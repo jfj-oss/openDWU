@@ -45,8 +45,20 @@ export function parseFacilities(text: string): Facility[] {
         const value1 = parseInt(parts[7], 10);
         const value2 = parseInt(parts[8], 10);
         const value3 = parseInt(parts[9], 10);
-        // Description may contain commas, so join remaining parts
-        const description = parts.slice(10).join(',').trim();
+        // Port: C# reads Description as the raw remainder of the line after
+        // Value3's comma (a single Trim), so the space after commas inside the
+        // description survives (split/join would drop it).
+        let descriptionComma = -1;
+        for (let i = 0; i < 10; i++) {
+            descriptionComma = line.indexOf(',', descriptionComma + 1);
+            if (descriptionComma < 0) {
+                break;
+            }
+        }
+        if (descriptionComma < 0) {
+            continue;
+        }
+        const description = line.slice(descriptionComma + 1).trim();
 
         if (
             Number.isNaN(facilityId) ||

@@ -47,16 +47,28 @@ export function parsePlagues(text: string): Plague[] {
         const pictureRef = parseInt(parts[2], 10);
         const mortalityRate = parseFloat(parts[3]);
         const infectionChance = parseInt(parts[4], 10);
-        const duration = parseInt(parts[5], 10);
+        const duration = parseFloat(parts[5]); // C# Length is a float
         const naturalOccurrenceLevel = parseInt(parts[6], 10);
         const canCompletelyEliminatePopulation = parseYesNo(parts[7]);
         const exceptionRaceName = parts[8];
         const exceptionMortalityRate = parseFloat(parts[9]);
         const exceptionInfectionChance = parseInt(parts[10], 10);
-        const exceptionDuration = parseInt(parts[11], 10);
+        const exceptionDuration = parseFloat(parts[11]); // C# ExceptionLength is a float
         const specialFunctionCode = parseInt(parts[12], 10);
-        // Description may contain commas, so join remaining parts
-        const description = parts.slice(13).join(',').trim();
+        // Port: C# reads Description as the raw remainder of the line after
+        // SpecialFunctionCode's comma (a single Trim), so the space after
+        // commas inside the description survives (split/join would drop it).
+        let descriptionComma = -1;
+        for (let i = 0; i < 13; i++) {
+            descriptionComma = line.indexOf(',', descriptionComma + 1);
+            if (descriptionComma < 0) {
+                break;
+            }
+        }
+        if (descriptionComma < 0) {
+            continue;
+        }
+        const description = line.slice(descriptionComma + 1).trim();
 
         if (
             Number.isNaN(plagueId) ||
