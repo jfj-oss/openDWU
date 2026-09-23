@@ -20,3 +20,30 @@ Public API: `generateGalaxy({ seed, shape, starCount, sectorWidth, sectorHeight,
 Tests `test/galaxy.test.ts`: per shape with 700 stars → 700 star systems (+ gas clouds count in `[140, 350)`), all coords in bounds, deterministic for a seed; spiral density higher at center than rim.
 
 Done when `npm run typecheck` && `npm test` pass. Append `## Worker report`.
+
+## Worker report
+
+**Files changed:**
+- `src/sim/galaxy.ts` (new) — `Galaxy` class + `generateGalaxy()`.
+- `src/sim/data.ts` (new) — `parseSystemNames()`.
+- `test/galaxy.test.ts` (new) — vitest coverage per the task spec.
+
+**Done:**
+- `SetGalaxyPhysicalDimensions` (Galaxy.3.cs 5723) ported as `Galaxy.setGalaxyPhysicalDimensions`; confirmed `SectorSizeX = SectorSizeY = 2_000_000`, `IndexSize = 400_000` via grep in `Galaxy.3.cs`/`Galaxy.cs`.
+- `ObtainRandomGalaxyCoordinates` (both overloads, Galaxy.5.cs 2830-2865) ported.
+- `SetupSun` (Galaxy.5.cs 1102-1373) ported for all six `GalaxyShape` variants (Spiral/Elliptical/Irregular/Ring/ClustersEven/ClustersVaried), including `SelectClusterIndex` and `SelectStar` (Galaxy.6.cs 2525-2617) helpers, and the star-cluster setup portion of the constructor (Galaxy.4.cs 2221-2276, as `Galaxy.setupStarClusters`).
+- `GenerateCodeName` (Galaxy.4.cs 2788) and `AssignSystemName` (Galaxy.4.cs 3495-3543) ported; `parseSystemNames` in `src/sim/data.ts` parses `systemNames.txt`'s comment/comma-list format (verified against the real file's first 20 lines).
+- `SetResearchBonus` / `SetScenicFactor` (Galaxy.5.cs 1947-2060, partial for `SetScenicFactor` — only the cases through line 2060 as specified) ported; numeric bonuses (`researchBonus`, `scenicFactor`) applied, RNG call sequence preserved even where the resulting value (`ResearchBonusIndustry`, `ScenicFeature`, `HasRings`) isn't stored (those fields don't exist on `Habitat` yet).
+- `GenerateGasCloud()` (Galaxy.4.cs 2794-2955) ported: type roll, diameter roll, min-distance retry loop, picture-ref bucketing, orbit-direction roll all faithful. The nebula-anchored placement is **not** faithful (see below).
+- Constructor logic (Galaxy.4.cs 2221-2347): cluster setup, per-star loop calling `setupSolarSystem` (stub with `TODO(01c)` marker where planet generation belongs), gas-cloud loop (`Rnd.Next(starCount/5, starCount/2)` — matches the `[140, 350)` test bound for `starCount=700`), then habitat re-indexing and `SystemInfo[]` construction (one per star; each system's `habitats` currently contains only the star itself, since moons/planets aren't generated).
+- `npm run typecheck` and `npm test` both pass (22 tests).
+
+**Left undone / approximated (all noted with `TODO(port)`/`TODO(01c)` comments in `galaxy.ts`):**
+- **Nebula clouds / `GalaxyLocation` are not ported.** `GenerateGasCloud()` in the source anchors clouds inside existing `NebulaCloud` locations; since no nebula/location system exists yet, gas clouds are placed at uniform-random galaxy coordinates instead. This is a real deviation from the original spatial distribution (clouds would otherwise cluster in nebulae) but the RNG call sequence and all other mechanics (type/diameter rolls, retry loop, distance threshold) are preserved.
+- `FindNearestSystemGasCloudAsteroid` is ported as a linear scan over `habitats` filtered to `GasCloud`/`Asteroid` categories, rather than the original's `GalaxyIndex` sector-grid search — same result, no perf optimization (fine at current scale; galaxy.test.ts runs starCount up to 700 well under 200ms).
+- Black hole "Pull"/"Event Horizon" and supernova `GalaxyLocation` objects at the end of `SetupSun` are skipped entirely (needs `GalaxyLocation`, out of scope).
+- `AssignSystemName`'s black-hole-name branch (`GenerateBlackHoleName`) is not ported; black-hole stars just get a code name via `GenerateCodeName` (same as any 0-planet system, which is what all stars currently are, since planets aren't generated in this task).
+- `SetScenicFactor`'s cases past line 2060 (further habitat types) are out of scope per the task's line range and not ported.
+- `Habitat.researchBonusIndustry`, `.scenicFeature`, `.hasRings` don't exist on the `types.ts` `Habitat` class; the corresponding RNG rolls are still consumed (to keep the random sequence faithful) but the values are discarded.
+- The final sort step in the source constructor (`list.Sort()`, relying on `HabitatList`/`IComparable`) isn't ported — system/gas-cloud groups are instead kept in original generation order. This preserves determinism (same seed → identical output) but doesn't reproduce the original's exact in-memory habitat ordering (which only affects internal indexing, not any tested behavior here).
+- `colonyPrevalence` is accepted in `generateGalaxy()`'s options for API-shape compatibility but currently unused (no colonies are generated yet).
