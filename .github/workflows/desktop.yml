@@ -1,0 +1,39 @@
+# Builds the native desktop apps. Manual trigger only (Actions → "desktop" → Run workflow).
+# Tests need the user's DW:U install, so CI only typechecks, builds and packages.
+name: desktop
+on:
+  workflow_dispatch:
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            script: package:linux
+            artifact: dwu-linux-x64
+          - os: macos-14   # Apple Silicon runner
+            script: package:mac
+            artifact: dwu-darwin-arm64
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: game
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: game/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm run ${{ matrix.script }}
+      - name: Ad-hoc sign (macOS)
+        if: runner.os == 'macOS'
+        run: codesign --force --deep -s - release/*/*.app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: game/release/
