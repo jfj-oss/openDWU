@@ -37,3 +37,6 @@ List the folders with `ls` to find actual filenames.
 
 ## Verify
 `npm run typecheck`, `npm test`. Start `npm run dev` in the background, then take screenshots with `node scripts/shot.mjs "<url with params>" shots/<name>.png` at galaxy zoom, sector zoom, and system zoom (centered on a star with planets — find one from `window.__dwu.galaxy` or compute in a node script). Check the console output printed by shot.mjs has no errors. List the screenshot paths in your Worker report.
+
+## Worker report (orchestrator)
+The worker sessions (qwen, text-only) crashed three times trying to Read their own screenshots (server: "Vision is disabled"). Code passes typecheck + 88 tests; committed as the base. Orchestrator screenshot review → follow-up task `02b-main-view-art-and-zoom.md`: art paths are guessed (all 404 → generated fallbacks), mid-zoom dead band (black), planets are dots.
