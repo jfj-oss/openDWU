@@ -12,3 +12,6 @@ Depends on 04c (correct resource data). Goal: remove `TODO(port)` gaps in `src/s
 Tests: resources present on planets/asteroids with ids that exist in GameData; gas giants get gas resources per the prevalence tables; deterministic; supernova habitats have nova fields in range.
 
 Done when `npm run typecheck` && `npm test` pass. Append `## Worker report`.
+
+## Note (orchestrator): CryptoRnd
+`SelectResources` (`Galaxy.4.cs` 3285–3370) draws from **both** `Rnd` and `CryptoRnd`. `CryptoRnd` is `CryptoRandom` (`CryptoRandom.cs`) — a true cryptographic RNG (`RandomNumberGenerator.Create()`), so the original's resource placement is not reproducible from a seed. Port every `Rnd` call exactly (it drives the shared sequence), but route `CryptoRnd.Next/NextDouble` to a **separate** `Random` seeded from the galaxy seed (e.g. `new Random(seed ^ 0x5eed)`, exposed as `galaxy.cryptoRnd`) so our galaxies stay deterministic. Add a comment saying so.
