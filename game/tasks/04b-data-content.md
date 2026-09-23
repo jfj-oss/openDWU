@@ -1,5 +1,7 @@
 # Task 04b — Data loaders: resources, components, fighters, facilities, plagues, research
 
+model: haiku
+
 Same work style and conventions as `tasks/04a-data-races-governments.md` (read it first; reuse its paths/fetch helpers).
 
 | data file | C# loader | TS module |

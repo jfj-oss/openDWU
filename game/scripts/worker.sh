@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Runs a headless Claude Code worker on one task file.
 # Usage: scripts/worker.sh tasks/NN-name.md   (log -> tasks/NN-name.log)
-# Default: Sonnet at low effort. WORKER=ninfer uses the local NInfer-4090 server instead.
+# Default: Sonnet at low effort; a task can pick its model with a "model: haiku|sonnet|opus" line. WORKER=ninfer uses the local NInfer-4090 server instead.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 task="$1"; log="${task%.md}.log"
@@ -20,4 +20,6 @@ if [ "${WORKER:-sonnet}" = ninfer ]; then
   exec "$(dirname "$0")/ninfer-worker.sh" "$task"
 fi
 
-CLAUDE_CODE_EFFORT_LEVEL=low exec claude --model sonnet "${args[@]}" > "$log" 2>&1
+# Per-task model: a line "model: haiku|sonnet|opus" near the top of the task file (default sonnet).
+model=$(grep -m1 -oP '^model:\s*\K(haiku|sonnet|opus)' "$task" || true)
+CLAUDE_CODE_EFFORT_LEVEL=low exec claude --model "${model:-sonnet}" "${args[@]}" > "$log" 2>&1
