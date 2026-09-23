@@ -9,12 +9,14 @@ diverges early and the hybrid (GDN) model can't reuse its KV/turn checkpoints
 (every turn = reuse=full_reset). This proxy canonicalizes content so consecutive
 requests are exact extensions of each other.
 
-Usage: ninfer-proxy.py [listen_port=8099] [upstream=http://127.0.0.1:8095]
+Usage: ninfer-proxy.py [listen_port=8099] [upstream=http://127.0.0.1:8095] [bind_host=127.0.0.1]
+(e.g. bind the Tailscale IP to serve the MacBook wrapper over the tailnet)
 """
 import http.server, itertools, json, os, sys, urllib.request, urllib.error
 
 LISTEN = int(sys.argv[1]) if len(sys.argv) > 1 else 8099
 UPSTREAM = sys.argv[2] if len(sys.argv) > 2 else "http://127.0.0.1:8095"
+BIND = sys.argv[3] if len(sys.argv) > 3 else "127.0.0.1"
 DUMP_DIR = os.environ.get("NINFER_PROXY_DUMP")  # debug: write each canonicalized request here
 _seq = itertools.count(1)
 
@@ -96,4 +98,4 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    http.server.ThreadingHTTPServer(("127.0.0.1", LISTEN), Handler).serve_forever()
+    http.server.ThreadingHTTPServer((BIND, LISTEN), Handler).serve_forever()
