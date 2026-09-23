@@ -16,7 +16,7 @@ exec env \
   CLAUDE_CODE_ATTRIBUTION_HEADER="0" \
   CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="1" \
   API_TIMEOUT_MS="1800000" \
-  CLAUDE_CODE_MAX_CONTEXT_TOKENS="262144" \
+  CLAUDE_CODE_MAX_CONTEXT_TOKENS="108000" \
   claude -p "Do the task described in $task. Read CLAUDE.md first. When finished, append a short '## Worker report' section to $task listing files changed, what is done, and anything left undone." \
     --permission-mode acceptEdits \
     --allowedTools "Read" "Edit" "Write" "Glob" "Grep" "TodoWrite" \
