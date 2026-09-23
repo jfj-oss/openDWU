@@ -37,3 +37,18 @@ Read and port **member order exactly** (TS numeric enums):
 
 ## Done when
 `npm run typecheck` && `npm test` pass. Append a short `## Worker report` to this file.
+
+## Worker report
+**Files changed**
+- `src/sim/random.ts` (new) — port of the .NET Framework legacy `System.Random` (seed array, `next()`, `next(max)`, `next(min, max)` incl. `GetSampleForLargeRange`, `nextDouble()`).
+- `src/sim/types.ts` (new) — `HabitatType`, `HabitatCategoryType`, `GalaxyShape`, `HabitatAtmosphereType` enums (member order matches the .cs files); `reduceAngle`/`increaseAngle` (ports of `Galaxy.ReduceAngle`/`IncreaseAngle`, Galaxy.3.cs); `Habitat` class with the x/y and orbit/`doInitialMove` constructors (port of the Habitat.cs ctors, incl. category/type validation, `_AnglePerSecond` and the 30 s initial `Move` geometry); `SystemInfo` interface.
+- `test/random.test.ts` (new) — the three exact-value tests from the task.
+
+**Done**
+- `npm run typecheck` and `npm test` pass (3/3 random tests, exact .NET values).
+- Extra throwaway sanity test (removed afterwards) confirmed the `Habitat` orbit math: a planet at distance 10, speed 1, direction + starts at angle 3 rad, i.e. `(cos 3, sin 3)·10` from its parent.
+
+**Left undone / notes**
+- The C# `Galaxy` constructor parameter is omitted (headless sim): galaxy-time fields (`_Last*Touch`), `Resources`/`Population`/`_BasesAtHabitat` lists, and `RecalculateCriticalResourceSupplyBonuses()` are `TODO(port)` notes in `types.ts` — they need the Galaxy and list types from later tasks.
+- `move(totalSeconds)` takes the delta explicitly (ctor passes 30, matching `_LastTouch = now − 30 s`); the per-tick `Move(galaxy)` driven by Galaxy time is left as a `TODO(port)` (Habitat.cs:Move).
+- `ConditionCheckLimit`'s 20-iteration cap is inlined in `move()` rather than ported as a function.
