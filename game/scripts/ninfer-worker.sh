@@ -3,9 +3,12 @@
 # Usage: scripts/ninfer-worker.sh tasks/NN-name.md   (log -> tasks/NN-name.log)
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# Requests go through scripts/ninfer-proxy.py (:8099) so ninfer can reuse its prompt cache.
+curl -sf -m 3 http://127.0.0.1:8099/health >/dev/null || {
+  echo "ninfer-proxy not running on :8099 (start: python3 scripts/ninfer-proxy.py 8099)" >&2; exit 3; }
 task="$1"; log="${task%.md}.log"
 exec env \
-  ANTHROPIC_BASE_URL="http://127.0.0.1:8095" \
+  ANTHROPIC_BASE_URL="http://127.0.0.1:8099" \
   ANTHROPIC_AUTH_TOKEN="ninfer" \
   ANTHROPIC_MODEL="qwen3.8-27b" \
   ANTHROPIC_SMALL_FAST_MODEL="qwen3.8-27b" \
