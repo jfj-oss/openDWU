@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { generateGalaxy } from '../src/sim/galaxy';
-import { GalaxyShape, HabitatCategoryType } from '../src/sim/types';
+import { GalaxyShape, HabitatCategoryType, HabitatType } from '../src/sim/types';
 
 const systemNames = Array.from({ length: 200 }, (_, i) => `Test System ${i}`);
 
@@ -91,5 +91,68 @@ describe('generateGalaxy', () => {
         }
 
         expect(innerCount).toBeGreaterThan(outerCount);
+    });
+
+    it('planets and moons are parented correctly, and orbit distances/counts obey source tables', () => {
+        const galaxy = generateGalaxy({
+            seed: 2024,
+            shape: GalaxyShape.Spiral,
+            starCount: 400,
+            sectorWidth: 10,
+            sectorHeight: 10,
+            systemNames,
+        });
+
+        let sawPlanet = false;
+        let sawMoon = false;
+
+        for (const system of galaxy.systems) {
+            const star = system.systemStar;
+            const planets = system.habitats.filter((h) => h.category === HabitatCategoryType.Planet);
+            const moons = system.habitats.filter((h) => h.category === HabitatCategoryType.Moon);
+
+            for (const planet of planets) {
+                sawPlanet = true;
+                expect(planet.parent).toBe(star);
+            }
+            for (const moon of moons) {
+                sawMoon = true;
+                expect(moon.parent).toBeDefined();
+                expect(moon.parent?.category).toBe(HabitatCategoryType.Planet);
+                expect(planets).toContain(moon.parent);
+            }
+
+            switch (star.type) {
+                case HabitatType.MainSequence:
+                case HabitatType.RedGiant:
+                case HabitatType.SuperGiant:
+                    expect(planets.length).toBeLessThanOrEqual(15);
+                    break;
+                case HabitatType.WhiteDwarf:
+                    expect(planets.length).toBeLessThanOrEqual(2);
+                    break;
+                case HabitatType.Neutron:
+                    expect(planets.length).toBeLessThanOrEqual(1);
+                    break;
+                case HabitatType.SuperNova:
+                    expect(planets.length).toBe(0);
+                    break;
+            }
+        }
+
+        expect(sawPlanet).toBe(true);
+        expect(sawMoon).toBe(true);
+    });
+
+    it('generateGalaxy with planets/moons/asteroids is deterministic for a fixed seed', () => {
+        const optionsA = { seed: 4242, shape: GalaxyShape.Spiral, starCount: 300, sectorWidth: 8, sectorHeight: 8, systemNames };
+        const optionsB = { seed: 4242, shape: GalaxyShape.Spiral, starCount: 300, sectorWidth: 8, sectorHeight: 8, systemNames };
+
+        const galaxyA = generateGalaxy(optionsA);
+        const galaxyB = generateGalaxy(optionsB);
+
+        expect(galaxyA.habitats.map((h) => [h.category, h.name, h.type, h.xpos, h.ypos, h.diameter, h.orbitDistance])).toEqual(
+            galaxyB.habitats.map((h) => [h.category, h.name, h.type, h.xpos, h.ypos, h.diameter, h.orbitDistance]),
+        );
     });
 });

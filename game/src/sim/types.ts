@@ -105,6 +105,7 @@ export class Habitat {
     habitatIndex = 0;
     scenicFactor = 0; // C#: float
     researchBonus = 0; // C#: byte
+    hasRings = false; // C#: bool HasRings (Galaxy.5.cs SetupSolarSystem)
 
     // TODO(port): _LastHugeTouch/_LastLongTouch/_LastPeriodicTouch/_LastTouch
     // (galaxy time), Resources/Population/_BasesAtHabitat lists and

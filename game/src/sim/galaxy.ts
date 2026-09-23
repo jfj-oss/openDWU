@@ -1,8 +1,9 @@
-// Galaxy skeleton: star generation (all GalaxyShape variants), system
-// naming, and gas clouds. Ports of DistantWorlds.Types.Galaxy (Galaxy.cs /
-// Galaxy.3.cs / Galaxy.4.cs / Galaxy.5.cs / Galaxy.6.cs). Planets, moons,
-// asteroids, and nebula/galaxy-location generation are out of scope for
-// this task — see the `TODO(01c)` markers below.
+// Galaxy generation: star generation (all GalaxyShape variants), system
+// naming, gas clouds, and solar-system contents (planets, moons, asteroid
+// fields). Ports of DistantWorlds.Types.Galaxy (Galaxy.cs / Galaxy.3.cs /
+// Galaxy.4.cs / Galaxy.5.cs / Galaxy.6.cs / Galaxy.9.cs). Nebula/
+// galaxy-location generation, resources, population, and creatures are out
+// of scope — see the `TODO(port)` markers below.
 
 import { Random } from './random';
 import {
@@ -19,6 +20,8 @@ const SECTOR_SIZE = 2_000_000;
 const INDEX_SIZE = 400_000;
 // Port of Galaxy.3.cs InitializeStatics: MaxSolarSystemSize = 23000.
 const MAX_SOLAR_SYSTEM_SIZE = 23000;
+// Port of Galaxy.3.cs InitializeStatics: MaxMoonOrbitSize = 1200.
+const MAX_MOON_ORBIT_SIZE = 1200;
 
 export interface GenerateGalaxyOptions {
     seed: number;
@@ -41,6 +44,8 @@ export class Galaxy {
     galaxyShape: GalaxyShape;
     habitats: Habitat[] = [];
     systems: SystemInfo[] = [];
+    // Port of Galaxy.cs _ColonyPrevalence (defaults to 1.0).
+    colonyPrevalence = 1.0;
 
     // Port of Galaxy.cs _StarClusterLocations / _StarClusterPortions
     // (used by the ClustersEven/ClustersVaried shapes).
@@ -52,13 +57,16 @@ export class Galaxy {
     private systemNamesUsedPlain: boolean[];
     private systemNamesUsedAlternative: boolean[];
 
-    constructor(seed: number, shape: GalaxyShape, starCount: number, sectorWidth: number, sectorHeight: number, systemNames: string[]) {
+    constructor(seed: number, shape: GalaxyShape, starCount: number, sectorWidth: number, sectorHeight: number, systemNames: string[], colonyPrevalence?: number) {
         this.rnd = new Random(seed);
         this.galaxyShape = shape;
         this.starCount = starCount;
         this.sectorWidth = sectorWidth;
         this.sectorHeight = sectorHeight;
         this.systemNames = systemNames;
+        if (colonyPrevalence !== undefined) {
+            this.colonyPrevalence = colonyPrevalence;
+        }
         this.systemNamesUsedPlain = new Array(systemNames.length).fill(false);
         this.systemNamesUsedAlternative = new Array(systemNames.length).fill(false);
         this.setGalaxyPhysicalDimensions(sectorWidth, sectorHeight);
@@ -547,17 +555,922 @@ export class Galaxy {
         return habitat;
     }
 
-    // Stub for Galaxy.5.cs SetupSolarSystem(galaxyShape): sets up the sun
-    // and its naming/bonuses only. Planets are out of scope for this task.
-    // TODO(01c): planets — Galaxy.5.cs:1386+ (SetupSolarSystem planet loop).
-    setupSolarSystem(galaxyShape: GalaxyShape): Habitat {
-        const star = this.setupSun(galaxyShape);
-        // TODO(01c): planets — Galaxy.5.cs:1386+
-        const planetCount = 0;
-        this.assignSystemName(star, planetCount);
-        this.setScenicFactor(star);
-        this.setResearchBonus(star);
-        return star;
+    // Port of Galaxy.5.cs CheckOrbitOverlap
+    private checkOrbitOverlap(existingMin: number, existingMax: number, newMin: number, newMax: number): boolean {
+        if (newMin >= existingMin && newMin <= existingMax) {
+            return true;
+        }
+        if (newMax >= existingMin && newMax <= existingMax) {
+            return true;
+        }
+        if (newMin < existingMin && newMax > existingMax) {
+            return true;
+        }
+        return false;
+    }
+
+    // Port of Galaxy.6.cs CalculateAngleFromCoords
+    private calculateAngleFromCoords(x: number, y: number, centerX: number, centerY: number, distance: number): number {
+        const halfPi = Math.PI / 2.0;
+        const negHalfPi = -halfPi;
+        if (x < centerX) {
+            if (y < centerY) {
+                return negHalfPi - (halfPi + Math.asin((y - centerY) / distance));
+            }
+            return halfPi + (halfPi - Math.asin((y - centerY) / distance));
+        }
+        if (y < centerY) {
+            return Math.asin((y - centerY) / distance) * -1.0;
+        }
+        return Math.asin((y - centerY) / distance);
+    }
+
+    // Port of Galaxy.6.cs SelectBarrenRockPlanet(diameter, out pictureRef, out landscapePictureRef)
+    private selectBarrenRockPictures(): { pictureRef: number; landscapePictureRef: number } {
+        return { pictureRef: 100 + this.rnd.next(0, 10), landscapePictureRef: 200 + this.rnd.next(0, 10) };
+    }
+
+    // Port of Galaxy.6.cs SelectBarrenRockPlanet(out type, out pictureRef, out diameter, out minOrbitDistance, out maxOrbitDistance, out landscapePictureRef)
+    private selectBarrenRockPlanet(): { type: HabitatType; diameter: number; minOrbitDistance: number; maxOrbitDistance: number; pictureRef: number; landscapePictureRef: number } {
+        const diameter = this.rnd.next(80, 340);
+        const minOrbitDistance = 2500;
+        const maxOrbitDistance = 11500;
+        const { pictureRef, landscapePictureRef } = this.selectBarrenRockPictures();
+        return { type: HabitatType.BarrenRock, diameter, minOrbitDistance, maxOrbitDistance, pictureRef, landscapePictureRef };
+    }
+
+    // Port of Galaxy.6.cs SelectContinentalPlanet
+    private selectContinentalPlanet(): { type: HabitatType; diameter: number; minOrbitDistance: number; maxOrbitDistance: number; pictureRef: number; landscapePictureRef: number } {
+        const diameter = this.rnd.next(200, 320);
+        const pictureRef = 300 + this.rnd.next(0, 10);
+        const landscapePictureRef = 400 + this.rnd.next(0, 10);
+        return { type: HabitatType.Continental, diameter, minOrbitDistance: 5000, maxOrbitDistance: 10000, pictureRef, landscapePictureRef };
+    }
+
+    // Port of Galaxy.6.cs SelectIcePlanet
+    private selectIcePlanet(): { type: HabitatType; diameter: number; minOrbitDistance: number; maxOrbitDistance: number; pictureRef: number; landscapePictureRef: number } {
+        const diameter = this.rnd.next(180, 320);
+        const pictureRef = 500 + this.rnd.next(0, 10);
+        const landscapePictureRef = 600 + this.rnd.next(0, 10);
+        return { type: HabitatType.Ice, diameter, minOrbitDistance: 18000, maxOrbitDistance: 23000, pictureRef, landscapePictureRef };
+    }
+
+    // Port of Galaxy.6.cs SelectMarshySwampPlanet
+    private selectMarshySwampPlanet(): { type: HabitatType; diameter: number; minOrbitDistance: number; maxOrbitDistance: number; pictureRef: number; landscapePictureRef: number } {
+        const diameter = this.rnd.next(200, 320);
+        const pictureRef = 700 + this.rnd.next(0, 10);
+        const landscapePictureRef = 800 + this.rnd.next(0, 10);
+        return { type: HabitatType.MarshySwamp, diameter, minOrbitDistance: 5000, maxOrbitDistance: 9500, pictureRef, landscapePictureRef };
+    }
+
+    // Port of Galaxy.6.cs SelectOceanPlanet
+    private selectOceanPlanet(): { type: HabitatType; diameter: number; minOrbitDistance: number; maxOrbitDistance: number; pictureRef: number; landscapePictureRef: number } {
+        const diameter = this.rnd.next(200, 320);
+        const pictureRef = 900 + this.rnd.next(0, 10);
+        const landscapePictureRef = 1000 + this.rnd.next(0, 10);
+        return { type: HabitatType.Ocean, diameter, minOrbitDistance: 5000, maxOrbitDistance: 10000, pictureRef, landscapePictureRef };
+    }
+
+    // Port of Galaxy.6.cs SelectDesertPlanet
+    private selectDesertPlanet(): { type: HabitatType; diameter: number; minOrbitDistance: number; maxOrbitDistance: number; pictureRef: number; landscapePictureRef: number } {
+        const diameter = this.rnd.next(180, 330);
+        const pictureRef = 1100 + this.rnd.next(0, 10);
+        const landscapePictureRef = 1200 + this.rnd.next(0, 10);
+        return { type: HabitatType.Desert, diameter, minOrbitDistance: 3000, maxOrbitDistance: 10300, pictureRef, landscapePictureRef };
+    }
+
+    // Port of Galaxy.6.cs SelectVolcanicPlanet
+    private selectVolcanicPlanet(): { type: HabitatType; diameter: number; minOrbitDistance: number; maxOrbitDistance: number; pictureRef: number; landscapePictureRef: number } {
+        const diameter = this.rnd.next(160, 330);
+        const pictureRef = 1300 + this.rnd.next(0, 10);
+        const landscapePictureRef = 1400 + this.rnd.next(0, 10);
+        return { type: HabitatType.Volcanic, diameter, minOrbitDistance: 1250, maxOrbitDistance: 3500, pictureRef, landscapePictureRef };
+    }
+
+    // Port of Galaxy.6.cs SelectGasGiantPlanet
+    private selectGasGiantPlanet(): { type: HabitatType; diameter: number; minOrbitDistance: number; maxOrbitDistance: number; pictureRef: number; landscapePictureRef: number } {
+        const diameter = this.rnd.next(550, 970);
+        const pictureRef = 1500 + this.rnd.next(0, 10);
+        const landscapePictureRef = 1600 + this.rnd.next(0, 10);
+        return { type: HabitatType.GasGiant, diameter, minOrbitDistance: 12000, maxOrbitDistance: 17000, pictureRef, landscapePictureRef };
+    }
+
+    // Port of Galaxy.6.cs SelectFrozenGasGiantPlanet
+    private selectFrozenGasGiantPlanet(): { type: HabitatType; diameter: number; minOrbitDistance: number; maxOrbitDistance: number; pictureRef: number; landscapePictureRef: number } {
+        const diameter = this.rnd.next(480, 680);
+        const pictureRef = 1700 + this.rnd.next(0, 10);
+        const landscapePictureRef = 1800 + this.rnd.next(0, 10);
+        return { type: HabitatType.FrozenGasGiant, diameter, minOrbitDistance: 17500, maxOrbitDistance: 22000, pictureRef, landscapePictureRef };
+    }
+
+    // Port of Galaxy.6.cs CalculatePlanetTypePrevalenceByStarType (line 2307).
+    // colonyPrevalence defaults to 1.0 (matches _ColonyPrevalence's default
+    // when GenerateGalaxyOptions.colonyPrevalence is unset).
+    private calculatePlanetTypePrevalenceByStarType(starType: HabitatType): number[] {
+        let thresholds: number[];
+        switch (starType) {
+            case HabitatType.MainSequence:
+            case HabitatType.RedGiant:
+            case HabitatType.SuperGiant:
+                thresholds = [0.213, 0.015, 0.019, 0.029, 0.036, 0.058, 0.062, 0.281, 0.287];
+                break;
+            case HabitatType.WhiteDwarf:
+                thresholds = [0.216, 0.0, 0.0, 0.0, 0.0, 0.176, 0.098, 0.0, 0.51];
+                break;
+            case HabitatType.Neutron:
+                thresholds = [0.0, 0.0, 0.0, 0.0, 0.0, 0.333, 0.118, 0.0, 0.549];
+                break;
+            default:
+                thresholds = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+                break;
+        }
+        const colonyPrevalence = this.colonyPrevalence;
+        const num = 1.0 - (1.0 - colonyPrevalence) / 2.0;
+        thresholds[1] *= colonyPrevalence;
+        thresholds[2] *= colonyPrevalence;
+        thresholds[7] *= num;
+        return thresholds;
+    }
+
+    // Port of Galaxy.6.cs SelectPlanetType (line 2365)
+    private selectPlanetType(parentStarType: HabitatType): {
+        type: HabitatType;
+        pictureRef: number;
+        diameter: number;
+        minOrbitDistance: number;
+        maxOrbitDistance: number;
+        landscapePictureRef: number;
+    } {
+        const prevalenceThresholds = this.calculatePlanetTypePrevalenceByStarType(parentStarType);
+        const num = this.rnd.nextDouble();
+        let sumLow = 0.0;
+        let sumHigh = 0.0;
+        let result: { type: HabitatType; diameter: number; minOrbitDistance: number; maxOrbitDistance: number; pictureRef: number; landscapePictureRef: number } | null = null;
+        for (let i = 0; i < prevalenceThresholds.length; i++) {
+            sumLow = sumHigh;
+            sumHigh += prevalenceThresholds[i];
+            if (num >= sumLow && num < sumHigh) {
+                switch (i) {
+                    case 0:
+                        result = this.selectFrozenGasGiantPlanet();
+                        break;
+                    case 1:
+                        result = this.selectContinentalPlanet();
+                        break;
+                    case 2:
+                        result = this.selectMarshySwampPlanet();
+                        break;
+                    case 3:
+                        result = this.selectOceanPlanet();
+                        break;
+                    case 4:
+                        result = this.selectDesertPlanet();
+                        break;
+                    case 5:
+                        result = this.selectIcePlanet();
+                        break;
+                    case 6:
+                        result = this.selectVolcanicPlanet();
+                        break;
+                    case 7:
+                        result = this.selectGasGiantPlanet();
+                        break;
+                    case 8:
+                        result = this.selectBarrenRockPlanet();
+                        break;
+                    default:
+                        result = this.selectBarrenRockPlanet();
+                        break;
+                }
+                break;
+            }
+        }
+        if (result === null || result.diameter <= 0) {
+            result = this.selectBarrenRockPlanet();
+        }
+        return result;
+    }
+
+    // Port of Galaxy.6.cs CalculateMoonTypePrevalenceByPlanetType (line 1809)
+    private calculateMoonTypePrevalenceByPlanetType(planetDiameter: number, planetType: HabitatType): number[] {
+        let thresholds: number[];
+        if (planetDiameter >= 430) {
+            thresholds = planetType === HabitatType.FrozenGasGiant
+                ? [0.15, 0.0, 0.0, 0.0, 0.0, 0.0, 0.85]
+                : [0.08, 0.024, 0.024, 0.062, 0.062, 0.086, 0.662];
+        } else if (planetDiameter >= 340) {
+            thresholds = planetType === HabitatType.FrozenGasGiant
+                ? [0.15, 0.0, 0.0, 0.0, 0.0, 0.0, 0.85]
+                : [0.093, 0.0, 0.0, 0.093, 0.093, 0.093, 0.628];
+        } else {
+            thresholds = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0];
+        }
+        const colonyPrevalence = this.colonyPrevalence;
+        thresholds[1] *= colonyPrevalence;
+        thresholds[2] *= colonyPrevalence;
+        return thresholds;
+    }
+
+    // Port of Galaxy.6.cs SelectMoonType (line 1873)
+    private selectMoonType(parentDiameter: number, parentType: HabitatType): {
+        type: HabitatType;
+        diameter: number;
+        pictureRef: number;
+        landscapePictureRef: number;
+    } {
+        const prevalenceThresholds = this.calculateMoonTypePrevalenceByPlanetType(parentDiameter, parentType);
+        const num = this.rnd.nextDouble();
+        let sumLow = 0.0;
+        let sumHigh = 0.0;
+        let result: { type: HabitatType; diameter: number; pictureRef: number; landscapePictureRef: number } | null = null;
+        for (let i = 0; i < prevalenceThresholds.length; i++) {
+            sumLow = sumHigh;
+            sumHigh += prevalenceThresholds[i];
+            if (num >= sumLow && num < sumHigh) {
+                switch (i) {
+                    case 0:
+                        result = this.selectIcePlanet();
+                        break;
+                    case 1:
+                        result = this.selectContinentalPlanet();
+                        break;
+                    case 2:
+                        result = this.selectMarshySwampPlanet();
+                        break;
+                    case 3:
+                        result = this.selectOceanPlanet();
+                        break;
+                    case 4:
+                        result = this.selectDesertPlanet();
+                        break;
+                    case 5:
+                        result = this.selectVolcanicPlanet();
+                        break;
+                    case 6:
+                        result = this.selectBarrenRockPlanet();
+                        break;
+                    default:
+                        result = this.selectBarrenRockPlanet();
+                        break;
+                }
+                break;
+            }
+        }
+        if (result === null || result.diameter <= 0) {
+            result = this.selectBarrenRockPlanet();
+        }
+        let diameter = result.diameter;
+        if (diameter > parentDiameter * 0.33) {
+            diameter = Math.trunc(parentDiameter * (this.rnd.next(28, 33) * 0.01));
+        }
+        return { type: result.type, diameter, pictureRef: result.pictureRef, landscapePictureRef: result.landscapePictureRef };
+    }
+
+    // Port of Galaxy.6.cs SelectHabitatPictures (line 2062). Habitat.Resources
+    // isn't modeled yet (SelectResources not ported — see TODO(port) note on
+    // setupSolarSystem), so the "has resources" branches for GasGiant/
+    // FrozenGasGiant are unreachable here; only the "no resources" branch
+    // (a single Rnd.Next roll) runs, which desyncs the Rnd sequence versus
+    // the original whenever a real game would have generated resources for
+    // that habitat. TODO(port): resource-based picture selection — needs
+    // SelectResources.
+    selectHabitatPictures(habitat: Habitat): void {
+        if (habitat.category === HabitatCategoryType.Asteroid) {
+            switch (habitat.type) {
+                case HabitatType.BarrenRock:
+                    habitat.pictureRef = 2000 + this.rnd.next(0, 10);
+                    habitat.landscapePictureRef = 200 + this.rnd.next(0, 10);
+                    break;
+                case HabitatType.Ice:
+                    habitat.pictureRef = 2100 + this.rnd.next(0, 10);
+                    habitat.landscapePictureRef = 200 + this.rnd.next(0, 10);
+                    break;
+                case HabitatType.Metal:
+                    habitat.pictureRef = 2200 + this.rnd.next(0, 10);
+                    habitat.landscapePictureRef = 200 + this.rnd.next(0, 10);
+                    break;
+                default:
+                    habitat.pictureRef = 2000 + this.rnd.next(0, 10);
+                    habitat.landscapePictureRef = 200 + this.rnd.next(0, 10);
+                    break;
+            }
+            return;
+        }
+        switch (habitat.type) {
+            case HabitatType.BarrenRock:
+                habitat.pictureRef = 100 + this.rnd.next(0, 10);
+                habitat.landscapePictureRef = 200 + this.rnd.next(0, 10);
+                break;
+            case HabitatType.Continental:
+                habitat.pictureRef = 300 + this.rnd.next(0, 10);
+                habitat.landscapePictureRef = 400 + this.rnd.next(0, 10);
+                break;
+            case HabitatType.FrozenGasGiant:
+                habitat.landscapePictureRef = 1800 + this.rnd.next(0, 10);
+                // No Resources modeled yet -> always the "no resources" branch.
+                habitat.pictureRef = 1700 + this.rnd.next(0, 10);
+                break;
+            case HabitatType.GasGiant:
+                habitat.landscapePictureRef = 1600 + this.rnd.next(0, 10);
+                // No Resources modeled yet -> always the "no resources" branch.
+                habitat.pictureRef = 1500 + this.rnd.next(0, 10);
+                break;
+            case HabitatType.Ice:
+                habitat.pictureRef = 500 + this.rnd.next(0, 10);
+                habitat.landscapePictureRef = 600 + this.rnd.next(0, 10);
+                break;
+            case HabitatType.MarshySwamp:
+                habitat.pictureRef = 700 + this.rnd.next(0, 10);
+                habitat.landscapePictureRef = 800 + this.rnd.next(0, 10);
+                break;
+            case HabitatType.Ocean:
+                habitat.pictureRef = 900 + this.rnd.next(0, 10);
+                habitat.landscapePictureRef = 1000 + this.rnd.next(0, 10);
+                break;
+            case HabitatType.Desert:
+                habitat.pictureRef = 1100 + this.rnd.next(0, 10);
+                habitat.landscapePictureRef = 1200 + this.rnd.next(0, 10);
+                break;
+            case HabitatType.Volcanic:
+                habitat.pictureRef = 1300 + this.rnd.next(0, 10);
+                habitat.landscapePictureRef = 1400 + this.rnd.next(0, 10);
+                break;
+            // MainSequence/RedGiant/SuperGiant/WhiteDwarf/Neutron/BlackHole
+            // (stars) and SuperNova aren't reachable here: SetupSolarSystem
+            // only calls SelectHabitatPictures for planets/moons/asteroids.
+        }
+    }
+
+    // Port of Galaxy.4.cs SelectHabitatQuality (line 3170)
+    selectHabitatQuality(habitat: Habitat, colonyPrevalence: number): number {
+        let base = 0;
+        let spread = 0;
+        let lifeChance = 0;
+        switch (habitat.type) {
+            case HabitatType.BarrenRock:
+                base = 0;
+                spread = 0.02;
+                lifeChance = 0;
+                break;
+            case HabitatType.Continental:
+                base = 1;
+                spread = 0.2;
+                lifeChance = 0;
+                break;
+            case HabitatType.Ice:
+                base = 0.3;
+                spread = 0.18;
+                lifeChance = 0.11 * colonyPrevalence;
+                break;
+            case HabitatType.MarshySwamp:
+                base = 0.85;
+                spread = 0.15;
+                lifeChance = 0;
+                break;
+            case HabitatType.Ocean: {
+                base = 0.8;
+                spread = 0.75;
+                const diff = base - 0.5;
+                base = diff * colonyPrevalence + 0.5;
+                lifeChance = 0.03 * colonyPrevalence;
+                break;
+            }
+            case HabitatType.Desert: {
+                base = 0.75;
+                spread = 0.72;
+                const diff = base - 0.5;
+                base = diff * colonyPrevalence + 0.5;
+                lifeChance = 0.08 * colonyPrevalence;
+                break;
+            }
+            case HabitatType.Volcanic:
+                base = 0.25;
+                spread = 0.18;
+                lifeChance = 0.18 * colonyPrevalence;
+                break;
+            default:
+                base = 0;
+                spread = 0;
+                lifeChance = 0;
+                break;
+        }
+        let quality = base - this.rnd.nextDouble() * spread;
+        if (this.rnd.nextDouble() < lifeChance) {
+            quality = 0.5 + this.rnd.nextDouble() * 0.5;
+        }
+        if (quality >= 0.5 && quality < 0.6 && this.rnd.next(0, 5) > 0) {
+            quality = 0.6 + this.rnd.nextDouble() * 0.12;
+        }
+        return Math.min(1, Math.max(0, quality));
+    }
+
+    // Port of Galaxy.9.cs GenerateAsteroidField (line 3482 overload; the
+    // simpler overloads at 3463/3470 that resolve nearestSystemStar/
+    // orbitDistance via FindNearestSystemGasCloudAsteroid aren't ported —
+    // SetupSolarSystem always supplies nearestSystemStar/orbitDistance
+    // directly). The `randomOrderedResources`/resources output is skipped
+    // (SelectResources isn't ported yet) but the same count/order of Rnd
+    // calls SelectResources(habitat, minimumResourceCount) would consume is
+    // NOT reproduced here — see the Worker report for the resulting desync.
+    // TODO(port): resources — Galaxy.9.cs GenerateAsteroidField.
+    private generateAsteroidFieldAt(
+        asteroidCount: number,
+        x: number,
+        y: number,
+        nearestSystemStar: Habitat,
+        orbitDirection: boolean,
+        orbitSpeed: number,
+        orbitDistance: number,
+        distanceSpreadFactor: number,
+        arcSpreadFactor: number,
+        type: HabitatType,
+    ): Habitat[] {
+        const result: Habitat[] = [];
+        const baseAngle = this.calculateAngleFromCoords(x, y, nearestSystemStar.xpos, nearestSystemStar.ypos, orbitDistance);
+        let arcSpread = arcSpreadFactor * arcSpreadFactor;
+        let val = (MAX_SOLAR_SYSTEM_SIZE - orbitDistance) / (MAX_SOLAR_SYSTEM_SIZE / 3);
+        val = Math.min(3.0, Math.max(0.3, val));
+        arcSpread *= val;
+        const distSpread = Math.max(0.06, 0.13 * (asteroidCount / 350.0));
+        const distRange = Math.max(250.0, 500.0 * (asteroidCount / 350.0) * distanceSpreadFactor);
+        const negHalf = -0.4;
+        let minDist = orbitDistance + negHalf * distRange * distanceSpreadFactor;
+        let maxDist = orbitDistance + 0.4 * distRange * distanceSpreadFactor;
+        let minAngle = baseAngle + negHalf * distSpread * arcSpread;
+        let maxAngle = baseAngle + 0.4 * distSpread * arcSpread;
+        if (minAngle > maxAngle) {
+            const tmp = maxAngle;
+            maxAngle = minAngle;
+            minAngle = tmp;
+        }
+        for (let i = 0; i < asteroidCount; i++) {
+            let diameter = this.rnd.next(10, 25);
+            if (this.rnd.next(0, 30) === 5) {
+                diameter = this.rnd.next(26, 45);
+            }
+            const pictureRef = 2000 + this.rnd.next(0, 10);
+            let dist = orbitDistance + Math.trunc((this.rnd.nextDouble() - 0.5) * this.rnd.nextDouble() * 2.0 * distRange * distanceSpreadFactor);
+            let angle = baseAngle + (this.rnd.nextDouble() - 0.5) * this.rnd.nextDouble() * 2.0 * distSpread * arcSpread;
+            if (dist > minDist && dist < maxDist && angle > minAngle && angle < maxAngle) {
+                const distFrac = this.rnd.nextDouble() * 0.8 - 0.4;
+                const angleFrac = this.rnd.nextDouble() * 0.8 - 0.4;
+                dist = orbitDistance + Math.trunc(distFrac * distRange * distanceSpreadFactor);
+                angle = baseAngle + angleFrac * distSpread * arcSpread;
+            }
+            const name = this.generateCodeName() + ', Asteroid Field';
+            const asteroid = new Habitat(HabitatCategoryType.Asteroid, HabitatType.BarrenRock, name, nearestSystemStar, angle, orbitDirection, dist, orbitSpeed, false);
+            asteroid.diameter = diameter;
+            asteroid.pictureRef = pictureRef;
+            asteroid.landscapePictureRef = -1;
+            // TODO(port): SelectResources(habitat, minimumResourceCount, null, 0, randomOrderedResources) — Galaxy.4.cs.
+            // The minimumResourceCount roll below is kept for the single Rnd
+            // call SetupSolarSystem's inline equivalent makes; the resource
+            // selection itself is not reproduced.
+            if (type === HabitatType.Metal && this.rnd.next(0, 3) > 0) {
+                // minimumResourceCount = 1 in source; no resource list to populate here.
+            }
+            asteroid.type = type;
+            this.selectHabitatPictures(asteroid);
+            // TODO(port): GenerateTreasureAsteroid — Galaxy.9.cs:3419 (1/1300 roll below consumes the same Rnd call the source makes; the treasure-asteroid Rnd calls that would follow are not reproduced).
+            this.rnd.next(0, 1300);
+            result.push(asteroid);
+        }
+        return result;
+    }
+
+    // Port of Galaxy.5.cs SetupSolarSystem(galaxyShape, sunHabitat, out
+    // asteroidField) (lines 1386-1945). colonyPrevalence (this.colonyPrevalence)
+    // stands in for Galaxy._ColonyPrevalence.
+    //
+    // Not ported (out of scope per task 01c): SelectResources,
+    // SelectPopulation, SelectCreatures, DockingBay/Cargo/Troop/Character/
+    // Construction/Manufacturing list setup, DoTasks, GenerateTreasureAsteroid's
+    // actual resource assignment. Every call site that would have called one
+    // of the skipped functions is noted in the Worker report together with
+    // the (data-dependent, non-fixed) number of Rnd calls it would have
+    // consumed in the original — the ported Rnd sequence diverges from the
+    // original from the first such call site onward.
+    setupSolarSystem(galaxyShape: GalaxyShape): { habitats: Habitat[]; asteroidField: Habitat[] | null } {
+        let allowCreatures = true; // C#: flag
+        const habitatList: Habitat[] = []; // C#: habitatList (planets/moons/asteroids, unordered)
+        const habitatList2: Habitat[] = []; // C#: habitatList2 (final ordered return list)
+        let asteroidField: Habitat[] | null = null;
+        const minValue = 0; // sunHabitat is always null at this call site (see Galaxy.5.cs sunHabitat==null branch).
+        const sunHabitat = this.setupSun(galaxyShape);
+
+        let maxValue = 0;
+        let planetCount = 0;
+        switch (sunHabitat.type) {
+            case HabitatType.MainSequence:
+            case HabitatType.RedGiant:
+            case HabitatType.SuperGiant:
+                maxValue = 12;
+                if (this.starCount <= 400) {
+                    switch (this.rnd.next(minValue, 8)) {
+                        case 0:
+                            planetCount = 0;
+                            break;
+                        case 1:
+                        case 2:
+                            planetCount = this.rnd.next(1, 4);
+                            break;
+                        case 3:
+                        case 4:
+                            planetCount = this.rnd.next(2, 7);
+                            break;
+                        case 5:
+                        case 6:
+                            planetCount = this.rnd.next(5, 10);
+                            break;
+                        case 7:
+                            planetCount = this.rnd.next(6, 16);
+                            break;
+                    }
+                } else if (this.starCount <= 1000) {
+                    switch (this.rnd.next(minValue, 7)) {
+                        case 0:
+                            planetCount = 0;
+                            break;
+                        case 1:
+                        case 2:
+                            planetCount = this.rnd.next(1, 4);
+                            break;
+                        case 3:
+                        case 4:
+                            planetCount = this.rnd.next(3, 7);
+                            break;
+                        case 5:
+                            planetCount = this.rnd.next(4, 9);
+                            break;
+                        case 6:
+                            planetCount = this.rnd.next(5, 15);
+                            break;
+                    }
+                } else {
+                    switch (this.rnd.next(minValue, 5)) {
+                        case 0:
+                            planetCount = 0;
+                            break;
+                        case 1:
+                            planetCount = this.rnd.next(1, 3);
+                            break;
+                        case 2:
+                            planetCount = this.rnd.next(2, 5);
+                            break;
+                        case 3:
+                            planetCount = this.rnd.next(3, 7);
+                            break;
+                        case 4:
+                            planetCount = this.rnd.next(4, 11);
+                            break;
+                    }
+                }
+                break;
+            case HabitatType.WhiteDwarf:
+                maxValue = 3;
+                switch (this.rnd.next(minValue, 6)) {
+                    case 0:
+                    case 1:
+                    case 2:
+                    case 3:
+                        planetCount = 0;
+                        break;
+                    case 4:
+                    case 5:
+                        planetCount = this.rnd.next(1, 3);
+                        break;
+                }
+                break;
+            case HabitatType.Neutron:
+                maxValue = 24;
+                switch (this.rnd.next(minValue, 6)) {
+                    case 0:
+                    case 1:
+                    case 2:
+                    case 3:
+                        planetCount = 0;
+                        break;
+                    case 4:
+                    case 5:
+                        planetCount = 1;
+                        break;
+                }
+                break;
+            case HabitatType.SuperNova:
+                maxValue = 2;
+                allowCreatures = false;
+                planetCount = 0;
+                break;
+        }
+
+        if (planetCount > 0) {
+            let attempts = 0;
+            for (;;) {
+                if (attempts < 20) {
+                    if (this.assignSystemName(sunHabitat, planetCount)) {
+                        break;
+                    }
+                    attempts++;
+                    continue;
+                }
+                sunHabitat.name = this.generateCodeName();
+                break;
+            }
+        }
+        this.setScenicFactor(sunHabitat);
+        this.setResearchBonus(sunHabitat);
+        habitatList2.push(sunHabitat);
+
+        if (planetCount > 0) {
+            for (let i = 0; i < planetCount; i++) {
+                let habitat: Habitat = sunHabitat;
+                const { type, pictureRef, diameter, minOrbitDistance, maxOrbitDistance, landscapePictureRef } = this.selectPlanetType(habitat.type);
+                const halfSpacing = Math.trunc(diameter / 4);
+                let attempts = 0;
+                let orbitDistance = this.rnd.next(minOrbitDistance, maxOrbitDistance);
+                let newMin = orbitDistance - (Math.trunc(diameter / 2) + halfSpacing);
+                let newMax = orbitDistance + (Math.trunc(diameter / 2) + halfSpacing);
+                let overlap = true;
+                while (overlap && attempts < 50) {
+                    overlap = false;
+                    for (const existing of habitatList) {
+                        const existingMin = existing.orbitDistance - (Math.trunc(existing.diameter / 2) + halfSpacing);
+                        const existingMax = existing.orbitDistance + (Math.trunc(existing.diameter / 2) + halfSpacing);
+                        if (this.checkOrbitOverlap(existingMin, existingMax, newMin, newMax)) {
+                            orbitDistance = this.rnd.next(minOrbitDistance, maxOrbitDistance);
+                            newMin = orbitDistance - (Math.trunc(diameter / 2) + halfSpacing);
+                            newMax = orbitDistance + (Math.trunc(diameter / 2) + halfSpacing);
+                            overlap = true;
+                            break;
+                        }
+                    }
+                    attempts++;
+                }
+                let planet = new Habitat(
+                    HabitatCategoryType.Planet,
+                    type,
+                    'Planet',
+                    habitat,
+                    this.rnd.nextDouble() * Math.PI * 2.0,
+                    true,
+                    orbitDistance,
+                    this.rnd.next(2, 5),
+                );
+                planet.diameter = diameter;
+                planet.pictureRef = pictureRef;
+                planet.landscapePictureRef = landscapePictureRef;
+                planet.baseQuality = this.selectHabitatQuality(planet, this.colonyPrevalence);
+                // TODO(port): DoTasks(CurrentDateTime) — Habitat.DoTasks (galaxy-time driven; out of scope).
+                // TODO(port): SelectResources(habitat2) — Galaxy.4.cs:3270. Data-dependent Rnd-call count; see Worker report.
+                this.setScenicFactor(planet);
+                this.setResearchBonus(planet);
+                this.selectHabitatPictures(planet);
+                if (this.rnd.next(0, 5) === 2) {
+                    planet.orbitDirection = false;
+                }
+                if (planet.type === HabitatType.GasGiant && planet.diameter < 760) {
+                    planet.hasRings = true;
+                }
+                let populationRolls = 1;
+                if (this.rnd.next(0, 4) === 1) {
+                    populationRolls++;
+                }
+                // TODO(port): SelectPopulation(habitat2, sunHabitat) x populationRolls — Galaxy.6.cs:1218. Data-dependent Rnd-call count; see Worker report.
+                // TODO(port): population-driven DockingBay/Cargo/Troop/etc setup vs. SelectCreatures(habitat2) — Galaxy.6.cs:654 (SelectCreatures). Data-dependent Rnd-call count; see Worker report.
+                habitatList.push(planet);
+                habitat = planet;
+
+                let moonCount = 0;
+                if (this.starCount <= 400) {
+                    if (planet.diameter <= 370) {
+                        moonCount = planet.diameter > 260 ? this.rnd.next(0, 3) : planet.diameter > 150 ? this.rnd.next(0, 2) : 0;
+                    } else {
+                        moonCount = this.rnd.next(0, Math.min(5, Math.trunc(planet.diameter / 165)));
+                    }
+                } else if (this.starCount <= 1000) {
+                    if (planet.diameter <= 370) {
+                        moonCount = planet.diameter > 260 ? this.rnd.next(0, 3) : planet.diameter > 165 ? this.rnd.next(0, 2) : 0;
+                    } else {
+                        moonCount = this.rnd.next(0, Math.min(5, Math.trunc(planet.diameter / 180)));
+                    }
+                } else if (planet.diameter <= 370) {
+                    moonCount = planet.diameter > 260 ? this.rnd.next(0, 3) : planet.diameter > 180 ? this.rnd.next(0, 2) : 0;
+                } else {
+                    moonCount = this.rnd.next(0, Math.min(5, Math.trunc(planet.diameter / 180)));
+                }
+
+                const moonsForThisPlanet: Habitat[] = [];
+                for (let l = 0; l < moonCount; l++) {
+                    const moonSel = this.selectMoonType(habitat.diameter, habitat.type);
+                    let moonDiameter = moonSel.diameter;
+                    let moon = new Habitat(
+                        HabitatCategoryType.Moon,
+                        moonSel.type,
+                        this.generateCodeName(),
+                        habitat,
+                        this.rnd.nextDouble() * Math.PI * 2.0,
+                        true,
+                        this.rnd.next(5, 32),
+                        this.rnd.next(4, 9),
+                    );
+                    if (moonDiameter < 15) {
+                        moonDiameter = 15;
+                    }
+                    moon.diameter = moonDiameter;
+                    moon.pictureRef = moonSel.pictureRef;
+                    moon.landscapePictureRef = moonSel.landscapePictureRef;
+                    moon.baseQuality = this.selectHabitatQuality(moon, this.colonyPrevalence);
+
+                    const minMoonOrbit = Math.max(150, Math.trunc(habitat.diameter * 0.75));
+                    let maxMoonOrbit = Math.trunc(habitat.diameter * 3.3);
+                    if (maxMoonOrbit > MAX_MOON_ORBIT_SIZE) {
+                        maxMoonOrbit = MAX_MOON_ORBIT_SIZE;
+                    }
+                    const moonSpacing = 5;
+                    let moonAttempts = 0;
+                    let moonOrbitDistance = this.rnd.next(minMoonOrbit, maxMoonOrbit);
+                    let moonNewMin = moonOrbitDistance - (Math.trunc(moonDiameter / 2) + moonSpacing);
+                    let moonNewMax = moonOrbitDistance + (Math.trunc(moonDiameter / 2) + moonSpacing);
+                    let moonOverlap = true;
+                    while (moonOverlap && moonAttempts < 50) {
+                        moonOverlap = false;
+                        for (const existingMoon of moonsForThisPlanet) {
+                            const existingMin = existingMoon.orbitDistance - (Math.trunc(existingMoon.diameter / 2) + moonSpacing);
+                            const existingMax = existingMoon.orbitDistance + (Math.trunc(existingMoon.diameter / 2) + moonSpacing);
+                            if (this.checkOrbitOverlap(existingMin, existingMax, moonNewMin, moonNewMax)) {
+                                moonOrbitDistance = this.rnd.next(minMoonOrbit, maxMoonOrbit);
+                                moonNewMin = moonOrbitDistance - (Math.trunc(moonDiameter / 2) + moonSpacing);
+                                moonNewMax = moonOrbitDistance + (Math.trunc(moonDiameter / 2) + moonSpacing);
+                                moonOverlap = true;
+                                break;
+                            }
+                        }
+                        moonAttempts++;
+                    }
+                    moonsForThisPlanet.push(moon);
+                    moon.orbitDistance = moonOrbitDistance;
+                    // TODO(port): DoTasks(CurrentDateTime) — out of scope (galaxy time).
+                    // TODO(port): SelectResources(habitat2) — Galaxy.4.cs:3270. Data-dependent Rnd-call count; see Worker report.
+                    this.setScenicFactor(moon);
+                    this.setResearchBonus(moon);
+                    this.selectHabitatPictures(moon);
+                    if (this.rnd.next(0, 5) === 2) {
+                        moon.orbitDirection = false;
+                    }
+                    let moonPopulationRolls = 1;
+                    if (this.rnd.next(0, 4) === 1 && moon.type !== HabitatType.BarrenRock) {
+                        moonPopulationRolls++;
+                    }
+                    // TODO(port): SelectPopulation(habitat2, sunHabitat) x moonPopulationRolls — Galaxy.6.cs:1218. Data-dependent Rnd-call count; see Worker report.
+                    // TODO(port): population-driven setup vs. SelectCreatures(habitat2) — Galaxy.6.cs:654. Data-dependent Rnd-call count; see Worker report.
+                    habitatList.push(moon);
+                }
+            }
+
+            // Extra un-clustered asteroids directly orbiting the star.
+            const extraAsteroidCount = this.rnd.next(0, Math.trunc(planetCount * 4.5));
+            for (let i = 0; i < extraAsteroidCount; i++) {
+                const name = this.generateCodeName();
+                const diameter = this.rnd.next(20, 35);
+                const pictureRef = 2000 + this.rnd.next(0, 10);
+                const orbitAngle = this.rnd.nextDouble() * Math.PI * 2.0;
+                const asteroid = new Habitat(
+                    HabitatCategoryType.Asteroid,
+                    HabitatType.BarrenRock,
+                    name,
+                    sunHabitat,
+                    orbitAngle,
+                    true,
+                    this.rnd.next(10500, 11500),
+                    this.rnd.next(2, 8),
+                );
+                asteroid.diameter = diameter;
+                asteroid.pictureRef = pictureRef;
+                asteroid.landscapePictureRef = -1;
+                asteroid.baseQuality = this.selectHabitatQuality(asteroid, this.colonyPrevalence);
+                // TODO(port): SelectResources(habitat2) — Galaxy.4.cs:3270. Data-dependent Rnd-call count; see Worker report.
+                this.selectHabitatPictures(asteroid);
+                if (this.rnd.next(0, 5) === 2) {
+                    asteroid.orbitDirection = false;
+                }
+                // TODO(port): SelectCreatures(habitat2) — Galaxy.6.cs:654. Data-dependent Rnd-call count; see Worker report.
+                habitatList.push(asteroid);
+            }
+        }
+
+        // Main asteroid field (Galaxy.5.cs 1813-1909: inlined equivalent of
+        // GenerateAsteroidField, kept in-line here to match source exactly;
+        // the standalone generateAsteroidFieldAt() helper above ports
+        // Galaxy.9.cs GenerateAsteroidField for API completeness but isn't
+        // called from here since SetupSolarSystem doesn't call it).
+        if (this.rnd.next(0, maxValue) === 1) {
+            let fieldCount = 1;
+            if (sunHabitat.type === HabitatType.SuperNova && this.rnd.next(0, 2) === 1) {
+                fieldCount = 2;
+            }
+            for (let f = 0; f < fieldCount; f++) {
+                const fieldAsteroids: Habitat[] = [];
+                const asteroidCount = this.rnd.next(80, 350);
+                const baseAngle = this.rnd.nextDouble() * Math.PI * 2.0;
+                let baseOrbitDistance = this.rnd.next(9500, 10500);
+                let fieldType = HabitatType.BarrenRock;
+                switch (this.rnd.next(0, 4)) {
+                    case 1:
+                        fieldType = HabitatType.Metal;
+                        break;
+                    case 2:
+                        fieldType = HabitatType.Ice;
+                        break;
+                }
+                if (sunHabitat.type === HabitatType.SuperNova) {
+                    fieldType = HabitatType.Metal;
+                }
+                if (fieldType === HabitatType.Ice) {
+                    baseOrbitDistance = this.rnd.next(17200, 22200);
+                }
+                const orbitSpeed = this.rnd.next(1, 4);
+                let orbitDirection = true;
+                if (this.rnd.next(0, 4) === 2) {
+                    orbitDirection = false;
+                }
+                const arcSpread = Math.max(0.06, 0.13 * (asteroidCount / 350.0));
+                const distRange = Math.max(250.0, 500.0 * (asteroidCount / 350.0));
+                const negHalf = -0.4;
+                const minDist = baseOrbitDistance + negHalf * distRange;
+                const maxDist = baseOrbitDistance + 0.4 * distRange;
+                let minAngle = baseAngle + negHalf * arcSpread;
+                let maxAngle = baseAngle + 0.4 * arcSpread;
+                if (minAngle > maxAngle) {
+                    const tmp = maxAngle;
+                    maxAngle = minAngle;
+                    minAngle = tmp;
+                }
+                for (let a = 0; a < asteroidCount; a++) {
+                    let name = this.generateCodeName();
+                    name = name + ', Asteroid Field';
+                    let diameter = this.rnd.next(10, 25);
+                    if (this.rnd.next(0, 30) === 5) {
+                        diameter = this.rnd.next(26, 45);
+                    }
+                    const pictureRef = 2000 + this.rnd.next(0, 10);
+                    let dist = baseOrbitDistance + Math.trunc((this.rnd.nextDouble() - 0.5) * this.rnd.nextDouble() * 2.0 * distRange);
+                    let angle = baseAngle + (this.rnd.nextDouble() - 0.5) * this.rnd.nextDouble() * 2.0 * arcSpread;
+                    if (dist > minDist && dist < maxDist && angle > minAngle && angle < maxAngle) {
+                        const distFrac = this.rnd.nextDouble() * 0.8 - 0.4;
+                        const angleFrac = this.rnd.nextDouble() * 0.8 - 0.4;
+                        dist = baseOrbitDistance + Math.trunc(distFrac * distRange);
+                        angle = baseAngle + angleFrac * arcSpread;
+                    }
+                    const asteroid = new Habitat(HabitatCategoryType.Asteroid, HabitatType.BarrenRock, name, sunHabitat, angle, orbitDirection, dist, orbitSpeed);
+                    asteroid.diameter = diameter;
+                    asteroid.pictureRef = pictureRef;
+                    asteroid.landscapePictureRef = -1;
+                    asteroid.baseQuality = this.selectHabitatQuality(asteroid, this.colonyPrevalence);
+                    if (fieldType === HabitatType.Metal && this.rnd.next(0, 3) > 0) {
+                        // minimumResourceCount = 1 in source; no resource list modeled here.
+                    }
+                    // TODO(port): SelectResources(habitat3, minimumResourceCount) — Galaxy.4.cs:3270. Data-dependent Rnd-call count; see Worker report.
+                    asteroid.type = fieldType;
+                    this.selectHabitatPictures(asteroid);
+                    if (allowCreatures) {
+                        // TODO(port): SelectCreatures(habitat3) — Galaxy.6.cs:654. Data-dependent Rnd-call count; see Worker report.
+                    }
+                    if (this.rnd.next(0, 1300) === 1) {
+                        // TODO(port): GenerateTreasureAsteroid — Galaxy.9.cs:3419. Data-dependent Rnd-call count (only fires ~1/1300 asteroids); see Worker report.
+                    }
+                    fieldAsteroids.push(asteroid);
+                    habitatList.push(asteroid);
+                }
+                asteroidField = fieldAsteroids;
+            }
+        }
+
+        // Sort planets/asteroids by orbit distance, assign final names, and
+        // build the ordered return list (Galaxy.5.cs 1910-1944).
+        const orderable = habitatList.filter((h) => h.category === HabitatCategoryType.Planet || h.category === HabitatCategoryType.Asteroid);
+        orderable.sort((a, b) => a.orbitDistance - b.orbitDistance);
+        let planetNumber = 1;
+        for (const h of orderable) {
+            if (h.category === HabitatCategoryType.Planet) {
+                h.name = sunHabitat.name + ' ' + planetNumber;
+                planetNumber++;
+            }
+            if (!habitatList2.includes(h)) {
+                habitatList2.push(h);
+            }
+            for (const moon of habitatList) {
+                if (moon.parent === h) {
+                    // Port of Galaxy.4.cs GenerateMoonName: not fully ported
+                    // (depends on DetermineHabitatSystemStar/GenerateRandomNameAlt
+                    // string generators, out of scope) — a code name is used
+                    // instead. TODO(port): GenerateMoonName — Galaxy.4.cs:2533.
+                    moon.name = this.generateCodeName();
+                    habitatList2.push(moon);
+                }
+            }
+        }
+
+        return { habitats: habitatList2, asteroidField };
     }
 
     // Port of the star-cluster setup portion of the Galaxy.4.cs constructor
@@ -616,18 +1529,21 @@ export class Galaxy {
 // full generator but unused here (no colonies are generated in 01b/01c
 // scope yet). TODO(port): colony placement — later task.
 export function generateGalaxy(options: GenerateGalaxyOptions): Galaxy {
-    const { seed, shape, starCount, sectorWidth, sectorHeight, systemNames } = options;
-    const galaxy = new Galaxy(seed, shape, starCount, sectorWidth, sectorHeight, systemNames);
+    const { seed, shape, starCount, sectorWidth, sectorHeight, systemNames, colonyPrevalence } = options;
+    const galaxy = new Galaxy(seed, shape, starCount, sectorWidth, sectorHeight, systemNames, colonyPrevalence);
 
     // Cluster setup (Galaxy.4.cs 2221-2276), only for the Clusters shapes.
     galaxy.setupStarClusters(shape, starCount);
 
-    // Per-star loop (Galaxy.4.cs 2278-2296).
+    // Per-star loop (Galaxy.4.cs 2278-2296). Each system's habitat list
+    // (star + planets + moons + asteroids, from setupSolarSystem) forms one
+    // group; asteroidField is the subset used for the main asteroid belt
+    // (not separately tracked at this level — it's a sub-list of habitats).
     const perStarHabitats: Habitat[][] = [];
     for (let i = 0; i < starCount; i++) {
-        const star = galaxy.setupSolarSystem(shape);
-        perStarHabitats.push([star]);
-        galaxy.habitats.push(star);
+        const { habitats } = galaxy.setupSolarSystem(shape);
+        perStarHabitats.push(habitats);
+        galaxy.habitats.push(...habitats);
     }
 
     // Gas-cloud loop (Galaxy.4.cs 2297-2313).
