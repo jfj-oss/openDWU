@@ -1,0 +1,48 @@
+## RESOURCE DEFINITIONS (verbatim data, 41 resources — reproduce as data file)
+
+| ID | Name | PicRef | BasePrice | Type(0=Mineral,1=Gas,2=Luxury) | SuperLuxBonus | Fuel | PreWarpImp | GrowthLevel | MfgLevel |
+|----|------|--------|-----------|-----|------|------|------|-------------|----------|
+| 0 | Emeros Crystal | 0 | 5.0 | 0 | 0 | N | N | 0 | 0 |
+| 1 | Nekros Stone | 1 | 5.0 | 0 | 0 | N | Y | 0 | 0 |
+| 2 | Osalia | 2 | 5.0 | 0 | 0 | N | N | 0 | 0 |
+| 3 | Dilithium Crystal | 3 | 5.0 | 0 | 0 | N | N | 0 | 0 |
+| 4 | Helium | 4 | 5.0 | 1 | 0 | N | Y | 0 | 0 |
+| 5 | Argon | 5 | 5.0 | 1 | 0 | N | N | 0 | 0 |
+| 6 | Krypton | 6 | 5.0 | 1 | 0 | N | N | 0 | 0 |
+| 7 | Tyderios | 7 | 5.0 | 1 | 0 | N | N | 0 | 0 |
+| 8 | Hydrogen | 8 | 5.0 | 1 | 0 | Y | Y | 1.0 | 0 |
+| 9 | Silicon | 9 | 5.0 | 0 | 0 | N | Y | 0.3 | 0 |
+| 10 | Steel | 10 | 5.0 | 0 | 0 | N | Y | 0.6 | 0 |
+| 11 | Aculon | 11 | 5.0 | 0 | 0 | N | N | 0 | 0 |
+| 12 | Chromium | 12 | 5.0 | 0 | 0 | N | Y | 0 | 0 |
+| 13 | Lead | 13 | 5.0 | 0 | 0 | N | Y | 0.4 | 0 |
+| 14 | Gold | 14 | 5.0 | 0 | 0 | N | Y | 0 | 0 |
+| 15 | Iridium | 15 | 5.0 | 0 | 0 | N | N | 0 | 0 |
+| 16 | Polymer | 16 | 5.0 | 0 | 0 | N | Y | 0.3 | 0 |
+| 17 | Carbon Fibre | 17 | 5.0 | 0 | 0 | N | Y | 0.3 | 0 |
+| 18 | Caslon | 18 | 5.0 | 1 | 0 | Y | Y | 1.0 | 0 |
+| 19 | Loros Fruit | 19 | 200.0 | 2 | 30 | N | N | 0 | 0 |
+| 20 | Megallos Nut | 20 | 5.0 | 2 | 0 | N | N | 0 | 0 |
+| 21 | Falajian Spice | 21 | 20.0 | 2 | 0 | N | N | 0 | 0 |
+| 22 | Korabbian Spice | 22 | 200.0 | 2 | 30 | N | N | 0 | 0 |
+| 23 | Ekarus Meat | 23 | 20.0 | 2 | 0 | N | N | 0 | 0 |
+| 24 | Nepthys Wine | 24 | 20.0 | 2 | 0 | N | N | 0 | 0 |
+| 25 | Rephidium Ale | 25 | 5.0 | 2 | 0 | N | N | 0 | 0 |
+| 26 | Wiconium | 26 | 5.0 | 2 | 0 | N | N | 0 | 0 |
+| 27 | Vodkol | 27 | 10.0 | 2 | 0 | N | N | 0 | 0 |
+| 28 | Questurian Skin | 28 | 10.0 | 2 | 0 | N | N | 0 | 0 |
+| 29 | Bifurian Silk | 29 | 10.0 | 2 | 0 | N | N | 0 | 0 |
+| 30 | Caguar Fur | 30 | 20.0 | 2 | 0 | N | N | 0 | 0 |
+| 31 | Terallion Down | 31 | 5.0 | 2 | 0 | N | N | 0 | 0 |
+| 32 | Dantha Fur | 32 | 10.0 | 2 | 0 | N | N | 0 | 0 |
+| 33 | Aquasian Incense | 33 | 20.0 | 2 | 0 | N | N | 0 | 0 |
+| 34 | Natarran Incense | 34 | 20.0 | 2 | 0 | N | N | 0 | 0 |
+| 35 | Zentabia Fluid | 35 | 200.0 | 2 | 30 | N | N | 0 | 0 |
+| 36 | Ilosian Jade | 36 | 20.0 | 2 | 0 | N | N | 0 | 0 |
+| 37 | Otandium Opal | 37 | 20.0 | 2 | 0 | N | N | 0 | 0 |
+| 38 | Jakanta Ivory | 38 | 20.0 | 2 | 0 | N | N | 0 | 0 |
+| 39 | Ucantium Pearl | 39 | 20.0 | 2 | 0 | N | N | 0 | 0 |
+| 40 | Yarras Marble | 40 | 20.0 | 2 | 0 | N | N | 0 | 0 |
+
+## Prevalence / distribution table
+

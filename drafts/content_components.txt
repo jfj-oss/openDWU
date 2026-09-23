@@ -1,0 +1,133 @@
+## COMPONENT DEFINITIONS (components.txt — 129 components; reproduce as data file)
+
+| ID | Name | Type | Category | Value1 | Value2 | Value3 | Value4 | Value5 | Value6 | Value7 |
+|----|------|------|----------|--------|--------|--------|--------|--------|--------|--------|
+| 0 | Maxos Blaster | 48 | 5 | 5 | 190 | 12 | 360 | 1 | 1240 | 0 |
+| 1 | Shatterforce Laser | 48 | 4 | 7 | 320 | 20 | 310 | 1 | 1500 | 0 |
+| 2 | Impact Assault Blaster | 48 | 5 | 12 | 220 | 38 | 260 | 3 | 1700 | 0 |
+| 3 | Titan Beam | 48 | 6 | 20 | 390 | 28 | 330 | 4 | 1400 | 0 |
+| 4 | PulseWave Cannon | 48 | 5 | 13 | 310 | 24 | 350 | 3 | 1400 | 0 |
+| 5 | Epsilon Torpedo | 60 | 15 | 11 | 300 | 30 | 60 | 3 | 2900 | 0 |
+| 6 | Velocity Shard | 60 | 11 | 16 | 630 | 44 | 120 | 2 | 3300 | 0 |
+| 7 | Shockwave Torpedo | 60 | 12 | 24 | 430 | 60 | 75 | 4 | 3800 | 0 |
+| 8 | Plasma Thunderbolt | 60 | 12 | 36 | 690 | 64 | 125 | 4 | 3200 | 0 |
+| 9 | Shaktur FireStorm | 60 | 12 | 36 | 295 | 52 | 65 | 10 | 2900 | 6 |
+| 10 | Concussion Missile | 54 | 10 | 6 | 520 | 18 | 120 | 0 | 2700 | 0 |
+| 11 | Nuclear Devastator | 49 | 8 | 0 | 210 | 15 | 50 | 0 | 6000 | 3 |
+| 12 | Nuclear Exterminator | 49 | 14 | 0 | 270 | 44 | 60 | 13 | 6700 | 8 |
+| 13 | Point Defense Cannon | 56 | 3 | 3 | 140 | 4 | 430 | 1 | 540 | 0 |
+| 14 | Terminator AutoCannon | 56 | 3 | 6 | 190 | 6 | 550 | 1 | 480 | 0 |
+| 15 | Ion Cannon | 51 | 12 | 20 | 260 | 80 | 230 | 5 | 3300 | 0 |
+| 16 | Ion Pulse | 53 | 20 | 24 | 210 | 125 | 120 | 7 | 6600 | 0 |
+| 17 | Ion Defense | 52 | 2 | 18 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 18 | HyperDeny GW1000 | 22 | 12 | 3 | 340 | 2 | 0 | 0 | 0 | 0 |
+| 19 | Intimidator Surgewave | 46 | 16 | 35 | 220 | 54 | 120 | 13 | 8200 | 0 |
+| 20 | HyperDeny GW4000 | 22 | 14 | 6 | 1020 | 2 | 0 | 0 | 0 | 0 |
+| 21 | Derasian Shockwave | 46 | 18 | 74 | 300 | 90 | 150 | 21 | 9000 | 0 |
+| 22 | Gravity Well Projector | 24 | 52 | 6 | 1800 | 92 | 0 | 0 | 0 | 0 |
+| 23 | Death Ray | 59 | 140 | 1800 | 440 | 400 | 370 | 270 | 8500 | 0 |
+| 24 | Devastator Pulse | 58 | 170 | 1200 | 520 | 470 | 125 | 210 | 12000 | 0 |
+| 25 | Super Laser | 59 | 640 | 30000 | 700 | 800 | 450 | 380 | 32000 | 0 |
+| 26 | Standard Fighter Bay | 19 | 50 | 40 | 4 | 0 | 0 | 0 | 0 | 0 |
+| 27 | Advanced Fighter Bay | 19 | 45 | 40 | 7 | 0 | 0 | 0 | 0 | 0 |
+| 28 | Standard Armor | 1 | 1 | 10 | 2 | 0 | 0 | 0 | 0 | 0 |
+| 29 | Enhanced Armor | 1 | 1 | 18 | 4 | 0 | 0 | 0 | 0 | 0 |
+| 30 | Reactive Armor | 1 | 1 | 25 | 7 | 0 | 0 | 0 | 0 | 0 |
+| 31 | UltraDense Armor | 1 | 1 | 40 | 10 | 0 | 0 | 0 | 0 | 0 |
+| 32 | Corvidian Shields | 40 | 10 | 100 | 3 | 0 | 0 | 0 | 0 | 0 |
+| 33 | Talassos Shields | 40 | 10 | 130 | 8 | 0 | 0 | 0 | 0 | 0 |
+| 34 | Deucalios Shields | 40 | 10 | 180 | 4 | 0 | 0 | 0 | 0 | 0 |
+| 35 | Meridian Shields | 40 | 10 | 220 | 10 | 0 | 0 | 0 | 0 | 0 |
+| 36 | Megatron Z4 | 40 | 9 | 155 | 12 | 0 | 0 | 0 | 0 | 0 |
+| 37 | Area Shield Recharge | 0 | 20 | 250 | 400 | 600 | 0 | 0 | 0 | 0 |
+| 38 | Proton Thruster | 14 | 7 | 1000 | 5 | 560 | 2 | 0 | 0 | 0 |
+| 39 | Quantum Engine | 14 | 8 | 1230 | 5 | 620 | 2 | 0 | 0 | 0 |
+| 40 | Acceleros Engine | 14 | 8 | 1540 | 8 | 720 | 3 | 0 | 0 | 0 |
+| 41 | Vortex Engine | 14 | 8 | 1630 | 6 | 950 | 3 | 0 | 0 | 0 |
+| 42 | TurboThruster | 14 | 7 | 1380 | 3 | 850 | 1 | 0 | 0 | 0 |
+| 43 | StarBurner | 14 | 7 | 1880 | 7 | 1180 | 4 | 0 | 0 | 0 |
+| 44 | Thrust Vector | 15 | 2 | 6 | 1 | 0 | 0 | 0 | 0 | 0 |
+| 45 | Multi Vector | 15 | 2 | 12 | 1 | 0 | 0 | 0 | 0 | 0 |
+| 46 | Swift Vector | 15 | 2 | 10 | 1 | 0 | 0 | 0 | 0 | 0 |
+| 47 | Gerax HyperDrive | 23 | 11 | 12500 | 78 | 15 | 0 | 0 | 0 | 0 |
+| 48 | Kaldos HyperDrive | 23 | 9 | 13750 | 94 | 7 | 0 | 0 | 0 | 0 |
+| 49 | Equinox JumpDrive | 23 | 9 | 18750 | 88 | 13 | 0 | 0 | 0 | 0 |
+| 50 | Calista-Dal WarpDrive | 23 | 9 | 15000 | 60 | 12 | 0 | 0 | 0 | 0 |
+| 51 | Torrent Drive | 23 | 9 | 25000 | 83 | 6 | 0 | 0 | 0 | 0 |
+| 52 | VelocityDrive | 23 | 8 | 23500 | 64 | 6 | 0 | 0 | 0 | 0 |
+| 53 | Fission Reactor | 33 | 22 | 60 | 105 | 400 | 18 | 0 | 0 | 0 |
+| 54 | Fusion Reactor | 33 | 15 | 84 | 180 | 520 | 8 | 0 | 0 | 0 |
+| 55 | Quantum Reactor | 33 | 18 | 120 | 230 | 800 | 18 | 0 | 0 | 0 |
+| 56 | HyperFusion Reactor | 33 | 16 | 180 | 350 | 975 | 8 | 0 | 0 | 0 |
+| 57 | NovaCore Reactor | 33 | 20 | 120 | 240 | 480 | 8 | 0 | 0 | 0 |
+| 58 | Energy Collector | 12 | 8 | 24 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 59 | Mining Engine | 18 | 14 | 3 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 60 | Gas Extractor | 16 | 16 | 20 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 61 | Luxury Resource Extractor | 17 | 22 | 3 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 62 | Weapons Plant | 29 | 35 | 20000 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 63 | Energy Plant | 27 | 35 | 20000 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 64 | HighTech Plant | 28 | 28 | 20000 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 65 | Standard Fuel Cell | 20 | 6 | 65 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 66 | UltraDense Fuel Cell | 20 | 6 | 100 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 67 | Mega-Density Fuel Cell | 20 | 6 | 140 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 68 | Standard Cargo Bay | 3 | 8 | 500 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 69 | Massive Cargo Bay | 3 | 8 | 800 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 70 | Standard Troop Compartment | 45 | 8 | 100 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 71 | Massive Troop Compartment | 45 | 8 | 160 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 72 | Standard Passenger Compartment | 31 | 10 | 1200000 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 73 | Massive Passenger Compartment | 31 | 10 | 2400000 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 74 | Docking Bay | 11 | 4 | 150 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 75 | Basic Proximity Array | 32 | 3 | 48000 | 1 | 0 | 0 | 0 | 0 | 0 |
+| 76 | Advanced Proximity Array | 32 | 3 | 54000 | 10 | 0 | 0 | 0 | 0 | 0 |
+| 77 | Resource Profile Sensor | 38 | 2 | 500 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 78 | Long Range Scanner | 26 | 72 | 450000 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 79 | Ultra Long Range Scanner | 26 | 98 | 1100000 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 80 | Trace Scanner | 44 | 2 | 500 | 10 | 0 | 0 | 0 | 0 | 0 |
+| 81 | Scanner Jammer | 39 | 2 | 0 | 10 | 0 | 0 | 0 | 0 | 0 |
+| 82 | Stealth Cloak | 41 | 60 | 500 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 83 | Combat Targetting System | 42 | 1 | 10 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 84 | Countermeasures System | 8 | 1 | 10 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 85 | Command Center | 5 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 86 | Commerce Center | 6 | 3 | 50 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 87 | ShadowGhost ECM | 8 | 1 | 40 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 88 | Raptor Targetting System | 42 | 1 | 40 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 89 | Fleet Targetting System | 43 | 3 | 25 | 10 | 0 | 0 | 0 | 0 | 0 |
+| 90 | Fleet Countermeasures System | 9 | 3 | 25 | 10 | 0 | 0 | 0 | 0 | 0 |
+| 91 | Weapons Lab | 37 | 20 | 30000 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 92 | Energy Lab | 35 | 20 | 30000 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 93 | HighTech Lab | 36 | 20 | 30000 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 94 | Construction Yard | 7 | 10 | 200 | 100 | 0 | 0 | 0 | 0 | 0 |
+| 95 | Damage Control Unit | 10 | 4 | 400 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 96 | S2F4 RepairBot | 10 | 3 | 500 | 5 | 0 | 0 | 0 | 0 | 0 |
+| 97 | S2F7 RepairBot | 10 | 2 | 650 | 4 | 0 | 0 | 0 | 0 | 0 |
+| 98 | Life Support | 25 | 1 | 60 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 99 | Hab Module | 21 | 2 | 60 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 100 | Medical Center | 30 | 4 | 100 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 101 | Recreation Center | 34 | 20 | 100 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 102 | Basic Colonization Module | 4 | 300 | 30000000 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 103 | Enhanced Colonization Module | 4 | 390 | 60000000 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 104 | Massive Colonization Module | 4 | 440 | 100000000 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 105 | Giant Ion Cannon | 51 | 200 | 220 | 400 | 0 | 220 | 4 | 8000 | 0 |
+| 106 | Phaser Cannon | 55 | 7 | 9 | 200 | 32 | 500 | 0 | 2200 | 0 |
+| 107 | Rail Gun | 57 | 7 | 6 | 120 | 6 | 120 | 0 | 1000 | 0 |
+| 108 | Assault Missile | 54 | 14 | 20 | 740 | 18 | 110 | 0 | 4200 | 0 |
+| 109 | Energy To Fuel Converter | 13 | 280 | 50 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 110 | Phaser Lance | 55 | 9 | 20 | 300 | 50 | 520 | 0 | 4000 | 0 |
+| 111 | Heavy Rail Gun | 57 | 12 | 10 | 180 | 8 | 180 | 0 | 2000 | 1 |
+| 112 | Massive Rail Gun | 57 | 18 | 16 | 280 | 12 | 200 | 0 | 2800 | 2 |
+| 113 | Tractor Beam | 61 | 10 | 10 | 320 | 28 | 800 | 5 | 4000 | 0 |
+| 114 | Assault Pod | 2 | 8 | 50 | 140 | 6 | 50 | 20 | 120000 | 0 |
+| 115 | Graviton Beam | 50 | 20 | 15 | 150 | 40 | 400 | 4 | 7000 | 0 |
+| 116 | Resonant Graviton Beam | 50 | 30 | 28 | 240 | 60 | 400 | 3 | 7000 | 0 |
+| 117 | High Power Tractor Beam | 61 | 10 | 16 | 400 | 34 | 400 | 2 | 4000 | 0 |
+| 118 | Area Graviton Pulse | 47 | 40 | 40 | 360 | 100 | 60 | 240 | 9000 | 80 |
+| 119 | Area Transient Singularity | 47 | 50 | 100 | 520 | 200 | 65 | 350 | 12000 | 120 |
+| 120 | Basic Space Reactor | 33 | 18 | 46 | 90 | 370 | 18 | 0 | 0 | 0 |
+| 121 | Ion Thruster | 14 | 6 | 600 | 4 | 520 | 2 | 0 | 0 | 0 |
+| 122 | Directional Thruster | 15 | 2 | 3 | 1 | 0 | 0 | 0 | 0 | 0 |
+| 123 | Small Fuel Cell | 20 | 6 | 55 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 124 | Small Cargo Bay | 3 | 8 | 350 | 0 | 0 | 0 | 0 | 0 | 0 |
+| 125 | Warp Bubble Generator | 23 | 10 | 2000 | 132 | 18 | 0 | 0 | 0 | 0 |
+| 126 | Pulse Blaster | 48 | 4 | 4 | 150 | 13 | 360 | 1 | 1240 | 0 |
+| 127 | Long Range Gun | 57 | 6 | 5 | 100 | 7 | 100 | 0 | 1000 | 0 |
+| 128 | Seeking Missile | 54 | 8 | 5 | 400 | 20 | 80 | 0 | 2700 | 0 |

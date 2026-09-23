@@ -1,0 +1,195 @@
+Fleets allo=
+w you to
+group a number of military ships together and assign missions to the entire
+group. This is useful for coordinating large attacks on enemy targets.=
+Large fleets are effective for major assaults against enemy targets li=
+ke colonies
+or spaceports. Smaller fleets (often called strike forces) are useful for
+intercepting enemy attacks and making small raids.
+Your automated fleets will respond to intercept enemy attacks when the=
+re
+are insufficient forces to defend the target. The nearest available automat=
+ed
+fleet will travel to the attack location and defend the target.
+Creating a =
+new
+fleet
+T=
+o create a
+new fleet first select at least one military ship. You may also multi-selec=
+t a
+group of military ships, either using drag-select or by shift-clicking the
+ships.
+W=
+ith one or
+more military ships selected, do one of the following:
+&middot;      =
+  
+Click
+the &#8220;New Fleet&#8221; Action button (under the Selection Panel)
+&middot;      =
+  
+Right-click to show a pop-up=
+ menu
+with a &#8220;Join Fleet&#8221; menu option. This will contain a submenu it=
+em
+to join a &#8220;(New Fleet)&#8221;
+A=
+ssigning
+ships to fleets
+To assign a military ship to a fleet you have three options:
+&middot;      =
+  
+From the main screen select the ship, then click the
+&#8220;Join Nearest Fleet&#8221; Action button (below the Selection Panel).=
+&middot;      =
+  
+From the ma=
+in screen
+select the ship, then right-click to show a pop-up menu with a &#8220;Join
+Fleet&#8221; menu option. This will contain a submenu listing all of the fl=
+eets
+in your empire. You also have the option to assign the ship to a new fleet.=
+&middot;      =
+  
+In the Ships and Bases screen (F11) select the ship in the
+master list, then select a fleet from the list at the bottom of the screen.=
+S=
+electing
+fleets
+There are f=
+our ways
+to select a fleet in the main view:
+&middot;      =
+  
+When zoomed out to sector-level or greater your fleets ap=
+pear
+as an inverted triangle icon. Click the fleet icon to select it.=
+&middot;      =
+  
+When zoomed in to system-level or lower, you can double-c=
+lick
+any ship in the fleet to select the entire fleet.
+&middot;      =
+  
+Using the Empire Navigation Tool, open the Fleets list and
+click the desired fleet
+&middot;      =
+  
+Cycle all of your fleets by repeatedly pressing the F key=
+When a fleet is selected you can assign missions to it in the same way=
+ you
+would assign missions to a single ship.
+F=
+leet Postures
+Fleets are assigned postures that define how they are used. Fleets are=
+ set
+to either Attack or Defend. They also have a response range set that determ=
+ines
+how far they will respond from their home base (for Defend fleets), or how =
+far
+from their attack target they will select a new target (for Attack fleets).=
+Setting Posture
+To set a=
+ fleet&#8217;s
+posture (Attack or Defend), with the fleet selected, click the Set Posture =
+action
+button below the Selection Panel. This will toggle between the two setting=
+s.
+Setting Range=
+To set a fleet&#8217;s range=
+, with
+the fleet selected, click the Set Range action button below the Selection
+Panel. This will cycle through the various ranges as described below.
+Ranges for Attack Fleets
+&middot;      =
+  
+Target: only attack specified target=
+&middot;      =
+  
+System: attack specified target and then any ot=
+her
+enemy targets in the same system
+&middot;      =
+  
+Nearby Systems: attack specified target an=
+d then
+any other enemy targets in the nearby systems
+&middot;      =
+  
+Sector: attack specified target and then any ot=
+her
+enemy targets in the surrounding sector
+&middot;      =
+  
+Anywhere: attack specified target and then any ot=
+her
+enemy target, or if no attack target set just attack any enemy target
+Ranges for Defend Fleets
+&middot;      =
+  
+Target: only defend Home Base=
+&middot;      =
+  
+System: defend Home Base and its system
+&middot;      =
+  
+Nearby Systems: defend Home Base and nearby
+systems 
+&middot;      =
+  
+Sector: defend Home Base and surrounding sector=
+&middot;      =
+  
+Anywhere: defend Home Base and any other empire
+colonies or bases under attack, or if no home base set just defend any empi=
+re
+colony or base that is attacked
+Setting a Home Bas=
+e
+To set a fleet&#8217;s home =
+base,
+with the fleet selected, click the Set Home Base action button below the
+Selection Panel. The mouse pointer will change to show a symbol of a colony=
+ and
+fleet. Then click on any valid home base in the main view to set this as the
+fleet&#8217;s new home base.
+V=
+alid bases
+include any space port, colony or gas mining station of your empire. If you
+have a military refueling agreement with another empire then you can also s=
+et
+your fleet&#8217;s home base to be any of their space ports, colonies or gas
+mining stations. To clear the fleet&#8217;s home base, click the Set Home B=
+ase action
+button, then click anywhere in empty space.
+F=
+or Defend
+fleets, the defend area (centered on the fleet&#8217;s home base, and the s=
+ize
+of the fleet&#8217;s range) is shown in the main view as a blue circle (if =
+Fleet
+Postures map overlay is switched on).
+Setting an Attack =
+Target
+To set the attack target of =
+an
+Attack fleet, with the fleet selected, click the Set Attack Target action
+button below the Selection Panel. The mouse pointer will change to show a
+symbol of a fleet and targeting reticule. Then click any valid enemy target=
+ in
+the main view to set this as the Attack fleet&#8217;s attack target. When w=
+ar
+begins your Attack fleet will travel to this target and attack your enemy.
+V=
+alid enemy
+attack targets include any colonies or bases of another empire. To clear the
+fleet&#8217;s attack target, click the Set Attack Target action button, then
+click anywhere in empty space.
+F=
+or Attack
+fleets, the path from the fleet&#8217;s home base to its attack target is s=
+hown
+in the main view as a dotted red line (if Fleet Postures map overlay is
+switched on).
+.32888070--

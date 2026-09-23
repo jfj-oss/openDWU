@@ -1,0 +1,376 @@
+=== WEAPONS (152 projects) ===
+  L2 r1: Wave Weapons  [unlocks:4]
+  L4 r1: Enhanced Wave Weapons
+  L6 r1: Advanced Wave Weapons
+  L3 r2: Long Range Lasers  [unlocks:1]
+  L4 r2: Advanced Laser Focussing
+  L6 r2: High Intensity Lasers
+  L0 r3: Beam Weapons  [unlocks:126]
+  L1 r3: Enhanced Beam Weapons  [unlocks:0]
+  L2 r3: Efficient Blasters
+  L3 r3: Advanced Blasters
+  L5 r3: Advanced Beams  [unlocks:3]
+  L6 r3: Beam Intensification
+  L7 r3: Beam Superflow
+  L3 r4: High Power Blasters  [unlocks:2]
+  L4 r4: Synchronized Energy Output
+  L6 r4: Devastating Energy Release
+  L100 r4: Super Beam Weapons  [special:3; unlocks:23]
+  L101 r4: Advanced Super Weapons  [unlocks:25]
+  L3 r5: Phased Beams  [unlocks:106]
+  L4 r5: Phaser Intensification
+  L6 r5: Phaser Optimization
+  L4 r6: Phaser Focusing  [unlocks:110]
+  L6 r6: Advanced Phasers
+  L7 r6: Extreme Energy Beams
+  L2 r7: Ion Weapons  [unlocks:15]
+  L3 r7: EMP Defenses  [unlocks:17]
+  L4 r7: Advanced Ion Weapons
+  L5 r7: Advanced EMP Defenses
+  L4 r8: EMP Blasting  [unlocks:16]
+  L5 r8: Massive Ion Weapons  [facility:3]
+  L6 r8: Optimized EMP Blasting
+  L3 r9: Gravitic Resonance  [unlocks:116]
+  L4 r9: Advanced Gravitic Resonance
+  L6 r9: Superior Gravitic Resonance
+  L1 r10: Gravitic Weapons  [unlocks:115]
+  L2 r10: Enhanced Gravitic Beams
+  L3 r10: Advanced Gravitic Beams
+  L5 r10: Gravitic Distortion Field  [unlocks:118]
+  L6 r10: Gravitic Distortion Zone
+  L7 r10: Gravitic Singularity Creation  [unlocks:119]
+  L100 r10: Super Area Weapons  [special:3; unlocks:24]
+  L2 r11: Tractor Beams  [unlocks:113]
+  L3 r11: Improved Tractor Beams
+  L4 r11: Extended Range Tractor Beams
+  L5 r11: Gravitic Stretching
+  L6 r11: Intense Gravitic Stretching
+  L4 r12: High Power Tractor Beams  [unlocks:117]
+  L5 r12: Gravity Densification
+  L6 r12: Intense Gravitic Warping
+  L1 r13: Area Weapons  [unlocks:19]
+  L2 r13: Enhanced Area Weapons
+  L3 r13: Advanced Area Weapons  [unlocks:21]
+  L4 r13: Devastating Area Effects
+  L6 r13: Optimized Blast Wave
+  L2 r14: Devastating Plasma Charge  [unlocks:9]
+  L4 r14: Plasma Focussing
+  L6 r14: Resonant Energy Pulsing
+  L3 r15: Fast Energy Propulsion  [unlocks:6]
+  L4 r15: Total Energy Acceleration
+  L6 r15: Smooth Energy Streams
+  L1 r16: Energy Torpedo Weapons  [unlocks:5]
+  L2 r16: Enhanced Torpedoes
+  L3 r16: Advanced Torpedoes
+  L5 r16: Advanced Plasma Physics  [unlocks:8]
+  L6 r16: Intense Plasma Eruptions
+  L7 r16: Plasma Hardening
+  L3 r17: High Energy Cohesion  [unlocks:7]
+  L4 r17: High Power Discharges
+  L6 r17: Extreme Energy Vortexes
+  L2 r18: Light Torpedo Bombers  [fighters:6]
+  L4 r18: Medium Torpedo Bombers  [fighters:7]
+  L6 r18: Strike Bombers  [fighters:8]
+  L7 r18: Heavy Assault Bombers  [fighters:9]
+  L1 r19: Star Fighters  [unlocks:26; fighters:0, 5]
+  L2 r19: Light Interceptors  [fighters:1]
+  L3 r19: Tactical Interceptors  [fighters:2; Dedicated Carriers, 3, 3, 0, 0]
+  L5 r19: Advanced Fighters  [unlocks:27]
+  L6 r19: Advanced Star Fighters  [fighters:3]
+  L7 r19: Superiority Fighters  [fighters:4]
+  L2 r20: Missile Bombers  [fighters:10]
+  L3 r20: Enhanced Missile Bombers  [fighters:11]
+  L5 r20: Advanced Missile Bombers  [fighters:12]
+  L7 r20: Super Missile Bombers  [fighters:13]
+  L1 r21: Ship Boarding  [unlocks:114]
+  L3 r21: Improved Assault Techniques
+  L5 r21: Heavy Ship Assault
+  L7 r21: Advanced Ship Assault
+  L4 r22: DualPhase Point Defense  [unlocks:14]
+  L5 r22: MultiPhase Point Defense
+  L6 r22: Terminal Point Defense
+  L2 r23: Point Defense Weapons  [unlocks:13]
+  L3 r23: Enhanced Point Defense
+  L4 r23: Advanced Point Defense
+  L0 r24: Missile Weapons  [unlocks:128]
+  L1 r24: Enhanced Missiles  [unlocks:10]
+  L3 r24: Improved Missiles
+  L4 r24: Advanced Missiles
+  L5 r24: Heavy Missiles  [unlocks:108]
+  L6 r24: Long Range Missiles
+  L7 r24: Massive Missile Assaults
+  L2 r25: Bombard Weapons  [unlocks:11]
+  L3 r25: Enhanced Bombardment
+  L4 r25: Advanced Bombardment
+  L4 r26: Annihilating Bombardment  [unlocks:12]
+  L5 r26: Severe Radiation Blast
+  L6 r26: Total Destruction
+  L0 r27: Projectile Weapons  [unlocks:127]
+  L1 r27: Rail Gun Weaponry  [unlocks:107]
+  L2 r27: Rapid Fire Projectiles
+  L3 r27: Projectile Arrays
+  L4 r27: Massive Projectile Arrays
+  L2 r28: Accelerated Projectiles  [unlocks:111]
+  L3 r28: Long Range Projectiles
+  L4 r28: Hyper-Accelerated Projectiles
+  L5 r28: Super-Heavy Mass Drivers  [unlocks:112]
+  L6 r28: Assault Mass Drivers
+  L1 r29: Armor Plating  [unlocks:28]
+  L3 r29: High Density Alloys  [unlocks:29]
+  L4 r29: Reinforced Construction  [facility:8]
+  L5 r29: Ablative Metals  [unlocks:30]
+  L6 r29: Impregnable Structures  [facility:11]
+  L7 r29: Indestructible Compounds  [unlocks:31]
+  L2 r30: Armored Ground Assault  [facility:27; Enable Armored Forces, 5, 2, 0, 2]
+  L4 r30: Armored Shock Forces  [Improved Armor Attack, 5, 4, 25, 2]
+  L6 r30: Heavy Armor Forces  [Improved Armor Defense, 5, 6, -25, 2]
+  L7 r30: Super Heavy Armor  [Improved Armor Attack, 5, 7, 50, 2]
+  L0 r31: Ground Combat  [special:1; Enable Infantry, 5, 0, 0, 1]
+  L1 r31: Improved Assault Tactics  [Improved Infantry Attack, 5, 1, 25, 1]
+  L3 r31: BattleField Sabotage  [facility:31; Enable Special Forces, 5, 3, 0, 4]
+  L4 r31: Special Operations  [Improved Special Forces Attack, 5, 4, 25, 4]
+  L6 r31: Stealth Operations  [Improved Special Forces Defense, 5, 6, -25, 4]
+  L7 r31: Elite Operations  [Improved Special Forces Attack, 5, 7, 50, 4]
+  L3 r32: Superior Defense Tactics  [Improved Infantry Defense, 5, 3, -50, 1]
+  L5 r32: Superior Assault Tactics  [Improved Infantry Attack, 5, 5, 50, 1]
+  L7 r32: Tactical Supremacy  [Improved Infantry Defense, 5, 7, -75, 1]
+  L1 r33: Improved Defense Tactics  [Improved Infantry Defense, 5, 1, -25, 1]
+  L3 r33: Shipboard Marines  [Improved Boarding Attack, 0, 3, 10, 0]
+  L4 r33: Ship Defense Systems  [Improved Boarding Defense, 0, 4, -10, 0]
+  L5 r33: Assault Marines  [Improved Boarding Attack, 0, 5, 25, 0]
+  L6 r33: Ship Defense Network  [Improved Boarding Defense, 0, 6, -25, 0]
+  L7 r33: Armored Assault Marines  [Improved Boarding Attack, 0, 7, 50, 0]
+  L2 r34: Planetary Defense Units  [Enable Planetary Defense, 5, 2, 0, 3]
+  L3 r34: Single Layer Planetary Defense  [Improved Interception Accuracy, 5, 3, -10, 3]
+  L5 r34: Multi-Layer Planetary Defense  [Improved Interception Accuracy, 5, 5, -20, 3]
+  L6 r34: Orbital Defense Network  [Improved Interception Accuracy, 5, 6, -30, 3]
+  L7 r34: High Orbital Defenses  [Improved Interception Accuracy, 5, 7, -50, 3]
+  L3 r35: Heavy Installations  [Improved Interception Damage, 5, 3, 10, 3]
+  L5 r35: Integrated Installations  [Improved Interception Damage, 5, 5, 20, 3]
+  L6 r35: Core-Powered Installations  [Improved Interception Damage, 5, 6, 30, 3]
+  L1 r36: Improved Logistics  [Lower Troop Maintenance, 5, 1, -10, 0]
+  L4 r36: Advanced Logistics  [Lower Troop Maintenance, 5, 4, -30, 0]
+  L7 r36: Superior Logistics  [Lower Troop Maintenance, 5, 7, -50, 0]
+=== ENERGY (115 projects) ===
+  L3 r1: Fusion Physics  [unlocks:54]
+  L4 r1: Advanced Fusion Physics
+  L6 r1: Fusion Cycle Secrets
+  L0 r2: Space Reactors  [unlocks:120]
+  L1 r2: Advanced Nuclear Fission  [unlocks:53]
+  L2 r2: Nuclear Supercharging
+  L3 r2: Fission Mastery
+  L5 r2: Fusion Balance  [unlocks:56]
+  L6 r2: HyperFusion Intensification
+  L7 r2: Advanced Fusion Balance
+  L3 r3: Quantum Exploitation  [unlocks:55]
+  L4 r3: Quantum MicroUtilization
+  L6 r3: Quantum Mastery
+  L2 r4: Fusion Ignition  [unlocks:57]
+  L4 r4: Intense Fusion Reactions
+  L6 r4: Zero Fusion Threshold
+  L2 r5: UltraFast Shield Recharging  [unlocks:36]
+  L4 r5: Capacitor Overloading
+  L6 r5: Pure Energy Discharge
+  L3 r6: Accelerated Shield Recharge  [unlocks:33]
+  L4 r6: High Energy Capacitors
+  L6 r6: MultiPhase Capacitors
+  L3 r7: Intensified Shield Strength  [unlocks:34]
+  L4 r7: High Storage Capacitors
+  L6 r7: Dense Energy Banks
+  L1 r8: Shields  [unlocks:32]
+  L2 r8: Enhanced Shields
+  L3 r8: Shield Reinforcement
+  L5 r8: Advanced Shields  [unlocks:35]
+  L6 r8: Shield Multipliers
+  L7 r8: Exponential Shield Effects
+  L4 r9: Massive Shield Projection  [facility:4]
+  L6 r9: Remote Shield Recharging  [unlocks:37]
+  L7 r9: Intense Recharge Power
+  L6 r10: Submerged Forcefields  [facility:24]
+  L2 r11: Pulse Jump Theory  [unlocks:52]
+  L4 r11: Advanced Jump Techniques
+  L6 r11: Unified Pulse Jump Theory
+  L3 r12: Fast Jump HyperDrives  [unlocks:48]
+  L4 r12: Accelerated HyperJump
+  L6 r12: Instant Jump Initiation
+  L3 r13: High Speed HyperDrives  [unlocks:49]
+  L4 r13: Hyper Slipstreaming
+  L6 r13: Hyper Flow Dynamics
+  L3 r14: Efficient HyperDrives  [unlocks:50]
+  L4 r14: Jump Efficiency
+  L6 r14: Jump Energy Recycling
+  L0 r15: Warp Field Precursors  [special:2; unlocks:125]
+  L1 r15: HyperDrive Technology  [unlocks:47]
+  L2 r15: Enhanced HyperDrives
+  L3 r15: Jump Sequence Optimization
+  L5 r15: Advanced HyperDrives  [unlocks:51]
+  L6 r15: Hyperspace PathSlicing
+  L7 r15: Unified HyperDrive Theory
+  L2 r16: Hyperjump Inhibiting  [unlocks:18]
+  L3 r16: Advanced Jump Stalling
+  L4 r16: Refined Hyperjump Theory  [unlocks:20]
+  L5 r16: Long Range Jump Blocking
+  L6 r16: Hyperjump Disruption  [unlocks:22]
+  L7 r16: Advanced Jump Disruption
+  L2 r17: Ultra Efficient Engines  [unlocks:42]
+  L4 r17: Lossless Energy Conversion
+  L6 r17: Energy Overloading
+  L3 r18: Efficient Energy Conversion  [unlocks:39]
+  L4 r18: Pure Energy Conversion
+  L6 r18: Optimized Engine Efficiency
+  L0 r19: Starship Engines  [unlocks:121]
+  L1 r19: Proton Ionization  [unlocks:38]
+  L2 r19: Enhanced Engines
+  L3 r19: Advanced Proton Ionization
+  L5 r19: Advanced Engines  [unlocks:41]
+  L6 r19: Harmonized Thrust
+  L7 r19: Resonant Thrust Output
+  L3 r20: High Volume Thrust  [unlocks:40]
+  L4 r20: Maximized Thrust Output
+  L6 r20: Surplus Thrust Overload
+  L2 r21: Very High Thrust Engines  [unlocks:43]
+  L4 r21: Synchronized Thrust
+  L6 r21: Intense Thrust Output
+  L0 r22: Starship Maneuvering  [unlocks:122]
+  L1 r22: Enhanced Maneuvering  [unlocks:44]
+  L2 r22: Advanced Maneuvering
+  L3 r22: Coordinated Maneuvering
+  L4 r22: High Speed Turning  [unlocks:45]
+  L5 r22: Advanced Maneuvering
+  L6 r22: Ultimate Maneuvering
+  L2 r23: Accelerated Maneuvering  [unlocks:46]
+  L3 r23: Swift Maneuvering
+  L5 r23: Directional Vectoring
+  L0 r24: Mining  [special:1; unlocks:59, 60, 61]
+  L3 r24: Fast Mining
+  L4 r24: Self-Optimizing Extractors
+  L6 r24: High Power Extractors
+  L1 r25: Energy Collection  [unlocks:58]
+  L3 r25: Enhanced Energy Collection
+  L4 r25: High Power Receptors
+  L6 r25: Total Energy Absorption
+  L7 r25: Advanced Energy Secrets  [unlocks:109]
+  L3 r26: Accelerated Construction  [facility:10; Resupply Ships, 3, 3, 0, 1]
+  L4 r26: Robotic Defenses  [facility:1]
+  L0 r27: Orbital Assembly  [unlocks:94, 62, 63, 64]
+  L1 r27: Space Construction  [Increased Construction Size, 2, 1, 230, 0]
+  L2 r27: Enhanced Construction  [Increased Construction Size, 2, 2, 300, 0]
+  L3 r27: Component PreFabrication  [Increased Construction Size, 2, 3, 400, 0]
+  L4 r27: LargeScale Construction  [Increased Construction Size, 2, 4, 500, 0]
+  L5 r27: Rapid Assembly  [Increased Construction Size, 2, 5, 650, 0]
+  L6 r27: MegaScale Construction  [Increased Construction Size, 2, 6, 800, 0]
+  L7 r27: Automated Manufacturing  [Increased Maximum Construction Size, 2, 7, 1100, 0]
+  L8 r27: Colossal Construction  [Increased Maximum Construction Size, 2, 8, 1500, 0]
+  L3 r28: Damage Control  [unlocks:95]
+  L4 r28: Enhanced Damage Control
+  L5 r28: Robotic Repairs  [unlocks:96]
+  L6 r28: Enhanced Robotic Repairs
+  L3 r29: Swift Robotic Repairs  [unlocks:97]
+  L5 r29: Advanced Robotic Repairs
+=== HIGHTECH (105 projects) ===
+  L2 r1: Holographic Projection  [unlocks:87]
+  L3 r1: Advanced Holograms
+  L4 r1: MultiDimensional Holograms
+  L6 r1: Holographic Manipulation
+  L1 r2: Countermeasures  [unlocks:84]
+  L2 r2: Enhanced Countermeasures
+  L3 r2: Fleet Countermeasures  [unlocks:90]
+  L4 r2: Advanced Countermeasures
+  L5 r2: Advanced Fleet Countermeasures
+  L6 r2: Optimal Countermeasures
+  L1 r3: Target Tracking  [unlocks:83]
+  L2 r3: Enhanced Target Tracking
+  L3 r3: Fleet Targeting  [unlocks:89]
+  L4 r3: Advanced Target Tracking
+  L5 r3: Advanced Fleet Targeting
+  L6 r3: Optimal Target Tracking
+  L2 r4: Situational Awareness AI  [unlocks:88]
+  L3 r4: Advanced Tracking AI
+  L4 r4: Predictive Target Tracking
+  L6 r4: Tracking Omniscience
+  L2 r5: Long Range Scanners  [unlocks:78]
+  L3 r5: Enhanced Scanners
+  L4 r5: Advanced Scanners
+  L5 r5: Deep Space Arrays  [unlocks:79]
+  L6 r5: Enhanced Arrays
+  L7 r5: Advanced Arrays
+  L1 r6: Proximity Sensors  [unlocks:75]
+  L2 r6: Enhanced Sensors
+  L3 r6: Advanced Sensors
+  L4 r6: Stealth  [unlocks:82; facility:28]
+  L5 r6: Directional Jump Sensing  [unlocks:76]
+  L6 r6: Jump Intercept
+  L7 r6: Jump Prediction
+  L8 r6: Advanced Stealth
+  L0 r7: Resource Exploration  [special:1; unlocks:77]
+  L1 r7: Enhanced Resource Exploration
+  L2 r7: Advanced Resource Exploration
+  L3 r7: Ship Scanning  [unlocks:80]
+  L4 r7: Scanner Jamming  [unlocks:81]
+  L5 r7: Enhanced Ship Scanning
+  L6 r7: Advanced Jamming
+  L7 r7: Advanced Ship Scanning
+  L2 r8: Marshy Swamp Colonization  [special:4; Colonize Marshy Swamp planets, 1, 2, 2, 0]
+  L4 r8: Ocean Colonization  [unlocks:103; facility:9; Colonize Ocean planets, 1, 3, 3, 0,		Marshy Swamp colony growth rate doubled, 4, 3, 2, 0]
+  L6 r8: Ice Colonization  [Colonize Ice planets, 1, 5, 5, 0,		Ocean colony growth rate doubled, 4, 5, 3, 0]
+  L7 r8: Hive Colonies  [facility:21]
+  L1 r9: Colonization  [unlocks:102]
+  L2 r9: Continental Colonization  [Colonize Continental planets, 1, 1, 1, 0]
+  L4 r9: Desert Colonization  [unlocks:103; facility:9; Colonize Desert planets, 1, 3, 4, 0,		Continental colony growth rate doubled, 4, 2, 1, 0]
+  L6 r9: Volcanic Colonization  [Colonize Volcanic planets, 1, 5, 6, 0,		Desert colony growth rate doubled, 4, 5, 4, 0]
+  L7 r9: Advanced Colonization  [unlocks:104; Ice colony growth rate doubled, 4, 6, 5, 0,		Volcanic colony growth rate doubled, 4, 6, 6, 0]
+  L1 r10: Transport Systems  [unlocks:70, 72]
+  L2 r10: Enhanced Transport
+  L3 r10: Advanced Troop Transport  [unlocks:71]
+  L4 r10: Planetary Defense  [facility:0]
+  L5 r10: Ultimate Troop Transport
+  L7 r10: Magma Harnessing  [facility:23]
+  L3 r11: Advanced Passenger Transport  [unlocks:73]
+  L4 r11: Luxury Passenger Transport
+  L2 r12: Compressed Fuel Storage  [unlocks:67]
+  L4 r12: Advanced Fuel Storage  [unlocks:66]
+  L6 r12: Optimized Fuel Storage
+  L0 r13: Basic Storage and Payloads  [unlocks:123, 124]
+  L1 r13: Storage Systems  [unlocks:65, 68]
+  L2 r13: Enhanced Storage
+  L4 r13: Advanced Cargo Storage  [unlocks:69]
+  L6 r13: Optimized Cargo Storage
+  L7 r13: Archival Facilities  [facility:22]
+  L0 r14: Docking Bay  [special:1; unlocks:74]
+  L3 r14: Coordinated Docking
+  L5 r14: High Volume Cargo Transfer
+  L7 r14: Automated Cargo Conveyers
+  L0 r15: Basic Crew Environment  [unlocks:98, 99]
+  L1 r15: Crew Systems
+  L3 r15: Enhanced Crew Systems
+  L5 r15: Advanced Crew Systems
+  L7 r15: Luxury Crew Environment
+  L1 r16: Medical Systems  [unlocks:100]
+  L3 r16: Advanced Medicine
+  L4 r16: Biological Workshops  [facility:14]
+  L5 r16: Genetic Replication  [facility:2]
+  L6 r16: Genetic Rewiring  [facility:16]
+  L1 r17: Entertainment Systems  [unlocks:101]
+  L3 r17: Holographic Entertainment
+  L4 r17: Networked Entertainment  [facility:12]
+  L5 r17: Virtual Reality
+  L6 r17: Total Immersion Recreation  [facility:15]
+  L0 r18: Research Laboratories  [unlocks:91, 92, 93]
+  L2 r18: Structured Research  [facility:29]
+  L3 r18: Enhanced Research  [facility:18]
+  L4 r18: Armaments Research  [facility:19]
+  L5 r18: Advanced Research  [facility:17]
+  L7 r18: Accelerated Research
+  L0 r19: Space Command  [special:1; unlocks:85]
+  L2 r19: Coordinated Control
+  L3 r19: Planetary Governance  [facility:5]
+  L4 r19: Officer Training  [facility:30]
+  L5 r19: Regional Governance  [facility:6]
+  L6 r19: Advanced Command
+  L7 r19: Galactic Governance  [facility:7]
+  L0 r20: Space Commerce  [special:1; unlocks:86]
+  L3 r20: Enhanced Commerce
+  L4 r20: Open Trade Network  [facility:13]
+  L5 r20: Efficient Transactions
+  L6 r20: Unlimited Commerce  [facility:20]
+TOTAL 372
