@@ -1,6 +1,6 @@
 # Roadmap
 
-Milestones follow the spec's Part 15 (16.1). Each milestone is split into small **ninfer tasks** (`tasks/NN-*.md`), run by `scripts/run-queue.sh` and reviewed by the orchestrator (typecheck + tests + screenshot comparison against real gameplay footage).
+Milestones follow the spec's Part 15 (16.1). Each milestone is split into small **worker tasks** (headless Claude Code, Sonnet at low effort) (`tasks/NN-*.md`), run by `scripts/run-queue.sh` and reviewed by the orchestrator (typecheck + tests + screenshot comparison against real gameplay footage).
 
 Status: ✅ done · 🔄 running/queued · 📝 spec written · ⬜ not started
 
