@@ -33,4 +33,4 @@ Never commit art; never copy it into the repo.
 - TypeScript strict. Run `npm run typecheck` and `npm test` before finishing; both must pass.
 - Keep C# names recognizable (e.g. `Habitat`, `HabitatType`, `SystemInfo`, `setupSolarSystem`) and cite the source file + method in a short comment above each ported function, e.g. `// Port of Galaxy.5.cs SetupSolarSystem`.
 - Do not invent mechanics when the source has them. If something is out of scope for the current task, leave a `// TODO(port): <what> — <source file:method>` note.
-- Visual check: with `npm run dev` running, `node scripts/shot.mjs http://localhost:5173/ shots/x.png` saves a headless screenshot (and prints console errors).
+- Visual check: with `npm run dev` running, `node scripts/shot.mjs http://localhost:5173/ shots/x.png` saves a headless screenshot (and prints console errors). **Do not open/Read image files** (screenshots or art): workers may run on a text-only model and image input crashes the session. Just save the screenshots, check the printed console output for errors, and list the screenshot paths in your Worker report — the orchestrator reviews them visually.

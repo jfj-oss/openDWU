@@ -26,4 +26,5 @@ exec env \
       "Bash(npm:*)" "Bash(npx:*)" "Bash(node:*)" "Bash(ls:*)" "Bash(cat:*)" "Bash(grep:*)" \
       "Bash(sed:*)" "Bash(head:*)" "Bash(tail:*)" "Bash(find:*)" "Bash(wc:*)" "Bash(mkdir:*)" \
       "Bash(awk:*)" "Bash(file:*)" "Bash(python3:*)" \
+    --disallowedTools "Read(**/*.png)" "Read(**/*.jpg)" "Read(**/*.jpeg)" "Read(**/*.webp)" "Read(**/*.gif)" \
     --output-format stream-json --verbose > "$log" 2>&1
