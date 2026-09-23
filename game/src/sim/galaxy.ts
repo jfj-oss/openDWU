@@ -1,9 +1,10 @@
 // Galaxy generation: star generation (all GalaxyShape variants), system
 // naming, gas clouds, and solar-system contents (planets, moons, asteroid
-// fields). Ports of DistantWorlds.Types.Galaxy (Galaxy.cs / Galaxy.3.cs /
-// Galaxy.4.cs / Galaxy.5.cs / Galaxy.6.cs / Galaxy.9.cs). Nebula/
-// galaxy-location generation, resources, population, and creatures are out
-// of scope — see the `TODO(port)` markers below.
+// fields, resources, treasure asteroids). Ports of
+// DistantWorlds.Types.Galaxy (Galaxy.cs / Galaxy.3.cs / Galaxy.4.cs /
+// Galaxy.5.cs / Galaxy.6.cs / Galaxy.9.cs). Nebula/galaxy-location
+// generation, population, and creatures are out of scope — see the
+// `TODO(port)` markers below.
 
 import { Random } from './random';
 import {
@@ -13,6 +14,8 @@ import {
     HabitatType,
     type SystemInfo,
 } from './types';
+import type { Resource } from './data/resources';
+import type { GameData } from './data/gameData';
 
 // Port of Galaxy.cs static fields (Galaxy.3.cs InitializeStatics sets
 // these): SectorSizeX = SectorSizeY = 2_000_000, IndexSize = 400_000.
@@ -31,10 +34,22 @@ export interface GenerateGalaxyOptions {
     sectorHeight: number;
     colonyPrevalence?: number;
     systemNames: string[];
+    // Parsed game data (resource definitions, ...). When omitted, no
+    // resources are generated (pre-01d behavior).
+    gameData?: GameData;
 }
 
 export class Galaxy {
     rnd: Random;
+    // Port of Galaxy.cs static CryptoRnd (CryptoRandom, unseeded). The C#
+    // class uses an unseeded static RNG for resource prevalence/abundance
+    // rolls and the random resource ordering; to keep generation
+    // deterministic we substitute a second seeded stream derived from the
+    // galaxy seed. (Documented deviation.)
+    cryptoRnd: Random;
+    // Parsed resource definitions (ResourceSystem.Resources), passed in via
+    // GenerateGalaxyOptions.gameData.
+    resources: Resource[] = [];
     sizeX = 0;
     sizeY = 0;
     sectorSize = SECTOR_SIZE;
@@ -59,6 +74,7 @@ export class Galaxy {
 
     constructor(seed: number, shape: GalaxyShape, starCount: number, sectorWidth: number, sectorHeight: number, systemNames: string[], colonyPrevalence?: number) {
         this.rnd = new Random(seed);
+        this.cryptoRnd = new Random(Math.imul(seed, 0x5bd1e995) | 0);
         this.galaxyShape = shape;
         this.starCount = starCount;
         this.sectorWidth = sectorWidth;
@@ -352,6 +368,17 @@ export class Galaxy {
         star.diameter = diameter;
         star.pictureRef = pictureRef;
         star.landscapePictureRef = -1;
+        if (type === HabitatType.SuperNova) {
+            // Port of Galaxy.5.cs SetupSun supernova branch (1353-1371).
+            // TextResolver.GetText("HabitatType SuperNova") = "Super Nova"
+            // (TextResolver not ported — literal used).
+            star.name = 'Super Nova ' + this.generateCodeName();
+            // C# field is float — round to float32 for fidelity.
+            star.novaProgression = Math.fround(30000 + this.rnd.nextDouble() * 60000);
+            star.novaImageIndexMajor = this.rnd.next(0, 20); // GalaxyImages.NovaImageCountMajor
+            star.novaImageIndexMinor = this.rnd.next(0, 56); // GalaxyImages.NovaImageCountMinor
+            star.diameter = Math.trunc(Math.trunc(star.novaProgression * 2.0) / 10);
+        }
         // TODO(port): black hole "Pull"/"Event Horizon" and supernova
         // GalaxyLocation objects — Galaxy.5.cs SetupSun:1329-1371 (needs
         // GalaxyLocation, not ported yet).
@@ -478,9 +505,9 @@ export class Galaxy {
     // GalaxyLocations; nebulae aren't modeled yet, so this places the
     // cloud at a uniform-random galaxy coordinate instead (documented
     // deviation) while keeping the type roll, diameter roll, min-distance
-    // retry loop (against other gas clouds/asteroids), and orbitDirection
-    // roll faithful to source. TODO(port): nebula-anchored placement,
-    // SelectResources, radiation fields — need GalaxyLocation/resources.
+    // retry loop (against other gas clouds/asteroids), SelectResources,
+    // radiation rolls, and orbitDirection roll faithful to source.
+    // TODO(port): nebula-anchored placement — needs GalaxyLocation.
     generateGasCloud(): Habitat {
         let habitatType = HabitatType.Ammonia;
         switch (this.rnd.next(0, 15)) {
@@ -531,6 +558,8 @@ export class Galaxy {
         this.rnd.next(40, 60); // solarRadiation
         this.rnd.next(1, 5); // microwaveRadiation
         this.rnd.next(0, 3); // xrayRadiation
+
+        this.selectResources(habitat);
 
         switch (habitat.type) {
             case HabitatType.Hydrogen:
@@ -826,14 +855,201 @@ export class Galaxy {
         return { type: result.type, diameter, pictureRef: result.pictureRef, landscapePictureRef: result.landscapePictureRef };
     }
 
-    // Port of Galaxy.6.cs SelectHabitatPictures (line 2062). Habitat.Resources
-    // isn't modeled yet (SelectResources not ported — see TODO(port) note on
-    // setupSolarSystem), so the "has resources" branches for GasGiant/
-    // FrozenGasGiant are unreachable here; only the "no resources" branch
-    // (a single Rnd.Next roll) runs, which desyncs the Rnd sequence versus
-    // the original whenever a real game would have generated resources for
-    // that habitat. TODO(port): resource-based picture selection — needs
-    // SelectResources.
+    // Port of Galaxy.4.cs ResolveHabitatTypeByIndexIncludeGasClouds (line 774).
+    // resources.txt distribution subType is a compact index, not the
+    // HabitatType enum value.
+    private resolveHabitatTypeByIndexIncludeGasClouds(index: number): HabitatType {
+        switch (index) {
+            case 0:
+                return HabitatType.Continental;
+            case 1:
+                return HabitatType.MarshySwamp;
+            case 2:
+                return HabitatType.Ocean;
+            case 3:
+                return HabitatType.Desert;
+            case 4:
+                return HabitatType.Ice;
+            case 5:
+                return HabitatType.Volcanic;
+            case 6:
+                return HabitatType.BarrenRock;
+            case 7:
+                return HabitatType.GasGiant;
+            case 8:
+                return HabitatType.FrozenGasGiant;
+            case 9:
+                return HabitatType.Metal;
+            case 10:
+                return HabitatType.Ammonia;
+            case 11:
+                return HabitatType.Argon;
+            case 12:
+                return HabitatType.CarbonDioxide;
+            case 13:
+                return HabitatType.Chlorine;
+            case 14:
+                return HabitatType.Helium;
+            case 15:
+                return HabitatType.Hydrogen;
+            case 16:
+                return HabitatType.NitrogenOxygen;
+            case 17:
+                return HabitatType.Oxygen;
+            default:
+                return HabitatType.Continental;
+        }
+    }
+
+    // Port of ResourceDefinitionList.cs CheckPrevalenceValidForHabitat
+    // (line 56). Distribution type: 0=Planet/Moon, 1=Asteroid, 2=GasCloud.
+    private checkPrevalenceValidForHabitat(habitat: Habitat, dist: Resource['distributions'][number]): boolean {
+        if (this.resolveHabitatTypeByIndexIncludeGasClouds(dist.subType) !== habitat.type) {
+            return false;
+        }
+        let valid = false;
+        switch (habitat.category) {
+            case HabitatCategoryType.Planet:
+            case HabitatCategoryType.Moon:
+                valid = dist.type !== 1 && dist.type !== 2;
+                break;
+            case HabitatCategoryType.Asteroid:
+                // C#: this.Type == 1 && this.Type != 2 (the second
+                // conjunct is redundant for a single value).
+                valid = dist.type === 1;
+                break;
+            case HabitatCategoryType.GasCloud:
+                // C#: this.Type == 2 && this.Type != 1.
+                valid = dist.type === 2;
+                break;
+        }
+        return valid;
+    }
+
+    // Port of ResourceSystem.cs GenerateRandomOrderedResources (line 225):
+    // Fisher-Yates-style partial shuffle using the (substituted) CryptoRnd.
+    private generateRandomOrderedResources(): Resource[] {
+        const list = this.resources.slice();
+        const ordered: Resource[] = [];
+        while (list.length > 0) {
+            const index = this.cryptoRnd.next(0, list.length);
+            if (index >= 0 && index < list.length) {
+                ordered.push(list[index]);
+                list.splice(index, 1);
+            }
+        }
+        return ordered;
+    }
+
+    // Port of ResourceDefinitionList.cs GetByName.
+    private getResourceByName(name: string): Resource | null {
+        for (const resource of this.resources) {
+            if (resource.name === name) {
+                return resource;
+            }
+        }
+        return null;
+    }
+
+    // C# Resource.Name is a computed property: ResourceSystemStatic.Resources
+    // [ResourceID].Name (Resource.cs:26).
+    private getResourceName(resourceId: number): string {
+        for (const resource of this.resources) {
+            if (resource.resourceId === resourceId) {
+                return resource.name;
+            }
+        }
+        return '';
+    }
+
+    // Port of Galaxy.4.cs SelectResources (line 3270, all overloads collapse
+    // into default parameters here). Prevalence/abundance rolls use the
+    // (substituted) CryptoRnd stream; the resource-count roll uses Galaxy.Rnd.
+    // C# HabitatResourceList.Add rejects duplicate resource IDs, but the
+    // abundance roll happens before Add — so the roll is always performed
+    // and only the push is skipped on duplicates (keeps the RNG sequence).
+    selectResources(
+        habitat: Habitat,
+        minimumResourceCount = 0,
+        dominantRace: object | null = null,
+        minimumCriticalResourceCount = 0,
+        randomOrderedResources: Resource[] | null = null,
+    ): Habitat {
+        let num = 0;
+        if (this.starCount <= 250) {
+            num = 1;
+        }
+        let num2: number;
+        if (habitat.diameter >= 85) {
+            if (habitat.diameter < 130) {
+                num2 = this.rnd.next(0, 3 + num);
+            } else if (habitat.diameter >= 170) {
+                num2 = this.rnd.next(1 + num, 6);
+            } else {
+                num2 = this.rnd.next(0, 4 + num);
+            }
+        } else {
+            num2 = this.rnd.next(0, 2 + num);
+            if (habitat.category === HabitatCategoryType.Asteroid) {
+                num2 = 0;
+                if (this.rnd.next(0, 3) === 1) {
+                    num2 = this.rnd.next(0, 2 + num);
+                }
+            }
+        }
+        if (num2 < minimumResourceCount) {
+            num2 = minimumResourceCount;
+        }
+        minimumCriticalResourceCount = Math.min(minimumCriticalResourceCount, num2);
+        if (dominantRace !== null && minimumResourceCount > 0) {
+            // TODO(port): critical resources from dominantRace's
+            // colonyGrowthResourceLevels (Rnd.Next(200, 800) abundances) —
+            // Galaxy.4.cs SelectResources. dominantRace is always null at
+            // every call site ported so far.
+        }
+        if (randomOrderedResources === null || randomOrderedResources.length <= 0) {
+            randomOrderedResources = this.generateRandomOrderedResources();
+        }
+        for (let k = 0; k < randomOrderedResources.length; k++) {
+            if (habitat.resources.length >= 5) {
+                break;
+            }
+            const resourceDefinition = randomOrderedResources[k];
+            if (
+                resourceDefinition === null ||
+                resourceDefinition.colonyManufacturingLevel > 0 ||
+                resourceDefinition.distributions.length <= 0 ||
+                resourceDefinition.superLuxuryBonusAmount > 0
+            ) {
+                continue;
+            }
+            for (let l = 0; l < resourceDefinition.distributions.length; l++) {
+                const dist = resourceDefinition.distributions[l];
+                if (dist === null || !this.checkPrevalenceValidForHabitat(habitat, dist)) {
+                    continue;
+                }
+                // C#: float num3 = (float)CryptoRnd.NextDouble(); compared
+                // against the float prevalence.
+                const num3 = Math.fround(this.cryptoRnd.nextDouble());
+                if (num3 < Math.fround(dist.prevalence)) {
+                    let val = Math.trunc(Math.fround(dist.abundanceMin) * 1000);
+                    let val2 = Math.trunc(Math.fround(dist.abundanceMax) * 1000);
+                    val = Math.max(0, Math.min(1000, val));
+                    val2 = Math.max(0, Math.min(1000, val2));
+                    if (val > val2) {
+                        val = val2;
+                    }
+                    const abundance = this.cryptoRnd.next(val, val2);
+                    if (!habitat.resources.some((r) => r.resourceId === resourceDefinition.resourceId)) {
+                        habitat.resources.push({ resourceId: resourceDefinition.resourceId, abundance });
+                    }
+                }
+            }
+        }
+        return habitat;
+    }
+
+    // Port of Galaxy.6.cs SelectHabitatPictures (line 2062).
     selectHabitatPictures(habitat: Habitat): void {
         if (habitat.category === HabitatCategoryType.Asteroid) {
             switch (habitat.type) {
@@ -866,14 +1082,87 @@ export class Galaxy {
                 habitat.landscapePictureRef = 400 + this.rnd.next(0, 10);
                 break;
             case HabitatType.FrozenGasGiant:
-                habitat.landscapePictureRef = 1800 + this.rnd.next(0, 10);
-                // No Resources modeled yet -> always the "no resources" branch.
-                habitat.pictureRef = 1700 + this.rnd.next(0, 10);
+                // Port of Galaxy.6.cs SelectHabitatPictures FrozenGasGiant
+                // case (2097-2143). GalaxyImages constants: landscape
+                // 9+Next(0,2); pictures Argon 67/10, Helium 77/10, Krypton
+                // 87/11, Tyderios 98/13, Any 111/10.
+                habitat.landscapePictureRef = 9 + this.rnd.next(0, 2);
+                if (habitat.resources.length > 0) {
+                    if (this.rnd.next(0, 5) === 1) {
+                        habitat.pictureRef = 111 + this.rnd.next(0, 10);
+                        break;
+                    }
+                    let text2 = 'Tyderios';
+                    let num2 = 0;
+                    for (const resource of habitat.resources) {
+                        if (resource.abundance > num2) {
+                            text2 = this.getResourceName(resource.resourceId);
+                            num2 = resource.abundance;
+                        }
+                    }
+                    switch (text2.toLowerCase()) {
+                        case 'argon':
+                            habitat.pictureRef = 67 + this.rnd.next(0, 10);
+                            break;
+                        case 'helium':
+                            habitat.pictureRef = 77 + this.rnd.next(0, 10);
+                            break;
+                        case 'krypton':
+                            habitat.pictureRef = 87 + this.rnd.next(0, 11);
+                            break;
+                        case 'tyderios':
+                            habitat.pictureRef = 98 + this.rnd.next(0, 13);
+                            break;
+                        default:
+                            habitat.pictureRef = 67 + this.rnd.next(0, 10 + 10 + 11 + 13 + 10);
+                            break;
+                    }
+                } else {
+                    habitat.pictureRef = 67 + this.rnd.next(0, 10 + 10 + 11 + 13 + 10);
+                }
                 break;
             case HabitatType.GasGiant:
-                habitat.landscapePictureRef = 1600 + this.rnd.next(0, 10);
-                // No Resources modeled yet -> always the "no resources" branch.
-                habitat.pictureRef = 1500 + this.rnd.next(0, 10);
+                // Port of Galaxy.6.cs SelectHabitatPictures GasGiant case
+                // (2144-2193). GalaxyImages constants: landscape 11+Next(0,6);
+                // pictures Argon 121/5, Caslon 126/5, Helium 131/8, Hydrogen
+                // 139/8, Krypton 147/5, Any 152/2.
+                habitat.landscapePictureRef = 11 + this.rnd.next(0, 6);
+                if (habitat.resources.length > 0) {
+                    if (this.rnd.next(0, 5) === 1) {
+                        habitat.pictureRef = 152 + this.rnd.next(0, 2);
+                        break;
+                    }
+                    let text = 'Hydrogen';
+                    let num = 0;
+                    for (const resource of habitat.resources) {
+                        if (resource.abundance > num) {
+                            text = this.getResourceName(resource.resourceId);
+                            num = resource.abundance;
+                        }
+                    }
+                    switch (text.toLowerCase()) {
+                        case 'argon':
+                            habitat.pictureRef = 121 + this.rnd.next(0, 5);
+                            break;
+                        case 'helium':
+                            habitat.pictureRef = 131 + this.rnd.next(0, 8);
+                            break;
+                        case 'krypton':
+                            habitat.pictureRef = 147 + this.rnd.next(0, 5);
+                            break;
+                        case 'caslon':
+                            habitat.pictureRef = 126 + this.rnd.next(0, 5);
+                            break;
+                        case 'hydrogen':
+                            habitat.pictureRef = 139 + this.rnd.next(0, 8);
+                            break;
+                        default:
+                            habitat.pictureRef = 121 + this.rnd.next(0, 2 + 5 + 5 + 8 + 8 + 5);
+                            break;
+                    }
+                } else {
+                    habitat.pictureRef = 121 + this.rnd.next(0, 2 + 5 + 5 + 8 + 8 + 5);
+                }
                 break;
             case HabitatType.Ice:
                 habitat.pictureRef = 500 + this.rnd.next(0, 10);
@@ -964,15 +1253,84 @@ export class Galaxy {
         return Math.min(1, Math.max(0, quality));
     }
 
+    // Port of Galaxy.9.cs GenerateTreasureAsteroid.
+    // TextResolver.GetText("Asteroid") = "Asteroid" (TextResolver not ported —
+    // literal used). GalaxyImages: LandscapeImageOffsetBarrenRock=0,
+    // LandscapeImageCountBarrenRock=4; HabitatImageOffsetAsteroidsGold=649,
+    // HabitatImageCountAsteroidsGold=8; HabitatImageOffsetAsteroidsCrystal=657,
+    // HabitatImageCountAsteroidsCrystal=8.
+    private generateTreasureAsteroid(
+        sun: Habitat,
+        orbitAngle: number,
+        orbitDistance: number,
+        orbitDirection: boolean,
+        orbitSpeed: number,
+        doInitialMove: boolean,
+    ): Habitat | null {
+        const byName = this.getResourceByName('Gold');
+        const byName2 = this.getResourceByName('Dilithium Crystal');
+        if (byName === null && byName2 === null) {
+            return null;
+        }
+        const habitat = new Habitat(HabitatCategoryType.Asteroid, HabitatType.Metal, 'Asteroid', sun, orbitAngle, orbitDirection, orbitDistance, orbitSpeed, doInitialMove);
+        habitat.diameter = this.rnd.next(35, 50);
+        habitat.landscapePictureRef = 0 + this.rnd.next(0, 4);
+        const abundance = this.rnd.next(800, 1000);
+        if (byName2 === null) {
+            // byName is non-null: the both-null case returned above.
+            habitat.pictureRef = 649 + this.rnd.next(0, 8);
+            habitat.resources.push({ resourceId: byName!.resourceId, abundance });
+            habitat.name = this.generateGoldAsteroidName(sun);
+        } else if (byName === null) {
+            habitat.pictureRef = 657 + this.rnd.next(0, 8);
+            habitat.resources.push({ resourceId: byName2.resourceId, abundance });
+            habitat.name = this.generateCrystalAsteroidName(sun);
+        } else if (this.rnd.next(0, 2) === 1) {
+            habitat.pictureRef = 649 + this.rnd.next(0, 8);
+            habitat.resources.push({ resourceId: byName.resourceId, abundance });
+            habitat.name = this.generateGoldAsteroidName(sun);
+        } else {
+            habitat.pictureRef = 657 + this.rnd.next(0, 8);
+            habitat.resources.push({ resourceId: byName2.resourceId, abundance });
+            habitat.name = this.generateCrystalAsteroidName(sun);
+        }
+        habitat.scenicFactor = 0.3 + this.rnd.nextDouble() * 0.3;
+        return habitat;
+    }
+
+    // Port of Galaxy.9.cs GenerateGoldAsteroidName.
+    private generateGoldAsteroidName(sun: Habitat | null): string {
+        const array = ['Concealed', 'Lost', 'Golden', 'Precious', 'Glittering', 'Hidden', "Miner's"];
+        const array2 = ['Hoard', 'Rock', 'Treasure', 'Nugget', 'Fortune', 'Folly', 'Legend', 'Star', 'Prize'];
+        if (sun !== null && sun.type !== HabitatType.SuperNova && this.rnd.next(0, 3) === 1) {
+            if (this.rnd.next(0, 2) === 1) {
+                return sun.name + ' ' + array2[this.rnd.next(0, array2.length)];
+            }
+            return array2[this.rnd.next(0, array2.length)] + ' of ' + sun.name;
+        }
+        return array[this.rnd.next(0, array.length)] + ' ' + array2[this.rnd.next(0, array2.length)];
+    }
+
+    // Port of Galaxy.9.cs GenerateCrystalAsteroidName.
+    private generateCrystalAsteroidName(sun: Habitat | null): string {
+        const array = ['Concealed', 'Lost', 'Shining', 'Precious', 'Glittering', 'Hidden', "Miner's", 'Crystal'];
+        const array2 = ['Hoard', 'Rock', 'Treasure', 'Jewel', 'Fortune', 'Folly', 'Legend', 'Star', 'Prize', 'Gem'];
+        if (sun !== null && sun.type !== HabitatType.SuperNova && this.rnd.next(0, 3) === 1) {
+            if (this.rnd.next(0, 2) === 1) {
+                return sun.name + ' ' + array2[this.rnd.next(0, array2.length)];
+            }
+            return array2[this.rnd.next(0, array2.length)] + ' of ' + sun.name;
+        }
+        return array[this.rnd.next(0, array.length)] + ' ' + array2[this.rnd.next(0, array2.length)];
+    }
+
     // Port of Galaxy.9.cs GenerateAsteroidField (line 3482 overload; the
     // simpler overloads at 3463/3470 that resolve nearestSystemStar/
     // orbitDistance via FindNearestSystemGasCloudAsteroid aren't ported —
     // SetupSolarSystem always supplies nearestSystemStar/orbitDistance
-    // directly). The `randomOrderedResources`/resources output is skipped
-    // (SelectResources isn't ported yet) but the same count/order of Rnd
-    // calls SelectResources(habitat, minimumResourceCount) would consume is
-    // NOT reproduced here — see the Worker report for the resulting desync.
-    // TODO(port): resources — Galaxy.9.cs GenerateAsteroidField.
+    // directly). `randomOrderedResources` defaults to null, in which case
+    // SelectResources shuffles all resources (C#
+    // GenerateRandomOrderedResources).
     private generateAsteroidFieldAt(
         asteroidCount: number,
         x: number,
@@ -984,6 +1342,7 @@ export class Galaxy {
         distanceSpreadFactor: number,
         arcSpreadFactor: number,
         type: HabitatType,
+        randomOrderedResources?: Resource[] | null,
     ): Habitat[] {
         const result: Habitat[] = [];
         const baseAngle = this.calculateAngleFromCoords(x, y, nearestSystemStar.xpos, nearestSystemStar.ypos, orbitDistance);
@@ -1022,17 +1381,26 @@ export class Galaxy {
             asteroid.diameter = diameter;
             asteroid.pictureRef = pictureRef;
             asteroid.landscapePictureRef = -1;
-            // TODO(port): SelectResources(habitat, minimumResourceCount, null, 0, randomOrderedResources) — Galaxy.4.cs.
-            // The minimumResourceCount roll below is kept for the single Rnd
-            // call SetupSolarSystem's inline equivalent makes; the resource
-            // selection itself is not reproduced.
+            let minimumResourceCount = 0;
             if (type === HabitatType.Metal && this.rnd.next(0, 3) > 0) {
-                // minimumResourceCount = 1 in source; no resource list to populate here.
+                minimumResourceCount = 1;
             }
+            // C# calls SelectResources(habitat, minimumResourceCount, null, 0,
+            // randomOrderedResources) while habitat.Type is still BarrenRock,
+            // then sets habitat.Type = type.
+            this.selectResources(asteroid, minimumResourceCount, null, 0, randomOrderedResources ?? null);
             asteroid.type = type;
             this.selectHabitatPictures(asteroid);
-            // TODO(port): GenerateTreasureAsteroid — Galaxy.9.cs:3419 (1/1300 roll below consumes the same Rnd call the source makes; the treasure-asteroid Rnd calls that would follow are not reproduced).
-            this.rnd.next(0, 1300);
+            if (this.rnd.next(0, 1300) === 1) {
+                const treasure = this.generateTreasureAsteroid(nearestSystemStar, angle, dist, orbitDirection, orbitSpeed, false);
+                if (treasure !== null) {
+                    // C# replaces the asteroid with the treasure habitat (it
+                    // would add null if GenerateTreasureAsteroid returned
+                    // null); we keep the original asteroid in that case.
+                    result.push(treasure);
+                    continue;
+                }
+            }
             result.push(asteroid);
         }
         return result;
@@ -1042,14 +1410,13 @@ export class Galaxy {
     // asteroidField) (lines 1386-1945). colonyPrevalence (this.colonyPrevalence)
     // stands in for Galaxy._ColonyPrevalence.
     //
-    // Not ported (out of scope per task 01c): SelectResources,
-    // SelectPopulation, SelectCreatures, DockingBay/Cargo/Troop/Character/
-    // Construction/Manufacturing list setup, DoTasks, GenerateTreasureAsteroid's
-    // actual resource assignment. Every call site that would have called one
-    // of the skipped functions is noted in the Worker report together with
-    // the (data-dependent, non-fixed) number of Rnd calls it would have
-    // consumed in the original — the ported Rnd sequence diverges from the
-    // original from the first such call site onward.
+    // Not ported (out of scope per task 01c): SelectPopulation,
+    // SelectCreatures, DockingBay/Cargo/Troop/Character/Construction/
+    // Manufacturing list setup, DoTasks. Every call site that would have
+    // called one of the skipped functions is noted in the Worker report
+    // together with the (data-dependent, non-fixed) number of Rnd calls it
+    // would have consumed in the original — the ported Rnd sequence
+    // diverges from the original from the first such call site onward.
     setupSolarSystem(galaxyShape: GalaxyShape): { habitats: Habitat[]; asteroidField: Habitat[] | null } {
         let allowCreatures = true; // C#: flag
         const habitatList: Habitat[] = []; // C#: habitatList (planets/moons/asteroids, unordered)
@@ -1221,7 +1588,7 @@ export class Galaxy {
                 planet.landscapePictureRef = landscapePictureRef;
                 planet.baseQuality = this.selectHabitatQuality(planet, this.colonyPrevalence);
                 // TODO(port): DoTasks(CurrentDateTime) — Habitat.DoTasks (galaxy-time driven; out of scope).
-                // TODO(port): SelectResources(habitat2) — Galaxy.4.cs:3270. Data-dependent Rnd-call count; see Worker report.
+                this.selectResources(planet);
                 this.setScenicFactor(planet);
                 this.setResearchBonus(planet);
                 this.selectHabitatPictures(planet);
@@ -1310,7 +1677,7 @@ export class Galaxy {
                     moonsForThisPlanet.push(moon);
                     moon.orbitDistance = moonOrbitDistance;
                     // TODO(port): DoTasks(CurrentDateTime) — out of scope (galaxy time).
-                    // TODO(port): SelectResources(habitat2) — Galaxy.4.cs:3270. Data-dependent Rnd-call count; see Worker report.
+                    this.selectResources(moon);
                     this.setScenicFactor(moon);
                     this.setResearchBonus(moon);
                     this.selectHabitatPictures(moon);
@@ -1348,7 +1715,7 @@ export class Galaxy {
                 asteroid.pictureRef = pictureRef;
                 asteroid.landscapePictureRef = -1;
                 asteroid.baseQuality = this.selectHabitatQuality(asteroid, this.colonyPrevalence);
-                // TODO(port): SelectResources(habitat2) — Galaxy.4.cs:3270. Data-dependent Rnd-call count; see Worker report.
+                this.selectResources(asteroid);
                 this.selectHabitatPictures(asteroid);
                 if (this.rnd.next(0, 5) === 2) {
                     asteroid.orbitDirection = false;
@@ -1426,20 +1793,32 @@ export class Galaxy {
                     asteroid.pictureRef = pictureRef;
                     asteroid.landscapePictureRef = -1;
                     asteroid.baseQuality = this.selectHabitatQuality(asteroid, this.colonyPrevalence);
+                    let minimumResourceCount = 0;
                     if (fieldType === HabitatType.Metal && this.rnd.next(0, 3) > 0) {
-                        // minimumResourceCount = 1 in source; no resource list modeled here.
+                        minimumResourceCount = 1;
                     }
-                    // TODO(port): SelectResources(habitat3, minimumResourceCount) — Galaxy.4.cs:3270. Data-dependent Rnd-call count; see Worker report.
+                    // C# sets habitat3.Type = fieldType (Galaxy.5.cs:1894)
+                    // before SelectResources(habitat3, minimumResourceCount)
+                    // (1895).
                     asteroid.type = fieldType;
+                    this.selectResources(asteroid, minimumResourceCount);
                     this.selectHabitatPictures(asteroid);
                     if (allowCreatures) {
                         // TODO(port): SelectCreatures(habitat3) — Galaxy.6.cs:654. Data-dependent Rnd-call count; see Worker report.
                     }
+                    let toAdd = asteroid;
                     if (this.rnd.next(0, 1300) === 1) {
-                        // TODO(port): GenerateTreasureAsteroid — Galaxy.9.cs:3419. Data-dependent Rnd-call count (only fires ~1/1300 asteroids); see Worker report.
+                        const treasure = this.generateTreasureAsteroid(sunHabitat, angle, dist, orbitDirection, orbitSpeed, true);
+                        if (treasure !== null) {
+                            // C# replaces the asteroid with the treasure
+                            // habitat (it would add null if
+                            // GenerateTreasureAsteroid returned null); we
+                            // keep the original asteroid in that case.
+                            toAdd = treasure;
+                        }
                     }
-                    fieldAsteroids.push(asteroid);
-                    habitatList.push(asteroid);
+                    fieldAsteroids.push(toAdd);
+                    habitatList.push(toAdd);
                 }
                 asteroidField = fieldAsteroids;
             }
@@ -1529,8 +1908,10 @@ export class Galaxy {
 // full generator but unused here (no colonies are generated in 01b/01c
 // scope yet). TODO(port): colony placement — later task.
 export function generateGalaxy(options: GenerateGalaxyOptions): Galaxy {
-    const { seed, shape, starCount, sectorWidth, sectorHeight, systemNames, colonyPrevalence } = options;
+    const { seed, shape, starCount, sectorWidth, sectorHeight, systemNames, colonyPrevalence, gameData } = options;
     const galaxy = new Galaxy(seed, shape, starCount, sectorWidth, sectorHeight, systemNames, colonyPrevalence);
+    // ResourceSystem.Resources (Galaxy.4.cs ctor loads it before generation).
+    galaxy.resources = gameData?.resources ?? [];
 
     // Cluster setup (Galaxy.4.cs 2221-2276), only for the Clusters shapes.
     galaxy.setupStarClusters(shape, starCount);
