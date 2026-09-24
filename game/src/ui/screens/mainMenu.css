@@ -1,0 +1,125 @@
+/* Main menu screen (task 06a). Sits behind/above the PixiJS canvas until
+   Start New Game is clicked. */
+
+.main-menu {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    overflow: hidden;
+    background: #000;
+    font-family: 'Forgotten Futurist', sans-serif;
+    color: #fff;
+}
+
+.main-menu-bg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.main-menu-theme {
+    position: absolute;
+    top: 2%;
+    left: 50%;
+    transform: translateX(-50%);
+    color: #e8d24a;
+    font-size: 13px;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+.main-menu-panel {
+    position: absolute;
+    top: 13%;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    background: rgba(20, 22, 28, 0.8);
+    border-radius: 14px;
+    padding: 12px 28px;
+}
+
+.main-menu-item {
+    background: transparent;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    display: block;
+}
+
+.main-menu-item img {
+    display: block;
+    height: 28px;
+    width: auto;
+}
+
+.main-menu-title {
+    position: absolute;
+    top: 58%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 50%;
+    height: auto;
+    pointer-events: none;
+}
+
+.main-menu-corner {
+    position: absolute;
+    background: transparent;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+}
+
+.main-menu-corner img {
+    display: block;
+    height: 36px;
+    width: auto;
+}
+
+.main-menu-galactopedia {
+    top: 10px;
+    left: 10px;
+}
+
+.main-menu-updates {
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    text-align: center;
+}
+
+.main-menu-updates button {
+    background: transparent;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+}
+
+.main-menu-version {
+    font-size: 11px;
+    color: #ccc;
+    margin-top: 4px;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+.main-menu-credits {
+    bottom: 10px;
+    right: 10px;
+}
+
+.menu-toast {
+    position: absolute;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(20, 22, 28, 0.9);
+    border-radius: 8px;
+    padding: 10px 18px;
+    font-size: 13px;
+    color: #fff;
+}

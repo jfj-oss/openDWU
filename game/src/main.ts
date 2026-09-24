@@ -16,6 +16,7 @@ import { GalaxyTime } from './sim/clock';
 import { START_STAR_DATE } from './sim/galaxyTime';
 import { formatClockLabel } from './ui/hud';
 import { createMapOverlayState } from './ui/mapOverlays';
+import { createMainMenu } from './ui/screens/mainMenu';
 import './ui/hud.css';
 
 // ?shape= names accepted by the boot URL.
@@ -82,8 +83,33 @@ async function loadSystemNames(dwuPresent: boolean): Promise<string[]> {
     return FALLBACK_SYSTEM_NAMES;
 }
 
+/** Keys that, when present on the boot URL, skip the main menu and boot
+ * straight into the game (keeps screenshot scripts / dev links working). */
+const SKIP_MENU_PARAMS = ['seed', 'shape', 'stars', 'zoom', 'cx', 'cy', 'skipMenu'];
+
 async function main(): Promise<void> {
     const params = new URLSearchParams(window.location.search);
+    const skipMenu = SKIP_MENU_PARAMS.some((k) => params.has(k));
+
+    if (!skipMenu) {
+        const menu = createMainMenu({
+            onStartNewGame: () => {
+                menu.destroy();
+                // Task 06a defaults: seed = Date.now() % 2147483647, spiral, 700 stars.
+                const newGameParams = new URLSearchParams();
+                newGameParams.set('seed', String(Date.now() % 2147483647));
+                newGameParams.set('shape', 'spiral');
+                newGameParams.set('stars', '700');
+                void bootGame(newGameParams);
+            },
+        });
+        return;
+    }
+
+    await bootGame(params);
+}
+
+async function bootGame(params: URLSearchParams): Promise<void> {
     const seed = parseInt(params.get('seed') ?? '1', 10) || 1;
     const starCount = parseInt(params.get('stars') ?? '700', 10) || 700;
     const shape = SHAPE_BY_NAME[params.get('shape') ?? 'spiral'] ?? GalaxyShape.Spiral;
