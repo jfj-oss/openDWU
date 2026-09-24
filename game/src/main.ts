@@ -32,7 +32,7 @@ import { createCreditsScreen } from './ui/screens/credits';
 import { startMusic } from './audio/musicPlayer';
 import { createNewGameWizard } from './ui/screens/newGameWizard';
 import { openGalactopedia } from './ui/screens/galactopedia';
-import { defaultStartGameOptions, toCreateGameOptions, type StartGameOptions } from './sim/startGameOptions';
+import { defaultStartGameOptions, STARTING_TECH_LEVEL, toCreateGameOptions, type StartGameOptions } from './sim/startGameOptions';
 import { serializeGame, deserializeGame } from './sim/save/gameSave';
 import { setSaveLoadProvider, createSaveLoadPanel, type LoadedGame } from './ui/screens/saveLoad';
 import { type Game } from './sim/game';
@@ -519,7 +519,7 @@ async function startTutorialGame(file: string): Promise<void> {
         console.error('DW:U game data is required to start a tutorial but failed to load.');
         return;
     }
-    const ai = { race: '(Random)', homeSystemFavourability: 'Normal' as const, proximityDistance: 'Random', age: 1, techLevel: 0 };
+    const ai = { race: '(Random)', homeSystemFavourability: 'Normal' as const, proximityDistance: 'Random', age: 1, techLevel: STARTING_TECH_LEVEL };
     const opts: CreateGameOptions = {
         seed: 1,
         shape: GalaxyShape.Spiral,
@@ -528,7 +528,7 @@ async function startTutorialGame(file: string): Promise<void> {
         sectorHeight: 4,
         systemNames,
         gameData,
-        player: { race: 'Human', homeSystemFavourability: 'Normal', startLocation: '(Random)', age: 1, techLevel: 0 },
+        player: { race: 'Human', homeSystemFavourability: 'Normal', startLocation: '(Random)', age: 1, techLevel: STARTING_TECH_LEVEL },
         aiEmpires: [ai, { ...ai }, { ...ai }],
     };
     let game: Game | null = null;
@@ -764,7 +764,7 @@ async function buildAutostartGame(
         console.warn('?autostart=1 needs DW:U game data (races/governments); falling back to generateGalaxy');
         return null;
     }
-    const ai = { race: '(Random)', homeSystemFavourability: 'Normal' as const, proximityDistance: 'Random', age: 1, techLevel: 0 };
+    const ai = { race: '(Random)', homeSystemFavourability: 'Normal' as const, proximityDistance: 'Random', age: 1, techLevel: STARTING_TECH_LEVEL };
     const opts: CreateGameOptions = {
         seed,
         shape,
@@ -773,7 +773,7 @@ async function buildAutostartGame(
         sectorHeight,
         systemNames,
         gameData,
-        player: { race: 'Human', homeSystemFavourability: 'Normal', startLocation: '(Random)', age: 1, techLevel: 0 },
+        player: { race: 'Human', homeSystemFavourability: 'Normal', startLocation: '(Random)', age: 1, techLevel: STARTING_TECH_LEVEL },
         aiEmpires: [ai, { ...ai }, { ...ai }],
     };
     try {

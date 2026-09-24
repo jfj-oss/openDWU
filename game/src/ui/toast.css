@@ -3,6 +3,7 @@
    .game-menu-toast rule under the new class name. */
 
 .dwu-toast {
+    font-family: 'Forgotten Futurist', sans-serif;
     position: absolute;
     bottom: 24px;
     left: 50%;

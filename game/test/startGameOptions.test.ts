@@ -682,7 +682,7 @@ describe('toCreateGameOptions (task 06i)', () => {
         expect(c.player.homeSystemFavourability).toBe('Normal');
         expect(c.player.startLocation).toBe('(Random)');
         // Tech level is fixed and supported (never the unported 0.5 "Normal").
-        expect(c.player.techLevel).toBe(0);
+        expect(c.player.techLevel).toBe(0.5);
         expect(c.player.age).toBe(1);
     });
 
@@ -704,7 +704,7 @@ describe('toCreateGameOptions (task 06i)', () => {
             expect(ai.race).toBe('(Random)');
             expect(ai.proximityDistance).toBe('Random');
             expect(ai.homeSystemFavourability).toBe('Normal');
-            expect(ai.techLevel).toBe(0);
+            expect(ai.techLevel).toBe(0.5);
         }
     });
 
@@ -746,7 +746,7 @@ describe('toCreateGameOptions (task 06i)', () => {
         for (const ai of c.aiEmpires) {
             expect(ai.homeSystemFavourability).toBe('Normal');
             expect(ai.proximityDistance).toBe('Random');
-            expect(ai.techLevel).toBe(0);
+            expect(ai.techLevel).toBe(0.5);
         }
     });
 

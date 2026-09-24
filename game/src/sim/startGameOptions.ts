@@ -567,10 +567,8 @@ export function defaultStartGameOptions(): StartGameOptions {
  * the DW:U install / fallback list at boot), so they are passed in explicitly;
  * both are required by CreateGameOptions.
  *
- * Known limitation (C2): createGame only supports tech levels PreWarp (0) and
- * Level 1-6 — the "Normal" 0.5 path needs SetTechTreeStartingDefaults + empire
- * policies, which are not ported yet. The wizard has no tech-level page, so a
- * fixed supported value is supplied for every starting empire (see
+ * The wizard has no tech-level page, so a fixed value (the original's
+ * "Normal" start, 0.5) is supplied for every starting empire (see
  * STARTING_TECH_LEVEL below).
  */
 export function toCreateGameOptions(
@@ -670,5 +668,6 @@ export function toCreateGameOptions(
 }
 
 /** Fixed starting tech level for every empire (see toCreateGameOptions).
- * 0 = PreWarp; must not be 0.5 ("Normal") until that path is ported. */
-const STARTING_TECH_LEVEL = 0;
+ * 0.5 = the original's "Normal" start (starting ships, space port, stations);
+ * 0 would be PreWarp (no ships). Supported since the M3 merge (C2d+). */
+export const STARTING_TECH_LEVEL = 0.5;
