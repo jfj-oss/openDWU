@@ -1836,7 +1836,8 @@ export class Galaxy {
         }
         let num2 = 0;
         const num3 = this.rnd.next(0, 30);
-        num2 = num3 < 0 || num3 > 6 ? this.rnd.next(100000, 300000) * num : this.rnd.next(300000, 600000) * num;
+        // C# multiplies by (long)num — truncate before multiplying.
+        num2 = num3 < 0 || num3 > 6 ? this.rnd.next(100000, 300000) * Math.trunc(num) : this.rnd.next(300000, 600000) * Math.trunc(num);
         if (this.age > 0) {
             num2 = Math.trunc(num2 * Math.pow(1.2, this.age));
         }
