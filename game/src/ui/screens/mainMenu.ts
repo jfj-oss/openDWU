@@ -35,6 +35,8 @@ export interface MainMenuCallbacks {
     onStartNewGame: () => void;
     /** Task 06l: open the Tutorials list screen (or start a tutorial game). */
     onTutorials?: () => void;
+    /** Called when "Load Game" is clicked (task 11a3: open the load panel). */
+    onLoadGame?: () => void;
 }
 
 export interface MainMenuRefs {
@@ -191,6 +193,13 @@ export function createMainMenu(callbacks: MainMenuCallbacks): MainMenuRefs {
                 case 'options':
                     // Task 06k: same options panel as the in-game Escape menu.
                     openOptionsModal(root);
+                    break;
+                case 'loadGame':
+                    if (callbacks.onLoadGame) {
+                        callbacks.onLoadGame();
+                    } else {
+                        console.info('TODO(menu): loadGame');
+                    }
                     break;
                 case 'exit':
                     if (isDesktopShell()) {

@@ -20,7 +20,7 @@ import { START_STAR_DATE } from './sim/galaxyTime';
 import { formatClockLabel, SECTOR_LEVEL_ZOOM, SYSTEM_LEVEL_ZOOM, type Selection } from './ui/hud';
 import { Habitat, HabitatCategoryType } from './sim/types';
 import { createMapOverlayState, type MapOverlayState, type OverlayKey } from './ui/mapOverlays';
-import { buildDefaultHandlers, createShortcutsOverlay, dispatchKey } from './ui/keyboard';
+import { buildDefaultHandlers, createShortcutsOverlay, dispatchKey, setGameMenuHandler } from './ui/keyboard';
 import { createMainMenu } from './ui/screens/mainMenu';
 import { openOptionsModal } from './ui/screens/mainMenu';
 import { createTutorialsScreen, openTutorialWindow } from './ui/screens/tutorials';
@@ -29,6 +29,8 @@ import { startMusic } from './audio/musicPlayer';
 import { createNewGameWizard } from './ui/screens/newGameWizard';
 import { openGalactopedia } from './ui/screens/galactopedia';
 import { toCreateGameOptions, type StartGameOptions } from './sim/startGameOptions';
+import { serializeGame, deserializeGame } from './sim/save/gameSave';
+import { setSaveLoadProvider, createSaveLoadPanel, type LoadedGame } from './ui/screens/saveLoad';
 import { type Game } from './sim/game';
 import './ui/hud.css';
 
@@ -127,6 +129,14 @@ async function loadGameDataOrNone(dwuPresent: boolean): Promise<GameData | null>
     }
 }
 
+// Task 11a3: module-level state for the save/load panels. The loaded game
+// data is remembered so a later "Load Game" can deserialize saved games
+// (deserializeGame needs the static race/resource/research tables).
+let lastGameData: GameData | null = null;
+let lastStartOptions: StartGameOptions | null = null;
+let activeSavePanel: ReturnType<typeof createSaveLoadPanel> | null = null;
+let activeGameViewCleanup: (() => void) | null = null;
+
 /** Task M2e2: build the `window.__dwu` debug/screenshot object (pure — no
  * window access, so it is testable without jsdom). The parameter types are
  * structural (any non-null value) so tests can pass plain objects instead of
@@ -177,8 +187,9 @@ function applyOverlaysUrlParam(overlays: MapOverlayState): void {
 /** Task M2e2: one shared boot used by the wizard Start, `?autostart=1` and
  * save-load — centres the camera on the player's capital at Sector zoom,
  * wires the HUD/clock/input, and sets `window.__dwu` (camera, galaxy, view,
- * app, game). */
-async function startGameView(game: Game, zoomOverride?: number, extraBoots?: Array<() => void>): Promise<void> {
+ * app, game). Returns the GalaxyTime it created so callers (the save/load
+ * provider, task 11a3) can serialize the running game. */
+export async function startGameView(game: Game, zoomOverride?: number, extraBoots?: Array<() => void>): Promise<GalaxyTime> {
     const dwuPresent = await detectDwuPresent();
     if (dwuPresent) {
         // Real-art file lists (scripts/gen-asset-manifest.mjs, predev/prebuild).
@@ -262,8 +273,11 @@ async function startGameView(game: Game, zoomOverride?: number, extraBoots?: Arr
         }
     };
     refreshHud();
-    window.addEventListener('resize', () => layoutHud(hud));
-    setInterval(refreshHud, 250);
+    const resizeHandler = (): void => {
+        layoutHud(hud);
+    };
+    window.addEventListener('resize', resizeHandler);
+    const refreshHudTimer = setInterval(refreshHud, 250);
     const refreshClockLabel = (): void => {
         if (dateEl) {
             dateEl.textContent = formatClockLabel(time.currentStarDate, time.speed);
@@ -272,7 +286,7 @@ async function startGameView(game: Game, zoomOverride?: number, extraBoots?: Arr
             pauseBtn.textContent = time.paused ? '▶' : '⏸';
         }
     };
-    setInterval(refreshClockLabel, 250);
+    const refreshClockTimer = setInterval(refreshClockLabel, 250);
 
     // Task 06l: extra boots run after the HUD/clock are wired (e.g. opening
     // a tutorial window that pauses/unpauses the clock).
@@ -282,8 +296,8 @@ async function startGameView(game: Game, zoomOverride?: number, extraBoots?: Arr
 
     const shortcuts = createShortcutsOverlay();
     const keyHandlers = buildDefaultHandlers(camera, time);
-    window.addEventListener('keydown', (e: KeyboardEvent) => {
-        if (e.key === '?') {
+    const keydownHandler = (e: KeyboardEvent): void => {
+        if (e.key === '?' || e.key === 'F1') {
             e.preventDefault();
             shortcuts.toggle();
             return;
@@ -292,7 +306,8 @@ async function startGameView(game: Game, zoomOverride?: number, extraBoots?: Arr
         if (action === 'togglePause' || action === 'speedUp' || action === 'speedDown') {
             refreshClockLabel();
         }
-    });
+    };
+    window.addEventListener('keydown', keydownHandler);
 
     app.ticker.add(() => {
         const gameMs = time.advance(app.ticker.deltaMS);
@@ -303,8 +318,67 @@ async function startGameView(game: Game, zoomOverride?: number, extraBoots?: Arr
     });
     app.renderer.on('resize', () => {
         camera.setViewport(app.renderer.width, app.renderer.height);
-        layoutHud(hud);
+        resizeHandler();
     });
+
+    // Task 11a3: register the save/load provider for this game view. The
+    // panel is created lazily on first open and reuses one instance per game
+    // view; saving serializes via serializeGame with this view's clock +
+    // startOptions, loading deserializes against the remembered gameData and
+    // reboots through startGameView.
+    let savePanel: ReturnType<typeof createSaveLoadPanel> | null = null;
+    const memorySaves = new Map<string, string>();
+    function getSavePanel() {
+        if (!savePanel) {
+            savePanel = createSaveLoadPanel('save', {
+                callbacks: {
+                    onLoadedFile: (loaded) => void bootLoadedGame(loaded),
+                },
+                memorySaves,
+                serialize: () =>
+                    lastStartOptions !== null ? serializeGame(game, time, lastStartOptions) : null,
+                loadSave: (text) => {
+                    if (lastGameData === null) {
+                        throw new Error('DW:U game data is required to load a save');
+                    }
+                    return deserializeGame(text, lastGameData) as unknown as LoadedGame;
+                },
+            });
+        }
+        activeSavePanel = savePanel;
+        return savePanel;
+    }
+    setSaveLoadProvider({
+        open: (_mode) => {
+            const panel = getSavePanel();
+            panel.show();
+        },
+        serialize: () =>
+            lastStartOptions !== null ? serializeGame(game, time, lastStartOptions) : null,
+        loadSave: (text) => {
+            if (lastGameData === null) {
+                throw new Error('DW:U game data is required to load a save');
+            }
+            return deserializeGame(text, lastGameData) as unknown as LoadedGame;
+        },
+        memorySaves,
+    });
+
+    // Teardown for a later mid-game load (task 11a3): drop this view's canvas,
+    // HUD, overlays and intervals before startGameView rebuilds them.
+    activeGameViewCleanup = () => {
+        window.removeEventListener('keydown', keydownHandler);
+        window.removeEventListener('resize', resizeHandler);
+        clearInterval(refreshHudTimer);
+        clearInterval(refreshClockTimer);
+        app.destroy(true);
+        hud.root.remove();
+        shortcuts.destroy();
+        hud.gameMenu?.destroy();
+        setGameMenuHandler(null);
+    };
+
+    return time;
 }
 
 /** Open the new-game wizard (task 06b), replacing the main menu. Start Game
@@ -343,6 +417,8 @@ async function bootGameFromWizard(startOptions: StartGameOptions): Promise<void>
         return;
     }
 
+    lastGameData = gameData;
+    lastStartOptions = startOptions;
     const game: Game = createGame(toCreateGameOptions(startOptions, gameData, systemNames));
     // Task 10d: the wizard's chosen flag shape/colour is not forwarded to
     // createGame yet (see TODO(createGame) in startGameOptions.ts), so apply
@@ -399,6 +475,31 @@ async function startTutorialGame(file: string): Promise<void> {
             },
         });
     }]);
+}
+
+/** Task 11a3: remember the loaded game data so later loads (main menu or
+ * mid-game) can deserialize saved games against the same static tables. */
+/** Task 11a3: tear down the currently running game view (canvas, HUD,
+ * intervals, save panel) before replacing it with a loaded game. */
+function teardownActiveGameView(): void {
+    activeSavePanel?.destroy();
+    activeSavePanel = null;
+    activeGameViewCleanup?.();
+    activeGameViewCleanup = null;
+}
+
+/** Task 11a3: replace the running game with a loaded one (already
+ * deserialized by the save panel's loadSave), rebooting through the shared
+ * startGameView. */
+async function bootLoadedGame(loaded: LoadedGame): Promise<void> {
+    const { game, startOptions } = loaded as unknown as {
+        game: Game;
+        time: GalaxyTime;
+        startOptions: StartGameOptions;
+    };
+    lastStartOptions = startOptions;
+    teardownActiveGameView();
+    await startGameView(game);
 }
 
 async function main(): Promise<void> {
@@ -458,7 +559,9 @@ async function main(): Promise<void> {
 }
 
 /** Show the main menu; Start New Game opens the wizard, whose back button
- * returns here. */
+ * returns here. Task 11a3: Load Game opens the shared save/load panel in
+ * load mode (localStorage saves + .dwusave files); a pick reboots through
+ * startGameView with the remembered gameData. */
 function showMainMenu(): void {
     const menu = createMainMenu({
         onStartNewGame: () => {
@@ -475,8 +578,44 @@ function showMainMenu(): void {
                 },
             });
         },
+        onLoadGame: () => {
+            // Register a load-only provider for the main menu context.
+            setSaveLoadProvider({
+                open: (_mode) => {
+                    getMainMenuSavePanel().show();
+                },
+                loadSave: (text) => {
+                    if (lastGameData === null) {
+                        throw new Error('DW:U game data is required to load a save');
+                    }
+                    return deserializeGame(text, lastGameData) as unknown as LoadedGame;
+                },
+            });
+            getMainMenuSavePanel().show();
+        },
     });
     startMusic();
+}
+
+// Lazily-created save panel for the main menu's Load Game item (task 11a3).
+let mainMenuSavePanel: ReturnType<typeof createSaveLoadPanel> | null = null;
+function getMainMenuSavePanel() {
+    if (!mainMenuSavePanel) {
+        mainMenuSavePanel = createSaveLoadPanel('load', {
+            callbacks: {
+                onLoadedFile: (loaded) => void bootLoadedGame(loaded),
+            },
+            serialize: () => null, // saving is only available during a game
+            loadSave: (text) => {
+                if (lastGameData === null) {
+                    throw new Error('DW:U game data is required to load a save');
+                }
+                return deserializeGame(text, lastGameData) as unknown as LoadedGame;
+            },
+        });
+    }
+    activeSavePanel = mainMenuSavePanel;
+    return mainMenuSavePanel;
 }
 
 /** Fully-resolved options to start a game (from the boot URL or the wizard). */
@@ -559,6 +698,9 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     const dwuPresent = await detectDwuPresent();
     const systemNames = await loadSystemNames(dwuPresent);
     const gameData = await loadGameDataOrNone(dwuPresent);
+    // Task 11a3: remember the loaded game data so later loads (main menu or
+    // mid-game) can deserialize saved games against the same static tables.
+    lastGameData = gameData;
     // Real-art file lists (scripts/gen-asset-manifest.mjs, predev/prebuild).
     if (dwuPresent) {
         await loadManifest();

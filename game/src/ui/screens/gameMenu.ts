@@ -7,6 +7,7 @@ import './gameMenu.css';
 import { GalaxyTime } from '../../sim/clock';
 import { startMusic } from '../../audio/musicPlayer';
 import { getSettings, updateSettings, uiScaleFactor } from '../settings';
+import { getSaveLoadProvider } from './saveLoad';
 
 /** Music volume adapter so the screen stays import-safe in node tests. */
 export interface MusicAdapter {
@@ -229,13 +230,24 @@ export function createGameMenu(
     };
 
     const resumeBtn = makeButton('Resume', () => hide());
+    // Task 11a3: open the shared Save/Load panel (registered by src/main.ts
+    // after booting a game view); fall back to a toast when no provider is
+    // registered (e.g. the URL-param boot path without a full Game object).
     const saveBtn = makeButton('Save Game', () => {
-        // TODO(port): implement save — DistantWorlds.SaveGame.cs.
-        showToast(root, 'Save Game not implemented yet');
+        const provider = getSaveLoadProvider();
+        if (provider) {
+            provider.open('save');
+        } else {
+            showToast(root, 'Save Game not available in this mode');
+        }
     });
     const loadBtn = makeButton('Load Game', () => {
-        // TODO(port): implement load — DistantWorlds.LoadGame.cs.
-        showToast(root, 'Load Game not implemented yet');
+        const provider = getSaveLoadProvider();
+        if (provider) {
+            provider.open('load');
+        } else {
+            showToast(root, 'Load Game not available in this mode');
+        }
     });
     const optionsBtn = makeButton('Options', () => {
         optionsPanel.style.display = optionsPanel.style.display === 'none' ? '' : 'none';
