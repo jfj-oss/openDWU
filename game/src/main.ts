@@ -16,10 +16,9 @@ import { GalaxyTime } from './sim/clock';
 import { START_STAR_DATE } from './sim/galaxyTime';
 import { formatClockLabel } from './ui/hud';
 import { createMapOverlayState } from './ui/mapOverlays';
-import { createMainMenu, shouldOpenWizard, shouldSkipMenu } from './ui/screens/mainMenu';
+import { createMainMenu } from './ui/screens/mainMenu';
 import { createNewGameWizard } from './ui/screens/newGameWizard';
-import { defaultStartGameOptions, starCountFor, sectorsFor } from './sim/startGameOptions';
-import type { StartGameOptions } from './sim/startGameOptions';
+import { sectorsFor, starCountFor, type StartGameOptions } from './sim/startGameOptions';
 import './ui/hud.css';
 
 // ?shape= names accepted by the boot URL.
@@ -86,72 +85,99 @@ async function loadSystemNames(dwuPresent: boolean): Promise<string[]> {
     return FALLBACK_SYSTEM_NAMES;
 }
 
-async function main(): Promise<void> {
-    const params = new URLSearchParams(window.location.search);
+/** Keys that, when present on the boot URL, skip the main menu and boot
+ * straight into the game (keeps screenshot scripts / dev links working). */
+const SKIP_MENU_PARAMS = ['seed', 'shape', 'stars', 'zoom', 'cx', 'cy', 'skipMenu'];
 
-    // Task 06a: show the main menu first; the galaxy/Main View/HUD are created
-    // only after Start New Game. Any of ?seed/shape/stars/zoom/cx/cy/skipMenu
-    // skips the menu and boots straight into the game (screenshot scripts).
-    // Task 06b: ?screen=wizard opens the wizard directly over the menu.
-    if (!shouldSkipMenu(window.location.search)) {
-        const openWizardFrom = (menu: ReturnType<typeof createMainMenu>): void => {
-            const callbacks = {
-                onCancel: () => {
-                    wizard?.destroy();
-                },
-                onStart: (options: StartGameOptions) => {
-                    wizard?.destroy();
-                    menu.destroy();
-                    bootGameFromOptions(options);
-                },
-            };
-            const opts = defaultStartGameOptions();
-            opts.seed = Math.floor(Math.random() * 2147483647);
-            wizard = createNewGameWizard(opts, callbacks);
-        };
-        const menu = createMainMenu(() => openWizardFrom(menu));
-        // Task 06b: ?screen=wizard opens the wizard directly over the menu.
-        if (shouldOpenWizard(window.location.search)) {
-            openWizardFrom(menu);
-        }
-        return;
-    }
-
-    const seed = parseInt(params.get('seed') ?? '1', 10) || 1;
-    const starCount = parseInt(params.get('stars') ?? '700', 10) || 700;
-    await bootGame({ seed, starCount, params });
-}
-
-// Task 06b: the wizard's Start Game button — generate with the wizard's
-// options (star count / sector size from the slider tables) and enter the
-// Main View + HUD, keeping the other generateGalaxy options as-is.
-let wizard: ReturnType<typeof createNewGameWizard> | null = null;
-
-async function bootGameFromOptions(options: StartGameOptions): Promise<void> {
-    await bootGame({
-        seed: options.seed,
-        starCount: starCountFor(options.starCountIndex),
-        shape: options.shape,
-        sectors: sectorsFor(options.dimensionIndex),
+/** Open the new-game wizard (task 06b), replacing the main menu. Start Game
+ * maps the chosen StartGameOptions to generateGalaxy's options and boots. */
+function openWizard(onBackToMenu: () => void): void {
+    const wizard = createNewGameWizard({
+        onBackToMenu: () => {
+            wizard.destroy();
+            onBackToMenu();
+        },
+        onStartGame: (options: StartGameOptions) => {
+            wizard.destroy();
+            void bootGameWithOptions({
+                seed: options.seed,
+                shape: options.shape,
+                starCount: starCountFor(options.starCountIndex),
+                sectorWidth: sectorsFor(options.dimensionIndex),
+                sectorHeight: sectorsFor(options.dimensionIndex),
+                zoom: null,
+                cx: null,
+                cy: null,
+            });
+        },
     });
 }
 
-/** Boot the game directly (menu skipped via URL params or Start New Game). */
-async function bootGame(opts: {
+async function main(): Promise<void> {
+    const params = new URLSearchParams(window.location.search);
+    const skipMenu = SKIP_MENU_PARAMS.some((k) => params.has(k));
+
+    if (params.get('screen') === 'wizard') {
+        // Screenshot / dev hook (task 06b): jump straight to the wizard.
+        openWizard(() => {
+            // Nothing to go back to when opened directly; reload to the menu.
+            window.location.search = '';
+        });
+        return;
+    }
+
+    if (!skipMenu) {
+        showMainMenu();
+        return;
+    }
+
+    await bootGame(params);
+}
+
+/** Show the main menu; Start New Game opens the wizard, whose back button
+ * returns here. */
+function showMainMenu(): void {
+    const menu = createMainMenu({
+        onStartNewGame: () => {
+            menu.destroy();
+            openWizard(showMainMenu);
+        },
+    });
+}
+
+/** Fully-resolved options to start a game (from the boot URL or the wizard). */
+interface BootOptions {
     seed: number;
+    shape: GalaxyShape;
     starCount: number;
-    shape?: GalaxyShape;
-    sectors?: number;
-    params?: URLSearchParams;
-}): Promise<void> {
-    const params = opts.params ?? new URLSearchParams(window.location.search);
-    const seed = opts.seed;
-    const starCount = opts.starCount;
-    const shape = opts.shape ?? SHAPE_BY_NAME[params.get('shape') ?? 'spiral'] ?? GalaxyShape.Spiral;
-    const sectors = opts.sectors ?? 4;
-    const zoomParam = params.get('zoom') !== null ? parseFloat(params.get('zoom')!) : null;
-    const cx = params.get('cx') !== null ? parseFloat(params.get('cx')!) : null;
-    const cy = params.get('cy') !== null ? parseFloat(params.get('cy')!) : null;
+    sectorWidth: number;
+    sectorHeight: number;
+    zoom: number | null;
+    cx: number | null;
+    cy: number | null;
+}
+
+/** Parse `bootGame`'s URL-param path into a BootOptions (task 06a defaults:
+ * seed=1, spiral, 700 stars, 4x4 sectors). */
+function parseBootOptions(params: URLSearchParams): BootOptions {
+    return {
+        seed: parseInt(params.get('seed') ?? '1', 10) || 1,
+        starCount: parseInt(params.get('stars') ?? '700', 10) || 700,
+        shape: SHAPE_BY_NAME[params.get('shape') ?? 'spiral'] ?? GalaxyShape.Spiral,
+        sectorWidth: 4,
+        sectorHeight: 4,
+        zoom: params.get('zoom') !== null ? parseFloat(params.get('zoom')!) : null,
+        cx: params.get('cx') !== null ? parseFloat(params.get('cx')!) : null,
+        cy: params.get('cy') !== null ? parseFloat(params.get('cy')!) : null,
+    };
+}
+
+async function bootGame(params: URLSearchParams): Promise<void> {
+    await bootGameWithOptions(parseBootOptions(params));
+}
+
+async function bootGameWithOptions(opts: BootOptions): Promise<void> {
+    const { seed, shape, starCount, sectorWidth, sectorHeight, zoom: zoomParam, cx, cy } = opts;
 
     const dwuPresent = await detectDwuPresent();
     const systemNames = await loadSystemNames(dwuPresent);
@@ -169,14 +195,13 @@ async function bootGame(opts: {
     });
     document.body.appendChild(app.canvas);
 
-    // Deterministic galaxy (seed/shape/stars from the URL, defaults per the
-    // task: seed=1, spiral, 700 stars, 4x4 sectors).
+    // Deterministic galaxy (seed/shape/stars/sectors from the URL or wizard).
     const galaxy = generateGalaxy({
         seed,
         shape,
         starCount: starCount,
-        sectorWidth: sectors,
-        sectorHeight: sectors,
+        sectorWidth,
+        sectorHeight,
         systemNames,
     });
 

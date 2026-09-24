@@ -11,7 +11,7 @@ You are to build a **complete, fully playable, original re-implementation** of t
 **Definition of done (all must be true):**
 1. A player can create a fully custom new game (all options described in the New Game section) and play it to victory or defeat, in any of the game modes (Classic Era planetary empire, Pirate faction, Pre-Warp era, Ancient Galaxy storyline, or pure custom sandbox).
 2. Every screen, button, list, overlay, message, and hotkey listed in the UI section exists and works.
-3. Every race (24), government (13), resource (41), component (129), planetary facility (17 types + wonders), fighter type, plague (4), ship design template role (31 per race), research project (337), and victory condition (60 race conditions + general) listed in the Content section exists in the game.
+3. Every race (24), government (13), resource (41), component (129), planetary facility (17 types + wonders), fighter type, plague (4), ship design template role (31 per race), research project (372), and victory condition (60 race conditions + general) listed in the Content section exists in the game.
 4. Every AI empire, pirate faction, and space creature behaves per the AI section, with full automation working unattended.
 5. Save/load, autosave, game editor, theme/mod loading, and scenario/event system all work.
 6. The game runs a full custom galaxy at interactive frame rates with the performance requirements in the Architecture section.

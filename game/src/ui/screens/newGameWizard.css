@@ -1,159 +1,125 @@
-/* New-game wizard, "The Galaxy" page (task 06b). Modernized styling in the
-   same dark-panel language as the HUD / main menu. */
-@font-face {
-    font-family: 'Forgotten Futurist';
-    src: url('/assets/dwu/Customization/DistantWorldsExpanded-main/DistantWorldsExpanded/DistantWorlds/Resources/Forgotte.ttf');
-}
+/* New-game wizard: The Galaxy page (task 06b). Modernized dark panel styling
+   consistent with src/ui/hud.css. */
 
-#new-game-wizard {
-    position: absolute;
+.wizard-overlay {
+    position: fixed;
     inset: 0;
-    background: #000;
-    overflow: hidden;
+    z-index: 1100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.45);
     font-family: 'Forgotten Futurist', sans-serif;
-    color: #fff;
-    z-index: 15; /* above the main menu (z-index 10) */
+    color: #e6e6e6;
 }
 
-.wizard-background {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    opacity: 0.55;
-}
-
-/* Centred dark window (~900×620). */
 .wizard-window {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: min(900px, 94vw);
-    max-height: 94vh;
+    width: 900px;
+    max-width: 96vw;
+    height: 620px;
+    max-height: 92vh;
+    background: rgba(24, 26, 32, 0.96);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
     display: flex;
     flex-direction: column;
-    background: rgba(16, 18, 24, 0.92);
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    border-radius: 14px;
-    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.7);
     overflow: hidden;
 }
 
-/* Title bar with close ✕. */
 .wizard-titlebar {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 14px;
-    background: rgba(30, 34, 44, 0.9);
+    padding: 10px 16px;
+    background: rgba(10, 11, 15, 0.9);
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    font-size: 15px;
+    color: #e8d24a;
 }
-.wizard-title {
-    font-size: 16px;
-    letter-spacing: 0.5px;
-    color: #ffd84d;
-}
+
 .wizard-close {
-    pointer-events: auto;
     background: transparent;
     border: none;
-    color: #cfd6dd;
-    font-size: 15px;
-    line-height: 1;
+    color: #ccc;
+    font-size: 16px;
     cursor: pointer;
-    padding: 4px 8px;
-    border-radius: 6px;
+    padding: 2px 6px;
 }
 .wizard-close:hover {
-    background: rgba(255, 255, 255, 0.12);
     color: #fff;
 }
 
 .wizard-body {
-    display: flex;
-    gap: 24px;
-    padding: 18px 22px;
     flex: 1;
-    min-height: 0;
-}
-
-/* Left column: shape radio list + preview + blurb. */
-.wizard-shapes {
+    overflow-y: auto;
+    padding: 16px 20px;
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    width: 220px;
-    flex-shrink: 0;
+    gap: 18px;
 }
+
+.wizard-shape-row {
+    display: flex;
+    gap: 20px;
+}
+
 .wizard-shape-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 180px;
+}
+
+.wizard-shape-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.wizard-shape-preview {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+
+.wizard-shape-preview img {
+    width: 180px;
+    height: 180px;
+    object-fit: contain;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+}
+
+.wizard-shape-desc {
+    font-size: 12px;
+    color: #aaa;
+    max-width: 220px;
+    text-align: center;
+}
+
+.wizard-slider {
     display: flex;
     flex-direction: column;
     gap: 4px;
 }
-.wizard-shape-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 4px 8px;
-    border-radius: 8px;
-    cursor: pointer;
+
+.wizard-slider-title {
     font-size: 13px;
-    color: #cfd6dd;
-}
-.wizard-shape-row:hover {
-    background: rgba(255, 255, 255, 0.07);
-}
-.wizard-shape-row input[type='radio'] {
-    accent-color: #ffd84d;
-    margin: 0;
-}
-.wizard-shape-preview {
-    width: 180px;
-    height: 180px;
-    object-fit: contain;
-    border-radius: 10px;
-    background: rgba(0, 0, 0, 0.35);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    user-select: none;
-    -webkit-user-drag: none;
-}
-.wizard-shape-blurb {
-    font-size: 12px;
-    color: #9aa4b0;
-    line-height: 1.4;
+    color: #e8d24a;
 }
 
-/* Right column: sliders + seed. */
-.wizard-options {
-    display: flex;
-    flex-direction: column;
-    gap: 22px;
-    flex: 1;
-    min-width: 0;
-}
-.wizard-option-title {
-    font-size: 13px;
-    color: #ffd84d;
-    margin-bottom: 6px;
-    letter-spacing: 0.4px;
-}
 .wizard-slider input[type='range'] {
     width: 100%;
-    accent-color: #ffd84d;
-    cursor: pointer;
 }
-.wizard-tick-labels {
-    display: flex;
-    justify-content: space-between;
-    margin-top: 4px;
+
+.wizard-slider-ticks {
     font-size: 11px;
-    color: #9aa4b0;
-}
-.wizard-tick-labels span {
-    text-align: center;
-    flex: 1;
+    color: #999;
 }
 
 .wizard-seed-row {
@@ -161,60 +127,57 @@
     align-items: center;
     gap: 10px;
 }
-.wizard-seed-row .wizard-option-title {
-    margin-bottom: 0;
-    white-space: nowrap;
-}
+
 .wizard-seed-input {
-    width: 160px;
     background: rgba(0, 0, 0, 0.4);
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
     color: #fff;
-    font-family: inherit;
-    font-size: 13px;
-    padding: 6px 10px;
-}
-.wizard-reroll {
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    border-radius: 8px;
-    font-size: 15px;
-    line-height: 1;
-    padding: 6px 10px;
-    cursor: pointer;
-}
-.wizard-reroll:hover {
-    background: rgba(255, 255, 255, 0.16);
+    padding: 4px 8px;
+    width: 140px;
 }
 
-/* Footer buttons. */
+.wizard-seed-reroll {
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+    cursor: pointer;
+    padding: 4px 8px;
+    font-size: 14px;
+}
+
+.wizard-todo {
+    font-size: 11px;
+    color: #777;
+    font-style: italic;
+}
+
 .wizard-footer {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 12px 22px;
-    background: rgba(30, 34, 44, 0.9);
+    padding: 12px 20px;
+    background: rgba(10, 11, 15, 0.9);
     border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
+
 .wizard-btn {
-    font-family: inherit;
-    font-size: 14px;
-    padding: 8px 20px;
-    border-radius: 8px;
-    border: 1px solid rgba(255, 255, 255, 0.18);
-    background: rgba(255, 255, 255, 0.08);
-    color: #fff;
+    border-radius: 6px;
+    padding: 8px 18px;
+    font-size: 13px;
     cursor: pointer;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.06);
+    color: #eee;
 }
-.wizard-btn:hover {
-    background: rgba(255, 255, 255, 0.16);
-}
+
 .wizard-btn-primary {
-    background: rgba(255, 216, 77, 0.18);
-    border-color: rgba(255, 216, 77, 0.5);
-    color: #ffd84d;
+    background: #3a6f3a;
+    border-color: #4f9a4f;
+    color: #fff;
+    font-weight: bold;
 }
-.wizard-btn-primary:hover {
-    background: rgba(255, 216, 77, 0.3);
+
+.wizard-btn:hover {
+    filter: brightness(1.15);
 }

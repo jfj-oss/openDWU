@@ -1,48 +1,44 @@
 import { describe, expect, it } from 'vitest';
-import { MENU_ITEMS, shouldSkipMenu } from '../src/ui/screens/mainMenu';
+import { MENU_ITEMS } from '../src/ui/screens/mainMenu';
 
-// The menu DOM itself needs a browser (jsdom is not configured), so this tests
-// the pure data: the item order and that every image name comes from the
-// original chrome file list (task 06a).
+// The DOM screen itself needs a browser (jsdom is not configured here, see
+// hud.test.ts), so this tests the pure MENU_ITEMS data (task 06a).
+
+const KNOWN_IMAGE_BASES = [
+    'Menu_Tutorials',
+    'Menu_StartNewGame',
+    'Menu_LoadGame',
+    'Menu_Options',
+    'Menu_ChangeTheme',
+    'Menu_Exit',
+    'Menu_Galactopedia',
+    'Menu_Credits',
+    'Menu_CheckForUpdates',
+];
 
 describe('MENU_ITEMS (task 06a)', () => {
-    it('lists the items in display order', () => {
-        expect(MENU_ITEMS.map((i) => i.id)).toEqual([
+    it('is in the original order', () => {
+        expect(MENU_ITEMS.map((m) => m.id)).toEqual([
+            'tutorials',
+            'startNewGame',
+            'loadGame',
+            'options',
+            'changeTheme',
+            'exit',
+        ]);
+        expect(MENU_ITEMS.map((m) => m.label)).toEqual([
             'Tutorials',
-            'StartNewGame',
-            'LoadGame',
+            'Start New Game',
+            'Load Game',
             'Options',
-            'ChangeTheme',
+            'Change Theme',
             'Exit',
         ]);
     });
 
-    it('uses only the original chrome image base names', () => {
-        const allowed = new Set(
-            ['Tutorials', 'StartNewGame', 'LoadGame', 'Options', 'ChangeTheme', 'Exit',
-                'Galactopedia', 'Credits', 'CheckForUpdates'].map((n) => `Menu_${n}`),
-        );
+    it('uses image names from the known chrome list', () => {
         for (const item of MENU_ITEMS) {
-            expect(allowed.has(item.imageBase)).toBe(true);
+            expect(KNOWN_IMAGE_BASES).toContain(item.imageBase);
         }
-    });
-
-    it('has a human label for every item', () => {
-        for (const item of MENU_ITEMS) {
-            expect(item.label.length).toBeGreaterThan(0);
-        }
-    });
-});
-
-describe('shouldSkipMenu (task 06a)', () => {
-    it('skips the menu when any boot param or skipMenu is present', () => {
-        for (const k of ['seed', 'shape', 'stars', 'zoom', 'cx', 'cy', 'skipMenu']) {
-            expect(shouldSkipMenu(`?${k}=1`)).toBe(true);
-        }
-    });
-
-    it('shows the menu otherwise', () => {
-        expect(shouldSkipMenu('')).toBe(false);
-        expect(shouldSkipMenu('?foo=bar')).toBe(false);
     });
 });
