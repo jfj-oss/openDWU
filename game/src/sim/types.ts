@@ -5,7 +5,7 @@
 import { PopulationList } from './population';
 import type { Creature } from './creature';
 import type { CargoList, TroopList } from './cargo';
-import type { BuiltObject } from './builtObject';
+import type { BuiltObject, DockingBay } from './builtObject';
 import type { Empire } from './empire';
 import type { Ruin } from './ruins';
 import { MIN_TIME } from './tick/simTime';
@@ -397,6 +397,9 @@ export class Habitat {
     explosion: unknown = null;
     explosions: unknown[] | null = null;
     // ---- M4b fields (missions) ----
+    /** StellarObject.DockingBays / DockingBayWaitQueue on a planet (read by ClearPreviousMissionRequirements / ClearParent; M4e fills them). */
+    dockingBays: DockingBay[] | null = null;
+    dockingBayWaitQueue: BuiltObject[] | null = null;
     // ---- M4c fields (movement, fuel) ----
     // ---- M4d fields (orders, colony supply) ----
     // ---- M4e fields (docking) ----

@@ -79,3 +79,37 @@ const T_reviewWhetherRefuellingDepot = registerTodo('M4c', 'reviewWhetherRefuell
 export function reviewWhetherRefuellingDepot(galaxy: Galaxy, habitat: Habitat): void {
     /* TODO(port) M4c */ todo(T_reviewWhetherRefuellingDepot);
 }
+
+// ---- stubs added by M4b (called from missions/*.ts) ----
+
+const T_accelerateToTargetSpeed = registerTodo('M4c', 'accelerateToTargetSpeed');
+/** BuiltObject.2.cs 7334 AccelerateToTargetSpeed(timePassed) — stub: speed unchanged. */
+export function accelerateToTargetSpeed(galaxy: Galaxy, builtObject: BuiltObject, timePassed: number): void {
+    /* TODO(port) M4c */ todo(T_accelerateToTargetSpeed);
+}
+
+const T_calculateCurrentHeading = registerTodo('M4c', 'calculateCurrentHeading');
+/** BuiltObject.2.cs 7433 CalculateCurrentHeading(timePassed) — stub: heading unchanged. */
+export function calculateCurrentHeading(galaxy: Galaxy, builtObject: BuiltObject, timePassed: number): void {
+    /* TODO(port) M4c */ todo(T_calculateCurrentHeading);
+}
+
+const T_updatePosition = registerTodo('M4c', 'updatePosition');
+/** BaconBuiltObject.cs 4329 UpdatePosition (BuiltObject.UpdatePosition) — stub: position unchanged. */
+export function updatePosition(galaxy: Galaxy, builtObject: BuiltObject): void {
+    /* TODO(port) M4c */ todo(T_updatePosition);
+}
+
+const T_withinFuelRange = registerTodo('M4c', 'withinFuelRange');
+/** BuiltObject.1.cs 2373 WithinFuelRange(destinationX, destinationY, fuelPortionMargin) — stub: true (the C# checks fuel vs distance). */
+export function withinFuelRange(galaxy: Galaxy, builtObject: BuiltObject, destinationX: number, destinationY: number, fuelPortionMargin: number): boolean {
+    /* TODO(port) M4c */ todo(T_withinFuelRange);
+    return true;
+}
+
+const T_withinFuelRangeAndRefuel = registerTodo('M4c', 'withinFuelRangeAndRefuel');
+/** BuiltObject.1.cs 2479 WithinFuelRangeAndRefuel(destinationX, destinationY, extraFuelPortionMargin) — stub: true (the C# may queue a Refuel mission). */
+export function withinFuelRangeAndRefuel(galaxy: Galaxy, builtObject: BuiltObject, destinationX: number, destinationY: number, extraFuelPortionMargin: number): boolean {
+    /* TODO(port) M4c */ todo(T_withinFuelRangeAndRefuel);
+    return true;
+}

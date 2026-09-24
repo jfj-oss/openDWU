@@ -46,3 +46,21 @@ const T_checkForUnownedCargoHabitat = registerTodo('M4d', 'checkForUnownedCargoH
 export function checkForUnownedCargoHabitat(galaxy: Galaxy, habitat: Habitat): void {
     /* TODO(port) M4d */ todo(T_checkForUnownedCargoHabitat);
 }
+
+// ---- stubs added by M4b (called from missions/*.ts) ----
+
+const T_cancelContract = registerTodo('M4d', 'cancelContract');
+/** Galaxy.cs CancelContract(contract) — stub: nothing released (the C# un-reserves the supplier's cargo). */
+export function cancelContract(galaxy: Galaxy, contract: unknown): void {
+    /* TODO(port) M4d */ todo(T_cancelContract);
+}
+
+const T_createContract = registerTodo('M4d', 'createContract');
+/**
+ * Contract.cs 29 `new Contract(supplier, amountToFulfill, resourceId, componentId, buyerEmpireId)` — stub: a plain record
+ * with the constructor fields (M4d replaces it with the Contract class).
+ */
+export function createContract(galaxy: Galaxy, supplier: BuiltObject | Habitat, amountToFulfill: number, resourceId: number, componentId: number, buyerEmpireId: number): unknown {
+    /* TODO(port) M4d */ todo(T_createContract);
+    return { supplier, amountToFulfill, amountDelivered: 0, amountPickedUp: 0, resourceId, componentId, buyerEmpireId };
+}

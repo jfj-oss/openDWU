@@ -7,6 +7,9 @@
 
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
+import type { BuiltObject } from '../builtObject';
+import type { Habitat } from '../types';
+import type { ShipGroup } from './shipGroup';
 import { registerTodo, todo } from '../tick/todo';
 
 const T_respondToIncomingEnemyFleetsAndPlanetDestroyers = registerTodo('M4m', 'respondToIncomingEnemyFleetsAndPlanetDestroyers');
@@ -81,5 +84,20 @@ const T_identifyMechanoidEmpire = registerTodo('M4m', 'identifyMechanoidEmpire')
 /** Galaxy.8.cs 1619 IdentifyMechanoidEmpire. */
 export function identifyMechanoidEmpire(galaxy: Galaxy): Empire | null {
     /* TODO(port) M4m */ todo(T_identifyMechanoidEmpire);
+    return null;
+}
+
+// ---- stubs added by M4b (called from missions/*.ts) ----
+
+const T_implementBlockade = registerTodo('M4m', 'implementBlockade');
+/** Empire.ImplementBlockade(BuiltObject | Habitat target, bool, bool) — stub. */
+export function implementBlockade(galaxy: Galaxy, empire: Empire, target: BuiltObject | Habitat, arg2: boolean, arg3: boolean): void {
+    /* TODO(port) M4m */ todo(T_implementBlockade);
+}
+
+const T_identifyNearestResponseFleet = registerTodo('M4m', 'identifyNearestResponseFleet');
+/** Empire.3.cs 5182 IdentifyNearestResponseFleet(x, y, mustBeWithinFuelRange, fuelPortionMargin, excludeRange) — stub: null (no fleet responds). */
+export function identifyNearestResponseFleet(galaxy: Galaxy, empire: Empire, x: number, y: number, mustBeWithinFuelRange: boolean, fuelPortionMargin: number, excludeRange: number): ShipGroup | null {
+    /* TODO(port) M4m */ todo(T_identifyNearestResponseFleet);
     return null;
 }

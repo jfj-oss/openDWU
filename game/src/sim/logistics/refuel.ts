@@ -7,6 +7,8 @@
 
 import type { Galaxy } from '../galaxy';
 import type { BuiltObject } from '../builtObject';
+import type { Habitat } from '../types';
+import type { Creature } from '../creature';
 import { registerTodo, todo } from '../tick/todo';
 
 const T_checkForRefuelling = registerTodo('M4e', 'checkForRefuelling');
@@ -19,4 +21,27 @@ const T_checkForFuelOrdering = registerTodo('M4e', 'checkForFuelOrdering');
 /** BuiltObject.cs 4697 CheckForFuelOrdering. */
 export function checkForFuelOrdering(galaxy: Galaxy, builtObject: BuiltObject): void {
     /* TODO(port) M4e */ todo(T_checkForFuelOrdering);
+}
+
+// ---- stubs added by M4b (called from missions/assign.ts) ----
+
+const T_checkCancelRefuelData = registerTodo('M4e', 'checkCancelRefuelData');
+/** BuiltObject.2.cs 7029 CheckCancelRefuelData — stub: false (the C# releases the reserved fuel at the refuelling point). */
+export function checkCancelRefuelData(galaxy: Galaxy, builtObject: BuiltObject): boolean {
+    /* TODO(port) M4e */ todo(T_checkCancelRefuelData);
+    return false;
+}
+
+const T_initiateRefuelData = registerTodo('M4e', 'initiateRefuelData');
+/** BuiltObject.2.cs 7097 InitiateRefuelData(refuelLocation) → reserved fuel amount — stub: 0. */
+export function initiateRefuelData(galaxy: Galaxy, builtObject: BuiltObject, refuelLocation: BuiltObject | Habitat | Creature): number {
+    /* TODO(port) M4e */ todo(T_initiateRefuelData);
+    return 0;
+}
+
+const T_autoRefuelRepairShip = registerTodo('M4e', 'autoRefuelRepairShip');
+/** BuiltObject.2.cs 4706 AutoRefuelRepairShip(useCachedRefuellingLocation) — stub: false (no refuel/repair mission queued). */
+export function autoRefuelRepairShip(galaxy: Galaxy, builtObject: BuiltObject, useCachedRefuellingLocation: boolean): boolean {
+    /* TODO(port) M4e */ todo(T_autoRefuelRepairShip);
+    return false;
 }

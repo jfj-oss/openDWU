@@ -65,7 +65,7 @@ describe('time model (tick/simTime.ts, scheduler frame length)', () => {
 describe('Empire.DoTasks intervals (Empire.1.cs 3427, >= on seconds, touches first)', () => {
     const markers = {
         short: 'M4m respondToIncomingEnemyFleetsAndPlanetDestroyers',
-        regular: 'M4b processDistressSignals',
+        regular: 'M4i reviewDesignsAndRetrofit', // (M4b ported processDistressSignals; the block is detected by its M4i stub)
         periodic: 'M4s checkSendPirateRaid',
         intermediate: 'M4l reviewFleetAdmiralBonuses',
         long: 'M4i reviewColonyWonders',
@@ -193,12 +193,14 @@ describe('BuiltObject.DoTasks (BuiltObject.cs 3614)', () => {
         expect(firedBlocks(markers, () => builtObjectDoTasks(galaxy, bo, t + 60000, 0))).toEqual(['intermediate', 'periodic', 'long']);
     });
 
-    it('runs the ExecuteCommands loop once with the stub (it returns 0 remaining seconds)', () => {
+    it('runs the ExecuteCommands loop once for a ship without a mission (the epilogue reaches the M4e AutoRefuelRepairShip stub, then returns 0)', () => {
+        // M4b ported ExecuteCommands: with no mission the no-command epilogue (BuiltObject.2.cs 4494-4574) runs
+        // AssignQueuedMission (no queued missions) then RevertToPreviousMission → AutoRefuelRepairShip (M4e stub) once.
         const bo = galaxy.builtObjects[1];
         builtObjectDoTasks(galaxy, bo, 5000, 0); // first call: _LastTouch = now, dt = 0 ⇒ no ExecuteCommands
         resetTodoCounts();
         builtObjectDoTasks(galaxy, bo, 6000, 0);
-        expect(todoHits()['M4b executeCommands']).toBe(1);
+        expect(todoHits()['M4e autoRefuelRepairShip']).toBe(1);
     });
 });
 
