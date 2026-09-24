@@ -46,3 +46,13 @@ const T_checkForUnownedCargoHabitat = registerTodo('M4d', 'checkForUnownedCargoH
 export function checkForUnownedCargoHabitat(galaxy: Galaxy, habitat: Habitat): void {
     /* TODO(port) M4d */ todo(T_checkForUnownedCargoHabitat);
 }
+
+const T_countResourceSupplyLocations = registerTodo('M4d', 'countResourceSupplyLocations');
+/**
+ * Empire.CountResourceSupplyLocations(resourceId, includeUnderConstruction) (added by M4j: BaconHabitat
+ * CalculateResourcePriceEnvironmentalFactors). Stub returns 0.
+ */
+export function countResourceSupplyLocations(galaxy: Galaxy, empire: Empire, resourceId: number, includeUnderConstruction: boolean): number {
+    /* TODO(port) M4d */ todo(T_countResourceSupplyLocations);
+    return 0;
+}

@@ -22,3 +22,13 @@ export function fleeFromHopelessBattle(galaxy: Galaxy, builtObject: BuiltObject)
     // RND: draws in callees (d≤3) — not drawn until M4n.
     /* TODO(port) M4n */ todo(T_fleeFromHopelessBattle);
 }
+
+const T_calculateOverallStrengthFactorWithoutShields = registerTodo('M4n', 'calculateOverallStrengthFactorWithoutShields');
+/**
+ * BuiltObject.1.cs 2276 → BaconBuiltObject CalculateOverallStrengthFactorWithoutShields (added by M4j: Empire.MilitaryPotency,
+ * read by CheckChangeGovernment). Stub returns 0.
+ */
+export function calculateOverallStrengthFactorWithoutShields(galaxy: Galaxy, builtObject: BuiltObject): number {
+    /* TODO(port) M4n */ todo(T_calculateOverallStrengthFactorWithoutShields);
+    return 0;
+}

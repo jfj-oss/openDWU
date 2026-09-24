@@ -150,9 +150,8 @@ const leaderColonyHappiness = (empire: Empire): number => resolveLeaderColonyHap
 // Habitat.cs 617-620 / 5801-5804: Characters.GetHighestSkillLevelExcludeLeaders(ColonyHappiness) when
 // Characters non-empty, else 0.
 const colonyCharactersHighestSkill = (h: Habitat): number => colonyCharactersHighestSkillExcludeLeaders(h, CharacterSkillType.ColonyHappiness);
-// TODO(port): Empire._SpecialBonusHappiness (ReviewSpecialBonusesRuinsWonders, Empire.3.cs 939)
-// — 0.0 until then (happiness ruins/wonders).
-const specialBonusHappiness = (_empire: Empire): number => 0.0;
+// Empire._SpecialBonusHappiness (ReviewSpecialBonusesRuinsWonders, Empire.3.cs 939; treasury.ts).
+const specialBonusHappiness = (empire: Empire): number => empire.specialBonusHappiness;
 
 // Empire.cs WarWeariness (1405).
 export function empireWarWeariness(empire: Empire): number {
@@ -166,8 +165,8 @@ export function empireWarWeariness(empire: Empire): number {
 // Empire.cs CivilityRatingApprovalRaw (1450).
 export function empireCivilityRatingApprovalRaw(galaxy: Galaxy, empire: Empire): number {
     let num = 0.0;
-    // TODO(port): Empire._CivilityRating (Empire.8.cs reputation model) — 0.0 at game start.
-    const civilityRating = 0.0;
+    // Empire._CivilityRating (Empire.8.cs reputation model — M4r; extermination in ReviewColonyPopulationPolicy).
+    const civilityRating = empire.civilityRating;
     if (empire !== galaxy.independentEmpire) num = civilityRating / 5.0;
     const gov = empireGovernmentAttributes(empire);
     if (gov !== null && num < 0.0) num *= gov.concernForOwnReputation;
@@ -308,8 +307,8 @@ export function calculatePopulationPolicyConcern(h: Habitat): number {
     let num = 0.0;
     if (h.empire !== null) {
         const exterminationConcern = calculateExterminationConcern(h);
-        // TODO(port): Habitat.SlaveryBonusFactor (float, default 1f; slavery model).
-        const slaveryBonusFactor = f32(1);
+        // Habitat.SlaveryBonusFactor (float; ReviewColonyPopulationPolicy, colonyTick.ts).
+        const slaveryBonusFactor = f32(h.slaveryBonusFactor);
         let slaveryConcern = -1.0 * ((slaveryBonusFactor - 1.0) * 20.0);
         if (slaveryConcern < 0.0) slaveryConcern = Math.min(-5.0, Math.max(-20.0, slaveryConcern));
         num += exterminationConcern;
@@ -356,8 +355,8 @@ export function raidEconomyDamageFactor(_h: Habitat): number {
 
 // Habitat.cs GetPlagueUnhappinessFactor (1869).
 export function getPlagueUnhappinessFactor(_h: Habitat): number {
-    // TODO(port): Habitat.PlagueId (short, default -1) / Galaxy.PlaguesStatic — no plague at game start.
-    const plagueId = -1;
+    // Habitat.PlagueId (short, default -1). TODO(port) M4u: Galaxy.PlaguesStatic / plague model.
+    const plagueId = _h.plagueId;
     if (plagueId >= 0) throw new Error('TODO(port): plagues (Habitat.GetPlagueUnhappinessFactor)');
     return 0.0;
 }
@@ -397,13 +396,13 @@ export function empireApprovalRating(galaxy: Galaxy, h: Habitat): number {
         num2 = calculatePopulationPolicyConcern(h);
     }
     const racialHappiness = habitatRacialHappiness(galaxy, h);
-    // TODO(port): Habitat._WarWithOurRace (float, CalculateWarWithOurRace 5694) — 0f: no wars at game start.
-    const warWithOurRace = f32(0);
+    // Habitat._WarWithOurRace (float, CalculateWarWithOurRace 5694; colonyTick.ts).
+    const warWithOurRace = f32(h.warWithOurRace);
     const inputValue3 = f32(h.damage) * -20.0;
     // TODO(port): Habitat._CulturalDistressFactor (float) — 0f at game start.
     const culturalDistressFactor = f32(0);
-    // TODO(port): Habitat.ConqueredFactor (float, UpdateConqueredFactor) — 0f at game start.
-    const conqueredFactor = f32(0);
+    // Habitat.ConqueredFactor (float, UpdateConqueredFactor; colonyTick.ts).
+    const conqueredFactor = f32(h.conqueredFactor);
     const num8 = modifyApprovalValueByEmpireAttributes(galaxy, h, inputValue);
     const num9 = modifyApprovalValueByEmpireAttributes(galaxy, h, habitatDevelopmentLevel(h) / 5.0);
     const num10 = modifyApprovalValueByEmpireAttributes(galaxy, h, taxApproval);

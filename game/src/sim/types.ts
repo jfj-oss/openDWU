@@ -157,10 +157,28 @@ export class Habitat {
     private _anglePerSecond = 0;
 
     // Plain fields set later by generation (Galaxy.5/6.cs).
-    diameter = 0; // C#: short
+    // C#: short Diameter / float BaseQuality — properties whose setters call RecalculateMaximumPopulation
+    // (Habitat.cs 976-985 / 213-224 → BaconHabitat.cs 233; M4j, see recalculateMaximumPopulation below the class).
+    private _diameter = 0;
+    get diameter(): number {
+        return this._diameter;
+    }
+    set diameter(value: number) {
+        this._diameter = value;
+        recalculateMaximumPopulation(this);
+    }
     pictureRef = 0; // C#: short
     landscapePictureRef = 0; // C#: short
-    baseQuality = 1; // C#: float _BaseQuality = 1f
+    private _baseQuality = 1; // C#: float _BaseQuality = 1f
+    get baseQuality(): number {
+        return this._baseQuality;
+    }
+    // Habitat.cs 217-223: _BaseQuality = value; RecalculateQuality() (quality is a live getter here);
+    // RecalculateMaximumPopulation().
+    set baseQuality(value: number) {
+        this._baseQuality = value;
+        recalculateMaximumPopulation(this);
+    }
     atmosphere = HabitatAtmosphereType.None;
     atmosphereDensity = 0; // C#: int
     systemIndex = 0;
@@ -409,6 +427,29 @@ export class Habitat {
     constructionQueue: unknown = null;
     // ---- M4i fields (facilities, wonders) ----
     // ---- M4j fields (colony growth, happiness) ----
+    /** Habitat.cs 53 _MaxPopulation (long; BaconHabitat.RecalculateMaximumPopulation, read by GrowPopulation). */
+    maxPopulation = 0;
+    /** Habitat.cs 99 _MigrationFactor (float; CalculateMigrationFactor). */
+    migrationFactor = 0;
+    /** Habitat.cs 103 _RestrictedResourcesPresent (EvaluateColonyVariables; read by DevelopmentLevel). */
+    restrictedResourcesPresent = false;
+    /** Habitat.cs 117 ConqueredFactor (float; UpdateConqueredFactor; set negative on conquest by M4q). */
+    conqueredFactor = 0;
+    /** Habitat.cs 170 _WarWithOurRace (float; CalculateWarWithOurRace). */
+    warWithOurRace = 0;
+    /** Habitat.cs 79 SlaveryBonusFactor = 1f (float; ReviewColonyPopulationPolicy). */
+    slaveryBonusFactor = 1;
+    /**
+     * Habitat.cs 91/93 PlagueId = -1 (short) / PlagueTimeRemaining (float). Read by GrowPopulation; the plague model
+     * (ProcessPlague) is M4u's — kept here so the growth guard reads the real fields.
+     */
+    plagueId = -1;
+    plagueTimeRemaining = 0;
+    /**
+     * Habitat.cs 211 BaconValues (Dictionary<string, object>, null until first use): "marketcash", "resourcePriceList",
+     * "infrastructure" (M4j, BaconHabitat economy), "piratebase" (M4s), "capturedSpies" (M4q).
+     */
+    baconValues: Map<string, unknown> | null = null;
     // ---- M4k fields (research) ----
     // ---- M4l fields (fleets) ----
     // ---- M4m fields (military AI) ----
@@ -427,6 +468,24 @@ export class Habitat {
     // ---- M4u fields (events, rebellion, plague) ----
     /** Habitat.cs 109 _Rebelling. */
     rebelling = false;
+}
+
+/**
+ * M4j: BaconHabitat.cs 233 RecalculateMaximumPopulation(planet) (via Habitat.cs 6160). Called by the Diameter /
+ * BaseQuality setters, RegenerateDamage, TerraformColony (colonyTick.ts) and ConstructFacilities.
+ */
+export function recalculateMaximumPopulation(planet: Habitat): void {
+    const f32 = Math.fround;
+    // (double)Math.Max(0.01f, planet.BaseQuality * (1f - planet.Damage)) — float arithmetic.
+    const num = Math.max(f32(0.01), f32(f32(planet.baseQuality) * f32(1 - f32(planet.damage))));
+    const diameter = planet.diameter;
+    planet.maxPopulation = Math.trunc(diameter * diameter * 250000.0 * (num * num));
+    const population = planet.population as PopulationList | undefined;
+    const dominantRace = population != null ? population.dominantRace : null;
+    if (population != null && dominantRace !== null && dominantRace.nativeHabitatType === planet.type) {
+        planet.maxPopulation = Math.trunc(planet.maxPopulation * 1.1);
+    }
+    planet.maxPopulation = Math.max(planet.maxPopulation, 100);
 }
 
 export interface SystemInfo {

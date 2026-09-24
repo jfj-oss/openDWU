@@ -213,7 +213,7 @@ function updateEmpireStarts(list: ResolvedStart[], races: Race[], rnd: Random, e
 }
 
 // Port of Empire.10.cs DetermineMostSuitableGovermentTypes(race, allowable, 3).
-function determineMostSuitableGovernmentTypes(race: Race, allowable: number[], maximumCount = 3): Government[] {
+export function determineMostSuitableGovernmentTypes(race: Race, allowable: number[], maximumCount = 3): Government[] {
     const list: { g: Government; tag: number }[] = [];
     for (const g of governmentsStatic()) {
         if (g === null) continue;

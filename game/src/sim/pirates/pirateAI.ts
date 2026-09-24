@@ -137,3 +137,9 @@ const T_updateRaidCountdownHabitat = registerTodo('M4s', 'updateRaidCountdownHab
 export function updateRaidCountdownHabitat(galaxy: Galaxy, habitat: Habitat, timePassed: number): void {
     /* TODO(port) M4s */ todo(T_updateRaidCountdownHabitat);
 }
+
+const T_pirateEconomyPerformExpense = registerTodo('M4s', 'pirateEconomyPerformExpense');
+/** PirateEconomy.PerformExpense(amount, type, starDate) (PirateEconomy.cs; added by M4j: Pay* in treasury.ts). */
+export function pirateEconomyPerformExpense(galaxy: Galaxy, empire: Empire, amount: number, expenseType: number): void {
+    /* TODO(port) M4s */ todo(T_pirateEconomyPerformExpense);
+}

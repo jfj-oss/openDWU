@@ -160,7 +160,7 @@ const PINNED_SUMMARY: unknown = {
             miningStations: 6,
             stateShips: { ExplorationShip: 7, ConstructionShip: 3 },
             privateShips: { SmallFreighter: 1, GasMiningShip: 2, MiningShip: 2 },
-            troops: 0,
+            troops: 1, // M4j: was 0 — EvaluateColonyVariables (recruitment on) completes a queued recruit in the game-start ticks
             characters: 4,
             taxRates: [0.2800000011920929],
         },
@@ -186,7 +186,7 @@ const PINNED_SUMMARY: unknown = {
             miningStations: 6,
             stateShips: { ExplorationShip: 7, ConstructionShip: 3 },
             privateShips: { SmallFreighter: 1, GasMiningShip: 2, MiningShip: 2 },
-            troops: 0,
+            troops: 1, // M4j: was 0 (same cause)
             characters: 3,
             taxRates: [0.27000001072883606],
         },

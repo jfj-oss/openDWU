@@ -27,6 +27,7 @@
 
 import type { Galaxy } from './galaxy';
 import type { Habitat } from './types';
+import { calculatePirateIncome } from './treasury';
 import { Empire, empireGovernmentAttributes } from './empire';
 import { BuiltObjectSubRole } from './builtObjectTypes';
 import { BuiltObjectRole } from './data/designSpecifications';
@@ -115,7 +116,8 @@ const pirateRelationsOf = (empire: Empire): PirateRelation[] => empire.pirateRel
 // Empire._ShipMaintenanceSavings (Empire.cs 2991). TODO(port): set by
 // ReviewEmpireAbilityBonuses (long DoTasks block, not ported); 0.0 until then,
 // and only ever multiplies built-object support costs (none at game start).
-const shipMaintenanceSavings = (_empire: Empire): number => 0.0;
+// Empire._ShipMaintenanceSavings (ReviewEmpireAbilityBonuses, treasury.ts).
+const shipMaintenanceSavings = (empire: Empire): number => empire.shipMaintenanceSavings;
 
 // Empire.ColonyCorruptionFactor / ColonyIncomeFactor (Empire.cs 409/425), set by
 // Galaxy.SetEmpireDifficultyFactors (pirates.ts) — Galaxy.*Default until then.
@@ -432,14 +434,14 @@ export function habitatAnnualRevenue(galaxy: Galaxy, h: Habitat): number {
         // Habitat._IncomeFactor (RecalculateCriticalResourceSupplyFactors, taxes.ts).
         num *= h.incomeFactor;
         if (empire !== null && empire !== galaxy.independentEmpire) {
-            // TODO(port): Empire.TradeBonus (ReviewEmpireAbilityBonuses) — 0.0 until then.
-            num *= 1.0 + 0.0;
+            // Empire.TradeBonus (ReviewEmpireAbilityBonuses, treasury.ts).
+            num *= 1.0 + empire.tradeBonus;
             const gov = empireGovernmentAttributes(empire);
             if (gov !== null) num *= gov.tradeBonus;
-            // TODO(port): Habitat.SlaveryBonusFactor (float, default 1f).
-            num *= 1.0;
-            // TODO(port): Empire.SpecialBonusWealth (ReviewSpecialBonusesRuinsWonders) — 0.0 until then.
-            num *= 1.0 + 0.0;
+            // Habitat.SlaveryBonusFactor (float; ReviewColonyPopulationPolicy, colonyTick.ts).
+            num *= h.slaveryBonusFactor;
+            // Empire.SpecialBonusWealth (ReviewSpecialBonusesRuinsWonders, treasury.ts).
+            num *= 1.0 + empire.specialBonusWealth;
             // Habitat._ResourceBonuses (RecalculateCriticalResourceSupplyBonuses, taxes.ts).
             const num4 = 1.0 + resourceBonusTotalByEffectType(h, ColonyResourceEffect.IncomeBoost) / 100.0;
             num *= num4;
@@ -662,8 +664,8 @@ export function annualFacilityMaintenance(empire: Empire): number {
 // Empire.3.cs CalculateAccurateAnnualIncome (4199).
 export function calculateAccurateAnnualIncome(galaxy: Galaxy, empire: Empire): number {
     if (empire.pirateEmpireBaseHabitat !== null) {
-        // Pirate factions run DoTasksPirates, never ProjectForceStructure.
-        throw new Error('TODO(port): Empire.CalculatePirateIncome (Empire.3.cs)');
+        // Empire.3.cs 4203 CalculatePirateIncome (treasury.ts; reached from EvaluateColonyVariablesPirate).
+        return calculatePirateIncome(galaxy, empire);
     }
     let num = annualTaxRevenue(galaxy, empire) + calculateAnnualSubjugationTributeIncome(galaxy, empire);
     const gov = empireGovernmentAttributes(empire);

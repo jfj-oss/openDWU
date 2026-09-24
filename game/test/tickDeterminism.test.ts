@@ -66,7 +66,7 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         checkInvariants(long);
         const hits = r.todoHits;
         // Every tick family reached its stubs.
-        for (const key of ['M4b executeCommands', 'M4j growPopulation', 'M4r processMessages', 'M4s pirateAssignShipMissions', 'M4s reviewPirateMissionsAndAssign', 'M4t checkForShipsDiscoveringRuins']) {
+        for (const key of ['M4b executeCommands', 'M4q scanForNewOwnerHabitat', 'M4r processMessages', 'M4s pirateAssignShipMissions', 'M4s reviewPirateMissionsAndAssign', 'M4t checkForShipsDiscoveringRuins']) {
             expect(hits[key] ?? 0, key).toBeGreaterThan(0);
         }
         const summary = { digest: stateDigest(long), counts: stateCounts(long), rndDraws: long.rnd.drawCount };
@@ -75,7 +75,10 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // Moved from 2e883aa30dfd001e when createGame adopted the real game-start ticks: the Start.2.cs 1344-1350
         // stagger now writes the empire touch times (the Rnd draw was already there), so empire blocks fire at
         // different frames; createGame's own pins did not move.
-        expect(summary.digest).toBe('78d35aa06c9a1e5b');
+        // Moved from 78d35aa06c9a1e5b by M4j: colonies now grow (GrowPopulation, EvaluateColonyVariables growth rates and
+        // development level), the treasury pays maintenance / troops / facilities, ProcessColonyTroops recruits (Rnd per
+        // completed recruit) and CheckSatisfaction can draw Rnd.Next(0, 3); the game-start Empire.DoTasks runs the same.
+        expect(summary.digest).toBe('e6557af8503f3064');
     }, 600000);
 });
 

@@ -140,7 +140,7 @@ describe('Empire.DoTasks intervals (Empire.1.cs 3427, >= on seconds, touches fir
 describe('Habitat.DoTasks intervals (Habitat.cs 1399, strict >)', () => {
     const markers = {
         intermediate: 'M4t checkForShipsDiscoveringRuins',
-        periodic: 'M4j calculateWarWithOurRace',
+        periodic: 'M4q scanForNewOwnerHabitat',
         long: 'M4c reviewWhetherRefuellingDepot',
         huge: 'M4q clearTroopsAwaitingPickup',
     };

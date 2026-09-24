@@ -218,14 +218,18 @@ describe('FillShipsWithTroops / GenerateNewTroop', () => {
             if (a[0] === 1 && a[1] === 9) { draw = v; return 1; }
             return v;
         };
+        // Re-pinned by M4j: GenerateEmpire's Empire.DoTasks now runs EvaluateColonyVariables with recruitment, which
+        // can queue troops (and advance the empire's troop-name counter) before the transport is filled.
+        const before = e.troopCount;
+        const ord = (n: number) => `${n}${n % 100 >= 11 && n % 100 <= 13 ? 'th' : n % 10 === 1 ? 'st' : n % 10 === 2 ? 'nd' : n % 10 === 3 ? 'rd' : 'th'}`;
         fillShipsWithTroops(g, e);
         expect(draw).toBeGreaterThanOrEqual(1);
         const troops = bo.troops!.items;
         // While TroopCapacityRemaining >= 100 (max 50 iterations): one 100-size troop each.
         expect(troops.length).toBe(Math.min(50, Math.trunc(bo.troopCapacity / 100)));
         expect(bo.troops!.totalSize).toBeLessThanOrEqual(bo.troopCapacity);
-        expect(troops[0].name).toBe(`1st ${e.dominantRace!.troopName}`);
-        if (troops.length > 1) expect(troops[1].name).toBe(`2nd ${e.dominantRace!.troopName}`);
+        expect(troops[0].name).toBe(`${ord(before + 1)} ${e.dominantRace!.troopName}`);
+        if (troops.length > 1) expect(troops[1].name).toBe(`${ord(before + 2)} ${e.dominantRace!.troopName}`);
         for (const t of troops) {
             expect(t.type).toBe(TroopType.Infantry);
             expect(t.builtObject).toBe(bo);
