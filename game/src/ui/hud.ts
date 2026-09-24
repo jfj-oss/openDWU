@@ -163,6 +163,8 @@ export interface HudWiring {
     game?: { playerEmpire: { name: string; mainColor: number; stateMoney: number; flagShape: number } };
     /** Called after a selection change so main.ts can react. */
     onSelectionChange?: (sel: Selection | null) => void;
+    /** Escape menu "Main Menu" (confirmed): main.ts tears the game down. */
+    onMainMenu?: () => void;
 }
 
 export interface Selection {
@@ -197,7 +199,7 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
     // it pauses the game and closing restores the previous paused state. Its
     // toggle is registered as the global Escape action; the ≡ button below
     // calls the same toggle.
-    const gameMenu = createGameMenu(clock);
+    const gameMenu = createGameMenu(clock, { onMainMenu: wiring.onMainMenu });
     setGameMenuHandler(gameMenu.toggle);
     refs.gameMenu = gameMenu;
 

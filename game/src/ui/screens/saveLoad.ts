@@ -150,7 +150,8 @@ export interface SavePanelCallbacks {
     onSaved?: (name: string) => void;
     /** Called when a save should be loaded (panel already closed). */
     onLoad?: (name: string) => void;
-    /** Called when a .dwusave file was picked and parsed. */
+    /** Called when a stored save or a .dwusave file was parsed (panel
+     * already closed): the caller boots the loaded game. */
     onLoadedFile?: (loaded: LoadedGame) => void;
     /** Called after a save was deleted (list refresh handled internally). */
     onDelete?: (name: string) => void;
@@ -175,13 +176,15 @@ export interface SavePanelWiring {
     now?: () => Date;
     /** Storage backend (default: window.localStorage). */
     storage?: SaveStorage;
+    /** Hide the Save tab (main menu: there is no running game to save). */
+    loadOnly?: boolean;
 }
 
 /** Build the Save/Load panel and append it to document.body. `mode` picks
  * which sub-panel shows first: 'save' (Escape menu Save Game) or 'load'
  * (Escape menu Load Game / main menu Load Game). */
 export function createSaveLoadPanel(mode: 'save' | 'load', wiring: SavePanelWiring = { callbacks: {} }): SavePanelRefs {
-    const { callbacks, memorySaves, serialize, loadSave, now, storage } = wiring;
+    const { callbacks, memorySaves, serialize, loadSave, now, storage, loadOnly } = wiring;
     const getStorage = (): SaveStorage => storage ?? (window.localStorage as unknown as SaveStorage);
     const stamp = (): string => (now ? now() : new Date()).toISOString();
 
@@ -208,6 +211,7 @@ export function createSaveLoadPanel(mode: 'save' | 'load', wiring: SavePanelWiri
         load: makeTabButton('Load'),
     };
     tabs.append(tabButtons.save, tabButtons.load);
+    if (loadOnly) tabs.style.display = 'none';
     panel.appendChild(tabs);
 
     // --- Save sub-panel -----------------------------------------------------
@@ -401,13 +405,19 @@ export function createSaveLoadPanel(mode: 'save' | 'load', wiring: SavePanelWiri
             return;
         }
         const date = stamp();
-        if (memorySaves) {
-            memorySaves.set(name, text);
-        } else {
+        // Persist to localStorage; when that fails (quota exceeded / storage
+        // disabled) keep it in memory for this session and say so.
+        let persisted = true;
+        try {
             storeSave(getStorage(), name, text, date);
+            memorySaves?.delete(name);
+        } catch (err) {
+            console.warn('Save could not be written to localStorage', err);
+            persisted = false;
+            memorySaves?.set(name, text);
         }
         refreshLists();
-        showToast(`Saved "${name}"`);
+        showToast(persisted ? `Saved "${name}"` : `Saved "${name}" for this session only (browser storage full) — use Download .dwusave to keep it`);
         callbacks.onSaved?.(name);
     }
 
@@ -432,8 +442,9 @@ export function createSaveLoadPanel(mode: 'save' | 'load', wiring: SavePanelWiri
             showToast('Loading is only available during a game');
             return;
         }
+        let loaded: LoadedGame;
         try {
-            loadSave(text);
+            loaded = loadSave(text);
         } catch (err) {
             console.error('Failed to load save', err);
             showToast('Could not load that save');
@@ -441,14 +452,12 @@ export function createSaveLoadPanel(mode: 'save' | 'load', wiring: SavePanelWiri
         }
         hide();
         callbacks.onLoad?.(name);
+        callbacks.onLoadedFile?.(loaded);
     }
 
     function doDelete(name: string): void {
-        if (memorySaves) {
-            memorySaves.delete(name);
-        } else {
-            deleteSave(getStorage(), name);
-        }
+        memorySaves?.delete(name);
+        deleteSave(getStorage(), name);
         refreshLists();
         showToast(`Deleted "${name}"`);
         callbacks.onDelete?.(name);

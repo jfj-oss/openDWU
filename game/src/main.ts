@@ -28,7 +28,7 @@ import { createCreditsScreen } from './ui/screens/credits';
 import { startMusic } from './audio/musicPlayer';
 import { createNewGameWizard } from './ui/screens/newGameWizard';
 import { openGalactopedia } from './ui/screens/galactopedia';
-import { toCreateGameOptions, type StartGameOptions } from './sim/startGameOptions';
+import { defaultStartGameOptions, toCreateGameOptions, type StartGameOptions } from './sim/startGameOptions';
 import { serializeGame, deserializeGame } from './sim/save/gameSave';
 import { setSaveLoadProvider, createSaveLoadPanel, type LoadedGame } from './ui/screens/saveLoad';
 import { type Game } from './sim/game';
@@ -135,6 +135,22 @@ async function loadGameDataOrNone(dwuPresent: boolean): Promise<GameData | null>
 let lastGameData: GameData | null = null;
 let lastStartOptions: StartGameOptions | null = null;
 let activeSavePanel: ReturnType<typeof createSaveLoadPanel> | null = null;
+/** Saves that could not be written to localStorage (quota), kept for this
+ * session and shared by every save/load panel (in-game and main menu). */
+const sessionSaves = new Map<string, string>();
+/** The main menu currently on screen (closed when a save is loaded from it). */
+let activeMainMenu: { destroy: () => void } | null = null;
+
+/** Load the static game data and the art manifest once, for paths that did
+ * not boot through the wizard/autostart (main-menu Load Game). */
+async function ensureStaticData(): Promise<void> {
+    if (lastGameData !== null) return;
+    const dwuPresent = await detectDwuPresent();
+    lastGameData = await loadGameDataOrNone(dwuPresent);
+    if (dwuPresent) {
+        await loadManifest();
+    }
+}
 let activeGameViewCleanup: (() => void) | null = null;
 
 /** Task M2e2: build the `window.__dwu` debug/screenshot object (pure — no
@@ -245,7 +261,17 @@ export async function startGameView(game: Game, zoomOverride?: number, extraBoot
     // window's "Play This Game" button can unpause it.
     (window as unknown as { __dwu?: unknown }).__dwu = buildDwuDebugObject({ camera, galaxy, view, app, game, time });
     // Task 10d: the HUD's money panel refreshes from the player empire.
-    const hud: HudRefs = createHud({ clock: time, overlays, camera, galaxy, game });
+    const hud: HudRefs = createHud({
+        clock: time,
+        overlays,
+        camera,
+        galaxy,
+        game,
+        onMainMenu: () => {
+            teardownActiveGameView();
+            showMainMenu();
+        },
+    });
     const systemNameEl = hud.elements.get('pnlMoney')?.querySelector('.hud-system-name');
     const dateEl = hud.elements.get('pnlTopLeftBar')?.querySelector('.hud-date');
     const pauseBtn = hud.elements.get('pnlTopLeftBar')?.querySelector<HTMLButtonElement>('button[title="Play / pause"]');
@@ -295,7 +321,7 @@ export async function startGameView(game: Game, zoomOverride?: number, extraBoot
     }
 
     const shortcuts = createShortcutsOverlay();
-    const keyHandlers = buildDefaultHandlers(camera, time);
+    const keyHandlers = buildDefaultHandlers(camera, time, { width: galaxy.sizeX, height: galaxy.sizeY });
     const keydownHandler = (e: KeyboardEvent): void => {
         if (e.key === '?' || e.key === 'F1') {
             e.preventDefault();
@@ -327,7 +353,7 @@ export async function startGameView(game: Game, zoomOverride?: number, extraBoot
     // startOptions, loading deserializes against the remembered gameData and
     // reboots through startGameView.
     let savePanel: ReturnType<typeof createSaveLoadPanel> | null = null;
-    const memorySaves = new Map<string, string>();
+    const memorySaves = sessionSaves;
     function getSavePanel() {
         if (!savePanel) {
             savePanel = createSaveLoadPanel('save', {
@@ -463,6 +489,9 @@ async function startTutorialGame(file: string): Promise<void> {
         console.warn('Tutorial game creation failed', err);
         return;
     }
+    // Saves need start options (metadata only; the galaxy itself is saved).
+    lastGameData = gameData;
+    lastStartOptions = { ...defaultStartGameOptions(), seed: opts.seed };
     // The clock is created inside startGameView and starts paused; the
     // tutorial window's "Play This Game" button resumes it (method_455).
     await startGameView(game, undefined, [() => {
@@ -498,6 +527,9 @@ async function bootLoadedGame(loaded: LoadedGame): Promise<void> {
         startOptions: StartGameOptions;
     };
     lastStartOptions = startOptions;
+    activeMainMenu?.destroy();
+    activeMainMenu = null;
+    await ensureStaticData();
     teardownActiveGameView();
     await startGameView(game);
 }
@@ -578,7 +610,10 @@ function showMainMenu(): void {
                 },
             });
         },
-        onLoadGame: () => {
+        onLoadGame: async () => {
+            // Game data is needed to deserialize a save; the menu path has
+            // not loaded it yet.
+            await ensureStaticData();
             // Register a load-only provider for the main menu context.
             setSaveLoadProvider({
                 open: (_mode) => {
@@ -594,6 +629,7 @@ function showMainMenu(): void {
             getMainMenuSavePanel().show();
         },
     });
+    activeMainMenu = menu;
     startMusic();
 }
 
@@ -606,6 +642,8 @@ function getMainMenuSavePanel() {
                 onLoadedFile: (loaded) => void bootLoadedGame(loaded),
             },
             serialize: () => null, // saving is only available during a game
+            loadOnly: true,
+            memorySaves: sessionSaves,
             loadSave: (text) => {
                 if (lastGameData === null) {
                     throw new Error('DW:U game data is required to load a save');
@@ -685,7 +723,10 @@ async function buildAutostartGame(
         aiEmpires: [ai, { ...ai }, { ...ai }],
     };
     try {
-        return createGame(opts);
+        const game = createGame(opts);
+        // Saves need start options (metadata only; the galaxy itself is saved).
+        lastStartOptions = { ...defaultStartGameOptions(), seed };
+        return game;
     } catch (err) {
         console.warn('?autostart=1 createGame failed; falling back to generateGalaxy', err);
         return null;
@@ -834,7 +875,7 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     // dispatches on keydown; it replaces the ad-hoc spacebar handler. '?'
     // toggles the "Keyboard shortcuts" overlay; F1 opens the Galactopedia.
     const shortcuts = createShortcutsOverlay();
-    const keyHandlers = buildDefaultHandlers(camera, time);
+    const keyHandlers = buildDefaultHandlers(camera, time, { width: galaxy.sizeX, height: galaxy.sizeY });
     window.addEventListener('keydown', (e: KeyboardEvent) => {
         if (e.key === '?') {
             e.preventDefault();

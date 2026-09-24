@@ -153,8 +153,11 @@ export function findBinding(
     mods: KeyModifiers,
     bindings: KeyBinding[] = KEY_BINDINGS,
 ): KeyBinding | null {
+    // KeyboardEvent.key is lowercase for unshifted letters ('g'); the table
+    // uses the original's key names (Keys.G), so compare letters uppercased.
+    const k = key.length === 1 ? key.toUpperCase() : key;
     for (const b of bindings) {
-        if (b.key !== key) continue;
+        if (b.key !== k) continue;
         if (b.modifiers.ctrl !== mods.ctrl) continue;
         if (b.modifiers.alt !== mods.alt) continue;
         if (b.modifiers.shift !== mods.shift) continue;

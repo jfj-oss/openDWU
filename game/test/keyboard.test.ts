@@ -304,3 +304,10 @@ describe('dispatchKey (task 10a)', () => {
         expect(dispatchKey(fakeEvent('L'), handlers)).toBe('lockView');
     });
 });
+describe('findBinding letter case', () => {
+    it('matches unshifted lowercase letters to the uppercase table keys', () => {
+        const none = { ctrl: false, alt: false, shift: false };
+        expect(findBinding('g', none)?.action).toBe('galaxyMap');
+        expect(findBinding('G', none)?.action).toBe('galaxyMap');
+    });
+});
