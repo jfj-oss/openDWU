@@ -17,6 +17,8 @@ import http.server, itertools, json, os, sys, urllib.request, urllib.error
 LISTEN = int(sys.argv[1]) if len(sys.argv) > 1 else 8099
 UPSTREAM = sys.argv[2] if len(sys.argv) > 2 else "http://127.0.0.1:8095"
 BIND = sys.argv[3] if len(sys.argv) > 3 else "127.0.0.1"
+# NINFER_PROXY_THINKING=off: force thinking disabled on every request (for mechanical tasks).
+THINKING_OFF = os.environ.get("NINFER_PROXY_THINKING") == "off"
 DUMP_DIR = os.environ.get("NINFER_PROXY_DUMP")  # debug: write each canonicalized request here
 _seq = itertools.count(1)
 
@@ -48,6 +50,13 @@ def canonicalize(body):
             m["content"] = "<system-reminder>\n" + text + "\n</system-reminder>"
     for t in body.get("tools", []) or []:
         t.pop("cache_control", None)
+    if THINKING_OFF:
+        body["thinking"] = {"type": "disabled"}
+        body.pop("output_config", None)
+        # Drop thinking blocks from history too, so turns stay cache-stable.
+        for m in body.get("messages", []):
+            if isinstance(m.get("content"), list):
+                m["content"] = [b for b in m["content"] if not (isinstance(b, dict) and b.get("type") in ("thinking", "redacted_thinking"))]
     return body
 
 
