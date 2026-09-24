@@ -2,11 +2,17 @@
 // screen (Main.Part5.cs) as a compact in-game DOM panel. The original is a
 // full statistics window; this streamlined version shows one row per summary
 // field — empire, race, government, capital, colonies, population, treasury —
-// for the player's empire. Styling follows the Empires list / tutorial-window
+// for the player's empire. Task 13b appends the Economy rows from
+// EmpireSummaryEconomy.cs (leader, colony tax revenue, ship & base
+// maintenance, space ports, mining stations, state/private ships & bases,
+// characters). Styling follows the Empires list / tutorial-window
 // dark-panel tokens.
+// TODO(sim): Troop maintenance, fuel costs and Cashflow (EmpireSummaryEconomy.cs 356-381) need Empire fields not yet ported.
 
 import './empireSummary.css';
 import type { Empire } from '../../sim/empire';
+import { annualStateMaintenance, annualTaxRevenue } from '../../sim/forceStructure';
+import { formatThousandsK } from './coloniesList';
 import { formatMoney, formatPopulation } from '../hud';
 
 /** The data the panel displays: the player's empire plus its government's
@@ -23,15 +29,64 @@ export interface EmpireSummaryRow {
     value: string;
 }
 
+/** The extra Economy rows (task 13b, EmpireSummaryEconomy.cs 343-381): the
+ * leader's name and the empire's annual tax revenue / state maintenance
+ * (null when the sim throws TODO(port)), plus counts of space ports, mining
+ * stations, state & private ships/bases and characters. */
+export interface EmpireSummaryExtra {
+    leaderName: string | null;
+    taxRevenue: number | null;
+    maintenance: number | null;
+    stateShipsAndBases: number;
+    privateShipsAndBases: number;
+    spacePorts: number;
+    miningStations: number;
+    characters: number;
+}
+
+/** Impure wrapper reading the extra fields off the empire. Each sim call is
+ * in its own try/catch (some paths still throw TODO(port)) and falls back to
+ * null; array lengths use `?.length ?? 0`. */
+export function empireSummaryExtra(e: Empire): EmpireSummaryExtra {
+    let taxRevenue: number | null = null;
+    try {
+        taxRevenue = annualTaxRevenue(e.galaxy, e);
+    } catch {
+        taxRevenue = null;
+    }
+    let maintenance: number | null = null;
+    try {
+        maintenance = annualStateMaintenance(e);
+    } catch {
+        maintenance = null;
+    }
+    return {
+        leaderName: e.leader?.name ?? null,
+        taxRevenue,
+        maintenance,
+        stateShipsAndBases: e.builtObjects?.length ?? 0,
+        privateShipsAndBases: e.privateBuiltObjects?.length ?? 0,
+        spacePorts: e.spacePorts?.length ?? 0,
+        miningStations: e.miningStations?.length ?? 0,
+        characters: e.characters?.length ?? 0,
+    };
+}
+
 /** Rows for the panel, in the original's order: Empire, Race, Government,
- * Capital, Colonies, Population, Treasury. Missing values show '—'. */
-export function empireSummaryRows(src: EmpireSummarySource): EmpireSummaryRow[] {
+ * Capital, Colonies, Population, Treasury. Missing values show '—'. With an
+ * `extra`, the Economy rows (Leader, Colony tax revenue, Ship & base
+ * maintenance, Space ports, Mining stations, State ships & bases, Private
+ * ships & bases, Characters) are appended after Treasury. */
+export function empireSummaryRows(
+    src: EmpireSummarySource,
+    extra?: EmpireSummaryExtra,
+): EmpireSummaryRow[] {
     const e = src.empire;
     let population = 0;
     for (const c of e.colonies) {
         population += c.population?.totalAmount ?? 0;
     }
-    return [
+    const rows: EmpireSummaryRow[] = [
         { label: 'Empire', value: e.name },
         { label: 'Race', value: e.dominantRace?.name ?? '—' },
         { label: 'Government', value: src.governmentName ?? '—' },
@@ -40,6 +95,19 @@ export function empireSummaryRows(src: EmpireSummarySource): EmpireSummaryRow[] 
         { label: 'Population', value: formatPopulation(population) },
         { label: 'Treasury', value: formatMoney(e.stateMoney) },
     ];
+    if (extra) {
+        rows.push(
+            { label: 'Leader', value: extra.leaderName ?? '—' },
+            { label: 'Colony tax revenue', value: extra.taxRevenue == null ? '—' : formatThousandsK(extra.taxRevenue) },
+            { label: 'Ship & base maintenance', value: extra.maintenance == null ? '—' : formatThousandsK(extra.maintenance) },
+            { label: 'Space ports', value: String(extra.spacePorts) },
+            { label: 'Mining stations', value: String(extra.miningStations) },
+            { label: 'State ships & bases', value: String(extra.stateShipsAndBases) },
+            { label: 'Private ships & bases', value: String(extra.privateShipsAndBases) },
+            { label: 'Characters', value: String(extra.characters) },
+        );
+    }
+    return rows;
 }
 
 interface OpenState {
@@ -104,7 +172,7 @@ function createEmpireSummary(src: EmpireSummarySource): OpenState {
     const body = document.createElement('div');
     body.className = 'empire-summary-body';
 
-    for (const row of empireSummaryRows(src)) {
+    for (const row of empireSummaryRows(src, empireSummaryExtra(src.empire))) {
         const line = document.createElement('div');
         line.className = 'empire-summary-row';
         const label = document.createElement('span');

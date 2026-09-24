@@ -7,7 +7,11 @@
 
 import './coloniesList.css';
 import type { Empire } from '../../sim/empire';
+import type { Galaxy } from '../../sim/galaxy';
 import type { Habitat } from '../../sim/types';
+import { habitatDevelopmentLevel } from '../../sim/developmentLevel';
+import { empireApprovalRating } from '../../sim/taxes';
+import { habitatAnnualRevenue } from '../../sim/forceStructure';
 import { formatPopulation } from '../hud';
 
 export interface ColoniesListOptions {
@@ -25,11 +29,68 @@ export interface ColonyRow {
     /** Population formatted via hud.formatPopulation ('1.2B' / '350M' / ...). */
     population: string;
     isCapital: boolean;
+    /** DevelopmentLevel as '${Math.trunc(d)}%' (ItemListPanel.cs 897), or '—'. */
+    development: string;
+    /** Approval-mood icon (happy/neutral/sad/angry, ItemListPanel.cs 895-898); null = no icon. */
+    approval: ApprovalMood | null;
+    /** GDP (Habitat.AnnualRevenue) via formatThousandsK, or '—'. */
+    gdp: string;
+    tax: string;
+    troops: string;
+}
+
+/** The four approval icons drawn by ItemListPanel.cs 895-898
+ * (Main.Part12.cs 621-625: images/ui/chrome/happy|neutral|sad|angry.png). */
+export type ApprovalMood = 'happy' | 'neutral' | 'sad' | 'angry';
+
+/** Port of the ItemListPanel.cs 895-898 thresholds: > 15 happy, > 0 neutral,
+ * > -15 sad, else angry. */
+export function approvalMood(rating: number): ApprovalMood {
+    if (rating > 15.0) return 'happy';
+    if (rating > 0.0) return 'neutral';
+    if (!(rating > -15.0)) return 'angry';
+    return 'sad';
+}
+
+/** C# .ToString("0,K"): divide by 1000, round, append a literal 'K'
+ * (1234567 -> '1235K', 0 -> '0K'). */
+export function formatThousandsK(v: number): string {
+    return `${Math.round(v / 1000)}K`;
+}
+
+/** Per-colony metrics read from the sim (task 13b). */
+export interface ColonyMetrics {
+    development: number;
+    approval: number;
+    revenue: number;
+}
+
+/** Impure wrapper around the three sim getters for one colony:
+ * DevelopmentLevel (developmentLevel.ts), EmpireApprovalRating (taxes.ts) and
+ * AnnualRevenue (forceStructure.ts). Some sim paths still throw TODO(port),
+ * so any exception — or a non-finite value — yields null. */
+export function colonyMetrics(galaxy: Galaxy, h: Habitat): ColonyMetrics | null {
+    try {
+        const development = habitatDevelopmentLevel(h);
+        const approval = empireApprovalRating(galaxy, h);
+        const revenue = habitatAnnualRevenue(galaxy, h);
+        if (!Number.isFinite(development) || !Number.isFinite(approval) || !Number.isFinite(revenue)) {
+            return null;
+        }
+        return { development, approval, revenue };
+    } catch {
+        return null;
+    }
 }
 
 /** Rows for the panel: the empire's colonies sorted by population descending
- * (a missing population counts as 0), ties broken by name. */
-export function colonyRows(empire: Empire): ColonyRow[] {
+ * (a missing population counts as 0), ties broken by name. With a `metrics`
+ * callback the development/approval/GDP columns are filled in; without it
+ * they show '—' / null. */
+export function colonyRows(
+    empire: Empire,
+    metrics?: (h: Habitat) => ColonyMetrics | null,
+): ColonyRow[] {
     return [...empire.colonies]
         .sort((a, b) => {
             const pa = a.population?.totalAmount ?? 0;
@@ -37,12 +98,20 @@ export function colonyRows(empire: Empire): ColonyRow[] {
             if (pa !== pb) return pb - pa;
             return a.name.localeCompare(b.name);
         })
-        .map((h) => ({
-            habitat: h,
-            name: h.name,
-            population: formatPopulation(h.population?.totalAmount ?? 0),
-            isCapital: empire.capital === h,
-        }));
+        .map((h) => {
+            const m = metrics ? metrics(h) : null;
+            return {
+                habitat: h,
+                name: h.name,
+                population: formatPopulation(h.population?.totalAmount ?? 0),
+                isCapital: empire.capital === h,
+                development: m ? `${Math.trunc(m.development)}%` : '—',
+                approval: m ? approvalMood(m.approval) : null,
+                gdp: m ? formatThousandsK(m.revenue) : '—',
+                tax: `${Math.round((h.taxRate ?? 0) * 100)}%`,
+                troops: String(h.troops?.count ?? 0),
+            };
+        });
 }
 
 interface OpenState {
@@ -91,19 +160,29 @@ function createColoniesList(opts: ColoniesListOptions): OpenState {
     const body = document.createElement('div');
     body.className = 'colonies-list-body';
 
-    // Column headers, same grid as the rows (Name | Population).
+    // Column headers, same grid as the rows (Name | Population | Dev. | Approval | GDP | Tax | Troops).
     const header = document.createElement('div');
     header.className = 'colonies-list-header';
     const hName = document.createElement('span');
     hName.className = 'colonies-list-header-cell';
     hName.textContent = 'Name';
-    const hPopulation = document.createElement('span');
-    hPopulation.className = 'colonies-list-header-cell colonies-list-header-population';
-    hPopulation.textContent = 'Population';
-    header.append(hName, hPopulation);
+    for (const [text, cls] of [
+        ['Population', 'colonies-list-header-population'],
+        ['Dev.', 'colonies-list-header-number'],
+        ['Approval', 'colonies-list-header-approval'],
+        ['GDP', 'colonies-list-header-number'],
+        ['Tax', 'colonies-list-header-number'],
+        ['Troops', 'colonies-list-header-number'],
+    ] as const) {
+        const cell = document.createElement('span');
+        cell.className = `colonies-list-header-cell ${cls}`;
+        cell.textContent = text;
+        header.appendChild(cell);
+    }
+    header.prepend(hName);
     body.appendChild(header);
 
-    for (const row of colonyRows(opts.empire)) {
+    for (const row of colonyRows(opts.empire, (h) => colonyMetrics(opts.empire.galaxy, h))) {
         const line = document.createElement('div');
         line.className = 'colonies-list-row';
 
@@ -121,7 +200,35 @@ function createColoniesList(opts: ColoniesListOptions): OpenState {
         pop.className = 'colonies-list-population';
         pop.textContent = row.population;
 
-        line.append(name, pop);
+        const dev = document.createElement('span');
+        dev.className = 'colonies-list-number';
+        dev.textContent = row.development;
+
+        const approval = document.createElement('span');
+        approval.className = 'colonies-list-approval';
+        if (row.approval) {
+            const img = document.createElement('img');
+            img.className = 'colonies-list-approval-icon';
+            img.src = `/assets/dwu/images/ui/chrome/${row.approval}.png`;
+            img.alt = row.approval;
+            img.title = row.approval;
+            img.draggable = false;
+            approval.appendChild(img);
+        }
+
+        const gdp = document.createElement('span');
+        gdp.className = 'colonies-list-number';
+        gdp.textContent = row.gdp;
+
+        const tax = document.createElement('span');
+        tax.className = 'colonies-list-number';
+        tax.textContent = row.tax;
+
+        const troops = document.createElement('span');
+        troops.className = 'colonies-list-number';
+        troops.textContent = row.troops;
+
+        line.append(name, pop, dev, approval, gdp, tax, troops);
         line.addEventListener('click', () => {
             close();
             opts.onZoomTo(row.habitat);
