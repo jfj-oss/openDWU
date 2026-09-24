@@ -123,33 +123,29 @@ async function loadGameDataOrNone(dwuPresent: boolean): Promise<GameData | null>
     }
 }
 
-/** Open the new-game wizard (task 06b), replacing the main menu. Start Game
- * maps the chosen StartGameOptions onto createGame's options and boots the
- * Main View + HUD with the returned galaxy/empires (task 06i). */
-function openWizard(onBackToMenu: () => void): void {
-    const wizard = createNewGameWizard({
-        onBackToMenu: () => {
-            wizard.destroy();
-            onBackToMenu();
-        },
-        onStartGame: (options: StartGameOptions) => {
-            wizard.destroy();
-            void bootGameFromWizard(options);
-        },
-    });
+/** Task M2e2: build the `window.__dwu` debug/screenshot object (pure — no
+ * window access, so it is testable without jsdom). The parameter types are
+ * structural (any non-null value) so tests can pass plain objects instead of
+ * real Camera/Galaxy/MainView/Application instances. */
+export function buildDwuDebugObject(args: { camera: object; galaxy: object; view: object; app: object; game?: Game }): Record<string, unknown> {
+    const obj: Record<string, unknown> = { camera: args.camera, galaxy: args.galaxy, view: args.view, app: args.app };
+    if (args.game !== undefined) {
+        obj.game = args.game;
+    }
+    return obj;
 }
 
-/** Task 06i: boot from the wizard's StartGameOptions via createGame (galaxy +
- * player/AI empires + starting colonies), then the Main View + HUD. The URL-
- * param boot path (bootGameWithOptions) still uses generateGalaxy only. */
-async function bootGameFromWizard(startOptions: StartGameOptions): Promise<void> {
+/** Task M2e2: one shared boot used by the wizard Start, `?autostart=1` and
+ * save-load — centres the camera on the player's capital at Sector zoom,
+ * wires the HUD/clock/input, and sets `window.__dwu` (camera, galaxy, view,
+ * app, game). */
+async function startGameView(game: Game): Promise<void> {
     const dwuPresent = await detectDwuPresent();
-    const systemNames = await loadSystemNames(dwuPresent);
-    const gameData = await loadGameDataOrNone(dwuPresent);
-    // Real-art file lists (scripts/gen-asset-manifest.mjs, predev/prebuild).
     if (dwuPresent) {
+        // Real-art file lists (scripts/gen-asset-manifest.mjs, predev/prebuild).
         await loadManifest();
     }
+    const galaxy = game.galaxy;
 
     const app = new Application();
     await app.init({
@@ -160,21 +156,12 @@ async function bootGameFromWizard(startOptions: StartGameOptions): Promise<void>
     });
     document.body.appendChild(app.canvas);
 
-    // createGame needs full game data (races/governments); without a DW:U
-    // install there is no fallback, so report it rather than booting broken.
-    if (gameData === null) {
-        console.error('DW:U game data is required to start a game from the wizard but failed to load.');
-        return;
-    }
-
-    const game: Game = createGame(toCreateGameOptions(startOptions, gameData, systemNames));
-    const galaxy = game.galaxy;
-
     const camera = new Camera();
     camera.setViewport(app.renderer.width, app.renderer.height);
     camera.setGalaxyBounds(galaxy.sizeX, galaxy.sizeY);
     // Centre on the player's capital (createGame returns viewX/viewY).
     camera.centerOn(game.viewX, game.viewY);
+    // Sector-level zoom: the whole-galaxy minimum zoom.
     camera.zoom = camera.minZoom;
 
     const store = new AssetStore(dwuPresent);
@@ -182,11 +169,11 @@ async function bootGameFromWizard(startOptions: StartGameOptions): Promise<void>
     await view.init();
 
     // Debug / screenshot hook: the created game (galaxy + player empire).
-    (window as unknown as { __dwu?: unknown }).__dwu = { camera, galaxy, view, app, game };
+    (window as unknown as { __dwu?: unknown }).__dwu = buildDwuDebugObject({ camera, galaxy, view, app, game });
 
     const time = new GalaxyTime(START_STAR_DATE);
     const overlays = createMapOverlayState();
-    const hud: HudRefs = createHud({ clock: time, overlays, camera, galaxy, gameData });
+    const hud: HudRefs = createHud({ clock: time, overlays, camera, galaxy });
     const systemNameEl = hud.elements.get('pnlMoney')?.querySelector('.hud-system-name');
     const dateEl = hud.elements.get('pnlTopLeftBar')?.querySelector('.hud-date');
     const pauseBtn = hud.elements.get('pnlTopLeftBar')?.querySelector<HTMLButtonElement>('button[title="Play / pause"]');
@@ -251,6 +238,46 @@ async function bootGameFromWizard(startOptions: StartGameOptions): Promise<void>
         camera.setViewport(app.renderer.width, app.renderer.height);
         layoutHud(hud);
     });
+}
+
+/** Open the new-game wizard (task 06b), replacing the main menu. Start Game
+ * maps the chosen StartGameOptions onto createGame's options and boots the
+ * Main View + HUD with the returned galaxy/empires (task 06i). */
+function openWizard(onBackToMenu: () => void): void {
+    const wizard = createNewGameWizard({
+        onBackToMenu: () => {
+            wizard.destroy();
+            onBackToMenu();
+        },
+        onStartGame: (options: StartGameOptions) => {
+            wizard.destroy();
+            void bootGameFromWizard(options);
+        },
+    });
+}
+
+/** Task 06i: boot from the wizard's StartGameOptions via createGame (galaxy +
+ * player/AI empires + starting colonies), then the shared Main View + HUD
+ * boot (task M2e2). The URL-param boot path (bootGameWithOptions) still uses
+ * generateGalaxy only. */
+async function bootGameFromWizard(startOptions: StartGameOptions): Promise<void> {
+    const dwuPresent = await detectDwuPresent();
+    const systemNames = await loadSystemNames(dwuPresent);
+    const gameData = await loadGameDataOrNone(dwuPresent);
+    // Real-art file lists (scripts/gen-asset-manifest.mjs, predev/prebuild).
+    if (dwuPresent) {
+        await loadManifest();
+    }
+
+    // createGame needs full game data (races/governments); without a DW:U
+    // install there is no fallback, so report it rather than booting broken.
+    if (gameData === null) {
+        console.error('DW:U game data is required to start a game from the wizard but failed to load.');
+        return;
+    }
+
+    const game: Game = createGame(toCreateGameOptions(startOptions, gameData, systemNames));
+    await startGameView(game);
 }
 
 async function main(): Promise<void> {
@@ -335,7 +362,7 @@ async function buildAutostartGame(
     sectorHeight: number,
     systemNames: string[],
     gameData: GameData | null,
-): Promise<{ galaxy: Galaxy; viewX: number; viewY: number } | null> {
+): Promise<Game | null> {
     if (gameData === null) {
         console.warn('?autostart=1 needs DW:U game data (races/governments); falling back to generateGalaxy');
         return null;
@@ -353,8 +380,7 @@ async function buildAutostartGame(
         aiEmpires: [ai, { ...ai }, { ...ai }],
     };
     try {
-        const game = createGame(opts);
-        return { galaxy: game.galaxy, viewX: game.viewX, viewY: game.viewY };
+        return createGame(opts);
     } catch (err) {
         console.warn('?autostart=1 createGame failed; falling back to generateGalaxy', err);
         return null;
@@ -372,6 +398,17 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
         await loadManifest();
     }
 
+    // Task M2e2: ?autostart=1 boots a full game (player + 3 AI empires with
+    // colours + colonies) through the shared startGameView — camera centred on
+    // the player's capital at Sector zoom, window.__dwu.game set.
+    if (paramsHasAutostart()) {
+        const started = await buildAutostartGame(seed, shape, starCount, sectorWidth, sectorHeight, systemNames, gameData);
+        if (started !== null) {
+            await startGameView(started);
+            return;
+        }
+    }
+
     const app = new Application();
     await app.init({
         resizeTo: window,
@@ -382,9 +419,7 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     document.body.appendChild(app.canvas);
 
     // Deterministic galaxy (seed/shape/stars/sectors from the URL or wizard).
-    // ?autostart=1 runs the full createGame (empires with colours + colonies);
-    // otherwise a bare generateGalaxy.
-    let galaxy = generateGalaxy({
+    const galaxy = generateGalaxy({
         seed,
         shape,
         starCount: starCount,
@@ -395,23 +430,15 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     });
     let viewX = galaxy.sizeX / 2;
     let viewY = galaxy.sizeY / 2;
-    if (paramsHasAutostart()) {
-        const started = await buildAutostartGame(seed, shape, starCount, sectorWidth, sectorHeight, systemNames, gameData);
-        if (started !== null) {
-            galaxy = started.galaxy;
-            viewX = started.viewX;
-            viewY = started.viewY;
-        }
+    if (cx !== null && cy !== null) {
+        viewX = cx;
+        viewY = cy;
     }
 
     const camera = new Camera();
     camera.setViewport(app.renderer.width, app.renderer.height);
     camera.setGalaxyBounds(galaxy.sizeX, galaxy.sizeY);
-    if (cx !== null && cy !== null) {
-        camera.centerOn(cx, cy);
-    } else {
-        camera.centerOn(viewX, viewY);
-    }
+    camera.centerOn(viewX, viewY);
     if (zoomParam !== null) {
         // zoom >= 1 is the original zoom *factor* (reciprocal of px/unit);
         // zoom < 1 is a direct px/unit value.

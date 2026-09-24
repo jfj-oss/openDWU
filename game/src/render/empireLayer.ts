@@ -54,8 +54,9 @@ export function toPixiColor(color: number | string): number {
     return 0xffffff;
 }
 
-/** The ring colour for a habitat's owner: the owner's primary colour, or
- * neutral grey when the world belongs to no empire (independent). */
+/** The ring colour for a habitat's owner: the owner's display colour (own
+ * main colour or the renderer-side palette fallback, task M2e2), or neutral
+ * grey when the world belongs to no empire (independent). */
 export function colonyRingColor(habitat: Habitat, galaxy: Galaxy): number {
     const owner = habitat.owner ?? habitat.empire;
     if (owner === null || owner === undefined) {
@@ -64,7 +65,33 @@ export function colonyRingColor(habitat: Habitat, galaxy: Galaxy): number {
     if (galaxy.independentEmpire !== null && owner === galaxy.independentEmpire) {
         return INDEPENDENT_RING_COLOR;
     }
+    const index = galaxy.empires.indexOf(owner);
+    if (index >= 0) {
+        return empireColour(owner, index);
+    }
     return toPixiColor(owner.mainColor);
+}
+
+/** 12-colour fallback palette (task M2e2): assigned by empire index in the
+ * renderer only when empires share or lack colours. Distinct from each other
+ * and from the independent grey; not written back to sim data. */
+export const EMPIRE_FALLBACK_COLORS = [
+    0x0080ff, 0xff681f, 0x00cc00, 0xc00080, 0xa840ff, 0xffff20,
+    0xff0030, 0x00ffff, 0xe0c060, 0x7020cc, 0xffa6c9, 0x999933,
+];
+
+/** The display colour for an empire: its own main colour when usable
+ * (non-zero), otherwise the palette entry for its index. Pure — no sim
+ * state is read or mutated (task M2e2). */
+export function empireColour(empire: Empire, index: number): number {
+    if (empire.mainColor !== 0) {
+        return toPixiColor(empire.mainColor);
+    }
+    // Task M2e2: the palette is indexed by position in galaxy.empires, which
+    // includes the independent empire — match that here so the renderer's
+    // per-index colours line up with the layer's.
+    const i = ((index + 1) % EMPIRE_FALLBACK_COLORS.length + EMPIRE_FALLBACK_COLORS.length) % EMPIRE_FALLBACK_COLORS.length;
+    return EMPIRE_FALLBACK_COLORS[i];
 }
 
 /** One Graphics per non-independent empire: all of that empire's territory
@@ -84,6 +111,10 @@ class EmpireTerritory {
 export class EmpireLayer {
     /** World-space layer: territory discs, then colony/marker rings above. */
     root = new Container();
+    /** Non-independent empires in galaxy.empires order (index → palette). */
+    private empires: Empire[] = [];
+    /** Display colour per empire index (own main colour or palette fallback). */
+    private colors: number[] = [];
     private territories: Map<Empire, EmpireTerritory> = new Map();
     /** Colony rings, one per owned planet/moon (world space). */
     private colonyRings: Array<{ habitat: Habitat; ring: Graphics }> = [];
@@ -95,7 +126,14 @@ export class EmpireLayer {
         world.addChild(this.root);
         for (const empire of galaxy.empires) {
             if (empire === galaxy.independentEmpire) continue;
+            this.empires.push(empire);
+            this.colors.push(empireColour(empire, this.empires.length - 1));
             this.territories.set(empire, new EmpireTerritory(empire, this.root));
+            // Task M2e2: every empire with ≥1 owned habitat must draw its
+            // territory/rings; flag empires that own nothing.
+            if (empire.colonies.length < 1) {
+                console.warn(`Empire "${empire.name}" owns no habitats; its territory will not be drawn`);
+            }
         }
         for (const h of galaxy.habitats) {
             if (h.category !== HabitatCategoryType.Planet && h.category !== HabitatCategoryType.Moon) continue;
@@ -135,7 +173,8 @@ export class EmpireLayer {
         const tRadius = territoryRadius(this.galaxy.sectorSize);
 
         // Territory discs: galaxy/sector zoom only, hidden at system zoom.
-        for (const t of this.territories.values()) {
+        for (let i = 0; i < this.empires.length; i++) {
+            const t = this.territories.get(this.empires[i])!;
             if (atSystemZoom) {
                 t.graphics.visible = false;
                 continue;
@@ -150,7 +189,7 @@ export class EmpireLayer {
                     continue;
                 }
                 t.graphics.circle(star.xpos, star.ypos, tRadius).fill({
-                    color: toPixiColor(t.empire.mainColor),
+                    color: this.colors[i],
                     alpha: 0.18,
                 });
                 any = true;
@@ -199,8 +238,10 @@ export class EmpireLayer {
             // the marker sits just outside it.
             const iconPx = Math.min(Math.max(star.diameter * z * 30, 2.5), 26);
             const r = iconPx * 0.5 + 4;
+            const ownerIdx = this.empires.indexOf(mr.owner);
+            const color = ownerIdx >= 0 ? this.colors[ownerIdx] : toPixiColor(mr.owner.mainColor);
             mr.ring.clear();
-            mr.ring.circle(star.xpos, star.ypos, r).stroke({ width: 2 / z, color: toPixiColor(mr.owner.mainColor), alpha: 1 });
+            mr.ring.circle(star.xpos, star.ypos, r).stroke({ width: 2 / z, color, alpha: 1 });
             mr.ring.visible = true;
         }
     }
