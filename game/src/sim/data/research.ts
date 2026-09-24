@@ -116,9 +116,9 @@ export function parseResearch(text: string): ResearchNode[] {
                         components: currentNode.components || [],
                         componentImprovements: currentNode.componentImprovements || [],
                         fighters: currentNode.fighters || [],
-                        facilityId: currentNode.facilityId || null,
+                        facilityId: currentNode.facilityId ?? null,
                         abilities: currentNode.abilities || [],
-                        plagueChange: currentNode.plagueChange || null,
+                        plagueChange: currentNode.plagueChange ?? null,
                         allowedRaces: currentNode.allowedRaces || [],
                         parents: currentNode.parents || [],
                     });
@@ -312,9 +312,9 @@ export function parseResearch(text: string): ResearchNode[] {
             components: currentNode.components || [],
             componentImprovements: currentNode.componentImprovements || [],
             fighters: currentNode.fighters || [],
-            facilityId: currentNode.facilityId || null,
+            facilityId: currentNode.facilityId ?? null,
             abilities: currentNode.abilities || [],
-            plagueChange: currentNode.plagueChange || null,
+            plagueChange: currentNode.plagueChange ?? null,
             allowedRaces: currentNode.allowedRaces || [],
             parents: currentNode.parents || [],
         });

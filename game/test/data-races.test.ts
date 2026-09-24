@@ -223,6 +223,83 @@ describe('races.ts parseRace — GenerateRaceSummary fields (Race.cs LoadFromFil
         expect(clamped.victoryConditions).toEqual([]);
         expect(clamped.characterStartingTraitLeader).toBe(CharacterTraitType.Undefined);
     });
+    it('clamps the older attribute/bonus fields like SetNameValuePair does', () => {
+        // Race.cs LoadFromFile: ReproductiveRate [1.0, 1.5]; Intelligence/
+        // Aggression/Caution/Friendliness/Loyalty [50, 150]; the maintenance/
+        // bonus fields [0, N]; TroopStrength [50, 400].
+        const tooLow = parseRace([
+            'ReproductionRate ;0.1',
+            'Intelligence ;1',
+            'Aggression ;1',
+            'Caution ;1',
+            'Friendliness ;1',
+            'Loyalty ;1',
+            'ShipMaintenanceSavings ;-5',
+            'TroopMaintenanceSavings ;-5',
+            'ResourceExtractionBonus ;-5',
+            'WarWearinessAttenuation ;-5',
+            'SatisfactionModifier ;-5',
+            'ResearchBonus ;-5',
+            'EspionageBonus ;-5',
+            'TradeBonus ;-5',
+            'TroopStrength ;1',
+        ].join('\n'));
+        expect(tooLow.reproductionRate).toBe(1.0);
+        expect(tooLow.intelligence).toBe(50);
+        expect(tooLow.aggression).toBe(50);
+        expect(tooLow.caution).toBe(50);
+        expect(tooLow.friendliness).toBe(50);
+        expect(tooLow.loyalty).toBe(50);
+        expect(tooLow.shipMaintenanceSavings).toBe(0);
+        expect(tooLow.troopMaintenanceSavings).toBe(0);
+        expect(tooLow.resourceExtractionBonus).toBe(0);
+        expect(tooLow.warWearinessAttenuation).toBe(0);
+        expect(tooLow.satisfactionModifier).toBe(0);
+        expect(tooLow.researchBonus).toBe(0);
+        expect(tooLow.espionageBonus).toBe(0);
+        expect(tooLow.tradeBonus).toBe(0);
+        expect(tooLow.troopStrength).toBe(50);
+
+        const tooHigh = parseRace([
+            'ReproductionRate ;9',
+            'Intelligence ;9999',
+            'Aggression ;9999',
+            'Caution ;9999',
+            'Friendliness ;9999',
+            'Loyalty ;9999',
+            'ShipMaintenanceSavings ;9999',
+            'TroopMaintenanceSavings ;9999',
+            'ResourceExtractionBonus ;9999',
+            'WarWearinessAttenuation ;9999',
+            'SatisfactionModifier ;9999',
+            'ResearchBonus ;9999',
+            'EspionageBonus ;9999',
+            'TradeBonus ;9999',
+            'TroopStrength ;9999',
+        ].join('\n'));
+        expect(tooHigh.reproductionRate).toBe(1.5);
+        expect(tooHigh.intelligence).toBe(150);
+        expect(tooHigh.aggression).toBe(150);
+        expect(tooHigh.caution).toBe(150);
+        expect(tooHigh.friendliness).toBe(150);
+        expect(tooHigh.loyalty).toBe(150);
+        expect(tooHigh.shipMaintenanceSavings).toBe(100);
+        expect(tooHigh.troopMaintenanceSavings).toBe(100);
+        expect(tooHigh.resourceExtractionBonus).toBe(500);
+        expect(tooHigh.warWearinessAttenuation).toBe(100);
+        expect(tooHigh.satisfactionModifier).toBe(505);
+        expect(tooHigh.researchBonus).toBe(510);
+        expect(tooHigh.espionageBonus).toBe(515);
+        expect(tooHigh.tradeBonus).toBe(520);
+        expect(tooHigh.troopStrength).toBe(400);
+
+        // Absent lines keep the Race field defaults.
+        const bare = parseRace('Name ;X\n');
+        expect(bare.reproductionRate).toBe(1.0);
+        expect(bare.intelligence).toBe(100);
+        expect(bare.shipMaintenanceSavings).toBe(0);
+        expect(bare.troopStrength).toBe(100);
+    });
     it('no longer leaves the summary fields in extra', () => {
         const extraKeys = Object.keys(race('human.txt').extra);
         for (const k of ['Condition1Type', 'ShipSizeFactorMilitary', 'CharacterStartingTraitLeader', 'MigrationFactor']) {

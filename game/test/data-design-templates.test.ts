@@ -282,4 +282,17 @@ describe('designTemplates.ts — real files under designTemplates/DEFAULT/', () 
             expect(frigate.Contains(ComponentType.ComputerCommandCenter)).toBe(true);
         }
     });
+
+    it('ComponentCategoryType has a single canonical definition, re-exported (not redeclared) by races.ts', async () => {
+        // Regression test for a prior duplicate-enum bug: races.ts used to
+        // declare its own copy of ComponentCategoryType. Importing the
+        // "same" enum member from both modules must give identical values,
+        // and races.ts's export must be the literal object designTemplates.ts
+        // defines (an `export { X } from './designTemplates'` re-export),
+        // not a second, independently declared enum.
+        const { ComponentCategoryType: FromRaces } = await import('../src/sim/data/races');
+        expect(FromRaces).toBe(ComponentCategoryType);
+        expect(FromRaces.WeaponSuperTorpedo).toBe(ComponentCategoryType.WeaponSuperTorpedo);
+        expect(FromRaces.Undefined).toBe(0);
+    });
 });

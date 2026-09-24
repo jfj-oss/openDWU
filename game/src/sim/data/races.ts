@@ -5,6 +5,7 @@
 
 import { HabitatType, IndustryType, resolveColonyHabitatTypeByIndexDesertBeforeOcean } from '../types';
 import { netSort } from '../netSort';
+import { ComponentCategoryType } from './designTemplates';
 
 // Port of ResourceBonus.cs (race critical resources).
 export interface ResourceBonus {
@@ -111,39 +112,11 @@ export enum CharacterTraitType {
     Smuggler, BountyHunter,
 }
 
-// Port of ComponentCategoryType.cs (byte enum, full, exact member order).
-// NOTE: designTemplates.ts declares a partial enum of the same name whose
-// values do NOT follow the C# order; this one does.
-export enum ComponentCategoryType {
-    Undefined,
-    WeaponBeam,
-    WeaponTorpedo,
-    WeaponArea,
-    WeaponPointDefense,
-    WeaponIon,
-    WeaponGravity,
-    Armor,
-    AssaultPod,
-    Fighter,
-    Shields,
-    ShieldRecharge,
-    Engine,
-    HyperDrive,
-    HyperDisrupt,
-    Reactor,
-    EnergyCollector,
-    Extractor,
-    Manufacturer,
-    Storage,
-    Sensor,
-    Computer,
-    Labs,
-    Construction,
-    Habitation,
-    WeaponSuperBeam,
-    WeaponSuperArea,
-    WeaponSuperTorpedo,
-}
+// ComponentCategoryType.cs is defined once, canonically, in designTemplates.ts
+// (imported above); re-exported here since callers (including
+// galactopedia.ts) import it from this module alongside the race-related
+// types.
+export { ComponentCategoryType };
 
 // Port of RaceVictoryCondition.cs.
 export interface RaceVictoryCondition {
@@ -517,22 +490,26 @@ export function parseRace(text: string): Race {
         name: fields.get('Name') ?? '',
         pictureIndex: parseIntField(fields.get('PictureIndex')),
         raceFamily: parseIntField(fields.get('RaceFamily')),
-        reproductionRate: parseFloatField(fields.get('ReproductionRate'), 1.0),
-        intelligence: parseIntField(fields.get('Intelligence'), 100),
-        aggression: parseIntField(fields.get('Aggression'), 100),
-        caution: parseIntField(fields.get('Caution'), 100),
-        friendliness: parseIntField(fields.get('Friendliness'), 100),
-        loyalty: parseIntField(fields.get('Loyalty'), 100),
+        // Race.cs LoadFromFile clamps: ReproductiveRate to [1.0, 1.5];
+        // Intelligence/Aggression/Caution/Friendliness/LoyaltyLevel to [50, 150].
+        reproductionRate: dbl('ReproductionRate', 1.0, 1.0, 1.5),
+        intelligence: int('Intelligence', 100, 50, 150),
+        aggression: int('Aggression', 100, 50, 150),
+        caution: int('Caution', 100, 50, 150),
+        friendliness: int('Friendliness', 100, 50, 150),
+        loyalty: int('Loyalty', 100, 50, 150),
         designsPictureFamilyIndex: parseIntField(fields.get('DesignsPictureFamilyIndex')),
         designNamesIndex: parseIntField(fields.get('DesignNamesIndex')),
-        shipMaintenanceSavings: parseFloatField(fields.get('ShipMaintenanceSavings')),
-        troopMaintenanceSavings: parseFloatField(fields.get('TroopMaintenanceSavings')),
-        resourceExtractionBonus: parseFloatField(fields.get('ResourceExtractionBonus')),
-        warWearinessAttenuation: parseFloatField(fields.get('WarWearinessAttenuation')),
-        satisfactionModifier: parseFloatField(fields.get('SatisfactionModifier')),
-        researchBonus: parseFloatField(fields.get('ResearchBonus')),
-        espionageBonus: parseFloatField(fields.get('EspionageBonus')),
-        tradeBonus: parseFloatField(fields.get('TradeBonus')),
+        // Race.cs LoadFromFile clamps these to [0, N]; absent lines keep the
+        // Race field default of 0.
+        shipMaintenanceSavings: int('ShipMaintenanceSavings', 0, 0, 100),
+        troopMaintenanceSavings: int('TroopMaintenanceSavings', 0, 0, 100),
+        resourceExtractionBonus: int('ResourceExtractionBonus', 0, 0, 500),
+        warWearinessAttenuation: int('WarWearinessAttenuation', 0, 0, 100),
+        satisfactionModifier: int('SatisfactionModifier', 0, 0, 505),
+        researchBonus: int('ResearchBonus', 0, 0, 510),
+        espionageBonus: int('EspionageBonus', 0, 0, 515),
+        tradeBonus: int('TradeBonus', 0, 0, 520),
         overallShipDesignFocus: parseIntField(fields.get('OverallShipDesignFocus')),
         techFocus1: parseIntField(fields.get('TechFocus1')),
         techFocus2: parseIntField(fields.get('TechFocus2')),
@@ -553,7 +530,8 @@ export function parseRace(text: string): Race {
         canBeNormalEmpire: parseBoolField(fields.get('CanBeNormalEmpire'), true),
         playable: parseBoolField(fields.get('Playable'), true),
         homeSystemName: fields.get('HomeSystemName') ?? '',
-        troopStrength: parseIntField(fields.get('TroopStrength'), 100),
+        // Race.cs LoadFromFile: TroopStrength clamped to [50, 400].
+        troopStrength: int('TroopStrength', 100, 50, 400),
         troopName: fields.get('TroopName') ?? '',
         troopNameArmored: fields.get('TroopNameArmored') ?? '',
         troopNamePlanetaryDefense: fields.get('TroopNamePlanetaryDefense') ?? '',

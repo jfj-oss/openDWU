@@ -280,4 +280,43 @@ describe('galactopedia helpers', () => {
         expect(helpTopicKeyForHabitat({ category: HabitatCategoryType.Planet, type: HabitatType.Ocean })).toBe('Ocean Planets');
         expect(existsSync(resolve(dwuRoot, 'Help', 'Planet_Ocean.mht'))).toBe(true);
     });
+    it('maps a blockaded or independent-owned habitat before its category/type (btnHelp_Click)', () => {
+        // Port of Main.Part5.cs btnHelp_Click's Habitat branch: IsBlockaded
+        // wins first, then Empire == Galaxy.IndependentEmpire, then the
+        // category/type switch. Empire.cs initializeIndependentCtor gives
+        // the independent empire empireId 0.
+        expect(
+            helpTopicKeyForHabitat({ category: HabitatCategoryType.Planet, type: HabitatType.Ocean, isBlockaded: true }),
+        ).toBe('Blockades');
+        expect(
+            helpTopicKeyForHabitat({
+                category: HabitatCategoryType.Planet,
+                type: HabitatType.Ocean,
+                empire: { empireId: 0 },
+            }),
+        ).toBe('Independent planets and Traders');
+        // Blockaded takes priority over independent ownership.
+        expect(
+            helpTopicKeyForHabitat({
+                category: HabitatCategoryType.Planet,
+                type: HabitatType.Ocean,
+                isBlockaded: true,
+                empire: { empireId: 0 },
+            }),
+        ).toBe('Blockades');
+        // A normal (non-independent) owner doesn't trigger the independent
+        // topic, and an unowned/unblockaded habitat still falls through to
+        // its category/type.
+        expect(
+            helpTopicKeyForHabitat({
+                category: HabitatCategoryType.Planet,
+                type: HabitatType.Ocean,
+                isBlockaded: false,
+                empire: { empireId: 3 },
+            }),
+        ).toBe('Ocean Planets');
+        expect(
+            helpTopicKeyForHabitat({ category: HabitatCategoryType.Planet, type: HabitatType.Ocean, empire: null }),
+        ).toBe('Ocean Planets');
+    });
 });

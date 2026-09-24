@@ -968,15 +968,30 @@ export function helpTopicKeyForCreature(c: { type: CreatureType } | null): strin
 
 /** GameText key of the topic the help button opens for a selected habitat
  *  (btnHelp_Click's Habitat branch); "Main Screen" when nothing applies.
+ *  Port of the Habitat branch order: IsBlockaded ("Blockades"), then
+ *  Empire == Galaxy.IndependentEmpire ("Independent planets and Traders"),
+ *  then Asteroid/GasCloud/Star category, then per-HabitatType. `isBlockaded`
+ *  and `empire` are read-only, optional fields: the sim's Habitat.ts doesn't
+ *  model blockades yet (see galaxy.ts's "BlockadeCount ... — need
+ *  ruins/blockades/plagues/designs" TODO), and an empire counts as the
+ *  independent empire when its `empireId` is 0 (Empire.cs
+ *  initializeIndependentCtor: `empireId = isIndependentEmpire ? 0 : ...`).
  *  TODO(port): the rest of Main.Part5.cs btnHelp_Click — SystemInfo
  *  ("Stars"), ShipGroup ("Fleets"), BuiltObject (blockaded / pirate /
- *  independent / per-SubRole topics), Fighter, the Habitat blockaded and
- *  independent checks, the open-screen overrides (Game Options, Designs,
- *  Research, Colonies, ... screens) and the game-editor topics. None of
- *  those selections/screens exist yet; creatures: helpTopicKeyForCreature
- *  (the selection model cannot hold a creature yet either). */
-export function helpTopicKeyForHabitat(h: { category: HabitatCategoryType; type: HabitatType } | null): string {
+ *  independent / per-SubRole topics), Fighter, the open-screen overrides
+ *  (Game Options, Designs, Research, Colonies, ... screens) and the
+ *  game-editor topics. None of those selections/screens exist yet;
+ *  creatures: helpTopicKeyForCreature (the selection model cannot hold a
+ *  creature yet either). */
+export function helpTopicKeyForHabitat(
+    h:
+        | ({ category: HabitatCategoryType; type: HabitatType }
+              & { isBlockaded?: boolean; empire?: { empireId: number } | null })
+        | null,
+): string {
     if (!h) return 'Main Screen';
+    if (h.isBlockaded) return 'Blockades';
+    if (h.empire != null && h.empire.empireId === 0) return 'Independent planets and Traders';
     if (h.category === HabitatCategoryType.Asteroid) return 'Asteroids';
     if (h.category === HabitatCategoryType.GasCloud) return 'Gas Clouds';
     if (h.category === HabitatCategoryType.Star) return 'Stars';
