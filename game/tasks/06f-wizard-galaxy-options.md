@@ -253,3 +253,20 @@ Start.cs:4415
         }
     }
 ```
+
+## Worker report
+
+**Files changed**
+- `src/sim/startGameOptions.ts` — added `colonyPrevalenceIndex`, `alienLifeIndex`, `spaceCreaturesIndex`, `piratesIndex`, `aggressionIndex`, `difficultyIndex`, `difficultyScaling` to `StartGameOptions`; added pure converters `colonyPrevalenceFor` (method_64), `alienLifeFor` (method_67 → `OverrideLowIndependentLifeValue` vanilla table, with the 150-case Bacon override commented and the vanilla value used), `spaceCreaturesFor` (method_62), `piratesFor` (method_66), `aggressionFor` (method_71), `difficultyFor` (method_201), each ported exactly from the pasted C# including the pre-switch defaults; extended `defaultStartGameOptions()` with middle-tick slider defaults and `difficultyScaling: false`.
+- `src/ui/screens/newGameWizard.ts` — added tick-label constants (`COLONY_PREVALENCE_TICKS`, `ALIEN_LIFE_TICKS`, `SPACE_CREATURES_TICKS`, `PIRATES_TICKS`, `AGGRESSION_TICKS`, `DIFFICULTY_TICKS`); six new sliders below Star Amount / Physical Size on "The Galaxy" page plus the "Difficulty scales as player nears victory" checkbox; Start-page summary now lists all seven options.
+- `src/ui/screens/newGameWizard.css` — `.wizard-checkbox` styling for the difficulty-scaling checkbox row.
+- `test/startGameOptions.test.ts` — full-table + out-of-range tests for all six converters; default-position assertions in `defaultStartGameOptions`; updated the two `StartGameOptions` literals.
+
+**Done**
+- All six converters ported with exact tables and C# fallback defaults; raw slider indices stored in `StartGameOptions`.
+- Wizard UI: sliders use the original tick names where given (Aggression *Peaceful…Chaos*, Difficulty *Easy…Extreme*, Space Creatures *None…Many*, Pirates *None…Very Many*); Colony Prevalence / Alien Life labelled Rare … Very Common across their 5 cases. Checkbox wired to `difficultyScaling`.
+- `npm run typecheck` passes; `npm test` passes (319 tests). Headless screenshots saved: `shots/wizard-galaxy-06f.png`, `shots/wizard-start-06f.png` (no console errors printed).
+
+**Left undone / caveats**
+- Default slider positions were not visible in the pasted context, so per the task fallback each slider defaults to its middle tick (colony prevalence 2, alien life 2, space creatures 1, pirates 2, aggression 2, difficulty 2); scaling off.
+- The converted values are not yet consumed by galaxy generation (`src/sim/galaxy.ts` is locked for this task) — wiring them into `generateGalaxy` belongs to a later task.

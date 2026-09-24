@@ -160,3 +160,20 @@ namespace DistantWorlds.Types
   }
 }
 ```
+
+## Worker report
+
+**Files changed**
+- `src/sim/startGameOptions.ts` — new `VictoryConditions` interface (port of DistantWorlds.Types.VictoryConditions, wizard-editable fields only), `defaultVictoryConditions()` with the C# defaults (all types unchecked = sandbox, percents 33, time limit 10y, time start 3y, all event toggles on, threshold 1.0), control-bound constants (`VICTORY_PERCENT_MIN`, `VICTORY_TIME_LIMIT_YEARS_MIN/MAX` 1..1000, `VICTORY_TIME_START_YEARS_MIN/MAX` 1..99) and `clampVictory()`; `StartGameOptions.victory` field added and filled in `defaultStartGameOptions()`.
+- `src/ui/screens/newGameWizard.ts` — new `'victory'` WizardPageId inserted between `empire` and `start` (titles/back/forward labels updated); `buildVictoryPage()` with the original controls: sandbox note (lblVictorySandbox), checkboxes for Territory / Population / Economy / Time Limit + numeric inputs for their thresholds (percent boxes min 1, time-limit box 1..1000, time-start box 1..99, clamped on edit), and the three event-toggle checkboxes (Disasters, race-specific conditions, race-specific events); galaxy-page TODO note no longer lists victory conditions; Start-page summary gains a "Victory Conditions" row (lists checked types + thresholds, or "Sandbox mode").
+- `src/ui/screens/newGameWizard.css` — `.wizard-victory-sandbox`, `.wizard-victory-section`, `.wizard-victory-number-row`, `.wizard-victory-number-input` styling matching the other pages.
+- `test/startGameOptions.test.ts` — `defaultVictoryConditions` equals the C# defaults; bound constants match InitializeComponent; `clampVictory` min/max tests (percent ≥ 1, time limit 1..1000, time start 1..99, copy semantics); round-trip tests extended with nested `victory` objects (shallow spread + deep-copy mutation isolation).
+
+**Done**
+- `npm run typecheck` passes; `npm test` passes (326 tests, 29 files).
+- Headless screenshots saved (no console errors printed): `shots/06g-victory.png` (via `?screen=wizard&page=victory`) and `shots/06g-start.png` (Start page showing the new summary row).
+
+**Left undone**
+- The original's `lblVictoryThresholdPercentage` ("Victory Threshold Percent") has no visible numeric control in the pasted InitializeComponent excerpt, so `victoryThresholdPercentage` is stored (default 1.0) but not exposed as an input on the page.
+- `chkVictoryTimeStart` is a checkbox in the original (its checked state isn't in the pasted context); the page shows its label + years box without a separate boolean, since the time-start setting applies whenever any victory condition is active.
+- Story-event fields (`EnableStoryEvents`, `DefendHabitat*`, `TargetHabitat*`) are engine-set at start, not wizard-editable — intentionally not ported into `StartGameOptions`.

@@ -1,18 +1,40 @@
-// New-game wizard (tasks 06b/06d): The Galaxy → Your Race → Start pages.
+// New-game wizard (tasks 06b/06d/06e): The Galaxy → Your Race → Your Empire
+// → Start pages.
 // Port of the visual layout of Start.InitializeComponent.cs pnlStartNewGame*
 // panels, modernised like the HUD panels. "The Galaxy" page is task 06b;
-// "Your Race" (race list + portrait/stats detail) and the final summary
-// "Start" page are task 06d.
+// "Your Race" (race list + portrait/stats detail) is task 06d; "Your Empire"
+// (name / government / flag) and the final summary "Start" page are tasks
+// 06e/06d.
 import './newGameWizard.css';
 import { GalaxyShape } from '../../sim/types';
-import { defaultRaceName, defaultStartGameOptions, sectorsFor, starCountFor, type StartGameOptions } from '../../sim/startGameOptions';
+import {
+    applyEmpireDefaults,
+    defaultRaceName,
+    defaultStartGameOptions,
+    FLAG_COLOR_PALETTE,
+    flagShapeUrl,
+    sectorsFor,
+    starCountFor,
+    VICTORY_PERCENT_MIN,
+    VICTORY_TIME_LIMIT_YEARS_MAX,
+    VICTORY_TIME_LIMIT_YEARS_MIN,
+    VICTORY_TIME_START_YEARS_MAX,
+    VICTORY_TIME_START_YEARS_MIN,
+    type StartGameOptions,
+} from '../../sim/startGameOptions';
 import { parseRace, type Race } from '../../sim/data/races';
 import { parseRaceFamilies, type RaceFamily } from '../../sim/data/raceFamilies';
+import { parseGovernments, type Government } from '../../sim/data/governments';
 import { fetchText } from '../../sim/data/fetchData';
 import { resolveDataUrl } from '../../sim/data/paths';
 
 const CHROME = '/assets/dwu/images/ui/chrome/';
 const RACES_DIR = '/assets/dwu/images/units/races/';
+
+/** Task 06e: race name → index among playable races (sorted by name), the
+ * same ordering the "Your Race" page lists them in. Filled lazily by
+ * loadWizardRaceData; falls back to 0 until then. */
+export const PLAYABLE_RACE_INDEX = new Map<string, number>();
 
 export interface ShapeOption {
     shape: GalaxyShape;
@@ -35,24 +57,45 @@ export const SHAPE_OPTIONS: ShapeOption[] = [
 export const STAR_AMOUNT_TICKS = ['Dwarf 100', 'Tiny 250', 'Small 400', 'Standard 700', 'Large 1000', 'Huge 1400'];
 export const PHYSICAL_SIZE_TICKS = ['Tiny 4×4', 'Small 6×6', 'Medium 8×8', 'Large 10×10', 'Huge 15×15 sectors'];
 
+/** Task 06f: tick labels for the remaining "The Galaxy" sliders. Aggression,
+ * Space Creatures and Pirates use the original UI's tick names (gameplay
+ * frame); Colony Prevalence / Alien Life have no named ticks in the original,
+ * so they are labelled Rare … Common evenly across their five cases (the
+ * number of cases in their conversion methods). */
+export const COLONY_PREVALENCE_TICKS = ['Rare', 'Uncommon', 'Less Common', 'Common', 'Very Common'];
+export const ALIEN_LIFE_TICKS = ['Rare', 'Uncommon', 'Less Common', 'Common', 'Very Common'];
+export const SPACE_CREATURES_TICKS = ['None', 'Few', 'Normal', 'Many'];
+export const PIRATES_TICKS = ['None', 'Very Few', 'Few', 'Normal', 'Many', 'Very Many'];
+export const AGGRESSION_TICKS = ['Peaceful', 'Normal', 'Restless', 'Unstable', 'Chaos'];
+export const DIFFICULTY_TICKS = ['Easy', 'Normal', 'Hard', 'Very Hard', 'Extreme'];
+
 export interface NewGameWizardCallbacks {
     onBackToMenu: () => void;
     onStartGame: (options: StartGameOptions) => void;
 }
+
+/** Task 06e: called when the user picks a different race on the "Your Race"
+ * page, so the "Your Empire" page can re-apply its defaults (empire name,
+ * flag colours). `prevRaceName` is the previously selected race. */
+export type WizardRaceChangedHandler = (raceName: string, prevRaceName?: string) => void;
 
 export interface NewGameWizardRefs {
     root: HTMLDivElement;
     destroy: () => void;
 }
 
-/** Wizard page ids / navigation order (task 06d): The Galaxy → Your Race → Start. */
-export type WizardPageId = 'galaxy' | 'race' | 'start';
-export const WIZARD_PAGES: WizardPageId[] = ['galaxy', 'race', 'start'];
+/** Wizard page ids / navigation order (task 06e; task 06g inserts the
+ * "Victory Conditions" page as the last page before Start): The Galaxy →
+ * Your Race → Your Empire → Victory Conditions → Start. */
+export type WizardPageId = 'galaxy' | 'race' | 'empire' | 'victory' | 'start';
+export const WIZARD_PAGES: WizardPageId[] = ['galaxy', 'race', 'empire', 'victory', 'start'];
 
 /** Title-bar text per page ("Start a New Game: <page title>"). */
 export const WIZARD_PAGE_TITLES: Record<WizardPageId, string> = {
     galaxy: 'The Galaxy',
     race: 'Your Race',
+    empire: 'Your Empire',
+    victory: 'Victory Conditions',
     start: 'Start',
 };
 
@@ -60,15 +103,43 @@ export const WIZARD_PAGE_TITLES: Record<WizardPageId, string> = {
 export const WIZARD_BACK_LABELS: Record<WizardPageId, string> = {
     galaxy: '← Main Menu',
     race: '← The Galaxy',
-    start: '← Your Race',
+    empire: '← Your Race',
+    victory: '← Your Empire',
+    start: '← Victory Conditions',
 };
 
 /** Footer forward-button label per page. */
 export const WIZARD_FORWARD_LABELS: Record<WizardPageId, string> = {
     galaxy: 'Next →',
     race: 'Next →',
+    empire: 'Next →',
+    victory: 'Next →',
     start: 'Start Game',
 };
+
+/** Task 06e: the key numeric modifiers shown in the small two-column table
+ * under the government dropdown (fields of the parsed Government, see
+ * src/sim/data/governments.ts). */
+export const GOVERNMENT_MODIFIER_FIELDS: ReadonlyArray<{ key: keyof Government; label: string }> = [
+    { key: 'corruption', label: 'Corruption' },
+    { key: 'warWeariness', label: 'War Weariness' },
+    { key: 'maintenanceCosts', label: 'Maintenance Costs' },
+    { key: 'approvalRating', label: 'Approval Rating' },
+    { key: 'populationGrowth', label: 'Population Growth' },
+    { key: 'researchSpeed', label: 'Research Speed' },
+    { key: 'troopRecruitment', label: 'Troop Recruitment' },
+    { key: 'tradeBonus', label: 'Trade Bonus' },
+    { key: 'stability', label: 'Stability' },
+];
+
+/** Task 06e: governments available to a new player empire at start. The
+ * original's Government type carries an availability field (0 = all empires)
+ * plus specialFunctionCode — storyline-only governments have a non-zero
+ * special function (e.g. 1 = nationalize private sector), so both are
+ * excluded here. */
+export function filterStartGovernments(governments: Government[]): Government[] {
+    return governments.filter((g) => g.availability === 0 && g.specialFunctionCode === 0);
+}
 
 /** Task 06d: every numeric field the race parser has (src/sim/data/races.ts),
  * shown on the "Your Race" page as a two-column stats grid. */
@@ -140,6 +211,13 @@ async function loadWizardRaceData(): Promise<{ races: Race[]; families: RaceFami
         races.push(parseRace(text));
     }
     const families = parseRaceFamilies(familyText);
+    cachedRaces = races;
+    // Task 06e: record each playable race's index in the sorted list so the
+    // "Your Empire" page can derive deterministic flag colours by race index.
+    [...races]
+        .filter((r) => r.playable)
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .forEach((r, i) => PLAYABLE_RACE_INDEX.set(r.name, i));
     return { races, families, missing };
 }
 
@@ -151,9 +229,10 @@ function isRaceFileText(text: string): boolean {
     return first.startsWith("'");
 }
 
-/** Build the new-game wizard (Galaxy → Your Race → Start) and append it to
- * document.body. When opened via ?screen=wizard&page=race the wizard starts
- * on the named page (screenshot/dev hook; main.ts does not pass the page). */
+/** Build the new-game wizard (Galaxy → Your Race → Your Empire → Start) and
+ * append it to document.body. When opened via ?screen=wizard&page=empire the
+ * wizard starts on the named page (screenshot/dev hook; main.ts does not pass
+ * the page). */
 export function createNewGameWizard(callbacks: NewGameWizardCallbacks): NewGameWizardRefs {
     const options: StartGameOptions = defaultStartGameOptions();
     let page: WizardPageId = 'galaxy';
@@ -192,11 +271,15 @@ export function createNewGameWizard(callbacks: NewGameWizardCallbacks): NewGameW
 
     // --- Page containers (built once, shown/hidden on navigation). ---
     const galaxyPage = buildGalaxyPage(options);
-    const racePage = buildRacePage(options);
+    const racePage = buildRacePage(options, handleRaceChanged);
+    const empirePage = buildEmpirePage(options);
+    const victoryPage = buildVictoryPage(options);
     const startPage = buildStartPage(options);
     const pageEls: Record<WizardPageId, HTMLElement> = {
         galaxy: galaxyPage,
         race: racePage,
+        empire: empirePage,
+        victory: victoryPage,
         start: startPage,
     };
     for (const el of Object.values(pageEls)) {
@@ -207,6 +290,15 @@ export function createNewGameWizard(callbacks: NewGameWizardCallbacks): NewGameW
     function refreshStartSummary(): void {
         const refresh = (startPage as unknown as { __refresh?: () => void }).__refresh;
         if (refresh) refresh();
+    }
+
+    /** Task 06e: the "Your Race" page reports a new selection here so the
+     * "Your Empire" page can re-derive its defaults. */
+    function handleRaceChanged(raceName: string): void {
+        const prev = options.raceName;
+        options.raceName = raceName;
+        const handler = (empirePage as unknown as { __onRaceChanged?: WizardRaceChangedHandler }).__onRaceChanged;
+        if (handler) handler(raceName, prev);
     }
 
     // --- Footer (back/forward buttons change per page). ---
@@ -357,6 +449,42 @@ function buildGalaxyPage(options: StartGameOptions): HTMLDivElement {
         options.dimensionIndex = i;
     }));
 
+    // --- Task 06f: remaining "The Galaxy" sliders (below Star Amount /
+    // Physical Size, as in the original). ---
+    wrap.appendChild(makeSlider('Colony Prevalence', COLONY_PREVALENCE_TICKS, options.colonyPrevalenceIndex, (i) => {
+        options.colonyPrevalenceIndex = i;
+    }));
+    wrap.appendChild(makeSlider('Alien Life', ALIEN_LIFE_TICKS, options.alienLifeIndex, (i) => {
+        options.alienLifeIndex = i;
+    }));
+    wrap.appendChild(makeSlider('Space Creatures', SPACE_CREATURES_TICKS, options.spaceCreaturesIndex, (i) => {
+        options.spaceCreaturesIndex = i;
+    }));
+    wrap.appendChild(makeSlider('Pirates', PIRATES_TICKS, options.piratesIndex, (i) => {
+        options.piratesIndex = i;
+    }));
+    wrap.appendChild(makeSlider('Aggression', AGGRESSION_TICKS, options.aggressionIndex, (i) => {
+        options.aggressionIndex = i;
+    }));
+    wrap.appendChild(makeSlider('Difficulty', DIFFICULTY_TICKS, options.difficultyIndex, (i) => {
+        options.difficultyIndex = i;
+    }));
+
+    // "Difficulty scales as player nears victory" (chkStartNewGameTheGalaxyDifficultyScaling).
+    const scalingRow = document.createElement('label');
+    scalingRow.className = 'wizard-checkbox';
+    const scalingCheck = document.createElement('input');
+    scalingCheck.type = 'checkbox';
+    scalingCheck.checked = options.difficultyScaling;
+    scalingCheck.addEventListener('change', () => {
+        options.difficultyScaling = scalingCheck.checked;
+    });
+    scalingRow.appendChild(scalingCheck);
+    const scalingText = document.createElement('span');
+    scalingText.textContent = 'Difficulty scales as player nears victory';
+    scalingRow.appendChild(scalingText);
+    wrap.appendChild(scalingRow);
+
     // --- Seed ---
     const seedRow = document.createElement('div');
     seedRow.className = 'wizard-seed-row';
@@ -387,12 +515,11 @@ function buildGalaxyPage(options: StartGameOptions): HTMLDivElement {
     wrap.appendChild(seedRow);
 
     // TODO(port): remaining wizard pages (playstyle, colonization/territory,
-    // empire, other empires, victory conditions, quick start) —
-    // Start.InitializeComponent.cs pnlStartNewGame* panels other than
-    // pnlStartNewGameTheGalaxy / pnlStartNewGameRace.
+    // other empires, quick start) — Start.InitializeComponent.cs
+    // pnlStartNewGame* panels other than the ones already built.
     const moreTodo = document.createElement('div');
     moreTodo.className = 'wizard-todo';
-    moreTodo.textContent = 'Other wizard pages (playstyle, colonization, empire, victory conditions) — coming later.';
+    moreTodo.textContent = 'Other wizard pages (playstyle, colonization, other empires) — coming later.';
     wrap.appendChild(moreTodo);
 
     return wrap;
@@ -422,7 +549,7 @@ function makeRacePortrait(pictureRef: number, altText: string, className: string
     return img;
 }
 
-function buildRacePage(options: StartGameOptions): HTMLDivElement {
+function buildRacePage(options: StartGameOptions, onRaceChanged?: WizardRaceChangedHandler): HTMLDivElement {
     const wrap = document.createElement('div');
     wrap.className = 'wizard-page wizard-race-page';
 
@@ -445,7 +572,7 @@ function buildRacePage(options: StartGameOptions): HTMLDivElement {
             if (options.raceName === '') {
                 options.raceName = defaultRaceName(races);
             }
-            renderRacePage(wrap, races, families, options);
+            renderRacePage(wrap, races, families, options, onRaceChanged);
             if (missing.length > 0) {
                 const note = document.createElement('div');
                 note.className = 'wizard-race-missing';
@@ -469,6 +596,7 @@ function renderRacePage(
     races: Race[],
     families: RaceFamily[],
     options: StartGameOptions,
+    onRaceChanged?: WizardRaceChangedHandler,
 ): void {
     const sorted = [...races].sort((a, b) => a.name.localeCompare(b.name));
     const familyName = (id: number): string =>
@@ -513,6 +641,8 @@ function renderRacePage(
         for (const item of list.children) {
             item.classList.toggle('selected', (item as HTMLElement).dataset.race === race.name);
         }
+        // Task 06e: let the "Your Empire" page re-derive its defaults.
+        onRaceChanged?.(race.name);
     }
 
     for (const race of sorted) {
@@ -532,6 +662,13 @@ function renderRacePage(
 
     const initial = sorted.find((r) => r.name === options.raceName) ?? sorted.find((r) => r.playable) ?? sorted[0];
     selectRace(initial);
+
+    // Task 06e: expose the race-changed hook to the wizard shell. The
+    // initial selection above already ran onRaceChanged (which re-applies
+    // the empire defaults for that race), so nothing else is needed here.
+    if (onRaceChanged) {
+        (wrap as unknown as { __raceChanged?: WizardRaceChangedHandler }).__raceChanged = onRaceChanged;
+    }
 }
 
 /** Two-column grid cells for every numeric race stat field. */
@@ -552,6 +689,442 @@ function buildStatsCells(race: Race): HTMLElement[] {
         cells.push(cell);
     }
     return cells;
+}
+
+// ---------------------------------------------------------------------------
+// Your Empire page (task 06e): name, government, flag.
+// ---------------------------------------------------------------------------
+
+/** Task 06e: load governments.txt via the same URL resolution the engine
+ * uses (Customization/<set>/ first, base last). A body that is not a real
+ * DW:U .txt file (the dev server's HTML 404 fallback) yields no rows. */
+/** Task 06e: the race's preferred starting government id, or -1 if the race
+ * is unknown / has no preference. The "Your Empire" page uses this to preselect
+ * a sensible default when the user hasn't chosen one yet. */
+export function preferredGovernmentForRace(raceName: string): number {
+    const races = loadWizardRacesSync();
+    const race = races.find((r) => r.name === raceName);
+    return race?.preferredStartingGovernment ?? -1;
+}
+
+/** Synchronous cache of the parsed races, populated by loadWizardRaceData.
+ * (The wizard always loads race data before the empire page needs it.) */
+let cachedRaces: Race[] | null = null;
+function loadWizardRacesSync(): Race[] {
+    return cachedRaces ?? [];
+}
+
+async function loadWizardGovernments(): Promise<Government[]> {
+    const text = await fetchText(resolveDataUrl('governments.txt'));
+    if (!isRaceFileText(text)) {
+        return [];
+    }
+    return parseGovernments(text);
+}
+
+function buildEmpirePage(options: StartGameOptions): HTMLDivElement {
+    const wrap = document.createElement('div');
+    wrap.className = 'wizard-page wizard-empire-page';
+
+    // --- Empire name ---
+    const nameRow = document.createElement('div');
+    nameRow.className = 'wizard-empire-name-row';
+    const nameLabel = document.createElement('span');
+    nameLabel.className = 'wizard-empire-label';
+    nameLabel.textContent = 'Empire Name';
+    nameRow.appendChild(nameLabel);
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.className = 'wizard-empire-name-input';
+    nameInput.value = options.empireName;
+    nameInput.addEventListener('input', () => {
+        // Any user edit marks the name as customised — applyEmpireDefaults
+        // will then leave it alone when the race changes.
+        options.empireName = nameInput.value;
+    });
+    nameRow.appendChild(nameInput);
+    wrap.appendChild(nameRow);
+
+    // --- Government (dropdown + modifier table) ---
+    const govSection = document.createElement('div');
+    govSection.className = 'wizard-empire-gov';
+    const govLabel = document.createElement('span');
+    govLabel.className = 'wizard-empire-label';
+    govLabel.textContent = 'Government';
+    govSection.appendChild(govLabel);
+
+    const govLoading = document.createElement('div');
+    govLoading.className = 'wizard-race-loading';
+    govLoading.textContent = 'Loading governments…';
+    govSection.appendChild(govLoading);
+
+    const govSelect = document.createElement('select');
+    govSelect.className = 'wizard-empire-gov-select';
+    govSelect.style.display = 'none';
+    const govTable = document.createElement('table');
+    govTable.className = 'wizard-empire-gov-table';
+    govTable.style.display = 'none';
+    govSection.appendChild(govSelect);
+    govSection.appendChild(govTable);
+    wrap.appendChild(govSection);
+
+    let governments: Government[] = [];
+
+    function selectedGovernment(): Government | null {
+        return governments.find((g) => g.governmentId === options.governmentId) ?? null;
+    }
+
+    function renderGovModifiers(): void {
+        const gov = selectedGovernment();
+        if (gov === null) {
+            govTable.replaceChildren();
+            return;
+        }
+        const tbody = document.createElement('tbody');
+        for (const { key, label } of GOVERNMENT_MODIFIER_FIELDS) {
+            const value = gov[key];
+            const tr = document.createElement('tr');
+            const tdKey = document.createElement('td');
+            tdKey.textContent = titleCase(label);
+            const tdVal = document.createElement('td');
+            tdVal.textContent = typeof value === 'number' ? String(value) : String(value);
+            tr.appendChild(tdKey);
+            tr.appendChild(tdVal);
+            tbody.appendChild(tr);
+        }
+        govTable.replaceChildren(tbody);
+    }
+
+    function selectGovernment(id: number): void {
+        options.governmentId = id;
+        renderGovModifiers();
+    }
+
+    void loadWizardGovernments()
+        .then((all) => {
+            govLoading.remove();
+            governments = filterStartGovernments(all);
+            if (governments.length === 0) {
+                const note = document.createElement('div');
+                note.className = 'wizard-todo';
+                note.textContent = 'No start-available government data found in this install.';
+                govSection.appendChild(note);
+                return;
+            }
+            // Default selection: the race's preferred starting government
+            // when it is in the available list, else the first available one.
+            if (options.governmentId < 0) {
+                const preferred = preferredGovernmentForRace(options.raceName);
+                options.governmentId =
+                    preferred >= 0 && governments.some((g) => g.governmentId === preferred)
+                        ? preferred
+                        : governments[0].governmentId;
+            }
+            for (const g of governments) {
+                const optEl = document.createElement('option');
+                optEl.value = String(g.governmentId);
+                optEl.textContent = g.name;
+                optEl.selected = g.governmentId === options.governmentId;
+                govSelect.appendChild(optEl);
+            }
+            govSelect.addEventListener('change', () => {
+                selectGovernment(parseInt(govSelect.value, 10));
+            });
+            govSelect.style.display = '';
+            govTable.style.display = '';
+            renderGovModifiers();
+        })
+        .catch((err) => {
+            govLoading.remove();
+            const error = document.createElement('div');
+            error.className = 'wizard-race-error';
+            error.textContent = `Failed to load government data: ${String(err)}`;
+            govSection.appendChild(error);
+        });
+
+    // --- Flag: shape grid + colour pickers + preview ---
+    const flagSection = document.createElement('div');
+    flagSection.className = 'wizard-empire-flag';
+    const flagLabel = document.createElement('span');
+    flagLabel.className = 'wizard-empire-label';
+    flagLabel.textContent = 'Flag';
+    flagSection.appendChild(flagLabel);
+
+    const flagGrid = document.createElement('div');
+    flagGrid.className = 'wizard-empire-flag-grid';
+    flagSection.appendChild(flagGrid);
+
+    const colorRow = document.createElement('div');
+    colorRow.className = 'wizard-empire-color-row';
+    for (const [labelText, prop] of [['Primary Colour', 'primaryColor'], ['Secondary Colour', 'secondaryColor']] as const) {
+        const cell = document.createElement('div');
+        cell.className = 'wizard-empire-color-cell';
+        const span = document.createElement('span');
+        span.textContent = labelText;
+        const input = document.createElement('input');
+        input.type = 'color';
+        input.className = 'wizard-empire-color-input';
+        input.value = options[prop] || '#808080';
+        input.addEventListener('input', () => {
+            options[prop] = input.value;
+            updateFlagPreview();
+        });
+        cell.appendChild(span);
+        cell.appendChild(input);
+        colorRow.appendChild(cell);
+    }
+    flagSection.appendChild(colorRow);
+
+    const previewWrap = document.createElement('div');
+    previewWrap.className = 'wizard-empire-flag-preview-wrap';
+    const previewBg = document.createElement('div');
+    previewBg.className = 'wizard-empire-flag-preview-bg';
+    const previewShape = document.createElement('div');
+    previewShape.className = 'wizard-empire-flag-preview-shape';
+    previewWrap.appendChild(previewBg);
+    previewWrap.appendChild(previewShape);
+    flagSection.appendChild(previewWrap);
+    wrap.appendChild(flagSection);
+
+    function updateFlagPreview(): void {
+        const url = flagShapeUrl(options.flagShapeIndex >= 0 ? options.flagShapeIndex : 0);
+        previewBg.style.background = options.primaryColor || '#808080';
+        previewShape.style.backgroundColor = options.secondaryColor || '#ffffff';
+        previewShape.style.maskImage = `url(${url})`;
+        previewShape.style.webkitMaskImage = `url(${url})`;
+        previewShape.style.maskSize = 'contain';
+        previewShape.style.webkitMaskSize = 'contain';
+        previewShape.style.maskRepeat = 'no-repeat';
+        previewShape.style.webkitMaskRepeat = 'no-repeat';
+        previewShape.style.maskPosition = 'center';
+        previewShape.style.webkitMaskPosition = 'center';
+    }
+
+    function selectFlagShape(index: number): void {
+        options.flagShapeIndex = index;
+        for (const child of flagGrid.children) {
+            (child as HTMLElement).classList.toggle('selected', Number((child as HTMLElement).dataset.index) === index);
+        }
+        updateFlagPreview();
+    }
+
+    for (let i = 0; i < 83; i++) {
+        const tile = document.createElement('button');
+        tile.type = 'button';
+        tile.className = 'wizard-empire-flag-tile';
+        tile.dataset.index = String(i);
+        const img = document.createElement('img');
+        img.src = flagShapeUrl(i);
+        img.alt = `Flag shape ${i}`;
+        img.loading = 'lazy';
+        tile.appendChild(img);
+        tile.addEventListener('click', () => selectFlagShape(i));
+        flagGrid.appendChild(tile);
+    }
+
+    /** Task 06e: re-apply the "Your Empire" defaults when the race changes
+     * (name auto-update rule + deterministic flag colours by race index),
+     * then refresh the UI controls to match. */
+    function onRaceChanged(raceName: string, prevRaceName?: string): void {
+        const raceIndex = Math.max(0, PLAYABLE_RACE_INDEX.get(raceName) ?? 0);
+        applyEmpireDefaults(options, raceIndex, prevRaceName);
+        nameInput.value = options.empireName;
+        const colorInputs = colorRow.querySelectorAll<HTMLInputElement>('input[type="color"]');
+        if (colorInputs.length >= 2) {
+            colorInputs[0].value = options.primaryColor;
+            colorInputs[1].value = options.secondaryColor;
+        }
+        if (options.flagShapeIndex >= 0) {
+            for (const child of flagGrid.children) {
+                (child as HTMLElement).classList.toggle('selected', Number((child as HTMLElement).dataset.index) === options.flagShapeIndex);
+            }
+        }
+        updateFlagPreview();
+    }
+    (wrap as unknown as { __onRaceChanged?: WizardRaceChangedHandler }).__onRaceChanged = onRaceChanged;
+
+    // Initial paint: apply defaults once so the controls show something even
+    // before any race has been picked (raceName '' → race index 0).
+    onRaceChanged(options.raceName);
+
+    return wrap;
+}
+
+// ---------------------------------------------------------------------------
+// Victory Conditions page (task 06g): victory types + thresholds, time
+// limits, event toggles. Port of the visual layout of
+// Start.InitializeComponent.cs pnlStartNewGameVictoryConditions controls.
+// ---------------------------------------------------------------------------
+
+/** Task 06g: checkbox row bound to a boolean field of options.victory. */
+function makeVictoryCheckbox(
+    wrap: HTMLDivElement,
+    label: string,
+    get: () => boolean,
+    set: (v: boolean) => void,
+): void {
+    const row = document.createElement('label');
+    row.className = 'wizard-checkbox';
+    const check = document.createElement('input');
+    check.type = 'checkbox';
+    check.checked = get();
+    check.addEventListener('change', () => set(check.checked));
+    row.appendChild(check);
+    const span = document.createElement('span');
+    span.textContent = label;
+    row.appendChild(span);
+    wrap.appendChild(row);
+}
+
+/** Task 06g: "Label … <number input> years/%" row for one numeric victory
+ * control (percent boxes or year boxes), clamped into [min, max] on edit. */
+function makeVictoryNumberRow(
+    wrap: HTMLDivElement,
+    prefix: string,
+    suffix: string,
+    min: number,
+    max: number,
+    get: () => number,
+    set: (v: number) => void,
+): void {
+    const row = document.createElement('div');
+    row.className = 'wizard-victory-number-row';
+    const pre = document.createElement('span');
+    pre.textContent = prefix;
+    row.appendChild(pre);
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.className = 'wizard-victory-number-input';
+    input.min = String(min);
+    input.max = String(max);
+    input.step = '1';
+    input.value = String(get());
+    input.addEventListener('input', () => {
+        const v = parseInt(input.value, 10);
+        if (!Number.isNaN(v)) {
+            set(Math.min(max, Math.max(min, v)));
+        }
+    });
+    row.appendChild(input);
+    const post = document.createElement('span');
+    post.textContent = suffix;
+    row.appendChild(post);
+    wrap.appendChild(row);
+}
+
+function buildVictoryPage(options: StartGameOptions): HTMLDivElement {
+    const wrap = document.createElement('div');
+    wrap.className = 'wizard-page wizard-victory-page';
+    const v = options.victory;
+
+    // --- Sandbox note (lblVictorySandbox). ---
+    const sandboxNote = document.createElement('div');
+    sandboxNote.className = 'wizard-victory-sandbox';
+    sandboxNote.textContent = 'Leave all Victory Conditions unchecked to play in Sandbox mode (open play)';
+    wrap.appendChild(sandboxNote);
+
+    // --- Victory types with their threshold rows. The original labels embed
+    // the percent value inside the checkbox text ("… generates   % of galaxy
+    // total"); here the checkbox carries the type name and the threshold is
+    // a separate "… <n> % of …" row below it. ---
+    const sectionTypes = document.createElement('div');
+    sectionTypes.className = 'wizard-victory-section';
+    wrap.appendChild(sectionTypes);
+
+    makeVictoryCheckbox(sectionTypes, 'Territory: control % of colonies in galaxy', () => v.territory, (x) => {
+        v.territory = x;
+    });
+    makeVictoryNumberRow(
+        sectionTypes,
+        '',
+        '% of colonies in galaxy',
+        VICTORY_PERCENT_MIN,
+        Number.MAX_SAFE_INTEGER,
+        () => v.territoryPercent,
+        (x) => {
+            v.territoryPercent = x;
+        },
+    );
+
+    makeVictoryCheckbox(sectionTypes, 'Population: control % of population in galaxy', () => v.population, (x) => {
+        v.population = x;
+    });
+    makeVictoryNumberRow(
+        sectionTypes,
+        '',
+        '% of population in galaxy',
+        VICTORY_PERCENT_MIN,
+        Number.MAX_SAFE_INTEGER,
+        () => v.populationPercent,
+        (x) => {
+            v.populationPercent = x;
+        },
+    );
+
+    makeVictoryCheckbox(sectionTypes, 'Economy: private economy generates % of galaxy total', () => v.economy, (x) => {
+        v.economy = x;
+    });
+    makeVictoryNumberRow(
+        sectionTypes,
+        '',
+        '% of galaxy total',
+        VICTORY_PERCENT_MIN,
+        Number.MAX_SAFE_INTEGER,
+        () => v.economyPercent,
+        (x) => {
+            v.economyPercent = x;
+        },
+    );
+
+    // --- Time limit / time start (chkVictoryTimeLimit / chkVictoryTimeStart). ---
+    const sectionTime = document.createElement('div');
+    sectionTime.className = 'wizard-victory-section';
+    wrap.appendChild(sectionTime);
+
+    makeVictoryCheckbox(sectionTime, 'Time Limit: game finishes after years', () => v.timeLimit, (x) => {
+        v.timeLimit = x;
+    });
+    makeVictoryNumberRow(
+        sectionTime,
+        '',
+        'years',
+        VICTORY_TIME_LIMIT_YEARS_MIN,
+        VICTORY_TIME_LIMIT_YEARS_MAX,
+        () => v.timeLimitYears,
+        (x) => {
+            v.timeLimitYears = x;
+        },
+    );
+
+    makeVictoryCheckbox(sectionTime, 'Victory Conditions apply after years', () => true, () => {});
+    makeVictoryNumberRow(
+        sectionTime,
+        '',
+        'years',
+        VICTORY_TIME_START_YEARS_MIN,
+        VICTORY_TIME_START_YEARS_MAX,
+        () => v.startDateYears,
+        (x) => {
+            v.startDateYears = x;
+        },
+    );
+
+    // --- Event toggles (chkVictoryEnable*). ---
+    const sectionEvents = document.createElement('div');
+    sectionEvents.className = 'wizard-victory-section';
+    wrap.appendChild(sectionEvents);
+
+    makeVictoryCheckbox(sectionEvents, 'Enable Disasters and other events', () => v.enableDisasterEvents, (x) => {
+        v.enableDisasterEvents = x;
+    });
+    makeVictoryCheckbox(sectionEvents, 'Enable race-specific victory conditions', () => v.enableRaceSpecificConditions, (x) => {
+        v.enableRaceSpecificConditions = x;
+    });
+    makeVictoryCheckbox(sectionEvents, 'Enable race-specific events', () => v.enableRaceSpecificEvents, (x) => {
+        v.enableRaceSpecificEvents = x;
+    });
+
+    return wrap;
 }
 
 // ---------------------------------------------------------------------------
@@ -582,7 +1155,30 @@ function buildStartPage(options: StartGameOptions): HTMLDivElement {
             ['Galaxy Shape', shapeOpt.label],
             ['Star Amount', STAR_AMOUNT_TICKS[options.starCountIndex] ?? `${starCountFor(options.starCountIndex)} stars`],
             ['Physical Size', PHYSICAL_SIZE_TICKS[options.dimensionIndex] ?? `${sectorsFor(options.dimensionIndex)}×${sectorsFor(options.dimensionIndex)} sectors`],
+            ['Colony Prevalence', COLONY_PREVALENCE_TICKS[options.colonyPrevalenceIndex] ?? `index ${options.colonyPrevalenceIndex}`],
+            ['Alien Life', ALIEN_LIFE_TICKS[options.alienLifeIndex] ?? `index ${options.alienLifeIndex}`],
+            ['Space Creatures', SPACE_CREATURES_TICKS[options.spaceCreaturesIndex] ?? `index ${options.spaceCreaturesIndex}`],
+            ['Pirates', PIRATES_TICKS[options.piratesIndex] ?? `index ${options.piratesIndex}`],
+            ['Aggression', AGGRESSION_TICKS[options.aggressionIndex] ?? `index ${options.aggressionIndex}`],
+            ['Difficulty', DIFFICULTY_TICKS[options.difficultyIndex] ?? `index ${options.difficultyIndex}` + (options.difficultyScaling ? ' (scales near victory)' : '')],
             ['Your Race', options.raceName || '(not chosen)'],
+            ['Empire Name', options.empireName || '(not set)'],
+            ['Government', options.governmentId >= 0 ? `#${options.governmentId}` : '(not chosen)'],
+            ['Flag', `shape ${options.flagShapeIndex} · ${options.primaryColor} / ${options.secondaryColor}`],
+            // Task 06g: victory conditions summary (sandbox when none checked).
+            [
+                'Victory Conditions',
+                options.victory.territory || options.victory.population || options.victory.economy || options.victory.timeLimit
+                    ? [
+                        options.victory.territory && `Territory ≥ ${options.victory.territoryPercent}%`,
+                        options.victory.population && `Population ≥ ${options.victory.populationPercent}%`,
+                        options.victory.economy && `Economy ≥ ${options.victory.economyPercent}%`,
+                        options.victory.timeLimit && `Time limit ${options.victory.timeLimitYears}y`,
+                    ]
+                        .filter(Boolean)
+                        .join(', ') + ` (apply after ${options.victory.startDateYears}y)`
+                    : 'Sandbox mode (no victory conditions)',
+            ],
             ['Seed', String(options.seed)],
         ];
         summary.replaceChildren(...rows.map(([k, v]) => {
