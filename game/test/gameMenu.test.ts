@@ -2,9 +2,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { GalaxyTime } from '../src/sim/clock';
 import { pauseForMenu, restorePauseState } from '../src/ui/screens/gameMenu';
 import {
+    clearSettingsListeners,
     DEFAULT_SETTINGS,
     getSettings,
     loadSettings,
+    onSettingsChange,
     setSettingsStorage,
     uiScaleFactor,
     updateSettings,
@@ -36,10 +38,12 @@ describe('settings persist/restore (task 10c)', () => {
     beforeEach(() => {
         storage = makeFakeStorage();
         setSettingsStorage(storage);
+        clearSettingsListeners();
     });
 
     afterEach(() => {
         setSettingsStorage(null);
+        clearSettingsListeners();
     });
 
     it('returns defaults when nothing has been stored', () => {
@@ -73,6 +77,49 @@ describe('settings persist/restore (task 10c)', () => {
         updateSettings({ uiScale: 110, showSystemNames: false });
         expect(uiScaleFactor()).toBeCloseTo(1.1);
         expect(getSettings().showSystemNames).toBe(false);
+    });
+
+    // Task 10f: subscribers are told about every settings change so the HUD
+    // (UI scale) can react immediately.
+    it('fires onSettingsChange after an update with the new state', () => {
+        const seen: number[] = [];
+        const off = onSettingsChange((s) => {
+            seen.push(s.uiScale);
+        });
+        try {
+            updateSettings({ uiScale: 90 });
+            updateSettings({ uiScale: 125 });
+            expect(seen).toEqual([90, 125]);
+        } finally {
+            off();
+        }
+    });
+
+    it('stops notifying after unsubscribe', () => {
+        let calls = 0;
+        const off = onSettingsChange(() => {
+            calls++;
+        });
+        updateSettings({ uiScale: 90 });
+        off();
+        updateSettings({ uiScale: 110 });
+        expect(calls).toBe(1);
+    });
+
+    it('survives a listener that throws', () => {
+        onSettingsChange(() => {
+            throw new Error('broken');
+        });
+        let ok = false;
+        const off = onSettingsChange(() => {
+            ok = true;
+        });
+        try {
+            expect(() => updateSettings({ uiScale: 90 })).not.toThrow();
+            expect(ok).toBe(true);
+        } finally {
+            off();
+        }
     });
 });
 

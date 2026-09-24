@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { chromeButtonFile, clearHudMessages, formatCashflow, formatClockLabel, formatMoney, formatPopulation, getHudMessages, habitatTypeLabel, pushHudMessage, resourceIconUrl } from '../src/ui/hud';
-import { computeHudLayout } from '../src/ui/hudLayout';
+import { chromeButtonFile, clearHudMessages, formatCashflow, formatClockLabel, formatMoney, formatPopulation, getHudMessages, habitatTypeLabel, hudTransformOrigin, pushHudMessage, resourceIconUrl } from '../src/ui/hud';
+import { computeHudLayout, TOP_BAR_BUTTONS } from '../src/ui/hudLayout';
 import { START_STAR_DATE } from '../src/sim/galaxyTime';
 import { HabitatCategoryType, HabitatType } from '../src/sim/types';
 
@@ -120,6 +120,31 @@ describe('message ring buffer (task 10d)', () => {
         pushHudMessage('b');
         expect([...getHudMessages()]).toEqual(['a', 'b']);
         clearHudMessages();
+    });
+});
+
+describe('hudTransformOrigin (task 10f)', () => {
+    const layout = computeHudLayout(1920, 1080);
+    const rectFor = (name: string) => layout[name] ?? { x: 0, y: 0, w: 0, h: 0 };
+
+    it('scales right-anchored panels from their right edge', () => {
+        expect(hudTransformOrigin('pnlMoney', rectFor('pnlMoney'))).toBe('100% 0');
+        expect(hudTransformOrigin('pnlOptionsList', rectFor('pnlOptionsList'))).toBe('100% 100%');
+    });
+
+    it('scales the bottom-left selection panel from its bottom edge', () => {
+        expect(hudTransformOrigin('pnlSelection', rectFor('pnlSelection'))).toBe('0 100%');
+    });
+
+    it('scales top-middle elements from top-centre', () => {
+        expect(hudTransformOrigin('lstMessages', rectFor('lstMessages'))).toBe('50% 0');
+        for (const name of TOP_BAR_BUTTONS) {
+            expect(hudTransformOrigin(name, rectFor(name)), `${name} should scale from top-centre`).toBe('50% 0');
+        }
+    });
+
+    it('defaults other elements to top-left', () => {
+        expect(hudTransformOrigin('pnlTopLeftBar', rectFor('pnlTopLeftBar'))).toBe('0 0');
     });
 });
 

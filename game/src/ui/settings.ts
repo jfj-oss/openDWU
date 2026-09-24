@@ -113,7 +113,44 @@ export function updateSettings(patch: Partial<UiSettings>): UiSettings {
     current = next;
     saveSettings(next);
     applySoundSettings(next);
+    notifySettingsListeners(next);
     return next;
+}
+
+// ---------------------------------------------------------------------------
+// Change notifications (task 10f): subscribers are told about every settings
+// change so the HUD (UI scale) and other systems can react immediately. The
+// Main View renderer reads its flags per frame instead of subscribing.
+// ---------------------------------------------------------------------------
+
+type SettingsListener = (settings: UiSettings) => void;
+
+const settingsListeners: SettingsListener[] = [];
+
+/** Register a callback fired after any settings change (i.e. after
+ * {@link updateSettings} has applied and persisted the new state). Returns
+ * an unsubscribe function. */
+export function onSettingsChange(cb: SettingsListener): () => void {
+    settingsListeners.push(cb);
+    return () => {
+        const i = settingsListeners.indexOf(cb);
+        if (i >= 0) settingsListeners.splice(i, 1);
+    };
+}
+
+/** Test hook: drop all registered listeners. */
+export function clearSettingsListeners(): void {
+    settingsListeners.length = 0;
+}
+
+function notifySettingsListeners(s: UiSettings): void {
+    for (const cb of settingsListeners) {
+        try {
+            cb(s);
+        } catch {
+            // A broken listener must never break a settings change.
+        }
+    }
 }
 
 /** Push the sound settings into the live effects player. Best-effort: the

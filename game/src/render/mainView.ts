@@ -43,6 +43,7 @@ import { GalaxyLocation, GalaxyLocationType } from '../sim/galaxyLocation';
 import { Habitat, HabitatCategoryType, HabitatType, SystemInfo } from '../sim/types';
 import { NebulaCloudGenerator } from './nebulaClouds';
 import { EmpireLayer } from './empireLayer';
+import { showRegionLabels, showSystemNames } from '../ui/settings';
 
 export function fadeIn(v: number, a: number, b: number): number {
     if (v <= a) {
@@ -1021,8 +1022,9 @@ export class MainView {
                 continue;
             }
             // Decide label visibility greedily (min 80 px between labels).
+            // Task 10f: the "Show system names" setting disables them entirely.
             const s = cam.worldToScreen(star.xpos, star.ypos);
-            let allow = z > labelZoom;
+            let allow = z > labelZoom && showSystemNames();
             if (allow) {
                 for (const k of kept) {
                     const dx = k.x - s.x;
@@ -1056,11 +1058,16 @@ export class MainView {
 
         // Region/nebula location name labels (task 08f1): visible while the
         // original's zoom factor double_15 satisfies 70 < double_15 <=
-        // double_5 (the full-galaxy factor = 1/minZoom).
-        const factor = 1 / z;
-        const maxFactor = 1 / m;
-        for (const rl of this.regionLabelViews) {
-            rl.update(cam, factor, maxFactor);
+        // double_5 (the full-galaxy factor = 1/minZoom). Task 10f: the
+        // "Show region labels" setting hides the whole layer.
+        const showRegions = showRegionLabels();
+        this.regionLabels.visible = showRegions;
+        if (showRegions) {
+            const factor = 1 / z;
+            const maxFactor = 1 / m;
+            for (const rl of this.regionLabelViews) {
+                rl.update(cam, factor, maxFactor);
+            }
         }
 
         // Task 08g: keep the selection ring around the selected object.

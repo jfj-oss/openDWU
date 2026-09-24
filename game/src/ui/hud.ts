@@ -1,4 +1,5 @@
-import { computeHudLayout, CYCLE_CHIPS, VIEW_ROWS, type Rect, type ViewRowKey } from './hudLayout';
+import { computeHudLayout, CYCLE_CHIPS, TOP_BAR_BUTTONS, VIEW_ROWS, type Rect, type ViewRowKey } from './hudLayout';
+import { onSettingsChange, uiScaleFactor } from './settings';
 import { GalaxyTime } from '../sim/clock';
 import { resolveStarDateDescription } from '../sim/galaxyTime';
 import { createMapOverlayState, OVERLAY_ROWS, toggleOverlay, type MapOverlayState } from './mapOverlays';
@@ -87,6 +88,43 @@ const VIEW_ROW_CONTROL: Partial<Record<ViewRowKey, string>> = {
 
 /** Planet-level ("100%") camera zoom: 1 px per world unit. */
 export const PLANET_LEVEL_ZOOM = 1;
+
+// ---------------------------------------------------------------------------
+// UI scale (task 10f): each HUD element is scaled about its anchored corner so
+// the panel edges stay pinned to the screen edge/corner at any scale. The
+// origin follows the element's anchor in computeHudLayout: top-left panels
+// scale from top-left, right-anchored panels from their right edge, the
+// bottom-right options list from bottom-right, and the top-middle message
+// panel + launch row from top-centre.
+// ---------------------------------------------------------------------------
+
+/** CSS `transform-origin` for a HUD element name given its layout rect. Pure
+ * (no window access) so node-based tests can exercise the mapping: the
+ * bottom-left selection panel is the only element anchored to the bottom edge,
+ * and every other element anchors top-left except the special cases below. */
+export function hudTransformOrigin(name: string, _rect: Rect): string {
+    if (name === 'pnlOptionsList') return '100% 100%'; // bottom-right anchored
+    if (name === 'pnlMoney') return '100% 0'; // top-right anchored
+    if (name === 'lstMessages' || (TOP_BAR_BUTTONS as readonly string[]).includes(name)) {
+        return '50% 0'; // top-middle: scale from top-centre
+    }
+    if (name === 'pnlSelection') return '0 100%'; // bottom-left anchored
+    return '0 0'; // default: top-left anchored
+}
+
+/** Apply the UI scale setting to every HUD element: `transform: scale(s)`
+ * about the element's anchored corner (see {@link hudTransformOrigin}). A
+ * factor of 1 clears the transform entirely. */
+export function applyHudScale(refs: HudRefs): void {
+    const s = uiScaleFactor();
+    const layout = computeHudLayout(window.innerWidth, window.innerHeight);
+    for (const [name, el] of refs.elements) {
+        const rect = layout[name];
+        if (!rect) continue;
+        el.style.transformOrigin = hudTransformOrigin(name, rect);
+        el.style.transform = s === 1 ? '' : `scale(${s})`;
+    }
+}
 
 /** System-level view: show ~1 sector (the original's system zoom band). */
 export const SYSTEM_LEVEL_ZOOM = 0.001;
@@ -215,6 +253,11 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
     // Task 10d: bind the message ticker's five lines to the ring buffer.
     setMessageLineElements(elements.get('lstMessages') ?? null);
 
+    // Task 10f: apply the persisted UI scale on startup and re-apply it
+    // immediately whenever a settings change updates it (Escape menu).
+    applyHudScale(refs);
+    onSettingsChange(() => applyHudScale(refs));
+
     document.body.appendChild(root);
     return refs;
 }
@@ -242,6 +285,8 @@ export function layoutHud(refs: HudRefs): void {
             el.style.bottom = `${Math.max(0, window.innerHeight - rect.y - rect.h)}px`;
         }
     }
+    // Task 10f: keep the UI scale applied after a re-layout.
+    applyHudScale(refs);
 }
 
 // ---------------------------------------------------------------------------
