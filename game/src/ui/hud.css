@@ -71,9 +71,12 @@
     background: rgba(38, 42, 48, 0.9);
 }
 
-/* Panels: dark translucent boxes per the task style spec. */
+/* Panels: dark, near-opaque boxes so map star labels don't show through
+   (task 05d); a slight blur keeps any bleed-through soft. */
 .hud-panel {
-    background: rgba(18, 20, 24, 0.85);
+    background: rgba(14, 16, 20, 0.94);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 6px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
@@ -178,46 +181,47 @@
     margin-top: 8px;
     flex-wrap: wrap;
 }
+/* Cycle chips: compact text pills (the original's cycle<X>.png art bakes a
+   "›" arrow into each icon, so chips are labels instead — task 05d). */
 .hud-chip {
     pointer-events: auto;
-    background: rgba(24, 26, 30, 0.85);
+    background: transparent;
     border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 6px;
+    border-radius: 999px;
     cursor: pointer;
-    padding: 2px;
+    padding: 4px 8px;
+    font-size: 11px;
+    line-height: 1;
+    color: #9aa3ad;
+    white-space: nowrap;
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    min-width: 26px;
-    min-height: 26px;
-}
-.hud-chip img {
-    width: 20px;
-    height: 20px;
-    object-fit: contain;
-    user-select: none;
-    -webkit-user-drag: none;
 }
 .hud-chip:hover {
-    background: rgba(38, 42, 48, 0.9);
+    background: rgba(255, 255, 255, 0.06);
 }
 .hud-chip-active {
+    background: rgba(255, 255, 255, 0.12);
     border-color: rgba(120, 170, 255, 0.6);
-}
-.hud-chip-text {
-    font-size: 10px;
-    color: #9aa3ad;
-    min-width: 0;
-    padding: 0 6px;
+    color: #fff;
 }
 
-/* Options list (bottom-right). */
+/* Options list (bottom-right). Content-sized (task 05d): the layout gives it
+   no fixed height; if the window is shorter than the list it scrolls. */
+.hud-options {
+    height: auto !important;
+    max-height: calc(100vh - 140px);
+    overflow-y: auto;
+}
 .hud-section-head {
     color: #9aa3ad;
     font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    margin: 4px 0 2px;
+    margin: 8px 0 2px;
+}
+.hud-section-head:first-child {
+    margin-top: 0;
 }
 .hud-option-row {
     pointer-events: auto;
@@ -229,7 +233,9 @@
     border: none;
     border-radius: 6px;
     cursor: pointer;
-    padding: 3px 6px;
+    padding: 0 6px;
+    height: 20px;
+    line-height: 20px;
     color: #fff;
     font-size: 12px;
     font-family: inherit;

@@ -1,4 +1,4 @@
-import { computeHudLayout, CYCLE_CHIPS, VIEW_ROWS, type CycleChipKey, type Rect, type ViewRowKey } from './hudLayout';
+import { computeHudLayout, CYCLE_CHIPS, VIEW_ROWS, type Rect, type ViewRowKey } from './hudLayout';
 import { createGameClock, stepSpeed, type GameClock } from '../sim/clock';
 import { createMapOverlayState, OVERLAY_ROWS, toggleOverlay, type MapOverlayState } from './mapOverlays';
 import { Camera } from '../render/camera';
@@ -36,14 +36,6 @@ export const CHROME_BUTTONS: Record<string, string | null> = {
     btnHelp: 'galactopediaButton.png',
     // Runtime bitmaps in the original (bitmap_45/46) — not chrome files.
     btnPlayPause: null,
-    // Selection panel cycle chips (icon row in the streamlined footer).
-    btnCycleBases: 'cycleBases.png',
-    btnCycleColonies: 'cycleColonies.png',
-    btnCycleConstruction: 'cycleConstruction.png',
-    btnCycleIdleShips: 'cycleIdleShips.png',
-    btnCycleMilitary: 'cycleMilitary.png',
-    btnCycleOther: 'cycleOther.png',
-    btnCycleShipGroups: 'cycleFleets.png',
     // System-map zoom rows (C# names use lowercase "Colony"/"In"; the chrome
     // folder only contains the lowercase-z variants).
     btnZoomColony: 'zoomcolony.png',
@@ -66,17 +58,6 @@ export function chromeButtonFile(name: string): string | null {
 const TOP_BAR_TEXT_LABELS: Record<string, string> = {
     btnEmpireSummary: 'Empire',
     tbtnResearch: 'Research',
-};
-
-/** Cycle chip key → original cycle-button control name (for its icon art). */
-const CHIP_CONTROL: Record<CycleChipKey, string> = {
-    colonies: 'btnCycleColonies',
-    bases: 'btnCycleBases',
-    military: 'btnCycleMilitary',
-    construction: 'btnCycleConstruction',
-    other: 'btnCycleOther',
-    fleets: 'btnCycleShipGroups',
-    idleShips: 'btnCycleIdleShips',
 };
 
 /** View row key → original zoom-button control name (for its icon art). */
@@ -170,6 +151,12 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
         el.classList.add('hud-el');
         el.dataset.hud = name;
         applyRect(el, rect);
+        // The options list is content-sized (rect.h === 0): anchor it to the
+        // window's bottom-right corner instead of a fixed top offset.
+        if (name === 'pnlOptionsList' && rect.h === 0) {
+            el.style.top = '';
+            el.style.bottom = `${Math.max(0, window.innerHeight - rect.y - rect.h)}px`;
+        }
         root.appendChild(el);
         elements.set(name, el);
     }
@@ -191,6 +178,10 @@ export function layoutHud(refs: HudRefs): void {
     for (const [name, el] of refs.elements) {
         const rect = layout[name];
         if (rect) applyRect(el, rect);
+        if (name === 'pnlOptionsList' && rect && rect.h === 0) {
+            el.style.top = '';
+            el.style.bottom = `${Math.max(0, window.innerHeight - rect.y - rect.h)}px`;
+        }
     }
 }
 
@@ -372,7 +363,7 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
     footer.className = 'hud-selection-footer';
     const back = makeGlyphButton('‹', 'Previous');
     const fwd = makeGlyphButton('›', 'Next');
-    let activeChip: CycleChipKey = 'colonies';
+    let activeChip = 'colonies';
     back.addEventListener('click', () => console.log(`TODO(cycle): ${activeChip} back`));
     fwd.addEventListener('click', () => console.log(`TODO(cycle): ${activeChip} forward`));
     footer.append(back, fwd);
@@ -381,17 +372,9 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         b.type = 'button';
         b.className = 'hud-chip';
         b.title = chip.label;
-        const file = chromeButtonFile(CHIP_CONTROL[chip.key]);
-        if (file) {
-            const img = document.createElement('img');
-            img.src = `/assets/dwu/images/ui/chrome/${file}`;
-            img.alt = '';
-            img.draggable = false;
-            b.appendChild(img);
-        } else {
-            b.classList.add('hud-chip-text');
-            b.textContent = chip.label;
-        }
+        // Text pill, not the original's cycle<X>.png art: that art bakes a
+        // "›" arrow into each icon (task 05d).
+        b.textContent = chip.label;
         b.addEventListener('click', () => {
             activeChip = chip.key;
             footer.querySelectorAll('.hud-chip').forEach((c) => c.classList.remove('hud-chip-active'));

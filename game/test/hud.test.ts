@@ -16,7 +16,8 @@ describe('chromeButtonFile', () => {
         expect(chromeButtonFile('btnGameMenu')).toBe('gameOptionsButton.png');
         expect(chromeButtonFile('btnHelp')).toBe('galactopediaButton.png');
         expect(chromeButtonFile('btnHistoryMessages')).toBe('messagesButton.png');
-        expect(chromeButtonFile('btnCycleShipGroups')).toBe('cycleFleets.png');
+        // Cycle chips are text pills now (task 05d) — no chrome files.
+        expect(chromeButtonFile('btnCycleShipGroups')).toBeNull();
         expect(chromeButtonFile('btnZoomIn')).toBe('zoomin.png');
         expect(chromeButtonFile('btnZoomColony')).toBe('zoomcolony.png');
     });
@@ -127,6 +128,6 @@ describe('streamlined HUD element set (task 05c)', () => {
         expect(layout['pnlTopLeftBar']).toEqual({ x: 10, y: 10, w: 300, h: 40 });
         expect(layout['pnlMoney'].x).toBe(1920 - 230 - 10);
         expect(layout['pnlSelection']).toEqual({ x: 10, y: 1080 - 220 - 10, w: 300, h: 220 });
-        expect(layout['pnlOptionsList']).toEqual({ x: 1920 - 220 - 10, y: 1080 - 400 - 10, w: 220, h: 400 });
+        expect(layout['pnlOptionsList']).toEqual({ x: 1920 - 220 - 10, y: 1080 - 10, w: 220, h: 0 });
     });
 });

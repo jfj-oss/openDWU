@@ -31,8 +31,9 @@ describe('computeHudLayout (streamlined, task 05c)', () => {
             // Selection panel anchored bottom-left with a 10 px margin.
             expect(l['pnlSelection']).toEqual({ x: 10, y: height - 220 - 10, w: 300, h: 220 });
 
-            // Options list anchored bottom-right with a 10 px margin.
-            expect(l['pnlOptionsList']).toEqual({ x: width - 220 - 10, y: height - 400 - 10, w: 220, h: 400 });
+            // Options list anchored bottom-right with a 10 px margin; height is
+            // content-driven (h = 0, task 05d) so it fits at any window size.
+            expect(l['pnlOptionsList']).toEqual({ x: width - 220 - 10, y: height - 10, w: 220, h: 0 });
 
             // Every rect stays inside the screen.
             for (const r of Object.values(l)) {

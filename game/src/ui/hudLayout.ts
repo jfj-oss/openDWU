@@ -28,15 +28,17 @@ export const TOP_BAR_BUTTONS = [
     'btnGalacticHistory',
 ] as const;
 
-/** Cycle chips of the streamlined selection panel footer. */
+/** Cycle chips of the streamlined selection panel footer. The original's
+    cycle<X>.png art bakes a "›" arrow into each icon, so the chips render
+    as short text labels instead (task 05d). */
 export const CYCLE_CHIPS = [
     { key: 'colonies', label: 'Colonies' },
     { key: 'bases', label: 'Bases' },
     { key: 'military', label: 'Military' },
-    { key: 'construction', label: 'Construction' },
+    { key: 'construction', label: 'Constr.' },
     { key: 'other', label: 'Other' },
     { key: 'fleets', label: 'Fleets' },
-    { key: 'idleShips', label: 'Idle ships' },
+    { key: 'idleShips', label: 'Idle' },
 ] as const;
 
 export type CycleChipKey = (typeof CYCLE_CHIPS)[number]['key'];
@@ -104,9 +106,11 @@ export function computeHudLayout(width: number, height: number): Record<string, 
     layout['pnlSelection'] = { x: 10, y: height - 220 - 10, w: 300, h: 220 };
 
     // ------------------------------------------------------------------
-    // Bottom-right: options list, 220 px wide (replaces the minimap).
+    // Bottom-right: options list, 220 px wide (replaces the minimap). Height
+    // is content-driven (h = 0): the CSS sizes it to its rows and scrolls if
+    // the window is shorter than the list (task 05d).
     // ------------------------------------------------------------------
-    layout['pnlOptionsList'] = { x: width - 220 - 10, y: height - 400 - 10, w: 220, h: 400 };
+    layout['pnlOptionsList'] = { x: width - 220 - 10, y: height - 10, w: 220, h: 0 };
 
     return layout;
 }
