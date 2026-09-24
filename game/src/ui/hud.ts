@@ -1134,7 +1134,8 @@ export function buildSelectionRows(sel: Selection, gameData?: GameData): Selecti
         const natives = h.population.items
             .map((p) => `${p.race.name}: ${formatPopulation(p.amount)}`)
             .join(', ');
-        addText('Natives', natives);
+        // Owned habitats list their population's races; unowned ones natives.
+        addText(h.empire ? 'Races' : 'Natives', natives);
     }
 
     // Scenic feature (Galaxy.5.cs SetScenicFactor).
