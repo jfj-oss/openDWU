@@ -45,6 +45,7 @@ import { Habitat, HabitatCategoryType, HabitatType, SystemInfo } from '../sim/ty
 import { NebulaCloudGenerator } from './nebulaClouds';
 import { EmpireLayer } from './empireLayer';
 import { OverlayLayer } from './overlayLayer';
+import { BuiltObjectLayer } from './builtObjectLayer';
 import { createMapOverlayState, type MapOverlayState } from '../ui/mapOverlays';
 import { showRegionLabels, showSystemNames } from '../ui/settings';
 import { hideMapTooltip, showMapTooltip, tooltipText } from '../ui/mapTooltip';
@@ -871,6 +872,8 @@ export class MainView {
     /** Task M3: the Overlays HUD toggles this renderer implements (potential
      * colonies, scenic/research markers, empire territory visibility). */
     private overlayLayer!: OverlayLayer;
+    /** Task 13a: ships, bases, pirates and traders (BuiltObjects). */
+    private builtObjectLayer!: BuiltObjectLayer;
     private textures!: MainViewTextures;
     private minZoom = 1e-6;
     private lastGridZoom = -1;
@@ -1126,6 +1129,8 @@ export class MainView {
         // Territory toggle. Added after empireLayer so its yellow marker
         // rings draw above the territory discs and colony rings.
         this.overlayLayer = new OverlayLayer(this.galaxy, this.world, this.empireLayer, this.overlays);
+        // Task 13a: ships/bases/pirates/traders on top of all map layers.
+        this.builtObjectLayer = new BuiltObjectLayer(this.galaxy, this.world, this.store, this.overlays);
 
         this.attachInput();
     }
@@ -1232,6 +1237,8 @@ export class MainView {
         // Territory's visibility toggle is applied straight to empireLayer,
         // above).
         this.overlayLayer.update(z, cam);
+        // Task 13a: built objects (ships, bases, pirates, traders).
+        this.builtObjectLayer.update(z, cam);
 
         // Region/nebula location name labels (task 08f1): visible while the
         // original's zoom factor double_15 satisfies 70 < double_15 <=
