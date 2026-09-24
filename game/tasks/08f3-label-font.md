@@ -10,3 +10,13 @@ Fix: before building the Main View text layers, `await document.fonts.load('16px
 Test: a pure helper `MAP_FONT_FAMILY` constant equals `'Forgotten Futurist, sans-serif'` and every Text style in mainView uses it (grep-style test on the module source is fine).
 
 `npm run typecheck` && `npm test`; save (don't open) `shots/08f3-labels.png` at `/?skipMenu=1`. Append `## Worker report`.
+
+## Worker report
+
+**Files changed:**
+- `src/render/mainView.ts` — added exported `MAP_FONT_FAMILY = 'Forgotten Futurist, sans-serif'` and async `loadMapFont()` (awaits `document.fonts.load('16px "Forgotten Futurist"')` + `'bold 16px "Forgotten Futurist"'`, catches failures). All three label sites (planet name, system name, region label) now use `fontFamily: MAP_FONT_FAMILY`. `MainView.init()` awaits `loadMapFont()` before any Text is built, and additionally re-applies `style.fontFamily = MAP_FONT_FAMILY` to every existing label once `document.fonts.ready` resolves (covers labels created earlier / font that finished loading late).
+- `test/main-view-label-font.test.ts` (new) — asserts `MAP_FONT_FAMILY === 'Forgotten Futurist, sans-serif'` and greps the mainView source so every `new Text({...})` site sets `fontFamily: MAP_FONT_FAMILY` with no hard-coded family strings left.
+
+**Done:** typecheck passes; all 244 tests pass (24 files); screenshot saved to `shots/08f3-labels.png` via `node scripts/shot.mjs 'http://localhost:5173/?skipMenu=1'` — no console errors printed.
+
+**Left undone:** none. (`src/main.ts` did not need changes — the fix lives entirely in `mainView.init()`, which main.ts already awaits.)
