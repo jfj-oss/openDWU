@@ -87,12 +87,12 @@ function halveRgb(color: number): number {
     return (((r / 2) | 0) << 16) | (((g / 2) | 0) << 8) | ((b / 2) | 0);
 }
 
-class EmpireCounters {
+export class EmpireCounters {
     constructor(_empire: Empire) {}
 }
 
 // TODO(port): PirateEconomy — PirateEconomy.cs.
-class PirateEconomy {
+export class PirateEconomy {
     constructor(_startStarDate: number) {}
 }
 

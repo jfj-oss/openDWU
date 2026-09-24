@@ -7,41 +7,10 @@
 
 import type { RaceFamily } from './raceFamilies';
 
-// Port of DistantWorlds.Types.BuiltObjectSubRole (BuiltObjectSubRole.cs).
-// Member order is the exact C# declaration order (the enum is [Serializable]
-// byte-backed, so numeric values matter for any code that reads/writes them).
-export enum BuiltObjectSubRole {
-    Undefined = 0,
-    Escort,
-    Frigate,
-    Destroyer,
-    Cruiser,
-    CapitalShip,
-    TroopTransport,
-    Carrier,
-    ResupplyShip,
-    ExplorationShip,
-    SmallFreighter,
-    MediumFreighter,
-    LargeFreighter,
-    ColonyShip,
-    PassengerShip,
-    ConstructionShip,
-    GasMiningShip,
-    MiningShip,
-    GasMiningStation,
-    MiningStation,
-    SmallSpacePort,
-    MediumSpacePort,
-    LargeSpacePort,
-    ResortBase,
-    GenericBase,
-    EnergyResearchStation,
-    WeaponsResearchStation,
-    HighTechResearchStation,
-    MonitoringStation,
-    DefensiveBase,
-}
+// BuiltObjectSubRole lives in ../builtObjectTypes (shared by the sim and data
+// layers); re-exported here for the callers that import it from names.ts.
+import { BuiltObjectSubRole } from '../builtObjectTypes';
+export { BuiltObjectSubRole };
 
 // Enum.GetNames(typeof(BuiltObjectSubRole)): member names in declaration order.
 const SUB_ROLE_NAMES: readonly string[] = Object.keys(BuiltObjectSubRole).filter(
