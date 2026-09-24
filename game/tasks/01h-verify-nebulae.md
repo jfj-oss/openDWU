@@ -665,3 +665,23 @@ namespace DistantWorlds.Types
 }
 
 ```
+
+## Worker report
+
+**Files changed:**
+- `test/galaxyLocations.test.ts` — added a pin test that freezes the first 3 generated locations' (type, x, y, size) for seed 1, spiral, 700 stars (exercises `GalaxyNebulaeGenerator` directly). No other files needed changes.
+
+**Verification (method by method, C# `GalaxyNebulaeGenerator.cs` vs `src/sim/galaxyNebulaeGenerator.ts`):**
+The port is already faithful; **no code divergences were found**, so no `// fixed vs C#:` comments were needed. Confirmed matching:
+- Own `Random` seeded from `randomSeed` (`this.rnd = new Random(randomSeed)`), independent of the galaxy's main stream. The `Random` port itself was cross-checked against the .NET reference-source algorithm (ctor seeding loop, `InternalSample` wraparound, `Next(min,max)` range math) — identical.
+- `GenerateGalaxyNebulae` (generateImage=false path): same `_Rnd` call order and counts — `Next(20,40)` cluster count; per cluster `Next(3,10)`, `Next(0,sizeX)`, `Next(0,sizeY)`, `GenerateCloudName(None)`; per member `Next(-maxValue,maxValue)`×2, `Next(0,15)==1` → [`SelectEffect()` + `GenerateCloudName(effect)`], `GenerateNebulaCloud`; then scattered `Next(40,60)`, per cloud `Next(0,sizeX)`, `Next(0,sizeY)`, `GenerateCloudName(None)`, `Next(0,10)==1` → [effect], `GenerateNebulaCloud`. Bounds/overlap checks and the `num5`/`showName` bookkeeping match.
+- `DrawSpiralArms`/`DrawSpiralArm`: int truncs of `sizeX/2`, `sizeY/2`, `sizeX/27`; `num9 = startAngle - 33π/10`; per step `Next(0,5)==1`, `NextDouble()`, radius growth `×1.6` with the offset-direction switch, `NextDouble()` for cloud size, `Next(0,15)==1` effect roll, in-bounds check with `num3++` only when in bounds.
+- `GenerateNebulaCloud`: `Next(minSize,maxSize)`, `x - num/2` (int div), `SelectRandomCloudIndex`, default `MovementSlowed` effect (caller overrides if non-None).
+- `SelectEffect` (`Next(0,2)` → LightningDamage/ShieldReduction), `GenerateArmName`, `GenerateCloudName` (word lists per effect; `IsNullOrEmpty(lastName)` always true on this path since the only caller passes `""`), `CheckOverlapExistingLocation` (`IntersectsWith` on `(int)`-cast rects), `CheckWithinGalaxyBounds` (vs captured `sizeX/sizeY`).
+
+**Tests:** `npm run typecheck` clean; `npm test` → 208 passed (17 files), including the new pin test. Pinned values for seed 1 / spiral / 700 stars (10×10 sectors → sizeX=sizeY=20,000,000):
+- [0] NebulaCloud x=9385432 y=8411493 size=1817283
+- [1] NebulaCloud x=8491573 y=8597370 size=1713964
+- [2] NebulaCloud x=7976225 y=9348316 size=1723910
+
+All generated locations lie within galaxy bounds for every shape (verified in the existing per-shape tests). Nothing left undone.
