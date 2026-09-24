@@ -25,7 +25,7 @@ import { createMainMenu } from './ui/screens/mainMenu';
 import { startMusic } from './audio/musicPlayer';
 import { createNewGameWizard } from './ui/screens/newGameWizard';
 import { toCreateGameOptions, type StartGameOptions } from './sim/startGameOptions';
-import { createGame, type Game } from './sim/game';
+import { type Game } from './sim/game';
 import './ui/hud.css';
 
 // ?shape= names accepted by the boot URL.
