@@ -47,6 +47,7 @@ import type { RaceFamily } from './data/raceFamilies';
 import { BuiltObjectRole } from './data/designSpecifications';
 import { BuiltObjectSubRole } from './builtObjectTypes';
 import { MIN_TIME } from './tick/simTime';
+import { canEmpireColonizeHabitat, habitatResourcesHaveSuperLuxury } from './exploration';
 import type { SchedulerState } from './tick/scheduler';
 import type { GalaxyOrder } from './independentTraders';
 
@@ -319,40 +320,77 @@ export class Galaxy {
         return { x: x2, y: y2 };
     }
 
-    // Port of Galaxy.1.cs UpdateSystemInfo(playerEmpire=null): DetermineSystemInfo
-    // for every system (Systems order) + SystemsIndex membership.
-    // TODO(port): player-empire fields (colonizable targets etc.), HasRuins,
-    // BlockadeCount, PlagueId — need ruins/blockades/plagues/designs.
-    updateSystemInfo(): void {
+    // Port of Galaxy.1.cs UpdateSystemInfo(playerEmpire) (840): DetermineSystemInfo for every system (Systems
+    // order) + SystemsIndex membership. With a player empire, PlayerPotentialColonies is computed against its newest
+    // buildable colony-ship design (Designs.FindNewestCanBuild(ColonyShip)) and ColonizableHabitatTypesForEmpire.
+    // No Rnd. (Task M4t: player variant.)
+    updateSystemInfo(playerEmpire: Empire | null = null): void {
+        let latestColonyDesign: Design | null = null;
+        let colonizableHabitatTypes: HabitatType[] = [];
+        if (playerEmpire !== null) {
+            // DesignList.FindNewestCanBuild(subRole) (DesignList.cs 140): the empire is the first design's owner.
+            const designs = playerEmpire.designs;
+            const designsEmpire = designs.length > 0 && designs[0] != null ? ((designs[0].empire as Empire | null) ?? null) : null;
+            latestColonyDesign = findNewestCanBuild(designs, BuiltObjectSubRole.ColonyShip, designsEmpire);
+            colonizableHabitatTypes = playerEmpire.colonizableHabitatTypesForEmpire();
+        }
         for (const sys of this.systems) {
-            this.determineSystemInfo(sys);
+            this.determineSystemInfo(sys, playerEmpire, colonizableHabitatTypes, latestColonyDesign);
             const c = this.resolveIndex(sys.systemStar.xpos, sys.systemStar.ypos);
             const cell = this.systemsIndexGrid[c.x][c.y];
             if (!cell.includes(sys)) cell.push(sys);
         }
     }
 
-    // Port of Galaxy.1.cs DetermineSystemInfo (873): planet/moon/independent
-    // counts, and the dominant empire = highest total StrategicValue
-    // (ties: larger population), others listed in first-seen order.
-    determineSystemInfo(sys: SystemInfo): void {
+    // Port of Galaxy.1.cs DetermineSystemInfo(system, playerEmpire, colonizableHabitatTypes, latestColonyDesign)
+    // (873): planet/moon/blockade/independent counts, ruins/scenery/research-bonus/plague flags, the player's
+    // potential-colony flag, and the dominant empire = highest total StrategicValue (ties: larger population),
+    // others listed in first-seen order. Writes the fields in place (C# CopyFromOther of the returned `system`).
+    determineSystemInfo(sys: SystemInfo, playerEmpire: Empire | null = null, colonizableHabitatTypes: HabitatType[] = [], latestColonyDesign: Design | null = null): void {
         const empires: Empire[] = [];
         const sv: number[] = [];
         const cc: number[] = [];
         const pop: number[] = [];
         let num = 0;
         let num2 = 0;
+        let num3 = 0;
         let num4 = 0;
-        // Galaxy.1.cs 887-895 / 912-915 (task M3d): hasResearchBonus.
+        let plagueId = -1;
+        let flag = false;
+        let hasRuins = false;
+        let hasScenery = false;
         let hasResearchBonus = false;
+        if (sys.systemStar.scenicFactor > 0) hasScenery = true;
         if (sys.systemStar.researchBonus > 0) hasResearchBonus = true;
         for (const h of this.systemHabitatsOf(sys.systemStar.systemIndex)) {
             if (h.category === HabitatCategoryType.Asteroid) continue;
+            if (h.ruin !== null) hasRuins = true;
+            if (h.scenicFactor > 0) hasScenery = true;
             if (h.researchBonus > 0) hasResearchBonus = true;
             if (h.category === HabitatCategoryType.Planet) num++;
             else if (h.category === HabitatCategoryType.Moon) num2++;
+            if (h.isBlockaded) num3++;
+            if (h.plagueId >= 0) plagueId = h.plagueId;
             // C#: Empire == IndependentEmpire — also true while both are null.
-            if (h.empire === this.independentEmpire) num4++;
+            if (h.empire === this.independentEmpire) {
+                num4++;
+            } else if (
+                playerEmpire !== null &&
+                !flag &&
+                canEmpireColonizeHabitat(this, playerEmpire, playerEmpire, h, colonizableHabitatTypes, latestColonyDesign) &&
+                (h.quality >= 0.5 ||
+                    (h.resources != null && habitatResourcesHaveSuperLuxury(this, h)) ||
+                    (h.ruin !== null &&
+                        (h.ruin.bonusDefensive > 0.0 ||
+                            h.ruin.bonusDiplomacy > 0.0 ||
+                            h.ruin.bonusHappiness > 0.0 ||
+                            h.ruin.bonusResearchEnergy > 0.0 ||
+                            h.ruin.bonusResearchHighTech > 0.0 ||
+                            h.ruin.bonusResearchWeapons > 0.0 ||
+                            h.ruin.bonusWealth > 0.0)))
+            ) {
+                flag = true;
+            }
             if (h.empire !== null && h.empire !== this.independentEmpire) {
                 let i = empires.indexOf(h.empire);
                 if (i < 0) {
@@ -381,8 +419,13 @@ export class Galaxy {
         }
         sys.planetCount = num;
         sys.moonCount = num2;
+        sys.blockadeCount = num3;
+        sys.plagueId = plagueId;
         sys.independentColonyCount = num4;
+        sys.hasRuins = hasRuins;
+        sys.hasScenery = hasScenery;
         sys.hasResearchBonus = hasResearchBonus;
+        if (playerEmpire !== null) sys.playerPotentialColonies = flag;
         sys.dominantEmpire = dom !== null ? { empire: dom, colonyCount, totalStrategicValue: num6 } : null;
         sys.otherEmpires = null;
         if (dom !== null) {
@@ -392,6 +435,7 @@ export class Galaxy {
                 sys.otherEmpires.push({ empire: empires[k], colonyCount: cc[k], totalStrategicValue: sv[k] });
             }
         }
+        sys.isDisputed = empires.length > 1;
     }
 
     // Port of Galaxy.7.cs DetermineClosestIndexEdges (int math).
@@ -4332,6 +4376,15 @@ export class Galaxy {
     // ---- M4r fields (diplomacy runtime) ----
     // ---- M4s fields (pirates runtime) ----
     // ---- M4t fields (visibility, exploration, territory) ----
+    /**
+     * Galaxy.cs _RegeneratingEmpireTerritory / _RegenerateEmpireTerritoryAgain (ReviewEmpireTerritoryCore 3384):
+     * in C# a ThreadPool guard; the TS runs the review synchronously, so the flag is only ever true during a
+     * call (kept for the re-entry path).
+     */
+    regeneratingEmpireTerritory = false;
+    regenerateEmpireTerritoryAgain = false;
+    /** Galaxy._AggressionLevel (double; Galaxy ctor Galaxy.4.cs 2151). */
+    aggressionLevel = 1.0;
     // ---- M4u fields (events, disasters, characters) ----
 }
 
@@ -4370,6 +4423,8 @@ export function generateGalaxy(options: GenerateGalaxyOptions): Galaxy {
     // AggressionLevel >= 1.5 / >= 1.3 / >= 1.1 / else. With no empireStarts
     // this consumes zero Rnd calls (pre-01f1 behavior).
     const aggressionLevel = options.aggressionLevel ?? 1.0;
+    // Galaxy.4.cs 2151 _AggressionLevel = aggressionLevel (task M4t: read by DoSingleEmpireEncounter).
+    galaxy.aggressionLevel = aggressionLevel;
     const aggressiveRacesRequired = aggressionLevel >= 1.5 ? 3 : aggressionLevel >= 1.3 ? 2 : aggressionLevel >= 1.1 ? 1 : 0;
     setupAlienRacePopulations(galaxy, options.empireStarts ?? [], aggressiveRacesRequired);
 

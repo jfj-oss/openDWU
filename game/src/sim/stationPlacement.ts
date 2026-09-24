@@ -165,7 +165,7 @@ export function fastFindNearestSpacePort(galaxy: Galaxy, x: number, y: number, e
 }
 
 // Galaxy.7.cs DetermineClosestIndexEdgesCustom (2667). int math.
-function determineClosestIndexEdgesCustom(galaxy: Galaxy, x: number, y: number, indexBoundLeft: number, indexBoundRight: number, indexBoundTop: number, indexBoundBottom: number): { d: number; nearestX: number; nearestY: number } {
+export function determineClosestIndexEdgesCustom(galaxy: Galaxy, x: number, y: number, indexBoundLeft: number, indexBoundRight: number, indexBoundTop: number, indexBoundBottom: number): { d: number; nearestX: number; nearestY: number } {
     const indexMaxX = galaxy.indexMaxX;
     const indexMaxY = galaxy.indexMaxY;
     let num = x - INDEX_SIZE * indexBoundLeft;

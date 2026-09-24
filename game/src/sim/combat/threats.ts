@@ -7,6 +7,8 @@
 
 import type { Galaxy } from '../galaxy';
 import type { BuiltObject } from '../builtObject';
+import type { Empire } from '../empire';
+import type { Habitat } from '../types';
 import { registerTodo, todo } from '../tick/todo';
 
 const T_threatEvaluation = registerTodo('M4n', 'threatEvaluation');
@@ -21,4 +23,15 @@ const T_fleeFromHopelessBattle = registerTodo('M4n', 'fleeFromHopelessBattle');
 export function fleeFromHopelessBattle(galaxy: Galaxy, builtObject: BuiltObject): void {
     // RND: draws in callees (d≤3) — not drawn until M4n.
     /* TODO(port) M4n */ todo(T_fleeFromHopelessBattle);
+}
+
+const T_evaluateSystemThreats = registerTodo('M4n', 'evaluateSystemThreats');
+/**
+ * Galaxy.7.cs 3506 EvaluateSystemThreats(systemStar, empire, out threatLevels). Stub added by M4t
+ * (Habitat.cs 2623 PerformThreatEvaluation); returns empty lists.
+ */
+export function evaluateSystemThreats(galaxy: Galaxy, systemStar: Habitat, empire: Empire): { threats: BuiltObject[]; threatLevels: number[] } {
+    // RND: draws in callees (DoEmpireEncounter) — not drawn until M4n.
+    /* TODO(port) M4n */ todo(T_evaluateSystemThreats);
+    return { threats: [], threatLevels: [] };
 }

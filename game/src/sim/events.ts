@@ -221,3 +221,14 @@ const T_updateAchievements = registerTodo('deferred', 'updateAchievements');
 export function updateAchievements(galaxy: Galaxy, empire: Empire): void {
     /* TODO(port) deferred (not M4) */ todo(T_updateAchievements);
 }
+
+const T_checkSendPreWarpProgressEventMessage = registerTodo('M4u', 'checkSendPreWarpProgressEventMessage');
+/**
+ * Empire.7.cs 3426 CheckSendPreWarpProgressEventMessage(eventType, subject, empire, hint). Stub added by M4t
+ * (Galaxy.7.cs 3957 DoEmpireEncounter). `eventType` is a PreWarpProgressEventType (exploration.ts). Returns false.
+ */
+export function checkSendPreWarpProgressEventMessage(galaxy: Galaxy, empire: Empire, eventType: number, subject: unknown, otherEmpire: Empire | null = null, hint = ''): boolean {
+    // RND: 7 direct — not drawn until M4u.
+    /* TODO(port) M4u */ todo(T_checkSendPreWarpProgressEventMessage);
+    return false;
+}

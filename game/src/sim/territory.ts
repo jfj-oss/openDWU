@@ -100,6 +100,12 @@ export class EmpireTerritory {
         this.territory = calculateEmpireTerritoryGridIndex(galaxy, { x: 0, y: 0, w: galaxy.sizeX, h: galaxy.sizeY }, null);
     }
 
+    // Port of ReviewEmpireTerritory(galaxy, onlySystems) (EmpireTerritory.cs 38) — whole galaxy, fresh grid; with
+    // onlySystems only the cell of each system star is claimed (task M4t, Galaxy.cs 3376 ReviewEmpireTerritory(true)).
+    reviewEmpireTerritoryOnlySystems(galaxy: Galaxy, onlySystems: boolean): void {
+        this.territory = calculateEmpireTerritoryGridIndex(galaxy, { x: 0, y: 0, w: galaxy.sizeX, h: galaxy.sizeY }, null, onlySystems);
+    }
+
     // Port of ReviewEmpireTerritoryUpdate(galaxy, galaxySection) — incremental.
     reviewEmpireTerritoryUpdate(galaxy: Galaxy, section: Rect): void {
         this.territory = calculateEmpireTerritoryGridIndex(galaxy, section, this.territory);
@@ -107,8 +113,8 @@ export class EmpireTerritory {
 }
 
 // Port of EmpireTerritory.CalculateEmpireTerritoryGridIndex(galaxy, section,
-// 2000, 2000, influence, onlySystems: false).
-function calculateEmpireTerritoryGridIndex(galaxy: Galaxy, section: Rect, influence: Uint8Array[] | null): Uint8Array[] {
+// 2000, 2000, influence, onlySystems) (EmpireTerritory.cs 105).
+function calculateEmpireTerritoryGridIndex(galaxy: Galaxy, section: Rect, influence: Uint8Array[] | null, onlySystems = false): Uint8Array[] {
     const size = TERRITORY_INDEX_SIZE;
     if (influence === null) influence = Array.from({ length: size }, () => new Uint8Array(size));
     const num1 = galaxy.sizeX / size;
@@ -137,6 +143,11 @@ function calculateEmpireTerritoryGridIndex(galaxy: Galaxy, section: Rect, influe
             if (colony.owner !== empire) continue;
             const r = Math.trunc(colony.colonyInfluenceRadius);
             if (!intersects(section, { x: Math.trunc(colony.xpos) - r, y: Math.trunc(colony.ypos) - r, w: r * 2, h: r * 2 })) continue;
+            if (onlySystems) {
+                // EmpireTerritory.cs 152: no overlapping-colony list in the systems-only pass.
+                list.push({ colony, overlapping: [] });
+                continue;
+            }
             // DetermineOverlappingColonies(rectangular, all empires).
             const s = sectorOf(colony.xpos, colony.ypos);
             const near: Habitat[] = [];
@@ -153,6 +164,32 @@ function calculateEmpireTerritoryGridIndex(galaxy: Galaxy, section: Rect, influe
             }
             list.push({ colony, overlapping });
         }
+    }
+    if (onlySystems) {
+        // EmpireTerritory.cs 162-201: claim each system star's cell for the colony with the highest influence there.
+        let num4 = 0;
+        for (let index3 = 0; index3 < galaxy.systems.length; index3++) {
+            const system = galaxy.systems[index3];
+            if (system == null || system.systemStar == null) continue;
+            // Rectangle.Contains(Point((int)Xpos, (int)Ypos)).
+            const px = Math.trunc(system.systemStar.xpos);
+            const py = Math.trunc(system.systemStar.ypos);
+            if (!(px >= section.x && px < section.x + section.w && py >= section.y && py < section.y + section.h)) continue;
+            const indexX = Math.trunc(system.systemStar.xpos / (galaxy.sizeX / size));
+            const indexY = Math.trunc(system.systemStar.ypos / (galaxy.sizeY / size));
+            if (influence[indexX][indexY] !== 0) continue;
+            let num5 = 0;
+            for (const { colony } of list) {
+                if (colony.empire === null) continue;
+                const influenceAtPoint = colonyInfluenceAtPoint(colony.colonyInfluenceRadius, colony.xpos, colony.ypos, system.systemStar.xpos, system.systemStar.ypos);
+                if (influenceAtPoint > num5) {
+                    num4 = colony.empire.empireId + 1;
+                    num5 = influenceAtPoint;
+                }
+            }
+            if (num5 > 0) influence[indexX][indexY] = num4;
+        }
+        return influence;
     }
     const num6 = Math.fround(num1);
     for (const { colony, overlapping } of list) {

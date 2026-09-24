@@ -1408,6 +1408,11 @@ export class BuiltObject {
     // ---- M4r fields (diplomacy) ----
     // ---- M4s fields (pirates) ----
     // ---- M4t fields (scanning, exploration) ----
+    /**
+     * BuiltObject.BaconValues (Bacon mod, Dictionary<string, object>; null until first written). M4t writes
+     * "scientificData" (BaconBuiltObject.AddScientificData 3536); other Bacon keys belong to their packages.
+     */
+    baconValues: Map<string, unknown> | null = null;
     // ---- M4u fields (events, location effects) ----
 }
 
