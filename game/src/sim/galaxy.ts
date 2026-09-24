@@ -10,6 +10,7 @@
 import { Random } from './random';
 import { GalaxyLocation, GalaxyLocationEffectType, GalaxyLocationShape, GalaxyLocationType } from './galaxyLocation';
 import { GalaxyNebulaeGenerator } from './galaxyNebulaeGenerator';
+import { setupAlienRacePopulations, type EmpireStart } from './raceRegions';
 import {
     GalaxyShape,
     Habitat,
@@ -17,6 +18,7 @@ import {
     HabitatType,
     type SystemInfo,
 } from './types';
+import type { Race } from './data/races';
 import type { Resource } from './data/resources';
 import type { GameData } from './data/gameData';
 
@@ -53,6 +55,13 @@ export interface GenerateGalaxyOptions {
     // DEFAULT_CLOUD_IMAGE_COUNT). Only affects pictureRef values, not
     // the RNG stream.
     cloudImageCount?: number;
+    // Port of Galaxy.4.cs ctor: AggressionLevel (default 1.0) drives
+    // aggressiveRacesRequired = 3/2/1/0 for >= 1.5 / >= 1.3 / >= 1.1 / else.
+    aggressionLevel?: number;
+    // Empire starts (resolved race + projected colony amount each). When
+    // omitted/empty no race regions are created and SetupAlienRacePopulations
+    // consumes zero Rnd calls (pre-01f1 behavior).
+    empireStarts?: EmpireStart[];
 }
 
 export class Galaxy {
@@ -85,6 +94,17 @@ export class Galaxy {
     private galaxyLocationIndex: GalaxyLocation[][][] = [];
     // Port of Galaxy.cs _ColonyPrevalence (defaults to 1.0).
     colonyPrevalence = 1.0;
+    // Port of Galaxy.cs Races (RaceList, loaded from GameData in the ctor).
+    races: Race[] = [];
+    // Port of Galaxy.cs habitat-race lists (_ContinentalRaces etc.),
+    // populated by SetupAlienRacePopulations (raceRegions.ts).
+    continentalRaces: Race[] = [];
+    marshySwampRaces: Race[] = [];
+    desertRaces: Race[] = [];
+    oceanRaces: Race[] = [];
+    iceRaces: Race[] = [];
+    volcanicRaces: Race[] = [];
+    barrenRockRaces: Race[] = [];
 
     // Port of Galaxy.cs _StarClusterLocations / _StarClusterPortions
     // (used by the ClustersEven/ClustersVaried shapes).
@@ -129,7 +149,7 @@ export class Galaxy {
     }
 
     // Port of Galaxy.5.cs ObtainRandomGalaxyCoordinates(radiusFromCenterMinimum, radiusFromCenterMaximum, out x, out y)
-    private obtainRandomGalaxyCoordinatesInRadius(radiusFromCenterMinimum: number, radiusFromCenterMaximum: number): { x: number; y: number } {
+    obtainRandomGalaxyCoordinatesInRadius(radiusFromCenterMinimum: number, radiusFromCenterMaximum: number): { x: number; y: number } {
         const halfX = this.sizeX / 2.0;
         const halfY = this.sizeY / 2.0;
         const radiusBase = this.sizeX / 2.0;
@@ -143,7 +163,7 @@ export class Galaxy {
     }
 
     // Port of Galaxy.6.cs CalculateDistance
-    private calculateDistance(x1: number, y1: number, x2: number, y2: number): number {
+    calculateDistance(x1: number, y1: number, x2: number, y2: number): number {
         const dx = x1 - x2;
         const dy = y1 - y2;
         return Math.sqrt(dx * dx + dy * dy);
@@ -2103,6 +2123,8 @@ export function generateGalaxy(options: GenerateGalaxyOptions): Galaxy {
     const galaxy = new Galaxy(seed, shape, starCount, sectorWidth, sectorHeight, systemNames, colonyPrevalence);
     // ResourceSystem.Resources (Galaxy.4.cs ctor loads it before generation).
     galaxy.resources = gameData?.resources ?? [];
+    // Port of Galaxy.cs Races (loaded from GameData in the ctor).
+    galaxy.races = gameData?.races ?? [];
 
     // Nebulae / galaxy locations (Galaxy.4.cs ctor: GenerateNebulae + index
     // grid + AddGalaxyLocationIndex), generated before star placement so
@@ -2111,6 +2133,14 @@ export function generateGalaxy(options: GenerateGalaxyOptions): Galaxy {
 
     // Cluster setup (Galaxy.4.cs 2221-2276), only for the Clusters shapes.
     galaxy.setupStarClusters(shape, starCount);
+
+    // Race regions (Galaxy.4.cs ~2205-2220: SetupAlienRacePopulations is
+    // called before the star loop). aggressiveRacesRequired = 3/2/1/0 for
+    // AggressionLevel >= 1.5 / >= 1.3 / >= 1.1 / else. With no empireStarts
+    // this consumes zero Rnd calls (pre-01f1 behavior).
+    const aggressionLevel = options.aggressionLevel ?? 1.0;
+    const aggressiveRacesRequired = aggressionLevel >= 1.5 ? 3 : aggressionLevel >= 1.3 ? 2 : aggressionLevel >= 1.1 ? 1 : 0;
+    setupAlienRacePopulations(galaxy, options.empireStarts ?? [], aggressiveRacesRequired);
 
     // Per-star loop (Galaxy.4.cs 2278-2296). Each system's habitat list
     // (star + planets + moons + asteroids, from setupSolarSystem) forms one

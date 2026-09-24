@@ -1,6 +1,8 @@
 // Port of DistantWorlds.Types.GalaxyLocation (GalaxyLocation.cs), with the
-// serialization members and the BuiltObject/Race/CreatureList relations
+// serialization members and the BuiltObject/CreatureList relations
 // omitted (out of scope).
+
+import type { Race } from './data/races';
 
 export enum GalaxyLocationType {
     Undefined = 0,
@@ -46,6 +48,9 @@ export class GalaxyLocation {
     effectRandomSeed: number;
     shape: GalaxyLocationShape;
     soundScheme: number;
+    // Port of GalaxyLocation.cs RelatedRace (set by SetupAlienRacePopulations
+    // for RaceRegion locations).
+    relatedRace: Race | null;
 
     constructor(name: string, type: GalaxyLocationType, x: number, y: number, width: number, height: number, pictureRef: number) {
         this.name = name;
@@ -62,6 +67,7 @@ export class GalaxyLocation {
         this.effectRandomSeed = 0;
         this.shape = GalaxyLocationShape.Square;
         this.soundScheme = -1;
+        this.relatedRace = null;
     }
 
     // Port of GalaxyLocation.ResolveLocationCenter(out x, out y)
