@@ -22,7 +22,8 @@ import { buildDefaultHandlers, createShortcutsOverlay, dispatchKey } from './ui/
 import { createMainMenu } from './ui/screens/mainMenu';
 import { startMusic } from './audio/musicPlayer';
 import { createNewGameWizard } from './ui/screens/newGameWizard';
-import { sectorsFor, starCountFor, type StartGameOptions } from './sim/startGameOptions';
+import { toCreateGameOptions, type StartGameOptions } from './sim/startGameOptions';
+import { createGame, type Game } from './sim/game';
 import './ui/hud.css';
 
 // ?shape= names accepted by the boot URL.
@@ -121,7 +122,8 @@ async function loadGameDataOrNone(dwuPresent: boolean): Promise<GameData | null>
 }
 
 /** Open the new-game wizard (task 06b), replacing the main menu. Start Game
- * maps the chosen StartGameOptions to generateGalaxy's options and boots. */
+ * maps the chosen StartGameOptions onto createGame's options and boots the
+ * Main View + HUD with the returned galaxy/empires (task 06i). */
 function openWizard(onBackToMenu: () => void): void {
     const wizard = createNewGameWizard({
         onBackToMenu: () => {
@@ -130,18 +132,122 @@ function openWizard(onBackToMenu: () => void): void {
         },
         onStartGame: (options: StartGameOptions) => {
             wizard.destroy();
-            void bootGameWithOptions({
-                seed: options.seed,
-                shape: options.shape,
-                starCount: starCountFor(options.starCountIndex),
-                sectorWidth: sectorsFor(options.dimensionIndex),
-                sectorHeight: sectorsFor(options.dimensionIndex),
-                zoom: null,
-                cx: null,
-                cy: null,
-                select: null,
-            });
+            void bootGameFromWizard(options);
         },
+    });
+}
+
+/** Task 06i: boot from the wizard's StartGameOptions via createGame (galaxy +
+ * player/AI empires + starting colonies), then the Main View + HUD. The URL-
+ * param boot path (bootGameWithOptions) still uses generateGalaxy only. */
+async function bootGameFromWizard(startOptions: StartGameOptions): Promise<void> {
+    const dwuPresent = await detectDwuPresent();
+    const systemNames = await loadSystemNames(dwuPresent);
+    const gameData = await loadGameDataOrNone(dwuPresent);
+    // Real-art file lists (scripts/gen-asset-manifest.mjs, predev/prebuild).
+    if (dwuPresent) {
+        await loadManifest();
+    }
+
+    const app = new Application();
+    await app.init({
+        resizeTo: window,
+        background: 0x000000,
+        antialias: true,
+        preference: 'webgl',
+    });
+    document.body.appendChild(app.canvas);
+
+    // createGame needs full game data (races/governments); without a DW:U
+    // install there is no fallback, so report it rather than booting broken.
+    if (gameData === null) {
+        console.error('DW:U game data is required to start a game from the wizard but failed to load.');
+        return;
+    }
+
+    const game: Game = createGame(toCreateGameOptions(startOptions, gameData, systemNames));
+    const galaxy = game.galaxy;
+
+    const camera = new Camera();
+    camera.setViewport(app.renderer.width, app.renderer.height);
+    camera.setGalaxyBounds(galaxy.sizeX, galaxy.sizeY);
+    // Centre on the player's capital (createGame returns viewX/viewY).
+    camera.centerOn(game.viewX, game.viewY);
+    camera.zoom = camera.minZoom;
+
+    const store = new AssetStore(dwuPresent);
+    const view = new MainView(app, camera, galaxy, store);
+    await view.init();
+
+    // Debug / screenshot hook: the created game (galaxy + player empire).
+    (window as unknown as { __dwu?: unknown }).__dwu = { camera, galaxy, view, app, game };
+
+    const time = new GalaxyTime(START_STAR_DATE);
+    const overlays = createMapOverlayState();
+    const hud: HudRefs = createHud({ clock: time, overlays, camera, galaxy, gameData });
+    const systemNameEl = hud.elements.get('pnlMoney')?.querySelector('.hud-system-name');
+    const dateEl = hud.elements.get('pnlTopLeftBar')?.querySelector('.hud-date');
+    const pauseBtn = hud.elements.get('pnlTopLeftBar')?.querySelector<HTMLButtonElement>('button[title="Play / pause"]');
+    const setSelection = (h: Habitat | null): void => {
+        if (h === null) {
+            hud.onSelectionChange?.(null);
+            return;
+        }
+        const system = galaxy.systems.find((s) => s.habitats.includes(h)) ?? galaxy.systems[h.systemIndex];
+        const sel: Selection = { habitat: h, system };
+        hud.onSelectionChange?.(sel);
+    };
+    view.onSelectionChange = setSelection;
+    view.onDoubleClickStar = (star: Habitat) => {
+        if (star.category !== HabitatCategoryType.Star) return;
+        camera.centerOn(star.xpos, star.ypos);
+        camera.zoomAt(SYSTEM_LEVEL_ZOOM, camera.width / 2, camera.height / 2);
+    };
+    const refreshHud = (): void => {
+        if (systemNameEl) {
+            systemNameEl.textContent = nearestSystemName(
+                { galaxy },
+                camera,
+            );
+        }
+    };
+    refreshHud();
+    window.addEventListener('resize', () => layoutHud(hud));
+    setInterval(refreshHud, 250);
+    const refreshClockLabel = (): void => {
+        if (dateEl) {
+            dateEl.textContent = formatClockLabel(time.currentStarDate, time.speed);
+        }
+        if (pauseBtn) {
+            pauseBtn.textContent = time.paused ? '▶' : '⏸';
+        }
+    };
+    setInterval(refreshClockLabel, 250);
+
+    const shortcuts = createShortcutsOverlay();
+    const keyHandlers = buildDefaultHandlers(camera, time);
+    window.addEventListener('keydown', (e: KeyboardEvent) => {
+        if (e.key === '?' || e.key === 'F1') {
+            e.preventDefault();
+            shortcuts.toggle();
+            return;
+        }
+        const action = dispatchKey(e, keyHandlers);
+        if (action === 'togglePause' || action === 'speedUp' || action === 'speedDown') {
+            refreshClockLabel();
+        }
+    });
+
+    app.ticker.add(() => {
+        const gameMs = time.advance(app.ticker.deltaMS);
+        if (gameMs > 0) {
+            galaxy.step(gameMs);
+        }
+        view.update();
+    });
+    app.renderer.on('resize', () => {
+        camera.setViewport(app.renderer.width, app.renderer.height);
+        layoutHud(hud);
     });
 }
 

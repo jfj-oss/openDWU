@@ -1,6 +1,8 @@
 // New-game wizard options (task 06b). Headless — no DOM/Pixi imports.
 import { GalaxyShape } from './types';
 import type { Race } from './data/races';
+import type { GameData } from './data/gameData';
+import type { CreateGameOptions, EmpireStartOptions } from './game';
 
 export interface StartGameOptions {
     shape: GalaxyShape;
@@ -531,3 +533,103 @@ export function defaultStartGameOptions(): StartGameOptions {
         otherEmpires: defaultOtherEmpiresOptions(),
     };
 }
+
+/**
+ * Task 06i: map the wizard's StartGameOptions (all pages) onto createGame's
+ * CreateGameOptions (src/sim/game.ts). Port of the option-gathering part of
+ * DistantWorlds/Start.2.cs CreateGameFromSettings, which reads the wizard's
+ * StartNewGameForm controls and builds the Galaxy + EmpireStartList it hands
+ * to the engine.
+ *
+ * gameData and systemNames are not carried by StartGameOptions (they come from
+ * the DW:U install / fallback list at boot), so they are passed in explicitly;
+ * both are required by CreateGameOptions.
+ *
+ * Known limitation (C2): createGame only supports tech levels PreWarp (0) and
+ * Level 1-6 — the "Normal" 0.5 path needs SetTechTreeStartingDefaults + empire
+ * policies, which are not ported yet. The wizard has no tech-level page, so a
+ * fixed supported value is supplied for every starting empire (see
+ * STARTING_TECH_LEVEL below).
+ */
+export function toCreateGameOptions(
+    startOptions: StartGameOptions,
+    gameData: GameData,
+    systemNames: string[],
+): CreateGameOptions {
+    const o = startOptions;
+    // The wizard has no tech-level control; use a fixed supported level. Must
+    // NOT be 0.5 ("Normal") — see the C2 note above. PreWarp (0) is used.
+    const techLevel = STARTING_TECH_LEVEL;
+
+    // Player empire (task 06d race, task 06e name/government/colours).
+    // governmentId (-1 = not chosen) is resolved to a government *name* here
+    // because createGame matches governments by name (game.ts
+    // resolveGovernmentId); '(Random)' lets the engine pick a suitable one.
+    const governmentName =
+        o.governmentId >= 0 ? gameData.governments[o.governmentId]?.name ?? '(Random)' : '(Random)';
+    const player: EmpireStartOptions = {
+        name: o.empireName,
+        race: o.raceName === '' ? '(Random)' : o.raceName,
+        governmentStyle: governmentName,
+        homeSystemFavourability: 'Normal',
+        startLocation: '(Random)',
+        age: 1,
+        techLevel,
+        // TODO(createGame): flag colours (primaryColor/secondaryColor) and
+        // flagShapeIndex are not accepted by createGame yet (empire flags are
+        // an unported TODO(port) in game.ts).
+    };
+
+    // AI empires (task 06h "Other Empires" page). Auto-generation produces
+    // `empireCount` random-race empires placed at random proximity.
+    // TODO(createGame): the manual (non-autogenerate) per-empire list —
+    // specific races/governments/placements — is not represented on
+    // OtherEmpiresOptions yet, so a non-autogenerate choice falls back to the
+    // same auto-generated set sized by empireCount.
+    const aiEmpires: EmpireStartOptions[] = [];
+    const count = clampOtherEmpires(o.otherEmpires).empireCount;
+    for (let i = 0; i < count; i++) {
+        aiEmpires.push({
+            race: '(Random)',
+            governmentStyle: '(Random)',
+            homeSystemFavourability: 'Normal',
+            proximityDistance: 'Random',
+            age: 1,
+            techLevel,
+        });
+    }
+
+    return {
+        seed: o.seed,
+        shape: o.shape,
+        starCount: starCountFor(o.starCountIndex),
+        sectorWidth: sectorsFor(o.dimensionIndex),
+        sectorHeight: sectorsFor(o.dimensionIndex),
+        systemNames,
+        gameData,
+        colonyPrevalence: colonyPrevalenceFor(o.colonyPrevalenceIndex),
+        player,
+        aiEmpires,
+        allowEmpiresInSameSystem: o.colonization.allowSameSystemAsOtherEmpires,
+        // Only meaningful when the range limits are enforced; <= 0 lets
+        // createGame fall back to its auto value.
+        empireTerritoryColonyInfluenceRangeFactor: o.colonization.enforceRangeLimits
+            ? o.colonization.colonyInfluenceRangePercent
+            : undefined,
+        // TODO(createGame): fields createGame does not accept yet stay on
+        // StartGameOptions and are ignored here:
+        //   - alien life (alienLifeIndex → alienLifeFor): independent-life count
+        //   - space creatures (spaceCreaturesIndex → spaceCreaturesFor)
+        //   - pirates (piratesIndex → piratesFor): pirate empires are unported
+        //   - aggression (aggressionIndex → aggressionFor)
+        //   - difficulty (difficultyIndex → difficultyFor) + difficultyScaling
+        //     (SetEmpireDifficultyFactors is an unported TODO(port))
+        //   - victory conditions (o.victory): applied post-creation, not a
+        //     generation input
+        //   - colonization range (colonizationRangeKly) enforcement radius
+    };
+}
+
+/** Fixed starting tech level for every empire (see toCreateGameOptions).
+ * 0 = PreWarp; must not be 0.5 ("Normal") until that path is ported. */
+const STARTING_TECH_LEVEL = 0;

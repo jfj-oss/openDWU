@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
@@ -29,6 +29,7 @@ import {
     sectorsFor,
     spaceCreaturesFor,
     starCountFor,
+    toCreateGameOptions,
     VICTORY_PERCENT_MIN,
     VICTORY_TIME_LIMIT_YEARS_MAX,
     VICTORY_TIME_LIMIT_YEARS_MIN,
@@ -38,6 +39,8 @@ import {
 } from '../src/sim/startGameOptions';
 import { GalaxyShape } from '../src/sim/types';
 import { parseRace, type Race } from '../src/sim/data/races';
+import type { GameData } from '../src/sim/data/gameData';
+import { loadGameDataFs } from './helpers/loadGameDataFs';
 import {
     WIZARD_BACK_LABELS,
     WIZARD_FORWARD_LABELS,
@@ -592,5 +595,100 @@ describe('wizard page order (task 06h, Start.InitializeComponent.cs navigation)'
             }
         }
         expect(WIZARD_FORWARD_LABELS.start).toBe('Start Game');
+    });
+});
+
+describe('toCreateGameOptions (task 06i)', () => {
+    let gameData: GameData;
+    beforeAll(async () => {
+        gameData = await loadGameDataFs();
+    }, 60000);
+
+    const NAMES = ['Alpha', 'Beta', 'Gamma'];
+
+    it('maps the galaxy options through the slider converters', () => {
+        const o = defaultStartGameOptions();
+        o.seed = 12345;
+        // Defaults: star index 3 -> 700, dimension index 2 -> 8x8.
+        const c = toCreateGameOptions(o, gameData, NAMES);
+        expect(c.shape).toBe(GalaxyShape.Spiral);
+        expect(c.starCount).toBe(starCountFor(3));
+        expect(c.sectorWidth).toBe(sectorsFor(2));
+        expect(c.sectorHeight).toBe(sectorsFor(2));
+        expect(c.systemNames).toBe(NAMES);
+        expect(c.gameData).toBe(gameData);
+        expect(c.colonyPrevalence).toBe(colonyPrevalenceFor(2));
+    });
+
+    it('passes the seed straight through', () => {
+        const o = defaultStartGameOptions();
+        o.seed = 987654321;
+        expect(toCreateGameOptions(o, gameData, NAMES).seed).toBe(987654321);
+    });
+
+    it('builds the player empire from race / name / government', () => {
+        const o = defaultStartGameOptions();
+        o.raceName = 'Human';
+        o.empireName = 'Human Empire';
+        // Pick a real government by its parsed id so the name resolves.
+        const govId = gameData.governments.findIndex((g) => g.name.length > 0);
+        o.governmentId = govId;
+        const c = toCreateGameOptions(o, gameData, NAMES);
+        expect(c.player.race).toBe('Human');
+        expect(c.player.name).toBe('Human Empire');
+        expect(c.player.governmentStyle).toBe(gameData.governments[govId].name);
+        expect(c.player.homeSystemFavourability).toBe('Normal');
+        expect(c.player.startLocation).toBe('(Random)');
+        // Tech level is fixed and supported (never the unported 0.5 "Normal").
+        expect(c.player.techLevel).toBe(0);
+        expect(c.player.age).toBe(1);
+    });
+
+    it('falls back to (Random) when no race or government is chosen', () => {
+        const o = defaultStartGameOptions();
+        o.raceName = '';
+        o.governmentId = -1;
+        const c = toCreateGameOptions(o, gameData, NAMES);
+        expect(c.player.race).toBe('(Random)');
+        expect(c.player.governmentStyle).toBe('(Random)');
+    });
+
+    it('sizes aiEmpires from the Other Empires count', () => {
+        const o = defaultStartGameOptions();
+        o.otherEmpires = { ...defaultOtherEmpiresOptions(), empireCount: 4 };
+        const c = toCreateGameOptions(o, gameData, NAMES);
+        expect(c.aiEmpires).toHaveLength(4);
+        for (const ai of c.aiEmpires) {
+            expect(ai.race).toBe('(Random)');
+            expect(ai.proximityDistance).toBe('Random');
+            expect(ai.homeSystemFavourability).toBe('Normal');
+            expect(ai.techLevel).toBe(0);
+        }
+    });
+
+    it('clamps an out-of-range AI empire count', () => {
+        const o = defaultStartGameOptions();
+        o.otherEmpires = { ...defaultOtherEmpiresOptions(), empireCount: 250 };
+        expect(toCreateGameOptions(o, gameData, NAMES).aiEmpires).toHaveLength(OTHER_EMPIRES_COUNT_MAX);
+    });
+
+    it('maps the colonization same-system flag and influence factor', () => {
+        const o = defaultStartGameOptions();
+        o.colonization = {
+            ...defaultColonizationOptions(),
+            enforceRangeLimits: true,
+            colonyInfluenceRangePercent: 150,
+            allowSameSystemAsOtherEmpires: true,
+        };
+        const c = toCreateGameOptions(o, gameData, NAMES);
+        expect(c.allowEmpiresInSameSystem).toBe(true);
+        expect(c.empireTerritoryColonyInfluenceRangeFactor).toBe(150);
+
+        // With enforcement off the influence factor is left to createGame's auto value.
+        const o2 = defaultStartGameOptions();
+        o2.colonization = { ...defaultColonizationOptions(), enforceRangeLimits: false };
+        const c2 = toCreateGameOptions(o2, gameData, NAMES);
+        expect(c2.allowEmpiresInSameSystem).toBe(false);
+        expect(c2.empireTerritoryColonyInfluenceRangeFactor).toBeUndefined();
     });
 });
