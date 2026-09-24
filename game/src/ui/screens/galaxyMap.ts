@@ -14,6 +14,8 @@
 // the map on the left and a side panel on the right.
 
 import type { Galaxy } from '../../sim/galaxy';
+import type { Empire } from '../../sim/empire';
+import { DiplomaticRelationType } from '../../sim/diplomacy';
 import { GalaxyLocationType } from '../../sim/galaxyLocation';
 import { HabitatCategoryType, HabitatType, type Habitat } from '../../sim/types';
 import { NebulaCloudGenerator } from '../../render/nebulaClouds';
@@ -117,9 +119,10 @@ export const COLONY_TYPE_FILTERS: readonly { label: string; type: HabitatType }[
     { label: 'Volcanic', type: HabitatType.Volcanic },
 ];
 
-// What the filters need from the player's empire. Until empires exist
-// (M2) the map runs in "god mode": everything explored and surveyed, and the
-// empire-only lists are empty.
+// What the filters need from the player's empire. In games with a player
+// empire, `empireGalaxyMapPlayer` below provides it; `GOD_MODE_PLAYER` (everything
+// explored and surveyed, empire-only lists empty) is used only on the
+// generateGalaxy-only boot where no empires exist.
 export interface GalaxyMapPlayer {
     // C#: PlayerEmpire.CheckSystemVisibilityStatus(i) is Visible or Explored.
     systemExplored(systemIndex: number): boolean;
@@ -143,6 +146,37 @@ export const GOD_MODE_PLAYER: GalaxyMapPlayer = {
     enemyColonies: () => [],
     knownPirateBaseHabitats: () => [],
 };
+
+// Task 13e: the Galaxy Map's view of the real player empire (Main.Part9.cs
+// cmbGalaxyMapViewMode_SelectedValueChanged reads these off PlayerEmpire).
+export function empireGalaxyMapPlayer(empire: Empire): GalaxyMapPlayer {
+    return {
+        // checkSystemExplored indexes systemVisibility without a bounds check; guard here.
+        systemExplored: (i) => i >= 0 && i < empire.visibility.systemVisibility.length && empire.visibility.checkSystemExplored(i),
+        resourcesKnown: (h) => empire.resourceMap.checkResourcesKnown(h),
+        colonies: () => empire.colonies,
+        // TODO(port): Empire.IdentifyColonizationTargets(galaxy, false, 0, 500) — not in sim.
+        colonizationTargets: () => [],
+        enemyColonies: (): readonly Habitat[] => {
+            const out: Habitat[] = [];
+            for (const rel of empire.diplomaticRelations) {
+                if (rel.type !== DiplomaticRelationType.War) continue;
+                if (rel.otherEmpire === null || rel.otherEmpire === empire) continue;
+                for (const c of rel.otherEmpire.colonies) out.push(c);
+            }
+            return out;
+        },
+        knownPirateBaseHabitats: (): readonly Habitat[] => {
+            // The sim does not fill knownPirateBases yet (TODO(port) in
+            // empire.ts), so this is empty for now.
+            const out: Habitat[] = [];
+            for (const b of empire.knownPirateBases) {
+                if (b.parentHabitat !== null) out.push(b.parentHabitat);
+            }
+            return out;
+        },
+    };
+}
 
 export interface ViewModeSelection {
     /** C# habitatList_1: system stars highlighted on the map (null = no filter). */
@@ -203,9 +237,8 @@ export function computeViewModeSelection(
             return { systems, habitats };
         case GalaxyMapViewMode.IndependentPopulations:
             // C#: Population > 0 and (Empire == IndependentEmpire || Empire == null).
-            // TODO(port): owner check once Habitat has an owner (M2b).
             for (const h of galaxy.habitats) {
-                if (h.population.totalAmount <= 0) continue;
+                if (h.population.totalAmount <= 0 || (h.empire !== galaxy.independentEmpire && h.empire !== null)) continue;
                 if (explored(h)) {
                     addStar(h);
                     habitats.push(h);
@@ -375,7 +408,9 @@ const STAR_TYPE_NAMES: Partial<Record<HabitatType, string>> = {
 
 export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
     const { galaxy } = opts;
-    const player = opts.player ?? GOD_MODE_PLAYER;
+    // Task 13e: the real player empire when there is one; god mode only on the
+    // generateGalaxy-only boot (no empires).
+    const player = opts.player ?? (galaxy.playerEmpire !== null ? empireGalaxyMapPlayer(galaxy.playerEmpire) : GOD_MODE_PLAYER);
     let isOpen = false;
     let mode = GalaxyMapViewMode.Default;
     let colonyType = HabitatType.Undefined;

@@ -106,3 +106,17 @@ Build the galaxy like galaxyMap.test.ts does: `generateGalaxy({ seed: 1, shape: 
   - With `GOD_MODE_PLAYER`, expect `habitats` → `[a, b]` and `systems` → `[star]`.
 
 Run `npm run typecheck && npm test`. With `npm run dev` running, save `node scripts/shot.mjs 'http://localhost:5173/?autostart=1' shots/13e-galaxy-map.png`. Do not open it. Then append `## Worker report`: files changed, the shot.mjs console output, and anything left undone.
+
+## Worker report
+
+Files changed:
+- `src/ui/screens/galaxyMap.ts` — added `Empire` / `DiplomaticRelationType` imports; new `empireGalaxyMapPlayer(empire)` after `GOD_MODE_PLAYER` (live reads, no caching; index-guarded `systemExplored`; `colonizationTargets()` returns `[]` with a TODO(port) for `IdentifyColonizationTargets`); `IndependentPopulations` now applies the C# owner check (`population.totalAmount <= 0 || (h.empire !== galaxy.independentEmpire && h.empire !== null)`); `createGalaxyMap` uses `galaxy.playerEmpire` when set, else `GOD_MODE_PLAYER`; updated the `GalaxyMapPlayer` comment.
+- `test/galaxyMap-player.test.ts` (new) — visibility/resource guards, Explored Systems selection, enemy-colony relation filtering, pirate-base parent habitats, colonies/colonizationTargets, and the IndependentPopulations owner check on a fake galaxy.
+
+Verification:
+- `npm run typecheck` passes; `npm test` → 87 files / 868 tests pass (existing `test/galaxyMap.test.ts` unchanged and green).
+- `node scripts/shot.mjs 'http://localhost:5173/?autostart=1' shots/13e-galaxy-map.png` → `[debug] [vite] connecting...`, `[debug] [vite] connected.`, `saved shots/13e-galaxy-map.png` — no console errors. Screenshot at `shots/13e-galaxy-map.png` (not opened here).
+
+Notes / deviations:
+- The task's suggested negative case `galaxy.systems[4].systemStar` is a gas cloud in this seed, and gas clouds count as always explored, so the Explored Systems test asserts against `systems[9]` (a star) instead. Positive case (`systems[3]`) is unchanged.
+- Left undone (by design): `colonizationTargets()` stays `[]` until `Empire.IdentifyColonizationTargets` is ported to the sim; `knownPirateBaseHabitats()` is empty until the sim fills `Empire.knownPirateBases` (both marked with TODO(port) comments).
