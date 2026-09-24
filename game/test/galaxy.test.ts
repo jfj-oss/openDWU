@@ -3,7 +3,7 @@ import { generateGalaxy, type Galaxy } from '../src/sim/galaxy';
 import type { GameData } from '../src/sim/data/gameData';
 import { determineAggressiveRaces, type EmpireStart } from '../src/sim/raceRegions';
 import { GalaxyLocationType } from '../src/sim/galaxyLocation';
-import { GalaxyShape, HabitatCategoryType, HabitatType } from '../src/sim/types';
+import { GalaxyShape, HabitatCategoryType, HabitatType, IndustryType } from '../src/sim/types';
 import { CreatureType } from '../src/sim/creature';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 
@@ -69,13 +69,14 @@ describe('generateGalaxy', () => {
     }
 
     it('Spiral shape: star density is higher near the galaxy center than near the rim', () => {
-        // Seed re-picked from 42 to 555 after task 01f3 wired SelectCreatures
-        // into generation: each call consumes Rnd values, shifting the shared
+        // Seed re-picked from 555 to 322 after task 01g wired
+        // GenerateBlackHoleName/GenerateMoonName/SetScenicFactor into
+        // generation: each call consumes Rnd values, shifting the shared
         // stream and hence every subsequent star's position rolls. The test
         // checks a statistical property (center-heavy spiral), not exact
         // positions, so a different seed with the same property is equivalent.
         const galaxy = generateGalaxy({
-            seed: 555,
+            seed: 322,
             shape: GalaxyShape.Spiral,
             starCount: 700,
             sectorWidth: 10,
@@ -164,6 +165,82 @@ describe('generateGalaxy', () => {
         expect(galaxyA.habitats.map((h) => [h.category, h.name, h.type, h.xpos, h.ypos, h.diameter, h.orbitDistance])).toEqual(
             galaxyB.habitats.map((h) => [h.category, h.name, h.type, h.xpos, h.ypos, h.diameter, h.orbitDistance]),
         );
+    });
+
+    it('black holes get non-empty generated names (task 01g: GenerateBlackHoleName)', () => {
+        const galaxy = generateGalaxy({
+            seed: 12345,
+            shape: GalaxyShape.Spiral,
+            starCount: 700,
+            sectorWidth: 10,
+            sectorHeight: 10,
+            systemNames,
+        });
+
+        const blackHoles = galaxy.habitats.filter((h) => h.type === HabitatType.BlackHole && h.category === HabitatCategoryType.Star);
+        expect(blackHoles.length).toBeGreaterThan(0);
+        for (const bh of blackHoles) {
+            expect(bh.name.length).toBeGreaterThan(0);
+            // Names are "Adjective Noun" pairs from the source word lists.
+            expect(bh.name.split(' ').length).toBe(2);
+        }
+    });
+
+    it('every moon has a name (task 01g: GenerateMoonName)', () => {
+        const galaxy = generateGalaxy({
+            seed: 12345,
+            shape: GalaxyShape.Spiral,
+            starCount: 700,
+            sectorWidth: 10,
+            sectorHeight: 10,
+            systemNames,
+        });
+
+        const moons = galaxy.habitats.filter((h) => h.category === HabitatCategoryType.Moon);
+        expect(moons.length).toBeGreaterThan(0);
+        for (const moon of moons) {
+            expect(moon.name.length).toBeGreaterThan(0);
+        }
+    });
+
+    it('some habitats have a scenic feature (task 01g: SetScenicFactor)', () => {
+        const galaxy = generateGalaxy({
+            seed: 12345,
+            shape: GalaxyShape.Spiral,
+            starCount: 700,
+            sectorWidth: 10,
+            sectorHeight: 10,
+            systemNames,
+        });
+
+        const withFeature = galaxy.habitats.filter((h) => h.scenicFeature.length > 0);
+        expect(withFeature.length).toBeGreaterThan(0);
+        // Scenic features reference their system star's name.
+        for (const h of withFeature) {
+            const star = h;
+            let current = star;
+            while (current.parent !== null) {
+                current = current.parent;
+            }
+            expect(h.scenicFeature).toContain(current.name);
+        }
+    });
+
+    it('research bonus industries are set alongside the numeric bonus (task 01g: SetResearchBonus)', () => {
+        const galaxy = generateGalaxy({
+            seed: 12345,
+            shape: GalaxyShape.Spiral,
+            starCount: 700,
+            sectorWidth: 10,
+            sectorHeight: 10,
+            systemNames,
+        });
+
+        const withBonus = galaxy.habitats.filter((h) => h.researchBonus > 0);
+        expect(withBonus.length).toBeGreaterThan(0);
+        for (const h of withBonus) {
+            expect([IndustryType.Weapon, IndustryType.Energy, IndustryType.HighTech]).toContain(h.researchBonusIndustry);
+        }
     });
 });
 

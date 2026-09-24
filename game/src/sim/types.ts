@@ -35,6 +35,16 @@ export enum HabitatType {
     Metal,
 }
 
+// Port of DistantWorlds.Types.IndustryType (IndustryType.cs). Only the
+// members referenced by Galaxy.5.cs SetResearchBonus are ported; member
+// order follows the C# enum as used there.
+export enum IndustryType {
+    Undefined,
+    Weapon,
+    Energy,
+    HighTech,
+}
+
 // Port of DistantWorlds.Types.HabitatCategoryType (HabitatCategoryType.cs)
 export enum HabitatCategoryType {
     Star,
@@ -108,6 +118,13 @@ export class Habitat {
     habitatIndex = 0;
     scenicFactor = 0; // C#: float
     researchBonus = 0; // C#: byte
+    // Port of DistantWorlds.Types.IndustryType (member order as used by
+    // Galaxy.5.cs SetResearchBonus).
+    researchBonusIndustry = IndustryType.Undefined; // C#: IndustryType ResearchBonusIndustry
+    // Port of Habitat.cs ScenicFeature (string, set by Galaxy.5.cs
+    // SetScenicFactor via TextResolver — literals used here since the
+    // TextResolver is not ported).
+    scenicFeature = ''; // C#: string ScenicFeature
     hasRings = false; // C#: bool HasRings (Galaxy.5.cs SetupSolarSystem)
     novaProgression = 0; // C#: float NovaProgression (supernovae; Galaxy.5.cs SetupSun)
     novaImageIndexMajor = 0; // C#: short NovaImageIndexMajor

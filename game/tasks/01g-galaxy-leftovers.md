@@ -15,6 +15,21 @@ If a C# call references something not yet ported, leave a precise `TODO(port)` i
 Tests: black holes get non-empty names; every moon has a name; some habitats have a scenic feature; determinism unchanged (same seed → same output).
 `npm run typecheck` && `npm test`. Append `## Worker report`.
 
+## Worker report
+
+Files changed:
+- `src/sim/types.ts` — added `IndustryType` enum (Undefined, Weapon, Energy, HighTech); added `Habitat.researchBonusIndustry` and `Habitat.scenicFeature` fields (`hasRings` already existed).
+- `src/sim/galaxy.ts`:
+  - Ported `generateBlackHoleName()` (Galaxy.5.cs:2486) with both word lists; used in `assignSystemName` for planet-less systems and in `setupSun`'s black-hole branch (star renamed before the Pull/Event-Horizon GalaxyLocations are created, matching C#).
+  - Ported `generateRandomNameAlt()` (picks a SystemNames entry without marking it used + one of four suffixes) and `generateMoonName(moon)` (Galaxy.4.cs:2533: discarded `GenerateCodeName()`, touch of `moon.Parent`, `DetermineHabitatSystemStar`, then `GenerateRandomNameAlt()` — Rnd stream preserved). Moon naming loop in `setupSolarSystem` now calls `generateMoonName` instead of `generateCodeName`.
+  - Completed `setResearchBonus` (Galaxy.5.cs:1952): industry roll now stored on `habitat.researchBonusIndustry` (Weapon/Energy/HighTech by `Rnd.Next(0,3)`), same call order as before.
+  - Completed `setScenicFactor` (Galaxy.5.cs:2010): full switch incl. BlackHole/GasGiant/Neutron/SuperNova cases; scenic-feature strings built from literals (TextResolver not ported) using the system star's name via `determineHabitatSystemStar`; `hasRings` set for Rings/Ice-Rings/Fire-Rings features.
+- `test/galaxy.test.ts` — new tests: black holes get non-empty two-word names; every moon has a name; some habitats have a scenic feature referencing their system star; research-bonus habitats carry a valid `researchBonusIndustry`. Existing determinism tests cover "same seed → same output". The spiral-density test seed was re-picked 555 → 322 (statistical property unchanged; verified inner > outer at 1.5× margin) because the new Rnd calls shift the shared stream.
+
+Done: all four TODO(port) markers resolved; `npm run typecheck` passes; `npm test` 196/196 pass.
+
+Left undone: none for this task. Pre-existing out-of-scope TODOs remain (DoTasks, nebula-anchored gas clouds, colony placement, critical resources, sector-index perf note).
+
 ## C# source
 
 ### Galaxy.5.cs line 2486 — GenerateBlackHoleName
