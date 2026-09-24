@@ -1,6 +1,6 @@
 // Node.js filesystem version of loadGameData for tests.
 
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import type { GameData, FetchText } from '../../src/sim/data/gameData';
@@ -20,6 +20,10 @@ const fetchTextFs: FetchText = async (candidates: string[]): Promise<string> => 
             let relPath = candidate.replace(/^\/assets\/dwu\/?/, '');
             // Handle special case: resolve 'races' directory path
             // (resolveDataUrl might return multiple candidates for customization fallback)
+            const filePath = resolve(dwuRoot, relPath);
+            if (!existsSync(filePath)) {
+                continue;
+            }
             return readDwu(relPath);
         } catch (err) {
             // Try next candidate
@@ -39,5 +43,17 @@ export async function loadGameDataFs(customizationSet?: string): Promise<GameDat
         .filter((f) => f.endsWith('.txt'))
         .sort();
 
-    return loadGameData(fetchTextFs, customizationSet, raceFileNames);
+    // Discover design template file names (without extension) from
+    // designTemplates/DEFAULT/. The C# engine loads one file per sub-role;
+    // only names matching a BuiltObjectSubRole member are used by loadGameData.
+    let designTemplateFiles: string[] = [];
+    const templatesDir = resolve(dwuRoot, 'designTemplates', 'DEFAULT');
+    if (existsSync(templatesDir)) {
+        designTemplateFiles = readdirSync(templatesDir)
+            .filter((f) => f.endsWith('.txt'))
+            .map((f) => f.replace(/\.txt$/, ''))
+            .sort();
+    }
+
+    return loadGameData(fetchTextFs, customizationSet, raceFileNames, designTemplateFiles);
 }

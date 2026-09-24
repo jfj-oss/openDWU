@@ -16,6 +16,10 @@ export interface ResourceBonus {
 
 export interface Race {
     name: string;
+    /** Port of Race.cs LoadFromFile: `case "PictureIndex": race.PictureRef = ParseIntValue(value);` —
+     *  the race's portrait index, i.e. the original's PictureRef (race_<i>.png /
+     *  race_<i>a.png under images/units/races/, Main.Part13.cs ~2195). Kept named
+     *  pictureIndex to match existing call sites (e.g. galaxy.ts). */
     pictureIndex: number;
     raceFamily: number;
     reproductionRate: number;

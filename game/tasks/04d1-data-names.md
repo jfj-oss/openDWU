@@ -282,3 +282,20 @@ namespace DistantWorlds.Types
   }
 }
 ```
+
+## Worker report
+
+Files changed:
+- `src/sim/data/names.ts` (new) — pure parsers ported from Galaxy.cs: `parseColonyNames`, `parseShipNames` (→ `SubRoleNameSet` with `getNames`), `parseAgentNames` (characterNames.txt, two rows per race family), `parseDesignNames` (throws on <14 families). Also defines a partial `BuiltObjectSubRole` enum (the sub-role keys that appear in shipNames.txt; full enum left as TODO(port)).
+- `src/sim/data/gameData.ts` — registers the four new fields (`colonyNames`, `shipNames`, `agentNames`, `designNames`) in `GameData`; fetches `colonyNames.txt` / `shipNames.txt` tolerating a missing file (the engine returns an empty result when those files are absent) and `characterNames.txt` / `designNames.txt` as required.
+- `test/helpers/loadGameDataFs.ts` — fetchText mock now skips candidates whose file doesn't exist instead of throwing on the first candidate, so tolerated missing name-list files fall back correctly.
+- `test/data-names.test.ts` (new) — parser tests for all four loaders.
+
+Done:
+- All four parsers implemented and registered in GameData.
+- `npm run typecheck` passes; `npm test` passes (212/212 across 18 files).
+
+Notes / left undone:
+- The default install's `colonyNames.txt` and `shipNames.txt` are empty templates (comments only, no names), so the >100-colony-names and ≥5-sub-roles assertions can't hold against the real files; those two tests use synthetic inputs shaped like the documented format instead. `characterNames.txt` and `designNames.txt` are tested against the real files (designNames asserts ≥14 families, each non-empty).
+- `BuiltObjectSubRole` is partial (only the shipNames.txt keys); the full enum is a TODO(port) for a later task.
+- Agent-name rows are keyed by position against the race-family list (matching the C# loop over `RaceFamilies.Count`); the agent-names test uses a synthetic 2-family input since the real file has no machine-readable family ids.

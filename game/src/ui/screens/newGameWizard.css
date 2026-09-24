@@ -165,6 +165,186 @@
     font-style: italic;
 }
 
+/* --- Your Race page (task 06d) --- */
+
+.wizard-page {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.wizard-race-row {
+    display: flex;
+    gap: 20px;
+    flex: 1;
+    min-height: 0; /* let the list scroll inside the fixed window height */
+}
+
+.wizard-race-list {
+    width: 240px;
+    flex-shrink: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding-right: 6px;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    padding: 6px;
+}
+
+.wizard-race-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    cursor: pointer;
+    padding: 3px 6px;
+    color: #e6e6e6;
+    font-size: 13px;
+    text-align: left;
+    font-family: inherit;
+}
+
+.wizard-race-item:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.wizard-race-item.selected {
+    background: rgba(79, 154, 79, 0.2);
+    border-color: #4f9a4f;
+}
+
+.wizard-race-thumb {
+    width: 32px;
+    height: 32px;
+    object-fit: contain;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+
+.wizard-race-detail {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    overflow-y: auto;
+    padding-left: 4px;
+}
+
+.wizard-race-portrait-wrap {
+    display: flex;
+    justify-content: center;
+}
+
+.wizard-race-portrait {
+    width: 160px;
+    height: 160px;
+    object-fit: contain;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+}
+
+.wizard-race-name {
+    font-size: 20px;
+    color: #e8d24a;
+    text-align: center;
+}
+
+.wizard-race-family {
+    font-size: 13px;
+    color: #aaa;
+    text-align: center;
+}
+
+/* Two-column grid of every numeric race stat field. */
+.wizard-race-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 16px;
+}
+
+.wizard-race-stat {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 12px;
+    padding: 3px 8px;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 4px;
+}
+
+.wizard-race-stat-label {
+    color: #c9d1d9;
+}
+
+.wizard-race-stat-value {
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+}
+
+.wizard-race-loading,
+.wizard-race-error {
+    margin: auto;
+    font-size: 14px;
+    color: #aaa;
+}
+
+.wizard-race-error {
+    color: #e07a7a;
+}
+
+/* Note listing race files absent from this install (partial asset tree). */
+.wizard-race-missing {
+    font-size: 11px;
+    color: #b8a24a;
+    font-style: italic;
+    text-align: center;
+}
+
+/* --- Start page (task 06d): options summary before booting. --- */
+
+.wizard-start-heading {
+    font-size: 18px;
+    color: #e8d24a;
+    text-align: center;
+}
+
+.wizard-start-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-width: 480px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+.wizard-start-line {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 14px;
+    padding: 6px 12px;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 4px;
+}
+
+.wizard-start-key {
+    color: #c9d1d9;
+}
+
+.wizard-start-value {
+    color: #fff;
+}
+
 .wizard-footer {
     display: flex;
     align-items: center;

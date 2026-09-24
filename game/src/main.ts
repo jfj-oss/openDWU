@@ -19,6 +19,7 @@ import { Habitat, HabitatCategoryType } from './sim/types';
 import { createMapOverlayState } from './ui/mapOverlays';
 import { buildDefaultHandlers, createShortcutsOverlay, dispatchKey } from './ui/keyboard';
 import { createMainMenu } from './ui/screens/mainMenu';
+import { startMusic } from './audio/musicPlayer';
 import { createNewGameWizard } from './ui/screens/newGameWizard';
 import { sectorsFor, starCountFor, type StartGameOptions } from './sim/startGameOptions';
 import './ui/hud.css';
@@ -145,6 +146,7 @@ function showMainMenu(): void {
             openWizard(showMainMenu);
         },
     });
+    startMusic();
 }
 
 /** Fully-resolved options to start a game (from the boot URL or the wizard). */

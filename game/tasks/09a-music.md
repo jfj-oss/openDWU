@@ -384,3 +384,17 @@ namespace DistantWorlds
     }
 }
 ```
+
+## Worker report
+
+**Files changed:**
+- `src/audio/musicPlayer.ts` (new) — port of `MusicPlayer.cs` + `MusicMood` on `HTMLAudioElement`. Two audio elements for cross-fade (active/inactive swap). 50 ms `setInterval` fade timer with the faithful sqrt curve (`max(0.005, sqrt(level + 0.1) * 0.02) * direction`, clamp at target, 20-tick hold before executing the finish action). Volume scaled by `* 0.6`. Exposes `setMood(mood)`, `setVolume(0..1)`, `mute()`, `unmute()`, plus `playTheme()`, `pause()`, `resume()`, `fadePause()`, `fadeResume()`, `fadeStop()`, `dispose()`. Tracks served from `/assets/dwu/Sounds/Music/<file>` (all 21 files listed above are in `MUSIC_FILES`). Autoplay is gated: `startMusic()` registers a one-shot `pointerdown`/`keydown` listener and only begins playback after the first user gesture. Pure helpers `pickTrackForMood(mood, currentFile, rand)` and `fadeStep(level, target, direction)` are exported for testing.
+- `test/musicPlayer.test.ts` (new) — unit tests for `pickTrackForMood` (null for empty pool, always from mood pool, no repeat when pool > 1, single-track pool repeats, deterministic for a given rand sequence) and `fadeStep` (step size, clamp at target fading up, no clamp while still above target fading down, completion on overshoot, full fade-out bounded). No audio in tests.
+- `src/main.ts` — added `import { startMusic } from './audio/musicPlayer';` and a single `startMusic();` call as the last statement in `showMainMenu()`.
+
+**Verification:** `npm run typecheck` and `npm test` both pass (276 tests, 26 files).
+
+**Left undone / notes:**
+- The original C# picks randomly from *every* MP3 in the folder regardless of mood (`EbsZqjqvhZ` scans `string_3`); this recreation groups tracks into mood pools by name (Quiet/Moderate/Intense/Theme) so each mood has a sensible set. The four `DistantWorldsTheme_*` variant files are not used by any mood pool (only `DistantWorldsTheme.mp3` is the Theme track).
+- The `SoundVolume` enum mapping (Mute/Faint/Soft/Normal/Loud/Maximum → 0/0.1/0.3/0.5/0.75/1.0) is represented via `setVolume(0..1)` + `mute()`/`unmute()` rather than a separate enum overload, since the UI calls `setVolume` directly.
+- Visual/audio verification in a browser was not performed (no display); logic verified via unit tests and typecheck.
