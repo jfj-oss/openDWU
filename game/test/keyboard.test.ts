@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
     KEY_BINDINGS,
     buildDefaultHandlers,
+    cycleActionArgs,
     dispatchKey,
     findBinding,
     isTypingTarget,
@@ -314,5 +315,36 @@ describe('findBinding letter case', () => {
         const none = { ctrl: false, alt: false, shift: false };
         expect(findBinding('g', none)?.action).toBe('galaxyMap');
         expect(findBinding('G', none)?.action).toBe('galaxyMap');
+    });
+});
+
+// Task 12n: cycleActionArgs decodes the C/P/M/Y/X/F/I binding actions into
+// cycler arguments (pure — no DOM needed).
+describe('cycleActionArgs (task 12n)', () => {
+    it('maps each prefix to its cycle kind', () => {
+        expect(cycleActionArgs('cycleColonies')).toEqual({ kind: 'colonies', dir: 1, moveView: false });
+        expect(cycleActionArgs('cycleSpacePorts')).toEqual({ kind: 'bases', dir: 1, moveView: false });
+        expect(cycleActionArgs('cycleMilitaryShips')).toEqual({ kind: 'military', dir: 1, moveView: false });
+        expect(cycleActionArgs('cycleConstructionShips')).toEqual({ kind: 'construction', dir: 1, moveView: false });
+        expect(cycleActionArgs('cycleExplorationShips')).toEqual({ kind: 'other', dir: 1, moveView: false });
+        expect(cycleActionArgs('cycleFleets')).toEqual({ kind: 'fleets', dir: 1, moveView: false });
+        expect(cycleActionArgs('cycleIdleShips')).toEqual({ kind: 'idleShips', dir: 1, moveView: false });
+    });
+
+    it('Backward suffix cycles backwards without moving the view', () => {
+        expect(cycleActionArgs('cycleColoniesBackward')).toEqual({ kind: 'colonies', dir: -1, moveView: false });
+        expect(cycleActionArgs('cycleFleetsBackward')).toEqual({ kind: 'fleets', dir: -1, moveView: false });
+    });
+
+    it('MoveView suffix cycles forward and moves the view', () => {
+        expect(cycleActionArgs('cycleFleetsMoveView')).toEqual({ kind: 'fleets', dir: 1, moveView: true });
+        expect(cycleActionArgs('cycleColoniesMoveView')).toEqual({ kind: 'colonies', dir: 1, moveView: true });
+    });
+
+    it('returns null for non-cycler or unknown actions', () => {
+        expect(cycleActionArgs('cycleEngagementStance')).toBeNull();
+        expect(cycleActionArgs('zoomIn')).toBeNull();
+        expect(cycleActionArgs('togglePause')).toBeNull();
+        expect(cycleActionArgs('cycleSomethingElse')).toBeNull();
     });
 });

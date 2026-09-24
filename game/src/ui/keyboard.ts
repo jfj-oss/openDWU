@@ -188,6 +188,13 @@ export function dispatchKey(
         shift: event.shiftKey,
     }, bindings);
     if (!binding) return null;
+    // Task 12n: the C/P/M/Y/X/F/I cycler keys route to the HUD's cycle
+    // handler (registered by createHud) instead of the inert default branch.
+    const cyc = cycleActionArgs(binding.action);
+    if (cyc) {
+        cycleHandler?.(cyc.kind, cyc.dir, cyc.moveView);
+        return binding.action;
+    }
     switch (binding.action) {
         case 'togglePause':
             handlers.togglePause?.();
@@ -348,6 +355,54 @@ let gameMenuHandler: (() => void) | null = null;
 /** Register the in-game menu's toggle as the Escape action handler. */
 export function setGameMenuHandler(h: (() => void) | null): void {
     gameMenuHandler = h;
+}
+
+// ---------------------------------------------------------------------------
+// Cycle hotkeys (task 12n): C/P/M/Y/X/F/I drive the HUD selection panel's
+// cycler — plain cycles, Shift cycles backwards, Ctrl cycles + moves view.
+// The HUD registers a handler via createHud; dispatchKey routes the seven
+// cycle actions to it and never falls through to the inert default branch.
+// ---------------------------------------------------------------------------
+
+/** The seven cycler lists of the selection panel (the CYCLE_CHIPS keys). */
+export type CycleKind = 'colonies' | 'bases' | 'military' | 'construction' | 'other' | 'fleets' | 'idleShips';
+
+let cycleHandler: ((kind: CycleKind, dir: 1 | -1, moveView: boolean) => void) | null = null;
+
+/** Register the HUD's cycler as the handler for the C/P/M/Y/X/F/I bindings. */
+export function setCycleHandler(h: ((kind: CycleKind, dir: 1 | -1, moveView: boolean) => void) | null): void {
+    cycleHandler = h;
+}
+
+const CYCLE_KIND_PREFIXES: Record<string, CycleKind> = {
+    Colonies: 'colonies',
+    SpacePorts: 'bases',
+    MilitaryShips: 'military',
+    ConstructionShips: 'construction',
+    ExplorationShips: 'other',
+    Fleets: 'fleets',
+    IdleShips: 'idleShips',
+};
+
+/** Decode a `cycle<X>` binding action into its cycler arguments. Pure:
+ * `Backward` suffix → dir -1, `MoveView` suffix → dir 1 + move view, no
+ * suffix → dir 1 without moving the view. Anything else (including
+ * `cycleEngagementStance`) yields null. */
+export function cycleActionArgs(action: string): { kind: CycleKind; dir: 1 | -1; moveView: boolean } | null {
+    if (!action.startsWith('cycle')) return null;
+    let rest = action.slice('cycle'.length);
+    let dir: 1 | -1 = 1;
+    let moveView = false;
+    if (rest.endsWith('Backward')) {
+        dir = -1;
+        rest = rest.slice(0, -'Backward'.length);
+    } else if (rest.endsWith('MoveView')) {
+        moveView = true;
+        rest = rest.slice(0, -'MoveView'.length);
+    }
+    const kind = CYCLE_KIND_PREFIXES[rest];
+    if (!kind) return null;
+    return { kind, dir, moveView };
 }
 
 // ---------------------------------------------------------------------------

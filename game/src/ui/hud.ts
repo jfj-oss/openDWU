@@ -10,7 +10,7 @@ import { Habitat, HabitatCategoryType, HabitatType, IndustryType, SystemInfo } f
 import type { Empire } from '../sim/empire';
 import { flagShapeUrl } from '../sim/startGameOptions';
 import { createGameMenu, type GameMenuRefs } from './screens/gameMenu';
-import { setGameMenuHandler } from './keyboard';
+import { setGameMenuHandler, setCycleHandler, type CycleKind } from './keyboard';
 import { startEffects } from '../audio/effectsPlayer';
 import { helpTopicKeyForHabitat, toggleGalactopedia } from './screens/galactopedia';
 import { toggleEmpiresList } from './screens/empiresList';
@@ -629,13 +629,14 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
     footer.className = 'hud-selection-footer';
     const back = makeGlyphButton('‹', 'Previous');
     const fwd = makeGlyphButton('›', 'Next');
-    let activeChip = 'colonies';
+    let activeChip: CycleKind = 'colonies';
     const chipLabel = (): string => CYCLE_CHIPS.find((c) => c.key === activeChip)?.label ?? activeChip;
-    /** Step through the active chip's list: select the next item (same hook
-     * as click-to-select, so the panel updates) and centre the camera on it
-     * at System zoom. */
-    const stepCycle = (dir: 1 | -1): void => {
-        if (activeChip !== 'colonies') {
+    /** Step through a cycle list: select the next item (same hook as
+     * click-to-select, so the panel updates). With `moveView` (the Ctrl
+     * variants of C/P/M/Y/X/F/I and the ‹ › buttons) the camera also centres
+     * on it at System zoom. */
+    const stepCycle = (dir: 1 | -1, kind: CycleKind = activeChip, moveView = true): void => {
+        if (kind !== 'colonies') {
             // TODO(cycle): needs ships (M3) — Bases/Military/Constr./Other/
             // Fleets/Idle all iterate BuiltObject/fleet state that M3 ports.
             pushHudMessage(`No ${chipLabel()} yet`);
@@ -656,8 +657,10 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         const system =
             galaxy.systems.find((s) => s.habitats.includes(next)) ?? galaxy.systems[next.systemIndex];
         wiring.onSelectionChange?.({ habitat: next, system });
-        cam.centerOn(next.xpos, next.ypos);
-        cam.zoomAt(SYSTEM_LEVEL_ZOOM, cam.width / 2, cam.height / 2);
+        if (moveView) {
+            cam.centerOn(next.xpos, next.ypos);
+            cam.zoomAt(SYSTEM_LEVEL_ZOOM, cam.width / 2, cam.height / 2);
+        }
     };
     back.addEventListener('click', () => {
         playUiClick();
@@ -686,6 +689,18 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         footer.appendChild(b);
     }
     panel.appendChild(footer);
+
+    // Task 12n: the C/P/M/Y/X/F/I hotkeys route here. A plain/Shift cycle
+    // selects without moving the view; Ctrl (MoveView) also moves it. The
+    // chip is switched to the cycled list and highlighted like a chip click,
+    // so the panel shows which list is cycling.
+    setCycleHandler((kind, dir, moveView) => {
+        activeChip = kind;
+        footer.querySelectorAll('.hud-chip').forEach((c) => c.classList.remove('hud-chip-active'));
+        const label = CYCLE_CHIPS.find((c) => c.key === kind)?.label ?? '';
+        footer.querySelector(`.hud-chip[title="${label}"]`)?.classList.add('hud-chip-active');
+        stepCycle(dir, kind, moveView);
+    });
 
     // Refresh the header/body from the current selection.
     const gameData = wiring.gameData;
