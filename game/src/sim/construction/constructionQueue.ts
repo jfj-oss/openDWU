@@ -7,6 +7,7 @@
 
 import type { Galaxy } from '../galaxy';
 import type { Habitat } from '../types';
+import type { BuiltObject } from '../builtObject';
 import { registerTodo, todo } from '../tick/todo';
 
 const T_doConstruction = registerTodo('M4h', 'doConstruction');
@@ -20,4 +21,19 @@ const T_reviewConstructionSpeed = registerTodo('M4h', 'reviewConstructionSpeed')
 /** ConstructionQueue.cs 66 / BaconConstructionQueue.cs 45 ReviewConstructionSpeed. */
 export function reviewConstructionSpeed(galaxy: Galaxy, habitat: Habitat): void {
     /* TODO(port) M4h */ todo(T_reviewConstructionSpeed);
+}
+
+// Stubs added by M4g for BuiltObject.IndustrialProcessing (BuiltObject.2.cs 8120-8127), which drives a built
+// object's own yard queue. `bo.constructionQueue` stays null until M4h creates it in ReDefine.
+const T_doConstructionBuiltObject = registerTodo('M4h', 'doConstructionBuiltObject');
+/** ConstructionQueue.cs 1196 DoConstruction(galaxy, time) on a built object's ConstructionQueue. */
+export function doConstructionBuiltObject(galaxy: Galaxy, builtObject: BuiltObject, time: number): void {
+    // RND: 1 direct — not drawn until M4h.
+    /* TODO(port) M4h */ todo(T_doConstructionBuiltObject);
+}
+
+const T_resetProcessTime = registerTodo('M4h', 'resetProcessTime');
+/** ConstructionQueue.ResetProcessTime(time) on a built object's ConstructionQueue (BuiltObject.2.cs 8127). */
+export function resetProcessTimeBuiltObject(galaxy: Galaxy, builtObject: BuiltObject, time: number): void {
+    /* TODO(port) M4h */ todo(T_resetProcessTime);
 }

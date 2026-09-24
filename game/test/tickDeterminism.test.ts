@@ -84,7 +84,11 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // EvaluateRelativeToParent, the no-mission epilogue resets idle speeds; freighters contracted by M4d now get
         // real missions and command queues). M4k: the game-start and periodic Empire.DoTasks run PerformResearch (queue
         // project picks and research-event rolls draw Rnd; completed research changes components and troop types).
-        expect(summary.digest).toBe('c52d805d788d9173');
+        // Moved from c52d805d788d9173 by M4g: colonies (and manufacturer bases) now own ManufacturingQueues whose
+        // DoManufacturing draws Rnd.Next(0, manufacturers) per call; colonies and mining stations extract resources into
+        // cargo (Habitat.ExtractResources, BuiltObject.IndustrialProcessing); PrioritizeEmpireResourceNeeds fills
+        // EmpireResourceTargets; ReviewManufacturedResources may draw when a colony-manufactured resource can appear.
+        expect(summary.digest).toBe('6519ad959133768e');
     }, 600000);
 });
 
