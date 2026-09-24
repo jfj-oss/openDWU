@@ -1,0 +1,16 @@
+/* Task 12k: Main View hover tooltip. Small dark translucent label next to
+   the cursor, styled like the HUD panels (cf. hud.css / toast.css). */
+
+.dwu-map-tooltip {
+    position: fixed;
+    display: none;
+    pointer-events: none;
+    z-index: 100;
+    background: rgba(20, 22, 28, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    padding: 3px 8px;
+    font-size: 12px;
+    color: #fff;
+    white-space: nowrap;
+}

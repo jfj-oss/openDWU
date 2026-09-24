@@ -46,6 +46,7 @@ import { EmpireLayer } from './empireLayer';
 import { OverlayLayer } from './overlayLayer';
 import { createMapOverlayState, type MapOverlayState } from '../ui/mapOverlays';
 import { showRegionLabels, showSystemNames } from '../ui/settings';
+import { hideMapTooltip, showMapTooltip, tooltipText } from '../ui/mapTooltip';
 
 export function fadeIn(v: number, a: number, b: number): number {
     if (v <= a) {
@@ -736,6 +737,8 @@ export class MainView {
     private lastDragX = 0;
     private lastDragY = 0;
     private pointerInside = false;
+    /** Task 12k: debounce timer for the hover tooltip pick. */
+    private tooltipTimer: number | undefined;
     /** Elapsed seconds since boot (disc rotation / corona frame clock). */
     private elapsedSeconds = 0;
     private lastUpdateMs = -1;
@@ -1183,7 +1186,35 @@ export class MainView {
                 this.camera.panByScreen(x - this.lastDragX, y - this.lastDragY);
                 this.lastDragX = x;
                 this.lastDragY = y;
+                // Task 12k: no hover tooltip while panning.
+                hideMapTooltip();
+                return;
             }
+            // Task 12k: hover tooltip — debounce ~120 ms so it only appears
+            // when the mouse rests on a pickable object.
+            if (this.tooltipTimer !== undefined) {
+                clearTimeout(this.tooltipTimer);
+            }
+            this.tooltipTimer = window.setTimeout(() => {
+                this.tooltipTimer = undefined;
+                if (!this.pointerInside) {
+                    hideMapTooltip();
+                    return;
+                }
+                const hit = this.pick(x, y);
+                if (hit === null) {
+                    hideMapTooltip();
+                    return;
+                }
+                // Same lookup as main.ts's selection code: the system star of
+                // the habitat's system, guarded against out-of-range indices.
+                let systemName: string | null = null;
+                const sys = this.galaxy.systems[hit.systemIndex];
+                if (sys !== undefined) {
+                    systemName = sys.systemStar.name;
+                }
+                showMapTooltip(tooltipText(hit, systemName), e.clientX, e.clientY);
+            }, 120);
         });
         window.addEventListener('mouseup', (e: MouseEvent) => {
             if (e.button === 2 && this.dragging) {
@@ -1232,6 +1263,15 @@ export class MainView {
                 this.camera.zoomStep(-1);
             }
         });
+    }
+
+    /** Task 12k: drop the hover tooltip when this view is torn down. */
+    dispose(): void {
+        if (this.tooltipTimer !== undefined) {
+            clearTimeout(this.tooltipTimer);
+            this.tooltipTimer = undefined;
+        }
+        hideMapTooltip();
     }
 }
 

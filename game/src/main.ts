@@ -397,6 +397,7 @@ export async function startGameView(game: Game, zoomOverride?: number, extraBoot
         window.removeEventListener('resize', resizeHandler);
         clearInterval(refreshHudTimer);
         clearInterval(refreshClockTimer);
+        view.dispose(); // Task 12k: remove the hover tooltip div.
         app.destroy(true);
         hud.root.remove();
         shortcuts.destroy();
