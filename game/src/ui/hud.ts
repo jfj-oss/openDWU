@@ -1016,9 +1016,28 @@ interface SelectionRow {
     element: HTMLElement;
 }
 
+/** CSS colour for a packed RGB empire mainColor, decoded the same way as the
+ * Empires list swatch (empiresList.ts). */
+export function rgbCss(rgb: number): string {
+    return `rgb(${(rgb >> 16) & 255}, ${((rgb >> 8) & 255)}, ${(rgb & 255)})`;
+}
+
+/** Owner / capital / population rows for the selection panel (task 12l):
+ * shown only when the habitat is a colony (`empire !== null`). */
+export function ownerRows(h: Habitat): { label: string; value: string; color?: number }[] {
+    if (h.empire === null) return [];
+    const rows: { label: string; value: string; color?: number }[] = [
+        { label: 'Owner', value: h.empire.name, color: h.empire.mainColor },
+    ];
+    if (h.empire.capital === h) rows.push({ label: 'Status', value: 'Capital' });
+    if (h.population.totalAmount > 0) rows.push({ label: 'Population', value: formatPopulation(h.population.totalAmount) });
+    return rows;
+}
+
 /** Build the selection panel's detail rows in the original's order, skipping
  * empty ones: Quality (planets/moons), Diameter, Resources, Natives, Scenic,
- * Research bonus; stars additionally show their planet count. */
+ * Research bonus; stars additionally show their planet count. Colonies add
+ * Owner / Status / Population rows after the header (task 12l). */
 export function buildSelectionRows(sel: Selection, gameData?: GameData): SelectionRow[] {
     const h = sel.habitat;
     const rows: SelectionRow[] = [];
@@ -1035,6 +1054,28 @@ export function buildSelectionRows(sel: Selection, gameData?: GameData): Selecti
         line.append(k, v);
         rows.push({ element: line });
     };
+
+    // Owner / Status / Population for colonies (task 12l), right after the
+    // name/type header and before Quality. The owner row carries a 10px swatch
+    // in the empire's main colour, decoded like the Empires list.
+    for (const orow of ownerRows(h)) {
+        const line = document.createElement('div');
+        line.className = 'hud-money-row';
+        const k = document.createElement('span');
+        k.className = 'hud-label';
+        if (orow.color !== undefined) {
+            const swatch = document.createElement('span');
+            swatch.className = 'hud-owner-swatch';
+            swatch.style.background = rgbCss(orow.color);
+            k.appendChild(swatch);
+        }
+        k.append(document.createTextNode(orow.label));
+        const v = document.createElement('span');
+        v.className = 'hud-value';
+        v.textContent = orow.value;
+        line.append(k, v);
+        rows.push({ element: line });
+    }
 
     // Quality: baseQuality × 100 as %, planets/moons only.
     if (h.category === HabitatCategoryType.Planet || h.category === HabitatCategoryType.Moon) {

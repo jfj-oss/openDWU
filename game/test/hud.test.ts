@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chromeButtonFile, clearHudMessages, formatCashflow, formatClockLabel, formatMoney, formatPopulation, getHudMessageHistory, getHudMessages, habitatTypeLabel, hudTransformOrigin, nextInCycle, playerColonyList, pushHudMessage, resourceIconUrl } from '../src/ui/hud';
+import { chromeButtonFile, clearHudMessages, formatCashflow, formatClockLabel, formatMoney, formatPopulation, getHudMessageHistory, getHudMessages, habitatTypeLabel, hudTransformOrigin, nextInCycle, ownerRows, playerColonyList, pushHudMessage, resourceIconUrl } from '../src/ui/hud';
 import { historyRows } from '../src/ui/screens/messageHistory';
 import { computeHudLayout, TOP_BAR_BUTTONS } from '../src/ui/hudLayout';
 import { START_STAR_DATE } from '../src/sim/galaxyTime';
@@ -331,6 +331,36 @@ describe('nextInCycle (task 10h)', () => {
     it('works on a single-item list', () => {
         expect(nextInCycle(['only'], 'only', 1)).toBe('only');
         expect(nextInCycle(['only'], 'only', -1)).toBe('only');
+    });
+});
+
+describe('ownerRows (task 12l)', () => {
+    function colony(opts: { name?: string; capital?: boolean; population?: number }): Habitat {
+        const h = new Habitat(HabitatCategoryType.Planet, HabitatType.Ocean, opts.name ?? 'Colony', 0, 0);
+        const empire = { name: 'Test Empire', mainColor: 0x345678, capital: null } as unknown as Empire;
+        h.empire = empire;
+        if (opts.capital) empire.capital = h;
+        if (opts.population !== undefined) h.population.totalAmount = opts.population;
+        return h;
+    }
+
+    it('returns no rows for a habitat without an empire', () => {
+        const h = new Habitat(HabitatCategoryType.Planet, HabitatType.Ocean, 'Wild', 0, 0);
+        expect(ownerRows(h)).toEqual([]);
+    });
+
+    it('shows Owner, Status and Population for a populated capital', () => {
+        const h = colony({ capital: true, population: 1_500_000 });
+        expect(ownerRows(h)).toEqual([
+            { label: 'Owner', value: 'Test Empire', color: 0x345678 },
+            { label: 'Status', value: 'Capital' },
+            { label: 'Population', value: '1.5M' },
+        ]);
+    });
+
+    it('shows only Owner for a non-capital colony with zero population', () => {
+        const h = colony({ population: 0 });
+        expect(ownerRows(h)).toEqual([{ label: 'Owner', value: 'Test Empire', color: 0x345678 }]);
     });
 });
 

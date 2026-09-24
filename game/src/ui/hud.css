@@ -212,6 +212,17 @@
     font-size: 11px;
     line-height: 16px;
 }
+/* Owner row (task 12l): 10px swatch in the empire's main colour, decoded like
+   the Empires list. */
+.hud-owner-swatch {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    margin-right: 4px;
+    vertical-align: middle;
+}
 .hud-selection-footer {
     display: flex;
     align-items: center;
