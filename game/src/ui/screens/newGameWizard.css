@@ -309,6 +309,156 @@
     text-align: center;
 }
 
+/* --- Your Empire page (task 06e): name, government, flag. --- */
+
+.wizard-empire-label {
+    font-size: 13px;
+    color: #e8d24a;
+}
+
+.wizard-empire-name-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.wizard-empire-name-input {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+    color: #fff;
+    padding: 4px 8px;
+    width: 280px;
+    font-family: inherit;
+}
+
+.wizard-empire-gov {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.wizard-empire-gov-select {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+    color: #fff;
+    padding: 4px 8px;
+    width: 280px;
+    font-family: inherit;
+}
+
+/* Small two-column table of the selected government's key modifiers. */
+.wizard-empire-gov-table {
+    border-collapse: collapse;
+    font-size: 12px;
+    max-width: 420px;
+}
+
+.wizard-empire-gov-table td {
+    padding: 3px 10px;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.wizard-empire-gov-table td:first-child {
+    color: #c9d1d9;
+}
+
+.wizard-empire-gov-table td:last-child {
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+}
+
+.wizard-empire-flag {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* Grid of the 83 flag shape tiles. */
+.wizard-empire-flag-grid {
+    display: grid;
+    grid-template-columns: repeat(17, 1fr);
+    gap: 3px;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    padding: 6px;
+}
+
+.wizard-empire-flag-tile {
+    aspect-ratio: 1;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    cursor: pointer;
+    padding: 1px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.wizard-empire-flag-tile img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.wizard-empire-flag-tile:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.wizard-empire-flag-tile.selected {
+    background: rgba(79, 154, 79, 0.25);
+    border-color: #4f9a4f;
+}
+
+.wizard-empire-color-row {
+    display: flex;
+    gap: 24px;
+}
+
+.wizard-empire-color-cell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: #c9d1d9;
+}
+
+.wizard-empire-color-input {
+    width: 48px;
+    height: 28px;
+    padding: 2px;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+/* Flag preview: primary colour background with the shape tinted in the
+   secondary colour via a CSS mask of the chosen flag png. */
+.wizard-empire-flag-preview-wrap {
+    position: relative;
+    width: 120px;
+    height: 80px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.wizard-empire-flag-preview-bg {
+    position: absolute;
+    inset: 0;
+}
+
+.wizard-empire-flag-preview-shape {
+    position: absolute;
+    inset: 0;
+}
+
 /* --- Start page (task 06d): options summary before booting. --- */
 
 .wizard-start-heading {

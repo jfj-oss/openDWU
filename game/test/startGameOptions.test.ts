@@ -1,7 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { defaultRaceName, defaultStartGameOptions, sectorsFor, starCountFor, type StartGameOptions } from '../src/sim/startGameOptions';
+import {
+    applyEmpireDefaults,
+    defaultEmpireName,
+    defaultFlagColors,
+    defaultRaceName,
+    defaultStartGameOptions,
+    flagShapeUrl,
+    FLAG_COLOR_PALETTE,
+    sectorsFor,
+    starCountFor,
+    type StartGameOptions,
+} from '../src/sim/startGameOptions';
 import { GalaxyShape } from '../src/sim/types';
 import { parseRace, type Race } from '../src/sim/data/races';
 
@@ -45,6 +56,13 @@ describe('defaultStartGameOptions (task 06b)', () => {
         expect(typeof opts.seed).toBe('number');
         // Task 06d: no race chosen until the wizard's "Your Race" page runs.
         expect(opts.raceName).toBe('');
+        // Task 06e: the "Your Empire" fields start uncustomised so
+        // applyEmpireDefaults can fill them in.
+        expect(opts.empireName).toBe('');
+        expect(opts.governmentId).toBe(-1);
+        expect(opts.flagShapeIndex).toBe(-1);
+        expect(opts.primaryColor).toBe('');
+        expect(opts.secondaryColor).toBe('');
     });
 });
 
@@ -92,6 +110,11 @@ describe('StartGameOptions round-trip (task 06d)', () => {
             dimensionIndex: 4,
             seed: 42,
             raceName: 'Human',
+            empireName: 'Human Empire',
+            governmentId: 5,
+            flagShapeIndex: 7,
+            primaryColor: '#c8373a',
+            secondaryColor: '#e8d24a',
         };
         const copy = { ...options };
         expect(copy).toEqual(options);
@@ -109,9 +132,83 @@ describe('StartGameOptions round-trip (task 06d)', () => {
             dimensionIndex: 2,
             seed: 1,
             raceName: 'Ackdarian',
+            empireName: 'Ackdarian Empire',
+            governmentId: -1,
+            flagShapeIndex: -1,
+            primaryColor: '',
+            secondaryColor: '',
         };
         expect(starCountFor(options.starCountIndex)).toBe(700);
         expect(sectorsFor(options.dimensionIndex)).toBe(8);
         expect(options.raceName).toBe('Ackdarian');
+    });
+});
+
+describe('flagShapeUrl (task 06e)', () => {
+    it('builds two-digit flagNN.png URLs under /assets/dwu/images/ui/flagshapes/', () => {
+        expect(flagShapeUrl(0)).toBe('/assets/dwu/images/ui/flagshapes/flag00.png');
+        expect(flagShapeUrl(7)).toBe('/assets/dwu/images/ui/flagshapes/flag07.png');
+        expect(flagShapeUrl(82)).toBe('/assets/dwu/images/ui/flagshapes/flag82.png');
+    });
+});
+
+describe('defaultEmpireName / applyEmpireDefaults (task 06e)', () => {
+    function baseOptions(): StartGameOptions {
+        return defaultStartGameOptions();
+    }
+
+    it('defaults the empire name to "<Race name> Empire"', () => {
+        expect(defaultEmpireName('Human')).toBe('Human Empire');
+        const opts = baseOptions();
+        opts.raceName = 'Human';
+        applyEmpireDefaults(opts, 0);
+        expect(opts.empireName).toBe('Human Empire');
+    });
+
+    it('auto-updates the name when the race changes and the user has not edited it', () => {
+        const opts = baseOptions();
+        opts.raceName = 'Human';
+        applyEmpireDefaults(opts, 0);
+        expect(opts.empireName).toBe('Human Empire');
+        // Race changes on the wizard's "Your Race" page (prev = 'Human').
+        opts.raceName = 'Evuck';
+        applyEmpireDefaults(opts, 1, 'Human');
+        expect(opts.empireName).toBe('Evuck Empire');
+    });
+
+    it('keeps a user-edited name across race changes', () => {
+        const opts = baseOptions();
+        opts.raceName = 'Human';
+        applyEmpireDefaults(opts, 0);
+        opts.empireName = 'My Custom Empire'; // user edit
+        opts.raceName = 'Evuck';
+        applyEmpireDefaults(opts, 1, 'Human');
+        expect(opts.empireName).toBe('My Custom Empire');
+    });
+
+    it('fills deterministic flag defaults by race index only while uncustomised', () => {
+        const opts = baseOptions();
+        opts.raceName = 'Human';
+        applyEmpireDefaults(opts, 3);
+        expect(opts.flagShapeIndex).toBe(3 % 83);
+        expect(opts.primaryColor).toBe(defaultFlagColors(3).primary);
+        expect(opts.secondaryColor).toBe(defaultFlagColors(3).secondary);
+
+        // A second call with a different race index must not clobber them.
+        applyEmpireDefaults(opts, 7);
+        expect(opts.flagShapeIndex).toBe(3 % 83);
+        expect(opts.primaryColor).toBe(defaultFlagColors(3).primary);
+        expect(opts.secondaryColor).toBe(defaultFlagColors(3).secondary);
+    });
+
+    it('defaultFlagColors picks deterministically from the 12-colour palette', () => {
+        expect(FLAG_COLOR_PALETTE).toHaveLength(12);
+        for (let i = 0; i < 24; i++) {
+            const { primary, secondary } = defaultFlagColors(i);
+            expect(FLAG_COLOR_PALETTE).toContain(primary);
+            expect(FLAG_COLOR_PALETTE).toContain(secondary);
+            expect(primary).toBe(FLAG_COLOR_PALETTE[((i % 12) + 12) % 12]);
+            expect(secondary).toBe(FLAG_COLOR_PALETTE[(((i % 12) + 12) % 12 + 5) % 12]);
+        }
     });
 });

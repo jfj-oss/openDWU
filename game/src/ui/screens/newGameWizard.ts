@@ -1,18 +1,35 @@
-// New-game wizard (tasks 06b/06d): The Galaxy → Your Race → Start pages.
+// New-game wizard (tasks 06b/06d/06e): The Galaxy → Your Race → Your Empire
+// → Start pages.
 // Port of the visual layout of Start.InitializeComponent.cs pnlStartNewGame*
 // panels, modernised like the HUD panels. "The Galaxy" page is task 06b;
-// "Your Race" (race list + portrait/stats detail) and the final summary
-// "Start" page are task 06d.
+// "Your Race" (race list + portrait/stats detail) is task 06d; "Your Empire"
+// (name / government / flag) and the final summary "Start" page are tasks
+// 06e/06d.
 import './newGameWizard.css';
 import { GalaxyShape } from '../../sim/types';
-import { defaultRaceName, defaultStartGameOptions, sectorsFor, starCountFor, type StartGameOptions } from '../../sim/startGameOptions';
+import {
+    applyEmpireDefaults,
+    defaultRaceName,
+    defaultStartGameOptions,
+    FLAG_COLOR_PALETTE,
+    flagShapeUrl,
+    sectorsFor,
+    starCountFor,
+    type StartGameOptions,
+} from '../../sim/startGameOptions';
 import { parseRace, type Race } from '../../sim/data/races';
 import { parseRaceFamilies, type RaceFamily } from '../../sim/data/raceFamilies';
+import { parseGovernments, type Government } from '../../sim/data/governments';
 import { fetchText } from '../../sim/data/fetchData';
 import { resolveDataUrl } from '../../sim/data/paths';
 
 const CHROME = '/assets/dwu/images/ui/chrome/';
 const RACES_DIR = '/assets/dwu/images/units/races/';
+
+/** Task 06e: race name → index among playable races (sorted by name), the
+ * same ordering the "Your Race" page lists them in. Filled lazily by
+ * loadWizardRaceData; falls back to 0 until then. */
+export const PLAYABLE_RACE_INDEX = new Map<string, number>();
 
 export interface ShapeOption {
     shape: GalaxyShape;
@@ -40,19 +57,26 @@ export interface NewGameWizardCallbacks {
     onStartGame: (options: StartGameOptions) => void;
 }
 
+/** Task 06e: called when the user picks a different race on the "Your Race"
+ * page, so the "Your Empire" page can re-apply its defaults (empire name,
+ * flag colours). `prevRaceName` is the previously selected race. */
+export type WizardRaceChangedHandler = (raceName: string, prevRaceName?: string) => void;
+
 export interface NewGameWizardRefs {
     root: HTMLDivElement;
     destroy: () => void;
 }
 
-/** Wizard page ids / navigation order (task 06d): The Galaxy → Your Race → Start. */
-export type WizardPageId = 'galaxy' | 'race' | 'start';
-export const WIZARD_PAGES: WizardPageId[] = ['galaxy', 'race', 'start'];
+/** Wizard page ids / navigation order (task 06e): The Galaxy → Your Race →
+ * Your Empire → Start. */
+export type WizardPageId = 'galaxy' | 'race' | 'empire' | 'start';
+export const WIZARD_PAGES: WizardPageId[] = ['galaxy', 'race', 'empire', 'start'];
 
 /** Title-bar text per page ("Start a New Game: <page title>"). */
 export const WIZARD_PAGE_TITLES: Record<WizardPageId, string> = {
     galaxy: 'The Galaxy',
     race: 'Your Race',
+    empire: 'Your Empire',
     start: 'Start',
 };
 
@@ -60,15 +84,41 @@ export const WIZARD_PAGE_TITLES: Record<WizardPageId, string> = {
 export const WIZARD_BACK_LABELS: Record<WizardPageId, string> = {
     galaxy: '← Main Menu',
     race: '← The Galaxy',
-    start: '← Your Race',
+    empire: '← Your Race',
+    start: '← Your Empire',
 };
 
 /** Footer forward-button label per page. */
 export const WIZARD_FORWARD_LABELS: Record<WizardPageId, string> = {
     galaxy: 'Next →',
     race: 'Next →',
+    empire: 'Next →',
     start: 'Start Game',
 };
+
+/** Task 06e: the key numeric modifiers shown in the small two-column table
+ * under the government dropdown (fields of the parsed Government, see
+ * src/sim/data/governments.ts). */
+export const GOVERNMENT_MODIFIER_FIELDS: ReadonlyArray<{ key: keyof Government; label: string }> = [
+    { key: 'corruption', label: 'Corruption' },
+    { key: 'warWeariness', label: 'War Weariness' },
+    { key: 'maintenanceCosts', label: 'Maintenance Costs' },
+    { key: 'approvalRating', label: 'Approval Rating' },
+    { key: 'populationGrowth', label: 'Population Growth' },
+    { key: 'researchSpeed', label: 'Research Speed' },
+    { key: 'troopRecruitment', label: 'Troop Recruitment' },
+    { key: 'tradeBonus', label: 'Trade Bonus' },
+    { key: 'stability', label: 'Stability' },
+];
+
+/** Task 06e: governments available to a new player empire at start. The
+ * original's Government type carries an availability field (0 = all empires)
+ * plus specialFunctionCode — storyline-only governments have a non-zero
+ * special function (e.g. 1 = nationalize private sector), so both are
+ * excluded here. */
+export function filterStartGovernments(governments: Government[]): Government[] {
+    return governments.filter((g) => g.availability === 0 && g.specialFunctionCode === 0);
+}
 
 /** Task 06d: every numeric field the race parser has (src/sim/data/races.ts),
  * shown on the "Your Race" page as a two-column stats grid. */
@@ -140,6 +190,13 @@ async function loadWizardRaceData(): Promise<{ races: Race[]; families: RaceFami
         races.push(parseRace(text));
     }
     const families = parseRaceFamilies(familyText);
+    cachedRaces = races;
+    // Task 06e: record each playable race's index in the sorted list so the
+    // "Your Empire" page can derive deterministic flag colours by race index.
+    [...races]
+        .filter((r) => r.playable)
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .forEach((r, i) => PLAYABLE_RACE_INDEX.set(r.name, i));
     return { races, families, missing };
 }
 
@@ -151,9 +208,10 @@ function isRaceFileText(text: string): boolean {
     return first.startsWith("'");
 }
 
-/** Build the new-game wizard (Galaxy → Your Race → Start) and append it to
- * document.body. When opened via ?screen=wizard&page=race the wizard starts
- * on the named page (screenshot/dev hook; main.ts does not pass the page). */
+/** Build the new-game wizard (Galaxy → Your Race → Your Empire → Start) and
+ * append it to document.body. When opened via ?screen=wizard&page=empire the
+ * wizard starts on the named page (screenshot/dev hook; main.ts does not pass
+ * the page). */
 export function createNewGameWizard(callbacks: NewGameWizardCallbacks): NewGameWizardRefs {
     const options: StartGameOptions = defaultStartGameOptions();
     let page: WizardPageId = 'galaxy';
@@ -192,11 +250,13 @@ export function createNewGameWizard(callbacks: NewGameWizardCallbacks): NewGameW
 
     // --- Page containers (built once, shown/hidden on navigation). ---
     const galaxyPage = buildGalaxyPage(options);
-    const racePage = buildRacePage(options);
+    const racePage = buildRacePage(options, handleRaceChanged);
+    const empirePage = buildEmpirePage(options);
     const startPage = buildStartPage(options);
     const pageEls: Record<WizardPageId, HTMLElement> = {
         galaxy: galaxyPage,
         race: racePage,
+        empire: empirePage,
         start: startPage,
     };
     for (const el of Object.values(pageEls)) {
@@ -207,6 +267,15 @@ export function createNewGameWizard(callbacks: NewGameWizardCallbacks): NewGameW
     function refreshStartSummary(): void {
         const refresh = (startPage as unknown as { __refresh?: () => void }).__refresh;
         if (refresh) refresh();
+    }
+
+    /** Task 06e: the "Your Race" page reports a new selection here so the
+     * "Your Empire" page can re-derive its defaults. */
+    function handleRaceChanged(raceName: string): void {
+        const prev = options.raceName;
+        options.raceName = raceName;
+        const handler = (empirePage as unknown as { __onRaceChanged?: WizardRaceChangedHandler }).__onRaceChanged;
+        if (handler) handler(raceName, prev);
     }
 
     // --- Footer (back/forward buttons change per page). ---
@@ -422,7 +491,7 @@ function makeRacePortrait(pictureRef: number, altText: string, className: string
     return img;
 }
 
-function buildRacePage(options: StartGameOptions): HTMLDivElement {
+function buildRacePage(options: StartGameOptions, onRaceChanged?: WizardRaceChangedHandler): HTMLDivElement {
     const wrap = document.createElement('div');
     wrap.className = 'wizard-page wizard-race-page';
 
@@ -445,7 +514,7 @@ function buildRacePage(options: StartGameOptions): HTMLDivElement {
             if (options.raceName === '') {
                 options.raceName = defaultRaceName(races);
             }
-            renderRacePage(wrap, races, families, options);
+            renderRacePage(wrap, races, families, options, onRaceChanged);
             if (missing.length > 0) {
                 const note = document.createElement('div');
                 note.className = 'wizard-race-missing';
@@ -469,6 +538,7 @@ function renderRacePage(
     races: Race[],
     families: RaceFamily[],
     options: StartGameOptions,
+    onRaceChanged?: WizardRaceChangedHandler,
 ): void {
     const sorted = [...races].sort((a, b) => a.name.localeCompare(b.name));
     const familyName = (id: number): string =>
@@ -513,6 +583,8 @@ function renderRacePage(
         for (const item of list.children) {
             item.classList.toggle('selected', (item as HTMLElement).dataset.race === race.name);
         }
+        // Task 06e: let the "Your Empire" page re-derive its defaults.
+        onRaceChanged?.(race.name);
     }
 
     for (const race of sorted) {
@@ -532,6 +604,13 @@ function renderRacePage(
 
     const initial = sorted.find((r) => r.name === options.raceName) ?? sorted.find((r) => r.playable) ?? sorted[0];
     selectRace(initial);
+
+    // Task 06e: expose the race-changed hook to the wizard shell. The
+    // initial selection above already ran onRaceChanged (which re-applies
+    // the empire defaults for that race), so nothing else is needed here.
+    if (onRaceChanged) {
+        (wrap as unknown as { __raceChanged?: WizardRaceChangedHandler }).__raceChanged = onRaceChanged;
+    }
 }
 
 /** Two-column grid cells for every numeric race stat field. */
@@ -552,6 +631,265 @@ function buildStatsCells(race: Race): HTMLElement[] {
         cells.push(cell);
     }
     return cells;
+}
+
+// ---------------------------------------------------------------------------
+// Your Empire page (task 06e): name, government, flag.
+// ---------------------------------------------------------------------------
+
+/** Task 06e: load governments.txt via the same URL resolution the engine
+ * uses (Customization/<set>/ first, base last). A body that is not a real
+ * DW:U .txt file (the dev server's HTML 404 fallback) yields no rows. */
+/** Task 06e: the race's preferred starting government id, or -1 if the race
+ * is unknown / has no preference. The "Your Empire" page uses this to preselect
+ * a sensible default when the user hasn't chosen one yet. */
+export function preferredGovernmentForRace(raceName: string): number {
+    const races = loadWizardRacesSync();
+    const race = races.find((r) => r.name === raceName);
+    return race?.preferredStartingGovernment ?? -1;
+}
+
+/** Synchronous cache of the parsed races, populated by loadWizardRaceData.
+ * (The wizard always loads race data before the empire page needs it.) */
+let cachedRaces: Race[] | null = null;
+function loadWizardRacesSync(): Race[] {
+    return cachedRaces ?? [];
+}
+
+async function loadWizardGovernments(): Promise<Government[]> {
+    const text = await fetchText(resolveDataUrl('governments.txt'));
+    if (!isRaceFileText(text)) {
+        return [];
+    }
+    return parseGovernments(text);
+}
+
+function buildEmpirePage(options: StartGameOptions): HTMLDivElement {
+    const wrap = document.createElement('div');
+    wrap.className = 'wizard-page wizard-empire-page';
+
+    // --- Empire name ---
+    const nameRow = document.createElement('div');
+    nameRow.className = 'wizard-empire-name-row';
+    const nameLabel = document.createElement('span');
+    nameLabel.className = 'wizard-empire-label';
+    nameLabel.textContent = 'Empire Name';
+    nameRow.appendChild(nameLabel);
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.className = 'wizard-empire-name-input';
+    nameInput.value = options.empireName;
+    nameInput.addEventListener('input', () => {
+        // Any user edit marks the name as customised — applyEmpireDefaults
+        // will then leave it alone when the race changes.
+        options.empireName = nameInput.value;
+    });
+    nameRow.appendChild(nameInput);
+    wrap.appendChild(nameRow);
+
+    // --- Government (dropdown + modifier table) ---
+    const govSection = document.createElement('div');
+    govSection.className = 'wizard-empire-gov';
+    const govLabel = document.createElement('span');
+    govLabel.className = 'wizard-empire-label';
+    govLabel.textContent = 'Government';
+    govSection.appendChild(govLabel);
+
+    const govLoading = document.createElement('div');
+    govLoading.className = 'wizard-race-loading';
+    govLoading.textContent = 'Loading governments…';
+    govSection.appendChild(govLoading);
+
+    const govSelect = document.createElement('select');
+    govSelect.className = 'wizard-empire-gov-select';
+    govSelect.style.display = 'none';
+    const govTable = document.createElement('table');
+    govTable.className = 'wizard-empire-gov-table';
+    govTable.style.display = 'none';
+    govSection.appendChild(govSelect);
+    govSection.appendChild(govTable);
+    wrap.appendChild(govSection);
+
+    let governments: Government[] = [];
+
+    function selectedGovernment(): Government | null {
+        return governments.find((g) => g.governmentId === options.governmentId) ?? null;
+    }
+
+    function renderGovModifiers(): void {
+        const gov = selectedGovernment();
+        if (gov === null) {
+            govTable.replaceChildren();
+            return;
+        }
+        const tbody = document.createElement('tbody');
+        for (const { key, label } of GOVERNMENT_MODIFIER_FIELDS) {
+            const value = gov[key];
+            const tr = document.createElement('tr');
+            const tdKey = document.createElement('td');
+            tdKey.textContent = titleCase(label);
+            const tdVal = document.createElement('td');
+            tdVal.textContent = typeof value === 'number' ? String(value) : String(value);
+            tr.appendChild(tdKey);
+            tr.appendChild(tdVal);
+            tbody.appendChild(tr);
+        }
+        govTable.replaceChildren(tbody);
+    }
+
+    function selectGovernment(id: number): void {
+        options.governmentId = id;
+        renderGovModifiers();
+    }
+
+    void loadWizardGovernments()
+        .then((all) => {
+            govLoading.remove();
+            governments = filterStartGovernments(all);
+            if (governments.length === 0) {
+                const note = document.createElement('div');
+                note.className = 'wizard-todo';
+                note.textContent = 'No start-available government data found in this install.';
+                govSection.appendChild(note);
+                return;
+            }
+            // Default selection: the race's preferred starting government
+            // when it is in the available list, else the first available one.
+            if (options.governmentId < 0) {
+                const preferred = preferredGovernmentForRace(options.raceName);
+                options.governmentId =
+                    preferred >= 0 && governments.some((g) => g.governmentId === preferred)
+                        ? preferred
+                        : governments[0].governmentId;
+            }
+            for (const g of governments) {
+                const optEl = document.createElement('option');
+                optEl.value = String(g.governmentId);
+                optEl.textContent = g.name;
+                optEl.selected = g.governmentId === options.governmentId;
+                govSelect.appendChild(optEl);
+            }
+            govSelect.addEventListener('change', () => {
+                selectGovernment(parseInt(govSelect.value, 10));
+            });
+            govSelect.style.display = '';
+            govTable.style.display = '';
+            renderGovModifiers();
+        })
+        .catch((err) => {
+            govLoading.remove();
+            const error = document.createElement('div');
+            error.className = 'wizard-race-error';
+            error.textContent = `Failed to load government data: ${String(err)}`;
+            govSection.appendChild(error);
+        });
+
+    // --- Flag: shape grid + colour pickers + preview ---
+    const flagSection = document.createElement('div');
+    flagSection.className = 'wizard-empire-flag';
+    const flagLabel = document.createElement('span');
+    flagLabel.className = 'wizard-empire-label';
+    flagLabel.textContent = 'Flag';
+    flagSection.appendChild(flagLabel);
+
+    const flagGrid = document.createElement('div');
+    flagGrid.className = 'wizard-empire-flag-grid';
+    flagSection.appendChild(flagGrid);
+
+    const colorRow = document.createElement('div');
+    colorRow.className = 'wizard-empire-color-row';
+    for (const [labelText, prop] of [['Primary Colour', 'primaryColor'], ['Secondary Colour', 'secondaryColor']] as const) {
+        const cell = document.createElement('div');
+        cell.className = 'wizard-empire-color-cell';
+        const span = document.createElement('span');
+        span.textContent = labelText;
+        const input = document.createElement('input');
+        input.type = 'color';
+        input.className = 'wizard-empire-color-input';
+        input.value = options[prop] || '#808080';
+        input.addEventListener('input', () => {
+            options[prop] = input.value;
+            updateFlagPreview();
+        });
+        cell.appendChild(span);
+        cell.appendChild(input);
+        colorRow.appendChild(cell);
+    }
+    flagSection.appendChild(colorRow);
+
+    const previewWrap = document.createElement('div');
+    previewWrap.className = 'wizard-empire-flag-preview-wrap';
+    const previewBg = document.createElement('div');
+    previewBg.className = 'wizard-empire-flag-preview-bg';
+    const previewShape = document.createElement('div');
+    previewShape.className = 'wizard-empire-flag-preview-shape';
+    previewWrap.appendChild(previewBg);
+    previewWrap.appendChild(previewShape);
+    flagSection.appendChild(previewWrap);
+    wrap.appendChild(flagSection);
+
+    function updateFlagPreview(): void {
+        const url = flagShapeUrl(options.flagShapeIndex >= 0 ? options.flagShapeIndex : 0);
+        previewBg.style.background = options.primaryColor || '#808080';
+        previewShape.style.backgroundColor = options.secondaryColor || '#ffffff';
+        previewShape.style.maskImage = `url(${url})`;
+        previewShape.style.webkitMaskImage = `url(${url})`;
+        previewShape.style.maskSize = 'contain';
+        previewShape.style.webkitMaskSize = 'contain';
+        previewShape.style.maskRepeat = 'no-repeat';
+        previewShape.style.webkitMaskRepeat = 'no-repeat';
+        previewShape.style.maskPosition = 'center';
+        previewShape.style.webkitMaskPosition = 'center';
+    }
+
+    function selectFlagShape(index: number): void {
+        options.flagShapeIndex = index;
+        for (const child of flagGrid.children) {
+            (child as HTMLElement).classList.toggle('selected', Number((child as HTMLElement).dataset.index) === index);
+        }
+        updateFlagPreview();
+    }
+
+    for (let i = 0; i < 83; i++) {
+        const tile = document.createElement('button');
+        tile.type = 'button';
+        tile.className = 'wizard-empire-flag-tile';
+        tile.dataset.index = String(i);
+        const img = document.createElement('img');
+        img.src = flagShapeUrl(i);
+        img.alt = `Flag shape ${i}`;
+        img.loading = 'lazy';
+        tile.appendChild(img);
+        tile.addEventListener('click', () => selectFlagShape(i));
+        flagGrid.appendChild(tile);
+    }
+
+    /** Task 06e: re-apply the "Your Empire" defaults when the race changes
+     * (name auto-update rule + deterministic flag colours by race index),
+     * then refresh the UI controls to match. */
+    function onRaceChanged(raceName: string, prevRaceName?: string): void {
+        const raceIndex = Math.max(0, PLAYABLE_RACE_INDEX.get(raceName) ?? 0);
+        applyEmpireDefaults(options, raceIndex, prevRaceName);
+        nameInput.value = options.empireName;
+        const colorInputs = colorRow.querySelectorAll<HTMLInputElement>('input[type="color"]');
+        if (colorInputs.length >= 2) {
+            colorInputs[0].value = options.primaryColor;
+            colorInputs[1].value = options.secondaryColor;
+        }
+        if (options.flagShapeIndex >= 0) {
+            for (const child of flagGrid.children) {
+                (child as HTMLElement).classList.toggle('selected', Number((child as HTMLElement).dataset.index) === options.flagShapeIndex);
+            }
+        }
+        updateFlagPreview();
+    }
+    (wrap as unknown as { __onRaceChanged?: WizardRaceChangedHandler }).__onRaceChanged = onRaceChanged;
+
+    // Initial paint: apply defaults once so the controls show something even
+    // before any race has been picked (raceName '' → race index 0).
+    onRaceChanged(options.raceName);
+
+    return wrap;
 }
 
 // ---------------------------------------------------------------------------
@@ -583,6 +921,9 @@ function buildStartPage(options: StartGameOptions): HTMLDivElement {
             ['Star Amount', STAR_AMOUNT_TICKS[options.starCountIndex] ?? `${starCountFor(options.starCountIndex)} stars`],
             ['Physical Size', PHYSICAL_SIZE_TICKS[options.dimensionIndex] ?? `${sectorsFor(options.dimensionIndex)}×${sectorsFor(options.dimensionIndex)} sectors`],
             ['Your Race', options.raceName || '(not chosen)'],
+            ['Empire Name', options.empireName || '(not set)'],
+            ['Government', options.governmentId >= 0 ? `#${options.governmentId}` : '(not chosen)'],
+            ['Flag', `shape ${options.flagShapeIndex} · ${options.primaryColor} / ${options.secondaryColor}`],
             ['Seed', String(options.seed)],
         ];
         summary.replaceChildren(...rows.map(([k, v]) => {
