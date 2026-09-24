@@ -95,7 +95,9 @@ describe('ProjectForceStructure / ProjectPrivateForceStructure at game start', (
         }
         // Pinned for seed 1 (re-pinned M4k: the game-start Empire.DoTasks now runs PerformResearch, whose research-queue selection and research events draw Rnd): only the second empire's capital neighbour has known resources
         // (ProjectPrivateForceStructure flag), so only it projects freighters and mining ships.
-        expect(a.map((e) => e.private)).toEqual([[], [['SmallFreighter', 2], ['MediumFreighter', 1], ['LargeFreighter', 1], ['GasMiningShip', 2], ['MiningShip', 2]], [], []]);
+        // Re-pinned M4s1: ReviewPirateRelations draws Rnd.NextDouble in each game-start Empire.DoTasks long block, so the
+        // empires land elsewhere; now no capital neighbour has known resources and none projects private ships.
+        expect(a.map((e) => e.private)).toEqual([[], [], [], []]);
     }, 60000);
 
     it('colony economy at the DoTasks point: tax snapshot −ColonyStateSupportCost, income 0', () => {

@@ -155,9 +155,11 @@ describe('troops (game start)', () => {
         // StrategicValue and so EstimatedDefensiveForceRequired.
         // Re-pinned again at the M4 wave-1 merge (M4k): the game-start Empire.DoTasks also runs PerformResearch, whose
         // research-queue selection and research events draw Rnd (and completed research changes troop types).
-        expect(a.capitals.map((c) => [c.edfr, c.levelRequired, c.troops])).toEqual([[1211, 907, 12], [1535, 1150, 2], [1710, 1282, 1], [641, 480, 10]]);
-        expect(a.colonyTroops).toEqual([13, 6, 14, 3]);
-        expect(a.maintenance).toEqual([25000, 7200, 13500, 11700]);
+        // Re-pinned by M4s1: ReviewPirateRelations draws Rnd.NextDouble in each game-start Empire.DoTasks long block, so
+        // the empires / garrison rolls move.
+        expect(a.capitals.map((c) => [c.edfr, c.levelRequired, c.troops])).toEqual([[1211, 907, 0], [1538, 1153, 9], [1720, 1290, 0], [667, 499, 6]]);
+        expect(a.colonyTroops).toEqual([10, 7, 13, 2]);
+        expect(a.maintenance).toEqual([10000, 14400, 11050, 7200]);
         expect(a.processDraws).toEqual(['', '', '', '']); // garrisons already meet TroopLevelRequired
         expect(run(true)).toEqual(a);
     }, 120000);
@@ -165,13 +167,14 @@ describe('troops (game start)', () => {
     it('ProcessColonyTroops recruits under-garrisoned capitals (Rnd: Next(0,70) per completed recruit)', () => {
         const b = run(false);
         // (re-pinned at the M4 wave-1 merge: M4k PerformResearch at game start, see above)
-        expect(b.capitals.map((c) => c.troops)).toEqual([12, 14, 2, 8]);
-        expect(b.maintenance).toEqual([12000, 12600, 1800, 7200]);
-        // Empire 3 (1 troop, level 1282) recruits two troops; each completion draws Next(0,70).
-        expect(b.processDraws).toEqual(['', '', 'Next(0,70)=1 Next(0,70)=4', '']);
-        // The first roll is 1 → Empire.GenerateNewCharacter(TroopGeneral) via the hook (the 3rd troop).
-        expect(b.troopGenerals.length).toBe(1);
-        expect(b.troopGenerals[0]).toMatch(/:3rd /);
+        // (re-pinned M4s1: ReviewPirateRelations' game-start Rnd draw moves the empires / garrison rolls.)
+        expect(b.capitals.map((c) => c.troops)).toEqual([0, 2, 7, 0]);
+        expect(b.maintenance).toEqual([0, 1800, 5950, 0]);
+        // The under-garrisoned capitals recruit two troops each; each completion draws ChanceNewTroopGeneralFromRecruitment's
+        // Next(0, 70 / race general-appearance chance) — 87 for the first empire's race.
+        expect(b.processDraws).toEqual(['Next(0,87)=56 Next(0,87)=57', 'Next(0,70)=0 Next(0,70)=38', '', 'Next(0,70)=31 Next(0,70)=28']);
+        // No roll is 1 → no Empire.GenerateNewCharacter(TroopGeneral) call.
+        expect(b.troopGenerals.length).toBe(0);
         expect(run(false)).toEqual(b);
     }, 120000);
 });

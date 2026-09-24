@@ -7,6 +7,7 @@
 // population and creatures are ported (01f2: SelectPopulation, 01f3:
 // SelectCreatures) — see the `TODO(port)` markers below for what remains.
 
+import { EmpireActivityList } from './pirates/empireActivity';
 import { Random } from './random';
 import { Creature, CreatureType } from './creature';
 import { GalaxyLocation, GalaxyLocationEffectType, GalaxyLocationShape, GalaxyLocationType } from './galaxyLocation';
@@ -4389,6 +4390,8 @@ export class Galaxy {
     // ---- M4q fields (invasion, troops, boarding) ----
     // ---- M4r fields (diplomacy runtime) ----
     // ---- M4s fields (pirates runtime) ----
+    /** Galaxy.cs 593 PirateMissions (EmpireActivityList: missions on offer / being bid on; pirates/missionsMarket.ts). */
+    pirateMissions = new EmpireActivityList();
     // ---- M4t fields (visibility, exploration, territory) ----
     /**
      * Galaxy.cs _RegeneratingEmpireTerritory / _RegenerateEmpireTerritoryAgain (ReviewEmpireTerritoryCore 3384):

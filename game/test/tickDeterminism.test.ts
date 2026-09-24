@@ -66,7 +66,7 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         checkInvariants(long);
         const hits = r.todoHits;
         // Every tick family reached its stubs.
-        for (const key of ['M4e autoRefuelRepairShip', 'M4q scanForNewOwnerHabitat', 'M4r processMessages', 'M4s pirateAssignShipMissions', 'M4s reviewPirateMissionsAndAssign', 'M4n evaluateSystemThreats']) {
+        for (const key of ['M4e autoRefuelRepairShip', 'M4q scanForNewOwnerHabitat', 'M4r processMessages', 'M4s pirateAssignShipMissions', 'M4s pirateCollectIncomeFromControlledColonies', 'M4n evaluateSystemThreats']) {
             expect(hits[key] ?? 0, key).toBeGreaterThan(0);
         }
         const summary = { digest: stateDigest(long), counts: stateCounts(long), rndDraws: long.rnd.drawCount };
@@ -84,7 +84,12 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // EvaluateRelativeToParent, the no-mission epilogue resets idle speeds; freighters contracted by M4d now get
         // real missions and command queues). M4k: the game-start and periodic Empire.DoTasks run PerformResearch (queue
         // project picks and research-event rolls draw Rnd; completed research changes components and troop types).
-        expect(summary.digest).toBe('c52d805d788d9173');
+        // Moved from c52d805d788d9173 by M4s1: the pirate mission marketplace runs — ReviewPirateRelations draws one
+        // Rnd.NextDouble per Empire long block, IndependentColoniesMake{Smuggling,Defend}OffersToPirates draw per
+        // independent colony (Next(0, 2) / Next(0, 30), plus DetermineColonyDeficientInResources' Next(0, orders)), the
+        // smuggling offers create state orders, pirate factions accept smuggling missions, and
+        // CountResourceSupplyLocations is ported (market price factors).
+        expect(summary.digest).toBe('0e118e130d8e1c67');
     }, 600000);
 });
 

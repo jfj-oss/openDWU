@@ -78,6 +78,8 @@ export { SystemVisibilityStatus } from './visibility';
 // BuiltObjectSubRole (full C# member order) lives in builtObjectTypes.ts.
 export { BuiltObjectSubRole } from './builtObjectTypes';
 import { BuiltObjectSubRole } from './builtObjectTypes';
+import { PirateEconomy } from './pirates/pirateEconomy';
+import { EmpireActivityList } from './pirates/empireActivity';
 
 
 
@@ -101,6 +103,9 @@ export class EmpireCounters {
     colonyPrivateRevenueTotal = 0.0;
     pirateSmugglingIncome = 0.0;
     pirateProtectionIncome = 0.0;
+    // EmpireCounters.cs 90-91 (M4s: CompletePirateMission, pirates/missionsMarket.ts).
+    completedPirateMissionAttackCount = 0;
+    completedPirateMissionDefendCount = 0;
     constructor(_empire: Empire) {}
     /** EmpireCounters.cs 220 ProcessColonyRevenue(amount). */
     processColonyRevenue(amount: number): void {
@@ -122,10 +127,7 @@ export class EmpireCounters {
     }
 }
 
-// TODO(port): PirateEconomy — PirateEconomy.cs.
-class PirateEconomy {
-    constructor(_startStarDate: number) {}
-}
+// PirateEconomy.cs: pirates/pirateEconomy.ts (M4s).
 
 // Port of DesignSpecification.LoadFromFile(galaxy, subRoleName, subRole, isMobile, race,
 // isPirate, [standAlone,] raceNameOverride) (DesignSpecification.cs 148/185): a null race
@@ -281,7 +283,9 @@ export class Empire {
     controlColonyFacilities: AutomationLevel = AutomationLevel.Undefined;
     controlPopulationPolicy = false;
     controlCharacterLocations = false;
-    controlOfferPirateMissions: AutomationLevel = AutomationLevel.Undefined;
+    // Empire.cs 569: [OptionalField] _ControlOfferPirateMissions = AutomationLevel.FullyAutomated (field initializer, so
+    // the pirate / independent ctor keeps it too).
+    controlOfferPirateMissions: AutomationLevel = AutomationLevel.FullyAutomated;
     mainColor = 0;
     secondaryColor = 0;
     flagShape = -1;
@@ -367,7 +371,8 @@ export class Empire {
         this.active = true;
         this.empireId = isIndependentEmpire ? 0 : galaxy.getNextEmpireID();
         this.counters = new EmpireCounters(this);
-        this.pirateEconomy = new PirateEconomy(START_STAR_DATE);
+        // Empire.cs 4159: new PirateEconomy(galaxy.CurrentStarDate).
+        this.pirateEconomy = new PirateEconomy(galaxyCurrentStarDate(galaxy));
         this.visibility = new EmpireVisibility(galaxy, this.visibilityOwner(isIndependentEmpire));
         this.name = name === '' ? 'Independent' : name;
         this.dominantRace = dominantRace;
@@ -455,9 +460,8 @@ export class Empire {
         this.active = true;
         this.empireId = galaxy.getNextEmpireID();
         this.counters = new EmpireCounters(this);
-        // TODO(port): Galaxy.CurrentStarDate — Galaxy.cs (no time on the TS
-        // Galaxy yet); stand in with the start star date.
-        this.pirateEconomy = new PirateEconomy(START_STAR_DATE);
+        // Empire.cs 3759: new PirateEconomy(galaxy.CurrentStarDate).
+        this.pirateEconomy = new PirateEconomy(galaxyCurrentStarDate(galaxy));
         // ResourceMap.InitializeFlags(Habitats.Count) + one Unexplored
         // SystemVisibility per system (Empire.cs 3760, 3831-3840).
         this.visibility = new EmpireVisibility(galaxy, this.visibilityOwner());
@@ -1590,6 +1594,8 @@ export class Empire {
     /** Empire.cs 402 _RelativeEmpireSize (CalculateRelativeEmpireSize; added by M4a for the tick's assignment). */
     relativeEmpireSize = 0;
     // ---- M4s fields (pirates runtime) ----
+    /** Empire.cs 487 _PirateMissions (EmpireActivityList; pirates/missionsMarket.ts). */
+    pirateMissions = new EmpireActivityList();
     // ---- M4t fields (visibility, exploration) ----
     /** Empire.cs 139 _EmpiresViewable (EmpireList) / 141 _EmpiresViewableExpiry (List<long>), parallel lists. */
     empiresViewable: Empire[] = [];

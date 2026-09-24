@@ -282,14 +282,17 @@ describe('FindNearestBuiltObject / FindNearestPirateFaction', () => {
 // (re-pinned M4k: the game-start Empire.DoTasks now runs PerformResearch — SelectNextResearchProject draws
 // Rnd (SelectRandomLowestProject) and research events draw Next(0, num4) per industry — so later game-start
 // Rnd draws shift.)
+// Re-pinned M4s1: ReviewPirateRelations (Empire.2.cs 2427) draws one Rnd.NextDouble in every Empire long block,
+// including the game-start Empire.DoTasks of each generated empire, and the Galaxy long block's independent-colony
+// pirate offers draw per colony, so the stream reaching CreateStateShips moved.
 const PINNED_NAMES: unknown[] = [
-    ['ExplorationShip', 'S147 Queen'],
-    ['ExplorationShip', 'S147 Discovery'],
-    ['ExplorationShip', 'Bountiful Subterfuge'],
-    ['ExplorationShip', 'Feeble Journey'],
-    ['ExplorationShip', 'Gallant Impulse'],
-    ['ExplorationShip', 'Futile Guardian'],
-    ['ExplorationShip', 'Slippery Miracle'],
-    ['ConstructionShip', 'Precious Wonder'],
-    ['ConstructionShip', 'S147 Trader'],
+    ['ExplorationShip', 'Celestial Rebel'],
+    ['ExplorationShip', 'S147 Shroud'],
+    ['ExplorationShip', 'Merry Journey'],
+    ['ExplorationShip', 'Lost Treasure'],
+    ['ExplorationShip', 'Cowering Starrider'],
+    ['ExplorationShip', 'S147 Tramp'],
+    ['ExplorationShip', 'Precious Expedition'],
+    ['ConstructionShip', 'Crooked Decoy'],
+    ['ConstructionShip', 'Hasty Wanderer'],
 ];

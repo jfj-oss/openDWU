@@ -28,7 +28,8 @@ describe('createGame', () => {
         // Pinned for seed 1 (TS port; C# parity diverges at the first Empire.DoTasks, unported).
         // (re-pinned: design generation + colonizable-habitat search)
         // (re-pinned M4k: the game-start Empire.DoTasks now runs PerformResearch, whose research-queue selection and research events draw Rnd)
-        expect(a.map((e) => e.capital)).toEqual(['S147', 'S32', 'S31', 'S118']);
+        // (re-pinned M4s1: ReviewPirateRelations draws Rnd.NextDouble in each game-start Empire.DoTasks long block)
+        expect(a.map((e) => e.capital)).toEqual(['S147', 'S281', 'S88', 'S218']);
         expect(a.map((e) => e.colonies)).toEqual([1, 1, 1, 1]);
         expect(a.length).toBe(4);
         for (const e of a) expect(e.colonies).toBeGreaterThanOrEqual(1);

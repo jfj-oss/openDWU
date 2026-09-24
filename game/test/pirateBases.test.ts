@@ -199,33 +199,35 @@ function spyRnd(g: Galaxy): { k: string; v: number }[] {
 // (re-pinned M4k: the game-start Empire.DoTasks now runs PerformResearch — SelectNextResearchProject draws
 // Rnd (SelectRandomLowestProject) and research events draw Next(0, num4) per industry — so later game-start
 // Rnd draws shift.)
+// (re-pinned M4s1: ReviewPirateRelations draws Rnd.NextDouble in every game-start Empire long block and the Galaxy long
+// block's independent-colony pirate offers draw per colony, so GenerateNewPirateEmpires sees a different stream.)
 const PINNED_SEED1_FLEETS: unknown[] = [
     [
-        'SmallSpacePort:Fugitives End|Escort:Forceful Rebellion|Escort:Ruinous Surprise|ConstructionShip:Nightstar of S95',
-        'SmallFreighter:Worthy Pathway|GasMiningStation:TH717 Gas Mining Station',
+        'SmallSpacePort:Villainous End|Escort:Wrathful Rage|ExplorationShip:Noble Negotiator|ConstructionShip:Adamant Distress',
+        'SmallFreighter:Gallant Impulse|MiningShip:Precious Mystery|GasMiningShip:Wild Bargain|GasMiningStation:BK606 Gas Mining Station|GasMiningStation:EB105 Gas Mining Station',
     ],
     [
-        'SmallSpacePort:Secluded Nest|Escort:Potent Retribution|ExplorationShip:Envoy of S250|ConstructionShip:Cautious Adversity',
-        'SmallFreighter:Merchant of S250|SmallFreighter:S250 Illusion|MiningShip:S250 Trader|GasMiningShip:Bold Deal|GasMiningStation:S250 6 Gas Mining Station|MiningStation:Elpui Mining Station',
+        'SmallSpacePort:Secluded Haunt|Escort:Banished Monarch|Escort:Reckless Gauntlet|ConstructionShip:Lonesome Sojourn',
+        'SmallFreighter:S259 Sun|GasMiningStation:QR411 Gas Mining Station',
     ],
     [
-        'SmallSpacePort:Lonely Fortress|Escort:Bleak Chariot|ExplorationShip:Grimy Bootlegger|ConstructionShip:Muffled Bargain',
-        'SmallFreighter:Hasty Wanderer|SmallFreighter:Deep Bargain|MiningShip:S134 Bargain|GasMiningShip:Strange Queen|GasMiningStation:QR411 Gas Mining Station|GasMiningStation:SR808 Gas Mining Station',
+        'SmallSpacePort:S200 Rest|ExplorationShip:S200 Pearl|ConstructionShip:S200 Relic',
+        'SmallFreighter:Cryptic Star|SmallFreighter:Cryptic Spirit|SmallFreighter:Adamant Echo|SmallFreighter:Solitary Nightstar|MiningShip:Tarnished Impasse|GasMiningShip:Placid Adventure|GasMiningStation:PE220 Gas Mining Station|GasMiningStation:S200 2 Gas Mining Station|MiningStation:Sleyroca Mining Station',
     ],
     [
-        'SmallSpacePort:Brigands Stronghold|Escort:Sinister Renegade|Escort:Elusive Enigma|ConstructionShip:Gallant Wager',
-        'SmallFreighter:S141 Rogue|GasMiningStation:S141 9 Gas Mining Station',
+        'SmallSpacePort:Lonely Cave|Escort:Decisive Warrior|Escort:Bitter Monarch|ConstructionShip:Daring Chance',
+        'SmallFreighter:S36 Profit|GasMiningStation:S36 6 Gas Mining Station',
     ],
     [
-        'SmallSpacePort:Bounty Hunters Fortress|Escort:Swift Exile|Escort:Dark Horizon|ConstructionShip:Aimless Destiny',
-        'SmallFreighter:Noble Adventure|GasMiningStation:TO28 Gas Mining Station',
+        'SmallSpacePort:Bandits Lair|Escort:Hostile Behemoth|ExplorationShip:Hidden Adversity|ConstructionShip:Deep Victory',
+        'SmallFreighter:Eager Star|MiningShip:Merry Trader|GasMiningShip:Grimy Smuggler|GasMiningStation:BF486 Gas Mining Station|GasMiningStation:S75 1 Gas Mining Station',
     ],
     [
-        'SmallSpacePort:Outlaws Shelter|ExplorationShip:Dire Luxury|ConstructionShip:Jubilant Vagrant',
-        'SmallFreighter:S31 Enterprise|SmallFreighter:Tarnished Smuggler|SmallFreighter:Ancient Pathway|SmallFreighter:Gallant Mirage|MiningShip:Brisk Rogue|GasMiningShip:Dubious Disturbance|GasMiningStation:KX635 Gas Mining Station|GasMiningStation:S31 4 Gas Mining Station|MiningStation:S31 3 Mining Station',
+        'SmallSpacePort:Gamblers Cove|Escort:Desperate Dragon|ExplorationShip:Valiant Voyager|ConstructionShip:Audacious Challenge',
+        'SmallFreighter:Cautious Subterfuge|SmallFreighter:Rusty Gamble|MiningShip:Disturbance of S118|GasMiningShip:Hoard of S118|GasMiningStation:TH717 Gas Mining Station|GasMiningStation:S118 1 Gas Mining Station',
     ],
     [
-        'SmallSpacePort:Villainous Retreat|Escort:Worthy Stealth|ExplorationShip:Hasty Starway|ConstructionShip:Mocking Prowler',
-        'SmallFreighter:Tired Renegade|SmallFreighter:Eager Adversity|MiningShip:Vain Odyssey|GasMiningShip:Late Negotiator|GasMiningStation:S297 3 Gas Mining Station|GasMiningStation:S11 2 Gas Mining Station',
+        'SmallSpacePort:Villainous End|Escort:Merciless Cutlass|ExplorationShip:Radiant Lurker|ConstructionShip:Sneaky Pride',
+        'SmallFreighter:Valiant Miracle|SmallFreighter:Aimless Nova|MiningShip:S68 Solace|GasMiningShip:S68 Victory|GasMiningStation:AB17 Gas Mining Station|GasMiningStation:SR808 Gas Mining Station',
     ],
 ];

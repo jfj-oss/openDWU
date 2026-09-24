@@ -111,7 +111,8 @@ describe('Empire.DoTasks intervals (Empire.1.cs 3427, >= on seconds, touches fir
     it('pirate factions branch to DoTasksPirates with the same intervals', () => {
         const pirateMarkers = {
             short: 'M4u processCharacters',
-            regular: 'M4s pirateCheckMissionsOnOffer',
+            // M4s1 ported PirateCheckMissionsOnOffer; ReviewDesignsAndRetrofit (same block, 4173) is still a stub.
+            regular: 'M4i reviewDesignsAndRetrofit',
             periodic: 'M4s pirateRecalculateEmpireCorruption',
             intermediate: 'M4s pirateCollectIncomeFromControlledColonies',
             long: 'M4s doTaskPiratesLongInterval',
@@ -249,7 +250,8 @@ describe('Galaxy.DoTasks (Galaxy.cs 3054) and DoTasksTimeSensitive (3046)', () =
         resetTodoCounts();
         galaxyDoTasksTimeSensitive(galaxy, 0, 1234);
         galaxyDoTasksTimeSensitive(galaxy, 0, 1250);
-        expect(todoHits()['M4s reviewPirateMissionsAndAssign']).toBe(2);
+        // M4s1 ported ReviewPirateMissionsAndAssign; ProcessDelayedEventActions (3050) runs in the same call.
+        expect(todoHits()['deferred processDelayedEventActions']).toBe(2);
         expect(galaxy.lastGalaxyProcessTimeSensitive).toBe(1250);
     });
 });
@@ -271,7 +273,8 @@ describe('frame driver (Main.Part12.cs method_86)', () => {
         expect([s.fleetEmpireCursor, s.fleetFrameCounter]).toEqual([1, 1]);
         expect(s.inBattleCursor).toBe(0); // the in-battle scan loop is a no-op
         expect(s.queue).toEqual([]);
-        expect(todoHits()['M4s reviewPirateMissionsAndAssign']).toBe(21);
+        // DoTasksTimeSensitive every frame (ReviewPirateMissionsAndAssign is ported by M4s1; ProcessDelayedEventActions is the stub).
+        expect(todoHits()['deferred processDelayedEventActions']).toBe(21);
         // Empires 0..2 were ticked (at frames 1, 11, 21); empire 3 not yet — it keeps createGame's
         // Start.2.cs 1344-1350 stagger (all six touches = now − Rnd.Next(1, 120) s).
         expect(g.empires[0].lastShortTouch).toBeGreaterThan(0);

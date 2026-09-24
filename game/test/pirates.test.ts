@@ -216,12 +216,49 @@ describe('generatePirateEmpireName', () => {
 // (re-pinned M4k: the game-start Empire.DoTasks now runs PerformResearch — SelectNextResearchProject draws
 // Rnd (SelectRandomLowestProject) and research events draw Next(0, num4) per industry — so later game-start
 // Rnd draws shift.)
+// (re-pinned M4s1: ReviewPirateRelations draws Rnd.NextDouble in every game-start Empire long block and the Galaxy long
+// block's independent-colony pirate offers draw per colony, so GenerateNewPirateEmpires sees a different stream.)
 const PINNED_SEED1_PIRATES: unknown[] = [
-    ['Dhayu Invaders', 'S95 2', 'Atuuk', 796684],
-    ['Dread Storm Council', 'S250 7', 'Ackdarian', 32639],
-    ['Fierce League', 'S134 1', 'Kiadian', 88],
-    ['S83 Intruders', 'S141 7', 'Atuuk', 2427716],
-    ['Murderous Moon Invaders', 'BK606', 'Atuuk', 531208],
-    ['Savage Exports', 'S31 6', 'Securan', 16511],
-    ['Dark Force', 'SI948', 'Kiadian', 3155216],
+    [
+        'Red Storm Pillagers',
+        'TO28',
+        'Sluken',
+        5513343,
+    ],
+    [
+        'Vicious Dagger Outlaws',
+        'S259 2',
+        'Atuuk',
+        796684,
+    ],
+    [
+        'Black Storm Transport',
+        'S200 4',
+        'Ketarov',
+        16384,
+    ],
+    [
+        'Hidden Warriors',
+        'S36 5',
+        'Atuuk',
+        11008,
+    ],
+    [
+        'Deadly Dagger Buccaneers',
+        'S75 3',
+        'Boskara',
+        3674214,
+    ],
+    [
+        'Fearsome Sun Authority',
+        'S118 2',
+        'Kiadian',
+        88,
+    ],
+    [
+        'Sol Authority',
+        'S68 2',
+        'Ikkuro',
+        26112,
+    ],
 ];

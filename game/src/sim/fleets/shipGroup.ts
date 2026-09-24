@@ -182,3 +182,12 @@ export function disbandShipGroup(galaxy: Galaxy, empire: Empire, shipGroup: Ship
     void shipGroup;
     /* TODO(port) M4l */ todo(T_disbandShipGroup);
 }
+
+// ---- stub added by M4s (Empire.8.cs 2440 CancelPirateDefendMissions) ----
+const T_shipGroupCompleteMission = registerTodo('M4l', 'shipGroupCompleteMission');
+/** ShipGroup.cs 1837 CompleteMission() → CompleteMission(true) — stub. */
+export function shipGroupCompleteMission(galaxy: Galaxy, shipGroup: ShipGroup): boolean {
+    // RND: mission completion / reassignment draws in callees — not drawn until M4l.
+    /* TODO(port) M4l */ todo(T_shipGroupCompleteMission);
+    return false;
+}

@@ -896,12 +896,42 @@ export function checkForUnownedCargoHabitat(galaxy: Galaxy, habitat: Habitat): v
     checkForUnownedCargo(habitat.cargo, habitat.empire);
 }
 
-const T_countResourceSupplyLocations = registerTodo('M4d', 'countResourceSupplyLocations');
 /**
- * Empire.CountResourceSupplyLocations(resourceId, includeUnderConstruction) (added by M4j: BaconHabitat
- * CalculateResourcePriceEnvironmentalFactors). Stub returns 0.
+ * Empire.6.cs 1313 CountResourceSupplyLocations(resourceId, includeIndependentColonies) (ported by M4s; the second C#
+ * parameter is includeIndependentColonies). No Rnd.
  */
-export function countResourceSupplyLocations(galaxy: Galaxy, empire: Empire, resourceId: number, includeUnderConstruction: boolean): number {
-    /* TODO(port) M4d */ todo(T_countResourceSupplyLocations);
-    return 0;
+export function countResourceSupplyLocations(galaxy: Galaxy, empire: Empire, resourceId: number, includeIndependentColonies: boolean): number {
+    let num = 0;
+    const builtObjectList: BuiltObject[] = [];
+    builtObjectList.push(...empire.builtObjects);
+    builtObjectList.push(...empire.privateBuiltObjects);
+    for (let i = 0; i < empire.colonies.length; i++) {
+        const habitat = empire.colonies[i];
+        if (habitat.empire !== empire) continue;
+        for (const resource of habitat.resources) if (resource.resourceId === resourceId) num++;
+    }
+    for (let j = 0; j < builtObjectList.length; j++) {
+        const builtObject = builtObjectList[j];
+        if (builtObject.subRole === BuiltObjectSubRole.GasMiningStation || builtObject.subRole === BuiltObjectSubRole.MiningStation) {
+            if (builtObject.parentHabitat === null) continue;
+            for (const resource2 of builtObject.parentHabitat.resources) if (resource2.resourceId === resourceId) num++;
+        } else {
+            if (
+                empire.pirateEmpireBaseHabitat === null ||
+                (builtObject.subRole !== BuiltObjectSubRole.SmallSpacePort && builtObject.subRole !== BuiltObjectSubRole.MediumSpacePort && builtObject.subRole !== BuiltObjectSubRole.LargeSpacePort) ||
+                builtObject.parentHabitat === null ||
+                builtObject.parentHabitat.empire === empire
+            )
+                continue;
+            for (const resource3 of builtObject.parentHabitat.resources) if (resource3.resourceId === resourceId) num++;
+        }
+    }
+    if (includeIndependentColonies) {
+        for (let k = 0; k < galaxy.independentColonies.length; k++) {
+            const habitat2 = galaxy.independentColonies[k];
+            if (habitat2.empire !== galaxy.independentEmpire || !empire.visibility.checkSystemExplored(habitat2.systemIndex)) continue;
+            for (const resource4 of habitat2.resources) if (resource4.resourceId === resourceId) num++;
+        }
+    }
+    return num;
 }

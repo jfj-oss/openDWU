@@ -209,26 +209,28 @@ describe('UpgradeMilitaryShipDesignMoreWeapons / MoreEngines (Galaxy.8.cs 4121 /
 // (re-pinned M4k: the game-start Empire.DoTasks now runs PerformResearch — SelectNextResearchProject draws
 // Rnd (SelectRandomLowestProject) and research events draw Next(0, num4) per industry — so later game-start
 // Rnd draws shift.)
+// (re-pinned M4s1: ReviewPirateRelations draws Rnd.NextDouble in every game-start Empire long block and the Galaxy long
+// block's independent-colony pirate offers draw per colony, so later game-start draws shift.)
 const PINNED: unknown[] = [
     [
-        'Escort:Royale II:32',
-        'Frigate:Sovereign II:47',
-        'Destroyer:Decurion II:57',
-        'Cruiser:Senator:81',
-        'CapitalShip:Colossia:139',
-        'Carrier:CX-2 Carrier:100',
+        'Escort:Tetrarch II:32',
+        'Frigate:Enforcer II:44',
+        'Destroyer:Maximus II:54',
+        'Cruiser:Shadow:89',
+        'CapitalShip:Argossia:136',
+        'Carrier:CX-2 Carrier:108',
         'DefensiveBase:Phantom Pirate Defensive Base:123',
         'GenericBase:Phantom Pirate Base:217',
     ],
     [
-        'GenericBase:Bandits Den',
-        'DefensiveBase:Haako 4 Defense Battery',
+        'GenericBase:Desperado Sanctuary',
         'DefensiveBase:Haako 4 Orbital Battery',
+        'DefensiveBase:Haako 4 Weapons Platform',
         'DefensiveBase:Haako 4 Defensive Base',
-        'Destroyer:Looming Hero',
-        'Carrier:Terrible Challenger',
-        'Frigate:Cunning Eclipse',
-        'Escort:Indomitable Gauntlet',
+        'Frigate:Shrouded Stealth',
+        'Frigate:Intrepid Revenge',
+        'Destroyer:Insidious Claw',
+        'CapitalShip:Sly Bandit',
     ],
-    30,
+    27,
 ];

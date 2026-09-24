@@ -124,6 +124,8 @@ import { disbandShipGroup, empireShipGroups } from './fleets/shipGroup';
 import { REAL_SECONDS_IN_GALACTIC_YEAR } from './tick/simTime';
 import { netSort } from './netSort';
 import { registerTodo, todo } from './tick/todo';
+import { galaxyStarDate } from './tick/simTime';
+import { PirateExpenseType } from './pirates/pirateEconomy';
 
 // ---------------------------------------------------------------------------
 // Small C# semantics helpers
@@ -1610,12 +1612,11 @@ export function calculateCrashResearchProgramCost(empire: Empire, project: TechN
 
 // Empire.3.cs InitiateCrashResearchProgram (3204).
 export function initiateCrashResearchProgram(galaxy: Galaxy, empire: Empire, project: TechNode, cost: number): void {
-    void galaxy;
     if (empire.stateMoney >= cost) {
         project.isRushing = true;
         empire.stateMoney -= cost;
-        // TODO(port) M4s: PirateEconomy.PerformExpense(cost, PirateExpenseType.CrashResearch, CurrentStarDate) —
-        // PirateEconomy (yearly income/expense statistics) is not modeled.
+        // Empire.3.cs 3210 (wired by M4s1).
+        empire.pirateEconomy.performExpense(cost, PirateExpenseType.CrashResearch, galaxyStarDate(galaxy));
     }
 }
 

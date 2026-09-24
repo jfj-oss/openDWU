@@ -9,6 +9,7 @@ import type { Galaxy } from '../galaxy';
 import type { BuiltObject } from '../builtObject';
 import type { Habitat } from '../types';
 import type { Creature } from '../creature';
+import type { Empire } from '../empire';
 import { registerTodo, todo } from '../tick/todo';
 
 const T_checkForRefuelling = registerTodo('M4e', 'checkForRefuelling');
@@ -44,4 +45,15 @@ const T_autoRefuelRepairShip = registerTodo('M4e', 'autoRefuelRepairShip');
 export function autoRefuelRepairShip(galaxy: Galaxy, builtObject: BuiltObject, useCachedRefuellingLocation: boolean): boolean {
     /* TODO(port) M4e */ todo(T_autoRefuelRepairShip);
     return false;
+}
+
+// ---- stub added by M4s (Empire.2.cs 1365/1452 ReviewPirateSmugglingMissions / MakeSmugglingOffersToPirates) ----
+const T_thisYearsPrivateFuelCosts = registerTodo('M4e', 'thisYearsPrivateFuelCosts');
+/**
+ * Empire.ThisYearsPrivateFuelCosts (Empire.cs 2336: _ThisYearsPrivateFuelCosts, accumulated by Empire.6.cs 2266
+ * PurchasePrivateFuel). Stub: 0 (no private fuel purchases are recorded until M4e ports refuelling payments).
+ */
+export function thisYearsPrivateFuelCosts(galaxy: Galaxy, empire: Empire): number {
+    /* TODO(port) M4e */ todo(T_thisYearsPrivateFuelCosts);
+    return 0.0;
 }
