@@ -9,6 +9,7 @@ import type { Galaxy } from '../galaxy';
 import type { BuiltObject } from '../builtObject';
 import type { Empire } from '../empire';
 import type { Habitat } from '../types';
+import type { SystemVisibility } from '../visibility';
 import { registerTodo, todo } from '../tick/todo';
 
 const T_threatEvaluation = registerTodo('M4n', 'threatEvaluation');
@@ -43,5 +44,21 @@ const T_calculateOverallStrengthFactorWithoutShields = registerTodo('M4n', 'calc
  */
 export function calculateOverallStrengthFactorWithoutShields(galaxy: Galaxy, builtObject: BuiltObject): number {
     /* TODO(port) M4n */ todo(T_calculateOverallStrengthFactorWithoutShields);
+    return 0;
+}
+
+// ---- stubs added by M4b (called from missions/*.ts) ----
+
+const T_determineDefendingStrength = registerTodo('M4n', 'determineDefendingStrength');
+/** Galaxy.6.cs 4674 / 4745 DetermineDefendingStrength(BuiltObject | Habitat, empire) — stub: 0. */
+export function determineDefendingStrength(galaxy: Galaxy, target: BuiltObject | Habitat, empire: Empire): number {
+    /* TODO(port) M4n */ todo(T_determineDefendingStrength);
+    return 0;
+}
+
+const T_calculateAttackingFirepowerNearEmpireTargets = registerTodo('M4n', 'calculateAttackingFirepowerNearEmpireTargets');
+/** SystemVisibility.Threats.CalculateAttackingFirepowerNearEmpireTargets(empire) (BuiltObjectList.cs 570; Threats is an M4n field) — stub: 0. */
+export function calculateAttackingFirepowerNearEmpireTargets(galaxy: Galaxy, systemVisibility: SystemVisibility, empire: Empire): number {
+    /* TODO(port) M4n */ todo(T_calculateAttackingFirepowerNearEmpireTargets);
     return 0;
 }

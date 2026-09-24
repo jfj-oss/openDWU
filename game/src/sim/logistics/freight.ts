@@ -19,8 +19,8 @@ import { findNewest, galaxyComponentCurrentPrices, galaxyResourceCurrentPrices }
 import { DiplomaticRelationType, obtainDiplomaticRelation } from '../diplomacy';
 import { checkEmpireHasHyperDriveTech, getPrivateFunds } from '../forceStructure';
 import { isStellarObjectDockable } from '../independentTraders';
-import { ASSIGN_MISSION_NO_POSITION, BuiltObjectMissionPriority, assignMission } from '../missions/assign';
-import { BuiltObjectMissionType, builtObjectMission } from '../missions/mission';
+import { assignMission } from '../missions/assign';
+import { BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission } from '../missions/mission';
 import { netSort } from '../netSort';
 import { resolvePirateMissionsByType, type EmpireActivityRef } from '../pirates/missionsMarket';
 import { PirateRelationType } from '../pirateRelations';
@@ -71,9 +71,10 @@ function missionIsIdle(bo: BuiltObject): boolean {
  * docking (M4e). Until M4e adds the field this reads as an existing empty queue.
  */
 function habitatDockingBayWaitQueueCount(habitat: Habitat): number | null {
-    const q = (habitat as Habitat & { dockingBayWaitQueue?: unknown[] | null }).dockingBayWaitQueue;
-    if (q === undefined) return 0;
-    return q === null ? null : q.length;
+    // TODO(port) M4e: types.ts now declares Habitat.dockingBayWaitQueue (M4b block) but nothing creates the queues at
+    // the C# sites yet (Galaxy.8.cs 285-532, Empire.1.cs 131), so a null queue still reads as the existing empty one.
+    const q = habitat.dockingBayWaitQueue;
+    return q === null ? 0 : q.length;
 }
 
 /** Habitat.IsBlockaded (Habitat.cs 119). TODO(port) M4m: blockades not modeled on Habitat yet (false until then). */
@@ -383,7 +384,7 @@ function sendFreightersToSmugglingDestination(galaxy: Galaxy, self: Empire, colo
                 builtObjectContracts(nearest).push(contract);
                 const transactionAmount = calculateCurrentContractValueResource(galaxy, resource, num2);
                 initiateContract(galaxy, self, builtObject, colony, colony.owner, false, resource, null, transactionAmount, contract, self, galaxyStarDate(galaxy));
-                assignMission(galaxy, nearest, BuiltObjectMissionType.Transport, builtObject, colony, cargoList, null, null, null, ASSIGN_MISSION_NO_POSITION, ASSIGN_MISSION_NO_POSITION, -1, BuiltObjectMissionPriority.Normal, true);
+                assignMission(galaxy, nearest, BuiltObjectMissionType.Transport, builtObject, colony, BuiltObjectMissionPriority.Normal, { cargo: cargoList, allowReprocessing: true });
                 const idx = availableFreighters.indexOf(nearest);
                 if (idx >= 0) availableFreighters.splice(idx, 1);
             }
@@ -678,7 +679,7 @@ function findFreighterToFulfillOrder(ctx: FulfillContext, order: Order, availabl
         let target: StellarObject | null = null;
         if (order.requestingBuiltObject !== null) target = order.requestingBuiltObject;
         else if (order.requestingColony !== null) target = order.requestingColony;
-        assignMission(galaxy, builtObject, BuiltObjectMissionType.Transport, tradingPost, target, cargoList, null, null, null, ASSIGN_MISSION_NO_POSITION, ASSIGN_MISSION_NO_POSITION, -1, BuiltObjectMissionPriority.Normal, true);
+        assignMission(galaxy, builtObject, BuiltObjectMissionType.Transport, tradingPost, target, BuiltObjectMissionPriority.Normal, { cargo: cargoList, allowReprocessing: true });
         switch (freighterTypeIndex) {
             case 0: {
                 const i = ctx.availableFreighters.indexOf(builtObject);

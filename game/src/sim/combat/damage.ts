@@ -8,6 +8,7 @@
 import type { Galaxy } from '../galaxy';
 import type { BuiltObject } from '../builtObject';
 import type { Habitat } from '../types';
+import type { Creature } from '../creature';
 import { registerTodo, todo } from '../tick/todo';
 
 const T_doExplosionsBuiltObject = registerTodo('M4o', 'doExplosionsBuiltObject');
@@ -41,4 +42,22 @@ const T_checkSelfDestruct = registerTodo('M4o', 'checkSelfDestruct');
 export function checkSelfDestruct(galaxy: Galaxy, builtObject: BuiltObject): void {
     // RND: draws in callees (d≤3), +clock×2 — not drawn until M4o.
     /* TODO(port) M4o */ todo(T_checkSelfDestruct);
+}
+
+// ---- stubs added by M4b (called from missions/*.ts) ----
+
+const T_startNewBattleStats = registerTodo('M4o', 'startNewBattleStats');
+/** BuiltObject.2.cs 7643-7644: BaconSpaceBattleStats.AddLatestCombatStats(this, BattleStats); BattleStats = new SpaceBattleStats() — stub: BattleStats stays null. */
+export function startNewBattleStats(galaxy: Galaxy, builtObject: BuiltObject): void {
+    /* TODO(port) M4o */ todo(T_startNewBattleStats);
+}
+
+const T_finalizeBattleStats = registerTodo('M4o', 'finalizeBattleStats');
+/**
+ * BuiltObject.2.cs 4517-4522 / 4527-4531: AddLatestCombatStats + BattleStats.Location = ResolveNearestLocation(attackedTarget,
+ * this, out nearby) + DoCharacterEvent(SpaceBattle, BattleStats, Characters) — stub (only reachable once BattleStats is non-null).
+ */
+export function finalizeBattleStats(galaxy: Galaxy, builtObject: BuiltObject, attackedTarget: BuiltObject | Habitat | Creature | null): void {
+    // RND: DoCharacterEvent(SpaceBattle) draws — not drawn until M4o.
+    /* TODO(port) M4o */ todo(T_finalizeBattleStats);
 }

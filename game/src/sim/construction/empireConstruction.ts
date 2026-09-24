@@ -7,6 +7,9 @@
 
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
+import type { BuiltObject } from '../builtObject';
+import type { Habitat } from '../types';
+import type { BuiltObjectSubRole } from '../builtObjectTypes';
 import { registerTodo, todo } from '../tick/todo';
 
 const T_reviewDesignsAndRetrofit = registerTodo('M4i', 'reviewDesignsAndRetrofit');
@@ -48,4 +51,26 @@ const T_determineMonitoringStationLocation = registerTodo('M4i', 'determineMonit
 export function determineMonitoringStationLocation(galaxy: Galaxy, empire: Empire): void {
     // RND: 1 direct — not drawn until M4i.
     /* TODO(port) M4i */ todo(T_determineMonitoringStationLocation);
+}
+
+// ---- stubs added by M4b (called from missions/assign.ts) ----
+
+const T_assignRetrofitMission = registerTodo('M4i', 'assignRetrofitMission');
+/** Empire.5.cs 126 AssignRetrofitMission(ship) — stub. */
+export function assignRetrofitMission(galaxy: Galaxy, empire: Empire, ship: BuiltObject): void {
+    /* TODO(port) M4i */ todo(T_assignRetrofitMission);
+}
+
+const T_determineHabitatsWithBasesIncludingBuilding = registerTodo('M4i', 'determineHabitatsWithBasesIncludingBuilding');
+/** Empire.4.cs 2171 DetermineHabitatsWithBasesIncludingBuilding(subRoles) — stub: []. */
+export function determineHabitatsWithBasesIncludingBuilding(galaxy: Galaxy, empire: Empire, subRoles: readonly BuiltObjectSubRole[]): Habitat[] {
+    /* TODO(port) M4i */ todo(T_determineHabitatsWithBasesIncludingBuilding);
+    return [];
+}
+
+const T_determineHabitatsBeingMinedIncludingBuildingMiningStations = registerTodo('M4i', 'determineHabitatsBeingMinedIncludingBuildingMiningStations');
+/** Empire.4.cs 2214 DetermineHabitatsBeingMinedIncludingBuildingMiningStations(includeMiningShips) — stub: []. */
+export function determineHabitatsBeingMinedIncludingBuildingMiningStations(galaxy: Galaxy, empire: Empire, includeMiningShips: boolean): Habitat[] {
+    /* TODO(port) M4i */ todo(T_determineHabitatsBeingMinedIncludingBuildingMiningStations);
+    return [];
 }

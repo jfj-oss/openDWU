@@ -31,6 +31,7 @@ import { empireGovernmentAttributes } from './empire';
 import { PIRATE_SHIP_MAINTENANCE_FACTOR, SHIP_MAINTENANCE_COST_PER_SIZE_UNIT } from './forceStructure';
 import { Weapon, weaponsDetermineNotInSuppliedList, weaponsQuickCompareEquivalent, weaponsRemoveAndResetFirstMatchingWeaponById } from './weapon';
 import { MIN_TIME } from './tick/simTime';
+import type { BuiltObjectMission } from './missions/mission';
 
 // Port of EngineType.cs (byte enum, member order exact).
 export enum EngineType {
@@ -1390,6 +1391,23 @@ export class BuiltObject {
     threats: (BuiltObject | null)[] | null = null;
     threatLevels: number[] | null = null;
     // ---- M4b fields (missions & command dispatcher) ----
+    /** StellarObject.DockedAt (the base/planet this ship is docked at; docking itself is M4e). */
+    dockedAt: BuiltObject | Habitat | null = null;
+    /** BuiltObject.cs 526 RevertMission (RecordRevertMission / RevertToPreviousMission). */
+    revertMission: BuiltObjectMission | null = null;
+    /** BuiltObject.cs 339 _MissionCompleteMessageSent. */
+    missionCompleteMessageSent = false;
+    /** BuiltObject.cs 407/409 HyperExitStartAnimation / HyperEnterStartAnimation (cleared by AssignMission). */
+    hyperEnterStartAnimation = false;
+    hyperExitStartAnimation = false;
+    /** BuiltObject.cs 385 _HyperjumpPrepare. */
+    hyperjumpPrepare = false;
+    /** BuiltObject.cs 501 _ColonyToAttack. */
+    colonyToAttack: Habitat | null = null;
+    /** BuiltObject.cs 30 BattleStats (SpaceBattleStats, M4o owns the type; null until a combat mission starts it). */
+    battleStats: unknown = null;
+    /** BuiltObject.cs 327 _ExecutingShipGroupCommand. */
+    executingShipGroupCommand = false;
     // ---- M4c fields (movement, hyperjump, fuel, energy) ----
     // ---- M4d fields (orders, cargo) ----
     // ---- M4e fields (docking, refuelling) ----

@@ -40,6 +40,7 @@ import { recalculateColonyInfluenceRadius } from './territory';
 import type { Character } from './characters';
 import { DiplomaticRelationList } from './diplomacy';
 import { MIN_TIME } from './tick/simTime';
+import type { DeclinedTask } from './missions/distress';
 import type { IMessageRecipient } from './messages';
 
 // Empire.1.cs TakeOwnershipOfColony callees that live in modules importing empire.ts
@@ -1487,6 +1488,18 @@ export class Empire {
     /** Empire.cs 31 _MessageRecipient (IMessageRecipient; the UI attaches one to the player empire). */
     messageRecipient: IMessageRecipient | null = null;
     // ---- M4b fields (missions & command dispatcher) ----
+    /** Empire.cs 363-370 attack ranges (GameOptions defaults 48000 / 2000 / 48000 / 2000; SetAutomationSettings 3639-3672 copies them). */
+    attackRangePatrol = 48000;
+    attackRangeEscort = 2000;
+    attackRangeOther = 48000;
+    attackRangeAttack = 2000;
+    /** Empire.cs 381-390 manual (player-set) attack ranges, -1 = unset. */
+    attackRangePatrolManual = -1;
+    attackRangeEscortManual = -1;
+    attackRangeOtherManual = -1;
+    attackRangeAttackManual = -1;
+    /** Empire.cs _DeclinedTasks (DeclinedTaskList; CheckTaskAuthorized adds, ClearExpiredDeclinedTasks removes). */
+    declinedTasks: DeclinedTask[] = [];
     // ---- M4c fields (movement, fuel) ----
     // ---- M4d fields (orders, contracts, freight) ----
     /** Empire.cs _EmpireOrderCount (set by CheckMarketOrders, Empire.4.cs 792). */

@@ -66,7 +66,7 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         checkInvariants(long);
         const hits = r.todoHits;
         // Every tick family reached its stubs.
-        for (const key of ['M4b executeCommands', 'M4q scanForNewOwnerHabitat', 'M4r processMessages', 'M4s pirateAssignShipMissions', 'M4s reviewPirateMissionsAndAssign', 'M4n evaluateSystemThreats']) {
+        for (const key of ['M4e autoRefuelRepairShip', 'M4q scanForNewOwnerHabitat', 'M4r processMessages', 'M4s pirateAssignShipMissions', 'M4s reviewPirateMissionsAndAssign', 'M4n evaluateSystemThreats']) {
             expect(hits[key] ?? 0, key).toBeGreaterThan(0);
         }
         const summary = { digest: stateDigest(long), counts: stateCounts(long), rndDraws: long.rnd.drawCount };
@@ -78,9 +78,12 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // Moved from 78d35aa06c9a1e5b by M4t (ScanArea surveys habitats — one Rnd.Next(0, 800) per newly surveyed
         // non-independent habitat —, pre-warp visibility, exploration status, systems-only territory), M4d (colony
         // resupply orders, CheckMarketOrders contracts traders — FindFreighterForContract Rnd.Next(0, count) —,
-        // Galaxy.Orders.Count digested) and M4j (colony growth, development level, treasury, ProcessColonyTroops
-        // recruits — Rnd per completed recruit —, CheckSatisfaction Rnd.Next(0, 3); game-start Empire.DoTasks too).
-        expect(summary.digest).toBe('4650c2298c36e109');
+        // Galaxy.Orders.Count digested), M4j (colony growth, development level, treasury, ProcessColonyTroops
+        // recruits — Rnd per completed recruit —, CheckSatisfaction Rnd.Next(0, 3); game-start Empire.DoTasks too) and
+        // M4b (ships run the real ExecuteCommands frame: parked ships follow their parent's orbit via
+        // EvaluateRelativeToParent, the no-mission epilogue resets idle speeds; freighters contracted by M4d now get
+        // real missions and command queues).
+        expect(summary.digest).toBe('545a20e004ba236a');
     }, 600000);
 });
 

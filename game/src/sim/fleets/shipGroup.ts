@@ -10,7 +10,7 @@ import type { Empire } from '../empire';
 import type { BuiltObject } from '../builtObject';
 import { registerTodo, todo } from '../tick/todo';
 import { MIN_TIME } from '../tick/simTime';
-import type { BuiltObjectMission } from '../missions/mission';
+import type { BuiltObjectMission, BuiltObjectMissionPriority, BuiltObjectMissionType, MissionTarget } from '../missions/mission';
 
 // ShipGroup.cs (fleet). Minimal model created by M4a so the fleet tick (tick/shipGroupTick.ts) and the Empire /
 // Galaxy ticks can iterate Empire.ShipGroups; M4l ports the rest of ShipGroup.cs (3,578 lines: missions, lead ship,
@@ -31,6 +31,9 @@ export class ShipGroup {
     lastTouch = MIN_TIME;
     lastPeriodicTouch = MIN_TIME;
     // ---- M4l fields ----
+    /** ShipGroup.AllowImmediateThreatEvaluation / AttackRangeSquared (float) — set by Empire.ProcessDistressSignals (added by M4b). */
+    allowImmediateThreatEvaluation = false;
+    attackRangeSquared = 0;
     /** ShipGroup.cs _ShipEnergyUsageBonus / _ShipEnergyUsageBonusExtra (ShipEnergyUsageBonus => sum; read by BuiltObject.DoTasks 3828). */
     shipEnergyUsageBonusBase = 1.0;
     shipEnergyUsageBonusExtra = 0.0;
@@ -130,4 +133,43 @@ const T_performFleetTasks = registerTodo('M4l', 'performFleetTasks');
 export function performFleetTasks(galaxy: Galaxy, builtObject: BuiltObject): void {
     // RND: draws in callees (d≤3) — not drawn until M4l.
     /* TODO(port) M4l */ todo(T_performFleetTasks);
+}
+
+// ---- stubs added by M4b (called from missions/*.ts) ----
+
+const T_forceCompleteMission = registerTodo('M4l', 'forceCompleteMission');
+/** ShipGroup.cs 1422 ForceCompleteMission — stub. */
+export function forceCompleteMission(galaxy: Galaxy, shipGroup: ShipGroup): void {
+    /* TODO(port) M4l */ todo(T_forceCompleteMission);
+}
+
+const T_determineActualFleetLocation = registerTodo('M4l', 'determineActualFleetLocation');
+/** ShipGroup.cs 2581 DetermineActualFleetLocation → Point — stub: the lead ship's position (or 0,0). */
+export function determineActualFleetLocation(galaxy: Galaxy, shipGroup: ShipGroup): { x: number; y: number } {
+    /* TODO(port) M4l */ todo(T_determineActualFleetLocation);
+    const lead = shipGroup.leadShip;
+    return lead !== null ? { x: Math.trunc(lead.xpos), y: Math.trunc(lead.ypos) } : { x: 0, y: 0 };
+}
+
+const T_shipGroupTotalOverallStrengthFactor = registerTodo('M4l', 'shipGroupTotalOverallStrengthFactor');
+/** ShipGroup.TotalOverallStrengthFactor — stub: 0. */
+export function shipGroupTotalOverallStrengthFactor(galaxy: Galaxy, shipGroup: ShipGroup): number {
+    /* TODO(port) M4l */ todo(T_shipGroupTotalOverallStrengthFactor);
+    return 0;
+}
+
+const T_shipGroupAssignMission = registerTodo('M4l', 'shipGroupAssignMission');
+/** ShipGroup.cs 2028+ AssignMission(missionType, target, target2[, x, y], priority, manuallyAssigned) — stub. */
+export function shipGroupAssignMission(
+    galaxy: Galaxy,
+    shipGroup: ShipGroup,
+    missionType: BuiltObjectMissionType,
+    target: MissionTarget | null,
+    target2: MissionTarget | null,
+    priority: BuiltObjectMissionPriority,
+    manuallyAssigned: boolean,
+    coords: { x: number; y: number } | null = null,
+): void {
+    // RND: fleet mission resolution draws (ResolveCommandsForMission per ship) — not drawn until M4l.
+    /* TODO(port) M4l */ todo(T_shipGroupAssignMission);
 }
