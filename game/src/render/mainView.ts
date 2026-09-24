@@ -39,7 +39,7 @@ import {
 import { Galaxy } from '../sim/galaxy';
 import { Habitat, HabitatCategoryType, HabitatType, SystemInfo } from '../sim/types';
 
-function fadeIn(v: number, a: number, b: number): number {
+export function fadeIn(v: number, a: number, b: number): number {
     if (v <= a) {
         return 0;
     }
@@ -50,8 +50,32 @@ function fadeIn(v: number, a: number, b: number): number {
     return t * t * (3 - 2 * t);
 }
 
-function fadeOut(v: number, a: number, b: number): number {
+export function fadeOut(v: number, a: number, b: number): number {
     return 1 - fadeIn(v, a, b);
+}
+
+// Layer crossfade windows for the mid-zoom gap between the galaxy backdrop
+// and the system layers (task 02b2). The backdrop fades out over
+// [m*2.5, m*14] where m = minZoom (whole-galaxy zoom), so the starfield
+// must start fading in where the backdrop starts fading out and be fully
+// opaque by the time the backdrop is gone — otherwise the screen goes
+// black at ~zoom factor 150.
+export function backdropAlpha(z: number, m: number): number {
+    return fadeOut(z, m * 2.5, m * 14);
+}
+
+export function starfieldAlpha(z: number, m: number): number {
+    return fadeIn(z, m * 2.5, m * 14);
+}
+
+// Orbit rings appear once the outermost orbit spans >= ~40 px on screen
+// (smoothed with a short fade-in window).
+export function orbitRingAlpha(z: number, maxOrbitDistance: number): number {
+    if (maxOrbitDistance <= 0) {
+        return 0;
+    }
+    const zMin = 40 / maxOrbitDistance;
+    return 0.5 * fadeIn(z, zMin, zMin * 2);
 }
 
 function clamp(v: number, lo: number, hi: number): number {
@@ -223,9 +247,10 @@ class SystemView {
         this.starSprite.alpha = crossT;
         this.starSprite.scale.set(fullPx / (this.starSprite.texture.width * z));
 
-        // Faint circular orbit rings: appear at mid zoom (original's
-        // `actualZoomFactor > 3.0`), persist through 100%.
-        const ringA = 0.5 * fadeIn(z, 0.008, 0.03);
+        // Faint circular orbit rings: visible from the zoom where the
+        // outermost orbit spans >= ~40 px on screen (task 02b2), persist
+        // through 100%.
+        const ringA = orbitRingAlpha(z, this.maxExtent);
         this.ring.visible = ringA > 0.02;
         if (this.ring.visible) {
             this.ring.alpha = ringA;
@@ -487,7 +512,7 @@ export class MainView {
 
         // Galaxy backdrop: bright at full-galaxy zoom, fading out as the
         // sector view takes over (MainView.1.cs FadeGalaxyBackground).
-        const bdA = fadeOut(z, m * 2.5, m * 14);
+        const bdA = backdropAlpha(z, m);
         this.backdrop.alpha = bdA;
         this.backdrop.visible = bdA > 0.01;
 
@@ -501,8 +526,10 @@ export class MainView {
             this.lastGridZoom = z;
         }
 
-        // Dense parallax starfield: fades in over system zoom.
-        const sfA = fadeIn(z, 0.1, 0.3);
+        // Dense parallax starfield: fades in over the same window the backdrop
+        // fades out (task 02b2), so something is always visible while
+        // zooming between galaxy and system view.
+        const sfA = starfieldAlpha(z, m);
         this.starfieldFar.alpha = sfA * 0.5;
         this.starfieldFar.visible = sfA > 0.01;
         this.starfieldNear.alpha = sfA;
