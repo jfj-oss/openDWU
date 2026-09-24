@@ -78,6 +78,22 @@ export function orbitRingAlpha(z: number, maxOrbitDistance: number): number {
     return 0.5 * fadeIn(z, zMin, zMin * 2);
 }
 
+// Task 02b3: minimum on-screen sizes at system zoom. At ?zoom=30 planets
+// render as sub-pixel dots, so each body keeps its real scale when that is
+// larger than the minimum and snaps to the minimum otherwise:
+//   planets >= 14 px, moons >= 7 px, the star's system-zoom sprite >= 40 px.
+export function planetSpritePx(diameter: number, z: number): number {
+    return Math.max(diameter * z * 0.38, 14);
+}
+
+export function moonDotPx(diameter: number, z: number): number {
+    return Math.max(diameter * z * 0.3, 7);
+}
+
+export function starSpritePx(diameter: number, z: number): number {
+    return Math.min(Math.max(diameter * z * 0.42, 40), 1400);
+}
+
 function clamp(v: number, lo: number, hi: number): number {
     return Math.max(lo, Math.min(hi, v));
 }
@@ -238,7 +254,7 @@ class SystemView {
         // the full star sprite over zoom 0.05..0.10 (original's
         // actualZoomFactor 20..10, Main.Part11.cs `> 10.0` threshold).
         const iconPx = clamp(star.diameter * z * 30, 2.5, 26);
-        const fullPx = Math.min(star.diameter * z * 0.42, 1400);
+        const fullPx = starSpritePx(star.diameter, z);
         const crossT = fadeIn(z, 0.05, 0.1);
         this.mapIcon.visible = crossT < 0.995;
         this.mapIcon.alpha = 1 - crossT;
@@ -268,7 +284,7 @@ class SystemView {
             const px = Math.cos(p.orbitAngle) * p.orbitDistance;
             const py = Math.sin(p.orbitAngle) * p.orbitDistance;
             const dotPx = clamp(p.diameter * z * 0.5, 2, 12);
-            const sprPx = Math.min(p.diameter * z * 0.38, 320);
+            const sprPx = planetSpritePx(p.diameter, z);
             planet.dot.visible = z > 0.012 && dotT < 0.995;
             planet.dot.alpha = 1 - dotT;
             planet.dot.position.set(px, py);
@@ -277,14 +293,15 @@ class SystemView {
             planet.sprite.alpha = dotT;
             planet.sprite.position.set(px, py);
             planet.sprite.scale.set(sprPx / (planet.sprite.texture.width * z));
-            planet.label.visible = z > 0.15;
+            // Planet name label once the sprite reaches its 14 px minimum.
+            planet.label.visible = sprPx >= 14;
             planet.label.position.set(px, py + (sprPx * 0.5 + 8) / z);
             planet.label.scale.set(1 / z);
             for (const moon of planet.moons) {
                 const m = moon.habitat;
                 const mx = px + Math.cos(m.orbitAngle) * m.orbitDistance;
                 const my = py + Math.sin(m.orbitAngle) * m.orbitDistance;
-                const mPx = clamp(m.diameter * z * 0.3, 1.5, 8);
+                const mPx = moonDotPx(m.diameter, z);
                 moon.dot.visible = z > 0.012;
                 moon.dot.position.set(mx, my);
                 moon.dot.scale.set(mPx / (moon.dot.texture.width * z));

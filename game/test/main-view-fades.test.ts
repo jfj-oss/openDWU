@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { backdropAlpha, orbitRingAlpha, starfieldAlpha } from '../src/render/mainView';
+import { backdropAlpha, moonDotPx, orbitRingAlpha, planetSpritePx, starfieldAlpha, starSpritePx } from '../src/render/mainView';
 
 // Task 02b2: close the mid-zoom black gap. The backdrop fades out over
 // [m*2.5, m*14] (m = minZoom, whole-galaxy zoom) and the starfield must
@@ -36,5 +36,39 @@ describe('mid-zoom layer crossfades', () => {
         expect(orbitRingAlpha(0.008, 10_000)).toBeCloseTo(0.5, 6);
         expect(orbitRingAlpha(1, 10_000)).toBeCloseTo(0.5, 6);
         expect(orbitRingAlpha(1, 0)).toBe(0);
+    });
+});
+
+// Task 02b3: minimum on-screen sizes at system zoom. Real scale is kept
+// when it exceeds the minimum; otherwise the body snaps to the minimum px.
+describe('system-zoom minimum body sizes', () => {
+    it('planets are >= 14 px and keep real scale above that', () => {
+        // diameter 1000 at z = 30 -> 1000*30*0.38 = 11400 px (real scale).
+        expect(planetSpritePx(1000, 30)).toBeCloseTo(11400, 6);
+        // Small planet at system zoom: 100 * 0.05 * 0.38 = 1.9 px < 14? no...
+        // Use a case where real scale is below the minimum:
+        // 100 * 0.05 * 0.38 = 1.9 px -> clamped up to 14.
+        expect(planetSpritePx(100, 0.05)).toBe(14);
+        // Exactly at the boundary: 100 * z * 0.38 = 14 -> z = 0.3684...
+        const zAtMin = 14 / (100 * 0.38);
+        expect(planetSpritePx(100, zAtMin)).toBeCloseTo(14, 6);
+        expect(planetSpritePx(100, zAtMin * 1.01)).toBeGreaterThan(14);
+    });
+
+    it('moons are >= 7 px and keep real scale above that', () => {
+        expect(moonDotPx(100, 0.05)).toBe(7); // 100*0.05*0.3 = 1.5 px
+        expect(moonDotPx(100, 1)).toBeCloseTo(30, 6); // real scale
+        const zAtMin = 7 / (100 * 0.3);
+        expect(moonDotPx(100, zAtMin)).toBeCloseTo(7, 6);
+        expect(moonDotPx(100, zAtMin * 1.01)).toBeGreaterThan(7);
+    });
+
+    it("the star's system-zoom sprite is >= 40 px, capped at 1400", () => {
+        expect(starSpritePx(100, 0.05)).toBe(40); // 100*0.05*0.42 = 2.1 px
+        expect(starSpritePx(1000, 1)).toBeCloseTo(420, 6); // real scale
+        expect(starSpritePx(10_000, 1)).toBe(1400); // cap
+        const zAtMin = 40 / (1000 * 0.42);
+        expect(starSpritePx(1000, zAtMin)).toBeCloseTo(40, 6);
+        expect(starSpritePx(1000, zAtMin * 1.01)).toBeGreaterThan(40);
     });
 });
