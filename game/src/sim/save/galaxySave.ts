@@ -16,8 +16,10 @@ import { GalaxyLocation } from '../galaxyLocation';
 import { Habitat, type SystemInfo } from '../types';
 import { Random, type RandomState } from '../random';
 import type { Race } from '../data/races';
-import type { CargoList, TroopList } from '../cargo';
-import type { Empire } from '../empire';
+import { CargoList, TroopList } from '../cargo';
+import { Empire } from '../empire';
+import { EmpireVisibility } from '../visibility';
+import { ResearchSystem } from '../researchSystem';
 
 // ---------------------------------------------------------------------------
 // JSON shapes (key order is fixed so round-tripped strings compare equal)
@@ -56,8 +58,8 @@ interface HabitatJSON {
     cargo: null; // TODO(port): CargoList serialization — task 11a2.
     troops: null; // TODO(port): TroopList serialization — task 11a2.
     developmentLevel: number;
-    ownerIndex: number; // TODO(port): empire/owner refs — task 11a2 fills this.
-    empireIndex: number; // TODO(port): empire ref — task 11a2.
+    ownerIndex: number; // -1 = unowned (empire index into the flat empire list)
+    empireIndex: number; // -1 = none
     isRefuellingDepot: boolean;
     damage: number;
     troopsToRecruit: null; // TODO(port): task 11a2.
@@ -74,8 +76,69 @@ interface SystemJSON {
     planetCount: number | null;
     moonCount: number | null;
     independentColonyCount: number | null;
-    dominantEmpire: null; // TODO(port): empire refs — task 11a2.
-    otherEmpires: null; // TODO(port): task 11a2.
+    dominantEmpire: { empireIndex: number; colonyCount: number; totalStrategicValue: number } | null;
+    otherEmpires: { empireIndex: number; colonyCount: number; totalStrategicValue: number }[] | null;
+}
+
+// Task 11a2: one Empire (galaxy.empires / pirateEmpires / independentEmpire).
+// Object references become indices/names into the save's own arrays: capital
+// and home world → habitat index, colonies → habitat indices, dominant race →
+// race name, government → id. Heavy engine state (visibility, research,
+// built objects, ships, ...) is rebuilt on load, not serialized.
+interface EmpireJSON {
+    active: boolean;
+    empireId: number;
+    name: string;
+    capitalIndex: number; // -1 = none
+    homeWorldIndex: number; // -1 = none
+    dominantRaceName: string | null;
+    corruptionMultiplier: number;
+    lastDisasterDate: number;
+    policyName: string | null;
+    reclusive: boolean;
+    allowableGovernmentTypes: number[];
+    governmentId: number;
+    designNamesIndex: number;
+    controlColonization: number;
+    controlColonyDevelopment: boolean;
+    controlColonyStockLevels: boolean;
+    controlColonyTaxRates: boolean;
+    controlDesigns: boolean;
+    controlDiplomacyGifts: number;
+    controlDiplomacyOffense: number;
+    controlDiplomacyTreaties: number;
+    controlMilitaryAttacks: number;
+    controlMilitaryFleets: boolean;
+    controlStateConstruction: number;
+    controlTroopGeneration: boolean;
+    controlAgentAssignment: number;
+    controlResearch: boolean;
+    controlColonyFacilities: number;
+    controlPopulationPolicy: boolean;
+    controlCharacterLocations: boolean;
+    controlOfferPirateMissions: number;
+    mainColor: number;
+    secondaryColor: number;
+    flagShape: number;
+    smallFlagPicture: number;
+    largeFlagPicture: number;
+    troopDescription: string;
+    troopPictureRef: number;
+    stateMoney: number;
+    canColonizeContinental: boolean;
+    canColonizeMarshySwamp: boolean;
+    canColonizeOcean: boolean;
+    canColonizeDesert: boolean;
+    canColonizeIce: boolean;
+    canColonizeVolcanic: boolean;
+    designPictureFamilyIndex: number;
+    preWarpProgressEventsOccurred: boolean;
+    initiateConstruction: boolean;
+    expansion: number;
+    playerEmpire: boolean;
+    privateMoney: number;
+    lastLeaderChangeDate: number;
+    coloniesIndices: number[];
 }
 
 interface GalaxyLocationJSON {
@@ -185,10 +248,10 @@ export interface GalaxySaveJSON {
     colonyNameIndex: number;
     nextEmpireId: number;
     empireTerritoryColonyInfluenceRangeFactor: number;
-    empires: never[]; // TODO(port): task 11a2 serializes empires.
-    pirateEmpires: never[]; // TODO(port): task 11a2.
-    independentEmpire: null; // TODO(port): task 11a2.
-    playerEmpire: null; // TODO(port): task 11a2.
+    empires: EmpireJSON[];
+    pirateEmpires: EmpireJSON[];
+    independentEmpire: EmpireJSON | null;
+    playerEmpire: number; // index into the flat empire list, -1 = none
     systemNames: string[];
     systemNamesUsedPlain: boolean[];
     systemNamesUsedAlternative: boolean[];
@@ -227,9 +290,189 @@ function raceIndexOf(races: Race[], race: Race | null): number {
     return index;
 }
 
-/** Rebuild an instance without running the class constructor (which has
- *  side effects: Habitat validates category/type and performs an initial
- *  30s orbit move; Creature consumes the galaxy RNG; Galaxy seeds its RNGs). */
+/** Flat list of all empires in save order: galaxy.empires, then
+ *  pirateEmpires, then independentEmpire. The index into this list is what
+ *  habitat ownerIndex/empireIndex and system dominantEmpire/otherEmpires
+ *  store (task 11a2). */
+export function flatEmpireList(galaxy: Galaxy): Empire[] {
+    const list = [...galaxy.empires, ...galaxy.pirateEmpires];
+    if (galaxy.independentEmpire !== null) list.push(galaxy.independentEmpire);
+    return list;
+}
+
+/** Convert an Empire to its JSON shape (see EmpireJSON). Habitat references
+ *  become indices via habitatIndexOf; the dominant race becomes its name. */
+function empireToJSON(galaxy: Galaxy, e: Empire): EmpireJSON {
+    // TODO(port): policy — EmpirePolicy data model not ported yet; carry the
+    // policy's Name when it has one (the C# save serializes by name).
+    const policy = e.policy as { name?: unknown } | null;
+    return {
+        active: e.active,
+        empireId: e.empireId,
+        name: e.name,
+        capitalIndex: habitatIndexOf(galaxy, e.capital),
+        homeWorldIndex: habitatIndexOf(galaxy, e.homeWorld),
+        dominantRaceName: e.dominantRace?.name ?? null,
+        corruptionMultiplier: e.corruptionMultiplier,
+        lastDisasterDate: e.lastDisasterDate,
+        policyName: typeof policy?.name === 'string' ? policy.name : null,
+        reclusive: e.reclusive,
+        allowableGovernmentTypes: [...e.allowableGovernmentTypes],
+        governmentId: e.governmentId,
+        designNamesIndex: e.designNamesIndex,
+        controlColonization: e.controlColonization,
+        controlColonyDevelopment: e.controlColonyDevelopment,
+        controlColonyStockLevels: e.controlColonyStockLevels,
+        controlColonyTaxRates: e.controlColonyTaxRates,
+        controlDesigns: e.controlDesigns,
+        controlDiplomacyGifts: e.controlDiplomacyGifts,
+        controlDiplomacyOffense: e.controlDiplomacyOffense,
+        controlDiplomacyTreaties: e.controlDiplomacyTreaties,
+        controlMilitaryAttacks: e.controlMilitaryAttacks,
+        controlMilitaryFleets: e.controlMilitaryFleets,
+        controlStateConstruction: e.controlStateConstruction,
+        controlTroopGeneration: e.controlTroopGeneration,
+        controlAgentAssignment: e.controlAgentAssignment,
+        controlResearch: e.controlResearch,
+        controlColonyFacilities: e.controlColonyFacilities,
+        controlPopulationPolicy: e.controlPopulationPolicy,
+        controlCharacterLocations: e.controlCharacterLocations,
+        controlOfferPirateMissions: e.controlOfferPirateMissions,
+        mainColor: e.mainColor,
+        secondaryColor: e.secondaryColor,
+        flagShape: e.flagShape,
+        smallFlagPicture: e.smallFlagPicture,
+        largeFlagPicture: e.largeFlagPicture,
+        troopDescription: e.troopDescription,
+        troopPictureRef: e.troopPictureRef,
+        stateMoney: e.stateMoney,
+        canColonizeContinental: e.canColonizeContinental,
+        canColonizeMarshySwamp: e.canColonizeMarshySwamp,
+        canColonizeOcean: e.canColonizeOcean,
+        canColonizeDesert: e.canColonizeDesert,
+        canColonizeIce: e.canColonizeIce,
+        canColonizeVolcanic: e.canColonizeVolcanic,
+        designPictureFamilyIndex: e.designPictureFamilyIndex,
+        preWarpProgressEventsOccurred: e.preWarpProgressEventsOccurred,
+        initiateConstruction: e.initiateConstruction,
+        expansion: e.expansion,
+        playerEmpire: e.playerEmpire,
+        privateMoney: e.privateMoney,
+        lastLeaderChangeDate: e.lastLeaderChangeDate,
+        coloniesIndices: e.colonies.map((h) => habitatIndexOf(galaxy, h)),
+    };
+}
+
+/** Rebuild an Empire without running its constructor (it consumes the
+ *  galaxy RNG for colours/names and builds visibility/research). Heavy
+ *  engine state gets minimal stand-ins; visibility is rebuilt afterwards
+ *  (it needs the restored habitats/systems). */
+function empireFromJSON(
+    galaxy: Galaxy,
+    races: Race[],
+    e: EmpireJSON,
+    habitats: Habitat[],
+    isIndependent: boolean,
+): Empire {
+    const raceByName = (name: string | null): Race | null =>
+        name === null ? null : (races.find((r) => r.name === name) ?? null);
+    const habAt = (i: number): Habitat | null => (i < 0 ? null : habitats[i]);
+    const empire = createInstance(Empire, {
+        galaxy,
+        active: e.active,
+        empireId: e.empireId,
+        counters: {}, // TODO(port): EmpireCounters — EmpireCounters.cs.
+        pirateEconomy: {}, // TODO(port): PirateEconomy — PirateEconomy.cs.
+        name: e.name,
+        capital: habAt(e.capitalIndex),
+        homeWorld: habAt(e.homeWorldIndex),
+        dominantRace: raceByName(e.dominantRaceName),
+        corruptionMultiplier: e.corruptionMultiplier,
+        lastDisasterDate: e.lastDisasterDate,
+        // TODO(port): policy — restore from policyName once the EmpirePolicy
+        // data model is ported; {} matches the class default.
+        policy: {},
+        reclusive: e.reclusive,
+        allowableGovernmentTypes: [...e.allowableGovernmentTypes],
+        governmentId: e.governmentId,
+        designNamesIndex: e.designNamesIndex,
+        builtObjects: [],
+        shipGroups: [],
+        designs: [],
+        latestDesigns: [],
+        foreignDesigns: [],
+        characters: [],
+        troops: new TroopList(),
+        intelligenceMissions: [],
+        outlaws: [],
+        diplomaticRelations: [],
+        proposedDiplomaticRelations: [],
+        colonies: e.coloniesIndices.map((i) => habitats[i]),
+        constructionYards: [],
+        distressSignals: [],
+        manufacturers: [],
+        privateBuiltObjects: [],
+        refuellingDepots: [],
+        resourceExtractors: [],
+        spacePorts: [],
+        miningStations: [],
+        freighters: [],
+        constructionShips: [],
+        longRangeScanners: [],
+        researchFacilities: [],
+        resortBases: [],
+        resupplyShips: [],
+        planetDestroyers: [],
+        messages: [],
+        empireEvaluations: [],
+        controlColonization: e.controlColonization,
+        controlColonyDevelopment: e.controlColonyDevelopment,
+        controlColonyStockLevels: e.controlColonyStockLevels,
+        controlColonyTaxRates: e.controlColonyTaxRates,
+        controlDesigns: e.controlDesigns,
+        controlDiplomacyGifts: e.controlDiplomacyGifts,
+        controlDiplomacyOffense: e.controlDiplomacyOffense,
+        controlDiplomacyTreaties: e.controlDiplomacyTreaties,
+        controlMilitaryAttacks: e.controlMilitaryAttacks,
+        controlMilitaryFleets: e.controlMilitaryFleets,
+        controlStateConstruction: e.controlStateConstruction,
+        controlTroopGeneration: e.controlTroopGeneration,
+        controlAgentAssignment: e.controlAgentAssignment,
+        controlResearch: e.controlResearch,
+        controlColonyFacilities: e.controlColonyFacilities,
+        controlPopulationPolicy: e.controlPopulationPolicy,
+        controlCharacterLocations: e.controlCharacterLocations,
+        controlOfferPirateMissions: e.controlOfferPirateMissions,
+        mainColor: e.mainColor,
+        secondaryColor: e.secondaryColor,
+        flagShape: e.flagShape,
+        smallFlagPicture: e.smallFlagPicture,
+        largeFlagPicture: e.largeFlagPicture,
+        troopDescription: e.troopDescription,
+        troopPictureRef: e.troopPictureRef,
+        stateMoney: e.stateMoney,
+        canColonizeContinental: e.canColonizeContinental,
+        canColonizeMarshySwamp: e.canColonizeMarshySwamp,
+        canColonizeOcean: e.canColonizeOcean,
+        canColonizeDesert: e.canColonizeDesert,
+        canColonizeIce: e.canColonizeIce,
+        canColonizeVolcanic: e.canColonizeVolcanic,
+        designPictureFamilyIndex: e.designPictureFamilyIndex,
+        preWarpProgressEventsOccurred: e.preWarpProgressEventsOccurred,
+        initiateConstruction: e.initiateConstruction,
+        expansion: e.expansion,
+        playerEmpire: e.playerEmpire,
+        privateMoney: e.privateMoney,
+        research: new ResearchSystem(galaxy.researchStatic),
+        lastLeaderChangeDate: e.lastLeaderChangeDate,
+        designSpecifications: [],
+        planetDestroyerDesignSpecification: null,
+    });
+    // Visibility must be created after habitats/systems exist (its ctor sizes
+    // the resource map and builds one SystemVisibility per system).
+    empire.visibility = new EmpireVisibility(galaxy, empire.visibilityOwner(isIndependent));
+    return empire;
+}
 function createInstance<T>(ctor: new (...args: never[]) => T, fields: Record<string, unknown>): T {
     const instance = Object.create(ctor.prototype) as T;
     for (const key of Object.keys(fields)) {
@@ -251,6 +494,17 @@ function setAnglePerSecond(habitat: Habitat, value: number): void {
 /** Convert a Galaxy into a plain JSON-safe object (see GalaxySaveJSON). */
 export function galaxyToJSON(galaxy: Galaxy): GalaxySaveJSON {
     const races = galaxy.races;
+
+    // Task 11a2: flat empire list + index map for all empire references.
+    const empires = flatEmpireList(galaxy);
+    const empireIndex = new Map<Empire, number>();
+    empires.forEach((e, i) => empireIndex.set(e, i));
+    const empireIndexOf = (e: Empire | null): number => {
+        if (e === null) return -1;
+        const i = empireIndex.get(e);
+        if (i === undefined) throw new Error('Empire is not in the galaxy.');
+        return i;
+    };
 
     const habitats: HabitatJSON[] = galaxy.habitats.map((h) => ({
         name: h.name,
@@ -290,10 +544,8 @@ export function galaxyToJSON(galaxy: Galaxy): GalaxySaveJSON {
         cargo: null,
         troops: null,
         developmentLevel: h.developmentLevel,
-        // TODO(port): owner/empire refs — task 11a2 serializes empires and
-        // fills these with real indices.
-        ownerIndex: -1,
-        empireIndex: -1,
+        ownerIndex: empireIndexOf(h.owner),
+        empireIndex: empireIndexOf(h.empire),
         isRefuellingDepot: h.isRefuellingDepot,
         damage: h.damage,
         troopsToRecruit: null,
@@ -310,8 +562,20 @@ export function galaxyToJSON(galaxy: Galaxy): GalaxySaveJSON {
         planetCount: sys.planetCount ?? null,
         moonCount: sys.moonCount ?? null,
         independentColonyCount: sys.independentColonyCount ?? null,
-        dominantEmpire: null, // TODO(port): task 11a2.
-        otherEmpires: null, // TODO(port): task 11a2.
+        dominantEmpire: sys.dominantEmpire === null || sys.dominantEmpire === undefined
+            ? null
+            : {
+                  empireIndex: empireIndexOf(sys.dominantEmpire.empire),
+                  colonyCount: sys.dominantEmpire.colonyCount,
+                  totalStrategicValue: sys.dominantEmpire.totalStrategicValue,
+              },
+        otherEmpires: sys.otherEmpires === null || sys.otherEmpires === undefined
+            ? null
+            : sys.otherEmpires.map((o) => ({
+                  empireIndex: empireIndexOf(o.empire),
+                  colonyCount: o.colonyCount,
+                  totalStrategicValue: o.totalStrategicValue,
+              })),
     }));
 
     const galaxyLocations: GalaxyLocationJSON[] = galaxy.galaxyLocations.map((loc) => ({
@@ -421,10 +685,10 @@ export function galaxyToJSON(galaxy: Galaxy): GalaxySaveJSON {
         colonyNameIndex: galaxy.colonyNameIndex,
         nextEmpireId: galaxy.nextEmpireId,
         empireTerritoryColonyInfluenceRangeFactor: galaxy.empireTerritoryColonyInfluenceRangeFactor,
-        empires: [], // TODO(port): task 11a2.
-        pirateEmpires: [], // TODO(port): task 11a2.
-        independentEmpire: null, // TODO(port): task 11a2.
-        playerEmpire: null, // TODO(port): task 11a2.
+        empires: galaxy.empires.map((e) => empireToJSON(galaxy, e)),
+        pirateEmpires: galaxy.pirateEmpires.map((e) => empireToJSON(galaxy, e)),
+        independentEmpire: galaxy.independentEmpire === null ? null : empireToJSON(galaxy, galaxy.independentEmpire),
+        playerEmpire: empireIndexOf(galaxy.playerEmpire),
         systemNames: [...(galaxy as unknown as { systemNames: string[] }).systemNames],
         systemNamesUsedPlain: [...(galaxy as unknown as { systemNamesUsedPlain: boolean[] }).systemNamesUsedPlain],
         systemNamesUsedAlternative: [...(galaxy as unknown as { systemNamesUsedAlternative: boolean[] }).systemNamesUsedAlternative],
@@ -492,12 +756,8 @@ export function galaxyFromJSON(obj: GalaxySaveJSON, gameData: GameData): Galaxy 
     g.colonyNameIndex = obj.colonyNameIndex;
     g.nextEmpireId = obj.nextEmpireId;
     g.empireTerritoryColonyInfluenceRangeFactor = obj.empireTerritoryColonyInfluenceRangeFactor;
-    // TODO(port): empires/pirateEmpires/independentEmpire/playerEmpire —
-    // task 11a2 restores these from the save.
-    g.empires = [];
-    g.pirateEmpires = [];
-    g.independentEmpire = null;
-    g.playerEmpire = null;
+    // empires/pirateEmpires/independentEmpire/playerEmpire are restored after
+    // habitats and systems exist (empire visibility is built from them).
     g.systemNames = obj.systemNames;
     g.systemNamesUsedPlain = obj.systemNamesUsedPlain;
     g.systemNamesUsedAlternative = obj.systemNamesUsedAlternative;
@@ -574,8 +834,8 @@ export function galaxyFromJSON(obj: GalaxySaveJSON, gameData: GameData): Galaxy 
             cargo: null, // TODO(port): task 11a2.
             troops: null, // TODO(port): task 11a2.
             developmentLevel: hj.developmentLevel,
-            owner: null, // TODO(port): task 11a2.
-            empire: null, // TODO(port): task 11a2.
+            owner: null, // re-linked from ownerIndex after empires are restored.
+            empire: null, // re-linked from empireIndex after empires are restored.
             isRefuellingDepot: hj.isRefuellingDepot,
             damage: hj.damage,
             troopsToRecruit: null, // TODO(port): task 11a2.
@@ -609,12 +869,43 @@ export function galaxyFromJSON(obj: GalaxySaveJSON, gameData: GameData): Galaxy 
             planetCount: sj.planetCount ?? undefined,
             moonCount: sj.moonCount ?? undefined,
             independentColonyCount: sj.independentColonyCount ?? undefined,
-            dominantEmpire: null, // TODO(port): task 11a2.
-            otherEmpires: null, // TODO(port): task 11a2.
+            dominantEmpire: null, // re-linked after empires are restored.
+            otherEmpires: null, // re-linked after empires are restored.
         };
         return sys;
     });
     g.systems = systems;
+
+    // --- Empires (task 11a2): rebuild without the constructor, then re-link
+    //     habitat owner/empire refs and system dominant/other empire info.
+    const flatEmpires: Empire[] = [
+        ...obj.empires.map((e) => empireFromJSON(galaxy, races, e, habitats, false)),
+        ...obj.pirateEmpires.map((e) => empireFromJSON(galaxy, races, e, habitats, false)),
+    ];
+    const independentEmpire = obj.independentEmpire === null ? null : empireFromJSON(galaxy, races, obj.independentEmpire, habitats, true);
+    if (independentEmpire !== null) flatEmpires.push(independentEmpire);
+    g.empires = flatEmpires.slice(0, obj.empires.length);
+    g.pirateEmpires = flatEmpires.slice(obj.empires.length, obj.empires.length + obj.pirateEmpires.length);
+    g.independentEmpire = independentEmpire;
+    g.playerEmpire = obj.playerEmpire < 0 ? null : flatEmpires[obj.playerEmpire];
+    for (let i = 0; i < habitats.length; i++) {
+        const hj = obj.habitats[i];
+        habitats[i].owner = hj.ownerIndex < 0 ? null : flatEmpires[hj.ownerIndex];
+        habitats[i].empire = hj.empireIndex < 0 ? null : flatEmpires[hj.empireIndex];
+    }
+    for (let i = 0; i < systems.length; i++) {
+        const sj = obj.systems[i];
+        systems[i].dominantEmpire = sj.dominantEmpire === null ? null : {
+            empire: flatEmpires[sj.dominantEmpire.empireIndex],
+            colonyCount: sj.dominantEmpire.colonyCount,
+            totalStrategicValue: sj.dominantEmpire.totalStrategicValue,
+        };
+        systems[i].otherEmpires = sj.otherEmpires === null ? null : sj.otherEmpires.map((o) => ({
+            empire: flatEmpires[o.empireIndex],
+            colonyCount: o.colonyCount,
+            totalStrategicValue: o.totalStrategicValue,
+        }));
+    }
 
     // --- Index grids, filled exactly like generateGalaxy/updateSystemInfo.
     galaxy.initIndexGrids();
