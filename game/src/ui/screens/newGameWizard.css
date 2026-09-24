@@ -475,6 +475,81 @@
     inset: 0;
 }
 
+/* --- Colonization and Territory page (task 06h). --- */
+
+.wizard-colonization-group {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px 14px;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+}
+
+/* Value label shown under each colonization slider ("4000K" / "100%"). */
+.wizard-colonization-value {
+    font-size: 12px;
+    color: #e8d24a;
+    font-variant-numeric: tabular-nums;
+}
+
+.wizard-colonization-range-value {
+    font-size: 13px;
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+}
+
+.wizard-colonization-influence-value {
+    font-size: 13px;
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+}
+
+/* "Suggestion" hint next to the colony influence range (lbl…Suggestion). */
+.wizard-colonization-suggestion {
+    font-size: 11px;
+    color: #777;
+    font-style: italic;
+}
+
+/* --- Other Empires page (task 06h). --- */
+
+.wizard-empires-count-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: #c9d1d9;
+}
+
+.wizard-empires-count-input {
+    width: 80px;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+    color: #fff;
+    padding: 3px 8px;
+    font-family: inherit;
+    font-variant-numeric: tabular-nums;
+}
+
+.wizard-empires-or {
+    font-size: 12px;
+    color: #b8a24a;
+    font-style: italic;
+}
+
+/* Read-only preview of the AI empire list (auto-generate count). */
+.wizard-empires-list-preview {
+    font-size: 13px;
+    color: #c9d1d9;
+    padding: 8px 12px;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+}
+
 /* --- Victory Conditions page (task 06g). --- */
 
 .wizard-victory-sandbox {

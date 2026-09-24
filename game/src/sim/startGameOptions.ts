@@ -45,6 +45,12 @@ export interface StartGameOptions {
     /** Task 06g: the wizard's "Victory Conditions" page options, ported from
      * DistantWorlds.Types.VictoryConditions (see VictoryConditions below). */
     victory: VictoryConditions;
+    /** Task 06h: the wizard's "Colonization and Territory" page options
+     * (see ColonizationOptions below). */
+    colonization: ColonizationOptions;
+    /** Task 06h: the wizard's "Other Empires" page options (see
+     * OtherEmpiresOptions below). */
+    otherEmpires: OtherEmpiresOptions;
 }
 
 /**
@@ -119,7 +125,7 @@ export function defaultVictoryConditions(): VictoryConditions {
     };
 }
 
-/** Task 06g: clamp a VictoryConditions' numeric fields into the wizard
+/** Task 06h: clamp a VictoryConditions' numeric fields into the wizard
  * control bounds (percent >= 1; time limit 1..1000 years; time start
  * 1..99 years) and return a copy. Booleans pass through unchanged. */
 export function clampVictory(v: VictoryConditions): VictoryConditions {
@@ -136,6 +142,106 @@ export function clampVictory(v: VictoryConditions): VictoryConditions {
         startDateYears: Math.min(
             VICTORY_TIME_START_YEARS_MAX,
             Math.max(VICTORY_TIME_START_YEARS_MIN, v.startDateYears),
+        ),
+    };
+}
+
+/**
+ * Task 06h: the wizard's "Colonization and Territory" page options, ported
+ * from the pnlStartNewGameColonizationTerritory controls of
+ * Start.InitializeComponent.cs.
+ */
+export interface ColonizationOptions {
+    /** grpStartNewGameColonizationTerritoryColonizationRange: enforce the
+     * colonization-range limits below. */
+    enforceRangeLimits: boolean;
+    /** sldStartNewGameColonizationTerritoryColonizationRange (500..5000 Kly,
+     * default 4000). The player may only colonise systems within this range
+     * of their home system when enforcement is on. */
+    colonizationRangeKly: number;
+    /** sldStartNewGameColonizationTerritoryColonyInfluenceRange (10..200 %,
+     * default 100). Suggested colony influence range for new colonies. */
+    colonyInfluenceRangePercent: number;
+    /** chkOptionsAllowSameSystemAsOtherEmpires: allow building colonies and
+     * mining stations in other empires' systems. */
+    allowSameSystemAsOtherEmpires: boolean;
+}
+
+/** Min/max bounds of the wizard's colonization-range slider, straight from
+ * Start.InitializeComponent.cs (task 06h): Minimum = 500, Maximum = 5000. */
+export const COLONIZATION_RANGE_KLY_MIN = 500;
+export const COLONIZATION_RANGE_KLY_MAX = 5000;
+
+/** Min/max bounds of the wizard's colony-influence-range slider (10..200 %). */
+export const COLONY_INFLUENCE_RANGE_PCT_MIN = 10;
+export const COLONY_INFLUENCE_RANGE_PCT_MAX = 200;
+
+/** Task 06h: default ColonizationOptions matching the wizard control values
+ * from Start.InitializeComponent.cs: enforcement off, colonization range
+ * 4000 Kly, colony influence range 100 %, same-system option unchecked. */
+export function defaultColonizationOptions(): ColonizationOptions {
+    return {
+        enforceRangeLimits: false,
+        colonizationRangeKly: 4000,
+        colonyInfluenceRangePercent: 100,
+        allowSameSystemAsOtherEmpires: false,
+    };
+}
+
+/** Task 06h: clamp a ColonizationOptions' numeric fields into the wizard
+ * control bounds (range 500..5000 Kly; influence 10..200 %) and return a
+ * copy. Booleans pass through unchanged. */
+export function clampColonization(c: ColonizationOptions): ColonizationOptions {
+    return {
+        ...c,
+        colonizationRangeKly: Math.min(
+            COLONIZATION_RANGE_KLY_MAX,
+            Math.max(COLONIZATION_RANGE_KLY_MIN, c.colonizationRangeKly),
+        ),
+        colonyInfluenceRangePercent: Math.min(
+            COLONY_INFLUENCE_RANGE_PCT_MAX,
+            Math.max(COLONY_INFLUENCE_RANGE_PCT_MIN, c.colonyInfluenceRangePercent),
+        ),
+    };
+}
+
+/**
+ * Task 06h: the wizard's "Other Empires" page options, ported from the
+ * pnlStartNewGameOtherEmpires controls of Start.InitializeComponent.cs.
+ */
+export interface OtherEmpiresOptions {
+    /** chkOtherEmpiresAutogenerate: auto-generate the starting AI empires
+     * instead of specifying them manually below. */
+    autogenerate: boolean;
+    /** lblStartNewGameOtherEmpiresAutoGenNumberDescrip1/2 ("Generate <n>
+     * starting empires"): how many AI empires to generate. */
+    empireCount: number;
+}
+
+/** Min/max bounds of the wizard's "generate N starting empires" control.
+ * The original's InitializeComponent excerpt (task 06h) lists no explicit
+ * min/max for it, so sensible bounds are used: at least 0 (no AI empires)
+ * and at most 100. */
+export const OTHER_EMPIRES_COUNT_MIN = 0;
+export const OTHER_EMPIRES_COUNT_MAX = 100;
+
+/** Task 06h: default OtherEmpiresOptions — auto-generation on with 10
+ * starting empires (the typical DW:U starting-empire count). */
+export function defaultOtherEmpiresOptions(): OtherEmpiresOptions {
+    return {
+        autogenerate: true,
+        empireCount: 10,
+    };
+}
+
+/** Task 06h: clamp an OtherEmpiresOptions' empire count into the wizard
+ * control bounds (0..100) and return a copy. Booleans pass through. */
+export function clampOtherEmpires(o: OtherEmpiresOptions): OtherEmpiresOptions {
+    return {
+        ...o,
+        empireCount: Math.min(
+            OTHER_EMPIRES_COUNT_MAX,
+            Math.max(OTHER_EMPIRES_COUNT_MIN, o.empireCount),
         ),
     };
 }
@@ -398,7 +504,9 @@ export function applyEmpireDefaults(options: StartGameOptions, raceIndex: number
  * (colony prevalence / alien life 2 of 5, space creatures 1 of 4, pirates
  * 2 of 6, aggression 2 of 5, difficulty 2 of 5); difficulty scaling is off.
  * Task 06g: victory conditions start at the C# defaults (all types
- * unchecked = sandbox mode; see defaultVictoryConditions). */
+ * unchecked = sandbox mode; see defaultVictoryConditions). Task 06h:
+ * colonization and other-empires options start at the wizard control
+ * defaults (see defaultColonizationOptions / defaultOtherEmpiresOptions). */
 export function defaultStartGameOptions(): StartGameOptions {
     return {
         shape: GalaxyShape.Spiral,
@@ -419,5 +527,7 @@ export function defaultStartGameOptions(): StartGameOptions {
         difficultyIndex: 2,
         difficultyScaling: false,
         victory: defaultVictoryConditions(),
+        colonization: defaultColonizationOptions(),
+        otherEmpires: defaultOtherEmpiresOptions(),
     };
 }
