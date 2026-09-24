@@ -1,6 +1,8 @@
-import { describe, expect, it } from 'vitest';
-import { generateGalaxy } from '../src/sim/galaxy';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { generateGalaxy, type Galaxy } from '../src/sim/galaxy';
+import type { GameData } from '../src/sim/data/gameData';
 import { GalaxyShape, HabitatCategoryType, HabitatType } from '../src/sim/types';
+import { loadGameDataFs } from './helpers/loadGameDataFs';
 
 const systemNames = Array.from({ length: 200 }, (_, i) => `Test System ${i}`);
 
@@ -155,4 +157,220 @@ describe('generateGalaxy', () => {
             galaxyB.habitats.map((h) => [h.category, h.name, h.type, h.xpos, h.ypos, h.diameter, h.orbitDistance]),
         );
     });
+});
+
+describe('generateGalaxy with gameData (task 01d: supernovae, resources, treasure asteroids)', () => {
+    let gameData: GameData;
+
+    beforeAll(async () => {
+        gameData = await loadGameDataFs();
+    });
+
+    // Mirror of Galaxy.resolveHabitatTypeByIndexIncludeGasClouds
+    // (resources.txt SubType is a compact index, not the HabitatType value).
+    function resolveHabitatTypeByIndex(index: number): HabitatType {
+        switch (index) {
+            case 0:
+                return HabitatType.Continental;
+            case 1:
+                return HabitatType.MarshySwamp;
+            case 2:
+                return HabitatType.Ocean;
+            case 3:
+                return HabitatType.Desert;
+            case 4:
+                return HabitatType.Ice;
+            case 5:
+                return HabitatType.Volcanic;
+            case 6:
+                return HabitatType.BarrenRock;
+            case 7:
+                return HabitatType.GasGiant;
+            case 8:
+                return HabitatType.FrozenGasGiant;
+            case 9:
+                return HabitatType.Metal;
+            case 10:
+                return HabitatType.Ammonia;
+            case 11:
+                return HabitatType.Argon;
+            case 12:
+                return HabitatType.CarbonDioxide;
+            case 13:
+                return HabitatType.Chlorine;
+            case 14:
+                return HabitatType.Helium;
+            case 15:
+                return HabitatType.Hydrogen;
+            case 16:
+                return HabitatType.NitrogenOxygen;
+            case 17:
+                return HabitatType.Oxygen;
+            default:
+                return HabitatType.Continental;
+        }
+    }
+
+    // Mirror of Galaxy.checkPrevalenceValidForHabitat.
+    function checkPrevalenceValid(habitat: Galaxy['habitats'][number], dist: GameData['resources'][number]['distributions'][number]): boolean {
+        if (resolveHabitatTypeByIndex(dist.subType) !== habitat.type) {
+            return false;
+        }
+        switch (habitat.category) {
+            case HabitatCategoryType.Planet:
+            case HabitatCategoryType.Moon:
+                return dist.type !== 1 && dist.type !== 2;
+            case HabitatCategoryType.Asteroid:
+                return dist.type === 1;
+            case HabitatCategoryType.GasCloud:
+                return dist.type === 2;
+        }
+        return false;
+    }
+
+    it('supernovae have nova fields in the source ranges', () => {
+        const galaxy = generateGalaxy({
+            seed: 12345,
+            shape: GalaxyShape.Spiral,
+            starCount: 700,
+            sectorWidth: 10,
+            sectorHeight: 10,
+            systemNames,
+            gameData,
+        });
+
+        const novas = galaxy.habitats.filter((h) => h.type === HabitatType.SuperNova);
+        expect(novas.length).toBeGreaterThan(0);
+        for (const nova of novas) {
+            expect(nova.name.startsWith('Super Nova ')).toBe(true);
+            // NovaProgression = 30000 + Rnd.NextDouble() * 60000
+            expect(nova.novaProgression).toBeGreaterThanOrEqual(30000);
+            expect(nova.novaProgression).toBeLessThan(90000);
+            expect(nova.novaImageIndexMajor).toBeGreaterThanOrEqual(0);
+            expect(nova.novaImageIndexMajor).toBeLessThan(20);
+            expect(nova.novaImageIndexMinor).toBeGreaterThanOrEqual(0);
+            expect(nova.novaImageIndexMinor).toBeLessThan(56);
+            expect(nova.diameter).toBe(Math.trunc(Math.trunc(nova.novaProgression * 2.0) / 10));
+        }
+    }, 60000);
+
+    it('habitat resources use valid ids, abundances and prevalence entries', () => {
+        const galaxy = generateGalaxy({
+            seed: 12345,
+            shape: GalaxyShape.Spiral,
+            starCount: 700,
+            sectorWidth: 10,
+            sectorHeight: 10,
+            systemNames,
+            gameData,
+        });
+
+        const byId = new Map(gameData.resources.map((r) => [r.resourceId, r]));
+
+        let checked = 0;
+        for (const habitat of galaxy.habitats) {
+            if (habitat.resources.length === 0) {
+                continue;
+            }
+            // Treasure asteroids push their resource directly (C# does the
+            // same; e.g. Dilithium Crystal has no asteroid distribution).
+            if (habitat.pictureRef >= 649 && habitat.pictureRef <= 664) {
+                continue;
+            }
+            expect(habitat.resources.length).toBeLessThanOrEqual(5);
+            const seen = new Set<number>();
+            for (const res of habitat.resources) {
+                expect(seen.has(res.resourceId), `duplicate ${res.resourceId} on ${habitat.name}`).toBe(false);
+                seen.add(res.resourceId);
+                const def = byId.get(res.resourceId);
+                expect(def, `unknown resource id ${res.resourceId} on ${habitat.name}`).toBeDefined();
+                expect(res.abundance).toBeGreaterThanOrEqual(0);
+                expect(res.abundance).toBeLessThanOrEqual(1000);
+                const valid = def!.distributions.some((d) => checkPrevalenceValid(habitat, d));
+                expect(valid, `${habitat.name} (${HabitatType[habitat.type]}) has ${def!.name} with no valid prevalence entry`).toBe(true);
+                checked++;
+            }
+        }
+        expect(checked).toBeGreaterThan(0);
+
+        const planetsWithRes = galaxy.habitats.filter((h) => h.category === HabitatCategoryType.Planet && h.resources.length > 0);
+        expect(planetsWithRes.length).toBeGreaterThan(0);
+        const asteroidsWithRes = galaxy.habitats.filter((h) => h.category === HabitatCategoryType.Asteroid && h.resources.length > 0);
+        expect(asteroidsWithRes.length).toBeGreaterThan(0);
+    }, 60000);
+
+    it('gas giants only get gas resources matching their own type', () => {
+        const galaxy = generateGalaxy({
+            seed: 12345,
+            shape: GalaxyShape.Spiral,
+            starCount: 700,
+            sectorWidth: 10,
+            sectorHeight: 10,
+            systemNames,
+            gameData,
+        });
+
+        const byId = new Map(gameData.resources.map((r) => [r.resourceId, r]));
+        const gasGiants = galaxy.habitats.filter((h) => h.type === HabitatType.GasGiant || h.type === HabitatType.FrozenGasGiant);
+        expect(gasGiants.length).toBeGreaterThan(0);
+        const withRes = gasGiants.filter((h) => h.resources.length > 0);
+        expect(withRes.length).toBeGreaterThan(0);
+        for (const gg of withRes) {
+            for (const res of gg.resources) {
+                const def = byId.get(res.resourceId)!;
+                // Gas giant planets (category Planet) only match
+                // Planet/Moon (type 0) distributions of their own type.
+                const valid = def.distributions.some((d) => d.type === 0 && resolveHabitatTypeByIndex(d.subType) === gg.type);
+                expect(valid, `${gg.name} (${HabitatType[gg.type]}) has ${def.name} with no matching gas distribution`).toBe(true);
+            }
+        }
+    }, 60000);
+
+    it('treasure asteroids carry Gold or Dilithium Crystal at high abundance', () => {
+        const galaxy = generateGalaxy({
+            seed: 12345,
+            shape: GalaxyShape.Spiral,
+            starCount: 700,
+            sectorWidth: 10,
+            sectorHeight: 10,
+            systemNames,
+            gameData,
+        });
+
+        const gold = gameData.resources.find((r) => r.name === 'Gold');
+        const crystal = gameData.resources.find((r) => r.name === 'Dilithium Crystal');
+        expect(gold).toBeDefined();
+        expect(crystal).toBeDefined();
+
+        const treasures = galaxy.habitats.filter(
+            (h) => h.category === HabitatCategoryType.Asteroid && h.type === HabitatType.Metal && h.pictureRef >= 649 && h.pictureRef <= 664,
+        );
+        expect(treasures.length).toBeGreaterThan(0);
+        for (const t of treasures) {
+            expect(t.diameter).toBeGreaterThanOrEqual(35);
+            expect(t.diameter).toBeLessThan(50);
+            expect(t.parent).not.toBeNull();
+            expect(t.parent!.category).toBe(HabitatCategoryType.Star);
+            expect(t.resources.length).toBe(1);
+            const res = t.resources[0];
+            expect(res.abundance).toBeGreaterThanOrEqual(800);
+            expect(res.abundance).toBeLessThan(1000);
+            if (t.pictureRef <= 656) {
+                expect(res.resourceId).toBe(gold!.resourceId);
+            } else {
+                expect(res.resourceId).toBe(crystal!.resourceId);
+            }
+        }
+    }, 60000);
+
+    it('generation with gameData is deterministic for a fixed seed', () => {
+        const options = { seed: 4242, shape: GalaxyShape.Spiral, starCount: 300, sectorWidth: 8, sectorHeight: 8, systemNames, gameData };
+        const galaxyA = generateGalaxy(options);
+        const galaxyB = generateGalaxy(options);
+
+        const signature = (g: Galaxy) =>
+            g.habitats.map((h) => [h.category, h.name, h.type, h.xpos, h.ypos, h.diameter, h.resources.map((r) => [r.resourceId, r.abundance])]);
+
+        expect(signature(galaxyA)).toEqual(signature(galaxyB));
+    }, 60000);
 });

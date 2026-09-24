@@ -3,19 +3,25 @@
 # Usage: scripts/ninfer-worker.sh tasks/NN-name.md   (log -> tasks/NN-name.log)
 set -euo pipefail
 cd "$(dirname "$0")/.."
-# Requests go through scripts/ninfer-proxy.py (:8099) so ninfer can reuse its prompt cache.
-curl -sf -m 3 http://127.0.0.1:8099/health >/dev/null || {
-  echo "ninfer-proxy not running on :8099 (start: python3 scripts/ninfer-proxy.py 8099)" >&2; exit 3; }
 task="$1"; log="${task%.md}.log"
+# Requests go through scripts/ninfer-proxy.py so ninfer can reuse its prompt cache.
+# A task file line "thinking: off" (mechanical tasks: loaders, fixes, wiring) uses the
+# thinking-disabled proxy on :8100; faithful simulation ports keep low-effort thinking on :8099.
+port=8099
+grep -qiE '^thinking:\s*off' "$task" && port=8100
+# Fix passes inherit the setting of the task they fix.
+case "$task" in *.fix[0-9].md) base="${task%.fix?.md}.md"; [ -f "$base" ] && grep -qiE '^thinking:\s*off' "$base" && port=8100;; esac
+curl -sf -m 3 "http://127.0.0.1:$port/health" >/dev/null || {
+  echo "ninfer-proxy not running on :$port (start: python3 scripts/ninfer-proxy.py 8099; NINFER_PROXY_THINKING=off python3 scripts/ninfer-proxy.py 8100)" >&2; exit 3; }
 exec env \
-  ANTHROPIC_BASE_URL="http://127.0.0.1:8099" \
+  ANTHROPIC_BASE_URL="http://127.0.0.1:$port" \
   ANTHROPIC_AUTH_TOKEN="ninfer" \
   ANTHROPIC_MODEL="qwen3.8coding" \
   ANTHROPIC_SMALL_FAST_MODEL="qwen3.8coding" \
   ANTHROPIC_DEFAULT_SONNET_MODEL="qwen3.8coding" \
   ANTHROPIC_DEFAULT_OPUS_MODEL="qwen3.8coding" \
   ANTHROPIC_DEFAULT_HAIKU_MODEL="qwen3.8coding" \
-  CLAUDE_CODE_EFFORT_LEVEL="medium" \
+  CLAUDE_CODE_EFFORT_LEVEL="low" \
   CLAUDE_CODE_ATTRIBUTION_HEADER="0" \
   CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="1" \
   API_TIMEOUT_MS="1800000" \

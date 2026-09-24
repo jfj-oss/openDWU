@@ -106,9 +106,14 @@ export class Habitat {
     scenicFactor = 0; // C#: float
     researchBonus = 0; // C#: byte
     hasRings = false; // C#: bool HasRings (Galaxy.5.cs SetupSolarSystem)
+    novaProgression = 0; // C#: float NovaProgression (supernovae; Galaxy.5.cs SetupSun)
+    novaImageIndexMajor = 0; // C#: short NovaImageIndexMajor
+    novaImageIndexMinor = 0; // C#: short NovaImageIndexMinor
+    // Port of Habitat.cs Resources (HabitatResourceList). Abundance is 0-1000.
+    resources: { resourceId: number; abundance: number }[] = [];
 
     // TODO(port): _LastHugeTouch/_LastLongTouch/_LastPeriodicTouch/_LastTouch
-    // (galaxy time), Resources/Population/_BasesAtHabitat lists and
+    // (galaxy time), Population/_BasesAtHabitat lists and
     // RecalculateCriticalResourceSupplyBonuses() from the C# ctor —
     // Habitat.cs:ctor — need Galaxy and the list types.
 
