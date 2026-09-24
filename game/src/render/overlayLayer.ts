@@ -1,10 +1,13 @@
 // Task M3 — render three of the nine "Overlays" HUD toggles
-// (src/ui/mapOverlays.ts) against real sim data. The other five (Fleet
-// Postures, Travel Vectors State/Private, Long Range Scanners, Fade civilian
-// ships) need ship state this renderer has not ported yet; their click
-// handler in src/ui/hud.ts just keeps the toggle state and leaves a
+// (src/ui/mapOverlays.ts) against real sim data. The others (Fleet
+// Postures, Long Range Scanners, Fade civilian ships) need ship state
+// this renderer has not ported yet; their click handler in src/ui/hud.ts
+// just keeps the toggle state and leaves a
 // `// TODO(overlay): needs ships (M3)` note — no rendering happens here for
 // them.
+//
+// Travel Vectors (task 14c): port of MainView.2.cs method_250 per-ship pass +
+// BaconMainView.cs method_253; see travelVectorsFor.
 //
 // Empire Territory (Controls/MainView.2.cs / GalaxyMap.cs): the original's
 // GameOptions.MapOverlayEmpireTerritory defaults *false*, but it does not
@@ -49,6 +52,11 @@ import { HabitatCategoryType, type Habitat } from '../sim/types';
 import { onOverlayChange, type MapOverlayState } from '../ui/mapOverlays';
 import type { EmpireLayer } from './empireLayer';
 import { moonDotPx, planetSpritePx, starSpritePx } from './mainView';
+import type { BuiltObject } from '../sim/builtObject';
+import type { Empire } from '../sim/empire';
+import type { ShipGroup } from '../sim/fleets/shipGroup';
+import { builtObjectMission } from '../sim/missions/mission';
+import { BuiltObjectRole } from '../sim/data/designSpecifications';
 
 /** The original's selection-ring yellow (MainView.cs `color_2` default,
  * `System.Drawing.Color.FromArgb(255, 255, 255, 0)`), reused by
@@ -99,6 +107,104 @@ class MarkerRing {
     }
 }
 
+// MainView.2.cs method_251: Color.FromArgb(170, 170, 170)
+export const TRAVEL_VECTOR_COLOR = 0xaaaaaa;
+
+export type TravelVectorKind = 'state' | 'private';
+
+export interface TravelVector {
+    builtObject: BuiltObject;
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+}
+
+// Port of BaconDistantWorlds/BaconMainView.cs method_253 guard + target
+// (without the ShipGroup clause; travelVectorsFor handles fleets).
+export function travelVectorFor(bo: BuiltObject): TravelVector | null {
+    if (bo.hasBeenDestroyed) return null;
+    if (bo.role === BuiltObjectRole.Base) return null;
+    if (bo.topSpeed <= 0) return null;
+    if (bo.warpSpeed <= 0) return null;
+    if (bo.currentSpeed <= bo.topSpeed && !bo.hyperjumpPrepare) return null;
+    const m = builtObjectMission(bo.mission);
+    if (m === null) return null;
+    if (m.type === 0) return null; // BuiltObjectMissionType.Undefined
+    let p = m.resolveTargetCoordinatesCurrentCommand();
+    if (p.x === 0 && p.y === 0) {
+        // Point.IsEmpty
+        if (bo.parentBuiltObject !== null) {
+            p = { x: Math.trunc(bo.parentBuiltObject.xpos), y: Math.trunc(bo.parentBuiltObject.ypos) };
+        } else if (bo.parentHabitat !== null) {
+            p = { x: Math.trunc(bo.parentHabitat.xpos), y: Math.trunc(bo.parentHabitat.ypos) };
+        }
+    }
+    return { builtObject: bo, x1: bo.xpos, y1: bo.ypos, x2: p.x, y2: p.y };
+}
+
+// TODO(port): other empires' fleets (method_258 + IsObjectVisibleToThisEmpire), selected-fleet yellow, SpecialHighlightBuiltObjects red, arrow head (texture2D_35)
+// Port of MainView.2.cs method_250 (5925-5956) travel-vector filter + method_258 (player fleets, State only)
+export function travelVectorsFor(
+    galaxy: { builtObjects: readonly BuiltObject[] },
+    player: Empire | null,
+    kind: TravelVectorKind,
+): TravelVector[] {
+    if (player === null) return [];
+    const out: TravelVector[] = [];
+    for (const bo of galaxy.builtObjects) {
+        if (bo === null || bo === undefined) continue;
+        const group = bo.shipGroup as ShipGroup | null;
+        let include: boolean;
+        if (group !== null && group !== undefined) {
+            // method_258: fleet lead ships ignore Owner; other members are
+            // skipped (method_253's ShipGroup clause).
+            include = kind === 'state' && group.leadShip === bo && group.empire === player;
+        } else {
+            include = bo.actualEmpire === player && (kind === 'private' ? bo.owner === null : bo.owner !== null);
+        }
+        if (!include) continue;
+        const v = travelVectorFor(bo);
+        if (v !== null) out.push(v);
+    }
+    return out;
+}
+
+// BaconMainView.cs method_253 length gate; f = 1 / z (C# zoom factor).
+export function travelVectorLongEnough(v: TravelVector, f: number): boolean {
+    return (Math.abs(v.x2 - v.x1) + Math.abs(v.y2 - v.y1)) * (1500 / f) > 40000;
+}
+
+/** Split a line into dash segments [x1, y1, x2, y2]; dash/gap are scaled up
+ * so no more than `maxDashes` segments are produced. */
+export function dashSegments(
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    dash: number,
+    gap: number,
+    maxDashes = 200,
+): Array<[number, number, number, number]> {
+    const len = Math.hypot(x2 - x1, y2 - y1);
+    if (len === 0) return [];
+    let d = dash;
+    let g = gap;
+    if (len / (d + g) > maxDashes) {
+        const k = len / (maxDashes * (d + g));
+        d *= k;
+        g *= k;
+    }
+    const ux = (x2 - x1) / len;
+    const uy = (y2 - y1) / len;
+    const out: Array<[number, number, number, number]> = [];
+    for (let t = 0; t < len; t += d + g) {
+        const e = Math.min(t + d, len);
+        out.push([x1 + ux * t, y1 + uy * t, x1 + ux * e, y1 + uy * e]);
+    }
+    return out;
+}
+
 export class OverlayLayer {
     /** World-space layer: marker rings live above everything else. */
     root = new Container();
@@ -106,6 +212,7 @@ export class OverlayLayer {
     private scenicLocations: MarkerRing[] = [];
     private researchLocations: MarkerRing[] = [];
     private unsubscribe: () => void;
+    private travelVectors = new Graphics();
 
     constructor(
         private galaxy: Galaxy,
@@ -114,6 +221,7 @@ export class OverlayLayer {
         private state: MapOverlayState,
     ) {
         world.addChild(this.root);
+        this.root.addChild(this.travelVectors);
         // Eligibility is computed once from the galaxy as built: nothing in
         // the current sim (no ship/colonization missions yet) changes
         // ownership, quality or exploration after createGame runs.
@@ -170,6 +278,38 @@ export class OverlayLayer {
         this.updateGroup(this.potentialColonies, atSystemZoom && this.state.potentialColonies, z, cam);
         this.updateGroup(this.scenicLocations, atSystemZoom && this.state.scenicLocations, z, cam);
         this.updateGroup(this.researchLocations, atSystemZoom && this.state.researchLocations, z, cam);
+        this.updateTravelVectors(z, cam);
+    }
+
+    /** Travel Vectors (State / Private): dashed grey line from each of the
+     * player's hyperspeed ships to its current command target, redrawn every
+     * frame. MainView.2.cs method_250 draws above zoom factor 0.9 (always). */
+    private updateTravelVectors(z: number, cam: Camera): void {
+        const g = this.travelVectors;
+        g.clear();
+        const kinds: TravelVectorKind[] = [];
+        if (this.state.travelVectorsState) kinds.push('state');
+        if (this.state.travelVectorsPrivate) kinds.push('private');
+        const player = this.galaxy.playerEmpire;
+        if (kinds.length === 0 || player === null) {
+            g.visible = false;
+            return;
+        }
+        const f = 1 / z;
+        const halfW = cam.width / (2 * z);
+        const halfH = cam.height / (2 * z);
+        for (const kind of kinds) {
+            for (const v of travelVectorsFor(this.galaxy, player, kind)) {
+                // MainView.2.cs: only ships inside the view get a vector.
+                if (v.x1 < cam.x - halfW || v.x1 > cam.x + halfW || v.y1 < cam.y - halfH || v.y1 > cam.y + halfH) continue;
+                if (!travelVectorLongEnough(v, f)) continue;
+                for (const [ax, ay, bx, by] of dashSegments(v.x1, v.y1, v.x2, v.y2, 6 * f, 4 * f)) {
+                    g.moveTo(ax, ay).lineTo(bx, by);
+                }
+            }
+        }
+        g.stroke({ width: f, color: TRAVEL_VECTOR_COLOR, alpha: 1 });
+        g.visible = true;
     }
 
     /** Drop the overlay-change subscription (tests / view teardown). */
