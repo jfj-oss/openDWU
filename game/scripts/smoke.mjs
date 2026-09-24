@@ -1,7 +1,9 @@
 // Usage: node scripts/smoke.mjs
 // End-to-end smoke test: starts its own Vite dev server on a free port, then
 // drives the app through the main menu -> new-game wizard -> Main View + HUD
-// -> play/speed -> game menu -> selection, saving a screenshot at each step
+// -> play/speed -> game menu -> selection -> G-key zoom out -> panel hotkeys
+// (message history / colonies list / empire summary) -> save -> main menu ->
+// load round trip, saving a screenshot at each step
 // (game/shots/smoke-<n>.png) and printing a PASS/FAIL line per step.
 //
 // Fails (exit 1) on any page error, console error, or failed request to
@@ -104,6 +106,10 @@ async function main() {
         const consoleErrors = [];
         const pageErrors = [];
         const failedAssetRequests = [];
+
+        // The game menu's "Main Menu" button uses window.confirm; auto-accept
+        // it so step 9 can round-trip to the main menu unattended.
+        page.on('dialog', (d) => d.accept());
 
         page.on('console', (m) => {
             if (m.type() === 'error') {
@@ -289,6 +295,105 @@ async function main() {
         } catch (err) {
             fail('6. selection panel updates on click', err);
             await shot(page, 'selection (failed)').catch(() => {});
+        }
+
+        // --- Step 7: G key zooms out to the whole galaxy -------------------
+        try {
+            await page.keyboard.press('g');
+            await page.waitForTimeout(300);
+            const zoom = await page.evaluate(() => ({
+                zoom: window.__dwu?.camera?.zoom,
+                minZoom: window.__dwu?.camera?.minZoom,
+            }));
+            if (zoom.zoom === undefined || zoom.minZoom === undefined) {
+                throw new Error(`window.__dwu.camera missing zoom/minZoom (${JSON.stringify(zoom)})`);
+            }
+            if (zoom.zoom !== zoom.minZoom) {
+                throw new Error(`expected camera.zoom === camera.minZoom after pressing G, got ${zoom.zoom} vs ${zoom.minZoom}`);
+            }
+            await shot(page, 'G key zoomed out to the whole galaxy');
+            pass('7. G key zooms out to the whole galaxy (minZoom)');
+        } catch (err) {
+            fail('7. G key zooms out to the whole galaxy (minZoom)', err);
+            await shot(page, 'G-key zoom (failed)').catch(() => {});
+        }
+
+        // --- Step 8: panels open with hotkeys and close on Escape ----------
+        // Panel roots are full-screen fixed wrappers (pointer-events: none), so
+        // check presence in the DOM rather than visibility state.
+        try {
+            const panels = [
+                ['h', '.message-history-wrap'],
+                ['F2', '.colonies-list-wrap'],
+                ['F6', '.empire-summary-wrap'],
+            ];
+            for (const [key, sel] of panels) {
+                await page.keyboard.press(key);
+                await page.waitForTimeout(300);
+                let count = await page.locator(sel).count();
+                if (count === 0) {
+                    throw new Error(`pressing ${key} did not open ${sel}`);
+                }
+                await page.keyboard.press('Escape');
+                await page.waitForTimeout(300);
+                count = await page.locator(sel).count();
+                if (count > 0) {
+                    throw new Error(`${sel} still present after Escape (opened by ${key})`);
+                }
+            }
+            pass('8. message history (H), colonies list (F2) and empire summary (F6) open via hotkey and close on Escape');
+        } catch (err) {
+            fail('8. panel hotkeys open/close', err);
+            await shot(page, 'panel hotkeys (failed)').catch(() => {});
+        }
+
+        // --- Step 9: save -> main menu -> load round trip --------------------
+        try {
+            const capitalName = await page.evaluate(() => window.__dwu?.game?.playerEmpire?.capital?.name);
+            if (!capitalName) {
+                throw new Error('could not read the player capital name before saving');
+            }
+
+            await page.keyboard.press('Escape');
+            await page.waitForSelector('#game-menu-overlay', { state: 'visible', timeout: 5000 });
+            await page.getByRole('button', { name: 'Save Game' }).click();
+            await page.fill('input[placeholder]', 'smoke-save');
+            await page.locator('button', { hasText: /^Save$/ }).last().click();
+            await page.waitForTimeout(1500);
+            await shot(page, 'saved from the game menu');
+
+            await page.locator('#save-load-overlay button', { hasText: '✕' }).click();
+            await page.getByRole('button', { name: 'Main Menu' }).click();
+            await page.waitForTimeout(2500);
+
+            const loadEntryCount = await page.locator('[data-id=loadGame]').count();
+            const canvasCount = await page.locator('canvas').count();
+            if (loadEntryCount === 0) {
+                throw new Error('main menu is not shown after "Main Menu" (no [data-id=loadGame] entry)');
+            }
+            if (canvasCount !== 0) {
+                throw new Error(`expected the game view torn down (0 canvases) at the main menu, found ${canvasCount}`);
+            }
+            await shot(page, 'main menu after returning from the game');
+
+            await page.locator('[data-id=loadGame]').click();
+            await page.waitForTimeout(1500);
+            await page.locator('.save-row button', { hasText: 'Load' }).first().click();
+            await page.waitForTimeout(8000);
+
+            const reloadedCapital = await page.evaluate(() => window.__dwu?.game?.playerEmpire?.capital?.name);
+            if (reloadedCapital !== capitalName) {
+                throw new Error(`capital after loading is "${reloadedCapital}", expected "${capitalName}"`);
+            }
+            const menuCount = await page.locator('[data-id=loadGame]').count();
+            if (menuCount !== 0) {
+                throw new Error(`main menu still shown after loading a save ([data-id=loadGame] count ${menuCount})`);
+            }
+            await shot(page, 'reloaded from save');
+            pass(`9. save -> main menu -> load round trip (capital "${capitalName}" preserved)`);
+        } catch (err) {
+            fail('9. save -> main menu -> load round trip', err);
+            await shot(page, 'save/load round trip (failed)').catch(() => {});
         }
 
         // --- Global error checks ---------------------------------------------
