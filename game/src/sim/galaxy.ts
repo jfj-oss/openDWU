@@ -28,6 +28,7 @@ import { netSort } from './netSort';
 import { SystemVisibilityStatus } from './visibility';
 import { EmpireTerritory, strategicValue } from './territory';
 import { buildResearchStatic, type ResearchStatic } from './researchSystem';
+import { buildComponentStatic } from './componentStatic';
 
 // C# string.CompareTo (culture-sensitive; .NET 5+ uses ICU).
 const NAME_COLLATOR = new Intl.Collator('en-US');
@@ -38,6 +39,9 @@ function compareGroupNames(a: Habitat[], b: Habitat[]): number {
 }
 import type { Empire } from './empire';
 import type { GameData } from './data/gameData';
+import type { Design } from './design';
+import { findNewestCanBuild } from './designGeneration';
+import { BuiltObjectSubRole } from './builtObjectTypes';
 
 // Port of Galaxy.cs static fields (Galaxy.3.cs InitializeStatics sets
 // these): SectorSizeX = SectorSizeY = 2_000_000, IndexSize = 400_000.
@@ -95,6 +99,10 @@ export class Galaxy {
     resources: Resource[] = [];
     // Task C2c-3: Galaxy.ResearchNodeDefinitionsStatic + ComponentDefinitionsStatic.
     researchStatic: ResearchStatic | null = null;
+    /** GameData.designSpecificationTexts (designTemplates/<race>/[pirate/]<sub>.txt). */
+    designSpecificationTexts: Map<string, string> = new Map();
+    /** Galaxy.DesignNames (designNames.txt families). */
+    designNames: string[][] = [];
     // Task C2c-2: Galaxy.EmpireTerritory + EmpireTerritoryColonyInfluenceRangeFactor (Galaxy.cs:726).
     empireTerritory = new EmpireTerritory();
     empireTerritoryColonyInfluenceRangeFactor = 1;
@@ -610,6 +618,100 @@ export class Galaxy {
     // Port of Galaxy.cs CheckEmpireTerritoryIdAtLocation (3694).
     checkEmpireTerritoryIdAtLocation(x: number, y: number): number {
         return this.empireTerritory.checkLocationOwnership(this, x, y);
+    }
+
+    // Port of Galaxy.cs CheckEmpireTerritoryCanColonizeHabitat(empire, habitat)
+    // (3607) / the 3-arg overload with `out canColonizeBecauseAtWar` (3613).
+    // canColonizeBecauseAtWar is not consumed by any caller ported so far, so
+    // only the bool result is returned.
+    // TODO(port): DiplomaticRelation/war state (DiplomaticRelation.cs) is not
+    // modeled — at game start no wars have been declared yet, so the "at war"
+    // branch that would flip a hostile-territory colonization to allowed
+    // never applies, matching the value C# would read at this point.
+    checkEmpireTerritoryCanColonizeHabitat(empire: Empire, habitat: Habitat): boolean {
+        const systemStar = this.determineHabitatSystemStar(habitat);
+        const sys = this.systems[systemStar.systemIndex] as SystemInfo | undefined;
+        let ownerId = -1;
+        let disputed = false;
+        if (sys === undefined || sys.dominantEmpire == null || sys.dominantEmpire.empire === null) {
+            ownerId = this.empireTerritory.checkLocationOwnership(this, systemStar.xpos, systemStar.ypos);
+        } else {
+            if (sys.otherEmpires != null && sys.otherEmpires.length > 0) disputed = true;
+            ownerId = sys.dominantEmpire.empire.empireId;
+        }
+        if (ownerId >= 0 && ownerId !== empire.empireId) {
+            // C#: at war with the owner -> true (canColonizeBecauseAtWar).
+            // No wars exist yet at game start, so this is always false here.
+            return false;
+        }
+        if (disputed) return false;
+        return true;
+    }
+
+    // Port of Galaxy.7.cs FindNearestColonizableHabitatUnoccupiedSystem(x, y,
+    // empire) (1861) + FindNearestColonizableHabitatUnoccupiedSystemInIndex
+    // (2093). `colonizableHabitatTypes` mirrors the C# local (computed via
+    // empire.ColonizableHabitatTypesForEmpire(empire)) but, like C#, it is
+    // never actually read by the per-index search below.
+    findNearestColonizableHabitatUnoccupiedSystem(x: number, y: number, empire: Empire): Habitat | null {
+        const ix = Math.trunc(x);
+        const iy = Math.trunc(y);
+        const design: Design | null = findNewestCanBuild(
+            empire.designs,
+            BuiltObjectSubRole.ColonyShip,
+            empire.designs.length > 0 ? (empire.designs[0].empire as Empire | null) : null,
+        );
+        if (design === null) return null;
+        return this.ringSearch(x, y, (cx, cy) => {
+            let habitat: Habitat | null = null;
+            let distance = Number.MAX_VALUE;
+            let lastSystemIndex = -1;
+            let hostileSystem = false;
+            for (const h of this.habitatIndexGrid[cx][cy]) {
+                if (lastSystemIndex !== h.systemIndex) {
+                    const dom = this.systems[h.systemIndex]?.dominantEmpire ?? null;
+                    hostileSystem = dom !== null && dom.empire !== null && dom.empire !== empire;
+                    lastSystemIndex = h.systemIndex;
+                }
+                if (!hostileSystem && (h.empire === null || h.empire === this.independentEmpire) && this.checkEmpireTerritoryCanColonizeHabitat(empire, h)) {
+                    const num2 = this.calculateDistanceSquared(ix, iy, h.xpos, h.ypos);
+                    if (num2 < distance && empire.canDesignColonizeHabitat(design, h) && empire.determineColonizeLowQualityHabitat(h)) {
+                        habitat = h;
+                        distance = num2;
+                    }
+                }
+            }
+            if (habitat !== null) distance = this.calculateDistance(ix, iy, habitat.xpos, habitat.ypos);
+            return { item: habitat, distance };
+        });
+    }
+
+    // Port of Galaxy.7.cs FindNearestColonizableHabitat(x, y, empire) (1903) +
+    // FindNearestColonizableHabitatInIndex (2215).
+    findNearestColonizableHabitat(x: number, y: number, empire: Empire): Habitat | null {
+        const ix = Math.trunc(x);
+        const iy = Math.trunc(y);
+        const design: Design | null = findNewestCanBuild(
+            empire.designs,
+            BuiltObjectSubRole.ColonyShip,
+            empire.designs.length > 0 ? (empire.designs[0].empire as Empire | null) : null,
+        );
+        if (design === null) return null;
+        return this.ringSearch(x, y, (cx, cy) => {
+            let habitat: Habitat | null = null;
+            let distance = Number.MAX_VALUE;
+            for (const h of this.habitatIndexGrid[cx][cy]) {
+                if ((h.empire === null || h.empire === this.independentEmpire) && this.checkEmpireTerritoryCanColonizeHabitat(empire, h)) {
+                    const num = this.calculateDistanceSquared(ix, iy, h.xpos, h.ypos);
+                    if (num < distance && empire.canDesignColonizeHabitat(design, h) && empire.determineColonizeLowQualityHabitat(h)) {
+                        habitat = h;
+                        distance = num;
+                    }
+                }
+            }
+            if (habitat !== null) distance = this.calculateDistance(ix, iy, habitat.xpos, habitat.ypos);
+            return { item: habitat, distance };
+        });
     }
 
     // Port of Galaxy.cs GetNextEmpireID (1323): _NextEmpireID starts at 0 and is
@@ -3543,7 +3645,9 @@ export function generateGalaxy(options: GenerateGalaxyOptions): Galaxy {
     // ResourceSystem.Resources (Galaxy.4.cs ctor loads it before generation).
     galaxy.resources = gameData?.resources ?? [];
     galaxy.resourceSystem = buildResourceSystem(galaxy.resources, gameData?.components ?? []);
-    galaxy.researchStatic = gameData ? buildResearchStatic(gameData.research, gameData.components, gameData.races, gameData.policies, gameData.piratePolicies) : null;
+    galaxy.researchStatic = gameData ? buildResearchStatic(gameData.research, gameData.components, gameData.races, gameData.policies, gameData.piratePolicies, buildComponentStatic(gameData)) : null;
+    galaxy.designSpecificationTexts = gameData?.designSpecificationTexts ?? new Map();
+    galaxy.designNames = gameData?.designNames ?? [];
     // Port of Galaxy.cs Races (loaded from GameData in the ctor).
     galaxy.races = gameData?.races ?? [];
 

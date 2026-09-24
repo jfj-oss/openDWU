@@ -11,6 +11,8 @@
 // GrowPopulation, Habitat.DoTasks at game start, EstimatedDefensiveForceRequired,
 // GenerateNewTroop; SetTechTreeLevel draws only for fractional tech levels.
 
+import { createNewDesigns } from './designGeneration';
+import { startStarDateForAge } from './galaxyTime';
 import { loadEmpirePolicy } from './researchSystem';
 import type { Galaxy } from './galaxy';
 import { Galaxy as GalaxyClass } from './galaxy';
@@ -161,6 +163,12 @@ export function generateEmpire(
     empire.resourceMap.setResourcesKnown(capital, true);
     empire.initiateConstruction = false;
     // TODO(port): empire.DoTasks() — the full empire AI tick. RND DIVERGENCE POINT (see header).
+    // Of that tick only the design step is ported: Empire.1.cs 3623 (long-interval block)
+    // `if (_ControlDesigns) CreateNewDesigns(_Galaxy.CurrentStarDate)`.
+    if (empire.controlDesigns) {
+        const starDate = startStarDateForAge(galaxy.age);
+        createNewDesigns(galaxy, empire, starDate, starDate);
+    }
     empire.initiateConstruction = true;
     galaxy.setupHomeSystem(capital, race, homeSystemDescription, minimumResourceCount, minimumCriticalResourceCount);
     return { empire, expansion, actualTechLevel };

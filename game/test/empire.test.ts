@@ -71,8 +71,8 @@ describe('Empire (M2a)', () => {
         expect(empire.active).toBe(true);
         expect(empire.stateMoney).toBe(30000.0);
         expect(empire.privateMoney).toBe(100000.0);
-        // latestDesigns sized to BuiltObjectSubRole count (28).
-        expect(empire.latestDesigns.length).toBe(28);
+        // latestDesigns sized to BuiltObjectSubRole count (30, C# Enum.GetValues).
+        expect(empire.latestDesigns.length).toBe(30);
         // one SystemVisibility entry per system.
         expect(empire.systemVisibility.length).toBe(galaxy.systems.length);
         // government id stored by changeGovernment stub.

@@ -205,12 +205,13 @@ describe('generatePirateEmpireName', () => {
 });
 
 // Pinned for seed 1 (TS port; C# parity ends at the first Empire.DoTasks).
+// (re-pinned: design generation + colonizable-habitat search)
 const PINNED_SEED1_PIRATES: unknown[] = [
-    ['Lone Claw Confederation', 'S278 7', 'Kiadian', 88],
-    ['Menacing Gangsters', 'ZT619', 'Atuuk', 796684],
-    ['Red Salvage', 'S115 2', 'Haakonish', 7364656],
-    ['Sol Minerals', 'S134 1', 'Teekan', 3153920],
-    ['S83 Syndicate', 'TF887', 'Teekan', 5584707],
-    ['Iron Authority', 'S52 4', 'Ikkuro', 26112],
-    ['Red Spaceways', 'BK606', 'Teekan', 5570645],
+    ['Lone Dagger Authority', 'S182 3', 'Ackdarian', 32639],
+    ['Fierce Market Syndicate', 'S95 2', 'Shandar', 8336399],
+    ['Venomous Dagger Clan', 'S252 2', 'Ikkuro', 26112],
+    ['Dread Sun Corsairs', 'S75 3', 'Dhayut', 8323096],
+    ['S194 Intruders', 'S263 3', 'Naxxilian', 4331580],
+    ['Sol Industries', 'S134 1', 'Securan', 16511],
+    ['Fierce Storm Mining', 'ZT619', 'Shandar', 5453],
 ];

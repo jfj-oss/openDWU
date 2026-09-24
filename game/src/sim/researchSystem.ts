@@ -15,6 +15,29 @@ import { ComponentType } from './data/components';
 import type { Race } from './data/races';
 import type { Random } from './random';
 import { ComponentCategoryType, componentCategoryByIndex, defaultEmpirePolicy, resolveTechDisallow, resolveTechFocuses, type EmpirePolicy } from './data/policies';
+import {
+    checkComponentDefinitionMatchesCategoryStrict,
+    resolveComponentCategory,
+    resolveIndustry,
+    componentImprovementFromComponent,
+    type ComponentDefinition,
+    type ComponentImprovementEntry,
+    type ComponentStatic,
+} from './componentStatic';
+
+// Port of ShipDesignFocus.cs (enum member order exact).
+export enum ShipDesignFocus {
+    Balanced,
+    SpeedAgility,
+    Power,
+    Efficiency,
+}
+
+// Enumerates the numeric values of a numeric TS enum (Object.values on a
+// numeric enum also yields the reverse-mapping names, so we filter to numbers).
+function numericEnumValues(e: Record<string, unknown>): number[] {
+    return Object.values(e).filter((v): v is number => typeof v === 'number');
+}
 
 // ResearchAbilityType.cs, mapped from the research.txt ability code
 // (ResearchNodeDefinitionList.cs 504-522: 0 Boarding, 1 ColonizeHabitatType,
@@ -58,6 +81,8 @@ export interface ResearchStatic {
     disallowedRaces: Map<number, Set<string>>;
     policies: Map<string, EmpirePolicy>;
     piratePolicies: Map<string, EmpirePolicy>;
+    /** Galaxy.ComponentDefinitionsStatic / ordered-component lists, from componentStatic.ts. */
+    componentStatic: ComponentStatic | null;
 }
 
 // Port of Galaxy.3.cs SetResearchRaceSpecialProjects (1932): specified races,
@@ -69,6 +94,7 @@ export function buildResearchStatic(
     races: Race[],
     policies: Map<string, EmpirePolicy> = new Map(),
     piratePolicies: Map<string, EmpirePolicy> = new Map(),
+    componentStatic: ComponentStatic | null = null,
 ): ResearchStatic {
     const allowed = new Map<number, Set<string>>();
     const disallowed = new Map<number, Set<string>>();
@@ -114,6 +140,7 @@ export function buildResearchStatic(
         disallowedRaces: disallowed,
         policies,
         piratePolicies,
+        componentStatic,
     };
 }
 
@@ -122,12 +149,68 @@ export function loadEmpirePolicy(stat: ResearchStatic | null, race: Race, isPira
     return (isPirate ? stat?.piratePolicies : stat?.policies)?.get(race.name) ?? defaultEmpirePolicy();
 }
 
+/** ResearchAbility (type, level, value; RelatedObject kept as the research.txt index). */
+export interface ResearchAbilityRuntime {
+    type: ResearchAbilityType;
+    level: number;
+    value: number;
+    relatedObjectIndex: number;
+}
+
 export class ResearchSystem {
     techTree: TechNode[] = [];
-    abilities: { type: ResearchAbilityType; value: number }[] = [];
-    researchedComponents: Component[] = [];
+    abilities: ResearchAbilityRuntime[] = [];
+    researchedComponents: ComponentDefinition[] = [];
+    // Port of ResearchSystem.cs _ResearchedComponentState.
+    private researchedComponentIds = new Set<number>();
+    // Port of ResearchSystem.cs ComponentImprovements (indexed by ComponentID; here a Map).
+    componentImprovements = new Map<number, ComponentImprovementEntry>();
+    // Port of _LatestComponentsByType / _LatestComponentsByCategory / _BestComponentsByType / _BestComponentsByCategory.
+    private latestComponentsByType: (ComponentDefinition | null)[] = [];
+    private latestComponentsByCategory: (ComponentDefinition | null)[] = [];
+    private bestComponentsByType: (ComponentDefinition | null)[] = [];
+    private bestComponentsByCategory: (ComponentDefinition | null)[] = [];
+    // Port of the ComponentsXxxOrderedByYyy ComponentImprovementList fields (ReviewOrderedComponents, 173).
+    componentsWeaponBeamOrderedByRange: ComponentImprovementEntry[] = [];
+    componentsWeaponTorpedoOrderedByRange: ComponentImprovementEntry[] = [];
+    componentsWeaponAreaOrderedByRange: ComponentImprovementEntry[] = [];
+    componentsWeaponBeamOrderedByPower: ComponentImprovementEntry[] = [];
+    componentsWeaponTorpedoOrderedByPower: ComponentImprovementEntry[] = [];
+    componentsWeaponAreaOrderedByPower: ComponentImprovementEntry[] = [];
+    componentsReactorOrderedByEfficiency: ComponentImprovementEntry[] = [];
+    componentsReactorOrderedByPower: ComponentImprovementEntry[] = [];
+    componentsEngineMainThrustOrderedByPower: ComponentImprovementEntry[] = [];
+    componentsEngineVectoringOrderedByPower: ComponentImprovementEntry[] = [];
+    componentsEngineMainThrustOrderedByEfficiency: ComponentImprovementEntry[] = [];
+    componentsEngineVectoringOrderedByEfficiency: ComponentImprovementEntry[] = [];
+    componentsHyperdriveOrderedByPower: ComponentImprovementEntry[] = [];
+    componentsHyperdriveOrderedByEfficiency: ComponentImprovementEntry[] = [];
+    componentsHyperdriveOrderedByJumpInitiation: ComponentImprovementEntry[] = [];
 
-    constructor(private stat: ResearchStatic | null) {}
+    private readonly componentStatic: ComponentStatic | null;
+    // Fallback ComponentDefinition cache, used only when no ComponentStatic is
+    // available (keeps identity stable across calls so Set/array membership works).
+    private fallbackDefs = new Map<number, ComponentDefinition>();
+
+    constructor(private stat: ResearchStatic | null) {
+        this.componentStatic = stat?.componentStatic ?? null;
+    }
+
+    // Resolves a research-node Components/ComponentImprovements componentId to a
+    // ComponentDefinition, from ComponentStatic when available, else a definition
+    // synthesized on the fly (ComponentDefinition.cs ResolveComponentCategory/ResolveIndustry).
+    private definitionFor(id: number): ComponentDefinition | undefined {
+        if (this.componentStatic) return this.componentStatic.byId.get(id);
+        let d = this.fallbackDefs.get(id);
+        if (!d) {
+            const c = this.stat?.componentsById.get(id);
+            if (!c) return undefined;
+            const category = resolveComponentCategory(c.type);
+            d = { ...c, category, industry: resolveIndustry(category), techLevel: 0 };
+            this.fallbackDefs.set(id, d);
+        }
+        return d;
+    }
 
     // Port of ObtainTechTree(race).
     obtainTechTree(): void {
@@ -435,20 +518,406 @@ export class ResearchSystem {
         this.finishStartingDefaults(race);
     }
 
-    // Port of ResearchSystem.Update (researched components + abilities).
+    // Port of ResearchSystem.Update (researched components + abilities; component
+    // improvements, latest/best-by-type/category and ordered-component review; TODO(port):
+    // facilities, fighters, plagues, RefreshLatestNextProjects).
     update(): void {
-        const comps: Component[] = [];
-        const abilities: { type: ResearchAbilityType; value: number }[] = [];
+        const abilities: ResearchAbilityRuntime[] = [];
         for (const n of this.techTree) {
             if (!n.isResearched) continue;
+            for (const a of n.def.abilities) abilities.push({ type: abilityTypeFromFile(a.type), level: a.level, value: a.value, relatedObjectIndex: a.relatedObjectIndex });
+        }
+        this.abilities = abilities;
+
+        this.determineResearchedComponents();
+        this.determineComponentImprovements();
+        this.latestComponentsByType = this.determineLatestComponentsByType(this.researchedComponents);
+        this.latestComponentsByCategory = this.determineLatestComponentsByCategory(this.researchedComponents);
+        this.bestComponentsByType = this.determineBestComponentsByType(this.researchedComponents);
+        this.bestComponentsByCategory = this.determineBestComponentsByCategory(this.researchedComponents);
+        // TODO(port): DetermineBuildablePlanetaryFacilities, DetermineResearchedFighters,
+        // ReviewPlagues, RefreshLatestNextProjects.
+        this.reviewOrderedComponents();
+    }
+
+    // Port of ResearchSystem.cs DetermineResearchedComponents (1149).
+    private determineResearchedComponents(): void {
+        const comps: ComponentDefinition[] = [];
+        const state = new Set<number>();
+        for (const n of this.techTree) {
+            if (!n.isResearched || n.def.components.length === 0) continue;
             for (const id of n.def.components) {
-                const c = this.stat?.componentsById.get(id);
-                if (c && !comps.includes(c)) comps.push(c);
+                if (state.has(id)) continue;
+                const def = this.definitionFor(id);
+                if (!def) continue;
+                comps.push(def);
+                state.add(id);
             }
-            for (const a of n.def.abilities) abilities.push({ type: abilityTypeFromFile(a.type), value: a.value });
         }
         this.researchedComponents = comps;
-        this.abilities = abilities;
+        this.researchedComponentIds = state;
+    }
+
+    // Port of ResearchSystem.cs CheckComponentResearched (86).
+    checkComponentResearched(component: Component | ComponentDefinition | null | undefined): boolean {
+        if (!component) return false;
+        return this.researchedComponentIds.has(component.componentId);
+    }
+
+    // Port of ResearchSystem.cs DetermineComponentImprovements (1170). Requires
+    // ComponentStatic (per-project improvements); without it, no improvements are known
+    // and ResolveImprovedComponentValues falls back to the component's own values.
+    private determineComponentImprovements(): void {
+        const map = new Map<number, ComponentImprovementEntry>();
+        if (this.componentStatic) {
+            const byProjectId = new Map(this.componentStatic.researchProjects.map((p) => [p.projectId, p]));
+            for (const n of this.techTree) {
+                if (!n.isResearched) continue;
+                const project = byProjectId.get(n.def.projectId);
+                if (!project || project.improvements.length === 0) continue;
+                for (const ci of project.improvements) {
+                    const id = ci.improvedComponent.componentId;
+                    const existing = map.get(id);
+                    if (!existing || ci.techLevel > existing.techLevel) map.set(id, ci);
+                }
+            }
+        }
+        this.componentImprovements = map;
+    }
+
+    // Port of ResearchSystem.cs ResolveImprovedComponentValues (1645).
+    resolveImprovedComponentValues(component: ComponentDefinition): ComponentImprovementEntry {
+        return this.componentImprovements.get(component.componentId) ?? componentImprovementFromComponent(component);
+    }
+
+    private static valueOf(ci: ComponentImprovementEntry, n: 1 | 2 | 3 | 4 | 5 | 6 | 7): number {
+        switch (n) {
+            case 1: return ci.value1;
+            case 2: return ci.value2;
+            case 3: return ci.value3;
+            case 4: return ci.value4;
+            case 5: return ci.value5;
+            case 6: return ci.value6;
+            case 7: return ci.value7;
+        }
+    }
+
+    // Port of ResearchSystem.cs IdentifyComponentHighestValue1..7 (2451-2585): shared
+    // by index n, tie-broken by smaller Size.
+    private identifyHighestValue(components: ComponentDefinition[], n: 1 | 2 | 3 | 4 | 5 | 6 | 7): ComponentDefinition | null {
+        let best: ComponentImprovementEntry | null = null;
+        for (const c of components) {
+            const ci = this.resolveImprovedComponentValues(c);
+            if (!best) {
+                best = ci;
+                continue;
+            }
+            const v = ResearchSystem.valueOf(ci, n);
+            const bv = ResearchSystem.valueOf(best, n);
+            if (v > bv || (v === bv && ci.improvedComponent.size < best.improvedComponent.size)) best = ci;
+        }
+        return best?.improvedComponent ?? null;
+    }
+
+    // Port of ResearchSystem.cs IdentifyComponentLowestValue2WithMinimumThreshold (2521).
+    private identifyLowestValue2WithMinimumThreshold(components: ComponentDefinition[], minimumThreshold: number): ComponentDefinition | null {
+        let best: ComponentImprovementEntry | null = null;
+        for (const c of components) {
+            const ci = this.resolveImprovedComponentValues(c);
+            if (!best && ci.value2 >= minimumThreshold) best = ci;
+            else if (
+                best &&
+                ((ci.value2 < best.value2 && ci.value2 >= minimumThreshold) ||
+                    (ci.value2 === best.value2 && ci.value2 >= minimumThreshold && ci.improvedComponent.size < best.improvedComponent.size))
+            )
+                best = ci;
+        }
+        return best?.improvedComponent ?? null;
+    }
+
+    // Port of ComponentList.GetByType (156).
+    private getByType(components: ComponentDefinition[], type: ComponentType): ComponentDefinition[] {
+        return components.filter((c) => c.type === type);
+    }
+
+    // Port of ResearchSystem.cs DetermineBestComponent (2304).
+    determineBestComponent(type: ComponentType, researchedComponents: ComponentDefinition[]): ComponentDefinition | null {
+        const T = ComponentType;
+        const byType = this.getByType(researchedComponents, type);
+        switch (type) {
+            case T.WeaponBombard:
+                return this.identifyHighestValue(byType, 7);
+            case T.HyperDeny:
+            case T.HyperStop:
+            case T.Armor:
+            case T.SensorProximityArray:
+            case T.SensorTraceScanner:
+                return this.identifyHighestValue(byType, 2);
+            case T.DamageControl:
+                return this.identifyLowestValue2WithMinimumThreshold(byType, 1) ?? this.identifyHighestValue(byType, 1);
+            case T.Undefined:
+                return null;
+            default:
+                return this.identifyHighestValue(byType, 1);
+        }
+    }
+
+    // Port of ResearchSystem.cs DetermineBestComponentBySelectedCategories (2438).
+    determineBestComponentBySelectedCategories(category: ComponentCategoryType, researchedComponents: ComponentDefinition[]): ComponentDefinition | null {
+        const C = ComponentCategoryType;
+        const T = ComponentType;
+        let type: ComponentType = T.Undefined;
+        switch (category) {
+            case C.WeaponBeam: type = T.WeaponBeam; break;
+            case C.WeaponTorpedo: type = T.WeaponTorpedo; break;
+            case C.WeaponPointDefense: type = T.WeaponPointDefense; break;
+            case C.AssaultPod: type = T.AssaultPod; break;
+            case C.Shields: type = T.Shields; break;
+            case C.ShieldRecharge: type = T.ShieldRecharge; break;
+            case C.HyperDrive: type = T.HyperDrive; break;
+            case C.Reactor: type = T.Reactor; break;
+            case C.WeaponSuperBeam: type = T.WeaponSuperBeam; break;
+            case C.WeaponSuperTorpedo: type = T.WeaponSuperTorpedo; break;
+        }
+        return this.determineBestComponent(type, researchedComponents);
+    }
+
+    // Port of ResearchSystem.cs DetermineBestComponentsByType (1404).
+    private determineBestComponentsByType(researchedComponents: ComponentDefinition[]): (ComponentDefinition | null)[] {
+        const values = numericEnumValues(ComponentType);
+        const max = Math.max(0, ...values);
+        const out: (ComponentDefinition | null)[] = new Array(max + 1).fill(null);
+        for (const t of values) out[t] = this.determineBestComponent(t, researchedComponents);
+        return out;
+    }
+
+    // Port of ResearchSystem.cs DetermineBestComponentsByCategory (1413).
+    private determineBestComponentsByCategory(researchedComponents: ComponentDefinition[]): (ComponentDefinition | null)[] {
+        const values = numericEnumValues(ComponentCategoryType);
+        const max = Math.max(0, ...values);
+        const out: (ComponentDefinition | null)[] = new Array(max + 1).fill(null);
+        for (const c of values) out[c] = this.determineBestComponentBySelectedCategories(c, researchedComponents);
+        return out;
+    }
+
+    // Port of ResearchSystem.cs DetermineLatestComponentsByType (1422).
+    private determineLatestComponentsByType(researchedComponents: ComponentDefinition[]): (ComponentDefinition | null)[] {
+        const values = numericEnumValues(ComponentType);
+        const max = Math.max(0, ...values);
+        const out: (ComponentDefinition | null)[] = new Array(max + 1).fill(null);
+        for (const rc of researchedComponents) {
+            const t = rc.type;
+            const cur = out[t];
+            if (!cur) {
+                out[t] = rc;
+                continue;
+            }
+            const ci1 = this.resolveImprovedComponentValues(cur);
+            const ci2 = this.resolveImprovedComponentValues(rc);
+            if (ci2.techLevel > ci1.techLevel) out[t] = rc;
+            else if (ci2.techLevel === ci1.techLevel) out[t] = this.determineBestComponent(t, [ci2.improvedComponent, ci1.improvedComponent]);
+        }
+        return out;
+    }
+
+    // Port of ResearchSystem.cs DetermineLatestComponentsByCategory (1455).
+    private determineLatestComponentsByCategory(researchedComponents: ComponentDefinition[]): (ComponentDefinition | null)[] {
+        const values = numericEnumValues(ComponentCategoryType);
+        const max = Math.max(0, ...values);
+        const out: (ComponentDefinition | null)[] = new Array(max + 1).fill(null);
+        for (const rc of researchedComponents) {
+            const cat = rc.category;
+            const cur = out[cat];
+            if (!cur) {
+                if (rc.type !== ComponentType.WeaponBombard) out[cat] = rc;
+                continue;
+            }
+            const flag1 = checkComponentDefinitionMatchesCategoryStrict(cur, cur.category);
+            const flag2 = checkComponentDefinitionMatchesCategoryStrict(rc, rc.category);
+            const ci1 = this.resolveImprovedComponentValues(rc);
+            const ci2 = this.resolveImprovedComponentValues(cur);
+            let num = ci1.techLevel;
+            let techLevel = ci2.techLevel;
+            if (rc.category === ComponentCategoryType.Shields && num === techLevel) {
+                num = ci1.value1;
+                techLevel = ci2.value1;
+            }
+            if (rc.type === ComponentType.WeaponBombard) num = 0;
+            if (num > techLevel || (!flag1 && flag2)) {
+                if (!flag1 || flag2) out[cat] = rc;
+            } else if (num === techLevel) {
+                out[cat] = this.determineBestComponentBySelectedCategories(cat, [ci1.improvedComponent, ci2.improvedComponent]);
+            }
+        }
+        return out;
+    }
+
+    // Port of ResearchSystem.cs GetLatestComponent(ComponentType)/(ComponentCategoryType) (1729/1735).
+    getLatestComponent(match: ComponentType | ComponentCategoryType, byCategory = false): ComponentDefinition | null {
+        const arr = byCategory ? this.latestComponentsByCategory : this.latestComponentsByType;
+        return arr[match as number] ?? null;
+    }
+
+    // Port of ResearchSystem.cs ReviewOrderedComponents (173) / FilterUnresearchedComponents (192).
+    private filterUnresearchedComponents(components: ComponentDefinition[]): ComponentImprovementEntry[] {
+        return components.filter((c) => this.researchedComponentIds.has(c.componentId)).map((c) => this.resolveImprovedComponentValues(c));
+    }
+
+    private reviewOrderedComponents(): void {
+        const cs = this.componentStatic;
+        if (!cs) {
+            this.componentsWeaponBeamOrderedByRange = [];
+            this.componentsWeaponTorpedoOrderedByRange = [];
+            this.componentsWeaponAreaOrderedByRange = [];
+            this.componentsWeaponBeamOrderedByPower = [];
+            this.componentsWeaponTorpedoOrderedByPower = [];
+            this.componentsWeaponAreaOrderedByPower = [];
+            this.componentsReactorOrderedByEfficiency = [];
+            this.componentsReactorOrderedByPower = [];
+            this.componentsEngineMainThrustOrderedByPower = [];
+            this.componentsEngineVectoringOrderedByPower = [];
+            this.componentsEngineMainThrustOrderedByEfficiency = [];
+            this.componentsEngineVectoringOrderedByEfficiency = [];
+            this.componentsHyperdriveOrderedByPower = [];
+            this.componentsHyperdriveOrderedByEfficiency = [];
+            this.componentsHyperdriveOrderedByJumpInitiation = [];
+            return;
+        }
+        this.componentsWeaponBeamOrderedByRange = this.filterUnresearchedComponents(cs.componentsWeaponBeamOrderedByRange);
+        this.componentsWeaponTorpedoOrderedByRange = this.filterUnresearchedComponents(cs.componentsWeaponTorpedoOrderedByRange);
+        this.componentsWeaponAreaOrderedByRange = this.filterUnresearchedComponents(cs.componentsWeaponAreaOrderedByRange);
+        this.componentsWeaponBeamOrderedByPower = this.filterUnresearchedComponents(cs.componentsWeaponBeamOrderedByPower);
+        this.componentsWeaponTorpedoOrderedByPower = this.filterUnresearchedComponents(cs.componentsWeaponTorpedoOrderedByPower);
+        this.componentsWeaponAreaOrderedByPower = this.filterUnresearchedComponents(cs.componentsWeaponAreaOrderedByPower);
+        this.componentsReactorOrderedByEfficiency = this.filterUnresearchedComponents(cs.componentsReactorOrderedByEfficiency);
+        this.componentsReactorOrderedByPower = this.filterUnresearchedComponents(cs.componentsReactorOrderedByPower);
+        this.componentsEngineMainThrustOrderedByPower = this.filterUnresearchedComponents(cs.componentsEngineMainThrustOrderedByPower);
+        this.componentsEngineVectoringOrderedByPower = this.filterUnresearchedComponents(cs.componentsEngineVectoringOrderedByPower);
+        this.componentsEngineMainThrustOrderedByEfficiency = this.filterUnresearchedComponents(cs.componentsEngineMainThrustOrderedByEfficiency);
+        this.componentsEngineVectoringOrderedByEfficiency = this.filterUnresearchedComponents(cs.componentsEngineVectoringOrderedByEfficiency);
+        this.componentsHyperdriveOrderedByPower = this.filterUnresearchedComponents(cs.componentsHyperdriveOrderedByPower);
+        this.componentsHyperdriveOrderedByEfficiency = this.filterUnresearchedComponents(cs.componentsHyperdriveOrderedByEfficiency);
+        this.componentsHyperdriveOrderedByJumpInitiation = this.filterUnresearchedComponents(cs.componentsHyperdriveOrderedByJumpInitiation);
+    }
+
+    // Port of ResearchSystem.cs IdentifyBestComponent (2675).
+    private identifyBestComponent(ordered: ComponentImprovementEntry[]): ComponentDefinition | null {
+        return ordered.length > 0 ? ordered[0].improvedComponent : null;
+    }
+
+    // Port of ResearchSystem.cs IdentifyBestComponentPreferSmallSize (2677).
+    private identifyBestComponentPreferSmallSize(ordered: ComponentImprovementEntry[]): ComponentDefinition | null {
+        if (ordered.length === 0) return null;
+        return ordered.length > 1 && ordered[1].improvedComponent.size < ordered[0].improvedComponent.size
+            ? ordered[1].improvedComponent
+            : ordered[0].improvedComponent;
+    }
+
+    // Port of ResearchSystem.cs IdentifyBestComponentPreferLowEnergyUse (2686).
+    private identifyBestComponentPreferLowEnergyUse(ordered: ComponentImprovementEntry[]): ComponentDefinition | null {
+        if (ordered.length === 0) return null;
+        return ordered.length > 1 && ordered[1].improvedComponent.energyUsed < ordered[0].improvedComponent.energyUsed
+            ? ordered[1].improvedComponent
+            : ordered[0].improvedComponent;
+    }
+
+    // Port of ResearchSystem.cs EvaluateDesiredComponent(ComponentType, ShipDesignFocus, bool) (2600).
+    evaluateDesiredComponent(componentType: ComponentType, designFocus: ShipDesignFocus, preferLatest = false): ComponentDefinition | null {
+        const T = ComponentType;
+        const F = ShipDesignFocus;
+        const fallback = () => (preferLatest ? this.latestComponentsByType[componentType] : this.bestComponentsByType[componentType]) ?? null;
+        switch (designFocus) {
+            case F.Balanced:
+                return fallback();
+            case F.SpeedAgility:
+                switch (componentType) {
+                    case T.WeaponBeam: return this.identifyBestComponent(this.componentsWeaponBeamOrderedByRange);
+                    case T.WeaponTorpedo: return this.identifyBestComponent(this.componentsWeaponTorpedoOrderedByRange);
+                    case T.WeaponAreaDestruction: return this.identifyBestComponentPreferSmallSize(this.componentsWeaponAreaOrderedByRange);
+                    case T.EngineMainThrust: return this.identifyBestComponentPreferSmallSize(this.componentsEngineMainThrustOrderedByPower);
+                    case T.EngineVectoring: return this.identifyBestComponent(this.componentsEngineVectoringOrderedByPower);
+                    case T.HyperDrive: return this.identifyBestComponent(this.componentsHyperdriveOrderedByJumpInitiation);
+                    case T.Reactor: return this.identifyBestComponent(this.componentsReactorOrderedByPower);
+                    default: return fallback();
+                }
+            case F.Power:
+                switch (componentType) {
+                    case T.WeaponBeam: return this.identifyBestComponent(this.componentsWeaponBeamOrderedByPower);
+                    case T.WeaponTorpedo: return this.identifyBestComponent(this.componentsWeaponTorpedoOrderedByPower);
+                    case T.WeaponAreaDestruction: return this.identifyBestComponent(this.componentsWeaponAreaOrderedByPower);
+                    case T.EngineMainThrust: return this.identifyBestComponent(this.componentsEngineMainThrustOrderedByPower);
+                    case T.EngineVectoring: return this.identifyBestComponent(this.componentsEngineVectoringOrderedByPower);
+                    case T.HyperDrive: return this.identifyBestComponent(this.componentsHyperdriveOrderedByPower);
+                    case T.Reactor: return this.identifyBestComponent(this.componentsReactorOrderedByPower);
+                    default: return fallback();
+                }
+            case F.Efficiency:
+                switch (componentType) {
+                    case T.WeaponBeam: return this.identifyBestComponentPreferLowEnergyUse(this.componentsWeaponBeamOrderedByPower);
+                    case T.WeaponTorpedo: return this.identifyBestComponentPreferLowEnergyUse(this.componentsWeaponTorpedoOrderedByPower);
+                    case T.WeaponAreaDestruction: return this.identifyBestComponentPreferLowEnergyUse(this.componentsWeaponAreaOrderedByPower);
+                    case T.EngineMainThrust: return this.identifyBestComponentPreferLowEnergyUse(this.componentsEngineMainThrustOrderedByEfficiency);
+                    case T.EngineVectoring: return this.identifyBestComponentPreferLowEnergyUse(this.componentsEngineVectoringOrderedByEfficiency);
+                    case T.HyperDrive: return this.identifyBestComponentPreferLowEnergyUse(this.componentsHyperdriveOrderedByEfficiency);
+                    case T.Reactor: return this.identifyBestComponent(this.componentsReactorOrderedByEfficiency);
+                    default: return fallback();
+                }
+            default:
+                return fallback();
+        }
+    }
+
+    // Port of ResearchSystem.cs EvaluateDesiredComponentImprovement(ComponentType, ShipDesignFocus) (2293).
+    evaluateDesiredComponentImprovement(componentType: ComponentType, designFocus: ShipDesignFocus): ComponentImprovementEntry | null {
+        const desired = this.evaluateDesiredComponent(componentType, designFocus);
+        return desired ? this.resolveImprovedComponentValues(desired) : null;
+    }
+
+    // Port of ResearchSystem.cs EvaluateDesiredComponent(ComponentCategoryType, ShipDesignFocus, bool) (2713).
+    evaluateDesiredComponentByCategory(componentCategory: ComponentCategoryType, designFocus: ShipDesignFocus, preferLatest = false): ComponentDefinition | null {
+        const C = ComponentCategoryType;
+        const F = ShipDesignFocus;
+        const fallback = () => (preferLatest ? this.latestComponentsByCategory[componentCategory] : this.bestComponentsByCategory[componentCategory]) ?? null;
+        switch (designFocus) {
+            case F.Balanced:
+                return fallback();
+            case F.SpeedAgility:
+                switch (componentCategory) {
+                    case C.WeaponBeam: return this.identifyBestComponent(this.componentsWeaponBeamOrderedByRange);
+                    case C.WeaponTorpedo: return this.identifyBestComponent(this.componentsWeaponTorpedoOrderedByRange);
+                    case C.WeaponArea: return this.identifyBestComponentPreferSmallSize(this.componentsWeaponAreaOrderedByRange);
+                    case C.HyperDrive: return this.identifyBestComponent(this.componentsHyperdriveOrderedByJumpInitiation);
+                    case C.Reactor: return this.identifyBestComponent(this.componentsReactorOrderedByPower);
+                    default: return fallback();
+                }
+            case F.Power:
+                switch (componentCategory) {
+                    case C.WeaponBeam: return this.identifyBestComponent(this.componentsWeaponBeamOrderedByPower);
+                    case C.WeaponTorpedo: return this.identifyBestComponent(this.componentsWeaponTorpedoOrderedByPower);
+                    case C.WeaponArea: return this.identifyBestComponent(this.componentsWeaponAreaOrderedByPower);
+                    case C.HyperDrive: return this.identifyBestComponent(this.componentsHyperdriveOrderedByPower);
+                    case C.Reactor: return this.identifyBestComponent(this.componentsReactorOrderedByPower);
+                    default: return fallback();
+                }
+            case F.Efficiency:
+                switch (componentCategory) {
+                    case C.WeaponBeam: return this.identifyBestComponentPreferLowEnergyUse(this.componentsWeaponBeamOrderedByPower);
+                    case C.WeaponTorpedo: return this.identifyBestComponentPreferLowEnergyUse(this.componentsWeaponTorpedoOrderedByPower);
+                    case C.WeaponArea: return this.identifyBestComponentPreferLowEnergyUse(this.componentsWeaponAreaOrderedByPower);
+                    case C.HyperDrive: return this.identifyBestComponentPreferLowEnergyUse(this.componentsHyperdriveOrderedByEfficiency);
+                    case C.Reactor: return this.identifyBestComponent(this.componentsReactorOrderedByEfficiency);
+                    default: return fallback();
+                }
+            default:
+                return fallback();
+        }
+    }
+
+    // Port of ResearchSystem.cs EvaluateDesiredComponentImprovement(ComponentCategoryType, ShipDesignFocus) (2695):
+    // falls back to the latest-by-category component when no desired one was found.
+    evaluateDesiredComponentImprovementByCategory(componentCategory: ComponentCategoryType, designFocus: ShipDesignFocus): ComponentImprovementEntry | null {
+        const component = this.evaluateDesiredComponentByCategory(componentCategory, designFocus) ?? this.latestComponentsByCategory[componentCategory] ?? null;
+        return component ? this.resolveImprovedComponentValues(component) : null;
     }
 
     // Port of CheckEmpireHasHyperDriveTech: GetLatestComponent(HyperDrive) != null.

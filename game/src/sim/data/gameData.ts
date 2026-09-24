@@ -19,10 +19,26 @@ import type { Facility } from './facilities';
 import { parseFacilities } from './facilities';
 import type { EmpirePolicy } from './policies';
 import { parseEmpirePolicy } from './policies';
+import { parseDesignNames } from './designNames';
 import type { Plague } from './plagues';
 import { parsePlagues } from './plagues';
 import type { ResearchNode } from './research';
 import { parseResearch } from './research';
+import { designSpecificationFallbackFiles } from './designSpecifications';
+
+// Sub role names Empire.GenerateDesignSpecifications (Empire.cs 4108) loads a
+// design template for, plus "PlanetDestroyer" (same method,
+// PlanetDestroyerDesignSpecification). Mirrors the calls in
+// src/sim/empire.ts generateDesignSpecifications.
+const DESIGN_SPECIFICATION_SUB_ROLE_NAMES = [
+    'PlanetDestroyer', 'CapitalShip', 'Carrier', 'ColonyShip', 'ConstructionShip',
+    'Cruiser', 'DefensiveBase', 'Destroyer', 'EnergyResearchStation', 'Escort',
+    'ExplorationShip', 'Frigate', 'GasMiningShip', 'GasMiningStation',
+    'HighTechResearchStation', 'LargeFreighter', 'LargeSpacePort', 'MediumFreighter',
+    'MediumSpacePort', 'MiningShip', 'MiningStation', 'MonitoringStation',
+    'PassengerShip', 'ResortBase', 'ResupplyShip', 'SmallFreighter', 'SmallSpacePort',
+    'TroopTransport', 'WeaponsResearchStation',
+];
 
 export interface GameData {
     // From 04a (races, governments)
@@ -45,6 +61,15 @@ export interface GameData {
     // A missing file is absent here; Galaxy.LoadEmpirePolicy then uses a default policy.
     policies?: Map<string, EmpirePolicy>;
     piratePolicies?: Map<string, EmpirePolicy>;
+
+    // designTemplates/<race>/[pirate/]<subRole>.txt, keyed by the canonical
+    // relative file path (see data/designSpecifications.ts
+    // designSpecificationFallbackFiles). A missing file is simply absent;
+    // loadDesignSpecification then falls back to the next candidate or to
+    // the default design specification table.
+    designSpecificationTexts?: Map<string, string>;
+    /** designNames.txt families (Galaxy.4.cs LoadDesignNames). */
+    designNames?: string[][];
 }
 
 export type FetchText = (candidates: string[]) => Promise<string>;
@@ -126,9 +151,48 @@ export async function loadGameData(
         ),
     );
 
+    // designTemplates/<race>/[pirate/]<subRole>.txt for every race and every
+    // sub role Empire.GenerateDesignSpecifications loads (see
+    // designSpecifications.ts designSpecificationFallbackFiles — no
+    // DEFAULT-folder fallback, matching the C#). A "<!" response body means
+    // the dev server served index.html for a missing static file (Vite's
+    // SPA fallback) — treat that as missing too.
+    const designSpecificationTexts = new Map<string, string>();
+    const isMissingResponse = (text: string) => text.trimStart().startsWith('<!');
+    const designSpecificationFiles = new Set<string>();
+    for (const subRoleName of DESIGN_SPECIFICATION_SUB_ROLE_NAMES) {
+        for (const isPirate of [false, true]) {
+            for (const race of races) {
+                for (const file of designSpecificationFallbackFiles(subRoleName, race.name, isPirate)) {
+                    designSpecificationFiles.add(file);
+                }
+            }
+        }
+    }
+    await Promise.all(
+        [...designSpecificationFiles].map(async (file) => {
+            try {
+                const text = await fetchText(resolveDataUrl(file, customizationSet));
+                if (!isMissingResponse(text)) designSpecificationTexts.set(file, text);
+            } catch {
+                // missing file → absent; loadDesignSpecification falls back.
+            }
+        }),
+    );
+
+    // Galaxy.4.cs LoadDesignNames (designNames.txt).
+    let designNames: string[][] | undefined;
+    try {
+        designNames = parseDesignNames(await fetchText(resolveDataUrl('designNames.txt', customizationSet)));
+    } catch {
+        designNames = undefined;
+    }
+
     return {
+        designNames,
         policies,
         piratePolicies,
+        designSpecificationTexts,
         // 04a data
         races,
         raceFamilies,

@@ -705,10 +705,12 @@ export function createGame(opts: CreateGameOptions): Game {
         const num23 = e.empireId - 1;
         let num24 = list9[num23];
         galaxy.updateSystemInfo();
-        // FindNearestColonizableHabitat[UnoccupiedSystem] return null without a
-        // buildable colony-ship design. TODO(port): designs (then port both searches).
-        let h5: Habitat | null = null;
-        let num25 = Number.MAX_VALUE;
+        // Start.2.cs 996: habitat5 = !bool_6 ? FindNearestColonizableHabitatUnoccupiedSystem(...) : FindNearestColonizableHabitat(...).
+        let h5: Habitat | null = !(opts.allowEmpiresInSameSystem ?? false)
+            ? galaxy.findNearestColonizableHabitatUnoccupiedSystem(e.capital!.xpos, e.capital!.ypos, e)
+            : galaxy.findNearestColonizableHabitat(e.capital!.xpos, e.capital!.ypos, e);
+        // Start.2.cs 998-1001: num25 = habitat5 != null ? distance : double.MaxValue.
+        let num25 = h5 !== null ? galaxy.calculateDistance(e.capital!.xpos, e.capital!.ypos, h5.xpos, h5.ypos) : Number.MAX_VALUE;
         if (num25 > num24) {
             let num26 = 0;
             while (num25 > num24) {

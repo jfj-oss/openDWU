@@ -22,6 +22,8 @@ import type { Habitat } from './types';
 import type { Race } from './data/races';
 import { Empire } from './empire';
 import { netSort } from './netSort';
+import { createNewDesigns } from './designGeneration';
+import { startStarDateForAge } from './galaxyTime';
 import { loadEmpirePolicy } from './researchSystem';
 import { SystemVisibilityStatus } from './visibility';
 
@@ -286,8 +288,15 @@ export function generatePirateEmpire(
     empire.reviewDesignsBuiltObjectsImprovedComponents();
     empire.pirateEmpireBaseHabitat = habitat;
     empire.generateDesignSpecifications(galaxy, empire.dominantRace, true, empire.dominantRace?.name ?? null);
-    // TODO(port): CreateNewDesigns; pirate base + fleet + mining stations (needs designs,
-    // skipped as in C# when FindNewestCanBuild(SmallSpacePort) is null); GenerateStartingCharacters.
+    // Galaxy.8.cs 4622: empire.CreateNewDesigns(CurrentStarDate).
+    const starDate = startStarDateForAge(galaxy.age);
+    createNewDesigns(galaxy, empire, starDate, starDate);
+    // TODO(port): pirate base + fleet + mining stations (Galaxy.8.cs 4623-4820). With designs
+    // ported, FindNewestCanBuild(SmallSpacePort) now finds a design, so C# would enter this
+    // block (BuiltObjects, SelectRandomHeading, ship names — all Rnd draws). It needs the
+    // BuiltObject model (M3 starting ships); until then it is skipped, so the Rnd stream after
+    // the first pirate differs from C# (already past the Empire.DoTasks parity point).
+    // GenerateStartingCharacters also TODO.
     empire.colonizationTargets = pirateReviewColoniesToControl(galaxy, empire, ctx.independentColonies);
     empire.stateMoney = 20000.0;
     void isPlayerEmpire;
