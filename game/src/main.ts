@@ -9,6 +9,8 @@ import { Camera } from './render/camera';
 import { MainView } from './render/mainView';
 import { AssetStore, loadManifest } from './render/assets';
 import { generateGalaxy } from './sim/galaxy';
+import { Galaxy } from './sim/galaxy';
+import { createGame, type CreateGameOptions } from './sim/game';
 import { parseSystemNames } from './sim/data';
 import { loadGameData, type FetchText, type GameData } from './sim/data/gameData';
 import { GalaxyShape } from './sim/types';
@@ -91,7 +93,7 @@ async function loadSystemNames(dwuPresent: boolean): Promise<string[]> {
 
 /** Keys that, when present on the boot URL, skip the main menu and boot
  * straight into the game (keeps screenshot scripts / dev links working). */
-const SKIP_MENU_PARAMS = ['seed', 'shape', 'stars', 'zoom', 'cx', 'cy', 'select', 'skipMenu'];
+const SKIP_MENU_PARAMS = ['seed', 'shape', 'stars', 'zoom', 'cx', 'cy', 'select', 'skipMenu', 'autostart'];
 
 /** FetchText for the browser: try each candidate URL in order. */
 const fetchTextBrowser: FetchText = async (candidates: string[]): Promise<string> => {
@@ -212,6 +214,47 @@ async function bootGame(params: URLSearchParams): Promise<void> {
     await bootGameWithOptions(parseBootOptions(params));
 }
 
+/** Task M2e: `?autostart=1` boots a full game via createGame (player + 3 AI
+ * empires, defaults) instead of a bare generateGalaxy, so the Main View has
+ * owned colonies to draw empire rings/territory for. */
+function paramsHasAutostart(): boolean {
+    return new URLSearchParams(window.location.search).has('autostart');
+}
+
+async function buildAutostartGame(
+    seed: number,
+    shape: GalaxyShape,
+    starCount: number,
+    sectorWidth: number,
+    sectorHeight: number,
+    systemNames: string[],
+    gameData: GameData | null,
+): Promise<{ galaxy: Galaxy; viewX: number; viewY: number } | null> {
+    if (gameData === null) {
+        console.warn('?autostart=1 needs DW:U game data (races/governments); falling back to generateGalaxy');
+        return null;
+    }
+    const ai = { race: '(Random)', homeSystemFavourability: 'Normal' as const, proximityDistance: 'Random', age: 1, techLevel: 0 };
+    const opts: CreateGameOptions = {
+        seed,
+        shape,
+        starCount,
+        sectorWidth,
+        sectorHeight,
+        systemNames,
+        gameData,
+        player: { race: 'Human', homeSystemFavourability: 'Normal', startLocation: '(Random)', age: 1, techLevel: 0 },
+        aiEmpires: [ai, { ...ai }, { ...ai }],
+    };
+    try {
+        const game = createGame(opts);
+        return { galaxy: game.galaxy, viewX: game.viewX, viewY: game.viewY };
+    } catch (err) {
+        console.warn('?autostart=1 createGame failed; falling back to generateGalaxy', err);
+        return null;
+    }
+}
+
 async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     const { seed, shape, starCount, sectorWidth, sectorHeight, zoom: zoomParam, cx, cy, select } = opts;
 
@@ -233,7 +276,9 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     document.body.appendChild(app.canvas);
 
     // Deterministic galaxy (seed/shape/stars/sectors from the URL or wizard).
-    const galaxy = generateGalaxy({
+    // ?autostart=1 runs the full createGame (empires with colours + colonies);
+    // otherwise a bare generateGalaxy.
+    let galaxy = generateGalaxy({
         seed,
         shape,
         starCount: starCount,
@@ -242,6 +287,16 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
         systemNames,
         gameData: gameData ?? undefined,
     });
+    let viewX = galaxy.sizeX / 2;
+    let viewY = galaxy.sizeY / 2;
+    if (paramsHasAutostart()) {
+        const started = await buildAutostartGame(seed, shape, starCount, sectorWidth, sectorHeight, systemNames, gameData);
+        if (started !== null) {
+            galaxy = started.galaxy;
+            viewX = started.viewX;
+            viewY = started.viewY;
+        }
+    }
 
     const camera = new Camera();
     camera.setViewport(app.renderer.width, app.renderer.height);
@@ -249,7 +304,7 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     if (cx !== null && cy !== null) {
         camera.centerOn(cx, cy);
     } else {
-        camera.centerOn(galaxy.sizeX / 2, galaxy.sizeY / 2);
+        camera.centerOn(viewX, viewY);
     }
     if (zoomParam !== null) {
         // zoom >= 1 is the original zoom *factor* (reciprocal of px/unit);
