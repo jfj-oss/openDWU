@@ -30,7 +30,7 @@
 - Appendix C — Resource data (41 resources + distribution table)
 - Appendix D — Component data (129 components)
 - Appendix E — Planetary facility and wonder data
-- Appendix F — Complete research tree (337 projects)
+- Appendix F — Complete research tree (372 projects)
 - Appendix G — Design template roster and format
 - Appendix H — Fleet system
 - Appendix I — Plague data
@@ -51,7 +51,7 @@ You are to build a **complete, fully playable, original re-implementation** of t
 **Definition of done (all must be true):**
 1. A player can create a fully custom new game (all options described in the New Game section) and play it to victory or defeat, in any of the game modes (Classic Era planetary empire, Pirate faction, Pre-Warp era, Ancient Galaxy storyline, or pure custom sandbox).
 2. Every screen, button, list, overlay, message, and hotkey listed in the UI section exists and works.
-3. Every race (24), government (13), resource (41), component (129), planetary facility (17 types + wonders), fighter type, plague (4), ship design template role (31 per race), research project (337), and victory condition (60 race conditions + general) listed in the Content section exists in the game.
+3. Every race (24), government (13), resource (41), component (129), planetary facility (17 types + wonders), fighter type, plague (4), ship design template role (31 per race), research project (372), and victory condition (60 race conditions + general) listed in the Content section exists in the game.
 4. Every AI empire, pirate faction, and space creature behaves per the AI section, with full automation working unattended.
 5. Save/load, autosave, game editor, theme/mod loading, and scenario/event system all work.
 6. The game runs a full custom galaxy at interactive frame rates with the performance requirements in the Architecture section.
@@ -340,7 +340,7 @@ Galactic Wonders: unique empire-scale or colony-scale projects (Type WONDER) res
 ### 6.1 Structure
 - Three industries: **Weapons** (beam/area/ion/gravity/super weapons, torpedoes/missiles, point defense, armor, assault pods, fighters, troops), **Energy** (shields, engines, hyperdrives/hyper-disruption, reactors, collectors, extractors, construction, manufacturers, damage control), **HighTech** (all sensors, targeting, countermeasures, command/commerce centers, labs, life support/habitation/medical/recreation, storage, docking, colonization modules).
 - Tech trees: projects arranged in tech levels 0–8 (level N projects cost 2^N × BaseTechCost; each level doubles cost; the galaxy option "Research Costs" scales BaseTechCost, custom 1–999K). A project unlocks via PARENTS (all must be researched; multiple parents allowed — the UI shows red prerequisite lines). Projects may have: unlocked COMPONENTS (up to 4 new component IDs), COMPONENT IMPROVEMENTS (replace Value1–7 of existing components — **existing ships/bases using those components upgrade automatically and immediately**), FIGHTERS (new fighter/bomber types), FACILITY (new planetary facility/wonder), ABILITIES (e.g. "Colonize X-type planets", "Increased Construction Size (tier → max hull size)", "Dedicated Carriers", "Resupply Ships", "Enable Armored Forces", "Enable Special Forces", "Enable Planetary Defense", troop upgrade levels, "Improved Boarding Attack/Defense", "Lower Troop Maintenance"), PLAGUE CHANGE (e.g. Xaraktor virus becomes researchable/deployable), ALLOWED RACES (race-locked projects).
-- The complete 337-project tree (all names, levels, rows, unlocks) is in the Content section of this document (generated verbatim from research.txt) and MUST be reproduced as data.
+- The complete 372-project tree (all names, levels, rows, unlocks) is in the Content section of this document (generated verbatim from research.txt) and MUST be reproduced as data.
 - **Crash research**: pay money (cost scales with the project's remaining cost) to triple the research speed on the first queued project (lightning icon); one crash at a time per queue slot.
 - **Research output**: total empire **Research Potential** = sum over colonies (population × development × labs) + research stations (research labs Value1, with location bonuses: orbits of neutron stars, inside supernova radiation zones, edges of black holes, and on planets with Ruins give significant multipliers — "anomalies") + character scientist bonuses + government ResearchSpeed + race ResearchBonus + ResearchIndustryFocus (0=None,1=Weapons,2=Energy,3=HighTech) + wonders. **Research Capacity** = how much of the potential is actually staffed/distributed (three parallel workstreams, one per industry, split by policy). **Actual Output** (red when < capacity) is what progresses the queue: the queue advances projects in order; a project completes when its cost (tech points) is paid; on completion all its unlocks apply galaxy-wide to that empire.
 - Pre-warp empires start with pre-warp tech already researched (SpecialFunctionCode 1) and must unlock the primitive hyperdrive ("warp bubble", code 2) before accessing the rest of the tree; some projects start locked until a game event (code 5).
@@ -1270,10 +1270,10 @@ Generate an original 2D art and audio asset set in the classic DWU style (top-do
 2. **M2 — Empires & colonies**: empire data model (race, government, leader, policies), homeworld setup, population model, attitude/development, resources at colonies, facilities, tax rates, state/private economy split, private freighter/mining simulation, resource prices. *Accept: a static 2-empire galaxy simulates growth, trade, and economy correctly over 100 game years without player input.*
 3. **M3 — Ships & space ops**: ship design system + data, construction (yards, build times, cost), fuel/energy, engines/hyperdrive, all ship roles, movement, missions (all 20+), docking, cargo, refueling, repair/retrofit/scrap. *Accept: an empire can build, fuel, move, and repair ships; freighters trade.*
 4. **M4 — Combat**: full combat model (all weapon types, shields/armor, point defense, fighters, boarding, bombardment, blockades, ground combat with all troop types, planetary defense interception), stances/tactics, fleet grouping, escape. *Accept: scripted battles resolve per the combat rules; boarding can capture a ship; invasions succeed/lose per ground combat math.*
-5. **M5 — Research & progression**: research tree (337 nodes), crash research, research stations with location bonuses, component improvements auto-upgrading existing ships, ability unlocks (colonization types, construction size, dedicated carriers, troop types), fighter unlocks. *Accept: from a starting research level the empire can research through all trees; new tech changes designs/abilities.*
+5. **M5 — Research & progression**: research tree (372 nodes), crash research, research stations with location bonuses, component improvements auto-upgrading existing ships, ability unlocks (colonization types, construction size, dedicated carriers, troop types), fighter unlocks. *Accept: from a starting research level the empire can research through all trees; new tech changes designs/abilities.*
 6. **M6 — Diplomacy & espionage**: relations, all message types, conversation dialog (offer/accept/decline logic), treaties with exact effects, reputation, gifts/warnings, war declaration/peace/subjugation, trade offers (resources/tech/designs/credits/passengers/troops/maps), intelligence missions (all 12 types, success/counter-intel math), pirate diplomacy (protection agreements, truces). *Accept: AI empires make treaties, declare wars, trade, and respond to the player's messages per the decision rules.*
 7. **M7 — Full AI & automation**: empire automation (all domains, off/suggest/on), priorities, policies, force structure projection, fleet automation, construction automation, exploration automation, pirate AI (playstyles), space creatures, independent populations, AI difficulty scaling. *Accept: a fully automated 12-empire + pirates game plays itself to a winner at any victory setting with no player input.*
-8. **M8 — Content & storylines**: all 24 races, 13 governments, 41 resources, 129 components, facilities/wonders, plagues, 31 design templates × 24 races, all 337 research nodes, all 60 race victory conditions, pirate playstyles, the five storylines (Shakturi invasion events, Ancient Galaxy, Shadows pre-warp, Legends events/disasters), achievements. *Accept: every content item listed in Part 13 exists and is reachable/usable.*
+8. **M8 — Content & storylines**: all 24 races, 13 governments, 41 resources, 129 components, facilities/wonders, plagues, 31 design templates × 24 races, all 372 research nodes, all 60 race victory conditions, pirate playstyles, the five storylines (Shakturi invasion events, Ancient Galaxy, Shadows pre-warp, Legends events/disasters), achievements. *Accept: every content item listed in Part 13 exists and is reachable/usable.*
 9. **M9 — UI completeness**: every screen/panel/button/list/overlay/hotkey from Part 12, message system, options (all), empire policy screen, expansion planner, galaxy map, game editor (place/erase/edit + events/scenarios), Galactopedia (all topics), 11 tutorials, quick-start presets. *Accept: every screen opens, displays live data, and every control works.*
 10. **M10 — Persistence & modding**: full save/load (including mid-combat and pirate/creature state), autosave, stats XML, theme system (Customization folders, image/text/data overrides, hot-swap from menu), "use saved galaxy as map", moddable everything per Part 13. *Accept: save→quit→load continues seamlessly; a theme folder overrides art/text/data live.*
 
@@ -1747,7 +1747,7 @@ Corporate Nationalism           7            0            4            0        
 
 ### WonderType codes: 0=EmpirePopulationGrowth,1=EmpireHappiness,2=EmpireResearchWeapons,3=EmpireResearchEnergy,4=EmpireResearchHighTech,5=EmpireIncome,6=ColonyPopulationGrowth,7=ColonyHappiness,8=ColonyDefense,9=ColonyConstructionSpeed,10=ColonyIncome,11=RaceAchievement
 
-## APPENDIX F — COMPLETE RESEARCH TREE (research.txt — 337 projects, all three industries)
+## APPENDIX F — COMPLETE RESEARCH TREE (research.txt — 372 projects, all three industries)
 
 Project format: `L<techLevel> r<row>: Name [unlocks/improves/fighters/facility/abilities/race-lock/plague]`.
 
@@ -2209,201 +2209,45 @@ The same component-type vocabulary is used by every race. What differs between r
 
 ## APPENDIX H — FLEET SYSTEM (fleet creation, postures, ranges, auto-response — from official documentation)
 
-Fleets allo=
-w you to
-group a number of military ships together and assign missions to the entire
-group. This is useful for coordinating large attacks on enemy targets.=
-Large fleets are effective for major assaults against enemy targets li=
-ke colonies
-or spaceports. Smaller fleets (often called strike forces) are useful for
-intercepting enemy attacks and making small raids.
-Your automated fleets will respond to intercept enemy attacks when the=
-re
-are insufficient forces to defend the target. The nearest available automat=
-ed
-fleet will travel to the attack location and defend the target.
-Creating a =
-new
-fleet
-T=
-o create a
-new fleet first select at least one military ship. You may also multi-selec=
-t a
-group of military ships, either using drag-select or by shift-clicking the
-ships.
-W=
-ith one or
-more military ships selected, do one of the following:
-&middot;      =
-  
-Click
-the &#8220;New Fleet&#8221; Action button (under the Selection Panel)
-&middot;      =
-  
-Right-click to show a pop-up=
- menu
-with a &#8220;Join Fleet&#8221; menu option. This will contain a submenu it=
-em
-to join a &#8220;(New Fleet)&#8221;
-A=
-ssigning
-ships to fleets
-To assign a military ship to a fleet you have three options:
-&middot;      =
-  
-From the main screen select the ship, then click the
-&#8220;Join Nearest Fleet&#8221; Action button (below the Selection Panel).=
-&middot;      =
-  
-From the ma=
-in screen
-select the ship, then right-click to show a pop-up menu with a &#8220;Join
-Fleet&#8221; menu option. This will contain a submenu listing all of the fl=
-eets
-in your empire. You also have the option to assign the ship to a new fleet.=
-&middot;      =
-  
-In the Ships and Bases screen (F11) select the ship in the
-master list, then select a fleet from the list at the bottom of the screen.=
-S=
-electing
-fleets
-There are f=
-our ways
-to select a fleet in the main view:
-&middot;      =
-  
-When zoomed out to sector-level or greater your fleets ap=
-pear
-as an inverted triangle icon. Click the fleet icon to select it.=
-&middot;      =
-  
-When zoomed in to system-level or lower, you can double-c=
-lick
-any ship in the fleet to select the entire fleet.
-&middot;      =
-  
-Using the Empire Navigation Tool, open the Fleets list and
-click the desired fleet
-&middot;      =
-  
-Cycle all of your fleets by repeatedly pressing the F key=
-When a fleet is selected you can assign missions to it in the same way=
- you
-would assign missions to a single ship.
-F=
-leet Postures
-Fleets are assigned postures that define how they are used. Fleets are=
- set
-to either Attack or Defend. They also have a response range set that determ=
-ines
-how far they will respond from their home base (for Defend fleets), or how =
-far
-from their attack target they will select a new target (for Attack fleets).=
-Setting Posture
-To set a=
- fleet&#8217;s
-posture (Attack or Defend), with the fleet selected, click the Set Posture =
-action
-button below the Selection Panel. This will toggle between the two setting=
-s.
-Setting Range=
-To set a fleet&#8217;s range=
-, with
-the fleet selected, click the Set Range action button below the Selection
-Panel. This will cycle through the various ranges as described below.
-Ranges for Attack Fleets
-&middot;      =
-  
-Target: only attack specified target=
-&middot;      =
-  
-System: attack specified target and then any ot=
-her
-enemy targets in the same system
-&middot;      =
-  
-Nearby Systems: attack specified target an=
-d then
-any other enemy targets in the nearby systems
-&middot;      =
-  
-Sector: attack specified target and then any ot=
-her
-enemy targets in the surrounding sector
-&middot;      =
-  
-Anywhere: attack specified target and then any ot=
-her
-enemy target, or if no attack target set just attack any enemy target
-Ranges for Defend Fleets
-&middot;      =
-  
-Target: only defend Home Base=
-&middot;      =
-  
-System: defend Home Base and its system
-&middot;      =
-  
-Nearby Systems: defend Home Base and nearby
-systems 
-&middot;      =
-  
-Sector: defend Home Base and surrounding sector=
-&middot;      =
-  
-Anywhere: defend Home Base and any other empire
-colonies or bases under attack, or if no home base set just defend any empi=
-re
-colony or base that is attacked
-Setting a Home Bas=
-e
-To set a fleet&#8217;s home =
-base,
-with the fleet selected, click the Set Home Base action button below the
-Selection Panel. The mouse pointer will change to show a symbol of a colony=
- and
-fleet. Then click on any valid home base in the main view to set this as the
-fleet&#8217;s new home base.
-V=
-alid bases
-include any space port, colony or gas mining station of your empire. If you
-have a military refueling agreement with another empire then you can also s=
-et
-your fleet&#8217;s home base to be any of their space ports, colonies or gas
-mining stations. To clear the fleet&#8217;s home base, click the Set Home B=
-ase action
-button, then click anywhere in empty space.
-F=
-or Defend
-fleets, the defend area (centered on the fleet&#8217;s home base, and the s=
-ize
-of the fleet&#8217;s range) is shown in the main view as a blue circle (if =
-Fleet
-Postures map overlay is switched on).
-Setting an Attack =
-Target
-To set the attack target of =
-an
-Attack fleet, with the fleet selected, click the Set Attack Target action
-button below the Selection Panel. The mouse pointer will change to show a
-symbol of a fleet and targeting reticule. Then click any valid enemy target=
- in
-the main view to set this as the Attack fleet&#8217;s attack target. When w=
-ar
-begins your Attack fleet will travel to this target and attack your enemy.
-V=
-alid enemy
-attack targets include any colonies or bases of another empire. To clear the
-fleet&#8217;s attack target, click the Set Attack Target action button, then
-click anywhere in empty space.
-F=
-or Attack
-fleets, the path from the fleet&#8217;s home base to its attack target is s=
-hown
-in the main view as a dotted red line (if Fleet Postures map overlay is
-switched on).
-.32888070--
+Fleets group military ships so missions can be assigned to the whole group. Large fleets are for major assaults on colonies or spaceports; small fleets (strike forces) intercept enemy attacks and make small raids. **Automated fleets** respond to enemy attacks when a target lacks enough defenders: the nearest available automated fleet travels to the attack location and defends the target.
+
+### H.1 Creating a fleet
+Select at least one military ship (drag-select or shift-click for several), then either:
+- Click the **"New Fleet"** action button (under the Selection Panel), or
+- Right-click → **"Join Fleet"** → **"(New Fleet)"**.
+
+### H.2 Assigning ships to fleets
+- Select the ship on the main screen, click the **"Join Nearest Fleet"** action button.
+- Select the ship, right-click → **"Join Fleet"** → submenu listing every fleet in the empire (or a new fleet).
+- In the **Ships and Bases screen (F11)**, select the ship in the master list, then pick a fleet from the list at the bottom of the screen.
+
+### H.3 Selecting fleets
+- Zoomed out to sector level or beyond, fleets draw as an **inverted-triangle icon**; click it to select.
+- Zoomed in to system level or closer, **double-click any ship** in the fleet to select the whole fleet.
+- Empire Navigation Tool → Fleets list → click the fleet.
+- Press **F** repeatedly to cycle through all fleets.
+
+A selected fleet takes missions exactly like a single ship.
+
+### H.4 Postures
+Every fleet is **Attack** or **Defend**, plus a **response range**: how far from its home base it responds (Defend) or how far from its attack target it picks new targets (Attack).
+- **Set Posture** action button toggles Attack ↔ Defend.
+- **Set Range** action button cycles through the ranges below.
+
+| Range | Attack fleet | Defend fleet |
+|---|---|---|
+| Target | Only attack the specified target | Only defend the Home Base |
+| System | Target, then any other enemy targets in the same system | Home Base and its system |
+| Nearby Systems | Target, then enemy targets in nearby systems | Home Base and nearby systems |
+| Sector | Target, then enemy targets in the surrounding sector | Home Base and surrounding sector |
+| Anywhere | Target, then any enemy target; with no target set, attack any enemy target | Home Base and any empire colony/base under attack; with no home base, defend any attacked colony or base |
+
+### H.5 Home base
+**Set Home Base** action button → cursor shows colony+fleet symbol → click a valid base. Valid: any own space port, colony, or gas mining station; with a **military refueling agreement**, also the partner empire's space ports, colonies, and gas mining stations. Click empty space to clear. With the Fleet Postures map overlay on, a Defend fleet's area (centred on home base, radius = range) draws as a **blue circle**.
+
+### H.6 Attack target
+**Set Attack Target** action button → cursor shows fleet+targeting-reticule symbol → click any enemy colony or base. When war begins, the fleet travels to and attacks it. Click empty space to clear. With the Fleet Postures overlay on, the path from home base to attack target draws as a **dotted red line**.
+
 
 ## APPENDIX I — PLAGUE DATA (plagues.txt)
 
@@ -2901,7 +2745,7 @@ Content counts — the finished game must contain exactly:
 - **7 race families** (Amphibian, Reptilian, Insectoid, Humanoid, Ursidian, Rodent, Mechanoid)
 - **41 resources** (IDs 0–40: 13 minerals, 6 gases, 22 luxuries of which 3 are super-luxury with a +30 development bonus — Loros Fruit (19), Korabbian Spice (22), Zentabia Fluid (35), all base price 200 — per Appendix C; fuels: Hydrogen (8) and Caslon (18); colony growth requirements: Hydrogen 1.0, Steel 0.6, Lead 0.4, Silicon 0.3, Polymer 0.3, Carbon Fibre 0.3)
 - **129 components** (Appendix D; 50 component type codes)
-- **337 research projects** across tech levels 0–8 (levels 100/101 are super-weapon tiers; Appendix F), 27 project categories per industry
+- **372 research projects** across tech levels 0–8 (levels 100/101 are super-weapon tiers; Appendix F), 27 project categories per industry
 - **17 planetary facility types + 12 wonder types** (Appendix E)
 - **up to 30 fighters per design; fighter types from fighters.txt**
 - **4 plagues + Xaraktor virus** (Appendix I)
