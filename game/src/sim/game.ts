@@ -20,7 +20,9 @@
 // Normal (0.5, SetTechTreeStartingDefaults) and Level 1-6. AI pirate factions
 // are generated when piratePrevalence > 0 (pirates.ts).
 
-import { generateNewPirateEmpires } from './pirates';
+import { PiratePlayStyle, fastFindNearestIndependentHabitat, generateNewPirateEmpires, generatePirateEmpire, selectRandomRace, setEmpireDifficultyFactors } from './pirates';
+import { raceDesignPictureFamilyIndexPirates } from './empire';
+import { SystemVisibilityStatus } from './visibility';
 import { Galaxy, generateGalaxy } from './galaxy';
 import { Empire } from './empire';
 import { generateEmpire } from './empireGeneration';
@@ -53,6 +55,10 @@ export interface EmpireStartOptions {
     techLevel: number;
     corruptionMultiplier?: number;
     designPictureFamilyIndex?: number;
+    /** Player only: Start.2.cs bool_2 PlayAsAPirate. */
+    playAsPirate?: boolean;
+    /** Player only (pirate): EmpireStart.PiratePlayStyle. */
+    piratePlayStyle?: PiratePlayStyle;
 }
 
 export interface CreateGameOptions {
@@ -183,8 +189,7 @@ function selectRace(galaxy: Galaxy, name: string, empires: Empire[] | null, allo
         const used = (empires ?? []).map((e) => e.dominantRace).filter((r): r is Race => r !== null);
         const pool = galaxy.races.filter((r) => r.playable && !used.includes(r) && (allowNonNormal || r.canBeNormalEmpire));
         if (pool.length > 0) return pool[galaxy.rnd.next(0, pool.length)];
-        // TODO(port): Galaxy.SelectRandomRace(0).
-        return galaxy.races[galaxy.rnd.next(0, galaxy.races.length)];
+        return selectRandomRace(galaxy, 0)!; // Galaxy.SelectRandomRace(0)
     }
     const r = galaxy.races.find((x) => x.name === name);
     if (r === undefined) throw new Error(`Unknown race: ${name}`);
@@ -507,9 +512,11 @@ function allowableMaximumStartingColonies(galaxy: Galaxy): number {
 }
 
 // Player capital search areas per shape (CreateGameFromSettings).
-function playerStartPoint(galaxy: Galaxy, shape: GalaxyShape, loc: string, race: Race): { x: number; y: number } {
+// `regionFactor`: method_84(..., bool_5: true, 0.5) for a normal player, method_83 (factor 1.0)
+// for a pirate player (Start.2.cs ~580-660).
+function playerStartPoint(galaxy: Galaxy, shape: GalaxyShape, loc: string, race: Race, regionFactor = 0.5): { x: number; y: number } {
     const ring = (a: number, b: number) => randomPointInRing(galaxy, a, b);
-    const region = (max: number) => raceRegionPoint(galaxy, race, 0.0, max, true, 0.5);
+    const region = (max: number) => raceRegionPoint(galaxy, race, 0.0, max, true, regionFactor);
     switch (shape) {
         case GalaxyShape.Spiral:
             if (loc === 'Deep Core') return ring(0.0, 0.29);
@@ -532,6 +539,13 @@ function playerStartPoint(galaxy: Galaxy, shape: GalaxyShape, loc: string, race:
             if (loc === 'Edge') return ring(0.42, 1.44);
             return region(1.44);
     }
+}
+
+// Port of Galaxy.6.cs CheckNearIndependentColony(x, y, range) over Galaxy.IndependentColonies.
+function checkNearIndependentColony(galaxy: Galaxy, independentColonies: Habitat[], x: number, y: number, range: number): boolean {
+    const num = range * range;
+    for (const h of independentColonies) if (galaxy.calculateDistanceSquared(x, y, h.xpos, h.ypos) < num) return true;
+    return false;
 }
 
 // createGame: the sim entry point the wizard calls (non-pirate play).
@@ -574,7 +588,8 @@ export function createGame(opts: CreateGameOptions): Game {
     let independentColonies = reviewIndependentColonies(galaxy);
 
     // Player race + government.
-    const race = selectRace(galaxy, opts.player.race, null, false);
+    const playAsPirate = opts.player.playAsPirate ?? false; // bool_2
+    const race = selectRace(galaxy, opts.player.race, null, playAsPirate);
     let num2 = resolveGovernmentId(galaxy, opts.player.governmentStyle ?? RANDOM, race);
     let gov = governmentById(num2);
     if (gov !== null && gov.specialFunctionCode === 1 && (opts.player.governmentStyle ?? RANDOM) === RANDOM && race.preferredStartingGovernment !== num2) {
@@ -585,40 +600,105 @@ export function createGame(opts: CreateGameOptions): Game {
             num3++;
         }
     }
-    let designPictureFamilyIndex = opts.player.designPictureFamilyIndex ?? -1;
-    if (designPictureFamilyIndex < 0) designPictureFamilyIndex = race.designsPictureFamilyIndex;
-
-    // Player capital (non-pirate branch).
-    const { homeSystemFactor } = Galaxy.resolveHomeSystem(opts.player.homeSystemFavourability);
-    const capitalHabitatType = race.nativeHabitatType;
-    let habitat: Habitat | null = null;
-    let num10 = 0;
-    let num11 = 0.0;
-    let num12 = 0.0;
-    while (habitat === null) {
-        const p = playerStartPoint(galaxy, opts.shape, opts.player.startLocation ?? RANDOM, race);
-        habitat = galaxy.findNearestUncolonizedHabitat(p.x + num11, p.y + num12, capitalHabitatType);
-        if (habitat !== null && inNebula(galaxy, habitat)) habitat = null;
-        num10++;
-        if (num10 > 50) {
-            const num13 = num10 > 1000 ? 5000000.0 : 3000000.0;
-            num11 = num13 - galaxy.rnd.nextDouble() * num13 * 2.0;
-            num12 = num13 - galaxy.rnd.nextDouble() * num13 * 2.0;
+    let designPictureFamilyIndex = race.designsPictureFamilyIndex;
+    if ((opts.player.designPictureFamilyIndex ?? -1) >= 0) designPictureFamilyIndex = opts.player.designPictureFamilyIndex!;
+    let empire2: Empire;
+    let habitat: Habitat;
+    let playerExpansion = 0.0;
+    if (playAsPirate) {
+        // Start.2.cs 567-729: pirate player base near a fuel source close to independent colonies.
+        let habitat2: Habitat | null = null;
+        let num4 = 0;
+        let num5 = 0.0;
+        let num6 = 0.0;
+        const fuelId = galaxy.resourceSystem.fuelResources[0].resourceId;
+        while (habitat2 === null) {
+            const p = playerStartPoint(galaxy, opts.shape, opts.player.startLocation ?? RANDOM, race, 1.0);
+            habitat2 = galaxy.findNearestHabitatWithResource(p.x + num5, p.y + num6, fuelId);
+            // C# derefs habitat2 here (DetermineGalaxyLocationsAtPoint(habitat2.Xpos, …)).
+            if (inNebula(galaxy, habitat2!)) habitat2 = null;
+            if (habitat2 !== null) {
+                for (const h3 of independentColonies) {
+                    if (h3.systemIndex === habitat2.systemIndex) {
+                        habitat2 = null;
+                        break;
+                    }
+                }
+            }
+            if (habitat2 !== null && !checkNearIndependentColony(galaxy, independentColonies, habitat2.xpos, habitat2.ypos, 2000000.0)) habitat2 = null;
+            num4++;
+            if (num4 > 50) {
+                num4 = 0;
+                const num7 = 3000000.0;
+                num5 = num7 - galaxy.rnd.nextDouble() * num7 * 2.0;
+                num6 = num7 - galaxy.rnd.nextDouble() * num7 * 2.0;
+            }
         }
+        designPictureFamilyIndex = raceDesignPictureFamilyIndexPirates(race);
+        if ((opts.player.designPictureFamilyIndex ?? -1) >= 0) designPictureFamilyIndex = opts.player.designPictureFamilyIndex!;
+        const pt = galaxy.selectRelativeHabitatSurfacePoint(habitat2);
+        const style = opts.player.piratePlayStyle ?? PiratePlayStyle.Balanced;
+        empire2 = generatePirateEmpire(
+            galaxy,
+            { independentColonies, startingAge: opts.player.age, difficultyLevel: opts.difficultyLevel ?? 1.0 },
+            habitat2,
+            Math.trunc(pt.x),
+            Math.trunc(pt.y),
+            race,
+            designPictureFamilyIndex,
+            opts.player.techLevel,
+            style,
+            true,
+            false,
+        );
+        if (opts.player.name) empire2.name = opts.player.name;
+        empire2.piratePlayStyle = style;
+        habitat = habitat2;
+        const h4 = fastFindNearestIndependentHabitat(galaxy, independentColonies, habitat2.xpos, habitat2.ypos);
+        if (h4 !== null && !empire2.visibility.checkSystemExplored(h4.systemIndex)) {
+            const star = galaxy.determineHabitatSystemStar(h4);
+            empire2.visibility.setSystemVisibility(star, SystemVisibilityStatus.Explored);
+            empire2.resourceMap.setResourcesKnown(galaxy.systems[star.systemIndex].systemStar, true);
+            for (const h of galaxy.systemHabitatsOf(star.systemIndex)) empire2.resourceMap.setResourcesKnown(h, true);
+        }
+    } else {
+        // Player capital (non-pirate branch).
+        const { homeSystemFactor } = Galaxy.resolveHomeSystem(opts.player.homeSystemFavourability);
+        const capitalHabitatType = race.nativeHabitatType;
+        let found: Habitat | null = null;
+        let num10 = 0;
+        let num11 = 0.0;
+        let num12 = 0.0;
+        while (found === null) {
+            const p = playerStartPoint(galaxy, opts.shape, opts.player.startLocation ?? RANDOM, race);
+            found = galaxy.findNearestUncolonizedHabitat(p.x + num11, p.y + num12, capitalHabitatType);
+            if (found !== null && inNebula(galaxy, found)) found = null;
+            num10++;
+            if (num10 > 50) {
+                const num13 = num10 > 1000 ? 5000000.0 : 3000000.0;
+                num11 = num13 - galaxy.rnd.nextDouble() * num13 * 2.0;
+                num12 = num13 - galaxy.rnd.nextDouble() * num13 * 2.0;
+            }
+        }
+        habitat = found;
+        const player = generateEmpire(galaxy, true, opts.player.name ?? '', habitat, race, designPictureFamilyIndex, num2, homeSystemFactor, opts.player.homeSystemFavourability, opts.player.age, opts.player.techLevel, opts.player.corruptionMultiplier ?? 1.0);
+        empire2 = player.empire;
+        playerExpansion = player.expansion;
+        if (opts.player.age === 0) clearIndependentColoniesFromSystem(galaxy, independentColonies, habitat.systemIndex);
+        galaxy.playerEmpire = empire2;
+        setEmpireDifficultyFactors(galaxy, empire2, opts.difficultyLevel ?? 1.0);
+        // TODO(port): empire flag (Galaxy.GenerateEmpireFlag uses a clock-seeded Random).
     }
-    const player = generateEmpire(galaxy, true, opts.player.name ?? '', habitat, race, designPictureFamilyIndex, num2, homeSystemFactor, opts.player.homeSystemFavourability, opts.player.age, opts.player.techLevel, opts.player.corruptionMultiplier ?? 1.0);
-    const empire2 = player.empire;
-    if (opts.player.age === 0) clearIndependentColoniesFromSystem(galaxy, independentColonies, habitat.systemIndex);
     galaxy.playerEmpire = empire2;
-    // TODO(port): SetEmpireDifficultyFactors, empire flag.
     const viewX = habitat.xpos;
     const viewY = habitat.ypos;
     galaxy.updateSystemInfo();
 
     // AI empires.
-    const empireList: Empire[] = [empire2];
-    const list3: number[] = [player.expansion];
-    const list6: number[] = [opts.player.age];
+    // Start.2.cs 898: a pirate player is not part of the normal empire lists.
+    const empireList: Empire[] = playAsPirate ? [] : [empire2];
+    const list3: number[] = playAsPirate ? [] : [playerExpansion];
+    const list6: number[] = playAsPirate ? [] : [opts.player.age];
     const num14 = aiStarts.length;
     updateEmpireStarts(aiStarts, normalRaces, clockRnd, race.name);
     for (let num15 = 0; num15 < num14; num15++) {
@@ -650,7 +730,7 @@ export function createGame(opts: CreateGameOptions): Game {
         const { sector } = proximityDistance(galaxy, prox);
         galaxy.rnd.nextDouble();
         const home = Galaxy.resolveHomeSystem(es.opts.homeSystemFavourability);
-        const cap = findAiCapital(galaxy, aiRace, prox, habitat, aiRace.nativeHabitatType, false, num14 + 1, sector);
+        const cap = findAiCapital(galaxy, aiRace, prox, habitat, aiRace.nativeHabitatType, playAsPirate, num14 + 1, sector);
         if (cap === null) throw new Error('Could not locate capital!');
         let dpfi = es.opts.designPictureFamilyIndex ?? -1;
         if (dpfi < 0) dpfi = aiRace.designsPictureFamilyIndex;
@@ -702,7 +782,8 @@ export function createGame(opts: CreateGameOptions): Game {
     galaxy.empireTerritory.reviewEmpireTerritory(galaxy);
     for (let n = 0; n < list8.length; n++) {
         const e = empireList.find((x) => x.empireId === list8[n])!;
-        const num23 = e.empireId - 1;
+        let num23 = e.empireId - 1;
+        if (playAsPirate) num23--; // Start.2.cs 989
         let num24 = list9[num23];
         galaxy.updateSystemInfo();
         // Start.2.cs 996: habitat5 = !bool_6 ? FindNearestColonizableHabitatUnoccupiedSystem(...) : FindNearestColonizableHabitat(...).

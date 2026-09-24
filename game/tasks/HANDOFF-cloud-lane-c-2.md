@@ -84,3 +84,8 @@ Known gaps / TODOs (`grep TODO(port)` in the touched files):
 - Oversized starting designs (e.g. CapitalShip 647 vs max 230 at tech 0.5) are faithful to the C#: DefensiveBase/ResortBase are not trim-eligible (Empire.10.cs 2362), the trim feasibility pre-check abandons trimming when even removing every candidate won't fit (2677-2680), and CreateNewDesigns only checks CanBuildDesign when a previous design of that subrole exists (BaconEmpire.cs 947-955).
 
 Tests: added `test/componentStatic.test.ts`, `test/designNames.test.ts`, `test/designPlacement.test.ts`, `test/designSpecifications.test.ts`, `test/policies.test.ts`, `test/researchComponents.test.ts`, `test/startingColonies.test.ts` (plus updates to `empire.test.ts`/`game.test.ts`/`pirates.test.ts`). Full suite: **401/401 passing**.
+
+## Update — C2g play-as-pirate player start
+- `game.ts`: `player.playAsPirate` / `player.piratePlayStyle` port Start.2.cs 567-729 (bool_2): race via method_48(…, pirate), fuel-resource base (FindNearestHabitatWithResource) away from nebulae and independent-colony systems, CheckNearIndependentColony(2,000,000), 3,000,000 retry offsets, GeneratePirateEmpire(isPlayerEmpire), name/playstyle override, nearest-independent exploration. Pirate player excluded from empireList/list3/list6, findAiCapital playAsPirate, num23-- offset.
+- Normal player now gets SetEmpireDifficultyFactors; selectRace's fallback uses SelectRandomRace(0).
+- `test/pirateStart.test.ts`. TODO: player pirate policy overrides (fields exist now), pirate flag, Start.2.cs 1493 near-player pirate spawn (after Galaxy.DoTasks; not ported for either mode).
