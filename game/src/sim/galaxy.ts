@@ -1485,6 +1485,23 @@ export class Galaxy {
         return valid;
     }
 
+    // Port of ResourceDefinitionList.cs ResolveValidResourcesForHabitatExcludeManufactured
+    // (line 111): resource IDs with a prevalence valid for this habitat
+    // (same test as CheckPrevalenceValidForHabitat), excluding manufactured.
+    private resolveValidResourcesForHabitatExcludeManufactured(habitat: Habitat): number[] {
+        const list: number[] = [];
+        for (const def of this.resources) {
+            if (def === null || def.colonyManufacturingLevel > 0 || def.distributions.length <= 0) continue;
+            for (const dist of def.distributions) {
+                if (dist !== null && this.checkPrevalenceValidForHabitat(habitat, dist)) {
+                    list.push(def.resourceId);
+                    break;
+                }
+            }
+        }
+        return list;
+    }
+
     // Port of ResourceSystem.cs GenerateRandomOrderedResources (line 225):
     // Fisher-Yates-style partial shuffle using the (substituted) CryptoRnd.
     private generateRandomOrderedResources(): Resource[] {
@@ -1530,7 +1547,7 @@ export class Galaxy {
     selectResources(
         habitat: Habitat,
         minimumResourceCount = 0,
-        dominantRace: object | null = null,
+        dominantRace: Race | null = null,
         minimumCriticalResourceCount = 0,
         randomOrderedResources: Resource[] | null = null,
     ): Habitat {
@@ -1560,11 +1577,25 @@ export class Galaxy {
             num2 = minimumResourceCount;
         }
         minimumCriticalResourceCount = Math.min(minimumCriticalResourceCount, num2);
+        // Galaxy.4.cs SelectResources (5-arg): dominant race's critical
+        // resources. Source quirk: the C# 4-arg overload passes null for the
+        // race, so the one race-passing caller (Galaxy.7.cs:5375) never
+        // reaches this; 4-arg-style call sites must pass null here.
         if (dominantRace !== null && minimumResourceCount > 0) {
-            // TODO(port): critical resources from dominantRace's
-            // colonyGrowthResourceLevels (Rnd.Next(200, 800) abundances) —
-            // Galaxy.4.cs SelectResources. dominantRace is always null at
-            // every call site ported so far.
+            const resourceList: number[] = [];
+            const resourceList2 = dominantRace.criticalResources.map((b) => b.resourceId);
+            for (let i = 0; i < resourceList2.length && i < minimumCriticalResourceCount; i++) {
+                resourceList.push(resourceList2[i]);
+            }
+            const resourceList3 = this.resolveValidResourcesForHabitatExcludeManufactured(habitat);
+            for (let j = 0; j < resourceList.length; j++) {
+                if (resourceList3.includes(resourceList[j])) {
+                    const abundance = this.rnd.next(200, 800);
+                    if (!habitat.resources.some((r) => r.resourceId === resourceList[j])) {
+                        habitat.resources.push({ resourceId: resourceList[j], abundance });
+                    }
+                }
+            }
         }
         if (randomOrderedResources === null || randomOrderedResources.length <= 0) {
             randomOrderedResources = this.generateRandomOrderedResources();

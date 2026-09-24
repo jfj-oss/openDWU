@@ -5,6 +5,15 @@
 
 import { HabitatType, resolveColonyHabitatTypeByIndexDesertBeforeOcean } from '../types';
 
+// Port of ResourceBonus.cs (race critical resources).
+export interface ResourceBonus {
+    resourceId: number;
+    /** ColonyResourceEffect (1..11; 0 = Undefined is never stored). */
+    effect: number;
+    value: number;
+    appliesOnlyToSources: boolean;
+}
+
 export interface Race {
     name: string;
     pictureIndex: number;
@@ -54,6 +63,8 @@ export interface Race {
     defaultPrimaryColor: number;
     defaultSecondaryColor: number;
     defaultFlagDesign: number;
+    /** Race.cs CriticalResources (ResourceBonusList), built from Resource1..3*. */
+    criticalResources: ResourceBonus[];
     /** Fields present in the file but not modeled above, keyed by raw field name. */
     extra: Record<string, string>;
 }
@@ -92,6 +103,35 @@ function parseIntList(raw: string | undefined): number[] {
         .filter((n) => !Number.isNaN(n));
 }
 
+// Port of Race.cs LoadFromFile (lines 759-770, 901-962, 1085-1099):
+// Resource{N}Type/Effect/Amount/AppliesOnlyToSource → CriticalResources,
+// added in order 1,2,3 only when the effect is not Undefined.
+function parseCriticalResources(fields: Map<string, string>): ResourceBonus[] {
+    const list: ResourceBonus[] = [];
+    for (let n = 1; n <= 3; n++) {
+        let resourceId = 255; // byte.MaxValue
+        const typeRaw = fields.get(`Resource${n}Type`);
+        if (typeRaw !== undefined) {
+            // ParseByteValue: byte.TryParse, failure -> 0.
+            const b = /^\s*\+?\d+\s*$/.test(typeRaw) ? parseInt(typeRaw, 10) : NaN;
+            resourceId = Number.isNaN(b) || b > 255 ? 0 : b;
+        }
+        let effect = 0;
+        const effRaw = fields.get(`Resource${n}Effect`);
+        if (effRaw !== undefined) {
+            // (byte)ParseIntValue, then Enum.IsDefined(ColonyResourceEffect) (0..11).
+            const e = parseIntField(effRaw) & 0xff;
+            if (e >= 0 && e <= 11) effect = e;
+        }
+        const value = parseFloatField(fields.get(`Resource${n}Amount`));
+        const applies = parseBoolField(fields.get(`Resource${n}AppliesOnlyToSource`));
+        if (effect !== 0) {
+            list.push({ resourceId, effect, value, appliesOnlyToSources: applies });
+        }
+    }
+    return list;
+}
+
 // Port of Race.cs LoadFromFile (line 752). `text` is the full content of a
 // races/*.txt file (e.g. races/human.txt).
 export function parseRace(text: string): Race {
@@ -127,6 +167,9 @@ export function parseRace(text: string): Race {
         'CanBeNormalEmpire', 'Playable', 'HomeSystemName', 'TroopStrength', 'TroopName',
         'TroopNameArmored', 'TroopNamePlanetaryDefense', 'TroopNameSpecialForces',
         'DefaultPrimaryColor', 'DefaultSecondaryColor', 'DefaultFlagDesign',
+        'Resource1Type', 'Resource1Effect', 'Resource1Amount', 'Resource1AppliesOnlyToSource',
+        'Resource2Type', 'Resource2Effect', 'Resource2Amount', 'Resource2AppliesOnlyToSource',
+        'Resource3Type', 'Resource3Effect', 'Resource3Amount', 'Resource3AppliesOnlyToSource',
     ]);
     const extra: Record<string, string> = {};
     for (const [key, value] of fields) {
@@ -183,6 +226,7 @@ export function parseRace(text: string): Race {
         defaultPrimaryColor: parseIntField(fields.get('DefaultPrimaryColor')),
         defaultSecondaryColor: parseIntField(fields.get('DefaultSecondaryColor')),
         defaultFlagDesign: parseIntField(fields.get('DefaultFlagDesign')),
+        criticalResources: parseCriticalResources(fields),
         extra,
     };
 }
