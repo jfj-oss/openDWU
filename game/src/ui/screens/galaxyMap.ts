@@ -649,8 +649,10 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
             ctx.ellipse(x, y, size / 2, size / 2, 0, 0, Math.PI * 2);
             ctx.fill();
         };
-        for (const sys of galaxy.systems) drawDot(sys.systemStar);
-        for (const h of galaxy.habitats) if (h.category === HabitatCategoryType.GasCloud && h.parent === null) drawDot(h);
+        // After C2 gas clouds are SystemInfo entries too; draw each once either way.
+        const drawn = new Set<Habitat>();
+        for (const sys of galaxy.systems) { drawn.add(sys.systemStar); drawDot(sys.systemStar); }
+        for (const h of galaxy.habitats) if (h.category === HabitatCategoryType.GasCloud && h.parent === null && !drawn.has(h)) drawDot(h);
         // Selected systems on top so they are never hidden by dimmed ones.
         if (filterActive) for (const h of selection.systems!) drawDot(h);
         // Current Main View rectangle (pen_2).
