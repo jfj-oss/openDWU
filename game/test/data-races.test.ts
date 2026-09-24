@@ -158,3 +158,75 @@ describe('DEFAULT_RACE_FILES', () => {
         for (const f of DEFAULT_RACE_FILES) expect(existsSync(`public/assets/dwu/races/${f}`)).toBe(true);
     });
 });
+
+import {
+    CharacterTraitType,
+    ComponentCategoryType as RaceComponentCategoryType,
+    RaceVictoryConditionType,
+} from '../src/sim/data/races';
+describe('races.ts parseRace — GenerateRaceSummary fields (Race.cs LoadFromFile)', () => {
+    const race = (file: string) => parseRace(readDwu(`races/${file}`));
+
+    it('builds victory conditions in file order, sorted by proportion then reversed', () => {
+        // human.txt: 35 (15), 34 (15), 42 (25), 2 (25, Continental), 14 (20, amount 1).
+        // .NET insertion sort (stable) ascending -> 35,34,14,42,2; Reverse -> 2,42,14,34,35.
+        const h = race('human.txt');
+        expect(h.victoryConditions.map((c) => [c.type, c.proportion])).toEqual([
+            [RaceVictoryConditionType.ControlPlanetTypePercentage, 25],
+            [RaceVictoryConditionType.MutualDefensePactsFormedProportionAllEmpires, 25],
+            [RaceVictoryConditionType.DestroyMoreShipsThanLoseTimesFactor, 20],
+            [RaceVictoryConditionType.MostTourismIncome, 15],
+            [RaceVictoryConditionType.MostTradeIncome, 15],
+        ]);
+        expect(h.victoryConditions[0].additionalData).toBe(HabitatType.Continental); // index 1 (IncludingUndefined)
+        expect(h.victoryConditions[0].amount).toBe(33);
+        expect(h.victoryConditions[1].additionalData).toBeNull();
+    });
+    it('drops Undefined condition types (mechanoid has proportions only)', () => {
+        expect(race('mechanoid.txt').victoryConditions).toEqual([]);
+    });
+    it('resolves condition additional data by type', () => {
+        const g = race('gizurean.txt');
+        const wonder = g.victoryConditions.find((c) => c.type === RaceVictoryConditionType.BuildWonder)!;
+        expect(wonder.additionalData).toBe(21); // facilities.txt index
+        const teekan = race('teekan.txt');
+        const slug = teekan.victoryConditions.find((c) => c.type === RaceVictoryConditionType.DestroyMostCreaturesByType)!;
+        expect(slug.additionalData).toBe(3); // CreatureType.DesertSpaceSlug
+    });
+    it('parses character, colony and other modifiers with Race defaults and clamps', () => {
+        const q = race('quameno.txt');
+        expect(q.characterStartingTraitAmbassador).toBe(CharacterTraitType.Linguist);
+        expect(q.characterStartingTraitLeader).toBe(CharacterTraitType.Undefined);
+        const h = race('human.txt');
+        expect(h.intelligenceAgentAdditional).toBe(1);
+        expect(h.disallowedResearchAreas).toEqual([
+            RaceComponentCategoryType.Undefined, RaceComponentCategoryType.Undefined, RaceComponentCategoryType.Undefined,
+        ]);
+        expect(h.disallowedComponentIds).toEqual([]);
+        expect(race('dhayut.txt').changePeriodYearsInterval).toBe(5);
+        expect(race('dhayut.txt').changePeriodYearsLength).toBe(2);
+        expect(race('shandar.txt').immuneNaturalDisastersAtColonyType).toBe(HabitatType.Volcanic);
+        expect(race('zenox.txt').knownStartingGalacticHistoryLocations).toBe(2);
+        const t = race('teekan.txt');
+        expect(t.militaryShipSizeFactor).toBeCloseTo(0.8);
+        expect(t.civilianShipSizeFactor).toBeCloseTo(1.2);
+        // Race defaults when a line is absent.
+        const bare = parseRace('Name ;X\n');
+        expect(bare.victoryConditions).toEqual([]);
+        expect(bare.characterRandomAppearanceChanceLeader).toBe(1.0);
+        expect(bare.constructionSpeedModifier).toBe(1.0);
+        expect(bare.disallowedResearchAreas).toEqual([]);
+        // SetNameValuePair clamps / Enum.IsDefined checks.
+        const clamped = parseRace('ShipSizeFactorMilitary ;9\nAdditionalIntelligenceAgents ;12\nCondition1Type ;200\nCharacterStartingTraitLeader ;250\n');
+        expect(clamped.militaryShipSizeFactor).toBe(5.1);
+        expect(clamped.intelligenceAgentAdditional).toBe(5);
+        expect(clamped.victoryConditions).toEqual([]);
+        expect(clamped.characterStartingTraitLeader).toBe(CharacterTraitType.Undefined);
+    });
+    it('no longer leaves the summary fields in extra', () => {
+        const extraKeys = Object.keys(race('human.txt').extra);
+        for (const k of ['Condition1Type', 'ShipSizeFactorMilitary', 'CharacterStartingTraitLeader', 'MigrationFactor']) {
+            expect(extraKeys).not.toContain(k);
+        }
+    });
+});

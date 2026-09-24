@@ -10,13 +10,18 @@ import {
     parseGameText,
     removeSpecialCharacters,
     resolveEncyclopediaTopic,
+    splitString,
 } from '../src/sim/data/gameText';
 import { parseRace } from '../src/sim/data/races';
 import { parseResources } from '../src/sim/data/resources';
 import { parseGovernments } from '../src/sim/data/governments';
 import { decodeQuotedPrintable, findMhtPart, parseMht } from '../src/ui/screens/mht';
-import { generateRaceSummary, helpTopicKeyForHabitat, TopicHistory } from '../src/ui/screens/galactopedia';
+import { generateRaceSummary, helpTopicKeyForCreature, helpTopicKeyForHabitat, TopicHistory } from '../src/ui/screens/galactopedia';
 import { parseRaceFamilies } from '../src/sim/data/raceFamilies';
+import { parseResearch } from '../src/sim/data/research';
+import { parseComponents } from '../src/sim/data/components';
+import { parseFacilities } from '../src/sim/data/facilities';
+import { CreatureType } from '../src/sim/creature';
 import { HabitatCategoryType, HabitatType } from '../src/sim/types';
 
 const dwuRoot = resolve(__dirname, '../public/assets/dwu');
@@ -100,6 +105,60 @@ describe('buildEncyclopediaItems (Main.Part5.cs method_465)', () => {
         expect(componentsRoot.isCategoryRoot).toBe(true);
         expect(componentsRoot.relatedItems.map((r) => r.title)).toEqual(['Research', 'Ship Designs', 'Resources']);
     });
+    it('adds no theme / game-info topics for the stock install', () => {
+        expect(items.filter((i) => i.category === EncyclopediaCategory.Theme || i.category === EncyclopediaCategory.GameInfo)).toEqual([]);
+        expect(helpFiles.has('gameinfo_default.mht')).toBe(false);
+    });
+    it('AddThemeTopics: root + main theme topic, one topic per <set>_*.mht', () => {
+        const built = buildEncyclopediaItems(text, {
+            helpFileExists: helpExists,
+            helpListing: { customizationSetName: 'Mass Effect', themeRootExists: true, themeFiles: ['Mass Effect_TheReapers.mht', 'Mass Effect_Races.mht'] },
+        });
+        const theme = built.filter((i) => i.category === EncyclopediaCategory.Theme);
+        expect(theme.map((i) => [i.title, i.filename, i.isCategoryRoot])).toEqual([
+            ['Mass Effect Theme', 'Mass Effect.mht', true],
+            ['Mass Effect Theme', 'Mass Effect.mht', false],
+            ['The Reapers', 'Mass Effect_TheReapers.mht', false],
+            ['Races', 'Mass Effect_Races.mht', false],
+        ]);
+        expect(theme[0].relatedItems.map((i) => i.title)).toEqual(['The Reapers', 'Races']);
+        expect(theme[2].relatedItems).toEqual([theme[1]]);
+        // No <set>.mht: the first listed file becomes the theme page (and is still listed).
+        const noRoot = buildEncyclopediaItems(text, {
+            helpFileExists: helpExists,
+            helpListing: { customizationSetName: 'X', themeFiles: ['X_Intro.mht'] },
+        }).filter((i) => i.category === EncyclopediaCategory.Theme);
+        expect(noRoot.map((i) => [i.title, i.filename])).toEqual([['X Theme', 'X_Intro.mht'], ['X Theme', 'X_Intro.mht'], ['Intro', 'X_Intro.mht']]);
+        // No customization set: nothing.
+        expect(buildEncyclopediaItems(text, { helpFileExists: helpExists, helpListing: { themeFiles: ['X_Intro.mht'] } })
+            .some((i) => i.category === EncyclopediaCategory.Theme)).toBe(false);
+    });
+    it('AddGameInfoTopics: Game Info root from GameInfo_Default.mht or the first file', () => {
+        const withDefault = buildEncyclopediaItems(text, {
+            helpFileExists: helpExists,
+            helpListing: { gameInfoDefaultExists: true, gameInfoFiles: ['GameInfo_Default.mht', 'GameInfo_StoryLine.mht'] },
+        }).filter((i) => i.category === EncyclopediaCategory.GameInfo);
+        expect(withDefault.map((i) => [i.title, i.filename, i.isCategoryRoot])).toEqual([
+            ['Game Info', 'GameInfo_Default.mht', true],
+            ['Game Info', 'GameInfo_Default.mht', false],
+            ['Story Line', 'GameInfo_StoryLine.mht', false],
+        ]);
+        const noDefault = buildEncyclopediaItems(text, {
+            helpFileExists: helpExists,
+            helpListing: { gameInfoFiles: ['GameInfo_MapNotes.mht', 'GameInfo_Rules.mht'] },
+        }).filter((i) => i.category === EncyclopediaCategory.GameInfo);
+        expect(noDefault.map((i) => [i.title, i.filename, i.isCategoryRoot])).toEqual([
+            ['Game Info', 'GameInfo_MapNotes.mht', true],
+            ['Map Notes', 'GameInfo_MapNotes.mht', false],
+            ['Rules', 'GameInfo_Rules.mht', false],
+        ]);
+    });
+    it('splitString follows Galaxy.SplitString', () => {
+        expect(splitString('StoryLine')).toBe('Story Line');
+        expect(splitString('abcDef')).toBe('Def');
+        expect(splitString('HyperDisrupt')).toBe('Hyper Disrupt');
+        expect(splitString('12')).toBe('');
+    });
     it('resolves ?topic= by id, title and file name', () => {
         expect(resolveEncyclopediaTopic(items, 'ocean-planets')?.title).toBe('Ocean Planets');
         expect(resolveEncyclopediaTopic(items, 'combat - space battles')?.title).toBe('Combat - Space Battles');
@@ -154,6 +213,66 @@ describe('galactopedia helpers', () => {
         expect(s[0].items[2]).toBe(`Default Reproduction Rate: +${Math.round((human.reproductionRate - 1) * 100)}%`);
         expect(s[1].heading).toBe('Characteristics');
         expect(s[1].items).toHaveLength(5);
+    });
+    it('generates the later race summary sections (GenerateRaceSummary)', () => {
+        const families = parseRaceFamilies(readDwu('raceFamilies.txt'));
+        const data = {
+            races,
+            resources,
+            governments,
+            research: parseResearch(readDwu('research.txt')),
+            components: parseComponents(readDwu('components.txt')),
+            facilities: parseFacilities(readDwu('facilities.txt')),
+        };
+        const section = (name: string, heading: string) =>
+            generateRaceSummary(text, races.find((r) => r.name === name)!, families, data).find((s) => s.heading === heading);
+        const human = generateRaceSummary(text, races.find((r) => r.name === 'Human')!, families, data);
+        expect(human.map((s) => s.heading)).toEqual([
+            '', 'Characteristics', 'Bonuses', 'Resource Bonuses', 'Race Victory Conditions', 'Characters', 'Other',
+        ]);
+        expect(section('Human', 'Resource Bonuses')!.items[0]).toBe('Yarras Marble: +5 happiness bonus for all colonies with access to this resource');
+        expect(section('Human', 'Race Victory Conditions')!.items).toEqual([
+            '25%:  Control 33% of all Continental Colonies in the galaxy',
+            '25%:  Make Mutual Defense Pacts with 15% of all empires in the galaxy',
+            '20%:  Destroy more enemy ships and bases than you lose',
+            '15%:  Earn the most Tourist Income in the galaxy',
+            '15%:  Earn the most Trade Income in the galaxy',
+        ]);
+        expect(section('Human', 'Characters')!.items.slice(0, 2)).toEqual([
+            'Extra Intelligence Agents: 1',
+            'More likely to generate new Ambassador characters (+30%)',
+        ]);
+        expect(section('Human', 'Other')!.items).toEqual([
+            'Special Government: Corporate Nationalism',
+            'Special Technology: (None)',
+            'Disallowed Technology: (None)',
+        ]);
+        expect(section('Quameno', 'Characters')!.items).toContain('Ambassador characters have Linguist starting trait');
+        expect(section('Quameno', 'Other')!.items).toContain('Special Technology: NovaCore Reactor (Reactor)');
+        expect(section('Ikkuro', 'Colonies')!.items[0]).toBe('Continental planet Colonization Research -10% of normal costs');
+        expect(section('Shandar', 'Colonies')!.items).toContain('Volcanic colonies can usually avoid natural disasters');
+        expect(section('Gizurean', 'Race Victory Conditions')!.items).toContain('20%:  Build the Universal Hive wonder');
+        expect(section('Teekan', 'Race Victory Conditions')!.items).toContain('25%:  Destroy the most Sand Slugs');
+        expect(section('Teekan', 'Other')!.items).toEqual(expect.arrayContaining([
+            'Smaller military ship sizes: -20%',
+            'Larger civilian ship sizes: +20%',
+            'Higher Trade Income: +20%',
+        ]));
+        expect(section('Dhayut', 'Other')!.items).toContain('Regular 5-year change cycle: For 2 years have increased aggression, increased population growth');
+        expect(section('Zenox', 'Other')!.items).toContain('Historical Locations Known at Game Start: 2');
+        // Without the static data lists the sections still render.
+        expect(generateRaceSummary(text, races.find((r) => r.name === 'Human')!, families).at(-1)!.items).toContain('Special Technology: (None)');
+    });
+    it('maps selected creatures to help topics (btnHelp_Click)', () => {
+        expect(helpTopicKeyForCreature(null)).toBe('Main Screen');
+        expect(helpTopicKeyForCreature({ type: CreatureType.Kaltor })).toBe('Giant Kaltor');
+        expect(helpTopicKeyForCreature({ type: CreatureType.RockSpaceSlug })).toBe('Space Slug');
+        expect(helpTopicKeyForCreature({ type: CreatureType.DesertSpaceSlug })).toBe('Sand Slug');
+        expect(helpTopicKeyForCreature({ type: CreatureType.SilverMist })).toBe('SilverMist');
+        expect(helpTopicKeyForCreature({ type: CreatureType.Undefined })).toBe('Main Screen');
+        for (const t of [CreatureType.Kaltor, CreatureType.RockSpaceSlug, CreatureType.DesertSpaceSlug, CreatureType.Ardilus, CreatureType.SilverMist]) {
+            expect(resolveEncyclopediaTopic(items, getText(text, helpTopicKeyForCreature({ type: t })))?.category).toBe(EncyclopediaCategory.Creatures);
+        }
     });
     it('maps selected habitats to help topics (btnHelp_Click)', () => {
         expect(helpTopicKeyForHabitat(null)).toBe('Main Screen');

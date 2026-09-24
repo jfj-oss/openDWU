@@ -130,6 +130,35 @@ export interface BuildEncyclopediaOptions {
     governments?: ReadonlyArray<EncyclopediaGovernmentInput | null>;
     /** File.Exists(Help/<filename>) — case-insensitive on the original. */
     helpFileExists: (filename: string) => boolean;
+    /** Help-folder listings for AddThemeTopics / AddGameInfoTopics (the
+     *  original enumerates the folders; a browser cannot, so the caller
+     *  supplies what it found). Omitted = no such files. */
+    helpListing?: HelpFolderListing;
+}
+
+/** What Galaxy.9.cs AddThemeTopics / AddGameInfoTopics read from disk. */
+export interface HelpFolderListing {
+    /** The active customization set (Customization/<set>/help/); '' / undefined = none. */
+    customizationSetName?: string;
+    /** Directory.GetFiles(Customization/<set>/help/, "<set>_*.mht") names, in GetFiles order. */
+    themeFiles?: ReadonlyArray<string>;
+    /** File.Exists(Customization/<set>/help/<set>.mht). */
+    themeRootExists?: boolean;
+    /** GetFiles("GameInfo_*.mht") of Customization/<set>/help/ followed by
+     *  those of Help/, in GetFiles order. */
+    gameInfoFiles?: ReadonlyArray<string>;
+    /** File.Exists of GameInfo_Default.mht in Customization/<set>/help/ or Help/. */
+    gameInfoDefaultExists?: boolean;
+}
+
+/** Port of Galaxy.1.cs SplitString: Regex.Split(input, "([A-Z])"), each
+ *  captured capital joined with the text after it, space-separated (text
+ *  before the first capital is dropped, as in the C#). */
+export function splitString(input: string): string {
+    const parts = input.split(/([A-Z])/);
+    let out = '';
+    for (let i = 1; i < parts.length; i += 2) out += `${parts[i]}${parts[i + 1] ?? ''} `;
+    return out.trim();
 }
 
 /** Port of EncyclopediaItemList indexer this[string title]: first item whose
@@ -731,10 +760,10 @@ function slugify(title: string): string {
  * AddRaceTopics, AddGovernmentTopics): build the full Galactopedia topic
  * list with categories and related-topic links, in the original order.
  * Related links to titles that do not exist are skipped (the original would
- * add a null entry that its link box cannot display).
- * TODO(port): AddThemeTopics / AddGameInfoTopics (customization-set and
- * GameInfo_*.mht topics) — the stock install has none and the browser
- * cannot enumerate Help/ — Galaxy.9.cs AddThemeTopics / AddGameInfoTopics.
+ * add a null entry that its link box cannot display). Ends with
+ * Galaxy.9.cs AddThemeTopics / AddGameInfoTopics, driven by
+ * opts.helpListing (the stock install has no theme or GameInfo help, so
+ * those topics are normally absent).
  */
 export function buildEncyclopediaItems(text: GameText, opts: BuildEncyclopediaOptions): EncyclopediaItem[] {
     const items: EncyclopediaItem[] = [];
@@ -847,7 +876,65 @@ export function buildEncyclopediaItems(text: GameText, opts: BuildEncyclopediaOp
     }
 
     for (const [a, b] of RELATED_AFTER_LOOPS) relate(T(a), T(b));
+
+    const listing = opts.helpListing ?? {};
+    const setName = listing.customizationSetName ?? '';
+
+    // Port of Galaxy.9.cs AddThemeTopics.
+    if (setName !== '') {
+        const files = listing.themeFiles ?? [];
+        const rootFile = listing.themeRootExists ? `${setName}.mht` : (files[0] ?? '');
+        if (rootFile !== '') {
+            const title = format(T('THEMENAME Theme'), setName);
+            const root = make(title, rootFile, EncyclopediaCategory.Theme, true);
+            items.push(root);
+            const main = make(title, rootFile, EncyclopediaCategory.Theme, false);
+            items.push(main);
+            for (const name of files) {
+                const t = splitString(name.substring(setName.length + 1, name.length - 4));
+                const item = make(t, name, EncyclopediaCategory.Theme, false);
+                items.push(item);
+                item.relatedItems.push(main);
+                root.relatedItems.push(item);
+                main.relatedItems.push(item);
+            }
+        }
+    }
+
+    // Port of Galaxy.9.cs AddGameInfoTopics.
+    const prefix = 'GameInfo_';
+    const infoFiles = listing.gameInfoFiles ?? [];
+    if (infoFiles.length > 0) {
+        const defaultFile = listing.gameInfoDefaultExists ? `${prefix}Default.mht` : '';
+        let root: EncyclopediaItem;
+        let main: EncyclopediaItem;
+        if (defaultFile !== '') {
+            root = make(T('Game Info'), defaultFile, EncyclopediaCategory.GameInfo, true);
+            items.push(root);
+            main = make(T('Game Info'), defaultFile, EncyclopediaCategory.GameInfo, false);
+            items.push(main);
+        } else {
+            const name = infoFiles[0];
+            root = make(T('Game Info'), name, EncyclopediaCategory.GameInfo, true);
+            items.push(root);
+            main = make(splitString(name.substring(prefix.length, name.length - 4)), name, EncyclopediaCategory.GameInfo, false);
+            items.push(main);
+        }
+        for (const name of infoFiles) {
+            if (name === root.filename) continue;
+            const item = make(splitString(name.substring(prefix.length, name.length - 4)), name, EncyclopediaCategory.GameInfo, false);
+            items.push(item);
+            item.relatedItems.push(main);
+            root.relatedItems.push(item);
+            main.relatedItems.push(item);
+        }
+    }
     return items;
+}
+
+/** string.Format with positional {n} placeholders. */
+function format(template: string, ...args: string[]): string {
+    return template.replace(/\{(\d+)\}/g, (_m, i: string) => args[Number(i)] ?? '');
 }
 
 /** One category node of the topic tree. */
