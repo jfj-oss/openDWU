@@ -2104,6 +2104,230 @@ export class Galaxy {
             habitat.population.recalculateTotalAmount();
         }
     }
+    // ---- Task 08e1: home-system colony helpers (Galaxy.8.cs / Galaxy.9.cs) ----
+
+    // TS SystemInfo.habitats includes the star at [0]; C# Systems[star].Habitats doesn't.
+    private systemHabitatsExcludingStar(systemStar: Habitat): Habitat[] {
+        return this.systems[systemStar.systemIndex].habitats.filter((h) => h !== systemStar);
+    }
+
+    // Port of Galaxy.8.cs ResolveHomeSystem (line 595).
+    static resolveHomeSystem(homeSystemDescription: string): { capitalHabitatType: HabitatType; homeSystemFactor: number } {
+        switch (homeSystemDescription) {
+            case 'Harsh':
+                return { capitalHabitatType: HabitatType.Desert, homeSystemFactor: 0.4 };
+            case 'Trying':
+                return { capitalHabitatType: HabitatType.MarshySwamp, homeSystemFactor: 0.7 };
+            case 'Normal':
+                return { capitalHabitatType: HabitatType.MarshySwamp, homeSystemFactor: 1.0 };
+            case 'Agreeable':
+                return { capitalHabitatType: HabitatType.Continental, homeSystemFactor: 1.4 };
+            case 'Excellent':
+                return { capitalHabitatType: HabitatType.Continental, homeSystemFactor: 2.0 };
+        }
+        return { capitalHabitatType: HabitatType.Undefined, homeSystemFactor: 0.0 };
+    }
+
+    // Port of Galaxy.8.cs DetermineEmpireExpansion (line 626); constants
+    // EmpireAgeExpansionRateMinimum/Maximum from Galaxy.3.cs 5053-5054.
+    static determineEmpireExpansion(rnd: Random, age: number): number {
+        const EmpireAgeExpansionRateMinimum = 2.3;
+        const EmpireAgeExpansionRateMaximum = 2.7;
+        let num = 1.0;
+        const num2 = EmpireAgeExpansionRateMaximum - EmpireAgeExpansionRateMinimum;
+        age--;
+        for (let i = 0; i < age; i++) {
+            const num3 = EmpireAgeExpansionRateMinimum + rnd.nextDouble() * num2;
+            num *= num3;
+        }
+        return num;
+    }
+
+    // Port of Galaxy.8.cs CheckPlanetaryOrbitalOverlap (line 367).
+    private checkPlanetaryOrbitalOverlap(systemStar: Habitat, orbitDistance: number): boolean {
+        const num = 150;
+        for (const habitat of this.systemHabitatsExcludingStar(systemStar)) {
+            const num2 = habitat.orbitDistance - num;
+            const num3 = habitat.orbitDistance + num;
+            if (orbitDistance >= num2 && orbitDistance <= num3) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Port of Galaxy.8.cs GeneratePlanetaryOrbitDistance (line 390).
+    private generatePlanetaryOrbitDistance(systemStar: Habitat, minOrbitDistance: number, maxOrbitDistance: number): number {
+        let num = this.rnd.next(minOrbitDistance, maxOrbitDistance);
+        let num2 = 0;
+        while (this.checkPlanetaryOrbitalOverlap(systemStar, num) && num2 < 20) {
+            num = this.rnd.next(minOrbitDistance, maxOrbitDistance);
+            num2++;
+        }
+        return num;
+    }
+
+    // Port of Galaxy.8.cs GenerateContinentalPlanet (line 458), habitat fields only.
+    generateContinentalPlanet(sun: Habitat): Habitat {
+        const { type, pictureRef, diameter, minOrbitDistance, maxOrbitDistance, landscapePictureRef } = this.selectContinentalPlanet();
+        const orbitdistance = this.generatePlanetaryOrbitDistance(sun, minOrbitDistance, maxOrbitDistance);
+        const name = this.generateRandomName();
+        const orbitAngle = this.rnd.nextDouble() * Math.PI * 2.0;
+        const habitat = new Habitat(HabitatCategoryType.Planet, type, name, sun, orbitAngle, true, orbitdistance, this.rnd.next(2, 5));
+        habitat.diameter = diameter;
+        habitat.pictureRef = pictureRef;
+        habitat.landscapePictureRef = landscapePictureRef;
+        habitat.baseQuality = this.selectHabitatQuality(habitat, this.colonyPrevalence);
+        // TODO(port): DoTasks(CurrentDateTime) — Habitat.DoTasks (galaxy-time driven).
+        this.selectResources(habitat);
+        if (this.rnd.next(0, 5) === 2) {
+            habitat.orbitDirection = false;
+        }
+        // TODO(port): Cargo/Troops/TroopsToRecruit/InvadingTroops/ConstructionQueue/
+        // ManufacturingQueue/20 DockingBays (component 74) — Galaxy.8.cs GenerateContinentalPlanet.
+        return habitat;
+    }
+
+    // Port of Galaxy.9.cs AddHabitat (line 3225). Index maps (HabitatIndex
+    // grid, FixResourceMaps, SetSystemHabitatExploration) don't exist yet;
+    // later Habitats entries are re-numbered so habitatIndex == position.
+    addHabitat(habitat: Habitat, nearestSystemStar: Habitat | null): boolean {
+        if (nearestSystemStar === null) {
+            return false;
+        }
+        const others = this.systemHabitatsExcludingStar(nearestSystemStar);
+        const system = this.systems[nearestSystemStar.systemIndex];
+        const num = others.length <= 0 ? system.systemStar.habitatIndex + 1 : others[others.length - 1].habitatIndex + 1;
+        habitat.habitatIndex = num;
+        habitat.systemIndex = nearestSystemStar.systemIndex;
+        this.habitats.splice(num, 0, habitat);
+        for (let i = num + 1; i < this.habitats.length; i++) {
+            this.habitats[i].habitatIndex = i;
+        }
+        system.habitats.push(habitat);
+        return true;
+    }
+
+    // Port of Galaxy.8.cs SetColonizableHabitatsInSystem (line 95). No
+    // empires exist yet, so every habitat's Owner is null.
+    setColonizableHabitatsInSystem(systemStar: Habitat, race: Race, colonyCount: number): void {
+        const habitats = this.systemHabitatsExcludingStar(systemStar);
+        const habitatList: Habitat[] = [];
+        const habitatList2: Habitat[] = [];
+        for (const item of habitats) {
+            if ((item.population.totalAmount > 0 || item.type === race.nativeHabitatType) && item.category !== HabitatCategoryType.Asteroid) {
+                habitatList.push(item);
+            } else {
+                if (
+                    (item.category === HabitatCategoryType.Moon || item.category === HabitatCategoryType.Planet) &&
+                    (item.type === HabitatType.MarshySwamp || item.type === HabitatType.Ocean || item.type === HabitatType.Desert)
+                ) {
+                    habitatList2.push(item);
+                }
+                if (item.category === HabitatCategoryType.Planet && item.type === HabitatType.BarrenRock) {
+                    habitatList2.push(item);
+                }
+            }
+        }
+        if (habitatList.length > colonyCount) {
+            const num = habitatList.length - colonyCount;
+            for (let i = 0; i < num; i++) {
+                if (habitatList[i].population.totalAmount <= 0) {
+                    const sel = this.selectBarrenRockPlanet();
+                    habitatList[i].type = HabitatType.BarrenRock;
+                    habitatList[i].diameter = sel.diameter;
+                    habitatList[i].pictureRef = sel.pictureRef;
+                    habitatList[i].landscapePictureRef = sel.landscapePictureRef;
+                    habitatList[i].baseQuality = this.selectHabitatQuality(habitatList[i], this.colonyPrevalence);
+                    habitatList[i].resources = [];
+                    this.selectResources(habitatList[i]);
+                }
+            }
+        } else {
+            if (habitatList.length >= colonyCount) {
+                return;
+            }
+            const num2 = colonyCount - habitatList.length;
+            for (let j = 0; j < num2; j++) {
+                if (habitatList2.length > j) {
+                    let sel = { diameter: 0, pictureRef: 0, landscapePictureRef: 0 };
+                    switch (race.nativeHabitatType) {
+                        case HabitatType.Continental:
+                            sel = this.selectContinentalPlanet();
+                            break;
+                        case HabitatType.MarshySwamp:
+                            sel = this.selectMarshySwampPlanet();
+                            break;
+                        case HabitatType.Ocean:
+                            sel = this.selectOceanPlanet();
+                            break;
+                        case HabitatType.Desert:
+                            sel = this.selectDesertPlanet();
+                            break;
+                        case HabitatType.Ice:
+                            sel = this.selectIcePlanet();
+                            break;
+                        case HabitatType.Volcanic:
+                            sel = this.selectVolcanicPlanet();
+                            break;
+                    }
+                    habitatList2[j].type = race.nativeHabitatType;
+                    habitatList2[j].diameter = sel.diameter;
+                    habitatList2[j].pictureRef = sel.pictureRef;
+                    habitatList2[j].landscapePictureRef = sel.landscapePictureRef;
+                    habitatList2[j].baseQuality = Math.fround(0.7 + this.rnd.nextDouble() * 0.25);
+                    habitatList2[j].resources = [];
+                    this.selectResources(habitatList2[j]);
+                } else {
+                    const habitat = this.generateContinentalPlanet(systemStar);
+                    this.addHabitat(habitat, systemStar);
+                }
+            }
+        }
+    }
+
+    // Port of Galaxy.8.cs SetResourceLevelsInSystem (line 575).
+    setResourceLevelsInSystem(systemStar: Habitat, resourceLevelMinimum: number, resourceLevelMaximum: number): void {
+        for (const item of this.systemHabitatsExcludingStar(systemStar)) {
+            if (item.category === HabitatCategoryType.Planet || item.category === HabitatCategoryType.Moon) {
+                if (item.resources.length > resourceLevelMaximum) {
+                    item.resources = [];
+                } else if (item.resources.length < resourceLevelMinimum) {
+                    item.resources = [];
+                    this.selectResources(item, resourceLevelMinimum);
+                }
+            }
+        }
+    }
+
+    // Port of the tail of Galaxy.7.cs GenerateEmpire (lines 5348-5375).
+    // TODO(port): the rest of GenerateEmpire (Empire, policy, tech, troops,
+    // population, expansion) — task 08e2, blocked on an Empire model.
+    setupHomeSystem(capital: Habitat, race: Race, homeSystemDescription: string, minimumResourceCount: number, minimumCriticalResourceCount: number): void {
+        const systemStar = this.determineHabitatSystemStar(capital);
+        if (homeSystemDescription === 'Harsh') {
+            this.setColonizableHabitatsInSystem(systemStar, race, 0);
+            this.setResourceLevelsInSystem(systemStar, 0, 1);
+        } else if (homeSystemDescription === 'Trying') {
+            this.setColonizableHabitatsInSystem(systemStar, race, 0);
+            this.setResourceLevelsInSystem(systemStar, 0, 2);
+        } else if (homeSystemDescription === 'Normal') {
+            this.setColonizableHabitatsInSystem(systemStar, race, 0);
+            this.setResourceLevelsInSystem(systemStar, 1, 4);
+        } else if (homeSystemDescription === 'Agreeable') {
+            this.setColonizableHabitatsInSystem(systemStar, race, 1);
+            this.setResourceLevelsInSystem(systemStar, 1, 5);
+        } else if (homeSystemDescription === 'Excellent') {
+            this.setColonizableHabitatsInSystem(systemStar, race, 2);
+            this.setResourceLevelsInSystem(systemStar, 2, 5);
+        }
+        capital.resources = [];
+        // C# calls the 4-arg SelectResources overload, which passes null for
+        // the race (Galaxy.4.cs 3282) — see task 08c.
+        this.selectResources(capital, minimumResourceCount, null, minimumCriticalResourceCount);
+    }
+
+
 
     // Port of Galaxy.6.cs DetermineHabitatSystemStar(habitat) (Galaxy.6.cs:703).
     // Walks up the parent chain to the star; top-level habitats (stars, gas
@@ -2758,7 +2982,8 @@ export class Galaxy {
 // gas-cloud loop, sort/re-index, Systems build — Galaxy.4.cs 2221-2347).
 // colonyPrevalence is accepted for API compatibility with the eventual
 // full generator but unused here (no colonies are generated in 01b/01c
-// scope yet). TODO(port): colony placement — later task.
+// scope yet). TODO(port): colony placement — home-system helpers landed
+// in 08e1 (setupHomeSystem etc.); GenerateEmpire wiring is task 08e2.
 export function generateGalaxy(options: GenerateGalaxyOptions): Galaxy {
     const { seed, shape, starCount, sectorWidth, sectorHeight, systemNames, colonyPrevalence, gameData, cloudImageCount } = options;
     const galaxy = new Galaxy(seed, shape, starCount, sectorWidth, sectorHeight, systemNames, colonyPrevalence);
