@@ -11,7 +11,31 @@ Tests: defaults equal the C# defaults; min/max clamps; options round-trip.
 
 ## Original controls (Start.InitializeComponent.cs — name = initial value/text)
 ```
-
+this.btnStartNewGameVictoryConditionsPrevious.Text = "<< Previous: Other Empires"
+this.chkVictoryEconomy.Text = "Economy: private economy generates            % of galaxy total"
+this.chkVictoryEnableDisasterEvents.Text = "Enable Disasters and other events"
+this.chkVictoryEnableRaceSpecificConditions.Text = "Enable race-specific victory conditions"
+this.chkVictoryEnableRaceSpecificEvents.Text = "Enable race-specific events"
+this.chkVictoryPopulation.Text = "Population: control            % of population in galaxy"
+this.chkVictoryTerritory.Text = "Territory: control            % of colonies in galaxy"
+this.chkVictoryTimeLimit.Text = "Time Limit: game finishes after                years"
+this.chkVictoryTimeStart.Text = "Victory Conditions apply after              years"
+this.lblJumpStartVictoryPiratePlaystyle.Text = "Pirate Playstyle"
+this.lblVictoryPiratePlaystyle.Text = "Pirate Playstyle"
+this.lblVictorySandbox.Text = "Leave all Victory Conditions unchecked to play in Sandbox mode (open play)"
+this.lblVictoryThresholdPercentage.Text = "Victory Threshold Percent"
+this.numVictoryEconomyPercent.Minimum = new decimal(new int[4] { 1, 0, 0, 0 })
+this.numVictoryEconomyPercent.Value = new decimal(new int[4] { 33, 0, 0, 0 })
+this.numVictoryPopulationPercent.Minimum = new decimal(new int[4] { 1, 0, 0, 0 })
+this.numVictoryPopulationPercent.Value = new decimal(new int[4] { 33, 0, 0, 0 })
+this.numVictoryTerritoryPercent.Minimum = new decimal(new int[4] { 1, 0, 0, 0 })
+this.numVictoryTerritoryPercent.Value = new decimal(new int[4] { 33, 0, 0, 0 })
+this.numVictoryTimeLimitYears.Maximum = new decimal(new int[4] { 1000, 0, 0, 0 })
+this.numVictoryTimeLimitYears.Minimum = new decimal(new int[4] { 1, 0, 0, 0 })
+this.numVictoryTimeLimitYears.Value = new decimal(new int[4] { 10, 0, 0, 0 })
+this.numVictoryTimeStartYears.Maximum = new decimal(new int[4] { 99, 0, 0, 0 })
+this.numVictoryTimeStartYears.Minimum = new decimal(new int[4] { 1, 0, 0, 0 })
+this.numVictoryTimeStartYears.Value = new decimal(new int[4] { 3, 0, 0, 0 })
 ```
 ## VictoryConditions.cs
 ```csharp
