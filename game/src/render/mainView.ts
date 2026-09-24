@@ -45,7 +45,8 @@ import { Habitat, HabitatCategoryType, HabitatType, SystemInfo } from '../sim/ty
 import { NebulaCloudGenerator } from './nebulaClouds';
 import { EmpireLayer } from './empireLayer';
 import { OverlayLayer } from './overlayLayer';
-import { BuiltObjectLayer } from './builtObjectLayer';
+import { BuiltObjectLayer, BUILT_OBJECT_MAX_FACTOR } from './builtObjectLayer';
+import type { BuiltObject } from '../sim/builtObject';
 import { createMapOverlayState, type MapOverlayState } from '../ui/mapOverlays';
 import { showRegionLabels, showSystemNames } from '../ui/settings';
 import { hideMapTooltip, showMapTooltip, tooltipText } from '../ui/mapTooltip';
@@ -889,6 +890,8 @@ export class MainView {
     private lastUpdateMs = -1;
     /** Task 08g: set by main.ts — receives the habitat picked on left click. */
     onSelectionChange?: (h: Habitat | null) => void;
+    /** Task 13d: set by main.ts — receives the ship/base picked on left click. */
+    onBuiltObjectSelect?: (bo: BuiltObject) => void;
     /** Task 08g: set by main.ts — star double-clicked at galaxy/sector zoom. */
     onDoubleClickStar?: (h: Habitat) => void;
 
@@ -913,6 +916,8 @@ export class MainView {
 
     /** Task 08g: the habitat currently selected in the Main View (null = none). */
     selectedHabitat: Habitat | null = null;
+    /** Task 13d: the ship/base currently selected in the Main View (null = none). */
+    selectedBuiltObject: BuiltObject | null = null;
 
     /** Drawn on-screen size of a habitat at the current zoom — the same size
      * functions the renderer uses (planets >= 14 px, moons >= 7 px, star
@@ -971,6 +976,12 @@ export class MainView {
             }
         }
         return null;
+    }
+
+    /** Task 13d (Main.Part11.cs method_145): the ship/base under the screen point. Ships win over habitats. */
+    pickBuiltObject(screenX: number, screenY: number): BuiltObject | null {
+        const w = this.camera.screenToWorld(screenX, screenY);
+        return this.builtObjectLayer.pick(w.x, w.y, 1 / this.camera.zoom, this.galaxy.playerEmpire);
     }
 
     /** Load textures, build all scene objects, attach input handlers. */
@@ -1254,9 +1265,16 @@ export class MainView {
             }
         }
 
-        // Task 08g: keep the selection ring around the selected object.
+        // Task 08g / 13d: keep the selection ring around the selected habitat or ship.
+        const selBo = this.selectedBuiltObject;
         const sel = this.selectedHabitat;
-        if (sel === null) {
+        if (selBo !== null && !selBo.hasBeenDestroyed && 1 / z < BUILT_OBJECT_MAX_FACTOR) {
+            const s = cam.worldToScreen(selBo.xpos, selBo.ypos);
+            const r = Math.max(this.builtObjectLayer.drawnSizePx(selBo), 8) * 0.5 + 4;
+            this.selectionRing.clear();
+            this.selectionRing.circle(s.x, s.y, r).stroke({ width: 1.5, color: 0x4fc3f7 });
+            this.selectionRing.visible = true;
+        } else if (sel === null) {
             this.selectionRing.visible = false;
         } else {
             const s = cam.worldToScreen(sel.xpos, sel.ypos);
@@ -1396,7 +1414,15 @@ export class MainView {
                 if (Math.hypot(x - downX, y - downY) >= 4) {
                     return;
                 }
+                const bo = this.pickBuiltObject(x, y);
+                if (bo !== null) {
+                    this.selectedHabitat = null;
+                    this.selectedBuiltObject = bo;
+                    this.onBuiltObjectSelect?.(bo);
+                    return;
+                }
                 const hit = this.pick(x, y);
+                this.selectedBuiltObject = null;
                 this.selectedHabitat = hit;
                 this.onSelectionChange?.(hit);
             }

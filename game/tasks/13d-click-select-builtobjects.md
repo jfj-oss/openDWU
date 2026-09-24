@@ -209,3 +209,18 @@ We use the sprite's drawn size (the px that 13a's `builtObjectSizePx` gives, tim
   - with `nearestSystemStar: null` → false.
 
 Run `npm run typecheck && npm test` (builtobject-layer.test.ts must still pass). With `npm run dev` running, save `node scripts/shot.mjs 'http://localhost:5173/?autostart=1&zoom=8' shots/13d-pick.png`. Do not open it. Then append `## Worker report`: files changed, the shot.mjs console output, and anything left undone.
+
+## Worker report
+
+**Files changed:**
+- `src/render/builtObjectLayer.ts` — added imports (`DiplomaticRelationType`, `Empire`, `SystemInfo`), `BUILT_OBJECT_PICK_SYSTEM_MAX_FACTOR = 100`, and the exported pure helpers `builtObjectPickRadiusPx`, `warEmpires`, `builtObjectHiddenFromPick`, `pickBuiltObjectBySize`, `pickNearestBuiltObject`. The layer now tracks `drawnPx` (set in the `.then` callback after `builtObjectSizePx`, deleted in the cull and `url === null` branches) and exposes `drawnSizePx(bo)` plus `pick(wx, wy, f, player)` with the two TODO notes (IsObjectVisibleToThisEmpire/GodMode; ShipGroup/creature/fighter pick).
+- `src/render/mainView.ts` — import of `BUILT_OBJECT_MAX_FACTOR` + `type BuiltObject`; fields `selectedBuiltObject` and `onBuiltObjectSelect`; method `pickBuiltObject(screenX, screenY)` after `pick()`; left-click branch tries ships first (clearing the habitat selection) then falls back to the habitat pick; the selection-ring block in `update()` draws a ring around the selected ship (min radius from `drawnSizePx`, hidden when f >= 500 or destroyed) or the selected habitat as before.
+- `src/main.ts` — `nearestSystem` added to the hud import; `view.onBuiltObjectSelect` wired right after `view.onSelectionChange = setSelection;` in `startGameView` (selects `{ habitat: system.systemStar, system, builtObject: bo }`). The generateGalaxy-only boot path was not touched.
+- `test/builtobject-pick.test.ts` (new) — covers all five helpers per the spec's cases.
+
+**Verification:**
+- `npm run typecheck` — passes.
+- `npm test` — 872 tests pass (initially one expected-value typo in my own test for `builtObjectPickRadiusPx(5000)`; corrected to 40000 per the formula `num2 * f`).
+- `node scripts/shot.mjs 'http://localhost:5173/?autostart=1&zoom=8' shots/13d-pick.png` — saved; console output: `[debug] [vite] connecting... / [debug] [vite] connected. / saved shots/13d-pick.png` (no errors). Screenshot at `shots/13d-pick.png` for orchestrator review.
+
+**Left undone:** nothing within scope. Per-spec TODOs remain in code: `Empire.IsObjectVisibleToThisEmpire`/GodMode visibility filter, ShipGroup lead-ship pick at f > 100, creature/fighter pick at f <= 100, and DrawShipSymbolXna symbols at f >= 500 (so ships are unpickable there).

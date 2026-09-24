@@ -14,7 +14,7 @@ import { createGame, type CreateGameOptions } from './sim/game';
 import { parseSystemNames } from './sim/data';
 import { loadGameData, type FetchText, type GameData } from './sim/data/gameData';
 import { GalaxyShape } from './sim/types';
-import { clearHudMessages, createHud, layoutHud, nearestSystemName, pushHudMessage, type HudRefs } from './ui/hud';
+import { clearHudMessages, createHud, layoutHud, nearestSystem, nearestSystemName, pushHudMessage, type HudRefs } from './ui/hud';
 import { GalaxyTime } from './sim/clock';
 import { resolveStarDateDescription, START_STAR_DATE } from './sim/galaxyTime';
 import { formatClockLabel, SECTOR_LEVEL_ZOOM, SYSTEM_LEVEL_ZOOM, type Selection } from './ui/hud';
@@ -312,6 +312,12 @@ export async function startGameView(game: Game, zoomOverride?: number, extraBoot
         hud.onSelectionChange?.(sel);
     };
     view.onSelectionChange = setSelection;
+    // Task 13d: a clicked ship/base selects it (same Selection shape as the 13c cycle chips).
+    view.onBuiltObjectSelect = (bo) => {
+        const system = nearestSystem(galaxy.systems, bo.xpos, bo.ypos);
+        if (system === null) return;
+        hud.onSelectionChange?.({ habitat: system.systemStar, system, builtObject: bo });
+    };
     view.onDoubleClickStar = (star: Habitat) => {
         if (star.category !== HabitatCategoryType.Star) return;
         camera.centerOn(star.xpos, star.ypos);

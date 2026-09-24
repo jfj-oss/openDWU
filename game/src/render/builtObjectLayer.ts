@@ -21,12 +21,18 @@ import { Galaxy } from '../sim/galaxy';
 import type { BuiltObject } from '../sim/builtObject';
 import { BuiltObjectSubRole } from '../sim/builtObjectTypes';
 import { DesignImageScalingMode } from '../sim/data/designSpecifications';
+import { DiplomaticRelationType } from '../sim/diplomacy';
+import type { Empire } from '../sim/empire';
+import type { SystemInfo } from '../sim/types';
 import type { MapOverlayState } from '../ui/mapOverlays';
 
 // Galaxy.BuiltObjectDrawResizeFactor (Galaxy.1.cs).
 export const BUILT_OBJECT_DRAW_RESIZE_FACTOR = 8.0;
 // Ships are only drawn while the original's zoom factor double_0 < 500.
 export const BUILT_OBJECT_MAX_FACTOR = 500;
+// Main.Part11.cs method_145: below this zoom factor (f <= 100) ships are
+// picked by their drawn rect, above it by nearest-within-radius.
+export const BUILT_OBJECT_PICK_SYSTEM_MAX_FACTOR = 100;
 // First index of the standard family<N>/ ship sets (after the minor/major sets).
 export const STANDARD_SHIP_IMAGE_START_INDEX = 72;
 // One image per entry of SHIP_SET_FILES per family folder.
@@ -233,6 +239,112 @@ export function builtObjectSizePx(
     return Math.trunc(num);
 }
 
+/**
+ * Task 13d (Main.Part11.cs method_145, f > 100 branch): the pick radius in
+ * world units at zoom factor f. num2 = 10, scaled up while f < 400 and down
+ * while f > 4000, clamped to >= 6; the radius is num2 * f / 1.4.
+ */
+export function builtObjectPickRadiusPx(f: number): number {
+    let num2 = 10;
+    if (f < 400.0) num2 = Math.trunc(num2 * Math.sqrt(400.0 / f));
+    if (f > 4000.0) num2 = Math.trunc(num2 / (f / 4000.0));
+    if (num2 < 6) num2 = 6;
+    return num2 * f;
+}
+
+/** The other empires of every War diplomatic relation, in order. */
+export function warEmpires(relations: Iterable<{ type: DiplomaticRelationType; otherEmpire: Empire | null }>): Empire[] {
+    const out: Empire[] = [];
+    for (const r of relations) {
+        if (r.type === DiplomaticRelationType.War && r.otherEmpire !== null) out.push(r.otherEmpire);
+    }
+    return out;
+}
+
+// Port of Main.Part11.cs method_145 flag + Galaxy.3.cs FastTestShipInColonizedSystem
+export function builtObjectHiddenFromPick(
+    bo: BuiltObject,
+    systems: readonly SystemInfo[],
+    pirateEmpires: readonly (Empire | null)[],
+    war: readonly (Empire | null)[],
+): boolean {
+    if (
+        bo.subRole === BuiltObjectSubRole.SmallSpacePort ||
+        bo.subRole === BuiltObjectSubRole.MediumSpacePort ||
+        bo.subRole === BuiltObjectSubRole.LargeSpacePort
+    ) {
+        return false;
+    }
+    const star = bo.nearestSystemStar;
+    if (star === null) return false;
+    const sys = systems[star.systemIndex];
+    if (sys?.dominantEmpire?.empire == null) return false;
+    if (pirateEmpires.includes(bo.empire)) return false;
+    if (war.includes(bo.empire)) return false;
+    return true;
+}
+
+/**
+ * Task 13d (Main.Part11.cs method_145, f <= 100 branch): the smallest-size
+ * built object whose drawn rect (drawn px times f world units, padded by
+ * trunc(f * 1.3) screen px) contains the world point.
+ */
+export function pickBuiltObjectBySize(
+    list: readonly BuiltObject[],
+    wx: number,
+    wy: number,
+    f: number,
+    sizePx: (bo: BuiltObject) => number,
+): BuiltObject | null {
+    const x = Math.trunc(wx);
+    const y = Math.trunc(wy);
+    const pad = Math.trunc(f * 1.3);
+    let best: BuiltObject | null = null;
+    let bestSize = 536870911;
+    for (const bo of list) {
+        const px = sizePx(bo);
+        if (px <= 0) continue;
+        const w = Math.trunc(px * f);
+        const half = Math.trunc(w / 2);
+        const cx = Math.trunc(bo.xpos);
+        const cy = Math.trunc(bo.ypos);
+        if (x >= cx - half - pad && x <= cx + half + pad && y >= cy - half - pad && y <= cy + half + pad) {
+            if (bo.size < bestSize) {
+                best = bo;
+                bestSize = bo.size;
+            }
+        }
+    }
+    return best;
+}
+
+/**
+ * Task 13d (Main.Part11.cs method_145, f > 100 branch): the nearest
+ * non-hidden built object within builtObjectPickRadiusPx(f) / 1.4 world
+ * units of the point. Ties go to the first object in the list.
+ */
+export function pickNearestBuiltObject(
+    list: readonly BuiltObject[],
+    wx: number,
+    wy: number,
+    f: number,
+    hidden: (bo: BuiltObject) => boolean,
+): BuiltObject | null {
+    let best: BuiltObject | null = null;
+    let bestDist = Infinity;
+    for (const bo of list) {
+        if (hidden(bo)) continue;
+        const d = Math.hypot(bo.xpos - wx, bo.ypos - wy);
+        if (d < bestDist) {
+            bestDist = d;
+            best = bo;
+        }
+    }
+    if (best === null) return null;
+    if (bestDist <= builtObjectPickRadiusPx(f) / 1.4) return best;
+    return null;
+}
+
 interface LoadedShipImage {
     texture: Texture;
     metrics: ShipImageMetrics;
@@ -248,6 +360,8 @@ export class BuiltObjectLayer {
     root = new Container();
     private sprites = new Map<BuiltObject, Sprite>();
     private images = new Map<string, Promise<LoadedShipImage>>();
+    /** Task 13d: drawn size (px) of each built object at the last update. */
+    private drawnPx = new Map<BuiltObject, number>();
 
     constructor(
         private galaxy: Galaxy,
@@ -302,11 +416,13 @@ export class BuiltObjectLayer {
             // Cull more than 100 px outside the viewport.
             if (s.x < -100 || s.x > cam.width + 100 || s.y < -100 || s.y > cam.height + 100) {
                 if (sprite !== undefined) sprite.visible = false;
+                this.drawnPx.delete(bo);
                 continue;
             }
             const url = builtObjectImageUrl(resolveDrawPictureRef(bo));
             if (url === null) {
                 if (sprite !== undefined) sprite.visible = false;
+                this.drawnPx.delete(bo);
                 continue;
             }
             const imgPromise = this.loadImage(url);
@@ -326,6 +442,7 @@ export class BuiltObjectLayer {
                     bo.design?.imageScalingType ?? DesignImageScalingMode.None,
                     bo.design?.imageScalingFactor ?? 1,
                 );
+                this.drawnPx.set(bo, px);
                 if (px < 1) {
                     sprite.visible = false;
                     return;
@@ -342,6 +459,28 @@ export class BuiltObjectLayer {
         }
         // TODO(port): DrawShipSymbolXna (MainView.1.cs:1085-1110) — small symbol for ships too far away to show their art.
         // TODO(port): engine exhaust flames (MainView.1.cs ~1112-1133) — animated thrust frames behind moving ships.
+    }
+
+    /** Task 13d: drawn size in px of a built object from the last update (0 if unknown). */
+    drawnSizePx(bo: BuiltObject): number {
+        return this.drawnPx.get(bo) ?? 0;
+    }
+
+    // TODO(port): Empire.IsObjectVisibleToThisEmpire / GodMode (Main.Part11.cs method_145) — all objects pickable
+    // TODO(port): ShipGroup lead-ship pick at f > 100, and creature/fighter pick at f <= 100 — not ported
+    /** Task 13d (Main.Part11.cs method_145): the ship/base under the world point. */
+    pick(wx: number, wy: number, f: number, player: Empire | null): BuiltObject | null {
+        // ships are not drawn at f >= 500 (DrawShipSymbolXna not ported), so they are not pickable there
+        if (f >= BUILT_OBJECT_MAX_FACTOR) return null;
+        const list = this.galaxy.builtObjects.filter((b) => !b.hasBeenDestroyed);
+        if (f <= BUILT_OBJECT_PICK_SYSTEM_MAX_FACTOR) {
+            return pickBuiltObjectBySize(list, wx, wy, f, (b) => this.drawnSizePx(b));
+        }
+        if (player === null) return null;
+        const war = warEmpires(player.diplomaticRelations);
+        return pickNearestBuiltObject(list, wx, wy, f, (b) =>
+            builtObjectHiddenFromPick(b, this.galaxy.systems, this.galaxy.pirateEmpires, war),
+        );
     }
 }
 
