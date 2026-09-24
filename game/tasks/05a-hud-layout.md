@@ -759,3 +759,16 @@ Tests: for 1920×1080 and 1280×720 — `btnPlayPause` at (10,62), `lblStarDate`
             graphics_1 = picSystem.CreateGraphics();
             graphics_1.InterpolationMode = InterpolationMode.High;
 ```
+
+## Worker report
+
+Files changed:
+- `src/ui/hudLayout.ts` (new) — pure `computeHudLayout(width, height): Record<string, Rect>` porting every Location/Size assignment from `MainInit` (`Main.Part12.cs` 1498–2232), in original order (later assignments override earlier ones). Font/image/visibility/corner-curve/event code ignored. Selection panel uses the default small branch (`pnlDetailInfo` 280×240); the large 392×360 variant is set elsewhere at runtime and not represented here.
+- `test/hudLayout.test.ts` (new) — asserts for 1920×1080 and 1280×720: `btnPlayPause` at (10,62) 80×34, `lblStarDate` at (10,10), `lblStateMoney.x === width - 95`, `pnlDetailInfo` 280×240, `pnlSystemMap` flush bottom-right with a 10 px margin, plus centered message bar / button row tracking width, bottom-anchored selection + zoom buttons tracking height, and all sized rects inside the screen. Also checks C# ordering (pnlSystemMap's final location overrides its earlier state).
+
+Done: `npm run typecheck` passes; `npm test` 141/141 pass.
+
+Controls with TODO sizes (size never set anywhere in the excerpt → w/h = 0, position ported faithfully using the C# formulas):
+- `btnZoomSelection`, `btnZoomIn`, `btnZoomOut`, `btnZoomColony`, `btnZoomSystem`, `jQaYpdpkDs`, `btnZoomRegion` — their x depends on their own (unknown) width via `mainView.Width - (picSystem.Width + btn.Width + 17)`; computed with w = 0. Note `tbtnGalaxyMap.Size = new Size(btnZoomColony.Width, 40)` therefore also gets w = 0 until `btnZoomColony`'s size is known.
+- Labels `lblStarDate`, `lblSystemName`, `lblStateMoney`, `lblPrivateMoney`, `lblGodData`.
+- Position-only controls (location set, size set nowhere in the excerpt → w/h = 0): `btnGameSpeedDecrease`/`btnGameSpeedIncrease` have sizes (40×20); the cycle/selection buttons `btnCycleColoniesBack…IdleShips(Back)`, `btnSelectionPanelSize`, `btnSelectNearestMilitary`, `btnLockView` get only locations here (sizes come from elsewhere).

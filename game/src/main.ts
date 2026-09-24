@@ -11,6 +11,10 @@ import { AssetStore, loadManifest } from './render/assets';
 import { generateGalaxy } from './sim/galaxy';
 import { parseSystemNames } from './sim/data';
 import { GalaxyShape } from './sim/types';
+import { createHud, layoutHud, nearestSystemName, pickSelection, type HudRefs } from './ui/hud';
+import { createGameClock } from './sim/clock';
+import { createMapOverlayState } from './ui/mapOverlays';
+import './ui/hud.css';
 
 // ?shape= names accepted by the boot URL.
 const SHAPE_BY_NAME: Record<string, GalaxyShape> = {
@@ -136,8 +140,44 @@ async function main(): Promise<void> {
     // Debug / screenshot hook: the camera and the generated galaxy model.
     (window as unknown as { __dwu?: unknown }).__dwu = { camera, galaxy, view, app };
 
+    // HUD overlay (task 05c streamlined): DOM layer above the canvas. The
+    // compact top-left bar drives the simulation clock; the bottom-right list
+    // drives the camera and overlay toggles; the selection panel is refreshed
+    // as the camera moves (demo: nearest star/planet to the view centre).
+    const clock = createGameClock();
+    const overlays = createMapOverlayState();
+    const hud: HudRefs = createHud({ clock, overlays, camera, galaxy });
+    const systemNameEl = hud.elements.get('pnlMoney')?.querySelector('.hud-system-name');
+    const refreshHud = (): void => {
+        if (systemNameEl) {
+            systemNameEl.textContent = nearestSystemName(
+                { galaxy },
+                camera,
+            );
+        }
+        // Demo selection: the object nearest the camera centre (the Main View
+        // does not expose picking yet — TODO(port): click-to-select in
+        // MainView's input handlers, Controls/MainView.cs mouse handling).
+        hud.onSelectionChange?.(pickSelection({ galaxy }, camera));
+    };
+    refreshHud();
+    window.addEventListener('resize', () => layoutHud(hud));
+    // The camera centre moves with panning/zooming; keep lblSystemName fresh.
+    setInterval(refreshHud, 250);
+
+    // Spacebar toggles play/pause (streamlined HUD control set).
+    window.addEventListener('keydown', (e: KeyboardEvent) => {
+        if (e.code === 'Space' && e.target === document.body) {
+            e.preventDefault();
+            clock.paused = !clock.paused;
+        }
+    });
+
     app.ticker.add(() => view.update());
-    app.renderer.on('resize', () => camera.setViewport(app.renderer.width, app.renderer.height));
+    app.renderer.on('resize', () => {
+        camera.setViewport(app.renderer.width, app.renderer.height);
+        layoutHud(hud);
+    });
 }
 
 main().catch((err) => {

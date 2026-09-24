@@ -1,0 +1,264 @@
+/* HUD overlay (task 05c streamlined redesign). Original font: Forgotten
+   Futurist, served from the DW:U install folder via /assets/dwu/... (desktop
+   shell maps the prefix; in dev the public symlink does). */
+@font-face {
+    font-family: 'Forgotten Futurist';
+    src: url('/assets/dwu/Customization/DistantWorldsExpanded-main/DistantWorldsExpanded/DistantWorlds/Resources/Forgotte.ttf');
+}
+@font-face {
+    font-family: 'Forgotten Futurist';
+    font-weight: bold;
+    src: url('/assets/dwu/Customization/DistantWorldsExpanded-main/DistantWorldsExpanded/DistantWorlds/Resources/Forgottb.ttf');
+}
+
+#hud {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    font-family: 'Forgotten Futurist', sans-serif;
+    color: #fff;
+    overflow: hidden;
+}
+
+.hud-el {
+    position: absolute;
+}
+
+/* Interactive controls re-enable pointer events. */
+.hud-btn {
+    pointer-events: auto;
+    background: transparent;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.hud-btn img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    user-select: none;
+    -webkit-user-drag: none;
+}
+/* Controls with no chrome image: a small dark button so they stay clickable. */
+.hud-btn.hud-btn-bare {
+    background: rgba(24, 26, 30, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    font-size: 11px;
+    color: #9aa3ad;
+    padding: 0 8px;
+    min-height: 24px;
+}
+.hud-btn.hud-btn-bare:hover {
+    background: rgba(38, 42, 48, 0.9);
+}
+
+/* Text-glyph buttons (play/pause, speed, cycler arrows). */
+.hud-btn.hud-btn-glyph {
+    background: rgba(24, 26, 30, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    font-size: 12px;
+    color: #fff;
+    min-width: 26px;
+    min-height: 26px;
+    padding: 0 6px;
+}
+.hud-btn.hud-btn-glyph:hover {
+    background: rgba(38, 42, 48, 0.9);
+}
+
+/* Panels: dark, near-opaque boxes so map star labels don't show through
+   (task 05d); a slight blur keeps any bleed-through soft. */
+.hud-panel {
+    background: rgba(14, 16, 20, 0.94);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+    padding: 8px;
+    font-size: 12px;
+    line-height: 1.5;
+    pointer-events: auto;
+}
+.hud-label {
+    color: #9aa3ad;
+    font-size: 12px;
+}
+.hud-value {
+    color: #fff;
+    font-size: 12px;
+}
+.hud-muted {
+    color: #9aa3ad;
+}
+
+/* Top-left compact bar. */
+.hud-topbar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+}
+.hud-separator {
+    width: 1px;
+    height: 20px;
+    background: rgba(255, 255, 255, 0.12);
+    margin: 0 2px;
+}
+.hud-date {
+    color: #fff;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+/* lstMessages: fixed-height message list + envelope/hourglass actions. */
+.hud-messages {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    gap: 6px;
+}
+.hud-message-lines {
+    flex: 1;
+    overflow: hidden;
+}
+.hud-message-line {
+    height: 14px;
+    line-height: 14px;
+    color: #9aa3ad;
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+}
+.hud-message-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    justify-content: center;
+}
+
+/* Money block + system name. */
+.hud-money-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+}
+.hud-system-name {
+    margin-top: 6px;
+    font-size: 16px;
+    font-weight: bold;
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Selection panel. */
+.hud-selection-header {
+    margin-bottom: 6px;
+}
+.hud-selection-name {
+    font-size: 14px;
+    font-weight: bold;
+    color: #fff;
+}
+.hud-selection-sub {
+    color: #9aa3ad;
+    font-size: 11px;
+}
+.hud-selection-body {
+    min-height: 70px;
+}
+.hud-selection-footer {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 8px;
+    flex-wrap: wrap;
+}
+/* Cycle chips: compact text pills (the original's cycle<X>.png art bakes a
+   "›" arrow into each icon, so chips are labels instead — task 05d). */
+.hud-chip {
+    pointer-events: auto;
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 999px;
+    cursor: pointer;
+    padding: 4px 8px;
+    font-size: 11px;
+    line-height: 1;
+    color: #9aa3ad;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+}
+.hud-chip:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+.hud-chip-active {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(120, 170, 255, 0.6);
+    color: #fff;
+}
+
+/* Options list (bottom-right). Content-sized (task 05d): the layout gives it
+   no fixed height; if the window is shorter than the list it scrolls. */
+.hud-options {
+    height: auto !important;
+    max-height: calc(100vh - 140px);
+    overflow-y: auto;
+}
+.hud-section-head {
+    color: #9aa3ad;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin: 8px 0 2px;
+}
+.hud-section-head:first-child {
+    margin-top: 0;
+}
+.hud-option-row {
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    padding: 0 6px;
+    height: 20px;
+    line-height: 20px;
+    color: #fff;
+    font-size: 12px;
+    font-family: inherit;
+    text-align: left;
+}
+.hud-option-row:hover {
+    background: rgba(38, 42, 48, 0.9);
+}
+.hud-option-row img {
+    width: 18px;
+    height: 18px;
+    object-fit: contain;
+    user-select: none;
+    -webkit-user-drag: none;
+}
+.hud-option-check {
+    width: 14px;
+    color: #7fb2ff;
+    font-size: 12px;
+}
+.hud-option-label {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}

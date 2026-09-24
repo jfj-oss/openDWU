@@ -13,8 +13,8 @@
     "test": "vitest run",
     "import-assets": "bash scripts/import-assets.sh",
     "desktop:dev": "npm run build && electron desktop/main.cjs",
-    "package:linux": "electron-packager . dwu --platform=linux --arch=x64 --out=release --overwrite --app-version=0.1.0 --electron-version=44.4.5 --no-prune",
-    "package:mac": "electron-packager . dwu --platform=darwin --arch=arm64 --out=release --overwrite --app-version=0.1.0 --electron-version=44.4.5 --no-prune"
+    "package:linux": "node scripts/package-desktop.mjs --platform=linux --arch=x64",
+    "package:mac": "node scripts/package-desktop.mjs --platform=darwin --arch=arm64"
   },
   "dependencies": {
     "pixi.js": "^8.21.0"
