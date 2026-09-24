@@ -16,6 +16,7 @@ import {
 import { helpTopicKeyForHabitat, toggleGalactopedia } from './screens/galactopedia';
 import { getEmpireSummarySource, toggleEmpireSummary } from './screens/empireSummary';
 import { toggleColoniesList } from './screens/coloniesList';
+import { toggleShipsAndBasesList } from './screens/shipsAndBasesList';
 import { toggleMessageHistory } from './screens/messageHistory';
 import { showToast } from './toast';
 
@@ -139,6 +140,7 @@ export interface KeyHandlers {
     galaxyMap?: () => void;
     messageHistoryScreen?: () => void;
     coloniesScreen?: () => void;
+    shipsAndBasesScreen?: () => void;
     empireSummaryScreen?: () => void;
     gameMenu?: () => void;
     galactopediaHelp?: () => void;
@@ -250,6 +252,9 @@ export function dispatchKey(
         case 'coloniesScreen':
             handlers.coloniesScreen?.();
             break;
+        case 'shipsAndBasesScreen':
+            handlers.shipsAndBasesScreen?.();
+            break;
         case 'gameMenu':
             handlers.gameMenu?.();
             break;
@@ -328,6 +333,21 @@ export function buildDefaultHandlers(
                     },
                 });
             }
+        },
+        // F11: the Ships and Bases list (task 13f) — same source as the
+        // Empire Summary; sorts by distance to the selection when there is one.
+        shipsAndBasesScreen: () => {
+            const src = getEmpireSummarySource();
+            if (!src) return;
+            const sel = getSelection();
+            toggleShipsAndBasesList({
+                empire: src.empire,
+                selected: sel ? (sel.builtObject ?? sel.habitat) : null,
+                onZoomTo: (bo) => {
+                    camera.centerOn(bo.xpos, bo.ypos);
+                    camera.zoomAt(SYSTEM_LEVEL_ZOOM, cx(), cy());
+                },
+            });
         },
         // F1 (KeyMappingFriendlyNames.OpenHelp -> btnHelp_Click, Main.Part7.cs).
         galactopediaHelp: () => toggleGalactopedia(helpTopicKeyForHabitat(getSelection()?.habitat ?? null)),
@@ -418,7 +438,7 @@ export const IMPLEMENTED_KEY_ACTIONS: ReadonlySet<string> = new Set([
     'zoomIn', 'zoomOut', 'zoomToSelection',
     'zoomSystemLevel', 'zoomSectorLevel', 'zoomGalaxyLevel', 'zoomPlanetLevel',
     'scrollUp', 'scrollDown', 'scrollLeft', 'scrollRight',
-    'galaxyMap', 'messageHistoryScreen', 'empireSummaryScreen', 'coloniesScreen',
+    'galaxyMap', 'messageHistoryScreen', 'empireSummaryScreen', 'coloniesScreen', 'shipsAndBasesScreen',
     'gameMenu', 'galactopediaHelp',
     'cycleColonies', 'cycleColoniesBackward', 'cycleColoniesMoveView',
 ]);

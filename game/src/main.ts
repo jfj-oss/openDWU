@@ -23,6 +23,7 @@ import { createMapOverlayState, type MapOverlayState, type OverlayKey } from './
 import { buildDefaultHandlers, createShortcutsOverlay, dispatchKey, setCycleHandler, setGameMenuHandler } from './ui/keyboard';
 import { closeEmpiresList } from './ui/screens/empiresList';
 import { closeColoniesList } from './ui/screens/coloniesList';
+import { closeShipsAndBasesList } from './ui/screens/shipsAndBasesList';
 import { closeEmpireSummary, setEmpireSummarySource } from './ui/screens/empireSummary';
 import { closeMessageHistory } from './ui/screens/messageHistory';
 import { createMainMenu } from './ui/screens/mainMenu';
@@ -452,6 +453,7 @@ export async function startGameView(game: Game, zoomOverride?: number, extraBoot
         // document keydown listener: close them and drop their source.
         closeEmpiresList();
         closeColoniesList();
+        closeShipsAndBasesList();
         closeEmpireSummary();
         closeMessageHistory();
         setEmpireSummarySource(null);

@@ -19,6 +19,7 @@ import { helpTopicKeyForHabitat, toggleGalactopedia } from './screens/galactoped
 import { toggleEmpiresList } from './screens/empiresList';
 import { setEmpireSummarySource, getEmpireSummarySource, toggleEmpireSummary } from './screens/empireSummary';
 import { toggleColoniesList } from './screens/coloniesList';
+import { toggleShipsAndBasesList } from './screens/shipsAndBasesList';
 import { toggleMessageHistory } from './screens/messageHistory';
 import { showToast } from './toast';
 
@@ -448,7 +449,7 @@ function makeIconButton(controlName: string, title: string): HTMLButtonElement {
     return btn;
 }
 
-export type TopBarScreen = 'colonies' | 'empireSummary' | 'messageHistory';
+export type TopBarScreen = 'colonies' | 'empireSummary' | 'messageHistory' | 'shipsAndBases';
 
 /** Top-bar control → the existing screen it toggles (task 12s), or null. */
 export function topBarScreen(name: string): TopBarScreen | null {
@@ -459,6 +460,8 @@ export function topBarScreen(name: string): TopBarScreen | null {
             return 'empireSummary';
         case 'btnHistoryMessages':
             return 'messageHistory';
+        case 'tbtnBuiltObjects':
+            return 'shipsAndBases';
         default:
             // btnGalacticHistory is a different screen, not the message history.
             return null;
@@ -512,6 +515,21 @@ function buildTopBarButton(name: string, wiring: HudWiring): HTMLElement {
         } else if (screen === 'messageHistory') {
             // Main.Part4.cs btnHistoryMessages_Click: toggle Message History.
             toggleMessageHistory();
+        } else if (screen === 'shipsAndBases') {
+            // Main.Part9.cs tbtnBuiltObjects_Click: toggle the Ships and Bases list.
+            const src = getEmpireSummarySource();
+            if (!src) return;
+            const sel = getSelection();
+            toggleShipsAndBasesList({
+                empire: src.empire,
+                selected: sel ? (sel.builtObject ?? sel.habitat) : null,
+                onZoomTo: (bo) => {
+                    const cam = wiring.camera;
+                    if (!cam) return;
+                    cam.centerOn(bo.xpos, bo.ypos);
+                    cam.zoomAt(SYSTEM_LEVEL_ZOOM, cam.width / 2, cam.height / 2);
+                },
+            });
         } else {
             console.log(`TODO(screen): ${label ?? name}`);
             showToast(`${label ?? name} — not yet available`);

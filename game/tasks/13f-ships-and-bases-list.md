@@ -138,3 +138,20 @@ Importing the module pulls in its `.css`, as coloniesList.test.ts already does. 
 - `isKeyActionAvailable('shipsAndBasesScreen')` → true.
 
 Run `npm run typecheck && npm test` (keyboard.test.ts, hudTopBar.test.ts and hud.test.ts must still pass). With `npm run dev` running, save `node scripts/shot.mjs 'http://localhost:5173/?autostart=1' shots/13f-ships.png`. Do not open it. Then append `## Worker report`: files changed, the shot.mjs console output, and anything left undone.
+
+## Worker report
+
+**Files changed:**
+- NEW `src/ui/screens/shipsAndBasesList.ts` — panel module: `builtObjectRoleLabel` (port of Galaxy.2.cs `ResolveDescription(BuiltObjectRole)`, Undefined → "None"), pure `shipsAndBasesRows(empire, selected)` (list = `empire.builtObjects` + `empire.privateBuiltObjects`, stable sort by squared distance to the selection per BaconMain.cs `method_423`; columns Name | Role (`role, subRole`) | System (`nearestSystemStar.name` or "(Deep Space)") | Location (`parentHabitat.name`)), and `toggleShipsAndBasesList` / `closeShipsAndBasesList` / `createShipsAndBasesList` DOM panel (structure mirrors coloniesList: fixed wrap z-index 1500, titlebar with close button, Escape handler with `stopImmediatePropagation`, row click → close + `onZoomTo`).
+- NEW `src/ui/screens/shipsAndBasesList.css` — dark-panel styling copied from coloniesList.css, renamed `colonies-list-*` → `ships-list-*`, window width 620px, grid `minmax(0,1fr) 14em 7em 7em`.
+- `src/ui/hud.ts` — one import; `TopBarScreen` gains `'shipsAndBases'` and `topBarScreen` maps `tbtnBuiltObjects` → it; `buildTopBarButton` click handler opens the list via `getEmpireSummarySource()` + `getSelection()`, zooming to the clicked ship/base at `SYSTEM_LEVEL_ZOOM`.
+- `src/ui/keyboard.ts` — one import; `KeyHandlers.shipsAndBasesScreen?`, `dispatchKey` case, `buildDefaultHandlers` entry (F11), and `IMPLEMENTED_KEY_ACTIONS` entry.
+- `src/main.ts` — exactly two lines: the `closeShipsAndBasesList` import and its call in `activeGameViewCleanup`.
+- NEW `test/shipsAndBasesList.test.ts` — pure-logic tests as specified (role labels, row composition/order incl. stable tie-break, ghost → "None", empty empire, `topBarScreen('tbtnBuiltObjects')`, `isKeyActionAvailable('shipsAndBasesScreen')`).
+
+**Verification:**
+- `npm run typecheck` — passes (no output).
+- `npm test` — 88 files / 880 tests passed, including keyboard.test.ts, hudTopBar.test.ts and hud.test.ts.
+- `node scripts/shot.mjs 'http://localhost:5173/?autostart=1' shots/13f-ships.png` — saved `shots/13f-ships.png`; console output was only `[debug] [vite] connecting...` / `[debug] [vite] connected.` / `saved shots/13f-ships.png` (no errors). Screenshot not opened (text-only worker); path listed for orchestrator review.
+
+**Left undone:** nothing within scope. The panel is streamlined per the task (no filter combo, detail tabs, or mini galaxy map) — those remain out of scope for 13f.
