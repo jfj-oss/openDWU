@@ -13,6 +13,23 @@ grep -qiE '^thinking:\s*off' "$task" && port=8100
 case "$task" in *.fix[0-9].md) base="${task%.fix?.md}.md"; [ -f "$base" ] && grep -qiE '^thinking:\s*off' "$base" && port=8100;; esac
 curl -sf -m 3 "http://127.0.0.1:$port/health" >/dev/null || {
   echo "ninfer-proxy not running on :$port (start: python3 scripts/ninfer-proxy.py 8099; NINFER_PROXY_THINKING=off python3 scripts/ninfer-proxy.py 8100)" >&2; exit 3; }
+prompt="Do the task described in $task. Read CLAUDE.md first. When finished, append a short '## Worker report' section to $task listing files changed, what is done, and anything left undone."
+allowed=("Read" "Edit" "Write" "Glob" "Grep" "TodoWrite"
+  "Bash(npm:*)" "Bash(npx:*)" "Bash(node:*)" "Bash(ls:*)" "Bash(cat:*)" "Bash(grep:*)"
+  "Bash(sed:*)" "Bash(head:*)" "Bash(tail:*)" "Bash(find:*)" "Bash(wc:*)" "Bash(mkdir:*)"
+  "Bash(awk:*)" "Bash(file:*)" "Bash(python3:*)")
+denied=("Read(**/*.png)" "Read(**/*.jpg)" "Read(**/*.jpeg)" "Read(**/*.webp)" "Read(**/*.gif)")
+# "scope: locked" tasks carry everything the worker needs (source excerpts pasted in by the
+# orchestrator). The worker can't read the original game install and may only run npm/npx/node,
+# so it translates and wires instead of searching.
+locked=0
+grep -qiE '^scope:\s*locked' "$task" && locked=1
+case "$task" in *.fix[0-9].md) base="${task%.fix?.md}.md"; [ -f "$base" ] && grep -qiE '^scope:\s*locked' "$base" && locked=1;; esac
+if [ "$locked" = 1 ]; then
+  prompt="$prompt Everything you need is in the task file (source excerpts are pasted in it). Do not search for anything else: you cannot access the original game files. Only edit the files the task names. Start editing immediately."
+  allowed=("Read" "Edit" "Write" "Glob" "Grep" "TodoWrite" "Bash(npm:*)" "Bash(npx:*)" "Bash(node:*)" "Bash(mkdir:*)")
+  denied+=("Read(//home/justinf/.local/share/Steam/**)" "Read(**/public/assets/**)" "Read(//home/justinf/data/**)")
+fi
 exec env \
   ANTHROPIC_BASE_URL="http://127.0.0.1:$port" \
   ANTHROPIC_AUTH_TOKEN="ninfer" \
@@ -26,11 +43,8 @@ exec env \
   CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="1" \
   API_TIMEOUT_MS="1800000" \
   CLAUDE_CODE_MAX_CONTEXT_TOKENS="108000" \
-  claude -p "Do the task described in $task. Read CLAUDE.md first. When finished, append a short '## Worker report' section to $task listing files changed, what is done, and anything left undone." \
+  claude -p "$prompt" \
     --permission-mode acceptEdits \
-    --allowedTools "Read" "Edit" "Write" "Glob" "Grep" "TodoWrite" \
-      "Bash(npm:*)" "Bash(npx:*)" "Bash(node:*)" "Bash(ls:*)" "Bash(cat:*)" "Bash(grep:*)" \
-      "Bash(sed:*)" "Bash(head:*)" "Bash(tail:*)" "Bash(find:*)" "Bash(wc:*)" "Bash(mkdir:*)" \
-      "Bash(awk:*)" "Bash(file:*)" "Bash(python3:*)" \
-    --disallowedTools "Read(**/*.png)" "Read(**/*.jpg)" "Read(**/*.jpeg)" "Read(**/*.webp)" "Read(**/*.gif)" \
+    --allowedTools "${allowed[@]}" \
+    --disallowedTools "${denied[@]}" \
     --output-format stream-json --verbose > "$log" 2>&1
