@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { chromeButtonFile, clearHudMessages, formatCashflow, formatClockLabel, formatMoney, formatPopulation, getHudMessages, habitatTypeLabel, hudTransformOrigin, nextInCycle, playerColonyList, pushHudMessage, resourceIconUrl } from '../src/ui/hud';
+import { chromeButtonFile, clearHudMessages, formatCashflow, formatClockLabel, formatMoney, formatPopulation, getHudMessageHistory, getHudMessages, habitatTypeLabel, hudTransformOrigin, nextInCycle, playerColonyList, pushHudMessage, resourceIconUrl } from '../src/ui/hud';
+import { historyRows } from '../src/ui/screens/messageHistory';
 import { computeHudLayout, TOP_BAR_BUTTONS } from '../src/ui/hudLayout';
 import { START_STAR_DATE } from '../src/sim/galaxyTime';
 import { Habitat, HabitatCategoryType, HabitatType } from '../src/sim/types';
@@ -123,6 +124,53 @@ describe('message ring buffer (task 10d)', () => {
         pushHudMessage('b');
         expect([...getHudMessages()]).toEqual(['a', 'b']);
         clearHudMessages();
+    });
+});
+
+describe('message history (task 12i)', () => {
+    it('records pushed messages with their date (defaulting to empty)', () => {
+        clearHudMessages();
+        pushHudMessage('first', '2100.01.01');
+        pushHudMessage('second');
+        expect(getHudMessageHistory()).toEqual([
+            { text: 'first', at: '2100.01.01' },
+            { text: 'second', at: '' },
+        ]);
+        clearHudMessages();
+    });
+
+    it('caps the history at 500 entries, dropping the oldest', () => {
+        clearHudMessages();
+        for (let i = 1; i <= 503; i++) pushHudMessage(`m${i}`);
+        const history = getHudMessageHistory();
+        expect(history.length).toBe(500);
+        expect(history[0].text).toBe('m4');
+        expect(history[history.length - 1].text).toBe('m503');
+        clearHudMessages();
+    });
+
+    it('clears the history with clearHudMessages', () => {
+        clearHudMessages();
+        pushHudMessage('x');
+        expect(getHudMessageHistory().length).toBe(1);
+        clearHudMessages();
+        expect(getHudMessageHistory().length).toBe(0);
+    });
+});
+
+describe('historyRows (task 12i)', () => {
+    it('puts the newest entry first', () => {
+        const rows = historyRows([
+            { text: 'a', at: '' },
+            { text: 'b', at: '2100.01.02' },
+            { text: 'c', at: '' },
+        ]);
+        expect(rows.map((r) => r.text)).toEqual(['c', 'b', 'a']);
+        expect(rows.map((r) => r.at)).toEqual(['', '2100.01.02', '']);
+    });
+
+    it('returns an empty list for no entries', () => {
+        expect(historyRows([])).toEqual([]);
     });
 });
 
