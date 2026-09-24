@@ -28,6 +28,7 @@ import type { Habitat } from './types';
 import { getCharacterMaintenanceBonuses } from './characters';
 import { ColonyResourceEffect, resourceBonusTotalByEffectType } from './developmentLevel';
 import { empireGovernmentAttributes } from './empire';
+import { redefineBuiltObjectManufacturingQueue, type ManufacturingQueue } from './manufacturingQueue';
 import { PIRATE_SHIP_MAINTENANCE_FACTOR, SHIP_MAINTENANCE_COST_PER_SIZE_UNIT } from './forceStructure';
 import { Weapon, weaponsDetermineNotInSuppliedList, weaponsQuickCompareEquivalent, weaponsRemoveAndResetFirstMatchingWeaponById } from './weapon';
 import { MIN_TIME } from './tick/simTime';
@@ -288,7 +289,7 @@ export class BuiltObject {
     /** C#: public Galaxy _Galaxy. */
     _galaxy: Galaxy;
     fuelType: ResourceRef | null = null;
-    // TODO(port): ManufacturingQueue (ManufacturingQueue.cs) — see ReDefine.
+    // BuiltObject._ManufacturingQueue (M4g, manufacturingQueue.ts; set by ReDefine).
     private _manufacturingQueue: unknown = null;
     // TODO(port): Fighter / FighterList (Fighter.cs) — only the list is created.
     fighters: unknown[] | null = null;
@@ -1288,8 +1289,8 @@ export class BuiltObject {
         // `new ConstructionQueue(this, _Galaxy)` and keeps it while Redefine finds a built
         // yard; otherwise it is dropped. No Rnd. Left null here.
         void flag7;
-        // TODO(port): ManufacturingQueue (ManufacturingQueue.cs): with flag9 (a manufacturer
-        // component) C# creates `new ManufacturingQueue(this, _Galaxy)` the same way. No Rnd.
+        // BuiltObject.cs 3186-3200: ManufacturingQueue (M4g, manufacturingQueue.ts). No Rnd.
+        this._manufacturingQueue = redefineBuiltObjectManufacturingQueue(this._galaxy, this, flag9, this._manufacturingQueue as ManufacturingQueue | null);
         this.annualSupportCost = csInt(num28);
         const actualEmpire2 = this.actualEmpire;
         if (actualEmpire2 === null) return;
@@ -1413,6 +1414,10 @@ export class BuiltObject {
     // ---- M4e fields (docking, refuelling) ----
     // ---- M4f fields (civilian mission AI) ----
     // ---- M4g fields (extraction, industry) ----
+    /** BuiltObject.cs _DoingMining / _DoingGasMining / _DoingConstruction (reset and set by IndustrialProcessing; read by the UI and ship animations). */
+    doingMining = false;
+    doingGasMining = false;
+    doingConstruction = false;
     // ---- M4h fields (construction, repair, retrofit) ----
     // ---- M4i fields (empire construction) ----
     // ---- M4j fields (economy) ----

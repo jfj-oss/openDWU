@@ -29,6 +29,7 @@ import { SystemVisibilityStatus, type GalaxyResourceMap } from './visibility';
 import { EmpireTerritory, strategicValue } from './territory';
 import { buildResearchStatic, type ResearchStatic } from './researchSystem';
 import { buildComponentStatic } from './componentStatic';
+import { ensureHabitatManufacturingQueue } from './manufacturingQueue';
 
 // C# string.CompareTo (culture-sensitive; .NET 5+ uses ICU).
 const NAME_COLLATOR = new Intl.Collator('en-US');
@@ -1494,66 +1495,70 @@ export class Galaxy {
     }
 
     // Port of Galaxy.6.cs SelectStar
-    private selectStar(): { type: HabitatType; diameter: number; pictureRef: number } {
+    private selectStar(): { type: HabitatType; diameter: number; pictureRef: number; solarRadiation: number; microwaveRadiation: number; xrayRadiation: number } {
         const roll = this.rnd.next(0, 77);
         let type: HabitatType;
         let diameter: number;
         let pictureRef: number;
+        // Solar/Microwave/Xray radiation rolls (stored on the star, Galaxy.5.cs 1325-1327; read by M4g IndustrialProcessing).
+        let solarRadiation: number;
+        let microwaveRadiation: number;
+        let xrayRadiation: number;
         if (roll >= 0 && roll <= 61) {
             type = HabitatType.MainSequence;
             diameter = this.rnd.next(950, 1400);
             pictureRef = diameter <= 1200 ? 83 : 84;
             this.rnd.next(0, 4); // mapPictureRef roll — MapPictureRef not modeled yet
-            this.rnd.next(40, 60); // solarRadiation
-            this.rnd.next(5, 20); // microwaveRadiation
-            this.rnd.next(5, 12); // xrayRadiation
+            solarRadiation = this.rnd.next(40, 60);
+            microwaveRadiation = this.rnd.next(5, 20);
+            xrayRadiation = this.rnd.next(5, 12);
         } else if (roll >= 62 && roll <= 66) {
             type = HabitatType.RedGiant;
             diameter = this.rnd.next(1450, 1620);
             pictureRef = 85;
             this.rnd.next(0, 3);
-            this.rnd.next(70, 95);
-            this.rnd.next(5, 20);
-            this.rnd.next(5, 12);
+            solarRadiation = this.rnd.next(70, 95);
+            microwaveRadiation = this.rnd.next(5, 20);
+            xrayRadiation = this.rnd.next(5, 12);
         } else if (roll >= 67 && roll <= 69) {
             type = HabitatType.SuperGiant;
             diameter = this.rnd.next(1620, 1950);
             pictureRef = 86;
             this.rnd.next(0, 3);
-            this.rnd.next(80, 100);
-            this.rnd.next(5, 20);
-            this.rnd.next(5, 12);
+            solarRadiation = this.rnd.next(80, 100);
+            microwaveRadiation = this.rnd.next(5, 20);
+            xrayRadiation = this.rnd.next(5, 12);
         } else if (roll >= 70 && roll <= 72) {
             type = HabitatType.WhiteDwarf;
             diameter = this.rnd.next(260, 350);
             pictureRef = 87;
             this.rnd.next(0, 3);
-            this.rnd.next(10, 30);
-            this.rnd.next(20, 40);
-            this.rnd.next(40, 60);
+            solarRadiation = this.rnd.next(10, 30);
+            microwaveRadiation = this.rnd.next(20, 40);
+            xrayRadiation = this.rnd.next(40, 60);
         } else if (roll >= 73 && roll <= 74) {
             type = HabitatType.Neutron;
             diameter = this.rnd.next(180, 230);
             pictureRef = 88;
-            this.rnd.next(1, 5);
-            this.rnd.next(60, 90);
-            this.rnd.next(120, 200);
+            solarRadiation = this.rnd.next(1, 5);
+            microwaveRadiation = this.rnd.next(60, 90);
+            xrayRadiation = this.rnd.next(120, 200);
         } else if (roll === 75) {
             type = HabitatType.BlackHole;
             diameter = this.rnd.next(4500, 6500);
             pictureRef = 95;
-            this.rnd.next(10, 15);
-            this.rnd.next(60, 80);
-            this.rnd.next(90, 130);
+            solarRadiation = this.rnd.next(10, 15);
+            microwaveRadiation = this.rnd.next(60, 80);
+            xrayRadiation = this.rnd.next(90, 130);
         } else {
             type = HabitatType.SuperNova;
             diameter = this.rnd.next(300, 900);
             pictureRef = 0;
-            this.rnd.next(60, 80);
-            this.rnd.next(70, 110);
-            this.rnd.next(160, 220);
+            solarRadiation = this.rnd.next(60, 80);
+            microwaveRadiation = this.rnd.next(70, 110);
+            xrayRadiation = this.rnd.next(160, 220);
         }
-        return { type, diameter, pictureRef };
+        return { type, diameter, pictureRef, solarRadiation, microwaveRadiation, xrayRadiation };
     }
 
     // Port of Galaxy.4.cs GenerateNebulae (generateImage=false call) plus
@@ -1824,9 +1829,10 @@ export class Galaxy {
         let type: HabitatType;
         let diameter: number;
         let pictureRef: number;
+        let selected: ReturnType<Galaxy['selectStar']>;
         let flag4 = false;
         do {
-            const selected = this.selectStar();
+            selected = this.selectStar();
             type = selected.type;
             diameter = selected.diameter;
             pictureRef = selected.pictureRef;
@@ -1845,6 +1851,10 @@ export class Galaxy {
         star.diameter = diameter;
         star.pictureRef = pictureRef;
         star.landscapePictureRef = -1;
+        // Galaxy.5.cs 1325-1327: (byte) casts of the radiation rolls.
+        star.solarRadiation = selected.solarRadiation & 0xff;
+        star.microwaveRadiation = selected.microwaveRadiation & 0xff;
+        star.xrayRadiation = selected.xrayRadiation & 0xff;
         if (type === HabitatType.BlackHole) {
             // Port of Galaxy.5.cs SetupSun black-hole GalaxyLocations
             // (1329-1352). C# renames the star via GenerateBlackHoleName()
@@ -2324,9 +2334,10 @@ export class Galaxy {
             attempts++;
         } while (distance < MAX_SOLAR_SYSTEM_SIZE * 4 && attempts < 200);
 
-        this.rnd.next(40, 60); // solarRadiation
-        this.rnd.next(1, 5); // microwaveRadiation
-        this.rnd.next(0, 3); // xrayRadiation
+        // Galaxy.4.cs 2853-2858 (byte) radiation rolls.
+        habitat.solarRadiation = this.rnd.next(40, 60) & 0xff;
+        habitat.microwaveRadiation = this.rnd.next(1, 5) & 0xff;
+        habitat.xrayRadiation = this.rnd.next(0, 3) & 0xff;
 
         this.selectResources(habitat);
 
@@ -3406,7 +3417,9 @@ export class Galaxy {
             habitat.orbitDirection = false;
         }
         // TODO(port): Cargo/Troops/TroopsToRecruit/InvadingTroops/ConstructionQueue/
-        // ManufacturingQueue/20 DockingBays (component 74) — Galaxy.8.cs GenerateContinentalPlanet.
+        // 20 DockingBays (component 74) — Galaxy.8.cs GenerateContinentalPlanet.
+        // Galaxy.8.cs 484 (M4g): habitat.ManufacturingQueue = new ManufacturingQueue(habitat, galaxy).
+        ensureHabitatManufacturingQueue(this, habitat);
         return habitat;
     }
 
@@ -3954,6 +3967,9 @@ export class Galaxy {
                 for (let p = 0; p < populationRolls; p++) {
                     this.selectPopulation(planet, sunHabitat);
                 }
+                // Galaxy.5.cs 1609-1618 (M4g part): a populated planet gets `ManufacturingQueue = new ManufacturingQueue(habitat2, this)`.
+                // TODO(port): the other containers of that block (Cargo, Troops, ConstructionQueue, DockingBays).
+                if (planet.population.items.length > 0) ensureHabitatManufacturingQueue(this, planet);
                 // Port of Galaxy.6.cs SelectCreatures(habitat2) — Galaxy.6.cs:654 (call
                 // site in Galaxy.5.cs SetupSolarSystem, after population rolls).
                 this.selectCreatures(planet);
@@ -4044,6 +4060,8 @@ export class Galaxy {
                     for (let p = 0; p < moonPopulationRolls; p++) {
                         this.selectPopulation(moon, sunHabitat);
                     }
+                    // Galaxy.5.cs 1747-1756 (M4g part): a populated moon gets a ManufacturingQueue. TODO(port): the other containers.
+                    if (moon.population.items.length > 0) ensureHabitatManufacturingQueue(this, moon);
                     // Port of Galaxy.6.cs SelectCreatures(habitat2) — Galaxy.6.cs:654 (call
                     // site in Galaxy.5.cs SetupSolarSystem, after moon population rolls).
                     this.selectCreatures(moon);

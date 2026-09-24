@@ -423,6 +423,10 @@ export class Habitat {
     // ---- M4e fields (docking) ----
     // ---- M4f fields (civilian mission AI) ----
     // ---- M4g fields (extraction, industry) ----
+    /** Habitat.cs 1033/1045/1057 _SolarRadiation / _XrayRadiation / _MicrowaveRadiation (byte; set on stars and gas clouds at generation, read by BuiltObject.IndustrialProcessing). */
+    solarRadiation = 0;
+    microwaveRadiation = 0;
+    xrayRadiation = 0;
     /** Habitat._ManufacturingQueue (ManufacturingQueue; null until M4g creates it). */
     manufacturingQueue: unknown = null;
     // ---- M4h fields (construction queues) ----

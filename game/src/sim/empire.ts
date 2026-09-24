@@ -42,6 +42,7 @@ import { DiplomacyCounters, DiplomaticRelationList } from './diplomacy';
 import { MIN_TIME } from './tick/simTime';
 import type { DeclinedTask } from './missions/distress';
 import type { IMessageRecipient } from './messages';
+import { ensureHabitatManufacturingQueue } from './manufacturingQueue';
 
 // Empire.1.cs TakeOwnershipOfColony callees that live in modules importing empire.ts
 // (forceStructure.ts RecalculateDistanceFactor / RecalculateAnnualTaxRevenue, taxes.ts
@@ -101,6 +102,11 @@ export class EmpireCounters {
     colonyPrivateRevenueTotal = 0.0;
     pirateSmugglingIncome = 0.0;
     pirateProtectionIncome = 0.0;
+    /** EmpireCounters.cs MiningExtractionGas / Luxury / Strategic / ColonyManufactured (int, 80-84; M4g extraction sites add with int wrap). */
+    miningExtractionGas = 0;
+    miningExtractionLuxury = 0;
+    miningExtractionStrategic = 0;
+    miningExtractionColonyManufactured = 0;
     constructor(_empire: Empire) {}
     /** EmpireCounters.cs 220 ProcessColonyRevenue(amount). */
     processColonyRevenue(amount: number): void {
@@ -762,6 +768,9 @@ export class Empire {
         if (colony.troopsToRecruit === null) colony.troopsToRecruit = new TroopList();
         if (colony.invadingTroops === null) colony.invadingTroops = new TroopList();
         if (colony.facilities === null) colony.facilities = [];
+        // TODO(port) M4h: Empire.1.cs 108-115 ConstructionQueue (new / ReviewConstructionSpeed).
+        // Empire.1.cs 116-119 (M4g): if (colony.ManufacturingQueue == null) colony.ManufacturingQueue = new ManufacturingQueue(colony, _Galaxy).
+        ensureHabitatManufacturingQueue(this.galaxy, colony);
         colony.owner = newEmpire;
         colony.empire = newEmpire;
         if (empire !== null && flag) {

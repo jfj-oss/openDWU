@@ -86,7 +86,11 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // project picks and research-event rolls draw Rnd; completed research changes components and troop types).
         // M4r: Empire.RelativeEmpireSize (hashed) is computed by CalculateRelativeEmpireSize and the diplomacy runtime
         // runs once empires meet.
-        expect(summary.digest).toBe('9582e8126fa8a7cd');
+        // M4g: colonies (and manufacturer bases) now own ManufacturingQueues whose
+        // DoManufacturing draws Rnd.Next(0, manufacturers) per call; colonies and mining stations extract resources into
+        // cargo (Habitat.ExtractResources, BuiltObject.IndustrialProcessing); PrioritizeEmpireResourceNeeds fills
+        // EmpireResourceTargets; ReviewManufacturedResources may draw when a colony-manufactured resource can appear.
+        expect(summary.digest).toBe('63c7c5060c7cbda6');
     }, 600000);
 });
 
