@@ -146,7 +146,7 @@ export function generateEmpire(
     // ResearchNodeDefinitionsStatic.SetTechTreeLevel(techLevel) (draws Rnd only
     // for fractional levels) + Research.Update.
     if (galaxy.researchStatic !== null) empire.research.setTechTreeLevel(rnd, race, techLevel, false);
-    empire.research.update();
+    empire.research.update(race);
     // TODO(port): LoadOptimizedDesignsForEmpire (designs).
     empire.reviewResearchAbilities();
     empire.reviewDesignsBuiltObjectsImprovedComponents();

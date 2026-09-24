@@ -206,26 +206,29 @@ describe('UpgradeMilitaryShipDesignMoreWeapons / MoreEngines (Galaxy.8.cs 4121 /
 // Seed 1: [super-pirate designs (subRole:name:component count), first 8 BuiltObjects, BuiltObject count].
 // (re-pinned: generateSuperPirateFaction now runs on the full createGame state — stations, starting
 // ships, characters, ruins and the game-start tail consumed Rnd and changed the tech/design inputs.)
+// (re-pinned M4k: the game-start Empire.DoTasks now runs PerformResearch — SelectNextResearchProject draws
+// Rnd (SelectRandomLowestProject) and research events draw Next(0, num4) per industry — so later game-start
+// Rnd draws shift.)
 const PINNED: unknown[] = [
     [
-        'Escort:Imperator II:32',
-        'Frigate:Minotaur II:44',
-        'Destroyer:Tetrarch II:54',
-        'Cruiser:Battleaxe II:89',
-        'CapitalShip:Decurion:137',
-        'Carrier:CX-2 Carrier:109',
+        'Escort:Royale II:32',
+        'Frigate:Sovereign II:47',
+        'Destroyer:Decurion II:57',
+        'Cruiser:Senator:81',
+        'CapitalShip:Colossia:139',
+        'Carrier:CX-2 Carrier:100',
         'DefensiveBase:Phantom Pirate Defensive Base:123',
         'GenericBase:Phantom Pirate Base:217',
     ],
     [
-        'GenericBase:Haako End',
+        'GenericBase:Bandits Den',
         'DefensiveBase:Haako 4 Defense Battery',
-        'DefensiveBase:Haako 4 Defense Battery',
-        'DefensiveBase:Haako 4 Weapons Platform',
-        'Cruiser:Grand Judgment',
-        'Frigate:Banished Death',
-        'CapitalShip:Immortal Nemesis',
-        'Frigate:Ruinous Encounter',
+        'DefensiveBase:Haako 4 Orbital Battery',
+        'DefensiveBase:Haako 4 Defensive Base',
+        'Destroyer:Looming Hero',
+        'Carrier:Terrible Challenger',
+        'Frigate:Cunning Eclipse',
+        'Escort:Indomitable Gauntlet',
     ],
-    32,
+    30,
 ];

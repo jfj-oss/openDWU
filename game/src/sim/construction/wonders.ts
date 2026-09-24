@@ -20,3 +20,17 @@ const T_reviewWondersBuilt = registerTodo('M4i', 'reviewWondersBuilt');
 export function reviewWondersBuilt(galaxy: Galaxy): void {
     /* TODO(port) M4i */ todo(T_reviewWondersBuilt);
 }
+
+const T_checkWonderBuilt = registerTodo('M4i', 'checkWonderBuilt');
+/**
+ * Galaxy.5.cs 322 CheckWonderBuilt(wonder): _WondersBuilt[wonder.PlanetaryFacilityDefinitionId] (filled by
+ * ReviewWondersBuilt). Stub added by M4k (ResolveEssentialProjects_NEW): no wonder is built until M4i ports
+ * facilities/wonders, which is the value the C# reads while no empire owns a completed wonder.
+ */
+export function checkWonderBuilt(galaxy: Galaxy, wonder: { facilityId: number } | null): boolean {
+    void galaxy;
+    if (wonder !== null) {
+        /* TODO(port) M4i: _WondersBuilt lookup */ todo(T_checkWonderBuilt);
+    }
+    return false;
+}

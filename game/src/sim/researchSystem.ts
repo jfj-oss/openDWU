@@ -14,6 +14,12 @@ import type { Component } from './data/components';
 import { ComponentType } from './data/components';
 import type { Race } from './data/races';
 import type { Random } from './random';
+import { HabitatType, IndustryType } from './types';
+import { TroopType } from './cargo';
+import { BuiltObjectSubRole } from './builtObjectTypes';
+import type { Facility } from './data/facilities';
+import type { Fighter } from './data/fighters';
+import type { Plague } from './data/plagues';
 import { ComponentCategoryType, componentCategoryByIndex, defaultEmpirePolicy, resolveTechDisallow, resolveTechFocuses, type EmpirePolicy } from './data/policies';
 import {
     checkComponentDefinitionMatchesCategoryStrict,
@@ -63,12 +69,36 @@ export function abilityTypeFromFile(code: number): ResearchAbilityType {
     return ABILITY_FROM_FILE[code] ?? ResearchAbilityType.Undefined;
 }
 
+/** Runtime ResearchNode (ResearchNode.cs). Properties delegating to the definition read `def`. */
+// Port of Galaxy.4.cs ResolveColonyHabitatTypeByIndexIncludingUndefined (717).
+export function resolveColonyHabitatTypeByIndexIncludingUndefined(index: number): HabitatType {
+    switch (index) {
+        case 1: return HabitatType.Continental;
+        case 2: return HabitatType.MarshySwamp;
+        case 3: return HabitatType.Ocean;
+        case 4: return HabitatType.Desert;
+        case 5: return HabitatType.Ice;
+        case 6: return HabitatType.Volcanic;
+        default: return HabitatType.Undefined;
+    }
+}
+
 export interface TechNode {
     def: ResearchNodeDefinition;
     isResearched: boolean;
     isEnabled: boolean;
+    /** ResearchNode.Progress (float). */
     progress: number;
     selfResearched: boolean;
+    /** ResearchNode.Cost (float): ResearchNodeDefinition.Cost, scaled by UpdateProjectCostsForRace (M4k). */
+    cost: number;
+    /** ResearchNode.IsRushing (M4k). */
+    isRushing: boolean;
+    /** ResearchNode.ParentNodes / ParentIsRequired (UpdateParentNodes; M4k). */
+    parentNodes: TechNode[];
+    parentIsRequired: boolean[];
+    /** ResearchNode.SortTag (float; IComparable key). */
+    sortTag: number;
 }
 
 // Shared static data (C# Galaxy.ResearchNodeDefinitionsStatic / ComponentDefinitionsStatic).
@@ -83,6 +113,20 @@ export interface ResearchStatic {
     piratePolicies: Map<string, EmpirePolicy>;
     /** Galaxy.ComponentDefinitionsStatic / ordered-component lists, from componentStatic.ts. */
     componentStatic: ComponentStatic | null;
+    /** Galaxy.PlanetaryFacilityDefinitionsStatic (facilities.txt; M4k). */
+    facilities: Facility[];
+    /** Galaxy.FighterSpecificationsStatic (fighters.txt; M4k). */
+    fighters: Fighter[];
+    /**
+     * Galaxy.PlaguesStatic (plagues.txt; M4k). C# ResearchSystem.ReviewPlagues mutates these shared static
+     * objects (LatestTechLevelUpdate, rates); here they are per-galaxy copies.
+     */
+    plagues: PlagueStatic[];
+}
+
+/** Plague.cs fields ReviewPlagues touches, on a copy of the plagues.txt row. */
+export interface PlagueStatic extends Plague {
+    latestTechLevelUpdate: number;
 }
 
 // Port of Galaxy.3.cs SetResearchRaceSpecialProjects (1932): specified races,
@@ -95,6 +139,9 @@ export function buildResearchStatic(
     policies: Map<string, EmpirePolicy> = new Map(),
     piratePolicies: Map<string, EmpirePolicy> = new Map(),
     componentStatic: ComponentStatic | null = null,
+    facilities: Facility[] = [],
+    fighters: Fighter[] = [],
+    plagues: Plague[] = [],
 ): ResearchStatic {
     const allowed = new Map<number, Set<string>>();
     const disallowed = new Map<number, Set<string>>();
@@ -141,6 +188,9 @@ export function buildResearchStatic(
         policies,
         piratePolicies,
         componentStatic,
+        facilities,
+        fighters,
+        plagues: plagues.map((p) => ({ ...p, latestTechLevelUpdate: 0 })),
     };
 }
 
@@ -164,6 +214,22 @@ export interface ResearchAbilityRuntime {
 export class ResearchSystem {
     techTree: TechNode[] = [];
     abilities: ResearchAbilityRuntime[] = [];
+    // ---- M4k: research progress state (ResearchSystem.cs 21-52) ----
+    /** ResearchSystem.cs 21 BuildablePlanetaryFacilities (DetermineBuildablePlanetaryFacilities). */
+    buildablePlanetaryFacilities: Facility[] = [];
+    /** ResearchSystem.cs 22 EnabledPlagues (ReviewPlagues). */
+    enabledPlagues: PlagueStatic[] = [];
+    /** ResearchSystem.cs 24 ResearchedFighters (DetermineResearchedFighters; FighterSpecification rows). */
+    researchedFighters: Fighter[] = [];
+    /** ResearchSystem.cs 27-28 LatestProjects / NextProjects (RefreshLatestNextProjects); null until first refresh. */
+    latestProjects: TechNode[] | null = null;
+    nextProjects: TechNode[] | null = null;
+    /** ResearchSystem.cs 34 RecentProjects. */
+    recentProjects: TechNode[] = [];
+    /** ResearchSystem.cs 50-52 ResearchQueueWeapons / Energy / HighTech. */
+    researchQueueWeapons: TechNode[] = [];
+    researchQueueEnergy: TechNode[] = [];
+    researchQueueHighTech: TechNode[] = [];
     researchedComponents: ComponentDefinition[] = [];
     // Port of ResearchSystem.cs _ResearchedComponentState.
     private researchedComponentIds = new Set<number>();
@@ -203,7 +269,7 @@ export class ResearchSystem {
     // Resolves a research-node Components/ComponentImprovements componentId to a
     // ComponentDefinition, from ComponentStatic when available, else a definition
     // synthesized on the fly (ComponentDefinition.cs ResolveComponentCategory/ResolveIndustry).
-    private definitionFor(id: number): ComponentDefinition | undefined {
+    definitionFor(id: number): ComponentDefinition | undefined {
         if (this.componentStatic) return this.componentStatic.byId.get(id);
         let d = this.fallbackDefs.get(id);
         if (!d) {
@@ -216,9 +282,84 @@ export class ResearchSystem {
         return d;
     }
 
-    // Port of ObtainTechTree(race).
-    obtainTechTree(): void {
-        this.techTree = (this.stat?.definitions ?? []).map((def) => ({ def, isResearched: false, isEnabled: true, progress: 0, selfResearched: false }));
+    // Port of ResearchNodeDefinitionList.ObtainTechTree(race) (890): one ResearchNode per definition
+    // (ResearchNode ctor: Cost = definition Cost, from Galaxy.3.cs SetResearchCosts), then
+    // UpdateProjectCostsForRace (842) and UpdateParentNodes (868).
+    obtainTechTree(race: Race | null = null): void {
+        const costs = this.componentStatic?.researchCostByProjectId;
+        this.techTree = (this.stat?.definitions ?? []).map((def) => ({
+            def,
+            isResearched: false,
+            isEnabled: true,
+            progress: 0,
+            selfResearched: false,
+            cost: Math.fround(costs?.get(def.projectId) ?? 0),
+            isRushing: false,
+            parentNodes: [],
+            parentIsRequired: [],
+            sortTag: 0,
+        }));
+        this.updateProjectCostsForRace(race);
+        this.updateParentNodes();
+    }
+
+    // Port of ResearchNodeDefinitionList.UpdateProjectCostsForRace (842). Race.ResearchColonizationCostFactor*
+    // (Race.cs 186-196, default 1.0; LoadFromFile 1456-1472 clamps to [0.2, 5]).
+    private updateProjectCostsForRace(race: Race | null): void {
+        if (race === null) return;
+        const factor = (key: string): number => {
+            const raw = race.extra?.[key];
+            if (raw === undefined || raw.trim() === '') return 1.0;
+            return Math.min(5.0, Math.max(0.2, Number(raw.trim())));
+        };
+        const H = HabitatType;
+        const p1 = this.getLowestProjectForColonization(this.techTree, H.Continental);
+        const p2 = this.getLowestProjectForColonization(this.techTree, H.MarshySwamp);
+        const p3 = this.getLowestProjectForColonization(this.techTree, H.Ocean);
+        const p4 = this.getLowestProjectForColonization(this.techTree, H.Desert);
+        const p5 = this.getLowestProjectForColonization(this.techTree, H.Ice);
+        const p6 = this.getLowestProjectForColonization(this.techTree, H.Volcanic);
+        if (p1 !== null) p1.cost = Math.fround(p1.cost * Math.fround(factor('ResearchColonizationCostFactorContinental')));
+        if (p2 !== null) p2.cost = Math.fround(p2.cost * Math.fround(factor('ResearchColonizationCostFactorMarshySwamp')));
+        if (p3 !== null) p3.cost = Math.fround(p3.cost * Math.fround(factor('ResearchColonizationCostFactorOcean')));
+        if (p4 !== null) p4.cost = Math.fround(p4.cost * Math.fround(factor('ResearchColonizationCostFactorDesert')));
+        if (p5 !== null) p5.cost = Math.fround(p5.cost * Math.fround(factor('ResearchColonizationCostFactorIce')));
+        if (p6 !== null) p6.cost = Math.fround(p6.cost * Math.fround(factor('ResearchColonizationCostFactorVolcanic')));
+    }
+
+    // Port of ResearchNodeDefinitionList.UpdateParentNodes (868): the definition's ParentNodes (file PARENTS
+    // lines; ResearchNodeDefinitionList.cs 823-836, ParentIsRequired defaults to false) resolved to runtime nodes
+    // by id (FindNodeById). Definitions are in id order (CheckSequentialIds), so index == id.
+    private updateParentNodes(): void {
+        const byId = new Map<number, TechNode>();
+        for (const n of this.techTree) if (!byId.has(n.def.projectId)) byId.set(n.def.projectId, n);
+        for (const n of this.techTree) {
+            if (n.def.parents.length <= 0) continue;
+            n.parentNodes = [];
+            n.parentIsRequired = [];
+            for (const parent of n.def.parents) {
+                const nodeById = byId.get(parent.parentProjectId);
+                if (nodeById !== undefined) {
+                    n.parentNodes.push(nodeById);
+                    n.parentIsRequired.push(parent.isRequired);
+                }
+            }
+        }
+    }
+
+    // Port of ResearchNodeList.GetLowestProjectForColonization(habitatType) (1028), over any node list.
+    getLowestProjectForColonization(list: TechNode[], habitatType: HabitatType): TechNode | null {
+        let num = Number.MAX_VALUE;
+        let r: TechNode | null = null;
+        for (const n of list) {
+            for (const a of n.def.abilities) {
+                if (abilityTypeFromFile(a.type) === ResearchAbilityType.ColonizeHabitatType && resolveColonyHabitatTypeByIndexIncludingUndefined(a.value) === habitatType && n.def.techLevel < num) {
+                    r = n;
+                    num = n.def.techLevel;
+                }
+            }
+        }
+        return r;
     }
 
     private restrictedFor(node: TechNode, race: Race, isPirate: boolean): boolean {
@@ -267,12 +408,12 @@ export class ResearchSystem {
 
     // ---- ResearchNode / ResearchNodeList helpers (ResearchNode.cs, ResearchNodeList.cs) ----
 
-    private componentTypeOf(id: number): ComponentType | undefined {
+    componentTypeOf(id: number): ComponentType | undefined {
         return this.stat?.componentsById.get(id)?.type;
     }
 
     // ResearchNode.ResolveComponentTypesAll (93).
-    private componentTypesAll(n: TechNode): ComponentType[] {
+    componentTypesAll(n: TechNode): ComponentType[] {
         const out: ComponentType[] = [];
         for (const id of n.def.components) {
             const t = this.componentTypeOf(id);
@@ -522,26 +663,116 @@ export class ResearchSystem {
         this.finishStartingDefaults(race);
     }
 
-    // Port of ResearchSystem.Update (researched components + abilities; component
-    // improvements, latest/best-by-type/category and ordered-component review; TODO(port):
-    // facilities, fighters, plagues, RefreshLatestNextProjects).
-    update(): void {
+    // Port of ResearchSystem.Update(race) (68). No Galaxy.Rnd.
+    update(race: Race | null = null): void {
+        this.determineResearchedComponents();
+        this.determineComponentImprovements();
+        // DetermineResearchAbilities (1099).
         const abilities: ResearchAbilityRuntime[] = [];
         for (const n of this.techTree) {
             if (!n.isResearched) continue;
             for (const a of n.def.abilities) abilities.push({ type: abilityTypeFromFile(a.type), level: a.level, value: a.value, relatedObjectIndex: a.relatedObjectIndex });
         }
         this.abilities = abilities;
-
-        this.determineResearchedComponents();
-        this.determineComponentImprovements();
+        this.buildablePlanetaryFacilities = this.determineBuildablePlanetaryFacilities();
+        this.researchedFighters = this.determineResearchedFighters();
+        this.enabledPlagues = this.reviewPlagues();
         this.latestComponentsByType = this.determineLatestComponentsByType(this.researchedComponents);
         this.latestComponentsByCategory = this.determineLatestComponentsByCategory(this.researchedComponents);
         this.bestComponentsByType = this.determineBestComponentsByType(this.researchedComponents);
         this.bestComponentsByCategory = this.determineBestComponentsByCategory(this.researchedComponents);
-        // TODO(port): DetermineBuildablePlanetaryFacilities, DetermineResearchedFighters,
-        // ReviewPlagues, RefreshLatestNextProjects.
+        this.refreshLatestNextProjects(race);
         this.reviewOrderedComponents();
+    }
+
+    /** research.txt facility id → PlanetaryFacilityDefinition (Galaxy.PlanetaryFacilityDefinitionsStatic[id]). */
+    planetaryFacilityOf(n: TechNode): Facility | null {
+        const id = n.def.facilityId;
+        if (id === null || id < 0) return null;
+        return this.stat?.facilities[id] ?? null;
+    }
+
+    // Port of ResearchSystem.cs DetermineBuildablePlanetaryFacilities (1138).
+    private determineBuildablePlanetaryFacilities(): Facility[] {
+        const list: Facility[] = [];
+        for (const n of this.techTree) {
+            const f = this.planetaryFacilityOf(n);
+            if (n.isResearched && f !== null && !list.some((x) => x.facilityId === f.facilityId)) list.push(f);
+        }
+        return list;
+    }
+
+    // Port of ResearchSystem.cs DetermineResearchedFighters (1085).
+    private determineResearchedFighters(): Fighter[] {
+        const list: Fighter[] = [];
+        for (const n of this.techTree) {
+            if (n.isResearched && n.def.fighters.length > 0) {
+                for (const id of n.def.fighters) {
+                    const f = this.stat?.fighters.find((x) => x.fighterId === id);
+                    if (f !== undefined) list.push(f);
+                }
+            }
+        }
+        return list;
+    }
+
+    // Port of ResearchSystem.cs ReviewPlagues (1113): mutates the shared static plague rows.
+    private reviewPlagues(): PlagueStatic[] {
+        const list: PlagueStatic[] = [];
+        for (const n of this.techTree) {
+            const pc = n.def.plagueChange;
+            if (n.isResearched && pc !== null) {
+                const plague = this.stat?.plagues[pc.plagueId];
+                if (plague === undefined) throw new Error(`ResearchSystem.ReviewPlagues: PlaguesStatic[${pc.plagueId}] out of range`);
+                if (!list.some((x) => x.plagueId === pc.plagueId)) list.push(plague);
+                if (plague.latestTechLevelUpdate < n.def.techLevel) {
+                    plague.latestTechLevelUpdate = n.def.techLevel;
+                    plague.mortalityRate = pc.mortalityRate;
+                    plague.infectionChance = pc.infectionChance;
+                    plague.duration = pc.duration;
+                    plague.exceptionMortalityRate = pc.exceptionMortalityRate;
+                    plague.exceptionInfectionChance = pc.exceptionInfectionChance;
+                    plague.exceptionDuration = pc.exceptionDuration;
+                }
+            }
+        }
+        return list;
+    }
+
+    // Port of ResearchSystem.cs RefreshLatestNextProjects (171) → DetermineLatestResearchProjects (1010).
+    refreshLatestNextProjects(race: Race | null): void {
+        const researchProjects: TechNode[] = [];
+        const nextProjects: TechNode[] = [];
+        for (const n of this.techTree) {
+            if (n.isResearched) continue;
+            let flag1 = true;
+            const allowed = this.stat?.allowedRaces.get(n.def.projectId);
+            if (allowed !== undefined && allowed.size > 0) {
+                flag1 = false;
+                if (race !== null && allowed.has(race.name)) flag1 = true;
+            }
+            const disallowed = this.stat?.disallowedRaces.get(n.def.projectId);
+            if (disallowed !== undefined && disallowed.size > 0 && race !== null && disallowed.has(race.name)) flag1 = false;
+            let flag2 = true;
+            if (flag1) {
+                let flag3 = false;
+                if (n.parentNodes.length > 0) {
+                    for (let i = 0; i < n.parentNodes.length; i++) {
+                        if (n.parentIsRequired[i] && !n.parentNodes[i].isResearched) flag2 = false;
+                        else if (n.parentNodes[i].isResearched) {
+                            flag3 = true;
+                            if (!researchProjects.includes(n.parentNodes[i])) researchProjects.push(n.parentNodes[i]);
+                        }
+                    }
+                } else {
+                    flag2 = true;
+                    flag3 = true;
+                }
+                if (flag2 && flag3 && n.isEnabled && !nextProjects.includes(n)) nextProjects.push(n);
+            }
+        }
+        this.latestProjects = researchProjects;
+        this.nextProjects = nextProjects;
     }
 
     // Port of ResearchSystem.cs DetermineResearchedComponents (1149).
@@ -924,6 +1155,43 @@ export class ResearchSystem {
         return component ? this.resolveImprovedComponentValues(component) : null;
     }
 
+    /** ResearchNode.AllowedRaces.Count (Galaxy.3.cs SetResearchRaceSpecialProjects). */
+    allowedRacesCount(n: TechNode): number {
+        return this.stat?.allowedRaces.get(n.def.projectId)?.size ?? 0;
+    }
+    /** ResearchNode.AllowedRaces.Contains(race). */
+    allowedRacesContains(n: TechNode, race: Race): boolean {
+        return this.stat?.allowedRaces.get(n.def.projectId)?.has(race.name) ?? false;
+    }
+
+    /** The research queue of `industry` (ResearchSystem.cs CanResearchNode 1507-1518 switch); null for Undefined. */
+    researchQueueFor(industry: IndustryType): TechNode[] | null {
+        switch (industry) {
+            case IndustryType.Weapon: return this.researchQueueWeapons;
+            case IndustryType.Energy: return this.researchQueueEnergy;
+            case IndustryType.HighTech: return this.researchQueueHighTech;
+            default: return null;
+        }
+    }
+
+    // Port of ResearchSystem.cs CanResearchNode (1503).
+    canResearchNode(node: TechNode): boolean {
+        if (!node.isEnabled) return false;
+        const researchNodeList = this.researchQueueFor(nodeIndustry(node));
+        let flag = false;
+        if (node.parentNodes.length <= 0) return true;
+        for (let i = 0; i < node.parentNodes.length; i++) {
+            const parent = node.parentNodes[i];
+            if (node.parentIsRequired[i]) {
+                if (!parent.isResearched && !researchNodeList!.includes(parent)) return false;
+                if (researchNodeList!.includes(parent)) flag = true;
+                else if (parent.isResearched) flag = true;
+            } else if (parent.isResearched) flag = true;
+            else if (researchNodeList!.includes(parent)) flag = true;
+        }
+        return flag;
+    }
+
     // Port of CheckEmpireHasHyperDriveTech: GetLatestComponent(HyperDrive) != null.
     hasHyperDrive(): boolean {
         return this.researchedComponents.some((c) => c.type === ComponentType.HyperDrive);
@@ -935,4 +1203,519 @@ export class ResearchSystem {
 // 26 WeaponSuperTorpedo.
 function isSuperWeaponCategory(categoryIndex: number): boolean {
     return categoryIndex === 23 || categoryIndex === 24 || categoryIndex === 26;
+}
+
+// ---------------------------------------------------------------------------
+// M4k: ResearchNode / ResearchNodeList helpers over runtime node lists (ResearchNode.cs, ResearchNodeList.cs).
+// ResearchNodeList derives from List<ResearchNode>: Contains / Remove / IndexOf-by-reference semantics.
+// ---------------------------------------------------------------------------
+
+/** ResearchNode.Industry: research.txt industry 0/1/2 → IndustryType Weapon/Energy/HighTech (ResearchNodeDefinitionList.cs 164-177). */
+export function nodeIndustry(n: TechNode): IndustryType {
+    switch (n.def.industry) {
+        case 0: return IndustryType.Weapon;
+        case 1: return IndustryType.Energy;
+        case 2: return IndustryType.HighTech;
+        default: return IndustryType.Undefined;
+    }
+}
+
+/** ResearchNode.Category (Galaxy.4.cs DetermineComponentCategoryByIndex). */
+export function nodeCategory(n: TechNode): ComponentCategoryType {
+    return componentCategoryByIndex(n.def.category);
+}
+
+/** ResearchNode.ResolveComponentType (ResearchNode.cs 122). */
+export function resolveComponentType(rs: ResearchSystem, n: TechNode): ComponentType {
+    if (n.def.components.length > 0) return rs.componentTypeOf(n.def.components[0]) ?? ComponentType.Undefined;
+    if (n.def.componentImprovements.length > 0) return rs.componentTypeOf(n.def.componentImprovements[0].componentId) ?? ComponentType.Undefined;
+    return ComponentType.Undefined;
+}
+
+/** ResearchNode.ResolveResearchAbilityType (ResearchNode.cs 129): the first ability's type. */
+export function resolveResearchAbilityType(n: TechNode): ResearchAbilityType {
+    return n.def.abilities.length > 0 ? abilityTypeFromFile(n.def.abilities[0].type) : ResearchAbilityType.Undefined;
+}
+
+/** ResearchAbility.RelatedObject as TroopType for a Troop ability (ResearchNodeDefinitionList.cs 581-598), else null. */
+export function abilityRelatedTroopType(a: { type: number; relatedObjectIndex: number }): TroopType | null {
+    if (abilityTypeFromFile(a.type) !== ResearchAbilityType.Troop) return null;
+    switch (a.relatedObjectIndex) {
+        case 0: return TroopType.Undefined;
+        case 1: return TroopType.Infantry;
+        case 2: return TroopType.Armored;
+        case 3: return TroopType.Artillery;
+        case 4: return TroopType.SpecialForces;
+        default: return null;
+    }
+}
+
+/** ResearchAbility.RelatedObject as BuiltObjectSubRole for an EnableShipSubRole ability (ResearchNodeDefinitionList.cs 569-579), else null. */
+export function abilityRelatedSubRole(a: { type: number; relatedObjectIndex: number }): BuiltObjectSubRole | null {
+    if (abilityTypeFromFile(a.type) !== ResearchAbilityType.EnableShipSubRole) return null;
+    switch (a.relatedObjectIndex) {
+        case 0: return BuiltObjectSubRole.Carrier;
+        case 1: return BuiltObjectSubRole.ResupplyShip;
+        default: return null;
+    }
+}
+
+/** ResearchNodeList.ContainsById (260). */
+export function containsById(list: readonly (TechNode | null)[], researchNodeId: number): boolean {
+    for (let i = 0; i < list.length; i++) {
+        const n = list[i];
+        // C# dereferences this[index] without a null check (a null entry would throw).
+        if (n!.def.projectId === researchNodeId) return true;
+    }
+    return false;
+}
+
+/** ResearchNodeList.FindNodeById (270). */
+export function findNodeById(list: readonly TechNode[], researchNodeId: number): TechNode | null {
+    for (let i = 0; i < list.length; i++) if (list[i].def.projectId === researchNodeId) return list[i];
+    return null;
+}
+
+/** List<T>.Remove: first occurrence by reference. */
+export function listRemove<T>(list: T[], item: T): boolean {
+    const i = list.indexOf(item);
+    if (i < 0) return false;
+    list.splice(i, 1);
+    return true;
+}
+
+/** ResearchNodeList.GetProjectsByIndustry (205). */
+export function getProjectsByIndustry(list: readonly TechNode[], industry: IndustryType): TechNode[] {
+    return list.filter((n) => nodeIndustry(n) === industry);
+}
+
+/** ResearchNodeList.GetProjectsByCategory (194). */
+export function getProjectsByCategory(list: readonly TechNode[], category: ComponentCategoryType): TechNode[] {
+    return list.filter((n) => nodeCategory(n) === category);
+}
+
+/** ResearchNodeList.GetProjectsByAbility (150). */
+export function getProjectsByAbility(list: readonly TechNode[], abilityType: ResearchAbilityType): TechNode[] {
+    return list.filter((n) => resolveResearchAbilityType(n) === abilityType);
+}
+
+/** ResearchNodeList.GetProjectsByType (161). */
+export function getProjectsByType(rs: ResearchSystem, list: readonly TechNode[], type: ComponentType): TechNode[] {
+    return list.filter((n) => resolveComponentType(rs, n) === type);
+}
+
+/** ResearchNodeList.GetProjectsByTypeAny (172). */
+export function getProjectsByTypeAny(rs: ResearchSystem, list: readonly TechNode[], type: ComponentType): TechNode[] {
+    return list.filter((n) => rs.componentTypesAll(n).includes(type));
+}
+
+/** ResearchNodeList.StripProjectsByType (136). */
+export function stripProjectsByType(rs: ResearchSystem, list: TechNode[], type: ComponentType): void {
+    const strip = getProjectsByTypeAny(rs, list, type);
+    for (const n of strip) listRemove(list, n);
+}
+
+/** ResearchNodeList.StripProjectsByAbility (143). */
+export function stripProjectsByAbility(list: TechNode[], abilityType: ResearchAbilityType): void {
+    const strip = getProjectsByAbility(list, abilityType);
+    for (const n of strip) listRemove(list, n);
+}
+
+/** ResearchNodeList.StripProjectsAboveTechLevel (129) via GetProjectsAboveTechLevel (572). */
+export function stripProjectsAboveTechLevel(list: TechNode[], techLevel: number): void {
+    const strip = list.filter((n) => n !== null && n.def.techLevel > techLevel);
+    for (const n of strip) listRemove(list, n);
+}
+
+/** ResearchNodeList.FindNodesByIdsUnresearched (216). */
+export function findNodesByIdsUnresearched(list: readonly TechNode[], researchNodeIds: readonly number[]): TechNode[] {
+    const out: TechNode[] = [];
+    for (const id of researchNodeIds) {
+        const n = findNodeById(list, id);
+        if (n !== null && !n.isResearched && n.isEnabled) out.push(n);
+    }
+    return out;
+}
+
+/** ResearchNodeList.CheckContainsAnyNodeId (1052). */
+export function checkContainsAnyNodeId(list: readonly TechNode[], nodeIds: readonly number[]): boolean {
+    for (const n of list) if (n !== null && nodeIds.includes(n.def.projectId)) return true;
+    return false;
+}
+
+/** ResearchNodeList.IndexBySpecialFunctionCode (250). */
+export function indexBySpecialFunctionCode(list: readonly TechNode[], specialFunctionCode: number): number {
+    for (let i = 0; i < list.length; i++) if (list[i].def.specialFunctionCode === specialFunctionCode) return i;
+    return -1;
+}
+
+/** ResearchNodeList.Merge (494). */
+export function mergeNodes(a: readonly (TechNode | null)[], projects: readonly (TechNode | null)[]): (TechNode | null)[] {
+    const out: (TechNode | null)[] = [...a];
+    for (const p of projects) if (p !== null && !containsById(out, p.def.projectId)) out.push(p);
+    return out;
+}
+
+/** ResearchNodeList.Intersect (507): the entries of `projects` whose id is in `a`, in `projects` order. */
+export function intersectNodes(a: readonly (TechNode | null)[], projects: readonly (TechNode | null)[]): TechNode[] {
+    const out: TechNode[] = [];
+    for (const p of projects) if (p !== null && containsById(a, p.def.projectId)) out.push(p);
+    return out;
+}
+
+/** ResearchNodeList.NotIntersect (519). */
+export function notIntersectNodes(a: readonly (TechNode | null)[], projects: readonly (TechNode | null)[]): TechNode[] {
+    const out: TechNode[] = [];
+    for (const n of a) if (n !== null && !containsById(projects, n.def.projectId)) out.push(n);
+    return out;
+}
+
+/** ResearchNodeList.GetLowestTechLevel (531). */
+export function getLowestTechLevel(list: readonly TechNode[]): number {
+    let lowest = 2147483647;
+    for (const n of list) if (n !== null && n.def.techLevel < lowest) lowest = n.def.techLevel;
+    return lowest;
+}
+
+/** ResearchNodeList.GetTechLevelRange (543). */
+export function getTechLevelRange(list: readonly TechNode[]): { lowest: number; highest: number } {
+    let lowest = 2147483647;
+    let highest = 0;
+    for (const n of list) {
+        if (n !== null) {
+            if (n.def.techLevel < lowest) lowest = n.def.techLevel;
+            if (n.def.techLevel > highest) highest = n.def.techLevel;
+        }
+    }
+    return { lowest, highest };
+}
+
+/** ResearchNodeList.GetProjectsAtTechLevel (560). */
+export function getProjectsAtTechLevel(list: readonly TechNode[], techLevel: number): TechNode[] {
+    return list.filter((n) => n !== null && n.def.techLevel === techLevel);
+}
+
+/** ResearchNodeList.RemoveProjectsWithTechLevelHigherThan (584): a new list of the entries at or below `techLevel`. */
+export function removeProjectsWithTechLevelHigherThan(list: readonly TechNode[], techLevel: number): TechNode[] {
+    return list.filter((n) => n !== null && n.def.techLevel <= techLevel);
+}
+
+/** ResearchNodeList.SelectRandomLowestProject(galaxy) (614). Rnd: Next(0, count) over the lowest-tech-level entries. */
+export function selectRandomLowestProject(rnd: Random, list: readonly TechNode[]): TechNode | null {
+    if (list.length > 0) {
+        let num = Number.MAX_VALUE;
+        const lowest: TechNode[] = [];
+        for (const n of list) {
+            if (n !== null) {
+                if (n.def.techLevel < num) {
+                    num = n.def.techLevel;
+                    lowest.length = 0;
+                    lowest.push(n);
+                } else if (n.def.techLevel === num) lowest.push(n);
+            }
+        }
+        if (lowest.length > 0) return lowest[rnd.next(0, lowest.length)];
+    }
+    return null;
+}
+
+/** ResearchNodeList.GetHighestResearchedProjectForIndustry (691). */
+export function getHighestResearchedProjectForIndustry(list: readonly TechNode[], industry: IndustryType): TechNode | null {
+    let num = 0.0;
+    let r: TechNode | null = null;
+    for (const n of list) {
+        if (n.isResearched && nodeIndustry(n) === industry && n.def.techLevel > num) {
+            r = n;
+            num = n.def.techLevel;
+        }
+    }
+    return r;
+}
+
+/** ResearchNodeList.GetHighestProjectForCategory (706). */
+export function getHighestProjectForCategory(list: readonly TechNode[], category: ComponentCategoryType): TechNode | null {
+    let num = 0.0;
+    let r: TechNode | null = null;
+    for (const n of list) {
+        if (nodeCategory(n) === category && n.def.techLevel > num) {
+            r = n;
+            num = n.def.techLevel;
+        }
+    }
+    return r;
+}
+
+/** ResearchNodeList.GetHighestProjectForTypeAny (738). */
+export function getHighestProjectForTypeAny(rs: ResearchSystem, list: readonly TechNode[], type: ComponentType): TechNode | null {
+    let num = 0.0;
+    let r: TechNode | null = null;
+    for (const n of list) {
+        if (rs.componentTypesAll(n).includes(type) && n.def.techLevel > num) {
+            r = n;
+            num = n.def.techLevel;
+        }
+    }
+    return r;
+}
+
+/** ResearchNodeList.GetLowestProjectForTypeAny (783). */
+export function getLowestProjectForTypeAnyIn(rs: ResearchSystem, list: readonly TechNode[], type: ComponentType): TechNode | null {
+    let num = Number.MAX_VALUE;
+    let r: TechNode | null = null;
+    for (const n of list) {
+        if (rs.componentTypesAll(n).includes(type) && n.def.techLevel < num) {
+            r = n;
+            num = n.def.techLevel;
+        }
+    }
+    return r;
+}
+
+/** ResearchNodeList.GetSecondLowestProjectForTypeAny (828) — verbatim, including its "previous lowest" semantics. */
+export function getSecondLowestProjectForTypeAny(rs: ResearchSystem, list: readonly TechNode[], type: ComponentType): TechNode | null {
+    let num = Number.MAX_VALUE;
+    let researchNode: TechNode | null = null;
+    let r: TechNode | null = null;
+    for (const n of list) {
+        if (rs.componentTypesAll(n).includes(type) && n.def.techLevel < num) {
+            if (researchNode !== null) r = researchNode;
+            researchNode = n;
+            num = researchNode.def.techLevel;
+        }
+    }
+    return r;
+}
+
+/** ResearchNodeList.GetLowestUnresearchedProjectForTypeAny(type, race) (798). */
+export function getLowestUnresearchedProjectForTypeAny(rs: ResearchSystem, list: readonly TechNode[], type: ComponentType, race: Race | null): TechNode | null {
+    let num = Number.MAX_VALUE;
+    let r: TechNode | null = null;
+    for (const n of list) {
+        if (!n.isResearched && rs.componentTypesAll(n).includes(type) && n.def.techLevel < num && (race === null || rs.allowedRacesCount(n) <= 0 || rs.allowedRacesContains(n, race))) {
+            r = n;
+            num = n.def.techLevel;
+        }
+    }
+    return r;
+}
+
+/** ResearchNodeList.GetLowestUnresearchedProjectForRaceForTypeAny(type, race) (768). */
+export function getLowestUnresearchedProjectForRaceForTypeAny(rs: ResearchSystem, list: readonly TechNode[], type: ComponentType, race: Race): TechNode | null {
+    let num = Number.MAX_VALUE;
+    let r: TechNode | null = null;
+    for (const n of list) {
+        if (rs.componentTypesAll(n).includes(type) && rs.allowedRacesContains(n, race) && n.def.techLevel < num) {
+            r = n;
+            num = n.def.techLevel;
+        }
+    }
+    return r;
+}
+
+/** ResearchNodeList.GetLowestUnresearchedProjectForRaceForCategory(category, race) (721). */
+export function getLowestUnresearchedProjectForRaceForCategory(rs: ResearchSystem, list: readonly TechNode[], category: ComponentCategoryType, race: Race): TechNode | null {
+    let num = Number.MAX_VALUE;
+    let r: TechNode | null = null;
+    for (const n of list) {
+        if (nodeCategory(n) === category && rs.allowedRacesContains(n, race) && n.def.techLevel < num) {
+            r = n;
+            num = n.def.techLevel;
+        }
+    }
+    return r;
+}
+
+/** ResearchNodeList.GetLowestProjectForTroopType (940) / GetLowestUnresearchedProjectForTroopType (962). */
+export function getLowestProjectForTroopType(list: readonly TechNode[], troopType: TroopType, unresearchedOnly = false): TechNode | null {
+    let num = Number.MAX_VALUE;
+    let r: TechNode | null = null;
+    for (const n of list) {
+        if (unresearchedOnly && n.isResearched) continue;
+        for (const a of n.def.abilities) {
+            if (abilityRelatedTroopType(a) === troopType && n.def.techLevel < num) {
+                r = n;
+                num = n.def.techLevel;
+            }
+        }
+    }
+    return r;
+}
+
+/** ResearchNodeList.GetLowestProjectForDedicatedCarriers (984). */
+export function getLowestProjectForDedicatedCarriers(list: readonly TechNode[]): TechNode | null {
+    let num = Number.MAX_VALUE;
+    let r: TechNode | null = null;
+    for (const n of list) {
+        for (const a of n.def.abilities) {
+            if (abilityRelatedSubRole(a) === BuiltObjectSubRole.Carrier && n.def.techLevel < num) {
+                r = n;
+                num = n.def.techLevel;
+            }
+        }
+    }
+    return r;
+}
+
+/** PlanetaryFacilityDefinitionList.cs LoadFromFile 100-151: facilities.txt Type column → PlanetaryFacilityType. */
+export enum PlanetaryFacilityType {
+    Undefined,
+    TroopTrainingCenter,
+    RoboticTroopFoundry,
+    CloningFacility,
+    PlanetaryShield,
+    IonCannon,
+    RegionalCapital,
+    FortifiedBunker,
+    TerraformingFacility,
+    Wonder,
+    PirateBase,
+    PirateFortress,
+    ArmoredFactory,
+    MilitaryAcademy,
+    SpyAcademy,
+    NavalAcademy,
+    ScienceAcademy,
+    PirateCriminalNetwork,
+}
+const FACILITY_TYPE_BY_FILE: PlanetaryFacilityType[] = [
+    PlanetaryFacilityType.TroopTrainingCenter, PlanetaryFacilityType.RoboticTroopFoundry, PlanetaryFacilityType.CloningFacility,
+    PlanetaryFacilityType.PlanetaryShield, PlanetaryFacilityType.IonCannon, PlanetaryFacilityType.RegionalCapital,
+    PlanetaryFacilityType.FortifiedBunker, PlanetaryFacilityType.TerraformingFacility, PlanetaryFacilityType.Wonder,
+    PlanetaryFacilityType.PirateBase, PlanetaryFacilityType.PirateFortress, PlanetaryFacilityType.ArmoredFactory,
+    PlanetaryFacilityType.SpyAcademy, PlanetaryFacilityType.ScienceAcademy, PlanetaryFacilityType.NavalAcademy,
+    PlanetaryFacilityType.MilitaryAcademy, PlanetaryFacilityType.PirateCriminalNetwork,
+];
+export function facilityType(f: Facility): PlanetaryFacilityType {
+    return FACILITY_TYPE_BY_FILE[f.type] ?? PlanetaryFacilityType.Undefined;
+}
+
+/** WonderType.cs (facilities.txt WonderType column 0-12 maps 1:1). */
+export enum WonderType {
+    Undefined,
+    EmpirePopulationGrowth,
+    EmpireHappiness,
+    EmpireResearchWeapons,
+    EmpireResearchEnergy,
+    EmpireResearchHighTech,
+    EmpireIncome,
+    ColonyPopulationGrowth,
+    ColonyHappiness,
+    ColonyDefense,
+    ColonyConstructionSpeed,
+    ColonyIncome,
+    RaceAchievement,
+}
+
+/** ResearchNodeList.GetLowestProjectForPlanetaryFacilityType (879) / GetLowestUnresearchedProjectForPlanetaryFacilityType (894). */
+export function getLowestProjectForPlanetaryFacilityType(rs: ResearchSystem, list: readonly TechNode[], type: PlanetaryFacilityType, unresearchedOnly = false): TechNode | null {
+    let num = Number.MAX_VALUE;
+    let r: TechNode | null = null;
+    for (const n of list) {
+        if (unresearchedOnly && n.isResearched) continue;
+        const f = rs.planetaryFacilityOf(n);
+        if (f !== null && facilityType(f) === type && n.def.techLevel < num) {
+            r = n;
+            num = n.def.techLevel;
+        }
+    }
+    return r;
+}
+
+/** ResearchNodeList.GetLowestProjectForWonderType (910) / GetLowestUnresearchedProjectForWonderType (925). */
+export function getLowestProjectForWonderType(rs: ResearchSystem, list: readonly TechNode[], wonderType: WonderType, unresearchedOnly = false): TechNode | null {
+    let num = Number.MAX_VALUE;
+    let r: TechNode | null = null;
+    for (const n of list) {
+        if (unresearchedOnly && n.isResearched) continue;
+        const f = rs.planetaryFacilityOf(n);
+        if (f !== null && facilityType(f) === PlanetaryFacilityType.Wonder && f.wonderType === wonderType && n.def.techLevel < num) {
+            r = n;
+            num = n.def.techLevel;
+        }
+    }
+    return r;
+}
+
+/** ResearchNodeList.GetProjectByFacility (657): reference match on the static definition (by id here). */
+export function getProjectByFacility(rs: ResearchSystem, list: readonly TechNode[], facility: Facility): TechNode | null {
+    for (const n of list) {
+        const f = rs.planetaryFacilityOf(n);
+        if (n !== null && f !== null && f.facilityId === facility.facilityId) return n;
+    }
+    return null;
+}
+
+/** ResearchNodeList.GetHighestProjectForComponent (668). */
+export function getHighestProjectForComponent(list: readonly TechNode[], componentId: number): TechNode | null {
+    let num = 0.0;
+    let r: TechNode | null = null;
+    for (const n of list) {
+        if (n.def.components.includes(componentId)) {
+            if (n.def.techLevel > num) {
+                r = n;
+                num = n.def.techLevel;
+            }
+        } else if (n.def.componentImprovements.some((ci) => ci.componentId === componentId) && n.def.techLevel > num) {
+            r = n;
+            num = n.def.techLevel;
+        }
+    }
+    return r;
+}
+
+/** ResearchNodeList.CheckProjectIsReachableWithAllNeededParentResearch (408). */
+export function checkProjectIsReachableWithAllNeededParentResearch(project: TechNode): { reachable: boolean; requiredParentsNeedResearching: boolean; optionalParentsNeedResearching: boolean } {
+    let requiredParentsNeedResearching = false;
+    let optionalParentsNeedResearching = false;
+    if (project.parentNodes.length <= 0) return { reachable: true, requiredParentsNeedResearching, optionalParentsNeedResearching };
+    let num1 = 0;
+    let num2 = 0;
+    let num3 = 0;
+    let num4 = 0;
+    for (let i = 0; i < project.parentNodes.length; i++) {
+        const parentNode = project.parentNodes[i];
+        let flag = false;
+        if (project.parentIsRequired.length > i) flag = project.parentIsRequired[i];
+        if (parentNode !== null) {
+            if (flag) {
+                ++num1;
+                if (!parentNode.isResearched) ++num2;
+            } else {
+                ++num3;
+                if (parentNode.isResearched) ++num4;
+            }
+        }
+    }
+    if (num1 > 0) {
+        if (num2 === 0) return { reachable: true, requiredParentsNeedResearching, optionalParentsNeedResearching };
+        requiredParentsNeedResearching = true;
+    } else {
+        if (num3 <= 0 || num4 > 0) return { reachable: true, requiredParentsNeedResearching, optionalParentsNeedResearching };
+        optionalParentsNeedResearching = true;
+    }
+    return { reachable: false, requiredParentsNeedResearching, optionalParentsNeedResearching };
+}
+
+/** ResearchNodeList.GetCurrentPath(startingNode, race) (380). */
+export function getCurrentPath(rs: ResearchSystem, startingNode: TechNode, race: Race | null): (TechNode | null)[] {
+    let currentPath1: (TechNode | null)[] = [];
+    const r = checkProjectIsReachableWithAllNeededParentResearch(startingNode);
+    if (!r.reachable) {
+        for (let i = 0; i < startingNode.parentNodes.length; i++) {
+            const parentNode = startingNode.parentNodes[i];
+            let flag = false;
+            if (startingNode.parentIsRequired.length > i) flag = startingNode.parentIsRequired[i];
+            if (
+                parentNode !== null &&
+                ((r.requiredParentsNeedResearching && flag) || (r.optionalParentsNeedResearching && !flag)) &&
+                !parentNode.isResearched &&
+                (rs.allowedRacesCount(parentNode) === 0 || (race !== null && rs.allowedRacesContains(parentNode, race)))
+            ) {
+                currentPath1.push(parentNode);
+                const currentPath2 = getCurrentPath(rs, parentNode, race);
+                if (currentPath2.length > 0) currentPath1 = mergeNodes(currentPath1, currentPath2);
+            }
+        }
+    }
+    return currentPath1;
 }

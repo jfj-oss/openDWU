@@ -741,7 +741,7 @@ export function generatePirateEmpire(
     if (designPictureFamilyIndex >= 0) empire.designPictureFamilyIndex = designPictureFamilyIndex;
     if (techLevel !== 0.5) empire.research.setTechTreeLevel(galaxy.rnd, race, techLevel, true);
     else empire.research.setTechTreeStartingDefaultsPirates(race, empire.policy);
-    empire.research.update();
+    empire.research.update(race);
     empire.reviewResearchAbilities();
     empire.reviewDesignsBuiltObjectsImprovedComponents();
     empire.pirateEmpireBaseHabitat = habitat;

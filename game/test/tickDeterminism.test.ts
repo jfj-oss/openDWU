@@ -82,8 +82,9 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // recruits — Rnd per completed recruit —, CheckSatisfaction Rnd.Next(0, 3); game-start Empire.DoTasks too) and
         // M4b (ships run the real ExecuteCommands frame: parked ships follow their parent's orbit via
         // EvaluateRelativeToParent, the no-mission epilogue resets idle speeds; freighters contracted by M4d now get
-        // real missions and command queues).
-        expect(summary.digest).toBe('545a20e004ba236a');
+        // real missions and command queues). M4k: the game-start and periodic Empire.DoTasks run PerformResearch (queue
+        // project picks and research-event rolls draw Rnd; completed research changes components and troop types).
+        expect(summary.digest).toBe('c52d805d788d9173');
     }, 600000);
 });
 

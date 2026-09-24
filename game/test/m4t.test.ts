@@ -136,17 +136,23 @@ describe('Galaxy.4.cs MergeGalaxyMap', () => {
 
 describe('BuiltObject.1.cs ScanArea / ScanForLocations, BuiltObject.cs pre-warp visibility', () => {
     it('surveys unsurveyed habitats within sensor range and draws Next(0, 800) once per non-independent one', () => {
-        const ship = galaxy.builtObjects.find((b) => b.empire !== null && b.empire !== galaxy.independentEmpire && b.sensorResourceProfileSensorRange > 0)!;
+        // First empire ship / base with a habitat in sensor range (which one depends on the seed's game start).
+        const habitatsInRange = (ship: (typeof galaxy.builtObjects)[number]) => {
+            const r = ship.sensorResourceProfileSensorRange;
+            return getHabitatsAtLocation(galaxy, ship.xpos, ship.ypos, r + 46000).filter(
+                (h) =>
+                    h.xpos >= Math.trunc(ship.xpos) - r &&
+                    h.xpos <= Math.trunc(ship.xpos) + r &&
+                    h.ypos >= Math.trunc(ship.ypos) - r &&
+                    h.ypos <= Math.trunc(ship.ypos) + r &&
+                    galaxy.calculateDistanceSquared(h.xpos, h.ypos, ship.xpos, ship.ypos) <= r * r,
+            );
+        };
+        const ship = galaxy.builtObjects.find(
+            (b) => b.empire !== null && b.empire !== galaxy.independentEmpire && b.sensorResourceProfileSensorRange > 0 && habitatsInRange(b).length > 0,
+        )!;
         const empire = ship.empire as Empire;
-        const r = ship.sensorResourceProfileSensorRange;
-        const inRange = getHabitatsAtLocation(galaxy, ship.xpos, ship.ypos, r + 46000).filter(
-            (h) =>
-                h.xpos >= Math.trunc(ship.xpos) - r &&
-                h.xpos <= Math.trunc(ship.xpos) + r &&
-                h.ypos >= Math.trunc(ship.ypos) - r &&
-                h.ypos <= Math.trunc(ship.ypos) + r &&
-                galaxy.calculateDistanceSquared(h.xpos, h.ypos, ship.xpos, ship.ypos) <= r * r,
-        );
+        const inRange = habitatsInRange(ship);
         expect(inRange.length).toBeGreaterThan(0);
         const saved = inRange.map((h) => empire.resourceMap.checkResourcesKnown(h));
         for (const h of inRange) empire.resourceMap.setResourcesKnown(h, false);

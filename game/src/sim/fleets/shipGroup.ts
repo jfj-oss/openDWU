@@ -173,3 +173,12 @@ export function shipGroupAssignMission(
     // RND: fleet mission resolution draws (ResolveCommandsForMission per ship) — not drawn until M4l.
     /* TODO(port) M4l */ todo(T_shipGroupAssignMission);
 }
+
+const T_disbandShipGroup = registerTodo('M4l', 'disbandShipGroup');
+/** Empire.8.cs 5145 DisbandShipGroup(shipGroup). Stub added by M4k (DoResearchBreakthrough hyperspace tech). */
+export function disbandShipGroup(galaxy: Galaxy, empire: Empire, shipGroup: ShipGroup): void {
+    void galaxy;
+    void empire;
+    void shipGroup;
+    /* TODO(port) M4l */ todo(T_disbandShipGroup);
+}

@@ -213,12 +213,15 @@ describe('generatePirateEmpireName', () => {
 // (re-pinned: createGame now runs the price reviews and the first galaxy tick's huge block and
 // independent traders before GenerateNewPirateEmpires, pirate starting characters (Galaxy.8.cs 4822)
 // draw between factions, and Start.2.cs 1493-1533 may add one more faction near the player.)
+// (re-pinned M4k: the game-start Empire.DoTasks now runs PerformResearch — SelectNextResearchProject draws
+// Rnd (SelectRandomLowestProject) and research events draw Next(0, num4) per industry — so later game-start
+// Rnd draws shift.)
 const PINNED_SEED1_PIRATES: unknown[] = [
-    ['Hidden Minerals', 'S272 7', 'Ketarov', 16384],
-    ['Ugnar Horde', 'S106 7', 'Boskara', 3674214],
-    ['S147 Corsairs', 'S251 3', 'Naxxilian', 4331580],
-    ['Grim Mining', 'S97 3', 'Ketarov', 59],
-    ['Dread Outlaws', 'QR411', 'Dhayut', 8323096],
-    ['Fearsome Sun Authority', 'S118 2', 'Kiadian', 88],
-    ['Sol Authority', 'S68 2', 'Ikkuro', 26112],
+    ['Dhayu Invaders', 'S95 2', 'Atuuk', 796684],
+    ['Dread Storm Council', 'S250 7', 'Ackdarian', 32639],
+    ['Fierce League', 'S134 1', 'Kiadian', 88],
+    ['S83 Intruders', 'S141 7', 'Atuuk', 2427716],
+    ['Murderous Moon Invaders', 'BK606', 'Atuuk', 531208],
+    ['Savage Exports', 'S31 6', 'Securan', 16511],
+    ['Dark Force', 'SI948', 'Kiadian', 3155216],
 ];

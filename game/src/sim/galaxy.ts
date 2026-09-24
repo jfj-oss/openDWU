@@ -4379,6 +4379,8 @@ export class Galaxy {
      */
     baconHabitatClockRnd: Random | null = null;
     // ---- M4k fields (research progress) ----
+    /** Galaxy.cs 116 _ResearchSpeedModifier (Start.2.cs 110 sets 1.0). */
+    researchSpeedModifier = 1.0;
     // ---- M4l fields (ship groups) ----
     // ---- M4m fields (military AI) ----
     // ---- M4n fields (threats, attack AI) ----
@@ -4412,7 +4414,7 @@ export function generateGalaxy(options: GenerateGalaxyOptions): Galaxy {
     // ResourceSystem.Resources (Galaxy.4.cs ctor loads it before generation).
     galaxy.resources = gameData?.resources ?? [];
     galaxy.resourceSystem = buildResourceSystem(galaxy.resources, gameData?.components ?? []);
-    galaxy.researchStatic = gameData ? buildResearchStatic(gameData.research, gameData.components, gameData.races, gameData.policies, gameData.piratePolicies, buildComponentStatic(gameData)) : null;
+    galaxy.researchStatic = gameData ? buildResearchStatic(gameData.research, gameData.components, gameData.races, gameData.policies, gameData.piratePolicies, buildComponentStatic(gameData), gameData.facilities, gameData.fighters, gameData.plagues) : null;
     galaxy.designSpecificationTexts = gameData?.designSpecificationTexts ?? new Map();
     galaxy.designNames = gameData?.designNames ?? [];
     // Port of Galaxy.cs Races (loaded from GameData in the ctor).

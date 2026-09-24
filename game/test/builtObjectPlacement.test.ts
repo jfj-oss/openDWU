@@ -279,14 +279,17 @@ describe('FindNearestBuiltObject / FindNearestPirateFaction', () => {
 // Pinned for seed 1 (TS port). (re-pinned: createGame now runs the price reviews, the first
 // galaxy tick (independent traders) and the per-empire station/tax setup before the player's
 // CreateStateShips, so the name draws come later in the Rnd stream.)
+// (re-pinned M4k: the game-start Empire.DoTasks now runs PerformResearch — SelectNextResearchProject draws
+// Rnd (SelectRandomLowestProject) and research events draw Next(0, num4) per industry — so later game-start
+// Rnd draws shift.)
 const PINNED_NAMES: unknown[] = [
-    ['ExplorationShip', 'Lost Pride'],
-    ['ExplorationShip', 'Superb Mystery'],
-    ['ExplorationShip', 'Bargain of S147'],
-    ['ExplorationShip', 'Precious Chance'],
-    ['ExplorationShip', 'Ancient Hope'],
-    ['ExplorationShip', 'S147 Obsession'],
-    ['ExplorationShip', 'Resolute Ranger'],
-    ['ConstructionShip', 'Prudent Guide'],
-    ['ConstructionShip', 'Surly Lurker'],
+    ['ExplorationShip', 'S147 Queen'],
+    ['ExplorationShip', 'S147 Discovery'],
+    ['ExplorationShip', 'Bountiful Subterfuge'],
+    ['ExplorationShip', 'Feeble Journey'],
+    ['ExplorationShip', 'Gallant Impulse'],
+    ['ExplorationShip', 'Futile Guardian'],
+    ['ExplorationShip', 'Slippery Miracle'],
+    ['ConstructionShip', 'Precious Wonder'],
+    ['ConstructionShip', 'S147 Trader'],
 ];
