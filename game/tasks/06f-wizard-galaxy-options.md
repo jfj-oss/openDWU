@@ -225,4 +225,31 @@ Start.cs:4415
 
 
 // ---- BaconStart.OverrideLowIndependentLifeValue (method_67 delegates here)
+// vanilla table (use this; the 150 case is replaced by a Bacon setting in the mod):
+        public static int OverrideLowIndependentLifeValue(int sliderValue)
+        {
+            int num = 400;
+            switch (sliderValue)
+            {
+                case 0:
+                    num = 150;
+                    break;
+                case 1:
+                    num = 250;
+                    break;
+                case 2:
+                    num = 400;
+                    break;
+                case 3:
+                    num = 700;
+                    break;
+                case 4:
+                    num = 1000;
+                    break;
+            }
+            if (num == 150)
+                num = BaconStart.lowIndependentLifeValue;
+            return num;
+        }
+    }
 ```
