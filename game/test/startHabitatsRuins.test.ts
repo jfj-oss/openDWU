@@ -4,11 +4,11 @@ import { GalaxyShape, HabitatCategoryType, HabitatType, IndustryType } from '../
 import type { Galaxy } from '../src/sim/galaxy';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 import type { GameData } from '../src/sim/data/gameData';
-import { applyResearchBonusGasGiant, ensureImportantPreWarpResources, getMostTerrestrialResourcePrevalance } from '../src/sim/startHabitats';
-import { clearRuinBonusesForAge, findPlanetMoonBeyondRangeOrFurthestNoRuins, placeRuinsUnlockTech, placeStartRuins, Ruin, RuinType } from '../src/sim/ruins';
+import { getMostTerrestrialResourcePrevalance } from '../src/sim/startHabitats';
+import { clearRuinBonusesForAge, findPlanetMoonBeyondRangeOrFurthestNoRuins, Ruin, RuinType } from '../src/sim/ruins';
 
 // Start.2.cs 1156-1304 (start habitats + unlock-tech ruins) and 1536-1565
-// (SelectRuins pass, Age>0 clearing), run standalone on a createGame galaxy.
+// (SelectRuins pass, Age>0 clearing), as createGame runs them.
 let gameData: GameData;
 beforeAll(async () => { gameData = await loadGameDataFs(); }, 60000);
 
@@ -22,31 +22,66 @@ function opts(techLevel: number): CreateGameOptions {
     };
 }
 
-// Counts Galaxy.Rnd draws (Next + NextDouble) made while `fn` runs.
-function countDraws(galaxy: Galaxy, fn: () => void): number {
+// Counts Galaxy.Rnd draws (Next + NextDouble) from now on.
+function drawCounter(galaxy: Galaxy): () => number {
     const rnd = galaxy.rnd;
     const next = rnd.next.bind(rnd) as (...x: number[]) => number;
     const nextDouble = rnd.nextDouble.bind(rnd);
     let n = 0;
     rnd.next = ((...a: number[]) => { n++; return next(...a); }) as typeof rnd.next;
     rnd.nextDouble = () => { n++; return nextDouble(); };
-    try { fn(); } finally { rnd.next = next as typeof rnd.next; rnd.nextDouble = nextDouble; }
-    return n;
+    return () => n;
 }
 
+// createGame's own Start.2.cs 1156-1304 (per empire) and 1534-1565 steps, with the draws of each
+// counted at the phase boundaries (test-only __phaseHook); stopped right after the ruins.
 function run(techLevel: number) {
-    const galaxy = createGame(opts(techLevel)).galaxy;
     const perEmpire: { gas: number; preWarp: number; unlock: number }[] = [];
-    const habitatsBefore = galaxy.habitats.length;
-    for (const empire of galaxy.empires) {
-        const gas = countDraws(galaxy, () => applyResearchBonusGasGiant(galaxy, empire));
-        const preWarp = countDraws(galaxy, () => ensureImportantPreWarpResources(galaxy, empire, techLevel));
-        const unlock = countDraws(galaxy, () => placeRuinsUnlockTech(galaxy, empire, techLevel));
-        perEmpire.push({ gas, preWarp, unlock });
-    }
-    galaxy.updateSystemInfo();
-    const ruins = countDraws(galaxy, () => placeStartRuins(galaxy));
-    const clear = countDraws(galaxy, () => clearRuinBonusesForAge(galaxy));
+    let count: () => number = () => 0;
+    let mark = 0;
+    let cur = { gas: 0, preWarp: 0, unlock: 0 };
+    let habitatsBefore = 0;
+    let ruins = 0;
+    let clear = 0;
+    const since = () => {
+        const n = count() - mark;
+        mark = count();
+        return n;
+    };
+    const galaxy = createGame({
+        ...opts(techLevel),
+        __phaseHook: (phase, g) => {
+            switch (phase) {
+                case 'firstGalaxyTick':
+                    count = drawCounter(g);
+                    habitatsBefore = g.habitats.length;
+                    break;
+                case 'empire:baseFacilities':
+                    since();
+                    break;
+                case 'empire:gasGiantBonus':
+                    cur = { gas: since(), preWarp: 0, unlock: 0 };
+                    break;
+                case 'empire:preWarpResources':
+                    cur.preWarp = since();
+                    break;
+                case 'empire:unlockTechRuin':
+                    cur.unlock = since();
+                    perEmpire.push(cur);
+                    break;
+                case 'nearPlayerPirate':
+                    since();
+                    break;
+                case 'startRuins':
+                    ruins = since();
+                    break;
+                case 'ruins':
+                    clear = since();
+                    return 'stop';
+            }
+            return undefined;
+        },
+    }).galaxy;
     const withRuins = galaxy.habitats.filter((h) => h.ruin !== null);
     return {
         galaxy,

@@ -14,6 +14,7 @@
 // ProjectForceStructure / ProjectPrivateForceStructure run (task M3b; none draws
 // Rnd) — see the stand-in below.
 
+import { generateCapitalStartingTroops } from './troops';
 import { createNewDesigns } from './designGeneration';
 import { projectForceStructure, projectPrivateForceStructure, recalculateColonyTaxRevenues } from './forceStructure';
 // taxes.ts also registers empire.ts's TakeOwnershipOfColony hooks (SetColonyTaxRate etc.).
@@ -157,14 +158,8 @@ export function generateEmpire(
     empire.setStartupColonyResourceCargo(capital);
     capital.setDevelopmentLevel(10);
     // capital.DoTasks(CurrentDateTime): no-op at game start (see colony.ts).
-    // TODO(port): EstimatedDefensiveForceRequired — 0 until ported (no Rnd).
-    let num6 = 0 * 2;
-    if (num6 > COLONY_MAXIMUM_TROOP_STRENGTH / 100) num6 = COLONY_MAXIMUM_TROOP_STRENGTH / 100;
-    const num7 = Math.trunc(num6 * rnd.nextDouble());
-    let num8 = Math.trunc(num7 / 100);
-    if (techLevel === 0.0) num8 = Math.min(1, num8);
-    // TODO(port): TroopCanRecruitInfantry → num8 × GenerateNewTroop(Infantry, race.TroopStrength).
-    void num8;
+    // Galaxy.7.cs 5291-5316: capital garrison (one NextDouble).
+    generateCapitalStartingTroops(galaxy, empire, capital, race, techLevel, galaxy.difficultyLevel);
     for (const h of galaxy.habitats) {
         if (h.parent === null) empire.resourceMap.setResourcesKnown(h, false);
     }
@@ -189,6 +184,18 @@ export function generateEmpire(
     // ReviewEmpireAbilityBonuses, ReviewDiplomaticStrategies,
     // PayMaintenanceForBuiltObjects). Rnd parity with the C# is already lost at this
     // point (the skipped steps draw Rnd); none of the ported steps draws Rnd.
+    empireDoTasksStandIn(galaxy, empire);
+    empire.initiateConstruction = true;
+    galaxy.setupHomeSystem(capital, race, homeSystemDescription, minimumResourceCount, minimumCriticalResourceCount);
+    return { empire, expansion, actualTechLevel };
+}
+
+// The ported steps of Empire.DoTasks at game start (see the RND DIVERGENCE note in
+// generateEmpire): periodic-block cache writes, CreateNewDesigns, IdentifyResourceCentres,
+// ProjectForceStructure / ProjectPrivateForceStructure. Used for GenerateEmpire's DoTasks
+// (Galaxy.7.cs 5346) and for createGame's second empire DoTasks (Start.2.cs 1342), which
+// only runs these blocks when the touch times were reset (galaxy age > 0).
+export function empireDoTasksStandIn(galaxy: Galaxy, empire: Empire): void {
     const starDate = startStarDateForAge(galaxy.age); // Galaxy.CurrentStarDate
     // Periodic block, Empire.1.cs 3523-3538 — it runs on this first tick: the Empire ctor sets
     // _LastPeriodicTouch = now - (LongProcessingInterval + 1) s (Empire.cs 3921-3923), so
@@ -222,13 +229,7 @@ export function generateEmpire(
     empire.resourceTargets = identifyResourceCentres(galaxy, empire);
     // Long block, Empire.1.cs 3690-3691 (forceStructure.ts): the projections
     // Galaxy.8.cs CreateStateShips / CreatePrivateShips consume.
-    // TODO(port): Galaxy.DifficultyLevel is not kept on the TS Galaxy; it is only
-    // read behind `AnnualStateMaintenance < num2 * 0.95`, false at game start
-    // (no ships, zero tax income).
-    const forceStructureCtx = { currentStarDate: starDate, difficultyLevel: 1.0 };
+    const forceStructureCtx = { currentStarDate: starDate, difficultyLevel: galaxy.difficultyLevel };
     projectForceStructure(galaxy, empire, forceStructureCtx);
     projectPrivateForceStructure(galaxy, empire, forceStructureCtx);
-    empire.initiateConstruction = true;
-    galaxy.setupHomeSystem(capital, race, homeSystemDescription, minimumResourceCount, minimumCriticalResourceCount);
-    return { empire, expansion, actualTechLevel };
 }

@@ -12,8 +12,8 @@
 // once in place of that tick.
 // Task M3e: the pirate base + fleet block (Galaxy.8.cs 4623-4823), CreatePirateMiningStations
 // (Galaxy.8.cs 776) and the super-pirate event + faction (Galaxy.cs 3297/3313, Galaxy.8.cs 3984).
-// Not ported: starting characters (GenerateStartingCharacters, TODO below), flags (flag shapes
-// use a clock-seeded Random — no galaxy Rnd).
+// Starting characters: Empire.GenerateStartingCharacters(base) (Galaxy.8.cs 4822, characters.ts).
+// Not ported: flags (flag shapes use a clock-seeded Random — no galaxy Rnd).
 // Task M3f: the super-pirate design pipeline (Galaxy.8.cs 3760-3982, 4121-4254; Empire.10.cs
 // GenerateDesignFromSpec 3387 in designGeneration.ts).
 //
@@ -37,10 +37,11 @@
 //   CreatePirateMiningStations (count: 2, Mercenary 1, Smuggler 3): per CreateMiningStation that
 //                reaches a design, SelectRelativeHabitatSurfacePoint (NextDouble, NextDouble) and,
 //                when placed, a heading NextDouble.
-//   GenerateStartingCharacters: TODO(port) — its Rnd draws are missing (see below).
+//   GenerateStartingCharacters(base) (Galaxy.8.cs 4822): characters.ts (its own Rnd draws).
 // Only designs the faction can build are used (FindNewestCanBuild); a missing design skips that
 // group and its draws (the escort Next(0,3) is still drawn).
 import type { Galaxy } from './galaxy';
+import { generateStartingCharacters } from './characters';
 import { HabitatCategoryType, type Habitat, type SystemInfo } from './types';
 import type { Race } from './data/races';
 import { Empire } from './empire';
@@ -892,13 +893,8 @@ export function generatePirateEmpire(
             }
             createPirateMiningStations(galaxy, empire, count, false);
         }
-        // TODO(port): empire.GenerateStartingCharacters(builtObject) (Galaxy.8.cs 4822 →
-        // Empire.6.cs 4309): Character / CharacterList / AvailableCharacters are not ported.
-        // In C# it adds the pirate's starting characters (a PirateLeader via
-        // GenerateNewCharacter when the available list has none, all roles except
-        // Ambassador/ColonyGovernor/Leader/TroopGeneral) located at the base; character
-        // generation draws galaxy Rnd, so the stream diverges from C# after this point.
-        void builtObject;
+        // Galaxy.8.cs 4822: empire.GenerateStartingCharacters(builtObject) (Empire.6.cs 4309).
+        generateStartingCharacters(galaxy, empire, builtObject);
     }
     empire.colonizationTargets = pirateReviewColoniesToControl(galaxy, empire, ctx.independentColonies);
     empire.stateMoney = 20000.0;

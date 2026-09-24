@@ -43,6 +43,7 @@ import type { CharacterFileRow, CharacterNames } from './data/characters';
 import type { Design } from './design';
 import { findNewestCanBuild, resolveSubRoleDescription } from './designGeneration';
 import type { BuiltObject } from './builtObject';
+import type { RaceFamily } from './data/raceFamilies';
 import { BuiltObjectRole } from './data/designSpecifications';
 import { BuiltObjectSubRole } from './builtObjectTypes';
 
@@ -121,6 +122,8 @@ export class Galaxy {
     designSpecificationTexts: Map<string, string> = new Map();
     /** Galaxy.DesignNames (designNames.txt families). */
     designNames: string[][] = [];
+    /** Galaxy.DifficultyLevel (Galaxy.cs 465; wizard setting, default 1.0). */
+    difficultyLevel = 1.0;
     // Task C2c-2: Galaxy.EmpireTerritory + EmpireTerritoryColonyInfluenceRangeFactor (Galaxy.cs:726).
     empireTerritory = new EmpireTerritory();
     empireTerritoryColonyInfluenceRangeFactor = 1;
@@ -4206,6 +4209,78 @@ export class Galaxy {
                 this.starClusterPortions[i] /= portionTotal;
             }
         }
+    }
+
+    // ---- Game-start tail (gameStartTail.ts, Start.2.cs 1568-2034) ----
+    /** Galaxy.cs 611 AbandonedBuiltObjects (BuiltObjectList). */
+    abandonedBuiltObjects: BuiltObject[] = [];
+    /** Galaxy.cs 605 AbandonedShipCount. */
+    abandonedShipCount = 0;
+    /** Galaxy.cs 542 SilverMistCreatureRuinsHabitat. */
+    silverMistCreatureRuinsHabitat: Habitat | null = null;
+    /** Galaxy.cs 615 / 617 _RuinsGovernmentWayOfAncients / _RuinsGovernmentWayOfDarkness. */
+    ruinsGovernmentWayOfAncients = 0;
+    ruinsGovernmentWayOfDarkness = 0;
+    /** Galaxy.cs 723 GameDisasterEventsEnabled (= VictoryConditions.EnableDisasterEvents, default true; Start.2.cs 503). */
+    gameDisasterEventsEnabled = true;
+    /** Galaxy.cs 500 DeferEventsForGameStart. */
+    deferEventsForGameStart = true;
+    /** Start.2.cs 501: StoryReturnOfTheShakturiEnabled = VictoryConditions.EnableStoryEvents. */
+    storyReturnOfTheShakturiEnabled = false;
+    /** Start.2.cs 502: StoryDistantWorldsEnabled = bool_7. */
+    storyDistantWorldsEnabled = false;
+    /**
+     * Galaxy.cs 816 RaceFamilies (RaceFamilyList, loaded with the game data). createGame must copy
+     * GameData.raceFamilies here; read by gameStartTail.ts SelectSpecialRuins(SleepersAwake).
+     */
+    raceFamilies: RaceFamily[] = [];
+
+    /**
+     * Galaxy.9.cs 3477 GenerateAsteroidField(asteroidCount, x, y, nearestSystemStar, orbitDirection,
+     * orbitSpeed, orbitDistance, distanceSpreadFactor, arcSpreadFactor, type) → the 3482 overload with
+     * randomOrderedResources = null (generateAsteroidFieldAt).
+     */
+    generateAsteroidField(asteroidCount: number, x: number, y: number, nearestSystemStar: Habitat, orbitDirection: boolean, orbitSpeed: number, orbitDistance: number, distanceSpreadFactor: number, arcSpreadFactor: number, type: HabitatType): Habitat[] {
+        return this.generateAsteroidFieldAt(asteroidCount, x, y, nearestSystemStar, orbitDirection, orbitSpeed, orbitDistance, distanceSpreadFactor, arcSpreadFactor, type, null);
+    }
+
+    /**
+     * Galaxy.9.cs 3543 AddAsteroidField(asteroids, nearestSystemStar): insert the asteroids into
+     * Habitats right before the next parentless habitat after the system star (the next system),
+     * number them, add them to Systems[star].Habitats and the star's HabitatIndex cell, shift the
+     * later HabitatIndex values and every resource map (FixResourceMapsByteSplicing 2881 when
+     * Count % 8 == 0, else FixResourceMaps 2994 — both amount to inserting Count unknown bits at the
+     * insertion index), then SetSystemHabitatsExploration (3333). No Rnd.
+     */
+    addAsteroidField(asteroids: Habitat[] | null, nearestSystemStar: Habitat | null): boolean {
+        if (nearestSystemStar !== null && asteroids !== null && asteroids.length > 0) {
+            let num = this.habitats.length;
+            const num2 = this.habitats.indexOf(nearestSystemStar);
+            for (let i = num2 + 1; i < this.habitats.length; i++) {
+                if (this.habitats[i].parent === null) {
+                    num = i;
+                    break;
+                }
+            }
+            const galaxyIndex = this.resolveIndex(nearestSystemStar.xpos, nearestSystemStar.ypos);
+            for (let j = 0; j < asteroids.length; j++) {
+                asteroids[j].habitatIndex = num + j;
+                asteroids[j].systemIndex = nearestSystemStar.systemIndex;
+            }
+            this.habitats.splice(num, 0, ...asteroids);
+            const system = this.systems.find((s) => s.systemStar === nearestSystemStar)!; // Systems[nearestSystemStar]
+            system.habitats.push(...asteroids);
+            if (this.habitatIndexGrid.length > 0) this.habitatIndexGrid[galaxyIndex.x][galaxyIndex.y].push(...asteroids);
+            const startIndex = num + asteroids.length;
+            const endIndex = this.habitats.length - 1;
+            const count = asteroids.length;
+            // Both C# branches (byte splicing / per-habitat snapshot) give the same maps.
+            this.fixResourceMaps(startIndex, endIndex, count, asteroids);
+            for (const asteroid of asteroids) this.setSystemHabitatExploration(asteroid, nearestSystemStar);
+            this.stepOrderDirty = true;
+            return true;
+        }
+        return false;
     }
 }
 

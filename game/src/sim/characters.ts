@@ -69,9 +69,10 @@ import { Random } from './random';
 import { netSort } from './netSort';
 import { galaxyCurrentStarDate } from './pirateRelations';
 import { selectRandomRace } from './pirates';
-import { identifyEmpireCapitals } from './forceStructure';
+import { habitatAnnualRevenue, identifyEmpireCapitals, totalColonyStrategicValue } from './forceStructure';
 import { strategicValue as habitatStrategicValue } from './territory';
 import { PirateRelationType } from './pirateRelations';
+import { DiplomaticRelationType, DiplomaticStrategy, resolveEmpiresToDefendAgainst as resolveEmpiresToDefendAgainstDiplomatic } from './diplomacy';
 
 /** C# StellarObject (Habitat or BuiltObject) as a character location. */
 export type StellarObject = Habitat | BuiltObject;
@@ -5027,6 +5028,11 @@ export function doCharacterEvent(galaxy: Galaxy, eventType: CharacterEventType, 
     doCharacterEventList(galaxy, eventType, eventData, characterList0, includeLeader, leaderEmpire);
 }
 
+/** Galaxy.1.cs DoCharacterEvent(eventType, eventData, CharacterList sourceCharacters, includeLeader, leaderEmpire) (3781). */
+export function doCharacterEventForList(galaxy: Galaxy, eventType: CharacterEventType, eventData: unknown, sourceCharacters: Character[] | null, includeLeader: boolean, leaderEmpire: Empire | null): void {
+    doCharacterEventList(galaxy, eventType, eventData, sourceCharacters, includeLeader, leaderEmpire);
+}
+
 function doCharacterEventList(galaxy: Galaxy, eventType: CharacterEventType, eventData: unknown, sourceCharacters: Character[] | null, includeLeader: boolean, leaderEmpire: Empire | null): void {
     if (sourceCharacters === null || sourceCharacters.length <= 0) return;
     const characterList: Character[] = [];
@@ -5572,12 +5578,25 @@ function getHabitatsPopulationBelowThreshold(list: Habitat[], maxPopulationAmoun
     return result;
 }
 
-// HabitatList.OrderByRevenue (399): Array.Sort(revenues, habitats) then Array.Reverse.
-// TODO(port): Habitat.AnnualRevenue (Habitat.cs 830) — not ported; with 0 or 1 colonies the sort
-// never compares keys (the getter is side-effect free), so only Count > 1 throws.
-function orderByRevenue(list: Habitat[]): Habitat[] {
-    if (list.length > 1) throw new Error('TODO(port): HabitatList.OrderByRevenue needs Habitat.AnnualRevenue (Habitat.cs 830)');
-    const array = list.slice();
+// HabitatList.OrderByRevenue (399): keys = Habitat.AnnualRevenue (Habitat.cs 830, forceStructure.ts
+// habitatAnnualRevenue), Array.Sort<double, Habitat>(keys, array) then Array.Reverse. Array.Sort(keys,
+// items) moves the items with their keys, so the keyed introsort is netSort over (key, item) pairs.
+function orderByRevenue(galaxy: Galaxy, list: Habitat[]): Habitat[] {
+    const doubleList: number[] = [];
+    for (let index = 0; index < list.length; ++index) {
+        const habitat = list[index];
+        doubleList.push(habitatAnnualRevenue(galaxy, habitat));
+    }
+    const pairs = list.map((h, n) => ({ key: doubleList[n], item: h }));
+    netSort(pairs, (a, b) => {
+        // double.CompareTo(double) (NaN sorts first).
+        if (a.key < b.key) return -1;
+        if (a.key > b.key) return 1;
+        if (a.key === b.key) return 0;
+        if (Number.isNaN(a.key)) return Number.isNaN(b.key) ? 0 : -1;
+        return 1;
+    });
+    const array = pairs.map((p) => p.item);
     array.reverse();
     return array;
 }
@@ -5636,8 +5655,8 @@ function resolveEmpiresToDefendAgainst(empire: Empire): Empire[] {
             if (pirateRelation !== null && pirateRelation.otherEmpire !== null && pirateRelation.type === PirateRelationType.None) empireList.push(pirateRelation.otherEmpire);
         }
     } else {
-        // TODO(port): DiplomaticRelation (War / Strategy) — the TS list is empty at game start.
-        if (empire.diplomaticRelations.length > 0) throw new Error('TODO(port): Empire.9.cs ResolveEmpiresToDefendAgainst DiplomaticRelations');
+        // Empire.9.cs 1711-1736 (diplomacy.ts resolveEmpiresToDefendAgainst).
+        empireList.push(...resolveEmpiresToDefendAgainstDiplomatic(empire));
     }
     return empireList;
 }
@@ -5696,9 +5715,8 @@ function resolveLocationsToDefend(galaxy: Galaxy, empire: Empire, includeBases: 
  * Empire.7.cs ReviewCharacterLocation (479). Ported branches: pre-checks, Demoralizing relocation,
  * Leader, ColonyGovernor (revenue branch), PirateLeader, Scientist, FleetAdmiral/TroopGeneral fleet
  * search with no fleets, ShipCaptain; IntelligenceAgent has no case (keeps its location).
- * TODO(port) (throw when reached with non-empty inputs): Ambassador DiplomaticRelations
- * (DiplomaticRelation unported; TS empire.diplomaticRelations is empty at game start → C#
- * relations of NotMet empires are all skipped), ColonyGovernor population-growth branch
+ * Ambassador: DiplomaticRelations loop (diplomacy.ts).
+ * TODO(port) (throw when reached with non-empty inputs): ColonyGovernor population-growth branch
  * (Habitat.MaximumPopulation / DetermineColonizationValue), ShipGroup fleets (ShipGroups empty at
  * game start), DiplomaticRelation-driven parts of ResolveLocationsToDefend.
  */
@@ -5737,18 +5755,66 @@ export function reviewCharacterLocation(galaxy: Galaxy, empire: Empire, characte
         const characters = empireCharacters(empire);
         switch (character.role) {
             case CharacterRole.Ambassador: {
+                // Empire.7.cs 534-617. C# `empire` here is the local `character.DetermineLocationEmpire()`
+                // (TS `locationEmpire`), not `this`.
                 const charactersByRole4 = getCharactersByRole(characters, CharacterRole.Ambassador);
-                void charactersByRole4;
+                let num13 = 0.0;
+                let empire2: Empire | null = null;
                 if (empire.reclusive) break;
-                // TODO(port): DiplomaticRelations loop (Empire.7.cs 541-615) — DiplomaticRelation is
-                // unported; the TS list is empty at game start (no relation → no target empire).
-                if (empire.diplomaticRelations.length > 0) throw new Error('TODO(port): Empire.7.cs ReviewCharacterLocation Ambassador DiplomaticRelations');
+                for (let num14 = 0; num14 < empire.diplomaticRelations.count; num14++) {
+                    const diplomaticRelation = empire.diplomaticRelations.at(num14);
+                    if (diplomaticRelation == null || diplomaticRelation.type === DiplomaticRelationType.NotMet || diplomaticRelation.type === DiplomaticRelationType.War || diplomaticRelation.otherEmpire === null || diplomaticRelation.otherEmpire.reclusive || diplomaticRelation.otherEmpire.capital === null) {
+                        continue;
+                    }
+                    const systemStar = galaxy.determineHabitatSystemStar(diplomaticRelation.otherEmpire.capital);
+                    // Empire.9.cs 2993 CheckSystemExplored(Habitat) → CheckSystemExplored(systemStar.SystemIndex).
+                    if (!empire.visibility.checkSystemExplored(systemStar.systemIndex)) continue;
+                    let flag5 = false;
+                    for (let num15 = 0; num15 < charactersByRole4.length; num15++) {
+                        const character4 = charactersByRole4[num15];
+                        if (character4 !== character) {
+                            const empire3 = character4.determineLocationEmpireWithTransfer();
+                            if (empire3 === diplomaticRelation.otherEmpire) {
+                                flag5 = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (flag5) continue;
+                    let num16 = 0.0;
+                    switch (diplomaticRelation.strategy) {
+                        case DiplomaticStrategy.Ally:
+                            if (diplomaticRelation.type !== DiplomaticRelationType.MutualDefensePact && diplomaticRelation.type !== DiplomaticRelationType.Protectorate) num16 = 100.0;
+                            break;
+                        case DiplomaticStrategy.Befriend:
+                            if (diplomaticRelation.type !== DiplomaticRelationType.FreeTradeAgreement && diplomaticRelation.type !== DiplomaticRelationType.MutualDefensePact && diplomaticRelation.type !== DiplomaticRelationType.Protectorate) num16 = 50.0;
+                            break;
+                        case DiplomaticStrategy.DefendPlacate:
+                            if ((diplomaticRelation.type as DiplomaticRelationType) !== DiplomaticRelationType.War) num16 = 25.0;
+                            break;
+                        case DiplomaticStrategy.Placate:
+                            if ((diplomaticRelation.type as DiplomaticRelationType) !== DiplomaticRelationType.War) num16 = 10.0;
+                            break;
+                        default:
+                            num16 = 1.0;
+                            break;
+                    }
+                    num16 *= totalColonyStrategicValue(diplomaticRelation.otherEmpire) / 1000.0;
+                    if (num16 > num13 && checkLocationSafeForDemoralizingCharacter(empire, flag, diplomaticRelation.otherEmpire.capital, character)) {
+                        num13 = num16;
+                        empire2 = diplomaticRelation.otherEmpire;
+                    }
+                }
+                if (empire2 !== null && empire2.capital !== null && empire2 !== locationEmpire) {
+                    if (transferToLocation) character.transferToNewLocation(empire2.capital, galaxy);
+                    return empire2.capital;
+                }
                 break;
             }
             case CharacterRole.ColonyGovernor: {
                 const charactersByRole3 = getCharactersByRole(characters, CharacterRole.ColonyGovernor);
                 if ((character.colonyIncome > character.colonyHappiness && character.colonyIncome > character.populationGrowth) || (character.colonyHappiness > character.colonyIncome && character.colonyHappiness > character.populationGrowth)) {
-                    const habitatList = orderByRevenue(empire.colonies);
+                    const habitatList = orderByRevenue(galaxy, empire.colonies);
                     for (let num7 = 0; num7 < habitatList.length; num7++) {
                         const habitat6 = habitatList[num7];
                         if (habitat6 === character.location) break;

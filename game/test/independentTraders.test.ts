@@ -11,7 +11,6 @@ import {
     assignIndependentTraderMissions,
     cancelExpiredOrders,
     galaxyGameStartHugeTick,
-    galaxyGameStartLongTick,
     generateIndependentTraders,
     isObjectVisibleToThisEmpire,
     removeCompletedOrders,
@@ -19,7 +18,6 @@ import {
     selectPopularDesignCandidates,
     type GalaxyOrder,
 } from '../src/sim/independentTraders';
-import { checkEmpireTerritoryCanBuildAtHabitat } from '../src/sim/resourceTargets';
 
 let gameData: GameData;
 beforeAll(async () => { gameData = await loadGameDataFs(); }, 60000);
@@ -45,17 +43,34 @@ function recordRnd(g: Galaxy): string[] {
     return log;
 }
 
+// createGame's first galaxy tick (Start.2.cs 1105-1106) with the long block's draws recorded;
+// stopped right after it (test-only __phaseHook). No pirates: GenerateNewPirateEmpires draws nothing.
 function runStartTick() {
-    const g = createGame(opts()).galaxy;
-    galaxyGameStartHugeTick(g);
-    const log = recordRnd(g);
-    const traders = galaxyGameStartLongTick(g, { checkEmpireTerritoryCanBuildAtHabitat });
+    let log: string[] = [];
+    let before: unknown[] = [];
+    const g = createGame({
+        ...opts(),
+        __phaseHook: (phase, gal) => {
+            if (phase === 'firstGalaxyTick:huge') {
+                log = recordRnd(gal);
+                before = gal.independentEmpire!.privateBuiltObjects.slice();
+            }
+            return phase === 'firstGalaxyTick' ? 'stop' : undefined;
+        },
+    }).galaxy;
+    expect(before).toEqual([]);
+    const traders = g.independentEmpire!.privateBuiltObjects.slice();
     return { g, log, traders };
+}
+
+/** createGame stopped before its first galaxy tick (the HEAD-era createGame end state + price reviews). */
+function beforeFirstTick(): Galaxy {
+    return createGame({ ...opts(), __phaseHook: (phase) => (phase === 'priceReviews' ? 'stop' : undefined) }).galaxy;
 }
 
 describe('independent traders (Galaxy.7.cs GenerateIndependentTraders)', () => {
     it('SelectPopularDesignCandidates: 3 per sub-role, cloned for the independent empire', () => {
-        const g = createGame(opts()).galaxy;
+        const g = beforeFirstTick();
         const originals = g.empires.flatMap((e) => e.designs);
         selectPopularDesignCandidates(g);
         expect(g.popularDesigns.length).toBe(18);
@@ -139,7 +154,7 @@ describe('independent traders (Galaxy.7.cs GenerateIndependentTraders)', () => {
     }, 60000);
 
     it('fallback: no popular freighters → designs generated from the independent spec per playable race', () => {
-        const g = createGame(opts()).galaxy;
+        const g = beforeFirstTick();
         galaxyGameStartHugeTick(g);
         g.popularDesigns = [];
         reviewIndependentColonies(g);

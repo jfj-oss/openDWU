@@ -59,6 +59,7 @@ import type { Design } from './design';
 import { findNewestCanBuild } from './designGeneration';
 import { COLONY_ANNUAL_LUXURY_RESOURCE_CONSUMPTION_RATE, MINIMUM_LUXURY_RESOURCE_REORDER_AMOUNT, type Empire } from './empire';
 import { checkEmpireHasHyperDriveTech } from './forceStructure';
+import { CharacterRole, CharacterTraitType, empireCharactersHaveTrait } from './characters';
 import type { Galaxy } from './galaxy';
 import { netSort } from './netSort';
 import { ShipDesignFocus } from './researchSystem';
@@ -616,8 +617,10 @@ function annualResearchPotential(empire: Empire): number {
     }
     let num4 = Math.sqrt(Math.sqrt(empire.totalPopulation / 1000.0)) * 10000.0;
     num4 *= empire.economyEfficiency;
-    // TODO(port): Characters.CheckCharactersForTrait(Scientist, UltraGenius) → × 1.2. Characters are not
-    // ported (Empire.characters is empty), so the bonus never applies here.
+    // Empire.cs 1852-1855.
+    if (empireCharactersHaveTrait(empire, CharacterRole.Scientist, CharacterTraitType.UltraGenius)) {
+        num4 *= 1.2;
+    }
     return num4 * researchRate;
 }
 

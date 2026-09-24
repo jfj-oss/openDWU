@@ -8,15 +8,13 @@ import { empireGovernmentAttributes } from '../src/sim/empire';
 import { annualTaxRevenue } from '../src/sim/forceStructure';
 import {
     empireApprovalRating,
-    gameStartColonyRecalc,
-    gameStartReviewTaxes,
     habitatDevelopmentLevel,
     netRound,
     taxComplianceRate,
 } from '../src/sim/taxes';
 
 // Empire.10.cs ReviewTaxes / Empire.9.cs SetColonyTaxRate / Habitat.cs EmpireApprovalRating,
-// run as Start.2.cs 1109-1115 and 1318-1339 do.
+// as createGame runs them (Start.2.cs 1109-1115 and 1318-1339).
 let gameData: GameData;
 beforeAll(async () => { gameData = await loadGameDataFs(); }, 60000);
 
@@ -42,28 +40,60 @@ function countDraws(g: Galaxy): { count: () => number } {
     return { count: () => n };
 }
 
+type ColonySnap = { empire: string; pop: number; dev: number; taxRate: number; approval: number; compliance: number; revenue: number; sfc: number; smallPolicy: number };
+type TotalSnap = { pop: number; corruption: number; tax: number };
+
+// createGame's own Start.2.cs 1110-1113 (colony recalc) and 1319-1339 (ReviewTaxes) per empire, with
+// the Galaxy.Rnd draws of those two steps counted and each empire's colonies snapshotted right after
+// its tax step (test-only __phaseHook); stopped after the per-empire setup.
 function run() {
-    const galaxy = createGame(opts()).galaxy;
-    const empires = galaxy.empires;
-    const rndBefore = JSON.stringify(galaxy.rnd);
-    const counter = countDraws(galaxy);
-    for (const e of empires) gameStartColonyRecalc(galaxy, e);
-    for (const e of empires) gameStartReviewTaxes(galaxy, e, galaxy.age);
-    const draws = counter.count();
-    const rndAfter = JSON.stringify(galaxy.rnd);
-    const colonies = empires.flatMap((e) => e.colonies.map((c) => ({
-        empire: e.name,
-        pop: c.population.totalAmount,
-        dev: habitatDevelopmentLevel(c),
-        taxRate: c.taxRate,
-        approval: empireApprovalRating(galaxy, c),
-        compliance: taxComplianceRate(galaxy, c),
-        revenue: c.annualTaxRevenue,
-        sfc: empireGovernmentAttributes(e)?.specialFunctionCode ?? 0,
-        smallPolicy: e.policy!.colonyTaxRateSmallColony,
-    })));
-    const totals = empires.map((e) => ({ pop: e.totalPopulation, corruption: e.corruption, tax: annualTaxRevenue(galaxy, e) }));
-    return { galaxy, colonies, totals, draws, rndBefore, rndAfter };
+    let counter: { count: () => number } = { count: () => 0 };
+    let draws = 0;
+    let mark = 0;
+    let rndBefore = '';
+    let rndAfter = '';
+    const rndMismatch: string[] = [];
+    const colonies: ColonySnap[] = [];
+    const totals: TotalSnap[] = [];
+    const galaxy = createGame({
+        ...opts(),
+        __phaseHook: (phase, g, e) => {
+            switch (phase) {
+                case 'firstGalaxyTick':
+                    counter = countDraws(g);
+                    break;
+                case 'empire:start':
+                case 'empire:luxury':
+                    mark = counter.count();
+                    rndBefore = JSON.stringify(g.rnd);
+                    break;
+                case 'empire:colonyRecalc':
+                case 'empire:taxes':
+                    draws += counter.count() - mark;
+                    rndAfter = JSON.stringify(g.rnd);
+                    if (rndAfter !== rndBefore) rndMismatch.push(`${e!.name}:${phase}`);
+                    if (phase === 'empire:taxes') {
+                        colonies.push(...e!.colonies.map((c) => ({
+                            empire: e!.name,
+                            pop: c.population.totalAmount,
+                            dev: habitatDevelopmentLevel(c),
+                            taxRate: c.taxRate,
+                            approval: empireApprovalRating(g, c),
+                            compliance: taxComplianceRate(g, c),
+                            revenue: c.annualTaxRevenue,
+                            sfc: empireGovernmentAttributes(e!)?.specialFunctionCode ?? 0,
+                            smallPolicy: e!.policy!.colonyTaxRateSmallColony,
+                        })));
+                        totals.push({ pop: e!.totalPopulation, corruption: e!.corruption, tax: annualTaxRevenue(g, e!) });
+                    }
+                    break;
+                case 'empireSetup':
+                    return 'stop';
+            }
+            return undefined;
+        },
+    }).galaxy;
+    return { galaxy, colonies, totals, draws, rndMismatch };
 }
 
 describe('taxes (ReviewTaxes at game start)', () => {
@@ -71,11 +101,13 @@ describe('taxes (ReviewTaxes at game start)', () => {
         const a = run();
         // No Galaxy.Rnd draws anywhere in the tax / approval model.
         expect(a.draws).toBe(0);
-        expect(a.rndAfter).toBe(a.rndBefore);
+        expect(a.rndMismatch).toEqual([]);
         expect(a.colonies.length).toBeGreaterThan(0);
         // Pinned for seed 1 (TS port state: one ~10B-pop capital per empire, Large policy → target
         // approval 10; two ReviewTaxes passes). Re-pin if colony generation changes upstream.
-        expect(a.colonies.map((c) => c.taxRate)).toEqual([0.23, 0.16, 0.14, 0.25].map(Math.fround));
+        // (re-pinned: createGame now runs the taxes after that empire's space port, stations and
+        // luxury-resource setup (Start.2.cs 1139-1318), which change development and approval.)
+        expect(a.colonies.map((c) => c.taxRate)).toEqual(PINNED_TAX_RATES);
         for (const c of a.colonies) {
             // Rounded to 2 decimals (Math.Round(num3, 2)) and stored as float.
             expect(Math.fround(netRound(c.taxRate, 2))).toBe(c.taxRate);
@@ -127,3 +159,5 @@ describe('taxes (ReviewTaxes at game start)', () => {
         expect(netRound(1.5, 0)).toBe(2);
     });
 });
+
+const PINNED_TAX_RATES: number[] = [0.28, 0.28, 0.27, 0.31].map(Math.fround);

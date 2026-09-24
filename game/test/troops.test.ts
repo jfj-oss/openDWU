@@ -65,7 +65,9 @@ interface RunSummary {
 }
 
 function run(colonyGarrisons: boolean): RunSummary {
-    const galaxy = createGame(opts()).galaxy;
+    // State right after the starting colonies (capital garrisons from GenerateEmpire), before
+    // createGame's own ReviewTaxes / ProcessColonyTroops (Start.2.cs 1320-1339) — test-only __phaseHook.
+    const galaxy = createGame({ ...opts(), __phaseHook: (phase) => (phase === 'startingColonies' ? 'stop' : undefined) }).galaxy;
     const summary: RunSummary = { capitals: [], colonyTroops: [], maintenance: [], processDraws: [], troopGenerals: [] };
     // Stand-in for Empire.GenerateNewCharacter(TroopGeneral) (characters port): records the call.
     registerTroopGeneralHook((_g, e, loc, troop) => { summary.troopGenerals.push(`${e.name}@${loc.name}:${troop.name}`); });

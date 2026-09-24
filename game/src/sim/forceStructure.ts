@@ -17,7 +17,8 @@
 // (the first Empire.DoTasks inside Galaxy.GenerateEmpire):
 // - BuiltObjects / PrivateBuiltObjects / MiningStations / ResortBases: empty
 //   (read through BuiltObjectView until src/sim/builtObject.ts lands).
-// - DiplomaticRelations: empty (relations are created lazily on contact);
+// - DiplomaticRelations: diplomacy.ts (empty until Start.2.cs 1376 meetEmpiresAtStart;
+//   game-start relations are None / Strategy Undefined);
 //   PirateRelations: empty (pirate factions are generated after the empires).
 // - Galaxy.Orders: no orders exist yet (count 0).
 // - Troops: the TS GenerateEmpire creates none yet (Troop model TODO).
@@ -36,8 +37,11 @@ import { DEFAULT_BASE_TECH_COST } from './componentStatic';
 import { ForceStructureProjection, ForceStructureProjectionList } from './forceStructureProjection';
 import { HabitatType } from './types';
 import { ResearchAbilityType } from './researchSystem';
-import { recalculateCriticalResourceSupplyBonuses, taxComplianceRate } from './taxes';
+import { obtainEmpireEvaluation, recalculateCriticalResourceSupplyBonuses, taxComplianceRate } from './taxes';
 import { ColonyResourceEffect, habitatDevelopmentLevel, resourceBonusTotalByEffectType } from './developmentLevel';
+import { DiplomaticRelationType, DiplomaticStrategy, type DiplomaticRelation } from './diplomacy';
+import { resolveCharacterColonyCorruptionBonus, resolveCharacterColonyIncomeBonus } from './characters';
+import { PirateRelationType, obtainPirateRelation, type PirateRelation } from './pirateRelations';
 
 export { ForceStructureProjection, ForceStructureProjectionList } from './forceStructureProjection';
 
@@ -75,37 +79,10 @@ export function csToInt32(value: number): number {
 const f32 = Math.fround;
 
 // Port of the C# enums read here (member order exact).
-// DiplomaticRelationType.cs
-export enum DiplomaticRelationType {
-    NotMet,
-    None,
-    FreeTradeAgreement,
-    MutualDefensePact,
-    SubjugatedDominion,
-    Protectorate,
-    TradeSanctions,
-    War,
-    Truce,
-}
-// DiplomaticStrategy.cs
-export enum DiplomaticStrategy {
-    Undefined,
-    Conquer,
-    Befriend,
-    Placate,
-    Defend,
-    Ally,
-    Undermine,
-    DefendPlacate,
-    DefendUndermine,
-    Punish,
-}
-// PirateRelationType.cs
-export enum PirateRelationType {
-    NotMet,
-    None,
-    Protection,
-}
+// DiplomaticRelationType.cs / DiplomaticStrategy.cs: canonical enums in diplomacy.ts.
+export { DiplomaticRelationType, DiplomaticStrategy };
+// PirateRelationType.cs: canonical enum in pirateRelations.ts.
+export { PirateRelationType };
 
 /**
  * The BuiltObject members this module reads.
@@ -125,27 +102,15 @@ export interface BuiltObjectView {
     annualSupportCost: number; // C#: float
 }
 
-/** TODO(port): DiplomaticRelation (DiplomaticRelation.cs) — Empire.diplomaticRelations is empty at game start. */
-interface DiplomaticRelationView {
-    otherEmpire: Empire;
-    initiator: Empire | null;
-    type: DiplomaticRelationType;
-    strategy: DiplomaticStrategy;
-}
+/** DiplomaticRelation (diplomacy.ts). OtherEmpire is never null on a relation held in Empire.DiplomaticRelations. */
+type DiplomaticRelationView = DiplomaticRelation & { otherEmpire: Empire };
 
-/** TODO(port): PirateRelation (PirateRelation.cs) / Empire.PirateRelations. */
-interface PirateRelationView {
-    otherEmpire: Empire | null;
-    type: PirateRelationType;
-}
 
 const builtObjectsOf = (list: unknown[]): BuiltObjectView[] => list as BuiltObjectView[];
-const diplomaticRelationsOf = (empire: Empire): DiplomaticRelationView[] => empire.diplomaticRelations as DiplomaticRelationView[];
-// TODO(port): Empire.PirateRelations (PirateRelationList, Empire.cs 493) is not
-// modeled. It is filled lazily by ObtainPirateRelation / AddPirateRelation
-// (Empire.8.cs 2351) and holds nothing at game start: pirate factions are
-// generated after all empires (Galaxy.DoTasks → GenerateNewPirateEmpires).
-const pirateRelationsOf = (_empire: Empire): PirateRelationView[] => [];
+const diplomaticRelationsOf = (empire: Empire): DiplomaticRelationView[] => empire.diplomaticRelations.toArray() as DiplomaticRelationView[];
+// Empire.PirateRelations (PirateRelationList, Empire.cs 493; pirateRelations.ts), iterated by index
+// (C# `for (i = 0; i < PirateRelations.Count; i++) PirateRelations[i]`).
+const pirateRelationsOf = (empire: Empire): PirateRelation[] => empire.pirateRelations.toArray();
 
 // Empire._ShipMaintenanceSavings (Empire.cs 2991). TODO(port): set by
 // ReviewEmpireAbilityBonuses (long DoTasks block, not ported); 0.0 until then,
@@ -435,7 +400,8 @@ export function habitatCorruption(galaxy: Galaxy, h: Habitat): number {
         const empireCorruption = empire.corruption;
         val = num2 * (1.0 + empireCorruption) * Math.sqrt(h.distanceFactor);
         // TODO(port): _PirateColonyControl bonus — no pirate colony control at game start.
-        const num4 = 0; // TODO(port): colony characters / Empire.Leader ColonyCorruption — none at game start.
+        // Habitat.cs 810-818: colony characters (excluding leaders) + Empire.Leader.ColonyCorruption.
+        const num4 = resolveCharacterColonyCorruptionBonus(h);
         const num5 = 1.0 - num4 / 100.0;
         val *= num5;
         val *= empire.corruptionMultiplier;
@@ -479,7 +445,8 @@ export function habitatAnnualRevenue(galaxy: Galaxy, h: Habitat): number {
             num *= num4;
         }
     }
-    const num5 = 0; // TODO(port): colony characters / Empire.Leader ColonyIncome — none at game start.
+    // Habitat.cs 867-875: colony characters (excluding leaders) + Empire.Leader.ColonyIncome.
+    const num5 = resolveCharacterColonyIncomeBonus(h);
     const num6 = 1.0 + num5 / 100.0;
     num *= num6;
     // TODO(port): RaidCountdown / RaidEconomyDamageFactor — 0 at game start.
@@ -621,20 +588,9 @@ export function annualPrivateMaintenanceExcludingUnderConstruction(empire: Empir
     return num - num2;
 }
 
-/**
- * Empire.cs AnnualTroopMaintenance (2025) / AnnualTroopMaintenanceIncludeRecruiting
- * (2070). TODO(port): Troop model (Troop.cs MaintenanceMultiplier, Type,
- * BeingRecruited, Colony/BuiltObject characters), Empire.TroopMaintenanceFactor
- * (ReviewTroopTypes) and Empire.Leader — the TS GenerateEmpire creates no
- * troops yet, so the sum is over an empty list; a troop would throw.
- */
-function annualTroopMaintenanceSum(empire: Empire, _includeRecruiting: boolean): number {
-    const num = 0.0;
-    if (empire.troops.items.length > 0) throw new Error('TODO(port): Troop maintenance (Troop.cs MaintenanceMultiplier)');
-    return num;
-}
-export const annualTroopMaintenance = (empire: Empire): number => annualTroopMaintenanceSum(empire, false);
-export const annualTroopMaintenanceIncludeRecruiting = (empire: Empire): number => annualTroopMaintenanceSum(empire, true);
+// Empire.cs AnnualTroopMaintenance (2025) / AnnualTroopMaintenanceIncludeRecruiting (2070): ported in troops.ts.
+import { annualTroopMaintenance, annualTroopMaintenanceIncludeRecruiting } from './troops';
+export { annualTroopMaintenance, annualTroopMaintenanceIncludeRecruiting };
 
 // Empire.cs MinimumTroopSpending (2187).
 function minimumTroopSpending(galaxy: Galaxy, empire: Empire): number {
@@ -675,10 +631,17 @@ export function annualSubjugationTribute(galaxy: Galaxy, empire: Empire): number
 
 // Empire.cs AnnualPirateProtection (1775).
 export function annualPirateProtection(empire: Empire): number {
-    const num = 0.0;
-    for (const pirateRelation of pirateRelationsOf(empire)) {
-        if (pirateRelation != null && pirateRelation.type === PirateRelationType.Protection && pirateRelation.otherEmpire !== null) {
-            throw new Error('TODO(port): PirateRelation.MonthlyProtectionFeeToThisEmpire');
+    let num = 0.0;
+    if (empire.pirateRelations != null) {
+        for (let i = 0; i < empire.pirateRelations.count; i++) {
+            const pirateRelation = empire.pirateRelations.get(i);
+            if (pirateRelation != null && pirateRelation.type === PirateRelationType.Protection && pirateRelation.otherEmpire !== null) {
+                // Empire.cs 1787: OtherEmpire.ObtainPirateRelation(this) (may add the relation).
+                const pirateRelation2 = obtainPirateRelation(pirateRelation.otherEmpire, empire);
+                if (pirateRelation2 != null) {
+                    num += pirateRelation2.monthlyProtectionFeeToThisEmpire * 12.0;
+                }
+            }
         }
     }
     return num;
@@ -1007,10 +970,9 @@ export function projectForceStructure(galaxy: Galaxy, empire: Empire, ctx: Force
     let num6 = 1.0;
     for (const diplomaticRelation of diplomaticRelationsOf(empire)) {
         if (diplomaticRelation.otherEmpire === galaxy.independentEmpire || diplomaticRelation.otherEmpire.pirateEmpireBaseHabitat !== null) continue;
-        // TODO(port): ObtainEmpireEvaluation(OtherEmpire) (Empire.4.cs 106) — only its
-        // .Empire (== OtherEmpire) is read here; its EmpireEvaluations.Add side
-        // effect is not modeled (no relations exist at game start).
-        const evaluationEmpire = diplomaticRelation.otherEmpire;
+        // Empire.9.cs 5010: ObtainEmpireEvaluation(OtherEmpire) (taxes.ts; may add to
+        // Empire.EmpireEvaluations); only its .Empire (== OtherEmpire) is read.
+        const evaluationEmpire = obtainEmpireEvaluation(galaxy, empire, diplomaticRelation.otherEmpire).empire!;
         if (diplomaticRelation.type === DiplomaticRelationType.War) {
             const num7 = totalMobileMilitaryFirepower(evaluationEmpire.builtObjects);
             num5 = (num5 + num7) | 0;

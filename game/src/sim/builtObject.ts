@@ -10,12 +10,12 @@
 // Subsystems not ported yet are TODO(port) at the exact spot, with the value C#
 // sees at game start: ConstructionQueue / ManufacturingQueue (created by
 // ReDefine for shipyards / manufacturers), fighters (FighterList), characters,
-// contracts, missions, UpdatePosition, the AnnualSupportCost getter.
+// contracts, missions, UpdatePosition.
 
 import { BuiltObjectSubRole } from './builtObjectTypes';
 import { BuiltObjectComponent, BuiltObjectComponentList, ComponentStatus, csInt, toByte, toShort } from './builtObjectComponent';
 import { CargoList, ResourceRef, TroopList, type Troop } from './cargo';
-import { componentImprovementFromComponent, type ComponentImprovementEntry } from './componentStatic';
+import { DEFAULT_BASE_TECH_COST, componentImprovementFromComponent, type ComponentImprovementEntry } from './componentStatic';
 import { ComponentType } from './data/components';
 import { BattleTactics, BuiltObjectFleeWhen, BuiltObjectRole, InvasionTactics } from './data/designSpecifications';
 import { ComponentCategoryType, type EmpirePolicy } from './data/policies';
@@ -25,6 +25,10 @@ import type { Empire } from './empire';
 import type { Galaxy } from './galaxy';
 import { PopulationList } from './population';
 import type { Habitat } from './types';
+import { getCharacterMaintenanceBonuses } from './characters';
+import { ColonyResourceEffect, resourceBonusTotalByEffectType } from './developmentLevel';
+import { empireGovernmentAttributes } from './empire';
+import { PIRATE_SHIP_MAINTENANCE_FACTOR, SHIP_MAINTENANCE_COST_PER_SIZE_UNIT } from './forceStructure';
 import { Weapon, weaponsDetermineNotInSuppliedList, weaponsQuickCompareEquivalent, weaponsRemoveAndResetFirstMatchingWeaponById } from './weapon';
 
 // Port of EngineType.cs (byte enum, member order exact).
@@ -399,9 +403,51 @@ export class BuiltObject {
     get cruiseSpeedBase(): number { return this._cruiseSpeedBase; }
     /** C# private _AnnualSupportCost (what the AnnualSupportCost setter stores). */
     get annualSupportCostBase(): number { return this._annualSupportCost; }
-    // BuiltObject.AnnualSupportCost setter. TODO(port): the getter (BuiltObject.cs 770) needs
-    // ShipMaintenanceCostPerSizeUnit, colony resource bonuses, characters, government
-    // maintenance factors and the empire state/private maintenance factors.
+    // BuiltObject.AnnualSupportCost (BuiltObject.cs 782-830). Returns int.
+    get annualSupportCost(): number {
+        const num = SHIP_MAINTENANCE_COST_PER_SIZE_UNIT * this.size;
+        let num2 = this._annualSupportCost + num;
+        if (this.role !== BuiltObjectRole.Base && this.design != null && this.design.warpSpeed <= 0) {
+            num2 *= 0.8;
+        }
+        const actualEmpire = this.actualEmpire;
+        let num3 = 0.0;
+        const parent = this.parentHabitat;
+        if (this.role === BuiltObjectRole.Base && parent != null && actualEmpire !== null && actualEmpire !== this._galaxy.independentEmpire && parent.empire === actualEmpire && parent.population != null && parent.population.items.length > 0) {
+            // ParentHabitat.ResourceBonuses (never null on a TS habitat).
+            num3 = resourceBonusTotalByEffectType(parent, ColonyResourceEffect.BaseMaintenanceReduction) / 100.0;
+        }
+        // TODO(port): Race.ChangePeriodActive / PeriodicRaceEvent StrengthInNumbersMaintenanceLowerForSmallShips
+        // (num4 = 0.25 for Size <= 200) — periodic race events are not modeled (none at game start).
+        const num4 = 0.0;
+        const characterMaintenanceBonuses = getCharacterMaintenanceBonuses(this);
+        const num5 = characterMaintenanceBonuses / 100.0;
+        const num6 = Math.min(1.0, this.maintenanceSavings + num3 + num4 + num5);
+        const num7 = num6 * num2;
+        let num8 = 1.0;
+        const gov = this.empire !== null ? empireGovernmentAttributes(this.empire) : null;
+        if (gov !== null) {
+            num8 = gov.maintenanceCosts;
+        }
+        if (actualEmpire !== null && actualEmpire.pirateEmpireBaseHabitat !== null) {
+            // TODO(port): Galaxy.BaseTechCost (game option) is not kept on the TS Galaxy — the
+            // componentStatic default stands in (as in forceStructure.ts calculateSupportCost).
+            let d = DEFAULT_BASE_TECH_COST / 120000.0;
+            d = Math.sqrt(d);
+            num8 *= PIRATE_SHIP_MAINTENANCE_FACTOR * d;
+        }
+        if (actualEmpire !== null) {
+            // Empire.ShipMaintenancePrivateFactor / ShipMaintenanceStateFactor (Empire.cs 437/440, 1.0;
+            // set for pirates by SetPirateFactionModifiers — pirates.ts pirateFactionModifiers).
+            const mods = actualEmpire.pirateFactionModifiers;
+            num8 = !determineBuiltObjectIsState(this.subRole)
+                ? num8 * (mods !== null ? mods.shipMaintenancePrivateFactor : 1.0)
+                : num8 * (mods !== null ? mods.shipMaintenanceStateFactor : 1.0);
+        }
+        let num9 = (num2 - num7) * num8;
+        num9 *= this._supportCostFactor;
+        return csInt(num9);
+    }
     set annualSupportCost(value: number) { this._annualSupportCost = value; }
 
     // BuiltObject.PopulationCapacityRemaining.
@@ -1387,5 +1433,42 @@ function baconModMyShip(ship: BuiltObject): void {
         // TODO(port): the "Romulan" empire bonuses (BaconBuiltObject.cs 2823-2905) need
         // Empire.CountResourceSupplyLocations; no generated empire name contains "Romulan".
         throw new Error('TODO(port): BaconBuiltObject.ModMyShip Romulan bonuses');
+    }
+}
+
+// Galaxy.4.cs DetermineBuiltObjectIsState(subRole) (2495).
+export function determineBuiltObjectIsState(subRole: BuiltObjectSubRole): boolean {
+    switch (subRole) {
+        case BuiltObjectSubRole.Escort:
+        case BuiltObjectSubRole.Frigate:
+        case BuiltObjectSubRole.Destroyer:
+        case BuiltObjectSubRole.Cruiser:
+        case BuiltObjectSubRole.CapitalShip:
+        case BuiltObjectSubRole.TroopTransport:
+        case BuiltObjectSubRole.Carrier:
+        case BuiltObjectSubRole.ResupplyShip:
+        case BuiltObjectSubRole.ExplorationShip:
+        case BuiltObjectSubRole.ColonyShip:
+        case BuiltObjectSubRole.ConstructionShip:
+        case BuiltObjectSubRole.SmallSpacePort:
+        case BuiltObjectSubRole.MediumSpacePort:
+        case BuiltObjectSubRole.LargeSpacePort:
+        case BuiltObjectSubRole.GenericBase:
+        case BuiltObjectSubRole.EnergyResearchStation:
+        case BuiltObjectSubRole.WeaponsResearchStation:
+        case BuiltObjectSubRole.HighTechResearchStation:
+        case BuiltObjectSubRole.MonitoringStation:
+        case BuiltObjectSubRole.DefensiveBase:
+            return true;
+        case BuiltObjectSubRole.SmallFreighter:
+        case BuiltObjectSubRole.MediumFreighter:
+        case BuiltObjectSubRole.LargeFreighter:
+        case BuiltObjectSubRole.GasMiningShip:
+        case BuiltObjectSubRole.MiningShip:
+        case BuiltObjectSubRole.GasMiningStation:
+        case BuiltObjectSubRole.MiningStation:
+            return false;
+        default:
+            return false;
     }
 }

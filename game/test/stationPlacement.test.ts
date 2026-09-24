@@ -51,44 +51,69 @@ function traceRnd(g: Galaxy, log: string[]): void {
     };
 }
 
+// createGame's own per-empire station steps (Start.2.cs 1139-1318) with the Rnd draws of each step
+// recorded at the phase boundaries (test-only __phaseHook); stopped after the per-empire setup.
 function run() {
-    const g = createGame(opts()).galaxy;
-    g.startingAge = 1;
     const log: string[] = [];
-    traceRnd(g, log);
     const phases: Record<string, string[]>[] = [];
     const researchTargets: Habitat[][] = [];
-    for (const e of g.empires) {
-        const ph: Record<string, string[]> = {};
-        const mark = (name: string, f: () => void) => {
-            const n = log.length;
-            f();
-            ph[name] = log.slice(n);
-        };
-        checkColoniesForBaseFacilities(e);
-        let ports: string[] = [];
-        mark('ports', () => {
-            const amount = 1 + Math.trunc(e.colonies.length / 4.5);
-            const list = determineNewSpacePortLocations(g, e, e.colonies, amount, false);
-            ports = list.map((h) => h.name);
-            createSpacePorts(g, e, list);
-        });
-        mark('colonyResources', () => {
-            for (const h of e.colonies.filter((c) => ports.includes(c.name))) setColonyResources(g, h, e, true);
-        });
-        checkColoniesForBaseFacilities(e);
-        mark('researchLocations', () => determineResearchStationLocation(g, e, false, true));
-        researchTargets.push(e.researchHabitats.slice());
-        mark('research', () => createResearchStations(g, e, false));
-        mark('mining', () => createMiningStations(g, e, false));
-        mark('luxury', () => setLuxuryResourcesAtColonies(g, e));
-        phases.push(ph);
-    }
+    let mark = 0;
+    let ph: Record<string, string[]> = {};
+    const take = (name: string) => {
+        ph[name] = log.slice(mark);
+        mark = log.length;
+    };
+    const g = createGame({
+        ...opts(),
+        __phaseHook: (phase, gal, e) => {
+            switch (phase) {
+                case 'firstGalaxyTick':
+                    traceRnd(gal, log);
+                    break;
+                case 'empire:colonyRecalc':
+                    ph = {};
+                    mark = log.length;
+                    break;
+                case 'empire:spacePorts':
+                    take('ports');
+                    break;
+                case 'empire:portColonyResources':
+                    take('colonyResources');
+                    break;
+                case 'empire:unlockTechRuin':
+                    mark = log.length;
+                    break;
+                case 'empire:researchLocations':
+                    take('researchLocations');
+                    researchTargets.push(e!.researchHabitats.slice());
+                    break;
+                case 'empire:researchStations':
+                    take('research');
+                    break;
+                case 'empire:miningStations':
+                    take('mining');
+                    break;
+                case 'empire:luxury':
+                    take('luxury');
+                    phases.push(ph);
+                    break;
+                case 'empireSetup':
+                    return 'stop';
+            }
+            return undefined;
+        },
+    }).galaxy;
     return { g, phases, researchTargets };
 }
 
+/** createGame stopped before the per-empire setup (no space ports yet). */
+function beforeEmpireSetup(): Galaxy {
+    return createGame({ ...opts(), __phaseHook: (phase) => (phase === 'firstGalaxyTick' ? 'stop' : undefined) }).galaxy;
+}
+
+// The bases of the per-empire setup (independent traders from the first galaxy tick excluded).
 function summary(g: Galaxy) {
-    return g.builtObjects.map((b) => [b.builtObjectID, b.empire!.name, S[b.subRole], b.name, b.parentHabitat!.name, Math.round(b.xpos), Math.round(b.ypos), b.heading]);
+    return g.builtObjects.filter((b) => b.empire !== g.independentEmpire).map((b) => [b.builtObjectID, b.empire!.name, S[b.subRole], b.name, b.parentHabitat!.name, Math.round(b.xpos), Math.round(b.ypos), b.heading]);
 }
 
 describe('M3d station placement at game start (tech 0.5, age 1)', () => {
@@ -114,7 +139,7 @@ describe('M3d station placement at game start (tech 0.5, age 1)', () => {
     }, 60000);
 
     it('DetermineNewSpacePortLocations sorts by StrategicValue (then population) descending with no ports yet', () => {
-        const g = createGame(opts()).galaxy;
+        const g = beforeEmpireSetup();
         const e = g.empires[0];
         const capitals = g.empires.map((x) => x.capital!);
         const got = determineNewSpacePortLocations(g, e, capitals, 2, false);
@@ -135,7 +160,8 @@ describe('M3d station placement at game start (tech 0.5, age 1)', () => {
         const mining6plusSkip = Array(20).fill('NextDouble'); // + one candidate with a base: point drawn, nothing built
         expect(phases.map((p) => p.ports)).toEqual([port, port, port, port]);
         expect(phases.map((p) => p.researchLocations)).toEqual([[], [], [], []]);
-        expect(phases.map((p) => p.research)).toEqual([research, research, research, []]);
+        // (re-pinned: in createGame's own order the fourth empire also gets a research target.)
+        expect(phases.map((p) => p.research)).toEqual([research, research, research, research]);
         expect(phases.map((p) => p.mining)).toEqual([mining6plusSkip, mining6plusSkip, mining6, mining6]);
         expect(phases.map((p) => p.luxury)).toEqual([[], [], [], []]);
         for (let i = 0; i < g.empires.length; i++) {
@@ -175,36 +201,39 @@ describe('M3d station placement at game start (tech 0.5, age 1)', () => {
 });
 
 // Pinned for seed 1 (TS port): [id, empire, subRole, name, parent, x, y, heading].
+// (re-pinned: createGame now runs the first galaxy tick before this loop — its 150 independent
+// traders take ids 1-150 and their Rnd draws shift the station points/headings/names.)
 const PINNED: unknown[] = [
-    [1,  'S147 Kingdom',  'MediumSpacePort',  'Hotaulf Space Port',  'Hotaulf',  4692181,  1539086,  0.3117123246192932],
-    [2,  'S147 Kingdom',  'WeaponsResearchStation',  'S147 Station',  'S147 3',  4722542,  1541421,  0.06623484194278717],
-    [3,  'S147 Kingdom',  'GasMiningStation',  'S147 2 Gas Mining Station',  'S147 2',  4718787,  1548813,  -1.5028066635131836],
-    [4,  'S147 Kingdom',  'GasMiningStation',  'S147 4 Gas Mining Station',  'S147 4',  4693276,  1538109,  -3.0344324111938477],
-    [5,  'S147 Kingdom',  'GasMiningStation',  'S251 3 Gas Mining Station',  'S251 3',  4865387,  948087,  -0.21368546783924103],
-    [6,  'S147 Kingdom',  'MiningStation',  'Gewes Mining Station',  'Gewes',  4691819,  1550413,  -2.1986124515533447],
-    [7,  'S147 Kingdom',  'MiningStation',  'Alceycev Mining Station',  'Alceycev',  4693494,  1538304,  0.18163460493087769],
-    [8,  'S147 Kingdom',  'MiningStation',  'Rhuleete Mining Station',  'Rhuleete',  4693603,  1538262,  2.347738027572632],
-    [9,  'Haakonish Corporation',  'MediumSpacePort',  'S281 1 Space Port',  'S281 1',  4917347,  14063045,  -0.5463184714317322],
-    [10,  'Haakonish Corporation',  'HighTechResearchStation',  'S281 Station',  'S281 4',  4924994,  14065272,  2.5363035202026367],
-    [11,  'Haakonish Corporation',  'GasMiningStation',  'S281 2 Gas Mining Station',  'S281 2',  4923622,  14063508,  -1.0109935998916626],
-    [12,  'Haakonish Corporation',  'GasMiningStation',  'S281 5 Gas Mining Station',  'S281 5',  4895858,  14055227,  -2.6399624347686768],
-    [13,  'Haakonish Corporation',  'GasMiningStation',  'S281 3 Gas Mining Station',  'S281 3',  4909334,  14049279,  -3.0068461894989014],
-    [14,  'Haakonish Corporation',  'MiningStation',  'Aldoi Mining Station',  'Aldoi',  4925042,  14065209,  -2.1748621463775635],
-    [15,  'Haakonish Corporation',  'MiningStation',  'Eteph Mining Station',  'Eteph',  4917406,  14063000,  2.0216245651245117],
-    [16,  'Haakonish Corporation',  'MiningStation',  'Raho Mining Station',  'Raho',  4923559,  14063614,  2.331791400909424],
-    [17,  'S88 Union',  'MediumSpacePort',  'Toal Space Port',  'Toal',  6757792,  9953055,  -2.193997621536255],
-    [18,  'S88 Union',  'HighTechResearchStation',  'S88 Research Center',  'S88 6',  6755229,  9942387,  -0.2908647656440735],
-    [19,  'S88 Union',  'GasMiningStation',  'S88 3 Gas Mining Station',  'S88 3',  6757567,  9953110,  0.27321183681488037],
-    [20,  'S88 Union',  'GasMiningStation',  'S88 2 Gas Mining Station',  'S88 2',  6781906,  9959397,  -0.5728729367256165],
-    [21,  'S88 Union',  'GasMiningStation',  'S88 4 Gas Mining Station',  'S88 4',  6776593,  9938310,  2.484189033508301],
-    [22,  'S88 Union',  'MiningStation',  'Searocand Mining Station',  'Searocand',  6781797,  9959584,  -2.5764307975769043],
-    [23,  'S88 Union',  'MiningStation',  'Owleas Mining Station',  'Owleas',  6776794,  9938213,  -2.546337366104126],
-    [24,  'S88 Union',  'MiningStation',  'Eppif Mining Station',  'Eppif',  6770450,  9971152,  -2.7316136360168457],
-    [25,  'S46 Corporation',  'MediumSpacePort',  'Omesmehe Space Port',  'Omesmehe',  9406520,  14860705,  0.07212747633457184],
-    [26,  'S46 Corporation',  'GasMiningStation',  'S46 3 Gas Mining Station',  'S46 3',  9411017,  14892917,  -2.85225248336792],
-    [27,  'S46 Corporation',  'GasMiningStation',  'S46 1 Gas Mining Station',  'S46 1',  9404751,  14875560,  -2.1098945140838623],
-    [28,  'S46 Corporation',  'GasMiningStation',  'S31 6 Gas Mining Station',  'S31 6',  9772899,  13916207,  1.128775715827942],
-    [29,  'S46 Corporation',  'GasMiningStation',  'S46 2 Gas Mining Station',  'S46 2',  9403254,  14881242,  1.882344365119934],
-    [30,  'S46 Corporation',  'GasMiningStation',  'TJ933 Gas Mining Station',  'TJ933',  9086417,  15125422,  -0.804036021232605],
-    [31,  'S46 Corporation',  'MiningStation',  'Smoumesa Mining Station',  'Smoumesa',  9406541,  14860653,  -0.7389998435974121],
+    [151,  'S147 Kingdom',  'MediumSpacePort',  'Hotaulf Space Port',  'Hotaulf',  4692114,  1539085,  1.7379629611968994],
+    [152,  'S147 Kingdom',  'WeaponsResearchStation',  'S147 Research Facility',  'S147 3',  4722431,  1541180,  -2.3301198482513428],
+    [153,  'S147 Kingdom',  'GasMiningStation',  'S147 2 Gas Mining Station',  'S147 2',  4718793,  1548770,  2.3197569847106934],
+    [154,  'S147 Kingdom',  'GasMiningStation',  'S147 4 Gas Mining Station',  'S147 4',  4693152,  1538173,  -0.7135066390037537],
+    [155,  'S147 Kingdom',  'GasMiningStation',  'S251 3 Gas Mining Station',  'S251 3',  4865198,  948115,  2.1504313945770264],
+    [156,  'S147 Kingdom',  'MiningStation',  'Gewes Mining Station',  'Gewes',  4691753,  1550417,  -2.4236128330230713],
+    [157,  'S147 Kingdom',  'MiningStation',  'Alceycev Mining Station',  'Alceycev',  4693553,  1538348,  1.221428632736206],
+    [158,  'S147 Kingdom',  'MiningStation',  'Rhuleete Mining Station',  'Rhuleete',  4693561,  1538256,  -1.4129968881607056],
+    [159,  'Haakonish Corporation',  'MediumSpacePort',  'S281 1 Space Port',  'S281 1',  4917395,  14063020,  2.3799712657928467],
+    [160,  'Haakonish Corporation',  'HighTechResearchStation',  'S281 Research Facility',  'S281 4',  4925051,  14065098,  2.004002809524536],
+    [161,  'Haakonish Corporation',  'GasMiningStation',  'S281 2 Gas Mining Station',  'S281 2',  4923679,  14063477,  -0.508375883102417],
+    [162,  'Haakonish Corporation',  'GasMiningStation',  'S281 5 Gas Mining Station',  'S281 5',  4895837,  14055302,  -0.3740006387233734],
+    [163,  'Haakonish Corporation',  'GasMiningStation',  'S281 3 Gas Mining Station',  'S281 3',  4909203,  14049464,  3.1252634525299072],
+    [164,  'Haakonish Corporation',  'MiningStation',  'Aldoi Mining Station',  'Aldoi',  4925029,  14065201,  -1.6735355854034424],
+    [165,  'Haakonish Corporation',  'MiningStation',  'Eteph Mining Station',  'Eteph',  4917432,  14063054,  2.4699816703796387],
+    [166,  'Haakonish Corporation',  'MiningStation',  'Raho Mining Station',  'Raho',  4923562,  14063615,  2.0479631423950195],
+    [167,  'S88 Union',  'MediumSpacePort',  'Toal Space Port',  'Toal',  6757788,  9953093,  1.9591331481933594],
+    [168,  'S88 Union',  'HighTechResearchStation',  'S88 Station',  'S88 6',  6755303,  9942202,  1.6003285646438599],
+    [169,  'S88 Union',  'GasMiningStation',  'S88 3 Gas Mining Station',  'S88 3',  6758027,  9953116,  0.11749134212732315],
+    [170,  'S88 Union',  'GasMiningStation',  'S88 2 Gas Mining Station',  'S88 2',  6781501,  9959701,  -2.522240161895752],
+    [171,  'S88 Union',  'GasMiningStation',  'S88 4 Gas Mining Station',  'S88 4',  6776934,  9938232,  -1.4881337881088257],
+    [172,  'S88 Union',  'MiningStation',  'Searocand Mining Station',  'Searocand',  6781799,  9959539,  0.324599027633667],
+    [173,  'S88 Union',  'MiningStation',  'Owleas Mining Station',  'Owleas',  6776757,  9938154,  2.722996711730957],
+    [174,  'S88 Union',  'MiningStation',  'Eppif Mining Station',  'Eppif',  6770501,  9971124,  2.0642170906066895],
+    [175,  'S46 Corporation',  'MediumSpacePort',  'Omesmehe Space Port',  'Omesmehe',  9406560,  14860723,  1.1919268369674683],
+    [176,  'S46 Corporation',  'HighTechResearchStation',  'S31 Research Station',  'S31 4',  9773893,  13902309,  2.454179048538208],
+    [177,  'S46 Corporation',  'GasMiningStation',  'S46 3 Gas Mining Station',  'S46 3',  9410871,  14892393,  1.414827585220337],
+    [178,  'S46 Corporation',  'GasMiningStation',  'S46 1 Gas Mining Station',  'S46 1',  9404605,  14875316,  2.4456305503845215],
+    [179,  'S46 Corporation',  'GasMiningStation',  'S31 6 Gas Mining Station',  'S31 6',  9772864,  13916307,  2.0620462894439697],
+    [180,  'S46 Corporation',  'GasMiningStation',  'S46 2 Gas Mining Station',  'S46 2',  9402917,  14881436,  -2.527775764465332],
+    [181,  'S46 Corporation',  'GasMiningStation',  'TJ933 Gas Mining Station',  'TJ933',  9082407,  15126223,  -0.6137555837631226],
+    [182,  'S46 Corporation',  'MiningStation',  'Smoumesa Mining Station',  'Smoumesa',  9406506,  14860665,  -2.4643402099609375],
 ];

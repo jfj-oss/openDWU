@@ -204,26 +204,28 @@ describe('UpgradeMilitaryShipDesignMoreWeapons / MoreEngines (Galaxy.8.cs 4121 /
 });
 
 // Seed 1: [super-pirate designs (subRole:name:component count), first 8 BuiltObjects, BuiltObject count].
+// (re-pinned: generateSuperPirateFaction now runs on the full createGame state — stations, starting
+// ships, characters, ruins and the game-start tail consumed Rnd and changed the tech/design inputs.)
 const PINNED: unknown[] = [
     [
-        'Escort:Venator II:32',
-        'Frigate:Striker II:43',
-        'Destroyer:Centurion II:55',
-        'Cruiser:Victory II:90',
-        'CapitalShip:Minotaur:136',
-        'Carrier:CX-2 Carrier:108',
+        'Escort:Imperator II:32',
+        'Frigate:Minotaur II:44',
+        'Destroyer:Tetrarch II:54',
+        'Cruiser:Battleaxe II:89',
+        'CapitalShip:Decurion:137',
+        'Carrier:CX-2 Carrier:109',
         'DefensiveBase:Phantom Pirate Defensive Base:123',
         'GenericBase:Phantom Pirate Base:217',
     ],
     [
-        'GenericBase:Bounty Hunters Nest',
+        'GenericBase:Haako End',
+        'DefensiveBase:Haako 4 Defense Battery',
         'DefensiveBase:Haako 4 Defense Battery',
         'DefensiveBase:Haako 4 Weapons Platform',
-        'DefensiveBase:Haako 4 Defensive Base',
-        'CapitalShip:Courageous Firelance',
-        'Destroyer:Supreme Hand',
-        'Frigate:Black Hydra',
-        'Destroyer:Smashing Battle',
+        'Cruiser:Grand Judgment',
+        'Frigate:Banished Death',
+        'CapitalShip:Immortal Nemesis',
+        'Frigate:Ruinous Encounter',
     ],
-    33,
+    32,
 ];

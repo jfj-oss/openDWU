@@ -37,6 +37,7 @@ import { PirateRelationList, PirateRelationType, obtainPirateRelation, changePir
 import { recalculateDevelopmentLevelBaseline } from './developmentLevel';
 import { recalculateColonyInfluenceRadius } from './territory';
 import type { Character } from './characters';
+import { DiplomaticRelationList } from './diplomacy';
 
 // Empire.1.cs TakeOwnershipOfColony callees that live in modules importing empire.ts
 // (forceStructure.ts RecalculateDistanceFactor / RecalculateAnnualTaxRevenue, taxes.ts
@@ -119,6 +120,10 @@ let governmentsStatic: (Government | null)[] = [];
 export function setGovernmentsStatic(list: (Government | null)[]): void {
     governmentsStatic = list;
 }
+/** Galaxy.GovernmentsStatic / Galaxy.Governments (read by gameStartTail.ts SelectSpecialRuins). */
+export function getGovernmentsStatic(): readonly (Government | null)[] {
+    return governmentsStatic;
+}
 
 // Per-galaxy empire-id counter standing in for Galaxy.GetNextEmpireID()
 // (Galaxy.cs). The TS Galaxy class has no such member and cannot be edited
@@ -179,8 +184,15 @@ export class Empire {
     troops = new TroopList();
     intelligenceMissions: unknown[] = [];
     outlaws: unknown[] = [];
-    diplomaticRelations: unknown[] = [];
-    proposedDiplomaticRelations: unknown[] = [];
+    // Empire.cs 870 DiplomaticRelations / 78 _ProposedDiplomaticRelations (diplomacy.ts); both
+    // ctors (Empire.cs 3810-3812 / 4187-4189) recreate them with InvertEmpireIndexing = true
+    // on the proposed list.
+    diplomaticRelations = new DiplomaticRelationList();
+    proposedDiplomaticRelations = ((): DiplomaticRelationList => {
+        const list = new DiplomaticRelationList();
+        list.invertEmpireIndexing = true;
+        return list;
+    })();
     colonies: Habitat[] = [];
     // Pirate-faction state (Galaxy.8.cs GeneratePirateEmpire; task C2d).
     piratePlayStyle: PiratePlayStyle = 0 as PiratePlayStyle;
@@ -462,10 +474,9 @@ export class Empire {
         this.troops = new TroopList();
         this.intelligenceMissions = [];
         this.outlaws = [];
-        this.diplomaticRelations = [];
-        this.proposedDiplomaticRelations = [];
-        // C#: _ProposedDiplomaticRelations.InvertEmpireIndexing = true —
-        // TODO(port): DiplomaticRelationList — DiplomaticRelation.cs.
+        this.diplomaticRelations = new DiplomaticRelationList();
+        this.proposedDiplomaticRelations = new DiplomaticRelationList();
+        this.proposedDiplomaticRelations.invertEmpireIndexing = true;
         this.colonies = [];
         this.constructionYards = [];
         this.distressSignals = [];

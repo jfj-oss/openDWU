@@ -20,7 +20,22 @@
 // Normal (0.5, SetTechTreeStartingDefaults) and Level 1-6. AI pirate factions
 // are generated when piratePrevalence > 0 (pirates.ts).
 
-import { PiratePlayStyle, fastFindNearestIndependentHabitat, generateNewPirateEmpires, generatePirateEmpire, selectRandomRace, setEmpireDifficultyFactors } from './pirates';
+import { reviewComponentPrices, reviewResourcePrices } from './market';
+import { galaxyGameStartHugeTick, galaxyGameStartLongTick, selectPopularDesignCandidates } from './independentTraders';
+import { checkEmpireTerritoryCanBuildAtHabitat } from './resourceTargets';
+import { gameStartColonyRecalc, gameStartReviewTaxes } from './taxes';
+import { checkColoniesForBaseFacilities, createMiningStations, createResearchStations, createSpacePorts, determineNewSpacePortLocations, determineResearchStationLocation, setLuxuryResourcesAtColonies } from './stationPlacement';
+import { applyResearchBonusGasGiant, ensureImportantPreWarpResources } from './startHabitats';
+import { clearRuinBonusesForAge, placeRuinsUnlockTech, placeStartRuins } from './ruins';
+import { assignMissionsToBuiltObjectList, createPrivateShips, createStateShips, fillShipsWithTroops } from './builtObjectPlacement';
+import { meetPiratesAtStart } from './pirateRelations';
+import { CharacterRole, generateNewCharacter, generateStartingCharacters } from './characters';
+import { registerTroopGeneralHook } from './troops';
+import { empireDoTasksStandIn } from './empireGeneration';
+import { meetEmpiresAtStart } from './diplomacy';
+import { gameStartTail } from './gameStartTail';
+import { PiratePlayStyle, doGalaxyEventsSuperPirates, fastFindNearestIndependentHabitat, findNearestPirateFaction, generateNewPirateEmpires, generatePirateEmpire, generatePirateEmpireRandom, pirateReviewColoniesToControl, selectRandomRace, setEmpireDifficultyFactors, type PirateGenerationContext } from './pirates';
+import { setColonyResources } from './colony';
 import { raceDesignPictureFamilyIndexPirates } from './empire';
 import { SystemVisibilityStatus } from './visibility';
 import { Galaxy, generateGalaxy } from './galaxy';
@@ -86,9 +101,79 @@ export interface CreateGameOptions {
     maximumEmpireAmount?: number;
     /** Galaxy.DifficultyLevel (default 1.0). */
     difficultyLevel?: number;
+    /** VictoryConditions.EnableDisasterEvents (Start.2.cs 503; default true). */
+    disasterEventsEnabled?: boolean;
     /** Galaxy.EmpireTerritoryColonyInfluenceRangeFactor from the wizard (<= 0 = auto). */
     empireTerritoryColonyInfluenceRangeFactor?: number;
+    /**
+     * TEST-ONLY seam (not part of the game API; the wizard never sets it). Called at each
+     * game-start phase boundary *after* the named step has run (see GameStartPhase); returning
+     * 'stop' makes createGame return at once with the galaxy in exactly that state. Lets tests
+     * observe the state just before a step (exact Rnd-sequence tests) without re-running it.
+     * `empire` is set for the per-empire phases ('empire:*', 'ships:*').
+     */
+    __phaseHook?: (phase: GameStartPhase, galaxy: Galaxy, empire?: Empire) => void | 'stop';
 }
+
+/**
+ * createGame phase boundaries reported to CreateGameOptions.__phaseHook (test-only). Each name
+ * means "this step has just completed" (Start.2.cs CreateGameFromSettings line ranges):
+ * - 'startingColonies'  extra starting colonies + ReviewIndependentColonies (→ 1098)
+ * - 'priceReviews'      1099-1104 ReviewEmpireTerritory + 20 × resource/component price reviews
+ * - 'firstGalaxyTick:huge' the huge-interval block of that first Galaxy.DoTasks (popular designs, super pirates)
+ * - 'firstGalaxyTick'   1105-1106 Galaxy.DoTasks (super pirates, independent traders, pirate factions)
+ * - 'empire:start'      1108 per-empire setup loop, before the first step for that empire
+ * - 'empire:colonyRecalc' 1110-1113, 'empire:spacePorts' 1139-1145 (CreateSpacePorts),
+ *   'empire:portColonyResources' 1146, 'empire:baseFacilities' 1147, 'empire:gasGiantBonus' 1156-1173,
+ *   'empire:preWarpResources' 1174-1273, 'empire:unlockTechRuin' 1274-1304,
+ *   'empire:researchLocations' 1307, 'empire:researchStations' 1308-1311,
+ *   'empire:miningStations' 1313-1317, 'empire:luxury' 1318, 'empire:taxes' 1319-1339,
+ *   'empire:doTasks' 1340-1344 (end of that empire's setup)
+ * - 'empireSetup'       the whole 1108-1350 loop
+ * - 'ships:start' / 'ships:state' / 'ships:private' / 'ships:troops' / 'ships:missions'
+ *                       1365-1375 per empire (only for empires with tech level > 0)
+ * - 'startingShips'     the whole 1365-1375 loop
+ * - 'diplomacy'         1376-1472 (empires meet, pirate meetings)
+ * - 'characters'        1474-1482 starting characters
+ * - 'territoryReview'   1484-1486
+ * - 'nearPlayerPirate'  1493-1533
+ * - 'startRuins'        1534-1554 SelectRuins pass (placeStartRuins)
+ * - 'ruins'             1534-1565 (+ the Age > 0 ruin-bonus clearing)
+ * - 'tail'              gameStartTail (end of createGame)
+ */
+export type GameStartPhase =
+    | 'startingColonies'
+    | 'priceReviews'
+    | 'firstGalaxyTick:huge'
+    | 'firstGalaxyTick'
+    | 'empire:start'
+    | 'empire:colonyRecalc'
+    | 'empire:spacePorts'
+    | 'empire:portColonyResources'
+    | 'empire:baseFacilities'
+    | 'empire:gasGiantBonus'
+    | 'empire:preWarpResources'
+    | 'empire:unlockTechRuin'
+    | 'empire:researchLocations'
+    | 'empire:researchStations'
+    | 'empire:miningStations'
+    | 'empire:luxury'
+    | 'empire:taxes'
+    | 'empire:doTasks'
+    | 'empireSetup'
+    | 'ships:start'
+    | 'ships:state'
+    | 'ships:private'
+    | 'ships:troops'
+    | 'ships:missions'
+    | 'startingShips'
+    | 'diplomacy'
+    | 'characters'
+    | 'territoryReview'
+    | 'nearPlayerPirate'
+    | 'startRuins'
+    | 'ruins'
+    | 'tail';
 
 export interface Game {
     galaxy: Galaxy;
@@ -549,6 +634,45 @@ function checkNearIndependentColony(galaxy: Galaxy, independentColonies: Habitat
     return false;
 }
 
+// Start.2.cs 1493-1533: when pirates are on at the nearest proximity, one extra faction is
+// generated within reach of the player if the nearest faction is more than a sector away.
+function spawnPirateNearPlayer(galaxy: Galaxy, ctx: PirateGenerationContext, xpos: number, ypos: number): void {
+    const empire6 = findNearestPirateFaction(galaxy, xpos, ypos, null, true);
+    if (empire6 === null) return;
+    const num40 = galaxy.calculateDistance(xpos, ypos, empire6.pirateEmpireBaseHabitat!.xpos, empire6.pirateEmpireBaseHabitat!.ypos);
+    if (!(num40 > galaxy.sectorSize)) return;
+    let num41 = xpos;
+    let num42 = ypos;
+    let flag4 = false;
+    let num43 = 0;
+    const fuel = galaxy.resourceSystem.fuelResources[0].resourceId;
+    while (!flag4 && num43 < 50) {
+        num41 += 200000.0 - galaxy.rnd.nextDouble() * 400000.0;
+        num42 += 200000.0 - galaxy.rnd.nextDouble() * 400000.0;
+        let habitat12 = galaxy.findNearestHabitatWithResource(num41, num42, fuel);
+        // C# derefs habitat12 here without a null check.
+        if (habitat12!.basesAtHabitat.length > 0) {
+            for (const b of habitat12!.basesAtHabitat) {
+                if (b.empire !== null && b.empire !== galaxy.independentEmpire && b.empire.pirateEmpireBaseHabitat === null) {
+                    habitat12 = null;
+                    break;
+                }
+            }
+        }
+        if (habitat12 !== null) {
+            const habitat13 = galaxy.findNearestColony(habitat12.xpos, habitat12.ypos, null, false)!;
+            const num45 = galaxy.calculateDistance(habitat13.xpos, habitat13.ypos, habitat12.xpos, habitat12.ypos);
+            if (num45 > galaxy.maxSolarSystemSize * 2.1 && habitat12.category !== HabitatCategoryType.Star && galaxy.nextEmpireId < galaxy.maximumEmpireCount) {
+                selectPopularDesignCandidates(galaxy);
+                const pt = galaxy.selectRelativeHabitatSurfacePoint(habitat12);
+                generatePirateEmpireRandom(galaxy, ctx, habitat12, Math.trunc(pt.x), Math.trunc(pt.y), true);
+                flag4 = true;
+            }
+        }
+        num43++;
+    }
+}
+
 // createGame: the sim entry point the wizard calls (non-pirate play).
 export function createGame(opts: CreateGameOptions): Game {
     const gd = opts.gameData;
@@ -576,6 +700,17 @@ export function createGame(opts: CreateGameOptions): Game {
         empireStarts: all.filter((e) => e.resolvedRace !== null).map((e) => ({ resolvedRace: e.resolvedRace!, projectedColonyAmount: e.projectedColonyAmount })),
     });
     galaxy.age = opts.galaxyAge ?? 0;
+    // Start.2.cs 107-108 and the starting age / difficulty used throughout game start.
+    galaxy.piratePrevalence = opts.piratePrevalence ?? 0;
+    galaxy.raceFamilies = gd.raceFamilies;
+    galaxy.startingAge = opts.player.age;
+    galaxy.difficultyLevel = opts.difficultyLevel ?? 1.0;
+    // Start.2.cs 500: no race (AvailableCharacters) starting characters until 1478.
+    galaxy.allowRaceStartingCharacters = false;
+    registerTroopGeneralHook((g, e, location) => {
+        // Galaxy.2.cs 5230: GenerateNewCharacter(TroopGeneral, location). TODO(port): 5231-5233 message.
+        generateNewCharacter(g, e, CharacterRole.TroopGeneral, location);
+    });
     galaxy.empireTerritoryColonyInfluenceRangeFactor = opts.empireTerritoryColonyInfluenceRangeFactor ?? galaxy.empireTerritoryColonyInfluenceRangeFactor;
     galaxy.colonyNames = opts.colonyNames ?? null;
     galaxy.colonyNameIndex = 0;
@@ -641,6 +776,7 @@ export function createGame(opts: CreateGameOptions): Game {
         if ((opts.player.designPictureFamilyIndex ?? -1) >= 0) designPictureFamilyIndex = opts.player.designPictureFamilyIndex!;
         const pt = galaxy.selectRelativeHabitatSurfacePoint(habitat2);
         const style = opts.player.piratePlayStyle ?? PiratePlayStyle.Balanced;
+        galaxy.allowRaceStartingCharacters = true; // Start.2.cs 706
         empire2 = generatePirateEmpire(
             galaxy,
             { independentColonies, startingAge: opts.player.age, difficultyLevel: opts.difficultyLevel ?? 1.0 },
@@ -657,6 +793,7 @@ export function createGame(opts: CreateGameOptions): Game {
         if (opts.player.name) empire2.name = opts.player.name;
         empire2.piratePlayStyle = style;
         habitat = habitat2;
+        galaxy.allowRaceStartingCharacters = false; // Start.2.cs 717
         const h4 = fastFindNearestIndependentHabitat(galaxy, independentColonies, habitat2.xpos, habitat2.ypos);
         if (h4 !== null && !empire2.visibility.checkSystemExplored(h4.systemIndex)) {
             const star = galaxy.determineHabitatSystemStar(h4);
@@ -702,6 +839,8 @@ export function createGame(opts: CreateGameOptions): Game {
     const empireList: Empire[] = playAsPirate ? [] : [empire2];
     const list3: number[] = playAsPirate ? [] : [playerExpansion];
     const list6: number[] = playAsPirate ? [] : [opts.player.age];
+    // empireStartList2[i].TechLevel, parallel to empireList.
+    const listTech: number[] = playAsPirate ? [] : [opts.player.techLevel];
     const num14 = aiStarts.length;
     updateEmpireStarts(aiStarts, normalRaces, clockRnd, race.name);
     for (let num15 = 0; num15 < num14; num15++) {
@@ -742,6 +881,7 @@ export function createGame(opts: CreateGameOptions): Game {
         empireList.push(r.empire);
         list3.push(r.expansion);
         list6.push(es.opts.age);
+        listTech.push(es.opts.techLevel);
     }
 
     // Starting colonies (CreateGameFromSettings, "num15 >= num14" branch).
@@ -843,19 +983,141 @@ export function createGame(opts: CreateGameOptions): Game {
     }
     galaxy.updateSystemInfo();
     independentColonies = reviewIndependentColonies(galaxy);
-    // Pirate factions: Galaxy.DoTasks → GenerateNewPirateEmpires on the first tick
-    // after empire generation (Start.2.cs galaxy.DoTasks); see pirates.ts.
-    if ((opts.piratePrevalence ?? 0) > 0) {
-        generateNewPirateEmpires(
-            galaxy,
-            { independentColonies, startingAge: opts.player.age, difficultyLevel: opts.difficultyLevel ?? 1.0 },
-            {
-                piratePrevalence: opts.piratePrevalence ?? 0,
-                pirateProximity: opts.pirateProximity ?? 0,
-                maximumEmpireAmount: opts.maximumEmpireAmount ?? 1 + opts.aiEmpires.length,
-            },
-        );
+    // Test-only seam (CreateGameOptions.__phaseHook): no effect on the game when unset.
+    const phaseHook = opts.__phaseHook;
+    const result = (): Game => ({ galaxy, playerEmpire: empire2, viewX, viewY });
+    const stopAt = (phase: GameStartPhase, e?: Empire): boolean => phaseHook !== undefined && phaseHook(phase, galaxy, e) === 'stop';
+    if (stopAt('startingColonies')) return result();
+    const pirateCtx = () => ({ independentColonies: galaxy.independentColonies, startingAge: opts.player.age, difficultyLevel: galaxy.difficultyLevel });
+    const piratePrevalence = opts.piratePrevalence ?? 0;
+    const pirateSettings = {
+        piratePrevalence,
+        pirateProximity: opts.pirateProximity ?? 0,
+        maximumEmpireAmount: opts.maximumEmpireAmount ?? 1 + opts.aiEmpires.length,
+    };
+
+    // Start.2.cs 1099-1104.
+    galaxy.empireTerritory.reviewEmpireTerritory(galaxy); // ReviewEmpireTerritoryCore(false)
+    galaxy.updateSystemInfo();
+    for (let num28 = 0; num28 < 20; num28++) {
+        reviewResourcePrices(galaxy);
+        reviewComponentPrices(galaxy);
     }
+    if (stopAt('priceReviews')) return result();
+    // Start.2.cs 1105-1106: ResetLastTouchTimes + Galaxy.DoTasks — on this first tick the huge
+    // block runs, then the long block (independent traders, GenerateNewPirateEmpires).
+    galaxy.independentColonies = independentColonies;
+    galaxyGameStartHugeTick(galaxy, {
+        doGalaxyEvents: () => doGalaxyEventsSuperPirates(galaxy, pirateCtx(), { gameDisasterEventsEnabled: opts.disasterEventsEnabled ?? true, piratePrevalence }),
+    });
+    if (stopAt('firstGalaxyTick:huge')) return result();
+    galaxyGameStartLongTick(galaxy, {
+        checkEmpireTerritoryCanBuildAtHabitat,
+        generateNewPirateEmpires: () => {
+            if (piratePrevalence > 0) generateNewPirateEmpires(galaxy, pirateCtx(), pirateSettings);
+        },
+    });
+    // TODO(port): rest of that Galaxy.DoTasks (see independentTraders.ts galaxyGameStartLongTick).
+    if (stopAt('firstGalaxyTick')) return result();
+
+    // Start.2.cs 1108-1350: per-empire setup.
+    const int5 = galaxy.age; // int_5
+    let bool6 = opts.allowEmpiresInSameSystem ?? false;
+    for (let num29 = 0; num29 < empireList.length; num29++) {
+        const empire3 = empireList[num29];
+        const tech = listTech[num29];
+        if (stopAt('empire:start', empire3)) return result();
+        gameStartColonyRecalc(galaxy, empire3); // 1110-1113
+        if (stopAt('empire:colonyRecalc', empire3)) return result();
+        // 1114-1121 touch times (int_5 > 0): the second DoTasks below runs its blocks only then.
+        // 1122-1137: PreWarpProgressEventOccurredSendPirateRaid = true always; all 13 flags when
+        // tech > 0. TODO(port): the TS Empire keeps one combined flag, so SendPirateRaid alone
+        // (tech 0) is not representable.
+        if (tech > 0.0) empire3.preWarpProgressEventsOccurred = true;
+        if (tech > 0.0) {
+            // 1139-1146
+            const newSpacePortAmount = 1 + Math.trunc(empire3.colonies.length / 4.5);
+            const habitatList = determineNewSpacePortLocations(galaxy, empire3, empire3.colonies, newSpacePortAmount, false);
+            createSpacePorts(galaxy, empire3, habitatList);
+            if (stopAt('empire:spacePorts', empire3)) return result();
+            for (const item7 of habitatList) setColonyResources(galaxy, item7, empire3, true);
+            if (stopAt('empire:portColonyResources', empire3)) return result();
+        }
+        checkColoniesForBaseFacilities(empire3); // 1147
+        if (stopAt('empire:baseFacilities', empire3)) return result();
+        applyResearchBonusGasGiant(galaxy, empire3); // 1156-1173
+        if (stopAt('empire:gasGiantBonus', empire3)) return result();
+        ensureImportantPreWarpResources(galaxy, empire3, tech); // 1174-1273
+        if (stopAt('empire:preWarpResources', empire3)) return result();
+        placeRuinsUnlockTech(galaxy, empire3, tech); // 1274-1304
+        if (stopAt('empire:unlockTechRuin', empire3)) return result();
+        determineResearchStationLocation(galaxy, empire3, false, true); // 1307
+        if (stopAt('empire:researchLocations', empire3)) return result();
+        if (tech > 0.0) createResearchStations(galaxy, empire3, bool6); // 1308-1311
+        if (stopAt('empire:researchStations', empire3)) return result();
+        bool6 = false; // 1313
+        if (tech > 0.0) createMiningStations(galaxy, empire3, bool6); // 1314-1317
+        if (stopAt('empire:miningStations', empire3)) return result();
+        setLuxuryResourcesAtColonies(galaxy, empire3); // 1318
+        if (stopAt('empire:luxury', empire3)) return result();
+        empire3.initiateConstruction = false;
+        gameStartReviewTaxes(galaxy, empire3, int5); // 1320-1339 (incl. ProcessColonyTroops when int_5 > 0)
+        if (stopAt('empire:taxes', empire3)) return result();
+        empire3.buildFactor = 0.5 + Math.min(0.2, empire3.colonies.length / 20.0); // 1340
+        // 1341 empire3.DoTasks(): with the touch times reset (int_5 > 0) its periodic/long blocks
+        // run; otherwise they already ran this game second (GenerateEmpire) and are skipped.
+        if (int5 > 0) empireDoTasksStandIn(galaxy, empire3);
+        empire3.buildFactor = 1.0;
+        empire3.initiateConstruction = true;
+        galaxy.rnd.next(1, 120); // 1344 Rnd.Next(1, (int)LongProcessingInterval): touch-time stagger (Empire.cs 184: 120 s)
+        if (stopAt('empire:doTasks', empire3)) return result();
+    }
+    if (stopAt('empireSetup')) return result();
+    // TODO(port): 1354-1364 attack ranges from GameOptions (no Rnd).
+    // Start.2.cs 1365-1375: starting ships.
+    for (let num35 = 0; num35 < empireList.length; num35++) {
+        const empire4 = empireList[num35];
+        if (listTech[num35] > 0.0) {
+            if (stopAt('ships:start', empire4)) return result();
+            createStateShips(galaxy, empire4);
+            if (stopAt('ships:state', empire4)) return result();
+            createPrivateShips(galaxy, empire4);
+            if (stopAt('ships:private', empire4)) return result();
+            fillShipsWithTroops(galaxy, empire4);
+            if (stopAt('ships:troops', empire4)) return result();
+            assignMissionsToBuiltObjectList(empire4, empire4.builtObjects, false, null);
+            assignMissionsToBuiltObjectList(empire4, empire4.privateBuiltObjects, false, null);
+            if (stopAt('ships:missions', empire4)) return result();
+        }
+    }
+    if (stopAt('startingShips')) return result();
+    meetEmpiresAtStart(galaxy, empireList); // 1376-1420
+    if (empire2.pirateEmpireBaseHabitat !== null) {
+        meetPiratesAtStart(galaxy, empire2); // 1421-1471
+        empire2.colonizationTargets = pirateReviewColoniesToControl(galaxy, empire2, galaxy.independentColonies); // 1472
+    }
+    if (stopAt('diplomacy')) return result();
+    // 1474-1482: starting characters.
+    galaxy.allowRaceStartingCharacters = true;
+    for (const e of empireList) if (e.dominantRace !== null) generateStartingCharacters(galaxy, e);
+    if (stopAt('characters')) return result();
+    // 1484 galaxy.DoTasks: no touch interval has elapsed since the first tick (same game time),
+    // so nothing time-gated runs. TODO(port): its per-call (non-interval) work.
+    galaxy.empireTerritory.reviewEmpireTerritory(galaxy); // 1485
+    galaxy.updateSystemInfo(); // 1486
+    if (stopAt('territoryReview')) return result();
+    // 1493-1533: one more pirate faction near the player.
+    if (piratePrevalence > 0.0 && (opts.pirateProximity ?? 0) === 0 && !playAsPirate) {
+        spawnPirateNearPlayer(galaxy, pirateCtx(), viewX, viewY);
+    }
+    if (stopAt('nearPlayerPirate')) return result();
+    // 1534-1565: ruins.
+    placeStartRuins(galaxy);
+    if (stopAt('startRuins')) return result();
+    clearRuinBonusesForAge(galaxy);
+    if (stopAt('ruins')) return result();
+    gameStartTail(galaxy, { playerEmpire: empire2, empireList, playerTechLevel: opts.player.techLevel, playerAge: opts.player.age, playAsPirate, raceFamilies: gd.raceFamilies });
     // TODO(port): the rest of CreateGameFromSettings (see header).
-    return { galaxy, playerEmpire: empire2, viewX, viewY };
+    stopAt('tail');
+    return result();
 }

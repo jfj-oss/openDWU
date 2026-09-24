@@ -3,7 +3,6 @@ import { createGame, type CreateGameOptions } from '../src/sim/game';
 import { GalaxyShape } from '../src/sim/types';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 import type { GameData } from '../src/sim/data/gameData';
-import { reviewComponentPrices, reviewResourcePrices } from '../src/sim/market';
 import { galaxyComponentCurrentPrices, galaxyResourceCurrentPrices } from '../src/sim/design';
 import type { Galaxy } from '../src/sim/galaxy';
 
@@ -25,16 +24,28 @@ function rndState(g: Galaxy): string {
     return JSON.stringify(g.rnd);
 }
 
+// createGame's own 20 reviews (Start.2.cs 1102-1104): state recorded at the phase boundaries
+// around them and stopped right after (test-only __phaseHook).
 function run(): { galaxy: Galaxy; resources: number[]; components: number[]; rndBefore: string; rndAfter: string; initialResources: number[]; initialComponents: number[] } {
-    const galaxy = createGame(opts()).galaxy;
-    const initialResources = [...galaxyResourceCurrentPrices(galaxy)];
-    const initialComponents = [...galaxyComponentCurrentPrices(galaxy)];
-    const rndBefore = rndState(galaxy);
-    for (let i = 0; i < 20; i++) {
-        reviewResourcePrices(galaxy);
-        reviewComponentPrices(galaxy);
-    }
-    const rndAfter = rndState(galaxy);
+    let initialResources: number[] = [];
+    let initialComponents: number[] = [];
+    let rndBefore = '';
+    let rndAfter = '';
+    const galaxy = createGame({
+        ...opts(),
+        __phaseHook: (phase, g) => {
+            if (phase === 'startingColonies') {
+                initialResources = [...galaxyResourceCurrentPrices(g)];
+                initialComponents = [...galaxyComponentCurrentPrices(g)];
+                rndBefore = rndState(g);
+            }
+            if (phase === 'priceReviews') {
+                rndAfter = rndState(g);
+                return 'stop';
+            }
+            return undefined;
+        },
+    }).galaxy;
     return { galaxy, resources: [...galaxyResourceCurrentPrices(galaxy)], components: [...galaxyComponentCurrentPrices(galaxy)], rndBefore, rndAfter, initialResources, initialComponents };
 }
 

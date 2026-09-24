@@ -4,6 +4,7 @@
 // Every Galaxy.Rnd call is kept in the C# order. Callees that don't draw Rnd
 // and whose systems aren't ported yet are TODO(port) notes in place.
 
+import { generateColonyStartingTroops } from './troops';
 import type { Galaxy } from './galaxy';
 import type { Empire } from './empire';
 import { COLONY_ANNUAL_LUXURY_RESOURCE_CONSUMPTION_RATE, COLONY_ANNUAL_RESOURCE_CONSUMPTION_RATE, MINIMUM_LUXURY_RESOURCE_REORDER_AMOUNT } from './empire';
@@ -63,14 +64,8 @@ export function makeHabitatIntoColony(
     recalculateAnnualTaxRevenue(galaxy, habitat);
     // TODO(port): Habitat.DoTasks (680; a no-op at game start: all touch
     // spans are ~0), ConstructionQueue.ReviewConstructionSpeed (683) — no Rnd.
-    // TroopLevelRequired needs EstimatedDefensiveForceRequired (not ported),
-    // so it is 0 here and no troops are generated; the Rnd draw stays.
-    const troopLevelRequired = 0;
-    const num4 = Math.trunc(troopLevelRequired * (0.5 + galaxy.rnd.nextDouble()));
-    const num5 = Math.trunc(num4 / 100);
-    for (let i = 0; i < num5; i++) {
-        // TODO(port): GenerateNewTroop(GenerateTroopDescription(), Infantry, race.TroopStrength, empire, race).
-    }
+    // Galaxy.8.cs 685-696: starting garrison (one NextDouble).
+    generateColonyStartingTroops(galaxy, habitat, empire, race, galaxy.difficultyLevel);
     empire.resolveSystemVisibility(habitat.xpos, habitat.ypos);
 }
 

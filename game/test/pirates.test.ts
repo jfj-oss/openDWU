@@ -210,12 +210,15 @@ describe('generatePirateEmpireName', () => {
 // Galaxy.8.cs 4623-4820 — which draws Rnd (base name, headings, ship names, AddBuiltObjectToGalaxy
 // offsets, station surface points), and FindNearestPirateFaction now finds factions, so the
 // 1,000,000 spacing rule of GenerateNewPirateEmpires applies. The first faction is unchanged.)
+// (re-pinned: createGame now runs the price reviews and the first galaxy tick's huge block and
+// independent traders before GenerateNewPirateEmpires, pirate starting characters (Galaxy.8.cs 4822)
+// draw between factions, and Start.2.cs 1493-1533 may add one more faction near the player.)
 const PINNED_SEED1_PIRATES: unknown[] = [
-    ['Lone Dagger Authority', 'S182 3', 'Ackdarian', 32639],
-    ['Fearsome Fang Gang', 'S153 8', 'Dhayut', 8323096],
-    ['Burning Dagger Ravagers', 'S259 2', 'Atuuk', 796684],
-    ['Dhayu Spaceways', 'S95 2', 'Haakonish', 7364656],
-    ['S22 Clan', 'S24 6', 'Kiadian', 88],
-    ['Red Confederation', 'S214 4', 'Kiadian', 5570576],
-    ['Lone Fang Spaceways', 'S252 4', 'Haakonish', 5453],
+    ['Hidden Minerals', 'S272 7', 'Ketarov', 16384],
+    ['Ugnar Horde', 'S106 7', 'Boskara', 3674214],
+    ['S147 Corsairs', 'S251 3', 'Naxxilian', 4331580],
+    ['Grim Mining', 'S97 3', 'Ketarov', 59],
+    ['Dread Outlaws', 'QR411', 'Dhayut', 8323096],
+    ['Fearsome Sun Authority', 'S118 2', 'Kiadian', 88],
+    ['Sol Authority', 'S68 2', 'Ikkuro', 26112],
 ];

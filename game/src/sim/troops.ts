@@ -29,8 +29,8 @@
 //
 // Unported subsystems (game-start values used; see TODO(port) below):
 //   Galaxy.DifficultyLevel is not on the TS Galaxy → passed explicitly (`difficultyLevel`).
-//   Empire.Leader / Habitat.Characters / Habitat.InvadingCharacters: none before Start.2.cs
-//   1483 (characters are generated after the garrison / ProcessColonyTroops calls).
+//   Empire.Leader / Habitat.Characters / Habitat.InvadingCharacters: read through characters.ts
+//   (none before Start.2.cs 1483, where the starting characters are generated).
 //   Galaxy.GlobalVictoryConditions: null (no DefendHabitat / TargetHabitat).
 //   Empire.PenalColonies: empty. Empire.Capitals: only Capital at game start.
 //   Habitat.RaceEventType: Undefined. Habitat.DefensiveFortressBonus: 0. Facilities: none.
@@ -55,6 +55,22 @@ import type { Galaxy } from './galaxy';
 import { empireApprovalRating } from './taxes';
 import { strategicValue } from './territory';
 import type { Habitat } from './types';
+import type { BuiltObject } from './builtObject';
+import {
+    CharacterEventType,
+    CharacterRole,
+    CharacterSkillType,
+    countCharactersByRole,
+    doCharacterEventForList,
+    empireLeader as characterEmpireLeader,
+    getEmpireCharacters,
+    getHighestSkillLevelExcludeLeaders,
+    habitatInvadingCharacterList,
+    resolveLeaderTroopMaintenanceFactor,
+    resolveTroopLocationMaintenanceDivisor,
+    stellarObjectCharacters,
+    type Character,
+} from './characters';
 
 export { calculateTroopMaintenanceMultiplier, generateNewTroop };
 
@@ -83,25 +99,14 @@ function conditionCheckLimit(condition: boolean, maximumIterations: number, iter
 // adds the data, so the missing C# branch cannot be silently skipped.
 // ---------------------------------------------------------------------------
 
-// TODO(port): Empire.Leader (Empire.cs 866, Character) — null until the characters are
-// generated (Start.2.cs 1483, after every call in this file at game start).
-function empireLeader(empire: Empire): null {
-    const leader = (empire as unknown as { leader?: unknown }).leader;
-    if (leader != null) throw new Error('TODO(port): Empire.Leader troop skills (TroopMaintenance / TroopRecruitmentRate / TroopRecoveryRate)');
-    return null;
+// Empire.Leader (Empire.cs 866) — characters.ts.
+function empireLeader(empire: Empire): Character | null {
+    return characterEmpireLeader(empire);
 }
 
-// TODO(port): Habitat.Characters (CharacterList) — empty at game start (see empireLeader).
-function colonyCharacterCount(colony: Habitat): number {
-    const characters = (colony as unknown as { characters?: unknown[] | null }).characters;
-    if (characters != null && characters.length > 0) throw new Error('TODO(port): Habitat.Characters troop skills (CharacterList.GetHighestSkillLevelExcludeLeaders)');
-    return 0;
-}
-
-// TODO(port): Empire.Characters CountCharactersByRole(IntelligenceAgent) / Count — empty at game start.
-function empireNonAgentCharacterCount(empire: Empire): number {
-    if (empire.characters.length > 0) throw new Error('TODO(port): Empire.Characters (CharactersCanGenerateAmountNonIntelligenceAgent)');
-    return 0;
+// StellarObject.Characters (Habitat.Characters) — characters.ts keeps them; null when never assigned.
+function colonyCharacters(colony: Habitat): Character[] | null {
+    return stellarObjectCharacters(colony);
 }
 
 // Habitat.cs CheckTroopFacilitiesPresent (6791). TODO(port): PlanetaryFacility model —
@@ -179,8 +184,8 @@ export function estimatedDefensiveForceRequired(galaxy: Galaxy, habitat: Habitat
     if (empire !== null && empire.policy != null) {
         if (habitat === empire.homeWorld) {
             result = csDoubleToInt(result * empire.policy.homeworldDefensePriority);
-        } else if (colonyCharacterCount(habitat) > 0 && empire.policy.protectLeaderAtAllCosts) {
-            // Characters.CountCharactersByRole(Leader) > 0 → × 2.0 (unreachable: no characters).
+        } else if (colonyCharacters(habitat) !== null && countCharactersByRole(colonyCharacters(habitat)!, CharacterRole.Leader) > 0 && empire.policy.protectLeaderAtAllCosts) {
+            // Habitat.cs 5515: Characters != null && CountCharactersByRole(Leader) > 0 && ProtectLeaderAtAllCosts.
             result = csDoubleToInt(result * 2.0);
         }
     }
@@ -314,10 +319,8 @@ export function calculateDefaultTroopMaintenanceMultiplier(troopType: TroopType)
 // The two differ only in the skip test (PirateRaider / BeingRecruited). No Rnd.
 function annualTroopMaintenanceSum(empire: Empire, includeRecruiting: boolean): number {
     let num = 0.0;
-    let num2 = 1.0;
-    if (empireLeader(empire) !== null) {
-        // num2 *= 1.0 + Leader.TroopMaintenance / 100.0 (unreachable, see empireLeader).
-    }
+    // Empire.cs 2030-2034 / 2074-2078: num2 = 1.0; if (Leader != null) num2 *= 1.0 + Leader.TroopMaintenance / 100.0.
+    const num2 = resolveLeaderTroopMaintenanceFactor(empire);
     const gov = empireGovernmentAttributes(empire);
     const troops = empire.troops.items;
     for (let i = 0; i < troops.length; i++) {
@@ -329,19 +332,12 @@ function annualTroopMaintenanceSum(empire: Empire, includeRecruiting: boolean): 
             num3 *= gov.maintenanceCosts;
         }
         num3 /= num2;
-        if (troop.colony !== null) {
-            if (colonyCharacterCount(troop.colony as Habitat) > 0) {
-                // num3 /= 1.0 + Characters.GetHighestSkillLevelExcludeLeaders(TroopMaintenance) / 100.0 (unreachable).
-            }
-        } else if (troop.builtObject !== null) {
-            const characters = (troop.builtObject as { characters?: unknown[] | null }).characters;
-            if (characters != null && characters.length > 0) {
-                throw new Error('TODO(port): BuiltObject.Characters TroopMaintenance skill (Empire.cs AnnualTroopMaintenance)');
-            }
-        }
+        // Empire.cs 2049-2061 (2093-2105): colony characters (excluding leaders) or built-object
+        // characters (all) TroopMaintenance skill.
+        const divisor = resolveTroopLocationMaintenanceDivisor(troop.colony as Habitat | null, troop.colony !== null ? null : (troop.builtObject as BuiltObject | null));
+        if (divisor !== null) num3 /= divisor;
         num += num3;
     }
-    void num2;
     return num;
 }
 export const annualTroopMaintenance = (empire: Empire): number => annualTroopMaintenanceSum(empire, false);
@@ -351,26 +347,17 @@ export const annualTroopMaintenanceIncludeRecruiting = (empire: Empire): number 
 export function calculateCostPerTroop(empire: Empire, troopType: TroopType, colony: Habitat | null, builtObject: object | null): number {
     let num = 0.0;
     const num2 = calculateDefaultTroopMaintenanceMultiplier(troopType);
-    const num3 = 1.0;
-    if (empireLeader(empire) !== null) {
-        // num3 *= 1.0 + Leader.TroopMaintenance / 100.0 (unreachable).
-    }
+    // Empire.4.cs 1598-1602: num3 = 1.0; if (Leader != null) num3 *= 1.0 + Leader.TroopMaintenance / 100.0.
+    const num3 = resolveLeaderTroopMaintenanceFactor(empire);
     num = TROOP_ANNUAL_MAINTENANCE * num2;
     const gov = empireGovernmentAttributes(empire);
     if (gov !== null) {
         num *= gov.maintenanceCosts;
     }
     num /= num3;
-    if (colony !== null) {
-        if (colonyCharacterCount(colony) > 0) {
-            // num /= 1.0 + GetHighestSkillLevelExcludeLeaders(TroopMaintenance) / 100.0 (unreachable).
-        }
-    } else if (builtObject !== null) {
-        const characters = (builtObject as { characters?: unknown[] | null }).characters;
-        if (characters != null && characters.length > 0) {
-            throw new Error('TODO(port): BuiltObject.Characters TroopMaintenance skill (Empire.CalculateCostPerTroop)');
-        }
-    }
+    // Empire.4.cs 1609-1623: colony characters (excluding leaders) or built-object characters (all).
+    const divisor = resolveTroopLocationMaintenanceDivisor(colony, colony !== null ? null : (builtObject as BuiltObject | null));
+    if (divisor !== null) num /= divisor;
     return num;
 }
 
@@ -463,8 +450,10 @@ export function resolveInvasionEmpires(habitat: Habitat): { defender: Empire | n
             if (defender !== null) break;
         }
     }
-    if (defender === null && empire === null && colonyCharacterCount(habitat) > 0) {
-        // defender = Characters[0].Empire (unreachable).
+    // Habitat.cs 3256-3259.
+    const characters = colonyCharacters(habitat);
+    if (defender === null && empire === null && characters !== null && characters.length > 0 && characters[0] != null) {
+        defender = characters[0].empire;
     }
     let invader: Empire | null = null;
     let empire2: Empire | null = null;
@@ -478,7 +467,11 @@ export function resolveInvasionEmpires(habitat: Habitat): { defender: Empire | n
             if (invader !== null) break;
         }
     }
-    // TODO(port): Habitat.InvadingCharacters — empty at game start.
+    // Habitat.cs 3284-3287.
+    const invadingCharacters = habitatInvadingCharacterList(habitat);
+    if (invader === null && empire2 === null && invadingCharacters !== null && invadingCharacters.length > 0 && invadingCharacters[0] != null) {
+        invader = invadingCharacters[0].empire;
+    }
     if (defender === null && empire !== null) defender = empire;
     if (invader === null && empire2 !== null) invader = empire2;
     return { defender, invader };
@@ -494,7 +487,9 @@ function maximumCharactersAllowedNonIntelligenceAgent(empire: Empire): number {
 
 // Empire.6.cs CharactersCanGenerateAmountNonIntelligenceAgent (3976 / 3982).
 export function charactersCanGenerateAmountNonIntelligenceAgent(empire: Empire): number {
-    const otherCharacterCount = empireNonAgentCharacterCount(empire);
+    const characters = getEmpireCharacters(empire);
+    const num = countCharactersByRole(characters, CharacterRole.IntelligenceAgent);
+    const otherCharacterCount = characters.length - num;
     const num2 = maximumCharactersAllowedNonIntelligenceAgent(empire);
     return num2 - otherCharacterCount;
 }
@@ -656,11 +651,18 @@ export function processColonyTroopsFull(
         troopRecruitmentAmount *= gov.troopRecruitment;
         troopSizeRegenerationAmount *= gov.troopRecruitment;
     }
-    if (empireLeader(empire) !== null) {
-        // × (1 + Leader.TroopRecruitmentRate / 100), × (1 + Leader.TroopRecoveryRate / 100) (unreachable).
+    // Empire.4.cs 3522-3533.
+    const leader = empireLeader(empire);
+    if (leader !== null) {
+        troopRecruitmentAmount *= 1.0 + leader.troopRecruitmentRate / 100.0;
+        troopSizeRegenerationAmount *= 1.0 + leader.troopRecoveryRate / 100.0;
     }
-    if (colonyCharacterCount(colony) > 0) {
-        // TroopRecruitment / TroopRecoveryRate skills (unreachable).
+    const colonyChars = colonyCharacters(colony);
+    if (colonyChars !== null && colonyChars.length > 0) {
+        const highestSkillLevelExcludeLeaders = getHighestSkillLevelExcludeLeaders(colonyChars, CharacterSkillType.TroopRecruitment);
+        const highestSkillLevelExcludeLeaders2 = getHighestSkillLevelExcludeLeaders(colonyChars, CharacterSkillType.TroopRecoveryRate);
+        troopRecruitmentAmount *= 1.0 + highestSkillLevelExcludeLeaders / 100.0;
+        troopSizeRegenerationAmount *= 1.0 + highestSkillLevelExcludeLeaders2 / 100.0;
     }
     if (colony.invadingTroops !== null && colony.invadingTroops.count > 0) {
         troopSizeRegenerationAmount *= 0.5;
@@ -692,11 +694,9 @@ export function processColonyTroopsFull(
                     empire.troops.add(troop);
                 }
                 colony.troopsToRecruit.remove(troop);
-                // Galaxy.1.cs DoCharacterEvent(TroopComplete, troop, colony.Characters, includeLeader: true,
-                // colony.Empire) (3781): returns at once when colony.Characters is empty.
-                if (colonyCharacterCount(colony) > 0) {
-                    throw new Error('TODO(port): Galaxy.DoCharacterEvent(TroopComplete)');
-                }
+                // Empire.4.cs 3574: Galaxy.1.cs DoCharacterEvent(TroopComplete, troop, colony.Characters,
+                // includeLeader: true, colony.Empire) (3781; returns at once when colony.Characters is empty).
+                doCharacterEventForList(galaxy, CharacterEventType.TroopComplete, troop, colonyCharacters(colony), true, colony.empire);
                 chanceNewTroopGeneralFromRecruitment(galaxy, troop, empire, colony);
             }
         }

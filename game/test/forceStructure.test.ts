@@ -15,7 +15,9 @@ import type { GameData } from '../src/sim/data/gameData';
 import type { Galaxy } from '../src/sim/galaxy';
 
 // Task M3b — Empire.9.cs ProjectForceStructure / ProjectPrivateForceStructure and
-// Empire.4.cs IdentifyResourceCentres, run from GenerateEmpire's DoTasks stand-in.
+// Empire.4.cs IdentifyResourceCentres, run from GenerateEmpire's DoTasks stand-in. createGame
+// later consumes the projections (Start.2.cs 1365 CreateStateShips / CreatePrivateShips), so these
+// tests stop it right after the starting colonies (test-only __phaseHook).
 let gameData: GameData;
 beforeAll(async () => {
     gameData = await loadGameDataFs();
@@ -32,6 +34,10 @@ function opts(techLevel: number, age: number): CreateGameOptions {
 }
 
 const S = BuiltObjectSubRole;
+/** The galaxy at the GenerateEmpire DoTasks point: createGame stopped after the starting colonies. */
+function atDoTasksPoint(o: CreateGameOptions): Galaxy {
+    return createGame({ ...o, __phaseHook: (phase) => (phase === 'startingColonies' ? 'stop' : undefined) }).galaxy;
+}
 const listOf = (l: ForceStructureProjectionList | null) => (l === null ? null : l.items.map((p) => [S[p.subRole], p.amount]));
 function summary(g: Galaxy) {
     return g.empires.map((e) => ({
@@ -43,7 +49,7 @@ function summary(g: Galaxy) {
 
 describe('ProjectForceStructure / ProjectPrivateForceStructure at game start', () => {
     it('tech 0.5, age 1: explorers + construction ships; freighters and mining ships; deterministic', () => {
-        const g = createGame(opts(0.5, 1)).galaxy;
+        const g = atDoTasksPoint(opts(0.5, 1));
         const a = summary(g);
         expect(a.length).toBe(4);
         for (const e of a) {
@@ -65,11 +71,11 @@ describe('ProjectForceStructure / ProjectPrivateForceStructure at game start', (
         // Pinned for seed 1 (player empire).
         expect(a[0].private).toEqual([['SmallFreighter', 3], ['MediumFreighter', 1], ['GasMiningShip', 2], ['MiningShip', 2]]);
         expect(a[0].targets.length).toBe(55);
-        expect(summary(createGame(opts(0.5, 1)).galaxy)).toEqual(a);
+        expect(summary(atDoTasksPoint(opts(0.5, 1)))).toEqual(a);
     }, 60000);
 
     it('tech 0 (pre-warp): 2 explorers + 2 construction ships, no military; doubled private counts', () => {
-        const g = createGame(opts(0, 1)).galaxy;
+        const g = atDoTasksPoint(opts(0, 1));
         for (const e of summary(g)) {
             expect(e.state).toEqual([['ExplorationShip', 2], ['ConstructionShip', 2]]);
             const priv = new Map(e.private!.map(([k, v]) => [k as string, v as number]));
@@ -81,7 +87,7 @@ describe('ProjectForceStructure / ProjectPrivateForceStructure at game start', (
     }, 60000);
 
     it('age 0: nothing private (the nearest habitat to the capital has unknown resources), no mining targets', () => {
-        const g = createGame(opts(0.5, 0)).galaxy;
+        const g = atDoTasksPoint(opts(0.5, 0));
         for (const e of summary(g)) {
             expect(e.state).toEqual([['ExplorationShip', 7], ['ConstructionShip', 3]]);
             expect(e.private).toEqual([]);
@@ -90,7 +96,7 @@ describe('ProjectForceStructure / ProjectPrivateForceStructure at game start', (
     }, 60000);
 
     it('colony economy at the DoTasks point: tax snapshot −ColonyStateSupportCost, income 0', () => {
-        const g = createGame(opts(0.5, 1)).galaxy;
+        const g = atDoTasksPoint(opts(0.5, 1));
         const e = g.playerEmpire!;
         const cap = e.capital!;
         // TakeOwnershipOfColony: RecalculateDistanceFactor (capital → 0) and

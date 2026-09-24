@@ -19,7 +19,7 @@
 //
 // Unported state read here, with the value C# sees at game start (Start.2.cs
 // 1110-1339; characters are generated later, at Start.2.cs 1483):
-// - Empire.Leader / Habitat.Characters: none → ColonyHappiness / WarWeariness skills 0.
+// - Empire.Leader / Habitat.Characters: read through characters.ts (none before Start.2.cs 1483).
 // - Empire._WarWeariness 0, _CivilityRating 0, _LeaderChangeInfluence 0,
 //   _SpecialBonusHappiness 0 (ReviewSpecialBonusesRuinsWonders — TODO(port)).
 // - Habitat: _WarWithOurRace 0f (no wars), _CulturalDistressFactor 0f, ConqueredFactor 0f,
@@ -28,6 +28,8 @@
 //   BaconValues null.
 // - DiplomaticRelations empty → CheckAtWar false; no pirate colony control.
 
+import { processColonyTroops } from './troops';
+import { CharacterSkillType, colonyCharactersHighestSkillExcludeLeaders, resolveColonyWarWearinessDivisors, resolveEmpireLeaderWarWearinessDivisor, resolveLeaderColonyHappiness } from './characters';
 import type { Galaxy } from './galaxy';
 import type { Habitat } from './types';
 import type { Race } from './data/races';
@@ -143,11 +145,11 @@ export function calculateStrategicResourceSupplyGrowthFactor(galaxy: Galaxy, h: 
 // Empire reputation / war weariness inputs (Empire.cs)
 // ---------------------------------------------------------------------------
 
-// TODO(port): Empire.Leader (Character) — none at game start (characters are generated at
-// Start.2.cs 1483); Leader.ColonyHappiness / WarWeariness read as 0.
-const leaderColonyHappiness = (_empire: Empire): number => 0;
-// TODO(port): Habitat.Characters (CharacterList) GetHighestSkillLevelExcludeLeaders — none at game start.
-const colonyCharactersHighestSkill = (_h: Habitat): number => 0;
+// Empire.Leader.ColonyHappiness (Habitat.cs 621-624 / 5805-5808; characters.ts).
+const leaderColonyHappiness = (empire: Empire): number => resolveLeaderColonyHappiness(empire);
+// Habitat.cs 617-620 / 5801-5804: Characters.GetHighestSkillLevelExcludeLeaders(ColonyHappiness) when
+// Characters non-empty, else 0.
+const colonyCharactersHighestSkill = (h: Habitat): number => colonyCharactersHighestSkillExcludeLeaders(h, CharacterSkillType.ColonyHappiness);
 // TODO(port): Empire._SpecialBonusHappiness (ReviewSpecialBonusesRuinsWonders, Empire.3.cs 939)
 // — 0.0 until then (happiness ruins/wonders).
 const specialBonusHappiness = (_empire: Empire): number => 0.0;
@@ -156,9 +158,8 @@ const specialBonusHappiness = (_empire: Empire): number => 0.0;
 export function empireWarWeariness(empire: Empire): number {
     // TODO(port): Empire._WarWeariness (war model) — 0.0 at game start.
     const warWearinessRaw = 0.0;
-    // C#: if (Leader != null) num = 1.0 + Leader.WarWeariness / 100.0 — Leader null at game start.
-    const num = 1.0;
-    void empire;
+    // Empire.cs 1409-1413: if (Leader != null) num = 1.0 + Leader.WarWeariness / 100.0.
+    const num = resolveEmpireLeaderWarWearinessDivisor(empire);
     return warWearinessRaw / num;
 }
 
@@ -385,7 +386,10 @@ export function empireApprovalRating(galaxy: Galaxy, h: Habitat): number {
         const num4 = resourceBonusTotalByEffectType(h, ColonyResourceEffect.WarWearinessReduction) / 100.0;
         if (num4 > 0.0) num /= 1.0 + num4;
         // TODO(port): RaceEventType.TodashGalacticChampionships (*0.9) — no race event at game start.
-        // Empire.Leader / Characters WarWeariness skill: none at game start (num /= 1.0).
+        // Habitat.cs 567-578: Empire.Leader.WarWeariness, then Characters (excluding leaders) WarWeariness.
+        const wwDivisors = resolveColonyWarWearinessDivisors(h);
+        if (wwDivisors.leaderDivisor !== null) num /= wwDivisors.leaderDivisor;
+        if (wwDivisors.charactersDivisor !== null) num /= wwDivisors.charactersDivisor;
         inputValue2 = empireCivilityRatingApprovalRaw(galaxy, empire);
         let num7 = 1.0;
         if (dominantRace !== null) num7 = calculateRacialReputationConcern(dominantRace);
@@ -648,8 +652,10 @@ export function gameStartReviewTaxes(galaxy: Galaxy, empire: Empire, galaxyAge: 
     recalculateEmpirePopulation(empire);
     for (const colony of empire.colonies) {
         if (galaxyAge > 0) {
-            // TODO(port): Empire.ProcessColonyTroops(colony, null, 0.0, 100.0, 100.0) and twice
-            // (…, 300.0, 300.0) (Empire.4.cs 3462) — troop model; ported separately.
+            // Start.2.cs 1326-1328 → Empire.4.cs ProcessColonyTroops (troops.ts).
+            processColonyTroops(galaxy, empire, colony, null, 0.0, 100.0, 100.0, galaxy.difficultyLevel);
+            processColonyTroops(galaxy, empire, colony, null, 0.0, 300.0, 300.0, galaxy.difficultyLevel);
+            processColonyTroops(galaxy, empire, colony, null, 0.0, 300.0, 300.0, galaxy.difficultyLevel);
         }
         recalculateAnnualTaxRevenue(galaxy, colony);
     }
