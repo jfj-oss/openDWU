@@ -41,7 +41,7 @@ Mechanically sound where checkable (supernova fields, `GenerateTreasureAsteroid`
 
 Grouped into small worker-task candidates, in the existing `NNx` naming style. Dependencies noted.
 
-### 08a — Black-hole/moon names, scenic features, research-bonus industry
+### 08a — Black-hole/moon names, scenic features, research-bonus industry — ✅ DONE by cloud session (task 01g, bd05f50); only `TODO(port): GenerateRandomNameAlt` remains
 This is exactly **task `01g-galaxy-leftovers.md`**, already written and locked, just not yet run by a worker. No new task needed — just dispatch it. Covers:
 - `src/sim/galaxy.ts:688` — `TODO(port): GenerateBlackHoleName`
 - `src/sim/galaxy.ts:2400` — `TODO(port): GenerateMoonName`
@@ -51,7 +51,7 @@ Depends on: nothing new (galaxy.ts only). No dependency on 08b/08c below.
 
 ### 08b — Race/habitat-type data schema mismatch (blocks population fidelity)
 Not a `TODO(port)` comment in code, but surfaced by 01f2's worker report and confirmed here (see bug above): parsed race `nativePlanetType` (1-5) never equals generated `HabitatType` enum values (8-16), so `selectPopulation` (`src/sim/galaxy.ts` ~1780) never actually places a native population with current data, and `01f2`'s tests can't exercise the match branch. Needs the orchestrator to check `races.txt`/`races.ts` against `Galaxy.6.cs SelectRandomRacePreferHospitableHabitats`'s `HabitatType` cases and either fix the data parser's enum mapping or add a translation table. No file:line TODO(port) marker exists for this — recommend adding one at `src/sim/galaxy.ts:1780` once triaged.
-Also folds in the **confirmed bug** in `calculatePopulationAmount` (`src/sim/galaxy.ts:1756`, missing `Math.trunc(num)` before the two `Rnd.Next(...) * num` branches) — a one-line fix, doesn't need a full task, but should ride along with whatever touches this function next.
+**Fixed in 50a6942:** the in `calculatePopulationAmount` (`src/sim/galaxy.ts:1756`, missing `Math.trunc(num)` before the two `Rnd.Next(...) * num` branches) — a one-line fix, doesn't need a full task, but should ride along with whatever touches this function next.
 Depends on: 01f1/01f2 (already landed).
 
 ### 08c — SelectResources dominant-race critical resources
