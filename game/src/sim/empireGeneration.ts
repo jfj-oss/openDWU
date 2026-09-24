@@ -10,8 +10,13 @@
 // GenerateDesignSpecifications, Research.Update, LoadOptimizedDesigns,
 // GrowPopulation, Habitat.DoTasks at game start, EstimatedDefensiveForceRequired,
 // GenerateNewTroop; SetTechTreeLevel draws only for fractional tech levels.
+// Of DoTasks only CreateNewDesigns, IdentifyResourceCentres and
+// ProjectForceStructure / ProjectPrivateForceStructure run (task M3b; none draws
+// Rnd) — see the stand-in below.
 
 import { createNewDesigns } from './designGeneration';
+import { projectForceStructure, projectPrivateForceStructure, recalculateAnnualTaxRevenue, recalculateDistanceFactor } from './forceStructure';
+import { identifyResourceCentres } from './resourceTargets';
 import { startStarDateForAge } from './galaxyTime';
 import { loadEmpirePolicy } from './researchSystem';
 import type { Galaxy } from './galaxy';
@@ -85,6 +90,13 @@ export function generateEmpire(
     }
     // TODO(port): capital.Ruin cleared for Standard/CreatureSwarm/PirateAmbush ruins.
     empire.takeOwnershipOfColony(capital, empire);
+    // Empire.1.cs TakeOwnershipOfColony steps the TS takeOwnershipOfColony lacks
+    // (task M3b): RecalculateDistanceFactor (240); SetColonyTaxRate (241) is
+    // TODO(port) (approval model) — TaxRate stays 0, which is what it yields here
+    // anyway (population 0 → Policy.ColonyTaxRateSmallColony, 0 for the shipped
+    // policies); RecalculateAnnualTaxRevenue (269) snapshots −ColonyStateSupportCost.
+    recalculateDistanceFactor(galaxy, capital);
+    recalculateAnnualTaxRevenue(galaxy, capital);
     if (techLevel > 0.0 || !enableStoryEventsShadows) {
         empire.preWarpProgressEventsOccurred = true; // the 13 PreWarpProgressEventOccurred* flags
     }
@@ -163,12 +175,30 @@ export function generateEmpire(
     empire.resourceMap.setResourcesKnown(capital, true);
     empire.initiateConstruction = false;
     // TODO(port): empire.DoTasks() — the full empire AI tick. RND DIVERGENCE POINT (see header).
-    // Of that tick only the design step is ported: Empire.1.cs 3623 (long-interval block)
-    // `if (_ControlDesigns) CreateNewDesigns(_Galaxy.CurrentStarDate)`.
+    // Only these steps of that tick are ported, run here in the C# order of
+    // Empire.1.cs DoTasks; every step in between is SKIPPED (short/regular/periodic
+    // blocks entirely — incl. ReviewTaxes, EvaluateColonyVariables,
+    // RecalculateEmpireCorruption, PerformResearch — and the rest of the
+    // intermediate/long blocks, e.g. ReviewSystemThreats, IdentifyColonizationTargets,
+    // ReviewEmpireAbilityBonuses, RecalculateColonyTaxRevenues, ReviewDiplomaticStrategies,
+    // PayMaintenanceForBuiltObjects). Rnd parity with the C# is already lost at this
+    // point (the skipped steps draw Rnd); none of the ported steps draws Rnd.
+    const starDate = startStarDateForAge(galaxy.age); // Galaxy.CurrentStarDate
+    // Intermediate block, Empire.1.cs 3623: `if (_ControlDesigns) CreateNewDesigns(_Galaxy.CurrentStarDate)`.
     if (empire.controlDesigns) {
-        const starDate = startStarDateForAge(galaxy.age);
         createNewDesigns(galaxy, empire, starDate, starDate);
     }
+    // Intermediate block, Empire.1.cs 3633: `_ResourceTargets = IdentifyResourceCentres(_Galaxy)`
+    // (resourceTargets.ts). Galaxy.8.cs CreateMiningStations recomputes it before use.
+    empire.resourceTargets = identifyResourceCentres(galaxy, empire);
+    // Long block, Empire.1.cs 3690-3691 (forceStructure.ts): the projections
+    // Galaxy.8.cs CreateStateShips / CreatePrivateShips consume.
+    // TODO(port): Galaxy.DifficultyLevel is not kept on the TS Galaxy; it is only
+    // read behind `AnnualStateMaintenance < num2 * 0.95`, false at game start
+    // (no ships, zero tax income).
+    const forceStructureCtx = { currentStarDate: starDate, difficultyLevel: 1.0 };
+    projectForceStructure(galaxy, empire, forceStructureCtx);
+    projectPrivateForceStructure(galaxy, empire, forceStructureCtx);
     empire.initiateConstruction = true;
     galaxy.setupHomeSystem(capital, race, homeSystemDescription, minimumResourceCount, minimumCriticalResourceCount);
     return { empire, expansion, actualTechLevel };

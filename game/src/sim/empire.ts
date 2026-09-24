@@ -30,6 +30,8 @@ import { BuiltObjectRole } from './data/designSpecifications';
 import { DesignNameState } from './designNames';
 import { loadDesignSpecification as loadDesignSpecificationData, type DesignSpecification } from './data/designSpecifications';
 import { EmpireVisibility, SystemVisibilityStatus, type SystemVisibility, type VisibilityOwner, type VisibilityUnit } from './visibility';
+import type { ForceStructureProjectionList } from './forceStructureProjection';
+import type { HabitatPrioritization } from './resourceTargets';
 
 // EmpirePolicy.cs: only the research tech-focus fields are ported (data/policies.ts).
 export type EmpirePolicy = PolicyData | null;
@@ -1030,6 +1032,23 @@ export class Empire {
 
     // TODO(port): ReviewTroopTypes — Empire.cs.
     reviewTroopTypes(): void {}
+
+    // --- Task M3b (forceStructure.ts / resourceTargets.ts) ---
+    // Empire.cs _StateForceStructureProjections / _PrivateForceStructureProjections
+    // (null until the first ProjectForceStructure / ProjectPrivateForceStructure).
+    stateForceStructureProjections: ForceStructureProjectionList | null = null;
+    privateForceStructureProjections: ForceStructureProjectionList | null = null;
+    // Empire.cs _ResourceTargets = new HabitatPrioritizationList() (IdentifyResourceCentres).
+    resourceTargets: HabitatPrioritization[] = [];
+    // Empire.cs public double BuildFactor = 1.0.
+    buildFactor = 1.0;
+}
+
+// Task M3b: Empire.GovernmentAttributes (Empire.cs 2805: _Galaxy.Governments[_GovernmentId],
+// assigned by ChangeGovernment — the TS changeGovernment only stores the id).
+export function empireGovernmentAttributes(empire: Empire): Government | null {
+    const id = empire.governmentId;
+    return id >= 0 && id < governmentsStatic.length ? governmentsStatic[id] : null;
 }
 
 // Race.cs ShipSizeFactorCivilian / ShipSizeFactorMilitary (default 1.0; parsed values

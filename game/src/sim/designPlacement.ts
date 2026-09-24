@@ -744,13 +744,11 @@ export function placeComponentsOnDesign(
             let num51 = 0; // luxury extractor
 
             // Lines 2413-2429: WarpSpeed comparison to decide the aggressive (flag4) thresholds.
-            // `mostRecentDesign.WarpSpeed` isn't available on our Design port yet (Design.ReDefine
-            // is not ported — see design.ts's own TODO), so it reads as 0, same as an un-ReDefined
-            // C# design.
+            // `mostRecentDesign.WarpSpeed` is set by Design.ReDefine (design.ts).
             const colonyOrPassenger = new Set<BuiltObjectSubRole>([BuiltObjectSubRole.ColonyShip, BuiltObjectSubRole.PassengerShip]);
             let flag4 = false;
             if (mostRecentDesign !== null && hyperdriveCi !== null) {
-                const num52 = (mostRecentDesign as unknown as { warpSpeed?: number }).warpSpeed ?? 0;
+                const num52 = mostRecentDesign.warpSpeed;
                 const num53 = hyperdriveCi.value1;
                 if (num52 <= 0 || num53 / num52 >= 2) flag4 = true;
             } else if (mostRecentDesign === null && hyperdriveCi !== null && colonyOrPassenger.has(designSpec.subRole)) {

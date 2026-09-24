@@ -198,6 +198,13 @@ export class Habitat {
     colonyInfluenceRadius = 0;
     // C#: PlanetaryFacilityList Facilities. TODO(port): PlanetaryFacility model.
     facilities: unknown[] | null = null;
+    // Task M3b (colony economy, forceStructure.ts): C# double _AnnualTaxRevenue
+    // (a snapshot written by Habitat.RecalculateAnnualTaxRevenue), float _TaxRate
+    // (written by Empire.SetColonyTaxRate — TODO(port), needs the colony approval
+    // model) and float _DistanceFactor = 1f (Habitat.RecalculateDistanceFactor).
+    annualTaxRevenue = 0;
+    taxRate = 0;
+    distanceFactor = 1;
 
     // Port of Habitat.cs Quality (_Quality, kept equal to
     // BaseQuality * (1 - Damage) by the BaseQuality setter / RecalculateQuality).

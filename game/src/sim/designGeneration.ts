@@ -540,7 +540,7 @@ export function createNewDesigns(galaxy: Galaxy, empire: Empire, designDate: num
         }
         design5.role = spec.role;
         design5.subRole = spec.subRole;
-        // TODO(port): design5.ReDefine().
+        design5.reDefine();
         reviewRemoveObsoleteDesignsForSubRole(empire, spec.subRole, null, false);
         designs.push(design5);
         if (!design5.isPlanetDestroyer) empire.latestDesigns[design5.subRole] = design5;
