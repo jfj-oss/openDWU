@@ -14,6 +14,7 @@ import {
     getSelection,
 } from './hud';
 import { helpTopicKeyForHabitat, toggleGalactopedia } from './screens/galactopedia';
+import { toggleMessageHistory } from './screens/messageHistory';
 import { showToast } from './toast';
 
 /** Modifier state of a key event (Ctrl/Alt/Shift). */
@@ -59,7 +60,7 @@ export const KEY_BINDINGS: KeyBinding[] = [
     { key: 'F11', modifiers: NONE, action: 'shipsAndBasesScreen', description: 'Ships and Bases screen' },
     { key: 'F12', modifiers: NONE, action: 'fleetsScreen', description: 'Fleets screen' },
     { key: 'G', modifiers: NONE, action: 'galaxyMap', description: 'Zoom out to the whole galaxy' },
-    { key: 'H', modifiers: NONE, action: 'messageHistoryScreen', description: 'Message History screen' },
+    { key: 'H', modifiers: NONE, action: 'messageHistoryScreen', description: 'Message History' },
     { key: 'V', modifiers: NONE, action: 'empireComparisonScreen', description: 'Empire Comparison and Victory Conditions screen' },
     { key: 'O', modifiers: NONE, action: 'gameOptionsScreen', description: 'Game Options screen' },
     // "Pause or Spacebar": both keys pause/resume.
@@ -134,6 +135,7 @@ export interface KeyHandlers {
     scrollLeft?: () => void;
     scrollRight?: () => void;
     galaxyMap?: () => void;
+    messageHistoryScreen?: () => void;
     gameMenu?: () => void;
     galactopediaHelp?: () => void;
 }
@@ -228,6 +230,9 @@ export function dispatchKey(
         case 'galaxyMap':
             handlers.galaxyMap?.();
             break;
+        case 'messageHistoryScreen':
+            handlers.messageHistoryScreen?.();
+            break;
         case 'gameMenu':
             handlers.gameMenu?.();
             break;
@@ -290,6 +295,8 @@ export function buildDefaultHandlers(
                 camera.centerOn(galaxySize.width / 2, galaxySize.height / 2);
             }
         },
+        // H: the Message History window (task 12i).
+        messageHistoryScreen: () => toggleMessageHistory(),
         // F1 (KeyMappingFriendlyNames.OpenHelp -> btnHelp_Click, Main.Part7.cs).
         galactopediaHelp: () => toggleGalactopedia(helpTopicKeyForHabitat(getSelection()?.habitat ?? null)),
         // Esc: the in-game menu's toggle, registered by createHud (task 10c).

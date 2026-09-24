@@ -304,11 +304,8 @@ describe('dispatchKey (task 10a)', () => {
         expect(dispatchKey(fakeEvent('L'), handlers)).toBe('lockView');
     });
 
-    it('dispatches an unported binding (H -> messageHistoryScreen) without a DOM (task 12g)', () => {
-        // The default branch toasts "not yet available" — guarded by a
-        // `typeof document` check so node-based tests (no jsdom) don't throw.
+    it('dispatches H to the message history handler (task 12i)', () => {
         const handlers = buildDefaultHandlers(new Camera(), makeClock());
-        expect(typeof document).toBe('undefined');
         expect(dispatchKey(fakeEvent('H'), handlers)).toBe('messageHistoryScreen');
     });
 });

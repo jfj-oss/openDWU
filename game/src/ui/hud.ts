@@ -14,6 +14,7 @@ import { setGameMenuHandler } from './keyboard';
 import { startEffects } from '../audio/effectsPlayer';
 import { helpTopicKeyForHabitat, toggleGalactopedia } from './screens/galactopedia';
 import { toggleEmpiresList } from './screens/empiresList';
+import { toggleMessageHistory } from './screens/messageHistory';
 import { showToast } from './toast';
 
 /** Shared UI button-click sound (task 09b): the original plays a short click
@@ -268,6 +269,13 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
 
     // Task 10d: bind the message ticker's five lines to the ring buffer.
     setMessageLineElements(elements.get('lstMessages') ?? null);
+
+    // Task 12i: clicking the top-middle message panel toggles the Message
+    // History window (the original's "Historical messages" button).
+    const messagePanel = elements.get('lstMessages');
+    if (messagePanel) {
+        messagePanel.addEventListener('click', () => toggleMessageHistory());
+    }
 
     // Task 10f: apply the persisted UI scale on startup and re-apply it
     // immediately whenever a settings change updates it (Escape menu).
@@ -888,6 +896,16 @@ const MESSAGE_LINES = 5;
 let hudMessages: string[] = [];
 let messageLineEls: HTMLElement[] | null = null;
 
+// Task 12i: the full message history behind the ticker (the original's
+// "Historical messages" list), capped at 500 entries, oldest dropped first.
+const HISTORY_LIMIT = 500;
+export interface HudMessageEntry {
+    text: string;
+    /** Display date of the message ('' until main.ts passes the game date). */
+    at: string;
+}
+let hudMessageHistory: HudMessageEntry[] = [];
+
 /** Bind the five `.hud-message-line` slots of the message panel to the ring
  * buffer and render the current contents. Called from createHud. */
 function setMessageLineElements(panel: HTMLElement | null): void {
@@ -906,22 +924,34 @@ function renderMessages(): void {
 }
 
 /** Push a message into the top-middle ticker (keeps the last 5, newest at
- * the bottom). Exported for later systems (events, diplomacy, ...). */
-export function pushHudMessage(text: string): void {
+ * the bottom) and into the full history. `at` is an optional display date
+ * (main.ts will pass the game date); it defaults to ''. Exported for later
+ * systems (events, diplomacy, ...). */
+export function pushHudMessage(text: string, at?: string): void {
     hudMessages.push(text);
     while (hudMessages.length > MESSAGE_LINES) hudMessages.shift();
+    hudMessageHistory.push({ text, at: at ?? '' });
+    while (hudMessageHistory.length > HISTORY_LIMIT) hudMessageHistory.shift();
     renderMessages();
 }
 
-/** Test hook: drop all pushed messages (also clears the rendered lines). */
+/** Test hook: drop all pushed messages (also clears the rendered lines and
+ * the full history). */
 export function clearHudMessages(): void {
     hudMessages = [];
+    hudMessageHistory = [];
     renderMessages();
 }
 
 /** The current message ticker contents (oldest → newest), for tests. */
 export function getHudMessages(): readonly string[] {
     return hudMessages;
+}
+
+/** The full message history (oldest → newest), for the Message History panel
+ * and tests. */
+export function getHudMessageHistory(): ReadonlyArray<HudMessageEntry> {
+    return hudMessageHistory;
 }
 
 function trimDecimal(x: number): string {
