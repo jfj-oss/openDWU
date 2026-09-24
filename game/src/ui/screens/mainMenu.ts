@@ -5,6 +5,7 @@
 import './mainMenu.css';
 import { buildOptionsPanel, type MusicAdapter } from './gameMenu';
 import { createCreditsScreen } from './credits';
+import { createTutorialsScreen } from './tutorials';
 import { startMusic } from '../../audio/musicPlayer';
 import { openGalactopedia } from './galactopedia';
 
@@ -32,6 +33,8 @@ export const MENU_ITEMS: MenuItem[] = [
 
 export interface MainMenuCallbacks {
     onStartNewGame: () => void;
+    /** Task 06l: open the Tutorials list screen (or start a tutorial game). */
+    onTutorials?: () => void;
 }
 
 export interface MainMenuRefs {
@@ -174,6 +177,14 @@ export function createMainMenu(callbacks: MainMenuCallbacks): MainMenuRefs {
         });
         btn.addEventListener('click', () => {
             switch (item.id) {
+                case 'tutorials':
+                    // Task 06l: the Tutorials list screen (Start.1.cs pnlTutorials).
+                    if (callbacks.onTutorials) {
+                        callbacks.onTutorials();
+                    } else {
+                        createTutorialsScreen({ onStartTutorial: () => undefined });
+                    }
+                    break;
                 case 'startNewGame':
                     callbacks.onStartNewGame();
                     break;

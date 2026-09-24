@@ -1,0 +1,253 @@
+/* Tutorials (task 06l): the main-menu list screen and the in-game tutorial
+   window. Styling follows the wizard/HUD dark-panel tokens. */
+
+/* ---------------------------------------------------------------------------
+   Tutorials list screen (over the main menu).
+--------------------------------------------------------------------------- */
+
+.tutorials-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1200; /* above the main menu chrome buttons */
+    font-family: 'Forgotten Futurist', sans-serif;
+    color: #e6e6e6;
+}
+
+.tutorials-dim {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+}
+
+.tutorials-window {
+    position: relative;
+    width: 760px;
+    max-width: 94vw;
+    height: min(680px, 92vh);
+    margin: 4vh auto 0;
+    background: rgba(14, 16, 20, 0.94);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.tutorials-titlebar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    background: rgba(10, 11, 15, 0.9);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.tutorials-title {
+    font-size: 15px;
+    color: #e8d24a;
+}
+
+.tutorials-close {
+    background: transparent;
+    border: none;
+    color: #ccc;
+    font-size: 16px;
+    cursor: pointer;
+    padding: 2px 6px;
+}
+.tutorials-close:hover {
+    color: #fff;
+}
+
+.tutorials-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.tutorials-intro {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #aaa;
+}
+
+.tutorials-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.tutorials-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 6px;
+    padding: 10px 14px;
+}
+
+.tutorials-row-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.tutorials-row-name {
+    font-size: 14px;
+    color: #fff;
+}
+
+.tutorials-row-desc {
+    font-size: 12px;
+    color: #999;
+    margin-top: 2px;
+    line-height: 1.4;
+}
+
+.tutorials-start-btn {
+    flex-shrink: 0;
+    background: rgba(232, 210, 74, 0.15);
+    border: 1px solid rgba(232, 210, 74, 0.5);
+    color: #e8d24a;
+    border-radius: 4px;
+    padding: 6px 18px;
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+}
+.tutorials-start-btn:hover {
+    background: rgba(232, 210, 74, 0.3);
+    color: #fff;
+}
+
+/* ---------------------------------------------------------------------------
+   In-game tutorial window (draggable panel, modern HUD style).
+--------------------------------------------------------------------------- */
+
+.tutorial-window-wrap {
+    position: fixed;
+    inset: 0;
+    z-index: 1500; /* above the HUD, below nothing else in-game */
+    pointer-events: none;
+    font-family: 'Forgotten Futurist', sans-serif;
+    color: #e6e6e6;
+}
+
+.tutorial-window {
+    position: absolute;
+    width: 420px;
+    max-width: calc(100vw - 16px);
+    pointer-events: auto;
+    background: rgba(14, 16, 20, 0.94);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.tutorial-titlebar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: rgba(10, 11, 15, 0.9);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    cursor: move;
+    user-select: none;
+}
+
+.tutorial-heading {
+    font-size: 13px;
+    color: #e8d24a;
+}
+
+.tutorial-close {
+    background: transparent;
+    border: none;
+    color: #ccc;
+    font-size: 15px;
+    cursor: pointer;
+    padding: 2px 6px;
+}
+.tutorial-close:hover {
+    color: #fff;
+}
+
+.tutorial-content {
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 46vh;
+    overflow-y: auto;
+}
+
+.tutorial-step-title {
+    font-size: 14px;
+    color: #fff;
+}
+
+.tutorial-step-text {
+    margin: 0;
+    font-family: inherit;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #ccc;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.tutorial-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 10px 12px;
+    background: rgba(10, 11, 15, 0.9);
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.tutorial-btn {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #ddd;
+    border-radius: 4px;
+    padding: 6px 14px;
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+}
+.tutorial-btn:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.16);
+    color: #fff;
+}
+.tutorial-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.tutorial-btn-primary {
+    background: rgba(232, 210, 74, 0.15);
+    border-color: rgba(232, 210, 74, 0.5);
+    color: #e8d24a;
+}
+.tutorial-btn-primary:hover:not(:disabled) {
+    background: rgba(232, 210, 74, 0.3);
+    color: #fff;
+}
+
+.tutorial-counter {
+    font-size: 12px;
+    color: #999;
+}

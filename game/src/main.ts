@@ -23,6 +23,7 @@ import { createMapOverlayState, type MapOverlayState, type OverlayKey } from './
 import { buildDefaultHandlers, createShortcutsOverlay, dispatchKey } from './ui/keyboard';
 import { createMainMenu } from './ui/screens/mainMenu';
 import { openOptionsModal } from './ui/screens/mainMenu';
+import { createTutorialsScreen, openTutorialWindow } from './ui/screens/tutorials';
 import { createCreditsScreen } from './ui/screens/credits';
 import { startMusic } from './audio/musicPlayer';
 import { createNewGameWizard } from './ui/screens/newGameWizard';
@@ -130,10 +131,15 @@ async function loadGameDataOrNone(dwuPresent: boolean): Promise<GameData | null>
  * window access, so it is testable without jsdom). The parameter types are
  * structural (any non-null value) so tests can pass plain objects instead of
  * real Camera/Galaxy/MainView/Application instances. */
-export function buildDwuDebugObject(args: { camera: object; galaxy: object; view: object; app: object; game?: Game }): Record<string, unknown> {
+export function buildDwuDebugObject(args: { camera: object; galaxy: object; view: object; app: object; game?: Game; time?: GalaxyTime }): Record<string, unknown> {
     const obj: Record<string, unknown> = { camera: args.camera, galaxy: args.galaxy, view: args.view, app: args.app };
     if (args.game !== undefined) {
         obj.game = args.game;
+    }
+    if (args.time !== undefined) {
+        // Task 06l: the running clock, so the tutorial window's "Play This
+        // Game" button can unpause it.
+        obj.time = args.time;
     }
     return obj;
 }
@@ -172,7 +178,7 @@ function applyOverlaysUrlParam(overlays: MapOverlayState): void {
  * save-load — centres the camera on the player's capital at Sector zoom,
  * wires the HUD/clock/input, and sets `window.__dwu` (camera, galaxy, view,
  * app, game). */
-async function startGameView(game: Game, zoomOverride?: number): Promise<void> {
+async function startGameView(game: Game, zoomOverride?: number, extraBoots?: Array<() => void>): Promise<void> {
     const dwuPresent = await detectDwuPresent();
     if (dwuPresent) {
         // Real-art file lists (scripts/gen-asset-manifest.mjs, predev/prebuild).
@@ -222,10 +228,11 @@ async function startGameView(game: Game, zoomOverride?: number): Promise<void> {
     const view = new MainView(app, camera, galaxy, store, overlays);
     await view.init();
 
-    // Debug / screenshot hook: the created game (galaxy + player empire).
-    (window as unknown as { __dwu?: unknown }).__dwu = buildDwuDebugObject({ camera, galaxy, view, app, game });
-
     const time = new GalaxyTime(START_STAR_DATE);
+    // Debug / screenshot hook: the created game (galaxy + player empire).
+    // Task 06l: also exposes the running clock (`time`) so the tutorial
+    // window's "Play This Game" button can unpause it.
+    (window as unknown as { __dwu?: unknown }).__dwu = buildDwuDebugObject({ camera, galaxy, view, app, game, time });
     // Task 10d: the HUD's money panel refreshes from the player empire.
     const hud: HudRefs = createHud({ clock: time, overlays, camera, galaxy, game });
     const systemNameEl = hud.elements.get('pnlMoney')?.querySelector('.hud-system-name');
@@ -266,6 +273,12 @@ async function startGameView(game: Game, zoomOverride?: number): Promise<void> {
         }
     };
     setInterval(refreshClockLabel, 250);
+
+    // Task 06l: extra boots run after the HUD/clock are wired (e.g. opening
+    // a tutorial window that pauses/unpauses the clock).
+    for (const boot of extraBoots ?? []) {
+        boot();
+    }
 
     const shortcuts = createShortcutsOverlay();
     const keyHandlers = buildDefaultHandlers(camera, time);
@@ -340,6 +353,54 @@ async function bootGameFromWizard(startOptions: StartGameOptions): Promise<void>
     await startGameView(game);
 }
 
+/** Task 06l: boot a default-options game (player Human + 3 random AI
+ * empires, like ?autostart=1) and open the given tutorial's window over it.
+ * Used by the Tutorials screen's Start buttons. */
+async function startTutorialGame(file: string): Promise<void> {
+    const dwuPresent = await detectDwuPresent();
+    const systemNames = await loadSystemNames(dwuPresent);
+    const gameData = await loadGameDataOrNone(dwuPresent);
+    if (dwuPresent) {
+        // Real-art file lists (scripts/gen-asset-manifest.mjs, predev/prebuild).
+        await loadManifest();
+    }
+    if (gameData === null) {
+        console.error('DW:U game data is required to start a tutorial but failed to load.');
+        return;
+    }
+    const ai = { race: '(Random)', homeSystemFavourability: 'Normal' as const, proximityDistance: 'Random', age: 1, techLevel: 0 };
+    const opts: CreateGameOptions = {
+        seed: 1,
+        shape: GalaxyShape.Spiral,
+        starCount: 700,
+        sectorWidth: 4,
+        sectorHeight: 4,
+        systemNames,
+        gameData,
+        player: { race: 'Human', homeSystemFavourability: 'Normal', startLocation: '(Random)', age: 1, techLevel: 0 },
+        aiEmpires: [ai, { ...ai }, { ...ai }],
+    };
+    let game: Game | null = null;
+    try {
+        game = createGame(opts);
+    } catch (err) {
+        console.warn('Tutorial game creation failed', err);
+        return;
+    }
+    // The clock is created inside startGameView and starts paused; the
+    // tutorial window's "Play This Game" button resumes it (method_455).
+    await startGameView(game, undefined, [() => {
+        void openTutorialWindow(file, {
+            onPlayThisGame: () => {
+                const dwu = (window as unknown as { __dwu?: { time?: GalaxyTime } }).__dwu;
+                if (dwu?.time !== undefined) {
+                    dwu.time.paused = false;
+                }
+            },
+        });
+    }]);
+}
+
 async function main(): Promise<void> {
     const params = new URLSearchParams(window.location.search);
     const skipMenu = SKIP_MENU_PARAMS.some((k) => params.has(k));
@@ -353,21 +414,31 @@ async function main(): Promise<void> {
         return;
     }
 
-    if (params.get('screen') === 'credits' || params.get('screen') === 'options') {
-        // Screenshot / dev hook (task 06k): show the main menu with the
-        // credits screen or options modal pre-opened.
+    if (params.get('screen') === 'credits' || params.get('screen') === 'options' || params.get('screen') === 'tutorials') {
+        // Screenshot / dev hook (task 06k/06l): show the main menu with the
+        // credits screen, options modal or tutorials list pre-opened.
         const menu = createMainMenu({
             onStartNewGame: () => {
                 menu.destroy();
                 openWizard(showMainMenu);
+            },
+            onTutorials: () => {
+                const screen = createTutorialsScreen({
+                    onStartTutorial: (file) => {
+                        screen.destroy();
+                        void startTutorialGame(file);
+                    },
+                });
             },
         });
         startMusic();
         const screen = params.get('screen');
         if (screen === 'credits') {
             createCreditsScreen(() => undefined);
-        } else {
+        } else if (screen === 'options') {
             openOptionsModal(menu.root);
+        } else {
+            createTutorialsScreen({ onStartTutorial: () => undefined });
         }
         return;
     }
@@ -393,6 +464,16 @@ function showMainMenu(): void {
         onStartNewGame: () => {
             menu.destroy();
             openWizard(showMainMenu);
+        },
+        onTutorials: () => {
+            // Task 06l: the Tutorials list screen; Start boots a default
+            // game and opens that tutorial's window in it.
+            const screen = createTutorialsScreen({
+                onStartTutorial: (file) => {
+                    screen.destroy();
+                    void startTutorialGame(file);
+                },
+            });
         },
     });
     startMusic();

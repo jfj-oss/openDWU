@@ -414,3 +414,26 @@ namespace DistantWorlds {
                     SystemInfo systemInfo = (SystemInfo)tutorial_0.CurrentStep.ZoomScrollObject;
                     mainView.method_2(systemInfo.SystemStar.Xpos, systemInfo.SystemStar.Ypos, tutorial_0.CurrentStep.ZoomLevel);
 ```
+
+## Worker report
+
+**Files changed**
+- Created `src/sim/data/tutorials.ts` — port of `DistantWorlds.Types.Tutorial` / `TutorialItem` (step model + navigation: `lastStep`, `finished`, `previousStep`, `currentStep`, `next`) and `Main.Part5.cs method_454` (`parseTutorialItems`: `~` step separators, Name/Title lines, body accumulated as `text + "\n"`, `Error at line N reading file X` wrapping) plus `loadTutorialFile` (method_454's `<name>`/`DE_`/`FR_`/`ES_` path fallbacks via `fetchText`, `Missing file: <name>` on failure). Also the `TUTORIALS` list mapping the 11 tutorial files to display names/descriptions.
+- Created `src/ui/screens/tutorials.ts` — `createTutorialsScreen` (main-menu Tutorials list: name, short description, **Start**) and `createTutorialWindow` (draggable in-game panel: `Tutorial: <title>` heading, step body, `← Back` / `Continue →` (becomes **Play This Game** on the last step), `n / m` counter, ✕/Esc close; `openTutorialWindow` loads the file and opens the window). Steps whose original behaviour highlights/zooms/opens game UI show text only, with `// TODO(tutorial)` notes citing `Main.Part5.cs method_455`.
+- Created `src/ui/screens/tutorials.css` — styling for both screens (wizard/HUD dark-panel tokens).
+- Created `test/tutorials.test.ts` — parser tests (multi-step split, Name/Title trim, raw body accumulation, CRLF, EOF-without-title, error wrapping), `Tutorial` navigation tests, and the `TUTORIALS` file list (all 11 real file names).
+- Edited `src/ui/screens/mainMenu.ts` — `onTutorials?` callback on `MainMenuCallbacks`; the menu's Tutorials item calls it (falls back to opening the list screen itself).
+- Edited `src/main.ts` — `startGameView` now takes an optional `extraBoots` array run after the HUD/clock are wired, and `window.__dwu` now also exposes the running `GalaxyTime` (`buildDwuDebugObject` gained an optional `time`); added `startTutorialGame(file)` (default options like `?autostart=1`: seed 1, Spiral, 700 stars, 4×4, player Human + 3 random AI empires) which boots the game and opens the tutorial window, whose **Play This Game** button unpauses the clock (method_455 LastStep); `showMainMenu()` wires `onTutorials` to open the list screen (Start → `startTutorialGame`); `main()` handles `?screen=tutorials` (menu + pre-opened Tutorials list, mirroring the credits/options hook).
+
+**Done**
+- Tutorials list screen from the main menu (original order/names, descriptions, Start).
+- Start launches a default-options game via the existing `startGameView` path and opens the tutorial window over it.
+- In-game tutorial window: draggable, step title/body, Continue/Back/Close, step counter, "Play This Game" on the last step (unpauses the clock).
+- `npm run typecheck` passes; `npm test` passes (46 files, 547 tests).
+- Screenshot saved: `shots/06l-tutorials.png` (`?screen=tutorials`; headless check confirmed the list renders all 11 entries with no console errors).
+
+**Left undone / assumptions**
+- Display names and descriptions in `TUTORIALS` were inferred from the file names: the task file references "the menu code below" for the original names/order but that excerpt is not present in the pasted sources (it ends mid-`method_455`). The file set and order match the 11 files listed in the task.
+- Tests use inline fixtures rather than fetching the real `/assets/dwu/Tutorial/*.txt` files: the original game files are not accessible in this environment (no Steam install / dwu-assets clone here), so the "all real files parse with > 0 steps" verification could not be run against the actual files.
+- Highlight/zoom/open-screen behaviours of individual steps are text-only (`TODO(tutorial)` notes): they require live game objects (ShipGroup/BuiltObject/Habitat/SystemInfo wiring, OpenScreen panels) that are out of scope for this task.
+- `src/main.ts` was touched beyond the strictly named files because the mandatory `?screen=tutorials` screenshot hook and the private `startGameView` boot path live there.
