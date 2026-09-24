@@ -89,6 +89,24 @@ function createEmpiresList(opts: EmpiresListOptions): OpenState {
 
     const body = document.createElement('div');
     body.className = 'empires-list-body';
+
+    // Task 12g: column headers, same grid as the rows (blank swatch column).
+    const header = document.createElement('div');
+    header.className = 'empires-list-header';
+    const blank = document.createElement('span');
+    blank.className = 'empires-list-header-swatch';
+    const hName = document.createElement('span');
+    hName.className = 'empires-list-header-cell';
+    hName.textContent = 'Empire';
+    const hColonies = document.createElement('span');
+    hColonies.className = 'empires-list-header-cell empires-list-header-colonies';
+    hColonies.textContent = 'Colonies';
+    const hCapital = document.createElement('span');
+    hCapital.className = 'empires-list-header-cell';
+    hCapital.textContent = 'Capital';
+    header.append(blank, hName, hColonies, hCapital);
+    body.appendChild(header);
+
     for (const row of empireRows(opts.empires, opts.playerEmpire)) {
         const line = document.createElement('div');
         line.className = 'empires-list-row';

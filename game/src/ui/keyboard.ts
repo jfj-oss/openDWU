@@ -14,6 +14,7 @@ import {
     getSelection,
 } from './hud';
 import { helpTopicKeyForHabitat, toggleGalactopedia } from './screens/galactopedia';
+import { showToast } from './toast';
 
 /** Modifier state of a key event (Ctrl/Alt/Shift). */
 export interface KeyModifiers {
@@ -236,6 +237,11 @@ export function dispatchKey(
         default:
             // Registered but not implemented yet.
             console.info(`TODO(key): ${binding.action}`);
+            // Task 12g: tell the player the shortcut exists but is inert.
+            // Guarded: node-based tests run without a DOM (toast needs one).
+            if (typeof document !== 'undefined') {
+                showToast(`${binding.description} — not yet available`);
+            }
             break;
     }
     return binding.action;
