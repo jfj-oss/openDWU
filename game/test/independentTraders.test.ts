@@ -85,8 +85,10 @@ describe('independent traders (Galaxy.7.cs GenerateIndependentTraders)', () => {
         }
         // All BuildCounts are 0 at game start → the first three empires' designs (Empires order).
         // (re-pinned M4k: game-start research changes the Rnd stream before the design names are drawn)
-        expect(g.popularDesigns.slice(0, 3).map((d) => d.name)).toEqual(['MJ1000 Light Trader', 'WB1000 Light Trader', 'QB1000 Light Transport']);
-        expect(g.popularDesigns.slice(3, 6).map((d) => d.name)).toEqual(['IW1000 Cargo Hauler', 'IF1000 Cargo Freighter', 'QR1000 Medium Transport']);
+        // (re-pinned M4s1: ReviewPirateRelations draws Rnd.NextDouble in each game-start Empire.DoTasks long block)
+        // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
+        expect(g.popularDesigns.slice(0, 3).map((d) => d.name)).toEqual(['SZ1000 Light Freighter', 'LO1000 Light Hauler', 'BB1000 Merchant Freighter']);
+        expect(g.popularDesigns.slice(3, 6).map((d) => d.name)).toEqual(['KX1000 Freight Hauler', 'NL1000 Cargo Ferry', 'VW1000 Cargo Freighter']);
     }, 60000);
 
     it('seed 1: count, ownership, placement at non-visible independent colonies', () => {
@@ -123,24 +125,35 @@ describe('independent traders (Galaxy.7.cs GenerateIndependentTraders)', () => {
         const perColony = new Map<string, number>();
         for (const t of traders) perColony.set(t.parentHabitat!.name, (perColony.get(t.parentHabitat!.name) ?? 0) + 1);
         // (re-pinned M4k: the game-start Empire.DoTasks now runs PerformResearch, whose research-queue selection and research events draw Rnd)
-        expect(Object.fromEntries(perColony)).toEqual({ 'Haako 1': 21, 'S194 2': 33, Atoaklo: 9, 'S22 2': 15, 'Dhayu 1': 14, 'S83 10': 19, 'S83 14': 19, 'S43 5': 11, 'Sol 1': 9 });
-        expect(traders.slice(0, 2).map((t) => [t.name, t.design.name])).toEqual([['Sublime Traveller', 'QB1000 Light Transport'], ['Enchanted Adversity', 'WB1000 Light Trader']]);
+        // (re-pinned M4s1: ReviewPirateRelations draws Rnd.NextDouble in each game-start Empire.DoTasks long block)
+        // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
+        expect(Object.fromEntries(perColony)).toEqual({ 'Haako 4': 15, 'Dhayu 3': 13, 'S1 2': 16, Atoaklo: 23, 'S212 3': 17, 'S1 3': 14, Eroy: 12, 'S269 2': 11, 'S269 4': 18, 'S83 12': 11 });
+        expect(traders.slice(0, 2).map((t) => [t.name, t.design.name])).toEqual([['Grimy Wayfarer', 'LO1000 Light Hauler'], ['Vanishing Moon', 'LO1000 Light Hauler']]);
     }, 60000);
 
     it('seed 1: exact Rnd draws, deterministic', () => {
         const a = runStartTick();
-        // Only GenerateIndependentTraders draws on the long tick (up to GenerateNewPirateEmpires).
-        // (re-pinned M4k: the game-start Empire.DoTasks now runs PerformResearch, whose research-queue selection and research events draw Rnd)
-        expect(a.log.length).toBe(1540);
+        // GenerateIndependentTraders draws on the long tick (up to GenerateNewPirateEmpires), then (M4s1) the independent
+        // colonies' pirate offers: IndependentColoniesMakeSmugglingOffersToPirates draws Next(0, 2) per populated colony
+        // and, on a 1, DetermineColonyDeficientInResources' Next(0, orders) (no orders yet: Next(0, 0));
+        // IndependentColoniesMakeDefendOffersToPirates draws Next(0, 30) per colony (Galaxy.cs 3203-3276).
+        // (re-pinned M4s1: ReviewPirateRelations draws Rnd.NextDouble in each game-start Empire.DoTasks long block)
+        // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
+        expect(a.log.length).toBe(1563);
+        expect(a.log.slice(-25)).toEqual([
+            'Next(0,2)=1', 'Next(0,0)=0', 'Next(0,2)=0', 'Next(0,2)=1', 'Next(0,0)=0', 'Next(0,2)=1', 'Next(0,0)=0', 'Next(0,2)=1',
+            'Next(0,0)=0', 'Next(0,2)=0', 'Next(0,2)=0', 'Next(0,2)=0', 'Next(0,2)=0', 'Next(0,2)=1', 'Next(0,0)=0',
+            ...['10', '21', '14', '26', '2', '26', '22', '20', '11', '12'].map((v) => `Next(0,30)=${v}`),
+        ]);
         expect(a.log.slice(0, 22)).toEqual([
-            // trader 0: Next(0,3)=2 → small; Next(0,3) index; Next(0,10) start colony;
+            // trader 0: Next(0,3) freighter-size roll; Next(0,3) index; Next(0,10) start colony;
             // SelectRandomUniqueStandardShipName (Next(0,127), Next(0,125), Next(0,7) >= 2 → no extra draw);
             // SelectRandomHeading; SelectRelativeParkingPoint.
-            'Next(0,3)=2', 'Next(0,3)=2', 'Next(0,10)=1', 'Next(0,127)=3', 'Next(0,125)=8', 'Next(0,7)=4',
-            'NextDouble', 'NextDouble', 'Next(0,2)=0', 'NextDouble',
+            'Next(0,3)=0', 'Next(0,3)=1', 'Next(0,10)=1', 'Next(0,127)=122', 'Next(0,125)=10', 'Next(0,7)=6',
+            'NextDouble', 'NextDouble', 'Next(0,2)=1', 'NextDouble',
             // trader 1: same shape.
-            'Next(0,3)=2', 'Next(0,3)=1', 'Next(0,10)=2', 'Next(0,127)=6', 'Next(0,125)=51', 'Next(0,7)=4',
-            'NextDouble', 'NextDouble', 'Next(0,2)=0', 'NextDouble',
+            'Next(0,3)=2', 'Next(0,3)=1', 'Next(0,10)=0', 'Next(0,127)=118', 'Next(0,125)=18', 'Next(0,7)=3',
+            'NextDouble', 'NextDouble', 'Next(0,2)=1', 'NextDouble',
             'Next(0,3)=2', 'Next(0,3)=2',
         ]);
         const b = runStartTick();

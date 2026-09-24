@@ -209,26 +209,29 @@ describe('UpgradeMilitaryShipDesignMoreWeapons / MoreEngines (Galaxy.8.cs 4121 /
 // (re-pinned M4k: the game-start Empire.DoTasks now runs PerformResearch — SelectNextResearchProject draws
 // Rnd (SelectRandomLowestProject) and research events draw Next(0, num4) per industry — so later game-start
 // Rnd draws shift.)
+// (re-pinned M4s1: ReviewPirateRelations draws Rnd.NextDouble in every game-start Empire long block and the Galaxy long
+// block's independent-colony pirate offers draw per colony, so later game-start draws shift.)
+// (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
 const PINNED: unknown[] = [
     [
-        'Escort:Royale II:32',
-        'Frigate:Sovereign II:47',
-        'Destroyer:Decurion II:57',
-        'Cruiser:Senator:81',
-        'CapitalShip:Colossia:139',
-        'Carrier:CX-2 Carrier:100',
+        'Escort:Excelsior II:32',
+        'Frigate:Enforcer II:44',
+        'Destroyer:Maximus II:54',
+        'Cruiser:Argossia:89',
+        'CapitalShip:Consul:136',
+        'Carrier:CX-2 Carrier:105',
         'DefensiveBase:Phantom Pirate Defensive Base:123',
         'GenericBase:Phantom Pirate Base:217',
     ],
     [
-        'GenericBase:Bandits Den',
-        'DefensiveBase:Haako 4 Defense Battery',
-        'DefensiveBase:Haako 4 Orbital Battery',
-        'DefensiveBase:Haako 4 Defensive Base',
-        'Destroyer:Looming Hero',
-        'Carrier:Terrible Challenger',
-        'Frigate:Cunning Eclipse',
-        'Escort:Indomitable Gauntlet',
+        'GenericBase:Dhayu Hideout',
+        'DefensiveBase:Dhayu 7 Defense Battery',
+        'DefensiveBase:Dhayu 7 Orbital Battery',
+        'DefensiveBase:Dhayu 7 Defense Battery',
+        'Destroyer:Swift Fury',
+        'Frigate:Decisive Protector',
+        'Destroyer:Discarded Fury',
+        'Frigate:Invincible Moon',
     ],
-    30,
+    33,
 ];

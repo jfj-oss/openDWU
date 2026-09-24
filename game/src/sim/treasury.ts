@@ -192,8 +192,8 @@ export function payForPlanetaryFacilities(galaxy: Galaxy, empire: Empire, timePa
 
 /**
  * Empire.3.cs 4161 CalculatePirateIncome (Empire.3.cs 4201: CalculateAccurateAnnualIncome for pirate factions).
- * TODO(port) M4s: Habitat.GetPirateControl().GetByFaction (PirateColonyControl) and PirateEconomy.ThisYear/LastYear
- * totals — pirate factions own no colonies and have no economy history yet (a colony throws; the economy term is 0).
+ * TODO(port) M4s2: Habitat.GetPirateControl().GetByFaction (PirateColonyControl) — pirate factions own no colonies yet
+ * (a colony throws). The PirateEconomy term is ported (M4s1).
  */
 export function calculatePirateIncome(galaxy: Galaxy, empire: Empire): number {
     let num = 0.0;
@@ -209,7 +209,15 @@ export function calculatePirateIncome(galaxy: Galaxy, empire: Empire): number {
             num += pirateRelation.monthlyProtectionFeeToThisEmpire * 12.0;
         }
     }
-    // PirateEconomy != null: ((ThisYear.TotalIncome - ThisYear.StableIncome) / 2 [+ LastYear …]) — 0 until M4s.
+    // Empire.3.cs 4185-4195 (PirateEconomy is never null in the TS model).
+    const pirateEconomy = empire.pirateEconomy;
+    let num3 = (pirateEconomy.thisYear.totalIncome - pirateEconomy.thisYear.stableIncome) / 2.0;
+    if (pirateEconomy.lastYear !== null) {
+        const num4 = pirateEconomy.lastYear.totalIncome - pirateEconomy.lastYear.stableIncome;
+        num3 += num4 / 2.0;
+        num3 /= 2.0;
+    }
+    num += num3;
     return num;
 }
 

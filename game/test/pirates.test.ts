@@ -216,12 +216,50 @@ describe('generatePirateEmpireName', () => {
 // (re-pinned M4k: the game-start Empire.DoTasks now runs PerformResearch — SelectNextResearchProject draws
 // Rnd (SelectRandomLowestProject) and research events draw Next(0, num4) per industry — so later game-start
 // Rnd draws shift.)
+// (re-pinned M4s1: ReviewPirateRelations draws Rnd.NextDouble in every game-start Empire long block and the Galaxy long
+// block's independent-colony pirate offers draw per colony, so GenerateNewPirateEmpires sees a different stream.)
+// (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
 const PINNED_SEED1_PIRATES: unknown[] = [
-    ['Dhayu Invaders', 'S95 2', 'Atuuk', 796684],
-    ['Dread Storm Council', 'S250 7', 'Ackdarian', 32639],
-    ['Fierce League', 'S134 1', 'Kiadian', 88],
-    ['S83 Intruders', 'S141 7', 'Atuuk', 2427716],
-    ['Murderous Moon Invaders', 'BK606', 'Atuuk', 531208],
-    ['Savage Exports', 'S31 6', 'Securan', 16511],
-    ['Dark Force', 'SI948', 'Kiadian', 3155216],
+    [
+        'Dread Force',
+        'S243 3',
+        'Kiadian',
+        88,
+    ],
+    [
+        'Red Storm Gang',
+        'S247 4',
+        'Dhayut',
+        8323096,
+    ],
+    [
+        'Fierce Company',
+        'S276 7',
+        'Teekan',
+        3153920,
+    ],
+    [
+        'Ugnar Pillagers',
+        'LI613',
+        'Mortalen',
+        4390912,
+    ],
+    [
+        'Red Marauders',
+        'S43 3',
+        'Boskara',
+        3674214,
+    ],
+    [
+        'Iron Confederation',
+        'S156 6',
+        'Ackdarian',
+        32639,
+    ],
+    [
+        'Grim Ventures',
+        'S181 9',
+        'Haakonish',
+        7364656,
+    ],
 ];

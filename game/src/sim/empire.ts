@@ -81,6 +81,8 @@ export { SystemVisibilityStatus } from './visibility';
 // BuiltObjectSubRole (full C# member order) lives in builtObjectTypes.ts.
 export { BuiltObjectSubRole } from './builtObjectTypes';
 import { BuiltObjectSubRole } from './builtObjectTypes';
+import { PirateEconomy } from './pirates/pirateEconomy';
+import { EmpireActivityList } from './pirates/empireActivity';
 
 
 
@@ -109,6 +111,9 @@ export class EmpireCounters {
     miningExtractionLuxury = 0;
     miningExtractionStrategic = 0;
     miningExtractionColonyManufactured = 0;
+    // EmpireCounters.cs 90-91 (M4s: CompletePirateMission, pirates/missionsMarket.ts).
+    completedPirateMissionAttackCount = 0;
+    completedPirateMissionDefendCount = 0;
     constructor(_empire: Empire) {}
     /** EmpireCounters.cs 220 ProcessColonyRevenue(amount). */
     processColonyRevenue(amount: number): void {
@@ -130,10 +135,7 @@ export class EmpireCounters {
     }
 }
 
-// TODO(port): PirateEconomy — PirateEconomy.cs.
-export class PirateEconomy {
-    constructor(_startStarDate: number) {}
-}
+// PirateEconomy.cs: pirates/pirateEconomy.ts (M4s).
 
 // Port of DesignSpecification.LoadFromFile(galaxy, subRoleName, subRole, isMobile, race,
 // isPirate, [standAlone,] raceNameOverride) (DesignSpecification.cs 148/185): a null race
@@ -289,7 +291,9 @@ export class Empire {
     controlColonyFacilities: AutomationLevel = AutomationLevel.Undefined;
     controlPopulationPolicy = false;
     controlCharacterLocations = false;
-    controlOfferPirateMissions: AutomationLevel = AutomationLevel.Undefined;
+    // Empire.cs 569: [OptionalField] _ControlOfferPirateMissions = AutomationLevel.FullyAutomated (field initializer, so
+    // the pirate / independent ctor keeps it too).
+    controlOfferPirateMissions: AutomationLevel = AutomationLevel.FullyAutomated;
     mainColor = 0;
     secondaryColor = 0;
     flagShape = -1;
@@ -375,7 +379,8 @@ export class Empire {
         this.active = true;
         this.empireId = isIndependentEmpire ? 0 : galaxy.getNextEmpireID();
         this.counters = new EmpireCounters(this);
-        this.pirateEconomy = new PirateEconomy(START_STAR_DATE);
+        // Empire.cs 4159: new PirateEconomy(galaxy.CurrentStarDate).
+        this.pirateEconomy = new PirateEconomy(galaxyCurrentStarDate(galaxy));
         this.visibility = new EmpireVisibility(galaxy, this.visibilityOwner(isIndependentEmpire));
         this.name = name === '' ? 'Independent' : name;
         this.dominantRace = dominantRace;
@@ -463,9 +468,8 @@ export class Empire {
         this.active = true;
         this.empireId = galaxy.getNextEmpireID();
         this.counters = new EmpireCounters(this);
-        // TODO(port): Galaxy.CurrentStarDate — Galaxy.cs (no time on the TS
-        // Galaxy yet); stand in with the start star date.
-        this.pirateEconomy = new PirateEconomy(START_STAR_DATE);
+        // Empire.cs 3759: new PirateEconomy(galaxy.CurrentStarDate).
+        this.pirateEconomy = new PirateEconomy(galaxyCurrentStarDate(galaxy));
         // ResourceMap.InitializeFlags(Habitats.Count) + one Unexplored
         // SystemVisibility per system (Empire.cs 3760, 3831-3840).
         this.visibility = new EmpireVisibility(galaxy, this.visibilityOwner());
@@ -1632,11 +1636,11 @@ export class Empire {
      */
     desiredForeignColonies: HabitatPrioritization[] = [];
     empiresWithDesiredColonies: Empire[] = [];
-    /**
-     * Empire.cs _EmpiresViewable / _EmpiresViewableExpiry (EmpireList / List<long>): empires whose objects this
-     * empire can see (subjugation, espionage). Written by ChangeDiplomaticRelation / ConsiderTreatyProposals (M4r),
-     * espionage; expired by ClearExpiredViewableEmpires (M4t); read by IsObjectVisibleToThisEmpire.
-     */
+    // ---- M4s fields (pirates runtime) ----
+    /** Empire.cs 487 _PirateMissions (EmpireActivityList; pirates/missionsMarket.ts). */
+    pirateMissions = new EmpireActivityList();
+    // ---- M4t fields (visibility, exploration) ----
+    /** Empire.cs 139 _EmpiresViewable (EmpireList) / 141 _EmpiresViewableExpiry (List<long>), parallel lists. */
     empiresViewable: Empire[] = [];
     empiresViewableExpiry: number[] = [];
     /** Empire.cs LocationHints (List<Point>): AddLocationHint (Empire.cs 2807) — pirate info trades (tradeItems.ts), UI hints. */

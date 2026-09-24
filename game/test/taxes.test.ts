@@ -163,4 +163,6 @@ describe('taxes (ReviewTaxes at game start)', () => {
 // (re-pinned M4k: the game-start Empire.DoTasks now runs PerformResearch — SelectNextResearchProject draws
 // Rnd (SelectRandomLowestProject) and research events draw Next(0, num4) per industry — so later game-start
 // Rnd draws shift.)
-const PINNED_TAX_RATES: number[] = [0.28, 0.28, 0.26, 0.31].map(Math.fround);
+// (re-pinned M4s1: ReviewPirateRelations draws Rnd.NextDouble in each game-start Empire.DoTasks long block.)
+// (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
+const PINNED_TAX_RATES: number[] = [0.3, 0.28, 0.27, 0.31].map(Math.fround);

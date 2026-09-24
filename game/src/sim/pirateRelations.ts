@@ -13,6 +13,22 @@ import type { Empire } from './empire';
 import type { Galaxy } from './galaxy';
 import { REAL_SECONDS_IN_GALACTIC_YEAR, startStarDateForAge } from './galaxyTime';
 import { SystemVisibilityStatus } from './visibility';
+import type { BuiltObject } from './builtObject';
+import type { Habitat } from './types';
+import type { BuiltObjectMissionType } from './missions/mission';
+import { empireShipGroups, shipGroupCompleteMission, type ShipGroup } from './fleets/shipGroup';
+import { EmpireActivityType } from './pirates/empireActivity';
+
+// BuiltObjectMissionType values used by CancelPirateDefendMissions. pirateRelations.ts is loaded early by empire.ts, so
+// it must not pull missions/mission.ts (and with it builtObject.ts / types.ts) in at runtime; the values are the
+// enum's declaration indexes (checked in test/m4s1Market.test.ts).
+export const MISSION_TYPE_ATTACK = 9 as BuiltObjectMissionType;
+export const MISSION_TYPE_WAIT_AND_ATTACK = 16 as BuiltObjectMissionType;
+export const MISSION_TYPE_WAIT_AND_BOMBARD = 17 as BuiltObjectMissionType;
+export const MISSION_TYPE_MOVE_AND_WAIT = 18 as BuiltObjectMissionType;
+export const MISSION_TYPE_BOMBARD = 27 as BuiltObjectMissionType;
+export const MISSION_TYPE_CAPTURE = 28 as BuiltObjectMissionType;
+export const MISSION_TYPE_RAID = 30 as BuiltObjectMissionType;
 
 const f = Math.fround;
 
@@ -389,17 +405,64 @@ export function addPirateRelation(empire: Empire, otherEmpire: Empire, a: number
 }
 
 /**
- * Empire.8.cs 2381 CancelPirateDefendMissions(otherEmpire, evaluationPenaltyIfPirate).
- * TODO(port): EmpireActivity / PirateMissions (Empire + Galaxy) / ShipGroups are not
- * ported. The method first calls otherEmpire.ObtainPirateRelation(this) (ported: it may
- * create the relation), then walks this.PirateMissions (Defend requested by otherEmpire,
- * assigned to this, bidding over: remove everywhere, -20 EvaluationPirateMissionsFail
- * if pirate, complete fleets) and Galaxy.PirateMissions (unassign open bids, +10000
- * BidTimeRemaining). All mission lists are empty at game start → no further effect.
+ * Empire.8.cs 2382 CancelPirateDefendMissions(otherEmpire, evaluationPenaltyIfPirate) (ported by M4s s1): drop the
+ * accepted Defend missions otherEmpire gave this faction (bidding over), -20 EvaluationPirateMissionsFail when a
+ * penalised pirate, complete the fleets guarding / attacking those targets, and release open bids (+10 s). No Rnd here
+ * (ShipGroup.CompleteMission is an M4l stub).
  */
 export function cancelPirateDefendMissions(empire: Empire, otherEmpire: Empire, evaluationPenaltyIfPirate: boolean): void {
-    void evaluationPenaltyIfPirate;
-    obtainPirateRelation(otherEmpire, empire);
+    const galaxy = empire.galaxy;
+    const shipGroupList: ShipGroup[] = [];
+    const pirateRelation = obtainPirateRelation(otherEmpire, empire);
+    const empireActivityList = empire.pirateMissions.resolveByTypeAndRequester(EmpireActivityType.Defend, otherEmpire);
+    const shipGroups = empireShipGroups(empire);
+    for (let i = 0; i < empireActivityList.count; i++) {
+        const empireActivity = empireActivityList.at(i);
+        if (empireActivity === null || empireActivity.assignedEmpire !== empire || empireActivity.bidTimeRemaining > 0) continue;
+        empireActivity.requestingEmpire!.pirateMissions.removeEquivalent(empireActivity);
+        empire.pirateMissions.removeEquivalent(empireActivity);
+        if (empireActivity.assignedEmpire !== null && empireActivity.assignedEmpire.pirateMissions != null) empireActivity.assignedEmpire.pirateMissions.removeEquivalent(empireActivity);
+        if (galaxy.pirateMissions.containsEquivalent(empireActivity)) galaxy.pirateMissions.removeEquivalent(empireActivity);
+        if (evaluationPenaltyIfPirate && empire.pirateEmpireBaseHabitat !== null) {
+            pirateRelation.evaluationPirateMissionsFail = f(pirateRelation.evaluationPirateMissionsFail - 20);
+        }
+        // ShipGroupList.cs 242 ResolveFleetsWithWaitTarget / 102 ResolveFleetsWithAttackTarget(StellarObject).
+        for (const shipGroup of resolveFleetsWithTarget(shipGroups, empireActivity.target, false)) {
+            if (!shipGroupList.includes(shipGroup)) shipGroupList.push(shipGroup);
+        }
+        for (const shipGroup2 of resolveFleetsWithTarget(shipGroups, empireActivity.target, true)) {
+            if (!shipGroupList.includes(shipGroup2)) shipGroupList.push(shipGroup2);
+        }
+    }
+    for (let l = 0; l < galaxy.pirateMissions.count; l++) {
+        const empireActivity2 = galaxy.pirateMissions.at(l);
+        if (empireActivity2 !== null && empireActivity2.type === EmpireActivityType.Defend && empireActivity2.requestingEmpire === otherEmpire && empireActivity2.bidTimeRemaining > 0 && empireActivity2.assignedEmpire === empire) {
+            empireActivity2.assignedEmpire = null;
+            empireActivity2.bidTimeRemaining += 10000;
+        }
+    }
+    for (let m = 0; m < shipGroupList.length; m++) shipGroupCompleteMission(galaxy, shipGroupList[m]);
+}
+
+/**
+ * ShipGroupList.cs 242 ResolveFleetsWithWaitTarget(target) (attack = false: MoveAndWait missions) and 102
+ * ResolveFleetsWithAttackTarget(StellarObject) (attack = true) for a Habitat / BuiltObject target.
+ */
+function resolveFleetsWithTarget(shipGroups: (ShipGroup | null)[], target: Habitat | BuiltObject | null, attack: boolean): ShipGroup[] {
+    const result: ShipGroup[] = [];
+    for (let index = 0; index < shipGroups.length; ++index) {
+        const shipGroup = shipGroups[index];
+        if (shipGroup == null || shipGroup.leadShip === null || shipGroup.mission === null) continue;
+        const t = shipGroup.mission.type;
+        const matchesType = attack
+            ? t === MISSION_TYPE_ATTACK || t === MISSION_TYPE_WAIT_AND_ATTACK || t === MISSION_TYPE_BOMBARD || t === MISSION_TYPE_WAIT_AND_BOMBARD || t === MISSION_TYPE_CAPTURE || t === MISSION_TYPE_RAID
+            : t === MISSION_TYPE_MOVE_AND_WAIT;
+        if (!matchesType || target === null) continue;
+        // `case BuiltObject: Mission.TargetBuiltObject == target` / `case Habitat: Mission.TargetHabitat == target`: the
+        // other accessor is null for a target of the other kind, so comparing both is the same test.
+        if (shipGroup.mission.targetBuiltObject === target || shipGroup.mission.targetHabitat === target) result.push(shipGroup);
+    }
+    return result;
 }
 
 /** Empire.8.cs 2445/2450 ChangePirateRelation(otherEmpire, relationType, starDate[, monthlyFeeToThisEmpire = 0.0]). */

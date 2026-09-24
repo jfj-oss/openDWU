@@ -65,8 +65,9 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         expect(long.scheduler!.frames).toBe(36000);
         checkInvariants(long);
         const hits = r.todoHits;
-        // Every tick family reached its stubs. (M4r: every diplomacy entry point reached is fully ported.)
-        for (const key of ['M4e autoRefuelRepairShip', 'M4q scanForNewOwnerHabitat', 'M4s pirateAssignShipMissions', 'M4s reviewPirateMissionsAndAssign', 'M4l performFleetTasks']) {
+        // Every tick family reached its stubs. (M4r: every diplomacy entry point reached is fully ported; M4s1 ported
+        // reviewPirateMissionsAndAssign, so its marker is pirateCollectIncomeFromControlledColonies.)
+        for (const key of ['M4e autoRefuelRepairShip', 'M4q scanForNewOwnerHabitat', 'M4s pirateAssignShipMissions', 'M4s pirateCollectIncomeFromControlledColonies', 'M4l performFleetTasks']) {
             expect(hits[key] ?? 0, key).toBeGreaterThan(0);
         }
         const summary = { digest: stateDigest(long), counts: stateCounts(long), rndDraws: long.rnd.drawCount };
@@ -102,7 +103,15 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // SystemVisibility.LatestThreatEvaluation timestamps, distress signals from NotifyOfAttack) and the Attack case
         // body runs (with the SensorJumpIntercept Rnd roll before a warp pursuit). No new Rnd sites are reached on this
         // seed otherwise (smuggler detection needs trace scanners; invasion landings need troops).
-        expect(summary.digest).toBe('f5096dc7fa0d5173');
+        // M4s1: the pirate mission marketplace runs — ReviewPirateRelations draws one
+        // Rnd.NextDouble per Empire long block, IndependentColoniesMake{Smuggling,Defend}OffersToPirates draw per
+        // independent colony (Next(0, 2) / Next(0, 30), plus DetermineColonyDeficientInResources' Next(0, orders)), the
+        // smuggling offers create state orders, pirate factions accept smuggling missions, and
+        // CountResourceSupplyLocations is ported (market price factors).
+        // SelectCreatures population gating fix (Galaxy.5.cs 1648/1785): SelectCreatures(planet / moon) runs only when
+        // the body has no population, which moves every galaxy-generation draw after the first populated body (creature
+        // counts / positions, empire placement) and so everything downstream. (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
+        expect(summary.digest).toBe('198918104ea2794b');
     }, 600000);
 });
 

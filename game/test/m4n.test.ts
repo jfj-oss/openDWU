@@ -57,6 +57,10 @@ beforeAll(async () => {
     shipB.xpos = shipA.xpos + 1000;
     shipB.ypos = shipA.ypos;
     shipB.nearestSystemStar = shipA.nearestSystemStar;
+    // The threat unit checks below expect B to be A's top threat. After the SelectCreatures population gating fix
+    // (Galaxy.5.cs 1648/1785) moved galaxy generation, seed 1 puts a creature in A's system that outranks B
+    // (Galaxy.7.cs 3629 DetermineThreatLevel(Creature) is a legitimate threat source), so empty the system's creature list.
+    galaxy.systems[shipA.nearestSystemStar!.systemIndex].creatures = [];
     const cell = galaxy.resolveIndex(shipA.xpos, shipA.ypos);
     if (!galaxy.builtObjectIndexGrid[cell.x][cell.y].includes(shipB)) galaxy.builtObjectIndexGrid[cell.x][cell.y].push(shipB);
     // Pirate factions rate each other by PirateRelation (Galaxy.7.cs 3706-3718: ×50 unless Protection); None avoids the

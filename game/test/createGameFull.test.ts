@@ -151,10 +151,13 @@ describe('createGame full game start (seed 1, Spiral 300 stars, 8x8, Human + 3 A
 // Re-pinned at the M4 wave-1 merge: the game-start Empire.DoTasks now runs PerformResearch (M4k: queue picks and
 // research-event rolls draw Rnd, completed research changes components / troop types) and EvaluateColonyVariables /
 // ProcessColonyTroops recruitment (M4j), so every later Rnd consumer (names, pirates, placement) shifts.
+// Re-pinned M4s1: ReviewPirateRelations draws Rnd.NextDouble in every game-start Empire long block and the Galaxy long
+// block's independent-colony pirate offers draw per colony (IndependentColoniesMake{Smuggling,Defend}OffersToPirates).
+// (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
 const PINNED_SUMMARY: unknown = {
     empires: [
         {
-            name: 'S147 Kingdom',
+            name: 'Sol Commonwealth',
             race: 'Human',
             colonies: 1,
             spacePorts: 1,
@@ -169,37 +172,15 @@ const PINNED_SUMMARY: unknown = {
                 GasMiningShip: 2,
                 MiningShip: 2,
             },
-            troops: 1,
-            characters: 4,
+            troops: 10,
+            characters: 3,
             taxRates: [
-                0.2800000011920929,
+                0.30000001192092896,
             ],
         },
         {
-            name: 'S216 Corporation',
+            name: 'Free S288 Syndicate',
             race: 'Haakonish',
-            colonies: 1,
-            spacePorts: 1,
-            researchStations: 1,
-            miningStations: 6,
-            stateShips: {
-                ExplorationShip: 7,
-                ConstructionShip: 3,
-            },
-            privateShips: {
-                SmallFreighter: 1,
-                GasMiningShip: 2,
-                MiningShip: 2,
-            },
-            troops: 2,
-            characters: 4,
-            taxRates: [
-                0.2800000011920929,
-            ],
-        },
-        {
-            name: 'S96 Union',
-            race: 'Dhayut',
             colonies: 1,
             spacePorts: 1,
             researchStations: 1,
@@ -216,15 +197,37 @@ const PINNED_SUMMARY: unknown = {
             troops: 1,
             characters: 3,
             taxRates: [
-                0.25999999046325684,
+                0.2800000011920929,
             ],
         },
         {
-            name: 'Ugnari Consortium',
+            name: 'Grand Dhayut Territory',
+            race: 'Dhayut',
+            colonies: 1,
+            spacePorts: 1,
+            researchStations: 1,
+            miningStations: 6,
+            stateShips: {
+                ExplorationShip: 7,
+                ConstructionShip: 3,
+            },
+            privateShips: {
+                SmallFreighter: 1,
+                GasMiningShip: 2,
+                MiningShip: 2,
+            },
+            troops: 2,
+            characters: 3,
+            taxRates: [
+                0.27000001072883606,
+            ],
+        },
+        {
+            name: 'Free Ugnari Industries',
             race: 'Ugnari',
             colonies: 1,
             spacePorts: 1,
-            researchStations: 0,
+            researchStations: 1,
             miningStations: 6,
             stateShips: {
                 ExplorationShip: 7,
@@ -244,37 +247,7 @@ const PINNED_SUMMARY: unknown = {
     ],
     pirates: [
         {
-            name: 'Dhayu Invaders',
-            bases: 1,
-            fleet: {
-                Escort: 2,
-                ConstructionShip: 1,
-            },
-            private: {
-                SmallFreighter: 1,
-                GasMiningStation: 1,
-            },
-            characters: 2,
-        },
-        {
-            name: 'Dread Storm Council',
-            bases: 1,
-            fleet: {
-                Escort: 1,
-                ExplorationShip: 1,
-                ConstructionShip: 1,
-            },
-            private: {
-                SmallFreighter: 2,
-                MiningShip: 1,
-                GasMiningShip: 1,
-                GasMiningStation: 1,
-                MiningStation: 1,
-            },
-            characters: 2,
-        },
-        {
-            name: 'Fierce League',
+            name: 'Dread Force',
             bases: 1,
             fleet: {
                 Escort: 1,
@@ -290,33 +263,23 @@ const PINNED_SUMMARY: unknown = {
             characters: 2,
         },
         {
-            name: 'S83 Intruders',
+            name: 'Red Storm Gang',
             bases: 1,
             fleet: {
-                Escort: 2,
+                Escort: 1,
+                ExplorationShip: 1,
                 ConstructionShip: 1,
             },
             private: {
                 SmallFreighter: 1,
-                GasMiningStation: 1,
+                MiningShip: 1,
+                GasMiningShip: 1,
+                GasMiningStation: 2,
             },
             characters: 2,
         },
         {
-            name: 'Murderous Moon Invaders',
-            bases: 1,
-            fleet: {
-                Escort: 2,
-                ConstructionShip: 1,
-            },
-            private: {
-                SmallFreighter: 1,
-                GasMiningStation: 1,
-            },
-            characters: 2,
-        },
-        {
-            name: 'Savage Exports',
+            name: 'Fierce Company',
             bases: 1,
             fleet: {
                 ExplorationShip: 1,
@@ -326,13 +289,41 @@ const PINNED_SUMMARY: unknown = {
                 SmallFreighter: 4,
                 MiningShip: 1,
                 GasMiningShip: 1,
-                GasMiningStation: 2,
-                MiningStation: 1,
+                GasMiningStation: 3,
             },
             characters: 2,
         },
         {
-            name: 'Dark Force',
+            name: 'Ugnar Pillagers',
+            bases: 1,
+            fleet: {
+                Escort: 2,
+                ConstructionShip: 1,
+            },
+            private: {
+                SmallFreighter: 1,
+                GasMiningStation: 1,
+            },
+            characters: 2,
+        },
+        {
+            name: 'Red Marauders',
+            bases: 1,
+            fleet: {
+                Escort: 1,
+                ExplorationShip: 1,
+                ConstructionShip: 1,
+            },
+            private: {
+                SmallFreighter: 1,
+                MiningShip: 1,
+                GasMiningShip: 1,
+                GasMiningStation: 2,
+            },
+            characters: 2,
+        },
+        {
+            name: 'Iron Confederation',
             bases: 1,
             fleet: {
                 Escort: 1,
@@ -343,13 +334,30 @@ const PINNED_SUMMARY: unknown = {
                 SmallFreighter: 2,
                 MiningShip: 1,
                 GasMiningShip: 1,
-                GasMiningStation: 2,
+                GasMiningStation: 1,
+                MiningStation: 1,
+            },
+            characters: 2,
+        },
+        {
+            name: 'Grim Ventures',
+            bases: 1,
+            fleet: {
+                ExplorationShip: 1,
+                ConstructionShip: 1,
+            },
+            private: {
+                SmallFreighter: 4,
+                MiningShip: 1,
+                GasMiningShip: 1,
+                GasMiningStation: 1,
+                MiningStation: 2,
             },
             characters: 2,
         },
     ],
     independentTraders: 150,
-    unownedBuiltObjects: 20,
-    builtObjects: 321,
-    ruins: 27,
+    unownedBuiltObjects: 24,
+    builtObjects: 334,
+    ruins: 31,
 };

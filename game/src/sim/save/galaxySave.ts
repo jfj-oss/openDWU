@@ -25,7 +25,9 @@ import { GalaxyLocation } from '../galaxyLocation';
 import { Habitat } from '../types';
 import { Random } from '../random';
 import { Cargo, CargoList, ResourceRef, Troop, TroopList } from '../cargo';
-import { Empire, EmpireCounters, PirateEconomy, getGovernmentsStatic } from '../empire';
+import { Empire, EmpireCounters, getGovernmentsStatic } from '../empire';
+import { PirateEconomy, PirateEconomyYear } from '../pirates/pirateEconomy';
+import { EmpireActivity, EmpireActivityList } from '../pirates/empireActivity';
 import { EmpireVisibility, GalaxyResourceMap, SystemVisibility } from '../visibility';
 import { BuiltObject, DockingBay } from '../builtObject';
 import { BuiltObjectComponent, BuiltObjectComponentList } from '../builtObjectComponent';
@@ -88,6 +90,10 @@ const CLASSES: Record<string, object> = {
     Empire: Empire.prototype,
     EmpireCounters: EmpireCounters.prototype,
     PirateEconomy: PirateEconomy.prototype,
+    // M4s1: Empire.PirateEconomy years and the pirate mission marketplace lists (Galaxy.PirateMissions, Empire.PirateMissions).
+    PirateEconomyYear: PirateEconomyYear.prototype,
+    EmpireActivity: EmpireActivity.prototype,
+    EmpireActivityList: EmpireActivityList.prototype,
     EmpireVisibility: EmpireVisibility.prototype,
     SystemVisibility: SystemVisibility.prototype,
     GalaxyResourceMap: GalaxyResourceMap.prototype,

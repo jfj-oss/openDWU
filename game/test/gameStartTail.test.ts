@@ -322,7 +322,13 @@ describe('gameStartTail blocks (Start.2.cs 1568-2038) on a createGame galaxy', (
             expect(a.draws.debrisFieldsAtStart).toBe(0);
             expect(a.draws.shakturiAbandonedShipsAtStart).toBe(0);
             expect(a.draws.gameObjectAtStart).toBe(0);
-            expect((s.silverMist as string[]).length).toBe(1); // max(1, min(3, 300/450))
+            // max(1, min(3, 300/450)) = 1 silver-mist ruin is generated (Galaxy.6.cs 344), but every later lonely-habitat
+            // ruin generator (GenerateSpecialBonusRuins, Galaxy.5.cs 5518, and the SelectSpecialRuins passes) assigns
+            // Habitat.Ruin unconditionally, so it can be overwritten. (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785): on seed 1 the silver-mist
+            // habitat now also receives an EmpireBonus ruin, leaving 0.)
+            expect(g.silverMistCreatureRuinsHabitat).not.toBeNull();
+            expect((s.silverMist as string[]).length).toBeLessThanOrEqual(1);
+            if ((s.silverMist as string[]).length === 0) expect(g.silverMistCreatureRuinsHabitat!.ruin).not.toBeNull();
             // Seven EmpireBonus ruins; GenerateSpecialBonusRuins overwrites Habitat.Ruin, so two landing
             // on the same lonely habitat leave fewer.
             expect((s.empireBonus as string[]).length).toBeGreaterThanOrEqual(1);

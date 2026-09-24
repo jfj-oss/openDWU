@@ -32,7 +32,7 @@ import {
     withinFuelRangeWithFactor,
 } from '../src/sim/movement';
 import { currentRange as freightCurrentRange, withinFuelRange as freightWithinFuelRange, warpSpeedWithBonuses as freightWarp } from '../src/sim/logistics/freight';
-import { warpSpeedWithBonuses } from '../src/sim/movement';
+import { MAX_SOLAR_SYSTEM_SIZE, warpSpeedWithBonuses } from '../src/sim/movement';
 
 let gameData: GameData;
 beforeAll(async () => {
@@ -141,7 +141,10 @@ describe('per-frame upkeep', () => {
         b.reactorStorageCapacity = 1e9;
         b.currentEnergy = 0;
         performEnergyCollection(g, b, 1.0);
-        const num = 23000 + 500.0;
+        // BuiltObject.cs PerformEnergyCollection: MaxSolarSystemSize + 500, or diameter / 2 + 500 for a gas cloud star
+        // (re-pinned after the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785) moved galaxy generation:
+        // systems[0]'s star is no longer a plain star on seed 1, so compute num per C# instead of hard-coding 23000).
+        const num = (star.category === HabitatCategoryType.GasCloud ? Math.trunc(star.diameter / 2) : MAX_SOLAR_SYSTEM_SIZE) + 500.0;
         const sum = 10 * star.solarRadiation * 10.0 / 100.0 + 10 * star.microwaveRadiation * 10.0 / 100.0 + 10 * star.xrayRadiation * 10.0 / 100.0;
         expect(b.currentEnergy).toBeCloseTo(sum * ((num + 2000.0) / num), 9);
         b.currentSpeed = 1;

@@ -70,7 +70,8 @@ describe('ProjectForceStructure / ProjectPrivateForceStructure at game start', (
         }
         // Pinned for seed 1 (player empire).
         expect(a[0].private).toEqual([['SmallFreighter', 3], ['MediumFreighter', 1], ['GasMiningShip', 2], ['MiningShip', 2]]);
-        expect(a[0].targets.length).toBe(55);
+        // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
+        expect(a[0].targets.length).toBe(30);
         expect(summary(atDoTasksPoint(opts(0.5, 1)))).toEqual(a);
     }, 60000);
 
@@ -95,7 +96,39 @@ describe('ProjectForceStructure / ProjectPrivateForceStructure at game start', (
         }
         // Pinned for seed 1 (re-pinned M4k: the game-start Empire.DoTasks now runs PerformResearch, whose research-queue selection and research events draw Rnd): only the second empire's capital neighbour has known resources
         // (ProjectPrivateForceStructure flag), so only it projects freighters and mining ships.
-        expect(a.map((e) => e.private)).toEqual([[], [['SmallFreighter', 2], ['MediumFreighter', 1], ['LargeFreighter', 1], ['GasMiningShip', 2], ['MiningShip', 2]], [], []]);
+        // Re-pinned M4s1: ReviewPirateRelations draws Rnd.NextDouble in each game-start Empire.DoTasks long block, so the
+        // empires land elsewhere. (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785): now only the second
+        // empire's capital neighbour has known resources, so only it projects freighters and mining ships.)
+        expect(a.map((e) => e.private)).toEqual([
+            [
+            ],
+            [
+                [
+                    'SmallFreighter',
+                    2,
+                ],
+                [
+                    'MediumFreighter',
+                    1,
+                ],
+                [
+                    'LargeFreighter',
+                    1,
+                ],
+                [
+                    'GasMiningShip',
+                    2,
+                ],
+                [
+                    'MiningShip',
+                    2,
+                ],
+            ],
+            [
+            ],
+            [
+            ],
+        ]);
     }, 60000);
 
     it('colony economy at the DoTasks point: tax snapshot −ColonyStateSupportCost, income 0', () => {
@@ -104,13 +137,14 @@ describe('ProjectForceStructure / ProjectPrivateForceStructure at game start', (
         const cap = e.capital!;
         // TakeOwnershipOfColony: RecalculateDistanceFactor (capital → 0). Re-pinned by M4j: the GenerateEmpire
         // Empire.DoTasks now runs EvaluateColonyVariables, which raises the capital's development level 10 → 15 (its
-        // luxury cargo) before ReviewTaxes, so SetColonyTaxRate picks 0.06f (was 0 → −1000, i.e. only
-        // −ColonyStateSupportCost) and the snapshot is AnnualRevenue × 0.06 × TaxComplianceRate − 1000.
+        // luxury cargo) before ReviewTaxes, so SetColonyTaxRate picks a positive rate (was 0 → −1000, i.e. only
+        // −ColonyStateSupportCost) and the snapshot is AnnualRevenue × rate × TaxComplianceRate − 1000.
+        // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785): the player capital is now Sol 2, rate 0.16f.)
         expect(cap.distanceFactor).toBe(0);
-        expect(cap.taxRate).toBe(Math.fround(0.06));
-        expect(cap.annualTaxRevenue).toBe(1447.6451675605372);
-        expect(annualTaxRevenue(g, e)).toBe(1447.6451675605372);
-        expect(calculateAccurateAnnualIncome(g, e)).toBe(1447.6451675605372);
+        expect(cap.taxRate).toBe(Math.fround(0.16));
+        expect(cap.annualTaxRevenue).toBe(23487.80578889396);
+        expect(annualTaxRevenue(g, e)).toBe(23487.80578889396);
+        expect(calculateAccurateAnnualIncome(g, e)).toBe(23487.80578889396);
         const b = calculateStateExpenditureBalance(e, 0);
         const research = 1 - (b.shipMaintenancePortion + b.troopMaintenancePortion + b.facilityMaintenancePortion);
         expect(research).toBeGreaterThanOrEqual(0.06 - 1e-12);

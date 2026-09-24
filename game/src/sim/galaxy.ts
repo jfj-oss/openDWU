@@ -7,6 +7,7 @@
 // population and creatures are ported (01f2: SelectPopulation, 01f3:
 // SelectCreatures) — see the `TODO(port)` markers below for what remains.
 
+import { EmpireActivityList } from './pirates/empireActivity';
 import { Random } from './random';
 import { newHabitatConstructionQueue } from './construction/constructionYard';
 import { Creature, CreatureType } from './creature';
@@ -3975,10 +3976,11 @@ export class Galaxy {
                 if (planet.population.items.length > 0) {
                     newHabitatConstructionQueue(this, planet);
                     ensureHabitatManufacturingQueue(this, planet);
+                } else {
+                    // Galaxy.5.cs 1648: SelectCreatures(habitat2) runs only in the
+                    // else-branch of `if (habitat2.Population.Count > 0)`.
+                    this.selectCreatures(planet);
                 }
-                // Port of Galaxy.6.cs SelectCreatures(habitat2) — Galaxy.6.cs:654 (call
-                // site in Galaxy.5.cs SetupSolarSystem, after population rolls).
-                this.selectCreatures(planet);
                 habitatList.push(planet);
                 habitat = planet;
 
@@ -4070,10 +4072,11 @@ export class Galaxy {
                     if (moon.population.items.length > 0) {
                         newHabitatConstructionQueue(this, moon);
                         ensureHabitatManufacturingQueue(this, moon);
+                    } else {
+                        // Galaxy.5.cs 1785: SelectCreatures(habitat2) only when the moon
+                        // has no population (else-branch, as for planets).
+                        this.selectCreatures(moon);
                     }
-                    // Port of Galaxy.6.cs SelectCreatures(habitat2) — Galaxy.6.cs:654 (call
-                    // site in Galaxy.5.cs SetupSolarSystem, after moon population rolls).
-                    this.selectCreatures(moon);
                     habitatList.push(moon);
                 }
             }
@@ -4425,6 +4428,8 @@ export class Galaxy {
      */
     aggressionLevel = 1.0;
     // ---- M4s fields (pirates runtime) ----
+    /** Galaxy.cs 593 PirateMissions (EmpireActivityList: missions on offer / being bid on; pirates/missionsMarket.ts). */
+    pirateMissions = new EmpireActivityList();
     // ---- M4t fields (visibility, exploration, territory) ----
     /**
      * Galaxy.cs _RegeneratingEmpireTerritory / _RegenerateEmpireTerritoryAgain (ReviewEmpireTerritoryCore 3384):

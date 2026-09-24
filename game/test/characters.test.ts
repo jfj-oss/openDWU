@@ -135,153 +135,137 @@ describe('GenerateStartingCharacters (normal empires, seed 1)', () => {
         const { draws, log } = startNormalEmpires(g);
         // Rnd draws per empire (generation of random characters + 6 per activated character).
         // (re-pinned M4k: the game-start Empire.DoTasks now runs PerformResearch, whose research-queue selection and research events draw Rnd)
-        expect(draws).toEqual([98, 60, 38, 33]);
+        // (re-pinned M4s1: ReviewPirateRelations draws one Rnd.NextDouble per Empire long block, incl. the game-start DoTasks)
+        // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
+        expect(draws).toEqual([49, 38, 59, 27]);
         expect(log.filter((d) => d.startsWith('d=')).length).toBe(0);
         const summary = g.empires.map((e) => ({ race: e.dominantRace!.name, leader: e.leader?.name, characters: getEmpireCharacters(e).map(describeCharacter) }));
         // (re-pinned: createGame now runs the price reviews, first galaxy tick, per-empire setup,
         // starting ships and diplomacy before this step, so the character draws come later in the
         // Rnd stream; draw counts per character are unchanged in shape.)
         // (re-pinned M4k: game-start research shifts the Rnd stream before this step.)
+        // (re-pinned M4s1: ReviewPirateRelations draws Rnd.NextDouble in each game-start Empire.DoTasks long block.)
         expect(summary[0]).toEqual({
             race: 'Human',
-            leader: 'Thassun Trebulo',
+            leader: 'Matthia Obarria',
             characters: [
                 {
                     role: 'Ambassador',
                     name: 'Than Bendu',
                     race: 'Human',
-                    skills: ['Diplomacy:25'],
-                    traits: ['Tolerant', 'EloquentSpeaker'],
-                    location: 'Hotaulf',
+                    skills: [
+                        'Diplomacy:25',
+                    ],
+                    traits: [
+                        'Tolerant',
+                        'EloquentSpeaker',
+                    ],
+                    location: 'Sol 2',
                     bonusesKnown: false,
                 },
                 {
                     role: 'Leader',
-                    name: 'Thassun Trebulo',
+                    name: 'Matthia Obarria',
                     race: 'Human',
-                    skills: ['ColonyCorruption:2', 'ColonyIncome:5'],
-                    traits: ['Pacifist'],
-                    location: 'Hotaulf',
+                    skills: [
+                        'PopulationGrowth:5',
+                        'Diplomacy:6',
+                    ],
+                    traits: [
+                        'Expansionist',
+                    ],
+                    location: 'Sol 2',
                     bonusesKnown: true,
                 },
                 {
                     role: 'IntelligenceAgent',
-                    name: 'Laurus Bendu',
+                    name: 'Hugo Callosk',
                     race: 'Human',
-                    skills: ['Concealment:11'],
-                    traits: ['IntelligenceLawful', 'IntelligenceMeasured'],
-                    location: 'Hotaulf',
-                    bonusesKnown: false,
-                },
-                {
-                    role: 'IntelligenceAgent',
-                    name: 'Caran Ikkuros',
-                    race: 'Human',
-                    skills: ['PsyOps:11', 'CounterEspionage:6', 'Concealment:-4'],
-                    traits: ['IntelligenceXenophobic', 'IntelligenceUninhibited'],
-                    location: 'Hotaulf',
+                    skills: [
+                        'Espionage:5',
+                        'CounterEspionage:10',
+                    ],
+                    traits: [
+                        'IntelligenceCorrupt',
+                    ],
+                    location: 'Sol 2',
                     bonusesKnown: false,
                 },
             ],
         });
         expect(summary.slice(1).map((s) => [s.race, s.leader, s.characters.map((c) => `${c.role}:${c.name}`)])).toEqual([
-            [
-                'Haakonish',
-                'Uza Taghran',
-                [
-                    'ColonyGovernor:Yentor Zhukziban',
-                    'Leader:Uza Taghran',
-                    'IntelligenceAgent:Sarriq Hudall',
-                    'IntelligenceAgent:Gar Akshat',
-                ],
-            ],
-            [
-                'Dhayut',
-                'Randul Varqi',
-                ['TroopGeneral:Maqtor Aklon', 'Leader:Randul Varqi', 'IntelligenceAgent:Tek Sartora'],
-            ],
-            ['Ugnari', 'Xo Thanda', ['IntelligenceAgent:Tek Ixito', 'Leader:Xo Thanda']],
+            ['Haakonish', 'Gar Takruan', ['ColonyGovernor:Yentor Zhukziban', 'Leader:Gar Takruan', 'IntelligenceAgent:Mok Kawass']],
+            ['Dhayut', 'Wia Noskri', ['TroopGeneral:Maqtor Aklon', 'Leader:Wia Noskri', 'IntelligenceAgent:Wek Woppit']],
+            ['Ugnari', 'Cudas Wodos', ['IntelligenceAgent:Tek Ixito', 'Leader:Cudas Wodos']],
         ]);
-        // Human empire full draw sequence: Leader (14: name 2, skill count, skill picks + levels, trait
-        // count, trait), agent 1 (11: Next(0,4) race roll + ...), agent 2 (49, including 20 Next(0,1) and 15 Next(0,3)
-        // re-rolls), then 8 × (CharacterTransferLocation + CharacterStart: Next(0,5), Next(0,20), Next(0,80) each).
-        expect(log.slice(0, 74)).toEqual([
-            '0,31=12',
-            '0,26=8',
+        // Human empire full draw sequence: Leader (15: name 2, skill count, skill picks + levels, trait
+        // count, trait), one agent (16: Next(0,4) race roll + ...), then 6 × (CharacterTransferLocation +
+        // CharacterStart: Next(0,5), Next(0,20), Next(0,80) each) for the 3 characters; the second empire's draws follow.
+        // (re-pinned M4s1: the Rnd stream reaching this step moved, see above.)
+        // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785): the Human empire now activates 3 characters, so the 60-draw window spills into the next empire.)
+        expect(log.slice(0, 60)).toEqual([
+            '0,31=4',
+            '0,26=15',
             '0,2=1',
             '0,2=0',
-            '0,3=1',
-            '0,20=2',
+            '0,3=2',
+            '0,4=3',
             '0,3=0',
-            '0,4=1',
             '0,4=0',
-            '2,10=2',
             '0,4=2',
             '2,10=5',
+            '0,4=2',
+            '2,10=6',
             '0,2=0',
-            '0,41=9',
-            '0,4=3',
-            '0,31=9',
-            '0,26=12',
-            '0,2=0',
-            '0,3=1',
-            '0,3=1',
-            '0,4=3',
-            '5,16=11',
-            '0,2=1',
-            '0,14=13',
-            '0,14=5',
-            '0,4=1',
-            '0,1=0',
-            '0,1=0',
-            '0,1=0',
-            '0,1=0',
-            '0,1=0',
-            '0,1=0',
-            '0,1=0',
-            '0,1=0',
-            '0,1=0',
-            '0,1=0',
-            '0,1=0',
-            '0,1=0',
-            '0,1=0',
-            '0,1=0',
-            '0,1=0',
-            '0,1=0',
-            '0,1=0',
-            '0,1=0',
-            '0,1=0',
-            '0,1=0',
-            '0,31=10',
-            '0,26=0',
-            '0,2=1',
+            '0,41=10',
+            '0,4=0',
+            '0,31=29',
+            '0,26=10',
             '0,2=1',
             '0,2=0',
-            '0,3=1',
             '0,3=0',
-            '0,3=1',
             '0,3=0',
-            '0,3=2',
-            '0,3=1',
-            '0,3=2',
-            '0,3=1',
             '0,3=0',
-            '0,3=1',
             '0,3=0',
-            '0,3=1',
-            '0,3=1',
+            '0,3=0',
             '0,3=1',
             '0,4=0',
-            '5,16=11',
+            '5,16=5',
             '0,4=0',
-            '5,16=6',
+            '5,16=10',
+            '0,2=0',
+            '0,14=12',
+            '0,5=2',
+            '0,20=0',
+            '0,80=47',
+            '0,5=4',
+            '0,20=9',
+            '0,80=2',
+            '0,5=0',
+            '0,20=19',
+            '0,80=18',
+            '0,5=2',
+            '0,20=8',
+            '0,80=58',
+            '0,5=3',
+            '0,20=10',
+            '0,80=15',
+            '0,5=1',
+            '0,20=6',
+            '0,80=51',
+            '0,38=17',
+            '0,29=6',
+            '0,2=0',
+            '0,3=0',
+            '0,4=2',
             '0,4=1',
-            '-5,-1=-4',
-            '0,2=1',
-            '0,14=9',
-            '0,14=4',
+            '-5,-1=-5',
+            '0,2=0',
+            '0,41=27',
+            '0,4=3',
+            '0,38=19',
         ]);
-        expect(log.slice(74, 98).map((d) => d.split('=')[0])).toEqual(Array.from({ length: 8 }, () => ['0,5', '0,20', '0,80']).flat());
+        expect(log.slice(31, 49).map((d) => d.split('=')[0])).toEqual(Array.from({ length: 6 }, () => ['0,5', '0,20', '0,80']).flat());
 
         for (const e of g.empires) {
             const chars = getEmpireCharacters(e);
@@ -325,7 +309,8 @@ describe('GenerateStartingCharacters (normal empires, seed 1)', () => {
         const leader = dhayut.leader!;
         // Habitat.cs 616-624: colony characters excluding leaders count only when BonusesKnown (none) + leader.
         expect(resolveCharacterColonyHappinessBonus(cap)).toBe(leader.colonyHappiness);
-        expect(leader.colonyHappiness).toBe(0); // pinned for seed 1 (Dhayut leader Randul Varqi; re-pinned M4k: game-start research shifts the Rnd stream)
+        // pinned for seed 1 (re-pinned M4k: game-start research shifts the Rnd stream; re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
+        expect(leader.colonyHappiness).toBe(-10);
         expect(resolveCharacterColonyIncomeBonus(cap)).toBe(leader.colonyIncome);
         expect(resolveCharacterColonyCorruptionBonus(cap)).toBe(leader.colonyCorruption);
         expect(resolveEmpireLeaderWarWearinessDivisor(dhayut)).toBe(1.0 + leader.warWeariness / 100.0);

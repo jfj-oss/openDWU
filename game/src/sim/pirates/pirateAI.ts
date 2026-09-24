@@ -10,6 +10,7 @@ import type { Empire } from '../empire';
 import type { BuiltObject } from '../builtObject';
 import type { Habitat } from '../types';
 import { registerTodo, todo } from '../tick/todo';
+import type { PirateExpenseType, PirateIncomeType } from './pirateEconomy';
 
 const T_checkSendPirateRaid = registerTodo('M4s', 'checkSendPirateRaid');
 /** Empire.1.cs 4065 CheckSendPirateRaid. */
@@ -138,15 +139,28 @@ export function updateRaidCountdownHabitat(galaxy: Galaxy, habitat: Habitat, tim
     /* TODO(port) M4s */ todo(T_updateRaidCountdownHabitat);
 }
 
-// Added by M4d (Empire.4.cs 1164/1170 InitiateContract, logistics/contracts.ts).
-const T_pirateEconomyPerformIncome = registerTodo('M4s', 'pirateEconomyPerformIncome');
+// Added by M4d (Empire.4.cs 1164/1170 InitiateContract, logistics/contracts.ts); ported by M4s (s1).
 /** PirateEconomy.cs 37 PerformIncome(amount, type, starDate) (bookkeeping only; no Rnd). `type` is PirateIncomeType. */
 export function pirateEconomyPerformIncome(galaxy: Galaxy, empire: Empire, amount: number, type: number, starDate: number): void {
-    /* TODO(port) M4s */ todo(T_pirateEconomyPerformIncome);
+    void galaxy;
+    empire.pirateEconomy.performIncome(amount, type as PirateIncomeType, starDate);
 }
 
-const T_pirateEconomyPerformExpense = registerTodo('M4s', 'pirateEconomyPerformExpense');
 /** PirateEconomy.cs 28 PerformExpense(amount, type, starDate) (bookkeeping only; no Rnd). `type` is PirateExpenseType. */
 export function pirateEconomyPerformExpense(galaxy: Galaxy, empire: Empire, amount: number, type: number, starDate: number): void {
-    /* TODO(port) M4s */ todo(T_pirateEconomyPerformExpense);
+    void galaxy;
+    empire.pirateEconomy.performExpense(amount, type as PirateExpenseType, starDate);
+}
+
+// ---- stub added by M4s s1 (Empire.2.cs 2490 ReviewPirateRelations) ----
+const T_determineDesirePirateProtection = registerTodo('M4s', 'determineDesirePirateProtection');
+/**
+ * Empire.2.cs 2754 DetermineDesirePirateProtection(otherEmpire). TODO(port) M4s2: needs
+ * CalculatePirateProtectionPricePerMonth (Empire.2.cs 2653: TotalColonyStrategicValue, BuiltObjectList
+ * CalculateAttackingFirepowerNearEmpireTargets, CalculateAccurateAnnualCashflowIncludingUnderConstruction),
+ * CalculateDistanceToNearestColony, CheckSufficientCashflow. No Rnd. Stub: true (the protection agreement is kept).
+ */
+export function determineDesirePirateProtection(galaxy: Galaxy, empire: Empire, otherEmpire: Empire | null): boolean {
+    /* TODO(port) M4s2 */ todo(T_determineDesirePirateProtection);
+    return true;
 }
