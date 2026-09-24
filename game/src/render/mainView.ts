@@ -277,8 +277,10 @@ class SystemView {
         }
 
         // Planets: tiny colored dots on their rings at mid zoom; full
-        // planet sprites crossfaded in over zoom 0.25..0.45.
-        const dotT = fadeIn(z, 0.25, 0.45);
+        // planet sprites crossfaded in over zoom 0.012..0.03 so the art
+        // (min 14 px via planetSpritePx) shows once the whole system is on
+        // screen (~zoom factor 83..33, task 02c).
+        const dotT = fadeIn(z, 0.012, 0.03);
         for (const planet of this.planets) {
             const p = planet.habitat;
             const px = Math.cos(p.orbitAngle) * p.orbitDistance;
@@ -293,8 +295,10 @@ class SystemView {
             planet.sprite.alpha = dotT;
             planet.sprite.position.set(px, py);
             planet.sprite.scale.set(sprPx / (planet.sprite.texture.width * z));
-            // Planet name label once the sprite reaches its 14 px minimum.
-            planet.label.visible = sprPx >= 14;
+            // Planet name label only once the planet art is shown (task 02c —
+            // the 14 px sprite floor made `sprPx >= 14` always true, so every
+            // system got a pile of labels at sector zoom).
+            planet.label.visible = dotT > 0.5;
             planet.label.position.set(px, py + (sprPx * 0.5 + 8) / z);
             planet.label.scale.set(1 / z);
             for (const moon of planet.moons) {

@@ -11,3 +11,6 @@ Three small, exact fixes in `src/render/mainView.ts` (+ `src/render/assets.ts` f
 Unit tests: `fadeIn` window values at z = 0.012/0.03; label visibility false at sector zoom (z = 0.0005) and true at z = 0.05.
 
 Verify: `npm run typecheck`, `npm test`; with `npm run dev` running save (don't open) `?zoom=1200`, `?zoom=30`, `?zoom=4` with `&cx=4570664.9&cy=3835180.6` → `shots/02c-*.png`. Append `## Worker report`.
+
+## Worker report (orchestrator)
+Items 1 (planet-art fade window 0.012–0.03) and 2 (labels only when dotT > 0.5) done by the worker; it was stopped while searching the renderer for item 3. Item 3 (star tint + corona) moved to `02c2-star-disc-corona.md` (scope: locked, source excerpts pasted).
