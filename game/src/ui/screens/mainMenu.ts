@@ -33,6 +33,11 @@ export function shouldSkipMenu(search: string): boolean {
     return ['seed', 'shape', 'stars', 'zoom', 'cx', 'cy', 'skipMenu'].some((k) => p.get(k) !== null);
 }
 
+/** True when the URL asks to open the new-game wizard directly (screenshots). */
+export function shouldOpenWizard(search: string): boolean {
+    return new URLSearchParams(search).get('screen') === 'wizard';
+}
+
 export interface MainMenuRefs {
     root: HTMLDivElement;
     /** Remove the menu from the document (called on Start New Game). */

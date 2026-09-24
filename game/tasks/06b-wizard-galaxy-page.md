@@ -28,3 +28,16 @@ A centred dark window (~900×620) over the menu background, title bar "Start a N
 Tests: `starCountFor(0..5)` = 100/250/400/700/1000/1400, out-of-range → 400; `sectorsFor(0..4)` = 4/6/8/10/15, out-of-range → 10; defaults = spiral? no — **Elliptical** is the first radio but default selection is Spiral; default star index 3, dimension index 2.
 
 Verify: `npm run typecheck`, `npm test`; save (don't open) `shots/06b-wizard.png` after navigating: open `/`, click Start New Game (use a URL param `?screen=wizard` that opens the wizard directly, for screenshots). Append `## Worker report`.
+
+## Worker report
+
+Files changed:
+- `src/ui/screens/newGameWizard.ts` (+ `newGameWizard.css`) — "The Galaxy" wizard page: shape radio list (Elliptical…Varied Clusters) with 180 px preview image + one-line blurb, Star Amount slider (6 ticks, default Standard), Physical Size slider (5 ticks, default Medium), Seed number input with 🎲 re-roll, title bar "Start a New Game: The Galaxy" with close ✕, footer ← Main Menu / **Start Game**.
+- `src/sim/startGameOptions.ts` — `StartGameOptions {shape; starCountIndex; dimensionIndex; seed}`, `defaultStartGameOptions()` (Spiral, star index 3, dimension index 2), pure `starCountFor(index)` (100/250/400/700/1000/1400, out-of-range → 400) and `sectorsFor(index)` (4/6/8/10/15, out-of-range → 10) per BaconStart.method_60 / Start.method_69.
+- `src/ui/screens/mainMenu.ts` — added `shouldOpenWizard(search)` (`?screen=wizard`).
+- `src/main.ts` — Start New Game now opens the wizard over the menu (✕ / ← Main Menu returns); **Start Game** destroys wizard + menu and boots via `bootGameFromOptions` → `generateGalaxy({seed, shape, starCount: starCountFor(i), sectorWidth/Height: sectorsFor(j), systemNames})` → Main View + HUD. `?screen=wizard` opens the wizard directly for screenshots.
+- `test/wizard.test.ts` — new: slider tables incl. out-of-range defaults, defaults (Spiral/3/2), SHAPE_ENTRIES order/images.
+
+Done: typecheck + all 203 tests pass; screenshot saved to `shots/06b-wizard.png` (no console errors).
+
+Left undone: other wizard pages (Empire, …) — TODO(port) noted in `newGameWizard.ts`; remaining main-menu items still stubbed (task scope).
