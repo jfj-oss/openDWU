@@ -97,7 +97,57 @@ describe('gen-asset-manifest.mjs', () => {
         }
         const imageKeys = Object.keys(manifest).filter(
             (k) => !k.startsWith('designTemplates/') && k !== 'races' && k !== 'Policy' && k !== 'Policy/pirate'
+                && k !== 'Help' && !k.startsWith('Customization/')
         );
         expect(imageKeys.length).toBeGreaterThan(0);
+    });
+
+    // Case-insensitive folder lookup helper mirroring the generator's.
+    const findEntry = (dir: string, name: string): string | null => {
+        const target = name.toLowerCase();
+        for (const e of readdirSync(dir, { withFileTypes: true })) {
+            if (e.name.toLowerCase() === target) return e.name;
+        }
+        return null;
+    };
+
+    (installLinked ? it : it.skip)('lists Help/*.mht (top level only, folder matched case-insensitively)', () => {
+        const helpName = findEntry(dwuRoot, 'help');
+        expect(helpName).not.toBeNull();
+        const expected = readdirSync(resolve(dwuRoot, helpName!), { withFileTypes: true })
+            .filter((e) => e.isFile() && e.name.toLowerCase().endsWith('.mht'))
+            .map((e) => e.name);
+        if (expected.length === 0) {
+            expect(manifest['Help']).toBeUndefined();
+            return;
+        }
+        expect(manifest['Help']).toBeDefined();
+        expect(new Set(manifest['Help'])).toEqual(new Set(expected));
+        // Sorted case-insensitively (windowsOrdinal order).
+        const lower = manifest['Help'].map((f) => f.toLowerCase());
+        expect(lower).toEqual([...lower].sort());
+    });
+
+    (installLinked ? it : it.skip)('lists Customization/<set>/help/*.mht for every set with a help folder', () => {
+        const customizationDir = resolve(dwuRoot, 'Customization');
+        if (!existsSync(customizationDir)) return;
+        const sets = readdirSync(customizationDir, { withFileTypes: true }).filter((e) => e.isDirectory());
+        for (const set of sets) {
+            const helpName = findEntry(resolve(dwuRoot, 'Customization', set.name), 'help');
+            const key = `Customization/${set.name}/help`;
+            if (!helpName) {
+                expect(manifest[key]).toBeUndefined();
+                continue;
+            }
+            const expected = readdirSync(resolve(dwuRoot, 'Customization', set.name, helpName), { withFileTypes: true })
+                .filter((e) => e.isFile() && e.name.toLowerCase().endsWith('.mht'))
+                .map((e) => e.name);
+            if (expected.length === 0) {
+                expect(manifest[key]).toBeUndefined();
+            } else {
+                expect(manifest[key], `manifest missing key ${key}`).toBeDefined();
+                expect(new Set(manifest[key])).toEqual(new Set(expected));
+            }
+        }
     });
 });

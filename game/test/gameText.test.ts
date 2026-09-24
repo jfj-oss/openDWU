@@ -16,7 +16,7 @@ import { parseRace } from '../src/sim/data/races';
 import { parseResources } from '../src/sim/data/resources';
 import { parseGovernments } from '../src/sim/data/governments';
 import { decodeQuotedPrintable, findMhtPart, parseMht } from '../src/ui/screens/mht';
-import { generateRaceSummary, helpTopicKeyForCreature, helpTopicKeyForHabitat, TopicHistory } from '../src/ui/screens/galactopedia';
+import { generateRaceSummary, helpListingFromManifest, helpTopicKeyForCreature, helpTopicKeyForHabitat, TopicHistory } from '../src/ui/screens/galactopedia';
 import { parseRaceFamilies } from '../src/sim/data/raceFamilies';
 import { parseResearch } from '../src/sim/data/research';
 import { parseComponents } from '../src/sim/data/components';
@@ -166,6 +166,45 @@ describe('buildEncyclopediaItems (Main.Part5.cs method_465)', () => {
         expect(resolveEncyclopediaTopic(items, 'Component_Overview.mht')?.isCategoryRoot).toBe(false);
         expect(resolveEncyclopediaTopic(items, 'components')?.isCategoryRoot).toBe(true);
         expect(new Set(items.map((i) => i.id)).size).toBe(items.length);
+    });
+});
+
+describe('helpListingFromManifest (Galaxy.9.cs AddThemeTopics / AddGameInfoTopics)', () => {
+    it('no customization set: only Help/ files count', () => {
+        const l = helpListingFromManifest(undefined, ['GameInfo_Default.mht', 'Planet_Ocean.mht'], undefined);
+        expect(l.customizationSetName).toBeUndefined();
+        expect(l.themeFiles).toEqual([]);
+        expect(l.themeRootExists).toBe(false);
+        expect(l.gameInfoFiles).toEqual(['GameInfo_Default.mht']);
+        expect(l.gameInfoDefaultExists).toBe(true);
+    });
+    it('a set with <set>.mht: root exists, theme files keep the set prefix', () => {
+        const l = helpListingFromManifest(
+            'Mass Effect',
+            ['GameInfo_Default.mht'],
+            ['Mass Effect.mht', 'Mass Effect_Races.mht', 'Other.mht'],
+        );
+        expect(l.customizationSetName).toBe('Mass Effect');
+        expect(l.themeFiles).toEqual(['Mass Effect_Races.mht']);
+        expect(l.themeRootExists).toBe(true);
+        expect(l.gameInfoFiles).toEqual(['GameInfo_Default.mht']);
+        expect(l.gameInfoDefaultExists).toBe(true);
+    });
+    it('a set without <set>.mht but with <set>_A.mht: no root, theme files listed', () => {
+        const l = helpListingFromManifest('X', undefined, ['X_A.mht', 'X_B.mht']);
+        expect(l.themeFiles).toEqual(['X_A.mht', 'X_B.mht']);
+        expect(l.themeRootExists).toBe(false);
+        expect(l.gameInfoFiles).toEqual([]);
+        expect(l.gameInfoDefaultExists).toBe(false);
+    });
+    it('GameInfo files are ordered set-first, matching case-insensitively', () => {
+        const l = helpListingFromManifest(
+            'X',
+            ['gameinfo_default.mht', 'GameInfo_Base.mht'],
+            ['x_gameinfo_extra.mht', 'GameInfo_Set.mht'],
+        );
+        expect(l.gameInfoFiles).toEqual(['GameInfo_Set.mht', 'gameinfo_default.mht', 'GameInfo_Base.mht']);
+        expect(l.gameInfoDefaultExists).toBe(true);
     });
 });
 

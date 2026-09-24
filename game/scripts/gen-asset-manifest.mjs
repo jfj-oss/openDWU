@@ -8,11 +8,18 @@
 //   - Policy/pirate/ (*.txt), key "Policy/pirate".
 //   - designTemplates/<race>/ (*.txt, top level only) for every subfolder of
 //     designTemplates/ (including DEFAULT), key "designTemplates/<race>".
+//   - Help/ (*.mht, top level only; folder looked up case-insensitively),
+//     key "Help".
+//   - Customization/<set>/help/ (*.mht) for every subfolder <set> of
+//     Customization/ that has a help folder (any case), key
+//     "Customization/<set>/help".
 // The browser can't enumerate directories, so these lists are generated here
 // at dev/build time (predev/prebuild) and fetched by the renderer/data
 // loaders at runtime; assets.ts picks real files out of the image lists via
-// pictureRef modulo the folder's file count, and gameData.ts uses the
-// races/Policy/designTemplates lists to discover data files.
+// pictureRef modulo the folder's file count, gameData.ts uses the
+// races/Policy/designTemplates lists to discover data files, and the
+// Galactopedia uses the Help lists for Galaxy.9.cs AddThemeTopics /
+// AddGameInfoTopics.
 //
 // Sort order matches the original engine: Main.Part13.cs LoadMapStars /
 // LoadStars / LoadNebulae call Directory.GetFiles(..., "*.png") and index the
@@ -68,6 +75,12 @@ function walkFolders(dir, base, out) {
 
 /** List the .txt file names directly inside `dir` (non-recursive), sorted. */
 function listTxtFiles(dir) {
+    return listFiles(dir, '.txt');
+}
+
+/** List the file names directly inside `dir` matching `ext` (case-insensitive,
+ *  non-recursive), sorted in windowsOrdinal order. */
+function listFiles(dir, ext) {
     let entries;
     try {
         entries = readdirSync(dir, { withFileTypes: true });
@@ -75,9 +88,25 @@ function listTxtFiles(dir) {
         return [];
     }
     return entries
-        .filter((e) => e.isFile() && e.name.toLowerCase().endsWith('.txt'))
+        .filter((e) => e.isFile() && e.name.toLowerCase().endsWith(ext))
         .map((e) => e.name)
         .sort(windowsOrdinal);
+}
+
+/** The direct subentry of `dir` whose name matches `name` case-insensitively
+ *  (the install's folder casing varies), or null. */
+function findSubentry(dir, name) {
+    let entries;
+    try {
+        entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+        return null;
+    }
+    const target = name.toLowerCase();
+    for (const e of entries) {
+        if (e.name.toLowerCase() === target) return e;
+    }
+    return null;
 }
 
 /** List the names of every direct subfolder of `dir`, sorted. */
@@ -139,6 +168,27 @@ if (dwuRoot) {
         const files = listTxtFiles(join(designTemplatesDir, race));
         if (files.length > 0) {
             manifest[`designTemplates/${race}`] = files;
+        }
+    }
+
+    // Help/*.mht (top level only; the folder is "Help" on disk but may be
+    // cased differently — Galaxy.9.cs AddGameInfoTopics/AddThemeTopics).
+    const helpEntry = findSubentry(dwuRoot, 'help');
+    if (helpEntry?.isDirectory()) {
+        const files = listFiles(join(dwuRoot, helpEntry.name), '.mht');
+        if (files.length > 0) {
+            manifest['Help'] = files;
+        }
+    }
+
+    // Customization/<set>/help/*.mht for every <set> with a help folder.
+    const customizationDir = join(dwuRoot, 'Customization');
+    for (const set of listSubfolders(customizationDir)) {
+        const helpFolder = findSubentry(join(customizationDir, set), 'help');
+        if (!helpFolder?.isDirectory()) continue;
+        const files = listFiles(join(customizationDir, set, helpFolder.name), '.mht');
+        if (files.length > 0) {
+            manifest[`Customization/${set}/help`] = files;
         }
     }
 }

@@ -94,6 +94,14 @@ export function pickFromFolder(folder: string, pictureRef: number): string[] {
     return [`${IMG}/environment/${folder}/${files[i]}`];
 }
 
+/** The manifest's sorted file-name list for `key` (e.g. "Help",
+ *  "Customization/<set>/help"); undefined when loadManifest() has not run or
+ *  the key is absent. Unlike pickFromFolder this covers every manifest key,
+ *  not just images/environment/ folders. */
+export function manifestFiles(key: string): string[] | undefined {
+    return MANIFEST[key];
+}
+
 // Port of Main.Part13.cs LoadMapStars: map-star icons live under
 // images/environment/mapstars/<type>/ and are indexed by MapPictureRef.
 const STAR_MAP_FOLDERS: Record<string, string> = {

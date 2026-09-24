@@ -38,6 +38,7 @@ import { ComponentType, type Component } from '../../sim/data/components';
 import type { Facility } from '../../sim/data/facilities';
 import { CreatureType } from '../../sim/creature';
 import { HabitatCategoryType, HabitatType, IndustryType } from '../../sim/types';
+import { manifestFiles } from '../../render/assets';
 import { fileNameOf, findMhtPart, parseMht, type MhtDocument } from './mht';
 
 const DWU = '/assets/dwu/';
@@ -107,17 +108,56 @@ async function urlExists(url: string): Promise<boolean> {
 }
 
 /**
+ * Port of Galaxy.9.cs AddThemeTopics / AddGameInfoTopics' file selection from
+ * the two help-folder listings: gameInfoFiles = the set's GameInfo_*.mht
+ * (Directory.GetFiles order) followed by Help/'s; themeFiles = the set's
+ * <set>_*.mht; themeRootExists = File.Exists(<set>.mht); gameInfoDefaultExists
+ * = GameInfo_Default.mht in either list. All matching is case-insensitive, as
+ * on Windows. Pure so it can be tested without a manifest or DOM.
+ */
+export function helpListingFromManifest(
+    set: string | undefined,
+    helpFiles: string[] | undefined,
+    setHelpFiles: string[] | undefined,
+): HelpFolderListing {
+    const hasSet = set !== undefined && set.trim() !== '' && set.trim().toLowerCase() !== '(default)';
+    const setName = hasSet ? set : '';
+    const prefix = 'gameinfo_';
+    const rootName = `${setName}.mht`.toLowerCase();
+    const defaultName = 'gameinfo_default.mht';
+    const lower = (f: string): string => f.toLowerCase();
+    const setFiles = hasSet ? (setHelpFiles ?? []) : [];
+    const baseFiles = helpFiles ?? [];
+    return {
+        customizationSetName: hasSet ? setName : undefined,
+        themeFiles: setFiles.filter((f) => lower(f).startsWith(`${setName.toLowerCase()}_`)),
+        themeRootExists: setFiles.some((f) => lower(f) === rootName),
+        gameInfoFiles: [
+            ...setFiles.filter((f) => lower(f).startsWith(prefix)),
+            ...baseFiles.filter((f) => lower(f).startsWith(prefix)),
+        ],
+        gameInfoDefaultExists:
+            setFiles.some((f) => lower(f) === defaultName) || baseFiles.some((f) => lower(f) === defaultName),
+    };
+}
+
+/**
  * Inputs for Galaxy.9.cs AddThemeTopics / AddGameInfoTopics. The original
  * lists Help/ and Customization/<set>/help/ with Directory.GetFiles; the
- * browser cannot, and public/asset-manifest.json only covers
- * images/environment/, so only the file names the C# itself names are
- * probed: <set>.mht and GameInfo_Default.mht. Other <set>_*.mht /
- * GameInfo_*.mht pages are not discoverable (TODO(port): list Help/ and
- * Customization/<set>/help/ in the asset manifest). The stock install has
- * none of these files, so both probes normally 404 and no topics are added.
+ * browser cannot, so when the asset manifest (scripts/gen-asset-manifest.mjs)
+ * carries those lists they are used via helpListingFromManifest. Without a
+ * "Help" key (manifest not loaded — no DW:U install) only the file names the
+ * C# itself names are probed: <set>.mht and GameInfo_Default.mht. The stock
+ * install has none of these files, so both probes normally 404 and no topics
+ * are added.
  */
 async function probeHelpListing(set: string | undefined): Promise<HelpFolderListing> {
     const hasSet = set !== undefined && set.trim() !== '' && set.trim().toLowerCase() !== '(default)';
+    const helpList = manifestFiles('Help');
+    if (helpList !== undefined) {
+        // Manifest loaded: use its Help/ + Customization/<set>/help/ lists.
+        return helpListingFromManifest(set, helpList, hasSet ? manifestFiles(`Customization/${set}/help`) : undefined);
+    }
     const defaultName = 'GameInfo_Default.mht';
     const [themeRootExists, customInfo, baseInfo] = await Promise.all([
         hasSet ? urlExists(`${customHelpDir(set)}${set}.mht`) : Promise.resolve(false),
