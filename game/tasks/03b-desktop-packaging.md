@@ -24,3 +24,19 @@ Create `scripts/package-desktop.mjs` (Node ESM, uses `@electron/packager`'s JS A
 - `npm run package:linux` → `release/dwu-linux-x64/` must be **< 400 MB** and contain `resources/dwu-dist/index.html` and `resources/app.asar` (check with `node -e` + `fs.statSync`/`fs.existsSync`; report both sizes).
 - `npm run package:mac` → `release/dwu-darwin-arm64/dwu.app/Contents/Resources/dwu-dist/index.html` exists (it will not run here; just build it).
 Append `## Worker report` with the sizes.
+
+## Worker report
+
+**Files changed:**
+- `scripts/package-desktop.mjs` (new) — builds `dist/`, stages `release/stage/` (`desktop/` + minimal `package.json`), copies `dist/` → `release/dwu-dist/`, then runs `@electron/packager` (named `packager` export, v20.3.0) with `extraResource: ['release/dwu-dist']`, `asar: true`, electron 44.4.5. Prints output folder + total size.
+- `package.json` — `package:linux` / `package:mac` now run `node scripts/package-desktop.mjs --platform=… --arch=…`.
+- `desktop/README.md` — packaging section updated to describe the stage-dir approach and why it's small.
+
+**Done & verified:**
+- `npm run typecheck` ✓, `npm test` ✓ (138 tests pass).
+- `npm run package:linux` → `release/dwu-linux-x64/` = **283.1 MB** (< 400 MB ✓); contains `resources/dwu-dist/index.html` ✓ and `resources/app.asar` (0.01 MB) ✓.
+- `npm run package:mac` → `release/dwu-darwin-arm64/` = 501.2 MB; `dwu.app/Contents/Resources/dwu-dist/index.html` exists ✓ (expected warning about asar integrity digest when cross-building macOS on Linux — harmless, noted by packager).
+- `main.cjs` only requires Node/Electron built-ins (verified via grep), so no extra local files needed in the stage dir.
+- `release/` remains gitignored.
+
+**Left undone:** nothing within scope. The mac build is a cross-build (unsigned/quarantined binaries, per README instructions for re-signing on the Mac).

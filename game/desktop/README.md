@@ -47,8 +47,13 @@ npm run package:linux   # -> release/dwu-linux-x64/
 npm run package:mac     # -> release/dwu-darwin-arm64/ (cross-buildable from Linux)
 ```
 
-Both use `@electron/packager` with `--no-prune` (keeps node_modules intact —
-the app has no runtime deps beyond pixi.js, which is bundled into dist/).
+Both run `scripts/package-desktop.mjs`, which builds `dist/` and then runs
+`@electron/packager` on a minimal stage dir (`release/stage/`: just
+`desktop/` plus a small `package.json` — no node_modules, so the output is a
+few hundred MB instead of ~3.5 GB). The built game is attached as an extra
+resource at `resources/dwu-dist/`, where the packaged `main.cjs` loads it
+from; the app has no runtime deps beyond pixi.js, which is bundled into
+`dist/`.
 
 ### Linux
 
