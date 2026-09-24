@@ -17,6 +17,7 @@ import { START_STAR_DATE } from './sim/galaxyTime';
 import { formatClockLabel, SYSTEM_LEVEL_ZOOM, type Selection } from './ui/hud';
 import { Habitat, HabitatCategoryType } from './sim/types';
 import { createMapOverlayState } from './ui/mapOverlays';
+import { buildDefaultHandlers, createShortcutsOverlay, dispatchKey } from './ui/keyboard';
 import { createMainMenu } from './ui/screens/mainMenu';
 import { startMusic } from './audio/musicPlayer';
 import { createNewGameWizard } from './ui/screens/newGameWizard';
@@ -283,11 +284,19 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     };
     setInterval(refreshClockLabel, 250);
 
-    // Spacebar toggles play/pause (streamlined HUD control set).
+    // Task 10a: the full original keyboard command table (UI_KeyboardCommands)
+    // dispatches on keydown; it replaces the ad-hoc spacebar handler. '?' / F1
+    // toggle the "Keyboard shortcuts" overlay listing the table.
+    const shortcuts = createShortcutsOverlay();
+    const keyHandlers = buildDefaultHandlers(camera, time);
     window.addEventListener('keydown', (e: KeyboardEvent) => {
-        if (e.code === 'Space' && e.target === document.body) {
+        if (e.key === '?' || e.key === 'F1') {
             e.preventDefault();
-            time.togglePause();
+            shortcuts.toggle();
+            return;
+        }
+        const action = dispatchKey(e, keyHandlers);
+        if (action === 'togglePause' || action === 'speedUp' || action === 'speedDown') {
             refreshClockLabel();
         }
     });

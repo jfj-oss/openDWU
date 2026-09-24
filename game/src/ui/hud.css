@@ -262,3 +262,44 @@
     overflow: hidden;
     text-overflow: ellipsis;
 }
+
+/* "Keyboard shortcuts" overlay (task 10a): centered, content-sized panel. */
+#keyboard-shortcuts-overlay {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: min(640px, calc(100vw - 40px));
+    max-height: calc(100vh - 80px);
+    overflow-y: auto;
+    z-index: 10;
+}
+.hud-keyboard-close {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    min-width: 22px;
+    min-height: 22px;
+    font-size: 11px;
+}
+.hud-keyboard-rows {
+    margin-top: 4px;
+}
+.hud-keyboard-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 1px 6px;
+    border-radius: 4px;
+}
+.hud-keyboard-row:hover {
+    background: rgba(38, 42, 48, 0.9);
+}
+.hud-keyboard-key {
+    flex: 0 0 72px;
+    color: #7fb2ff;
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
