@@ -66,7 +66,7 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         checkInvariants(long);
         const hits = r.todoHits;
         // Every tick family reached its stubs.
-        for (const key of ['M4e autoRefuelRepairShip', 'M4q scanForNewOwnerHabitat', 'M4r processMessages', 'M4s pirateAssignShipMissions', 'M4s reviewPirateMissionsAndAssign', 'M4n evaluateSystemThreats']) {
+        for (const key of ['M4e autoRefuelRepairShip', 'M4q scanForNewOwnerHabitat', 'M4r processMessages', 'M4s pirateAssignShipMissions', 'M4s reviewPirateMissionsAndAssign', 'M4l performFleetTasks']) {
             expect(hits[key] ?? 0, key).toBeGreaterThan(0);
         }
         const summary = { digest: stateDigest(long), counts: stateCounts(long), rndDraws: long.rnd.drawCount };
@@ -84,7 +84,12 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // EvaluateRelativeToParent, the no-mission epilogue resets idle speeds; freighters contracted by M4d now get
         // real missions and command queues). M4k: the game-start and periodic Empire.DoTasks run PerformResearch (queue
         // project picks and research-event rolls draw Rnd; completed research changes components and troop types).
-        expect(summary.digest).toBe('c52d805d788d9173');
+        // Moved from c52d805d788d9173 by M4n: BuiltObject.ThreatEvaluation / CheckForAttack / FleeFromHopelessBattle now
+        // run (threat lists per ship and per SystemVisibility, Escape/Attack missions assigned to threatened ships, the
+        // SystemVisibility.LatestThreatEvaluation timestamps, distress signals from NotifyOfAttack) and the Attack case
+        // body runs (with the SensorJumpIntercept Rnd roll before a warp pursuit). No new Rnd sites are reached on this
+        // seed otherwise (smuggler detection needs trace scanners; invasion landings need troops).
+        expect(summary.digest).toBe('5dbb2d0815a7ee8e');
     }, 600000);
 });
 

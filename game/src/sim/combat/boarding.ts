@@ -7,6 +7,9 @@
 
 import type { Galaxy } from '../galaxy';
 import type { BuiltObject } from '../builtObject';
+import type { Habitat } from '../types';
+import type { Creature } from '../creature';
+import type { ShipGroup } from '../fleets/shipGroup';
 import { registerTodo, todo } from '../tick/todo';
 
 const T_processBoardingAssault = registerTodo('M4q', 'processBoardingAssault');
@@ -48,4 +51,19 @@ const T_baconBuiltObjectHugeProcessingSpanActions = registerTodo('M4q', 'baconBu
 export function baconBuiltObjectHugeProcessingSpanActions(galaxy: Galaxy, builtObject: BuiltObject): void {
     // RND: clock×1 (new Random().NextDouble() > 0.25) — not drawn until M4q.
     /* TODO(port) M4q */ todo(T_baconBuiltObjectHugeProcessingSpanActions);
+}
+
+// ---- stubs added by M4n (called from missions/cmdAttack.ts) ----
+
+const T_checkLaunchAssaultPodsAtTarget = registerTodo('M4q', 'checkLaunchAssaultPodsAtTarget');
+/** BuiltObject.1.cs 2531 / 2567 CheckLaunchAssaultPodsAtTarget(time, Habitat | BuiltObject target) — stub. */
+export function checkLaunchAssaultPodsAtTarget(galaxy: Galaxy, builtObject: BuiltObject, time: number, target: BuiltObject | Habitat): void {
+    /* TODO(port) M4q */ todo(T_checkLaunchAssaultPodsAtTarget);
+}
+
+const T_shipGroupTotalAvailableBoardingAssaultStrengthCapturingTarget = registerTodo('M4q', 'shipGroupTotalAvailableBoardingAssaultStrengthCapturingTarget');
+/** ShipGroup.cs 3165 TotalAvailableBoardingAssaultStrengthCapturingTarget(time, target) — stub: 0. */
+export function shipGroupTotalAvailableBoardingAssaultStrengthCapturingTarget(galaxy: Galaxy, shipGroup: ShipGroup, time: number, target: BuiltObject | Habitat | Creature | null): number {
+    /* TODO(port) M4q */ todo(T_shipGroupTotalAvailableBoardingAssaultStrengthCapturingTarget);
+    return 0;
 }

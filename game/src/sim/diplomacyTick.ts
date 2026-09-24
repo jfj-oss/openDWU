@@ -92,3 +92,12 @@ export function changeDiplomaticRelation(galaxy: Galaxy, empire: Empire, relatio
     // RND: 1 direct — not drawn until M4r.
     /* TODO(port) M4r */ todo(T_changeDiplomaticRelation);
 }
+
+// ---- stub added by M4n (called from missions/cmdAttack.ts) ----
+
+const T_declareWar = registerTodo('M4r', 'declareWar');
+/** Empire.7.cs 4868 DeclareWar(target) → 4883 DeclareWar(target, null, false, false) — stub (invasion landing on a capital / high-value colony). */
+export function declareWar(galaxy: Galaxy, empire: Empire, target: Empire): void {
+    // RND: ChangeDiplomaticRelation draws (Empire.8.cs 2568, 1 site) — not drawn until M4r.
+    /* TODO(port) M4r */ todo(T_declareWar);
+}

@@ -37,6 +37,12 @@ export class ShipGroup {
     /** ShipGroup.cs _ShipEnergyUsageBonus / _ShipEnergyUsageBonusExtra (ShipEnergyUsageBonus => sum; read by BuiltObject.DoTasks 3828). */
     shipEnergyUsageBonusBase = 1.0;
     shipEnergyUsageBonusExtra = 0.0;
+    // ---- fields added by M4n (read by combat/threats.ts, attackAI.ts, cmdAttack.ts) ----
+    /** ShipGroup.BattleStats (SpaceBattleStats, M4o owns the type; null until a combat mission starts it). */
+    battleStats: unknown = null;
+    /** ShipGroup.cs 38/49 _WeaponsRangeBonus = 1.0 / _WeaponsRangeBonusExtra (WeaponsRangeBonus => sum; M4l ReviewFleetBonuses sets them). */
+    weaponsRangeBonusBase = 1.0;
+    weaponsRangeBonusExtra = 0.0;
 
     // ShipGroup(Galaxy galaxy) (ShipGroup.cs 89).
     constructor(galaxy: Galaxy) {
@@ -181,4 +187,12 @@ export function disbandShipGroup(galaxy: Galaxy, empire: Empire, shipGroup: Ship
     void empire;
     void shipGroup;
     /* TODO(port) M4l */ todo(T_disbandShipGroup);
+}
+
+// ---- stubs added by M4n ----
+
+const T_shipGroupCompleteMission = registerTodo('M4l', 'shipGroupCompleteMission');
+/** ShipGroup.CompleteMission() (FleeFromHopelessBattle, BuiltObject.1.cs 651) — stub. */
+export function shipGroupCompleteMission(galaxy: Galaxy, shipGroup: ShipGroup): void {
+    /* TODO(port) M4l */ todo(T_shipGroupCompleteMission);
 }

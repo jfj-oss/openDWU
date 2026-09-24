@@ -113,3 +113,14 @@ export function withinFuelRangeAndRefuel(galaxy: Galaxy, builtObject: BuiltObjec
     /* TODO(port) M4c */ todo(T_withinFuelRangeAndRefuel);
     return true;
 }
+
+// ---- stub added by M4n (called from missions/cmdAttack.ts) ----
+
+const T_doMovement = registerTodo('M4c', 'doMovement');
+/**
+ * BuiltObject.2.cs 6851 DoMovement(timePassed, targetX, targetY, indexX, indexY, targetRelativeXpos, targetRelativeYpos, galaxy,
+ * manageArrival, manageHeading, manageDeceleration) — stub: the ship does not move.
+ */
+export function doMovement(galaxy: Galaxy, builtObject: BuiltObject, timePassed: number, targetX: number, targetY: number, indexX: number, indexY: number, targetRelativeXpos: number, targetRelativeYpos: number, manageArrival: boolean, manageHeading: boolean, manageDeceleration: boolean): void {
+    /* TODO(port) M4c */ todo(T_doMovement);
+}

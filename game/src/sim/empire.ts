@@ -1583,6 +1583,14 @@ export class Empire {
     // ---- M4l fields (ship groups) ----
     // ---- M4m fields (military AI) ----
     // ---- M4n fields (threats) ----
+    /** Empire.cs 137 _EmpiresToAttack (EmpireList; CheckForRandomAttackTargets consumes, M4m DetermineRandomAttacks fills). */
+    empiresToAttack: Empire[] = [];
+    /** Empire.cs 372 AttackOvermatchFactor = 2f (float; Empire.cs 3638 gameOptions.AttackOverMatchFactor — TODO(port) game option). */
+    attackOvermatchFactor = 2;
+    /** Empire.cs 108 _EncounteredSilverMistCreature. */
+    encounteredSilverMistCreature = false;
+    /** Empire.cs 844 PirateExtortionOfferMade. */
+    pirateExtortionOfferMade = false;
     // ---- M4o fields (weapons, damage) ----
     // ---- M4p fields (fighters) ----
     // ---- M4q fields (invasion, troops) ----
