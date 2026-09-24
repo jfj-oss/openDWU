@@ -6,6 +6,7 @@
 import './gameMenu.css';
 import { GalaxyTime } from '../../sim/clock';
 import { startMusic } from '../../audio/musicPlayer';
+import { startEffects } from '../../audio/effectsPlayer';
 import { getSettings, updateSettings, uiScaleFactor } from '../settings';
 import { showToast } from '../toast';
 import { getSaveLoadProvider } from './saveLoad';
@@ -21,6 +22,22 @@ export interface MusicAdapter {
 function defaultMusic(): MusicAdapter | null {
     try {
         return startMusic();
+    } catch {
+        return null;
+    }
+}
+
+/** Sound effects adapter so the screen stays import-safe in node tests. */
+export interface EffectsAdapter {
+    setVolume(v: number): void;
+    mute(): void;
+    unmute(): void;
+}
+
+/** Lazily fetch the real effects player (created by startEffects at boot). */
+function defaultEffects(): EffectsAdapter | null {
+    try {
+        return startEffects();
     } catch {
         return null;
     }
@@ -81,13 +98,19 @@ function applyUiScaleToHudRoot(): void {
 }
 
 /**
- * Build the Options sub-panel (music volume/mute, UI scale, label toggles).
+ * Build the Options sub-panel (music volume/mute, sound effects volume/mute,
+ * UI scale, label toggles).
  * Task 06k: extracted from createGameMenu so the main menu's "Options" item
  * can open the same panel as a centred modal. The returned element carries
  * the `game-menu-options` class and its own rows; callers append it to their
- * own container. `music` may be null (menu-only contexts without a player).
+ * own container. `music` / `effects` may be null (menu-only contexts without
+ * a player); they are only touched inside event handlers, keeping the panel
+ * import-safe in node tests.
  */
-export function buildOptionsPanel(music: MusicAdapter | null): HTMLElement {
+export function buildOptionsPanel(
+    music: MusicAdapter | null,
+    effects: EffectsAdapter | null = null,
+): HTMLElement {
     const optionsPanel = document.createElement('div');
     optionsPanel.className = 'game-menu-options';
 
@@ -128,6 +151,46 @@ export function buildOptionsPanel(music: MusicAdapter | null): HTMLElement {
     });
     musicRow.append(musicLabel, volSlider, muteBtn);
     optionsPanel.appendChild(musicRow);
+
+    // Sound effects volume slider + mute (task 12h). Built exactly like the
+    // music row; it writes soundVolume/soundMuted and drives the effects
+    // player. startEffects is only called inside the handlers via the
+    // defaultEffects adapter, so panel build stays import-safe in node tests.
+    const effectsAdapter = effects ?? defaultEffects();
+    const sfxRow = document.createElement('div');
+    sfxRow.className = 'game-menu-option-row';
+    const sfxLabel = document.createElement('span');
+    sfxLabel.className = 'game-menu-option-label';
+    sfxLabel.textContent = 'Sound Effects Volume';
+    const sfxSlider = document.createElement('input');
+    sfxSlider.type = 'range';
+    sfxSlider.min = '0';
+    sfxSlider.max = '1';
+    sfxSlider.step = '0.05';
+    sfxSlider.value = String(settings.soundVolume);
+    sfxSlider.setAttribute('aria-label', 'Sound effects volume');
+    sfxSlider.addEventListener('input', () => {
+        const v = parseFloat(sfxSlider.value);
+        updateSettings({ soundVolume: v, soundMuted: false });
+        effectsAdapter?.setVolume(v);
+        effectsAdapter?.unmute();
+    });
+    const sfxMuteBtn = document.createElement('button');
+    sfxMuteBtn.type = 'button';
+    sfxMuteBtn.className = 'game-menu-mute';
+    sfxMuteBtn.textContent = settings.soundMuted ? 'Unmute' : 'Mute';
+    sfxMuteBtn.addEventListener('click', () => {
+        const nowMuted = !getSettings().soundMuted;
+        updateSettings({ soundMuted: nowMuted });
+        if (nowMuted) {
+            effectsAdapter?.mute();
+        } else {
+            effectsAdapter?.unmute();
+        }
+        sfxMuteBtn.textContent = nowMuted ? 'Unmute' : 'Mute';
+    });
+    sfxRow.append(sfxLabel, sfxSlider, sfxMuteBtn);
+    optionsPanel.appendChild(sfxRow);
 
     // UI scale (90/100/110/125%).
     const scaleRow = document.createElement('div');
@@ -184,6 +247,7 @@ export function createGameMenu(
     music: MusicAdapter | null = null,
 ): GameMenuRefs {
     const resolvedMusic = music ?? defaultMusic();
+    const resolvedEffects = defaultEffects();
     let prevPaused = false;
     let open = false;
 
@@ -209,7 +273,7 @@ export function createGameMenu(
     panel.appendChild(list);
 
     // --- Options sub-panel (task 06k: shared buildOptionsPanel) -----------
-    const optionsPanel = buildOptionsPanel(resolvedMusic);
+    const optionsPanel = buildOptionsPanel(resolvedMusic, resolvedEffects);
     optionsPanel.style.display = 'none';
 
     // --- Button row -------------------------------------------------------

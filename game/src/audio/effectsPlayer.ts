@@ -15,6 +15,7 @@
 
 import { ComponentType } from '../sim/data/components';
 import { HabitatType } from '../sim/types';
+import { getSettings } from '../ui/settings';
 
 /** Port of DistantWorlds.SoundEffectRequest (double Volume/Balance, int
  * Frequency, string Filename). */
@@ -872,6 +873,15 @@ let instance: EffectsPlayer | null = null;
 export function startEffects(): EffectsPlayer {
     if (instance === null) {
         instance = new EffectsPlayer();
+        // Task 12h: apply the persisted sound settings to a freshly created
+        // player so it starts at the saved volume/mute state. getSettings()
+        // is storage-backed and never touches audio, so this stays safe in
+        // node test environments.
+        const s = getSettings();
+        instance.setVolume(s.soundVolume);
+        if (s.soundMuted) {
+            instance.mute();
+        }
         void instance.initialize();
     }
     instance.startEffects();
