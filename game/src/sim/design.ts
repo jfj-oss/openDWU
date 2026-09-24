@@ -60,11 +60,11 @@ const componentCurrentPricesByGalaxy = new WeakMap<object, number[]>();
 // Resource.BasePrice = (int)ResourceSystemStatic.Resources[ResourceID].BasePrice
 // (Resource.cs:40, a float truncated to int). Built lazily on first use (the TS
 // Galaxy gets its component/resource data after construction) and cached per galaxy.
-// TODO(port): Start.2.cs:1103-1107 then runs ReviewResourcePrices +
-// ReviewComponentPrices (Galaxy.1.cs:1204/1029) 20 times after the starting
-// colonies exist, and the market re-runs them during play (Galaxy.cs:3093); those
-// need orders / colony cargo (the resource market), which are not ported, so these
-// are the constructor values.
+// Start.2.cs:1103-1107 then runs ReviewResourcePrices + ReviewComponentPrices
+// (Galaxy.1.cs:1204/1027) 20 times after the starting colonies exist; those are
+// ported in src/sim/market.ts (reviewResourcePrices / reviewComponentPrices) and
+// update this same cached array in place, so CalculateCurrentPurchasePrice sees
+// the reviewed prices once they have run.
 export function galaxyComponentCurrentPrices(galaxy: ComponentPriceGalaxy): number[] {
     let prices = componentCurrentPricesByGalaxy.get(galaxy);
     if (prices === undefined) {
@@ -81,6 +81,23 @@ export function galaxyComponentCurrentPrices(galaxy: ComponentPriceGalaxy): numb
         }
         // Only cache once the static component data exists (it is loaded after construction).
         if (galaxy.researchStatic?.componentStatic) componentCurrentPricesByGalaxy.set(galaxy, prices);
+    }
+    return prices;
+}
+
+const resourceCurrentPricesByGalaxy = new WeakMap<object, number[]>();
+
+// Galaxy.ResourceCurrentPrices (Galaxy.cs:565) as initialised in the Galaxy
+// constructor (Galaxy.4.cs:2175-2178): one entry per ResourceSystem.Resources
+// item, ResourceDefinition.BasePrice (a C# float widened to double). Built
+// lazily and cached per galaxy once its resource data exists; ReviewResourcePrices
+// (src/sim/market.ts) mutates this same array in place.
+export function galaxyResourceCurrentPrices(galaxy: ComponentPriceGalaxy): number[] {
+    let prices = resourceCurrentPricesByGalaxy.get(galaxy);
+    if (prices === undefined) {
+        prices = [];
+        for (const resource of galaxy.resourceSystem.resources) prices.push(Math.fround(resource.basePrice));
+        if (galaxy.resourceSystem.resources.length > 0) resourceCurrentPricesByGalaxy.set(galaxy, prices);
     }
     return prices;
 }

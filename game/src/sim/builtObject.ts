@@ -18,7 +18,7 @@ import { CargoList, ResourceRef, TroopList, type Troop } from './cargo';
 import { componentImprovementFromComponent, type ComponentImprovementEntry } from './componentStatic';
 import { ComponentType } from './data/components';
 import { BattleTactics, BuiltObjectFleeWhen, BuiltObjectRole, InvasionTactics } from './data/designSpecifications';
-import { ComponentCategoryType } from './data/policies';
+import { ComponentCategoryType, type EmpirePolicy } from './data/policies';
 import type { Race } from './data/races';
 import { BuiltObjectStance, galaxyComponentCurrentPrices, type Design } from './design';
 import type { Empire } from './empire';
@@ -303,6 +303,8 @@ export class BuiltObject {
     disabledComponentDurations: number[] | null = null;
     weapons: Weapon[];
     captainName = '';
+    /** C#: StellarObject BuiltAt (the yard building it); null for ships created fully built. */
+    builtAt: unknown = null;
 
     /**
      * BaconBuiltObject.myMain._Game.Galaxy, read by BaconBuiltObject.ModMyShip. It is
@@ -429,6 +431,94 @@ export class BuiltObject {
             empire = this._galaxy.pirateEmpires.find((e) => e.empireId === this.pirateEmpireId) ?? null;
         }
         return empire;
+    }
+
+    // BuiltObject.TroopCapacityRemaining (BuiltObject.cs 768).
+    get troopCapacityRemaining(): number {
+        let num = 0;
+        if (this.troops !== null) num = this.troops.totalSize;
+        const val = this.troopCapacity - num;
+        return Math.max(0, val);
+    }
+
+    // Port of BuiltObject.SetTroopLoadoutsFromPolicy(EmpirePolicy) (BuiltObject.cs 1630-1713),
+    // with Galaxy.CalculateDefaultTroopMaintenanceMultiplier (Galaxy.7.cs 5505: Infantry 1,
+    // Armored 2, Artillery 4, SpecialForces 2). No Rnd.
+    setTroopLoadoutsFromPolicy(policy: EmpirePolicy | null): void {
+        if (policy === null) return;
+        const f = Math.fround;
+        if (policy.troopUseDefaultTransportLoadout) {
+            const num = Math.trunc(100.0 * 1.0);
+            const num2 = Math.trunc(100.0 * 2.0);
+            const num3 = Math.trunc(100.0 * 4.0);
+            const num4 = Math.trunc(100.0 * 2.0);
+            const troopCapacity = this.troopCapacity;
+            const inf = f(policy.troopDefaultTransportLoadoutInfantry);
+            const arm = f(policy.troopDefaultTransportLoadoutArmor);
+            const art = f(policy.troopDefaultTransportLoadoutArtillery);
+            const spf = f(policy.troopDefaultTransportLoadoutSpecialForces);
+            const num5 = f(f(f(inf + arm) + art) + spf);
+            const num6 = f(1 / num5);
+            let num7 = csInt(f(f(f(troopCapacity) * inf) * num6));
+            let num8 = csInt(f(f(f(troopCapacity) * arm) * num6));
+            let num9 = csInt(f(f(f(troopCapacity) * art) * num6));
+            let num10 = csInt(f(f(f(troopCapacity) * spf) * num6));
+            if (num10 < num4) {
+                num7 += num10;
+                num10 = 0;
+            }
+            if (num9 < num3) {
+                num7 += num9;
+                num9 = 0;
+            }
+            if (num8 < num2) {
+                num7 += num8;
+                num8 = 0;
+            }
+            num7 = Math.trunc(num7 / num) * num;
+            num8 = Math.trunc(num8 / num2) * num2;
+            num9 = Math.trunc(num9 / num3) * num3;
+            num10 = Math.trunc(num10 / num4) * num4;
+            const num11 = num7 + num9 + num8 + num10;
+            let num12 = troopCapacity - num11;
+            if (num12 >= 100 && this.empire !== null) {
+                const e = this.empire;
+                if (num12 >= num2 && e.troopCanRecruitArmored && this.troopLoadoutArmored >= this.troopLoadoutInfantry && this.troopLoadoutArmored >= this.troopLoadoutArtillery && this.troopLoadoutArmored >= this.troopLoadoutSpecialForces) {
+                    const num13 = Math.trunc(num12 / num2);
+                    num8 += num13 * num2;
+                    num12 -= num13 * num2;
+                }
+                if (num12 >= num4 && e.troopCanRecruitSpecialForces && this.troopLoadoutSpecialForces >= this.troopLoadoutInfantry && this.troopLoadoutSpecialForces >= this.troopLoadoutArtillery && this.troopLoadoutSpecialForces >= this.troopLoadoutArmored) {
+                    const num14 = Math.trunc(num12 / num4);
+                    num10 += num14 * num4;
+                    num12 -= num14 * num4;
+                }
+                if (num12 >= num3 && e.troopCanRecruitArtillery && this.troopLoadoutArtillery >= this.troopLoadoutInfantry && this.troopLoadoutArtillery >= this.troopLoadoutArmored && this.troopLoadoutArtillery >= this.troopLoadoutSpecialForces) {
+                    const num15 = Math.trunc(num12 / num3);
+                    num9 += num15 * num3;
+                    num12 -= num15 * num3;
+                }
+                if (num12 >= num && e.troopCanRecruitInfantry && this.troopLoadoutInfantry >= this.troopLoadoutArmored && this.troopLoadoutInfantry >= this.troopLoadoutArtillery && this.troopLoadoutInfantry >= this.troopLoadoutSpecialForces) {
+                    const num16 = Math.trunc(num12 / num);
+                    num7 += num16 * num;
+                    num12 -= num16 * num;
+                }
+                if (num12 >= 100) {
+                    const num17 = Math.trunc(num12 / num);
+                    num7 += num17 * num;
+                    num12 -= num17 * num;
+                }
+            }
+            this.troopLoadoutInfantry = toByte(Math.trunc(num7 / num));
+            this.troopLoadoutArmored = toByte(Math.trunc(num8 / num2));
+            this.troopLoadoutArtillery = toByte(Math.trunc(num9 / num3));
+            this.troopLoadoutSpecialForces = toByte(Math.trunc(num10 / num4));
+        } else {
+            this.troopLoadoutInfantry = 255;
+            this.troopLoadoutArmored = 255;
+            this.troopLoadoutArtillery = 255;
+            this.troopLoadoutSpecialForces = 255;
+        }
     }
 
     // BuiltObject.ReviewWeaponsComponentValues (2033).

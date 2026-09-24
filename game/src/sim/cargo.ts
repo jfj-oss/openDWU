@@ -80,10 +80,80 @@ export class CargoList {
     }
 }
 
-// TODO(port): Troop class (Troop.cs: race, strength, ...) — only the list
-// wrapper is needed by the Empire constructors.
-export interface Troop {
-    [key: string]: unknown;
+// Port of TroopType.cs (byte enum, member order exact).
+export enum TroopType {
+    Undefined,
+    Infantry,
+    Armored,
+    Artillery,
+    SpecialForces,
+    PirateRaider,
+}
+
+// Port of Troop.cs (task M3c): the constructor Troop(name, type, attackStrength,
+// defendStrength, size, readiness, empire, race) (Troop.cs 92) and the property
+// setters with side effects (BuiltObject / Colony, Troop.cs 134-158).
+// Empire / BuiltObject / Habitat / Race are typed loosely to keep cargo.ts free of
+// import cycles.
+// TODO(port): CompareTo, Garrisoned/Readiness logic, OverallStrength etc.
+export class Troop {
+    name: string;
+    private _type: TroopType;
+    private _attackStrength: number; // short
+    private _defendStrength: number; // short
+    private _size: number; // short
+    garrisoned = false;
+    readiness: number; // float
+    empire: ({ troops?: TroopList | null } & object) | null;
+    awaitingPickup = false;
+    private _atColony = false;
+    private _builtObject: object | null = null;
+    private _colony: object | null = null;
+    race: object | null;
+    pictureRef = 0;
+    private _maintenanceMultiplier = 1; // float
+
+    constructor(name: string, type: TroopType, attackStrength: number, defendStrength: number, size: number, readiness: number, empire: ({ troops?: TroopList | null } & object) | null, race: object | null) {
+        this.name = name;
+        this._type = type;
+        this._attackStrength = toShort(attackStrength);
+        this._defendStrength = toShort(defendStrength);
+        this._size = toShort(size);
+        this.readiness = Math.fround(readiness);
+        this.empire = empire;
+        this.race = race;
+        this.awaitingPickup = false;
+        this._maintenanceMultiplier = 1;
+    }
+
+    get type(): TroopType { return this._type; }
+    get attackStrength(): number { return this._attackStrength; }
+    get defendStrength(): number { return this._defendStrength; }
+    get size(): number { return this._size; }
+    get atColony(): boolean { return this._atColony; }
+    get maintenanceMultiplier(): number { return this._maintenanceMultiplier; }
+    set maintenanceMultiplier(v: number) { this._maintenanceMultiplier = Math.fround(v); }
+
+    get builtObject(): object | null { return this._builtObject; }
+    set builtObject(value: object | null) {
+        this._builtObject = value;
+        if (this._builtObject === null) return;
+        this._atColony = false;
+        this._colony = null;
+    }
+
+    get colony(): object | null { return this._colony; }
+    set colony(value: object | null) {
+        this._colony = value;
+        if (this._colony === null) return;
+        this._atColony = true;
+        this._builtObject = null;
+    }
+}
+
+// C# (short) cast: unchecked 16-bit wrap.
+function toShort(v: number): number {
+    return (Math.trunc(v) << 16) >> 16;
 }
 
 // Port of TroopList.cs (subset).
@@ -101,5 +171,12 @@ export class TroopList {
         }
         this.items.splice(index, 1);
         return true;
+    }
+
+    // TroopList.cs TotalSize (485).
+    get totalSize(): number {
+        let totalSize = 0;
+        for (const troop of this.items) totalSize += troop.size;
+        return totalSize;
     }
 }

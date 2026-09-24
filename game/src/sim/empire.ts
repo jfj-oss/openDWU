@@ -13,7 +13,8 @@ import { HabitatCategoryType, HabitatType } from './types';
 import type { Habitat } from './types';
 import type { Race } from './data/races';
 import type { Government } from './data/governments';
-import { START_STAR_DATE } from './galaxyTime';
+import { START_STAR_DATE, startStarDateForAge } from './galaxyTime';
+import type { BuiltObject } from './builtObject';
 import { Cargo, CargoList, ResourceRef, TroopList } from './cargo';
 import {
     checkEmpireColorUsed,
@@ -32,6 +33,7 @@ import { loadDesignSpecification as loadDesignSpecificationData, type DesignSpec
 import { EmpireVisibility, SystemVisibilityStatus, type SystemVisibility, type VisibilityOwner, type VisibilityUnit } from './visibility';
 import type { ForceStructureProjectionList } from './forceStructureProjection';
 import type { HabitatPrioritization } from './resourceTargets';
+import { PirateRelationList, PirateRelationType, obtainPirateRelation, changePirateRelation, galaxyCurrentStarDate } from './pirateRelations';
 
 // EmpirePolicy.cs: only the research tech-focus fields are ported (data/policies.ts).
 export type EmpirePolicy = PolicyData | null;
@@ -133,13 +135,19 @@ export class Empire {
     homeWorld: Habitat | null = null;
     dominantRace: Race | null = null;
     corruptionMultiplier = 0;
+    // Colony approval / tax model (taxes.ts): C# double Corruption (Empire.cs 70,
+    // written by RecalculateEmpireCorruption), long _TotalPopulation (509, written by
+    // RecalculateEmpirePopulation) and double _EconomyEfficiency = 1.0 (501).
+    corruption = 0;
+    totalPopulation = 0;
+    economyEfficiency = 1.0;
     lastDisasterDate = START_STAR_DATE;
     policy: EmpirePolicy = defaultEmpirePolicy();
     reclusive = false;
     allowableGovernmentTypes: number[] = [];
     governmentId = -1;
     designNamesIndex = 0;
-    builtObjects: unknown[] = [];
+    builtObjects: BuiltObject[] = [];
     shipGroups: unknown[] = [];
     designs: Design[] = [];
     latestDesigns: (Design | null)[] = [];
@@ -159,8 +167,8 @@ export class Empire {
     pirateEmpireSuperPirates = false;
     pirateFactionModifiers: PirateFactionModifiers | null = null;
     knownPirateEmpires: Empire[] = [];
-    /** Empires whose PirateRelation is no longer NotMet (full PirateRelation model TODO). */
-    metPirateRelations = new Set<Empire>();
+    // Empire.cs 493: public PirateRelationList PirateRelations (pirateRelations.ts).
+    pirateRelations = new PirateRelationList();
     colonizationTargets: { habitat: Habitat; priority: number }[] = [];
     // Galaxy.SetEmpireDifficultyFactors (pirates.ts setEmpireDifficultyFactors).
     difficultyLevel = 1.0;
@@ -175,11 +183,11 @@ export class Empire {
     constructionYards: unknown[] = [];
     distressSignals: unknown[] = [];
     manufacturers: unknown[] = [];
-    privateBuiltObjects: unknown[] = [];
+    privateBuiltObjects: BuiltObject[] = [];
     refuellingDepots: unknown[] = [];
     resourceExtractors: unknown[] = [];
-    spacePorts: unknown[] = [];
-    miningStations: unknown[] = [];
+    spacePorts: BuiltObject[] = [];
+    miningStations: BuiltObject[] = [];
     freighters: unknown[] = [];
     constructionShips: unknown[] = [];
     longRangeScanners: unknown[] = [];
@@ -341,9 +349,9 @@ export class Empire {
                     if (seen(status2) && status === SystemVisibilityStatus.Visible) flag = true;
                     if (seen(status) && seen(status2) && galaxy.rnd.next(0, 3) === 1) flag = true;
                     if (!flag) continue;
-                    if (!this.metPirateRelations.has(empire)) {
-                        // ChangePirateRelation(empire, None): PirateRelation model not ported beyond met/not-met.
-                        this.metPirateRelations.add(empire);
+                    const pirateRelation = obtainPirateRelation(this, empire);
+                    if (pirateRelation.type === PirateRelationType.NotMet) {
+                        changePirateRelation(this, empire, PirateRelationType.None, galaxyCurrentStarDate(galaxy));
                         if (this.pirateEmpireBaseHabitat !== null && !empire.knownPirateEmpires.includes(this)) empire.knownPirateEmpires.push(this);
                         if (empire.pirateEmpireBaseHabitat !== null && !this.knownPirateEmpires.includes(empire)) this.knownPirateEmpires.push(empire);
                     }
@@ -686,6 +694,15 @@ export class Empire {
             colony.isRefuellingDepot = true;
             if (newEmpire.capital === null) newEmpire.capital = colony;
             if (!newEmpire.colonies.includes(colony)) newEmpire.colonies.push(colony);
+            // TODO(port): Empire.1.cs 240-241 RecalculateDistanceFactor + SetColonyTaxRate(colony,
+            // atWar: false) run here in C#; they live in forceStructure.ts / taxes.ts
+            // (import cycle), so callers invoke recalculateDistanceFactor + setColonyTaxRate
+            // right after takeOwnershipOfColony.
+            // Empire.1.cs 242-246.
+            if (newEmpire.policy != null) {
+                colony.colonyPopulationPolicy = newEmpire.policy.newColonyPopulationPolicyAllRaces;
+                colony.colonyPopulationPolicyRaceFamily = newEmpire.policy.newColonyPopulationPolicyYourRaceFamily;
+            }
         } else {
             colony.isRefuellingDepot = false;
         }
@@ -1030,8 +1047,268 @@ export class Empire {
         this.canBuildResupplyShips = resupply;
     }
 
-    // TODO(port): ReviewTroopTypes — Empire.cs.
-    reviewTroopTypes(): void {}
+    // Empire.cs 736-765 (troop abilities, set by ReviewTroopTypes; floats default 1f).
+    troopCanRecruitInfantry = false;
+    troopCanRecruitArmored = false;
+    troopCanRecruitArtillery = false;
+    troopCanRecruitSpecialForces = false;
+    troopAttackStrengthBonusFactorInfantry = 1;
+    troopAttackStrengthBonusFactorArmored = 1;
+    troopAttackStrengthBonusFactorArtillery = 1;
+    troopAttackStrengthBonusFactorSpecialForces = 1;
+    troopDefendStrengthBonusFactorInfantry = 1;
+    troopDefendStrengthBonusFactorArmored = 1;
+    troopDefendStrengthBonusFactorSpecialForces = 1;
+    troopPlanetaryDefenseInterceptBonusFactor = 1;
+    troopMaintenanceFactor = 1;
+    boardingAttackFactor = 1;
+    boardingDefenseFactor = 1;
+    /** Empire.cs:529 private int _TroopCount (GenerateTroopDescription). */
+    troopCount = 0;
+
+    // Port of Empire.3.cs ReviewTroopTypes (2299-2466). Research ability RelatedObject for
+    // Troop abilities: research.txt index 0-4 → TroopType Undefined..SpecialForces
+    // (ResearchNodeDefinitionList.cs 581-596); any other index leaves it null (skipped).
+    // No Rnd.
+    reviewTroopTypes(): void {
+        let troopCanRecruitInfantry = false;
+        let troopCanRecruitArmored = false;
+        let troopCanRecruitArtillery = false;
+        let troopCanRecruitSpecialForces = false;
+        let num = 1;
+        let num2 = 1;
+        let num3 = 1;
+        let num4 = 1;
+        let num5 = 1;
+        let num6 = 1;
+        let num7 = 1;
+        let num8 = 1;
+        let num9 = 1;
+        let num10 = 1;
+        let num11 = 1;
+        const f = Math.fround;
+        // 1f + Math.Abs((float)Value / 100f) / Math.Abs((float)Value / 100f).
+        const plus = (v: number) => f(1 + f(Math.abs(f(f(v) / 100))));
+        const abs = (v: number) => f(Math.abs(f(f(v) / 100)));
+        const abilities = this.research?.abilities ?? null;
+        if (abilities !== null && abilities.length > 0) {
+            for (let i = 0; i < abilities.length; i++) {
+                const researchAbility = abilities[i];
+                if (researchAbility.type === ResearchAbilityType.Boarding) {
+                    if (researchAbility.value > 0) {
+                        const num12 = plus(researchAbility.value);
+                        if (num12 > num10) num10 = num12;
+                    } else if (researchAbility.value < 0) {
+                        const num13 = plus(researchAbility.value);
+                        if (num13 > num11) num11 = num13;
+                    }
+                } else {
+                    if (researchAbility.type !== ResearchAbilityType.Troop) continue;
+                    const rel = researchAbility.relatedObjectIndex;
+                    if (rel >= 0 && rel <= 4) {
+                        switch (rel) {
+                            case 0: // TroopType.Undefined
+                                if (researchAbility.value < 0) {
+                                    const num16 = abs(researchAbility.value);
+                                    const num17 = f(1 - num16);
+                                    if (num17 < num9) num9 = num17;
+                                }
+                                break;
+                            case 1: // Infantry
+                                troopCanRecruitInfantry = true;
+                                if (researchAbility.value > 0) {
+                                    const num18 = plus(researchAbility.value);
+                                    if (num18 > num) num = num18;
+                                } else if (researchAbility.value < 0) {
+                                    const num19 = plus(researchAbility.value);
+                                    if (num19 > num2) num2 = num19;
+                                }
+                                break;
+                            case 2: // Armored
+                                troopCanRecruitArmored = true;
+                                if (researchAbility.value > 0) {
+                                    const num22 = plus(researchAbility.value);
+                                    if (num22 > num3) num3 = num22;
+                                } else if (researchAbility.value < 0) {
+                                    const num23 = plus(researchAbility.value);
+                                    if (num23 > num4) num4 = num23;
+                                }
+                                break;
+                            case 3: // Artillery
+                                troopCanRecruitArtillery = true;
+                                if (researchAbility.value > 0) {
+                                    const num20 = plus(researchAbility.value);
+                                    if (num20 > num6) num6 = num20;
+                                } else if (researchAbility.value < 0) {
+                                    const num21 = plus(researchAbility.value);
+                                    if (num21 > num5) num5 = num21;
+                                }
+                                break;
+                            case 4: // SpecialForces
+                                troopCanRecruitSpecialForces = true;
+                                if (researchAbility.value > 0) {
+                                    const num14 = plus(researchAbility.value);
+                                    if (num14 > num7) num7 = num14;
+                                } else if (researchAbility.value < 0) {
+                                    const num15 = plus(researchAbility.value);
+                                    if (num15 > num8) num8 = num15;
+                                }
+                                break;
+                        }
+                    } else if (researchAbility.value < 0) {
+                        // RelatedObject null / not a TroopType (Empire.3.cs 2438).
+                        const num24 = abs(researchAbility.value);
+                        const num25 = f(1 - num24);
+                        if (num25 < num9) num9 = num25;
+                    }
+                }
+            }
+        }
+        this.troopCanRecruitInfantry = troopCanRecruitInfantry;
+        this.troopCanRecruitArmored = troopCanRecruitArmored;
+        this.troopCanRecruitArtillery = troopCanRecruitArtillery;
+        this.troopCanRecruitSpecialForces = troopCanRecruitSpecialForces;
+        this.troopAttackStrengthBonusFactorInfantry = num;
+        this.troopAttackStrengthBonusFactorArmored = num3;
+        this.troopAttackStrengthBonusFactorArtillery = num6;
+        this.troopAttackStrengthBonusFactorSpecialForces = num7;
+        this.troopDefendStrengthBonusFactorInfantry = num2;
+        this.troopDefendStrengthBonusFactorArmored = num4;
+        this.troopDefendStrengthBonusFactorSpecialForces = num8;
+        this.troopPlanetaryDefenseInterceptBonusFactor = num5;
+        // BaconEmpire.MultiplyTroopMaintenance: 0.05f for "Romulan" empires, else 1f.
+        this.troopMaintenanceFactor = f(num9 * (this.name.includes('Romulan') ? f(0.05) : 1));
+        this.boardingAttackFactor = num10;
+        this.boardingDefenseFactor = num11;
+    }
+
+    // Port of Empire.4.cs GenerateTroopDescription() (4036) / GenerateTroopDescription(label)
+    // (4041) + Galaxy.5.cs OrderedNumberDescription (3304). No Rnd.
+    generateTroopDescription(troopLabel: string = this.troopDescription): string {
+        this.troopCount++;
+        const number = this.troopCount;
+        let text = String(number);
+        switch (text.substring(text.length - 1)) {
+            case '0':
+            case '4':
+            case '5':
+            case '6':
+            case '7':
+            case '8':
+            case '9':
+                text += 'th';
+                break;
+            case '1':
+                text = number % 100 !== 11 ? text + 'st' : text + 'th';
+                break;
+            case '2':
+                text = number % 100 !== 12 ? text + 'nd' : text + 'th';
+                break;
+            case '3':
+                text = number % 100 !== 13 ? text + 'rd' : text + 'th';
+                break;
+        }
+        return text + ' ' + troopLabel;
+    }
+
+    // Port of Empire.9.cs SelectRandomColony (2364). Rnd: Next(0, Colonies.Count).
+    selectRandomColony(): Habitat {
+        const index = this.galaxy.rnd.next(0, this.colonies.length);
+        return this.colonies[index];
+    }
+
+    // Port of Empire.7.cs AddBuiltObjectToGalaxy(builtObject, parent, offsetLocationFromParent,
+    // isStateOwned, offsetX, offsetY, sendMessage) (1326-1431) and its shorter overloads
+    // (1311-1324: offsetX = offsetY = -2000000001, sendMessage = true).
+    // Rnd: only with offsetLocationFromParent and a Habitat parent — NextDouble for the
+    // radius, and (when no explicit offset is given) NextDouble for the angle.
+    addBuiltObjectToGalaxy(builtObject: BuiltObject, parent: Habitat | BuiltObject | null, offsetLocationFromParent: boolean, isStateOwned: boolean, offsetX = -2000000001, offsetY = -2000000001, sendMessage = true): void {
+        builtObject.builtObjectID = this.galaxy.getNextBuiltObjectID();
+        // TODO(port): Galaxy.CurrentStarDate — no galaxy clock on the TS Galaxy yet; at game
+        // start it is the start star date (Start.2.cs startStarDate for Galaxy._Age).
+        builtObject.dateBuilt = startStarDateForAge(this.galaxy.age);
+        builtObject.dateRetrofit = startStarDateForAge(this.galaxy.age);
+        let arg = '';
+        if (parent !== null) {
+            let num = 0.0;
+            if (!isBuiltObject(parent)) {
+                num = !offsetLocationFromParent ? 0.0 : parent.diameter / 2.0 - this.galaxy.rnd.nextDouble() * parent.diameter;
+                builtObject.parentHabitat = parent;
+                builtObject.xpos = builtObject.parentHabitat.xpos;
+                builtObject.ypos = builtObject.parentHabitat.ypos;
+                arg = builtObject.parentHabitat.name;
+                if (builtObject.role === BuiltObjectRole.Base) {
+                    parent.basesAtHabitat.push(builtObject);
+                }
+            } else {
+                num = 0.0;
+                builtObject.parentBuiltObject = parent;
+                builtObject.xpos = builtObject.parentBuiltObject.xpos;
+                builtObject.ypos = builtObject.parentBuiltObject.ypos;
+                arg = builtObject.parentBuiltObject.name;
+            }
+            if (offsetX > -2000000001 && offsetY > -2000000001) {
+                builtObject.parentOffsetX = offsetX;
+                builtObject.parentOffsetY = offsetY;
+            } else {
+                builtObject.parentOffsetX = 0.0;
+                builtObject.parentOffsetY = 0.0;
+                if (offsetLocationFromParent) {
+                    const num2 = this.galaxy.rnd.nextDouble() * Math.PI * 2.0;
+                    const parentOffsetX = Math.cos(num2) * num;
+                    const parentOffsetY = Math.sin(num2) * num;
+                    builtObject.parentOffsetX = parentOffsetX;
+                    builtObject.parentOffsetY = parentOffsetY;
+                }
+            }
+            builtObject.xpos += builtObject.parentOffsetX;
+            builtObject.ypos += builtObject.parentOffsetY;
+        }
+        // TextResolver "Ship Purchased NAME LOCATION" / "Base Purchased NAME LOCATION"
+        // (GameText.txt 1493/1494).
+        const empty = builtObject.role !== BuiltObjectRole.Base ? `The ship '${builtObject.name}' has been purchased at ${arg}` : `The base '${builtObject.name}' has been purchased at ${arg}`;
+        const galaxyIndex = this.galaxy.resolveIndex(builtObject.xpos, builtObject.ypos);
+        const x = galaxyIndex.x;
+        const y = galaxyIndex.y;
+        if (this.pirateEmpireBaseHabitat !== null) {
+            builtObject.pirateEmpireId = this.empireId & 0xff;
+        }
+        if (isStateOwned) {
+            this.builtObjects.push(builtObject);
+            builtObject.owner = this;
+        } else {
+            this.privateBuiltObjects.push(builtObject);
+        }
+        this.galaxy.builtObjects.push(builtObject);
+        this.galaxy.builtObjectIndexGrid[x][y].push(builtObject);
+        const boEmpire = builtObject.empire as Empire;
+        if ((builtObject.subRole === BuiltObjectSubRole.SmallSpacePort || builtObject.subRole === BuiltObjectSubRole.MediumSpacePort || builtObject.subRole === BuiltObjectSubRole.LargeSpacePort) && builtObject.isSpacePort && !boEmpire.spacePorts.includes(builtObject)) {
+            boEmpire.spacePorts.push(builtObject);
+        }
+        if ((builtObject.subRole === BuiltObjectSubRole.GasMiningStation || builtObject.subRole === BuiltObjectSubRole.MiningStation) && builtObject.isResourceExtractor && !boEmpire.miningStations.includes(builtObject)) {
+            boEmpire.miningStations.push(builtObject);
+        }
+        if (builtObject.nearestSystemStar === null) {
+            const habitat = this.galaxy.fastFindNearestSystem(builtObject.xpos, builtObject.ypos);
+            if (habitat !== null) {
+                const num3 = this.galaxy.calculateDistance(builtObject.xpos, builtObject.ypos, habitat.xpos, habitat.ypos);
+                if (Math.trunc(num3) <= this.galaxy.maxSolarSystemSize + 500) {
+                    builtObject.nearestSystemStar = habitat;
+                }
+            }
+        }
+        boEmpire.resolveSystemVisibility(builtObject.xpos, builtObject.ypos);
+        builtObject.reDefine();
+        if (builtObject.troopCapacity > 0 && this.policy !== null) {
+            builtObject.setTroopLoadoutsFromPolicy(this.policy);
+        }
+        if (sendMessage) {
+            // TODO(port): builtObject.Empire.SendMessageToEmpire(builtObject.Empire,
+            // EmpireMessageType.ShipBasePurchased, builtObject, empty) — EmpireMessage model not
+            // ported (adds to Empire.Messages / MessageRecipient; no Rnd).
+            void empty;
+        }
+    }
 
     // --- Task M3b (forceStructure.ts / resourceTargets.ts) ---
     // Empire.cs _StateForceStructureProjections / _PrivateForceStructureProjections
@@ -1046,6 +1323,11 @@ export class Empire {
 
 // Task M3b: Empire.GovernmentAttributes (Empire.cs 2805: _Galaxy.Governments[_GovernmentId],
 // assigned by ChangeGovernment — the TS changeGovernment only stores the id).
+// C# `parent is BuiltObject` for AddBuiltObjectToGalaxy's object parent (Habitat otherwise).
+function isBuiltObject(o: Habitat | BuiltObject): o is BuiltObject {
+    return (o as BuiltObject).builtObjectID !== undefined && (o as BuiltObject).design !== undefined;
+}
+
 export function empireGovernmentAttributes(empire: Empire): Government | null {
     const id = empire.governmentId;
     return id >= 0 && id < governmentsStatic.length ? governmentsStatic[id] : null;

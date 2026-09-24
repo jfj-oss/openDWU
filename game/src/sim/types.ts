@@ -5,7 +5,9 @@
 import { PopulationList } from './population';
 import type { Creature } from './creature';
 import type { CargoList, TroopList } from './cargo';
+import type { BuiltObject } from './builtObject';
 import type { Empire } from './empire';
+import type { Ruin } from './ruins';
 
 // Port of DistantWorlds.Types.HabitatType (HabitatType.cs)
 export enum HabitatType {
@@ -179,6 +181,8 @@ export class Habitat {
     // fields are nullable, so null until first use (Empire ctor sets them).
     cargo: CargoList | null = null;
     troops: TroopList | null = null;
+    // C#: BuiltObjectList _BasesAtHabitat = new BuiltObjectList() (Habitat ctor, Habitat.cs 6284).
+    basesAtHabitat: BuiltObject[] = [];
     // Port of Habitat.cs DevelopmentLevel (byte), set via SetDevelopmentLevel
     // (Habitat.cs).
     developmentLevel = 0;
@@ -205,6 +209,27 @@ export class Habitat {
     annualTaxRevenue = 0;
     taxRate = 0;
     distanceFactor = 1;
+    // C#: Ruin _Ruin (Habitat.cs Ruin; set by Galaxy.SelectRuins / SelectRuinsUnlockTech, ruins.ts).
+    ruin: Ruin | null = null;
+    // Colony approval / tax model (taxes.ts, Habitat.cs):
+    // C# int _DevelopmentLevelBaseline (Habitat.RecalculateDevelopmentLevelBaseline 5575).
+    // Note: `developmentLevel` above is C# _DevelopmentLevel (SetDevelopmentLevel);
+    // the C# DevelopmentLevel property (Habitat.cs 447) is taxes.ts habitatDevelopmentLevel.
+    developmentLevelBaseline = 0;
+    // C# float _HappinessModifier (written by CheckForSpacePortFacilities 2729).
+    happinessModifier = 0;
+    // C# bool HasSpacePort (Habitat.cs 191, written by CheckForSpacePortFacilities).
+    hasSpacePort = false;
+    // C# ResourceBonusList _ResourceBonuses = new ResourceBonusList() (Habitat.cs 187),
+    // double _GrowthFactor = 1.0 / _IncomeFactor = 1.0 (181/184); written by
+    // RecalculateCriticalResourceSupplyBonuses / ...Factors (5087/5124).
+    resourceBonuses: { resourceId: number; effect: number; value: number; appliesOnlyToSources: boolean }[] = [];
+    growthFactor = 1.0;
+    incomeFactor = 1.0;
+    // C# ColonyPopulationPolicy ColonyPopulationPolicy / ColonyPopulationPolicyRaceFamily
+    // (Habitat.cs 75/77, byte enum; default Assimilate = 0; set by TakeOwnershipOfColony).
+    colonyPopulationPolicy = 0;
+    colonyPopulationPolicyRaceFamily = 0;
 
     // Port of Habitat.cs Quality (_Quality, kept equal to
     // BaseQuality * (1 - Damage) by the BaseQuality setter / RecalculateQuality).
@@ -360,4 +385,6 @@ export interface SystemInfo {
     independentColonyCount?: number;
     dominantEmpire?: { empire: Empire; colonyCount: number; totalStrategicValue: number } | null;
     otherEmpires?: { empire: Empire; colonyCount: number; totalStrategicValue: number }[] | null;
+    // C#: SystemInfo.HasResearchBonus (bool, default false; set by Start.2.cs 1172, startHabitats.ts).
+    hasResearchBonus?: boolean;
 }

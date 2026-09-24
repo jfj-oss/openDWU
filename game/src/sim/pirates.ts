@@ -26,6 +26,8 @@ import { createNewDesigns } from './designGeneration';
 import { startStarDateForAge } from './galaxyTime';
 import { loadEmpirePolicy } from './researchSystem';
 import { SystemVisibilityStatus } from './visibility';
+import { BuiltObjectSubRole } from './builtObjectTypes';
+import { BuiltObjectRole } from './data/designSpecifications';
 
 // Port of PiratePlayStyle.cs (member order exact).
 export enum PiratePlayStyle {
@@ -177,12 +179,37 @@ export function fastFindNearestIndependentHabitat(galaxy: Galaxy, independentCol
     return result;
 }
 
-// Galaxy.8.cs FindNearestPirateFaction: needs a base BuiltObject (GenericBase or
-// Small/Medium/LargeSpacePort). BuiltObjects are not ported, so no faction has one.
-// TODO(port): check empire.BuiltObjects once they exist.
-export function findNearestPirateFaction(galaxy: Galaxy, _x: number, _y: number, _exclude: Empire | null, _includeSuperPirates: boolean): Empire | null {
-    void galaxy;
-    return null;
+// Galaxy.8.cs FindNearestPirateFaction(x, y, pirateFactionToExclude, includeSuperPirates)
+// (2872): nearest active pirate faction (by base habitat) that owns a base BuiltObject
+// (GenericBase or Small/Medium/LargeSpacePort). No Rnd.
+// Note: the pirate base itself is still TODO (generatePirateEmpire), so until it is ported
+// no faction qualifies and this returns null — as it did before.
+export function findNearestPirateFaction(galaxy: Galaxy, x: number, y: number, pirateFactionToExclude: Empire | null, includeSuperPirates: boolean): Empire | null {
+    let num = Number.MAX_VALUE;
+    let result: Empire | null = null;
+    for (let i = 0; i < galaxy.pirateEmpires.length; i++) {
+        const empire = galaxy.pirateEmpires[i];
+        if (empire == null || empire.pirateEmpireBaseHabitat === null || empire.builtObjects == null || !empire.active || (pirateFactionToExclude !== null && empire === pirateFactionToExclude) || (!includeSuperPirates && empire.pirateEmpireSuperPirates)) {
+            continue;
+        }
+        const num2 = galaxy.calculateDistanceSquared(x, y, empire.pirateEmpireBaseHabitat.xpos, empire.pirateEmpireBaseHabitat.ypos);
+        if (!(num2 < num)) {
+            continue;
+        }
+        let flag = false;
+        for (let j = 0; j < empire.builtObjects.length; j++) {
+            const builtObject = empire.builtObjects[j];
+            if (builtObject != null && (builtObject.subRole === BuiltObjectSubRole.GenericBase || builtObject.subRole === BuiltObjectSubRole.SmallSpacePort || builtObject.subRole === BuiltObjectSubRole.MediumSpacePort || builtObject.subRole === BuiltObjectSubRole.LargeSpacePort)) {
+                flag = true;
+                break;
+            }
+        }
+        if (flag) {
+            result = empire;
+            num = num2;
+        }
+    }
+    return result;
 }
 
 // Empire.1.cs PirateReviewColoniesToControl + PirateCheckControlColony (no Rnd).
@@ -378,8 +405,13 @@ export function generateNewPirateEmpires(galaxy: Galaxy, ctx: PirateGenerationCo
                 }
             }
             if (habitat !== null) {
-                // FindNearestBuiltObject: no BuiltObjects are ported → null → num8 = MaxValue.
-                const num8 = Number.MAX_VALUE;
+                // Galaxy.9.cs 83: FindNearestBuiltObject((int)X, (int)Y, BuiltObjectRole.Undefined,
+                // includeIndependentBuiltObjects: false).
+                const builtObject = galaxy.findNearestBuiltObject(Math.trunc(habitat.xpos), Math.trunc(habitat.ypos), BuiltObjectRole.Undefined, false);
+                let num8 = Number.MAX_VALUE;
+                if (builtObject !== null) {
+                    num8 = galaxy.calculateDistance(habitat.xpos, habitat.ypos, builtObject.xpos, builtObject.ypos);
+                }
                 if (num8 > num4) {
                     const h3 = galaxy.findNearestColony(habitat.xpos, habitat.ypos, null, false);
                     let num9 = Number.MAX_VALUE;

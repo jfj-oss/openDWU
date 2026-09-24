@@ -22,8 +22,7 @@
 // - Galaxy.Orders: no orders exist yet (count 0).
 // - Troops: the TS GenerateEmpire creates none yet (Troop model TODO).
 // - Characters / Leader: none; RaidCountdown 0; no pirate colony control.
-// - Tax: Habitat.TaxRate stays 0 (SetColonyTaxRate needs the approval model),
-//   see recalculateAnnualTaxRevenue.
+// - Tax: Habitat.TaxRate / TaxComplianceRate come from taxes.ts (SetColonyTaxRate).
 
 import type { Galaxy } from './galaxy';
 import type { Habitat } from './types';
@@ -37,6 +36,7 @@ import { DEFAULT_BASE_TECH_COST } from './componentStatic';
 import { ForceStructureProjection, ForceStructureProjectionList } from './forceStructureProjection';
 import { HabitatType } from './types';
 import { ResearchAbilityType } from './researchSystem';
+import { ColonyResourceEffect, recalculateCriticalResourceSupplyBonuses, resourceBonusTotalByEffectType, taxComplianceRate } from './taxes';
 
 export { ForceStructureProjection, ForceStructureProjectionList } from './forceStructureProjection';
 
@@ -459,9 +459,8 @@ export function habitatAnnualRevenue(galaxy: Galaxy, h: Habitat): number {
         num = (((num2 * num3 * (100.0 - h.developmentLevel / 2.0)) * (0.5 + habitatCorruption(galaxy, h))) / divisor);
     } else {
         num = (((num2 * h.developmentLevel) * (1.0 - habitatCorruption(galaxy, h))) * num3) / divisor;
-        // TODO(port): Habitat._IncomeFactor (RecalculateCriticalResourceSupplyFactors,
-        // wonders) — 1.0: no facilities at game start.
-        num *= 1.0;
+        // Habitat._IncomeFactor (RecalculateCriticalResourceSupplyFactors, taxes.ts).
+        num *= h.incomeFactor;
         if (empire !== null && empire !== galaxy.independentEmpire) {
             // TODO(port): Empire.TradeBonus (ReviewEmpireAbilityBonuses) — 0.0 until then.
             num *= 1.0 + 0.0;
@@ -471,9 +470,8 @@ export function habitatAnnualRevenue(galaxy: Galaxy, h: Habitat): number {
             num *= 1.0;
             // TODO(port): Empire.SpecialBonusWealth (ReviewSpecialBonusesRuinsWonders) — 0.0 until then.
             num *= 1.0 + 0.0;
-            // TODO(port): Habitat._ResourceBonuses (RecalculateCriticalResourceSupplyBonuses):
-            // empty — its only game-start call is TakeOwnershipOfColony's, at population 0.
-            const num4 = 1.0 + 0.0 / 100.0;
+            // Habitat._ResourceBonuses (RecalculateCriticalResourceSupplyBonuses, taxes.ts).
+            const num4 = 1.0 + resourceBonusTotalByEffectType(h, ColonyResourceEffect.IncomeBoost) / 100.0;
             num *= num4;
         }
     }
@@ -490,19 +488,13 @@ export function habitatAnnualRevenue(galaxy: Galaxy, h: Habitat): number {
  * _AnnualTaxRevenue snapshot. C# calls it from TakeOwnershipOfColony
  * (Empire.1.cs 269) and from the DoTasks tax steps (ReviewTaxes,
  * RecalculateColonyTaxRevenues — skipped here, see empireGeneration.ts).
- * TODO(port): Habitat.TaxRate is written by Empire.SetColonyTaxRate (Empire.9.cs
- * 5448), which needs Habitat.EmpireApprovalRating / TaxApproval; it stays 0.
- * TaxComplianceRate (Habitat.cs 701) needs EmpireApprovalRating too, but it is a
- * clamped [0, 1] factor, so for TaxRate 0 the C# product
- * AnnualRevenue * TaxRate * TaxComplianceRate equals AnnualRevenue * 0.
- * TODO(port): RecalculateCriticalResourceSupplyBonuses (Habitat.cs 5087) side
- * effects (_ResourceBonuses, _IncomeFactor, _GrowthFactor) are not modeled.
+ * Habitat.TaxRate is written by Empire.SetColonyTaxRate (taxes.ts);
+ * TaxComplianceRate and RecalculateCriticalResourceSupplyBonuses are in taxes.ts.
  */
 export function recalculateAnnualTaxRevenue(galaxy: Galaxy, h: Habitat): void {
     if (h.empire !== null) {
-        const taxRate = f32(h.taxRate);
-        if (taxRate !== 0) throw new Error('TODO(port): Habitat.TaxComplianceRate (EmpireApprovalRating)');
-        h.annualTaxRevenue = habitatAnnualRevenue(galaxy, h) * taxRate;
+        recalculateCriticalResourceSupplyBonuses(galaxy, h);
+        h.annualTaxRevenue = habitatAnnualRevenue(galaxy, h) * f32(h.taxRate) * taxComplianceRate(galaxy, h);
         h.annualTaxRevenue = Math.max(0.0, h.annualTaxRevenue);
         let num = COLONY_STATE_SUPPORT_COST;
         if (h.population != null) {

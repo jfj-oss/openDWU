@@ -25,7 +25,7 @@ import type { Race } from './data/races';
 import type { Resource } from './data/resources';
 import { buildResourceSystem, type ResourceSystem } from './resourceSystem';
 import { netSort } from './netSort';
-import { SystemVisibilityStatus } from './visibility';
+import { SystemVisibilityStatus, type GalaxyResourceMap } from './visibility';
 import { EmpireTerritory, strategicValue } from './territory';
 import { buildResearchStatic, type ResearchStatic } from './researchSystem';
 import { buildComponentStatic } from './componentStatic';
@@ -40,7 +40,9 @@ function compareGroupNames(a: Habitat[], b: Habitat[]): number {
 import type { Empire } from './empire';
 import type { GameData } from './data/gameData';
 import type { Design } from './design';
-import { findNewestCanBuild } from './designGeneration';
+import { findNewestCanBuild, resolveSubRoleDescription } from './designGeneration';
+import type { BuiltObject } from './builtObject';
+import { BuiltObjectRole } from './data/designSpecifications';
 import { BuiltObjectSubRole } from './builtObjectTypes';
 
 // Port of Galaxy.cs static fields (Galaxy.3.cs InitializeStatics sets
@@ -52,6 +54,21 @@ const MAXIMUM_EMPIRE_COUNT = 255; // Galaxy.3.cs:5034
 const MAX_SOLAR_SYSTEM_SIZE = 23000;
 // Port of Galaxy.3.cs InitializeStatics: MaxMoonOrbitSize = 1200.
 const MAX_MOON_ORBIT_SIZE = 1200;
+// Port of Galaxy.3.cs InitializeStatics: MovementDecelerationRange = 150 (Galaxy.3.cs:4983;
+// Galaxy.cs:170 `public static readonly int`).
+export const MOVEMENT_DECELERATION_RANGE = 150;
+
+// C# int.ToString("000") for the non-negative Design.BuildCount.
+function buildCount000(n: number): string {
+    return String(n).padStart(3, '0');
+}
+
+// Galaxy.5.cs SelectRandomUniqueStandardShipName word lists (exact order, incl. duplicates).
+const STANDARD_SHIP_NAME_ADJECTIVES: readonly string[] = ["Lucky", "Grand", "Bright", "Sublime", "Lonesome", "Charming", "Enchanted", "Brazen", "Serene", "Placid", "Quiet", "Friendly", "Happy", "Fortunate", "Merry", "Smiling", "Cautious", "Idle", "Brisk", "Bold", "Solitary", "Radiant", "Lavish", "Handsome", "Majestic", "Bountiful", "Gallant", "Intrepid", "Valiant", "Stout", "Superb", "Regal", "Noble", "Hardy", "Strange", "Shining", "Glowing", "Lively", "Daunting", "Slippery", "Crafty", "Risky", "Sneaky", "Lone", "Arduous", "Tenacious", "Outrageous", "Distant", "Doubtful", "Jubilant", "Cheerful", "Adamant", "Resolute", "Curious", "Extravagant", "Audacious", "Futile", "Vain", "Aimless", "Cryptic", "Prudent", "Worthy", "Honest", "Venerable", "Precious", "Celestial", "Foolish", "Roaming", "Blind", "Dusty", "Lost", "Solar", "Swift", "Stellar", "Last", "Wild", "Express", "Rusty", "Far", "Broken", "Fading", "Silent", "Ancient", "Pristine", "Shabby", "Tired", "Weary", "Secretive", "Conspicuous", "Hidden", "Dubious", "Devious", "Elusive", "Shady", "Wily", "Lawless", "Crooked", "Forbidden", "Wry", "Cowering", "Muffled", "Grasping", "Hasty", "Mocking", "Humble", "Sombre", "Solemn", "Eager", "Deep", "Meagre", "Frugal", "Daring", "Nimble", "Feeble", "Arcane", "Profound", "Obscure", "Graceful", "Vanishing", "Trusty", "Late", "Decrepit", "Grimy", "Surly", "Dire", "Tarnished", "Galactic"];
+const STANDARD_SHIP_NAME_NOUNS: readonly string[] = ["Queen", "Princess", "Sun", "Star", "Hope", "Chance", "Gamble", "Aspiration", "Traveller", "Voyager", "Wayfarer", "Scoundrel", "Wanderer", "Trader", "Merchant", "Encounter", "Scout", "Obsession", "Moon", "Empress", "Dream", "Fantasy", "Illusion", "Mirage", "Ruse", "Bluff", "Miracle", "Novelty", "Wonder", "Scheme", "Impulse", "Venture", "Wager", "Adventure", "Intrigue", "Luxury", "Challenge", "Maneuver", "Smuggler", "Lurker", "Prowler", "Imposter", "Subterfuge", "Mystery", "Enterprise", "Escapade", "Peril", "Ploy", "Quest", "Force", "Whim", "Adversity", "Navigator", "Ruse", "Gambit", "Subterfuge", "Pearl", "Jewel", "Treasure", "Prize", "Hoard", "Rogue", "Agent", "Envoy", "Guide", "Lady", "Pathfinder", "Expedition", "Journey", "Odyssey", "Errand", "Sojourn", "Bargain", "Way", "Guardian", "Dawn", "Echo", "Interlude", "Ranger", "Victory", "Renegade", "Starseeker", "Starwind", "Solace", "Pride", "Rimrunner", "Starway", "Beggar", "Rover", "Starfire", "Raider", "Deal", "Rendezvous", "Twilight", "Courage", "Burden", "Spirit", "Nightstar", "Profit", "Relic", "Bootlegger", "Shroud", "Remorse", "Disturbance", "Trailblazer", "Resolution", "Decoy", "Culprit", "Destiny", "Tramp", "Vagrant", "Splendor", "Starrider", "Negotiator", "Partisan", "Discovery", "Distress", "Rebel", "Evasion", "Pathway", "Endeavour", "Memory", "Orbit", "Impasse", "Nova"];
+// Galaxy.5.cs SelectRandomUniqueMilitaryShipName word lists (exact order, incl. duplicates).
+const MILITARY_SHIP_NAME_ADJECTIVES: readonly string[] = ["Grievous", "Prime", "Deadly", "Grand", "Black", "Swift", "Mighty", "Dreadful", "Crushing", "Shattering", "Silent", "Dark", "Supreme", "Ultimate", "Lethal", "Implacable", "Immortal", "Majestic", "Forceful", "Potent", "Great", "Ruinous", "Sinister", "Bleak", "Grim", "Devious", "Overwhelming", "Merciless", "Fearsome", "Cruel", "Iron", "Cunning", "Sly", "Fearless", "Insidious", "Evil", "Fearless", "Eternal", "Terrible", "Looming", "Overpowering", "Smashing", "Angry", "Raging", "Relentless", "Intrepid", "Wrathful", "Bitter", "Evasive", "Decisive", "Proud", "Indomitable", "Elusive", "Inevitable", "Belligerent", "Courageous", "Invincible", "Shrouded", "Growling", "Elite", "Final", "Assured", "Lamented", "Wailing", "Banished", "Discarded", "Worthy", "Desperate", "Reckless", "Fatal", "Hostile", "Tenacious", "Crimson", "Red", "Scarlet", "Formidable"];
+const MILITARY_SHIP_NAME_NOUNS: readonly string[] = ["Zenith", "Hand", "Vengeance", "Axe", "Dagger", "Eclipse", "Moon", "Sun", "Phantom", "Executioner", "Revenge", "Horizon", "Star", "Crucible", "Action", "Devastation", "Shadow", "Exploit", "Reprisal", "Surprise", "Strike", "Judgment", "Courage", "Stealth", "Enigma", "Mystery", "Fist", "Death", "Warrior", "Assassin", "Rendezvous", "Fate", "Destiny", "Doom", "Despair", "Curse", "Thunder", "Demise", "Revolution", "Annihilation", "Dominator", "Triumph", "Victory", "Conquest", "Invader", "Downfall", "Chaos", "Turmoil", "Anarchy", "Rebellion", "Sting", "Leader", "Master", "Victor", "Assault", "Cataclysm", "Tyrant", "Plague", "Fury", "Justice", "Reckoning", "Emancipator", "Defender", "Defiance", "Liberty", "Retribution", "Adversary", "Sentinel", "Sentry", "Ravager", "Subjugator", "Starfall", "Vigilance", "Starstream", "Inquisitor", "Swarm", "Intruder", "Bandit", "Allegiance", "Behemoth", "Emperor", "Firestorm", "Nemesis", "Onslaught", "Predator", "Rampage", "Stalker", "Trap", "Arrow", "Skirmish", "Spectre", "Hero", "Verdict", "Mandate", "Dictator", "Decree", "Revolt", "Protector", "Bastion", "Vindication", "Guardian", "Shield", "Champion", "Advocate", "Challenger", "Provocation", "Spite", "Mutiny", "Repulser", "Resistance", "Liberator", "Deception", "Exile", "Outcast", "Fugitive", "Renegade", "Cutlass", "Affliction", "Conflict", "Aggressor", "Banshee", "Battle", "Firelance", "Chariot", "Conqueror", "Demolisher", "Desolation", "Eminence", "Encounter", "Enforcer", "Eviscerator", "Exactor", "Fireclaw", "Firestorm", "Dragon", "Gauntlet", "Claw", "Hammer", "Hunter", "Hydra", "Intimidator", "Mauler", "Mayhem", "Monarch", "Nexus", "Rage", "Sovereign", "Scorpion", "Scourge", "Serpent", "Terror", "Vendetta", "Warlord", "Wolf", "Nightfall", "Night", "Legacy", "Backstab", "Fire", "Marauder", "Nova", "Raider"];
 
 // Default cloud-image count for the nebula generator. The renderer
 // should pass the actual number of
@@ -179,6 +196,13 @@ export class Galaxy {
     independentCount = 0;
     lifePrevalence = 1000;
     age = 0; // C#: _Age (always 0 in new-game generation; set from galaxy age at load time only)
+    // Port of Galaxy.cs _PiratePrevalence (double; set by GenerateGalaxy, Galaxy.4.cs 2144, and
+    // Start.2.cs 107 `galaxy_0.PiratePrevalence = double_3`). Read by SelectRuins (ruins.ts);
+    // createGame must copy CreateGameOptions.piratePrevalence here before ruins are placed.
+    piratePrevalence = 0;
+    // Port of Galaxy.cs RuinCount (int, 603) and _RuinsHabitats (HabitatList, 613) — ruins.ts.
+    ruinCount = 0;
+    ruinsHabitats: Habitat[] = [];
     // Task 07a: habitats with a parent, sorted once by orbit depth so step()
     // advances parents before children (stars have no parent; planets before
     // their moons). Rebuilt when habitats change.
@@ -254,12 +278,18 @@ export class Galaxy {
         return Math.trunc(this.sizeY / INDEX_SIZE);
     }
 
+    // Task M3c: C# BuiltObjectList[][] BuiltObjectIndex, sized like HabitatIndex
+    // (Galaxy.4.cs 2110-2114).
+    builtObjectIndexGrid: BuiltObject[][][] = [];
+
     initIndexGrids(): void {
         this.habitatIndexGrid = [];
         this.systemsIndexGrid = [];
+        this.builtObjectIndexGrid = [];
         for (let i = 0; i < this.indexMaxX; i++) {
             this.habitatIndexGrid.push(Array.from({ length: this.indexMaxY }, () => []));
             this.systemsIndexGrid.push(Array.from({ length: this.indexMaxY }, () => []));
+            this.builtObjectIndexGrid.push(Array.from({ length: this.indexMaxY }, () => []));
         }
     }
 
@@ -732,6 +762,472 @@ export class Galaxy {
             return this.nextCreatureId;
         }
         throw new Error('Maximum allowable creature number exceeded!');
+    }
+
+    // ---- Task M3c: BuiltObjects in the galaxy (Galaxy.cs / Galaxy.4-7.cs) ----
+    // C#: BuiltObjectList BuiltObjects (Galaxy.cs), _NextBuiltObjectID (starts at 0).
+    builtObjects: BuiltObject[] = [];
+    nextBuiltObjectId = 0;
+    /**
+     * C#: Galaxy.StartingAge (Start.2.cs sets it from the player's age setting before
+     * empire generation). Read by CreateStateShips. The caller wiring createGame sets it.
+     */
+    startingAge = 0;
+    /**
+     * C#: Galaxy.SubRoleNameSet (Start.2.cs:510, from Galaxy.LoadShipNames(shipNames.txt)).
+     * TODO(port): LoadShipNames — the stock shipNames.txt lists no names for any sub-role,
+     * so GetNames returns an empty (or no) list and GetCustomName always yields "";
+     * null here is equivalent.
+     */
+    subRoleNameSet: Map<BuiltObjectSubRole, string[]> | null = null;
+
+    /** Galaxy.MovementDecelerationRange (static readonly int, 150). */
+    get movementDecelerationRange(): number {
+        return MOVEMENT_DECELERATION_RANGE;
+    }
+
+    // Port of Galaxy.cs GetNextBuiltObjectID (1303).
+    getNextBuiltObjectID(): number {
+        if (this.nextBuiltObjectId < 2147483647) {
+            this.nextBuiltObjectId++;
+            return this.nextBuiltObjectId;
+        }
+        throw new Error('Maximum allowable ship number exceeded!');
+    }
+
+    // Port of Galaxy.6.cs SelectRelativeParkingPoint(minimumDistance, out x, out y) (3785)
+    // and SelectRelativeParkingPoint(out x, out y) (3797, minimumDistance =
+    // MovementDecelerationRange). Rnd: NextDouble, Next(0, 2), NextDouble.
+    selectRelativeParkingPoint(minimumDistance: number = MOVEMENT_DECELERATION_RANGE): { x: number; y: number } {
+        let num = this.rnd.nextDouble() * Math.PI;
+        if (this.rnd.next(0, 2) === 1) {
+            num *= -1.0;
+        }
+        const num2 = minimumDistance + this.rnd.nextDouble() * MOVEMENT_DECELERATION_RANGE;
+        return { x: Math.cos(num) * num2, y: Math.sin(num) * num2 };
+    }
+
+    // Port of Galaxy.4.cs GenerateBuiltObjectName(design[, habitat[, uniqueNamesForSmallMilitaryShips]])
+    // (2361-2493). Rnd only through GetCustomName (none) and SelectUniqueBuiltObjectName.
+    generateBuiltObjectName(design: Design, habitat: Habitat | null = null, uniqueNamesForSmallMilitaryShips = false): string {
+        const S = BuiltObjectSubRole;
+        let empty = '';
+        let flag = false;
+        empty = this.getCustomName(design);
+        if (empty === '') {
+            switch (design.subRole) {
+                case S.Escort:
+                case S.Frigate:
+                case S.Destroyer:
+                case S.TroopTransport:
+                    if (!uniqueNamesForSmallMilitaryShips) {
+                        flag = true;
+                    }
+                    break;
+                case S.ResupplyShip:
+                case S.ExplorationShip:
+                case S.SmallFreighter:
+                case S.MediumFreighter:
+                case S.LargeFreighter:
+                case S.ColonyShip:
+                case S.PassengerShip:
+                case S.ConstructionShip:
+                case S.GasMiningShip:
+                case S.MiningShip:
+                case S.GasMiningStation:
+                case S.MiningStation:
+                case S.SmallSpacePort:
+                case S.MediumSpacePort:
+                case S.LargeSpacePort:
+                case S.ResortBase:
+                case S.GenericBase:
+                case S.EnergyResearchStation:
+                case S.WeaponsResearchStation:
+                case S.HighTechResearchStation:
+                case S.MonitoringStation:
+                case S.DefensiveBase:
+                    flag = false;
+                    break;
+                default:
+                    if (design.buildCount <= 1 && design.subRole !== S.Carrier) {
+                        flag = true;
+                    }
+                    break;
+            }
+        }
+        if (flag) {
+            const n = buildCount000(design.buildCount);
+            switch (design.subRole) {
+                case S.GenericBase:
+                    empty = design.name + ' ' + n;
+                    break;
+                case S.Escort:
+                case S.Frigate:
+                case S.Destroyer:
+                case S.TroopTransport:
+                    empty = design.name + ' ' + n;
+                    break;
+                case S.Cruiser:
+                case S.CapitalShip:
+                case S.Carrier:
+                case S.ResupplyShip:
+                    empty = design.name;
+                    break;
+                case S.MonitoringStation:
+                    empty = design.name + ' ' + resolveSubRoleDescription(S.MonitoringStation) + ' ' + n;
+                    break;
+                case S.DefensiveBase:
+                    empty = design.name + ' ' + resolveSubRoleDescription(S.DefensiveBase) + ' ' + n;
+                    break;
+                case S.EnergyResearchStation:
+                    empty = design.name + ' ' + resolveSubRoleDescription(S.EnergyResearchStation) + ' ' + n;
+                    break;
+                case S.WeaponsResearchStation:
+                    empty = design.name + ' ' + resolveSubRoleDescription(S.WeaponsResearchStation) + ' ' + n;
+                    break;
+                case S.HighTechResearchStation:
+                    empty = design.name + ' ' + resolveSubRoleDescription(S.HighTechResearchStation) + ' ' + n;
+                    break;
+                case S.SmallSpacePort:
+                case S.MediumSpacePort:
+                case S.LargeSpacePort:
+                    // TextResolver.GetText("Space Port") (GameText.txt 521).
+                    empty = design.name + ' Space Port ' + n;
+                    break;
+                case S.MiningShip:
+                    empty = design.name + ' ' + n;
+                    break;
+                case S.GasMiningShip:
+                    empty = design.name + ' ' + n;
+                    break;
+                case S.MiningStation:
+                    empty = design.name + ' ' + resolveSubRoleDescription(S.MiningStation) + ' ' + n;
+                    break;
+                case S.GasMiningStation:
+                    empty = design.name + ' ' + resolveSubRoleDescription(S.GasMiningStation) + ' ' + n;
+                    break;
+                case S.SmallFreighter:
+                case S.MediumFreighter:
+                case S.LargeFreighter:
+                    empty = design.name + ' ' + n;
+                    break;
+                case S.ColonyShip:
+                    empty = design.name + ' ' + n;
+                    break;
+                case S.ConstructionShip:
+                    empty = design.name + ' ' + n;
+                    break;
+                case S.ExplorationShip:
+                    empty = design.name + ' ' + n;
+                    break;
+            }
+        } else {
+            empty = this.selectUniqueBuiltObjectName(design, habitat);
+        }
+        return empty;
+    }
+
+    // Port of Galaxy.5.cs GetCustomName (2223). No Rnd.
+    private getCustomName(design: Design): string {
+        let text = '';
+        let list: string[] | null = null;
+        if (design.empire === this.playerEmpire && this.subRoleNameSet !== null) {
+            list = this.subRoleNameSet.get(design.subRole) ?? null;
+        }
+        if (list !== null && list.length > 0) {
+            let flag = false;
+            const empire = design.empire as Empire;
+            const builtObjectList: BuiltObject[] = [];
+            builtObjectList.push(...empire.builtObjects);
+            builtObjectList.push(...empire.privateBuiltObjects);
+            for (let num = builtObjectList.length - 1; num >= 0; num--) {
+                if (builtObjectList[num].subRole === design.subRole) {
+                    const num2 = list.indexOf(builtObjectList[num].name);
+                    if (num2 >= 0) {
+                        if (num2 === list.length - 1) {
+                            flag = true;
+                        } else {
+                            text = list[num2 + 1];
+                        }
+                        break;
+                    }
+                }
+            }
+            if (text === '' && !flag) {
+                text = list[0];
+            }
+        }
+        return text;
+    }
+
+    // Port of Galaxy.5.cs SelectUniqueBuiltObjectName (2264). Rnd: see the callees and the
+    // Monitoring/Research/Defensive/Generic base arrays (one Next each).
+    selectUniqueBuiltObjectName(design: Design, parentHabitat: Habitat | null): string {
+        const S = BuiltObjectSubRole;
+        let empty = '';
+        empty = this.getCustomName(design);
+        if (empty !== '') {
+            return empty;
+        }
+        let text = '';
+        let text2 = '';
+        if (parentHabitat !== null) {
+            text = parentHabitat.name;
+            const habitat = this.determineHabitatSystemStar(parentHabitat);
+            text2 = habitat.name;
+        }
+        switch (design.subRole) {
+            case S.MiningStation:
+                empty = text + ' ' + resolveSubRoleDescription(S.MiningStation);
+                break;
+            case S.GasMiningStation:
+                empty = text + ' ' + resolveSubRoleDescription(S.GasMiningStation);
+                break;
+            case S.Escort:
+            case S.Frigate:
+            case S.Destroyer:
+            case S.Cruiser:
+            case S.CapitalShip:
+            case S.TroopTransport:
+            case S.Carrier:
+            case S.ResupplyShip:
+                empty = this.selectRandomUniqueMilitaryShipName(parentHabitat);
+                break;
+            case S.ResortBase:
+                empty = this.generateResortBaseName(parentHabitat);
+                break;
+            case S.MonitoringStation: {
+                const array = ['Beacon', 'Sentinel', 'Station', 'Monitoring Facility'];
+                empty = text2 !== '' ? text2 + ' ' + array[this.rnd.next(0, array.length)] : array[this.rnd.next(0, array.length)] + ' ' + buildCount000(design.buildCount);
+                break;
+            }
+            case S.EnergyResearchStation:
+            case S.WeaponsResearchStation:
+            case S.HighTechResearchStation: {
+                const array = ['Research Center', 'Station', 'Research Station', 'Research Facility'];
+                empty = text2 !== '' ? text2 + ' ' + array[this.rnd.next(0, array.length)] : array[this.rnd.next(0, array.length)] + ' ' + buildCount000(design.buildCount);
+                break;
+            }
+            case S.DefensiveBase: {
+                // TextResolver.GetText of each (GameText.txt 1601, 2781-2783).
+                const array = ['Defensive Base', 'Weapons Platform', 'Defense Battery', 'Orbital Battery'];
+                empty = text !== '' ? text + ' ' + array[this.rnd.next(0, array.length)] : array[this.rnd.next(0, array.length)] + ' ' + buildCount000(design.buildCount);
+                break;
+            }
+            case S.GenericBase: {
+                const array = ['Base', 'Station'];
+                const text3 = array[this.rnd.next(0, array.length)];
+                if (empty === '') {
+                    empty = text2 + ' ' + text3;
+                }
+                break;
+            }
+            case S.ExplorationShip:
+            case S.SmallFreighter:
+            case S.MediumFreighter:
+            case S.LargeFreighter:
+            case S.ColonyShip:
+            case S.PassengerShip:
+            case S.ConstructionShip:
+            case S.GasMiningShip:
+            case S.MiningShip:
+                empty = this.selectRandomUniqueStandardShipName(parentHabitat);
+                break;
+            case S.SmallSpacePort:
+            case S.MediumSpacePort:
+            case S.LargeSpacePort:
+                empty = text + ' Space Port';
+                break;
+            default:
+                empty = design.name + ' X';
+                break;
+        }
+        return empty;
+    }
+
+    // Port of Galaxy.5.cs SelectRandomUniqueStandardShipName (2356). Rnd: Next(0,127),
+    // Next(0,125), Next(0,7); when that is < 2 and habitat != null and the system star name
+    // passes the checks, one more Next(0,3).
+    selectRandomUniqueStandardShipName(habitat: Habitat | null): string {
+        let empty = '';
+        const array = STANDARD_SHIP_NAME_ADJECTIVES;
+        const array2 = STANDARD_SHIP_NAME_NOUNS;
+        let num = this.rnd.next(0, array.length);
+        const text = array[num];
+        num = this.rnd.next(0, array2.length);
+        const text2 = array2[num];
+        empty = text + ' ' + text2;
+        if (this.rnd.next(0, 7) < 2 && habitat !== null) {
+            const habitat2 = this.determineHabitatSystemStar(habitat);
+            if (habitat2.category === HabitatCategoryType.Star && habitat2.name.length < 16 && habitat2.name.length > 1) {
+                const text3 = habitat2.name.substring(1, 2);
+                if (text3.toLowerCase() === text3) {
+                    empty = this.rnd.next(0, 3) !== 1 ? habitat2.name + ' ' + text2 : text2 + ' of ' + habitat2.name;
+                }
+            }
+        }
+        return empty;
+    }
+
+    // Port of Galaxy.5.cs SelectRandomUniqueMilitaryShipName(habitat) (2419). Rnd: Next(0,76),
+    // Next(0,162), Next(0,5); when that is < 2 and habitat != null and the system star name
+    // passes the checks, one more Next(0,3).
+    selectRandomUniqueMilitaryShipName(habitat: Habitat | null = null): string {
+        let empty = '';
+        let empty2 = '';
+        let empty3 = '';
+        const array = MILITARY_SHIP_NAME_ADJECTIVES;
+        const array2 = MILITARY_SHIP_NAME_NOUNS;
+        let num = this.rnd.next(0, array.length);
+        empty2 = array[num];
+        num = this.rnd.next(0, array2.length);
+        empty3 = array2[num];
+        empty = empty2 + ' ' + empty3;
+        if (this.rnd.next(0, 5) < 2 && habitat !== null) {
+            const habitat2 = this.determineHabitatSystemStar(habitat);
+            if (habitat2.category === HabitatCategoryType.Star && habitat2.name.length < 16 && habitat2.name.length > 1) {
+                const text = habitat2.name.substring(1, 2);
+                if (text.toLowerCase() === text) {
+                    empty = this.rnd.next(0, 3) !== 1 ? empty3 + ' of ' + habitat2.name : habitat2.name + ' ' + empty3;
+                }
+            }
+        }
+        return empty;
+    }
+
+    // Port of Galaxy.3.cs GenerateResortBaseName (553).
+    private generateResortBaseName(habitat: Habitat | null): string {
+        const array = ['Royal', 'Holiday', 'Luxury', 'Grand', 'Horizon'];
+        const array2 = ['Resort', 'Hotel', 'Encounter', 'Casino', 'Retreat', 'Stopover', 'Lounge', 'Lodge', 'Club', 'Palace'];
+        if (habitat !== null && this.rnd.next(0, 3) > 0) {
+            if (habitat.scenicFeature !== null && habitat.scenicFeature !== '') {
+                if (habitat.scenicFeature.length < 26) {
+                    return habitat.scenicFeature + ' ' + array2[this.rnd.next(0, array2.length)];
+                }
+                const a = array[this.rnd.next(0, array.length)];
+                return a + ' ' + array2[this.rnd.next(0, array2.length)];
+            }
+            const habitat2 = this.determineHabitatSystemStar(habitat);
+            return habitat2.name + ' ' + array2[this.rnd.next(0, array2.length)];
+        }
+        const a = array[this.rnd.next(0, array.length)];
+        return a + ' ' + array2[this.rnd.next(0, array2.length)];
+    }
+
+    // Port of Galaxy.7.cs FindNearestBuiltObject(x, y, role[, includeIndependentBuiltObjects = true
+    // [, empireToExclude = null]]) (876-920) + FindNearestBuiltObjectInIndex (922). No Rnd.
+    findNearestBuiltObject(x: number, y: number, role: BuiltObjectRole = BuiltObjectRole.Undefined, includeIndependentBuiltObjects = true, empireToExclude: Empire | null = null): BuiltObject | null {
+        const ix = Math.trunc(x);
+        const iy = Math.trunc(y);
+        return this.ringSearch(ix, iy, (cx, cy) => {
+            let builtObject: BuiltObject | null = null;
+            let distance = Number.MAX_VALUE;
+            for (const builtObject2 of this.builtObjectIndexGrid[cx][cy]) {
+                if (builtObject2 === null || (!includeIndependentBuiltObjects && builtObject2.empire === this.independentEmpire) || (empireToExclude !== null && builtObject2.empire === empireToExclude)) continue;
+                const num = this.calculateDistanceSquared(ix, iy, builtObject2.xpos, builtObject2.ypos);
+                if (!(num < distance)) continue;
+                if (role !== BuiltObjectRole.Undefined) {
+                    if (builtObject2.role === role) {
+                        builtObject = builtObject2;
+                        distance = num;
+                    }
+                } else {
+                    builtObject = builtObject2;
+                    distance = num;
+                }
+            }
+            if (builtObject !== null) distance = this.calculateDistance(ix, iy, builtObject.xpos, builtObject.ypos);
+            return { item: builtObject, distance };
+        });
+    }
+
+    // Port of Galaxy.7.cs FindNearestBuiltObject(x, y, empire) (795) + InIndex (838). No Rnd.
+    findNearestBuiltObjectOfEmpire(x: number, y: number, empire: Empire | null): BuiltObject | null {
+        const ix = Math.trunc(x);
+        const iy = Math.trunc(y);
+        return this.ringSearch(ix, iy, (cx, cy) => {
+            let builtObject: BuiltObject | null = null;
+            let distance = Number.MAX_VALUE;
+            for (const builtObject2 of this.builtObjectIndexGrid[cx][cy]) {
+                if (builtObject2 === null) continue;
+                const num = this.calculateDistanceSquared(ix, iy, builtObject2.xpos, builtObject2.ypos);
+                if (!(num < distance)) continue;
+                if (empire !== null) {
+                    if (builtObject2.empire === empire) {
+                        builtObject = builtObject2;
+                        distance = num;
+                    }
+                } else {
+                    builtObject = builtObject2;
+                    distance = num;
+                }
+            }
+            if (builtObject !== null) distance = this.calculateDistance(ix, iy, builtObject.xpos, builtObject.ypos);
+            return { item: builtObject, distance };
+        });
+    }
+
+    // Port of Galaxy.7.cs FindNearestBuiltObject(x, y, empire, subRole, fullyFunctional) (1319)
+    // + InIndex (1355). No Rnd.
+    findNearestBuiltObjectOfEmpireSubRole(x: number, y: number, empire: Empire | null, subRole: BuiltObjectSubRole, fullyFunctional: boolean): BuiltObject | null {
+        const ix = Math.trunc(x);
+        const iy = Math.trunc(y);
+        return this.ringSearch(ix, iy, (cx, cy) => {
+            let builtObject: BuiltObject | null = null;
+            let distance = Number.MAX_VALUE;
+            for (const builtObject2 of this.builtObjectIndexGrid[cx][cy]) {
+                if (builtObject2 === null) continue;
+                const num = this.calculateDistanceSquared(ix, iy, builtObject2.xpos, builtObject2.ypos);
+                if (!(num < distance)) continue;
+                let flag = true;
+                if (fullyFunctional && (builtObject2.builtAt !== null || builtObject2.unbuiltOrDamagedComponentCount > 0)) flag = false;
+                if (!flag) continue;
+                let flag2 = true;
+                if (empire !== null && builtObject2.empire !== empire) flag2 = false;
+                if (!flag2) continue;
+                if (subRole !== BuiltObjectSubRole.Undefined) {
+                    if (builtObject2.subRole === subRole) {
+                        builtObject = builtObject2;
+                        distance = num;
+                    }
+                } else {
+                    builtObject = builtObject2;
+                    distance = num;
+                }
+            }
+            if (builtObject !== null) distance = this.calculateDistance(ix, iy, builtObject.xpos, builtObject.ypos);
+            return { item: builtObject, distance };
+        });
+    }
+
+    // Port of Galaxy.7.cs FindNearestBuiltObject(x, y, subRole, includeSecondaryEmpires) (1411)
+    // + InIndex (1447). No Rnd.
+    findNearestBuiltObjectOfSubRole(x: number, y: number, subRole: BuiltObjectSubRole, includeSecondaryEmpires: boolean): BuiltObject | null {
+        const ix = Math.trunc(x);
+        const iy = Math.trunc(y);
+        return this.ringSearch(ix, iy, (cx, cy) => {
+            let builtObject: BuiltObject | null = null;
+            let distance = Number.MAX_VALUE;
+            for (const builtObject2 of this.builtObjectIndexGrid[cx][cy].slice()) {
+                if (builtObject2 === null) continue;
+                const num = this.calculateDistanceSquared(ix, iy, builtObject2.xpos, builtObject2.ypos);
+                if (!(num < distance)) continue;
+                let flag = true;
+                if (!includeSecondaryEmpires && (builtObject2.empire === null || builtObject2.empire === this.independentEmpire || builtObject2.empire.pirateEmpireBaseHabitat !== null)) flag = false;
+                if (!flag) continue;
+                if (subRole !== BuiltObjectSubRole.Undefined) {
+                    if (builtObject2.subRole === subRole) {
+                        builtObject = builtObject2;
+                        distance = num;
+                    }
+                } else {
+                    builtObject = builtObject2;
+                    distance = num;
+                }
+            }
+            if (builtObject !== null) distance = this.calculateDistance(ix, iy, builtObject.xpos, builtObject.ypos);
+            return { item: builtObject, distance };
+        });
     }
 
     // Port of Galaxy.cs SelectRandomHeading (line 2795); C# returns float.
@@ -2855,11 +3351,69 @@ export class Galaxy {
         habitat.habitatIndex = num;
         habitat.systemIndex = nearestSystemStar.systemIndex;
         this.habitats.splice(num, 0, habitat);
-        for (let i = num + 1; i < this.habitats.length; i++) {
-            this.habitats[i].habitatIndex = i;
-        }
         system.habitats.push(habitat);
+        // Galaxy.9.cs 3235: HabitatIndex[galaxyIndex].Add(habitat) (index of the system star).
+        if (this.habitatIndexGrid.length > 0) {
+            const gi = this.resolveIndex(Math.trunc(nearestSystemStar.xpos), Math.trunc(nearestSystemStar.ypos));
+            this.habitatIndexGrid[gi.x][gi.y].push(habitat);
+        }
+        this.fixResourceMaps(habitat.habitatIndex + 1, this.habitats.length - 1, 1, [habitat]);
+        this.setSystemHabitatExploration(habitat, nearestSystemStar);
         return true;
+    }
+
+    // Port of Galaxy.9.cs FixResourceMaps(startIndex, endIndex, movement, newHabitats) (2994):
+    // snapshot every resource map by the (not yet reindexed) HabitatIndex values, reindex
+    // (ReindexHabitats 3595), then rebuild the maps sized for the new habitat count.
+    private fixResourceMaps(startIndex: number, endIndex: number, movement: number, newHabitats: Habitat[] | null): void {
+        const snapshot = (map: GalaxyResourceMap | null): boolean[] => {
+            const out = new Array<boolean>(this.habitats.length).fill(false);
+            if (map === null) return out;
+            for (let j = 0; j < this.habitats.length; j++) {
+                const h = this.habitats[j];
+                out[j] = newHabitats !== null && newHabitats.includes(h) ? false : map.checkResourcesKnownRaw(h.habitatIndex);
+            }
+            return out;
+        };
+        const list = this.empires.map((e) => snapshot(e.resourceMap ?? null));
+        const list3 = this.independentEmpire !== null ? snapshot(this.independentEmpire.resourceMap ?? null) : null;
+        const list2 = this.pirateEmpires.map((e) => snapshot(e.resourceMap ?? null));
+        // ReindexHabitats
+        for (let j = startIndex; j <= endIndex; j++) {
+            if (j < this.habitats.length && (newHabitats === null || newHabitats.length === 0 || !newHabitats.includes(this.habitats[j]))) {
+                this.habitats[j].habitatIndex += movement;
+            }
+        }
+        const rebuild = (map: GalaxyResourceMap, known: boolean[]) => {
+            map.initializeFlags(this.habitats.length, this);
+            for (let k = 0; k < this.habitats.length; k++) map.setResourcesKnownRaw(this.habitats[k].habitatIndex, known[k]);
+        };
+        this.empires.forEach((e, i) => {
+            if (e.resourceMap) rebuild(e.resourceMap, list[i]);
+        });
+        this.pirateEmpires.forEach((e, i) => {
+            if (e.resourceMap) rebuild(e.resourceMap, list2[i]);
+        });
+        if (this.independentEmpire?.resourceMap && list3 !== null) rebuild(this.independentEmpire.resourceMap, list3);
+    }
+
+    // Port of Galaxy.9.cs SetSystemHabitatExploration / SetSystemHabitatsExploration (3326/3333).
+    private setSystemHabitatExploration(systemHabitat: Habitat, systemStar: Habitat): void {
+        const seen = (s: SystemVisibilityStatus) => s === SystemVisibilityStatus.Explored || s === SystemVisibilityStatus.Visible;
+        for (const e of this.empires) {
+            if (!e.resourceMap) continue;
+            if (!seen(e.visibility.systemVisibility[systemStar.systemIndex].status)) continue;
+            e.resourceMap.setResourcesKnown(systemHabitat, true);
+        }
+        for (const e of this.pirateEmpires) {
+            if (!e.resourceMap) continue;
+            if (!seen(e.visibility.systemVisibility[systemStar.systemIndex].status)) continue;
+            e.resourceMap.setResourcesKnown(systemHabitat, true);
+        }
+        const ind = this.independentEmpire;
+        if (ind === null || !ind.resourceMap) return;
+        if (!seen(ind.visibility.systemVisibility[systemStar.systemIndex].status)) return;
+        ind.resourceMap.setResourcesKnown(systemHabitat, true);
     }
 
     // Port of Galaxy.8.cs SetColonizableHabitatsInSystem (line 95), including
