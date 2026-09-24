@@ -98,3 +98,11 @@ Tests: added `test/componentStatic.test.ts`, `test/designNames.test.ts`, `test/d
 - Rnd parity: C# game start is not seed-deterministic (Galaxy 240 s block reseeds Rnd from the clock; Bacon clock Randoms; worker threads). The port keeps one seeded stream; see tasks/M4-plan.md determinism contract.
 - Known TODOs: mission assignment (AssignMissionsToBuiltObjectList no-op; draws Rnd in C#), the rest of Empire/Galaxy DoTasks (M4), story events (off by default), messages/UI text.
 - Next: M4 per tasks/M4-plan.md (M4a tick core in progress).
+
+## M4a switch-over + wave 1 (in progress)
+
+- `3a1ae7f`: createGame / GenerateEmpire call the real ticks (tick/gameStart.ts) at the C# sites; stand-ins
+  `empireDoTasksStandIn`, `galaxyGameStartHugeTick/LongTick` removed. createGame pins unchanged; the 600 s
+  digest moved to `78d35aa06c9a1e5b` (1344-1350 touch stagger now applied, incl. LastHugeTouch).
+- Wave 1 is running in local worktrees `/home/user/wt/m4{b,d,j,k,r,t}` on branches `wip/m4*`.
+  M4b is on Fable; d, j, k, r and t are on Opus. They get merged into `claude/cloud-lane-c2` as they finish.
