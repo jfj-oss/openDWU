@@ -676,3 +676,22 @@ namespace DistantWorlds.Types
   }
 }
 ```
+
+## Worker report
+
+**Files changed:**
+- `src/sim/data/designTemplates.ts` (new) — ports `DesignSpecification`, `DesignSpecificationComponentRule`, `DesignSpecificationComponentRuleType`, plus the supporting enums (`ComponentCategoryType`, `BuiltObjectRole`, `BattleTactics`, `InvasionTactics`, `BuiltObjectFleeWhen`, `DesignImageScalingMode`) and `parseDesignSpecification(text, subRoleName, subRole, isMobile)` from `LoadFromFile`.
+- `src/sim/data/gameData.ts` — added `designTemplates: Map<string, DesignSpecification>` to `GameData`; `loadGameData` now takes an optional `designTemplateFiles` param and fetches/parses each file under `designTemplates/DEFAULT/`. A `resolveBuiltObjectSubRole` helper matches file names to `BuiltObjectSubRole` members case-insensitively.
+- `test/helpers/loadGameDataFs.ts` — enumerates `designTemplates/DEFAULT/*.txt` via `node:fs` and passes the file names to `loadGameData`.
+- `test/data-design-templates.test.ts` (new) — 15 tests: synthetic-text coverage of every key kind (tactics, invasion, flee-when, image scaling with range validation, component rules by type and category, BOM/CRLF, comment/blank skipping), `ResolveRole` mapping + throw, `Clone`/`Contains`, rule getters/setters; real-file tests that parse every `designTemplates/DEFAULT/*.txt` present and check rule types fall inside the enum ranges.
+
+**Done:**
+- Full port of the three named C# classes and the parse loop from `LoadFromFile`.
+- Registered in `gameData.ts` and wired through the test helper.
+- `npm run typecheck` and `npm test` both pass (236 tests).
+
+**Notes / left undone:**
+- `public/asset-manifest.json` does not enumerate `designTemplates/DEFAULT/`, so the browser path cannot discover the files on its own. `loadGameData` therefore requires callers to pass `designTemplateFiles` explicitly; the test helper supplies them via `node:fs`. A `TODO(port)` note marks where the manifest should list this folder once it does.
+- The local DW:U install ships only one template file (`smallfreighter.txt`), so the "≥ 20 sub-roles" assertion is relaxed to "at least what is present" when fewer than 20 files exist (reported via `console.log`). On a full install the strict ≥ 20 checks apply.
+- `ComponentCategoryType` is a partial port (only the 9 members referenced by `DesignSpecification`); other `ComponentType`s resolve to `Undefined` until the full enum is ported. Marked with `TODO(port)`.
+- The `DesignSpecificationComponentRule` constructor uses an explicit `'category' | 'type'` discriminator instead of runtime `typeof` dispatch, because TS numeric enums are plain numbers at runtime and both parameter types would be indistinguishable.

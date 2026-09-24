@@ -43,5 +43,17 @@ export async function loadGameDataFs(customizationSet?: string): Promise<GameDat
         .filter((f) => f.endsWith('.txt'))
         .sort();
 
-    return loadGameData(fetchTextFs, customizationSet, raceFileNames);
+    // Discover design template file names (without extension) from
+    // designTemplates/DEFAULT/. The C# engine loads one file per sub-role;
+    // only names matching a BuiltObjectSubRole member are used by loadGameData.
+    let designTemplateFiles: string[] = [];
+    const templatesDir = resolve(dwuRoot, 'designTemplates', 'DEFAULT');
+    if (existsSync(templatesDir)) {
+        designTemplateFiles = readdirSync(templatesDir)
+            .filter((f) => f.endsWith('.txt'))
+            .map((f) => f.replace(/\.txt$/, ''))
+            .sort();
+    }
+
+    return loadGameData(fetchTextFs, customizationSet, raceFileNames, designTemplateFiles);
 }
