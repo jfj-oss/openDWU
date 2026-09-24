@@ -240,7 +240,8 @@ export function createGameMenu(
         chk.setAttribute('aria-label', labelText);
         chk.addEventListener('change', () => {
             updateSettings({ [key]: chk.checked } as Partial<typeof settings>);
-            // TODO(port): consume these flags in the Main View renderer.
+            // Task 10f: the Main View renderer reads these flags per frame
+            // (src/render/mainView.ts), so no extra wiring is needed here.
         });
         row.append(lbl, chk);
         return row;

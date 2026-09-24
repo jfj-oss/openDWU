@@ -175,6 +175,12 @@ export function getSelection(): Selection | null {
     return currentSelection;
 }
 
+/** Test hook: set the current selection directly (bypasses the panel's own
+ * setter, which also refreshes its DOM). */
+export function setSelection(sel: Selection | null): void {
+    currentSelection = sel;
+}
+
 /** Build the HUD overlay and append it to document.body. */
 export function createHud(wiring: HudWiring = {}): HudRefs {
     const root = document.createElement('div');

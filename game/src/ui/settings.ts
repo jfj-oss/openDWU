@@ -18,9 +18,9 @@ export interface UiSettings {
     soundMuted: boolean;
     /** UI scale percentage applied as `--ui-scale` on the HUD root. */
     uiScale: number;
-    /** Show system name labels on the map (renderer TODO). */
+    /** Show system name labels on the map (mainView.ts reads per frame). */
     showSystemNames: boolean;
-    /** Show region label overlays on the map (renderer TODO). */
+    /** Show region label overlays on the map (mainView.ts reads per frame). */
     showRegionLabels: boolean;
 }
 
@@ -168,8 +168,8 @@ function applySoundSettings(s: UiSettings): void {
 }
 
 // ---------------------------------------------------------------------------
-// Getters the renderer can read later (TODO(port): consume these in the Main
-// View label/overlay rendering — src/render/mainView.ts).
+// Getters the Main View renderer reads per frame (task 10f: consumed by
+// src/render/mainView.ts for system-name and region-label visibility).
 // ---------------------------------------------------------------------------
 
 /** Whether system name labels should be drawn on the map. */

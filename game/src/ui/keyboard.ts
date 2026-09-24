@@ -11,6 +11,7 @@ import {
     PLANET_LEVEL_ZOOM,
     SECTOR_LEVEL_ZOOM,
     SYSTEM_LEVEL_ZOOM,
+    getSelection,
 } from './hud';
 
 /** Modifier state of a key event (Ctrl/Alt/Shift). */
@@ -245,8 +246,13 @@ export function buildDefaultHandlers(camera: Camera, time: GalaxyTime): KeyHandl
         zoomIn: () => camera.zoomStep(1),
         zoomOut: () => camera.zoomStep(-1),
         zoomToSelection: () => {
-            // TODO(port): zoom to the selected item — needs the selection hook.
-            console.info('TODO(key): zoomToSelection');
+            // Task 10g: centre on the selected habitat at System zoom — the
+            // same two calls as the HUD's "Zoom to selection" row (hud.ts
+            // doViewAction 'zoomSelection'). No-op when nothing is selected.
+            const sel = getSelection();
+            if (!sel) return;
+            camera.centerOn(sel.habitat.xpos, sel.habitat.ypos);
+            camera.zoomAt(SYSTEM_LEVEL_ZOOM, cx(), cy());
         },
         zoomSystemLevel: () => camera.zoomAt(SYSTEM_LEVEL_ZOOM, cx(), cy()),
         zoomSectorLevel: () => camera.zoomAt(SECTOR_LEVEL_ZOOM, cx(), cy()),
