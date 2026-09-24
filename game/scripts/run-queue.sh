@@ -4,6 +4,10 @@
 # Stops at the first task that fails its gate. Status lines go to tasks/queue.status.
 set -uo pipefail
 cd "$(dirname "$0")/.."
+# One queue per working tree at a time: a second run-queue waits here until the first exits,
+# so tasks can be queued directly without racing on the same files.
+exec 9>tasks/.queue.lock
+flock 9
 status() { echo "$(date +%T) $*" | tee -a tasks/queue.status; }
 
 gate() {

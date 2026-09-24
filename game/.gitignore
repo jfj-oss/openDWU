@@ -7,3 +7,4 @@ shots/
 tasks/*.log
 tasks/queue.status
 tasks/.gate-failure.txt
+tasks/.queue.lock
