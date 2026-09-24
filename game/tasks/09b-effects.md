@@ -949,3 +949,19 @@ namespace DistantWorlds
     }
 }
 ```
+
+## Worker report
+
+**Files changed:**
+- `src/audio/effectsPlayer.ts` (new) — Web Audio port of `EffectsPlayer.cs` + `SoundEffectRequest.cs`: buffer bank fetched from `/assets/dwu/Sounds/Effects/<file>` with lazy fetch/decode and in-flight dedupe, per-voice GainNode (volume clamped [0,1]) + StereoPannerNode (balance clamped [-1,1]), XNA Pitch → `playbackRate = 2^(frequency/1200)`, master volume (default 0.7) + mute, positional listener (`setListener(x, y, zoom, width?, height?)`) with linear distance attenuation by on-screen distance from the view centre, `playResolved(request, sourceX?, sourceY?)`, `playUiClick()`, and all pure resolver ports (`resolveIonStrike` … `resolveExplosion`) with the exact C# constants. Missing files are skipped gracefully (the original pops a dialog and exits).
+- `test/effectsPlayer.test.ts` (new) — 41 pure tests: attenuation curve, voice-cap decision, and every resolver's file/volume math with deterministic rand stubs (incl. the faithful `Min(1.0, …)` clamp making the >110-size explosion factor 2.5 → 1.0).
+- `src/ui/hud.ts` — shared `playUiClick()` helper wired into every HUD button click handler (top-bar buttons, menu/help/play-pause/slower/faster glyphs, selection cycler ‹ › + chips, options-list View rows and overlay toggles); `createHud` now registers the effects player and syncs its listener to `wiring.camera` (x, y, zoom, width, height) every 250 ms.
+- `src/ui/settings.ts` — added `soundVolume` / `soundMuted` to `UiSettings` (defaults 0.7 / false), parsing/clamping in `loadSettings`/`updateSettings`, `soundVolume()`/`soundMuted()` getters, and `updateSettings` now pushes them into the live effects player via `startEffects()`.
+
+**Done:** everything in the locked scope — player module, UI-click wiring, settings hook, pure tests; `npm run typecheck` and `npm test` both pass (40 files, 455 tests).
+
+**Left undone / notes:**
+- UI click sound: the pasted source has no plain UI-button resolver, so per the task's fallback rule `attack_click.wav` (first file containing "click"/"button") is used — see `UI_CLICK_FILE` in `effectsPlayer.ts`.
+- Preload list is limited to the six hardcoded explosion files; the original also preloads every weapon component's sound file via `ComponentDefinitionList.ResolveWeaponSoundEffectFilenames`, which is not ported (marked `TODO(port)` in the code).
+- The pasted excerpt contains no explicit voice-cap constant (the C# instance list is unbounded, pruned by `ClearFinishedBuffers`); `MAX_CONCURRENT_VOICES = 24` with oldest-voice replacement is a placeholder bound (marked `TODO(port)`).
+- `EmpireMessageType` is not ported, so `resolveMessage` takes numeric values with the switch groups documented in comments.
