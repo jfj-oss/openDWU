@@ -22,6 +22,8 @@ import { Habitat, HabitatCategoryType } from './sim/types';
 import { createMapOverlayState } from './ui/mapOverlays';
 import { buildDefaultHandlers, createShortcutsOverlay, dispatchKey } from './ui/keyboard';
 import { createMainMenu } from './ui/screens/mainMenu';
+import { openOptionsModal } from './ui/screens/mainMenu';
+import { createCreditsScreen } from './ui/screens/credits';
 import { startMusic } from './audio/musicPlayer';
 import { createNewGameWizard } from './ui/screens/newGameWizard';
 import { openGalactopedia } from './ui/screens/galactopedia';
@@ -314,6 +316,25 @@ async function main(): Promise<void> {
             // Nothing to go back to when opened directly; reload to the menu.
             window.location.search = '';
         });
+        return;
+    }
+
+    if (params.get('screen') === 'credits' || params.get('screen') === 'options') {
+        // Screenshot / dev hook (task 06k): show the main menu with the
+        // credits screen or options modal pre-opened.
+        const menu = createMainMenu({
+            onStartNewGame: () => {
+                menu.destroy();
+                openWizard(showMainMenu);
+            },
+        });
+        startMusic();
+        const screen = params.get('screen');
+        if (screen === 'credits') {
+            createCreditsScreen(() => undefined);
+        } else {
+            openOptionsModal(menu.root);
+        }
         return;
     }
 

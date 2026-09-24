@@ -124,3 +124,22 @@
     font-size: 13px;
     color: #fff;
 }
+
+/* Task 06k: Options modal over the main menu. Reuses the in-game game-menu
+   panel styles (gameMenu.css) for the rows/controls; only the overlay, dim
+   and sizing are specific to the menu context. */
+.main-menu-options-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1002; /* above the menu chrome buttons */
+}
+
+.main-menu-options-dim {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+}
+
+.main-menu-options-panel {
+    width: min(420px, calc(100vw - 40px));
+}

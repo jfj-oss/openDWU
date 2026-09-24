@@ -86,85 +86,16 @@ function applyUiScaleToHudRoot(): void {
     }
 }
 
-/** Build the in-game game menu and append it to document.body. */
-export function createGameMenu(
-    clock: GalaxyTime,
-    callbacks: GameMenuCallbacks = {},
-    music: MusicAdapter | null = null,
-): GameMenuRefs {
-    const resolvedMusic = music ?? defaultMusic();
-    let prevPaused = false;
-    let open = false;
-
-    const root = document.createElement('div');
-    root.id = 'game-menu-overlay';
-    root.style.display = 'none';
-
-    // Dim layer (55%) behind the panel.
-    const dim = document.createElement('div');
-    dim.className = 'game-menu-dim';
-    root.appendChild(dim);
-
-    const panel = document.createElement('div');
-    panel.className = 'game-menu-panel';
-
-    const title = document.createElement('div');
-    title.className = 'game-menu-title';
-    title.textContent = 'Game Menu';
-    panel.appendChild(title);
-
-    const list = document.createElement('div');
-    list.className = 'game-menu-list';
-    panel.appendChild(list);
-
-    // --- Button row -------------------------------------------------------
-    const makeButton = (label: string, onClick: () => void): HTMLButtonElement => {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'game-menu-btn';
-        btn.textContent = label;
-        btn.addEventListener('click', onClick);
-        return btn;
-    };
-
-    const resumeBtn = makeButton('Resume', () => hide());
-    const saveBtn = makeButton('Save Game', () => {
-        // TODO(port): implement save — DistantWorlds.SaveGame.cs.
-        showToast(root, 'Save Game not implemented yet');
-    });
-    const loadBtn = makeButton('Load Game', () => {
-        // TODO(port): implement load — DistantWorlds.LoadGame.cs.
-        showToast(root, 'Load Game not implemented yet');
-    });
-    const optionsBtn = makeButton('Options', () => {
-        optionsPanel.style.display = optionsPanel.style.display === 'none' ? '' : 'none';
-    });
-    const mainMenuBtn = makeButton('Main Menu', () => {
-        const ok = window.confirm('Return to the main menu? Unsaved progress will be lost.');
-        if (ok) {
-            hide();
-            callbacks.onMainMenu?.();
-        }
-    });
-    const exitBtn = makeButton('Exit', () => {
-        const ok = window.confirm('Exit the game?');
-        if (ok) {
-            hide();
-            if (callbacks.onExit) {
-                callbacks.onExit();
-            } else if (isDesktopShell()) {
-                window.close();
-            } else {
-                showToast(root, 'Close this tab to exit');
-            }
-        }
-    });
-    list.append(resumeBtn, saveBtn, loadBtn, optionsBtn, mainMenuBtn, exitBtn);
-
-    // --- Options sub-panel -------------------------------------------------
+/**
+ * Build the Options sub-panel (music volume/mute, UI scale, label toggles).
+ * Task 06k: extracted from createGameMenu so the main menu's "Options" item
+ * can open the same panel as a centred modal. The returned element carries
+ * the `game-menu-options` class and its own rows; callers append it to their
+ * own container. `music` may be null (menu-only contexts without a player).
+ */
+export function buildOptionsPanel(music: MusicAdapter | null): HTMLElement {
     const optionsPanel = document.createElement('div');
     optionsPanel.className = 'game-menu-options';
-    optionsPanel.style.display = 'none';
 
     const settings = getSettings();
 
@@ -184,8 +115,8 @@ export function createGameMenu(
     volSlider.addEventListener('input', () => {
         const v = parseFloat(volSlider.value);
         updateSettings({ musicVolume: v, musicMuted: false });
-        resolvedMusic?.setVolume(v);
-        resolvedMusic?.unmute();
+        music?.setVolume(v);
+        music?.unmute();
     });
     const muteBtn = document.createElement('button');
     muteBtn.type = 'button';
@@ -195,9 +126,9 @@ export function createGameMenu(
         const nowMuted = !getSettings().musicMuted;
         updateSettings({ musicMuted: nowMuted });
         if (nowMuted) {
-            resolvedMusic?.mute();
+            music?.mute();
         } else {
-            resolvedMusic?.unmute();
+            music?.unmute();
         }
         muteBtn.textContent = nowMuted ? 'Unmute' : 'Mute';
     });
@@ -248,6 +179,88 @@ export function createGameMenu(
     };
     optionsPanel.appendChild(makeToggle('Show system names', 'showSystemNames'));
     optionsPanel.appendChild(makeToggle('Show region labels', 'showRegionLabels'));
+
+    return optionsPanel;
+}
+
+/** Build the in-game game menu and append it to document.body. */
+export function createGameMenu(
+    clock: GalaxyTime,
+    callbacks: GameMenuCallbacks = {},
+    music: MusicAdapter | null = null,
+): GameMenuRefs {
+    const resolvedMusic = music ?? defaultMusic();
+    let prevPaused = false;
+    let open = false;
+
+    const root = document.createElement('div');
+    root.id = 'game-menu-overlay';
+    root.style.display = 'none';
+
+    // Dim layer (55%) behind the panel.
+    const dim = document.createElement('div');
+    dim.className = 'game-menu-dim';
+    root.appendChild(dim);
+
+    const panel = document.createElement('div');
+    panel.className = 'game-menu-panel';
+
+    const title = document.createElement('div');
+    title.className = 'game-menu-title';
+    title.textContent = 'Game Menu';
+    panel.appendChild(title);
+
+    const list = document.createElement('div');
+    list.className = 'game-menu-list';
+    panel.appendChild(list);
+
+    // --- Options sub-panel (task 06k: shared buildOptionsPanel) -----------
+    const optionsPanel = buildOptionsPanel(resolvedMusic);
+    optionsPanel.style.display = 'none';
+
+    // --- Button row -------------------------------------------------------
+    const makeButton = (label: string, onClick: () => void): HTMLButtonElement => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'game-menu-btn';
+        btn.textContent = label;
+        btn.addEventListener('click', onClick);
+        return btn;
+    };
+
+    const resumeBtn = makeButton('Resume', () => hide());
+    const saveBtn = makeButton('Save Game', () => {
+        // TODO(port): implement save — DistantWorlds.SaveGame.cs.
+        showToast(root, 'Save Game not implemented yet');
+    });
+    const loadBtn = makeButton('Load Game', () => {
+        // TODO(port): implement load — DistantWorlds.LoadGame.cs.
+        showToast(root, 'Load Game not implemented yet');
+    });
+    const optionsBtn = makeButton('Options', () => {
+        optionsPanel.style.display = optionsPanel.style.display === 'none' ? '' : 'none';
+    });
+    const mainMenuBtn = makeButton('Main Menu', () => {
+        const ok = window.confirm('Return to the main menu? Unsaved progress will be lost.');
+        if (ok) {
+            hide();
+            callbacks.onMainMenu?.();
+        }
+    });
+    const exitBtn = makeButton('Exit', () => {
+        const ok = window.confirm('Exit the game?');
+        if (ok) {
+            hide();
+            if (callbacks.onExit) {
+                callbacks.onExit();
+            } else if (isDesktopShell()) {
+                window.close();
+            } else {
+                showToast(root, 'Close this tab to exit');
+            }
+        }
+    });
+    list.append(resumeBtn, saveBtn, loadBtn, optionsBtn, mainMenuBtn, exitBtn);
 
     panel.appendChild(optionsPanel);
     root.appendChild(panel);

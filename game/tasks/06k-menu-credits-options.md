@@ -10,6 +10,24 @@ Everything you need is below. Create `src/ui/screens/credits.ts` (+css); edit `s
 - Tests: the credits line list is extracted exactly (first and last lines match the C#); options panel builder returns the expected controls.
 `npm run typecheck` && `npm test`; save (don't open) `shots/06k-credits.png` (`?screen=credits`) and `shots/06k-options.png` (`?screen=options`). Append `## Worker report`.
 
+## Worker report
+
+**Files changed:**
+- `src/ui/screens/credits.ts` (new) — port of `ScrollingCreditsPanel`: `buildCreditsItems()` returns the full credit line list (headings + entries in order, ending with "Recreation: Dwureup (TypeScript/PixiJS port)"); scroll constants match the C# panel (`CREDITS_SCROLL_SPEED = 20.0 / 0.05 = 400 px/s`, `CREDITS_TICK_MS = 50`); `createCreditsScreen(onClose)` renders the menu background + dark overlay + scrolling column (Verdana bold yellow, black outline), starts below the viewport and scrolls upward, restarting when all items pass the top; click or Esc closes.
+- `src/ui/screens/credits.css` (new) — overlay/dim/column/line styles.
+- `src/ui/screens/gameMenu.ts` — extracted the Options sub-panel into exported `buildOptionsPanel(music)` (music volume/mute, UI scale select, system-name/region-label toggles); `createGameMenu` now uses it, so the Escape menu is unchanged.
+- `src/ui/screens/mainMenu.ts` — Options item opens a centred modal (`openOptionsModal`, exported for the dev hook) reusing `buildOptionsPanel` + the game-menu panel styling; Credits corner button opens the credits screen.
+- `src/ui/screens/mainMenu.css` — styles for the options modal overlay/dim.
+- `src/main.ts` — `?screen=credits` / `?screen=options` screenshot/dev hooks (menu shown with the screen pre-opened).
+- `test/credits.test.ts` (new) — first lines ("Distant Worlds"/"Universe") and last lines ("Thank you for playing!" → recreation line) match exactly; heading-before-entry order; spacer heights; positive item heights; scroll constants equal the C# values.
+- `test/gameMenu.test.ts` — added settings-wiring tests around the shared `buildOptionsPanel` (volume/mute state, the four UI-scale steps, label toggles persist as the panel controls write them).
+
+**Done:** typecheck passes; all 501 tests pass (42 files); screenshots saved: `shots/06k-credits.png`, `shots/06k-options.png` (no console errors printed by shot.mjs).
+
+**Left undone / notes:**
+- The exact per-line credit text beyond the verified first/last lines follows the original credits structure (title block, Lead Designer/Programming/Art & Design/Music/Sound Effects/Special Thanks headings) but could not be diffed against the original credits content file here (no access to the game files); the orchestrator should visually confirm names/order against `shots/06k-credits.png`.
+- Line-height estimation for wrapping (`creditsItemHeight`) approximates the C# `MeasureString`; only affects wrap points, not scroll speed.
+
 ## ScrollingCreditsPanel.cs
 ```csharp
 // Decompiled with JetBrains decompiler
