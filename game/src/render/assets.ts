@@ -1,10 +1,15 @@
 // Texture loading/caching for the Main View. Original art is served from
 // `/assets/dwu/images/...` (mapped by the desktop shell / vite public
-// symlink to the user's DW:U install folder, see CLAUDE.md). Filenames
-// inside the original art folders are not part of the engine's public
-// contract, so every logical asset is loaded from a short candidate-URL
-// list and falls back to a generated texture when none exists — the view
-// must render (and stay console-clean) with or without the install.
+// symlink to the user's DW:U install folder, see CLAUDE.md). The browser can't
+// enumerate the install's art folders, so `scripts/gen-asset-manifest.mjs`
+// (predev/prebuild) writes public/asset-manifest.json = { "<folder under
+// images/environment/>": [sorted file names] }; loadManifest() fetches it at
+// boot and the URL builders below pick a REAL file out of each folder via
+// pictureRef modulo the folder's file count (the port's pictureRef values
+// don't match the original engine's offset scheme, so direct indexing would
+// 404). Without a manifest (no install) every builder returns [] and the
+// store falls back to generated textures — the view must render (and stay
+// console-clean) with or without the install.
 
 import { Assets, Texture } from 'pixi.js';
 import { Habitat, HabitatType } from '../sim/types';
@@ -47,11 +52,50 @@ export const CLOUD_COLORS: Record<string, string> = {
 };
 
 // ---------------------------------------------------------------------------
-// Candidate URL builders. Folders per the original install layout
+// Real-art URL builders. Folders per the original install layout
 // (Main.Part12.cs:1962 backdrops, Main.Part13.cs:993 map stars).
 
+const IMG = '/assets/dwu/images';
+
+/**
+ * File lists for every folder under images/environment/, keyed by path
+ * relative to that directory (e.g. "planets/ocean"). Written by
+ * scripts/gen-asset-manifest.mjs; empty until loadManifest() resolves it.
+ */
+export const MANIFEST: Record<string, string[]> = {};
+
+/** Fetch public/asset-manifest.json into MANIFEST (no-op if unreachable). */
+export async function loadManifest(): Promise<void> {
+    try {
+        const r = await fetch('/asset-manifest.json');
+        if (r.ok) {
+            const j = (await r.json()) as Record<string, string[]>;
+            if (j && typeof j === 'object') {
+                Object.assign(MANIFEST, j);
+            }
+        }
+    } catch {
+        // no manifest (install absent / built shell without it) -> fallbacks
+    }
+}
+
+/**
+ * Pick a real file from a manifest folder: `pictureRef` modulo the folder's
+ * file count (task 02b1 — the port's pictureRef values don't align with the
+ * original engine's offset scheme, so direct indexing would 404). Returns []
+ * when the folder is unknown or empty.
+ */
+export function pickFromFolder(folder: string, pictureRef: number): string[] {
+    const files = MANIFEST[folder];
+    if (!files || files.length === 0) {
+        return [];
+    }
+    const i = ((pictureRef % files.length) + files.length) % files.length;
+    return [`${IMG}/environment/${folder}/${files[i]}`];
+}
+
 // Port of Main.Part13.cs LoadMapStars: map-star icons live under
-// images/environment/mapstars/<type>/.
+// images/environment/mapstars/<type>/ and are indexed by MapPictureRef.
 const STAR_MAP_FOLDERS: Record<string, string> = {
     [HabitatType.MainSequence]: 'mainsequence',
     [HabitatType.RedGiant]: 'redgiant',
@@ -62,68 +106,77 @@ const STAR_MAP_FOLDERS: Record<string, string> = {
     [HabitatType.SuperNova]: 'flares',
 };
 
-const PLANET_FOLDERS: Record<string, string[]> = {
-    [HabitatType.Volcanic]: ['volcanic'],
-    [HabitatType.Desert]: ['desert'],
-    [HabitatType.MarshySwamp]: ['marshy', 'swamp'],
-    [HabitatType.Continental]: ['continental'],
-    [HabitatType.Ocean]: ['ocean'],
-    [HabitatType.BarrenRock]: ['barren_rock', 'barrenrock'],
-    [HabitatType.Ice]: ['ice'],
-    [HabitatType.GasGiant]: ['gas_giant', 'gasgiant'],
-    [HabitatType.FrozenGasGiant]: ['frozen_gas_giant', 'frozengasgiant'],
+// Planet/moon art folders per type (real install names under planets/).
+const PLANET_FOLDERS: Record<string, string> = {
+    [HabitatType.Volcanic]: 'volcanic',
+    [HabitatType.Desert]: 'sandydesert',
+    [HabitatType.MarshySwamp]: 'marshyswamp',
+    [HabitatType.Continental]: 'continental',
+    [HabitatType.Ocean]: 'ocean',
+    [HabitatType.BarrenRock]: 'barrenrock',
+    [HabitatType.Ice]: 'iceglacial',
+    [HabitatType.GasGiant]: 'gasgiant',
+    [HabitatType.FrozenGasGiant]: 'frozengasgiant',
 };
 
-const CLOUD_FOLDERS: Record<string, string> = {
-    [HabitatType.Hydrogen]: 'hydrogen',
-    [HabitatType.Helium]: 'helium',
-    [HabitatType.Argon]: 'argon',
-    [HabitatType.Ammonia]: 'ammonia',
-    [HabitatType.CarbonDioxide]: 'carbon_dioxide',
-    [HabitatType.Chlorine]: 'chlorine',
-    [HabitatType.Oxygen]: 'oxygen',
-    [HabitatType.NitrogenOxygen]: 'nitrogen_oxygen',
+// Asteroid belt art per composition (real install folders under asteroids/).
+const ASTEROID_FOLDERS: Record<string, string> = {
+    [HabitatType.BarrenRock]: 'rocky',
+    [HabitatType.Ice]: 'ice',
+    [HabitatType.Metal]: 'metal',
 };
-
-const IMG = '/assets/dwu/images';
 
 export function mapStarUrls(habitat: Habitat): string[] {
-    const folder = STAR_MAP_FOLDERS[habitat.type] ?? 'mainsequence';
-    return [`${IMG}/environment/mapstars/${folder}/${habitat.pictureRef}.png`];
+    const folder = `mapstars/${STAR_MAP_FOLDERS[habitat.type] ?? 'mainsequence'}`;
+    return pickFromFolder(folder, habitat.pictureRef);
 }
 
-// Full star sprites at system zoom (Main.Part12.cs star art).
+/**
+ * Full star sprites at system zoom (Main.Part13.cs LoadStars): one of three
+ * shared discs (`stars/star_disc_<n>.png`, n = pictureRef % 3) plus an
+ * animated corona ray frame (`stars/rays/CoronaA-<nnnn>.png`). Black holes
+ * use the dedicated disc + accretion-disc art instead.
+ */
 export function starSpriteUrls(habitat: Habitat): string[] {
-    const folder = STAR_MAP_FOLDERS[habitat.type] ?? 'mainsequence';
-    const urls = [`${IMG}/environment/stars/${folder}/${habitat.pictureRef}.png`];
     if (habitat.type === HabitatType.BlackHole) {
-        urls.push(`${IMG}/environment/stars/blackhole/${habitat.pictureRef}.png`);
+        const urls = [...pickFromFolder('stars/blackhole', habitat.pictureRef)];
+        urls.push(`${IMG}/environment/stars/star_blackhole_0.png`);
+        return urls;
     }
-    return urls;
+    const disc = `${IMG}/environment/stars/star_disc_${habitat.pictureRef % 3}.png`;
+    const rays = pickFromFolder('stars/rays', habitat.pictureRef);
+    return [disc, ...rays];
 }
 
-// Planet sprites: chosen via the habitat's pictureRef (task 01), e.g.
-// ocean planet pictureRef 900..909 -> images/environment/planets/ocean/.
+/** Planet/moon sprite: type folder, index = pictureRef modulo file count. */
 export function planetUrls(habitat: Habitat): string[] {
-    const folders = PLANET_FOLDERS[habitat.type] ?? ['ocean'];
-    const urls: string[] = [];
-    for (const folder of folders) {
-        urls.push(`${IMG}/environment/planets/${folder}/${habitat.pictureRef}.png`);
-        urls.push(`${IMG}/environment/planets/${folder}/planet_${habitat.pictureRef}.png`);
-    }
-    return urls;
+    const folder = `planets/${PLANET_FOLDERS[habitat.type] ?? 'ocean'}`;
+    return pickFromFolder(folder, habitat.pictureRef);
 }
 
+/**
+ * Gas-cloud nebula art: the install ships a single flat nebulae/ folder
+ * (NebulaArray*.png), so all cloud types share it (task 02b1).
+ */
 export function cloudUrls(habitat: Habitat): string[] {
-    const folder = CLOUD_FOLDERS[habitat.type] ?? 'hydrogen';
-    return [`${IMG}/environment/nebulae/${folder}/${habitat.pictureRef}.png`];
+    return pickFromFolder('nebulae', habitat.pictureRef);
 }
 
 export function asteroidUrls(habitat: Habitat): string[] {
-    return [`${IMG}/environment/asteroids/${habitat.pictureRef}.png`];
+    const folder = `asteroids/${ASTEROID_FOLDERS[habitat.type] ?? 'rocky'}`;
+    return pickFromFolder(folder, habitat.pictureRef);
 }
 
 export const BACKDROP_URLS = [`${IMG}/environment/galaxybackdrops/galaxy_backdrop.jpg`];
+
+// Warn once per missing URL (keeps the console informative but quiet).
+const warnedMissing = new Set<string>();
+export function warnMissing(url: string): void {
+    if (!warnedMissing.has(url)) {
+        warnedMissing.add(url);
+        console.warn(`missing DW:U art: ${url}`);
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Generated fallback textures (canvas-based, deterministic).
@@ -330,7 +383,8 @@ export class AssetStore {
                     this.cache.set(key, tex);
                     return tex;
                 } catch {
-                    // 404 / decode failure: try the next candidate.
+                    // 404 / decode failure: warn once, try the next candidate.
+                    warnMissing(url);
                 }
             }
             const tex = fallback();
@@ -353,7 +407,8 @@ export class AssetStore {
                             result = await Assets.load(url);
                             break;
                         } catch {
-                            // try the next candidate URL
+                            // 404 / decode failure: warn once, try the next candidate URL.
+                            warnMissing(url);
                         }
                     }
                 }

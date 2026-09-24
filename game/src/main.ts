@@ -7,7 +7,7 @@
 import { Application } from 'pixi.js';
 import { Camera } from './render/camera';
 import { MainView } from './render/mainView';
-import { AssetStore } from './render/assets';
+import { AssetStore, loadManifest } from './render/assets';
 import { generateGalaxy } from './sim/galaxy';
 import { parseSystemNames } from './sim/data';
 import { GalaxyShape } from './sim/types';
@@ -87,6 +87,10 @@ async function main(): Promise<void> {
 
     const dwuPresent = await detectDwuPresent();
     const systemNames = await loadSystemNames(dwuPresent);
+    // Real-art file lists (scripts/gen-asset-manifest.mjs, predev/prebuild).
+    if (dwuPresent) {
+        await loadManifest();
+    }
 
     const app = new Application();
     await app.init({

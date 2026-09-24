@@ -1,6 +1,7 @@
 node_modules/
 dist/
 public/assets/
+public/asset-manifest.json
 shots/
 tasks/*.log
 tasks/queue.status
