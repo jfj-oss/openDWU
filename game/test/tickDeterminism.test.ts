@@ -65,8 +65,9 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         expect(long.scheduler!.frames).toBe(36000);
         checkInvariants(long);
         const hits = r.todoHits;
-        // Every tick family reached its stubs.
-        for (const key of ['M4b executeCommands', 'M4j growPopulation', 'M4r tradeItems', 'M4s pirateAssignShipMissions', 'M4s reviewPirateMissionsAndAssign', 'M4t checkForShipsDiscoveringRuins']) {
+        // Every tick family reached its stubs. (M4r: every diplomacy entry point this run reaches is fully ported — no
+        // empires meet before M4t exploration — so no M4r counter is expected here.)
+        for (const key of ['M4b executeCommands', 'M4j growPopulation', 'M4s pirateAssignShipMissions', 'M4s reviewPirateMissionsAndAssign', 'M4t checkForShipsDiscoveringRuins']) {
             expect(hits[key] ?? 0, key).toBeGreaterThan(0);
         }
         const summary = { digest: stateDigest(long), counts: stateCounts(long), rndDraws: long.rnd.drawCount };

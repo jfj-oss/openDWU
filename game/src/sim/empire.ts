@@ -1446,6 +1446,8 @@ export class Empire {
      */
     empiresViewable: Empire[] = [];
     empiresViewableExpiry: number[] = [];
+    /** Empire.cs LocationHints (List<Point>): AddLocationHint (Empire.cs 2807) — pirate info trades (tradeItems.ts), UI hints. */
+    locationHints: { x: number; y: number }[] = [];
     /** EmpireCounters.cs diplomatic counters (diplomacy.ts DiplomacyCounters) until EmpireCounters is ported. */
     diplomacyCounters = new DiplomacyCounters();
     // ---- M4s fields (pirates runtime) ----

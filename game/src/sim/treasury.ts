@@ -69,3 +69,12 @@ const T_reviewEmpireDifficultyFactors = registerTodo('M4j', 'reviewEmpireDifficu
 export function reviewEmpireDifficultyFactors(galaxy: Galaxy): void {
     /* TODO(port) M4j */ todo(T_reviewEmpireDifficultyFactors);
 }
+
+// ---- Stub added by M4r (trade item AdoptGovernmentStyle) ----
+
+const T_haveRevolution = registerTodo('M4j', 'haveRevolution');
+/** Empire.10.cs HaveRevolution(race, governmentId) — government change (AdoptGovernmentStyle trade item). */
+export function haveRevolution(galaxy: Galaxy, empire: Empire, governmentId: number): void {
+    // RND: 4 direct (HaveRevolution) — not drawn until M4j.
+    /* TODO(port) M4j */ todo(T_haveRevolution);
+}

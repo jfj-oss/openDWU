@@ -113,7 +113,7 @@ function habitatStrategicValue(h: Habitat): number {
 }
 
 // Habitat.cs CompareTo(Habitat) (8023) — Comparer<Habitat>.Default for HabitatList.Sort().
-function habitatCompareTo(a: Habitat, b: Habitat): number {
+export function habitatCompareTo(a: Habitat, b: Habitat): number {
     const sa = habitatStrategicValue(a);
     const sb = habitatStrategicValue(b);
     if (sa === sb) {

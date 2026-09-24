@@ -76,6 +76,7 @@ import {
 import { chanceNewAmbassador, doCharacterEventRuntime } from './events';
 import { galaxyColonyFillFactor } from './colonyTick';
 import { isObjectVisibleToThisEmpire } from './independentTraders';
+import { TradeableItem, TradeableItemType, processTradeDealMessage, determineAcceptGalaxyMapTrade, determineAcceptTerritoryMapTrade, galaxyMergeGalaxyMap } from './tradeItems';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants (Galaxy.3.cs 4990-5140 InitializeStatics; BaconEmpire.cs statics with their default settings).
@@ -2704,6 +2705,12 @@ export function changeDiplomaticRelation(
 
 const T_sendNewsBroadcast = registerTodo('M4r', 'SendNewsBroadcastWarStartEnd (GalacticNewsNet messages, UI)');
 
+/** Empire.7.cs 2966 SendNewsBroadcastWarStartEnd(relation) → ThreadPool SendNewsBroadcastCore (GalacticNewsNet messages
+ *  to every empire; no Rnd). TODO(port) M9: news broadcasts. */
+export function sendNewsBroadcastWarStartEnd(_relation: DiplomaticRelation): void {
+    todo(T_sendNewsBroadcast);
+}
+
 /** Empire.7.cs 4868-4883 DeclareWar(target[, persuader[, lockedWar[, blockFlowonEffects]]]). */
 export function declareWar(galaxy: Galaxy, self: Empire, target: Empire | null, persuader: Empire | null = null, lockedWar = false, blockFlowonEffects = false): void {
     if (target === null) return;
@@ -2908,7 +2915,7 @@ function removeMilitaryForcesFromSystem(galaxy: Galaxy, self: Empire, systemStar
 }
 
 const T_pirateProtectionOffer = registerTodo('M4r', 'PirateOfferProtection (DetermineDesirePirateProtection / AcceptPirateProtection — M4s)');
-const T_offerTrade = registerTodo('M4r', 'ProcessMessages OfferTrade (trade subsystem: EvaluateTradeOffer / GiveTradeableItem — r2 remaining)');
+const T_offerTrade = registerTodo('M4r', 'ProcessMessages OfferTrade research purchase (M4k research)');
 const T_ordersForRelinquishedColony = registerTodo('M4r', 'RemoveColoniesFromSystem order/contract cleanup (M4d Galaxy.Orders.GetOrders)');
 
 /** Empire.3.cs 4240 ProcessMessages: handles and then clears the empire's message queue. */
@@ -3008,15 +3015,42 @@ export function processMessages(galaxy: Galaxy, empire: Empire): void {
                     pirateEconomyPerformIncome(sender!, empireMessage.money);
                 }
                 break;
-            case EmpireMessageType.OfferTrade:
+            case EmpireMessageType.OfferTrade: {
                 if (self === galaxy.playerEmpire) break;
-                // TODO(port) M4r (trade subsystem): EvaluateTradeOffer (Empire.7.cs 1779) + Galaxy.GiveTradeableItem (Galaxy.4.cs 3857)
-                // for object[] offers; the single-item TerritoryMap / GalaxyMap / ResearchProject offers (DetermineAccept*Trade,
-                // DoResearchBreakthrough). Nothing sends OfferTrade until TradeItems / ReviewDisputedTerritory /
-                // ReviewEnemyHelpEnlistment are ported (or the player trades from the UI).
-                // RND: ResearchProject offers draw one NextDouble — not drawn until the trade subsystem is ported.
-                todo(T_offerTrade);
+                if (Array.isArray(subject)) {
+                    // Empire.3.cs 4384-4418: object[] { offered TradeableItemList, requested TradeableItemList }.
+                    processTradeDealMessage(galaxy, self, sender!, subject[0] as TradeableItem[], subject[1] as TradeableItem[]);
+                    break;
+                }
+                if (!(subject instanceof TradeableItem)) break;
+                const tradeableItem = subject;
+                if (tradeableItem.type === TradeableItemType.TerritoryMap) {
+                    if (!determineAcceptTerritoryMapTrade(galaxy, self, tradeableItem.value, sender!)) break;
+                    const habitatList2 = determineEmpireSystems(galaxy, sender!);
+                    const habitatList3 = determineEmpireSystems(galaxy, self);
+                    for (const item5 of habitatList2) {
+                        if (!self.visibility.checkSystemExplored(item5.systemIndex)) self.visibility.setSystemVisibility(item5, SystemVisibilityStatus.Explored);
+                    }
+                    for (const item6 of habitatList3) {
+                        if (!sender!.visibility.checkSystemExplored(item6.systemIndex)) sender!.visibility.setSystemVisibility(item6, SystemVisibilityStatus.Explored);
+                    }
+                } else if (tradeableItem.type === TradeableItemType.GalaxyMap) {
+                    if (determineAcceptGalaxyMapTrade(galaxy, self, tradeableItem.value, sender!)) {
+                        galaxyMergeGalaxyMap(galaxy, sender!, self);
+                        galaxyMergeGalaxyMap(galaxy, self, sender!);
+                    }
+                } else {
+                    if (tradeableItem.type !== TradeableItemType.ResearchProject || !(tradeableItem.value <= self.stateMoney)) break;
+                    const num14 = self.stateMoney * (0.25 + galaxy.rnd.nextDouble() * 0.25);
+                    if (self.stateMoney >= num14 && tradeableItem.item !== null) {
+                        // TODO(port) M4k: Research.TechTree.GetEquivalent(node); if not researched → DoResearchBreakthrough(…,
+                        // selfResearched false, blockMessages, suppressUpdate), Research.Update, ReviewDesignsBuiltObjectsImprovedComponents,
+                        // ReviewResearchAbilities, then the payment. Research items are not offered until M4k's research model exists.
+                        todo(T_offerTrade);
+                    }
+                }
                 break;
+            }
             case EmpireMessageType.GiveGift: {
                 const num15 = valueMoneyGiftFromEmpire(galaxy, self, sender!, empireMessage.money);
                 if (sender!.pirateEmpireBaseHabitat === null && self.pirateEmpireBaseHabitat === null) {
@@ -3613,23 +3647,5 @@ export function considerTreatyProposals(galaxy: Galaxy, empire: Empire): void {
     for (const item of removals) proposed.remove(item);
 }
 
-// ---------------------------------------------------------------------------------------------------------------
-// r2 remaining — trade offers / enemy help / disputed territory (the trade subsystem is not ported yet).
-// ---------------------------------------------------------------------------------------------------------------
-
-const T_reviewEnemyHelpEnlistment = registerTodo('M4r', 'reviewEnemyHelpEnlistment');
-/** Empire.7.cs 2060 ReviewEnemyHelpEnlistment. */
-export function reviewEnemyHelpEnlistment(galaxy: Galaxy, empire: Empire): void {
-    /* TODO(port) M4r */ todo(T_reviewEnemyHelpEnlistment);
-    void galaxy;
-    void empire;
-}
-
-const T_reviewDisputedTerritory = registerTodo('M4r', 'reviewDisputedTerritory');
-/** Empire.7.cs 2205 ReviewDisputedTerritory. */
-export function reviewDisputedTerritory(galaxy: Galaxy, empire: Empire): void {
-    // RND: 2 direct — not drawn until M4r r2.
-    /* TODO(port) M4r */ todo(T_reviewDisputedTerritory);
-    void galaxy;
-    void empire;
-}
+// Empire.7.cs 2060 ReviewEnemyHelpEnlistment / 2205 ReviewDisputedTerritory live with the trade subsystem (tradeItems.ts).
+export { reviewEnemyHelpEnlistment, reviewDisputedTerritory } from './tradeItems';

@@ -295,3 +295,37 @@ describe('harness: diplomacy evolves once the empires have met', () => {
         expect(g2.rnd.drawCount).toBe(g.rnd.drawCount);
     }, 600000);
 });
+
+describe('trade offers (Empire.7.cs 2576 TradeItems, Galaxy.4.cs values)', () => {
+    it('RefactorValueForEmpire scales by the offering empire\'s attitude (and the player difficulty)', async () => {
+        const { getRefactorForEmpire, refactorValueForEmpire } = await import('../src/sim/tradeItems');
+        const { galaxy } = createTickGame(gameData);
+        const [a, b] = galaxy.empires.filter((e) => e !== galaxy.playerEmpire);
+        const ev = obtainEmpireEvaluation(galaxy, b, a);
+        const att = ev.overallAttitude;
+        const expected = att > 0 ? Math.min(1.0, 10.0 / Math.min(50, att)) : att !== 0 ? Math.max(1.0, Math.abs(Math.max(-50, att)) / 10.0) : 1.0;
+        expect(getRefactorForEmpire(galaxy, a, b)).toBe(expected);
+        expect(refactorValueForEmpire(galaxy, 1000, a, b)).toBe(Math.trunc(1000 * expected));
+    });
+
+    it('allies/friends are offered a map; the recipient answers in ProcessMessages', async () => {
+        const { tradeItems, TradeableItem } = await import('../src/sim/tradeItems');
+        const { galaxy } = createTickGame(gameData);
+        meetAll(galaxy);
+        const [a, b] = galaxy.empires.filter((e) => e !== galaxy.playerEmpire);
+        const r = obtainDiplomaticRelation(a, b);
+        r.strategy = DiplomaticStrategy.Befriend;
+        (b.messages as EmpireMessage[]).length = 0;
+        const draws = galaxy.rnd.drawCount;
+        tradeItems(galaxy, a);
+        const offers = (b.messages as EmpireMessage[]).filter((m) => m.messageType === EmpireMessageType.OfferTrade && m.sender === a);
+        // One Next(0, items) draw for the pair; the offer is sent only when a would accept the swap itself.
+        expect(galaxy.rnd.drawCount - draws).toBeGreaterThanOrEqual(1);
+        if (offers.length > 0) {
+            expect(offers[0].subject instanceof TradeableItem).toBe(true);
+            expect(r.lastTradeDealOfferDate).toBe(galaxyStarDate(galaxy));
+        }
+        processMessages(galaxy, b);
+        expect(b.messages.length).toBe(0);
+    });
+});

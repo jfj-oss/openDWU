@@ -45,3 +45,20 @@ export function scanForNewOwnerBuiltObject(galaxy: Galaxy, builtObject: BuiltObj
     // RND: draws in callees (d≤3), +clock×2 — not drawn until M4q.
     /* TODO(port) M4q */ todo(T_scanForNewOwnerBuiltObject);
 }
+
+// ---- Stubs added by M4r (trade: Galaxy.4.cs 3857 GiveTradeableItem) ----
+
+const T_takeOwnershipOfBuiltObject = registerTodo('M4q', 'takeOwnershipOfBuiltObject');
+/** Empire.1.cs 524 TakeOwnershipOfBuiltObject(builtObject, newOwner, setDesignAsObsolete) — a traded base changes hands. */
+export function takeOwnershipOfBuiltObject(galaxy: Galaxy, empire: Empire, builtObject: BuiltObject, newOwner: Empire, setDesignAsObsolete: boolean): void {
+    /* TODO(port) M4q */ todo(T_takeOwnershipOfBuiltObject);
+}
+
+const T_takeOwnershipOfColonyRuntime = registerTodo('M4q', 'takeOwnershipOfColonyRuntime');
+/**
+ * Empire.1.cs 54/64 TakeOwnershipOfColony(colony, newEmpire) at runtime (a traded colony). empire.ts ports the game-start
+ * core only (its TODO lists the runtime parts: queues, fleets, troops, characters, orders, bases, empire defeat).
+ */
+export function takeOwnershipOfColonyRuntime(galaxy: Galaxy, empire: Empire, colony: Habitat, newEmpire: Empire): void {
+    /* TODO(port) M4q */ todo(T_takeOwnershipOfColonyRuntime);
+}
