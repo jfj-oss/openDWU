@@ -1,18 +1,25 @@
-// New-game wizard (tasks 06b/06d/06e): The Galaxy → Your Race → Your Empire
-// → Start pages.
+// New-game wizard (tasks 06b/06d/06e/06h): The Galaxy → Colonization and
+// Territory → Your Race → Your Empire → Other Empires → Start pages.
 // Port of the visual layout of Start.InitializeComponent.cs pnlStartNewGame*
 // panels, modernised like the HUD panels. "The Galaxy" page is task 06b;
-// "Your Race" (race list + portrait/stats detail) is task 06d; "Your Empire"
-// (name / government / flag) and the final summary "Start" page are tasks
-// 06e/06d.
+// "Colonization and Territory" is task 06h; "Your Race" (race list +
+// portrait/stats detail) is task 06d; "Your Empire" (name / government /
+// flag) and the final summary "Start" page are tasks 06e/06d; "Other
+// Empires" is task 06h.
 import './newGameWizard.css';
 import { GalaxyShape } from '../../sim/types';
 import {
     applyEmpireDefaults,
+    COLONIZATION_RANGE_KLY_MAX,
+    COLONIZATION_RANGE_KLY_MIN,
+    COLONY_INFLUENCE_RANGE_PCT_MAX,
+    COLONY_INFLUENCE_RANGE_PCT_MIN,
     defaultRaceName,
     defaultStartGameOptions,
     FLAG_COLOR_PALETTE,
     flagShapeUrl,
+    OTHER_EMPIRES_COUNT_MAX,
+    OTHER_EMPIRES_COUNT_MIN,
     sectorsFor,
     starCountFor,
     VICTORY_PERCENT_MIN,
@@ -85,16 +92,21 @@ export interface NewGameWizardRefs {
 }
 
 /** Wizard page ids / navigation order (task 06e; task 06g inserts the
- * "Victory Conditions" page as the last page before Start): The Galaxy →
- * Your Race → Your Empire → Victory Conditions → Start. */
-export type WizardPageId = 'galaxy' | 'race' | 'empire' | 'victory' | 'start';
-export const WIZARD_PAGES: WizardPageId[] = ['galaxy', 'race', 'empire', 'victory', 'start'];
+ * "Victory Conditions" page as the last page before Start; task 06h inserts
+ * "Colonization and Territory" after The Galaxy and "Other Empires" between
+ * Your Empire and Victory Conditions, matching the original): The Galaxy →
+ * Colonization and Territory → Your Race → Your Empire → Other Empires →
+ * Victory Conditions → Start. */
+export type WizardPageId = 'galaxy' | 'colonization' | 'race' | 'empire' | 'empires' | 'victory' | 'start';
+export const WIZARD_PAGES: WizardPageId[] = ['galaxy', 'colonization', 'race', 'empire', 'empires', 'victory', 'start'];
 
 /** Title-bar text per page ("Start a New Game: <page title>"). */
 export const WIZARD_PAGE_TITLES: Record<WizardPageId, string> = {
     galaxy: 'The Galaxy',
+    colonization: 'Colonization and Territory',
     race: 'Your Race',
     empire: 'Your Empire',
+    empires: 'Other Empires',
     victory: 'Victory Conditions',
     start: 'Start',
 };
@@ -102,17 +114,21 @@ export const WIZARD_PAGE_TITLES: Record<WizardPageId, string> = {
 /** Footer back-button label per page. */
 export const WIZARD_BACK_LABELS: Record<WizardPageId, string> = {
     galaxy: '← Main Menu',
-    race: '← The Galaxy',
+    colonization: '← The Galaxy',
+    race: '← Colonization and Territory',
     empire: '← Your Race',
-    victory: '← Your Empire',
+    empires: '← Your Empire',
+    victory: '← Other Empires',
     start: '← Victory Conditions',
 };
 
 /** Footer forward-button label per page. */
 export const WIZARD_FORWARD_LABELS: Record<WizardPageId, string> = {
     galaxy: 'Next →',
+    colonization: 'Next →',
     race: 'Next →',
     empire: 'Next →',
+    empires: 'Next →',
     victory: 'Next →',
     start: 'Start Game',
 };
@@ -271,14 +287,18 @@ export function createNewGameWizard(callbacks: NewGameWizardCallbacks): NewGameW
 
     // --- Page containers (built once, shown/hidden on navigation). ---
     const galaxyPage = buildGalaxyPage(options);
+    const colonizationPage = buildColonizationPage(options);
     const racePage = buildRacePage(options, handleRaceChanged);
     const empirePage = buildEmpirePage(options);
+    const empiresPage = buildOtherEmpiresPage(options);
     const victoryPage = buildVictoryPage(options);
     const startPage = buildStartPage(options);
     const pageEls: Record<WizardPageId, HTMLElement> = {
         galaxy: galaxyPage,
+        colonization: colonizationPage,
         race: racePage,
         empire: empirePage,
+        empires: empiresPage,
         victory: victoryPage,
         start: startPage,
     };
@@ -514,13 +534,204 @@ function buildGalaxyPage(options: StartGameOptions): HTMLDivElement {
     seedRow.appendChild(rerollBtn);
     wrap.appendChild(seedRow);
 
-    // TODO(port): remaining wizard pages (playstyle, colonization/territory,
-    // other empires, quick start) — Start.InitializeComponent.cs
-    // pnlStartNewGame* panels other than the ones already built.
-    const moreTodo = document.createElement('div');
-    moreTodo.className = 'wizard-todo';
-    moreTodo.textContent = 'Other wizard pages (playstyle, colonization, other empires) — coming later.';
-    wrap.appendChild(moreTodo);
+    return wrap;
+}
+
+// ---------------------------------------------------------------------------
+// Colonization and Territory page (task 06h). Port of the visual layout of
+// Start.InitializeComponent.cs pnlStartNewGameColonizationTerritory controls.
+// ---------------------------------------------------------------------------
+
+/** Task 06h: a "Title — <range slider> — value label" row bound to one of
+ * the colonization page's numeric sliders, clamped into [min, max] on input. */
+function makeColonizationSlider(
+    wrap: HTMLDivElement,
+    title: string,
+    min: number,
+    max: number,
+    get: () => number,
+    set: (v: number) => void,
+): void {
+    const sliderWrap = document.createElement('div');
+    sliderWrap.className = 'wizard-slider';
+    const label = document.createElement('div');
+    label.className = 'wizard-slider-title';
+    label.textContent = title;
+    sliderWrap.appendChild(label);
+
+    const input = document.createElement('input');
+    input.type = 'range';
+    input.min = String(min);
+    input.max = String(max);
+    input.step = '1';
+    input.value = String(get());
+    input.addEventListener('input', () => {
+        const v = parseInt(input.value, 10);
+        if (!Number.isNaN(v)) {
+            set(Math.min(max, Math.max(min, v)));
+        }
+    });
+    sliderWrap.appendChild(input);
+
+    const value = document.createElement('span');
+    value.className = 'wizard-colonization-value';
+    function paint(): void {
+        value.textContent = String(get());
+    }
+    paint();
+    sliderWrap.appendChild(value);
+    wrap.appendChild(sliderWrap);
+}
+
+function buildColonizationPage(options: StartGameOptions): HTMLDivElement {
+    const wrap = document.createElement('div');
+    wrap.className = 'wizard-page wizard-colonization-page';
+    const c = options.colonization;
+
+    // --- Enforce Colonization Range Limits group box
+    // (grpStartNewGameColonizationTerritoryColonizationRange). ---
+    const rangeGroup = document.createElement('div');
+    rangeGroup.className = 'wizard-colonization-group';
+
+    const enforceRow = document.createElement('label');
+    enforceRow.className = 'wizard-checkbox';
+    const enforceCheck = document.createElement('input');
+    enforceCheck.type = 'checkbox';
+    enforceCheck.checked = c.enforceRangeLimits;
+    enforceCheck.addEventListener('change', () => {
+        c.enforceRangeLimits = enforceCheck.checked;
+    });
+    enforceRow.appendChild(enforceCheck);
+    const enforceText = document.createElement('span');
+    enforceText.textContent = 'Enforce Colonization Range Limits';
+    enforceRow.appendChild(enforceText);
+    rangeGroup.appendChild(enforceRow);
+
+    // Colonization Range (lbl…ColonizationRangeTitle / Value, sld…colorSlider2).
+    makeColonizationSlider(rangeGroup, 'Colonization Range', COLONIZATION_RANGE_KLY_MIN, COLONIZATION_RANGE_KLY_MAX,
+        () => c.colonizationRangeKly, (x) => {
+            c.colonizationRangeKly = x;
+        });
+    const rangeValue = document.createElement('span');
+    rangeValue.className = 'wizard-colonization-range-value';
+    rangeValue.textContent = `${c.colonizationRangeKly}K`;
+    rangeGroup.appendChild(rangeValue);
+
+    // Colony Influence Range (lbl…ColonyInfluenceRange* / Suggestion,
+    // sld…colorSlider1), shown as a percent.
+    makeColonizationSlider(rangeGroup, 'Colony Influence Range', COLONY_INFLUENCE_RANGE_PCT_MIN, COLONY_INFLUENCE_RANGE_PCT_MAX,
+        () => c.colonyInfluenceRangePercent, (x) => {
+            c.colonyInfluenceRangePercent = x;
+        });
+    const influenceValue = document.createElement('span');
+    influenceValue.className = 'wizard-colonization-influence-value';
+    influenceValue.textContent = `${c.colonyInfluenceRangePercent}%`;
+    rangeGroup.appendChild(influenceValue);
+    const suggestion = document.createElement('span');
+    suggestion.className = 'wizard-colonization-suggestion';
+    suggestion.textContent = 'Suggestion';
+    rangeGroup.appendChild(suggestion);
+    wrap.appendChild(rangeGroup);
+
+    // Keep the standalone value labels in sync with the sliders above.
+    for (const el of wrap.querySelectorAll<HTMLInputElement>('input[type="range"]')) {
+        el.addEventListener('input', () => {
+            rangeValue.textContent = `${c.colonizationRangeKly}K`;
+            influenceValue.textContent = `${c.colonyInfluenceRangePercent}%`;
+        });
+    }
+
+    // --- Allow same-system option (chkOptionsAllowSameSystemAsOtherEmpires). ---
+    const sameSystemRow = document.createElement('label');
+    sameSystemRow.className = 'wizard-checkbox';
+    const sameSystemCheck = document.createElement('input');
+    sameSystemCheck.type = 'checkbox';
+    sameSystemCheck.checked = c.allowSameSystemAsOtherEmpires;
+    sameSystemCheck.addEventListener('change', () => {
+        c.allowSameSystemAsOtherEmpires = sameSystemCheck.checked;
+    });
+    sameSystemRow.appendChild(sameSystemCheck);
+    const sameSystemText = document.createElement('span');
+    sameSystemText.textContent = 'Allow colonization and mining stations in other empires systems';
+    sameSystemRow.appendChild(sameSystemText);
+    wrap.appendChild(sameSystemRow);
+
+    return wrap;
+}
+
+// ---------------------------------------------------------------------------
+// Other Empires page (task 06h). Port of the visual layout of
+// Start.InitializeComponent.cs pnlStartNewGameOtherEmpires controls.
+// ---------------------------------------------------------------------------
+
+function buildOtherEmpiresPage(options: StartGameOptions): HTMLDivElement {
+    const wrap = document.createElement('div');
+    wrap.className = 'wizard-page wizard-empires-page';
+    const o = options.otherEmpires;
+
+    // --- Auto-Generate Starting Empires (chkOtherEmpiresAutogenerate). ---
+    const autoRow = document.createElement('label');
+    autoRow.className = 'wizard-checkbox';
+    const autoCheck = document.createElement('input');
+    autoCheck.type = 'checkbox';
+    autoCheck.checked = o.autogenerate;
+    autoCheck.addEventListener('change', () => {
+        o.autogenerate = autoCheck.checked;
+    });
+    autoRow.appendChild(autoCheck);
+    const autoText = document.createElement('span');
+    autoText.textContent = 'Auto-Generate Starting Empires';
+    autoRow.appendChild(autoText);
+    wrap.appendChild(autoRow);
+
+    // --- "Generate <n> starting empires" (lbl…AutoGenNumberDescrip1/2). ---
+    const countRow = document.createElement('div');
+    countRow.className = 'wizard-empires-count-row';
+    const pre = document.createElement('span');
+    pre.textContent = 'Generate';
+    countRow.appendChild(pre);
+    const countInput = document.createElement('input');
+    countInput.type = 'number';
+    countInput.className = 'wizard-empires-count-input';
+    countInput.min = String(OTHER_EMPIRES_COUNT_MIN);
+    countInput.max = String(OTHER_EMPIRES_COUNT_MAX);
+    countInput.step = '1';
+    countInput.value = String(o.empireCount);
+    countInput.addEventListener('input', () => {
+        const v = parseInt(countInput.value, 10);
+        if (!Number.isNaN(v)) {
+            o.empireCount = Math.min(OTHER_EMPIRES_COUNT_MAX, Math.max(OTHER_EMPIRES_COUNT_MIN, v));
+        }
+    });
+    countRow.appendChild(countInput);
+    const post = document.createElement('span');
+    post.textContent = 'starting empires';
+    countRow.appendChild(post);
+    wrap.appendChild(countRow);
+
+    // --- OR specify the starting empires below (lbl…OR). The original lists
+    // each AI empire here for manual editing; only the auto-generate settings
+    // are implemented now (task 06h scope). ---
+    const orLabel = document.createElement('div');
+    orLabel.className = 'wizard-empires-or';
+    orLabel.textContent = 'OR specify the starting empires below';
+    wrap.appendChild(orLabel);
+
+    const listPreview = document.createElement('div');
+    listPreview.className = 'wizard-empires-list-preview';
+    function paintPreview(): void {
+        listPreview.textContent = o.autogenerate
+            ? `${o.empireCount} empires will be generated`
+            : `Manual empire list — ${o.empireCount} empires (auto-generation off)`;
+    }
+    paintPreview();
+    wrap.appendChild(listPreview);
+    autoCheck.addEventListener('change', paintPreview);
+    countInput.addEventListener('input', paintPreview);
+
+    // TODO(port): manual per-empire editing (list of AI empires with race /
+    // government / home system pickers) — Start.InitializeComponent.cs
+    // pnlStartNewGameOtherEmpires empStartNewGame* rows.
 
     return wrap;
 }
@@ -1165,6 +1376,21 @@ function buildStartPage(options: StartGameOptions): HTMLDivElement {
             ['Empire Name', options.empireName || '(not set)'],
             ['Government', options.governmentId >= 0 ? `#${options.governmentId}` : '(not chosen)'],
             ['Flag', `shape ${options.flagShapeIndex} · ${options.primaryColor} / ${options.secondaryColor}`],
+            // Task 06h: colonization & territory summary.
+            [
+                'Colonization',
+                options.colonization.enforceRangeLimits
+                    ? `Range limits on (${options.colonization.colonizationRangeKly}K range, ${options.colonization.colonyInfluenceRangePercent}% influence)`
+                    : `No range limits (range ${options.colonization.colonizationRangeKly}K, influence ${options.colonization.colonyInfluenceRangePercent}%)`,
+            ],
+            ['Same-System Colonies', options.colonization.allowSameSystemAsOtherEmpires ? 'Allowed' : 'Disallowed'],
+            // Task 06h: other empires summary.
+            [
+                'Other Empires',
+                options.otherEmpires.autogenerate
+                    ? `${options.otherEmpires.empireCount} auto-generated`
+                    : `${options.otherEmpires.empireCount} manual (list editing TODO)`,
+            ],
             // Task 06g: victory conditions summary (sandbox when none checked).
             [
                 'Victory Conditions',

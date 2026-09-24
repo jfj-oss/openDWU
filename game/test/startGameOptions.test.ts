@@ -1,24 +1,35 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
     aggressionFor,
     alienLifeFor,
     applyEmpireDefaults,
+    clampColonization,
+    clampOtherEmpires,
     clampVictory,
     colonyPrevalenceFor,
+    COLONIZATION_RANGE_KLY_MAX,
+    COLONIZATION_RANGE_KLY_MIN,
+    COLONY_INFLUENCE_RANGE_PCT_MAX,
+    COLONY_INFLUENCE_RANGE_PCT_MIN,
+    defaultColonizationOptions,
     defaultEmpireName,
     defaultFlagColors,
+    defaultOtherEmpiresOptions,
     defaultRaceName,
     defaultStartGameOptions,
     defaultVictoryConditions,
     difficultyFor,
     flagShapeUrl,
     FLAG_COLOR_PALETTE,
+    OTHER_EMPIRES_COUNT_MAX,
+    OTHER_EMPIRES_COUNT_MIN,
     piratesFor,
     sectorsFor,
     spaceCreaturesFor,
     starCountFor,
+    toCreateGameOptions,
     VICTORY_PERCENT_MIN,
     VICTORY_TIME_LIMIT_YEARS_MAX,
     VICTORY_TIME_LIMIT_YEARS_MIN,
@@ -28,6 +39,14 @@ import {
 } from '../src/sim/startGameOptions';
 import { GalaxyShape } from '../src/sim/types';
 import { parseRace, type Race } from '../src/sim/data/races';
+import type { GameData } from '../src/sim/data/gameData';
+import { loadGameDataFs } from './helpers/loadGameDataFs';
+import {
+    WIZARD_BACK_LABELS,
+    WIZARD_FORWARD_LABELS,
+    WIZARD_PAGE_TITLES,
+    WIZARD_PAGES,
+} from '../src/ui/screens/newGameWizard';
 
 describe('starCountFor (task 06b, Start.cs BaconStart.method_60)', () => {
     it('maps the six star-amount slider ticks', () => {
@@ -90,6 +109,12 @@ describe('defaultStartGameOptions (task 06b)', () => {
         // unchecked = sandbox mode; percents 33; time limit 10y; time start
         // 3y; all event toggles on; threshold 1.0).
         expect(opts.victory).toEqual(defaultVictoryConditions());
+        // Task 06h: colonization options default to the wizard control values
+        // from Start.InitializeComponent.cs (enforcement off, range 4000 Kly,
+        // influence 100 %, same-system option off).
+        expect(opts.colonization).toEqual(defaultColonizationOptions());
+        // Task 06h: other empires default to auto-generate with 10 empires.
+        expect(opts.otherEmpires).toEqual(defaultOtherEmpiresOptions());
     });
 });
 
@@ -156,6 +181,17 @@ describe('StartGameOptions round-trip (task 06d)', () => {
                 timeLimit: true,
                 timeLimitYears: 25,
             },
+            colonization: {
+                ...defaultColonizationOptions(),
+                enforceRangeLimits: true,
+                colonizationRangeKly: 1500,
+                allowSameSystemAsOtherEmpires: true,
+            },
+            otherEmpires: {
+                ...defaultOtherEmpiresOptions(),
+                autogenerate: false,
+                empireCount: 4,
+            },
         };
         const copy = { ...options };
         expect(copy).toEqual(options);
@@ -164,6 +200,30 @@ describe('StartGameOptions round-trip (task 06d)', () => {
         copy.seed = 7;
         expect(options.raceName).toBe('Human');
         expect(options.seed).toBe(42);
+    });
+
+    it('round-trips custom nested colonization / otherEmpires objects through a deep copy', () => {
+        const options: StartGameOptions = defaultStartGameOptions();
+        options.colonization = {
+            ...defaultColonizationOptions(),
+            enforceRangeLimits: true,
+            colonizationRangeKly: 900,
+            colonyInfluenceRangePercent: 150,
+            allowSameSystemAsOtherEmpires: true,
+        };
+        options.otherEmpires = { autogenerate: false, empireCount: 3 };
+        const copy = {
+            ...options,
+            colonization: { ...options.colonization },
+            otherEmpires: { ...options.otherEmpires },
+        };
+        expect(copy.colonization).toEqual(options.colonization);
+        expect(copy.otherEmpires).toEqual(options.otherEmpires);
+        // Mutating the copies' nested objects must not affect the originals.
+        copy.colonization.colonizationRangeKly = 5000;
+        copy.otherEmpires.empireCount = 99;
+        expect(options.colonization.colonizationRangeKly).toBe(900);
+        expect(options.otherEmpires.empireCount).toBe(3);
     });
 
     it('round-trips a custom nested victory object through a deep copy', () => {
@@ -202,6 +262,8 @@ describe('StartGameOptions round-trip (task 06d)', () => {
             difficultyIndex: 2,
             difficultyScaling: false,
             victory: defaultVictoryConditions(),
+            colonization: defaultColonizationOptions(),
+            otherEmpires: defaultOtherEmpiresOptions(),
         };
         expect(starCountFor(options.starCountIndex)).toBe(700);
         expect(sectorsFor(options.dimensionIndex)).toBe(8);
@@ -425,5 +487,208 @@ describe('clampVictory (task 06g)', () => {
         expect(c.territory).toBe(true);
         expect(c.enableDisasterEvents).toBe(false);
         expect(c.victoryThresholdPercentage).toBe(1.0);
+    });
+});
+
+describe('defaultColonizationOptions (task 06h, Start.InitializeComponent.cs)', () => {
+    it('matches the wizard control values: enforcement off, range 4000 Kly, influence 100 %, same-system off', () => {
+        expect(defaultColonizationOptions()).toEqual({
+            enforceRangeLimits: false,
+            colonizationRangeKly: 4000,
+            colonyInfluenceRangePercent: 100,
+            allowSameSystemAsOtherEmpires: false,
+        });
+    });
+
+    it('exposes the wizard slider bounds from Start.InitializeComponent.cs', () => {
+        expect(COLONIZATION_RANGE_KLY_MIN).toBe(500);
+        expect(COLONIZATION_RANGE_KLY_MAX).toBe(5000);
+        expect(COLONY_INFLUENCE_RANGE_PCT_MIN).toBe(10);
+        expect(COLONY_INFLUENCE_RANGE_PCT_MAX).toBe(200);
+    });
+});
+
+describe('clampColonization (task 06h)', () => {
+    it('clamps the colonization range into 500..5000 Kly', () => {
+        expect(clampColonization({ ...defaultColonizationOptions(), colonizationRangeKly: 100 }).colonizationRangeKly).toBe(500);
+        expect(clampColonization({ ...defaultColonizationOptions(), colonizationRangeKly: 9000 }).colonizationRangeKly).toBe(5000);
+        expect(clampColonization({ ...defaultColonizationOptions(), colonizationRangeKly: 4000 }).colonizationRangeKly).toBe(4000);
+    });
+
+    it('clamps the colony influence range into 10..200 %', () => {
+        expect(clampColonization({ ...defaultColonizationOptions(), colonyInfluenceRangePercent: 1 }).colonyInfluenceRangePercent).toBe(10);
+        expect(clampColonization({ ...defaultColonizationOptions(), colonyInfluenceRangePercent: 500 }).colonyInfluenceRangePercent).toBe(200);
+        expect(clampColonization({ ...defaultColonizationOptions(), colonyInfluenceRangePercent: 100 }).colonyInfluenceRangePercent).toBe(100);
+    });
+
+    it('returns a copy and leaves booleans unchanged', () => {
+        const c = { ...defaultColonizationOptions(), enforceRangeLimits: true, allowSameSystemAsOtherEmpires: true };
+        const clamped = clampColonization(c);
+        expect(clamped).not.toBe(c);
+        expect(clamped.enforceRangeLimits).toBe(true);
+        expect(clamped.allowSameSystemAsOtherEmpires).toBe(true);
+    });
+});
+
+describe('defaultOtherEmpiresOptions (task 06h)', () => {
+    it('defaults to auto-generate on with 10 starting empires', () => {
+        expect(defaultOtherEmpiresOptions()).toEqual({
+            autogenerate: true,
+            empireCount: 10,
+        });
+    });
+
+    it('exposes the empire-count control bounds', () => {
+        expect(OTHER_EMPIRES_COUNT_MIN).toBe(0);
+        expect(OTHER_EMPIRES_COUNT_MAX).toBe(100);
+    });
+});
+
+describe('clampOtherEmpires (task 06h)', () => {
+    it('clamps the empire count into 0..100', () => {
+        expect(clampOtherEmpires({ ...defaultOtherEmpiresOptions(), empireCount: -3 }).empireCount).toBe(0);
+        expect(clampOtherEmpires({ ...defaultOtherEmpiresOptions(), empireCount: 250 }).empireCount).toBe(100);
+        expect(clampOtherEmpires({ ...defaultOtherEmpiresOptions(), empireCount: 10 }).empireCount).toBe(10);
+    });
+
+    it('returns a copy and leaves the autogenerate flag unchanged', () => {
+        const o = { ...defaultOtherEmpiresOptions(), autogenerate: false };
+        const clamped = clampOtherEmpires(o);
+        expect(clamped).not.toBe(o);
+        expect(clamped.autogenerate).toBe(false);
+    });
+});
+
+describe('wizard page order (task 06h, Start.InitializeComponent.cs navigation)', () => {
+    it('follows the original order: The Galaxy → Colonization and Territory → Your Race → Your Empire → Other Empires → Victory Conditions → Start', () => {
+        expect(WIZARD_PAGES).toEqual(['galaxy', 'colonization', 'race', 'empire', 'empires', 'victory', 'start']);
+    });
+
+    it('titles each page after its original panel name', () => {
+        expect(WIZARD_PAGE_TITLES).toEqual({
+            galaxy: 'The Galaxy',
+            colonization: 'Colonization and Territory',
+            race: 'Your Race',
+            empire: 'Your Empire',
+            empires: 'Other Empires',
+            victory: 'Victory Conditions',
+            start: 'Start',
+        });
+    });
+
+    it('back labels point at the previous page in that order', () => {
+        expect(WIZARD_BACK_LABELS).toEqual({
+            galaxy: '← Main Menu',
+            colonization: '← The Galaxy',
+            race: '← Colonization and Territory',
+            empire: '← Your Race',
+            empires: '← Your Empire',
+            victory: '← Other Empires',
+            start: '← Victory Conditions',
+        });
+    });
+
+    it('forward labels are "Next →" except the final page, which starts the game', () => {
+        for (const id of WIZARD_PAGES) {
+            if (id !== 'start') {
+                expect(WIZARD_FORWARD_LABELS[id]).toBe('Next →');
+            }
+        }
+        expect(WIZARD_FORWARD_LABELS.start).toBe('Start Game');
+    });
+});
+
+describe('toCreateGameOptions (task 06i)', () => {
+    let gameData: GameData;
+    beforeAll(async () => {
+        gameData = await loadGameDataFs();
+    }, 60000);
+
+    const NAMES = ['Alpha', 'Beta', 'Gamma'];
+
+    it('maps the galaxy options through the slider converters', () => {
+        const o = defaultStartGameOptions();
+        o.seed = 12345;
+        // Defaults: star index 3 -> 700, dimension index 2 -> 8x8.
+        const c = toCreateGameOptions(o, gameData, NAMES);
+        expect(c.shape).toBe(GalaxyShape.Spiral);
+        expect(c.starCount).toBe(starCountFor(3));
+        expect(c.sectorWidth).toBe(sectorsFor(2));
+        expect(c.sectorHeight).toBe(sectorsFor(2));
+        expect(c.systemNames).toBe(NAMES);
+        expect(c.gameData).toBe(gameData);
+        expect(c.colonyPrevalence).toBe(colonyPrevalenceFor(2));
+    });
+
+    it('passes the seed straight through', () => {
+        const o = defaultStartGameOptions();
+        o.seed = 987654321;
+        expect(toCreateGameOptions(o, gameData, NAMES).seed).toBe(987654321);
+    });
+
+    it('builds the player empire from race / name / government', () => {
+        const o = defaultStartGameOptions();
+        o.raceName = 'Human';
+        o.empireName = 'Human Empire';
+        // Pick a real government by its parsed id so the name resolves.
+        const govId = gameData.governments.findIndex((g) => g.name.length > 0);
+        o.governmentId = govId;
+        const c = toCreateGameOptions(o, gameData, NAMES);
+        expect(c.player.race).toBe('Human');
+        expect(c.player.name).toBe('Human Empire');
+        expect(c.player.governmentStyle).toBe(gameData.governments[govId].name);
+        expect(c.player.homeSystemFavourability).toBe('Normal');
+        expect(c.player.startLocation).toBe('(Random)');
+        // Tech level is fixed and supported (never the unported 0.5 "Normal").
+        expect(c.player.techLevel).toBe(0);
+        expect(c.player.age).toBe(1);
+    });
+
+    it('falls back to (Random) when no race or government is chosen', () => {
+        const o = defaultStartGameOptions();
+        o.raceName = '';
+        o.governmentId = -1;
+        const c = toCreateGameOptions(o, gameData, NAMES);
+        expect(c.player.race).toBe('(Random)');
+        expect(c.player.governmentStyle).toBe('(Random)');
+    });
+
+    it('sizes aiEmpires from the Other Empires count', () => {
+        const o = defaultStartGameOptions();
+        o.otherEmpires = { ...defaultOtherEmpiresOptions(), empireCount: 4 };
+        const c = toCreateGameOptions(o, gameData, NAMES);
+        expect(c.aiEmpires).toHaveLength(4);
+        for (const ai of c.aiEmpires) {
+            expect(ai.race).toBe('(Random)');
+            expect(ai.proximityDistance).toBe('Random');
+            expect(ai.homeSystemFavourability).toBe('Normal');
+            expect(ai.techLevel).toBe(0);
+        }
+    });
+
+    it('clamps an out-of-range AI empire count', () => {
+        const o = defaultStartGameOptions();
+        o.otherEmpires = { ...defaultOtherEmpiresOptions(), empireCount: 250 };
+        expect(toCreateGameOptions(o, gameData, NAMES).aiEmpires).toHaveLength(OTHER_EMPIRES_COUNT_MAX);
+    });
+
+    it('maps the colonization same-system flag and influence factor', () => {
+        const o = defaultStartGameOptions();
+        o.colonization = {
+            ...defaultColonizationOptions(),
+            enforceRangeLimits: true,
+            colonyInfluenceRangePercent: 150,
+            allowSameSystemAsOtherEmpires: true,
+        };
+        const c = toCreateGameOptions(o, gameData, NAMES);
+        expect(c.allowEmpiresInSameSystem).toBe(true);
+        expect(c.empireTerritoryColonyInfluenceRangeFactor).toBe(150);
+
+        // With enforcement off the influence factor is left to createGame's auto value.
+        const o2 = defaultStartGameOptions();
+        o2.colonization = { ...defaultColonizationOptions(), enforceRangeLimits: false };
+        const c2 = toCreateGameOptions(o2, gameData, NAMES);
+        expect(c2.allowEmpiresInSameSystem).toBe(false);
+        expect(c2.empireTerritoryColonyInfluenceRangeFactor).toBeUndefined();
     });
 });
