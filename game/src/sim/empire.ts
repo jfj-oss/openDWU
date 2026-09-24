@@ -9,13 +9,14 @@
 // marked TODO(port) so the constructor's order of operations stays visible.
 
 import type { Galaxy } from './galaxy';
-import { HabitatCategoryType } from './types';
+import { HabitatCategoryType, HabitatType } from './types';
 import type { Habitat } from './types';
 import type { Race } from './data/races';
 import type { Government } from './data/governments';
 import { START_STAR_DATE } from './galaxyTime';
 import { Cargo, CargoList, ResourceRef, TroopList } from './cargo';
 import { checkEmpireColorUsed, selectColorFromKey, selectComplementaryColorKey, selectUnusedMainColor } from './empireColors';
+import { ResearchSystem, ResearchAbilityType } from './researchSystem';
 import { EmpireVisibility, SystemVisibilityStatus, type SystemVisibility, type VisibilityOwner, type VisibilityUnit } from './visibility';
 
 // TODO(port): EmpirePolicy type — Empire.cs / Policy.cs (policy data model
@@ -69,13 +70,6 @@ export enum BuiltObjectSubRole {
 }
 
 
-// TODO(port): ResearchSystem + tech tree — ResearchSystem.cs /
-// Galaxy.ResearchNodeDefinitionsStatic.ObtainTechTree/SetTechTreeStartingDefaults.
-class ResearchSystem {
-    techTree: unknown = null;
-    // TODO(port): ResearchSystem.Update(race) — ResearchSystem.cs.
-    update(_race: Race | null): void {}
-}
 
 // TODO(port): EmpireCounters — EmpireCounters.cs.
 class EmpireCounters {
@@ -133,6 +127,7 @@ export const COLONY_ANNUAL_RESOURCE_CONSUMPTION_RATE = 1e-8;
 export const COLONY_ANNUAL_LUXURY_RESOURCE_CONSUMPTION_RATE = 2e-8;
 export const MINIMUM_LUXURY_RESOURCE_REORDER_AMOUNT = 100;
 export const COLONY_MAXIMUM_TROOP_STRENGTH = 150000;
+export const BUILD_COLONY_SHIP_POPULATION_REQUIREMENT = 500000000; // Galaxy.3.cs:5001
 
 export class Empire {
     galaxy!: Galaxy;
@@ -215,9 +210,17 @@ export class Empire {
     troopDescription = '';
     troopPictureRef = 0;
     stateMoney = 0.0;
-    // C#: Empire.CheckEmpireHasHyperDriveTech (Research.GetLatestComponent(HyperDrive)).
-    // TODO(port): research — false until the tech tree is ported (C2c-3).
-    hasHyperDriveTech = false;
+    // Port of Empire.3.cs CheckEmpireHasHyperDriveTech (Research.GetLatestComponent(HyperDrive)).
+    get hasHyperDriveTech(): boolean {
+        return this.research.hasHyperDrive();
+    }
+    // Empire.CanColonize* (ReviewColonizationTypes).
+    canColonizeContinental = false;
+    canColonizeMarshySwamp = false;
+    canColonizeOcean = false;
+    canColonizeDesert = false;
+    canColonizeIce = false;
+    canColonizeVolcanic = false;
     // Task C2b: fields GenerateEmpire sets.
     designPictureFamilyIndex = 0;
     preWarpProgressEventsOccurred = false;
@@ -225,7 +228,7 @@ export class Empire {
     expansion = 0;
     playerEmpire = false;
     privateMoney = 0.0;
-    research = new ResearchSystem();
+    research = new ResearchSystem(null);
     lastLeaderChangeDate = START_STAR_DATE;
     designSpecifications: DesignSpecification[] = [];
     planetDestroyerDesignSpecification: DesignSpecification | null = null;
@@ -456,11 +459,14 @@ export class Empire {
         }
         this.stateMoney = 30000.0;
         this.privateMoney = 100000.0;
-        this.research = new ResearchSystem();
+        this.research = new ResearchSystem(galaxy.researchStatic);
         // TODO(port): Galaxy.ResearchNodeDefinitionsStatic.ObtainTechTree /
         // SetTechTreeStartingDefaults — Galaxy.cs / ResearchNodeDefinition.cs.
-        this.research.techTree = null;
-        this.research.update(this.dominantRace);
+        // Empire.cs 3961-3962: ObtainTechTree(race) + SetTechTreeStartingDefaults(race, policy).
+        // TODO(port): SetTechTreeStartingDefaults — GenerateEmpire's SetTechTreeLevel
+        // re-sets IsResearched for every node for integer tech levels anyway.
+        this.research.obtainTechTree();
+        this.research.update();
         this.reviewResearchAbilities();
         this.reviewDesignsBuiltObjectsImprovedComponents();
         this.reviewColonizationTypes();
@@ -777,14 +783,47 @@ export class Empire {
         setColors(mainColor, secondaryColor);
     }
 
-    // TODO(port): ReviewResearchAbilities — Empire.cs.
-    reviewResearchAbilities(): void {}
+    // Port of Empire.3.cs ReviewResearchAbilities (2059).
+    // TODO(port): ReviewPopulationGrowthRates / MaximumConstructionSize / CanBuildShipTypes / TroopTypes bodies.
+    reviewResearchAbilities(): void {
+        this.reviewColonizationTypes();
+        this.reviewPopulationGrowthRates();
+        this.reviewMaximumConstructionSize(() => {});
+        this.reviewCanBuildShipTypes();
+        this.reviewTroopTypes();
+    }
 
     // TODO(port): ReviewDesignsBuiltObjectsImprovedComponents — Empire.cs.
     reviewDesignsBuiltObjectsImprovedComponents(): void {}
 
     // TODO(port): ReviewColonizationTypes — Empire.cs.
-    reviewColonizationTypes(): void {}
+    // Port of Empire.3.cs ReviewColonizationTypes (2184).
+    reviewColonizationTypes(): void {
+        const flags = [false, false, false, false, false, false, false];
+        for (const a of this.research.abilities) {
+            if (a.type === ResearchAbilityType.ColonizeHabitatType && a.value >= 1 && a.value <= 6) flags[a.value] = true;
+        }
+        [, this.canColonizeContinental, this.canColonizeMarshySwamp, this.canColonizeOcean, this.canColonizeDesert, this.canColonizeIce, this.canColonizeVolcanic] = flags;
+    }
+
+    // Port of Empire.7.cs ColonizableHabitatTypesForEmpire (1595).
+    // BuildColonyShipPopulationRequirement: Galaxy.3.cs static.
+    colonizableHabitatTypesForEmpire(): HabitatType[] {
+        const list: HabitatType[] = [];
+        if (this.canColonizeContinental) list.push(HabitatType.Continental);
+        if (this.canColonizeMarshySwamp) list.push(HabitatType.MarshySwamp);
+        if (this.canColonizeOcean) list.push(HabitatType.Ocean);
+        if (this.canColonizeDesert) list.push(HabitatType.Desert);
+        if (this.canColonizeIce) list.push(HabitatType.Ice);
+        if (this.canColonizeVolcanic) list.push(HabitatType.Volcanic);
+        for (const c of this.colonies) {
+            if (c.population.totalAmount >= BUILD_COLONY_SHIP_POPULATION_REQUIREMENT) {
+                const r = c.population.dominantRace;
+                if (r !== null && !list.includes(r.nativeHabitatType)) list.push(r.nativeHabitatType);
+            }
+        }
+        return list;
+    }
 
     // TODO(port): ReviewPopulationGrowthRates — Empire.cs.
     reviewPopulationGrowthRates(): void {}

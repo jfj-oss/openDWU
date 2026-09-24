@@ -125,10 +125,11 @@ export function generateEmpire(
     empire.privateMoney = 40000.0 + (expansion + 2.0) * 3000.0;
     empire.stateMoney = 15000.0 + (expansion + 2.0) * 1500.0;
     empire.generateDesignSpecifications(galaxy, race, false, race.name);
-    // TODO(port): ResearchNodeDefinitionsStatic.SetTechTreeLevel(techLevel) — draws
-    // Rnd only when techLevel is fractional; Research.Update; ReviewResearchAbilities;
-    // LoadOptimizedDesignsForEmpire; ReviewDesignsBuiltObjectsImprovedComponents; ReviewTroopTypes.
-    empire.research.update(race);
+    // ResearchNodeDefinitionsStatic.SetTechTreeLevel(techLevel) (draws Rnd only
+    // for fractional levels) + Research.Update.
+    if (galaxy.researchStatic !== null) empire.research.setTechTreeLevel(rnd, race, techLevel, false);
+    empire.research.update();
+    // TODO(port): LoadOptimizedDesignsForEmpire (designs).
     empire.reviewResearchAbilities();
     empire.reviewDesignsBuiltObjectsImprovedComponents();
     empire.reviewTroopTypes();

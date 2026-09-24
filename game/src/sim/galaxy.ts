@@ -26,6 +26,7 @@ import type { Resource } from './data/resources';
 import { buildResourceSystem, type ResourceSystem } from './resourceSystem';
 import { netSort } from './netSort';
 import { EmpireTerritory, strategicValue } from './territory';
+import { buildResearchStatic, type ResearchStatic } from './researchSystem';
 
 // C# string.CompareTo (culture-sensitive; .NET 5+ uses ICU).
 const NAME_COLLATOR = new Intl.Collator('en-US');
@@ -90,6 +91,8 @@ export class Galaxy {
     // Parsed resource definitions (ResourceSystem.Resources), passed in via
     // GenerateGalaxyOptions.gameData.
     resources: Resource[] = [];
+    // Task C2c-3: Galaxy.ResearchNodeDefinitionsStatic + ComponentDefinitionsStatic.
+    researchStatic: ResearchStatic | null = null;
     // Task C2c-2: Galaxy.EmpireTerritory + EmpireTerritoryColonyInfluenceRangeFactor (Galaxy.cs:726).
     empireTerritory = new EmpireTerritory();
     empireTerritoryColonyInfluenceRangeFactor = 1;
@@ -3468,6 +3471,7 @@ export function generateGalaxy(options: GenerateGalaxyOptions): Galaxy {
     // ResourceSystem.Resources (Galaxy.4.cs ctor loads it before generation).
     galaxy.resources = gameData?.resources ?? [];
     galaxy.resourceSystem = buildResourceSystem(galaxy.resources, gameData?.components ?? []);
+    galaxy.researchStatic = gameData ? buildResearchStatic(gameData.research, gameData.components, gameData.races) : null;
     // Port of Galaxy.cs Races (loaded from GameData in the ctor).
     galaxy.races = gameData?.races ?? [];
 
