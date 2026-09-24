@@ -39,6 +39,7 @@ import {
     starSpriteUrls,
 } from './assets';
 import { Galaxy } from '../sim/galaxy';
+import type { Empire } from '../sim/empire';
 import { GalaxyLocation, GalaxyLocationType } from '../sim/galaxyLocation';
 import { Habitat, HabitatCategoryType, HabitatType, SystemInfo } from '../sim/types';
 import { NebulaCloudGenerator } from './nebulaClouds';
@@ -108,20 +109,91 @@ export function orbitRingAlpha(z: number, maxOrbitDistance: number): number {
     return 0.5 * fadeIn(z, zMin, zMin * 2);
 }
 
-// Task 02b3: minimum on-screen sizes at system zoom. At ?zoom=30 planets
-// render as sub-pixel dots, so each body keeps its real scale when that is
-// larger than the minimum and snaps to the minimum otherwise:
-//   planets >= 14 px, moons >= 7 px, the star's system-zoom sprite >= 40 px.
+// Task 12p (Main.Part11.cs:487-505, MainView.1.cs:437-470/626-642,
+// MainView.cs:2186-2191): on-screen body sizes at system zoom, in the
+// original's zoom factor f = 1/z (px per world unit z, max 1). Planets and
+// moons are drawn while f < 500 with a compressed zoom factor (divided by
+// 1.25 / 1.1 above f = 10) and a minimum of 4 px (asteroids 1 px); stars
+// use the plain factor with a minimum of 4 px and no cap. The galaxy-level
+// map-star icon is D/f clamped to >= 10 px, plus 2 (MainView.2.cs:5465-5473).
+export function planetZoomFactor(f: number): number {
+    // Port of Main.Part11.cs CalculatePlanetZoomFactor.
+    let result = f;
+    if (f > 10.0) {
+        result = Math.max(10.0, f / 1.25);
+    }
+    return result;
+}
+
+export function moonZoomFactor(f: number): number {
+    // Port of Main.Part11.cs CalculateMoonZoomFactor.
+    let result = f;
+    if (f > 10.0) {
+        result = Math.max(10.0, f / 1.1);
+    }
+    return result;
+}
+
 export function planetSpritePx(diameter: number, z: number): number {
-    return Math.max(diameter * z * 0.38, 14);
+    const f = 1 / z;
+    return Math.max(4, Math.trunc(diameter / planetZoomFactor(f) + 1e-6));
 }
 
 export function moonDotPx(diameter: number, z: number): number {
-    return Math.max(diameter * z * 0.3, 7);
+    const f = 1 / z;
+    return Math.max(4, Math.trunc(diameter / moonZoomFactor(f) + 1e-6));
 }
 
 export function starSpritePx(diameter: number, z: number): number {
-    return Math.min(Math.max(diameter * z * 0.42, 40), 1400);
+    const f = 1 / z;
+    return Math.max(4, Math.trunc(diameter / f + 1e-6));
+}
+
+export function starGalaxySpritePx(diameter: number, z: number): number {
+    const f = 1 / z;
+    return Math.max(10, Math.trunc(diameter / f + 1e-6)) + 2;
+}
+
+// Task 12p (MainView.cs:3027-3058 method_60 `result` column): the zoom
+// factor below which the star is drawn as rotating discs + corona instead
+// of its plain texture (default 100 for unlisted types).
+export function starDiscMaxFactor(type: HabitatType): number {
+    switch (type) {
+        case HabitatType.MainSequence:
+            return 60;
+        case HabitatType.RedGiant:
+        case HabitatType.SuperGiant:
+            return 75;
+        case HabitatType.WhiteDwarf:
+            return 40;
+        case HabitatType.Neutron:
+            return 30;
+        case HabitatType.BlackHole:
+        case HabitatType.SuperNova:
+            return 150;
+        default:
+            return 100;
+    }
+}
+
+// Task 12p (MainView.1.cs:1814-1919 label rules): draw a habitat name while
+// f < 500 — populated colonies always, planets only down to f < 10. Bases
+// are not modelled (their flag ignored); the ruin marker (flag13) is skipped.
+export function habitatLabelVisible(isPlanet: boolean, populated: boolean, f: number): boolean {
+    return f < 500 && (populated || (isPlanet && f < 10));
+}
+
+// Task 12p (MainView.1.cs:2314-2338 method_84): TinyFont (11 px) at f >= 3,
+// NormalFont (17 px) below — the GDI twin's 10.67/16.67 px rounded up.
+export function habitatLabelFontSize(f: number): number {
+    return f < 3 ? 17 : 11;
+}
+
+// Task 12p (method_84): empire main colour unless the habitat belongs to
+// the independent empire (or none), then the default grey 0xa0a0a0
+// (MainView.cs:1410 color_1 = FromArgb(255,160,160,160)).
+export function habitatLabelColor(h: Habitat, independent: Empire | null): number {
+    return h.empire !== null && h.empire !== independent ? h.empire.mainColor : 0xa0a0a0;
 }
 
 // Task 08g (Controls/MainView.cs mouse picking): pure hit-test over a list of
@@ -241,11 +313,19 @@ class PlanetView {
         this.sprite.visible = false;
         this.sprite.alpha = 0;
         this.system.root.addChild(this.sprite);
+        // Task 12p (method_84): name centred on the drawn rect's right edge,
+        // vertically centred on the body; 1 px black drop shadow (the XNA
+        // offset is not recoverable from the C#).
         this.label = new Text({
             text: habitat.name,
-            style: { fontSize: 9, fill: 0xffffff, fontFamily: MAP_FONT_FAMILY },
+            style: {
+                fontSize: 11,
+                fill: 0xa0a0a0,
+                fontFamily: MAP_FONT_FAMILY,
+                dropShadow: { color: 0x000000, distance: 1, blur: 0, alpha: 1, angle: Math.PI / 4 },
+            },
         });
-        this.label.anchor.set(0.5, 0);
+        this.label.anchor.set(0.5, 0.5);
         this.label.visible = false;
         this.system.root.addChild(this.label);
     }
@@ -254,12 +334,28 @@ class PlanetView {
 class MoonView {
     habitat: Habitat;
     dot: Sprite;
+    label: Text;
     constructor(private system: SystemView, habitat: Habitat, tex: Texture) {
         this.habitat = habitat;
         this.dot = new Sprite(tex);
         this.dot.anchor.set(0.5);
         this.dot.visible = false;
         this.system.root.addChild(this.dot);
+        // Task 12p: moons are full planet-textured sprites at system zoom
+        // (MainView.1.cs:437-470 draws them like planets, factor via
+        // CalculateMoonZoomFactor), with the same label rules as planets.
+        this.label = new Text({
+            text: habitat.name,
+            style: {
+                fontSize: 11,
+                fill: 0xa0a0a0,
+                fontFamily: MAP_FONT_FAMILY,
+                dropShadow: { color: 0x000000, distance: 1, blur: 0, alpha: 1, angle: Math.PI / 4 },
+            },
+        });
+        this.label.anchor.set(0.5, 0.5);
+        this.label.visible = false;
+        this.system.root.addChild(this.label);
     }
 }
 
@@ -337,7 +433,8 @@ class SystemView {
                 this.planets.push(planet);
                 for (const moon of system.habitats) {
                     if (moon.category === HabitatCategoryType.Moon && moon.parent === habitat) {
-                        planet.moons.push(new MoonView(this, moon, textures.dots.get(moon.type) ?? textures.dot));
+                        // Task 12p: moons render as planet-textured sprites, not dots.
+                        planet.moons.push(new MoonView(this, moon, makePlanetTexture(PLANET_COLORS[moon.type] ?? '#888888')));
                     }
                 }
                 this.maxExtent = Math.max(this.maxExtent, habitat.orbitDistance + 3000);
@@ -382,19 +479,40 @@ class SystemView {
         }
 
         const z = zoom;
-        // Map-star icon: a few px, giants slightly bigger; crossfades to
-        // the full star sprite over zoom 0.05..0.10 (original's
-        // actualZoomFactor 20..10, Main.Part11.cs `> 10.0` threshold).
-        const iconPx = clamp(star.diameter * z * 30, 2.5, 26);
-        const fullPx = starSpritePx(star.diameter, z);
-        const crossT = fadeIn(z, 0.05, 0.1);
-        this.mapIcon.visible = crossT < 0.995;
-        this.mapIcon.alpha = 1 - crossT;
-        this.mapIcon.scale.set(iconPx / (this.mapIcon.texture.width * z));
-        this.starSprite.visible = crossT > 0.005;
-        this.starSprite.alpha = crossT;
-        this.starSprite.scale.set(fullPx / (this.starSprite.texture.width * z));
-        this.updateStarDiscs(crossT, fullPx, z, dtSeconds);
+        // Task 12p (MainView.1.cs:735-785, MainView.2.cs:5465-5473): hard
+        // bands on the original's zoom factor f = 1/z — no crossfade.
+        //   f < discMax(type)      : rotating discs + corona (not BH/SN)
+        //   BH and f < 150         : plain star sprite
+        //   f < 150                : galaxy-level map-star icon
+        //   f >= 150               : small map icon (iconPx)
+        const f = 1 / z;
+        const S = starSpritePx(star.diameter, z);
+        const isBHOrSN = star.type === HabitatType.BlackHole || star.type === HabitatType.SuperNova;
+        if (!isBHOrSN && f < starDiscMaxFactor(star.type)) {
+            this.mapIcon.visible = false;
+            this.starSprite.visible = false;
+            this.updateStarDiscs(1, S, z, dtSeconds);
+        } else if (star.type === HabitatType.BlackHole && f < 150) {
+            this.mapIcon.visible = false;
+            this.updateStarDiscs(0, S, z, dtSeconds);
+            this.starSprite.visible = true;
+            this.starSprite.alpha = 1;
+            this.starSprite.scale.set(S / (this.starSprite.texture.width * z));
+        } else if (f < 150) {
+            this.updateStarDiscs(0, S, z, dtSeconds);
+            this.starSprite.visible = false;
+            this.mapIcon.visible = true;
+            this.mapIcon.alpha = 1;
+            const gpx = starGalaxySpritePx(star.diameter, z);
+            this.mapIcon.scale.set(gpx / (this.mapIcon.texture.width * z));
+        } else {
+            this.updateStarDiscs(0, S, z, dtSeconds);
+            this.starSprite.visible = false;
+            this.mapIcon.visible = true;
+            this.mapIcon.alpha = 1;
+            const iconPx = clamp(star.diameter * z * 30, 2.5, 26);
+            this.mapIcon.scale.set(iconPx / (this.mapIcon.texture.width * z));
+        }
 
         // Faint circular orbit rings: visible from the zoom where the
         // outermost orbit spans >= ~40 px on screen (task 02b2), persist
@@ -409,39 +527,58 @@ class SystemView {
             }
         }
 
-        // Planets: tiny colored dots on their rings at mid zoom; full
-        // planet sprites crossfaded in over zoom 0.012..0.03 so the art
-        // (min 14 px via planetSpritePx) shows once the whole system is on
-        // screen (~zoom factor 83..33, task 02c).
-        const dotT = fadeIn(z, 0.012, 0.03);
+        // Task 12p (MainView.1.cs:437-470): no dot crossfade — planet sprites are
+        // drawn while f < 500 at their compressed-factor size; the name
+        // label follows the original's populated/planet rules (method_84).
         for (const planet of this.planets) {
             const p = planet.habitat;
             const px = Math.cos(p.orbitAngle) * p.orbitDistance;
             const py = Math.sin(p.orbitAngle) * p.orbitDistance;
-            const dotPx = clamp(p.diameter * z * 0.5, 2, 12);
             const sprPx = planetSpritePx(p.diameter, z);
-            planet.dot.visible = z > 0.012 && dotT < 0.995;
-            planet.dot.alpha = 1 - dotT;
-            planet.dot.position.set(px, py);
-            planet.dot.scale.set(dotPx / (planet.dot.texture.width * z));
-            planet.sprite.visible = dotT > 0.005;
-            planet.sprite.alpha = dotT;
+            planet.dot.visible = false;
+            planet.sprite.visible = f < 500;
+            planet.sprite.alpha = 1;
             planet.sprite.position.set(px, py);
             planet.sprite.scale.set(sprPx / (planet.sprite.texture.width * z));
-            // Planet name label only once the planet art is shown (task 02c —
-            // the 14 px sprite floor made `sprPx >= 14` always true, so every
-            // system got a pile of labels at sector zoom).
-            planet.label.visible = dotT > 0.5;
-            planet.label.position.set(px, py + (sprPx * 0.5 + 8) / z);
+            // Label centred on the drawn rect's right edge (method_84),
+            // vertically centred on the body.
+            const populated = p.owner !== null && p.population.items.length > 0;
+            planet.label.visible = habitatLabelVisible(true, populated, f);
+            planet.label.position.set(px + (sprPx / 2) / z, py);
             planet.label.scale.set(1 / z);
+            if (planet.label.visible) {
+                const fontSize = habitatLabelFontSize(f);
+                if (fontSize !== planet.label.style.fontSize) {
+                    planet.label.style.fontSize = fontSize;
+                }
+                const fill = habitatLabelColor(p, this.view.galaxy.independentEmpire);
+                if (fill !== planet.label.style.fill) {
+                    planet.label.style.fill = fill;
+                }
+            }
             for (const moon of planet.moons) {
                 const m = moon.habitat;
                 const mx = px + Math.cos(m.orbitAngle) * m.orbitDistance;
                 const my = py + Math.sin(m.orbitAngle) * m.orbitDistance;
                 const mPx = moonDotPx(m.diameter, z);
-                moon.dot.visible = z > 0.012;
+                moon.dot.visible = f < 500;
+                moon.dot.alpha = 1;
                 moon.dot.position.set(mx, my);
                 moon.dot.scale.set(mPx / (moon.dot.texture.width * z));
+                const mPopulated = m.owner !== null && m.population.items.length > 0;
+                moon.label.visible = habitatLabelVisible(false, mPopulated, f);
+                moon.label.position.set(mx + (mPx / 2) / z, my);
+                moon.label.scale.set(1 / z);
+                if (moon.label.visible) {
+                    const fontSize = habitatLabelFontSize(f);
+                    if (fontSize !== moon.label.style.fontSize) {
+                        moon.label.style.fontSize = fontSize;
+                    }
+                    const fill = habitatLabelColor(m, this.view.galaxy.independentEmpire);
+                    if (fill !== moon.label.style.fill) {
+                        moon.label.style.fill = fill;
+                    }
+                }
             }
         }
 
@@ -451,10 +588,15 @@ class SystemView {
             rock.visible = rocksVisible;
         }
 
-        // System name label under the star (small white text).
-        this.nameLabel.visible = labelAllowed;
+        // System name label under the star (small white text). Task 12p: only
+        // drawn above f = 150 (MainView.2.cs:5153/5627-5630) — nothing names
+        // stars at system zoom; offset uses the larger of the map icon and
+        // the drawn star size.
+        this.nameLabel.visible = labelAllowed && f > 150;
         if (this.nameLabel.visible) {
-            this.nameLabel.position.set(0, (Math.max(iconPx, fullPx) * 0.5 + 10) / z);
+            const gpx = starGalaxySpritePx(star.diameter, z);
+            const iconPx = clamp(star.diameter * z * 30, 2.5, 26);
+            this.nameLabel.position.set(0, (Math.max(iconPx, gpx) * 0.5 + 10) / z);
             this.nameLabel.scale.set(1 / z);
         }
     }
@@ -925,6 +1067,16 @@ export class MainView {
                             planet.sprite.texture = tex;
                         }),
                 );
+                // Task 12p: moons use per-habitat planet art too.
+                for (const moon of planet.moons) {
+                    lazyLoads.push(
+                        store
+                            .loadFirst(planetUrls(moon.habitat), () => makePlanetTexture(PLANET_COLORS[moon.habitat.type] ?? '#888888'))
+                            .then((tex) => {
+                                moon.dot.texture = tex;
+                            }),
+                    );
+                }
             }
             for (let i = 0; i < sv.asteroids.length; i++) {
                 const rock = sv.asteroids[i];
