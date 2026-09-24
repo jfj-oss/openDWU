@@ -42,6 +42,7 @@ import { Galaxy } from '../sim/galaxy';
 import { GalaxyLocation, GalaxyLocationType } from '../sim/galaxyLocation';
 import { Habitat, HabitatCategoryType, HabitatType, SystemInfo } from '../sim/types';
 import { NebulaCloudGenerator } from './nebulaClouds';
+import { EmpireLayer } from './empireLayer';
 
 export function fadeIn(v: number, a: number, b: number): number {
     if (v <= a) {
@@ -719,6 +720,8 @@ export class MainView {
     clouds: CloudView[] = [];
     /** Task 08f2: nebula cloud images, world-space between backdrop and stars. */
     nebulae: NebulaView[] = [];
+    /** Task M2e: empire ownership overlays (colony rings, markers, territory). */
+    private empireLayer!: EmpireLayer;
     private textures!: MainViewTextures;
     private minZoom = 1e-6;
     private lastGridZoom = -1;
@@ -946,6 +949,10 @@ export class MainView {
             }
         }
 
+        // Task M2e: empire ownership overlays. The layer's root is added to
+        // world after all system roots, so rings/discs draw on top of stars.
+        this.empireLayer = new EmpireLayer(this.galaxy, this.world);
+
         this.attachInput();
     }
 
@@ -1042,6 +1049,10 @@ export class MainView {
         for (const nv of this.nebulae) {
             nv.update(z, cam, nebA);
         }
+
+        // Task M2e: empire ownership overlays (colony rings at system zoom;
+        // owned-system markers + territory discs at galaxy/sector zoom).
+        this.empireLayer.update(z, cam);
 
         // Region/nebula location name labels (task 08f1): visible while the
         // original's zoom factor double_15 satisfies 70 < double_15 <=

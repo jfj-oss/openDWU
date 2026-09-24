@@ -8,6 +8,17 @@ import type { GameData } from '../sim/data/gameData';
 import { Habitat, HabitatCategoryType, HabitatType, IndustryType, SystemInfo } from '../sim/types';
 import { createGameMenu, type GameMenuRefs } from './screens/gameMenu';
 import { setGameMenuHandler } from './keyboard';
+import { startEffects } from '../audio/effectsPlayer';
+
+/** Shared UI button-click sound (task 09b): the original plays a short click
+ * for chrome-button presses; here every HUD button click routes through this. */
+function playUiClick(): void {
+    try {
+        startEffects().playUiClick();
+    } catch {
+        // Audio must never break a UI interaction.
+    }
+}
 
 // Port of Main.Part12.cs LoadUiChromeButtons (381–520): the control → chrome
 // button image mapping. The original loads each control's image from
@@ -139,6 +150,19 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
     setGameMenuHandler(gameMenu.toggle);
     refs.gameMenu = gameMenu;
 
+    // Task 09b: register the effects player (audio starts on first user
+    // gesture) and keep its positional listener on the view centre so
+    // playResolved() can attenuate by on-screen distance.
+    const effects = startEffects();
+    if (wiring.camera) {
+        const cam = wiring.camera;
+        const syncListener = (): void => {
+            effects.setListener(cam.x, cam.y, cam.zoom, cam.width, cam.height);
+        };
+        syncListener();
+        setInterval(syncListener, 250);
+    }
+
     for (const [name, rect] of Object.entries(computeHudLayout(window.innerWidth, window.innerHeight))) {
         let el: HTMLElement;
         switch (name) {
@@ -234,7 +258,10 @@ function buildTopLeftBar(clock: GalaxyTime, onGameMenu: () => void): HTMLElement
     // The ≡ button toggles the in-game Escape menu (task 10c) instead of the
     // generic TODO log other chrome buttons still use.
     const menu = makeIconButton('btnGameMenu', 'Menu');
-    menu.addEventListener('click', onGameMenu);
+    menu.addEventListener('click', () => {
+        playUiClick();
+        onGameMenu();
+    });
     const help = makeIconButton('btnHelp', 'Help');
     bar.append(menu, help);
     bar.appendChild(makeSeparator());
@@ -244,16 +271,19 @@ function buildTopLeftBar(clock: GalaxyTime, onGameMenu: () => void): HTMLElement
         pauseBtn.textContent = clock.paused ? '▶' : '⏸';
     };
     pauseBtn.addEventListener('click', () => {
+        playUiClick();
         clock.togglePause();
         refreshPauseGlyph();
     });
     const dec = makeGlyphButton('−', 'Slower');
     dec.addEventListener('click', () => {
+        playUiClick();
         clock.slower();
         refreshDateLabel(dateEl, clock);
     });
     const inc = makeGlyphButton('+', 'Faster');
     inc.addEventListener('click', () => {
+        playUiClick();
         clock.faster();
         refreshDateLabel(dateEl, clock);
     });
@@ -317,7 +347,10 @@ function makeIconButton(controlName: string, title: string): HTMLButtonElement {
         btn.textContent = title;
     }
     // TODO(screen): open the original's panel/screen for this control.
-    btn.addEventListener('click', () => console.log(`TODO(screen): ${title}`));
+    btn.addEventListener('click', () => {
+        playUiClick();
+        console.log(`TODO(screen): ${title}`);
+    });
     return btn;
 }
 
@@ -342,7 +375,10 @@ function buildTopBarButton(name: string): HTMLElement {
         btn.title = label ?? '';
     }
     // TODO(screen): open the original's panel/screen for this control.
-    btn.addEventListener('click', () => console.log(`TODO(screen): ${label ?? name}`));
+    btn.addEventListener('click', () => {
+        playUiClick();
+        console.log(`TODO(screen): ${label ?? name}`);
+    });
     return btn;
 }
 
@@ -393,8 +429,14 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
     const back = makeGlyphButton('‹', 'Previous');
     const fwd = makeGlyphButton('›', 'Next');
     let activeChip = 'colonies';
-    back.addEventListener('click', () => console.log(`TODO(cycle): ${activeChip} back`));
-    fwd.addEventListener('click', () => console.log(`TODO(cycle): ${activeChip} forward`));
+    back.addEventListener('click', () => {
+        playUiClick();
+        console.log(`TODO(cycle): ${activeChip} back`);
+    });
+    fwd.addEventListener('click', () => {
+        playUiClick();
+        console.log(`TODO(cycle): ${activeChip} forward`);
+    });
     footer.append(back, fwd);
     for (const chip of CYCLE_CHIPS) {
         const b = document.createElement('button');
@@ -405,6 +447,7 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         // "›" arrow into each icon (task 05d).
         b.textContent = chip.label;
         b.addEventListener('click', () => {
+            playUiClick();
             activeChip = chip.key;
             footer.querySelectorAll('.hud-chip').forEach((c) => c.classList.remove('hud-chip-active'));
             b.classList.add('hud-chip-active');
@@ -469,7 +512,10 @@ function buildOptionsList(wiring: HudWiring): HTMLElement {
         lbl.className = 'hud-option-label';
         lbl.textContent = row.label;
         item.appendChild(lbl);
-        item.addEventListener('click', () => doViewAction(row.key, wiring));
+        item.addEventListener('click', () => {
+            playUiClick();
+            doViewAction(row.key, wiring);
+        });
         panel.appendChild(item);
     }
 
@@ -489,6 +535,7 @@ function buildOptionsList(wiring: HudWiring): HTMLElement {
         lbl.textContent = row.label;
         item.append(check, lbl);
         item.addEventListener('click', () => {
+            playUiClick();
             toggleOverlay(overlays, row.key);
             check.textContent = overlays[row.key] ? '✓' : '';
             // TODO(overlay): render this map overlay in the Main View.

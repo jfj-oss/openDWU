@@ -9,13 +9,15 @@ import { Camera } from './render/camera';
 import { MainView } from './render/mainView';
 import { AssetStore, loadManifest } from './render/assets';
 import { generateGalaxy } from './sim/galaxy';
+import { Galaxy } from './sim/galaxy';
+import { createGame, type CreateGameOptions } from './sim/game';
 import { parseSystemNames } from './sim/data';
 import { loadGameData, type FetchText, type GameData } from './sim/data/gameData';
 import { GalaxyShape } from './sim/types';
 import { createHud, layoutHud, nearestSystemName, type HudRefs } from './ui/hud';
 import { GalaxyTime } from './sim/clock';
 import { START_STAR_DATE } from './sim/galaxyTime';
-import { formatClockLabel, SYSTEM_LEVEL_ZOOM, type Selection } from './ui/hud';
+import { formatClockLabel, SECTOR_LEVEL_ZOOM, SYSTEM_LEVEL_ZOOM, type Selection } from './ui/hud';
 import { Habitat, HabitatCategoryType } from './sim/types';
 import { createMapOverlayState } from './ui/mapOverlays';
 import { buildDefaultHandlers, createShortcutsOverlay, dispatchKey } from './ui/keyboard';
@@ -23,7 +25,7 @@ import { createMainMenu } from './ui/screens/mainMenu';
 import { startMusic } from './audio/musicPlayer';
 import { createNewGameWizard } from './ui/screens/newGameWizard';
 import { toCreateGameOptions, type StartGameOptions } from './sim/startGameOptions';
-import { createGame, type Game } from './sim/game';
+import { type Game } from './sim/game';
 import './ui/hud.css';
 
 // ?shape= names accepted by the boot URL.
@@ -92,7 +94,7 @@ async function loadSystemNames(dwuPresent: boolean): Promise<string[]> {
 
 /** Keys that, when present on the boot URL, skip the main menu and boot
  * straight into the game (keeps screenshot scripts / dev links working). */
-const SKIP_MENU_PARAMS = ['seed', 'shape', 'stars', 'zoom', 'cx', 'cy', 'select', 'skipMenu'];
+const SKIP_MENU_PARAMS = ['seed', 'shape', 'stars', 'zoom', 'cx', 'cy', 'select', 'skipMenu', 'autostart'];
 
 /** FetchText for the browser: try each candidate URL in order. */
 const fetchTextBrowser: FetchText = async (candidates: string[]): Promise<string> => {
@@ -121,33 +123,29 @@ async function loadGameDataOrNone(dwuPresent: boolean): Promise<GameData | null>
     }
 }
 
-/** Open the new-game wizard (task 06b), replacing the main menu. Start Game
- * maps the chosen StartGameOptions onto createGame's options and boots the
- * Main View + HUD with the returned galaxy/empires (task 06i). */
-function openWizard(onBackToMenu: () => void): void {
-    const wizard = createNewGameWizard({
-        onBackToMenu: () => {
-            wizard.destroy();
-            onBackToMenu();
-        },
-        onStartGame: (options: StartGameOptions) => {
-            wizard.destroy();
-            void bootGameFromWizard(options);
-        },
-    });
+/** Task M2e2: build the `window.__dwu` debug/screenshot object (pure — no
+ * window access, so it is testable without jsdom). The parameter types are
+ * structural (any non-null value) so tests can pass plain objects instead of
+ * real Camera/Galaxy/MainView/Application instances. */
+export function buildDwuDebugObject(args: { camera: object; galaxy: object; view: object; app: object; game?: Game }): Record<string, unknown> {
+    const obj: Record<string, unknown> = { camera: args.camera, galaxy: args.galaxy, view: args.view, app: args.app };
+    if (args.game !== undefined) {
+        obj.game = args.game;
+    }
+    return obj;
 }
 
-/** Task 06i: boot from the wizard's StartGameOptions via createGame (galaxy +
- * player/AI empires + starting colonies), then the Main View + HUD. The URL-
- * param boot path (bootGameWithOptions) still uses generateGalaxy only. */
-async function bootGameFromWizard(startOptions: StartGameOptions): Promise<void> {
+/** Task M2e2: one shared boot used by the wizard Start, `?autostart=1` and
+ * save-load — centres the camera on the player's capital at Sector zoom,
+ * wires the HUD/clock/input, and sets `window.__dwu` (camera, galaxy, view,
+ * app, game). */
+async function startGameView(game: Game, zoomOverride?: number): Promise<void> {
     const dwuPresent = await detectDwuPresent();
-    const systemNames = await loadSystemNames(dwuPresent);
-    const gameData = await loadGameDataOrNone(dwuPresent);
-    // Real-art file lists (scripts/gen-asset-manifest.mjs, predev/prebuild).
     if (dwuPresent) {
+        // Real-art file lists (scripts/gen-asset-manifest.mjs, predev/prebuild).
         await loadManifest();
     }
+    const galaxy = game.galaxy;
 
     const app = new Application();
     await app.init({
@@ -158,33 +156,35 @@ async function bootGameFromWizard(startOptions: StartGameOptions): Promise<void>
     });
     document.body.appendChild(app.canvas);
 
-    // createGame needs full game data (races/governments); without a DW:U
-    // install there is no fallback, so report it rather than booting broken.
-    if (gameData === null) {
-        console.error('DW:U game data is required to start a game from the wizard but failed to load.');
-        return;
-    }
-
-    const game: Game = createGame(toCreateGameOptions(startOptions, gameData, systemNames));
-    const galaxy = game.galaxy;
-
     const camera = new Camera();
     camera.setViewport(app.renderer.width, app.renderer.height);
     camera.setGalaxyBounds(galaxy.sizeX, galaxy.sizeY);
-    // Centre on the player's capital (createGame returns viewX/viewY).
-    camera.centerOn(game.viewX, game.viewY);
+    // Task M2e3: the Sector-level zoom must be applied AFTER any code that
+    // resets the camera to the whole-galaxy view (the order bug left the view
+    // at minZoom). Centre on the player's capital (createGame returns
+    // viewX/viewY as fallback when it is null).
+    const capital = game.playerEmpire?.capital ?? null;
+    camera.centerOn(capital !== null ? capital.xpos : game.viewX, capital !== null ? capital.ypos : game.viewY);
     camera.zoom = camera.minZoom;
+    if (zoomOverride !== undefined) {
+        // Task M2e3: an explicit ?zoom= on the autostart path overrides the
+        // Sector-level default (same factor/reciprocal semantics as the
+        // generateGalaxy boot path below).
+        camera.zoom = camera.clampZoom(zoomOverride >= 1 ? 1 / zoomOverride : zoomOverride);
+    } else {
+        camera.zoomAt(SECTOR_LEVEL_ZOOM, camera.width / 2, camera.height / 2);
+    }
 
     const store = new AssetStore(dwuPresent);
     const view = new MainView(app, camera, galaxy, store);
     await view.init();
 
     // Debug / screenshot hook: the created game (galaxy + player empire).
-    (window as unknown as { __dwu?: unknown }).__dwu = { camera, galaxy, view, app, game };
+    (window as unknown as { __dwu?: unknown }).__dwu = buildDwuDebugObject({ camera, galaxy, view, app, game });
 
     const time = new GalaxyTime(START_STAR_DATE);
     const overlays = createMapOverlayState();
-    const hud: HudRefs = createHud({ clock: time, overlays, camera, galaxy, gameData });
+    const hud: HudRefs = createHud({ clock: time, overlays, camera, galaxy });
     const systemNameEl = hud.elements.get('pnlMoney')?.querySelector('.hud-system-name');
     const dateEl = hud.elements.get('pnlTopLeftBar')?.querySelector('.hud-date');
     const pauseBtn = hud.elements.get('pnlTopLeftBar')?.querySelector<HTMLButtonElement>('button[title="Play / pause"]');
@@ -249,6 +249,46 @@ async function bootGameFromWizard(startOptions: StartGameOptions): Promise<void>
         camera.setViewport(app.renderer.width, app.renderer.height);
         layoutHud(hud);
     });
+}
+
+/** Open the new-game wizard (task 06b), replacing the main menu. Start Game
+ * maps the chosen StartGameOptions onto createGame's options and boots the
+ * Main View + HUD with the returned galaxy/empires (task 06i). */
+function openWizard(onBackToMenu: () => void): void {
+    const wizard = createNewGameWizard({
+        onBackToMenu: () => {
+            wizard.destroy();
+            onBackToMenu();
+        },
+        onStartGame: (options: StartGameOptions) => {
+            wizard.destroy();
+            void bootGameFromWizard(options);
+        },
+    });
+}
+
+/** Task 06i: boot from the wizard's StartGameOptions via createGame (galaxy +
+ * player/AI empires + starting colonies), then the shared Main View + HUD
+ * boot (task M2e2). The URL-param boot path (bootGameWithOptions) still uses
+ * generateGalaxy only. */
+async function bootGameFromWizard(startOptions: StartGameOptions): Promise<void> {
+    const dwuPresent = await detectDwuPresent();
+    const systemNames = await loadSystemNames(dwuPresent);
+    const gameData = await loadGameDataOrNone(dwuPresent);
+    // Real-art file lists (scripts/gen-asset-manifest.mjs, predev/prebuild).
+    if (dwuPresent) {
+        await loadManifest();
+    }
+
+    // createGame needs full game data (races/governments); without a DW:U
+    // install there is no fallback, so report it rather than booting broken.
+    if (gameData === null) {
+        console.error('DW:U game data is required to start a game from the wizard but failed to load.');
+        return;
+    }
+
+    const game: Game = createGame(toCreateGameOptions(startOptions, gameData, systemNames));
+    await startGameView(game);
 }
 
 async function main(): Promise<void> {
@@ -318,6 +358,46 @@ async function bootGame(params: URLSearchParams): Promise<void> {
     await bootGameWithOptions(parseBootOptions(params));
 }
 
+/** Task M2e: `?autostart=1` boots a full game via createGame (player + 3 AI
+ * empires, defaults) instead of a bare generateGalaxy, so the Main View has
+ * owned colonies to draw empire rings/territory for. */
+function paramsHasAutostart(): boolean {
+    return new URLSearchParams(window.location.search).has('autostart');
+}
+
+async function buildAutostartGame(
+    seed: number,
+    shape: GalaxyShape,
+    starCount: number,
+    sectorWidth: number,
+    sectorHeight: number,
+    systemNames: string[],
+    gameData: GameData | null,
+): Promise<Game | null> {
+    if (gameData === null) {
+        console.warn('?autostart=1 needs DW:U game data (races/governments); falling back to generateGalaxy');
+        return null;
+    }
+    const ai = { race: '(Random)', homeSystemFavourability: 'Normal' as const, proximityDistance: 'Random', age: 1, techLevel: 0 };
+    const opts: CreateGameOptions = {
+        seed,
+        shape,
+        starCount,
+        sectorWidth,
+        sectorHeight,
+        systemNames,
+        gameData,
+        player: { race: 'Human', homeSystemFavourability: 'Normal', startLocation: '(Random)', age: 1, techLevel: 0 },
+        aiEmpires: [ai, { ...ai }, { ...ai }],
+    };
+    try {
+        return createGame(opts);
+    } catch (err) {
+        console.warn('?autostart=1 createGame failed; falling back to generateGalaxy', err);
+        return null;
+    }
+}
+
 async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     const { seed, shape, starCount, sectorWidth, sectorHeight, zoom: zoomParam, cx, cy, select } = opts;
 
@@ -327,6 +407,19 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     // Real-art file lists (scripts/gen-asset-manifest.mjs, predev/prebuild).
     if (dwuPresent) {
         await loadManifest();
+    }
+
+    // Task M2e2: ?autostart=1 boots a full game (player + 3 AI empires with
+    // colours + colonies) through the shared startGameView — camera centred on
+    // the player's capital at Sector zoom, window.__dwu.game set.
+    if (paramsHasAutostart()) {
+        const started = await buildAutostartGame(seed, shape, starCount, sectorWidth, sectorHeight, systemNames, gameData);
+        if (started !== null) {
+            // Task M2e3: honour ?zoom= on the autostart path too (galaxy-view
+            // screenshots), otherwise startGameView applies Sector zoom.
+            await startGameView(started, zoomParam ?? undefined);
+            return;
+        }
     }
 
     const app = new Application();
@@ -348,15 +441,17 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
         systemNames,
         gameData: gameData ?? undefined,
     });
+    let viewX = galaxy.sizeX / 2;
+    let viewY = galaxy.sizeY / 2;
+    if (cx !== null && cy !== null) {
+        viewX = cx;
+        viewY = cy;
+    }
 
     const camera = new Camera();
     camera.setViewport(app.renderer.width, app.renderer.height);
     camera.setGalaxyBounds(galaxy.sizeX, galaxy.sizeY);
-    if (cx !== null && cy !== null) {
-        camera.centerOn(cx, cy);
-    } else {
-        camera.centerOn(galaxy.sizeX / 2, galaxy.sizeY / 2);
-    }
+    camera.centerOn(viewX, viewY);
     if (zoomParam !== null) {
         // zoom >= 1 is the original zoom *factor* (reciprocal of px/unit);
         // zoom < 1 is a direct px/unit value.
