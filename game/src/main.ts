@@ -19,6 +19,7 @@ import { Habitat, HabitatCategoryType } from './sim/types';
 import { createMapOverlayState } from './ui/mapOverlays';
 import { createMainMenu } from './ui/screens/mainMenu';
 import { createNewGameWizard } from './ui/screens/newGameWizard';
+import { createGalaxyMap } from './ui/screens/galaxyMap';
 import { sectorsFor, starCountFor, type StartGameOptions } from './sim/startGameOptions';
 import './ui/hud.css';
 
@@ -228,7 +229,8 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     await view.init();
 
     // Debug / screenshot hook: the camera and the generated galaxy model.
-    (window as unknown as { __dwu?: unknown }).__dwu = { camera, galaxy, view, app };
+    const debugHook: Record<string, unknown> = { camera, galaxy, view, app };
+    (window as unknown as { __dwu?: unknown }).__dwu = debugHook;
 
     // Task 07b: the compact top-left bar drives the galaxy-time clock
     // (GalaxyTime, starts paused at 1x per the original); the bottom-right
@@ -237,7 +239,19 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     // centre).
     const time = new GalaxyTime(START_STAR_DATE);
     const overlays = createMapOverlayState();
-    const hud: HudRefs = createHud({ clock: time, overlays, camera, galaxy });
+    // Task C3: Galaxy Map screen (G key / HUD "Galaxy map (G)" row).
+    const galaxyMap = createGalaxyMap({
+        galaxy,
+        getViewRect: () => {
+            const tl = camera.screenToWorld(0, 0);
+            const br = camera.screenToWorld(camera.width, camera.height);
+            return { x: tl.x, y: tl.y, width: br.x - tl.x, height: br.y - tl.y };
+        },
+        jumpTo: (x, y) => camera.centerOn(x, y),
+    });
+    document.body.appendChild(galaxyMap.element);
+    debugHook.galaxyMap = galaxyMap;
+    const hud: HudRefs = createHud({ clock: time, overlays, camera, galaxy, onGalaxyMap: () => galaxyMap.toggle() });
     const systemNameEl = hud.elements.get('pnlMoney')?.querySelector('.hud-system-name');
     const dateEl = hud.elements.get('pnlTopLeftBar')?.querySelector('.hud-date');
     const pauseBtn = hud.elements.get('pnlTopLeftBar')?.querySelector<HTMLButtonElement>('button[title="Play / pause"]');
@@ -283,6 +297,12 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
 
     // Spacebar toggles play/pause (streamlined HUD control set).
     window.addEventListener('keydown', (e: KeyboardEvent) => {
+        if ((e.code === 'KeyG' && e.target === document.body) || (e.code === 'Escape' && galaxyMap.isOpen)) {
+            e.preventDefault();
+            if (e.code === 'Escape') galaxyMap.close();
+            else galaxyMap.toggle();
+            return;
+        }
         if (e.code === 'Space' && e.target === document.body) {
             e.preventDefault();
             time.togglePause();
