@@ -5,6 +5,7 @@
 import { PopulationList } from './population';
 import type { Creature } from './creature';
 import type { CargoList, TroopList } from './cargo';
+import type { Empire } from './empire';
 
 // Port of DistantWorlds.Types.HabitatType (HabitatType.cs)
 export enum HabitatType {
@@ -182,6 +183,28 @@ export class Habitat {
     // (Habitat.cs).
     developmentLevel = 0;
 
+    // --- Colony fields (task C2a, Habitat.cs) ---
+    // C#: Empire Owner / Empire Empire (both set by Empire.TakeOwnershipOfColony).
+    owner: Empire | null = null;
+    empire: Empire | null = null;
+    // C#: bool IsRefuellingDepot.
+    isRefuellingDepot = false;
+    // C#: float Damage (0 at generation); Quality = BaseQuality * (1 - Damage).
+    damage = 0;
+    // C#: TroopsToRecruit / InvadingTroops (TroopList, nullable).
+    troopsToRecruit: TroopList | null = null;
+    invadingTroops: TroopList | null = null;
+    // C#: float _ColonyInfluenceRadius (Habitat.RecalculateColonyInfluenceRadius, territory.ts).
+    colonyInfluenceRadius = 0;
+    // C#: PlanetaryFacilityList Facilities. TODO(port): PlanetaryFacility model.
+    facilities: unknown[] | null = null;
+
+    // Port of Habitat.cs Quality (_Quality, kept equal to
+    // BaseQuality * (1 - Damage) by the BaseQuality setter / RecalculateQuality).
+    get quality(): number {
+        return Math.fround(Math.fround(this.baseQuality) * Math.fround(1 - this.damage));
+    }
+
     // Port of Habitat.cs SetDevelopmentLevel.
     setDevelopmentLevel(level: number): void {
         this.developmentLevel = level;
@@ -324,4 +347,10 @@ export interface SystemInfo {
     // Galaxy.GenerateCreatureAtHabitat (Galaxy.6.cs:723) when the creature's
     // habitat belongs to a built system; undefined until then.
     creatures?: Creature[];
+    // Galaxy.1.cs DetermineSystemInfo fields (task C2c-2; set by Galaxy.updateSystemInfo).
+    planetCount?: number;
+    moonCount?: number;
+    independentColonyCount?: number;
+    dominantEmpire?: { empire: Empire; colonyCount: number; totalStrategicValue: number } | null;
+    otherEmpires?: { empire: Empire; colonyCount: number; totalStrategicValue: number }[] | null;
 }

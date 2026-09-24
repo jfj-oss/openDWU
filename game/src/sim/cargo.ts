@@ -24,9 +24,9 @@ export class Cargo {
     commodity: ResourceRef;
     amount = 0; // C#: long _Amount
     empire: unknown; // C#: Empire _Empire (typed as unknown to avoid an import cycle)
-    reserved = false; // C#: bool _Reserved
+    reserved = 0; // C#: int Reserved (Cargo.cs:21)
 
-    constructor(commodity: ResourceRef, amount: number, empire?: unknown, reserved = false) {
+    constructor(commodity: ResourceRef, amount: number, empire?: unknown, reserved = 0) {
         this.commodity = commodity;
         this.amount = amount;
         if (empire !== undefined) {
@@ -41,8 +41,22 @@ export class Cargo {
 export class CargoList {
     items: Cargo[] = [];
 
+    // Port of CargoList.cs Add (line 183): cargo of the same empire and
+    // resource merges into the existing entry (Amount and Reserved add up).
+    // TODO(port): component cargo (CommodityComponent) — only resources here.
     add(cargo: Cargo): void {
+        for (const c of this.items) {
+            if (c.empire === cargo.empire && c.commodity.resourceId === cargo.commodity.resourceId) {
+                c.amount += cargo.amount;
+                c.reserved += cargo.reserved;
+                return;
+            }
+        }
         this.items.push(cargo);
+    }
+
+    clear(): void {
+        this.items = [];
     }
 
     remove(cargo: Cargo): boolean {

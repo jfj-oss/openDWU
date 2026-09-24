@@ -30,7 +30,9 @@ describe('generateGalaxy', () => {
                 systemNames,
             });
 
-            expect(galaxy.systems.length).toBe(700);
+            // C#: every habitat group is a SystemInfo — stars and gas clouds (C2c-1).
+            const starSystems = galaxy.systems.filter((sys) => sys.systemStar.category === HabitatCategoryType.Star);
+            expect(starSystems.length).toBe(700);
 
             const gasClouds = galaxy.habitats.filter((h) => h.category === HabitatCategoryType.GasCloud);
             expect(gasClouds.length).toBeGreaterThanOrEqual(140);
@@ -93,6 +95,7 @@ describe('generateGalaxy', () => {
         let outerCount = 0;
         for (const system of galaxy.systems) {
             const star = system.systemStar;
+            if (star.category !== HabitatCategoryType.Star) continue;
             const distance = Math.sqrt((star.xpos - centerX) ** 2 + (star.ypos - centerY) ** 2);
             const normalized = distance / maxRadius;
             if (normalized < 0.3) {
@@ -736,7 +739,10 @@ describe('generateGalaxy native populations (task 01f2: SelectPopulation)', () =
         for (const [name, count] of counts) {
             expect(count).toBeLessThanOrEqual(limit);
         }
-        expect(galaxy.independentCount).toBe([...counts.values()].reduce((a, b) => a + b, 0));
+        // C# PopulationList.Add merges a second population of the same race on
+        // one habitat into the existing entry (task C2a), while IndependentCount
+        // counts every placement — so entries <= placements.
+        expect(galaxy.independentCount).toBeGreaterThanOrEqual([...counts.values()].reduce((a, b) => a + b, 0));
     }, 60000);
 
     it('home-system renaming is consistent with the races that have native populations', () => {
@@ -875,17 +881,13 @@ describe('generateGalaxy creatures (task 01f3: SelectCreatures)', () => {
         }
     }, 60000);
 
-    it('system creature lists stay empty after generation, and post-generation spawns land in the owning system', () => {
+    it('generated creatures join their system lists, and post-generation spawns land in the owning system', () => {
         const galaxy = generateTestGalaxy(12345, 700);
 
-        // Faithful behavior: GenerateCreatureAtHabitat only appends to
-        // Systems[i].Creatures when Systems is already built (C# guard
-        // `Systems != null && Systems.Count > habitat2.SystemIndex`). During
-        // new-game generation the systems are built at the end of
-        // generateGalaxy — after every selectCreatures call — so no creature
-        // ever lands in a system list.
-        for (const system of galaxy.systems) {
-            expect(system.creatures).toBeUndefined();
+        // Galaxy.4.cs 2349-2355: after the systems are built, every creature
+        // is added to its parent habitat's system list (task C2c-1).
+        for (const c of galaxy.creatures) {
+            if (c.parentHabitat !== null) expect(galaxy.systems[c.parentHabitat.systemIndex].creatures).toContain(c);
         }
         expect(galaxy.creatures.length).toBeGreaterThan(0);
 
@@ -897,7 +899,7 @@ describe('generateGalaxy creatures (task 01f3: SelectCreatures)', () => {
         expect(spawned).not.toBeNull();
         expect(galaxy.creatures.length).toBe(before + 1);
         const system = galaxy.systems[planet.systemIndex];
-        expect(system.creatures).toEqual([spawned]);
+        expect(system.creatures).toContain(spawned);
         expect(galaxy.creatures).toContain(spawned);
     }, 60000);
 
