@@ -1,0 +1,177 @@
+/* Galaxy Map screen (task C3): streamlined full-screen overlay in the HUD
+   panel style (hud.css .hud-panel). */
+.gmap-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: rgba(4, 5, 8, 0.93);
+    font-family: 'Forgotten Futurist', sans-serif;
+    color: #fff;
+}
+.gmap-overlay[hidden] {
+    display: none;
+}
+.gmap-map {
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
+    line-height: 0;
+}
+.gmap-canvas {
+    cursor: crosshair;
+    display: block;
+}
+.gmap-side {
+    width: 320px;
+    max-height: calc(100vh - 32px);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow: hidden;
+    box-sizing: border-box;
+}
+.gmap-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.gmap-title {
+    font-size: 15px;
+    font-weight: bold;
+    letter-spacing: 0.04em;
+}
+.gmap-field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.gmap-field[hidden] {
+    display: none;
+}
+.gmap-field-label {
+    width: 64px;
+    color: #9aa3ad;
+    font-size: 11px;
+}
+.gmap-select {
+    flex: 1;
+    min-width: 0;
+    background: rgba(38, 42, 48, 0.9);
+    color: #d6dbe0;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    padding: 3px 6px;
+    font: inherit;
+    font-size: 12px;
+}
+.gmap-toggles {
+    display: flex;
+    gap: 6px;
+}
+.gmap-toggle,
+.gmap-btn,
+.gmap-list-row {
+    background: rgba(24, 26, 30, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    color: #9aa3ad;
+    font: inherit;
+    font-size: 11px;
+    padding: 4px 8px;
+    cursor: pointer;
+}
+.gmap-toggle:hover,
+.gmap-btn:hover,
+.gmap-list-row:hover {
+    background: rgba(38, 42, 48, 0.9);
+    color: #fff;
+}
+.gmap-toggle.on {
+    color: #d6dbe0;
+}
+.gmap-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+.gmap-close {
+    padding: 2px 8px;
+}
+.gmap-info {
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    padding-top: 8px;
+    min-height: 54px;
+}
+.gmap-sel-name {
+    font-size: 14px;
+    font-weight: bold;
+}
+.gmap-muted {
+    color: #9aa3ad;
+    font-size: 11px;
+}
+.gmap-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.gmap-list[hidden] {
+    display: none;
+}
+.gmap-list-head {
+    color: #9aa3ad;
+    font-size: 11px;
+    margin-bottom: 4px;
+}
+.gmap-list-row {
+    text-align: left;
+    border-radius: 4px;
+}
+.gmap-actions {
+    display: flex;
+    gap: 6px;
+}
+.gmap-goto {
+    flex: 1;
+}
+.gmap-key {
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    padding-top: 6px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px 8px;
+}
+.gmap-key .gmap-title {
+    grid-column: 1 / -1;
+    font-size: 12px;
+}
+.gmap-key[hidden] {
+    display: none;
+}
+.gmap-key-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: #d6dbe0;
+}
+.gmap-swatch {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex: none;
+}
+.gmap-swatch-rect {
+    border-radius: 0;
+    border: 1px solid rgb(96, 96, 255);
+    width: 10px;
+    height: 7px;
+}

@@ -36,6 +36,7 @@ import { defaultStartGameOptions, toCreateGameOptions, type StartGameOptions } f
 import { serializeGame, deserializeGame } from './sim/save/gameSave';
 import { setSaveLoadProvider, createSaveLoadPanel, type LoadedGame } from './ui/screens/saveLoad';
 import { type Game } from './sim/game';
+import { createGalaxyMap, type GalaxyMapScreen } from './ui/screens/galaxyMap';
 import './ui/hud.css';
 
 // ?shape= names accepted by the boot URL.
@@ -204,6 +205,22 @@ function applyOverlaysUrlParam(overlays: MapOverlayState): void {
     }
 }
 
+/** Task C3: the Galaxy Map screen for a game view (G key / HUD row); closes
+ * by jumping the Main View camera. */
+function createGalaxyMapFor(galaxy: Galaxy, camera: Camera): GalaxyMapScreen {
+    const galaxyMap = createGalaxyMap({
+        galaxy,
+        getViewRect: () => {
+            const tl = camera.screenToWorld(0, 0);
+            const br = camera.screenToWorld(camera.width, camera.height);
+            return { x: tl.x, y: tl.y, width: br.x - tl.x, height: br.y - tl.y };
+        },
+        jumpTo: (x, y) => camera.centerOn(x, y),
+    });
+    document.body.appendChild(galaxyMap.element);
+    return galaxyMap;
+}
+
 /** Task M2e2: one shared boot used by the wizard Start, `?autostart=1` and
  * save-load — centres the camera on the player's capital at Sector zoom,
  * wires the HUD/clock/input, and sets `window.__dwu` (camera, galaxy, view,
@@ -266,6 +283,9 @@ export async function startGameView(game: Game, zoomOverride?: number, extraBoot
     // window's "Play This Game" button can unpause it.
     (window as unknown as { __dwu?: unknown }).__dwu = buildDwuDebugObject({ camera, galaxy, view, app, game, time });
     // Task 10d: the HUD's money panel refreshes from the player empire.
+    // Task C3: Galaxy Map screen (G key / HUD "Galaxy map (G)" row).
+    const galaxyMap = createGalaxyMapFor(galaxy, camera);
+    (window as unknown as { __dwu?: Record<string, unknown> }).__dwu!.galaxyMap = galaxyMap;
     const hud: HudRefs = createHud({
         clock: time,
         overlays,
@@ -273,6 +293,7 @@ export async function startGameView(game: Game, zoomOverride?: number, extraBoot
         galaxy,
         game,
         gameData: lastGameData ?? undefined,
+        onGalaxyMap: () => galaxyMap.toggle(),
         onMainMenu: () => {
             teardownActiveGameView();
             showMainMenu();
@@ -328,7 +349,15 @@ export async function startGameView(game: Game, zoomOverride?: number, extraBoot
 
     const shortcuts = createShortcutsOverlay();
     const keyHandlers = buildDefaultHandlers(camera, time, { width: galaxy.sizeX, height: galaxy.sizeY });
+    // G opens the Galaxy Map screen (original UI_KeyboardCommands); the HUD's
+    // "Galaxy" view row still zooms the Main View out.
+    keyHandlers.galaxyMap = () => galaxyMap.toggle();
     const keydownHandler = (e: KeyboardEvent): void => {
+        if (galaxyMap.isOpen && e.key === 'Escape') {
+            e.preventDefault();
+            galaxyMap.close();
+            return;
+        }
         // F1 is the Galactopedia binding (dispatchKey), not the overlay.
         if (e.key === '?') {
             e.preventDefault();
@@ -405,6 +434,8 @@ export async function startGameView(game: Game, zoomOverride?: number, extraBoot
         clearInterval(refreshHudTimer);
         clearInterval(refreshClockTimer);
         view.dispose(); // Task 12k: remove the hover tooltip div.
+        galaxyMap.close();
+        galaxyMap.element.remove();
         app.destroy(true);
         hud.root.remove();
         shortcuts.destroy();
@@ -831,7 +862,8 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     await view.init();
 
     // Debug / screenshot hook: the camera and the generated galaxy model.
-    (window as unknown as { __dwu?: unknown }).__dwu = { camera, galaxy, view, app };
+    const debugHook: Record<string, unknown> = { camera, galaxy, view, app };
+    (window as unknown as { __dwu?: unknown }).__dwu = debugHook;
 
     // Task 07b: the compact top-left bar drives the galaxy-time clock
     // (GalaxyTime, starts paused at 1x per the original); the bottom-right
@@ -839,7 +871,17 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     // refreshed as the camera moves (demo: nearest star/planet to the view
     // centre).
     const time = new GalaxyTime(START_STAR_DATE);
-    const hud: HudRefs = createHud({ clock: time, overlays, camera, galaxy, gameData: gameData ?? undefined });
+    // Task C3: Galaxy Map screen (G key / HUD "Galaxy map (G)" row).
+    const galaxyMap = createGalaxyMapFor(galaxy, camera);
+    debugHook.galaxyMap = galaxyMap;
+    const hud: HudRefs = createHud({
+        clock: time,
+        overlays,
+        camera,
+        galaxy,
+        gameData: gameData ?? undefined,
+        onGalaxyMap: () => galaxyMap.toggle(),
+    });
     const systemNameEl = hud.elements.get('pnlMoney')?.querySelector('.hud-system-name');
     const dateEl = hud.elements.get('pnlTopLeftBar')?.querySelector('.hud-date');
     const pauseBtn = hud.elements.get('pnlTopLeftBar')?.querySelector<HTMLButtonElement>('button[title="Play / pause"]');
@@ -899,7 +941,13 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     // toggles the "Keyboard shortcuts" overlay; F1 opens the Galactopedia.
     const shortcuts = createShortcutsOverlay();
     const keyHandlers = buildDefaultHandlers(camera, time, { width: galaxy.sizeX, height: galaxy.sizeY });
+    keyHandlers.galaxyMap = () => galaxyMap.toggle();
     window.addEventListener('keydown', (e: KeyboardEvent) => {
+        if (galaxyMap.isOpen && e.key === 'Escape') {
+            e.preventDefault();
+            galaxyMap.close();
+            return;
+        }
         if (e.key === '?') {
             e.preventDefault();
             shortcuts.toggle();

@@ -172,6 +172,8 @@ export interface HudWiring {
     onSelectionChange?: (sel: Selection | null) => void;
     /** Escape menu "Main Menu" (confirmed): main.ts tears the game down. */
     onMainMenu?: () => void;
+    /** Task C3: open/close the Galaxy Map screen (the "Galaxy map (G)" row). */
+    onGalaxyMap?: () => void;
 }
 
 export interface Selection {
@@ -918,8 +920,14 @@ function doViewAction(key: ViewRowKey, wiring: HudWiring): void {
         case 'sector':
             cam.zoomAt(SECTOR_LEVEL_ZOOM, cx, cy);
             break;
-        case 'galaxy':
         case 'galaxyMap':
+            if (wiring.onGalaxyMap) {
+                wiring.onGalaxyMap();
+                break;
+            }
+            cam.zoomAt(GALAXY_LEVEL_ZOOM, cx, cy);
+            break;
+        case 'galaxy':
             cam.zoomAt(GALAXY_LEVEL_ZOOM, cx, cy);
             break;
         case 'zoomSelection': {

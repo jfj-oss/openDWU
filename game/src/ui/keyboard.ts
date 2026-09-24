@@ -61,7 +61,7 @@ export const KEY_BINDINGS: KeyBinding[] = [
     { key: 'F10', modifiers: NONE, action: 'constructionYardsScreen', description: 'Construction Yards screen' },
     { key: 'F11', modifiers: NONE, action: 'shipsAndBasesScreen', description: 'Ships and Bases screen' },
     { key: 'F12', modifiers: NONE, action: 'fleetsScreen', description: 'Fleets screen' },
-    { key: 'G', modifiers: NONE, action: 'galaxyMap', description: 'Zoom out to the whole galaxy' },
+    { key: 'G', modifiers: NONE, action: 'galaxyMap', description: 'Galaxy Map screen' },
     { key: 'H', modifiers: NONE, action: 'messageHistoryScreen', description: 'Message History' },
     { key: 'V', modifiers: NONE, action: 'empireComparisonScreen', description: 'Empire Comparison and Victory Conditions screen' },
     { key: 'O', modifiers: NONE, action: 'gameOptionsScreen', description: 'Game Options screen' },

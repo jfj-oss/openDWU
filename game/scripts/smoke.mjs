@@ -297,25 +297,29 @@ async function main() {
             await shot(page, 'selection (failed)').catch(() => {});
         }
 
-        // --- Step 7: G key zooms out to the whole galaxy -------------------
+        // --- Step 7: G opens the Galaxy Map screen, Escape closes it --------
         try {
             await page.keyboard.press('g');
+            await page.waitForTimeout(500);
+            const opened = await page.evaluate(() => window.__dwu?.galaxyMap?.isOpen);
+            if (opened !== true) {
+                throw new Error(`expected __dwu.galaxyMap.isOpen after pressing G, got ${opened}`);
+            }
+            await shot(page, 'G key galaxy map');
+            await page.keyboard.press('Escape');
             await page.waitForTimeout(300);
-            const zoom = await page.evaluate(() => ({
-                zoom: window.__dwu?.camera?.zoom,
-                minZoom: window.__dwu?.camera?.minZoom,
-            }));
-            if (zoom.zoom === undefined || zoom.minZoom === undefined) {
-                throw new Error(`window.__dwu.camera missing zoom/minZoom (${JSON.stringify(zoom)})`);
+            const closed = await page.evaluate(() => window.__dwu?.galaxyMap?.isOpen);
+            if (closed !== false) {
+                throw new Error(`expected the galaxy map to close on Escape, isOpen=${closed}`);
             }
-            if (zoom.zoom !== zoom.minZoom) {
-                throw new Error(`expected camera.zoom === camera.minZoom after pressing G, got ${zoom.zoom} vs ${zoom.minZoom}`);
+            const menuOpen = await page.getByRole('button', { name: 'Resume' }).isVisible();
+            if (menuOpen) {
+                throw new Error('Escape on the galaxy map also opened the game menu');
             }
-            await shot(page, 'G key zoomed out to the whole galaxy');
-            pass('7. G key zooms out to the whole galaxy (minZoom)');
+            pass('7. G opens the Galaxy Map screen, Escape closes it');
         } catch (err) {
-            fail('7. G key zooms out to the whole galaxy (minZoom)', err);
-            await shot(page, 'G-key zoom (failed)').catch(() => {});
+            fail('7. G opens the Galaxy Map screen, Escape closes it', err);
+            await shot(page, 'galaxy map (failed)').catch(() => {});
         }
 
         // --- Step 8: panels open with hotkeys and close on Escape ----------
