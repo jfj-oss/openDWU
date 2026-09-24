@@ -9,6 +9,7 @@ import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import type { BuiltObject } from '../builtObject';
 import type { Habitat } from '../types';
+import type { Character } from '../characters';
 import { registerTodo, todo } from '../tick/todo';
 
 const T_calculateSpaceControlStrengths = registerTodo('M4q', 'calculateSpaceControlStrengths');
@@ -67,4 +68,31 @@ const T_takeOwnershipOfColonyRuntime = registerTodo('M4q', 'takeOwnershipOfColon
  */
 export function takeOwnershipOfColonyRuntime(galaxy: Galaxy, empire: Empire, colony: Habitat, newEmpire: Empire): void {
     /* TODO(port) M4q */ todo(T_takeOwnershipOfColonyRuntime);
+}
+
+// ---- stubs added by M4n (called from missions/cmdAttack.ts: the Attack/Raid case's invasion approach & landing) ----
+
+const T_targetInvadingShips = registerTodo('M4q', 'targetInvadingShips');
+/** Habitat.cs 2255 TargetInvadingShips(invader, time) — giant ion cannon fire at the invader — stub. */
+export function targetInvadingShips(galaxy: Galaxy, habitat: Habitat, invader: BuiltObject, time: number): void {
+    // RND: ion cannon Weapon.Fire draws — not drawn until M4q/M4o.
+    /* TODO(port) M4q */ todo(T_targetInvadingShips);
+}
+
+const T_habitatStopRebelling = registerTodo('M4q', 'habitatStopRebelling');
+/** Habitat.cs 1204 StopRebelling (`_Rebelling = false`; the field is M4u's rebellion state) — stub. */
+export function habitatStopRebelling(galaxy: Galaxy, habitat: Habitat): void {
+    /* TODO(port) M4q */ todo(T_habitatStopRebelling);
+}
+
+const T_addInvasionStatsTroopsDamageToInvaders = registerTodo('M4q', 'addInvasionStatsTroopsDamageToInvaders');
+/** Habitat.InvasionStats ??= new InvasionStats(colony, invader, defender); InvasionStats.TroopsDamageToInvaders += amount (BuiltObject.2.cs 2367-2374) — stub. */
+export function addInvasionStatsTroopsDamageToInvaders(galaxy: Galaxy, colony: Habitat, invadingEmpire: Empire | null, amount: number): void {
+    /* TODO(port) M4q */ todo(T_addInvasionStatsTroopsDamageToInvaders);
+}
+
+const T_characterCompleteLocationTransferInvading = registerTodo('M4q', 'characterCompleteLocationTransferInvading');
+/** Character.CompleteLocationTransfer(colony, galaxy, invadingDestination: true) (BuiltObject.2.cs 2393) — stub. */
+export function characterCompleteLocationTransferInvading(galaxy: Galaxy, character: Character, colony: Habitat): void {
+    /* TODO(port) M4q */ todo(T_characterCompleteLocationTransferInvading);
 }

@@ -4413,6 +4413,8 @@ export class Galaxy {
     // ---- M4l fields (ship groups) ----
     // ---- M4m fields (military AI) ----
     // ---- M4n fields (threats, attack AI) ----
+    /** Galaxy.cs 597 InvasionAttempts (counter, BuiltObject.2.cs 2270). */
+    invasionAttempts = 0;
     // ---- M4o fields (weapons, damage, teardown) ----
     // ---- M4p fields (fighters) ----
     // ---- M4q fields (invasion, troops, boarding) ----

@@ -32,6 +32,7 @@ import { assignMission, clearPreviousMissionRequirements, recordRevertMission } 
 import { cmdClearAttackers, cmdClearParent, cmdDeploy, cmdEvaluateThreats, cmdHold, cmdRepeatSubsequentCommands, cmdSetParent, commandHandler, executeCommands, type CommandContext } from '../src/sim/missions/executeCommands';
 import { DeclinedTask, DistressSignal, DistressSignalType, clearExpiredDeclinedTasks, clearOldDistressSignals, clearOutOldDistressSignals, empireDistressSignals, processDistressSignals } from '../src/sim/missions/distress';
 import type { GameData } from '../src/sim/data/gameData';
+import { determineDefendingStrength } from '../src/sim/combat/threats';
 
 let gameData: GameData;
 let galaxy: Galaxy;
@@ -412,10 +413,13 @@ describe('ExecuteCommands (BuiltObject.2.cs 399-4579)', () => {
         const a = ctx(new Command(A.ClearAttackers));
         expect(cmdClearAttackers(a)).toBe(0.5);
         expect(ship.attackers).toEqual([]);
-        resetTodoCounts();
         const e = ctx(new Command(A.EvaluateThreats));
+        ship.threats = null;
         expect(cmdEvaluateThreats(e)).toBe(0.0);
-        expect(todoHits()['M4n threatEvaluation']).toBe(1);
+        // M4n ported ThreatEvaluation (it was a stub hit here): PerformThreatEvaluation now fills the ship's threat arrays.
+        expect(ship.threats).not.toBeNull();
+        expect(ship.threats!.length).toBe(ship.threatLevels!.length);
+        expect(ship.threats!.length).toBeLessThanOrEqual(20);
     });
 
     it('frame: destroyed command target completes the command and returns timePassed (470-481)', () => {
@@ -526,8 +530,11 @@ describe('distress signals / declined tasks', () => {
         resetTodoCounts();
         processDistressSignals(galaxy, empire);
         const hits = todoHits();
-        expect(hits['M4n determineDefendingStrength']).toBe(2);
-        expect(hits['M4m identifyNearestResponseFleet']).toBe(2);
+        // M4n ported DetermineDefendingStrength (Galaxy.6.cs 4674 / 4745): only the signals whose defenders fall short of
+        // 0.75 × the attack strength reach the M4m response-fleet lookup (Empire.3.cs 4934 / 4989).
+        const responses = [base, planet].filter((t) => determineDefendingStrength(galaxy, t, empire) < Math.trunc(1000 * 0.75)).length;
+        expect(responses).toBeGreaterThan(0);
+        expect(hits['M4m identifyNearestResponseFleet']).toBe(responses);
         list.length = 0;
         // no attack strength ⇒ defenders (0) >= 0.75 × 0 ⇒ no response fleet lookup
         const s4 = new DistressSignal(base, DistressSignalType.UnderAttack, now);

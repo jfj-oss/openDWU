@@ -178,7 +178,7 @@ describe('Habitat.DoTasks intervals (Habitat.cs 1399, strict >)', () => {
 
 describe('BuiltObject.DoTasks (BuiltObject.cs 3614)', () => {
     const markers = {
-        intermediate: 'M4n checkNearTarget',
+        intermediate: 'M4o checkShieldAreaRechargeReset', // was 'M4n checkNearTarget' until M4n ported it
         periodic: 'M4e checkClearDocking', // (was M4h checkRepairMissionStillValid, ported by M4h)
         long: 'M4q baconBuiltObjectHugeProcessingSpanActions',
     };
@@ -189,7 +189,10 @@ describe('BuiltObject.DoTasks (BuiltObject.cs 3614)', () => {
         const t = 500000;
         expect(firedBlocks(markers, () => builtObjectDoTasks(galaxy, bo, t, 0))).toEqual(['intermediate', 'periodic', 'long']);
         expect([bo.lastTouch, bo.lastIntermediateTouch, bo.lastPeriodicTouch, bo.lastLongTouch]).toEqual([t, t, t, t]);
-        expect(bo.threats).toHaveLength(20);
+        // 3664-3667 allocates StellarObject[20]; the intermediate block's ThreatEvaluation (M4n) then replaces it with the
+        // evaluated list (≤ 10 from IdentifySystemThreatsToUs, ≤ 20 from EvaluateThreats).
+        expect(bo.threats).not.toBeNull();
+        expect(bo.threats!.length).toBeLessThanOrEqual(20);
         expect(firedBlocks(markers, () => builtObjectDoTasks(galaxy, bo, t + 2999, 0))).toEqual([]);
         expect(firedBlocks(markers, () => builtObjectDoTasks(galaxy, bo, t + 3000, 0))).toEqual(['intermediate']);
         expect(firedBlocks(markers, () => builtObjectDoTasks(galaxy, bo, t + 10000, 0))).toEqual(['intermediate', 'periodic']);

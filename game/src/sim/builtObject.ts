@@ -23,6 +23,7 @@ import type { Race } from './data/races';
 import { BuiltObjectStance, galaxyComponentCurrentPrices, type Design } from './design';
 import type { Empire } from './empire';
 import type { Galaxy } from './galaxy';
+import type { Creature } from './creature';
 import { PopulationList } from './population';
 import type { Habitat } from './types';
 import { getCharacterMaintenanceBonuses } from './characters';
@@ -1387,7 +1388,8 @@ export class BuiltObject {
     /** BuiltObject.cs 509 Explosions = new ExplosionList() (M4o owns the element type). */
     explosions: unknown[] = [];
     /** BuiltObject.cs _Threats (BuiltObject[20]) / _ThreatLevels (int[20]): allocated by the first DoTasks (3664-3668). */
-    threats: (BuiltObject | null)[] | null = null;
+    // M4n: C# StellarObject[] — BuiltObjects and Creatures (Fighters are not modelled as threats in the TS port).
+    threats: (BuiltObject | Creature | null)[] | null = null;
     threatLevels: number[] | null = null;
     // ---- M4b fields (missions & command dispatcher) ----
     /** StellarObject.DockedAt (the base/planet this ship is docked at; docking itself is M4e). */
@@ -1446,6 +1448,18 @@ export class BuiltObject {
     // ---- M4l fields (ship groups) ----
     // ---- M4m fields (military AI) ----
     // ---- M4n fields (threats, attack AI) ----
+    /** BuiltObject.cs _TotalThreatLevel (IdentifySystemThreatsToUs out; read by CheckBattleOverwhelming). */
+    totalThreatLevel = 0;
+    /** BuiltObject.cs _LastWithdrawalEvaluation (CheckBattleOverwhelming two-step withdrawal). */
+    lastWithdrawalEvaluation = false;
+    /** BuiltObject.cs _SecondaryTargets (StellarObjectList) / _SecondaryThreatLevels (List<double>) — ThreatEvaluation scratch lists. */
+    secondaryTargets: (BuiltObject | Creature)[] = [];
+    secondaryThreatLevels: number[] = [];
+    /** BuiltObject.cs OptimalMinimumAttackRange / OptimalMaximumAttackRange (double; SetOptimalAttackRanges). */
+    optimalMinimumAttackRange = 0;
+    optimalMaximumAttackRange = 0;
+    /** BuiltObject.cs _LastInvasionDistance (double; the Attack case's invasion approach). */
+    lastInvasionDistance = 536870911.0;
     // ---- M4o fields (weapons, damage, teardown) ----
     // ---- M4p fields (fighters) ----
     // ---- M4q fields (boarding, troops, capture) ----

@@ -312,8 +312,14 @@ describe('harness smoke (seed 1, 600 game-s)', () => {
         expect(g.orders.count).toBeGreaterThan(0);
         const contracted = g.orders.items.filter((o) => o.contracts.length > 0);
         expect(contracted.length).toBeGreaterThan(0);
-        for (const o of contracted) {
+        // Since M4n a freighter that sights a creature within attack range flees (BuiltObject.1.cs 1621 ShouldFleeFrom,
+        // FleeWhen = EnemyMilitarySighted); ClearPreviousMissionRequirements then cancels its contracts, which the C#
+        // CancelContract leaves on the order with AmountToFulfill = AmountDelivered (0). Only live contracts are checked.
+        const live = contracted.filter((o) => o.contracts.some((c) => c !== null && c.amountToFulfill > 0));
+        expect(live.length).toBeGreaterThan(0);
+        for (const o of live) {
             for (const c of o.contracts) {
+                if (c === null || c.amountToFulfill <= 0) continue;
                 expect(c!.freighter).not.toBeNull();
                 expect(builtObjectContracts(c!.freighter!)).toContain(c);
                 expect(builtObjectMission(c!.freighter!.mission)?.type).toBe(BuiltObjectMissionType.Transport);

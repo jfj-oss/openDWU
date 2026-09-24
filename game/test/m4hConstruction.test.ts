@@ -205,8 +205,9 @@ describe('M4h milestone on the headless harness', () => {
         expect(bo.builtAt).toBeNull();
         expect(e.countersBuildMilitaryShipCount).toBe(milBefore + 1);
         const m = builtObjectMission(bo.mission);
-        // A new ship without a fleet gets a Move mission to a parking point by the port (unless its mission ran already).
-        expect(m === null || m.type === BuiltObjectMissionType.Move || m.type === BuiltObjectMissionType.Undefined).toBe(true);
+        // A new ship without a fleet gets a Move mission to a parking point by the port (unless its mission ran already);
+        // since M4n its ThreatEvaluation (BuiltObject.1.cs 243) may already have switched it to Attack on a nearby threat.
+        expect(m === null || m.type === BuiltObjectMissionType.Move || m.type === BuiltObjectMissionType.Undefined || m.type === BuiltObjectMissionType.Attack).toBe(true);
         expect(g.builtObjects).toContain(bo);
     }, 300000);
 

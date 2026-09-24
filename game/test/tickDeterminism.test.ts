@@ -66,7 +66,7 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         checkInvariants(long);
         const hits = r.todoHits;
         // Every tick family reached its stubs. (M4r: every diplomacy entry point reached is fully ported.)
-        for (const key of ['M4e autoRefuelRepairShip', 'M4q scanForNewOwnerHabitat', 'M4s pirateAssignShipMissions', 'M4s reviewPirateMissionsAndAssign', 'M4n evaluateSystemThreats']) {
+        for (const key of ['M4e autoRefuelRepairShip', 'M4q scanForNewOwnerHabitat', 'M4s pirateAssignShipMissions', 'M4s reviewPirateMissionsAndAssign', 'M4l performFleetTasks']) {
             expect(hits[key] ?? 0, key).toBeGreaterThan(0);
         }
         const summary = { digest: stateDigest(long), counts: stateCounts(long), rndDraws: long.rnd.drawCount };
@@ -97,7 +97,12 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // DoMovement, hyperjumps — HyperTo draws Rnd.Next(0, 2000) + SelectHyperJumpExitPoint per jump —, gravity-well
         // detours), energy collection / reactor recharge burn fuel every tick, EvaluateSystemLinks draws
         // Rnd.Next(0, count) for systems not linked to the capital through a space port.
-        expect(summary.digest).toBe('9a90a9c718ec9140');
+        // M4n: BuiltObject.ThreatEvaluation / CheckForAttack / FleeFromHopelessBattle now
+        // run (threat lists per ship and per SystemVisibility, Escape/Attack missions assigned to threatened ships, the
+        // SystemVisibility.LatestThreatEvaluation timestamps, distress signals from NotifyOfAttack) and the Attack case
+        // body runs (with the SensorJumpIntercept Rnd roll before a warp pursuit). No new Rnd sites are reached on this
+        // seed otherwise (smuggler detection needs trace scanners; invasion landings need troops).
+        expect(summary.digest).toBe('f5096dc7fa0d5173');
     }, 600000);
 });
 

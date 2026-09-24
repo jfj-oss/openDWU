@@ -9,6 +9,7 @@ import type { Galaxy } from '../galaxy';
 import type { BuiltObject } from '../builtObject';
 import type { Habitat } from '../types';
 import type { Creature } from '../creature';
+import type { ShipGroup } from '../fleets/shipGroup';
 import { registerTodo, todo } from '../tick/todo';
 
 const T_doExplosionsBuiltObject = registerTodo('M4o', 'doExplosionsBuiltObject');
@@ -70,4 +71,12 @@ export function battleStatsDamageRepairedUs(battleStats: unknown, repairAmount: 
     void battleStats;
     void repairAmount;
     /* TODO(port) M4o */ todo(T_battleStatsDamageRepairedUs);
+}
+
+// ---- stubs added by M4n ----
+
+const T_startNewShipGroupBattleStats = registerTodo('M4o', 'startNewShipGroupBattleStats');
+/** `ShipGroup.BattleStats = new SpaceBattleStats()` (BuiltObject.1.cs 318 / 501 / 572; the fleet stats object is M4o's) — stub: stays null. */
+export function startNewShipGroupBattleStats(galaxy: Galaxy, shipGroup: ShipGroup): void {
+    /* TODO(port) M4o */ todo(T_startNewShipGroupBattleStats);
 }

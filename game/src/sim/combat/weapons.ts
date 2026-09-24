@@ -8,6 +8,8 @@
 import type { Galaxy } from '../galaxy';
 import type { BuiltObject } from '../builtObject';
 import type { Habitat } from '../types';
+import type { Creature } from '../creature';
+import type { Empire } from '../empire';
 import { registerTodo, todo } from '../tick/todo';
 
 const T_handleWeaponsFiringBuiltObject = registerTodo('M4o', 'handleWeaponsFiringBuiltObject');
@@ -74,4 +76,32 @@ const T_attackEnemyTargets = registerTodo('M4o', 'attackEnemyTargets');
 export function attackEnemyTargets(galaxy: Galaxy, habitat: Habitat, time: number): void {
     // RND: draws in callees (d≤3) — not drawn until M4o.
     /* TODO(port) M4o */ todo(T_attackEnemyTargets);
+}
+
+// ---- stubs added by M4n (called from missions/cmdAttack.ts and combat/attackAI.ts) ----
+
+const T_fireWeaponsAtTarget = registerTodo('M4o', 'fireWeaponsAtTarget');
+/** BuiltObject.1.cs 5089 FireWeaponsAtTarget(distanceToTarget, target, time, mayModifyDiplomacy) — stub. */
+export function fireWeaponsAtTarget(galaxy: Galaxy, builtObject: BuiltObject, distanceToTarget: number, target: BuiltObject | Habitat | Creature, time: number, mayModifyDiplomacy: boolean): void {
+    // RND: Weapon.Fire hit rolls and ModifyDiplomacyFromAttack — not drawn until M4o.
+    /* TODO(port) M4o */ todo(T_fireWeaponsAtTarget);
+}
+
+const T_bombardTarget = registerTodo('M4o', 'bombardTarget');
+/** BuiltObject.1.cs 4899 BombardTarget(distanceToTarget, habitat) — stub. */
+export function bombardTarget(galaxy: Galaxy, builtObject: BuiltObject, distanceToTarget: number, habitat: Habitat): void {
+    // RND: bombard weapon fire draws — not drawn until M4o.
+    /* TODO(port) M4o */ todo(T_bombardTarget);
+}
+
+const T_firePlanetDestroyerAtHabitat = registerTodo('M4o', 'firePlanetDestroyerAtHabitat');
+/** BuiltObject.1.cs 4852 FirePlanetDestroyerAtHabitat(distanceToTarget, target) — stub. */
+export function firePlanetDestroyerAtHabitat(galaxy: Galaxy, builtObject: BuiltObject, distanceToTarget: number, target: Habitat): void {
+    /* TODO(port) M4o */ todo(T_firePlanetDestroyerAtHabitat);
+}
+
+const T_modifyDiplomacyFromAttackEmpire = registerTodo('M4o', 'modifyDiplomacyFromAttackEmpire');
+/** BuiltObject.1.cs 4652 ModifyDiplomacyFromAttack(targetEmpire, evaluationImpact) → 4721 — stub. */
+export function modifyDiplomacyFromAttackEmpire(galaxy: Galaxy, builtObject: BuiltObject, targetEmpire: Empire | null, evaluationImpact: number): void {
+    /* TODO(port) M4o */ todo(T_modifyDiplomacyFromAttackEmpire);
 }
