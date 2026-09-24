@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chromeButtonFile, clearHudMessages, formatCashflow, formatClockLabel, formatMoney, formatPopulation, getHudMessageHistory, getHudMessages, habitatTypeLabel, hudTransformOrigin, nextInCycle, ownerRows, playerColonyList, pushHudMessage, resourceIconUrl } from '../src/ui/hud';
+import { chromeButtonFile, clearHudMessages, formatCashflow, formatClockLabel, formatMoney, formatPopulation, getHudMessageHistory, getHudMessages, habitatTypeLabel, hudTransformOrigin, nextInCycle, ownerRows, playerColonyList, pushHudMessage, resourceIconUrl, systemRows } from '../src/ui/hud';
 import { historyRows } from '../src/ui/screens/messageHistory';
 import { computeHudLayout, TOP_BAR_BUTTONS } from '../src/ui/hudLayout';
 import { START_STAR_DATE } from '../src/sim/galaxyTime';
@@ -425,5 +425,67 @@ describe('playerColonyList (task 10h)', () => {
         y.owner = player;
         const g = galaxyWith([z, y], player);
         expect(playerColonyList(g, player).map((h) => h.name)).toEqual(['Yota', 'Zeta']);
+    });
+});
+
+describe('systemRows (task 12r)', () => {
+    function fakeSystem(habitats: Habitat[], fields?: Partial<SystemInfo>): SystemInfo {
+        const star = new Habitat(HabitatCategoryType.Star, HabitatType.MainSequence, 'Star', 0, 0);
+        return { systemStar: star, habitats, sector: { x: 0, y: 0 }, ...fields } as unknown as SystemInfo;
+    }
+
+    function empire(name: string, id: number): Empire {
+        return { name, mainColor: 0x112233, empireId: id } as unknown as Empire;
+    }
+
+    it('falls back to counting habitats when no cached fields are set', () => {
+        const p1 = new Habitat(HabitatCategoryType.Planet, HabitatType.Ocean, 'P1', 0, 0);
+        const p2 = new Habitat(HabitatCategoryType.Planet, HabitatType.Ocean, 'P2', 0, 0);
+        expect(systemRows(fakeSystem([p1, p2]))).toEqual([{ label: 'Planets', value: '2' }]);
+    });
+
+    it('prefers the cached planet and moon counts', () => {
+        const p = new Habitat(HabitatCategoryType.Planet, HabitatType.Ocean, 'P1', 0, 0);
+        const sys = fakeSystem([p], { planetCount: 5, moonCount: 1 });
+        expect(systemRows(sys)).toEqual([
+            { label: 'Planets', value: '5' },
+            { label: 'Moons', value: '1' },
+        ]);
+    });
+
+    it('shows a Dominant row with the empire colour and singular colony text', () => {
+        const p = new Habitat(HabitatCategoryType.Planet, HabitatType.Ocean, 'P1', 0, 0);
+        p.empire = empire('A', 3);
+        const sys = fakeSystem([p], { dominantEmpire: { empire: empire('A', 3), colonyCount: 1, totalStrategicValue: 0 } });
+        expect(systemRows(sys)).toContainEqual({ label: 'Dominant', value: 'A (1 colony)', color: 0x112233 });
+    });
+
+    it('shows one Also present row per other empire, in order, pluralising at 2', () => {
+        const p = new Habitat(HabitatCategoryType.Planet, HabitatType.Ocean, 'P1', 0, 0);
+        const sys = fakeSystem([p], {
+            otherEmpires: [
+                { empire: empire('A', 3), colonyCount: 2, totalStrategicValue: 0 },
+                { empire: empire('B', 4), colonyCount: 1, totalStrategicValue: 0 },
+            ],
+        });
+        const rows = systemRows(sys);
+        expect(rows.filter((r) => r.label === 'Also present')).toEqual([
+            { label: 'Also present', value: 'A (2 colonies)', color: 0x112233 },
+            { label: 'Also present', value: 'B (1 colony)', color: 0x112233 },
+        ]);
+    });
+
+    it('counts independent colonies by empireId 0, not sys.independentColonyCount', () => {
+        const p = new Habitat(HabitatCategoryType.Planet, HabitatType.Ocean, 'P1', 0, 0);
+        p.empire = empire('Indep', 0);
+        const sys = fakeSystem([p], { independentColonyCount: 99 });
+        expect(systemRows(sys)).toContainEqual({ label: 'Independent', value: '1 colony' });
+    });
+
+    it('omits the Independent row when no habitat has an empireId 0 owner', () => {
+        const p = new Habitat(HabitatCategoryType.Planet, HabitatType.Ocean, 'P1', 0, 0);
+        p.empire = empire('A', 3);
+        const sys = fakeSystem([p]);
+        expect(systemRows(sys).some((r) => r.label === 'Independent')).toBe(false);
     });
 });

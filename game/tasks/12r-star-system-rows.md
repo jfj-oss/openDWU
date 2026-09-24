@@ -41,3 +41,13 @@ export function systemRows(sys: SystemInfo): { label: string; value: string; col
    - one habitat whose empire has `empireId: 0` → `{ label: 'Independent', value: '1 colony' }`, and no Independent row when none has empireId 0.
 
 Run `npm run typecheck` && `npm test`, then append `## Worker report`.
+
+## Worker report
+
+Files changed:
+- `src/ui/hud.ts` — added exported `systemRows(sys)` (Planets always, Moons when > 0, Dominant with empire colour, one 'Also present' row per otherEmpires entry in order, Independent counted by `empire.empireId === 0` rather than `sys.independentColonyCount`) plus private `colonyText(name, n)` helper, right after `ownerRows`; in `buildSelectionRows` moved the owner-row loop body into a local `addColorRow(row)` and replaced the star block's self-counted planet count with `for (const r of systemRows(sel.system)) addColorRow(r)`, kept at the same position (after Diameter, before Resources).
+- `test/hud.test.ts` — added `systemRows` to the hud import and a new `describe('systemRows (task 12r)')` block covering: habitat fallback counts (2 planets → `[{label:'Planets', value:'2'}]`), cached `planetCount`/`moonCount` preference, Dominant row with singular colony text and colour, two ordered 'Also present' rows with pluralisation at 2, Independent row from an `empireId: 0` owner (ignoring a bogus `independentColonyCount`), and no Independent row when none qualifies.
+
+Done: everything in the task spec. `npm run typecheck` passes; `npm test` passes (55 files, 634 tests).
+
+Left undone: nothing.

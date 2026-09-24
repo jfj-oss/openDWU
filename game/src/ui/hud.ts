@@ -1051,6 +1051,36 @@ export function ownerRows(h: Habitat): { label: string; value: string; color?: n
     return rows;
 }
 
+/** `${name} (${n} colon)` — "colony" when n === 1, "colonies" otherwise. */
+function colonyText(name: string, n: number): string {
+    return `${name} (${n} ${n === 1 ? 'colony' : 'colonies'})`;
+}
+
+/** Rows for a selected star's system (task 12r), from the SystemInfo fields
+ * cached by Galaxy.determineSystemInfo (Galaxy.1.cs DetermineSystemInfo). */
+export function systemRows(sys: SystemInfo): { label: string; value: string; color?: number }[] {
+    const rows: { label: string; value: string; color?: number }[] = [];
+    // Planets is always shown; fall back to counting habitats when the sim has
+    // not cached planetCount yet.
+    const planetFallback = sys.habitats.filter((x) => x.category === HabitatCategoryType.Planet).length;
+    rows.push({ label: 'Planets', value: `${sys.planetCount ?? planetFallback}` });
+    const moonCount = sys.moonCount ?? sys.habitats.filter((x) => x.category === HabitatCategoryType.Moon).length;
+    if (moonCount > 0) rows.push({ label: 'Moons', value: `${moonCount}` });
+    if (sys.dominantEmpire !== null && sys.dominantEmpire !== undefined) {
+        const d = sys.dominantEmpire;
+        rows.push({ label: 'Dominant', value: colonyText(d.empire.name, d.colonyCount), color: d.empire.mainColor });
+    }
+    for (const o of sys.otherEmpires ?? []) {
+        rows.push({ label: 'Also present', value: colonyText(o.empire.name, o.colonyCount), color: o.empire.mainColor });
+    }
+    // Count independent colonies by empireId 0 rather than
+    // sys.independentColonyCount, which compares against galaxy.independentEmpire
+    // and counts every unowned body on a galaxy without an independent empire.
+    const independent = sys.habitats.filter((x) => x.empire !== null && x.empire.empireId === 0).length;
+    if (independent > 0) rows.push({ label: 'Independent', value: `${independent} ${independent === 1 ? 'colony' : 'colonies'}` });
+    return rows;
+}
+
 /** Build the selection panel's detail rows in the original's order, skipping
  * empty ones: Quality (planets/moons), Diameter, Resources, Natives, Scenic,
  * Research bonus; stars additionally show their planet count. Colonies add
@@ -1075,24 +1105,25 @@ export function buildSelectionRows(sel: Selection, gameData?: GameData): Selecti
     // Owner / Status / Population for colonies (task 12l), right after the
     // name/type header and before Quality. The owner row carries a 10px swatch
     // in the empire's main colour, decoded like the Empires list.
-    for (const orow of ownerRows(h)) {
+    const addColorRow = (row: { label: string; value: string; color?: number }): void => {
         const line = document.createElement('div');
         line.className = 'hud-money-row';
         const k = document.createElement('span');
         k.className = 'hud-label';
-        if (orow.color !== undefined) {
+        if (row.color !== undefined) {
             const swatch = document.createElement('span');
             swatch.className = 'hud-owner-swatch';
-            swatch.style.background = rgbCss(orow.color);
+            swatch.style.background = rgbCss(row.color);
             k.appendChild(swatch);
         }
-        k.append(document.createTextNode(orow.label));
+        k.append(document.createTextNode(row.label));
         const v = document.createElement('span');
         v.className = 'hud-value';
-        v.textContent = orow.value;
+        v.textContent = row.value;
         line.append(k, v);
         rows.push({ element: line });
-    }
+    };
+    for (const orow of ownerRows(h)) addColorRow(orow);
 
     // Quality: baseQuality × 100 as %, planets/moons only.
     if (h.category === HabitatCategoryType.Planet || h.category === HabitatCategoryType.Moon) {
@@ -1100,10 +1131,9 @@ export function buildSelectionRows(sel: Selection, gameData?: GameData): Selecti
     }
     addText('Diameter', `${h.diameter}`);
 
-    // Stars: how many planets orbit them.
+    // Stars: system rows from the cached SystemInfo fields (task 12r).
     if (h.category === HabitatCategoryType.Star) {
-        const planetCount = sel.system.habitats.filter((x) => x.category === HabitatCategoryType.Planet).length;
-        addText('Planets', `${planetCount}`);
+        for (const r of systemRows(sel.system)) addColorRow(r);
     }
 
     // Resources: one small icon per entry, abundance % as tooltip/label.
