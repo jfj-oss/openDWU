@@ -8,7 +8,7 @@
 // The renderer stays platform-neutral: no Node APIs in src/, everything goes
 // through URLs under /assets/dwu/.
 
-const { app, BrowserWindow, Menu, dialog, protocol, net, globalShortcut } = require('electron');
+const { app, BrowserWindow, Menu, dialog, protocol, net, globalShortcut, nativeImage } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -163,6 +163,7 @@ function resolveInsideRoot(root, rel) {
 // ---------------------------------------------------------------------------
 
 let installDir = null; // set before createWindow
+let appIcon = nativeImage.createEmpty(); // set alongside installDir
 
 // Must be registered after app ready: protocol.handle touches the default
 // session, which is only available once the app is ready.
@@ -220,6 +221,9 @@ function createWindow() {
         title: 'Distant Worlds: Universe',
         backgroundColor: '#000',
         show: false,
+        // Window icon on Linux/Windows (macOS ignores `icon`; the dock icon is
+        // set via app.dock.setIcon below). Empty image = Electron default.
+        icon: appIcon.isEmpty() ? undefined : appIcon,
         webPreferences: {
             contextIsolation: true,
             nodeIntegration: false,
@@ -230,6 +234,11 @@ function createWindow() {
     // No menu bar on Linux; macOS keeps the standard app menu (Quit ⌘Q).
     if (process.platform === 'linux') {
         Menu.setApplicationMenu(null);
+    }
+
+    // macOS: dock icon from the user's DW:U install folder.
+    if (process.platform === 'darwin' && !appIcon.isEmpty()) {
+        app.dock.setIcon(appIcon);
     }
 
     win.once('ready-to-show', () => win.show());
@@ -245,6 +254,32 @@ function createWindow() {
     });
 
     win.loadURL('dwu://app/index.html');
+}
+
+// ---------------------------------------------------------------------------
+// Window icon (loaded at runtime from the user's DW:U install folder — art
+// can't be committed to the repo)
+// ---------------------------------------------------------------------------
+
+/**
+ * Build the window/dock icon from the install dir. Tries the in-game chrome
+ * icon first, then the desktop icon shipped with the game. Returns an empty
+ * nativeImage if neither exists (callers must check isEmpty()).
+ */
+function makeAppIcon(installDir) {
+    if (installDir) {
+        const candidates = [
+            'images/ui/chrome/galaxy_Icon.png',
+            'DesktopIcon.ico',
+        ];
+        for (const rel of candidates) {
+            const resolved = resolveInsideRoot(installDir, rel);
+            if (!resolved || !fs.existsSync(resolved)) continue;
+            const img = nativeImage.createFromPath(resolved);
+            if (!img.isEmpty()) return img;
+        }
+    }
+    return nativeImage.createEmpty();
 }
 
 // ---------------------------------------------------------------------------
@@ -268,6 +303,7 @@ protocol.registerSchemesAsPrivileged([
 app.whenReady().then(async () => {
     // (protocol.handle for dwu:// is registered in the whenReady above.)
     installDir = await findInstallDir();
+    appIcon = makeAppIcon(installDir);
     if (!installDir) {
         // User declined to locate the install folder: still launch, the game
         // boots without original data/art (generated fallbacks).
