@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chromeButtonFile, formatClockLabel, formatPopulation, habitatTypeLabel, resourceIconUrl } from '../src/ui/hud';
+import { chromeButtonFile, clearHudMessages, formatCashflow, formatClockLabel, formatMoney, formatPopulation, getHudMessages, habitatTypeLabel, pushHudMessage, resourceIconUrl } from '../src/ui/hud';
 import { computeHudLayout } from '../src/ui/hudLayout';
 import { START_STAR_DATE } from '../src/sim/galaxyTime';
 import { HabitatCategoryType, HabitatType } from '../src/sim/types';
@@ -85,6 +85,41 @@ describe('resourceIconUrl (task 10b)', () => {
     it('builds the original resource icon path from the picture ref', () => {
         expect(resourceIconUrl(0)).toBe('/assets/dwu/images/ui/resources/Resource_0.bmp');
         expect(resourceIconUrl(17)).toBe('/assets/dwu/images/ui/resources/Resource_17.bmp');
+    });
+});
+
+describe('formatMoney / formatCashflow (task 10d)', () => {
+    it('adds thousands separators', () => {
+        expect(formatMoney(641607)).toBe('641,607');
+        expect(formatMoney(213959)).toBe('213,959');
+        expect(formatMoney(0)).toBe('0');
+    });
+
+    it('keeps the minus sign outside the separators', () => {
+        expect(formatMoney(-5000)).toBe('-5,000');
+    });
+
+    it('formats cashflow in parentheses with a sign', () => {
+        expect(formatCashflow(213959)).toBe('(+213,959)');
+        expect(formatCashflow(-5000)).toBe('(-5,000)');
+        expect(formatCashflow(0)).toBe('(0)');
+    });
+});
+
+describe('message ring buffer (task 10d)', () => {
+    it('keeps the last five messages, newest last', () => {
+        clearHudMessages();
+        for (let i = 1; i <= 8; i++) pushHudMessage(`msg${i}`);
+        expect([...getHudMessages()]).toEqual(['msg4', 'msg5', 'msg6', 'msg7', 'msg8']);
+        clearHudMessages();
+    });
+
+    it('keeps fewer than five as-is', () => {
+        clearHudMessages();
+        pushHudMessage('a');
+        pushHudMessage('b');
+        expect([...getHudMessages()]).toEqual(['a', 'b']);
+        clearHudMessages();
     });
 });
 

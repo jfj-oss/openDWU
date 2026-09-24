@@ -14,7 +14,7 @@ import { createGame, type CreateGameOptions } from './sim/game';
 import { parseSystemNames } from './sim/data';
 import { loadGameData, type FetchText, type GameData } from './sim/data/gameData';
 import { GalaxyShape } from './sim/types';
-import { createHud, layoutHud, nearestSystemName, type HudRefs } from './ui/hud';
+import { createHud, layoutHud, nearestSystemName, pushHudMessage, type HudRefs } from './ui/hud';
 import { GalaxyTime } from './sim/clock';
 import { START_STAR_DATE } from './sim/galaxyTime';
 import { formatClockLabel, SECTOR_LEVEL_ZOOM, SYSTEM_LEVEL_ZOOM, type Selection } from './ui/hud';
@@ -147,6 +147,11 @@ async function startGameView(game: Game, zoomOverride?: number): Promise<void> {
     }
     const galaxy = game.galaxy;
 
+    // Task 10d: first message of the top-middle ticker — the founding line.
+    const playerCapital = game.playerEmpire?.capital ?? null;
+    const systemName = playerCapital !== null ? galaxy.systems[playerCapital.systemIndex].systemStar.name : '';
+    pushHudMessage(`${game.playerEmpire.name} founded at ${playerCapital?.name ?? ''} (${systemName} system)`);
+
     const app = new Application();
     await app.init({
         resizeTo: window,
@@ -184,7 +189,8 @@ async function startGameView(game: Game, zoomOverride?: number): Promise<void> {
 
     const time = new GalaxyTime(START_STAR_DATE);
     const overlays = createMapOverlayState();
-    const hud: HudRefs = createHud({ clock: time, overlays, camera, galaxy });
+    // Task 10d: the HUD's money panel refreshes from the player empire.
+    const hud: HudRefs = createHud({ clock: time, overlays, camera, galaxy, game });
     const systemNameEl = hud.elements.get('pnlMoney')?.querySelector('.hud-system-name');
     const dateEl = hud.elements.get('pnlTopLeftBar')?.querySelector('.hud-date');
     const pauseBtn = hud.elements.get('pnlTopLeftBar')?.querySelector<HTMLButtonElement>('button[title="Play / pause"]');
@@ -288,6 +294,12 @@ async function bootGameFromWizard(startOptions: StartGameOptions): Promise<void>
     }
 
     const game: Game = createGame(toCreateGameOptions(startOptions, gameData, systemNames));
+    // Task 10d: the wizard's chosen flag shape/colour is not forwarded to
+    // createGame yet (see TODO(createGame) in startGameOptions.ts), so apply
+    // it to the player empire here for the HUD's empires button.
+    if (startOptions.flagShapeIndex >= 0) {
+        game.playerEmpire.flagShape = startOptions.flagShapeIndex;
+    }
     await startGameView(game);
 }
 

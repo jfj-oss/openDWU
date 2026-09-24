@@ -6,6 +6,7 @@ import { Camera } from '../render/camera';
 import { Galaxy } from '../sim/galaxy';
 import type { GameData } from '../sim/data/gameData';
 import { Habitat, HabitatCategoryType, HabitatType, IndustryType, SystemInfo } from '../sim/types';
+import { flagShapeUrl } from '../sim/startGameOptions';
 import { createGameMenu, type GameMenuRefs } from './screens/gameMenu';
 import { setGameMenuHandler } from './keyboard';
 import { startEffects } from '../audio/effectsPlayer';
@@ -116,6 +117,10 @@ export interface HudWiring {
     galaxy?: Galaxy;
     /** Parsed game data (resource definitions → icons/names). */
     gameData?: GameData;
+    /** The running game (galaxy + player empire) — task 10d: the money panel
+     * refreshes from `game.playerEmpire.stateMoney` and the empires button
+     * shows the player's flag shape tinted with the empire colour. */
+    game?: { playerEmpire: { name: string; mainColor: number; stateMoney: number; flagShape: number } };
     /** Called after a selection change so main.ts can react. */
     onSelectionChange?: (sel: Selection | null) => void;
 }
@@ -173,7 +178,7 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
                 el = buildTopLeftBar(clock, () => gameMenu.toggle());
                 break;
             case 'pnlMoney':
-                el = buildMoneyPanel();
+                el = buildMoneyPanel(wiring.game);
                 break;
             case 'pnlSelection':
                 el = buildSelectionPanel({ ...wiring, onSelectionChange: (sel) => {
@@ -185,7 +190,7 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
                 el = buildOptionsList({ ...wiring, overlays });
                 break;
             default:
-                el = buildTopBarButton(name);
+                el = name === 'tbtnEmpires' ? buildEmpireFlagButton(wiring) : buildTopBarButton(name);
                 break;
         }
         el.classList.add('hud-el');
@@ -200,6 +205,9 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
         root.appendChild(el);
         elements.set(name, el);
     }
+
+    // Task 10d: bind the message ticker's five lines to the ring buffer.
+    setMessageLineElements(elements.get('lstMessages') ?? null);
 
     document.body.appendChild(root);
     return refs;
@@ -382,10 +390,74 @@ function buildTopBarButton(name: string): HTMLElement {
     return btn;
 }
 
-/** Top-right money block + nearest-system name (existing behaviour kept). */
-function buildMoneyPanel(): HTMLElement {
+/** Top-row empires button (task 10d): the player's flag shape art tinted with
+ * the empire colour, falling back to the plain chrome diplomacy button when
+ * no game is wired (e.g. the generateGalaxy-only boot path). */
+function buildEmpireFlagButton(wiring: HudWiring): HTMLElement {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'hud-btn';
+    const file = chromeButtonFile('tbtnEmpires');
+    if (file) {
+        btn.title = 'Empires';
+        const img = document.createElement('img');
+        img.src = `/assets/dwu/images/ui/chrome/${file}`;
+        img.alt = '';
+        img.draggable = false;
+        btn.appendChild(img);
+    } else {
+        btn.classList.add('hud-btn-bare');
+        btn.textContent = 'Empires';
+        btn.title = 'Empires';
+    }
+    const game = wiring.game;
+    if (game) {
+        // The wizard's StartGameOptions carry the chosen flagShapeIndex; the
+        // autostart/fallback paths have none, so use the empire's own
+        // dominant-race default flag design (Empire.flagShape, -1 if none).
+        const shapeIndex = game.playerEmpire.flagShape >= 0 ? game.playerEmpire.flagShape : null;
+        if (shapeIndex !== null) {
+            const flag = document.createElement('img');
+            flag.src = flagShapeUrl(shapeIndex);
+            flag.alt = '';
+            flag.draggable = false;
+            flag.style.filter = `sepia(1) saturate(4) hue-rotate(${colorHueRotate(game.playerEmpire.mainColor)}deg)`;
+            btn.appendChild(flag);
+        }
+    }
+    // TODO(screen): open the original's Empires screen.
+    btn.addEventListener('click', () => {
+        playUiClick();
+        console.log('TODO(screen): Empires');
+    });
+    return btn;
+}
+
+/** CSS hue-rotate angle that turns a white source into `rgb` — used to tint
+ * the monochrome flag shape art with the empire's main colour. */
+export function colorHueRotate(rgb: number): number {
+    const r = ((rgb >> 16) & 255) / 255;
+    const g = ((rgb >> 8) & 255) / 255;
+    const b = (rgb & 255) / 255;
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    let h = 0;
+    if (max !== min) {
+        const d = max - min;
+        if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+        else if (max === g) h = ((b - r) / d + 2) / 6;
+        else h = ((r - g) / d + 4) / 6;
+    }
+    return Math.round(h * 360);
+}
+
+/** Top-right money block + nearest-system name (existing behaviour kept).
+ * Task 10d: Money is refreshed live from the player empire's state money;
+ * Cashflow and Bonus Income show '—' until the sim tracks them. */
+function buildMoneyPanel(game?: { playerEmpire: { name: string; mainColor: number; stateMoney: number; flagShape: number } }): HTMLElement {
     const panel = document.createElement('div');
     panel.className = 'hud-panel hud-money';
+    const valueEls: Record<string, HTMLElement> = {};
     for (const row of ['Money', 'Cashflow', 'Bonus Income']) {
         const line = document.createElement('div');
         line.className = 'hud-money-row';
@@ -394,7 +466,8 @@ function buildMoneyPanel(): HTMLElement {
         k.textContent = row;
         const v = document.createElement('span');
         v.className = 'hud-value';
-        v.textContent = '0';
+        v.textContent = '—';
+        valueEls[row] = v;
         line.append(k, v);
         panel.appendChild(line);
     }
@@ -402,6 +475,23 @@ function buildMoneyPanel(): HTMLElement {
     sys.className = 'hud-system-name';
     sys.textContent = '';
     panel.appendChild(sys);
+
+    if (game) {
+        // The original's top-right block mirrors the player empire's money
+        // fields (Main.Part12.cs pnlStateMoney); here only state money exists
+        // on Empire — see the TODO(sim) notes below.
+        const refreshMoney = (): void => {
+            valueEls['Money'].textContent = formatMoney(Math.round(game.playerEmpire.stateMoney));
+            // TODO(sim): Empire has no cashflow field yet (src/sim/empire.ts) —
+            // show '—' until the economy port adds it.
+            // TODO(sim): Empire has no bonus-income field yet (src/sim/empire.ts) —
+            // show '—' until the economy port adds it.
+            valueEls['Cashflow'].textContent = '—';
+            valueEls['Bonus Income'].textContent = '—';
+        };
+        refreshMoney();
+        setInterval(refreshMoney, 250);
+    }
     return panel;
 }
 
@@ -593,6 +683,66 @@ export function formatPopulation(n: number): string {
     if (n >= 1_000_000) return trimDecimal(n / 1_000_000) + 'M';
     if (n >= 1_000) return trimDecimal(n / 1_000) + 'K';
     return String(Math.trunc(n));
+}
+
+// ---------------------------------------------------------------------------
+// Money formatting + message ticker (task 10d)
+// ---------------------------------------------------------------------------
+
+/** Thousands separators like the original's money display (`641,607`). */
+export function formatMoney(n: number): string {
+    const sign = n < 0 ? '-' : '';
+    return sign + Math.abs(Math.trunc(n)).toLocaleString('en-US');
+}
+
+/** Cashflow style: signed, in parentheses — `(+213,959)` / `(-5,000)` / `(0)`. */
+export function formatCashflow(n: number): string {
+    const t = Math.trunc(n);
+    const inner = t > 0 ? '+' + formatMoney(t) : formatMoney(t);
+    return `(${inner})`;
+}
+
+/** The top-middle message panel keeps the last 5 messages, newest at the
+ * bottom (the original's message ticker). Module state so later systems can
+ * push via {@link pushHudMessage} without holding a HUD reference. */
+const MESSAGE_LINES = 5;
+let hudMessages: string[] = [];
+let messageLineEls: HTMLElement[] | null = null;
+
+/** Bind the five `.hud-message-line` slots of the message panel to the ring
+ * buffer and render the current contents. Called from createHud. */
+function setMessageLineElements(panel: HTMLElement | null): void {
+    messageLineEls = panel ? Array.from(panel.querySelectorAll('.hud-message-line')) : null;
+    renderMessages();
+}
+
+/** Re-render the bound message lines from the ring buffer (newest at the
+ * bottom, older lines blanked out). */
+function renderMessages(): void {
+    if (!messageLineEls) return;
+    for (let i = 0; i < messageLineEls.length; i++) {
+        const idx = i - (messageLineEls.length - MESSAGE_LINES);
+        messageLineEls[i].textContent = hudMessages[idx] ?? '';
+    }
+}
+
+/** Push a message into the top-middle ticker (keeps the last 5, newest at
+ * the bottom). Exported for later systems (events, diplomacy, ...). */
+export function pushHudMessage(text: string): void {
+    hudMessages.push(text);
+    while (hudMessages.length > MESSAGE_LINES) hudMessages.shift();
+    renderMessages();
+}
+
+/** Test hook: drop all pushed messages (also clears the rendered lines). */
+export function clearHudMessages(): void {
+    hudMessages = [];
+    renderMessages();
+}
+
+/** The current message ticker contents (oldest → newest), for tests. */
+export function getHudMessages(): readonly string[] {
+    return hudMessages;
 }
 
 function trimDecimal(x: number): string {
