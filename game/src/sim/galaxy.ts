@@ -104,6 +104,11 @@ export class Galaxy {
     // Port of Galaxy.cs Creatures (CreatureList, populated by
     // SelectCreatures/GenerateCreatureAtHabitat — Galaxy.6.cs:654/723).
     creatures: Creature[] = [];
+    // Task 08h: C# CurrentDateTime modeled as game seconds (advanced by step).
+    currentTimeSeconds = 0;
+    // C#: Galaxy._NextCreatureID / SilverMistCreatureCount (Galaxy.cs).
+    nextCreatureId = 0;
+    silverMistCreatureCount = 0;
     // Port of Galaxy.cs Races (RaceList, loaded from GameData in the ctor).
     races: Race[] = [];
     // Port of Galaxy.cs habitat-race lists (_ContinentalRaces etc.),
@@ -187,6 +192,91 @@ export class Galaxy {
         for (const habitat of this.stepOrder) {
             habitat.advanceOrbit(totalSeconds);
         }
+        // Task 08h: Creature.DoTasks for every creature (the C# UI drives
+        // the viewed system's creatures, Main.Part11.cs 597). Iterate a copy:
+        // DoTasks can add (Split/Reproduce) or remove (teardown) creatures.
+        this.currentTimeSeconds += totalSeconds;
+        for (const creature of this.creatures.slice()) {
+            if (!creature.hasBeenDestroyed) {
+                creature.doTasks(this.currentTimeSeconds);
+            }
+        }
+    }
+
+    // Port of Galaxy.cs GetNextCreatureID (line 1333).
+    getNextCreatureID(): number {
+        if (this.nextCreatureId < 2147483647) {
+            this.nextCreatureId++;
+            return this.nextCreatureId;
+        }
+        throw new Error('Maximum allowable creature number exceeded!');
+    }
+
+    // Port of Galaxy.cs SelectRandomHeading (line 2795); C# returns float.
+    selectRandomHeading(): number {
+        return Math.fround(Math.PI - this.rnd.nextDouble() * Math.PI * 2.0);
+    }
+
+    // Port of Galaxy.6.cs SelectRelativePoint (line 3762).
+    selectRelativePoint(range: number): { x: number; y: number } {
+        const num = range * this.rnd.nextDouble();
+        const num2 = this.selectRandomHeading();
+        return { x: Math.cos(num2) * num, y: Math.sin(num2) * num };
+    }
+
+    // Port of Galaxy.6.cs SelectRelativeHabitatSurfacePoint (line 3770).
+    selectRelativeHabitatSurfacePoint(habitat: Habitat | null): { x: number; y: number } {
+        let range = 50.0;
+        if (habitat !== null) {
+            let num = habitat.diameter - 10.0;
+            if (num < 1.0) {
+                num = 1.0;
+            }
+            range = num / 2.0;
+        }
+        return this.selectRelativePoint(range);
+    }
+
+    // Port of Galaxy.6.cs SelectHyperJumpExitPoint (line 3750).
+    selectHyperJumpExitPoint(minimumExitDistance: number): { x: number; y: number } {
+        let num = this.rnd.nextDouble() * Math.PI;
+        if (this.rnd.next(0, 2) === 1) {
+            num *= -1.0;
+        }
+        const num2 = minimumExitDistance + this.rnd.nextDouble() * minimumExitDistance * 0.4;
+        return { x: Math.cos(num) * num2, y: Math.sin(num) * num2 };
+    }
+
+    // Port of Galaxy.6.cs FastFindNearestSystem (line 3648). The C# sector
+    // search returns the system star with the smallest squared distance
+    // (from (int)x, (int)y); a linear scan gives the same result.
+    fastFindNearestSystem(x: number, y: number): Habitat | null {
+        const ix = Math.trunc(x);
+        const iy = Math.trunc(y);
+        let best: Habitat | null = null;
+        let bestDistance = Number.MAX_VALUE;
+        for (const system of this.systems) {
+            const d = this.calculateDistanceSquared(ix, iy, system.systemStar.xpos, system.systemStar.ypos);
+            if (d < bestDistance) {
+                bestDistance = d;
+                best = system.systemStar;
+            }
+        }
+        return best;
+    }
+
+    // Port of Galaxy.6.cs GenerateDistanceOrderedSystemList (line 3011).
+    generateDistanceOrderedSystemList(x: number, y: number): SystemInfo[] {
+        return this.systems
+            .map((s) => ({ s, d: this.calculateDistanceSquared(x, y, s.systemStar.xpos, s.systemStar.ypos) }))
+            .sort((a, b) => a.d - b.d)
+            .map((e) => e.s);
+    }
+
+    // C# Systems[i].Habitats (excludes the star; TS SystemInfo.habitats has it at [0]).
+    systemHabitatsOf(systemIndex: number): Habitat[] {
+        const system = this.systems[systemIndex];
+        return system === undefined ? [] : system.habitats.filter((h) => h !== system.systemStar);
     }
 
     // Rebuilds the cached step order: habitats that have a parent, sorted by
@@ -696,16 +786,202 @@ export class Galaxy {
 
     // Port of Galaxy.4.cs GenerateMoonName (line 2533). The C# generates a
     // code name (unused local `text`), touches DetermineHabitatSystemStar
-    // (no Rnd calls, side-effect free), then returns GenerateRandomNameAlt()
-    // — a string-table generator that isn't ported/available anywhere in the
-    // decompiled sources we have. We keep the known Rnd-consuming steps in
-    // order and use the generated code name as the moon's name.
-    // TODO(port): GenerateRandomNameAlt — source not available; using the
-    // code name generated above instead of the real alt-name text.
+    // (no Rnd calls, side-effect free), then returns GenerateRandomNameAlt().
     generateMoonName(moon: Habitat): string {
         const codeName = this.generateCodeName();
+        void moon.parent;
         this.determineHabitatSystemStar(moon);
-        return codeName;
+        return this.generateRandomNameAlt();
+    }
+
+    // Port of Galaxy.4.cs ConditionCheckLimit(bool condition, int limit, ref int iterationCount).
+    // Returns true while the condition holds and the limit has not been hit.
+    private conditionCheckLimit(condition: boolean, limit: number, iterationCount: { value: number }): boolean {
+        if (!condition) {
+            return false;
+        }
+        if (iterationCount.value >= limit) {
+            return false;
+        }
+        iterationCount.value++;
+        return true;
+    }
+
+    // Port of Galaxy.4.cs CheckForIllegalVowelCombination(string word, string letter).
+    // True when appending `letter` would create an illegal vowel pair at the
+    // end of the word ("ee", "oo", "ii").
+    private checkForIllegalVowelCombination(word: string, letter: string): boolean {
+        if (word.length < 2) {
+            return false;
+        }
+        const last = word[word.length - 1];
+        const secondLast = word[word.length - 2];
+        return (last === 'e' && secondLast === 'e' && letter === 'e') || (last === 'o' && secondLast === 'o' && letter === 'o') || (last === 'i' && secondLast === 'i' && letter === 'i');
+    }
+
+    // Port of Galaxy.4.cs GenerateRandomName — planet-style name generator
+    // (not called from generation; kept for fidelity next to its Alt sibling).
+    generateRandomName(): string {
+        let text = '';
+        const vowels = ['a', 'e', 'i', 'o', 'u', 'y'];
+        const consonants = ['b', 'c', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 'm', 'n', 'p', 'q', 'r', 's', 't', 'v', 'w', 'x', 'y', 'z'];
+        const maxLen = 7;
+        const parts = this.rnd.next(2, 5);
+        for (let i = 0; i < parts; i++) {
+            switch (this.rnd.next(0, 4)) {
+                case 0:
+                    text += consonants[this.rnd.next(0, consonants.length)];
+                    text += vowels[this.rnd.next(0, vowels.length)];
+                    break;
+                case 1: {
+                    let v = this.rnd.next(0, vowels.length);
+                    let count = { value: 0 };
+                    while (this.conditionCheckLimit(this.checkForIllegalVowelCombination(text, vowels[v]), 50, count)) {
+                        v = this.rnd.next(0, vowels.length);
+                    }
+                    text += vowels[v];
+                    text += consonants[this.rnd.next(0, consonants.length)];
+                    break;
+                }
+                case 2:
+                    text += consonants[this.rnd.next(0, consonants.length)];
+                    text += vowels[this.rnd.next(0, vowels.length)];
+                    text += consonants[this.rnd.next(0, consonants.length)];
+                    break;
+                case 3: {
+                    let v = this.rnd.next(0, vowels.length);
+                    let count = { value: 0 };
+                    while (this.conditionCheckLimit(this.checkForIllegalVowelCombination(text, vowels[v]), 50, count)) {
+                        v = this.rnd.next(0, vowels.length);
+                    }
+                    text += vowels[v];
+                    text += consonants[this.rnd.next(0, consonants.length)];
+                    text += vowels[this.rnd.next(0, vowels.length)];
+                    break;
+                }
+            }
+            if (text.length > maxLen) {
+                break;
+            }
+        }
+        return text.charAt(0).toUpperCase() + text.slice(1);
+    }
+
+    // Port of Galaxy.4.cs GenerateRandomNameAlt — moon-name generator.
+    // Alternates vowel/consonant additions until the target length is
+    // reached (or the 50-iteration safety limit trips).
+    private generateRandomNameAlt(): string {
+        let text = '';
+        const targetLength = this.rnd.next(4, 9);
+        let mode = this.rnd.next(0, 2);
+        let vowelCombinationCount = 0;
+        let consonantCombinationCount = 0;
+        let iterationCount = { value: 0 };
+        while (this.conditionCheckLimit(text.length < targetLength, 50, iterationCount)) {
+            if (mode === 0) {
+                if (this.rnd.next(0, 2) === 0 && text.length > 0 && vowelCombinationCount === 0) {
+                    text = text.length < targetLength - 2 ? this.addVowelCombination(text) : this.addVowelCombinationEnd(text);
+                    vowelCombinationCount++;
+                } else {
+                    text = this.addVowel(text);
+                }
+                mode = 1;
+            } else {
+                if (this.rnd.next(0, 2) !== 0 || consonantCombinationCount !== 0) {
+                    text = text.length < targetLength - 1 ? this.addConsonant(text) : this.addConsonantEnd(text);
+                } else {
+                    text = text.length <= 0 ? this.addConsonantCombinationStart(text) : text.length < targetLength - 2 ? this.addConsonantCombination(text) : this.addConsonantCombinationEnd(text);
+                    consonantCombinationCount++;
+                }
+                mode = 0;
+            }
+        }
+        return text.charAt(0).toUpperCase() + text.slice(1);
+    }
+
+    // Port of Galaxy.4.cs AddVowel — weighted single-vowel table.
+    private addVowel(word: string): string {
+        const table = ['a', 'a', 'a', 'e', 'e', 'e', 'e', 'i', 'i', 'o', 'o', 'u'];
+        return word + table[this.rnd.next(0, table.length)];
+    }
+
+    // Port of Galaxy.4.cs AddVowelEnd.
+    private addVowelEnd(word: string): string {
+        const table = ['a', 'a', 'o', 'o', 'u', 'y'];
+        return word + table[this.rnd.next(0, table.length)];
+    }
+
+    // Port of Galaxy.4.cs AddVowelCombination.
+    private addVowelCombination(word: string): string {
+        const table = ['ai', 'au', 'ea', 'ee', 'ei', 'eu', 'ey', 'oa', 'oi', 'oo', 'ou', 'ui'];
+        return word + table[this.rnd.next(0, table.length)];
+    }
+
+    // Port of Galaxy.4.cs AddVowelCombinationEnd.
+    private addVowelCombinationEnd(word: string): string {
+        const table = ['ai', 'au', 'ea', 'eu', 'ie', 'oa', 'oi', 'oo', 'oy', 'ui'];
+        return word + table[this.rnd.next(0, table.length)];
+    }
+
+    // Port of Galaxy.4.cs AddConsonant — weighted single-consonant table.
+    private addConsonant(word: string): string {
+        const table = [
+            'b', 'b', 'c', 'c', 'c', 'd', 'd', 'd', 'd', 'f',
+            'f', 'g', 'g', 'h', 'h', 'h', 'h', 'h', 'h', 'j',
+            'k', 'l', 'l', 'l', 'l', 'm', 'm', 'm', 'n', 'n',
+            'n', 'n', 'n', 'n', 'n', 'p', 'p', 'r', 'r', 'r',
+            'r', 'r', 'r', 's', 's', 's', 's', 's', 's', 't',
+            't', 't', 't', 't', 't', 't', 't', 't', 'v', 'w',
+            'w', 'x', 'y', 'y', 'z',
+        ];
+        return word + table[this.rnd.next(0, table.length)];
+    }
+
+    // Port of Galaxy.4.cs AddConsonantEnd.
+    private addConsonantEnd(word: string): string {
+        const table = [
+            'b', 'd', 'd', 'd', 'd', 'd', 'f', 'f', 'g', 'k',
+            'l', 'l', 'm', 'n', 'n', 'n', 'n', 'p', 'r', 'r',
+            'r', 's', 's', 's', 's', 's', 's', 's', 't', 't',
+            't', 't', 'v', 'x', 'z',
+        ];
+        return word + table[this.rnd.next(0, table.length)];
+    }
+
+    // Port of Galaxy.4.cs AddConsonantCombinationStart.
+    private addConsonantCombinationStart(word: string): string {
+        const table = [
+            'bl', 'br', 'ch', 'cl', 'cr', 'dr', 'fl', 'fr', 'gh', 'gl',
+            'gr', 'kl', 'kr', 'ph', 'pl', 'pr', 'qu', 'rh', 'ry', 'sc',
+            'sh', 'sk', 'sl', 'sm', 'sn', 'sp', 'st', 'th', 'tr',
+        ];
+        return word + table[this.rnd.next(0, table.length)];
+    }
+
+    // Port of Galaxy.4.cs AddConsonantCombinationEnd.
+    private addConsonantCombinationEnd(word: string): string {
+        const table = [
+            'ff', 'gh', 'ld', 'lf', 'lg', 'lk', 'll', 'lm', 'lt', 'ms',
+            'nc', 'nd', 'ng', 'nk', 'ns', 'nt', 'ny', 'ph', 'rc', 'rd',
+            'rf', 'rg', 'rk', 'rl', 'rm', 'rn', 'rp', 'rs', 'rt', 'ry',
+            'sc', 'sh', 'sk', 'ss', 'st', 'th',
+        ];
+        return word + table[this.rnd.next(0, table.length)];
+    }
+
+    // Port of Galaxy.4.cs AddConsonantCombination.
+    private addConsonantCombination(word: string): string {
+        const table = [
+            'bb', 'bl', 'br', 'ch', 'cl', 'cr', 'dd', 'dr', 'ff', 'fl',
+            'fr', 'gg', 'gl', 'gr', 'kl', 'kr', 'lc', 'ld', 'lf', 'lg',
+            'lk', 'll', 'lm', 'ln', 'lp', 'ls', 'lt', 'mb', 'mm', 'mn',
+            'mp', 'ms', 'nc', 'nd', 'ng', 'nk', 'nn', 'ns', 'nt', 'ph',
+            'pl', 'pp', 'pr', 'ps', 'qu', 'rb', 'rc', 'rd', 'rf', 'rg',
+            'rh', 'rk', 'rl', 'rm', 'rn', 'rp', 'rr', 'rs', 'rt', 'ry',
+            'sc', 'sh', 'sk', 'sl', 'sm', 'sn', 'sp', 'ss', 'st', 'th',
+            'tr', 'wl', 'xx',
+        ];
+        return word + table[this.rnd.next(0, table.length)];
     }
 
     // Port of Galaxy.4.cs AssignSystemName(Habitat habitat, int PlanetCount)
@@ -1299,6 +1575,23 @@ export class Galaxy {
         return valid;
     }
 
+    // Port of ResourceDefinitionList.cs ResolveValidResourcesForHabitatExcludeManufactured
+    // (line 111): resource IDs with a prevalence valid for this habitat
+    // (same test as CheckPrevalenceValidForHabitat), excluding manufactured.
+    private resolveValidResourcesForHabitatExcludeManufactured(habitat: Habitat): number[] {
+        const list: number[] = [];
+        for (const def of this.resources) {
+            if (def === null || def.colonyManufacturingLevel > 0 || def.distributions.length <= 0) continue;
+            for (const dist of def.distributions) {
+                if (dist !== null && this.checkPrevalenceValidForHabitat(habitat, dist)) {
+                    list.push(def.resourceId);
+                    break;
+                }
+            }
+        }
+        return list;
+    }
+
     // Port of ResourceSystem.cs GenerateRandomOrderedResources (line 225):
     // Fisher-Yates-style partial shuffle using the (substituted) CryptoRnd.
     private generateRandomOrderedResources(): Resource[] {
@@ -1344,7 +1637,7 @@ export class Galaxy {
     selectResources(
         habitat: Habitat,
         minimumResourceCount = 0,
-        dominantRace: object | null = null,
+        dominantRace: Race | null = null,
         minimumCriticalResourceCount = 0,
         randomOrderedResources: Resource[] | null = null,
     ): Habitat {
@@ -1374,11 +1667,25 @@ export class Galaxy {
             num2 = minimumResourceCount;
         }
         minimumCriticalResourceCount = Math.min(minimumCriticalResourceCount, num2);
+        // Galaxy.4.cs SelectResources (5-arg): dominant race's critical
+        // resources. Source quirk: the C# 4-arg overload passes null for the
+        // race, so the one race-passing caller (Galaxy.7.cs:5375) never
+        // reaches this; 4-arg-style call sites must pass null here.
         if (dominantRace !== null && minimumResourceCount > 0) {
-            // TODO(port): critical resources from dominantRace's
-            // colonyGrowthResourceLevels (Rnd.Next(200, 800) abundances) —
-            // Galaxy.4.cs SelectResources. dominantRace is always null at
-            // every call site ported so far.
+            const resourceList: number[] = [];
+            const resourceList2 = dominantRace.criticalResources.map((b) => b.resourceId);
+            for (let i = 0; i < resourceList2.length && i < minimumCriticalResourceCount; i++) {
+                resourceList.push(resourceList2[i]);
+            }
+            const resourceList3 = this.resolveValidResourcesForHabitatExcludeManufactured(habitat);
+            for (let j = 0; j < resourceList.length; j++) {
+                if (resourceList3.includes(resourceList[j])) {
+                    const abundance = this.rnd.next(200, 800);
+                    if (!habitat.resources.some((r) => r.resourceId === resourceList[j])) {
+                        habitat.resources.push({ resourceId: resourceList[j], abundance });
+                    }
+                }
+            }
         }
         if (randomOrderedResources === null || randomOrderedResources.length <= 0) {
             randomOrderedResources = this.generateRandomOrderedResources();
@@ -1887,6 +2194,229 @@ export class Galaxy {
             habitat.population.recalculateTotalAmount();
         }
     }
+    // ---- Task 08e1: home-system colony helpers (Galaxy.8.cs / Galaxy.9.cs) ----
+
+    private systemHabitatsExcludingStar(systemStar: Habitat): Habitat[] {
+        return this.systemHabitatsOf(systemStar.systemIndex);
+    }
+
+    // Port of Galaxy.8.cs ResolveHomeSystem (line 595).
+    static resolveHomeSystem(homeSystemDescription: string): { capitalHabitatType: HabitatType; homeSystemFactor: number } {
+        switch (homeSystemDescription) {
+            case 'Harsh':
+                return { capitalHabitatType: HabitatType.Desert, homeSystemFactor: 0.4 };
+            case 'Trying':
+                return { capitalHabitatType: HabitatType.MarshySwamp, homeSystemFactor: 0.7 };
+            case 'Normal':
+                return { capitalHabitatType: HabitatType.MarshySwamp, homeSystemFactor: 1.0 };
+            case 'Agreeable':
+                return { capitalHabitatType: HabitatType.Continental, homeSystemFactor: 1.4 };
+            case 'Excellent':
+                return { capitalHabitatType: HabitatType.Continental, homeSystemFactor: 2.0 };
+        }
+        return { capitalHabitatType: HabitatType.Undefined, homeSystemFactor: 0.0 };
+    }
+
+    // Port of Galaxy.8.cs DetermineEmpireExpansion (line 626); constants
+    // EmpireAgeExpansionRateMinimum/Maximum from Galaxy.3.cs 5053-5054.
+    static determineEmpireExpansion(rnd: Random, age: number): number {
+        const EmpireAgeExpansionRateMinimum = 2.3;
+        const EmpireAgeExpansionRateMaximum = 2.7;
+        let num = 1.0;
+        const num2 = EmpireAgeExpansionRateMaximum - EmpireAgeExpansionRateMinimum;
+        age--;
+        for (let i = 0; i < age; i++) {
+            const num3 = EmpireAgeExpansionRateMinimum + rnd.nextDouble() * num2;
+            num *= num3;
+        }
+        return num;
+    }
+
+    // Port of Galaxy.8.cs CheckPlanetaryOrbitalOverlap (line 367).
+    private checkPlanetaryOrbitalOverlap(systemStar: Habitat, orbitDistance: number): boolean {
+        const num = 150;
+        for (const habitat of this.systemHabitatsExcludingStar(systemStar)) {
+            const num2 = habitat.orbitDistance - num;
+            const num3 = habitat.orbitDistance + num;
+            if (orbitDistance >= num2 && orbitDistance <= num3) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Port of Galaxy.8.cs GeneratePlanetaryOrbitDistance (line 390).
+    private generatePlanetaryOrbitDistance(systemStar: Habitat, minOrbitDistance: number, maxOrbitDistance: number): number {
+        let num = this.rnd.next(minOrbitDistance, maxOrbitDistance);
+        let num2 = 0;
+        while (this.checkPlanetaryOrbitalOverlap(systemStar, num) && num2 < 20) {
+            num = this.rnd.next(minOrbitDistance, maxOrbitDistance);
+            num2++;
+        }
+        return num;
+    }
+
+    // Port of Galaxy.8.cs GenerateContinentalPlanet (line 458), habitat fields only.
+    generateContinentalPlanet(sun: Habitat): Habitat {
+        const { type, pictureRef, diameter, minOrbitDistance, maxOrbitDistance, landscapePictureRef } = this.selectContinentalPlanet();
+        const orbitdistance = this.generatePlanetaryOrbitDistance(sun, minOrbitDistance, maxOrbitDistance);
+        const name = this.generateRandomName();
+        const orbitAngle = this.rnd.nextDouble() * Math.PI * 2.0;
+        const habitat = new Habitat(HabitatCategoryType.Planet, type, name, sun, orbitAngle, true, orbitdistance, this.rnd.next(2, 5));
+        habitat.diameter = diameter;
+        habitat.pictureRef = pictureRef;
+        habitat.landscapePictureRef = landscapePictureRef;
+        habitat.baseQuality = this.selectHabitatQuality(habitat, this.colonyPrevalence);
+        // TODO(port): DoTasks(CurrentDateTime) — Habitat.DoTasks (galaxy-time driven).
+        this.selectResources(habitat);
+        if (this.rnd.next(0, 5) === 2) {
+            habitat.orbitDirection = false;
+        }
+        // TODO(port): Cargo/Troops/TroopsToRecruit/InvadingTroops/ConstructionQueue/
+        // ManufacturingQueue/20 DockingBays (component 74) — Galaxy.8.cs GenerateContinentalPlanet.
+        return habitat;
+    }
+
+    // Port of Galaxy.9.cs AddHabitat (line 3225). Index maps (HabitatIndex
+    // grid, FixResourceMaps, SetSystemHabitatExploration) don't exist yet;
+    // later Habitats entries are re-numbered so habitatIndex == position.
+    addHabitat(habitat: Habitat, nearestSystemStar: Habitat | null): boolean {
+        if (nearestSystemStar === null) {
+            return false;
+        }
+        const others = this.systemHabitatsOf(nearestSystemStar.systemIndex);
+        const system = this.systems[nearestSystemStar.systemIndex];
+        const num = others.length <= 0 ? system.systemStar.habitatIndex + 1 : others[others.length - 1].habitatIndex + 1;
+        habitat.habitatIndex = num;
+        habitat.systemIndex = nearestSystemStar.systemIndex;
+        this.habitats.splice(num, 0, habitat);
+        for (let i = num + 1; i < this.habitats.length; i++) {
+            this.habitats[i].habitatIndex = i;
+        }
+        system.habitats.push(habitat);
+        return true;
+    }
+
+    // Port of Galaxy.8.cs SetColonizableHabitatsInSystem (line 95). No
+    // empires exist yet, so every habitat's Owner is null.
+    setColonizableHabitatsInSystem(systemStar: Habitat, race: Race, colonyCount: number): void {
+        const habitats = this.systemHabitatsExcludingStar(systemStar);
+        const habitatList: Habitat[] = [];
+        const habitatList2: Habitat[] = [];
+        for (const item of habitats) {
+            if ((item.population.totalAmount > 0 || item.type === race.nativeHabitatType) && item.category !== HabitatCategoryType.Asteroid) {
+                habitatList.push(item);
+            } else {
+                if (
+                    (item.category === HabitatCategoryType.Moon || item.category === HabitatCategoryType.Planet) &&
+                    (item.type === HabitatType.MarshySwamp || item.type === HabitatType.Ocean || item.type === HabitatType.Desert)
+                ) {
+                    habitatList2.push(item);
+                }
+                if (item.category === HabitatCategoryType.Planet && item.type === HabitatType.BarrenRock) {
+                    habitatList2.push(item);
+                }
+            }
+        }
+        if (habitatList.length > colonyCount) {
+            const num = habitatList.length - colonyCount;
+            for (let i = 0; i < num; i++) {
+                if (habitatList[i].population.totalAmount <= 0) {
+                    const sel = this.selectBarrenRockPlanet();
+                    habitatList[i].type = HabitatType.BarrenRock;
+                    habitatList[i].diameter = sel.diameter;
+                    habitatList[i].pictureRef = sel.pictureRef;
+                    habitatList[i].landscapePictureRef = sel.landscapePictureRef;
+                    habitatList[i].baseQuality = this.selectHabitatQuality(habitatList[i], this.colonyPrevalence);
+                    habitatList[i].resources = [];
+                    this.selectResources(habitatList[i]);
+                }
+            }
+        } else {
+            if (habitatList.length >= colonyCount) {
+                return;
+            }
+            const num2 = colonyCount - habitatList.length;
+            for (let j = 0; j < num2; j++) {
+                if (habitatList2.length > j) {
+                    let sel = { diameter: 0, pictureRef: 0, landscapePictureRef: 0 };
+                    switch (race.nativeHabitatType) {
+                        case HabitatType.Continental:
+                            sel = this.selectContinentalPlanet();
+                            break;
+                        case HabitatType.MarshySwamp:
+                            sel = this.selectMarshySwampPlanet();
+                            break;
+                        case HabitatType.Ocean:
+                            sel = this.selectOceanPlanet();
+                            break;
+                        case HabitatType.Desert:
+                            sel = this.selectDesertPlanet();
+                            break;
+                        case HabitatType.Ice:
+                            sel = this.selectIcePlanet();
+                            break;
+                        case HabitatType.Volcanic:
+                            sel = this.selectVolcanicPlanet();
+                            break;
+                    }
+                    habitatList2[j].type = race.nativeHabitatType;
+                    habitatList2[j].diameter = sel.diameter;
+                    habitatList2[j].pictureRef = sel.pictureRef;
+                    habitatList2[j].landscapePictureRef = sel.landscapePictureRef;
+                    habitatList2[j].baseQuality = Math.fround(0.7 + this.rnd.nextDouble() * 0.25);
+                    habitatList2[j].resources = [];
+                    this.selectResources(habitatList2[j]);
+                } else {
+                    const habitat = this.generateContinentalPlanet(systemStar);
+                    this.addHabitat(habitat, systemStar);
+                }
+            }
+        }
+    }
+
+    // Port of Galaxy.8.cs SetResourceLevelsInSystem (line 575).
+    setResourceLevelsInSystem(systemStar: Habitat, resourceLevelMinimum: number, resourceLevelMaximum: number): void {
+        for (const item of this.systemHabitatsExcludingStar(systemStar)) {
+            if (item.category === HabitatCategoryType.Planet || item.category === HabitatCategoryType.Moon) {
+                if (item.resources.length > resourceLevelMaximum) {
+                    item.resources = [];
+                } else if (item.resources.length < resourceLevelMinimum) {
+                    item.resources = [];
+                    this.selectResources(item, resourceLevelMinimum);
+                }
+            }
+        }
+    }
+
+    // Port of the tail of Galaxy.7.cs GenerateEmpire (lines 5348-5375).
+    // TODO(port): the rest of GenerateEmpire (Empire, policy, tech, troops,
+    // population, expansion) — task 08e2, blocked on an Empire model.
+    setupHomeSystem(capital: Habitat, race: Race, homeSystemDescription: string, minimumResourceCount: number, minimumCriticalResourceCount: number): void {
+        const systemStar = this.determineHabitatSystemStar(capital);
+        if (homeSystemDescription === 'Harsh') {
+            this.setColonizableHabitatsInSystem(systemStar, race, 0);
+            this.setResourceLevelsInSystem(systemStar, 0, 1);
+        } else if (homeSystemDescription === 'Trying') {
+            this.setColonizableHabitatsInSystem(systemStar, race, 0);
+            this.setResourceLevelsInSystem(systemStar, 0, 2);
+        } else if (homeSystemDescription === 'Normal') {
+            this.setColonizableHabitatsInSystem(systemStar, race, 0);
+            this.setResourceLevelsInSystem(systemStar, 1, 4);
+        } else if (homeSystemDescription === 'Agreeable') {
+            this.setColonizableHabitatsInSystem(systemStar, race, 1);
+            this.setResourceLevelsInSystem(systemStar, 1, 5);
+        } else if (homeSystemDescription === 'Excellent') {
+            this.setColonizableHabitatsInSystem(systemStar, race, 2);
+            this.setResourceLevelsInSystem(systemStar, 2, 5);
+        }
+        capital.resources = [];
+        // C# calls the 4-arg SelectResources overload, which passes null for
+        // the race (Galaxy.4.cs 3282) — see task 08c.
+        this.selectResources(capital, minimumResourceCount, null, minimumCriticalResourceCount);
+    }
+
+
 
     // Port of Galaxy.6.cs DetermineHabitatSystemStar(habitat) (Galaxy.6.cs:703).
     // Walks up the parent chain to the star; top-level habitats (stars, gas
@@ -2541,7 +3071,8 @@ export class Galaxy {
 // gas-cloud loop, sort/re-index, Systems build — Galaxy.4.cs 2221-2347).
 // colonyPrevalence is accepted for API compatibility with the eventual
 // full generator but unused here (no colonies are generated in 01b/01c
-// scope yet). TODO(port): colony placement — later task.
+// scope yet). TODO(port): colony placement — home-system helpers landed
+// in 08e1 (setupHomeSystem etc.); GenerateEmpire wiring is task 08e2.
 export function generateGalaxy(options: GenerateGalaxyOptions): Galaxy {
     const { seed, shape, starCount, sectorWidth, sectorHeight, systemNames, colonyPrevalence, gameData, cloudImageCount } = options;
     const galaxy = new Galaxy(seed, shape, starCount, sectorWidth, sectorHeight, systemNames, colonyPrevalence);

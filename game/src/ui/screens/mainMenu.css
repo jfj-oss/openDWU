@@ -37,7 +37,7 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 8px;
+    gap: 2px; /* the art already carries its own padding/glow */
     background: rgba(20, 22, 28, 0.8);
     border-radius: 14px;
     padding: 12px 28px;
@@ -51,18 +51,20 @@
     display: block;
 }
 
+/* Menu_* art renders at natural size × s (set inline in mainMenu.ts); no
+   forced width/height so every item keeps its own aspect and height. */
 .main-menu-item img {
     display: block;
-    height: 28px;
-    width: auto;
 }
 
+/* Title art: width is min(482px * s, 40vw) (set inline in mainMenu.ts);
+   centred horizontally with its bottom edge 6% above the window bottom so it
+   can never overflow off-screen. */
 .main-menu-title {
     position: absolute;
-    top: 58%;
+    bottom: 6%;
     left: 50%;
     transform: translateX(-50%);
-    width: 50%;
     height: auto;
     pointer-events: none;
 }
@@ -75,10 +77,9 @@
     cursor: pointer;
 }
 
+/* Corner art at natural size × s (set inline in mainMenu.ts). */
 .main-menu-corner img {
     display: block;
-    height: 36px;
-    width: auto;
 }
 
 .main-menu-galactopedia {

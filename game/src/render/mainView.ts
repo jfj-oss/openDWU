@@ -9,9 +9,6 @@
 // more zoomed out); here `Camera.zoom` is its reciprocal (pixels per world
 // unit). Layer crossfade windows below are expressed in that zoom.
 //
-// TODO(port): GalaxyLocation region names (e.g. "Nispes Arm") in small
-// grey text at galaxy zoom — needs the GalaxyLocation model
-// (Galaxy.3.cs) which is not ported yet; hook left as `regionLabels`.
 // TODO(port): nebula-anchored gas-cloud placement / radiation fields —
 // Galaxy.4.cs GenerateGasCloud.
 
@@ -42,7 +39,9 @@ import {
     starSpriteUrls,
 } from './assets';
 import { Galaxy } from '../sim/galaxy';
+import { GalaxyLocation, GalaxyLocationType } from '../sim/galaxyLocation';
 import { Habitat, HabitatCategoryType, HabitatType, SystemInfo } from '../sim/types';
+import { NebulaCloudGenerator } from './nebulaClouds';
 
 export function fadeIn(v: number, a: number, b: number): number {
     if (v <= a) {
@@ -97,6 +96,79 @@ export function moonDotPx(diameter: number, z: number): number {
 
 export function starSpritePx(diameter: number, z: number): number {
     return Math.min(Math.max(diameter * z * 0.42, 40), 1400);
+}
+
+// Task 08g (Controls/MainView.cs mouse picking): pure hit-test over a list of
+// candidate habitats. Each object's drawn on-screen rect is the square centred
+// on its screen position with side `sizeFn(habitat, zoom)` px (the same size
+// functions the renderer uses, incl. the min-pixel sizes). The point belongs
+// to an object when |dx| <= size/2 && |dy| <= size/2; among several matches
+// the smaller object wins (a moon in front of its planet, a planet in front
+// of the star). Returns null for empty space.
+export function hitTestHabitats(
+    list: Habitat[],
+    x: number,
+    y: number,
+    sizeFn: (h: Habitat, zoom: number) => number,
+    zoom: number,
+): Habitat | null {
+    let best: Habitat | null = null;
+    let bestSize = Infinity;
+    for (const h of list) {
+        const s = sizeFn(h, zoom);
+        if (s <= 0) continue;
+        const dx = Math.abs(x - h.xpos);
+        const dy = Math.abs(y - h.ypos);
+        if (dx > s / 2 || dy > s / 2) continue;
+        if (s < bestSize) {
+            bestSize = s;
+            best = h;
+        }
+    }
+    return best;
+}
+
+// Task 08f1 (MainView.2.cs 4675-4705): region/nebula location labels are
+// drawn only while the original's zoom factor `double_15` satisfies
+// 70 < double_15 <= double_5 (the full-galaxy factor, passed by the caller).
+// The font depends on the location type and the factor:
+//   NebulaCloud:  > 4000 -> font_2 (15.33 px regular)
+//                 > 1000 -> font_0 (16.67 px regular)
+//                 else   -> font_1 (18.67 px bold)
+//   other types:  > 4000 -> font_3 (10.67 px regular)
+//                 > 1000 -> font_2 (15.33 px regular)
+//                 else   -> font_0 (16.67 px regular)
+// Fonts (MainView.cs 624-627): font_0 = 16.67 px regular, font_1 = 18.67 px
+// bold, font_2 = 15.33 px regular, font_3 = 10.67 px regular.
+export function regionLabelFont(type: GalaxyLocationType, factor: number, maxFactor: number): { size: number; bold: boolean } | null {
+    if (!(factor > 70 && factor <= maxFactor)) {
+        return null;
+    }
+    if (type === GalaxyLocationType.NebulaCloud) {
+        if (factor > 4000) {
+            return { size: 15.33, bold: false };
+        }
+        if (factor > 1000) {
+            return { size: 16.67, bold: false };
+        }
+        return { size: 18.67, bold: true };
+    }
+    if (factor > 4000) {
+        return { size: 10.67, bold: false };
+    }
+    if (factor > 1000) {
+        return { size: 15.33, bold: false };
+    }
+    return { size: 16.67, bold: false };
+}
+
+// Task 08f2 (Controls/MainView.cs FadeGalaxyNebulae ~4111-4152): the nebula
+// cloud images are visible at galaxy/sector zoom and fade out as the sector
+// starfield takes over — the same window the backdrop fades out over
+// ([m*2.5, m*14], m = minZoom). At full-galaxy zoom they are fully opaque;
+// they are gone by the time the dense starfield is opaque.
+export function nebulaAlpha(z: number, m: number): number {
+    return fadeOut(z, m * 2.5, m * 14);
 }
 
 function clamp(v: number, lo: number, hi: number): number {
@@ -486,6 +558,119 @@ class CloudView {
     }
 }
 
+// Task 08f1 (MainView.2.cs 4675-4705): a GalaxyLocation name label in
+// screen space (the original draws text at fixed pixel sizes on top of the
+// world). One Text object per location, created once and reused; the font
+// style is only rebuilt when the zoom-factor branch changes.
+class RegionLabel {
+    location: GalaxyLocation;
+    text: Text;
+    private lastSize = -1;
+    private lastBold = false;
+    constructor(location: GalaxyLocation, layer: Container) {
+        this.location = location;
+        this.text = new Text({
+            text: location.name,
+            style: { fontSize: 16.67, fill: 0xffffff, fontFamily: 'Forgotten Futurist' },
+        });
+        this.text.anchor.set(0.5);
+        this.text.alpha = 0.85;
+        this.text.visible = false;
+        layer.addChild(this.text);
+    }
+
+    /** Update position/font/visibility for the current camera state. */
+    update(cam: Camera, factor: number, maxFactor: number): void {
+        const font = regionLabelFont(this.location.type, factor, maxFactor);
+        if (font === null || !this.location.showName) {
+            this.text.visible = false;
+            return;
+        }
+        // Screen centre of the location (MainView.2.cs x/y formulas), with
+        // the non-nebula offset of (-5, -20) px.
+        const c = this.location.resolveLocationCenter();
+        const s = cam.worldToScreen(c.x, c.y);
+        if (s.x < -100 || s.x > cam.width + 100 || s.y < -100 || s.y > cam.height + 100) {
+            this.text.visible = false;
+            return;
+        }
+        if (this.location.type !== GalaxyLocationType.NebulaCloud) {
+            s.x -= 5;
+            s.y -= 20;
+        }
+        if (font.size !== this.lastSize || font.bold !== this.lastBold) {
+            this.text.style.fontSize = font.size;
+            this.text.style.fontWeight = font.bold ? 'bold' : 'normal';
+            this.lastSize = font.size;
+            this.lastBold = font.bold;
+        }
+        this.text.position.set(s.x, s.y);
+        this.text.visible = true;
+    }
+}
+
+// Task 08f2 (NebulaCloudGenerator): a procedurally generated translucent
+// nebula image placed over the location's rectangle. The texture is generated
+// lazily the first time the cloud becomes visible (the original generates all
+// clouds on a background thread at galaxy load; lazy generation keeps the
+// same per-location seed = location index, so results are identical).
+class NebulaView {
+    location: GalaxyLocation;
+    sprite: Sprite;
+    private generator: NebulaCloudGenerator;
+    constructor(private view: MainView, location: GalaxyLocation) {
+        this.location = location;
+        // Port of MainView.cs:1438-1452: two generators, seeds 1 and 2.
+        // Nebula locations use the second one (nebulaCloudGenerator_1); the
+        // color scheme stays -1 (random per generation, seeded by the call).
+        this.generator = new NebulaCloudGenerator(2);
+        this.sprite = new Sprite(Texture.EMPTY);
+        this.sprite.anchor.set(0.5);
+        this.sprite.x = location.xpos + location.width / 2;
+        this.sprite.y = location.ypos + location.height / 2;
+        this.sprite.alpha = 0;
+        this.sprite.visible = false;
+        this.view.world.addChild(this.sprite);
+    }
+
+    /** Generate (once) and draw the cloud for the current camera state. */
+    update(zoom: number, cam: Camera, alpha: number): void {
+        if (alpha <= 0.01) {
+            this.sprite.visible = false;
+            return;
+        }
+        const c = this.location.resolveLocationCenter();
+        const halfW = cam.width / 2 + this.location.width * zoom * 0.5 + 100;
+        const halfH = cam.height / 2 + this.location.height * zoom * 0.5 + 100;
+        if (c.x < cam.x - halfW || c.x > cam.x + halfW || c.y < cam.y - halfH || c.y > cam.y + halfH) {
+            this.sprite.visible = false;
+            return;
+        }
+        if (this.sprite.texture === Texture.EMPTY) {
+            // Lazy first-time generation (see class comment). The C# sizes
+            // the cloud to the location rect via minimumSize/maximumSize; we
+            // derive them from the rect in world units (the generator caps
+            // the texture at 512 px and the sprite is stretched to the rect).
+            const size = Math.max(64, Math.min(this.location.width, this.location.height));
+            const result = this.generator.generateNebulaBackdrop(
+                this.location.pictureRef >= 0 ? this.location.pictureRef : this.location.effectRandomSeed,
+                114, // TransparencyLevel set in method_41 (double_2 == 4.5 default)
+                -1,
+                Math.trunc(size),
+                Math.trunc(size * 1.5),
+                true,
+                false,
+                false,
+            );
+            this.sprite.texture = this.generator.toTexture(result);
+        }
+        // Stretch the (<=512 px) texture over the location rectangle.
+        this.sprite.scale.set(this.location.width / this.sprite.texture.width, this.location.height / this.sprite.texture.height);
+        this.sprite.alpha = alpha;
+        this.sprite.visible = true;
+    }
+}
+
 // ---------------------------------------------------------------------------
 
 export interface MainViewTextures {
@@ -500,14 +685,19 @@ export interface MainViewTextures {
 export class MainView {
     world = new Container();
     fx = new Container();
+    /** Task 08g: thin selection ring around the picked object (screen-space). */
+    selectionRing = new Graphics();
     private backdrop: Sprite;
     private grid = new Graphics();
     private starfieldFar!: TilingSprite;
     private starfieldNear!: TilingSprite;
-    /** Region-name label hook (GalaxyLocations not ported yet). */
+    /** Region-name label layer (task 08f1), screen-space. */
     regionLabels = new Container();
+    private regionLabelViews: RegionLabel[] = [];
     systems: SystemView[] = [];
     clouds: CloudView[] = [];
+    /** Task 08f2: nebula cloud images, world-space between backdrop and stars. */
+    nebulae: NebulaView[] = [];
     private textures!: MainViewTextures;
     private minZoom = 1e-6;
     private lastGridZoom = -1;
@@ -519,6 +709,10 @@ export class MainView {
     /** Elapsed seconds since boot (disc rotation / corona frame clock). */
     private elapsedSeconds = 0;
     private lastUpdateMs = -1;
+    /** Task 08g: set by main.ts — receives the habitat picked on left click. */
+    onSelectionChange?: (h: Habitat | null) => void;
+    /** Task 08g: set by main.ts — star double-clicked at galaxy/sector zoom. */
+    onDoubleClickStar?: (h: Habitat) => void;
 
     constructor(readonly app: Application, readonly camera: Camera, readonly galaxy: Galaxy, readonly store: AssetStore) {
         app.stage.addChild(this.world);
@@ -526,6 +720,70 @@ export class MainView {
         this.world.addChild(this.grid);
         this.backdrop = new Sprite(Texture.EMPTY);
         this.world.addChildAt(this.backdrop, 0);
+        this.selectionRing.visible = false;
+        this.fx.addChild(this.selectionRing);
+    }
+
+    /** Task 08g: the habitat currently selected in the Main View (null = none). */
+    selectedHabitat: Habitat | null = null;
+
+    /** Drawn on-screen size of a habitat at the current zoom — the same size
+     * functions the renderer uses (planets >= 14 px, moons >= 7 px, star
+     * sprite >= 40 px via planetSpritePx/moonDotPx/starSpritePx). */
+    private drawnSize(h: Habitat, z: number): number {
+        if (h.category === HabitatCategoryType.Star) {
+            return starSpritePx(h.diameter, z);
+        }
+        if (h.category === HabitatCategoryType.Moon) {
+            return moonDotPx(h.diameter, z);
+        }
+        if (h.category === HabitatCategoryType.Planet) {
+            return planetSpritePx(h.diameter, z);
+        }
+        // Asteroids/gas clouds are not pickable.
+        return 0;
+    }
+
+    /**
+     * Task 08g (Controls/MainView.cs mouse picking): the habitat drawn under
+     * the given screen point. At system/planet zoom prefer planets/moons whose
+     * drawn sprite rect contains the point (same size functions as the
+     * renderer), then the star; at galaxy/sector zoom pick the nearest star
+     * within 12 px of the cursor. Ties go to the smaller object.
+     */
+    pick(screenX: number, screenY: number): Habitat | null {
+        const cam = this.camera;
+        const w = cam.screenToWorld(screenX, screenY);
+        const z = cam.zoom;
+        const m = this.minZoom;
+        const factor = 1 / z;
+        const atSystemZoom = factor < 70; // original's system-zoom threshold
+        for (const sv of this.systems) {
+            const star = sv.system.systemStar;
+            const s = cam.worldToScreen(star.xpos, star.ypos);
+            if (atSystemZoom) {
+                // Planets + their moons first (smaller objects win ties),
+                // then the star itself.
+                const bodies: Habitat[] = [];
+                for (const p of sv.planets) {
+                    bodies.push(p.habitat);
+                    for (const moon of p.moons) {
+                        bodies.push(moon.habitat);
+                    }
+                }
+                let hit = hitTestHabitats(bodies, w.x, w.y, (h, zz) => this.drawnSize(h, zz), z);
+                if (hit === null) {
+                    hit = hitTestHabitats([star], w.x, w.y, (h, zz) => this.drawnSize(h, zz), z);
+                }
+                if (hit !== null) {
+                    return hit;
+                }
+            } else if (Math.hypot(s.x - screenX, s.y - screenY) <= 12) {
+                // Galaxy/sector zoom: nearest star within 12 px of the cursor.
+                return star;
+            }
+        }
+        return null;
     }
 
     /** Load textures, build all scene objects, attach input handlers. */
@@ -628,8 +886,22 @@ export class MainView {
         }
         await Promise.all(lazyLoads);
 
-        // Region-name hook: GalaxyLocations (Galaxy.3.cs) not ported yet.
-        this.world.addChild(this.regionLabels);
+        // Task 08f1: region/nebula location name labels (screen-space layer).
+        // All locations are treated as known to the empire for now.
+        for (const location of this.galaxy.galaxyLocations) {
+            this.regionLabelViews.push(new RegionLabel(location, this.regionLabels));
+        }
+        this.fx.addChild(this.regionLabels);
+
+        // Task 08f2: nebula cloud images over each NebulaCloud location rect,
+        // in world space between the backdrop and the map stars.
+        for (const location of this.galaxy.galaxyLocations) {
+            if (location.type === GalaxyLocationType.NebulaCloud) {
+                const nv = new NebulaView(this, location);
+                this.nebulae.push(nv);
+                this.world.addChildAt(nv.sprite, 1); // just above the backdrop
+            }
+        }
 
         this.attachInput();
     }
@@ -720,6 +992,35 @@ export class MainView {
             cloud.update(z, cam);
         }
 
+        // Task 08f2: nebula clouds fade out over the same window the backdrop
+        // fades out (FadeGalaxyNebulae), so they are fully visible at
+        // galaxy/sector zoom and gone by system zoom.
+        const nebA = nebulaAlpha(z, m);
+        for (const nv of this.nebulae) {
+            nv.update(z, cam, nebA);
+        }
+
+        // Region/nebula location name labels (task 08f1): visible while the
+        // original's zoom factor double_15 satisfies 70 < double_15 <=
+        // double_5 (the full-galaxy factor = 1/minZoom).
+        const factor = 1 / z;
+        const maxFactor = 1 / m;
+        for (const rl of this.regionLabelViews) {
+            rl.update(cam, factor, maxFactor);
+        }
+
+        // Task 08g: keep the selection ring around the selected object.
+        const sel = this.selectedHabitat;
+        if (sel === null) {
+            this.selectionRing.visible = false;
+        } else {
+            const s = cam.worldToScreen(sel.xpos, sel.ypos);
+            const r = this.drawnSize(sel, z) * 0.5 + 4;
+            this.selectionRing.clear();
+            this.selectionRing.circle(s.x, s.y, r).stroke({ width: 1.5, color: 0x4fc3f7 });
+            this.selectionRing.visible = true;
+        }
+
         // Screen-edge auto-scroll (original control scheme).
         if (!this.dragging && this.pointerInside) {
             const edge = 24;
@@ -763,6 +1064,8 @@ export class MainView {
 
     private attachInput(): void {
         const canvas = this.app.canvas;
+        let downX = 0;
+        let downY = 0;
         canvas.addEventListener(
             'wheel',
             (e: WheelEvent) => {
@@ -781,6 +1084,10 @@ export class MainView {
                 const rect = canvas.getBoundingClientRect();
                 this.lastDragX = e.clientX - rect.left;
                 this.lastDragY = e.clientY - rect.top;
+            } else if (e.button === 0) {
+                const rect = canvas.getBoundingClientRect();
+                downX = e.clientX - rect.left;
+                downY = e.clientY - rect.top;
             }
         });
         window.addEventListener('mousemove', (e: MouseEvent) => {
@@ -806,6 +1113,30 @@ export class MainView {
                     const w = this.camera.screenToWorld(x, y);
                     this.camera.centerOn(w.x, w.y);
                 }
+            } else if (e.button === 0) {
+                // Left click (no drag: < 4 px pointer movement between
+                // down/up) selects the object under the cursor; empty space
+                // clears the selection.
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                if (Math.hypot(x - downX, y - downY) >= 4) {
+                    return;
+                }
+                const hit = this.pick(x, y);
+                this.selectedHabitat = hit;
+                this.onSelectionChange?.(hit);
+            }
+        });
+        canvas.addEventListener('dblclick', (e: MouseEvent) => {
+            // Double-click a star at galaxy/sector zoom -> zoom to System
+            // level centred on it.
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            const hit = this.pick(x, y);
+            if (hit !== null && hit.category === HabitatCategoryType.Star) {
+                this.onDoubleClickStar?.(hit);
             }
         });
         canvas.addEventListener('contextmenu', (e) => e.preventDefault());

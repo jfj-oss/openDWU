@@ -18,6 +18,14 @@ A faithful recreation of *Distant Worlds: Universe* (v1.9.5) in TypeScript + Pix
 3. **Spec**: `../Distant_Worlds_Universe_Recreation_Prompt.md` (full rules + implementation plan, Part 15).
 4. **Manuals / help**: `$DWU/Manuals/*.pdf`, `$DWU/Help/*.mht`.
 
+## Game files outside this machine (cloud sessions)
+The original game files (data, art, sounds, manuals, decompiled source) are in the private repo **`jfj-oss/dwu-assets`**. On a machine without the Steam install:
+```bash
+git clone https://github.com/jfj-oss/dwu-assets.git ../../dwu-assets     # next to the Dwureup repo
+DWU_DIR="$(realpath ../../dwu-assets)" npm run import-assets              # links it as public/assets/dwu
+```
+Then read every `$DWU` path in this file and in task files as that clone (e.g. `$DWU/Customization/DistantWorldsExpanded-main/...`).
+
 ## Art
 Use the original art directly from `/assets/dwu/images/...` (e.g. `/assets/dwu/images/environment/planets/ocean/...`).
 Never commit art; never copy it into the repo.

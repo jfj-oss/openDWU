@@ -11,10 +11,11 @@ import { AssetStore, loadManifest } from './render/assets';
 import { generateGalaxy } from './sim/galaxy';
 import { parseSystemNames } from './sim/data';
 import { GalaxyShape } from './sim/types';
-import { createHud, layoutHud, nearestSystemName, pickSelection, type HudRefs } from './ui/hud';
+import { createHud, layoutHud, nearestSystemName, type HudRefs } from './ui/hud';
 import { GalaxyTime } from './sim/clock';
 import { START_STAR_DATE } from './sim/galaxyTime';
-import { formatClockLabel } from './ui/hud';
+import { formatClockLabel, SYSTEM_LEVEL_ZOOM, type Selection } from './ui/hud';
+import { Habitat, HabitatCategoryType } from './sim/types';
 import { createMapOverlayState } from './ui/mapOverlays';
 import { createMainMenu } from './ui/screens/mainMenu';
 import { createNewGameWizard } from './ui/screens/newGameWizard';
@@ -240,6 +241,23 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     const systemNameEl = hud.elements.get('pnlMoney')?.querySelector('.hud-system-name');
     const dateEl = hud.elements.get('pnlTopLeftBar')?.querySelector('.hud-date');
     const pauseBtn = hud.elements.get('pnlTopLeftBar')?.querySelector<HTMLButtonElement>('button[title="Play / pause"]');
+    // Task 08g: push a Main View pick (or null) to the HUD selection panel.
+    const setSelection = (h: Habitat | null): void => {
+        if (h === null) {
+            hud.onSelectionChange?.(null);
+            return;
+        }
+        const system = galaxy.systems.find((s) => s.habitats.includes(h)) ?? galaxy.systems[h.systemIndex];
+        const sel: Selection = { habitat: h, system };
+        hud.onSelectionChange?.(sel);
+    };
+    view.onSelectionChange = setSelection;
+    // Double-click a star at galaxy/sector zoom -> System level centred on it.
+    view.onDoubleClickStar = (star: Habitat) => {
+        if (star.category !== HabitatCategoryType.Star) return;
+        camera.centerOn(star.xpos, star.ypos);
+        camera.zoomAt(SYSTEM_LEVEL_ZOOM, camera.width / 2, camera.height / 2);
+    };
     const refreshHud = (): void => {
         if (systemNameEl) {
             systemNameEl.textContent = nearestSystemName(
@@ -247,10 +265,6 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
                 camera,
             );
         }
-        // Demo selection: the object nearest the camera centre (the Main View
-        // does not expose picking yet — TODO(port): click-to-select in
-        // MainView's input handlers, Controls/MainView.cs mouse handling).
-        hud.onSelectionChange?.(pickSelection({ galaxy }, camera));
     };
     refreshHud();
     window.addEventListener('resize', () => layoutHud(hud));

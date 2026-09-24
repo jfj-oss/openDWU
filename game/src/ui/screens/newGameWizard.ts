@@ -138,7 +138,13 @@ export function createNewGameWizard(callbacks: NewGameWizardCallbacks): NewGameW
 
         const ticksRow = document.createElement('div');
         ticksRow.className = 'wizard-slider-ticks';
-        ticksRow.textContent = ticks.join(' · ');
+        // One span per tick so CSS space-between spreads the labels evenly
+        // under the slider (task 06c).
+        for (const t of ticks) {
+            const span = document.createElement('span');
+            span.textContent = t;
+            ticksRow.appendChild(span);
+        }
         wrap.appendChild(ticksRow);
 
         return wrap;
