@@ -335,6 +335,8 @@ export interface GalaxyMapOptions {
 export interface GalaxyMapScreen {
     readonly element: HTMLElement;
     readonly isOpen: boolean;
+    /** Close, remove the element and drop the window resize listener. */
+    destroy(): void;
     open(selected?: Habitat | null): void;
     close(): void;
     toggle(selected?: Habitat | null): void;
@@ -769,12 +771,13 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
             close();
         }
     });
-    window.addEventListener('resize', () => {
+    const onResize = (): void => {
         if (isOpen) {
             layout();
             draw();
         }
-    });
+    };
+    window.addEventListener('resize', onResize);
 
     function open(selected: Habitat | null = null): void {
         if (isOpen) return;
@@ -806,6 +809,11 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
         },
         open,
         close,
+        destroy: () => {
+            close();
+            window.removeEventListener('resize', onResize);
+            root.remove();
+        },
         toggle: (selected?: Habitat | null) => (isOpen ? close() : open(selected ?? null)),
         setViewMode: (m: GalaxyMapViewMode) => {
             mode = m;

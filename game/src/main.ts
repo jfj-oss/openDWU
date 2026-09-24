@@ -14,7 +14,7 @@ import { createGame, type CreateGameOptions } from './sim/game';
 import { parseSystemNames } from './sim/data';
 import { loadGameData, type FetchText, type GameData } from './sim/data/gameData';
 import { GalaxyShape } from './sim/types';
-import { clearHudMessages, createHud, layoutHud, nearestSystem, nearestSystemName, pushHudMessage, type HudRefs } from './ui/hud';
+import { clearHudMessages, createHud, layoutHud, nearestSystem, nearestSystemName, pushHudMessage, setSelection as setHudSelection, type HudRefs } from './ui/hud';
 import { GalaxyTime } from './sim/clock';
 import { resolveStarDateDescription, START_STAR_DATE } from './sim/galaxyTime';
 import { formatClockLabel, SECTOR_LEVEL_ZOOM, SYSTEM_LEVEL_ZOOM, type Selection } from './ui/hud';
@@ -302,6 +302,11 @@ export async function startGameView(game: Game, zoomOverride?: number, extraBoot
             teardownActiveGameView();
             showMainMenu();
         },
+        // Keep the Main View selection ring on whatever the panel shows.
+        afterSelectionChange: (sel) => {
+            view.selectedBuiltObject = sel?.builtObject ?? null;
+            view.selectedHabitat = sel && !sel.builtObject ? sel.habitat : null;
+        },
     });
     const systemNameEl = hud.elements.get('pnlMoney')?.querySelector('.hud-system-name');
     const dateEl = hud.elements.get('pnlTopLeftBar')?.querySelector('.hud-date');
@@ -444,8 +449,10 @@ export async function startGameView(game: Game, zoomOverride?: number, extraBoot
         clearInterval(refreshHudTimer);
         clearInterval(refreshClockTimer);
         view.dispose(); // Task 12k: remove the hover tooltip div.
-        galaxyMap.close();
-        galaxyMap.element.remove();
+        galaxyMap.destroy();
+        // The HUD selection is module state: don't show the old game's
+        // object in the next game's panel.
+        setHudSelection(null);
         app.destroy(true);
         hud.root.remove();
         shortcuts.destroy();

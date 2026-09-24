@@ -166,6 +166,9 @@ export interface HudWiring {
     onSelectionChange?: (sel: Selection | null) => void;
     /** Escape menu "Main Menu" (confirmed): main.ts tears the game down. */
     onMainMenu?: () => void;
+    /** Notified after every selection change (click, cycle key, chip), so
+     * main.ts can keep the Main View's selection ring in sync. */
+    afterSelectionChange?: (sel: Selection | null) => void;
     /** Task C3: open/close the Galaxy Map screen (the "Galaxy map (G)" row). */
     onGalaxyMap?: () => void;
 }
@@ -808,6 +811,7 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
     wiring.onSelectionChange = (sel) => {
         currentSelection = sel;
         refresh();
+        wiring.afterSelectionChange?.(sel);
     };
     refresh();
     return panel;

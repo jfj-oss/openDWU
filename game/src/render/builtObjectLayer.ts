@@ -360,6 +360,8 @@ export class BuiltObjectLayer {
     root = new Container();
     private sprites = new Map<BuiltObject, Sprite>();
     private images = new Map<string, Promise<LoadedShipImage>>();
+    /** Loaded images by URL, read synchronously each frame (null = failed). */
+    private resolved = new Map<string, LoadedShipImage | null>();
     /** Task 13d: drawn size (px) of each built object at the last update. */
     private drawnPx = new Map<BuiltObject, number>();
 
@@ -425,37 +427,46 @@ export class BuiltObjectLayer {
                 this.drawnPx.delete(bo);
                 continue;
             }
-            const imgPromise = this.loadImage(url);
-            let settled = false;
-            imgPromise.then(({ texture, metrics }) => {
-                settled = true;
-                if (sprite === undefined) {
-                    sprite = new Sprite(texture);
-                    this.root.addChild(sprite);
-                    this.sprites.set(bo, sprite);
+            // Textures load once; until then (or if the load failed) the
+            // sprite stays hidden. The frame reads the cache synchronously so
+            // visibility is final before Pixi renders this tick.
+            const img = this.resolved.get(url);
+            if (img === undefined || img === null) {
+                if (img === undefined && !this.images.has(url)) {
+                    this.loadImage(url).then(
+                        (r) => this.resolved.set(url, r),
+                        () => this.resolved.set(url, null),
+                    );
                 }
-                sprite.texture = texture;
-                const px = builtObjectSizePx(
-                    bo.size,
-                    metrics.areaRatio,
-                    f,
-                    bo.design?.imageScalingType ?? DesignImageScalingMode.None,
-                    bo.design?.imageScalingFactor ?? 1,
-                );
-                this.drawnPx.set(bo, px);
-                if (px < 1) {
-                    sprite.visible = false;
-                    return;
-                }
-                sprite.position.set(bo.xpos, bo.ypos);
-                sprite.anchor.set(metrics.cropCenterX / texture.width, metrics.cropCenterY / texture.height);
-                sprite.rotation = bo.heading + Math.PI / 2;
-                sprite.scale.set(px / metrics.cropSide / z);
-                sprite.alpha = this.overlays.fadeCivilianShips && bo.owner === null ? 144 / 255 : 1;
-                sprite.visible = true;
-            });
-            // While the texture is still loading the sprite (if any) stays hidden.
-            if (!settled && sprite !== undefined) sprite.visible = false;
+                if (sprite !== undefined) sprite.visible = false;
+                this.drawnPx.delete(bo);
+                continue;
+            }
+            const { texture, metrics } = img;
+            if (sprite === undefined) {
+                sprite = new Sprite(texture);
+                this.root.addChild(sprite);
+                this.sprites.set(bo, sprite);
+            }
+            sprite.texture = texture;
+            const px = builtObjectSizePx(
+                bo.size,
+                metrics.areaRatio,
+                f,
+                bo.design?.imageScalingType ?? DesignImageScalingMode.None,
+                bo.design?.imageScalingFactor ?? 1,
+            );
+            this.drawnPx.set(bo, px);
+            if (px < 1) {
+                sprite.visible = false;
+                continue;
+            }
+            sprite.position.set(bo.xpos, bo.ypos);
+            sprite.anchor.set(metrics.cropCenterX / texture.width, metrics.cropCenterY / texture.height);
+            sprite.rotation = bo.heading + Math.PI / 2;
+            sprite.scale.set(px / metrics.cropSide / z);
+            sprite.alpha = this.overlays.fadeCivilianShips && bo.owner === null ? 144 / 255 : 1;
+            sprite.visible = true;
         }
         // TODO(port): DrawShipSymbolXna (MainView.1.cs:1085-1110) — small symbol for ships too far away to show their art.
         // TODO(port): engine exhaust flames (MainView.1.cs ~1112-1133) — animated thrust frames behind moving ships.

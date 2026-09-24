@@ -458,7 +458,7 @@ export class UiClickSounds {
         const buf = await p;
         if (buf === null) return;
         this.current.get(kind)?.stop();
-        this.current.set(kind, this.backend.play(buf, 0, 1, 1));
+        this.current.set(kind, this.backend.play(buf, 0, this.volume, 1));
     }
 }
 
@@ -494,7 +494,7 @@ export function startEffects(): SessionEffects {
         let muted = false;
         const apply = (): void => {
             player.volume = muted ? 0 : volume;
-            uiClickSounds().volume = muted ? 0 : 1.0;
+            uiClickSounds().volume = muted ? 0 : volume;
         };
         session = {
             player,
