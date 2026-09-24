@@ -107,12 +107,6 @@ export function setGovernmentsStatic(list: (Government | null)[]): void {
 // Per-galaxy empire-id counter standing in for Galaxy.GetNextEmpireID()
 // (Galaxy.cs). The TS Galaxy class has no such member and cannot be edited
 // for this task, so the counter lives here keyed by galaxy instance.
-const empireIdCounters = new WeakMap<Galaxy, number>();
-function nextEmpireId(galaxy: Galaxy): number {
-    const current = empireIdCounters.get(galaxy) ?? 0;
-    empireIdCounters.set(galaxy, current + 1);
-    return current;
-}
 
 // TODO(port): exact value of Empire._LongProcessingInterval — Empire.cs
 // (field initializer not in the excerpt); used to back-date the five
@@ -269,12 +263,58 @@ export class Empire {
         arg8?: boolean,
     ) {
         if (typeof arg3 === 'boolean') {
-            // Independent-empire overload.
-            void arg3;
-            this.initialize(galaxy, name, arg4 as Habitat | null, arg5 as Race | null, -1, 1.0, arg6 as EmpirePolicy, false);
+            this.initializeIndependentCtor(galaxy, name, arg3, arg4 as Habitat | null, arg5 as Race | null, arg6 as EmpirePolicy);
         } else {
             this.initialize(galaxy, name, arg3, arg4 as Race | null, arg5 as number, arg6 as number, arg7 ?? ({} as EmpirePolicy), arg8 ?? false);
         }
+    }
+
+    // Port of Empire.cs ctor Empire(galaxy, name, isIndependentEmpire,
+    // homeHabitat, dominantRace, policy) (4146), in C# order. Rnd: one draw in
+    // SelectEmpireColors (colours then overridden with grey for the
+    // independent empire); FastFindNearestUnexploredSystem (homeHabitat path)
+    // and the Age > 0 contact loop are TODO(port) — game setup passes a null
+    // homeHabitat and no empires exist yet when it runs.
+    private initializeIndependentCtor(galaxy: Galaxy, name: string, isIndependentEmpire: boolean, homeHabitat: Habitat | null, dominantRace: Race | null, policy: EmpirePolicy): void {
+        this.galaxy = galaxy;
+        this.active = true;
+        this.empireId = isIndependentEmpire ? 0 : galaxy.getNextEmpireID();
+        this.counters = new EmpireCounters(this);
+        this.pirateEconomy = new PirateEconomy(START_STAR_DATE);
+        this.visibility = new EmpireVisibility(galaxy, this.visibilityOwner(isIndependentEmpire));
+        this.name = name === '' ? 'Independent' : name;
+        this.dominantRace = dominantRace;
+        this.lastDisasterDate = START_STAR_DATE;
+        if (policy !== null && !isIndependentEmpire) this.policy = policy;
+        this.allowableGovernmentTypes = Empire.resolveDefaultAllowableGovernmentTypes(dominantRace, true);
+        this.troops = new TroopList();
+        this.selectEmpireColors(false, (main, secondary) => {
+            this.mainColor = main;
+            this.secondaryColor = secondary;
+        });
+        if (isIndependentEmpire) {
+            this.mainColor = 0x606060;
+            this.secondaryColor = 0x606060;
+        }
+        if (homeHabitat !== null) {
+            // TODO(port): FastFindNearestUnexploredSystem exploration around the home habitat.
+            this.resourceMap.setResourcesKnown(galaxy.systems[homeHabitat.systemIndex].systemStar, true);
+        } else {
+            for (const h of galaxy.habitats) this.resourceMap.setResourcesKnown(h, true);
+            for (const v of this.visibility.systemVisibility) v.status = SystemVisibilityStatus.Visible;
+        }
+        this.stateMoney = 30000.0;
+        this.privateMoney = 100000.0;
+        this.research = new ResearchSystem(galaxy.researchStatic);
+        this.research.obtainTechTree();
+        this.research.update();
+        this.reviewResearchAbilities();
+        this.reviewDesignsBuiltObjectsImprovedComponents();
+        this.reviewColonizationTypes();
+        this.reviewPopulationGrowthRates();
+        this.reviewMaximumConstructionSize(() => {});
+        this.reviewCanBuildShipTypes();
+        this.reviewTroopTypes();
     }
 
     // Body of the 8-arg Empire constructor (Empire.cs 3754–4146), ported in
@@ -291,7 +331,7 @@ export class Empire {
     ): void {
         this.galaxy = galaxy;
         this.active = true;
-        this.empireId = nextEmpireId(galaxy);
+        this.empireId = galaxy.getNextEmpireID();
         this.counters = new EmpireCounters(this);
         // TODO(port): Galaxy.CurrentStarDate — Galaxy.cs (no time on the TS
         // Galaxy yet); stand in with the start star date.
@@ -551,11 +591,9 @@ export class Empire {
     }
 
     // Hooks visibility.ts needs from the empire (task C1 VisibilityOwner).
-    visibilityOwner(): VisibilityOwner {
+    visibilityOwner(isIndependent = false): VisibilityOwner {
         return {
-            get isIndependent() {
-                return false;
-            },
+            isIndependent,
             active: true,
             controlsHabitat: (h: Habitat) => h.owner === this,
             // TODO(port): BuiltObjects / PrivateBuiltObjects (no ships yet).

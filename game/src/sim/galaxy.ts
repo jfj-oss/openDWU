@@ -42,6 +42,7 @@ import type { GameData } from './data/gameData';
 // these): SectorSizeX = SectorSizeY = 2_000_000, IndexSize = 400_000.
 const SECTOR_SIZE = 2_000_000;
 const INDEX_SIZE = 400_000;
+const MAXIMUM_EMPIRE_COUNT = 255; // Galaxy.3.cs:5034
 // Port of Galaxy.3.cs InitializeStatics: MaxSolarSystemSize = 23000.
 const MAX_SOLAR_SYSTEM_SIZE = 23000;
 // Port of Galaxy.3.cs InitializeStatics: MaxMoonOrbitSize = 1200.
@@ -577,6 +578,17 @@ export class Galaxy {
     // Port of Galaxy.cs CheckEmpireTerritoryIdAtLocation (3694).
     checkEmpireTerritoryIdAtLocation(x: number, y: number): number {
         return this.empireTerritory.checkLocationOwnership(this, x, y);
+    }
+
+    // Port of Galaxy.cs GetNextEmpireID (1323): _NextEmpireID starts at 0 and is
+    // pre-incremented, so the first normal empire is 1 (the independent is 0).
+    nextEmpireId = 0;
+    getNextEmpireID(): number {
+        if (this.nextEmpireId < MAXIMUM_EMPIRE_COUNT) {
+            this.nextEmpireId++;
+            return this.nextEmpireId;
+        }
+        throw new Error('Maximum allowable empire number exceeded!');
     }
 
     // Port of Galaxy.cs GetNextCreatureID (line 1333).
@@ -1660,6 +1672,19 @@ export class Galaxy {
     }
 
     // Port of Galaxy.6.cs SelectBarrenRockPlanet(out type, out pictureRef, out diameter, out minOrbitDistance, out maxOrbitDistance, out landscapePictureRef)
+    /** Galaxy.7.cs GenerateEmpire starting-colony switch (Volcanic/Desert/MarshySwamp/Continental/Ocean/Ice, default Desert). */
+    selectPlanetOfType(type: HabitatType) {
+        switch (type) {
+            case HabitatType.Volcanic: return this.selectVolcanicPlanet();
+            case HabitatType.Desert: return this.selectDesertPlanet();
+            case HabitatType.MarshySwamp: return this.selectMarshySwampPlanet();
+            case HabitatType.Continental: return this.selectContinentalPlanet();
+            case HabitatType.Ocean: return this.selectOceanPlanet();
+            case HabitatType.Ice: return this.selectIcePlanet();
+            default: return this.selectDesertPlanet();
+        }
+    }
+
     private selectBarrenRockPlanet(): { type: HabitatType; diameter: number; minOrbitDistance: number; maxOrbitDistance: number; pictureRef: number; landscapePictureRef: number } {
         const diameter = this.rnd.next(80, 340);
         const minOrbitDistance = 2500;

@@ -29,3 +29,10 @@ Branch `claude/cloud-lane-c2` (based on working branch `e53add3` = M2a, and it m
 5. **Galaxy.DoTasks** (runs after the starting colonies), plus pirates, ruins, age-0 asteroid fields/creatures, and the special-location blocks that follow in the same method.
 
 Suggested task order: **C2c-1** GalaxyIndex ring search (self-contained; also lets every nearest-X helper drop its linear scan) → **C2c-2** UpdateSystemInfo + EmpireTerritory → **C2c-3** research colonisation flags + colony-ship design stub → **C2c-4** createGame (independent empire, SetNativeResourceCargo/SetEmpireForAllIndependentHabitats/ReviewIndependentColonies, player + AI capitals via method_48/51/53/84/91/92/93, starting colonies) → **C2d** GeneratePirateEmpire + pirate placement. Exact parity past the first GenerateEmpire also needs **Empire.DoTasks**.
+
+## Update — C2c landed (supersedes "C2c blocked" above)
+- C2c-1 `e13b93c`: resource system, netSort, ICU-sorted system list, gas clouds are systems.
+- C2c-2 `cf2bbec`: GalaxyIndex ring search, DetermineSystemInfo, nearest-* finders.
+- C2c-3 `18e3429`: territory, research tree levels, independent empire ctor.
+- C2c-4: `src/sim/game.ts` `createGame(options)` — independent empire, player capital, AI empires (proximity modes, region placement), starting colonies, ReviewIndependentColonies, SetEmpireForAllIndependentHabitats. `test/game.test.ts` pins seed 1 capitals S147/S127/S81/S63, 1 colony each.
+- Still TODO: C2d pirates; tech level 0.5 (SetTechTreeStartingDefaults) throws; designs/colony ships (so extra starting colonies are rare); Empire.DoTasks (Rnd parity ends there); C3 galaxy map must skip gas-cloud systems after merge.
