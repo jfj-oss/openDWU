@@ -3,10 +3,13 @@
 // fields, resources, treasure asteroids). Ports of
 // DistantWorlds.Types.Galaxy (Galaxy.cs / Galaxy.3.cs / Galaxy.4.cs /
 // Galaxy.5.cs / Galaxy.6.cs / Galaxy.9.cs). Nebula/galaxy-location
-// generation, population, and creatures are out of scope — see the
-// `TODO(port)` markers below.
+// generation is ported (01e: GalaxyNebulaeGenerator + GalaxyLocation);
+// population and creatures remain out of scope — see the `TODO(port)`
+// markers below.
 
 import { Random } from './random';
+import { GalaxyLocation, GalaxyLocationEffectType, GalaxyLocationShape, GalaxyLocationType } from './galaxyLocation';
+import { GalaxyNebulaeGenerator } from './galaxyNebulaeGenerator';
 import {
     GalaxyShape,
     Habitat,
@@ -26,6 +29,15 @@ const MAX_SOLAR_SYSTEM_SIZE = 23000;
 // Port of Galaxy.3.cs InitializeStatics: MaxMoonOrbitSize = 1200.
 const MAX_MOON_ORBIT_SIZE = 1200;
 
+// Default cloud-image count for the nebula generator. The renderer
+// should pass the actual number of
+// /assets/dwu/images/environment/nebulae/*.png files via
+// GenerateGalaxyOptions.cloudImageCount; pictureRef only selects
+// which cloud image to draw, and Next(0, N) consumes one RNG sample
+// regardless of N, so the generation stream is unaffected by the
+// count.
+const DEFAULT_CLOUD_IMAGE_COUNT = 40;
+
 export interface GenerateGalaxyOptions {
     seed: number;
     shape: GalaxyShape;
@@ -37,6 +49,10 @@ export interface GenerateGalaxyOptions {
     // Parsed game data (resource definitions, ...). When omitted, no
     // resources are generated (pre-01d behavior).
     gameData?: GameData;
+    // Number of nebula cloud images available to the renderer (see
+    // DEFAULT_CLOUD_IMAGE_COUNT). Only affects pictureRef values, not
+    // the RNG stream.
+    cloudImageCount?: number;
 }
 
 export class Galaxy {
@@ -59,6 +75,14 @@ export class Galaxy {
     galaxyShape: GalaxyShape;
     habitats: Habitat[] = [];
     systems: SystemInfo[] = [];
+    // Port of Galaxy.cs RandomSeed (the seed the main Rnd and the
+    // nebula generator are both seeded from).
+    randomSeed: number;
+    // Port of Galaxy.cs _GalaxyLocations.
+    galaxyLocations: GalaxyLocation[] = [];
+    // Port of Galaxy.cs _GalaxyLocationIndex ([IndexMaxX][IndexMaxY]
+    // grid of GalaxyLocation lists, IndexSize = 400_000).
+    private galaxyLocationIndex: GalaxyLocation[][][] = [];
     // Port of Galaxy.cs _ColonyPrevalence (defaults to 1.0).
     colonyPrevalence = 1.0;
 
@@ -73,6 +97,7 @@ export class Galaxy {
     private systemNamesUsedAlternative: boolean[];
 
     constructor(seed: number, shape: GalaxyShape, starCount: number, sectorWidth: number, sectorHeight: number, systemNames: string[], colonyPrevalence?: number) {
+        this.randomSeed = seed;
         this.rnd = new Random(seed);
         this.cryptoRnd = new Random(Math.imul(seed, 0x5bd1e995) | 0);
         this.galaxyShape = shape;
@@ -221,12 +246,111 @@ export class Galaxy {
         return { type, diameter, pictureRef };
     }
 
+    // Port of Galaxy.4.cs GenerateNebulae (generateImage=false call) plus
+    // the constructor wiring (Galaxy.4.cs ~2190: _GalaxyLocations =
+    // locations, index-grid re-init, AddGalaxyLocationIndex per location).
+    generateNebulae(cloudImageCount: number): void {
+        const generator = new GalaxyNebulaeGenerator(cloudImageCount, this.systemNames);
+        this.galaxyLocations = generator.generateGalaxyNebulae(this.randomSeed, this.starCount, this.galaxyShape, this.sizeX, this.sizeY);
+        const indexMaxX = Math.trunc(this.sizeX / INDEX_SIZE);
+        const indexMaxY = Math.trunc(this.sizeY / INDEX_SIZE);
+        const grid: GalaxyLocation[][][] = [];
+        for (let i = 0; i < indexMaxX; i++) {
+            const row: GalaxyLocation[][] = [];
+            for (let j = 0; j < indexMaxY; j++) {
+                row.push([]);
+            }
+            grid.push(row);
+        }
+        this.galaxyLocationIndex = grid;
+        for (const location of this.galaxyLocations) {
+            this.addGalaxyLocationIndex(location);
+        }
+    }
+
+    // Port of Galaxy.4.cs AddGalaxyLocationIndex
+    addGalaxyLocationIndex(location: GalaxyLocation): void {
+        const point = this.resolveGalaxyLocationIndexes(location.xpos, location.ypos);
+        const point2 = this.resolveGalaxyLocationIndexes(location.xpos + location.width, location.ypos + location.height);
+        for (let i = point.x; i <= point2.x; i++) {
+            for (let j = point.y; j <= point2.y; j++) {
+                const cell = this.galaxyLocationIndex[i][j];
+                if (!cell.includes(location)) {
+                    cell.push(location);
+                }
+            }
+        }
+    }
+
+    // Port of Galaxy.4.cs RemoveGalaxyLocationIndex
+    removeGalaxyLocationIndex(location: GalaxyLocation): void {
+        const point = this.resolveGalaxyLocationIndexes(location.xpos, location.ypos);
+        const point2 = this.resolveGalaxyLocationIndexes(location.xpos + location.width, location.ypos + location.height);
+        for (let i = point.x; i <= point2.x; i++) {
+            for (let j = point.y; j <= point2.y; j++) {
+                const cell = this.galaxyLocationIndex[i][j];
+                const index = cell.indexOf(location);
+                if (index >= 0) {
+                    cell.splice(index, 1);
+                }
+            }
+        }
+    }
+
+    // Port of Galaxy.4.cs ResolveGalaxyLocationIndexes
+    private resolveGalaxyLocationIndexes(x: number, y: number): { x: number; y: number } {
+        // C# (int) casts truncate toward zero, then int division.
+        const coords = {
+            x: Math.trunc(Math.trunc(x) / INDEX_SIZE),
+            y: Math.trunc(Math.trunc(y) / INDEX_SIZE),
+        };
+        this.correctIndexCoords(coords);
+        return coords;
+    }
+
+    // Port of Galaxy.6.cs CorrectIndexCoords (clamps to
+    // [0, IndexMaxX-1] / [0, IndexMaxY-1]).
+    private correctIndexCoords(coords: { x: number; y: number }): void {
+        const indexMaxX = Math.trunc(this.sizeX / INDEX_SIZE);
+        const indexMaxY = Math.trunc(this.sizeY / INDEX_SIZE);
+        if (coords.x < 0) {
+            coords.x = 0;
+        } else if (coords.x >= indexMaxX) {
+            coords.x = indexMaxX - 1;
+        }
+        if (coords.y < 0) {
+            coords.y = 0;
+        } else if (coords.y >= indexMaxY) {
+            coords.y = indexMaxY - 1;
+        }
+    }
+
+    // Port of Galaxy.4.cs DetermineGalaxyLocationsAtPoint(x, y, type);
+    // type defaults to Undefined (no filter), matching the 2-arg overload.
+    determineGalaxyLocationsAtPoint(x: number, y: number, type: GalaxyLocationType = GalaxyLocationType.Undefined): GalaxyLocation[] {
+        const result: GalaxyLocation[] = [];
+        const point = this.resolveGalaxyLocationIndexes(x, y);
+        for (const location of this.galaxyLocationIndex[point.x][point.y]) {
+            const num = location.width / 2.0;
+            const num2 = num * num;
+            if (type === GalaxyLocationType.Undefined || location.type === type) {
+                const num3 = this.calculateDistanceSquared(x, y, location.xpos + num, location.ypos + location.height / 2.0);
+                if (num3 < num2) {
+                    result.push(location);
+                }
+            }
+        }
+        return result;
+    }
+
+    // Port of Galaxy.6.cs CalculateDistanceSquared
+    private calculateDistanceSquared(x1: number, y1: number, x2: number, y2: number): number {
+        const dx = x1 - x2;
+        const dy = y1 - y2;
+        return dx * dx + dy * dy;
+    }
+
     // Port of Galaxy.5.cs SetupSun(galaxyShape).
-    // Nebula clouds / GalaxyLocation generation aren't ported (no nebula
-    // data structure exists yet), so the retry loop's nebula-avoidance
-    // check (`flag`/`flag3`) is always satisfied and the black-hole/
-    // supernova location objects at the end of the source method are
-    // skipped — TODO(port): GalaxyLocation / nebula generation.
     private setupSun(galaxyShape: GalaxyShape): Habitat {
         let x = 0;
         let y = 0;
@@ -234,8 +358,11 @@ export class Galaxy {
         const clusterCap =
             this.starCount >= 1400 ? 5000000.0 : this.starCount >= 1000 ? 4250000.0 : this.starCount >= 700 ? 3600000.0 : this.starCount < 400 ? 2000000.0 : 2700000.0;
         const clusterVal = Math.min(clusterBaseRadius, clusterCap);
-        let attempts = 0;
-        let boundsOk = false;
+        let num5 = 0;
+        let num6 = 0.0;
+        let flag = false;
+        let flag2 = false;
+        let flag3 = false;
         do {
             switch (galaxyShape) {
                 case GalaxyShape.ClustersEven:
@@ -355,20 +482,79 @@ export class Galaxy {
                     y = this.rnd.nextDouble() * this.sizeY;
                     break;
             }
+            flag2 = true;
             const margin = MAX_SOLAR_SYSTEM_SIZE + 500.0;
-            boundsOk = !(x < margin || x > this.sizeX - margin || y < margin || y > this.sizeY - margin);
-            // Nearest gas-cloud/asteroid + nebula-avoidance checks from the
-            // source are skipped here: at star-generation time no gas
-            // clouds/asteroids exist yet, and nebulae aren't modeled.
-            attempts++;
-        } while (!boundsOk && attempts < 100);
+            if (x < margin || x > this.sizeX - margin || y < margin || y > this.sizeY - margin) {
+                flag2 = false;
+            }
+            const nearest = this.findNearestSystemGasCloudAsteroid(x, y);
+            num6 = nearest === null ? Number.MAX_VALUE : this.calculateDistance(x, y, nearest.xpos, nearest.ypos);
+            const nebulae = this.determineGalaxyLocationsAtPoint(x, y, GalaxyLocationType.NebulaCloud);
+            if (nebulae.length > 0) {
+                if (this.rnd.next(0, 15) === 1) {
+                    flag = true;
+                    for (const location of nebulae) {
+                        if (location.effect === GalaxyLocationEffectType.LightningDamage) {
+                            flag3 = true;
+                            break;
+                        }
+                    }
+                } else {
+                    flag = false;
+                }
+            } else {
+                flag = true;
+            }
+            num5++;
+        } while ((num6 < MAX_SOLAR_SYSTEM_SIZE * 4 || !flag || !flag2) && num5 < 100);
 
-        const { type, diameter, pictureRef } = this.selectStar();
+        // C# re-rolls the star type until it's compatible with any
+        // LightningDamage nebula the star landed in (flag3 is sticky for
+        // the whole SetupSun call, matching the source).
+        let type: HabitatType;
+        let diameter: number;
+        let pictureRef: number;
+        let flag4 = false;
+        do {
+            const selected = this.selectStar();
+            type = selected.type;
+            diameter = selected.diameter;
+            pictureRef = selected.pictureRef;
+            flag4 = true;
+            if (flag3) {
+                switch (type) {
+                    case HabitatType.MainSequence:
+                    case HabitatType.RedGiant:
+                    case HabitatType.SuperGiant:
+                        flag4 = false;
+                        break;
+                }
+            }
+        } while (!flag4);
         const star = new Habitat(HabitatCategoryType.Star, type, this.generateCodeName(), x, y);
         star.diameter = diameter;
         star.pictureRef = pictureRef;
         star.landscapePictureRef = -1;
-        if (type === HabitatType.SuperNova) {
+        if (type === HabitatType.BlackHole) {
+            // Port of Galaxy.5.cs SetupSun black-hole GalaxyLocations
+            // (1329-1352). C# renames the star via GenerateBlackHoleName()
+            // (not ported — see the assignSystemName TODO); the star's
+            // existing name is used for the location prefixes instead.
+            const pullSize = star.diameter * 1.1;
+            const pull = new GalaxyLocation(star.name + ' Pull', GalaxyLocationType.BlackHole, x - pullSize / 2.0, y - pullSize / 2.0, pullSize, pullSize, -1);
+            pull.showName = false;
+            pull.effect = GalaxyLocationEffectType.ShipPull;
+            pull.effectAmount = Math.fround(star.diameter / 600);
+            this.galaxyLocations.push(pull);
+            this.addGalaxyLocationIndex(pull);
+            const horizonSize = star.diameter * 0.04;
+            const horizon = new GalaxyLocation(star.name + ' Event Horizon', GalaxyLocationType.BlackHole, x - horizonSize / 2.0, y - horizonSize / 2.0, horizonSize, horizonSize, -1);
+            horizon.showName = false;
+            horizon.effect = GalaxyLocationEffectType.ShipDamage;
+            horizon.effectAmount = Math.fround(star.diameter);
+            this.galaxyLocations.push(horizon);
+            this.addGalaxyLocationIndex(horizon);
+        } else if (type === HabitatType.SuperNova) {
             // Port of Galaxy.5.cs SetupSun supernova branch (1353-1371).
             // TextResolver.GetText("HabitatType SuperNova") = "Super Nova"
             // (TextResolver not ported — literal used).
@@ -378,10 +564,15 @@ export class Galaxy {
             star.novaImageIndexMajor = this.rnd.next(0, 20); // GalaxyImages.NovaImageCountMajor
             star.novaImageIndexMinor = this.rnd.next(0, 56); // GalaxyImages.NovaImageCountMinor
             star.diameter = Math.trunc(Math.trunc(star.novaProgression * 2.0) / 10);
+            // Port of Galaxy.5.cs SetupSun supernova GalaxyLocation.
+            const num20 = Math.trunc(star.novaProgression * 2.0);
+            const location = new GalaxyLocation(star.name, GalaxyLocationType.SuperNova, x - num20 / 2.0, y - num20 / 2.0, num20, num20, -1);
+            location.showName = false;
+            location.shape = GalaxyLocationShape.Circular;
+            location.effect = GalaxyLocationEffectType.ShieldReduction;
+            this.galaxyLocations.push(location);
+            this.addGalaxyLocationIndex(location);
         }
-        // TODO(port): black hole "Pull"/"Event Horizon" and supernova
-        // GalaxyLocation objects — Galaxy.5.cs SetupSun:1329-1371 (needs
-        // GalaxyLocation, not ported yet).
         return star;
     }
 
@@ -1908,10 +2099,15 @@ export class Galaxy {
 // full generator but unused here (no colonies are generated in 01b/01c
 // scope yet). TODO(port): colony placement — later task.
 export function generateGalaxy(options: GenerateGalaxyOptions): Galaxy {
-    const { seed, shape, starCount, sectorWidth, sectorHeight, systemNames, colonyPrevalence, gameData } = options;
+    const { seed, shape, starCount, sectorWidth, sectorHeight, systemNames, colonyPrevalence, gameData, cloudImageCount } = options;
     const galaxy = new Galaxy(seed, shape, starCount, sectorWidth, sectorHeight, systemNames, colonyPrevalence);
     // ResourceSystem.Resources (Galaxy.4.cs ctor loads it before generation).
     galaxy.resources = gameData?.resources ?? [];
+
+    // Nebulae / galaxy locations (Galaxy.4.cs ctor: GenerateNebulae + index
+    // grid + AddGalaxyLocationIndex), generated before star placement so
+    // SetupSun can avoid/enter them.
+    galaxy.generateNebulae(cloudImageCount ?? DEFAULT_CLOUD_IMAGE_COUNT);
 
     // Cluster setup (Galaxy.4.cs 2221-2276), only for the Clusters shapes.
     galaxy.setupStarClusters(shape, starCount);
