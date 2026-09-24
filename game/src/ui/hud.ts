@@ -11,6 +11,8 @@ import type { Empire } from '../sim/empire';
 import type { BuiltObject } from '../sim/builtObject';
 import { BuiltObjectSubRole } from '../sim/builtObjectTypes';
 import { BuiltObjectRole } from '../sim/data/designSpecifications';
+import { BuiltObjectMissionType, builtObjectMission, type BuiltObjectMission } from '../sim/missions/mission';
+import { SystemVisibilityStatus } from '../sim/visibility';
 import { flagShapeUrl } from '../sim/startGameOptions';
 import { createGameMenu, type GameMenuRefs } from './screens/gameMenu';
 import { setGameMenuHandler, setCycleHandler, type CycleKind } from './keyboard';
@@ -804,7 +806,7 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
             subEl.textContent = `${typeName} · ${sel.system.systemStar.name} system`;
         }
         body.replaceChildren();
-        for (const row of buildSelectionRows(sel, gameData)) {
+        for (const row of buildSelectionRows(sel, gameData, wiring.galaxy?.playerEmpire ?? null)) {
             body.appendChild(row.element);
         }
     };
@@ -813,6 +815,15 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         refresh();
         wiring.afterSelectionChange?.(sel);
     };
+    // Task 14b: ship/base status (speed, fuel, mission) changes every tick — re-render
+    // the rows twice a second while one is selected. Stops once the HUD is removed.
+    const liveTimer = setInterval(() => {
+        if (!panel.isConnected) {
+            clearInterval(liveTimer);
+            return;
+        }
+        if (currentSelection?.builtObject) refresh();
+    }, 500);
     refresh();
     return panel;
 }
@@ -1017,6 +1028,141 @@ export function builtObjectRows(bo: BuiltObject): { label: string; value: string
     const location = bo.parentHabitat?.name ?? '';
     if (location !== '') rows.push({ label: 'Location', value: location });
     if (bo.troops !== null && bo.troops.count > 0) rows.push({ label: 'Troops', value: String(bo.troops.count) });
+    return rows;
+}
+
+// Port of Galaxy.2.cs ResolveDescription(BuiltObjectMissionType) (GameText.txt values)
+export function missionTypeLabel(type: BuiltObjectMissionType): string {
+    switch (type) {
+        case BuiltObjectMissionType.Undefined: return '(No mission)';
+        case BuiltObjectMissionType.Explore: return 'Explore';
+        case BuiltObjectMissionType.Build: return 'Build';
+        case BuiltObjectMissionType.BuildRepair: return 'Build';
+        case BuiltObjectMissionType.Transport: return 'Transport';
+        case BuiltObjectMissionType.Patrol: return 'Patrol';
+        case BuiltObjectMissionType.Escort: return 'Escort';
+        case BuiltObjectMissionType.Rescue: return 'Rescue';
+        case BuiltObjectMissionType.Blockade: return 'Blockade';
+        case BuiltObjectMissionType.Attack: return 'Attack';
+        case BuiltObjectMissionType.Escape: return 'Escape';
+        case BuiltObjectMissionType.Retire: return 'Retire';
+        case BuiltObjectMissionType.Retrofit: return 'Retrofit';
+        case BuiltObjectMissionType.Colonize: return 'Colonize';
+        case BuiltObjectMissionType.Waypoint: return 'Assemble';
+        case BuiltObjectMissionType.Hold: return 'Wait';
+        case BuiltObjectMissionType.WaitAndAttack: return 'Prepare and Attack';
+        case BuiltObjectMissionType.WaitAndBombard: return 'Prepare and Bombard';
+        case BuiltObjectMissionType.MoveAndWait: return 'Move and Wait';
+        case BuiltObjectMissionType.Refuel: return 'Refuel';
+        case BuiltObjectMissionType.ExtractResources: return 'Mine';
+        case BuiltObjectMissionType.LoadTroops: return 'Load Troops';
+        case BuiltObjectMissionType.UnloadTroops: return 'Unload Troops';
+        case BuiltObjectMissionType.Deploy: return 'Deploy';
+        case BuiltObjectMissionType.Undeploy: return 'Undeploy';
+        case BuiltObjectMissionType.Repair: return 'Repair';
+        case BuiltObjectMissionType.Move: return 'Move';
+        case BuiltObjectMissionType.Bombard: return 'Bombard';
+        default: return BuiltObjectMissionType[type] ?? '';
+    }
+}
+
+// Port of Galaxy.3.cs ResolveDescription(Empire, BuiltObjectMission) — target text only
+export function missionTargetText(mission: BuiltObjectMission, empire: Empire | null): string {
+    const sector = mission.targetSector;
+    if (sector !== null) return `Sector ${String.fromCharCode(sector.x + 65)}${sector.y + 1}`;
+    // TODO(port): ShipGroup.Name — not in sim
+    if (mission.targetShipGroup !== null) return '';
+    const bo = mission.targetBuiltObject;
+    if (bo !== null) return bo.name;
+    const h = mission.targetHabitat;
+    if (h !== null) {
+        const cat = h.category === HabitatCategoryType.GasCloud ? 'Gas Cloud' : HabitatCategoryType[h.category];
+        const unknown =
+            empire !== null &&
+            h.systemIndex >= 0 &&
+            h.systemIndex < empire.visibility.systemVisibility.length &&
+            empire.visibility.checkSystemVisibilityStatus(h.systemIndex) === SystemVisibilityStatus.Unexplored;
+        return unknown ? `Unknown ${cat}` : h.name;
+    }
+    const creature = mission.targetCreature;
+    if (creature !== null) return creature.name;
+    return '';
+}
+
+// Task 14b: port of BaconInfoPanel.cs BuiltObject rows (mission/components/fuel/speed); player null = no player empire (all known)
+export function builtObjectStatusRows(bo: BuiltObject, player: Empire | null): { label: string; value: string }[] {
+    const rows: { label: string; value: string }[] = [];
+    const known = player === null || bo.actualEmpire === player;
+
+    // Mission (BaconInfoPanel.cs:327-342)
+    const m = builtObjectMission(bo.mission);
+    if (!known) {
+        rows.push({ label: 'Mission', value: '(Unknown mission)' });
+    } else {
+        let text = m === null || m.type === BuiltObjectMissionType.Undefined ? '(No mission)' : missionTypeLabel(m.type);
+        if (bo.role === BuiltObjectRole.Military) {
+            if (bo.attackRangeSquared === 0) text += ' (Engage when attacked)';
+            else if (bo.attackRangeSquared === 4000000) text += ' (Engage nearby targets)';
+            else if (bo.attackRangeSquared === 2304000000) text += ' (Engage system targets)';
+            else text += ' (Engage detected targets)';
+        }
+        if (bo.subsequentMissions.length > 0) text += ` (${bo.subsequentMissions.length} queued)`;
+        rows.push({ label: 'Mission', value: text });
+    }
+
+    // Target (Galaxy.3.cs ResolveDescription target part)
+    if (known && m !== null && m.type !== BuiltObjectMissionType.Undefined) {
+        const t = missionTargetText(m, bo.actualEmpire);
+        if (t !== '') rows.push({ label: 'Target', value: t });
+    }
+
+    // Components (BaconInfoPanel.cs:463-490)
+    let components = '(Unknown component status)';
+    if (known || bo.actualEmpire === null) {
+        components = '(All components normal)';
+        const damaged = bo.damagedComponentCount;
+        const unbuilt = bo.unbuiltComponentCount;
+        const disabled = bo.disabledComponentIndexes !== null ? bo.disabledComponentIndexes.length : 0;
+        if (damaged > 0 || unbuilt > 0 || disabled > 0) {
+            const parts: string[] = [];
+            if (damaged > 0) parts.push(`${damaged} damaged`);
+            if (disabled > 0) parts.push(`${disabled} disabled`);
+            if (unbuilt > 0) parts.push(`${unbuilt} unbuilt`);
+            components = parts.join(', ');
+        } else if (bo.retrofitDesign !== null) {
+            components = `(RETROFITTING to ${bo.retrofitDesign.name})`;
+        }
+    }
+    rows.push({ label: 'Components', value: components });
+
+    // InfoPanel.cs:1236 damage fraction
+    if (known && bo.damagedComponentCount > 0 && bo.components.count > 0) {
+        rows.push({ label: 'Damage', value: `${Math.round((100 * bo.damagedComponentCount) / bo.components.count)}%` });
+    }
+
+    // Fuel (BaconInfoPanel.cs:604-620)
+    let fuel = '(Unknown)';
+    if (known) {
+        fuel = `${Math.max(0, Math.trunc(bo.currentFuel))} / ${Math.trunc(bo.fuelCapacity)}`;
+        if (bo.currentFuel <= 0 && bo.role !== BuiltObjectRole.Base && bo.unbuiltComponentCount === 0) fuel += ' (speed reduced)';
+    }
+    rows.push({ label: 'Fuel', value: fuel });
+
+    // Speed (BaconInfoPanel.cs:637-651)
+    if (bo.role !== BuiltObjectRole.Base) {
+        // TODO(port): " (slowed)" — BuiltObject.MovementSlowedLocation not in sim
+        let suffix = '';
+        if (bo.hyperjumpDisabledLocation) suffix += ' (Hyper block)';
+        if (bo.warpSpeed <= 0) suffix = ' (No Hyperdrive)';
+        rows.push({ label: 'Speed', value: `${Math.trunc(bo.currentSpeed)} / ${Math.trunc(bo.topSpeed)}${suffix}` });
+    }
+
+    // streamlined: not a row in the original panel
+    if (known && bo.cargoCapacity > 0) {
+        let used = 0;
+        for (const c of bo.cargo?.items ?? []) used += Math.max(0, c.amount);
+        rows.push({ label: 'Cargo', value: `${used} / ${bo.cargoCapacity}` });
+    }
     return rows;
 }
 
@@ -1262,7 +1408,7 @@ export function systemRows(sys: SystemInfo): { label: string; value: string; col
  * empty ones: Quality (planets/moons), Diameter, Resources, Natives, Scenic,
  * Research bonus; stars additionally show their planet count. Colonies add
  * Owner / Status / Population rows after the header (task 12l). */
-export function buildSelectionRows(sel: Selection, gameData?: GameData): SelectionRow[] {
+export function buildSelectionRows(sel: Selection, gameData?: GameData, player: Empire | null = null): SelectionRow[] {
     const h = sel.habitat;
     const rows: SelectionRow[] = [];
     const addText = (label: string, value: string): void => {
@@ -1304,6 +1450,7 @@ export function buildSelectionRows(sel: Selection, gameData?: GameData): Selecti
     // Size / Location / Troops) instead of the habitat's detail rows.
     if (sel.builtObject) {
         for (const r of builtObjectRows(sel.builtObject)) addColorRow(r);
+        for (const r of builtObjectStatusRows(sel.builtObject, player)) addColorRow(r);
         return rows;
     }
     for (const orow of ownerRows(h)) addColorRow(orow);
