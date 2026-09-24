@@ -13,7 +13,6 @@ import { BuiltObject } from '../builtObject';
 import { BuiltObjectSubRole } from '../builtObjectTypes';
 import { Habitat } from '../types';
 import { Cargo, CargoList, ResourceRef } from '../cargo';
-import { captainBonuses } from '../characters';
 import { BuiltObjectRole } from '../data/designSpecifications';
 import { findNewest, galaxyComponentCurrentPrices, galaxyResourceCurrentPrices } from '../design';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from '../diplomacy';
@@ -26,7 +25,7 @@ import { resolvePirateMissionsByType, type EmpireActivityRef } from '../pirates/
 import { PirateRelationType } from '../pirateRelations';
 import { fastFindNearestSpacePort } from '../stationPlacement';
 import { galaxyStarDate } from '../tick/simTime';
-import type { ShipGroup } from '../fleets/shipGroup';
+import { getNearestBuiltObjectWithinRange, withinFuelRangeWithFactor as withinFuelRange } from '../movement';
 import {
     calculateMinimumLuxuryResourceLevel,
     calculateMinimumLuxuryResourceLevelRestricted,
@@ -83,64 +82,10 @@ function habitatIsBlockaded(habitat: Habitat): boolean {
 }
 
 // ------------------------------------------------------------------------------------------
-// Fuel range (BuiltObject.1.cs 2338-2390). Shared helper ported here (M4c owns fuel ranges).
-
-/** BuiltObject.cs 572 WarpSpeedWithBonuses. */
-export function warpSpeedWithBonuses(builtObject: BuiltObject): number {
-    let num = builtObject.warpSpeed;
-    const shipGroup = builtObject.shipGroup as (ShipGroup & { hyperjumpSpeedBonus?: number }) | null;
-    if (shipGroup != null) {
-        // TODO(port) M4l: ShipGroup.HyperjumpSpeedBonus (ShipGroup.cs 87; 1.0 + admiral skill) — 1.0 until M4l.
-        num *= shipGroup.hyperjumpSpeedBonus ?? 1.0;
-    }
-    // BuiltObject.cs 608 CaptainHyperjumpSpeedBonus = _CaptainHyperjumpSpeedBonus / 100 (byte, default 100).
-    num *= (captainBonuses(builtObject)?.hyperjumpSpeed ?? 100) / 100.0;
-    return Math.trunc(num);
-}
-
-/** BuiltObject.1.cs 2338 FuelUnitPerEnergyUnit. */
-function fuelUnitPerEnergyUnit(builtObject: BuiltObject): number {
-    return builtObject.reactorCycleFuelConsumption / 1000.0 / (builtObject.reactorStorageCapacity + 1.0);
-}
-
-/** BuiltObject.1.cs 2348 CurrentRange(fuelPortionMargin). */
-export function currentRange(builtObject: BuiltObject, fuelPortionMargin = 0.0): number {
-    const num = fuelUnitPerEnergyUnit(builtObject);
-    let currentFuel = builtObject.currentFuel;
-    currentFuel -= builtObject.fuelCapacity * fuelPortionMargin;
-    currentFuel = Math.max(0.0, currentFuel);
-    if (builtObject.warpSpeed > 0) {
-        return (currentFuel / ((builtObject.warpSpeedFuelBurn + builtObject.staticEnergyConsumption) * num)) * warpSpeedWithBonuses(builtObject);
-    }
-    return (currentFuel / ((builtObject.cruiseSpeedFuelBurn + builtObject.staticEnergyConsumption) * num)) * builtObject.cruiseSpeed;
-}
-
-/** BuiltObject.1.cs 2379 WithinFuelRange(destinationX, destinationY, fuelPortionMargin, out rangeFactor). */
-export function withinFuelRange(galaxy: Galaxy, builtObject: BuiltObject, destinationX: number, destinationY: number, fuelPortionMargin: number): { within: boolean; rangeFactor: number } {
-    const num = currentRange(builtObject, fuelPortionMargin);
-    const num2 = num * num;
-    const num3 = galaxy.calculateDistanceSquared(builtObject.xpos, builtObject.ypos, destinationX, destinationY);
-    const rangeFactor = num3 / num2;
-    return { within: num3 <= num2, rangeFactor };
-}
-
-/** BuiltObjectList.cs 348 GetNearestBuiltObjectWithinRange(x, y, fuelPortionMargin, mustBeAvailable, out index). */
-function getNearestBuiltObjectWithinRange(galaxy: Galaxy, list: BuiltObject[], x: number, y: number, fuelPortionMargin: number, mustBeAvailable: boolean): BuiltObject | null {
-    let result: BuiltObject | null = null;
-    let num = Number.MAX_VALUE;
-    for (let i = 0; i < list.length; i++) {
-        const builtObject = list[i];
-        if (builtObject == null) continue;
-        const num2 = galaxy.calculateDistanceSquared(x, y, builtObject.xpos, builtObject.ypos);
-        const num3 = currentRange(builtObject, fuelPortionMargin);
-        const num4 = num3 * num3;
-        if (num2 <= num4 && num2 < num && (!mustBeAvailable || missionIsIdle(builtObject))) {
-            num = num2;
-            result = builtObject;
-        }
-    }
-    return result;
-}
+// Fuel range (BuiltObject.1.cs 2338-2390, BuiltObject.cs 572, BuiltObjectList.cs 348): one implementation, in movement.ts
+// (M4c owns fuel ranges); re-exported here for existing callers. `withinFuelRange` here is the C# `out rangeFactor`
+// overload ({ within, rangeFactor }); movement.ts's `withinFuelRange` is the boolean overload.
+export { currentRange, warpSpeedWithBonuses, withinFuelRangeWithFactor as withinFuelRange } from '../movement';
 
 /** BuiltObject.cs 4423 CheckPirateRelationOk(pirateEmpire). */
 function checkPirateRelationOk(builtObject: BuiltObject, pirateEmpire: Empire): boolean {

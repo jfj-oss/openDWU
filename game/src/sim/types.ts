@@ -419,6 +419,14 @@ export class Habitat {
     dockingBays: DockingBay[] | null = null;
     dockingBayWaitQueue: BuiltObject[] | null = null;
     // ---- M4c fields (movement, fuel) ----
+    /**
+     * Habitat.cs 29-33 _SolarRadiation / _MicrowaveRadiation / _XrayRadiation (bytes; set for stars and gas clouds by
+     * Galaxy.6.cs SelectStar / GenerateStar and Galaxy.4.cs GenerateGasCloud). Read by PerformEnergyCollection and the
+     * Bacon star gravity wells (movement.ts).
+     */
+    solarRadiation = 0;
+    microwaveRadiation = 0;
+    xrayRadiation = 0;
     // ---- M4d fields (orders, colony supply) ----
     // ---- M4e fields (docking) ----
     // ---- M4f fields (civilian mission AI) ----

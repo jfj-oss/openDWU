@@ -182,3 +182,11 @@ export function disbandShipGroup(galaxy: Galaxy, empire: Empire, shipGroup: Ship
     void shipGroup;
     /* TODO(port) M4l */ todo(T_disbandShipGroup);
 }
+
+// ---- stub added by M4c (movement.ts shipGroupRemoveShipsWithoutHyperdrive) ----
+
+const T_leaveShipGroup = registerTodo('M4l', 'leaveShipGroup');
+/** BuiltObject LeaveShipGroup (removes the ship from its fleet) — stub: the ship stays in the group. */
+export function leaveShipGroup(galaxy: Galaxy, builtObject: BuiltObject): void {
+    /* TODO(port) M4l */ todo(T_leaveShipGroup);
+}

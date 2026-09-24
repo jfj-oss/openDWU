@@ -337,7 +337,8 @@ describe('BuiltObject.AssignMission (BuiltObject.2.cs 7620) / ClearPreviousMissi
         expect(ship.targetSpeed).toBe(ship.cruiseSpeed);
         const hits = todoHits();
         expect(hits['M4e checkCancelRefuelData']).toBe(1); // Refuel mission → CheckCancelRefuelData
-        expect(hits['M4c updatePosition']).toBe(1);
+        // UpdatePosition is ported (M4c): no stub hit.
+        expect(hits['M4c updatePosition']).toBeUndefined();
     });
 });
 
@@ -446,18 +447,20 @@ describe('ExecuteCommands (BuiltObject.2.cs 399-4579)', () => {
         expect(ship.targetSpeed).toBe(0);
         const hits = todoHits();
         expect(hits['M4e autoRefuelRepairShip']).toBe(1);
-        expect(hits['M4c accelerateToTargetSpeed']).toBe(1);
-        expect(hits['M4c calculateCurrentHeading']).toBe(1);
+        // AccelerateToTargetSpeed / CalculateCurrentHeading are ported (M4c): no M4c stub is reached.
+        expect(Object.keys(hits).some((k) => k.startsWith('M4c '))).toBe(false);
         expect(Object.keys(hits).some((k) => k.startsWith('M4b '))).toBe(false);
-        // a stubbed foreign case: the command stays and no time is consumed
         assignMission(galaxy, ship, BuiltObjectMissionType.Explore, planet, null, BuiltObjectMissionPriority.Normal);
         const m = builtObjectMission(ship.mission)!;
         expect(executeCommands(galaxy, ship, 0.25, 10000, 10000)).toBe(0.25); // ClearParent (M4b) consumes nothing
         expect(m.fastPeekCurrentCommand()!.action).toBe(A.ConditionalHyperTo);
+        // ConditionalHyperTo is ported (M4c, was a stub that kept the command): the planet is within
+        // HyperJumpThreshhold, so the jump is dropped and all the time is handed on to the next command (SetParent).
+        expect(galaxy.calculateDistance(ship.xpos, ship.ypos, planet.xpos, planet.ypos)).toBeLessThanOrEqual(12000);
         resetTodoCounts();
-        expect(executeCommands(galaxy, ship, 0.25, 10000, 10000)).toBe(0.0);
-        expect(todoHits()['M4c cmdConditionalHyperTo']).toBe(1);
-        expect(m.fastPeekCurrentCommand()!.action).toBe(A.ConditionalHyperTo);
+        expect(executeCommands(galaxy, ship, 0.25, 10000, 10000)).toBe(0.25);
+        expect(todoHits()['M4c cmdConditionalHyperTo']).toBeUndefined();
+        expect(m.fastPeekCurrentCommand()!.action).toBe(A.SetParent);
         ship.inView = true;
         expect(executeCommands(galaxy, ship, 0.25, 10000, 10000)).toBe(0.0);
         ship.inView = false;

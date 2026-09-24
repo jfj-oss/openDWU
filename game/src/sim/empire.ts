@@ -42,6 +42,7 @@ import { DiplomaticRelationList } from './diplomacy';
 import { MIN_TIME } from './tick/simTime';
 import type { DeclinedTask } from './missions/distress';
 import type { IMessageRecipient } from './messages';
+import type { FuelSourceSystemList } from './movement';
 
 // Empire.1.cs TakeOwnershipOfColony callees that live in modules importing empire.ts
 // (forceStructure.ts RecalculateDistanceFactor / RecalculateAnnualTaxRevenue, taxes.ts
@@ -1501,6 +1502,10 @@ export class Empire {
     /** Empire.cs _DeclinedTasks (DeclinedTaskList; CheckTaskAuthorized adds, ClearExpiredDeclinedTasks removes). */
     declinedTasks: DeclinedTask[] = [];
     // ---- M4c fields (movement, fuel) ----
+    /** Empire.cs 729 FuelSystemsUpdating (volatile guard around UpdateSystemFuelSourceStatus). */
+    fuelSystemsUpdating = false;
+    /** Empire.cs 732 FuelSystemsSources (one FuelSourceSystemList per fuel resource; movement.ts). */
+    fuelSystemsSources: FuelSourceSystemList[] = [];
     // ---- M4d fields (orders, contracts, freight) ----
     /** Empire.cs _EmpireOrderCount (set by CheckMarketOrders, Empire.4.cs 792). */
     empireOrderCount = 0;

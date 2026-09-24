@@ -11,8 +11,8 @@ import type { Habitat } from '../types';
 import { registerTodo, todo } from '../tick/todo';
 
 const T_checkClearDocking = registerTodo('M4e', 'checkClearDocking');
-/** BuiltObject.1.cs 1275 CheckClearDocking. */
-export function checkClearDocking(galaxy: Galaxy, builtObject: BuiltObject): void {
+/** BuiltObject.1.cs 1275 CheckClearDocking([forceUndock]) (`forceUndock` added by M4c: HyperTo passes true). */
+export function checkClearDocking(galaxy: Galaxy, builtObject: BuiltObject, forceUndock = false): void {
     /* TODO(port) M4e */ todo(T_checkClearDocking);
 }
 
@@ -32,4 +32,17 @@ const T_checkRemoveInvalidDockingShipsFromWaitQueue = registerTodo('M4e', 'check
 /** Galaxy.cs 3540 CheckRemoveInvalidDockingShipsFromWaitQueue(stellarObject). */
 export function checkRemoveInvalidDockingShipsFromWaitQueue(galaxy: Galaxy, stellarObject: BuiltObject | Habitat): void {
     /* TODO(port) M4e */ todo(T_checkRemoveInvalidDockingShipsFromWaitQueue);
+}
+
+// ---- stub added by M4c (missions/cmdMovement.ts HyperTo arrival) ----
+
+const T_checkMissionStillValid = registerTodo('M4e', 'checkMissionStillValid');
+/**
+ * BuiltObject.1.cs 4496 CheckMissionStillValid(time) (also read by case Dock 2733) — stub: valid (true). The C# may clear
+ * the mission for Refuel/Transport/Build/LoadTroops/UnloadTroops missions whose dock target became unusable.
+ */
+export function checkMissionStillValid(galaxy: Galaxy, builtObject: BuiltObject, time: number): boolean {
+    // RND: Galaxy.Rnd.NextDouble() when the dock target is blockaded (4596) — not drawn until M4e.
+    /* TODO(port) M4e */ todo(T_checkMissionStillValid);
+    return true;
 }

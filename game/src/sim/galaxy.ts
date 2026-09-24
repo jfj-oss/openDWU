@@ -1494,66 +1494,70 @@ export class Galaxy {
     }
 
     // Port of Galaxy.6.cs SelectStar
-    private selectStar(): { type: HabitatType; diameter: number; pictureRef: number } {
+    private selectStar(): { type: HabitatType; diameter: number; pictureRef: number; solarRadiation: number; microwaveRadiation: number; xrayRadiation: number } {
         const roll = this.rnd.next(0, 77);
         let type: HabitatType;
         let diameter: number;
         let pictureRef: number;
+        // Radiation values (Habitat.SolarRadiation / MicrowaveRadiation / XrayRadiation; stored since task M4c).
+        let solarRadiation: number;
+        let microwaveRadiation: number;
+        let xrayRadiation: number;
         if (roll >= 0 && roll <= 61) {
             type = HabitatType.MainSequence;
             diameter = this.rnd.next(950, 1400);
             pictureRef = diameter <= 1200 ? 83 : 84;
             this.rnd.next(0, 4); // mapPictureRef roll — MapPictureRef not modeled yet
-            this.rnd.next(40, 60); // solarRadiation
-            this.rnd.next(5, 20); // microwaveRadiation
-            this.rnd.next(5, 12); // xrayRadiation
+            solarRadiation = this.rnd.next(40, 60);
+            microwaveRadiation = this.rnd.next(5, 20);
+            xrayRadiation = this.rnd.next(5, 12);
         } else if (roll >= 62 && roll <= 66) {
             type = HabitatType.RedGiant;
             diameter = this.rnd.next(1450, 1620);
             pictureRef = 85;
             this.rnd.next(0, 3);
-            this.rnd.next(70, 95);
-            this.rnd.next(5, 20);
-            this.rnd.next(5, 12);
+            solarRadiation = this.rnd.next(70, 95);
+            microwaveRadiation = this.rnd.next(5, 20);
+            xrayRadiation = this.rnd.next(5, 12);
         } else if (roll >= 67 && roll <= 69) {
             type = HabitatType.SuperGiant;
             diameter = this.rnd.next(1620, 1950);
             pictureRef = 86;
             this.rnd.next(0, 3);
-            this.rnd.next(80, 100);
-            this.rnd.next(5, 20);
-            this.rnd.next(5, 12);
+            solarRadiation = this.rnd.next(80, 100);
+            microwaveRadiation = this.rnd.next(5, 20);
+            xrayRadiation = this.rnd.next(5, 12);
         } else if (roll >= 70 && roll <= 72) {
             type = HabitatType.WhiteDwarf;
             diameter = this.rnd.next(260, 350);
             pictureRef = 87;
             this.rnd.next(0, 3);
-            this.rnd.next(10, 30);
-            this.rnd.next(20, 40);
-            this.rnd.next(40, 60);
+            solarRadiation = this.rnd.next(10, 30);
+            microwaveRadiation = this.rnd.next(20, 40);
+            xrayRadiation = this.rnd.next(40, 60);
         } else if (roll >= 73 && roll <= 74) {
             type = HabitatType.Neutron;
             diameter = this.rnd.next(180, 230);
             pictureRef = 88;
-            this.rnd.next(1, 5);
-            this.rnd.next(60, 90);
-            this.rnd.next(120, 200);
+            solarRadiation = this.rnd.next(1, 5);
+            microwaveRadiation = this.rnd.next(60, 90);
+            xrayRadiation = this.rnd.next(120, 200);
         } else if (roll === 75) {
             type = HabitatType.BlackHole;
             diameter = this.rnd.next(4500, 6500);
             pictureRef = 95;
-            this.rnd.next(10, 15);
-            this.rnd.next(60, 80);
-            this.rnd.next(90, 130);
+            solarRadiation = this.rnd.next(10, 15);
+            microwaveRadiation = this.rnd.next(60, 80);
+            xrayRadiation = this.rnd.next(90, 130);
         } else {
             type = HabitatType.SuperNova;
             diameter = this.rnd.next(300, 900);
             pictureRef = 0;
-            this.rnd.next(60, 80);
-            this.rnd.next(70, 110);
-            this.rnd.next(160, 220);
+            solarRadiation = this.rnd.next(60, 80);
+            microwaveRadiation = this.rnd.next(70, 110);
+            xrayRadiation = this.rnd.next(160, 220);
         }
-        return { type, diameter, pictureRef };
+        return { type, diameter, pictureRef, solarRadiation, microwaveRadiation, xrayRadiation };
     }
 
     // Port of Galaxy.4.cs GenerateNebulae (generateImage=false call) plus
@@ -1824,12 +1828,18 @@ export class Galaxy {
         let type: HabitatType;
         let diameter: number;
         let pictureRef: number;
+        let solarRadiation = 0;
+        let microwaveRadiation = 0;
+        let xrayRadiation = 0;
         let flag4 = false;
         do {
             const selected = this.selectStar();
             type = selected.type;
             diameter = selected.diameter;
             pictureRef = selected.pictureRef;
+            solarRadiation = selected.solarRadiation;
+            microwaveRadiation = selected.microwaveRadiation;
+            xrayRadiation = selected.xrayRadiation;
             flag4 = true;
             if (flag3) {
                 switch (type) {
@@ -1843,6 +1853,10 @@ export class Galaxy {
         } while (!flag4);
         const star = new Habitat(HabitatCategoryType.Star, type, this.generateCodeName(), x, y);
         star.diameter = diameter;
+        // Galaxy.5.cs 1325-1327 (stored since task M4c).
+        star.solarRadiation = solarRadiation;
+        star.microwaveRadiation = microwaveRadiation;
+        star.xrayRadiation = xrayRadiation;
         star.pictureRef = pictureRef;
         star.landscapePictureRef = -1;
         if (type === HabitatType.BlackHole) {
@@ -2324,9 +2338,10 @@ export class Galaxy {
             attempts++;
         } while (distance < MAX_SOLAR_SYSTEM_SIZE * 4 && attempts < 200);
 
-        this.rnd.next(40, 60); // solarRadiation
-        this.rnd.next(1, 5); // microwaveRadiation
-        this.rnd.next(0, 3); // xrayRadiation
+        // Galaxy.4.cs 2853-2858: SolarRadiation / MicrowaveRadiation / XrayRadiation (stored since task M4c).
+        habitat.solarRadiation = this.rnd.next(40, 60);
+        habitat.microwaveRadiation = this.rnd.next(1, 5);
+        habitat.xrayRadiation = this.rnd.next(0, 3);
 
         this.selectResources(habitat);
 
