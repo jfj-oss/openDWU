@@ -7,7 +7,12 @@
 // flag) and the final summary "Start" page are tasks 06e/06d; "Other
 // Empires" is task 06h.
 import './newGameWizard.css';
-import { GalaxyShape } from '../../sim/types';
+import { GalaxyShape, HabitatType } from '../../sim/types';
+
+/** 'MarshySwamp' → 'Marshy Swamp'. */
+function habitatTypeLabel(t: HabitatType): string {
+    return (HabitatType[t] ?? String(t)).replace(/([a-z])([A-Z])/g, '$1 $2');
+}
 import {
     applyEmpireDefaults,
     COLONIZATION_RANGE_KLY_MAX,
@@ -184,7 +189,7 @@ export const RACE_STAT_FIELDS: ReadonlyArray<{ key: keyof Race; label: string }>
     { key: 'overallShipDesignFocus', label: 'Overall Ship Design Focus' },
     { key: 'techFocus1', label: 'Tech Focus 1' },
     { key: 'techFocus2', label: 'Tech Focus 2' },
-    { key: 'nativePlanetType', label: 'Native Planet Type' },
+    { key: 'nativeHabitatType', label: 'Native Planet Type' },
     { key: 'specialComponent', label: 'Special Component' },
     { key: 'troopStrength', label: 'Troop Strength' },
     { key: 'defaultPrimaryColor', label: 'Default Primary Color' },
@@ -1052,7 +1057,9 @@ function buildStatsCells(race: Race): HTMLElement[] {
         labelEl.textContent = titleCase(label);
         const valueEl = document.createElement('div');
         valueEl.className = 'wizard-race-stat-value';
-        valueEl.textContent = typeof value === 'number' ? String(value) : String(value);
+        // Native planet type: show the resolved HabitatType name (Race.cs
+        // stores NativeHabitatType, not the raw races.txt index).
+        valueEl.textContent = key === 'nativeHabitatType' ? habitatTypeLabel(value as HabitatType) : String(value);
         cell.appendChild(labelEl);
         cell.appendChild(valueEl);
         cells.push(cell);

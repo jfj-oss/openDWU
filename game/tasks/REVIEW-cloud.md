@@ -49,7 +49,7 @@ This is exactly **task `01g-galaxy-leftovers.md`**, already written and locked, 
 - `src/sim/galaxy.ts:756`, `:788` — `TODO(port): ScenicFeature strings, HasRings` / remaining `SetScenicFactor` cases
 Depends on: nothing new (galaxy.ts only). No dependency on 08b/08c below.
 
-### 08b — Race/habitat-type data schema mismatch (blocks population fidelity)
+### 08b — Race/habitat-type data schema mismatch — ✅ FIXED in 64dea7a (race.nativeHabitatType via ResolveColonyHabitatTypeByIndexDesertBeforeOcean; see 08b-native-planet-type-FINDINGS.md)
 Not a `TODO(port)` comment in code, but surfaced by 01f2's worker report and confirmed here (see bug above): parsed race `nativePlanetType` (1-5) never equals generated `HabitatType` enum values (8-16), so `selectPopulation` (`src/sim/galaxy.ts` ~1780) never actually places a native population with current data, and `01f2`'s tests can't exercise the match branch. Needs the orchestrator to check `races.txt`/`races.ts` against `Galaxy.6.cs SelectRandomRacePreferHospitableHabitats`'s `HabitatType` cases and either fix the data parser's enum mapping or add a translation table. No file:line TODO(port) marker exists for this — recommend adding one at `src/sim/galaxy.ts:1780` once triaged.
 **Fixed in 50a6942:** the in `calculatePopulationAmount` (`src/sim/galaxy.ts:1756`, missing `Math.trunc(num)` before the two `Rnd.Next(...) * num` branches) — a one-line fix, doesn't need a full task, but should ride along with whatever touches this function next.
 Depends on: 01f1/01f2 (already landed).
