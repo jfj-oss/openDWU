@@ -113,18 +113,6 @@
     right: 10px;
 }
 
-.menu-toast {
-    position: absolute;
-    bottom: 40px;
-    left: 50%;
-    transform: translateX(-50%);
-    background: rgba(20, 22, 28, 0.9);
-    border-radius: 8px;
-    padding: 10px 18px;
-    font-size: 13px;
-    color: #fff;
-}
-
 /* Task 06k: Options modal over the main menu. Reuses the in-game game-menu
    panel styles (gameMenu.css) for the rows/controls; only the overlay, dim
    and sizing are specific to the menu context. */

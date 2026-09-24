@@ -8,6 +8,7 @@ import { createCreditsScreen } from './credits';
 import { createTutorialsScreen } from './tutorials';
 import { startMusic } from '../../audio/musicPlayer';
 import { openGalactopedia } from './galactopedia';
+import { showToast } from '../toast';
 
 const CHROME = '/assets/dwu/images/ui/chrome/';
 
@@ -64,14 +65,6 @@ export function menuScale(): number {
 function preloadImage(src: string): void {
     const img = new Image();
     img.src = src;
-}
-
-function showExitToast(root: HTMLElement): void {
-    const toast = document.createElement('div');
-    toast.className = 'menu-toast';
-    toast.textContent = 'Close this tab to exit';
-    root.appendChild(toast);
-    setTimeout(() => toast.remove(), 3000);
 }
 
 /** Lazily fetch the real music player for the Options panel (created by
@@ -205,7 +198,7 @@ export function createMainMenu(callbacks: MainMenuCallbacks): MainMenuRefs {
                     if (isDesktopShell()) {
                         window.close();
                     } else {
-                        showExitToast(root);
+                        showToast('Close this tab to exit', root);
                     }
                     break;
                 default:

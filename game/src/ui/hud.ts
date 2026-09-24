@@ -14,6 +14,7 @@ import { setGameMenuHandler } from './keyboard';
 import { startEffects } from '../audio/effectsPlayer';
 import { helpTopicKeyForHabitat, toggleGalactopedia } from './screens/galactopedia';
 import { toggleEmpiresList } from './screens/empiresList';
+import { showToast } from './toast';
 
 /** Shared UI button-click sound (task 09b): the original plays a short click
  * for chrome-button presses; here every HUD button click routes through this. */
@@ -432,6 +433,7 @@ function makeIconButton(controlName: string, title: string): HTMLButtonElement {
     btn.addEventListener('click', () => {
         playUiClick();
         console.log(`TODO(screen): ${title}`);
+        showToast(`${title} — not yet available`);
     });
     return btn;
 }
@@ -460,6 +462,7 @@ function buildTopBarButton(name: string): HTMLElement {
     btn.addEventListener('click', () => {
         playUiClick();
         console.log(`TODO(screen): ${label ?? name}`);
+        showToast(`${label ?? name} — not yet available`);
     });
     return btn;
 }
