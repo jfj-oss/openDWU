@@ -168,10 +168,10 @@ export function createIndexedDbSaveStore(dbName = 'dwu-saves'): SaveTextStore {
 
     /** Run `fn` against the opened DB, falling back to the memory store once
      * when the DB is unusable (and logging a single warning). */
-    async function withDb<T>(fn: (store: IDBObjectStore) => Promise<T>): Promise<T> {
+    async function withDb<T>(mode: IDBTransactionMode, fn: (store: IDBObjectStore) => Promise<T>): Promise<T> {
         try {
             const db = await openDb();
-            return await fn(db.transaction('saves', 'readonly').objectStore('saves'));
+            return await fn(db.transaction('saves', mode).objectStore('saves'));
         } catch (err) {
             if (!warned) {
                 warned = true;
@@ -184,7 +184,7 @@ export function createIndexedDbSaveStore(dbName = 'dwu-saves'): SaveTextStore {
     return {
         async get(name) {
             try {
-                return await withDb(async (store) => {
+                return await withDb('readonly', async (store) => {
                     const result = await new Promise<string | null>((resolve, reject) => {
                         const req = store.get(name);
                         req.onsuccess = () => resolve(req.result ?? null);
@@ -198,7 +198,7 @@ export function createIndexedDbSaveStore(dbName = 'dwu-saves'): SaveTextStore {
         },
         async put(name, text) {
             try {
-                await withDb(async (store) => {
+                await withDb('readwrite', async (store) => {
                     await new Promise<void>((resolve, reject) => {
                         const req = store.put(text, name);
                         req.onsuccess = () => resolve();
@@ -211,7 +211,7 @@ export function createIndexedDbSaveStore(dbName = 'dwu-saves'): SaveTextStore {
         },
         async delete(name) {
             try {
-                await withDb(async (store) => {
+                await withDb('readwrite', async (store) => {
                     await new Promise<void>((resolve, reject) => {
                         const req = store.delete(name);
                         req.onsuccess = () => resolve();
