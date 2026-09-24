@@ -104,6 +104,11 @@ export class Galaxy {
     // Port of Galaxy.cs Creatures (CreatureList, populated by
     // SelectCreatures/GenerateCreatureAtHabitat — Galaxy.6.cs:654/723).
     creatures: Creature[] = [];
+    // Task 08h: C# CurrentDateTime modeled as game seconds (advanced by step).
+    currentTimeSeconds = 0;
+    // C#: Galaxy._NextCreatureID / SilverMistCreatureCount (Galaxy.cs).
+    nextCreatureId = 0;
+    silverMistCreatureCount = 0;
     // Port of Galaxy.cs Races (RaceList, loaded from GameData in the ctor).
     races: Race[] = [];
     // Port of Galaxy.cs habitat-race lists (_ContinentalRaces etc.),
@@ -187,6 +192,91 @@ export class Galaxy {
         for (const habitat of this.stepOrder) {
             habitat.advanceOrbit(totalSeconds);
         }
+        // Task 08h: Creature.DoTasks for every creature (the C# UI drives
+        // the viewed system's creatures, Main.Part11.cs 597). Iterate a copy:
+        // DoTasks can add (Split/Reproduce) or remove (teardown) creatures.
+        this.currentTimeSeconds += totalSeconds;
+        for (const creature of this.creatures.slice()) {
+            if (!creature.hasBeenDestroyed) {
+                creature.doTasks(this.currentTimeSeconds);
+            }
+        }
+    }
+
+    // Port of Galaxy.cs GetNextCreatureID (line 1333).
+    getNextCreatureID(): number {
+        if (this.nextCreatureId < 2147483647) {
+            this.nextCreatureId++;
+            return this.nextCreatureId;
+        }
+        throw new Error('Maximum allowable creature number exceeded!');
+    }
+
+    // Port of Galaxy.cs SelectRandomHeading (line 2795); C# returns float.
+    selectRandomHeading(): number {
+        return Math.fround(Math.PI - this.rnd.nextDouble() * Math.PI * 2.0);
+    }
+
+    // Port of Galaxy.6.cs SelectRelativePoint (line 3762).
+    selectRelativePoint(range: number): { x: number; y: number } {
+        const num = range * this.rnd.nextDouble();
+        const num2 = this.selectRandomHeading();
+        return { x: Math.cos(num2) * num, y: Math.sin(num2) * num };
+    }
+
+    // Port of Galaxy.6.cs SelectRelativeHabitatSurfacePoint (line 3770).
+    selectRelativeHabitatSurfacePoint(habitat: Habitat | null): { x: number; y: number } {
+        let range = 50.0;
+        if (habitat !== null) {
+            let num = habitat.diameter - 10.0;
+            if (num < 1.0) {
+                num = 1.0;
+            }
+            range = num / 2.0;
+        }
+        return this.selectRelativePoint(range);
+    }
+
+    // Port of Galaxy.6.cs SelectHyperJumpExitPoint (line 3750).
+    selectHyperJumpExitPoint(minimumExitDistance: number): { x: number; y: number } {
+        let num = this.rnd.nextDouble() * Math.PI;
+        if (this.rnd.next(0, 2) === 1) {
+            num *= -1.0;
+        }
+        const num2 = minimumExitDistance + this.rnd.nextDouble() * minimumExitDistance * 0.4;
+        return { x: Math.cos(num) * num2, y: Math.sin(num) * num2 };
+    }
+
+    // Port of Galaxy.6.cs FastFindNearestSystem (line 3648). The C# sector
+    // search returns the system star with the smallest squared distance
+    // (from (int)x, (int)y); a linear scan gives the same result.
+    fastFindNearestSystem(x: number, y: number): Habitat | null {
+        const ix = Math.trunc(x);
+        const iy = Math.trunc(y);
+        let best: Habitat | null = null;
+        let bestDistance = Number.MAX_VALUE;
+        for (const system of this.systems) {
+            const d = this.calculateDistanceSquared(ix, iy, system.systemStar.xpos, system.systemStar.ypos);
+            if (d < bestDistance) {
+                bestDistance = d;
+                best = system.systemStar;
+            }
+        }
+        return best;
+    }
+
+    // Port of Galaxy.6.cs GenerateDistanceOrderedSystemList (line 3011).
+    generateDistanceOrderedSystemList(x: number, y: number): SystemInfo[] {
+        return this.systems
+            .map((s) => ({ s, d: this.calculateDistanceSquared(x, y, s.systemStar.xpos, s.systemStar.ypos) }))
+            .sort((a, b) => a.d - b.d)
+            .map((e) => e.s);
+    }
+
+    // C# Systems[i].Habitats (excludes the star; TS SystemInfo.habitats has it at [0]).
+    systemHabitatsOf(systemIndex: number): Habitat[] {
+        const system = this.systems[systemIndex];
+        return system === undefined ? [] : system.habitats.filter((h) => h !== system.systemStar);
     }
 
     // Rebuilds the cached step order: habitats that have a parent, sorted by
@@ -2106,9 +2196,8 @@ export class Galaxy {
     }
     // ---- Task 08e1: home-system colony helpers (Galaxy.8.cs / Galaxy.9.cs) ----
 
-    // TS SystemInfo.habitats includes the star at [0]; C# Systems[star].Habitats doesn't.
     private systemHabitatsExcludingStar(systemStar: Habitat): Habitat[] {
-        return this.systems[systemStar.systemIndex].habitats.filter((h) => h !== systemStar);
+        return this.systemHabitatsOf(systemStar.systemIndex);
     }
 
     // Port of Galaxy.8.cs ResolveHomeSystem (line 595).
@@ -2195,7 +2284,7 @@ export class Galaxy {
         if (nearestSystemStar === null) {
             return false;
         }
-        const others = this.systemHabitatsExcludingStar(nearestSystemStar);
+        const others = this.systemHabitatsOf(nearestSystemStar.systemIndex);
         const system = this.systems[nearestSystemStar.systemIndex];
         const num = others.length <= 0 ? system.systemStar.habitatIndex + 1 : others[others.length - 1].habitatIndex + 1;
         habitat.habitatIndex = num;
