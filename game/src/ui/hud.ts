@@ -4,6 +4,7 @@ import { resolveStarDateDescription } from '../sim/galaxyTime';
 import { createMapOverlayState, OVERLAY_ROWS, toggleOverlay, type MapOverlayState } from './mapOverlays';
 import { Camera } from '../render/camera';
 import { Galaxy } from '../sim/galaxy';
+import { uiClickSounds } from '../audio/effectsPlayer';
 import { Habitat, HabitatCategoryType, HabitatType, SystemInfo } from '../sim/types';
 
 // Port of Main.Part12.cs LoadUiChromeButtons (381–520): the control → chrome
@@ -118,6 +119,13 @@ export function getSelection(): Selection | null {
 export function createHud(wiring: HudWiring = {}): HudRefs {
     const root = document.createElement('div');
     root.id = 'hud';
+    // Task C4: HUD click sounds. Options-list rows are the original's
+    // HoverMenuItems (button2.wav); every other HUD button is a GlassButton
+    // (button1.wav) — Main.Part13.cs 905-944.
+    root.addEventListener('click', (e) => {
+        const btn = (e.target as HTMLElement | null)?.closest('button');
+        if (btn) void uiClickSounds().play(btn.classList.contains('hud-option-row') ? 'menuItem' : 'glass');
+    });
     const elements = new Map<string, HTMLElement>();
     const refs: HudRefs = { root, elements };
     // Default state objects when the caller does not supply its own.
