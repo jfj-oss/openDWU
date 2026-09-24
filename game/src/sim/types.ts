@@ -424,6 +424,14 @@ export class Habitat {
     // ---- M4r fields (diplomacy) ----
     // ---- M4s fields (pirates) ----
     // ---- M4t fields (exploration) ----
+    /** Habitat.cs 107 _CulturalDistressFactor (float; ExertCulturalInfluence Empire.cs 4734). */
+    culturalDistressFactor = 0;
+    /**
+     * Habitat.cs 119 IsBlockaded (written by the blockade code, M4m) and 91 PlagueId = -1 (written by plagues,
+     * M4u). Declared here because UpdateSystemInfo (M4t) reads them; the owning packages write them.
+     */
+    isBlockaded = false;
+    plagueId = -1;
     // ---- M4u fields (events, rebellion, plague) ----
     /** Habitat.cs 109 _Rebelling. */
     rebelling = false;
@@ -445,4 +453,11 @@ export interface SystemInfo {
     otherEmpires?: { empire: Empire; colonyCount: number; totalStrategicValue: number }[] | null;
     // C#: SystemInfo.HasResearchBonus (bool, default false; set by Start.2.cs 1172, startHabitats.ts).
     hasResearchBonus?: boolean;
+    // Galaxy.1.cs DetermineSystemInfo (873) remaining SystemInfo fields (task M4t; SystemInfo.cs CopyFromOther).
+    hasRuins?: boolean;
+    hasScenery?: boolean;
+    blockadeCount?: number;
+    plagueId?: number;
+    isDisputed?: boolean;
+    playerPotentialColonies?: boolean;
 }

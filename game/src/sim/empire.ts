@@ -681,12 +681,27 @@ export class Empire {
 
     // Hooks visibility.ts needs from the empire (task C1 VisibilityOwner).
     visibilityOwner(isIndependent = false): VisibilityOwner {
+        // eslint-disable-next-line @typescript-eslint/no-this-alias
+        const self = this;
         return {
             isIndependent,
-            active: true,
+            // C#: Empire.Active (read live — MergeGalaxyMapsForSharedVisibilityEmpires).
+            get active(): boolean {
+                return self.active;
+            },
+            // TODO(port) M4s: pirate factions also see systems whose habitats they control
+            // (habitat.GetPirateControl().GetByFaction(ourEmpire), Empire.9.cs 4740) — no pirate control model yet.
             controlsHabitat: (h: Habitat) => h.owner === this,
-            // TODO(port): BuiltObjects / PrivateBuiltObjects (no ships yet).
-            hasUnitInSystem: (_star: Habitat, _exclude: VisibilityUnit | null) => false,
+            // Empire.9.cs 4744-4759 CheckSystemVisible (task M4t): BuiltObjects then PrivateBuiltObjects.
+            hasUnitInSystem: (star: Habitat, exclude: VisibilityUnit | null) => {
+                for (const b of this.builtObjects) {
+                    if (b != null && b.nearestSystemStar === star && b !== exclude) return true;
+                }
+                for (const b of this.privateBuiltObjects) {
+                    if (b != null && b.nearestSystemStar === star && b !== exclude) return true;
+                }
+                return false;
+            },
             longRangeScanners: () => [],
             hasShipOutsideSystemWithScanRange: () => false,
         };
@@ -1425,6 +1440,14 @@ export class Empire {
     relativeEmpireSize = 0;
     // ---- M4s fields (pirates runtime) ----
     // ---- M4t fields (visibility, exploration) ----
+    /** Empire.cs 139 _EmpiresViewable (EmpireList) / 141 _EmpiresViewableExpiry (List<long>), parallel lists. */
+    empiresViewable: Empire[] = [];
+    empiresViewableExpiry: number[] = [];
+    /** Empire.LocationHints (List<Point>; AddLocationHint, removed by ScanForLocations BuiltObject.1.cs 1941). */
+    locationHints: { x: number; y: number }[] = [];
+    /** Empire.cs 147 _SystemExploredCount = 1 / 149 _ExplorationShipCount = 1 (UpdateSystemExplorationStatus). */
+    systemExploredCount = 1;
+    explorationShipCount = 1;
     // ---- M4u fields (events, characters) ----
 }
 

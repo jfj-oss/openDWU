@@ -400,8 +400,8 @@ export function empireApprovalRating(galaxy: Galaxy, h: Habitat): number {
     // TODO(port): Habitat._WarWithOurRace (float, CalculateWarWithOurRace 5694) — 0f: no wars at game start.
     const warWithOurRace = f32(0);
     const inputValue3 = f32(h.damage) * -20.0;
-    // TODO(port): Habitat._CulturalDistressFactor (float) — 0f at game start.
-    const culturalDistressFactor = f32(0);
+    // Habitat._CulturalDistressFactor (float; written by ExertCulturalInfluence, exploration.ts — 0f at game start).
+    const culturalDistressFactor = f32(h.culturalDistressFactor);
     // TODO(port): Habitat.ConqueredFactor (float, UpdateConqueredFactor) — 0f at game start.
     const conqueredFactor = f32(0);
     const num8 = modifyApprovalValueByEmpireAttributes(galaxy, h, inputValue);

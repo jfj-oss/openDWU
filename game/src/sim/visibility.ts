@@ -18,6 +18,8 @@
 // the empire's colonies and ships). See tasks/HANDOFF-cloud-lane-c-1.md.
 
 import type { Creature } from './creature';
+import type { BuiltObject } from './builtObject';
+import { MIN_TIME } from './tick/simTime';
 import type { Galaxy } from './galaxy';
 import { GalaxyLocationType, type GalaxyLocation } from './galaxyLocation';
 import { HabitatCategoryType, type Habitat, type SystemInfo } from './types';
@@ -43,6 +45,12 @@ export class SystemVisibility {
     isRefuellingPoint = false;
     empireStrength = 0;
     fuelSourcesFinalized = false;
+    // SystemVisibility.cs 23-28 [NonSerialized] per-empire system threat cache (task M4t: read/written by
+    // Habitat.PerformThreatEvaluation; BuiltObject.ThreatEvaluation, M4n, shares it). LatestThreatEvaluation is a
+    // game-time ms value (DateTime.MinValue = MIN_TIME, tick/simTime.ts).
+    threats: BuiltObject[] = [];
+    threatLevels: number[] = [];
+    latestThreatEvaluation = MIN_TIME;
 
     constructor(systemStar: Habitat, status: SystemVisibilityStatus = SystemVisibilityStatus.Undefined) {
         this.systemStar = systemStar;

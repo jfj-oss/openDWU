@@ -136,9 +136,8 @@ export function galaxyDoTasks(
         reviewComponentPrices(galaxy);
         removeCompletedOrders(galaxy.orders);
         cancelExpiredOrders(galaxy, galaxy.orders);
-        // UpdateSystemInfo(playerEmpire): TODO(port) M4t — galaxy.updateSystemInfo() is the playerEmpire == null
-        // variant (player colonisation-target fields not computed); no Rnd.
-        galaxy.updateSystemInfo();
+        // UpdateSystemInfo(playerEmpire) (Galaxy.1.cs 840); no Rnd.
+        galaxy.updateSystemInfo(playerEmpire);
         reviewIndependentColonies(galaxy);
         if (galaxy.independentEmpire !== null) {
             updateEmpireRefuellingLocations(galaxy, galaxy.independentEmpire);

@@ -2,7 +2,7 @@
 // the right times (Empire / pirate 3/10/30/60/120/240 s with `>=`, Habitat strict `>`, BuiltObject first-call
 // back-dating, ShipGroup, Galaxy long/huge), the frame length is quantised exactly, and the frame driver's
 // round-robin cursors / enqueue cadence follow Main.Part12.cs method_86 (the in-battle scan stays a no-op).
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 import { createTickGame } from './helpers/tickGame';
 import type { Galaxy } from '../src/sim/galaxy';
@@ -138,8 +138,9 @@ describe('Empire.DoTasks intervals (Empire.1.cs 3427, >= on seconds, touches fir
 });
 
 describe('Habitat.DoTasks intervals (Habitat.cs 1399, strict >)', () => {
+    // The intermediate block's only call (CheckForShipsDiscoveringRuins) is ported (M4t): it is detected by its
+    // touch write (Habitat.cs 1440 _LastIntermediateTouch = _tempNow) instead of a stub hit.
     const markers = {
-        intermediate: 'M4t checkForShipsDiscoveringRuins',
         periodic: 'M4j calculateWarWithOurRace',
         long: 'M4c reviewWhetherRefuellingDepot',
         huge: 'M4q clearTroopsAwaitingPickup',
@@ -147,7 +148,8 @@ describe('Habitat.DoTasks intervals (Habitat.cs 1399, strict >)', () => {
     const at = (ms: number): string[] => {
         const h = galaxy.empires[0].capital!;
         h.lastTouch = h.lastIntermediateTouch = h.lastPeriodicTouch = h.lastLongTouch = h.lastHugeTouch = 0;
-        return firedBlocks(markers, () => habitatDoTasks(galaxy, h, ms));
+        const fired = firedBlocks(markers, () => habitatDoTasks(galaxy, h, ms));
+        return h.lastIntermediateTouch !== 0 ? ['intermediate', ...fired] : fired;
     };
 
     it('fires a block only strictly after its span', () => {
@@ -158,7 +160,7 @@ describe('Habitat.DoTasks intervals (Habitat.cs 1399, strict >)', () => {
         expect(at(60000)).toEqual(['intermediate', 'periodic']);
         expect(at(60001)).toEqual(['intermediate', 'periodic', 'long']);
         expect(at(240000)).toEqual(['intermediate', 'periodic', 'long']);
-        expect(at(240001)).toEqual(Object.keys(markers));
+        expect(at(240001)).toEqual(['intermediate', ...Object.keys(markers)]);
     });
 
     it('moves the habitat along its orbit by the time since the last touch', () => {
@@ -216,18 +218,28 @@ describe('ShipGroup.DoTasks (ShipGroup.cs 97)', () => {
 });
 
 describe('Galaxy.DoTasks (Galaxy.cs 3054) and DoTasksTimeSensitive (3046)', () => {
-    const markers = { long: 'M4s checkForTerminatedPirateEmpires', systemsOnlyTerritory: 'M4t reviewEmpireTerritorySystemsOnly' };
+    const markers = { long: 'M4s checkForTerminatedPirateEmpires' };
+    // ReviewEmpireTerritory(onlySystems: true) is ported (M4t): detected through the EmpireTerritory call.
+    const withTerritory = (fn: () => void): string[] => {
+        const spy = vi.spyOn(galaxy.empireTerritory, 'reviewEmpireTerritoryOnlySystems');
+        try {
+            const fired = firedBlocks(markers, fn);
+            return spy.mock.calls.some((c) => c[1] === true) ? [...fired, 'systemsOnlyTerritory'] : fired;
+        } finally {
+            spy.mockRestore();
+        }
+    };
 
     it('runs the long block at >= 60 s and the huge block at >= 240 s (which skips the systems-only territory review)', () => {
         galaxy.lastGalaxyProcessTime = galaxy.lastGalaxyHugeProcessTime = 0;
         galaxy.nowMs = 59999;
-        expect(firedBlocks(markers, () => galaxyDoTasks(galaxy))).toEqual([]);
+        expect(withTerritory(() => galaxyDoTasks(galaxy))).toEqual([]);
         galaxy.nowMs = 60000;
-        expect(firedBlocks(markers, () => galaxyDoTasks(galaxy))).toEqual(['long', 'systemsOnlyTerritory']);
+        expect(withTerritory(() => galaxyDoTasks(galaxy))).toEqual(['long', 'systemsOnlyTerritory']);
         expect([galaxy.lastGalaxyProcessTime, galaxy.lastGalaxyHugeProcessTime]).toEqual([60000, 0]);
         galaxy.lastGalaxyProcessTime = galaxy.lastGalaxyHugeProcessTime = 0;
         galaxy.nowMs = 240000;
-        expect(firedBlocks(markers, () => galaxyDoTasks(galaxy))).toEqual(['long']);
+        expect(withTerritory(() => galaxyDoTasks(galaxy))).toEqual(['long']);
         expect([galaxy.lastGalaxyProcessTime, galaxy.lastGalaxyHugeProcessTime]).toEqual([240000, 240000]);
     });
 

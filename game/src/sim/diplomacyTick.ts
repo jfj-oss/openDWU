@@ -8,6 +8,7 @@
 import type { Galaxy } from './galaxy';
 import type { Empire } from './empire';
 import { registerTodo, todo } from './tick/todo';
+import type { DiplomaticRelation, DiplomaticRelationType } from './diplomacy';
 
 const T_calculateRelativeEmpireSize = registerTodo('M4r', 'calculateRelativeEmpireSize');
 /** Empire.7.cs 4135 CalculateRelativeEmpireSize; the stub returns the current value. */
@@ -80,4 +81,14 @@ const T_reviewDisputedTerritory = registerTodo('M4r', 'reviewDisputedTerritory')
 export function reviewDisputedTerritory(galaxy: Galaxy, empire: Empire): void {
     // RND: 2 direct — not drawn until M4r.
     /* TODO(port) M4r */ todo(T_reviewDisputedTerritory);
+}
+
+const T_changeDiplomaticRelation = registerTodo('M4r', 'changeDiplomaticRelation');
+/**
+ * Empire.8.cs 2568 ChangeDiplomaticRelation(relation, newType). Stub added by M4t (Galaxy.4.cs 3700 MergeGalaxyMap
+ * "Empire Contact From Galaxy Map" calls it with DiplomaticRelationType.None on a NotMet relation).
+ */
+export function changeDiplomaticRelation(galaxy: Galaxy, empire: Empire, relation: DiplomaticRelation, newType: DiplomaticRelationType): void {
+    // RND: 1 direct — not drawn until M4r.
+    /* TODO(port) M4r */ todo(T_changeDiplomaticRelation);
 }
