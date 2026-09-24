@@ -416,3 +416,66 @@ Tests: constructing an empire with a real race + capital habitat from a generate
 
         public Empire(Galaxy galaxy, string name, bool isIndependentEmpire, Habitat homeHabitat, Race dominantRace, EmpirePolicy policy)
 ```
+
+## Worker report
+
+**Files changed:**
+- `src/sim/empire.ts` (new) — `class Empire` porting the 7-arg and 8-arg constructors
+  (Empire.cs 3748–4146) in exact order of operations, plus `SetStartupColonyResourceCargo`,
+  `ResolveRaceSpecificGovernmentTypes`, `ResolveDefaultAllowableGovernmentTypes` (both
+  overloads), and `GenerateDesignSpecifications` (full 28-spec call list). The third
+  (independent-empire) constructor signature is wired up; its body was truncated from the
+  excerpt so it delegates neutrally to the primary ctor.
+- `src/sim/cargo.ts` (new) — minimal `Cargo` / `CargoList` / `ResourceRef` / `TroopList`
+  surface needed by the constructors. **Note: this file is beyond the task's named list**
+  (`empire.ts`, `types.ts`, `test/empire.test.ts`) but is required because the C# ctor
+  manipulates `capital.Cargo` (a `CargoList`) and `capital.Troops` (a `TroopList`).
+- `src/sim/types.ts` (edited) — added `cargo: CargoList | null`, `troops: TroopList | null`,
+  `developmentLevel`, and `setDevelopmentLevel(level)` to `Habitat`.
+- `test/empire.test.ts` (new) — constructs an empire with a real race + capital habitat
+  from a generated galaxy (asserts name, capital, homeWorld, dominantRace, government id,
+  state/private money, latestDesigns size, systemVisibility size, development level, cargo
+  re-titling); empty-name → generated name; independent-empire ctor; determinism across two
+  same-seed generations.
+
+**Done:** `npm run typecheck` passes; `npm test` passes (242 tests, 23 files, incl. the 4 new
+empire tests). All `Galaxy.Rnd` calls are preserved in position via `galaxy.rnd`.
+
+**Left undone / TODO stubs created (these become the next slices):**
+- `EmpireCounters` — EmpireCounters.cs (empty class).
+- `PirateEconomy` — PirateEconomy.cs (ctor only).
+- `ResourceMap.InitializeFlags` / `SetResourcesKnown` — ResourceMap.cs (no-ops).
+- `ChangeGovernment(governmentId)` — Empire.cs (stores the id; no effects).
+- `GenerateEmpireName(governmentId)` — Empire.cs (adjective+noun from the government
+  definition, fallback `'Empire'`; not the full random name-part logic).
+- `SelectEmpireColors(isPirateFaction, setColors)` — Empire.cs (uses race default colors).
+- `Galaxy.GenerateEmpireFlag` + `Galaxy.FlagShapes` — Galaxy.cs (flag shape passes through
+  the race's `defaultFlagDesign`; small/large flag pictures stay 0).
+- `ResearchSystem` + tech tree `ObtainTechTree` / `SetTechTreeStartingDefaults` —
+  ResearchSystem.cs / Galaxy.ResearchNodeDefinitionsStatic (techTree stays null).
+- `ReviewResearchAbilities`, `ReviewDesignsBuiltObjectsImprovedComponents`,
+  `ReviewColonizationTypes`, `ReviewPopulationGrowthRates`, `ReviewMaximumConstructionSize`,
+  `ReviewCanBuildShipTypes`, `ReviewTroopTypes` — Empire.cs (all no-op stubs).
+- `DesignSpecification.LoadFromFile` (28 specs + PlanetDestroyer path load) —
+  DesignSpecification.cs (returns `{}`).
+- `EmpirePolicy` type — Policy.cs (typed as `unknown`; policy data model not ported).
+- `Galaxy.CurrentStarDate` / `CurrentDateTime` — Galaxy.cs (stood in with `START_STAR_DATE`;
+  the five "last touch" back-dates are computed but not stored on any field yet).
+- `Galaxy.ColonyNames` / `ColonyNameIndex` — Galaxy.cs (player-empire capital rename branch
+  is a guarded no-op).
+- `Galaxy.HabitatIndex` grid — Galaxy.cs (capital's parent star found by scanning the
+  habitat list directly instead).
+- `ResourceSystem` strategic-resource ordering + `RelativeImportance`, and the
+  `ColonyAnnualResourceConsumptionRate` / `ColonyAnnualLuxuryResourceConsumptionRate` /
+  `MinimumLuxuryResourceReorderAmount` constants — ResourceSystem.cs / Galaxy.cs (mineral
+  resources substituted in file order with importance 1; rates = 1.0; reorder min = 400).
+- `Galaxy.SelectRandomLuxuryResource` — Galaxy.cs (uniform pick over type-2 resources via
+  `galaxy.rnd`).
+- `Galaxy.IndependentEmpire` cargo-ownership check — Galaxy.cs (TS Galaxy has no
+  IndependentEmpire; all pre-existing capital cargo is treated as independent-owned).
+- `_LongProcessingInterval` value — Empire.cs (field initializer not in excerpt; used 60_000).
+- `GetNextEmpireID` — Galaxy.cs (per-galaxy counter via a module-level `WeakMap<Galaxy, number>`
+  since the TS Galaxy class can't be edited for this task).
+- Independent-empire constructor body — Empire.cs:4146+ (truncated from the excerpt).
+- `Troop` class — Troop.cs (only the `TroopList` wrapper is modeled).
+- Full `Cargo` semantics (component vs resource commodities, per-empire merging) — Cargo.cs.

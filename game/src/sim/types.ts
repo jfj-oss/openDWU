@@ -4,6 +4,7 @@
 
 import { PopulationList } from './population';
 import type { Creature } from './creature';
+import type { CargoList, TroopList } from './cargo';
 
 // Port of DistantWorlds.Types.HabitatType (HabitatType.cs)
 export enum HabitatType {
@@ -173,6 +174,18 @@ export class Habitat {
     // Port of Habitat.cs Population (PopulationList, populated by
     // Galaxy.SelectPopulation — Galaxy.6.cs:1218).
     population = new PopulationList();
+    // Port of Habitat.cs Cargo (CargoList) and Troops (TroopList); the C#
+    // fields are nullable, so null until first use (Empire ctor sets them).
+    cargo: CargoList | null = null;
+    troops: TroopList | null = null;
+    // Port of Habitat.cs DevelopmentLevel (byte), set via SetDevelopmentLevel
+    // (Habitat.cs).
+    developmentLevel = 0;
+
+    // Port of Habitat.cs SetDevelopmentLevel.
+    setDevelopmentLevel(level: number): void {
+        this.developmentLevel = level;
+    }
 
     // TODO(port): _LastHugeTouch/_LastLongTouch/_LastPeriodicTouch/_LastTouch
     // (galaxy time), _BasesAtHabitat list and
