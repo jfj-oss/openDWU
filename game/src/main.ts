@@ -19,7 +19,7 @@ import { GalaxyTime } from './sim/clock';
 import { START_STAR_DATE } from './sim/galaxyTime';
 import { formatClockLabel, SECTOR_LEVEL_ZOOM, SYSTEM_LEVEL_ZOOM, type Selection } from './ui/hud';
 import { Habitat, HabitatCategoryType } from './sim/types';
-import { createMapOverlayState } from './ui/mapOverlays';
+import { createMapOverlayState, type MapOverlayState, type OverlayKey } from './ui/mapOverlays';
 import { buildDefaultHandlers, createShortcutsOverlay, dispatchKey } from './ui/keyboard';
 import { createMainMenu } from './ui/screens/mainMenu';
 import { openOptionsModal } from './ui/screens/mainMenu';
@@ -138,6 +138,36 @@ export function buildDwuDebugObject(args: { camera: object; galaxy: object; view
     return obj;
 }
 
+/** Task M3: `?overlays=` token → MapOverlayState key, including short
+ * screenshot-friendly aliases alongside the full field names. */
+const OVERLAY_PARAM_ALIASES: Record<string, OverlayKey> = {
+    potentialColonies: 'potentialColonies',
+    colonies: 'potentialColonies',
+    scenic: 'scenicLocations',
+    scenicLocations: 'scenicLocations',
+    research: 'researchLocations',
+    researchLocations: 'researchLocations',
+    territory: 'empireTerritory',
+    empireTerritory: 'empireTerritory',
+    fleetPostures: 'fleetPostures',
+    travelVectorsState: 'travelVectorsState',
+    travelVectorsPrivate: 'travelVectorsPrivate',
+    longRangeScanners: 'longRangeScanners',
+    fadeCivilianShips: 'fadeCivilianShips',
+};
+
+/** Screenshot / dev hook: `?overlays=potentialColonies,scenic,research`
+ * turns on the named overlay toggles at boot (task M3 verification), e.g.
+ * `?autostart=1&zoom=1200&overlays=potentialColonies,scenic,research`. */
+function applyOverlaysUrlParam(overlays: MapOverlayState): void {
+    const raw = new URLSearchParams(window.location.search).get('overlays');
+    if (raw === null) return;
+    for (const token of raw.split(',').map((s) => s.trim()).filter(Boolean)) {
+        const key = OVERLAY_PARAM_ALIASES[token];
+        if (key !== undefined) overlays[key] = true;
+    }
+}
+
 /** Task M2e2: one shared boot used by the wizard Start, `?autostart=1` and
  * save-load — centres the camera on the player's capital at Sector zoom,
  * wires the HUD/clock/input, and sets `window.__dwu` (camera, galaxy, view,
@@ -184,14 +214,18 @@ async function startGameView(game: Game, zoomOverride?: number): Promise<void> {
     }
 
     const store = new AssetStore(dwuPresent);
-    const view = new MainView(app, camera, galaxy, store);
+    // Task M3: the overlay toggle state is created here (instead of after
+    // MainView, as before) so the Main View's overlay layer and the HUD's
+    // options list share the same MapOverlayState instance.
+    const overlays = createMapOverlayState();
+    applyOverlaysUrlParam(overlays);
+    const view = new MainView(app, camera, galaxy, store, overlays);
     await view.init();
 
     // Debug / screenshot hook: the created game (galaxy + player empire).
     (window as unknown as { __dwu?: unknown }).__dwu = buildDwuDebugObject({ camera, galaxy, view, app, game });
 
     const time = new GalaxyTime(START_STAR_DATE);
-    const overlays = createMapOverlayState();
     // Task 10d: the HUD's money panel refreshes from the player empire.
     const hud: HudRefs = createHud({ clock: time, overlays, camera, galaxy, game });
     const systemNameEl = hud.elements.get('pnlMoney')?.querySelector('.hud-system-name');
@@ -502,7 +536,11 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     }
 
     const store = new AssetStore(dwuPresent);
-    const view = new MainView(app, camera, galaxy, store);
+    // Task M3: created before MainView so the Main View's overlay layer and
+    // the HUD's options list share the same MapOverlayState instance.
+    const overlays = createMapOverlayState();
+    applyOverlaysUrlParam(overlays);
+    const view = new MainView(app, camera, galaxy, store, overlays);
     await view.init();
 
     // Debug / screenshot hook: the camera and the generated galaxy model.
@@ -514,7 +552,6 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     // refreshed as the camera moves (demo: nearest star/planet to the view
     // centre).
     const time = new GalaxyTime(START_STAR_DATE);
-    const overlays = createMapOverlayState();
     const hud: HudRefs = createHud({ clock: time, overlays, camera, galaxy, gameData: gameData ?? undefined });
     const systemNameEl = hud.elements.get('pnlMoney')?.querySelector('.hud-system-name');
     const dateEl = hud.elements.get('pnlTopLeftBar')?.querySelector('.hud-date');

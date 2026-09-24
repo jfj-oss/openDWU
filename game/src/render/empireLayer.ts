@@ -163,6 +163,14 @@ export class EmpireLayer {
     /** Owned-system marker rings, one per star whose system has an owned
      * colony (drawn around the star icon at galaxy/sector zoom). */
     private markerRings: Array<{ star: Habitat; owner: Empire; ring: Graphics }> = [];
+    /** Task M3: gates the territory discs only (not colony/marker rings),
+     * driven by the "Empire Territory" overlay toggle in overlayLayer.ts. */
+    private territoryEnabled = true;
+
+    /** Show/hide the territory discs (overlayLayer.ts, "Empire Territory"). */
+    setTerritoryEnabled(enabled: boolean): void {
+        this.territoryEnabled = enabled;
+    }
 
     constructor(private galaxy: Galaxy, world: Container) {
         world.addChild(this.root);
@@ -229,7 +237,7 @@ export class EmpireLayer {
         // empire.colonies, so every empire with owned habitats draws its disc.
         for (let i = 0; i < this.empires.length; i++) {
             const t = this.territories.get(this.empires[i])!;
-            if (atSystemZoom) {
+            if (atSystemZoom || !this.territoryEnabled) {
                 t.graphics.visible = false;
                 continue;
             }

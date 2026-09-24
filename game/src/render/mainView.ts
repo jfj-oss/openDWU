@@ -43,6 +43,8 @@ import { GalaxyLocation, GalaxyLocationType } from '../sim/galaxyLocation';
 import { Habitat, HabitatCategoryType, HabitatType, SystemInfo } from '../sim/types';
 import { NebulaCloudGenerator } from './nebulaClouds';
 import { EmpireLayer } from './empireLayer';
+import { OverlayLayer } from './overlayLayer';
+import { createMapOverlayState, type MapOverlayState } from '../ui/mapOverlays';
 import { showRegionLabels, showSystemNames } from '../ui/settings';
 
 export function fadeIn(v: number, a: number, b: number): number {
@@ -723,6 +725,9 @@ export class MainView {
     nebulae: NebulaView[] = [];
     /** Task M2e: empire ownership overlays (colony rings, markers, territory). */
     private empireLayer!: EmpireLayer;
+    /** Task M3: the Overlays HUD toggles this renderer implements (potential
+     * colonies, scenic/research markers, empire territory visibility). */
+    private overlayLayer!: OverlayLayer;
     private textures!: MainViewTextures;
     private minZoom = 1e-6;
     private lastGridZoom = -1;
@@ -739,7 +744,16 @@ export class MainView {
     /** Task 08g: set by main.ts — star double-clicked at galaxy/sector zoom. */
     onDoubleClickStar?: (h: Habitat) => void;
 
-    constructor(readonly app: Application, readonly camera: Camera, readonly galaxy: Galaxy, readonly store: AssetStore) {
+    /** Task M3: map overlay toggle state (src/ui/mapOverlays.ts), shared
+     * with the HUD's options list. Defaults to a fresh state so existing
+     * callers that only pass the first four constructor args keep working. */
+    constructor(
+        readonly app: Application,
+        readonly camera: Camera,
+        readonly galaxy: Galaxy,
+        readonly store: AssetStore,
+        private overlays: MapOverlayState = createMapOverlayState(),
+    ) {
         app.stage.addChild(this.world);
         app.stage.addChild(this.fx);
         this.world.addChild(this.grid);
@@ -953,6 +967,10 @@ export class MainView {
         // Task M2e: empire ownership overlays. The layer's root is added to
         // world after all system roots, so rings/discs draw on top of stars.
         this.empireLayer = new EmpireLayer(this.galaxy, this.world);
+        // Task M3: potential-colonies/scenic/research markers + the Empire
+        // Territory toggle. Added after empireLayer so its yellow marker
+        // rings draw above the territory discs and colony rings.
+        this.overlayLayer = new OverlayLayer(this.galaxy, this.world, this.empireLayer, this.overlays);
 
         this.attachInput();
     }
@@ -1055,6 +1073,10 @@ export class MainView {
         // Task M2e: empire ownership overlays (colony rings at system zoom;
         // owned-system markers + territory discs at galaxy/sector zoom).
         this.empireLayer.update(z, cam);
+        // Task M3: potential-colonies/scenic/research markers (Empire
+        // Territory's visibility toggle is applied straight to empireLayer,
+        // above).
+        this.overlayLayer.update(z, cam);
 
         // Region/nebula location name labels (task 08f1): visible while the
         // original's zoom factor double_15 satisfies 70 < double_15 <=

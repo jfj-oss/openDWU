@@ -2,7 +2,7 @@ import { computeHudLayout, CYCLE_CHIPS, TOP_BAR_BUTTONS, VIEW_ROWS, type Rect, t
 import { onSettingsChange, uiScaleFactor } from './settings';
 import { GalaxyTime } from '../sim/clock';
 import { resolveStarDateDescription } from '../sim/galaxyTime';
-import { createMapOverlayState, OVERLAY_ROWS, toggleOverlay, type MapOverlayState } from './mapOverlays';
+import { createMapOverlayState, OVERLAY_ROWS, toggleOverlay, type MapOverlayState, type OverlayKey } from './mapOverlays';
 import { Camera } from '../render/camera';
 import { Galaxy } from '../sim/galaxy';
 import type { GameData } from '../sim/data/gameData';
@@ -649,6 +649,17 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
 }
 
 /** Bottom-right options list: View rows + overlay toggles. */
+/** Task M3: overlays that need ship state (fleets, travel vectors) not yet
+ * ported — their toggle just flips the checkbox; src/render/overlayLayer.ts
+ * does not draw anything for them. */
+const OVERLAY_NEEDS_SHIPS: ReadonlySet<OverlayKey> = new Set([
+    'fleetPostures',
+    'travelVectorsState',
+    'travelVectorsPrivate',
+    'longRangeScanners',
+    'fadeCivilianShips',
+]);
+
 function buildOptionsList(wiring: HudWiring): HTMLElement {
     const overlays = wiring.overlays ?? createMapOverlayState();
     const panel = document.createElement('div');
@@ -700,8 +711,13 @@ function buildOptionsList(wiring: HudWiring): HTMLElement {
             playUiClick();
             toggleOverlay(overlays, row.key);
             check.textContent = overlays[row.key] ? '✓' : '';
-            // TODO(overlay): render this map overlay in the Main View.
-            console.log(`TODO(overlay): ${row.label} -> ${overlays[row.key]}`);
+            // Rendering lives in src/render/overlayLayer.ts (task M3), which
+            // subscribes to onOverlayChange and reacts to this toggle
+            // immediately. Empire Territory / Potential Colonies / Scenic
+            // Locations / Research Locations are implemented there.
+            if (OVERLAY_NEEDS_SHIPS.has(row.key)) {
+                // TODO(overlay): needs ships (M3).
+            }
         });
         panel.appendChild(item);
     }
