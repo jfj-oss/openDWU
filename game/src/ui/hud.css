@@ -1,0 +1,83 @@
+/* HUD overlay (task 05b). Original font: Forgotten Futurist, served from the
+   DW:U install folder via /assets/dwu/... (desktop shell maps the prefix; in
+   dev the public symlink does). */
+@font-face {
+    font-family: 'Forgotten Futurist';
+    src: url('/assets/dwu/Customization/DistantWorldsExpanded-main/DistantWorldsExpanded/DistantWorlds/Resources/Forgotte.ttf');
+}
+@font-face {
+    font-family: 'Forgotten Futurist';
+    font-weight: bold;
+    src: url('/assets/dwu/Customization/DistantWorldsExpanded-main/DistantWorldsExpanded/DistantWorlds/Resources/Forgottb.ttf');
+}
+
+#hud {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    font-family: 'Forgotten Futurist', sans-serif;
+    color: #fff;
+    overflow: hidden;
+}
+
+.hud-el {
+    position: absolute;
+}
+
+/* Interactive controls re-enable pointer events. */
+.hud-btn {
+    pointer-events: auto;
+    background: transparent;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.hud-btn img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    user-select: none;
+    -webkit-user-drag: none;
+}
+/* Controls with no chrome image: a plain dark button so they stay clickable. */
+.hud-btn.hud-btn-bare {
+    background: rgba(24, 24, 24, 0.82);
+    border: 1px solid #3a3a3a;
+    border-radius: 4px;
+    font-size: 11px;
+    color: #9a9a9a;
+}
+
+/* Panels: original-style dark translucent boxes. */
+.hud-panel {
+    background: rgba(24, 24, 24, 0.82);
+    border: 1px solid #3a3a3a;
+    border-radius: 4px;
+    padding: 6px;
+    font-size: 11px;
+    line-height: 1.5;
+}
+.hud-label {
+    color: #9a9a9a;
+    font-size: 11px;
+}
+.hud-value {
+    color: #fff;
+    font-size: 12px;
+}
+
+/* lblStateMoney block: Money / Cashflow / Bonus Income rows. */
+.hud-money-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+/* lstMessages: fixed-height message list, empty lines as placeholders. */
+#lstMessages {
+    white-space: pre;
+    overflow: hidden;
+}

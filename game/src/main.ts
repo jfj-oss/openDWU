@@ -11,6 +11,8 @@ import { AssetStore, loadManifest } from './render/assets';
 import { generateGalaxy } from './sim/galaxy';
 import { parseSystemNames } from './sim/data';
 import { GalaxyShape } from './sim/types';
+import { createHud, layoutHud, nearestSystemName, type HudRefs } from './ui/hud';
+import './ui/hud.css';
 
 // ?shape= names accepted by the boot URL.
 const SHAPE_BY_NAME: Record<string, GalaxyShape> = {
@@ -136,8 +138,28 @@ async function main(): Promise<void> {
     // Debug / screenshot hook: the camera and the generated galaxy model.
     (window as unknown as { __dwu?: unknown }).__dwu = { camera, galaxy, view, app };
 
+    // HUD overlay (task 05b): DOM layer above the canvas, one element per
+    // rect from computeHudLayout; re-laid-out on window resize.
+    const hud: HudRefs = createHud();
+    const systemNameEl = hud.elements.get('lblSystemName');
+    const refreshHud = (): void => {
+        if (systemNameEl) {
+            systemNameEl.textContent = nearestSystemName(
+                { galaxy },
+                camera,
+            );
+        }
+    };
+    refreshHud();
+    window.addEventListener('resize', () => layoutHud(hud));
+    // The camera centre moves with panning/zooming; keep lblSystemName fresh.
+    setInterval(refreshHud, 250);
+
     app.ticker.add(() => view.update());
-    app.renderer.on('resize', () => camera.setViewport(app.renderer.width, app.renderer.height));
+    app.renderer.on('resize', () => {
+        camera.setViewport(app.renderer.width, app.renderer.height);
+        layoutHud(hud);
+    });
 }
 
 main().catch((err) => {
