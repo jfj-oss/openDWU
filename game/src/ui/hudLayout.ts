@@ -96,7 +96,9 @@ export function computeHudLayout(width: number, height: number): Record<string, 
     layout['pnlTopLeftBar'] = { x: 10, y: 10, w: 300, h: 40 };
 
     // ------------------------------------------------------------------
-    // Top-right: money block + system name, one panel flush to the corner.
+    // Top-right: money block + system name, one panel anchored to the right
+    // edge (10 px margin) so its values never clip past the screen edge
+    // (task 10e).
     // ------------------------------------------------------------------
     layout['pnlMoney'] = { x: width - 230 - 10, y: 10, w: 230, h: 100 };
 
@@ -106,8 +108,9 @@ export function computeHudLayout(width: number, height: number): Record<string, 
     layout['pnlSelection'] = { x: 10, y: height - 220 - 10, w: 300, h: 220 };
 
     // ------------------------------------------------------------------
-    // Bottom-right: options list, 220 px wide (replaces the minimap). Height
-    // is content-driven (h = 0): the CSS sizes it to its rows and scrolls if
+    // Bottom-right: options list, 220 px wide (replaces the minimap),
+    // anchored to the right edge with a 10 px margin (task 10e). Height is
+    // content-driven (h = 0): the CSS sizes it to its rows and scrolls if
     // the window is shorter than the list (task 05d).
     // ------------------------------------------------------------------
     layout['pnlOptionsList'] = { x: width - 220 - 10, y: height - 10, w: 220, h: 0 };

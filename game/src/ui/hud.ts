@@ -196,8 +196,14 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
         el.classList.add('hud-el');
         el.dataset.hud = name;
         applyRect(el, rect);
-        // The options list is content-sized (rect.h === 0): anchor it to the
-        // window's bottom-right corner instead of a fixed top offset.
+        // Task 10e: right-anchored panels position via `right` (not a computed
+        // left) so they can never clip past the screen edge. The options list
+        // is content-sized (rect.h === 0): anchor it to the window's
+        // bottom-right corner instead of a fixed top offset.
+        if (name === 'pnlMoney' || name === 'pnlOptionsList') {
+            el.style.left = '';
+            el.style.right = `${Math.max(0, window.innerWidth - rect.x - rect.w)}px`;
+        }
         if (name === 'pnlOptionsList' && rect.h === 0) {
             el.style.top = '';
             el.style.bottom = `${Math.max(0, window.innerHeight - rect.y - rect.h)}px`;
@@ -226,6 +232,11 @@ export function layoutHud(refs: HudRefs): void {
     for (const [name, el] of refs.elements) {
         const rect = layout[name];
         if (rect) applyRect(el, rect);
+        // Task 10e: keep the right-anchored panels pinned to the right edge.
+        if (rect && (name === 'pnlMoney' || name === 'pnlOptionsList')) {
+            el.style.left = '';
+            el.style.right = `${Math.max(0, window.innerWidth - rect.x - rect.w)}px`;
+        }
         if (name === 'pnlOptionsList' && rect && rect.h === 0) {
             el.style.top = '';
             el.style.bottom = `${Math.max(0, window.innerHeight - rect.y - rect.h)}px`;
