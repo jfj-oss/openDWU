@@ -54,6 +54,27 @@ export function fadeIn(v: number, a: number, b: number): number {
     return t * t * (3 - 2 * t);
 }
 
+// Task 08f3: every map Text uses this family so the labels fall back to
+// sans-serif (not serif) when 'Forgotten Futurist' has not loaded yet.
+export const MAP_FONT_FAMILY = 'Forgotten Futurist, sans-serif';
+
+/**
+ * Task 08f3: wait for the 'Forgotten Futurist' web font (declared via CSS
+ * @font-face in hud.css) before building the Main View text layers, so the
+ * region/system/planet labels rasterize in the real font instead of the
+ * serif fallback. Both weights are requested because RegionLabel switches
+ * fontWeight between normal and bold per zoom branch. Failures are caught
+ * and ignored — the labels then use the sans-serif fallback.
+ */
+export async function loadMapFont(): Promise<void> {
+    try {
+        await document.fonts.load('16px "Forgotten Futurist"');
+        await document.fonts.load('bold 16px "Forgotten Futurist"');
+    } catch {
+        // Font unavailable (e.g. no DW:U install): continue with the fallback.
+    }
+}
+
 export function fadeOut(v: number, a: number, b: number): number {
     return 1 - fadeIn(v, a, b);
 }
@@ -217,7 +238,7 @@ class PlanetView {
         this.system.root.addChild(this.sprite);
         this.label = new Text({
             text: habitat.name,
-            style: { fontSize: 9, fill: 0xffffff },
+            style: { fontSize: 9, fill: 0xffffff, fontFamily: MAP_FONT_FAMILY },
         });
         this.label.anchor.set(0.5, 0);
         this.label.visible = false;
@@ -333,7 +354,7 @@ class SystemView {
 
         this.nameLabel = new Text({
             text: star.name,
-            style: { fontSize: 11, fill: 0xffffff },
+            style: { fontSize: 11, fill: 0xffffff, fontFamily: MAP_FONT_FAMILY },
         });
         this.nameLabel.anchor.set(0.5, 0);
         this.nameLabel.visible = false;
@@ -571,7 +592,7 @@ class RegionLabel {
         this.location = location;
         this.text = new Text({
             text: location.name,
-            style: { fontSize: 16.67, fill: 0xffffff, fontFamily: 'Forgotten Futurist' },
+            style: { fontSize: 16.67, fill: 0xffffff, fontFamily: MAP_FONT_FAMILY },
         });
         this.text.anchor.set(0.5);
         this.text.alpha = 0.85;
@@ -789,6 +810,26 @@ export class MainView {
     /** Load textures, build all scene objects, attach input handlers. */
     async init(): Promise<void> {
         const store = this.store;
+        // Task 08f3: wait for the 'Forgotten Futurist' web font BEFORE any
+        // map Text object is built below (system/planet labels are created
+        // in SystemView's constructor), so they rasterize in the real font.
+        await loadMapFont();
+        // If the font finishes loading later (or was created earlier by a
+        // caller that skipped the wait), force every label to re-render in
+        // it once document.fonts settles.
+        void document.fonts.ready
+            .then(() => {
+                for (const sv of this.systems) {
+                    sv.nameLabel.style.fontFamily = MAP_FONT_FAMILY;
+                    for (const planet of sv.planets) {
+                        planet.label.style.fontFamily = MAP_FONT_FAMILY;
+                    }
+                }
+                for (const rl of this.regionLabelViews) {
+                    rl.text.style.fontFamily = MAP_FONT_FAMILY;
+                }
+            })
+            .catch(() => undefined);
         // Only the backdrop is preloaded up front; star map icons, star
         // sprites, planet sprites, rocks and gas clouds all load lazily
         // below, per habitat pictureRef (task 01).
