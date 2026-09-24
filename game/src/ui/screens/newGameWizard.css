@@ -141,6 +141,22 @@
     gap: 10px;
 }
 
+/* Task 06f: "Difficulty scales as player nears victory" checkbox row. */
+.wizard-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: #c9d1d9;
+    cursor: pointer;
+}
+
+.wizard-checkbox input[type='checkbox'] {
+    width: 15px;
+    height: 15px;
+    accent-color: #4f9a4f;
+}
+
 .wizard-seed-input {
     background: rgba(0, 0, 0, 0.4);
     border: 1px solid rgba(255, 255, 255, 0.15);

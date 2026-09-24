@@ -2,14 +2,20 @@ import { describe, expect, it } from 'vitest';
 import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
+    aggressionFor,
+    alienLifeFor,
     applyEmpireDefaults,
+    colonyPrevalenceFor,
     defaultEmpireName,
     defaultFlagColors,
     defaultRaceName,
     defaultStartGameOptions,
+    difficultyFor,
     flagShapeUrl,
     FLAG_COLOR_PALETTE,
+    piratesFor,
     sectorsFor,
+    spaceCreaturesFor,
     starCountFor,
     type StartGameOptions,
 } from '../src/sim/startGameOptions';
@@ -63,6 +69,16 @@ describe('defaultStartGameOptions (task 06b)', () => {
         expect(opts.flagShapeIndex).toBe(-1);
         expect(opts.primaryColor).toBe('');
         expect(opts.secondaryColor).toBe('');
+        // Task 06f: galaxy-option sliders default to their middle ticks (the
+        // original's default positions are not visible in the task context);
+        // difficulty scaling is off.
+        expect(opts.colonyPrevalenceIndex).toBe(2);
+        expect(opts.alienLifeIndex).toBe(2);
+        expect(opts.spaceCreaturesIndex).toBe(1);
+        expect(opts.piratesIndex).toBe(2);
+        expect(opts.aggressionIndex).toBe(2);
+        expect(opts.difficultyIndex).toBe(2);
+        expect(opts.difficultyScaling).toBe(false);
     });
 });
 
@@ -115,6 +131,13 @@ describe('StartGameOptions round-trip (task 06d)', () => {
             flagShapeIndex: 7,
             primaryColor: '#c8373a',
             secondaryColor: '#e8d24a',
+            colonyPrevalenceIndex: 0,
+            alienLifeIndex: 1,
+            spaceCreaturesIndex: 2,
+            piratesIndex: 3,
+            aggressionIndex: 4,
+            difficultyIndex: 0,
+            difficultyScaling: true,
         };
         const copy = { ...options };
         expect(copy).toEqual(options);
@@ -137,6 +160,13 @@ describe('StartGameOptions round-trip (task 06d)', () => {
             flagShapeIndex: -1,
             primaryColor: '',
             secondaryColor: '',
+            colonyPrevalenceIndex: 2,
+            alienLifeIndex: 2,
+            spaceCreaturesIndex: 1,
+            piratesIndex: 2,
+            aggressionIndex: 2,
+            difficultyIndex: 2,
+            difficultyScaling: false,
         };
         expect(starCountFor(options.starCountIndex)).toBe(700);
         expect(sectorsFor(options.dimensionIndex)).toBe(8);
@@ -210,5 +240,95 @@ describe('defaultEmpireName / applyEmpireDefaults (task 06e)', () => {
             expect(primary).toBe(FLAG_COLOR_PALETTE[((i % 12) + 12) % 12]);
             expect(secondary).toBe(FLAG_COLOR_PALETTE[(((i % 12) + 12) % 12 + 5) % 12]);
         }
+    });
+});
+
+describe('colonyPrevalenceFor (task 06f, Start.cs Start.method_64)', () => {
+    it('maps the five colony-prevalence slider ticks', () => {
+        expect(colonyPrevalenceFor(0)).toBe(0.35);
+        expect(colonyPrevalenceFor(1)).toBe(0.5);
+        expect(colonyPrevalenceFor(2)).toBe(0.65);
+        expect(colonyPrevalenceFor(3)).toBe(0.82);
+        expect(colonyPrevalenceFor(4)).toBe(1.0);
+    });
+
+    it('defaults out-of-range indices to 0.75 (C# pre-switch default)', () => {
+        expect(colonyPrevalenceFor(-1)).toBe(0.75);
+        expect(colonyPrevalenceFor(5)).toBe(0.75);
+    });
+});
+
+describe('alienLifeFor (task 06f, Start.cs Start.method_67 → BaconStart.OverrideLowIndependentLifeValue)', () => {
+    it('maps the five alien-life slider ticks (vanilla table; the 150 case is a Bacon override in the mod)', () => {
+        expect(alienLifeFor(0)).toBe(150);
+        expect(alienLifeFor(1)).toBe(250);
+        expect(alienLifeFor(2)).toBe(400);
+        expect(alienLifeFor(3)).toBe(700);
+        expect(alienLifeFor(4)).toBe(1000);
+    });
+
+    it('defaults out-of-range indices to 400 (C# pre-switch default)', () => {
+        expect(alienLifeFor(-1)).toBe(400);
+        expect(alienLifeFor(5)).toBe(400);
+    });
+});
+
+describe('spaceCreaturesFor (task 06f, Start.cs Start.method_62)', () => {
+    it('maps the four space-creatures slider ticks', () => {
+        expect(spaceCreaturesFor(0)).toBe(0.0);
+        expect(spaceCreaturesFor(1)).toBe(0.3);
+        expect(spaceCreaturesFor(2)).toBe(0.6);
+        expect(spaceCreaturesFor(3)).toBe(1.0);
+    });
+
+    it('defaults out-of-range indices to 0', () => {
+        expect(spaceCreaturesFor(-1)).toBe(0.0);
+        expect(spaceCreaturesFor(4)).toBe(0.0);
+    });
+});
+
+describe('piratesFor (task 06f, Start.cs Start.method_66)', () => {
+    it('maps the six pirates slider ticks', () => {
+        expect(piratesFor(0)).toBe(0.0);
+        expect(piratesFor(1)).toBe(0.07);
+        expect(piratesFor(2)).toBe(0.2);
+        expect(piratesFor(3)).toBe(0.4);
+        expect(piratesFor(4)).toBe(0.7);
+        expect(piratesFor(5)).toBe(1.0);
+    });
+
+    it('defaults out-of-range indices to 0', () => {
+        expect(piratesFor(-1)).toBe(0.0);
+        expect(piratesFor(6)).toBe(0.0);
+    });
+});
+
+describe('aggressionFor (task 06f, Start.cs Start.method_71)', () => {
+    it('maps the five aggression slider ticks', () => {
+        expect(aggressionFor(0)).toBe(0.9);
+        expect(aggressionFor(1)).toBe(1.1);
+        expect(aggressionFor(2)).toBe(1.3);
+        expect(aggressionFor(3)).toBe(1.5);
+        expect(aggressionFor(4)).toBe(1.7);
+    });
+
+    it('defaults out-of-range indices to 0', () => {
+        expect(aggressionFor(-1)).toBe(0.0);
+        expect(aggressionFor(5)).toBe(0.0);
+    });
+});
+
+describe('difficultyFor (task 06f, Start.1.cs Start.method_201)', () => {
+    it('maps the five difficulty slider ticks', () => {
+        expect(difficultyFor(0)).toBe(0.7);
+        expect(difficultyFor(1)).toBe(1.0);
+        expect(difficultyFor(2)).toBe(1.25);
+        expect(difficultyFor(3)).toBe(1.6);
+        expect(difficultyFor(4)).toBe(2.0);
+    });
+
+    it('defaults out-of-range indices to 1.0 (C# pre-switch default)', () => {
+        expect(difficultyFor(-1)).toBe(1.0);
+        expect(difficultyFor(5)).toBe(1.0);
     });
 });

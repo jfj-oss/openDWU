@@ -52,6 +52,18 @@ export const SHAPE_OPTIONS: ShapeOption[] = [
 export const STAR_AMOUNT_TICKS = ['Dwarf 100', 'Tiny 250', 'Small 400', 'Standard 700', 'Large 1000', 'Huge 1400'];
 export const PHYSICAL_SIZE_TICKS = ['Tiny 4×4', 'Small 6×6', 'Medium 8×8', 'Large 10×10', 'Huge 15×15 sectors'];
 
+/** Task 06f: tick labels for the remaining "The Galaxy" sliders. Aggression,
+ * Space Creatures and Pirates use the original UI's tick names (gameplay
+ * frame); Colony Prevalence / Alien Life have no named ticks in the original,
+ * so they are labelled Rare … Common evenly across their five cases (the
+ * number of cases in their conversion methods). */
+export const COLONY_PREVALENCE_TICKS = ['Rare', 'Uncommon', 'Less Common', 'Common', 'Very Common'];
+export const ALIEN_LIFE_TICKS = ['Rare', 'Uncommon', 'Less Common', 'Common', 'Very Common'];
+export const SPACE_CREATURES_TICKS = ['None', 'Few', 'Normal', 'Many'];
+export const PIRATES_TICKS = ['None', 'Very Few', 'Few', 'Normal', 'Many', 'Very Many'];
+export const AGGRESSION_TICKS = ['Peaceful', 'Normal', 'Restless', 'Unstable', 'Chaos'];
+export const DIFFICULTY_TICKS = ['Easy', 'Normal', 'Hard', 'Very Hard', 'Extreme'];
+
 export interface NewGameWizardCallbacks {
     onBackToMenu: () => void;
     onStartGame: (options: StartGameOptions) => void;
@@ -425,6 +437,42 @@ function buildGalaxyPage(options: StartGameOptions): HTMLDivElement {
     wrap.appendChild(makeSlider('Physical Size', PHYSICAL_SIZE_TICKS, options.dimensionIndex, (i) => {
         options.dimensionIndex = i;
     }));
+
+    // --- Task 06f: remaining "The Galaxy" sliders (below Star Amount /
+    // Physical Size, as in the original). ---
+    wrap.appendChild(makeSlider('Colony Prevalence', COLONY_PREVALENCE_TICKS, options.colonyPrevalenceIndex, (i) => {
+        options.colonyPrevalenceIndex = i;
+    }));
+    wrap.appendChild(makeSlider('Alien Life', ALIEN_LIFE_TICKS, options.alienLifeIndex, (i) => {
+        options.alienLifeIndex = i;
+    }));
+    wrap.appendChild(makeSlider('Space Creatures', SPACE_CREATURES_TICKS, options.spaceCreaturesIndex, (i) => {
+        options.spaceCreaturesIndex = i;
+    }));
+    wrap.appendChild(makeSlider('Pirates', PIRATES_TICKS, options.piratesIndex, (i) => {
+        options.piratesIndex = i;
+    }));
+    wrap.appendChild(makeSlider('Aggression', AGGRESSION_TICKS, options.aggressionIndex, (i) => {
+        options.aggressionIndex = i;
+    }));
+    wrap.appendChild(makeSlider('Difficulty', DIFFICULTY_TICKS, options.difficultyIndex, (i) => {
+        options.difficultyIndex = i;
+    }));
+
+    // "Difficulty scales as player nears victory" (chkStartNewGameTheGalaxyDifficultyScaling).
+    const scalingRow = document.createElement('label');
+    scalingRow.className = 'wizard-checkbox';
+    const scalingCheck = document.createElement('input');
+    scalingCheck.type = 'checkbox';
+    scalingCheck.checked = options.difficultyScaling;
+    scalingCheck.addEventListener('change', () => {
+        options.difficultyScaling = scalingCheck.checked;
+    });
+    scalingRow.appendChild(scalingCheck);
+    const scalingText = document.createElement('span');
+    scalingText.textContent = 'Difficulty scales as player nears victory';
+    scalingRow.appendChild(scalingText);
+    wrap.appendChild(scalingRow);
 
     // --- Seed ---
     const seedRow = document.createElement('div');
@@ -920,6 +968,12 @@ function buildStartPage(options: StartGameOptions): HTMLDivElement {
             ['Galaxy Shape', shapeOpt.label],
             ['Star Amount', STAR_AMOUNT_TICKS[options.starCountIndex] ?? `${starCountFor(options.starCountIndex)} stars`],
             ['Physical Size', PHYSICAL_SIZE_TICKS[options.dimensionIndex] ?? `${sectorsFor(options.dimensionIndex)}×${sectorsFor(options.dimensionIndex)} sectors`],
+            ['Colony Prevalence', COLONY_PREVALENCE_TICKS[options.colonyPrevalenceIndex] ?? `index ${options.colonyPrevalenceIndex}`],
+            ['Alien Life', ALIEN_LIFE_TICKS[options.alienLifeIndex] ?? `index ${options.alienLifeIndex}`],
+            ['Space Creatures', SPACE_CREATURES_TICKS[options.spaceCreaturesIndex] ?? `index ${options.spaceCreaturesIndex}`],
+            ['Pirates', PIRATES_TICKS[options.piratesIndex] ?? `index ${options.piratesIndex}`],
+            ['Aggression', AGGRESSION_TICKS[options.aggressionIndex] ?? `index ${options.aggressionIndex}`],
+            ['Difficulty', DIFFICULTY_TICKS[options.difficultyIndex] ?? `index ${options.difficultyIndex}` + (options.difficultyScaling ? ' (scales near victory)' : '')],
             ['Your Race', options.raceName || '(not chosen)'],
             ['Empire Name', options.empireName || '(not set)'],
             ['Government', options.governmentId >= 0 ? `#${options.governmentId}` : '(not chosen)'],
