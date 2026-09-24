@@ -1,7 +1,12 @@
 // Main menu screen (task 06a). Port of the visual layout of Main.Part*.cs /
 // Start.InitializeComponent.cs's pnlMainMenu, using the original chrome art
-// served from /assets/dwu/images/ui/chrome/.
+// served from /assets/dwu/images/ui/chrome/. Task 06k adds the Credits
+// screen and the Options modal.
 import './mainMenu.css';
+import { buildOptionsPanel, type MusicAdapter } from './gameMenu';
+import { createCreditsScreen } from './credits';
+import { startMusic } from '../../audio/musicPlayer';
+import { openGalactopedia } from './galactopedia';
 
 const CHROME = '/assets/dwu/images/ui/chrome/';
 
@@ -66,6 +71,64 @@ function showExitToast(root: HTMLElement): void {
     setTimeout(() => toast.remove(), 3000);
 }
 
+/** Lazily fetch the real music player for the Options panel (created by
+ * startMusic at boot); null if audio is unavailable. */
+function menuMusic(): MusicAdapter | null {
+    try {
+        return startMusic();
+    } catch {
+        return null;
+    }
+}
+
+/** Task 06k: open the Options sub-panel (shared with the in-game Escape
+ * menu) as a centred modal over the main menu. Esc or ✕ closes it and
+ * returns to the menu. */
+export function openOptionsModal(root: HTMLElement): void {
+    const overlay = document.createElement('div');
+    overlay.className = 'main-menu-options-overlay';
+
+    const dim = document.createElement('div');
+    dim.className = 'main-menu-options-dim';
+    overlay.appendChild(dim);
+
+    const panel = document.createElement('div');
+    panel.className = 'game-menu-panel main-menu-options-panel';
+
+    const title = document.createElement('div');
+    title.className = 'game-menu-title';
+    title.textContent = 'Options';
+    panel.appendChild(title);
+
+    // The same rows the in-game Escape menu shows (music volume/mute, UI
+    // scale, label toggles).
+    panel.appendChild(buildOptionsPanel(menuMusic()));
+
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'game-menu-close';
+    closeBtn.title = 'Close';
+    closeBtn.textContent = '✕';
+    closeBtn.addEventListener('click', () => close());
+    panel.appendChild(closeBtn);
+
+    overlay.appendChild(panel);
+    root.appendChild(overlay);
+
+    function onKeyDown(e: KeyboardEvent): void {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            close();
+        }
+    }
+    document.addEventListener('keydown', onKeyDown);
+
+    function close(): void {
+        document.removeEventListener('keydown', onKeyDown);
+        overlay.remove();
+    }
+}
+
 /** Build the main menu screen and append it to document.body. */
 export function createMainMenu(callbacks: MainMenuCallbacks): MainMenuRefs {
     const root = document.createElement('div');
@@ -123,6 +186,10 @@ export function createMainMenu(callbacks: MainMenuCallbacks): MainMenuRefs {
                         console.info('TODO(menu): loadGame');
                     }
                     break;
+                case 'options':
+                    // Task 06k: same options panel as the in-game Escape menu.
+                    openOptionsModal(root);
+                    break;
                 case 'exit':
                     if (isDesktopShell()) {
                         window.close();
@@ -165,7 +232,8 @@ export function createMainMenu(callbacks: MainMenuCallbacks): MainMenuRefs {
     galactopedia.addEventListener('mouseleave', () => {
         galactopediaImg.src = `${CHROME}Menu_Galactopedia_Inactive.png`;
     });
-    galactopedia.addEventListener('click', () => console.info('TODO(menu): galactopedia'));
+    // Start.cs menuGalactopedia_Click: method_127("") -> the home page.
+    galactopedia.addEventListener('click', () => openGalactopedia());
     root.appendChild(galactopedia);
 
     const updatesWrap = document.createElement('div');
@@ -209,7 +277,10 @@ export function createMainMenu(callbacks: MainMenuCallbacks): MainMenuRefs {
     credits.addEventListener('mouseleave', () => {
         creditsImg.src = `${CHROME}Menu_Credits_Inactive.png`;
     });
-    credits.addEventListener('click', () => console.info('TODO(menu): credits'));
+    credits.addEventListener('click', () => {
+        // Task 06k: scrolling credits screen (port of ScrollingCreditsPanel).
+        const screen = createCreditsScreen(() => undefined);
+    });
     root.appendChild(credits);
 
     document.body.appendChild(root);

@@ -1,7 +1,7 @@
 // Tests for src/sim/data/policy.ts (task 04d2): parseEmpirePolicy / createEmpirePolicy.
 
 import { describe, expect, it } from 'vitest';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import type { EmpirePolicy } from '../src/sim/data/policy';
@@ -150,5 +150,34 @@ describe('policy.ts — real file', () => {
             expect(Number.isNaN(value), `field ${name} is NaN`).toBe(false);
         }
         console.log(`✓ parsed Policy/default.txt (${numericFields(policy).length} numeric fields, no NaN)`);
+    });
+
+    it('parses every Policy/*.txt and Policy/pirate/*.txt file in the install with no NaN', () => {
+        const policyDir = resolve(dwuRoot, 'Policy');
+        if (!existsSync(policyDir)) {
+            console.log('✓ Policy/ not found under public/assets/dwu — skipping real-file sweep');
+            return;
+        }
+        const topFiles = readdirSync(policyDir, { withFileTypes: true })
+            .filter((e) => e.isFile() && e.name.toLowerCase().endsWith('.txt'))
+            .map((e) => resolve(policyDir, e.name));
+        const pirateDir = resolve(policyDir, 'pirate');
+        const pirateFiles = existsSync(pirateDir)
+            ? readdirSync(pirateDir)
+                  .filter((f) => f.toLowerCase().endsWith('.txt'))
+                  .map((f) => resolve(pirateDir, f))
+            : [];
+        const allFiles = [...topFiles, ...pirateFiles];
+        expect(allFiles.length).toBeGreaterThan(0);
+
+        let checked = 0;
+        for (const filePath of allFiles) {
+            const policy = parseEmpirePolicy(readFileSync(filePath, 'utf-8'));
+            for (const [name, value] of numericFields(policy)) {
+                expect(Number.isNaN(value), `${filePath}: field ${name} is NaN`).toBe(false);
+            }
+            checked++;
+        }
+        console.log(`✓ parsed ${checked} Policy file(s) with no NaN`);
     });
 });

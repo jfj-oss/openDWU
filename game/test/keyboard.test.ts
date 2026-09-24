@@ -8,6 +8,8 @@ import {
 } from '../src/ui/keyboard';
 import { Camera } from '../src/render/camera';
 import { GalaxyTime, START_STAR_DATE } from '../src/sim/galaxyTime';
+import { setSelection, SYSTEM_LEVEL_ZOOM } from '../src/ui/hud';
+import type { Habitat, SystemInfo } from '../src/sim/types';
 
 // Task 10a: the key-binding table mirrors the original's UI_KeyboardCommands
 // help table (verbatim in tasks/10a-keyboard.md). These tests are pure — no
@@ -210,6 +212,28 @@ describe('dispatchKey (task 10a)', () => {
         expect(cam.zoom).toBeLessThan(0.0001);
         dispatchKey(fakeEvent('Home'), handlers); // 100%
         expect(cam.zoom).toBe(1);
+    });
+
+    it('zooms to the selection (Backspace) via the shared zoom function', () => {
+        const cam = new Camera();
+        cam.setViewport(1000, 1000);
+        cam.x = 0;
+        cam.y = 0;
+        const handlers = buildDefaultHandlers(cam, makeClock());
+        // No selection: Backspace is a no-op.
+        setSelection(null);
+        expect(dispatchKey(fakeEvent('Backspace'), handlers)).toBe('zoomToSelection');
+        expect(cam.x).toBe(0);
+        expect(cam.zoom).toBe(1);
+        // With a selection: centres on the habitat at System zoom — the same
+        // two camera calls as the HUD's "Zoom to selection" row.
+        const habitat = { xpos: 42, ypos: -7 } as unknown as Habitat;
+        setSelection({ habitat, system: {} as SystemInfo });
+        expect(dispatchKey(fakeEvent('Backspace'), handlers)).toBe('zoomToSelection');
+        expect(cam.x).toBe(42);
+        expect(cam.y).toBe(-7);
+        expect(cam.zoom).toBeCloseTo(SYSTEM_LEVEL_ZOOM);
+        setSelection(null);
     });
 
     it('pans the camera with the arrow keys', () => {

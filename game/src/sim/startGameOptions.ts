@@ -218,6 +218,23 @@ export interface OtherEmpiresOptions {
     /** lblStartNewGameOtherEmpiresAutoGenNumberDescrip1/2 ("Generate <n>
      * starting empires"): how many AI empires to generate. */
     empireCount: number;
+    /** Task 06j: the wizard's manual per-empire list (the "OR specify the
+     * starting empires below" rows). When non-empty it overrides
+     * auto-generation for those slots — see toCreateGameOptions. Empty by
+     * default (pure auto-generation, as in task 06h). */
+    manual: ManualEmpireStart[];
+}
+
+/** Task 06j: one row of the wizard's manual AI-empire list. Race and
+ * government are stored by their parsed names / ids (as chosen on the page);
+ * name defaults to "<Race> Empire" when the user leaves it empty. */
+export interface ManualEmpireStart {
+    /** Race name (a parsed races/*.txt Name) or '(Random)'. */
+    race: string;
+    /** Government id from governments.txt (-1 = not chosen yet → '(Random)'). */
+    governmentId: number;
+    /** Empire display name ('' = use the "<Race> Empire" default). */
+    name: string;
 }
 
 /** Min/max bounds of the wizard's "generate N starting empires" control.
@@ -228,16 +245,20 @@ export const OTHER_EMPIRES_COUNT_MIN = 0;
 export const OTHER_EMPIRES_COUNT_MAX = 100;
 
 /** Task 06h: default OtherEmpiresOptions — auto-generation on with 10
- * starting empires (the typical DW:U starting-empire count). */
+ * starting empires (the typical DW:U starting-empire count). Task 06j: the
+ * manual list starts empty. */
 export function defaultOtherEmpiresOptions(): OtherEmpiresOptions {
     return {
         autogenerate: true,
         empireCount: 10,
+        manual: [],
     };
 }
 
 /** Task 06h: clamp an OtherEmpiresOptions' empire count into the wizard
- * control bounds (0..100) and return a copy. Booleans pass through. */
+ * control bounds (0..100) and return a copy. Booleans pass through. The
+ * manual list is copied (task 06j) so mutating the copy's rows can't affect
+ * the original. */
 export function clampOtherEmpires(o: OtherEmpiresOptions): OtherEmpiresOptions {
     return {
         ...o,
@@ -245,6 +266,7 @@ export function clampOtherEmpires(o: OtherEmpiresOptions): OtherEmpiresOptions {
             OTHER_EMPIRES_COUNT_MAX,
             Math.max(OTHER_EMPIRES_COUNT_MIN, o.empireCount),
         ),
+        manual: o.manual.map((m) => ({ ...m })),
     };
 }
 
@@ -581,22 +603,39 @@ export function toCreateGameOptions(
     };
 
     // AI empires (task 06h "Other Empires" page). Auto-generation produces
-    // `empireCount` random-race empires placed at random proximity.
-    // TODO(createGame): the manual (non-autogenerate) per-empire list —
-    // specific races/governments/placements — is not represented on
-    // OtherEmpiresOptions yet, so a non-autogenerate choice falls back to the
-    // same auto-generated set sized by empireCount.
+    // `empireCount` random-race empires placed at random proximity. Task 06j:
+    // a non-empty manual list overrides auto-generation — each row becomes an
+    // explicit EmpireStartOptions (createGame's aiEmpires field accepts
+    // specific race / government names; '(Random)' keeps a slot open).
     const aiEmpires: EmpireStartOptions[] = [];
-    const count = clampOtherEmpires(o.otherEmpires).empireCount;
-    for (let i = 0; i < count; i++) {
-        aiEmpires.push({
-            race: '(Random)',
-            governmentStyle: '(Random)',
-            homeSystemFavourability: 'Normal',
-            proximityDistance: 'Random',
-            age: 1,
-            techLevel,
-        });
+    const manual = o.otherEmpires.manual;
+    if (manual.length > 0) {
+        for (const m of manual) {
+            aiEmpires.push({
+                name: m.name === '' ? undefined : m.name,
+                race: m.race === '' ? '(Random)' : m.race,
+                governmentStyle:
+                    m.governmentId >= 0
+                        ? gameData.governments[m.governmentId]?.name ?? '(Random)'
+                        : '(Random)',
+                homeSystemFavourability: 'Normal',
+                proximityDistance: 'Random',
+                age: 1,
+                techLevel,
+            });
+        }
+    } else {
+        const count = clampOtherEmpires(o.otherEmpires).empireCount;
+        for (let i = 0; i < count; i++) {
+            aiEmpires.push({
+                race: '(Random)',
+                governmentStyle: '(Random)',
+                homeSystemFavourability: 'Normal',
+                proximityDistance: 'Random',
+                age: 1,
+                techLevel,
+            });
+        }
     }
 
     return {

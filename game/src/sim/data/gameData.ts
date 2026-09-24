@@ -29,6 +29,14 @@ import type { DesignSpecification } from './designTemplates';
 import { parseDesignSpecification } from './designTemplates';
 import { BuiltObjectSubRole } from './names';
 
+/** Race files shipped in the stock DW:U install (`races/`). */
+export const DEFAULT_RACE_FILES: readonly string[] = [
+    'ackdarian.txt', 'atuuk.txt', 'boskara.txt', 'dhayut.txt', 'gizurean.txt', 'haakonish.txt',
+    'human.txt', 'ikkuro.txt', 'ketarov.txt', 'kiadian.txt', 'mechanoid.txt', 'mortalen.txt',
+    'naxxilian.txt', 'quameno.txt', 'securan.txt', 'shakturi.txt', 'shandar.txt', 'sluken.txt',
+    'teekan.txt', 'ugnari.txt', 'wekkarus.txt', 'zenox.txt',
+];
+
 export interface GameData {
     // From 04a (races, governments)
     races: Race[];
@@ -52,41 +60,84 @@ export interface GameData {
     agentNames: AgentNames[];
     designNames: string[][];
 
-    // From 04d2 (empire policies)
-    policies: EmpirePolicy[];
+    // From 04d2 (empire policies). Keyed by file name relative to Policy/
+    // (e.g. "Ackdarian.txt" for Policy/Ackdarian.txt, "pirate/Ackdarian.txt"
+    // for Policy/pirate/Ackdarian.txt) — mirrors Galaxy.LoadEmpirePolicy's
+    // (name, isPirate) keying.
+    policies: Map<string, EmpirePolicy>;
 
     // From 04d3 (design templates). Keyed by sub-role file name (e.g. "frigate").
-    // TODO(port): public/asset-manifest.json does not enumerate the
-    // designTemplates/DEFAULT/ folder, so the browser path cannot discover the
-    // files — see loadGameData below. The test helper enumerates them via fs.
     designTemplates: Map<string, DesignSpecification>;
 }
 
+/** Shape of public/asset-manifest.json entries this loader consumes. */
+type AssetManifest = Record<string, string[]>;
+
 export type FetchText = (candidates: string[]) => Promise<string>;
+
+// Fetches and parses public/asset-manifest.json (written by
+// scripts/gen-asset-manifest.mjs). Returns null when it cannot be fetched or
+// parsed (e.g. no DW:U install linked, or running against a bespoke
+// FetchText that doesn't serve it) — callers fall back to their own defaults.
+async function fetchManifest(fetchText: FetchText): Promise<AssetManifest | null> {
+    try {
+        const text = await fetchText(['/asset-manifest.json']);
+        return JSON.parse(text) as AssetManifest;
+    } catch {
+        return null;
+    }
+}
 
 /**
  * Load all game data from remote URLs via fetch.
  * @param fetchText Browser fetch wrapper that tries multiple candidate URLs
  * @param customizationSet Optional customization folder name (e.g. "DistantWorldsExpanded")
- * @param raceFileNames Optional list of race file names (e.g. ["human.txt", "mechanoid.txt", ...]). If not provided, uses a default hardcoded list.
+ * @param raceFileNames Optional list of race file names (e.g. ["human.txt", "mechanoid.txt", ...]).
+ *   If not provided, uses public/asset-manifest.json's "races" list when available,
+ *   else a default hardcoded list.
+ * @param designTemplateFiles Optional list of designTemplates/DEFAULT/ sub-role file names
+ *   (without the .txt extension). If not provided, uses the manifest's
+ *   "designTemplates/DEFAULT" list when available, else none.
+ * @param policyFileNames Optional list of Policy/ file names to load, relative to Policy/
+ *   (e.g. "Ackdarian.txt", and "pirate/Ackdarian.txt" for Policy/pirate/Ackdarian.txt).
+ *   If not provided, uses the manifest's "Policy" + "Policy/pirate" lists when available,
+ *   else falls back to trying just "default.txt".
  */
 export async function loadGameData(
     fetchText: FetchText,
     customizationSet?: string,
     raceFileNames?: string[],
-    designTemplateFiles?: string[]
+    designTemplateFiles?: string[],
+    policyFileNames?: string[]
 ): Promise<GameData> {
     // Import path resolution here to avoid circular dependencies
     const { resolveDataUrl } = await import('./paths');
 
-    // Default race file names if not provided
-    const raceFiles = raceFileNames || [
-        'human.txt', 'mechanoid.txt', 'evuck.txt', 'ackdarians.txt', 'teekan.txt',
-        'kaltor.txt', 'dryad.txt', 'illo.txt', 'evuckian.txt', 'tao.txt',
-        'shaktur.txt', 'mithrilar.txt', 'human_pirate.txt', 'mechanoid_pirate.txt',
-        'draxian.txt', 'magellan.txt', 'dhayut.txt', 'sentinel.txt', 'thrynn.txt',
-        'soulless.txt', 'human_cai.txt', 'mechanoid_ancient.txt',
-    ];
+    // The manifest is only needed to fill in defaults for parameters the
+    // caller did not supply explicitly; skip the fetch entirely when every
+    // relevant list was passed in (keeps the fs-backed test helper, which
+    // always supplies all three, from touching /asset-manifest.json).
+    const needManifest = raceFileNames === undefined || designTemplateFiles === undefined || policyFileNames === undefined;
+    const manifest = needManifest ? await fetchManifest(fetchText) : null;
+
+    // Default: the manifest's races/ listing when available, else the 22
+    // race files of the stock DW:U install.
+    const raceFiles = raceFileNames ?? manifest?.races ?? [...DEFAULT_RACE_FILES];
+
+    // Default: the manifest's designTemplates/DEFAULT listing (strip .txt),
+    // else no design templates.
+    const defaultTemplateFiles = (manifest?.['designTemplates/DEFAULT'] ?? []).map((f) => f.replace(/\.txt$/i, ''));
+    const templateFiles = designTemplateFiles ?? defaultTemplateFiles;
+
+    // Default: every Policy/*.txt plus Policy/pirate/*.txt from the manifest
+    // (pirate files prefixed "pirate/" to disambiguate from the top-level
+    // file of the same name — mirrors Galaxy.LoadEmpirePolicy(name, isPirate)).
+    // Policy/default.txt this loader tolerates missing (the C# LoadFromFile
+    // swallows IO errors and leaves the policy at its defaults).
+    const defaultPolicyFiles = manifest
+        ? [...(manifest['Policy'] ?? []), ...(manifest['Policy/pirate'] ?? []).map((f) => `pirate/${f}`)]
+        : ['default.txt'];
+    const policyFiles = policyFileNames ?? defaultPolicyFiles;
 
     // Fetch all individual race files and other data in parallel
     const [
@@ -108,16 +159,8 @@ export async function loadGameData(
         characterNamesText,
         designNamesText,
 
-        // 04d2 policy file. The C# engine loads every Policy/*.txt (plus
-        // Policy/pirate/*.txt) listed in the asset manifest; the manifest does
-        // not yet enumerate them, so for now only default.txt is loaded, and a
-        // missing file is tolerated (the C# LoadFromFile swallows IO errors
-        // and leaves the policy at its defaults).
-        // TODO(port): enumerate Policy/ and Policy/pirate/ files from
-        // public/asset-manifest.json once it lists them — EmpirePolicy.cs
-        // LoadFromFile / Galaxy.?.cs policy loading.
-        policyText,
-        ...raceFileResults
+        policyTexts,
+        raceFileResults,
     ] = await Promise.all([
         // 04a non-race files
         fetchText(resolveDataUrl('raceFamilies.txt', customizationSet)),
@@ -142,25 +185,35 @@ export async function loadGameData(
         fetchText(resolveDataUrl('characterNames.txt', customizationSet)),
         fetchText(resolveDataUrl('designNames.txt', customizationSet)),
 
-        // 04d2 policy file (optional — see note above)
-        fetchText(resolveDataUrl('Policy/default.txt', customizationSet)).catch(() => ''),
+        // 04d2 policy files: every entry of policyFiles, each tolerated missing.
+        Promise.all(
+            policyFiles.map((fileName) => fetchText(resolveDataUrl(`Policy/${fileName}`, customizationSet)).catch(() => ''))
+        ),
 
         // Individual race files
-        ...raceFiles.map((fileName) => fetchText(resolveDataUrl(`races/${fileName}`, customizationSet))),
+        Promise.all(raceFiles.map((fileName) => fetchText(resolveDataUrl(`races/${fileName}`, customizationSet)))),
     ]);
 
     // Parse races from individual files
     const raceFamilies = parseRaceFamilies(raceFamiliesText);
     const races = raceFileResults.map((text) => parseRace(text));
 
+    // 04d2 policies: one EmpirePolicy per successfully-fetched policy file,
+    // keyed by its policyFiles entry (see GameData.policies doc comment).
+    const policies = new Map<string, EmpirePolicy>();
+    for (let i = 0; i < policyFiles.length; i++) {
+        const text = policyTexts[i];
+        if (text === '') {
+            continue;
+        }
+        policies.set(policyFiles[i], parseEmpirePolicy(text));
+    }
+
     // 04d3 design templates: one file per sub-role in designTemplates/DEFAULT/.
     // The C# engine loads designTemplates/<race>/<subRole>.txt for every
-    // BuiltObjectSubRole; the DEFAULT set is what ships with the game. The
-    // browser cannot enumerate a folder, so callers pass the file names
-    // explicitly (the test helper discovers them via node:fs). A missing file
-    // is tolerated — the C# LoadFromFile falls back to the built-in
-    // standAlone specification when the file does not exist.
-    const templateFiles = designTemplateFiles ?? [];
+    // BuiltObjectSubRole; the DEFAULT set is what ships with the game. A
+    // missing file is tolerated — the C# LoadFromFile falls back to the
+    // built-in standAlone specification when the file does not exist.
     const designTemplates = new Map<string, DesignSpecification>();
     if (templateFiles.length > 0) {
         const templateTexts = await Promise.all(
@@ -207,7 +260,7 @@ export async function loadGameData(
         designNames: parseDesignNames(designNamesText),
 
         // 04d2 data
-        policies: policyText === '' ? [] : [parseEmpirePolicy(policyText)],
+        policies,
 
         // 04d3 data
         designTemplates,

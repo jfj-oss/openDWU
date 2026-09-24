@@ -14,7 +14,14 @@ export interface MapOverlayState {
     fadeCivilianShips: boolean;
 }
 
-/** A fresh overlay state: everything off. */
+/** A fresh overlay state. Task M3: `empireTerritory` starts on, matching the
+ * original's behaviour — GameOptions.MapOverlayEmpireTerritory itself
+ * defaults false, but that flag only chooses between two territory-shading
+ * *algorithms* (GalaxyMap.cs: CalculateEmpireTerritoryGrid vs
+ * CalculateEmpireSystemTerritory); the original always shades territory.
+ * This renderer draws one disc style, so the toggle controls visibility
+ * instead, and starts on to match "territory is always shown". The rest
+ * default off, same as every other overlay in the original. */
 export function createMapOverlayState(): MapOverlayState {
     return {
         fleetPostures: false,
@@ -24,7 +31,7 @@ export function createMapOverlayState(): MapOverlayState {
         scenicLocations: false,
         researchLocations: false,
         longRangeScanners: false,
-        empireTerritory: false,
+        empireTerritory: true,
         fadeCivilianShips: false,
     };
 }
@@ -44,7 +51,22 @@ export const OVERLAY_ROWS: Array<{ key: OverlayKey; label: string }> = [
     { key: 'fadeCivilianShips', label: 'Fade civilian ships and bases' },
 ];
 
-/** Toggle one overlay flag in place. */
+/** Toggle one overlay flag in place, then notify subscribers (task M3: lets
+ * overlayLayer.ts react to a toggle without waiting for the next frame that
+ * happens to re-read the state anyway). */
 export function toggleOverlay(state: MapOverlayState, key: OverlayKey): void {
     state[key] = !state[key];
+    for (const fn of listeners) fn();
+}
+
+type OverlayChangeListener = () => void;
+const listeners = new Set<OverlayChangeListener>();
+
+/** Subscribe to overlay toggles (any key). Returns an unsubscribe function.
+ * Task M3: module-level, since the app only ever runs one overlay state at a
+ * time (main.ts creates one `MapOverlayState` and shares it with the HUD and
+ * the Main View). */
+export function onOverlayChange(fn: OverlayChangeListener): () => void {
+    listeners.add(fn);
+    return () => listeners.delete(fn);
 }

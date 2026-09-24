@@ -1,15 +1,26 @@
 // Usage: node scripts/gen-asset-manifest.mjs
-// Writes public/asset-manifest.json: for EVERY folder under the DW:U install's
-// images/environment/, a sorted list of its .png file names (keys are paths
-// relative to images/environment/, e.g. "planets/ocean"). The browser can't
-// enumerate directories, so these lists are generated here at dev/build time
-// (predev/prebuild) and fetched by the renderer at runtime; assets.ts picks
-// real files out of them via pictureRef modulo the folder's file count.
+// Writes public/asset-manifest.json: a flat map of folder path -> sorted list
+// of file names, for:
+//   - EVERY folder under the DW:U install's images/environment/ (*.png),
+//     keys relative to images/environment/, e.g. "planets/ocean".
+//   - races/ (*.txt), key "races".
+//   - Policy/ (*.txt, top level only), key "Policy".
+//   - Policy/pirate/ (*.txt), key "Policy/pirate".
+//   - designTemplates/<race>/ (*.txt, top level only) for every subfolder of
+//     designTemplates/ (including DEFAULT), key "designTemplates/<race>".
+// The browser can't enumerate directories, so these lists are generated here
+// at dev/build time (predev/prebuild) and fetched by the renderer/data
+// loaders at runtime; assets.ts picks real files out of the image lists via
+// pictureRef modulo the folder's file count, and gameData.ts uses the
+// races/Policy/designTemplates lists to discover data files.
 //
 // Sort order matches the original engine: Main.Part13.cs LoadMapStars /
 // LoadStars / LoadNebulae call Directory.GetFiles(..., "*.png") and index the
 // result by order. On Windows that is the NTFS ordinal (case-insensitive)
 // name order, so we sort the same way: case-insensitive ordinal comparison.
+// The same order is used for the data-file lists below (races/Policy/
+// designTemplates), matching Directory.GetFiles(..., "*.txt") elsewhere in
+// the engine (e.g. Galaxy.4.cs LoadRaces).
 //
 // The source of the file lists is the DW:U install, linked into the repo as
 // public/assets/dwu by `npm run import-assets`. If the install is absent the
@@ -55,11 +66,41 @@ function walkFolders(dir, base, out) {
     }
 }
 
+/** List the .txt file names directly inside `dir` (non-recursive), sorted. */
+function listTxtFiles(dir) {
+    let entries;
+    try {
+        entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+        return [];
+    }
+    return entries
+        .filter((e) => e.isFile() && e.name.toLowerCase().endsWith('.txt'))
+        .map((e) => e.name)
+        .sort(windowsOrdinal);
+}
+
+/** List the names of every direct subfolder of `dir`, sorted. */
+function listSubfolders(dir) {
+    let entries;
+    try {
+        entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+        return [];
+    }
+    return entries
+        .filter((e) => e.isDirectory())
+        .map((e) => e.name)
+        .sort(windowsOrdinal);
+}
+
 let envDir = null;
+let dwuRoot = null;
 try {
     const st = lstatSync(dwuLink);
     if (st.isSymbolicLink()) {
         const resolved = realpathSync(dwuLink);
+        dwuRoot = resolved;
         if (existsSync(join(resolved, 'images', 'environment'))) {
             envDir = join(resolved, 'images', 'environment');
         }
@@ -71,6 +112,35 @@ try {
 const manifest = {};
 if (envDir) {
     walkFolders(envDir, '', manifest);
+}
+
+if (dwuRoot) {
+    // races/*.txt
+    const races = listTxtFiles(join(dwuRoot, 'races'));
+    if (races.length > 0) {
+        manifest['races'] = races;
+    }
+
+    // Policy/*.txt (top level only; the pirate/ subfolder is listed separately)
+    const policy = listTxtFiles(join(dwuRoot, 'Policy'));
+    if (policy.length > 0) {
+        manifest['Policy'] = policy;
+    }
+
+    // Policy/pirate/*.txt
+    const policyPirate = listTxtFiles(join(dwuRoot, 'Policy', 'pirate'));
+    if (policyPirate.length > 0) {
+        manifest['Policy/pirate'] = policyPirate;
+    }
+
+    // designTemplates/<race>/*.txt for every subfolder (races + DEFAULT)
+    const designTemplatesDir = join(dwuRoot, 'designTemplates');
+    for (const race of listSubfolders(designTemplatesDir)) {
+        const files = listTxtFiles(join(designTemplatesDir, race));
+        if (files.length > 0) {
+            manifest[`designTemplates/${race}`] = files;
+        }
+    }
 }
 
 writeFileSync(outPath, JSON.stringify(manifest, null, 2) + '\n');

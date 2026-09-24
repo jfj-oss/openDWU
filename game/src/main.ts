@@ -14,16 +14,19 @@ import { createGame, type CreateGameOptions } from './sim/game';
 import { parseSystemNames } from './sim/data';
 import { loadGameData, type FetchText, type GameData } from './sim/data/gameData';
 import { GalaxyShape } from './sim/types';
-import { createHud, layoutHud, nearestSystemName, type HudRefs } from './ui/hud';
+import { createHud, layoutHud, nearestSystemName, pushHudMessage, type HudRefs } from './ui/hud';
 import { GalaxyTime } from './sim/clock';
 import { START_STAR_DATE } from './sim/galaxyTime';
 import { formatClockLabel, SECTOR_LEVEL_ZOOM, SYSTEM_LEVEL_ZOOM, type Selection } from './ui/hud';
 import { Habitat, HabitatCategoryType } from './sim/types';
-import { createMapOverlayState } from './ui/mapOverlays';
+import { createMapOverlayState, type MapOverlayState, type OverlayKey } from './ui/mapOverlays';
 import { buildDefaultHandlers, createShortcutsOverlay, dispatchKey, setGameMenuHandler } from './ui/keyboard';
 import { createMainMenu } from './ui/screens/mainMenu';
+import { openOptionsModal } from './ui/screens/mainMenu';
+import { createCreditsScreen } from './ui/screens/credits';
 import { startMusic } from './audio/musicPlayer';
 import { createNewGameWizard } from './ui/screens/newGameWizard';
+import { openGalactopedia } from './ui/screens/galactopedia';
 import { toCreateGameOptions, type StartGameOptions } from './sim/startGameOptions';
 import { serializeGame, deserializeGame } from './sim/save/gameSave';
 import { setSaveLoadProvider, createSaveLoadPanel, type LoadedGame } from './ui/screens/saveLoad';
@@ -145,6 +148,36 @@ export function buildDwuDebugObject(args: { camera: object; galaxy: object; view
     return obj;
 }
 
+/** Task M3: `?overlays=` token → MapOverlayState key, including short
+ * screenshot-friendly aliases alongside the full field names. */
+const OVERLAY_PARAM_ALIASES: Record<string, OverlayKey> = {
+    potentialColonies: 'potentialColonies',
+    colonies: 'potentialColonies',
+    scenic: 'scenicLocations',
+    scenicLocations: 'scenicLocations',
+    research: 'researchLocations',
+    researchLocations: 'researchLocations',
+    territory: 'empireTerritory',
+    empireTerritory: 'empireTerritory',
+    fleetPostures: 'fleetPostures',
+    travelVectorsState: 'travelVectorsState',
+    travelVectorsPrivate: 'travelVectorsPrivate',
+    longRangeScanners: 'longRangeScanners',
+    fadeCivilianShips: 'fadeCivilianShips',
+};
+
+/** Screenshot / dev hook: `?overlays=potentialColonies,scenic,research`
+ * turns on the named overlay toggles at boot (task M3 verification), e.g.
+ * `?autostart=1&zoom=1200&overlays=potentialColonies,scenic,research`. */
+function applyOverlaysUrlParam(overlays: MapOverlayState): void {
+    const raw = new URLSearchParams(window.location.search).get('overlays');
+    if (raw === null) return;
+    for (const token of raw.split(',').map((s) => s.trim()).filter(Boolean)) {
+        const key = OVERLAY_PARAM_ALIASES[token];
+        if (key !== undefined) overlays[key] = true;
+    }
+}
+
 /** Task M2e2: one shared boot used by the wizard Start, `?autostart=1` and
  * save-load — centres the camera on the player's capital at Sector zoom,
  * wires the HUD/clock/input, and sets `window.__dwu` (camera, galaxy, view,
@@ -157,6 +190,11 @@ export async function startGameView(game: Game, zoomOverride?: number): Promise<
         await loadManifest();
     }
     const galaxy = game.galaxy;
+
+    // Task 10d: first message of the top-middle ticker — the founding line.
+    const playerCapital = game.playerEmpire?.capital ?? null;
+    const systemName = playerCapital !== null ? galaxy.systems[playerCapital.systemIndex].systemStar.name : '';
+    pushHudMessage(`${game.playerEmpire.name} founded at ${playerCapital?.name ?? ''} (${systemName} system)`);
 
     const app = new Application();
     await app.init({
@@ -187,15 +225,20 @@ export async function startGameView(game: Game, zoomOverride?: number): Promise<
     }
 
     const store = new AssetStore(dwuPresent);
-    const view = new MainView(app, camera, galaxy, store);
+    // Task M3: the overlay toggle state is created here (instead of after
+    // MainView, as before) so the Main View's overlay layer and the HUD's
+    // options list share the same MapOverlayState instance.
+    const overlays = createMapOverlayState();
+    applyOverlaysUrlParam(overlays);
+    const view = new MainView(app, camera, galaxy, store, overlays);
     await view.init();
 
     // Debug / screenshot hook: the created game (galaxy + player empire).
     (window as unknown as { __dwu?: unknown }).__dwu = buildDwuDebugObject({ camera, galaxy, view, app, game });
 
     const time = new GalaxyTime(START_STAR_DATE);
-    const overlays = createMapOverlayState();
-    const hud: HudRefs = createHud({ clock: time, overlays, camera, galaxy });
+    // Task 10d: the HUD's money panel refreshes from the player empire.
+    const hud: HudRefs = createHud({ clock: time, overlays, camera, galaxy, game });
     const systemNameEl = hud.elements.get('pnlMoney')?.querySelector('.hud-system-name');
     const dateEl = hud.elements.get('pnlTopLeftBar')?.querySelector('.hud-date');
     const pauseBtn = hud.elements.get('pnlTopLeftBar')?.querySelector<HTMLButtonElement>('button[title="Play / pause"]');
@@ -364,6 +407,12 @@ async function bootGameFromWizard(startOptions: StartGameOptions): Promise<void>
     lastGameData = gameData;
     lastStartOptions = startOptions;
     const game: Game = createGame(toCreateGameOptions(startOptions, gameData, systemNames));
+    // Task 10d: the wizard's chosen flag shape/colour is not forwarded to
+    // createGame yet (see TODO(createGame) in startGameOptions.ts), so apply
+    // it to the player empire here for the HUD's empires button.
+    if (startOptions.flagShapeIndex >= 0) {
+        game.playerEmpire.flagShape = startOptions.flagShapeIndex;
+    }
     await startGameView(game);
 }
 
@@ -402,6 +451,31 @@ async function main(): Promise<void> {
             // Nothing to go back to when opened directly; reload to the menu.
             window.location.search = '';
         });
+        return;
+    }
+
+    if (params.get('screen') === 'credits' || params.get('screen') === 'options') {
+        // Screenshot / dev hook (task 06k): show the main menu with the
+        // credits screen or options modal pre-opened.
+        const menu = createMainMenu({
+            onStartNewGame: () => {
+                menu.destroy();
+                openWizard(showMainMenu);
+            },
+        });
+        startMusic();
+        const screen = params.get('screen');
+        if (screen === 'credits') {
+            createCreditsScreen(() => undefined);
+        } else {
+            openOptionsModal(menu.root);
+        }
+        return;
+    }
+
+    if (params.get('screen') === 'galactopedia') {
+        // Screenshot / dev hook: ?screen=galactopedia&topic=<id|title|file>.
+        openGalactopedia({ topic: params.get('topic') ?? undefined });
         return;
     }
 
@@ -604,7 +678,11 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     }
 
     const store = new AssetStore(dwuPresent);
-    const view = new MainView(app, camera, galaxy, store);
+    // Task M3: created before MainView so the Main View's overlay layer and
+    // the HUD's options list share the same MapOverlayState instance.
+    const overlays = createMapOverlayState();
+    applyOverlaysUrlParam(overlays);
+    const view = new MainView(app, camera, galaxy, store, overlays);
     await view.init();
 
     // Debug / screenshot hook: the camera and the generated galaxy model.
@@ -616,7 +694,6 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     // refreshed as the camera moves (demo: nearest star/planet to the view
     // centre).
     const time = new GalaxyTime(START_STAR_DATE);
-    const overlays = createMapOverlayState();
     const hud: HudRefs = createHud({ clock: time, overlays, camera, galaxy, gameData: gameData ?? undefined });
     const systemNameEl = hud.elements.get('pnlMoney')?.querySelector('.hud-system-name');
     const dateEl = hud.elements.get('pnlTopLeftBar')?.querySelector('.hud-date');
@@ -673,12 +750,12 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     setInterval(refreshClockLabel, 250);
 
     // Task 10a: the full original keyboard command table (UI_KeyboardCommands)
-    // dispatches on keydown; it replaces the ad-hoc spacebar handler. '?' / F1
-    // toggle the "Keyboard shortcuts" overlay listing the table.
+    // dispatches on keydown; it replaces the ad-hoc spacebar handler. '?'
+    // toggles the "Keyboard shortcuts" overlay; F1 opens the Galactopedia.
     const shortcuts = createShortcutsOverlay();
     const keyHandlers = buildDefaultHandlers(camera, time);
     window.addEventListener('keydown', (e: KeyboardEvent) => {
-        if (e.key === '?' || e.key === 'F1') {
+        if (e.key === '?') {
             e.preventDefault();
             shortcuts.toggle();
             return;

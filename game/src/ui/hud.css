@@ -127,13 +127,17 @@
     flex: 1;
     overflow: hidden;
 }
+/* Task 10e: roomier message text (12px / 18px lines) with a 12 px left
+   inset; long lines truncate with an ellipsis. */
 .hud-message-line {
-    height: 14px;
-    line-height: 14px;
+    height: 18px;
+    line-height: 18px;
     color: #9aa3ad;
-    font-size: 11px;
+    font-size: 12px;
     white-space: nowrap;
     overflow: hidden;
+    text-overflow: ellipsis;
+    padding-left: 12px;
 }
 .hud-message-actions {
     display: flex;
@@ -142,11 +146,22 @@
     justify-content: center;
 }
 
-/* Money block + system name. */
+/* Money block + system name. Task 10e: the panel is right-anchored in JS and
+   its values sit right-aligned with a 12 px inset so they never clip at the
+   screen edge. */
+.hud-money {
+    padding: 12px;
+}
 .hud-money-row {
     display: flex;
     justify-content: space-between;
     gap: 8px;
+}
+.hud-money-row .hud-value {
+    text-align: right;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 .hud-system-name {
     margin-top: 6px;

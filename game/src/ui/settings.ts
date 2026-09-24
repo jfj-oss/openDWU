@@ -18,9 +18,9 @@ export interface UiSettings {
     soundMuted: boolean;
     /** UI scale percentage applied as `--ui-scale` on the HUD root. */
     uiScale: number;
-    /** Show system name labels on the map (renderer TODO). */
+    /** Show system name labels on the map (mainView.ts reads per frame). */
     showSystemNames: boolean;
-    /** Show region label overlays on the map (renderer TODO). */
+    /** Show region label overlays on the map (mainView.ts reads per frame). */
     showRegionLabels: boolean;
 }
 
@@ -113,7 +113,44 @@ export function updateSettings(patch: Partial<UiSettings>): UiSettings {
     current = next;
     saveSettings(next);
     applySoundSettings(next);
+    notifySettingsListeners(next);
     return next;
+}
+
+// ---------------------------------------------------------------------------
+// Change notifications (task 10f): subscribers are told about every settings
+// change so the HUD (UI scale) and other systems can react immediately. The
+// Main View renderer reads its flags per frame instead of subscribing.
+// ---------------------------------------------------------------------------
+
+type SettingsListener = (settings: UiSettings) => void;
+
+const settingsListeners: SettingsListener[] = [];
+
+/** Register a callback fired after any settings change (i.e. after
+ * {@link updateSettings} has applied and persisted the new state). Returns
+ * an unsubscribe function. */
+export function onSettingsChange(cb: SettingsListener): () => void {
+    settingsListeners.push(cb);
+    return () => {
+        const i = settingsListeners.indexOf(cb);
+        if (i >= 0) settingsListeners.splice(i, 1);
+    };
+}
+
+/** Test hook: drop all registered listeners. */
+export function clearSettingsListeners(): void {
+    settingsListeners.length = 0;
+}
+
+function notifySettingsListeners(s: UiSettings): void {
+    for (const cb of settingsListeners) {
+        try {
+            cb(s);
+        } catch {
+            // A broken listener must never break a settings change.
+        }
+    }
 }
 
 /** Push the sound settings into the live effects player. Best-effort: the
@@ -131,8 +168,8 @@ function applySoundSettings(s: UiSettings): void {
 }
 
 // ---------------------------------------------------------------------------
-// Getters the renderer can read later (TODO(port): consume these in the Main
-// View label/overlay rendering — src/render/mainView.ts).
+// Getters the Main View renderer reads per frame (task 10f: consumed by
+// src/render/mainView.ts for system-name and region-label visibility).
 // ---------------------------------------------------------------------------
 
 /** Whether system name labels should be drawn on the map. */

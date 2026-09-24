@@ -23,6 +23,14 @@ Worlds: Universe install folder via the privileged `dwu://` scheme.
   background, no menu bar on Linux, standard app menu on macOS. F11 or
   Ctrl/Cmd+F toggles fullscreen. Renderer runs sandboxed
   (`contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`).
+- Icon: original art can't be committed to the repo, so the window/dock icon
+  is loaded at runtime from your DW:U install folder —
+  `images/ui/chrome/galaxy_Icon.png` first, then `DesktopIcon.ico` (resolved
+  case-insensitively). If neither exists (or you skipped locating the install
+  folder), Electron's default icon is used instead. Packaged builds therefore
+  show the default Electron icon in the file manager / Dock before first
+  launch, and switch to the game icon once running with an install folder
+  configured.
 
 ## Prerequisites
 

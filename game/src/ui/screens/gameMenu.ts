@@ -87,6 +87,103 @@ function applyUiScaleToHudRoot(): void {
     }
 }
 
+/**
+ * Build the Options sub-panel (music volume/mute, UI scale, label toggles).
+ * Task 06k: extracted from createGameMenu so the main menu's "Options" item
+ * can open the same panel as a centred modal. The returned element carries
+ * the `game-menu-options` class and its own rows; callers append it to their
+ * own container. `music` may be null (menu-only contexts without a player).
+ */
+export function buildOptionsPanel(music: MusicAdapter | null): HTMLElement {
+    const optionsPanel = document.createElement('div');
+    optionsPanel.className = 'game-menu-options';
+
+    const settings = getSettings();
+
+    // Music volume slider + mute.
+    const musicRow = document.createElement('div');
+    musicRow.className = 'game-menu-option-row';
+    const musicLabel = document.createElement('span');
+    musicLabel.className = 'game-menu-option-label';
+    musicLabel.textContent = 'Music Volume';
+    const volSlider = document.createElement('input');
+    volSlider.type = 'range';
+    volSlider.min = '0';
+    volSlider.max = '1';
+    volSlider.step = '0.05';
+    volSlider.value = String(settings.musicVolume);
+    volSlider.setAttribute('aria-label', 'Music volume');
+    volSlider.addEventListener('input', () => {
+        const v = parseFloat(volSlider.value);
+        updateSettings({ musicVolume: v, musicMuted: false });
+        music?.setVolume(v);
+        music?.unmute();
+    });
+    const muteBtn = document.createElement('button');
+    muteBtn.type = 'button';
+    muteBtn.className = 'game-menu-mute';
+    muteBtn.textContent = settings.musicMuted ? 'Unmute' : 'Mute';
+    muteBtn.addEventListener('click', () => {
+        const nowMuted = !getSettings().musicMuted;
+        updateSettings({ musicMuted: nowMuted });
+        if (nowMuted) {
+            music?.mute();
+        } else {
+            music?.unmute();
+        }
+        muteBtn.textContent = nowMuted ? 'Unmute' : 'Mute';
+    });
+    musicRow.append(musicLabel, volSlider, muteBtn);
+    optionsPanel.appendChild(musicRow);
+
+    // UI scale (90/100/110/125%).
+    const scaleRow = document.createElement('div');
+    scaleRow.className = 'game-menu-option-row';
+    const scaleLabel = document.createElement('span');
+    scaleLabel.className = 'game-menu-option-label';
+    scaleLabel.textContent = 'UI Scale';
+    const scaleSelect = document.createElement('select');
+    scaleSelect.setAttribute('aria-label', 'UI scale');
+    for (const pct of [90, 100, 110, 125]) {
+        const opt = document.createElement('option');
+        opt.value = String(pct);
+        opt.textContent = `${pct}%`;
+        if (pct === settings.uiScale) opt.selected = true;
+        scaleSelect.appendChild(opt);
+    }
+    scaleSelect.addEventListener('change', () => {
+        const pct = parseInt(scaleSelect.value, 10) || 100;
+        updateSettings({ uiScale: pct });
+        applyUiScaleToHudRoot();
+    });
+    scaleRow.append(scaleLabel, scaleSelect);
+    optionsPanel.appendChild(scaleRow);
+
+    // Show system names / region labels toggles.
+    const makeToggle = (labelText: string, key: 'showSystemNames' | 'showRegionLabels'): HTMLElement => {
+        const row = document.createElement('div');
+        row.className = 'game-menu-option-row';
+        const lbl = document.createElement('span');
+        lbl.className = 'game-menu-option-label';
+        lbl.textContent = labelText;
+        const chk = document.createElement('input');
+        chk.type = 'checkbox';
+        chk.checked = getSettings()[key];
+        chk.setAttribute('aria-label', labelText);
+        chk.addEventListener('change', () => {
+            updateSettings({ [key]: chk.checked } as Partial<typeof settings>);
+            // Task 10f: the Main View renderer reads these flags per frame
+            // (src/render/mainView.ts), so no extra wiring is needed here.
+        });
+        row.append(lbl, chk);
+        return row;
+    };
+    optionsPanel.appendChild(makeToggle('Show system names', 'showSystemNames'));
+    optionsPanel.appendChild(makeToggle('Show region labels', 'showRegionLabels'));
+
+    return optionsPanel;
+}
+
 /** Build the in-game game menu and append it to document.body. */
 export function createGameMenu(
     clock: GalaxyTime,
@@ -117,6 +214,10 @@ export function createGameMenu(
     const list = document.createElement('div');
     list.className = 'game-menu-list';
     panel.appendChild(list);
+
+    // --- Options sub-panel (task 06k: shared buildOptionsPanel) -----------
+    const optionsPanel = buildOptionsPanel(resolvedMusic);
+    optionsPanel.style.display = 'none';
 
     // --- Button row -------------------------------------------------------
     const makeButton = (label: string, onClick: () => void): HTMLButtonElement => {
@@ -172,93 +273,6 @@ export function createGameMenu(
         }
     });
     list.append(resumeBtn, saveBtn, loadBtn, optionsBtn, mainMenuBtn, exitBtn);
-
-    // --- Options sub-panel -------------------------------------------------
-    const optionsPanel = document.createElement('div');
-    optionsPanel.className = 'game-menu-options';
-    optionsPanel.style.display = 'none';
-
-    const settings = getSettings();
-
-    // Music volume slider + mute.
-    const musicRow = document.createElement('div');
-    musicRow.className = 'game-menu-option-row';
-    const musicLabel = document.createElement('span');
-    musicLabel.className = 'game-menu-option-label';
-    musicLabel.textContent = 'Music Volume';
-    const volSlider = document.createElement('input');
-    volSlider.type = 'range';
-    volSlider.min = '0';
-    volSlider.max = '1';
-    volSlider.step = '0.05';
-    volSlider.value = String(settings.musicVolume);
-    volSlider.setAttribute('aria-label', 'Music volume');
-    volSlider.addEventListener('input', () => {
-        const v = parseFloat(volSlider.value);
-        updateSettings({ musicVolume: v, musicMuted: false });
-        resolvedMusic?.setVolume(v);
-        resolvedMusic?.unmute();
-    });
-    const muteBtn = document.createElement('button');
-    muteBtn.type = 'button';
-    muteBtn.className = 'game-menu-mute';
-    muteBtn.textContent = settings.musicMuted ? 'Unmute' : 'Mute';
-    muteBtn.addEventListener('click', () => {
-        const nowMuted = !getSettings().musicMuted;
-        updateSettings({ musicMuted: nowMuted });
-        if (nowMuted) {
-            resolvedMusic?.mute();
-        } else {
-            resolvedMusic?.unmute();
-        }
-        muteBtn.textContent = nowMuted ? 'Unmute' : 'Mute';
-    });
-    musicRow.append(musicLabel, volSlider, muteBtn);
-    optionsPanel.appendChild(musicRow);
-
-    // UI scale (90/100/110/125%).
-    const scaleRow = document.createElement('div');
-    scaleRow.className = 'game-menu-option-row';
-    const scaleLabel = document.createElement('span');
-    scaleLabel.className = 'game-menu-option-label';
-    scaleLabel.textContent = 'UI Scale';
-    const scaleSelect = document.createElement('select');
-    scaleSelect.setAttribute('aria-label', 'UI scale');
-    for (const pct of [90, 100, 110, 125]) {
-        const opt = document.createElement('option');
-        opt.value = String(pct);
-        opt.textContent = `${pct}%`;
-        if (pct === settings.uiScale) opt.selected = true;
-        scaleSelect.appendChild(opt);
-    }
-    scaleSelect.addEventListener('change', () => {
-        const pct = parseInt(scaleSelect.value, 10) || 100;
-        updateSettings({ uiScale: pct });
-        applyUiScaleToHudRoot();
-    });
-    scaleRow.append(scaleLabel, scaleSelect);
-    optionsPanel.appendChild(scaleRow);
-
-    // Show system names / region labels toggles.
-    const makeToggle = (labelText: string, key: 'showSystemNames' | 'showRegionLabels'): HTMLElement => {
-        const row = document.createElement('div');
-        row.className = 'game-menu-option-row';
-        const lbl = document.createElement('span');
-        lbl.className = 'game-menu-option-label';
-        lbl.textContent = labelText;
-        const chk = document.createElement('input');
-        chk.type = 'checkbox';
-        chk.checked = getSettings()[key];
-        chk.setAttribute('aria-label', labelText);
-        chk.addEventListener('change', () => {
-            updateSettings({ [key]: chk.checked } as Partial<typeof settings>);
-            // TODO(port): consume these flags in the Main View renderer.
-        });
-        row.append(lbl, chk);
-        return row;
-    };
-    optionsPanel.appendChild(makeToggle('Show system names', 'showSystemNames'));
-    optionsPanel.appendChild(makeToggle('Show region labels', 'showRegionLabels'));
 
     panel.appendChild(optionsPanel);
     root.appendChild(panel);

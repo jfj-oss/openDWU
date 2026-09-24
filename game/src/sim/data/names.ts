@@ -8,10 +8,19 @@
 import type { RaceFamily } from './raceFamilies';
 
 // Port of DistantWorlds.Types.BuiltObjectSubRole (BuiltObjectSubRole.cs).
-// Members are the sub-role keys that appear in shipNames.txt; TODO(port): full
-// BuiltObjectSubRole enum once a task needs it.
+// Member order is the exact C# declaration order (the enum is [Serializable]
+// byte-backed, so numeric values matter for any code that reads/writes them).
 export enum BuiltObjectSubRole {
     Undefined = 0,
+    Escort,
+    Frigate,
+    Destroyer,
+    Cruiser,
+    CapitalShip,
+    TroopTransport,
+    Carrier,
+    ResupplyShip,
+    ExplorationShip,
     SmallFreighter,
     MediumFreighter,
     LargeFreighter,
@@ -27,13 +36,11 @@ export enum BuiltObjectSubRole {
     LargeSpacePort,
     ResortBase,
     GenericBase,
-    Frigate,
-    Destroyer,
-    Cruiser,
-    CapitalShip,
-    TroopTransport,
-    ExplorationShip,
-    Escort,
+    EnergyResearchStation,
+    WeaponsResearchStation,
+    HighTechResearchStation,
+    MonitoringStation,
+    DefensiveBase,
 }
 
 // Enum.GetNames(typeof(BuiltObjectSubRole)): member names in declaration order.

@@ -1,14 +1,18 @@
-import { computeHudLayout, CYCLE_CHIPS, VIEW_ROWS, type Rect, type ViewRowKey } from './hudLayout';
+import { computeHudLayout, CYCLE_CHIPS, TOP_BAR_BUTTONS, VIEW_ROWS, type Rect, type ViewRowKey } from './hudLayout';
+import { onSettingsChange, uiScaleFactor } from './settings';
 import { GalaxyTime } from '../sim/clock';
 import { resolveStarDateDescription } from '../sim/galaxyTime';
-import { createMapOverlayState, OVERLAY_ROWS, toggleOverlay, type MapOverlayState } from './mapOverlays';
+import { createMapOverlayState, OVERLAY_ROWS, toggleOverlay, type MapOverlayState, type OverlayKey } from './mapOverlays';
 import { Camera } from '../render/camera';
 import { Galaxy } from '../sim/galaxy';
 import type { GameData } from '../sim/data/gameData';
 import { Habitat, HabitatCategoryType, HabitatType, IndustryType, SystemInfo } from '../sim/types';
+import type { Empire } from '../sim/empire';
+import { flagShapeUrl } from '../sim/startGameOptions';
 import { createGameMenu, type GameMenuRefs } from './screens/gameMenu';
 import { setGameMenuHandler } from './keyboard';
 import { startEffects } from '../audio/effectsPlayer';
+import { helpTopicKeyForHabitat, toggleGalactopedia } from './screens/galactopedia';
 
 /** Shared UI button-click sound (task 09b): the original plays a short click
  * for chrome-button presses; here every HUD button click routes through this. */
@@ -87,6 +91,43 @@ const VIEW_ROW_CONTROL: Partial<Record<ViewRowKey, string>> = {
 /** Planet-level ("100%") camera zoom: 1 px per world unit. */
 export const PLANET_LEVEL_ZOOM = 1;
 
+// ---------------------------------------------------------------------------
+// UI scale (task 10f): each HUD element is scaled about its anchored corner so
+// the panel edges stay pinned to the screen edge/corner at any scale. The
+// origin follows the element's anchor in computeHudLayout: top-left panels
+// scale from top-left, right-anchored panels from their right edge, the
+// bottom-right options list from bottom-right, and the top-middle message
+// panel + launch row from top-centre.
+// ---------------------------------------------------------------------------
+
+/** CSS `transform-origin` for a HUD element name given its layout rect. Pure
+ * (no window access) so node-based tests can exercise the mapping: the
+ * bottom-left selection panel is the only element anchored to the bottom edge,
+ * and every other element anchors top-left except the special cases below. */
+export function hudTransformOrigin(name: string, _rect: Rect): string {
+    if (name === 'pnlOptionsList') return '100% 100%'; // bottom-right anchored
+    if (name === 'pnlMoney') return '100% 0'; // top-right anchored
+    if (name === 'lstMessages' || (TOP_BAR_BUTTONS as readonly string[]).includes(name)) {
+        return '50% 0'; // top-middle: scale from top-centre
+    }
+    if (name === 'pnlSelection') return '0 100%'; // bottom-left anchored
+    return '0 0'; // default: top-left anchored
+}
+
+/** Apply the UI scale setting to every HUD element: `transform: scale(s)`
+ * about the element's anchored corner (see {@link hudTransformOrigin}). A
+ * factor of 1 clears the transform entirely. */
+export function applyHudScale(refs: HudRefs): void {
+    const s = uiScaleFactor();
+    const layout = computeHudLayout(window.innerWidth, window.innerHeight);
+    for (const [name, el] of refs.elements) {
+        const rect = layout[name];
+        if (!rect) continue;
+        el.style.transformOrigin = hudTransformOrigin(name, rect);
+        el.style.transform = s === 1 ? '' : `scale(${s})`;
+    }
+}
+
 /** System-level view: show ~1 sector (the original's system zoom band). */
 export const SYSTEM_LEVEL_ZOOM = 0.001;
 
@@ -116,6 +157,10 @@ export interface HudWiring {
     galaxy?: Galaxy;
     /** Parsed game data (resource definitions → icons/names). */
     gameData?: GameData;
+    /** The running game (galaxy + player empire) — task 10d: the money panel
+     * refreshes from `game.playerEmpire.stateMoney` and the empires button
+     * shows the player's flag shape tinted with the empire colour. */
+    game?: { playerEmpire: { name: string; mainColor: number; stateMoney: number; flagShape: number } };
     /** Called after a selection change so main.ts can react. */
     onSelectionChange?: (sel: Selection | null) => void;
 }
@@ -130,6 +175,12 @@ let currentSelection: Selection | null = null;
 /** The object currently selected in the streamlined selection panel. */
 export function getSelection(): Selection | null {
     return currentSelection;
+}
+
+/** Test hook: set the current selection directly (bypasses the panel's own
+ * setter, which also refreshes its DOM). */
+export function setSelection(sel: Selection | null): void {
+    currentSelection = sel;
 }
 
 /** Build the HUD overlay and append it to document.body. */
@@ -173,26 +224,36 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
                 el = buildTopLeftBar(clock, () => gameMenu.toggle());
                 break;
             case 'pnlMoney':
-                el = buildMoneyPanel();
+                el = buildMoneyPanel(wiring.game);
                 break;
             case 'pnlSelection':
-                el = buildSelectionPanel({ ...wiring, onSelectionChange: (sel) => {
-                    refs.onSelectionChange = wiring.onSelectionChange;
-                    wiring.onSelectionChange?.(sel);
-                } });
+            {
+                // buildSelectionPanel installs its refresh callback on the object it is
+                // given; expose that callback as the HUD's selection hook.
+                const panelWiring: HudWiring = { ...wiring };
+                el = buildSelectionPanel(panelWiring);
+                wiring.onSelectionChange = panelWiring.onSelectionChange;
+                refs.onSelectionChange = panelWiring.onSelectionChange;
                 break;
+            }
             case 'pnlOptionsList':
                 el = buildOptionsList({ ...wiring, overlays });
                 break;
             default:
-                el = buildTopBarButton(name);
+                el = name === 'tbtnEmpires' ? buildEmpireFlagButton(wiring) : buildTopBarButton(name);
                 break;
         }
         el.classList.add('hud-el');
         el.dataset.hud = name;
         applyRect(el, rect);
-        // The options list is content-sized (rect.h === 0): anchor it to the
-        // window's bottom-right corner instead of a fixed top offset.
+        // Task 10e: right-anchored panels position via `right` (not a computed
+        // left) so they can never clip past the screen edge. The options list
+        // is content-sized (rect.h === 0): anchor it to the window's
+        // bottom-right corner instead of a fixed top offset.
+        if (name === 'pnlMoney' || name === 'pnlOptionsList') {
+            el.style.left = '';
+            el.style.right = `${Math.max(0, window.innerWidth - rect.x - rect.w)}px`;
+        }
         if (name === 'pnlOptionsList' && rect.h === 0) {
             el.style.top = '';
             el.style.bottom = `${Math.max(0, window.innerHeight - rect.y - rect.h)}px`;
@@ -200,6 +261,14 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
         root.appendChild(el);
         elements.set(name, el);
     }
+
+    // Task 10d: bind the message ticker's five lines to the ring buffer.
+    setMessageLineElements(elements.get('lstMessages') ?? null);
+
+    // Task 10f: apply the persisted UI scale on startup and re-apply it
+    // immediately whenever a settings change updates it (Escape menu).
+    applyHudScale(refs);
+    onSettingsChange(() => applyHudScale(refs));
 
     document.body.appendChild(root);
     return refs;
@@ -218,11 +287,18 @@ export function layoutHud(refs: HudRefs): void {
     for (const [name, el] of refs.elements) {
         const rect = layout[name];
         if (rect) applyRect(el, rect);
+        // Task 10e: keep the right-anchored panels pinned to the right edge.
+        if (rect && (name === 'pnlMoney' || name === 'pnlOptionsList')) {
+            el.style.left = '';
+            el.style.right = `${Math.max(0, window.innerWidth - rect.x - rect.w)}px`;
+        }
         if (name === 'pnlOptionsList' && rect && rect.h === 0) {
             el.style.top = '';
             el.style.bottom = `${Math.max(0, window.innerHeight - rect.y - rect.h)}px`;
         }
     }
+    // Task 10f: keep the UI scale applied after a re-layout.
+    applyHudScale(refs);
 }
 
 // ---------------------------------------------------------------------------
@@ -263,6 +339,11 @@ function buildTopLeftBar(clock: GalaxyTime, onGameMenu: () => void): HTMLElement
         onGameMenu();
     });
     const help = makeIconButton('btnHelp', 'Help');
+    // Main.Part5.cs btnHelp_Click: toggle the Galactopedia at the selection's topic.
+    help.addEventListener('click', () => {
+        playUiClick();
+        toggleGalactopedia(helpTopicKeyForHabitat(getSelection()?.habitat ?? null));
+    });
     bar.append(menu, help);
     bar.appendChild(makeSeparator());
 
@@ -382,10 +463,74 @@ function buildTopBarButton(name: string): HTMLElement {
     return btn;
 }
 
-/** Top-right money block + nearest-system name (existing behaviour kept). */
-function buildMoneyPanel(): HTMLElement {
+/** Top-row empires button (task 10d): the player's flag shape art tinted with
+ * the empire colour, falling back to the plain chrome diplomacy button when
+ * no game is wired (e.g. the generateGalaxy-only boot path). */
+function buildEmpireFlagButton(wiring: HudWiring): HTMLElement {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'hud-btn';
+    const file = chromeButtonFile('tbtnEmpires');
+    if (file) {
+        btn.title = 'Empires';
+        const img = document.createElement('img');
+        img.src = `/assets/dwu/images/ui/chrome/${file}`;
+        img.alt = '';
+        img.draggable = false;
+        btn.appendChild(img);
+    } else {
+        btn.classList.add('hud-btn-bare');
+        btn.textContent = 'Empires';
+        btn.title = 'Empires';
+    }
+    const game = wiring.game;
+    if (game) {
+        // The wizard's StartGameOptions carry the chosen flagShapeIndex; the
+        // autostart/fallback paths have none, so use the empire's own
+        // dominant-race default flag design (Empire.flagShape, -1 if none).
+        const shapeIndex = game.playerEmpire.flagShape >= 0 ? game.playerEmpire.flagShape : null;
+        if (shapeIndex !== null) {
+            const flag = document.createElement('img');
+            flag.src = flagShapeUrl(shapeIndex);
+            flag.alt = '';
+            flag.draggable = false;
+            flag.style.filter = `sepia(1) saturate(4) hue-rotate(${colorHueRotate(game.playerEmpire.mainColor)}deg)`;
+            btn.appendChild(flag);
+        }
+    }
+    // TODO(screen): open the original's Empires screen.
+    btn.addEventListener('click', () => {
+        playUiClick();
+        console.log('TODO(screen): Empires');
+    });
+    return btn;
+}
+
+/** CSS hue-rotate angle that turns a white source into `rgb` — used to tint
+ * the monochrome flag shape art with the empire's main colour. */
+export function colorHueRotate(rgb: number): number {
+    const r = ((rgb >> 16) & 255) / 255;
+    const g = ((rgb >> 8) & 255) / 255;
+    const b = (rgb & 255) / 255;
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    let h = 0;
+    if (max !== min) {
+        const d = max - min;
+        if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+        else if (max === g) h = ((b - r) / d + 2) / 6;
+        else h = ((r - g) / d + 4) / 6;
+    }
+    return Math.round(h * 360);
+}
+
+/** Top-right money block + nearest-system name (existing behaviour kept).
+ * Task 10d: Money is refreshed live from the player empire's state money;
+ * Cashflow and Bonus Income show '—' until the sim tracks them. */
+function buildMoneyPanel(game?: { playerEmpire: { name: string; mainColor: number; stateMoney: number; flagShape: number } }): HTMLElement {
     const panel = document.createElement('div');
     panel.className = 'hud-panel hud-money';
+    const valueEls: Record<string, HTMLElement> = {};
     for (const row of ['Money', 'Cashflow', 'Bonus Income']) {
         const line = document.createElement('div');
         line.className = 'hud-money-row';
@@ -394,7 +539,8 @@ function buildMoneyPanel(): HTMLElement {
         k.textContent = row;
         const v = document.createElement('span');
         v.className = 'hud-value';
-        v.textContent = '0';
+        v.textContent = '—';
+        valueEls[row] = v;
         line.append(k, v);
         panel.appendChild(line);
     }
@@ -402,6 +548,23 @@ function buildMoneyPanel(): HTMLElement {
     sys.className = 'hud-system-name';
     sys.textContent = '';
     panel.appendChild(sys);
+
+    if (game) {
+        // The original's top-right block mirrors the player empire's money
+        // fields (Main.Part12.cs pnlStateMoney); here only state money exists
+        // on Empire — see the TODO(sim) notes below.
+        const refreshMoney = (): void => {
+            valueEls['Money'].textContent = formatMoney(Math.round(game.playerEmpire.stateMoney));
+            // TODO(sim): Empire has no cashflow field yet (src/sim/empire.ts) —
+            // show '—' until the economy port adds it.
+            // TODO(sim): Empire has no bonus-income field yet (src/sim/empire.ts) —
+            // show '—' until the economy port adds it.
+            valueEls['Cashflow'].textContent = '—';
+            valueEls['Bonus Income'].textContent = '—';
+        };
+        refreshMoney();
+        setInterval(refreshMoney, 250);
+    }
     return panel;
 }
 
@@ -429,13 +592,42 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
     const back = makeGlyphButton('‹', 'Previous');
     const fwd = makeGlyphButton('›', 'Next');
     let activeChip = 'colonies';
+    const chipLabel = (): string => CYCLE_CHIPS.find((c) => c.key === activeChip)?.label ?? activeChip;
+    /** Step through the active chip's list: select the next item (same hook
+     * as click-to-select, so the panel updates) and centre the camera on it
+     * at System zoom. */
+    const stepCycle = (dir: 1 | -1): void => {
+        if (activeChip !== 'colonies') {
+            // TODO(cycle): needs ships (M3) — Bases/Military/Constr./Other/
+            // Fleets/Idle all iterate BuiltObject/fleet state that M3 ports.
+            pushHudMessage(`No ${chipLabel()} yet`);
+            return;
+        }
+        const game = wiring.game;
+        const cam = wiring.camera;
+        const galaxy = wiring.galaxy;
+        if (!game || !cam || !galaxy) return;
+        const colonies = playerColonyList(galaxy, game.playerEmpire as Empire);
+        if (colonies.length === 0) {
+            pushHudMessage('No Colonies yet');
+            return;
+        }
+        const current = currentSelection?.habitat ?? null;
+        const next = nextInCycle(colonies, current, dir);
+        if (!next) return;
+        const system =
+            galaxy.systems.find((s) => s.habitats.includes(next)) ?? galaxy.systems[next.systemIndex];
+        wiring.onSelectionChange?.({ habitat: next, system });
+        cam.centerOn(next.xpos, next.ypos);
+        cam.zoomAt(SYSTEM_LEVEL_ZOOM, cam.width / 2, cam.height / 2);
+    };
     back.addEventListener('click', () => {
         playUiClick();
-        console.log(`TODO(cycle): ${activeChip} back`);
+        stepCycle(-1);
     });
     fwd.addEventListener('click', () => {
         playUiClick();
-        console.log(`TODO(cycle): ${activeChip} forward`);
+        stepCycle(1);
     });
     footer.append(back, fwd);
     for (const chip of CYCLE_CHIPS) {
@@ -487,6 +679,17 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
 }
 
 /** Bottom-right options list: View rows + overlay toggles. */
+/** Task M3: overlays that need ship state (fleets, travel vectors) not yet
+ * ported — their toggle just flips the checkbox; src/render/overlayLayer.ts
+ * does not draw anything for them. */
+const OVERLAY_NEEDS_SHIPS: ReadonlySet<OverlayKey> = new Set([
+    'fleetPostures',
+    'travelVectorsState',
+    'travelVectorsPrivate',
+    'longRangeScanners',
+    'fadeCivilianShips',
+]);
+
 function buildOptionsList(wiring: HudWiring): HTMLElement {
     const overlays = wiring.overlays ?? createMapOverlayState();
     const panel = document.createElement('div');
@@ -538,12 +741,59 @@ function buildOptionsList(wiring: HudWiring): HTMLElement {
             playUiClick();
             toggleOverlay(overlays, row.key);
             check.textContent = overlays[row.key] ? '✓' : '';
-            // TODO(overlay): render this map overlay in the Main View.
-            console.log(`TODO(overlay): ${row.label} -> ${overlays[row.key]}`);
+            // Rendering lives in src/render/overlayLayer.ts (task M3), which
+            // subscribes to onOverlayChange and reacts to this toggle
+            // immediately. Empire Territory / Potential Colonies / Scenic
+            // Locations / Research Locations are implemented there.
+            if (OVERLAY_NEEDS_SHIPS.has(row.key)) {
+                // TODO(overlay): needs ships (M3).
+            }
         });
         panel.appendChild(item);
     }
     return panel;
+}
+
+// ---------------------------------------------------------------------------
+// Selection panel cycler (task 10h)
+// ---------------------------------------------------------------------------
+
+/** Next item of a cycle list for direction +1 (forward) or -1 (back), with
+ * wrap-around. An empty list yields null; if `current` is not in the list
+ * (e.g. it was just selected by clicking), forward starts at the first item
+ * and back at the last one. */
+export function nextInCycle<T>(list: readonly T[], current: T | null, dir: 1 | -1): T | null {
+    if (list.length === 0) return null;
+    const i = current == null ? -1 : list.indexOf(current);
+    if (i === -1) return dir === 1 ? list[0] : list[list.length - 1];
+    return list[(i + dir + list.length) % list.length];
+}
+
+/** The player empire's owned planets/moons, ordered like the original's
+ * colony list: descending population where the habitat has one, else name.
+ * Port of the Main.Part* cycleColonies list built from the player empire's
+ * colonies (Empire.colonies / Habitat.owner). */
+export function playerColonyList(galaxy: Galaxy, playerEmpire: Empire): Habitat[] {
+    const owned: Habitat[] = [];
+    for (const system of galaxy.systems) {
+        for (const h of system.habitats) {
+            if (
+                (h.category === HabitatCategoryType.Planet || h.category === HabitatCategoryType.Moon) &&
+                h.owner === playerEmpire
+            ) {
+                owned.push(h);
+            }
+        }
+    }
+    // Population is only comparable when every habitat reports one; mixed
+    // lists fall back to name order (task 10h).
+    const allHavePopulation = owned.every((h) => h.population != null && h.population.totalAmount > 0);
+    owned.sort((a, b) =>
+        allHavePopulation
+            ? b.population!.totalAmount - a.population!.totalAmount || a.name.localeCompare(b.name)
+            : a.name.localeCompare(b.name),
+    );
+    return owned;
 }
 
 /** Drive the camera for a View-list action. */
@@ -593,6 +843,66 @@ export function formatPopulation(n: number): string {
     if (n >= 1_000_000) return trimDecimal(n / 1_000_000) + 'M';
     if (n >= 1_000) return trimDecimal(n / 1_000) + 'K';
     return String(Math.trunc(n));
+}
+
+// ---------------------------------------------------------------------------
+// Money formatting + message ticker (task 10d)
+// ---------------------------------------------------------------------------
+
+/** Thousands separators like the original's money display (`641,607`). */
+export function formatMoney(n: number): string {
+    const sign = n < 0 ? '-' : '';
+    return sign + Math.abs(Math.trunc(n)).toLocaleString('en-US');
+}
+
+/** Cashflow style: signed, in parentheses — `(+213,959)` / `(-5,000)` / `(0)`. */
+export function formatCashflow(n: number): string {
+    const t = Math.trunc(n);
+    const inner = t > 0 ? '+' + formatMoney(t) : formatMoney(t);
+    return `(${inner})`;
+}
+
+/** The top-middle message panel keeps the last 5 messages, newest at the
+ * bottom (the original's message ticker). Module state so later systems can
+ * push via {@link pushHudMessage} without holding a HUD reference. */
+const MESSAGE_LINES = 5;
+let hudMessages: string[] = [];
+let messageLineEls: HTMLElement[] | null = null;
+
+/** Bind the five `.hud-message-line` slots of the message panel to the ring
+ * buffer and render the current contents. Called from createHud. */
+function setMessageLineElements(panel: HTMLElement | null): void {
+    messageLineEls = panel ? Array.from(panel.querySelectorAll('.hud-message-line')) : null;
+    renderMessages();
+}
+
+/** Re-render the bound message lines from the ring buffer (newest at the
+ * bottom, older lines blanked out). */
+function renderMessages(): void {
+    if (!messageLineEls) return;
+    for (let i = 0; i < messageLineEls.length; i++) {
+        const idx = i - (messageLineEls.length - MESSAGE_LINES);
+        messageLineEls[i].textContent = hudMessages[idx] ?? '';
+    }
+}
+
+/** Push a message into the top-middle ticker (keeps the last 5, newest at
+ * the bottom). Exported for later systems (events, diplomacy, ...). */
+export function pushHudMessage(text: string): void {
+    hudMessages.push(text);
+    while (hudMessages.length > MESSAGE_LINES) hudMessages.shift();
+    renderMessages();
+}
+
+/** Test hook: drop all pushed messages (also clears the rendered lines). */
+export function clearHudMessages(): void {
+    hudMessages = [];
+    renderMessages();
+}
+
+/** The current message ticker contents (oldest → newest), for tests. */
+export function getHudMessages(): readonly string[] {
+    return hudMessages;
 }
 
 function trimDecimal(x: number): string {

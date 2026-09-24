@@ -1,0 +1,343 @@
+/* Galactopedia modal: streamlined dark panels matching the HUD (hud.css). */
+
+#galactopedia {
+    position: fixed;
+    inset: 0;
+    z-index: 1100; /* above the HUD, main menu and in-game menu */
+    font-family: 'Forgotten Futurist', sans-serif;
+    color: #e6e9ee;
+}
+
+#galactopedia .gp-dim {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+}
+
+#galactopedia .gp-window {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: min(1320px, calc(100vw - 48px));
+    height: min(900px, calc(100vh - 48px));
+    display: flex;
+    flex-direction: column;
+    background: rgba(14, 16, 20, 0.94);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+    overflow: hidden;
+}
+
+/* ---- header ---- */
+#galactopedia .gp-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 12px 10px 18px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    flex: 0 0 auto;
+}
+#galactopedia .gp-brand {
+    font-size: 13px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #8fa3b8;
+    white-space: nowrap;
+}
+#galactopedia .gp-topic-title {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 17px;
+    font-weight: bold;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+#galactopedia .gp-nav {
+    display: flex;
+    gap: 4px;
+}
+#galactopedia .gp-btn {
+    width: 32px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(24, 26, 30, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    color: #c9d1da;
+    font-family: system-ui, 'Segoe UI', sans-serif;
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 0 3px;
+}
+#galactopedia .gp-btn:hover:not(:disabled) {
+    background: rgba(38, 42, 48, 0.95);
+    color: #fff;
+}
+#galactopedia .gp-btn:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+#galactopedia .gp-btn-close {
+    margin-left: 6px;
+    font-size: 22px;
+}
+
+/* ---- body ---- */
+#galactopedia .gp-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+}
+
+#galactopedia .gp-side {
+    flex: 0 0 290px;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid rgba(255, 255, 255, 0.08);
+    min-height: 0;
+}
+#galactopedia .gp-search {
+    margin: 12px 12px 8px;
+    padding: 7px 10px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    color: #e6e9ee;
+    font-family: inherit;
+    font-size: 13px;
+    outline: none;
+}
+#galactopedia .gp-search:focus {
+    border-color: rgba(120, 170, 230, 0.55);
+}
+#galactopedia .gp-tree {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 2px 8px 12px;
+}
+#galactopedia .gp-cat,
+#galactopedia .gp-topic {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: none;
+    border-radius: 5px;
+    color: inherit;
+    font-family: inherit;
+    cursor: pointer;
+}
+#galactopedia .gp-cat {
+    gap: 6px;
+    padding: 6px 6px;
+    font-size: 13px;
+    font-weight: bold;
+    color: #d5dde6;
+}
+#galactopedia .gp-caret {
+    width: 12px;
+    color: #7d8b99;
+    font-size: 11px;
+}
+#galactopedia .gp-children {
+    margin: 0 0 6px 12px;
+    border-left: 1px solid rgba(255, 255, 255, 0.07);
+    padding-left: 6px;
+}
+#galactopedia .gp-topic {
+    padding: 4px 8px;
+    font-size: 12.5px;
+    color: #a9b3be;
+}
+#galactopedia .gp-cat:hover,
+#galactopedia .gp-topic:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: #fff;
+}
+#galactopedia .gp-selected,
+#galactopedia .gp-selected:hover {
+    background: rgba(90, 140, 200, 0.22);
+    color: #fff;
+}
+
+#galactopedia .gp-main {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+#galactopedia .gp-content {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 20px 30px 28px;
+    font-family: Verdana, 'Segoe UI', sans-serif;
+    font-size: 13.5px;
+    line-height: 1.55;
+    color: #b8bec6;
+}
+#galactopedia .gp-content.gp-loading {
+    opacity: 0.5;
+}
+#galactopedia .gp-page-title {
+    font-family: 'Forgotten Futurist', sans-serif;
+    font-size: 26px;
+    font-weight: bold;
+    color: #fff;
+    margin: 0 0 14px;
+    letter-spacing: 0.02em;
+}
+#galactopedia .gp-page::after {
+    content: '';
+    display: block;
+    clear: both;
+}
+#galactopedia .gp-page p {
+    margin: 0 0 10px;
+}
+#galactopedia .gp-page h1,
+#galactopedia .gp-page h2,
+#galactopedia .gp-page h3,
+#galactopedia .gp-page h4 {
+    font-family: 'Forgotten Futurist', sans-serif;
+    color: #e8edf2;
+    margin: 18px 0 8px;
+    line-height: 1.25;
+}
+#galactopedia .gp-page h1 { font-size: 21px; }
+#galactopedia .gp-page h2 { font-size: 18px; }
+#galactopedia .gp-page h3 { font-size: 16px; color: #9ec3ea; }
+#galactopedia .gp-page h4 { font-size: 14px; }
+#galactopedia .gp-page .gp-title {
+    font-family: 'Forgotten Futurist', sans-serif;
+    font-size: 20px;
+    color: #fff;
+}
+#galactopedia .gp-page .gp-li {
+    position: relative;
+    margin: 0 0 4px;
+    padding-left: 22px;
+}
+#galactopedia .gp-page .gp-li-marker {
+    position: absolute;
+    left: 6px;
+    color: #7fa7d1;
+}
+#galactopedia .gp-page img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 3px;
+}
+#galactopedia .gp-page img.gp-float-left {
+    float: left;
+    margin: 2px 16px 8px 0;
+}
+#galactopedia .gp-page img.gp-float-right {
+    float: right;
+    margin: 2px 0 8px 16px;
+}
+#galactopedia .gp-page table {
+    border-collapse: collapse;
+    margin: 6px 0 12px;
+    max-width: 100%;
+}
+#galactopedia .gp-page td,
+#galactopedia .gp-page th {
+    padding: 3px 6px;
+    vertical-align: top;
+}
+#galactopedia .gp-page td p,
+#galactopedia .gp-page th p {
+    margin: 0 0 4px;
+}
+#galactopedia .gp-page a.gp-link,
+#galactopedia .gp-page a.gp-link span {
+    color: #8fc0f0 !important;
+    text-decoration: none;
+}
+#galactopedia .gp-page a.gp-link:hover span,
+#galactopedia .gp-page a.gp-link:hover {
+    text-decoration: underline;
+}
+#galactopedia .gp-missing {
+    color: #8a94a0;
+    font-style: italic;
+}
+
+/* Generated race summary (Main.Part5.cs method_460). */
+#galactopedia .gp-summary {
+    clear: both;
+    margin-top: 18px;
+    padding: 12px 18px 6px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+}
+#galactopedia .gp-summary h3 {
+    font-family: 'Forgotten Futurist', sans-serif;
+    font-size: 14px;
+    color: #9ec3ea;
+    margin: 6px 0 4px;
+}
+#galactopedia .gp-summary ul {
+    margin: 0 0 8px;
+    padding-left: 20px;
+}
+
+/* Related topics (RelatedEncyclopediaItemsBox). */
+#galactopedia .gp-related {
+    flex: 0 0 auto;
+    max-height: 30%;
+    overflow-y: auto;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 10px 30px 12px;
+}
+#galactopedia .gp-related[hidden] {
+    display: none;
+}
+#galactopedia .gp-related-label {
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #7d8b99;
+    margin-bottom: 7px;
+}
+#galactopedia .gp-related-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+#galactopedia .gp-chip {
+    background: rgba(90, 140, 200, 0.1);
+    border: 1px solid rgba(120, 170, 230, 0.25);
+    border-radius: 6px;
+    color: #b9d4f0;
+    font-family: inherit;
+    font-size: 12px;
+    padding: 4px 10px;
+    cursor: pointer;
+}
+#galactopedia .gp-chip:hover {
+    background: rgba(90, 140, 200, 0.25);
+    color: #fff;
+}
+
+/* Scrollbars */
+#galactopedia ::-webkit-scrollbar {
+    width: 9px;
+}
+#galactopedia ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 5px;
+}
+#galactopedia ::-webkit-scrollbar-track {
+    background: transparent;
+}

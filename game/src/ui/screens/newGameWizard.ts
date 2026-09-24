@@ -20,6 +20,7 @@ import {
     flagShapeUrl,
     OTHER_EMPIRES_COUNT_MAX,
     OTHER_EMPIRES_COUNT_MIN,
+    type ManualEmpireStart,
     sectorsFor,
     starCountFor,
     VICTORY_PERCENT_MIN,
@@ -122,14 +123,16 @@ export const WIZARD_BACK_LABELS: Record<WizardPageId, string> = {
     start: '← Victory Conditions',
 };
 
-/** Footer forward-button label per page. */
+/** Footer forward-button label per page: names the next page in the wizard
+ * order (mirrors WIZARD_BACK_LABELS), except the last page which starts the
+ * game rather than navigating. */
 export const WIZARD_FORWARD_LABELS: Record<WizardPageId, string> = {
-    galaxy: 'Next →',
-    colonization: 'Next →',
-    race: 'Next →',
-    empire: 'Next →',
-    empires: 'Next →',
-    victory: 'Next →',
+    galaxy: 'Colonization and Territory →',
+    colonization: 'Your Race →',
+    race: 'Your Empire →',
+    empire: 'Other Empires →',
+    empires: 'Victory Conditions →',
+    victory: 'Start →',
     start: 'Start Game',
 };
 
@@ -369,12 +372,32 @@ export function createNewGameWizard(callbacks: NewGameWizardCallbacks): NewGameW
     backBtn.addEventListener('click', goBack);
     nextBtn.addEventListener('click', goForward);
 
+    // Keyboard nav: Enter advances (like clicking the primary button), Esc
+    // always exits straight to the main menu (matches the ✕ close button,
+    // not the per-page "Back" button, so it's a predictable "cancel" key).
+    function onKeyDown(e: KeyboardEvent): void {
+        if (e.key === 'Enter') {
+            // Let a <select> keep its own Enter handling (closing/confirming
+            // its native dropdown) rather than also advancing the wizard.
+            if ((e.target as HTMLElement | null)?.tagName === 'SELECT') return;
+            e.preventDefault();
+            goForward();
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            callbacks.onBackToMenu();
+        }
+    }
+    document.addEventListener('keydown', onKeyDown);
+
     document.body.appendChild(overlay);
     showPage(page);
 
     return {
         root: overlay,
-        destroy: () => overlay.remove(),
+        destroy: () => {
+            document.removeEventListener('keydown', onKeyDown);
+            overlay.remove();
+        },
     };
 }
 
@@ -462,31 +485,35 @@ function buildGalaxyPage(options: StartGameOptions): HTMLDivElement {
         return sliderWrap;
     }
 
-    wrap.appendChild(makeSlider('Star Amount', STAR_AMOUNT_TICKS, options.starCountIndex, (i) => {
+    // Two-column grid for all 8 sliders (task 06f adds the 6 below Star
+    // Amount / Physical Size) — keeps the whole page visible without
+    // scrolling instead of one long single column.
+    const sliderGrid = document.createElement('div');
+    sliderGrid.className = 'wizard-slider-grid';
+    wrap.appendChild(sliderGrid);
+
+    sliderGrid.appendChild(makeSlider('Star Amount', STAR_AMOUNT_TICKS, options.starCountIndex, (i) => {
         options.starCountIndex = i;
     }));
-    wrap.appendChild(makeSlider('Physical Size', PHYSICAL_SIZE_TICKS, options.dimensionIndex, (i) => {
+    sliderGrid.appendChild(makeSlider('Physical Size', PHYSICAL_SIZE_TICKS, options.dimensionIndex, (i) => {
         options.dimensionIndex = i;
     }));
-
-    // --- Task 06f: remaining "The Galaxy" sliders (below Star Amount /
-    // Physical Size, as in the original). ---
-    wrap.appendChild(makeSlider('Colony Prevalence', COLONY_PREVALENCE_TICKS, options.colonyPrevalenceIndex, (i) => {
+    sliderGrid.appendChild(makeSlider('Colony Prevalence', COLONY_PREVALENCE_TICKS, options.colonyPrevalenceIndex, (i) => {
         options.colonyPrevalenceIndex = i;
     }));
-    wrap.appendChild(makeSlider('Alien Life', ALIEN_LIFE_TICKS, options.alienLifeIndex, (i) => {
+    sliderGrid.appendChild(makeSlider('Alien Life', ALIEN_LIFE_TICKS, options.alienLifeIndex, (i) => {
         options.alienLifeIndex = i;
     }));
-    wrap.appendChild(makeSlider('Space Creatures', SPACE_CREATURES_TICKS, options.spaceCreaturesIndex, (i) => {
+    sliderGrid.appendChild(makeSlider('Space Creatures', SPACE_CREATURES_TICKS, options.spaceCreaturesIndex, (i) => {
         options.spaceCreaturesIndex = i;
     }));
-    wrap.appendChild(makeSlider('Pirates', PIRATES_TICKS, options.piratesIndex, (i) => {
+    sliderGrid.appendChild(makeSlider('Pirates', PIRATES_TICKS, options.piratesIndex, (i) => {
         options.piratesIndex = i;
     }));
-    wrap.appendChild(makeSlider('Aggression', AGGRESSION_TICKS, options.aggressionIndex, (i) => {
+    sliderGrid.appendChild(makeSlider('Aggression', AGGRESSION_TICKS, options.aggressionIndex, (i) => {
         options.aggressionIndex = i;
     }));
-    wrap.appendChild(makeSlider('Difficulty', DIFFICULTY_TICKS, options.difficultyIndex, (i) => {
+    sliderGrid.appendChild(makeSlider('Difficulty', DIFFICULTY_TICKS, options.difficultyIndex, (i) => {
         options.difficultyIndex = i;
     }));
 
@@ -543,7 +570,9 @@ function buildGalaxyPage(options: StartGameOptions): HTMLDivElement {
 // ---------------------------------------------------------------------------
 
 /** Task 06h: a "Title — <range slider> — value label" row bound to one of
- * the colonization page's numeric sliders, clamped into [min, max] on input. */
+ * the colonization page's numeric sliders, clamped into [min, max] on input.
+ * `format` renders the current value (e.g. "4000K", "100%") in the single
+ * value badge next to the slider — there is no separate raw-number label. */
 function makeColonizationSlider(
     wrap: HTMLDivElement,
     title: string,
@@ -551,13 +580,25 @@ function makeColonizationSlider(
     max: number,
     get: () => number,
     set: (v: number) => void,
-): void {
+    format: (v: number) => string,
+): HTMLSpanElement {
     const sliderWrap = document.createElement('div');
     sliderWrap.className = 'wizard-slider';
+    const titleRow = document.createElement('div');
+    titleRow.className = 'wizard-slider-title-row';
     const label = document.createElement('div');
     label.className = 'wizard-slider-title';
     label.textContent = title;
-    sliderWrap.appendChild(label);
+    titleRow.appendChild(label);
+
+    const value = document.createElement('span');
+    value.className = 'wizard-colonization-value';
+    function paint(): void {
+        value.textContent = format(get());
+    }
+    paint();
+    titleRow.appendChild(value);
+    sliderWrap.appendChild(titleRow);
 
     const input = document.createElement('input');
     input.type = 'range';
@@ -569,18 +610,13 @@ function makeColonizationSlider(
         const v = parseInt(input.value, 10);
         if (!Number.isNaN(v)) {
             set(Math.min(max, Math.max(min, v)));
+            paint();
         }
     });
     sliderWrap.appendChild(input);
 
-    const value = document.createElement('span');
-    value.className = 'wizard-colonization-value';
-    function paint(): void {
-        value.textContent = String(get());
-    }
-    paint();
-    sliderWrap.appendChild(value);
     wrap.appendChild(sliderWrap);
+    return value;
 }
 
 function buildColonizationPage(options: StartGameOptions): HTMLDivElement {
@@ -611,35 +647,19 @@ function buildColonizationPage(options: StartGameOptions): HTMLDivElement {
     makeColonizationSlider(rangeGroup, 'Colonization Range', COLONIZATION_RANGE_KLY_MIN, COLONIZATION_RANGE_KLY_MAX,
         () => c.colonizationRangeKly, (x) => {
             c.colonizationRangeKly = x;
-        });
-    const rangeValue = document.createElement('span');
-    rangeValue.className = 'wizard-colonization-range-value';
-    rangeValue.textContent = `${c.colonizationRangeKly}K`;
-    rangeGroup.appendChild(rangeValue);
+        }, (v) => `${v}K`);
 
     // Colony Influence Range (lbl…ColonyInfluenceRange* / Suggestion,
     // sld…colorSlider1), shown as a percent.
     makeColonizationSlider(rangeGroup, 'Colony Influence Range', COLONY_INFLUENCE_RANGE_PCT_MIN, COLONY_INFLUENCE_RANGE_PCT_MAX,
         () => c.colonyInfluenceRangePercent, (x) => {
             c.colonyInfluenceRangePercent = x;
-        });
-    const influenceValue = document.createElement('span');
-    influenceValue.className = 'wizard-colonization-influence-value';
-    influenceValue.textContent = `${c.colonyInfluenceRangePercent}%`;
-    rangeGroup.appendChild(influenceValue);
+        }, (v) => `${v}%`);
     const suggestion = document.createElement('span');
     suggestion.className = 'wizard-colonization-suggestion';
     suggestion.textContent = 'Suggestion';
     rangeGroup.appendChild(suggestion);
     wrap.appendChild(rangeGroup);
-
-    // Keep the standalone value labels in sync with the sliders above.
-    for (const el of wrap.querySelectorAll<HTMLInputElement>('input[type="range"]')) {
-        el.addEventListener('input', () => {
-            rangeValue.textContent = `${c.colonizationRangeKly}K`;
-            influenceValue.textContent = `${c.colonyInfluenceRangePercent}%`;
-        });
-    }
 
     // --- Allow same-system option (chkOptionsAllowSameSystemAsOtherEmpires). ---
     const sameSystemRow = document.createElement('label');
@@ -669,6 +689,12 @@ function buildOtherEmpiresPage(options: StartGameOptions): HTMLDivElement {
     wrap.className = 'wizard-page wizard-empires-page';
     const o = options.otherEmpires;
 
+    // Group the auto-generate controls in a panel, matching the boxed
+    // sections used on the Colonization and Victory Conditions pages.
+    const autoGroup = document.createElement('div');
+    autoGroup.className = 'wizard-panel-group';
+    wrap.appendChild(autoGroup);
+
     // --- Auto-Generate Starting Empires (chkOtherEmpiresAutogenerate). ---
     const autoRow = document.createElement('label');
     autoRow.className = 'wizard-checkbox';
@@ -682,7 +708,7 @@ function buildOtherEmpiresPage(options: StartGameOptions): HTMLDivElement {
     const autoText = document.createElement('span');
     autoText.textContent = 'Auto-Generate Starting Empires';
     autoRow.appendChild(autoText);
-    wrap.appendChild(autoRow);
+    autoGroup.appendChild(autoRow);
 
     // --- "Generate <n> starting empires" (lbl…AutoGenNumberDescrip1/2). ---
     const countRow = document.createElement('div');
@@ -707,11 +733,11 @@ function buildOtherEmpiresPage(options: StartGameOptions): HTMLDivElement {
     const post = document.createElement('span');
     post.textContent = 'starting empires';
     countRow.appendChild(post);
-    wrap.appendChild(countRow);
+    autoGroup.appendChild(countRow);
 
-    // --- OR specify the starting empires below (lbl…OR). The original lists
-    // each AI empire here for manual editing; only the auto-generate settings
-    // are implemented now (task 06h scope). ---
+    // --- OR specify the starting empires below (lbl…OR). Task 06j: the
+    // original lists each AI empire here for manual editing — an editable row
+    // per empire with race / government pickers and a name field. ---
     const orLabel = document.createElement('div');
     orLabel.className = 'wizard-empires-or';
     orLabel.textContent = 'OR specify the starting empires below';
@@ -719,19 +745,151 @@ function buildOtherEmpiresPage(options: StartGameOptions): HTMLDivElement {
 
     const listPreview = document.createElement('div');
     listPreview.className = 'wizard-empires-list-preview';
-    function paintPreview(): void {
-        listPreview.textContent = o.autogenerate
-            ? `${o.empireCount} empires will be generated`
-            : `Manual empire list — ${o.empireCount} empires (auto-generation off)`;
+
+    const listWrap = document.createElement('div');
+    listWrap.className = 'wizard-empires-manual-wrap';
+    wrap.appendChild(listWrap);
+
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'wizard-btn wizard-btn-secondary wizard-empires-add-btn';
+    addBtn.textContent = 'Add empire';
+    wrap.appendChild(addBtn);
+
+    let governments: Government[] = [];
+    function playableRaces(): Race[] {
+        return loadWizardRacesSync()
+            .filter((r) => r.playable)
+            .sort((a, b) => a.name.localeCompare(b.name));
     }
+    /** Task 06j: default display name for a manual empire row ("<Race> Empire"). */
+    function defaultEmpireName(raceName: string): string {
+        return `${raceName} Empire`;
+    }
+    function paintPreview(): void {
+        if (o.manual.length > 0) {
+            listPreview.textContent = `Manual list — ${o.manual.length} specified empire${o.manual.length === 1 ? '' : 's'} (overrides auto-generation)`;
+        } else {
+            listPreview.textContent = o.autogenerate
+                ? `${o.empireCount} empires will be generated`
+                : `No manual empires — ${o.empireCount} random empires (auto-generation off)`;
+        }
+    }
+
+    // One editable row per manual empire (task 06j): race dropdown,
+    // government dropdown, name text input, remove ✕.
+    function makeRow(m: ManualEmpireStart): HTMLDivElement {
+        const row = document.createElement('div');
+        row.className = 'wizard-empires-row';
+
+        const raceSelect = document.createElement('select');
+        raceSelect.className = 'wizard-empires-race-select';
+        for (const r of playableRaces()) {
+            const opt = document.createElement('option');
+            opt.value = r.name;
+            opt.textContent = r.name;
+            opt.selected = r.name === m.race;
+            raceSelect.appendChild(opt);
+        }
+        if (!playableRaces().some((r) => r.name === m.race)) {
+            const opt = document.createElement('option');
+            opt.value = m.race;
+            opt.textContent = m.race;
+            raceSelect.appendChild(opt);
+        }
+        raceSelect.addEventListener('change', () => {
+            m.race = raceSelect.value;
+            if (m.name === '') {
+                m.name = defaultEmpireName(m.race);
+                nameInput.value = m.name;
+            }
+        });
+        row.appendChild(raceSelect);
+
+        const govSelect = document.createElement('select');
+        govSelect.className = 'wizard-empires-gov-select';
+        const noneOpt = document.createElement('option');
+        noneOpt.value = '-1';
+        noneOpt.textContent = '(Random)';
+        noneOpt.selected = m.governmentId < 0;
+        govSelect.appendChild(noneOpt);
+        for (const g of governments) {
+            const opt = document.createElement('option');
+            opt.value = String(g.governmentId);
+            opt.textContent = g.name;
+            opt.selected = g.governmentId === m.governmentId;
+            govSelect.appendChild(opt);
+        }
+        govSelect.addEventListener('change', () => {
+            m.governmentId = parseInt(govSelect.value, 10);
+        });
+        row.appendChild(govSelect);
+
+        const nameInput = document.createElement('input');
+        nameInput.type = 'text';
+        nameInput.className = 'wizard-empires-name-input';
+        nameInput.placeholder = defaultEmpireName(m.race);
+        nameInput.value = m.name;
+        nameInput.addEventListener('input', () => {
+            m.name = nameInput.value;
+        });
+        row.appendChild(nameInput);
+
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'wizard-empires-remove-btn';
+        removeBtn.title = 'Remove empire';
+        removeBtn.textContent = '✕';
+        removeBtn.addEventListener('click', () => {
+            const i = o.manual.indexOf(m);
+            if (i >= 0) o.manual.splice(i, 1);
+            row.remove();
+            paintList();
+        });
+        row.appendChild(removeBtn);
+
+        return row;
+    }
+
+    function paintList(): void {
+        listWrap.replaceChildren(...o.manual.map(makeRow));
+        addBtn.disabled = o.manual.length >= OTHER_EMPIRES_COUNT_MAX;
+        paintPreview();
+    }
+
+    addBtn.addEventListener('click', () => {
+        if (o.manual.length >= OTHER_EMPIRES_COUNT_MAX) return;
+        const races = playableRaces();
+        const race = races[0]?.name ?? '';
+        o.manual.push({ race, governmentId: -1, name: race === '' ? '' : defaultEmpireName(race) });
+        paintList();
+    });
+
     paintPreview();
     wrap.appendChild(listPreview);
     autoCheck.addEventListener('change', paintPreview);
     countInput.addEventListener('input', paintPreview);
 
-    // TODO(port): manual per-empire editing (list of AI empires with race /
-    // government / home system pickers) — Start.InitializeComponent.cs
-    // pnlStartNewGameOtherEmpires empStartNewGame* rows.
+    // Load race + government data (both are already loaded by the time the
+    // user reaches this page, but re-load defensively like buildEmpirePage),
+    // then render any pre-existing rows.
+    const loading = document.createElement('div');
+    loading.className = 'wizard-race-loading';
+    loading.textContent = 'Loading races and governments…';
+    listWrap.appendChild(loading);
+    Promise.all([loadWizardRaceData(), loadWizardGovernments()])
+        .then(([, allGovs]) => {
+            loading.remove();
+            governments = filterStartGovernments(allGovs);
+            paintList();
+        })
+        .catch(() => {
+            loading.remove();
+            const err = document.createElement('div');
+            err.className = 'wizard-race-error';
+            err.textContent = 'Failed to load race/government data for the manual empire list.';
+            listWrap.appendChild(err);
+        });
 
     return wrap;
 }
@@ -1053,7 +1211,9 @@ function buildEmpirePage(options: StartGameOptions): HTMLDivElement {
             govSection.appendChild(error);
         });
 
-    // --- Flag: shape grid + colour pickers + preview ---
+    // --- Flag: colour pickers + preview (header row, always visible) then
+    // the shape grid below in its own scroll box, so 83 tiles don't push the
+    // colour/preview controls off the bottom of the page (overflow fix). ---
     const flagSection = document.createElement('div');
     flagSection.className = 'wizard-empire-flag';
     const flagLabel = document.createElement('span');
@@ -1061,9 +1221,9 @@ function buildEmpirePage(options: StartGameOptions): HTMLDivElement {
     flagLabel.textContent = 'Flag';
     flagSection.appendChild(flagLabel);
 
-    const flagGrid = document.createElement('div');
-    flagGrid.className = 'wizard-empire-flag-grid';
-    flagSection.appendChild(flagGrid);
+    const flagHeaderRow = document.createElement('div');
+    flagHeaderRow.className = 'wizard-empire-flag-header';
+    flagSection.appendChild(flagHeaderRow);
 
     const colorRow = document.createElement('div');
     colorRow.className = 'wizard-empire-color-row';
@@ -1084,7 +1244,7 @@ function buildEmpirePage(options: StartGameOptions): HTMLDivElement {
         cell.appendChild(input);
         colorRow.appendChild(cell);
     }
-    flagSection.appendChild(colorRow);
+    flagHeaderRow.appendChild(colorRow);
 
     const previewWrap = document.createElement('div');
     previewWrap.className = 'wizard-empire-flag-preview-wrap';
@@ -1094,7 +1254,11 @@ function buildEmpirePage(options: StartGameOptions): HTMLDivElement {
     previewShape.className = 'wizard-empire-flag-preview-shape';
     previewWrap.appendChild(previewBg);
     previewWrap.appendChild(previewShape);
-    flagSection.appendChild(previewWrap);
+    flagHeaderRow.appendChild(previewWrap);
+
+    const flagGrid = document.createElement('div');
+    flagGrid.className = 'wizard-empire-flag-grid';
+    flagSection.appendChild(flagGrid);
     wrap.appendChild(flagSection);
 
     function updateFlagPreview(): void {
@@ -1384,12 +1548,14 @@ function buildStartPage(options: StartGameOptions): HTMLDivElement {
                     : `No range limits (range ${options.colonization.colonizationRangeKly}K, influence ${options.colonization.colonyInfluenceRangePercent}%)`,
             ],
             ['Same-System Colonies', options.colonization.allowSameSystemAsOtherEmpires ? 'Allowed' : 'Disallowed'],
-            // Task 06h: other empires summary.
+            // Task 06h/06j: other empires summary (manual list overrides).
             [
                 'Other Empires',
-                options.otherEmpires.autogenerate
-                    ? `${options.otherEmpires.empireCount} auto-generated`
-                    : `${options.otherEmpires.empireCount} manual (list editing TODO)`,
+                options.otherEmpires.manual.length > 0
+                    ? `${options.otherEmpires.manual.length} manual (${options.otherEmpires.manual.map((m) => m.name || m.race).join(', ')})`
+                    : options.otherEmpires.autogenerate
+                        ? `${options.otherEmpires.empireCount} auto-generated`
+                        : `${options.otherEmpires.empireCount} random`,
             ],
             // Task 06g: victory conditions summary (sandbox when none checked).
             [
