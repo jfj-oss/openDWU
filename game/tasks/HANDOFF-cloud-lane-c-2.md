@@ -104,5 +104,15 @@ Tests: added `test/componentStatic.test.ts`, `test/designNames.test.ts`, `test/d
 - `3a1ae7f`: createGame / GenerateEmpire call the real ticks (tick/gameStart.ts) at the C# sites; stand-ins
   `empireDoTasksStandIn`, `galaxyGameStartHugeTick/LongTick` removed. createGame pins unchanged; the 600 s
   digest moved to `78d35aa06c9a1e5b` (1344-1350 touch stagger now applied, incl. LastHugeTouch).
-- Wave 1 is running in local worktrees `/home/user/wt/m4{b,d,j,k,r,t}` on branches `wip/m4*`.
-  M4b is on Fable; d, j, k, r and t are on Opus. They get merged into `claude/cloud-lane-c2` as they finish.
+- Wave 1 merged into `claude/cloud-lane-c2` (last merge `bba13c4`, 626 tests passing):
+  - M4b missions/command dispatcher (`missions/`: mission.ts, assign.ts, resolveCommands.ts, executeCommands.ts,
+    distress.ts; per-package case stubs `missions/cmd*.ts`).
+  - M4d orders/contracts/freight/colony supply (`logistics/`). A null `Habitat.dockingBayWaitQueue` reads as an
+    empty queue until M4e creates them.
+  - M4j colony growth, satisfaction, treasury, government (`colonyTick.ts`, `treasury.ts`; EmpireCounters class).
+  - M4k research progress (`researchTick.ts`, extended `researchSystem.ts`).
+  - M4r diplomacy runtime (`diplomacyTick.ts`, `tradeItems.ts`, EmpireEvaluation in `diplomacy.ts`).
+  - M4t exploration/visibility/territory (`exploration.ts`; UpdateSystemInfo player variant).
+  - Pins moved: 600 s digest now `9582e8126fa8a7cd`; createGameFull / troops / many createGame pins moved with M4k
+    (game-start PerformResearch draws Rnd) and M4j (game-start EvaluateColonyVariables / recruitment).
+- Wave 2 running in `/home/user/wt/m4{c,g,h,n,s1}` (branched at `58e94b7`, before M4r): M4n on Fable, the rest on Opus.
