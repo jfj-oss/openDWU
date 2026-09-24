@@ -84,7 +84,10 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // EvaluateRelativeToParent, the no-mission epilogue resets idle speeds; freighters contracted by M4d now get
         // real missions and command queues). M4k: the game-start and periodic Empire.DoTasks run PerformResearch (queue
         // project picks and research-event rolls draw Rnd; completed research changes components and troop types).
-        expect(summary.digest).toBe('c52d805d788d9173');
+        // Moved from c52d805d788d9173 by M4h: colonies (and populated independent habitats) now own a ConstructionQueue
+        // whose DoConstruction draws Rnd.Next(0, yards.Count) in every periodic Habitat tick, and shipyards (space ports,
+        // construction ships) get queues in ReDefine; DoRepairs / CheckForRepairs / CheckWhetherStillBeingBuilt run.
+        expect(summary.digest).toBe('9383fd989e1c463f');
     }, 600000);
 });
 

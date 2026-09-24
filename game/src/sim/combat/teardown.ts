@@ -7,6 +7,7 @@
 
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
+import type { BuiltObject } from '../builtObject';
 import { registerTodo, todo } from '../tick/todo';
 
 const T_cleanupInvalidShips = registerTodo('M4o', 'cleanupInvalidShips');
@@ -14,4 +15,12 @@ const T_cleanupInvalidShips = registerTodo('M4o', 'cleanupInvalidShips');
 export function cleanupInvalidShips(galaxy: Galaxy, empire: Empire): void {
     // RND: +clock×3 — not drawn until M4o.
     /* TODO(port) M4o */ todo(T_cleanupInvalidShips);
+}
+
+// ---- stubs added by M4h (called from construction/constructionQueue.ts) ----
+
+const T_builtObjectCompleteTeardown = registerTodo('M4o', 'builtObjectCompleteTeardown');
+/** BuiltObject.2.cs 5166/5171 CompleteTeardown(galaxy[, removeFromEmpire]) — stub (a scrapped ship stays in the galaxy). */
+export function builtObjectCompleteTeardown(galaxy: Galaxy, builtObject: BuiltObject, removeFromEmpire = false): void {
+    /* TODO(port) M4o */ todo(T_builtObjectCompleteTeardown);
 }

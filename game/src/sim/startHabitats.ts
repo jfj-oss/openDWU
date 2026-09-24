@@ -16,6 +16,7 @@
 // they are reached here through TS bracket access (galaxy['name']), which
 // keeps galaxy.ts untouched.
 
+import { newHabitatConstructionQueue } from './construction/constructionYard';
 import type { Galaxy } from './galaxy';
 import type { Empire } from './empire';
 import type { Resource } from './data/resources';
@@ -57,7 +58,9 @@ function generatePlanet(galaxy: Galaxy, sun: Habitat, selector: PlanetSelector, 
         habitat.troops = new TroopList();
         habitat.troopsToRecruit = new TroopList();
         habitat.invadingTroops = new TroopList();
-        // TODO(port): ConstructionQueue / ManufacturingQueue / 20 DockingBays of
+        // Galaxy.8.cs 275/314/353/483/522/561 (M4h): habitat.ConstructionQueue = new ConstructionQueue(habitat, galaxy).
+        newHabitatConstructionQueue(galaxy, habitat);
+        // TODO(port): ManufacturingQueue / 20 DockingBays of
         // component 74 / DockingBayWaitQueue (no Rnd, no ID counters) — models not ported.
     }
     return habitat;

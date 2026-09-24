@@ -32,6 +32,7 @@ import { PIRATE_SHIP_MAINTENANCE_FACTOR, SHIP_MAINTENANCE_COST_PER_SIZE_UNIT } f
 import { Weapon, weaponsDetermineNotInSuppliedList, weaponsQuickCompareEquivalent, weaponsRemoveAndResetFirstMatchingWeaponById } from './weapon';
 import { MIN_TIME } from './tick/simTime';
 import type { BuiltObjectMission } from './missions/mission';
+import { builtObjectReDefineConstructionQueue } from './construction/constructionYard';
 
 // Port of EngineType.cs (byte enum, member order exact).
 export enum EngineType {
@@ -114,7 +115,7 @@ export class BuiltObject {
     empire: Empire | null = null;
     owner: Empire | null = null;
     dockingBays: DockingBay[] | null = null;
-    // TODO(port): ConstructionQueue (ConstructionQueue.cs) — see ReDefine.
+    /** StellarObject.ConstructionQueue (construction/constructionQueue.ts ConstructionQueue; created by ReDefine). */
     constructionQueue: unknown = null;
     isRefuellingDepot = false;
     isShipYard = false;
@@ -1283,11 +1284,8 @@ export class BuiltObject {
         this.unbuiltComponentCount = num29;
         this.damagedComponentCount = num30;
         if (this.damagedComponentCount === 0) this.strandedMessageSent = false;
-        // TODO(port): ConstructionQueue (ConstructionQueue.cs 71/200, BaconConstructionQueue
-        // ReviewConstructionSpeed): with flag7 (a ConstructionBuild component) C# creates
-        // `new ConstructionQueue(this, _Galaxy)` and keeps it while Redefine finds a built
-        // yard; otherwise it is dropped. No Rnd. Left null here.
-        void flag7;
+        // BuiltObject.cs 3171-3184: ConstructionQueue (M4h, construction/constructionQueue.ts). No Rnd.
+        builtObjectReDefineConstructionQueue(this, flag7);
         // TODO(port): ManufacturingQueue (ManufacturingQueue.cs): with flag9 (a manufacturer
         // component) C# creates `new ManufacturingQueue(this, _Galaxy)` the same way. No Rnd.
         this.annualSupportCost = csInt(num28);
@@ -1414,6 +1412,10 @@ export class BuiltObject {
     // ---- M4f fields (civilian mission AI) ----
     // ---- M4g fields (extraction, industry) ----
     // ---- M4h fields (construction, repair, retrofit) ----
+    /** BuiltObject.cs 353 _DoingConstruction (set by ProcessSingleConstructionYard, cleared by IndustrialProcessing). */
+    doingConstruction = false;
+    /** BuiltObject.cs RetrofitBaseConstructionQueue (a colony-built base's retrofit queue; Empire.5.cs 159-163, M4i). */
+    retrofitBaseConstructionQueue: unknown = null;
     // ---- M4i fields (empire construction) ----
     // ---- M4j fields (economy) ----
     // ---- M4k fields (research) ----

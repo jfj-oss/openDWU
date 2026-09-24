@@ -8,6 +8,7 @@
 // SelectCreatures) — see the `TODO(port)` markers below for what remains.
 
 import { Random } from './random';
+import { newHabitatConstructionQueue } from './construction/constructionYard';
 import { Creature, CreatureType } from './creature';
 import { GalaxyLocation, GalaxyLocationEffectType, GalaxyLocationShape, GalaxyLocationType } from './galaxyLocation';
 import { GalaxyNebulaeGenerator } from './galaxyNebulaeGenerator';
@@ -3405,7 +3406,9 @@ export class Galaxy {
         if (this.rnd.next(0, 5) === 2) {
             habitat.orbitDirection = false;
         }
-        // TODO(port): Cargo/Troops/TroopsToRecruit/InvadingTroops/ConstructionQueue/
+        // Galaxy.8.cs 483 (M4h): habitat.ConstructionQueue = new ConstructionQueue(habitat, galaxy). No Rnd.
+        newHabitatConstructionQueue(this, habitat);
+        // TODO(port): Cargo/Troops/TroopsToRecruit/InvadingTroops/
         // ManufacturingQueue/20 DockingBays (component 74) — Galaxy.8.cs GenerateContinentalPlanet.
         return habitat;
     }
@@ -3954,6 +3957,9 @@ export class Galaxy {
                 for (let p = 0; p < populationRolls; p++) {
                     this.selectPopulation(planet, sunHabitat);
                 }
+                // Galaxy.5.cs 1609-1617 (M4h): a populated habitat gets `ConstructionQueue = new ConstructionQueue(habitat2, this)`.
+                // TODO(port): the rest of that block (Cargo, Troops, Characters, ManufacturingQueue, DockingBays; no Rnd).
+                if (planet.population.items.length > 0) newHabitatConstructionQueue(this, planet);
                 // Port of Galaxy.6.cs SelectCreatures(habitat2) — Galaxy.6.cs:654 (call
                 // site in Galaxy.5.cs SetupSolarSystem, after population rolls).
                 this.selectCreatures(planet);
@@ -4044,6 +4050,8 @@ export class Galaxy {
                     for (let p = 0; p < moonPopulationRolls; p++) {
                         this.selectPopulation(moon, sunHabitat);
                     }
+                    // Galaxy.5.cs 1745-1755 (M4h): as for planets above.
+                    if (moon.population.items.length > 0) newHabitatConstructionQueue(this, moon);
                     // Port of Galaxy.6.cs SelectCreatures(habitat2) — Galaxy.6.cs:654 (call
                     // site in Galaxy.5.cs SetupSolarSystem, after moon population rolls).
                     this.selectCreatures(moon);
@@ -4364,6 +4372,8 @@ export class Galaxy {
     // ---- M4f fields (civilian mission AI) ----
     // ---- M4g fields (extraction, industry) ----
     // ---- M4h fields (construction queues, shipyards) ----
+    /** Clock-seeded `new Random()` of BaconBuiltObject.DoRepairs (4787): a galaxy-seed-derived stream (plan §0). */
+    baconRepairClockRnd: Random | null = null;
     // ---- M4i fields (empire construction, facilities, wonders) ----
     // ---- M4j fields (colony growth, treasury, government) ----
     /** Galaxy.cs 665 _ColonyFillFactor = 1.0 (ReviewColonyFillFactor). */

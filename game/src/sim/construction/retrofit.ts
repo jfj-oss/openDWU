@@ -1,17 +1,92 @@
-// M4h — retrofit queues.
-//
-// Stubs created by M4a (tasks/M4-plan.md §3.1): the tick skeletons in src/sim/tick/ call these entry points in C#
-// order. Each is a no-op that does NOT draw Galaxy.Rnd (a `RND:` note marks C# draw sites that are skipped until the
-// owning package ports the body) and records a TODO hit (tick/todo.ts). The owning package replaces the bodies in
-// place, keeping the signatures (or adjusting the skeleton call in the same change).
+// M4h — retrofit queues: BuiltObject.2.cs 6023 ReviewRetrofitConstructionQueue, and the Bacon private-sector
+// build / refit investment BaconBuiltObject.cs 5106 PrivateSectorBuildOrRefitInvestInInfrastructure (with Empire.9.cs
+// 2344 SelectRandomSpacePortColony), shared by case Build (missions/cmdConstruction.ts) and the retrofit missions
+// (Empire.5.cs 173-353, M4i).
 
 import type { Galaxy } from '../galaxy';
 import type { BuiltObject } from '../builtObject';
-import { registerTodo, todo } from '../tick/todo';
+import type { Empire } from '../empire';
+import type { Habitat } from '../types';
+import type { ConstructionQueue } from './constructionQueue';
 
-const T_reviewRetrofitConstructionQueue = registerTodo('M4h', 'reviewRetrofitConstructionQueue');
-/** BuiltObject.2.cs 6023 ReviewRetrofitConstructionQueue(time, starDate). */
+/**
+ * BaconBuiltObject.cs 77 privateBuildCostToStateMoney = 1.0 (the class default; BaconSettings.txt sets 0.3, but the
+ * port keeps the C# defaults for BaconMain.BaconInitialize settings, as builtObject.ts / colonyTick.ts do).
+ * TODO(port): BaconSettings.txt overrides (BaconMain.cs 925).
+ */
+export const BACON_PRIVATE_BUILD_COST_TO_STATE_MONEY = 1.0;
+
+/**
+ * BuiltObject.2.cs 6023 ReviewRetrofitConstructionQueue(time, starDate): runs a colony-built base's retrofit queues
+ * (RetrofitBaseManufacturingQueue, RetrofitBaseConstructionQueue) while they hold work, and drops them when empty.
+ * Rnd: DoConstruction's Next(0, yards).
+ */
 export function reviewRetrofitConstructionQueue(galaxy: Galaxy, builtObject: BuiltObject, time: number, starDate: number): void {
-    // RND: draws in callees (d≤3) — not drawn until M4h.
-    /* TODO(port) M4h */ todo(T_reviewRetrofitConstructionQueue);
+    void starDate;
+    // 6025-6051: RetrofitBaseManufacturingQueue (ManufacturingQueue, M4g) — TODO(port) M4g/M4i: the BuiltObject field
+    // does not exist yet; it is only set by Empire.5.cs AssignRetrofitMission (M4i), so the C# sees null here.
+    const retrofitBaseConstructionQueue = builtObject.retrofitBaseConstructionQueue as ConstructionQueue | null;
+    if (retrofitBaseConstructionQueue === null) {
+        return;
+    }
+    let flag2 = false;
+    if (retrofitBaseConstructionQueue.constructionWaitQueue !== null && retrofitBaseConstructionQueue.constructionWaitQueue.length > 0) {
+        flag2 = true;
+    }
+    const yards = retrofitBaseConstructionQueue.constructionYards;
+    if (yards !== null && yards.length > 0) {
+        for (let j = 0; j < yards.length; j++) {
+            const constructionYard = yards[j];
+            if (constructionYard != null && constructionYard.shipUnderConstruction !== null) {
+                flag2 = true;
+            }
+        }
+    }
+    if (flag2) {
+        retrofitBaseConstructionQueue.doConstruction(galaxy, time);
+    } else {
+        builtObject.retrofitBaseConstructionQueue = null;
+    }
+}
+
+/** Empire.9.cs 2344 SelectRandomSpacePortColony(coloniesToExclude). Rnd: Next(0, SpacePorts.Count). */
+export function selectRandomSpacePortColony(galaxy: Galaxy, empire: Empire, coloniesToExclude: readonly (BuiltObject | Habitat)[]): Habitat | null {
+    const spacePorts = empire.spacePorts;
+    const num = galaxy.rnd.next(0, spacePorts.length);
+    for (let i = num; i < spacePorts.length; i++) {
+        const ph = spacePorts[i].parentHabitat;
+        if (ph !== null && !coloniesToExclude.includes(ph)) return ph;
+    }
+    for (let j = 0; j < num; j++) {
+        const ph = spacePorts[j].parentHabitat;
+        if (ph !== null && !coloniesToExclude.includes(ph)) return ph;
+    }
+    return null;
+}
+
+/**
+ * BaconBuiltObject.cs 5106 PrivateSectorBuildOrRefitInvestInInfrastructure(ship, cost): (1 − factor) × cost goes to the
+ * "infrastructure" BaconValue of a random space-port colony, and factor × cost is returned (added to state money).
+ * Space ports named "--…" are excluded. Rnd: SelectRandomSpacePortColony. (The try/catch and the debug pause are
+ * UI-only.)
+ */
+export function privateSectorBuildOrRefitInvestInInfrastructure(galaxy: Galaxy, ship: BuiltObject, cost: number): number {
+    const num1 = (1.0 - BACON_PRIVATE_BUILD_COST_TO_STATE_MONEY) * cost;
+    const num2 = BACON_PRIVATE_BUILD_COST_TO_STATE_MONEY * cost;
+    const actualEmpire = ship.actualEmpire!;
+    const coloniesToExclude: BuiltObject[] = [];
+    for (const spacePort of actualEmpire.spacePorts) {
+        if (spacePort.name.startsWith('--')) coloniesToExclude.push(spacePort);
+    }
+    const habitat = selectRandomSpacePortColony(galaxy, actualEmpire, coloniesToExclude);
+    if (habitat !== null) {
+        if (habitat.baconValues === null) habitat.baconValues = new Map<string, unknown>();
+        if (habitat.baconValues.has('infrastructure')) {
+            const baconValue = habitat.baconValues.get('infrastructure') as number;
+            habitat.baconValues.set('infrastructure', baconValue + Math.trunc(num1));
+        } else {
+            habitat.baconValues.set('infrastructure', Math.trunc(num1));
+        }
+    }
+    return num2;
 }

@@ -34,6 +34,30 @@ export class Cargo {
         }
         this.reserved = reserved;
     }
+
+    // ---- M4h: component cargo (Cargo.cs 60-88 Cargo(Component, amount, empire[, reserved]), CommodityComponent,
+    // CommodityIsComponent). A component cargo keeps `commodity` as a ResourceRef(-1) sentinel (no resource id is
+    // negative, so every resource IndexOf/merge skips it) and carries the component in `commodityComponent`.
+    /** Cargo.cs Component / CommodityComponent (null for resource cargo). */
+    commodityComponent: { componentId: number } | null = null;
+    /** Cargo.cs CommodityIsComponent. */
+    get commodityIsComponent(): boolean {
+        return this.commodityComponent !== null;
+    }
+    /** Cargo.cs CommodityIsResource. */
+    get commodityIsResource(): boolean {
+        return this.commodityComponent === null;
+    }
+    /** Cargo.cs 94 Available => Amount - Reserved. */
+    get available(): number {
+        return this.amount - this.reserved;
+    }
+    /** Cargo.cs 60-88 `new Cargo(component, amount, empire[, reserved])`. */
+    static ofComponent(component: { componentId: number }, amount: number, empire: unknown, reserved = 0): Cargo {
+        const cargo = new Cargo(new ResourceRef(-1), amount, empire, reserved);
+        cargo.commodityComponent = { componentId: component.componentId };
+        return cargo;
+    }
 }
 
 // Port of CargoList.cs (subset). The C# list is keyed by (resource, empire);
@@ -46,7 +70,10 @@ export class CargoList {
     // TODO(port): component cargo (CommodityComponent) — only resources here.
     add(cargo: Cargo): void {
         for (const c of this.items) {
-            if (c.empire === cargo.empire && c.commodity.resourceId === cargo.commodity.resourceId) {
+            // M4h: a component cargo merges only with the same component (CargoList.cs 189-196).
+            const cc = c.commodityComponent;
+            const nc = cargo.commodityComponent;
+            if (c.empire === cargo.empire && c.commodity.resourceId === cargo.commodity.resourceId && (cc === null ? nc === null : nc !== null && cc.componentId === nc.componentId)) {
                 c.amount += cargo.amount;
                 c.reserved += cargo.reserved;
                 return;
@@ -77,6 +104,32 @@ export class CargoList {
             }
         }
         return -1;
+    }
+
+    // ---- M4h: component overloads (CargoList.cs 82 GetExists(Component), 668/676/756 GetCargo/IndexOf(Component,
+    // Empire)). The C# per-empire index arrays and the _ItemExists bitmap are caches over the same list: GetExists is
+    // "some entry of any empire carries the component" and IndexOf is the (only) entry of that component + empire.
+    /** CargoList.GetExists(Component). */
+    getExistsComponent(componentId: number): boolean {
+        for (let i = 0; i < this.items.length; i++) {
+            const cc = this.items[i].commodityComponent;
+            if (cc !== null && cc.componentId === componentId) return true;
+        }
+        return false;
+    }
+    /** CargoList.IndexOf(Component, Empire): -1 for a null empire. */
+    indexOfComponent(componentId: number, empire: unknown): number {
+        if (empire === null || empire === undefined) return -1;
+        for (let i = 0; i < this.items.length; i++) {
+            const cc = this.items[i].commodityComponent;
+            if (cc !== null && cc.componentId === componentId && this.items[i].empire === empire) return i;
+        }
+        return -1;
+    }
+    /** CargoList.GetCargo(Component, Empire). */
+    getCargoComponent(componentId: number, empire: unknown): Cargo | null {
+        const index = this.indexOfComponent(componentId, empire);
+        return index >= 0 ? this.items[index] : null;
     }
 }
 
