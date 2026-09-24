@@ -22,15 +22,21 @@
     background: rgba(0, 0, 0, 0.55);
 }
 
+/* Sized to fit every page's content without scrolling on a typical desktop
+   viewport while still respecting the 96vw/92vh caps on smaller windows;
+   colors match the HUD panel tokens (src/ui/hud.css .hud-panel) so the
+   wizard reads as part of the same UI system, not a separate skin. */
 .wizard-window {
     position: relative; /* above the ::before overlay */
-    width: 900px;
+    width: 1040px;
     max-width: 96vw;
-    height: 620px;
+    height: 740px;
     max-height: 92vh;
-    background: rgba(24, 26, 32, 0.96);
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    border-radius: 10px;
+    background: rgba(14, 16, 20, 0.94);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
     box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
     display: flex;
     flex-direction: column;
@@ -43,7 +49,7 @@
     justify-content: space-between;
     padding: 10px 16px;
     background: rgba(10, 11, 15, 0.9);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     font-size: 15px;
     color: #e8d24a;
 }
@@ -112,6 +118,14 @@
     text-align: center;
 }
 
+/* The Galaxy page: 8 sliders in two columns instead of one long column, so
+   the whole page fits without scrolling (task: fix overflow). */
+.wizard-slider-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px 28px;
+}
+
 .wizard-slider {
     display: flex;
     flex-direction: column;
@@ -121,6 +135,14 @@
 .wizard-slider-title {
     font-size: 13px;
     color: #e8d24a;
+}
+
+/* Title + value badge on one line (Colonization page sliders). */
+.wizard-slider-title-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
 }
 
 .wizard-slider input[type='range'] {
@@ -319,10 +341,13 @@
 
 /* Note listing race files absent from this install (partial asset tree). */
 .wizard-race-missing {
+    flex-shrink: 0;
+    margin-top: 4px;
     font-size: 11px;
     color: #b8a24a;
     font-style: italic;
     text-align: center;
+    line-height: 1.4;
 }
 
 /* --- Your Empire page (task 06e): name, government, flag. --- */
@@ -393,11 +418,25 @@
     gap: 8px;
 }
 
-/* Grid of the 83 flag shape tiles. */
+/* Colour pickers + live preview, above the flag grid so they're always
+   visible regardless of how far the grid below is scrolled. */
+.wizard-empire-flag-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+}
+
+/* Grid of the 83 flag shape tiles, capped and independently scrollable so
+   it can't push the colour pickers / preview above it off the page
+   (overflow fix — it used to sit between them and the page bottom). */
 .wizard-empire-flag-grid {
     display: grid;
     grid-template-columns: repeat(17, 1fr);
+    align-content: start;
     gap: 3px;
+    max-height: 220px;
+    overflow-y: auto;
     background: rgba(0, 0, 0, 0.25);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 6px;
@@ -477,7 +516,13 @@
 
 /* --- Colonization and Territory page (task 06h). --- */
 
-.wizard-colonization-group {
+/* Shared boxed-panel look for grouped controls: Colonization range limits,
+   Other Empires auto-generate, and Victory Conditions sections all use it,
+   so the three pages that group checkboxes/sliders into panels look like
+   one consistent pattern rather than three near-identical ad-hoc ones. */
+.wizard-colonization-group,
+.wizard-panel-group,
+.wizard-victory-section {
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -487,20 +532,8 @@
     border-radius: 6px;
 }
 
-/* Value label shown under each colonization slider ("4000K" / "100%"). */
+/* Value badge shown next to each colonization slider's title ("4000K" / "100%"). */
 .wizard-colonization-value {
-    font-size: 12px;
-    color: #e8d24a;
-    font-variant-numeric: tabular-nums;
-}
-
-.wizard-colonization-range-value {
-    font-size: 13px;
-    color: #fff;
-    font-variant-numeric: tabular-nums;
-}
-
-.wizard-colonization-influence-value {
     font-size: 13px;
     color: #fff;
     font-variant-numeric: tabular-nums;
@@ -513,7 +546,14 @@
     font-style: italic;
 }
 
-/* --- Other Empires page (task 06h). --- */
+/* Pages whose content is much shorter than the Race/Empire pages the window
+   is sized for: fill the remaining height and center vertically instead of
+   leaving a big dead gap under a top-aligned block. */
+.wizard-page.wizard-empires-page,
+.wizard-page.wizard-colonization-page {
+    flex: 1;
+    justify-content: center;
+}
 
 .wizard-empires-count-row {
     display: flex;
@@ -559,15 +599,6 @@
     text-align: center;
 }
 
-.wizard-victory-section {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    padding: 10px 12px;
-    background: rgba(0, 0, 0, 0.25);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 6px;
-}
 
 /* "… <number input> years/%" row under a victory-type checkbox. */
 .wizard-victory-number-row {
@@ -598,11 +629,13 @@
     text-align: center;
 }
 
+/* Two columns so the ~17 summary rows fit without scrolling on the wizard's
+   fixed window height (a single centered column ran well past the fold). */
 .wizard-start-summary {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    max-width: 480px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 16px;
+    max-width: 820px;
     margin: 0 auto;
     width: 100%;
 }
@@ -611,7 +644,7 @@
     display: flex;
     justify-content: space-between;
     gap: 12px;
-    font-size: 14px;
+    font-size: 13px;
     padding: 6px 12px;
     background: rgba(0, 0, 0, 0.25);
     border: 1px solid rgba(255, 255, 255, 0.08);

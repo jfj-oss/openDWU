@@ -588,13 +588,16 @@ describe('wizard page order (task 06h, Start.InitializeComponent.cs navigation)'
         });
     });
 
-    it('forward labels are "Next →" except the final page, which starts the game', () => {
-        for (const id of WIZARD_PAGES) {
-            if (id !== 'start') {
-                expect(WIZARD_FORWARD_LABELS[id]).toBe('Next →');
-            }
-        }
-        expect(WIZARD_FORWARD_LABELS.start).toBe('Start Game');
+    it('forward labels name the next page in that order, except the final page, which starts the game', () => {
+        expect(WIZARD_FORWARD_LABELS).toEqual({
+            galaxy: 'Colonization and Territory →',
+            colonization: 'Your Race →',
+            race: 'Your Empire →',
+            empire: 'Other Empires →',
+            empires: 'Victory Conditions →',
+            victory: 'Start →',
+            start: 'Start Game',
+        });
     });
 });
 
