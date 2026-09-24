@@ -104,4 +104,25 @@ export class Random {
     nextDouble(): number {
         return this.sample();
     }
+
+    /** Snapshot the full RNG state (seed array + indices) so it can be
+     *  serialized and restored — used by save/load to continue a game's
+     *  random sequence exactly where it left off. */
+    getState(): RandomState {
+        return { seedArray: [...this.seedArray], inext: this.inext, inextp: this.inextp };
+    }
+
+    /** Restore a previously-snapshotted RNG state. */
+    setState(state: RandomState): void {
+        this.seedArray = [...state.seedArray];
+        this.inext = state.inext;
+        this.inextp = state.inextp;
+    }
+}
+
+/** Serializable snapshot of a Random instance's internal state. */
+export interface RandomState {
+    seedArray: number[];
+    inext: number;
+    inextp: number;
 }
