@@ -430,6 +430,13 @@ function pseudo(i: number): number {
 // ---------------------------------------------------------------------------
 // Asset store: candidate-URL loading with caching + generated fallbacks.
 
+// Pixi's asset resolver joins root-relative paths itself and, under the packaged
+// app's custom scheme (dwu://app/…), turns "/assets/dwu/x" into "dwu://assets/dwu/x".
+// Resolve against the document first so every scheme gets a correct absolute URL.
+function absoluteUrl(url: string): string {
+    return typeof document !== 'undefined' ? new URL(url, document.baseURI).href : url;
+}
+
 export class AssetStore {
     private cache = new Map<string, Texture | Promise<Texture>>();
 
@@ -460,7 +467,7 @@ export class AssetStore {
         const promise = (async () => {
             for (const url of urls) {
                 try {
-                    const tex = await Assets.load(url);
+                    const tex = await Assets.load(absoluteUrl(url));
                     this.cache.set(key, tex);
                     return tex;
                 } catch {
@@ -485,7 +492,7 @@ export class AssetStore {
                 if (this.dwuPresent) {
                     for (const url of urls) {
                         try {
-                            result = await Assets.load(url);
+                            result = await Assets.load(absoluteUrl(url));
                             break;
                         } catch {
                             // 404 / decode failure: warn once, try the next candidate URL.
