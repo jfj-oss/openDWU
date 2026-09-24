@@ -13,6 +13,7 @@ import { createGameMenu, type GameMenuRefs } from './screens/gameMenu';
 import { setGameMenuHandler } from './keyboard';
 import { startEffects } from '../audio/effectsPlayer';
 import { helpTopicKeyForHabitat, toggleGalactopedia } from './screens/galactopedia';
+import { toggleEmpiresList } from './screens/empiresList';
 
 /** Shared UI button-click sound (task 09b): the original plays a short click
  * for chrome-button presses; here every HUD button click routes through this. */
@@ -498,10 +499,23 @@ function buildEmpireFlagButton(wiring: HudWiring): HTMLElement {
             btn.appendChild(flag);
         }
     }
-    // TODO(screen): open the original's Empires screen.
     btn.addEventListener('click', () => {
         playUiClick();
-        console.log('TODO(screen): Empires');
+        // Task 12b: open the Empires list panel (galaxy + player empire from
+        // the wiring, guarded when either is missing).
+        const galaxy = wiring.galaxy;
+        if (!galaxy || !game) return;
+        toggleEmpiresList({
+            empires: galaxy.empires,
+            playerEmpire: game.playerEmpire as Empire,
+            onZoomTo: (habitat) => {
+                const cam = wiring.camera;
+                if (!cam) return;
+                // Same camera calls as doViewAction('zoomSelection').
+                cam.centerOn(habitat.xpos, habitat.ypos);
+                cam.zoomAt(SYSTEM_LEVEL_ZOOM, cam.width / 2, cam.height / 2);
+            },
+        });
     });
     return btn;
 }

@@ -1,0 +1,108 @@
+/* Empires list panel (task 12b). Styling follows the tutorial window / HUD
+   dark-panel tokens. */
+
+.empires-list-wrap {
+    position: fixed;
+    inset: 0;
+    z-index: 1500; /* above the HUD, like the in-game tutorial window */
+    pointer-events: none;
+    font-family: 'Forgotten Futurist', sans-serif;
+    color: #e6e6e6;
+}
+
+.empires-list-window {
+    position: absolute;
+    top: 64px;
+    left: 16px;
+    width: 380px;
+    max-width: calc(100vw - 16px);
+    max-height: calc(100vh - 96px);
+    pointer-events: auto;
+    background: rgba(14, 16, 20, 0.94);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.empires-list-titlebar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: rgba(10, 11, 15, 0.9);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.empires-list-heading {
+    font-size: 13px;
+    color: #e8d24a;
+}
+
+.empires-list-close {
+    background: transparent;
+    border: none;
+    color: #ccc;
+    font-size: 15px;
+    cursor: pointer;
+    padding: 2px 6px;
+}
+.empires-list-close:hover {
+    color: #fff;
+}
+
+.empires-list-body {
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    overflow-y: auto;
+}
+
+.empires-list-row {
+    display: grid;
+    grid-template-columns: 12px minmax(0, 1fr) 2.5em minmax(0, 1fr);
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 4px;
+    cursor: pointer;
+}
+.empires-list-row:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.empires-list-swatch {
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.empires-list-name {
+    font-size: 13px;
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.empires-list-colonies {
+    font-size: 12px;
+    color: #aaa;
+    text-align: right;
+}
+
+.empires-list-capital {
+    font-size: 12px;
+    color: #999;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
