@@ -15,6 +15,7 @@ import type { Race } from './data/races';
 import type { Government } from './data/governments';
 import { START_STAR_DATE } from './galaxyTime';
 import { Cargo, CargoList, ResourceRef, TroopList } from './cargo';
+import { checkEmpireColorUsed, selectColorFromKey, selectComplementaryColorKey, selectUnusedMainColor } from './empireColors';
 import { EmpireVisibility, SystemVisibilityStatus, type SystemVisibility, type VisibilityOwner, type VisibilityUnit } from './visibility';
 
 // TODO(port): EmpirePolicy type — Empire.cs / Policy.cs (policy data model
@@ -214,6 +215,12 @@ export class Empire {
     troopDescription = '';
     troopPictureRef = 0;
     stateMoney = 0.0;
+    // Task C2b: fields GenerateEmpire sets.
+    designPictureFamilyIndex = 0;
+    preWarpProgressEventsOccurred = false;
+    initiateConstruction = true;
+    expansion = 0;
+    playerEmpire = false;
     privateMoney = 0.0;
     research = new ResearchSystem();
     lastLeaderChangeDate = START_STAR_DATE;
@@ -230,6 +237,7 @@ export class Empire {
         governmentId: number,
         corruptionMultiplier: number,
         policy: EmpirePolicy,
+        isPlayerEmpire?: boolean,
     );
     // Port of Empire.cs ctor Empire(Galaxy, string, bool, Habitat, Race, EmpirePolicy)
     // (independent-empire constructor).
@@ -252,13 +260,14 @@ export class Empire {
         arg5: Race | null | number,
         arg6: EmpirePolicy | number,
         arg7?: EmpirePolicy,
+        arg8?: boolean,
     ) {
         if (typeof arg3 === 'boolean') {
             // Independent-empire overload.
             void arg3;
             this.initialize(galaxy, name, arg4 as Habitat | null, arg5 as Race | null, -1, 1.0, arg6 as EmpirePolicy, false);
         } else {
-            this.initialize(galaxy, name, arg3, arg4 as Race | null, arg5 as number, arg6 as number, arg7 ?? ({} as EmpirePolicy), false);
+            this.initialize(galaxy, name, arg3, arg4 as Race | null, arg5 as number, arg6 as number, arg7 ?? ({} as EmpirePolicy), arg8 ?? false);
         }
     }
 
@@ -291,8 +300,10 @@ export class Empire {
         this.corruptionMultiplier = corruptionMultiplier;
         // TODO(port): Galaxy.ColonyNames/ColonyNameIndex — Galaxy.cs (not
         // ported); player-empire capital rename branch is a guarded no-op.
-        if (isPlayerEmpire && false) {
-            // capital.Name = galaxy.ColonyNames[galaxy.ColonyNameIndex++];
+        // Empire.cs: player capital takes the next colony name.
+        if (isPlayerEmpire && capital !== null && galaxy.colonyNames !== null && galaxy.colonyNames.length > galaxy.colonyNameIndex) {
+            capital.name = galaxy.colonyNames[galaxy.colonyNameIndex];
+            galaxy.colonyNameIndex++;
         }
         this.lastDisasterDate = START_STAR_DATE;
         if (this.dominantRace !== null) {
@@ -690,23 +701,77 @@ export class Empire {
         this.governmentId = governmentId;
     }
 
-    // TODO(port): GenerateEmpireName — Empire.cs (adjective/noun tables from
-    // the government definition + Galaxy random name parts); deterministic
-    // fallback until the naming data is wired up.
+    // Port of Empire.cs GenerateEmpireName(governmentId) (line 4482). Note the
+    // C# quirk: the adjective (text2) is not reset between retries.
     generateEmpireName(governmentId: number): string {
-        const government = governmentsStatic.find((g) => g !== null && g.governmentId === governmentId);
-        if (government !== undefined && government !== null && government.empireNameAdjectives.length > 0 && government.empireNameNouns.length > 0) {
-            const adjective = government.empireNameAdjectives[0];
-            const noun = government.empireNameNouns[0];
-            return `${adjective} ${noun}`;
+        const rnd = this.galaxy.rnd;
+        let text = '';
+        const government = governmentId >= 0 && governmentId < governmentsStatic.length ? governmentsStatic[governmentId] : null;
+        let text2 = '';
+        let flag = true;
+        let num = 0;
+        while (flag && num < 50) {
+            text = '';
+            let empty: string;
+            const roll = rnd.next(0, 2) === 1;
+            if ((roll && this.dominantRace!.name.toLowerCase() !== 'human') || this.capital === null) {
+                empty = this.dominantRace!.name;
+            } else {
+                empty = this.galaxy.determineHabitatSystemStar(this.capital).name;
+            }
+            let list: string[] = government?.empireNameAdjectives ?? [];
+            let list2: string[] = government?.empireNameNouns ?? [];
+            if (list.length === 0) list = ['United', 'Combined', 'Imperial', 'Great', 'Grand'];
+            if (list2.length === 0) {
+                list2 = ['Empire', 'Alliance', 'Group', 'Dominion', 'Territory', 'Nation', 'Realm', 'Federation', 'Authority', 'Enclave', 'Confederacy', 'Coalition', 'Domain'];
+            }
+            const empty2 = list2[rnd.next(0, list2.length)];
+            const text3 = `${empty} ${empty2}`;
+            if (rnd.next(0, 4) === 1 && text3.length < 18 && list.length > 0) {
+                text2 = list[rnd.next(0, list.length)];
+            }
+            if (text2 !== '') text = `${text}${text2} `;
+            text = `${text}${empty} `;
+            text += empty2;
+            flag = this.galaxy.empires.some((e) => e.name === text);
+            num++;
         }
-        return 'Empire';
+        return text;
     }
 
-    // TODO(port): SelectEmpireColors — Empire.cs (race default colors /
-    // palette); neutral colors until ported.
-    selectEmpireColors(_isPirateFaction: boolean, setColors: (main: number, secondary: number) => void): void {
-        setColors(this.dominantRace?.defaultPrimaryColor ?? 0, this.dominantRace?.defaultSecondaryColor ?? 0);
+    // Port of Empire.cs SelectEmpireColors (line 4385), non-pirate path.
+    // TODO(port): pirate-faction branch (DefaultMainColorPirates, DetermineSecondaryColor) — C2d.
+    selectEmpireColors(isPirateFaction: boolean, setColors: (main: number, secondary: number) => void): void {
+        let flag = false;
+        let mainColor = 0;
+        let secondaryColor = 0;
+        let iterationCount = 0;
+        while (iterationCount < 200 && !flag) {
+            iterationCount++;
+            const race = this.dominantRace;
+            const color = race !== null ? selectColorFromKey(race.defaultPrimaryColor) : 0;
+            if (race !== null && !checkEmpireColorUsed(this.galaxy, isPirateFaction, color)) {
+                mainColor = color;
+                secondaryColor = selectColorFromKey(race.defaultSecondaryColor);
+            } else {
+                const u = selectUnusedMainColor(this.galaxy, isPirateFaction);
+                mainColor = u.color;
+                if (u.unusedColorKey < 0) {
+                    secondaryColor = selectColorFromKey(this.galaxy.rnd.next(0, 23));
+                } else {
+                    secondaryColor = selectColorFromKey(selectComplementaryColorKey(u.unusedColorKey));
+                }
+            }
+            flag = true;
+            for (const e of isPirateFaction ? this.galaxy.pirateEmpires : this.galaxy.empires) {
+                if ((e.mainColor === mainColor && e.secondaryColor === secondaryColor) || mainColor === secondaryColor) {
+                    flag = false;
+                    break;
+                }
+            }
+            if (mainColor === secondaryColor) flag = false;
+        }
+        setColors(mainColor, secondaryColor);
     }
 
     // TODO(port): ReviewResearchAbilities — Empire.cs.
