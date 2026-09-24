@@ -12,7 +12,9 @@ import { generateGalaxy } from './sim/galaxy';
 import { parseSystemNames } from './sim/data';
 import { GalaxyShape } from './sim/types';
 import { createHud, layoutHud, nearestSystemName, pickSelection, type HudRefs } from './ui/hud';
-import { createGameClock } from './sim/clock';
+import { GalaxyTime } from './sim/clock';
+import { START_STAR_DATE } from './sim/galaxyTime';
+import { formatClockLabel } from './ui/hud';
 import { createMapOverlayState } from './ui/mapOverlays';
 import './ui/hud.css';
 
@@ -140,14 +142,17 @@ async function main(): Promise<void> {
     // Debug / screenshot hook: the camera and the generated galaxy model.
     (window as unknown as { __dwu?: unknown }).__dwu = { camera, galaxy, view, app };
 
-    // HUD overlay (task 05c streamlined): DOM layer above the canvas. The
-    // compact top-left bar drives the simulation clock; the bottom-right list
-    // drives the camera and overlay toggles; the selection panel is refreshed
-    // as the camera moves (demo: nearest star/planet to the view centre).
-    const clock = createGameClock();
+    // Task 07b: the compact top-left bar drives the galaxy-time clock
+    // (GalaxyTime, starts paused at 1x per the original); the bottom-right
+    // list drives the camera and overlay toggles; the selection panel is
+    // refreshed as the camera moves (demo: nearest star/planet to the view
+    // centre).
+    const time = new GalaxyTime(START_STAR_DATE);
     const overlays = createMapOverlayState();
-    const hud: HudRefs = createHud({ clock, overlays, camera, galaxy });
+    const hud: HudRefs = createHud({ clock: time, overlays, camera, galaxy });
     const systemNameEl = hud.elements.get('pnlMoney')?.querySelector('.hud-system-name');
+    const dateEl = hud.elements.get('pnlTopLeftBar')?.querySelector('.hud-date');
+    const pauseBtn = hud.elements.get('pnlTopLeftBar')?.querySelector<HTMLButtonElement>('button[title="Play / pause"]');
     const refreshHud = (): void => {
         if (systemNameEl) {
             systemNameEl.textContent = nearestSystemName(
@@ -164,16 +169,35 @@ async function main(): Promise<void> {
     window.addEventListener('resize', () => layoutHud(hud));
     // The camera centre moves with panning/zooming; keep lblSystemName fresh.
     setInterval(refreshHud, 250);
+    // Task 07b: keep the star-date label (and the play/pause glyph) fresh.
+    const refreshClockLabel = (): void => {
+        if (dateEl) {
+            dateEl.textContent = formatClockLabel(time.currentStarDate, time.speed);
+        }
+        if (pauseBtn) {
+            pauseBtn.textContent = time.paused ? '▶' : '⏸';
+        }
+    };
+    setInterval(refreshClockLabel, 250);
 
     // Spacebar toggles play/pause (streamlined HUD control set).
     window.addEventListener('keydown', (e: KeyboardEvent) => {
         if (e.code === 'Space' && e.target === document.body) {
             e.preventDefault();
-            clock.paused = !clock.paused;
+            time.togglePause();
+            refreshClockLabel();
         }
     });
 
-    app.ticker.add(() => view.update());
+    // Task 07b: drive galaxy time each frame — advance the clock by real
+    // time, then advance planet/moon orbits by the game ms advanced.
+    app.ticker.add(() => {
+        const gameMs = time.advance(app.ticker.deltaMS);
+        if (gameMs > 0) {
+            galaxy.step(gameMs);
+        }
+        view.update();
+    });
     app.renderer.on('resize', () => {
         camera.setViewport(app.renderer.width, app.renderer.height);
         layoutHud(hud);

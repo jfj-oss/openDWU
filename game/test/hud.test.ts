@@ -1,10 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { chromeButtonFile } from '../src/ui/hud';
+import { chromeButtonFile, formatClockLabel } from '../src/ui/hud';
 import { computeHudLayout } from '../src/ui/hudLayout';
+import { START_STAR_DATE } from '../src/sim/galaxyTime';
 
 // The DOM overlay itself needs a browser (jsdom is not configured), so this
 // tests the pure control → chrome-image mapping from LoadUiChromeButtons and
 // the element set the streamlined HUD renders.
+
+describe('formatClockLabel (task 07b)', () => {
+    it('formats the star date with an integer speed', () => {
+        expect(formatClockLabel(START_STAR_DATE, 1)).toBe('2100.01.01 (1x)');
+        expect(formatClockLabel(START_STAR_DATE, 4)).toBe('2100.01.01 (4x)');
+    });
+
+    it('formats fractional speeds as fractions', () => {
+        expect(formatClockLabel(START_STAR_DATE, 0.25)).toBe('2100.01.01 (¼x)');
+        expect(formatClockLabel(START_STAR_DATE, 0.5)).toBe('2100.01.01 (½x)');
+    });
+});
 
 describe('chromeButtonFile', () => {
     it('maps controls to their original chrome button images', () => {

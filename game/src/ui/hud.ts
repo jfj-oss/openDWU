@@ -1,5 +1,6 @@
 import { computeHudLayout, CYCLE_CHIPS, VIEW_ROWS, type Rect, type ViewRowKey } from './hudLayout';
-import { createGameClock, stepSpeed, type GameClock } from '../sim/clock';
+import { GalaxyTime } from '../sim/clock';
+import { resolveStarDateDescription } from '../sim/galaxyTime';
 import { createMapOverlayState, OVERLAY_ROWS, toggleOverlay, type MapOverlayState } from './mapOverlays';
 import { Camera } from '../render/camera';
 import { Galaxy } from '../sim/galaxy';
@@ -90,7 +91,7 @@ export interface HudRefs {
 
 export interface HudWiring {
     /** Simulation clock state (play/pause + speed), mutated by the HUD. */
-    clock?: GameClock;
+    clock?: GalaxyTime;
     /** Overlay toggle state, mutated by the options list. */
     overlays?: MapOverlayState;
     /** Main-view camera, driven by the View rows. */
@@ -120,7 +121,7 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
     const elements = new Map<string, HTMLElement>();
     const refs: HudRefs = { root, elements };
     // Default state objects when the caller does not supply its own.
-    const clock = wiring.clock ?? createGameClock();
+    const clock = wiring.clock ?? new GalaxyTime();
     const overlays = wiring.overlays ?? createMapOverlayState();
 
     for (const [name, rect] of Object.entries(computeHudLayout(window.innerWidth, window.innerHeight))) {
@@ -211,7 +212,7 @@ function buildMessagesPanel(): HTMLElement {
 }
 
 /** Top-left compact bar: menu | help || play/pause − + || date (speed). */
-function buildTopLeftBar(clock: GameClock): HTMLElement {
+function buildTopLeftBar(clock: GalaxyTime): HTMLElement {
     const bar = document.createElement('div');
     bar.className = 'hud-panel hud-topbar';
 
@@ -220,19 +221,22 @@ function buildTopLeftBar(clock: GameClock): HTMLElement {
     bar.append(menu, help);
     bar.appendChild(makeSeparator());
 
-    const pauseBtn = makeGlyphButton('▶', 'Play / pause');
-    pauseBtn.addEventListener('click', () => {
-        clock.paused = !clock.paused;
+    const pauseBtn = makeGlyphButton(clock.paused ? '▶' : '⏸', 'Play / pause');
+    const refreshPauseGlyph = (): void => {
         pauseBtn.textContent = clock.paused ? '▶' : '⏸';
+    };
+    pauseBtn.addEventListener('click', () => {
+        clock.togglePause();
+        refreshPauseGlyph();
     });
     const dec = makeGlyphButton('−', 'Slower');
     dec.addEventListener('click', () => {
-        clock.speed = stepSpeed(clock.speed, -1);
+        clock.slower();
         refreshDateLabel(dateEl, clock);
     });
     const inc = makeGlyphButton('+', 'Faster');
     inc.addEventListener('click', () => {
-        clock.speed = stepSpeed(clock.speed, 1);
+        clock.faster();
         refreshDateLabel(dateEl, clock);
     });
     bar.append(pauseBtn, dec, inc);
@@ -245,13 +249,20 @@ function buildTopLeftBar(clock: GameClock): HTMLElement {
     return bar;
 }
 
-function refreshDateLabel(el: HTMLElement, clock: GameClock): void {
-    // Star date placeholder (lblStarDate) plus the speed multiplier.
-    el.textContent = `9860.01.01 (${formatSpeed(clock.speed)}x)`;
+// Task 07b: the star-date label shows the current star date plus the speed
+// multiplier, e.g. `2100.01.01 (1x)` or `2100.01.01 (¼x)`.
+export function formatClockLabel(starDate: number, speed: number): string {
+    return `${resolveStarDateDescription(starDate)} (${formatSpeed(speed)}x)`;
 }
 
 function formatSpeed(speed: number): string {
+    if (speed === 0.25) return '¼';
+    if (speed === 0.5) return '½';
     return Number.isInteger(speed) ? String(speed) : String(speed);
+}
+
+function refreshDateLabel(el: HTMLElement, clock: GalaxyTime): void {
+    el.textContent = formatClockLabel(clock.currentStarDate, clock.speed);
 }
 
 function makeSeparator(): HTMLElement {
