@@ -148,6 +148,87 @@ export function starSpriteUrls(habitat: Habitat): string[] {
     return [disc, ...rays];
 }
 
+// Task 02c2: the GPU renderer draws system-zoom stars as two tinted,
+// counter-rotating discs (star_disc_2 under star_disc_0) plus an animated
+// corona frame (MainView.1.cs ~740-782). These URLs are fixed install files
+// (no manifest lookup needed).
+
+/** `stars/star_disc_<n>.png` — one of the shared rotating star discs. */
+export function starDiscUrl(n: number): string {
+    return `${IMG}/environment/stars/star_disc_${n}.png`;
+}
+
+/** All 100 frames of `stars/rays/Corona<B|C>-<nnnn>.png` (1-based). */
+export function coronaFrameUrls(kind: 'B' | 'C'): string[] {
+    const urls: string[] = [];
+    for (let i = 1; i <= 100; i++) {
+        urls.push(`${IMG}/environment/stars/rays/Corona${kind}-${String(i).padStart(4, '0')}.png`);
+    }
+    return urls;
+}
+
+// Port of MainView.1.cs method_65: scale each RGB channel by f, clamped to
+// 0..255 (integer truncation, like C# (int)(channel * f)).
+export function scaleColour(rgb: number, f: number): number {
+    const r = Math.min(255, ((rgb >> 16) & 0xff) * f);
+    const g = Math.min(255, ((rgb >> 8) & 0xff) * f);
+    const b = Math.min(255, (rgb & 0xff) * f);
+    return ((r | 0) << 16) | ((g | 0) << 8) | (b | 0);
+}
+
+// Port of MainView.1.cs method_117 frame selection: loopMs = frameCount / fps
+// seconds; stepMs = loopMs / max(1, frameCount - 1); frame = floor((nowMs %
+// loopMs) / stepMs), so it advances once per step and wraps at frameCount.
+export function coronaFrameIndex(nowMs: number, frameCount: number, fps: number): number {
+    if (frameCount <= 0) {
+        return 0;
+    }
+    const loopMs = (frameCount / fps) * 1000;
+    const stepMs = loopMs / Math.max(1, frameCount - 1);
+    return Math.floor((nowMs % loopMs) / stepMs);
+}
+
+const centreColourCache = new Map<string, Promise<number>>();
+
+/**
+ * Centre pixel colour (0xRRGGBB) of a loaded image: drawn to a canvas and
+ * read at (⌊w/2⌋, ⌊h/2⌋) — the original samples the map-star icon's centre
+ * pixel to tint the system-zoom discs/corona (method_120 in MainView.1.cs).
+ * Cached per URL; resolves to 0xffffff when the image can't be fetched or
+ * decoded (keeps the view console-clean without an install).
+ */
+export async function sampleCentreColour(url: string): Promise<number> {
+    let p = centreColourCache.get(url);
+    if (!p) {
+        p = (async () => {
+            try {
+                const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+                    const el = new Image();
+                    el.onload = () => resolve(el);
+                    el.onerror = () => reject(new Error(`image load failed: ${url}`));
+                    el.src = url;
+                });
+                const w = img.naturalWidth || img.width;
+                const h = img.naturalHeight || img.height;
+                if (!w || !h) {
+                    throw new Error(`zero-size image: ${url}`);
+                }
+                const canvas = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(w, h) : document.createElement('canvas');
+                canvas.width = w;
+                canvas.height = h;
+                const ctx = canvas.getContext('2d')!;
+                ctx.drawImage(img, 0, 0);
+                const px = ctx.getImageData(Math.floor(w / 2), Math.floor(h / 2), 1, 1).data;
+                return (px[0] << 16) | (px[1] << 8) | px[2];
+            } catch {
+                return 0xffffff;
+            }
+        })();
+        centreColourCache.set(url, p);
+    }
+    return p;
+}
+
 /** Planet/moon sprite: type folder, index = pictureRef modulo file count. */
 export function planetUrls(habitat: Habitat): string[] {
     const folder = `planets/${PLANET_FOLDERS[habitat.type] ?? 'ocean'}`;

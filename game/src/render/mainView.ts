@@ -25,6 +25,8 @@ import {
     STAR_COLORS,
     asteroidUrls,
     cloudUrls,
+    coronaFrameIndex,
+    coronaFrameUrls,
     makeBackdropTexture,
     makeCloudTexture,
     makeDotTexture,
@@ -34,6 +36,9 @@ import {
     makeStarfieldTexture,
     mapStarUrls,
     planetUrls,
+    sampleCentreColour,
+    scaleColour,
+    starDiscUrl,
     starSpriteUrls,
 } from './assets';
 import { Galaxy } from '../sim/galaxy';
@@ -173,6 +178,18 @@ class SystemView {
     maxExtent = 0; // farthest orbit radius (culling margin)
     private lastRingZoom = -1;
 
+    // Task 02c2: system-zoom star = two tinted counter-rotating discs plus an
+    // animated corona (MainView.1.cs ~740-782). Built lazily on first entry to
+    // the crossfade window; black holes keep the plain `starSprite` instead.
+    private starDiscs: Container | null = null;
+    private discA: Sprite | null = null;
+    private discB: Sprite | null = null;
+    private corona: Sprite | null = null;
+    private coronaFrames: Texture[] = [];
+    private coronaFps = 15;
+    private coronaScale = 1.65;
+    private discAngle = 0;
+
     constructor(private view: MainView, system: SystemInfo, textures: MainViewTextures) {
         this.system = system;
         const star = system.systemStar;
@@ -194,6 +211,23 @@ class SystemView {
         this.starSprite.visible = false;
         this.starSprite.alpha = 0;
         this.root.addChild(this.starSprite);
+
+        // Task 02c2: tinted rotating discs + corona for non-black-hole stars,
+        // built lazily (see buildStarDiscs) so the corona frames are only
+        // fetched once a star actually reaches system zoom.
+        if (star.type !== HabitatType.BlackHole) {
+            this.starDiscs = new Container();
+            this.starDiscs.visible = false;
+            this.starDiscs.alpha = 0;
+            this.discA = new Sprite(Texture.EMPTY);
+            this.discA.anchor.set(0.5);
+            this.discB = new Sprite(Texture.EMPTY);
+            this.discB.anchor.set(0.5);
+            this.corona = new Sprite(Texture.EMPTY);
+            this.corona.anchor.set(0.5);
+            this.starDiscs.addChild(this.discA, this.discB, this.corona);
+            this.root.addChild(this.starDiscs);
+        }
 
         this.ring = new Graphics();
         this.root.addChild(this.ring);
@@ -235,7 +269,7 @@ class SystemView {
     }
 
     /** Per-frame level-of-detail update (only for systems near the view). */
-    update(zoom: number, cam: Camera, labelAllowed: boolean): void {
+    update(zoom: number, cam: Camera, labelAllowed: boolean, dtSeconds: number): void {
         const star = this.system.systemStar;
         // Culling: screen-space margin plus the farthest orbit so rings
         // don't pop in at the screen edge.
@@ -262,6 +296,7 @@ class SystemView {
         this.starSprite.visible = crossT > 0.005;
         this.starSprite.alpha = crossT;
         this.starSprite.scale.set(fullPx / (this.starSprite.texture.width * z));
+        this.updateStarDiscs(crossT, fullPx, z, dtSeconds);
 
         // Faint circular orbit rings: visible from the zoom where the
         // outermost orbit spans >= ~40 px on screen (task 02b2), persist
@@ -342,6 +377,81 @@ class SystemView {
             }
         }
     }
+
+    /**
+     * Task 02c2 (MainView.1.cs ~740-782): lazily build the system-zoom star
+     * from two tinted counter-rotating discs plus an animated corona frame.
+     * The tint is the centre pixel of this star's MAP-STAR image (the same
+     * icon used at galaxy/sector zoom), sampled once per URL. Corona B is
+     * used for all stars except neutron stars, which use Corona C with a
+     * larger scale and slower fps.
+     */
+    private async buildStarDiscs(): Promise<void> {
+        if (this.starDiscs === null || this.discA === null || this.discB === null || this.corona === null) {
+            return;
+        }
+        const store = this.view.store;
+        const star = this.system.systemStar;
+        const [discATex, discBTex] = await Promise.all([
+            store.loadFirst([starDiscUrl(2)], () => makeGlowTexture(starColors(star.type).glow, starColors(star.type).core)),
+            store.loadFirst([starDiscUrl(0)], () => makeGlowTexture(starColors(star.type).glow, starColors(star.type).core)),
+        ]);
+        this.discA.texture = discATex;
+        this.discB.texture = discBTex;
+
+        // Tint = centre pixel of the map-star icon (method_120 in the
+        // original); falls back to white when the image can't be read.
+        const mapUrls = mapStarUrls(star);
+        const c = mapUrls.length > 0 ? await sampleCentreColour(mapUrls[0]) : 0xffffff;
+        const bright = scaleColour(c, 1.2);
+        this.discA.tint = bright; // star_disc_2, rotation +angle, alpha 255
+        this.discA.alpha = 1;
+        this.discB.tint = c; // star_disc_0 on top, rotation -angle, alpha 96
+        this.discB.alpha = 96 / 255;
+
+        // Corona frames load lazily here (only when a star reaches system
+        // zoom) and only once (AssetStore caches by first URL).
+        const isNeutron = star.type === HabitatType.Neutron;
+        this.coronaFps = isNeutron ? 12 : 15;
+        this.coronaScale = isNeutron ? 2.3 : 1.65;
+        const frames = await Promise.all(coronaFrameUrls(isNeutron ? 'C' : 'B').map((url) => store.loadFirst([url], () => Texture.EMPTY)));
+        this.coronaFrames = frames;
+        this.corona.texture = frames[0];
+        this.corona.tint = bright;
+        this.corona.alpha = 240 / 255;
+    }
+
+    /** Per-frame update of the disc/corona group (no-op until built). */
+    private updateStarDiscs(crossT: number, fullPx: number, z: number, dtSeconds: number): void {
+        if (this.starDiscs === null || this.discA === null || this.discB === null || this.corona === null) {
+            return;
+        }
+        if (crossT <= 0.005) {
+            this.starDiscs.visible = false;
+            this.starDiscs.alpha = 0;
+            return;
+        }
+        if (this.coronaFrames.length === 0) {
+            // First entry into the crossfade window: kick off the lazy load
+            // (disc textures, centre-pixel tint, corona frames).
+            void this.buildStarDiscs();
+            this.starDiscs.visible = false;
+            this.starDiscs.alpha = 0;
+            return;
+        }
+        this.discAngle += dtSeconds * 0.02; // double_5 -= elapsed * 0.02; A rotates +angle, B -angle
+        this.starDiscs.visible = true;
+        this.starDiscs.alpha = crossT;
+        const s = fullPx / (this.discA.texture.width * z);
+        this.discA.scale.set(s);
+        this.discA.rotation = this.discAngle;
+        this.discB.scale.set(s);
+        this.discB.rotation = -this.discAngle;
+        const cs = (fullPx * this.coronaScale) / (this.corona.texture.width * z);
+        this.corona.scale.set(cs);
+        const nowMs = performance.now();
+        this.corona.texture = this.coronaFrames[coronaFrameIndex(nowMs, this.coronaFrames.length, this.coronaFps)];
+    }
 }
 
 class CloudView {
@@ -406,8 +516,11 @@ export class MainView {
     private lastDragX = 0;
     private lastDragY = 0;
     private pointerInside = false;
+    /** Elapsed seconds since boot (disc rotation / corona frame clock). */
+    private elapsedSeconds = 0;
+    private lastUpdateMs = -1;
 
-    constructor(readonly app: Application, readonly camera: Camera, readonly galaxy: Galaxy, private store: AssetStore) {
+    constructor(readonly app: Application, readonly camera: Camera, readonly galaxy: Galaxy, readonly store: AssetStore) {
         app.stage.addChild(this.world);
         app.stage.addChild(this.fx);
         this.world.addChild(this.grid);
@@ -527,6 +640,12 @@ export class MainView {
         const z = cam.zoom;
         const m = this.minZoom;
 
+        // Frame delta for the animated star discs/corona (task 02c2).
+        const nowMs = performance.now();
+        const dtSeconds = this.lastUpdateMs < 0 ? 0 : Math.max(0, (nowMs - this.lastUpdateMs) / 1000);
+        this.lastUpdateMs = nowMs;
+        this.elapsedSeconds += dtSeconds;
+
         this.world.scale.set(z);
         this.world.x = cam.width / 2 - cam.x * z;
         this.world.y = cam.height / 2 - cam.y * z;
@@ -595,7 +714,7 @@ export class MainView {
                     kept.push(s);
                 }
             }
-            sv.update(z, cam, allow);
+            sv.update(z, cam, allow, dtSeconds);
         }
         for (const cloud of this.clouds) {
             cloud.update(z, cam);
