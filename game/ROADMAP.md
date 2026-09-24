@@ -27,8 +27,23 @@ Milestones follow the spec's Part 15 (16.1) in `Distant_Worlds_Universe_Recreati
 | 08h | Creature spawn + movement/AI tick (combat still TODO, needs `BuiltObject`s) | 🔄 |
 | 09a/09b | Music player, sound effects | ✅ |
 | 10a–10c | Keyboard shortcuts, selection panel details, escape/game menu | ✅ |
-| 10d | HUD live empire data (money/cashflow, message ticker, flag) | 📝 spec written, not yet run |
-| 11a | Save / load (JSON + RNG state, localStorage + file) | 📝 spec written, not yet run |
+| 10d–10h | HUD live empire data, edge fixes, settings wiring, small TODOs, colony cycling | ✅ |
+| 11a1–11a3 | Save / load (JSON + RNG state; IndexedDB saves, .dwusave download/open; main-menu Load) | ✅ |
+| 06j–06l | Galactopedia, credits/options, tutorials list + tutorial window | ✅ |
+
+## UI polish (lanes A/B, streamlined HUD)
+| Task | Scope | Status |
+|---|---|---|
+| 12a | G zooms out to the whole galaxy; letter hotkeys fixed (case) | ✅ |
+| 12b/12g | Empires list panel (HUD Empires button), column headers | ✅ |
+| 12c | Help/*.mht listing in the asset manifest (Galactopedia game-info/theme topics) | ✅ |
+| 12d | Shared toast; "not yet available" for unported screens/hotkeys | ✅ |
+| 12e | Saves stored in IndexedDB (localStorage quota too small) | ✅ |
+| 12f | Tutorials list shows real step titles | ✅ |
+| 12h | Sound effects volume/mute in Options | ✅ |
+| 12i | Message History panel (H / ticker click) | ✅ |
+| 12j | Empire Summary panel (F6) | 🔄 |
+| 12k | Main View hover tooltip | 🔄 |
 
 ## Data loaders (feeds M2+)
 | Task | Scope | Status |
