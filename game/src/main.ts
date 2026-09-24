@@ -267,6 +267,7 @@ export async function startGameView(game: Game, zoomOverride?: number, extraBoot
         camera,
         galaxy,
         game,
+        gameData: lastGameData ?? undefined,
         onMainMenu: () => {
             teardownActiveGameView();
             showMainMenu();
