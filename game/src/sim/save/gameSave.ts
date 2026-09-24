@@ -1,9 +1,10 @@
-// Save/load part 2 (task 11a2): serialize a whole game — galaxy + empires
-// (via galaxyToJSON, which now carries the empire data), the GalaxyTime clock
-// and the new-game StartGameOptions — into one JSON string, and rebuild it.
-// The C# Game ISerializable members are not ported; this is our own save
-// format for the headless sim. Key order is fixed so round-tripped strings
-// compare byte-for-byte equal.
+// Save/load part 2 (task 11a2, format 2 with the M3 game-start state):
+// serialize a whole game — the galaxy graph (empires, ships, bases, designs,
+// characters, pirates; see galaxySave.ts), the GalaxyTime clock and the
+// new-game StartGameOptions — into one JSON string, and rebuild it. The C#
+// Game ISerializable members are not ported; this is our own save format for
+// the headless sim. Key order is fixed so round-tripped strings compare
+// byte-for-byte equal.
 
 import type { Game } from '../game';
 import type { Galaxy } from '../galaxy';
@@ -11,15 +12,15 @@ import type { Empire } from '../empire';
 import type { GameData } from '../data/gameData';
 import type { StartGameOptions } from '../startGameOptions';
 import { GalaxyTime } from '../galaxyTime';
-import { galaxyFromJSON, galaxyToJSON, type GalaxySaveJSON } from './galaxySave';
+import { flatEmpireList, galaxyFromJSON, galaxyToJSON, type GalaxySaveJSON } from './galaxySave';
+
+/** Bumped to 2 when the galaxy graph (M3 state) replaced the index-based
+ *  format; version-1 saves predate ships/bases/characters and are rejected. */
+export const GAME_SAVE_VERSION = 2;
 
 export interface GameSaveJSON {
-    version: 1;
+    version: typeof GAME_SAVE_VERSION;
     galaxy: GalaxySaveJSON;
-    // Mirrors galaxy.empires/pirateEmpires/independentEmpire (kept at the top
-    // level per the task's shape spec); the authoritative copy lives inside
-    // the galaxy object.
-    empires: GalaxySaveJSON['empires'];
     time: { elapsedMs: number; speed: number; paused: boolean; startStarDate: number };
     startOptions: StartGameOptions;
     playerEmpireIndex: number; // -1 = none (index into the flat empire list)
@@ -27,11 +28,9 @@ export interface GameSaveJSON {
 
 /** Serialize a whole game to a JSON string (see GameSaveJSON). */
 export function serializeGame(game: Game, time: GalaxyTime, startOptions: StartGameOptions): string {
-    const galaxyJson = galaxyToJSON(game.galaxy);
     const save: GameSaveJSON = {
-        version: 1,
-        galaxy: galaxyJson,
-        empires: galaxyJson.empires,
+        version: GAME_SAVE_VERSION,
+        galaxy: galaxyToJSON(game.galaxy),
         time: {
             elapsedMs: time.elapsedMs,
             speed: time.speed,
@@ -39,7 +38,7 @@ export function serializeGame(game: Game, time: GalaxyTime, startOptions: StartG
             startStarDate: time.startStarDate,
         },
         startOptions,
-        playerEmpireIndex: galaxyJson.playerEmpire,
+        playerEmpireIndex: game.galaxy.playerEmpire === null ? -1 : flatEmpireList(game.galaxy).indexOf(game.galaxy.playerEmpire),
     };
     return JSON.stringify(save);
 }
@@ -48,7 +47,7 @@ export function serializeGame(game: Game, time: GalaxyTime, startOptions: StartG
  *  research, governments) comes from gameData. */
 export function deserializeGame(text: string, gameData: GameData): { game: Game; time: GalaxyTime; startOptions: StartGameOptions } {
     const obj = JSON.parse(text) as GameSaveJSON;
-    if (obj.version !== 1) throw new Error(`Unsupported save version ${obj.version}.`);
+    if (obj.version !== GAME_SAVE_VERSION) throw new Error(`Unsupported save version ${String(obj.version)} (expected ${GAME_SAVE_VERSION}).`);
 
     const galaxy: Galaxy = galaxyFromJSON(obj.galaxy, gameData);
 
