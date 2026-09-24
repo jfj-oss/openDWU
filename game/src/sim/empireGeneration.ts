@@ -15,21 +15,17 @@
 // Rnd) — see the stand-in below.
 
 import { generateCapitalStartingTroops } from './troops';
-import { createNewDesigns } from './designGeneration';
-import { projectForceStructure, projectPrivateForceStructure, recalculateColonyTaxRevenues } from './forceStructure';
 // taxes.ts also registers empire.ts's TakeOwnershipOfColony hooks (SetColonyTaxRate etc.).
-import { recalculateEmpireCorruption, reviewTaxes } from './taxes';
 import { RuinType } from './ruins';
-import { identifyResourceCentres } from './resourceTargets';
-import { startStarDateForAge } from './galaxyTime';
 import { loadEmpirePolicy } from './researchSystem';
 import type { Galaxy } from './galaxy';
 import { Galaxy as GalaxyClass } from './galaxy';
-import { Empire, COLONY_MAXIMUM_TROOP_STRENGTH } from './empire';
+import { Empire } from './empire';
 import type { Race } from './data/races';
 import type { Habitat } from './types';
 import { Population } from './population';
 import { setEmpireExplorationAmount } from './visibility';
+import { runGameStartEmpireTick } from './tick/gameStart';
 
 export interface GenerateEmpireResult {
     empire: Empire;
@@ -175,61 +171,10 @@ export function generateEmpire(
     setEmpireExplorationAmount(galaxy, empire.visibility, empire.capital!, val2);
     empire.resourceMap.setResourcesKnown(capital, true);
     empire.initiateConstruction = false;
-    // TODO(port): empire.DoTasks() — the full empire AI tick. RND DIVERGENCE POINT (see header).
-    // Only these steps of that tick are ported, run here in the C# order of
-    // Empire.1.cs DoTasks; every step in between is SKIPPED (short/regular blocks
-    // entirely, the periodic block except the cache writes below — incl. most of
-    // EvaluateColonyVariables, PerformResearch — and the rest of the
-    // intermediate/long blocks, e.g. ReviewSystemThreats, IdentifyColonizationTargets,
-    // ReviewEmpireAbilityBonuses, ReviewDiplomaticStrategies,
-    // PayMaintenanceForBuiltObjects). Rnd parity with the C# is already lost at this
-    // point (the skipped steps draw Rnd); none of the ported steps draws Rnd.
-    empireDoTasksStandIn(galaxy, empire);
+    // Galaxy.7.cs 5346 empire.DoTasks(): the real Empire tick (tick/empireTick.ts); the ctor touch times make
+    // every block run, incl. the huge one.
+    runGameStartEmpireTick(galaxy, empire);
     empire.initiateConstruction = true;
     galaxy.setupHomeSystem(capital, race, homeSystemDescription, minimumResourceCount, minimumCriticalResourceCount);
     return { empire, expansion, actualTechLevel };
-}
-
-// The ported steps of Empire.DoTasks at game start (see the RND DIVERGENCE note in
-// generateEmpire): periodic-block cache writes, CreateNewDesigns, IdentifyResourceCentres,
-// ProjectForceStructure / ProjectPrivateForceStructure. Used for GenerateEmpire's DoTasks
-// (Galaxy.7.cs 5346) and for createGame's second empire DoTasks (Start.2.cs 1342), which
-// only runs these blocks when the touch times were reset (galaxy age > 0).
-export function empireDoTasksStandIn(galaxy: Galaxy, empire: Empire): void {
-    const starDate = startStarDateForAge(galaxy.age); // Galaxy.CurrentStarDate
-    // Periodic block, Empire.1.cs 3523-3538 — it runs on this first tick: the Empire ctor sets
-    // _LastPeriodicTouch = now - (LongProcessingInterval + 1) s (Empire.cs 3921-3923), so
-    // num3 = 121 >= PeriodicProcessingInterval (30). Only the steps that write the caches the
-    // long block's projections read are ported:
-    // Empire.1.cs 3531 EvaluateColonyVariables(_Galaxy, num3) — only its _TotalPopulation
-    // write (Empire.4.cs 2945/3174/3182/3306: sum of Population.Amount over the colonies,
-    // both growth branches). TODO(port): the rest of EvaluateColonyVariables (development
-    // level drift by (int)num12 — (121 / 600) * 25 * num8 can reach >= 1 here —, growth
-    // rates, resource orders, RecalculateAnnualTaxRevenue, ProcessColonyTroops).
-    {
-        let num = 0;
-        for (let j = 0; j < empire.colonies.length; j++) {
-            const habitat = empire.colonies[j];
-            // Habitat.HasBeenDestroyed: false for every colony at game start.
-            for (const population of habitat.population.items) num += population.amount;
-        }
-        empire.totalPopulation = num;
-    }
-    // Empire.1.cs 3533.
-    recalculateEmpireCorruption(empire);
-    // Empire.1.cs 3534-3537.
-    if (empire.controlColonyTaxRates) reviewTaxes(galaxy, empire);
-    recalculateColonyTaxRevenues(galaxy, empire);
-    // Intermediate block, Empire.1.cs 3623: `if (_ControlDesigns) CreateNewDesigns(_Galaxy.CurrentStarDate)`.
-    if (empire.controlDesigns) {
-        createNewDesigns(galaxy, empire, starDate, starDate);
-    }
-    // Intermediate block, Empire.1.cs 3633: `_ResourceTargets = IdentifyResourceCentres(_Galaxy)`
-    // (resourceTargets.ts). Galaxy.8.cs CreateMiningStations recomputes it before use.
-    empire.resourceTargets = identifyResourceCentres(galaxy, empire);
-    // Long block, Empire.1.cs 3690-3691 (forceStructure.ts): the projections
-    // Galaxy.8.cs CreateStateShips / CreatePrivateShips consume.
-    const forceStructureCtx = { currentStarDate: starDate, difficultyLevel: galaxy.difficultyLevel };
-    projectForceStructure(galaxy, empire, forceStructureCtx);
-    projectPrivateForceStructure(galaxy, empire, forceStructureCtx);
 }

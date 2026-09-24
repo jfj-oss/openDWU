@@ -258,9 +258,11 @@ describe('frame driver (Main.Part12.cs method_86)', () => {
         expect(s.inBattleCursor).toBe(0); // the in-battle scan loop is a no-op
         expect(s.queue).toEqual([]);
         expect(todoHits()['M4s reviewPirateMissionsAndAssign']).toBe(21);
-        // Empires 0..2 were ticked (at frames 1, 11, 21) from their ctor touches; empire 3 not yet.
+        // Empires 0..2 were ticked (at frames 1, 11, 21); empire 3 not yet — it keeps createGame's
+        // Start.2.cs 1344-1350 stagger (all six touches = now − Rnd.Next(1, 120) s).
         expect(g.empires[0].lastShortTouch).toBeGreaterThan(0);
-        expect(g.empires[3].lastShortTouch).toBe(-121000);
+        expect(g.empires[3].lastShortTouch).toBeLessThan(0);
+        expect(g.empires[3].lastHugeTouch).toBe(g.empires[3].lastShortTouch);
     });
 
     it('ticks the next min(1000, Habitats.Count) habitats round-robin, wrapping like method_86', () => {
@@ -293,7 +295,7 @@ describe('game-start switch-over entry points (tick/gameStart.ts)', () => {
             expect(firedBlocks({ long: 'M4i reviewColonyWonders', huge: 'M4u resetRaceEvents' }, () => runGameStartEmpireTick(galaxy, e))).toEqual(['long']);
             staggerEmpireTouchTimes(galaxy, e, 17);
             expect(e.lastLongTouch).toBe(-17000);
-            expect(e.lastHugeTouch).toBe(-121000);
+            expect(e.lastHugeTouch).toBe(-17000); // Start.2.cs 1350 sets LastHugeTouch too
         }
         resetTodoCounts();
         runGameStartGalaxyTick(galaxy);

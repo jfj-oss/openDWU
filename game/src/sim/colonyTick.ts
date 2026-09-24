@@ -14,7 +14,7 @@ const T_evaluateColonyVariables = registerTodo('M4j', 'evaluateColonyVariables')
 /**
  * Empire.4.cs 2943 EvaluateColonyVariables(galaxy, timePassed). Only its _TotalPopulation write is ported
  * (Empire.4.cs 2945/3174/3182/3306: sum of Population.Amount over the non-destroyed colonies, both growth
- * branches) — the slice empireGeneration.ts empireDoTasksStandIn runs, moved here so the real Empire tick
+ * branches) — the slice the old game-start stand-in ran, moved here so the real Empire tick
  * reproduces it. TODO(port) M4j: the rest (development level drift, growth rates, resource orders,
  * RecalculateAnnualTaxRevenue, ProcessColonyTroops with recruitment).
  */

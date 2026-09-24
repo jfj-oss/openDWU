@@ -10,7 +10,6 @@ import { MOVEMENT_DECELERATION_RANGE } from '../src/sim/galaxy';
 import {
     assignIndependentTraderMissions,
     cancelExpiredOrders,
-    galaxyGameStartHugeTick,
     generateIndependentTraders,
     isObjectVisibleToThisEmpire,
     removeCompletedOrders,
@@ -155,7 +154,8 @@ describe('independent traders (Galaxy.7.cs GenerateIndependentTraders)', () => {
 
     it('fallback: no popular freighters → designs generated from the independent spec per playable race', () => {
         const g = beforeFirstTick();
-        galaxyGameStartHugeTick(g);
+        g.empireTerritory.reviewEmpireTerritory(g); // Galaxy.cs 3083-3085 huge block
+        selectPopularDesignCandidates(g);
         g.popularDesigns = [];
         reviewIndependentColonies(g);
         const traders = generateIndependentTraders(g);

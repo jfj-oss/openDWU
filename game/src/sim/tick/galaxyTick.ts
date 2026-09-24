@@ -93,7 +93,12 @@ function maximumEmpireAmount(galaxy: Galaxy): number {
  * Galaxy.cs 3054 DoTasks(gameFinished, playerEmpire, globalVictoryConditions, playerConditionsToAchieve,
  * playerConditionsToPrevent). The victory-condition arguments go to the (deferred) CheckVictoryConditions stub.
  */
-export function galaxyDoTasks(galaxy: Galaxy, gameFinished = false, playerEmpire: Empire | null = galaxy.playerEmpire): void {
+export function galaxyDoTasks(
+    galaxy: Galaxy,
+    gameFinished = false,
+    playerEmpire: Empire | null = galaxy.playerEmpire,
+    afterHugeBlock?: () => boolean,
+): void {
     // 3056-3058
     const currentDateTime = galaxyNow(galaxy);
     const timeSpan = currentDateTime - galaxy.lastGalaxyProcessTime;
@@ -122,6 +127,8 @@ export function galaxyDoTasks(galaxy: Galaxy, gameFinished = false, playerEmpire
         cleanupInvalidShipsInIndexes(galaxy);
         // 3088 ReseedRandom(): dropped (see above).
     }
+    // Test-only seam (createGame's 'firstGalaxyTick:huge' phase): true stops this tick here.
+    if (afterHugeBlock !== undefined && afterHugeBlock()) return;
     // 3090-3131 long block.
     if (timeSpan >= LONG_PROCESSING_SPAN_MS) {
         galaxy.deferEventsForGameStart = false;
@@ -186,16 +193,19 @@ export function galaxyDoTasks(galaxy: Galaxy, gameFinished = false, playerEmpire
 
 /**
  * Game-start switch-over (Start.2.cs 1108-1110): ResetLastTouchTimes, then the first Galaxy.DoTasks — its huge and
- * long blocks both run at the current game time. Replaces independentTraders.ts galaxyGameStartHugeTick +
- * galaxyGameStartLongTick in createGame once the game-start rework adopts the real ticks. Follow it with
+ * long blocks both run at the current game time. createGame calls it, then sets
  * `galaxy.deferEventsForGameStart = true` (Start.2.cs 1110) as the C# does.
  *
  * The C# DoTasks also runs ProcessPirateFleets (no factions yet at that point) and — past the stand-ins — the rest of
  * the long block (terminated pirates … CheckVictoryConditions); those are package stubs today.
- * Needs the Galaxy fields createGame does not set yet: pirateProximity / maximumEmpireAmount (M4a section),
- * piratePrevalence, startingAge, gameDisasterEventsEnabled.
+ * createGame sets the Galaxy fields it reads first: pirateProximity, maximumEmpireAmount, piratePrevalence,
+ * startingAge, gameDisasterEventsEnabled.
  */
-export function runGameStartGalaxyTick(galaxy: Galaxy, playerEmpire: Empire | null = galaxy.playerEmpire): void {
+export function runGameStartGalaxyTick(
+    galaxy: Galaxy,
+    playerEmpire: Empire | null = galaxy.playerEmpire,
+    afterHugeBlock?: () => boolean,
+): void {
     resetLastTouchTimes(galaxy);
-    galaxyDoTasks(galaxy, false, playerEmpire);
+    galaxyDoTasks(galaxy, false, playerEmpire, afterHugeBlock);
 }

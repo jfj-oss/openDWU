@@ -72,7 +72,10 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         const summary = { digest: stateDigest(long), counts: stateCounts(long), rndDraws: long.rnd.drawCount };
         console.log('[tick] seed 1, 600 game-s:', JSON.stringify(summary), 'stubs reached:', Object.keys(hits).length);
         // Seed pin: moves whenever createGame or a package changes Rnd use or ticked state (re-pin, say why).
-        expect(summary.digest).toBe('2e883aa30dfd001e');
+        // Moved from 2e883aa30dfd001e when createGame adopted the real game-start ticks: the Start.2.cs 1344-1350
+        // stagger now writes the empire touch times (the Rnd draw was already there), so empire blocks fire at
+        // different frames; createGame's own pins did not move.
+        expect(summary.digest).toBe('78d35aa06c9a1e5b');
     }, 600000);
 });
 

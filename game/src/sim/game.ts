@@ -21,8 +21,7 @@
 // are generated when piratePrevalence > 0 (pirates.ts).
 
 import { reviewComponentPrices, reviewResourcePrices } from './market';
-import { galaxyGameStartHugeTick, galaxyGameStartLongTick, selectPopularDesignCandidates } from './independentTraders';
-import { checkEmpireTerritoryCanBuildAtHabitat } from './resourceTargets';
+import { selectPopularDesignCandidates } from './independentTraders';
 import { gameStartColonyRecalc, gameStartReviewTaxes } from './taxes';
 import { checkColoniesForBaseFacilities, createMiningStations, createResearchStations, createSpacePorts, determineNewSpacePortLocations, determineResearchStationLocation, setLuxuryResourcesAtColonies } from './stationPlacement';
 import { applyResearchBonusGasGiant, ensureImportantPreWarpResources } from './startHabitats';
@@ -31,10 +30,10 @@ import { assignMissionsToBuiltObjectList, createPrivateShips, createStateShips, 
 import { meetPiratesAtStart } from './pirateRelations';
 import { CharacterRole, generateNewCharacter, generateStartingCharacters } from './characters';
 import { registerTroopGeneralHook } from './troops';
-import { empireDoTasksStandIn } from './empireGeneration';
+import { resetEmpireTouchTimesForAge, runGameStartEmpireTick, runGameStartGalaxyTick, staggerEmpireTouchTimes } from './tick/gameStart';
 import { meetEmpiresAtStart } from './diplomacy';
 import { gameStartTail } from './gameStartTail';
-import { PiratePlayStyle, doGalaxyEventsSuperPirates, fastFindNearestIndependentHabitat, findNearestPirateFaction, generateNewPirateEmpires, generatePirateEmpire, generatePirateEmpireRandom, pirateReviewColoniesToControl, selectRandomRace, setEmpireDifficultyFactors, type PirateGenerationContext } from './pirates';
+import { PiratePlayStyle, fastFindNearestIndependentHabitat, findNearestPirateFaction, generatePirateEmpire, generatePirateEmpireRandom, pirateReviewColoniesToControl, selectRandomRace, setEmpireDifficultyFactors, type PirateGenerationContext } from './pirates';
 import { setColonyResources } from './colony';
 import { raceDesignPictureFamilyIndexPirates } from './empire';
 import { SystemVisibilityStatus } from './visibility';
@@ -1004,20 +1003,16 @@ export function createGame(opts: CreateGameOptions): Game {
         reviewComponentPrices(galaxy);
     }
     if (stopAt('priceReviews')) return result();
-    // Start.2.cs 1105-1106: ResetLastTouchTimes + Galaxy.DoTasks — on this first tick the huge
-    // block runs, then the long block (independent traders, GenerateNewPirateEmpires).
+    // Start.2.cs 1108-1110: ResetLastTouchTimes + Galaxy.DoTasks(false, player) — on this first tick the huge
+    // block runs, then the long block (independent traders, GenerateNewPirateEmpires) — then DeferEventsForGameStart.
     galaxy.independentColonies = independentColonies;
-    galaxyGameStartHugeTick(galaxy, {
-        doGalaxyEvents: () => doGalaxyEventsSuperPirates(galaxy, pirateCtx(), { gameDisasterEventsEnabled: opts.disasterEventsEnabled ?? true, piratePrevalence }),
-    });
-    if (stopAt('firstGalaxyTick:huge')) return result();
-    galaxyGameStartLongTick(galaxy, {
-        checkEmpireTerritoryCanBuildAtHabitat,
-        generateNewPirateEmpires: () => {
-            if (piratePrevalence > 0) generateNewPirateEmpires(galaxy, pirateCtx(), pirateSettings);
-        },
-    });
-    // TODO(port): rest of that Galaxy.DoTasks (see independentTraders.ts galaxyGameStartLongTick).
+    galaxy.gameDisasterEventsEnabled = opts.disasterEventsEnabled ?? true;
+    galaxy.pirateProximity = pirateSettings.pirateProximity;
+    galaxy.maximumEmpireAmount = pirateSettings.maximumEmpireAmount;
+    let stoppedAtHuge = false;
+    runGameStartGalaxyTick(galaxy, galaxy.playerEmpire, () => (stoppedAtHuge = stopAt('firstGalaxyTick:huge')));
+    if (stoppedAtHuge) return result();
+    galaxy.deferEventsForGameStart = true;
     if (stopAt('firstGalaxyTick')) return result();
 
     // Start.2.cs 1108-1350: per-empire setup.
@@ -1030,6 +1025,7 @@ export function createGame(opts: CreateGameOptions): Game {
         gameStartColonyRecalc(galaxy, empire3); // 1110-1113
         if (stopAt('empire:colonyRecalc', empire3)) return result();
         // 1114-1121 touch times (int_5 > 0): the second DoTasks below runs its blocks only then.
+        if (int5 > 0) resetEmpireTouchTimesForAge(galaxy, empire3);
         // 1122-1137: PreWarpProgressEventOccurredSendPirateRaid = true always; all 13 flags when
         // tech > 0. TODO(port): the TS Empire keeps one combined flag, so SendPirateRaid alone
         // (tech 0) is not representable.
@@ -1064,12 +1060,13 @@ export function createGame(opts: CreateGameOptions): Game {
         gameStartReviewTaxes(galaxy, empire3, int5); // 1320-1339 (incl. ProcessColonyTroops when int_5 > 0)
         if (stopAt('empire:taxes', empire3)) return result();
         empire3.buildFactor = 0.5 + Math.min(0.2, empire3.colonies.length / 20.0); // 1340
-        // 1341 empire3.DoTasks(): with the touch times reset (int_5 > 0) its periodic/long blocks
-        // run; otherwise they already ran this game second (GenerateEmpire) and are skipped.
-        if (int5 > 0) empireDoTasksStandIn(galaxy, empire3);
+        // 1341 empire3.DoTasks(): with the touch times reset (int_5 > 0) its blocks run; otherwise they
+        // already ran this game second (GenerateEmpire) and are skipped.
+        runGameStartEmpireTick(galaxy, empire3);
         empire3.buildFactor = 1.0;
         empire3.initiateConstruction = true;
-        galaxy.rnd.next(1, 120); // 1344 Rnd.Next(1, (int)LongProcessingInterval): touch-time stagger (Empire.cs 184: 120 s)
+        const seconds = galaxy.rnd.next(1, 120); // 1344 Rnd.Next(1, (int)LongProcessingInterval) (Empire.cs 184: 120 s)
+        staggerEmpireTouchTimes(galaxy, empire3, seconds); // 1345-1350
         if (stopAt('empire:doTasks', empire3)) return result();
     }
     if (stopAt('empireSetup')) return result();

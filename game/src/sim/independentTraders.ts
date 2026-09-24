@@ -21,7 +21,7 @@
 //   (Galaxy.cs 3075) if (ResetRandom) ReseedRandom();  — ResetRandom is false (set false at 3036).
 //   (3079) ProcessPirateFleets(currentDateTime)         — Galaxy.PirateEmpires is empty at this
 //          point (pirate factions are generated later on this very tick, in the long block) → no-op.
-//   Huge block (3081-3089), see galaxyGameStartHugeTick:
+//   Huge block (3081-3089), tick/galaxyTick.ts galaxyDoTasks:
 //     ReviewEmpireTerritory(onlySystems: false)  — queued on the ThreadPool in C# (3376).
 //     SelectPopularDesignCandidates()            — ported here; feeds GenerateIndependentTraders.
 //     DoGalaxyEvents()                           — pirates.ts doGalaxyEventsSuperPirates
@@ -32,7 +32,7 @@
 //                                                  (Galaxy.cs 3033): every Rnd draw after this
 //                                                  point on the tick is clock-seeded in C#. The TS
 //                                                  port keeps the seeded galaxy.rnd stream (no reseed).
-//   Long block (3091-…), see galaxyGameStartLongTick.
+//   Long block (3091-…), tick/galaxyTick.ts galaxyDoTasks.
 //
 // Rnd: GenerateIndependentTraders is the only Rnd consumer here (see its comment).
 
@@ -46,7 +46,6 @@ import { generateDesignFromSpec, resolveLegacySubRole } from './designGeneration
 import type { Empire } from './empire';
 import type { Galaxy } from './galaxy';
 import { REAL_SECONDS_IN_GALACTIC_YEAR, startStarDateForAge } from './galaxyTime';
-import { reviewComponentPrices, reviewResourcePrices } from './market';
 import { obtainPirateRelation, PirateRelationType } from './pirateRelations';
 import { HabitatCategoryType, type Habitat } from './types';
 import { SystemVisibilityStatus, THREAT_RANGE } from './visibility';
@@ -796,78 +795,4 @@ export function cleanupInvalidShipsInIndexes(galaxy: Galaxy): void {
             }
         }
     }
-}
-
-// ------------------------------------------------------------------------------------------
-// Game-start tick drivers.
-
-export interface GameStartHugeTickHooks {
-    /** Galaxy.cs 3087 DoGalaxyEvents() — pirates.ts doGalaxyEventsSuperPirates(galaxy, ctx, settings). */
-    doGalaxyEvents?: () => void;
-}
-
-// Galaxy.cs 3081-3089: the huge-interval block of the first DoTasks (runs before the long block).
-export function galaxyGameStartHugeTick(galaxy: Galaxy, hooks: GameStartHugeTickHooks = {}): void {
-    // (3079, before the block) ProcessPirateFleets: TODO(port) ShipGroup.DoTasks — PirateEmpires is
-    // empty on the game-start tick (factions are generated in the long block), so no-op.
-    // 3083 ReviewEmpireTerritory(onlySystems: false): ThreadPool work item in C# (Galaxy.cs 3376) →
-    // EmpireTerritory.ReviewEmpireTerritory(this, false). No Rnd.
-    galaxy.empireTerritory.reviewEmpireTerritory(galaxy);
-    // 3084 flag = true (skips the long block's trailing ReviewEmpireTerritory).
-    // 3085
-    selectPopularDesignCandidates(galaxy);
-    // 3086
-    hooks.doGalaxyEvents?.();
-    // 3087
-    cleanupInvalidShipsInIndexes(galaxy);
-    // 3088 ReseedRandom(): C# reseeds Galaxy.Rnd from DateTime.Now.Ticks. TODO(port)/deliberate:
-    // the TS port keeps the seeded galaxy.rnd stream for determinism (as pirates.ts does).
-}
-
-export interface GameStartLongTickOptions {
-    /**
-     * Galaxy.cs 3095/3096 RemoveCompletedOrders / CancelExpiredOrders operate on Galaxy.Orders.
-     * TODO(port): Galaxy.Orders is not modeled (empty at game start) — defaults to [].
-     */
-    orders?: GalaxyOrder[];
-    /** Galaxy.cs 3102 GenerateNewPirateEmpires() — pirates.ts generateNewPirateEmpires(galaxy, ctx, settings). */
-    generateNewPirateEmpires?: () => void;
-    /** Galaxy.cs CheckEmpireTerritoryCanBuildAtHabitat (3637) — resourceTargets.ts. Required by IdentifyDisputedBases. */
-    checkEmpireTerritoryCanBuildAtHabitat: (galaxy: Galaxy, empire: Empire, habitat: Habitat) => boolean;
-}
-
-// Galaxy.cs 3091-3104: the long-interval block of the first DoTasks, in C# order, up to and including
-// GenerateNewPirateEmpires. Returns the traders created by GenerateIndependentTraders.
-export function galaxyGameStartLongTick(galaxy: Galaxy, opts: GameStartLongTickOptions): BuiltObject[] {
-    const orders = opts.orders ?? [];
-    // 3093 DeferEventsForGameStart = false. TODO(port): Galaxy.DeferEventsForGameStart (event deferral) not modeled.
-    // 3094-3095
-    reviewResourcePrices(galaxy);
-    reviewComponentPrices(galaxy);
-    // 3096-3097
-    removeCompletedOrders(orders);
-    cancelExpiredOrders(galaxy, orders);
-    // 3098 UpdateSystemInfo(playerEmpire). TODO(port): the TS galaxy.updateSystemInfo() is the
-    // playerEmpire == null variant (player colonization-target fields not computed); no Rnd.
-    galaxy.updateSystemInfo();
-    // 3099
-    reviewIndependentColonies(galaxy);
-    // 3100
-    updateEmpireRefuellingLocations(galaxy, galaxy.independentEmpire!);
-    // 3101
-    identifyDisputedBases(galaxy, opts.checkEmpireTerritoryCanBuildAtHabitat);
-    // 3102-3103
-    const traders = generateIndependentTraders(galaxy);
-    assignIndependentTraderMissions(galaxy);
-    // 3104
-    opts.generateNewPirateEmpires?.();
-    // TODO(port): the rest of the long block (Galaxy.cs 3105-…), not ported here:
-    //   CheckForTerminatedPirateEmpires, GenerateNewPirateShips, DoSuperPirateTasks,
-    //   ClearEmptyDebrisFields, ClearCompletedPlanetDestroyerProjects, CheckMergePirateFactions,
-    //   ReviewPirateEmpireActivities, MaintainIndependentColonyFuelLevels,
-    //   IndependentEmpire.CheckMarketOrders, IndependentEmpire.ReviewPirateSmugglingMissions /
-    //   ReviewPirateDefendMissions, IndependentColoniesMakeSmugglingOffersToPirates /
-    //   IndependentColoniesMakeDefendOffersToPirates, ReviewRacePeriodicChanges, ReviewColonyFillFactor,
-    //   and the trailing `if (!flag) ReviewEmpireTerritory(true)` (flag is true on this tick).
-    return traders;
 }
