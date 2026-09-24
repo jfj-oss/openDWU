@@ -15,6 +15,7 @@ import type { Race } from './data/races';
 import type { Government } from './data/governments';
 import { START_STAR_DATE } from './galaxyTime';
 import { Cargo, CargoList, ResourceRef, TroopList } from './cargo';
+import { EmpireVisibility, SystemVisibilityStatus, type SystemVisibility, type VisibilityOwner, type VisibilityUnit } from './visibility';
 
 // TODO(port): EmpirePolicy type — Empire.cs / Policy.cs (policy data model
 // not ported yet); constructors treat it as an opaque value.
@@ -27,12 +28,9 @@ export enum AutomationLevel {
     FullyAutomated,
 }
 
-// Port of DistantWorlds.Types.SystemVisibilityStatus (SystemVisibility.cs).
-export enum SystemVisibilityStatus {
-    Unexplored,
-    Visible,
-    Explored,
-}
+// SystemVisibilityStatus lives in visibility.ts (task C1; C# order
+// Undefined, Unexplored, Explored, Visible).
+export { SystemVisibilityStatus } from './visibility';
 
 // Port of DistantWorlds.Types.BuiltObjectSubRole (BuiltObjectSubRole.cs).
 // Only the members referenced by GenerateDesignSpecifications are listed;
@@ -69,11 +67,6 @@ export enum BuiltObjectSubRole {
     WeaponsResearchStation,
 }
 
-// One entry of Empire.SystemVisibility (SystemVisibility.cs).
-export interface SystemVisibilityEntry {
-    status: SystemVisibilityStatus;
-    systemStar: Habitat;
-}
 
 // TODO(port): ResearchSystem + tech tree — ResearchSystem.cs /
 // Galaxy.ResearchNodeDefinitionsStatic.ObtainTechTree/SetTechTreeStartingDefaults.
@@ -91,12 +84,6 @@ class EmpireCounters {
 // TODO(port): PirateEconomy — PirateEconomy.cs.
 class PirateEconomy {
     constructor(_startStarDate: number) {}
-}
-
-// TODO(port): ResourceMap.InitializeFlags/SetResourcesKnown — ResourceMap.cs.
-class ResourceMap {
-    initializeFlags(_habitatCount: number, _galaxy: Galaxy): void {}
-    setResourcesKnown(_habitat: Habitat, _known: boolean): void {}
 }
 
 // TODO(port): DesignSpecification.LoadFromFile — DesignSpecification.cs.
@@ -135,14 +122,16 @@ function nextEmpireId(galaxy: Galaxy): number {
 // TODO(port): exact value of Empire._LongProcessingInterval — Empire.cs
 // (field initializer not in the excerpt); used to back-date the five
 // "last touch" timestamps at construction.
-const LONG_PROCESSING_INTERVAL_MS = 60_000;
+const LONG_PROCESSING_INTERVAL_MS = 120_000; // C#: double _LongProcessingInterval = 120.0 (seconds), Empire.cs:184
 
 // TODO(port): Galaxy.ColonyAnnualResourceConsumptionRate /
 // ColonyAnnualLuxuryResourceConsumptionRate / MinimumLuxuryResourceReorderAmount
 // statics — Galaxy.cs (values not in the excerpt).
-const COLONY_ANNUAL_RESOURCE_CONSUMPTION_RATE = 1.0;
-const COLONY_ANNUAL_LUXURY_RESOURCE_CONSUMPTION_RATE = 1.0;
-const MINIMUM_LUXURY_RESOURCE_REORDER_AMOUNT = 400;
+// Values from Galaxy.3.cs InitializeStatics 5004-5005, 5026, 5039.
+export const COLONY_ANNUAL_RESOURCE_CONSUMPTION_RATE = 1e-8;
+export const COLONY_ANNUAL_LUXURY_RESOURCE_CONSUMPTION_RATE = 2e-8;
+export const MINIMUM_LUXURY_RESOURCE_REORDER_AMOUNT = 100;
+export const COLONY_MAXIMUM_TROOP_STRENGTH = 150000;
 
 export class Empire {
     galaxy!: Galaxy;
@@ -150,7 +139,12 @@ export class Empire {
     empireId = 0;
     counters = new EmpireCounters(this);
     pirateEconomy = new PirateEconomy(START_STAR_DATE);
-    resourceMap = new ResourceMap();
+    // Task C1/C2a: SystemVisibility + ResourceMap + SystemsVisible +
+    // EmpiresSharedVisibility + KnownGalaxyLocations (visibility.ts).
+    visibility!: EmpireVisibility;
+    get resourceMap() {
+        return this.visibility.resourceMap;
+    }
     name = '';
     capital: Habitat | null = null;
     homeWorld: Habitat | null = null;
@@ -191,7 +185,9 @@ export class Empire {
     planetDestroyers: unknown[] = [];
     messages: unknown[] = [];
     empireEvaluations: unknown[] = [];
-    systemVisibility: SystemVisibilityEntry[] = [];
+    get systemVisibility(): SystemVisibility[] {
+        return this.visibility.systemVisibility;
+    }
     controlColonization: AutomationLevel = AutomationLevel.Undefined;
     controlColonyDevelopment = false;
     controlColonyStockLevels = false;
@@ -285,7 +281,9 @@ export class Empire {
         // TODO(port): Galaxy.CurrentStarDate — Galaxy.cs (no time on the TS
         // Galaxy yet); stand in with the start star date.
         this.pirateEconomy = new PirateEconomy(START_STAR_DATE);
-        this.resourceMap.initializeFlags(galaxy.habitats.length, galaxy);
+        // ResourceMap.InitializeFlags(Habitats.Count) + one Unexplored
+        // SystemVisibility per system (Empire.cs 3760, 3831-3840).
+        this.visibility = new EmpireVisibility(galaxy, this.visibilityOwner());
         this.name = name;
         this.capital = capital;
         this.homeWorld = this.capital;
@@ -350,13 +348,7 @@ export class Empire {
         this.planetDestroyers = [];
         this.messages = [];
         this.empireEvaluations = [];
-        this.systemVisibility = [];
-        for (let j = 0; j < galaxy.systems.length; j++) {
-            this.systemVisibility.push({
-                status: SystemVisibilityStatus.Unexplored,
-                systemStar: galaxy.systems[j].systemStar,
-            });
-        }
+        // (SystemVisibility list already built by EmpireVisibility above.)
         this.controlColonization = AutomationLevel.FullyAutomated;
         this.controlColonyDevelopment = true;
         this.controlColonyStockLevels = true;
@@ -483,22 +475,17 @@ export class Empire {
         if (colony.cargo === null) {
             colony.cargo = new CargoList();
         }
-        // C# iterates Galaxy.ResourceSystem.StrategicResourcesOrderedByRelativeImportance.
-        // TODO(port): ResourceSystem strategic-resource ordering +
-        // RelativeImportance — ResourceSystem.cs (not ported); substitute the
-        // galaxy's mineral (type 0) resources in file order with importance 1.
-        for (const resourceDefinition of this.galaxy.resources) {
-            if (resourceDefinition.type === 0 && resourceDefinition.colonyManufacturingLevel <= 0) {
-                cargo = new Cargo(new ResourceRef(resourceDefinition.resourceId), Math.trunc(1 * 6000 * num), this);
+        const rs = this.galaxy.resourceSystem;
+        for (const resourceDefinition of rs.strategicResourcesOrderedByRelativeImportance) {
+            if (resourceDefinition.colonyManufacturingLevel <= 0) {
+                const imp = rs.relativeImportance.get(resourceDefinition.resourceId) ?? 0;
+                cargo = new Cargo(new ResourceRef(resourceDefinition.resourceId), Math.trunc(Math.fround(imp * 6000) * num), this);
                 colony.cargo!.add(cargo);
             }
         }
-        // C#: 4 picks from Galaxy.ResourceSystem.LuxuryResources via
-        // Galaxy.Rnd.Next(0, count). Luxury pool = type-2 resources.
-        const luxuryResources = this.galaxy.resources.filter((r) => r.type === 2);
         for (let j = 0; j < 4; j++) {
-            const index = this.galaxy.rnd.next(0, luxuryResources.length);
-            const resourceDefinition2 = luxuryResources[index];
+            const index = this.galaxy.rnd.next(0, rs.luxuryResources.length);
+            const resourceDefinition2 = rs.luxuryResources[index];
             if (resourceDefinition2 !== undefined && resourceDefinition2.superLuxuryBonusAmount <= 0 && resourceDefinition2.colonyManufacturingLevel <= 0) {
                 cargo = new Cargo(new ResourceRef(resourceDefinition2.resourceId), 600, this);
                 colony.cargo!.add(cargo);
@@ -527,15 +514,77 @@ export class Empire {
         return val;
     }
 
-    // TODO(port): Galaxy.SelectRandomLuxuryResource — Galaxy.cs (random
-    // luxury pick); substitute a uniform pick over the galaxy's type-2
-    // resources using galaxy.rnd so the Rnd call stays in position.
+    // Port of Galaxy.3.cs SelectRandomLuxuryResource (line 429): up to 50
+    // tries for a luxury that isn't restricted (super-luxury) or manufactured.
     private selectRandomLuxuryResource(): ResourceRef {
-        const pool = this.galaxy.resources.filter((r) => r.type === 2);
-        if (pool.length === 0) {
-            return new ResourceRef(-1);
+        const lux = this.galaxy.resourceSystem.luxuryResources;
+        let resource = new ResourceRef(0);
+        let flag = false;
+        let iterationCount = 0;
+        while (iterationCount < 50 && !flag) {
+            iterationCount++;
+            const def = lux[this.galaxy.rnd.next(0, lux.length)];
+            resource = new ResourceRef(def.resourceId);
+            flag = !(def.superLuxuryBonusAmount > 0 || def.colonyManufacturingLevel > 0);
         }
-        return new ResourceRef(pool[this.galaxy.rnd.next(0, pool.length)].resourceId);
+        return resource;
+    }
+
+    // Hooks visibility.ts needs from the empire (task C1 VisibilityOwner).
+    visibilityOwner(): VisibilityOwner {
+        return {
+            get isIndependent() {
+                return false;
+            },
+            active: true,
+            controlsHabitat: (h: Habitat) => h.owner === this,
+            // TODO(port): BuiltObjects / PrivateBuiltObjects (no ships yet).
+            hasUnitInSystem: (_star: Habitat, _exclude: VisibilityUnit | null) => false,
+            longRangeScanners: () => [],
+            hasShipOutsideSystemWithScanRange: () => false,
+        };
+    }
+
+    // Port of Empire.9.cs ResolveSystemVisibility(x, y, null, null).
+    resolveSystemVisibility(x: number, y: number): void {
+        this.visibility.resolveSystemVisibilityAt(x, y);
+    }
+
+    // Port of Empire.1.cs TakeOwnershipOfColony(colony, newEmpire) (line 54 →
+    // 64 with destroyBases/destroyTroops false). Ported: the container
+    // initialisation, owner change, colony-list moves, capital fallback,
+    // refuelling flag and system visibility. No Rnd calls in the C#.
+    // TODO(port): events, ConstructionQueue/ManufacturingQueue/docking bays,
+    // fleet home bases, troop/character re-assignment details, orders,
+    // blockades/attacks cancellation, tax rate, population policy, bases and
+    // mining stations, empire defeat/teardown — Empire.1.cs 64-370.
+    takeOwnershipOfColony(colony: Habitat, newEmpire: Empire | null): void {
+        const empire = colony.empire;
+        let flag = false;
+        if (empire !== null) {
+            if (empire.capital === colony) flag = true;
+            const i = empire.colonies.indexOf(colony);
+            if (i >= 0) empire.colonies.splice(i, 1);
+        }
+        if (colony.cargo === null) colony.cargo = new CargoList();
+        if (colony.troops === null) colony.troops = new TroopList();
+        if (colony.troopsToRecruit === null) colony.troopsToRecruit = new TroopList();
+        if (colony.invadingTroops === null) colony.invadingTroops = new TroopList();
+        if (colony.facilities === null) colony.facilities = [];
+        colony.owner = newEmpire;
+        colony.empire = newEmpire;
+        if (empire !== null && flag) {
+            // TODO(port): SelectBestCandidateForCapital — Empire.cs.
+            empire.capital = empire.colonies[0] ?? null;
+        }
+        if (newEmpire !== null) {
+            colony.isRefuellingDepot = true;
+            if (newEmpire.capital === null) newEmpire.capital = colony;
+            if (!newEmpire.colonies.includes(colony)) newEmpire.colonies.push(colony);
+        } else {
+            colony.isRefuellingDepot = false;
+        }
+        this.resolveSystemVisibility(colony.xpos, colony.ypos);
     }
 
     // Port of Empire.cs ResolveRaceSpecificGovernmentTypes (static).

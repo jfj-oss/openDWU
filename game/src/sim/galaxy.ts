@@ -23,6 +23,8 @@ import {
 } from './types';
 import type { Race } from './data/races';
 import type { Resource } from './data/resources';
+import { buildResourceSystem, type ResourceSystem } from './resourceSystem';
+import type { Empire } from './empire';
 import type { GameData } from './data/gameData';
 
 // Port of Galaxy.cs static fields (Galaxy.3.cs InitializeStatics sets
@@ -78,6 +80,15 @@ export class Galaxy {
     // Parsed resource definitions (ResourceSystem.Resources), passed in via
     // GenerateGalaxyOptions.gameData.
     resources: Resource[] = [];
+    // Task C2a: empires and colony naming (Galaxy.cs).
+    empires: Empire[] = [];
+    pirateEmpires: Empire[] = [];
+    independentEmpire: Empire | null = null;
+    playerEmpire: Empire | null = null;
+    colonyNames: string[] | null = null;
+    colonyNameIndex = 0;
+    // Task C2a: Galaxy.ResourceSystem (strategic/luxury lists, RelativeImportance).
+    resourceSystem: ResourceSystem = buildResourceSystem([], []);
     sizeX = 0;
     sizeY = 0;
     sectorSize = SECTOR_SIZE;
@@ -2297,16 +2308,17 @@ export class Galaxy {
         return true;
     }
 
-    // Port of Galaxy.8.cs SetColonizableHabitatsInSystem (line 95). No
-    // empires exist yet, so every habitat's Owner is null.
+    // Port of Galaxy.8.cs SetColonizableHabitatsInSystem (line 95), including
+    // the (Owner == null || Owner == IndependentEmpire) checks (102/106).
     setColonizableHabitatsInSystem(systemStar: Habitat, race: Race, colonyCount: number): void {
         const habitats = this.systemHabitatsExcludingStar(systemStar);
         const habitatList: Habitat[] = [];
         const habitatList2: Habitat[] = [];
         for (const item of habitats) {
-            if ((item.population.totalAmount > 0 || item.type === race.nativeHabitatType) && item.category !== HabitatCategoryType.Asteroid) {
+            const unowned = item.owner === null || item.owner === this.independentEmpire;
+            if (unowned && (item.population.totalAmount > 0 || item.type === race.nativeHabitatType) && item.category !== HabitatCategoryType.Asteroid) {
                 habitatList.push(item);
-            } else {
+            } else if (unowned) {
                 if (
                     (item.category === HabitatCategoryType.Moon || item.category === HabitatCategoryType.Planet) &&
                     (item.type === HabitatType.MarshySwamp || item.type === HabitatType.Ocean || item.type === HabitatType.Desert)
@@ -3078,6 +3090,7 @@ export function generateGalaxy(options: GenerateGalaxyOptions): Galaxy {
     const galaxy = new Galaxy(seed, shape, starCount, sectorWidth, sectorHeight, systemNames, colonyPrevalence);
     // ResourceSystem.Resources (Galaxy.4.cs ctor loads it before generation).
     galaxy.resources = gameData?.resources ?? [];
+    galaxy.resourceSystem = buildResourceSystem(galaxy.resources, gameData?.components ?? []);
     // Port of Galaxy.cs Races (loaded from GameData in the ctor).
     galaxy.races = gameData?.races ?? [];
 

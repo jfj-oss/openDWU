@@ -5,6 +5,7 @@
 import { PopulationList } from './population';
 import type { Creature } from './creature';
 import type { CargoList, TroopList } from './cargo';
+import type { Empire } from './empire';
 
 // Port of DistantWorlds.Types.HabitatType (HabitatType.cs)
 export enum HabitatType {
@@ -181,6 +182,26 @@ export class Habitat {
     // Port of Habitat.cs DevelopmentLevel (byte), set via SetDevelopmentLevel
     // (Habitat.cs).
     developmentLevel = 0;
+
+    // --- Colony fields (task C2a, Habitat.cs) ---
+    // C#: Empire Owner / Empire Empire (both set by Empire.TakeOwnershipOfColony).
+    owner: Empire | null = null;
+    empire: Empire | null = null;
+    // C#: bool IsRefuellingDepot.
+    isRefuellingDepot = false;
+    // C#: float Damage (0 at generation); Quality = BaseQuality * (1 - Damage).
+    damage = 0;
+    // C#: TroopsToRecruit / InvadingTroops (TroopList, nullable).
+    troopsToRecruit: TroopList | null = null;
+    invadingTroops: TroopList | null = null;
+    // C#: PlanetaryFacilityList Facilities. TODO(port): PlanetaryFacility model.
+    facilities: unknown[] | null = null;
+
+    // Port of Habitat.cs Quality (_Quality, kept equal to
+    // BaseQuality * (1 - Damage) by the BaseQuality setter / RecalculateQuality).
+    get quality(): number {
+        return Math.fround(Math.fround(this.baseQuality) * Math.fround(1 - this.damage));
+    }
 
     // Port of Habitat.cs SetDevelopmentLevel.
     setDevelopmentLevel(level: number): void {

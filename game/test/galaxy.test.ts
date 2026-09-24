@@ -736,7 +736,10 @@ describe('generateGalaxy native populations (task 01f2: SelectPopulation)', () =
         for (const [name, count] of counts) {
             expect(count).toBeLessThanOrEqual(limit);
         }
-        expect(galaxy.independentCount).toBe([...counts.values()].reduce((a, b) => a + b, 0));
+        // C# PopulationList.Add merges a second population of the same race on
+        // one habitat into the existing entry (task C2a), while IndependentCount
+        // counts every placement — so entries <= placements.
+        expect(galaxy.independentCount).toBeGreaterThanOrEqual([...counts.values()].reduce((a, b) => a + b, 0));
     }, 60000);
 
     it('home-system renaming is consistent with the races that have native populations', () => {

@@ -40,9 +40,32 @@ export class PopulationList {
     items: Population[] = [];
     totalAmount = 0; // C#: long TotalAmount (kept in sync by Add/Remove/RecalculateTotalAmount)
 
-    add(population: Population): void {
+    // Port of PopulationList.cs Add: a population of a race already present
+    // is merged into it (returns -1); TotalAmount is NOT updated (callers
+    // set it or call RecalculateTotalAmount).
+    add(population: Population): number {
+        for (const p of this.items) {
+            if (p.race.name === population.race.name) {
+                p.amount += population.amount;
+                return -1;
+            }
+        }
         this.items.push(population);
-        this.totalAmount += population.amount;
+        return this.items.length - 1;
+    }
+
+    // Port of PopulationList.cs DominantRace: largest Amount * IntelligenceLevel.
+    get dominantRace(): Race | null {
+        let num1 = 0;
+        let dominant: Race | null = null;
+        for (const p of this.items) {
+            const num2 = p.amount * p.race.intelligence;
+            if (num2 > num1) {
+                dominant = p.race;
+                num1 = num2;
+            }
+        }
+        return dominant;
     }
 
     remove(population: Population): boolean {
