@@ -90,3 +90,14 @@ list.Add(BuiltObjectRole.Colony); list.Add(BuiltObjectRole.Exploration);   // Ge
 - `nextInCycle` wrap with a remembered last item. Reuse the existing export: list [a, b], last b, dir 1 → a.
 
 Run `npm run typecheck && npm test` (hud.test.ts must still pass), then append `## Worker report`.
+
+## Worker report
+
+Files changed:
+- `src/ui/hud.ts` — added `builtObjectCycleList`, `subRoleLabel`, `nearestSystem`, `builtObjectRows` exports; extended `Selection` with optional `builtObject`; rewrote `stepCycle` so bases/military/construction/other cycle real BuiltObjects (per-kind `lastCycled` map, `nearestSystem` for the panel's system, view centre+zoom on move); `refresh()` shows the built object's name + sub-role label; `buildSelectionRows` returns `builtObjectRows` early for a ship/base selection; `doViewAction` 'zoomSelection' centres on `sel.builtObject ?? sel.habitat`. Fleets/idleShips keep the "No … yet" message with a TODO(cycle) note.
+- `src/ui/keyboard.ts` — `zoomToSelection` now centres on `sel.builtObject ?? sel.habitat`.
+- `test/hud-cycle-builtobjects.test.ts` (new) — covers all five cycle-list filters, `subRoleLabel`, `nearestSystem` (nearest + empty), `builtObjectRows` (owned + abandoned), and `nextInCycle` wrap with a remembered last item.
+
+Done: all steps 1–10 of the task. `npm run typecheck` passes; `npm test` passes (85 files, 848 tests, including hud.test.ts).
+
+Left undone: nothing in scope. Map click-picking of ships remains out of scope per the task; Fleets/Idle chips still stubbed (ShipGroup / missions not ported).

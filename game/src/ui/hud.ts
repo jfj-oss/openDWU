@@ -8,6 +8,9 @@ import { Galaxy } from '../sim/galaxy';
 import type { GameData } from '../sim/data/gameData';
 import { Habitat, HabitatCategoryType, HabitatType, IndustryType, SystemInfo } from '../sim/types';
 import type { Empire } from '../sim/empire';
+import type { BuiltObject } from '../sim/builtObject';
+import { BuiltObjectSubRole } from '../sim/builtObjectTypes';
+import { BuiltObjectRole } from '../sim/data/designSpecifications';
 import { flagShapeUrl } from '../sim/startGameOptions';
 import { createGameMenu, type GameMenuRefs } from './screens/gameMenu';
 import { setGameMenuHandler, setCycleHandler, type CycleKind } from './keyboard';
@@ -169,6 +172,9 @@ export interface HudWiring {
 export interface Selection {
     habitat: Habitat;
     system: SystemInfo;
+    /** Task 13c: the selected ship/base when cycling Bases/Military/Constr./
+     * Other. `habitat` is then the nearest system's star. */
+    builtObject?: BuiltObject;
 }
 
 let currentSelection: Selection | null = null;
@@ -656,15 +662,44 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
     const fwd = makeGlyphButton('›', 'Next');
     let activeChip: CycleKind = 'colonies';
     const chipLabel = (): string => CYCLE_CHIPS.find((c) => c.key === activeChip)?.label ?? activeChip;
+    // Task 13c: each BuiltObject cycle kind (bases/military/construction/other)
+    // remembers its own last-cycled object, like the original's builtObject_0..3.
+    const lastCycled = new Map<CycleKind, BuiltObject>();
     /** Step through a cycle list: select the next item (same hook as
      * click-to-select, so the panel updates). With `moveView` (the Ctrl
      * variants of C/P/M/Y/X/F/I and the ‹ › buttons) the camera also centres
      * on it at System zoom. */
     const stepCycle = (dir: 1 | -1, kind: CycleKind = activeChip, moveView = true): void => {
         if (kind !== 'colonies') {
-            // TODO(cycle): needs ships (M3) — Bases/Military/Constr./Other/
-            // Fleets/Idle all iterate BuiltObject/fleet state that M3 ports.
-            pushHudMessage(`No ${chipLabel()} yet`);
+            if (kind === 'fleets' || kind === 'idleShips') {
+                // TODO(cycle): ShipGroup / BuiltObject.mission not ported (Main.Part7.cs 1863 btnCycleIdleShips_Click)
+                pushHudMessage(`No ${chipLabel()} yet`);
+                return;
+            }
+            // Port of Main.Part9.cs btnCycle{Bases,Military,Construction,Other}_Click
+            // (2927-3090): filter PlayerEmpire.BuiltObjects + PrivateBuiltObjects by
+            // role/sub-role, remember the last-cycled object per kind, and select
+            // the next one (method_208), moving the view with MoveView (method_157).
+            const game = wiring.game;
+            const cam = wiring.camera;
+            const galaxy = wiring.galaxy;
+            if (!game || !cam || !galaxy) return;
+            const label = CYCLE_CHIPS.find((c) => c.key === kind)?.label ?? kind;
+            const list = builtObjectCycleList(game.playerEmpire as Empire, kind);
+            if (list.length === 0) {
+                pushHudMessage(`No ${label} yet`);
+                return;
+            }
+            const next = nextInCycle(list, lastCycled.get(kind) ?? null, dir);
+            if (!next) return;
+            lastCycled.set(kind, next);
+            const system = nearestSystem(galaxy.systems, next.xpos, next.ypos);
+            if (!system) return;
+            wiring.onSelectionChange?.({ habitat: system.systemStar, system, builtObject: next });
+            if (moveView) {
+                cam.centerOn(next.xpos, next.ypos);
+                cam.zoomAt(SYSTEM_LEVEL_ZOOM, cam.width / 2, cam.height / 2);
+            }
             return;
         }
         const game = wiring.game;
@@ -736,10 +771,17 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
             return;
         }
         const h = sel.habitat;
-        nameEl.textContent = h.name;
-        nameEl.classList.remove('hud-muted');
-        const typeName = habitatTypeLabel(h.type, h.category);
-        subEl.textContent = `${typeName} · ${sel.system.systemStar.name} system`;
+        if (sel.builtObject) {
+            // Task 13c: ship/base header — name + sub-role label and system.
+            nameEl.textContent = sel.builtObject.name;
+            nameEl.classList.remove('hud-muted');
+            subEl.textContent = `${subRoleLabel(sel.builtObject.subRole)} · ${sel.system.systemStar.name} system`;
+        } else {
+            nameEl.textContent = h.name;
+            nameEl.classList.remove('hud-muted');
+            const typeName = habitatTypeLabel(h.type, h.category);
+            subEl.textContent = `${typeName} · ${sel.system.systemStar.name} system`;
+        }
         body.replaceChildren();
         for (const row of buildSelectionRows(sel, gameData)) {
             body.appendChild(row.element);
@@ -869,6 +911,93 @@ export function playerColonyList(galaxy: Galaxy, playerEmpire: Empire): Habitat[
     return owned;
 }
 
+// ---------------------------------------------------------------------------
+// BuiltObject cycles (task 13c)
+// ---------------------------------------------------------------------------
+
+/** The sub-roles of the Bases cycle chip (Main.Part9.cs btnCycleBases_Click:
+ * GetBuiltObjectsBySubRole over these nine). */
+const BASE_SUB_ROLES: readonly BuiltObjectSubRole[] = [
+    BuiltObjectSubRole.SmallSpacePort,
+    BuiltObjectSubRole.MediumSpacePort,
+    BuiltObjectSubRole.LargeSpacePort,
+    BuiltObjectSubRole.GenericBase,
+    BuiltObjectSubRole.EnergyResearchStation,
+    BuiltObjectSubRole.WeaponsResearchStation,
+    BuiltObjectSubRole.HighTechResearchStation,
+    BuiltObjectSubRole.MonitoringStation,
+    BuiltObjectSubRole.DefensiveBase,
+];
+
+/** Cycle list for a BuiltObject chip: the empire's state + private built
+ * objects filtered per kind, in list order (nulls dropped), mirroring the
+ * original's btnCycle*_Click handlers (Main.Part9.cs 2927-3090) and
+ * BuiltObjectList.GetBuiltObjectsByRole/BySubRole (BuiltObjectList.cs
+ * 317-329). Construction appends the ResupplyShip objects after the Build-role
+ * ones; other kinds filter by role or sub-role; fleets/idleShips have no list
+ * yet (ShipGroup not ported). */
+export function builtObjectCycleList(
+    empire: { builtObjects: BuiltObject[]; privateBuiltObjects: BuiltObject[] },
+    kind: CycleKind,
+): BuiltObject[] {
+    const all = [...empire.builtObjects, ...empire.privateBuiltObjects].filter((b) => b !== null);
+    switch (kind) {
+        case 'construction': {
+            const out = all.filter((b) => b.role === BuiltObjectRole.Build);
+            for (const b of all) if (b.subRole === BuiltObjectSubRole.ResupplyShip) out.push(b);
+            return out;
+        }
+        case 'military':
+            return all.filter((b) => b.role === BuiltObjectRole.Military);
+        case 'bases':
+            return all.filter((b) => BASE_SUB_ROLES.includes(b.subRole));
+        case 'other':
+            return all.filter((b) => b.role === BuiltObjectRole.Colony || b.role === BuiltObjectRole.Exploration);
+        default:
+            return [];
+    }
+}
+
+/** Human label for a built-object sub-role: the enum name split into words
+ * (`SmallSpacePort` → "Small Space Port"); '' for Undefined. */
+export function subRoleLabel(subRole: BuiltObjectSubRole): string {
+    if (subRole === BuiltObjectSubRole.Undefined) return '';
+    return BuiltObjectSubRole[subRole].replace(/([a-z])([A-Z])/g, '$1 $2');
+}
+
+/** The system whose star is nearest (x, y) by squared distance, or null for
+ * an empty list — the same loop as {@link nearestSystemName}. */
+export function nearestSystem(systems: readonly SystemInfo[], x: number, y: number): SystemInfo | null {
+    let best: SystemInfo | null = null;
+    let bestDist = Infinity;
+    for (let i = 0; i < systems.length; i++) {
+        const star = systems[i].systemStar;
+        const dx = star.xpos - x;
+        const dy = star.ypos - y;
+        const d = dx * dx + dy * dy;
+        if (d < bestDist) {
+            bestDist = d;
+            best = systems[i];
+        }
+    }
+    return best;
+}
+
+/** Detail rows for a selected ship/base (task 13c), in order, each skipped
+ * when empty: Owner (with the empire's main colour), Design, Size, Location
+ * (parent habitat name), Troops (only when non-zero). */
+export function builtObjectRows(bo: BuiltObject): { label: string; value: string; color?: number }[] {
+    const rows: { label: string; value: string; color?: number }[] = [];
+    if (bo.empire !== null) rows.push({ label: 'Owner', value: bo.empire.name, color: bo.empire.mainColor });
+    const design = bo.design?.name ?? '';
+    if (design !== '') rows.push({ label: 'Design', value: design });
+    rows.push({ label: 'Size', value: String(bo.size) });
+    const location = bo.parentHabitat?.name ?? '';
+    if (location !== '') rows.push({ label: 'Location', value: location });
+    if (bo.troops !== null && bo.troops.count > 0) rows.push({ label: 'Troops', value: String(bo.troops.count) });
+    return rows;
+}
+
 /** Drive the camera for a View-list action. */
 function doViewAction(key: ViewRowKey, wiring: HudWiring): void {
     const cam = wiring.camera;
@@ -904,7 +1033,9 @@ function doViewAction(key: ViewRowKey, wiring: HudWiring): void {
         case 'zoomSelection': {
             const sel = currentSelection;
             if (!sel) return;
-            cam.centerOn(sel.habitat.xpos, sel.habitat.ypos);
+            // Task 13c: centre on the selected ship/base when one is set.
+            const t = sel.builtObject ?? sel.habitat;
+            cam.centerOn(t.xpos, t.ypos);
             cam.zoomAt(SYSTEM_LEVEL_ZOOM, cx, cy);
             break;
         }
@@ -1147,6 +1278,12 @@ export function buildSelectionRows(sel: Selection, gameData?: GameData): Selecti
         line.append(k, v);
         rows.push({ element: line });
     };
+    // Task 13c: a selected ship/base shows only its own rows (Owner / Design /
+    // Size / Location / Troops) instead of the habitat's detail rows.
+    if (sel.builtObject) {
+        for (const r of builtObjectRows(sel.builtObject)) addColorRow(r);
+        return rows;
+    }
     for (const orow of ownerRows(h)) addColorRow(orow);
 
     // Quality: baseQuality × 100 as %, planets/moons only.

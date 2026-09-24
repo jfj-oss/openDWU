@@ -292,7 +292,9 @@ export function buildDefaultHandlers(
             // doViewAction 'zoomSelection'). No-op when nothing is selected.
             const sel = getSelection();
             if (!sel) return;
-            camera.centerOn(sel.habitat.xpos, sel.habitat.ypos);
+            // Task 13c: a ship/base selection centres on the built object.
+            const t = sel.builtObject ?? sel.habitat;
+            camera.centerOn(t.xpos, t.ypos);
             camera.zoomAt(SYSTEM_LEVEL_ZOOM, cx(), cy());
         },
         zoomSystemLevel: () => camera.zoomAt(SYSTEM_LEVEL_ZOOM, cx(), cy()),
