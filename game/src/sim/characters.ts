@@ -5663,7 +5663,7 @@ function resolveEmpiresToDefendAgainst(empire: Empire): Empire[] {
 
 // Empire.9.cs ResolveLocationsToDefend (1742/1747). Habitat.HasBeenDestroyed is false at game start
 // (not modelled on the TS Habitat).
-function resolveLocationsToDefend(galaxy: Galaxy, empire: Empire, includeBases: boolean): StellarObject[] {
+export function resolveLocationsToDefend(galaxy: Galaxy, empire: Empire, includeBases: boolean): StellarObject[] {
     void includeBases;
     let stellarObjectList: StellarObject[] = [];
     if (empire.pirateEmpireBaseHabitat !== null) {

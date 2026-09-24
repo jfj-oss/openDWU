@@ -99,12 +99,15 @@ describe('ProjectForceStructure / ProjectPrivateForceStructure at game start', (
         const g = atDoTasksPoint(opts(0.5, 1));
         const e = g.playerEmpire!;
         const cap = e.capital!;
-        // TakeOwnershipOfColony: RecalculateDistanceFactor (capital → 0) and
-        // RecalculateAnnualTaxRevenue at TaxRate 0 → 0 − 1000 (capital: no small-colony surcharge).
+        // TakeOwnershipOfColony: RecalculateDistanceFactor (capital → 0). Re-pinned by M4j: the GenerateEmpire
+        // Empire.DoTasks now runs EvaluateColonyVariables, which raises the capital's development level 10 → 15 (its
+        // luxury cargo) before ReviewTaxes, so SetColonyTaxRate picks 0.06f (was 0 → −1000, i.e. only
+        // −ColonyStateSupportCost) and the snapshot is AnnualRevenue × 0.06 × TaxComplianceRate − 1000.
         expect(cap.distanceFactor).toBe(0);
-        expect(cap.annualTaxRevenue).toBe(-1000);
-        expect(annualTaxRevenue(g, e)).toBe(0);
-        expect(calculateAccurateAnnualIncome(g, e)).toBe(0);
+        expect(cap.taxRate).toBe(Math.fround(0.06));
+        expect(cap.annualTaxRevenue).toBe(1447.6451675605372);
+        expect(annualTaxRevenue(g, e)).toBe(1447.6451675605372);
+        expect(calculateAccurateAnnualIncome(g, e)).toBe(1447.6451675605372);
         const b = calculateStateExpenditureBalance(e, 0);
         const research = 1 - (b.shipMaintenancePortion + b.troopMaintenancePortion + b.facilityMaintenancePortion);
         expect(research).toBeGreaterThanOrEqual(0.06 - 1e-12);

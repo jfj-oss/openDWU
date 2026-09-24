@@ -12,6 +12,7 @@ import type { Galaxy } from './galaxy';
 import { HabitatCategoryType, HabitatType } from './types';
 import type { Habitat } from './types';
 import type { Race } from './data/races';
+import type { Ruin } from './ruins';
 import type { Government } from './data/governments';
 import { START_STAR_DATE, startStarDateForAge } from './galaxyTime';
 import type { BuiltObject } from './builtObject';
@@ -89,8 +90,35 @@ function halveRgb(color: number): number {
     return (((r / 2) | 0) << 16) | (((g / 2) | 0) << 8) | ((b / 2) | 0);
 }
 
-class EmpireCounters {
+// Port of EmpireCounters.cs (revenue parts, M4j): the income / extermination totals and their Process* methods
+// (EmpireCounters.cs 67-72, 220-230). TODO(port) M4o/M4r: the destruction / diplomacy / espionage counters.
+export class EmpireCounters {
+    exterminatedPopulationAmount = 0; // long
+    tradeIncomeStateBonus = 0.0;
+    tradeIncomeTotalVolume = 0.0;
+    tourismIncome = 0.0;
+    colonyPrivateRevenueTotal = 0.0;
+    pirateSmugglingIncome = 0.0;
+    pirateProtectionIncome = 0.0;
     constructor(_empire: Empire) {}
+    /** EmpireCounters.cs 220 ProcessColonyRevenue(amount). */
+    processColonyRevenue(amount: number): void {
+        this.colonyPrivateRevenueTotal += amount;
+    }
+    /** EmpireCounters.cs 222 ProcessTourismIncome(amount). */
+    processTourismIncome(amount: number): void {
+        this.tourismIncome += amount;
+    }
+    /** EmpireCounters.cs 224 ProcessTradeBonus(relation, amount). */
+    processTradeBonus(relation: { tradeBonus: number } | null, amount: number): void {
+        this.tradeIncomeTotalVolume += amount;
+        if (relation == null) return;
+        this.tradeIncomeStateBonus += relation.tradeBonus * amount;
+    }
+    /** EmpireCounters.cs 232 ProcessExterminatedPopulation(amount). */
+    processExterminatedPopulation(amount: number): void {
+        this.exterminatedPopulationAmount += amount;
+    }
 }
 
 // TODO(port): PirateEconomy — PirateEconomy.cs.
@@ -1030,8 +1058,49 @@ export class Empire {
         return false;
     }
 
-    // TODO(port): ReviewPopulationGrowthRates — Empire.cs.
-    reviewPopulationGrowthRates(): void {}
+    // Port of Empire.3.cs ReviewPopulationGrowthRates (2233; filled by M4j — read by CalculateColonyGrowthRateMultiplier).
+    reviewPopulationGrowthRates(): void {
+        const f = Math.fround(0.5);
+        let colonyGrowthRateContinental = f;
+        let colonyGrowthRateMarshySwamp = f;
+        let colonyGrowthRateOcean = f;
+        let colonyGrowthRateDesert = f;
+        let colonyGrowthRateIce = f;
+        let colonyGrowthRateVolcanic = f;
+        const abilities = this.research?.abilities ?? null;
+        if (abilities !== null && abilities.length > 0) {
+            for (let i = 0; i < abilities.length; i++) {
+                if (abilities[i].type === ResearchAbilityType.PopulationGrowthRate) {
+                    switch (abilities[i].value) {
+                        case 1:
+                            colonyGrowthRateContinental = 1;
+                            break;
+                        case 2:
+                            colonyGrowthRateMarshySwamp = 1;
+                            break;
+                        case 3:
+                            colonyGrowthRateOcean = 1;
+                            break;
+                        case 4:
+                            colonyGrowthRateDesert = 1;
+                            break;
+                        case 5:
+                            colonyGrowthRateIce = 1;
+                            break;
+                        case 6:
+                            colonyGrowthRateVolcanic = 1;
+                            break;
+                    }
+                }
+            }
+        }
+        this.colonyGrowthRateContinental = colonyGrowthRateContinental;
+        this.colonyGrowthRateMarshySwamp = colonyGrowthRateMarshySwamp;
+        this.colonyGrowthRateOcean = colonyGrowthRateOcean;
+        this.colonyGrowthRateDesert = colonyGrowthRateDesert;
+        this.colonyGrowthRateIce = colonyGrowthRateIce;
+        this.colonyGrowthRateVolcanic = colonyGrowthRateVolcanic;
+    }
 
     // Port of Empire.10.cs MaximumConstructionSize(shipSubRole) (630).
     maximumConstructionSize(shipSubRole: BuiltObjectSubRole = BuiltObjectSubRole.Undefined): number {
@@ -1430,6 +1499,63 @@ export class Empire {
     // ---- M4h fields (construction queues) ----
     // ---- M4i fields (empire construction, facilities) ----
     // ---- M4j fields (colony growth, treasury, government) ----
+    /** Empire.cs 220-230 ColonyGrowthRateContinental .. Volcanic = 1f (float; ReviewPopulationGrowthRates). */
+    colonyGrowthRateContinental = 1;
+    colonyGrowthRateMarshySwamp = 1;
+    colonyGrowthRateOcean = 1;
+    colonyGrowthRateDesert = 1;
+    colonyGrowthRateIce = 1;
+    colonyGrowthRateVolcanic = 1;
+    /** Empire.cs _ShipMaintenanceSavings / _ResourceExtractionBonus / _ResearchBonus / _EspionageBonus / _TradeBonus (+ …Race); ReviewEmpireAbilityBonuses. */
+    shipMaintenanceSavings = 0.0;
+    shipMaintenanceSavingsRace: Race | null = null;
+    resourceExtractionBonus = 0.0;
+    resourceExtractionBonusRace: Race | null = null;
+    researchBonus = 0.0;
+    researchBonusRace: Race | null = null;
+    espionageBonus = 0.0;
+    espionageBonusRace: Race | null = null;
+    tradeBonus = 0.0;
+    tradeBonusRace: Race | null = null;
+    /** Empire.cs _SpecialBonus* (ReviewSpecialBonusesRuinsWonders, Empire.3.cs 939). Wonders are PlanetaryFacility (M4i model). */
+    specialBonusResearchEnergy = 0.0;
+    specialBonusResearchHighTech = 0.0;
+    specialBonusResearchWeapons = 0.0;
+    specialBonusWealth = 0.0;
+    specialBonusHappiness = 0.0;
+    specialBonusDiplomacy = 0.0;
+    specialBonusPopulationGrowth = 0.0;
+    specialBonusResearchEnergyRuin: Ruin | null = null;
+    specialBonusResearchHighTechRuin: Ruin | null = null;
+    specialBonusResearchWeaponsRuin: Ruin | null = null;
+    specialBonusWealthRuin: Ruin | null = null;
+    specialBonusHappinessRuin: Ruin | null = null;
+    specialBonusDiplomacyRuin: Ruin | null = null;
+    specialBonusHappinessWonder: unknown = null;
+    specialBonusPopulationGrowthWonder: unknown = null;
+    specialBonusResearchEnergyWonder: unknown = null;
+    specialBonusResearchHighTechWonder: unknown = null;
+    specialBonusResearchWeaponsWonder: unknown = null;
+    specialBonusWealthWonder: unknown = null;
+    /**
+     * Empire.cs 513 Capitals = new HabitatList() — assigned only by RefreshColonyFacilityInfo (Empire.3.cs 106, M4i);
+     * read by EvaluateColonyVariables (leader population-growth bonus).
+     */
+    capitals: Habitat[] = [];
+    /** Empire.cs 800 _UseAveragedVariableIncome (set only by the UI's CheckAgeVariableIncome for the player; ThisYearsSpacePortIncome). */
+    useAveragedVariableIncome = false;
+    /** Empire.cs _ThisYearsResortIncome / _LastResortIncomeAddDate (AddResortIncome, Empire.6.cs 2183 — tourism, M4f). */
+    thisYearsResortIncomeValue = 0.0;
+    lastResortIncomeAddDate = 0;
+    /** Empire.cs 806 _ThisYearsStateFuelCosts (written by state fuel purchases — M4e). */
+    thisYearsStateFuelCosts = 0.0;
+    /** Empire.cs _PenalColonies = new HabitatList() (ReviewColonyPopulationPolicy). */
+    penalColonies: Habitat[] = [];
+    /**
+     * Empire.cs _CivilityRating (double). Written by ReviewColonyPopulationPolicy (extermination) and the M4r
+     * reputation model; read by CalculateWarWithOurRace and taxes.ts CivilityRatingApprovalRaw.
+     */
+    civilityRating = 0.0;
     // ---- M4k fields (research progress) ----
     // ---- M4l fields (ship groups) ----
     // ---- M4m fields (military AI) ----

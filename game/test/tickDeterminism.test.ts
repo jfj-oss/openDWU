@@ -66,7 +66,7 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         checkInvariants(long);
         const hits = r.todoHits;
         // Every tick family reached its stubs.
-        for (const key of ['M4b executeCommands', 'M4j growPopulation', 'M4r processMessages', 'M4s pirateAssignShipMissions', 'M4s reviewPirateMissionsAndAssign', 'M4n evaluateSystemThreats']) {
+        for (const key of ['M4b executeCommands', 'M4q scanForNewOwnerHabitat', 'M4r processMessages', 'M4s pirateAssignShipMissions', 'M4s reviewPirateMissionsAndAssign', 'M4n evaluateSystemThreats']) {
             expect(hits[key] ?? 0, key).toBeGreaterThan(0);
         }
         const summary = { digest: stateDigest(long), counts: stateCounts(long), rndDraws: long.rnd.drawCount };
@@ -76,10 +76,11 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // stagger now writes the empire touch times (the Rnd draw was already there), so empire blocks fire at
         // different frames; createGame's own pins did not move.
         // Moved from 78d35aa06c9a1e5b by M4t (ScanArea surveys habitats — one Rnd.Next(0, 800) per newly surveyed
-        // non-independent habitat —, pre-warp visibility, exploration status, systems-only territory) and M4d (colony
+        // non-independent habitat —, pre-warp visibility, exploration status, systems-only territory), M4d (colony
         // resupply orders, CheckMarketOrders contracts traders — FindFreighterForContract Rnd.Next(0, count) —,
-        // Galaxy.Orders.Count digested).
-        expect(summary.digest).toBe('9f86c7b403225098');
+        // Galaxy.Orders.Count digested) and M4j (colony growth, development level, treasury, ProcessColonyTroops
+        // recruits — Rnd per completed recruit —, CheckSatisfaction Rnd.Next(0, 3); game-start Empire.DoTasks too).
+        expect(summary.digest).toBe('4650c2298c36e109');
     }, 600000);
 });
 

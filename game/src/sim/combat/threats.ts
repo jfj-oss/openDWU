@@ -35,3 +35,13 @@ export function evaluateSystemThreats(galaxy: Galaxy, systemStar: Habitat, empir
     /* TODO(port) M4n */ todo(T_evaluateSystemThreats);
     return { threats: [], threatLevels: [] };
 }
+
+const T_calculateOverallStrengthFactorWithoutShields = registerTodo('M4n', 'calculateOverallStrengthFactorWithoutShields');
+/**
+ * BuiltObject.1.cs 2276 → BaconBuiltObject CalculateOverallStrengthFactorWithoutShields (added by M4j: Empire.MilitaryPotency,
+ * read by CheckChangeGovernment). Stub returns 0.
+ */
+export function calculateOverallStrengthFactorWithoutShields(galaxy: Galaxy, builtObject: BuiltObject): number {
+    /* TODO(port) M4n */ todo(T_calculateOverallStrengthFactorWithoutShields);
+    return 0;
+}

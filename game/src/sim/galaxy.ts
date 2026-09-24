@@ -4366,6 +4366,18 @@ export class Galaxy {
     // ---- M4h fields (construction queues, shipyards) ----
     // ---- M4i fields (empire construction, facilities, wonders) ----
     // ---- M4j fields (colony growth, treasury, government) ----
+    /** Galaxy.cs 665 _ColonyFillFactor = 1.0 (ReviewColonyFillFactor). */
+    colonyFillFactor = 1.0;
+    /**
+     * Race.ChangePeriodActive per race (Race.cs 125 _ChangePeriodActive; ReviewRacePeriodicChanges). Kept per galaxy
+     * because the TS Race objects are the shared parsed game data (colonyTick.ts raceReproductiveRate & co. read it).
+     */
+    raceChangePeriodActive = new Set<Race>();
+    /**
+     * Stand-in for the clock-seeded `new Random()` instances of BaconHabitat.HugeProcessingSpanActions (plan §0: derived
+     * from the galaxy seed, never draws Galaxy.Rnd). Created lazily by colonyTick.ts.
+     */
+    baconHabitatClockRnd: Random | null = null;
     // ---- M4k fields (research progress) ----
     // ---- M4l fields (ship groups) ----
     // ---- M4m fields (military AI) ----

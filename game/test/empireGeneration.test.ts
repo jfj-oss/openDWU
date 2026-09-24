@@ -16,6 +16,8 @@ beforeAll(async () => {
     setGovernmentsStatic(gameData.governments);
     // createGame registers these (game.ts 681); needed since M4d: CheckMarketOrders (GenerateValidTradingPosts →
     // ObtainDiplomaticRelation) gives the second empire a NotMet relation, which ProjectForceStructure then evaluates.
+    // The Empire.DoTasks stand-in in generateEmpire reaches ReviewColonyPopulationPolicy (M4j), which reads race biases
+    // through ObtainEmpireEvaluation — register them as createGame does.
     setRaceBiasesStatic(gameData.races, gameData.raceBiases, gameData.raceFamilies.length, gameData.raceFamilyBiases);
 }, 60000);
 

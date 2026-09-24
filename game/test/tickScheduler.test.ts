@@ -141,7 +141,7 @@ describe('Habitat.DoTasks intervals (Habitat.cs 1399, strict >)', () => {
     // The intermediate block's only call (CheckForShipsDiscoveringRuins) is ported (M4t): it is detected by its
     // touch write (Habitat.cs 1440 _LastIntermediateTouch = _tempNow) instead of a stub hit.
     const markers = {
-        periodic: 'M4j calculateWarWithOurRace',
+        periodic: 'M4q scanForNewOwnerHabitat',
         long: 'M4c reviewWhetherRefuellingDepot',
         huge: 'M4q clearTroopsAwaitingPickup',
     };

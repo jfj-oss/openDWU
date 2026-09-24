@@ -55,3 +55,12 @@ export function loadTroopsIfNecessaryAndPossible(galaxy: Galaxy, shipGroup: Ship
     // RND: Next(0,2) per eligible ship — not drawn until M4q.
     /* TODO(port) M4q */ todo(T_loadTroopsIfNecessaryAndPossible);
 }
+
+const T_baconHabitatHandlePrisoners = registerTodo('M4q', 'baconHabitatHandlePrisoners');
+/**
+ * BaconHabitat.cs 575 HandlePlayerPrisoners / 608 HandleAIPrisoners (captured spies, BaconValues "capturedSpies"; clock
+ * Randoms only). Added by M4j (BaconHabitat.HugeProcessingSpanActions, colonyTick.ts).
+ */
+export function baconHabitatHandlePrisoners(galaxy: Galaxy, habitat: Habitat, isPlayer: boolean): void {
+    /* TODO(port) M4q */ todo(T_baconHabitatHandlePrisoners);
+}

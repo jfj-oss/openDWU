@@ -45,3 +45,9 @@ export function scanForNewOwnerBuiltObject(galaxy: Galaxy, builtObject: BuiltObj
     // RND: draws in callees (d≤3), +clock×2 — not drawn until M4q.
     /* TODO(port) M4q */ todo(T_scanForNewOwnerBuiltObject);
 }
+
+const T_clearColony = registerTodo('M4q', 'clearColony');
+/** Habitat.cs 7450 ClearColony(newOwner) (added by M4j: ReviewColonyPopulationPolicy clears emptied colonies). */
+export function clearColony(galaxy: Galaxy, habitat: Habitat, newOwner: Empire | null): void {
+    /* TODO(port) M4q */ todo(T_clearColony);
+}

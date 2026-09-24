@@ -76,6 +76,9 @@ function run(colonyGarrisons: boolean): RunSummary {
         const race = empire.dominantRace!;
         empire.troops.clear();
         capital.troops!.clear();
+        // M4j: GenerateEmpire's Empire.DoTasks now runs EvaluateColonyVariables with recruitment, which may queue
+        // troops (named from the same counter) — reset them with the garrison.
+        capital.troopsToRecruit?.clear();
         empire.troopCount = 0;
         // Galaxy.7.cs 5292-5316.
         const edfr = estimatedDefensiveForceRequired(galaxy, capital, false, DIFFICULTY);
@@ -147,9 +150,12 @@ function run(colonyGarrisons: boolean): RunSummary {
 describe('troops (game start)', () => {
     it('garrisons, names, maintenance and ProcessColonyTroops on a seed-1 galaxy; deterministic', () => {
         const a = run(true);
-        expect(a.capitals.map((c) => [c.edfr, c.levelRequired, c.troops])).toEqual([[1125, 843, 13], [1391, 1042, 6], [1604, 1203, 10], [605, 453, 8]]);
-        expect(a.colonyTroops).toEqual([8, 6, 6, 4]);
-        expect(a.maintenance).toEqual([21000, 10800, 13600, 10800]);
+        // Re-pinned by M4j (was [[1125, 843, 13], [1391, 1042, 6], [1604, 1203, 10], [605, 453, 8]]): GenerateEmpire's
+        // Empire.DoTasks now grows the capitals' development level / growth (EvaluateColonyVariables), raising their
+        // StrategicValue and so EstimatedDefensiveForceRequired.
+        expect(a.capitals.map((c) => [c.edfr, c.levelRequired, c.troops])).toEqual([[1211, 907, 13], [1499, 1123, 6], [1728, 1296, 10], [651, 487, 9]]);
+        expect(a.colonyTroops).toEqual([9, 6, 6, 4]); // M4j: was [8, 6, 6, 4] (same cause)
+        expect(a.maintenance).toEqual([22000, 10800, 13600, 11700]); // M4j: was [21000, 10800, 13600, 10800]
         expect(a.processDraws).toEqual(['', '', '', '']); // garrisons already meet TroopLevelRequired
         expect(run(true)).toEqual(a);
     }, 120000);

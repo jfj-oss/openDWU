@@ -7,6 +7,7 @@
 // CheckMarketOrders (freighter assignment) lives in freight.ts and is re-exported here, because the tick skeletons
 // import it from this module. None of the functions in this file draw from Galaxy.Rnd.
 
+import { registerTodo, todo } from '../tick/todo';
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import { AutomationLevel, empireGovernmentAttributes } from '../empire';
@@ -893,4 +894,14 @@ export function checkForUnownedCargoBuiltObject(galaxy: Galaxy, builtObject: Bui
 export function checkForUnownedCargoHabitat(galaxy: Galaxy, habitat: Habitat): void {
     void galaxy;
     checkForUnownedCargo(habitat.cargo, habitat.empire);
+}
+
+const T_countResourceSupplyLocations = registerTodo('M4d', 'countResourceSupplyLocations');
+/**
+ * Empire.CountResourceSupplyLocations(resourceId, includeUnderConstruction) (added by M4j: BaconHabitat
+ * CalculateResourcePriceEnvironmentalFactors). Stub returns 0.
+ */
+export function countResourceSupplyLocations(galaxy: Galaxy, empire: Empire, resourceId: number, includeUnderConstruction: boolean): number {
+    /* TODO(port) M4d */ todo(T_countResourceSupplyLocations);
+    return 0;
 }

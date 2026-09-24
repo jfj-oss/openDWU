@@ -36,6 +36,9 @@ import {
     isRestrictedResource,
     type OrderList,
 } from './orders';
+import { calculateMaximumOrderFulfillmentDistance } from './orders';
+import type { Empire } from '../empire';
+import { registerTodo, todo } from '../tick/todo';
 
 // Galaxy.3.cs 5123-5128 ResourceLevel*Quantity.
 const RESOURCE_LEVEL_ONE_QUANTITY = 4000.0;
@@ -410,4 +413,46 @@ function checkResourceMeetsMinimumLevelGalaxy(resource: ResourceRef, minimumReso
     if (amountToOrder < COLONY_MINIMUM_RESOURCE_REORDER_AMOUNT) amountToOrder = 0;
     if (num2 >= minimumResourceLevel) result = true;
     return { meets: result, amountToOrder };
+}
+
+// ---- Added by M4j: the order-side parts of Empire.4.cs EvaluateColonyVariables (2943) / EvaluateColonyVariablesPirate
+// (2579). None of them draws Galaxy.Rnd; none affects the growth / development state M4j computes.
+
+const T_prepareColonyLuxuryResourceLists = registerTodo('M4d', 'prepareColonyLuxuryResourceLists');
+/**
+ * Empire.4.cs 2958-2982 (2589-2613 pirate): resourceList = Galaxy.ShowCheapestLuxuryResources(), resourceList2/3 =
+ * ShowAvailableRestrictedResourcesForEmpire(SelfSupplied)(this), `_SelfSuppliedLuxuryResources ??= new ResourceList()`,
+ * then the self-supplied-first / unavailable-last reorder. Returns an opaque bundle for orderColonyLuxuryResources.
+ */
+export function prepareColonyLuxuryResourceLists(galaxy: Galaxy, empire: Empire): unknown {
+    /* TODO(port) M4d */ todo(T_prepareColonyLuxuryResourceLists);
+    return null;
+}
+
+const T_maintainColonyCriticalResourceLevels = registerTodo('M4d', 'maintainColonyCriticalResourceLevels');
+/** Empire.MaintainColonyCriticalResourceLevels(spacePort, colony) (called when _ControlColonyStockLevels). */
+export function maintainColonyCriticalResourceLevels(galaxy: Galaxy, empire: Empire, spacePort: BuiltObject | null, colony: Habitat): void {
+    /* TODO(port) M4d */ todo(T_maintainColonyCriticalResourceLevels);
+}
+
+const T_maintainColonyResourceLevels = registerTodo('M4d', 'maintainColonyResourceLevels');
+/** Empire.MaintainColonyResourceLevels(spacePort, colony) (called when _ControlColonyStockLevels). */
+export function maintainColonyResourceLevels(galaxy: Galaxy, empire: Empire, spacePort: BuiltObject | null, colony: Habitat): void {
+    /* TODO(port) M4d */ todo(T_maintainColonyResourceLevels);
+}
+
+/** Galaxy.CalculateMaximumOrderFulfillmentDistance(habitat) (Galaxy.3.cs 1864; result unused at Empire.4.cs 3035). */
+export function calculateMaximumOrderFulfillmentDistanceForHabitat(galaxy: Galaxy, habitat: Habitat): number {
+    return calculateMaximumOrderFulfillmentDistance(galaxy, habitat.xpos, habitat.ypos);
+}
+
+const T_orderColonyLuxuryResources = registerTodo('M4d', 'orderColonyLuxuryResources');
+/**
+ * Empire.4.cs 3183-3301 (2814-2932 pirate): OrderList orders = Galaxy.Orders.GetOrders(habitat) (+ the space port's),
+ * CheckResourcesMeetingMinimumLevel(Luxury, num6 = habitat.CalculateMinimumLuxuryResourceLevel()), and when
+ * _ControlColonyDevelopment the luxury / restricted (num7 = CalculateMinimumLuxuryResourceLevelRestricted()) CreateOrder
+ * loop. `lists` is prepareColonyLuxuryResourceLists' result.
+ */
+export function orderColonyLuxuryResources(galaxy: Galaxy, empire: Empire, habitat: Habitat, spacePort: BuiltObject | null, lists: unknown): void {
+    /* TODO(port) M4d */ todo(T_orderColonyLuxuryResources);
 }
