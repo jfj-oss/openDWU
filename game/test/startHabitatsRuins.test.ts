@@ -107,10 +107,14 @@ describe('start habitats + ruins (Start.2.cs 1156-1304, 1536-1565)', () => {
         // Research-bonus gas giants flagged on their systems.
         const flagged = g.systems.filter((s) => s.hasResearchBonus === true);
         expect(flagged.length).toBeGreaterThan(0);
+        // Galaxy.1.cs 887-915: a system is flagged when its star or any non-asteroid habitat has a research bonus.
         for (const s of flagged) {
-            const gg = g.systemHabitatsOf(s.systemStar.systemIndex).filter((h) => h.type === HabitatType.GasGiant && h.researchBonus >= 10);
-            expect(gg.length).toBeGreaterThan(0);
-            expect(gg[0].researchBonusIndustry).not.toBe(IndustryType.Undefined);
+            const withBonus = [s.systemStar, ...g.systemHabitatsOf(s.systemStar.systemIndex)].filter((h) => h.researchBonus > 0);
+            expect(withBonus.length).toBeGreaterThan(0);
+        }
+        // Every start research-bonus gas giant (research bonus 10-30 with an industry) sits in a flagged system.
+        for (const h of g.habitats.filter((x) => x.type === HabitatType.GasGiant && x.researchBonusIndustry !== IndustryType.Undefined && x.researchBonus >= 10)) {
+            expect(g.systems[h.systemIndex].hasResearchBonus).toBe(true);
         }
         // Ruins pass placed some standard / negative ruins on Continental/Swamp/Desert habitats.
         const std = g.habitats.filter((h) => h.ruin !== null && h.ruin.type !== RuinType.UnlockResearchProject);

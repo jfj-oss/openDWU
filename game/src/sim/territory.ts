@@ -7,14 +7,16 @@
 
 import type { Galaxy } from './galaxy';
 import type { Habitat } from './types';
+import { habitatDevelopmentLevel, recalculateDevelopmentLevelBaseline } from './developmentLevel';
 
 export const TERRITORY_INDEX_SIZE = 2000;
 // BaconHabitat.myTerritoryMultiplier (BaconDistantWorlds/BaconHabitat.cs:21).
 const BACON_ROMULAN_TERRITORY_MULTIPLIER = 2;
 
-// Port of Habitat.cs StrategicValue (309).
+// Port of Habitat.cs StrategicValue (309). Line 313 reads the DevelopmentLevel property (447).
 export function strategicValue(h: Habitat): number {
-    const val = h.developmentLevel * Math.trunc(h.population.totalAmount / 1000000);
+    // C# int * (int)(long / 1000000): unchecked int arithmetic.
+    const val = Math.imul(habitatDevelopmentLevel(h), Math.trunc(h.population.totalAmount / 1000000) | 0);
     return Math.max(10000, val);
 }
 
@@ -27,14 +29,14 @@ function territoryMultiplier(h: Habitat): number {
 }
 
 // Port of Habitat.cs RecalculateColonyInfluenceRadius(empireHasWarptech) (1066).
-// (RecalculateDevelopmentLevelBaseline only sets the baseline field; its
-// RecalculateTotalAmount side effect is kept.)
 export function recalculateColonyInfluenceRadius(galaxy: Galaxy, h: Habitat, empireHasWarptech: boolean): void {
     let r = 0;
-    if (h.empire !== null && h.empire !== galaxy.independentEmpire) {
-        if (h.population.items.length > 0) h.population.recalculateTotalAmount();
+    if (h.empire !== null && h.empire !== galaxy.independentEmpire && h.population != null) {
+        // Habitat.cs 1070.
+        recalculateDevelopmentLevelBaseline(h);
         if (h.population.totalAmount > 0) {
-            const num = Math.max(10, h.developmentLevel) * Math.trunc(h.population.totalAmount / 1000000);
+            // Habitat.cs 1073 reads the DevelopmentLevel property (447).
+            const num = Math.max(10, habitatDevelopmentLevel(h)) * Math.trunc(h.population.totalAmount / 1000000);
             if (h.empire.dominantRace !== null && !h.empire.dominantRace.expanding) {
                 r = Math.fround(200000 + Math.max(0, Math.min(150000, Math.fround(Math.sqrt(strategicValue(h)) * 700.0))));
             } else {

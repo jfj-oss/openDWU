@@ -183,9 +183,10 @@ export class Habitat {
     troops: TroopList | null = null;
     // C#: BuiltObjectList _BasesAtHabitat = new BuiltObjectList() (Habitat ctor, Habitat.cs 6284).
     basesAtHabitat: BuiltObject[] = [];
-    // Port of Habitat.cs DevelopmentLevel (byte), set via SetDevelopmentLevel
-    // (Habitat.cs).
-    developmentLevel = 0;
+    // Port of Habitat.cs field `int _DevelopmentLevel = 1` (101), set via SetDevelopmentLevel
+    // (5589) / read by GetDevelopmentLevel (5602). The DevelopmentLevel property (447)
+    // is developmentLevel.ts habitatDevelopmentLevel.
+    developmentLevel = 1;
 
     // --- Colony fields (task C2a, Habitat.cs) ---
     // C#: Empire Owner / Empire Empire (both set by Empire.TakeOwnershipOfColony).
@@ -204,8 +205,8 @@ export class Habitat {
     facilities: unknown[] | null = null;
     // Task M3b (colony economy, forceStructure.ts): C# double _AnnualTaxRevenue
     // (a snapshot written by Habitat.RecalculateAnnualTaxRevenue), float _TaxRate
-    // (written by Empire.SetColonyTaxRate — TODO(port), needs the colony approval
-    // model) and float _DistanceFactor = 1f (Habitat.RecalculateDistanceFactor).
+    // (written by Empire.SetColonyTaxRate, taxes.ts) and float _DistanceFactor = 1f
+    // (Habitat.RecalculateDistanceFactor).
     annualTaxRevenue = 0;
     taxRate = 0;
     distanceFactor = 1;
@@ -214,7 +215,7 @@ export class Habitat {
     // Colony approval / tax model (taxes.ts, Habitat.cs):
     // C# int _DevelopmentLevelBaseline (Habitat.RecalculateDevelopmentLevelBaseline 5575).
     // Note: `developmentLevel` above is C# _DevelopmentLevel (SetDevelopmentLevel);
-    // the C# DevelopmentLevel property (Habitat.cs 447) is taxes.ts habitatDevelopmentLevel.
+    // the C# DevelopmentLevel property (Habitat.cs 447) is developmentLevel.ts habitatDevelopmentLevel.
     developmentLevelBaseline = 0;
     // C# float _HappinessModifier (written by CheckForSpacePortFacilities 2729).
     happinessModifier = 0;
@@ -237,9 +238,14 @@ export class Habitat {
         return Math.fround(Math.fround(this.baseQuality) * Math.fround(1 - this.damage));
     }
 
-    // Port of Habitat.cs SetDevelopmentLevel.
+    // Port of Habitat.cs SetDevelopmentLevel (5589): clamped to 0..50.
     setDevelopmentLevel(level: number): void {
         this.developmentLevel = level;
+        if (this.developmentLevel > 50) {
+            this.developmentLevel = 50;
+        } else if (this.developmentLevel < 0) {
+            this.developmentLevel = 0;
+        }
     }
 
     // TODO(port): _LastHugeTouch/_LastLongTouch/_LastPeriodicTouch/_LastTouch

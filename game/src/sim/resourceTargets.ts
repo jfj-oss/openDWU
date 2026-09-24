@@ -12,9 +12,9 @@
 // (5551/5529).
 //
 // Rnd: none. Unported subsystems it reads, all empty at game start (the first
-// Empire.DoTasks inside Galaxy.GenerateEmpire): built objects (space ports,
-// construction ships and their missions, mining stations — Habitat.BasesAtHabitat),
-// KnownPirateBases, SystemVisibility.Threats, DiplomaticRelations.
+// Empire.DoTasks inside Galaxy.GenerateEmpire): construction ships and their missions,
+// KnownPirateBases (never filled yet), SystemVisibility.Threats, DiplomaticRelations.
+// Habitat.BasesAtHabitat is the real list (filled by Empire.addBuiltObjectToGalaxy).
 
 import type { Galaxy } from './galaxy';
 import { HabitatCategoryType, type Habitat } from './types';
@@ -25,6 +25,8 @@ import { findNewest } from './design';
 import { GalaxyLocationEffectType, GalaxyLocationType } from './galaxyLocation';
 import { netSort } from './netSort';
 import { csToInt32, resourceCurrentPrice, type BuiltObjectView } from './forceStructure';
+import { findNearestPirateFaction } from './pirates';
+import type { BuiltObject } from './builtObject';
 
 // Galaxy.MaxSolarSystemSize (Galaxy.3.cs InitializeStatics).
 const MAX_SOLAR_SYSTEM_SIZE = 23000;
@@ -81,10 +83,9 @@ function findNearest(list: Positioned[], x: number, y: number): Positioned | nul
 
 const isSpacePort = (s: BuiltObjectSubRole) => s === BuiltObjectSubRole.SmallSpacePort || s === BuiltObjectSubRole.MediumSpacePort || s === BuiltObjectSubRole.LargeSpacePort;
 
-// TODO(port): Habitat.BasesAtHabitat (built objects parented to the habitat) is
-// not modeled; no bases exist before Galaxy.CreateSpacePorts / CreateMiningStations.
-function basesAtHabitat(_habitat: Habitat): (BuiltObjectView & { extractionGas: number; extractionMine: number })[] {
-    return [];
+// Habitat.BasesAtHabitat (Empire.AddBuiltObjectToGalaxy adds every Base parented to the habitat).
+function basesAtHabitat(habitat: Habitat): BuiltObject[] {
+    return habitat.basesAtHabitat;
 }
 
 // Galaxy.7.cs DetermineMiningStationAtHabitat (417).
@@ -131,42 +132,31 @@ export function checkInStorm(galaxy: Galaxy, x: number, y: number): boolean {
     return false;
 }
 
-// Galaxy.8.cs FindNearestPirateFaction(x, y, pirateFactionToExclude, includeSuperPirates) (2872).
-function findNearestPirateFaction(galaxy: Galaxy, x: number, y: number, pirateFactionToExclude: Empire | null, includeSuperPirates: boolean): Empire | null {
-    let num = Number.MAX_VALUE;
-    let result: Empire | null = null;
-    for (const empire of galaxy.pirateEmpires) {
-        if (empire == null || empire.pirateEmpireBaseHabitat === null || empire.builtObjects == null || !empire.active || (pirateFactionToExclude !== null && empire === pirateFactionToExclude) || (!includeSuperPirates && empire.pirateEmpireSuperPirates)) continue;
-        const num2 = galaxy.calculateDistanceSquared(x, y, empire.pirateEmpireBaseHabitat.xpos, empire.pirateEmpireBaseHabitat.ypos);
-        if (!(num2 < num)) continue;
-        let flag = false;
-        for (const builtObject of empire.builtObjects as BuiltObjectView[]) {
-            if (builtObject != null && (builtObject.subRole === BuiltObjectSubRole.GenericBase || isSpacePort(builtObject.subRole))) {
-                flag = true;
-                break;
-            }
-        }
-        if (flag) {
-            result = empire;
-            num = num2;
-        }
-    }
-    return result;
-}
+// Galaxy.8.cs FindNearestPirateFaction (2872): pirates.ts findNearestPirateFaction.
 
-// Empire.5.cs CheckNearPirateBase(stellarObject, x, y, empireToExclude) (3451) →
-// (stellarObject, scanRange, x, y, empireToExclude) (3456).
-function checkNearPirateBase(galaxy: Galaxy, _stellarObject: Positioned | null, x: number, y: number, empireToExclude: Empire | null): boolean {
-    const scanRange = csToInt32(MAX_SOLAR_SYSTEM_SIZE * 2.1);
-    void scanRange;
+// Empire.5.cs CheckNearPirateBase(stellarObject, scanRange, x, y, empireToExclude) (3457).
+// The overloads: (Habitat, x, y) (3440) and (stellarObject, x, y, empireToExclude) (3451)
+// pass scanRange = (int)(MaxSolarSystemSize * 2.1); (Habitat, x, y) passes empireToExclude = null.
+export function checkNearPirateBase(galaxy: Galaxy, owner: Empire, stellarObject: Positioned | null, scanRange: number, x: number, y: number, empireToExclude: Empire | null): boolean {
     const empire = findNearestPirateFaction(galaxy, x, y, empireToExclude, true);
     if (empire !== null && empire.pirateEmpireBaseHabitat !== null) {
-        // The pirate base = the faction's space port among PirateEmpireBaseHabitat.BasesAtHabitat;
-        // then `KnownPirateBases.Contains(builtObject)`.
-        // TODO(port): Empire.KnownPirateBases (BuiltObjectList) and BasesAtHabitat are
-        // not modeled; both are empty at game start, so the check is false.
-        const builtObject = basesAtHabitat(empire.pirateEmpireBaseHabitat).find((b) => b != null && b.empire === empire && isSpacePort(b.subRole)) ?? null;
-        if (builtObject !== null) throw new Error('TODO(port): Empire.KnownPirateBases');
+        let builtObject: BuiltObject | null = null;
+        const bases = empire.pirateEmpireBaseHabitat.basesAtHabitat;
+        if (bases != null && bases.length > 0) {
+            for (let i = 0; i < bases.length; i++) {
+                const builtObject2 = bases[i];
+                if (builtObject2 != null && builtObject2.empire === empire && isSpacePort(builtObject2.subRole)) {
+                    builtObject = builtObject2;
+                    break;
+                }
+            }
+        }
+        // Empire.KnownPirateBases: filled only by visibility scans (BuiltObject.1.cs 1902/1928,
+        // Galaxy.4.cs 3798 — TODO(port)); empty at game start.
+        if (owner.knownPirateBases != null && builtObject !== null && owner.knownPirateBases.includes(builtObject) && stellarObject !== null) {
+            const num = galaxy.calculateDistance(stellarObject.xpos, stellarObject.ypos, builtObject.xpos, builtObject.ypos);
+            if (num < scanRange) return true;
+        }
     }
     return false;
 }
@@ -241,14 +231,13 @@ export function calculateCurrentStrategicResourceValue(galaxy: Galaxy, habitat: 
 }
 
 // Empire.4.cs CheckConstructionShipAndMiningStationCanSurviveStorms (4535).
-function checkConstructionShipAndMiningStationCanSurviveStorms(empire: Empire): boolean {
-    let builtObject: unknown = null;
-    if (empire.constructionShips.length > 0) builtObject = empire.constructionShips[empire.constructionShips.length - 1];
+export function checkConstructionShipAndMiningStationCanSurviveStorms(empire: Empire): boolean {
+    let builtObject: BuiltObject | null = null;
+    if (empire.constructionShips.length > 0) builtObject = empire.constructionShips[empire.constructionShips.length - 1] as BuiltObject;
     const design = findNewest(empire.designs, BuiltObjectSubRole.MiningStation);
-    if (design !== null && builtObject !== null) {
-        // TODO(port): Design.ArmorReactive / BuiltObject.ArmorReactive (ReDefine) — no
-        // construction ships exist at game start.
-        throw new Error('TODO(port): ArmorReactive (Design/BuiltObject ReDefine)');
+    // Design.ArmorReactive / BuiltObject.ArmorReactive are set by ReDefine (design.ts / builtObject.ts).
+    if (design !== null && builtObject !== null && design.armorReactive >= 5 && builtObject.armorReactive >= 5) {
+        return true;
     }
     return false;
 }
@@ -256,8 +245,14 @@ function checkConstructionShipAndMiningStationCanSurviveStorms(empire: Empire): 
 // Empire.4.cs DetermineHabitatsBuildingMiningStations (2279).
 function determineHabitatsBuildingMiningStations(empire: Empire): HabitatPrioritization[] {
     const habitatPrioritizationList: HabitatPrioritization[] = [];
-    if (empire.constructionShips.length > 0) {
-        // TODO(port): BuiltObject.Mission / SubsequentMissions (Build targets).
+    for (let i = 0; i < empire.constructionShips.length; i++) {
+        const builtObject = empire.constructionShips[i] as BuiltObject;
+        // TODO(port): BuiltObjectMission (Type == Build, TargetHabitat) and SubsequentMissions
+        // are not modeled. During game setup no construction ship has a mission yet
+        // (Mission == null → `continue` in C#), so nothing is added.
+        if (builtObject.mission == null) {
+            continue;
+        }
         throw new Error('TODO(port): construction ship missions (BuiltObjectMission)');
     }
     return habitatPrioritizationList;
@@ -285,9 +280,10 @@ export function identifyResourceCentres(galaxy: Galaxy, empire: Empire, filterOu
             if (builtObject != null && !builtObject.hasBeenDestroyed && isSpacePort(builtObject.subRole)) stellarObjectList.push(builtObject);
         }
         for (const habitat of empire.colonies) {
-            // TODO(port): Habitat.HasBeenDestroyed (false) / Habitat.HasSpacePort (a space
-            // port in BasesAtHabitat — none before Galaxy.CreateSpacePorts).
-            const hasSpacePort = false;
+            // TODO(port): Habitat.HasBeenDestroyed (false: no planet destruction at game start).
+            // Habitat.HasSpacePort is the field set by CheckForSpacePortFacilities
+            // (stationPlacement.ts checkColoniesForBaseFacilities).
+            const hasSpacePort = habitat.hasSpacePort;
             if (habitat != null && !hasSpacePort && habitat.population != null && habitat.population.totalAmount >= 500000000) stellarObjectList.push(habitat);
         }
     }
@@ -318,7 +314,7 @@ export function identifyResourceCentres(galaxy: Galaxy, empire: Empire, filterOu
         if (filterOutDangerousTargets) {
             flag4 = checkInStorm(galaxy, star.xpos, star.ypos);
             if (flag4 && flag) flag4 = false;
-            flag5 = checkNearPirateBase(galaxy, star, star.xpos, star.ypos, empire);
+            flag5 = checkNearPirateBase(galaxy, empire, star, csToInt32(MAX_SOLAR_SYSTEM_SIZE * 2.1), star.xpos, star.ypos, empire);
         }
         if (flag4 || flag5) continue;
         let habitatList = galaxy.systemHabitatsOf(k);

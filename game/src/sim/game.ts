@@ -33,6 +33,7 @@ import type { GameData } from './data/gameData';
 import type { Race } from './data/races';
 import type { Government } from './data/governments';
 import { setGovernmentsStatic } from './empire';
+import { setRaceBiasesStatic } from './raceBias';
 import { GalaxyLocationType } from './galaxyLocation';
 import { GalaxyShape, HabitatCategoryType, HabitatType, type Habitat } from './types';
 import { Cargo, CargoList, ResourceRef } from './cargo';
@@ -553,6 +554,8 @@ export function createGame(opts: CreateGameOptions): Game {
     const gd = opts.gameData;
     govs = gd.governments;
     setGovernmentsStatic(gd.governments);
+    // Galaxy.cs LoadRaceBiases (Race.Biases) / Galaxy.RaceFamiliesStatic biases (raceBias.ts).
+    setRaceBiasesStatic(gd.races, gd.raceBiases, gd.raceFamilies.length, gd.raceFamilyBiases);
     const clockRnd = new Random(opts.seed ^ 0x5eed); // stands in for the C# clock-seeded Randoms
     const normalRaces = gd.races.filter((r) => r.canBeNormalEmpire);
     // empireStartList = player + AIs, Update(raceList) before the Galaxy ctor.

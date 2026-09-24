@@ -6,25 +6,32 @@
 //     CheckDesignSubRoleShouldBeUpgraded (3082), ReviewRemoveObsoleteDesignsForSubRole (3266)
 //   DesignList.cs FindNewestCanBuild (160) / FindNewestCanBuildFullEvaluate (214)
 //   Galaxy.8.cs ResolveLegacySubRole (2232), Galaxy.2.cs ResolveDescription(subRole) (2133)
+//   Empire.10.cs GenerateDesignFromSpec (3387), Galaxy.8.cs AddComponentsToDesign (2320),
+//     GetPlanetDestroyerComponents (2362), Galaxy.7.cs GeneratePlanetDestroyerDesign (4862),
+//     DesignList.cs FindNewestPlanetDestroyer (98), ComponentDefinition.cs GetHighestTechByType (393)
+//   ResearchSystem.cs CalculateComponentMinMaxTechPoints (1290) / CalculateMaxTechPoints (1305)
+//     / CalculateMinTechPoints (1192) (static ComponentMax/MinTechPoints, 53-54)
 // Rnd: GenerateDesignName (designNames.ts) and the pirate PictureRef branch below; the
 // placement code only draws in SelectPreferredSuperWeapon.
 // TODO(port): LoadOptimizedDesignsForEmpire / ResolveOptimizedDesigns (optimized designs
-// are loaded from files C# ships per race; none are loaded, so the list is empty and
-// Design.CalculateTechLevel is never reached), Design.ReDefine stats, the planet-destroyer
-// tail (needs SelectPreferredSuperWeapon(mustBePlanetDestroyer) to find a super weapon,
-// which a starting empire never has), minor ship images (ShipImageHelper's own
-// clock-seeded Random), CheckDesignInUse (no BuiltObjects yet → never in use).
+// are loaded from files C# ships per race; none are loaded, so the list is empty — the
+// OptimizedDesign > 0 branch of FindNewestCanBuildFullEvaluate is ported but unreachable),
+// minor ship images (ShipImageHelper's own clock-seeded Random), CheckDesignInUse (no
+// BuiltObjects yet → never in use).
 
 import { BuiltObjectSubRole } from './builtObjectTypes';
+import { csInt } from './builtObjectComponent';
+import { DEFAULT_BASE_TECH_COST, componentImprovementFromComponent, evaluateLatestByCategory, evaluateLatestByType, type ComponentDefinition, type ComponentImprovementEntry } from './componentStatic';
 import { ComponentType } from './data/components';
+import type { ResearchNode as ResearchNodeDefinition } from './data/research';
 import { BattleTactics, BuiltObjectFleeWhen, BuiltObjectRole, InvasionTactics, type DesignSpecification } from './data/designSpecifications';
 import { ComponentCategoryType, resolveTechFocuses } from './data/policies';
-import { Design, BuiltObjectStance, findNewest } from './design';
-import { generateDesignName } from './designNames';
-import { placeComponentsOnDesignSized, selectPreferredSuperWeapon, type DesignPlacementEmpire } from './designPlacement';
+import { Design, BuiltObjectStance, determineHabModulesRequired, determineLifeSupportRequired, findNewest } from './design';
+import { generateDesignName, type PreviousDesignForNaming } from './designNames';
+import { placeComponentsOnDesignSized, placeComponentsOnDesignWithTech, selectPreferredSuperWeapon, type DesignPlacementEmpire } from './designPlacement';
 import { Empire, raceDesignPictureFamilyIndexPirates } from './empire';
 import type { Galaxy } from './galaxy';
-import { ShipDesignFocus } from './researchSystem';
+import { ShipDesignFocus, type ResearchStatic, type ResearchSystem } from './researchSystem';
 import type { Habitat } from './types';
 
 // Galaxy.3.cs 5021 / 5138.
@@ -286,22 +293,162 @@ export function canBuildDesign(empire: Empire, design: Design, includeSizeCheck 
     return true;
 }
 
-// DesignList.cs FindNewestCanBuildFullEvaluate (214). Optimized designs are never loaded
-// (see header), so only the newest-DateCreated branch can win.
-export function findNewestCanBuildFullEvaluate(designs: Design[], subRole: BuiltObjectSubRole, colony: Habitat | null, includePlanetDestroyers = true): Design | null {
+// --- ResearchSystem static tech points -------------------------------------------------
+// ResearchSystem.cs static int[] ComponentMaxTechPoints / ComponentMinTechPoints (53-54),
+// filled once by CalculateComponentMinMaxTechPoints(baseTechCost, ResearchNodeDefinitionsStatic)
+// from Galaxy.SetResearchComponentMaxTechPoints (Galaxy.3.cs 1927), which the Galaxy ctor
+// calls (Galaxy.4.cs 2136) right after SetResearchRaceSpecialProjects (so AllowedRaces is the
+// ResearchStatic.allowedRaces map). The TS port computes it lazily per ResearchStatic (pure,
+// no Rnd). TODO(port): Galaxy ctor baseTechCost (Start.2.cs game option) is not kept on the TS
+// Galaxy; C# would see (int)baseTechCost — the TS uses DEFAULT_BASE_TECH_COST (120000), the
+// same value componentStatic.ts bakes into research costs.
+
+export interface ComponentTechPoints {
+    max: number[];
+    min: number[];
+}
+
+const allowedRacesCount = (allowedRaces: Map<number, Set<string>>, node: ResearchNodeDefinition): number => allowedRaces.get(node.projectId)?.size ?? 0;
+
+// ResearchSystem.cs CalculateMaxTechPoints(component, baseTechCost, techTree) (1305).
+export function calculateMaxTechPoints(componentId: number, baseTechCost: number, techTree: ResearchNodeDefinition[], allowedRaces: Map<number, Set<string>>): number {
     let num1 = 0;
-    let design2: Design | null = null;
-    for (const d of designs) {
-        const owner = d.empire as Empire | null;
-        if (d.subRole === subRole && !d.isObsolete && (d.dateCreated > num1 || d.optimizedDesign > 0) && owner !== null && canBuildDesign(owner, d, true, colony) && (includePlanetDestroyers || !d.isPlanetDestroyer)) {
-            if (d.optimizedDesign > 0) {
-                throw new Error('TODO(port): optimized designs (Design.CalculateTechLevel)');
+    let flag = false;
+    let val1 = 0;
+    for (let index1 = 0; index1 < techTree.length; ++index1) {
+        if (techTree[index1].techLevel < 100) val1 = Math.max(val1, techTree[index1].techLevel);
+        if (techTree[index1].components != null && techTree[index1].components.length > 0) {
+            for (let index2 = 0; index2 < techTree[index1].components.length; ++index2) {
+                if (techTree[index1].components[index2] === componentId && techTree[index1].techLevel > num1) {
+                    num1 = techTree[index1].techLevel;
+                    flag = false;
+                    if (allowedRacesCount(allowedRaces, techTree[index1]) > 0) flag = true;
+                }
             }
-            num1 = d.dateCreated;
-            design2 = d;
+        }
+        if (techTree[index1].componentImprovements != null && techTree[index1].componentImprovements.length > 0) {
+            for (let index3 = 0; index3 < techTree[index1].componentImprovements.length; ++index3) {
+                if (techTree[index1].componentImprovements[index3].componentId === componentId && techTree[index1].techLevel > num1) {
+                    num1 = techTree[index1].techLevel;
+                    flag = false;
+                    if (allowedRacesCount(allowedRaces, techTree[index1]) > 0) flag = true;
+                }
+            }
         }
     }
-    return design2;
+    if (num1 >= 100) num1 = val1 + 1;
+    let maxTechPoints = 0.0;
+    for (let index = num1; index > 0; --index) {
+        const num2 = Math.pow(2.0, index - 1);
+        maxTechPoints += num2 * baseTechCost;
+    }
+    if (flag) ++maxTechPoints;
+    return csInt(maxTechPoints);
+}
+
+// ResearchSystem.cs CalculateMinTechPoints(component, baseTechCost, techTree) (1192).
+export function calculateMinTechPoints(componentId: number, baseTechCost: number, techTree: ResearchNodeDefinition[], allowedRaces: Map<number, Set<string>>): number {
+    let num1 = 100;
+    let flag = false;
+    let val1 = 0;
+    for (let index1 = 0; index1 < techTree.length; ++index1) {
+        if (techTree[index1].techLevel < 100) val1 = Math.max(val1, techTree[index1].techLevel);
+        if (techTree[index1].components != null && techTree[index1].components.length > 0) {
+            for (let index2 = 0; index2 < techTree[index1].components.length; ++index2) {
+                if (techTree[index1].components[index2] === componentId && techTree[index1].techLevel < num1) {
+                    num1 = techTree[index1].techLevel;
+                    flag = false;
+                    if (allowedRacesCount(allowedRaces, techTree[index1]) > 0) flag = true;
+                }
+            }
+        }
+        if (techTree[index1].componentImprovements != null && techTree[index1].componentImprovements.length > 0) {
+            for (let index3 = 0; index3 < techTree[index1].componentImprovements.length; ++index3) {
+                if (techTree[index1].componentImprovements[index3].componentId === componentId && techTree[index1].techLevel < num1) {
+                    num1 = techTree[index1].techLevel;
+                    flag = false;
+                    if (allowedRacesCount(allowedRaces, techTree[index1]) > 0) flag = true;
+                }
+            }
+        }
+    }
+    if (num1 >= 100) num1 = val1 + 1;
+    let minTechPoints = 0.0;
+    for (let index = num1; index > 0; --index) {
+        const num2 = Math.pow(2.0, index - 1);
+        minTechPoints += num2 * baseTechCost;
+    }
+    if (flag) ++minTechPoints;
+    return csInt(minTechPoints);
+}
+
+// ResearchSystem.cs CalculateComponentMinMaxTechPoints(baseTechCost, techTree) (1290):
+// arrays sized Galaxy.ComponentDefinitionsStatic.Length, indexed by ComponentID.
+export function calculateComponentMinMaxTechPoints(baseTechCost: number, techTree: ResearchNodeDefinition[], allowedRaces: Map<number, Set<string>>, componentCount: number): ComponentTechPoints {
+    const max = new Array<number>(componentCount).fill(0);
+    const min = new Array<number>(componentCount).fill(0);
+    for (let componentID = 0; componentID < componentCount; ++componentID) {
+        max[componentID] = calculateMaxTechPoints(componentID, baseTechCost, techTree, allowedRaces);
+        min[componentID] = calculateMinTechPoints(componentID, baseTechCost, techTree, allowedRaces);
+    }
+    return { max, min };
+}
+
+const techPointsCache = new WeakMap<ResearchStatic, ComponentTechPoints>();
+const EMPTY_TECH_POINTS: ComponentTechPoints = { max: [], min: [] };
+
+/** ResearchSystem.ComponentMaxTechPoints / ComponentMinTechPoints for this galaxy's static research data. */
+export function researchComponentTechPoints(galaxy: Galaxy): ComponentTechPoints {
+    const stat = galaxy.researchStatic;
+    if (stat === null) return EMPTY_TECH_POINTS; // no game data: C# always has the statics
+    let tp = techPointsCache.get(stat);
+    if (tp === undefined) {
+        const componentCount = stat.componentStatic?.definitions.length ?? stat.componentsById.size;
+        tp = calculateComponentMinMaxTechPoints(DEFAULT_BASE_TECH_COST, stat.definitions, stat.allowedRaces, componentCount);
+        techPointsCache.set(stat, tp);
+    }
+    return tp;
+}
+export const researchComponentMaxTechPoints = (galaxy: Galaxy): number[] => researchComponentTechPoints(galaxy).max;
+
+// Design.CalculateTechLevel(design.Empire, design.Empire.Galaxy) as DesignList.cs calls it
+// (guarded by `Empire != null && Empire.Galaxy != null`, else 0.0).
+function designTechLevelForOwner(design: Design): number {
+    const owner = design.empire as Empire | null;
+    if (owner !== null && owner.galaxy != null) {
+        return design.calculateTechLevel(owner, researchComponentMaxTechPoints(owner.galaxy));
+    }
+    return 0.0;
+}
+
+// DesignList.cs FindNewestCanBuildFullEvaluate(subRole, colony, out, out, includePlanetDestroyers) (240).
+export function findNewestCanBuildFullEvaluate(designs: Design[], subRole: BuiltObjectSubRole, colony: Habitat | null, includePlanetDestroyers = true): Design | null {
+    let num1 = 0;
+    let num2 = 0.0;
+    let design1: Design | null = null;
+    let num3 = 0.0;
+    let design2: Design | null = null;
+    for (let index = 0; index < designs.length; ++index) {
+        const design3 = designs[index];
+        const owner = design3 != null ? (design3.empire as Empire | null) : null;
+        if (design3 != null && design3.subRole === subRole && !design3.isObsolete && (design3.dateCreated > num1 || design3.optimizedDesign > 0) && owner !== null && canBuildDesign(owner, design3, true, colony) && (includePlanetDestroyers || !design3.isPlanetDestroyer)) {
+            if (design3.optimizedDesign > 0) {
+                const num4 = designTechLevelForOwner(design3);
+                if (num4 > num2) {
+                    num2 = num4;
+                    design1 = design3;
+                }
+            } else {
+                num1 = design3.dateCreated;
+                const num5 = designTechLevelForOwner(design3);
+                num3 = num5;
+                design2 = design3;
+            }
+        }
+    }
+    let buildFullEvaluate = design2;
+    if (design1 !== null && design2 !== design1 && num3 / num2 < 1.5) buildFullEvaluate = design1;
+    return buildFullEvaluate;
 }
 
 // DesignList.cs FindNewestCanBuild(subRole, empire, colony, includePlanetDestroyers) (160).
@@ -545,12 +692,426 @@ export function createNewDesigns(galaxy: Galaxy, empire: Empire, designDate: num
         designs.push(design5);
         if (!design5.isPlanetDestroyer) empire.latestDesigns[design5.subRole] = design5;
     }
-    // Planet destroyers (BaconEmpire.cs ~1040).
+    // Planet destroyers (BaconEmpire.cs 1039-1091).
     if (!(empire.policy?.buildPlanetDestroyers ?? false) || !checkDesignSubRoleShouldBeUpgraded(empire, BuiltObjectSubRole.CapitalShip)) return;
     const { categories, types } = resolveTechFocuses(empire.policy);
     if (selectPreferredSuperWeapon(view, categories, types, true) !== null) {
-        // TODO(port): GenerateDesignFromSpec(PlanetDestroyerDesignSpecification) /
-        // Galaxy.GeneratePlanetDestroyerDesign and the replace-if-better logic.
-        throw new Error('TODO(port): planet destroyer design generation');
+        let design7: Design | null;
+        if (empire.planetDestroyerDesignSpecification !== null) {
+            design7 = generateDesignFromSpec(galaxy, empire, empire.planetDestroyerDesignSpecification, 0.0, currentStarDate);
+            if (design7 !== null) {
+                design7.name = 'World Destroyer'; // TextResolver.GetText("World Destroyer") (GameText.txt 2111)
+                design7.stance = BuiltObjectStance.AttackEnemies;
+                design7.fleeWhen = BuiltObjectFleeWhen.Shields20;
+                design7.tacticsStrongerShips = BattleTactics.Standoff;
+                design7.tacticsWeakerShips = BattleTactics.AllWeapons;
+                design7.tacticsInvasion = InvasionTactics.DoNotInvade;
+                design7.pictureRef = SHIP_IMAGE_PLANET_DESTROYER;
+            }
+        } else {
+            design7 = generatePlanetDestroyerDesign(galaxy, 1.0, empire, currentStarDate);
+        }
+        if (design7 !== null) {
+            let flag = false;
+            let design8: Design | null = null;
+            if (canBuildDesign(empire, design7)) {
+                design8 = findNewestPlanetDestroyer(designs);
+                if (design8 !== null) {
+                    flag = false;
+                    if (canBuildDesign(empire, design8)) {
+                        if (!design7.isEquivalent(design8)) flag = true;
+                    } else {
+                        flag = true;
+                    }
+                } else {
+                    flag = true;
+                }
+            }
+            if (flag) {
+                if (design8 !== null) {
+                    if (design8.buildCount <= 0) {
+                        const i = designs.indexOf(design8);
+                        if (i >= 0) designs.splice(i, 1);
+                    } else {
+                        design8.isObsolete = true;
+                    }
+                }
+                designs.push(design7);
+            }
+        }
     }
+}
+
+// ShipImageHelper.cs PlanetDestroyer (= 0).
+export const SHIP_IMAGE_PLANET_DESTROYER = 0;
+
+// Empire.cs GenerateDesignName(subRole, previousDesign) (3208) — the call shape shared by
+// CreateNewDesigns and GenerateDesignFromSpec (Rnd: see designNames.ts).
+function empireGenerateDesignName(galaxy: Galaxy, empire: Empire, subRole: BuiltObjectSubRole, previousDesign: PreviousDesignForNaming | null): string {
+    const reactor = empire.research.evaluateDesiredComponentByCategory(ComponentCategoryType.Reactor, ShipDesignFocus.Balanced);
+    return generateDesignName(
+        galaxy,
+        empire.designNameState,
+        { designNamesIndex: empire.designNamesIndex, designNames: galaxy.designNames, existingDesigns: empire.designs as Design[], latestReactorComponentId: reactor?.componentId ?? null },
+        subRole,
+        previousDesign,
+    );
+}
+
+// Empire.10.cs GenerateDesignFromSpec(designSpec, techAdvanceAmount) (3387-3538).
+// `currentStarDate` = Galaxy.CurrentStarDate (not tracked on the TS Galaxy; callers pass it).
+// Rnd: SelectPreferredSuperWeapon inside PlaceComponentsOnDesign (capital ships of aggressive
+// and intelligent races), then GenerateDesignName.
+export function generateDesignFromSpec(galaxy: Galaxy, empire: Empire, designSpec: DesignSpecification | null, techAdvanceAmount: number, currentStarDate: number): Design | null {
+    let design: Design | null = null;
+    const fleeWhen = BuiltObjectFleeWhen.Shields20;
+    const stance = BuiltObjectStance.AttackEnemies;
+    const fleeWhen2 = BuiltObjectFleeWhen.EnemyMilitarySighted;
+    const stance2 = BuiltObjectStance.DoNotAttack;
+    const fleeWhen3 = BuiltObjectFleeWhen.EnemyMilitarySighted;
+    const stance3 = BuiltObjectStance.DoNotAttack;
+    const fleeWhen4 = BuiltObjectFleeWhen.EnemyMilitarySighted;
+    const stance4 = BuiltObjectStance.AttackIfAttacked;
+    const fleeWhen5 = BuiltObjectFleeWhen.EnemyMilitarySighted;
+    const stance5 = BuiltObjectStance.DoNotAttack;
+    const fleeWhen6 = BuiltObjectFleeWhen.EnemyMilitarySighted;
+    const stance6 = BuiltObjectStance.DoNotAttack;
+    const fleeWhen7 = BuiltObjectFleeWhen.Shields50;
+    const stance7 = BuiltObjectStance.AttackEnemies;
+    if (designSpec !== null) {
+        let previousDesign: Design | null = null;
+        const designs = empire.designs as Design[];
+        if (designs != null) {
+            // DesignList.FindNewestCanBuild(subRole) (140): empire = this[0].Empire.
+            const designsEmpire = designs.length > 0 && designs[0] != null ? (designs[0].empire as Empire | null) : null;
+            previousDesign = findNewestCanBuild(designs, designSpec.subRole, designsEmpire);
+        }
+        const text = resolveSubRoleDescription(designSpec.subRole);
+        let empty = '';
+        empty = empire.dominantRace === null ? text : empire.dominantRace.name + ' ' + text;
+        design = new Design(empty);
+        design.role = designSpec.role;
+        design.subRole = designSpec.subRole;
+        design.imageScalingType = designSpec.imageScalingMode;
+        design.imageScalingFactor = designSpec.imageScalingFactor;
+        design = placeComponentsOnDesignWithTech(placementView(empire, galaxy), design, designSpec, null, techAdvanceAmount);
+        // C# dereferences the result unconditionally (NullReferenceException when
+        // PlaceComponentsOnDesign returns null: a military spec with no weapon or fighter bay).
+        if (design === null) throw new Error('GenerateDesignFromSpec: PlaceComponentsOnDesign returned null (C# NullReferenceException)');
+        const S = BuiltObjectSubRole;
+        const B = BattleTactics;
+        const I = InvasionTactics;
+        switch (designSpec.subRole) {
+            case S.SmallSpacePort:
+            case S.MediumSpacePort:
+            case S.LargeSpacePort:
+            case S.GenericBase:
+            case S.EnergyResearchStation:
+            case S.WeaponsResearchStation:
+            case S.HighTechResearchStation:
+            case S.MonitoringStation:
+            case S.DefensiveBase:
+                design.stance = BuiltObjectStance.AttackEnemies;
+                design.fleeWhen = BuiltObjectFleeWhen.Never;
+                design.tacticsStrongerShips = B.PointBlank;
+                design.tacticsWeakerShips = B.PointBlank;
+                design.tacticsInvasion = I.DoNotInvade;
+                break;
+            case S.GasMiningStation:
+            case S.MiningStation:
+                design.stance = BuiltObjectStance.AttackIfAttacked;
+                design.fleeWhen = BuiltObjectFleeWhen.Never;
+                design.tacticsStrongerShips = B.PointBlank;
+                design.tacticsWeakerShips = B.PointBlank;
+                design.tacticsInvasion = I.DoNotInvade;
+                break;
+            case S.Escort:
+            case S.Frigate:
+            case S.Destroyer:
+            case S.Cruiser:
+            case S.CapitalShip:
+                design.stance = stance;
+                design.fleeWhen = fleeWhen;
+                design.tacticsStrongerShips = B.Standoff;
+                design.tacticsWeakerShips = B.AllWeapons;
+                design.tacticsInvasion = I.InvadeWhenClear;
+                break;
+            case S.Carrier:
+                design.stance = stance7;
+                design.fleeWhen = fleeWhen7;
+                design.tacticsStrongerShips = B.Evade;
+                design.tacticsWeakerShips = B.AllWeapons;
+                design.tacticsInvasion = I.InvadeWhenClear;
+                break;
+            case S.SmallFreighter:
+            case S.MediumFreighter:
+            case S.LargeFreighter:
+                design.stance = stance2;
+                design.fleeWhen = fleeWhen2;
+                design.tacticsStrongerShips = B.Evade;
+                design.tacticsWeakerShips = B.Evade;
+                design.tacticsInvasion = I.DoNotInvade;
+                break;
+            case S.ExplorationShip:
+                design.stance = stance4;
+                design.fleeWhen = fleeWhen4;
+                design.tacticsStrongerShips = B.Evade;
+                design.tacticsWeakerShips = B.Evade;
+                design.tacticsInvasion = I.DoNotInvade;
+                break;
+            case S.ColonyShip:
+                design.stance = stance5;
+                design.fleeWhen = fleeWhen5;
+                design.tacticsStrongerShips = B.Evade;
+                design.tacticsWeakerShips = B.Evade;
+                design.tacticsInvasion = I.DoNotInvade;
+                break;
+            case S.ConstructionShip:
+                design.stance = stance6;
+                design.fleeWhen = fleeWhen6;
+                design.tacticsStrongerShips = B.Evade;
+                design.tacticsWeakerShips = B.Evade;
+                design.tacticsInvasion = I.DoNotInvade;
+                break;
+            case S.GasMiningShip:
+            case S.MiningShip:
+                design.stance = stance3;
+                design.fleeWhen = fleeWhen3;
+                design.tacticsStrongerShips = B.Evade;
+                design.tacticsWeakerShips = B.Evade;
+                design.tacticsInvasion = I.DoNotInvade;
+                break;
+            case S.TroopTransport:
+                design.stance = stance7;
+                design.fleeWhen = fleeWhen7;
+                design.tacticsStrongerShips = B.Evade;
+                design.tacticsWeakerShips = B.AllWeapons;
+                design.tacticsInvasion = I.InvadeImmediately;
+                break;
+            case S.ResupplyShip:
+                design.stance = stance7;
+                design.fleeWhen = fleeWhen7;
+                design.tacticsStrongerShips = B.Evade;
+                design.tacticsWeakerShips = B.AllWeapons;
+                design.tacticsInvasion = I.DoNotInvade;
+                break;
+            default:
+                design.stance = BuiltObjectStance.DoNotAttack;
+                design.fleeWhen = BuiltObjectFleeWhen.Attacked;
+                design.tacticsStrongerShips = B.Standoff;
+                design.tacticsWeakerShips = B.AllWeapons;
+                design.tacticsInvasion = I.DoNotInvade;
+                break;
+        }
+        let num = empire.designPictureFamilyIndex;
+        if (empire.dominantRace !== null && empire.pirateEmpireBaseHabitat !== null) {
+            num = raceDesignPictureFamilyIndexPirates(empire.dominantRace);
+            if (num < 0) {
+                num = empire.dominantRace.designsPictureFamilyIndex;
+            }
+        }
+        empty = design.name = empireGenerateDesignName(galaxy, empire, designSpec.subRole, previousDesign);
+        void empty;
+        design.dateCreated = currentStarDate;
+        design.empire = empire;
+        design.pictureRef = standardPictureRef(num, designSpec.subRole);
+        design.role = designSpec.role;
+        design.subRole = designSpec.subRole;
+        design.reDefine();
+    }
+    return design;
+}
+
+/** C# ComponentList as built by the Get*Components helpers: `Add(null)` keeps the null slot. */
+export type NullableComponentList = (ComponentDefinition | null)[];
+
+/** Galaxy.ComponentDefinitionsStatic. */
+export function componentDefinitionsStatic(galaxy: Galaxy): ComponentDefinition[] {
+    return galaxy.researchStatic?.componentStatic?.definitions ?? [];
+}
+
+// Galaxy.8.cs AddComponentsToDesign(design, components, research) (2320). No Rnd.
+export function addComponentsToDesign(galaxy: Galaxy, design: Design, components: NullableComponentList, research: ResearchSystem | null): Design {
+    for (const component3 of components) {
+        if (component3 != null) {
+            design.components.push(component3);
+        }
+    }
+    const defs = componentDefinitionsStatic(galaxy);
+    const component = evaluateLatestByType(defs, ComponentType.HabitationHabModule, 1000000.0);
+    // new ComponentImprovement(component): C# dereferences component (never null with the
+    // stock component set at tech 1,000,000).
+    let componentImprovement: ComponentImprovementEntry = componentImprovementFromComponent(component!);
+    const component2 = evaluateLatestByType(defs, ComponentType.HabitationLifeSupport, 1000000.0);
+    let componentImprovement2: ComponentImprovementEntry = componentImprovementFromComponent(component2!);
+    if (research !== null) {
+        if (component !== null) {
+            componentImprovement = research.resolveImprovedComponentValues(component);
+        }
+        if (component2 !== null) {
+            componentImprovement2 = research.resolveImprovedComponentValues(component2);
+        }
+    }
+    const num = determineHabModulesRequired(componentImprovement, design);
+    const num2 = determineLifeSupportRequired(componentImprovement2, design);
+    for (let i = 0; i < num; i++) {
+        design.components.push(componentImprovement.improvedComponent);
+    }
+    for (let j = 0; j < num2; j++) {
+        design.components.push(componentImprovement2.improvedComponent);
+    }
+    return design;
+}
+
+// ComponentDefinition.cs GetHighestTechByType(type, definitions) (393).
+export function getHighestTechByType(type: ComponentType, definitions: ComponentDefinition[]): ComponentDefinition | null {
+    let highestTechByType: ComponentDefinition | null = null;
+    for (let index = 0; index < definitions.length; ++index) {
+        const definition = definitions[index];
+        if (definition != null && definition.type === type && (highestTechByType === null || definition.techLevel > highestTechByType.techLevel)) {
+            highestTechByType = definition;
+        }
+    }
+    return highestTechByType;
+}
+
+// Galaxy.8.cs GetPlanetDestroyerComponents(overpowerFactor, empire) (2362). No Rnd.
+export function getPlanetDestroyerComponents(galaxy: Galaxy, overpowerFactor: number, empire: Empire | null): NullableComponentList {
+    const componentList: NullableComponentList = [];
+    const num = csInt(30.0 * overpowerFactor);
+    const num2 = csInt(18.0 * overpowerFactor);
+    const num3 = csInt(12.0 * overpowerFactor);
+    const num4 = csInt(8.0 * overpowerFactor);
+    const num5 = csInt(16.0 * overpowerFactor);
+    const num6 = csInt(12.0 * overpowerFactor);
+    const num7 = csInt(5.0 * overpowerFactor);
+    const num8 = csInt(6.0 * overpowerFactor);
+    const num9 = csInt(14.0 * overpowerFactor);
+    const T = ComponentType;
+    const C = ComponentCategoryType;
+    const defs = componentDefinitionsStatic(galaxy);
+    if (empire !== null && empire.research != null) {
+        const r = empire.research;
+        const lt = (t: ComponentType) => r.getLatestComponent(t);
+        const lc = (c: ComponentCategoryType) => r.getLatestComponent(c, true);
+        componentList.push(lt(T.ComputerCommandCenter));
+        componentList.push(lt(T.ComputerCommandCenter));
+        componentList.push(lt(T.DamageControl));
+        componentList.push(lt(T.DamageControl));
+        componentList.push(lt(T.DamageControl));
+        componentList.push(lt(T.DamageControl));
+        for (let i = 0; i < num8; i++) componentList.push(lt(T.Reactor));
+        for (let j = 0; j < 60; j++) componentList.push(lt(T.StorageFuel));
+        for (let k = 0; k < 60; k++) componentList.push(lt(T.StorageCargo));
+        componentList.push(lt(T.StorageDockingBay));
+        componentList.push(lt(T.StorageDockingBay));
+        componentList.push(lt(T.StorageDockingBay));
+        componentList.push(lt(T.StorageDockingBay));
+        componentList.push(lt(T.ComputerCommerceCenter));
+        componentList.push(lt(T.HabitationMedicalCenter));
+        componentList.push(lt(T.HabitationRecreationCenter));
+        componentList.push(lt(T.SensorProximityArray));
+        componentList.push(lt(T.ComputerTargetting));
+        componentList.push(lt(T.ComputerCountermeasures));
+        componentList.push(lt(T.ComputerTargettingFleet));
+        componentList.push(lt(T.ComputerCountermeasuresFleet));
+        componentList.push(lt(T.SensorLongRange));
+        for (let l = 0; l < num; l++) componentList.push(lt(T.Armor));
+        for (let m = 0; m < num2; m++) componentList.push(lc(C.Shields));
+        for (let n = 0; n < num9; n++) componentList.push(lt(T.EnergyCollector));
+        for (let num10 = 0; num10 < num5; num10++) componentList.push(lt(T.EngineMainThrust));
+        for (let num11 = 0; num11 < 1; num11++) componentList.push(lt(T.EngineVectoring));
+        for (let num12 = 0; num12 < num3; num12++) componentList.push(lc(C.WeaponBeam));
+        for (let num13 = 0; num13 < num6; num13++) componentList.push(lc(C.WeaponPointDefense));
+        for (let num14 = 0; num14 < num4; num14++) componentList.push(lc(C.WeaponTorpedo));
+        componentList.push(lt(T.WeaponTractorBeam));
+        componentList.push(lt(T.WeaponTractorBeam));
+        componentList.push(lt(T.WeaponTractorBeam));
+        componentList.push(lt(T.WeaponTractorBeam));
+        for (let num15 = 0; num15 < num7; num15++) componentList.push(lt(T.FighterBay));
+        componentList.push(lt(T.WeaponAreaDestruction));
+        const highestTechByType = getHighestTechByType(T.WeaponSuperBeam, defs);
+        if (highestTechByType !== null) componentList.push(highestTechByType);
+        componentList.push(lt(T.WeaponIonDefense));
+        componentList.push(lc(C.HyperDrive));
+    } else {
+        const lt = (t: ComponentType, tech: number) => evaluateLatestByType(defs, t, tech);
+        const lc = (c: ComponentCategoryType, tech: number) => evaluateLatestByCategory(defs, c, tech);
+        componentList.push(lt(T.ComputerCommandCenter, 1000000.0));
+        componentList.push(lt(T.ComputerCommandCenter, 1000000.0));
+        componentList.push(lt(T.DamageControl, 1000000.0));
+        componentList.push(lt(T.DamageControl, 1000000.0));
+        componentList.push(lt(T.DamageControl, 1000000.0));
+        componentList.push(lt(T.DamageControl, 1000000.0));
+        for (let num16 = 0; num16 < num8; num16++) componentList.push(lt(T.Reactor, 1000000.0));
+        for (let num17 = 0; num17 < 60; num17++) componentList.push(lt(T.StorageFuel, 1000000.0));
+        for (let num18 = 0; num18 < 60; num18++) componentList.push(lt(T.StorageCargo, 1000000.0));
+        componentList.push(lt(T.StorageDockingBay, 1000000.0));
+        componentList.push(lt(T.StorageDockingBay, 1000000.0));
+        componentList.push(lt(T.StorageDockingBay, 1000000.0));
+        componentList.push(lt(T.StorageDockingBay, 1000000.0));
+        componentList.push(lt(T.ComputerCommerceCenter, 1000000.0));
+        componentList.push(lt(T.HabitationMedicalCenter, 1000000.0));
+        componentList.push(lt(T.HabitationRecreationCenter, 1000000.0));
+        componentList.push(lt(T.SensorProximityArray, 1000000.0));
+        componentList.push(lt(T.ComputerTargetting, 1000000.0));
+        componentList.push(lt(T.ComputerCountermeasures, 1000000.0));
+        componentList.push(lt(T.ComputerTargettingFleet, 1000000.0));
+        componentList.push(lt(T.ComputerCountermeasuresFleet, 1000000.0));
+        componentList.push(lt(T.SensorLongRange, 1000000.0));
+        for (let num19 = 0; num19 < num; num19++) componentList.push(lt(T.Armor, 1000000.0));
+        for (let num20 = 0; num20 < num2; num20++) componentList.push(lc(C.Shields, 6.0));
+        for (let num21 = 0; num21 < num9; num21++) componentList.push(lt(T.EnergyCollector, 1000000.0));
+        for (let num22 = 0; num22 < num5; num22++) componentList.push(lt(T.EngineMainThrust, 6.0));
+        for (let num23 = 0; num23 < 1; num23++) componentList.push(lt(T.EngineVectoring, 6.0));
+        for (let num24 = 0; num24 < num3; num24++) componentList.push(lc(C.WeaponBeam, 6.0));
+        for (let num25 = 0; num25 < num6; num25++) componentList.push(lc(C.WeaponPointDefense, 6.0));
+        for (let num26 = 0; num26 < num4; num26++) componentList.push(lc(C.WeaponTorpedo, 6.0));
+        componentList.push(lt(T.WeaponTractorBeam, 6.0));
+        componentList.push(lt(T.WeaponTractorBeam, 6.0));
+        componentList.push(lt(T.WeaponTractorBeam, 6.0));
+        componentList.push(lt(T.WeaponTractorBeam, 6.0));
+        for (let num27 = 0; num27 < num7; num27++) componentList.push(lt(T.FighterBay, 6.0));
+        componentList.push(lt(T.WeaponAreaDestruction, 6.0));
+        const highestTechByType2 = getHighestTechByType(T.WeaponSuperBeam, defs);
+        if (highestTechByType2 !== null) componentList.push(highestTechByType2);
+        componentList.push(lt(T.WeaponIonDefense, 6.0));
+        componentList.push(lc(C.HyperDrive, 6.0));
+    }
+    return componentList;
+}
+
+// Galaxy.7.cs GeneratePlanetDestroyerDesign(overpowerFactor, empire) (4862). No Rnd.
+// `currentStarDate` = Galaxy.CurrentStarDate.
+export function generatePlanetDestroyerDesign(galaxy: Galaxy, overpowerFactor: number, empire: Empire | null, currentStarDate: number): Design {
+    const planetDestroyerComponents = getPlanetDestroyerComponents(galaxy, overpowerFactor, empire);
+    const text = 'World Destroyer'; // TextResolver.GetText("World Destroyer")
+    let design = new Design(text);
+    design.role = BuiltObjectRole.Military;
+    design.subRole = BuiltObjectSubRole.CapitalShip;
+    design = addComponentsToDesign(galaxy, design, planetDestroyerComponents, null);
+    design.stance = BuiltObjectStance.AttackEnemies;
+    design.fleeWhen = BuiltObjectFleeWhen.Shields20;
+    design.tacticsStrongerShips = BattleTactics.Standoff;
+    design.tacticsWeakerShips = BattleTactics.AllWeapons;
+    design.tacticsInvasion = InvasionTactics.DoNotInvade;
+    design.name = text;
+    design.dateCreated = currentStarDate;
+    design.empire = empire;
+    design.pictureRef = SHIP_IMAGE_PLANET_DESTROYER;
+    design.reDefine();
+    return design;
+}
+
+// DesignList.cs FindNewestPlanetDestroyer (98).
+export function findNewestPlanetDestroyer(designs: Design[]): Design | null {
+    let num = 0;
+    let newestPlanetDestroyer: Design | null = null;
+    for (const design of designs) {
+        if (design.role !== BuiltObjectRole.Base && design.dateCreated > num && !design.isObsolete && design.isPlanetDestroyer) {
+            num = design.dateCreated;
+            newestPlanetDestroyer = design;
+        }
+    }
+    return newestPlanetDestroyer;
 }

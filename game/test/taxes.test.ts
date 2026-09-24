@@ -12,7 +12,6 @@ import {
     gameStartReviewTaxes,
     habitatDevelopmentLevel,
     netRound,
-    recalculateDevelopmentLevelBaseline,
     taxComplianceRate,
 } from '../src/sim/taxes';
 
@@ -46,9 +45,6 @@ function countDraws(g: Galaxy): { count: () => number } {
 function run() {
     const galaxy = createGame(opts()).galaxy;
     const empires = galaxy.empires;
-    // Galaxy.8.cs 678 / Empire.1.cs 268 / Habitat.cs 1070 set the baseline before this point
-    // in C#; createGame does not call it yet (see taxes.ts recalculateDevelopmentLevelBaseline).
-    for (const e of empires) for (const c of e.colonies) recalculateDevelopmentLevelBaseline(c);
     const rndBefore = JSON.stringify(galaxy.rnd);
     const counter = countDraws(galaxy);
     for (const e of empires) gameStartColonyRecalc(galaxy, e);
@@ -105,6 +101,22 @@ describe('taxes (ReviewTaxes at game start)', () => {
         const b = run();
         expect(b.colonies).toEqual(a.colonies);
         expect(b.totals).toEqual(a.totals);
+    }, 120000);
+
+    it('createGame sets DevelopmentLevelBaseline and the DoTasks population/corruption caches', () => {
+        const galaxy = createGame(opts()).galaxy;
+        for (const e of galaxy.empires) {
+            // Empire.1.cs 268 / Habitat.cs 1070 RecalculateDevelopmentLevelBaseline (developmentLevel.ts).
+            for (const c of e.colonies) {
+                expect(c.developmentLevelBaseline).toBe(Math.trunc(50 * Math.min(1, c.population.totalAmount / 500000000)));
+                // Habitat.cs 447: the property adds the baseline to _DevelopmentLevel (+ bonuses).
+                expect(habitatDevelopmentLevel(c)).toBeGreaterThanOrEqual(c.developmentLevelBaseline + c.developmentLevel);
+            }
+            // Empire.1.cs 3531/3533 (GenerateEmpire's DoTasks periodic block): _TotalPopulation and
+            // Corruption are written before the projections read them.
+            expect(e.totalPopulation).toBeGreaterThan(0);
+            expect(e.corruption).toBeGreaterThan(0);
+        }
     }, 120000);
 
     it('netRound matches .NET Math.Round(x, 2) (MidpointRounding.ToEven)', () => {

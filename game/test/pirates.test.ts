@@ -206,12 +206,16 @@ describe('generatePirateEmpireName', () => {
 
 // Pinned for seed 1 (TS port; C# parity ends at the first Empire.DoTasks).
 // (re-pinned: design generation + colonizable-habitat search)
+// (re-pinned M3e: each faction now gets its SmallSpacePort base, fleet and mining stations —
+// Galaxy.8.cs 4623-4820 — which draws Rnd (base name, headings, ship names, AddBuiltObjectToGalaxy
+// offsets, station surface points), and FindNearestPirateFaction now finds factions, so the
+// 1,000,000 spacing rule of GenerateNewPirateEmpires applies. The first faction is unchanged.)
 const PINNED_SEED1_PIRATES: unknown[] = [
     ['Lone Dagger Authority', 'S182 3', 'Ackdarian', 32639],
-    ['Fierce Market Syndicate', 'S95 2', 'Shandar', 8336399],
-    ['Venomous Dagger Clan', 'S252 2', 'Ikkuro', 26112],
-    ['Dread Sun Corsairs', 'S75 3', 'Dhayut', 8323096],
-    ['S194 Intruders', 'S263 3', 'Naxxilian', 4331580],
-    ['Sol Industries', 'S134 1', 'Securan', 16511],
-    ['Fierce Storm Mining', 'ZT619', 'Shandar', 5453],
+    ['Fearsome Fang Gang', 'S153 8', 'Dhayut', 8323096],
+    ['Burning Dagger Ravagers', 'S259 2', 'Atuuk', 796684],
+    ['Dhayu Spaceways', 'S95 2', 'Haakonish', 7364656],
+    ['S22 Clan', 'S24 6', 'Kiadian', 88],
+    ['Red Confederation', 'S214 4', 'Kiadian', 5570576],
+    ['Lone Fang Spaceways', 'S252 4', 'Haakonish', 5453],
 ];

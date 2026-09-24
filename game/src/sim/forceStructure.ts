@@ -36,7 +36,8 @@ import { DEFAULT_BASE_TECH_COST } from './componentStatic';
 import { ForceStructureProjection, ForceStructureProjectionList } from './forceStructureProjection';
 import { HabitatType } from './types';
 import { ResearchAbilityType } from './researchSystem';
-import { ColonyResourceEffect, recalculateCriticalResourceSupplyBonuses, resourceBonusTotalByEffectType, taxComplianceRate } from './taxes';
+import { recalculateCriticalResourceSupplyBonuses, taxComplianceRate } from './taxes';
+import { ColonyResourceEffect, habitatDevelopmentLevel, resourceBonusTotalByEffectType } from './developmentLevel';
 
 export { ForceStructureProjection, ForceStructureProjectionList } from './forceStructureProjection';
 
@@ -305,8 +306,9 @@ export function troopCanRecruitFlags(empire: Empire): { infantry: boolean; armor
 export function totalColonyStrategicValue(empire: Empire): number {
     let num = 0;
     for (const habitat of empire.colonies) {
+        // Habitat.cs 313 reads the DevelopmentLevel property (447), not _DevelopmentLevel.
         // (int)(long / 1000000): unchecked long→int wraps (| 0).
-        const val = Math.imul(habitat.developmentLevel, Math.trunc(habitat.population.totalAmount / 1000000) | 0);
+        const val = Math.imul(habitatDevelopmentLevel(habitat), Math.trunc(habitat.population.totalAmount / 1000000) | 0);
         num = (num + Math.max(10000, val)) | 0;
     }
     return num;
@@ -427,9 +429,10 @@ export function habitatCorruption(galaxy: Galaxy, h: Habitat): number {
             if (gov !== null) num2 *= gov.corruption;
             num2 *= colonyCorruptionFactor(empire);
         }
-        // TODO(port): Empire.Corruption (Empire.cs 70; RecalculateEmpireCorruption,
-        // periodic DoTasks block) — 0.0 until then.
-        const empireCorruption = 0.0;
+        // Empire.Corruption (Empire.cs 70), the cache written by RecalculateEmpireCorruption
+        // (Empire.4.cs 3411; taxes.ts): 0.0 until first written (the periodic block of
+        // GenerateEmpire's DoTasks, Empire.1.cs 3533 — empireGeneration.ts).
+        const empireCorruption = empire.corruption;
         val = num2 * (1.0 + empireCorruption) * Math.sqrt(h.distanceFactor);
         // TODO(port): _PirateColonyControl bonus — no pirate colony control at game start.
         const num4 = 0; // TODO(port): colony characters / Empire.Leader ColonyCorruption — none at game start.
@@ -455,10 +458,11 @@ export function habitatAnnualRevenue(galaxy: Galaxy, h: Habitat): number {
     }
     const quality = h.quality;
     const num3 = (quality - 0.5) * 2.0;
+    // Habitat.cs 848/852 read the DevelopmentLevel property (447), not _DevelopmentLevel.
     if (quality < 0.5) {
-        num = (((num2 * num3 * (100.0 - h.developmentLevel / 2.0)) * (0.5 + habitatCorruption(galaxy, h))) / divisor);
+        num = (((num2 * num3 * (100.0 - habitatDevelopmentLevel(h) / 2.0)) * (0.5 + habitatCorruption(galaxy, h))) / divisor);
     } else {
-        num = (((num2 * h.developmentLevel) * (1.0 - habitatCorruption(galaxy, h))) * num3) / divisor;
+        num = (((num2 * habitatDevelopmentLevel(h)) * (1.0 - habitatCorruption(galaxy, h))) * num3) / divisor;
         // Habitat._IncomeFactor (RecalculateCriticalResourceSupplyFactors, taxes.ts).
         num *= h.incomeFactor;
         if (empire !== null && empire !== galaxy.independentEmpire) {
@@ -577,10 +581,11 @@ export function privateAnnualRevenueUnadjusted(galaxy: Galaxy, empire: Empire): 
 // Empire.cs PrivateAnnualRevenue (1639).
 export function privateAnnualRevenue(galaxy: Galaxy, empire: Empire): number {
     const num = privateAnnualRevenueUnadjusted(galaxy, empire);
-    // TODO(port): Empire._TotalPopulation (Empire.cs 2216) is a cache written by
-    // EvaluateColonyVariables / RecalculateEmpirePopulation (periodic DoTasks
-    // block, skipped) — still 0 at GenerateEmpire's DoTasks.
-    const totalPopulation = 0;
+    // Empire._TotalPopulation (Empire.cs 509/2216), the cache written by
+    // EvaluateColonyVariables (Empire.4.cs 3306) / RecalculateEmpirePopulation (3460):
+    // at GenerateEmpire's DoTasks the periodic block has just written it (Empire.1.cs
+    // 3531, empireGeneration.ts) before the long block's projections read it.
+    const totalPopulation = empire.totalPopulation;
     return revenueDropoff(num, totalPopulation, empire);
 }
 

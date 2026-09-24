@@ -34,6 +34,26 @@ import { EmpireVisibility, SystemVisibilityStatus, type SystemVisibility, type V
 import type { ForceStructureProjectionList } from './forceStructureProjection';
 import type { HabitatPrioritization } from './resourceTargets';
 import { PirateRelationList, PirateRelationType, obtainPirateRelation, changePirateRelation, galaxyCurrentStarDate } from './pirateRelations';
+import { recalculateDevelopmentLevelBaseline } from './developmentLevel';
+import { recalculateColonyInfluenceRadius } from './territory';
+
+// Empire.1.cs TakeOwnershipOfColony callees that live in modules importing empire.ts
+// (forceStructure.ts RecalculateDistanceFactor / RecalculateAnnualTaxRevenue, taxes.ts
+// SetColonyTaxRate). taxes.ts registers them at module load; colony.ts and
+// empireGeneration.ts import taxes.ts, so every game path has them.
+export interface TakeOwnershipOfColonyHooks {
+    recalculateDistanceFactor(galaxy: Galaxy, colony: Habitat): void;
+    setColonyTaxRate(galaxy: Galaxy, empire: Empire, colony: Habitat, atWar: boolean): void;
+    recalculateAnnualTaxRevenue(galaxy: Galaxy, colony: Habitat): void;
+}
+let takeOwnershipOfColonyHooks: TakeOwnershipOfColonyHooks | null = null;
+export function registerTakeOwnershipOfColonyHooks(hooks: TakeOwnershipOfColonyHooks): void {
+    takeOwnershipOfColonyHooks = hooks;
+}
+function requireTakeOwnershipOfColonyHooks(): TakeOwnershipOfColonyHooks {
+    if (takeOwnershipOfColonyHooks === null) throw new Error('takeOwnershipOfColony: import ./taxes first (registers the Empire.1.cs 240/241/269 callees)');
+    return takeOwnershipOfColonyHooks;
+}
 
 // EmpirePolicy.cs: only the research tech-focus fields are ported (data/policies.ts).
 export type EmpirePolicy = PolicyData | null;
@@ -694,10 +714,10 @@ export class Empire {
             colony.isRefuellingDepot = true;
             if (newEmpire.capital === null) newEmpire.capital = colony;
             if (!newEmpire.colonies.includes(colony)) newEmpire.colonies.push(colony);
-            // TODO(port): Empire.1.cs 240-241 RecalculateDistanceFactor + SetColonyTaxRate(colony,
-            // atWar: false) run here in C#; they live in forceStructure.ts / taxes.ts
-            // (import cycle), so callers invoke recalculateDistanceFactor + setColonyTaxRate
-            // right after takeOwnershipOfColony.
+            // Empire.1.cs 240: colony.RecalculateDistanceFactor().
+            requireTakeOwnershipOfColonyHooks().recalculateDistanceFactor(this.galaxy, colony);
+            // Empire.1.cs 241: newEmpire.SetColonyTaxRate(colony, atWar: false).
+            requireTakeOwnershipOfColonyHooks().setColonyTaxRate(this.galaxy, newEmpire, colony, false);
             // Empire.1.cs 242-246.
             if (newEmpire.policy != null) {
                 colony.colonyPopulationPolicy = newEmpire.policy.newColonyPopulationPolicyAllRaces;
@@ -705,7 +725,15 @@ export class Empire {
             }
         } else {
             colony.isRefuellingDepot = false;
+            // TODO(port): Empire.1.cs 250-266 order removal (Galaxy.Orders) — no orders at game start.
         }
+        // Empire.1.cs 268: colony.RecalculateDevelopmentLevelBaseline().
+        recalculateDevelopmentLevelBaseline(colony);
+        // Empire.1.cs 269: colony.RecalculateAnnualTaxRevenue().
+        requireTakeOwnershipOfColonyHooks().recalculateAnnualTaxRevenue(this.galaxy, colony);
+        // Empire.1.cs 270-271: RecalculateColonyInfluenceRadius(CheckEmpireHasHyperDriveTech(this)).
+        recalculateColonyInfluenceRadius(this.galaxy, colony, this.hasHyperDriveTech);
+        // TODO(port): Empire.1.cs 272+ mining-station teardown, bases, troops, events.
         this.resolveSystemVisibility(colony.xpos, colony.ypos);
     }
 
@@ -1319,6 +1347,17 @@ export class Empire {
     resourceTargets: HabitatPrioritization[] = [];
     // Empire.cs public double BuildFactor = 1.0.
     buildFactor = 1.0;
+
+    // --- Task M3d (stationPlacement.ts) ---
+    // Empire.cs _ResearchHabitats = new HabitatList() (277; DetermineResearchStationLocation).
+    researchHabitats: Habitat[] = [];
+    // Empire.cs _UnavailableLuxuryResources = new ResourceList() / _SelfSuppliedLuxuryResources
+    // (null until IdentifyUnavailableLuxuryResources / EvaluateColonyVariablesPirate).
+    unavailableLuxuryResources: ResourceRef[] = [];
+    selfSuppliedLuxuryResources: ResourceRef[] | null = null;
+    // Empire.cs _KnownPirateBases = new BuiltObjectList() (481). TODO(port): filled by
+    // visibility scans (BuiltObject.1.cs 1902/1928, Galaxy.4.cs 3798) — empty at game start.
+    knownPirateBases: BuiltObject[] = [];
 }
 
 // Task M3b: Empire.GovernmentAttributes (Empire.cs 2805: _Galaxy.Governments[_GovernmentId],

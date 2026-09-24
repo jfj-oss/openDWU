@@ -328,8 +328,12 @@ export class Galaxy {
         let num = 0;
         let num2 = 0;
         let num4 = 0;
+        // Galaxy.1.cs 887-895 / 912-915 (task M3d): hasResearchBonus.
+        let hasResearchBonus = false;
+        if (sys.systemStar.researchBonus > 0) hasResearchBonus = true;
         for (const h of this.systemHabitatsOf(sys.systemStar.systemIndex)) {
             if (h.category === HabitatCategoryType.Asteroid) continue;
+            if (h.researchBonus > 0) hasResearchBonus = true;
             if (h.category === HabitatCategoryType.Planet) num++;
             else if (h.category === HabitatCategoryType.Moon) num2++;
             // C#: Empire == IndependentEmpire — also true while both are null.
@@ -363,6 +367,7 @@ export class Galaxy {
         sys.planetCount = num;
         sys.moonCount = num2;
         sys.independentColonyCount = num4;
+        sys.hasResearchBonus = hasResearchBonus;
         sys.dominantEmpire = dom !== null ? { empire: dom, colonyCount, totalStrategicValue: num6 } : null;
         sys.otherEmpires = null;
         if (dom !== null) {
@@ -773,6 +778,10 @@ export class Galaxy {
      * empire generation). Read by CreateStateShips. The caller wiring createGame sets it.
      */
     startingAge = 0;
+    /** C#: Galaxy._AsteroidFields (Galaxy.cs 587): each system's main asteroid belt (Galaxy.4.cs 2286). Task M3d. */
+    asteroidFields: Habitat[][] = [];
+    /** C#: Galaxy._SuperPirateFactionsGenerated (Galaxy.cs 573). Read/incremented by pirates.ts galaxyEventSuperPirates. */
+    superPirateFactionsGenerated = 0;
     /**
      * C#: Galaxy.SubRoleNameSet (Start.2.cs:510, from Galaxy.LoadShipNames(shipNames.txt)).
      * TODO(port): LoadShipNames — the stock shipNames.txt lists no names for any sub-role,
@@ -4227,8 +4236,10 @@ export function generateGalaxy(options: GenerateGalaxyOptions): Galaxy {
     // (not separately tracked at this level — it's a sub-list of habitats).
     const perStarHabitats: Habitat[][] = [];
     for (let i = 0; i < starCount; i++) {
-        const { habitats } = galaxy.setupSolarSystem(shape);
+        const { habitats, asteroidField } = galaxy.setupSolarSystem(shape);
         perStarHabitats.push(habitats);
+        // Galaxy.4.cs 2284-2287: if (asteroidField != null) _AsteroidFields.Add(asteroidField).
+        if (asteroidField !== null) galaxy.asteroidFields.push(asteroidField);
         galaxy.habitats.push(...habitats);
     }
 

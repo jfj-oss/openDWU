@@ -15,7 +15,10 @@
 // Rnd) — see the stand-in below.
 
 import { createNewDesigns } from './designGeneration';
-import { projectForceStructure, projectPrivateForceStructure, recalculateAnnualTaxRevenue, recalculateDistanceFactor } from './forceStructure';
+import { projectForceStructure, projectPrivateForceStructure, recalculateColonyTaxRevenues } from './forceStructure';
+// taxes.ts also registers empire.ts's TakeOwnershipOfColony hooks (SetColonyTaxRate etc.).
+import { recalculateEmpireCorruption, reviewTaxes } from './taxes';
+import { RuinType } from './ruins';
 import { identifyResourceCentres } from './resourceTargets';
 import { startStarDateForAge } from './galaxyTime';
 import { loadEmpirePolicy } from './researchSystem';
@@ -88,15 +91,18 @@ export function generateEmpire(
     if (designPictureFamilyIndex >= 0) {
         empire.designPictureFamilyIndex = designPictureFamilyIndex;
     }
-    // TODO(port): capital.Ruin cleared for Standard/CreatureSwarm/PirateAmbush ruins.
+    // Galaxy.7.cs 5178-5185.
+    if (capital.ruin !== null && (capital.ruin.type === RuinType.Standard || capital.ruin.type === RuinType.CreatureSwarm || capital.ruin.type === RuinType.PirateAmbush)) {
+        capital.ruin = null;
+        const ri = galaxy.ruinsHabitats.indexOf(capital);
+        if (ri >= 0) galaxy.ruinsHabitats.splice(ri, 1);
+    }
+    // Galaxy.7.cs 5186. TakeOwnershipOfColony runs RecalculateDistanceFactor (Empire.1.cs 240),
+    // SetColonyTaxRate(colony, atWar: false) (241; population is still 0 here, so the
+    // small-colony policy applies: 0 for the shipped policies, 1.0 for a
+    // SpecialFunctionCode 1 government), RecalculateDevelopmentLevelBaseline (268),
+    // RecalculateAnnualTaxRevenue (269) and RecalculateColonyInfluenceRadius (271).
     empire.takeOwnershipOfColony(capital, empire);
-    // Empire.1.cs TakeOwnershipOfColony steps the TS takeOwnershipOfColony lacks
-    // (task M3b): RecalculateDistanceFactor (240); SetColonyTaxRate (241) is
-    // TODO(port) (approval model) — TaxRate stays 0, which is what it yields here
-    // anyway (population 0 → Policy.ColonyTaxRateSmallColony, 0 for the shipped
-    // policies); RecalculateAnnualTaxRevenue (269) snapshots −ColonyStateSupportCost.
-    recalculateDistanceFactor(galaxy, capital);
-    recalculateAnnualTaxRevenue(galaxy, capital);
     if (techLevel > 0.0 || !enableStoryEventsShadows) {
         empire.preWarpProgressEventsOccurred = true; // the 13 PreWarpProgressEventOccurred* flags
     }
@@ -176,14 +182,37 @@ export function generateEmpire(
     empire.initiateConstruction = false;
     // TODO(port): empire.DoTasks() — the full empire AI tick. RND DIVERGENCE POINT (see header).
     // Only these steps of that tick are ported, run here in the C# order of
-    // Empire.1.cs DoTasks; every step in between is SKIPPED (short/regular/periodic
-    // blocks entirely — incl. ReviewTaxes, EvaluateColonyVariables,
-    // RecalculateEmpireCorruption, PerformResearch — and the rest of the
+    // Empire.1.cs DoTasks; every step in between is SKIPPED (short/regular blocks
+    // entirely, the periodic block except the cache writes below — incl. most of
+    // EvaluateColonyVariables, PerformResearch — and the rest of the
     // intermediate/long blocks, e.g. ReviewSystemThreats, IdentifyColonizationTargets,
-    // ReviewEmpireAbilityBonuses, RecalculateColonyTaxRevenues, ReviewDiplomaticStrategies,
+    // ReviewEmpireAbilityBonuses, ReviewDiplomaticStrategies,
     // PayMaintenanceForBuiltObjects). Rnd parity with the C# is already lost at this
     // point (the skipped steps draw Rnd); none of the ported steps draws Rnd.
     const starDate = startStarDateForAge(galaxy.age); // Galaxy.CurrentStarDate
+    // Periodic block, Empire.1.cs 3523-3538 — it runs on this first tick: the Empire ctor sets
+    // _LastPeriodicTouch = now - (LongProcessingInterval + 1) s (Empire.cs 3921-3923), so
+    // num3 = 121 >= PeriodicProcessingInterval (30). Only the steps that write the caches the
+    // long block's projections read are ported:
+    // Empire.1.cs 3531 EvaluateColonyVariables(_Galaxy, num3) — only its _TotalPopulation
+    // write (Empire.4.cs 2945/3174/3182/3306: sum of Population.Amount over the colonies,
+    // both growth branches). TODO(port): the rest of EvaluateColonyVariables (development
+    // level drift by (int)num12 — (121 / 600) * 25 * num8 can reach >= 1 here —, growth
+    // rates, resource orders, RecalculateAnnualTaxRevenue, ProcessColonyTroops).
+    {
+        let num = 0;
+        for (let j = 0; j < empire.colonies.length; j++) {
+            const habitat = empire.colonies[j];
+            // Habitat.HasBeenDestroyed: false for every colony at game start.
+            for (const population of habitat.population.items) num += population.amount;
+        }
+        empire.totalPopulation = num;
+    }
+    // Empire.1.cs 3533.
+    recalculateEmpireCorruption(empire);
+    // Empire.1.cs 3534-3537.
+    if (empire.controlColonyTaxRates) reviewTaxes(galaxy, empire);
+    recalculateColonyTaxRevenues(galaxy, empire);
     // Intermediate block, Empire.1.cs 3623: `if (_ControlDesigns) CreateNewDesigns(_Galaxy.CurrentStarDate)`.
     if (empire.controlDesigns) {
         createNewDesigns(galaxy, empire, starDate, starDate);

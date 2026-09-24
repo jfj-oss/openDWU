@@ -11,6 +11,11 @@ import type { Race } from './data/races';
 import type { Habitat } from './types';
 import { Population } from './population';
 import { Cargo, ResourceRef } from './cargo';
+// taxes.ts also registers empire.ts's TakeOwnershipOfColony hooks (SetColonyTaxRate etc.).
+import { recalculateCriticalResourceSupplyBonuses } from './taxes';
+import { recalculateDevelopmentLevelBaseline } from './developmentLevel';
+import { recalculateAnnualTaxRevenue } from './forceStructure';
+import { RuinType } from './ruins';
 
 // Port of Galaxy.8.cs MakeHabitatIntoColony(galaxy, habitat, empire, age, race,
 // homeSystemFactor, hasSpacePort).
@@ -23,8 +28,12 @@ export function makeHabitatIntoColony(
     homeSystemFactor: number,
     hasSpacePort: boolean,
 ): void {
-    // TODO(port): Habitat.Ruin (Standard/CreatureSwarm/PirateAmbush ruins are
-    // cleared here) — ruins aren't modelled yet.
+    // Galaxy.8.cs 641-648 (the Ruin feeds the DevelopmentLevel property).
+    if (habitat.ruin !== null && (habitat.ruin.type === RuinType.Standard || habitat.ruin.type === RuinType.CreatureSwarm || habitat.ruin.type === RuinType.PirateAmbush)) {
+        habitat.ruin = null;
+        const i = galaxy.ruinsHabitats.indexOf(habitat);
+        if (i >= 0) galaxy.ruinsHabitats.splice(i, 1);
+    }
     empire.takeOwnershipOfColony(habitat, empire);
     if (habitat.quality < 0.5) {
         habitat.baseQuality = Math.fround(0.5 + Math.fround(galaxy.rnd.nextDouble() * 0.1));
@@ -48,9 +57,12 @@ export function makeHabitatIntoColony(
     // TODO(port): Habitat.GrowPopulation(TimeSpan.Zero) — no Rnd; growth model not ported.
     const num3 = setColonyResources(galaxy, habitat, empire, hasSpacePort);
     habitat.setDevelopmentLevel(Math.min(50, Math.max(0, num3 * 5 + galaxy.rnd.next(0, 5))));
-    // TODO(port): RecalculateCriticalResourceSupplyBonuses / DevelopmentLevelBaseline /
-    // AnnualTaxRevenue, Habitat.DoTasks (a no-op at game start: all touch
-    // spans are ~0), ConstructionQueue.ReviewConstructionSpeed — no Rnd.
+    // Galaxy.8.cs 677-679.
+    recalculateCriticalResourceSupplyBonuses(galaxy, habitat);
+    recalculateDevelopmentLevelBaseline(habitat);
+    recalculateAnnualTaxRevenue(galaxy, habitat);
+    // TODO(port): Habitat.DoTasks (680; a no-op at game start: all touch
+    // spans are ~0), ConstructionQueue.ReviewConstructionSpeed (683) — no Rnd.
     // TroopLevelRequired needs EstimatedDefensiveForceRequired (not ported),
     // so it is 0 here and no troops are generated; the Rnd draw stays.
     const troopLevelRequired = 0;

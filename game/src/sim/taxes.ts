@@ -30,30 +30,18 @@
 
 import type { Galaxy } from './galaxy';
 import type { Habitat } from './types';
-import { Empire, empireGovernmentAttributes } from './empire';
+import type { Race } from './data/races';
+import { resolveStandardRaceBias } from './raceBias';
+import { Empire, empireGovernmentAttributes, registerTakeOwnershipOfColonyHooks } from './empire';
 import { BuiltObjectSubRole } from './builtObjectTypes';
 import { ResourceRef } from './cargo';
-import { checkAtWar, recalculateAnnualTaxRevenue } from './forceStructure';
+import { checkAtWar, recalculateAnnualTaxRevenue, recalculateDistanceFactor } from './forceStructure';
+import { ColonyResourceEffect, habitatDevelopmentLevel, resourceBonusTotalByEffectType } from './developmentLevel';
 
 export { recalculateColonyTaxRevenues } from './forceStructure';
+export { ColonyResourceEffect, habitatDevelopmentLevel, recalculateDevelopmentLevelBaseline, resourceBonusTotalByEffectType } from './developmentLevel';
 
 const f32 = Math.fround;
-
-// ColonyResourceEffect.cs (byte enum, member order exact).
-export enum ColonyResourceEffect {
-    Undefined,
-    Happiness,
-    Development,
-    ConstructionSpeed,
-    RecruitedTroopStrength,
-    ResearchWeapons,
-    ResearchEnergy,
-    ResearchHighTech,
-    PopulationGrowthRate,
-    WarWearinessReduction,
-    IncomeBoost,
-    BaseMaintenanceReduction,
-}
 
 // ColonyPopulationPolicy.cs (byte enum) — same values as data/policies.ts.
 const POLICY_ENSLAVE = 3;
@@ -76,48 +64,9 @@ export function netRound(value: number, digits: number): number {
     return value;
 }
 
-// ResourceBonusList.cs GetBonusTotalByEffectType (15).
-export function resourceBonusTotalByEffectType(h: Habitat, effectType: ColonyResourceEffect): number {
-    let total = 0.0;
-    for (const resourceBonus of h.resourceBonuses) {
-        if (resourceBonus != null && resourceBonus.effect === effectType) total += resourceBonus.value;
-    }
-    return total;
-}
-
-// ---------------------------------------------------------------------------
-// Development level
-// ---------------------------------------------------------------------------
-
-// Habitat.cs RecalculateDevelopmentLevelBaseline (5575).
-export function recalculateDevelopmentLevelBaseline(h: Habitat): void {
-    let developmentLevelBaseline = 0;
-    if (h.population != null && h.population.items.length > 0) {
-        h.population.recalculateTotalAmount();
-        const totalAmount = h.population.totalAmount;
-        let val = totalAmount / 500000000.0;
-        val = Math.min(1.0, Math.max(0.0, val));
-        developmentLevelBaseline = Math.trunc(50.0 * val);
-    }
-    h.developmentLevelBaseline = developmentLevelBaseline;
-}
-
-// Habitat.cs DevelopmentLevel (447) — the property (baseline + _DevelopmentLevel + bonuses).
-export function habitatDevelopmentLevel(h: Habitat): number {
-    let val = 0;
-    const val2 = 0;
-    if (h.ruin !== null) val = Math.trunc(h.ruin.developmentBonus * 100.0);
-    // TODO(port): WonderForDevelopment (PlanetaryFacility model) — null at game start.
-    let num = Math.max(val, val2);
-    // TODO(port): _RestrictedResourcesPresent (set by EvaluateColonyVariables) — false at game start.
-    const restrictedResourcesPresent = false;
-    if (restrictedResourcesPresent) num += 30;
-    num += Math.trunc(resourceBonusTotalByEffectType(h, ColonyResourceEffect.Development));
-    // TODO(port): RaceEventType (TodashGalacticChampionships / PredictiveHistory +5) — Undefined at game start.
-    // TODO(port): BaconHabitat.GetDevelopmentLevel (infrastructure spending) — BaconValues null → 0.
-    const bacon = 0;
-    return h.developmentLevelBaseline + h.developmentLevel + num + bacon;
-}
+// ColonyResourceEffect, GetBonusTotalByEffectType, RecalculateDevelopmentLevelBaseline and
+// the DevelopmentLevel property live in developmentLevel.ts (cycle-free; used by
+// empire.ts / colony.ts / territory.ts) and are re-exported here.
 
 // ---------------------------------------------------------------------------
 // Critical resource bonuses (Habitat.cs 5087 / 5124)
@@ -250,17 +199,79 @@ export function habitatTaxApproval(h: Habitat): number {
     return num;
 }
 
-// Habitat.cs RacialHappiness (491).
+// EmpireEvaluation.cs — only the fields read here. A new evaluation has
+// _RacialOffense = _SlaveryOffense = 0 (ctor 70); _Bias is set by ObtainEmpireEvaluation.
+export interface EmpireEvaluation {
+    empire: Empire | null;
+    bias: number;
+    racialOffense: number;
+    slaveryOffense: number;
+}
+
+function newEmpireEvaluation(empire: Empire | null): EmpireEvaluation {
+    return { empire, bias: 0.0, racialOffense: 0.0, slaveryOffense: 0.0 };
+}
+
+// Empire.2.cs DetermineEmpiresWithDominantRace (3460).
+export function determineEmpiresWithDominantRace(galaxy: Galaxy, race: Race | null): Empire[] {
+    const empireList: Empire[] = [];
+    for (let i = 0; i < galaxy.empires.length; i++) {
+        const empire = galaxy.empires[i];
+        if (empire != null && empire.dominantRace === race) empireList.push(empire);
+    }
+    return empireList;
+}
+
+// Empire.4.cs ObtainEmpireEvaluation (106). Empire.EmpireEvaluations is the TS
+// Empire.empireEvaluations list (EmpireEvaluationList; indexer [Empire] = first match).
+export function obtainEmpireEvaluation(galaxy: Galaxy, self: Empire, empire: Empire | null): EmpireEvaluation {
+    if (empire == null) return newEmpireEvaluation(empire);
+    if (empire === galaxy.independentEmpire) return newEmpireEvaluation(empire);
+    if (empire.pirateEmpireBaseHabitat !== null || self.pirateEmpireBaseHabitat !== null) return newEmpireEvaluation(empire);
+    if (self.empireEvaluations != null && empire != null) {
+        const evaluations = self.empireEvaluations as EmpireEvaluation[];
+        let empireEvaluation: EmpireEvaluation | null = null;
+        for (let index = 0; index < evaluations.length; index++) {
+            if (evaluations[index].empire === empire) {
+                empireEvaluation = evaluations[index];
+                break;
+            }
+        }
+        if (empireEvaluation == null) {
+            empireEvaluation = newEmpireEvaluation(empire);
+            empireEvaluation.bias = resolveStandardRaceBias(self.dominantRace, empire.dominantRace);
+            if (empire.active) evaluations.push(empireEvaluation);
+        }
+        return empireEvaluation;
+    }
+    return newEmpireEvaluation(empire);
+}
+
+// Habitat.cs RacialHappiness (495).
 export function habitatRacialHappiness(galaxy: Galaxy, h: Habitat): number {
     const empire = h.empire;
     if (empire !== null && empire !== galaxy.independentEmpire && h.population != null && h.population.items.length > 0) {
         const dominantRace = h.population.dominantRace;
         if (dominantRace !== null && empire.dominantRace !== dominantRace) {
-            // TODO(port): Empire.DetermineEmpiresWithDominantRace + ObtainEmpireEvaluation
-            // (RacialOffense + SlaveryOffense), the Enslave/Exterminate policy caps and
-            // Galaxy.ResolveStandardRaceBias — every game-start colony is of its empire's
-            // dominant race, so this branch is not reached.
-            throw new Error('TODO(port): Habitat.RacialHappiness for a foreign dominant race (EmpireEvaluation)');
+            let num = 0.0;
+            const empireList = determineEmpiresWithDominantRace(galaxy, dominantRace);
+            if (empireList != null && empireList.length > 0) {
+                const empireEvaluation = obtainEmpireEvaluation(galaxy, empire, empireList[0]);
+                num = empireEvaluation.racialOffense + empireEvaluation.slaveryOffense;
+            }
+            let colonyPopulationPolicy = h.colonyPopulationPolicy;
+            // C# dereferences Empire.DominantRace unguarded here.
+            if (dominantRace.raceFamily === empire.dominantRace!.raceFamily) colonyPopulationPolicy = h.colonyPopulationPolicyRaceFamily;
+            switch (colonyPopulationPolicy) {
+                case POLICY_ENSLAVE:
+                    num = Math.min(num, -25.0);
+                    break;
+                case POLICY_EXTERMINATE:
+                    num = Math.min(num, -50.0);
+                    break;
+            }
+            const num2 = resolveStandardRaceBias(dominantRace, empire.dominantRace);
+            return Math.min(num2 * 0.5, num * 0.5);
         }
     }
     return 0.0;
@@ -654,3 +665,11 @@ function recalculateColonyTaxRevenuesLocal(galaxy: Galaxy, empire: Empire): void
         if (habitat != null && habitat.empire === empire) recalculateAnnualTaxRevenue(galaxy, habitat);
     }
 }
+
+// Empire.1.cs TakeOwnershipOfColony 240/241/269 callees (see empire.ts
+// registerTakeOwnershipOfColonyHooks; registered here to avoid an import cycle).
+registerTakeOwnershipOfColonyHooks({
+    recalculateDistanceFactor: (galaxy, colony) => recalculateDistanceFactor(galaxy, colony),
+    setColonyTaxRate: (galaxy, empire, colony, atWar) => setColonyTaxRate(galaxy, empire, colony, atWar),
+    recalculateAnnualTaxRevenue: (galaxy, colony) => recalculateAnnualTaxRevenue(galaxy, colony),
+});

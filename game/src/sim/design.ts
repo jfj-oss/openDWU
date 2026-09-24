@@ -761,6 +761,32 @@ export class Design {
         for (const c of this.components) num += c.size;
         return num;
     }
+
+    /**
+     * Design.cs CalculateTechLevel(empire, galaxy) (959). `componentMaxTechPoints` is
+     * ResearchSystem.ComponentMaxTechPoints (static in C#; see designGeneration.ts
+     * researchComponentMaxTechPoints). `galaxy` is only null-checked by the C# callers.
+     * C# accumulates into a long: exact in a JS double while < 2^53 (max points ~2^31 × size).
+     */
+    calculateTechLevel(empire: DesignOwner | null, componentMaxTechPoints: number[]): number {
+        let result = 1.0;
+        if (empire !== null) {
+            let num = 0;
+            for (let i = 0; i < this.components.length; i++) {
+                const component = this.components[i];
+                if (component != null && empire.research != null) {
+                    const num2 = componentMaxTechPoints[component.componentId];
+                    num += num2 * component.size;
+                }
+            }
+            let num3 = this.size;
+            if (num3 <= 0) {
+                num3 = this.quickCalculateSize();
+            }
+            result = num / num3;
+        }
+        return result;
+    }
 }
 
 // BaconDesign.Redefine (BaconDesign.cs 138): re-ReDefine the owner's (private)
