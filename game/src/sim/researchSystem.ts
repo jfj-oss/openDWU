@@ -145,8 +145,12 @@ export function buildResearchStatic(
 }
 
 // Port of Galaxy.4.cs LoadEmpirePolicy(race, isPirate): file policy or a default one (never null).
+// C# reads the file into a fresh EmpirePolicy on every call, so callers may mutate the result:
+// return a copy of the prefetched policy (researchDesignTechFocus slots copied too).
 export function loadEmpirePolicy(stat: ResearchStatic | null, race: Race, isPirate: boolean): EmpirePolicy {
-    return (isPirate ? stat?.piratePolicies : stat?.policies)?.get(race.name) ?? defaultEmpirePolicy();
+    const p = (isPirate ? stat?.piratePolicies : stat?.policies)?.get(race.name);
+    if (p === undefined) return defaultEmpirePolicy();
+    return { ...p, researchDesignTechFocus: p.researchDesignTechFocus.map((f) => ({ ...f })) };
 }
 
 /** ResearchAbility (type, level, value; RelatedObject kept as the research.txt index). */

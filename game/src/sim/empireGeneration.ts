@@ -50,8 +50,8 @@ export function generateEmpire(
     const rnd = galaxy.rnd;
     let actualTechLevel = 1.0;
     // Galaxy.7.cs 5092: LoadEmpirePolicy(race, isPirate: false) (no Rnd).
-    // TODO(port): player ImplementEnslavementWithPenalColonies = false (field not ported).
     const empirePolicy = loadEmpirePolicy(galaxy.researchStatic, race, false);
+    if (isPlayerEmpire) empirePolicy.implementEnslavementWithPenalColonies = false;
     const empire = new Empire(galaxy, empireName, capital, race, governmentId, corruptionMultiplier, empirePolicy, isPlayerEmpire);
     empire.playerEmpire = isPlayerEmpire;
     if (techLevel < 0.0) {

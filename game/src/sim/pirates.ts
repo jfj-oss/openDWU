@@ -251,7 +251,16 @@ export function generatePirateEmpire(
     void offsetY; // pirate base position (AddBuiltObjectToGalaxy) — no base without designs
     if (galaxy.empires.length > 0) galaxy.rnd.next(0, galaxy.empires.length);
     const empirePolicy = loadEmpirePolicy(galaxy.researchStatic, race, true);
-    // TODO(port): player pirate policy overrides (enslavement, pirate missions) — fields not ported.
+    if (isPlayerEmpire) {
+        // Galaxy.8.cs 4504-4513.
+        empirePolicy.implementEnslavementWithPenalColonies = false;
+        empirePolicy.acceptPirateSmugglingMissions = false;
+        empirePolicy.bidOnPirateAttackMissions = false;
+        empirePolicy.bidOnPirateDefendMissions = false;
+        empirePolicy.offerSmugglingPirateMissions = 0;
+        empirePolicy.offerDefensivePirateMissionsSituation = 0;
+        empirePolicy.offerPirateAttackMissions = 0;
+    }
     const name = generatePirateEmpireName(galaxy, habitat, piratePlaystyle);
     const empire = new Empire(galaxy, name, false, habitat, race, empirePolicy);
     empire.piratePlayStyle = piratePlaystyle;
@@ -299,7 +308,6 @@ export function generatePirateEmpire(
     // GenerateStartingCharacters also TODO.
     empire.colonizationTargets = pirateReviewColoniesToControl(galaxy, empire, ctx.independentColonies);
     empire.stateMoney = 20000.0;
-    void isPlayerEmpire;
     return empire;
 }
 
