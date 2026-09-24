@@ -18,6 +18,7 @@ import {
     Habitat,
     HabitatCategoryType,
     HabitatType,
+    IndustryType,
     type SystemInfo,
 } from './types';
 import type { Race } from './data/races';
@@ -637,8 +638,8 @@ export class Galaxy {
         if (type === HabitatType.BlackHole) {
             // Port of Galaxy.5.cs SetupSun black-hole GalaxyLocations
             // (1329-1352). C# renames the star via GenerateBlackHoleName()
-            // (not ported — see the assignSystemName TODO); the star's
-            // existing name is used for the location prefixes instead.
+            // before building the Pull/Event Horizon location names.
+            star.name = this.generateBlackHoleName();
             const pullSize = star.diameter * 1.1;
             const pull = new GalaxyLocation(star.name + ' Pull', GalaxyLocationType.BlackHole, x - pullSize / 2.0, y - pullSize / 2.0, pullSize, pullSize, -1);
             pull.showName = false;
@@ -681,12 +682,37 @@ export class Galaxy {
         return letters + this.rnd.next(1, 1000);
     }
 
+    // Port of Galaxy.5.cs GenerateBlackHoleName (line 2486).
+    generateBlackHoleName(): string {
+        const prefixes = ["Devil's", 'Dark', 'Ravenous', 'Deadly', 'Perilous', "Traitor's", 'Wretched', 'Devouring', "Destroyer's"];
+        const suffixes = [
+            'Gate', 'Vortex', 'Whirlpool', 'Wheel', 'Lair', 'Snare', 'Desolation', 'End', 'Mouth', 'Cauldron',
+            'Pit', 'Abyss', 'Chasm', 'Dungeon', 'Inferno', 'Void',
+        ];
+        const prefix = prefixes[this.rnd.next(0, prefixes.length)];
+        const suffix = suffixes[this.rnd.next(0, suffixes.length)];
+        return prefix + ' ' + suffix;
+    }
+
+    // Port of Galaxy.4.cs GenerateMoonName (line 2533). The C# generates a
+    // code name (unused local `text`), touches DetermineHabitatSystemStar
+    // (no Rnd calls, side-effect free), then returns GenerateRandomNameAlt()
+    // — a string-table generator that isn't ported/available anywhere in the
+    // decompiled sources we have. We keep the known Rnd-consuming steps in
+    // order and use the generated code name as the moon's name.
+    // TODO(port): GenerateRandomNameAlt — source not available; using the
+    // code name generated above instead of the real alt-name text.
+    generateMoonName(moon: Habitat): string {
+        const codeName = this.generateCodeName();
+        this.determineHabitatSystemStar(moon);
+        return codeName;
+    }
+
     // Port of Galaxy.4.cs AssignSystemName(Habitat habitat, int PlanetCount)
     assignSystemName(habitat: Habitat, planetCount: number): boolean {
         let name = '';
         if (planetCount <= 0) {
-            // TODO(port): GenerateBlackHoleName for HabitatType.BlackHole — Galaxy.4.cs.
-            name = this.generateCodeName();
+            name = habitat.type === HabitatType.BlackHole ? this.generateBlackHoleName() : this.generateCodeName();
         } else {
             if (this.systemNames.length === 0) {
                 return false;
@@ -727,8 +753,6 @@ export class Galaxy {
     }
 
     // Port of Galaxy.5.cs SetResearchBonus(Habitat, bool definitelySet).
-    // ResearchBonusIndustry isn't modeled on Habitat yet (out of scope),
-    // so only the numeric bonus is applied. TODO(port): ResearchBonusIndustry.
     setResearchBonus(habitat: Habitat, definitelySet = false): void {
         switch (habitat.type) {
             case HabitatType.Neutron:
@@ -736,7 +760,7 @@ export class Galaxy {
             case HabitatType.SuperNova:
                 if (definitelySet || this.rnd.next(0, 4) > 0) {
                     habitat.researchBonus = this.rnd.next(5, 16);
-                    this.rnd.next(0, 3); // researchBonusIndustry roll
+                    habitat.researchBonusIndustry = this.rollResearchBonusIndustry();
                 }
                 break;
             case HabitatType.Volcanic:
@@ -744,49 +768,108 @@ export class Galaxy {
             case HabitatType.FrozenGasGiant:
                 if (definitelySet || this.rnd.next(0, 40) === 1) {
                     habitat.researchBonus = this.rnd.next(10, 31);
-                    this.rnd.next(0, 3); // researchBonusIndustry roll
+                    habitat.researchBonusIndustry = this.rollResearchBonusIndustry();
                 }
                 break;
         }
     }
 
+    // Shared IndustryType roll used by SetResearchBonus's two branches
+    // (Galaxy.5.cs 1952, the `switch (Rnd.Next(0, 3))` inside each branch).
+    private rollResearchBonusIndustry(): IndustryType {
+        switch (this.rnd.next(0, 3)) {
+            case 0:
+                return IndustryType.Weapon;
+            case 1:
+                return IndustryType.Energy;
+            case 2:
+                return IndustryType.HighTech;
+            default:
+                return IndustryType.Undefined;
+        }
+    }
+
     // Port of Galaxy.5.cs SetScenicFactor(Habitat, bool definitelySet).
-    // ScenicFeature/HasRings text/flags aren't modeled on Habitat yet
-    // (out of scope) — only scenicFactor is applied.
-    // TODO(port): ScenicFeature strings, HasRings — Galaxy.5.cs SetScenicFactor.
+    // TextResolver isn't ported (see the SuperNova-name comment above); the
+    // literal English format strings are used directly, matching that
+    // existing convention.
     setScenicFactor(habitat: Habitat, definitelySet = false): void {
+        const systemStar = this.determineHabitatSystemStar(habitat);
         switch (habitat.type) {
             case HabitatType.BarrenRock:
                 if ((habitat.category === HabitatCategoryType.Planet || habitat.category === HabitatCategoryType.Moon) && (definitelySet || this.rnd.next(0, 600) === 1)) {
                     habitat.scenicFactor = 0.1 + this.rnd.nextDouble() * 0.3;
+                    habitat.scenicFeature = `Ancient Monolith of ${systemStar.name}`;
                 }
                 break;
             case HabitatType.MarshySwamp:
             case HabitatType.Continental:
                 if (definitelySet || this.rnd.next(0, 70) === 1) {
                     habitat.scenicFactor = 0.2 + this.rnd.nextDouble() * 0.4;
-                    this.rnd.next(0, 2);
+                    switch (this.rnd.next(0, 2)) {
+                        case 0:
+                            habitat.scenicFeature = `Rings of ${systemStar.name}`;
+                            habitat.hasRings = true;
+                            break;
+                        case 1:
+                            habitat.scenicFeature = `${systemStar.name} Falls`;
+                            break;
+                    }
                 }
                 break;
             case HabitatType.Ocean:
                 if (definitelySet || this.rnd.next(0, 100) === 1) {
                     habitat.scenicFactor = 0.1 + this.rnd.nextDouble() * 0.3;
+                    habitat.scenicFeature = `Undersea Ruins of ${systemStar.name}`;
                 }
                 break;
             case HabitatType.Ice:
                 if (definitelySet || this.rnd.next(0, 200) === 1) {
                     habitat.scenicFactor = 0.2 + this.rnd.nextDouble() * 0.4;
+                    habitat.scenicFeature = `Ice Rings of ${systemStar.name}`;
+                    habitat.hasRings = true;
                 }
                 break;
             case HabitatType.Volcanic:
             case HabitatType.Desert:
                 if (definitelySet || this.rnd.next(0, 200) === 1) {
                     habitat.scenicFactor = 0.2 + this.rnd.nextDouble() * 0.4;
-                    this.rnd.next(0, 2);
+                    switch (this.rnd.next(0, 2)) {
+                        case 0: {
+                            let scenicFeature = `Rings of ${systemStar.name}`;
+                            if (habitat.type === HabitatType.Volcanic) {
+                                scenicFeature = `Fire Rings of ${systemStar.name}`;
+                            }
+                            habitat.scenicFeature = scenicFeature;
+                            habitat.hasRings = true;
+                            break;
+                        }
+                        case 1: {
+                            let scenicFeature = 'Great Canyon';
+                            if (systemStar.name.length < 15) {
+                                scenicFeature = `${systemStar.name} Canyon`;
+                            }
+                            habitat.scenicFeature = scenicFeature;
+                            break;
+                        }
+                    }
                 }
                 break;
-            // TODO(port): remaining scenic-feature cases (Galaxy.5.cs
-            // SetScenicFactor continues past line 2060) — out of scope here.
+            case HabitatType.BlackHole:
+                habitat.scenicFactor = 0.3 + this.rnd.nextDouble() * 0.6;
+                break;
+            case HabitatType.GasGiant:
+                if (definitelySet || this.rnd.next(0, 100) === 1) {
+                    habitat.scenicFactor = 0.2 + this.rnd.nextDouble() * 0.2;
+                }
+                break;
+            case HabitatType.Neutron:
+                if (definitelySet || this.rnd.next(0, 2) > 0) {
+                    habitat.scenicFactor = 0.3 + this.rnd.nextDouble() * 0.3;
+                }
+                break;
+            case HabitatType.SuperNova:
+                break;
         }
     }
 
@@ -2394,11 +2477,7 @@ export class Galaxy {
             }
             for (const moon of habitatList) {
                 if (moon.parent === h) {
-                    // Port of Galaxy.4.cs GenerateMoonName: not fully ported
-                    // (depends on DetermineHabitatSystemStar/GenerateRandomNameAlt
-                    // string generators, out of scope) — a code name is used
-                    // instead. TODO(port): GenerateMoonName — Galaxy.4.cs:2533.
-                    moon.name = this.generateCodeName();
+                    moon.name = this.generateMoonName(moon);
                     habitatList2.push(moon);
                 }
             }

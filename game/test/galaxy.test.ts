@@ -3,7 +3,7 @@ import { generateGalaxy, type Galaxy } from '../src/sim/galaxy';
 import type { GameData } from '../src/sim/data/gameData';
 import { determineAggressiveRaces, type EmpireStart } from '../src/sim/raceRegions';
 import { GalaxyLocationType } from '../src/sim/galaxyLocation';
-import { GalaxyShape, HabitatCategoryType, HabitatType } from '../src/sim/types';
+import { GalaxyShape, HabitatCategoryType, HabitatType, IndustryType } from '../src/sim/types';
 import { CreatureType } from '../src/sim/creature';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 
@@ -164,6 +164,75 @@ describe('generateGalaxy', () => {
         expect(galaxyA.habitats.map((h) => [h.category, h.name, h.type, h.xpos, h.ypos, h.diameter, h.orbitDistance])).toEqual(
             galaxyB.habitats.map((h) => [h.category, h.name, h.type, h.xpos, h.ypos, h.diameter, h.orbitDistance]),
         );
+    });
+
+    it('black holes get non-empty, word-list names', () => {
+        const galaxy = generateGalaxy({
+            seed: 2024,
+            shape: GalaxyShape.Spiral,
+            starCount: 700,
+            sectorWidth: 10,
+            sectorHeight: 10,
+            systemNames,
+        });
+
+        const blackHoles = galaxy.habitats.filter((h) => h.category === HabitatCategoryType.Star && h.type === HabitatType.BlackHole);
+        expect(blackHoles.length).toBeGreaterThan(0);
+        for (const star of blackHoles) {
+            expect(star.name.length).toBeGreaterThan(0);
+            expect(star.name).toMatch(/^\S+ \S+$/);
+        }
+    });
+
+    it('every moon has a non-empty name', () => {
+        const galaxy = generateGalaxy({
+            seed: 2024,
+            shape: GalaxyShape.Spiral,
+            starCount: 400,
+            sectorWidth: 10,
+            sectorHeight: 10,
+            systemNames,
+        });
+
+        const moons = galaxy.habitats.filter((h) => h.category === HabitatCategoryType.Moon);
+        expect(moons.length).toBeGreaterThan(0);
+        for (const moon of moons) {
+            expect(moon.name.length).toBeGreaterThan(0);
+        }
+    });
+
+    it('some habitats have a scenic feature (with a ring flag when applicable)', () => {
+        const galaxy = generateGalaxy({
+            seed: 2024,
+            shape: GalaxyShape.Spiral,
+            starCount: 700,
+            sectorWidth: 10,
+            sectorHeight: 10,
+            systemNames,
+        });
+
+        const scenic = galaxy.habitats.filter((h) => h.scenicFeature !== '');
+        expect(scenic.length).toBeGreaterThan(0);
+        for (const habitat of scenic) {
+            expect(typeof habitat.scenicFeature).toBe('string');
+            expect(habitat.scenicFactor).toBeGreaterThan(0);
+        }
+        expect(scenic.some((h) => h.hasRings)).toBe(true);
+    });
+
+    it('research-bonus habitats get a research bonus industry', () => {
+        const galaxy = generateGalaxy({
+            seed: 2024,
+            shape: GalaxyShape.Spiral,
+            starCount: 700,
+            sectorWidth: 10,
+            sectorHeight: 10,
+            systemNames,
+        });
+
+        const withBonus = galaxy.habitats.filter((h) => h.researchBonus > 0);
+        expect(withBonus.length).toBeGreaterThan(0);
+        expect(withBonus.some((h) => h.researchBonusIndustry !== IndustryType.Undefined)).toBe(true);
     });
 });
 
