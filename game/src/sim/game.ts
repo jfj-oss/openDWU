@@ -14,11 +14,13 @@
 //
 // Not ported yet (TODO(port), in C# order after the starting colonies):
 // ReviewEmpireTerritoryCore, resource/component price reviews, Galaxy.DoTasks,
-// pirates (GeneratePirateEmpire + placement, C2d), ruins, age-0 home asteroid
+// play-as-pirate (C2d covers AI pirate factions only), ruins, age-0 home asteroid
 // fields + slugs, special locations/characters/ships, empire flags.
-// Only non-pirate play; tech levels PreWarp (0) and Level 1-6 (the "Normal"
-// 0.5 path needs SetTechTreeStartingDefaults + empire policies).
+// Player plays a normal empire (play-as-pirate TODO); tech levels PreWarp (0),
+// Normal (0.5, SetTechTreeStartingDefaults) and Level 1-6. AI pirate factions
+// are generated when piratePrevalence > 0 (pirates.ts).
 
+import { generateNewPirateEmpires } from './pirates';
 import { Galaxy, generateGalaxy } from './galaxy';
 import { Empire } from './empire';
 import { generateEmpire } from './empireGeneration';
@@ -69,6 +71,14 @@ export interface CreateGameOptions {
     aiEmpires: EmpireStartOptions[];
     /** C# bool_6 "allow empires to start in the same system" (colony search variant). */
     allowEmpiresInSameSystem?: boolean;
+    /** Galaxy.PiratePrevalence (0 or unset = no pirate factions). */
+    piratePrevalence?: number;
+    /** Galaxy.PirateProximity: 0 near (default), 1 medium, 2 far. */
+    pirateProximity?: number;
+    /** Galaxy.MaximumEmpireAmount (defaults to player + AI count). */
+    maximumEmpireAmount?: number;
+    /** Galaxy.DifficultyLevel (default 1.0). */
+    difficultyLevel?: number;
     /** Galaxy.EmpireTerritoryColonyInfluenceRangeFactor from the wizard (<= 0 = auto). */
     empireTerritoryColonyInfluenceRangeFactor?: number;
 }
@@ -747,7 +757,19 @@ export function createGame(opts: CreateGameOptions): Game {
     }
     galaxy.updateSystemInfo();
     independentColonies = reviewIndependentColonies(galaxy);
-    void independentColonies;
+    // Pirate factions: Galaxy.DoTasks → GenerateNewPirateEmpires on the first tick
+    // after empire generation (Start.2.cs galaxy.DoTasks); see pirates.ts.
+    if ((opts.piratePrevalence ?? 0) > 0) {
+        generateNewPirateEmpires(
+            galaxy,
+            { independentColonies, startingAge: opts.player.age, difficultyLevel: opts.difficultyLevel ?? 1.0 },
+            {
+                piratePrevalence: opts.piratePrevalence ?? 0,
+                pirateProximity: opts.pirateProximity ?? 0,
+                maximumEmpireAmount: opts.maximumEmpireAmount ?? 1 + opts.aiEmpires.length,
+            },
+        );
+    }
     // TODO(port): the rest of CreateGameFromSettings (see header).
     return { galaxy, playerEmpire: empire2, viewX, viewY };
 }

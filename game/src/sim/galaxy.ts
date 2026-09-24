@@ -25,6 +25,7 @@ import type { Race } from './data/races';
 import type { Resource } from './data/resources';
 import { buildResourceSystem, type ResourceSystem } from './resourceSystem';
 import { netSort } from './netSort';
+import { SystemVisibilityStatus } from './visibility';
 import { EmpireTerritory, strategicValue } from './territory';
 import { buildResearchStatic, type ResearchStatic } from './researchSystem';
 
@@ -490,6 +491,37 @@ export class Galaxy {
         });
     }
 
+    // Port of Galaxy.7.cs FindNearestHabitatWithResource(x, y, resourceId) (2462 → 2476 /
+    // InIndex 2788): nearest habitat carrying the resource. habitatToExclude/empire/
+    // systemToExclude are null and allowBases is true on this overload.
+    findNearestHabitatWithResource(x: number, y: number, resourceId: number): Habitat | null {
+        return this.ringSearch(x, y, (cx, cy) => {
+            let habitat: Habitat | null = null;
+            let distance = Number.MAX_VALUE;
+            for (const h of this.habitatIndexGrid[cx][cy]) {
+                if (h.resources.length <= 0) continue;
+                if (h.resources.some((r) => r.resourceId === resourceId)) {
+                    const num2 = this.calculateDistanceSquared(x, y, h.xpos, h.ypos);
+                    if (num2 < distance) {
+                        habitat = h;
+                        distance = num2;
+                    }
+                }
+            }
+            if (habitat !== null) distance = this.calculateDistance(x, y, habitat.xpos, habitat.ypos);
+            return { item: habitat, distance };
+        });
+    }
+
+    /** Galaxy.MaxSolarSystemSize. */
+    get maxSolarSystemSize(): number {
+        return MAX_SOLAR_SYSTEM_SIZE;
+    }
+    /** Galaxy.MaximumEmpireCount (Galaxy.3.cs 5034). */
+    get maximumEmpireCount(): number {
+        return MAXIMUM_EMPIRE_COUNT;
+    }
+
     // Port of Galaxy.7.cs FindNearestHabitat(x, y, type, exclude) (2332/2730).
     findNearestHabitatOfType(x: number, y: number, habitatType: HabitatType, habitatToExclude: Habitat | null = null): Habitat | null {
         const ix = Math.trunc(x);
@@ -633,6 +665,21 @@ export class Galaxy {
         }
         const num2 = minimumExitDistance + this.rnd.nextDouble() * minimumExitDistance * 0.4;
         return { x: Math.cos(num) * num2, y: Math.sin(num) * num2 };
+    }
+
+    // Port of Galaxy.6.cs FastFindNearestUnexploredSystem (3944) /
+    // GenerateDistanceOrderedSystemListUnexplored (3920): Unexplored/Undefined systems
+    // sorted by squared distance with List.Sort (unstable, netSort); first element.
+    fastFindNearestUnexploredSystem(x: number, y: number, empire: Empire): Habitat | null {
+        const list: { s: SystemInfo; d: number }[] = [];
+        for (const s of this.systems) {
+            const st = empire.visibility.systemVisibility[s.systemStar.systemIndex].status;
+            if (st === SystemVisibilityStatus.Unexplored || st === SystemVisibilityStatus.Undefined) {
+                list.push({ s, d: this.calculateDistanceSquared(x, y, s.systemStar.xpos, s.systemStar.ypos) });
+            }
+        }
+        netSort(list, (a, b) => (a.d < b.d ? -1 : a.d > b.d ? 1 : 0));
+        return list.length > 0 ? list[0].s.systemStar : null;
     }
 
     // Port of Galaxy.6.cs FastFindNearestSystem (line 3648) / FindNearestSystemInIndex
@@ -937,7 +984,7 @@ export class Galaxy {
     }
 
     // Port of Galaxy.6.cs CalculateDistanceSquared
-    private calculateDistanceSquared(x1: number, y1: number, x2: number, y2: number): number {
+    calculateDistanceSquared(x1: number, y1: number, x2: number, y2: number): number {
         const dx = x1 - x2;
         const dy = y1 - y2;
         return dx * dx + dy * dy;

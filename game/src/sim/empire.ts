@@ -15,8 +15,15 @@ import type { Race } from './data/races';
 import type { Government } from './data/governments';
 import { START_STAR_DATE } from './galaxyTime';
 import { Cargo, CargoList, ResourceRef, TroopList } from './cargo';
-import { checkEmpireColorUsed, selectColorFromKey, selectComplementaryColorKey, selectUnusedMainColor } from './empireColors';
+import {
+    checkEmpireColorUsed,
+    determineSecondaryColor,
+    selectColorFromKey,
+    selectComplementaryColorKey,
+    selectUnusedMainColor,
+} from './empireColors';
 import { ResearchSystem, ResearchAbilityType } from './researchSystem';
+import type { PiratePlayStyle, PirateFactionModifiers } from './pirates';
 import { defaultEmpirePolicy, type EmpirePolicy as PolicyData } from './data/policies';
 import { EmpireVisibility, SystemVisibilityStatus, type SystemVisibility, type VisibilityOwner, type VisibilityUnit } from './visibility';
 
@@ -72,6 +79,15 @@ export enum BuiltObjectSubRole {
 
 
 // TODO(port): EmpireCounters — EmpireCounters.cs.
+// Race.cs DefaultMainColorPirates (line 726): Color.FromArgb(R/2, G/2, B/2)
+// using C# integer division.
+function halveRgb(color: number): number {
+    const r = (color >> 16) & 0xff;
+    const g = (color >> 8) & 0xff;
+    const b = color & 0xff;
+    return (((r / 2) | 0) << 16) | (((g / 2) | 0) << 8) | ((b / 2) | 0);
+}
+
 class EmpireCounters {
     constructor(_empire: Empire) {}
 }
@@ -158,6 +174,19 @@ export class Empire {
     diplomaticRelations: unknown[] = [];
     proposedDiplomaticRelations: unknown[] = [];
     colonies: Habitat[] = [];
+    // Pirate-faction state (Galaxy.8.cs GeneratePirateEmpire; task C2d).
+    piratePlayStyle: PiratePlayStyle = 0 as PiratePlayStyle;
+    pirateEmpireBaseHabitat: Habitat | null = null;
+    pirateEmpireSuperPirates = false;
+    pirateFactionModifiers: PirateFactionModifiers | null = null;
+    knownPirateEmpires: Empire[] = [];
+    /** Empires whose PirateRelation is no longer NotMet (full PirateRelation model TODO). */
+    metPirateRelations = new Set<Empire>();
+    colonizationTargets: { habitat: Habitat; priority: number }[] = [];
+    // Galaxy.SetEmpireDifficultyFactors (pirates.ts setEmpireDifficultyFactors).
+    difficultyLevel = 1.0;
+    difficultyLevelModifier = 0.0;
+    difficultyFactors: Record<string, number> | null = null;
     constructionYards: unknown[] = [];
     distressSignals: unknown[] = [];
     manufacturers: unknown[] = [];
@@ -297,11 +326,44 @@ export class Empire {
             this.secondaryColor = 0x606060;
         }
         if (homeHabitat !== null) {
-            // TODO(port): FastFindNearestUnexploredSystem exploration around the home habitat.
             this.resourceMap.setResourcesKnown(galaxy.systems[homeHabitat.systemIndex].systemStar, true);
+            // (C# loops `k > Habitats.Count` here, so the home system's habitats are never marked.)
+            const num = Math.trunc(2.0 * Math.sqrt(galaxy.starCount));
+            for (let l = 0; l < num; l++) {
+                const habitat = galaxy.fastFindNearestUnexploredSystem(homeHabitat.xpos, homeHabitat.ypos, this);
+                if (habitat !== null) {
+                    this.visibility.systemVisibility[habitat.systemIndex].status = SystemVisibilityStatus.Explored;
+                    this.resourceMap.setResourcesKnown(galaxy.systems[habitat.systemIndex].systemStar, true);
+                    for (const h of galaxy.systemHabitatsOf(habitat.systemIndex)) this.resourceMap.setResourcesKnown(h, true);
+                }
+            }
         } else {
             for (const h of galaxy.habitats) this.resourceMap.setResourcesKnown(h, true);
             for (const v of this.visibility.systemVisibility) v.status = SystemVisibilityStatus.Visible;
+        }
+        if (galaxy.age > 0) {
+            // Empire.cs 4275: meet empires whose explored space overlaps (one Rnd.Next(0,3) per
+            // mutually explored system until the first hit).
+            for (const empire of galaxy.empires) {
+                if (!empire.active || empire === this) continue;
+                for (const systemInfo of galaxy.systems) {
+                    const idx = systemInfo.systemStar.systemIndex;
+                    const status = empire.visibility.systemVisibility[idx].status;
+                    const status2 = this.visibility.systemVisibility[idx].status;
+                    const seen = (st: SystemVisibilityStatus) => st === SystemVisibilityStatus.Explored || st === SystemVisibilityStatus.Visible;
+                    let flag = false;
+                    if (seen(status2) && status === SystemVisibilityStatus.Visible) flag = true;
+                    if (seen(status) && seen(status2) && galaxy.rnd.next(0, 3) === 1) flag = true;
+                    if (!flag) continue;
+                    if (!this.metPirateRelations.has(empire)) {
+                        // ChangePirateRelation(empire, None): PirateRelation model not ported beyond met/not-met.
+                        this.metPirateRelations.add(empire);
+                        if (this.pirateEmpireBaseHabitat !== null && !empire.knownPirateEmpires.includes(this)) empire.knownPirateEmpires.push(this);
+                        if (empire.pirateEmpireBaseHabitat !== null && !this.knownPirateEmpires.includes(empire)) this.knownPirateEmpires.push(empire);
+                    }
+                    break;
+                }
+            }
         }
         this.stateMoney = 30000.0;
         this.privateMoney = 100000.0;
@@ -785,8 +847,7 @@ export class Empire {
         return text;
     }
 
-    // Port of Empire.cs SelectEmpireColors (line 4385), non-pirate path.
-    // TODO(port): pirate-faction branch (DefaultMainColorPirates, DetermineSecondaryColor) — C2d.
+    // Port of Empire.cs SelectEmpireColors (line 4385).
     selectEmpireColors(isPirateFaction: boolean, setColors: (main: number, secondary: number) => void): void {
         let flag = false;
         let mainColor = 0;
@@ -795,7 +856,14 @@ export class Empire {
         while (iterationCount < 200 && !flag) {
             iterationCount++;
             const race = this.dominantRace;
-            const color = race !== null ? selectColorFromKey(race.defaultPrimaryColor) : 0;
+            // DominantRace.DefaultMainColorPirates = half the RGB channels of
+            // DefaultMainColor (Race.cs 726).
+            const color =
+                race !== null
+                    ? isPirateFaction
+                        ? halveRgb(selectColorFromKey(race.defaultPrimaryColor))
+                        : selectColorFromKey(race.defaultPrimaryColor)
+                    : 0;
             if (race !== null && !checkEmpireColorUsed(this.galaxy, isPirateFaction, color)) {
                 mainColor = color;
                 secondaryColor = selectColorFromKey(race.defaultSecondaryColor);
@@ -803,10 +871,13 @@ export class Empire {
                 const u = selectUnusedMainColor(this.galaxy, isPirateFaction);
                 mainColor = u.color;
                 if (u.unusedColorKey < 0) {
-                    secondaryColor = selectColorFromKey(this.galaxy.rnd.next(0, 23));
+                    secondaryColor = isPirateFaction ? 0xfefefe : selectColorFromKey(this.galaxy.rnd.next(0, 23));
                 } else {
                     secondaryColor = selectColorFromKey(selectComplementaryColorKey(u.unusedColorKey));
                 }
+            }
+            if (isPirateFaction) {
+                secondaryColor = determineSecondaryColor(mainColor);
             }
             flag = true;
             for (const e of isPirateFaction ? this.galaxy.pirateEmpires : this.galaxy.empires) {
