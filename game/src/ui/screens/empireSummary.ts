@@ -126,12 +126,12 @@ function createEmpireSummary(src: EmpireSummarySource): OpenState {
         open = null;
     }
 
-    // Escape closes the panel; stopPropagation keeps the global game-menu
+    // Escape closes the panel; stopImmediatePropagation keeps the global game-menu (and other open panels)
     // Escape handler (registered in createHud) from opening as well.
     function onKeyDown(e: KeyboardEvent): void {
         if (e.key === 'Escape') {
             e.preventDefault();
-            e.stopPropagation();
+            e.stopImmediatePropagation();
             close();
         }
     }
