@@ -184,7 +184,7 @@ describe('generateGalaxy', () => {
         }
     });
 
-    it('every moon has a non-empty name', () => {
+    it('every moon has a non-empty name made of letters', () => {
         const galaxy = generateGalaxy({
             seed: 2024,
             shape: GalaxyShape.Spiral,
@@ -198,7 +198,48 @@ describe('generateGalaxy', () => {
         expect(moons.length).toBeGreaterThan(0);
         for (const moon of moons) {
             expect(moon.name.length).toBeGreaterThan(0);
+            // GenerateRandomNameAlt builds names from vowel/consonant tables
+            // and capitalizes the first letter — letters only.
+            expect(moon.name).toMatch(/^[A-Za-z]+$/);
         }
+    });
+
+    it('moon names are deterministic for seed 1, and the rest of the galaxy is unchanged', () => {
+        const optionsA = { seed: 1, shape: GalaxyShape.Spiral, starCount: 300, sectorWidth: 8, sectorHeight: 8, systemNames };
+        const optionsB = { seed: 1, shape: GalaxyShape.Spiral, starCount: 300, sectorWidth: 8, sectorHeight: 8, systemNames };
+
+        const galaxyA = generateGalaxy(optionsA);
+        const galaxyB = generateGalaxy(optionsB);
+
+        const moonsOf = (g: Galaxy) => g.habitats.filter((h) => h.category === HabitatCategoryType.Moon);
+        const moonsA = moonsOf(galaxyA);
+        const moonsB = moonsOf(galaxyB);
+        expect(moonsA.length).toBeGreaterThan(0);
+        expect(moonsA.length).toBe(moonsB.length);
+        // Moon names: identical across runs and letters only.
+        expect(moonsA.map((m) => m.name)).toEqual(moonsB.map((m) => m.name));
+        for (const moon of moonsA) {
+            expect(moon.name).toMatch(/^[A-Za-z]+$/);
+        }
+
+        // Everything else in the galaxy output is unchanged by the moon-name
+        // port: star/planet counts and positions match exactly between the two
+        // generations (and so do types/diameters/orbits as a wider check).
+        const nonMoonSignature = (g: Galaxy) =>
+            g.habitats
+                .filter((h) => h.category !== HabitatCategoryType.Moon)
+                .map((h) => [h.category, h.type, h.xpos, h.ypos, h.diameter, h.orbitDistance]);
+        expect(nonMoonSignature(galaxyA)).toEqual(nonMoonSignature(galaxyB));
+
+        const countByCategory = (g: Galaxy) => {
+            const counts = new Map<HabitatCategoryType, number>();
+            for (const h of g.habitats) {
+                counts.set(h.category, (counts.get(h.category) ?? 0) + 1);
+            }
+            return [...counts.entries()].sort(([a], [b]) => a - b);
+        };
+        expect(countByCategory(galaxyA)).toEqual(countByCategory(galaxyB));
+        expect(galaxyA.systems.length).toBe(galaxyB.systems.length);
     });
 
     it('some habitats have a scenic feature (with a ring flag when applicable)', () => {

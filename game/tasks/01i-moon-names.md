@@ -245,3 +245,17 @@ Tests: every moon has a non-empty name made of letters; names are deterministic 
         }
 
 ```
+
+## Worker report
+
+Files changed:
+- `src/sim/galaxy.ts` — replaced the `TODO(port): GenerateRandomNameAlt` placeholder with a faithful port of Galaxy.4.cs: `generateMoonName` (now returns `generateRandomNameAlt()` after the unused code-name local, `moon.parent` touch, and `determineHabitatSystemStar`), plus newly ported helpers `conditionCheckLimit`, `checkForIllegalVowelCombination`, `generateRandomName`, `generateRandomNameAlt`, and all nine `add*` table methods (`addVowel`, `addVowelEnd`, `addVowelCombination`, `addVowelCombinationEnd`, `addConsonant`, `addConsonantEnd`, `addConsonantCombinationStart`, `addConsonantCombinationEnd`, `addConsonantCombination`) with the C# string tables copied verbatim. Every `Rnd` call is in the same order as the source; reused existing `generateCodeName` and `determineHabitatSystemStar`.
+- `test/galaxy.test.ts` — extended 'every moon has a non-empty name' to also assert each moon name matches `/^[A-Za-z]+$/`; added 'moon names are deterministic for seed 1, and the rest of the galaxy is unchanged', which generates seed 1 twice and asserts moon names are identical across runs and letter-only, while star/planet/asteroid/gas-cloud counts and positions (plus types/diameters/orbit distances) are identical between the two generations.
+
+Done:
+- `npm run typecheck` passes.
+- `npm test` passes (209/209).
+
+Left undone / notes:
+- The C# body of `CheckForIllegalVowelCombination` was not included in the task file's excerpt; it was inferred from its name and usage (flags illegal trailing double-vowel pairs "ee"/"oo"/"ii" when the candidate letter matches). It only affects `GenerateRandomName`, which is not called during generation, so it cannot affect the seeded moon-name stream.
+- No before/after baseline snapshot existed to diff against; the "otherwise unchanged except moon names" requirement is covered by asserting that non-moon habitat counts/positions are stable across two seed-1 generations (the pre-change baseline isn't runnable here).

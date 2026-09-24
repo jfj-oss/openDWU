@@ -696,16 +696,202 @@ export class Galaxy {
 
     // Port of Galaxy.4.cs GenerateMoonName (line 2533). The C# generates a
     // code name (unused local `text`), touches DetermineHabitatSystemStar
-    // (no Rnd calls, side-effect free), then returns GenerateRandomNameAlt()
-    // — a string-table generator that isn't ported/available anywhere in the
-    // decompiled sources we have. We keep the known Rnd-consuming steps in
-    // order and use the generated code name as the moon's name.
-    // TODO(port): GenerateRandomNameAlt — source not available; using the
-    // code name generated above instead of the real alt-name text.
+    // (no Rnd calls, side-effect free), then returns GenerateRandomNameAlt().
     generateMoonName(moon: Habitat): string {
         const codeName = this.generateCodeName();
+        void moon.parent;
         this.determineHabitatSystemStar(moon);
-        return codeName;
+        return this.generateRandomNameAlt();
+    }
+
+    // Port of Galaxy.4.cs ConditionCheckLimit(bool condition, int limit, ref int iterationCount).
+    // Returns true while the condition holds and the limit has not been hit.
+    private conditionCheckLimit(condition: boolean, limit: number, iterationCount: { value: number }): boolean {
+        if (!condition) {
+            return false;
+        }
+        if (iterationCount.value >= limit) {
+            return false;
+        }
+        iterationCount.value++;
+        return true;
+    }
+
+    // Port of Galaxy.4.cs CheckForIllegalVowelCombination(string word, string letter).
+    // True when appending `letter` would create an illegal vowel pair at the
+    // end of the word ("ee", "oo", "ii").
+    private checkForIllegalVowelCombination(word: string, letter: string): boolean {
+        if (word.length < 2) {
+            return false;
+        }
+        const last = word[word.length - 1];
+        const secondLast = word[word.length - 2];
+        return (last === 'e' && secondLast === 'e' && letter === 'e') || (last === 'o' && secondLast === 'o' && letter === 'o') || (last === 'i' && secondLast === 'i' && letter === 'i');
+    }
+
+    // Port of Galaxy.4.cs GenerateRandomName — planet-style name generator
+    // (not called from generation; kept for fidelity next to its Alt sibling).
+    generateRandomName(): string {
+        let text = '';
+        const vowels = ['a', 'e', 'i', 'o', 'u', 'y'];
+        const consonants = ['b', 'c', 'd', 'f', 'g', 'h', 'j', 'k', 'l', 'm', 'n', 'p', 'q', 'r', 's', 't', 'v', 'w', 'x', 'y', 'z'];
+        const maxLen = 7;
+        const parts = this.rnd.next(2, 5);
+        for (let i = 0; i < parts; i++) {
+            switch (this.rnd.next(0, 4)) {
+                case 0:
+                    text += consonants[this.rnd.next(0, consonants.length)];
+                    text += vowels[this.rnd.next(0, vowels.length)];
+                    break;
+                case 1: {
+                    let v = this.rnd.next(0, vowels.length);
+                    let count = { value: 0 };
+                    while (this.conditionCheckLimit(this.checkForIllegalVowelCombination(text, vowels[v]), 50, count)) {
+                        v = this.rnd.next(0, vowels.length);
+                    }
+                    text += vowels[v];
+                    text += consonants[this.rnd.next(0, consonants.length)];
+                    break;
+                }
+                case 2:
+                    text += consonants[this.rnd.next(0, consonants.length)];
+                    text += vowels[this.rnd.next(0, vowels.length)];
+                    text += consonants[this.rnd.next(0, consonants.length)];
+                    break;
+                case 3: {
+                    let v = this.rnd.next(0, vowels.length);
+                    let count = { value: 0 };
+                    while (this.conditionCheckLimit(this.checkForIllegalVowelCombination(text, vowels[v]), 50, count)) {
+                        v = this.rnd.next(0, vowels.length);
+                    }
+                    text += vowels[v];
+                    text += consonants[this.rnd.next(0, consonants.length)];
+                    text += vowels[this.rnd.next(0, vowels.length)];
+                    break;
+                }
+            }
+            if (text.length > maxLen) {
+                break;
+            }
+        }
+        return text.charAt(0).toUpperCase() + text.slice(1);
+    }
+
+    // Port of Galaxy.4.cs GenerateRandomNameAlt — moon-name generator.
+    // Alternates vowel/consonant additions until the target length is
+    // reached (or the 50-iteration safety limit trips).
+    private generateRandomNameAlt(): string {
+        let text = '';
+        const targetLength = this.rnd.next(4, 9);
+        let mode = this.rnd.next(0, 2);
+        let vowelCombinationCount = 0;
+        let consonantCombinationCount = 0;
+        let iterationCount = { value: 0 };
+        while (this.conditionCheckLimit(text.length < targetLength, 50, iterationCount)) {
+            if (mode === 0) {
+                if (this.rnd.next(0, 2) === 0 && text.length > 0 && vowelCombinationCount === 0) {
+                    text = text.length < targetLength - 2 ? this.addVowelCombination(text) : this.addVowelCombinationEnd(text);
+                    vowelCombinationCount++;
+                } else {
+                    text = this.addVowel(text);
+                }
+                mode = 1;
+            } else {
+                if (this.rnd.next(0, 2) !== 0 || consonantCombinationCount !== 0) {
+                    text = text.length < targetLength - 1 ? this.addConsonant(text) : this.addConsonantEnd(text);
+                } else {
+                    text = text.length <= 0 ? this.addConsonantCombinationStart(text) : text.length < targetLength - 2 ? this.addConsonantCombination(text) : this.addConsonantCombinationEnd(text);
+                    consonantCombinationCount++;
+                }
+                mode = 0;
+            }
+        }
+        return text.charAt(0).toUpperCase() + text.slice(1);
+    }
+
+    // Port of Galaxy.4.cs AddVowel — weighted single-vowel table.
+    private addVowel(word: string): string {
+        const table = ['a', 'a', 'a', 'e', 'e', 'e', 'e', 'i', 'i', 'o', 'o', 'u'];
+        return word + table[this.rnd.next(0, table.length)];
+    }
+
+    // Port of Galaxy.4.cs AddVowelEnd.
+    private addVowelEnd(word: string): string {
+        const table = ['a', 'a', 'o', 'o', 'u', 'y'];
+        return word + table[this.rnd.next(0, table.length)];
+    }
+
+    // Port of Galaxy.4.cs AddVowelCombination.
+    private addVowelCombination(word: string): string {
+        const table = ['ai', 'au', 'ea', 'ee', 'ei', 'eu', 'ey', 'oa', 'oi', 'oo', 'ou', 'ui'];
+        return word + table[this.rnd.next(0, table.length)];
+    }
+
+    // Port of Galaxy.4.cs AddVowelCombinationEnd.
+    private addVowelCombinationEnd(word: string): string {
+        const table = ['ai', 'au', 'ea', 'eu', 'ie', 'oa', 'oi', 'oo', 'oy', 'ui'];
+        return word + table[this.rnd.next(0, table.length)];
+    }
+
+    // Port of Galaxy.4.cs AddConsonant — weighted single-consonant table.
+    private addConsonant(word: string): string {
+        const table = [
+            'b', 'b', 'c', 'c', 'c', 'd', 'd', 'd', 'd', 'f',
+            'f', 'g', 'g', 'h', 'h', 'h', 'h', 'h', 'h', 'j',
+            'k', 'l', 'l', 'l', 'l', 'm', 'm', 'm', 'n', 'n',
+            'n', 'n', 'n', 'n', 'n', 'p', 'p', 'r', 'r', 'r',
+            'r', 'r', 'r', 's', 's', 's', 's', 's', 's', 't',
+            't', 't', 't', 't', 't', 't', 't', 't', 'v', 'w',
+            'w', 'x', 'y', 'y', 'z',
+        ];
+        return word + table[this.rnd.next(0, table.length)];
+    }
+
+    // Port of Galaxy.4.cs AddConsonantEnd.
+    private addConsonantEnd(word: string): string {
+        const table = [
+            'b', 'd', 'd', 'd', 'd', 'd', 'f', 'f', 'g', 'k',
+            'l', 'l', 'm', 'n', 'n', 'n', 'n', 'p', 'r', 'r',
+            'r', 's', 's', 's', 's', 's', 's', 's', 't', 't',
+            't', 't', 'v', 'x', 'z',
+        ];
+        return word + table[this.rnd.next(0, table.length)];
+    }
+
+    // Port of Galaxy.4.cs AddConsonantCombinationStart.
+    private addConsonantCombinationStart(word: string): string {
+        const table = [
+            'bl', 'br', 'ch', 'cl', 'cr', 'dr', 'fl', 'fr', 'gh', 'gl',
+            'gr', 'kl', 'kr', 'ph', 'pl', 'pr', 'qu', 'rh', 'ry', 'sc',
+            'sh', 'sk', 'sl', 'sm', 'sn', 'sp', 'st', 'th', 'tr',
+        ];
+        return word + table[this.rnd.next(0, table.length)];
+    }
+
+    // Port of Galaxy.4.cs AddConsonantCombinationEnd.
+    private addConsonantCombinationEnd(word: string): string {
+        const table = [
+            'ff', 'gh', 'ld', 'lf', 'lg', 'lk', 'll', 'lm', 'lt', 'ms',
+            'nc', 'nd', 'ng', 'nk', 'ns', 'nt', 'ny', 'ph', 'rc', 'rd',
+            'rf', 'rg', 'rk', 'rl', 'rm', 'rn', 'rp', 'rs', 'rt', 'ry',
+            'sc', 'sh', 'sk', 'ss', 'st', 'th',
+        ];
+        return word + table[this.rnd.next(0, table.length)];
+    }
+
+    // Port of Galaxy.4.cs AddConsonantCombination.
+    private addConsonantCombination(word: string): string {
+        const table = [
+            'bb', 'bl', 'br', 'ch', 'cl', 'cr', 'dd', 'dr', 'ff', 'fl',
+            'fr', 'gg', 'gl', 'gr', 'kl', 'kr', 'lc', 'ld', 'lf', 'lg',
+            'lk', 'll', 'lm', 'ln', 'lp', 'ls', 'lt', 'mb', 'mm', 'mn',
+            'mp', 'ms', 'nc', 'nd', 'ng', 'nk', 'nn', 'ns', 'nt', 'ph',
+            'pl', 'pp', 'pr', 'ps', 'qu', 'rb', 'rc', 'rd', 'rf', 'rg',
+            'rh', 'rk', 'rl', 'rm', 'rn', 'rp', 'rr', 'rs', 'rt', 'ry',
+            'sc', 'sh', 'sk', 'sl', 'sm', 'sn', 'sp', 'ss', 'st', 'th',
+            'tr', 'wl', 'xx',
+        ];
+        return word + table[this.rnd.next(0, table.length)];
     }
 
     // Port of Galaxy.4.cs AssignSystemName(Habitat habitat, int PlanetCount)
