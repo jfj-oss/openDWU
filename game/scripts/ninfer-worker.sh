@@ -28,7 +28,7 @@ case "$task" in *.fix[0-9].md) base="${task%.fix?.md}.md"; [ -f "$base" ] && gre
 if [ "$locked" = 1 ]; then
   prompt="$prompt Everything you need is in the task file (source excerpts are pasted in it). Do not search for anything else: you cannot access the original game files. Only edit the files the task names. Start editing immediately."
   allowed=("Read" "Edit" "Write" "Glob" "Grep" "TodoWrite" "Bash(npm:*)" "Bash(npx:*)" "Bash(node:*)" "Bash(mkdir:*)")
-  denied+=("Read(//home/justinf/.local/share/Steam/**)" "Read(**/public/assets/**)" "Read(//home/justinf/data/**)")
+  denied+=("Bash(node -e:*)" "Bash(node --eval:*)" "Bash(node -p:*)" "Read(//home/justinf/.local/share/Steam/**)" "Read(**/public/assets/**)" "Read(//home/justinf/data/**)")
 fi
 exec env \
   ANTHROPIC_BASE_URL="http://127.0.0.1:$port" \
