@@ -14,7 +14,7 @@ import { createGame, type CreateGameOptions } from './sim/game';
 import { parseSystemNames } from './sim/data';
 import { loadGameData, type FetchText, type GameData } from './sim/data/gameData';
 import { GalaxyShape } from './sim/types';
-import { createHud, layoutHud, nearestSystemName, pushHudMessage, type HudRefs } from './ui/hud';
+import { clearHudMessages, createHud, layoutHud, nearestSystemName, pushHudMessage, type HudRefs } from './ui/hud';
 import { GalaxyTime } from './sim/clock';
 import { START_STAR_DATE } from './sim/galaxyTime';
 import { formatClockLabel, SECTOR_LEVEL_ZOOM, SYSTEM_LEVEL_ZOOM, type Selection } from './ui/hud';
@@ -402,6 +402,8 @@ export async function startGameView(game: Game, zoomOverride?: number, extraBoot
         shortcuts.destroy();
         hud.gameMenu?.destroy();
         setGameMenuHandler(null);
+        // The ticker buffer is module-level; the next game starts fresh.
+        clearHudMessages();
     };
 
     return time;
