@@ -1,5 +1,8 @@
 // Diplomacy model: port of DiplomaticRelationType.cs, DiplomaticStrategy.cs,
 // DiplomaticRelation.cs, DiplomaticRelationList.cs, YearlyTradeValue(.List).cs,
+// WarObjective.cs, WarEndReason.cs, EmpireEvaluation(.List).cs (M4r),
+// Empire.4.cs ObtainEmpireEvaluation (106), GovernmentBiasList.GetBias / GovernmentAttributes.NaturalAffinity,
+// the diplomatic counters of EmpireCounters.cs (M4r),
 // the Empire methods Empire.4.cs ObtainDiplomaticRelation (137) and
 // Empire.9.cs ResolveEmpiresToDefendAgainst (1696), and the Start.2.cs
 // 1376-1427 block in which the starting empires meet each other
@@ -19,6 +22,7 @@ import type { BuiltObject } from './builtObject';
 import { REAL_SECONDS_IN_GALACTIC_YEAR } from './galaxyTime';
 import { SystemVisibilityStatus } from './visibility';
 import { PirateRelationType } from './pirateRelations';
+import { resolveStandardRaceBias } from './raceBias';
 
 // DiplomaticRelationType.cs (byte enum; member order exact).
 export enum DiplomaticRelationType {
@@ -75,11 +79,24 @@ export class YearlyTradeValueList {
     }
 }
 
-/**
- * TODO(port): WarObjective (WarObjective.cs) — null on every relation created at game start
- * (only the war-planning code in Empire.9.cs assigns it).
- */
-type WarObjective = unknown;
+// WarObjective.cs (member order exact).
+export enum WarObjective {
+    Undefined,
+    TotalConquest,
+    CaptureObjectives,
+    EndWar,
+}
+
+// WarEndReason.cs (byte enum; member order exact).
+export enum WarEndReason {
+    Undefined,
+    ObjectivesMet,
+    WarWearinessExceeded,
+    WantEnd,
+    AtWarWithOtherEmpires,
+    HeavyLosses,
+    NoAttackFleets,
+}
 
 // DiplomaticRelation.cs
 export class DiplomaticRelation {
@@ -103,7 +120,7 @@ export class DiplomaticRelation {
     militaryRefuelingToOther = false;
     miningRightsToOther = false;
     strategy: DiplomaticStrategy = DiplomaticStrategy.Undefined;
-    warObjective: WarObjective = null;
+    warObjective: WarObjective = WarObjective.Undefined;
     warObjectiveColonies: Habitat[] = [];
     warObjectiveBases: BuiltObject[] = [];
     /** [NonSerialized] double SortTag. */
@@ -202,23 +219,31 @@ export class DiplomaticRelation {
         return totalTradeValue;
     }
 
-    /**
-     * DiplomaticRelation.cs 160 AnnualTradeBonus.
-     * TODO(port): Galaxy.TradeBonusMaximumFreeTrade(Amount) / TradeBonusMaximumMutualDefense(Amount)
-     * statics are not in the TS Galaxy; TradeBonus is 0.0 on every game-start relation, so the
-     * result is 0 whenever those statics are finite. Throws for the treaty types until ported.
-     */
+    /** DiplomaticRelation.cs 140 AnnualTradeBonus (Galaxy.3.cs 5064-5067 TradeBonusMaximum* statics). */
     get annualTradeBonus(): number {
+        let val1 = 0.0;
         switch (this.type) {
-            case DiplomaticRelationType.FreeTradeAgreement:
+            case DiplomaticRelationType.FreeTradeAgreement: {
+                const maximumFreeTrade = TRADE_BONUS_MAXIMUM_FREE_TRADE;
+                val1 = TRADE_BONUS_MAXIMUM_FREE_TRADE_AMOUNT / maximumFreeTrade;
+                break;
+            }
             case DiplomaticRelationType.MutualDefensePact:
-            case DiplomaticRelationType.Protectorate:
-                throw new Error('TODO(port): DiplomaticRelation.cs AnnualTradeBonus (Galaxy.TradeBonusMaximum* statics)');
+            case DiplomaticRelationType.Protectorate: {
+                const maximumMutualDefense = TRADE_BONUS_MAXIMUM_MUTUAL_DEFENSE;
+                val1 = TRADE_BONUS_MAXIMUM_MUTUAL_DEFENSE_AMOUNT / maximumMutualDefense;
+                break;
+            }
         }
-        const val1 = 0.0;
         return this.tradeBonus * Math.min(val1, this.normalizedAnnualTradeValue);
     }
 }
+
+/** Galaxy.3.cs 5064-5067. */
+export const TRADE_BONUS_MAXIMUM_FREE_TRADE = 0.2;
+export const TRADE_BONUS_MAXIMUM_FREE_TRADE_AMOUNT = 20000.0;
+export const TRADE_BONUS_MAXIMUM_MUTUAL_DEFENSE = 0.3;
+export const TRADE_BONUS_MAXIMUM_MUTUAL_DEFENSE_AMOUNT = 30000.0;
 
 // DiplomaticRelationList.cs (SyncList<DiplomaticRelation> + EmpireId-1 → index table).
 export class DiplomaticRelationList implements Iterable<DiplomaticRelation> {
@@ -485,4 +510,315 @@ export function meetEmpiresAtStart(galaxy: Galaxy, empireList: readonly Empire[]
             }
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// M4r: EmpireEvaluation.cs (the attitude model), EmpireEvaluationList.cs, ObtainEmpireEvaluation.
+// ---------------------------------------------------------------------------
+
+/** EmpireEvaluation.cs 42-51 statics. */
+export const SYSTEM_COMPETITION_CAP = 20.0;
+export const SYSTEM_COMPETITION_CAP_EXTENDED = 30.0;
+export const RELATIONSHIP_WITH_FRIENDS_CAP = 10.0;
+export const COVETOUSNESS_CAP = 25.0;
+export const GOVERNMENT_STYLE_AFFINITY_CAP = 12.0;
+export const INCIDENT_EVALUATION_CAP = 80.0;
+export const INCIDENT_EVALUATION_CAP_NEGATIVE = -150.0;
+export const RESTRICTED_RESOURCE_TRADING_CAP = 10.0;
+export const FIRST_CONTACT_PENALTY_START_AMOUNT = -15.0;
+export const FIRST_CONTACT_PENALTY_ANNUAL_REDUCTION_AMOUNT = 6.0;
+
+/** Galaxy.AggressionLevel (Galaxy.cs 1034; galaxy.ts M4r field). */
+function galaxyAggressionLevel(galaxy: Galaxy): number {
+    return galaxy.aggressionLevel;
+}
+
+/**
+ * EmpireEvaluation.cs — how the owning empire regards `empire`. C# properties that transform on read
+ * (IncidentEvaluation, Bias: ÷ or × DiplomacyFactor) are TS accessors over the raw fields; the raw fields
+ * keep their C# names with a leading underscore.
+ */
+export class EmpireEvaluation {
+    private _empire: Empire | null;
+    _incidentEvaluation: number; // double
+    systemCompetition: number; // int
+    tradeVolume: number; // int
+    relationshipWithFriendsPositive: number; // int
+    relationshipWithFriendsNegative: number; // int
+    covetousness = 0; // int
+    blockades = 0; // int
+    governmentStyleAffinity = 0; // int
+    militaryForcesInSystems = 0; // int
+    envy = 0; // int
+    _bias: number; // double
+    restrictedResourceTrading: number; // double
+    militaryRefueling = 0; // int
+    miningRights = 0; // int
+    racialOffense = 0.0; // double
+    private _slaveryOffense = 0.0; // double
+    diplomacyFactor = 1.0; // double
+    lastSystemWarningDate = 0; // long
+    lastSystemWarningIndex = -1; // int
+    civilityRatingWeight = 0.5; // double
+    firstContactPenalty = FIRST_CONTACT_PENALTY_START_AMOUNT; // double
+    systemCompetitionCumulative = 0.0;
+    relationshipWithFriendsPositiveCumulative = 0.0;
+    relationshipWithFriendsNegativeCumulative = 0.0;
+    covetousnessCumulative = 0.0;
+    governmentStyleAffinityCumulative = 0.0;
+
+    /** EmpireEvaluation(Empire empire, Galaxy galaxy) (EmpireEvaluation.cs 72). */
+    constructor(empire: Empire | null, galaxy: Galaxy) {
+        this._empire = empire;
+        this._incidentEvaluation = 0.0;
+        this.systemCompetition = 0;
+        this.tradeVolume = 0;
+        this.relationshipWithFriendsPositive = 0;
+        this.relationshipWithFriendsNegative = 0;
+        this._bias = 0.0;
+        this.restrictedResourceTrading = 0.0;
+        this.firstContactPenalty = FIRST_CONTACT_PENALTY_START_AMOUNT * galaxyAggressionLevel(galaxy);
+    }
+
+    setSlaveryOffense(slaveryOffense: number): void {
+        this._slaveryOffense = slaveryOffense;
+    }
+    get slaveryOffense(): number {
+        return this._slaveryOffense;
+    }
+    clear(): void {
+        this._empire = null;
+    }
+    get empire(): Empire | null {
+        return this._empire;
+    }
+
+    // C# `value <= 0.0 ? value * AggressionLevel / DiplomacyFactor : value / AggressionLevel * DiplomacyFactor`.
+    private weigh(value: number, aggressionLevel: number): number {
+        return value <= 0.0 ? (value * aggressionLevel) / this.diplomacyFactor : (value / aggressionLevel) * this.diplomacyFactor;
+    }
+
+    /** EmpireEvaluation.cs 98 OverallAttitude (reads this._Empire.Galaxy.AggressionLevel). */
+    get overallAttitude(): number {
+        const a = galaxyAggressionLevel(this._empire!.galaxy);
+        const num1 = 0.0;
+        const num3 = num1 + this.weigh(this._incidentEvaluation, a);
+        const num5 = num3 + this.weigh(this.systemCompetitionCumulative, a);
+        const num7 = num5 + this.weigh(this.tradeVolume, a);
+        const num9 = num7 + this.weigh(this.relationshipWithFriendsPositiveCumulative, a);
+        const num11 = num9 + this.weigh(this.relationshipWithFriendsNegativeCumulative, a);
+        const num13 = num11 + this.weigh(this.covetousnessCumulative, a);
+        const num15 = num13 + this.weigh(this.blockades, a);
+        const num17 = num15 + this.weigh(this.governmentStyleAffinityCumulative, a);
+        const num19 = num17 + this.weigh(this.militaryForcesInSystems, a);
+        const num21 = num19 + this.weigh(this.restrictedResourceTrading, a);
+        const num23 = num21 + this.weigh(this.envy, a);
+        const num25 = num23 + this.weigh(this.militaryRefueling, a);
+        const num27 = num25 + this.weigh(this.miningRights, a);
+        const num29 = num27 + this.weigh(this.racialOffense, a);
+        const num31 = num29 + this.weigh(this._slaveryOffense, a);
+        const num33 = num31 + this.weigh(this.firstContactPenalty, a);
+        const num35 = num33 + this.weigh(this.reputationWeighted, a);
+        const num36 = this.weigh(this._bias, a);
+        return Math.trunc(num35 + num36);
+    }
+
+    /** EmpireEvaluation.cs 143 OverallAttitudeWithoutSystemCompetition. */
+    get overallAttitudeWithoutSystemCompetition(): number {
+        const a = galaxyAggressionLevel(this._empire!.galaxy);
+        const num1 =
+            this._incidentEvaluation +
+            this.tradeVolume +
+            this.relationshipWithFriendsPositiveCumulative +
+            this.relationshipWithFriendsNegativeCumulative +
+            this.covetousnessCumulative +
+            this.blockades +
+            this.governmentStyleAffinityCumulative +
+            this.militaryForcesInSystems +
+            this.restrictedResourceTrading +
+            this.envy +
+            this.militaryRefueling +
+            this.miningRights +
+            this.racialOffense +
+            this.firstContactPenalty +
+            this.reputationWeighted +
+            this._bias;
+        const num2 = num1 <= 0.0 ? num1 * a : num1 / a;
+        return num2 <= 0.0 ? Math.trunc(num2 / this.diplomacyFactor) : Math.trunc(num2 * this.diplomacyFactor);
+    }
+
+    /** EmpireEvaluation.cs 153 ReputationWeighted. */
+    get reputationWeighted(): number {
+        const num = Math.sqrt(Math.min(4.0, this._empire!.relativeEmpireSize));
+        let reputationWeighted = this._empire!.civilityRating * this.civilityRatingWeight;
+        if (reputationWeighted < 0.0) reputationWeighted *= num;
+        return reputationWeighted;
+    }
+
+    get incidentEvaluationRaw(): number {
+        return this._incidentEvaluation;
+    }
+
+    /** EmpireEvaluation.cs 185 IncidentEvaluation: get ÷/× DiplomacyFactor; set clamps to [-150, 80]. */
+    get incidentEvaluation(): number {
+        const incidentEvaluation = this._incidentEvaluation;
+        return incidentEvaluation <= 0.0 ? incidentEvaluation / this.diplomacyFactor : incidentEvaluation * this.diplomacyFactor;
+    }
+    set incidentEvaluation(value: number) {
+        this._incidentEvaluation = value;
+        if (this._incidentEvaluation > INCIDENT_EVALUATION_CAP) {
+            this._incidentEvaluation = INCIDENT_EVALUATION_CAP;
+        } else {
+            if (this._incidentEvaluation >= INCIDENT_EVALUATION_CAP_NEGATIVE) return;
+            this._incidentEvaluation = INCIDENT_EVALUATION_CAP_NEGATIVE;
+        }
+    }
+
+    get biasRaw(): number {
+        return this._bias;
+    }
+
+    /** EmpireEvaluation.cs 280 Bias: get ÷/× DiplomacyFactor; set raw. */
+    get bias(): number {
+        const bias = this._bias;
+        return bias <= 0.0 ? bias / this.diplomacyFactor : bias * this.diplomacyFactor;
+    }
+    set bias(value: number) {
+        this._bias = value;
+    }
+}
+
+/** Empire.EmpireEvaluations (EmpireEvaluationList) — empire.ts declares the field `unknown[]`. */
+export function empireEvaluationsOf(empire: Empire): EmpireEvaluation[] {
+    return empire.empireEvaluations as EmpireEvaluation[];
+}
+
+/** EmpireEvaluationList.cs 14 this[Empire empire] (first match, or null). */
+export function empireEvaluationByEmpire(list: readonly EmpireEvaluation[], empire: Empire | null): EmpireEvaluation | null {
+    for (let index = 0; index < list.length; ++index) {
+        const empireEvaluation = list[index];
+        if (empireEvaluation.empire === empire) return empireEvaluation;
+    }
+    return null;
+}
+
+/** EmpireEvaluationList.cs 29 GetLowestEvaluation(excludeEmpires). */
+export function getLowestEvaluation(list: readonly EmpireEvaluation[], excludeEmpires: readonly Empire[] = []): EmpireEvaluation | null {
+    let lowestEvaluation: EmpireEvaluation | null = null;
+    for (let index = 0; index < list.length; ++index) {
+        const empireEvaluation = list[index];
+        if (empireEvaluation != null && !excludeEmpires.includes(empireEvaluation.empire!) && (lowestEvaluation === null || lowestEvaluation.overallAttitude > empireEvaluation.overallAttitude)) {
+            lowestEvaluation = empireEvaluation;
+        }
+    }
+    return lowestEvaluation;
+}
+
+/** Empire.4.cs 106 ObtainEmpireEvaluation(empire): adds a new evaluation (race bias) for an active empire. */
+export function obtainEmpireEvaluation(galaxy: Galaxy, self: Empire, empire: Empire | null): EmpireEvaluation {
+    if (empire == null) return new EmpireEvaluation(empire, galaxy);
+    if (empire === galaxy.independentEmpire) return new EmpireEvaluation(empire, galaxy);
+    if (empire.pirateEmpireBaseHabitat !== null || self.pirateEmpireBaseHabitat !== null) return new EmpireEvaluation(empire, galaxy);
+    if (self.empireEvaluations != null && empire != null) {
+        const evaluations = empireEvaluationsOf(self);
+        let empireEvaluation = empireEvaluationByEmpire(evaluations, empire);
+        if (empireEvaluation === null) {
+            empireEvaluation = new EmpireEvaluation(empire, galaxy);
+            empireEvaluation.bias = resolveStandardRaceBias(self.dominantRace, empire.dominantRace);
+            if (empire.active) evaluations.push(empireEvaluation);
+        }
+        return empireEvaluation;
+    }
+    return new EmpireEvaluation(empire, galaxy);
+}
+
+// ---------------------------------------------------------------------------
+// M4r: GovernmentAttributes.Biases (GovernmentBiasList.cs) — NaturalAffinity.
+// ---------------------------------------------------------------------------
+
+/** Per-government bias rows (governmentBiases.txt), registered by createGame like setGovernmentsStatic. */
+let governmentBiasesStatic: { governmentId: number; biases: number[] }[] = [];
+export function setGovernmentBiasesStatic(rows: { governmentId: number; biases: number[] }[]): void {
+    governmentBiasesStatic = rows;
+}
+
+/**
+ * GovernmentAttributes.cs 105 NaturalAffinity(governmentId) = Biases.GetBias(governmentId) (GovernmentBiasList.cs 99):
+ * the row of `ownGovernmentId` (GovernmentBiasList.LoadFromFile sets governments[row id].Biases = (index, value)
+ * pairs; a government without a row has an empty list → 0). The loader keeps the LAST row for an id.
+ */
+export function governmentNaturalAffinity(ownGovernmentId: number, governmentId: number): number {
+    let row: { governmentId: number; biases: number[] } | null = null;
+    for (let i = 0; i < governmentBiasesStatic.length; i++) {
+        if (governmentBiasesStatic[i].governmentId === ownGovernmentId) row = governmentBiasesStatic[i];
+    }
+    if (row === null) return 0;
+    return governmentId >= 0 && governmentId < row.biases.length ? row.biases[governmentId] : 0;
+}
+
+// ---------------------------------------------------------------------------
+// M4r: the diplomatic counters of EmpireCounters.cs (BrokenTreatyCount, SubjugationsMade, WarsWeStartedCount,
+// WarsDeclaredOnUsCount, _AtWarStartDate, _TimeSpentAtWarExcludingCurrent). empire.ts's EmpireCounters is an
+// empty placeholder; these live in Empire.diplomacyCounters until EmpireCounters is ported (then merge them).
+// ---------------------------------------------------------------------------
+
+/** long.MaxValue stand-in for EmpireCounters._AtWarStartDate "not at war". */
+export const LONG_MAX_VALUE = Number.MAX_SAFE_INTEGER;
+
+export class DiplomacyCounters {
+    brokenTreatyCount = 0;
+    subjugationsMade = 0;
+    warsWeStartedCount = 0;
+    warsDeclaredOnUsCount = 0;
+    atWarStartDate = LONG_MAX_VALUE;
+    timeSpentAtWarExcludingCurrent = 0;
+
+    /** EmpireCounters.cs 113 FixupAtWarCounter(starDate). */
+    fixupAtWarCounter(starDate: number): void {
+        this.timeSpentAtWarExcludingCurrent += starDate - this.atWarStartDate;
+        this.atWarStartDate = LONG_MAX_VALUE;
+    }
+}
+
+/** EmpireCounters.cs 148/157 ProcessRelationChange(relation, initiator, newRelationType, starDate[, previousRelationType]). */
+export function processRelationChange(counters: DiplomacyCounters, countersEmpire: Empire, relation: DiplomaticRelation | null, initiator: Empire | null, newRelationType: DiplomaticRelationType, starDate: number, previousRelationTypeArg: DiplomaticRelationType | null = null): void {
+    // `if (!previousRelationType.HasValue) previousRelationType = relation.Type` — read before the null check, as in C#.
+    const previousRelationType = previousRelationTypeArg ?? relation!.type;
+    if (relation == null || initiator == null) return;
+    switch (newRelationType) {
+        case DiplomaticRelationType.None:
+        case DiplomaticRelationType.SubjugatedDominion:
+        case DiplomaticRelationType.TradeSanctions:
+        case DiplomaticRelationType.War:
+            switch (previousRelationType) {
+                case DiplomaticRelationType.FreeTradeAgreement:
+                case DiplomaticRelationType.MutualDefensePact:
+                case DiplomaticRelationType.Protectorate:
+                    if (initiator === countersEmpire) ++counters.brokenTreatyCount;
+                    break;
+            }
+            break;
+    }
+    if (newRelationType === DiplomaticRelationType.SubjugatedDominion && initiator === countersEmpire) ++counters.subjugationsMade;
+    if (newRelationType === DiplomaticRelationType.War) {
+        if (initiator === countersEmpire) ++counters.warsWeStartedCount;
+        else ++counters.warsDeclaredOnUsCount;
+    }
+    if (newRelationType === DiplomaticRelationType.War) {
+        if (counters.atWarStartDate !== LONG_MAX_VALUE) return;
+        counters.atWarStartDate = starDate;
+    } else {
+        if (previousRelationType !== DiplomaticRelationType.War || checkAtWarExcluding(relation.thisEmpire!, relation.otherEmpire) || counters.atWarStartDate === LONG_MAX_VALUE) return;
+        counters.timeSpentAtWarExcludingCurrent += starDate - counters.atWarStartDate;
+        counters.atWarStartDate = LONG_MAX_VALUE;
+    }
+}
+
+/** Empire.9.cs 1362 CheckAtWar(Empire excludeEmpire) (null = any war). */
+export function checkAtWarExcluding(self: Empire, excludeEmpire: Empire | null): boolean {
+    for (let i = 0; i < self.diplomaticRelations.count; i++) {
+        const diplomaticRelation = self.diplomaticRelations.at(i);
+        if (diplomaticRelation.type === DiplomaticRelationType.War && diplomaticRelation.otherEmpire !== excludeEmpire) return true;
+    }
+    return false;
 }

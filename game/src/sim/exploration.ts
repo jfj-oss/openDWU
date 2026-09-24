@@ -202,12 +202,9 @@ function nearestSystemNameForDiscovery(galaxy: Galaxy, discoveryLocation: Discov
     return habitat !== null ? habitat.name : '';
 }
 
-/**
- * EmpireEvaluation.FirstContactPenalty (double, EmpireEvaluation.cs 35). TODO(port) M4r: the TS EmpireEvaluation
- * (taxes.ts) has no FirstContactPenalty field yet; the value is written onto the evaluation object for M4r's model.
- */
+/** EmpireEvaluation.FirstContactPenalty (double, EmpireEvaluation.cs 35; diplomacy.ts EmpireEvaluation). */
 function setFirstContactPenalty(evaluation: EmpireEvaluation, value: number): void {
-    (evaluation as EmpireEvaluation & { firstContactPenalty?: number }).firstContactPenalty = value;
+    evaluation.firstContactPenalty = value;
 }
 
 /** BaconBuiltObject.cs 3536 AddScientificData(ship, planet, eventType). No Rnd. */

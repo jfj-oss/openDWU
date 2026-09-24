@@ -18,6 +18,8 @@ beforeAll(async () => {
     // ObtainDiplomaticRelation) gives the second empire a NotMet relation, which ProjectForceStructure then evaluates.
     // The Empire.DoTasks stand-in in generateEmpire reaches ReviewColonyPopulationPolicy (M4j), which reads race biases
     // through ObtainEmpireEvaluation — register them as createGame does.
+    // M4r: the game-start Empire.DoTasks now runs ReviewDiplomaticStrategies, whose ObtainEmpireEvaluation reads the race
+    // bias tables (createGame registers them the same way).
     setRaceBiasesStatic(gameData.races, gameData.raceBiases, gameData.raceFamilies.length, gameData.raceFamilyBiases);
 }, 60000);
 

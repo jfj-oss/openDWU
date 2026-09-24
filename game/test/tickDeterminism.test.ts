@@ -65,8 +65,8 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         expect(long.scheduler!.frames).toBe(36000);
         checkInvariants(long);
         const hits = r.todoHits;
-        // Every tick family reached its stubs.
-        for (const key of ['M4e autoRefuelRepairShip', 'M4q scanForNewOwnerHabitat', 'M4r processMessages', 'M4s pirateAssignShipMissions', 'M4s reviewPirateMissionsAndAssign', 'M4n evaluateSystemThreats']) {
+        // Every tick family reached its stubs. (M4r: every diplomacy entry point reached is fully ported.)
+        for (const key of ['M4e autoRefuelRepairShip', 'M4q scanForNewOwnerHabitat', 'M4s pirateAssignShipMissions', 'M4s reviewPirateMissionsAndAssign', 'M4n evaluateSystemThreats']) {
             expect(hits[key] ?? 0, key).toBeGreaterThan(0);
         }
         const summary = { digest: stateDigest(long), counts: stateCounts(long), rndDraws: long.rnd.drawCount };
@@ -84,7 +84,9 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // EvaluateRelativeToParent, the no-mission epilogue resets idle speeds; freighters contracted by M4d now get
         // real missions and command queues). M4k: the game-start and periodic Empire.DoTasks run PerformResearch (queue
         // project picks and research-event rolls draw Rnd; completed research changes components and troop types).
-        expect(summary.digest).toBe('c52d805d788d9173');
+        // M4r: Empire.RelativeEmpireSize (hashed) is computed by CalculateRelativeEmpireSize and the diplomacy runtime
+        // runs once empires meet.
+        expect(summary.digest).toBe('9582e8126fa8a7cd');
     }, 600000);
 });
 

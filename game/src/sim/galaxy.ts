@@ -4388,6 +4388,11 @@ export class Galaxy {
     // ---- M4p fields (fighters) ----
     // ---- M4q fields (invasion, troops, boarding) ----
     // ---- M4r fields (diplomacy runtime) ----
+    /**
+     * Galaxy.cs 1034 AggressionLevel (_AggressionLevel, Galaxy.4.cs 2151 ctor argument; default 1.0). Read by the
+     * EmpireEvaluation attitude model. generateGalaxy stores GenerateGalaxyOptions.aggressionLevel here.
+     */
+    aggressionLevel = 1.0;
     // ---- M4s fields (pirates runtime) ----
     // ---- M4t fields (visibility, exploration, territory) ----
     /**
@@ -4397,8 +4402,6 @@ export class Galaxy {
      */
     regeneratingEmpireTerritory = false;
     regenerateEmpireTerritoryAgain = false;
-    /** Galaxy._AggressionLevel (double; Galaxy ctor Galaxy.4.cs 2151). */
-    aggressionLevel = 1.0;
     // ---- M4u fields (events, disasters, characters) ----
 }
 

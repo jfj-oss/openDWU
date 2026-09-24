@@ -38,7 +38,7 @@ import { PirateRelationList, PirateRelationType, obtainPirateRelation, changePir
 import { recalculateDevelopmentLevelBaseline } from './developmentLevel';
 import { recalculateColonyInfluenceRadius } from './territory';
 import type { Character } from './characters';
-import { DiplomaticRelationList } from './diplomacy';
+import { DiplomacyCounters, DiplomaticRelationList } from './diplomacy';
 import { MIN_TIME } from './tick/simTime';
 import type { DeclinedTask } from './missions/distress';
 import type { IMessageRecipient } from './messages';
@@ -1564,11 +1564,6 @@ export class Empire {
     thisYearsStateFuelCosts = 0.0;
     /** Empire.cs _PenalColonies = new HabitatList() (ReviewColonyPopulationPolicy). */
     penalColonies: Habitat[] = [];
-    /**
-     * Empire.cs _CivilityRating (double). Written by ReviewColonyPopulationPolicy (extermination) and the M4r
-     * reputation model; read by CalculateWarWithOurRace and taxes.ts CivilityRatingApprovalRaw.
-     */
-    civilityRating = 0.0;
     // ---- M4k fields (research progress) ----
     /** Empire.cs ResearchBonusWeapons / Energy / HighTech (float) and their stations (ReviewResearchStationBonuses, Empire.3.cs 2732). */
     researchBonusWeapons = 0;
@@ -1589,13 +1584,40 @@ export class Empire {
     // ---- M4r fields (diplomacy runtime) ----
     /** Empire.cs 402 _RelativeEmpireSize (CalculateRelativeEmpireSize; added by M4a for the tick's assignment). */
     relativeEmpireSize = 0;
-    // ---- M4s fields (pirates runtime) ----
-    // ---- M4t fields (visibility, exploration) ----
-    /** Empire.cs 139 _EmpiresViewable (EmpireList) / 141 _EmpiresViewableExpiry (List<long>), parallel lists. */
+    /**
+     * Empire.cs 578 _CivilityRating (reputation; write through diplomacyTick.ts setCivilityRating, which clamps to
+     * [-100, 30]). Also written by M4j ReviewColonyPopulationPolicy (extermination); read by CalculateWarWithOurRace
+     * and taxes.ts CivilityRatingApprovalRaw.
+     */
+    civilityRating = 0.0;
+    /** Empire.cs 580 _WarWeariness (Empire.WarWearinessRaw; Empire.WarWeariness divides by the leader bonus). */
+    warWearinessRaw = 0.0;
+    /** Empire.cs 531 _TopCompetitor (EvaluatePoliticalSituation). */
+    topCompetitor: Empire | null = null;
+    /** Empire.cs 325/327 _RecentAttackingEmpires / _RecentSpyingEmpires (filled by combat / espionage, cleared by EvaluatePoliticalSituation). */
+    recentAttackingEmpires: Empire[] = [];
+    recentSpyingEmpires: Empire[] = [];
+    /**
+     * Empire.cs 132/135 _DesiredForeignColonies / _EmpiresWithDesiredColonies (HabitatPrioritizationList / EmpireList):
+     * filled by Empire.2.cs 4566 IdentifyDesiredForeignColonies (DetermineRandomAttacks, M4m), read by
+     * EvaluatePoliticalSituation (Covetousness). Declared here by M4r; M4m writes them.
+     */
+    desiredForeignColonies: HabitatPrioritization[] = [];
+    empiresWithDesiredColonies: Empire[] = [];
+    /**
+     * Empire.cs _EmpiresViewable / _EmpiresViewableExpiry (EmpireList / List<long>): empires whose objects this
+     * empire can see (subjugation, espionage). Written by ChangeDiplomaticRelation / ConsiderTreatyProposals (M4r),
+     * espionage; expired by ClearExpiredViewableEmpires (M4t); read by IsObjectVisibleToThisEmpire.
+     */
     empiresViewable: Empire[] = [];
     empiresViewableExpiry: number[] = [];
-    /** Empire.LocationHints (List<Point>; AddLocationHint, removed by ScanForLocations BuiltObject.1.cs 1941). */
+    /** Empire.cs LocationHints (List<Point>): AddLocationHint (Empire.cs 2807) — pirate info trades (tradeItems.ts), UI hints. */
     locationHints: { x: number; y: number }[] = [];
+    /** EmpireCounters.cs diplomatic counters (diplomacy.ts DiplomacyCounters) until EmpireCounters is ported. */
+    diplomacyCounters = new DiplomacyCounters();
+    // ---- M4s fields (pirates runtime) ----
+    // ---- M4t fields (visibility, exploration) ----
+    // _EmpiresViewable / _EmpiresViewableExpiry / LocationHints: declared in the M4r block (M4t expires / removes them).
     /** Empire.cs 147 _SystemExploredCount = 1 / 149 _ExplorationShipCount = 1 (UpdateSystemExplorationStatus). */
     systemExploredCount = 1;
     explorationShipCount = 1;

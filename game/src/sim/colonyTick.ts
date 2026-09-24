@@ -180,6 +180,14 @@ function recalculateQuality(_habitat: Habitat): void {}
 // Habitat.DoTasks entry points (tick/habitatTick.ts)
 // ---------------------------------------------------------------------------
 
+/**
+ * Galaxy.cs 944 ColonyFillFactor (_ColonyFillFactor, default 1.0; maintained by reviewColonyFillFactor). Added by M4r
+ * (CalculateNextAllowableProposalDate reads it).
+ */
+export function galaxyColonyFillFactor(galaxy: Galaxy): number {
+    return galaxy.colonyFillFactor;
+}
+
 /** Habitat.cs 5694 CalculateWarWithOurRace. */
 export function calculateWarWithOurRace(galaxy: Galaxy, habitat: Habitat): void {
     habitat.warWithOurRace = 0;
@@ -914,8 +922,8 @@ export function evaluateColonyVariablesPirate(galaxy: Galaxy, empire: Empire, ti
 // ---------------------------------------------------------------------------
 
 /** EmpireEvaluation.SetSlaveryOffense(value): assigns _SlaveryOffense. */
-function setSlaveryOffense(evaluation: { slaveryOffense: number }, value: number): void {
-    evaluation.slaveryOffense = value;
+function setSlaveryOffense(evaluation: { setSlaveryOffense(value: number): void }, value: number): void {
+    evaluation.setSlaveryOffense(value);
 }
 
 /** PopulationList.cs Add: merges a population of a race already present (TotalAmount untouched). */

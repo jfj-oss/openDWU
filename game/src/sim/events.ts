@@ -247,7 +247,7 @@ const T_doCharacterEventRuntime = registerTodo('M4u', 'doCharacterEventRuntime')
  * Galaxy.1.cs 3781 DoCharacterEvent(eventType, eventData, sourceCharacters, includeLeader, leaderEmpire) for the
  * runtime event types characters.ts doCharacterEventForList does not port yet (DetermineCharacterSkillsAffectedByEvent /
  * skill progress: it throws for them). Added by M4j (ColonyDevelopmentIncrease/Decrease from EvaluateColonyVariables
- * and HaveRevolution) and M4d (TradeIncome from DiplomaticRelation.PerformTradeTransaction, logistics/contracts.ts).
+ * and HaveRevolution), M4r (TreatySigned / TreatyBroken / WarStarted from ChangeDiplomaticRelation) and M4d (TradeIncome from DiplomaticRelation.PerformTradeTransaction, logistics/contracts.ts).
  * `eventType` is a characters.ts CharacterEventType.
  */
 export function doCharacterEventRuntime(galaxy: Galaxy, eventType: number, eventData: unknown, sourceCharacters: readonly unknown[] | null, includeLeader: boolean, leaderEmpire: Empire | null): void {
@@ -255,4 +255,12 @@ export function doCharacterEventRuntime(galaxy: Galaxy, eventType: number, event
     if (sourceCharacters === null || sourceCharacters.length <= 0) return;
     // RND: 3 draws per relevant character (+1 per known-bonus skill pick), Galaxy.1.cs 3842-3850/5047 — not drawn until M4u.
     /* TODO(port) M4u */ todo(T_doCharacterEventRuntime);
+}
+
+const T_chanceNewAmbassador = registerTodo('M4u', 'chanceNewAmbassador');
+/** Galaxy.2.cs 4819 ChanceNewAmbassador(empire, newRelationType, otherEmpire) — a treaty may bring a new ambassador character. */
+export function chanceNewAmbassador(galaxy: Galaxy, empire: Empire, newRelationType: number, otherEmpire: Empire): boolean {
+    // RND: Rnd.Next(0, num) when num < 100 (every treaty type) — not drawn until M4u.
+    /* TODO(port) M4u */ todo(T_chanceNewAmbassador);
+    return false;
 }
