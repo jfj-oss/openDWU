@@ -97,6 +97,36 @@ export function starSpritePx(diameter: number, z: number): number {
     return Math.min(Math.max(diameter * z * 0.42, 40), 1400);
 }
 
+// Task 08g (Controls/MainView.cs mouse picking): pure hit-test over a list of
+// candidate habitats. Each object's drawn on-screen rect is the square centred
+// on its screen position with side `sizeFn(habitat, zoom)` px (the same size
+// functions the renderer uses, incl. the min-pixel sizes). The point belongs
+// to an object when |dx| <= size/2 && |dy| <= size/2; among several matches
+// the smaller object wins (a moon in front of its planet, a planet in front
+// of the star). Returns null for empty space.
+export function hitTestHabitats(
+    list: Habitat[],
+    x: number,
+    y: number,
+    sizeFn: (h: Habitat, zoom: number) => number,
+    zoom: number,
+): Habitat | null {
+    let best: Habitat | null = null;
+    let bestSize = Infinity;
+    for (const h of list) {
+        const s = sizeFn(h, zoom);
+        if (s <= 0) continue;
+        const dx = Math.abs(x - h.xpos);
+        const dy = Math.abs(y - h.ypos);
+        if (dx > s / 2 || dy > s / 2) continue;
+        if (s < bestSize) {
+            bestSize = s;
+            best = h;
+        }
+    }
+    return best;
+}
+
 // Task 08f1 (MainView.2.cs 4675-4705): region/nebula location labels are
 // drawn only while the original's zoom factor `double_15` satisfies
 // 70 < double_15 <= double_5 (the full-galaxy factor, passed by the caller).
@@ -583,6 +613,8 @@ export interface MainViewTextures {
 export class MainView {
     world = new Container();
     fx = new Container();
+    /** Task 08g: thin selection ring around the picked object (screen-space). */
+    selectionRing = new Graphics();
     private backdrop: Sprite;
     private grid = new Graphics();
     private starfieldFar!: TilingSprite;
@@ -603,6 +635,10 @@ export class MainView {
     /** Elapsed seconds since boot (disc rotation / corona frame clock). */
     private elapsedSeconds = 0;
     private lastUpdateMs = -1;
+    /** Task 08g: set by main.ts — receives the habitat picked on left click. */
+    onSelectionChange?: (h: Habitat | null) => void;
+    /** Task 08g: set by main.ts — star double-clicked at galaxy/sector zoom. */
+    onDoubleClickStar?: (h: Habitat) => void;
 
     constructor(readonly app: Application, readonly camera: Camera, readonly galaxy: Galaxy, readonly store: AssetStore) {
         app.stage.addChild(this.world);
@@ -610,6 +646,70 @@ export class MainView {
         this.world.addChild(this.grid);
         this.backdrop = new Sprite(Texture.EMPTY);
         this.world.addChildAt(this.backdrop, 0);
+        this.selectionRing.visible = false;
+        this.fx.addChild(this.selectionRing);
+    }
+
+    /** Task 08g: the habitat currently selected in the Main View (null = none). */
+    selectedHabitat: Habitat | null = null;
+
+    /** Drawn on-screen size of a habitat at the current zoom — the same size
+     * functions the renderer uses (planets >= 14 px, moons >= 7 px, star
+     * sprite >= 40 px via planetSpritePx/moonDotPx/starSpritePx). */
+    private drawnSize(h: Habitat, z: number): number {
+        if (h.category === HabitatCategoryType.Star) {
+            return starSpritePx(h.diameter, z);
+        }
+        if (h.category === HabitatCategoryType.Moon) {
+            return moonDotPx(h.diameter, z);
+        }
+        if (h.category === HabitatCategoryType.Planet) {
+            return planetSpritePx(h.diameter, z);
+        }
+        // Asteroids/gas clouds are not pickable.
+        return 0;
+    }
+
+    /**
+     * Task 08g (Controls/MainView.cs mouse picking): the habitat drawn under
+     * the given screen point. At system/planet zoom prefer planets/moons whose
+     * drawn sprite rect contains the point (same size functions as the
+     * renderer), then the star; at galaxy/sector zoom pick the nearest star
+     * within 12 px of the cursor. Ties go to the smaller object.
+     */
+    pick(screenX: number, screenY: number): Habitat | null {
+        const cam = this.camera;
+        const w = cam.screenToWorld(screenX, screenY);
+        const z = cam.zoom;
+        const m = this.minZoom;
+        const factor = 1 / z;
+        const atSystemZoom = factor < 70; // original's system-zoom threshold
+        for (const sv of this.systems) {
+            const star = sv.system.systemStar;
+            const s = cam.worldToScreen(star.xpos, star.ypos);
+            if (atSystemZoom) {
+                // Planets + their moons first (smaller objects win ties),
+                // then the star itself.
+                const bodies: Habitat[] = [];
+                for (const p of sv.planets) {
+                    bodies.push(p.habitat);
+                    for (const moon of p.moons) {
+                        bodies.push(moon.habitat);
+                    }
+                }
+                let hit = hitTestHabitats(bodies, w.x, w.y, (h, zz) => this.drawnSize(h, zz), z);
+                if (hit === null) {
+                    hit = hitTestHabitats([star], w.x, w.y, (h, zz) => this.drawnSize(h, zz), z);
+                }
+                if (hit !== null) {
+                    return hit;
+                }
+            } else if (Math.hypot(s.x - screenX, s.y - screenY) <= 12) {
+                // Galaxy/sector zoom: nearest star within 12 px of the cursor.
+                return star;
+            }
+        }
+        return null;
     }
 
     /** Load textures, build all scene objects, attach input handlers. */
@@ -817,6 +917,18 @@ export class MainView {
             rl.update(cam, factor, maxFactor);
         }
 
+        // Task 08g: keep the selection ring around the selected object.
+        const sel = this.selectedHabitat;
+        if (sel === null) {
+            this.selectionRing.visible = false;
+        } else {
+            const s = cam.worldToScreen(sel.xpos, sel.ypos);
+            const r = this.drawnSize(sel, z) * 0.5 + 4;
+            this.selectionRing.clear();
+            this.selectionRing.circle(s.x, s.y, r).stroke({ width: 1.5, color: 0x4fc3f7 });
+            this.selectionRing.visible = true;
+        }
+
         // Screen-edge auto-scroll (original control scheme).
         if (!this.dragging && this.pointerInside) {
             const edge = 24;
@@ -860,6 +972,8 @@ export class MainView {
 
     private attachInput(): void {
         const canvas = this.app.canvas;
+        let downX = 0;
+        let downY = 0;
         canvas.addEventListener(
             'wheel',
             (e: WheelEvent) => {
@@ -878,6 +992,10 @@ export class MainView {
                 const rect = canvas.getBoundingClientRect();
                 this.lastDragX = e.clientX - rect.left;
                 this.lastDragY = e.clientY - rect.top;
+            } else if (e.button === 0) {
+                const rect = canvas.getBoundingClientRect();
+                downX = e.clientX - rect.left;
+                downY = e.clientY - rect.top;
             }
         });
         window.addEventListener('mousemove', (e: MouseEvent) => {
@@ -903,6 +1021,30 @@ export class MainView {
                     const w = this.camera.screenToWorld(x, y);
                     this.camera.centerOn(w.x, w.y);
                 }
+            } else if (e.button === 0) {
+                // Left click (no drag: < 4 px pointer movement between
+                // down/up) selects the object under the cursor; empty space
+                // clears the selection.
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                if (Math.hypot(x - downX, y - downY) >= 4) {
+                    return;
+                }
+                const hit = this.pick(x, y);
+                this.selectedHabitat = hit;
+                this.onSelectionChange?.(hit);
+            }
+        });
+        canvas.addEventListener('dblclick', (e: MouseEvent) => {
+            // Double-click a star at galaxy/sector zoom -> zoom to System
+            // level centred on it.
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            const hit = this.pick(x, y);
+            if (hit !== null && hit.category === HabitatCategoryType.Star) {
+                this.onDoubleClickStar?.(hit);
             }
         });
         canvas.addEventListener('contextmenu', (e) => e.preventDefault());

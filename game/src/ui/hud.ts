@@ -569,41 +569,6 @@ export function habitatTypeName(h: Habitat): string {
     return 'Habitat';
 }
 
-/**
- * Pick the object to select: the star/planet nearest the given world point
- * (a click position). Falls back to the system nearest the camera centre when
- * the Main View does not expose picking (task 05c demo behaviour).
- */
-export function pickSelection(
-    dwu: { galaxy?: Galaxy } | undefined,
-    camera: { x: number; y: number } | undefined,
-    clickWorld?: { x: number; y: number },
-): Selection | null {
-    const systems = dwu?.galaxy?.systems;
-    if (!systems || systems.length === 0) return null;
-
-    // Prefer an explicit click position; otherwise the camera centre.
-    const px = clickWorld?.x ?? camera?.x ?? 0;
-    const py = clickWorld?.y ?? camera?.y ?? 0;
-
-    let best: Selection | null = null;
-    let bestDist = Infinity;
-    for (const system of systems) {
-        // Consider the star and each planet/moon/asteroid in the system.
-        const candidates = [system.systemStar, ...system.habitats];
-        for (const h of candidates) {
-            const dx = h.xpos - px;
-            const dy = h.ypos - py;
-            const d = dx * dx + dy * dy;
-            if (d < bestDist) {
-                bestDist = d;
-                best = { habitat: h, system };
-            }
-        }
-    }
-    return best;
-}
-
 /** Name of the system nearest the camera centre, or '' if unavailable. */
 export function nearestSystemName(
     dwu: { galaxy?: { systems?: Array<{ systemStar: { name: string; xpos: number; ypos: number } }> } } | undefined,
