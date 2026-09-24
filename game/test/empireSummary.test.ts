@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { empireSummaryRows, type EmpireSummarySource } from '../src/ui/screens/empireSummary';
+import { empireSummaryRows, type EmpireSummaryExtra, type EmpireSummarySource } from '../src/ui/screens/empireSummary';
 import type { Empire } from '../src/sim/empire';
 import type { Habitat } from '../src/sim/types';
 
@@ -81,5 +81,43 @@ describe('empireSummaryRows (task 12j)', () => {
         expect(rows.find((r) => r.label === 'Race')?.value).toBe('—');
         expect(rows.find((r) => r.label === 'Government')?.value).toBe('—');
         expect(rows.find((r) => r.label === 'Capital')?.value).toBe('—');
+    });
+
+    it('appends the Economy rows after Treasury when extra is given (task 13b)', () => {
+        const src: EmpireSummarySource = {
+            empire: {
+                name: 'The Republic',
+                dominantRace: { name: 'Human' },
+                capital: colony('Home'),
+                colonies: [colony('Home', 1_000_000)],
+                stateMoney: 641_607,
+            } as unknown as Empire,
+            governmentName: 'Democracy',
+        };
+        const extra: EmpireSummaryExtra = {
+            leaderName: 'Ada',
+            taxRevenue: 12_345,
+            maintenance: null,
+            stateShipsAndBases: 3,
+            privateShipsAndBases: 10,
+            spacePorts: 1,
+            miningStations: 6,
+            characters: 4,
+        };
+        const rows = empireSummaryRows(src, extra);
+        const labels = rows.map((r) => r.label);
+        const values = rows.map((r) => r.value);
+        const treasuryIdx = labels.indexOf('Treasury');
+        expect(labels.slice(treasuryIdx + 1)).toEqual([
+            'Leader',
+            'Colony tax revenue',
+            'Ship & base maintenance',
+            'Space ports',
+            'Mining stations',
+            'State ships & bases',
+            'Private ships & bases',
+            'Characters',
+        ]);
+        expect(values.slice(treasuryIdx + 1)).toEqual(['Ada', '12K', '—', '1', '6', '3', '10', '4']);
     });
 });
