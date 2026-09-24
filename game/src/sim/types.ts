@@ -419,6 +419,7 @@ export class Habitat {
     dockingBays: DockingBay[] | null = null;
     dockingBayWaitQueue: BuiltObject[] | null = null;
     // ---- M4c fields (movement, fuel) ----
+    // Habitat radiation (read by PerformEnergyCollection and the Bacon star gravity wells) is declared in the M4g block.
     // ---- M4d fields (orders, colony supply) ----
     // ---- M4e fields (docking) ----
     // ---- M4f fields (civilian mission AI) ----

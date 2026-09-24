@@ -48,3 +48,11 @@ export function fireAtNearbyFighters(galaxy: Galaxy, builtObject: BuiltObject, t
     // RND: draws in callees (d≤3) — not drawn until M4p.
     /* TODO(port) M4p */ todo(T_fireAtNearbyFighters);
 }
+
+// ---- stub added by M4c (movement.ts HyperTo / CheckFightersOnboardAndRetrieve) ----
+
+const T_fighterReturnToCarrier = registerTodo('M4p', 'fighterReturnToCarrier');
+/** Fighter.cs ReturnToCarrier — stub: the fighter is not recalled. */
+export function fighterReturnToCarrier(galaxy: Galaxy, fighter: unknown): void {
+    /* TODO(port) M4p */ todo(T_fighterReturnToCarrier);
+}

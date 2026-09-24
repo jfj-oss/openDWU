@@ -1408,6 +1408,26 @@ export class BuiltObject {
     /** BuiltObject.cs 327 _ExecutingShipGroupCommand. */
     executingShipGroupCommand = false;
     // ---- M4c fields (movement, hyperjump, fuel, energy) ----
+    /** BuiltObject.cs 395 _Angle (float): heading towards the current movement target. */
+    angle = 0;
+    /** BuiltObject.cs 403/405 _LastPositionX / _LastPositionY (CheckWhetherArrived overshoot test). */
+    lastPositionX = 0;
+    lastPositionY = 0;
+    /** BuiltObject.cs 383 _HyperjumpCountdown (star date ms at which the jump may start). */
+    hyperjumpCountdown = 0;
+    /** BuiltObject.cs 387/389 _HyperjumpX / _HyperjumpY = -1.0 (exit-point offset from the target). */
+    hyperjumpX = -1.0;
+    hyperjumpY = -1.0;
+    /** BuiltObject.cs 393 _LastHyperDistance = 100000000.0. */
+    lastHyperDistance = 100000000.0;
+    /** BuiltObject.cs 303 _LastHyperjumpDistance (float). */
+    lastHyperjumpDistance = 0;
+    /** BuiltObject.cs 391 _FirstHyperjumpExecution. */
+    firstHyperjumpExecution = false;
+    /** BuiltObject.cs 379 _HyperjumpAboutToEnterSoundPlayed (UI sound flag, reset by HyperTo). */
+    hyperjumpAboutToEnterSoundPlayed = false;
+    /** BuiltObject.cs 70 _HyperjumpDisabledLocation (set by DetectHyperDeny). */
+    hyperjumpDisabledLocation = false;
     // ---- M4d fields (orders, cargo) ----
     // ---- M4e fields (docking, refuelling) ----
     // ---- M4f fields (civilian mission AI) ----

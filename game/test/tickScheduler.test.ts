@@ -142,7 +142,8 @@ describe('Habitat.DoTasks intervals (Habitat.cs 1399, strict >)', () => {
     // touch write (Habitat.cs 1440 _LastIntermediateTouch = _tempNow) instead of a stub hit.
     const markers = {
         periodic: 'M4q scanForNewOwnerHabitat',
-        long: 'M4c reviewWhetherRefuellingDepot',
+        // M4c ported ReviewWhetherRefuellingDepot; CheckHabitatIsEmpire (M4u stub, SpawnNewEmpires on) marks the block.
+        long: 'M4u checkHabitatIsEmpire',
         huge: 'M4q clearTroopsAwaitingPickup',
     };
     const at = (ms: number): string[] => {

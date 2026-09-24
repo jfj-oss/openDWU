@@ -51,6 +51,10 @@ export class SystemVisibility {
     threats: BuiltObject[] = [];
     threatLevels: number[] = [];
     latestThreatEvaluation = MIN_TIME;
+    // SystemVisibility.cs 29-32 [NonSerialized] _LinkSystemStars / _ReciprocalLinkSystemStars (task M4c: written by
+    // Empire.EvaluateSystemLinks, movement.ts).
+    linkSystemStars: Habitat[] = [];
+    reciprocalLinkSystemStars: Habitat[] = [];
 
     constructor(systemStar: Habitat, status: SystemVisibilityStatus = SystemVisibilityStatus.Undefined) {
         this.systemStar = systemStar;

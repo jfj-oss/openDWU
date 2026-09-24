@@ -214,3 +214,11 @@ export function shipGroupRepairBonus(shipGroup: ShipGroup): number {
     /* TODO(port) M4l */ todo(T_shipGroupRepairBonus);
     return 1.0;
 }
+
+// ---- stub added by M4c (movement.ts shipGroupRemoveShipsWithoutHyperdrive) ----
+
+const T_leaveShipGroup = registerTodo('M4l', 'leaveShipGroup');
+/** BuiltObject LeaveShipGroup (removes the ship from its fleet) — stub: the ship stays in the group. */
+export function leaveShipGroup(galaxy: Galaxy, builtObject: BuiltObject): void {
+    /* TODO(port) M4l */ todo(T_leaveShipGroup);
+}

@@ -93,7 +93,11 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // M4h: colonies (and populated independent habitats) now own a ConstructionQueue
         // whose DoConstruction draws Rnd.Next(0, yards.Count) in every periodic Habitat tick, and shipyards (space ports,
         // construction ships) get queues in ReDefine; DoRepairs / CheckForRepairs / CheckWhetherStillBeingBuilt run.
-        expect(summary.digest).toBe('a3f165f54afcbe42');
+        // M4c: ships execute the movement cases (MoveTo / HyperTo / ConditionalHyperTo:
+        // DoMovement, hyperjumps — HyperTo draws Rnd.Next(0, 2000) + SelectHyperJumpExitPoint per jump —, gravity-well
+        // detours), energy collection / reactor recharge burn fuel every tick, EvaluateSystemLinks draws
+        // Rnd.Next(0, count) for systems not linked to the capital through a space port.
+        expect(summary.digest).toBe('9a90a9c718ec9140');
     }, 600000);
 });
 
