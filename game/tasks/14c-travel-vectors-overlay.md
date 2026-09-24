@@ -176,3 +176,20 @@ Here `player = {}` and `other = {}`, each cast to Empire.
 - `OverlayLayer` still constructs with the existing overlay-layer.test.ts setup (that file is unchanged and must pass).
 
 Run `npm run typecheck && npm test`. With `npm run dev` running, save `node scripts/shot.mjs 'http://localhost:5173/?autostart=1&overlays=travelVectorsState,travelVectorsPrivate' shots/14c-travel-vectors.png` (main.ts `applyOverlaysUrlParam` accepts these keys). Do not open the screenshot. Then append `## Worker report`: files changed, the shot.mjs console output, and anything left undone.
+
+## Worker report
+
+Files changed:
+- `src/render/overlayLayer.ts`: imports, header comment, exported helpers (`TRAVEL_VECTOR_COLOR`, `TravelVectorKind`, `TravelVector`, `travelVectorFor`, `travelVectorsFor`, `travelVectorLongEnough`, `dashSegments`), `travelVectors` Graphics field, constructor addChild, `updateTravelVectors` called at the end of `update()`.
+- `test/travel-vectors.test.ts` (new).
+
+`npm run typecheck` clean; full suite 105 files / 1116 tests passed (`test/overlay-layer.test.ts` unchanged).
+
+Screenshot (dev server run on port 5197 because other agents share 5173):
+`node scripts/shot.mjs 'http://localhost:5197/?autostart=1&overlays=travelVectorsState,travelVectorsPrivate' shots/14c-travel-vectors.png`
+```
+[debug] [vite] connecting...
+[debug] [vite] connected.
+saved shots/14c-travel-vectors.png
+```
+No console errors. Not opened. Left undone (TODO(port) in code): other empires' fleets, selected-fleet yellow, SpecialHighlightBuiltObjects red, arrow head.
