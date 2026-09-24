@@ -352,3 +352,10 @@
     overflow: hidden;
     text-overflow: ellipsis;
 }
+.hud-keyboard-row-unavailable { opacity: 0.45; }
+.hud-keyboard-tag {
+    flex: 0 0 auto;
+    font-size: 10px;
+    color: #9aa3ad;
+    white-space: nowrap;
+}

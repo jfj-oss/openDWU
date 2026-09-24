@@ -49,3 +49,14 @@ export function isKeyActionAvailable(action: string): boolean {
    - `dispatchKey` with `{ key: 'F7', ctrlKey: false, altKey: false, shiftKey: false, target: null }` and `{}` handlers returns `'researchScreen'`, and that action is not available. This confirms that unavailable actions really fall through to the default branch.
 
 Run `npm run typecheck` && `npm test`, then append `## Worker report`.
+
+## Worker report
+
+Files changed:
+- `src/ui/keyboard.ts` — added exported `IMPLEMENTED_KEY_ACTIONS` set and `isKeyActionAvailable()` just above `createShortcutsOverlay`; overlay row loop now adds `hud-keyboard-row-unavailable` to rows whose action is unavailable and appends a `hud-keyboard-tag` span reading "not yet available" after the description (row order unchanged). Verified every non-default `case` label in `dispatchKey`'s switch appears in the set; no additions were needed.
+- `src/ui/hud.css` — added `.hud-keyboard-row-unavailable { opacity: 0.45; }` and `.hud-keyboard-tag` after `.hud-keyboard-key`.
+- `test/keyboard.test.ts` — new `describe('isKeyActionAvailable (task 12q)')`: true for `togglePause`/`coloniesScreen`/`cycleColoniesMoveView`; false for `researchScreen`/`cycleFleets`/`commandRefuel`/`nonsense`; every `IMPLEMENTED_KEY_ACTIONS` entry appears as some `KEY_BINDINGS[i].action`; `dispatchKey` with F7 + `{}` handlers returns `'researchScreen'`, which is not available (confirms fall-through to the default branch).
+
+Done: all four task items. `npm run typecheck` passes; `npm test` passes (55 files, 632 tests).
+
+Left undone: nothing.

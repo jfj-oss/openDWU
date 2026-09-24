@@ -409,6 +409,23 @@ export function cycleActionArgs(action: string): { kind: CycleKind; dir: 1 | -1;
 // "Keyboard shortcuts" overlay (toggled by ? / F1-equivalent).
 // ---------------------------------------------------------------------------
 
+/** Actions with a real handler today: the `case`s of dispatchKey plus the
+ * colony cycler (task 12n; the other cyclers only toast "No <x> yet"). */
+export const IMPLEMENTED_KEY_ACTIONS: ReadonlySet<string> = new Set([
+    'togglePause', 'speedUp', 'speedDown',
+    'zoomIn', 'zoomOut', 'zoomToSelection',
+    'zoomSystemLevel', 'zoomSectorLevel', 'zoomGalaxyLevel', 'zoomPlanetLevel',
+    'scrollUp', 'scrollDown', 'scrollLeft', 'scrollRight',
+    'galaxyMap', 'messageHistoryScreen', 'empireSummaryScreen', 'coloniesScreen',
+    'gameMenu', 'galactopediaHelp',
+    'cycleColonies', 'cycleColoniesBackward', 'cycleColoniesMoveView',
+]);
+
+/** True when pressing the binding's key does something today. Pure. */
+export function isKeyActionAvailable(action: string): boolean {
+    return IMPLEMENTED_KEY_ACTIONS.has(action);
+}
+
 /** Show/hide the shortcuts overlay; returns the new visibility. */
 export function createShortcutsOverlay(): {
     root: HTMLDivElement;
@@ -441,6 +458,9 @@ export function createShortcutsOverlay(): {
     for (const b of KEY_BINDINGS) {
         const row = document.createElement('div');
         row.className = 'hud-keyboard-row';
+        if (!isKeyActionAvailable(b.action)) {
+            row.classList.add('hud-keyboard-row-unavailable');
+        }
         const k = document.createElement('span');
         k.className = 'hud-keyboard-key';
         const modParts = [
@@ -453,6 +473,12 @@ export function createShortcutsOverlay(): {
         d.className = 'hud-option-label';
         d.textContent = b.description;
         row.append(k, d);
+        if (!isKeyActionAvailable(b.action)) {
+            const tag = document.createElement('span');
+            tag.className = 'hud-keyboard-tag';
+            tag.textContent = 'not yet available';
+            row.appendChild(tag);
+        }
         list.appendChild(row);
     }
     root.appendChild(list);

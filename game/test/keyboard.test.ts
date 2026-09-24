@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+    IMPLEMENTED_KEY_ACTIONS,
     KEY_BINDINGS,
     buildDefaultHandlers,
     cycleActionArgs,
     dispatchKey,
     findBinding,
+    isKeyActionAvailable,
     isTypingTarget,
 } from '../src/ui/keyboard';
 import { Camera } from '../src/render/camera';
@@ -308,6 +310,38 @@ describe('dispatchKey (task 10a)', () => {
     it('dispatches H to the message history handler (task 12i)', () => {
         const handlers = buildDefaultHandlers(new Camera(), makeClock());
         expect(dispatchKey(fakeEvent('H'), handlers)).toBe('messageHistoryScreen');
+    });
+});
+
+// Task 12q: which shortcut rows do something today.
+describe('isKeyActionAvailable (task 12q)', () => {
+    it('marks implemented actions as available', () => {
+        expect(isKeyActionAvailable('togglePause')).toBe(true);
+        expect(isKeyActionAvailable('coloniesScreen')).toBe(true);
+        expect(isKeyActionAvailable('cycleColoniesMoveView')).toBe(true);
+    });
+
+    it('marks unimplemented actions as unavailable', () => {
+        expect(isKeyActionAvailable('researchScreen')).toBe(false);
+        expect(isKeyActionAvailable('cycleFleets')).toBe(false);
+        expect(isKeyActionAvailable('commandRefuel')).toBe(false);
+        expect(isKeyActionAvailable('nonsense')).toBe(false);
+    });
+
+    it('every implemented action appears in KEY_BINDINGS (catches typos)', () => {
+        const actions = new Set(KEY_BINDINGS.map((b) => b.action));
+        for (const a of IMPLEMENTED_KEY_ACTIONS) {
+            expect(actions.has(a), `IMPLEMENTED_KEY_ACTIONS entry ${a} has no binding`).toBe(true);
+        }
+    });
+
+    it('unavailable actions fall through to dispatchKey default branch', () => {
+        const action = dispatchKey(
+            { key: 'F7', ctrlKey: false, altKey: false, shiftKey: false, target: null },
+            {},
+        );
+        expect(action).toBe('researchScreen');
+        expect(isKeyActionAvailable(action!)).toBe(false);
     });
 });
 describe('findBinding letter case', () => {
