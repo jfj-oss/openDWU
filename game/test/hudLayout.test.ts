@@ -1,76 +1,59 @@
 import { describe, expect, it } from 'vitest';
-import { computeHudLayout, type Rect } from '../src/ui/hudLayout';
+import { computeHudLayout, TOP_BAR_BUTTONS } from '../src/ui/hudLayout';
 
-describe('computeHudLayout', () => {
+describe('computeHudLayout (streamlined, task 05c)', () => {
     for (const [width, height] of [[1920, 1080], [1280, 720]] as const) {
         it(`positions are correct at ${width}x${height}`, () => {
             const l = computeHudLayout(width, height);
 
-            // Fixed top-left controls.
-            expect(l['btnPlayPause']).toEqual({ x: 10, y: 62, w: 80, h: 34 });
-            expect(l['lblStarDate'].x).toBe(10);
-            expect(l['lblStarDate'].y).toBe(10);
-            expect(l['lblStateMoney'].x).toBe(width - 95);
-            expect(l['lblPrivateMoney'].x).toBe(width - 95);
-
-            // Selection panel takes the default (small) 280x240 branch; the
-            // large 392x360 variant is set elsewhere at runtime.
-            expect(l['pnlDetailInfo']).toEqual({ x: 44, y: 5, w: 280, h: 240 });
-
-            // System map flush to bottom-right with a 10 px margin.
-            expect(l['pnlSystemMap']).toEqual({
-                x: width - 330 - 10,
-                y: height - 290 - 10,
-                w: 330,
-                h: 290,
-            });
-            expect(l['picSystem']).toEqual({ x: 45, y: 5, w: 280, h: 280 });
-
-            // Centered message bar / button row track the width.
+            // Top-middle message panel tracks the width.
             const num3 = Math.floor((width - 700) / 2);
-            expect(l['lstMessages'].x).toBe(num3);
-            expect(l['btnHistoryMessages'].x).toBe(num3 + 668);
+            expect(l['lstMessages']).toEqual({ x: num3, y: 10, w: 668, h: 80 });
+            // Buttons sit at the exact (truncated) right edge of the panel.
+            const msgEdge = Math.floor((width - 700) / 2 + 668);
+            expect(l['btnHistoryMessages'].x).toBe(msgEdge);
+            expect(l['btnGalacticHistory'].x).toBe(msgEdge);
+
+            // Screen-launch button row starts at the original's offset.
             const num4 = Math.floor((width - 624) / 2);
             expect(l['tbtnColonies'].x).toBe(num4);
-            // Row widths: 32×8 + 80×2 = 592.
-            expect(l['tbtnTroops'].x).toBe(num4 + 592);
+            // tbtnTroops (last row button) at num4 + 592 = 6×32 + 3×80 + 5×32;
+            // full row width 32×15 + 80×3 = 720 (the two history buttons sit
+            // by the message panel, not in this row).
+            expect(l[TOP_BAR_BUTTONS[14]].x).toBe(num4 + 592);
 
-            // Bottom-anchored selection buttons track the height.
-            const num6 = height - (240 + 45) + 1;
-            expect(l['btnLockView'].y).toBe(num6);
-            expect(l['btnCycleIdleShips'].y).toBe(num6 + 210);
-            expect(l['btnSelectionBack']).toEqual({ x: 71, y: num6 - 36, w: 138, h: 28 });
+            // Top-left compact bar is fixed at (10,10).
+            expect(l['pnlTopLeftBar']).toEqual({ x: 10, y: 10, w: 300, h: 40 });
 
-            // Zoom buttons sit just above the system-map bottom edge.
-            const num6b = height - (290 + 7) + 1;
-            expect(l['btnZoomIn'].y).toBe(num6b + 30);
-            expect(l['btnZoomRegion'].y).toBe(num6b + 180);
-            expect(l['tbtnGalaxyMap'].y).toBe(num6b + 240);
-            expect(l['tbtnGalaxyMap'].h).toBe(40);
+            // Money block flush to the top-right corner with a 10 px margin.
+            expect(l['pnlMoney']).toEqual({ x: width - 230 - 10, y: 10, w: 230, h: 100 });
 
-            // Map overlay buttons start inside the system map's top edge.
-            const num9 = height - (290 + 10) - 29;
-            expect(l['btnMapCivilianFade'].x).toBe(width - (330 + 10) + 11);
-            expect(l['btnMapCivilianFade'].y).toBe(num9);
-            expect(l['btnMapOverlay8'].x).toBe(width - (330 + 10) + 11 + 35 * 8);
+            // Selection panel anchored bottom-left with a 10 px margin.
+            expect(l['pnlSelection']).toEqual({ x: 10, y: height - 220 - 10, w: 300, h: 220 });
 
-            // Every rect with a known size stays inside the screen.
-            for (const r of Object.values(l) as Rect[]) {
-                if (r.w > 0 || r.h > 0) {
-                    expect(r.x, `x of ${r}`).toBeGreaterThanOrEqual(0);
-                    expect(r.y, `y of ${r}`).toBeGreaterThanOrEqual(0);
-                    if (r.w > 0) expect(r.x + r.w, `right of ${r}`).toBeLessThanOrEqual(width);
-                    if (r.h > 0) expect(r.y + r.h, `bottom of ${r}`).toBeLessThanOrEqual(height);
-                }
+            // Options list anchored bottom-right with a 10 px margin.
+            expect(l['pnlOptionsList']).toEqual({ x: width - 220 - 10, y: height - 400 - 10, w: 220, h: 400 });
+
+            // Every rect stays inside the screen.
+            for (const r of Object.values(l)) {
+                expect(r.x, `x of ${r}`).toBeGreaterThanOrEqual(0);
+                expect(r.y, `y of ${r}`).toBeGreaterThanOrEqual(0);
+                if (r.w > 0) expect(r.x + r.w, `right of ${r}`).toBeLessThanOrEqual(width);
+                if (r.h > 0) expect(r.y + r.h, `bottom of ${r}`).toBeLessThanOrEqual(height);
             }
         });
     }
 
-    it('later assignments override earlier ones (C# order preserved)', () => {
+    it('top-bar buttons are laid out sequentially in the original order', () => {
         const l = computeHudLayout(1920, 1080);
-        // pnlSystemMap gets its final Location after its Size and after the
-        // zoom-button block: bottom-right corner minus the 10 px margin.
-        expect(l['pnlSystemMap'].x).toBe(1920 - 340);
-        expect(l['pnlSystemMap'].y).toBe(1080 - 300);
+        let x = Math.floor((1920 - 624) / 2);
+        for (const name of TOP_BAR_BUTTONS) {
+            if (name === 'btnHistoryMessages' || name === 'btnGalacticHistory') continue; // by the message panel
+            const w = name === 'tbtnEmpires' || name === 'btnEmpireSummary' || name === 'tbtnResearch' ? 80 : 32;
+            expect(l[name].x).toBe(x);
+            expect(l[name].w).toBe(w);
+            expect(l[name].y).toBe(90);
+            x += w;
+        }
     });
 });
