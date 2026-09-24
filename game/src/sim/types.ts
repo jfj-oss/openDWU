@@ -194,6 +194,8 @@ export class Habitat {
     // C#: TroopsToRecruit / InvadingTroops (TroopList, nullable).
     troopsToRecruit: TroopList | null = null;
     invadingTroops: TroopList | null = null;
+    // C#: float _ColonyInfluenceRadius (Habitat.RecalculateColonyInfluenceRadius, territory.ts).
+    colonyInfluenceRadius = 0;
     // C#: PlanetaryFacilityList Facilities. TODO(port): PlanetaryFacility model.
     facilities: unknown[] | null = null;
 
@@ -345,4 +347,10 @@ export interface SystemInfo {
     // Galaxy.GenerateCreatureAtHabitat (Galaxy.6.cs:723) when the creature's
     // habitat belongs to a built system; undefined until then.
     creatures?: Creature[];
+    // Galaxy.1.cs DetermineSystemInfo fields (task C2c-2; set by Galaxy.updateSystemInfo).
+    planetCount?: number;
+    moonCount?: number;
+    independentColonyCount?: number;
+    dominantEmpire?: { empire: Empire; colonyCount: number; totalStrategicValue: number } | null;
+    otherEmpires?: { empire: Empire; colonyCount: number; totalStrategicValue: number }[] | null;
 }

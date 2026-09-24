@@ -25,6 +25,7 @@ import type { Race } from './data/races';
 import type { Resource } from './data/resources';
 import { buildResourceSystem, type ResourceSystem } from './resourceSystem';
 import { netSort } from './netSort';
+import { EmpireTerritory, strategicValue } from './territory';
 
 // C# string.CompareTo (culture-sensitive; .NET 5+ uses ICU).
 const NAME_COLLATOR = new Intl.Collator('en-US');
@@ -89,6 +90,9 @@ export class Galaxy {
     // Parsed resource definitions (ResourceSystem.Resources), passed in via
     // GenerateGalaxyOptions.gameData.
     resources: Resource[] = [];
+    // Task C2c-2: Galaxy.EmpireTerritory + EmpireTerritoryColonyInfluenceRangeFactor (Galaxy.cs:726).
+    empireTerritory = new EmpireTerritory();
+    empireTerritoryColonyInfluenceRangeFactor = 1;
     // Task C2a: empires and colony naming (Galaxy.cs).
     empires: Empire[] = [];
     pirateEmpires: Empire[] = [];
@@ -257,14 +261,73 @@ export class Galaxy {
         return { x: x2, y: y2 };
     }
 
-    // Port of Galaxy.1.cs UpdateSystemInfo: add each system to SystemsIndex
-    // (Systems order). TODO(port): DetermineSystemInfo / CopyFromOther
-    // (PlanetCount, DominantEmpire, ...) — task C2c-2.
+    // Port of Galaxy.1.cs UpdateSystemInfo(playerEmpire=null): DetermineSystemInfo
+    // for every system (Systems order) + SystemsIndex membership.
+    // TODO(port): player-empire fields (colonizable targets etc.), HasRuins,
+    // BlockadeCount, PlagueId — need ruins/blockades/plagues/designs.
     updateSystemInfo(): void {
         for (const sys of this.systems) {
+            this.determineSystemInfo(sys);
             const c = this.resolveIndex(sys.systemStar.xpos, sys.systemStar.ypos);
             const cell = this.systemsIndexGrid[c.x][c.y];
             if (!cell.includes(sys)) cell.push(sys);
+        }
+    }
+
+    // Port of Galaxy.1.cs DetermineSystemInfo (873): planet/moon/independent
+    // counts, and the dominant empire = highest total StrategicValue
+    // (ties: larger population), others listed in first-seen order.
+    determineSystemInfo(sys: SystemInfo): void {
+        const empires: Empire[] = [];
+        const sv: number[] = [];
+        const cc: number[] = [];
+        const pop: number[] = [];
+        let num = 0;
+        let num2 = 0;
+        let num4 = 0;
+        for (const h of this.systemHabitatsOf(sys.systemStar.systemIndex)) {
+            if (h.category === HabitatCategoryType.Asteroid) continue;
+            if (h.category === HabitatCategoryType.Planet) num++;
+            else if (h.category === HabitatCategoryType.Moon) num2++;
+            // C#: Empire == IndependentEmpire — also true while both are null.
+            if (h.empire === this.independentEmpire) num4++;
+            if (h.empire !== null && h.empire !== this.independentEmpire) {
+                let i = empires.indexOf(h.empire);
+                if (i < 0) {
+                    empires.push(h.empire);
+                    sv.push(0);
+                    cc.push(0);
+                    pop.push(0);
+                    i = empires.length - 1;
+                }
+                sv[i] += strategicValue(h);
+                pop[i] += h.population.totalAmount;
+                cc[i]++;
+            }
+        }
+        let dom: Empire | null = null;
+        let num6 = 0;
+        let num7 = 0;
+        let colonyCount = 0;
+        for (let j = 0; j < empires.length; j++) {
+            if (sv[j] > num6 || (sv[j] === num6 && pop[j] > num7)) {
+                dom = empires[j];
+                num6 = sv[j];
+                num7 = pop[j];
+                colonyCount = cc[j];
+            }
+        }
+        sys.planetCount = num;
+        sys.moonCount = num2;
+        sys.independentColonyCount = num4;
+        sys.dominantEmpire = dom !== null ? { empire: dom, colonyCount, totalStrategicValue: num6 } : null;
+        sys.otherEmpires = null;
+        if (dom !== null) {
+            for (let k = 0; k < empires.length; k++) {
+                if (empires[k] === dom) continue;
+                if (sys.otherEmpires === null) sys.otherEmpires = [];
+                sys.otherEmpires.push({ empire: empires[k], colonyCount: cc[k], totalStrategicValue: sv[k] });
+            }
         }
     }
 
@@ -498,21 +561,19 @@ export class Galaxy {
         });
     }
 
-    // SystemInfo.PlanetCount (DetermineSystemInfo). TODO(port): cached field — C2c-2.
+    // SystemInfo.PlanetCount (cached by DetermineSystemInfo).
     systemPlanetCount(sys: SystemInfo): number {
-        let n = 0;
-        for (const h of sys.habitats) if (h.category === HabitatCategoryType.Planet) n++;
-        return n;
+        return sys.planetCount ?? 0;
     }
 
-    // SystemInfo.DominantEmpire?.Empire. TODO(port): DetermineSystemInfo — C2c-2.
-    systemDominantEmpire(_sys: SystemInfo): Empire | null {
-        return null;
+    // SystemInfo.DominantEmpire?.Empire (cached by DetermineSystemInfo).
+    systemDominantEmpire(sys: SystemInfo): Empire | null {
+        return sys.dominantEmpire?.empire ?? null;
     }
 
-    // Galaxy.CheckEmpireTerritoryIdAtLocation. TODO(port): EmpireTerritory grid — C2c-2.
-    checkEmpireTerritoryIdAtLocation(_x: number, _y: number): number {
-        return -1;
+    // Port of Galaxy.cs CheckEmpireTerritoryIdAtLocation (3694).
+    checkEmpireTerritoryIdAtLocation(x: number, y: number): number {
+        return this.empireTerritory.checkLocationOwnership(this, x, y);
     }
 
     // Port of Galaxy.cs GetNextCreatureID (line 1333).

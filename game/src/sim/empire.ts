@@ -215,6 +215,9 @@ export class Empire {
     troopDescription = '';
     troopPictureRef = 0;
     stateMoney = 0.0;
+    // C#: Empire.CheckEmpireHasHyperDriveTech (Research.GetLatestComponent(HyperDrive)).
+    // TODO(port): research — false until the tech tree is ported (C2c-3).
+    hasHyperDriveTech = false;
     // Task C2b: fields GenerateEmpire sets.
     designPictureFamilyIndex = 0;
     preWarpProgressEventsOccurred = false;
