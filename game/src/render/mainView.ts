@@ -9,9 +9,6 @@
 // more zoomed out); here `Camera.zoom` is its reciprocal (pixels per world
 // unit). Layer crossfade windows below are expressed in that zoom.
 //
-// TODO(port): GalaxyLocation region names (e.g. "Nispes Arm") in small
-// grey text at galaxy zoom — needs the GalaxyLocation model
-// (Galaxy.3.cs) which is not ported yet; hook left as `regionLabels`.
 // TODO(port): nebula-anchored gas-cloud placement / radiation fields —
 // Galaxy.4.cs GenerateGasCloud.
 
@@ -42,6 +39,7 @@ import {
     starSpriteUrls,
 } from './assets';
 import { Galaxy } from '../sim/galaxy';
+import { GalaxyLocation, GalaxyLocationType } from '../sim/galaxyLocation';
 import { Habitat, HabitatCategoryType, HabitatType, SystemInfo } from '../sim/types';
 
 export function fadeIn(v: number, a: number, b: number): number {
@@ -97,6 +95,40 @@ export function moonDotPx(diameter: number, z: number): number {
 
 export function starSpritePx(diameter: number, z: number): number {
     return Math.min(Math.max(diameter * z * 0.42, 40), 1400);
+}
+
+// Task 08f1 (MainView.2.cs 4675-4705): region/nebula location labels are
+// drawn only while the original's zoom factor `double_15` satisfies
+// 70 < double_15 <= double_5 (the full-galaxy factor, passed by the caller).
+// The font depends on the location type and the factor:
+//   NebulaCloud:  > 4000 -> font_2 (15.33 px regular)
+//                 > 1000 -> font_0 (16.67 px regular)
+//                 else   -> font_1 (18.67 px bold)
+//   other types:  > 4000 -> font_3 (10.67 px regular)
+//                 > 1000 -> font_2 (15.33 px regular)
+//                 else   -> font_0 (16.67 px regular)
+// Fonts (MainView.cs 624-627): font_0 = 16.67 px regular, font_1 = 18.67 px
+// bold, font_2 = 15.33 px regular, font_3 = 10.67 px regular.
+export function regionLabelFont(type: GalaxyLocationType, factor: number, maxFactor: number): { size: number; bold: boolean } | null {
+    if (!(factor > 70 && factor <= maxFactor)) {
+        return null;
+    }
+    if (type === GalaxyLocationType.NebulaCloud) {
+        if (factor > 4000) {
+            return { size: 15.33, bold: false };
+        }
+        if (factor > 1000) {
+            return { size: 16.67, bold: false };
+        }
+        return { size: 18.67, bold: true };
+    }
+    if (factor > 4000) {
+        return { size: 10.67, bold: false };
+    }
+    if (factor > 1000) {
+        return { size: 15.33, bold: false };
+    }
+    return { size: 16.67, bold: false };
 }
 
 function clamp(v: number, lo: number, hi: number): number {
@@ -486,6 +518,57 @@ class CloudView {
     }
 }
 
+// Task 08f1 (MainView.2.cs 4675-4705): a GalaxyLocation name label in
+// screen space (the original draws text at fixed pixel sizes on top of the
+// world). One Text object per location, created once and reused; the font
+// style is only rebuilt when the zoom-factor branch changes.
+class RegionLabel {
+    location: GalaxyLocation;
+    text: Text;
+    private lastSize = -1;
+    private lastBold = false;
+    constructor(location: GalaxyLocation, layer: Container) {
+        this.location = location;
+        this.text = new Text({
+            text: location.name,
+            style: { fontSize: 16.67, fill: 0xffffff, fontFamily: 'Forgotten Futurist' },
+        });
+        this.text.anchor.set(0.5);
+        this.text.alpha = 0.85;
+        this.text.visible = false;
+        layer.addChild(this.text);
+    }
+
+    /** Update position/font/visibility for the current camera state. */
+    update(cam: Camera, factor: number, maxFactor: number): void {
+        const font = regionLabelFont(this.location.type, factor, maxFactor);
+        if (font === null || !this.location.showName) {
+            this.text.visible = false;
+            return;
+        }
+        // Screen centre of the location (MainView.2.cs x/y formulas), with
+        // the non-nebula offset of (-5, -20) px.
+        const c = this.location.resolveLocationCenter();
+        const s = cam.worldToScreen(c.x, c.y);
+        if (s.x < -100 || s.x > cam.width + 100 || s.y < -100 || s.y > cam.height + 100) {
+            this.text.visible = false;
+            return;
+        }
+        if (this.location.type !== GalaxyLocationType.NebulaCloud) {
+            s.x -= 5;
+            s.y -= 20;
+        }
+        if (font.size !== this.lastSize || font.bold !== this.lastBold) {
+            this.text.style.fontSize = font.size;
+            this.text.style.fontWeight = font.bold ? 'bold' : 'normal';
+            this.lastSize = font.size;
+            this.lastBold = font.bold;
+        }
+        this.text.position.set(s.x, s.y);
+        this.text.visible = true;
+    }
+}
+
 // ---------------------------------------------------------------------------
 
 export interface MainViewTextures {
@@ -504,8 +587,9 @@ export class MainView {
     private grid = new Graphics();
     private starfieldFar!: TilingSprite;
     private starfieldNear!: TilingSprite;
-    /** Region-name label hook (GalaxyLocations not ported yet). */
+    /** Region-name label layer (task 08f1), screen-space. */
     regionLabels = new Container();
+    private regionLabelViews: RegionLabel[] = [];
     systems: SystemView[] = [];
     clouds: CloudView[] = [];
     private textures!: MainViewTextures;
@@ -628,8 +712,12 @@ export class MainView {
         }
         await Promise.all(lazyLoads);
 
-        // Region-name hook: GalaxyLocations (Galaxy.3.cs) not ported yet.
-        this.world.addChild(this.regionLabels);
+        // Task 08f1: region/nebula location name labels (screen-space layer).
+        // All locations are treated as known to the empire for now.
+        for (const location of this.galaxy.galaxyLocations) {
+            this.regionLabelViews.push(new RegionLabel(location, this.regionLabels));
+        }
+        this.fx.addChild(this.regionLabels);
 
         this.attachInput();
     }
@@ -718,6 +806,15 @@ export class MainView {
         }
         for (const cloud of this.clouds) {
             cloud.update(z, cam);
+        }
+
+        // Region/nebula location name labels (task 08f1): visible while the
+        // original's zoom factor double_15 satisfies 70 < double_15 <=
+        // double_5 (the full-galaxy factor = 1/minZoom).
+        const factor = 1 / z;
+        const maxFactor = 1 / m;
+        for (const rl of this.regionLabelViews) {
+            rl.update(cam, factor, maxFactor);
         }
 
         // Screen-edge auto-scroll (original control scheme).

@@ -28,3 +28,22 @@ if (main_0.double_0 > 70.0 && main_0.double_0 <= main_0.double_5)
 - Pure helper `regionLabelFont(type, factor): { size, bold } | null` (null when not visible) + unit tests covering each branch.
 
 Verify: `npm run typecheck`, `npm test`; save (don't open) `shots/08f1-labels.png` at `/?zoom=1200` and `/?zoom=6000` (1600×900). Append `## Worker report`.
+
+## Worker report
+
+Files changed:
+- `src/render/mainView.ts` — implemented the `regionLabels` hook left by task 02:
+  - Exported pure helper `regionLabelFont(type, factor, maxFactor)` implementing the MainView.2.cs 4675–4705 font table (NebulaCloud: >4000 → 15.33px regular, >1000 → 16.67px regular, else 18.67px bold; other types: >4000 → 10.67px, >1000 → 15.33px, else 16.67px), returning `null` outside `70 < factor <= maxFactor`.
+  - New `RegionLabel` class: one screen-space Pixi `Text` per `GalaxyLocation` (created once in `init()`, reused), white fill, alpha 0.85, 'Forgotten Futurist' font, centred on the location's screen centre with the non-nebula (-5, -20) px offset; culled off-screen ±100 px; style rebuilt only when the zoom-factor branch changes.
+  - `MainView.update()` now updates all region labels each frame with `factor = 1/camera.zoom`, `maxFactor = 1/minZoom` (the full-galaxy factor); label layer moved from `world` to the screen-space `fx` container. All locations treated as known to the empire (per task note).
+- `test/main-view-fades.test.ts` — new `region label fonts` describe block covering null outside the window, both window edges (70 exclusive, maxFactor inclusive), and every font branch for NebulaCloud and non-nebula types.
+
+Done / verified:
+- `npm run typecheck` passes; `npm test` passes (213 tests, 17 files).
+- Headless screenshots saved (no console errors): `shots/08f1-labels-zoom1200.png` and `shots/08f1-labels-zoom6000.png` (1600×900).
+- Live-state check via `window.__dwu`: at ?zoom=1200 two arm names visible ("Zunama Sicut Arm", "Sacreya Arm"); at ?zoom=6000 forty-four labels visible (arm/storm/tempest names); at ?zoom=80 and ?zoom=60 zero labels (below the `>70` threshold), matching the source condition.
+
+Left undone:
+- Empire knowledge filtering is not implemented (task says treat all locations as known for now).
+- The original's exact grey text colour was not given in the source excerpt; used white at alpha 0.85 per the task spec.
+- `double_5` (max zoom-out factor) is approximated as `1/minZoom` (whole-galaxy fit); the original constant may differ slightly.
