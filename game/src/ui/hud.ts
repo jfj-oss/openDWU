@@ -7,6 +7,7 @@ import { Camera } from '../render/camera';
 import { Galaxy } from '../sim/galaxy';
 import type { GameData } from '../sim/data/gameData';
 import { Habitat, HabitatCategoryType, HabitatType, IndustryType, SystemInfo } from '../sim/types';
+import type { Empire } from '../sim/empire';
 import { flagShapeUrl } from '../sim/startGameOptions';
 import { createGameMenu, type GameMenuRefs } from './screens/gameMenu';
 import { setGameMenuHandler } from './keyboard';
@@ -591,13 +592,42 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
     const back = makeGlyphButton('‹', 'Previous');
     const fwd = makeGlyphButton('›', 'Next');
     let activeChip = 'colonies';
+    const chipLabel = (): string => CYCLE_CHIPS.find((c) => c.key === activeChip)?.label ?? activeChip;
+    /** Step through the active chip's list: select the next item (same hook
+     * as click-to-select, so the panel updates) and centre the camera on it
+     * at System zoom. */
+    const stepCycle = (dir: 1 | -1): void => {
+        if (activeChip !== 'colonies') {
+            // TODO(cycle): needs ships (M3) — Bases/Military/Constr./Other/
+            // Fleets/Idle all iterate BuiltObject/fleet state that M3 ports.
+            pushHudMessage(`No ${chipLabel()} yet`);
+            return;
+        }
+        const game = wiring.game;
+        const cam = wiring.camera;
+        const galaxy = wiring.galaxy;
+        if (!game || !cam || !galaxy) return;
+        const colonies = playerColonyList(galaxy, game.playerEmpire as Empire);
+        if (colonies.length === 0) {
+            pushHudMessage('No Colonies yet');
+            return;
+        }
+        const current = currentSelection?.habitat ?? null;
+        const next = nextInCycle(colonies, current, dir);
+        if (!next) return;
+        const system =
+            galaxy.systems.find((s) => s.habitats.includes(next)) ?? galaxy.systems[next.systemIndex];
+        wiring.onSelectionChange?.({ habitat: next, system });
+        cam.centerOn(next.xpos, next.ypos);
+        cam.zoomAt(SYSTEM_LEVEL_ZOOM, cam.width / 2, cam.height / 2);
+    };
     back.addEventListener('click', () => {
         playUiClick();
-        console.log(`TODO(cycle): ${activeChip} back`);
+        stepCycle(-1);
     });
     fwd.addEventListener('click', () => {
         playUiClick();
-        console.log(`TODO(cycle): ${activeChip} forward`);
+        stepCycle(1);
     });
     footer.append(back, fwd);
     for (const chip of CYCLE_CHIPS) {
@@ -722,6 +752,48 @@ function buildOptionsList(wiring: HudWiring): HTMLElement {
         panel.appendChild(item);
     }
     return panel;
+}
+
+// ---------------------------------------------------------------------------
+// Selection panel cycler (task 10h)
+// ---------------------------------------------------------------------------
+
+/** Next item of a cycle list for direction +1 (forward) or -1 (back), with
+ * wrap-around. An empty list yields null; if `current` is not in the list
+ * (e.g. it was just selected by clicking), forward starts at the first item
+ * and back at the last one. */
+export function nextInCycle<T>(list: readonly T[], current: T | null, dir: 1 | -1): T | null {
+    if (list.length === 0) return null;
+    const i = current == null ? -1 : list.indexOf(current);
+    if (i === -1) return dir === 1 ? list[0] : list[list.length - 1];
+    return list[(i + dir + list.length) % list.length];
+}
+
+/** The player empire's owned planets/moons, ordered like the original's
+ * colony list: descending population where the habitat has one, else name.
+ * Port of the Main.Part* cycleColonies list built from the player empire's
+ * colonies (Empire.colonies / Habitat.owner). */
+export function playerColonyList(galaxy: Galaxy, playerEmpire: Empire): Habitat[] {
+    const owned: Habitat[] = [];
+    for (const system of galaxy.systems) {
+        for (const h of system.habitats) {
+            if (
+                (h.category === HabitatCategoryType.Planet || h.category === HabitatCategoryType.Moon) &&
+                h.owner === playerEmpire
+            ) {
+                owned.push(h);
+            }
+        }
+    }
+    // Population is only comparable when every habitat reports one; mixed
+    // lists fall back to name order (task 10h).
+    const allHavePopulation = owned.every((h) => h.population != null && h.population.totalAmount > 0);
+    owned.sort((a, b) =>
+        allHavePopulation
+            ? b.population!.totalAmount - a.population!.totalAmount || a.name.localeCompare(b.name)
+            : a.name.localeCompare(b.name),
+    );
+    return owned;
 }
 
 /** Drive the camera for a View-list action. */

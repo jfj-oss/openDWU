@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { chromeButtonFile, clearHudMessages, formatCashflow, formatClockLabel, formatMoney, formatPopulation, getHudMessages, habitatTypeLabel, hudTransformOrigin, pushHudMessage, resourceIconUrl } from '../src/ui/hud';
+import { chromeButtonFile, clearHudMessages, formatCashflow, formatClockLabel, formatMoney, formatPopulation, getHudMessages, habitatTypeLabel, hudTransformOrigin, nextInCycle, playerColonyList, pushHudMessage, resourceIconUrl } from '../src/ui/hud';
 import { computeHudLayout, TOP_BAR_BUTTONS } from '../src/ui/hudLayout';
 import { START_STAR_DATE } from '../src/sim/galaxyTime';
-import { HabitatCategoryType, HabitatType } from '../src/sim/types';
+import { Habitat, HabitatCategoryType, HabitatType } from '../src/sim/types';
+import type { SystemInfo } from '../src/sim/types';
+import type { Galaxy } from '../src/sim/galaxy';
+import type { Empire } from '../src/sim/empire';
 
 // The DOM overlay itself needs a browser (jsdom is not configured), so this
 // tests the pure control → chrome-image mapping from LoadUiChromeButtons and
@@ -247,5 +250,102 @@ describe('streamlined HUD element set (task 05c)', () => {
         expect(layout['pnlMoney'].x).toBe(1920 - 230 - 10);
         expect(layout['pnlSelection']).toEqual({ x: 10, y: 1080 - 220 - 10, w: 300, h: 220 });
         expect(layout['pnlOptionsList']).toEqual({ x: 1920 - 220 - 10, y: 1080 - 10, w: 220, h: 0 });
+    });
+});
+
+describe('nextInCycle (task 10h)', () => {
+    const list = ['a', 'b', 'c'];
+
+    it('steps forward and back with wrap-around', () => {
+        expect(nextInCycle(list, 'a', 1)).toBe('b');
+        expect(nextInCycle(list, 'b', 1)).toBe('c');
+        expect(nextInCycle(list, 'c', 1)).toBe('a');
+        expect(nextInCycle(list, 'b', -1)).toBe('a');
+        expect(nextInCycle(list, 'a', -1)).toBe('c');
+        expect(nextInCycle(list, 'c', -1)).toBe('b');
+    });
+
+    it('returns null for an empty list', () => {
+        expect(nextInCycle([], 'a', 1)).toBeNull();
+        expect(nextInCycle([], null, -1)).toBeNull();
+    });
+
+    it('starts at the first item going forward when current is not in the list', () => {
+        expect(nextInCycle(list, null, 1)).toBe('a');
+        expect(nextInCycle(list, 'zzz', 1)).toBe('a');
+    });
+
+    it('starts at the last item going back when current is not in the list', () => {
+        expect(nextInCycle(list, null, -1)).toBe('c');
+        expect(nextInCycle(list, 'zzz', -1)).toBe('c');
+    });
+
+    it('works on a single-item list', () => {
+        expect(nextInCycle(['only'], 'only', 1)).toBe('only');
+        expect(nextInCycle(['only'], 'only', -1)).toBe('only');
+    });
+});
+
+describe('playerColonyList (task 10h)', () => {
+    function planet(name: string, population: number): Habitat {
+        const h = new Habitat(HabitatCategoryType.Planet, HabitatType.Ocean, name, 0, 0);
+        if (population > 0) {
+            // totalAmount is what generation sets via RecalculateTotalAmount;
+            // the cycler only reads it.
+            h.population.totalAmount = population;
+        }
+        return h;
+    }
+
+    function galaxyWith(habitats: Habitat[], owner: Empire | null, others?: Habitat[]): Galaxy {
+        const system = { systemStar: habitats[0], habitats: [...habitats, ...(others ?? [])] } as unknown as SystemInfo;
+        return { systems: [system] } as unknown as Galaxy;
+    }
+
+    it('keeps only owned planets/moons of the given empire', () => {
+        const player = {} as Empire;
+        const rival = {} as Empire;
+        const p1 = planet('Alpha', 100);
+        p1.owner = player;
+        const m1 = new Habitat(HabitatCategoryType.Moon, HabitatType.BarrenRock, 'Beta', 0, 0);
+        m1.owner = player;
+        const p2 = planet('Gamma', 50);
+        p2.owner = rival;
+        const star = new Habitat(HabitatCategoryType.Star, HabitatType.MainSequence, 'Sun', 0, 0);
+        star.owner = player;
+        const g = galaxyWith([star, p1, m1, p2], player);
+        expect(playerColonyList(g, player).map((h) => h.name)).toEqual(['Alpha', 'Beta']);
+    });
+
+    it('orders by descending population when every colony has one', () => {
+        const player = {} as Empire;
+        const small = planet('Small', 10);
+        small.owner = player;
+        const big = planet('Big', 1000);
+        big.owner = player;
+        const mid = planet('Mid', 100);
+        mid.owner = player;
+        const g = galaxyWith([small, big, mid], player);
+        expect(playerColonyList(g, player).map((h) => h.name)).toEqual(['Big', 'Mid', 'Small']);
+    });
+
+    it('falls back to name order when some colony has no population', () => {
+        const player = {} as Empire;
+        const b = planet('Bravo', 1000);
+        b.owner = player;
+        const a = planet('Alfa', 0);
+        a.owner = player;
+        const g = galaxyWith([b, a], player);
+        expect(playerColonyList(g, player).map((h) => h.name)).toEqual(['Alfa', 'Bravo']);
+    });
+
+    it('breaks population ties by name', () => {
+        const player = {} as Empire;
+        const z = planet('Zeta', 50);
+        z.owner = player;
+        const y = planet('Yota', 50);
+        y.owner = player;
+        const g = galaxyWith([z, y], player);
+        expect(playerColonyList(g, player).map((h) => h.name)).toEqual(['Yota', 'Zeta']);
     });
 });
