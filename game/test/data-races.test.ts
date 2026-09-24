@@ -149,3 +149,12 @@ describe('governments.ts', () => {
         }
     });
 });
+
+import { DEFAULT_RACE_FILES } from '../src/sim/data/gameData';
+import { existsSync } from 'node:fs';
+describe('DEFAULT_RACE_FILES', () => {
+    it('lists exactly the 22 race files that exist in the install', () => {
+        expect(DEFAULT_RACE_FILES.length).toBe(22);
+        for (const f of DEFAULT_RACE_FILES) expect(existsSync(`public/assets/dwu/races/${f}`)).toBe(true);
+    });
+});

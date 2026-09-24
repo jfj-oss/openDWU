@@ -29,6 +29,14 @@ import type { DesignSpecification } from './designTemplates';
 import { parseDesignSpecification } from './designTemplates';
 import { BuiltObjectSubRole } from './names';
 
+/** Race files shipped in the stock DW:U install (`races/`). */
+export const DEFAULT_RACE_FILES: readonly string[] = [
+    'ackdarian.txt', 'atuuk.txt', 'boskara.txt', 'dhayut.txt', 'gizurean.txt', 'haakonish.txt',
+    'human.txt', 'ikkuro.txt', 'ketarov.txt', 'kiadian.txt', 'mechanoid.txt', 'mortalen.txt',
+    'naxxilian.txt', 'quameno.txt', 'securan.txt', 'shakturi.txt', 'shandar.txt', 'sluken.txt',
+    'teekan.txt', 'ugnari.txt', 'wekkarus.txt', 'zenox.txt',
+];
+
 export interface GameData {
     // From 04a (races, governments)
     races: Race[];
@@ -79,14 +87,8 @@ export async function loadGameData(
     // Import path resolution here to avoid circular dependencies
     const { resolveDataUrl } = await import('./paths');
 
-    // Default race file names if not provided
-    const raceFiles = raceFileNames || [
-        'human.txt', 'mechanoid.txt', 'evuck.txt', 'ackdarians.txt', 'teekan.txt',
-        'kaltor.txt', 'dryad.txt', 'illo.txt', 'evuckian.txt', 'tao.txt',
-        'shaktur.txt', 'mithrilar.txt', 'human_pirate.txt', 'mechanoid_pirate.txt',
-        'draxian.txt', 'magellan.txt', 'dhayut.txt', 'sentinel.txt', 'thrynn.txt',
-        'soulless.txt', 'human_cai.txt', 'mechanoid_ancient.txt',
-    ];
+    // Default: the 22 race files of the stock DW:U install (races/ folder).
+    const raceFiles = raceFileNames || [...DEFAULT_RACE_FILES];
 
     // Fetch all individual race files and other data in parallel
     const [
