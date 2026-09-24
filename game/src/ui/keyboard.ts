@@ -57,7 +57,7 @@ export const KEY_BINDINGS: KeyBinding[] = [
     { key: 'F10', modifiers: NONE, action: 'constructionYardsScreen', description: 'Construction Yards screen' },
     { key: 'F11', modifiers: NONE, action: 'shipsAndBasesScreen', description: 'Ships and Bases screen' },
     { key: 'F12', modifiers: NONE, action: 'fleetsScreen', description: 'Fleets screen' },
-    { key: 'G', modifiers: NONE, action: 'galaxyMap', description: 'Galaxy Map screen' },
+    { key: 'G', modifiers: NONE, action: 'galaxyMap', description: 'Zoom out to the whole galaxy' },
     { key: 'H', modifiers: NONE, action: 'messageHistoryScreen', description: 'Message History screen' },
     { key: 'V', modifiers: NONE, action: 'empireComparisonScreen', description: 'Empire Comparison and Victory Conditions screen' },
     { key: 'O', modifiers: NONE, action: 'gameOptionsScreen', description: 'Game Options screen' },
@@ -239,8 +239,13 @@ export function dispatchKey(
 }
 
 /** Build the standard handler set from the camera + clock (the same camera
- * calls the HUD options list uses, Main.Part11.cs zoom behaviour). */
-export function buildDefaultHandlers(camera: Camera, time: GalaxyTime): KeyHandlers {
+ * calls the HUD options list uses, Main.Part11.cs zoom behaviour). When
+ * `galaxySize` is given, the G key also centres on the middle of the galaxy. */
+export function buildDefaultHandlers(
+    camera: Camera,
+    time: GalaxyTime,
+    galaxySize?: { width: number; height: number },
+): KeyHandlers {
     const cx = (): number => camera.width / 2;
     const cy = (): number => camera.height / 2;
     return {
@@ -267,9 +272,15 @@ export function buildDefaultHandlers(camera: Camera, time: GalaxyTime): KeyHandl
         scrollDown: () => camera.panByScreen(0, -SCROLL_PAN_PX),
         scrollLeft: () => camera.panByScreen(SCROLL_PAN_PX, 0),
         scrollRight: () => camera.panByScreen(-SCROLL_PAN_PX, 0),
-        // TODO(key): open the Galaxy Map screen (no openGalaxyMap hook today;
-        // the View-list row only zooms out to galaxy level).
-        galaxyMap: () => console.info('TODO(key): galaxyMap'),
+        // G: zoom the Main View out to show the whole galaxy (minZoom is the
+        // galaxy-fit zoom from Camera.setGalaxyBounds) and centre on its
+        // middle when the galaxy size is known.
+        galaxyMap: () => {
+            camera.zoom = camera.minZoom;
+            if (galaxySize) {
+                camera.centerOn(galaxySize.width / 2, galaxySize.height / 2);
+            }
+        },
         // F1 (KeyMappingFriendlyNames.OpenHelp -> btnHelp_Click, Main.Part7.cs).
         galactopediaHelp: () => toggleGalactopedia(helpTopicKeyForHabitat(getSelection()?.habitat ?? null)),
         // Esc: the in-game menu's toggle, registered by createHud (task 10c).

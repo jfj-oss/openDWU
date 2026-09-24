@@ -236,6 +236,35 @@ describe('dispatchKey (task 10a)', () => {
         setSelection(null);
     });
 
+    it('zooms to the whole galaxy with G (minZoom) and centres on its middle', () => {
+        const cam = new Camera();
+        cam.setViewport(1000, 1000);
+        cam.setGalaxyBounds(2000, 800); // minZoom = min(0.5, 1.25) * 0.9
+        cam.x = 0;
+        cam.y = 0;
+        cam.zoom = 1;
+        const handlers = buildDefaultHandlers(cam, makeClock(), { width: 2000, height: 800 });
+        expect(dispatchKey(fakeEvent('G'), handlers)).toBe('galaxyMap');
+        expect(cam.zoom).toBeCloseTo(cam.minZoom);
+        expect(cam.x).toBe(1000);
+        expect(cam.y).toBe(400);
+    });
+
+    it('zooms out only when G is pressed without a galaxy size', () => {
+        const cam = new Camera();
+        cam.setViewport(1000, 1000);
+        cam.setGalaxyBounds(2000, 800);
+        cam.x = 5;
+        cam.y = -3;
+        cam.zoom = 1;
+        const handlers = buildDefaultHandlers(cam, makeClock());
+        expect(dispatchKey(fakeEvent('G'), handlers)).toBe('galaxyMap');
+        expect(cam.zoom).toBeCloseTo(cam.minZoom);
+        // No centreing without a galaxy size.
+        expect(cam.x).toBe(5);
+        expect(cam.y).toBe(-3);
+    });
+
     it('pans the camera with the arrow keys', () => {
         const cam = new Camera();
         cam.setViewport(1000, 1000);
