@@ -504,107 +504,12 @@ export function assignIndependentTraderMissions(galaxy: Galaxy): void {
 }
 
 // ------------------------------------------------------------------------------------------
-// Orders (Galaxy.1.cs). Galaxy.Orders is not modeled on the TS Galaxy (market.ts galaxyOrders
-// stub); at game start it is empty, so these are no-ops there. Minimal surfaces:
-export interface GalaxyContract {
-    supplier: { cargo: CargoList | null } | null;
-    buyerEmpireId: number;
-    resourceId: number;
-    componentId: number;
-    amountToFulfill: number;
-    amountPickedUp: number;
-    amountDelivered: number;
-}
-export interface GalaxyOrder {
-    amountRequested: number;
-    amountDelivered: number;
-    expiryDate: number;
-    amountStillToArrive: number;
-    contracts: (GalaxyContract | null)[] | null;
-}
-
-// Galaxy.1.cs RemoveCompletedOrders (1047). No Rnd.
-export function removeCompletedOrders(orders: GalaxyOrder[]): void {
-    const orderList: GalaxyOrder[] = [];
-    for (let i = 0; i < orders.length; i++) {
-        const order = orders[i];
-        const num = order.amountRequested - order.amountDelivered;
-        if (num <= 0) orderList.push(order);
-    }
-    for (const item of orderList) {
-        const idx = orders.indexOf(item);
-        if (idx >= 0) orders.splice(idx, 1);
-    }
-}
-
-// Galaxy.cs GetEmpireById (2103).
-function getEmpireById(galaxy: Galaxy, empireId: number): Empire | null {
-    let empire: Empire | null = null;
-    empire = empireId !== galaxy.independentEmpire!.empireId ? (galaxy.empires.find((e) => e.empireId === empireId) ?? null) : galaxy.independentEmpire;
-    if (empire === null) {
-        empire = galaxy.pirateEmpires.find((e) => e.empireId === empireId) ?? null;
-    }
-    return empire;
-}
-
-// Galaxy.1.cs CancelContract (1086). No Rnd.
-export function cancelContract(galaxy: Galaxy, contract: GalaxyContract | null): boolean {
-    if (contract !== null) {
-        if (contract.supplier !== null) {
-            const num = contract.amountToFulfill - contract.amountPickedUp;
-            if (num > 0) {
-                const cargo = contract.supplier.cargo;
-                const empireById = getEmpireById(galaxy, contract.buyerEmpireId);
-                if (empireById !== null && cargo !== null) {
-                    let cargo2 = null;
-                    if (contract.resourceId >= 0) {
-                        // CargoList.GetCargo(Resource, Empire) (CargoList.cs 714).
-                        const index = cargo.indexOf(new ResourceRef(contract.resourceId), empireById);
-                        cargo2 = index >= 0 ? cargo.items[index] : null;
-                    } else if (contract.componentId >= 0) {
-                        // TODO(port): component cargo (cargo.GetCargo(new Component(id), empire)) — CargoList
-                        // only carries resources in the TS port.
-                        cargo2 = null;
-                    }
-                    if (cargo2 !== null) {
-                        cargo2.reserved -= num;
-                        cargo2.reserved = Math.max(0, cargo2.reserved);
-                        if (cargo2.amount <= 0 && cargo2.reserved <= 0) {
-                            cargo.remove(cargo2);
-                        }
-                    }
-                }
-            }
-        }
-        contract.amountToFulfill = contract.amountDelivered;
-        return true;
-    }
-    return false;
-}
-
-// Galaxy.1.cs CancelExpiredOrders (1126). No Rnd.
-export function cancelExpiredOrders(galaxy: Galaxy, orders: GalaxyOrder[]): void {
-    const starDate = currentStarDate(galaxy);
-    const orderList: GalaxyOrder[] = [];
-    for (let i = 0; i < orders.length; i++) {
-        const order = orders[i];
-        if (starDate <= order.expiryDate || order.amountStillToArrive > 0) {
-            continue;
-        }
-        orderList.push(order);
-        if (order.contracts === null || order.contracts.length <= 0) {
-            continue;
-        }
-        for (let j = 0; j < order.contracts.length; j++) {
-            const contract = order.contracts[j];
-            if (contract !== null) cancelContract(galaxy, contract);
-        }
-    }
-    for (const item of orderList) {
-        const idx = orders.indexOf(item);
-        if (idx >= 0) orders.splice(idx, 1);
-    }
-}
+// Orders (Galaxy.1.cs): the Order / Contract model and RemoveCompletedOrders / CancelExpiredOrders / CancelContract
+// moved to logistics/ (M4d); re-exported here for existing callers.
+export { cancelExpiredOrders, removeCompletedOrders } from './logistics/orders';
+export { cancelContract } from './logistics/contracts';
+export type { Order as GalaxyOrder } from './logistics/orders';
+export type { Contract as GalaxyContract } from './logistics/contracts';
 
 // ------------------------------------------------------------------------------------------
 // Galaxy.cs CheckEmpireTerritoryCanBuildAtLocation (3671). No Rnd.

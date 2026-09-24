@@ -221,3 +221,14 @@ const T_updateAchievements = registerTodo('deferred', 'updateAchievements');
 export function updateAchievements(galaxy: Galaxy, empire: Empire): void {
     /* TODO(port) deferred (not M4) */ todo(T_updateAchievements);
 }
+
+// Added by M4d (DiplomaticRelation.PerformTradeTransaction → CharacterEventType.TradeIncome, logistics/contracts.ts).
+const T_doCharacterEventRuntime = registerTodo('M4u', 'doCharacterEventRuntime');
+/**
+ * Galaxy.1.cs 3781 DoCharacterEvent(eventType, eventData, CharacterList sourceCharacters, includeLeader, leaderEmpire)
+ * for the runtime event types characters.ts doCharacterEventForList does not cover yet (it throws for them).
+ * RND: DoCharacterEvent draws Next(0, 5), Next(0, 20), Next(0, 80) per character (Galaxy.1.cs 3858-3860) — not drawn until M4u.
+ */
+export function doCharacterEventRuntime(galaxy: Galaxy, eventType: number, eventData: unknown, sourceCharacters: unknown[] | null, includeLeader: boolean, leaderEmpire: Empire | null): void {
+    /* TODO(port) M4u */ todo(T_doCharacterEventRuntime);
+}

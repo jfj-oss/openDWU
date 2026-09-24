@@ -48,7 +48,7 @@ import { BuiltObjectRole } from './data/designSpecifications';
 import { BuiltObjectSubRole } from './builtObjectTypes';
 import { MIN_TIME } from './tick/simTime';
 import type { SchedulerState } from './tick/scheduler';
-import type { GalaxyOrder } from './independentTraders';
+import { createGalaxyOrderList, type OrderList } from './logistics/orders';
 
 // Port of Galaxy.cs static fields (Galaxy.3.cs InitializeStatics sets
 // these): SectorSizeX = SectorSizeY = 2_000_000, IndexSize = 400_000.
@@ -4314,8 +4314,8 @@ export class Galaxy {
     // ---- M4b fields (missions & command dispatcher) ----
     // ---- M4c fields (movement, hyperjump, fuel, energy) ----
     // ---- M4d fields (orders, contracts, freight) ----
-    /** Galaxy.Orders (OrderList): read by the ported RemoveCompletedOrders / CancelExpiredOrders (added by M4a). */
-    orders: GalaxyOrder[] = [];
+    /** Galaxy.cs 563 Orders (OrderList, indexed: Galaxy.4.cs 2356 EnableIndexing). */
+    orders: OrderList = createGalaxyOrderList();
     // ---- M4e fields (docking, refuelling) ----
     // ---- M4f fields (civilian mission AI) ----
     // ---- M4g fields (extraction, industry) ----

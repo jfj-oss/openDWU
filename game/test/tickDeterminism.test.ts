@@ -75,7 +75,10 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // Moved from 2e883aa30dfd001e when createGame adopted the real game-start ticks: the Start.2.cs 1344-1350
         // stagger now writes the empire touch times (the Rnd draw was already there), so empire blocks fire at
         // different frames; createGame's own pins did not move.
-        expect(summary.digest).toBe('78d35aa06c9a1e5b');
+        // Moved from 78d35aa06c9a1e5b with M4d (orders / freight): colonies and independent colonies now place resupply
+        // orders, CheckMarketOrders contracts independent traders for them (FindFreighterForContract draws
+        // Rnd.Next(0, count) per attempt; InitiateContract moves money and cargo), and Galaxy.Orders.Count is digested.
+        expect(summary.digest).toBe('9cfcdf41db7de0dc');
     }, 600000);
 });
 

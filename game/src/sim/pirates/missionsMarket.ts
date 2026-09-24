@@ -79,3 +79,22 @@ const T_piratesMakeAttackOffers = registerTodo('M4s', 'piratesMakeAttackOffers')
 export function piratesMakeAttackOffers(galaxy: Galaxy, empire: Empire, starDate: number): void {
     /* TODO(port) M4s */ todo(T_piratesMakeAttackOffers);
 }
+
+// Added by M4d (Empire.4.cs 735 CheckMarketOrders smuggling branch, logistics/freight.ts).
+/** EmpireActivity.cs fields read by CheckMarketOrders (Target, RequestingEmpire, ResourceId). M4s ports the class. */
+export interface EmpireActivityRef {
+    target: unknown;
+    requestingEmpire: Empire | null;
+    /** byte; 255 = any resource. */
+    resourceId: number;
+}
+const T_resolvePirateMissionsByType = registerTodo('M4s', 'resolvePirateMissionsByType');
+/**
+ * Empire._PirateMissions.ResolveActivitiesByType(type) (EmpireActivityList.cs). `type` is EmpireActivityType
+ * (Undefined, Attack, Defend, Smuggle). Empire._PirateMissions is not modeled yet: returns an empty list (the C# list
+ * is empty until pirates accept missions).
+ */
+export function resolvePirateMissionsByType(galaxy: Galaxy, empire: Empire, type: number): EmpireActivityRef[] {
+    /* TODO(port) M4s */ todo(T_resolvePirateMissionsByType);
+    return [];
+}

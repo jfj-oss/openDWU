@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { generateGalaxy, type Galaxy } from '../src/sim/galaxy';
 import { setGovernmentsStatic } from '../src/sim/empire';
+import { setRaceBiasesStatic } from '../src/sim/raceBias';
 import { generateEmpire } from '../src/sim/empireGeneration';
 import { selectColorFromKey } from '../src/sim/empireColors';
 import { SystemVisibilityStatus, countExploredSystems } from '../src/sim/visibility';
@@ -13,6 +14,9 @@ let gameData: GameData;
 beforeAll(async () => {
     gameData = await loadGameDataFs();
     setGovernmentsStatic(gameData.governments);
+    // createGame registers these (game.ts 681); needed since M4d: CheckMarketOrders (GenerateValidTradingPosts →
+    // ObtainDiplomaticRelation) gives the second empire a NotMet relation, which ProjectForceStructure then evaluates.
+    setRaceBiasesStatic(gameData.races, gameData.raceBiases, gameData.raceFamilies.length, gameData.raceFamilyBiases);
 }, 60000);
 
 function makeGalaxy(): Galaxy {

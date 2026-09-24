@@ -1405,6 +1405,8 @@ export class Empire {
     // ---- M4b fields (missions & command dispatcher) ----
     // ---- M4c fields (movement, fuel) ----
     // ---- M4d fields (orders, contracts, freight) ----
+    /** Empire.cs _EmpireOrderCount (set by CheckMarketOrders, Empire.4.cs 792). */
+    empireOrderCount = 0;
     // ---- M4e fields (docking, refuelling) ----
     // ---- M4f fields (civilian mission AI) ----
     // ---- M4g fields (extraction, industry) ----
