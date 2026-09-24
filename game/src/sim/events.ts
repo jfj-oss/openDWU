@@ -221,3 +221,26 @@ const T_updateAchievements = registerTodo('deferred', 'updateAchievements');
 export function updateAchievements(galaxy: Galaxy, empire: Empire): void {
     /* TODO(port) deferred (not M4) */ todo(T_updateAchievements);
 }
+
+// ---- Stubs added by M4r (character runtime callees of ChangeDiplomaticRelation) ----
+
+const T_doCharacterEventRuntime = registerTodo('M4u', 'doCharacterEventRuntime');
+/**
+ * Galaxy.1.cs 3781 DoCharacterEvent(eventType, eventData, sourceCharacters, includeLeader, leaderEmpire) at runtime
+ * (TreatySigned / TreatyBroken / WarStarted from ChangeDiplomaticRelation). characters.ts ports the game-start event types
+ * and throws for the skill-changing ones; M4u audits the runtime types. The stub does nothing when the source list is
+ * empty (as the C# returns), else counts a hit.
+ */
+export function doCharacterEventRuntime(galaxy: Galaxy, eventType: number, eventData: unknown, sourceCharacters: readonly unknown[] | null, includeLeader: boolean, leaderEmpire: Empire | null): void {
+    if (sourceCharacters === null || sourceCharacters.length <= 0) return;
+    // RND: 3 draws per affected character (Galaxy.1.cs 3860-3862) + skill/trait changes — not drawn until M4u.
+    /* TODO(port) M4u */ todo(T_doCharacterEventRuntime);
+}
+
+const T_chanceNewAmbassador = registerTodo('M4u', 'chanceNewAmbassador');
+/** Galaxy.2.cs 4819 ChanceNewAmbassador(empire, newRelationType, otherEmpire) — a treaty may bring a new ambassador character. */
+export function chanceNewAmbassador(galaxy: Galaxy, empire: Empire, newRelationType: number, otherEmpire: Empire): boolean {
+    // RND: Rnd.Next(0, num) when num < 100 (every treaty type) — not drawn until M4u.
+    /* TODO(port) M4u */ todo(T_chanceNewAmbassador);
+    return false;
+}

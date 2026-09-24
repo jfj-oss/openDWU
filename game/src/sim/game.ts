@@ -47,6 +47,7 @@ import type { GameData } from './data/gameData';
 import type { Race } from './data/races';
 import type { Government } from './data/governments';
 import { setGovernmentsStatic } from './empire';
+import { setGovernmentBiasesStatic } from './diplomacy';
 import { setRaceBiasesStatic } from './raceBias';
 import { GalaxyLocationType } from './galaxyLocation';
 import { GalaxyShape, HabitatCategoryType, HabitatType, type Habitat } from './types';
@@ -677,6 +678,7 @@ export function createGame(opts: CreateGameOptions): Game {
     const gd = opts.gameData;
     govs = gd.governments;
     setGovernmentsStatic(gd.governments);
+    setGovernmentBiasesStatic(gd.governmentBiases); // GovernmentBiasList.LoadFromFile (M4r: NaturalAffinity)
     // Galaxy.cs LoadRaceBiases (Race.Biases) / Galaxy.RaceFamiliesStatic biases (raceBias.ts).
     setRaceBiasesStatic(gd.races, gd.raceBiases, gd.raceFamilies.length, gd.raceFamilyBiases);
     const clockRnd = new Random(opts.seed ^ 0x5eed); // stands in for the C# clock-seeded Randoms

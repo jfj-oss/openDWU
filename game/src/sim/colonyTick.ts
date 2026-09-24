@@ -55,6 +55,14 @@ export function reviewColonyFillFactor(galaxy: Galaxy): void {
     /* TODO(port) M4j */ todo(T_reviewColonyFillFactor);
 }
 
+/**
+ * Galaxy.cs 944 ColonyFillFactor (_ColonyFillFactor, default 1.0; written by ReviewColonyFillFactor). Added by M4r
+ * (CalculateNextAllowableProposalDate reads it). TODO(port) M4j: return the field ReviewColonyFillFactor maintains.
+ */
+export function galaxyColonyFillFactor(galaxy: Galaxy): number {
+    return 1.0;
+}
+
 const T_calculateWarWithOurRace = registerTodo('M4j', 'calculateWarWithOurRace');
 /** Habitat.cs 5694 CalculateWarWithOurRace. */
 export function calculateWarWithOurRace(galaxy: Galaxy, habitat: Habitat): void {

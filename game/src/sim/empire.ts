@@ -37,7 +37,7 @@ import { PirateRelationList, PirateRelationType, obtainPirateRelation, changePir
 import { recalculateDevelopmentLevelBaseline } from './developmentLevel';
 import { recalculateColonyInfluenceRadius } from './territory';
 import type { Character } from './characters';
-import { DiplomaticRelationList } from './diplomacy';
+import { DiplomacyCounters, DiplomaticRelationList } from './diplomacy';
 import { MIN_TIME } from './tick/simTime';
 import type { IMessageRecipient } from './messages';
 
@@ -1423,6 +1423,31 @@ export class Empire {
     // ---- M4r fields (diplomacy runtime) ----
     /** Empire.cs 402 _RelativeEmpireSize (CalculateRelativeEmpireSize; added by M4a for the tick's assignment). */
     relativeEmpireSize = 0;
+    /** Empire.cs 578 _CivilityRating (reputation; write through diplomacyTick.ts setCivilityRating, which clamps to [-100, 30]). */
+    civilityRating = 0.0;
+    /** Empire.cs 580 _WarWeariness (Empire.WarWearinessRaw; Empire.WarWeariness divides by the leader bonus). */
+    warWearinessRaw = 0.0;
+    /** Empire.cs 531 _TopCompetitor (EvaluatePoliticalSituation). */
+    topCompetitor: Empire | null = null;
+    /** Empire.cs 325/327 _RecentAttackingEmpires / _RecentSpyingEmpires (filled by combat / espionage, cleared by EvaluatePoliticalSituation). */
+    recentAttackingEmpires: Empire[] = [];
+    recentSpyingEmpires: Empire[] = [];
+    /**
+     * Empire.cs 132/135 _DesiredForeignColonies / _EmpiresWithDesiredColonies (HabitatPrioritizationList / EmpireList):
+     * filled by Empire.2.cs 4566 IdentifyDesiredForeignColonies (DetermineRandomAttacks, M4m), read by
+     * EvaluatePoliticalSituation (Covetousness). Declared here by M4r; M4m writes them.
+     */
+    desiredForeignColonies: HabitatPrioritization[] = [];
+    empiresWithDesiredColonies: Empire[] = [];
+    /**
+     * Empire.cs _EmpiresViewable / _EmpiresViewableExpiry (EmpireList / List<long>): empires whose objects this
+     * empire can see (subjugation, espionage). Written by ChangeDiplomaticRelation / ConsiderTreatyProposals (M4r),
+     * espionage; expired by ClearExpiredViewableEmpires (M4t); read by IsObjectVisibleToThisEmpire.
+     */
+    empiresViewable: Empire[] = [];
+    empiresViewableExpiry: number[] = [];
+    /** EmpireCounters.cs diplomatic counters (diplomacy.ts DiplomacyCounters) until EmpireCounters is ported. */
+    diplomacyCounters = new DiplomacyCounters();
     // ---- M4s fields (pirates runtime) ----
     // ---- M4t fields (visibility, exploration) ----
     // ---- M4u fields (events, characters) ----

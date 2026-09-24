@@ -156,8 +156,8 @@ const specialBonusHappiness = (_empire: Empire): number => 0.0;
 
 // Empire.cs WarWeariness (1405).
 export function empireWarWeariness(empire: Empire): number {
-    // TODO(port): Empire._WarWeariness (war model) — 0.0 at game start.
-    const warWearinessRaw = 0.0;
+    // Empire.cs 580 _WarWeariness (EvaluatePoliticalSituation, diplomacyTick.ts).
+    const warWearinessRaw = empire.warWearinessRaw;
     // Empire.cs 1409-1413: if (Leader != null) num = 1.0 + Leader.WarWeariness / 100.0.
     const num = resolveEmpireLeaderWarWearinessDivisor(empire);
     return warWearinessRaw / num;
@@ -166,8 +166,8 @@ export function empireWarWeariness(empire: Empire): number {
 // Empire.cs CivilityRatingApprovalRaw (1450).
 export function empireCivilityRatingApprovalRaw(galaxy: Galaxy, empire: Empire): number {
     let num = 0.0;
-    // TODO(port): Empire._CivilityRating (Empire.8.cs reputation model) — 0.0 at game start.
-    const civilityRating = 0.0;
+    // Empire.cs 578 _CivilityRating (reputation model, diplomacyTick.ts).
+    const civilityRating = empire.civilityRating;
     if (empire !== galaxy.independentEmpire) num = civilityRating / 5.0;
     const gov = empireGovernmentAttributes(empire);
     if (gov !== null && num < 0.0) num *= gov.concernForOwnReputation;
@@ -200,18 +200,9 @@ export function habitatTaxApproval(h: Habitat): number {
     return num;
 }
 
-// EmpireEvaluation.cs — only the fields read here. A new evaluation has
-// _RacialOffense = _SlaveryOffense = 0 (ctor 70); _Bias is set by ObtainEmpireEvaluation.
-export interface EmpireEvaluation {
-    empire: Empire | null;
-    bias: number;
-    racialOffense: number;
-    slaveryOffense: number;
-}
-
-function newEmpireEvaluation(empire: Empire | null): EmpireEvaluation {
-    return { empire, bias: 0.0, racialOffense: 0.0, slaveryOffense: 0.0 };
-}
+// EmpireEvaluation.cs / Empire.4.cs ObtainEmpireEvaluation (106): the full model lives in diplomacy.ts (M4r).
+import { obtainEmpireEvaluation } from './diplomacy';
+export { EmpireEvaluation, obtainEmpireEvaluation } from './diplomacy';
 
 // Empire.2.cs DetermineEmpiresWithDominantRace (3460).
 export function determineEmpiresWithDominantRace(galaxy: Galaxy, race: Race | null): Empire[] {
@@ -221,31 +212,6 @@ export function determineEmpiresWithDominantRace(galaxy: Galaxy, race: Race | nu
         if (empire != null && empire.dominantRace === race) empireList.push(empire);
     }
     return empireList;
-}
-
-// Empire.4.cs ObtainEmpireEvaluation (106). Empire.EmpireEvaluations is the TS
-// Empire.empireEvaluations list (EmpireEvaluationList; indexer [Empire] = first match).
-export function obtainEmpireEvaluation(galaxy: Galaxy, self: Empire, empire: Empire | null): EmpireEvaluation {
-    if (empire == null) return newEmpireEvaluation(empire);
-    if (empire === galaxy.independentEmpire) return newEmpireEvaluation(empire);
-    if (empire.pirateEmpireBaseHabitat !== null || self.pirateEmpireBaseHabitat !== null) return newEmpireEvaluation(empire);
-    if (self.empireEvaluations != null && empire != null) {
-        const evaluations = self.empireEvaluations as EmpireEvaluation[];
-        let empireEvaluation: EmpireEvaluation | null = null;
-        for (let index = 0; index < evaluations.length; index++) {
-            if (evaluations[index].empire === empire) {
-                empireEvaluation = evaluations[index];
-                break;
-            }
-        }
-        if (empireEvaluation == null) {
-            empireEvaluation = newEmpireEvaluation(empire);
-            empireEvaluation.bias = resolveStandardRaceBias(self.dominantRace, empire.dominantRace);
-            if (empire.active) evaluations.push(empireEvaluation);
-        }
-        return empireEvaluation;
-    }
-    return newEmpireEvaluation(empire);
 }
 
 // Habitat.cs RacialHappiness (495).

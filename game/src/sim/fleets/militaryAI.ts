@@ -83,3 +83,58 @@ export function identifyMechanoidEmpire(galaxy: Galaxy): Empire | null {
     /* TODO(port) M4m */ todo(T_identifyMechanoidEmpire);
     return null;
 }
+
+// ---- Stubs added by M4r (callees of the diplomacy runtime; fleet side effects owned by M4m) ----
+
+const T_setDefendFleets = registerTodo('M4m', 'setDefendFleets');
+/** Empire.9.cs 789/794 SetDefendFleets([defendingFromAttack, assignMovement]) — called by ReviewDiplomaticStrategies / DeclareWar (M4r). */
+export function setDefendFleets(galaxy: Galaxy, empire: Empire, defendingFromAttack: boolean, assignMovement: boolean): void {
+    /* TODO(port) M4m */ todo(T_setDefendFleets);
+}
+
+const T_clearAttackFleetAssignments = registerTodo('M4m', 'clearAttackFleetAssignments');
+/** Empire.9.cs 714/719 ClearAttackFleetAssignments([targetEmpire]) — null = every attack fleet. */
+export function clearAttackFleetAssignments(galaxy: Galaxy, empire: Empire, targetEmpire: Empire | null): void {
+    /* TODO(port) M4m */ todo(T_clearAttackFleetAssignments);
+}
+
+const T_checkAttackFleetTargets = registerTodo('M4m', 'checkAttackFleetTargets');
+/** Empire.9.cs 736 CheckAttackFleetTargets(targetEmpires). */
+export function checkAttackFleetTargets(galaxy: Galaxy, empire: Empire, targetEmpires: Empire[]): void {
+    /* TODO(port) M4m */ todo(T_checkAttackFleetTargets);
+}
+
+const T_sendAttackFleets = registerTodo('M4m', 'sendAttackFleets');
+/** Empire.7.cs 4828 SendAttackFleets(targetEmpire) — called by DeclareWar (M4r). */
+export function sendAttackFleets(galaxy: Galaxy, empire: Empire, targetEmpire: Empire): void {
+    /* TODO(port) M4m */ todo(T_sendAttackFleets);
+}
+
+const T_reviewDefensiveFleetLocations = registerTodo('M4m', 'reviewDefensiveFleetLocations');
+/** Empire.9.cs 1917 ReviewDefensiveFleetLocations — called by DeclareWar (M4r). */
+export function reviewDefensiveFleetLocations(galaxy: Galaxy, empire: Empire): void {
+    /* TODO(port) M4m */ todo(T_reviewDefensiveFleetLocations);
+}
+
+const T_sendScoutsToSingleEnemyEmpire = registerTodo('M4m', 'sendScoutsToSingleEnemyEmpire');
+/** Empire.9.cs 4481 SendScoutsToSingleEnemyEmpire(enemyEmpire, availableScouts): scouts sent (MoveAndWait missions). The stub sends none. */
+export function sendScoutsToSingleEnemyEmpire(galaxy: Galaxy, empire: Empire, enemyEmpire: Empire, availableScouts: number): number {
+    /* TODO(port) M4m */ todo(T_sendScoutsToSingleEnemyEmpire);
+    return 0;
+}
+
+const T_cancelAttackMissionsAgainstEmpire = registerTodo('M4m', 'cancelAttackMissionsAgainstEmpire');
+/**
+ * Empire.3.cs 3443 CancelAttacksAgainstEmpire(empire), mission part: CancelAttackMissionAgainstEmpireForSingleShip for every
+ * state and private ship and CancelAttackMissionAgainstEmpireForSingleShipGroup for every fleet (the trailing
+ * ClearOutlawsFromEmpire is ported in diplomacyTick.ts). Called by ProcessEndOfWarWithEmpire (M4r).
+ */
+export function cancelAttackMissionsAgainstEmpire(galaxy: Galaxy, empire: Empire, targetEmpire: Empire): void {
+    /* TODO(port) M4m */ todo(T_cancelAttackMissionsAgainstEmpire);
+}
+
+const T_clearDefendFleets = registerTodo('M4m', 'clearDefendFleets');
+/** Empire.9.cs 758 ClearDefendFleets — called by ProcessEndOfWarWithEmpire (M4r). */
+export function clearDefendFleets(galaxy: Galaxy, empire: Empire): void {
+    /* TODO(port) M4m */ todo(T_clearDefendFleets);
+}

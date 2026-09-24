@@ -4330,6 +4330,11 @@ export class Galaxy {
     // ---- M4p fields (fighters) ----
     // ---- M4q fields (invasion, troops, boarding) ----
     // ---- M4r fields (diplomacy runtime) ----
+    /**
+     * Galaxy.cs 1034 AggressionLevel (_AggressionLevel, Galaxy.4.cs 2151 ctor argument; default 1.0). Read by the
+     * EmpireEvaluation attitude model. generateGalaxy stores GenerateGalaxyOptions.aggressionLevel here.
+     */
+    aggressionLevel = 1.0;
     // ---- M4s fields (pirates runtime) ----
     // ---- M4t fields (visibility, exploration, territory) ----
     // ---- M4u fields (events, disasters, characters) ----
@@ -4370,6 +4375,7 @@ export function generateGalaxy(options: GenerateGalaxyOptions): Galaxy {
     // AggressionLevel >= 1.5 / >= 1.3 / >= 1.1 / else. With no empireStarts
     // this consumes zero Rnd calls (pre-01f1 behavior).
     const aggressionLevel = options.aggressionLevel ?? 1.0;
+    galaxy.aggressionLevel = aggressionLevel; // Galaxy.4.cs 2151 _AggressionLevel = aggressionLevel (M4r)
     const aggressiveRacesRequired = aggressionLevel >= 1.5 ? 3 : aggressionLevel >= 1.3 ? 2 : aggressionLevel >= 1.1 ? 1 : 0;
     setupAlienRacePopulations(galaxy, options.empireStarts ?? [], aggressiveRacesRequired);
 
