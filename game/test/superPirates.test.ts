@@ -206,27 +206,29 @@ describe('UpgradeMilitaryShipDesignMoreWeapons / MoreEngines (Galaxy.8.cs 4121 /
 // Seed 1: [super-pirate designs (subRole:name:component count), first 8 BuiltObjects, BuiltObject count].
 // (re-pinned: generateSuperPirateFaction now runs on the full createGame state — stations, starting
 // ships, characters, ruins and the game-start tail consumed Rnd and changed the tech/design inputs.)
-// (pinned after race-attribute clamps, Race.cs LoadFromFile)
+// (re-pinned M4k: the game-start Empire.DoTasks now runs PerformResearch — SelectNextResearchProject draws
+// Rnd (SelectRandomLowestProject) and research events draw Next(0, num4) per industry — so later game-start
+// Rnd draws shift.)
 const PINNED: unknown[] = [
     [
-        'Escort:Senator II:32',
-        'Frigate:Vengeance II:44',
-        'Destroyer:Royale II:54',
-        'Cruiser:Javelin:89',
-        'CapitalShip:Argossia:137',
-        'Carrier:CX-2 Carrier:109',
+        'Escort:Royale II:32',
+        'Frigate:Sovereign II:47',
+        'Destroyer:Decurion II:57',
+        'Cruiser:Senator:81',
+        'CapitalShip:Colossia:139',
+        'Carrier:CX-2 Carrier:100',
         'DefensiveBase:Phantom Pirate Defensive Base:123',
         'GenericBase:Phantom Pirate Base:217',
     ],
     [
-        'GenericBase:Haako Fortress',
+        'GenericBase:Bandits Den',
+        'DefensiveBase:Haako 4 Defense Battery',
         'DefensiveBase:Haako 4 Orbital Battery',
-        'DefensiveBase:Haako 4 Orbital Battery',
-        'DefensiveBase:Haako 4 Weapons Platform',
-        'CapitalShip:Tenacious Vendetta',
-        'Destroyer:Indomitable Liberator',
-        'Destroyer:Angry Gauntlet',
-        'Frigate:Courageous Provocation',
+        'DefensiveBase:Haako 4 Defensive Base',
+        'Destroyer:Looming Hero',
+        'Carrier:Terrible Challenger',
+        'Frigate:Cunning Eclipse',
+        'Escort:Indomitable Gauntlet',
     ],
-    28,
+    30,
 ];

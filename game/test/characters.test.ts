@@ -134,40 +134,154 @@ describe('GenerateStartingCharacters (normal empires, seed 1)', () => {
         const g = beforeCharacters(opts());
         const { draws, log } = startNormalEmpires(g);
         // Rnd draws per empire (generation of random characters + 6 per activated character).
-        // (pinned after race-attribute clamps, Race.cs LoadFromFile)
-        expect(draws).toEqual([43, 53, 57, 21]);
+        // (re-pinned M4k: the game-start Empire.DoTasks now runs PerformResearch, whose research-queue selection and research events draw Rnd)
+        expect(draws).toEqual([98, 60, 38, 33]);
         expect(log.filter((d) => d.startsWith('d=')).length).toBe(0);
         const summary = g.empires.map((e) => ({ race: e.dominantRace!.name, leader: e.leader?.name, characters: getEmpireCharacters(e).map(describeCharacter) }));
         // (re-pinned: createGame now runs the price reviews, first galaxy tick, per-empire setup,
         // starting ships and diplomacy before this step, so the character draws come later in the
         // Rnd stream; draw counts per character are unchanged in shape.)
+        // (re-pinned M4k: game-start research shifts the Rnd stream before this step.)
         expect(summary[0]).toEqual({
             race: 'Human',
-            leader: 'Juran Berallia',
+            leader: 'Thassun Trebulo',
             characters: [
-                { role: 'Ambassador', name: 'Than Bendu', race: 'Human', skills: ['Diplomacy:25'], traits: ['Tolerant', 'EloquentSpeaker'], location: 'Hotaulf', bonusesKnown: false },
-                { role: 'Leader', name: 'Juran Berallia', race: 'Human', skills: ['TourismIncome:2', 'CounterEspionage:5'], traits: ['InspiringPresence'], location: 'Hotaulf', bonusesKnown: true },
-                { role: 'IntelligenceAgent', name: 'Luc Mankara', race: 'Human', skills: ['CounterEspionage:13'], traits: ['IntelligenceCorrupt', 'IntelligenceTolerant'], location: 'Hotaulf', bonusesKnown: false },
+                {
+                    role: 'Ambassador',
+                    name: 'Than Bendu',
+                    race: 'Human',
+                    skills: ['Diplomacy:25'],
+                    traits: ['Tolerant', 'EloquentSpeaker'],
+                    location: 'Hotaulf',
+                    bonusesKnown: false,
+                },
+                {
+                    role: 'Leader',
+                    name: 'Thassun Trebulo',
+                    race: 'Human',
+                    skills: ['ColonyCorruption:2', 'ColonyIncome:5'],
+                    traits: ['Pacifist'],
+                    location: 'Hotaulf',
+                    bonusesKnown: true,
+                },
+                {
+                    role: 'IntelligenceAgent',
+                    name: 'Laurus Bendu',
+                    race: 'Human',
+                    skills: ['Concealment:11'],
+                    traits: ['IntelligenceLawful', 'IntelligenceMeasured'],
+                    location: 'Hotaulf',
+                    bonusesKnown: false,
+                },
+                {
+                    role: 'IntelligenceAgent',
+                    name: 'Caran Ikkuros',
+                    race: 'Human',
+                    skills: ['PsyOps:11', 'CounterEspionage:6', 'Concealment:-4'],
+                    traits: ['IntelligenceXenophobic', 'IntelligenceUninhibited'],
+                    location: 'Hotaulf',
+                    bonusesKnown: false,
+                },
             ],
         });
-        // (pinned after race-attribute clamps, Race.cs LoadFromFile: one fewer IntelligenceAgent for the Human empire)
-        // (pinned after race-attribute clamps, Race.cs LoadFromFile)
         expect(summary.slice(1).map((s) => [s.race, s.leader, s.characters.map((c) => `${c.role}:${c.name}`)])).toEqual([
-            ['Haakonish', 'Zeek Daghrun', ['ColonyGovernor:Yentor Zhukziban', 'Leader:Zeek Daghrun', 'IntelligenceAgent:Fhasha Halskut']],
-            ['Dhayut', 'Lashar Nassiki', ['TroopGeneral:Maqtor Aklon', 'Leader:Lashar Nassiki', 'IntelligenceAgent:Kibul Diitak']],
-            ['Ugnari', 'Wod Qendo', ['IntelligenceAgent:Tek Ixito', 'Leader:Wod Qendo']],
+            [
+                'Haakonish',
+                'Uza Taghran',
+                [
+                    'ColonyGovernor:Yentor Zhukziban',
+                    'Leader:Uza Taghran',
+                    'IntelligenceAgent:Sarriq Hudall',
+                    'IntelligenceAgent:Gar Akshat',
+                ],
+            ],
+            [
+                'Dhayut',
+                'Randul Varqi',
+                ['TroopGeneral:Maqtor Aklon', 'Leader:Randul Varqi', 'IntelligenceAgent:Tek Sartora'],
+            ],
+            ['Ugnari', 'Xo Thanda', ['IntelligenceAgent:Tek Ixito', 'Leader:Xo Thanda']],
         ]);
         // Human empire full draw sequence: Leader (14: name 2, skill count, skill picks + levels, trait
-        // count, trait), agent 1 (11: Next(0,4) race roll + ...), then 3 characters × 2 (CharacterTransferLocation
-        // + CharacterStart: Next(0,5), Next(0,20), Next(0,80) each).
-        // (pinned after race-attribute clamps, Race.cs LoadFromFile: the second IntelligenceAgent no longer
-        // spawns, so the agent-2 block is gone and only 3 characters go through transfer+start.)
-        expect(log.slice(0, 35)).toEqual([
-            '0,31=2', '0,26=14', '0,2=1', '0,2=0', '0,3=1', '0,20=1', '0,3=1', '0,20=13', '0,4=2', '2,10=2', '0,4=3', '2,10=5', '0,2=0', '0,41=1',
-            '0,4=2', '0,31=20', '0,26=4', '0,2=0', '0,3=0', '0,3=1', '0,4=0', '5,16=13', '0,2=1', '0,14=12', '0,14=8',
-            '0,5=1', '0,20=7', '0,80=3', '0,5=2', '0,20=7', '0,80=41', '0,5=0', '0,20=11', '0,80=16', '0,5=0',
+        // count, trait), agent 1 (11: Next(0,4) race roll + ...), agent 2 (49, including 20 Next(0,1) and 15 Next(0,3)
+        // re-rolls), then 8 × (CharacterTransferLocation + CharacterStart: Next(0,5), Next(0,20), Next(0,80) each).
+        expect(log.slice(0, 74)).toEqual([
+            '0,31=12',
+            '0,26=8',
+            '0,2=1',
+            '0,2=0',
+            '0,3=1',
+            '0,20=2',
+            '0,3=0',
+            '0,4=1',
+            '0,4=0',
+            '2,10=2',
+            '0,4=2',
+            '2,10=5',
+            '0,2=0',
+            '0,41=9',
+            '0,4=3',
+            '0,31=9',
+            '0,26=12',
+            '0,2=0',
+            '0,3=1',
+            '0,3=1',
+            '0,4=3',
+            '5,16=11',
+            '0,2=1',
+            '0,14=13',
+            '0,14=5',
+            '0,4=1',
+            '0,1=0',
+            '0,1=0',
+            '0,1=0',
+            '0,1=0',
+            '0,1=0',
+            '0,1=0',
+            '0,1=0',
+            '0,1=0',
+            '0,1=0',
+            '0,1=0',
+            '0,1=0',
+            '0,1=0',
+            '0,1=0',
+            '0,1=0',
+            '0,1=0',
+            '0,1=0',
+            '0,1=0',
+            '0,1=0',
+            '0,1=0',
+            '0,1=0',
+            '0,31=10',
+            '0,26=0',
+            '0,2=1',
+            '0,2=1',
+            '0,2=0',
+            '0,3=1',
+            '0,3=0',
+            '0,3=1',
+            '0,3=0',
+            '0,3=2',
+            '0,3=1',
+            '0,3=2',
+            '0,3=1',
+            '0,3=0',
+            '0,3=1',
+            '0,3=0',
+            '0,3=1',
+            '0,3=1',
+            '0,3=1',
+            '0,4=0',
+            '5,16=11',
+            '0,4=0',
+            '5,16=6',
+            '0,4=1',
+            '-5,-1=-4',
+            '0,2=1',
+            '0,14=9',
+            '0,14=4',
         ]);
-        expect(log.slice(25, 43).map((d) => d.split('=')[0])).toEqual(Array.from({ length: 6 }, () => ['0,5', '0,20', '0,80']).flat());
+        expect(log.slice(74, 98).map((d) => d.split('=')[0])).toEqual(Array.from({ length: 8 }, () => ['0,5', '0,20', '0,80']).flat());
 
         for (const e of g.empires) {
             const chars = getEmpireCharacters(e);
@@ -211,7 +325,7 @@ describe('GenerateStartingCharacters (normal empires, seed 1)', () => {
         const leader = dhayut.leader!;
         // Habitat.cs 616-624: colony characters excluding leaders count only when BonusesKnown (none) + leader.
         expect(resolveCharacterColonyHappinessBonus(cap)).toBe(leader.colonyHappiness);
-        expect(leader.colonyHappiness).toBe(0); // pinned for seed 1 (Dhayut leader Lashar Nassiki; after race-attribute clamps, Race.cs LoadFromFile)
+        expect(leader.colonyHappiness).toBe(0); // pinned for seed 1 (Dhayut leader Randul Varqi; re-pinned M4k: game-start research shifts the Rnd stream)
         expect(resolveCharacterColonyIncomeBonus(cap)).toBe(leader.colonyIncome);
         expect(resolveCharacterColonyCorruptionBonus(cap)).toBe(leader.colonyCorruption);
         expect(resolveEmpireLeaderWarWearinessDivisor(dhayut)).toBe(1.0 + leader.warWeariness / 100.0);
@@ -262,5 +376,7 @@ describe('GenerateStartingCharacters(pirate base) (Galaxy.8.cs 4822)', () => {
 
 // Pinned for seed 1 (TS port): the first AI pirate faction's starting characters, now generated
 // inside GeneratePirateEmpire (Galaxy.8.cs 4822) during the first galaxy tick.
-// (pinned after race-attribute clamps, Race.cs LoadFromFile)
+// (re-pinned M4k: the game-start Empire.DoTasks now runs PerformResearch — SelectNextResearchProject draws
+// Rnd (SelectRandomLowestProject) and research events draw Next(0, num4) per industry — so later game-start
+// Rnd draws shift.)
 const PIRATE_ROLES: string[] = ['PirateLeader', 'IntelligenceAgent'];

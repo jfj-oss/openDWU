@@ -98,3 +98,72 @@ Tests: added `test/componentStatic.test.ts`, `test/designNames.test.ts`, `test/d
 - Rnd parity: C# game start is not seed-deterministic (Galaxy 240 s block reseeds Rnd from the clock; Bacon clock Randoms; worker threads). The port keeps one seeded stream; see tasks/M4-plan.md determinism contract.
 - Known TODOs: mission assignment (AssignMissionsToBuiltObjectList no-op; draws Rnd in C#), the rest of Empire/Galaxy DoTasks (M4), story events (off by default), messages/UI text.
 - Next: M4 per tasks/M4-plan.md (M4a tick core in progress).
+
+## M4a switch-over + wave 1 (in progress)
+
+- `3a1ae7f`: createGame / GenerateEmpire call the real ticks (tick/gameStart.ts) at the C# sites; stand-ins
+  `empireDoTasksStandIn`, `galaxyGameStartHugeTick/LongTick` removed. createGame pins unchanged; the 600 s
+  digest moved to `78d35aa06c9a1e5b` (1344-1350 touch stagger now applied, incl. LastHugeTouch).
+- Wave 1 merged into `claude/cloud-lane-c2` (last merge `bba13c4`, 626 tests passing):
+  - M4b missions/command dispatcher (`missions/`: mission.ts, assign.ts, resolveCommands.ts, executeCommands.ts,
+    distress.ts; per-package case stubs `missions/cmd*.ts`).
+  - M4d orders/contracts/freight/colony supply (`logistics/`). A null `Habitat.dockingBayWaitQueue` reads as an
+    empty queue until M4e creates them.
+  - M4j colony growth, satisfaction, treasury, government (`colonyTick.ts`, `treasury.ts`; EmpireCounters class).
+  - M4k research progress (`researchTick.ts`, extended `researchSystem.ts`).
+  - M4r diplomacy runtime (`diplomacyTick.ts`, `tradeItems.ts`, EmpireEvaluation in `diplomacy.ts`).
+  - M4t exploration/visibility/territory (`exploration.ts`; UpdateSystemInfo player variant).
+  - Pins moved: 600 s digest now `9582e8126fa8a7cd`; createGameFull / troops / many createGame pins moved with M4k
+    (game-start PerformResearch draws Rnd) and M4j (game-start EvaluateColonyVariables / recruitment).
+- Wave 2: M4g, M4h, M4c, M4n merged (see below); M4s1 finished but NOT merged (branch `claude/cloud-lane-c2-m4s1`).
+
+
+## Handover to local (cloud lane C stopped)
+
+State of `claude/cloud-lane-c2` at `79e0e15` plus this note. No cloud agents or jobs are running.
+
+**Merged:** M4a (ticks + game-start switch-over), wave 1 (b, d, j, k, r, t), wave 2 g, h, c, n.
+- Full suite last run green after the M4h merge (651 tests). After the M4c and M4n merges only the tick
+  tests and `test/m4*` were run (190 pass); **run the full suite first** (`npx vitest run`).
+- 600 s digest pin: `f5096dc7fa0d5173` (test/tickDeterminism.test.ts; each merge appended its reason).
+- The per-package reports (ported entry points, stubs added in other packages, C# oddities) are summarised
+  in the merge commit messages and in each package commit on its `wip/m4*` history (reachable from this branch).
+
+**Step 1: merge M4s1 (pirate mission marketplace).** Branch `claude/cloud-lane-c2-m4s1` (`5f54c15`, based on
+`58e94b7`: it has wave 1 minus M4r, and none of wave 2). Its own suite: 612/612. Expect:
+- tickDeterminism / tickScheduler marker conflicts. M4s1 ported `reviewPirateMissionsAndAssign`, so its
+  marker becomes `M4s pirateCollectIncomeFromControlledColonies`.
+- **M4s1 moved nearly every createGame pin.** `ReviewPirateRelations` draws one NextDouble per Empire long
+  block, including the game-start DoTasks. Affected: createGameFull PINNED_SUMMARY, game.test capitals,
+  characters, troops, taxes, startingColonies, forceStructure, stationPlacement, builtObjectPlacement,
+  pirateBases, pirates, superPirates, independentTraders. Take the test structure from HEAD and re-pin the
+  values against the merged code.
+- M4s1 read `OverallAttitude` defensively because M4r was not in its base. Now that M4r's `EmpireEvaluation`
+  (diplomacy.ts) is merged, switch it to the real getter.
+- M4s1 made `empire.controlOfferPirateMissions` default to FullyAutomated (Empire.cs 569), which was a bug fix.
+
+**Step 2: SelectCreatures gating bug (pre-existing generation mismatch; moves every generation pin).** In
+`galaxy.ts` SetupSolarSystem, the calls `this.selectCreatures(planet)` (~line 3981) and
+`this.selectCreatures(moon)` (~4076) run unconditionally. C# Galaxy.5.cs 1648 / 1785 call SelectCreatures only in
+the `else` of `if (habitat2.Population.Count > 0)`. Also check the asteroid call sites against Galaxy.5.cs 1809
+and 1899. Do this with step 1 so all pins move once.
+
+**Step 3: wave 3** (M4-plan §3.4): M4e docking/refuel, M4l ShipGroup + fleet tick, M4i empire
+construction/facilities AI, M4o weapons/damage/teardown, M4f civilian mission AI (freighters need M4e), M4u
+events/characters/creature combat. Brief: `tasks/M4-agent-brief.md` plus the package row. Then wave 4: M4m, M4p,
+M4q, M4s2. Suggested models: Fable for f, o, m (and n-level difficulty); Opus otherwise.
+
+**Known follow-ups found during the merges:**
+- `cargo.ts` now has component cargo (M4h). M4g's two unreachable component-cargo sites in `industry.ts`
+  still throw `TODO(port) M4d`; they can use `Cargo.ofComponent` now.
+- A null `Habitat.dockingBayWaitQueue` reads as an empty queue (logistics/freight.ts). M4e must create the
+  queues at the C# sites (Galaxy.8.cs 285-532, Empire.1.cs 131, Galaxy.5.cs 1643/1780).
+- BaconSettings.txt overrides are not loaded anywhere; the C# class defaults are used (e.g.
+  `useStarGravityWells`, `privateBuildCostToStateMoney`, no-fuel speed multipliers).
+- `stationPlacement.ts` has a private copy of research-potential code whose pirate branch throws; switch it to
+  researchTick.ts exports (M4i).
+- `pirates.ts` has its own `countResourceSourcesForEmpire` that skips construction ships (M4s).
+- `resolveLocationsToDefend` (characters.ts) throws once an empire is at war; EvaluateColonyVariables calls
+  it every 30 s, so it surfaces as soon as a war starts (M4m).
+- Local `wip/m4*` branches and `/home/user/wt/*` worktrees lived only in the cloud container. Everything
+  except M4s1 is merged into this branch, and M4s1 is pushed as above.

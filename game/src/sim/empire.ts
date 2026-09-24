@@ -8,10 +8,12 @@
 // Anything the constructors call but that isn't ported yet is a stub method
 // marked TODO(port) so the constructor's order of operations stays visible.
 
+import { takeOwnershipOfColonyConstructionQueue } from './construction/constructionYard';
 import type { Galaxy } from './galaxy';
 import { HabitatCategoryType, HabitatType } from './types';
 import type { Habitat } from './types';
 import type { Race } from './data/races';
+import type { Ruin } from './ruins';
 import type { Government } from './data/governments';
 import { START_STAR_DATE, startStarDateForAge } from './galaxyTime';
 import type { BuiltObject } from './builtObject';
@@ -37,7 +39,12 @@ import { PirateRelationList, PirateRelationType, obtainPirateRelation, changePir
 import { recalculateDevelopmentLevelBaseline } from './developmentLevel';
 import { recalculateColonyInfluenceRadius } from './territory';
 import type { Character } from './characters';
-import { DiplomaticRelationList } from './diplomacy';
+import { DiplomacyCounters, DiplomaticRelationList } from './diplomacy';
+import { MIN_TIME } from './tick/simTime';
+import type { DeclinedTask } from './missions/distress';
+import type { IMessageRecipient } from './messages';
+import { ensureHabitatManufacturingQueue } from './manufacturingQueue';
+import type { FuelSourceSystemList } from './movement';
 
 // Empire.1.cs TakeOwnershipOfColony callees that live in modules importing empire.ts
 // (forceStructure.ts RecalculateDistanceFactor / RecalculateAnnualTaxRevenue, taxes.ts
@@ -87,8 +94,40 @@ function halveRgb(color: number): number {
     return (((r / 2) | 0) << 16) | (((g / 2) | 0) << 8) | ((b / 2) | 0);
 }
 
+// Port of EmpireCounters.cs (revenue parts, M4j): the income / extermination totals and their Process* methods
+// (EmpireCounters.cs 67-72, 220-230). TODO(port) M4o/M4r: the destruction / diplomacy / espionage counters.
 export class EmpireCounters {
+    exterminatedPopulationAmount = 0; // long
+    tradeIncomeStateBonus = 0.0;
+    tradeIncomeTotalVolume = 0.0;
+    tourismIncome = 0.0;
+    colonyPrivateRevenueTotal = 0.0;
+    pirateSmugglingIncome = 0.0;
+    pirateProtectionIncome = 0.0;
+    /** EmpireCounters.cs MiningExtractionGas / Luxury / Strategic / ColonyManufactured (int, 80-84; M4g extraction sites add with int wrap). */
+    miningExtractionGas = 0;
+    miningExtractionLuxury = 0;
+    miningExtractionStrategic = 0;
+    miningExtractionColonyManufactured = 0;
     constructor(_empire: Empire) {}
+    /** EmpireCounters.cs 220 ProcessColonyRevenue(amount). */
+    processColonyRevenue(amount: number): void {
+        this.colonyPrivateRevenueTotal += amount;
+    }
+    /** EmpireCounters.cs 222 ProcessTourismIncome(amount). */
+    processTourismIncome(amount: number): void {
+        this.tourismIncome += amount;
+    }
+    /** EmpireCounters.cs 224 ProcessTradeBonus(relation, amount). */
+    processTradeBonus(relation: { tradeBonus: number } | null, amount: number): void {
+        this.tradeIncomeTotalVolume += amount;
+        if (relation == null) return;
+        this.tradeIncomeStateBonus += relation.tradeBonus * amount;
+    }
+    /** EmpireCounters.cs 232 ProcessExterminatedPopulation(amount). */
+    processExterminatedPopulation(amount: number): void {
+        this.exterminatedPopulationAmount += amount;
+    }
 }
 
 // TODO(port): PirateEconomy — PirateEconomy.cs.
@@ -395,10 +434,10 @@ export class Empire {
         this.stateMoney = 30000.0;
         this.privateMoney = 100000.0;
         this.research = new ResearchSystem(galaxy.researchStatic);
-        this.research.obtainTechTree();
+        this.research.obtainTechTree(dominantRace);
         // Empire.cs 4329: SetTechTreeStartingDefaults(TechTree, dominantRace, policy).
         this.research.setTechTreeStartingDefaults(dominantRace, policy);
-        this.research.update();
+        this.research.update(dominantRace);
         this.reviewResearchAbilities();
         this.reviewDesignsBuiltObjectsImprovedComponents();
         this.reviewColonizationTypes();
@@ -591,9 +630,9 @@ export class Empire {
         this.privateMoney = 100000.0;
         this.research = new ResearchSystem(galaxy.researchStatic);
         // Empire.cs 3961-3962: ObtainTechTree(race) + SetTechTreeStartingDefaults(race, policy).
-        this.research.obtainTechTree();
+        this.research.obtainTechTree(dominantRace);
         this.research.setTechTreeStartingDefaults(dominantRace, policy);
-        this.research.update();
+        this.research.update(dominantRace);
         this.reviewResearchAbilities();
         this.reviewDesignsBuiltObjectsImprovedComponents();
         this.reviewColonizationTypes();
@@ -679,12 +718,27 @@ export class Empire {
 
     // Hooks visibility.ts needs from the empire (task C1 VisibilityOwner).
     visibilityOwner(isIndependent = false): VisibilityOwner {
+        // eslint-disable-next-line @typescript-eslint/no-this-alias
+        const self = this;
         return {
             isIndependent,
-            active: true,
+            // C#: Empire.Active (read live — MergeGalaxyMapsForSharedVisibilityEmpires).
+            get active(): boolean {
+                return self.active;
+            },
+            // TODO(port) M4s: pirate factions also see systems whose habitats they control
+            // (habitat.GetPirateControl().GetByFaction(ourEmpire), Empire.9.cs 4740) — no pirate control model yet.
             controlsHabitat: (h: Habitat) => h.owner === this,
-            // TODO(port): BuiltObjects / PrivateBuiltObjects (no ships yet).
-            hasUnitInSystem: (_star: Habitat, _exclude: VisibilityUnit | null) => false,
+            // Empire.9.cs 4744-4759 CheckSystemVisible (task M4t): BuiltObjects then PrivateBuiltObjects.
+            hasUnitInSystem: (star: Habitat, exclude: VisibilityUnit | null) => {
+                for (const b of this.builtObjects) {
+                    if (b != null && b.nearestSystemStar === star && b !== exclude) return true;
+                }
+                for (const b of this.privateBuiltObjects) {
+                    if (b != null && b.nearestSystemStar === star && b !== exclude) return true;
+                }
+                return false;
+            },
             longRangeScanners: () => [],
             hasShipOutsideSystemWithScanRange: () => false,
         };
@@ -716,6 +770,10 @@ export class Empire {
         if (colony.troopsToRecruit === null) colony.troopsToRecruit = new TroopList();
         if (colony.invadingTroops === null) colony.invadingTroops = new TroopList();
         if (colony.facilities === null) colony.facilities = [];
+        // Empire.1.cs 108-115 (M4h): ConstructionQueue (created, or its speed re-reviewed). No Rnd.
+        takeOwnershipOfColonyConstructionQueue(this.galaxy, colony);
+        // Empire.1.cs 116-119 (M4g): if (colony.ManufacturingQueue == null) colony.ManufacturingQueue = new ManufacturingQueue(colony, _Galaxy).
+        ensureHabitatManufacturingQueue(this.galaxy, colony);
         colony.owner = newEmpire;
         colony.empire = newEmpire;
         if (empire !== null && flag) {
@@ -1013,8 +1071,49 @@ export class Empire {
         return false;
     }
 
-    // TODO(port): ReviewPopulationGrowthRates — Empire.cs.
-    reviewPopulationGrowthRates(): void {}
+    // Port of Empire.3.cs ReviewPopulationGrowthRates (2233; filled by M4j — read by CalculateColonyGrowthRateMultiplier).
+    reviewPopulationGrowthRates(): void {
+        const f = Math.fround(0.5);
+        let colonyGrowthRateContinental = f;
+        let colonyGrowthRateMarshySwamp = f;
+        let colonyGrowthRateOcean = f;
+        let colonyGrowthRateDesert = f;
+        let colonyGrowthRateIce = f;
+        let colonyGrowthRateVolcanic = f;
+        const abilities = this.research?.abilities ?? null;
+        if (abilities !== null && abilities.length > 0) {
+            for (let i = 0; i < abilities.length; i++) {
+                if (abilities[i].type === ResearchAbilityType.PopulationGrowthRate) {
+                    switch (abilities[i].value) {
+                        case 1:
+                            colonyGrowthRateContinental = 1;
+                            break;
+                        case 2:
+                            colonyGrowthRateMarshySwamp = 1;
+                            break;
+                        case 3:
+                            colonyGrowthRateOcean = 1;
+                            break;
+                        case 4:
+                            colonyGrowthRateDesert = 1;
+                            break;
+                        case 5:
+                            colonyGrowthRateIce = 1;
+                            break;
+                        case 6:
+                            colonyGrowthRateVolcanic = 1;
+                            break;
+                    }
+                }
+            }
+        }
+        this.colonyGrowthRateContinental = colonyGrowthRateContinental;
+        this.colonyGrowthRateMarshySwamp = colonyGrowthRateMarshySwamp;
+        this.colonyGrowthRateOcean = colonyGrowthRateOcean;
+        this.colonyGrowthRateDesert = colonyGrowthRateDesert;
+        this.colonyGrowthRateIce = colonyGrowthRateIce;
+        this.colonyGrowthRateVolcanic = colonyGrowthRateVolcanic;
+    }
 
     // Port of Empire.10.cs MaximumConstructionSize(shipSubRole) (630).
     maximumConstructionSize(shipSubRole: BuiltObjectSubRole = BuiltObjectSubRole.Undefined): number {
@@ -1264,10 +1363,10 @@ export class Empire {
     // radius, and (when no explicit offset is given) NextDouble for the angle.
     addBuiltObjectToGalaxy(builtObject: BuiltObject, parent: Habitat | BuiltObject | null, offsetLocationFromParent: boolean, isStateOwned: boolean, offsetX = -2000000001, offsetY = -2000000001, sendMessage = true): void {
         builtObject.builtObjectID = this.galaxy.getNextBuiltObjectID();
-        // TODO(port): Galaxy.CurrentStarDate — no galaxy clock on the TS Galaxy yet; at game
-        // start it is the start star date (Start.2.cs startStarDate for Galaxy._Age).
-        builtObject.dateBuilt = startStarDateForAge(this.galaxy.age);
-        builtObject.dateRetrofit = startStarDateForAge(this.galaxy.age);
+        // Galaxy.CurrentStarDate (tick/simTime.ts galaxyStarDate; equals the start star date at game start — M4h:
+        // ships queued at runtime get the current date).
+        builtObject.dateBuilt = startStarDateForAge(this.galaxy.age) + this.galaxy.nowMs;
+        builtObject.dateRetrofit = startStarDateForAge(this.galaxy.age) + this.galaxy.nowMs;
         let arg = '';
         if (parent !== null) {
             let num = 0.0;
@@ -1386,6 +1485,171 @@ export class Empire {
     // Empire.cs 862: public CharacterList AvailableCharacters = new CharacterList() — empty for a
     // new game (filled only by the scenario editor / game events).
     availableCharacters: Character[] = [];
+
+    // ---- M4a fields (tick core; tick/empireTick.ts, tick/pirateTick.ts, messages.ts) ----
+    // Empire.cs 188-198 _LastShortTouch .. _LastHugeTouch (game ms). Both ctors (Empire.cs 3921-3925 / 4320-4324)
+    // set short..long = CurrentDateTime − (LongProcessingInterval + 1) s and leave _LastHugeTouch = MinValue. The
+    // defaults are those ctor values at game time 0 (every createGame empire is built at 0); empires created later
+    // get them from tick/empireTick.ts initEmpireTouchTimes.
+    lastShortTouch = -121000;
+    lastRegularTouch = -121000;
+    lastPeriodicTouch = -121000;
+    lastIntermediateTouch = -121000;
+    lastLongTouch = -121000;
+    lastHugeTouch = MIN_TIME;
+    /** Empire.cs 31 _MessageRecipient (IMessageRecipient; the UI attaches one to the player empire). */
+    messageRecipient: IMessageRecipient | null = null;
+    // ---- M4b fields (missions & command dispatcher) ----
+    /** Empire.cs 363-370 attack ranges (GameOptions defaults 48000 / 2000 / 48000 / 2000; SetAutomationSettings 3639-3672 copies them). */
+    attackRangePatrol = 48000;
+    attackRangeEscort = 2000;
+    attackRangeOther = 48000;
+    attackRangeAttack = 2000;
+    /** Empire.cs 381-390 manual (player-set) attack ranges, -1 = unset. */
+    attackRangePatrolManual = -1;
+    attackRangeEscortManual = -1;
+    attackRangeOtherManual = -1;
+    attackRangeAttackManual = -1;
+    /** Empire.cs _DeclinedTasks (DeclinedTaskList; CheckTaskAuthorized adds, ClearExpiredDeclinedTasks removes). */
+    declinedTasks: DeclinedTask[] = [];
+    // ---- M4c fields (movement, fuel) ----
+    /** Empire.cs 729 FuelSystemsUpdating (volatile guard around UpdateSystemFuelSourceStatus). */
+    fuelSystemsUpdating = false;
+    /** Empire.cs 732 FuelSystemsSources (one FuelSourceSystemList per fuel resource; movement.ts). */
+    fuelSystemsSources: FuelSourceSystemList[] = [];
+    // ---- M4d fields (orders, contracts, freight) ----
+    /** Empire.cs _EmpireOrderCount (set by CheckMarketOrders, Empire.4.cs 792). */
+    empireOrderCount = 0;
+    // ---- M4e fields (docking, refuelling) ----
+    // ---- M4f fields (civilian mission AI) ----
+    // ---- M4g fields (extraction, industry) ----
+    /** Empire.cs 122 _EmpireResourceTargets (PrioritizeEmpireResourceNeeds; added by M4a for the tick's assignment). */
+    empireResourceTargets: HabitatPrioritization[] = [];
+    // ---- M4h fields (construction queues) ----
+    /** EmpireCounters.cs BuildBaseCount / BuildMilitaryShipCount / BuildCivilianShipCount (ProcessBuiltObjectConstruction 321). */
+    countersBuildBaseCount = 0;
+    countersBuildMilitaryShipCount = 0;
+    countersBuildCivilianShipCount = 0;
+    // ---- M4i fields (empire construction, facilities) ----
+    // ---- M4j fields (colony growth, treasury, government) ----
+    /** Empire.cs 220-230 ColonyGrowthRateContinental .. Volcanic = 1f (float; ReviewPopulationGrowthRates). */
+    colonyGrowthRateContinental = 1;
+    colonyGrowthRateMarshySwamp = 1;
+    colonyGrowthRateOcean = 1;
+    colonyGrowthRateDesert = 1;
+    colonyGrowthRateIce = 1;
+    colonyGrowthRateVolcanic = 1;
+    /** Empire.cs _ShipMaintenanceSavings / _ResourceExtractionBonus / _ResearchBonus / _EspionageBonus / _TradeBonus (+ …Race); ReviewEmpireAbilityBonuses. */
+    shipMaintenanceSavings = 0.0;
+    shipMaintenanceSavingsRace: Race | null = null;
+    resourceExtractionBonus = 0.0;
+    resourceExtractionBonusRace: Race | null = null;
+    researchBonus = 0.0;
+    researchBonusRace: Race | null = null;
+    espionageBonus = 0.0;
+    espionageBonusRace: Race | null = null;
+    tradeBonus = 0.0;
+    tradeBonusRace: Race | null = null;
+    /** Empire.cs _SpecialBonus* (ReviewSpecialBonusesRuinsWonders, Empire.3.cs 939). Wonders are PlanetaryFacility (M4i model). */
+    specialBonusResearchEnergy = 0.0;
+    specialBonusResearchHighTech = 0.0;
+    specialBonusResearchWeapons = 0.0;
+    specialBonusWealth = 0.0;
+    specialBonusHappiness = 0.0;
+    specialBonusDiplomacy = 0.0;
+    specialBonusPopulationGrowth = 0.0;
+    specialBonusResearchEnergyRuin: Ruin | null = null;
+    specialBonusResearchHighTechRuin: Ruin | null = null;
+    specialBonusResearchWeaponsRuin: Ruin | null = null;
+    specialBonusWealthRuin: Ruin | null = null;
+    specialBonusHappinessRuin: Ruin | null = null;
+    specialBonusDiplomacyRuin: Ruin | null = null;
+    specialBonusHappinessWonder: unknown = null;
+    specialBonusPopulationGrowthWonder: unknown = null;
+    specialBonusResearchEnergyWonder: unknown = null;
+    specialBonusResearchHighTechWonder: unknown = null;
+    specialBonusResearchWeaponsWonder: unknown = null;
+    specialBonusWealthWonder: unknown = null;
+    /**
+     * Empire.cs 513 Capitals = new HabitatList() — assigned only by RefreshColonyFacilityInfo (Empire.3.cs 106, M4i);
+     * read by EvaluateColonyVariables (leader population-growth bonus).
+     */
+    capitals: Habitat[] = [];
+    /** Empire.cs 800 _UseAveragedVariableIncome (set only by the UI's CheckAgeVariableIncome for the player; ThisYearsSpacePortIncome). */
+    useAveragedVariableIncome = false;
+    /** Empire.cs _ThisYearsResortIncome / _LastResortIncomeAddDate (AddResortIncome, Empire.6.cs 2183 — tourism, M4f). */
+    thisYearsResortIncomeValue = 0.0;
+    lastResortIncomeAddDate = 0;
+    /** Empire.cs 806 _ThisYearsStateFuelCosts (written by state fuel purchases — M4e). */
+    thisYearsStateFuelCosts = 0.0;
+    /** Empire.cs _PenalColonies = new HabitatList() (ReviewColonyPopulationPolicy). */
+    penalColonies: Habitat[] = [];
+    // ---- M4k fields (research progress) ----
+    /** Empire.cs ResearchBonusWeapons / Energy / HighTech (float) and their stations (ReviewResearchStationBonuses, Empire.3.cs 2732). */
+    researchBonusWeapons = 0;
+    researchBonusEnergy = 0;
+    researchBonusHighTech = 0;
+    researchBonusWeaponsStation: BuiltObject | null = null;
+    researchBonusEnergyStation: BuiltObject | null = null;
+    researchBonusHighTechStation: BuiltObject | null = null;
+    /** Empire.cs _ReviewDesignsAndRetrofit / _ReviewDesignsAndRetrofitImportantBreakthrough (set by DoResearchBreakthrough; read by M4i ReviewDesignsAndRetrofit). */
+    reviewDesignsAndRetrofitFlag = false;
+    reviewDesignsAndRetrofitImportantBreakthrough = false;
+    // ---- M4l fields (ship groups) ----
+    // ---- M4m fields (military AI) ----
+    // ---- M4n fields (threats) ----
+    /** Empire.cs 137 _EmpiresToAttack (EmpireList; CheckForRandomAttackTargets consumes, M4m DetermineRandomAttacks fills). */
+    empiresToAttack: Empire[] = [];
+    /** Empire.cs 372 AttackOvermatchFactor = 2f (float; Empire.cs 3638 gameOptions.AttackOverMatchFactor — TODO(port) game option). */
+    attackOvermatchFactor = 2;
+    /** Empire.cs 108 _EncounteredSilverMistCreature. */
+    encounteredSilverMistCreature = false;
+    /** Empire.cs 844 PirateExtortionOfferMade. */
+    pirateExtortionOfferMade = false;
+    // ---- M4o fields (weapons, damage) ----
+    // ---- M4p fields (fighters) ----
+    // ---- M4q fields (invasion, troops) ----
+    // ---- M4r fields (diplomacy runtime) ----
+    /** Empire.cs 402 _RelativeEmpireSize (CalculateRelativeEmpireSize; added by M4a for the tick's assignment). */
+    relativeEmpireSize = 0;
+    /**
+     * Empire.cs 578 _CivilityRating (reputation; write through diplomacyTick.ts setCivilityRating, which clamps to
+     * [-100, 30]). Also written by M4j ReviewColonyPopulationPolicy (extermination); read by CalculateWarWithOurRace
+     * and taxes.ts CivilityRatingApprovalRaw.
+     */
+    civilityRating = 0.0;
+    /** Empire.cs 580 _WarWeariness (Empire.WarWearinessRaw; Empire.WarWeariness divides by the leader bonus). */
+    warWearinessRaw = 0.0;
+    /** Empire.cs 531 _TopCompetitor (EvaluatePoliticalSituation). */
+    topCompetitor: Empire | null = null;
+    /** Empire.cs 325/327 _RecentAttackingEmpires / _RecentSpyingEmpires (filled by combat / espionage, cleared by EvaluatePoliticalSituation). */
+    recentAttackingEmpires: Empire[] = [];
+    recentSpyingEmpires: Empire[] = [];
+    /**
+     * Empire.cs 132/135 _DesiredForeignColonies / _EmpiresWithDesiredColonies (HabitatPrioritizationList / EmpireList):
+     * filled by Empire.2.cs 4566 IdentifyDesiredForeignColonies (DetermineRandomAttacks, M4m), read by
+     * EvaluatePoliticalSituation (Covetousness). Declared here by M4r; M4m writes them.
+     */
+    desiredForeignColonies: HabitatPrioritization[] = [];
+    empiresWithDesiredColonies: Empire[] = [];
+    /**
+     * Empire.cs _EmpiresViewable / _EmpiresViewableExpiry (EmpireList / List<long>): empires whose objects this
+     * empire can see (subjugation, espionage). Written by ChangeDiplomaticRelation / ConsiderTreatyProposals (M4r),
+     * espionage; expired by ClearExpiredViewableEmpires (M4t); read by IsObjectVisibleToThisEmpire.
+     */
+    empiresViewable: Empire[] = [];
+    empiresViewableExpiry: number[] = [];
+    /** Empire.cs LocationHints (List<Point>): AddLocationHint (Empire.cs 2807) — pirate info trades (tradeItems.ts), UI hints. */
+    locationHints: { x: number; y: number }[] = [];
+    /** EmpireCounters.cs diplomatic counters (diplomacy.ts DiplomacyCounters) until EmpireCounters is ported. */
+    diplomacyCounters = new DiplomacyCounters();
+    // ---- M4s fields (pirates runtime) ----
+    // ---- M4t fields (visibility, exploration) ----
+    // _EmpiresViewable / _EmpiresViewableExpiry / LocationHints: declared in the M4r block (M4t expires / removes them).
+    /** Empire.cs 147 _SystemExploredCount = 1 / 149 _ExplorationShipCount = 1 (UpdateSystemExplorationStatus). */
+    systemExploredCount = 1;
+    explorationShipCount = 1;
+    // ---- M4u fields (events, characters) ----
 }
 
 // Task M3b: Empire.GovernmentAttributes (Empire.cs 2805: _Galaxy.Governments[_GovernmentId],

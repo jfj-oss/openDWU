@@ -147,9 +147,10 @@ describe('createGame full game start (seed 1, Spiral 300 stars, 8x8, Human + 3 A
     }, 120000);
 });
 
-// Seed 1, techLevel 0.5, age 1, piratePrevalence 1.0 (TS port). Tax rates are C# floats
-// (Math.fround of 0.28 / 0.28 / 0.27 / 0.31).
-// (pinned after race-attribute clamps, Race.cs LoadFromFile)
+// Seed 1, techLevel 0.5, age 1, piratePrevalence 1.0 (TS port). Tax rates are C# floats.
+// Re-pinned at the M4 wave-1 merge: the game-start Empire.DoTasks now runs PerformResearch (M4k: queue picks and
+// research-event rolls draw Rnd, completed research changes components / troop types) and EvaluateColonyVariables /
+// ProcessColonyTroops recruitment (M4j), so every later Rnd consumer (names, pirates, placement) shifts.
 const PINNED_SUMMARY: unknown = {
     empires: [
         {
@@ -159,105 +160,196 @@ const PINNED_SUMMARY: unknown = {
             spacePorts: 1,
             researchStations: 1,
             miningStations: 6,
-            stateShips: { ExplorationShip: 7, ConstructionShip: 3 },
-            privateShips: { SmallFreighter: 1, GasMiningShip: 2, MiningShip: 2 },
-            troops: 0,
-            characters: 3,
-            taxRates: [0.2800000011920929],
+            stateShips: {
+                ExplorationShip: 7,
+                ConstructionShip: 3,
+            },
+            privateShips: {
+                SmallFreighter: 1,
+                GasMiningShip: 2,
+                MiningShip: 2,
+            },
+            troops: 1,
+            characters: 4,
+            taxRates: [
+                0.2800000011920929,
+            ],
         },
         {
-            name: 'Haakonish Corporation',
+            name: 'S216 Corporation',
             race: 'Haakonish',
             colonies: 1,
             spacePorts: 1,
             researchStations: 1,
             miningStations: 6,
-            stateShips: { ExplorationShip: 7, ConstructionShip: 3 },
-            privateShips: { SmallFreighter: 1, GasMiningShip: 2, MiningShip: 2 },
-            troops: 3,
-            characters: 3,
-            taxRates: [0.2800000011920929],
+            stateShips: {
+                ExplorationShip: 7,
+                ConstructionShip: 3,
+            },
+            privateShips: {
+                SmallFreighter: 1,
+                GasMiningShip: 2,
+                MiningShip: 2,
+            },
+            troops: 2,
+            characters: 4,
+            taxRates: [
+                0.2800000011920929,
+            ],
         },
         {
-            name: 'S88 Union',
+            name: 'S96 Union',
             race: 'Dhayut',
             colonies: 1,
             spacePorts: 1,
             researchStations: 1,
             miningStations: 6,
-            stateShips: { ExplorationShip: 7, ConstructionShip: 3 },
-            privateShips: { SmallFreighter: 1, GasMiningShip: 2, MiningShip: 2 },
-            troops: 0,
+            stateShips: {
+                ExplorationShip: 7,
+                ConstructionShip: 3,
+            },
+            privateShips: {
+                SmallFreighter: 1,
+                GasMiningShip: 2,
+                MiningShip: 2,
+            },
+            troops: 1,
             characters: 3,
-            taxRates: [0.27000001072883606],
+            taxRates: [
+                0.25999999046325684,
+            ],
         },
         {
-            name: 'S46 Corporation',
+            name: 'Ugnari Consortium',
             race: 'Ugnari',
             colonies: 1,
             spacePorts: 1,
-            researchStations: 1,
+            researchStations: 0,
             miningStations: 6,
-            stateShips: { ExplorationShip: 7, ConstructionShip: 3 },
-            privateShips: { SmallFreighter: 1, GasMiningShip: 2, MiningShip: 2 },
+            stateShips: {
+                ExplorationShip: 7,
+                ConstructionShip: 3,
+            },
+            privateShips: {
+                SmallFreighter: 1,
+                GasMiningShip: 2,
+                MiningShip: 2,
+            },
             troops: 1,
             characters: 2,
-            taxRates: [0.3100000023841858],
+            taxRates: [
+                0.3100000023841858,
+            ],
         },
     ],
     pirates: [
         {
-            name: 'Hidden Minerals',
+            name: 'Dhayu Invaders',
             bases: 1,
-            fleet: { ExplorationShip: 1, ConstructionShip: 1 },
-            private: { SmallFreighter: 4, MiningShip: 1, GasMiningShip: 1, GasMiningStation: 2, MiningStation: 1 },
+            fleet: {
+                Escort: 2,
+                ConstructionShip: 1,
+            },
+            private: {
+                SmallFreighter: 1,
+                GasMiningStation: 1,
+            },
             characters: 2,
         },
         {
-            name: 'Hidden Star Spaceways',
+            name: 'Dread Storm Council',
             bases: 1,
-            fleet: { ExplorationShip: 1, ConstructionShip: 1 },
-            private: { SmallFreighter: 4, MiningShip: 1, GasMiningShip: 1, GasMiningStation: 3 },
+            fleet: {
+                Escort: 1,
+                ExplorationShip: 1,
+                ConstructionShip: 1,
+            },
+            private: {
+                SmallFreighter: 2,
+                MiningShip: 1,
+                GasMiningShip: 1,
+                GasMiningStation: 1,
+                MiningStation: 1,
+            },
             characters: 2,
         },
         {
-            name: 'Fearsome Freightways',
+            name: 'Fierce League',
             bases: 1,
-            fleet: { ExplorationShip: 1, ConstructionShip: 1 },
-            private: { SmallFreighter: 4, MiningShip: 1, GasMiningShip: 1, GasMiningStation: 2, MiningStation: 1 },
+            fleet: {
+                Escort: 1,
+                ExplorationShip: 1,
+                ConstructionShip: 1,
+            },
+            private: {
+                SmallFreighter: 2,
+                MiningShip: 1,
+                GasMiningShip: 1,
+                GasMiningStation: 2,
+            },
             characters: 2,
         },
         {
-            name: 'Menacing Star Corporation',
+            name: 'S83 Intruders',
             bases: 1,
-            fleet: { ExplorationShip: 1, ConstructionShip: 1 },
-            private: { SmallFreighter: 4, MiningShip: 1, GasMiningShip: 1, GasMiningStation: 2, MiningStation: 1 },
+            fleet: {
+                Escort: 2,
+                ConstructionShip: 1,
+            },
+            private: {
+                SmallFreighter: 1,
+                GasMiningStation: 1,
+            },
             characters: 2,
         },
         {
-            name: 'Hidden Marauders',
+            name: 'Murderous Moon Invaders',
             bases: 1,
-            fleet: { Escort: 2, ConstructionShip: 1 },
-            private: { SmallFreighter: 1, GasMiningStation: 1 },
+            fleet: {
+                Escort: 2,
+                ConstructionShip: 1,
+            },
+            private: {
+                SmallFreighter: 1,
+                GasMiningStation: 1,
+            },
             characters: 2,
         },
         {
-            name: 'Fearsome Starfreight',
+            name: 'Savage Exports',
             bases: 1,
-            fleet: { ExplorationShip: 1, ConstructionShip: 1 },
-            private: { SmallFreighter: 4, MiningShip: 1, GasMiningShip: 1, GasMiningStation: 2, MiningStation: 1 },
+            fleet: {
+                ExplorationShip: 1,
+                ConstructionShip: 1,
+            },
+            private: {
+                SmallFreighter: 4,
+                MiningShip: 1,
+                GasMiningShip: 1,
+                GasMiningStation: 2,
+                MiningStation: 1,
+            },
             characters: 2,
         },
         {
-            name: 'Venomous Buccaneers',
+            name: 'Dark Force',
             bases: 1,
-            fleet: { Escort: 1, ExplorationShip: 1, ConstructionShip: 1 },
-            private: { SmallFreighter: 1, MiningShip: 1, GasMiningShip: 1, MiningStation: 2 },
+            fleet: {
+                Escort: 1,
+                ExplorationShip: 1,
+                ConstructionShip: 1,
+            },
+            private: {
+                SmallFreighter: 2,
+                MiningShip: 1,
+                GasMiningShip: 1,
+                GasMiningStation: 2,
+            },
             characters: 2,
         },
     ],
     independentTraders: 150,
     unownedBuiltObjects: 20,
-    builtObjects: 337,
-    ruins: 30,
+    builtObjects: 321,
+    ruins: 27,
 };

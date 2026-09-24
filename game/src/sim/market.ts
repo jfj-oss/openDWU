@@ -15,21 +15,17 @@
 import type { Cargo } from './cargo';
 import { galaxyComponentCurrentPrices, galaxyResourceCurrentPrices } from './design';
 import type { Galaxy } from './galaxy';
+import type { Order } from './logistics/orders';
 
 /**
- * Minimal Order surface ReviewResourcePrices reads (Order.cs CommodityResource,
- * AmountOutstandingToContract).
+ * The Order surface ReviewResourcePrices reads (Order.cs CommodityResource, AmountOutstandingToContract): the real
+ * Order model (logistics/orders.ts).
  */
-export interface MarketOrder {
-    readonly commodityResource: { readonly resourceId: number } | null;
-    readonly amountOutstandingToContract: number;
-}
+export type MarketOrder = Order;
 
-// Galaxy.Orders (OrderList). TODO(port): the order/contract system is not ported;
-// at game start (Start.2.cs:1103, before the first DoTasks) Galaxy.Orders.Count == 0,
-// so C# sees an empty list here.
-function galaxyOrders(_galaxy: Galaxy): MarketOrder[] {
-    return [];
+// Galaxy.Orders (OrderList, logistics/orders.ts).
+function galaxyOrders(galaxy: Galaxy): MarketOrder[] {
+    return galaxy.orders.items;
 }
 
 // C# Cargo.CommodityResource (null for component cargo). TS Cargo only carries

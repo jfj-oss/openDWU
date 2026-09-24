@@ -86,25 +86,31 @@ describe('ProjectForceStructure / ProjectPrivateForceStructure at game start', (
         }
     }, 60000);
 
-    it('age 0: nothing private (the nearest habitat to the capital has unknown resources), no mining targets', () => {
+    it('age 0: private ships only where the nearest habitat to the capital has known resources, no mining targets', () => {
         const g = atDoTasksPoint(opts(0.5, 0));
-        for (const e of summary(g)) {
+        const a = summary(g);
+        for (const e of a) {
             expect(e.state).toEqual([['ExplorationShip', 7], ['ConstructionShip', 3]]);
-            expect(e.private).toEqual([]);
             expect(e.targets).toEqual([]);
         }
+        // Pinned for seed 1 (re-pinned M4k: the game-start Empire.DoTasks now runs PerformResearch, whose research-queue selection and research events draw Rnd): only the second empire's capital neighbour has known resources
+        // (ProjectPrivateForceStructure flag), so only it projects freighters and mining ships.
+        expect(a.map((e) => e.private)).toEqual([[], [['SmallFreighter', 2], ['MediumFreighter', 1], ['LargeFreighter', 1], ['GasMiningShip', 2], ['MiningShip', 2]], [], []]);
     }, 60000);
 
     it('colony economy at the DoTasks point: tax snapshot −ColonyStateSupportCost, income 0', () => {
         const g = atDoTasksPoint(opts(0.5, 1));
         const e = g.playerEmpire!;
         const cap = e.capital!;
-        // TakeOwnershipOfColony: RecalculateDistanceFactor (capital → 0) and
-        // RecalculateAnnualTaxRevenue at TaxRate 0 → 0 − 1000 (capital: no small-colony surcharge).
+        // TakeOwnershipOfColony: RecalculateDistanceFactor (capital → 0). Re-pinned by M4j: the GenerateEmpire
+        // Empire.DoTasks now runs EvaluateColonyVariables, which raises the capital's development level 10 → 15 (its
+        // luxury cargo) before ReviewTaxes, so SetColonyTaxRate picks 0.06f (was 0 → −1000, i.e. only
+        // −ColonyStateSupportCost) and the snapshot is AnnualRevenue × 0.06 × TaxComplianceRate − 1000.
         expect(cap.distanceFactor).toBe(0);
-        expect(cap.annualTaxRevenue).toBe(-1000);
-        expect(annualTaxRevenue(g, e)).toBe(0);
-        expect(calculateAccurateAnnualIncome(g, e)).toBe(0);
+        expect(cap.taxRate).toBe(Math.fround(0.06));
+        expect(cap.annualTaxRevenue).toBe(1447.6451675605372);
+        expect(annualTaxRevenue(g, e)).toBe(1447.6451675605372);
+        expect(calculateAccurateAnnualIncome(g, e)).toBe(1447.6451675605372);
         const b = calculateStateExpenditureBalance(e, 0);
         const research = 1 - (b.shipMaintenancePortion + b.troopMaintenancePortion + b.facilityMaintenancePortion);
         expect(research).toBeGreaterThanOrEqual(0.06 - 1e-12);

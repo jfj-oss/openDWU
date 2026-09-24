@@ -52,6 +52,7 @@
 
 import { BuiltObject } from './builtObject';
 import { BuiltObjectSubRole } from './builtObjectTypes';
+import { BuiltObjectMissionType, builtObjectMission } from './missions/mission';
 import { Cargo, CargoList, ResourceRef } from './cargo';
 import { ComponentType } from './data/components';
 import { BuiltObjectRole } from './data/designSpecifications';
@@ -113,7 +114,7 @@ function habitatStrategicValue(h: Habitat): number {
 }
 
 // Habitat.cs CompareTo(Habitat) (8023) — Comparer<Habitat>.Default for HabitatList.Sort().
-function habitatCompareTo(a: Habitat, b: Habitat): number {
+export function habitatCompareTo(a: Habitat, b: Habitat): number {
     const sa = habitatStrategicValue(a);
     const sb = habitatStrategicValue(b);
     if (sa === sb) {
@@ -165,7 +166,7 @@ export function fastFindNearestSpacePort(galaxy: Galaxy, x: number, y: number, e
 }
 
 // Galaxy.7.cs DetermineClosestIndexEdgesCustom (2667). int math.
-function determineClosestIndexEdgesCustom(galaxy: Galaxy, x: number, y: number, indexBoundLeft: number, indexBoundRight: number, indexBoundTop: number, indexBoundBottom: number): { d: number; nearestX: number; nearestY: number } {
+export function determineClosestIndexEdgesCustom(galaxy: Galaxy, x: number, y: number, indexBoundLeft: number, indexBoundRight: number, indexBoundTop: number, indexBoundBottom: number): { d: number; nearestX: number; nearestY: number } {
     const indexMaxX = galaxy.indexMaxX;
     const indexMaxY = galaxy.indexMaxY;
     let num = x - INDEX_SIZE * indexBoundLeft;
@@ -279,10 +280,18 @@ export function countResourceSourcesForEmpire(empire: Empire | null, resourceId:
             }
         }
         if (includeConstructionShipsBuildingMiningStations && empire.constructionShips != null) {
-            // TODO(port): BuiltObject.Mission (Build mission TargetHabitat) is not ported; no
-            // construction ship has a mission when the starting bases are placed (Start.2.cs
-            // creates the ships only afterwards, 1370), so this adds 0.
-            void habitatList;
+            // Galaxy.7.cs 487-503 (ported by M4g now that missions exist, missions/mission.ts).
+            for (let k = 0; k < empire.constructionShips.length; k++) {
+                const builtObject2 = empire.constructionShips[k] as BuiltObject | null;
+                if (builtObject2 == null) continue;
+                const mission = builtObjectMission(builtObject2.mission);
+                if (mission !== null && mission.type === BuiltObjectMissionType.Build && mission.targetHabitat !== null) {
+                    const targetHabitat = mission.targetHabitat;
+                    if (targetHabitat !== null && !habitatList.includes(targetHabitat) && targetHabitat.resources != null && habitatHasResource(targetHabitat, resourceId)) {
+                        num++;
+                    }
+                }
+            }
         }
     }
     return num;

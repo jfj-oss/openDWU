@@ -53,7 +53,29 @@ export interface GalaxySaveJSON {
 
 /** Every model class that can appear in the galaxy graph. Instances are
  *  rebuilt with Object.create(prototype); the name is what the save stores. */
+import { ConstructionQueue } from '../construction/constructionQueue';
+import { ConstructionYard } from '../construction/constructionYard';
+import { ManufacturingQueue } from '../manufacturingQueue';
+import { Manufacturer } from '../manufacturingQueue';
+import { ResourceDatePairList } from '../manufacturingQueue';
+import { EmpireEvaluation } from '../diplomacy';
+import { FuelSourceSystemList } from '../movement';
+import { FuelSourceSystem } from '../movement';
+import { DiplomacyCounters } from '../diplomacy';
+import { OrderList } from '../logistics/orders';
+import { EmpireMessage } from '../messages';
 const CLASSES: Record<string, object> = {
+    EmpireMessage: EmpireMessage.prototype,
+    OrderList: OrderList.prototype,
+    DiplomacyCounters: DiplomacyCounters.prototype,
+    FuelSourceSystem: FuelSourceSystem.prototype,
+    FuelSourceSystemList: FuelSourceSystemList.prototype,
+    EmpireEvaluation: EmpireEvaluation.prototype,
+    ResourceDatePairList: ResourceDatePairList.prototype,
+    Manufacturer: Manufacturer.prototype,
+    ManufacturingQueue: ManufacturingQueue.prototype,
+    ConstructionYard: ConstructionYard.prototype,
+    ConstructionQueue: ConstructionQueue.prototype,
     Galaxy: Galaxy.prototype,
     Random: Random.prototype,
     Habitat: Habitat.prototype,

@@ -218,14 +218,18 @@ describe('FillShipsWithTroops / GenerateNewTroop', () => {
             if (a[0] === 1 && a[1] === 9) { draw = v; return 1; }
             return v;
         };
+        // Re-pinned by M4j: GenerateEmpire's Empire.DoTasks now runs EvaluateColonyVariables with recruitment, which
+        // can queue troops (and advance the empire's troop-name counter) before the transport is filled.
+        const before = e.troopCount;
+        const ord = (n: number) => `${n}${n % 100 >= 11 && n % 100 <= 13 ? 'th' : n % 10 === 1 ? 'st' : n % 10 === 2 ? 'nd' : n % 10 === 3 ? 'rd' : 'th'}`;
         fillShipsWithTroops(g, e);
         expect(draw).toBeGreaterThanOrEqual(1);
         const troops = bo.troops!.items;
         // While TroopCapacityRemaining >= 100 (max 50 iterations): one 100-size troop each.
         expect(troops.length).toBe(Math.min(50, Math.trunc(bo.troopCapacity / 100)));
         expect(bo.troops!.totalSize).toBeLessThanOrEqual(bo.troopCapacity);
-        expect(troops[0].name).toBe(`1st ${e.dominantRace!.troopName}`);
-        if (troops.length > 1) expect(troops[1].name).toBe(`2nd ${e.dominantRace!.troopName}`);
+        expect(troops[0].name).toBe(`${ord(before + 1)} ${e.dominantRace!.troopName}`);
+        if (troops.length > 1) expect(troops[1].name).toBe(`${ord(before + 2)} ${e.dominantRace!.troopName}`);
         for (const t of troops) {
             expect(t.type).toBe(TroopType.Infantry);
             expect(t.builtObject).toBe(bo);
@@ -275,14 +279,17 @@ describe('FindNearestBuiltObject / FindNearestPirateFaction', () => {
 // Pinned for seed 1 (TS port). (re-pinned: createGame now runs the price reviews, the first
 // galaxy tick (independent traders) and the per-empire station/tax setup before the player's
 // CreateStateShips, so the name draws come later in the Rnd stream.)
+// (re-pinned M4k: the game-start Empire.DoTasks now runs PerformResearch — SelectNextResearchProject draws
+// Rnd (SelectRandomLowestProject) and research events draw Next(0, num4) per industry — so later game-start
+// Rnd draws shift.)
 const PINNED_NAMES: unknown[] = [
-    ['ExplorationShip', 'Lost Pride'],
-    ['ExplorationShip', 'Superb Mystery'],
-    ['ExplorationShip', 'Bargain of S147'],
-    ['ExplorationShip', 'Precious Chance'],
-    ['ExplorationShip', 'Ancient Hope'],
-    ['ExplorationShip', 'S147 Obsession'],
-    ['ExplorationShip', 'Resolute Ranger'],
-    ['ConstructionShip', 'Prudent Guide'],
-    ['ConstructionShip', 'Surly Lurker'],
+    ['ExplorationShip', 'S147 Queen'],
+    ['ExplorationShip', 'S147 Discovery'],
+    ['ExplorationShip', 'Bountiful Subterfuge'],
+    ['ExplorationShip', 'Feeble Journey'],
+    ['ExplorationShip', 'Gallant Impulse'],
+    ['ExplorationShip', 'Futile Guardian'],
+    ['ExplorationShip', 'Slippery Miracle'],
+    ['ConstructionShip', 'Precious Wonder'],
+    ['ConstructionShip', 'S147 Trader'],
 ];

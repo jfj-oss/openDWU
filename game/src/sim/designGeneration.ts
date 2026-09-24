@@ -605,7 +605,7 @@ export function createNewDesigns(galaxy: Galaxy, empire: Empire, designDate: num
     }
     let num3 = Math.trunc(MINIMUM_DESIGN_REVIEW_INTERVAL_YEARS * REAL_SECONDS_IN_GALACTIC_YEAR * 1000.0);
     if (!empire.initiateConstruction || forceUpdate) num3 = 0;
-    empire.research.update();
+    empire.research.update(empire.dominantRace);
     reviewDesignComponentsAvailable(empire);
     const militaryFleeWhen = empire.policy?.defaultMilitaryFleeWhen ?? BuiltObjectFleeWhen.Shields20;
     const race = empire.dominantRace!;

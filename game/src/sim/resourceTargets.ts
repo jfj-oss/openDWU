@@ -16,6 +16,7 @@
 // KnownPirateBases (never filled yet), SystemVisibility.Threats, DiplomaticRelations.
 // Habitat.BasesAtHabitat is the real list (filled by Empire.addBuiltObjectToGalaxy).
 
+import { BuiltObjectMissionType, builtObjectMission, builtObjectSubsequentMissions } from './missions/mission';
 import type { Galaxy } from './galaxy';
 import { HabitatCategoryType, type Habitat } from './types';
 import type { Empire } from './empire';
@@ -243,17 +244,31 @@ export function checkConstructionShipAndMiningStationCanSurviveStorms(empire: Em
 }
 
 // Empire.4.cs DetermineHabitatsBuildingMiningStations (2279).
-function determineHabitatsBuildingMiningStations(empire: Empire): HabitatPrioritization[] {
+export function determineHabitatsBuildingMiningStations(empire: Empire): HabitatPrioritization[] {
     const habitatPrioritizationList: HabitatPrioritization[] = [];
     for (let i = 0; i < empire.constructionShips.length; i++) {
         const builtObject = empire.constructionShips[i] as BuiltObject;
-        // TODO(port): BuiltObjectMission (Type == Build, TargetHabitat) and SubsequentMissions
-        // are not modeled. During game setup no construction ship has a mission yet
-        // (Mission == null → `continue` in C#), so nothing is added.
-        if (builtObject.mission == null) {
+        // Empire.4.cs 2284-2307 (ported by M4g now that missions exist, missions/mission.ts).
+        const mission = builtObjectMission(builtObject.mission);
+        if (mission === null || mission.type !== BuiltObjectMissionType.Build) {
             continue;
         }
-        throw new Error('TODO(port): construction ship missions (BuiltObjectMission)');
+        if (mission.targetHabitat !== null) {
+            const habitatPrioritization = new HabitatPrioritization(mission.targetHabitat, 0);
+            habitatPrioritization.assignedShip = builtObject;
+            habitatPrioritizationList.push(habitatPrioritization);
+        }
+        const subsequentMissions = builtObjectSubsequentMissions(builtObject);
+        if (subsequentMissions == null || subsequentMissions.length <= 0) {
+            continue;
+        }
+        for (const subsequentMission of subsequentMissions) {
+            if (subsequentMission != null && subsequentMission.type === BuiltObjectMissionType.Build && subsequentMission.targetHabitat !== null) {
+                const habitatPrioritization2 = new HabitatPrioritization(subsequentMission.targetHabitat, 0);
+                habitatPrioritization2.assignedShip = builtObject;
+                habitatPrioritizationList.push(habitatPrioritization2);
+            }
+        }
     }
     return habitatPrioritizationList;
 }

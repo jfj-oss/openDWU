@@ -5,9 +5,10 @@
 import { PopulationList } from './population';
 import type { Creature } from './creature';
 import type { CargoList, TroopList } from './cargo';
-import type { BuiltObject } from './builtObject';
+import type { BuiltObject, DockingBay } from './builtObject';
 import type { Empire } from './empire';
 import type { Ruin } from './ruins';
+import { MIN_TIME } from './tick/simTime';
 
 // Port of DistantWorlds.Types.HabitatType (HabitatType.cs)
 export enum HabitatType {
@@ -156,10 +157,28 @@ export class Habitat {
     private _anglePerSecond = 0;
 
     // Plain fields set later by generation (Galaxy.5/6.cs).
-    diameter = 0; // C#: short
+    // C#: short Diameter / float BaseQuality — properties whose setters call RecalculateMaximumPopulation
+    // (Habitat.cs 976-985 / 213-224 → BaconHabitat.cs 233; M4j, see recalculateMaximumPopulation below the class).
+    private _diameter = 0;
+    get diameter(): number {
+        return this._diameter;
+    }
+    set diameter(value: number) {
+        this._diameter = value;
+        recalculateMaximumPopulation(this);
+    }
     pictureRef = 0; // C#: short
     landscapePictureRef = 0; // C#: short
-    baseQuality = 1; // C#: float _BaseQuality = 1f
+    private _baseQuality = 1; // C#: float _BaseQuality = 1f
+    get baseQuality(): number {
+        return this._baseQuality;
+    }
+    // Habitat.cs 217-223: _BaseQuality = value; RecalculateQuality() (quality is a live getter here);
+    // RecalculateMaximumPopulation().
+    set baseQuality(value: number) {
+        this._baseQuality = value;
+        recalculateMaximumPopulation(this);
+    }
     atmosphere = HabitatAtmosphereType.None;
     atmosphereDensity = 0; // C#: int
     systemIndex = 0;
@@ -375,6 +394,113 @@ export class Habitat {
         this.ypos = y;
         this.xpos = x;
     }
+
+    // ---- M4a fields (tick core; tick/habitatTick.ts) ----
+    // Habitat.cs 147-155 _LastTouch / _LastIntermediateTouch / _LastPeriodicTouch / _LastLongTouch / _LastHugeTouch
+    // (game ms). The ctor (Habitat.cs 6184-6187) sets huge/long/periodic/touch = CurrentDateTime and leaves
+    // _LastIntermediateTouch = MinValue; every TS habitat is built during generation at game time 0.
+    lastTouch = 0;
+    lastIntermediateTouch = MIN_TIME;
+    lastPeriodicTouch = 0;
+    lastLongTouch = 0;
+    lastHugeTouch = 0;
+    /** StellarObject.HasBeenDestroyed. */
+    hasBeenDestroyed = false;
+    /** Habitat.DoingTasks / DoingRemove. */
+    doingTasks = false;
+    doingRemove = false;
+    /** StellarObject.IsShipYard (set every periodic Habitat tick, Habitat.cs 1484-1491). */
+    isShipYard = false;
+    /** Habitat.Explosion / Explosions (M4o owns the element type). */
+    explosion: unknown = null;
+    explosions: unknown[] | null = null;
+    // ---- M4b fields (missions) ----
+    /** StellarObject.DockingBays / DockingBayWaitQueue on a planet (read by ClearPreviousMissionRequirements / ClearParent; M4e fills them). */
+    dockingBays: DockingBay[] | null = null;
+    dockingBayWaitQueue: BuiltObject[] | null = null;
+    // ---- M4c fields (movement, fuel) ----
+    // Habitat radiation (read by PerformEnergyCollection and the Bacon star gravity wells) is declared in the M4g block.
+    // ---- M4d fields (orders, colony supply) ----
+    // ---- M4e fields (docking) ----
+    // ---- M4f fields (civilian mission AI) ----
+    // ---- M4g fields (extraction, industry) ----
+    /** Habitat.cs 1033/1045/1057 _SolarRadiation / _XrayRadiation / _MicrowaveRadiation (byte; set on stars and gas clouds at generation, read by BuiltObject.IndustrialProcessing). */
+    solarRadiation = 0;
+    microwaveRadiation = 0;
+    xrayRadiation = 0;
+    /** Habitat._ManufacturingQueue (ManufacturingQueue; null until M4g creates it). */
+    manufacturingQueue: unknown = null;
+    // ---- M4h fields (construction queues) ----
+    /** Habitat.ConstructionQueue (ConstructionQueue; null until M4h creates it). */
+    constructionQueue: unknown = null;
+    // ---- M4i fields (facilities, wonders) ----
+    // ---- M4j fields (colony growth, happiness) ----
+    /** Habitat.cs 53 _MaxPopulation (long; BaconHabitat.RecalculateMaximumPopulation, read by GrowPopulation). */
+    maxPopulation = 0;
+    /** Habitat.cs 99 _MigrationFactor (float; CalculateMigrationFactor). */
+    migrationFactor = 0;
+    /** Habitat.cs 103 _RestrictedResourcesPresent (EvaluateColonyVariables; read by DevelopmentLevel). */
+    restrictedResourcesPresent = false;
+    /** Habitat.cs 117 ConqueredFactor (float; UpdateConqueredFactor; set negative on conquest by M4q). */
+    conqueredFactor = 0;
+    /** Habitat.cs 170 _WarWithOurRace (float; CalculateWarWithOurRace). */
+    warWithOurRace = 0;
+    /** Habitat.cs 79 SlaveryBonusFactor = 1f (float; ReviewColonyPopulationPolicy). */
+    slaveryBonusFactor = 1;
+    /**
+     * Habitat.cs 91/93 PlagueId = -1 (short) / PlagueTimeRemaining (float). Read by GrowPopulation; the plague model
+     * (ProcessPlague) is M4u's — kept here so the growth guard reads the real fields.
+     */
+    plagueId = -1;
+    plagueTimeRemaining = 0;
+    /**
+     * Habitat.cs 211 BaconValues (Dictionary<string, object>, null until first use): "marketcash", "resourcePriceList",
+     * "infrastructure" (M4j, BaconHabitat economy), "piratebase" (M4s), "capturedSpies" (M4q).
+     */
+    baconValues: Map<string, unknown> | null = null;
+    // ---- M4k fields (research) ----
+    // ---- M4l fields (fleets) ----
+    // ---- M4m fields (military AI) ----
+    // ---- M4n fields (threats) ----
+    // ---- M4o fields (weapons, damage) ----
+    // ---- M4p fields (fighters) ----
+    // ---- M4q fields (invasion, troops) ----
+    /** Habitat.ColonyInvasion (ColonyInvasion.cs; null = no invasion in progress). */
+    colonyInvasion: unknown = null;
+    /** Habitat.cs 194/197 InvasionSpaceControlStrengthDefenders / Attackers = -1. */
+    invasionSpaceControlStrengthDefenders = -1;
+    invasionSpaceControlStrengthAttackers = -1;
+    // ---- M4r fields (diplomacy) ----
+    // ---- M4s fields (pirates) ----
+    // ---- M4t fields (exploration) ----
+    /** Habitat.cs 107 _CulturalDistressFactor (float; ExertCulturalInfluence Empire.cs 4734). */
+    culturalDistressFactor = 0;
+    /**
+     * Habitat.cs 119 IsBlockaded (written by the blockade code, M4m). Declared here because UpdateSystemInfo (M4t)
+     * reads it (as it reads PlagueId, declared in the M4j block).
+     */
+    isBlockaded = false;
+    // ---- M4u fields (events, rebellion, plague) ----
+    /** Habitat.cs 109 _Rebelling. */
+    rebelling = false;
+}
+
+/**
+ * M4j: BaconHabitat.cs 233 RecalculateMaximumPopulation(planet) (via Habitat.cs 6160). Called by the Diameter /
+ * BaseQuality setters, RegenerateDamage, TerraformColony (colonyTick.ts) and ConstructFacilities.
+ */
+export function recalculateMaximumPopulation(planet: Habitat): void {
+    const f32 = Math.fround;
+    // (double)Math.Max(0.01f, planet.BaseQuality * (1f - planet.Damage)) — float arithmetic.
+    const num = Math.max(f32(0.01), f32(f32(planet.baseQuality) * f32(1 - f32(planet.damage))));
+    const diameter = planet.diameter;
+    planet.maxPopulation = Math.trunc(diameter * diameter * 250000.0 * (num * num));
+    const population = planet.population as PopulationList | undefined;
+    const dominantRace = population != null ? population.dominantRace : null;
+    if (population != null && dominantRace !== null && dominantRace.nativeHabitatType === planet.type) {
+        planet.maxPopulation = Math.trunc(planet.maxPopulation * 1.1);
+    }
+    planet.maxPopulation = Math.max(planet.maxPopulation, 100);
 }
 
 export interface SystemInfo {
@@ -393,4 +519,11 @@ export interface SystemInfo {
     otherEmpires?: { empire: Empire; colonyCount: number; totalStrategicValue: number }[] | null;
     // C#: SystemInfo.HasResearchBonus (bool, default false; set by Start.2.cs 1172, startHabitats.ts).
     hasResearchBonus?: boolean;
+    // Galaxy.1.cs DetermineSystemInfo (873) remaining SystemInfo fields (task M4t; SystemInfo.cs CopyFromOther).
+    hasRuins?: boolean;
+    hasScenery?: boolean;
+    blockadeCount?: number;
+    plagueId?: number;
+    isDisputed?: boolean;
+    playerPotentialColonies?: boolean;
 }

@@ -11,8 +11,30 @@ export class Random {
     private seedArray: number[];
     private inext: number;
     private inextp: number;
+    // M4a (tasks/M4-plan.md §5.2): opt-in draw counter / trace hook for diffing two runs. Non-enumerable
+    // own properties (defined in the ctor), so JSON.stringify(rnd), deep-equality checks and
+    // Object.assign clones of the stream state are unchanged (a clone counts from NaN).
+    declare private draws: number;
+    declare private trace: ((value: number) => void) | null;
+
+    /** Number of InternalSample() calls so far (every Next/NextDouble draws 1, large-range Next 2). */
+    get drawCount(): number {
+        return this.draws;
+    }
+
+    /** Called with every InternalSample() result while set (null to clear). */
+    setTrace(trace: ((value: number) => void) | null): void {
+        Object.defineProperty(this, 'trace', { value: trace, writable: true, enumerable: false, configurable: true });
+    }
+
+    /** Copy of the generator state (SeedArray, inext, inextp) for state digests. */
+    snapshotState(): { seedArray: number[]; inext: number; inextp: number } {
+        return { seedArray: this.seedArray.slice(), inext: this.inext, inextp: this.inextp };
+    }
 
     constructor(seed: number) {
+        Object.defineProperty(this, 'draws', { value: 0, writable: true, enumerable: false, configurable: true });
+        Object.defineProperty(this, 'trace', { value: null, writable: true, enumerable: false, configurable: true });
         this.seedArray = new Array<number>(56).fill(0);
         const subtraction = seed === INT_MIN ? INT_MAX : Math.abs(seed);
         let mj = MSEED - subtraction;
@@ -55,6 +77,8 @@ export class Random {
             ret += MBIG;
         }
         this.seedArray[this.inext] = ret;
+        this.draws++;
+        if (this.trace) this.trace(ret);
         return ret;
     }
 

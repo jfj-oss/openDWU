@@ -23,13 +23,18 @@ import type { Race } from './data/races';
 import { BuiltObjectStance, galaxyComponentCurrentPrices, type Design } from './design';
 import type { Empire } from './empire';
 import type { Galaxy } from './galaxy';
+import type { Creature } from './creature';
 import { PopulationList } from './population';
 import type { Habitat } from './types';
 import { getCharacterMaintenanceBonuses } from './characters';
 import { ColonyResourceEffect, resourceBonusTotalByEffectType } from './developmentLevel';
 import { empireGovernmentAttributes } from './empire';
+import { redefineBuiltObjectManufacturingQueue, type ManufacturingQueue } from './manufacturingQueue';
 import { PIRATE_SHIP_MAINTENANCE_FACTOR, SHIP_MAINTENANCE_COST_PER_SIZE_UNIT } from './forceStructure';
 import { Weapon, weaponsDetermineNotInSuppliedList, weaponsQuickCompareEquivalent, weaponsRemoveAndResetFirstMatchingWeaponById } from './weapon';
+import { MIN_TIME } from './tick/simTime';
+import type { BuiltObjectMission } from './missions/mission';
+import { builtObjectReDefineConstructionQueue } from './construction/constructionYard';
 
 // Port of EngineType.cs (byte enum, member order exact).
 export enum EngineType {
@@ -112,7 +117,7 @@ export class BuiltObject {
     empire: Empire | null = null;
     owner: Empire | null = null;
     dockingBays: DockingBay[] | null = null;
-    // TODO(port): ConstructionQueue (ConstructionQueue.cs) — see ReDefine.
+    /** StellarObject.ConstructionQueue (construction/constructionQueue.ts ConstructionQueue; created by ReDefine). */
     constructionQueue: unknown = null;
     isRefuellingDepot = false;
     isShipYard = false;
@@ -286,7 +291,7 @@ export class BuiltObject {
     /** C#: public Galaxy _Galaxy. */
     _galaxy: Galaxy;
     fuelType: ResourceRef | null = null;
-    // TODO(port): ManufacturingQueue (ManufacturingQueue.cs) — see ReDefine.
+    // BuiltObject._ManufacturingQueue (M4g, manufacturingQueue.ts; set by ReDefine).
     private _manufacturingQueue: unknown = null;
     // TODO(port): Fighter / FighterList (Fighter.cs) — only the list is created.
     fighters: unknown[] | null = null;
@@ -1281,13 +1286,10 @@ export class BuiltObject {
         this.unbuiltComponentCount = num29;
         this.damagedComponentCount = num30;
         if (this.damagedComponentCount === 0) this.strandedMessageSent = false;
-        // TODO(port): ConstructionQueue (ConstructionQueue.cs 71/200, BaconConstructionQueue
-        // ReviewConstructionSpeed): with flag7 (a ConstructionBuild component) C# creates
-        // `new ConstructionQueue(this, _Galaxy)` and keeps it while Redefine finds a built
-        // yard; otherwise it is dropped. No Rnd. Left null here.
-        void flag7;
-        // TODO(port): ManufacturingQueue (ManufacturingQueue.cs): with flag9 (a manufacturer
-        // component) C# creates `new ManufacturingQueue(this, _Galaxy)` the same way. No Rnd.
+        // BuiltObject.cs 3171-3184: ConstructionQueue (M4h, construction/constructionQueue.ts). No Rnd.
+        builtObjectReDefineConstructionQueue(this, flag7);
+        // BuiltObject.cs 3186-3200: ManufacturingQueue (M4g, manufacturingQueue.ts). No Rnd.
+        this._manufacturingQueue = redefineBuiltObjectManufacturingQueue(this._galaxy, this, flag9, this._manufacturingQueue as ManufacturingQueue | null);
         this.annualSupportCost = csInt(num28);
         const actualEmpire2 = this.actualEmpire;
         if (actualEmpire2 === null) return;
@@ -1365,6 +1367,111 @@ export class BuiltObject {
         }
         baconModMyShip(this);
     }
+
+    // ---- M4a fields (tick core; tick/builtObjectTick.ts) ----
+    // BuiltObject.cs _LastTouch / _LastIntermediateTouch / _LastPeriodicTouch / _LastLongTouch (game ms): C# default
+    // DateTime.MinValue; the first DoTasks back-dates them (BuiltObject.cs 3618-3633).
+    lastTouch = MIN_TIME;
+    lastIntermediateTouch = MIN_TIME;
+    lastPeriodicTouch = MIN_TIME;
+    lastLongTouch = MIN_TIME;
+    /** BuiltObject.cs _HyperjumpAboutToEnter / _HyperjumpJustExited (cleared every DoTasks, 3676-3677). */
+    hyperjumpAboutToEnter = false;
+    hyperjumpJustExited = false;
+    /** BuiltObject.cs 365/367 ScanHabitatIndex = -1 / LastScanTime (star date ms). */
+    scanHabitatIndex = -1;
+    lastScanTime = 0;
+    /** BuiltObject.cs 74 _ShipPullAmountLocation (float). */
+    shipPullAmountLocation = 0;
+    /** BuiltObject.cs 299 AssaultOwnershipChangeCounter (short). */
+    assaultOwnershipChangeCounter = 0;
+    /** BuiltObject.cs 509 Explosions = new ExplosionList() (M4o owns the element type). */
+    explosions: unknown[] = [];
+    /** BuiltObject.cs _Threats (BuiltObject[20]) / _ThreatLevels (int[20]): allocated by the first DoTasks (3664-3668). */
+    // M4n: C# StellarObject[] — BuiltObjects and Creatures (Fighters are not modelled as threats in the TS port).
+    threats: (BuiltObject | Creature | null)[] | null = null;
+    threatLevels: number[] | null = null;
+    // ---- M4b fields (missions & command dispatcher) ----
+    /** StellarObject.DockedAt (the base/planet this ship is docked at; docking itself is M4e). */
+    dockedAt: BuiltObject | Habitat | null = null;
+    /** BuiltObject.cs 526 RevertMission (RecordRevertMission / RevertToPreviousMission). */
+    revertMission: BuiltObjectMission | null = null;
+    /** BuiltObject.cs 339 _MissionCompleteMessageSent. */
+    missionCompleteMessageSent = false;
+    /** BuiltObject.cs 407/409 HyperExitStartAnimation / HyperEnterStartAnimation (cleared by AssignMission). */
+    hyperEnterStartAnimation = false;
+    hyperExitStartAnimation = false;
+    /** BuiltObject.cs 385 _HyperjumpPrepare. */
+    hyperjumpPrepare = false;
+    /** BuiltObject.cs 501 _ColonyToAttack. */
+    colonyToAttack: Habitat | null = null;
+    /** BuiltObject.cs 30 BattleStats (SpaceBattleStats, M4o owns the type; null until a combat mission starts it). */
+    battleStats: unknown = null;
+    /** BuiltObject.cs 327 _ExecutingShipGroupCommand. */
+    executingShipGroupCommand = false;
+    // ---- M4c fields (movement, hyperjump, fuel, energy) ----
+    /** BuiltObject.cs 395 _Angle (float): heading towards the current movement target. */
+    angle = 0;
+    /** BuiltObject.cs 403/405 _LastPositionX / _LastPositionY (CheckWhetherArrived overshoot test). */
+    lastPositionX = 0;
+    lastPositionY = 0;
+    /** BuiltObject.cs 383 _HyperjumpCountdown (star date ms at which the jump may start). */
+    hyperjumpCountdown = 0;
+    /** BuiltObject.cs 387/389 _HyperjumpX / _HyperjumpY = -1.0 (exit-point offset from the target). */
+    hyperjumpX = -1.0;
+    hyperjumpY = -1.0;
+    /** BuiltObject.cs 393 _LastHyperDistance = 100000000.0. */
+    lastHyperDistance = 100000000.0;
+    /** BuiltObject.cs 303 _LastHyperjumpDistance (float). */
+    lastHyperjumpDistance = 0;
+    /** BuiltObject.cs 391 _FirstHyperjumpExecution. */
+    firstHyperjumpExecution = false;
+    /** BuiltObject.cs 379 _HyperjumpAboutToEnterSoundPlayed (UI sound flag, reset by HyperTo). */
+    hyperjumpAboutToEnterSoundPlayed = false;
+    /** BuiltObject.cs 70 _HyperjumpDisabledLocation (set by DetectHyperDeny). */
+    hyperjumpDisabledLocation = false;
+    // ---- M4d fields (orders, cargo) ----
+    // ---- M4e fields (docking, refuelling) ----
+    // ---- M4f fields (civilian mission AI) ----
+    // ---- M4g fields (extraction, industry) ----
+    /** BuiltObject.cs _DoingMining / _DoingGasMining / _DoingConstruction (reset and set by IndustrialProcessing; read by the UI and ship animations). */
+    doingMining = false;
+    doingGasMining = false;
+    doingConstruction = false;
+    // ---- M4h fields (construction, repair, retrofit) ----
+    // _DoingConstruction (BuiltObject.cs 353; set by ProcessSingleConstructionYard) is declared in the M4g block.
+    /** BuiltObject.cs RetrofitBaseConstructionQueue (a colony-built base's retrofit queue; Empire.5.cs 159-163, M4i). */
+    retrofitBaseConstructionQueue: unknown = null;
+    // ---- M4i fields (empire construction) ----
+    // ---- M4j fields (economy) ----
+    // ---- M4k fields (research) ----
+    // ---- M4l fields (ship groups) ----
+    // ---- M4m fields (military AI) ----
+    // ---- M4n fields (threats, attack AI) ----
+    /** BuiltObject.cs _TotalThreatLevel (IdentifySystemThreatsToUs out; read by CheckBattleOverwhelming). */
+    totalThreatLevel = 0;
+    /** BuiltObject.cs _LastWithdrawalEvaluation (CheckBattleOverwhelming two-step withdrawal). */
+    lastWithdrawalEvaluation = false;
+    /** BuiltObject.cs _SecondaryTargets (StellarObjectList) / _SecondaryThreatLevels (List<double>) — ThreatEvaluation scratch lists. */
+    secondaryTargets: (BuiltObject | Creature)[] = [];
+    secondaryThreatLevels: number[] = [];
+    /** BuiltObject.cs OptimalMinimumAttackRange / OptimalMaximumAttackRange (double; SetOptimalAttackRanges). */
+    optimalMinimumAttackRange = 0;
+    optimalMaximumAttackRange = 0;
+    /** BuiltObject.cs _LastInvasionDistance (double; the Attack case's invasion approach). */
+    lastInvasionDistance = 536870911.0;
+    // ---- M4o fields (weapons, damage, teardown) ----
+    // ---- M4p fields (fighters) ----
+    // ---- M4q fields (boarding, troops, capture) ----
+    // ---- M4r fields (diplomacy) ----
+    // ---- M4s fields (pirates) ----
+    // ---- M4t fields (scanning, exploration) ----
+    /**
+     * BuiltObject.BaconValues (Bacon mod, Dictionary<string, object>; null until first written). M4t writes
+     * "scientificData" (BaconBuiltObject.AddScientificData 3536); other Bacon keys belong to their packages.
+     */
+    baconValues: Map<string, unknown> | null = null;
+    // ---- M4u fields (events, location effects) ----
 }
 
 // `int i = list.IndexOf(this); if (i >= 0) list.RemoveAt(i);`

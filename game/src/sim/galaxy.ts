@@ -8,6 +8,7 @@
 // SelectCreatures) — see the `TODO(port)` markers below for what remains.
 
 import { Random } from './random';
+import { newHabitatConstructionQueue } from './construction/constructionYard';
 import { Creature, CreatureType } from './creature';
 import { GalaxyLocation, GalaxyLocationEffectType, GalaxyLocationShape, GalaxyLocationType } from './galaxyLocation';
 import { GalaxyNebulaeGenerator } from './galaxyNebulaeGenerator';
@@ -29,6 +30,7 @@ import { SystemVisibilityStatus, type GalaxyResourceMap } from './visibility';
 import { EmpireTerritory, strategicValue } from './territory';
 import { buildResearchStatic, type ResearchStatic } from './researchSystem';
 import { buildComponentStatic } from './componentStatic';
+import { ensureHabitatManufacturingQueue } from './manufacturingQueue';
 
 // C# string.CompareTo (culture-sensitive; .NET 5+ uses ICU).
 const NAME_COLLATOR = new Intl.Collator('en-US');
@@ -46,6 +48,10 @@ import type { BuiltObject } from './builtObject';
 import type { RaceFamily } from './data/raceFamilies';
 import { BuiltObjectRole } from './data/designSpecifications';
 import { BuiltObjectSubRole } from './builtObjectTypes';
+import { MIN_TIME } from './tick/simTime';
+import { canEmpireColonizeHabitat, habitatResourcesHaveSuperLuxury } from './exploration';
+import type { SchedulerState } from './tick/scheduler';
+import { createGalaxyOrderList, type OrderList } from './logistics/orders';
 
 // Port of Galaxy.cs static fields (Galaxy.3.cs InitializeStatics sets
 // these): SectorSizeX = SectorSizeY = 2_000_000, IndexSize = 400_000.
@@ -316,40 +322,77 @@ export class Galaxy {
         return { x: x2, y: y2 };
     }
 
-    // Port of Galaxy.1.cs UpdateSystemInfo(playerEmpire=null): DetermineSystemInfo
-    // for every system (Systems order) + SystemsIndex membership.
-    // TODO(port): player-empire fields (colonizable targets etc.), HasRuins,
-    // BlockadeCount, PlagueId — need ruins/blockades/plagues/designs.
-    updateSystemInfo(): void {
+    // Port of Galaxy.1.cs UpdateSystemInfo(playerEmpire) (840): DetermineSystemInfo for every system (Systems
+    // order) + SystemsIndex membership. With a player empire, PlayerPotentialColonies is computed against its newest
+    // buildable colony-ship design (Designs.FindNewestCanBuild(ColonyShip)) and ColonizableHabitatTypesForEmpire.
+    // No Rnd. (Task M4t: player variant.)
+    updateSystemInfo(playerEmpire: Empire | null = null): void {
+        let latestColonyDesign: Design | null = null;
+        let colonizableHabitatTypes: HabitatType[] = [];
+        if (playerEmpire !== null) {
+            // DesignList.FindNewestCanBuild(subRole) (DesignList.cs 140): the empire is the first design's owner.
+            const designs = playerEmpire.designs;
+            const designsEmpire = designs.length > 0 && designs[0] != null ? ((designs[0].empire as Empire | null) ?? null) : null;
+            latestColonyDesign = findNewestCanBuild(designs, BuiltObjectSubRole.ColonyShip, designsEmpire);
+            colonizableHabitatTypes = playerEmpire.colonizableHabitatTypesForEmpire();
+        }
         for (const sys of this.systems) {
-            this.determineSystemInfo(sys);
+            this.determineSystemInfo(sys, playerEmpire, colonizableHabitatTypes, latestColonyDesign);
             const c = this.resolveIndex(sys.systemStar.xpos, sys.systemStar.ypos);
             const cell = this.systemsIndexGrid[c.x][c.y];
             if (!cell.includes(sys)) cell.push(sys);
         }
     }
 
-    // Port of Galaxy.1.cs DetermineSystemInfo (873): planet/moon/independent
-    // counts, and the dominant empire = highest total StrategicValue
-    // (ties: larger population), others listed in first-seen order.
-    determineSystemInfo(sys: SystemInfo): void {
+    // Port of Galaxy.1.cs DetermineSystemInfo(system, playerEmpire, colonizableHabitatTypes, latestColonyDesign)
+    // (873): planet/moon/blockade/independent counts, ruins/scenery/research-bonus/plague flags, the player's
+    // potential-colony flag, and the dominant empire = highest total StrategicValue (ties: larger population),
+    // others listed in first-seen order. Writes the fields in place (C# CopyFromOther of the returned `system`).
+    determineSystemInfo(sys: SystemInfo, playerEmpire: Empire | null = null, colonizableHabitatTypes: HabitatType[] = [], latestColonyDesign: Design | null = null): void {
         const empires: Empire[] = [];
         const sv: number[] = [];
         const cc: number[] = [];
         const pop: number[] = [];
         let num = 0;
         let num2 = 0;
+        let num3 = 0;
         let num4 = 0;
-        // Galaxy.1.cs 887-895 / 912-915 (task M3d): hasResearchBonus.
+        let plagueId = -1;
+        let flag = false;
+        let hasRuins = false;
+        let hasScenery = false;
         let hasResearchBonus = false;
+        if (sys.systemStar.scenicFactor > 0) hasScenery = true;
         if (sys.systemStar.researchBonus > 0) hasResearchBonus = true;
         for (const h of this.systemHabitatsOf(sys.systemStar.systemIndex)) {
             if (h.category === HabitatCategoryType.Asteroid) continue;
+            if (h.ruin !== null) hasRuins = true;
+            if (h.scenicFactor > 0) hasScenery = true;
             if (h.researchBonus > 0) hasResearchBonus = true;
             if (h.category === HabitatCategoryType.Planet) num++;
             else if (h.category === HabitatCategoryType.Moon) num2++;
+            if (h.isBlockaded) num3++;
+            if (h.plagueId >= 0) plagueId = h.plagueId;
             // C#: Empire == IndependentEmpire — also true while both are null.
-            if (h.empire === this.independentEmpire) num4++;
+            if (h.empire === this.independentEmpire) {
+                num4++;
+            } else if (
+                playerEmpire !== null &&
+                !flag &&
+                canEmpireColonizeHabitat(this, playerEmpire, playerEmpire, h, colonizableHabitatTypes, latestColonyDesign) &&
+                (h.quality >= 0.5 ||
+                    (h.resources != null && habitatResourcesHaveSuperLuxury(this, h)) ||
+                    (h.ruin !== null &&
+                        (h.ruin.bonusDefensive > 0.0 ||
+                            h.ruin.bonusDiplomacy > 0.0 ||
+                            h.ruin.bonusHappiness > 0.0 ||
+                            h.ruin.bonusResearchEnergy > 0.0 ||
+                            h.ruin.bonusResearchHighTech > 0.0 ||
+                            h.ruin.bonusResearchWeapons > 0.0 ||
+                            h.ruin.bonusWealth > 0.0)))
+            ) {
+                flag = true;
+            }
             if (h.empire !== null && h.empire !== this.independentEmpire) {
                 let i = empires.indexOf(h.empire);
                 if (i < 0) {
@@ -378,8 +421,13 @@ export class Galaxy {
         }
         sys.planetCount = num;
         sys.moonCount = num2;
+        sys.blockadeCount = num3;
+        sys.plagueId = plagueId;
         sys.independentColonyCount = num4;
+        sys.hasRuins = hasRuins;
+        sys.hasScenery = hasScenery;
         sys.hasResearchBonus = hasResearchBonus;
+        if (playerEmpire !== null) sys.playerPotentialColonies = flag;
         sys.dominantEmpire = dom !== null ? { empire: dom, colonyCount, totalStrategicValue: num6 } : null;
         sys.otherEmpires = null;
         if (dom !== null) {
@@ -389,6 +437,7 @@ export class Galaxy {
                 sys.otherEmpires.push({ empire: empires[k], colonyCount: cc[k], totalStrategicValue: sv[k] });
             }
         }
+        sys.isDisputed = empires.length > 1;
     }
 
     // Port of Galaxy.7.cs DetermineClosestIndexEdges (int math).
@@ -1447,66 +1496,70 @@ export class Galaxy {
     }
 
     // Port of Galaxy.6.cs SelectStar
-    private selectStar(): { type: HabitatType; diameter: number; pictureRef: number } {
+    private selectStar(): { type: HabitatType; diameter: number; pictureRef: number; solarRadiation: number; microwaveRadiation: number; xrayRadiation: number } {
         const roll = this.rnd.next(0, 77);
         let type: HabitatType;
         let diameter: number;
         let pictureRef: number;
+        // Solar/Microwave/Xray radiation rolls (stored on the star, Galaxy.5.cs 1325-1327; read by M4g IndustrialProcessing).
+        let solarRadiation: number;
+        let microwaveRadiation: number;
+        let xrayRadiation: number;
         if (roll >= 0 && roll <= 61) {
             type = HabitatType.MainSequence;
             diameter = this.rnd.next(950, 1400);
             pictureRef = diameter <= 1200 ? 83 : 84;
             this.rnd.next(0, 4); // mapPictureRef roll — MapPictureRef not modeled yet
-            this.rnd.next(40, 60); // solarRadiation
-            this.rnd.next(5, 20); // microwaveRadiation
-            this.rnd.next(5, 12); // xrayRadiation
+            solarRadiation = this.rnd.next(40, 60);
+            microwaveRadiation = this.rnd.next(5, 20);
+            xrayRadiation = this.rnd.next(5, 12);
         } else if (roll >= 62 && roll <= 66) {
             type = HabitatType.RedGiant;
             diameter = this.rnd.next(1450, 1620);
             pictureRef = 85;
             this.rnd.next(0, 3);
-            this.rnd.next(70, 95);
-            this.rnd.next(5, 20);
-            this.rnd.next(5, 12);
+            solarRadiation = this.rnd.next(70, 95);
+            microwaveRadiation = this.rnd.next(5, 20);
+            xrayRadiation = this.rnd.next(5, 12);
         } else if (roll >= 67 && roll <= 69) {
             type = HabitatType.SuperGiant;
             diameter = this.rnd.next(1620, 1950);
             pictureRef = 86;
             this.rnd.next(0, 3);
-            this.rnd.next(80, 100);
-            this.rnd.next(5, 20);
-            this.rnd.next(5, 12);
+            solarRadiation = this.rnd.next(80, 100);
+            microwaveRadiation = this.rnd.next(5, 20);
+            xrayRadiation = this.rnd.next(5, 12);
         } else if (roll >= 70 && roll <= 72) {
             type = HabitatType.WhiteDwarf;
             diameter = this.rnd.next(260, 350);
             pictureRef = 87;
             this.rnd.next(0, 3);
-            this.rnd.next(10, 30);
-            this.rnd.next(20, 40);
-            this.rnd.next(40, 60);
+            solarRadiation = this.rnd.next(10, 30);
+            microwaveRadiation = this.rnd.next(20, 40);
+            xrayRadiation = this.rnd.next(40, 60);
         } else if (roll >= 73 && roll <= 74) {
             type = HabitatType.Neutron;
             diameter = this.rnd.next(180, 230);
             pictureRef = 88;
-            this.rnd.next(1, 5);
-            this.rnd.next(60, 90);
-            this.rnd.next(120, 200);
+            solarRadiation = this.rnd.next(1, 5);
+            microwaveRadiation = this.rnd.next(60, 90);
+            xrayRadiation = this.rnd.next(120, 200);
         } else if (roll === 75) {
             type = HabitatType.BlackHole;
             diameter = this.rnd.next(4500, 6500);
             pictureRef = 95;
-            this.rnd.next(10, 15);
-            this.rnd.next(60, 80);
-            this.rnd.next(90, 130);
+            solarRadiation = this.rnd.next(10, 15);
+            microwaveRadiation = this.rnd.next(60, 80);
+            xrayRadiation = this.rnd.next(90, 130);
         } else {
             type = HabitatType.SuperNova;
             diameter = this.rnd.next(300, 900);
             pictureRef = 0;
-            this.rnd.next(60, 80);
-            this.rnd.next(70, 110);
-            this.rnd.next(160, 220);
+            solarRadiation = this.rnd.next(60, 80);
+            microwaveRadiation = this.rnd.next(70, 110);
+            xrayRadiation = this.rnd.next(160, 220);
         }
-        return { type, diameter, pictureRef };
+        return { type, diameter, pictureRef, solarRadiation, microwaveRadiation, xrayRadiation };
     }
 
     // Port of Galaxy.4.cs GenerateNebulae (generateImage=false call) plus
@@ -1777,9 +1830,10 @@ export class Galaxy {
         let type: HabitatType;
         let diameter: number;
         let pictureRef: number;
+        let selected: ReturnType<Galaxy['selectStar']>;
         let flag4 = false;
         do {
-            const selected = this.selectStar();
+            selected = this.selectStar();
             type = selected.type;
             diameter = selected.diameter;
             pictureRef = selected.pictureRef;
@@ -1798,6 +1852,10 @@ export class Galaxy {
         star.diameter = diameter;
         star.pictureRef = pictureRef;
         star.landscapePictureRef = -1;
+        // Galaxy.5.cs 1325-1327: (byte) casts of the radiation rolls.
+        star.solarRadiation = selected.solarRadiation & 0xff;
+        star.microwaveRadiation = selected.microwaveRadiation & 0xff;
+        star.xrayRadiation = selected.xrayRadiation & 0xff;
         if (type === HabitatType.BlackHole) {
             // Port of Galaxy.5.cs SetupSun black-hole GalaxyLocations
             // (1329-1352). C# renames the star via GenerateBlackHoleName()
@@ -2277,9 +2335,10 @@ export class Galaxy {
             attempts++;
         } while (distance < MAX_SOLAR_SYSTEM_SIZE * 4 && attempts < 200);
 
-        this.rnd.next(40, 60); // solarRadiation
-        this.rnd.next(1, 5); // microwaveRadiation
-        this.rnd.next(0, 3); // xrayRadiation
+        // Galaxy.4.cs 2853-2858 (byte) radiation rolls.
+        habitat.solarRadiation = this.rnd.next(40, 60) & 0xff;
+        habitat.microwaveRadiation = this.rnd.next(1, 5) & 0xff;
+        habitat.xrayRadiation = this.rnd.next(0, 3) & 0xff;
 
         this.selectResources(habitat);
 
@@ -3358,8 +3417,12 @@ export class Galaxy {
         if (this.rnd.next(0, 5) === 2) {
             habitat.orbitDirection = false;
         }
-        // TODO(port): Cargo/Troops/TroopsToRecruit/InvadingTroops/ConstructionQueue/
-        // ManufacturingQueue/20 DockingBays (component 74) — Galaxy.8.cs GenerateContinentalPlanet.
+        // Galaxy.8.cs 483 (M4h): habitat.ConstructionQueue = new ConstructionQueue(habitat, galaxy). No Rnd.
+        newHabitatConstructionQueue(this, habitat);
+        // Galaxy.8.cs 484 (M4g): habitat.ManufacturingQueue = new ManufacturingQueue(habitat, galaxy).
+        ensureHabitatManufacturingQueue(this, habitat);
+        // TODO(port): Cargo/Troops/TroopsToRecruit/InvadingTroops/20 DockingBays (component 74) — Galaxy.8.cs
+        // GenerateContinentalPlanet.
         return habitat;
     }
 
@@ -3907,6 +3970,12 @@ export class Galaxy {
                 for (let p = 0; p < populationRolls; p++) {
                     this.selectPopulation(planet, sunHabitat);
                 }
+                // Galaxy.5.cs 1609-1618: a populated planet gets `ConstructionQueue` (M4h, 1617) and `ManufacturingQueue` (M4g, 1618).
+                // TODO(port): the other containers of that block (Cargo, Troops, Characters, DockingBays; no Rnd).
+                if (planet.population.items.length > 0) {
+                    newHabitatConstructionQueue(this, planet);
+                    ensureHabitatManufacturingQueue(this, planet);
+                }
                 // Port of Galaxy.6.cs SelectCreatures(habitat2) — Galaxy.6.cs:654 (call
                 // site in Galaxy.5.cs SetupSolarSystem, after population rolls).
                 this.selectCreatures(planet);
@@ -3996,6 +4065,11 @@ export class Galaxy {
                     }
                     for (let p = 0; p < moonPopulationRolls; p++) {
                         this.selectPopulation(moon, sunHabitat);
+                    }
+                    // Galaxy.5.cs 1745-1756: as for planets above (ConstructionQueue 1755, ManufacturingQueue 1756).
+                    if (moon.population.items.length > 0) {
+                        newHabitatConstructionQueue(this, moon);
+                        ensureHabitatManufacturingQueue(this, moon);
                     }
                     // Port of Galaxy.6.cs SelectCreatures(habitat2) — Galaxy.6.cs:654 (call
                     // site in Galaxy.5.cs SetupSolarSystem, after moon population rolls).
@@ -4282,6 +4356,84 @@ export class Galaxy {
         }
         return false;
     }
+
+    // ---- M4a fields (tick core: time model, scheduler; src/sim/tick/*) ----
+    /** Sim clock: integer game ms since game start (C# CurrentDateTime − _StartDateTime; tick/simTime.ts). */
+    nowMs = 0;
+    /**
+     * Galaxy.cs 67 _LastGalaxyProcessTimeSensitive (ms). MIN_TIME: Start.2.cs 1108 ResetLastTouchTimes sets it to
+     * DateTime.MinValue and nothing but DoTasksTimeSensitive (first sim frame) updates it.
+     */
+    lastGalaxyProcessTimeSensitive = MIN_TIME;
+    /**
+     * Galaxy.cs 69/71 _LastGalaxyProcessTime / _LastGalaxyHugeProcessTime (ms). 0 = set by the game-start
+     * Galaxy.DoTasks at game time 0 (Start.2.cs 1109; createGame's stand-ins run its huge/long blocks).
+     * tick/galaxyTick.ts runGameStartGalaxyTick resets them first (ResetLastTouchTimes, Galaxy.cs 3134).
+     */
+    lastGalaxyProcessTime = 0;
+    lastGalaxyHugeProcessTime = 0;
+    /** Galaxy.ResetRandom (Galaxy.cs 3075): never true in play; ReseedRandom is dropped in TS (determinism). */
+    resetRandom = false;
+    /** Galaxy._PirateProximity (0 near / 1 medium / 2 far) — wizard option, read by GenerateNewPirateEmpires. */
+    pirateProximity = 0;
+    /** Galaxy.MaximumEmpireAmount — wizard option; 0 = derive (player + AIs = empires at game start). */
+    maximumEmpireAmount = 0;
+    /** Galaxy.SpawnNewEmpires (Start.2.cs 116, wizard option) — gates Habitat CheckHabitatIsEmpire. */
+    spawnNewEmpires = true;
+    /** Frame-driver state (cursors int_48..int_58, frame carry; tick/scheduler.ts). Created lazily. */
+    scheduler: SchedulerState | null = null;
+    // ---- M4b fields (missions & command dispatcher) ----
+    // ---- M4c fields (movement, hyperjump, fuel, energy) ----
+    // ---- M4d fields (orders, contracts, freight) ----
+    /** Galaxy.cs 563 Orders (OrderList, indexed: Galaxy.4.cs 2356 EnableIndexing). */
+    orders: OrderList = createGalaxyOrderList();
+    // ---- M4e fields (docking, refuelling) ----
+    // ---- M4f fields (civilian mission AI) ----
+    // ---- M4g fields (extraction, industry) ----
+    // ---- M4h fields (construction queues, shipyards) ----
+    /** Clock-seeded `new Random()` of BaconBuiltObject.DoRepairs (4787): a galaxy-seed-derived stream (plan §0). */
+    baconRepairClockRnd: Random | null = null;
+    // ---- M4i fields (empire construction, facilities, wonders) ----
+    // ---- M4j fields (colony growth, treasury, government) ----
+    /** Galaxy.cs 665 _ColonyFillFactor = 1.0 (ReviewColonyFillFactor). */
+    colonyFillFactor = 1.0;
+    /**
+     * Race.ChangePeriodActive per race (Race.cs 125 _ChangePeriodActive; ReviewRacePeriodicChanges). Kept per galaxy
+     * because the TS Race objects are the shared parsed game data (colonyTick.ts raceReproductiveRate & co. read it).
+     */
+    raceChangePeriodActive = new Set<Race>();
+    /**
+     * Stand-in for the clock-seeded `new Random()` instances of BaconHabitat.HugeProcessingSpanActions (plan §0: derived
+     * from the galaxy seed, never draws Galaxy.Rnd). Created lazily by colonyTick.ts.
+     */
+    baconHabitatClockRnd: Random | null = null;
+    // ---- M4k fields (research progress) ----
+    /** Galaxy.cs 116 _ResearchSpeedModifier (Start.2.cs 110 sets 1.0). */
+    researchSpeedModifier = 1.0;
+    // ---- M4l fields (ship groups) ----
+    // ---- M4m fields (military AI) ----
+    // ---- M4n fields (threats, attack AI) ----
+    /** Galaxy.cs 597 InvasionAttempts (counter, BuiltObject.2.cs 2270). */
+    invasionAttempts = 0;
+    // ---- M4o fields (weapons, damage, teardown) ----
+    // ---- M4p fields (fighters) ----
+    // ---- M4q fields (invasion, troops, boarding) ----
+    // ---- M4r fields (diplomacy runtime) ----
+    /**
+     * Galaxy.cs 1034 AggressionLevel (_AggressionLevel, Galaxy.4.cs 2151 ctor argument; default 1.0). Read by the
+     * EmpireEvaluation attitude model. generateGalaxy stores GenerateGalaxyOptions.aggressionLevel here.
+     */
+    aggressionLevel = 1.0;
+    // ---- M4s fields (pirates runtime) ----
+    // ---- M4t fields (visibility, exploration, territory) ----
+    /**
+     * Galaxy.cs _RegeneratingEmpireTerritory / _RegenerateEmpireTerritoryAgain (ReviewEmpireTerritoryCore 3384):
+     * in C# a ThreadPool guard; the TS runs the review synchronously, so the flag is only ever true during a
+     * call (kept for the re-entry path).
+     */
+    regeneratingEmpireTerritory = false;
+    regenerateEmpireTerritoryAgain = false;
+    // ---- M4u fields (events, disasters, characters) ----
 }
 
 // Port of Galaxy.4.cs Galaxy constructor (star-cluster setup, star loop,
@@ -4296,7 +4448,7 @@ export function generateGalaxy(options: GenerateGalaxyOptions): Galaxy {
     // ResourceSystem.Resources (Galaxy.4.cs ctor loads it before generation).
     galaxy.resources = gameData?.resources ?? [];
     galaxy.resourceSystem = buildResourceSystem(galaxy.resources, gameData?.components ?? []);
-    galaxy.researchStatic = gameData ? buildResearchStatic(gameData.research, gameData.components, gameData.races, gameData.policies, gameData.piratePolicies, buildComponentStatic(gameData)) : null;
+    galaxy.researchStatic = gameData ? buildResearchStatic(gameData.research, gameData.components, gameData.races, gameData.policies, gameData.piratePolicies, buildComponentStatic(gameData), gameData.facilities, gameData.fighters, gameData.plagues) : null;
     galaxy.designSpecificationTexts = gameData?.designSpecificationTexts ?? new Map();
     galaxy.designNames = gameData?.designNames ?? [];
     // Port of Galaxy.cs Races (loaded from GameData in the ctor).
@@ -4319,6 +4471,8 @@ export function generateGalaxy(options: GenerateGalaxyOptions): Galaxy {
     // AggressionLevel >= 1.5 / >= 1.3 / >= 1.1 / else. With no empireStarts
     // this consumes zero Rnd calls (pre-01f1 behavior).
     const aggressionLevel = options.aggressionLevel ?? 1.0;
+    // Galaxy.4.cs 2151 _AggressionLevel = aggressionLevel (task M4t: read by DoSingleEmpireEncounter).
+    galaxy.aggressionLevel = aggressionLevel;
     const aggressiveRacesRequired = aggressionLevel >= 1.5 ? 3 : aggressionLevel >= 1.3 ? 2 : aggressionLevel >= 1.1 ? 1 : 0;
     setupAlienRacePopulations(galaxy, options.empireStarts ?? [], aggressiveRacesRequired);
 
