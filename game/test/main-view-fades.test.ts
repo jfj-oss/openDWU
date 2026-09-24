@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { backdropAlpha, moonDotPx, orbitRingAlpha, planetSpritePx, starfieldAlpha, starSpritePx } from '../src/render/mainView';
+import { backdropAlpha, fadeIn, moonDotPx, orbitRingAlpha, planetSpritePx, starfieldAlpha, starSpritePx } from '../src/render/mainView';
 
 // Task 02b2: close the mid-zoom black gap. The backdrop fades out over
 // [m*2.5, m*14] (m = minZoom, whole-galaxy zoom) and the starfield must
@@ -36,6 +36,25 @@ describe('mid-zoom layer crossfades', () => {
         expect(orbitRingAlpha(0.008, 10_000)).toBeCloseTo(0.5, 6);
         expect(orbitRingAlpha(1, 10_000)).toBeCloseTo(0.5, 6);
         expect(orbitRingAlpha(1, 0)).toBe(0);
+    });
+});
+
+// Task 02c: planet art appears at system zoom (not closer than factor ~4),
+// and planet labels only once the art is shown.
+describe('planet art window + label gating', () => {
+    it('the dot -> planet-art crossfade window is z = 0.012..0.03 (factor ~83..33)', () => {
+        expect(fadeIn(0.012, 0.012, 0.03)).toBeCloseTo(0, 6);
+        expect(fadeIn(0.03, 0.012, 0.03)).toBeCloseTo(1, 6);
+        expect(fadeIn(0.021, 0.012, 0.03)).toBeCloseTo(0.5, 6); // midpoint of the window
+        expect(fadeIn(0.05, 0.012, 0.03)).toBeCloseTo(1, 6); // whole-system view: art fully in
+    });
+
+    it('label visibility (dotT > 0.5) is false at sector zoom, true at z = 0.05', () => {
+        const visible = (z: number) => fadeIn(z, 0.012, 0.03) > 0.5;
+        expect(visible(0.0005)).toBe(false); // sector zoom: no pile of labels
+        expect(visible(0.012)).toBe(false); // start of the window
+        expect(visible(0.021)).toBe(true); // mid-window
+        expect(visible(0.05)).toBe(true); // system zoom
     });
 });
 
