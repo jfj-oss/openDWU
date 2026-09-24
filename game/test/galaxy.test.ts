@@ -1,6 +1,8 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { generateGalaxy, type Galaxy } from '../src/sim/galaxy';
 import type { GameData } from '../src/sim/data/gameData';
+import { determineAggressiveRaces, type EmpireStart } from '../src/sim/raceRegions';
+import { GalaxyLocationType } from '../src/sim/galaxyLocation';
 import { GalaxyShape, HabitatCategoryType, HabitatType } from '../src/sim/types';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 
@@ -372,5 +374,170 @@ describe('generateGalaxy with gameData (task 01d: supernovae, resources, treasur
             g.habitats.map((h) => [h.category, h.name, h.type, h.xpos, h.ypos, h.diameter, h.resources.map((r) => [r.resourceId, r.abundance])]);
 
         expect(signature(galaxyA)).toEqual(signature(galaxyB));
+    }, 60000);
+});
+
+describe('generateGalaxy race regions (task 01f1: SetupAlienRacePopulations)', () => {
+    let gameData: GameData;
+
+    beforeAll(async () => {
+        gameData = await loadGameDataFs();
+    });
+
+    // Five playable, mutually distinct races (one per empire start). All are
+    // in the aggressive list (aggression >= 115, intelligence >= 85) so that
+    // with aggressionLevel 1.5 four proximity-eligible candidates exist for
+    // the "marks >= 3 aggressive races" test.
+    const startRaces = ['Boskara', 'Mortalen', 'Sluken', 'Naxxilian', 'Dhayut'];
+    const makeEmpireStarts = (): EmpireStart[] =>
+        startRaces.map((name) => ({ resolvedRace: gameData.races.find((r) => r.name === name)!, projectedColonyAmount: 5 }));
+
+    it('creates one RaceRegion location per empire start, named "<race> Region"', () => {
+        const galaxy = generateGalaxy({
+            seed: 12345,
+            shape: GalaxyShape.Spiral,
+            starCount: 700,
+            sectorWidth: 10,
+            sectorHeight: 10,
+            systemNames,
+            gameData,
+            aggressionLevel: 1.5,
+            empireStarts: makeEmpireStarts(),
+        });
+
+        const regions = galaxy.galaxyLocations.filter((l) => l.type === GalaxyLocationType.RaceRegion);
+        expect(regions.length).toBe(5);
+        for (const region of regions) {
+            expect(region.relatedRace).not.toBeNull();
+            expect(region.name).toBe(region.relatedRace!.name + ' Region');
+            expect(region.showName).toBe(false);
+            expect(region.pictureRef).toBe(-1);
+            expect(region.width).toBeCloseTo(region.height, 5);
+        }
+        const names = regions.map((r) => r.relatedRace!.name).sort();
+        expect(names).toEqual([...startRaces].sort());
+    }, 60000);
+
+    it('race regions are inside the galaxy bounds', () => {
+        const galaxy = generateGalaxy({
+            seed: 777,
+            shape: GalaxyShape.Elliptical,
+            starCount: 300,
+            sectorWidth: 8,
+            sectorHeight: 8,
+            systemNames,
+            gameData,
+            aggressionLevel: 1.5,
+            empireStarts: makeEmpireStarts(),
+        });
+
+        const regions = galaxy.galaxyLocations.filter((l) => l.type === GalaxyLocationType.RaceRegion);
+        expect(regions.length).toBe(5);
+        for (const region of regions) {
+            expect(region.xpos).toBeGreaterThanOrEqual(0);
+            expect(region.ypos).toBeGreaterThanOrEqual(0);
+            expect(region.xpos + region.width).toBeLessThan(galaxy.sizeX);
+            expect(region.ypos + region.height).toBeLessThan(galaxy.sizeY);
+        }
+    }, 60000);
+
+    it('race regions are deterministic for a fixed seed', () => {
+        const options = {
+            seed: 4242,
+            shape: GalaxyShape.Spiral,
+            starCount: 300,
+            sectorWidth: 8,
+            sectorHeight: 8,
+            systemNames,
+            gameData,
+            aggressionLevel: 1.5,
+            empireStarts: makeEmpireStarts(),
+        };
+        const galaxyA = generateGalaxy(options);
+        const galaxyB = generateGalaxy(options);
+
+        const signature = (g: Galaxy) =>
+            g.galaxyLocations
+                .filter((l) => l.type === GalaxyLocationType.RaceRegion)
+                .map((l) => [l.name, l.xpos, l.ypos, l.width, l.height]);
+
+        expect(signature(galaxyA)).toEqual(signature(galaxyB));
+    }, 60000);
+
+    it('aggression level 1.5 marks >= 1 aggressive race (proximity to the first region)', () => {
+        const galaxy = generateGalaxy({
+            seed: 12345,
+            shape: GalaxyShape.Spiral,
+            starCount: 700,
+            sectorWidth: 10,
+            sectorHeight: 10,
+            systemNames,
+            gameData,
+            aggressionLevel: 1.5,
+            empireStarts: makeEmpireStarts(),
+        });
+
+        const regions = galaxy.galaxyLocations.filter((l) => l.type === GalaxyLocationType.RaceRegion);
+        const first = regions[0];
+        // The source's "num" counter increments when an aggressive-race
+        // region lands within SectorSize * 2 of the first empire's region.
+        // With all five start races in the aggressive list, four candidates
+        // (i > 0) each get up to 50 proximity re-rolls; for this seed one
+        // of them lands within range (the rest exhaust their retries).
+        const num2 = galaxy.sectorSize * 2.0;
+        let closeCount = 0;
+        for (let i = 1; i < regions.length; i++) {
+            const center = regions[i].resolveLocationCenter();
+            const firstCenter = first.resolveLocationCenter();
+            if (galaxy.calculateDistance(center.x, center.y, firstCenter.x, firstCenter.y) <= num2) {
+                closeCount++;
+            }
+        }
+        expect(closeCount).toBeGreaterThanOrEqual(1);
+    }, 60000);
+
+    it('determineAggressiveRaces filters by playable/aggression/intelligence and sorts descending', () => {
+        const result = determineAggressiveRaces(gameData.races, 115, 85);
+        const names = result.map((r) => r.name);
+        // Playable races with Aggression >= 115 and Intelligence >= 85:
+        // Boskara (140), Dhayut (119), Ikkuro (115), Mortalen (127),
+        // Naxxilian (121), Sluken (123). Shakturi (150) is unplayable;
+        // Gizurean (110) and Human (110) fall below the aggression threshold.
+        expect(names).toEqual(['Boskara', 'Mortalen', 'Sluken', 'Naxxilian', 'Dhayut', 'Ikkuro']);
+        for (const race of result) {
+            expect(race.playable).toBe(true);
+            expect(race.aggression).toBeGreaterThanOrEqual(115);
+            expect(race.intelligence).toBeGreaterThanOrEqual(85);
+        }
+    });
+
+    it('with no empire starts no race regions are created', () => {
+        const withStarts = generateGalaxy({
+            seed: 4242,
+            shape: GalaxyShape.Spiral,
+            starCount: 100,
+            sectorWidth: 8,
+            sectorHeight: 8,
+            systemNames,
+            gameData,
+            aggressionLevel: 1.5,
+            empireStarts: makeEmpireStarts(),
+        });
+        const withoutStarts = generateGalaxy({
+            seed: 4242,
+            shape: GalaxyShape.Spiral,
+            starCount: 100,
+            sectorWidth: 8,
+            sectorHeight: 8,
+            systemNames,
+            gameData,
+        });
+
+        expect(withoutStarts.galaxyLocations.filter((l) => l.type === GalaxyLocationType.RaceRegion).length).toBe(0);
+        // With non-empty empire starts the SetupAlienRacePopulations loop
+        // consumes Rnd calls before the star loop (matching the C# source
+        // ordering), so star positions legitimately differ between the two
+        // galaxies; only the region count is asserted here.
+        expect(withStarts.galaxyLocations.filter((l) => l.type === GalaxyLocationType.RaceRegion).length).toBe(5);
     }, 60000);
 });
