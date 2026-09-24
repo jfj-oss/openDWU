@@ -16,7 +16,7 @@ import { loadGameData, type FetchText, type GameData } from './sim/data/gameData
 import { GalaxyShape } from './sim/types';
 import { clearHudMessages, createHud, layoutHud, nearestSystemName, pushHudMessage, type HudRefs } from './ui/hud';
 import { GalaxyTime } from './sim/clock';
-import { START_STAR_DATE } from './sim/galaxyTime';
+import { resolveStarDateDescription, START_STAR_DATE } from './sim/galaxyTime';
 import { formatClockLabel, SECTOR_LEVEL_ZOOM, SYSTEM_LEVEL_ZOOM, type Selection } from './ui/hud';
 import { Habitat, HabitatCategoryType } from './sim/types';
 import { createMapOverlayState, type MapOverlayState, type OverlayKey } from './ui/mapOverlays';
@@ -216,7 +216,7 @@ export async function startGameView(game: Game, zoomOverride?: number, extraBoot
     // Task 10d: first message of the top-middle ticker — the founding line.
     const playerCapital = game.playerEmpire?.capital ?? null;
     const systemName = playerCapital !== null ? galaxy.systems[playerCapital.systemIndex].systemStar.name : '';
-    pushHudMessage(`${game.playerEmpire.name} founded at ${playerCapital?.name ?? ''} (${systemName} system)`);
+    const foundingMessage = `${game.playerEmpire.name} founded at ${playerCapital?.name ?? ''} (${systemName} system)`;
 
     const app = new Application();
     await app.init({
@@ -256,6 +256,7 @@ export async function startGameView(game: Game, zoomOverride?: number, extraBoot
     await view.init();
 
     const time = new GalaxyTime(START_STAR_DATE);
+    pushHudMessage(foundingMessage, resolveStarDateDescription(time.currentStarDate));
     // Debug / screenshot hook: the created game (galaxy + player empire).
     // Task 06l: also exposes the running clock (`time`) so the tutorial
     // window's "Play This Game" button can unpause it.

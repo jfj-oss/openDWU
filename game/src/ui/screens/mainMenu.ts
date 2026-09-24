@@ -257,7 +257,8 @@ export function createMainMenu(callbacks: MainMenuCallbacks): MainMenuRefs {
     updates.addEventListener('mouseleave', () => {
         updatesImg.src = `${CHROME}Menu_CheckForUpdates_Inactive.png`;
     });
-    updates.addEventListener('click', () => console.info('TODO(menu): checkForUpdates'));
+    // The original checks its update server; this recreation has none.
+    updates.addEventListener('click', () => showToast('No updates: this is the recreation build', root));
     const version = document.createElement('div');
     version.className = 'main-menu-version';
     version.textContent = 'Version 1.9.5 (recreation)';
