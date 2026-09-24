@@ -1269,3 +1269,19 @@ namespace DistantWorlds.Types
   }
 }
 ```
+
+## Worker report
+
+**Files changed:**
+- `src/sim/data/policy.ts` (new) — full port of `EmpirePolicy.cs`: the `EmpirePolicy` interface with every C# field (camelCase, same defaults), `createEmpirePolicy()` factory, and `parseEmpirePolicy(text)` porting `LoadFromFile` / `SetNameValuePair` including BOM stripping, `'`-comment/blank-line skipping, first-`;` splitting, TryParse-failure→0 semantics (int via strict digit match so `"12.5"` fails like C#, byte range 0..255), y/n-only booleans, and [0.5, 4.0] clamping on all 15 priority/willingness/factor doubles.
+- `src/sim/data/gameData.ts` — added `policies: EmpirePolicy[]` to `GameData`; loads `Policy/default.txt` tolerantly (`.catch(() => '')`, mirroring C# swallowing IO errors); parses it into `policies` when present.
+- `test/data-policy.test.ts` (new) — synthetic-text tests (bools, ints, floats, clamping, OverallFocus 0–3 guard, comment/blank/BOM/CRLF handling, unknown keys, empty text → exact defaults, no-NaN sweep) plus a conditional real-file test that parses `public/assets/dwu/Policy/default.txt` if it exists.
+- `test/helpers/loadGameDataFs.ts` — unchanged; its tolerant candidate lookup already handles the optional Policy file.
+
+**Verification:** `npm run typecheck` and `npm test` both pass (19 files, 221 tests).
+
+**Left undone (TODO(port) notes in code):**
+- Enum-typed fields (`ComponentCategoryType`, `ComponentType`, `ShipDesignFocus`, `IndustryType`, `BuiltObjectFleeWhen`, `ColonyPopulationPolicy`) are stored as plain numbers holding C# underlying values until those enums are ported.
+- `Galaxy.ResolveTechFocus` not yet ported — `ResearchDesignTechFocusN` cases yield (0, 0) matching C# pre-initialization on failure.
+- Asset manifest does not enumerate `Policy/` files, so only `default.txt` is loaded; enumerating `Policy/` + `Policy/pirate/` from `public/asset-manifest.json` is left as a TODO.
+- The numeric value of `BuiltObjectFleeWhen.Shields20` is assumed to be 20 (enum source not in the task file).

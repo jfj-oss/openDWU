@@ -23,6 +23,8 @@ import type { ResearchNode } from './research';
 import { parseResearch } from './research';
 import type { AgentNames, SubRoleNameSet } from './names';
 import { parseAgentNames, parseColonyNames, parseDesignNames, parseShipNames } from './names';
+import type { EmpirePolicy } from './policy';
+import { parseEmpirePolicy } from './policy';
 
 export interface GameData {
     // From 04a (races, governments)
@@ -46,6 +48,9 @@ export interface GameData {
     shipNames: SubRoleNameSet;
     agentNames: AgentNames[];
     designNames: string[][];
+
+    // From 04d2 (empire policies)
+    policies: EmpirePolicy[];
 }
 
 export type FetchText = (candidates: string[]) => Promise<string>;
@@ -92,6 +97,16 @@ export async function loadGameData(
         shipNamesText,
         characterNamesText,
         designNamesText,
+
+        // 04d2 policy file. The C# engine loads every Policy/*.txt (plus
+        // Policy/pirate/*.txt) listed in the asset manifest; the manifest does
+        // not yet enumerate them, so for now only default.txt is loaded, and a
+        // missing file is tolerated (the C# LoadFromFile swallows IO errors
+        // and leaves the policy at its defaults).
+        // TODO(port): enumerate Policy/ and Policy/pirate/ files from
+        // public/asset-manifest.json once it lists them — EmpirePolicy.cs
+        // LoadFromFile / Galaxy.?.cs policy loading.
+        policyText,
         ...raceFileResults
     ] = await Promise.all([
         // 04a non-race files
@@ -116,6 +131,9 @@ export async function loadGameData(
         fetchText(resolveDataUrl('shipNames.txt', customizationSet)).catch(() => ''),
         fetchText(resolveDataUrl('characterNames.txt', customizationSet)),
         fetchText(resolveDataUrl('designNames.txt', customizationSet)),
+
+        // 04d2 policy file (optional — see note above)
+        fetchText(resolveDataUrl('Policy/default.txt', customizationSet)).catch(() => ''),
 
         // Individual race files
         ...raceFiles.map((fileName) => fetchText(resolveDataUrl(`races/${fileName}`, customizationSet))),
@@ -147,5 +165,8 @@ export async function loadGameData(
         shipNames: parseShipNames(shipNamesText),
         agentNames: parseAgentNames(characterNamesText, raceFamilies),
         designNames: parseDesignNames(designNamesText),
+
+        // 04d2 data
+        policies: policyText === '' ? [] : [parseEmpirePolicy(policyText)],
     };
 }
