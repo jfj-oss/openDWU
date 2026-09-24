@@ -10,6 +10,7 @@ import { MainView } from './render/mainView';
 import { AssetStore, loadManifest } from './render/assets';
 import { generateGalaxy } from './sim/galaxy';
 import { parseSystemNames } from './sim/data';
+import { loadGameData, type FetchText, type GameData } from './sim/data/gameData';
 import { GalaxyShape } from './sim/types';
 import { createHud, layoutHud, nearestSystemName, type HudRefs } from './ui/hud';
 import { GalaxyTime } from './sim/clock';
@@ -90,7 +91,34 @@ async function loadSystemNames(dwuPresent: boolean): Promise<string[]> {
 
 /** Keys that, when present on the boot URL, skip the main menu and boot
  * straight into the game (keeps screenshot scripts / dev links working). */
-const SKIP_MENU_PARAMS = ['seed', 'shape', 'stars', 'zoom', 'cx', 'cy', 'skipMenu'];
+const SKIP_MENU_PARAMS = ['seed', 'shape', 'stars', 'zoom', 'cx', 'cy', 'select', 'skipMenu'];
+
+/** FetchText for the browser: try each candidate URL in order. */
+const fetchTextBrowser: FetchText = async (candidates: string[]): Promise<string> => {
+    for (const url of candidates) {
+        try {
+            const r = await fetch(url);
+            if (r.ok) {
+                return await r.text();
+            }
+        } catch {
+            // try the next candidate
+        }
+    }
+    throw new Error(`Could not load any of: ${candidates.join(', ')}`);
+};
+
+/** Load all parsed DW:U data (resources, races, ...) when an install is
+ * reachable; null otherwise so generation falls back to no resources. */
+async function loadGameDataOrNone(dwuPresent: boolean): Promise<GameData | null> {
+    if (!dwuPresent) return null;
+    try {
+        return await loadGameData(fetchTextBrowser);
+    } catch (err) {
+        console.warn('DW:U game data failed to load; continuing without it', err);
+        return null;
+    }
+}
 
 /** Open the new-game wizard (task 06b), replacing the main menu. Start Game
  * maps the chosen StartGameOptions to generateGalaxy's options and boots. */
@@ -111,6 +139,7 @@ function openWizard(onBackToMenu: () => void): void {
                 zoom: null,
                 cx: null,
                 cy: null,
+                select: null,
             });
         },
     });
@@ -159,6 +188,8 @@ interface BootOptions {
     zoom: number | null;
     cx: number | null;
     cy: number | null;
+    /** ?select=<habitat name>: select that habitat on boot (screenshots). */
+    select: string | null;
 }
 
 /** Parse `bootGame`'s URL-param path into a BootOptions (task 06a defaults:
@@ -173,6 +204,7 @@ function parseBootOptions(params: URLSearchParams): BootOptions {
         zoom: params.get('zoom') !== null ? parseFloat(params.get('zoom')!) : null,
         cx: params.get('cx') !== null ? parseFloat(params.get('cx')!) : null,
         cy: params.get('cy') !== null ? parseFloat(params.get('cy')!) : null,
+        select: params.get('select'),
     };
 }
 
@@ -181,10 +213,11 @@ async function bootGame(params: URLSearchParams): Promise<void> {
 }
 
 async function bootGameWithOptions(opts: BootOptions): Promise<void> {
-    const { seed, shape, starCount, sectorWidth, sectorHeight, zoom: zoomParam, cx, cy } = opts;
+    const { seed, shape, starCount, sectorWidth, sectorHeight, zoom: zoomParam, cx, cy, select } = opts;
 
     const dwuPresent = await detectDwuPresent();
     const systemNames = await loadSystemNames(dwuPresent);
+    const gameData = await loadGameDataOrNone(dwuPresent);
     // Real-art file lists (scripts/gen-asset-manifest.mjs, predev/prebuild).
     if (dwuPresent) {
         await loadManifest();
@@ -207,6 +240,7 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
         sectorWidth,
         sectorHeight,
         systemNames,
+        gameData: gameData ?? undefined,
     });
 
     const camera = new Camera();
@@ -240,7 +274,7 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     // centre).
     const time = new GalaxyTime(START_STAR_DATE);
     const overlays = createMapOverlayState();
-    const hud: HudRefs = createHud({ clock: time, overlays, camera, galaxy });
+    const hud: HudRefs = createHud({ clock: time, overlays, camera, galaxy, gameData: gameData ?? undefined });
     const systemNameEl = hud.elements.get('pnlMoney')?.querySelector('.hud-system-name');
     const dateEl = hud.elements.get('pnlTopLeftBar')?.querySelector('.hud-date');
     const pauseBtn = hud.elements.get('pnlTopLeftBar')?.querySelector<HTMLButtonElement>('button[title="Play / pause"]');
@@ -255,6 +289,17 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
         hud.onSelectionChange?.(sel);
     };
     view.onSelectionChange = setSelection;
+    // Task 10b: ?select=<habitat name> selects that habitat on boot (used by
+    // screenshot scripts to show a filled-in selection panel).
+    if (select !== null && select !== '') {
+        const target = galaxy.habitats.find((h) => h.name === select);
+        if (target) {
+            camera.centerOn(target.xpos, target.ypos);
+            setSelection(target);
+        } else {
+            console.warn(`?select=: no habitat named "${select}"`);
+        }
+    }
     // Double-click a star at galaxy/sector zoom -> System level centred on it.
     view.onDoubleClickStar = (star: Habitat) => {
         if (star.category !== HabitatCategoryType.Star) return;

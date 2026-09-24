@@ -4,7 +4,8 @@ import { resolveStarDateDescription } from '../sim/galaxyTime';
 import { createMapOverlayState, OVERLAY_ROWS, toggleOverlay, type MapOverlayState } from './mapOverlays';
 import { Camera } from '../render/camera';
 import { Galaxy } from '../sim/galaxy';
-import { Habitat, HabitatCategoryType, HabitatType, SystemInfo } from '../sim/types';
+import type { GameData } from '../sim/data/gameData';
+import { Habitat, HabitatCategoryType, HabitatType, IndustryType, SystemInfo } from '../sim/types';
 
 // Port of Main.Part12.cs LoadUiChromeButtons (381–520): the control → chrome
 // button image mapping. The original loads each control's image from
@@ -98,6 +99,8 @@ export interface HudWiring {
     camera?: Camera;
     /** Generated galaxy model, for selection lookups. */
     galaxy?: Galaxy;
+    /** Parsed game data (resource definitions → icons/names). */
+    gameData?: GameData;
     /** Called after a selection change so main.ts can react. */
     onSelectionChange?: (sel: Selection | null) => void;
 }
@@ -397,6 +400,7 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
     panel.appendChild(footer);
 
     // Refresh the header/body from the current selection.
+    const gameData = wiring.gameData;
     const refresh = (): void => {
         const sel = currentSelection;
         if (!sel) {
@@ -406,29 +410,14 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
             body.replaceChildren();
             return;
         }
-        nameEl.textContent = sel.habitat.name;
+        const h = sel.habitat;
+        nameEl.textContent = h.name;
         nameEl.classList.remove('hud-muted');
-        const typeName = habitatTypeName(sel.habitat);
+        const typeName = habitatTypeLabel(h.type, h.category);
         subEl.textContent = `${typeName} · ${sel.system.systemStar.name} system`;
-        const rows: Array<[string, string]> = [
-            ['Type', typeName],
-            ['System', sel.system.systemStar.name],
-            ['Diameter', `${sel.habitat.diameter}`],
-            ['Quality', `${sel.habitat.baseQuality}`],
-        ];
         body.replaceChildren();
-        for (const [k, v] of rows) {
-            if (v === '') continue; // hide empty rows
-            const line = document.createElement('div');
-            line.className = 'hud-money-row';
-            const kk = document.createElement('span');
-            kk.className = 'hud-label';
-            kk.textContent = k;
-            const vv = document.createElement('span');
-            vv.className = 'hud-value';
-            vv.textContent = v;
-            line.append(kk, vv);
-            body.appendChild(line);
+        for (const row of buildSelectionRows(sel, gameData)) {
+            body.appendChild(row.element);
         }
     };
     wiring.onSelectionChange = (sel) => {
@@ -535,38 +524,143 @@ function doViewAction(key: ViewRowKey, wiring: HudWiring): void {
 // Selection helpers
 // ---------------------------------------------------------------------------
 
-/** Human-readable planet/star type name for the selection header. */
-export function habitatTypeName(h: Habitat): string {
-    const t = h.type;
-    if (t >= HabitatType.Volcanic && t <= HabitatType.FrozenGasGiant) {
-        const planets: Record<number, string> = {
-            [HabitatType.Volcanic]: 'Volcanic Planet',
-            [HabitatType.Desert]: 'Desert Planet',
-            [HabitatType.MarshySwamp]: 'Marshy Swamp Planet',
-            [HabitatType.Continental]: 'Continental Planet',
-            [HabitatType.Ocean]: 'Ocean Planet',
-            [HabitatType.BarrenRock]: 'Barren Rock Planet',
-            [HabitatType.Ice]: 'Ice Planet',
-            [HabitatType.GasGiant]: 'Gas Giant',
-            [HabitatType.FrozenGasGiant]: 'Frozen Gas Giant',
-        };
-        return planets[t] ?? 'Planet';
+/** Format a population amount as `1.2B` / `350M` / `4.2K` (one decimal,
+ * dropped when integral; smaller amounts stay plain). */
+export function formatPopulation(n: number): string {
+    if (n >= 1_000_000_000) return trimDecimal(n / 1_000_000_000) + 'B';
+    if (n >= 1_000_000) return trimDecimal(n / 1_000_000) + 'M';
+    if (n >= 1_000) return trimDecimal(n / 1_000) + 'K';
+    return String(Math.trunc(n));
+}
+
+function trimDecimal(x: number): string {
+    const s = x.toFixed(1);
+    return s.endsWith('.0') ? s.slice(0, -2) : s;
+}
+
+/** Human label for a habitat type: the `HabitatType` enum name split into
+ * words (`MarshySwamp` → "Marshy Swamp"), plus the category word
+ * (Planet/Moon/Star/Asteroid/Gas cloud). */
+export function habitatTypeLabel(type: HabitatType, category?: HabitatCategoryType): string {
+    let base = '';
+    for (const key of Object.keys(HabitatType)) {
+        if ((HabitatType as Record<string, unknown>)[key] === type) {
+            base = key;
+            break;
+        }
     }
-    if (t >= HabitatType.MainSequence && t <= HabitatType.SuperNova) {
-        const stars: Record<number, string> = {
-            [HabitatType.MainSequence]: 'Main Sequence Star',
-            [HabitatType.RedGiant]: 'Red Giant',
-            [HabitatType.SuperGiant]: 'Super Giant',
-            [HabitatType.WhiteDwarf]: 'White Dwarf',
-            [HabitatType.Neutron]: 'Neutron Star',
-            [HabitatType.BlackHole]: 'Black Hole',
-            [HabitatType.SuperNova]: 'Supernova',
-        };
-        return stars[t] ?? 'Star';
+    const words = base.replace(/([a-z])([A-Z])/g, '$1 $2');
+    const catWord =
+        category === undefined
+            ? ''
+            : category === HabitatCategoryType.Star
+                ? 'Star'
+                : category === HabitatCategoryType.Planet
+                    ? 'Planet'
+                    : category === HabitatCategoryType.Moon
+                        ? 'Moon'
+                        : category === HabitatCategoryType.Asteroid
+                            ? 'Asteroid'
+                            : 'Gas cloud';
+    return catWord ? `${words} ${catWord}` : words;
+}
+
+/** URL of a resource's small UI icon (browsers display BMP directly). */
+export function resourceIconUrl(pictureRef: number): string {
+    return `/assets/dwu/images/ui/resources/Resource_${pictureRef}.bmp`;
+}
+
+/** Industry label for the research-bonus row (IndustryType member names). */
+function industryLabel(industry: IndustryType): string {
+    for (const key of Object.keys(IndustryType)) {
+        if ((IndustryType as Record<string, unknown>)[key] === industry) {
+            return key;
+        }
     }
-    if (h.category === HabitatCategoryType.Asteroid) return 'Asteroid Field';
-    if (h.category === HabitatCategoryType.GasCloud) return 'Gas Cloud';
-    return 'Habitat';
+    return '';
+}
+
+interface SelectionRow {
+    element: HTMLElement;
+}
+
+/** Build the selection panel's detail rows in the original's order, skipping
+ * empty ones: Quality (planets/moons), Diameter, Resources, Natives, Scenic,
+ * Research bonus; stars additionally show their planet count. */
+export function buildSelectionRows(sel: Selection, gameData?: GameData): SelectionRow[] {
+    const h = sel.habitat;
+    const rows: SelectionRow[] = [];
+    const addText = (label: string, value: string): void => {
+        if (value === '') return; // hide empty rows
+        const line = document.createElement('div');
+        line.className = 'hud-money-row';
+        const k = document.createElement('span');
+        k.className = 'hud-label';
+        k.textContent = label;
+        const v = document.createElement('span');
+        v.className = 'hud-value';
+        v.textContent = value;
+        line.append(k, v);
+        rows.push({ element: line });
+    };
+
+    // Quality: baseQuality × 100 as %, planets/moons only.
+    if (h.category === HabitatCategoryType.Planet || h.category === HabitatCategoryType.Moon) {
+        addText('Quality', `${Math.round(h.baseQuality * 100)}%`);
+    }
+    addText('Diameter', `${h.diameter}`);
+
+    // Stars: how many planets orbit them.
+    if (h.category === HabitatCategoryType.Star) {
+        const planetCount = sel.system.habitats.filter((x) => x.category === HabitatCategoryType.Planet).length;
+        addText('Planets', `${planetCount}`);
+    }
+
+    // Resources: one small icon per entry, abundance % as tooltip/label.
+    if (h.resources.length > 0) {
+        const line = document.createElement('div');
+        line.className = 'hud-money-row hud-resource-row';
+        const k = document.createElement('span');
+        k.className = 'hud-label';
+        k.textContent = 'Resources';
+        const icons = document.createElement('span');
+        icons.className = 'hud-resource-icons';
+        for (const r of h.resources) {
+            const def = gameData?.resources.find((d) => d.resourceId === r.resourceId);
+            const img = document.createElement('img');
+            img.src = def ? resourceIconUrl(def.pictureRef) : '';
+            img.alt = def?.name ?? `Resource ${r.resourceId}`;
+            img.title = `${def?.name ?? `Resource ${r.resourceId}`} (${r.abundance}%)`;
+            if (!def) img.style.display = 'none';
+            const pct = document.createElement('span');
+            pct.className = 'hud-resource-pct';
+            pct.textContent = `${r.abundance}%`;
+            icons.append(img, pct);
+        }
+        line.append(k, icons);
+        rows.push({ element: line });
+    }
+
+    // Natives: each population entry — race name + formatted amount.
+    if (h.population.items.length > 0) {
+        const natives = h.population.items
+            .map((p) => `${p.race.name}: ${formatPopulation(p.amount)}`)
+            .join(', ');
+        addText('Natives', natives);
+    }
+
+    // Scenic feature (Galaxy.5.cs SetScenicFactor).
+    if (h.scenicFeature !== '') {
+        addText('Scenic', h.scenicFeature);
+    }
+
+    // Research bonus (Galaxy.5.cs SetResearchBonus) with its industry.
+    if (h.researchBonus > 0) {
+        const ind = industryLabel(h.researchBonusIndustry);
+        addText('Research bonus', ind ? `${h.researchBonus} (${ind})` : `${h.researchBonus}`);
+    }
+
+    return rows;
 }
 
 /** Name of the system nearest the camera centre, or '' if unavailable. */

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { chromeButtonFile, formatClockLabel } from '../src/ui/hud';
+import { chromeButtonFile, formatClockLabel, formatPopulation, habitatTypeLabel, resourceIconUrl } from '../src/ui/hud';
 import { computeHudLayout } from '../src/ui/hudLayout';
 import { START_STAR_DATE } from '../src/sim/galaxyTime';
+import { HabitatCategoryType, HabitatType } from '../src/sim/types';
 
 // The DOM overlay itself needs a browser (jsdom is not configured), so this
 // tests the pure control → chrome-image mapping from LoadUiChromeButtons and
@@ -40,6 +41,50 @@ describe('chromeButtonFile', () => {
         expect(chromeButtonFile('btnPlayPause')).toBeNull();
         expect(chromeButtonFile('btnZoomSystem')).toBeNull();
         expect(chromeButtonFile('lblStarDate')).toBeNull();
+    });
+});
+
+describe('formatPopulation (task 10b)', () => {
+    it('formats billions with one decimal', () => {
+        expect(formatPopulation(1_200_000_000)).toBe('1.2B');
+        expect(formatPopulation(2_000_000_000)).toBe('2B');
+    });
+
+    it('formats millions without a forced decimal', () => {
+        expect(formatPopulation(350_000_000)).toBe('350M');
+        expect(formatPopulation(1_500_000)).toBe('1.5M');
+    });
+
+    it('formats thousands with one decimal', () => {
+        expect(formatPopulation(4_200)).toBe('4.2K');
+        expect(formatPopulation(4_000)).toBe('4K');
+    });
+
+    it('keeps smaller amounts plain', () => {
+        expect(formatPopulation(999)).toBe('999');
+        expect(formatPopulation(0)).toBe('0');
+    });
+});
+
+describe('habitatTypeLabel (task 10b)', () => {
+    it('splits the enum name into words and appends the category word', () => {
+        expect(habitatTypeLabel(HabitatType.MarshySwamp, HabitatCategoryType.Planet)).toBe('Marshy Swamp Planet');
+        expect(habitatTypeLabel(HabitatType.Continental, HabitatCategoryType.Moon)).toBe('Continental Moon');
+        expect(habitatTypeLabel(HabitatType.MainSequence, HabitatCategoryType.Star)).toBe('Main Sequence Star');
+        expect(habitatTypeLabel(HabitatType.BarrenRock, HabitatCategoryType.Asteroid)).toBe('Barren Rock Asteroid');
+        expect(habitatTypeLabel(HabitatType.Hydrogen, HabitatCategoryType.GasCloud)).toBe('Hydrogen Gas cloud');
+    });
+
+    it('omits the category word when no category is given', () => {
+        expect(habitatTypeLabel(HabitatType.MarshySwamp)).toBe('Marshy Swamp');
+        expect(habitatTypeLabel(HabitatType.FrozenGasGiant)).toBe('Frozen Gas Giant');
+    });
+});
+
+describe('resourceIconUrl (task 10b)', () => {
+    it('builds the original resource icon path from the picture ref', () => {
+        expect(resourceIconUrl(0)).toBe('/assets/dwu/images/ui/resources/Resource_0.bmp');
+        expect(resourceIconUrl(17)).toBe('/assets/dwu/images/ui/resources/Resource_17.bmp');
     });
 });
 
