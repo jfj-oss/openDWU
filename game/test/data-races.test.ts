@@ -49,6 +49,18 @@ describe('races.ts parseRace', () => {
             expect(resolveColonyIndexByHabitatTypeDesertBeforeOcean(race.nativeHabitatType)).toBe(race.nativePlanetType);
         }
     });
+
+    // Task 06d: Race.cs LoadFromFile `case "PictureIndex": race.PictureRef = ...`
+    // — every race's portrait index must be a plausible image index so that
+    // /assets/dwu/images/units/races/race_<pictureRef>.png can exist.
+    it('parses pictureRef (PictureIndex) in range for all races', () => {
+        for (const file of raceFiles) {
+            const race = parseRace(readFileSync(resolve(racesDir, file), 'utf-8'));
+            expect(Number.isInteger(race.pictureIndex)).toBe(true);
+            expect(race.pictureIndex).toBeGreaterThanOrEqual(0);
+            expect(race.pictureIndex).toBeLessThan(1000);
+        }
+    });
 });
 
 describe('resolveColonyHabitatTypeByIndexDesertBeforeOcean / inverse (task 08b)', () => {
