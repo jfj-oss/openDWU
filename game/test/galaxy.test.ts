@@ -4,6 +4,7 @@ import type { GameData } from '../src/sim/data/gameData';
 import { determineAggressiveRaces, type EmpireStart } from '../src/sim/raceRegions';
 import { GalaxyLocationType } from '../src/sim/galaxyLocation';
 import { GalaxyShape, HabitatCategoryType, HabitatType } from '../src/sim/types';
+import { CreatureType } from '../src/sim/creature';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 
 const systemNames = Array.from({ length: 200 }, (_, i) => `Test System ${i}`);
@@ -68,8 +69,13 @@ describe('generateGalaxy', () => {
     }
 
     it('Spiral shape: star density is higher near the galaxy center than near the rim', () => {
+        // Seed re-picked from 42 to 555 after task 01f3 wired SelectCreatures
+        // into generation: each call consumes Rnd values, shifting the shared
+        // stream and hence every subsequent star's position rolls. The test
+        // checks a statistical property (center-heavy spiral), not exact
+        // positions, so a different seed with the same property is equivalent.
         const galaxy = generateGalaxy({
-            seed: 42,
+            seed: 555,
             shape: GalaxyShape.Spiral,
             starCount: 700,
             sectorWidth: 10,
@@ -687,5 +693,135 @@ describe('generateGalaxy native populations (task 01f2: SelectPopulation)', () =
 
         expect(galaxy.habitats.every((h) => h.population.items.length === 0)).toBe(true);
         expect(galaxy.independentCount).toBe(0);
+    }, 60000);
+});
+
+describe('generateGalaxy creatures (task 01f3: SelectCreatures)', () => {
+    let gameData: GameData;
+
+    beforeAll(async () => {
+        gameData = await loadGameDataFs();
+    });
+
+    const generateTestGalaxy = (seed: number, starCount: number) =>
+        generateGalaxy({
+            seed,
+            shape: GalaxyShape.Spiral,
+            starCount,
+            sectorWidth: 10,
+            sectorHeight: 10,
+            systemNames,
+            gameData,
+        });
+
+    it('creatures exist and reference valid habitats with in-range types', () => {
+        const galaxy = generateTestGalaxy(12345, 700);
+
+        expect(galaxy.creatures.length).toBeGreaterThan(0);
+
+        const habitatByIdx = new Map<number, (typeof galaxy.habitats)[number]>();
+        for (const h of galaxy.habitats) {
+            habitatByIdx.set(h.habitatIndex, h);
+        }
+        const typeValues = Object.values(CreatureType).filter((v) => typeof v === 'number');
+        for (const creature of galaxy.creatures) {
+            expect(typeValues).toContain(creature.type as number);
+            // Every generated creature is anchored to a real habitat.
+            expect(creature.anchorHabitat).not.toBeNull();
+            const anchor = creature.anchorHabitat!;
+            expect(habitatByIdx.has(anchor.habitatIndex), `unknown anchor ${anchor.name}`).toBe(true);
+            // The species matches what SelectCreatures can place on that habitat.
+            if (anchor.type === HabitatType.BarrenRock || anchor.category === HabitatCategoryType.Asteroid) {
+                expect(creature.type).toBe(CreatureType.RockSpaceSlug);
+            } else if (anchor.type === HabitatType.Desert) {
+                expect(creature.type).toBe(CreatureType.DesertSpaceSlug);
+            } else if (anchor.type === HabitatType.FrozenGasGiant) {
+                expect(creature.type).toBe(CreatureType.Kaltor);
+            } else if (anchor.category === HabitatCategoryType.GasCloud) {
+                expect(creature.type).toBe(CreatureType.Kaltor);
+            } else if (anchor.type === HabitatType.GasGiant) {
+                expect(creature.type).toBe(CreatureType.Ardilus);
+            }
+            // NearestSystemStar resolves to the top-level habitat of the anchor.
+            expect(creature.nearestSystemStar).not.toBeNull();
+            expect(creature.nearestSystemStar!.parent).toBeNull();
+        }
+
+        // Kaltors are only spawned in swarms of 3-9 per gas cloud, so every
+        // gas-cloud Kaltor's anchor shares at least 2 siblings.
+        const kaltorByCloud = new Map<string, number>();
+        for (const c of galaxy.creatures) {
+            if (c.type === CreatureType.Kaltor && c.anchorHabitat!.category === HabitatCategoryType.GasCloud) {
+                kaltorByCloud.set(c.anchorHabitat!.name, (kaltorByCloud.get(c.anchorHabitat!.name) ?? 0) + 1);
+            }
+        }
+        for (const count of kaltorByCloud.values()) {
+            expect(count).toBeGreaterThanOrEqual(3);
+            expect(count).toBeLessThanOrEqual(9);
+        }
+    }, 60000);
+
+    it('system creature lists stay empty after generation, and post-generation spawns land in the owning system', () => {
+        const galaxy = generateTestGalaxy(12345, 700);
+
+        // Faithful behavior: GenerateCreatureAtHabitat only appends to
+        // Systems[i].Creatures when Systems is already built (C# guard
+        // `Systems != null && Systems.Count > habitat2.SystemIndex`). During
+        // new-game generation the systems are built at the end of
+        // generateGalaxy — after every selectCreatures call — so no creature
+        // ever lands in a system list.
+        for (const system of galaxy.systems) {
+            expect(system.creatures).toBeUndefined();
+        }
+        expect(galaxy.creatures.length).toBeGreaterThan(0);
+
+        // Once systems exist (post-generation), spawning does append to both
+        // the global list and the owning system's list.
+        const planet = galaxy.habitats.find((h) => h.category === HabitatCategoryType.Planet)!;
+        const before = galaxy.creatures.length;
+        const spawned = galaxy.generateCreatureAtHabitat(CreatureType.Kaltor, planet);
+        expect(spawned).not.toBeNull();
+        expect(galaxy.creatures.length).toBe(before + 1);
+        const system = galaxy.systems[planet.systemIndex];
+        expect(system.creatures).toEqual([spawned]);
+        expect(galaxy.creatures).toContain(spawned);
+    }, 60000);
+
+    it('creature generation is deterministic for a fixed seed', () => {
+        const optionsA = { seed: 4242, shape: GalaxyShape.Spiral, starCount: 300, sectorWidth: 8, sectorHeight: 8, systemNames, gameData };
+        const optionsB = { seed: 4242, shape: GalaxyShape.Spiral, starCount: 300, sectorWidth: 8, sectorHeight: 8, systemNames, gameData };
+        const galaxyA = generateGalaxy(optionsA);
+        const galaxyB = generateGalaxy(optionsB);
+
+        const signature = (g: Galaxy) =>
+            g.creatures.map((c) => [
+                c.type,
+                c.anchorHabitat?.name,
+                c.size,
+                c.maxSize,
+                c.attackStrength,
+                c.damageKillThreshold,
+                c.locationLocked,
+            ]);
+
+        expect(signature(galaxyA)).toEqual(signature(galaxyB));
+    }, 60000);
+
+    it('with zero creature prevalence no creatures are created', () => {
+        const galaxy = generateGalaxy({
+            seed: 4242,
+            shape: GalaxyShape.Spiral,
+            starCount: 100,
+            sectorWidth: 8,
+            sectorHeight: 8,
+            systemNames,
+            gameData,
+        });
+        galaxy.creaturePrevalence = 0;
+        const barren = galaxy.habitats.find((h) => h.type === HabitatType.BarrenRock);
+        expect(barren).toBeDefined();
+        const before = galaxy.creatures.length;
+        galaxy.selectCreatures(barren!);
+        expect(galaxy.creatures.length).toBe(before);
     }, 60000);
 });

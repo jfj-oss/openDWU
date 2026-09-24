@@ -4,10 +4,11 @@
 // DistantWorlds.Types.Galaxy (Galaxy.cs / Galaxy.3.cs / Galaxy.4.cs /
 // Galaxy.5.cs / Galaxy.6.cs / Galaxy.9.cs). Nebula/galaxy-location
 // generation is ported (01e: GalaxyNebulaeGenerator + GalaxyLocation);
-// population and creatures remain out of scope — see the `TODO(port)`
-// markers below.
+// population and creatures are ported (01f2: SelectPopulation, 01f3:
+// SelectCreatures) — see the `TODO(port)` markers below for what remains.
 
 import { Random } from './random';
+import { Creature, CreatureType } from './creature';
 import { GalaxyLocation, GalaxyLocationEffectType, GalaxyLocationShape, GalaxyLocationType } from './galaxyLocation';
 import { GalaxyNebulaeGenerator } from './galaxyNebulaeGenerator';
 import { setupAlienRacePopulations, type EmpireStart } from './raceRegions';
@@ -95,6 +96,13 @@ export class Galaxy {
     private galaxyLocationIndex: GalaxyLocation[][][] = [];
     // Port of Galaxy.cs _ColonyPrevalence (defaults to 1.0).
     colonyPrevalence = 1.0;
+    // Port of Galaxy.cs _CreaturePrevalence (defaults to 1.0 in the C# ctor).
+    creaturePrevalence = 1.0;
+    // Port of Galaxy.cs AllowGiantKaltorGeneration (true in the C# ctor).
+    allowGiantKaltorGeneration = true;
+    // Port of Galaxy.cs Creatures (CreatureList, populated by
+    // SelectCreatures/GenerateCreatureAtHabitat — Galaxy.6.cs:654/723).
+    creatures: Creature[] = [];
     // Port of Galaxy.cs Races (RaceList, loaded from GameData in the ctor).
     races: Race[] = [];
     // Port of Galaxy.cs habitat-race lists (_ContinentalRaces etc.),
@@ -154,6 +162,10 @@ export class Galaxy {
         this.independentCount = 0;
         this.lifePrevalence = 1000;
         this.age = 0;
+        // Port of the C# ctor's remaining field initializers.
+        this.creaturePrevalence = 1.0;
+        this.allowGiantKaltorGeneration = true;
+        this.creatures = [];
     }
 
     // Port of Galaxy.3.cs SetGalaxyPhysicalDimensions
@@ -1748,18 +1760,162 @@ export class Galaxy {
         }
     }
 
+    // Port of Galaxy.6.cs DetermineHabitatSystemStar(habitat) (Galaxy.6.cs:703).
+    // Walks up the parent chain to the star; top-level habitats (stars, gas
+    // clouds) are their own system star.
+    determineHabitatSystemStar(habitat: Habitat): Habitat {
+        let current = habitat;
+        while (current.parent !== null) {
+            current = current.parent;
+        }
+        return current;
+    }
+
+    // Port of Galaxy.6.cs SelectCreatures(habitat) (Galaxy.6.cs:654).
+    // Rolls one Rnd.NextDouble() per call and, depending on the habitat's
+    // type/category, spawns 1..9 creatures via GenerateCreatureAtHabitat.
+    selectCreatures(habitat: Habitat): void {
+        if (this.creaturePrevalence <= 0.0) {
+            return;
+        }
+        const num = this.rnd.nextDouble();
+        if (habitat.type === HabitatType.BarrenRock || habitat.category === HabitatCategoryType.Asteroid) {
+            const num2 = this.creaturePrevalence * 0.009;
+            if (num <= num2) {
+                this.generateCreatureAtHabitat(CreatureType.RockSpaceSlug, habitat);
+            }
+        } else if (habitat.type === HabitatType.Desert) {
+            const num3 = this.creaturePrevalence * 0.32;
+            const flag = habitat.resources.some((r) => this.getResourceName(r.resourceId) === 'Korabbian Spice');
+            if (num <= num3 || flag) {
+                this.generateCreatureAtHabitat(CreatureType.DesertSpaceSlug, habitat);
+                if (flag) {
+                    this.generateCreatureAtHabitat(CreatureType.DesertSpaceSlug, habitat);
+                    this.generateCreatureAtHabitat(CreatureType.DesertSpaceSlug, habitat);
+                }
+            }
+        } else if (habitat.type === HabitatType.FrozenGasGiant) {
+            const num4 = this.creaturePrevalence * 0.15;
+            if (this.allowGiantKaltorGeneration && num <= num4) {
+                this.generateCreatureAtHabitat(CreatureType.Kaltor, habitat);
+            }
+        } else if (habitat.category === HabitatCategoryType.GasCloud) {
+            const num5 = this.creaturePrevalence * 0.15;
+            if (this.allowGiantKaltorGeneration && num <= num5) {
+                const num6 = this.rnd.next(3, 10);
+                for (let i = 0; i < num6; i++) {
+                    this.generateCreatureAtHabitat(CreatureType.Kaltor, habitat);
+                }
+            }
+        } else if (habitat.type === HabitatType.GasGiant) {
+            const num7 = this.creaturePrevalence * 0.06;
+            if (num <= num7) {
+                this.generateCreatureAtHabitat(CreatureType.Ardilus, habitat);
+            }
+        }
+    }
+
+    // Port of Galaxy.6.cs GenerateCreatureAtHabitat(creatureType, habitat)
+    // (Galaxy.6.cs:713) — delegates with lockLocation = false. TypeScript
+    // has no overloads, so the C# 2-arg and 3-arg overloads collapse into
+    // default parameters here (the 5-arg form is the public API).
+    generateCreatureAtHabitat(creatureType: CreatureType, habitat: Habitat, lockLocation = false, offsetX = -2000000001, offsetY = -2000000001): Creature | null {
+        const habitat2 = this.determineHabitatSystemStar(habitat);
+        switch (creatureType) {
+            case CreatureType.SilverMist: {
+                const creature = new Creature(this, CreatureType.SilverMist, habitat, offsetX, offsetY);
+                creature.locationLocked = false;
+                this.creatures.push(creature);
+                creature.nearestSystemStar = habitat2;
+                if (this.systems.length > habitat2.systemIndex) {
+                    const system = this.systems[habitat2.systemIndex];
+                    if (!system.creatures) {
+                        system.creatures = [];
+                    }
+                    system.creatures.push(creature);
+                }
+                return creature;
+            }
+            case CreatureType.Ardilus: {
+                const creature = new Creature(this, CreatureType.Ardilus, habitat, offsetX, offsetY);
+                creature.locationLocked = lockLocation;
+                this.creatures.push(creature);
+                creature.nearestSystemStar = habitat2;
+                if (this.systems.length > habitat2.systemIndex) {
+                    const system = this.systems[habitat2.systemIndex];
+                    if (!system.creatures) {
+                        system.creatures = [];
+                    }
+                    system.creatures.push(creature);
+                }
+                return creature;
+            }
+            case CreatureType.DesertSpaceSlug: {
+                const creature = new Creature(this, CreatureType.DesertSpaceSlug, habitat, offsetX, offsetY);
+                creature.locationLocked = lockLocation;
+                this.creatures.push(creature);
+                creature.nearestSystemStar = habitat2;
+                if (this.systems.length > habitat2.systemIndex) {
+                    const system = this.systems[habitat2.systemIndex];
+                    if (!system.creatures) {
+                        system.creatures = [];
+                    }
+                    system.creatures.push(creature);
+                }
+                return creature;
+            }
+            case CreatureType.RockSpaceSlug: {
+                const creature = new Creature(this, CreatureType.RockSpaceSlug, habitat, offsetX, offsetY);
+                if (this.rnd.next(0, 30) === 1) {
+                    creature.size = this.rnd.next(300, 400);
+                    creature.maxSize = 450;
+                    creature.attackStrength = Math.trunc(creature.size / 30.0);
+                    creature.damageKillThreshold = Math.trunc(creature.size * 1.1);
+                }
+                creature.locationLocked = lockLocation;
+                this.creatures.push(creature);
+                creature.nearestSystemStar = habitat2;
+                if (this.systems.length > habitat2.systemIndex) {
+                    const system = this.systems[habitat2.systemIndex];
+                    if (!system.creatures) {
+                        system.creatures = [];
+                    }
+                    system.creatures.push(creature);
+                }
+                return creature;
+            }
+            case CreatureType.Kaltor: {
+                const creature = new Creature(this, CreatureType.Kaltor, habitat, offsetX, offsetY);
+                creature.locationLocked = lockLocation;
+                this.creatures.push(creature);
+                creature.nearestSystemStar = habitat2;
+                if (this.systems.length > habitat2.systemIndex) {
+                    const system = this.systems[habitat2.systemIndex];
+                    if (!system.creatures) {
+                        system.creatures = [];
+                    }
+                    system.creatures.push(creature);
+                }
+                return creature;
+            }
+            default:
+                return null;
+        }
+    }
+
     // Port of Galaxy.5.cs SetupSolarSystem(galaxyShape, sunHabitat, out
     // asteroidField) (lines 1386-1945). colonyPrevalence (this.colonyPrevalence)
     // stands in for Galaxy._ColonyPrevalence.
     //
-    // Not ported (out of scope per task 01c): SelectCreatures,
-    // DockingBay/Cargo/Troop/Character/Construction/
-    // Manufacturing list setup, DoTasks. SelectPopulation was ported in
-    // task 01f2 (see selectPopulation below). Every call site that would
-    // have called one of the skipped functions is noted in the Worker report
-    // together with the (data-dependent, non-fixed) number of Rnd calls it
-    // would have consumed in the original — the ported Rnd sequence
-    // diverges from the original from the first such call site onward.
+    // Not ported (out of scope per task 01c): DockingBay/Cargo/Troop/
+    // Character/Construction/Manufacturing list setup, DoTasks.
+    // SelectPopulation was ported in task 01f2 (see selectPopulation above)
+    // and SelectCreatures in task 01f3 (see selectCreatures above). Every
+    // call site that would have called one of the skipped functions is noted
+    // in the Worker report together with the (data-dependent, non-fixed)
+    // number of Rnd calls it would have consumed in the original — the
+    // ported Rnd sequence diverges from the original from the first such
+    // call site onward.
     setupSolarSystem(galaxyShape: GalaxyShape): { habitats: Habitat[]; asteroidField: Habitat[] | null } {
         let allowCreatures = true; // C#: flag
         const habitatList: Habitat[] = []; // C#: habitatList (planets/moons/asteroids, unordered)
@@ -1948,7 +2104,9 @@ export class Galaxy {
                 for (let p = 0; p < populationRolls; p++) {
                     this.selectPopulation(planet, sunHabitat);
                 }
-                // TODO(port): population-driven DockingBay/Cargo/Troop/etc setup vs. SelectCreatures(habitat2) — Galaxy.6.cs:654 (SelectCreatures). Data-dependent Rnd-call count; see Worker report.
+                // Port of Galaxy.6.cs SelectCreatures(habitat2) — Galaxy.6.cs:654 (call
+                // site in Galaxy.5.cs SetupSolarSystem, after population rolls).
+                this.selectCreatures(planet);
                 habitatList.push(planet);
                 habitat = planet;
 
@@ -2036,7 +2194,9 @@ export class Galaxy {
                     for (let p = 0; p < moonPopulationRolls; p++) {
                         this.selectPopulation(moon, sunHabitat);
                     }
-                    // TODO(port): population-driven setup vs. SelectCreatures(habitat2) — Galaxy.6.cs:654. Data-dependent Rnd-call count; see Worker report.
+                    // Port of Galaxy.6.cs SelectCreatures(habitat2) — Galaxy.6.cs:654 (call
+                    // site in Galaxy.5.cs SetupSolarSystem, after moon population rolls).
+                    this.selectCreatures(moon);
                     habitatList.push(moon);
                 }
             }
@@ -2067,7 +2227,9 @@ export class Galaxy {
                 if (this.rnd.next(0, 5) === 2) {
                     asteroid.orbitDirection = false;
                 }
-                // TODO(port): SelectCreatures(habitat2) — Galaxy.6.cs:654. Data-dependent Rnd-call count; see Worker report.
+                // Port of Galaxy.6.cs SelectCreatures(habitat2) — Galaxy.6.cs:654 (call
+                // site for extra un-clustered asteroids).
+                this.selectCreatures(asteroid);
                 habitatList.push(asteroid);
             }
         }
@@ -2151,7 +2313,9 @@ export class Galaxy {
                     this.selectResources(asteroid, minimumResourceCount);
                     this.selectHabitatPictures(asteroid);
                     if (allowCreatures) {
-                        // TODO(port): SelectCreatures(habitat3) — Galaxy.6.cs:654. Data-dependent Rnd-call count; see Worker report.
+                        // Port of Galaxy.6.cs SelectCreatures(habitat3) —
+                        // Galaxy.6.cs:654 (call site for main asteroid field).
+                        this.selectCreatures(asteroid);
                     }
                     let toAdd = asteroid;
                     if (this.rnd.next(0, 1300) === 1) {
@@ -2289,11 +2453,13 @@ export function generateGalaxy(options: GenerateGalaxyOptions): Galaxy {
         galaxy.habitats.push(...habitats);
     }
 
-    // Gas-cloud loop (Galaxy.4.cs 2297-2313).
+    // Gas-cloud loop (Galaxy.4.cs 2297-2313). SelectCreatures(habitat) is
+    // called right after GenerateGasCloud() in the source (Kaltor swarms).
     const gasCloudCount = galaxy.rnd.next(Math.trunc(starCount / 5), Math.trunc(starCount / 2));
     const gasCloudGroups: Habitat[][] = [];
     for (let i = 0; i < gasCloudCount; i++) {
         const cloud = galaxy.generateGasCloud();
+        galaxy.selectCreatures(cloud);
         gasCloudGroups.push([cloud]);
         galaxy.habitats.push(cloud);
     }

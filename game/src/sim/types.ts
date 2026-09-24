@@ -3,6 +3,7 @@
 // HabitatAtmosphereType.cs, and the Habitat constructors (Habitat.cs).
 
 import { PopulationList } from './population';
+import type { Creature } from './creature';
 
 // Port of DistantWorlds.Types.HabitatType (HabitatType.cs)
 export enum HabitatType {
@@ -243,4 +244,8 @@ export interface SystemInfo {
     systemStar: Habitat;
     habitats: Habitat[];
     sector: { x: number; y: number };
+    // Port of Galaxy.cs System.Creatures (CreatureList). Populated by
+    // Galaxy.GenerateCreatureAtHabitat (Galaxy.6.cs:723) when the creature's
+    // habitat belongs to a built system; undefined until then.
+    creatures?: Creature[];
 }
