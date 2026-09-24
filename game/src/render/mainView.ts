@@ -1406,15 +1406,9 @@ export class MainView {
             }
         });
         canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-        window.addEventListener('keydown', (e: KeyboardEvent) => {
-            if (e.code === 'PageUp') {
-                e.preventDefault();
-                this.camera.zoomStep(1);
-            } else if (e.code === 'PageDown') {
-                e.preventDefault();
-                this.camera.zoomStep(-1);
-            }
-        });
+        // PageUp/PageDown zoom is handled by the KEY_BINDINGS dispatch
+        // (src/ui/keyboard.ts zoomOut/zoomIn); a second listener here undid it
+        // and survived game-view teardown.
     }
 
     /** Task 12k: drop the hover tooltip when this view is torn down. */

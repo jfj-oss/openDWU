@@ -329,7 +329,8 @@ export async function startGameView(game: Game, zoomOverride?: number, extraBoot
     const shortcuts = createShortcutsOverlay();
     const keyHandlers = buildDefaultHandlers(camera, time, { width: galaxy.sizeX, height: galaxy.sizeY });
     const keydownHandler = (e: KeyboardEvent): void => {
-        if (e.key === '?' || e.key === 'F1') {
+        // F1 is the Galactopedia binding (dispatchKey), not the overlay.
+        if (e.key === '?') {
             e.preventDefault();
             shortcuts.toggle();
             return;
