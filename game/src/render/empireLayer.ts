@@ -239,8 +239,8 @@ export class EmpireLayer {
             if (es !== undefined) {
                 for (const sysIdx of es.systems) {
                     const star = this.galaxy.systems[sysIdx].systemStar;
-                    const halfW = cam.width / 2 + tRadius + 100;
-                    const halfH = cam.height / 2 + tRadius + 100;
+                    const halfW = cam.width / (2 * z) + tRadius; // screen px -> world units
+                    const halfH = cam.height / (2 * z) + tRadius;
                     if (star.xpos < cam.x - halfW || star.xpos > cam.x + halfW || star.ypos < cam.y - halfH || star.ypos > cam.y + halfH) {
                         continue;
                     }
