@@ -38,6 +38,7 @@ import { serializeGame, deserializeGame } from './sim/save/gameSave';
 import { setSaveLoadProvider, createSaveLoadPanel, type LoadedGame } from './ui/screens/saveLoad';
 import { type Game } from './sim/game';
 import { createGalaxyMap, type GalaxyMapScreen } from './ui/screens/galaxyMap';
+import { hideMapTooltip } from './ui/mapTooltip';
 import './ui/hud.css';
 
 // ?shape= names accepted by the boot URL.
@@ -217,6 +218,8 @@ function createGalaxyMapFor(galaxy: Galaxy, camera: Camera): GalaxyMapScreen {
             return { x: tl.x, y: tl.y, width: br.x - tl.x, height: br.y - tl.y };
         },
         jumpTo: (x, y) => camera.centerOn(x, y),
+        // The Main View hover tooltip would otherwise stay over the map.
+        onOpen: () => hideMapTooltip(),
     });
     document.body.appendChild(galaxyMap.element);
     return galaxyMap;
