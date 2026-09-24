@@ -1,5 +1,7 @@
 # Task 03 — Native desktop shell (Electron) for macOS arm64 + Linux x86_64
 
+thinking: off
+
 Goal: `desktop/` wraps the built game (`dist/`) as a native app on **macOS arm64** and **Linux x86_64**.
 
 ## Requirements

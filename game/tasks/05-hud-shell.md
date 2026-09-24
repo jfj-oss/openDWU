@@ -1,5 +1,7 @@
 # Task 05 — In-game HUD shell (layout + original chrome art)
 
+thinking: off
+
 Depends on 02 (Main View). Build the HUD that sits over the Main View, with the **original layout, art and font**. Most buttons are placeholders for now (log a `TODO(screen)` on click), but zoom buttons, play/pause, speed and the minimap must work.
 
 **Work style:** read the listed line ranges with Read offset/limit, port, move on. Do not survey.
