@@ -41,6 +41,7 @@ import {
 import { Galaxy } from '../sim/galaxy';
 import { GalaxyLocation, GalaxyLocationType } from '../sim/galaxyLocation';
 import { Habitat, HabitatCategoryType, HabitatType, SystemInfo } from '../sim/types';
+import { NebulaCloudGenerator } from './nebulaClouds';
 
 export function fadeIn(v: number, a: number, b: number): number {
     if (v <= a) {
@@ -159,6 +160,15 @@ export function regionLabelFont(type: GalaxyLocationType, factor: number, maxFac
         return { size: 15.33, bold: false };
     }
     return { size: 16.67, bold: false };
+}
+
+// Task 08f2 (Controls/MainView.cs FadeGalaxyNebulae ~4111-4152): the nebula
+// cloud images are visible at galaxy/sector zoom and fade out as the sector
+// starfield takes over — the same window the backdrop fades out over
+// ([m*2.5, m*14], m = minZoom). At full-galaxy zoom they are fully opaque;
+// they are gone by the time the dense starfield is opaque.
+export function nebulaAlpha(z: number, m: number): number {
+    return fadeOut(z, m * 2.5, m * 14);
 }
 
 function clamp(v: number, lo: number, hi: number): number {
@@ -599,6 +609,68 @@ class RegionLabel {
     }
 }
 
+// Task 08f2 (NebulaCloudGenerator): a procedurally generated translucent
+// nebula image placed over the location's rectangle. The texture is generated
+// lazily the first time the cloud becomes visible (the original generates all
+// clouds on a background thread at galaxy load; lazy generation keeps the
+// same per-location seed = location index, so results are identical).
+class NebulaView {
+    location: GalaxyLocation;
+    sprite: Sprite;
+    private generator: NebulaCloudGenerator;
+    constructor(private view: MainView, location: GalaxyLocation) {
+        this.location = location;
+        // Port of MainView.cs:1438-1452: two generators, seeds 1 and 2.
+        // Nebula locations use the second one (nebulaCloudGenerator_1); the
+        // color scheme stays -1 (random per generation, seeded by the call).
+        this.generator = new NebulaCloudGenerator(2);
+        this.sprite = new Sprite(Texture.EMPTY);
+        this.sprite.anchor.set(0.5);
+        this.sprite.x = location.xpos + location.width / 2;
+        this.sprite.y = location.ypos + location.height / 2;
+        this.sprite.alpha = 0;
+        this.sprite.visible = false;
+        this.view.world.addChild(this.sprite);
+    }
+
+    /** Generate (once) and draw the cloud for the current camera state. */
+    update(zoom: number, cam: Camera, alpha: number): void {
+        if (alpha <= 0.01) {
+            this.sprite.visible = false;
+            return;
+        }
+        const c = this.location.resolveLocationCenter();
+        const halfW = cam.width / 2 + this.location.width * zoom * 0.5 + 100;
+        const halfH = cam.height / 2 + this.location.height * zoom * 0.5 + 100;
+        if (c.x < cam.x - halfW || c.x > cam.x + halfW || c.y < cam.y - halfH || c.y > cam.y + halfH) {
+            this.sprite.visible = false;
+            return;
+        }
+        if (this.sprite.texture === Texture.EMPTY) {
+            // Lazy first-time generation (see class comment). The C# sizes
+            // the cloud to the location rect via minimumSize/maximumSize; we
+            // derive them from the rect in world units (the generator caps
+            // the texture at 512 px and the sprite is stretched to the rect).
+            const size = Math.max(64, Math.min(this.location.width, this.location.height));
+            const result = this.generator.generateNebulaBackdrop(
+                this.location.pictureRef >= 0 ? this.location.pictureRef : this.location.effectRandomSeed,
+                114, // TransparencyLevel set in method_41 (double_2 == 4.5 default)
+                -1,
+                Math.trunc(size),
+                Math.trunc(size * 1.5),
+                true,
+                false,
+                false,
+            );
+            this.sprite.texture = this.generator.toTexture(result);
+        }
+        // Stretch the (<=512 px) texture over the location rectangle.
+        this.sprite.scale.set(this.location.width / this.sprite.texture.width, this.location.height / this.sprite.texture.height);
+        this.sprite.alpha = alpha;
+        this.sprite.visible = true;
+    }
+}
+
 // ---------------------------------------------------------------------------
 
 export interface MainViewTextures {
@@ -624,6 +696,8 @@ export class MainView {
     private regionLabelViews: RegionLabel[] = [];
     systems: SystemView[] = [];
     clouds: CloudView[] = [];
+    /** Task 08f2: nebula cloud images, world-space between backdrop and stars. */
+    nebulae: NebulaView[] = [];
     private textures!: MainViewTextures;
     private minZoom = 1e-6;
     private lastGridZoom = -1;
@@ -819,6 +893,16 @@ export class MainView {
         }
         this.fx.addChild(this.regionLabels);
 
+        // Task 08f2: nebula cloud images over each NebulaCloud location rect,
+        // in world space between the backdrop and the map stars.
+        for (const location of this.galaxy.galaxyLocations) {
+            if (location.type === GalaxyLocationType.NebulaCloud) {
+                const nv = new NebulaView(this, location);
+                this.nebulae.push(nv);
+                this.world.addChildAt(nv.sprite, 1); // just above the backdrop
+            }
+        }
+
         this.attachInput();
     }
 
@@ -906,6 +990,14 @@ export class MainView {
         }
         for (const cloud of this.clouds) {
             cloud.update(z, cam);
+        }
+
+        // Task 08f2: nebula clouds fade out over the same window the backdrop
+        // fades out (FadeGalaxyNebulae), so they are fully visible at
+        // galaxy/sector zoom and gone by system zoom.
+        const nebA = nebulaAlpha(z, m);
+        for (const nv of this.nebulae) {
+            nv.update(z, cam, nebA);
         }
 
         // Region/nebula location name labels (task 08f1): visible while the

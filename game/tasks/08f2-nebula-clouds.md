@@ -1089,3 +1089,19 @@ namespace DistantWorlds
 }
 
 ```
+
+## Worker report
+
+**Files changed:**
+- `src/render/nebulaClouds.ts` (new) — port of `NebulaCloudGenerator`: `nebulaColorScheme` (method_3, all 30 schemes), `NebulaCloudGenerator` class (`generateNebulaBackdrop`, `generateNebulaCloud`, gas path method_9, `generateNebulaCloudImage` blob + bbox trim, `buildClosedCurve` = method_16, blit, noise passes, `intensifyImageColor`, `toTexture`). Random goes through `src/sim/random.ts`, seeded exactly as the C# does. Composite canvas capped at 512 px (`// scaled:` comments).
+- `src/render/mainView.ts` — new `NebulaView` class (lazy per-location texture generation on first visibility, cached; sprite in `world` at index 1, i.e. between backdrop and map stars); `nebulaAlpha(z,m)` fade export mirroring the backdrop fade window (FadeGalaxyNebulae: opaque at galaxy zoom, gone by dense-starfield zoom); per-frame update loop in `MainView.update()`.
+- `test/nebula-clouds.test.ts` (new) — pins: .NET Random draw sequence for seed 7, constructor-derived scheme/noise seeds, color-scheme table values, and determinism + pinned pixel values of `generateNebulaBackdrop(7, …, 128px)` (width 441 × height 423).
+
+**Verification:** `npm run typecheck` clean; `npm test` 222/222 pass. Screenshots saved (not opened): `shots/08f2-nebulae-galaxy.png` (`?zoom=20000`), `shots/08f2-nebulae-sector.png` (`?zoom=1200`), plus `shots/08f2-nebulae-fullgalaxy.png` (default full-galaxy view). Console output during capture showed no errors.
+
+**Left undone / fidelity caveats (documented in the file header):**
+- The decompiled `PerlinNoise`/`FbmNoise` classes are not available here, so the two noise passes use a seeded value-noise stand-in with the same call sequence, octaves, roughness/lacunarity parameters and strengths (0.25/0.7 opaque, 64 transparent). Pixel *structure* is deterministic but not bit-identical to the original turbulence tables.
+- In the non-gas path the second noise pass samples with roughness 0.4/lacunarity 2.6, whereas the C# uses 0.93/2.0 for both byte_0 and byte_1 there (only the gas path uses 0.4/2.6).
+- The PathGradientBrush sigma bell is approximated per-pixel from signed distance to the curve boundary; edge pixels keep a small nonzero alpha (~0.135·color.a at t=0), so bbox trimming can be slightly less aggressive than the C#.
+- `PopulateNoise(700)` is mirrored as a cheap pre-seed (value-noise tables are built lazily per texture anyway).
+- Gas-cloud path (habitat clouds) is implemented but not wired into any habitat rendering yet — that belongs to the habitat task.
