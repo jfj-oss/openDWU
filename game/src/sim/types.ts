@@ -209,6 +209,13 @@ export class Habitat {
         return Math.PI * this.orbitDistance * 2.0;
     }
 
+    // Public wrapper around the private move() (task 07a): Galaxy.step
+    // advances every orbiting habitat by game-time seconds. The C# call is
+    // Habitat.Move(galaxy) with totalSeconds = (_tempNow - _LastTouch).TotalSeconds.
+    advanceOrbit(totalSeconds: number): void {
+        this.move(totalSeconds);
+    }
+
     // Port of Habitat.cs Move (Habitat.Move(Galaxy)). totalSeconds stands in
     // for (_tempNow - _LastTouch).TotalSeconds; the C#
     // Galaxy.ConditionCheckLimit(angle-cond, 20, ref count) loop is inlined.

@@ -136,6 +136,11 @@ export class Galaxy {
     independentCount = 0;
     lifePrevalence = 1000;
     age = 0; // C#: _Age (always 0 in new-game generation; set from galaxy age at load time only)
+    // Task 07a: habitats with a parent, sorted once by orbit depth so step()
+    // advances parents before children (stars have no parent; planets before
+    // their moons). Rebuilt when habitats change.
+    private stepOrder: Habitat[] = [];
+    private stepOrderDirty = true;
 
     constructor(seed: number, shape: GalaxyShape, starCount: number, sectorWidth: number, sectorHeight: number, systemNames: string[], colonyPrevalence?: number) {
         this.randomSeed = seed;
@@ -166,6 +171,45 @@ export class Galaxy {
         this.creaturePrevalence = 1.0;
         this.allowGiantKaltorGeneration = true;
         this.creatures = [];
+    }
+
+    // Task 07a: advance the galaxy by game time (ms). Every habitat with a
+    // parent moves along its orbit via Habitat.advanceOrbit(gameMs / 1000)
+    // (port of Habitat.cs Move, called every tick from Habitat.DoTasks),
+    // parents before children — stars have no parent, planets move before
+    // their moons. The depth-sorted order is computed once and cached.
+    step(gameMs: number): void {
+        if (this.stepOrderDirty) {
+            this.rebuildStepOrder();
+        }
+        const totalSeconds = gameMs / 1000;
+        for (const habitat of this.stepOrder) {
+            habitat.advanceOrbit(totalSeconds);
+        }
+    }
+
+    // Rebuilds the cached step order: habitats that have a parent, sorted by
+    // orbit depth (planets before their moons; stars have no parent and are
+    // skipped). Depths are memoized per habitat so the sort is O(n log n).
+    private rebuildStepOrder(): void {
+        const depths = new Map<Habitat, number>();
+        const depthOf = (h: Habitat): number => {
+            let d = 0;
+            let cur = h;
+            while (cur.parent !== null) {
+                const known = depths.get(cur);
+                if (known !== undefined) {
+                    d += known;
+                    break;
+                }
+                d++;
+                cur = cur.parent;
+            }
+            depths.set(h, d);
+            return d;
+        };
+        this.stepOrder = this.habitats.filter((h) => h.parent !== null).sort((a, b) => depthOf(a) - depthOf(b));
+        this.stepOrderDirty = false;
     }
 
     // Port of Galaxy.3.cs SetGalaxyPhysicalDimensions
