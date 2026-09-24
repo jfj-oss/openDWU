@@ -263,8 +263,8 @@ export class EmpireLayer {
                 continue;
             }
             // Cull off-screen bodies.
-            const halfW = cam.width / 2 + 200 / z;
-            const halfH = cam.height / 2 + 200 / z;
+            const halfW = cam.width / (2 * z) + 200 / z;
+            const halfH = cam.height / (2 * z) + 200 / z;
             if (h.xpos < cam.x - halfW || h.xpos > cam.x + halfW || h.ypos < cam.y - halfH || h.ypos > cam.y + halfH) {
                 cr.ring.visible = false;
                 continue;
@@ -285,8 +285,8 @@ export class EmpireLayer {
                 mr.ring.visible = false;
                 continue;
             }
-            const halfW = cam.width / 2 + 100 / z;
-            const halfH = cam.height / 2 + 100 / z;
+            const halfW = cam.width / (2 * z) + 100 / z;
+            const halfH = cam.height / (2 * z) + 100 / z;
             if (star.xpos < cam.x - halfW || star.xpos > cam.x + halfW || star.ypos < cam.y - halfH || star.ypos > cam.y + halfH) {
                 mr.ring.visible = false;
                 continue;
