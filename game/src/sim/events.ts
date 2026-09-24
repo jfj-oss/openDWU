@@ -12,17 +12,76 @@ import type { Empire } from './empire';
 import type { BuiltObject } from './builtObject';
 import type { Habitat } from './types';
 import { registerTodo, todo } from './tick/todo';
+import { GalaxyLocationEffectType, GalaxyLocationType, type GalaxyLocation } from './galaxyLocation';
+import { getBuiltObjectsAtLocation } from './stationPlacement';
+import { BuiltObjectRole } from './data/designSpecifications';
+import { builtObjectInflictDamage } from './combat/damage';
+import { determineAngle } from './creature';
+import { doCharacterEventForList, type Character, type CharacterEventType } from './characters';
 
-const T_clearEmptyDebrisFields = registerTodo('M4u', 'clearEmptyDebrisFields');
-/** Galaxy.5.cs 2893 ClearEmptyDebrisFields. */
-export function clearEmptyDebrisFields(galaxy: Galaxy): void {
-    /* TODO(port) M4u */ todo(T_clearEmptyDebrisFields);
+/** Galaxy.5.cs 3372 FindAbandonedShipsInDebrisField(location). */
+export function findAbandonedShipsInDebrisField(galaxy: Galaxy, location: GalaxyLocation | null): BuiltObject[] {
+    const builtObjectList: BuiltObject[] = [];
+    if (location !== null && location.type === GalaxyLocationType.DebrisField) {
+        const num = location.width / 2.0;
+        const num2 = location.height / 2.0;
+        const range = Math.trunc(Math.max(location.width / 2.0, location.height / 2.0));
+        const builtObjectsAtLocation = getBuiltObjectsAtLocation(galaxy, location.xpos + num, location.ypos + num2, range);
+        const num3 = location.xpos - location.width / 2.0;
+        const num4 = location.xpos + location.width / 2.0;
+        const num5 = location.ypos - location.height / 2.0;
+        const num6 = location.ypos + location.height / 2.0;
+        for (let i = 0; i < builtObjectsAtLocation.length; i++) {
+            const builtObject = builtObjectsAtLocation[i];
+            if (builtObject != null && builtObject.empire === null && builtObject.xpos > num3 && builtObject.xpos < num4 && builtObject.ypos > num5 && builtObject.ypos < num6 && !builtObjectList.includes(builtObject)) {
+                builtObjectList.push(builtObject);
+            }
+        }
+    }
+    return builtObjectList;
 }
 
-const T_processCharacters = registerTodo('M4u', 'processCharacters');
+/** Galaxy.5.cs 2893-2920 / 2867-2890 tail: drop a location from every empire's KnownGalaxyLocations, the index and the list. */
+function removeGalaxyLocation(galaxy: Galaxy, item: GalaxyLocation): void {
+    for (let j = 0; j < galaxy.empires.length; j++) {
+        const empire = galaxy.empires[j];
+        const known = empire.visibility.knownGalaxyLocations;
+        if (known.includes(item)) {
+            known.splice(known.indexOf(item), 1);
+        }
+    }
+    galaxy.removeGalaxyLocationIndex(item);
+    const idx = galaxy.galaxyLocations.indexOf(item);
+    if (idx >= 0) galaxy.galaxyLocations.splice(idx, 1);
+}
+
+/** Galaxy.5.cs 2893 ClearEmptyDebrisFields. */
+export function clearEmptyDebrisFields(galaxy: Galaxy): void {
+    const galaxyLocationList: GalaxyLocation[] = [];
+    for (let i = 0; i < galaxy.galaxyLocations.length; i++) {
+        const galaxyLocation = galaxy.galaxyLocations[i];
+        if (galaxyLocation.type === GalaxyLocationType.DebrisField) {
+            const builtObjectList = findAbandonedShipsInDebrisField(galaxy, galaxyLocation);
+            if (builtObjectList.length === 0) {
+                galaxyLocationList.push(galaxyLocation);
+            }
+        }
+    }
+    for (const item of galaxyLocationList) {
+        removeGalaxyLocation(galaxy, item);
+    }
+}
+
 /** Empire.6.cs 3941 ProcessCharacters(timePassed) → Character.cs 4277 DoTasks(galaxy) → ProcessTransfer. */
 export function processCharacters(galaxy: Galaxy, empire: Empire, timePassed: number): void {
-    /* TODO(port) M4u */ todo(T_processCharacters);
+    void timePassed;
+    const characters = empire.characters as Character[] | null;
+    if (characters != null) {
+        for (let i = 0; i < characters.length; i++) {
+            const character = characters[i];
+            character.doTasks(galaxy);
+        }
+    }
 }
 
 const T_checkReviewSpecialPirateEvents = registerTodo('M4u', 'checkReviewSpecialPirateEvents');
@@ -107,18 +166,125 @@ export function pirateReviewRandomEvents(galaxy: Galaxy, empire: Empire): void {
     /* TODO(port) M4u */ todo(T_pirateReviewRandomEvents);
 }
 
-const T_doLocationEffects = registerTodo('M4u', 'doLocationEffects');
 /** BuiltObject.cs 3448 DoLocationEffects(timePassed, time). */
 export function doLocationEffects(galaxy: Galaxy, builtObject: BuiltObject, timePassed: number, time: number): void {
-    // RND: +clock×2 — not drawn until M4u.
-    /* TODO(port) M4u */ todo(T_doLocationEffects);
+    if (builtObject.shipDamageAmountLocation > 0) {
+        const hitPower = builtObject.shipDamageAmountLocation * timePassed;
+        // TODO(port) M4o: InflictDamage (BuiltObject.2.cs 6221) — stub, no damage applied.
+        builtObjectInflictDamage(galaxy, builtObject, builtObject, null, hitPower, time, 0, false, -Number.MAX_VALUE, false);
+    }
+    if (builtObject.shipPullAmountLocation > 0) {
+        const num = builtObject.shipPullAmountLocation * timePassed;
+        builtObject.xpos += Math.cos(builtObject.shipPullAngleLocation) * num;
+        builtObject.ypos += Math.sin(builtObject.shipPullAngleLocation) * num;
+        if (builtObject.parentHabitat !== null) {
+            builtObject.parentOffsetX += Math.cos(builtObject.shipPullAngleLocation) * num;
+            builtObject.parentOffsetY += Math.sin(builtObject.shipPullAngleLocation) * num;
+        }
+        if (builtObject.role !== BuiltObjectRole.Base && builtObject.topSpeed > 0) {
+            // TargetHeading = _ShipPullAngleLocation + (float)Math.PI (float + float).
+            builtObject.targetHeading = Math.fround(builtObject.shipPullAngleLocation + Math.fround(Math.PI));
+            builtObject.targetSpeed = builtObject.topSpeed;
+        }
+    }
 }
 
-const T_applyLocationEffects = registerTodo('M4u', 'applyLocationEffects');
 /** BuiltObject.cs 3934 ApplyLocationEffects(timePassed, time). */
 export function applyLocationEffects(galaxy: Galaxy, builtObject: BuiltObject, timePassed: number, time: number): void {
-    // RND: 4 direct, +clock×2 — not drawn until M4u.
-    /* TODO(port) M4u */ todo(T_applyLocationEffects);
+    const f = Math.fround;
+    const locations = galaxy.determineGalaxyLocationsAtPoint(builtObject.xpos, builtObject.ypos, GalaxyLocationType.Undefined);
+    const flag = locations.length > 0;
+    let flag2 = false;
+    let flag3 = false;
+    let flag4 = false;
+    let flag5 = false;
+    let hyperjumpDisabledLocation = false;
+    let num = 0.0;
+    let flag6 = false;
+    let num2 = 0.0;
+    let num3 = 0.0;
+    builtObject.locationEffects.length = 0;
+    if (flag) {
+        for (let i = 0; i < locations.length; i++) {
+            const galaxyLocation = locations[i];
+            switch (galaxyLocation.effect) {
+                case GalaxyLocationEffectType.LightningDamage:
+                    builtObject.locationEffects.push(GalaxyLocationEffectType.LightningDamage);
+                    flag2 = true;
+                    break;
+                case GalaxyLocationEffectType.MovementSlowed:
+                    builtObject.locationEffects.push(GalaxyLocationEffectType.MovementSlowed);
+                    flag3 = true;
+                    break;
+                case GalaxyLocationEffectType.ShieldReduction:
+                    builtObject.locationEffects.push(GalaxyLocationEffectType.ShieldReduction);
+                    flag4 = true;
+                    break;
+                case GalaxyLocationEffectType.HyperjumpDisabled:
+                    builtObject.locationEffects.push(GalaxyLocationEffectType.HyperjumpDisabled);
+                    hyperjumpDisabledLocation = true;
+                    break;
+                case GalaxyLocationEffectType.ShipDamage:
+                    builtObject.locationEffects.push(GalaxyLocationEffectType.ShipDamage);
+                    flag5 = true;
+                    num = galaxyLocation.effectAmount;
+                    break;
+                case GalaxyLocationEffectType.ShipPull: {
+                    builtObject.locationEffects.push(GalaxyLocationEffectType.ShipPull);
+                    flag6 = true;
+                    const x = galaxyLocation.xpos + galaxyLocation.width / 2.0;
+                    const y = galaxyLocation.ypos + galaxyLocation.height / 2.0;
+                    const num4 = galaxy.calculateDistance(builtObject.xpos, builtObject.ypos, x, y);
+                    const num5 = galaxyLocation.width / 2.0 / num4;
+                    num2 = galaxyLocation.effectAmount * num5;
+                    const num6 = determineAngle(builtObject.xpos, builtObject.ypos, x, y);
+                    num3 = num6;
+                    break;
+                }
+            }
+        }
+    }
+    if (flag2 && builtObject.currentSpeed <= builtObject.topSpeed) {
+        const totalSeconds = (time - builtObject.lastLocationEffectTouch) / 1000;
+        const num7 = galaxy.rnd.nextDouble() * totalSeconds;
+        if (num7 > 7.0) {
+            let num8 = 20.0 + galaxy.rnd.nextDouble() * 70.0;
+            if (builtObject.currentShields <= num8) {
+                builtObject.currentShields = 0;
+                num8 = galaxy.rnd.nextDouble() * 5.0;
+            }
+            // TODO(port) M4o: InflictDamage (BuiltObject.2.cs 6221) — stub, no damage applied.
+            builtObjectInflictDamage(galaxy, builtObject, builtObject, null, num8, time, 0, false, -Number.MAX_VALUE, true);
+            builtObject.lastLocationEffectTouch = time;
+        }
+    }
+    if (flag5) {
+        builtObject.shipDamageAmountLocation = f(num);
+    } else {
+        builtObject.shipDamageAmountLocation = 0;
+    }
+    if (flag6) {
+        builtObject.shipPullAmountLocation = f(num2);
+        builtObject.shipPullAngleLocation = f(num3);
+    } else {
+        builtObject.shipPullAmountLocation = 0;
+        builtObject.shipPullAngleLocation = 0;
+    }
+    builtObject.hyperjumpDisabledLocation = hyperjumpDisabledLocation;
+    if (flag3 && !builtObject._fuelHandicapped && builtObject.currentSpeed < builtObject.warpSpeed) {
+        builtObject.cruiseSpeed = Math.trunc(builtObject.cruiseSpeedBase * 0.75);
+        builtObject.topSpeed = Math.trunc(builtObject.topSpeedBase * 0.75);
+    } else if (!flag3 && builtObject.movementSlowedLocation) {
+        builtObject.cruiseSpeed = builtObject.cruiseSpeedBase;
+        builtObject.topSpeed = builtObject.topSpeedBase;
+    }
+    builtObject.movementSlowedLocation = flag3;
+    if (flag4) {
+        let val = (3.0 + galaxy.rnd.nextDouble() * 0.5) * timePassed;
+        val = Math.min(builtObject.currentShields, val);
+        builtObject.currentShields = f(builtObject.currentShields - f(val));
+    }
+    builtObject.shieldsReducedLocation = flag4;
 }
 
 const T_processPlague = registerTodo('M4u', 'processPlague');
@@ -242,19 +408,15 @@ export function leaveEmpire(galaxy: Galaxy, habitat: Habitat): void {
     /* TODO(port) M4u */ todo(T_leaveEmpire);
 }
 
-const T_doCharacterEventRuntime = registerTodo('M4u', 'doCharacterEventRuntime');
 /**
- * Galaxy.1.cs 3781 DoCharacterEvent(eventType, eventData, sourceCharacters, includeLeader, leaderEmpire) for the
- * runtime event types characters.ts doCharacterEventForList does not port yet (DetermineCharacterSkillsAffectedByEvent /
- * skill progress: it throws for them). Added by M4j (ColonyDevelopmentIncrease/Decrease from EvaluateColonyVariables
- * and HaveRevolution), M4r (TreatySigned / TreatyBroken / WarStarted from ChangeDiplomaticRelation) and M4d (TradeIncome from DiplomaticRelation.PerformTradeTransaction, logistics/contracts.ts).
- * `eventType` is a characters.ts CharacterEventType.
+ * Galaxy.1.cs 3781 DoCharacterEvent(eventType, eventData, sourceCharacters, includeLeader, leaderEmpire) — runtime entry
+ * used by M4j (ColonyDevelopmentIncrease/Decrease from EvaluateColonyVariables and HaveRevolution), M4r (TreatySigned /
+ * TreatyBroken / WarStarted from ChangeDiplomaticRelation) and M4d (TradeIncome from DiplomaticRelation.
+ * PerformTradeTransaction). `eventType` is a characters.ts CharacterEventType. Ported in characters.ts
+ * (doCharacterEventForList, with DetermineCharacterSkillsAffectedByEvent, the BonusesKnown trait cases and skill progress).
  */
 export function doCharacterEventRuntime(galaxy: Galaxy, eventType: number, eventData: unknown, sourceCharacters: readonly unknown[] | null, includeLeader: boolean, leaderEmpire: Empire | null): void {
-    // Galaxy.1.cs 3783-3786: an empty / null source list returns at once (no draws).
-    if (sourceCharacters === null || sourceCharacters.length <= 0) return;
-    // RND: 3 draws per relevant character (+1 per known-bonus skill pick), Galaxy.1.cs 3842-3850/5047 — not drawn until M4u.
-    /* TODO(port) M4u */ todo(T_doCharacterEventRuntime);
+    doCharacterEventForList(galaxy, eventType as CharacterEventType, eventData, sourceCharacters as Character[] | null, includeLeader, leaderEmpire);
 }
 
 const T_chanceNewAmbassador = registerTodo('M4u', 'chanceNewAmbassador');

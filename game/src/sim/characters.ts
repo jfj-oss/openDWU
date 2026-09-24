@@ -61,7 +61,15 @@ import type { Empire } from './empire';
 import type { Race } from './data/races';
 import type { BuiltObject } from './builtObject';
 import type { CharacterFileRow } from './data/characters';
-import { HabitatCategoryType, HabitatType, IndustryType, type Habitat } from './types';
+import { HabitatCategoryType, HabitatType, IndustryType, Habitat as HabitatClass, type Habitat } from './types';
+import { BuiltObject as BuiltObjectClass } from './builtObject';
+import { Empire as EmpireClass } from './empire';
+import { Creature } from './creature';
+import { Troop, TroopType } from './cargo';
+import { EmpireMessageType, resolveDescription, sendMessageToEmpire } from './messages';
+import { ComponentType } from './data/components';
+import { ComponentCategoryType } from './data/policies';
+import { PlanetaryFacilityType, ResearchAbilityType, nodeCategory, nodeIndustry, resolveComponentType, resolveResearchAbilityType, type TechNode } from './researchSystem';
 import { BuiltObjectRole } from './data/designSpecifications';
 import { BuiltObjectSubRole } from './builtObjectTypes';
 import { SystemVisibilityStatus } from './visibility';
@@ -73,7 +81,7 @@ import { selectRandomRace } from './pirates';
 import { habitatAnnualRevenue, identifyEmpireCapitals, totalColonyStrategicValue } from './forceStructure';
 import { strategicValue as habitatStrategicValue } from './territory';
 import { PirateRelationType } from './pirateRelations';
-import { DiplomaticRelationType, DiplomaticStrategy, resolveEmpiresToDefendAgainst as resolveEmpiresToDefendAgainstDiplomatic } from './diplomacy';
+import { DiplomaticRelation, DiplomaticRelationType, DiplomaticStrategy, resolveEmpiresToDefendAgainst as resolveEmpiresToDefendAgainstDiplomatic } from './diplomacy';
 
 /** C# StellarObject (Habitat or BuiltObject) as a character location. */
 export type StellarObject = Habitat | BuiltObject;
@@ -1920,6 +1928,50 @@ function baconIncrementSkillProgress(character: Character): number {
     return num;
 }
 
+/**
+ * BaconCharacter.cs 31 Kill(character): true ⇒ Character.Kill completes the death. A "Romulan" empire keeps its
+ * intelligence agents and turns its leader into a colony governor. The rest runs only when the caller two frames up is
+ * Empire.PerformIntelligenceMissions (espionage, deferred — not M4): the clock-seeded `new Random()` draw
+ * (spyCaptureChance 1f > NextDouble, always true) has no other effect, so it is not modelled.
+ */
+function baconCharacterKill(character: Character): boolean {
+    let flag1 = true;
+    if (character.empire !== null && character.empire.name.includes('Romulan')) {
+        if (character.role === CharacterRole.IntelligenceAgent) flag1 = false;
+        else if (character.role === CharacterRole.Leader) {
+            character.role = CharacterRole.ColonyGovernor;
+            flag1 = false;
+        }
+    }
+    return flag1;
+}
+
+/**
+ * IntelligenceMission.cs (espionage is deferred, tasks/M4-plan.md §0.3): the data a runtime character mission carries.
+ * Only the CounterIntelligence ctor (75) is reached (CheckForCharacterAppearance puts new agents on counter-intelligence).
+ */
+export class IntelligenceMission {
+    originatingEmpire: Empire | null;
+    agent: Character | null;
+    /** IntelligenceMissionType (IntelligenceMissionType.cs; 8 = CounterIntelligence). */
+    type: number;
+    startDate: number;
+    timeLength: number;
+    targetEmpire: Empire | null;
+    targetIsEmpire: boolean;
+
+    // IntelligenceMission(originatingEmpire, agent, startDate) (IntelligenceMission.cs 75).
+    constructor(originatingEmpire: Empire | null, agent: Character | null, startDate: number) {
+        this.originatingEmpire = originatingEmpire;
+        this.agent = agent;
+        this.type = 8;
+        this.startDate = startDate;
+        this.timeLength = Math.trunc((600 * 1000) / 12);
+        this.targetEmpire = originatingEmpire;
+        this.targetIsEmpire = true;
+    }
+}
+
 export class Character {
     name: string;
     race: Race | null;
@@ -2123,6 +2175,171 @@ export class Character {
             if (this.skills.items[i].type === skill) return true;
         }
         return false;
+    }
+
+    // Character.cs IncrementSkillProgress (564). M4u.
+    incrementSkillProgress(skillType: CharacterSkillType, progressAmount: number, galaxy: Galaxy | null): boolean {
+        const f = Math.fround;
+        for (let i = 0; i < this.skills.count; i++) {
+            const characterSkill = this.skills.items[i];
+            if (characterSkill === null || characterSkill.type !== skillType) continue;
+            characterSkill.progress = f(characterSkill.progress + f(progressAmount));
+            if (characterSkill.progress >= characterSkill.nextProgressThreshold) {
+                let num = this.calculateSkillLevelIncrement(skillType, galaxy) * baconIncrementSkillProgress(this);
+                if (this.role === CharacterRole.Leader) {
+                    num = Math.trunc(num / 2);
+                    num = Math.max(1, num);
+                }
+                const val = characterSkill.level + num;
+                characterSkill.level = Math.max(-100, Math.min(val, 125));
+                this.updateSkillLevel(characterSkill.type, characterSkill.level);
+                characterSkill.progress = 0;
+                characterSkill.nextProgressThreshold = f(characterSkill.nextProgressThreshold * f(1.5));
+                if (galaxy !== null) {
+                    const currentStarDate = galaxyCurrentStarDate(galaxy);
+                    const characterEvent = new CharacterEvent(CharacterEventType.CharacterSkillProgress, characterSkill, currentStarDate);
+                    this.eventHistory.push(characterEvent);
+                }
+                return true;
+            }
+            if (characterSkill.progress < 0) characterSkill.progress = 0;
+        }
+        return false;
+    }
+
+    // Character.cs CalculateSkillLevelIncrement (600): one Galaxy.Rnd draw for every skill with a case. M4u. (C# Galaxy.Rnd
+    // is static; the TS stream is the galaxy's: the argument, else the character's empire's.)
+    private calculateSkillLevelIncrement(skillType: CharacterSkillType, galaxy: Galaxy | null): number {
+        const g = galaxy ?? this._empire?.galaxy ?? null;
+        if (g === null) throw new Error('Character.calculateSkillLevelIncrement: no galaxy for Galaxy.Rnd');
+        const rnd = g.rnd;
+        let result = 0;
+        switch (skillType) {
+            case CharacterSkillType.MilitaryShipMaintenance:
+            case CharacterSkillType.MilitaryBaseMaintenance:
+            case CharacterSkillType.CivilianShipMaintenance:
+            case CharacterSkillType.CivilianBaseMaintenance:
+                result = rnd.next(4, 9);
+                break;
+            case CharacterSkillType.MilitaryShipConstructionSpeed:
+            case CharacterSkillType.CivilianShipConstructionSpeed:
+                result = rnd.next(5, 16);
+                break;
+            case CharacterSkillType.ColonyIncome:
+            case CharacterSkillType.ColonyCorruption:
+            case CharacterSkillType.ColonyHappiness:
+                result = rnd.next(4, 9);
+                break;
+            case CharacterSkillType.Espionage:
+            case CharacterSkillType.CounterEspionage:
+            case CharacterSkillType.Sabotage:
+            case CharacterSkillType.Concealment:
+            case CharacterSkillType.PsyOps:
+            case CharacterSkillType.Assassination:
+                result = rnd.next(5, 16);
+                break;
+            case CharacterSkillType.Targeting:
+            case CharacterSkillType.Countermeasures:
+            case CharacterSkillType.ShipManeuvering:
+            case CharacterSkillType.Fighters:
+            case CharacterSkillType.ShipEnergyUsage:
+            case CharacterSkillType.ShieldRechargeRate:
+            case CharacterSkillType.DamageControl:
+            case CharacterSkillType.RepairBonus:
+                result = rnd.next(5, 16);
+                break;
+            case CharacterSkillType.WeaponsDamage:
+            case CharacterSkillType.WeaponsRange:
+                result = rnd.next(4, 9);
+                break;
+            case CharacterSkillType.HyperjumpSpeed:
+                result = rnd.next(4, 9);
+                break;
+            case CharacterSkillType.Diplomacy:
+                result = rnd.next(5, 16);
+                break;
+            case CharacterSkillType.FacilityConstructionSpeed:
+                result = rnd.next(5, 16);
+                break;
+            case CharacterSkillType.MiningRate:
+                result = rnd.next(5, 16);
+                break;
+            case CharacterSkillType.PopulationGrowth:
+                result = rnd.next(5, 16);
+                break;
+            case CharacterSkillType.ResearchWeapons:
+            case CharacterSkillType.ResearchEnergy:
+            case CharacterSkillType.ResearchHighTech:
+                result = rnd.next(4, 9);
+                break;
+            case CharacterSkillType.TradeIncome:
+            case CharacterSkillType.TourismIncome:
+                result = rnd.next(4, 9);
+                break;
+            case CharacterSkillType.TroopRecruitment:
+            case CharacterSkillType.TroopGroundAttack:
+            case CharacterSkillType.TroopGroundDefense:
+            case CharacterSkillType.TroopRecoveryRate:
+                result = rnd.next(5, 16);
+                break;
+            case CharacterSkillType.TroopMaintenance:
+            case CharacterSkillType.TroopExperienceGain:
+                result = rnd.next(4, 9);
+                break;
+            case CharacterSkillType.WarWeariness:
+                result = rnd.next(4, 9);
+                break;
+            case CharacterSkillType.TroopStrengthArmor:
+            case CharacterSkillType.TroopStrengthInfantry:
+            case CharacterSkillType.TroopStrengthSpecialForces:
+            case CharacterSkillType.TroopStrengthPlanetaryDefense:
+                result = rnd.next(5, 16);
+                break;
+            case CharacterSkillType.SmugglingIncome:
+            case CharacterSkillType.SmugglingEvasion:
+                result = rnd.next(5, 16);
+                break;
+            case CharacterSkillType.BoardingAssault:
+                result = rnd.next(5, 16);
+                break;
+        }
+        return result;
+    }
+
+    // Character.cs DoTasks (4277) → ProcessTransfer (4285). M4u. `_LastTouch` is kept in seconds (galaxy.currentTimeSeconds
+    // = nowMs / 1000); the elapsed time is taken on the integer ms clock like the C# TimeSpan (spanSeconds semantics).
+    doTasks(galaxy: Galaxy): void {
+        const currentDateTimeMs = galaxy.nowMs;
+        const totalSeconds = (currentDateTimeMs - Math.round(this._lastTouch * 1000)) / 1000;
+        this.processTransfer(totalSeconds, galaxy);
+        this._lastTouch = currentDateTimeMs / 1000;
+    }
+
+    // Character.cs ProcessTransfer (4285).
+    private processTransfer(timePassed: number, galaxy: Galaxy): void {
+        if (this._transferDestination !== null) {
+            this._transferTimeRemaining = Math.fround(this._transferTimeRemaining - Math.fround(timePassed));
+            if (this._transferTimeRemaining <= 0) {
+                this.completeLocationTransfer(this._transferDestination, galaxy);
+                this._transferDestination = null;
+                this._transferTimeRemaining = 0;
+            }
+        }
+    }
+
+    // Character.cs Kill (4546). M4u. BaconCharacter.Kill (BaconCharacter.cs 31) decides whether the character dies. The
+    // game-event trigger (GetMatchingGameEventIdCharacterKilled + CheckTriggerEvent(CharacterKilled)) is a scripted game
+    // event — none exist in a normal game (deferred with ProcessDelayedEventActions).
+    kill(galaxy: Galaxy | null): void {
+        void galaxy;
+        if (baconCharacterKill(this)) {
+            this.completeEmpireChange(null);
+            this.completeLocationTransfer(null, null);
+            this._transferDestination = null;
+            this._transferTimeRemaining = 0;
+            this._mission = null;
+            this._active = false;
+        }
     }
 
     // Character.cs TotalSkillValuesIfPresent (1205).
@@ -4988,40 +5205,8 @@ function conditionCheckLimit(condition: boolean, maximumIterations: number, iter
 // Galaxy.1.cs DoCharacterEvent (3762-3781)
 // ---------------------------------------------------------------------------
 
-// Event types with a case in the BonusesKnown trait switch (Galaxy.1.cs 3863-4993).
-const EVENTS_WITH_TRAIT_CASES = new Set<CharacterEventType>([
-    CharacterEventType.Boarding, CharacterEventType.Raid, CharacterEventType.SmugglingSuccess, CharacterEventType.CriticalResearchFailure,
-    CharacterEventType.CriticalResearchSuccess, CharacterEventType.TargetOfFailedAssassination, CharacterEventType.WarStarted, CharacterEventType.WarEnded,
-    CharacterEventType.GroundInvasion, CharacterEventType.SpaceBattle, CharacterEventType.ResearchAdvanceEnergy, CharacterEventType.ResearchAdvanceHighTech,
-    CharacterEventType.ResearchAdvanceWeapons, CharacterEventType.Subjugated, CharacterEventType.BuildMilitaryShip, CharacterEventType.BuildCivilianShip,
-    CharacterEventType.BuildColonyShip, CharacterEventType.BuildSpaceport, CharacterEventType.BuildMilitaryBase, CharacterEventType.BuildResearchStationEnergy,
-    CharacterEventType.BuildResearchStationHighTech, CharacterEventType.BuildResearchStationWeapons, CharacterEventType.BuildResortBase, CharacterEventType.BuildFacility,
-    CharacterEventType.BuildWonder, CharacterEventType.TreatySigned, CharacterEventType.TreatyBroken, CharacterEventType.AmbassadorAssignedToEmpire,
-    CharacterEventType.TroopComplete, CharacterEventType.IntelligenceMissionFailEspionage, CharacterEventType.IntelligenceMissionFailSabotage,
-    CharacterEventType.IntelligenceMissionInterceptEnemy, CharacterEventType.IntelligenceMissionSucceedEspionage, CharacterEventType.IntelligenceMissionSucceedSabotage,
-]);
-// Event types with a case in DetermineCharacterSkillsAffectedByEvent (Galaxy.1.cs 2249).
-const EVENTS_WITH_SKILL_CASES = new Set<CharacterEventType>([
-    CharacterEventType.CriticalResearchSuccess, CharacterEventType.CriticalResearchFailure, CharacterEventType.Subjugated, CharacterEventType.TreatyBroken,
-    CharacterEventType.BuildSpaceport, CharacterEventType.BuildOtherBase, CharacterEventType.BuildCivilianShip, CharacterEventType.BuildColonyShip,
-    CharacterEventType.BuildFacility, CharacterEventType.BuildWonder, CharacterEventType.BuildMilitaryBase, CharacterEventType.BuildMilitaryShip,
-    CharacterEventType.BuildMiningStation, CharacterEventType.BuildResearchStationEnergy, CharacterEventType.BuildResearchStationHighTech,
-    CharacterEventType.BuildResearchStationWeapons, CharacterEventType.BuildResortBase, CharacterEventType.CashNegative, CharacterEventType.CashPositive,
-    CharacterEventType.ColonyDevelopmentIncrease, CharacterEventType.ColonyDevelopmentDecrease, CharacterEventType.GroundInvasion, CharacterEventType.HyperjumpExit,
-    CharacterEventType.IntelligenceAgentOursCaptured, CharacterEventType.IntelligenceAgentRecruited, CharacterEventType.IntelligenceMissionFailEspionage,
-    CharacterEventType.IntelligenceMissionFailSabotage, CharacterEventType.IntelligenceMissionInterceptEnemy, CharacterEventType.IntelligenceMissionSucceedEspionage,
-    CharacterEventType.IntelligenceMissionSucceedSabotage, CharacterEventType.ResearchAdvanceEnergy, CharacterEventType.ResearchAdvanceHighTech,
-    CharacterEventType.ResearchAdvanceWeapons, CharacterEventType.SpaceBattle, CharacterEventType.TourismIncome, CharacterEventType.TradeIncome,
-    CharacterEventType.TreatySigned, CharacterEventType.TroopComplete, CharacterEventType.WarEnded, CharacterEventType.WarStarted,
-    CharacterEventType.Boarding, CharacterEventType.Raid, CharacterEventType.SmugglingSuccess, CharacterEventType.SmugglingDetection,
-]);
-
 /**
- * Galaxy.1.cs DoCharacterEvent (3762 → 3781). Ported for the events a new game raises
- * (CharacterStart, CharacterTransferLocation, and AmbassadorAssignedToEmpire for a character whose
- * bonuses are unknown). TODO(port): the BonusesKnown trait cases (3863-4993) and
- * DetermineCharacterSkillsAffectedByEvent / skill-progress (2249, 5047-5319) for the other events —
- * they throw here instead of silently diverging.
+ * Galaxy.1.cs DoCharacterEvent(eventType, eventData, character[, includeLeader, leaderEmpire]) (3762 / 3774 → 3781).
  */
 export function doCharacterEvent(galaxy: Galaxy, eventType: CharacterEventType, eventData: unknown, character: Character, includeLeader = false, leaderEmpire: Empire | null = null): void {
     const characterList0: Character[] = [];
@@ -5034,11 +5219,349 @@ export function doCharacterEventForList(galaxy: Galaxy, eventType: CharacterEven
     doCharacterEventList(galaxy, eventType, eventData, sourceCharacters, includeLeader, leaderEmpire);
 }
 
-const T_doCharacterEventSkillCases = registerTodo('M4u', 'DoCharacterEvent skill progress (DetermineCharacterSkillsAffectedByEvent)');
+// ---------------------------------------------------------------------------
+// Galaxy.1.cs DoCharacterEvent runtime (M4u): DetermineCharacterSkillsAffectedByEvent (2249), the BonusesKnown trait
+// cases (3863-4993), skill progress (5047-5319) and DoCharacterEventChanceNewSkill (5323).
+// ---------------------------------------------------------------------------
+
+/** TextResolver.GetText + string.Format stand-in: GameText key and format args (M9 localizes; same shape as colonyTick.ts). */
+function characterText(key: string, ...args: unknown[]): string {
+    return args.length > 0 ? `${key}|${args.map((a) => String(a)).join('|')}` : key;
+}
+
+/** Galaxy.ResolveDescription(enum) stand-in (messages.ts resolveDescription). */
+function rdRole(role: CharacterRole): string {
+    return resolveDescription(CharacterRole, role);
+}
+function rdTrait(trait: CharacterTraitType): string {
+    return resolveDescription(CharacterTraitType, trait);
+}
+function rdSkill(skill: CharacterSkillType): string {
+    return resolveDescription(CharacterSkillType, skill);
+}
+/** IntelligenceMissionType names (IntelligenceMissionType.cs) for ResolveDescription(intelligenceMission.Type). */
+const INTELLIGENCE_MISSION_TYPE_NAMES = ['Undefined', 'SabotageConstruction', 'StealGalaxyMap', 'StealOperationsMap', 'StealTechData', 'SabotageColony', 'DeepCover', 'InciteRevolution', 'CounterIntelligence', 'StealTerritoryMap', 'AssassinateCharacter', 'DestroyBase'];
+function rdMissionType(type: number): string {
+    return INTELLIGENCE_MISSION_TYPE_NAMES[type] ?? String(type);
+}
+
+/** C# `eventData is BuiltObject` / `is Habitat` / `is Empire` / `is StellarObject`. */
+function isBuiltObjectData(o: unknown): o is BuiltObject {
+    return o instanceof BuiltObjectClass;
+}
+function isHabitatData(o: unknown): o is Habitat {
+    return o instanceof HabitatClass;
+}
+function isEmpireData(o: unknown): o is Empire {
+    return o instanceof EmpireClass;
+}
+function isStellarObjectData(o: unknown): o is { name: string } {
+    return o instanceof BuiltObjectClass || o instanceof HabitatClass || o instanceof Creature;
+}
+/** C# `eventData is ResearchNode` (the TS ResearchNode is the TechNode record, researchSystem.ts). */
+function isResearchNodeData(o: unknown): o is TechNode {
+    return typeof o === 'object' && o !== null && 'def' in o && 'isResearched' in o && 'progress' in o;
+}
+/** C# `eventData is Troop` (cargo.ts). */
+function isTroopData(o: unknown): o is Troop {
+    return o instanceof Troop;
+}
+
+/**
+ * PlanetaryFacility.cs fields DoCharacterEvent reads. The PlanetaryFacility model is M4i's; `eventData is PlanetaryFacility`
+ * is tested structurally (a `wonderType` member) until then.
+ */
+interface PlanetaryFacilityData {
+    name: string;
+    type: number;
+    wonderType: number;
+}
+function isPlanetaryFacilityData(o: unknown): o is PlanetaryFacilityData {
+    return typeof o === 'object' && o !== null && 'wonderType' in o && 'name' in o && 'type' in o;
+}
+/** PlanetaryFacilityType.Wonder (researchSystem.ts PlanetaryFacilityType) / WonderType.ColonyPopulationGrowth / EmpirePopulationGrowth. */
+const PLANETARY_FACILITY_TYPE_WONDER = PlanetaryFacilityType.Wonder;
+const WONDER_TYPE_COLONY_POPULATION_GROWTH = 1;
+const WONDER_TYPE_EMPIRE_POPULATION_GROWTH = 2;
+
+/** InvasionStats.cs (M4q owns the class): tested structurally until it lands. */
+interface InvasionStatsData {
+    colony: Habitat | null;
+    troopsDamageToInvaders: number;
+    troopsDamageToDefenders: number;
+    destroyedInvadingTroops: number;
+    destroyedDefendingTroops: number;
+    defendingEmpire: Empire | null;
+}
+function isInvasionStatsData(o: unknown): o is InvasionStatsData {
+    return typeof o === 'object' && o !== null && 'troopsDamageToInvaders' in o && 'destroyedDefendingTroops' in o;
+}
+
+/** SpaceBattleStats.cs (M4o owns the class): tested structurally until it lands. */
+interface SpaceBattleStatsData {
+    location: Habitat | null;
+    nearLocation: boolean;
+    weaponsDamageToEnemy: number;
+    weaponsHits: number;
+    weaponsHitsLongRange: number;
+    weaponsMisses: number;
+    shieldsDamageAbsorbed: number;
+    damageToUs: number;
+    damageRepaired: number;
+    destroyedEnemyShipBaseSize: number;
+    destroyedFriendlyShipBaseSize: number;
+    destroyedEnemyShipBaseSizeByFighters: number;
+    destroyedFriendlyShipBaseSizeByFighters: number;
+    destroyedEnemyShipsTroopTransport: number;
+    destroyedEnemyShipsFrigate: number;
+    destroyedEnemyShipsEscort: number;
+    destroyedEnemyShipsResupplyShip: number;
+    destroyedEnemyFighters: number;
+    destroyedFriendlyShipsCarrier: number;
+    destroyedFriendlyShipsCapitalShip: number;
+    destroyedFriendlyShipsCruiser: number;
+    destroyedFriendlyShipsDestroyer: number;
+    destroyedFriendlyShipsFrigate: number;
+    destroyedFriendlyShipsEscort: number;
+    destroyedFriendlyFighters: number;
+}
+function isSpaceBattleStatsData(o: unknown): o is SpaceBattleStatsData {
+    return typeof o === 'object' && o !== null && 'destroyedEnemyShipBaseSize' in o && 'shieldsDamageAbsorbed' in o;
+}
+
+/** Character.Empire.SendMessageToEmpire(Character.Empire, CharacterSkillTraitChange, character, description). */
+function sendCharacterSkillTraitMessage(character: Character, description: string): void {
+    const empire = character.empire;
+    if (empire === null) throw new Error('DoCharacterEvent: character without an empire (C# NullReferenceException)');
+    sendMessageToEmpire(empire, empire, EmpireMessageType.CharacterSkillTraitChange, character, description);
+}
+
+// Galaxy.1.cs DetermineCharacterSkillsAffectedByEvent (2249): the skills an event can progress and their relative
+// importances (float).
+export function determineCharacterSkillsAffectedByEvent(eventType: CharacterEventType): { skills: CharacterSkillType[]; relativeImportances: number[] } {
+    const list: CharacterSkillType[] = [];
+    const relativeImportances: number[] = [];
+    const add = (s: CharacterSkillType, w: number): void => {
+        list.push(s);
+        relativeImportances.push(w);
+    };
+    switch (eventType) {
+        case CharacterEventType.CriticalResearchSuccess:
+        case CharacterEventType.CriticalResearchFailure:
+            add(CharacterSkillType.ResearchWeapons, 1);
+            add(CharacterSkillType.ResearchEnergy, 1);
+            add(CharacterSkillType.ResearchHighTech, 1);
+            break;
+        case CharacterEventType.Subjugated:
+            add(CharacterSkillType.Diplomacy, 1);
+            add(CharacterSkillType.ColonyHappiness, 1);
+            add(CharacterSkillType.MilitaryShipConstructionSpeed, 0.5);
+            break;
+        case CharacterEventType.TreatyBroken:
+            add(CharacterSkillType.Diplomacy, 1);
+            add(CharacterSkillType.TourismIncome, 0.5);
+            add(CharacterSkillType.TradeIncome, 0.5);
+            break;
+        case CharacterEventType.BuildSpaceport:
+            add(CharacterSkillType.MilitaryBaseMaintenance, 1);
+            add(CharacterSkillType.MilitaryShipConstructionSpeed, 1);
+            add(CharacterSkillType.CivilianBaseMaintenance, 1);
+            add(CharacterSkillType.CivilianShipConstructionSpeed, 1);
+            break;
+        case CharacterEventType.BuildOtherBase:
+            add(CharacterSkillType.CivilianBaseMaintenance, 1);
+            add(CharacterSkillType.CivilianShipConstructionSpeed, 1);
+            break;
+        case CharacterEventType.BuildCivilianShip:
+            add(CharacterSkillType.CivilianShipConstructionSpeed, 1);
+            add(CharacterSkillType.CivilianShipMaintenance, 1);
+            add(CharacterSkillType.ColonyIncome, 0.5);
+            break;
+        case CharacterEventType.BuildColonyShip:
+            add(CharacterSkillType.ColonyShipConstructionSpeed, 1);
+            add(CharacterSkillType.PopulationGrowth, 0.5);
+            break;
+        case CharacterEventType.BuildFacility:
+            add(CharacterSkillType.FacilityConstructionSpeed, 1);
+            add(CharacterSkillType.ColonyIncome, 0.5);
+            break;
+        case CharacterEventType.BuildWonder:
+            add(CharacterSkillType.FacilityConstructionSpeed, 1);
+            add(CharacterSkillType.ColonyIncome, 0.5);
+            break;
+        case CharacterEventType.BuildMilitaryBase:
+            add(CharacterSkillType.MilitaryBaseMaintenance, 1);
+            add(CharacterSkillType.MilitaryShipConstructionSpeed, 1);
+            break;
+        case CharacterEventType.BuildMilitaryShip:
+            add(CharacterSkillType.MilitaryShipConstructionSpeed, 1);
+            add(CharacterSkillType.MilitaryShipMaintenance, 1);
+            break;
+        case CharacterEventType.BuildMiningStation:
+            add(CharacterSkillType.CivilianShipConstructionSpeed, 1);
+            add(CharacterSkillType.CivilianBaseMaintenance, 1);
+            add(CharacterSkillType.MiningRate, 2);
+            break;
+        case CharacterEventType.BuildResearchStationEnergy:
+            add(CharacterSkillType.CivilianBaseMaintenance, 1);
+            add(CharacterSkillType.CivilianShipConstructionSpeed, 1);
+            add(CharacterSkillType.ResearchEnergy, 2);
+            break;
+        case CharacterEventType.BuildResearchStationHighTech:
+            add(CharacterSkillType.CivilianBaseMaintenance, 1);
+            add(CharacterSkillType.CivilianShipConstructionSpeed, 1);
+            add(CharacterSkillType.ResearchHighTech, 2);
+            break;
+        case CharacterEventType.BuildResearchStationWeapons:
+            add(CharacterSkillType.CivilianBaseMaintenance, 1);
+            add(CharacterSkillType.CivilianShipConstructionSpeed, 1);
+            add(CharacterSkillType.ResearchWeapons, 2);
+            break;
+        case CharacterEventType.BuildResortBase:
+            add(CharacterSkillType.CivilianShipConstructionSpeed, 1);
+            add(CharacterSkillType.CivilianBaseMaintenance, 1);
+            add(CharacterSkillType.TourismIncome, 2);
+            break;
+        case CharacterEventType.CashNegative:
+            add(CharacterSkillType.ColonyIncome, 1);
+            break;
+        case CharacterEventType.CashPositive:
+            add(CharacterSkillType.ColonyIncome, 1);
+            break;
+        case CharacterEventType.ColonyDevelopmentIncrease:
+            add(CharacterSkillType.ColonyHappiness, 1);
+            add(CharacterSkillType.PopulationGrowth, 1);
+            break;
+        case CharacterEventType.ColonyDevelopmentDecrease:
+            add(CharacterSkillType.ColonyHappiness, 1);
+            add(CharacterSkillType.PopulationGrowth, 1);
+            break;
+        case CharacterEventType.GroundInvasion:
+            add(CharacterSkillType.TroopExperienceGain, 1);
+            add(CharacterSkillType.TroopGroundAttack, 1);
+            add(CharacterSkillType.TroopGroundDefense, 1);
+            add(CharacterSkillType.TroopRecoveryRate, 1);
+            add(CharacterSkillType.TroopStrengthArmor, 0.5);
+            add(CharacterSkillType.TroopStrengthInfantry, 0.5);
+            add(CharacterSkillType.TroopStrengthSpecialForces, 0.5);
+            add(CharacterSkillType.TroopStrengthPlanetaryDefense, 0.5);
+            break;
+        case CharacterEventType.HyperjumpExit:
+            add(CharacterSkillType.HyperjumpSpeed, 1);
+            break;
+        case CharacterEventType.IntelligenceAgentOursCaptured:
+            add(CharacterSkillType.Espionage, 1);
+            add(CharacterSkillType.Sabotage, 1);
+            add(CharacterSkillType.Concealment, 0.5);
+            break;
+        case CharacterEventType.IntelligenceAgentRecruited:
+            add(CharacterSkillType.Espionage, 1);
+            add(CharacterSkillType.Sabotage, 1);
+            add(CharacterSkillType.CounterEspionage, 0.5);
+            break;
+        case CharacterEventType.IntelligenceMissionFailEspionage:
+            add(CharacterSkillType.Espionage, 1);
+            add(CharacterSkillType.Concealment, 0.5);
+            break;
+        case CharacterEventType.IntelligenceMissionFailSabotage:
+            add(CharacterSkillType.Sabotage, 1);
+            add(CharacterSkillType.PsyOps, 0.5);
+            break;
+        case CharacterEventType.IntelligenceMissionInterceptEnemy:
+            add(CharacterSkillType.CounterEspionage, 1);
+            break;
+        case CharacterEventType.IntelligenceMissionSucceedEspionage:
+            add(CharacterSkillType.Espionage, 1);
+            add(CharacterSkillType.Assassination, 1);
+            add(CharacterSkillType.PsyOps, 1);
+            add(CharacterSkillType.Concealment, 1);
+            break;
+        case CharacterEventType.IntelligenceMissionSucceedSabotage:
+            add(CharacterSkillType.Sabotage, 1);
+            add(CharacterSkillType.Assassination, 1);
+            add(CharacterSkillType.PsyOps, 1);
+            add(CharacterSkillType.Concealment, 1);
+            break;
+        case CharacterEventType.ResearchAdvanceEnergy:
+            add(CharacterSkillType.ResearchEnergy, 1);
+            break;
+        case CharacterEventType.ResearchAdvanceHighTech:
+            add(CharacterSkillType.ResearchHighTech, 1);
+            break;
+        case CharacterEventType.ResearchAdvanceWeapons:
+            add(CharacterSkillType.ResearchWeapons, 1);
+            break;
+        case CharacterEventType.SpaceBattle:
+            add(CharacterSkillType.Countermeasures, 1);
+            add(CharacterSkillType.DamageControl, 1);
+            add(CharacterSkillType.Fighters, 1);
+            add(CharacterSkillType.RepairBonus, 1);
+            add(CharacterSkillType.ShieldRechargeRate, 1);
+            add(CharacterSkillType.ShipEnergyUsage, 1);
+            add(CharacterSkillType.ShipManeuvering, 1);
+            add(CharacterSkillType.Targeting, 1);
+            add(CharacterSkillType.WeaponsDamage, 1);
+            add(CharacterSkillType.WeaponsRange, 1);
+            break;
+        case CharacterEventType.TourismIncome:
+            add(CharacterSkillType.TourismIncome, 1);
+            add(CharacterSkillType.Diplomacy, 0.5);
+            break;
+        case CharacterEventType.TradeIncome:
+            add(CharacterSkillType.TradeIncome, 1);
+            add(CharacterSkillType.Diplomacy, 0.5);
+            break;
+        case CharacterEventType.TreatySigned:
+            add(CharacterSkillType.Diplomacy, 1);
+            add(CharacterSkillType.TradeIncome, 0.5);
+            break;
+        case CharacterEventType.TroopComplete:
+            add(CharacterSkillType.TroopRecruitment, 1);
+            add(CharacterSkillType.TroopGroundDefense, 0.5);
+            add(CharacterSkillType.TroopMaintenance, 0.5);
+            break;
+        case CharacterEventType.WarEnded:
+            add(CharacterSkillType.WarWeariness, 1);
+            add(CharacterSkillType.Diplomacy, 0.5);
+            break;
+        case CharacterEventType.WarStarted:
+            add(CharacterSkillType.WarWeariness, 1);
+            add(CharacterSkillType.Diplomacy, 0.5);
+            break;
+        case CharacterEventType.Boarding:
+            add(CharacterSkillType.BoardingAssault, 1);
+            add(CharacterSkillType.ShipManeuvering, 0.5);
+            add(CharacterSkillType.Targeting, 0.5);
+            break;
+        case CharacterEventType.Raid:
+            add(CharacterSkillType.BoardingAssault, 1);
+            add(CharacterSkillType.Targeting, 0.5);
+            add(CharacterSkillType.SmugglingIncome, 0.5);
+            break;
+        case CharacterEventType.SmugglingSuccess:
+            add(CharacterSkillType.SmugglingIncome, 1);
+            add(CharacterSkillType.SmugglingEvasion, 1);
+            break;
+        case CharacterEventType.SmugglingDetection:
+            add(CharacterSkillType.SmugglingIncome, 1);
+            add(CharacterSkillType.SmugglingEvasion, 1);
+            break;
+    }
+    return { skills: list, relativeImportances };
+}
+
+/**
+ * Galaxy.1.cs 3781 DoCharacterEvent(eventType, eventData, CharacterList sourceCharacters, includeLeader, leaderEmpire).
+ * Rnd per character: Next(0,5), Next(0,20), Next(0,80); for a bonuses-known character the event's trait case
+ * (DoCharacterEventChanceNewSkill: Next(0,5) [+ Next(3,7) per addable skill], optional Next(0,2|3), trait pick
+ * Next(0,n)); then, when a matching skill exists, Next(0,n) + NextDouble (+ CalculateSkillLevelIncrement on level-up).
+ */
 function doCharacterEventList(galaxy: Galaxy, eventType: CharacterEventType, eventData: unknown, sourceCharacters: Character[] | null, includeLeader: boolean, leaderEmpire: Empire | null): void {
+    // 3783-3786
     if (sourceCharacters === null || sourceCharacters.length <= 0) return;
     const characterList: Character[] = [];
     characterList.push(...sourceCharacters);
+    // 3789-3815
     if (includeLeader && leaderEmpire !== null) {
         if (leaderEmpire.pirateEmpireBaseHabitat === null) {
             const charactersByRole = getCharactersByRole(empireCharacters(leaderEmpire), CharacterRole.Leader);
@@ -5054,17 +5577,23 @@ function doCharacterEventList(galaxy: Galaxy, eventType: CharacterEventType, eve
             }
         }
     }
-    // DetermineCharacterSkillsAffectedByEvent(eventType, out relativeImportances).
-    if (EVENTS_WITH_SKILL_CASES.has(eventType)) {
-        // TODO(port) M4u: Galaxy.1.cs DetermineCharacterSkillsAffectedByEvent / skill progress (5047-5319) and the
-        // BonusesKnown trait cases for this event. Stub (counted TODO hit, tick/todo.ts) instead of a throw so the
-        // M4 ticks keep running (changed by M4k: research / troop events now reach it at game start).
-        // RND: Next(0,5), Next(0,20), Next(0,80) per character + skill/trait draws — not drawn until M4u.
-        todo(T_doCharacterEventSkillCases);
-        return;
+    // 3816-3817
+    const affected = determineCharacterSkillsAffectedByEvent(eventType);
+    const list = affected.skills;
+    const relativeImportances = affected.relativeImportances;
+    // 3818-3840: GroundInvasion drops the troop-strength skills for troop types the colony has none of. `List.Remove`
+    // removes the skill but not its relativeImportances entry (the C# lists go out of step; ported as is).
+    if (eventType === CharacterEventType.GroundInvasion && eventData !== null && isInvasionStatsData(eventData)) {
+        const invasionStats = eventData;
+        if (invasionStats.colony !== null && invasionStats.colony.troops !== null) {
+            const troops = invasionStats.colony.troops;
+            if (list.includes(CharacterSkillType.TroopStrengthArmor) && troops.countByType(TroopType.Armored) <= 0) removeFirst(list, CharacterSkillType.TroopStrengthArmor);
+            if (list.includes(CharacterSkillType.TroopStrengthInfantry) && troops.countByType(TroopType.Infantry) <= 0) removeFirst(list, CharacterSkillType.TroopStrengthInfantry);
+            if (list.includes(CharacterSkillType.TroopStrengthSpecialForces) && troops.countByType(TroopType.SpecialForces) <= 0) removeFirst(list, CharacterSkillType.TroopStrengthSpecialForces);
+            if (list.includes(CharacterSkillType.TroopStrengthPlanetaryDefense) && troops.countByType(TroopType.Artillery) <= 0) removeFirst(list, CharacterSkillType.TroopStrengthPlanetaryDefense);
+        }
     }
-    const list: CharacterSkillType[] = [];
-    // GroundInvasion InvasionStats filtering (3818-3840): not reachable (GroundInvasion throws above).
+    // 3841-5320
     for (let k = 0; k < characterList.length; k++) {
         const character3 = characterList[k];
         if (character3 === null) continue;
@@ -5074,22 +5603,14 @@ function doCharacterEventList(galaxy: Galaxy, eventType: CharacterEventType, eve
             character3.eventHistory.push(characterEvent);
         }
         const traits = determineValidTraitsForRole(character3.role);
-        const list2: CharacterTraitType[] = [];
-        const list3 = intersectTraitLists(traits, list2);
-        void list3;
         const validSkillsForRole = determineValidSkillsForRole(character3.role);
-        void validSkillsForRole;
         const flag = galaxy.rnd.next(0, 5) === 1;
         const flag2 = galaxy.rnd.next(0, 20) === 1;
         const flag3 = galaxy.rnd.next(0, 80) === 1;
-        void flag;
-        void flag2;
-        void flag3;
         if (character3.bonusesKnown) {
-            if (EVENTS_WITH_TRAIT_CASES.has(eventType)) {
-                throw new Error('TODO(port): Galaxy.1.cs DoCharacterEvent BonusesKnown trait case for CharacterEventType ' + CharacterEventType[eventType]);
-            }
+            doCharacterEventTraitCase(galaxy, eventType, eventData, character3, traits, list, validSkillsForRole, flag, flag2, flag3);
         }
+        // 4995-5042
         if (!character3.bonusesKnown) {
             switch (character3.role) {
                 case CharacterRole.ShipCaptain:
@@ -5132,21 +5653,868 @@ function doCharacterEventList(galaxy: Galaxy, eventType: CharacterEventType, eve
                     break;
             }
         }
+        // 5043-5046
         if (!character3.bonusesKnown || character3.skills === null || character3.skills.count <= 0) continue;
+        // 5047-5061
         const list4: CharacterSkillType[] = [];
+        const list5: number[] = [];
         for (let m = 0; m < character3.skills.count; m++) {
             const characterSkill = character3.skills.items[m];
             for (let n = 0; n < list.length; n++) {
-                if (list[n] === characterSkill.type) list4.push(list[n]);
+                const characterSkillType = list[n];
+                if (characterSkillType === characterSkill.type) {
+                    list4.push(characterSkillType);
+                    list5.push(relativeImportances[n]);
+                }
             }
         }
+        // 5062-5076
         let num2 = -1;
         if (list4.length > 0) num2 = galaxy.rnd.next(0, list4.length);
         if (num2 < 0) continue;
-        // Unreachable: `list` is empty for the ported events.
-        throw new Error('TODO(port): Galaxy.1.cs DoCharacterEvent skill progress (5071-5319)');
+        const characterSkillType2 = list4[num2];
+        const num3 = list5[num2];
+        if (characterSkillType2 === CharacterSkillType.Undefined) continue;
+        // 5077-5300 (float arithmetic)
+        const f = Math.fround;
+        let num4 = 0;
+        switch (eventType) {
+            case CharacterEventType.Boarding:
+                num4 = 15;
+                break;
+            case CharacterEventType.Raid:
+                num4 = 15;
+                break;
+            case CharacterEventType.SmugglingSuccess:
+                num4 = 20;
+                break;
+            case CharacterEventType.SmugglingDetection:
+                num4 = -40;
+                break;
+            case CharacterEventType.CriticalResearchFailure:
+                num4 = -35;
+                break;
+            case CharacterEventType.CriticalResearchSuccess:
+                num4 = 50;
+                break;
+            case CharacterEventType.Subjugated:
+                num4 = -30;
+                break;
+            case CharacterEventType.TreatyBroken:
+                num4 = -15;
+                break;
+            case CharacterEventType.BuildCivilianShip:
+                num4 = 5;
+                break;
+            case CharacterEventType.BuildColonyShip:
+                num4 = 40;
+                break;
+            case CharacterEventType.BuildFacility:
+                num4 = 40;
+                break;
+            case CharacterEventType.BuildWonder:
+                num4 = 100;
+                break;
+            case CharacterEventType.BuildMilitaryBase:
+                num4 = 40;
+                break;
+            case CharacterEventType.BuildMilitaryShip:
+                num4 = 9;
+                break;
+            case CharacterEventType.BuildMiningStation:
+                num4 = 20;
+                break;
+            case CharacterEventType.BuildOtherBase:
+                num4 = 20;
+                break;
+            case CharacterEventType.BuildResearchStationEnergy:
+                num4 = 40;
+                break;
+            case CharacterEventType.BuildResearchStationHighTech:
+                num4 = 40;
+                break;
+            case CharacterEventType.BuildResearchStationWeapons:
+                num4 = 40;
+                break;
+            case CharacterEventType.BuildResortBase:
+                num4 = 40;
+                break;
+            case CharacterEventType.BuildSpaceport:
+                num4 = 40;
+                break;
+            case CharacterEventType.CashNegative:
+                num4 = -8;
+                break;
+            case CharacterEventType.CashPositive:
+                num4 = 1;
+                break;
+            case CharacterEventType.ColonyDevelopmentIncrease:
+                num4 = 8;
+                break;
+            case CharacterEventType.ColonyDevelopmentDecrease:
+                num4 = -8;
+                break;
+            case CharacterEventType.GroundInvasion:
+                if (eventData !== null && isInvasionStatsData(eventData)) {
+                    const invasionStats3 = eventData;
+                    if (invasionStats3.colony !== null) {
+                        num4 = invasionStats3.colony.empire !== character3.empire ? -50 : 50;
+                    }
+                }
+                break;
+            case CharacterEventType.HyperjumpExit:
+                if (eventData !== null && isBuiltObjectData(eventData)) {
+                    const builtObject13 = eventData;
+                    if (builtObject13.shipGroup !== null) {
+                        num4 = f(f(builtObject13.lastHyperjumpDistance) / 5000000);
+                    }
+                }
+                break;
+            case CharacterEventType.IntelligenceAgentOursCaptured:
+                num4 = -15;
+                break;
+            case CharacterEventType.IntelligenceAgentRecruited:
+                num4 = 20;
+                break;
+            case CharacterEventType.IntelligenceMissionFailEspionage:
+                num4 = -15;
+                break;
+            case CharacterEventType.IntelligenceMissionFailSabotage:
+                num4 = -15;
+                break;
+            case CharacterEventType.IntelligenceMissionInterceptEnemy:
+                num4 = 20;
+                break;
+            case CharacterEventType.IntelligenceMissionSucceedEspionage:
+                num4 = 40;
+                break;
+            case CharacterEventType.IntelligenceMissionSucceedSabotage:
+                num4 = 40;
+                break;
+            case CharacterEventType.ResearchAdvanceEnergy:
+                num4 = 25;
+                break;
+            case CharacterEventType.ResearchAdvanceHighTech:
+                num4 = 25;
+                break;
+            case CharacterEventType.ResearchAdvanceWeapons:
+                num4 = 25;
+                break;
+            case CharacterEventType.SpaceBattle: {
+                if (eventData === null || !isSpaceBattleStatsData(eventData)) break;
+                const s = eventData;
+                const num5 = 1.0 + (s.destroyedEnemyShipBaseSize + s.destroyedEnemyShipBaseSizeByFighters);
+                const num6 = 1.0 + (s.destroyedFriendlyShipBaseSize + s.destroyedFriendlyShipBaseSizeByFighters);
+                const num7 = num5 / num6;
+                switch (characterSkillType2) {
+                    case CharacterSkillType.Countermeasures:
+                        num4 = Math.min(50, f(20 * f(f(s.shieldsDamageAbsorbed) / f(num5))));
+                        break;
+                    case CharacterSkillType.DamageControl:
+                        num4 = f(f(s.damageToUs) / 100);
+                        break;
+                    case CharacterSkillType.Fighters:
+                        num4 = f(f(f(s.destroyedEnemyFighters) / 5) * f(f(1 + f(s.destroyedEnemyFighters)) / f(1 + f(s.destroyedFriendlyFighters))));
+                        break;
+                    case CharacterSkillType.RepairBonus:
+                        num4 = f(f(s.damageRepaired) / 5);
+                        break;
+                    case CharacterSkillType.ShieldRechargeRate:
+                        num4 = f(f(s.shieldsDamageAbsorbed) / 200);
+                        break;
+                    case CharacterSkillType.ShipManeuvering: {
+                        const num8 = f(1 + s.destroyedEnemyShipsFrigate + s.destroyedEnemyShipsEscort);
+                        const num9 = f(1 + s.destroyedFriendlyShipsFrigate + s.destroyedFriendlyShipsEscort);
+                        const num10 = Math.max(f(0.2), Math.min(5, f(num8 / num9)));
+                        num4 = Math.min(50, f(20 * num10));
+                        break;
+                    }
+                    case CharacterSkillType.Targeting: {
+                        let val2 = f(f(s.weaponsHits) / f(s.weaponsMisses));
+                        val2 = Math.max(f(0.1), Math.min(1, val2));
+                        let val3 = f(f(1 + f(s.weaponsDamageToEnemy)) / f(1 + f(s.shieldsDamageAbsorbed)));
+                        val3 = Math.max(f(0.2), Math.min(5, val3));
+                        num4 = Math.min(50, f(f(20 * val2) * val3));
+                        break;
+                    }
+                    case CharacterSkillType.WeaponsDamage:
+                        num4 = Math.min(50, f(f(s.weaponsDamageToEnemy) / 100));
+                        break;
+                    case CharacterSkillType.WeaponsRange: {
+                        let val = f(f(s.weaponsHitsLongRange) / f(s.weaponsHits));
+                        val = Math.max(f(0.1), Math.min(1, val));
+                        num4 = f(Math.min(100, f(f(s.weaponsDamageToEnemy) / 20)) * val);
+                        num4 = Math.min(50, num4);
+                        break;
+                    }
+                    default:
+                        num4 = !(num7 < 1.0) ? f(num5 / 100.0) : f(-1 * f(num6 / 100.0));
+                        break;
+                }
+                num4 = Math.max(-50, Math.min(50, num4));
+                break;
+            }
+            case CharacterEventType.TourismIncome:
+                num4 = 3;
+                break;
+            case CharacterEventType.TradeIncome:
+                num4 = 2;
+                break;
+            case CharacterEventType.TreatySigned:
+                // `eventData is DiplomaticRelationType` (a boxed enum). The TS callers pass a DiplomaticRelation for
+                // TreatySigned, so this reads as the C# does for them (no match, num4 stays 0).
+                if (eventData !== null && typeof eventData === 'number') {
+                    switch (eventData as DiplomaticRelationType) {
+                        case DiplomaticRelationType.FreeTradeAgreement:
+                            num4 = 30;
+                            break;
+                        case DiplomaticRelationType.MutualDefensePact:
+                        case DiplomaticRelationType.Protectorate:
+                            num4 = 60;
+                            break;
+                    }
+                }
+                break;
+            case CharacterEventType.TroopComplete:
+                num4 = 7;
+                break;
+            case CharacterEventType.WarEnded:
+                num4 = characterSkillType2 !== CharacterSkillType.WarWeariness ? 10 : 40;
+                break;
+            case CharacterEventType.WarStarted:
+                num4 = characterSkillType2 !== CharacterSkillType.WarWeariness ? 10 : -15;
+                break;
+        }
+        // 5301-5307
+        num4 = f(num4 * f(0.5 + galaxy.rnd.nextDouble()));
+        num4 = f(num4 * num3);
+        if (Number.isNaN(num4)) num4 = 0;
+        num4 = f(num4 / 100);
+        // 5308-5319
+        const skill = character3.getSkill(characterSkillType2);
+        if (skill !== null && character3.incrementSkillProgress(characterSkillType2, num4, galaxy) && character3.empire !== null) {
+            let text24 = '';
+            if (character3.location !== null) text24 = character3.location.name;
+            const skillLevel = character3.getSkillLevel(skill.type);
+            const description31 = characterText('Character Skill Increase Description', rdRole(character3.role), character3.name, text24, rdSkill(characterSkillType2), formatSignedInt(skillLevel));
+            sendMessageToEmpire(character3.empire, character3.empire, EmpireMessageType.CharacterSkillTraitChange, character3, description31);
+        }
     }
 }
+
+/** C# int.ToString("+0;-0"). */
+function formatSignedInt(v: number): string {
+    return v > 0 ? '+' + v : v < 0 ? String(v) : '+0';
+}
+
+/** `list3 = IntersectTraitLists(traits, list2); if (list3.Count > 0) { pick; AddTrait }` → the added trait or null. */
+function pickAndAddTrait(galaxy: Galaxy, character3: Character, traits: CharacterTraitType[], list2: CharacterTraitType[], starting = false): CharacterTraitType | null {
+    const list3 = intersectTraitLists(traits, list2);
+    if (list3.length <= 0) return null;
+    const trait = list3[galaxy.rnd.next(0, list3.length)];
+    if (!character3.addTrait(trait, starting, galaxy)) return null;
+    return trait;
+}
+
+/** `eventData is BuiltObject ? ((BuiltObject)eventData).Name : string.Empty`. */
+function builtObjectDataName(eventData: unknown): string {
+    if (eventData !== null && isBuiltObjectData(eventData)) return eventData.name;
+    return '';
+}
+
+/** Galaxy.1.cs 3863-4993: the BonusesKnown trait cases of DoCharacterEvent. */
+function doCharacterEventTraitCase(
+    galaxy: Galaxy,
+    eventType: CharacterEventType,
+    eventData: unknown,
+    character3: Character,
+    traits: CharacterTraitType[],
+    list: CharacterSkillType[],
+    validSkillsForRole: CharacterSkillType[],
+    flag: boolean,
+    flag2: boolean,
+    flag3: boolean,
+): void {
+    const list2: CharacterTraitType[] = [];
+    const chance = (): boolean => doCharacterEventChanceNewSkill(galaxy, character3, list, validSkillsForRole, eventType, eventData);
+    switch (eventType) {
+        case CharacterEventType.Boarding: {
+            // 3868
+            if (!flag || chance()) break;
+            if (galaxy.rnd.next(0, 2) === 1) list2.push(CharacterTraitType.BountyHunter);
+            const t = pickAndAddTrait(galaxy, character3, traits, list2);
+            if (t === null) break;
+            let empty: string;
+            if (eventData !== null && isBuiltObjectData(eventData)) {
+                empty = characterText('Character New Trait Boarding Location', rdRole(character3.role), character3.name, rdTrait(t), eventData.name);
+            } else {
+                empty = characterText('Character New Trait Boarding', rdRole(character3.role), character3.name, rdTrait(t));
+            }
+            sendCharacterSkillTraitMessage(character3, empty);
+            break;
+        }
+        case CharacterEventType.Raid: {
+            // 3897
+            if (!flag || chance()) break;
+            if (galaxy.rnd.next(0, 2) === 1) list2.push(CharacterTraitType.BountyHunter);
+            const t = pickAndAddTrait(galaxy, character3, traits, list2);
+            if (t === null) break;
+            let empty4: string;
+            if (eventData !== null) {
+                let text19 = '';
+                if (isHabitatData(eventData)) text19 = eventData.name;
+                else if (isBuiltObjectData(eventData)) text19 = eventData.name;
+                empty4 = characterText('Character New Trait Raid Location', rdRole(character3.role), character3.name, rdTrait(t), text19);
+            } else {
+                empty4 = characterText('Character New Trait Raid', rdRole(character3.role), character3.name, rdTrait(t));
+            }
+            sendCharacterSkillTraitMessage(character3, empty4);
+            break;
+        }
+        case CharacterEventType.SmugglingSuccess: {
+            // 3938
+            if (!flag || chance()) break;
+            list2.push(CharacterTraitType.Smuggler);
+            if (galaxy.rnd.next(0, 3) === 1) list2.push(CharacterTraitType.Addict);
+            const t = pickAndAddTrait(galaxy, character3, traits, list2);
+            if (t === null) break;
+            let empty2: string;
+            if (eventData !== null && isStellarObjectData(eventData)) {
+                empty2 = characterText('Character New Trait Smuggling Success Location', rdRole(character3.role), character3.name, rdTrait(t), eventData.name);
+            } else {
+                empty2 = characterText('Character New Trait Smuggling Success', rdRole(character3.role), character3.name, rdTrait(t));
+            }
+            sendCharacterSkillTraitMessage(character3, empty2);
+            break;
+        }
+        case CharacterEventType.CriticalResearchFailure:
+            // 3971
+            if (flag && !chance() && character3.addTrait(CharacterTraitType.Methodical, false, galaxy) && eventData !== null && isResearchNodeData(eventData)) {
+                const text16 = eventData.def.name;
+                sendCharacterSkillTraitMessage(character3, characterText('Character New Trait Critical Research Failure', rdRole(character3.role), character3.name, rdTrait(CharacterTraitType.Methodical), text16));
+            }
+            break;
+        case CharacterEventType.CriticalResearchSuccess:
+            // 3984
+            if (flag && !chance() && character3.addTrait(CharacterTraitType.Creative, false, galaxy) && eventData !== null && isResearchNodeData(eventData)) {
+                const text9 = eventData.def.name;
+                sendCharacterSkillTraitMessage(character3, characterText('Character New Trait Critical Research Success', rdRole(character3.role), character3.name, rdTrait(CharacterTraitType.Creative), text9));
+            }
+            break;
+        case CharacterEventType.TargetOfFailedAssassination:
+            // 3997
+            if (flag && !chance() && character3.addTrait(CharacterTraitType.Paranoid, false, galaxy)) {
+                sendCharacterSkillTraitMessage(character3, characterText('Character New Trait Failed Assassination', rdRole(character3.role), character3.name, rdTrait(CharacterTraitType.Paranoid)));
+            }
+            break;
+        case CharacterEventType.WarStarted: {
+            // 4004
+            if (!flag2 || chance()) break;
+            list2.push(CharacterTraitType.PeaceThroughStrength);
+            if (eventData !== null && isEmpireData(eventData)) {
+                const empire2 = eventData;
+                if (empire2.dominantRace !== null && character3.empire!.dominantRace !== null && empire2.dominantRace.raceFamily !== character3.empire!.dominantRace.raceFamily) {
+                    list2.push(CharacterTraitType.Xenophobic);
+                    list2.push(CharacterTraitType.IntelligenceXenophobic);
+                }
+            }
+            const t = pickAndAddTrait(galaxy, character3, traits, list2);
+            if (t !== null) sendCharacterSkillTraitMessage(character3, characterText('Character New Trait War Started', rdRole(character3.role), character3.name, rdTrait(t)));
+            break;
+        }
+        case CharacterEventType.WarEnded: {
+            // 4030
+            if (!flag2 || chance()) break;
+            list2.push(CharacterTraitType.Drunk);
+            const t = pickAndAddTrait(galaxy, character3, traits, list2);
+            if (t !== null) sendCharacterSkillTraitMessage(character3, characterText('Character New Trait War Ended', rdRole(character3.role), character3.name, rdTrait(t)));
+            break;
+        }
+        case CharacterEventType.GroundInvasion: {
+            // 4047
+            if (!flag || chance() || eventData === null || !isInvasionStatsData(eventData)) break;
+            const invasionStats2 = eventData;
+            if (invasionStats2.colony === null) break;
+            if (invasionStats2.colony.empire !== null) {
+                if (invasionStats2.colony.empire === character3.empire) {
+                    list2.push(CharacterTraitType.GoodStrategist, CharacterTraitType.GoodTactician);
+                    if (invasionStats2.defendingEmpire === character3.empire) {
+                        list2.push(CharacterTraitType.StrongGroundDefender);
+                        if (invasionStats2.troopsDamageToDefenders < invasionStats2.troopsDamageToInvaders) list2.push(CharacterTraitType.CarefulAttacker);
+                        else list2.push(CharacterTraitType.RecklessAttacker);
+                    } else {
+                        list2.push(CharacterTraitType.StrongGroundAttacker);
+                        if (invasionStats2.troopsDamageToDefenders < invasionStats2.troopsDamageToInvaders) list2.push(CharacterTraitType.RecklessAttacker);
+                        else list2.push(CharacterTraitType.CarefulAttacker);
+                    }
+                    if (character3.location !== null) {
+                        const num = galaxy.calculateDistance(character3.location.xpos, character3.location.ypos, invasionStats2.colony.xpos, invasionStats2.colony.ypos);
+                        if (num < 3000.0) list2.push(CharacterTraitType.LocalDefenseTactics);
+                    }
+                } else {
+                    list2.push(CharacterTraitType.PoorStrategist, CharacterTraitType.PoorTactician);
+                    if (invasionStats2.defendingEmpire === character3.empire) {
+                        list2.push(CharacterTraitType.PoorGroundDefender);
+                        if (invasionStats2.destroyedDefendingTroops > 4) list2.push(CharacterTraitType.Drunk);
+                        const pop = invasionStats2.colony.population;
+                        if (pop != null && pop.totalAmount > 100000000) list2.push(CharacterTraitType.PeaceThroughStrength);
+                    } else {
+                        list2.push(CharacterTraitType.PoorGroundAttacker);
+                        if (invasionStats2.destroyedInvadingTroops > 4) list2.push(CharacterTraitType.Drunk);
+                    }
+                }
+            }
+            const t = pickAndAddTrait(galaxy, character3, traits, list2);
+            if (t !== null) sendCharacterSkillTraitMessage(character3, characterText('Character New Trait Ground Invasion', rdRole(character3.role), character3.name, rdTrait(t), invasionStats2.colony.name));
+            break;
+        }
+        case CharacterEventType.SpaceBattle: {
+            // 4141
+            if (!flag2 || chance() || eventData === null || !isSpaceBattleStatsData(eventData)) break;
+            const s = eventData;
+            if (s.destroyedEnemyShipBaseSize + s.destroyedEnemyShipBaseSizeByFighters > s.destroyedFriendlyShipBaseSize + s.destroyedFriendlyShipBaseSizeByFighters) {
+                list2.push(CharacterTraitType.GoodStrategist, CharacterTraitType.GoodTactician, CharacterTraitType.StrongSpaceAttacker, CharacterTraitType.StrongSpaceDefender);
+                if (s.destroyedFriendlyShipsCapitalShip > 0 || s.destroyedFriendlyShipsCruiser > 0 || s.destroyedFriendlyShipsCarrier > 0 || s.destroyedFriendlyShipsDestroyer > 0 || s.destroyedEnemyShipsTroopTransport > 0 || s.destroyedEnemyShipsResupplyShip > 0) {
+                    list2.push(CharacterTraitType.Drunk);
+                }
+                if (s.location !== null && s.nearLocation) {
+                    if (s.location.empire !== null && s.location.empire === character3.empire) {
+                        list2.push(CharacterTraitType.LocalDefenseTactics);
+                    } else if (s.location.basesAtHabitat !== null && s.location.basesAtHabitat.length > 0) {
+                        for (let l = 0; l < s.location.basesAtHabitat.length; l++) {
+                            const builtObject5 = s.location.basesAtHabitat[l];
+                            if (builtObject5 != null && !builtObject5.hasBeenDestroyed && builtObject5.empire !== null && builtObject5.empire === character3.empire) {
+                                list2.push(CharacterTraitType.LocalDefenseTactics);
+                                break;
+                            }
+                        }
+                    }
+                }
+            } else {
+                list2.push(CharacterTraitType.PoorStrategist, CharacterTraitType.PoorTactician, CharacterTraitType.PoorSpaceAttacker, CharacterTraitType.PoorSpaceDefender);
+                if (s.destroyedFriendlyShipsCapitalShip > 0 || s.destroyedFriendlyShipsCruiser > 0 || s.destroyedFriendlyShipsCarrier > 0 || s.destroyedFriendlyShipsDestroyer > 0 || s.destroyedFriendlyShipsFrigate > 0 || s.destroyedFriendlyShipsEscort > 0 || s.destroyedEnemyShipsTroopTransport > 0 || s.destroyedEnemyShipsResupplyShip > 0) {
+                    list2.push(CharacterTraitType.Drunk);
+                }
+            }
+            const t = pickAndAddTrait(galaxy, character3, traits, list2);
+            if (t !== null) {
+                const empty3 = s.location === null
+                    ? characterText('Character New Trait Space Battle', rdRole(character3.role), character3.name, rdTrait(t))
+                    : characterText('Character New Trait Space Battle With Location', rdRole(character3.role), character3.name, rdTrait(t), s.location.name);
+                sendCharacterSkillTraitMessage(character3, empty3);
+            }
+            break;
+        }
+        case CharacterEventType.ResearchAdvanceEnergy: {
+            // 4212
+            if (!flag2 || chance() || eventData === null || !isResearchNodeData(eventData)) break;
+            const researchNode5 = eventData;
+            if (nodeIndustryOf(researchNode5) !== IndustryType.Energy) break;
+            const category = nodeCategoryOf(researchNode5);
+            if (category === ComponentCategoryType.Extractor) {
+                list2.push(CharacterTraitType.Expansionist);
+                list2.push(CharacterTraitType.LaborOriented);
+            } else if (category === ComponentCategoryType.Construction) {
+                list2.push(CharacterTraitType.LaborOriented);
+            }
+            const t = pickAndAddTrait(galaxy, character3, traits, list2);
+            if (t !== null) sendCharacterSkillTraitMessage(character3, characterText('Character New Trait Research Advance', rdRole(character3.role), character3.name, rdTrait(t), researchNode5.def.name));
+            break;
+        }
+        case CharacterEventType.ResearchAdvanceHighTech: {
+            // 4244
+            if (!flag2 || chance() || eventData === null || !isResearchNodeData(eventData)) break;
+            const researchNode2 = eventData;
+            if (nodeIndustryOf(researchNode2) !== IndustryType.HighTech) break;
+            const abilityType = resolveResearchAbilityTypeOf(researchNode2);
+            if (researchNode2.def.abilities.length > 0 && (abilityType === ResearchAbilityType.ColonizeHabitatType || abilityType === ResearchAbilityType.PopulationGrowthRate)) {
+                list2.push(CharacterTraitType.Expansionist);
+            } else if (nodeCategoryOf(researchNode2) === ComponentCategoryType.Storage) {
+                list2.push(CharacterTraitType.Expansionist);
+            } else {
+                const componentType = researchNodeComponentType(character3, researchNode2);
+                if (componentType === ComponentType.HabitationMedicalCenter) {
+                    list2.push(CharacterTraitType.HealthOriented);
+                } else if (componentType === ComponentType.ComputerCommandCenter) {
+                    list2.push(CharacterTraitType.GoodStrategist);
+                } else if (componentType === ComponentType.HabitationRecreationCenter) {
+                    list2.push(CharacterTraitType.Uninhibited);
+                    list2.push(CharacterTraitType.Addict);
+                    list2.push(CharacterTraitType.IntelligenceUninhibited);
+                    list2.push(CharacterTraitType.IntelligenceAddict);
+                }
+            }
+            const t = pickAndAddTrait(galaxy, character3, traits, list2);
+            if (t !== null) sendCharacterSkillTraitMessage(character3, characterText('Character New Trait Research Advance', rdRole(character3.role), character3.name, rdTrait(t), researchNode2.def.name));
+            break;
+        }
+        case CharacterEventType.ResearchAdvanceWeapons: {
+            // 4290
+            if (!flag2 || chance() || eventData === null || !isResearchNodeData(eventData)) break;
+            const researchNode3 = eventData;
+            if (nodeIndustryOf(researchNode3) !== IndustryType.Weapon) break;
+            list2.push(CharacterTraitType.PeaceThroughStrength);
+            list2.push(CharacterTraitType.Isolationist);
+            const t = pickAndAddTrait(galaxy, character3, traits, list2);
+            if (t !== null) sendCharacterSkillTraitMessage(character3, characterText('Character New Trait Research Advance', rdRole(character3.role), character3.name, rdTrait(t), researchNode3.def.name));
+            break;
+        }
+        case CharacterEventType.Subjugated: {
+            // 4315
+            if (!flag || chance()) break;
+            list2.push(CharacterTraitType.Pacifist);
+            list2.push(CharacterTraitType.Weak);
+            list2.push(CharacterTraitType.IntelligenceWeak);
+            const t = pickAndAddTrait(galaxy, character3, traits, list2);
+            if (t === null) break;
+            let text22 = '';
+            if (eventData !== null && isEmpireData(eventData)) text22 = eventData.name;
+            sendCharacterSkillTraitMessage(character3, characterText('Character New Trait Subjugated', rdRole(character3.role), character3.name, rdTrait(t), text22));
+            break;
+        }
+        case CharacterEventType.BuildMilitaryShip: {
+            // 4347
+            if (!flag3 || chance()) break;
+            list2.push(CharacterTraitType.Isolationist, CharacterTraitType.Engineer, CharacterTraitType.Organized, CharacterTraitType.Technical);
+            const t = pickAndAddTrait(galaxy, character3, traits, list2);
+            if (t === null) break;
+            sendCharacterSkillTraitMessage(character3, characterText('Character New Trait Build Military Ship', rdRole(character3.role), character3.name, rdTrait(t), builtObjectDataName(eventData)));
+            break;
+        }
+        case CharacterEventType.BuildCivilianShip: {
+            // 4380
+            if (!flag3 || chance()) break;
+            list2.push(CharacterTraitType.LaborOriented, CharacterTraitType.Technical);
+            const t = pickAndAddTrait(galaxy, character3, traits, list2);
+            if (t === null) break;
+            sendCharacterSkillTraitMessage(character3, characterText('Character New Trait Build Civilian Ship', rdRole(character3.role), character3.name, rdTrait(t), builtObjectDataName(eventData)));
+            break;
+        }
+        case CharacterEventType.BuildColonyShip: {
+            // 4411
+            if (!flag2 || chance()) break;
+            list2.push(CharacterTraitType.Expansionist, CharacterTraitType.Organized, CharacterTraitType.Technical);
+            const t = pickAndAddTrait(galaxy, character3, traits, list2);
+            if (t === null) break;
+            sendCharacterSkillTraitMessage(character3, characterText('Character New Trait Build Colony Ship', rdRole(character3.role), character3.name, rdTrait(t), builtObjectDataName(eventData)));
+            break;
+        }
+        case CharacterEventType.BuildSpaceport: {
+            // 4443
+            if (!flag2 || chance()) break;
+            if (eventData !== null && isBuiltObjectData(eventData) && eventData.medicalCapacity > 0) list2.push(CharacterTraitType.HealthOriented);
+            list2.push(CharacterTraitType.Engineer, CharacterTraitType.Organized, CharacterTraitType.Technical);
+            const t = pickAndAddTrait(galaxy, character3, traits, list2);
+            if (t === null) break;
+            sendCharacterSkillTraitMessage(character3, characterText('Character New Trait Build Spaceport', rdRole(character3.role), character3.name, rdTrait(t), builtObjectDataName(eventData)));
+            break;
+        }
+        case CharacterEventType.BuildMilitaryBase: {
+            // 4483
+            if (!flag2 || chance()) break;
+            list2.push(CharacterTraitType.Organized, CharacterTraitType.Technical);
+            const t = pickAndAddTrait(galaxy, character3, traits, list2);
+            if (t === null) break;
+            sendCharacterSkillTraitMessage(character3, characterText('Character New Trait Build Military Base', rdRole(character3.role), character3.name, rdTrait(t), builtObjectDataName(eventData)));
+            break;
+        }
+        case CharacterEventType.BuildResearchStationEnergy:
+        case CharacterEventType.BuildResearchStationHighTech:
+        case CharacterEventType.BuildResearchStationWeapons: {
+            // 4514 / 4545 / 4576 (identical bodies)
+            if (!flag2 || chance()) break;
+            list2.push(CharacterTraitType.Engineer, CharacterTraitType.Organized);
+            const t = pickAndAddTrait(galaxy, character3, traits, list2);
+            if (t === null) break;
+            sendCharacterSkillTraitMessage(character3, characterText('Character New Trait Build Research Station', rdRole(character3.role), character3.name, rdTrait(t), builtObjectDataName(eventData)));
+            break;
+        }
+        case CharacterEventType.BuildResortBase: {
+            // 4607
+            if (!flag2 || chance()) break;
+            list2.push(CharacterTraitType.Tolerant, CharacterTraitType.IntelligenceTolerant, CharacterTraitType.Organized);
+            const t = pickAndAddTrait(galaxy, character3, traits, list2);
+            if (t === null) break;
+            sendCharacterSkillTraitMessage(character3, characterText('Character New Trait Build Resort Base', rdRole(character3.role), character3.name, rdTrait(t), builtObjectDataName(eventData)));
+            break;
+        }
+        case CharacterEventType.BuildFacility: {
+            // 4639
+            if (!flag2 || chance()) break;
+            list2.push(CharacterTraitType.Organized);
+            const t = pickAndAddTrait(galaxy, character3, traits, list2);
+            if (t === null) break;
+            const text18 = eventData !== null && isPlanetaryFacilityData(eventData) ? eventData.name : '';
+            sendCharacterSkillTraitMessage(character3, characterText('Character New Trait Build Facility', rdRole(character3.role), character3.name, rdTrait(t), text18));
+            break;
+        }
+        case CharacterEventType.BuildWonder: {
+            // 4669
+            if (!flag || chance()) break;
+            if (eventData !== null && isPlanetaryFacilityData(eventData)) {
+                const pf = eventData;
+                if (pf.type === PLANETARY_FACILITY_TYPE_WONDER && (pf.wonderType === WONDER_TYPE_COLONY_POPULATION_GROWTH || pf.wonderType === WONDER_TYPE_EMPIRE_POPULATION_GROWTH)) {
+                    list2.push(CharacterTraitType.HealthOriented);
+                }
+            }
+            list2.push(CharacterTraitType.Organized);
+            const t = pickAndAddTrait(galaxy, character3, traits, list2);
+            if (t === null) break;
+            const text3 = eventData !== null && isPlanetaryFacilityData(eventData) ? eventData.name : '';
+            sendCharacterSkillTraitMessage(character3, characterText('Character New Trait Build Wonder', rdRole(character3.role), character3.name, rdTrait(t), text3));
+            break;
+        }
+        case CharacterEventType.TreatySigned: {
+            // 4707
+            if (!flag || chance() || eventData === null || !(eventData instanceof DiplomaticRelation)) break;
+            const diplomaticRelation = eventData;
+            if (diplomaticRelation.otherEmpire === null) break;
+            list2.push(CharacterTraitType.Diplomat, CharacterTraitType.FreeTrader, CharacterTraitType.Measured, CharacterTraitType.IntelligenceMeasured);
+            const other = diplomaticRelation.otherEmpire;
+            if (other.dominantRace !== null && character3.empire!.dominantRace !== null && other.dominantRace.raceFamily !== character3.empire!.dominantRace.raceFamily) {
+                list2.push(CharacterTraitType.Tolerant);
+                list2.push(CharacterTraitType.IntelligenceTolerant);
+            }
+            if (diplomaticRelation.type === DiplomaticRelationType.MutualDefensePact) {
+                list2.push(CharacterTraitType.EloquentSpeaker);
+                list2.push(CharacterTraitType.IntelligenceEloquentSpeaker);
+            }
+            const t = pickAndAddTrait(galaxy, character3, traits, list2);
+            if (t !== null) sendCharacterSkillTraitMessage(character3, characterText('Character New Trait Treaty Signed', rdRole(character3.role), character3.name, rdTrait(t), other.name));
+            break;
+        }
+        case CharacterEventType.TreatyBroken: {
+            // 4744
+            if (!flag2 || chance()) break;
+            list2.push(CharacterTraitType.Protectionist, CharacterTraitType.PoorSpeaker, CharacterTraitType.IntelligencePoorSpeaker);
+            const t = pickAndAddTrait(galaxy, character3, traits, list2);
+            if (t === null) break;
+            const text7 = eventData !== null && isEmpireData(eventData) ? eventData.name : '';
+            sendCharacterSkillTraitMessage(character3, characterText('Character New Trait Treaty Broken', rdRole(character3.role), character3.name, rdTrait(t), text7));
+            break;
+        }
+        case CharacterEventType.AmbassadorAssignedToEmpire: {
+            // 4776
+            if (!flag2 || chance()) break;
+            list2.push(CharacterTraitType.Linguist);
+            const t = pickAndAddTrait(galaxy, character3, traits, list2);
+            if (t === null) break;
+            const text23 = eventData !== null && isEmpireData(eventData) ? eventData.name : '';
+            sendCharacterSkillTraitMessage(character3, characterText('Character New Trait Ambassador Assigned To Empire', rdRole(character3.role), character3.name, rdTrait(t), text23));
+            break;
+        }
+        case CharacterEventType.TroopComplete: {
+            // 4806
+            if (!flag3 || chance()) break;
+            list2.push(CharacterTraitType.GoodRecruiter, CharacterTraitType.GoodGroundLogistician);
+            const t = pickAndAddTrait(galaxy, character3, traits, list2);
+            if (t === null) break;
+            let text12 = '';
+            let text13 = '';
+            if (eventData !== null && isTroopData(eventData)) {
+                const troop = eventData;
+                text12 = troop.name;
+                if (troop.colony !== null) text13 = (troop.colony as Habitat).name;
+                else if (troop.builtObject !== null) text13 = (troop.builtObject as BuiltObject).name;
+            }
+            sendCharacterSkillTraitMessage(character3, characterText('Character New Trait Troop Complete', rdRole(character3.role), character3.name, rdTrait(t), text13, text12));
+            break;
+        }
+        case CharacterEventType.IntelligenceMissionFailEspionage:
+        case CharacterEventType.IntelligenceMissionFailSabotage: {
+            // 4846 / 4876
+            if (!flag2 || chance()) break;
+            list2.push(CharacterTraitType.DoubleAgent);
+            if (eventType === CharacterEventType.IntelligenceMissionFailSabotage) list2.push(CharacterTraitType.IntelligenceAddict);
+            const t = pickAndAddTrait(galaxy, character3, traits, list2);
+            if (t === null || eventData === null || !(eventData instanceof IntelligenceMission)) break;
+            const text6 = eventData.agent !== null ? eventData.agent.name : '';
+            sendCharacterSkillTraitMessage(character3, characterText('Character New Trait Intelligence Mission Failure', rdRole(character3.role), character3.name, rdTrait(t), rdMissionType(eventData.type), text6));
+            break;
+        }
+        case CharacterEventType.IntelligenceMissionInterceptEnemy: {
+            // 4907
+            if (!flag2 || chance()) break;
+            list2.push(CharacterTraitType.IntelligenceXenophobic);
+            const t = pickAndAddTrait(galaxy, character3, traits, list2);
+            if (t !== null) sendCharacterSkillTraitMessage(character3, characterText('Character New Trait Intercept Foreign Agent', rdRole(character3.role), character3.name, rdTrait(t)));
+            break;
+        }
+        case CharacterEventType.IntelligenceMissionSucceedEspionage: {
+            // 4924
+            if (!flag2 || chance()) break;
+            list2.push(CharacterTraitType.IntelligenceMeasured);
+            if (eventData !== null && eventData instanceof IntelligenceMission && eventData.type === 4 /* StealTechData */) list2.push(CharacterTraitType.ForeignSpy);
+            const t = pickAndAddTrait(galaxy, character3, traits, list2);
+            if (t === null || eventData === null || !(eventData instanceof IntelligenceMission)) break;
+            const text8 = eventData.agent !== null ? eventData.agent.name : '';
+            sendCharacterSkillTraitMessage(character3, characterText('Character New Trait Intelligence Mission Success', rdRole(character3.role), character3.name, rdTrait(t), rdMissionType(eventData.type), text8));
+            break;
+        }
+        case CharacterEventType.IntelligenceMissionSucceedSabotage: {
+            // 4962 (AddTrait starting: true)
+            if (!flag2 || chance()) break;
+            list2.push(CharacterTraitType.IntelligenceSober, CharacterTraitType.IntelligenceCourageous);
+            const t = pickAndAddTrait(galaxy, character3, traits, list2, true);
+            if (t === null || eventData === null || !(eventData instanceof IntelligenceMission)) break;
+            const text = eventData.agent !== null ? eventData.agent.name : '';
+            sendCharacterSkillTraitMessage(character3, characterText('Character New Trait Intelligence Mission Success', rdRole(character3.role), character3.name, rdTrait(t), rdMissionType(eventData.type), text));
+            break;
+        }
+    }
+}
+
+// Galaxy.1.cs DoCharacterEventChanceNewSkill (5323).
+function doCharacterEventChanceNewSkill(galaxy: Galaxy, character: Character, skills: CharacterSkillType[], validSkillsForRole: CharacterSkillType[], eventType: CharacterEventType, eventData: unknown): boolean {
+    if (galaxy.rnd.next(0, 5) === 1) {
+        for (let i = 0; i < skills.length; i++) {
+            const characterSkillType = skills[i];
+            if (characterSkillType === CharacterSkillType.Undefined || !validSkillsForRole.includes(characterSkillType) || character.skills.getSkillByType(characterSkillType) !== null) continue;
+            if (!character.addSkill(characterSkillType, galaxy.rnd.next(3, 7), galaxy)) continue;
+            const skill = character.getSkill(characterSkillType);
+            if (skill !== null) {
+                const description = chanceNewSkillDescription(character, skill.type, eventType, eventData);
+                sendCharacterSkillTraitMessage(character, description);
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
+/** Galaxy.1.cs 5337-5723: the new-skill message text per event type (string.Empty when no case / data mismatch). */
+function chanceNewSkillDescription(character: Character, skillType: CharacterSkillType, eventType: CharacterEventType, eventData: unknown): string {
+    const r = rdRole(character.role);
+    const n = character.name;
+    const s = rdSkill(skillType);
+    switch (eventType) {
+        case CharacterEventType.Boarding:
+            if (eventData !== null && isBuiltObjectData(eventData)) return characterText('Character New Skill Boarding', r, n, s, eventData.name);
+            return '';
+        case CharacterEventType.Raid:
+            if (eventData !== null) {
+                let text9 = '';
+                if (isBuiltObjectData(eventData)) text9 = eventData.name;
+                else if (isHabitatData(eventData)) text9 = eventData.name;
+                return characterText('Character New Skill Raid', r, n, s, text9);
+            }
+            return '';
+        case CharacterEventType.SmugglingSuccess:
+            if (eventData !== null && isStellarObjectData(eventData)) return characterText('Character New Skill Smuggling Success', r, n, s, eventData.name);
+            return '';
+        case CharacterEventType.SmugglingDetection:
+            if (eventData !== null && isStellarObjectData(eventData)) return characterText('Character New Skill Smuggling Detection', r, n, s, eventData.name);
+            return '';
+        case CharacterEventType.CriticalResearchFailure:
+            if (eventData !== null && isResearchNodeData(eventData)) return characterText('Character New Skill Critical Research Failure', r, n, s, eventData.def.name);
+            return '';
+        case CharacterEventType.CriticalResearchSuccess:
+            if (eventData !== null && isResearchNodeData(eventData)) return characterText('Character New Skill Critical Research Success', r, n, s, eventData.def.name);
+            return '';
+        case CharacterEventType.TargetOfFailedAssassination:
+            return characterText('Character New Skill Failed Assassination', r, n, s);
+        case CharacterEventType.WarStarted:
+            return characterText('Character New Skill War Started', r, n, s);
+        case CharacterEventType.WarEnded:
+            return characterText('Character New Skill War Ended', r, n, s);
+        case CharacterEventType.GroundInvasion:
+            if (eventData !== null && isInvasionStatsData(eventData) && eventData.colony !== null) return characterText('Character New Skill Ground Invasion', r, n, s, eventData.colony.name);
+            return '';
+        case CharacterEventType.SpaceBattle:
+            if (eventData !== null && isSpaceBattleStatsData(eventData)) {
+                return eventData.location === null ? characterText('Character New Skill Space Battle', r, n, s) : characterText('Character New Skill Space Battle With Location', r, n, s, eventData.location.name);
+            }
+            return '';
+        case CharacterEventType.ResearchAdvanceEnergy:
+            if (eventData !== null && isResearchNodeData(eventData) && nodeIndustryOf(eventData) === IndustryType.Energy) return characterText('Character New Skill Research Advance', r, n, s, eventData.def.name);
+            return '';
+        case CharacterEventType.ResearchAdvanceHighTech:
+            if (eventData !== null && isResearchNodeData(eventData) && nodeIndustryOf(eventData) === IndustryType.HighTech) return characterText('Character New Skill Research Advance', r, n, s, eventData.def.name);
+            return '';
+        case CharacterEventType.ResearchAdvanceWeapons:
+            if (eventData !== null && isResearchNodeData(eventData) && nodeIndustryOf(eventData) === IndustryType.Weapon) return characterText('Character New Skill Research Advance', r, n, s, eventData.def.name);
+            return '';
+        case CharacterEventType.Subjugated:
+            if (eventData !== null && isEmpireData(eventData)) return characterText('Character New Skill Subjugated', r, n, s, eventData.name);
+            return '';
+        case CharacterEventType.BuildMilitaryShip:
+            if (eventData !== null && isBuiltObjectData(eventData)) return characterText('Character New Skill Build Military Ship', r, n, s, eventData.name);
+            return '';
+        case CharacterEventType.BuildCivilianShip:
+            if (eventData !== null && isBuiltObjectData(eventData)) return characterText('Character New Skill Build Civilian Ship', r, n, s, eventData.name);
+            return '';
+        case CharacterEventType.BuildColonyShip:
+            if (eventData !== null && isBuiltObjectData(eventData)) return characterText('Character New Skill Build Colony Ship', r, n, s, eventData.name);
+            return '';
+        case CharacterEventType.BuildSpaceport:
+            if (eventData !== null && isBuiltObjectData(eventData)) return characterText('Character New Skill Build Spaceport', r, n, s, eventData.name);
+            return '';
+        case CharacterEventType.BuildMilitaryBase:
+            if (eventData !== null && isBuiltObjectData(eventData)) return characterText('Character New Skill Build Military Base', r, n, s, eventData.name);
+            return '';
+        case CharacterEventType.BuildResearchStationEnergy:
+        case CharacterEventType.BuildResearchStationHighTech:
+        case CharacterEventType.BuildResearchStationWeapons:
+            if (eventData !== null && isBuiltObjectData(eventData)) return characterText('Character New Skill Build Research Station', r, n, s, eventData.name);
+            return '';
+        case CharacterEventType.BuildResortBase:
+            if (eventData !== null && isBuiltObjectData(eventData)) return characterText('Character New Skill Build Resort Base', r, n, s, eventData.name);
+            return '';
+        case CharacterEventType.BuildFacility:
+            if (eventData !== null && isPlanetaryFacilityData(eventData)) return characterText('Character New Skill Build Facility', r, n, s, eventData.name);
+            return '';
+        case CharacterEventType.BuildWonder:
+            if (eventData !== null && isPlanetaryFacilityData(eventData)) return characterText('Character New Skill Build Wonder', r, n, s, eventData.name);
+            return '';
+        case CharacterEventType.TreatySigned:
+            if (eventData !== null && eventData instanceof DiplomaticRelation && eventData.otherEmpire !== null) return characterText('Character New Skill Treaty Signed', r, n, s, eventData.otherEmpire.name);
+            return '';
+        case CharacterEventType.TreatyBroken:
+            if (eventData !== null && isEmpireData(eventData)) return characterText('Character New Skill Treaty Broken', r, n, s, eventData.name);
+            return '';
+        case CharacterEventType.AmbassadorAssignedToEmpire:
+            if (eventData !== null && isEmpireData(eventData)) return characterText('Character New Skill Ambassador Assigned To Empire', r, n, s, eventData.name);
+            return '';
+        case CharacterEventType.TroopComplete:
+            if (eventData !== null && isTroopData(eventData)) {
+                const troop = eventData;
+                let text11 = '';
+                if (troop.colony !== null) text11 = (troop.colony as Habitat).name;
+                else if (troop.builtObject !== null) text11 = (troop.builtObject as BuiltObject).name;
+                return characterText('Character New Skill Troop Complete', r, n, s, text11, troop.name);
+            }
+            return '';
+        case CharacterEventType.IntelligenceMissionFailEspionage:
+        case CharacterEventType.IntelligenceMissionFailSabotage:
+            if (eventData !== null && eventData instanceof IntelligenceMission) return characterText('Character New Skill Intelligence Mission Failure', r, n, s, rdMissionType(eventData.type), eventData.agent !== null ? eventData.agent.name : '');
+            return '';
+        case CharacterEventType.IntelligenceMissionInterceptEnemy:
+            return characterText('Character New Skill Intercept Foreign Agent', r, n, s);
+        case CharacterEventType.IntelligenceMissionSucceedEspionage:
+        case CharacterEventType.IntelligenceMissionSucceedSabotage:
+            if (eventData !== null && eventData instanceof IntelligenceMission) return characterText('Character New Skill Intelligence Mission Success', r, n, s, rdMissionType(eventData.type), eventData.agent !== null ? eventData.agent.name : '');
+            return '';
+    }
+    return '';
+}
+
+/** ResearchNode.Industry / Category / ResolveResearchAbilityType (researchSystem.ts helpers). */
+function nodeIndustryOf(n: TechNode): IndustryType {
+    return nodeIndustry(n);
+}
+function nodeCategoryOf(n: TechNode): ComponentCategoryType {
+    return nodeCategory(n);
+}
+function resolveResearchAbilityTypeOf(n: TechNode): ResearchAbilityType {
+    return resolveResearchAbilityType(n);
+}
+/** ResearchNode.ResolveComponentType (ResearchNode.cs 122) over the character's empire research system (static component table). */
+function researchNodeComponentType(character: Character, n: TechNode): ComponentType {
+    const rs = character.empire !== null ? character.empire.research : null;
+    if (rs === null || rs === undefined) throw new Error('DoCharacterEvent: ResolveComponentType needs a ResearchSystem');
+    return resolveComponentType(rs, n);
+}
+
 
 // ---------------------------------------------------------------------------
 // BuiltObject.cs character helpers

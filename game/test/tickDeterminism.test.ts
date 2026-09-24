@@ -111,7 +111,11 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // SelectCreatures population gating fix (Galaxy.5.cs 1648/1785): SelectCreatures(planet / moon) runs only when
         // the body has no population, which moves every galaxy-generation draw after the first populated body (creature
         // counts / positions, empire placement) and so everything downstream. (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
-        expect(summary.digest).toBe('198918104ea2794b');
+        // Moved from 198918104ea2794b by M4u: DoCharacterEvent runtime (Galaxy.1.cs 3781: Next(0,5)/Next(0,20)/Next(0,80) per
+        // character, trait cases, skill progress) now runs for the M4j/M4k/M4r/M4d events, Character.DoTasks completes
+        // location transfers, ApplyLocationEffects draws for lightning / shield-reduction storms and slows ships in
+        // nebulae, and ClearEmptyDebrisFields removes empty debris-field locations.
+        expect(summary.digest).toBe('9ba92363c1bf5e89');
     }, 600000);
 });
 

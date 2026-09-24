@@ -33,7 +33,7 @@ import { BuiltObject, DockingBay } from '../builtObject';
 import { BuiltObjectComponent, BuiltObjectComponentList } from '../builtObjectComponent';
 import { Design } from '../design';
 import { Weapon } from '../weapon';
-import { Character, CharacterEvent, CharacterSkill, CharacterSkillList } from '../characters';
+import { Character, CharacterEvent, CharacterSkill, CharacterSkillList, IntelligenceMission } from '../characters';
 import { Ruin } from '../ruins';
 import { DesignNameState } from '../designNames';
 import { DiplomaticRelation, DiplomaticRelationList, YearlyTradeValue, YearlyTradeValueList } from '../diplomacy';
@@ -125,6 +125,7 @@ const CLASSES: Record<string, object> = {
     CharacterSkill: CharacterSkill.prototype,
     CharacterSkillList: CharacterSkillList.prototype,
     CharacterEvent: CharacterEvent.prototype,
+    IntelligenceMission: IntelligenceMission.prototype,
 };
 
 /** Galaxy fields that hold GameData tables (re-wired from gameData on load,

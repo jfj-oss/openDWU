@@ -80,3 +80,17 @@ const T_startNewShipGroupBattleStats = registerTodo('M4o', 'startNewShipGroupBat
 export function startNewShipGroupBattleStats(galaxy: Galaxy, shipGroup: ShipGroup): void {
     /* TODO(port) M4o */ todo(T_startNewShipGroupBattleStats);
 }
+
+// ---- stub added by M4u (events.ts DoLocationEffects / ApplyLocationEffects) ----
+
+const T_builtObjectInflictDamage = registerTodo('M4o', 'builtObjectInflictDamage');
+/**
+ * BuiltObject.2.cs 6221 InflictDamage(abstractTarget, weapon, hitPower, time, galaxy, weaponDistanceTravelled,
+ * allowRecursion, strikeAngle, allowArmorInvulnerability) on `builtObject` (the C# `this`). Stub: no damage, returns
+ * false ("target not destroyed"). M4u calls it for storm/location damage with target = builtObject, weapon = null.
+ */
+export function builtObjectInflictDamage(galaxy: Galaxy, builtObject: BuiltObject, abstractTarget: BuiltObject | Habitat | Creature | null, weapon: unknown, hitPower: number, time: number, weaponDistanceTravelled: number, allowRecursion: boolean, strikeAngle: number, allowArmorInvulnerability: boolean): boolean {
+    // RND: component / damage-spread draws inside InflictDamage — not drawn until M4o.
+    /* TODO(port) M4o */ todo(T_builtObjectInflictDamage);
+    return false;
+}
