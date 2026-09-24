@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { backdropAlpha, fadeIn, moonDotPx, orbitRingAlpha, planetSpritePx, starfieldAlpha, starSpritePx } from '../src/render/mainView';
+import { backdropAlpha, fadeIn, moonDotPx, orbitRingAlpha, planetSpritePx, regionLabelFont, starfieldAlpha, starSpritePx } from '../src/render/mainView';
+import { GalaxyLocationType } from '../src/sim/galaxyLocation';
 
 // Task 02b2: close the mid-zoom black gap. The backdrop fades out over
 // [m*2.5, m*14] (m = minZoom, whole-galaxy zoom) and the starfield must
@@ -89,5 +90,45 @@ describe('system-zoom minimum body sizes', () => {
         const zAtMin = 40 / (1000 * 0.42);
         expect(starSpritePx(1000, zAtMin)).toBeCloseTo(40, 6);
         expect(starSpritePx(1000, zAtMin * 1.01)).toBeGreaterThan(40);
+    });
+});
+
+// Task 08f1: region/nebula location label fonts (MainView.2.cs 4675-4705).
+// Labels are only drawn while 70 < factor <= maxFactor; the font branch
+// depends on the location type and the factor.
+describe('region label fonts', () => {
+    // A typical full-galaxy factor for an 8e6-unit galaxy on a 1600x900
+    // viewport (~minZoom 0.08 -> factor ~12500).
+    const maxFactor = 12_500;
+
+    it('returns null outside the visible window', () => {
+        expect(regionLabelFont(GalaxyLocationType.NebulaCloud, 70, maxFactor)).toBeNull(); // not > 70
+        expect(regionLabelFont(GalaxyLocationType.NebulaCloud, 69.9, maxFactor)).toBeNull();
+        expect(regionLabelFont(GalaxyLocationType.RaceRegion, 70, maxFactor)).toBeNull();
+        expect(regionLabelFont(GalaxyLocationType.NebulaCloud, maxFactor + 1, maxFactor)).toBeNull(); // > double_5
+        expect(regionLabelFont(GalaxyLocationType.NebulaCloud, 0, maxFactor)).toBeNull();
+    });
+
+    it('is visible at the window edges (factor 70 exclusive, maxFactor inclusive)', () => {
+        expect(regionLabelFont(GalaxyLocationType.NebulaCloud, 70.0001, maxFactor)).not.toBeNull();
+        expect(regionLabelFont(GalaxyLocationType.NebulaCloud, maxFactor, maxFactor)).not.toBeNull();
+    });
+
+    it('nebula clouds: font_2 (>4000), font_0 (>1000), font_1 bold (else)', () => {
+        expect(regionLabelFont(GalaxyLocationType.NebulaCloud, 4001, maxFactor)).toEqual({ size: 15.33, bold: false });
+        expect(regionLabelFont(GalaxyLocationType.NebulaCloud, 4000, maxFactor)).toEqual({ size: 16.67, bold: false }); // not > 4000
+        expect(regionLabelFont(GalaxyLocationType.NebulaCloud, 1001, maxFactor)).toEqual({ size: 16.67, bold: false });
+        expect(regionLabelFont(GalaxyLocationType.NebulaCloud, 1000, maxFactor)).toEqual({ size: 18.67, bold: true }); // not > 1000
+        expect(regionLabelFont(GalaxyLocationType.NebulaCloud, 100, maxFactor)).toEqual({ size: 18.67, bold: true });
+    });
+
+    it('non-nebula locations: font_3 (>4000), font_2 (>1000), font_0 (else)', () => {
+        for (const type of [GalaxyLocationType.GalacticCore, GalaxyLocationType.SuperNova, GalaxyLocationType.RaceRegion]) {
+            expect(regionLabelFont(type, 4001, maxFactor)).toEqual({ size: 10.67, bold: false });
+            expect(regionLabelFont(type, 4000, maxFactor)).toEqual({ size: 15.33, bold: false });
+            expect(regionLabelFont(type, 1001, maxFactor)).toEqual({ size: 15.33, bold: false });
+            expect(regionLabelFont(type, 1000, maxFactor)).toEqual({ size: 16.67, bold: false });
+            expect(regionLabelFont(type, 100, maxFactor)).toEqual({ size: 16.67, bold: false });
+        }
     });
 });
