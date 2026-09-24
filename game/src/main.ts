@@ -16,6 +16,7 @@ import { GalaxyTime } from './sim/clock';
 import { START_STAR_DATE } from './sim/galaxyTime';
 import { formatClockLabel } from './ui/hud';
 import { createMapOverlayState } from './ui/mapOverlays';
+import { createMainMenu, shouldSkipMenu } from './ui/screens/mainMenu';
 import './ui/hud.css';
 
 // ?shape= names accepted by the boot URL.
@@ -84,8 +85,32 @@ async function loadSystemNames(dwuPresent: boolean): Promise<string[]> {
 
 async function main(): Promise<void> {
     const params = new URLSearchParams(window.location.search);
+
+    // Task 06a: show the main menu first; the galaxy/Main View/HUD are created
+    // only after Start New Game. Any of ?seed/shape/stars/zoom/cx/cy/skipMenu
+    // skips the menu and boots straight into the game (screenshot scripts).
+    if (!shouldSkipMenu(window.location.search)) {
+        const menu = createMainMenu(() => {
+            menu.destroy();
+            bootGame({ seed: Date.now() % 2147483647, starCount: 700 });
+        });
+        return;
+    }
+
     const seed = parseInt(params.get('seed') ?? '1', 10) || 1;
     const starCount = parseInt(params.get('stars') ?? '700', 10) || 700;
+    await bootGame({ seed, starCount, params });
+}
+
+/** Boot the game directly (menu skipped via URL params or Start New Game). */
+async function bootGame(opts: {
+    seed: number;
+    starCount: number;
+    params?: URLSearchParams;
+}): Promise<void> {
+    const params = opts.params ?? new URLSearchParams(window.location.search);
+    const seed = opts.seed;
+    const starCount = opts.starCount;
     const shape = SHAPE_BY_NAME[params.get('shape') ?? 'spiral'] ?? GalaxyShape.Spiral;
     const zoomParam = params.get('zoom') !== null ? parseFloat(params.get('zoom')!) : null;
     const cx = params.get('cx') !== null ? parseFloat(params.get('cx')!) : null;

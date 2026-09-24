@@ -22,3 +22,15 @@ Everything you need is here. Create `src/ui/screens/mainMenu.ts` (+ css), edit `
 - Export a pure `MENU_ITEMS` array (id, label, imageBase) and test that its order is Tutorials, StartNewGame, LoadGame, Options, ChangeTheme, Exit and that every image name is from the list above.
 
 Verify: `npm run typecheck`, `npm test`; with `npm run dev` running save (don't open) `shots/06a-menu.png` at `/` (no params) 1920×1080. Append `## Worker report`.
+
+## Worker report
+
+Files changed:
+- `src/ui/screens/mainMenu.ts` (new) — `MENU_ITEMS` (id/label/imageBase, order Tutorials → StartNewGame → LoadGame → Options → ChangeTheme → Exit), `shouldSkipMenu(search)` (true for any of `seed`, `shape`, `stars`, `zoom`, `cx`, `cy`, `skipMenu`), `createMainMenu(onStartNewGame)` building the full-screen `MainBackground.jpg`, top-centre yellow theme label, centred rounded translucent panel (`rgba(20,22,28,0.8)`, radius 14px, padding 12px 28px, 8px gaps) with the six `Menu_*_Inactive.png` rows swapping to `_Active.png` on hover, `Title.png` at top 58% / width 50%, and corner items Galactopedia (top-left), CheckForUpdates (bottom-left, with `Version 1.9.5 (recreation)` under it), Credits (bottom-right). Exit calls `window.close()` (desktop) or shows a "Close this tab to exit" toast (browser); other items log `TODO(menu): <item>`.
+- `src/ui/screens/mainMenu.css` (new) — layout above, 'Forgotten Futurist' font via the same @font-face as hud.css.
+- `src/main.ts` — boot now shows the main menu first; galaxy/Main View/HUD are created only after Start New Game (seed = `Date.now() % 2147483647`, spiral, 700 stars via new `bootGame()`); URL params `seed/shape/stars/zoom/cx/cy/skipMenu` skip the menu and boot straight in as before.
+- `test/mainMenu.test.ts` (new) — MENU_ITEMS order + image-base names from the allowed list + labels non-empty; `shouldSkipMenu` true for each boot param, false otherwise.
+
+Done: typecheck passes, all 197 tests pass (16 files), screenshot saved to `shots/06a-menu.png` (1920×1080, no params) — console output clean (only Vite HMR debug lines, no errors).
+
+Left undone: nothing in scope. (Note: `src/sim/startGameOptions.ts` is an untracked file from task 06b's lane, not part of this task.)

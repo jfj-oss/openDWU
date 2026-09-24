@@ -1,0 +1,128 @@
+/* Main menu screen (task 06a). Font: Forgotten Futurist, served from the DW:U
+   install folder via /assets/dwu/... (same @font-face as hud.css). */
+@font-face {
+    font-family: 'Forgotten Futurist';
+    src: url('/assets/dwu/Customization/DistantWorldsExpanded-main/DistantWorldsExpanded/DistantWorlds/Resources/Forgotte.ttf');
+}
+
+#main-menu {
+    position: absolute;
+    inset: 0;
+    background: #000;
+    overflow: hidden;
+    font-family: 'Forgotten Futurist', sans-serif;
+    color: #fff;
+    z-index: 10;
+}
+
+.menu-background {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/* Top-centre theme label. */
+.menu-theme-label {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: #ffd84d;
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+/* Vertical menu list in a dark rounded translucent panel near the top. */
+.menu-panel {
+    position: absolute;
+    top: 13%;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background: rgba(20, 22, 28, 0.8);
+    border-radius: 14px;
+    padding: 12px 28px;
+}
+
+.menu-item {
+    pointer-events: auto;
+    background: transparent;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    line-height: 0;
+}
+.menu-item img {
+    max-width: 220px;
+    height: auto;
+    user-select: none;
+    -webkit-user-drag: none;
+}
+
+/* Title logo, lower-middle, ~50% of window width (aspect kept). */
+.menu-title {
+    position: absolute;
+    top: 58%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 50%;
+    height: auto;
+    user-select: none;
+    -webkit-user-drag: none;
+}
+
+/* Small corner items. */
+.menu-corner {
+    position: absolute;
+    pointer-events: auto;
+    background: transparent;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    line-height: 0;
+    text-align: center;
+}
+.menu-corner img {
+    max-width: 120px;
+    height: auto;
+    user-select: none;
+    -webkit-user-drag: none;
+}
+.menu-corner-galactopedia {
+    top: 10px;
+    left: 10px;
+}
+.menu-corner-updates {
+    bottom: 10px;
+    left: 10px;
+}
+.menu-corner-credits {
+    bottom: 10px;
+    right: 10px;
+}
+.menu-version {
+    margin-top: 4px;
+    font-size: 11px;
+    color: #cfd6dd;
+    white-space: nowrap;
+}
+
+/* "Close this tab to exit" toast (browser exit fallback). */
+.menu-toast {
+    position: fixed;
+    bottom: 40px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(20, 22, 28, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    padding: 10px 18px;
+    font-family: 'Forgotten Futurist', sans-serif;
+    font-size: 13px;
+    color: #fff;
+    z-index: 20;
+}
