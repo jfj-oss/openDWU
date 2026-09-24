@@ -27,6 +27,8 @@ export const MENU_ITEMS: MenuItem[] = [
 
 export interface MainMenuCallbacks {
     onStartNewGame: () => void;
+    /** Called when "Load Game" is clicked (task 11a3: open the load panel). */
+    onLoadGame?: () => void;
 }
 
 export interface MainMenuRefs {
@@ -113,6 +115,13 @@ export function createMainMenu(callbacks: MainMenuCallbacks): MainMenuRefs {
             switch (item.id) {
                 case 'startNewGame':
                     callbacks.onStartNewGame();
+                    break;
+                case 'loadGame':
+                    if (callbacks.onLoadGame) {
+                        callbacks.onLoadGame();
+                    } else {
+                        console.info('TODO(menu): loadGame');
+                    }
                     break;
                 case 'exit':
                     if (isDesktopShell()) {

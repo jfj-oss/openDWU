@@ -1,0 +1,235 @@
+/* Save/load panels (task 11a3). Centred modal over the map, same modern
+   dark-panel style as the in-game Escape menu (gameMenu.css). */
+
+#save-load-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1002; /* above the game menu overlay and the HUD */
+    font-family: 'Forgotten Futurist', sans-serif;
+    color: #fff;
+}
+
+.save-load-dim {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+}
+
+.save-load-panel {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: min(420px, calc(100vw - 40px));
+    max-height: calc(100vh - 80px);
+    overflow-y: auto;
+    background: rgba(14, 16, 20, 0.96);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+    padding: 18px 20px 20px;
+}
+
+.save-load-title {
+    font-size: 18px;
+    font-weight: bold;
+    text-align: center;
+    margin-bottom: 14px;
+    letter-spacing: 0.04em;
+}
+
+/* Save / Load tabs. */
+.save-load-tabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 12px;
+}
+
+.save-load-tab {
+    pointer-events: auto;
+    flex: 1;
+    background: rgba(30, 33, 40, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    cursor: pointer;
+    padding: 6px 12px;
+    font-size: 13px;
+    font-family: inherit;
+    color: #cfd6df;
+    transition: background 0.12s ease, border-color 0.12s ease;
+}
+.save-load-tab:hover {
+    background: rgba(44, 49, 58, 0.95);
+    color: #fff;
+}
+.save-load-tab-active {
+    background: rgba(44, 49, 58, 0.95);
+    border-color: rgba(120, 170, 255, 0.5);
+    color: #fff;
+}
+
+.save-load-body {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.save-load-field-label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 13px;
+    color: #cfd6df;
+}
+
+.save-load-name-input {
+    pointer-events: auto;
+    background: rgba(30, 33, 40, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    color: #fff;
+    font-family: inherit;
+    font-size: 14px;
+    padding: 7px 10px;
+}
+.save-load-name-input:focus {
+    outline: none;
+    border-color: rgba(120, 170, 255, 0.6);
+}
+
+.save-list-head {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #9aa3ad;
+}
+
+.save-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 220px;
+    overflow-y: auto;
+}
+
+.save-list-empty {
+    font-size: 13px;
+    color: #9aa3ad;
+    padding: 6px 2px;
+}
+
+.save-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(30, 33, 40, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 6px;
+    padding: 6px 10px;
+}
+.save-row-clickable {
+    pointer-events: auto;
+    cursor: pointer;
+    transition: background 0.12s ease, border-color 0.12s ease;
+}
+.save-row-clickable:hover {
+    background: rgba(44, 49, 58, 0.9);
+    border-color: rgba(120, 170, 255, 0.4);
+}
+
+.save-row-name {
+    flex: 1;
+    font-size: 13px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.save-row-date {
+    font-size: 11px;
+    color: #9aa3ad;
+    white-space: nowrap;
+}
+
+.save-row-btn {
+    pointer-events: auto;
+    background: rgba(30, 33, 40, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 5px;
+    cursor: pointer;
+    padding: 3px 10px;
+    font-size: 12px;
+    font-family: inherit;
+    color: #fff;
+    transition: background 0.12s ease, border-color 0.12s ease;
+}
+.save-row-btn:hover {
+    background: rgba(44, 49, 58, 0.95);
+    border-color: rgba(120, 170, 255, 0.5);
+}
+.save-row-delete:hover {
+    border-color: rgba(255, 120, 120, 0.6);
+}
+
+.save-load-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.save-load-btn {
+    pointer-events: auto;
+    flex: 1;
+    background: rgba(30, 33, 40, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    cursor: pointer;
+    padding: 8px 12px;
+    font-size: 14px;
+    font-family: inherit;
+    color: #fff;
+    transition: background 0.12s ease, border-color 0.12s ease;
+}
+.save-load-btn:hover {
+    background: rgba(44, 49, 58, 0.95);
+    border-color: rgba(120, 170, 255, 0.5);
+}
+.save-load-btn:active {
+    background: rgba(56, 62, 74, 0.95);
+}
+
+/* Close (✕) button, top-right of the panel. */
+.save-load-close {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    pointer-events: auto;
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    min-width: 26px;
+    min-height: 26px;
+    font-size: 13px;
+    color: #9aa3ad;
+}
+.save-load-close:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+}
+
+/* Toast for save/delete/download feedback. */
+.save-load-toast {
+    position: absolute;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(20, 22, 28, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 10px 18px;
+    font-size: 13px;
+    color: #fff;
+    white-space: nowrap;
+}

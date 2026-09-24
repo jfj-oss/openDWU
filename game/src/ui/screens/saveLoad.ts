@@ -1,0 +1,555 @@
+// Save/load part 3 (task 11a3): the Save Game / Load Game panels. The Escape
+// menu's Save/Load buttons and the main menu's "Load Game" item open these;
+// in src/main.ts a load goes through the shared startGameView(game).
+//
+// Storage: localStorage['dwu.saves.' + name] holds the serializeGame JSON
+// string (src/sim/save/gameSave.ts); 'dwu.saveIndex' is a small index of
+// {name, date} entries so the list can be shown without parsing every save.
+// A save also carries its own savedAt timestamp inside the stored JSON.
+// .dwusave files are plain-text exports/imports of that same JSON string
+// (Blob download / <input type=file>).
+import './saveLoad.css';
+
+/** localStorage key prefix for one named save. */
+export const SAVE_KEY_PREFIX = 'dwu.saves.';
+/** localStorage key of the save index (array of SaveEntry). */
+export const SAVE_INDEX_KEY = 'dwu.saveIndex';
+/** File extension for downloaded/imported save files. */
+export const SAVE_FILE_EXTENSION = '.dwusave';
+
+/** Minimal string-keyed storage shape (localStorage-compatible subset). */
+export interface SaveStorage {
+    getItem(key: string): string | null;
+    setItem(key: string, value: string): void;
+    removeItem(key: string): void;
+}
+
+/** One row of the save list. */
+export interface SaveEntry {
+    name: string;
+    /** ISO date string (UTC) when the save was written. */
+    date: string;
+}
+
+/** The three things a loaded game needs to boot through startGameView. */
+export interface LoadedGame {
+    game: unknown;
+    time: unknown;
+    startOptions: unknown;
+}
+
+// ---------------------------------------------------------------------------
+// Pure save-index helpers (testable with an injected storage object).
+// ---------------------------------------------------------------------------
+
+/** Read the save index from storage (missing/corrupt → empty list). */
+export function readSaveIndex(storage: SaveStorage): SaveEntry[] {
+    try {
+        const raw = storage.getItem(SAVE_INDEX_KEY);
+        if (raw === null) return [];
+        const parsed = JSON.parse(raw) as unknown;
+        if (!Array.isArray(parsed)) return [];
+        return parsed.filter(
+            (e): e is SaveEntry =>
+                typeof e === 'object' && e !== null && typeof (e as SaveEntry).name === 'string',
+        );
+    } catch {
+        return [];
+    }
+}
+
+/** Write the save index back to storage. */
+export function writeSaveIndex(storage: SaveStorage, entries: SaveEntry[]): void {
+    storage.setItem(SAVE_INDEX_KEY, JSON.stringify(entries));
+}
+
+/** Store `text` under `name`: writes the save key plus the index entry
+ * (replacing any existing entry for the same name, newest first). */
+export function storeSave(storage: SaveStorage, name: string, text: string, date: string): void {
+    storage.setItem(SAVE_KEY_PREFIX + name, text);
+    const entries = readSaveIndex(storage).filter((e) => e.name !== name);
+    entries.unshift({ name, date });
+    writeSaveIndex(storage, entries);
+}
+
+/** Remove the save key and its index entry (no-op when absent). Returns true
+ * when something was removed. */
+export function deleteSave(storage: SaveStorage, name: string): boolean {
+    let removed = false;
+    if (storage.getItem(SAVE_KEY_PREFIX + name) !== null) {
+        storage.removeItem(SAVE_KEY_PREFIX + name);
+        removed = true;
+    }
+    const entries = readSaveIndex(storage);
+    const kept = entries.filter((e) => e.name !== name);
+    if (kept.length !== entries.length) {
+        writeSaveIndex(storage, kept);
+        removed = true;
+    }
+    return removed;
+}
+
+/** Parse a .dwusave file's text into a LoadedGame (throws on bad input). */
+export function parseSaveFileText(text: string, load: (text: string) => LoadedGame): LoadedGame {
+    // Validate the JSON up front so callers get a clean error before touching
+    // the sim; the loader itself re-parses.
+    JSON.parse(text);
+    return load(text);
+}
+
+/** Trigger a browser download of `text` as `<baseName>.dwusave`. */
+export function downloadSaveFile(baseName: string, text: string): void {
+    const blob = new Blob([text], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${baseName}${SAVE_FILE_EXTENSION}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+}
+
+// ---------------------------------------------------------------------------
+// Provider registry (same pattern as keyboard.setGameMenuHandler)
+// ---------------------------------------------------------------------------
+
+/** What the running app offers the Save/Load panels. Registered by
+ * src/main.ts after booting a game view (and for the main menu's Load Game). */
+export interface SaveLoadProvider {
+    /** Open the panel in the given sub-mode ('save' / 'load'). */
+    open(mode: 'save' | 'load'): void;
+    /** Serialize the running game (null when saving is unavailable). */
+    serialize?: () => string | null;
+    /** Resolve stored save text to a LoadedGame (null when loading is
+     * unavailable, e.g. on the main menu without a loaded game data set). */
+    loadSave?: (text: string) => LoadedGame;
+    /** In-memory saves written this session (merged over localStorage). */
+    memorySaves?: Map<string, string>;
+}
+
+let saveLoadProvider: SaveLoadProvider | null = null;
+
+/** Register the provider used by the Escape menu's Save/Load buttons and the
+ * main menu's Load Game item. Pass null to unregister (e.g. on teardown). */
+export function setSaveLoadProvider(p: SaveLoadProvider | null): void {
+    saveLoadProvider = p;
+}
+
+/** The currently registered provider (null before any game has booted). */
+export function getSaveLoadProvider(): SaveLoadProvider | null {
+    return saveLoadProvider;
+}
+
+// ---------------------------------------------------------------------------
+// Panel UI
+// ---------------------------------------------------------------------------
+
+export interface SavePanelCallbacks {
+    /** Called by the panel after it has written the save to storage. */
+    onSaved?: (name: string) => void;
+    /** Called when a save should be loaded (panel already closed). */
+    onLoad?: (name: string) => void;
+    /** Called when a .dwusave file was picked and parsed. */
+    onLoadedFile?: (loaded: LoadedGame) => void;
+    /** Called after a save was deleted (list refresh handled internally). */
+    onDelete?: (name: string) => void;
+}
+
+export interface SavePanelRefs {
+    root: HTMLDivElement;
+    show: () => void;
+    hide: () => void;
+    destroy: () => void;
+}
+
+export interface SavePanelWiring {
+    callbacks: SavePanelCallbacks;
+    /** In-memory saves (this session), merged above the localStorage ones. */
+    memorySaves?: Map<string, string>;
+    /** Serialize the running game to its save text (null → saving disabled). */
+    serialize?: () => string | null;
+    /** Resolve a stored save text to a LoadedGame (load button / file open). */
+    loadSave?: (text: string) => LoadedGame;
+    /** Date stamp for newly written saves (default: now). */
+    now?: () => Date;
+    /** Storage backend (default: window.localStorage). */
+    storage?: SaveStorage;
+}
+
+/** Build the Save/Load panel and append it to document.body. `mode` picks
+ * which sub-panel shows first: 'save' (Escape menu Save Game) or 'load'
+ * (Escape menu Load Game / main menu Load Game). */
+export function createSaveLoadPanel(mode: 'save' | 'load', wiring: SavePanelWiring = { callbacks: {} }): SavePanelRefs {
+    const { callbacks, memorySaves, serialize, loadSave, now, storage } = wiring;
+    const getStorage = (): SaveStorage => storage ?? (window.localStorage as unknown as SaveStorage);
+    const stamp = (): string => (now ? now() : new Date()).toISOString();
+
+    const root = document.createElement('div');
+    root.id = 'save-load-overlay';
+    root.style.display = 'none';
+
+    const dim = document.createElement('div');
+    dim.className = 'save-load-dim';
+    root.appendChild(dim);
+
+    const panel = document.createElement('div');
+    panel.className = 'save-load-panel';
+
+    const title = document.createElement('div');
+    title.className = 'save-load-title';
+    panel.appendChild(title);
+
+    // --- Tabs ---------------------------------------------------------------
+    const tabs = document.createElement('div');
+    tabs.className = 'save-load-tabs';
+    const tabButtons: Record<'save' | 'load', HTMLButtonElement> = {
+        save: makeTabButton('Save'),
+        load: makeTabButton('Load'),
+    };
+    tabs.append(tabButtons.save, tabButtons.load);
+    panel.appendChild(tabs);
+
+    // --- Save sub-panel -----------------------------------------------------
+    const saveBody = document.createElement('div');
+    saveBody.className = 'save-load-body';
+
+    const nameLabel = document.createElement('label');
+    nameLabel.className = 'save-load-field-label';
+    nameLabel.textContent = 'Save name';
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.className = 'save-load-name-input';
+    nameInput.maxLength = 40;
+    nameInput.placeholder = 'My Galaxy';
+    nameLabel.append(nameInput);
+    saveBody.appendChild(nameLabel);
+
+    const saveListHead = document.createElement('div');
+    saveListHead.className = 'save-list-head';
+    saveListHead.textContent = 'Existing saves';
+    saveBody.appendChild(saveListHead);
+    const saveList = document.createElement('div');
+    saveList.className = 'save-list';
+    saveBody.appendChild(saveList);
+
+    const saveActions = document.createElement('div');
+    saveActions.className = 'save-load-actions';
+    const saveBtn = makeActionButton('Save');
+    const downloadBtn = makeActionButton('Download .dwusave');
+    saveActions.append(saveBtn, downloadBtn);
+    saveBody.appendChild(saveActions);
+
+    // --- Load sub-panel -----------------------------------------------------
+    const loadBody = document.createElement('div');
+    loadBody.className = 'save-load-body';
+    loadBody.style.display = 'none';
+
+    const loadListHead = document.createElement('div');
+    loadListHead.className = 'save-list-head';
+    loadListHead.textContent = 'Saves';
+    loadBody.appendChild(loadListHead);
+    const loadList = document.createElement('div');
+    loadList.className = 'save-list';
+    loadBody.appendChild(loadList);
+
+    const loadActions = document.createElement('div');
+    loadActions.className = 'save-load-actions';
+    const openFileBtn = makeActionButton('Open file…');
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = SAVE_FILE_EXTENSION;
+    fileInput.className = 'save-load-file-input';
+    fileInput.style.display = 'none';
+    loadActions.append(openFileBtn, fileInput);
+    loadBody.appendChild(loadActions);
+
+    panel.append(saveBody, loadBody);
+    root.appendChild(panel);
+
+    // Close button (top-right of the panel).
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'save-load-close';
+    closeBtn.title = 'Close';
+    closeBtn.textContent = '✕';
+    closeBtn.addEventListener('click', () => hide());
+    panel.appendChild(closeBtn);
+
+    document.body.appendChild(root);
+
+    // --- State --------------------------------------------------------------
+    let activeMode: 'save' | 'load' = mode;
+    let toastTimer: number | undefined;
+
+    function showToast(text: string): void {
+        const existing = root.querySelector('.save-load-toast');
+        if (existing) existing.remove();
+        if (toastTimer !== undefined) {
+            clearTimeout(toastTimer);
+            toastTimer = undefined;
+        }
+        const toast = document.createElement('div');
+        toast.className = 'save-load-toast';
+        toast.textContent = text;
+        root.appendChild(toast);
+        toastTimer = window.setTimeout(() => {
+            toast.remove();
+            toastTimer = undefined;
+        }, 3000);
+    }
+
+    /** All known saves: in-memory (this session) merged over localStorage,
+     * newest first (index order, then memory-only names). */
+    function allSaves(): SaveEntry[] {
+        const st = getStorage();
+        const local = readSaveIndex(st);
+        const seen = new Set(local.map((e) => e.name));
+        const memEntries: SaveEntry[] = [];
+        for (const [name, text] of memorySaves ?? []) {
+            if (seen.has(name)) continue;
+            seen.add(name);
+            memEntries.push({ name, date: savedDateFromText(text) ?? '' });
+        }
+        return [...memEntries, ...local];
+    }
+
+    /** Look up the save text for `name` (memory first, then storage). */
+    function saveTextFor(name: string): string | null {
+        const mem = memorySaves?.get(name);
+        if (mem !== undefined) return mem;
+        return getStorage().getItem(SAVE_KEY_PREFIX + name);
+    }
+
+    function refreshLists(): void {
+        renderList(saveList, allSaves(), {
+            onSaveClick: (name) => {
+                nameInput.value = name;
+            },
+        });
+        renderList(loadList, allSaves(), {
+            onLoadClick: (name) => {
+                doLoadByName(name);
+            },
+            onDeleteClick: (name) => {
+                doDelete(name);
+            },
+        });
+    }
+
+    function renderList(
+        listEl: HTMLDivElement,
+        entries: SaveEntry[],
+        handlers: { onSaveClick?: (name: string) => void; onLoadClick?: (name: string) => void; onDeleteClick?: (name: string) => void },
+    ): void {
+        listEl.replaceChildren();
+        if (entries.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'save-list-empty';
+            empty.textContent = 'No saves yet';
+            listEl.appendChild(empty);
+            return;
+        }
+        for (const entry of entries) {
+            const row = document.createElement('div');
+            row.className = 'save-row';
+            const label = document.createElement('span');
+            label.className = 'save-row-name';
+            label.textContent = entry.name;
+            const date = document.createElement('span');
+            date.className = 'save-row-date';
+            date.textContent = formatSaveDate(entry.date);
+            row.append(label, date);
+            if (handlers.onSaveClick) {
+                row.classList.add('save-row-clickable');
+                row.addEventListener('click', () => handlers.onSaveClick!(entry.name));
+            }
+            if (handlers.onLoadClick) {
+                const loadBtn = makeRowButton('Load');
+                loadBtn.addEventListener('click', () => handlers.onLoadClick!(entry.name));
+                row.appendChild(loadBtn);
+            }
+            if (handlers.onDeleteClick) {
+                const delBtn = makeRowButton('Delete');
+                delBtn.className += ' save-row-delete';
+                delBtn.addEventListener('click', () => handlers.onDeleteClick!(entry.name));
+                row.appendChild(delBtn);
+            }
+            listEl.appendChild(row);
+        }
+    }
+
+    function switchMode(next: 'save' | 'load'): void {
+        activeMode = next;
+        title.textContent = next === 'save' ? 'Save Game' : 'Load Game';
+        tabButtons.save.classList.toggle('save-load-tab-active', next === 'save');
+        tabButtons.load.classList.toggle('save-load-tab-active', next === 'load');
+        saveBody.style.display = next === 'save' ? '' : 'none';
+        loadBody.style.display = next === 'load' ? '' : 'none';
+        refreshLists();
+    }
+
+    function doSave(): void {
+        const name = nameInput.value.trim();
+        if (name === '') {
+            showToast('Enter a save name first');
+            return;
+        }
+        const text = serialize?.() ?? null;
+        if (text === null) {
+            showToast('Nothing to save yet');
+            return;
+        }
+        const date = stamp();
+        if (memorySaves) {
+            memorySaves.set(name, text);
+        } else {
+            storeSave(getStorage(), name, text, date);
+        }
+        refreshLists();
+        showToast(`Saved "${name}"`);
+        callbacks.onSaved?.(name);
+    }
+
+    function doDownload(): void {
+        const name = nameInput.value.trim() || 'save';
+        const text = serialize?.() ?? null;
+        if (text === null) {
+            showToast('Nothing to download yet');
+            return;
+        }
+        downloadSaveFile(name, text);
+        showToast(`Downloading ${name}${SAVE_FILE_EXTENSION}`);
+    }
+
+    function doLoadByName(name: string): void {
+        const text = saveTextFor(name);
+        if (text === null) {
+            showToast(`Save "${name}" not found`);
+            return;
+        }
+        if (!loadSave) {
+            showToast('Loading is only available during a game');
+            return;
+        }
+        try {
+            loadSave(text);
+        } catch (err) {
+            console.error('Failed to load save', err);
+            showToast('Could not load that save');
+            return;
+        }
+        hide();
+        callbacks.onLoad?.(name);
+    }
+
+    function doDelete(name: string): void {
+        if (memorySaves) {
+            memorySaves.delete(name);
+        } else {
+            deleteSave(getStorage(), name);
+        }
+        refreshLists();
+        showToast(`Deleted "${name}"`);
+        callbacks.onDelete?.(name);
+    }
+
+    function handleFilePicked(e: Event): void {
+        const input = e.target as HTMLInputElement;
+        const file = input.files?.[0];
+        input.value = '';
+        if (!file) return;
+        if (!loadSave) {
+            showToast('Opening files is only available during a game');
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => {
+            try {
+                const loaded = parseSaveFileText(String(reader.result), loadSave);
+                hide();
+                callbacks.onLoadedFile?.(loaded);
+            } catch (err) {
+                console.error('Failed to read save file', err);
+                showToast('Could not read that save file');
+            }
+        };
+        reader.onerror = () => showToast('Could not read that save file');
+        reader.readAsText(file);
+    }
+
+    tabButtons.save.addEventListener('click', () => switchMode('save'));
+    tabButtons.load.addEventListener('click', () => switchMode('load'));
+    saveBtn.addEventListener('click', doSave);
+    downloadBtn.addEventListener('click', doDownload);
+    openFileBtn.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', handleFilePicked);
+
+    function show(): void {
+        root.style.display = '';
+        switchMode(activeMode);
+    }
+
+    function hide(): void {
+        root.style.display = 'none';
+    }
+
+    switchMode(mode);
+
+    return {
+        root,
+        show,
+        hide,
+        destroy: () => {
+            if (toastTimer !== undefined) clearTimeout(toastTimer);
+            root.remove();
+        },
+    };
+}
+
+// ---------------------------------------------------------------------------
+// Small DOM/date helpers
+// ---------------------------------------------------------------------------
+
+function makeTabButton(label: string): HTMLButtonElement {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'save-load-tab';
+    btn.textContent = label;
+    return btn;
+}
+
+function makeActionButton(label: string): HTMLButtonElement {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'save-load-btn';
+    btn.textContent = label;
+    return btn;
+}
+
+function makeRowButton(label: string): HTMLButtonElement {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'save-row-btn';
+    btn.textContent = label;
+    return btn;
+}
+
+/** Pull the savedAt timestamp out of a stored save JSON (best effort). */
+function savedDateFromText(text: string): string | null {
+    try {
+        const obj = JSON.parse(text) as { savedAt?: unknown };
+        return typeof obj.savedAt === 'string' ? obj.savedAt : null;
+    } catch {
+        return null;
+    }
+}
+
+/** Format an ISO date for the list, e.g. `2026-09-24 15:03`. */
+function formatSaveDate(iso: string): string {
+    if (iso === '') return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    const pad = (n: number): string => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
