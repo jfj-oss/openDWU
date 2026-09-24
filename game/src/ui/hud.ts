@@ -225,11 +225,15 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
                 el = buildMoneyPanel(wiring.game);
                 break;
             case 'pnlSelection':
-                el = buildSelectionPanel({ ...wiring, onSelectionChange: (sel) => {
-                    refs.onSelectionChange = wiring.onSelectionChange;
-                    wiring.onSelectionChange?.(sel);
-                } });
+            {
+                // buildSelectionPanel installs its refresh callback on the object it is
+                // given; expose that callback as the HUD's selection hook.
+                const panelWiring: HudWiring = { ...wiring };
+                el = buildSelectionPanel(panelWiring);
+                wiring.onSelectionChange = panelWiring.onSelectionChange;
+                refs.onSelectionChange = panelWiring.onSelectionChange;
                 break;
+            }
             case 'pnlOptionsList':
                 el = buildOptionsList({ ...wiring, overlays });
                 break;
