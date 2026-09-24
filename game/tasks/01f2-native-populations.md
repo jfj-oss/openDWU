@@ -234,3 +234,17 @@ namespace DistantWorlds.Types
 }
 
 ```
+
+## Worker report
+
+**Files changed**
+- `src/sim/population.ts` (new) — port of `Population.cs` (ctor `Population(Race, long)`, fields `_Race`/`_Amount`/`_UnassimilatedAmount`/`_GrowthRate`, `CompareTo`) and `PopulationList.cs` (`Add`/`Remove`/`RecalculateTotalAmount`). Serialization members omitted (out of scope). C# `long` is 64-bit; JS numbers are exact up to 2^53, which covers every population amount this game generates.
+- `src/sim/types.ts` — added `population = new PopulationList()` field to `Habitat` (port of `Habitat.cs` `Population` property, populated by `Galaxy.SelectPopulation`); imported `PopulationList`.
+- `src/sim/galaxy.ts` — ported `SelectPopulation(habitat, sun)` (Galaxy.6.cs:1218) plus helpers `CalculatePopulationAmount` (1330), `CheckIndependentColonyLimitForRace` (1273), `RenameSystemIfHome` (1320), and `DetermineNearestRaceRegion(x, y)` (Galaxy.4.cs:1919). Every `Rnd` call goes through `this.rnd` in source order. Added state fields `raceUsed` (bool[], lazily allocated), `raceIndependentColonyCount` (number[], lazily allocated — the C# quirk of sizing by `Races.Count` but indexing by `race.PictureRef` is preserved), `independentCount` (public, as in C#), `lifePrevalence` (default 1000 per C# ctor), and `age` (always 0 for new games; set from galaxy age at load time only). The C# ctor's field initializers are re-applied in the TS ctor body for parity with a freshly constructed Galaxy. Wired the call sites inside `setupSolarSystem`: planets and moons, each in a loop matching the C# `populationRolls`/`moonPopulationRolls` count. Updated the header comment to note SelectPopulation was ported in task 01f2.
+- `test/galaxy.test.ts` — new describe block "generateGalaxy native populations (task 01f2: SelectPopulation)" with five tests: (1) no populations created when no race NativeHabitatType matches any planet type (current data); (2) per-race independent colony limit respected; (3) home-system renaming consistent with races that have native populations; (4) deterministic for a fixed seed; (5) no empire starts → no native populations.
+
+**Verification**: `npm run typecheck` clean; `npm test` 149/149 passing.
+
+**Notes / deviations**
+- **Data/model mismatch (pre-existing, outside this task's scope)**: the parsed race `NativePlanetType` values from the current data files are 1–5, while generated planet `HabitatType` values are 8–16 (Volcanic=8 … FrozenGasGiant=16). The faithful comparison `race.nativePlanetType === habitat.type` therefore never matches, so no native populations are created with the current data. The 01f1 task source (`SelectRandomRacePreferHospitableHabitats`) confirms the C# engine compares `race.NativeHabitatType` directly against `HabitatType` enum cases (Volcanic/Desert/MarshySwamp/Continental/Ocean/BarrenRock/Ice), implying the original data files store HabitatType-range values. The port mirrors the C# comparison exactly; if the data files are fixed to store HabitatType-range values (or a mapping is added in `races.ts`), the tests in the new describe block should be updated to assert populated planets instead of the current no-match outcome.
+- Out of scope (left as TODO(port) in `galaxy.ts`): `SelectCreatures` (Galaxy.6.cs:654), population-driven DockingBay/Cargo/Troop/Character/Construction/Manufacturing list setup, `DoTasks`, `_BasesAtHabitat`. `lifePrevalence` is not exposed as a `GenerateGalaxyOptions` field (defaults to 1000 like the C# ctor); `age` is always 0 for new-game generation.

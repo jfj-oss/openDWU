@@ -11,6 +11,7 @@ import { Random } from './random';
 import { GalaxyLocation, GalaxyLocationEffectType, GalaxyLocationShape, GalaxyLocationType } from './galaxyLocation';
 import { GalaxyNebulaeGenerator } from './galaxyNebulaeGenerator';
 import { setupAlienRacePopulations, type EmpireStart } from './raceRegions';
+import { Population, PopulationList } from './population';
 import {
     GalaxyShape,
     Habitat,
@@ -116,6 +117,18 @@ export class Galaxy {
     private systemNamesUsedPlain: boolean[];
     private systemNamesUsedAlternative: boolean[];
 
+    // Port of Galaxy.6.cs SelectPopulation state (Galaxy.cs fields):
+    // _RaceUsed (bool[Races.Count], lazily allocated),
+    // _RaceIndependentColonyCount (List<int>, lazily allocated — note the
+    // source sizes it by Races.Count but indexes it by race.PictureRef, a
+    // quirk preserved here). IndependentCount is public in C# and exposed
+    // here for tests; _LifePrevalence defaults to 1000 in the C# ctor.
+    private raceUsed: boolean[] | null = null;
+    private raceIndependentColonyCount: number[] | null = null;
+    independentCount = 0;
+    lifePrevalence = 1000;
+    age = 0; // C#: _Age (always 0 in new-game generation; set from galaxy age at load time only)
+
     constructor(seed: number, shape: GalaxyShape, starCount: number, sectorWidth: number, sectorHeight: number, systemNames: string[], colonyPrevalence?: number) {
         this.randomSeed = seed;
         this.rnd = new Random(seed);
@@ -131,6 +144,16 @@ export class Galaxy {
         this.systemNamesUsedPlain = new Array(systemNames.length).fill(false);
         this.systemNamesUsedAlternative = new Array(systemNames.length).fill(false);
         this.setGalaxyPhysicalDimensions(sectorWidth, sectorHeight);
+        // Port of the C# ctor's field initializers (_Age = 0,
+        // _RaceUsed = null, _RaceIndependentColonyCount = null,
+        // IndependentCount = 0, _LifePrevalence = 1000). The class-field
+        // initializers above run before the ctor body, so reset them here
+        // for parity with a freshly constructed Galaxy.
+        this.raceUsed = null;
+        this.raceIndependentColonyCount = null;
+        this.independentCount = 0;
+        this.lifePrevalence = 1000;
+        this.age = 0;
     }
 
     // Port of Galaxy.3.cs SetGalaxyPhysicalDimensions
@@ -1617,14 +1640,123 @@ export class Galaxy {
         return result;
     }
 
+    // Port of Galaxy.4.cs DetermineNearestRaceRegion(x, y) (Galaxy.4.cs:1919).
+    // Returns the RaceRegion GalaxyLocation whose center is closest to (x, y),
+    // or null when there are no race regions.
+    determineNearestRaceRegion(x: number, y: number): GalaxyLocation | null {
+        let result: GalaxyLocation | null = null;
+        let num = Number.MAX_VALUE;
+        for (let i = 0; i < this.galaxyLocations.length; i++) {
+            if (this.galaxyLocations[i].type === GalaxyLocationType.RaceRegion) {
+                const center = this.galaxyLocations[i].resolveLocationCenter();
+                const num2 = this.calculateDistanceSquared(x, y, center.x, center.y);
+                if (num2 < num) {
+                    result = this.galaxyLocations[i];
+                    num = num2;
+                }
+            }
+        }
+        return result;
+    }
+
+    // Port of Galaxy.6.cs CheckIndependentColonyLimitForRace(race)
+    // (Galaxy.6.cs:1273). _LifePrevalence defaults to 1000 (C# ctor), so the
+    // limit is (int)(Math.Sqrt(StarCount) / 3.5 * _LifePrevalence / 1000.0).
+    private checkIndependentColonyLimitForRace(race: Race): boolean {
+        const num = this.lifePrevalence / 1000.0;
+        const num2 = Math.trunc(Math.sqrt(this.starCount) / 3.5 * num);
+        if (this.raceIndependentColonyCount === null || this.raceIndependentColonyCount.length === 0) {
+            this.raceIndependentColonyCount = [];
+            for (let i = 0; i < this.races.length; i++) {
+                this.raceIndependentColonyCount.push(0);
+            }
+        }
+        // C# indexes by race.PictureRef (list sized Races.Count — quirk kept).
+        const num3 = this.raceIndependentColonyCount[race.pictureIndex] ?? 0;
+        return num3 >= num2;
+    }
+
+    // Port of Galaxy.6.cs RenameSystemIfHome(sun, race) (Galaxy.6.cs:1320).
+    // The first native population of a given race renames its star system to
+    // the race's HomeSystemName and marks that race as used.
+    private renameSystemIfHome(sun: Habitat, race: Race, raceUsed: boolean[]): void {
+        const pictureRef = race.pictureIndex;
+        if (!raceUsed[pictureRef]) {
+            sun.name = race.homeSystemName;
+            raceUsed[pictureRef] = true;
+        }
+    }
+
+    // Port of Galaxy.6.cs CalculatePopulationAmount(habitat, race)
+    // (Galaxy.6.cs:1330). habitat.Quality reduces to BaseQuality at
+    // generation time (no bases/creatures yet).
+    private calculatePopulationAmount(habitat: Habitat, race: Race): number {
+        let num = habitat.baseQuality * 1000;
+        if (habitat.type === race.nativePlanetType) {
+            num *= 1.5;
+        }
+        let num2 = 0;
+        const num3 = this.rnd.next(0, 30);
+        num2 = num3 < 0 || num3 > 6 ? this.rnd.next(100000, 300000) * num : this.rnd.next(300000, 600000) * num;
+        if (this.age > 0) {
+            num2 = Math.trunc(num2 * Math.pow(1.2, this.age));
+        }
+        return num2;
+    }
+
+    // Port of Galaxy.6.cs SelectPopulation(habitat, sun) (Galaxy.6.cs:1218).
+    // Places an independent (native) population on the habitat when the
+    // nearest race region's race natively inhabits this habitat type and the
+    // per-race independent-colony limit hasn't been reached. Every Rnd call
+    // goes through this.rnd in source order.
+    selectPopulation(habitat: Habitat, sun: Habitat): void {
+        if (habitat.diameter < 75) {
+            return;
+        }
+        if (this.raceUsed === null) {
+            this.raceUsed = new Array(this.races.length).fill(false);
+        }
+        const raceUsed = this.raceUsed;
+        let race: Race | null = null;
+        const galaxyLocation = this.determineNearestRaceRegion(habitat.xpos, habitat.ypos);
+        if (galaxyLocation !== null) {
+            race = galaxyLocation.relatedRace;
+        }
+        if (race !== null && race.nativePlanetType === habitat.type && !this.checkIndependentColonyLimitForRace(race)) {
+            if (habitat.baseQuality < 0.6) {
+                // C#: habitat.BaseQuality = 0.5f + (float)(Rnd.NextDouble() * 0.4)
+                // (float casts throughout — Math.fround matches).
+                habitat.baseQuality = Math.fround(0.5 + Math.fround(this.rnd.nextDouble() * 0.4));
+            }
+            const num = 1;
+            for (let i = 0; i < num; i++) {
+                this.independentCount++;
+                const amount = this.calculatePopulationAmount(habitat, race);
+                const population = new Population(race, amount);
+                // C#: population.GrowthRate = 1f + ((float)race.ReproductiveRate - 1f) / 3f
+                population.growthRate = Math.fround(1 + (Math.fround(race.reproductionRate) - 1) / 3);
+                if (this.raceIndependentColonyCount !== null) {
+                    const idx = race.pictureIndex;
+                    if (idx < this.raceIndependentColonyCount.length) {
+                        this.raceIndependentColonyCount[idx]++;
+                    }
+                }
+                habitat.population.add(population);
+                this.renameSystemIfHome(sun, race, raceUsed);
+            }
+            habitat.population.recalculateTotalAmount();
+        }
+    }
+
     // Port of Galaxy.5.cs SetupSolarSystem(galaxyShape, sunHabitat, out
     // asteroidField) (lines 1386-1945). colonyPrevalence (this.colonyPrevalence)
     // stands in for Galaxy._ColonyPrevalence.
     //
-    // Not ported (out of scope per task 01c): SelectPopulation,
-    // SelectCreatures, DockingBay/Cargo/Troop/Character/Construction/
-    // Manufacturing list setup, DoTasks. Every call site that would have
-    // called one of the skipped functions is noted in the Worker report
+    // Not ported (out of scope per task 01c): SelectCreatures,
+    // DockingBay/Cargo/Troop/Character/Construction/
+    // Manufacturing list setup, DoTasks. SelectPopulation was ported in
+    // task 01f2 (see selectPopulation below). Every call site that would
+    // have called one of the skipped functions is noted in the Worker report
     // together with the (data-dependent, non-fixed) number of Rnd calls it
     // would have consumed in the original — the ported Rnd sequence
     // diverges from the original from the first such call site onward.
@@ -1813,7 +1945,9 @@ export class Galaxy {
                 if (this.rnd.next(0, 4) === 1) {
                     populationRolls++;
                 }
-                // TODO(port): SelectPopulation(habitat2, sunHabitat) x populationRolls — Galaxy.6.cs:1218. Data-dependent Rnd-call count; see Worker report.
+                for (let p = 0; p < populationRolls; p++) {
+                    this.selectPopulation(planet, sunHabitat);
+                }
                 // TODO(port): population-driven DockingBay/Cargo/Troop/etc setup vs. SelectCreatures(habitat2) — Galaxy.6.cs:654 (SelectCreatures). Data-dependent Rnd-call count; see Worker report.
                 habitatList.push(planet);
                 habitat = planet;
@@ -1899,7 +2033,9 @@ export class Galaxy {
                     if (this.rnd.next(0, 4) === 1 && moon.type !== HabitatType.BarrenRock) {
                         moonPopulationRolls++;
                     }
-                    // TODO(port): SelectPopulation(habitat2, sunHabitat) x moonPopulationRolls — Galaxy.6.cs:1218. Data-dependent Rnd-call count; see Worker report.
+                    for (let p = 0; p < moonPopulationRolls; p++) {
+                        this.selectPopulation(moon, sunHabitat);
+                    }
                     // TODO(port): population-driven setup vs. SelectCreatures(habitat2) — Galaxy.6.cs:654. Data-dependent Rnd-call count; see Worker report.
                     habitatList.push(moon);
                 }

@@ -2,6 +2,8 @@
 // HabitatType.cs, HabitatCategoryType.cs, GalaxyShape.cs,
 // HabitatAtmosphereType.cs, and the Habitat constructors (Habitat.cs).
 
+import { PopulationList } from './population';
+
 // Port of DistantWorlds.Types.HabitatType (HabitatType.cs)
 export enum HabitatType {
     Undefined,
@@ -111,9 +113,12 @@ export class Habitat {
     novaImageIndexMinor = 0; // C#: short NovaImageIndexMinor
     // Port of Habitat.cs Resources (HabitatResourceList). Abundance is 0-1000.
     resources: { resourceId: number; abundance: number }[] = [];
+    // Port of Habitat.cs Population (PopulationList, populated by
+    // Galaxy.SelectPopulation — Galaxy.6.cs:1218).
+    population = new PopulationList();
 
     // TODO(port): _LastHugeTouch/_LastLongTouch/_LastPeriodicTouch/_LastTouch
-    // (galaxy time), Population/_BasesAtHabitat lists and
+    // (galaxy time), _BasesAtHabitat list and
     // RecalculateCriticalResourceSupplyBonuses() from the C# ctor —
     // Habitat.cs:ctor — need Galaxy and the list types.
 
