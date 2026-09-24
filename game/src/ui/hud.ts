@@ -6,6 +6,8 @@ import { Camera } from '../render/camera';
 import { Galaxy } from '../sim/galaxy';
 import type { GameData } from '../sim/data/gameData';
 import { Habitat, HabitatCategoryType, HabitatType, IndustryType, SystemInfo } from '../sim/types';
+import { createGameMenu, type GameMenuRefs } from './screens/gameMenu';
+import { setGameMenuHandler } from './keyboard';
 
 // Port of Main.Part12.cs LoadUiChromeButtons (381–520): the control → chrome
 // button image mapping. The original loads each control's image from
@@ -88,6 +90,8 @@ export interface HudRefs {
     elements: Map<string, HTMLElement>;
     /** Set by the selection panel; main.ts calls it to push a new selection. */
     onSelectionChange?: (sel: Selection | null) => void;
+    /** The in-game Escape menu (task 10c), created with the HUD's clock. */
+    gameMenu?: GameMenuRefs;
 }
 
 export interface HudWiring {
@@ -127,6 +131,14 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
     const clock = wiring.clock ?? new GalaxyTime();
     const overlays = wiring.overlays ?? createMapOverlayState();
 
+    // In-game Escape menu (task 10c): created with the HUD's clock so opening
+    // it pauses the game and closing restores the previous paused state. Its
+    // toggle is registered as the global Escape action; the ≡ button below
+    // calls the same toggle.
+    const gameMenu = createGameMenu(clock);
+    setGameMenuHandler(gameMenu.toggle);
+    refs.gameMenu = gameMenu;
+
     for (const [name, rect] of Object.entries(computeHudLayout(window.innerWidth, window.innerHeight))) {
         let el: HTMLElement;
         switch (name) {
@@ -134,7 +146,7 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
                 el = buildMessagesPanel();
                 break;
             case 'pnlTopLeftBar':
-                el = buildTopLeftBar(clock);
+                el = buildTopLeftBar(clock, () => gameMenu.toggle());
                 break;
             case 'pnlMoney':
                 el = buildMoneyPanel();
@@ -215,11 +227,14 @@ function buildMessagesPanel(): HTMLElement {
 }
 
 /** Top-left compact bar: menu | help || play/pause − + || date (speed). */
-function buildTopLeftBar(clock: GalaxyTime): HTMLElement {
+function buildTopLeftBar(clock: GalaxyTime, onGameMenu: () => void): HTMLElement {
     const bar = document.createElement('div');
     bar.className = 'hud-panel hud-topbar';
 
+    // The ≡ button toggles the in-game Escape menu (task 10c) instead of the
+    // generic TODO log other chrome buttons still use.
     const menu = makeIconButton('btnGameMenu', 'Menu');
+    menu.addEventListener('click', onGameMenu);
     const help = makeIconButton('btnHelp', 'Help');
     bar.append(menu, help);
     bar.appendChild(makeSeparator());
