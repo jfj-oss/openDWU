@@ -1,6 +1,6 @@
 // Node.js filesystem version of loadGameData for tests.
 
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import type { GameData, FetchText } from '../../src/sim/data/gameData';
@@ -20,6 +20,10 @@ const fetchTextFs: FetchText = async (candidates: string[]): Promise<string> => 
             let relPath = candidate.replace(/^\/assets\/dwu\/?/, '');
             // Handle special case: resolve 'races' directory path
             // (resolveDataUrl might return multiple candidates for customization fallback)
+            const filePath = resolve(dwuRoot, relPath);
+            if (!existsSync(filePath)) {
+                continue;
+            }
             return readDwu(relPath);
         } catch (err) {
             // Try next candidate

@@ -21,6 +21,8 @@ import type { Plague } from './plagues';
 import { parsePlagues } from './plagues';
 import type { ResearchNode } from './research';
 import { parseResearch } from './research';
+import type { AgentNames, SubRoleNameSet } from './names';
+import { parseAgentNames, parseColonyNames, parseDesignNames, parseShipNames } from './names';
 
 export interface GameData {
     // From 04a (races, governments)
@@ -38,6 +40,12 @@ export interface GameData {
     facilities: Facility[];
     plagues: Plague[];
     research: ResearchNode[];
+
+    // From 04d1 (name lists)
+    colonyNames: string[];
+    shipNames: SubRoleNameSet;
+    agentNames: AgentNames[];
+    designNames: string[][];
 }
 
 export type FetchText = (candidates: string[]) => Promise<string>;
@@ -79,6 +87,11 @@ export async function loadGameData(
         facilitiesText,
         plaguesText,
         researchText,
+
+        colonyNamesText,
+        shipNamesText,
+        characterNamesText,
+        designNamesText,
         ...raceFileResults
     ] = await Promise.all([
         // 04a non-race files
@@ -95,6 +108,14 @@ export async function loadGameData(
         fetchText(resolveDataUrl('facilities.txt', customizationSet)),
         fetchText(resolveDataUrl('plagues.txt', customizationSet)),
         fetchText(resolveDataUrl('research.txt', customizationSet)),
+
+        // 04d1 name-list files. LoadColonyNames / LoadShipNames return an empty
+        // result when the file is missing (no fallback throw), so a failed fetch
+        // is tolerated here; agent/design names are required by the engine.
+        fetchText(resolveDataUrl('colonyNames.txt', customizationSet)).catch(() => ''),
+        fetchText(resolveDataUrl('shipNames.txt', customizationSet)).catch(() => ''),
+        fetchText(resolveDataUrl('characterNames.txt', customizationSet)),
+        fetchText(resolveDataUrl('designNames.txt', customizationSet)),
 
         // Individual race files
         ...raceFiles.map((fileName) => fetchText(resolveDataUrl(`races/${fileName}`, customizationSet))),
@@ -120,5 +141,11 @@ export async function loadGameData(
         facilities: parseFacilities(facilitiesText),
         plagues: parsePlagues(plaguesText),
         research: parseResearch(researchText),
+
+        // 04d1 data
+        colonyNames: parseColonyNames(colonyNamesText),
+        shipNames: parseShipNames(shipNamesText),
+        agentNames: parseAgentNames(characterNamesText, raceFamilies),
+        designNames: parseDesignNames(designNamesText),
     };
 }
