@@ -2,6 +2,7 @@
 // Start.InitializeComponent.cs's pnlMainMenu, using the original chrome art
 // served from /assets/dwu/images/ui/chrome/.
 import './mainMenu.css';
+import { openGalactopedia } from './galactopedia';
 
 const CHROME = '/assets/dwu/images/ui/chrome/';
 
@@ -156,7 +157,8 @@ export function createMainMenu(callbacks: MainMenuCallbacks): MainMenuRefs {
     galactopedia.addEventListener('mouseleave', () => {
         galactopediaImg.src = `${CHROME}Menu_Galactopedia_Inactive.png`;
     });
-    galactopedia.addEventListener('click', () => console.info('TODO(menu): galactopedia'));
+    // Start.cs menuGalactopedia_Click: method_127("") -> the home page.
+    galactopedia.addEventListener('click', () => openGalactopedia());
     root.appendChild(galactopedia);
 
     const updatesWrap = document.createElement('div');

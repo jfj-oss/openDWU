@@ -13,6 +13,7 @@ import {
     SYSTEM_LEVEL_ZOOM,
     getSelection,
 } from './hud';
+import { helpTopicKeyForHabitat, toggleGalactopedia } from './screens/galactopedia';
 
 /** Modifier state of a key event (Ctrl/Alt/Shift). */
 export interface KeyModifiers {
@@ -133,6 +134,7 @@ export interface KeyHandlers {
     scrollRight?: () => void;
     galaxyMap?: () => void;
     gameMenu?: () => void;
+    galactopediaHelp?: () => void;
 }
 
 /** True when focus is inside an input/textarea/contenteditable element.
@@ -225,6 +227,9 @@ export function dispatchKey(
         case 'gameMenu':
             handlers.gameMenu?.();
             break;
+        case 'galactopediaHelp':
+            handlers.galactopediaHelp?.();
+            break;
         default:
             // Registered but not implemented yet.
             console.info(`TODO(key): ${binding.action}`);
@@ -265,6 +270,8 @@ export function buildDefaultHandlers(camera: Camera, time: GalaxyTime): KeyHandl
         // TODO(key): open the Galaxy Map screen (no openGalaxyMap hook today;
         // the View-list row only zooms out to galaxy level).
         galaxyMap: () => console.info('TODO(key): galaxyMap'),
+        // F1 (KeyMappingFriendlyNames.OpenHelp -> btnHelp_Click, Main.Part7.cs).
+        galactopediaHelp: () => toggleGalactopedia(helpTopicKeyForHabitat(getSelection()?.habitat ?? null)),
         // Esc: the in-game menu's toggle, registered by createHud (task 10c).
         gameMenu: () => {
             if (gameMenuHandler) {

@@ -24,6 +24,7 @@ import { buildDefaultHandlers, createShortcutsOverlay, dispatchKey } from './ui/
 import { createMainMenu } from './ui/screens/mainMenu';
 import { startMusic } from './audio/musicPlayer';
 import { createNewGameWizard } from './ui/screens/newGameWizard';
+import { openGalactopedia } from './ui/screens/galactopedia';
 import { toCreateGameOptions, type StartGameOptions } from './sim/startGameOptions';
 import { type Game } from './sim/game';
 import './ui/hud.css';
@@ -233,7 +234,7 @@ async function startGameView(game: Game, zoomOverride?: number): Promise<void> {
     const shortcuts = createShortcutsOverlay();
     const keyHandlers = buildDefaultHandlers(camera, time);
     window.addEventListener('keydown', (e: KeyboardEvent) => {
-        if (e.key === '?' || e.key === 'F1') {
+        if (e.key === '?') {
             e.preventDefault();
             shortcuts.toggle();
             return;
@@ -313,6 +314,12 @@ async function main(): Promise<void> {
             // Nothing to go back to when opened directly; reload to the menu.
             window.location.search = '';
         });
+        return;
+    }
+
+    if (params.get('screen') === 'galactopedia') {
+        // Screenshot / dev hook: ?screen=galactopedia&topic=<id|title|file>.
+        openGalactopedia({ topic: params.get('topic') ?? undefined });
         return;
     }
 
@@ -543,12 +550,12 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     setInterval(refreshClockLabel, 250);
 
     // Task 10a: the full original keyboard command table (UI_KeyboardCommands)
-    // dispatches on keydown; it replaces the ad-hoc spacebar handler. '?' / F1
-    // toggle the "Keyboard shortcuts" overlay listing the table.
+    // dispatches on keydown; it replaces the ad-hoc spacebar handler. '?'
+    // toggles the "Keyboard shortcuts" overlay; F1 opens the Galactopedia.
     const shortcuts = createShortcutsOverlay();
     const keyHandlers = buildDefaultHandlers(camera, time);
     window.addEventListener('keydown', (e: KeyboardEvent) => {
-        if (e.key === '?' || e.key === 'F1') {
+        if (e.key === '?') {
             e.preventDefault();
             shortcuts.toggle();
             return;

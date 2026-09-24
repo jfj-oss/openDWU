@@ -11,6 +11,7 @@ import { flagShapeUrl } from '../sim/startGameOptions';
 import { createGameMenu, type GameMenuRefs } from './screens/gameMenu';
 import { setGameMenuHandler } from './keyboard';
 import { startEffects } from '../audio/effectsPlayer';
+import { helpTopicKeyForHabitat, toggleGalactopedia } from './screens/galactopedia';
 
 /** Shared UI button-click sound (task 09b): the original plays a short click
  * for chrome-button presses; here every HUD button click routes through this. */
@@ -337,6 +338,11 @@ function buildTopLeftBar(clock: GalaxyTime, onGameMenu: () => void): HTMLElement
         onGameMenu();
     });
     const help = makeIconButton('btnHelp', 'Help');
+    // Main.Part5.cs btnHelp_Click: toggle the Galactopedia at the selection's topic.
+    help.addEventListener('click', () => {
+        playUiClick();
+        toggleGalactopedia(helpTopicKeyForHabitat(getSelection()?.habitat ?? null));
+    });
     bar.append(menu, help);
     bar.appendChild(makeSeparator());
 
