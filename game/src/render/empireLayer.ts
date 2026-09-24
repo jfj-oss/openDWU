@@ -108,6 +108,45 @@ class EmpireTerritory {
     }
 }
 
+export interface EmpireSystems {
+    /** The owning empire (always a member of galaxy.empires). */
+    empire: Empire;
+    /** Indices into galaxy.systems for every system with an owned colony. */
+    systems: number[];
+}
+
+/** Task M2e3: pure collector — for each non-independent empire in
+ * galaxy.empires, the set of systems containing at least one owned
+ * planet/moon (`habitat.owner === empire`, task M2e3: ownership is the
+ * source of truth, not the empire.colonies bookkeeping list). The independent
+ * empire is excluded: its populated worlds are drawn as grey rings by the
+ * layer (INDEPENDENT_RING_COLOR), never as territory. Deterministic given
+ * the galaxy state; no sim state is mutated. */
+export function collectEmpireSystems(galaxy: Galaxy): EmpireSystems[] {
+    const byEmpire = new Map<Empire, Set<number>>();
+    for (const h of galaxy.habitats) {
+        if (h.category !== HabitatCategoryType.Planet && h.category !== HabitatCategoryType.Moon) continue;
+        const owner = h.owner ?? h.empire;
+        if (owner === null || owner === undefined) continue;
+        if (galaxy.independentEmpire !== null && owner === galaxy.independentEmpire) continue;
+        if (!galaxy.empires.includes(owner)) continue;
+        let set = byEmpire.get(owner);
+        if (set === undefined) {
+            set = new Set<number>();
+            byEmpire.set(owner, set);
+        }
+        set.add(h.systemIndex);
+    }
+    const out: EmpireSystems[] = [];
+    for (const empire of galaxy.empires) {
+        if (empire === galaxy.independentEmpire) continue;
+        const set = byEmpire.get(empire);
+        if (set === undefined) continue;
+        out.push({ empire, systems: [...set].sort((a, b) => a - b) });
+    }
+    return out;
+}
+
 export class EmpireLayer {
     /** World-space layer: territory discs, then colony/marker rings above. */
     root = new Container();
@@ -115,6 +154,9 @@ export class EmpireLayer {
     private empires: Empire[] = [];
     /** Display colour per empire index (own main colour or palette fallback). */
     private colors: number[] = [];
+    /** Owned-system indices per empire (task M2e3: from habitat ownership,
+     * collected once — the layer is built after createGame, so colonies exist). */
+    private empireSystems: EmpireSystems[] = [];
     private territories: Map<Empire, EmpireTerritory> = new Map();
     /** Colony rings, one per owned planet/moon (world space). */
     private colonyRings: Array<{ habitat: Habitat; ring: Graphics }> = [];
@@ -124,16 +166,26 @@ export class EmpireLayer {
 
     constructor(private galaxy: Galaxy, world: Container) {
         world.addChild(this.root);
-        for (const empire of galaxy.empires) {
-            if (empire === galaxy.independentEmpire) continue;
+        // Task M2e3: iterate galaxy.empires and draw territory + rings for
+        // EVERY empire with owned habitats (ownership via habitat.owner).
+        // Previously only one disc was drawn because the territory loop read
+        // empire.colonies, which can be empty/stale for some empires even
+        // though their habitats carry the owner reference.
+        this.empireSystems = collectEmpireSystems(this.galaxy);
+        for (const es of this.empireSystems) {
+            this.empires.push(es.empire);
+            this.colors.push(empireColour(es.empire, this.empires.length - 1));
+            this.territories.set(es.empire, new EmpireTerritory(es.empire, this.root));
+        }
+        // Empires in galaxy.empires that own nothing still get a (empty)
+        // territory object so indexOf-based lookups stay aligned.
+        for (const empire of this.galaxy.empires) {
+            if (empire === this.galaxy.independentEmpire) continue;
+            if (this.territories.has(empire)) continue;
             this.empires.push(empire);
             this.colors.push(empireColour(empire, this.empires.length - 1));
             this.territories.set(empire, new EmpireTerritory(empire, this.root));
-            // Task M2e2: every empire with ≥1 owned habitat must draw its
-            // territory/rings; flag empires that own nothing.
-            if (empire.colonies.length < 1) {
-                console.warn(`Empire "${empire.name}" owns no habitats; its territory will not be drawn`);
-            }
+            console.warn(`Empire "${empire.name}" owns no habitats; its territory will not be drawn`);
         }
         for (const h of galaxy.habitats) {
             if (h.category !== HabitatCategoryType.Planet && h.category !== HabitatCategoryType.Moon) continue;
@@ -173,6 +225,8 @@ export class EmpireLayer {
         const tRadius = territoryRadius(this.galaxy.sectorSize);
 
         // Territory discs: galaxy/sector zoom only, hidden at system zoom.
+        // Task M2e3: driven by collectEmpireSystems (habitat.owner), not
+        // empire.colonies, so every empire with owned habitats draws its disc.
         for (let i = 0; i < this.empires.length; i++) {
             const t = this.territories.get(this.empires[i])!;
             if (atSystemZoom) {
@@ -181,18 +235,21 @@ export class EmpireLayer {
             }
             t.graphics.clear();
             let any = false;
-            for (const colony of t.empire.colonies) {
-                const star = this.galaxy.systems[colony.systemIndex].systemStar;
-                const halfW = cam.width / 2 + tRadius + 100;
-                const halfH = cam.height / 2 + tRadius + 100;
-                if (star.xpos < cam.x - halfW || star.xpos > cam.x + halfW || star.ypos < cam.y - halfH || star.ypos > cam.y + halfH) {
-                    continue;
+            const es = this.empireSystems.find((e) => e.empire === t.empire);
+            if (es !== undefined) {
+                for (const sysIdx of es.systems) {
+                    const star = this.galaxy.systems[sysIdx].systemStar;
+                    const halfW = cam.width / 2 + tRadius + 100;
+                    const halfH = cam.height / 2 + tRadius + 100;
+                    if (star.xpos < cam.x - halfW || star.xpos > cam.x + halfW || star.ypos < cam.y - halfH || star.ypos > cam.y + halfH) {
+                        continue;
+                    }
+                    t.graphics.circle(star.xpos, star.ypos, tRadius).fill({
+                        color: this.colors[i],
+                        alpha: 0.18,
+                    });
+                    any = true;
                 }
-                t.graphics.circle(star.xpos, star.ypos, tRadius).fill({
-                    color: this.colors[i],
-                    alpha: 0.18,
-                });
-                any = true;
             }
             t.graphics.visible = any;
         }

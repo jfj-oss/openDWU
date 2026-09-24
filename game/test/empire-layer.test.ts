@@ -1,8 +1,12 @@
 // Task M2e — pure helper tests for the empire ownership layer.
 
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import type { Empire } from '../src/sim/empire';
-import { colonyRingRadius, EMPIRE_FALLBACK_COLORS, empireColour, INDEPENDENT_RING_COLOR, territoryRadius, toPixiColor } from '../src/render/empireLayer';
+import { colonyRingRadius, collectEmpireSystems, EMPIRE_FALLBACK_COLORS, empireColour, INDEPENDENT_RING_COLOR, territoryRadius, toPixiColor } from '../src/render/empireLayer';
+import { createGame, type CreateGameOptions } from '../src/sim/game';
+import { GalaxyShape } from '../src/sim/types';
+import { loadGameDataFs } from './helpers/loadGameDataFs';
+import type { GameData } from '../src/sim/data/gameData';
 
 describe('colonyRingRadius', () => {
     it('is the drawn sprite radius plus 6 px', () => {
@@ -90,4 +94,46 @@ describe('empireColour', () => {
             seen.add(c);
         }
     });
+});
+
+// Task M2e3: collectEmpireSystems derives per-empire owned systems from
+// habitat ownership (habitat.owner), the source of truth the layer draws
+// from — independent of the empire.colonies bookkeeping list.
+describe('collectEmpireSystems (task M2e3)', () => {
+    let gameData: GameData;
+    beforeAll(async () => { gameData = await loadGameDataFs(); }, 60000);
+
+    // Same options as ?autostart=1 (main.ts buildAutostartGame): seed 1,
+    // spiral, 700 stars, 4x4 sectors, Human player + 3 random AI empires.
+    function autostartOpts(): CreateGameOptions {
+        const ai = { race: '(Random)', homeSystemFavourability: 'Normal' as const, proximityDistance: 'Random', age: 1, techLevel: 0 };
+        return {
+            seed: 1, shape: GalaxyShape.Spiral, starCount: 700, sectorWidth: 4, sectorHeight: 4,
+            systemNames: Array.from({ length: 700 }, (_, i) => `S${i}`), gameData,
+            player: { race: 'Human', homeSystemFavourability: 'Normal', startLocation: '(Random)', age: 1, techLevel: 0 },
+            aiEmpires: [ai, { ...ai }, { ...ai }],
+        };
+    }
+
+    it('returns one entry per non-independent empire, each owning >= 1 system', () => {
+        const galaxy = createGame(autostartOpts()).galaxy;
+        const collected = collectEmpireSystems(galaxy);
+        // The four normal empires (player + 3 AI) are in galaxy.empires; the
+        // independent empire is separate and excluded.
+        expect(collected.length).toBe(4);
+        for (const es of collected) {
+            expect(galaxy.empires.includes(es.empire)).toBe(true);
+            if (galaxy.independentEmpire !== null) {
+                expect(es.empire).not.toBe(galaxy.independentEmpire);
+            }
+            expect(es.systems.length).toBeGreaterThanOrEqual(1);
+            for (const sysIdx of es.systems) {
+                expect(sysIdx).toBeGreaterThanOrEqual(0);
+                expect(sysIdx).toBeLessThan(galaxy.systems.length);
+            }
+        }
+        // Every empire in galaxy.empires that owns habitats appears exactly once.
+        const names = collected.map((es) => es.empire.name);
+        expect(new Set(names).size).toBe(names.length);
+    }, 60000);
 });

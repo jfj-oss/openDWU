@@ -17,7 +17,7 @@ import { GalaxyShape } from './sim/types';
 import { createHud, layoutHud, nearestSystemName, type HudRefs } from './ui/hud';
 import { GalaxyTime } from './sim/clock';
 import { START_STAR_DATE } from './sim/galaxyTime';
-import { formatClockLabel, SYSTEM_LEVEL_ZOOM, type Selection } from './ui/hud';
+import { formatClockLabel, SECTOR_LEVEL_ZOOM, SYSTEM_LEVEL_ZOOM, type Selection } from './ui/hud';
 import { Habitat, HabitatCategoryType } from './sim/types';
 import { createMapOverlayState } from './ui/mapOverlays';
 import { buildDefaultHandlers, createShortcutsOverlay, dispatchKey } from './ui/keyboard';
@@ -139,7 +139,7 @@ export function buildDwuDebugObject(args: { camera: object; galaxy: object; view
  * save-load — centres the camera on the player's capital at Sector zoom,
  * wires the HUD/clock/input, and sets `window.__dwu` (camera, galaxy, view,
  * app, game). */
-async function startGameView(game: Game): Promise<void> {
+async function startGameView(game: Game, zoomOverride?: number): Promise<void> {
     const dwuPresent = await detectDwuPresent();
     if (dwuPresent) {
         // Real-art file lists (scripts/gen-asset-manifest.mjs, predev/prebuild).
@@ -159,10 +159,21 @@ async function startGameView(game: Game): Promise<void> {
     const camera = new Camera();
     camera.setViewport(app.renderer.width, app.renderer.height);
     camera.setGalaxyBounds(galaxy.sizeX, galaxy.sizeY);
-    // Centre on the player's capital (createGame returns viewX/viewY).
-    camera.centerOn(game.viewX, game.viewY);
-    // Sector-level zoom: the whole-galaxy minimum zoom.
+    // Task M2e3: the Sector-level zoom must be applied AFTER any code that
+    // resets the camera to the whole-galaxy view (the order bug left the view
+    // at minZoom). Centre on the player's capital (createGame returns
+    // viewX/viewY as fallback when it is null).
+    const capital = game.playerEmpire?.capital ?? null;
+    camera.centerOn(capital !== null ? capital.xpos : game.viewX, capital !== null ? capital.ypos : game.viewY);
     camera.zoom = camera.minZoom;
+    if (zoomOverride !== undefined) {
+        // Task M2e3: an explicit ?zoom= on the autostart path overrides the
+        // Sector-level default (same factor/reciprocal semantics as the
+        // generateGalaxy boot path below).
+        camera.zoom = camera.clampZoom(zoomOverride >= 1 ? 1 / zoomOverride : zoomOverride);
+    } else {
+        camera.zoomAt(SECTOR_LEVEL_ZOOM, camera.width / 2, camera.height / 2);
+    }
 
     const store = new AssetStore(dwuPresent);
     const view = new MainView(app, camera, galaxy, store);
@@ -404,7 +415,9 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     if (paramsHasAutostart()) {
         const started = await buildAutostartGame(seed, shape, starCount, sectorWidth, sectorHeight, systemNames, gameData);
         if (started !== null) {
-            await startGameView(started);
+            // Task M2e3: honour ?zoom= on the autostart path too (galaxy-view
+            // screenshots), otherwise startGameView applies Sector zoom.
+            await startGameView(started, zoomParam ?? undefined);
             return;
         }
     }
