@@ -10,7 +10,19 @@
 // GenerateDesignSpecifications, Research.Update, LoadOptimizedDesigns,
 // GrowPopulation, Habitat.DoTasks at game start, EstimatedDefensiveForceRequired,
 // GenerateNewTroop; SetTechTreeLevel draws only for fractional tech levels.
+// Of DoTasks only CreateNewDesigns, IdentifyResourceCentres and
+// ProjectForceStructure / ProjectPrivateForceStructure run (task M3b; none draws
+// Rnd) — see the stand-in below.
 
+import { generateCapitalStartingTroops } from './troops';
+import { createNewDesigns } from './designGeneration';
+import { projectForceStructure, projectPrivateForceStructure, recalculateColonyTaxRevenues } from './forceStructure';
+// taxes.ts also registers empire.ts's TakeOwnershipOfColony hooks (SetColonyTaxRate etc.).
+import { recalculateEmpireCorruption, reviewTaxes } from './taxes';
+import { RuinType } from './ruins';
+import { identifyResourceCentres } from './resourceTargets';
+import { startStarDateForAge } from './galaxyTime';
+import { loadEmpirePolicy } from './researchSystem';
 import type { Galaxy } from './galaxy';
 import { Galaxy as GalaxyClass } from './galaxy';
 import { Empire, COLONY_MAXIMUM_TROOP_STRENGTH } from './empire';
@@ -46,9 +58,9 @@ export function generateEmpire(
 ): GenerateEmpireResult {
     const rnd = galaxy.rnd;
     let actualTechLevel = 1.0;
-    // TODO(port): LoadEmpirePolicy(race, false) (Policy files, no Rnd); the
-    // player's ImplementEnslavementWithPenalColonies = false.
-    const empirePolicy = {};
+    // Galaxy.7.cs 5092: LoadEmpirePolicy(race, isPirate: false) (no Rnd).
+    const empirePolicy = loadEmpirePolicy(galaxy.researchStatic, race, false);
+    if (isPlayerEmpire) empirePolicy.implementEnslavementWithPenalColonies = false;
     const empire = new Empire(galaxy, empireName, capital, race, governmentId, corruptionMultiplier, empirePolicy, isPlayerEmpire);
     empire.playerEmpire = isPlayerEmpire;
     if (techLevel < 0.0) {
@@ -80,7 +92,17 @@ export function generateEmpire(
     if (designPictureFamilyIndex >= 0) {
         empire.designPictureFamilyIndex = designPictureFamilyIndex;
     }
-    // TODO(port): capital.Ruin cleared for Standard/CreatureSwarm/PirateAmbush ruins.
+    // Galaxy.7.cs 5178-5185.
+    if (capital.ruin !== null && (capital.ruin.type === RuinType.Standard || capital.ruin.type === RuinType.CreatureSwarm || capital.ruin.type === RuinType.PirateAmbush)) {
+        capital.ruin = null;
+        const ri = galaxy.ruinsHabitats.indexOf(capital);
+        if (ri >= 0) galaxy.ruinsHabitats.splice(ri, 1);
+    }
+    // Galaxy.7.cs 5186. TakeOwnershipOfColony runs RecalculateDistanceFactor (Empire.1.cs 240),
+    // SetColonyTaxRate(colony, atWar: false) (241; population is still 0 here, so the
+    // small-colony policy applies: 0 for the shipped policies, 1.0 for a
+    // SpecialFunctionCode 1 government), RecalculateDevelopmentLevelBaseline (268),
+    // RecalculateAnnualTaxRevenue (269) and RecalculateColonyInfluenceRadius (271).
     empire.takeOwnershipOfColony(capital, empire);
     if (techLevel > 0.0 || !enableStoryEventsShadows) {
         empire.preWarpProgressEventsOccurred = true; // the 13 PreWarpProgressEventOccurred* flags
@@ -136,14 +158,8 @@ export function generateEmpire(
     empire.setStartupColonyResourceCargo(capital);
     capital.setDevelopmentLevel(10);
     // capital.DoTasks(CurrentDateTime): no-op at game start (see colony.ts).
-    // TODO(port): EstimatedDefensiveForceRequired — 0 until ported (no Rnd).
-    let num6 = 0 * 2;
-    if (num6 > COLONY_MAXIMUM_TROOP_STRENGTH / 100) num6 = COLONY_MAXIMUM_TROOP_STRENGTH / 100;
-    const num7 = Math.trunc(num6 * rnd.nextDouble());
-    let num8 = Math.trunc(num7 / 100);
-    if (techLevel === 0.0) num8 = Math.min(1, num8);
-    // TODO(port): TroopCanRecruitInfantry → num8 × GenerateNewTroop(Infantry, race.TroopStrength).
-    void num8;
+    // Galaxy.7.cs 5291-5316: capital garrison (one NextDouble).
+    generateCapitalStartingTroops(galaxy, empire, capital, race, techLevel, galaxy.difficultyLevel);
     for (const h of galaxy.habitats) {
         if (h.parent === null) empire.resourceMap.setResourcesKnown(h, false);
     }
@@ -160,7 +176,60 @@ export function generateEmpire(
     empire.resourceMap.setResourcesKnown(capital, true);
     empire.initiateConstruction = false;
     // TODO(port): empire.DoTasks() — the full empire AI tick. RND DIVERGENCE POINT (see header).
+    // Only these steps of that tick are ported, run here in the C# order of
+    // Empire.1.cs DoTasks; every step in between is SKIPPED (short/regular blocks
+    // entirely, the periodic block except the cache writes below — incl. most of
+    // EvaluateColonyVariables, PerformResearch — and the rest of the
+    // intermediate/long blocks, e.g. ReviewSystemThreats, IdentifyColonizationTargets,
+    // ReviewEmpireAbilityBonuses, ReviewDiplomaticStrategies,
+    // PayMaintenanceForBuiltObjects). Rnd parity with the C# is already lost at this
+    // point (the skipped steps draw Rnd); none of the ported steps draws Rnd.
+    empireDoTasksStandIn(galaxy, empire);
     empire.initiateConstruction = true;
     galaxy.setupHomeSystem(capital, race, homeSystemDescription, minimumResourceCount, minimumCriticalResourceCount);
     return { empire, expansion, actualTechLevel };
+}
+
+// The ported steps of Empire.DoTasks at game start (see the RND DIVERGENCE note in
+// generateEmpire): periodic-block cache writes, CreateNewDesigns, IdentifyResourceCentres,
+// ProjectForceStructure / ProjectPrivateForceStructure. Used for GenerateEmpire's DoTasks
+// (Galaxy.7.cs 5346) and for createGame's second empire DoTasks (Start.2.cs 1342), which
+// only runs these blocks when the touch times were reset (galaxy age > 0).
+export function empireDoTasksStandIn(galaxy: Galaxy, empire: Empire): void {
+    const starDate = startStarDateForAge(galaxy.age); // Galaxy.CurrentStarDate
+    // Periodic block, Empire.1.cs 3523-3538 — it runs on this first tick: the Empire ctor sets
+    // _LastPeriodicTouch = now - (LongProcessingInterval + 1) s (Empire.cs 3921-3923), so
+    // num3 = 121 >= PeriodicProcessingInterval (30). Only the steps that write the caches the
+    // long block's projections read are ported:
+    // Empire.1.cs 3531 EvaluateColonyVariables(_Galaxy, num3) — only its _TotalPopulation
+    // write (Empire.4.cs 2945/3174/3182/3306: sum of Population.Amount over the colonies,
+    // both growth branches). TODO(port): the rest of EvaluateColonyVariables (development
+    // level drift by (int)num12 — (121 / 600) * 25 * num8 can reach >= 1 here —, growth
+    // rates, resource orders, RecalculateAnnualTaxRevenue, ProcessColonyTroops).
+    {
+        let num = 0;
+        for (let j = 0; j < empire.colonies.length; j++) {
+            const habitat = empire.colonies[j];
+            // Habitat.HasBeenDestroyed: false for every colony at game start.
+            for (const population of habitat.population.items) num += population.amount;
+        }
+        empire.totalPopulation = num;
+    }
+    // Empire.1.cs 3533.
+    recalculateEmpireCorruption(empire);
+    // Empire.1.cs 3534-3537.
+    if (empire.controlColonyTaxRates) reviewTaxes(galaxy, empire);
+    recalculateColonyTaxRevenues(galaxy, empire);
+    // Intermediate block, Empire.1.cs 3623: `if (_ControlDesigns) CreateNewDesigns(_Galaxy.CurrentStarDate)`.
+    if (empire.controlDesigns) {
+        createNewDesigns(galaxy, empire, starDate, starDate);
+    }
+    // Intermediate block, Empire.1.cs 3633: `_ResourceTargets = IdentifyResourceCentres(_Galaxy)`
+    // (resourceTargets.ts). Galaxy.8.cs CreateMiningStations recomputes it before use.
+    empire.resourceTargets = identifyResourceCentres(galaxy, empire);
+    // Long block, Empire.1.cs 3690-3691 (forceStructure.ts): the projections
+    // Galaxy.8.cs CreateStateShips / CreatePrivateShips consume.
+    const forceStructureCtx = { currentStarDate: starDate, difficultyLevel: galaxy.difficultyLevel };
+    projectForceStructure(galaxy, empire, forceStructureCtx);
+    projectPrivateForceStructure(galaxy, empire, forceStructureCtx);
 }

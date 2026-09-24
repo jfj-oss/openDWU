@@ -700,9 +700,23 @@ export class Creature {
         return false;
     }
 
-    // Port of Creature.cs CompleteTeardown (line 948). BuiltObject/Fighter
-    // and GalaxyLocation.RelatedCreatures cleanup is TODO(port).
+    // Port of Creature.cs CompleteTeardown (line 948). CurrentTarget is always null here (the
+    // target block 950-956 reduces away). TODO(port): Fighter.AbandonAttackTarget / EvaluateThreats
+    // (Fighter unported; BuiltObject.fighters is always empty) and GalaxyLocation.RelatedCreatures
+    // (not modelled on the TS GalaxyLocation; only story special zones set it).
     completeTeardown(): void {
+        const builtObjects = this.galaxy.builtObjects;
+        for (let index1 = 0; index1 < builtObjects.length; ++index1) {
+            const bo = builtObjects[index1];
+            if (bo != null) {
+                const index2 = bo.attackers !== null ? bo.attackers.indexOf(this) : -1;
+                if (index2 >= 0) bo.attackers!.splice(index2, 1);
+                const index3 = bo.pursuers !== null ? bo.pursuers.indexOf(this) : -1;
+                if (index3 >= 0) bo.pursuers!.splice(index3, 1);
+                if (bo.currentTarget === this) bo.currentTarget = null;
+                if (bo.fighters != null && bo.fighters.length > 0) throw new Error('TODO(port): Creature.cs CompleteTeardown fighters (Fighter.AbandonAttackTarget)');
+            }
+        }
         removeFrom(this.galaxy.creatures, this);
         for (const system of this.galaxy.systems) {
             if (system.creatures) {

@@ -17,14 +17,15 @@ import type { Fighter } from './fighters';
 import { parseFighters } from './fighters';
 import type { Facility } from './facilities';
 import { parseFacilities } from './facilities';
+import type { EmpirePolicy } from './policies';
+import { parseEmpirePolicy } from './policies';
+import { parseDesignNames } from './designNames';
 import type { Plague } from './plagues';
 import { parsePlagues } from './plagues';
 import type { ResearchNode } from './research';
 import { parseResearch } from './research';
 import type { AgentNames, SubRoleNameSet } from './names';
-import { parseAgentNames, parseColonyNames, parseDesignNames, parseShipNames } from './names';
-import type { EmpirePolicy } from './policy';
-import { parseEmpirePolicy } from './policy';
+import { parseAgentNames, parseColonyNames, parseShipNames } from './names';
 import type { DesignSpecification } from './designTemplates';
 import { parseDesignSpecification } from './designTemplates';
 import { BuiltObjectSubRole } from './names';
@@ -35,6 +36,23 @@ export const DEFAULT_RACE_FILES: readonly string[] = [
     'human.txt', 'ikkuro.txt', 'ketarov.txt', 'kiadian.txt', 'mechanoid.txt', 'mortalen.txt',
     'naxxilian.txt', 'quameno.txt', 'securan.txt', 'shakturi.txt', 'shandar.txt', 'sluken.txt',
     'teekan.txt', 'ugnari.txt', 'wekkarus.txt', 'zenox.txt',
+];
+
+import { designSpecificationFallbackFiles } from './designSpecifications';
+import { parseCharacterFile, parseCharacterNames, type CharacterFileRow, type CharacterNames } from './characters';
+
+// Sub role names Empire.GenerateDesignSpecifications (Empire.cs 4108) loads a
+// design template for, plus "PlanetDestroyer" (same method,
+// PlanetDestroyerDesignSpecification). Mirrors the calls in
+// src/sim/empire.ts generateDesignSpecifications.
+const DESIGN_SPECIFICATION_SUB_ROLE_NAMES = [
+    'PlanetDestroyer', 'CapitalShip', 'Carrier', 'ColonyShip', 'ConstructionShip',
+    'Cruiser', 'DefensiveBase', 'Destroyer', 'EnergyResearchStation', 'Escort',
+    'ExplorationShip', 'Frigate', 'GasMiningShip', 'GasMiningStation',
+    'HighTechResearchStation', 'LargeFreighter', 'LargeSpacePort', 'MediumFreighter',
+    'MediumSpacePort', 'MiningShip', 'MiningStation', 'MonitoringStation',
+    'PassengerShip', 'ResortBase', 'ResupplyShip', 'SmallFreighter', 'SmallSpacePort',
+    'TroopTransport', 'WeaponsResearchStation',
 ];
 
 export interface GameData {
@@ -58,16 +76,36 @@ export interface GameData {
     colonyNames: string[];
     shipNames: SubRoleNameSet;
     agentNames: AgentNames[];
-    designNames: string[][];
 
-    // From 04d2 (empire policies). Keyed by file name relative to Policy/
+    // From 04d2 (empire policies, file-keyed; the sim uses `policies` by
+    // race name below). Keyed by file name relative to Policy/
     // (e.g. "Ackdarian.txt" for Policy/Ackdarian.txt, "pirate/Ackdarian.txt"
     // for Policy/pirate/Ackdarian.txt) — mirrors Galaxy.LoadEmpirePolicy's
     // (name, isPirate) keying.
-    policies: Map<string, EmpirePolicy>;
+    policiesByFile: Map<string, EmpirePolicy>;
 
     // From 04d3 (design templates). Keyed by sub-role file name (e.g. "frigate").
     designTemplates: Map<string, DesignSpecification>;
+    // Policy/<race>.txt and Policy/pirate/<race>.txt by race name (C2 starting techs).
+    // A missing file is absent here; Galaxy.LoadEmpirePolicy then uses a default policy.
+    policies?: Map<string, EmpirePolicy>;
+    piratePolicies?: Map<string, EmpirePolicy>;
+
+    // designTemplates/<race>/[pirate/]<subRole>.txt, keyed by the canonical
+    // relative file path (see data/designSpecifications.ts
+    // designSpecificationFallbackFiles). A missing file is simply absent;
+    // loadDesignSpecification then falls back to the next candidate or to
+    // the default design specification table.
+    designSpecificationTexts?: Map<string, string>;
+    /** designNames.txt families (Galaxy.4.cs LoadDesignNames). */
+    designNames?: string[][];
+    /** characterNames.txt (Galaxy.4.cs LoadAgentNames; one section per race family). */
+    characterNames?: CharacterNames;
+    /**
+     * characters/<race name>.txt tokenized rows keyed by race name (Galaxy.4.cs LoadCharacters /
+     * SetRaceStartupCharacters). A missing file is absent (C#: File.Exists false → empty list).
+     */
+    characterFiles?: Map<string, CharacterFileRow[]>;
 }
 
 /** Shape of public/asset-manifest.json entries this loader consumes. */
@@ -199,14 +237,14 @@ export async function loadGameData(
     const races = raceFileResults.map((text) => parseRace(text));
 
     // 04d2 policies: one EmpirePolicy per successfully-fetched policy file,
-    // keyed by its policyFiles entry (see GameData.policies doc comment).
-    const policies = new Map<string, EmpirePolicy>();
+    // keyed by its policyFiles entry (see GameData.policiesByFile doc comment).
+    const policiesByFile = new Map<string, EmpirePolicy>();
     for (let i = 0; i < policyFiles.length; i++) {
         const text = policyTexts[i];
         if (text === '') {
             continue;
         }
-        policies.set(policyFiles[i], parseEmpirePolicy(text));
+        policiesByFile.set(policyFiles[i], parseEmpirePolicy(text));
     }
 
     // 04d3 design templates: one file per sub-role in designTemplates/DEFAULT/.
@@ -235,8 +273,89 @@ export async function loadGameData(
             designTemplates.set(subRoleName, parseDesignSpecification(text, subRoleName, subRole, true));
         }
     }
+    // Port of Galaxy.4.cs LoadEmpirePolicy (1696) file lookup, prefetched per race.
+    const policies = new Map<string, EmpirePolicy>();
+    const piratePolicies = new Map<string, EmpirePolicy>();
+    await Promise.all(
+        races.flatMap((r) =>
+            ([[policies, 'Policy/'], [piratePolicies, 'Policy/pirate/']] as const).map(async ([map, dir]) => {
+                try {
+                    map.set(r.name, parseEmpirePolicy(await fetchText(resolveDataUrl(`${dir}${r.name}.txt`, customizationSet))));
+                } catch {
+                    // missing file → default policy
+                }
+            }),
+        ),
+    );
+
+    // designTemplates/<race>/[pirate/]<subRole>.txt for every race and every
+    // sub role Empire.GenerateDesignSpecifications loads (see
+    // designSpecifications.ts designSpecificationFallbackFiles — no
+    // DEFAULT-folder fallback, matching the C#). A "<!" response body means
+    // the dev server served index.html for a missing static file (Vite's
+    // SPA fallback) — treat that as missing too.
+    const designSpecificationTexts = new Map<string, string>();
+    const isMissingResponse = (text: string) => text.trimStart().startsWith('<!');
+    const designSpecificationFiles = new Set<string>();
+    for (const subRoleName of DESIGN_SPECIFICATION_SUB_ROLE_NAMES) {
+        for (const isPirate of [false, true]) {
+            for (const race of races) {
+                for (const file of designSpecificationFallbackFiles(subRoleName, race.name, isPirate)) {
+                    designSpecificationFiles.add(file);
+                }
+            }
+        }
+    }
+    await Promise.all(
+        [...designSpecificationFiles].map(async (file) => {
+            try {
+                const text = await fetchText(resolveDataUrl(file, customizationSet));
+                if (!isMissingResponse(text)) designSpecificationTexts.set(file, text);
+            } catch {
+                // missing file → absent; loadDesignSpecification falls back.
+            }
+        }),
+    );
+
+    // Galaxy.4.cs LoadDesignNames (designNames.txt).
+    let designNames: string[][] | undefined;
+    try {
+        designNames = parseDesignNames(await fetchText(resolveDataUrl('designNames.txt', customizationSet)));
+    } catch {
+        designNames = undefined;
+    }
+
+    // Galaxy.4.cs LoadAgentNames (characterNames.txt, RaceFamilies.Count sections) and
+    // SetRaceStartupCharacters → LoadCharacters (characters\<race.Name>.txt; Windows paths are
+    // case-insensitive, the shipped files are lower-case).
+    let characterNames: CharacterNames | undefined;
+    try {
+        characterNames = parseCharacterNames(await fetchText(resolveDataUrl('characterNames.txt', customizationSet)), raceFamilies.length);
+    } catch {
+        characterNames = undefined;
+    }
+    const characterFiles = new Map<string, CharacterFileRow[]>();
+    await Promise.all(
+        races.map(async (r) => {
+            const file = `characters/${r.name}.txt`;
+            let text: string;
+            try {
+                text = await fetchText([...resolveDataUrl(file, customizationSet), ...resolveDataUrl(`characters/${r.name.toLowerCase()}.txt`, customizationSet)]);
+            } catch {
+                return; // missing file → no race starting characters
+            }
+            if (isMissingResponse(text)) return;
+            characterFiles.set(r.name, parseCharacterFile(text, file));
+        }),
+    );
 
     return {
+        characterNames,
+        characterFiles,
+        designNames,
+        policies,
+        piratePolicies,
+        designSpecificationTexts,
         // 04a data
         races,
         raceFamilies,
@@ -257,10 +376,9 @@ export async function loadGameData(
         colonyNames: parseColonyNames(colonyNamesText),
         shipNames: parseShipNames(shipNamesText),
         agentNames: parseAgentNames(characterNamesText, raceFamilies),
-        designNames: parseDesignNames(designNamesText),
 
-        // 04d2 data
-        policies,
+        // 04d2 data (file-keyed; `policies` above is by race name)
+        policiesByFile,
 
         // 04d3 data
         designTemplates,

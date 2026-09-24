@@ -62,7 +62,7 @@ describe('Empire (M2a)', () => {
         const popItem = capital.population.items[0];
         const race = popItem?.race ?? null;
 
-        const empire = new Empire(galaxy, 'Test Empire', capital, race, 0, 1.0, {});
+        const empire = new Empire(galaxy, 'Test Empire', capital, race, 0, 1.0, null);
 
         expect(empire.name).toBe('Test Empire');
         expect(empire.capital).toBe(capital);
@@ -71,8 +71,8 @@ describe('Empire (M2a)', () => {
         expect(empire.active).toBe(true);
         expect(empire.stateMoney).toBe(30000.0);
         expect(empire.privateMoney).toBe(100000.0);
-        // latestDesigns sized to BuiltObjectSubRole count (28).
-        expect(empire.latestDesigns.length).toBe(28);
+        // latestDesigns sized to BuiltObjectSubRole count (30, C# Enum.GetValues).
+        expect(empire.latestDesigns.length).toBe(30);
         // one SystemVisibility entry per system.
         expect(empire.systemVisibility.length).toBe(galaxy.systems.length);
         // government id stored by changeGovernment stub.
@@ -92,7 +92,7 @@ describe('Empire (M2a)', () => {
         const capital = pickCapital(galaxy);
         const race = capital.population.items[0]?.race ?? null;
 
-        const empire = new Empire(galaxy, '', capital, race, 0, 1.0, {});
+        const empire = new Empire(galaxy, '', capital, race, 0, 1.0, null);
 
         expect(empire.name.length).toBeGreaterThan(0);
     }, 60000);
@@ -102,7 +102,7 @@ describe('Empire (M2a)', () => {
         const homeHabitat = pickCapital(galaxy);
         const race = homeHabitat.population.items[0]?.race ?? null;
 
-        const empire = new Empire(galaxy, 'Independent', true, homeHabitat, race, {});
+        const empire = new Empire(galaxy, 'Independent', true, homeHabitat, race, null);
 
         expect(empire.name).toBe('Independent');
         expect(empire.active).toBe(true);
@@ -119,8 +119,8 @@ describe('Empire (M2a)', () => {
         const raceA = capitalA.population.items[0]?.race ?? null;
         const raceB = capitalB.population.items[0]?.race ?? null;
 
-        const empireA = new Empire(galaxyA, 'Det Empire', capitalA, raceA, 0, 1.0, {});
-        const empireB = new Empire(galaxyB, 'Det Empire', capitalB, raceB, 0, 1.0, {});
+        const empireA = new Empire(galaxyA, 'Det Empire', capitalA, raceA, 0, 1.0, null);
+        const empireB = new Empire(galaxyB, 'Det Empire', capitalB, raceB, 0, 1.0, null);
 
         const sig = (e: Empire) =>
             [

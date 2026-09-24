@@ -14,10 +14,11 @@ beforeAll(async () => {
     gameData = await loadGameDataFs();
 });
 
-describe('game save/load (11a2)', () => {
+describe('game save/load (11a2)', { timeout: 30000 }, () => {
     // Pinned seed: defaultStartGameOptions uses Date.now() for the seed.
     const startOptions = { ...defaultStartGameOptions(), seed: 42 };
 
+    // Full M3 game start (ships, pirates, characters) is slow under suite load.
     it('createGame → advance 10 s → serialize/deserialize/serialize is byte-identical', () => {
         const game = createGame(toCreateGameOptions(startOptions, gameData, systemNames));
         const time = new GalaxyTime();

@@ -85,10 +85,17 @@ describe('view modes (cmbGalaxyMapViewMode_SelectedValueChanged)', () => {
     });
 
     it('Explored Systems honours the player visibility', () => {
-        const player: GalaxyMapPlayer = { ...GOD_MODE_PLAYER, systemExplored: (i) => i < 3, resourcesKnown: () => false };
+        // The first three star systems (gas clouds are SystemInfo entries too
+        // and always count as explored, so they are skipped here).
+        const starIdx = galaxy.systems
+            .map((sys, i) => ({ sys, i }))
+            .filter(({ sys }) => sys.systemStar.category === HabitatCategoryType.Star)
+            .slice(0, 3)
+            .map(({ i }) => i);
+        const player: GalaxyMapPlayer = { ...GOD_MODE_PLAYER, systemExplored: (i) => starIdx.includes(i), resourcesKnown: () => false };
         const sel = computeViewModeSelection(galaxy, GalaxyMapViewMode.ExploredSystems, player);
         const starSystems = sel.systems!.filter((h) => h.category === HabitatCategoryType.Star);
-        expect(starSystems.map((h) => h.systemIndex).sort()).toEqual([0, 1, 2]);
+        expect(starSystems.map((h) => h.systemIndex).sort((a, b) => a - b)).toEqual(starIdx);
         expect(sel.habitats).toEqual([]);
     });
 

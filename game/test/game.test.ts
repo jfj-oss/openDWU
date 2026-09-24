@@ -26,7 +26,8 @@ describe('createGame', () => {
     it('seed 1: player + 3 AIs placed, deterministic', () => {
         const a = summary(opts());
         // Pinned for seed 1 (TS port; C# parity diverges at the first Empire.DoTasks, unported).
-        expect(a.map((e) => e.capital)).toEqual(['S147', 'S127', 'S81', 'S63']);
+        // (re-pinned: design generation + colonizable-habitat search)
+        expect(a.map((e) => e.capital)).toEqual(['S147', 'S71', 'S259', 'S23']);
         expect(a.map((e) => e.colonies)).toEqual([1, 1, 1, 1]);
         expect(a.length).toBe(4);
         for (const e of a) expect(e.colonies).toBeGreaterThanOrEqual(1);

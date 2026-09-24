@@ -55,17 +55,17 @@ describe('gameData.ts loadGameData — browser path (manifest-driven defaults)',
         expect(expectedCount).toBeGreaterThan(0);
 
         const data = await loadGameData(fetchTextBrowserLike);
-        expect(data.policies).toBeInstanceOf(Map);
-        expect(data.policies.size).toBe(expectedCount);
+        expect(data.policiesByFile).toBeInstanceOf(Map);
+        expect(data.policiesByFile.size).toBe(expectedCount);
 
         // Every value must be a fully-formed EmpirePolicy (spot-check a
         // couple of representative fields have sane defaults/parsed values).
-        for (const policy of data.policies.values()) {
+        for (const policy of data.policiesByFile.values()) {
             expect(Number.isNaN(policy.fleetTypicalSize)).toBe(false);
         }
 
         // Pirate entries are keyed with a "pirate/" prefix.
-        const pirateKeys = [...data.policies.keys()].filter((k) => k.startsWith('pirate/'));
+        const pirateKeys = [...data.policiesByFile.keys()].filter((k) => k.startsWith('pirate/'));
         expect(pirateKeys.length).toBe((manifest['Policy/pirate'] ?? []).length);
     });
 
@@ -126,7 +126,7 @@ describe('gameData.ts loadGameData — browser path (manifest-driven defaults)',
         // No policy files could be discovered without the manifest (only the
         // "default.txt" fallback is tried, and this install has none), and no
         // design templates either — but the call must resolve, not throw.
-        expect(data.policies).toBeInstanceOf(Map);
+        expect(data.policiesByFile).toBeInstanceOf(Map);
         expect(data.designTemplates).toBeInstanceOf(Map);
         if (installLinked) {
             expect(data.races.length).toBeGreaterThan(0);
