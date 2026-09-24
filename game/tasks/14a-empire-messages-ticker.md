@@ -124,3 +124,19 @@ Build real messages with `new EmpireMessage(sender, type, subject)` and set `des
   - Two separate feeds do not share their seen set: a new feed polling the same queue returns its messages again.
 
 Run `npm run typecheck && npm test`. With `npm run dev` running, save `node scripts/shot.mjs 'http://localhost:5173/?autostart=1' shots/14a-messages.png`. Do not open it. Then append `## Worker report`: files changed, the shot.mjs console output, and anything left undone.
+
+## Worker report
+
+Files changed:
+- `src/ui/empireMessageFeed.ts` (new): `formatEmpireMessage` (port of Main.Part9.cs ReceiveMessageInternal ticker text + bool_2, method_250) and `createEmpireMessageFeed` (polls the player queue, dedupes by object identity with a WeakSet, read-only).
+- `src/main.ts`: import, `const messageFeed` above `refreshHud` in `startGameView`, and the poll loop at the end of `refreshHud`.
+- `test/empire-message-feed.test.ts` (new): the format and poll cases from the spec.
+
+shot.mjs (`http://localhost:5914/?autostart=1`, dev server on a private port since other agents share 5173) -> `shots/14a-messages.png`. Console output:
+```
+[debug] [vite] connecting...
+[debug] [vite] connected.
+saved shots/14a-messages.png
+```
+
+Left undone (as TODO(port) in the file): DisplayMessage<Category> options, popups, diplomatic conversation queue.

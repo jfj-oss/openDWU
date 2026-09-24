@@ -26,6 +26,7 @@ import { closeColoniesList } from './ui/screens/coloniesList';
 import { closeShipsAndBasesList } from './ui/screens/shipsAndBasesList';
 import { closeEmpireSummary, setEmpireSummarySource } from './ui/screens/empireSummary';
 import { closeMessageHistory } from './ui/screens/messageHistory';
+import { createEmpireMessageFeed } from './ui/empireMessageFeed';
 import { createMainMenu } from './ui/screens/mainMenu';
 import { openOptionsModal } from './ui/screens/mainMenu';
 import { createTutorialsScreen, openTutorialWindow } from './ui/screens/tutorials';
@@ -332,12 +333,18 @@ export async function startGameView(game: Game, zoomOverride?: number, extraBoot
         camera.centerOn(star.xpos, star.ypos);
         camera.zoomAt(SYSTEM_LEVEL_ZOOM, camera.width / 2, camera.height / 2);
     };
+    // Task 14a: the player's EmpireMessage queue feeds the ticker. The sim empties the
+    // queue in processMessages, so poll on every HUD refresh (4x a second).
+    const messageFeed = createEmpireMessageFeed();
     const refreshHud = (): void => {
         if (systemNameEl) {
             systemNameEl.textContent = nearestSystemName(
                 { galaxy },
                 camera,
             );
+        }
+        for (const text of messageFeed.poll(game.playerEmpire)) {
+            pushHudMessage(text, resolveStarDateDescription(time.currentStarDate));
         }
     };
     refreshHud();
