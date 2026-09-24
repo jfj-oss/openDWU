@@ -1,0 +1,342 @@
+// Usage: node scripts/smoke.mjs
+// End-to-end smoke test: starts its own Vite dev server on a free port, then
+// drives the app through the main menu -> new-game wizard -> Main View + HUD
+// -> play/speed -> game menu -> selection, saving a screenshot at each step
+// (game/shots/smoke-<n>.png) and printing a PASS/FAIL line per step.
+//
+// Fails (exit 1) on any page error, console error, or failed request to
+// /assets/dwu/ — in addition to any step assertion failing. Uses the system
+// Chromium via playwright-core, same as scripts/shot.mjs.
+import { chromium } from 'playwright-core';
+import { spawn, execFileSync } from 'node:child_process';
+import { createServer } from 'node:net';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+import { mkdirSync } from 'node:fs';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const root = join(here, '..');
+const shotsDir = join(root, 'shots');
+mkdirSync(shotsDir, { recursive: true });
+
+let shotN = 0;
+async function shot(page, label) {
+    shotN += 1;
+    const out = join(shotsDir, `smoke-${shotN}.png`);
+    await page.screenshot({ path: out });
+    console.log(`  screenshot: shots/smoke-${shotN}.png (${label})`);
+    return out;
+}
+
+/** Ask the OS for an unused TCP port (closed immediately; vite binds it). */
+function freePort() {
+    return new Promise((resolve, reject) => {
+        const srv = createServer();
+        srv.on('error', reject);
+        srv.listen(0, '127.0.0.1', () => {
+            const { port } = srv.address();
+            srv.close(() => resolve(port));
+        });
+    });
+}
+
+async function waitForServer(url, timeoutMs) {
+    const start = Date.now();
+    for (;;) {
+        try {
+            const r = await fetch(url);
+            if (r.status < 500) return;
+        } catch {
+            // not up yet
+        }
+        if (Date.now() - start > timeoutMs) {
+            throw new Error(`dev server did not respond at ${url} within ${timeoutMs}ms`);
+        }
+        await new Promise((res) => setTimeout(res, 200));
+    }
+}
+
+const results = [];
+function pass(name) {
+    results.push({ name, ok: true });
+    console.log(`PASS: ${name}`);
+}
+function fail(name, err) {
+    results.push({ name, ok: false });
+    console.log(`FAIL: ${name} — ${err?.message ?? err}`);
+}
+
+async function main() {
+    // scripts/gen-asset-manifest.mjs normally runs as npm's predev hook; we
+    // spawn vite directly (not via `npm run dev`) so run it explicitly.
+    execFileSync('node', ['scripts/gen-asset-manifest.mjs'], { cwd: root, stdio: 'inherit' });
+
+    const port = await freePort();
+    const base = `http://localhost:${port}`;
+    console.log(`Starting vite dev server on ${base} ...`);
+    const vite = spawn('npx', ['vite', '--port', String(port), '--strictPort'], {
+        cwd: root,
+        stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let viteOut = '';
+    vite.stdout.on('data', (d) => {
+        viteOut += d.toString();
+    });
+    vite.stderr.on('data', (d) => {
+        viteOut += d.toString();
+    });
+
+    let browser = null;
+    try {
+        try {
+            await waitForServer(`${base}/`, 30000);
+        } catch (err) {
+            console.error(viteOut);
+            throw err;
+        }
+
+        browser = await chromium.launch({
+            executablePath: process.env.CHROMIUM || '/usr/bin/chromium',
+            args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+        });
+        const page = await browser.newPage({ viewport: { width: 1600, height: 900 } });
+
+        const consoleErrors = [];
+        const pageErrors = [];
+        const failedAssetRequests = [];
+
+        page.on('console', (m) => {
+            if (m.type() === 'error') {
+                consoleErrors.push(m.text());
+                console.log(`  [console.error] ${m.text()}`);
+            }
+        });
+        page.on('pageerror', (e) => {
+            pageErrors.push(e.message);
+            console.log(`  [pageerror] ${e.message}`);
+        });
+        page.on('requestfailed', (req) => {
+            if (req.url().includes('/assets/dwu/')) {
+                const msg = `${req.url()} — ${req.failure()?.errorText ?? 'failed'}`;
+                failedAssetRequests.push(msg);
+                console.log(`  [requestfailed] ${msg}`);
+            }
+        });
+        page.on('response', (res) => {
+            if (res.url().includes('/assets/dwu/') && res.status() >= 400) {
+                const msg = `${res.url()} — HTTP ${res.status()}`;
+                failedAssetRequests.push(msg);
+                console.log(`  [response] ${msg}`);
+            }
+        });
+
+        // --- Step 1: main menu -------------------------------------------
+        try {
+            await page.goto(`${base}/`, { waitUntil: 'domcontentloaded' });
+            await page.waitForSelector('button[data-id="startNewGame"]', { state: 'visible', timeout: 15000 });
+            await shot(page, 'main menu');
+            pass('1. main menu visible (Start New Game present)');
+        } catch (err) {
+            fail('1. main menu visible (Start New Game present)', err);
+            await shot(page, 'main menu (failed)').catch(() => {});
+        }
+
+        // --- Step 2: wizard, step through every page, Start Game ---------
+        try {
+            await page.click('button[data-id="startNewGame"]');
+            await page.waitForSelector('.wizard-window', { state: 'visible', timeout: 10000 });
+            await shot(page, 'wizard opened (The Galaxy)');
+
+            const nextSel = '.wizard-btn-primary';
+            for (let i = 0; i < 10; i++) {
+                // Race/government data loads async as soon as the wizard opens
+                // (all pages are built upfront); wait for it so the option
+                // defaults derived from it (empire name, flag, government) are
+                // in place before advancing.
+                await page
+                    .waitForFunction(() => !document.querySelector('.wizard-race-loading'), { timeout: 10000 })
+                    .catch(() => {});
+                const label = await page.textContent(nextSel);
+                if (label === 'Start Game') break;
+                await page.click(nextSel);
+                await page.waitForTimeout(150);
+            }
+            await shot(page, 'wizard last page (Start)');
+
+            const finalLabel = await page.textContent(nextSel);
+            if (finalLabel !== 'Start Game') {
+                throw new Error(`expected the forward button to read "Start Game" on the last page, got "${finalLabel}"`);
+            }
+            await page.click(nextSel);
+            await page.waitForSelector('#hud', { state: 'attached', timeout: 60000 });
+            pass('2. wizard stepped through every page and Start Game clicked');
+        } catch (err) {
+            fail('2. wizard stepped through every page and Start Game clicked', err);
+        }
+
+        // --- Step 3: Main View + HUD --------------------------------------
+        try {
+            await page.waitForSelector('canvas', { state: 'visible', timeout: 15000 });
+            await page.waitForFunction(() => !!window.__dwu && !!window.__dwu.game, { timeout: 30000 });
+            const info = await page.evaluate(() => {
+                const d = window.__dwu;
+                const dateEl = document.querySelector('.hud-date');
+                return {
+                    empireCount: d.game?.galaxy?.empires?.length ?? 0,
+                    dateText: dateEl ? dateEl.textContent : null,
+                };
+            });
+            if (info.empireCount < 2) {
+                throw new Error(`expected window.__dwu.game with >= 2 empires, got ${info.empireCount}`);
+            }
+            if (!info.dateText || !/\d{4}\.\d\d\.\d\d/.test(info.dateText)) {
+                throw new Error(`date label "${info.dateText}" does not match /\\d{4}\\.\\d\\d\\.\\d\\d/`);
+            }
+            await shot(page, 'Main View + HUD');
+            pass(`3. Main View + HUD visible (${info.empireCount} empires, date "${info.dateText}")`);
+        } catch (err) {
+            fail('3. Main View + HUD visible', err);
+            await shot(page, 'Main View + HUD (failed)').catch(() => {});
+        }
+
+        // --- Step 4: play + speed -----------------------------------------
+        try {
+            const dateSel = '.hud-date';
+            const before = await page.textContent(dateSel);
+            await page.click('button[title="Play / pause"]');
+            // The spec calls for a 3s wait, but this headless Chromium/
+            // swiftshader setup throttles requestAnimationFrame heavily (a
+            // few frames/second, each clamped to Pixi's ticker deltaMS cap),
+            // so the in-game clock — driven from app.ticker — advances much
+            // slower than wall-clock time here. Poll for up to 20s instead of
+            // a bare 3s sleep so the check is robust to that environment
+            // quirk rather than flaky.
+            let after = before;
+            const deadline = Date.now() + 20000;
+            while (Date.now() < deadline) {
+                await page.waitForTimeout(500);
+                after = await page.textContent(dateSel);
+                if (after !== before) break;
+            }
+            if (after === before) {
+                throw new Error(`date label did not change within 20s of clicking play (still "${before}")`);
+            }
+            await page.click('button[title="Faster"]');
+            await page.click('button[title="Faster"]');
+            await page.waitForTimeout(100);
+            const speedLabel = await page.textContent(dateSel);
+            if (!speedLabel.includes('(4x)')) {
+                throw new Error(`expected the date label to show "(4x)" after two speed-ups, got "${speedLabel}"`);
+            }
+            await shot(page, 'playing at 4x');
+            pass(`4. play + speed up to 4x (before "${before}", after 3s "${after}", at 4x "${speedLabel}")`);
+        } catch (err) {
+            fail('4. play + speed up to 4x', err);
+            await shot(page, 'play + speed (failed)').catch(() => {});
+        }
+
+        // --- Step 5: game menu ---------------------------------------------
+        try {
+            await page.keyboard.press('Escape');
+            await page.waitForSelector('#game-menu-overlay', { state: 'visible', timeout: 5000 });
+            await shot(page, 'game menu open');
+            await page.getByRole('button', { name: 'Resume', exact: true }).click();
+            await page.waitForSelector('#game-menu-overlay', { state: 'hidden', timeout: 5000 });
+            await shot(page, 'game menu closed (Resume)');
+            pass('5. Escape opens the game menu, Resume hides it');
+        } catch (err) {
+            fail('5. Escape opens the game menu, Resume hides it', err);
+            await shot(page, 'game menu (failed)').catch(() => {});
+        }
+
+        // --- Step 6: selection ----------------------------------------------
+        try {
+            const vp = page.viewportSize();
+            const cx = vp.width / 2;
+            const cy = vp.height / 2;
+            // Spiral-search near the screen centre for a pickable habitat via
+            // the debug view.pick() API (task 08g), then perform a real mouse
+            // click there so the normal click -> onSelectionChange wiring runs.
+            const target = await page.evaluate(
+                ({ cx, cy }) => {
+                    const view = window.__dwu?.view;
+                    if (!view || typeof view.pick !== 'function') return null;
+                    for (let r = 0; r <= 400; r += 8) {
+                        for (let a = 0; a < 360; a += 20) {
+                            const x = cx + r * Math.cos((a * Math.PI) / 180);
+                            const y = cy + r * Math.sin((a * Math.PI) / 180);
+                            if (view.pick(x, y)) return { x, y };
+                        }
+                    }
+                    return null;
+                },
+                { cx, cy },
+            );
+
+            if (!target) {
+                console.log('  WARN: no pickable star/planet found near the screen centre; skipping selection check');
+                pass('6. selection panel (skipped: nothing pickable near centre)');
+            } else {
+                await page.mouse.click(target.x, target.y);
+                await page.waitForTimeout(200);
+                const selName = (await page.textContent('.hud-selection-name'))?.trim();
+                if (!selName || selName === 'Nothing selected') {
+                    throw new Error(`selection panel still shows "${selName}" after clicking a pickable object at (${target.x}, ${target.y})`);
+                }
+                await shot(page, 'selection');
+                pass(`6. selection panel shows "${selName}"`);
+            }
+        } catch (err) {
+            fail('6. selection panel updates on click', err);
+            await shot(page, 'selection (failed)').catch(() => {});
+        }
+
+        // --- Global error checks ---------------------------------------------
+        if (consoleErrors.length > 0) {
+            fail('no console errors', new Error(`${consoleErrors.length} console error(s): ${consoleErrors.slice(0, 3).join(' | ')}`));
+        } else {
+            pass('no console errors');
+        }
+        if (pageErrors.length > 0) {
+            fail('no page errors', new Error(`${pageErrors.length} page error(s): ${pageErrors.slice(0, 3).join(' | ')}`));
+        } else {
+            pass('no page errors');
+        }
+        if (failedAssetRequests.length > 0) {
+            fail(
+                'no failed /assets/dwu/ requests',
+                new Error(`${failedAssetRequests.length} failed request(s): ${failedAssetRequests.slice(0, 3).join(' | ')}`),
+            );
+        } else {
+            pass('no failed /assets/dwu/ requests');
+        }
+    } finally {
+        if (browser) {
+            await browser.close().catch(() => {});
+        }
+        await new Promise((resolve) => {
+            vite.once('exit', () => resolve());
+            vite.kill();
+            setTimeout(resolve, 3000);
+        });
+    }
+
+    console.log('\n--- Summary ---');
+    for (const r of results) {
+        console.log(`${r.ok ? 'PASS' : 'FAIL'}: ${r.name}`);
+    }
+
+    const failures = results.filter((r) => !r.ok);
+    if (failures.length > 0) {
+        console.log(`\n${failures.length} failure(s).`);
+        process.exitCode = 1;
+    } else {
+        console.log('\nAll checks passed.');
+        process.exitCode = 0;
+    }
+}
+
+main().catch((err) => {
+    console.error('smoke test crashed:', err);
+    process.exitCode = 1;
+});

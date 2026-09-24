@@ -11,6 +11,7 @@
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "smoke": "node scripts/smoke.mjs",
     "import-assets": "bash scripts/import-assets.sh",
     "desktop:dev": "npm run build && electron desktop/main.cjs",
     "package:linux": "node scripts/package-desktop.mjs --platform=linux --arch=x64",
