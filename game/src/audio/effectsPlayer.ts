@@ -1,889 +1,520 @@
-// Port of DistantWorlds.EffectsPlayer (EffectsPlayer.cs) + SoundEffectRequest
-// (SoundEffectRequest.cs), on the Web Audio API.
+// Sound effects (task C4), on the Web Audio API. Ports of
+//   DistantWorlds/EffectsPlayer.cs      (Resolve* request builders, PlayEffect, sfx bank)
+//   DistantWorlds/SoundEffectRequest.cs (Volume / Balance / Frequency / Filename)
+//   Main.Part13.cs method_0/1/2         (the request queue: at most int_3 = 10
+//                                        pending requests, extra requests dropped,
+//                                        flushed once per Main View frame)
+//   Controls/MainView.1.cs method_90    (stereo balance + distance attenuation
+//                                        from the view centre)
+//   DistantWorlds.Controls GlassButton / HoverButton / HoverMenuItem /
+//   ListViewBase, with the sounds Main.Part13.cs 905-944 assigns them
+//                                       (button1.wav / button2.wav / grid.wav)
+// EffectsPlayer.DX.cs (the DirectSound backend) is intentionally not ported.
 //
-// The C# class keeps a `Dictionary<string, SoundEffect>` bank (XNA
-// SoundEffect = decoded buffer) plus a list of live SoundEffectInstances;
-// buffers are preloaded in Initialize() for the weapon/explosion files and
-// lazily loaded in PlayEffect() for everything else. Here the "bank" is a
-// map of filename → AudioBuffer fetched from /assets/dwu/Sounds/Effects/<file>
-// (the desktop shell maps that prefix to the DW:U install folder). Missing
-// files are skipped gracefully — the original pops an error dialog and exits
-// the process (method_1), which is not an option in a browser.
-//
-// Browsers block audio until a user gesture: startEffects() defers creating
-// the AudioContext to the first pointerdown/keydown, mirroring startMusic().
+// Sounds load from /assets/dwu/Sounds/Effects/<file>. The C# path is
+// "\sounds\effects\" on a case-insensitive file system; the dev server and
+// desktop shell resolve /assets/dwu case-insensitively (task 05d).
 
-import { ComponentType } from '../sim/data/components';
-import { HabitatType } from '../sim/types';
 import { getSettings } from '../ui/settings';
+import { Random } from '../sim/random';
 
-/** Port of DistantWorlds.SoundEffectRequest (double Volume/Balance, int
- * Frequency, string Filename). */
+export const EFFECTS_BASE_URL = '/assets/dwu/Sounds/Effects/';
+
+// Port of SoundEffectRequest.cs.
 export interface SoundEffectRequest {
-    volume: number;
+    filename: string;
     balance: number;
+    volume: number;
     frequency: number;
-    filename: string;
 }
 
-/** Folder the effect files are served from. */
-const EFFECTS_URL_PREFIX = '/assets/dwu/Sounds/Effects/';
-
-/** Files preloaded at startup (port of EffectsPlayer.method_0's hardcoded
- * additions). The original also prepends every weapon component's sound file
- * via ComponentDefinitionList.ResolveWeaponSoundEffectFilenames — that helper
- * is not ported here, so the preload list is limited to the explosion set.
- * TODO(port): extend the preload list once ResolveWeaponSoundEffectFilenames
- * is available (DistantWorlds.Types.ComponentDefinitionList).
- */
-const PRELOAD_FILES = [
-    'Explosion.wav',
-    'Explosion2.wav',
-    'Explosion3.wav',
-    'explosion_small.wav',
-    'Explosion_small2.wav',
-    'Explosion_small3.wav',
-];
-
-/** The UI button-click sound. The pasted source has no resolver for plain UI
- * button clicks (ResolveAttackClick plays attack_click.wav for attacks); per
- * the task's fallback rule this is the first file whose name contains
- * "click" or "button". */
-export const UI_CLICK_FILE = 'attack_click.wav';
-
-/** Cap on simultaneously playing voices. The pasted excerpt does not contain
- * the original's exact concurrency limit (its instance list is unbounded and
- * pruned by ClearFinishedBuffers); 24 is a modest bound so a battle cannot
- * open hundreds of AudioBufferSourceNodes at once.
- * TODO(port): use the original's exact voice cap once it is known. */
-export const MAX_CONCURRENT_VOICES = 24;
-
-/** Pure helper: positional attenuation factor (port of each resolver's
- * `distance = Math.Min(1.0, distance)` then `volume *= distance`). Returns 1
- * for a source at the view centre (zero distance), falling linearly to 0 at
- * the full-screen radius. */
-export function attenuationFactor(distance: number): number {
-    if (distance <= 0) return 1;
-    return Math.min(1, distance);
+function request(filename: string, balance: number, volume: number): SoundEffectRequest {
+    return { filename, balance, volume, frequency: 0 };
 }
 
-/** Pure helper: convert a world-space offset from the listener into the
- * linear attenuation factor. `zoom` is pixels per world unit (Camera.zoom),
- * so the on-screen distance in pixels is hypot(dx, dy) * zoom; the C# code
- * clamps the resulting distance to [0, 1] before scaling the volume. */
-export function attenuationFromOffset(
-    dx: number,
-    dy: number,
-    zoom: number,
-    screenRadius: number,
-): number {
-    if (screenRadius <= 0) return 1;
-    const px = Math.hypot(dx, dy) * zoom;
-    return attenuationFactor(px / screenRadius);
+// Port of MainView.1.cs method_90(x, y, zoomFactor): balance -1..1 from the
+// horizontal offset, and a 0.02..1 distance factor from the screen centre,
+// divided by sqrt(zoom factor) (C# double_0 = 1 / pixels-per-unit) and
+// silenced when zoomed out past factor 50.
+export function resolveBalanceAndDistance(
+    screenX: number,
+    screenY: number,
+    viewWidth: number,
+    viewHeight: number,
+    zoomFactor: number,
+): { balance: number; distance: number } {
+    const num = viewWidth / 2.0;
+    const y = viewHeight / 2.0;
+    const balance = (screenX - num) / num;
+    let num2 = Math.trunc(Math.sqrt(num * num + y * y));
+    num2 = Math.trunc(num2 * 1.5);
+    const dx = num - screenX;
+    const dy = y - screenY;
+    const num3 = Math.trunc(Math.sqrt(dx * dx + dy * dy));
+    let val = (num2 - num3) / num2;
+    val = Math.max(0.02, val);
+    const num4 = Math.max(1.0, Math.sqrt(zoomFactor));
+    let distance = val / num4;
+    if (zoomFactor > 50.0) {
+        distance = 0.0;
+    }
+    return { balance, distance };
 }
 
-/** Pure helper: decide whether a new voice may start given the currently
- * active ones. The original keeps every instance alive until it finishes
- * (ClearFinishedBuffers prunes stopped ones); here we additionally cap the
- * concurrent count and drop the oldest voice when the cap is hit. Returns
- * true when the caller should remove `oldestIndex` to make room. */
-export function shouldReplaceOldestVoice(activeCount: number, maxVoices: number): boolean {
-    return activeCount >= maxVoices;
+// C# EmpireMessageType values grouped by EffectsPlayer.ResolveMessage.
+const MESSAGE_MINOR = new Set([14, 55, 56]);
+const MESSAGE_ALARM = new Set([20, 22]);
+const MESSAGE_MAJOR = new Set([24, 26, 29, 31, 33, 34, 50, 59, 60, 63, 67, 68, 72, 78, 79, 82, 91, 92, 96]);
+const MESSAGE_NONE = new Set([0]);
+
+// ---------------------------------------------------------------------------
+// Web Audio seam (so tests can supply a fake context).
+// ---------------------------------------------------------------------------
+
+export interface AudioBackend {
+    /** Decode a file into a playable buffer (null if missing). */
+    load(url: string): Promise<AudioBuffer | null>;
+    /** Start a buffer; returns a handle whose `ended` flag flips when done. */
+    play(buffer: AudioBuffer, pan: number, gain: number, playbackRate: number): PlayingSound;
 }
 
-/** One live playback (a SoundEffectInstance analogue). */
-interface Voice {
-    source: AudioBufferSourceNode;
-    gain: GainNode;
-    pan: StereoPannerNode;
-    filename: string;
-    /** True once the source node has finished (analogous to State === Stopped). */
-    finished: boolean;
+export interface PlayingSound {
+    readonly ended: boolean;
+    stop(): void;
 }
 
-class EffectsPlayer {
+// Browser backend: BufferSource -> StereoPanner -> Gain -> destination.
+export class WebAudioBackend implements AudioBackend {
     private ctx: AudioContext | null = null;
-    private master: GainNode | null = null;
 
-    /** Decoded buffer bank (port of sfxBank). */
-    private readonly bank = new Map<string, AudioBuffer>();
-    /** In-flight buffer loads (one fetch per filename). */
-    private readonly loading = new Map<string, Promise<AudioBuffer | null>>();
-    /** Live voices (port of list_0). */
-    private readonly voices: Voice[] = [];
-
-    /** Master volume (port of double_0, default 0.7). */
-    private volume = 0.7;
-    private muted = false;
-
-    /** Listener position in world space (setListener). */
-    private listenerX = 0;
-    private listenerY = 0;
-    /** Pixels per world unit (Camera.zoom). */
-    private zoom = 1;
-    /** Half the smaller screen dimension in px (attenuation reference). */
-    private screenRadius = 450;
-
-    /** Port of random_0 = new Random((int)DateTime.Now.Ticks). */
-    private readonly rand = Math.random;
-
-    /** Create the AudioContext (deferred until a user gesture). */
-    private ensureContext(): AudioContext | null {
-        if (this.ctx !== null) return this.ctx;
-        try {
-            const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-            if (!Ctor) return null;
-            this.ctx = new Ctor();
-            this.master = this.ctx.createGain();
-            this.master.connect(this.ctx.destination);
-            this.applyMasterVolume();
-        } catch {
-            this.ctx = null;
-            this.master = null;
+    private context(): AudioContext {
+        if (this.ctx === null) {
+            this.ctx = new AudioContext();
+        }
+        // Browsers start the context suspended until a user gesture.
+        if (this.ctx.state === 'suspended') {
+            void this.ctx.resume();
         }
         return this.ctx;
     }
 
-    /** Register the player: the AudioContext starts on the first
-     * pointerdown/keydown (browsers block autoplay before a user gesture). */
-    startEffects(): void {
-        if (this.ctx !== null) return;
-        const begin = (): void => {
-            window.removeEventListener('pointerdown', begin);
-            window.removeEventListener('keydown', begin);
-            if (this.ensureContext()?.state === 'suspended') {
-                void this.ctx?.resume();
-            }
+    async load(url: string): Promise<AudioBuffer | null> {
+        try {
+            const r = await fetch(url);
+            if (!r.ok) return null;
+            const data = await r.arrayBuffer();
+            return await this.context().decodeAudioData(data);
+        } catch {
+            return null;
+        }
+    }
+
+    play(buffer: AudioBuffer, pan: number, gain: number, playbackRate: number): PlayingSound {
+        const ctx = this.context();
+        const src = ctx.createBufferSource();
+        src.buffer = buffer;
+        src.playbackRate.value = playbackRate;
+        const panner = ctx.createStereoPanner();
+        panner.pan.value = pan;
+        const g = ctx.createGain();
+        g.gain.value = gain;
+        src.connect(panner).connect(g).connect(ctx.destination);
+        const handle = { ended: false, stop: () => src.stop() };
+        src.onended = () => {
+            handle.ended = true;
+            src.disconnect();
         };
-        window.addEventListener('pointerdown', begin);
-        window.addEventListener('keydown', begin);
+        src.start();
+        return handle;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// EffectsPlayer
+// ---------------------------------------------------------------------------
+
+export class EffectsPlayer {
+    // C# double_0 = 0.7 (the master effects volume; Main sets it from options).
+    volume = 0.7;
+    private backend: AudioBackend;
+    private baseUrl: string;
+    // C# sfxBank (filename -> SoundEffect). Promises so concurrent requests
+    // for a not-yet-loaded file share one fetch.
+    private sfxBank = new Map<string, Promise<AudioBuffer | null>>();
+    // C# list_0: live SoundEffectInstances.
+    private instances: PlayingSound[] = [];
+    // C# random_0 = new Random((int)DateTime.Now.Ticks) — cosmetic variety,
+    // intentionally not the galaxy stream.
+    private random: Random;
+
+    constructor(backend: AudioBackend = new WebAudioBackend(), baseUrl = EFFECTS_BASE_URL, seed = Date.now() & 0x7fffffff) {
+        this.backend = backend;
+        this.baseUrl = baseUrl;
+        this.random = new Random(seed);
     }
 
-    /** Port of Volume (double_0). */
-    get volumeValue(): number {
-        return this.volume;
+    // Port of method_0 (Initialize): preload the weapon sounds (component
+    // SoundEffectFilenames) and the six explosions.
+    preload(weaponSoundFilenames: readonly string[] = []): Promise<void> {
+        const list = [...weaponSoundFilenames, 'Explosion.wav', 'Explosion2.wav', 'Explosion3.wav', 'Explosion_Small.wav', 'Explosion_Small2.wav', 'Explosion_Small3.wav'];
+        return Promise.all(list.map((f) => this.buffer(f))).then(() => undefined);
     }
 
-    /** Port of SetVolume(double) — clamped to [0,1]. */
-    setVolume(volume: number): void {
-        if (volume < 0 || volume > 1) return;
-        this.volume = volume;
-        this.applyMasterVolume();
+    // Port of Clear.
+    clear(): void {
+        this.sfxBank.clear();
     }
 
-    mute(): void {
-        this.muted = true;
-        this.applyMasterVolume();
-    }
-
-    unmute(): void {
-        this.muted = false;
-        this.applyMasterVolume();
-    }
-
-    private applyMasterVolume(): void {
-        if (this.master !== null && this.ctx !== null) {
-            this.master.gain.setTargetAtTime(this.muted ? 0 : this.volume, this.ctx.currentTime, 0.01);
+    private buffer(filename: string): Promise<AudioBuffer | null> {
+        const key = filename.toLowerCase();
+        let p = this.sfxBank.get(key);
+        if (p === undefined) {
+            p = this.backend.load(this.baseUrl + filename);
+            this.sfxBank.set(key, p);
         }
-    }
-
-    /** Positional listener: the world-space point at the view centre, the
-     * current zoom (px per world unit) and the screen size used as the
-     * attenuation reference. Call with the camera each frame/tick. */
-    setListener(x: number, y: number, zoom: number, width?: number, height?: number): void {
-        this.listenerX = x;
-        this.listenerY = y;
-        this.zoom = zoom;
-        if (width !== undefined && height !== undefined) {
-            this.screenRadius = Math.min(width, height) / 2;
-        }
-    }
-
-    /** Preload the startup buffer set (port of method_0). Failures are
-     * logged and skipped instead of aborting the app. */
-    async initialize(): Promise<void> {
-        await Promise.allSettled(PRELOAD_FILES.map((f) => this.loadBuffer(f)));
-    }
-
-    /** Fetch + decode one file into the bank (lazy-load path of PlayEffect).
-     * Returns null when the file is missing or undecodable. */
-    loadBuffer(filename: string): Promise<AudioBuffer | null> {
-        const cached = this.bank.get(filename);
-        if (cached) return Promise.resolve(cached);
-        const inflight = this.loading.get(filename);
-        if (inflight) return inflight;
-        const p = (async (): Promise<AudioBuffer | null> => {
-            const ctx = this.ensureContext();
-            if (ctx === null) return null;
-            try {
-                const res = await fetch(EFFECTS_URL_PREFIX + filename);
-                if (!res.ok) return null;
-                const data = await res.arrayBuffer();
-                const buf = await ctx.decodeAudioData(data);
-                this.bank.set(filename, buf);
-                return buf;
-            } catch {
-                // Missing/corrupt file: skip it (the original would exit).
-                return null;
-            } finally {
-                this.loading.delete(filename);
-            }
-        })();
-        this.loading.set(filename, p);
         return p;
     }
 
-    /** Port of ClearFinishedBuffers: drop voices whose source has stopped. */
+    /** Number of live (not yet cleared) sound instances. */
+    get activeCount(): number {
+        return this.instances.length;
+    }
+
+    // Port of ClearFinishedBuffers.
     clearFinishedBuffers(): void {
-        for (let i = this.voices.length - 1; i >= 0; i--) {
-            const v = this.voices[i];
-            if (v.finished) {
-                try {
-                    v.source.disconnect();
-                    v.gain.disconnect();
-                    v.pan.disconnect();
-                } catch {
-                    // already disconnected
-                }
-                this.voices.splice(i, 1);
-            }
-        }
+        this.instances = this.instances.filter((i) => !i.ended);
     }
 
-    /** Port of PlayEffect(filename, balance, volume, frequency). The whole
-     * body sits in a try/catch in C# that swallows every exception; same
-     * here — a failed play must never break the game loop. */
-    async playEffect(filename: string, balance: number, volume: number, frequency: number): Promise<void> {
-        try {
-            const ctx = this.ensureContext();
-            if (ctx === null || this.master === null) return;
-            if (ctx.state === 'suspended') {
-                void ctx.resume();
-            }
-            let buffer = this.bank.get(filename) ?? null;
-            if (buffer === null) {
-                buffer = await this.loadBuffer(filename);
-            }
-            if (buffer === null) return;
-
-            this.clearFinishedBuffers();
-            if (shouldReplaceOldestVoice(this.voices.length, MAX_CONCURRENT_VOICES)) {
-                // Drop the oldest voice to make room (see MAX_CONCURRENT_VOICES).
-                const oldest = this.voices.shift();
-                if (oldest) {
-                    try {
-                        oldest.source.stop();
-                        oldest.source.disconnect();
-                        oldest.gain.disconnect();
-                        oldest.pan.disconnect();
-                    } catch {
-                        // already stopped
-                    }
-                }
-            }
-
-            const source = ctx.createBufferSource();
-            source.buffer = buffer;
-            const gain = ctx.createGain();
-            gain.gain.value = Math.max(0, Math.min(1, volume));
-            const pan = ctx.createStereoPanner();
-            pan.pan.value = Math.max(-1, Math.min(1, balance));
-            if (frequency > 0) {
-                // XNA Pitch is cents relative to 0; approximate with a rate
-                // shift (2^(cents/1200)).
-                source.playbackRate.value = Math.pow(2, frequency / 1200);
-            }
-            source.connect(gain);
-            gain.connect(pan);
-            pan.connect(this.master);
-            source.onended = () => {
-                const v = this.voices.find((x) => x.source === source);
-                if (v) v.finished = true;
-            };
-            this.voices.push({ source, gain, pan, filename, finished: false });
-            source.start();
-        } catch {
-            // Port of PlayEffect's swallowing catch.
-        }
+    // Port of PlayEffect(filename, balance, volume, frequency): Pan =
+    // clamp(balance, -1, 1), Volume = volume, Pitch = frequency when > 0 (XNA
+    // pitch in octaves → playbackRate 2^pitch). Missing files are skipped.
+    async playEffect(filename: string, balance: number, volume: number, frequency = 0): Promise<void> {
+        if (filename === '') return;
+        const buf = await this.buffer(filename);
+        if (buf === null) return;
+        const pan = Math.max(-1, Math.min(1, balance));
+        const rate = frequency > 0 ? Math.pow(2, Math.min(1, frequency)) : 1;
+        this.instances.push(this.backend.play(buf, pan, Math.max(0, Math.min(1, volume)), rate));
     }
 
-    /** Stop all live voices and release the bank (port of Clear). */
-    dispose(): void {
-        for (const v of this.voices) {
-            try {
-                v.source.stop();
-            } catch {
-                // not started / already stopped
-            }
-            try {
-                v.source.disconnect();
-                v.gain.disconnect();
-                v.pan.disconnect();
-            } catch {
-                // ignore
-            }
-        }
-        this.voices.length = 0;
-        this.bank.clear();
-        this.loading.clear();
-        if (this.master) {
-            this.master.disconnect();
-            this.master = null;
-        }
-        if (this.ctx) {
-            void this.ctx.close().catch(() => undefined);
-            this.ctx = null;
-        }
-    }
+    // --- Resolve* request builders (EffectsPlayer.cs) ---
 
-    // ------------------------------------------------------------------
-    // Resolvers (ports of the public Resolve* methods). Each takes the
-    // master volume explicitly so they stay pure and testable; the class
-    // wrappers below feed them this.volume.
-    // ------------------------------------------------------------------
-
-    /** Port of ResolveIonStrike. */
     resolveIonStrike(balance: number, distance: number): SoundEffectRequest {
-        return resolveIonStrike(this.volume, balance, distance);
+        return request('ion_strike.wav', balance, this.volume * 1.8 * Math.min(1.0, distance));
     }
 
-    /** Port of ResolveWeapon. */
-    resolveWeapon(soundEffectFilename: string | null, balance: number, distance: number): SoundEffectRequest {
-        return resolveWeapon(this.volume, soundEffectFilename, balance, distance);
+    // component.SoundEffectFilename, 0.23.
+    resolveWeapon(soundEffectFilename: string, balance: number, distance: number): SoundEffectRequest {
+        return request(soundEffectFilename, balance, this.volume * 0.23 * Math.min(1.0, distance));
     }
 
-    /** Port of ResolveFighterWeapon. */
-    resolveFighterWeapon(effectFilename: string, type: ComponentType, balance: number, distance: number): SoundEffectRequest {
-        return resolveFighterWeapon(this.volume, effectFilename, type, balance, distance);
+    // ComponentType 1 (WeaponBeam) 0.19, 2 / 4 0.25; other types: no file.
+    resolveFighterWeapon(effectFilename: string, type: number, balance: number, distance: number): SoundEffectRequest {
+        let text = '';
+        let num = 0.19;
+        switch (type) {
+            case 1:
+                text = effectFilename;
+                break;
+            case 2:
+            case 4:
+                text = effectFilename;
+                num = 0.25;
+                break;
+        }
+        return request(text, balance, this.volume * num * Math.min(1.0, distance));
     }
 
-    /** Port of ResolveAmbientEffect. */
-    resolveAmbientEffect(soundScheme: number, balance: number, distance: number, nextEffectOffset: { value: number }): SoundEffectRequest {
-        return resolveAmbientEffect(this.volume, soundScheme, balance, distance, nextEffectOffset, this.rand);
+    resolveAmbientEffect(soundScheme: number, balance: number, distance: number): { request: SoundEffectRequest; nextEffectOffset: number } {
+        let text = '';
+        const num = this.volume * 0.7;
+        let nextEffectOffset = 4000;
+        switch (soundScheme) {
+            case 0:
+                switch (this.random.next(0, 3)) {
+                    case 0: text = 'ambient1_voice1.wav'; nextEffectOffset = 5500; break;
+                    case 1: text = 'ambient1_voice2.wav'; nextEffectOffset = 10800; break;
+                    case 2: text = 'ambient1_voice3.wav'; nextEffectOffset = 6600; break;
+                }
+                break;
+            case 1:
+                switch (this.random.next(0, 4)) {
+                    case 0: text = 'ambient2_voice1.wav'; nextEffectOffset = 9200; break;
+                    case 1: text = 'ambient2_voice2.wav'; nextEffectOffset = 9200; break;
+                    case 2: text = 'ambient2_voice3.wav'; nextEffectOffset = 8200; break;
+                    case 3: text = 'ambient2_voice4.wav'; nextEffectOffset = 9200; break;
+                }
+                break;
+            case 2:
+                switch (this.random.next(0, 3)) {
+                    case 0: text = 'ambient3_energy1.wav'; nextEffectOffset = 8400; break;
+                    case 1: text = 'ambient3_energy2.wav'; nextEffectOffset = 8400; break;
+                    case 2: text = 'ambient3_energy3.wav'; nextEffectOffset = 11400; break;
+                }
+                break;
+            case 3:
+                switch (this.random.next(0, 5)) {
+                    case 0:
+                    case 1: text = 'ambient4_boom1.wav'; nextEffectOffset = 5500; break;
+                    case 2:
+                    case 3: text = 'ambient4_boom2.wav'; nextEffectOffset = 6500; break;
+                    case 4: text = 'ambient4_boom3.wav'; nextEffectOffset = 8500; break;
+                }
+                break;
+        }
+        return { request: request(text, balance, num * Math.min(1.0, distance)), nextEffectOffset };
     }
 
-    /** Port of ResolveAttackClick. */
     resolveAttackClick(): SoundEffectRequest {
-        return resolveAttackClick(this.volume);
+        return request('attack_click.wav', 0.0, this.volume * 1.0);
     }
 
-    /** Port of ResolveImportantMessage. */
     resolveImportantMessage(): SoundEffectRequest {
-        return resolveImportantMessage(this.volume);
+        return request('message_major.wav', 0.0, this.volume * 0.7);
     }
 
-    /** Port of ResolveMessage (EmpireMessageType values are numeric). */
+    // Port of ResolveMessage(EmpireMessageType): every listed type not in the
+    // minor / alarm / major groups plays message_standard.wav (types not
+    // listed at all, e.g. 0, play nothing).
     resolveMessage(messageType: number): SoundEffectRequest {
-        return resolveMessage(this.volume, messageType);
+        let text = '';
+        let num = this.volume * 0.7;
+        if (MESSAGE_MINOR.has(messageType)) {
+            text = 'message_minor.wav';
+        } else if (MESSAGE_ALARM.has(messageType)) {
+            text = 'message_alarm.wav';
+            num = this.volume * 0.4;
+        } else if (MESSAGE_MAJOR.has(messageType)) {
+            text = 'message_major.wav';
+        } else if (!MESSAGE_NONE.has(messageType) && messageType >= 1 && messageType <= 97) {
+            text = 'message_standard.wav';
+        }
+        return request(text, 0.0, num);
     }
 
-    /** Port of ResolveHyperjumpEntry. */
     resolveHyperjumpEntry(balance: number, distance: number): SoundEffectRequest {
-        return resolveHyperjumpEntry(this.volume, balance, distance);
+        return request('Hyperjump_Enter.wav', balance, this.volume * 0.45 * Math.min(1.0, distance));
     }
 
-    /** Port of ResolveHyperjumpExit. */
     resolveHyperjumpExit(balance: number, distance: number): SoundEffectRequest {
-        return resolveHyperjumpExit(this.volume, balance, distance);
+        return request('Hyperjump_Exit.wav', balance, this.volume * 0.5 * Math.min(1.0, distance));
     }
 
-    /** Port of ResolveStar. Returns null when the star type has no sound. */
-    resolveStar(starType: HabitatType, balance: number, distance: number): SoundEffectRequest | null {
-        return resolveStar(this.volume, starType, balance, distance, this.rand);
+    // HabitatType 1 MainSequence, 2/3 Red/SuperGiant, 4 WhiteDwarf, 5 Neutron,
+    // 6 BlackHole; anything else → null.
+    resolveStar(starType: number, balance: number, distance: number): SoundEffectRequest | null {
+        const num = this.random.next(0, 2);
+        let num2 = 1.0;
+        let text = '';
+        let num3 = 0;
+        switch (starType) {
+            case 1: text = num === 1 ? 'star_basic2.wav' : 'star_basic1.wav'; num3 = 23; num2 = 0.7; break;
+            case 2:
+            case 3: text = num === 1 ? 'star_bass2.wav' : 'star_bass1.wav'; num3 = 25; num2 = 0.7; break;
+            case 4: text = num === 1 ? 'star_hollow2.wav' : 'star_hollow1.wav'; num3 = 27; num2 = 0.5; break;
+            case 5: text = num === 1 ? 'star_ring2.wav' : 'star_ring1.wav'; num3 = 29; num2 = 1.2; break;
+            case 6: text = num === 1 ? 'star_intense2.wav' : 'star_intense1.wav'; num3 = 31; num2 = 1.0; break;
+        }
+        if (num3 === 0) return null;
+        return request(text, balance, this.volume * 1.2 * Math.min(1.0, distance) * num2);
     }
 
-    /** Port of ResolveMining. */
     resolveMining(balance: number, distance: number): SoundEffectRequest {
-        return resolveMining(this.volume, balance, distance, this.rand);
+        const num = this.random.next(0, 4);
+        let num2 = this.volume * 0.22;
+        let file = '';
+        switch (num) {
+            case 0: file = 'Mining_1.wav'; break;
+            case 1: file = 'Mining_2.wav'; break;
+            case 2: file = 'Mining_3.wav'; break;
+            case 3: file = 'mining_4.wav'; num2 = this.volume * 0.5; break;
+        }
+        return request(file, balance, num2 * Math.min(1.0, distance));
     }
 
-    /** Port of ResolveThunder. */
     resolveThunder(balance: number, distance: number): SoundEffectRequest {
-        return resolveThunder(this.volume, balance, distance, this.rand);
+        const file = ['thunder1.wav', 'thunder2.wav', 'thunder3.wav'][this.random.next(0, 3)];
+        return request(file, balance, this.volume * 1.3 * Math.min(1.0, distance));
     }
 
-    /** Port of ResolveConstruction. */
     resolveConstruction(balance: number, distance: number): SoundEffectRequest {
-        return resolveConstruction(this.volume, balance, distance, this.rand);
+        const file = ['construction.wav', 'construction_2.wav', 'construction_3.wav', 'construction_4.wav', 'construction_5.wav'][this.random.next(0, 5)];
+        return request(file, balance, this.volume * 0.7 * Math.min(1.0, distance));
     }
 
-    /** Port of ResolveGasMining. */
     resolveGasMining(balance: number, distance: number): SoundEffectRequest {
-        return resolveGasMining(this.volume, balance, distance, this.rand);
+        distance = Math.min(1.0, distance);
+        const file = ['GasMining1.wav', 'GasMining2.wav', 'gasmining3.wav'][this.random.next(0, 3)];
+        return request(file, balance, this.volume * 0.5 * distance);
     }
 
-    /** Port of PlayAlert (empty body in the original). */
-    playAlert(_balance: number): void {
-        // empty, like the original
+    // C#: num is set to 1.0, then Min(1, num), then overwritten with 2.1.
+    resolvePlanetExplosion(_size: number, balance: number, distance: number): SoundEffectRequest {
+        return request('planetExplosion.wav', balance, this.volume * 2.1 * Math.min(1.0, distance));
     }
 
-    /** Port of ResolvePlanetExplosion. */
-    resolvePlanetExplosion(size: number, balance: number, distance: number): SoundEffectRequest {
-        return resolvePlanetExplosion(this.volume, size, balance, distance);
-    }
-
-    /** Port of ResolveExplosion. */
     resolveExplosion(size: number, balance: number, distance: number): SoundEffectRequest {
-        return resolveExplosion(this.volume, size, balance, distance, this.rand);
-    }
-
-    /** Play a resolved request through the positional pipeline: attenuate by
-     * the source's distance from the listener (view centre), then play. */
-    playResolved(request: SoundEffectRequest, sourceX?: number, sourceY?: number): void {
-        if (request.filename === '') return;
-        let volume = request.volume;
-        if (sourceX !== undefined && sourceY !== undefined) {
-            const factor = attenuationFromOffset(sourceX - this.listenerX, sourceY - this.listenerY, this.zoom, this.screenRadius);
-            volume *= factor;
+        distance = Math.min(1.0, distance);
+        let text: string;
+        let num2: number;
+        if (size < 100) {
+            const num = this.random.next(0, 3);
+            text = num === 0 ? 'explosion_small.wav' : num === 1 ? 'explosion_small2.wav' : 'explosion_small3.wav';
+            num2 = 0.75;
+        } else {
+            const num3 = this.random.next(0, 3);
+            text = num3 === 0 ? 'explosion.wav' : num3 === 1 ? 'explosion2.wav' : 'explosion3.wav';
+            num2 = 0.9;
+            if (size > 110) num2 = 2.5;
         }
-        void this.playEffect(request.filename, request.balance, volume, request.frequency);
+        num2 = Math.min(1.0, num2);
+        return request(text, balance, this.volume * num2 * distance);
     }
 
-    /** The UI button-click sound (task 09b wiring). */
-    playUiClick(): void {
-        const req = this.resolveAttackClick();
-        void this.playEffect(req.filename, req.balance, req.volume, req.frequency);
+    // Main.Part10.cs method_225: grid.wav at the effects volume (control-group
+    // hotkeys, selection by click in the Main View).
+    resolveGrid(): SoundEffectRequest {
+        return request('grid.wav', 0.0, this.volume);
     }
 }
 
 // ---------------------------------------------------------------------------
-// Pure resolver ports (extracted so tests can run without a browser).
-// Signatures mirror the C# methods with the master volume passed in place of
-// the implicit double_0 field.
+// Request queue (Main.Part13.cs method_0 / method_1 / method_2)
 // ---------------------------------------------------------------------------
 
-/** Port of ResolveIonStrike. */
-export function resolveIonStrike(masterVolume: number, balance: number, distance: number): SoundEffectRequest {
-    const d = Math.min(1, distance);
-    return { filename: 'ion_strike.wav', balance, volume: masterVolume * 1.8 * d, frequency: 0 };
-}
+// C# int_3 = 10 (Main ctor, Main.Part13.cs).
+export const MAX_PENDING_SOUND_REQUESTS = 10;
 
-/** Port of ResolveWeapon. */
-export function resolveWeapon(
-    masterVolume: number,
-    soundEffectFilename: string | null,
-    balance: number,
-    distance: number,
-): SoundEffectRequest {
-    const d = Math.min(1, distance);
-    return { filename: soundEffectFilename ?? '', balance, volume: masterVolume * 0.23 * d, frequency: 0 };
-}
+export class SoundEffectQueue {
+    private pending: SoundEffectRequest[] = [];
+    constructor(private player: EffectsPlayer, private limit = MAX_PENDING_SOUND_REQUESTS) {}
 
-/** Port of ResolveFighterWeapon (ComponentType 1/2/4 select the file). */
-export function resolveFighterWeapon(
-    masterVolume: number,
-    effectFilename: string,
-    type: ComponentType,
-    balance: number,
-    distance: number,
-): SoundEffectRequest {
-    let text = '';
-    let num = 0.19;
-    switch (type) {
-        case ComponentType.WeaponBeam: // (ComponentType)1
-            text = effectFilename;
-            break;
-        case ComponentType.WeaponTorpedo: // (ComponentType)2
-            text = effectFilename;
-            num = 0.25;
-            break;
-        case ComponentType.WeaponMissile: // (ComponentType)4
-            text = effectFilename;
-            num = 0.25;
-            break;
-    }
-    const d = Math.min(1, distance);
-    return { filename: text, balance, volume: masterVolume * num * d, frequency: 0 };
-}
-
-/** Port of ResolveAmbientEffect. `nextEffectOffset.value` is written out
- * (C# out parameter). */
-export function resolveAmbientEffect(
-    masterVolume: number,
-    soundScheme: number,
-    balance: number,
-    distance: number,
-    nextEffectOffset: { value: number },
-    rand: () => number,
-): SoundEffectRequest {
-    let text = '';
-    const num = masterVolume * 0.7;
-    nextEffectOffset.value = 4000;
-    switch (soundScheme) {
-        case 0: {
-            switch (Math.floor(rand() * 3)) {
-                case 0:
-                    text = 'ambient1_voice1.wav';
-                    nextEffectOffset.value = 5500;
-                    break;
-                case 1:
-                    text = 'ambient1_voice2.wav';
-                    nextEffectOffset.value = 10800;
-                    break;
-                case 2:
-                    text = 'ambient1_voice3.wav';
-                    nextEffectOffset.value = 6600;
-                    break;
-            }
-            break;
+    // method_0: accepted only while fewer than `limit` are pending
+    // (first-come; later requests in the same frame are dropped).
+    enqueue(req: SoundEffectRequest | null): boolean {
+        if (req === null) return false;
+        if (this.pending.length < this.limit) {
+            this.pending.push(req);
+            return true;
         }
-        case 1: {
-            switch (Math.floor(rand() * 4)) {
-                case 0:
-                    text = 'ambient2_voice1.wav';
-                    nextEffectOffset.value = 9200;
-                    break;
-                case 1:
-                    text = 'ambient2_voice2.wav';
-                    nextEffectOffset.value = 9200;
-                    break;
-                case 2:
-                    text = 'ambient2_voice3.wav';
-                    nextEffectOffset.value = 8200;
-                    break;
-                case 3:
-                    text = 'ambient2_voice4.wav';
-                    nextEffectOffset.value = 9200;
-                    break;
-            }
-            break;
+        return false;
+    }
+
+    get pendingCount(): number {
+        return this.pending.length;
+    }
+
+    // method_1 + method_2: play everything pending (in order), then clear
+    // finished instances. Called once per Main View frame.
+    flush(): void {
+        if (this.pending.length === 0) return;
+        const array = this.pending;
+        this.pending = [];
+        for (const r of array) {
+            void this.player.playEffect(r.filename, r.balance, r.volume, r.frequency);
         }
-        case 2: {
-            switch (Math.floor(rand() * 3)) {
-                case 0:
-                    text = 'ambient3_energy1.wav';
-                    nextEffectOffset.value = 8400;
-                    break;
-                case 1:
-                    text = 'ambient3_energy2.wav';
-                    nextEffectOffset.value = 8400;
-                    break;
-                case 2:
-                    text = 'ambient3_energy3.wav';
-                    nextEffectOffset.value = 11400;
-                    break;
-            }
-            break;
+        this.player.clearFinishedBuffers();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// UI click sounds (GlassButton / HoverButton / HoverMenuItem / ListViewBase)
+// ---------------------------------------------------------------------------
+
+// Main.Part13.cs 905-944: GlassButton → button1.wav, HoverButton and
+// HoverMenuItem → button2.wav, ListViewBase → grid.wav.
+export type UiClickKind = 'glass' | 'hover' | 'menuItem' | 'list';
+
+export const UI_CLICK_SOUND: Record<UiClickKind, string> = {
+    glass: 'button1.wav',
+    hover: 'button2.wav',
+    menuItem: 'button2.wav',
+    list: 'grid.wav',
+};
+
+// Each control class plays through one static System.Media.SoundPlayer:
+// Play() restarts the sound (no overlap per class) and is skipped when the
+// class Volume <= 0. SoundPlayer has no volume of its own, so the click plays
+// at full gain.
+export class UiClickSounds {
+    // GlassButton.Volume etc. (set from options.SoundEffectsVolume).
+    volume = 1.0;
+    private current = new Map<UiClickKind, PlayingSound>();
+    private backend: AudioBackend;
+    private buffers = new Map<string, Promise<AudioBuffer | null>>();
+
+    constructor(backend: AudioBackend = new WebAudioBackend(), private baseUrl = EFFECTS_BASE_URL) {
+        this.backend = backend;
+    }
+
+    async play(kind: UiClickKind): Promise<void> {
+        if (this.volume <= 0.0) return;
+        const file = UI_CLICK_SOUND[kind];
+        let p = this.buffers.get(file);
+        if (p === undefined) {
+            p = this.backend.load(this.baseUrl + file);
+            this.buffers.set(file, p);
         }
-        case 3: {
-            switch (Math.floor(rand() * 5)) {
-                case 0:
-                case 1:
-                    text = 'ambient4_boom1.wav';
-                    nextEffectOffset.value = 5500;
-                    break;
-                case 2:
-                case 3:
-                    text = 'ambient4_boom2.wav';
-                    nextEffectOffset.value = 6500;
-                    break;
-                case 4:
-                    text = 'ambient4_boom3.wav';
-                    nextEffectOffset.value = 8500;
-                    break;
-            }
-            break;
-        }
+        const buf = await p;
+        if (buf === null) return;
+        this.current.get(kind)?.stop();
+        this.current.set(kind, this.backend.play(buf, 0, 1, 1));
     }
-    const d = Math.min(1, distance);
-    return { filename: text, balance, volume: num * d, frequency: 0 };
 }
 
-/** Port of ResolveAttackClick. */
-export function resolveAttackClick(masterVolume: number): SoundEffectRequest {
-    return { filename: 'attack_click.wav', balance: 0, volume: masterVolume * 1.0, frequency: 0 };
+// Shared instance for the HUD (created lazily so importing this module in
+// tests or at boot doesn't create an AudioContext).
+let sharedUiClicks: UiClickSounds | null = null;
+export function uiClickSounds(): UiClickSounds {
+    if (sharedUiClicks === null) sharedUiClicks = new UiClickSounds();
+    return sharedUiClicks;
 }
 
-/** Port of ResolveImportantMessage. */
-export function resolveImportantMessage(masterVolume: number): SoundEffectRequest {
-    return { filename: 'message_major.wav', balance: 0, volume: masterVolume * 0.7, frequency: 0 };
+// ---------------------------------------------------------------------------
+// Session glue: one EffectsPlayer for the running app, with the Options
+// "Sound Effects Volume"/mute (UiSettings.soundVolume/soundMuted) applied to
+// both the effects master volume and the UI click sounds.
+// ---------------------------------------------------------------------------
+
+export interface SessionEffects {
+    readonly player: EffectsPlayer;
+    setVolume(v: number): void;
+    mute(): void;
+    unmute(): void;
 }
 
-/** Message types routed to message_minor.wav (port of the ResolveMessage
- * cases 14/55/56). */
-const MESSAGE_MINOR_TYPES = new Set([14, 55, 56]);
-/** Message types routed to message_alarm.wav (cases 20/22). */
-const MESSAGE_ALARM_TYPES = new Set([20, 22]);
-/** Message types routed to message_major.wav (the long case list). */
-const MESSAGE_MAJOR_TYPES = new Set([
-    24, 26, 29, 31, 33, 34, 50, 59, 60, 63, 67, 68, 72, 78, 79, 82, 91, 92, 96,
-]);
+let session: SessionEffects | null = null;
 
-/** Port of ResolveMessage. `messageType` is the numeric EmpireMessageType
- * value (the enum itself is not ported). Types 1–13, 15–19, 21, 23, 25,
- * 27, 28, 30, 32, 35–49, 51–54, 57, 58, 61, 62, 64–66, 69–71, 73–77,
- * 80, 81, 83–90, 93–95, 97 → message_standard; anything else → '' (no
- * sound), matching the C# switch's fall-through. */
-export function resolveMessage(masterVolume: number, messageType: number): SoundEffectRequest {
-    let text = '';
-    let num = masterVolume * 0.7;
-    if (MESSAGE_MINOR_TYPES.has(messageType)) {
-        text = 'message_minor.wav';
-    } else if (MESSAGE_ALARM_TYPES.has(messageType)) {
-        text = 'message_alarm.wav';
-        num = masterVolume * 0.4;
-    } else if (MESSAGE_MAJOR_TYPES.has(messageType)) {
-        text = 'message_major.wav';
-    } else if (
-        messageType >= 1 &&
-        messageType <= 97 &&
-        !MESSAGE_MINOR_TYPES.has(messageType) &&
-        !MESSAGE_ALARM_TYPES.has(messageType) &&
-        !MESSAGE_MAJOR_TYPES.has(messageType)
-    ) {
-        // The remaining values in 1..97 are all in the standard group.
-        text = 'message_standard.wav';
-    }
-    return { filename: text, balance: 0, volume: num, frequency: 0 };
-}
-
-/** Port of ResolveHyperjumpEntry. */
-export function resolveHyperjumpEntry(masterVolume: number, balance: number, distance: number): SoundEffectRequest {
-    const d = Math.min(1, distance);
-    return { filename: 'Hyperjump_Enter.wav', balance, volume: masterVolume * 0.45 * d, frequency: 0 };
-}
-
-/** Port of ResolveHyperjumpExit. */
-export function resolveHyperjumpExit(masterVolume: number, balance: number, distance: number): SoundEffectRequest {
-    const d = Math.min(1, distance);
-    return { filename: 'Hyperjump_Exit.wav', balance, volume: masterVolume * 0.5 * d, frequency: 0 };
-}
-
-/** Port of ResolveStar. Returns null when the type has no star sound
- * (num3 stays 0). */
-export function resolveStar(
-    masterVolume: number,
-    starType: HabitatType,
-    balance: number,
-    distance: number,
-    rand: () => number,
-): SoundEffectRequest | null {
-    const num = Math.floor(rand() * 2);
-    let text = '';
-    let num2 = 1.0;
-    let num3 = 0;
-    switch (starType) {
-        case HabitatType.MainSequence: // (HabitatType)1
-            text = 'star_basic1.wav';
-            if (num === 1) text = 'star_basic2.wav';
-            num3 = 23;
-            num2 = 0.7;
-            break;
-        case HabitatType.RedGiant: // (HabitatType)2
-        case HabitatType.SuperGiant: // (HabitatType)3
-            text = 'star_bass1.wav';
-            if (num === 1) text = 'star_bass2.wav';
-            num3 = 25;
-            num2 = 0.7;
-            break;
-        case HabitatType.WhiteDwarf: // (HabitatType)4
-            text = 'star_hollow1.wav';
-            if (num === 1) text = 'star_hollow2.wav';
-            num3 = 27;
-            num2 = 0.5;
-            break;
-        case HabitatType.Neutron: // (HabitatType)5
-            text = 'star_ring1.wav';
-            if (num === 1) text = 'star_ring2.wav';
-            num3 = 29;
-            num2 = 1.2;
-            break;
-        case HabitatType.BlackHole: // (HabitatType)6
-            text = 'star_intense1.wav';
-            if (num === 1) text = 'star_intense2.wav';
-            num3 = 31;
-            num2 = 1.0;
-            break;
-    }
-    if (num3 === 0) {
-        return null;
-    }
-    // num3 += num; — only used by callers that need the pitch variant index;
-    // the request itself carries no frequency, so it has no observable
-    // effect here (kept as a comment for fidelity).
-    const d = Math.min(1, distance);
-    return { filename: text, balance, volume: masterVolume * 1.2 * d * num2, frequency: 0 };
-}
-
-/** Port of ResolveMining. */
-export function resolveMining(
-    masterVolume: number,
-    balance: number,
-    distance: number,
-    rand: () => number,
-): SoundEffectRequest {
-    const num = Math.floor(rand() * 4);
-    let num2 = masterVolume * 0.22;
-    let filename = '';
-    switch (num) {
-        case 0:
-            filename = 'mining_1.wav';
-            break;
-        case 1:
-            filename = 'mining_2.wav';
-            break;
-        case 2:
-            filename = 'mining_3.wav';
-            break;
-        case 3:
-            filename = 'mining_4.wav';
-            num2 = masterVolume * 0.5;
-            break;
-    }
-    const d = Math.min(1, distance);
-    return { filename, balance, volume: num2 * d, frequency: 0 };
-}
-
-/** Port of ResolveThunder. */
-export function resolveThunder(
-    masterVolume: number,
-    balance: number,
-    distance: number,
-    rand: () => number,
-): SoundEffectRequest {
-    const num = Math.floor(rand() * 3);
-    let filename = '';
-    switch (num) {
-        case 0:
-            filename = 'thunder1.wav';
-            break;
-        case 1:
-            filename = 'thunder2.wav';
-            break;
-        case 2:
-            filename = 'thunder3.wav';
-            break;
-    }
-    const d = Math.min(1, distance);
-    return { filename, balance, volume: masterVolume * 1.3 * d, frequency: 0 };
-}
-
-/** Port of ResolveConstruction. */
-export function resolveConstruction(
-    masterVolume: number,
-    balance: number,
-    distance: number,
-    rand: () => number,
-): SoundEffectRequest {
-    const num = Math.floor(rand() * 5);
-    let filename = '';
-    switch (num) {
-        case 0:
-            filename = 'construction.wav';
-            break;
-        case 1:
-            filename = 'construction_2.wav';
-            break;
-        case 2:
-            filename = 'construction_3.wav';
-            break;
-        case 3:
-            filename = 'construction_4.wav';
-            break;
-        case 4:
-            filename = 'construction_5.wav';
-            break;
-    }
-    const d = Math.min(1, distance);
-    return { filename, balance, volume: masterVolume * 0.7 * d, frequency: 0 };
-}
-
-/** Port of ResolveGasMining. */
-export function resolveGasMining(
-    masterVolume: number,
-    balance: number,
-    distance: number,
-    rand: () => number,
-): SoundEffectRequest {
-    const d = Math.min(1, distance);
-    const num = Math.floor(rand() * 3);
-    let filename = '';
-    switch (num) {
-        case 0:
-            filename = 'GasMining1.wav';
-            break;
-        case 1:
-            filename = 'GasMining2.wav';
-            break;
-        case 2:
-            filename = 'gasmining3.wav';
-            break;
-    }
-    return { filename, balance, volume: masterVolume * 0.5 * d, frequency: 0 };
-}
-
-/** Port of ResolvePlanetExplosion (size is unused by the original). */
-export function resolvePlanetExplosion(
-    _masterVolume: number,
-    _size: number,
-    balance: number,
-    distance: number,
-): SoundEffectRequest {
-    const d = Math.min(1, distance);
-    // The original computes num = 1.0, clamps it to 1.0, then overwrites it
-    // with 2.1 — the final factor is 2.1.
-    return { filename: 'planetExplosion.wav', balance, volume: _masterVolume * 2.1 * d, frequency: 0 };
-}
-
-/** Port of ResolveExplosion. Note the faithful quirk: after picking the
- * 0.75 / 0.9 / 2.5 factors the original clamps `num2 = Math.Min(1.0, num2)`,
- * so the >110-size 2.5 becomes 1.0. */
-export function resolveExplosion(
-    masterVolume: number,
-    size: number,
-    balance: number,
-    distance: number,
-    rand: () => number,
-): SoundEffectRequest {
-    let text = '';
-    const d = Math.min(1, distance);
-    let num2: number;
-    if (size < 100) {
-        const num = Math.floor(rand() * 3);
-        if (num === 0) {
-            text = 'explosion_small.wav';
-        } else if (num === 1) {
-            text = 'explosion_small2.wav';
-        } else {
-            text = 'explosion_small3.wav';
-        }
-        num2 = 0.75;
-    } else {
-        const num3 = Math.floor(rand() * 3);
-        if (num3 === 0) {
-            text = 'explosion.wav';
-        } else if (num3 === 1) {
-            text = 'explosion2.wav';
-        } else {
-            text = 'explosion3.wav';
-        }
-        num2 = 0.9;
-        if (size > 110) {
-            num2 = 2.5;
-        }
-    }
-    num2 = Math.min(1.0, num2);
-    return { filename: text, balance, volume: masterVolume * num2 * d, frequency: 0 };
-}
-
-let instance: EffectsPlayer | null = null;
-
-/** Create (once) and register the global effects player. Call alongside
- * startMusic(); actual audio waits for the first user gesture. */
-export function startEffects(): EffectsPlayer {
-    if (instance === null) {
-        instance = new EffectsPlayer();
-        // Task 12h: apply the persisted sound settings to a freshly created
-        // player so it starts at the saved volume/mute state. getSettings()
-        // is storage-backed and never touches audio, so this stays safe in
-        // node test environments.
+/** Create (once) the session effects player; audio waits for the first user
+ * gesture (WebAudioBackend creates its AudioContext lazily). */
+export function startEffects(): SessionEffects {
+    if (session === null) {
+        const player = new EffectsPlayer();
+        let volume = player.volume;
+        let muted = false;
+        const apply = (): void => {
+            player.volume = muted ? 0 : volume;
+            uiClickSounds().volume = muted ? 0 : 1.0;
+        };
+        session = {
+            player,
+            setVolume(v: number): void {
+                if (v < 0 || v > 1) return;
+                volume = v;
+                apply();
+            },
+            mute(): void {
+                muted = true;
+                apply();
+            },
+            unmute(): void {
+                muted = false;
+                apply();
+            },
+        };
         const s = getSettings();
-        instance.setVolume(s.soundVolume);
-        if (s.soundMuted) {
-            instance.mute();
-        }
-        void instance.initialize();
+        session.setVolume(s.soundVolume);
+        if (s.soundMuted) session.mute();
     }
-    instance.startEffects();
-    return instance;
+    return session;
 }

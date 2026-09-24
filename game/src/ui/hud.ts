@@ -11,23 +11,13 @@ import type { Empire } from '../sim/empire';
 import { flagShapeUrl } from '../sim/startGameOptions';
 import { createGameMenu, type GameMenuRefs } from './screens/gameMenu';
 import { setGameMenuHandler, setCycleHandler, type CycleKind } from './keyboard';
-import { startEffects } from '../audio/effectsPlayer';
+import { uiClickSounds } from '../audio/effectsPlayer';
 import { helpTopicKeyForHabitat, toggleGalactopedia } from './screens/galactopedia';
 import { toggleEmpiresList } from './screens/empiresList';
 import { setEmpireSummarySource, getEmpireSummarySource, toggleEmpireSummary } from './screens/empireSummary';
 import { toggleColoniesList } from './screens/coloniesList';
 import { toggleMessageHistory } from './screens/messageHistory';
 import { showToast } from './toast';
-
-/** Shared UI button-click sound (task 09b): the original plays a short click
- * for chrome-button presses; here every HUD button click routes through this. */
-function playUiClick(): void {
-    try {
-        startEffects().playUiClick();
-    } catch {
-        // Audio must never break a UI interaction.
-    }
-}
 
 // Port of Main.Part12.cs LoadUiChromeButtons (381–520): the control → chrome
 // button image mapping. The original loads each control's image from
@@ -198,6 +188,13 @@ export function setSelection(sel: Selection | null): void {
 export function createHud(wiring: HudWiring = {}): HudRefs {
     const root = document.createElement('div');
     root.id = 'hud';
+    // Task C4: HUD click sounds. Options-list rows are the original's
+    // HoverMenuItems (button2.wav); every other HUD button is a GlassButton
+    // (button1.wav) — Main.Part13.cs 905-944.
+    root.addEventListener('click', (e) => {
+        const btn = (e.target as HTMLElement | null)?.closest('button');
+        if (btn) void uiClickSounds().play(btn.classList.contains('hud-option-row') ? 'menuItem' : 'glass');
+    });
     const elements = new Map<string, HTMLElement>();
     const refs: HudRefs = { root, elements };
     // Default state objects when the caller does not supply its own.
@@ -211,19 +208,6 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
     const gameMenu = createGameMenu(clock, { onMainMenu: wiring.onMainMenu });
     setGameMenuHandler(gameMenu.toggle);
     refs.gameMenu = gameMenu;
-
-    // Task 09b: register the effects player (audio starts on first user
-    // gesture) and keep its positional listener on the view centre so
-    // playResolved() can attenuate by on-screen distance.
-    const effects = startEffects();
-    if (wiring.camera) {
-        const cam = wiring.camera;
-        const syncListener = (): void => {
-            effects.setListener(cam.x, cam.y, cam.zoom, cam.width, cam.height);
-        };
-        syncListener();
-        setInterval(syncListener, 250);
-    }
 
     for (const [name, rect] of Object.entries(computeHudLayout(window.innerWidth, window.innerHeight))) {
         let el: HTMLElement;
@@ -363,13 +347,11 @@ function buildTopLeftBar(clock: GalaxyTime, onGameMenu: () => void): HTMLElement
     // generic TODO log other chrome buttons still use.
     const menu = makeIconButton('btnGameMenu', 'Menu');
     menu.addEventListener('click', () => {
-        playUiClick();
         onGameMenu();
     });
     const help = makeIconButton('btnHelp', 'Help');
     // Main.Part5.cs btnHelp_Click: toggle the Galactopedia at the selection's topic.
     help.addEventListener('click', () => {
-        playUiClick();
         toggleGalactopedia(helpTopicKeyForHabitat(getSelection()?.habitat ?? null));
     });
     bar.append(menu, help);
@@ -380,19 +362,16 @@ function buildTopLeftBar(clock: GalaxyTime, onGameMenu: () => void): HTMLElement
         pauseBtn.textContent = clock.paused ? '▶' : '⏸';
     };
     pauseBtn.addEventListener('click', () => {
-        playUiClick();
         clock.togglePause();
         refreshPauseGlyph();
     });
     const dec = makeGlyphButton('−', 'Slower');
     dec.addEventListener('click', () => {
-        playUiClick();
         clock.slower();
         refreshDateLabel(dateEl, clock);
     });
     const inc = makeGlyphButton('+', 'Faster');
     inc.addEventListener('click', () => {
-        playUiClick();
         clock.faster();
         refreshDateLabel(dateEl, clock);
     });
@@ -457,7 +436,6 @@ function makeIconButton(controlName: string, title: string): HTMLButtonElement {
     }
     // TODO(screen): open the original's panel/screen for this control.
     btn.addEventListener('click', () => {
-        playUiClick();
         console.log(`TODO(screen): ${title}`);
         showToast(`${title} — not yet available`);
     });
@@ -507,7 +485,6 @@ function buildTopBarButton(name: string, wiring: HudWiring): HTMLElement {
     // the unmapped ones below still toast; tbtnColonies / btnEmpireSummary /
     // btnHistoryMessages toggle their screens.
     btn.addEventListener('click', () => {
-        playUiClick();
         const screen = topBarScreen(name);
         if (screen === 'colonies') {
             // Main.Part9.cs tbtnColonies_Click: toggle the Colonies list.
@@ -573,7 +550,6 @@ function buildEmpireFlagButton(wiring: HudWiring): HTMLElement {
         }
     }
     btn.addEventListener('click', () => {
-        playUiClick();
         // Task 12b: open the Empires list panel (galaxy + player empire from
         // the wiring, guarded when either is missing).
         const galaxy = wiring.galaxy;
@@ -712,11 +688,9 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         }
     };
     back.addEventListener('click', () => {
-        playUiClick();
         stepCycle(-1);
     });
     fwd.addEventListener('click', () => {
-        playUiClick();
         stepCycle(1);
     });
     footer.append(back, fwd);
@@ -729,7 +703,6 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         // "›" arrow into each icon (task 05d).
         b.textContent = chip.label;
         b.addEventListener('click', () => {
-            playUiClick();
             activeChip = chip.key;
             footer.querySelectorAll('.hud-chip').forEach((c) => c.classList.remove('hud-chip-active'));
             b.classList.add('hud-chip-active');
@@ -818,7 +791,6 @@ function buildOptionsList(wiring: HudWiring): HTMLElement {
         lbl.textContent = row.label;
         item.appendChild(lbl);
         item.addEventListener('click', () => {
-            playUiClick();
             doViewAction(row.key, wiring);
         });
         panel.appendChild(item);
@@ -840,7 +812,6 @@ function buildOptionsList(wiring: HudWiring): HTMLElement {
         lbl.textContent = row.label;
         item.append(check, lbl);
         item.addEventListener('click', () => {
-            playUiClick();
             toggleOverlay(overlays, row.key);
             check.textContent = overlays[row.key] ? '✓' : '';
             // Rendering lives in src/render/overlayLayer.ts (task M3), which
