@@ -47,7 +47,7 @@ import { IndustryType } from './types';
 import { EmpireMessageType, sendMessageToEmpire } from './messages';
 import { gameText } from './colonyTick';
 import { conditionCheckLimit } from './tick/builtObjectTick';
-import { doConstructionBuiltObject, resetProcessTimeBuiltObject } from './construction/constructionQueue';
+import { doConstructionBuiltObject, resetConstructionProcessTime } from './construction/constructionQueue';
 import { REAL_SECONDS_IN_GALACTIC_YEAR, galaxyStarDate } from './tick/simTime';
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -577,12 +577,11 @@ export function industrialProcessing(galaxy: Galaxy, builtObject: BuiltObject, t
             manufacturingQueueDoManufacturing(manufacturingQueue, galaxy, time, galaxyStarDate(galaxy));
         }
         if (bo.isShipYard && bo.constructionQueue !== null) {
-            // RND: ConstructionQueue.DoConstruction draws — not drawn until M4h.
-            doConstructionBuiltObject(galaxy, bo, time);
+            doConstructionBuiltObject(galaxy, bo, time); // ConstructionQueue.cs 1196 (draws Rnd.Next(0, yards))
         }
     } else if (bo.constructionQueue !== null) {
         // 8125-8128 ConstructionQueue.ResetProcessTime(time) (M4h).
-        resetProcessTimeBuiltObject(galaxy, bo, time);
+        resetConstructionProcessTime(bo, time);
     }
 }
 

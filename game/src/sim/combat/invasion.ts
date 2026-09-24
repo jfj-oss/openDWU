@@ -40,8 +40,8 @@ export function scanForNewOwnerHabitat(galaxy: Galaxy, habitat: Habitat): void {
 }
 
 const T_scanForNewOwnerBuiltObject = registerTodo('M4q', 'scanForNewOwnerBuiltObject');
-/** BuiltObject.1.cs 65 ScanForNewOwner. */
-export function scanForNewOwnerBuiltObject(galaxy: Galaxy, builtObject: BuiltObject): void {
+/** BuiltObject.1.cs 65 ScanForNewOwner() / 70 ScanForNewOwner(preferredDiscoverer) (the parameter added by M4h: ConstructionQueue.cs 830). */
+export function scanForNewOwnerBuiltObject(galaxy: Galaxy, builtObject: BuiltObject, preferredDiscoverer: BuiltObject | null = null): void {
     // RND: draws in callees (d≤3), +clock×2 — not drawn until M4q.
     /* TODO(port) M4q */ todo(T_scanForNewOwnerBuiltObject);
 }

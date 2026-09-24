@@ -10,7 +10,8 @@ import type { Empire } from '../empire';
 import type { BuiltObject } from '../builtObject';
 import { registerTodo, todo } from '../tick/todo';
 import { MIN_TIME } from '../tick/simTime';
-import type { BuiltObjectMission, BuiltObjectMissionPriority, BuiltObjectMissionType, MissionTarget } from '../missions/mission';
+import type { BuiltObjectMission, BuiltObjectMissionPriority, BuiltObjectMissionType, MissionTarget, StellarObject } from '../missions/mission';
+import { BuiltObjectRole } from '../data/designSpecifications';
 
 // ShipGroup.cs (fleet). Minimal model created by M4a so the fleet tick (tick/shipGroupTick.ts) and the Empire /
 // Galaxy ticks can iterate Empire.ShipGroups; M4l ports the rest of ShipGroup.cs (3,578 lines: missions, lead ship,
@@ -181,4 +182,35 @@ export function disbandShipGroup(galaxy: Galaxy, empire: Empire, shipGroup: Ship
     void empire;
     void shipGroup;
     /* TODO(port) M4l */ todo(T_disbandShipGroup);
+}
+
+// ---- stubs added by M4h (called from construction/*.ts) ----
+
+const T_assignFleetWaypointMission = registerTodo('M4l', 'assignFleetWaypointMission');
+/**
+ * Galaxy.7.cs 4597 AssignFleetWaypointMission(builtObject, allowMissionOverride, waypoint). The guard is ported (a ship
+ * without a fleet returns false, as every newly built AI ship does until fleets are ported); the fleet branch (lead ship
+ * / gather point target, SelectRelativeParkingPoint, ClearPreviousMissionRequirements, AssignMission Move) is a stub that
+ * returns true like the C# branch.
+ */
+export function assignFleetWaypointMission(galaxy: Galaxy, builtObject: BuiltObject | null, allowMissionOverride: boolean, waypoint: StellarObject | null): boolean {
+    if (builtObject !== null && builtObject.shipGroup !== null && builtObject.topSpeed > 0 && builtObject.role !== BuiltObjectRole.Base) {
+        const mission = builtObject.mission as BuiltObjectMission | null;
+        // BuiltObjectMissionType.Undefined = 0.
+        if (allowMissionOverride || mission === null || (mission !== null && (mission.type as number) === 0)) {
+            // RND: SelectRelativeParkingPoint (NextDouble, Next(0, 2), NextDouble) + AssignMission — not drawn until M4l.
+            void waypoint;
+            /* TODO(port) M4l */ todo(T_assignFleetWaypointMission);
+            return true;
+        }
+    }
+    return false;
+}
+
+const T_shipGroupRepairBonus = registerTodo('M4l', 'shipGroupRepairBonus');
+/** ShipGroup.RepairBonus => _RepairBonus (1.0 until ReviewCharacterLocationBonuses) + _RepairBonusExtra (0) — stub: 1.0. */
+export function shipGroupRepairBonus(shipGroup: ShipGroup): number {
+    void shipGroup;
+    /* TODO(port) M4l */ todo(T_shipGroupRepairBonus);
+    return 1.0;
 }

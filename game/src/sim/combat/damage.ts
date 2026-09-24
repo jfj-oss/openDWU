@@ -61,3 +61,13 @@ export function finalizeBattleStats(galaxy: Galaxy, builtObject: BuiltObject, at
     // RND: DoCharacterEvent(SpaceBattle) draws — not drawn until M4o.
     /* TODO(port) M4o */ todo(T_finalizeBattleStats);
 }
+
+// ---- stubs added by M4h (called from construction/repair.ts) ----
+
+const T_battleStatsDamageRepairedUs = registerTodo('M4o', 'battleStatsDamageRepairedUs');
+/** SpaceBattleStats.DamageRepairedUs(repairAmount) (SpaceBattleStats.cs 103: DamageRepaired += amount) — stub (BattleStats is never non-null yet). */
+export function battleStatsDamageRepairedUs(battleStats: unknown, repairAmount: number): void {
+    void battleStats;
+    void repairAmount;
+    /* TODO(port) M4o */ todo(T_battleStatsDamageRepairedUs);
+}

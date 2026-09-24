@@ -8,6 +8,7 @@
 // Anything the constructors call but that isn't ported yet is a stub method
 // marked TODO(port) so the constructor's order of operations stays visible.
 
+import { takeOwnershipOfColonyConstructionQueue } from './construction/constructionYard';
 import type { Galaxy } from './galaxy';
 import { HabitatCategoryType, HabitatType } from './types';
 import type { Habitat } from './types';
@@ -768,7 +769,8 @@ export class Empire {
         if (colony.troopsToRecruit === null) colony.troopsToRecruit = new TroopList();
         if (colony.invadingTroops === null) colony.invadingTroops = new TroopList();
         if (colony.facilities === null) colony.facilities = [];
-        // TODO(port) M4h: Empire.1.cs 108-115 ConstructionQueue (new / ReviewConstructionSpeed).
+        // Empire.1.cs 108-115 (M4h): ConstructionQueue (created, or its speed re-reviewed). No Rnd.
+        takeOwnershipOfColonyConstructionQueue(this.galaxy, colony);
         // Empire.1.cs 116-119 (M4g): if (colony.ManufacturingQueue == null) colony.ManufacturingQueue = new ManufacturingQueue(colony, _Galaxy).
         ensureHabitatManufacturingQueue(this.galaxy, colony);
         colony.owner = newEmpire;
@@ -1360,10 +1362,10 @@ export class Empire {
     // radius, and (when no explicit offset is given) NextDouble for the angle.
     addBuiltObjectToGalaxy(builtObject: BuiltObject, parent: Habitat | BuiltObject | null, offsetLocationFromParent: boolean, isStateOwned: boolean, offsetX = -2000000001, offsetY = -2000000001, sendMessage = true): void {
         builtObject.builtObjectID = this.galaxy.getNextBuiltObjectID();
-        // TODO(port): Galaxy.CurrentStarDate — no galaxy clock on the TS Galaxy yet; at game
-        // start it is the start star date (Start.2.cs startStarDate for Galaxy._Age).
-        builtObject.dateBuilt = startStarDateForAge(this.galaxy.age);
-        builtObject.dateRetrofit = startStarDateForAge(this.galaxy.age);
+        // Galaxy.CurrentStarDate (tick/simTime.ts galaxyStarDate; equals the start star date at game start — M4h:
+        // ships queued at runtime get the current date).
+        builtObject.dateBuilt = startStarDateForAge(this.galaxy.age) + this.galaxy.nowMs;
+        builtObject.dateRetrofit = startStarDateForAge(this.galaxy.age) + this.galaxy.nowMs;
         let arg = '';
         if (parent !== null) {
             let num = 0.0;
@@ -1519,6 +1521,10 @@ export class Empire {
     /** Empire.cs 122 _EmpireResourceTargets (PrioritizeEmpireResourceNeeds; added by M4a for the tick's assignment). */
     empireResourceTargets: HabitatPrioritization[] = [];
     // ---- M4h fields (construction queues) ----
+    /** EmpireCounters.cs BuildBaseCount / BuildMilitaryShipCount / BuildCivilianShipCount (ProcessBuiltObjectConstruction 321). */
+    countersBuildBaseCount = 0;
+    countersBuildMilitaryShipCount = 0;
+    countersBuildCivilianShipCount = 0;
     // ---- M4i fields (empire construction, facilities) ----
     // ---- M4j fields (colony growth, treasury, government) ----
     /** Empire.cs 220-230 ColonyGrowthRateContinental .. Volcanic = 1f (float; ReviewPopulationGrowthRates). */

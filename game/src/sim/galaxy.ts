@@ -8,6 +8,7 @@
 // SelectCreatures) — see the `TODO(port)` markers below for what remains.
 
 import { Random } from './random';
+import { newHabitatConstructionQueue } from './construction/constructionYard';
 import { Creature, CreatureType } from './creature';
 import { GalaxyLocation, GalaxyLocationEffectType, GalaxyLocationShape, GalaxyLocationType } from './galaxyLocation';
 import { GalaxyNebulaeGenerator } from './galaxyNebulaeGenerator';
@@ -3416,10 +3417,12 @@ export class Galaxy {
         if (this.rnd.next(0, 5) === 2) {
             habitat.orbitDirection = false;
         }
-        // TODO(port): Cargo/Troops/TroopsToRecruit/InvadingTroops/ConstructionQueue/
-        // 20 DockingBays (component 74) — Galaxy.8.cs GenerateContinentalPlanet.
+        // Galaxy.8.cs 483 (M4h): habitat.ConstructionQueue = new ConstructionQueue(habitat, galaxy). No Rnd.
+        newHabitatConstructionQueue(this, habitat);
         // Galaxy.8.cs 484 (M4g): habitat.ManufacturingQueue = new ManufacturingQueue(habitat, galaxy).
         ensureHabitatManufacturingQueue(this, habitat);
+        // TODO(port): Cargo/Troops/TroopsToRecruit/InvadingTroops/20 DockingBays (component 74) — Galaxy.8.cs
+        // GenerateContinentalPlanet.
         return habitat;
     }
 
@@ -3967,9 +3970,12 @@ export class Galaxy {
                 for (let p = 0; p < populationRolls; p++) {
                     this.selectPopulation(planet, sunHabitat);
                 }
-                // Galaxy.5.cs 1609-1618 (M4g part): a populated planet gets `ManufacturingQueue = new ManufacturingQueue(habitat2, this)`.
-                // TODO(port): the other containers of that block (Cargo, Troops, ConstructionQueue, DockingBays).
-                if (planet.population.items.length > 0) ensureHabitatManufacturingQueue(this, planet);
+                // Galaxy.5.cs 1609-1618: a populated planet gets `ConstructionQueue` (M4h, 1617) and `ManufacturingQueue` (M4g, 1618).
+                // TODO(port): the other containers of that block (Cargo, Troops, Characters, DockingBays; no Rnd).
+                if (planet.population.items.length > 0) {
+                    newHabitatConstructionQueue(this, planet);
+                    ensureHabitatManufacturingQueue(this, planet);
+                }
                 // Port of Galaxy.6.cs SelectCreatures(habitat2) — Galaxy.6.cs:654 (call
                 // site in Galaxy.5.cs SetupSolarSystem, after population rolls).
                 this.selectCreatures(planet);
@@ -4060,8 +4066,11 @@ export class Galaxy {
                     for (let p = 0; p < moonPopulationRolls; p++) {
                         this.selectPopulation(moon, sunHabitat);
                     }
-                    // Galaxy.5.cs 1747-1756 (M4g part): a populated moon gets a ManufacturingQueue. TODO(port): the other containers.
-                    if (moon.population.items.length > 0) ensureHabitatManufacturingQueue(this, moon);
+                    // Galaxy.5.cs 1745-1756: as for planets above (ConstructionQueue 1755, ManufacturingQueue 1756).
+                    if (moon.population.items.length > 0) {
+                        newHabitatConstructionQueue(this, moon);
+                        ensureHabitatManufacturingQueue(this, moon);
+                    }
                     // Port of Galaxy.6.cs SelectCreatures(habitat2) — Galaxy.6.cs:654 (call
                     // site in Galaxy.5.cs SetupSolarSystem, after moon population rolls).
                     this.selectCreatures(moon);
@@ -4382,6 +4391,8 @@ export class Galaxy {
     // ---- M4f fields (civilian mission AI) ----
     // ---- M4g fields (extraction, industry) ----
     // ---- M4h fields (construction queues, shipyards) ----
+    /** Clock-seeded `new Random()` of BaconBuiltObject.DoRepairs (4787): a galaxy-seed-derived stream (plan §0). */
+    baconRepairClockRnd: Random | null = null;
     // ---- M4i fields (empire construction, facilities, wonders) ----
     // ---- M4j fields (colony growth, treasury, government) ----
     /** Galaxy.cs 665 _ColonyFillFactor = 1.0 (ReviewColonyFillFactor). */

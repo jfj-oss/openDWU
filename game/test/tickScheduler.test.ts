@@ -178,7 +178,7 @@ describe('Habitat.DoTasks intervals (Habitat.cs 1399, strict >)', () => {
 describe('BuiltObject.DoTasks (BuiltObject.cs 3614)', () => {
     const markers = {
         intermediate: 'M4n checkNearTarget',
-        periodic: 'M4h checkRepairMissionStillValid',
+        periodic: 'M4e checkClearDocking', // (was M4h checkRepairMissionStillValid, ported by M4h)
         long: 'M4q baconBuiltObjectHugeProcessingSpanActions',
     };
 

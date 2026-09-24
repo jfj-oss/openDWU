@@ -74,3 +74,15 @@ export function determineHabitatsBeingMinedIncludingBuildingMiningStations(galax
     /* TODO(port) M4i */ todo(T_determineHabitatsBeingMinedIncludingBuildingMiningStations);
     return [];
 }
+
+// ---- stubs added by M4h (called from missions/cmdConstruction.ts) ----
+
+const T_obtainBuildResourcesForConstructionShip = registerTodo('M4i', 'obtainBuildResourcesForConstructionShip');
+/**
+ * Empire.6.cs 842 ObtainBuildResourcesForConstructionShip(constructionShip, newBuiltObject): clears the construction
+ * ship's cargo reservations, ProcureConstructionComponents (component wait queue on its ManufacturingQueue, M4g) and
+ * CreateOrder(ConstructionShortageMobile) per missing resource (M4d) — stub.
+ */
+export function obtainBuildResourcesForConstructionShip(galaxy: Galaxy, empire: Empire, constructionShip: BuiltObject, newBuiltObject: BuiltObject): void {
+    /* TODO(port) M4i */ todo(T_obtainBuildResourcesForConstructionShip);
+}

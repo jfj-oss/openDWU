@@ -16,6 +16,7 @@
 // KnownPirateBases (never filled yet), SystemVisibility.Threats, DiplomaticRelations.
 // Habitat.BasesAtHabitat is the real list (filled by Empire.addBuiltObjectToGalaxy).
 
+import { BuiltObjectMissionType, builtObjectMission, builtObjectSubsequentMissions } from './missions/mission';
 import type { Galaxy } from './galaxy';
 import { HabitatCategoryType, type Habitat } from './types';
 import type { Empire } from './empire';
@@ -27,7 +28,6 @@ import { netSort } from './netSort';
 import { csToInt32, resourceCurrentPrice, type BuiltObjectView } from './forceStructure';
 import { findNearestPirateFaction } from './pirates';
 import type { BuiltObject } from './builtObject';
-import { BuiltObjectMissionType, builtObjectMission, builtObjectSubsequentMissions } from './missions/mission';
 
 // Galaxy.MaxSolarSystemSize (Galaxy.3.cs InitializeStatics).
 const MAX_SOLAR_SYSTEM_SIZE = 23000;

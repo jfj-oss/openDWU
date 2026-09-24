@@ -90,7 +90,10 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // DoManufacturing draws Rnd.Next(0, manufacturers) per call; colonies and mining stations extract resources into
         // cargo (Habitat.ExtractResources, BuiltObject.IndustrialProcessing); PrioritizeEmpireResourceNeeds fills
         // EmpireResourceTargets; ReviewManufacturedResources may draw when a colony-manufactured resource can appear.
-        expect(summary.digest).toBe('63c7c5060c7cbda6');
+        // M4h: colonies (and populated independent habitats) now own a ConstructionQueue
+        // whose DoConstruction draws Rnd.Next(0, yards.Count) in every periodic Habitat tick, and shipyards (space ports,
+        // construction ships) get queues in ReDefine; DoRepairs / CheckForRepairs / CheckWhetherStillBeingBuilt run.
+        expect(summary.digest).toBe('a3f165f54afcbe42');
     }, 600000);
 });
 
