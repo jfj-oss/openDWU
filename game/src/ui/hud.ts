@@ -14,6 +14,7 @@ import { setGameMenuHandler } from './keyboard';
 import { startEffects } from '../audio/effectsPlayer';
 import { helpTopicKeyForHabitat, toggleGalactopedia } from './screens/galactopedia';
 import { toggleEmpiresList } from './screens/empiresList';
+import { setEmpireSummarySource } from './screens/empireSummary';
 import { toggleMessageHistory } from './screens/messageHistory';
 import { showToast } from './toast';
 
@@ -275,6 +276,16 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
     const messagePanel = elements.get('lstMessages');
     if (messagePanel) {
         messagePanel.addEventListener('click', () => toggleMessageHistory());
+    }
+
+    // Task 12j: register the Empire Summary panel's data source (F6): the
+    // player's empire plus its government's name from the parsed game data.
+    if (wiring.game) {
+        setEmpireSummarySource(() => ({
+            empire: wiring.game!.playerEmpire as Empire,
+            governmentName:
+                wiring.gameData?.governments[(wiring.game!.playerEmpire as Empire).governmentId]?.name ?? null,
+        }));
     }
 
     // Task 10f: apply the persisted UI scale on startup and re-apply it

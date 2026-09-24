@@ -14,6 +14,7 @@ import {
     getSelection,
 } from './hud';
 import { helpTopicKeyForHabitat, toggleGalactopedia } from './screens/galactopedia';
+import { toggleEmpireSummary } from './screens/empireSummary';
 import { toggleMessageHistory } from './screens/messageHistory';
 import { showToast } from './toast';
 
@@ -52,7 +53,7 @@ export const KEY_BINDINGS: KeyBinding[] = [
     { key: 'F3', modifiers: NONE, action: 'expansionPlannerScreen', description: 'Expansion Planner screen' },
     { key: 'F4', modifiers: NONE, action: 'intelligenceAgentsScreen', description: 'Intelligence Agents screen' },
     { key: 'F5', modifiers: NONE, action: 'diplomacyScreen', description: 'Diplomacy screen' },
-    { key: 'F6', modifiers: NONE, action: 'empireSummaryScreen', description: 'Your Empire Summary screen' },
+    { key: 'F6', modifiers: NONE, action: 'empireSummaryScreen', description: 'Empire Summary' },
     { key: 'F7', modifiers: NONE, action: 'researchScreen', description: 'Research screen' },
     { key: 'F8', modifiers: NONE, action: 'shipDesignsScreen', description: 'Ship Designs screen' },
     { key: 'F9', modifiers: NONE, action: 'buildOrderScreen', description: 'Build Order screen' },
@@ -136,6 +137,7 @@ export interface KeyHandlers {
     scrollRight?: () => void;
     galaxyMap?: () => void;
     messageHistoryScreen?: () => void;
+    empireSummaryScreen?: () => void;
     gameMenu?: () => void;
     galactopediaHelp?: () => void;
 }
@@ -232,6 +234,9 @@ export function dispatchKey(
             break;
         case 'messageHistoryScreen':
             handlers.messageHistoryScreen?.();
+            break;
+        case 'empireSummaryScreen':
+            toggleEmpireSummary();
             break;
         case 'gameMenu':
             handlers.gameMenu?.();
