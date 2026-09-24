@@ -1434,10 +1434,14 @@ function requireDesign(design: Design | null, what: string): Design {
 // Rnd: [GeneratePirateEmpireName: 4 draws when name is empty — the result is then unused:
 // GeneratePirateEmpire names the empire itself], [race selection], SelectRelativeHabitatSurfacePoint
 // (2), GeneratePirateEmpire(…, isSuperPirates: true) (no base block), then the design pipeline
-// (TODO — throws), the base (GeneratePirateBaseName + heading), 3 defensive bases (heading +
-// DetermineOrbitalBaseLocation each; GenerateBuiltObjectName of a DefensiveBase draws one Next
-// in SelectUniqueBuiltObjectName) and Rnd.Next(20, 30) warships (Next(0, 25) type, military
-// name, heading, 2 AddBuiltObjectToGalaxy offset draws each).
+// (six GenerateDesignFromSpec: SelectPreferredSuperWeapon's tie-break Next inside the CapitalShip
+// placement for aggressive+intelligent races, and GenerateDesignName's draws — seed-1 test: one
+// Next(0, 36) for the CapitalShip's new proper name; the base designs and upgrades draw nothing),
+// the base (GeneratePirateBaseName + heading), 3 defensive bases (GenerateBuiltObjectName of a
+// DefensiveBase draws one Next(0, 4) in SelectUniqueBuiltObjectName, heading, then
+// DetermineOrbitalBaseLocation: NextDouble, Next(0, 2), NextDouble per attempt) and
+// Rnd.Next(20, 30) warships (Next(0, 25) type, military name Next(0,76)/Next(0,162)/Next(0,5),
+// heading, 2 AddBuiltObjectToGalaxy offset draws each).
 export function generateSuperPirateFaction(galaxy: Galaxy, ctx: PirateGenerationContext, habitat: Habitat, name: string | null, race: Race | null, techLevel: number): Empire {
     if (name === null || name === '') {
         name = generatePirateEmpireName(galaxy, habitat, PiratePlayStyle.Pirate);

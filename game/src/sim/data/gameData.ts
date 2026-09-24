@@ -25,6 +25,7 @@ import { parsePlagues } from './plagues';
 import type { ResearchNode } from './research';
 import { parseResearch } from './research';
 import { designSpecificationFallbackFiles } from './designSpecifications';
+import { parseCharacterFile, parseCharacterNames, type CharacterFileRow, type CharacterNames } from './characters';
 
 // Sub role names Empire.GenerateDesignSpecifications (Empire.cs 4108) loads a
 // design template for, plus "PlanetDestroyer" (same method,
@@ -70,6 +71,13 @@ export interface GameData {
     designSpecificationTexts?: Map<string, string>;
     /** designNames.txt families (Galaxy.4.cs LoadDesignNames). */
     designNames?: string[][];
+    /** characterNames.txt (Galaxy.4.cs LoadAgentNames; one section per race family). */
+    characterNames?: CharacterNames;
+    /**
+     * characters/<race name>.txt tokenized rows keyed by race name (Galaxy.4.cs LoadCharacters /
+     * SetRaceStartupCharacters). A missing file is absent (C#: File.Exists false → empty list).
+     */
+    characterFiles?: Map<string, CharacterFileRow[]>;
 }
 
 export type FetchText = (candidates: string[]) => Promise<string>;
@@ -188,7 +196,33 @@ export async function loadGameData(
         designNames = undefined;
     }
 
+    // Galaxy.4.cs LoadAgentNames (characterNames.txt, RaceFamilies.Count sections) and
+    // SetRaceStartupCharacters → LoadCharacters (characters\<race.Name>.txt; Windows paths are
+    // case-insensitive, the shipped files are lower-case).
+    let characterNames: CharacterNames | undefined;
+    try {
+        characterNames = parseCharacterNames(await fetchText(resolveDataUrl('characterNames.txt', customizationSet)), raceFamilies.length);
+    } catch {
+        characterNames = undefined;
+    }
+    const characterFiles = new Map<string, CharacterFileRow[]>();
+    await Promise.all(
+        races.map(async (r) => {
+            const file = `characters/${r.name}.txt`;
+            let text: string;
+            try {
+                text = await fetchText([...resolveDataUrl(file, customizationSet), ...resolveDataUrl(`characters/${r.name.toLowerCase()}.txt`, customizationSet)]);
+            } catch {
+                return; // missing file → no race starting characters
+            }
+            if (isMissingResponse(text)) return;
+            characterFiles.set(r.name, parseCharacterFile(text, file));
+        }),
+    );
+
     return {
+        characterNames,
+        characterFiles,
         designNames,
         policies,
         piratePolicies,

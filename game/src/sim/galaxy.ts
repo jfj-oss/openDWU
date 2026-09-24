@@ -39,6 +39,7 @@ function compareGroupNames(a: Habitat[], b: Habitat[]): number {
 }
 import type { Empire } from './empire';
 import type { GameData } from './data/gameData';
+import type { CharacterFileRow, CharacterNames } from './data/characters';
 import type { Design } from './design';
 import { findNewestCanBuild, resolveSubRoleDescription } from './designGeneration';
 import type { BuiltObject } from './builtObject';
@@ -165,6 +166,14 @@ export class Galaxy {
     silverMistCreatureCount = 0;
     // Port of Galaxy.cs Races (RaceList, loaded from GameData in the ctor).
     races: Race[] = [];
+    // Port of Galaxy.cs AllowRaceStartingCharacters (Galaxy.cs 692, default true; Start.2.cs
+    // 500/706/717/1478 toggle it). Read by characters.ts (GenerateStartingCharacters).
+    allowRaceStartingCharacters = true;
+    // Galaxy ctor (Galaxy.4.cs 2133-2134) inputs of LoadAgentNames / SetRaceStartupCharacters:
+    // parsed characterNames.txt and characters/<race>.txt rows (GameData). characters.ts builds
+    // Galaxy._AgentFirstNames/_AgentLastNames and Race.AvailableCharacters from them per galaxy.
+    characterNames: CharacterNames | null = null;
+    characterFiles: Map<string, CharacterFileRow[]> | null = null;
     // Port of Galaxy.cs habitat-race lists (_ContinentalRaces etc.),
     // populated by SetupAlienRacePopulations (raceRegions.ts).
     continentalRaces: Race[] = [];
@@ -782,6 +791,10 @@ export class Galaxy {
     asteroidFields: Habitat[][] = [];
     /** C#: Galaxy._SuperPirateFactionsGenerated (Galaxy.cs 573). Read/incremented by pirates.ts galaxyEventSuperPirates. */
     superPirateFactionsGenerated = 0;
+    /** C#: Galaxy.IndependentColonies (Galaxy.cs 516); rebuilt by independentTraders.ts reviewIndependentColonies (Galaxy.1.cs 827). */
+    independentColonies: Habitat[] = [];
+    /** C#: Galaxy.PopularDesigns (Galaxy.cs 561); rebuilt by independentTraders.ts selectPopularDesignCandidates (Galaxy.7.cs 4698). */
+    popularDesigns: Design[] = [];
     /**
      * C#: Galaxy.SubRoleNameSet (Start.2.cs:510, from Galaxy.LoadShipNames(shipNames.txt)).
      * TODO(port): LoadShipNames — the stock shipNames.txt lists no names for any sub-role,
@@ -4213,6 +4226,10 @@ export function generateGalaxy(options: GenerateGalaxyOptions): Galaxy {
     galaxy.designNames = gameData?.designNames ?? [];
     // Port of Galaxy.cs Races (loaded from GameData in the ctor).
     galaxy.races = gameData?.races ?? [];
+    // Galaxy.4.cs ctor 2133-2134: LoadAgentNames + SetRaceStartupCharacters inputs (characters.ts
+    // builds the agent-name lists and Race.AvailableCharacters lazily; no Galaxy.Rnd use).
+    galaxy.characterNames = gameData?.characterNames ?? null;
+    galaxy.characterFiles = gameData?.characterFiles ?? null;
 
     // Nebulae / galaxy locations (Galaxy.4.cs ctor: GenerateNebulae + index
     // grid + AddGalaxyLocationIndex), generated before star placement so

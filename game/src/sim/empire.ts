@@ -36,6 +36,7 @@ import type { HabitatPrioritization } from './resourceTargets';
 import { PirateRelationList, PirateRelationType, obtainPirateRelation, changePirateRelation, galaxyCurrentStarDate } from './pirateRelations';
 import { recalculateDevelopmentLevelBaseline } from './developmentLevel';
 import { recalculateColonyInfluenceRadius } from './territory';
+import type { Character } from './characters';
 
 // Empire.1.cs TakeOwnershipOfColony callees that live in modules importing empire.ts
 // (forceStructure.ts RecalculateDistanceFactor / RecalculateAnnualTaxRevenue, taxes.ts
@@ -1358,6 +1359,22 @@ export class Empire {
     // Empire.cs _KnownPirateBases = new BuiltObjectList() (481). TODO(port): filled by
     // visibility scans (BuiltObject.1.cs 1902/1928, Galaxy.4.cs 3798) — empty at game start.
     knownPirateBases: BuiltObject[] = [];
+
+    // --- independentTraders.ts (Galaxy DoTasks long block) ---
+    // Empire.cs 323: public BuiltObjectList DisputedBases = new BuiltObjectList() (IdentifyDisputedBases).
+    disputedBases: BuiltObject[] | null = [];
+    // Empire.cs 283/286: _RefuellingLocations / _RefuellingLocationsMilitaryOnly = new StellarObjectList()
+    // (UpdateEmpireRefuellingLocations, Empire.6.cs 3845).
+    refuellingLocations: (Habitat | BuiltObject)[] = [];
+    refuellingLocationsMilitaryOnly: (Habitat | BuiltObject)[] = [];
+
+    // --- characters.ts (Empire.6.cs GenerateStartingCharacters) ---
+    // Empire.cs 866: public Character Leader (assigned by Character.CompleteEmpireChange).
+    // Empire.characters (Empire.cs CharacterList Characters) holds Character objects (characters.ts).
+    leader: Character | null = null;
+    // Empire.cs 862: public CharacterList AvailableCharacters = new CharacterList() — empty for a
+    // new game (filled only by the scenario editor / game events).
+    availableCharacters: Character[] = [];
 }
 
 // Task M3b: Empire.GovernmentAttributes (Empire.cs 2805: _Galaxy.Governments[_GovernmentId],

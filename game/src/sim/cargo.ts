@@ -149,6 +149,19 @@ export class Troop {
         this._atColony = true;
         this._builtObject = null;
     }
+
+    // Troop.cs SetAttackStrength / SetDefendStrength: (short) casts.
+    setAttackStrength(attackStrength: number): void { this._attackStrength = toShort(attackStrength); }
+    setDefendStrength(defendStrength: number): void { this._defendStrength = toShort(defendStrength); }
+    // Troop.cs OverallAttackStrength / OverallDefendStrength / OverallDefendStrengthExcludeReadiness (double).
+    get overallAttackStrength(): number { return this._attackStrength * this.readiness; }
+    get overallDefendStrength(): number { return this._defendStrength * this.readiness; }
+    get overallDefendStrengthExcludeReadiness(): number { return this._defendStrength * 100.0; }
+    // Troop.cs BeingRecruited: _AtColony && _Colony.TroopsToRecruit.Contains(this).
+    get beingRecruited(): boolean {
+        const colony = this._colony as { troopsToRecruit?: TroopList | null } | null;
+        return this._atColony && colony !== null && colony.troopsToRecruit != null && colony.troopsToRecruit.contains(this);
+    }
 }
 
 // C# (short) cast: unchecked 16-bit wrap.
@@ -178,5 +191,58 @@ export class TroopList {
         let totalSize = 0;
         for (const troop of this.items) totalSize += troop.size;
         return totalSize;
+    }
+
+    // --- troops.ts additions (TroopList.cs; SyncList Count / Contains / Clear) ---
+    get count(): number { return this.items.length; }
+    contains(troop: Troop): boolean { return this.items.indexOf(troop) >= 0; }
+    clear(): void { this.items.length = 0; }
+
+    // TroopList.cs CountByType(troopType) (186).
+    countByType(troopType: TroopType): number {
+        let num = 0;
+        for (let index = 0; index < this.items.length; ++index) {
+            const troop = this.items[index];
+            if (troop != null && troop.type === troopType) ++num;
+        }
+        return num;
+    }
+
+    // TroopList.cs GetByType(troopType) (214).
+    getByType(troopType: TroopType): TroopList {
+        const byType = new TroopList();
+        for (let index = 0; index < this.items.length; ++index) {
+            const troop = this.items[index];
+            if (troop != null && troop.type === troopType) byType.add(troop);
+        }
+        return byType;
+    }
+
+    // TroopList.cs TotalAttackStrength (285): (int) of a double sum of AttackStrength * Readiness.
+    get totalAttackStrength(): number {
+        let total = 0.0;
+        for (const troop of this.items) total += troop.attackStrength * troop.readiness;
+        return Math.trunc(total);
+    }
+
+    // TroopList.cs TotalDefendStrength (296).
+    get totalDefendStrength(): number {
+        let total = 0.0;
+        for (const troop of this.items) total += troop.defendStrength * troop.readiness;
+        return Math.trunc(total);
+    }
+
+    // TroopList.cs TotalDefendStrengthExcludeReadiness (307).
+    get totalDefendStrengthExcludeReadiness(): number {
+        let total = 0.0;
+        for (const troop of this.items) total += troop.defendStrength * 100.0;
+        return Math.trunc(total);
+    }
+
+    // TroopList.cs TotalDefendStrengthGarrisonedExcludeReadiness (360): int sum.
+    get totalDefendStrengthGarrisonedExcludeReadiness(): number {
+        let total = 0;
+        for (const troop of this.items) if (troop.garrisoned) total += troop.defendStrength;
+        return total;
     }
 }

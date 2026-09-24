@@ -1,4 +1,9 @@
 import { beforeAll, describe, expect, it } from 'vitest';
+
+// Task M3f — Galaxy.8.cs GenerateSuperPirateFaction (3984) with its design pipeline:
+// Empire.10.cs GenerateDesignFromSpec (3387), GenerateSuperPirate(Defensive)BaseDesign
+// (3937/3963), Get*Components (3760/3853), AddComponentsToDesign (2320),
+// UpgradeMilitaryShipDesignMoreEngines/MoreWeapons (4206/4121).
 import { createGame, type CreateGameOptions } from '../src/sim/game';
 import { setGovernmentsStatic } from '../src/sim/empire';
 import { GalaxyShape, HabitatCategoryType, type Habitat } from '../src/sim/types';
@@ -6,7 +11,16 @@ import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 import type { GameData } from '../src/sim/data/gameData';
 import type { Galaxy } from '../src/sim/galaxy';
-import { generateSuperPirateFaction } from '../src/sim/pirates';
+import {
+    generateSuperPirateFaction,
+    resolveSuperPirateShipImageIndex,
+    upgradeMilitaryShipDesignMoreEngines,
+    upgradeMilitaryShipDesignMoreWeapons,
+} from '../src/sim/pirates';
+import { Design } from '../src/sim/design';
+import { ComponentType } from '../src/sim/data/components';
+import { ComponentCategoryType } from '../src/sim/data/policies';
+import { startStarDateForAge } from '../src/sim/galaxyTime';
 
 let gameData: GameData;
 beforeAll(async () => {
@@ -45,12 +59,171 @@ function run() {
     return { g, p, home, log };
 }
 
-describe('explore', () => {
-    it('runs', () => {
-        const { p, log } = run();
-        console.log(p.designs.map((d) => `${BuiltObjectSubRole[d.subRole]}:${d.name}:${d.components.length}:${d.pictureRef}`).join('\n'));
-        console.log(p.builtObjects.map((b) => `${BuiltObjectSubRole[b.subRole]}:${b.name}`).join('\n'));
-        console.log(log.map((e) => e.k + '=' + (e.k === 'd' ? e.v.toFixed(4) : e.v)).join(' '));
-        expect(p).toBeTruthy();
+const S = BuiltObjectSubRole;
+const SHIP_ROLES = [S.Escort, S.Frigate, S.Destroyer, S.Cruiser, S.CapitalShip, S.Carrier];
+
+describe('generateSuperPirateFaction (seed 1, createGame, tech 4)', () => {
+    it('adds the faction with 8 designs, the Phantom base, 3 defensive bases and 20-29 warships', () => {
+        const { g, p, home, log } = run();
+        expect(p.pirateEmpireSuperPirates).toBe(true);
+        expect(g.pirateEmpires).toContain(p);
+        expect(p.pirateEmpireBaseHabitat).toBe(home);
+        // Designs: the 8 super-pirate designs are appended after CreateNewDesigns' own.
+        const sp = (p.designs as Design[]).slice(-8);
+        expect(sp.map((d) => d.subRole)).toEqual([...SHIP_ROLES, S.DefensiveBase, S.GenericBase]);
+        expect(sp.map((d) => d.pictureRef)).toEqual([64, 65, 66, 67, 68, 69, 70, 71]);
+        expect(sp.map((d) => resolveSuperPirateShipImageIndex(d.subRole))).toEqual([64, 65, 66, 67, 68, 69, 70, 71]);
+        expect(sp[6].name).toBe('Phantom Pirate Defensive Base');
+        expect(sp[7].name).toBe('Phantom Pirate Base');
+        const sd = startStarDateForAge(g.age);
+        for (const d of sp) expect(d.dateCreated).toBe(sd);
+        for (const d of sp.slice(0, 6)) expect(d.empire).toBe(p);
+        expect(sp[6].empire).toBeNull();
+        expect(sp[7].empire).toBeNull();
+        // Tech 4 designs: every component evaluated at tech level <= 4 (EvaluateLatest).
+        for (const d of sp) for (const c of d.components) expect(c.techLevel).toBeLessThanOrEqual(4);
+        // UpgradeMilitaryShipDesignMoreWeapons minimum beam counts (Galaxy.8.cs 4130-4166).
+        const minBeams = [3, 5, 6, 10, 16, 4];
+        sp.slice(0, 6).forEach((d, i) => {
+            const beams = d.components.filter((c) => c.category === ComponentCategoryType.WeaponBeam).length;
+            if (beams > 0) expect(beams).toBeGreaterThanOrEqual(minBeams[i]);
+        });
+        // Base designs: AddComponentsToDesign components (30 armor on the base, 15 on defensive).
+        expect(sp[7].components.filter((c) => c.type === ComponentType.Armor).length).toBe(30);
+        expect(sp[6].components.filter((c) => c.type === ComponentType.Armor).length).toBe(15);
+        expect(sp[7].components.filter((c) => c.type === ComponentType.HabitationHabModule).length).toBeGreaterThan(0);
+
+        // BuiltObjects: base, 3 defensive bases, then the warships.
+        const bos = p.builtObjects;
+        expect(bos[0].subRole).toBe(S.GenericBase);
+        expect(bos[0].design).toBe(sp[7]);
+        expect(bos[0].parentHabitat).toBe(home);
+        expect(bos.slice(1, 4).map((b) => b.subRole)).toEqual([S.DefensiveBase, S.DefensiveBase, S.DefensiveBase]);
+        for (const b of bos.slice(0, 4)) {
+            expect(home.basesAtHabitat).toContain(b);
+            expect(b.empire).toBe(p);
+        }
+        expect(sp[7].buildCount).toBe(1);
+        expect(sp[6].buildCount).toBe(3);
+        const iWar = log.findIndex((e) => e.k === 'n20,30');
+        const warships = log[iWar].v;
+        expect(warships).toBeGreaterThanOrEqual(20);
+        expect(warships).toBeLessThan(30);
+        expect(bos.length).toBe(4 + warships);
+        for (const b of bos.slice(4)) {
+            expect(SHIP_ROLES).toContain(b.subRole);
+            expect(b.parentHabitat).toBe(home);
+        }
+        expect(sp.slice(0, 6).reduce((n, d) => n + d.buildCount, 0)).toBe(warships);
+    }, 60000);
+
+    it('Rnd: base name + heading, 3 × (defensive name, heading, orbital location), Next(20,30), 7 draws per warship', () => {
+        const { log } = run();
+        const iWar = log.findIndex((e) => e.k === 'n20,30');
+        const warships = log[iWar].v;
+        // Warships: Next(0,25) type, SelectRandomUniqueMilitaryShipName (Next(0,76), Next(0,162),
+        // Next(0,5)), heading NextDouble, AddBuiltObjectToGalaxy offset NextDouble × 2.
+        for (let w = 0; w < warships; w++) {
+            expect(log.slice(iWar + 1 + 7 * w, iWar + 8 + 7 * w).map((e) => e.k)).toEqual(['n0,25', 'n0,76', 'n0,162', 'n0,5', 'd', 'd', 'd']);
+        }
+        expect(log.length).toBe(iWar + 1 + 7 * warships);
+        // Walk forward from the base name: GeneratePirateBaseName Next(0,13), Next(0,20),
+        // [Next(0,4) (+ Next(0,20) on 1) unless a gas cloud], heading NextDouble.
+        let i = log.findIndex((e, k) => e.k === 'n0,13' && log[k + 1]?.k === 'n0,20' && k > log.length - 7 * warships - 40);
+        expect(i).toBeGreaterThan(0);
+        i += 2;
+        if (log[i].k === 'n0,4') {
+            i++;
+            if (log[i - 1].v === 1) expect(log[i++].k).toBe('n0,20');
+        }
+        expect(log[i++].k).toBe('d');
+        // Defensive bases: SelectUniqueBuiltObjectName Next(0,4) (defensive-base array), heading,
+        // DetermineOrbitalBaseLocation (NextDouble, Next(0,2), NextDouble per attempt).
+        for (let b = 0; b < 3; b++) {
+            expect(log[i++].k).toBe('n0,4');
+            expect(log[i++].k).toBe('d');
+            let attempts = 0;
+            while (log[i].k === 'd' && log[i + 1].k === 'n0,2' && log[i + 2].k === 'd') {
+                i += 3;
+                attempts++;
+            }
+            expect(attempts).toBeGreaterThanOrEqual(1);
+        }
+        expect(i).toBe(iWar);
+    }, 60000);
+
+    it('Rnd before the base: design pipeline draws only in GenerateDesignName (seed 1: one Next(0,36))', () => {
+        const { log } = run();
+        const iWar = log.findIndex((e) => e.k === 'n20,30');
+        const iBase = log.slice(0, iWar).map((e) => e.k).lastIndexOf('n0,13');
+        // Race: SelectRandomPirateRace Next(0, count); SelectRelativeHabitatSurfacePoint (2).
+        expect(log[0].k.startsWith('n0,')).toBe(true);
+        expect(log.slice(1, 3).map((e) => e.k)).toEqual(['d', 'd']);
+        // The last draw before the base name is the CapitalShip's new proper design name.
+        expect(log[iBase - 1].k).toBe('n0,36');
+    }, 60000);
+
+    it('is deterministic (pinned names)', () => {
+        const fp = () => {
+            const { p } = run();
+            return [
+                (p.designs as Design[]).slice(-8).map((d) => `${S[d.subRole]}:${d.name}:${d.components.length}`),
+                p.builtObjects.slice(0, 8).map((b) => `${S[b.subRole]}:${b.name}`),
+                p.builtObjects.length,
+            ];
+        };
+        const a = fp();
+        expect(fp()).toEqual(a);
+        expect(a).toEqual(PINNED);
     }, 60000);
 });
+
+describe('UpgradeMilitaryShipDesignMoreWeapons / MoreEngines (Galaxy.8.cs 4121 / 4206)', () => {
+    it('tops up beams/torpedoes/point defense by sub-role and adds at most one engine of each kind', () => {
+        const { g } = run();
+        const defs = g.researchStatic!.componentStatic!.definitions;
+        const beam = defs.find((c) => c.category === ComponentCategoryType.WeaponBeam)!;
+        const torp = defs.find((c) => c.category === ComponentCategoryType.WeaponTorpedo)!;
+        const main = defs.find((c) => c.type === ComponentType.EngineMainThrust)!;
+        const vec = defs.find((c) => c.type === ComponentType.EngineVectoring)!;
+        const d = new Design('x');
+        d.subRole = S.Cruiser;
+        d.components.push(beam, torp, main, vec);
+        upgradeMilitaryShipDesignMoreWeapons(d);
+        expect(d.components.filter((c) => c === beam).length).toBe(10);
+        expect(d.components.filter((c) => c === torp).length).toBe(4);
+        expect(d.components.filter((c) => c.category === ComponentCategoryType.WeaponPointDefense).length).toBe(0); // no PD to copy
+        upgradeMilitaryShipDesignMoreEngines(d);
+        upgradeMilitaryShipDesignMoreEngines(d);
+        expect(d.components.filter((c) => c === main).length).toBe(3);
+        expect(d.components.filter((c) => c === vec).length).toBe(3); // Cruiser: 3 vectoring max
+        upgradeMilitaryShipDesignMoreEngines(d);
+        expect(d.components.filter((c) => c === vec).length).toBe(3);
+        expect(upgradeMilitaryShipDesignMoreWeapons(null)).toBeNull();
+    }, 60000);
+});
+
+// Seed 1: [super-pirate designs (subRole:name:component count), first 8 BuiltObjects, BuiltObject count].
+const PINNED: unknown[] = [
+    [
+        'Escort:Venator II:32',
+        'Frigate:Striker II:43',
+        'Destroyer:Centurion II:55',
+        'Cruiser:Victory II:90',
+        'CapitalShip:Minotaur:136',
+        'Carrier:CX-2 Carrier:108',
+        'DefensiveBase:Phantom Pirate Defensive Base:123',
+        'GenericBase:Phantom Pirate Base:217',
+    ],
+    [
+        'GenericBase:Bounty Hunters Nest',
+        'DefensiveBase:Haako 4 Defense Battery',
+        'DefensiveBase:Haako 4 Weapons Platform',
+        'DefensiveBase:Haako 4 Defensive Base',
+        'CapitalShip:Courageous Firelance',
+        'Destroyer:Supreme Hand',
+        'Frigate:Black Hydra',
+        'Destroyer:Smashing Battle',
+    ],
+    33,
+];
