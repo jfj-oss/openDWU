@@ -3496,7 +3496,7 @@ export function generateGalaxy(options: GenerateGalaxyOptions): Galaxy {
     // ResourceSystem.Resources (Galaxy.4.cs ctor loads it before generation).
     galaxy.resources = gameData?.resources ?? [];
     galaxy.resourceSystem = buildResourceSystem(galaxy.resources, gameData?.components ?? []);
-    galaxy.researchStatic = gameData ? buildResearchStatic(gameData.research, gameData.components, gameData.races) : null;
+    galaxy.researchStatic = gameData ? buildResearchStatic(gameData.research, gameData.components, gameData.races, gameData.policies, gameData.piratePolicies) : null;
     // Port of Galaxy.cs Races (loaded from GameData in the ctor).
     galaxy.races = gameData?.races ?? [];
 

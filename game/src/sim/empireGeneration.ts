@@ -11,6 +11,7 @@
 // GrowPopulation, Habitat.DoTasks at game start, EstimatedDefensiveForceRequired,
 // GenerateNewTroop; SetTechTreeLevel draws only for fractional tech levels.
 
+import { loadEmpirePolicy } from './researchSystem';
 import type { Galaxy } from './galaxy';
 import { Galaxy as GalaxyClass } from './galaxy';
 import { Empire, COLONY_MAXIMUM_TROOP_STRENGTH } from './empire';
@@ -46,9 +47,9 @@ export function generateEmpire(
 ): GenerateEmpireResult {
     const rnd = galaxy.rnd;
     let actualTechLevel = 1.0;
-    // TODO(port): LoadEmpirePolicy(race, false) (Policy files, no Rnd); the
-    // player's ImplementEnslavementWithPenalColonies = false.
-    const empirePolicy = {};
+    // Galaxy.7.cs 5092: LoadEmpirePolicy(race, isPirate: false) (no Rnd).
+    // TODO(port): player ImplementEnslavementWithPenalColonies = false (field not ported).
+    const empirePolicy = loadEmpirePolicy(galaxy.researchStatic, race, false);
     const empire = new Empire(galaxy, empireName, capital, race, governmentId, corruptionMultiplier, empirePolicy, isPlayerEmpire);
     empire.playerEmpire = isPlayerEmpire;
     if (techLevel < 0.0) {

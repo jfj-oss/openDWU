@@ -64,7 +64,7 @@ describe('MakeHabitatIntoColony', () => {
         const g = makeGalaxy();
         const race = gameData.races.find((r) => r.name === 'Human') ?? gameData.races[0];
         const [capital, target] = planets(g);
-        const empire = new Empire(g, 'Test Empire', capital, race, 0, 1.0, {});
+        const empire = new Empire(g, 'Test Empire', capital, race, 0, 1.0, null);
         makeHabitatIntoColony(g, target, empire, 0, race, 1.0, false);
         expect(target.owner).toBe(empire);
         expect(target.empire).toBe(empire);
@@ -84,7 +84,7 @@ describe('MakeHabitatIntoColony', () => {
             const g = makeGalaxy();
             const race = gameData.races[3];
             const [capital, a, b] = planets(g);
-            const e = new Empire(g, 'E', capital, race, 0, 1.0, {});
+            const e = new Empire(g, 'E', capital, race, 0, 1.0, null);
             makeHabitatIntoColony(g, a, e, 1, race, 1.0, true);
             makeHabitatIntoColony(g, b, e, 0, race, 1.0, false);
             return JSON.stringify([a.population.totalAmount, b.population.totalAmount, a.developmentLevel, a.cargo!.items.map((c) => [c.commodity.resourceId, c.amount]), g.rnd.next(0, 1 << 30)]);
@@ -96,7 +96,7 @@ describe('MakeHabitatIntoColony', () => {
         const g = makeGalaxy();
         const race = gameData.races.find((r) => r.criticalResources.length > 0)!;
         const [capital, h] = planets(g);
-        const e = new Empire(g, 'E', capital, race, 0, 1.0, {});
+        const e = new Empire(g, 'E', capital, race, 0, 1.0, null);
         h.population.add(new Population(race, 1_000_000_000));
         h.population.recalculateTotalAmount();
         h.cargo = null;
@@ -114,7 +114,7 @@ describe('SetColonizableHabitatsInSystem owner checks', () => {
         const race = gameData.races[0];
         const sys = g.systems.find((s) => g.systemHabitatsOf(s.systemStar.systemIndex).some((h) => h.type === race.nativeHabitatType && h.category === HabitatCategoryType.Planet))!;
         const native = g.systemHabitatsOf(sys.systemStar.systemIndex).find((h) => h.type === race.nativeHabitatType && h.category === HabitatCategoryType.Planet)!;
-        const e = new Empire(g, 'E', native, race, 0, 1.0, {});
+        const e = new Empire(g, 'E', native, race, 0, 1.0, null);
         e.takeOwnershipOfColony(native, e);
         const type = native.type;
         g.setColonizableHabitatsInSystem(sys.systemStar, race, 0);

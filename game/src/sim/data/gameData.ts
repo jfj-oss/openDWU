@@ -17,6 +17,8 @@ import type { Fighter } from './fighters';
 import { parseFighters } from './fighters';
 import type { Facility } from './facilities';
 import { parseFacilities } from './facilities';
+import type { EmpirePolicy } from './policies';
+import { parseEmpirePolicy } from './policies';
 import type { Plague } from './plagues';
 import { parsePlagues } from './plagues';
 import type { ResearchNode } from './research';
@@ -38,6 +40,11 @@ export interface GameData {
     facilities: Facility[];
     plagues: Plague[];
     research: ResearchNode[];
+
+    // Policy/<race>.txt and Policy/pirate/<race>.txt by race name (C2 starting techs).
+    // A missing file is absent here; Galaxy.LoadEmpirePolicy then uses a default policy.
+    policies?: Map<string, EmpirePolicy>;
+    piratePolicies?: Map<string, EmpirePolicy>;
 }
 
 export type FetchText = (candidates: string[]) => Promise<string>;
@@ -104,7 +111,24 @@ export async function loadGameData(
     const raceFamilies = parseRaceFamilies(raceFamiliesText);
     const races = raceFileResults.map((text) => parseRace(text));
 
+    // Port of Galaxy.4.cs LoadEmpirePolicy (1696) file lookup, prefetched per race.
+    const policies = new Map<string, EmpirePolicy>();
+    const piratePolicies = new Map<string, EmpirePolicy>();
+    await Promise.all(
+        races.flatMap((r) =>
+            ([[policies, 'Policy/'], [piratePolicies, 'Policy/pirate/']] as const).map(async ([map, dir]) => {
+                try {
+                    map.set(r.name, parseEmpirePolicy(await fetchText(resolveDataUrl(`${dir}${r.name}.txt`, customizationSet))));
+                } catch {
+                    // missing file → default policy
+                }
+            }),
+        ),
+    );
+
     return {
+        policies,
+        piratePolicies,
         // 04a data
         races,
         raceFamilies,

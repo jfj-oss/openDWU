@@ -17,11 +17,11 @@ import { START_STAR_DATE } from './galaxyTime';
 import { Cargo, CargoList, ResourceRef, TroopList } from './cargo';
 import { checkEmpireColorUsed, selectColorFromKey, selectComplementaryColorKey, selectUnusedMainColor } from './empireColors';
 import { ResearchSystem, ResearchAbilityType } from './researchSystem';
+import { defaultEmpirePolicy, type EmpirePolicy as PolicyData } from './data/policies';
 import { EmpireVisibility, SystemVisibilityStatus, type SystemVisibility, type VisibilityOwner, type VisibilityUnit } from './visibility';
 
-// TODO(port): EmpirePolicy type — Empire.cs / Policy.cs (policy data model
-// not ported yet); constructors treat it as an opaque value.
-export type EmpirePolicy = unknown;
+// EmpirePolicy.cs: only the research tech-focus fields are ported (data/policies.ts).
+export type EmpirePolicy = PolicyData | null;
 
 // Port of DistantWorlds.Types.AutomationLevel (AutomationLevel.cs).
 export enum AutomationLevel {
@@ -141,7 +141,7 @@ export class Empire {
     dominantRace: Race | null = null;
     corruptionMultiplier = 0;
     lastDisasterDate = START_STAR_DATE;
-    policy: EmpirePolicy = {};
+    policy: EmpirePolicy = defaultEmpirePolicy();
     reclusive = false;
     allowableGovernmentTypes: number[] = [];
     governmentId = -1;
@@ -265,7 +265,7 @@ export class Empire {
         if (typeof arg3 === 'boolean') {
             this.initializeIndependentCtor(galaxy, name, arg3, arg4 as Habitat | null, arg5 as Race | null, arg6 as EmpirePolicy);
         } else {
-            this.initialize(galaxy, name, arg3, arg4 as Race | null, arg5 as number, arg6 as number, arg7 ?? ({} as EmpirePolicy), arg8 ?? false);
+            this.initialize(galaxy, name, arg3, arg4 as Race | null, arg5 as number, arg6 as number, arg7 ?? null, arg8 ?? false);
         }
     }
 
@@ -307,6 +307,8 @@ export class Empire {
         this.privateMoney = 100000.0;
         this.research = new ResearchSystem(galaxy.researchStatic);
         this.research.obtainTechTree();
+        // Empire.cs 4329: SetTechTreeStartingDefaults(TechTree, dominantRace, policy).
+        this.research.setTechTreeStartingDefaults(dominantRace, policy);
         this.research.update();
         this.reviewResearchAbilities();
         this.reviewDesignsBuiltObjectsImprovedComponents();
@@ -500,12 +502,9 @@ export class Empire {
         this.stateMoney = 30000.0;
         this.privateMoney = 100000.0;
         this.research = new ResearchSystem(galaxy.researchStatic);
-        // TODO(port): Galaxy.ResearchNodeDefinitionsStatic.ObtainTechTree /
-        // SetTechTreeStartingDefaults — Galaxy.cs / ResearchNodeDefinition.cs.
         // Empire.cs 3961-3962: ObtainTechTree(race) + SetTechTreeStartingDefaults(race, policy).
-        // TODO(port): SetTechTreeStartingDefaults — GenerateEmpire's SetTechTreeLevel
-        // re-sets IsResearched for every node for integer tech levels anyway.
         this.research.obtainTechTree();
+        this.research.setTechTreeStartingDefaults(dominantRace, policy);
         this.research.update();
         this.reviewResearchAbilities();
         this.reviewDesignsBuiltObjectsImprovedComponents();

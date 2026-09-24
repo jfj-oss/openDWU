@@ -36,3 +36,9 @@ Suggested task order: **C2c-1** GalaxyIndex ring search (self-contained; also le
 - C2c-3 `18e3429`: territory, research tree levels, independent empire ctor.
 - C2c-4: `src/sim/game.ts` `createGame(options)` — independent empire, player capital, AI empires (proximity modes, region placement), starting colonies, ReviewIndependentColonies, SetEmpireForAllIndependentHabitats. `test/game.test.ts` pins seed 1 capitals S147/S127/S81/S63, 1 colony each.
 - Still TODO: C2d pirates; tech level 0.5 (SetTechTreeStartingDefaults) throws; designs/colony ships (so extra starting colonies are rare); Empire.DoTasks (Rnd parity ends there); C3 galaxy map must skip gas-cloud systems after merge.
+
+## Update — starting techs (tech level 0.5 "Normal")
+- `src/sim/data/policies.ts`: EmpirePolicy tech-focus fields (LoadFromFile, ResolveTechFocus/ResolveTechFocuses), ComponentCategoryType, DetermineComponentCategoryByIndex, ResolveTechDisallow. GameData now prefetches `Policy/<race>.txt` and `Policy/pirate/<race>.txt` (a missing file gives the default policy).
+- `researchSystem.ts`: SetTechTreeStartingDefaults and ...Pirates, FindAndResearchLowestProject (type/category), GetLowestProjectForTypeAny/Infantry/ResupplyShips, DisallowedRaces from race DisallowedResearchArea1-3/DisallowedComponentIds; `setTechTreeLevel(0.5)` works.
+- The Empire ctors (8-arg and independent) call SetTechTreeStartingDefaults(race, policy) as in C#; GenerateEmpire loads the race policy. No Rnd, so the seed-1 pins are unchanged.
+- `test/startingTechs.test.ts` (6 tests).
