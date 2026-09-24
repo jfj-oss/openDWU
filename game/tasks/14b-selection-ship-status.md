@@ -179,3 +179,21 @@ Here `player = { visibility: { systemVisibility: [{}, {}], checkSystemVisibility
   - With `player` null, everything is known.
 
 Run `npm run typecheck && npm test` (hud.test.ts and hud-cycle-builtobjects.test.ts must still pass). With `npm run dev` running, save `node scripts/shot.mjs 'http://localhost:5173/?autostart=1' shots/14b-selection.png`. Do not open it. Then append `## Worker report`: files changed, the shot.mjs console output, and anything left undone.
+
+## Worker report
+
+Files changed:
+- `src/ui/hud.ts`: mission/visibility imports; new exported `missionTypeLabel`, `missionTargetText`, `builtObjectStatusRows` after `builtObjectRows`; `buildSelectionRows(sel, gameData?, player = null)` appends the status rows for built objects; the call site passes `wiring.galaxy?.playerEmpire ?? null`; 500 ms live-refresh timer in `buildSelectionPanel` (it clears itself once the panel is disconnected).
+- `test/hud-builtobject-status.test.ts` (new).
+
+`npm run typecheck` is clean. The full vitest suite passes: 105 files, 1112 tests.
+
+Screenshot: `shots/14b-selection.png`. I took it from a dev server on port 5199 (`?autostart=1`), not 5173, because other agents share the machine. shot.mjs output:
+```
+[debug] [vite] connecting...
+[debug] [vite] connected.
+saved shots/14b-selection.png
+```
+No console errors. The screenshot does not select a ship, so the new rows are not visible in it.
+
+Left undone (TODO(port) in code): the " (slowed)" speed suffix, because `BuiltObject.MovementSlowedLocation` is not in the sim. ShipGroup target names are empty because `ShipGroup` has no name at HEAD.
