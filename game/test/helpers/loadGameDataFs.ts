@@ -55,5 +55,25 @@ export async function loadGameDataFs(customizationSet?: string): Promise<GameDat
             .sort();
     }
 
-    return loadGameData(fetchTextFs, customizationSet, raceFileNames, designTemplateFiles);
+    // Discover policy file names from Policy/ (top level) and Policy/pirate/,
+    // mirroring public/asset-manifest.json's "Policy" / "Policy/pirate" lists
+    // (pirate entries prefixed "pirate/" — see loadGameData's policyFileNames doc).
+    let policyFileNames: string[] = [];
+    const policyDir = resolve(dwuRoot, 'Policy');
+    if (existsSync(policyDir)) {
+        policyFileNames = readdirSync(policyDir, { withFileTypes: true })
+            .filter((e) => e.isFile() && e.name.endsWith('.txt'))
+            .map((e) => e.name)
+            .sort();
+        const policyPirateDir = resolve(policyDir, 'pirate');
+        if (existsSync(policyPirateDir)) {
+            const pirateFiles = readdirSync(policyPirateDir)
+                .filter((f) => f.endsWith('.txt'))
+                .sort()
+                .map((f) => `pirate/${f}`);
+            policyFileNames.push(...pirateFiles);
+        }
+    }
+
+    return loadGameData(fetchTextFs, customizationSet, raceFileNames, designTemplateFiles, policyFileNames);
 }

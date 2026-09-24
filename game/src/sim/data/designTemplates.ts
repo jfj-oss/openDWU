@@ -10,20 +10,36 @@ import { BuiltObjectSubRole } from './names';
 import { ComponentType } from './components';
 
 // Port of DistantWorlds.Types.ComponentCategoryType (ComponentCategoryType.cs).
-// TODO(port): full enum not yet ported; only the members referenced by
-// DesignSpecification are declared here. Member order is the exact C#
-// declaration order: Undefined, WeaponBeam, WeaponTorpedo, WeaponPointDefense,
-// AssaultPod, Shields, ShieldRecharge, HyperDrive, Reactor.
+// Member order is the exact C# declaration order (byte-backed enum).
 export enum ComponentCategoryType {
     Undefined = 0,
     WeaponBeam,
     WeaponTorpedo,
+    WeaponArea,
     WeaponPointDefense,
+    WeaponIon,
+    WeaponGravity,
+    Armor,
     AssaultPod,
+    Fighter,
     Shields,
     ShieldRecharge,
+    Engine,
     HyperDrive,
+    HyperDisrupt,
     Reactor,
+    EnergyCollector,
+    Extractor,
+    Manufacturer,
+    Storage,
+    Sensor,
+    Computer,
+    Labs,
+    Construction,
+    Habitation,
+    WeaponSuperBeam,
+    WeaponSuperArea,
+    WeaponSuperTorpedo,
 }
 
 // Port of DistantWorlds.Types.BuiltObjectRole (BuiltObjectRole.cs).
@@ -59,14 +75,16 @@ export enum InvasionTactics {
 }
 
 // Port of DistantWorlds.Types.BuiltObjectFleeWhen (BuiltObjectFleeWhen.cs).
+// Member order is the exact C# declaration order: note Never (5) comes
+// before Armor50 (6).
 export enum BuiltObjectFleeWhen {
     Undefined = 0,
     EnemyMilitarySighted,
     Attacked,
     Shields50,
     Shields20,
-    Armor50,
     Never,
+    Armor50,
 }
 
 // Port of DistantWorlds.Types.DesignImageScalingMode (DesignImageScalingMode.cs).
@@ -136,28 +154,110 @@ export class DesignSpecificationComponentRule {
     }
 }
 
-// Port of ComponentDefinition.cs ResolveComponentCategory (line ~130): maps a
-// concrete ComponentType to its ComponentCategoryType. Only the categories
-// declared in this module are resolvable; other types map to Undefined until
-// the full ComponentCategoryType enum is ported.
+// Port of ComponentDefinition.cs ResolveComponentCategory (line ~271): maps a
+// concrete ComponentType to its ComponentCategoryType. The C# switch throws
+// ApplicationException("Unknown component type.") for a ComponentType with
+// no case (only Undefined itself); here that falls through to Undefined
+// since the caller (DesignSpecificationComponentRule / Clone) never needs to
+// resolve the category of ComponentType.Undefined.
 function resolveComponentCategory(componentType: ComponentType): ComponentCategoryType {
     switch (componentType) {
         case ComponentType.WeaponBeam:
             return ComponentCategoryType.WeaponBeam;
         case ComponentType.WeaponTorpedo:
+        case ComponentType.WeaponBombard:
+        case ComponentType.WeaponMissile:
             return ComponentCategoryType.WeaponTorpedo;
         case ComponentType.WeaponPointDefense:
             return ComponentCategoryType.WeaponPointDefense;
+        case ComponentType.WeaponIonCannon:
+        case ComponentType.WeaponIonPulse:
+        case ComponentType.WeaponIonDefense:
+            return ComponentCategoryType.WeaponIon;
+        case ComponentType.WeaponTractorBeam:
+        case ComponentType.WeaponGravityBeam:
+        case ComponentType.WeaponAreaGravity:
+            return ComponentCategoryType.WeaponGravity;
         case ComponentType.AssaultPod:
             return ComponentCategoryType.AssaultPod;
+        case ComponentType.HyperDeny:
+        case ComponentType.HyperStop:
+            return ComponentCategoryType.HyperDisrupt;
+        case ComponentType.WeaponAreaDestruction:
+            return ComponentCategoryType.WeaponArea;
+        case ComponentType.WeaponSuperBeam:
+        case ComponentType.WeaponSuperPhaser:
+        case ComponentType.WeaponSuperRailGun:
+            return ComponentCategoryType.WeaponSuperBeam;
+        case ComponentType.WeaponSuperArea:
+            return ComponentCategoryType.WeaponSuperArea;
+        case ComponentType.FighterBay:
+            return ComponentCategoryType.Fighter;
+        case ComponentType.Armor:
+            return ComponentCategoryType.Armor;
         case ComponentType.Shields:
             return ComponentCategoryType.Shields;
         case ComponentType.ShieldRecharge:
             return ComponentCategoryType.ShieldRecharge;
+        case ComponentType.EngineMainThrust:
+        case ComponentType.EngineVectoring:
+            return ComponentCategoryType.Engine;
         case ComponentType.HyperDrive:
             return ComponentCategoryType.HyperDrive;
         case ComponentType.Reactor:
             return ComponentCategoryType.Reactor;
+        case ComponentType.EnergyCollector:
+            return ComponentCategoryType.EnergyCollector;
+        case ComponentType.ExtractorMine:
+        case ComponentType.ExtractorGasExtractor:
+        case ComponentType.ExtractorLuxury:
+            return ComponentCategoryType.Extractor;
+        case ComponentType.ManufacturerWeaponsPlant:
+        case ComponentType.ManufacturerEnergyPlant:
+        case ComponentType.ManufacturerHighTechPlant:
+            return ComponentCategoryType.Manufacturer;
+        case ComponentType.StorageFuel:
+        case ComponentType.StorageCargo:
+        case ComponentType.StorageTroop:
+        case ComponentType.StoragePassenger:
+        case ComponentType.StorageDockingBay:
+            return ComponentCategoryType.Storage;
+        case ComponentType.SensorProximityArray:
+        case ComponentType.SensorResourceProfileSensor:
+        case ComponentType.SensorLongRange:
+        case ComponentType.SensorTraceScanner:
+        case ComponentType.SensorScannerJammer:
+        case ComponentType.SensorStealth:
+            return ComponentCategoryType.Sensor;
+        case ComponentType.ComputerTargetting:
+        case ComponentType.ComputerTargettingFleet:
+        case ComponentType.ComputerCountermeasures:
+        case ComponentType.ComputerCountermeasuresFleet:
+        case ComponentType.ComputerCommandCenter:
+        case ComponentType.ComputerCommerceCenter:
+            return ComponentCategoryType.Computer;
+        case ComponentType.LabsWeaponsLab:
+        case ComponentType.LabsEnergyLab:
+        case ComponentType.LabsHighTechLab:
+            return ComponentCategoryType.Labs;
+        case ComponentType.ConstructionBuild:
+        case ComponentType.DamageControl:
+            return ComponentCategoryType.Construction;
+        case ComponentType.HabitationLifeSupport:
+        case ComponentType.HabitationHabModule:
+        case ComponentType.HabitationMedicalCenter:
+        case ComponentType.HabitationRecreationCenter:
+        case ComponentType.HabitationColonization:
+            return ComponentCategoryType.Habitation;
+        case ComponentType.WeaponPhaser:
+            return ComponentCategoryType.WeaponBeam;
+        case ComponentType.WeaponRailGun:
+            return ComponentCategoryType.WeaponBeam;
+        case ComponentType.EnergyToFuel:
+            return ComponentCategoryType.EnergyCollector;
+        case ComponentType.WeaponSuperTorpedo:
+        case ComponentType.WeaponSuperMissile:
+            return ComponentCategoryType.WeaponSuperTorpedo;
         default:
             return ComponentCategoryType.Undefined;
     }
@@ -255,6 +355,8 @@ export class DesignSpecification {
             case BuiltObjectSubRole.Cruiser:
             case BuiltObjectSubRole.CapitalShip:
             case BuiltObjectSubRole.TroopTransport:
+            case BuiltObjectSubRole.Carrier:
+            case BuiltObjectSubRole.ResupplyShip:
                 return BuiltObjectRole.Military;
             case BuiltObjectSubRole.ExplorationShip:
                 return BuiltObjectRole.Exploration;
@@ -278,6 +380,11 @@ export class DesignSpecification {
             case BuiltObjectSubRole.LargeSpacePort:
             case BuiltObjectSubRole.ResortBase:
             case BuiltObjectSubRole.GenericBase:
+            case BuiltObjectSubRole.EnergyResearchStation:
+            case BuiltObjectSubRole.WeaponsResearchStation:
+            case BuiltObjectSubRole.HighTechResearchStation:
+            case BuiltObjectSubRole.MonitoringStation:
+            case BuiltObjectSubRole.DefensiveBase:
                 return BuiltObjectRole.Base;
             default:
                 throw new Error('Unknown built object sub role type.');

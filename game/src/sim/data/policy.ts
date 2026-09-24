@@ -3,9 +3,33 @@
 // Pure parsing — no fs. Handles UTF-8 BOM, `'`-comment lines, and CRLF.
 //
 // Enum-typed fields (ComponentCategoryType, ComponentType, ShipDesignFocus,
-// IndustryType, BuiltObjectFleeWhen, ColonyPopulationPolicy) are represented
-// as plain numbers holding the C# underlying values; the enums themselves are
-// not yet ported into src/sim (see TODO(port) notes below).
+// IndustryType, BuiltObjectFleeWhen, ColonyPopulationPolicy) hold the real
+// ported enum types. The C# setters are unchecked casts from an int/byte
+// (e.g. `(ShipDesignFocus) intValue`, `(BuiltObjectFleeWhen) b`) with no
+// Enum.IsDefined check, so out-of-range values are preserved faithfully here
+// too via `as <Enum>` numeric casts rather than being clamped/rejected.
+
+import { ComponentCategoryType, BuiltObjectFleeWhen } from './designTemplates';
+import { ComponentType } from './components';
+import { IndustryType } from '../types';
+import { resolveTechFocus } from './resolveTechFocus';
+
+// Port of DistantWorlds.Types.ShipDesignFocus (ShipDesignFocus.cs).
+export enum ShipDesignFocus {
+    Balanced = 0,
+    SpeedAgility,
+    Power,
+    Efficiency,
+}
+
+// Port of DistantWorlds.Types.ColonyPopulationPolicy (ColonyPopulationPolicy.cs).
+export enum ColonyPopulationPolicy {
+    Assimilate = 0,
+    DoNotAccept,
+    Resettle,
+    Enslave,
+    Exterminate,
+}
 
 export interface EmpirePolicy {
     // --- Intelligence ---
@@ -65,24 +89,20 @@ export interface EmpirePolicy {
     colonyPopulationThresholdTroopRecruitment: number; // int = 0
 
     // --- Research & design ---
-    // TODO(port): C# field type is ShipDesignFocus (enum not yet ported);
-    // stored as the enum's underlying int (0..3 valid per SetNameValuePair).
-    researchDesignOverallFocus: number; // ShipDesignFocus = Undefined (0)
-    // TODO(port): C# field types are ComponentCategoryType / ComponentType
-    // (enums not yet ported); stored as underlying ints, resolved via
-    // Galaxy.ResolveTechFocus (not yet ported either — see parse helper).
-    researchDesignTechFocus1: number; // ComponentCategoryType = Undefined (0)
-    researchDesignTechFocus2: number;
-    researchDesignTechFocus3: number;
-    researchDesignTechFocus4: number;
-    researchDesignTechFocus5: number;
-    researchDesignTechFocus6: number;
-    researchDesignTechFocusType1: number; // ComponentType = Undefined (0)
-    researchDesignTechFocusType2: number;
-    researchDesignTechFocusType3: number;
-    researchDesignTechFocusType4: number;
-    researchDesignTechFocusType5: number;
-    researchDesignTechFocusType6: number;
+    researchDesignOverallFocus: ShipDesignFocus; // Undefined = Balanced (0)
+    // Resolved via Galaxy.ResolveTechFocus (ported as resolveTechFocus below).
+    researchDesignTechFocus1: ComponentCategoryType; // Undefined (0)
+    researchDesignTechFocus2: ComponentCategoryType;
+    researchDesignTechFocus3: ComponentCategoryType;
+    researchDesignTechFocus4: ComponentCategoryType;
+    researchDesignTechFocus5: ComponentCategoryType;
+    researchDesignTechFocus6: ComponentCategoryType;
+    researchDesignTechFocusType1: ComponentType; // Undefined (0)
+    researchDesignTechFocusType2: ComponentType;
+    researchDesignTechFocusType3: ComponentType;
+    researchDesignTechFocusType4: ComponentType;
+    researchDesignTechFocusType5: ComponentType;
+    researchDesignTechFocusType6: ComponentType;
     researchDesignAutoRetrofit: boolean; // true
     researchDesignAutoUpgradeFighters: boolean; // true
 
@@ -111,10 +131,8 @@ export interface EmpirePolicy {
     // --- General behavior ---
     tradeWithOtherEmpires: boolean; // true
     engageInTourism: boolean; // true
-    // TODO(port): C# field type is ColonyPopulationPolicy (enum not yet
-    // ported); stored as the enum's underlying int (byte.TryParse result).
-    newColonyPopulationPolicyAllRaces: number; // ColonyPopulationPolicy = 0
-    newColonyPopulationPolicyYourRaceFamily: number;
+    newColonyPopulationPolicyAllRaces: ColonyPopulationPolicy; // Assimilate (0)
+    newColonyPopulationPolicyYourRaceFamily: ColonyPopulationPolicy;
     implementEnslavementWithPenalColonies: boolean; // true
     homeworldDefensePriority: number; // double = 1.0
     protectLeaderAtAllCosts: boolean; // false
@@ -127,10 +145,7 @@ export interface EmpirePolicy {
     colonizeVolcanicPriority: number; // double = 1.0
     colonizeRuinsPriority: number; // double = 1.0
     controlRestrictedResourcesPriority: number; // double = 1.0
-    // TODO(port): C# field type is IndustryType (partially ported in
-    // types.ts); stored as the enum's underlying int here to keep this module
-    // self-contained.
-    researchIndustryFocus: number; // IndustryType = Undefined (0)
+    researchIndustryFocus: IndustryType; // Undefined (0)
     researchPriority: number; // double = 1.0
     tradePriority: number; // double = 1.0
     alliancePriority: number; // double = 1.0
@@ -141,9 +156,7 @@ export interface EmpirePolicy {
     breakTreatyWillingness: number; // double = 1.0
     invasionOverkillFactor: number; // double = 1.0
     shipBattleCautionFactor: number; // double = 1.0
-    // TODO(port): C# field type is BuiltObjectFleeWhen (enum not yet ported);
-    // stored as the enum's underlying int (default Shields20 = 20).
-    defaultMilitaryFleeWhen: number; // BuiltObjectFleeWhen.Shields20 (20)
+    defaultMilitaryFleeWhen: BuiltObjectFleeWhen; // Shields20 (4)
 
     // --- Design upgrades (all default true) ---
     designUpgradeEscort: boolean;
@@ -332,8 +345,7 @@ export function createEmpirePolicy(): EmpirePolicy {
         breakTreatyWillingness: 1.0,
         invasionOverkillFactor: 1.0,
         shipBattleCautionFactor: 1.0,
-        // BuiltObjectFleeWhen.Shields20 (enum not yet ported; underlying value 20).
-        defaultMilitaryFleeWhen: 20,
+        defaultMilitaryFleeWhen: BuiltObjectFleeWhen.Shields20,
 
         designUpgradeEscort: true,
         designUpgradeFrigate: true,
@@ -679,12 +691,12 @@ function setNameValuePair(policy: EmpirePolicy, name: string, value: string): vo
             policy.intelligenceUseSabotageAgainstEmpireWhen = parseIntValue(value);
             break;
         case 'NewColonyPopulationPolicyAllRaces':
-            // Port of ParseColonyPopulationPolicyValue (byte.TryParse ->
-            // (ColonyPopulationPolicy); enum not yet ported, kept as int).
-            policy.newColonyPopulationPolicyAllRaces = parseByteValue(value);
+            // Port of ParseColonyPopulationPolicyValue: byte.TryParse ->
+            // unchecked (ColonyPopulationPolicy) cast (no Enum.IsDefined check).
+            policy.newColonyPopulationPolicyAllRaces = parseByteValue(value) as ColonyPopulationPolicy;
             break;
         case 'NewColonyPopulationPolicyYourRaceFamily':
-            policy.newColonyPopulationPolicyYourRaceFamily = parseByteValue(value);
+            policy.newColonyPopulationPolicyYourRaceFamily = parseByteValue(value) as ColonyPopulationPolicy;
             break;
         case 'ResearchDesignAutoRetrofit':
             policy.researchDesignAutoRetrofit = parseBoolValue(value);
@@ -699,27 +711,27 @@ function setNameValuePair(policy: EmpirePolicy, name: string, value: string): vo
             {
                 const intValue = parseIntValue(value);
                 if (intValue >= 0 && intValue <= 3) {
-                    policy.researchDesignOverallFocus = intValue;
+                    policy.researchDesignOverallFocus = intValue as ShipDesignFocus;
                 }
             }
             break;
         case 'ResearchDesignTechFocus1':
-            resolveTechFocus(parseIntValue(value), policy, 'researchDesignTechFocus1', 'researchDesignTechFocusType1');
+            applyTechFocus(parseIntValue(value), policy, 'researchDesignTechFocus1', 'researchDesignTechFocusType1');
             break;
         case 'ResearchDesignTechFocus2':
-            resolveTechFocus(parseIntValue(value), policy, 'researchDesignTechFocus2', 'researchDesignTechFocusType2');
+            applyTechFocus(parseIntValue(value), policy, 'researchDesignTechFocus2', 'researchDesignTechFocusType2');
             break;
         case 'ResearchDesignTechFocus3':
-            resolveTechFocus(parseIntValue(value), policy, 'researchDesignTechFocus3', 'researchDesignTechFocusType3');
+            applyTechFocus(parseIntValue(value), policy, 'researchDesignTechFocus3', 'researchDesignTechFocusType3');
             break;
         case 'ResearchDesignTechFocus4':
-            resolveTechFocus(parseIntValue(value), policy, 'researchDesignTechFocus4', 'researchDesignTechFocusType4');
+            applyTechFocus(parseIntValue(value), policy, 'researchDesignTechFocus4', 'researchDesignTechFocusType4');
             break;
         case 'ResearchDesignTechFocus5':
-            resolveTechFocus(parseIntValue(value), policy, 'researchDesignTechFocus5', 'researchDesignTechFocusType5');
+            applyTechFocus(parseIntValue(value), policy, 'researchDesignTechFocus5', 'researchDesignTechFocusType5');
             break;
         case 'ResearchDesignTechFocus6':
-            resolveTechFocus(parseIntValue(value), policy, 'researchDesignTechFocus6', 'researchDesignTechFocusType6');
+            applyTechFocus(parseIntValue(value), policy, 'researchDesignTechFocus6', 'researchDesignTechFocusType6');
             break;
         case 'TradeWithOtherEmpires':
             policy.tradeWithOtherEmpires = parseBoolValue(value);
@@ -797,12 +809,13 @@ function setNameValuePair(policy: EmpirePolicy, name: string, value: string): vo
             policy.prioritizeBuildWonderId = parseIntValue(value);
             break;
         case 'ResearchIndustryFocus':
-            policy.researchIndustryFocus = parseByteValue(value);
+            // Port of ParseIndustryValue: byte.TryParse -> unchecked (IndustryType) cast.
+            policy.researchIndustryFocus = parseByteValue(value) as IndustryType;
             break;
         case 'DefaultMilitaryFleeWhen':
-            // Port of ParseFleeWhenValue (byte.TryParse ->
-            // (BuiltObjectFleeWhen); enum not yet ported, kept as int).
-            policy.defaultMilitaryFleeWhen = parseByteValue(value);
+            // Port of ParseFleeWhenValue: byte.TryParse -> unchecked
+            // (BuiltObjectFleeWhen) cast (no Enum.IsDefined check).
+            policy.defaultMilitaryFleeWhen = parseByteValue(value) as BuiltObjectFleeWhen;
             break;
         case 'DesignUpgradeEscort':
             policy.designUpgradeEscort = parseBoolValue(value);
@@ -995,21 +1008,14 @@ function setNameValuePair(policy: EmpirePolicy, name: string, value: string): vo
 
 // Port of the ResearchDesignTechFocusN cases in SetNameValuePair, which call
 // Galaxy.ResolveTechFocus(index, out category, out type) with both outputs
-// pre-initialized to Undefined.
-// TODO(port): Galaxy.ResolveTechFocus (Galaxy.?.cs) is not yet ported; until
-// then every parsed focus index yields (category, type) = (0, 0) i.e.
-// (Undefined, Undefined), matching the C# pre-initialization when resolution
-// fails. Once ResolveTechFocus exists, wire it in here.
-function resolveTechFocus(
+// pre-initialized to Undefined and set the corresponding policy fields.
+function applyTechFocus(
     index: number,
     policy: EmpirePolicy,
     categoryField: `researchDesignTechFocus${1 | 2 | 3 | 4 | 5 | 6}`,
     typeField: `researchDesignTechFocusType${1 | 2 | 3 | 4 | 5 | 6}`
 ): void {
-    let category = 0; // ComponentCategoryType.Undefined
-    let type = 0; // ComponentType.Undefined
-    // TODO(port): replace with Galaxy.ResolveTechFocus(index, ...) once ported.
-    void index;
+    const { category, type } = resolveTechFocus(index);
     policy[categoryField] = category;
     policy[typeField] = type;
 }
