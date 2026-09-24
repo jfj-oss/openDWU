@@ -46,6 +46,9 @@ import type { BuiltObject } from './builtObject';
 import type { RaceFamily } from './data/raceFamilies';
 import { BuiltObjectRole } from './data/designSpecifications';
 import { BuiltObjectSubRole } from './builtObjectTypes';
+import { MIN_TIME } from './tick/simTime';
+import type { SchedulerState } from './tick/scheduler';
+import type { GalaxyOrder } from './independentTraders';
 
 // Port of Galaxy.cs static fields (Galaxy.3.cs InitializeStatics sets
 // these): SectorSizeX = SectorSizeY = 2_000_000, IndexSize = 400_000.
@@ -4282,6 +4285,54 @@ export class Galaxy {
         }
         return false;
     }
+
+    // ---- M4a fields (tick core: time model, scheduler; src/sim/tick/*) ----
+    /** Sim clock: integer game ms since game start (C# CurrentDateTime − _StartDateTime; tick/simTime.ts). */
+    nowMs = 0;
+    /**
+     * Galaxy.cs 67 _LastGalaxyProcessTimeSensitive (ms). MIN_TIME: Start.2.cs 1108 ResetLastTouchTimes sets it to
+     * DateTime.MinValue and nothing but DoTasksTimeSensitive (first sim frame) updates it.
+     */
+    lastGalaxyProcessTimeSensitive = MIN_TIME;
+    /**
+     * Galaxy.cs 69/71 _LastGalaxyProcessTime / _LastGalaxyHugeProcessTime (ms). 0 = set by the game-start
+     * Galaxy.DoTasks at game time 0 (Start.2.cs 1109; createGame's stand-ins run its huge/long blocks).
+     * tick/galaxyTick.ts runGameStartGalaxyTick resets them first (ResetLastTouchTimes, Galaxy.cs 3134).
+     */
+    lastGalaxyProcessTime = 0;
+    lastGalaxyHugeProcessTime = 0;
+    /** Galaxy.ResetRandom (Galaxy.cs 3075): never true in play; ReseedRandom is dropped in TS (determinism). */
+    resetRandom = false;
+    /** Galaxy._PirateProximity (0 near / 1 medium / 2 far) — wizard option, read by GenerateNewPirateEmpires. */
+    pirateProximity = 0;
+    /** Galaxy.MaximumEmpireAmount — wizard option; 0 = derive (player + AIs = empires at game start). */
+    maximumEmpireAmount = 0;
+    /** Galaxy.SpawnNewEmpires (Start.2.cs 116, wizard option) — gates Habitat CheckHabitatIsEmpire. */
+    spawnNewEmpires = true;
+    /** Frame-driver state (cursors int_48..int_58, frame carry; tick/scheduler.ts). Created lazily. */
+    scheduler: SchedulerState | null = null;
+    // ---- M4b fields (missions & command dispatcher) ----
+    // ---- M4c fields (movement, hyperjump, fuel, energy) ----
+    // ---- M4d fields (orders, contracts, freight) ----
+    /** Galaxy.Orders (OrderList): read by the ported RemoveCompletedOrders / CancelExpiredOrders (added by M4a). */
+    orders: GalaxyOrder[] = [];
+    // ---- M4e fields (docking, refuelling) ----
+    // ---- M4f fields (civilian mission AI) ----
+    // ---- M4g fields (extraction, industry) ----
+    // ---- M4h fields (construction queues, shipyards) ----
+    // ---- M4i fields (empire construction, facilities, wonders) ----
+    // ---- M4j fields (colony growth, treasury, government) ----
+    // ---- M4k fields (research progress) ----
+    // ---- M4l fields (ship groups) ----
+    // ---- M4m fields (military AI) ----
+    // ---- M4n fields (threats, attack AI) ----
+    // ---- M4o fields (weapons, damage, teardown) ----
+    // ---- M4p fields (fighters) ----
+    // ---- M4q fields (invasion, troops, boarding) ----
+    // ---- M4r fields (diplomacy runtime) ----
+    // ---- M4s fields (pirates runtime) ----
+    // ---- M4t fields (visibility, exploration, territory) ----
+    // ---- M4u fields (events, disasters, characters) ----
 }
 
 // Port of Galaxy.4.cs Galaxy constructor (star-cluster setup, star loop,

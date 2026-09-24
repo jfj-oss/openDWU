@@ -1,0 +1,60 @@
+// M4a: game-start switch-over to the real ticks.
+//
+// TODO(port) M4a/game-start rework: createGame (game.ts) and GenerateEmpire (empireGeneration.ts) still run the
+// stand-ins — empireGeneration.ts empireDoTasksStandIn (Galaxy.7.cs 5346 and Start.2.cs 1341) and
+// independentTraders.ts galaxyGameStartHugeTick / galaxyGameStartLongTick (Start.2.cs 1108-1109) — and skip the
+// per-habitat Habitat.DoTasks calls of generation (galaxy.ts 3356/3892/3985, startHabitats.ts, gameStartTail.ts
+// 2035-2038) and the empire touch-time writes of Start.2.cs 1114-1121 / 1345-1350. Replace them with the functions
+// below (one call per C# site, same order). Seed pins move once when this lands (plan §0.4, §6).
+
+import type { Galaxy } from '../galaxy';
+import type { Empire } from '../empire';
+import type { Habitat } from '../types';
+import { galaxyNow } from './simTime';
+import { LONG_PROCESSING_INTERVAL, empireDoTasks } from './empireTick';
+import { habitatDoTasks } from './habitatTick';
+import { runGameStartGalaxyTick } from './galaxyTick';
+
+export { runGameStartGalaxyTick };
+
+/**
+ * Empire.DoTasks at a game-start site — replaces empireDoTasksStandIn(galaxy, empire):
+ * - Galaxy.7.cs 5346 (end of GenerateEmpire, between `InitiateConstruction = false/true`): the Empire ctor touch
+ *   times (now − 121 s, huge = MinValue) make every block run, incl. the huge one.
+ * - Start.2.cs 1341 (per-empire setup, between `BuildFactor = …` and `BuildFactor = 1.0`): blocks run only when
+ *   resetEmpireTouchTimesForAge ran first (galaxy age > 0); otherwise nothing fires (same game second).
+ * The real skeleton runs everything the stand-in ran (EvaluateColonyVariables' _TotalPopulation slice, corruption,
+ * taxes, CreateNewDesigns, IdentifyResourceCentres, ProjectForceStructure / ProjectPrivateForceStructure) plus the
+ * other already-ported steps (UpdateEmpireRefuellingLocations, IdentifyUnavailableLuxuryResources,
+ * DetermineResearchStationLocation, money, …) and the package stubs, in C# order.
+ */
+export function runGameStartEmpireTick(galaxy: Galaxy, empire: Empire): void {
+    empireDoTasks(galaxy, empire);
+}
+
+/** Start.2.cs 1114-1121 (int_5 = galaxy age > 0): all six touches = CurrentDateTime − (LongProcessingInterval + 1) s. */
+export function resetEmpireTouchTimesForAge(galaxy: Galaxy, empire: Empire): void {
+    empire.lastLongTouch = galaxyNow(galaxy) - (Math.trunc(LONG_PROCESSING_INTERVAL) + 1) * 1000;
+    empire.lastIntermediateTouch = empire.lastLongTouch;
+    empire.lastPeriodicTouch = empire.lastLongTouch;
+    empire.lastRegularTouch = empire.lastLongTouch;
+    empire.lastShortTouch = empire.lastLongTouch;
+    empire.lastHugeTouch = empire.lastLongTouch;
+}
+
+/**
+ * Start.2.cs 1344-1350: `seconds = Galaxy.Rnd.Next(1, (int)LongProcessingInterval)` then short..long touches =
+ * CurrentDateTime − seconds (the huge touch is left alone). Pass the value game.ts already draws at 1344.
+ */
+export function staggerEmpireTouchTimes(galaxy: Galaxy, empire: Empire, seconds: number): void {
+    empire.lastLongTouch = galaxyNow(galaxy) - seconds * 1000;
+    empire.lastIntermediateTouch = empire.lastLongTouch;
+    empire.lastPeriodicTouch = empire.lastLongTouch;
+    empire.lastRegularTouch = empire.lastLongTouch;
+    empire.lastShortTouch = empire.lastLongTouch;
+}
+
+/** Habitat.DoTasks(galaxy.CurrentDateTime) at a generation / game-start site (e.g. Start.2.cs 2035-2038 player capital). */
+export function runGameStartHabitatTick(galaxy: Galaxy, habitat: Habitat): boolean {
+    return habitatDoTasks(galaxy, habitat, galaxyNow(galaxy));
+}

@@ -38,6 +38,8 @@ import { recalculateDevelopmentLevelBaseline } from './developmentLevel';
 import { recalculateColonyInfluenceRadius } from './territory';
 import type { Character } from './characters';
 import { DiplomaticRelationList } from './diplomacy';
+import { MIN_TIME } from './tick/simTime';
+import type { IMessageRecipient } from './messages';
 
 // Empire.1.cs TakeOwnershipOfColony callees that live in modules importing empire.ts
 // (forceStructure.ts RecalculateDistanceFactor / RecalculateAnnualTaxRevenue, taxes.ts
@@ -1386,6 +1388,44 @@ export class Empire {
     // Empire.cs 862: public CharacterList AvailableCharacters = new CharacterList() — empty for a
     // new game (filled only by the scenario editor / game events).
     availableCharacters: Character[] = [];
+
+    // ---- M4a fields (tick core; tick/empireTick.ts, tick/pirateTick.ts, messages.ts) ----
+    // Empire.cs 188-198 _LastShortTouch .. _LastHugeTouch (game ms). Both ctors (Empire.cs 3921-3925 / 4320-4324)
+    // set short..long = CurrentDateTime − (LongProcessingInterval + 1) s and leave _LastHugeTouch = MinValue. The
+    // defaults are those ctor values at game time 0 (every createGame empire is built at 0); empires created later
+    // get them from tick/empireTick.ts initEmpireTouchTimes.
+    lastShortTouch = -121000;
+    lastRegularTouch = -121000;
+    lastPeriodicTouch = -121000;
+    lastIntermediateTouch = -121000;
+    lastLongTouch = -121000;
+    lastHugeTouch = MIN_TIME;
+    /** Empire.cs 31 _MessageRecipient (IMessageRecipient; the UI attaches one to the player empire). */
+    messageRecipient: IMessageRecipient | null = null;
+    // ---- M4b fields (missions & command dispatcher) ----
+    // ---- M4c fields (movement, fuel) ----
+    // ---- M4d fields (orders, contracts, freight) ----
+    // ---- M4e fields (docking, refuelling) ----
+    // ---- M4f fields (civilian mission AI) ----
+    // ---- M4g fields (extraction, industry) ----
+    /** Empire.cs 122 _EmpireResourceTargets (PrioritizeEmpireResourceNeeds; added by M4a for the tick's assignment). */
+    empireResourceTargets: HabitatPrioritization[] = [];
+    // ---- M4h fields (construction queues) ----
+    // ---- M4i fields (empire construction, facilities) ----
+    // ---- M4j fields (colony growth, treasury, government) ----
+    // ---- M4k fields (research progress) ----
+    // ---- M4l fields (ship groups) ----
+    // ---- M4m fields (military AI) ----
+    // ---- M4n fields (threats) ----
+    // ---- M4o fields (weapons, damage) ----
+    // ---- M4p fields (fighters) ----
+    // ---- M4q fields (invasion, troops) ----
+    // ---- M4r fields (diplomacy runtime) ----
+    /** Empire.cs 402 _RelativeEmpireSize (CalculateRelativeEmpireSize; added by M4a for the tick's assignment). */
+    relativeEmpireSize = 0;
+    // ---- M4s fields (pirates runtime) ----
+    // ---- M4t fields (visibility, exploration) ----
+    // ---- M4u fields (events, characters) ----
 }
 
 // Task M3b: Empire.GovernmentAttributes (Empire.cs 2805: _Galaxy.Governments[_GovernmentId],

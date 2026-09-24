@@ -1,0 +1,133 @@
+// M4l — ShipGroup model, fleet maintenance, fleet bonuses, ShipGroup.DoTasks callees.
+//
+// Stubs created by M4a (tasks/M4-plan.md §3.1): the tick skeletons in src/sim/tick/ call these entry points in C#
+// order. Each is a no-op that does NOT draw Galaxy.Rnd (a `RND:` note marks C# draw sites that are skipped until the
+// owning package ports the body) and records a TODO hit (tick/todo.ts). The owning package replaces the bodies in
+// place, keeping the signatures (or adjusting the skeleton call in the same change).
+
+import type { Galaxy } from '../galaxy';
+import type { Empire } from '../empire';
+import type { BuiltObject } from '../builtObject';
+import { registerTodo, todo } from '../tick/todo';
+import { MIN_TIME } from '../tick/simTime';
+import type { BuiltObjectMission } from '../missions/mission';
+
+// ShipGroup.cs (fleet). Minimal model created by M4a so the fleet tick (tick/shipGroupTick.ts) and the Empire /
+// Galaxy ticks can iterate Empire.ShipGroups; M4l ports the rest of ShipGroup.cs (3,578 lines: missions, lead ship,
+// fuel range, bonuses) into this class. Free functions, C# `this` first (plan §3.1 rule 2).
+export class ShipGroup {
+    /** ShipGroup.cs _Galaxy. */
+    galaxy: Galaxy;
+    /** ShipGroup.Empire. */
+    empire: Empire | null = null;
+    /** ShipGroup.cs _Ships (BuiltObjectList). */
+    ships: BuiltObject[] = [];
+    /** ShipGroup.LeadShip. */
+    leadShip: BuiltObject | null = null;
+    /** ShipGroup.Mission (BuiltObjectMission, M4b). */
+    mission: BuiltObjectMission | null = null;
+    // ---- M4a fields (tick core) ----
+    /** ShipGroup.cs 60/61 _LastTouch / _LastPeriodicTouch (game ms): C# default DateTime.MinValue. */
+    lastTouch = MIN_TIME;
+    lastPeriodicTouch = MIN_TIME;
+    // ---- M4l fields ----
+    /** ShipGroup.cs _ShipEnergyUsageBonus / _ShipEnergyUsageBonusExtra (ShipEnergyUsageBonus => sum; read by BuiltObject.DoTasks 3828). */
+    shipEnergyUsageBonusBase = 1.0;
+    shipEnergyUsageBonusExtra = 0.0;
+
+    // ShipGroup(Galaxy galaxy) (ShipGroup.cs 89).
+    constructor(galaxy: Galaxy) {
+        this.galaxy = galaxy;
+        this.ships = [];
+    }
+
+    /** ShipGroup.ShipEnergyUsageBonus => _ShipEnergyUsageBonus + _ShipEnergyUsageBonusExtra. */
+    get shipEnergyUsageBonus(): number {
+        return this.shipEnergyUsageBonusBase + this.shipEnergyUsageBonusExtra;
+    }
+}
+
+/** Empire.ShipGroups as the typed list (empire.ts declares it `unknown[]`). */
+export function empireShipGroups(empire: Empire): (ShipGroup | null)[] {
+    return empire.shipGroups as (ShipGroup | null)[];
+}
+
+const T_checkForMissionCompletion = registerTodo('M4l', 'checkForMissionCompletion');
+/** ShipGroup.cs 516 CheckForMissionCompletion. */
+export function checkForMissionCompletion(galaxy: Galaxy, shipGroup: ShipGroup): void {
+    // RND: draws in callees (d≤3) — not drawn until M4l.
+    /* TODO(port) M4l */ todo(T_checkForMissionCompletion);
+}
+
+const T_checkForCompletedBattle = registerTodo('M4l', 'checkForCompletedBattle');
+/** ShipGroup.cs 191 CheckForCompletedBattle. */
+export function checkForCompletedBattle(galaxy: Galaxy, shipGroup: ShipGroup): void {
+    // RND: draws in callees (d≤3) — not drawn until M4l.
+    /* TODO(port) M4l */ todo(T_checkForCompletedBattle);
+}
+
+const T_checkRefuelManual = registerTodo('M4l', 'checkRefuelManual');
+/** ShipGroup.cs 1597 CheckRefuelManual. */
+export function checkRefuelManual(galaxy: Galaxy, shipGroup: ShipGroup): void {
+    // RND: draws in callees (d≤3) — not drawn until M4l.
+    /* TODO(port) M4l */ todo(T_checkRefuelManual);
+}
+
+const T_checkRefuelRepairAttack = registerTodo('M4l', 'checkRefuelRepairAttack');
+/** ShipGroup.cs 1670 CheckRefuelRepairAttack(bool, Empire). */
+export function checkRefuelRepairAttack(galaxy: Galaxy, shipGroup: ShipGroup, forceRefuel: boolean, empireToAttack: Empire | null): void {
+    // RND: draws in callees (d≤3) — not drawn until M4l.
+    /* TODO(port) M4l */ todo(T_checkRefuelRepairAttack);
+}
+
+const T_checkSendForAttack = registerTodo('M4l', 'checkSendForAttack');
+/** ShipGroup.cs 170 CheckSendForAttack. */
+export function checkSendForAttack(galaxy: Galaxy, shipGroup: ShipGroup): void {
+    // RND: draws in callees (d≤3) — not drawn until M4l.
+    /* TODO(port) M4l */ todo(T_checkSendForAttack);
+}
+
+const T_reviewCharacterLocationBonuses = registerTodo('M4l', 'reviewCharacterLocationBonuses');
+/** ShipGroup.cs 316 ReviewCharacterLocationBonuses. */
+export function reviewCharacterLocationBonuses(galaxy: Galaxy, shipGroup: ShipGroup): void {
+    /* TODO(port) M4l */ todo(T_reviewCharacterLocationBonuses);
+}
+
+const T_maintainShipGroups = registerTodo('M4l', 'maintainShipGroups');
+/** Empire.9.cs 2472 MaintainShipGroups. */
+export function maintainShipGroups(galaxy: Galaxy, empire: Empire): void {
+    // RND: draws in callees (d≤3) — not drawn until M4l.
+    /* TODO(port) M4l */ todo(T_maintainShipGroups);
+}
+
+const T_updateFleetLeadShips = registerTodo('M4l', 'updateFleetLeadShips');
+/** Empire.9.cs 2460 UpdateFleetLeadShips. */
+export function updateFleetLeadShips(galaxy: Galaxy, empire: Empire): void {
+    /* TODO(port) M4l */ todo(T_updateFleetLeadShips);
+}
+
+const T_reviewFleetPostures = registerTodo('M4l', 'reviewFleetPostures');
+/** Empire.9.cs 2454 ReviewFleetPostures. */
+export function reviewFleetPostures(galaxy: Galaxy, empire: Empire): void {
+    // RND: draws in callees (d≤3) — not drawn until M4l.
+    /* TODO(port) M4l */ todo(T_reviewFleetPostures);
+}
+
+const T_reviewFleetAdmiralBonuses = registerTodo('M4l', 'reviewFleetAdmiralBonuses');
+/** Empire.2.cs 2944 ReviewFleetAdmiralBonuses. */
+export function reviewFleetAdmiralBonuses(galaxy: Galaxy, empire: Empire): void {
+    /* TODO(port) M4l */ todo(T_reviewFleetAdmiralBonuses);
+}
+
+const T_reviewFleetBonuses = registerTodo('M4l', 'reviewFleetBonuses');
+/** BuiltObject.cs 1906 ReviewFleetBonuses. */
+export function reviewFleetBonuses(galaxy: Galaxy, builtObject: BuiltObject): void {
+    /* TODO(port) M4l */ todo(T_reviewFleetBonuses);
+}
+
+const T_performFleetTasks = registerTodo('M4l', 'performFleetTasks');
+/** BuiltObject.cs 3503 PerformFleetTasks. */
+export function performFleetTasks(galaxy: Galaxy, builtObject: BuiltObject): void {
+    // RND: draws in callees (d≤3) — not drawn until M4l.
+    /* TODO(port) M4l */ todo(T_performFleetTasks);
+}

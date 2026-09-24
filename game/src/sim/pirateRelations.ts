@@ -38,12 +38,12 @@ export enum PirateRelationEvaluationType {
 }
 
 /**
- * Galaxy.CurrentStarDate (Galaxy.cs 1098) = elapsed game ms + _StartStarDate.
- * TODO(port): the TS Galaxy does not track game time. At game start no time has
- * elapsed and _StartStarDate = StartStarDate + Age * 30000000 (Start.2.cs 450-451).
+ * Galaxy.CurrentStarDate (Galaxy.cs 1098) = elapsed game ms + _StartStarDate, with
+ * _StartStarDate = StartStarDate + Age * 30000000 (Start.2.cs 450-451) and the elapsed game ms
+ * kept by the M4a sim clock (galaxy.nowMs, 0 until the first sim frame; tick/simTime.ts galaxyStarDate).
  */
 export function galaxyCurrentStarDate(galaxy: Galaxy): number {
-    return startStarDateForAge(galaxy.age);
+    return startStarDateForAge(galaxy.age) + galaxy.nowMs;
 }
 
 // PirateRelation.cs

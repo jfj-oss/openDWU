@@ -30,6 +30,7 @@ import { ColonyResourceEffect, resourceBonusTotalByEffectType } from './developm
 import { empireGovernmentAttributes } from './empire';
 import { PIRATE_SHIP_MAINTENANCE_FACTOR, SHIP_MAINTENANCE_COST_PER_SIZE_UNIT } from './forceStructure';
 import { Weapon, weaponsDetermineNotInSuppliedList, weaponsQuickCompareEquivalent, weaponsRemoveAndResetFirstMatchingWeaponById } from './weapon';
+import { MIN_TIME } from './tick/simTime';
 
 // Port of EngineType.cs (byte enum, member order exact).
 export enum EngineType {
@@ -1365,6 +1366,49 @@ export class BuiltObject {
         }
         baconModMyShip(this);
     }
+
+    // ---- M4a fields (tick core; tick/builtObjectTick.ts) ----
+    // BuiltObject.cs _LastTouch / _LastIntermediateTouch / _LastPeriodicTouch / _LastLongTouch (game ms): C# default
+    // DateTime.MinValue; the first DoTasks back-dates them (BuiltObject.cs 3618-3633).
+    lastTouch = MIN_TIME;
+    lastIntermediateTouch = MIN_TIME;
+    lastPeriodicTouch = MIN_TIME;
+    lastLongTouch = MIN_TIME;
+    /** BuiltObject.cs _HyperjumpAboutToEnter / _HyperjumpJustExited (cleared every DoTasks, 3676-3677). */
+    hyperjumpAboutToEnter = false;
+    hyperjumpJustExited = false;
+    /** BuiltObject.cs 365/367 ScanHabitatIndex = -1 / LastScanTime (star date ms). */
+    scanHabitatIndex = -1;
+    lastScanTime = 0;
+    /** BuiltObject.cs 74 _ShipPullAmountLocation (float). */
+    shipPullAmountLocation = 0;
+    /** BuiltObject.cs 299 AssaultOwnershipChangeCounter (short). */
+    assaultOwnershipChangeCounter = 0;
+    /** BuiltObject.cs 509 Explosions = new ExplosionList() (M4o owns the element type). */
+    explosions: unknown[] = [];
+    /** BuiltObject.cs _Threats (BuiltObject[20]) / _ThreatLevels (int[20]): allocated by the first DoTasks (3664-3668). */
+    threats: (BuiltObject | null)[] | null = null;
+    threatLevels: number[] | null = null;
+    // ---- M4b fields (missions & command dispatcher) ----
+    // ---- M4c fields (movement, hyperjump, fuel, energy) ----
+    // ---- M4d fields (orders, cargo) ----
+    // ---- M4e fields (docking, refuelling) ----
+    // ---- M4f fields (civilian mission AI) ----
+    // ---- M4g fields (extraction, industry) ----
+    // ---- M4h fields (construction, repair, retrofit) ----
+    // ---- M4i fields (empire construction) ----
+    // ---- M4j fields (economy) ----
+    // ---- M4k fields (research) ----
+    // ---- M4l fields (ship groups) ----
+    // ---- M4m fields (military AI) ----
+    // ---- M4n fields (threats, attack AI) ----
+    // ---- M4o fields (weapons, damage, teardown) ----
+    // ---- M4p fields (fighters) ----
+    // ---- M4q fields (boarding, troops, capture) ----
+    // ---- M4r fields (diplomacy) ----
+    // ---- M4s fields (pirates) ----
+    // ---- M4t fields (scanning, exploration) ----
+    // ---- M4u fields (events, location effects) ----
 }
 
 // `int i = list.IndexOf(this); if (i >= 0) list.RemoveAt(i);`

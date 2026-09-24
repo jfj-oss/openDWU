@@ -8,6 +8,7 @@ import type { CargoList, TroopList } from './cargo';
 import type { BuiltObject } from './builtObject';
 import type { Empire } from './empire';
 import type { Ruin } from './ruins';
+import { MIN_TIME } from './tick/simTime';
 
 // Port of DistantWorlds.Types.HabitatType (HabitatType.cs)
 export enum HabitatType {
@@ -375,6 +376,57 @@ export class Habitat {
         this.ypos = y;
         this.xpos = x;
     }
+
+    // ---- M4a fields (tick core; tick/habitatTick.ts) ----
+    // Habitat.cs 147-155 _LastTouch / _LastIntermediateTouch / _LastPeriodicTouch / _LastLongTouch / _LastHugeTouch
+    // (game ms). The ctor (Habitat.cs 6184-6187) sets huge/long/periodic/touch = CurrentDateTime and leaves
+    // _LastIntermediateTouch = MinValue; every TS habitat is built during generation at game time 0.
+    lastTouch = 0;
+    lastIntermediateTouch = MIN_TIME;
+    lastPeriodicTouch = 0;
+    lastLongTouch = 0;
+    lastHugeTouch = 0;
+    /** StellarObject.HasBeenDestroyed. */
+    hasBeenDestroyed = false;
+    /** Habitat.DoingTasks / DoingRemove. */
+    doingTasks = false;
+    doingRemove = false;
+    /** StellarObject.IsShipYard (set every periodic Habitat tick, Habitat.cs 1484-1491). */
+    isShipYard = false;
+    /** Habitat.Explosion / Explosions (M4o owns the element type). */
+    explosion: unknown = null;
+    explosions: unknown[] | null = null;
+    // ---- M4b fields (missions) ----
+    // ---- M4c fields (movement, fuel) ----
+    // ---- M4d fields (orders, colony supply) ----
+    // ---- M4e fields (docking) ----
+    // ---- M4f fields (civilian mission AI) ----
+    // ---- M4g fields (extraction, industry) ----
+    /** Habitat._ManufacturingQueue (ManufacturingQueue; null until M4g creates it). */
+    manufacturingQueue: unknown = null;
+    // ---- M4h fields (construction queues) ----
+    /** Habitat.ConstructionQueue (ConstructionQueue; null until M4h creates it). */
+    constructionQueue: unknown = null;
+    // ---- M4i fields (facilities, wonders) ----
+    // ---- M4j fields (colony growth, happiness) ----
+    // ---- M4k fields (research) ----
+    // ---- M4l fields (fleets) ----
+    // ---- M4m fields (military AI) ----
+    // ---- M4n fields (threats) ----
+    // ---- M4o fields (weapons, damage) ----
+    // ---- M4p fields (fighters) ----
+    // ---- M4q fields (invasion, troops) ----
+    /** Habitat.ColonyInvasion (ColonyInvasion.cs; null = no invasion in progress). */
+    colonyInvasion: unknown = null;
+    /** Habitat.cs 194/197 InvasionSpaceControlStrengthDefenders / Attackers = -1. */
+    invasionSpaceControlStrengthDefenders = -1;
+    invasionSpaceControlStrengthAttackers = -1;
+    // ---- M4r fields (diplomacy) ----
+    // ---- M4s fields (pirates) ----
+    // ---- M4t fields (exploration) ----
+    // ---- M4u fields (events, rebellion, plague) ----
+    /** Habitat.cs 109 _Rebelling. */
+    rebelling = false;
 }
 
 export interface SystemInfo {
