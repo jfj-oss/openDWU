@@ -56,6 +56,13 @@ export function setEmpireSummarySource(get: (() => EmpireSummarySource | null) |
     source = get;
 }
 
+/** The registered source's current value, or null when nothing is registered
+ * or the callback returns null (task 12m: the Colonies list reads the player
+ * empire through this). */
+export function getEmpireSummarySource(): EmpireSummarySource | null {
+    return source?.() ?? null;
+}
+
 /** Open the Empire Summary panel, or close it if it is already open. A no-op
  * when no source is registered (e.g. the generateGalaxy-only boot path). */
 export function toggleEmpireSummary(): void {
