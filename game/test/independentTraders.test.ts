@@ -7,6 +7,9 @@ import type { Galaxy } from '../src/sim/galaxy';
 import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
 import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
 import { MOVEMENT_DECELERATION_RANGE } from '../src/sim/galaxy';
+import { ResourceRef } from '../src/sim/cargo';
+import { Order, OrderList } from '../src/sim/logistics/orders';
+import { Contract } from '../src/sim/logistics/contracts';
 import {
     assignIndependentTraderMissions,
     cancelExpiredOrders,
@@ -171,14 +174,24 @@ describe('independent traders (Galaxy.7.cs GenerateIndependentTraders)', () => {
 
     it('orders: completed and expired orders are removed', () => {
         const g = createGame(opts()).galaxy;
-        const mk = (amountRequested: number, amountDelivered: number, expiryDate: number): GalaxyOrder => ({ amountRequested, amountDelivered, expiryDate, amountStillToArrive: 0, contracts: null });
+        const colony = g.empires[0].colonies[0];
+        // Order.AmountDelivered is the sum over its contracts (Order.cs 178); AmountStillToArrive = fulfill − delivered.
+        const mk = (amountRequested: number, amountDelivered: number, expiryDate: number): GalaxyOrder => {
+            const o = new Order(g, colony, new ResourceRef(0), amountRequested, expiryDate, 0);
+            const c = new Contract(null, amountDelivered, 0, -1, g.empires[0].empireId);
+            c.amountDelivered = amountDelivered;
+            o.contracts.push(c);
+            return o;
+        };
         const done = mk(10, 10, Number.MAX_SAFE_INTEGER);
         const open = mk(10, 5, Number.MAX_SAFE_INTEGER);
         const expired = mk(10, 5, 0);
-        const orders = [done, open, expired];
+        const orders = new OrderList(true);
+        for (const o of [done, open, expired]) orders.add(o);
         removeCompletedOrders(orders);
-        expect(orders).toEqual([open, expired]);
+        expect(orders.items).toEqual([open, expired]);
         cancelExpiredOrders(g, orders);
-        expect(orders).toEqual([open]);
+        expect(orders.items).toEqual([open]);
+        expect(orders.getOrdersForHabitat(colony).items).toEqual([open]);
     }, 60000);
 });

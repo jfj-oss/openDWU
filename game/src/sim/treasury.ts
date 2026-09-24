@@ -69,3 +69,10 @@ const T_reviewEmpireDifficultyFactors = registerTodo('M4j', 'reviewEmpireDifficu
 export function reviewEmpireDifficultyFactors(galaxy: Galaxy): void {
     /* TODO(port) M4j */ todo(T_reviewEmpireDifficultyFactors);
 }
+
+// Added by M4d (DiplomaticRelation.PerformTradeTransaction, logistics/contracts.ts).
+const T_countersProcessTradeBonus = registerTodo('M4j', 'countersProcessTradeBonus');
+/** EmpireCounters.cs 224 ProcessTradeBonus(relation, amount): TradeIncomeTotalVolume += amount; TradeIncomeStateBonus += relation.TradeBonus * amount. No Rnd. */
+export function countersProcessTradeBonus(galaxy: Galaxy, empire: Empire, relation: unknown, amount: number): void {
+    /* TODO(port) M4j */ todo(T_countersProcessTradeBonus);
+}

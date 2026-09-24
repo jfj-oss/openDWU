@@ -137,3 +137,16 @@ const T_updateRaidCountdownHabitat = registerTodo('M4s', 'updateRaidCountdownHab
 export function updateRaidCountdownHabitat(galaxy: Galaxy, habitat: Habitat, timePassed: number): void {
     /* TODO(port) M4s */ todo(T_updateRaidCountdownHabitat);
 }
+
+// Added by M4d (Empire.4.cs 1164/1170 InitiateContract, logistics/contracts.ts).
+const T_pirateEconomyPerformIncome = registerTodo('M4s', 'pirateEconomyPerformIncome');
+/** PirateEconomy.cs 37 PerformIncome(amount, type, starDate) (bookkeeping only; no Rnd). `type` is PirateIncomeType. */
+export function pirateEconomyPerformIncome(galaxy: Galaxy, empire: Empire, amount: number, type: number, starDate: number): void {
+    /* TODO(port) M4s */ todo(T_pirateEconomyPerformIncome);
+}
+
+const T_pirateEconomyPerformExpense = registerTodo('M4s', 'pirateEconomyPerformExpense');
+/** PirateEconomy.cs 28 PerformExpense(amount, type, starDate) (bookkeeping only; no Rnd). `type` is PirateExpenseType. */
+export function pirateEconomyPerformExpense(galaxy: Galaxy, empire: Empire, amount: number, type: number, starDate: number): void {
+    /* TODO(port) M4s */ todo(T_pirateEconomyPerformExpense);
+}

@@ -75,10 +75,11 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // Moved from 2e883aa30dfd001e when createGame adopted the real game-start ticks: the Start.2.cs 1344-1350
         // stagger now writes the empire touch times (the Rnd draw was already there), so empire blocks fire at
         // different frames; createGame's own pins did not move.
-        // Moved from 78d35aa06c9a1e5b by M4t: ScanArea now surveys habitats in sensor range (ResourceMap bits, one
-        // Rnd.Next(0, 800) per newly surveyed non-independent habitat), pre-warp ships resolve system visibility, and
-        // UpdateSystemExplorationStatus / systems-only territory reviews run.
-        expect(summary.digest).toBe('040ea121c182e879');
+        // Moved from 78d35aa06c9a1e5b by M4t (ScanArea surveys habitats — one Rnd.Next(0, 800) per newly surveyed
+        // non-independent habitat —, pre-warp visibility, exploration status, systems-only territory) and M4d (colony
+        // resupply orders, CheckMarketOrders contracts traders — FindFreighterForContract Rnd.Next(0, count) —,
+        // Galaxy.Orders.Count digested).
+        expect(summary.digest).toBe('9f86c7b403225098');
     }, 600000);
 });
 
