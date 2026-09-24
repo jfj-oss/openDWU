@@ -173,7 +173,7 @@ app.whenReady().then(() => {
             const url = new URL(request.url);
             // dwu://app/<rest> — host is "app", pathname starts with "/"
             let rest = decodeURIComponent(url.pathname.replace(/^\/+/, ''));
-            if (url.search) rest += url.search;
+            // The query string (?autostart=1 etc.) is for the page, not the file.
 
             if (rest.startsWith('assets/dwu/')) {
                 // Original DW:U data/art from the user's install folder.
