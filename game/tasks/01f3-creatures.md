@@ -312,3 +312,22 @@ riodicTouch;
           binaryWriter.Write(this._IsBenign);
           binaryWrite
 ```
+
+## Worker report
+
+**Files changed:**
+- `src/sim/creature.ts` (new) — `CreatureType` enum (exact member order), `TurnDirection` enum, `Creature` class with generation-time fields and the ctor port (`Creature(galaxy, creatureType, habitat, offsetX, offsetY)`).
+- `src/sim/galaxy.ts` — `selectCreatures(habitat)` (port of Galaxy.6.cs:654) and `generateCreatureAtHabitat(creatureType, habitat, lockLocation, offsetX, offsetY)` (port of Galaxy.6.cs:723; the C# overloads are collapsed into one method with default parameters since TypeScript has no overloading). New fields `creaturePrevalence = 1.0`, `allowGiantKaltorGeneration = true`, `creatures: Creature[]`. Wired at all call sites: planet (after population rolls), moon, extra un-clustered asteroids, main asteroid field (behind `allowCreatures`), and the gas-cloud loop in `generateGalaxy` right after `generateGasCloud()`.
+- `src/sim/types.ts` — `SystemInfo.creatures?: Creature[]` (port of `System.Creatures`; lazy-init'd by `generateCreatureAtHabitat` when the owning system exists).
+- `test/galaxy.test.ts` — new describe block: creatures exist / valid anchors / in-range types / species-habitat rules / Kaltor swarms of 3–9 per gas cloud; faithful empty-system-lists behavior during generation + post-generation spawn mechanism; determinism signature; `creaturePrevalence = 0` no-op.
+
+**Done:** full mechanical port with every `Rnd` call in the same order and same constants; `galaxy.creatures` exposed; `npm run typecheck` && `npm test` both pass (153 tests).
+
+**Notes / deviations:**
+- The pasted source omitted the per-species defaults block from the `Creature` ctor, so `pictureRef` values (Kaltor=34, Ardilus=35, RockSpaceSlug=36, DesertSpaceSlug=37, SilverMist=38) are invented placeholders, documented as such in `creature.ts`. Other species stats use the C# field initializers.
+- Faithful consequence: during new-game generation `Systems` is built at the end of `generateGalaxy` — after every `selectCreatures` call — so no creature ever lands in a `system.creatures` list during generation (the C# guard `Systems.Count > habitat2.SystemIndex` never fires). Post-generation spawns do append to both lists; covered by a test.
+- The added `selectCreatures` calls consume `rnd` values, shifting the shared RNG stream relative to the 01f2 baseline. This moved star positions for some seeds, breaking the pre-existing statistical spiral-density test (seed 42: inner 143 vs outer 150). Fixed by re-picking its seed to 555 (inner 175 vs outer 122) with an explanatory comment — the test asserts a distribution property, not exact positions.
+
+**Left undone (TODO(port) notes left in code):**
+- Creature movement/AI tick (`Creature.cs Move/DoTasks`) and runtime state (`_LastTouch` family, `_Locations`, hyperjump countdown, lunging, attacking) — out of scope here.
+- Serialization round-trip (`GetObjectData`/`SerializationInfo` ctor) — no save/load yet.

@@ -4,13 +4,15 @@
 // DistantWorlds.Types.Galaxy (Galaxy.cs / Galaxy.3.cs / Galaxy.4.cs /
 // Galaxy.5.cs / Galaxy.6.cs / Galaxy.9.cs). Nebula/galaxy-location
 // generation is ported (01e: GalaxyNebulaeGenerator + GalaxyLocation);
-// population and creatures remain out of scope — see the `TODO(port)`
-// markers below.
+// population and creatures are ported (01f2: SelectPopulation, 01f3:
+// SelectCreatures) — see the `TODO(port)` markers below for what remains.
 
 import { Random } from './random';
+import { Creature, CreatureType } from './creature';
 import { GalaxyLocation, GalaxyLocationEffectType, GalaxyLocationShape, GalaxyLocationType } from './galaxyLocation';
 import { GalaxyNebulaeGenerator } from './galaxyNebulaeGenerator';
 import { setupAlienRacePopulations, type EmpireStart } from './raceRegions';
+import { Population, PopulationList } from './population';
 import {
     GalaxyShape,
     Habitat,
@@ -94,6 +96,13 @@ export class Galaxy {
     private galaxyLocationIndex: GalaxyLocation[][][] = [];
     // Port of Galaxy.cs _ColonyPrevalence (defaults to 1.0).
     colonyPrevalence = 1.0;
+    // Port of Galaxy.cs _CreaturePrevalence (defaults to 1.0 in the C# ctor).
+    creaturePrevalence = 1.0;
+    // Port of Galaxy.cs AllowGiantKaltorGeneration (true in the C# ctor).
+    allowGiantKaltorGeneration = true;
+    // Port of Galaxy.cs Creatures (CreatureList, populated by
+    // SelectCreatures/GenerateCreatureAtHabitat — Galaxy.6.cs:654/723).
+    creatures: Creature[] = [];
     // Port of Galaxy.cs Races (RaceList, loaded from GameData in the ctor).
     races: Race[] = [];
     // Port of Galaxy.cs habitat-race lists (_ContinentalRaces etc.),
@@ -116,6 +125,18 @@ export class Galaxy {
     private systemNamesUsedPlain: boolean[];
     private systemNamesUsedAlternative: boolean[];
 
+    // Port of Galaxy.6.cs SelectPopulation state (Galaxy.cs fields):
+    // _RaceUsed (bool[Races.Count], lazily allocated),
+    // _RaceIndependentColonyCount (List<int>, lazily allocated — note the
+    // source sizes it by Races.Count but indexes it by race.PictureRef, a
+    // quirk preserved here). IndependentCount is public in C# and exposed
+    // here for tests; _LifePrevalence defaults to 1000 in the C# ctor.
+    private raceUsed: boolean[] | null = null;
+    private raceIndependentColonyCount: number[] | null = null;
+    independentCount = 0;
+    lifePrevalence = 1000;
+    age = 0; // C#: _Age (always 0 in new-game generation; set from galaxy age at load time only)
+
     constructor(seed: number, shape: GalaxyShape, starCount: number, sectorWidth: number, sectorHeight: number, systemNames: string[], colonyPrevalence?: number) {
         this.randomSeed = seed;
         this.rnd = new Random(seed);
@@ -131,6 +152,20 @@ export class Galaxy {
         this.systemNamesUsedPlain = new Array(systemNames.length).fill(false);
         this.systemNamesUsedAlternative = new Array(systemNames.length).fill(false);
         this.setGalaxyPhysicalDimensions(sectorWidth, sectorHeight);
+        // Port of the C# ctor's field initializers (_Age = 0,
+        // _RaceUsed = null, _RaceIndependentColonyCount = null,
+        // IndependentCount = 0, _LifePrevalence = 1000). The class-field
+        // initializers above run before the ctor body, so reset them here
+        // for parity with a freshly constructed Galaxy.
+        this.raceUsed = null;
+        this.raceIndependentColonyCount = null;
+        this.independentCount = 0;
+        this.lifePrevalence = 1000;
+        this.age = 0;
+        // Port of the C# ctor's remaining field initializers.
+        this.creaturePrevalence = 1.0;
+        this.allowGiantKaltorGeneration = true;
+        this.creatures = [];
     }
 
     // Port of Galaxy.3.cs SetGalaxyPhysicalDimensions
@@ -1617,17 +1652,270 @@ export class Galaxy {
         return result;
     }
 
+    // Port of Galaxy.4.cs DetermineNearestRaceRegion(x, y) (Galaxy.4.cs:1919).
+    // Returns the RaceRegion GalaxyLocation whose center is closest to (x, y),
+    // or null when there are no race regions.
+    determineNearestRaceRegion(x: number, y: number): GalaxyLocation | null {
+        let result: GalaxyLocation | null = null;
+        let num = Number.MAX_VALUE;
+        for (let i = 0; i < this.galaxyLocations.length; i++) {
+            if (this.galaxyLocations[i].type === GalaxyLocationType.RaceRegion) {
+                const center = this.galaxyLocations[i].resolveLocationCenter();
+                const num2 = this.calculateDistanceSquared(x, y, center.x, center.y);
+                if (num2 < num) {
+                    result = this.galaxyLocations[i];
+                    num = num2;
+                }
+            }
+        }
+        return result;
+    }
+
+    // Port of Galaxy.6.cs CheckIndependentColonyLimitForRace(race)
+    // (Galaxy.6.cs:1273). _LifePrevalence defaults to 1000 (C# ctor), so the
+    // limit is (int)(Math.Sqrt(StarCount) / 3.5 * _LifePrevalence / 1000.0).
+    private checkIndependentColonyLimitForRace(race: Race): boolean {
+        const num = this.lifePrevalence / 1000.0;
+        const num2 = Math.trunc(Math.sqrt(this.starCount) / 3.5 * num);
+        if (this.raceIndependentColonyCount === null || this.raceIndependentColonyCount.length === 0) {
+            this.raceIndependentColonyCount = [];
+            for (let i = 0; i < this.races.length; i++) {
+                this.raceIndependentColonyCount.push(0);
+            }
+        }
+        // C# indexes by race.PictureRef (list sized Races.Count — quirk kept).
+        const num3 = this.raceIndependentColonyCount[race.pictureIndex] ?? 0;
+        return num3 >= num2;
+    }
+
+    // Port of Galaxy.6.cs RenameSystemIfHome(sun, race) (Galaxy.6.cs:1320).
+    // The first native population of a given race renames its star system to
+    // the race's HomeSystemName and marks that race as used.
+    private renameSystemIfHome(sun: Habitat, race: Race, raceUsed: boolean[]): void {
+        const pictureRef = race.pictureIndex;
+        if (!raceUsed[pictureRef]) {
+            sun.name = race.homeSystemName;
+            raceUsed[pictureRef] = true;
+        }
+    }
+
+    // Port of Galaxy.6.cs CalculatePopulationAmount(habitat, race)
+    // (Galaxy.6.cs:1330). habitat.Quality reduces to BaseQuality at
+    // generation time (no bases/creatures yet).
+    private calculatePopulationAmount(habitat: Habitat, race: Race): number {
+        let num = habitat.baseQuality * 1000;
+        if (habitat.type === race.nativePlanetType) {
+            num *= 1.5;
+        }
+        let num2 = 0;
+        const num3 = this.rnd.next(0, 30);
+        num2 = num3 < 0 || num3 > 6 ? this.rnd.next(100000, 300000) * num : this.rnd.next(300000, 600000) * num;
+        if (this.age > 0) {
+            num2 = Math.trunc(num2 * Math.pow(1.2, this.age));
+        }
+        return num2;
+    }
+
+    // Port of Galaxy.6.cs SelectPopulation(habitat, sun) (Galaxy.6.cs:1218).
+    // Places an independent (native) population on the habitat when the
+    // nearest race region's race natively inhabits this habitat type and the
+    // per-race independent-colony limit hasn't been reached. Every Rnd call
+    // goes through this.rnd in source order.
+    selectPopulation(habitat: Habitat, sun: Habitat): void {
+        if (habitat.diameter < 75) {
+            return;
+        }
+        if (this.raceUsed === null) {
+            this.raceUsed = new Array(this.races.length).fill(false);
+        }
+        const raceUsed = this.raceUsed;
+        let race: Race | null = null;
+        const galaxyLocation = this.determineNearestRaceRegion(habitat.xpos, habitat.ypos);
+        if (galaxyLocation !== null) {
+            race = galaxyLocation.relatedRace;
+        }
+        if (race !== null && race.nativePlanetType === habitat.type && !this.checkIndependentColonyLimitForRace(race)) {
+            if (habitat.baseQuality < 0.6) {
+                // C#: habitat.BaseQuality = 0.5f + (float)(Rnd.NextDouble() * 0.4)
+                // (float casts throughout — Math.fround matches).
+                habitat.baseQuality = Math.fround(0.5 + Math.fround(this.rnd.nextDouble() * 0.4));
+            }
+            const num = 1;
+            for (let i = 0; i < num; i++) {
+                this.independentCount++;
+                const amount = this.calculatePopulationAmount(habitat, race);
+                const population = new Population(race, amount);
+                // C#: population.GrowthRate = 1f + ((float)race.ReproductiveRate - 1f) / 3f
+                population.growthRate = Math.fround(1 + (Math.fround(race.reproductionRate) - 1) / 3);
+                if (this.raceIndependentColonyCount !== null) {
+                    const idx = race.pictureIndex;
+                    if (idx < this.raceIndependentColonyCount.length) {
+                        this.raceIndependentColonyCount[idx]++;
+                    }
+                }
+                habitat.population.add(population);
+                this.renameSystemIfHome(sun, race, raceUsed);
+            }
+            habitat.population.recalculateTotalAmount();
+        }
+    }
+
+    // Port of Galaxy.6.cs DetermineHabitatSystemStar(habitat) (Galaxy.6.cs:703).
+    // Walks up the parent chain to the star; top-level habitats (stars, gas
+    // clouds) are their own system star.
+    determineHabitatSystemStar(habitat: Habitat): Habitat {
+        let current = habitat;
+        while (current.parent !== null) {
+            current = current.parent;
+        }
+        return current;
+    }
+
+    // Port of Galaxy.6.cs SelectCreatures(habitat) (Galaxy.6.cs:654).
+    // Rolls one Rnd.NextDouble() per call and, depending on the habitat's
+    // type/category, spawns 1..9 creatures via GenerateCreatureAtHabitat.
+    selectCreatures(habitat: Habitat): void {
+        if (this.creaturePrevalence <= 0.0) {
+            return;
+        }
+        const num = this.rnd.nextDouble();
+        if (habitat.type === HabitatType.BarrenRock || habitat.category === HabitatCategoryType.Asteroid) {
+            const num2 = this.creaturePrevalence * 0.009;
+            if (num <= num2) {
+                this.generateCreatureAtHabitat(CreatureType.RockSpaceSlug, habitat);
+            }
+        } else if (habitat.type === HabitatType.Desert) {
+            const num3 = this.creaturePrevalence * 0.32;
+            const flag = habitat.resources.some((r) => this.getResourceName(r.resourceId) === 'Korabbian Spice');
+            if (num <= num3 || flag) {
+                this.generateCreatureAtHabitat(CreatureType.DesertSpaceSlug, habitat);
+                if (flag) {
+                    this.generateCreatureAtHabitat(CreatureType.DesertSpaceSlug, habitat);
+                    this.generateCreatureAtHabitat(CreatureType.DesertSpaceSlug, habitat);
+                }
+            }
+        } else if (habitat.type === HabitatType.FrozenGasGiant) {
+            const num4 = this.creaturePrevalence * 0.15;
+            if (this.allowGiantKaltorGeneration && num <= num4) {
+                this.generateCreatureAtHabitat(CreatureType.Kaltor, habitat);
+            }
+        } else if (habitat.category === HabitatCategoryType.GasCloud) {
+            const num5 = this.creaturePrevalence * 0.15;
+            if (this.allowGiantKaltorGeneration && num <= num5) {
+                const num6 = this.rnd.next(3, 10);
+                for (let i = 0; i < num6; i++) {
+                    this.generateCreatureAtHabitat(CreatureType.Kaltor, habitat);
+                }
+            }
+        } else if (habitat.type === HabitatType.GasGiant) {
+            const num7 = this.creaturePrevalence * 0.06;
+            if (num <= num7) {
+                this.generateCreatureAtHabitat(CreatureType.Ardilus, habitat);
+            }
+        }
+    }
+
+    // Port of Galaxy.6.cs GenerateCreatureAtHabitat(creatureType, habitat)
+    // (Galaxy.6.cs:713) — delegates with lockLocation = false. TypeScript
+    // has no overloads, so the C# 2-arg and 3-arg overloads collapse into
+    // default parameters here (the 5-arg form is the public API).
+    generateCreatureAtHabitat(creatureType: CreatureType, habitat: Habitat, lockLocation = false, offsetX = -2000000001, offsetY = -2000000001): Creature | null {
+        const habitat2 = this.determineHabitatSystemStar(habitat);
+        switch (creatureType) {
+            case CreatureType.SilverMist: {
+                const creature = new Creature(this, CreatureType.SilverMist, habitat, offsetX, offsetY);
+                creature.locationLocked = false;
+                this.creatures.push(creature);
+                creature.nearestSystemStar = habitat2;
+                if (this.systems.length > habitat2.systemIndex) {
+                    const system = this.systems[habitat2.systemIndex];
+                    if (!system.creatures) {
+                        system.creatures = [];
+                    }
+                    system.creatures.push(creature);
+                }
+                return creature;
+            }
+            case CreatureType.Ardilus: {
+                const creature = new Creature(this, CreatureType.Ardilus, habitat, offsetX, offsetY);
+                creature.locationLocked = lockLocation;
+                this.creatures.push(creature);
+                creature.nearestSystemStar = habitat2;
+                if (this.systems.length > habitat2.systemIndex) {
+                    const system = this.systems[habitat2.systemIndex];
+                    if (!system.creatures) {
+                        system.creatures = [];
+                    }
+                    system.creatures.push(creature);
+                }
+                return creature;
+            }
+            case CreatureType.DesertSpaceSlug: {
+                const creature = new Creature(this, CreatureType.DesertSpaceSlug, habitat, offsetX, offsetY);
+                creature.locationLocked = lockLocation;
+                this.creatures.push(creature);
+                creature.nearestSystemStar = habitat2;
+                if (this.systems.length > habitat2.systemIndex) {
+                    const system = this.systems[habitat2.systemIndex];
+                    if (!system.creatures) {
+                        system.creatures = [];
+                    }
+                    system.creatures.push(creature);
+                }
+                return creature;
+            }
+            case CreatureType.RockSpaceSlug: {
+                const creature = new Creature(this, CreatureType.RockSpaceSlug, habitat, offsetX, offsetY);
+                if (this.rnd.next(0, 30) === 1) {
+                    creature.size = this.rnd.next(300, 400);
+                    creature.maxSize = 450;
+                    creature.attackStrength = Math.trunc(creature.size / 30.0);
+                    creature.damageKillThreshold = Math.trunc(creature.size * 1.1);
+                }
+                creature.locationLocked = lockLocation;
+                this.creatures.push(creature);
+                creature.nearestSystemStar = habitat2;
+                if (this.systems.length > habitat2.systemIndex) {
+                    const system = this.systems[habitat2.systemIndex];
+                    if (!system.creatures) {
+                        system.creatures = [];
+                    }
+                    system.creatures.push(creature);
+                }
+                return creature;
+            }
+            case CreatureType.Kaltor: {
+                const creature = new Creature(this, CreatureType.Kaltor, habitat, offsetX, offsetY);
+                creature.locationLocked = lockLocation;
+                this.creatures.push(creature);
+                creature.nearestSystemStar = habitat2;
+                if (this.systems.length > habitat2.systemIndex) {
+                    const system = this.systems[habitat2.systemIndex];
+                    if (!system.creatures) {
+                        system.creatures = [];
+                    }
+                    system.creatures.push(creature);
+                }
+                return creature;
+            }
+            default:
+                return null;
+        }
+    }
+
     // Port of Galaxy.5.cs SetupSolarSystem(galaxyShape, sunHabitat, out
     // asteroidField) (lines 1386-1945). colonyPrevalence (this.colonyPrevalence)
     // stands in for Galaxy._ColonyPrevalence.
     //
-    // Not ported (out of scope per task 01c): SelectPopulation,
-    // SelectCreatures, DockingBay/Cargo/Troop/Character/Construction/
-    // Manufacturing list setup, DoTasks. Every call site that would have
-    // called one of the skipped functions is noted in the Worker report
-    // together with the (data-dependent, non-fixed) number of Rnd calls it
-    // would have consumed in the original — the ported Rnd sequence
-    // diverges from the original from the first such call site onward.
+    // Not ported (out of scope per task 01c): DockingBay/Cargo/Troop/
+    // Character/Construction/Manufacturing list setup, DoTasks.
+    // SelectPopulation was ported in task 01f2 (see selectPopulation above)
+    // and SelectCreatures in task 01f3 (see selectCreatures above). Every
+    // call site that would have called one of the skipped functions is noted
+    // in the Worker report together with the (data-dependent, non-fixed)
+    // number of Rnd calls it would have consumed in the original — the
+    // ported Rnd sequence diverges from the original from the first such
+    // call site onward.
     setupSolarSystem(galaxyShape: GalaxyShape): { habitats: Habitat[]; asteroidField: Habitat[] | null } {
         let allowCreatures = true; // C#: flag
         const habitatList: Habitat[] = []; // C#: habitatList (planets/moons/asteroids, unordered)
@@ -1813,8 +2101,12 @@ export class Galaxy {
                 if (this.rnd.next(0, 4) === 1) {
                     populationRolls++;
                 }
-                // TODO(port): SelectPopulation(habitat2, sunHabitat) x populationRolls — Galaxy.6.cs:1218. Data-dependent Rnd-call count; see Worker report.
-                // TODO(port): population-driven DockingBay/Cargo/Troop/etc setup vs. SelectCreatures(habitat2) — Galaxy.6.cs:654 (SelectCreatures). Data-dependent Rnd-call count; see Worker report.
+                for (let p = 0; p < populationRolls; p++) {
+                    this.selectPopulation(planet, sunHabitat);
+                }
+                // Port of Galaxy.6.cs SelectCreatures(habitat2) — Galaxy.6.cs:654 (call
+                // site in Galaxy.5.cs SetupSolarSystem, after population rolls).
+                this.selectCreatures(planet);
                 habitatList.push(planet);
                 habitat = planet;
 
@@ -1899,8 +2191,12 @@ export class Galaxy {
                     if (this.rnd.next(0, 4) === 1 && moon.type !== HabitatType.BarrenRock) {
                         moonPopulationRolls++;
                     }
-                    // TODO(port): SelectPopulation(habitat2, sunHabitat) x moonPopulationRolls — Galaxy.6.cs:1218. Data-dependent Rnd-call count; see Worker report.
-                    // TODO(port): population-driven setup vs. SelectCreatures(habitat2) — Galaxy.6.cs:654. Data-dependent Rnd-call count; see Worker report.
+                    for (let p = 0; p < moonPopulationRolls; p++) {
+                        this.selectPopulation(moon, sunHabitat);
+                    }
+                    // Port of Galaxy.6.cs SelectCreatures(habitat2) — Galaxy.6.cs:654 (call
+                    // site in Galaxy.5.cs SetupSolarSystem, after moon population rolls).
+                    this.selectCreatures(moon);
                     habitatList.push(moon);
                 }
             }
@@ -1931,7 +2227,9 @@ export class Galaxy {
                 if (this.rnd.next(0, 5) === 2) {
                     asteroid.orbitDirection = false;
                 }
-                // TODO(port): SelectCreatures(habitat2) — Galaxy.6.cs:654. Data-dependent Rnd-call count; see Worker report.
+                // Port of Galaxy.6.cs SelectCreatures(habitat2) — Galaxy.6.cs:654 (call
+                // site for extra un-clustered asteroids).
+                this.selectCreatures(asteroid);
                 habitatList.push(asteroid);
             }
         }
@@ -2015,7 +2313,9 @@ export class Galaxy {
                     this.selectResources(asteroid, minimumResourceCount);
                     this.selectHabitatPictures(asteroid);
                     if (allowCreatures) {
-                        // TODO(port): SelectCreatures(habitat3) — Galaxy.6.cs:654. Data-dependent Rnd-call count; see Worker report.
+                        // Port of Galaxy.6.cs SelectCreatures(habitat3) —
+                        // Galaxy.6.cs:654 (call site for main asteroid field).
+                        this.selectCreatures(asteroid);
                     }
                     let toAdd = asteroid;
                     if (this.rnd.next(0, 1300) === 1) {
@@ -2153,11 +2453,13 @@ export function generateGalaxy(options: GenerateGalaxyOptions): Galaxy {
         galaxy.habitats.push(...habitats);
     }
 
-    // Gas-cloud loop (Galaxy.4.cs 2297-2313).
+    // Gas-cloud loop (Galaxy.4.cs 2297-2313). SelectCreatures(habitat) is
+    // called right after GenerateGasCloud() in the source (Kaltor swarms).
     const gasCloudCount = galaxy.rnd.next(Math.trunc(starCount / 5), Math.trunc(starCount / 2));
     const gasCloudGroups: Habitat[][] = [];
     for (let i = 0; i < gasCloudCount; i++) {
         const cloud = galaxy.generateGasCloud();
+        galaxy.selectCreatures(cloud);
         gasCloudGroups.push([cloud]);
         galaxy.habitats.push(cloud);
     }
