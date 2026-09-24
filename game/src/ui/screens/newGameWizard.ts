@@ -20,6 +20,7 @@ import {
     flagShapeUrl,
     OTHER_EMPIRES_COUNT_MAX,
     OTHER_EMPIRES_COUNT_MIN,
+    type ManualEmpireStart,
     sectorsFor,
     starCountFor,
     VICTORY_PERCENT_MIN,
@@ -734,9 +735,9 @@ function buildOtherEmpiresPage(options: StartGameOptions): HTMLDivElement {
     countRow.appendChild(post);
     autoGroup.appendChild(countRow);
 
-    // --- OR specify the starting empires below (lbl…OR). The original lists
-    // each AI empire here for manual editing; only the auto-generate settings
-    // are implemented now (task 06h scope). ---
+    // --- OR specify the starting empires below (lbl…OR). Task 06j: the
+    // original lists each AI empire here for manual editing — an editable row
+    // per empire with race / government pickers and a name field. ---
     const orLabel = document.createElement('div');
     orLabel.className = 'wizard-empires-or';
     orLabel.textContent = 'OR specify the starting empires below';
@@ -744,19 +745,151 @@ function buildOtherEmpiresPage(options: StartGameOptions): HTMLDivElement {
 
     const listPreview = document.createElement('div');
     listPreview.className = 'wizard-empires-list-preview';
-    function paintPreview(): void {
-        listPreview.textContent = o.autogenerate
-            ? `${o.empireCount} empires will be generated`
-            : `Manual empire list — ${o.empireCount} empires (auto-generation off)`;
+
+    const listWrap = document.createElement('div');
+    listWrap.className = 'wizard-empires-manual-wrap';
+    wrap.appendChild(listWrap);
+
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'wizard-btn wizard-btn-secondary wizard-empires-add-btn';
+    addBtn.textContent = 'Add empire';
+    wrap.appendChild(addBtn);
+
+    let governments: Government[] = [];
+    function playableRaces(): Race[] {
+        return loadWizardRacesSync()
+            .filter((r) => r.playable)
+            .sort((a, b) => a.name.localeCompare(b.name));
     }
+    /** Task 06j: default display name for a manual empire row ("<Race> Empire"). */
+    function defaultEmpireName(raceName: string): string {
+        return `${raceName} Empire`;
+    }
+    function paintPreview(): void {
+        if (o.manual.length > 0) {
+            listPreview.textContent = `Manual list — ${o.manual.length} specified empire${o.manual.length === 1 ? '' : 's'} (overrides auto-generation)`;
+        } else {
+            listPreview.textContent = o.autogenerate
+                ? `${o.empireCount} empires will be generated`
+                : `No manual empires — ${o.empireCount} random empires (auto-generation off)`;
+        }
+    }
+
+    // One editable row per manual empire (task 06j): race dropdown,
+    // government dropdown, name text input, remove ✕.
+    function makeRow(m: ManualEmpireStart): HTMLDivElement {
+        const row = document.createElement('div');
+        row.className = 'wizard-empires-row';
+
+        const raceSelect = document.createElement('select');
+        raceSelect.className = 'wizard-empires-race-select';
+        for (const r of playableRaces()) {
+            const opt = document.createElement('option');
+            opt.value = r.name;
+            opt.textContent = r.name;
+            opt.selected = r.name === m.race;
+            raceSelect.appendChild(opt);
+        }
+        if (!playableRaces().some((r) => r.name === m.race)) {
+            const opt = document.createElement('option');
+            opt.value = m.race;
+            opt.textContent = m.race;
+            raceSelect.appendChild(opt);
+        }
+        raceSelect.addEventListener('change', () => {
+            m.race = raceSelect.value;
+            if (m.name === '') {
+                m.name = defaultEmpireName(m.race);
+                nameInput.value = m.name;
+            }
+        });
+        row.appendChild(raceSelect);
+
+        const govSelect = document.createElement('select');
+        govSelect.className = 'wizard-empires-gov-select';
+        const noneOpt = document.createElement('option');
+        noneOpt.value = '-1';
+        noneOpt.textContent = '(Random)';
+        noneOpt.selected = m.governmentId < 0;
+        govSelect.appendChild(noneOpt);
+        for (const g of governments) {
+            const opt = document.createElement('option');
+            opt.value = String(g.governmentId);
+            opt.textContent = g.name;
+            opt.selected = g.governmentId === m.governmentId;
+            govSelect.appendChild(opt);
+        }
+        govSelect.addEventListener('change', () => {
+            m.governmentId = parseInt(govSelect.value, 10);
+        });
+        row.appendChild(govSelect);
+
+        const nameInput = document.createElement('input');
+        nameInput.type = 'text';
+        nameInput.className = 'wizard-empires-name-input';
+        nameInput.placeholder = defaultEmpireName(m.race);
+        nameInput.value = m.name;
+        nameInput.addEventListener('input', () => {
+            m.name = nameInput.value;
+        });
+        row.appendChild(nameInput);
+
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'wizard-empires-remove-btn';
+        removeBtn.title = 'Remove empire';
+        removeBtn.textContent = '✕';
+        removeBtn.addEventListener('click', () => {
+            const i = o.manual.indexOf(m);
+            if (i >= 0) o.manual.splice(i, 1);
+            row.remove();
+            paintList();
+        });
+        row.appendChild(removeBtn);
+
+        return row;
+    }
+
+    function paintList(): void {
+        listWrap.replaceChildren(...o.manual.map(makeRow));
+        addBtn.disabled = o.manual.length >= OTHER_EMPIRES_COUNT_MAX;
+        paintPreview();
+    }
+
+    addBtn.addEventListener('click', () => {
+        if (o.manual.length >= OTHER_EMPIRES_COUNT_MAX) return;
+        const races = playableRaces();
+        const race = races[0]?.name ?? '';
+        o.manual.push({ race, governmentId: -1, name: race === '' ? '' : defaultEmpireName(race) });
+        paintList();
+    });
+
     paintPreview();
     wrap.appendChild(listPreview);
     autoCheck.addEventListener('change', paintPreview);
     countInput.addEventListener('input', paintPreview);
 
-    // TODO(port): manual per-empire editing (list of AI empires with race /
-    // government / home system pickers) — Start.InitializeComponent.cs
-    // pnlStartNewGameOtherEmpires empStartNewGame* rows.
+    // Load race + government data (both are already loaded by the time the
+    // user reaches this page, but re-load defensively like buildEmpirePage),
+    // then render any pre-existing rows.
+    const loading = document.createElement('div');
+    loading.className = 'wizard-race-loading';
+    loading.textContent = 'Loading races and governments…';
+    listWrap.appendChild(loading);
+    Promise.all([loadWizardRaceData(), loadWizardGovernments()])
+        .then(([, allGovs]) => {
+            loading.remove();
+            governments = filterStartGovernments(allGovs);
+            paintList();
+        })
+        .catch(() => {
+            loading.remove();
+            const err = document.createElement('div');
+            err.className = 'wizard-race-error';
+            err.textContent = 'Failed to load race/government data for the manual empire list.';
+            listWrap.appendChild(err);
+        });
 
     return wrap;
 }
@@ -1415,12 +1548,14 @@ function buildStartPage(options: StartGameOptions): HTMLDivElement {
                     : `No range limits (range ${options.colonization.colonizationRangeKly}K, influence ${options.colonization.colonyInfluenceRangePercent}%)`,
             ],
             ['Same-System Colonies', options.colonization.allowSameSystemAsOtherEmpires ? 'Allowed' : 'Disallowed'],
-            // Task 06h: other empires summary.
+            // Task 06h/06j: other empires summary (manual list overrides).
             [
                 'Other Empires',
-                options.otherEmpires.autogenerate
-                    ? `${options.otherEmpires.empireCount} auto-generated`
-                    : `${options.otherEmpires.empireCount} manual (list editing TODO)`,
+                options.otherEmpires.manual.length > 0
+                    ? `${options.otherEmpires.manual.length} manual (${options.otherEmpires.manual.map((m) => m.name || m.race).join(', ')})`
+                    : options.otherEmpires.autogenerate
+                        ? `${options.otherEmpires.empireCount} auto-generated`
+                        : `${options.otherEmpires.empireCount} random`,
             ],
             // Task 06g: victory conditions summary (sandbox when none checked).
             [

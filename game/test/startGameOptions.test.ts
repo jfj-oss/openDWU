@@ -211,7 +211,7 @@ describe('StartGameOptions round-trip (task 06d)', () => {
             colonyInfluenceRangePercent: 150,
             allowSameSystemAsOtherEmpires: true,
         };
-        options.otherEmpires = { autogenerate: false, empireCount: 3 };
+        options.otherEmpires = { autogenerate: false, empireCount: 3, manual: [] };
         const copy = {
             ...options,
             colonization: { ...options.colonization },
@@ -531,10 +531,11 @@ describe('clampColonization (task 06h)', () => {
 });
 
 describe('defaultOtherEmpiresOptions (task 06h)', () => {
-    it('defaults to auto-generate on with 10 starting empires', () => {
+    it('defaults to auto-generate on with 10 starting empires and an empty manual list', () => {
         expect(defaultOtherEmpiresOptions()).toEqual({
             autogenerate: true,
             empireCount: 10,
+            manual: [],
         });
     });
 
@@ -556,6 +557,44 @@ describe('clampOtherEmpires (task 06h)', () => {
         const clamped = clampOtherEmpires(o);
         expect(clamped).not.toBe(o);
         expect(clamped.autogenerate).toBe(false);
+    });
+
+    it('deep-copies the manual list (task 06j)', () => {
+        const row = { race: 'Human', governmentId: 3, name: 'Human Empire' };
+        const o = { ...defaultOtherEmpiresOptions(), manual: [row] };
+        const clamped = clampOtherEmpires(o);
+        expect(clamped.manual).toEqual([row]);
+        expect(clamped.manual[0]).not.toBe(row);
+        // Mutating the copy's row must not affect the original.
+        clamped.manual[0].name = 'Mutated';
+        expect(o.manual[0].name).toBe('Human Empire');
+    });
+});
+
+describe('manual empire list round-trip (task 06j)', () => {
+    it('add/remove rows through StartGameOptions.otherEmpires.manual', () => {
+        const options: StartGameOptions = defaultStartGameOptions();
+        expect(options.otherEmpires.manual).toHaveLength(0);
+        // Add two rows (wizard "Add empire" button behaviour).
+        options.otherEmpires.manual.push({ race: 'Evuck', governmentId: -1, name: 'Evuck Empire' });
+        options.otherEmpires.manual.push({ race: 'Ackdarian', governmentId: 5, name: '' });
+        expect(options.otherEmpires.manual).toHaveLength(2);
+        // Remove the first one (wizard ✕ button behaviour).
+        options.otherEmpires.manual.splice(0, 1);
+        expect(options.otherEmpires.manual).toHaveLength(1);
+        expect(options.otherEmpires.manual[0].race).toBe('Ackdarian');
+    });
+
+    it('round-trips manual rows through a deep copy without aliasing', () => {
+        const options: StartGameOptions = defaultStartGameOptions();
+        options.otherEmpires.manual = [{ race: 'Human', governmentId: 2, name: 'Human Empire' }];
+        const copy = {
+            ...options,
+            otherEmpires: { ...options.otherEmpires, manual: options.otherEmpires.manual.map((m) => ({ ...m })) },
+        };
+        expect(copy.otherEmpires.manual).toEqual(options.otherEmpires.manual);
+        copy.otherEmpires.manual[0].name = 'Mutated';
+        expect(options.otherEmpires.manual[0].name).toBe('Human Empire');
     });
 });
 
@@ -673,6 +712,53 @@ describe('toCreateGameOptions (task 06i)', () => {
         const o = defaultStartGameOptions();
         o.otherEmpires = { ...defaultOtherEmpiresOptions(), empireCount: 250 };
         expect(toCreateGameOptions(o, gameData, NAMES).aiEmpires).toHaveLength(OTHER_EMPIRES_COUNT_MAX);
+    });
+
+    it('maps a non-empty manual list to explicit aiEmpires (task 06j)', () => {
+        // Pick two real start-available government ids so the names resolve.
+        const govIds = gameData.governments
+            .filter((g) => g.availability === 0 && g.specialFunctionCode === 0)
+            .slice(0, 2)
+            .map((g) => g.governmentId);
+        const o = defaultStartGameOptions();
+        o.otherEmpires = {
+            ...defaultOtherEmpiresOptions(),
+            autogenerate: false,
+            empireCount: 4, // must be ignored — the manual list overrides
+            manual: [
+                { race: 'Human', governmentId: govIds[0] ?? -1, name: 'Human Empire' },
+                { race: '', governmentId: -1, name: '' },
+            ],
+        };
+        const c = toCreateGameOptions(o, gameData, NAMES);
+        expect(c.aiEmpires).toHaveLength(2);
+        expect(c.aiEmpires[0].name).toBe('Human Empire');
+        expect(c.aiEmpires[0].race).toBe('Human');
+        if (govIds[0] !== undefined) {
+            expect(c.aiEmpires[0].governmentStyle).toBe(gameData.governments[govIds[0]].name);
+        } else {
+            expect(c.aiEmpires[0].governmentStyle).toBe('(Random)');
+        }
+        // Empty race / government / name fall back to (Random) / undefined.
+        expect(c.aiEmpires[1].race).toBe('(Random)');
+        expect(c.aiEmpires[1].governmentStyle).toBe('(Random)');
+        expect(c.aiEmpires[1].name).toBeUndefined();
+        for (const ai of c.aiEmpires) {
+            expect(ai.homeSystemFavourability).toBe('Normal');
+            expect(ai.proximityDistance).toBe('Random');
+            expect(ai.techLevel).toBe(0);
+        }
+    });
+
+    it('keeps auto-generation sizing when the manual list is empty (task 06j)', () => {
+        const o = defaultStartGameOptions();
+        o.otherEmpires = { ...defaultOtherEmpiresOptions(), autogenerate: false, empireCount: 3, manual: [] };
+        const c = toCreateGameOptions(o, gameData, NAMES);
+        expect(c.aiEmpires).toHaveLength(3);
+        for (const ai of c.aiEmpires) {
+            expect(ai.race).toBe('(Random)');
+            expect(ai.name).toBeUndefined();
+        }
     });
 
     it('maps the colonization same-system flag and influence factor', () => {
