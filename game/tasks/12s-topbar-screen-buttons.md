@@ -46,3 +46,13 @@ export function topBarScreen(name: string): TopBarScreen | null;
    - every non-null result comes from a name in `TOP_BAR_BUTTONS` (import it from `../src/ui/hudLayout`).
 
 Run `npm run typecheck` && `npm test`, then append `## Worker report`.
+
+## Worker report
+
+Files changed:
+- `src/ui/hud.ts` — added exported `TopBarScreen` type + pure `topBarScreen(name)` mapping (placed just above `buildTopBarButton`); changed `buildTopBarButton(name)` → `buildTopBarButton(name, wiring)` with the click listener now toggling Colonies (`toggleColoniesList` via `getEmpireSummarySource()`, camera-guarded `onZoomTo` mirroring the Empires button), Empire Summary (`toggleEmpireSummary()`), or Message History (`toggleMessageHistory()`), falling back to the existing TODO log + "not yet available" toast for unmapped controls; updated the `// TODO(screen)` comment to note only unmapped controls still toast; merged imports of `toggleColoniesList` and `toggleEmpireSummary`/`getEmpireSummarySource`; passed `wiring` at the `createHud` call site.
+- `test/hudTopBar.test.ts` (new) — no-jsdom tests for `topBarScreen`: the three mapped names, `btnGalacticHistory`/`tbtnResearch`/`'nonsense'` → null, and that every non-null result comes from a name in `TOP_BAR_BUTTONS`.
+
+Done: all task items 1–4. `npm run typecheck` passes; `npm test` passes (56 files, 641 tests).
+
+Left undone: nothing within scope. Screens not yet ported (e.g. Galactic History, Research, Designs) still show the "not yet available" toast by design.

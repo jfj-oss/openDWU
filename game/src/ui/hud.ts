@@ -14,7 +14,8 @@ import { setGameMenuHandler, setCycleHandler, type CycleKind } from './keyboard'
 import { startEffects } from '../audio/effectsPlayer';
 import { helpTopicKeyForHabitat, toggleGalactopedia } from './screens/galactopedia';
 import { toggleEmpiresList } from './screens/empiresList';
-import { setEmpireSummarySource } from './screens/empireSummary';
+import { setEmpireSummarySource, getEmpireSummarySource, toggleEmpireSummary } from './screens/empireSummary';
+import { toggleColoniesList } from './screens/coloniesList';
 import { toggleMessageHistory } from './screens/messageHistory';
 import { showToast } from './toast';
 
@@ -248,7 +249,7 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
                 el = buildOptionsList({ ...wiring, overlays });
                 break;
             default:
-                el = name === 'tbtnEmpires' ? buildEmpireFlagButton(wiring) : buildTopBarButton(name);
+                el = name === 'tbtnEmpires' ? buildEmpireFlagButton(wiring) : buildTopBarButton(name, wiring);
                 break;
         }
         el.classList.add('hud-el');
@@ -461,8 +462,27 @@ function makeIconButton(controlName: string, title: string): HTMLButtonElement {
     return btn;
 }
 
-/** Top-middle screen-launch button (chrome art, or small text label). */
-function buildTopBarButton(name: string): HTMLElement {
+export type TopBarScreen = 'colonies' | 'empireSummary' | 'messageHistory';
+
+/** Top-bar control → the existing screen it toggles (task 12s), or null. */
+export function topBarScreen(name: string): TopBarScreen | null {
+    switch (name) {
+        case 'tbtnColonies':
+            return 'colonies';
+        case 'btnEmpireSummary':
+            return 'empireSummary';
+        case 'btnHistoryMessages':
+            return 'messageHistory';
+        default:
+            // btnGalacticHistory is a different screen, not the message history.
+            return null;
+    }
+}
+
+/** Top-middle screen-launch button (chrome art, or small text label). Task
+ * 12s: buttons whose screen exists toggle it (like their hotkeys); only the
+ * unmapped controls still toast "not yet available". */
+function buildTopBarButton(name: string, wiring: HudWiring): HTMLElement {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'hud-btn';
@@ -481,11 +501,36 @@ function buildTopBarButton(name: string): HTMLElement {
         btn.textContent = label ?? '';
         btn.title = label ?? '';
     }
-    // TODO(screen): open the original's panel/screen for this control.
+    // TODO(screen): open the original's panel/screen for this control — only
+    // the unmapped ones below still toast; tbtnColonies / btnEmpireSummary /
+    // btnHistoryMessages toggle their screens.
     btn.addEventListener('click', () => {
         playUiClick();
-        console.log(`TODO(screen): ${label ?? name}`);
-        showToast(`${label ?? name} — not yet available`);
+        const screen = topBarScreen(name);
+        if (screen === 'colonies') {
+            // Main.Part9.cs tbtnColonies_Click: toggle the Colonies list.
+            const src = getEmpireSummarySource();
+            if (!src) return;
+            toggleColoniesList({
+                empire: src.empire,
+                onZoomTo: (h) => {
+                    const cam = wiring.camera;
+                    if (!cam) return;
+                    // Same camera calls as the Empires button's onZoomTo.
+                    cam.centerOn(h.xpos, h.ypos);
+                    cam.zoomAt(SYSTEM_LEVEL_ZOOM, cam.width / 2, cam.height / 2);
+                },
+            });
+        } else if (screen === 'empireSummary') {
+            // Main.Part8.cs btnEmpireSummary_Click: toggle the Empire Summary.
+            toggleEmpireSummary();
+        } else if (screen === 'messageHistory') {
+            // Main.Part4.cs btnHistoryMessages_Click: toggle Message History.
+            toggleMessageHistory();
+        } else {
+            console.log(`TODO(screen): ${label ?? name}`);
+            showToast(`${label ?? name} — not yet available`);
+        }
     });
     return btn;
 }
