@@ -14,7 +14,8 @@ import {
     getSelection,
 } from './hud';
 import { helpTopicKeyForHabitat, toggleGalactopedia } from './screens/galactopedia';
-import { toggleEmpireSummary } from './screens/empireSummary';
+import { getEmpireSummarySource, toggleEmpireSummary } from './screens/empireSummary';
+import { toggleColoniesList } from './screens/coloniesList';
 import { toggleMessageHistory } from './screens/messageHistory';
 import { showToast } from './toast';
 
@@ -49,7 +50,7 @@ const ALT: KeyModifiers = { ctrl: false, alt: true, shift: false };
  * interactions — no key exists for them, so they have no binding row. */
 export const KEY_BINDINGS: KeyBinding[] = [
     { key: 'F1', modifiers: NONE, action: 'galactopediaHelp', description: 'Galactopedia Help screen' },
-    { key: 'F2', modifiers: NONE, action: 'coloniesScreen', description: 'Colonies screen' },
+    { key: 'F2', modifiers: NONE, action: 'coloniesScreen', description: 'Colonies' },
     { key: 'F3', modifiers: NONE, action: 'expansionPlannerScreen', description: 'Expansion Planner screen' },
     { key: 'F4', modifiers: NONE, action: 'intelligenceAgentsScreen', description: 'Intelligence Agents screen' },
     { key: 'F5', modifiers: NONE, action: 'diplomacyScreen', description: 'Diplomacy screen' },
@@ -137,6 +138,7 @@ export interface KeyHandlers {
     scrollRight?: () => void;
     galaxyMap?: () => void;
     messageHistoryScreen?: () => void;
+    coloniesScreen?: () => void;
     empireSummaryScreen?: () => void;
     gameMenu?: () => void;
     galactopediaHelp?: () => void;
@@ -238,6 +240,9 @@ export function dispatchKey(
         case 'empireSummaryScreen':
             toggleEmpireSummary();
             break;
+        case 'coloniesScreen':
+            handlers.coloniesScreen?.();
+            break;
         case 'gameMenu':
             handlers.gameMenu?.();
             break;
@@ -302,6 +307,19 @@ export function buildDefaultHandlers(
         },
         // H: the Message History window (task 12i).
         messageHistoryScreen: () => toggleMessageHistory(),
+        // F2: the Colonies list (task 12m) — same source as the Empire Summary.
+        coloniesScreen: () => {
+            const src = getEmpireSummarySource();
+            if (src) {
+                toggleColoniesList({
+                    empire: src.empire,
+                    onZoomTo: (h) => {
+                        camera.centerOn(h.xpos, h.ypos);
+                        camera.zoomAt(SYSTEM_LEVEL_ZOOM, cx(), cy());
+                    },
+                });
+            }
+        },
         // F1 (KeyMappingFriendlyNames.OpenHelp -> btnHelp_Click, Main.Part7.cs).
         galactopediaHelp: () => toggleGalactopedia(helpTopicKeyForHabitat(getSelection()?.habitat ?? null)),
         // Esc: the in-game menu's toggle, registered by createHud (task 10c).
