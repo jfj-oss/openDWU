@@ -44,3 +44,14 @@ public static int ResolveColonyIndexByHabitatTypeDesertBeforeOcean(HabitatType t
 4. Tests: helper table (0..5 and out-of-range → Continental; inverse → -1 for non-colony types); every parsed race's `nativeHabitatType` is one of the six colony types; a 700-star galaxy (seed 1, default options) now has **> 0 habitats with native populations**, deterministic; the existing native-population tests now exercise the match path (update any test that asserted zero populations).
 
 `npm run typecheck` && `npm test`. Append `## Worker report`.
+
+## Worker report
+
+Files changed:
+- `src/sim/types.ts` — added exported `resolveColonyHabitatTypeByIndexDesertBeforeOcean(index)` (0..5 → Continental/MarshySwamp/Desert/Ocean/Ice/Volcanic, out-of-range → Continental) and its inverse `resolveColonyIndexByHabitatTypeDesertBeforeOcean(type)` (non-colony types → -1), next to `HabitatType`, with source comments citing Galaxy.4.cs:746.
+- `src/sim/data/races.ts` — `Race` keeps raw `nativePlanetType` and gains `nativeHabitatType: HabitatType`; `parseRace` resolves it via the helper (port of Race.cs LoadFromFile line 1286).
+- `src/sim/galaxy.ts` — both comparisons now use `race.nativeHabitatType`: `calculatePopulationAmount` (line ~1834, the ×1.5 native bonus) and `selectPopulation` (line ~1865, the placement match). These were the only two uses of `nativePlanetType` in `src/sim/`.
+- `test/data-races.test.ts` — new describe block for both helpers (full 0..5 table, out-of-range → Continental, inverse → -1 for non-colony types); every parsed race's `nativeHabitatType` is one of the six colony types and round-trips to its raw index.
+- `test/galaxy.test.ts` — updated the task 01f2 native-population block to exercise the match path: a 700-star galaxy (seed 1, default options) now asserts > 0 populated planets / independentCount, with each population's race matching the planet's habitat type; the per-race colony-limit test asserts at least one race has populations; home-system renaming asserts ≥ 1 renamed system. The no-empire-starts and determinism tests still hold unchanged.
+
+Done: all four implementation items plus tests. `npm run typecheck` passes; `npm test` passes (207/207 across 17 files). Nothing left undone.

@@ -45,6 +45,50 @@ export enum IndustryType {
     HighTech,
 }
 
+// Port of Galaxy.4.cs Galaxy.ResolveColonyHabitatTypeByIndexDesertBeforeOcean
+// (Galaxy.4.cs:746). Maps a race file's NativePlanetType index to the
+// corresponding colony habitat type; out-of-range values fall back to
+// Continental.
+export function resolveColonyHabitatTypeByIndexDesertBeforeOcean(index: number): HabitatType {
+    switch (index) {
+        case 0:
+            return HabitatType.Continental;
+        case 1:
+            return HabitatType.MarshySwamp;
+        case 2:
+            return HabitatType.Desert;
+        case 3:
+            return HabitatType.Ocean;
+        case 4:
+            return HabitatType.Ice;
+        case 5:
+            return HabitatType.Volcanic;
+        default:
+            return HabitatType.Continental;
+    }
+}
+
+// Port of Galaxy.4.cs Galaxy.ResolveColonyIndexByHabitatTypeDesertBeforeOcean
+// (inverse of the above); non-colony types map to -1.
+export function resolveColonyIndexByHabitatTypeDesertBeforeOcean(type: HabitatType): number {
+    switch (type) {
+        case HabitatType.Continental:
+            return 0;
+        case HabitatType.MarshySwamp:
+            return 1;
+        case HabitatType.Desert:
+            return 2;
+        case HabitatType.Ocean:
+            return 3;
+        case HabitatType.Ice:
+            return 4;
+        case HabitatType.Volcanic:
+            return 5;
+        default:
+            return -1;
+    }
+}
+
 // Port of DistantWorlds.Types.HabitatCategoryType (HabitatCategoryType.cs)
 export enum HabitatCategoryType {
     Star,

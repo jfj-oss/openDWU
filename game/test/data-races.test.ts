@@ -5,6 +5,7 @@ import { parseRace } from '../src/sim/data/races';
 import { parseRaceFamilies } from '../src/sim/data/raceFamilies';
 import { parseRaceBiases, parseRaceFamilyBiases } from '../src/sim/data/biases';
 import { parseGovernments, parseGovernmentBiases } from '../src/sim/data/governments';
+import { HabitatType, resolveColonyHabitatTypeByIndexDesertBeforeOcean, resolveColonyIndexByHabitatTypeDesertBeforeOcean } from '../src/sim/types';
 
 const dwuRoot = resolve(__dirname, '../public/assets/dwu');
 
@@ -31,6 +32,60 @@ describe('races.ts parseRace', () => {
             expect(familyIds.has(race.raceFamily)).toBe(true);
         });
     }
+
+    it('every parsed race nativeHabitatType is one of the six colony types', () => {
+        const colonyTypes = [
+            HabitatType.Continental,
+            HabitatType.MarshySwamp,
+            HabitatType.Desert,
+            HabitatType.Ocean,
+            HabitatType.Ice,
+            HabitatType.Volcanic,
+        ];
+        for (const file of raceFiles) {
+            const race = parseRace(readFileSync(resolve(racesDir, file), 'utf-8'));
+            expect(colonyTypes).toContain(race.nativeHabitatType);
+            // The resolved type must round-trip to the raw file index.
+            expect(resolveColonyIndexByHabitatTypeDesertBeforeOcean(race.nativeHabitatType)).toBe(race.nativePlanetType);
+        }
+    });
+});
+
+describe('resolveColonyHabitatTypeByIndexDesertBeforeOcean / inverse (task 08b)', () => {
+    it('maps indices 0..5 to the six colony habitat types', () => {
+        expect(resolveColonyHabitatTypeByIndexDesertBeforeOcean(0)).toBe(HabitatType.Continental);
+        expect(resolveColonyHabitatTypeByIndexDesertBeforeOcean(1)).toBe(HabitatType.MarshySwamp);
+        expect(resolveColonyHabitatTypeByIndexDesertBeforeOcean(2)).toBe(HabitatType.Desert);
+        expect(resolveColonyHabitatTypeByIndexDesertBeforeOcean(3)).toBe(HabitatType.Ocean);
+        expect(resolveColonyHabitatTypeByIndexDesertBeforeOcean(4)).toBe(HabitatType.Ice);
+        expect(resolveColonyHabitatTypeByIndexDesertBeforeOcean(5)).toBe(HabitatType.Volcanic);
+    });
+
+    it('out-of-range indices fall back to Continental', () => {
+        for (const index of [-3, -1, 6, 7, 100]) {
+            expect(resolveColonyHabitatTypeByIndexDesertBeforeOcean(index)).toBe(HabitatType.Continental);
+        }
+    });
+
+    it('inverse maps the six colony types to 0..5 and non-colony types to -1', () => {
+        expect(resolveColonyIndexByHabitatTypeDesertBeforeOcean(HabitatType.Continental)).toBe(0);
+        expect(resolveColonyIndexByHabitatTypeDesertBeforeOcean(HabitatType.MarshySwamp)).toBe(1);
+        expect(resolveColonyIndexByHabitatTypeDesertBeforeOcean(HabitatType.Desert)).toBe(2);
+        expect(resolveColonyIndexByHabitatTypeDesertBeforeOcean(HabitatType.Ocean)).toBe(3);
+        expect(resolveColonyIndexByHabitatTypeDesertBeforeOcean(HabitatType.Ice)).toBe(4);
+        expect(resolveColonyIndexByHabitatTypeDesertBeforeOcean(HabitatType.Volcanic)).toBe(5);
+        for (const type of [
+            HabitatType.Undefined,
+            HabitatType.MainSequence,
+            HabitatType.BarrenRock,
+            HabitatType.GasGiant,
+            HabitatType.FrozenGasGiant,
+            HabitatType.Hydrogen,
+            HabitatType.Metal,
+        ]) {
+            expect(resolveColonyIndexByHabitatTypeDesertBeforeOcean(type)).toBe(-1);
+        }
+    });
 });
 
 describe('raceFamilies.ts parseRaceFamilies', () => {

@@ -1831,7 +1831,7 @@ export class Galaxy {
     // generation time (no bases/creatures yet).
     private calculatePopulationAmount(habitat: Habitat, race: Race): number {
         let num = habitat.baseQuality * 1000;
-        if (habitat.type === race.nativePlanetType) {
+        if (habitat.type === race.nativeHabitatType) {
             num *= 1.5;
         }
         let num2 = 0;
@@ -1862,7 +1862,7 @@ export class Galaxy {
         if (galaxyLocation !== null) {
             race = galaxyLocation.relatedRace;
         }
-        if (race !== null && race.nativePlanetType === habitat.type && !this.checkIndependentColonyLimitForRace(race)) {
+        if (race !== null && race.nativeHabitatType === habitat.type && !this.checkIndependentColonyLimitForRace(race)) {
             if (habitat.baseQuality < 0.6) {
                 // C#: habitat.BaseQuality = 0.5f + (float)(Rnd.NextDouble() * 0.4)
                 // (float casts throughout — Math.fround matches).

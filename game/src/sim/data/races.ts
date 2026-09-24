@@ -3,6 +3,8 @@
 // non-comment line is "Key<whitespace>;Value" (first `;` splits key/value,
 // per LoadFromFile's `text.IndexOf(";")`).
 
+import { HabitatType, resolveColonyHabitatTypeByIndexDesertBeforeOcean } from '../types';
+
 export interface Race {
     name: string;
     pictureIndex: number;
@@ -27,6 +29,10 @@ export interface Race {
     techFocus1: number;
     techFocus2: number;
     nativePlanetType: number;
+    /** Port of Race.cs LoadFromFile (line 1286): NativeHabitatType is the
+     *  file's NativePlanetType index resolved to a HabitatType via
+     *  Galaxy.ResolveColonyHabitatTypeByIndexDesertBeforeOcean. */
+    nativeHabitatType: HabitatType;
     specialComponent: number;
     weaponsResearchProjectOrder: number[];
     energyResearchProjectOrder: number[];
@@ -153,6 +159,9 @@ export function parseRace(text: string): Race {
         techFocus1: parseIntField(fields.get('TechFocus1')),
         techFocus2: parseIntField(fields.get('TechFocus2')),
         nativePlanetType: parseIntField(fields.get('NativePlanetType')),
+        // Port of Race.cs LoadFromFile (line 1286): NativeHabitatType =
+        // Galaxy.ResolveColonyHabitatTypeByIndexDesertBeforeOcean(NativePlanetType).
+        nativeHabitatType: resolveColonyHabitatTypeByIndexDesertBeforeOcean(parseIntField(fields.get('NativePlanetType'))),
         specialComponent: parseIntField(fields.get('SpecialComponent'), -1),
         weaponsResearchProjectOrder: parseIntList(fields.get('WeaponsResearchProjectOrder')),
         energyResearchProjectOrder: parseIntList(fields.get('EnergyResearchProjectOrder')),

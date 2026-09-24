@@ -624,15 +624,12 @@ describe('generateGalaxy native populations (task 01f2: SelectPopulation)', () =
         gameData = await loadGameDataFs();
     });
 
-    // Same five start races as the 01f1 block. NOTE: with the current race
-    // data files the parsed NativePlanetType values (1-5) never fall in the
-    // planet HabitatType range (8-16), so SelectPopulation's type match
-    // `race.nativePlanetType === habitat.type` is false for every planet and
-    // no native populations are created — a pre-existing data/model mismatch
-    // outside this task's scope (the port mirrors the C# comparison exactly,
-    // which the 01f1 source confirms is how the engine behaves). The tests
-    // below therefore assert the honest outcome (no populations) plus the
-    // mechanism's invariants, which hold regardless of the data.
+    // Same five start races as the 01f1 block. Task 08b fixed the data/model
+    // mismatch: race files store NativePlanetType as a raw index (0-5), which
+    // parseRace resolves to a HabitatType via
+    // resolveColonyHabitatTypeByIndexDesertBeforeOcean, so SelectPopulation's
+    // type match now works and native populations are placed on planets of
+    // the matching habitat type.
     const startRaces = ['Boskara', 'Mortalen', 'Sluken', 'Naxxilian', 'Dhayut'];
     const makeEmpireStarts = (): EmpireStart[] =>
         startRaces.map((name) => ({ resolvedRace: gameData.races.find((r) => r.name === name)!, projectedColonyAmount: 5 }));
@@ -650,22 +647,28 @@ describe('generateGalaxy native populations (task 01f2: SelectPopulation)', () =
             empireStarts: makeEmpireStarts(),
         });
 
-    it('native population selection produces no populations when no race NativeHabitatType matches any planet type (current data)', () => {
-        const galaxy = generateTestGalaxy(12345, 700);
+    it('a 700-star galaxy (seed 1) has habitats with native populations', () => {
+        const galaxy = generateTestGalaxy(1, 700);
 
-        // With the current race data files (NativePlanetType 1-5 vs planet
-        // HabitatType 8-16) no planet ever matches its nearest region's race
-        // native type, so SelectPopulation creates nothing. If the data is
-        // fixed to store HabitatType-range values, this test will need to be
-        // updated to assert populated planets instead.
+        // Task 08b: races now store a resolved HabitatType, so planets whose
+        // type matches their nearest race region's race get native
+        // populations. With seed 1 and the default five start races this is
+        // deterministic and > 0.
         const populated = galaxy.habitats.filter(
             (h) => h.category === HabitatCategoryType.Planet && h.population.items.length > 0,
         );
-        expect(populated.length).toBe(0);
-        expect(galaxy.independentCount).toBe(0);
+        expect(populated.length).toBeGreaterThan(0);
+        expect(galaxy.independentCount).toBeGreaterThan(0);
 
-        // Sanity: the mechanism would work if types matched — verify that at
-        // least one start race's region exists and that the per-race colony
+        // Every populated planet must match its population's race native
+        // habitat type (the SelectPopulation match condition).
+        for (const habitat of populated) {
+            for (const population of habitat.population.items) {
+                expect(habitat.type).toBe(population.race.nativeHabitatType);
+            }
+        }
+
+        // Sanity: all five start races have regions and the per-race colony
         // limit logic is reachable (limit > 0 for 700 stars).
         const regions = galaxy.galaxyLocations.filter((l) => l.type === GalaxyLocationType.RaceRegion);
         expect(regions.length).toBe(startRaces.length);
@@ -677,16 +680,16 @@ describe('generateGalaxy native populations (task 01f2: SelectPopulation)', () =
         const galaxy = generateTestGalaxy(12345, 700);
 
         // Limit = (int)(Math.Sqrt(StarCount) / 3.5 * LifePrevalence / 1000),
-        // with LifePrevalence defaulting to 1000. Holds trivially when there
-        // are no populations (current data); exercises the real bound once
-        // the NativeHabitatType data mismatch is resolved.
+        // with LifePrevalence defaulting to 1000.
         const limit = Math.trunc(Math.sqrt(galaxy.starCount) / 3.5);
+        expect(limit).toBeGreaterThan(0);
         const counts = new Map<string, number>();
         for (const habitat of galaxy.habitats) {
             for (const population of habitat.population.items) {
                 counts.set(population.race.name, (counts.get(population.race.name) ?? 0) + 1);
             }
         }
+        expect(counts.size).toBeGreaterThan(0);
         for (const [name, count] of counts) {
             expect(count).toBeLessThanOrEqual(limit);
         }
@@ -712,10 +715,9 @@ describe('generateGalaxy native populations (task 01f2: SelectPopulation)', () =
                 }
             }
         }
-        // With the current data no race has a native population, so no home
-        // system is renamed. Once the NativeHabitatType data mismatch is
-        // fixed this should assert >= 1 instead.
-        expect(homeSystems.size).toBe(0);
+        // Task 08b: at least one race's first native population renames its home
+        // system, so some home systems are renamed.
+        expect(homeSystems.size).toBeGreaterThanOrEqual(1);
         for (const name of homeSystems) {
             const race = gameData.races.find((r) => r.name === name)!;
             expect(race.homeSystemName.length).toBeGreaterThan(0);
