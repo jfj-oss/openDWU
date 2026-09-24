@@ -259,12 +259,33 @@ export function buildDefaultHandlers(camera: Camera, time: GalaxyTime): KeyHandl
         // TODO(key): open the Galaxy Map screen (no openGalaxyMap hook today;
         // the View-list row only zooms out to galaxy level).
         galaxyMap: () => console.info('TODO(key): galaxyMap'),
-        gameMenu: () => console.info('TODO(key): gameMenu'),
+        // Esc: the in-game menu's toggle, registered by createHud (task 10c).
+        gameMenu: () => {
+            if (gameMenuHandler) {
+                gameMenuHandler();
+            } else {
+                console.info('TODO(key): gameMenu');
+            }
+        },
     };
 }
 
 /** Screen-pixel step for arrow-key scrolling (one HUD-panel-height-ish nudge). */
 const SCROLL_PAN_PX = 60;
+
+// ---------------------------------------------------------------------------
+// Game-menu hook (task 10c): createHud registers the in-game menu's toggle so
+// the Escape binding reaches it without main.ts knowing about the menu. This is
+// the single Escape path — the menu does not add its own window keydown
+// listener, which would double-fire with this dispatch on one keypress.
+// ---------------------------------------------------------------------------
+
+let gameMenuHandler: (() => void) | null = null;
+
+/** Register the in-game menu's toggle as the Escape action handler. */
+export function setGameMenuHandler(h: (() => void) | null): void {
+    gameMenuHandler = h;
+}
 
 // ---------------------------------------------------------------------------
 // "Keyboard shortcuts" overlay (toggled by ? / F1-equivalent).
