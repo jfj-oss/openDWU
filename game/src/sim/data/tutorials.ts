@@ -161,24 +161,49 @@ export async function loadTutorialFile(name: string): Promise<TutorialItem[]> {
 
 /** One entry of the main menu's Tutorials list. `file` is the tutorial
  *  file name under $DWU/Tutorial/ (e.g. "basic.txt"). Display names/order
- *  follow the original's tutorial menu (Start.1.cs pnlTutorials); short
- *  descriptions summarize each tutorial's topic. */
+ *  follow the original's tutorial menu (Start.1.cs pnlTutorials); the row's
+ *  description line is filled in from the file's step titles at runtime via
+ *  tutorialSummary. */
 export interface TutorialEntry {
     file: string;
     displayName: string;
-    description: string;
 }
 
 export const TUTORIALS: TutorialEntry[] = [
-    { file: 'basic.txt', displayName: 'Basic', description: 'A quick tour of the basics: navigating the galaxy map, the empire panel and starting your first colony.' },
-    { file: 'advanced.txt', displayName: 'Advanced', description: 'An in-depth tour covering fleets, research, diplomacy and everything beyond the basics.' },
-    { file: 'ShipsAndMissions.txt', displayName: 'Ships and Missions', description: 'Designing ships, building them and giving your fleets orders.' },
-    { file: 'ResearchDesign.txt', displayName: 'Research and Design', description: 'How research works and how to design new ship types.' },
-    { file: 'FleetsTroops.txt', displayName: 'Fleets and Troops', description: 'Moving fleets between systems and using troops on planets.' },
-    { file: 'FindingYourWayAround.txt', displayName: 'Finding Your Way Around', description: 'The main view: panning, zooming, selecting and the various overlays.' },
-    { file: 'DealingWithPirates.txt', displayName: 'Dealing With Pirates', description: 'Spotting pirates, hunting them down and keeping your trade routes safe.' },
-    { file: 'PlayAsPirate.txt', displayName: 'Play As Pirate', description: 'Starting as a pirate race: raiding, plundering and surviving the empires.' },
-    { file: 'PreWarpEmpire.txt', displayName: 'Pre-Warp Empire', description: 'Playing an empire without warp drive: expansion across nearby space.' },
-    { file: 'EmpireAndColonies.txt', displayName: 'Empire and Colonies', description: 'Managing your empire: colonies, governments, resources and growth.' },
-    { file: 'ExpansionDiplomacy.txt', displayName: 'Expansion and Diplomacy', description: 'Growing your territory and dealing with other empires diplomatically.' },
+    { file: 'basic.txt', displayName: 'Basic' },
+    { file: 'advanced.txt', displayName: 'Advanced' },
+    { file: 'ShipsAndMissions.txt', displayName: 'Ships and Missions' },
+    { file: 'ResearchDesign.txt', displayName: 'Research and Design' },
+    { file: 'FleetsTroops.txt', displayName: 'Fleets and Troops' },
+    { file: 'FindingYourWayAround.txt', displayName: 'Finding Your Way Around' },
+    { file: 'DealingWithPirates.txt', displayName: 'Dealing With Pirates' },
+    { file: 'PlayAsPirate.txt', displayName: 'Play As Pirate' },
+    { file: 'PreWarpEmpire.txt', displayName: 'Pre-Warp Empire' },
+    { file: 'EmpireAndColonies.txt', displayName: 'Empire and Colonies' },
+    { file: 'ExpansionDiplomacy.txt', displayName: 'Expansion and Diplomacy' },
 ];
+
+/** Build a one-line summary of a tutorial file from its steps: the distinct
+ *  step titles in order (empty titles and exact repeats skipped), joined
+ *  with " · ". Cut at the last whole title that fits in maxLength; when
+ *  titles were dropped, append " · …". */
+export function tutorialSummary(items: TutorialItem[], maxLength = 140): string {
+    const titles: string[] = [];
+    for (const item of items) {
+        const t = item.title;
+        if (t === '' || titles.includes(t)) continue;
+        titles.push(t);
+    }
+    const parts: string[] = [];
+    let len = 0;
+    for (let i = 0; i < titles.length; i++) {
+        const partLen = (i > 0 ? ' · '.length : 0) + titles[i].length;
+        if (len + partLen > maxLength) break;
+        parts.push(titles[i]);
+        len += partLen;
+    }
+    if (parts.length < titles.length) {
+        return `${parts.join(' · ')} · …`;
+    }
+    return parts.join(' · ');
+}

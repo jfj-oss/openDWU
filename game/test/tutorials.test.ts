@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Tutorial, TUTORIALS, parseTutorialItems } from '../src/sim/data/tutorials';
+import { Tutorial, TUTORIALS, parseTutorialItems, tutorialSummary } from '../src/sim/data/tutorials';
 
 // The screen/window DOM parts need a browser (jsdom is not configured here,
 // see hud.test.ts), so this tests the pure parsing + model code (task 06l).
@@ -145,10 +145,36 @@ describe('TUTORIALS list (Start.1.cs pnlTutorials)', () => {
         expect(TUTORIALS.map((e) => e.file)).toEqual(REAL_FILES);
     });
 
-    it('has a display name and description per entry', () => {
+    it('has a display name per entry', () => {
         for (const entry of TUTORIALS) {
             expect(entry.displayName.length).toBeGreaterThan(0);
-            expect(entry.description.length).toBeGreaterThan(0);
         }
+    });
+});
+
+describe('tutorialSummary', () => {
+    // The real file format: Name line, Title line, body lines, `~` separator.
+    const SUMMARY_SAMPLE = [
+        'Welcome',
+        'Welcome',
+        'Body one.',
+        '~',
+        'Introduction',
+        'Introduction',
+        'Body two.',
+        '~',
+        'Introduction',
+        'Introduction',
+        'Body three.',
+    ].join('\n');
+
+    it('joins distinct step titles in order, skipping repeats', () => {
+        const items = parseTutorialItems('sample.txt', SUMMARY_SAMPLE);
+        expect(tutorialSummary(items)).toBe('Welcome · Introduction');
+    });
+
+    it('cuts at the last whole title that fits and appends " · …"', () => {
+        const items = parseTutorialItems('sample.txt', SUMMARY_SAMPLE);
+        expect(tutorialSummary(items, 10)).toBe('Welcome · …');
     });
 });

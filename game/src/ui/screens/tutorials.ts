@@ -6,7 +6,7 @@
 // only (see TODO(tutorial) notes in src/sim/data/tutorials.ts).
 
 import './tutorials.css';
-import { Tutorial, TUTORIALS, loadTutorialFile } from '../../sim/data/tutorials';
+import { Tutorial, TUTORIALS, loadTutorialFile, tutorialSummary } from '../../sim/data/tutorials';
 
 const CHROME = '/assets/dwu/images/ui/chrome/';
 
@@ -70,7 +70,13 @@ export function createTutorialsScreen(callbacks: TutorialsScreenCallbacks): Tuto
         name.textContent = entry.displayName;
         const desc = document.createElement('div');
         desc.className = 'tutorials-row-desc';
-        desc.textContent = entry.description;
+        // Filled in from the file's step titles once it loads (the original
+        // menu shows no description; this is a recreation convenience).
+        void loadTutorialFile(entry.file).then((items) => {
+            desc.textContent = tutorialSummary(items);
+        }).catch(() => {
+            desc.textContent = '';
+        });
         info.append(name, desc);
 
         const start = document.createElement('button');
