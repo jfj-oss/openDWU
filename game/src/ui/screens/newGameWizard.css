@@ -1,6 +1,8 @@
 /* New-game wizard: The Galaxy page (task 06b). Modernized dark panel styling
    consistent with src/ui/hud.css. */
 
+/* Task 06c: MainBackground.jpg (cover) behind the wizard window with a 55%
+   black overlay, instead of plain black. */
 .wizard-overlay {
     position: fixed;
     inset: 0;
@@ -8,12 +10,20 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(0, 0, 0, 0.45);
+    background: url('/assets/dwu/images/ui/chrome/MainBackground.jpg') center / cover no-repeat #000;
     font-family: 'Forgotten Futurist', sans-serif;
     color: #e6e6e6;
 }
 
+.wizard-overlay::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+}
+
 .wizard-window {
+    position: relative; /* above the ::before overlay */
     width: 900px;
     max-width: 96vw;
     height: 620px;
@@ -117,9 +127,12 @@
     width: 100%;
 }
 
+/* Tick labels: 12 px, readable, spread evenly under the slider (task 06c). */
 .wizard-slider-ticks {
-    font-size: 11px;
-    color: #999;
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: #c9d1d9;
 }
 
 .wizard-seed-row {

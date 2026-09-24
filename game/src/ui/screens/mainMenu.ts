@@ -39,6 +39,23 @@ function isDesktopShell(): boolean {
     return navigator.userAgent.includes('Electron');
 }
 
+/**
+ * Menu art scale (task 06c): s = clamp(innerHeight/1080, 0.6, 1.4). All
+ * chrome art renders at its natural pixel size × s so items keep their real
+ * aspect ratios and relative heights.
+ */
+export function menuScale(): number {
+    const s = window.innerHeight / 1080;
+    return Math.min(1.4, Math.max(0.6, s));
+}
+
+/** Preload an image (used for the _Active hover variants so swapping src on
+ * mouseenter causes no layout shift or flicker). */
+function preloadImage(src: string): void {
+    const img = new Image();
+    img.src = src;
+}
+
 function showExitToast(root: HTMLElement): void {
     const toast = document.createElement('div');
     toast.className = 'menu-toast';
@@ -51,6 +68,9 @@ function showExitToast(root: HTMLElement): void {
 export function createMainMenu(callbacks: MainMenuCallbacks): MainMenuRefs {
     const root = document.createElement('div');
     root.className = 'main-menu';
+
+    // Task 06c: all chrome art renders at natural size × s.
+    const s = menuScale();
 
     const bg = document.createElement('img');
     bg.className = 'main-menu-bg';
@@ -75,7 +95,13 @@ export function createMainMenu(callbacks: MainMenuCallbacks): MainMenuRefs {
         const img = document.createElement('img');
         img.src = `${CHROME}${item.imageBase}_Inactive.png`;
         img.alt = item.label;
+        // Natural size × s (task 06c); height follows from the aspect ratio.
+        img.style.width = `${280 * s}px`;
         btn.appendChild(img);
+
+        // Preload the hover variant so swapping src on mouseenter is instant
+        // and causes no layout shift.
+        preloadImage(`${CHROME}${item.imageBase}_Active.png`);
 
         btn.addEventListener('mouseenter', () => {
             img.src = `${CHROME}${item.imageBase}_Active.png`;
@@ -104,11 +130,13 @@ export function createMainMenu(callbacks: MainMenuCallbacks): MainMenuRefs {
     }
     root.appendChild(panel);
 
-    // Title art, lower-middle.
+    // Title art, lower-middle (task 06c): natural aspect, width =
+    // min(482px * s, 40vw); bottom edge sits 6% above the window bottom.
     const title = document.createElement('img');
     title.className = 'main-menu-title';
     title.src = `${CHROME}Title.png`;
     title.alt = 'Distant Worlds: Universe';
+    title.style.width = `min(${482 * s}px, 40vw)`;
     root.appendChild(title);
 
     // Corner items.
@@ -118,6 +146,9 @@ export function createMainMenu(callbacks: MainMenuCallbacks): MainMenuRefs {
     const galactopediaImg = document.createElement('img');
     galactopediaImg.src = `${CHROME}Menu_Galactopedia_Inactive.png`;
     galactopediaImg.alt = 'Galactopedia';
+    // Natural size × s (115×93 art).
+    galactopediaImg.style.width = `${115 * s}px`;
+    preloadImage(`${CHROME}Menu_Galactopedia_Active.png`);
     galactopedia.appendChild(galactopediaImg);
     galactopedia.addEventListener('mouseenter', () => {
         galactopediaImg.src = `${CHROME}Menu_Galactopedia_Active.png`;
@@ -135,6 +166,9 @@ export function createMainMenu(callbacks: MainMenuCallbacks): MainMenuRefs {
     const updatesImg = document.createElement('img');
     updatesImg.src = `${CHROME}Menu_CheckForUpdates_Inactive.png`;
     updatesImg.alt = 'Check for Updates';
+    // Natural size × s (89×48 art).
+    updatesImg.style.width = `${89 * s}px`;
+    preloadImage(`${CHROME}Menu_CheckForUpdates_Active.png`);
     updates.appendChild(updatesImg);
     updates.addEventListener('mouseenter', () => {
         updatesImg.src = `${CHROME}Menu_CheckForUpdates_Active.png`;
@@ -156,6 +190,9 @@ export function createMainMenu(callbacks: MainMenuCallbacks): MainMenuRefs {
     const creditsImg = document.createElement('img');
     creditsImg.src = `${CHROME}Menu_Credits_Inactive.png`;
     creditsImg.alt = 'Credits';
+    // Natural size × s (89×44 art).
+    creditsImg.style.width = `${89 * s}px`;
+    preloadImage(`${CHROME}Menu_Credits_Active.png`);
     credits.appendChild(creditsImg);
     credits.addEventListener('mouseenter', () => {
         creditsImg.src = `${CHROME}Menu_Credits_Active.png`;
