@@ -132,11 +132,13 @@ export function applyHudScale(refs: HudRefs): void {
     }
 }
 
-/** System-level view: show ~1 sector (the original's system zoom band). */
-export const SYSTEM_LEVEL_ZOOM = 0.001;
+/** System-level view: zoom factor 50 (Main.Part9.cs btnZoomSystem_Click
+ * method_4(50.0)), inside the Main View's system band (factor < 70). */
+export const SYSTEM_LEVEL_ZOOM = 1 / 50;
 
-/** Sector-level view: show ~4 sectors across. */
-export const SECTOR_LEVEL_ZOOM = 0.00025;
+/** Sector-level view: zoom factor 3000 (Main.Part9.cs sector button,
+ * method_4(3000.0)). */
+export const SECTOR_LEVEL_ZOOM = 1 / 3000;
 
 /** Whole-galaxy view: the most zoomed-out level (fits the galaxy). */
 export const GALAXY_LEVEL_ZOOM = 0.00001;
