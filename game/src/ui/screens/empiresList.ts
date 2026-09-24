@@ -1,0 +1,147 @@
+// Empires list panel (task 12b): a compact in-game DOM panel listing the
+// known empires, opened by the HUD's Empires button. The original's Empires
+// screen (Main.Part5.cs) is a full diplomacy window; this streamlined version
+// shows one row per empire — colour swatch, name ("(you)" for the player),
+// colony count and capital name — and zooms to the clicked empire's capital.
+// Styling follows the tutorial window / HUD dark-panel tokens.
+
+import './empiresList.css';
+import type { Empire } from '../../sim/empire';
+import type { Habitat } from '../../sim/types';
+
+export interface EmpiresListOptions {
+    /** galaxy.empires — every empire in the galaxy. */
+    empires: Empire[];
+    playerEmpire: Empire;
+    /** Zoom the Main View to a capital (the HUD centres on it at system zoom). */
+    onZoomTo: (habitat: Habitat) => void;
+}
+
+/** One displayed row of the panel. Pure so the row logic is testable without
+ * a DOM (jsdom is not configured). */
+export interface EmpireRow {
+    empire: Empire;
+    /** Name, with " (you)" appended for the player's empire. */
+    label: string;
+    colonies: number;
+    capitalName: string;
+}
+
+/** Rows for the panel: empires with an empty name or no capital are excluded
+ * (they cannot be shown or zoomed to); the player comes first, then the rest
+ * sorted by name (localeCompare). */
+export function empireRows(empires: Empire[], player: Empire): EmpireRow[] {
+    const visible = empires.filter((e) => e.name !== '' && e.capital != null);
+    const rest = visible
+        .filter((e) => e !== player)
+        .sort((a, b) => a.name.localeCompare(b.name));
+    const ordered = visible.includes(player) ? [player, ...rest] : rest;
+    return ordered.map((e) => ({
+        empire: e,
+        label: e === player ? `${e.name} (you)` : e.name,
+        colonies: e.colonies.length,
+        capitalName: e.capital!.name,
+    }));
+}
+
+interface OpenState {
+    root: HTMLElement;
+    close: () => void;
+}
+
+let open: OpenState | null = null;
+
+/** Open the Empires list, or close it if it is already open. */
+export function toggleEmpiresList(opts: EmpiresListOptions): void {
+    if (open) {
+        open.close();
+    } else {
+        open = createEmpiresList(opts);
+    }
+}
+
+/** Close the Empires list (no-op when closed). */
+export function closeEmpiresList(): void {
+    open?.close();
+}
+
+function createEmpiresList(opts: EmpiresListOptions): OpenState {
+    const root = document.createElement('div');
+    root.className = 'empires-list-wrap';
+
+    const win = document.createElement('div');
+    win.className = 'empires-list-window';
+
+    const titlebar = document.createElement('div');
+    titlebar.className = 'empires-list-titlebar';
+    const heading = document.createElement('div');
+    heading.className = 'empires-list-heading';
+    heading.textContent = 'Empires';
+    titlebar.appendChild(heading);
+
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'empires-list-close';
+    closeBtn.title = 'Close';
+    closeBtn.textContent = '✕';
+    titlebar.appendChild(closeBtn);
+    win.appendChild(titlebar);
+
+    const body = document.createElement('div');
+    body.className = 'empires-list-body';
+    for (const row of empireRows(opts.empires, opts.playerEmpire)) {
+        const line = document.createElement('div');
+        line.className = 'empires-list-row';
+
+        // Colour swatch: Empire.mainColor is a packed RGB value read the same
+        // way hud.ts colorHueRotate decodes it.
+        const c = row.empire.mainColor;
+        const swatch = document.createElement('span');
+        swatch.className = 'empires-list-swatch';
+        swatch.style.background = `rgb(${(c >> 16) & 255}, ${((c >> 8) & 255)}, ${(c & 255)})`;
+
+        const name = document.createElement('span');
+        name.className = 'empires-list-name';
+        name.textContent = row.label;
+
+        const count = document.createElement('span');
+        count.className = 'empires-list-colonies';
+        count.textContent = String(row.colonies);
+
+        const capital = document.createElement('span');
+        capital.className = 'empires-list-capital';
+        capital.textContent = row.capitalName;
+
+        line.append(swatch, name, count, capital);
+        line.addEventListener('click', () => {
+            const capitalHabitat = row.empire.capital;
+            if (!capitalHabitat) return;
+            close();
+            opts.onZoomTo(capitalHabitat);
+        });
+        body.appendChild(line);
+    }
+    win.appendChild(body);
+    root.appendChild(win);
+    document.body.appendChild(root);
+
+    function close(): void {
+        document.removeEventListener('keydown', onKeyDown);
+        root.remove();
+        open = null;
+    }
+
+    // Escape closes the panel; stopPropagation keeps the global game-menu
+    // Escape handler (registered in createHud) from opening as well.
+    function onKeyDown(e: KeyboardEvent): void {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
+            close();
+        }
+    }
+    document.addEventListener('keydown', onKeyDown);
+    closeBtn.addEventListener('click', () => close());
+
+    return { root, close };
+}

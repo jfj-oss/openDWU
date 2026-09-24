@@ -1,0 +1,19 @@
+/* Shared toast (task 12d). One toast at a time, bottom-centre of its root,
+   fading out before removal. Styling moved from gameMenu.css's old
+   .game-menu-toast rule under the new class name. */
+
+.dwu-toast {
+    position: absolute;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(20, 22, 28, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 10px 18px;
+    font-size: 13px;
+    color: #fff;
+    white-space: nowrap;
+    opacity: 1;
+    transition: opacity 0.3s ease;
+}

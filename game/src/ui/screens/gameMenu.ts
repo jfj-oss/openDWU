@@ -7,6 +7,7 @@ import './gameMenu.css';
 import { GalaxyTime } from '../../sim/clock';
 import { startMusic } from '../../audio/musicPlayer';
 import { getSettings, updateSettings, uiScaleFactor } from '../settings';
+import { showToast } from '../toast';
 import { getSaveLoadProvider } from './saveLoad';
 
 /** Music volume adapter so the screen stays import-safe in node tests. */
@@ -69,14 +70,6 @@ function isTypingTarget(target: EventTarget | null): boolean {
 /** Electron sets a distinctive UA token; used to pick the Exit behaviour. */
 function isDesktopShell(): boolean {
     return navigator.userAgent.includes('Electron');
-}
-
-function showToast(root: HTMLElement, text: string): void {
-    const toast = document.createElement('div');
-    toast.className = 'game-menu-toast';
-    toast.textContent = text;
-    root.appendChild(toast);
-    setTimeout(() => toast.remove(), 3000);
 }
 
 /** Apply the persisted UI scale as `--ui-scale` on the HUD root. */
@@ -238,7 +231,7 @@ export function createGameMenu(
         if (provider) {
             provider.open('save');
         } else {
-            showToast(root, 'Save Game not available in this mode');
+            showToast('Save Game not available in this mode', root);
         }
     });
     const loadBtn = makeButton('Load Game', () => {
@@ -246,7 +239,7 @@ export function createGameMenu(
         if (provider) {
             provider.open('load');
         } else {
-            showToast(root, 'Load Game not available in this mode');
+            showToast('Load Game not available in this mode', root);
         }
     });
     const optionsBtn = makeButton('Options', () => {
@@ -268,7 +261,7 @@ export function createGameMenu(
             } else if (isDesktopShell()) {
                 window.close();
             } else {
-                showToast(root, 'Close this tab to exit');
+                showToast('Close this tab to exit', root);
             }
         }
     });

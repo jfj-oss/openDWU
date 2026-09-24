@@ -37,3 +37,15 @@ Tests: jsdom is NOT configured (see test/hud.test.ts), so put the row logic in a
 - the player's label ends with " (you)".
 
 Run `npm run typecheck` && `npm test`, then append `## Worker report`.
+
+## Worker report
+
+Files changed:
+- `src/ui/screens/empiresList.ts` (new) — `EmpiresListOptions`, pure `empireRows(empires, player)` (excludes empty-name / capital-less empires; player first, rest by `name.localeCompare`; label gets " (you)" for the player), plus `toggleEmpiresList(opts)` / `closeEmpiresList()` building a DOM panel (titlebar "Empires" + ✕ close, rows with 12px swatch in `rgb(mainColor)` decoded like hud.ts `colorHueRotate`, name, colony count, capital name). Row click calls `onZoomTo(empire.capital)` and closes. Escape keydown listener added on open, removed on close, with `stopPropagation` so the game menu does not also open.
+- `src/ui/screens/empiresList.css` (new) — copies the tutorial-window dark-panel tokens (background, blur, borders, gold heading, font); grid row layout with the 12px swatch column.
+- `src/ui/hud.ts` — Empires button click now calls `toggleEmpiresList({ empires: wiring.galaxy.empires, playerEmpire: wiring.game.playerEmpire as Empire, onZoomTo })`, guarded when `galaxy`/`game` are missing; `onZoomTo` reuses the `doViewAction('zoomSelection')` camera calls (`cam.centerOn(xpos, ypos)` + `cam.zoomAt(SYSTEM_LEVEL_ZOOM, width/2, height/2)`). Replaced the `TODO(screen): Empires` console.log.
+- `test/empiresList.test.ts` (new) — tests only `empireRows`: player first then others by name; empty-name/no-capital exclusion; player label ends with " (you)"; colony counts and capital names.
+
+Done: all of the above; `npm run typecheck` and `npm test` both pass (583 tests).
+
+Left undone: nothing in scope. The original's full Empires/diplomacy window (relations, leaders, etc.) is out of scope per the streamlined-HUD approach; the panel shows the four specified columns only.

@@ -17,3 +17,18 @@ Three copies of the toast code exist:
 Tests: `toast.ts` is DOM-only and jsdom is not configured, so no new tests. Keep the existing tests green.
 
 Run `npm run typecheck` && `npm test`, then append `## Worker report`.
+
+## Worker report
+
+Files changed:
+- `src/ui/toast.ts` (new) — shared `showToast(text, root = document.body, ms = 2500)`; one toast at a time (replaces any existing), bottom-centre of `root`, fades out (opacity transition) before removal.
+- `src/ui/toast.css` (new) — `.dwu-toast` rule, moved from gameMenu.css's old `.game-menu-toast` rule plus an opacity fade transition.
+- `src/ui/screens/gameMenu.ts` — deleted local `showToast`; imports shared `showToast`; call sites updated to `(text, root)` order (texts unchanged).
+- `src/ui/screens/gameMenu.css` — removed the old `.game-menu-toast` rule.
+- `src/ui/screens/mainMenu.ts` — deleted `showExitToast`; imports shared `showToast`; Exit handler now calls `showToast('Close this tab to exit', root)` (text unchanged).
+- `src/ui/screens/mainMenu.css` — removed the old `.menu-toast` rule.
+- `src/ui/hud.ts` — both `TODO(screen)` click handlers (`makeIconButton`, `buildTopBarButton`) now also call `showToast(\`${title} — not yet available\`)` / `showToast(\`${label ?? name} — not yet available\`)`; the `console.log` lines are kept. Empires button untouched.
+
+Done: all three steps of the task. `saveLoad.ts`'s own `showToast` left untouched as instructed.
+
+Left undone: nothing. `npm run typecheck` passes; `npm test` — 583 tests pass (no new tests; toast.ts is DOM-only and jsdom is not configured).

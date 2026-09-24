@@ -6,9 +6,11 @@ import {
     SAVE_KEY_PREFIX,
     readSaveIndex,
     writeSaveIndex,
+    writeSaveIndexEntry,
     storeSave,
     deleteSave,
     parseSaveFileText,
+    createMemorySaveStore,
     type SaveStorage,
 } from '../src/ui/screens/saveLoad';
 
@@ -110,6 +112,51 @@ describe('deleteSave', () => {
         expect(deleteSave(storage, 'nope')).toBe(false);
         // The index is untouched.
         expect(readSaveIndex(storage).map((e) => e.name)).toEqual(['alpha']);
+    });
+});
+
+describe('createMemorySaveStore', () => {
+    it('round-trips put/get/delete', async () => {
+        const store = createMemorySaveStore();
+        expect(await store.get('alpha')).toBeNull();
+        await store.put('alpha', '{"v":1}');
+        expect(await store.get('alpha')).toBe('{"v":1}');
+        // A second put replaces the text.
+        await store.put('alpha', '{"v":2}');
+        expect(await store.get('alpha')).toBe('{"v":2}');
+        await store.delete('alpha');
+        expect(await store.get('alpha')).toBeNull();
+        // Deleting an unknown name is a no-op.
+        await store.delete('nope');
+    });
+
+    it('keeps entries independent per name', async () => {
+        const store = createMemorySaveStore();
+        await store.put('a', 'ta');
+        await store.put('b', 'tb');
+        expect(await store.get('a')).toBe('ta');
+        expect(await store.get('b')).toBe('tb');
+        await store.delete('a');
+        expect(await store.get('b')).toBe('tb');
+    });
+});
+
+describe('writeSaveIndexEntry', () => {
+    it('puts the newest entry first', () => {
+        const storage = new FakeStorage();
+        writeSaveIndexEntry(storage, 'first', '2026-09-24T09:00:00.000Z');
+        writeSaveIndexEntry(storage, 'second', '2026-09-24T10:00:00.000Z');
+        expect(readSaveIndex(storage).map((e) => e.name)).toEqual(['second', 'first']);
+    });
+
+    it('replaces a same-name entry without duplicating', () => {
+        const storage = new FakeStorage();
+        writeSaveIndexEntry(storage, 'alpha', '2026-09-24T09:00:00.000Z');
+        writeSaveIndexEntry(storage, 'beta', '2026-09-24T09:30:00.000Z');
+        writeSaveIndexEntry(storage, 'alpha', '2026-09-24T10:00:00.000Z');
+        const entries = readSaveIndex(storage);
+        expect(entries.map((e) => e.name)).toEqual(['alpha', 'beta']);
+        expect(entries[0].date).toBe('2026-09-24T10:00:00.000Z');
     });
 });
 
