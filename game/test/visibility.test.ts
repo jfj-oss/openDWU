@@ -22,6 +22,10 @@ const systemNames = Array.from({ length: 200 }, (_, i) => `S${i}`);
 function makeGalaxy(): Galaxy {
     return generateGalaxy({ seed: 1, shape: GalaxyShape.Spiral, starCount: 200, sectorWidth: 6, sectorHeight: 6, systemNames });
 }
+// Star systems with at least one planet/moon (gas clouds are systems too, C2c-1).
+function starSystemIdx(g: Galaxy, n: number): number {
+    return g.systems.map((s, i) => [s, i] as const).filter(([s]) => s.systemStar.category === HabitatCategoryType.Star && g.systemHabitatsOf(s.systemStar.systemIndex).length > 0)[n][1];
+}
 function owner(over: Partial<VisibilityOwner>): VisibilityOwner {
     return { ...NULL_VISIBILITY_OWNER, ...over };
 }
@@ -60,26 +64,26 @@ describe('EmpireVisibility', () => {
 
     it('owned colony makes its system Visible; losing it drops to Explored', () => {
         const g = makeGalaxy();
-        const sys = g.systems[3];
-        const planet = g.systemHabitatsOf(3)[0];
+        const sys = g.systems[starSystemIdx(g, 3)];
+        const planet = g.systemHabitatsOf(starSystemIdx(g, 3))[0];
         let owns = true;
         const v = new EmpireVisibility(g, owner({ controlsHabitat: (h) => owns && h === planet }));
         v.resolveSystemVisibilityAt(planet.xpos, planet.ypos);
-        expect(v.systemVisibility[3].status).toBe(SystemVisibilityStatus.Visible);
+        expect(v.systemVisibility[starSystemIdx(g, 3)].status).toBe(SystemVisibilityStatus.Visible);
         expect(v.systemsVisible).toContain(sys.systemStar);
-        expect(v.checkSystemVisible(3)).toBe(true);
+        expect(v.checkSystemVisible(starSystemIdx(g, 3))).toBe(true);
         owns = false;
         v.resolveSystemVisibilityAt(planet.xpos, planet.ypos);
-        expect(v.systemVisibility[3].status).toBe(SystemVisibilityStatus.Explored);
+        expect(v.systemVisibility[starSystemIdx(g, 3)].status).toBe(SystemVisibilityStatus.Explored);
         expect(v.systemsVisible).not.toContain(sys.systemStar);
-        expect(v.checkSystemExplored(3)).toBe(true);
-        expect(v.checkSystemVisible(3)).toBe(false);
+        expect(v.checkSystemExplored(starSystemIdx(g, 3))).toBe(true);
+        expect(v.checkSystemVisible(starSystemIdx(g, 3))).toBe(false);
     });
 
     it('excludeHabitat / excludeUnit are ignored when resolving', () => {
         const g = makeGalaxy();
-        const star = g.systems[4].systemStar;
-        const planet = g.systemHabitatsOf(4)[0];
+        const star = g.systems[starSystemIdx(g, 4)].systemStar;
+        const planet = g.systemHabitatsOf(starSystemIdx(g, 4))[0];
         const ship: VisibilityUnit = { xpos: star.xpos, ypos: star.ypos, nearestSystemStar: star };
         const v = new EmpireVisibility(g, owner({
             controlsHabitat: (h) => h === planet,
@@ -88,7 +92,7 @@ describe('EmpireVisibility', () => {
         expect(v.checkSystemVisibleExcluding(star, null, planet)).toBe(SystemVisibilityStatus.Visible); // ship
         expect(v.checkSystemVisibleExcluding(star, ship, planet)).toBe(SystemVisibilityStatus.Unexplored);
         v.resolveSystemVisibilityForUnit(ship, false);
-        expect(v.systemVisibility[4].status).toBe(SystemVisibilityStatus.Visible);
+        expect(v.systemVisibility[starSystemIdx(g, 4)].status).toBe(SystemVisibilityStatus.Visible);
     });
 
     it('far from any system: ResolveSystemVisibility(x, y) does nothing', () => {
@@ -164,11 +168,11 @@ describe('game-start exploration (SetEmpireExplorationAmount)', () => {
     it('explores the N systems nearest the capital, and knows every star', () => {
         const g = makeGalaxy();
         const v = new EmpireVisibility(g);
-        const capital = g.systemHabitatsOf(10).find((h) => h.category === HabitatCategoryType.Planet) ?? g.systems[10].systemStar;
+        const capital = g.systemHabitatsOf(starSystemIdx(g, 10)).find((h) => h.category === HabitatCategoryType.Planet) ?? g.systems[starSystemIdx(g, 10)].systemStar;
         setEmpireExplorationAmount(g, v, capital, 5);
-        expect(countExploredSystems(v.systemVisibility)).toBe(5);
-        // The 5 explored systems are the 5 nearest star systems to the capital.
-        const byDist = [...g.systems].sort(
+        // 5 star systems explored; nearer gas clouds are also marked Explored
+        // but don't count (C# j--).
+        const byDist = [...g.systems].filter((s) => s.systemStar.category !== HabitatCategoryType.GasCloud).sort(
             (a, b) => g.calculateDistance(capital.xpos, capital.ypos, a.systemStar.xpos, a.systemStar.ypos) -
                 g.calculateDistance(capital.xpos, capital.ypos, b.systemStar.xpos, b.systemStar.ypos),
         );
@@ -176,7 +180,8 @@ describe('game-start exploration (SetEmpireExplorationAmount)', () => {
             expect(v.systemVisibility[s.systemStar.systemIndex].status).toBe(SystemVisibilityStatus.Explored);
             for (const h of g.systemHabitatsOf(s.systemStar.systemIndex)) expect(v.resourceMap.checkResourcesKnown(h)).toBe(true);
         }
-        for (const s of g.systems) expect(v.resourceMap.checkResourcesKnown(s.systemStar)).toBe(true);
+        // Galaxy.7.cs 4998: every top-level habitat except gas clouds becomes known.
+        for (const s of g.systems) if (s.systemStar.category !== HabitatCategoryType.GasCloud) expect(v.resourceMap.checkResourcesKnown(s.systemStar)).toBe(true);
     });
 
     it('amount 0 explores nothing', () => {
@@ -208,8 +213,8 @@ describe('game-start exploration (SetEmpireExplorationAmount)', () => {
         const g = makeGalaxy();
         const a = new EmpireVisibility(g);
         const b = new EmpireVisibility(g);
-        const star = g.systems[6].systemStar;
-        const hs: Habitat[] = g.systemHabitatsOf(6);
+        const star = g.systems[starSystemIdx(g, 6)].systemStar;
+        const hs: Habitat[] = g.systemHabitatsOf(starSystemIdx(g, 6));
         a.setSystemVisibility(star, SystemVisibilityStatus.Explored);
         setSystemHabitatsExploration([a, b], hs, star);
         for (const h of hs) {

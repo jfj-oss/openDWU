@@ -24,6 +24,15 @@ import {
 import type { Race } from './data/races';
 import type { Resource } from './data/resources';
 import { buildResourceSystem, type ResourceSystem } from './resourceSystem';
+import { netSort } from './netSort';
+
+// C# string.CompareTo (culture-sensitive; .NET 5+ uses ICU).
+const NAME_COLLATOR = new Intl.Collator('en-US');
+function compareGroupNames(a: Habitat[], b: Habitat[]): number {
+    if (b.length === 0) return a.length > 0 ? 1 : 0;
+    if (a.length === 0) return -1;
+    return NAME_COLLATOR.compare(a[0].name, b[0].name);
+}
 import type { Empire } from './empire';
 import type { GameData } from './data/gameData';
 
@@ -214,6 +223,298 @@ export class Galaxy {
         }
     }
 
+    // ---- Task C2c-1: GalaxyIndex grids + ring search (Galaxy.7.cs) ----
+    // C#: HabitatList[][] HabitatIndex / SystemInfoList[][] SystemsIndex,
+    // IndexSize = 400000, IndexMaxX/Y = SizeX/SizeY / IndexSize.
+    habitatIndexGrid: Habitat[][][] = [];
+    systemsIndexGrid: SystemInfo[][][] = [];
+
+    get indexMaxX(): number {
+        return Math.trunc(this.sizeX / INDEX_SIZE);
+    }
+
+    get indexMaxY(): number {
+        return Math.trunc(this.sizeY / INDEX_SIZE);
+    }
+
+    initIndexGrids(): void {
+        this.habitatIndexGrid = [];
+        this.systemsIndexGrid = [];
+        for (let i = 0; i < this.indexMaxX; i++) {
+            this.habitatIndexGrid.push(Array.from({ length: this.indexMaxY }, () => []));
+            this.systemsIndexGrid.push(Array.from({ length: this.indexMaxY }, () => []));
+        }
+    }
+
+    // Port of Galaxy.7.cs ResolveIndex(int x, int y) + CorrectIndexCoords.
+    resolveIndex(x: number, y: number): { x: number; y: number } {
+        let x2 = Math.trunc(Math.trunc(x) / INDEX_SIZE);
+        let y2 = Math.trunc(Math.trunc(y) / INDEX_SIZE);
+        if (x2 < 0) x2 = 0;
+        else if (x2 >= this.indexMaxX) x2 = this.indexMaxX - 1;
+        if (y2 < 0) y2 = 0;
+        else if (y2 >= this.indexMaxY) y2 = this.indexMaxY - 1;
+        return { x: x2, y: y2 };
+    }
+
+    // Port of Galaxy.1.cs UpdateSystemInfo: add each system to SystemsIndex
+    // (Systems order). TODO(port): DetermineSystemInfo / CopyFromOther
+    // (PlanetCount, DominantEmpire, ...) — task C2c-2.
+    updateSystemInfo(): void {
+        for (const sys of this.systems) {
+            const c = this.resolveIndex(sys.systemStar.xpos, sys.systemStar.ypos);
+            const cell = this.systemsIndexGrid[c.x][c.y];
+            if (!cell.includes(sys)) cell.push(sys);
+        }
+    }
+
+    // Port of Galaxy.7.cs DetermineClosestIndexEdges (int math).
+    private determineClosestIndexEdges(x: number, y: number, l: number, r: number, t: number, b: number): { d: number; nx: number; ny: number } {
+        let num = x - INDEX_SIZE * l;
+        if (num < 0) num = 536870911;
+        let num2 = INDEX_SIZE * (r + 1) - x;
+        if (num2 > this.indexMaxX * INDEX_SIZE) num2 = 536870911;
+        let num3 = y - INDEX_SIZE * t;
+        if (num3 < 0) num3 = 536870911;
+        let num4 = INDEX_SIZE * (b + 1) - y;
+        if (num4 > this.indexMaxY * INDEX_SIZE) num4 = 536870911;
+        let val: number;
+        let nx: number;
+        if (num < num2) {
+            val = num;
+            nx = -1;
+        } else {
+            val = num2;
+            nx = 1;
+        }
+        let val2: number;
+        let ny: number;
+        if (num3 < num4) {
+            val2 = num3;
+            ny = -1;
+        } else {
+            val2 = num4;
+            ny = 1;
+        }
+        return { d: Math.min(val, val2), nx, ny };
+    }
+
+    // Port of the ring-search loop shared by every Galaxy FindNearest*/FastFind*
+    // (Galaxy.7.cs DetermineSectorBoundaries 2513 + BuildIndexListForSearching
+    // 2603). `inIndex` is the per-cell search (C# *InIndex), returning the
+    // cell's best habitat and its (non-squared) distance.
+    ringSearch<T>(x: number, y: number, inIndex: (cx: number, cy: number) => { item: T | null; distance: number }): T | null {
+        const ix = Math.trunc(x);
+        const iy = Math.trunc(y);
+        let num = Number.MAX_VALUE;
+        let result: T | null = null;
+        const start = this.resolveIndex(ix, iy);
+        const bounds = { l: start.x, r: start.x, t: start.y, b: start.y };
+        let num2 = 0;
+        let num3 = 0;
+        let iterationCount = 0;
+        while (iterationCount < 10000 && (iterationCount++, num > num3)) {
+            // DetermineSectorBoundaries
+            let e = this.determineClosestIndexEdges(ix, iy, bounds.l, bounds.r, bounds.t, bounds.b);
+            let row = -1;
+            let col = -1;
+            if (num2 === 0) {
+                row = bounds.t;
+                col = bounds.l;
+                num3 = e.d;
+            } else {
+                if (e.nx === -1) {
+                    bounds.l--;
+                    if (bounds.l < 0) {
+                        bounds.r++;
+                        bounds.l = 0;
+                        if (bounds.r > this.indexMaxX - 1) bounds.r = this.indexMaxX - 1;
+                        col = bounds.r;
+                    } else col = bounds.l;
+                } else if (e.nx === 1) {
+                    bounds.r++;
+                    if (bounds.r > this.indexMaxX - 1) {
+                        bounds.l--;
+                        bounds.r = this.indexMaxX - 1;
+                        if (bounds.l < 0) bounds.l = 0;
+                        col = bounds.l;
+                    } else col = bounds.r;
+                }
+                if (e.ny === -1) {
+                    bounds.t--;
+                    if (bounds.t < 0) {
+                        bounds.b++;
+                        bounds.t = 0;
+                        if (bounds.b > this.indexMaxY - 1) bounds.b = this.indexMaxY - 1;
+                        row = bounds.b;
+                    } else row = bounds.t;
+                } else if (e.ny === 1) {
+                    bounds.b++;
+                    if (bounds.b > this.indexMaxY - 1) {
+                        bounds.t--;
+                        bounds.b = this.indexMaxY - 1;
+                        if (bounds.t < 0) bounds.t = 0;
+                        row = bounds.t;
+                    } else row = bounds.b;
+                }
+                e = this.determineClosestIndexEdges(ix, iy, bounds.l, bounds.r, bounds.t, bounds.b);
+                num3 = e.d;
+            }
+            // BuildIndexListForSearching
+            const cells: [number, number][] = [];
+            for (let i = bounds.l; i <= bounds.r; i++) cells.push([i, row]);
+            for (let j = bounds.t; j <= bounds.b; j++) if (j !== row) cells.push([col, j]);
+            for (const [cx, cy] of cells) {
+                // C# indexes the jagged arrays directly; -1 rows/cols never
+                // occur because both edges always move on a later step.
+                if (cx < 0 || cy < 0 || cx >= this.indexMaxX || cy >= this.indexMaxY) continue;
+                const r = inIndex(cx, cy);
+                if (r.distance < num) {
+                    result = r.item;
+                    num = r.distance;
+                }
+            }
+            num2++;
+            if (num2 > this.indexMaxX) break;
+        }
+        return result;
+    }
+
+    private static nearestIn(list: readonly Habitat[], x: number, y: number, pred: (h: Habitat) => boolean, calc: (a: number, b: number, c: number, d: number) => number): { item: Habitat | null; distance: number } {
+        let habitat: Habitat | null = null;
+        let distance = Number.MAX_VALUE;
+        for (const h of list) {
+            const dx = x - h.xpos;
+            const dy = y - h.ypos;
+            const num = dx * dx + dy * dy;
+            if (num < distance && pred(h)) {
+                habitat = h;
+                distance = num;
+            }
+        }
+        if (habitat !== null) distance = calc(x, y, habitat.xpos, habitat.ypos);
+        return { item: habitat, distance };
+    }
+
+    // Port of Galaxy.7.cs FindNearestUncolonizedHabitat (2239): planet/moon of
+    // the type (Undefined = any), unowned or independent.
+    findNearestUncolonizedHabitat(x: number, y: number, habitatType: HabitatType): Habitat | null {
+        const ix = Math.trunc(x);
+        const iy = Math.trunc(y);
+        return this.ringSearch(x, y, (cx, cy) => {
+            let habitat: Habitat | null = null;
+            let distance = Number.MAX_VALUE;
+            for (const h of this.habitatIndexGrid[cx][cy]) {
+                if (h.empire !== null && h.empire !== this.independentEmpire) continue;
+                const num = this.calculateDistanceSquared(ix, iy, h.xpos, h.ypos);
+                if (!(num < distance) || (h.category !== HabitatCategoryType.Planet && h.category !== HabitatCategoryType.Moon)) continue;
+                if (habitatType !== HabitatType.Undefined) {
+                    if (h.type === habitatType) {
+                        habitat = h;
+                        distance = num;
+                    }
+                } else {
+                    habitat = h;
+                    distance = num;
+                }
+            }
+            if (habitat !== null) distance = this.calculateDistance(ix, iy, habitat.xpos, habitat.ypos);
+            return { item: habitat, distance };
+        });
+    }
+
+    // Port of Galaxy.7.cs FindNearestHabitat(x, y, type, exclude) (2332/2730).
+    findNearestHabitatOfType(x: number, y: number, habitatType: HabitatType, habitatToExclude: Habitat | null = null): Habitat | null {
+        const ix = Math.trunc(x);
+        const iy = Math.trunc(y);
+        return this.ringSearch(x, y, (cx, cy) => {
+            let habitat: Habitat | null = null;
+            let distance = Number.MAX_VALUE;
+            for (const h of this.habitatIndexGrid[cx][cy]) {
+                if (h === habitatToExclude) continue;
+                const num = this.calculateDistanceSquared(ix, iy, h.xpos, h.ypos);
+                if (!(num < distance)) continue;
+                if (habitatType !== HabitatType.Undefined) {
+                    if (h.type === habitatType) {
+                        habitat = h;
+                        distance = num;
+                    }
+                } else {
+                    habitat = h;
+                    distance = num;
+                }
+            }
+            if (habitat !== null) distance = this.calculateDistance(ix, iy, habitat.xpos, habitat.ypos);
+            return { item: habitat, distance };
+        });
+    }
+
+    // Port of Galaxy.3.cs FindNearestColony(x, y, empire, threshold, includeIndependent)
+    // (1739). StrategicValue >= threshold is taken as true for threshold 0
+    // (the only value game setup uses). TODO(port): Habitat.StrategicValue.
+    findNearestColony(x: number, y: number, empire: Empire | null, includeIndependentColonies: boolean): Habitat | null {
+        return this.ringSearch(x, y, (cx, cy) =>
+            Galaxy.nearestIn(
+                this.habitatIndexGrid[cx][cy],
+                x,
+                y,
+                (h) => (includeIndependentColonies || h.empire !== this.independentEmpire) && (h.owner === empire || empire === null) && h.population.items.length > 0,
+                (a, b, c, d) => this.calculateDistance(a, b, c, d),
+            ),
+        );
+    }
+
+    // Port of Galaxy.6.cs FastFindNearestPlanetMoonOfTypesUnoccupiedSystem (2859).
+    // Draws Rnd.Next(0, Habitats.Count) for every visited system with planets
+    // that passes the dominant-empire / territory checks (C# order).
+    fastFindNearestPlanetMoonOfTypesUnoccupiedSystem(x: number, y: number, empire: Empire | null, types: readonly HabitatType[] | null): Habitat | null {
+        const ix = Math.trunc(x);
+        const iy = Math.trunc(y);
+        return this.ringSearch(x, y, (cx, cy) => {
+            let habitat: Habitat | null = null;
+            let distance = Number.MAX_VALUE;
+            for (const sys of this.systemsIndexGrid[cx][cy]) {
+                if (this.systemPlanetCount(sys) <= 0) continue;
+                const dom = this.systemDominantEmpire(sys);
+                if (dom !== null && dom !== empire) continue;
+                const tid = this.checkEmpireTerritoryIdAtLocation(sys.systemStar.xpos, sys.systemStar.ypos);
+                if (tid >= 0 && tid !== (empire?.empireId ?? -1)) continue;
+                const hs = this.systemHabitatsOf(sys.systemStar.systemIndex);
+                const num2 = this.rnd.next(0, hs.length);
+                const consider = (h: Habitat): void => {
+                    if ((h.category === HabitatCategoryType.Moon || h.category === HabitatCategoryType.Planet) && (types === null || types.length === 0 || types.includes(h.type)) && (h.empire === null || h.empire === this.independentEmpire)) {
+                        const num3 = this.calculateDistanceSquared(ix, iy, h.xpos, h.ypos);
+                        if (num3 < distance) {
+                            habitat = h;
+                            distance = num3;
+                        }
+                    }
+                };
+                for (let j = num2; j < hs.length; j++) consider(hs[j]);
+                for (let k = 0; k < num2; k++) consider(hs[k]);
+            }
+            if (habitat !== null) distance = this.calculateDistance(ix, iy, (habitat as Habitat).xpos, (habitat as Habitat).ypos);
+            return { item: habitat, distance };
+        });
+    }
+
+    // SystemInfo.PlanetCount (DetermineSystemInfo). TODO(port): cached field — C2c-2.
+    systemPlanetCount(sys: SystemInfo): number {
+        let n = 0;
+        for (const h of sys.habitats) if (h.category === HabitatCategoryType.Planet) n++;
+        return n;
+    }
+
+    // SystemInfo.DominantEmpire?.Empire. TODO(port): DetermineSystemInfo — C2c-2.
+    systemDominantEmpire(_sys: SystemInfo): Empire | null {
+        return null;
+    }
+
+    // Galaxy.CheckEmpireTerritoryIdAtLocation. TODO(port): EmpireTerritory grid — C2c-2.
+    checkEmpireTerritoryIdAtLocation(_x: number, _y: number): number {
+        return -1;
+    }
+
     // Port of Galaxy.cs GetNextCreatureID (line 1333).
     getNextCreatureID(): number {
         if (this.nextCreatureId < 2147483647) {
@@ -258,22 +559,37 @@ export class Galaxy {
         return { x: Math.cos(num) * num2, y: Math.sin(num) * num2 };
     }
 
-    // Port of Galaxy.6.cs FastFindNearestSystem (line 3648). The C# sector
-    // search returns the system star with the smallest squared distance
-    // (from (int)x, (int)y); a linear scan gives the same result.
+    // Port of Galaxy.6.cs FastFindNearestSystem (line 3648) / FindNearestSystemInIndex
+    // (SystemsIndex ring search; C2c-1). Falls back to a linear scan when the
+    // index grids haven't been built (galaxies made outside generateGalaxy).
     fastFindNearestSystem(x: number, y: number): Habitat | null {
         const ix = Math.trunc(x);
         const iy = Math.trunc(y);
-        let best: Habitat | null = null;
-        let bestDistance = Number.MAX_VALUE;
-        for (const system of this.systems) {
-            const d = this.calculateDistanceSquared(ix, iy, system.systemStar.xpos, system.systemStar.ypos);
-            if (d < bestDistance) {
-                bestDistance = d;
-                best = system.systemStar;
+        if (this.systemsIndexGrid.length === 0) {
+            let best: Habitat | null = null;
+            let bestDistance = Number.MAX_VALUE;
+            for (const system of this.systems) {
+                const d = this.calculateDistanceSquared(ix, iy, system.systemStar.xpos, system.systemStar.ypos);
+                if (d < bestDistance) {
+                    bestDistance = d;
+                    best = system.systemStar;
+                }
             }
+            return best;
         }
-        return best;
+        return this.ringSearch(x, y, (cx, cy) => {
+            let item: Habitat | null = null;
+            let distance = Number.MAX_VALUE;
+            for (const sys of this.systemsIndexGrid[cx][cy]) {
+                const d = this.calculateDistanceSquared(ix, iy, sys.systemStar.xpos, sys.systemStar.ypos);
+                if (d < distance) {
+                    item = sys.systemStar;
+                    distance = d;
+                }
+            }
+            if (item !== null) distance = this.calculateDistance(ix, iy, (item as Habitat).xpos, (item as Habitat).ypos);
+            return { item, distance };
+        });
     }
 
     // Port of Galaxy.6.cs GenerateDistanceOrderedSystemList (line 3011).
@@ -3132,29 +3448,32 @@ export function generateGalaxy(options: GenerateGalaxyOptions): Galaxy {
         galaxy.habitats.push(cloud);
     }
 
-    // Sort + re-index (Galaxy.4.cs 2314-2334): the source sorts the list of
-    // per-system HabitatLists and rebuilds Habitats/HabitatIndex from that
-    // order. There's no cross-system ordering comparator ported (relies on
-    // HabitatList.Sort()/IComparable, out of scope), so system groups are
-    // emitted in their original generation order, which is a superset of
-    // determinism (same seed -> identical order) even if it doesn't match
-    // the original in-memory ordering exactly.
+    // Sort + re-index (Galaxy.4.cs 2314-2334), task C2c-1: list.Sort() orders
+    // the per-system HabitatLists by HabitatList.CompareTo = first habitat's
+    // Name.CompareTo (culture-sensitive; ICU en-US collation), with .NET's
+    // unstable introsort. Habitats and HabitatIndex are rebuilt in that order;
+    // every habitat of a group goes into the index cell of the group's first
+    // habitat.
     const allGroups = [...perStarHabitats, ...gasCloudGroups];
+    netSort(allGroups, (a, b) => compareGroupNames(a, b));
     galaxy.habitats = [];
+    galaxy.initIndexGrids();
     for (const group of allGroups) {
+        const cell = galaxy.resolveIndex(group[0].xpos, group[0].ypos);
         for (const habitat of group) {
             habitat.habitatIndex = galaxy.habitats.length;
             galaxy.habitats.push(habitat);
+            galaxy.habitatIndexGrid[cell.x][cell.y].push(habitat);
         }
     }
 
-    // Build Systems (Galaxy.4.cs 2335-2347): one SystemInfo per star. Only
-    // stars are systems; gas clouds are standalone habitats (no
-    // moons/planets/asteroids yet — see setupSolarSystem TODO).
-    for (const group of perStarHabitats) {
+    // Build Systems (Galaxy.4.cs 2335-2347): one SystemInfo per group — gas
+    // clouds included (their Habitats list is empty). TS convention: the
+    // SystemInfo.habitats array holds the star at [0] (systemHabitatsOf()
+    // gives the C# list).
+    for (const group of allGroups) {
         const star = group[0];
         const systemIndex = galaxy.systems.length;
-        star.systemIndex = systemIndex;
         for (const habitat of group) {
             habitat.systemIndex = systemIndex;
         }
@@ -3166,6 +3485,17 @@ export function generateGalaxy(options: GenerateGalaxyOptions): Galaxy {
                 y: Math.trunc(star.ypos / galaxy.sectorSize),
             },
         });
+    }
+    // UpdateSystemInfo(null): SystemsIndex in Systems order.
+    // TODO(port): DetermineSystemInfo fields (PlanetCount etc.) — see updateSystemInfo().
+    galaxy.updateSystemInfo();
+    // Galaxy.4.cs 2349-2355: creatures join their parent habitat's system.
+    for (const c of galaxy.creatures) {
+        const ph = c.parentHabitat;
+        if (ph === null) continue;
+        const sys = galaxy.systems[ph.systemIndex];
+        if (!sys.creatures) sys.creatures = [];
+        if (!sys.creatures.includes(c)) sys.creatures.push(c);
     }
 
     return galaxy;

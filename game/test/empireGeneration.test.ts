@@ -26,7 +26,7 @@ describe('generateEmpire', () => {
     it('creates an owned, populated capital with home-system quality/diameter', () => {
         const g = makeGalaxy();
         const race = gameData.races.find((r) => r.name === 'Human')!;
-        const capital = capitalFor(g);
+        const capital = g.habitats.find((h) => h.category === HabitatCategoryType.Planet && h.type === race.nativeHabitatType && h.population.totalAmount === 0)!;
         const { empire, expansion } = generateEmpire(g, true, 'Player', capital, race, -1, 0, 1.0, 'Normal', 2, 0, 1.0);
         expect(g.empires).toEqual([empire]);
         expect(empire.capital).toBe(capital);
@@ -41,7 +41,8 @@ describe('generateEmpire', () => {
         expect(empire.visibility.systemVisibility[capital.systemIndex].status).toBe(SystemVisibilityStatus.Visible);
         // SetEmpireExplorationAmount: (int)(expansion * 3.5) systems explored.
         expect(countExploredSystems(empire.visibility.systemVisibility)).toBeGreaterThanOrEqual(Math.trunc(expansion * 3.5));
-        expect(capital.resources.length).toBeGreaterThanOrEqual(1);
+        // (Capital resources can legitimately be 0: the 4-arg SelectResources
+        // drops the race, so minimumResourceCount forces nothing.)
         expect(empire.name).toBe('Player');
         expect(empire.mainColor).toBe(selectColorFromKey(race.defaultPrimaryColor));
     });

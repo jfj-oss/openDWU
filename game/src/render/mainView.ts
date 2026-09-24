@@ -828,6 +828,8 @@ export class MainView {
 
         // Systems and gas clouds.
         for (const system of this.galaxy.systems) {
+            // Gas clouds are SystemInfos too (C# / task C2c-1); they are drawn as clouds below.
+            if (system.systemStar.category === HabitatCategoryType.GasCloud) continue;
             this.systems.push(new SystemView(this, system, textures));
         }
         for (const habitat of this.galaxy.habitats) {

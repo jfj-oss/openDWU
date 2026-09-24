@@ -503,13 +503,11 @@ export function setEmpireExplorationAmount(galaxy: Galaxy, empire: EmpireVisibil
             continue;
         }
         empire.resourceMap.setResourcesKnown(habitats[num], true);
-        // Gas clouds (and top-level asteroids) have no SystemVisibility entry.
-        const status = habitat2.category === HabitatCategoryType.GasCloud || habitat2.category === HabitatCategoryType.Asteroid
-            ? SystemVisibilityStatus.Undefined
-            : empire.checkSystemVisibilityStatus(habitat2.systemIndex);
+        const status = empire.checkSystemVisibilityStatus(habitat2.systemIndex);
         if (habitat2.category === HabitatCategoryType.GasCloud || habitat2.category === HabitatCategoryType.Asteroid) {
-            // C# also calls SetSystemVisibility here when Unexplored; the TS
-            // gas clouds carry no system index, so it is a no-op either way.
+            if (status === SystemVisibilityStatus.Unexplored) {
+                empire.setSystemVisibility(habitat2, SystemVisibilityStatus.Explored);
+            }
             j--;
             continue;
         }
