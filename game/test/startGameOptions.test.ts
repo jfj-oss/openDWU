@@ -5,11 +5,13 @@ import {
     aggressionFor,
     alienLifeFor,
     applyEmpireDefaults,
+    clampVictory,
     colonyPrevalenceFor,
     defaultEmpireName,
     defaultFlagColors,
     defaultRaceName,
     defaultStartGameOptions,
+    defaultVictoryConditions,
     difficultyFor,
     flagShapeUrl,
     FLAG_COLOR_PALETTE,
@@ -17,6 +19,11 @@ import {
     sectorsFor,
     spaceCreaturesFor,
     starCountFor,
+    VICTORY_PERCENT_MIN,
+    VICTORY_TIME_LIMIT_YEARS_MAX,
+    VICTORY_TIME_LIMIT_YEARS_MIN,
+    VICTORY_TIME_START_YEARS_MAX,
+    VICTORY_TIME_START_YEARS_MIN,
     type StartGameOptions,
 } from '../src/sim/startGameOptions';
 import { GalaxyShape } from '../src/sim/types';
@@ -79,6 +86,10 @@ describe('defaultStartGameOptions (task 06b)', () => {
         expect(opts.aggressionIndex).toBe(2);
         expect(opts.difficultyIndex).toBe(2);
         expect(opts.difficultyScaling).toBe(false);
+        // Task 06g: victory conditions default to the C# defaults (all types
+        // unchecked = sandbox mode; percents 33; time limit 10y; time start
+        // 3y; all event toggles on; threshold 1.0).
+        expect(opts.victory).toEqual(defaultVictoryConditions());
     });
 });
 
@@ -138,6 +149,13 @@ describe('StartGameOptions round-trip (task 06d)', () => {
             aggressionIndex: 4,
             difficultyIndex: 0,
             difficultyScaling: true,
+            victory: {
+                ...defaultVictoryConditions(),
+                territory: true,
+                territoryPercent: 50,
+                timeLimit: true,
+                timeLimitYears: 25,
+            },
         };
         const copy = { ...options };
         expect(copy).toEqual(options);
@@ -146,6 +164,22 @@ describe('StartGameOptions round-trip (task 06d)', () => {
         copy.seed = 7;
         expect(options.raceName).toBe('Human');
         expect(options.seed).toBe(42);
+    });
+
+    it('round-trips a custom nested victory object through a deep copy', () => {
+        const options: StartGameOptions = defaultStartGameOptions();
+        options.victory = {
+            ...defaultVictoryConditions(),
+            economy: true,
+            economyPercent: 60,
+            startDateYears: 12,
+            enableDisasterEvents: false,
+        };
+        const copy = { ...options, victory: { ...options.victory } };
+        expect(copy.victory).toEqual(options.victory);
+        // Mutating the copy's nested object must not affect the original.
+        copy.victory.economyPercent = 99;
+        expect(options.victory.economyPercent).toBe(60);
     });
 
     it('maps through the option helpers unchanged', () => {
@@ -167,6 +201,7 @@ describe('StartGameOptions round-trip (task 06d)', () => {
             aggressionIndex: 2,
             difficultyIndex: 2,
             difficultyScaling: false,
+            victory: defaultVictoryConditions(),
         };
         expect(starCountFor(options.starCountIndex)).toBe(700);
         expect(sectorsFor(options.dimensionIndex)).toBe(8);
@@ -330,5 +365,65 @@ describe('difficultyFor (task 06f, Start.1.cs Start.method_201)', () => {
     it('defaults out-of-range indices to 1.0 (C# pre-switch default)', () => {
         expect(difficultyFor(-1)).toBe(1.0);
         expect(difficultyFor(5)).toBe(1.0);
+    });
+});
+
+describe('defaultVictoryConditions (task 06g, VictoryConditions.cs + Start.InitializeComponent.cs)', () => {
+    it('matches the C# defaults: all types unchecked, percents 33, time limit 10y, time start 3y, events on, threshold 1.0', () => {
+        expect(defaultVictoryConditions()).toEqual({
+            territory: false,
+            territoryPercent: 33,
+            population: false,
+            populationPercent: 33,
+            economy: false,
+            economyPercent: 33,
+            timeLimit: false,
+            timeLimitYears: 10,
+            startDateYears: 3,
+            enableDisasterEvents: true,
+            enableRaceSpecificConditions: true,
+            enableRaceSpecificEvents: true,
+            victoryThresholdPercentage: 1.0,
+        });
+    });
+
+    it('exposes the wizard control bounds from Start.InitializeComponent.cs', () => {
+        expect(VICTORY_PERCENT_MIN).toBe(1);
+        expect(VICTORY_TIME_LIMIT_YEARS_MIN).toBe(1);
+        expect(VICTORY_TIME_LIMIT_YEARS_MAX).toBe(1000);
+        expect(VICTORY_TIME_START_YEARS_MIN).toBe(1);
+        expect(VICTORY_TIME_START_YEARS_MAX).toBe(99);
+    });
+});
+
+describe('clampVictory (task 06g)', () => {
+    it('clamps percentages up to the minimum of 1', () => {
+        const v = { ...defaultVictoryConditions(), territoryPercent: 0, populationPercent: -5 };
+        const c = clampVictory(v);
+        expect(c.territoryPercent).toBe(1);
+        expect(c.populationPercent).toBe(1);
+        // Economy percent is untouched when already in range.
+        expect(c.economyPercent).toBe(33);
+    });
+
+    it('clamps the time limit into 1..1000 years', () => {
+        expect(clampVictory({ ...defaultVictoryConditions(), timeLimitYears: 0 }).timeLimitYears).toBe(1);
+        expect(clampVictory({ ...defaultVictoryConditions(), timeLimitYears: 2000 }).timeLimitYears).toBe(1000);
+        expect(clampVictory({ ...defaultVictoryConditions(), timeLimitYears: 10 }).timeLimitYears).toBe(10);
+    });
+
+    it('clamps the time start into 1..99 years', () => {
+        expect(clampVictory({ ...defaultVictoryConditions(), startDateYears: 0 }).startDateYears).toBe(1);
+        expect(clampVictory({ ...defaultVictoryConditions(), startDateYears: 150 }).startDateYears).toBe(99);
+        expect(clampVictory({ ...defaultVictoryConditions(), startDateYears: 3 }).startDateYears).toBe(3);
+    });
+
+    it('returns a copy and leaves booleans unchanged', () => {
+        const v = { ...defaultVictoryConditions(), territory: true, enableDisasterEvents: false };
+        const c = clampVictory(v);
+        expect(c).not.toBe(v);
+        expect(c.territory).toBe(true);
+        expect(c.enableDisasterEvents).toBe(false);
+        expect(c.victoryThresholdPercentage).toBe(1.0);
     });
 });

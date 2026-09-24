@@ -475,6 +475,46 @@
     inset: 0;
 }
 
+/* --- Victory Conditions page (task 06g). --- */
+
+.wizard-victory-sandbox {
+    font-size: 12px;
+    color: #b8a24a;
+    font-style: italic;
+    text-align: center;
+}
+
+.wizard-victory-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px 12px;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+}
+
+/* "… <number input> years/%" row under a victory-type checkbox. */
+.wizard-victory-number-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: #c9d1d9;
+    padding-left: 23px; /* indent under the checkbox */
+}
+
+.wizard-victory-number-input {
+    width: 70px;
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+    color: #fff;
+    padding: 3px 8px;
+    font-family: inherit;
+    font-variant-numeric: tabular-nums;
+}
+
 /* --- Start page (task 06d): options summary before booting. --- */
 
 .wizard-start-heading {

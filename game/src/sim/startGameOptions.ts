@@ -42,6 +42,102 @@ export interface StartGameOptions {
     /** Task 06f: "Difficulty scales as player nears victory" checkbox
      * (chkStartNewGameTheGalaxyDifficultyScaling). */
     difficultyScaling: boolean;
+    /** Task 06g: the wizard's "Victory Conditions" page options, ported from
+     * DistantWorlds.Types.VictoryConditions (see VictoryConditions below). */
+    victory: VictoryConditions;
+}
+
+/**
+ * Port of DistantWorlds.Types.VictoryConditions (DistantWorlds.Types assembly,
+ * see task 06g source). Only the fields the new-game wizard edits are kept —
+ * the habitat/empire story-event targets (DefendHabitat, TargetHabitat, ...)
+ * are set by the engine at start, not by the player.
+ */
+export interface VictoryConditions {
+    /** chkVictoryTerritory: win by controlling TerritoryPercent % of colonies. */
+    territory: boolean;
+    /** numVictoryTerritoryPercent (1..100, default 33). */
+    territoryPercent: number;
+    /** chkVictoryPopulation: win by controlling PopulationPercent % of population. */
+    population: boolean;
+    /** numVictoryPopulationPercent (1..100, default 33). */
+    populationPercent: number;
+    /** chkVictoryEconomy: win when the private economy generates
+     * EconomyPercent % of the galaxy total. */
+    economy: boolean;
+    /** numVictoryEconomyPercent (1..100, default 33). */
+    economyPercent: number;
+    /** chkVictoryTimeLimit: game finishes after timeLimitYears years. */
+    timeLimit: boolean;
+    /** numVictoryTimeLimitYears (1..1000, default 10). */
+    timeLimitYears: number;
+    /** chkVictoryTimeStart: victory conditions apply after startDateYears
+     * years (numVictoryTimeStartYears, 1..99, default 3). */
+    startDateYears: number;
+    /** chkVictoryEnableDisasterEvents (C# field EnableDisasterEvents, true). */
+    enableDisasterEvents: boolean;
+    /** chkVictoryEnableRaceSpecificConditions (C# field
+     * EnableRaceSpecificVictoryConditions, true). */
+    enableRaceSpecificConditions: boolean;
+    /** chkVictoryEnableRaceSpecificEvents (C# field EnableRaceSpecificEvents,
+     * true). */
+    enableRaceSpecificEvents: boolean;
+    /** C# field VictoryThresholdPercentage (default 1.0); the original UI
+     * exposes it via lblVictoryThresholdPercentage on this page. */
+    victoryThresholdPercentage: number;
+}
+
+/** Min/max bounds of the wizard's numeric victory controls, straight from
+ * Start.InitializeComponent.cs (task 06g): the three percent boxes have
+ * Minimum = 1 (no Maximum in InitializeComponent), the time-limit box is
+ * 1..1000 and the time-start box is 1..99. */
+export const VICTORY_PERCENT_MIN = 1;
+export const VICTORY_TIME_LIMIT_YEARS_MIN = 1;
+export const VICTORY_TIME_LIMIT_YEARS_MAX = 1000;
+export const VICTORY_TIME_START_YEARS_MIN = 1;
+export const VICTORY_TIME_START_YEARS_MAX = 99;
+
+/** Task 06g: default VictoryConditions matching the C# class defaults plus
+ * the wizard control values from Start.InitializeComponent.cs: all victory
+ * types unchecked (sandbox mode), percents 33, time limit 10 years, time
+ * start 3 years, all event toggles on, threshold 1.0. */
+export function defaultVictoryConditions(): VictoryConditions {
+    return {
+        territory: false,
+        territoryPercent: 33,
+        population: false,
+        populationPercent: 33,
+        economy: false,
+        economyPercent: 33,
+        timeLimit: false,
+        timeLimitYears: 10,
+        startDateYears: 3,
+        enableDisasterEvents: true,
+        enableRaceSpecificConditions: true,
+        enableRaceSpecificEvents: true,
+        victoryThresholdPercentage: 1.0,
+    };
+}
+
+/** Task 06g: clamp a VictoryConditions' numeric fields into the wizard
+ * control bounds (percent >= 1; time limit 1..1000 years; time start
+ * 1..99 years) and return a copy. Booleans pass through unchanged. */
+export function clampVictory(v: VictoryConditions): VictoryConditions {
+    const pct = (x: number): number => Math.max(VICTORY_PERCENT_MIN, x);
+    return {
+        ...v,
+        territoryPercent: pct(v.territoryPercent),
+        populationPercent: pct(v.populationPercent),
+        economyPercent: pct(v.economyPercent),
+        timeLimitYears: Math.min(
+            VICTORY_TIME_LIMIT_YEARS_MAX,
+            Math.max(VICTORY_TIME_LIMIT_YEARS_MIN, v.timeLimitYears),
+        ),
+        startDateYears: Math.min(
+            VICTORY_TIME_START_YEARS_MAX,
+            Math.max(VICTORY_TIME_START_YEARS_MIN, v.startDateYears),
+        ),
+    };
 }
 
 /**
@@ -300,7 +396,9 @@ export function applyEmpireDefaults(options: StartGameOptions, raceIndex: number
  * Task 06f galaxy-option sliders: the original's default slider positions
  * are not visible in the task context, so each defaults to its middle tick
  * (colony prevalence / alien life 2 of 5, space creatures 1 of 4, pirates
- * 2 of 6, aggression 2 of 5, difficulty 2 of 5); difficulty scaling is off. */
+ * 2 of 6, aggression 2 of 5, difficulty 2 of 5); difficulty scaling is off.
+ * Task 06g: victory conditions start at the C# defaults (all types
+ * unchecked = sandbox mode; see defaultVictoryConditions). */
 export function defaultStartGameOptions(): StartGameOptions {
     return {
         shape: GalaxyShape.Spiral,
@@ -320,5 +418,6 @@ export function defaultStartGameOptions(): StartGameOptions {
         aggressionIndex: 2,
         difficultyIndex: 2,
         difficultyScaling: false,
+        victory: defaultVictoryConditions(),
     };
 }

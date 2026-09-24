@@ -11,7 +11,31 @@ Tests: defaults equal the C# defaults; min/max clamps; options round-trip.
 
 ## Original controls (Start.InitializeComponent.cs — name = initial value/text)
 ```
-
+this.btnStartNewGameVictoryConditionsPrevious.Text = "<< Previous: Other Empires"
+this.chkVictoryEconomy.Text = "Economy: private economy generates            % of galaxy total"
+this.chkVictoryEnableDisasterEvents.Text = "Enable Disasters and other events"
+this.chkVictoryEnableRaceSpecificConditions.Text = "Enable race-specific victory conditions"
+this.chkVictoryEnableRaceSpecificEvents.Text = "Enable race-specific events"
+this.chkVictoryPopulation.Text = "Population: control            % of population in galaxy"
+this.chkVictoryTerritory.Text = "Territory: control            % of colonies in galaxy"
+this.chkVictoryTimeLimit.Text = "Time Limit: game finishes after                years"
+this.chkVictoryTimeStart.Text = "Victory Conditions apply after              years"
+this.lblJumpStartVictoryPiratePlaystyle.Text = "Pirate Playstyle"
+this.lblVictoryPiratePlaystyle.Text = "Pirate Playstyle"
+this.lblVictorySandbox.Text = "Leave all Victory Conditions unchecked to play in Sandbox mode (open play)"
+this.lblVictoryThresholdPercentage.Text = "Victory Threshold Percent"
+this.numVictoryEconomyPercent.Minimum = new decimal(new int[4] { 1, 0, 0, 0 })
+this.numVictoryEconomyPercent.Value = new decimal(new int[4] { 33, 0, 0, 0 })
+this.numVictoryPopulationPercent.Minimum = new decimal(new int[4] { 1, 0, 0, 0 })
+this.numVictoryPopulationPercent.Value = new decimal(new int[4] { 33, 0, 0, 0 })
+this.numVictoryTerritoryPercent.Minimum = new decimal(new int[4] { 1, 0, 0, 0 })
+this.numVictoryTerritoryPercent.Value = new decimal(new int[4] { 33, 0, 0, 0 })
+this.numVictoryTimeLimitYears.Maximum = new decimal(new int[4] { 1000, 0, 0, 0 })
+this.numVictoryTimeLimitYears.Minimum = new decimal(new int[4] { 1, 0, 0, 0 })
+this.numVictoryTimeLimitYears.Value = new decimal(new int[4] { 10, 0, 0, 0 })
+this.numVictoryTimeStartYears.Maximum = new decimal(new int[4] { 99, 0, 0, 0 })
+this.numVictoryTimeStartYears.Minimum = new decimal(new int[4] { 1, 0, 0, 0 })
+this.numVictoryTimeStartYears.Value = new decimal(new int[4] { 3, 0, 0, 0 })
 ```
 ## VictoryConditions.cs
 ```csharp
@@ -136,3 +160,20 @@ namespace DistantWorlds.Types
   }
 }
 ```
+
+## Worker report
+
+**Files changed**
+- `src/sim/startGameOptions.ts` — new `VictoryConditions` interface (port of DistantWorlds.Types.VictoryConditions, wizard-editable fields only), `defaultVictoryConditions()` with the C# defaults (all types unchecked = sandbox, percents 33, time limit 10y, time start 3y, all event toggles on, threshold 1.0), control-bound constants (`VICTORY_PERCENT_MIN`, `VICTORY_TIME_LIMIT_YEARS_MIN/MAX` 1..1000, `VICTORY_TIME_START_YEARS_MIN/MAX` 1..99) and `clampVictory()`; `StartGameOptions.victory` field added and filled in `defaultStartGameOptions()`.
+- `src/ui/screens/newGameWizard.ts` — new `'victory'` WizardPageId inserted between `empire` and `start` (titles/back/forward labels updated); `buildVictoryPage()` with the original controls: sandbox note (lblVictorySandbox), checkboxes for Territory / Population / Economy / Time Limit + numeric inputs for their thresholds (percent boxes min 1, time-limit box 1..1000, time-start box 1..99, clamped on edit), and the three event-toggle checkboxes (Disasters, race-specific conditions, race-specific events); galaxy-page TODO note no longer lists victory conditions; Start-page summary gains a "Victory Conditions" row (lists checked types + thresholds, or "Sandbox mode").
+- `src/ui/screens/newGameWizard.css` — `.wizard-victory-sandbox`, `.wizard-victory-section`, `.wizard-victory-number-row`, `.wizard-victory-number-input` styling matching the other pages.
+- `test/startGameOptions.test.ts` — `defaultVictoryConditions` equals the C# defaults; bound constants match InitializeComponent; `clampVictory` min/max tests (percent ≥ 1, time limit 1..1000, time start 1..99, copy semantics); round-trip tests extended with nested `victory` objects (shallow spread + deep-copy mutation isolation).
+
+**Done**
+- `npm run typecheck` passes; `npm test` passes (326 tests, 29 files).
+- Headless screenshots saved (no console errors printed): `shots/06g-victory.png` (via `?screen=wizard&page=victory`) and `shots/06g-start.png` (Start page showing the new summary row).
+
+**Left undone**
+- The original's `lblVictoryThresholdPercentage` ("Victory Threshold Percent") has no visible numeric control in the pasted InitializeComponent excerpt, so `victoryThresholdPercentage` is stored (default 1.0) but not exposed as an input on the page.
+- `chkVictoryTimeStart` is a checkbox in the original (its checked state isn't in the pasted context); the page shows its label + years box without a separate boolean, since the time-start setting applies whenever any victory condition is active.
+- Story-event fields (`EnableStoryEvents`, `DefendHabitat*`, `TargetHabitat*`) are engine-set at start, not wizard-editable — intentionally not ported into `StartGameOptions`.

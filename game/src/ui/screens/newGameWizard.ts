@@ -15,6 +15,11 @@ import {
     flagShapeUrl,
     sectorsFor,
     starCountFor,
+    VICTORY_PERCENT_MIN,
+    VICTORY_TIME_LIMIT_YEARS_MAX,
+    VICTORY_TIME_LIMIT_YEARS_MIN,
+    VICTORY_TIME_START_YEARS_MAX,
+    VICTORY_TIME_START_YEARS_MIN,
     type StartGameOptions,
 } from '../../sim/startGameOptions';
 import { parseRace, type Race } from '../../sim/data/races';
@@ -79,16 +84,18 @@ export interface NewGameWizardRefs {
     destroy: () => void;
 }
 
-/** Wizard page ids / navigation order (task 06e): The Galaxy → Your Race →
- * Your Empire → Start. */
-export type WizardPageId = 'galaxy' | 'race' | 'empire' | 'start';
-export const WIZARD_PAGES: WizardPageId[] = ['galaxy', 'race', 'empire', 'start'];
+/** Wizard page ids / navigation order (task 06e; task 06g inserts the
+ * "Victory Conditions" page as the last page before Start): The Galaxy →
+ * Your Race → Your Empire → Victory Conditions → Start. */
+export type WizardPageId = 'galaxy' | 'race' | 'empire' | 'victory' | 'start';
+export const WIZARD_PAGES: WizardPageId[] = ['galaxy', 'race', 'empire', 'victory', 'start'];
 
 /** Title-bar text per page ("Start a New Game: <page title>"). */
 export const WIZARD_PAGE_TITLES: Record<WizardPageId, string> = {
     galaxy: 'The Galaxy',
     race: 'Your Race',
     empire: 'Your Empire',
+    victory: 'Victory Conditions',
     start: 'Start',
 };
 
@@ -97,7 +104,8 @@ export const WIZARD_BACK_LABELS: Record<WizardPageId, string> = {
     galaxy: '← Main Menu',
     race: '← The Galaxy',
     empire: '← Your Race',
-    start: '← Your Empire',
+    victory: '← Your Empire',
+    start: '← Victory Conditions',
 };
 
 /** Footer forward-button label per page. */
@@ -105,6 +113,7 @@ export const WIZARD_FORWARD_LABELS: Record<WizardPageId, string> = {
     galaxy: 'Next →',
     race: 'Next →',
     empire: 'Next →',
+    victory: 'Next →',
     start: 'Start Game',
 };
 
@@ -264,11 +273,13 @@ export function createNewGameWizard(callbacks: NewGameWizardCallbacks): NewGameW
     const galaxyPage = buildGalaxyPage(options);
     const racePage = buildRacePage(options, handleRaceChanged);
     const empirePage = buildEmpirePage(options);
+    const victoryPage = buildVictoryPage(options);
     const startPage = buildStartPage(options);
     const pageEls: Record<WizardPageId, HTMLElement> = {
         galaxy: galaxyPage,
         race: racePage,
         empire: empirePage,
+        victory: victoryPage,
         start: startPage,
     };
     for (const el of Object.values(pageEls)) {
@@ -504,12 +515,11 @@ function buildGalaxyPage(options: StartGameOptions): HTMLDivElement {
     wrap.appendChild(seedRow);
 
     // TODO(port): remaining wizard pages (playstyle, colonization/territory,
-    // empire, other empires, victory conditions, quick start) —
-    // Start.InitializeComponent.cs pnlStartNewGame* panels other than
-    // pnlStartNewGameTheGalaxy / pnlStartNewGameRace.
+    // other empires, quick start) — Start.InitializeComponent.cs
+    // pnlStartNewGame* panels other than the ones already built.
     const moreTodo = document.createElement('div');
     moreTodo.className = 'wizard-todo';
-    moreTodo.textContent = 'Other wizard pages (playstyle, colonization, empire, victory conditions) — coming later.';
+    moreTodo.textContent = 'Other wizard pages (playstyle, colonization, other empires) — coming later.';
     wrap.appendChild(moreTodo);
 
     return wrap;
@@ -941,6 +951,183 @@ function buildEmpirePage(options: StartGameOptions): HTMLDivElement {
 }
 
 // ---------------------------------------------------------------------------
+// Victory Conditions page (task 06g): victory types + thresholds, time
+// limits, event toggles. Port of the visual layout of
+// Start.InitializeComponent.cs pnlStartNewGameVictoryConditions controls.
+// ---------------------------------------------------------------------------
+
+/** Task 06g: checkbox row bound to a boolean field of options.victory. */
+function makeVictoryCheckbox(
+    wrap: HTMLDivElement,
+    label: string,
+    get: () => boolean,
+    set: (v: boolean) => void,
+): void {
+    const row = document.createElement('label');
+    row.className = 'wizard-checkbox';
+    const check = document.createElement('input');
+    check.type = 'checkbox';
+    check.checked = get();
+    check.addEventListener('change', () => set(check.checked));
+    row.appendChild(check);
+    const span = document.createElement('span');
+    span.textContent = label;
+    row.appendChild(span);
+    wrap.appendChild(row);
+}
+
+/** Task 06g: "Label … <number input> years/%" row for one numeric victory
+ * control (percent boxes or year boxes), clamped into [min, max] on edit. */
+function makeVictoryNumberRow(
+    wrap: HTMLDivElement,
+    prefix: string,
+    suffix: string,
+    min: number,
+    max: number,
+    get: () => number,
+    set: (v: number) => void,
+): void {
+    const row = document.createElement('div');
+    row.className = 'wizard-victory-number-row';
+    const pre = document.createElement('span');
+    pre.textContent = prefix;
+    row.appendChild(pre);
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.className = 'wizard-victory-number-input';
+    input.min = String(min);
+    input.max = String(max);
+    input.step = '1';
+    input.value = String(get());
+    input.addEventListener('input', () => {
+        const v = parseInt(input.value, 10);
+        if (!Number.isNaN(v)) {
+            set(Math.min(max, Math.max(min, v)));
+        }
+    });
+    row.appendChild(input);
+    const post = document.createElement('span');
+    post.textContent = suffix;
+    row.appendChild(post);
+    wrap.appendChild(row);
+}
+
+function buildVictoryPage(options: StartGameOptions): HTMLDivElement {
+    const wrap = document.createElement('div');
+    wrap.className = 'wizard-page wizard-victory-page';
+    const v = options.victory;
+
+    // --- Sandbox note (lblVictorySandbox). ---
+    const sandboxNote = document.createElement('div');
+    sandboxNote.className = 'wizard-victory-sandbox';
+    sandboxNote.textContent = 'Leave all Victory Conditions unchecked to play in Sandbox mode (open play)';
+    wrap.appendChild(sandboxNote);
+
+    // --- Victory types with their threshold rows. The original labels embed
+    // the percent value inside the checkbox text ("… generates   % of galaxy
+    // total"); here the checkbox carries the type name and the threshold is
+    // a separate "… <n> % of …" row below it. ---
+    const sectionTypes = document.createElement('div');
+    sectionTypes.className = 'wizard-victory-section';
+    wrap.appendChild(sectionTypes);
+
+    makeVictoryCheckbox(sectionTypes, 'Territory: control % of colonies in galaxy', () => v.territory, (x) => {
+        v.territory = x;
+    });
+    makeVictoryNumberRow(
+        sectionTypes,
+        '',
+        '% of colonies in galaxy',
+        VICTORY_PERCENT_MIN,
+        Number.MAX_SAFE_INTEGER,
+        () => v.territoryPercent,
+        (x) => {
+            v.territoryPercent = x;
+        },
+    );
+
+    makeVictoryCheckbox(sectionTypes, 'Population: control % of population in galaxy', () => v.population, (x) => {
+        v.population = x;
+    });
+    makeVictoryNumberRow(
+        sectionTypes,
+        '',
+        '% of population in galaxy',
+        VICTORY_PERCENT_MIN,
+        Number.MAX_SAFE_INTEGER,
+        () => v.populationPercent,
+        (x) => {
+            v.populationPercent = x;
+        },
+    );
+
+    makeVictoryCheckbox(sectionTypes, 'Economy: private economy generates % of galaxy total', () => v.economy, (x) => {
+        v.economy = x;
+    });
+    makeVictoryNumberRow(
+        sectionTypes,
+        '',
+        '% of galaxy total',
+        VICTORY_PERCENT_MIN,
+        Number.MAX_SAFE_INTEGER,
+        () => v.economyPercent,
+        (x) => {
+            v.economyPercent = x;
+        },
+    );
+
+    // --- Time limit / time start (chkVictoryTimeLimit / chkVictoryTimeStart). ---
+    const sectionTime = document.createElement('div');
+    sectionTime.className = 'wizard-victory-section';
+    wrap.appendChild(sectionTime);
+
+    makeVictoryCheckbox(sectionTime, 'Time Limit: game finishes after years', () => v.timeLimit, (x) => {
+        v.timeLimit = x;
+    });
+    makeVictoryNumberRow(
+        sectionTime,
+        '',
+        'years',
+        VICTORY_TIME_LIMIT_YEARS_MIN,
+        VICTORY_TIME_LIMIT_YEARS_MAX,
+        () => v.timeLimitYears,
+        (x) => {
+            v.timeLimitYears = x;
+        },
+    );
+
+    makeVictoryCheckbox(sectionTime, 'Victory Conditions apply after years', () => true, () => {});
+    makeVictoryNumberRow(
+        sectionTime,
+        '',
+        'years',
+        VICTORY_TIME_START_YEARS_MIN,
+        VICTORY_TIME_START_YEARS_MAX,
+        () => v.startDateYears,
+        (x) => {
+            v.startDateYears = x;
+        },
+    );
+
+    // --- Event toggles (chkVictoryEnable*). ---
+    const sectionEvents = document.createElement('div');
+    sectionEvents.className = 'wizard-victory-section';
+    wrap.appendChild(sectionEvents);
+
+    makeVictoryCheckbox(sectionEvents, 'Enable Disasters and other events', () => v.enableDisasterEvents, (x) => {
+        v.enableDisasterEvents = x;
+    });
+    makeVictoryCheckbox(sectionEvents, 'Enable race-specific victory conditions', () => v.enableRaceSpecificConditions, (x) => {
+        v.enableRaceSpecificConditions = x;
+    });
+    makeVictoryCheckbox(sectionEvents, 'Enable race-specific events', () => v.enableRaceSpecificEvents, (x) => {
+        v.enableRaceSpecificEvents = x;
+    });
+
+    return wrap;
+}
+
+// ---------------------------------------------------------------------------
 // Start page (task 06d): summary of the chosen options before booting.
 // ---------------------------------------------------------------------------
 
@@ -978,6 +1165,20 @@ function buildStartPage(options: StartGameOptions): HTMLDivElement {
             ['Empire Name', options.empireName || '(not set)'],
             ['Government', options.governmentId >= 0 ? `#${options.governmentId}` : '(not chosen)'],
             ['Flag', `shape ${options.flagShapeIndex} · ${options.primaryColor} / ${options.secondaryColor}`],
+            // Task 06g: victory conditions summary (sandbox when none checked).
+            [
+                'Victory Conditions',
+                options.victory.territory || options.victory.population || options.victory.economy || options.victory.timeLimit
+                    ? [
+                        options.victory.territory && `Territory ≥ ${options.victory.territoryPercent}%`,
+                        options.victory.population && `Population ≥ ${options.victory.populationPercent}%`,
+                        options.victory.economy && `Economy ≥ ${options.victory.economyPercent}%`,
+                        options.victory.timeLimit && `Time limit ${options.victory.timeLimitYears}y`,
+                    ]
+                        .filter(Boolean)
+                        .join(', ') + ` (apply after ${options.victory.startDateYears}y)`
+                    : 'Sandbox mode (no victory conditions)',
+            ],
             ['Seed', String(options.seed)],
         ];
         summary.replaceChildren(...rows.map(([k, v]) => {
