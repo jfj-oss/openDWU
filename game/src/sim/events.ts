@@ -221,3 +221,35 @@ const T_updateAchievements = registerTodo('deferred', 'updateAchievements');
 export function updateAchievements(galaxy: Galaxy, empire: Empire): void {
     /* TODO(port) deferred (not M4) */ todo(T_updateAchievements);
 }
+
+/** PreWarpProgressEventType.cs (enum member order exact). Added by M4k for CheckSendPreWarpProgressEventMessage. */
+export enum PreWarpProgressEventType {
+    Undefined,
+    FirstContactPirateOrIndependent,
+    FirstContactNormalEmpire,
+    BuildFirstShip,
+    BuildFirstSpaceport,
+    BuildFirstMiningStation,
+    BuildFirstResearchStation,
+    DiscoverHyperspaceTech,
+    DiscoverColonizationTech,
+    FirstHyperjump,
+    EncounterFirstKaltor,
+    BuildFirstMilitaryShip,
+    FirstPirateRaid,
+}
+
+const T_checkSendPreWarpProgressEventMessage = registerTodo('M4u', 'checkSendPreWarpProgressEventMessage');
+/**
+ * Empire.7.cs 3416-3834 CheckSendPreWarpProgressEventMessage(eventType, subject). Stub added by M4k (called from
+ * DoResearchBreakthrough for SpecialFunctionCode 2 / 4 projects). The C# sets the PreWarpProgressEventOccurred* flag,
+ * applies the event bonus and sends the event message the first time, returning true.
+ */
+export function checkSendPreWarpProgressEventMessage(galaxy: Galaxy, empire: Empire, eventType: PreWarpProgressEventType, subject: unknown): boolean {
+    void galaxy;
+    void empire;
+    void eventType;
+    void subject;
+    /* TODO(port) M4u */ todo(T_checkSendPreWarpProgressEventMessage);
+    return false;
+}

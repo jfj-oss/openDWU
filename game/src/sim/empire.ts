@@ -397,10 +397,10 @@ export class Empire {
         this.stateMoney = 30000.0;
         this.privateMoney = 100000.0;
         this.research = new ResearchSystem(galaxy.researchStatic);
-        this.research.obtainTechTree();
+        this.research.obtainTechTree(dominantRace);
         // Empire.cs 4329: SetTechTreeStartingDefaults(TechTree, dominantRace, policy).
         this.research.setTechTreeStartingDefaults(dominantRace, policy);
-        this.research.update();
+        this.research.update(dominantRace);
         this.reviewResearchAbilities();
         this.reviewDesignsBuiltObjectsImprovedComponents();
         this.reviewColonizationTypes();
@@ -593,9 +593,9 @@ export class Empire {
         this.privateMoney = 100000.0;
         this.research = new ResearchSystem(galaxy.researchStatic);
         // Empire.cs 3961-3962: ObtainTechTree(race) + SetTechTreeStartingDefaults(race, policy).
-        this.research.obtainTechTree();
+        this.research.obtainTechTree(dominantRace);
         this.research.setTechTreeStartingDefaults(dominantRace, policy);
-        this.research.update();
+        this.research.update(dominantRace);
         this.reviewResearchAbilities();
         this.reviewDesignsBuiltObjectsImprovedComponents();
         this.reviewColonizationTypes();
@@ -1414,6 +1414,16 @@ export class Empire {
     // ---- M4i fields (empire construction, facilities) ----
     // ---- M4j fields (colony growth, treasury, government) ----
     // ---- M4k fields (research progress) ----
+    /** Empire.cs ResearchBonusWeapons / Energy / HighTech (float) and their stations (ReviewResearchStationBonuses, Empire.3.cs 2732). */
+    researchBonusWeapons = 0;
+    researchBonusEnergy = 0;
+    researchBonusHighTech = 0;
+    researchBonusWeaponsStation: BuiltObject | null = null;
+    researchBonusEnergyStation: BuiltObject | null = null;
+    researchBonusHighTechStation: BuiltObject | null = null;
+    /** Empire.cs _ReviewDesignsAndRetrofit / _ReviewDesignsAndRetrofitImportantBreakthrough (set by DoResearchBreakthrough; read by M4i ReviewDesignsAndRetrofit). */
+    reviewDesignsAndRetrofitFlag = false;
+    reviewDesignsAndRetrofitImportantBreakthrough = false;
     // ---- M4l fields (ship groups) ----
     // ---- M4m fields (military AI) ----
     // ---- M4n fields (threats) ----

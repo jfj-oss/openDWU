@@ -81,8 +81,9 @@ describe('independent traders (Galaxy.7.cs GenerateIndependentTraders)', () => {
             expect(originals).not.toContain(d);
         }
         // All BuildCounts are 0 at game start → the first three empires' designs (Empires order).
-        expect(g.popularDesigns.slice(0, 3).map((d) => d.name)).toEqual(['LU1000 Light Transport', 'EU1000 Cargo Shuttle', 'EW1000 Cargo Shuttle']);
-        expect(g.popularDesigns.slice(3, 6).map((d) => d.name)).toEqual(['IM1000 Medium Transport', 'AJ1000 Medium Freighter', 'UM1000 Freight Hauler']);
+        // (re-pinned M4k: game-start research changes the Rnd stream before the design names are drawn)
+        expect(g.popularDesigns.slice(0, 3).map((d) => d.name)).toEqual(['MJ1000 Light Trader', 'WB1000 Light Trader', 'QB1000 Light Transport']);
+        expect(g.popularDesigns.slice(3, 6).map((d) => d.name)).toEqual(['IW1000 Cargo Hauler', 'IF1000 Cargo Freighter', 'QR1000 Medium Transport']);
     }, 60000);
 
     it('seed 1: count, ownership, placement at non-visible independent colonies', () => {
@@ -118,24 +119,26 @@ describe('independent traders (Galaxy.7.cs GenerateIndependentTraders)', () => {
         expect(traders.some((t) => t.parentHabitat!.name === 'Wailnas')).toBe(false);
         const perColony = new Map<string, number>();
         for (const t of traders) perColony.set(t.parentHabitat!.name, (perColony.get(t.parentHabitat!.name) ?? 0) + 1);
-        expect(Object.fromEntries(perColony)).toEqual({ 'S22 2': 17, 'Sol 1': 12, 'Haako 1': 20, Atoaklo: 11, 'S83 14': 15, 'Dhayu 1': 12, 'S43 5': 12, 'S194 2': 35, 'S83 10': 16 });
-        expect(traders.slice(0, 2).map((t) => [t.name, t.design.name])).toEqual([['S22 Raider', 'EU1000 Cargo Shuttle'], ['Mocking Gambit', 'LU1000 Light Transport']]);
+        // (re-pinned M4k: the game-start Empire.DoTasks now runs PerformResearch, whose research-queue selection and research events draw Rnd)
+        expect(Object.fromEntries(perColony)).toEqual({ 'Haako 1': 21, 'S194 2': 33, Atoaklo: 9, 'S22 2': 15, 'Dhayu 1': 14, 'S83 10': 19, 'S83 14': 19, 'S43 5': 11, 'Sol 1': 9 });
+        expect(traders.slice(0, 2).map((t) => [t.name, t.design.name])).toEqual([['Sublime Traveller', 'QB1000 Light Transport'], ['Enchanted Adversity', 'WB1000 Light Trader']]);
     }, 60000);
 
     it('seed 1: exact Rnd draws, deterministic', () => {
         const a = runStartTick();
         // Only GenerateIndependentTraders draws on the long tick (up to GenerateNewPirateEmpires).
-        expect(a.log.length).toBe(1535);
+        // (re-pinned M4k: the game-start Empire.DoTasks now runs PerformResearch, whose research-queue selection and research events draw Rnd)
+        expect(a.log.length).toBe(1540);
         expect(a.log.slice(0, 22)).toEqual([
             // trader 0: Next(0,3)=2 → small; Next(0,3) index; Next(0,10) start colony;
-            // SelectRandomUniqueStandardShipName (Next(0,127), Next(0,125), Next(0,7) < 2 → Next(0,3));
+            // SelectRandomUniqueStandardShipName (Next(0,127), Next(0,125), Next(0,7) >= 2 → no extra draw);
             // SelectRandomHeading; SelectRelativeParkingPoint.
-            'Next(0,3)=2', 'Next(0,3)=1', 'Next(0,10)=4', 'Next(0,127)=12', 'Next(0,125)=90', 'Next(0,7)=0', 'Next(0,3)=2',
-            'NextDouble', 'NextDouble', 'Next(0,2)=1', 'NextDouble',
-            // trader 1: Next(0,7)=5 → no extra name draw.
-            'Next(0,3)=0', 'Next(0,3)=0', 'Next(0,10)=4', 'Next(0,127)=103', 'Next(0,125)=54', 'Next(0,7)=5',
-            'NextDouble', 'NextDouble', 'Next(0,2)=1', 'NextDouble',
-            'Next(0,3)=0',
+            'Next(0,3)=2', 'Next(0,3)=2', 'Next(0,10)=1', 'Next(0,127)=3', 'Next(0,125)=8', 'Next(0,7)=4',
+            'NextDouble', 'NextDouble', 'Next(0,2)=0', 'NextDouble',
+            // trader 1: same shape.
+            'Next(0,3)=2', 'Next(0,3)=1', 'Next(0,10)=2', 'Next(0,127)=6', 'Next(0,125)=51', 'Next(0,7)=4',
+            'NextDouble', 'NextDouble', 'Next(0,2)=0', 'NextDouble',
+            'Next(0,3)=2', 'Next(0,3)=2',
         ]);
         const b = runStartTick();
         expect(b.log).toEqual(a.log);

@@ -131,3 +131,12 @@ export function performFleetTasks(galaxy: Galaxy, builtObject: BuiltObject): voi
     // RND: draws in callees (d≤3) — not drawn until M4l.
     /* TODO(port) M4l */ todo(T_performFleetTasks);
 }
+
+const T_disbandShipGroup = registerTodo('M4l', 'disbandShipGroup');
+/** Empire.8.cs 5145 DisbandShipGroup(shipGroup). Stub added by M4k (DoResearchBreakthrough hyperspace tech). */
+export function disbandShipGroup(galaxy: Galaxy, empire: Empire, shipGroup: ShipGroup): void {
+    void galaxy;
+    void empire;
+    void shipGroup;
+    /* TODO(port) M4l */ todo(T_disbandShipGroup);
+}

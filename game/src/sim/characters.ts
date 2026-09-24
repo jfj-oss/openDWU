@@ -67,6 +67,7 @@ import { BuiltObjectSubRole } from './builtObjectTypes';
 import { SystemVisibilityStatus } from './visibility';
 import { Random } from './random';
 import { netSort } from './netSort';
+import { registerTodo, todo } from './tick/todo';
 import { galaxyCurrentStarDate } from './pirateRelations';
 import { selectRandomRace } from './pirates';
 import { habitatAnnualRevenue, identifyEmpireCapitals, totalColonyStrategicValue } from './forceStructure';
@@ -5033,6 +5034,7 @@ export function doCharacterEventForList(galaxy: Galaxy, eventType: CharacterEven
     doCharacterEventList(galaxy, eventType, eventData, sourceCharacters, includeLeader, leaderEmpire);
 }
 
+const T_doCharacterEventSkillCases = registerTodo('M4u', 'DoCharacterEvent skill progress (DetermineCharacterSkillsAffectedByEvent)');
 function doCharacterEventList(galaxy: Galaxy, eventType: CharacterEventType, eventData: unknown, sourceCharacters: Character[] | null, includeLeader: boolean, leaderEmpire: Empire | null): void {
     if (sourceCharacters === null || sourceCharacters.length <= 0) return;
     const characterList: Character[] = [];
@@ -5054,7 +5056,12 @@ function doCharacterEventList(galaxy: Galaxy, eventType: CharacterEventType, eve
     }
     // DetermineCharacterSkillsAffectedByEvent(eventType, out relativeImportances).
     if (EVENTS_WITH_SKILL_CASES.has(eventType)) {
-        throw new Error('TODO(port): Galaxy.1.cs DetermineCharacterSkillsAffectedByEvent / skill progress for CharacterEventType ' + CharacterEventType[eventType]);
+        // TODO(port) M4u: Galaxy.1.cs DetermineCharacterSkillsAffectedByEvent / skill progress (5047-5319) and the
+        // BonusesKnown trait cases for this event. Stub (counted TODO hit, tick/todo.ts) instead of a throw so the
+        // M4 ticks keep running (changed by M4k: research / troop events now reach it at game start).
+        // RND: Next(0,5), Next(0,20), Next(0,80) per character + skill/trait draws — not drawn until M4u.
+        todo(T_doCharacterEventSkillCases);
+        return;
     }
     const list: CharacterSkillType[] = [];
     // GroundInvasion InvasionStats filtering (3818-3840): not reachable (GroundInvasion throws above).

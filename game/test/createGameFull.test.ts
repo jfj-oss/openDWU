@@ -148,7 +148,10 @@ describe('createGame full game start (seed 1, Spiral 300 stars, 8x8, Human + 3 A
 });
 
 // Seed 1, techLevel 0.5, age 1, piratePrevalence 1.0 (TS port). Tax rates are C# floats
-// (Math.fround of 0.28 / 0.28 / 0.27 / 0.31).
+// (Math.fround of 0.28 / 0.28 / 0.26 / 0.31).
+// (re-pinned M4k: the game-start Empire.DoTasks now runs PerformResearch — SelectNextResearchProject draws
+// Rnd (SelectRandomLowestProject) and research events draw Next(0, num4) per industry — so later game-start
+// Rnd draws shift.)
 const PINNED_SUMMARY: unknown = {
     empires: [
         {
@@ -165,7 +168,7 @@ const PINNED_SUMMARY: unknown = {
             taxRates: [0.2800000011920929],
         },
         {
-            name: 'Haakonish Corporation',
+            name: 'S216 Corporation',
             race: 'Haakonish',
             colonies: 1,
             spacePorts: 1,
@@ -173,12 +176,12 @@ const PINNED_SUMMARY: unknown = {
             miningStations: 6,
             stateShips: { ExplorationShip: 7, ConstructionShip: 3 },
             privateShips: { SmallFreighter: 1, GasMiningShip: 2, MiningShip: 2 },
-            troops: 3,
+            troops: 2,
             characters: 4,
             taxRates: [0.2800000011920929],
         },
         {
-            name: 'S88 Union',
+            name: 'S96 Union',
             race: 'Dhayut',
             colonies: 1,
             spacePorts: 1,
@@ -186,77 +189,77 @@ const PINNED_SUMMARY: unknown = {
             miningStations: 6,
             stateShips: { ExplorationShip: 7, ConstructionShip: 3 },
             privateShips: { SmallFreighter: 1, GasMiningShip: 2, MiningShip: 2 },
-            troops: 0,
+            troops: 1,
             characters: 3,
-            taxRates: [0.27000001072883606],
+            taxRates: [0.25999999046325684],
         },
         {
-            name: 'S46 Corporation',
+            name: 'Ugnari Consortium',
             race: 'Ugnari',
             colonies: 1,
             spacePorts: 1,
-            researchStations: 1,
+            researchStations: 0,
             miningStations: 6,
             stateShips: { ExplorationShip: 7, ConstructionShip: 3 },
             privateShips: { SmallFreighter: 1, GasMiningShip: 2, MiningShip: 2 },
-            troops: 1,
+            troops: 0,
             characters: 2,
             taxRates: [0.3100000023841858],
         },
     ],
     pirates: [
         {
-            name: 'Hidden Minerals',
+            name: 'Dhayu Invaders',
             bases: 1,
-            fleet: { ExplorationShip: 1, ConstructionShip: 1 },
-            private: { SmallFreighter: 4, MiningShip: 1, GasMiningShip: 1, GasMiningStation: 2, MiningStation: 1 },
-            characters: 5,
-        },
-        {
-            name: 'Ugnar Horde',
-            bases: 1,
-            fleet: { Escort: 1, ExplorationShip: 1, ConstructionShip: 1 },
-            private: { SmallFreighter: 1, MiningShip: 1, GasMiningShip: 1, GasMiningStation: 2 },
+            fleet: { Escort: 2, ConstructionShip: 1 },
+            private: { SmallFreighter: 1, GasMiningStation: 1 },
             characters: 2,
         },
         {
-            name: 'S147 Corsairs',
+            name: 'Dread Storm Council',
             bases: 1,
             fleet: { Escort: 1, ExplorationShip: 1, ConstructionShip: 1 },
-            private: { SmallFreighter: 1, MiningShip: 1, GasMiningShip: 1, MiningStation: 2 },
+            private: { SmallFreighter: 2, MiningShip: 1, GasMiningShip: 1, GasMiningStation: 1, MiningStation: 1 },
             characters: 2,
         },
         {
-            name: 'Grim Mining',
-            bases: 1,
-            fleet: { ExplorationShip: 1, ConstructionShip: 1 },
-            private: { SmallFreighter: 4, MiningShip: 1, GasMiningShip: 1, GasMiningStation: 2, MiningStation: 1 },
-            characters: 5,
-        },
-        {
-            name: 'Dread Outlaws',
-            bases: 1,
-            fleet: { Escort: 1, ExplorationShip: 1, ConstructionShip: 1 },
-            private: { SmallFreighter: 1, MiningShip: 1, GasMiningShip: 1, GasMiningStation: 2 },
-            characters: 2,
-        },
-        {
-            name: 'Fearsome Sun Authority',
+            name: 'Fierce League',
             bases: 1,
             fleet: { Escort: 1, ExplorationShip: 1, ConstructionShip: 1 },
             private: { SmallFreighter: 2, MiningShip: 1, GasMiningShip: 1, GasMiningStation: 2 },
             characters: 2,
         },
         {
-            name: 'Sol Authority',
+            name: 'S83 Intruders',
+            bases: 1,
+            fleet: { Escort: 2, ConstructionShip: 1 },
+            private: { SmallFreighter: 1, GasMiningStation: 1 },
+            characters: 2,
+        },
+        {
+            name: 'Murderous Moon Invaders',
+            bases: 1,
+            fleet: { Escort: 2, ConstructionShip: 1 },
+            private: { SmallFreighter: 1, GasMiningStation: 1 },
+            characters: 2,
+        },
+        {
+            name: 'Savage Exports',
+            bases: 1,
+            fleet: { ExplorationShip: 1, ConstructionShip: 1 },
+            private: { SmallFreighter: 4, MiningShip: 1, GasMiningShip: 1, GasMiningStation: 2, MiningStation: 1 },
+            characters: 2,
+        },
+        {
+            name: 'Dark Force',
             bases: 1,
             fleet: { Escort: 1, ExplorationShip: 1, ConstructionShip: 1 },
-            private: { SmallFreighter: 2, MiningShip: 1, GasMiningShip: 1, MiningStation: 2 },
+            private: { SmallFreighter: 2, MiningShip: 1, GasMiningShip: 1, GasMiningStation: 2 },
             characters: 2,
         },
     ],
     independentTraders: 150,
     unownedBuiltObjects: 20,
-    builtObjects: 333,
+    builtObjects: 321,
     ruins: 27,
 };

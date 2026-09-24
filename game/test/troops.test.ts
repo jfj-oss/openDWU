@@ -147,20 +147,22 @@ function run(colonyGarrisons: boolean): RunSummary {
 describe('troops (game start)', () => {
     it('garrisons, names, maintenance and ProcessColonyTroops on a seed-1 galaxy; deterministic', () => {
         const a = run(true);
-        expect(a.capitals.map((c) => [c.edfr, c.levelRequired, c.troops])).toEqual([[1125, 843, 13], [1391, 1042, 6], [1604, 1203, 10], [605, 453, 8]]);
-        expect(a.colonyTroops).toEqual([8, 6, 6, 4]);
-        expect(a.maintenance).toEqual([21000, 10800, 13600, 10800]);
+        // (re-pinned M4k: the game-start Empire.DoTasks now runs PerformResearch, whose research-queue selection and research events draw Rnd)
+        expect(a.capitals.map((c) => [c.edfr, c.levelRequired, c.troops])).toEqual([[1125, 843, 12], [1426, 1069, 2], [1588, 1191, 1], [596, 447, 9]]);
+        expect(a.colonyTroops).toEqual([12, 5, 13, 2]);
+        expect(a.maintenance).toEqual([24000, 6300, 12600, 9900]);
         expect(a.processDraws).toEqual(['', '', '', '']); // garrisons already meet TroopLevelRequired
         expect(run(true)).toEqual(a);
     }, 120000);
 
     it('ProcessColonyTroops recruits under-garrisoned capitals (Rnd: Next(0,70) per completed recruit)', () => {
         const b = run(false);
-        expect(b.capitals.map((c) => c.troops)).toEqual([13, 7, 6, 1]);
-        expect(b.maintenance).toEqual([13000, 6300, 5100, 900]);
-        // Empire 4 (1 troop, level 453) recruits two troops; each completion draws Next(0,70).
-        expect(b.processDraws).toEqual(['', '', '', 'Next(0,70)=50 Next(0,70)=1']);
-        // The second roll is 1 → Empire.GenerateNewCharacter(TroopGeneral) via the hook.
+        // (re-pinned M4k: the game-start Empire.DoTasks now runs PerformResearch, whose research-queue selection and research events draw Rnd)
+        expect(b.capitals.map((c) => c.troops)).toEqual([12, 14, 2, 7]);
+        expect(b.maintenance).toEqual([12000, 12600, 1800, 6300]);
+        // Empire 3 (2 troops, level 1191) recruits two troops; each completion draws Next(0,70).
+        expect(b.processDraws).toEqual(['', '', 'Next(0,70)=1 Next(0,70)=4', '']);
+        // The first roll is 1 → Empire.GenerateNewCharacter(TroopGeneral) via the hook (the 3rd troop).
         expect(b.troopGenerals.length).toBe(1);
         expect(b.troopGenerals[0]).toMatch(/:3rd /);
         expect(run(false)).toEqual(b);

@@ -52,7 +52,7 @@ describe('starting colonies (extra colonies at age >= 2)', () => {
         // which does retype the habitat to a type in `colonizable`. So not
         // every colony's type need be in `colonizable` — check the ones that
         // are, and separately note (via the pin below) which are not.
-        const alreadyInhabitedExceptions = 2; // Haakonish Consortium's and Dhayut Sovereignty's 2nd colonies (found already-populated).
+        const alreadyInhabitedExceptions = 2; // S155 Syndicate's and Dhayut Territory's 2nd colonies (found already-populated; re-pinned M4k).
         let outsideColonizable = 0;
         for (const e of a) {
             for (const t of e.colonyTypes) {
@@ -62,11 +62,12 @@ describe('starting colonies (extra colonies at age >= 2)', () => {
         expect(outsideColonizable).toBe(alreadyInhabitedExceptions);
         // Pinned for seed 1 (TS port; C# parity ends at the first Empire.DoTasks, unported).
         expect(a.map((e) => e.colonyCount)).toEqual([2, 2, 2, 2]);
+        // (re-pinned M4k: game-start research shifts the Rnd stream.)
         expect(a.map((e) => e.colonyTypes)).toEqual([
             [HabitatType.Continental, HabitatType.Continental],
             [HabitatType.Continental, HabitatType.Continental],
             [HabitatType.MarshySwamp, HabitatType.Desert],
-            [HabitatType.Desert, HabitatType.Continental],
+            [HabitatType.Desert, HabitatType.MarshySwamp],
         ]);
         // Determinism.
         expect(summary(opts(2, 0.5))).toEqual(a);

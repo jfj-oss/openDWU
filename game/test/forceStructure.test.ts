@@ -86,13 +86,16 @@ describe('ProjectForceStructure / ProjectPrivateForceStructure at game start', (
         }
     }, 60000);
 
-    it('age 0: nothing private (the nearest habitat to the capital has unknown resources), no mining targets', () => {
+    it('age 0: private ships only where the nearest habitat to the capital has known resources, no mining targets', () => {
         const g = atDoTasksPoint(opts(0.5, 0));
-        for (const e of summary(g)) {
+        const a = summary(g);
+        for (const e of a) {
             expect(e.state).toEqual([['ExplorationShip', 7], ['ConstructionShip', 3]]);
-            expect(e.private).toEqual([]);
             expect(e.targets).toEqual([]);
         }
+        // Pinned for seed 1 (re-pinned M4k: the game-start Empire.DoTasks now runs PerformResearch, whose research-queue selection and research events draw Rnd): only the second empire's capital neighbour has known resources
+        // (ProjectPrivateForceStructure flag), so only it projects freighters and mining ships.
+        expect(a.map((e) => e.private)).toEqual([[], [['SmallFreighter', 2], ['MediumFreighter', 1], ['LargeFreighter', 1], ['GasMiningShip', 2], ['MiningShip', 2]], [], []]);
     }, 60000);
 
     it('colony economy at the DoTasks point: tax snapshot −ColonyStateSupportCost, income 0', () => {
