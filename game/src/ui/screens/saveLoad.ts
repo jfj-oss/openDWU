@@ -197,25 +197,30 @@ export function createIndexedDbSaveStore(dbName = 'dwu-saves'): SaveTextStore {
             }
         },
         async put(name, text) {
-            try {
-                await withDb('readwrite', async (store) => {
-                    await new Promise<void>((resolve, reject) => {
-                        const req = store.put(text, name);
-                        req.onsuccess = () => resolve();
-                        req.onerror = () => reject(req.error);
-                    });
+            // No internal fallback: a failed put must reach doSave so it can
+            // keep the save in the session map and warn the user. Resolve on
+            // transaction completion — quota errors surface as an abort
+            // after the request itself has succeeded.
+            await withDb('readwrite', async (store) => {
+                await new Promise<void>((resolve, reject) => {
+                    const tx = store.transaction;
+                    const req = store.put(text, name);
+                    req.onerror = () => reject(req.error);
+                    tx.oncomplete = () => resolve();
+                    tx.onabort = () => reject(tx.error ?? new Error('Save transaction aborted'));
+                    tx.onerror = () => reject(tx.error ?? new Error('Save transaction failed'));
                 });
-            } catch {
-                await memoryFallback.put(name, text);
-            }
+            });
         },
         async delete(name) {
             try {
                 await withDb('readwrite', async (store) => {
                     await new Promise<void>((resolve, reject) => {
+                        const tx = store.transaction;
                         const req = store.delete(name);
-                        req.onsuccess = () => resolve();
                         req.onerror = () => reject(req.error);
+                        tx.oncomplete = () => resolve();
+                        tx.onabort = () => reject(tx.error ?? new Error('Delete transaction aborted'));
                     });
                 });
             } catch {
@@ -579,6 +584,18 @@ export function createSaveLoadPanel(mode: 'save' | 'load', wiring: SavePanelWiri
     }
 
     async function doLoadByName(name: string): Promise<void> {
+        // Ignore repeat clicks while the save text is being read: a second
+        // onLoadedFile would boot a second game view.
+        if (loadingName !== null) return;
+        loadingName = name;
+        try {
+            await doLoadByNameInner(name);
+        } finally {
+            loadingName = null;
+        }
+    }
+
+    async function doLoadByNameInner(name: string): Promise<void> {
         const text = await saveTextFor(name);
         if (text === null) {
             showToast(`Save "${name}" not found`);
@@ -643,13 +660,26 @@ export function createSaveLoadPanel(mode: 'save' | 'load', wiring: SavePanelWiri
     openFileBtn.addEventListener('click', () => fileInput.click());
     fileInput.addEventListener('change', handleFilePicked);
 
+    let loadingName: string | null = null;
+
+    // Escape closes the panel. Capture phase on document runs before the
+    // window-level key dispatch, so the game menu does not also toggle.
+    const onKeyDown = (e: KeyboardEvent): void => {
+        if (e.key !== 'Escape') return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        hide();
+    };
+
     function show(): void {
         root.style.display = '';
         switchMode(activeMode);
+        document.addEventListener('keydown', onKeyDown, true);
     }
 
     function hide(): void {
         root.style.display = 'none';
+        document.removeEventListener('keydown', onKeyDown, true);
     }
 
     switchMode(mode);
@@ -660,6 +690,7 @@ export function createSaveLoadPanel(mode: 'save' | 'load', wiring: SavePanelWiri
         hide,
         destroy: () => {
             if (toastTimer !== undefined) clearTimeout(toastTimer);
+            hide();
             root.remove();
         },
     };

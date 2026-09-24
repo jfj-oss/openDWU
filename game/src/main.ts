@@ -20,7 +20,11 @@ import { resolveStarDateDescription, START_STAR_DATE } from './sim/galaxyTime';
 import { formatClockLabel, SECTOR_LEVEL_ZOOM, SYSTEM_LEVEL_ZOOM, type Selection } from './ui/hud';
 import { Habitat, HabitatCategoryType } from './sim/types';
 import { createMapOverlayState, type MapOverlayState, type OverlayKey } from './ui/mapOverlays';
-import { buildDefaultHandlers, createShortcutsOverlay, dispatchKey, setGameMenuHandler } from './ui/keyboard';
+import { buildDefaultHandlers, createShortcutsOverlay, dispatchKey, setCycleHandler, setGameMenuHandler } from './ui/keyboard';
+import { closeEmpiresList } from './ui/screens/empiresList';
+import { closeColoniesList } from './ui/screens/coloniesList';
+import { closeEmpireSummary, setEmpireSummarySource } from './ui/screens/empireSummary';
+import { closeMessageHistory } from './ui/screens/messageHistory';
 import { createMainMenu } from './ui/screens/mainMenu';
 import { openOptionsModal } from './ui/screens/mainMenu';
 import { createTutorialsScreen, openTutorialWindow } from './ui/screens/tutorials';
@@ -405,6 +409,14 @@ export async function startGameView(game: Game, zoomOverride?: number, extraBoot
         shortcuts.destroy();
         hud.gameMenu?.destroy();
         setGameMenuHandler(null);
+        setCycleHandler(null);
+        // Module-level panels hold the old game's Empire/camera and a
+        // document keydown listener: close them and drop their source.
+        closeEmpiresList();
+        closeColoniesList();
+        closeEmpireSummary();
+        closeMessageHistory();
+        setEmpireSummarySource(null);
         // The ticker buffer is module-level; the next game starts fresh.
         clearHudMessages();
     };
@@ -517,6 +529,11 @@ async function startTutorialGame(file: string): Promise<void> {
  * intervals, save panel) before replacing it with a loaded game. */
 function teardownActiveGameView(): void {
     activeSavePanel?.destroy();
+    // The main-menu panel is cached; drop the destroyed instance so the next
+    // Load Game builds a fresh one.
+    if (activeSavePanel === mainMenuSavePanel) {
+        mainMenuSavePanel = null;
+    }
     activeSavePanel = null;
     activeGameViewCleanup?.();
     activeGameViewCleanup = null;
