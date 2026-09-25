@@ -5,7 +5,7 @@
 //   Empire.6.cs DirectConstruction does: AddBuiltObjectToConstruct + AddBuiltObjectToGalaxy + BuiltAt).
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame, createTickGameAtAge } from './helpers/tickGame';
+import { createTickGame } from './helpers/tickGame';
 import { runGameSeconds } from '../src/sim/tick/harness';
 import type { GameData } from '../src/sim/data/gameData';
 import type { Galaxy } from '../src/sim/galaxy';
@@ -158,11 +158,7 @@ function queueAtColony(g: Galaxy, e: Empire, colony: Habitat, design: Design, na
 
 describe('M4h milestone on the headless harness', () => {
     it('a construction ship queued at a colony is built from component cargo and joins the galaxy', () => {
-        // Age 0 (PreWarp) fixture: at the default age-1 start the empires form fleets within this run and
-        // Empire.7.cs ReviewCharacterLocation's FleetAdmiral / TroopGeneral ShipGroup branches (838-, 1150-,
-        // GenerateOrderedFleetsBy*, Empire.8.cs) are still TODO(port) throws in characters.ts; back to
-        // createTickGame once they are ported.
-        const g = createTickGameAtAge(gameData, 0).galaxy;
+        const g = createTickGame(gameData).galaxy;
         const e = g.empires[0];
         // M4f DirectPrivateConstruction queues private ships at the capital's space port (shared colony cargo) in the
         // Empire long block and would consume the stocked components first; this test exercises the yard alone.
@@ -180,22 +176,22 @@ describe('M4h milestone on the headless harness', () => {
         expect(Object.keys(r.todoHits).filter((k) => k.startsWith('M4h '))).toEqual([]);
         expect(bo.unbuiltComponentCount).toBe(0);
         expect(bo.builtAt).toBeNull();
-        expect(yardsCountUnderConstruction(q.constructionYards!)).toBe(0);
-        expect(q.constructionWaitQueue!.length).toBe(0);
+        // Since the default age-1 start the empire AI itself queues bases at the capital within this run (a space port,
+        // then DefensiveBase-subrole orbital batteries via BuildDefensiveBases), so the yards need not be idle at the end:
+        // only the test builder must have left the yards and the wait queue.
+        expect(q.constructionYards!.some((y) => y.shipUnderConstruction === bo)).toBe(false);
+        expect(q.constructionWaitQueue!.includes(bo)).toBe(false);
         expect(e.countersBuildCivilianShipCount).toBe(civBefore + 1);
         expect(e.constructionShips).toContain(bo); // ReDefine registers the finished builder
         expect(bo.parentHabitat === colony || builtObjectMission(bo.mission) !== null).toBe(true);
-        // Each component used up one component cargo unit.
-        for (const c of design.components) expect(colony.cargo!.getCargoComponent(c.componentId, e)).toBeNull();
+        // (Before the age-1 default start this also checked that the capital's component cargo was used up; at age 1
+        // the capital manufactures and receives components for its own base builds during the run, so the stocked
+        // units are indistinguishable from those — unbuiltComponentCount above covers the construction.)
         expect(Number.isFinite(bo.xpos) && Number.isFinite(bo.ypos)).toBe(true);
     }, 300000);
 
     it('a warship queued at a space port is built (yard ticked as IndustrialProcessing would) and parks', () => {
-        // Age 0 (PreWarp) fixture: at the default age-1 start the empires form fleets within this run and
-        // Empire.7.cs ReviewCharacterLocation's FleetAdmiral / TroopGeneral ShipGroup branches (838-, 1150-,
-        // GenerateOrderedFleetsBy*, Empire.8.cs) are still TODO(port) throws in characters.ts; back to
-        // createTickGame once they are ported.
-        const g = createTickGameAtAge(gameData, 0).galaxy;
+        const g = createTickGame(gameData).galaxy;
         const e = g.empires[0];
         e.initiateConstruction = false; // see above
         const port = e.spacePorts[0];

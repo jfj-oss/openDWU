@@ -3,7 +3,7 @@
 // M4i stub).
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame, createTickGameAtAge } from './helpers/tickGame';
+import { createTickGame } from './helpers/tickGame';
 import { runGameSeconds } from '../src/sim/tick/harness';
 import type { GameData } from '../src/sim/data/gameData';
 import type { Galaxy } from '../src/sim/galaxy';
@@ -193,11 +193,7 @@ describe('M4i unit: construction helpers', () => {
 
 describe('M4i harness: empire construction entry points', () => {
     it('DirectConstruction with ample funds queues state ships at the space port, pays for them, and they get built', () => {
-        // Age 0 (PreWarp) fixture: at the default age-1 start the empires form fleets within this run and
-        // Empire.7.cs ReviewCharacterLocation's FleetAdmiral / TroopGeneral ShipGroup branches (838-, 1150-,
-        // GenerateOrderedFleetsBy*, Empire.8.cs) are still TODO(port) throws in characters.ts; back to
-        // createTickGame once they are ported.
-        const g = createTickGameAtAge(gameData, 0).galaxy;
+        const g = createTickGame(gameData).galaxy;
         runGameSeconds(g, 60);
         // Pick an empire whose long Empire.DoTasks block (ProjectForceStructure) has already re-run: the game-start
         // CreateStateShips (Galaxy.8.cs 955) clears StateForceStructureProjections, and the per-empire timers are staggered,
