@@ -355,3 +355,15 @@ describe('"Swap maps or tech" (OFFER_DEAL, Main.Part9.cs:273 / Main.Part10.cs:42
         }
     });
 });
+
+describe('trade panel helpers ([tradenego] tradePanel.ts)', () => {
+    it('label text appends the value; reply class follows the result', async () => {
+        const { tradeLabelText, tradeReplyClass } = await import('../src/ui/screens/tradePanel');
+        expect(tradeLabelText({ text: 'Gravitic Weapons', value: 284292 })).toBe('Gravitic Weapons (284,292)');
+        expect(tradeLabelText({ text: 'Money', value: null })).toBe('Money');
+        expect(tradeReplyClass(null)).toBe('trade-reply');
+        const n = beginTradeNegotiation(galaxy, player, ai, 'trade')!;
+        addTradeItem(galaxy, n.us, moneyRow(n.us, 10));
+        expect(tradeReplyClass(submitTradeOffer(galaxy, n))).toBe('trade-reply trade-reply-accepted');
+    });
+});
