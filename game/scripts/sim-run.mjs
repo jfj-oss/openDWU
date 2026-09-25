@@ -61,7 +61,7 @@ function analyseProfile(p) {
     for (const n of p.nodes) for (const c of n.children ?? []) parent.set(c, n.id);
     const dt = new Map();
     for (let i = 0; i < p.samples.length; i++) dt.set(p.samples[i], (dt.get(p.samples[i]) ?? 0) + (p.timeDeltas[i] ?? 0) / 1000);
-    const label = (n) => { const f = n.callFrame; const file = f.url.replace(/^.*\/src\//, 'src/').replace(/^file:\/\//, ''); return `${f.functionName || '(anon)'} ${file}:${f.lineNumber + 1}`; };
+    const label = (n) => { const f = n.callFrame; const file = f.url.replace(/^.*?\/(src|test)\//, '$1/').replace(/\.js$/, '.ts').replace(/^file:\/\//, ''); return `${f.functionName || '(anon)'} ${file}:${f.lineNumber + 1}`; };
     const self = new Map(), incl = new Map(), entry = new Map();
     for (const [id, ms] of dt) {
         let n = byId.get(id);
@@ -80,7 +80,7 @@ function analyseProfile(p) {
         if (tickEntry !== null) entry.set(tickEntry, (entry.get(tickEntry) ?? 0) + ms);
     }
     const sorted = (m, filter = () => true) => [...m].filter(([k]) => filter(k)).sort((a, b) => b[1] - a[1]);
-    return { entry: sorted(entry), self: sorted(self, (k) => !k.startsWith('(')), incl: sorted(incl, (k) => k.includes('src/sim/')) };
+    return { entry: sorted(entry), self: sorted(self, (k) => !k.startsWith('(') && !k.includes(' node:')), incl: sorted(incl, (k) => !k.startsWith('(') && !k.includes(' node:') && !k.includes('sim-run.mjs')) };
 }
 
 const MODULES = { game: '/src/sim/game.ts', types: '/src/sim/types.ts', load: '/test/helpers/loadGameDataFs.ts', harness: '/src/sim/tick/harness.ts',
@@ -95,7 +95,7 @@ if (loader === 'vite') {
 } else {
     bundleDir = mkdtempSync(resolve(tmpdir(), 'dwu-sim-run-'));
     await build({ cwd: root, input: Object.fromEntries(Object.entries(MODULES).map(([k, v]) => [k, '.' + v])), platform: 'node', transform: { define: dirnameDefine },
-        output: { dir: bundleDir, format: 'esm' }, write: true, logLevel: 'warn' });
+        output: { dir: bundleDir, format: 'esm', preserveModules: true, preserveModulesRoot: root }, write: true, logLevel: 'warn' });
     load = (key) => import(resolve(bundleDir, key + '.js'));
 }
 const out = { loader, seed, stars, empires, seconds, age, pirates, exceptions: [] };
@@ -188,5 +188,5 @@ try {
     if (jsonOut !== null) writeFileSync(String(jsonOut), JSON.stringify(out, null, 1));
 } finally {
     await server?.close();
-    if (bundleDir !== null) rmSync(bundleDir, { recursive: true, force: true });
+    if (bundleDir !== null && !process.env.KEEP) rmSync(bundleDir, { recursive: true, force: true });
 }
