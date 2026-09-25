@@ -10,7 +10,11 @@ import { PlanetaryFacility } from '../src/sim/construction/facilities';
 import { WonderType } from '../src/sim/researchSystem';
 import { MIN_TIME, galaxyStarDate } from '../src/sim/tick/simTime';
 import { ShipActionType, createShipAction } from '../src/sim/player/shipAction';
-import { executeShipAction } from '../src/sim/player/executeShipAction';
+import { calculateValueOfCargoForEmpire, executeShipAction, findResalePriceOfShip } from '../src/sim/player/executeShipAction';
+import { ComponentStatus } from '../src/sim/builtObjectComponent';
+import { calculateCrewLevel } from '../src/sim/achievements';
+import { checkAtWar } from '../src/sim/forceStructure';
+import { determineEmpireRelationshipFactors } from '../src/sim/empireRelationshipFactors';
 import { canDeployXaraktorVirus } from '../src/sim/player/orderMenu';
 import { checkWithinDistancePotential } from '../src/sim/movement';
 import { checkWithinDistancePotential as damageCheckWithinDistancePotential } from '../src/sim/combat/damage';
@@ -19,7 +23,7 @@ import { BuiltObject as BuiltObjectClass, determineBuiltObjectIsState } from '..
 import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
 import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
 import { canBuiltObjectColonizeHabitat } from '../src/sim/construction/constructionQueue';
-import { canBuildDesign } from '../src/sim/designGeneration';
+import { canBuildDesign, canBuildDesignTech } from '../src/sim/designGeneration';
 import { BuiltObjectMission, BuiltObjectMissionPriority, BuiltObjectMissionType, Command, CommandAction } from '../src/sim/missions/mission';
 import { cmdColonize } from '../src/sim/missions/cmdTroops';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
@@ -191,5 +195,57 @@ describe('item 4: pirate player conversation (Main.Part9.cs:175-190; Main.Part10
         const t = submitProposal(g, player, other, 'DEAL_BEGIN:trade');
         expect(t.ok).toBe(true);
         expect(t.trade).not.toBeNull();
+    });
+});
+
+describe('item 5: BaconMain.cs 160-213 GiveBuiltObject by a "Romulan" / "Mining Company" empire (BaconBuiltObject.cs 3860)', { timeout: 600000 }, () => {
+    it('the receiver pays FindResalePriceOfShip to the giver, then method_347 hands the ship over', () => {
+        const game = createTickGame(gameData);
+        const g = game.galaxy;
+        const player = g.playerEmpire!;
+        player.name = 'Romulan Star Empire';
+        const other = g.empires.find((e) => e !== player && e.pirateEmpireBaseHabitat === null)!;
+        const ship = player.builtObjects.find((b) => b.role !== BuiltObjectRole.Base && b.builtAt === null && b.topSpeed > 0)!;
+        expect(ship).toBeDefined();
+
+        // Hand-worked BaconBuiltObject.cs 3860-3899 for this ship (no unbuilt components at the start).
+        expect(ship.components.items.some((x) => x.status === ComponentStatus.Unbuilt)).toBe(false);
+        let expected = ship.design!.calculateCurrentPurchasePrice(g) * (1.0 + player.tradeBonus - other.tradeBonus);
+        if (!canBuildDesignTech(other, ship.design!)) expected *= 2.0;
+        const crew = calculateCrewLevel(ship);
+        expected *= ({ green: 0.9, experienced: 1.1, veteran: 1.2, elite: 1.3, legendary: 1.4 } as Record<string, number>)[crew] ?? 1.0;
+        if (ship.role === BuiltObjectRole.Military && checkAtWar(other)) expected *= 1.2;
+        if (ship.cargo !== null) expected += calculateValueOfCargoForEmpire(g, ship.cargo, player) * Math.max(0.02, 1 - Math.trunc(player.totalPopulation / 1e9));
+        const fuel = ship.currentFuel / Math.max(1, ship.fuelCapacity);
+        if (fuel < 0.25) expected *= 0.5;
+        else if (fuel > 0.9) expected *= 1.1;
+        const factors = determineEmpireRelationshipFactors(player, other).reduce((a, f) => a + f.value, 0.0);
+        const price = Math.trunc(expected * Math.max(0.0, 1.0 + factors / 100.0));
+        expect(findResalePriceOfShip(g, ship, other)).toBe(price);
+        expect(price).toBeGreaterThan(0);
+
+        const giverMoney = player.stateMoney;
+        const buyerMoney = other.stateMoney;
+        const action = createShipAction(ShipActionType.GiveBuiltObject, ship);
+        action.target2 = other;
+        const r = executeShipAction(g, player, ship, action, false);
+        expect(r.ok).toBe(true);
+        expect(player.stateMoney).toBe(giverMoney + price);
+        expect(other.stateMoney).toBe(buyerMoney - price);
+        expect(ship.empire).toBe(other); // Main.Part7.cs 188-206 TakeOwnershipOfBuiltObject — no longer aborted
+    });
+
+    it('any other empire gives ships for free', () => {
+        const game = createTickGame(gameData);
+        const g = game.galaxy;
+        const player = g.playerEmpire!;
+        const other = g.empires.find((e) => e !== player && e.pirateEmpireBaseHabitat === null)!;
+        const ship = player.builtObjects.find((b) => b.role !== BuiltObjectRole.Base && b.builtAt === null && b.topSpeed > 0)!;
+        const giverMoney = player.stateMoney;
+        const action = createShipAction(ShipActionType.GiveBuiltObject, ship);
+        action.target2 = other;
+        executeShipAction(g, player, ship, action, false);
+        expect(player.stateMoney).toBe(giverMoney);
+        expect(ship.empire).toBe(other);
     });
 });

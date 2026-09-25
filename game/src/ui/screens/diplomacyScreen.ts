@@ -17,6 +17,7 @@
 // sim/player/diplomacyProposals.ts) as a compact "Propose..." list on the selected empire, with the reply inline.
 // TODO(port): pirate relations (Empire.7.cs:4270 pirate branch), ambassador card (EmpireDetailView.cs:613) — not in 15a
 
+import { civilityDescription } from '../../sim/empireRelationshipFactors';
 import './diplomacyScreen.css';
 import type { Empire } from '../../sim/empire';
 import type { Galaxy } from '../../sim/galaxy';
@@ -111,20 +112,8 @@ export function feelingDescription(overallAttitude: number): string {
     return result;
 }
 
-/** Empire.10.cs:681 CivilityDescription (if / else if chain verbatim). */
-export function civilityDescription(rating: number): string {
-    if (rating < -50.0) return 'Diabolical';
-    else if (rating >= -50.0 && rating <= -30.0) return 'Evil';
-    else if (rating >= -30.0 && rating <= -20.0) return 'Notorious';
-    else if (rating >= -20.0 && rating <= -10.0) return 'Nasty';
-    else if (rating >= -10.0 && rating <= -1.0) return 'Dubious';
-    else if (rating >= -1.0 && rating <= 4.0) return 'Satisfactory';
-    else if (rating >= 4.0 && rating <= 10.0) return 'Respectable';
-    else if (rating >= 10.0 && rating <= 16.0) return 'Admired';
-    else if (rating >= 16.0 && rating <= 22.0) return 'Noble';
-    else if (rating > 22.0) return 'Heroic';
-    return '';
-}
+/** Empire.10.cs:681 CivilityDescription (sim/empireRelationshipFactors.ts). */
+export { civilityDescription };
 
 /** C# ToString("+0;-0;0"): round half away from zero, then '+N', '-N' or '0'. */
 export function formatSigned(v: number): string {
