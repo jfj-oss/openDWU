@@ -14,10 +14,9 @@
 //   GenerateBuiltObjectFromDesign; Empire.10.cs 3372 ObtainDesignSpec; BaconBuiltObject.cs 3536 AddScientificData.
 //
 // Messages: Empire.SendEventMessageToEmpire (Empire.7.cs 3400) only forwards to the UI's EventMessageRecipient (null
-// headless) — those calls and the text they format are omitted (no state, no Rnd). Empire.SendMessageToEmpire calls
-// are kept (messages.ts queue) with GameText keys as descriptions (TextResolver is not ported; M9).
-// Scripted game events (GameEvents) are empty in a normal game (plan §0.3): GetMatchingGameEventIdEmpireEncounter
-// returns no id and CheckTriggerEvent does nothing — omitted with TODO(port) notes.
+// headless); InvestigateRuins calls it (events.ts), the other entry points omit those calls (no state, no Rnd).
+// Empire.SendMessageToEmpire calls are kept (messages.ts queue) with GameText keys as descriptions (TextResolver is not
+// ported; M9). Scripted game events: CheckTriggerEvent / GetMatchingGameEventId* are story/eventActions.ts.
 
 import { doSingleEmpireEncounterShakturiStory, checkForStoryLocationHint, investigateRuinsStoryClue, investigateRuinsStoryEvent } from './story/storyEvents';
 import { resolveDescription } from './messages';
@@ -401,7 +400,7 @@ function findEmpireByVisibility(galaxy: Galaxy, v: Empire['visibility']): Empire
 
 /**
  * Empire.1.cs 1060 MergeGalaxyMapsForSharedVisibilityEmpires.
- * RND: ChangeDiplomaticRelation (M4r, 1 draw) inside MergeGalaxyMap — not drawn until M4r.
+ * Rnd: only what ChangeDiplomaticRelation (diplomacyTick.ts) draws inside MergeGalaxyMap's first-contact block.
  */
 export function mergeGalaxyMapsForSharedVisibilityEmpires(galaxy: Galaxy, empire: Empire): void {
     const shared = empiresSharedVisibility(galaxy, empire);
@@ -594,7 +593,7 @@ export interface DiscoveryLocation {
 
 /**
  * Galaxy.7.cs 3957 DoEmpireEncounter(discoverer, otherEmpire, discoveryLocation).
- * RND: CheckSendPreWarpProgressEventMessage (M4u, 7 draws) — not drawn until M4u.
+ * Rnd: CheckSendPreWarpProgressEventMessage's (empireEvents.ts) draws.
  */
 export function doEmpireEncounter(galaxy: Galaxy, discoverer: Empire | null, otherEmpire: Empire | null, discoveryLocation: DiscoveryLocation | null): void {
     if (otherEmpire === galaxy.independentEmpire) {
@@ -1366,7 +1365,7 @@ export function checkForShipsDiscoveringRuins(galaxy: Galaxy, habitat: Habitat):
 
 /**
  * Habitat.cs 2615 CheckForShipsOfNewEmpiresInSystem(galaxy, time) → 2623 PerformThreatEvaluation(time): refreshes the
- * owner's per-system threat cache at most every 5 s. RND: EvaluateSystemThreats (M4n) — not drawn until M4n.
+ * owner's per-system threat cache at most every 5 s. EvaluateSystemThreats is combat/threats.ts; no Rnd.
  */
 export function checkForShipsOfNewEmpiresInSystem(galaxy: Galaxy, habitat: Habitat, time: number): void {
     if (habitat.owner !== null && habitat.owner !== galaxy.independentEmpire) {

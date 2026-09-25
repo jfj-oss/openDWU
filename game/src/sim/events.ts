@@ -216,7 +216,7 @@ export function pirateReviewRandomEvents(galaxy: Galaxy, empire: Empire): void {
 export function doLocationEffects(galaxy: Galaxy, builtObject: BuiltObject, timePassed: number, time: number): void {
     if (builtObject.shipDamageAmountLocation > 0) {
         const hitPower = builtObject.shipDamageAmountLocation * timePassed;
-        // TODO(port) M4o: InflictDamage (BuiltObject.2.cs 6221) — stub, no damage applied.
+        // BuiltObject.2.cs 6221 InflictDamage (combat/damage.ts; applies the damage, Rnd per its callees).
         inflictDamageFull(galaxy, builtObject, builtObject, null, hitPower, time, 0, false, -Number.MAX_VALUE, false);
     }
     if (builtObject.shipPullAmountLocation > 0) {
@@ -299,7 +299,7 @@ export function applyLocationEffects(galaxy: Galaxy, builtObject: BuiltObject, t
                 builtObject.currentShields = 0;
                 num8 = galaxy.rnd.nextDouble() * 5.0;
             }
-            // TODO(port) M4o: InflictDamage (BuiltObject.2.cs 6221) — stub, no damage applied.
+            // BuiltObject.2.cs 6221 InflictDamage (combat/damage.ts; applies the damage, Rnd per its callees).
             inflictDamageFull(galaxy, builtObject, builtObject, null, num8, time, 0, false, -Number.MAX_VALUE, true);
             builtObject.lastLocationEffectTouch = time;
         }
@@ -482,15 +482,15 @@ export function processPlague(galaxy: Galaxy, habitat: Habitat, timePassed: numb
                     }
                     for (let m = 0; m < builtObjectList.length; m++) {
                         const builtObject2 = builtObjectList[m];
-                        // TODO(port) M4o: InflictDamage (BuiltObject.2.cs 6221) — stub, no damage applied (the C# destroys the base).
+                        // BuiltObject.2.cs 6221 InflictDamage (combat/damage.ts): 1 000 000 damage destroys the base, as in the C#.
                         inflictDamageFull(galaxy, builtObject2, builtObject2, null, 1000000.0, galaxyNow(galaxy), 0, false, 0.0, false);
                     }
                     for (let n = 0; n < habitat.basesAtHabitat.length; n++) {
                         const builtObject3 = habitat.basesAtHabitat[n];
-                        // TODO(port) M4o: InflictDamage (BuiltObject.2.cs 6221) — stub, no damage applied.
+                        // BuiltObject.2.cs 6221 InflictDamage (combat/damage.ts): 1 000 000 damage destroys the base, as in the C#.
                         if (builtObject3 != null) inflictDamageFull(galaxy, builtObject3, builtObject3, null, 1000000.0, galaxyNow(galaxy), 0, false, 0.0, false);
                     }
-                    // TODO(port) M4q: ClearColony(null, sendMessages: true, removeEmpireWhenNoColonies: true) (Habitat.cs 7450) — stub.
+                    // Habitat.cs 7450 ClearColony(null, sendMessages: true, removeEmpireWhenNoColonies: true) (combat/ownership.ts).
                     clearColony(galaxy, habitat, null);
                     habitat.plagueId = -1;
                     habitat.plagueTimeRemaining = 0;
@@ -766,7 +766,7 @@ function purgeHabitatPrioritizations<T extends { habitat: Habitat | null }>(list
  */
 export function habitatCompleteTeardown(galaxy: Galaxy, habitat: Habitat): void {
     let num = -1;
-    // TODO(port) M4q: ClearColony(TeardownEmpire) (Habitat.cs 7450) — stub.
+    // Habitat.cs 7450 ClearColony(TeardownEmpire) (combat/ownership.ts).
     clearColony(galaxy, habitat, habitat.teardownEmpire);
     galaxy.orders.updateHabitatIndexes(habitat.habitatIndex, -1);
     for (let i = 0; i < galaxy.builtObjects.length; i++) {
@@ -774,7 +774,7 @@ export function habitatCompleteTeardown(galaxy: Galaxy, habitat: Habitat): void 
         if (builtObject != null && builtObject.parentHabitat === habitat) {
             if (builtObject.role === BuiltObjectRole.Base || builtObject.dockedAt === habitat || builtObject.builtAt === habitat) {
                 clearPreviousMissionRequirements(galaxy, builtObject);
-                // TODO(port) M4o: BuiltObject.CompleteTeardown(galaxy, removeFromEmpire: true) — stub.
+                // BuiltObject.CompleteTeardown(galaxy, removeFromEmpire: true) (combat/teardown.ts).
                 builtObjectCompleteTeardown(galaxy, builtObject, true);
             } else {
                 builtObject.parentHabitat = null;
@@ -807,7 +807,7 @@ export function habitatCompleteTeardown(galaxy: Galaxy, habitat: Habitat): void 
             if (shipGroup == null) continue;
             const mission = shipGroup.mission;
             if (mission !== null) {
-                // TODO(port) M4l: ShipGroup.CompleteMission — stub.
+                // ShipGroup.CompleteMission (fleets/shipGroup.ts).
                 if (mission.targetHabitat !== null && mission.targetHabitat === habitat) shipGroupCompleteMission(galaxy, shipGroup);
                 if (mission.secondaryTargetHabitat !== null && mission.secondaryTargetHabitat === habitat) shipGroupCompleteMission(galaxy, shipGroup);
             }
@@ -816,7 +816,7 @@ export function habitatCompleteTeardown(galaxy: Galaxy, habitat: Habitat): void 
     for (let m = 0; m < galaxy.builtObjects.length; m++) {
         const builtObject2 = galaxy.builtObjects[m];
         if (builtObject2 == null) continue;
-        // TODO(port) M4b: BuiltObject.ClearAllMissionsForTarget(builtObject2, this, Undefined, dropOutOfHyperspace: true) — stub.
+        // BuiltObject.ClearAllMissionsForTarget(builtObject2, this, Undefined, dropOutOfHyperspace: true) (missions/assign.ts).
         clearAllMissionsForTargetHabitat(galaxy, builtObject2, builtObject2, habitat, BuiltObjectMissionType.Undefined, true);
         if (builtObject2.nearestSystemStar === habitat) {
             clearPreviousMissionRequirements(galaxy, builtObject2);
@@ -1365,7 +1365,7 @@ export function chanceNewAmbassador(galaxy: Galaxy, empire: Empire, newRelationT
 
 // ---------------------------------------------------------------------------
 // Creature.cs 1196-1345 creature combat (CheckForAttackers, CheckForTargets, ScanForTarget, CheckTargetInRange,
-// AttackTarget). Creature times are game seconds (creature.ts); DamageTarget is combat damage (M4o stub).
+// AttackTarget). Creature times are game seconds (creature.ts); DamageTarget is combat damage (combat/damage.ts creatureDamageTarget).
 // ---------------------------------------------------------------------------
 
 // StellarObject.Attackers / Pursuers: combat/threats.ts stellarAttackers / stellarPursuers.
@@ -1523,7 +1523,7 @@ export function creatureAttackTarget(galaxy: Galaxy, creature: Creature, timePas
     creature.distanceToTarget = galaxy.calculateDistance(creature.xpos, creature.ypos, target.xpos, target.ypos);
     if (creature.distanceToTarget <= 50.0) {
         creature.targetSpeed = isHabitat(target) ? Math.fround(target.orbitSpeed + 3) : stellarCurrentSpeed(target);
-        // TODO(port) M4o: Creature.cs 1347 DamageTarget — stub (no damage, never destroys the target).
+        // Creature.cs 1347 DamageTarget (combat/damage.ts creatureDamageTarget; applies the damage and may destroy the target).
         if (creatureDamageTarget(galaxy, creature, target, Math.max(1, Math.trunc(creature.attackStrength * timePassed)), Math.round(tempNow * 1000), timePassed)) {
             if (!isHabitat(target)) {
                 const size = target.size;
@@ -1561,7 +1561,7 @@ export function creatureAttackTarget(galaxy: Galaxy, creature: Creature, timePas
     }
 }
 
-// ---- stubs added by M4o (called from combat/damage.ts and combat/teardown.ts) ----
+// ---- entry points added by M4o (called from combat/damage.ts and combat/teardown.ts); ported ----
 
 /**
  * Habitat.cs 6399 DoPlanetDestroyAsteroidField (started on a Thread by DoExplosion, Habitat.cs 6361; run inline in TS, plan §0):

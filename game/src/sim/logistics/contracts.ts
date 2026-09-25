@@ -196,8 +196,8 @@ export function performTradeTransaction(galaxy: Galaxy, relation: DiplomaticRela
         if (thisEmpire.characters != null) {
             // Galaxy.DoCharacterEvent(TradeIncome, null, Characters.GetAmbassadorsForEmpire(_OtherEmpire), true, _ThisEmpire).
             const ambassadors = getAmbassadorsForEmpire(thisEmpire.characters as Character[], relation.otherEmpire);
-            // TODO(port) M4u: characters.ts doCharacterEventForList throws for TradeIncome (skill progress not ported).
-            // RND: DoCharacterEvent draws 3 per character (Galaxy.1.cs 3858-3860) — not drawn until M4u.
+            // Galaxy.1.cs 3781 DoCharacterEvent (characters.ts doCharacterEventForList; Rnd: its per-character draws,
+            // Galaxy.1.cs 3858-3860).
             doCharacterEventRuntime(galaxy, CharacterEventType.TradeIncome, null, ambassadors, true, thisEmpire);
         }
     }

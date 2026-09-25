@@ -719,8 +719,8 @@ export function processColonyTroopsFull(
                 colony.troopsToRecruit.remove(troop);
                 // Empire.4.cs 3574: Galaxy.1.cs DoCharacterEvent(TroopComplete, troop, colony.Characters,
                 // includeLeader: true, colony.Empire) (3781; returns at once when colony.Characters is empty).
-                // TODO(port) M4u: characters.ts throws for the runtime TroopComplete event (skill progress); routed through
-                // the M4u stub (identical for an empty list; RND noted there). Changed by M4j (recruitment now runs in the tick).
+                // characters.ts doCharacterEventForList (Rnd: its per-character draws). Changed by M4j (recruitment now runs
+                // in the tick).
                 doCharacterEventRuntime(galaxy, CharacterEventType.TroopComplete, troop, colonyCharacters(colony), true, colony.empire);
                 chanceNewTroopGeneralFromRecruitment(galaxy, troop, empire, colony);
             }
