@@ -247,6 +247,10 @@ export async function startGameView(game: Game, zoomOverride?: number, extraBoot
     const app = new Application();
     await app.init({
         resizeTo: window,
+        // Render at the display's device pixel ratio (HiDPI / 4K): without this Pixi draws at 1x
+        // and the browser upscales the canvas, which looks like a 720p capture on a 2x screen.
+        resolution: window.devicePixelRatio || 1,
+        autoDensity: true,
         background: 0x000000,
         antialias: true,
         preference: 'webgl',
@@ -846,6 +850,10 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     const app = new Application();
     await app.init({
         resizeTo: window,
+        // Render at the display's device pixel ratio (HiDPI / 4K): without this Pixi draws at 1x
+        // and the browser upscales the canvas, which looks like a 720p capture on a 2x screen.
+        resolution: window.devicePixelRatio || 1,
+        autoDensity: true,
         background: 0x000000,
         antialias: true,
         preference: 'webgl',
