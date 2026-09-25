@@ -66,6 +66,7 @@ import { getGovernmentsStatic, registerTakeOwnershipOfColonyFull } from '../empi
 import { fastFindNearestUnexploredHabitat } from '../civilianAI';
 import { SystemVisibilityStatus } from '../visibility';
 import { selectRandomNextResearchProjectExcludeSuperWeapons } from '../construction/constructionQueue';
+import { checkCancelIntelligenceMissionsWithTarget as espionageCheckCancelIntelligenceMissionsWithTarget } from '../espionage';
 import { doResearchBreakthrough, reviewDesignsBuiltObjectsImprovedComponents } from '../researchTick';
 import { pirateEconomyPerformIncome } from '../pirates/pirateAI';
 import { PirateIncomeType } from '../pirates/pirateEconomy';
@@ -272,27 +273,9 @@ export function cancelAllCharacterTransfers(galaxy: Galaxy, colony: Habitat): vo
     }
 }
 
-/**
- * Galaxy.8.cs 3563 CheckCancelIntelligenceMissionsWithTarget(target). Intelligence missions are only created by the
- * (deferred) espionage code, so every agent's Mission is null; a set mission throws the deferred TODO. No Rnd.
- */
+/** Galaxy.8.cs 3563 CheckCancelIntelligenceMissionsWithTarget(target): ported by M4z2 (espionage.ts). No Rnd. */
 export function checkCancelIntelligenceMissionsWithTarget(galaxy: Galaxy, target: StellarObject | null): void {
-    if (target === null) return;
-    for (let i = 0; i < galaxy.empires.length; i++) {
-        const empire = galaxy.empires[i];
-        if (empire == null || empire.characters == null) continue;
-        const chars = charactersOf(empire);
-        for (let j = 0; j < chars.length; j++) {
-            const character = chars[j];
-            if (character == null || character.role !== CharacterRole.IntelligenceAgent) continue;
-            const mission = character.mission as { target: unknown } | null;
-            if (mission == null || mission.target == null) continue;
-            if (mission.target === target) {
-                // Empire.CancelIntelligenceMission(mission); character.Mission = null — espionage is deferred.
-                throw new Error('TODO(port) deferred espionage: Empire.CancelIntelligenceMission (Galaxy.8.cs 3563)');
-            }
-        }
-    }
+    espionageCheckCancelIntelligenceMissionsWithTarget(galaxy, target as Habitat | BuiltObject | null);
 }
 
 /** Galaxy.7.cs 4274 ReevaluateMissionsAgainstHabitat(habitat, newEmpire). No Rnd. */

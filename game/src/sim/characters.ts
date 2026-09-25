@@ -1954,9 +1954,9 @@ function baconIncrementSkillProgress(character: Character): number {
 
 /**
  * BaconCharacter.cs 31 Kill(character): true ⇒ Character.Kill completes the death. A "Romulan" empire keeps its
- * intelligence agents and turns its leader into a colony governor. The rest runs only when the caller two frames up is
- * Empire.PerformIntelligenceMissions (espionage, deferred — not M4): the clock-seeded `new Random()` draw
- * (spyCaptureChance 1f > NextDouble, always true) has no other effect, so it is not modelled.
+ * intelligence agents and turns its leader into a colony governor. The rest (spy capture / ransom) runs only when the caller
+ * two frames up is Empire.PerformIntelligenceMissions: espionagePrisoners.ts characterKillFromPerformIntelligenceMissions
+ * (M4z2) handles those calls; every other caller gets only the Romulan checks here.
  */
 function baconCharacterKill(character: Character): boolean {
     let flag1 = true;
@@ -1971,18 +1971,31 @@ function baconCharacterKill(character: Character): boolean {
 }
 
 /**
- * IntelligenceMission.cs (espionage is deferred, tasks/M4-plan.md §0.3): the data a runtime character mission carries.
- * Only the CounterIntelligence ctor (75) is reached (CheckForCharacterAppearance puts new agents on counter-intelligence).
+ * IntelligenceMission.cs: the data a runtime character mission carries. The constructor is the CounterIntelligence ctor
+ * (IntelligenceMission.cs 75); the other five ctors (empire / research / built object / habitat / character targets) and
+ * the Difficulty / Target getters are free functions in espionage.ts (M4z2).
  */
 export class IntelligenceMission {
     originatingEmpire: Empire | null;
     agent: Character | null;
-    /** IntelligenceMissionType (IntelligenceMissionType.cs; 8 = CounterIntelligence). */
+    /** IntelligenceMissionType (espionage.ts; 8 = CounterIntelligence). */
     type: number;
     startDate: number;
     timeLength: number;
+    // ---- M4z2 fields (espionage) ----
+    /** IntelligenceMissionOutcome (espionage.ts; 0 = Undefined). */
+    outcome = 0;
     targetEmpire: Empire | null;
+    targetHabitat: Habitat | null = null;
+    targetBuiltObject: BuiltObject | null = null;
+    /** _TargetResearchNode (a node of the target empire's tech tree, researchSystem.ts TechNode). */
+    targetResearchNode: TechNode | null = null;
+    targetCharacter: Character | null = null;
     targetIsEmpire: boolean;
+    targetIsHabitat = false;
+    targetIsBuiltObject = false;
+    targetIsResearch = false;
+    targetIsCharacter = false;
 
     // IntelligenceMission(originatingEmpire, agent, startDate) (IntelligenceMission.cs 75).
     constructor(originatingEmpire: Empire | null, agent: Character | null, startDate: number) {
@@ -2004,7 +2017,7 @@ export class Character {
     private _endDate = 0;
     private _active = false;
     private _empire: Empire | null = null;
-    // TODO(port): IntelligenceMission (IntelligenceMission.cs) — null at game start.
+    /** Character.cs _Mission (IntelligenceMission; espionage.ts). */
     private _mission: unknown = null;
     private _appearanceOrder = 0;
     private _location: StellarObject | null = null;

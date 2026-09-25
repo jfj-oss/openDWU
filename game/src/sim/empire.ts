@@ -112,7 +112,7 @@ function halveRgb(color: number): number {
 
 // Port of EmpireCounters.cs (revenue parts, M4j): the income / extermination totals and their Process* methods
 // (EmpireCounters.cs 67-72, 220-230). M4o: the destruction counters (EmpireCounters.cs 20-58, 138, 333-513).
-// TODO(port) M4r: the diplomacy / espionage counters.
+// M4z2: the espionage counters (EmpireCounters.cs 45-50, 234). TODO(port) M4r: the diplomacy counters.
 export class EmpireCounters {
     /** EmpireCounters.cs _Empire. */
     private readonly _empire: Empire;
@@ -187,6 +187,14 @@ export class EmpireCounters {
     eliminateEmpireCount = 0;
     eliminateEmpireStrategicValue = 0;
     eliminatePirateEmpireCount = 0;
+    // ---- M4z2 fields (espionage) ----
+    // EmpireCounters.cs 45-50 intelligence mission counters (int).
+    intelligenceMissionSuccessEspionageCount = 0;
+    intelligenceMissionSuccessSabotageCount = 0;
+    intelligenceMissionFailureEspionageCount = 0;
+    intelligenceMissionFailureSabotageCount = 0;
+    intelligenceMissionSuccessCounterIntelligenceCount = 0;
+    intelligenceMissionAgentCapturedCount = 0;
     constructor(empire: Empire) {
         this._empire = empire;
     }
@@ -196,6 +204,53 @@ export class EmpireCounters {
         ++this.killEnemyCharactersCount;
         if (character.empire === null) return;
         ++character.empire.counters.lossesCharactersKilledCount;
+    }
+    /**
+     * EmpireCounters.cs 234 ProcessIntelligenceMissionOutcome(mission, outcome) (M4z2). `mission.type` is an
+     * IntelligenceMissionType, `outcome` an IntelligenceMissionOutcome (espionage.ts).
+     */
+    processIntelligenceMissionOutcome(mission: { type: number } | null, outcome: number): void {
+        if (mission == null || outcome === 0 /* Undefined */) return;
+        let flag1 = false;
+        let flag2 = false;
+        switch (outcome) {
+            case 1: // SucceedNotDetect
+            case 2: // SucceedDetect
+                flag1 = true;
+                break;
+            case 5: // Capture
+                flag2 = true;
+                break;
+        }
+        if (flag2) ++this.intelligenceMissionAgentCapturedCount;
+        switch (mission.type) {
+            case 1: // SabotageConstruction
+            case 5: // SabotageColony
+            case 7: // InciteRevolution
+            case 10: // AssassinateCharacter
+            case 11: // DestroyBase
+                if (flag1) {
+                    ++this.intelligenceMissionSuccessSabotageCount;
+                    break;
+                }
+                ++this.intelligenceMissionFailureSabotageCount;
+                break;
+            case 2: // StealGalaxyMap
+            case 3: // StealOperationsMap
+            case 4: // StealTechData
+            case 6: // DeepCover
+            case 9: // StealTerritoryMap
+                if (flag1) {
+                    ++this.intelligenceMissionSuccessEspionageCount;
+                    break;
+                }
+                ++this.intelligenceMissionFailureEspionageCount;
+                break;
+            case 8: // CounterIntelligence
+                if (!flag1) break;
+                ++this.intelligenceMissionSuccessCounterIntelligenceCount;
+                break;
+        }
     }
     /** EmpireCounters.cs 505 ProcessTroopDestruction(troop). */
     processTroopDestruction(troop: { empire: unknown } | null): void {

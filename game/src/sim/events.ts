@@ -1292,19 +1292,8 @@ export function checkSendShipConvoysViaGateway(galaxy: Galaxy, empire: Empire, t
     throw new Error('TODO(port) deferred (story events, plan §0.3): Empire.1.cs 3937 GenerateMilitaryConvoy/GenerateCivilianConvoy (gateway convoys)');
 }
 
-const T_assignSpecialMissions = registerTodo('deferred', 'assignSpecialMissions');
-/** Empire.5.cs 5401 AssignSpecialMissions (espionage). */
-export function assignSpecialMissions(galaxy: Galaxy, empire: Empire): void {
-    // RND: 3 direct — not drawn until ported.
-    /* TODO(port) deferred (not M4) */ todo(T_assignSpecialMissions);
-}
-
-const T_performIntelligenceMissions = registerTodo('deferred', 'performIntelligenceMissions');
-/** Empire.5.cs 5597 PerformIntelligenceMissions (espionage). */
-export function performIntelligenceMissions(galaxy: Galaxy, empire: Empire): void {
-    // RND: 6 direct, +clock×3 — not drawn until ported.
-    /* TODO(port) deferred (not M4) */ todo(T_performIntelligenceMissions);
-}
+// Empire.5.cs 5401 AssignSpecialMissions / 5597 PerformIntelligenceMissions (espionage): ported by M4z2 in espionage.ts.
+export { assignSpecialMissions, performIntelligenceMissions } from './espionage';
 
 // Galaxy.1.cs 2935 ReviewAchievements, Galaxy.1.cs 88 CheckVictoryConditions, Empire.1.cs 3969 UpdateAchievements:
 // ported by M4z4 in achievements.ts / victory.ts (re-exported here for the tick skeletons).

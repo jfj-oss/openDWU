@@ -106,7 +106,7 @@ function cleanupInvalidShipsProbe(getEmpire: () => Empire): BlockProbe {
  * A block with no unconditional stub left is detected by its touch: Empire.1.cs 3470-3500 sets _Last<Block>Touch to
  * CurrentDateTime before running the block, and only when the block fires.
  */
-function touchProbe(galaxyOf: () => Galaxy, getEmpire: () => Empire, field: 'lastIntermediateTouch' | 'lastLongTouch' | 'lastHugeTouch'): BlockProbe {
+function touchProbe(galaxyOf: () => Galaxy, getEmpire: () => Empire, field: 'lastPeriodicTouch' | 'lastIntermediateTouch' | 'lastLongTouch' | 'lastHugeTouch'): BlockProbe {
     return {
         arm: () => {},
         fired: () => getEmpire()[field] === galaxyOf().nowMs,
@@ -186,7 +186,8 @@ describe('Empire.DoTasks intervals (Empire.1.cs 3427, >= on seconds, touches fir
     const markers = {
         short: incomingFleetsProbe(() => probeEmpire!), // (M4m ported RespondToIncomingEnemyFleetsAndPlanetDestroyers)
         regular: reviewDesignsProbe(() => probeEmpire!), // (no stub left in the regular block: detected by a probe)
-        periodic: 'deferred performIntelligenceMissions', // (M4s2 ported CheckSendPirateRaid)
+        // (M4s2 ported CheckSendPirateRaid, M4z2 PerformIntelligenceMissions): detected by the touch.
+        periodic: touchProbe(() => galaxy, () => probeEmpire!, 'lastPeriodicTouch'),
         intermediate: systemThreatsProbe(() => probeEmpire!), // (M4l ported reviewFleetAdmiralBonuses, M4m TaskResupplyShips)
         long: touchProbe(() => galaxy, () => probeEmpire!, 'lastLongTouch'), // (M4f ported ReviewMigrationTourism, M4i ReviewColonyWonders)
         huge: touchProbe(() => galaxy, () => probeEmpire!, 'lastHugeTouch'), // (M4s2 ported CheckColoniesForPirateFacilitiesAndAttack, M4o CleanupInvalidShips)
@@ -237,7 +238,8 @@ describe('Empire.DoTasks intervals (Empire.1.cs 3427, >= on seconds, touches fir
             // M4s1 ported PirateCheckMissionsOnOffer, M4i ReviewDesignsAndRetrofit (4173): detected by a probe.
             regular: reviewDesignsProbe(() => galaxy.pirateEmpires[0]),
             // M4s2 ported the pirate periodic / intermediate / long steps: other stubs (or the touch) mark the blocks.
-            periodic: 'deferred performIntelligenceMissions',
+            // M4z2 ported PerformIntelligenceMissions (the previous marker): detected by the touch.
+            periodic: touchProbe(() => galaxy, () => galaxy.pirateEmpires[0], 'lastPeriodicTouch'),
             // M4m ported TaskResupplyShips (the previous intermediate marker): detected by the touch.
             intermediate: touchProbe(() => galaxy, () => galaxy.pirateEmpires[0], 'lastIntermediateTouch'),
             long: touchProbe(() => galaxy, () => galaxy.pirateEmpires[0], 'lastLongTouch'),
