@@ -8,7 +8,7 @@ import { defaultStartGameOptions } from '../src/sim/startGameOptions';
 import { deserializeGame, serializeGame } from '../src/sim/save/gameSave';
 import { PlanetaryFacility } from '../src/sim/construction/facilities';
 import { WonderType } from '../src/sim/researchSystem';
-import { MIN_TIME } from '../src/sim/tick/simTime';
+import { MIN_TIME, galaxyStarDate } from '../src/sim/tick/simTime';
 import { ShipActionType, createShipAction } from '../src/sim/player/shipAction';
 import { executeShipAction } from '../src/sim/player/executeShipAction';
 import { canDeployXaraktorVirus } from '../src/sim/player/orderMenu';
@@ -23,7 +23,15 @@ import { canBuildDesign } from '../src/sim/designGeneration';
 import { BuiltObjectMission, BuiltObjectMissionPriority, BuiltObjectMissionType, Command, CommandAction } from '../src/sim/missions/mission';
 import { cmdColonize } from '../src/sim/missions/cmdTroops';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { createTickGame, tickGameOptions } from './helpers/tickGame';
+import { createGame } from '../src/sim/game';
+import { PiratePlayStyle } from '../src/sim/pirates';
+import { PirateRelationType, changePirateRelation, obtainPirateRelation } from '../src/sim/pirateRelations';
+import { calculatePirateProtectionPricePerMonth } from '../src/sim/pirates/pirateRelationsAI';
+import { determineDesirePirateProtection } from '../src/sim/pirates/pirateAI';
+import { price0 } from '../src/sim/pirates/missionsMarket';
+import { gameText } from '../src/sim/colonyTick';
+import { listProposals, submitProposal } from '../src/sim/player/diplomacyProposals';
 
 let gameData: GameData;
 beforeAll(async () => {
@@ -138,5 +146,50 @@ describe('item 3: Galaxy.6.cs 2737 CalculateAngleFromCoords; BuiltObject.2.cs 11
         // Empire.6.cs 2001-2016: affordable → BuildCount++, then paid from StateMoney (state) or private funds.
         expect(design.buildCount).toBe(buildCount + 1);
         if (isState) expect(empire.stateMoney).toBeLessThanOrEqual(money - price + 1e-6);
+    });
+});
+
+describe('item 4: pirate player conversation (Main.Part9.cs:175-190; Main.Part10.cs:5088-5131)', { timeout: 600000 }, () => {
+    it('offers protection / cancel / trade to a pirate player and evaluates them like method_237', () => {
+        const o = tickGameOptions(gameData);
+        const game = createGame({ ...o, player: { ...o.player, playAsPirate: true, piratePlayStyle: PiratePlayStyle.Balanced, name: 'Test Pirates' } });
+        const g = game.galaxy;
+        const player = g.playerEmpire!;
+        expect(player.pirateEmpireBaseHabitat).not.toBeNull();
+        const other = g.empires.find((e) => e.pirateEmpireBaseHabitat === null && e.active)!;
+        // Meet them (DiplomaticRelationListView.cs 171-176 lists pirate relations that are not NotMet).
+        obtainPirateRelation(player, other).type = PirateRelationType.None;
+        obtainPirateRelation(other, player).type = PirateRelationType.None;
+
+        const options = listProposals(g, player, other);
+        const price = calculatePirateProtectionPricePerMonth(g, player, other).price;
+        expect(options.map((x) => x.id)).toEqual(['PIRATE_PROTECTIONPROPOSE_OFFER', 'DEAL_BEGIN:trade']);
+        expect(options[0].cost).toBe(price);
+        expect(options[0].label).toBe(gameText('Propose Pirate Protection', price0(price)));
+
+        const wants = determineDesirePirateProtection(g, other, player);
+        const r = submitProposal(g, player, other, 'PIRATE_PROTECTIONPROPOSE_OFFER');
+        expect(r.ok).toBe(true);
+        expect(r.reply).toBe(wants ? 'PIRATE_PROTECTIONPROPOSE_OFFER_ACCEPT' : 'PIRATE_PROTECTIONPROPOSE_OFFER_REJECT');
+        if (wants) {
+            // AcceptPirateProtection (Empire.3.cs 4213): the pirate's relation becomes Protection with the monthly fee.
+            expect(obtainPirateRelation(player, other).type).toBe(PirateRelationType.Protection);
+            expect(obtainPirateRelation(player, other).monthlyProtectionFeeToThisEmpire).toBe(price);
+        } else {
+            changePirateRelation(player, other, PirateRelationType.Protection, galaxyStarDate(g), price);
+        }
+
+        expect(listProposals(g, player, other).map((x) => x.id)).toEqual(['CANCELPIRATEPROTECTION', 'DEAL_BEGIN:trade']);
+        const offense = obtainPirateRelation(other, player).calculateOffenseOverCancellingProtection(galaxyStarDate(g));
+        const before = obtainPirateRelation(other, player).evaluationProtectionCancelled;
+        const c = submitProposal(g, player, other, 'CANCELPIRATEPROTECTION');
+        expect(c.ok).toBe(true);
+        expect(['CANCELTREATY_RESPONSE_ANGRY', 'CANCELTREATY_RESPONSE_NEUTRAL', 'CANCELTREATY_RESPONSE_FRIENDLY']).toContain(c.reply);
+        expect(obtainPirateRelation(player, other).type).toBe(PirateRelationType.None);
+        expect(obtainPirateRelation(other, player).evaluationProtectionCancelled).toBe(Math.fround(before + offense));
+
+        const t = submitProposal(g, player, other, 'DEAL_BEGIN:trade');
+        expect(t.ok).toBe(true);
+        expect(t.trade).not.toBeNull();
     });
 });
