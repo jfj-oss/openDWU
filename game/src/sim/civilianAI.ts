@@ -104,7 +104,7 @@ import { DiplomaticRelationType, obtainDiplomaticRelation } from './diplomacy';
 import { PirateRelationType, obtainPirateRelation } from './pirateRelations';
 import { determineEmpiresAtWarWith, performPrivateTransaction } from './treasury';
 import { OrderType, SECTOR_SIZE, empireCreateOrder } from './logistics/orders';
-import { Contract, getEmpireById, performFinancialTransaction } from './logistics/contracts';
+import { Contract, performFinancialTransaction } from './logistics/contracts';
 import { calculateMinimumLuxuryResourceLevel, calculateMinimumLuxuryResourceLevelRestricted, calculateResourceLevelHabitat } from './logistics/colonySupply';
 import { Cargo, CargoList, ResourceRef } from './cargo';
 import { Population, PopulationList } from './population';
