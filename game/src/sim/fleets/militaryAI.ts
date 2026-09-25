@@ -10,6 +10,8 @@ import type { Empire } from '../empire';
 import type { BuiltObject } from '../builtObject';
 import type { Habitat } from '../types';
 import type { ShipGroup } from './shipGroup';
+import type { StellarObject } from '../missions/mission';
+import type { FuelTypeRef } from '../movement';
 import { registerTodo, todo } from '../tick/todo';
 
 const T_respondToIncomingEnemyFleetsAndPlanetDestroyers = registerTodo('M4m', 'respondToIncomingEnemyFleetsAndPlanetDestroyers');
@@ -155,4 +157,85 @@ const T_clearDefendFleets = registerTodo('M4m', 'clearDefendFleets');
 /** Empire.9.cs 758 ClearDefendFleets — called by ProcessEndOfWarWithEmpire (M4r). */
 export function clearDefendFleets(galaxy: Galaxy, empire: Empire): void {
     /* TODO(port) M4m */ todo(T_clearDefendFleets);
+}
+
+// ---- Stubs added by M4l (callees of ShipGroup.cs / MaintainShipGroups; fleet tasking owned by M4m) ----
+
+const T_assignFleetRefuelling = registerTodo('M4m', 'assignFleetRefuelling');
+/**
+ * Empire.9.cs 672 AssignFleetRefuelling(refuelFleet, requiredFuel) (DecideBestFleetRefuelPoint 265 + ShipGroup.AssignMission
+ * Refuel) — stub: false (the fleet is not sent to refuel). Called by ShipGroup.CheckForMissionCompletion / CheckRefuelRepairAttack.
+ */
+export function assignFleetRefuelling(galaxy: Galaxy, empire: Empire, refuelFleet: ShipGroup, requiredFuel: FuelTypeRef[]): boolean {
+    // RND: ShipGroup.AssignMission(Refuel) → per-ship SelectRelativePoint + ResolveCommandsForMission — not drawn until M4m.
+    /* TODO(port) M4m */ todo(T_assignFleetRefuelling);
+    return false;
+}
+
+const T_coordinateFleetAttacksWithAllies = registerTodo('M4m', 'coordinateFleetAttacksWithAllies');
+/** Empire.1.cs 3730 CoordinateFleetAttacksWithAllies(fleet) — stub: false. Called by ShipGroup.CheckRefuelRepairAttack. */
+export function coordinateFleetAttacksWithAllies(galaxy: Galaxy, empire: Empire, fleet: ShipGroup): boolean {
+    // RND: fleet.AssignMission(Attack) in the 3-argument overload — not drawn until M4m.
+    /* TODO(port) M4m */ todo(T_coordinateFleetAttacksWithAllies);
+    return false;
+}
+
+const T_coordinateFleetAttacksWithAlliesOf = registerTodo('M4m', 'coordinateFleetAttacksWithAlliesOf');
+/** Empire.1.cs 3750 CoordinateFleetAttacksWithAllies(fleet, empire, enemies) — stub: false. Called by ShipGroup.CheckRefuelRepairAttack. */
+export function coordinateFleetAttacksWithAlliesOf(galaxy: Galaxy, self: Empire, fleet: ShipGroup, empire: Empire, enemies: Empire[] | null): boolean {
+    // RND: fleet.AssignMission(Attack) — not drawn until M4m.
+    /* TODO(port) M4m */ todo(T_coordinateFleetAttacksWithAlliesOf);
+    return false;
+}
+
+const T_selectFleetWarAttackTarget = registerTodo('M4m', 'selectFleetWarAttackTarget');
+/** Empire.8.cs 1146 SelectFleetWarAttackTarget(fleet, otherEmpire, out waypointing) — stub: no target, not waypointing. */
+export function selectFleetWarAttackTarget(galaxy: Galaxy, empire: Empire, fleet: ShipGroup, otherEmpire: Empire): { target: StellarObject | null; waypointing: boolean } {
+    // RND: waypoint / gather missions in callees — not drawn until M4m.
+    /* TODO(port) M4m */ todo(T_selectFleetWarAttackTarget);
+    return { target: null, waypointing: false };
+}
+
+const T_checkBombardEnemyColony = registerTodo('M4m', 'checkBombardEnemyColony');
+/** Empire.8.cs 4504 CheckBombardEnemyColony(enemyColony, attackFleet) — stub: false (attack, not bombard). */
+export function checkBombardEnemyColony(galaxy: Galaxy, empire: Empire, enemyColony: Habitat, attackFleet: ShipGroup): boolean {
+    /* TODO(port) M4m */ todo(T_checkBombardEnemyColony);
+    return false;
+}
+
+const T_identifyEmpireStrikePoints = registerTodo('M4m', 'identifyEmpireStrikePoints');
+/** Empire.9.cs 3704 IdentifyEmpireStrikePoints(empire) → PrioritizedTargetList — stub: empty list. */
+export function identifyEmpireStrikePoints(galaxy: Galaxy, empire: Empire, targetEmpire: Empire): unknown[] {
+    /* TODO(port) M4m */ todo(T_identifyEmpireStrikePoints);
+    return [];
+}
+
+const T_assignFleetAttackMission = registerTodo('M4m', 'assignFleetAttackMission');
+/** Empire.8.cs 4521 AssignFleetAttackMission(fleet, ref targets, ref refusalCount) — stub: false (no mission assigned). */
+export function assignFleetAttackMission(galaxy: Galaxy, empire: Empire, fleet: ShipGroup, targets: unknown[], refusalCount: { value: number }): boolean {
+    // RND: fleet.AssignMission(Attack / Bombard / gather) — not drawn until M4m.
+    /* TODO(port) M4m */ todo(T_assignFleetAttackMission);
+    return false;
+}
+
+const T_assignFleetRetrofit = registerTodo('M4m', 'assignFleetRetrofit');
+/** Empire.9.cs 620/625 AssignFleetRetrofit(fleet, [shipYard,] isAutoRetrofit) — stub: false. Called by ShipGroup.AssignQueuedMission. */
+export function assignFleetRetrofit(galaxy: Galaxy, empire: Empire, fleet: ShipGroup, isAutoRetrofit: boolean): boolean {
+    // RND: fleet.AssignMission(Retrofit) + per-ship AssignRetrofitMission / AssignMission(Refuel) — not drawn until M4m.
+    /* TODO(port) M4m */ todo(T_assignFleetRetrofit);
+    return false;
+}
+
+const T_selectDefensiveFleetBase = registerTodo('M4m', 'selectDefensiveFleetBase');
+/** Empire.9.cs 2007 SelectDefensiveFleetBase(fleet, defendLocations, moveToLocationIfAvailable) — stub: null. */
+export function selectDefensiveFleetBase(galaxy: Galaxy, empire: Empire, fleet: ShipGroup, defendLocations: StellarObject[], moveToLocationIfAvailable: boolean): StellarObject | null {
+    /* TODO(port) M4m */ todo(T_selectDefensiveFleetBase);
+    return null;
+}
+
+const T_ensureSingleStellarObjectPerSystem = registerTodo('M4m', 'ensureSingleStellarObjectPerSystem');
+/** Galaxy.7.cs 579 EnsureSingleStellarObjectPerSystem(stellarObjects) (needs Habitat.StrategicValue / StellarObject.SortStellarObject) — stub: the list unchanged. */
+export function ensureSingleStellarObjectPerSystem(galaxy: Galaxy, stellarObjects: StellarObject[]): StellarObject[] {
+    /* TODO(port) M4m */ todo(T_ensureSingleStellarObjectPerSystem);
+    return stellarObjects;
 }

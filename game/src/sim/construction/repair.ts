@@ -13,6 +13,8 @@ import { BuiltObjectMissionType, builtObjectMission } from '../missions/mission'
 import { shipGroupRepairBonus, type ShipGroup } from '../fleets/shipGroup';
 import { battleStatsDamageRepairedUs } from '../combat/damage';
 import type { ConstructionQueue } from './constructionQueue';
+import type { Empire } from '../empire';
+import { registerTodo, todo } from '../tick/todo';
 
 /** BaconBuiltObject.cs 66-70 shipFreeRepairTimeFromCrewSkill* (seconds per component; BaconSettings.txt has the same values). */
 const SHIP_FREE_REPAIR_TIME_AVERAGE = 160;
@@ -152,4 +154,17 @@ export function checkForRepairs(galaxy: Galaxy, builtObject: BuiltObject): void 
     } else if (!builtObject.repairForNextMission && builtObject.unbuiltOrDamagedComponentCount > 0 && builtObject.builtAt === null) {
         builtObject.repairForNextMission = true;
     }
+}
+
+// ---- stub added by M4l (ShipGroup.CheckRefuelRepairAttack) ----
+
+const T_assignRepairMission = registerTodo('M4h', 'assignRepairMission');
+/**
+ * Empire.4.cs 4863 AssignRepairMission(builtObject) (FindNearestShipYard, unbuilt-component orders, AssignMission Repair)
+ * — stub: false (no repair mission). Called by ShipGroup.CheckRefuelRepairAttack for damaged fleet ships.
+ */
+export function assignRepairMission(galaxy: Galaxy, empire: Empire, builtObject: BuiltObject): boolean {
+    // RND: AssignMission(Repair) → ResolveCommandsForMission draws — not drawn until M4h.
+    /* TODO(port) M4h */ todo(T_assignRepairMission);
+    return false;
 }

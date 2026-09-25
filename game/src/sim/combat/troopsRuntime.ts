@@ -64,3 +64,16 @@ const T_baconHabitatHandlePrisoners = registerTodo('M4q', 'baconHabitatHandlePri
 export function baconHabitatHandlePrisoners(galaxy: Galaxy, habitat: Habitat, isPlayer: boolean): void {
     /* TODO(port) M4q */ todo(T_baconHabitatHandlePrisoners);
 }
+
+// ---- stub added by M4l (MaintainShipGroups, BuiltObject.PerformFleetTasks) ----
+
+const T_assignLoadTroopsMission = registerTodo('M4q', 'assignLoadTroopsMission');
+/**
+ * Empire.5.cs 808-823 AssignLoadTroopsMission(ship[, colony[, queueMission, enforceMinimumTroopLimits[, manuallyAssigned]]])
+ * (overload defaults: colony null, queueMission false, enforceMinimumTroopLimits true, manuallyAssigned false) — stub: false.
+ */
+export function assignLoadTroopsMission(galaxy: Galaxy, empire: Empire, ship: BuiltObject, colony: Habitat | null = null, queueMission = false, enforceMinimumTroopLimits = true, manuallyAssigned = false): boolean {
+    // RND: AssignMission(LoadTroops) → ResolveCommandsForMission draws — not drawn until M4q.
+    /* TODO(port) M4q */ todo(T_assignLoadTroopsMission);
+    return false;
+}

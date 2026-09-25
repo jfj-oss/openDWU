@@ -164,3 +164,19 @@ export function determineDesirePirateProtection(galaxy: Galaxy, empire: Empire, 
     /* TODO(port) M4s2 */ todo(T_determineDesirePirateProtection);
     return true;
 }
+
+// ---- stubs added by M4l (ShipGroup.CheckForMissionCompletion, pirate fleets) ----
+
+const T_findNearestBaseForPirateAttack = registerTodo('M4s', 'findNearestBaseForPirateAttack');
+/** Galaxy.7.cs 1210 FindNearestBaseForPirateAttack(x, y, empireToExclude) — stub: null (super-pirate fleets get no follow-up target). */
+export function findNearestBaseForPirateAttack(galaxy: Galaxy, x: number, y: number, empireToExclude: Empire | null): BuiltObject | null {
+    /* TODO(port) M4s */ todo(T_findNearestBaseForPirateAttack);
+    return null;
+}
+
+const T_findNearestKnownBaseOfEmpireForPirateAttack = registerTodo('M4s', 'findNearestKnownBaseOfEmpireForPirateAttack');
+/** Galaxy.7.cs 1056 FindNearestKnownBaseOfEmpireForPirateAttack(attackingPirateEmpire, x, y, targetEmpire, attackStrength) — stub: null. */
+export function findNearestKnownBaseOfEmpireForPirateAttack(galaxy: Galaxy, attackingPirateEmpire: Empire, x: number, y: number, targetEmpire: Empire, attackStrength: number): BuiltObject | null {
+    /* TODO(port) M4s */ todo(T_findNearestKnownBaseOfEmpireForPirateAttack);
+    return null;
+}
