@@ -30,6 +30,9 @@ import { closeShipsAndBasesList } from './ui/screens/shipsAndBasesList';
 import { closeResearchScreen } from './ui/screens/researchScreen'; // [15b]
 import { closeShipDesigns } from './ui/screens/shipDesigns'; // [16b]
 import { closeEmpireSummary, setEmpireSummarySource } from './ui/screens/empireSummary';
+// [advisor] begin
+import { closeAdvisorPanel } from './ui/advisorPanel';
+// [advisor] end
 import { closeMessageHistory } from './ui/screens/messageHistory';
 import { closeFleetsList } from './ui/screens/fleetsList'; // [15c]
 import { closeBuildOrder } from './ui/screens/buildOrder'; import { closeConstructionYards } from './ui/screens/constructionYards'; // [16c]
@@ -522,6 +525,9 @@ export async function startGameView(
         removeMessagePopups();
         closeGameOptionsPanel();
         // [/16d]
+        // [advisor] begin
+        closeAdvisorPanel();
+        // [advisor] end
     };
 
     return time;

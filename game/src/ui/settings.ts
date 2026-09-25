@@ -22,6 +22,16 @@ export interface UiSettings {
     showSystemNames: boolean;
     /** Show region label overlays on the map (mainView.ts reads per frame). */
     showRegionLabels: boolean;
+    // [advisor] begin — 18a chat advisor: a local OpenAI-compatible / Ollama chat endpoint (off unless it responds).
+    /** Base URL of the model server (Ollama default port; llama-server usually :8080). */
+    advisorEndpoint: string;
+    /** Model name sent with each request. */
+    advisorModel: string;
+    /** Wire protocol: Ollama /api/chat, OpenAI /v1/chat/completions, or detect on first use. */
+    advisorApi: 'auto' | 'ollama' | 'openai';
+    /** Let a thinking model reason first (Ollama `think`): better at "the most distant …" style orders, ~10x slower. */
+    advisorThink: boolean;
+    // [advisor] end
 }
 
 const STORAGE_KEY = 'dwu-ui-settings';
@@ -36,6 +46,12 @@ export const DEFAULT_SETTINGS: UiSettings = {
     uiScale: 100,
     showSystemNames: true,
     showRegionLabels: false,
+    // [advisor] begin
+    advisorEndpoint: 'http://127.0.0.1:11434',
+    advisorModel: 'qwen3:4b',
+    advisorApi: 'auto',
+    advisorThink: false,
+    // [advisor] end
 };
 
 /** Minimal storage shape (localStorage-compatible). */
@@ -79,6 +95,12 @@ export function loadSettings(): UiSettings {
         }
         if (typeof parsed.showSystemNames === 'boolean') out.showSystemNames = parsed.showSystemNames;
         if (typeof parsed.showRegionLabels === 'boolean') out.showRegionLabels = parsed.showRegionLabels;
+        // [advisor] begin
+        if (typeof parsed.advisorEndpoint === 'string' && parsed.advisorEndpoint.trim() !== '') out.advisorEndpoint = parsed.advisorEndpoint.trim();
+        if (typeof parsed.advisorModel === 'string' && parsed.advisorModel.trim() !== '') out.advisorModel = parsed.advisorModel.trim();
+        if (parsed.advisorApi === 'auto' || parsed.advisorApi === 'ollama' || parsed.advisorApi === 'openai') out.advisorApi = parsed.advisorApi;
+        if (typeof parsed.advisorThink === 'boolean') out.advisorThink = parsed.advisorThink;
+        // [advisor] end
     } catch {
         // Corrupt blob: keep the defaults.
     }
