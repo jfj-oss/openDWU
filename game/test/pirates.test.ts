@@ -220,6 +220,9 @@ describe('generatePirateEmpireName', () => {
 // block's independent-colony pirate offers draw per colony, so GenerateNewPirateEmpires sees a different stream.)
 // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
 // Re-pinned M4u: game-start character reviews (ReviewCharacterTraits Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd) move the Rnd stream before pirate generation.
+// Re-pinned M4x: Galaxy.StartingAge is now the galaxy age (Galaxy.cs 982; unset galaxyAge = 0 here) instead of the
+// player's age 1, so CreateStateShips builds a third of the ships (Galaxy.8.cs 931), CreateMiningStations targets 6 (808)
+// and GeneratePirateEmpire skips the 0.5 difficulty modifier (4518): the game-start Rnd stream moves.
 const PINNED_SEED1_PIRATES: unknown[] = [
     [
         "Venomous Marauders",
@@ -228,39 +231,39 @@ const PINNED_SEED1_PIRATES: unknown[] = [
         4331580
     ],
     [
-        "Iron League",
-        "S162 6",
-        "Kiadian",
-        88
-    ],
-    [
-        "S1 Ravagers",
-        "S278 6",
-        "Dhayut",
-        8323096
-    ],
-    [
-        "Fearsome Claw Interstellar",
-        "S285 4",
-        "Shandar",
-        8336399
-    ],
-    [
-        "Sinister Moon Marauders",
-        "WB225",
+        "Sol Ravagers",
+        "S96 2",
         "Mortalen",
         4390912
     ],
     [
-        "Dirty Pirates",
-        "S48 6",
-        "Gizurean",
-        8355600
+        "Fearsome Transport",
+        "S24 6",
+        "Teekan",
+        3153920
     ],
     [
-        "Sol Pirates",
-        "S96 2",
-        "Atuuk",
-        796684
+        "Dread Authority",
+        "S93 6",
+        "Human",
+        8308
+    ],
+    [
+        "Savage Fang Mining",
+        "S130 6",
+        "Ugnari",
+        8323199
+    ],
+    [
+        "S269 League",
+        "S135 11",
+        "Kiadian",
+        88
+    ],
+    [
+        "Iron Claw Guild",
+        "S162 6",
+        "Ugnari",
+        3675477
     ]
 ];

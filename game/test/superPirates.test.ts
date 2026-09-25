@@ -215,26 +215,29 @@ describe('UpgradeMilitaryShipDesignMoreWeapons / MoreEngines (Galaxy.8.cs 4121 /
 // (re-pinned M4u: game-start character reviews (ReviewCharacterTraits Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd) move the stream before the super-pirate generation.)
 // (re-pinned M4f: Start.2.cs 1373 AssignMissionsToBuiltObjectList draws per idle ship at game start shift every later draw)
 // (Merge of M4f onto M4u/M4o/M4l: re-pinned once against the combined code.)
+// Re-pinned M4x: Galaxy.StartingAge is now the galaxy age (Galaxy.cs 982; unset galaxyAge = 0 here) instead of the
+// player's age 1, so CreateStateShips builds a third of the ships (Galaxy.8.cs 931), CreateMiningStations targets 6 (808)
+// and GeneratePirateEmpire skips the 0.5 difficulty modifier (4518): the game-start Rnd stream moves.
 const PINNED: unknown[] = [
     [
-        "Escort:Praetor II:33",
-        "Frigate:Sovereign II:46",
-        "Destroyer:Dominator II:56",
-        "Cruiser:Executor II:90",
-        "CapitalShip:Javelin:137",
-        "Carrier:CX-2 Carrier:110",
+        "Escort:Decurion II:32",
+        "Frigate:Praefectus II:43",
+        "Destroyer:Vengeance II:55",
+        "Cruiser:Quaestor:90",
+        "CapitalShip:Shadow:137",
+        "Carrier:CX-2 Carrier:109",
         "DefensiveBase:Phantom Pirate Defensive Base:123",
         "GenericBase:Phantom Pirate Base:217"
     ],
     [
-        "GenericBase:Dhayu Station",
+        "GenericBase:Gamblers Stronghold",
+        "DefensiveBase:Dhayu 7 Orbital Battery",
         "DefensiveBase:Dhayu 7 Defense Battery",
         "DefensiveBase:Dhayu 7 Weapons Platform",
-        "DefensiveBase:Dhayu 7 Defense Battery",
-        "Frigate:Worthy Stealth",
-        "Destroyer:Crushing Champion",
-        "Carrier:Ultimate Exile",
-        "Cruiser:Sly Monarch"
+        "Cruiser:Dreadful Warrior",
+        "Destroyer:Ruinous Nova",
+        "Cruiser:Crushing Rampage",
+        "Frigate:Mighty Revolt"
     ],
-    33
+    26
 ];

@@ -3,6 +3,7 @@ import { GalaxyShape } from './types';
 import type { Race } from './data/races';
 import type { GameData } from './data/gameData';
 import type { CreateGameOptions, EmpireStartOptions } from './game';
+import { Random } from './random';
 
 export interface StartGameOptions {
     shape: GalaxyShape;
@@ -53,6 +54,16 @@ export interface StartGameOptions {
     /** Task 06h: the wizard's "Other Empires" page options (see
      * OtherEmpiresOptions below). */
     otherEmpires: OtherEmpiresOptions;
+    /** Task M4x: "The Galaxy" Expansion slider (tbarStartNewGameTheGalaxyExpansion, 0..5 = PreWarp, Starting,
+     * Young, Expanding, Mature, Old; Start.cs 3166). Becomes Galaxy.Age (Start.1.cs 3695, Start.2.cs 113) and
+     * drives the AI empires' age / tech level. Optional so older saves still load (unset = 1). */
+    galaxyExpansionIndex?: number;
+    /** Task M4x: "Your Empire" size slider (tbarStartNewGameYourEmpireSize, 0..5 = (Random), Starting, Young,
+     * Expanding, Mature, Old; Start.cs 3451 / method_74). Unset = 1 (Main.Part9.cs 2680 YourEmpireExpansion = 1). */
+    empireExpansionIndex?: number;
+    /** Task M4x: "Your Empire" tech-level slider (tbarStartNewGameYourEmpireTechLevel, 0..8 = PreWarp, Normal,
+     * Level 1..7; Start.cs 3460 / method_75). Unset = 1 (Normal, tech 0.5). */
+    empireTechLevelIndex?: number;
 }
 
 /**
@@ -553,6 +564,12 @@ export function defaultStartGameOptions(): StartGameOptions {
         victory: defaultVictoryConditions(),
         colonization: defaultColonizationOptions(),
         otherEmpires: defaultOtherEmpiresOptions(),
+        // Task M4x: the "Starting" era — the standard-game preset of Start.cs 3298-3302 / 3321-3327
+        // (Expansion 1, empire tech Normal). NOTE: the C# StartGameOptions defaults (Main.Part9.cs 2664 / 2689,
+        // GalaxyExpansion = 0, YourEmpireTechLevel = 0) would be a full pre-warp start.
+        galaxyExpansionIndex: 1,
+        empireExpansionIndex: 1,
+        empireTechLevelIndex: 1,
     };
 }
 
@@ -567,9 +584,11 @@ export function defaultStartGameOptions(): StartGameOptions {
  * the DW:U install / fallback list at boot), so they are passed in explicitly;
  * both are required by CreateGameOptions.
  *
- * The wizard has no tech-level page, so a fixed value (the original's
- * "Normal" start, 0.5) is supplied for every starting empire (see
- * STARTING_TECH_LEVEL below).
+ * Task M4x: galaxy age and every empire's age / tech level follow the
+ * original's btnStartNewGameStart_Click (Start.1.cs 3685-3770): the galaxy
+ * Expansion slider is Galaxy.Age, the player's age / tech come from the
+ * "Your Empire" size and tech-level sliders, auto-generated AI empires get
+ * method_109 / method_89 of the Expansion slider.
  */
 export function toCreateGameOptions(
     startOptions: StartGameOptions,
@@ -577,9 +596,14 @@ export function toCreateGameOptions(
     systemNames: string[],
 ): CreateGameOptions {
     const o = startOptions;
-    // The wizard has no tech-level control; use a fixed supported level. Must
-    // NOT be 0.5 ("Normal") — see the C2 note above. PreWarp (0) is used.
-    const techLevel = STARTING_TECH_LEVEL;
+    // Start.1.cs 3695 `int value = tbarStartNewGameTheGalaxyExpansion.Value`.
+    const value = o.galaxyExpansionIndex ?? 1;
+    // Start.1.cs 3685 `Random random_ = new Random((int)DateTime.Now.Ticks)` (clock-seeded → seeded from the
+    // galaxy seed, as elsewhere in the port); the other clock Randoms are method-local (see the helpers).
+    const random_ = new Random((o.seed ^ 0x3685) | 0);
+    // Start.1.cs 3710-3716: player age / tech level.
+    const playerAge = playerEmpireAge(o.empireExpansionIndex ?? 1, value, new Random((o.seed ^ 0x4302) | 0));
+    const playerTechLevel = techLevelForSliderIndex(o.empireTechLevelIndex ?? 1);
 
     // Player empire (task 06d race, task 06e name/government/colours).
     // governmentId (-1 = not chosen) is resolved to a government *name* here
@@ -593,8 +617,8 @@ export function toCreateGameOptions(
         governmentStyle: governmentName,
         homeSystemFavourability: 'Normal',
         startLocation: '(Random)',
-        age: 1,
-        techLevel,
+        age: playerAge,
+        techLevel: playerTechLevel,
         // TODO(createGame): flag colours (primaryColor/secondaryColor) and
         // flagShapeIndex are not accepted by createGame yet (empire flags are
         // an unported TODO(port) in game.ts).
@@ -608,6 +632,12 @@ export function toCreateGameOptions(
     const aiEmpires: EmpireStartOptions[] = [];
     const manual = o.otherEmpires.manual;
     if (manual.length > 0) {
+        // Start.1.cs 3768-3769 method_199: each grid row carries its own Size / TechLevel cells (3577-3598).
+        // TODO(port): the wizard's manual rows have no Size / TechLevel cells yet; they use the galaxy-era values
+        // the original seeds the list with (Start.1.cs 3343-3344: method_58(GalaxyExpansion) and
+        // method_55(method_89(GalaxyExpansion)), read back through method_57 / method_54 as in method_199).
+        const rowAge = value; // method_57(method_58(value))
+        const rowTech = techLevelFromBucket(aiTechLevelForExpansion(value, new Random((o.seed ^ 0x2634) | 0)));
         for (const m of manual) {
             aiEmpires.push({
                 name: m.name === '' ? undefined : m.name,
@@ -618,19 +648,23 @@ export function toCreateGameOptions(
                         : '(Random)',
                 homeSystemFavourability: 'Normal',
                 proximityDistance: 'Random',
-                age: 1,
-                techLevel,
+                age: rowAge,
+                techLevel: rowTech,
             });
         }
     } else {
         const count = clampOtherEmpires(o.otherEmpires).empireCount;
         for (let i = 0; i < count; i++) {
+            // Start.1.cs 3759-3761: Age = method_57(method_109(string_, random_)); TechLevel = method_89(value)
+            // (method_89 news its own clock Random per call).
+            const age = aiEmpireAge(value, random_);
+            const techLevel = aiTechLevelForExpansion(value, new Random((o.seed ^ 0x2634 ^ (i + 1)) | 0));
             aiEmpires.push({
                 race: '(Random)',
                 governmentStyle: '(Random)',
                 homeSystemFavourability: 'Normal',
                 proximityDistance: 'Random',
-                age: 1,
+                age,
                 techLevel,
             });
         }
@@ -639,6 +673,8 @@ export function toCreateGameOptions(
     return {
         seed: o.seed,
         shape: o.shape,
+        // Start.2.cs 113 `galaxy_0.Age = int_5` (int_5 = the Expansion slider value, Start.1.cs 3845).
+        galaxyAge: value,
         starCount: starCountFor(o.starCountIndex),
         sectorWidth: sectorsFor(o.dimensionIndex),
         sectorHeight: sectorsFor(o.dimensionIndex),
@@ -667,7 +703,83 @@ export function toCreateGameOptions(
     };
 }
 
-/** Fixed starting tech level for every empire (see toCreateGameOptions).
- * 0.5 = the original's "Normal" start (starting ships, space port, stations);
- * 0 would be PreWarp (no ships). Supported since the M3 merge (C2d+). */
+/** Tech level of the "Normal" start (Start.cs 4162 method_54 "Normal" = 0.5: starting ships, space port,
+ * stations); 0 = PreWarp (no space port, no ships: Start.2.cs 1146 / 1308 / 1314 / 1367 gate on TechLevel > 0).
+ * Used by the dev autostart / tutorial paths in main.ts. */
 export const STARTING_TECH_LEVEL = 0.5;
+
+/** Task M4x: the wizard's era names (Start.cs 4342 method_58, ages 0..6). */
+export const AGE_NAMES = ['PreWarp', 'Starting', 'Young', 'Expanding', 'Mature', 'Old', 'Supersize'] as const;
+
+/** Task M4x: Start.1.cs 3710-3715 + Start.cs 4687 method_74 + Start.cs 4302 method_57. The "Your Empire" size
+ * slider (0 = (Random), 1..5 = Starting..Old) → EmpireStart.Age; "Starting" in a PreWarp galaxy (Expansion 0)
+ * becomes PreWarp (age 0). (Random) draws `new Random(clock).Next(1, 6)` (clockRnd stands in for it). */
+export function playerEmpireAge(empireExpansionIndex: number, galaxyExpansionIndex: number, clockRnd: Random): number {
+    if (empireExpansionIndex === 1 && galaxyExpansionIndex === 0) return 0; // Start.1.cs 3711-3714
+    if (empireExpansionIndex <= 0 || empireExpansionIndex > 5) return clockRnd.next(1, 6); // method_74 default "(Random)"
+    return empireExpansionIndex; // method_57("Starting".."Old") = 1..5
+}
+
+/** Task M4x: Start.cs 4714 method_75 + Start.cs 4149 method_54. The tech-level slider (0 = PreWarp,
+ * 1 = Normal, 2..8 = Level 1..7) → EmpireStart.TechLevel. */
+export function techLevelForSliderIndex(index: number): number {
+    if (index === 0) return 0.0; // PreWarp
+    if (index >= 2 && index <= 8) return index - 1; // Level X
+    return 0.5; // method_75 default "Normal"
+}
+
+/** Task M4x: Start.2.cs 3963 method_109 then Start.cs 4302 method_57 for an auto-generated AI empire:
+ * the age name of the galaxy Expansion slider (method_58) is widened by one Next(0, 2) draw on random_. */
+export function aiEmpireAge(galaxyExpansionIndex: number, random_: Random, clockRnd?: Random): number {
+    switch (galaxyExpansionIndex) {
+        case 0:
+            return 0; // PreWarp
+        case 1:
+            return 1; // Starting
+        case 2:
+            return random_.next(0, 2) === 0 ? 1 : 2; // Starting / Young
+        case 3:
+            return random_.next(0, 2) === 0 ? 2 : 3; // Young / Expanding
+        case 4:
+            return random_.next(0, 2) === 0 ? 3 : 4; // Expanding / Mature
+        case 5:
+            return random_.next(0, 2) === 0 ? 4 : 5; // Mature / Old
+        case 6: {
+            const r = random_.next(0, 3); // Supersize: Mature / Old / Supersize
+            return r === 0 ? 4 : r === 1 ? 5 : 6;
+        }
+        default:
+            // method_58 of any other value: method_109 keeps "(Random)" and method_57 draws its own clock Random
+            // (unreachable from the 0..5 slider).
+            return (clockRnd ?? random_).next(1, 6);
+    }
+}
+
+/** Task M4x: port of Start.2.cs 2634 method_89 (AI tech level from the galaxy Expansion slider).
+ * `clockRnd` stands in for its `new Random((int)DateTime.Now.Ticks)`. */
+export function aiTechLevelForExpansion(int_1: number, clockRnd: Random): number {
+    let num2 = 1.0;
+    let num3 = 6.99;
+    switch (int_1) {
+        case 0: num2 = 0.0; num3 = 0.0; break;
+        case 1: num2 = 0.5; num3 = 0.5; break;
+        case 2: num2 = 1.0; num3 = 1.99; break;
+        case 3: num2 = 1.0; num3 = 2.99; break;
+        case 4: num2 = 2.0; num3 = 3.99; break;
+        case 5: num2 = 3.0; num3 = 4.99; break;
+        case 6: num2 = 4.0; num3 = 5.99; break;
+    }
+    let num = num2 + clockRnd.nextDouble() * (num3 - num2);
+    if (int_1 === 1) num = 0.5;
+    return num;
+}
+
+/** Task M4x: Start.cs 4196 method_55 (tech level → name) read back by Start.1.cs 3593-3597 (method_199:
+ * "Starting" → "Normal", then method_54). Negative = "(Random)" → -1 (Start.1.cs 3589). */
+export function techLevelFromBucket(double_1: number): number {
+    if (double_1 < 0.0) return -1.0;
+    if (double_1 === 0.0) return 0.0;
+    if (double_1 === 0.5) return 0.5;
+    for (let x = 1; x <= 6; x++) if (double_1 > x - 1 && double_1 <= x && (x > 1 || double_1 > 0.5)) return x;
+    return 7.0; // includes (0, 0.5), as in the C# fall-through
+}

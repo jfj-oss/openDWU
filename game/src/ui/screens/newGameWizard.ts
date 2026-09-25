@@ -81,6 +81,12 @@ export const SPACE_CREATURES_TICKS = ['None', 'Few', 'Normal', 'Many'];
 export const PIRATES_TICKS = ['None', 'Very Few', 'Few', 'Normal', 'Many', 'Very Many'];
 export const AGGRESSION_TICKS = ['Peaceful', 'Normal', 'Restless', 'Unstable', 'Chaos'];
 export const DIFFICULTY_TICKS = ['Easy', 'Normal', 'Hard', 'Very Hard', 'Extreme'];
+/** Task M4x: "The Galaxy" Expansion slider labels (Start.cs 3166-3174). */
+export const EXPANSION_TICKS = ['Pre-Warp', 'Starting', 'Young', 'Expanding', 'Mature', 'Old'];
+/** Task M4x: "Your Empire" size slider labels (Start.cs 3451-3459). */
+export const EMPIRE_SIZE_TICKS = ['Random', 'Starting', 'Young', 'Expanding', 'Mature', 'Old'];
+/** Task M4x: "Your Empire" tech-level slider labels (Start.cs 3460-3471). */
+export const TECH_LEVEL_TICKS = ['Pre-Warp', 'Normal', 'Level 1', 'Level 2', 'Level 3', 'Level 4', 'Level 5', 'Level 6', 'Level 7'];
 
 export interface NewGameWizardCallbacks {
     onBackToMenu: () => void;
@@ -410,6 +416,38 @@ export function createNewGameWizard(callbacks: NewGameWizardCallbacks): NewGameW
 // The Galaxy page (task 06b).
 // ---------------------------------------------------------------------------
 
+// A titled range slider with one label per tick (task 06c/06f; shared by the galaxy and empire pages).
+function makeWizardSlider(title: string, ticks: string[], defaultIndex: number, onChange: (i: number) => void): HTMLDivElement {
+    const sliderWrap = document.createElement('div');
+    sliderWrap.className = 'wizard-slider';
+    const label = document.createElement('div');
+    label.className = 'wizard-slider-title';
+    label.textContent = title;
+    sliderWrap.appendChild(label);
+
+    const input = document.createElement('input');
+    input.type = 'range';
+    input.min = '0';
+    input.max = String(ticks.length - 1);
+    input.step = '1';
+    input.value = String(defaultIndex);
+    input.addEventListener('input', () => onChange(parseInt(input.value, 10)));
+    sliderWrap.appendChild(input);
+
+    const ticksRow = document.createElement('div');
+    ticksRow.className = 'wizard-slider-ticks';
+    // One span per tick so CSS space-between spreads the labels evenly
+    // under the slider (task 06c).
+    for (const t of ticks) {
+        const span = document.createElement('span');
+        span.textContent = t;
+        ticksRow.appendChild(span);
+    }
+    sliderWrap.appendChild(ticksRow);
+
+    return sliderWrap;
+}
+
 function buildGalaxyPage(options: StartGameOptions): HTMLDivElement {
     const wrap = document.createElement('div');
     wrap.className = 'wizard-page';
@@ -458,39 +496,10 @@ function buildGalaxyPage(options: StartGameOptions): HTMLDivElement {
     });
     updatePreview();
 
-    // --- Sliders ---
-    function makeSlider(title: string, ticks: string[], defaultIndex: number, onChange: (i: number) => void): HTMLDivElement {
-        const sliderWrap = document.createElement('div');
-        sliderWrap.className = 'wizard-slider';
-        const label = document.createElement('div');
-        label.className = 'wizard-slider-title';
-        label.textContent = title;
-        sliderWrap.appendChild(label);
+    // --- Sliders (makeWizardSlider) ---
+    const makeSlider = makeWizardSlider;
 
-        const input = document.createElement('input');
-        input.type = 'range';
-        input.min = '0';
-        input.max = String(ticks.length - 1);
-        input.step = '1';
-        input.value = String(defaultIndex);
-        input.addEventListener('input', () => onChange(parseInt(input.value, 10)));
-        sliderWrap.appendChild(input);
-
-        const ticksRow = document.createElement('div');
-        ticksRow.className = 'wizard-slider-ticks';
-        // One span per tick so CSS space-between spreads the labels evenly
-        // under the slider (task 06c).
-        for (const t of ticks) {
-            const span = document.createElement('span');
-            span.textContent = t;
-            ticksRow.appendChild(span);
-        }
-        sliderWrap.appendChild(ticksRow);
-
-        return sliderWrap;
-    }
-
-    // Two-column grid for all 8 sliders (task 06f adds the 6 below Star
+    // Two-column grid for all 9 sliders (task 06f adds the 6 below Star; M4x adds Expansion
     // Amount / Physical Size) — keeps the whole page visible without
     // scrolling instead of one long single column.
     const sliderGrid = document.createElement('div');
@@ -520,6 +529,10 @@ function buildGalaxyPage(options: StartGameOptions): HTMLDivElement {
     }));
     sliderGrid.appendChild(makeSlider('Difficulty', DIFFICULTY_TICKS, options.difficultyIndex, (i) => {
         options.difficultyIndex = i;
+    }));
+    // Task M4x: tbarStartNewGameTheGalaxyExpansion (Start.cs 3166, "Expansion") → Galaxy.Age.
+    sliderGrid.appendChild(makeSlider('Expansion', EXPANSION_TICKS, options.galaxyExpansionIndex ?? 1, (i) => {
+        options.galaxyExpansionIndex = i;
     }));
 
     // "Difficulty scales as player nears victory" (chkStartNewGameTheGalaxyDifficultyScaling).
@@ -1121,6 +1134,17 @@ function buildEmpirePage(options: StartGameOptions): HTMLDivElement {
     nameRow.appendChild(nameInput);
     wrap.appendChild(nameRow);
 
+    // --- Task M4x: size (tbarStartNewGameYourEmpireSize) and tech level (tbarStartNewGameYourEmpireTechLevel). ---
+    const eraGrid = document.createElement('div');
+    eraGrid.className = 'wizard-slider-grid';
+    eraGrid.appendChild(makeWizardSlider('Size', EMPIRE_SIZE_TICKS, options.empireExpansionIndex ?? 1, (i) => {
+        options.empireExpansionIndex = i;
+    }));
+    eraGrid.appendChild(makeWizardSlider('Tech Level', TECH_LEVEL_TICKS, options.empireTechLevelIndex ?? 1, (i) => {
+        options.empireTechLevelIndex = i;
+    }));
+    wrap.appendChild(eraGrid);
+
     // --- Government (dropdown + modifier table) ---
     const govSection = document.createElement('div');
     govSection.className = 'wizard-empire-gov';
@@ -1542,6 +1566,9 @@ function buildStartPage(options: StartGameOptions): HTMLDivElement {
             ['Space Creatures', SPACE_CREATURES_TICKS[options.spaceCreaturesIndex] ?? `index ${options.spaceCreaturesIndex}`],
             ['Pirates', PIRATES_TICKS[options.piratesIndex] ?? `index ${options.piratesIndex}`],
             ['Aggression', AGGRESSION_TICKS[options.aggressionIndex] ?? `index ${options.aggressionIndex}`],
+            ['Expansion', EXPANSION_TICKS[options.galaxyExpansionIndex ?? 1] ?? `index ${options.galaxyExpansionIndex}`],
+            ['Empire Size', EMPIRE_SIZE_TICKS[options.empireExpansionIndex ?? 1] ?? `index ${options.empireExpansionIndex}`],
+            ['Tech Level', TECH_LEVEL_TICKS[options.empireTechLevelIndex ?? 1] ?? `index ${options.empireTechLevelIndex}`],
             ['Difficulty', DIFFICULTY_TICKS[options.difficultyIndex] ?? `index ${options.difficultyIndex}` + (options.difficultyScaling ? ' (scales near victory)' : '')],
             ['Your Race', options.raceName || '(not chosen)'],
             ['Empire Name', options.empireName || '(not set)'],

@@ -129,7 +129,7 @@ export const MINING_STATION_RESOURCE_TRANSPORT_THRESHHOLD = 1000;
 export const COLONY_RESOURCE_TRANSPORT_THRESHHOLD = 300;
 /** Galaxy.3.cs 5033 MaximumConstructionQueueWaitTimeYears. */
 export const MAXIMUM_CONSTRUCTION_QUEUE_WAIT_TIME_YEARS = 2.5;
-/** BaconBuiltObject.cs 77 privateBuildCostToStateMoney (default 1.0; BaconMain.cs 925 reads a settings override). */
+/** BaconBuiltObject.cs 77 privateBuildCostToStateMoney (default 1.0; BaconMain.cs 925 reads a settings override). Intentionally not BaconSettings.txt line 156 (0.3). */
 export const PRIVATE_BUILD_COST_TO_STATE_MONEY = 1.0;
 
 /** System.Drawing.Point as the C# uses it here: Point.Empty is (0, 0) and IsEmpty tests exactly that. */

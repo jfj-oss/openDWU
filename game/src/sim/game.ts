@@ -87,7 +87,8 @@ export interface CreateGameOptions {
     systemNames: string[];
     gameData: GameData;
     colonyPrevalence?: number;
-    /** Galaxy.Age (0-6). */
+    /** Galaxy.Age (0-6): the wizard's galaxy Expansion slider (Start.1.cs 3695 / Start.2.cs 113). Also
+     *  Galaxy.StartingAge (Galaxy.cs 982). Unset = 0 (PreWarp). */
     galaxyAge?: number;
     colonyNames?: string[];
     player: EmpireStartOptions;
@@ -705,7 +706,9 @@ export function createGame(opts: CreateGameOptions): Game {
     // Start.2.cs 107-108 and the starting age / difficulty used throughout game start.
     galaxy.piratePrevalence = opts.piratePrevalence ?? 0;
     galaxy.raceFamilies = gd.raceFamilies;
-    galaxy.startingAge = opts.player.age;
+    // Galaxy.cs 982 `StartingAge => _Age`: the galaxy's age (Start.2.cs 113 `galaxy_0.Age = int_5`, the
+    // Expansion slider), not the player's EmpireStart.Age.
+    galaxy.startingAge = galaxy.age;
     galaxy.difficultyLevel = opts.difficultyLevel ?? 1.0;
     // Start.2.cs 500: no race (AvailableCharacters) starting characters until 1478.
     galaxy.allowRaceStartingCharacters = false;
@@ -781,7 +784,7 @@ export function createGame(opts: CreateGameOptions): Game {
         galaxy.allowRaceStartingCharacters = true; // Start.2.cs 706
         empire2 = generatePirateEmpire(
             galaxy,
-            { independentColonies, startingAge: opts.player.age, difficultyLevel: opts.difficultyLevel ?? 1.0 },
+            { independentColonies, startingAge: galaxy.startingAge, difficultyLevel: opts.difficultyLevel ?? 1.0 },
             habitat2,
             Math.trunc(pt.x),
             Math.trunc(pt.y),
@@ -990,7 +993,7 @@ export function createGame(opts: CreateGameOptions): Game {
     const result = (): Game => ({ galaxy, playerEmpire: empire2, viewX, viewY });
     const stopAt = (phase: GameStartPhase, e?: Empire): boolean => phaseHook !== undefined && phaseHook(phase, galaxy, e) === 'stop';
     if (stopAt('startingColonies')) return result();
-    const pirateCtx = () => ({ independentColonies: galaxy.independentColonies, startingAge: opts.player.age, difficultyLevel: galaxy.difficultyLevel });
+    const pirateCtx = () => ({ independentColonies: galaxy.independentColonies, startingAge: galaxy.startingAge, difficultyLevel: galaxy.difficultyLevel });
     const piratePrevalence = opts.piratePrevalence ?? 0;
     const pirateSettings = {
         piratePrevalence,

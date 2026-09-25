@@ -30,6 +30,8 @@ function opts(age = 1, piratePrevalence = 1.0): CreateGameOptions {
         player: { race: 'Human', homeSystemFavourability: 'Normal', startLocation: '(Random)', age, techLevel: 0.5 },
         aiEmpires: [ai('(Random)'), ai('(Random)'), ai('(Random)')],
         piratePrevalence,
+        // M4x: Galaxy.StartingAge is the galaxy age (Galaxy.cs 982), so an age-1 start sets galaxyAge too.
+        galaxyAge: age,
     };
 }
 
@@ -203,10 +205,12 @@ function spyRnd(g: Galaxy): { k: string; v: number }[] {
 // block's independent-colony pirate offers draw per colony, so GenerateNewPirateEmpires sees a different stream.)
 // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
 // Re-pinned M4u: game-start character reviews (ReviewCharacterTraits Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd) move the Rnd stream before pirate generation.
+// Re-pinned M4x: opts() now sets galaxyAge = age (Galaxy.StartingAge is the galaxy age, Galaxy.cs 982), so the age-1
+// runs use Galaxy.Age 1 (Start.2.cs int_5 > 0 game-start steps, StartStarDate + 30000000): the Rnd stream moves.
 const PINNED_SEED1_FLEETS: unknown[] = [
     [
-        "SmallSpacePort:Secret Hideaway|Escort:Relentless Hammer|ExplorationShip:Roaming Challenge|ConstructionShip:Late Negotiator",
-        "SmallFreighter:Profound Shroud|MiningShip:Fading Voyager|GasMiningShip:Grimy Relic|GasMiningStation:XB621 Gas Mining Station|GasMiningStation:HU531 Gas Mining Station"
+        "SmallSpacePort:Fugitives Nest|Escort:Smashing Dictator|ExplorationShip:Vanishing Maneuver|ConstructionShip:Dusty Enterprise",
+        "SmallFreighter:Grasping Mirage|MiningShip:Merry Rogue|GasMiningShip:Lawless Solace|GasMiningStation:XB621 Gas Mining Station|GasMiningStation:HU531 Gas Mining Station"
     ],
     [
         "SmallSpacePort:Fugitives Sanctuary|Escort:Evasive Firestorm|ExplorationShip:Cowering Empress|ConstructionShip:S162 Errand",
@@ -229,7 +233,7 @@ const PINNED_SEED1_FLEETS: unknown[] = [
         "SmallFreighter:S48 Whim|GasMiningStation:S138 5 Gas Mining Station"
     ],
     [
-        "SmallSpacePort:S96 Station|Escort:Growling Aggressor|Escort:Crimson Challenger|ConstructionShip:Swift Adventure",
-        "SmallFreighter:Express Nova|GasMiningStation:S186 5 Gas Mining Station"
+        "SmallSpacePort:Secret Fortress|Escort:Formidable Plague|Escort:Shrouded Resistance|ConstructionShip:Lively Remorse",
+        "SmallFreighter:Elusive Gamble|GasMiningStation:S186 5 Gas Mining Station"
     ]
 ];

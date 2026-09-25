@@ -140,7 +140,10 @@ describe('GenerateStartingCharacters (normal empires, seed 1)', () => {
         // (re-pinned M4u: the game-start Empire.DoTasks runs the character reviews and ReviewEmpireEvents, whose Rnd moves the
         // empire placement and races)
         // (Merge of M4f onto M4u/M4o/M4l: re-pinned once against the combined code.)
-        expect(draws).toEqual([62, 52, 47, 22]);
+        // (re-pinned M4x: Galaxy.StartingAge is the galaxy age (0 here), so CreateStateShips builds a third of the
+        // non-construction ships (Galaxy.8.cs 931) and CreateMiningStations targets 6 (808); fewer ship names / placement
+        // draws shift every later draw.)
+        expect(draws).toEqual([51, 62, 52, 43]);
         expect(log.filter((d) => d.startsWith('d=')).length).toBe(0);
         const summary = g.empires.map((e) => ({ race: e.dominantRace!.name, leader: e.leader?.name, characters: getEmpireCharacters(e).map(describeCharacter) }));
         // (re-pinned: createGame now runs the price reviews, first galaxy tick, per-empire setup,
@@ -151,7 +154,7 @@ describe('GenerateStartingCharacters (normal empires, seed 1)', () => {
         // re-pinned M4u: the game-start Empire.DoTasks runs the character reviews (ReviewCharacterTraits / ApplyCharacterLocationBonus Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd), moving the Rnd stream (and empire placement / races) from the first empire on.
         expect(summary[0]).toEqual({
             "race": "Human",
-            "leader": "Paedri Tarfan",
+            "leader": "Cobi Undulian",
             "characters": [
                 {
                     "role": "Ambassador",
@@ -169,27 +172,29 @@ describe('GenerateStartingCharacters (normal empires, seed 1)', () => {
                 },
                 {
                     "role": "Leader",
-                    "name": "Paedri Tarfan",
+                    "name": "Cobi Undulian",
                     "race": "Human",
                     "skills": [
-                        "ResearchWeapons:5"
+                        "WarWeariness:-2"
                     ],
                     "traits": [
-                        "FreeTrader"
+                        "Industrialist"
                     ],
                     "location": "Sol 2",
                     "bonusesKnown": true
                 },
                 {
                     "role": "IntelligenceAgent",
-                    "name": "San Callosk",
+                    "name": "Yuri Mankara",
                     "race": "Human",
                     "skills": [
-                        "Sabotage:15",
-                        "CounterEspionage:9"
+                        "Espionage:8",
+                        "Sabotage:5",
+                        "CounterEspionage:6",
+                        "PsyOps:14"
                     ],
                     "traits": [
-                        "IntelligenceUninhibited"
+                        "IntelligenceCourageous"
                     ],
                     "location": "Sol 2",
                     "bonusesKnown": false
@@ -199,28 +204,28 @@ describe('GenerateStartingCharacters (normal empires, seed 1)', () => {
         expect(summary.slice(1).map((s) => [s.race, s.leader, s.characters.map((c) => `${c.role}:${c.name}`)])).toEqual([
             [
                 "Haakonish",
-                "Balluk Zhukziban",
+                "Danpo Jukelos",
                 [
                     "ColonyGovernor:Yentor Zhukziban",
-                    "Leader:Balluk Zhukziban",
-                    "IntelligenceAgent:Vok Takruan"
+                    "Leader:Danpo Jukelos",
+                    "IntelligenceAgent:Ebari Akshat"
                 ]
             ],
             [
                 "Dhayut",
-                "Nashan Xetry",
+                "Randul Qytian",
                 [
                     "TroopGeneral:Maqtor Aklon",
-                    "Leader:Nashan Xetry",
-                    "IntelligenceAgent:Rek Qytian"
+                    "Leader:Randul Qytian",
+                    "IntelligenceAgent:Dekshi Woppit"
                 ]
             ],
             [
                 "Ugnari",
-                "Raqi Unkaro",
+                "Vos Edari",
                 [
                     "IntelligenceAgent:Tek Ixito",
-                    "Leader:Raqi Unkaro"
+                    "Leader:Vos Edari"
                 ]
             ]
         ]);
@@ -233,70 +238,72 @@ describe('GenerateStartingCharacters (normal empires, seed 1)', () => {
         // (re-pinned M4f: the game-start AssignMissionsToBuiltObjectList draws shift the stream reaching this step.)
         // (Merge of M4f onto M4u/M4o/M4l: re-pinned once against the combined code.)
         expect(log.slice(0, 60)).toEqual([
-            "0,31=5",
-            "0,26=9",
+            "0,31=25",
+            "0,26=6",
             "0,2=0",
             "0,3=1",
-            "0,20=9",
-            "0,4=0",
-            "2,10=5",
-            "0,2=0",
-            "0,41=21",
+            "0,20=19",
             "0,4=1",
-            "0,1=0",
-            "0,1=0",
-            "0,1=0",
-            "0,1=0",
-            "0,1=0",
-            "0,1=0",
-            "0,1=0",
-            "0,1=0",
-            "0,1=0",
-            "0,1=0",
-            "0,1=0",
-            "0,1=0",
-            "0,1=0",
-            "0,1=0",
-            "0,1=0",
-            "0,1=0",
-            "0,1=0",
-            "0,1=0",
-            "0,1=0",
-            "0,1=0",
-            "0,31=21",
-            "0,26=10",
-            "0,2=1",
+            "-5,-1=-2",
             "0,2=0",
+            "0,41=24",
+            "0,4=2",
+            "0,31=7",
+            "0,26=4",
+            "0,2=1",
+            "0,2=1",
+            "0,2=1",
+            "0,3=0",
             "0,3=0",
             "0,3=2",
             "0,3=2",
+            "0,3=0",
             "0,3=1",
-            "0,4=0",
-            "5,16=15",
+            "0,3=1",
+            "0,3=0",
             "0,4=2",
-            "5,16=9",
+            "5,16=8",
+            "0,4=3",
+            "5,16=5",
+            "0,4=2",
+            "5,16=6",
+            "0,4=0",
+            "5,16=14",
             "0,2=0",
-            "0,14=4",
-            "0,5=4",
-            "0,20=2",
-            "0,80=29",
+            "0,14=2",
+            "0,5=0",
+            "0,20=15",
+            "0,80=7",
+            "0,5=3",
+            "0,20=11",
+            "0,80=9",
             "0,5=1",
+            "0,20=4",
+            "0,80=13",
+            "0,5=2",
             "0,20=8",
-            "0,80=31",
-            "0,5=1",
-            "0,20=17",
+            "0,80=13",
+            "0,5=0",
+            "0,20=4",
             "0,80=19",
             "0,5=0",
-            "0,20=5",
-            "0,80=55",
-            "0,5=3",
-            "0,20=18",
-            "0,80=3",
-            "0,5=2"
+            "0,20=4",
+            "0,80=50",
+            "0,38=6",
+            "0,29=10",
+            "0,2=0",
+            "0,3=0",
+            "0,4=1",
+            "0,4=0",
+            "2,10=8",
+            "0,2=0",
+            "0,41=0"
         ]);
         // (M4u: Leader 11 + agent 15 draws, activations at 26; M4f: at 40. Merged code: the Human leader activates with 20
         // trait rolls (Next(0, 1)), then the agent, so the activations start at 44.)
-        expect(log.slice(44, 62).map((d) => d.split('=')[0])).toEqual(Array.from({ length: 6 }, () => ['0,5', '0,20', '0,80']).flat());
+        // (M4x: the stream reaching this step moved (StartingAge = galaxy age 0); the Human leader now has 1 skill /
+        // 1 trait and the agent 4 skills, so the activations start at 33.)
+        expect(log.slice(33, 51).map((d) => d.split('=')[0])).toEqual(Array.from({ length: 6 }, () => ['0,5', '0,20', '0,80']).flat());
 
         for (const e of g.empires) {
             const chars = getEmpireCharacters(e);
@@ -344,7 +351,8 @@ describe('GenerateStartingCharacters (normal empires, seed 1)', () => {
         // (re-pinned M4u: game-start character reviews / race events shift the Rnd stream; the new Dhayut leader.)
         // (re-pinned M4f: game-start AssignMissionsToBuiltObjectList draws shift the character stream)
         // (merge of M4f onto M4u/M4o/M4l: re-pinned once; the merged stream gives the Dhayut leader Nashan Xetry.)
-        expect(leader.colonyHappiness).toBe(-10);
+        // (re-pinned M4x: StartingAge = galaxy age 0 shifts the character stream.)
+        expect(leader.colonyHappiness).toBe(8);
         expect(resolveCharacterColonyIncomeBonus(cap)).toBe(leader.colonyIncome);
         expect(resolveCharacterColonyCorruptionBonus(cap)).toBe(leader.colonyCorruption);
         expect(resolveEmpireLeaderWarWearinessDivisor(dhayut)).toBe(1.0 + leader.warWeariness / 100.0);
