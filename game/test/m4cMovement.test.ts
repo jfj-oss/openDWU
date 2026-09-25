@@ -32,7 +32,9 @@ import {
     withinFuelRangeWithFactor,
 } from '../src/sim/movement';
 import { currentRange as freightCurrentRange, withinFuelRange as freightWithinFuelRange, warpSpeedWithBonuses as freightWarp } from '../src/sim/logistics/freight';
-import { MAX_SOLAR_SYSTEM_SIZE, warpSpeedWithBonuses } from '../src/sim/movement';
+import { MAX_SOLAR_SYSTEM_SIZE, baconMovementSettings, warpSpeedWithBonuses } from '../src/sim/movement';
+import { baconSettings } from '../src/sim/data/baconSettings';
+import { resetBaconSettingsToDefaults } from '../src/sim/baconInitialize';
 
 let gameData: GameData;
 beforeAll(async () => {
@@ -217,13 +219,15 @@ describe('fuel ranges (one implementation, re-exported by logistics/freight.ts)'
         const top = b.topSpeed;
         const cruise = b.cruiseSpeed;
         const warp = b.warpSpeed;
+        // BaconSettings.txt noFuel*SpeedMultiplier (installed: 0.9 / 0.9 / 0.5; C# defaults 0.33f) apply from game start.
+        expect(baconMovementSettings.noFuelTopSpeedMultiplier).toBe(baconSettings.noFuelTopSpeedMultiplier);
         b.currentFuel = 0;
         b.currentEnergy = 0;
         checkFuelHandicap(g, b);
         expect(b._fuelHandicapped).toBe(true);
-        expect(b.topSpeed).toBe(Math.trunc(top * Math.fround(0.33)));
-        expect(b.cruiseSpeed).toBe(Math.trunc(cruise * Math.fround(0.33)));
-        expect(b.warpSpeed).toBe(Math.trunc(warp * Math.fround(0.33)));
+        expect(b.topSpeed).toBe(Math.trunc(top * baconMovementSettings.noFuelTopSpeedMultiplier));
+        expect(b.cruiseSpeed).toBe(Math.trunc(cruise * baconMovementSettings.noFuelCruiseSpeedMultiplier));
+        expect(b.warpSpeed).toBe(Math.trunc(warp * baconMovementSettings.noFuelHyperSpeedMultiplier));
         b.currentFuel = 10;
         checkFuelHandicap(g, b);
         expect(b._fuelHandicapped).toBe(false);
@@ -233,6 +237,8 @@ describe('fuel ranges (one implementation, re-exported by logistics/freight.ts)'
 
     it('IsOutsideStarGravityWell: the Bacon well radius is MaxSolarSystemSize × radiation sum / 100 (× hyperdrive mitigation)', () => {
         const g = newGalaxy();
+        // The well is on with the C# default useStarGravityWells = true (the installed BaconSettings.txt turns it off).
+        resetBaconSettingsToDefaults();
         const b = aShip(g);
         const star = g.systems.map((s) => s.systemStar).find((s) => s.solarRadiation > 0 && s.category !== HabitatCategoryType.GasCloud)!;
         const sum = star.solarRadiation + star.microwaveRadiation + star.xrayRadiation;

@@ -308,9 +308,14 @@ describe('fleet scenarios (Empire.8.cs 4266 IdentifyMilitaryObjectives / 4845 Fo
         expect(sg.mission!.type).toBe(BuiltObjectMissionType.Blockade);
         const colony = sg.mission!.targetHabitat!;
         expect(colony.empire).toBe(b);
-        runGameSeconds(g, 300);
-        expect(colony.isBlockaded).toBe(true);
-        expect(galaxyBlockadeFor(g, colony)!.initiator).toBe(a);
+        // Run until the fleet arrives and sets up the blockade (within 300 game-s). With the installed BaconSettings.txt
+        // (from game start) the fleet is later re-tasked to attack a nearby target, which lifts the blockade again.
+        let initiator: Empire | null = null;
+        for (let t = 0; t < 30 && initiator === null; t++) {
+            runGameSeconds(g, 10);
+            if (colony.isBlockaded) initiator = galaxyBlockadeFor(g, colony)!.initiator;
+        }
+        expect(initiator).toBe(a);
     }, 300000);
 });
 

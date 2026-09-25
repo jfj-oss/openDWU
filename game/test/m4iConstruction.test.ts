@@ -52,7 +52,7 @@ describe('M4i unit: construction helpers', () => {
         const e = aiEmpire(g);
         const design = findNewestCanBuild(e.designs, BuiltObjectSubRole.Escort, e)!;
         const price = design.calculateCurrentPurchasePrice(g);
-        const num1 = Math.trunc(price / baconSettings.shipMarkupFactor) + 1 + 1.0 * design.size;
+        const num1 = Math.trunc(price / baconSettings.shipMarkupFactor) + 1 + baconSettings.shipMaintenanceCostPerSizeUnit * design.size;
         const leaderBonus = e.leader !== null ? e.leader.militaryShipMaintenance : 0;
         const num4 = Math.min(1.0, design.maintenanceSavings + leaderBonus / 100.0) * num1;
         const gov = empireGovernmentAttributes(e);

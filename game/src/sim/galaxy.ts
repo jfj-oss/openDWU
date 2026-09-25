@@ -10,7 +10,7 @@
 import type { VictoryConditions, EmpireVictoryConditions } from './victory';
 import { EmpireActivityList } from './pirates/empireActivity';
 import { Random } from './random';
-import type { Cargo } from './cargo';
+import { CargoList, TroopList, type Cargo } from './cargo';
 import { newHabitatConstructionQueue } from './construction/constructionYard';
 import { Creature, CreatureType } from './creature';
 import { GalaxyLocation, GalaxyLocationEffectType, GalaxyLocationShape, GalaxyLocationType } from './galaxyLocation';
@@ -4050,8 +4050,13 @@ export class Galaxy {
                     this.selectPopulation(planet, sunHabitat);
                 }
                 // Galaxy.5.cs 1609-1618: a populated planet gets `ConstructionQueue` (M4h, 1617) and `ManufacturingQueue` (M4g, 1618).
-                // TODO(port): the other containers of that block (Cargo, Troops, Characters; no Rnd).
+                // Galaxy.5.cs 1611-1614: Cargo / Troops / TroopsToRecruit / InvadingTroops.
+                // TODO(port): Characters / InvadingCharacters (1615-1616; no Habitat fields yet; no Rnd).
                 if (planet.population.items.length > 0) {
+                    planet.cargo = new CargoList();
+                    planet.troops = new TroopList();
+                    planet.troopsToRecruit = new TroopList();
+                    planet.invadingTroops = new TroopList();
                     newHabitatConstructionQueue(this, planet);
                     ensureHabitatManufacturingQueue(this, planet);
                     // Galaxy.5.cs 1619-1644 (M4e): DockingBays (20, or 1 for asteroids / barren rock / other types) + wait queue.
@@ -4150,6 +4155,11 @@ export class Galaxy {
                     }
                     // Galaxy.5.cs 1745-1756: as for planets above (ConstructionQueue 1755, ManufacturingQueue 1756).
                     if (moon.population.items.length > 0) {
+                        // Galaxy.5.cs 1751-1754: Cargo / Troops / TroopsToRecruit / InvadingTroops.
+                        moon.cargo = new CargoList();
+                        moon.troops = new TroopList();
+                        moon.troopsToRecruit = new TroopList();
+                        moon.invadingTroops = new TroopList();
                         newHabitatConstructionQueue(this, moon);
                         ensureHabitatManufacturingQueue(this, moon);
                         // Galaxy.5.cs 1757-1781 (M4e): DockingBays + wait queue, as for planets.
