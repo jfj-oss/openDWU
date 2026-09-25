@@ -133,12 +133,28 @@ describe('shipImageMetrics', () => {
 
         const m = shipImageMetrics(rgba, w, h);
         expect(m).not.toBeNull();
-        // bbox 4×2 → padded square side max(4, 2) + 8 = 11.
-        expect(m!.cropSide).toBe(11);
-        // C# measures on the 30×30 rescale; this is the scale-free equivalent.
-        expect(m!.areaRatio).toBeCloseTo(15.125, 10);
-        expect(m!.cropCenterX).toBe(3.5);
-        expect(m!.cropCenterY).toBe(3.5);
+        // BuiltObjectImageCache.cs CropImageContent: padded bbox x -2..9,
+        // y -1..8 (num9 = 11, num8 = 9), squared about it into
+        // new Bitmap(num11 - num10 + 1, ...) → side 12, rect (-2, -2).
+        expect(m!.cropSide).toBe(12);
+        // DetermineBuiltObjectSizeNEW num3: crop area / content count = 144 / 8.
+        expect(m!.areaRatio).toBeCloseTo(18, 10);
+        expect(m!.cropCenterX).toBe(4);
+        expect(m!.cropCenterY).toBe(4);
+    });
+
+    it('squares a tall bbox with the C# integer centring', () => {
+        const w = 10;
+        const h = 10;
+        const rgba = makeRgba(w, h);
+        // A 1×6 column at x 4, y 1..6.
+        for (let y = 1; y <= 6; y++) setPixel(rgba, w, 4, y, 200, 200, 200, 255);
+        const m = shipImageMetrics(rgba, w, h)!;
+        // num8 = 13 > num9 = 8: num10 = 0 + 8/2 - 13/2 = -2, num12 = -3, side 14.
+        expect(m.cropSide).toBe(14);
+        expect(m.areaRatio).toBeCloseTo(196 / 6, 10);
+        expect(m.cropCenterX).toBe(5);
+        expect(m.cropCenterY).toBe(4);
     });
 
     it('returns null when the image has no content pixels', () => {
