@@ -28,6 +28,38 @@ function stubRnd(g: Galaxy): void {
     r.nextDouble = () => 0;
 }
 
+describe('M4z6 (2) InflictBombardDamage facility types (BuiltObject.2.cs 5877-5911)', () => {
+    it('SelectRandomFacility(PirateCriminalNetwork) excludes the criminal network by PlanetaryFacilityType (PlanetaryFacilityList.cs 214)', () => {
+        const g = createTickGame(gameData).galaxy;
+        const net = facility(g, PlanetaryFacilityType.PirateCriminalNetwork);
+        expect(selectRandomFacility(g, [net], PlanetaryFacilityType.PirateCriminalNetwork)).toBeNull();
+        const base = facility(g, PlanetaryFacilityType.PirateBase);
+        for (let i = 0; i < 20; i++) {
+            const got = selectRandomFacility(g, [net, base], PlanetaryFacilityType.PirateCriminalNetwork);
+            expect(got === null || got === base).toBe(true);
+        }
+    });
+
+    it('a bombarded pirate base clears the facility control (control − 0.2 clamped to [0.01, 0.49])', () => {
+        const g = createTickGame(gameData).galaxy;
+        const e = aiEmpire(g);
+        const cap = e.capital!;
+        cap.planetaryShieldPresent = false;
+        const pirate = g.pirateEmpires[0];
+        const self = pirate.builtObjects[0];
+        const base = facility(g, PlanetaryFacilityType.PirateBase);
+        cap.facilities = [base];
+        cap.pirateColonyControl.items = [];
+        const control = new PirateColonyControl(pirate.empireId, 0.8, true);
+        cap.pirateColonyControl.add(control);
+        stubRnd(g); // Next(0, 2) == 0 → the pirate facility is destroyed
+        inflictBombardDamage(g, self, cap, 5000);
+        expect(cap.facilities).toEqual([]);
+        expect(control.hasFacilityControl).toBe(false);
+        expect(control.controlLevel).toBe(Math.min(Math.fround(0.49), Math.max(Math.fround(0.01), Math.fround(Math.fround(0.8) - Math.fround(0.2)))));
+    });
+});
+
 describe('M4z6 (1) Habitat.cs 6070 CheckColonyRevenueFromPirateControl', () => {
     it('true only for a pirate faction on a colony it does not own', () => {
         const g = createTickGame(gameData).galaxy;

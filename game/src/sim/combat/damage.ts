@@ -58,7 +58,8 @@ import { generateDesignFromSpec } from '../designGeneration';
 import { generateAbandonedBuiltObject, getMonitoringStationDesignSpec } from '../gameStartTail';
 import { findLonelyColonyLocation } from '../civilianAI';
 import { getEmpireById } from '../logistics/contracts';
-import { facilitiesFindBestPirateFacility } from '../construction/facilities';
+import { checkRemoveFacilityTracking, facilitiesFindBestPirateFacility, type PlanetaryFacility } from '../construction/facilities';
+import { PlanetaryFacilityType } from '../researchSystem';
 import { gameText } from '../colonyTick';
 import { strategicValue } from '../territory';
 import { SystemVisibilityStatus } from '../visibility';
@@ -1433,17 +1434,13 @@ export function getArtilleryTroopDefendStrength(troops: TroopList): number {
     return troopDefendStrength;
 }
 
-/** PlanetaryFacility surface read here (the class is M4i's; Habitat.facilities is `unknown[]`). */
-interface PlanetaryFacilityLike {
-    type: unknown;
-    name: string;
+/** BuiltObject.2.cs 5883 / 5891: the PirateBase / PirateFortress / PirateCriminalNetwork type test. */
+function isPirateFacilityType(type: PlanetaryFacilityType): boolean {
+    return type === PlanetaryFacilityType.PirateBase || type === PlanetaryFacilityType.PirateFortress || type === PlanetaryFacilityType.PirateCriminalNetwork;
 }
-/** PlanetaryFacilityType members compared here by member name (PlanetaryFacilityType.cs; the TS facility list is untyped). */
-const PIRATE_FACILITY_TYPES = ['PirateBase', 'PirateFortress', 'PirateCriminalNetwork'];
-const T_planetaryFacilityType = registerTodo('M4i', 'planetaryFacilityTypeValues');
 /** PlanetaryFacilityList.cs 214 SelectRandomFacility(excludeType). Rnd: Next(0, Count) × (1..11). */
-export function selectRandomFacility(galaxy: Galaxy, facilities: PlanetaryFacilityLike[], excludeType: unknown): PlanetaryFacilityLike | null {
-    let planetaryFacility: PlanetaryFacilityLike | null = null;
+export function selectRandomFacility(galaxy: Galaxy, facilities: PlanetaryFacility[], excludeType: PlanetaryFacilityType): PlanetaryFacility | null {
+    let planetaryFacility: PlanetaryFacility | null = null;
     if (facilities.length > 0) {
         let num = 0;
         for (planetaryFacility = facilities[galaxy.rnd.next(0, facilities.length)]; (planetaryFacility == null || planetaryFacility.type === excludeType) && num < 10; ++num) {
@@ -1498,20 +1495,17 @@ export function inflictBombardDamage(galaxy: Galaxy, self: BuiltObject, habitat:
             for (let i = 0; i < habitat.troopsToRecruit.count; i++) habitat.empire.troops.remove(habitat.troopsToRecruit.items[i]);
             habitat.troopsToRecruit.clear();
         }
-        const facilities = habitat.facilities as PlanetaryFacilityLike[] | null;
+        const facilities = habitat.facilities;
         if (facilities !== null && facilities.length > 0 && galaxy.rnd.next(0, 3000) < bombardPower) {
-            // TODO(port) M4i: PlanetaryFacilityType enum / PlanetaryFacility class (the TS facility list is untyped): the
-            // exclude type PirateCriminalNetwork and the pirate-facility checks compare `type` by member name.
-            todo(T_planetaryFacilityType);
-            const planetaryFacility = selectRandomFacility(galaxy, facilities, 'PirateCriminalNetwork');
+            // BuiltObject.2.cs 5879-5891: PlanetaryFacility.Type (PlanetaryFacilityType enum) comparisons.
+            const planetaryFacility = selectRandomFacility(galaxy, facilities, PlanetaryFacilityType.PirateCriminalNetwork);
             if (planetaryFacility !== null) {
                 let flag = true;
-                const isPirateFacility = PIRATE_FACILITY_TYPES.includes(String(planetaryFacility.type));
-                if (isPirateFacility && galaxy.rnd.next(0, 2) === 1) flag = false;
+                if (isPirateFacilityType(planetaryFacility.type) && galaxy.rnd.next(0, 2) === 1) flag = false;
                 if (flag) {
                     facilities.splice(facilities.indexOf(planetaryFacility), 1);
-                    // TODO(port) M4i: habitat.CheckRemoveFacilityTracking(planetaryFacility).
-                    if (isPirateFacility) {
+                    checkRemoveFacilityTracking(habitat, planetaryFacility);
+                    if (isPirateFacilityType(planetaryFacility.type)) {
                         // BuiltObject.2.cs 5896-5911 (PirateColonyControl ported by M4s2).
                         const byFacilityControl = habitat.pirateColonyControl.getByFacilityControl();
                         if (byFacilityControl !== null) {
@@ -1527,7 +1521,7 @@ export function inflictBombardDamage(galaxy: Galaxy, self: BuiltObject, habitat:
                             }
                         }
                     } else if (habitat.empire !== null) {
-                        const description2 = `Bombardment by ${self.name} destroys the ${planetaryFacility.name}`;
+                        const description2 = gameText('Bombardment Destroys Facility Description', planetaryFacility.name, self.name);
                         sendMessageToEmpire(habitat.empire, habitat.empire, EmpireMessageType.PlanetaryFacilityDestroyed, planetaryFacility, description2);
                     }
                 }
