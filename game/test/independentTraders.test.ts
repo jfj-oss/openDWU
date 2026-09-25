@@ -88,15 +88,17 @@ describe('independent traders (Galaxy.7.cs GenerateIndependentTraders)', () => {
         // (re-pinned M4s1: ReviewPirateRelations draws Rnd.NextDouble in each game-start Empire.DoTasks long block)
         // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
         // (re-pinned M4u: game-start character reviews (ReviewCharacterTraits Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd) move the stream)
+        // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
         expect(g.popularDesigns.slice(0, 3).map((d) => d.name)).toEqual([
             "SZ1000 Light Freighter",
-            "ZY1000 Light Transport",
-            "PF1000 Light Hauler"
+            "NY1000 Cargo Shuttle",
+            "BB1000 Merchant Freighter"
         ]);
+        // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
         expect(g.popularDesigns.slice(3, 6).map((d) => d.name)).toEqual([
             "KX1000 Freight Hauler",
-            "LO1000 Cargo Hauler",
-            "KR1000 Cargo Ferry"
+            "GE1000 Medium Transport",
+            "VW1000 Cargo Freighter"
         ]);
     }, 60000);
 
@@ -104,12 +106,15 @@ describe('independent traders (Galaxy.7.cs GenerateIndependentTraders)', () => {
         const { g, traders } = runStartTick();
         const ind = g.independentEmpire!;
         const cols = g.independentColonies;
-        expect(cols.length).toBe(10);
+        // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
+        expect(cols.length).toBe(9);
         let pop = 0;
         for (const c of cols) pop += c.population.totalAmount;
         // min(pop / 20000000, 10 * 15) - 0 existing non-pirate private ships.
-        expect(Math.min(Math.trunc(pop / 20000000), cols.length * 15)).toBe(150);
-        expect(traders.length).toBe(150);
+        // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
+        expect(Math.min(Math.trunc(pop / 20000000), cols.length * 15)).toBe(135);
+        // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
+        expect(traders.length).toBe(135);
         expect(ind.privateBuiltObjects).toEqual(traders);
         expect(ind.builtObjects.length).toBe(0);
         const freighters = g.popularDesigns.filter((d) => d.warpSpeed > 5000 && (d.subRole === BuiltObjectSubRole.SmallFreighter || d.subRole === BuiltObjectSubRole.MediumFreighter));
@@ -128,7 +133,8 @@ describe('independent traders (Galaxy.7.cs GenerateIndependentTraders)', () => {
             expect(t.targetHeading).toBe(t.heading);
             expect(g.builtObjects).toContain(t);
         }
-        expect(freighters.reduce((s, d) => s + d.buildCount, 0)).toBe(150);
+        // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
+        expect(freighters.reduce((s, d) => s + d.buildCount, 0)).toBe(135);
         // Player's capital system colony (Wailnas, system 128) is visible → never used.
         expect(traders.some((t) => t.parentHabitat!.name === 'Wailnas')).toBe(false);
         const perColony = new Map<string, number>();
@@ -137,25 +143,26 @@ describe('independent traders (Galaxy.7.cs GenerateIndependentTraders)', () => {
         // (re-pinned M4s1: ReviewPirateRelations draws Rnd.NextDouble in each game-start Empire.DoTasks long block)
         // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
         // (re-pinned M4u: game-start character reviews (ReviewCharacterTraits Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd) move the stream)
+        // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
         expect(Object.fromEntries(perColony)).toEqual({
-            "S1 3": 12,
-            "Haako 4": 17,
-            "S269 4": 20,
-            "S269 2": 13,
-            "Atoaklo": 22,
+            "Haako 4": 15,
+            "Atoaklo": 19,
+            "S269 2": 12,
+            "Dhayu 3": 17,
             "S1 2": 18,
-            "Dhayu 3": 13,
-            "Eroy": 14,
-            "S212 3": 13,
-            "S83 12": 8
+            "S269 4": 18,
+            "Eroy": 17,
+            "S83 12": 9,
+            "S212 3": 10
         });
+        // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
         expect(traders.slice(0, 2).map((t) => [t.name, t.design.name])).toEqual([
             [
-                "Majestic Mystery",
-                "LO1000 Cargo Hauler"
+                "Hasty Sojourn",
+                "NY1000 Cargo Shuttle"
             ],
             [
-                "Radiant Evasion",
+                "Cautious Impasse",
                 "KX1000 Freight Hauler"
             ]
         ]);
@@ -170,45 +177,60 @@ describe('independent traders (Galaxy.7.cs GenerateIndependentTraders)', () => {
         // (re-pinned M4s1: ReviewPirateRelations draws Rnd.NextDouble in each game-start Empire.DoTasks long block)
         // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
         // (re-pinned M4u: game-start character reviews (ReviewCharacterTraits Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd) move the stream)
-        expect(a.log.length).toBe(1561);
+        // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
+        expect(a.log.length).toBe(1408);
+        // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
         expect(a.log.slice(-25)).toEqual([
+            "Next(0,2)=0",
+            "NextDouble",
+            "Next(0,2)=1",
             "Next(0,0)=0",
             "Next(0,2)=0",
             "Next(0,2)=1",
             "Next(0,0)=0",
             "Next(0,2)=1",
             "Next(0,0)=0",
-            "Next(0,2)=1",
-            "Next(0,0)=0",
-            "Next(0,2)=0",
             "Next(0,2)=0",
             "Next(0,2)=1",
             "Next(0,0)=0",
             "Next(0,2)=0",
+            "Next(0,2)=0",
             "Next(0,2)=1",
             "Next(0,0)=0",
-            "Next(0,30)=11",
-            "Next(0,30)=17",
-            "Next(0,30)=29",
-            "Next(0,30)=2",
-            "Next(0,30)=1",
-            "Next(0,30)=24",
-            "Next(0,30)=15",
-            "Next(0,30)=11",
-            "Next(0,30)=3",
-            "Next(0,30)=7"
+            "Next(0,30)=9",
+            "Next(0,30)=28",
+            "Next(0,30)=8",
+            "Next(0,30)=26",
+            "Next(0,30)=25",
+            "Next(0,30)=23",
+            "Next(0,30)=0",
+            "Next(0,30)=14",
+            "Next(0,30)=4"
         ]);
+        // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
         expect(a.log.slice(0, 22)).toEqual([
-            // trader 0: Next(0,3) freighter-size roll; Next(0,3) index; Next(0,10) start colony;
-            // SelectRandomUniqueStandardShipName (Next(0,127), Next(0,125), Next(0,7) >= 2 → no extra draw);
-            // SelectRandomHeading; SelectRelativeParkingPoint.
-            // (re-pinned M4u: game-start character reviews / DoRaceEvent Rnd move the stream.)
-            'Next(0,3)=1', 'Next(0,3)=1', 'Next(0,10)=3', 'Next(0,127)=24', 'Next(0,125)=43', 'Next(0,7)=5',
-            'NextDouble', 'NextDouble', 'Next(0,2)=0', 'NextDouble',
-            // trader 1: same shape.
-            'Next(0,3)=1', 'Next(0,3)=0', 'Next(0,10)=1', 'Next(0,127)=21', 'Next(0,125)=118', 'Next(0,7)=2',
-            'NextDouble', 'NextDouble', 'Next(0,2)=1', 'NextDouble',
-            'Next(0,3)=0', 'Next(0,3)=0',
+            "Next(0,3)=0",
+            "Next(0,3)=1",
+            "Next(0,9)=1",
+            "Next(0,127)=102",
+            "Next(0,125)=71",
+            "Next(0,7)=3",
+            "NextDouble",
+            "NextDouble",
+            "Next(0,2)=1",
+            "NextDouble",
+            "Next(0,3)=1",
+            "Next(0,3)=0",
+            "Next(0,9)=8",
+            "Next(0,127)=16",
+            "Next(0,125)=123",
+            "Next(0,7)=2",
+            "NextDouble",
+            "NextDouble",
+            "Next(0,2)=0",
+            "NextDouble",
+            "Next(0,3)=2",
+            "Next(0,3)=2"
         ]);
         const b = runStartTick();
         expect(b.log).toEqual(a.log);
@@ -222,7 +244,8 @@ describe('independent traders (Galaxy.7.cs GenerateIndependentTraders)', () => {
         expect(generateIndependentTraders(g).length).toBe(0);
         assignIndependentTraderMissions(g); // no-op at game start
         expect(log.length).toBe(0);
-        expect(g.independentEmpire!.privateBuiltObjects.length).toBe(150);
+        // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
+        expect(g.independentEmpire!.privateBuiltObjects.length).toBe(135);
     }, 60000);
 
     it('fallback: no popular freighters → designs generated from the independent spec per playable race', () => {
@@ -233,7 +256,8 @@ describe('independent traders (Galaxy.7.cs GenerateIndependentTraders)', () => {
         reviewIndependentColonies(g);
         const traders = generateIndependentTraders(g);
         const ind = g.independentEmpire!;
-        expect(traders.length).toBe(150);
+        // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
+        expect(traders.length).toBe(135);
         const player = g.playerEmpire!.dominantRace!;
         const races = g.races.filter((r) => r.playable && r !== player);
         const kept = races.filter((r) => r.designsPictureFamilyIndex !== player.designsPictureFamilyIndex).length;

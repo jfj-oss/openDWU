@@ -220,47 +220,48 @@ describe('generatePirateEmpireName', () => {
 // block's independent-colony pirate offers draw per colony, so GenerateNewPirateEmpires sees a different stream.)
 // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
 // Re-pinned M4u: game-start character reviews (ReviewCharacterTraits Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd) move the Rnd stream before pirate generation.
+// (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
 const PINNED_SEED1_PIRATES: unknown[] = [
     [
-        "Venomous Marauders",
-        "OI626",
-        "Naxxilian",
-        4331580
-    ],
-    [
-        "Iron League",
-        "S162 6",
-        "Kiadian",
-        88
-    ],
-    [
-        "S1 Ravagers",
-        "S278 6",
-        "Dhayut",
-        8323096
-    ],
-    [
-        "Fearsome Claw Interstellar",
-        "S285 4",
-        "Shandar",
-        8336399
-    ],
-    [
-        "Sinister Moon Marauders",
-        "WB225",
+        "Bloody Outlaws",
+        "KM532",
         "Mortalen",
         4390912
     ],
     [
-        "Dirty Pirates",
-        "S48 6",
+        "Menacing Claw Skyjackers",
+        "S96 2",
         "Gizurean",
         8355600
     ],
     [
-        "Sol Pirates",
-        "S96 2",
-        "Atuuk",
-        796684
+        "Dark Fang Warriors",
+        "LN38",
+        "Gizurean",
+        4931616
+    ],
+    [
+        "Haako Skyjackers",
+        "BT322",
+        "Boskara",
+        3674214
+    ],
+    [
+        "Grim Fang Skyjackers",
+        "S42 3",
+        "Dhayut",
+        8323096
+    ],
+    [
+        "Haako Pirates",
+        "S152 4",
+        "Dhayut",
+        531208
+    ],
+    [
+        "Savage Skyjackers",
+        "S169 2",
+        "Gizurean",
+        5584707
     ]
 ];

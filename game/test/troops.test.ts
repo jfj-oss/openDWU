@@ -159,9 +159,12 @@ describe('troops (game start)', () => {
         // the empires / garrison rolls move.
         // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
         // (re-pinned M4u: game-start character reviews (ReviewCharacterTraits Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd) move the empires / garrisons.)
-        expect(a.capitals.map((c) => [c.edfr, c.levelRequired, c.troops])).toEqual([[1263, 946, 7], [1473, 1104, 5], [1712, 1284, 5], [646, 484, 7]]);
-        expect(a.colonyTroops).toEqual([9, 7, 15, 2]);
-        expect(a.maintenance).toEqual([16000, 10800, 18000, 8100]);
+        // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
+        expect(a.capitals.map((c) => [c.edfr, c.levelRequired, c.troops])).toEqual([[1263, 946, 2], [1480, 1110, 2], [1828, 1371, 8], [666, 499, 9]]);
+        // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
+        expect(a.colonyTroops).toEqual([8, 14, 13, 3]);
+        // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
+        expect(a.maintenance).toEqual([10000, 14400, 17850, 10800]);
         expect(a.processDraws).toEqual(['', '', '', '']); // garrisons already meet TroopLevelRequired
         expect(run(true)).toEqual(a);
     }, 120000);
@@ -172,11 +175,14 @@ describe('troops (game start)', () => {
         // (re-pinned M4s1: ReviewPirateRelations' game-start Rnd draw moves the empires / garrison rolls.)
         // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
         // (re-pinned M4u: game-start character reviews (ReviewCharacterTraits Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd) move the empires / garrisons.)
-        expect(b.capitals.map((c) => c.troops)).toEqual([7, 5, 2, 7]);
-        expect(b.maintenance).toEqual([7000, 4500, 1800, 6300]);
+        // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
+        expect(b.capitals.map((c) => c.troops)).toEqual([2, 12, 8, 6]);
+        // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
+        expect(b.maintenance).toEqual([2000, 10800, 6800, 5400]);
         // The under-garrisoned capitals recruit troops; each completion draws ChanceNewTroopGeneralFromRecruitment's
         // Next(0, 70 / race general-appearance chance).
-        expect(b.processDraws).toEqual(['Next(0,70)=37', '', 'Next(0,70)=24 Next(0,70)=51', '']);
+        // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
+        expect(b.processDraws).toEqual(['Next(0,70)=24 Next(0,70)=11', '', '', '']);
         // No roll is 1 → no Empire.GenerateNewCharacter(TroopGeneral) call.
         expect(b.troopGenerals.length).toBe(0);
         expect(run(false)).toEqual(b);

@@ -213,7 +213,9 @@ describe('M4h milestone on the headless harness', () => {
         // since M4n its ThreatEvaluation (BuiltObject.1.cs 243) may already have switched it to Attack on a nearby threat, and
         // since M4u (creatures now target ships, Creature.cs 1206) FleeFromHopelessBattle may send it off on Escape, and
         // since M4f AssignMissionToBuiltObject (Empire.5.cs 1445) sends a low-fuel idle ship to refuel (SetupRefuelling).
-        expect(m === null || m.type === BuiltObjectMissionType.Move || m.type === BuiltObjectMissionType.Undefined || m.type === BuiltObjectMissionType.Attack || m.type === BuiltObjectMissionType.Escape || m.type === BuiltObjectMissionType.Refuel).toBe(true);
+        // (M4q: with the seed-1 stream shifted by InvadeUnwillingColonizationTargets' NextDouble, the empire's design review
+        // may already have queued the new escort for a Retrofit to a newer design.)
+        expect(m === null || m.type === BuiltObjectMissionType.Move || m.type === BuiltObjectMissionType.Undefined || m.type === BuiltObjectMissionType.Attack || m.type === BuiltObjectMissionType.Escape || m.type === BuiltObjectMissionType.Refuel || m.type === BuiltObjectMissionType.Retrofit).toBe(true);
         expect(g.builtObjects).toContain(bo);
     }, 300000);
 

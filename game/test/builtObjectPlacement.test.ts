@@ -292,14 +292,42 @@ describe('FindNearestBuiltObject / FindNearestPirateFaction', () => {
 // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
 // Re-pinned by M4u: the game-start Empire.DoTasks now runs the character reviews (ReviewCharacterTraits Rnd) and
 // ReviewEmpireEvents (DoRaceEvent Rnd), moving every later draw.
+// (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
 const PINNED_NAMES: unknown[] = [
-    ['ExplorationShip', 'Lively Destiny'],
-    ['ExplorationShip', 'Sol Smuggler'],
-    ['ExplorationShip', 'Charming Culprit'],
-    ['ExplorationShip', 'Worthy Impulse'],
-    ['ExplorationShip', 'Frugal Smuggler'],
-    ['ExplorationShip', 'Sol Pearl'],
-    ['ExplorationShip', 'Foolish Renegade'],
-    ['ConstructionShip', 'Galactic Challenge'],
-    ['ConstructionShip', 'Frugal Scoundrel'],
+    [
+        "ExplorationShip",
+        "Ranger of Sol"
+    ],
+    [
+        "ExplorationShip",
+        "Humble Starseeker"
+    ],
+    [
+        "ExplorationShip",
+        "Noble Pathway"
+    ],
+    [
+        "ExplorationShip",
+        "Sol Orbit"
+    ],
+    [
+        "ExplorationShip",
+        "Adamant Decoy"
+    ],
+    [
+        "ExplorationShip",
+        "Renegade of Sol"
+    ],
+    [
+        "ExplorationShip",
+        "Cheerful Bargain"
+    ],
+    [
+        "ConstructionShip",
+        "Lively Echo"
+    ],
+    [
+        "ConstructionShip",
+        "Sol Rogue"
+    ]
 ];

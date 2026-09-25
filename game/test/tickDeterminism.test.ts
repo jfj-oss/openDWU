@@ -68,8 +68,9 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // Every tick family reached its stubs. (M4r: every diplomacy entry point reached is fully ported; M4s1 ported
         // reviewPirateMissionsAndAssign, so its marker is pirateCollectIncomeFromControlledColonies; M4e ported
         // autoRefuelRepairShip, which was the first marker; M4l ported performFleetTasks, so the BuiltObject periodic block
-        // is detected by healTroops.)
-        for (const key of ['M4q scanForNewOwnerHabitat', 'M4s pirateAssignShipMissions', 'M4s pirateCollectIncomeFromControlledColonies', 'M4q healTroops']) {
+        // is detected by healTroops; M4q ported ScanForNewOwner / HealTroops, so the markers are M4s reviewPirateControl (Habitat
+        // periodic) and pirateBaseDiscovery (BuiltObject periodic).)
+        for (const key of ['M4s reviewPirateControl', 'M4s pirateAssignShipMissions', 'M4s pirateCollectIncomeFromControlledColonies', 'M4s pirateBaseDiscovery']) {
             expect(hits[key] ?? 0, key).toBeGreaterThan(0);
         }
         const summary = { digest: stateDigest(long), counts: stateCounts(long), rndDraws: long.rnd.drawCount };
@@ -162,7 +163,8 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // plus the merge fixes (civilianAI uses M4i's real AssignScrapMission / ProcureConstructionComponents, M4e's
         // SetupRefuelling and the shared GetBuiltObjectsAtLocation / HabitatCompareTo / DesignCalculateMaintenanceCosts
         // instead of its own copies), re-pinned once.
-        expect(summary.digest).toBe('2689770786790d6a');
+        // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
+        expect(summary.digest).toBe('fc77d2b53feed820');
     }, 600000);
 });
 

@@ -100,28 +100,12 @@ describe('ProjectForceStructure / ProjectPrivateForceStructure at game start', (
         // empires land elsewhere. (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785): now only the second
         // empire's capital neighbour has known resources, so only it projects freighters and mining ships.)
         // Re-pinned M4u (game-start character reviews / DoRaceEvent Rnd move empire placement): now only the fourth empire's capital neighbour has known resources.
+        // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
         expect(a.map((e) => e.private)).toEqual([
             [],
             [],
             [],
-            [
-                [
-                    "SmallFreighter",
-                    3
-                ],
-                [
-                    "MediumFreighter",
-                    1
-                ],
-                [
-                    "GasMiningShip",
-                    2
-                ],
-                [
-                    "MiningShip",
-                    2
-                ]
-            ]
+            []
         ]);
     }, 60000);
 

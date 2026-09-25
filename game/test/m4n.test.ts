@@ -251,6 +251,10 @@ describe('BuiltObject.2.cs 1698 case Attack (missions/cmdAttack.ts)', () => {
         shipA.firstExecutionOfCommand = true;
         shipA.currentTarget = null;
         shipA.attackers = [];
+        // (M4q: since InvadeUnwillingColonizationTargets draws, seed 1's shipA may face away from B, and DoMovement's
+        // WillMeetDestination check then caps its target speed; point it at B, which lies due east.)
+        shipA.heading = 0;
+        shipA.targetHeading = 0;
         const signalsBefore = empireDistressSignals(shipB.empire!).length;
         const result = cmdAttackBombardCaptureRaid(c);
         expect(result).toBe(0);

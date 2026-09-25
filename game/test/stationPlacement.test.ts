@@ -169,7 +169,8 @@ describe('M3d station placement at game start (tech 0.5, age 1)', () => {
         expect(phases.map((p) => p.research)).toEqual([research, research, research, research]);
         // (re-pinned M4u: game-start character reviews / DoRaceEvent Rnd move the empires; the first and fourth empire now skip
         // one occupied mining candidate.)
-        expect(phases.map((p) => p.mining)).toEqual([mining6plusSkip, mining6, mining6, mining6plusSkip]);
+        // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
+        expect(phases.map((p) => p.mining)).toEqual([mining6, mining6plusSkip, mining6, mining6plusSkip]);
         expect(phases.map((p) => p.luxury)).toEqual([[], [], [], []]);
         for (let i = 0; i < g.empires.length; i++) {
             const e = g.empires[i];
@@ -217,325 +218,326 @@ describe('M3d station placement at game start (tech 0.5, age 1)', () => {
 // block's independent-colony pirate offers draw per colony, so the station points / headings / names shift.)
 // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
 // (re-pinned M4u: game-start character reviews (ReviewCharacterTraits Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd) move the empires and the station points.)
+// (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
 const PINNED: unknown[] = [
     [
-        151,
+        136,
         "Sol Commonwealth",
         "MediumSpacePort",
         "Sol 2 Space Port",
         "Sol 2",
-        4568476,
-        2362774,
-        0.2715461552143097
+        4568415,
+        2362871,
+        -0.34413084387779236
     ],
     [
-        152,
+        137,
         "Sol Commonwealth",
-        "WeaponsResearchStation",
-        "S96 Research Center",
-        "S96 2",
-        3994503,
-        2307470,
-        0.03199479356408119
+        "HighTechResearchStation",
+        "Sol Research Center",
+        "Sol 7",
+        4566547,
+        2388271,
+        0.6659872531890869
     ],
     [
-        153,
+        138,
+        "Sol Commonwealth",
+        "GasMiningStation",
+        "S96 2 Gas Mining Station",
+        "S96 2",
+        3994581,
+        2307505,
+        1.1913686990737915
+    ],
+    [
+        139,
         "Sol Commonwealth",
         "MiningStation",
         "Epautox Mining Station",
         "Epautox",
-        4574680,
-        2379420,
-        0.3019760549068451
+        4574688,
+        2379425,
+        -2.427722454071045
     ],
     [
-        154,
+        140,
         "Sol Commonwealth",
         "MiningStation",
         "Sol 1 Mining Station",
         "Sol 1",
-        4565984,
-        2367443,
-        -2.1879498958587646
+        4566048,
+        2367497,
+        -1.2375562191009521
     ],
     [
-        155,
+        141,
         "Sol Commonwealth",
         "MiningStation",
         "Sol 5 Mining Station",
         "Sol 5",
-        4574625,
-        2379409,
-        -0.9036071300506592
+        4574708,
+        2379441,
+        2.219999313354492
     ],
     [
-        156,
+        142,
         "Sol Commonwealth",
         "MiningStation",
         "LD741 Mining Station",
         "LD741",
-        4559188,
-        2371747,
-        -2.1624536514282227
+        4559189,
+        2371752,
+        0.5460940003395081
     ],
     [
-        157,
+        143,
         "Sol Commonwealth",
         "MiningStation",
         "S185 1 Mining Station",
         "S185 1",
-        4707350,
-        2968564,
-        -0.15501470863819122
+        4707537,
+        2968547,
+        2.595449447631836
+    ],
+    [
+        144,
+        "Haakonish Industries",
+        "MediumSpacePort",
+        "S216 2 Space Port",
+        "S216 2",
+        8254579,
+        2932472,
+        0.2054254561662674
+    ],
+    [
+        145,
+        "Haakonish Industries",
+        "WeaponsResearchStation",
+        "S174 Station",
+        "S174 1",
+        7993428,
+        2399834,
+        -0.36867228150367737
+    ],
+    [
+        146,
+        "Haakonish Industries",
+        "GasMiningStation",
+        "S216 4 Gas Mining Station",
+        "S216 4",
+        8249521,
+        2942035,
+        2.640260696411133
+    ],
+    [
+        147,
+        "Haakonish Industries",
+        "MiningStation",
+        "Owuilg Mining Station",
+        "Owuilg",
+        8254538,
+        2932460,
+        0.18121880292892456
+    ],
+    [
+        148,
+        "Haakonish Industries",
+        "MiningStation",
+        "S216 3 Mining Station",
+        "S216 3",
+        8254536,
+        2935861,
+        -2.223687171936035
+    ],
+    [
+        149,
+        "Haakonish Industries",
+        "MiningStation",
+        "BA496 Mining Station",
+        "BA496",
+        8265884,
+        2940934,
+        1.9737778902053833
+    ],
+    [
+        150,
+        "Haakonish Industries",
+        "MiningStation",
+        "HT297 Mining Station",
+        "HT297",
+        8252705,
+        2923664,
+        -0.8626134991645813
+    ],
+    [
+        151,
+        "Haakonish Industries",
+        "MiningStation",
+        "PM149 Mining Station",
+        "PM149",
+        8253528,
+        2939865,
+        -2.4686214923858643
+    ],
+    [
+        152,
+        "Dhayut Territory",
+        "MediumSpacePort",
+        "S1 3 Space Port",
+        "S1 3",
+        9072990,
+        3383317,
+        -0.6356511116027832
+    ],
+    [
+        153,
+        "Dhayut Territory",
+        "HighTechResearchStation",
+        "S188 Research Center",
+        "S188 4",
+        8924975,
+        3086288,
+        -0.42063677310943604
+    ],
+    [
+        154,
+        "Dhayut Territory",
+        "GasMiningStation",
+        "S6 2 Gas Mining Station",
+        "S6 2",
+        9889927,
+        3766612,
+        1.249326229095459
+    ],
+    [
+        155,
+        "Dhayut Territory",
+        "MiningStation",
+        "DN169, Asteroid Field Mining Station",
+        "DN169, Asteroid Field",
+        9072058,
+        3379664,
+        1.0001496076583862
+    ],
+    [
+        156,
+        "Dhayut Territory",
+        "MiningStation",
+        "XO112, Asteroid Field Mining Station",
+        "XO112, Asteroid Field",
+        9071750,
+        3379200,
+        -1.340457558631897
+    ],
+    [
+        157,
+        "Dhayut Territory",
+        "MiningStation",
+        "PW425, Asteroid Field Mining Station",
+        "PW425, Asteroid Field",
+        9071991,
+        3379325,
+        -1.4194839000701904
     ],
     [
         158,
-        "Sol Commonwealth",
+        "Dhayut Territory",
         "MiningStation",
-        "Ahous Mining Station",
-        "Ahous",
-        4709064,
-        2980855,
-        3.025357484817505
+        "Eshoa Mining Station",
+        "Eshoa",
+        9072966,
+        3383320,
+        -0.034286145120859146
     ],
     [
         159,
-        "Free S160 Consortium",
-        "MediumSpacePort",
-        "S160 3 Space Port",
-        "S160 3",
-        2950740,
-        7974448,
-        2.4571590423583984
+        "Dhayut Territory",
+        "MiningStation",
+        "S188 3 Mining Station",
+        "S188 3",
+        8902380,
+        3077970,
+        -1.5134004354476929
     ],
     [
         160,
-        "Free S160 Consortium",
-        "HighTechResearchStation",
-        "S139 Station",
-        "S139 1",
-        2819010,
-        8094640,
-        -0.1965635120868683
+        "Free S34 Corporation",
+        "MediumSpacePort",
+        "Emoarn Space Port",
+        "Emoarn",
+        6829493,
+        9264396,
+        2.041285514831543
     ],
     [
         161,
-        "Free S160 Consortium",
-        "GasMiningStation",
-        "S160 6 Gas Mining Station",
-        "S160 6",
-        2946371,
-        7988473,
-        -2.742340564727783
+        "Free S34 Corporation",
+        "HighTechResearchStation",
+        "S136 Research Center",
+        "S136 1",
+        6324533,
+        9068363,
+        -2.753337860107422
     ],
     [
         162,
-        "Free S160 Consortium",
+        "Free S34 Corporation",
         "MiningStation",
-        "Amsoi Mining Station",
-        "Amsoi",
-        2946417,
-        7988573,
-        -2.5909759998321533
+        "S34 2 Mining Station",
+        "S34 2",
+        6842448,
+        9280376,
+        -2.021071195602417
     ],
     [
         163,
-        "Free S160 Consortium",
+        "Free S34 Corporation",
         "MiningStation",
-        "Glex Mining Station",
-        "Glex",
-        2950901,
-        7971756,
-        -1.863935112953186
+        "Ryibiwie Mining Station",
+        "Ryibiwie",
+        6855925,
+        9278545,
+        -0.09320308268070221
     ],
     [
         164,
-        "Free S160 Consortium",
+        "Free S34 Corporation",
         "MiningStation",
-        "Delf Mining Station",
-        "Delf",
-        2959734,
-        7979067,
-        -0.8207922577857971
+        "IE225 Mining Station",
+        "IE225",
+        6831148,
+        9291357,
+        2.0796756744384766
     ],
     [
         165,
-        "Free S160 Consortium",
+        "Free S34 Corporation",
         "MiningStation",
-        "NW1 Mining Station",
-        "NW1",
-        2948150,
-        7985407,
-        2.4463579654693604
+        "S34 1 Mining Station",
+        "S34 1",
+        6835332,
+        9286795,
+        0.11203910410404205
     ],
     [
         166,
-        "Free S160 Consortium",
+        "Free S34 Corporation",
         "MiningStation",
-        "S160 1 Mining Station",
-        "S160 1",
-        2959689,
-        7979120,
-        -2.9180960655212402
+        "HC228 Mining Station",
+        "HC228",
+        6846532,
+        9285482,
+        -2.5375473499298096
     ],
     [
         167,
-        "Combined S144 Alliance",
-        "MediumSpacePort",
-        "Aseeglet Space Port",
-        "Aseeglet",
-        3577173,
-        12698386,
-        -1.0578980445861816
-    ],
-    [
-        168,
-        "Combined S144 Alliance",
-        "WeaponsResearchStation",
-        "S36 Station",
-        "S36 3",
-        3216290,
-        12089840,
-        1.6561763286590576
-    ],
-    [
-        169,
-        "Combined S144 Alliance",
-        "GasMiningStation",
-        "S144 7 Gas Mining Station",
-        "S144 7",
-        3554799,
-        12708237,
-        -1.384136438369751
-    ],
-    [
-        170,
-        "Combined S144 Alliance",
-        "GasMiningStation",
-        "S144 11 Gas Mining Station",
-        "S144 11",
-        3570038,
-        12715772,
-        -1.4832037687301636
-    ],
-    [
-        171,
-        "Combined S144 Alliance",
-        "GasMiningStation",
-        "S144 8 Gas Mining Station",
-        "S144 8",
-        3575021,
-        12692563,
-        1.6214509010314941
-    ],
-    [
-        172,
-        "Combined S144 Alliance",
+        "Free S34 Corporation",
         "MiningStation",
-        "Ereiti Mining Station",
-        "Ereiti",
-        3574996,
-        12688879,
-        0.13817834854125977
-    ],
-    [
-        173,
-        "Combined S144 Alliance",
-        "MiningStation",
-        "Ikleata Mining Station",
-        "Ikleata",
-        3575119,
-        12688951,
-        0.9272089600563049
-    ],
-    [
-        174,
-        "Combined S144 Alliance",
-        "MiningStation",
-        "Getoaton Mining Station",
-        "Getoaton",
-        3569723,
-        12715842,
-        -1.7945938110351562
-    ],
-    [
-        175,
-        "Ugnari Corporation",
-        "MediumSpacePort",
-        "Kroxoy Space Port",
-        "Kroxoy",
-        7555416,
-        704637,
-        -1.7965428829193115
-    ],
-    [
-        176,
-        "Ugnari Corporation",
-        "HighTechResearchStation",
-        "S181 Research Station",
-        "S181 6",
-        7137176,
-        1441791,
-        1.7650281190872192
-    ],
-    [
-        177,
-        "Ugnari Corporation",
-        "GasMiningStation",
-        "S181 7 Gas Mining Station",
-        "S181 7",
-        7139679,
-        1446266,
-        0.6371418833732605
-    ],
-    [
-        178,
-        "Ugnari Corporation",
-        "GasMiningStation",
-        "TH391 Gas Mining Station",
-        "TH391",
-        7293100,
-        618920,
-        1.1630359888076782
-    ],
-    [
-        179,
-        "Ugnari Corporation",
-        "GasMiningStation",
-        "S181 9 Gas Mining Station",
-        "S181 9",
-        7133756,
-        1442177,
-        2.951711416244507
-    ],
-    [
-        180,
-        "Ugnari Corporation",
-        "MiningStation",
-        "S252 3 Mining Station",
-        "S252 3",
-        7540437,
-        688442,
-        -2.41445255279541
-    ],
-    [
-        181,
-        "Ugnari Corporation",
-        "MiningStation",
-        "S252 4 Mining Station",
-        "S252 4",
-        7536452,
-        690967,
-        -1.0290274620056152
-    ],
-    [
-        182,
-        "Ugnari Corporation",
-        "MiningStation",
-        "Ilget Mining Station",
-        "Ilget",
-        7543520,
-        681083,
-        -1.355878233909607
+        "Eldoa Mining Station",
+        "Eldoa",
+        6829458,
+        9264311,
+        2.057286024093628
     ]
 ];

@@ -5,6 +5,7 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 import { createTickGame } from './helpers/tickGame';
+import type { BuiltObject } from '../src/sim/builtObject';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { Empire } from '../src/sim/empire';
 import { MIN_TIME, spanSeconds } from '../src/sim/tick/simTime';
@@ -222,19 +223,19 @@ describe('Empire.DoTasks intervals (Empire.1.cs 3427, >= on seconds, touches fir
 });
 
 describe('Habitat.DoTasks intervals (Habitat.cs 1399, strict >)', () => {
-    // The intermediate block's only call (CheckForShipsDiscoveringRuins) is ported (M4t): it is detected by its
-    // touch write (Habitat.cs 1440 _LastIntermediateTouch = _tempNow) instead of a stub hit.
-    const markers = {
-        periodic: 'M4q scanForNewOwnerHabitat',
-        // M4c ported ReviewWhetherRefuellingDepot, M4u CheckHabitatIsEmpire; UpdateRaidCountdown (M4s stub) marks the block.
-        long: 'M4s updateRaidCountdownHabitat',
-        huge: 'M4q clearTroopsAwaitingPickup',
-    };
+    // Every block's calls are ported (the intermediate CheckForShipsDiscoveringRuins by M4t; M4q ported the periodic
+    // ScanForNewOwner / huge ClearTroopsAwaitingPickup markers), so each block is detected by the touch it stamps at its
+    // end (Habitat.cs 1440 / 1497 / 1523 / 1543 _Last*Touch = _tempNow).
     const at = (ms: number): string[] => {
         const h = galaxy.empires[0].capital!;
         h.lastTouch = h.lastIntermediateTouch = h.lastPeriodicTouch = h.lastLongTouch = h.lastHugeTouch = 0;
-        const fired = firedBlocks(markers, () => habitatDoTasks(galaxy, h, ms));
-        return h.lastIntermediateTouch !== 0 ? ['intermediate', ...fired] : fired;
+        habitatDoTasks(galaxy, h, ms);
+        const fired: string[] = [];
+        if (h.lastIntermediateTouch !== 0) fired.push('intermediate');
+        if (h.lastPeriodicTouch !== 0) fired.push('periodic');
+        if (h.lastLongTouch !== 0) fired.push('long');
+        if (h.lastHugeTouch !== 0) fired.push('huge');
+        return fired;
     };
 
     it('fires a block only strictly after its span', () => {
@@ -245,7 +246,7 @@ describe('Habitat.DoTasks intervals (Habitat.cs 1399, strict >)', () => {
         expect(at(60000)).toEqual(['intermediate', 'periodic']);
         expect(at(60001)).toEqual(['intermediate', 'periodic', 'long']);
         expect(at(240000)).toEqual(['intermediate', 'periodic', 'long']);
-        expect(at(240001)).toEqual(['intermediate', ...Object.keys(markers)]);
+        expect(at(240001)).toEqual(['intermediate', 'periodic', 'long', 'huge']);
     });
 
     it('moves the habitat along its orbit by the time since the last touch', () => {
@@ -261,26 +262,32 @@ describe('Habitat.DoTasks intervals (Habitat.cs 1399, strict >)', () => {
 });
 
 describe('BuiltObject.DoTasks (BuiltObject.cs 3614)', () => {
-    const markers = {
-        intermediate: 'M4q processBoardingAssault', // was 'M4o checkShieldAreaRechargeReset' until M4o ported it (and 'M4n checkNearTarget' before that)
-        periodic: 'M4q healTroops', // (was M4e checkClearDocking until M4e ported it; before that M4h checkRepairMissionStillValid)
-        long: 'M4q baconBuiltObjectHugeProcessingSpanActions',
+    // M4q ported the last block markers (ProcessBoardingAssault / HealTroops / Bacon HugeProcessingSpanActions): each block
+    // is detected by the touch it stamps at its end (BuiltObject.cs 3768 / 3796 / 3812 _Last*Touch = _tempNow).
+    const fire = (bo: BuiltObject, t: number): string[] => {
+        const before = [bo.lastIntermediateTouch, bo.lastPeriodicTouch, bo.lastLongTouch];
+        builtObjectDoTasks(galaxy, bo, t, 0);
+        const fired: string[] = [];
+        if (bo.lastIntermediateTouch !== before[0]) fired.push('intermediate');
+        if (bo.lastPeriodicTouch !== before[1]) fired.push('periodic');
+        if (bo.lastLongTouch !== before[2]) fired.push('long');
+        return fired;
     };
 
     it('back-dates the touches on the first call so every block fires, then uses >=', () => {
         const bo = galaxy.builtObjects[0];
         bo.lastTouch = bo.lastIntermediateTouch = bo.lastPeriodicTouch = bo.lastLongTouch = MIN_TIME;
         const t = 500000;
-        expect(firedBlocks(markers, () => builtObjectDoTasks(galaxy, bo, t, 0))).toEqual(['intermediate', 'periodic', 'long']);
+        expect(fire(bo, t)).toEqual(['intermediate', 'periodic', 'long']);
         expect([bo.lastTouch, bo.lastIntermediateTouch, bo.lastPeriodicTouch, bo.lastLongTouch]).toEqual([t, t, t, t]);
         // 3664-3667 allocates StellarObject[20]; the intermediate block's ThreatEvaluation (M4n) then replaces it with the
         // evaluated list (≤ 10 from IdentifySystemThreatsToUs, ≤ 20 from EvaluateThreats).
         expect(bo.threats).not.toBeNull();
         expect(bo.threats!.length).toBeLessThanOrEqual(20);
-        expect(firedBlocks(markers, () => builtObjectDoTasks(galaxy, bo, t + 2999, 0))).toEqual([]);
-        expect(firedBlocks(markers, () => builtObjectDoTasks(galaxy, bo, t + 3000, 0))).toEqual(['intermediate']);
-        expect(firedBlocks(markers, () => builtObjectDoTasks(galaxy, bo, t + 10000, 0))).toEqual(['intermediate', 'periodic']);
-        expect(firedBlocks(markers, () => builtObjectDoTasks(galaxy, bo, t + 60000, 0))).toEqual(['intermediate', 'periodic', 'long']);
+        expect(fire(bo, t + 2999)).toEqual([]);
+        expect(fire(bo, t + 3000)).toEqual(['intermediate']);
+        expect(fire(bo, t + 10000)).toEqual(['intermediate', 'periodic']);
+        expect(fire(bo, t + 60000)).toEqual(['intermediate', 'periodic', 'long']);
     });
 
     it('runs the ExecuteCommands loop once for a ship without a mission (the epilogue reaches AutoRefuelRepairShip, ported by M4e, and no M4e stub)', () => {

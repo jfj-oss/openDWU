@@ -241,8 +241,10 @@ describe('cases Load / Unload (BuiltObject.2.cs 3232, 3698)', () => {
     }, 300000);
 
     it('Load moves Capacity×dt units per call from the dock to the hold; Unload moves them back', () => {
-        const bo = g.builtObjects.find((b) => b.role === BuiltObjectRole.Freight && b.empire !== null && b.empire.capital !== null && b.cargoCapacity > 500)!;
-        const host = bo.empire!.capital!;
+        // (M4q: since InvadeUnwillingColonizationTargets draws its NextDouble the seed-1 empires start without private
+        // freighters, so an independent trader docks at empire 0's capital.)
+        const bo = g.builtObjects.find((b) => b.role === BuiltObjectRole.Freight && b.empire !== null && b.cargoCapacity > 500)!;
+        const host = g.empires[0].capital!;
         for (const bay of host.dockingBays!) bay.dockedShip = null;
         dockAt(bo, host);
         bo.cargo = new CargoList();

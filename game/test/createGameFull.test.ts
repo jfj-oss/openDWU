@@ -157,6 +157,7 @@ describe('createGame full game start (seed 1, Spiral 300 stars, 8x8, Human + 3 A
 // Re-pinned M4u: the game-start Empire.DoTasks runs the character reviews (ReviewCharacterTraits / ApplyCharacterLocationBonus Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd); empire placement, names and pirates shift.
 // Re-pinned M4f: game-start AssignMissionsToBuiltObjectList draws move the empire-placement / ruins stream.
 // (Merge of M4f onto M4u/M4o/M4l: re-pinned once against the combined code.)
+// (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
 const PINNED_SUMMARY: unknown = {
     "empires": [
         {
@@ -182,7 +183,7 @@ const PINNED_SUMMARY: unknown = {
             ]
         },
         {
-            "name": "Free S160 Consortium",
+            "name": "Haakonish Industries",
             "race": "Haakonish",
             "colonies": 1,
             "spacePorts": 1,
@@ -200,11 +201,11 @@ const PINNED_SUMMARY: unknown = {
             "troops": 1,
             "characters": 3,
             "taxRates": [
-                0.28999999165534973
+                0.2800000011920929
             ]
         },
         {
-            "name": "Combined S144 Alliance",
+            "name": "Dhayut Territory",
             "race": "Dhayut",
             "colonies": 1,
             "spacePorts": 1,
@@ -219,14 +220,14 @@ const PINNED_SUMMARY: unknown = {
                 "GasMiningShip": 2,
                 "MiningShip": 2
             },
-            "troops": 1,
+            "troops": 6,
             "characters": 3,
             "taxRates": [
-                0.2199999988079071
+                0.27000001072883606
             ]
         },
         {
-            "name": "Ugnari Corporation",
+            "name": "Free S34 Corporation",
             "race": "Ugnari",
             "colonies": 1,
             "spacePorts": 1,
@@ -244,77 +245,13 @@ const PINNED_SUMMARY: unknown = {
             "troops": 1,
             "characters": 2,
             "taxRates": [
-                0.3100000023841858
+                0.33000001311302185
             ]
         }
     ],
     "pirates": [
         {
-            "name": "Venomous Marauders",
-            "bases": 1,
-            "fleet": {
-                "Escort": 1,
-                "ExplorationShip": 1,
-                "ConstructionShip": 1
-            },
-            "private": {
-                "SmallFreighter": 1,
-                "MiningShip": 1,
-                "GasMiningShip": 1,
-                "GasMiningStation": 2
-            },
-            "characters": 2
-        },
-        {
-            "name": "Iron League",
-            "bases": 1,
-            "fleet": {
-                "Escort": 1,
-                "ExplorationShip": 1,
-                "ConstructionShip": 1
-            },
-            "private": {
-                "SmallFreighter": 2,
-                "MiningShip": 1,
-                "GasMiningShip": 1,
-                "GasMiningStation": 2
-            },
-            "characters": 2
-        },
-        {
-            "name": "S1 Ravagers",
-            "bases": 1,
-            "fleet": {
-                "Escort": 1,
-                "ExplorationShip": 1,
-                "ConstructionShip": 1
-            },
-            "private": {
-                "SmallFreighter": 1,
-                "MiningShip": 1,
-                "GasMiningShip": 1,
-                "GasMiningStation": 2
-            },
-            "characters": 2
-        },
-        {
-            "name": "Fearsome Claw Interstellar",
-            "bases": 1,
-            "fleet": {
-                "ExplorationShip": 1,
-                "ConstructionShip": 1
-            },
-            "private": {
-                "SmallFreighter": 4,
-                "MiningShip": 1,
-                "GasMiningShip": 1,
-                "GasMiningStation": 2,
-                "MiningStation": 1
-            },
-            "characters": 2
-        },
-        {
-            "name": "Sinister Moon Marauders",
+            "name": "Bloody Outlaws",
             "bases": 1,
             "fleet": {
                 "Escort": 2,
@@ -327,7 +264,7 @@ const PINNED_SUMMARY: unknown = {
             "characters": 2
         },
         {
-            "name": "Dirty Pirates",
+            "name": "Menacing Claw Skyjackers",
             "bases": 1,
             "fleet": {
                 "Escort": 2,
@@ -340,7 +277,68 @@ const PINNED_SUMMARY: unknown = {
             "characters": 2
         },
         {
-            "name": "Sol Pirates",
+            "name": "Dark Fang Warriors",
+            "bases": 1,
+            "fleet": {
+                "Escort": 2,
+                "ConstructionShip": 1
+            },
+            "private": {
+                "SmallFreighter": 1,
+                "GasMiningStation": 1
+            },
+            "characters": 2
+        },
+        {
+            "name": "Haako Skyjackers",
+            "bases": 1,
+            "fleet": {
+                "Escort": 1,
+                "ExplorationShip": 1,
+                "ConstructionShip": 1
+            },
+            "private": {
+                "SmallFreighter": 1,
+                "MiningShip": 1,
+                "GasMiningShip": 1,
+                "GasMiningStation": 2
+            },
+            "characters": 2
+        },
+        {
+            "name": "Grim Fang Skyjackers",
+            "bases": 1,
+            "fleet": {
+                "Escort": 1,
+                "ExplorationShip": 1,
+                "ConstructionShip": 1
+            },
+            "private": {
+                "SmallFreighter": 1,
+                "MiningShip": 1,
+                "GasMiningShip": 1,
+                "GasMiningStation": 2
+            },
+            "characters": 2
+        },
+        {
+            "name": "Haako Pirates",
+            "bases": 1,
+            "fleet": {
+                "Escort": 1,
+                "ExplorationShip": 1,
+                "ConstructionShip": 1
+            },
+            "private": {
+                "SmallFreighter": 1,
+                "MiningShip": 1,
+                "GasMiningShip": 1,
+                "GasMiningStation": 2
+            },
+            "characters": 2
+        },
+        {
+            "name": "Savage Skyjackers",
             "bases": 1,
             "fleet": {
                 "Escort": 2,
@@ -353,8 +351,8 @@ const PINNED_SUMMARY: unknown = {
             "characters": 2
         }
     ],
-    "independentTraders": 150,
+    "independentTraders": 135,
     "unownedBuiltObjects": 24,
-    "builtObjects": 324,
-    "ruins": 20
+    "builtObjects": 302,
+    "ruins": 31
 };

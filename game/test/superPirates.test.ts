@@ -215,26 +215,27 @@ describe('UpgradeMilitaryShipDesignMoreWeapons / MoreEngines (Galaxy.8.cs 4121 /
 // (re-pinned M4u: game-start character reviews (ReviewCharacterTraits Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd) move the stream before the super-pirate generation.)
 // (re-pinned M4f: Start.2.cs 1373 AssignMissionsToBuiltObjectList draws per idle ship at game start shift every later draw)
 // (Merge of M4f onto M4u/M4o/M4l: re-pinned once against the combined code.)
+// (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
 const PINNED: unknown[] = [
     [
-        "Escort:Praetor II:33",
-        "Frigate:Sovereign II:46",
-        "Destroyer:Dominator II:56",
-        "Cruiser:Executor II:90",
-        "CapitalShip:Javelin:137",
-        "Carrier:CX-2 Carrier:110",
+        "Escort:Thunder II:32",
+        "Frigate:Decimator II:47",
+        "Destroyer:Sabre II:57",
+        "Cruiser:Dominator:81",
+        "CapitalShip:Sovereign:140",
+        "Carrier:CX-2 Carrier:99",
         "DefensiveBase:Phantom Pirate Defensive Base:123",
         "GenericBase:Phantom Pirate Base:217"
     ],
     [
-        "GenericBase:Dhayu Station",
+        "GenericBase:Dhayu Rest",
         "DefensiveBase:Dhayu 7 Defense Battery",
-        "DefensiveBase:Dhayu 7 Weapons Platform",
-        "DefensiveBase:Dhayu 7 Defense Battery",
-        "Frigate:Worthy Stealth",
-        "Destroyer:Crushing Champion",
-        "Carrier:Ultimate Exile",
-        "Cruiser:Sly Monarch"
+        "DefensiveBase:Dhayu 7 Defensive Base",
+        "DefensiveBase:Dhayu 7 Defensive Base",
+        "Carrier:Hostile Mauler",
+        "Escort:Proud Scorpion",
+        "CapitalShip:Overwhelming Aggressor",
+        "Cruiser:Immortal Strike"
     ],
-    33
+    28
 ];
