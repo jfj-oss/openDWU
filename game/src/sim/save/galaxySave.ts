@@ -205,7 +205,8 @@ function staticTablesOfGameData(gameData: GameData): StaticTables {
         races: gameData.races,
         raceFamilies: gameData.raceFamilies,
         resources: gameData.resources,
-        researchStatic: buildResearchStatic(gameData.research, gameData.components, gameData.races, gameData.policies, gameData.piratePolicies, buildComponentStatic(gameData)),
+        // generateGalaxy's wiring (galaxy.ts): facilities, fighters (Galaxy.FighterSpecificationsStatic, M4p) and plagues too.
+        researchStatic: buildResearchStatic(gameData.research, gameData.components, gameData.races, gameData.policies, gameData.piratePolicies, buildComponentStatic(gameData), gameData.facilities, gameData.fighters, gameData.plagues),
         resourceSystem: buildResourceSystem(gameData.resources, gameData.components),
         designSpecificationTexts: gameData.designSpecificationTexts ?? new Map(),
         designNames: gameData.designNames ?? [],

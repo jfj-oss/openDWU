@@ -162,7 +162,12 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // plus the merge fixes (civilianAI uses M4i's real AssignScrapMission / ProcureConstructionComponents, M4e's
         // SetupRefuelling and the shared GetBuiltObjectsAtLocation / HabitatCompareTo / DesignCalculateMaintenanceCosts
         // instead of its own copies), re-pinned once.
-        expect(summary.digest).toBe('2689770786790d6a');
+        // M4p: carriers build fighters (BuildNewFighters / ManufactureRepairFighters, no Rnd) — the player's capital space
+        // port fills its fighter bays — and launch them when threats appear (LaunchFighter: Next(0, 2) + RandomHeadingOffset
+        // NextDouble); launched fighters patrol (PerformPatrol NextDouble / Next(0, 2) + RandomHeadingOffset), attack creatures
+        // near the port (DetermineHitTarget NextDouble + Next(0, 12), FighterWeapon.Fire NextDouble + Next(0, 2), InflictDamage),
+        // and ApplyLocationEffectsNEW draws in storms. Moved from 2689770786790d6a.
+        expect(summary.digest).toBe('09580cc5f62634cb');
     }, 600000);
 });
 
