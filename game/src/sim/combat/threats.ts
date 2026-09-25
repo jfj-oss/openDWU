@@ -227,7 +227,7 @@ interface GalaxyLocationIndexAccess {
     resolveGalaxyLocationIndexes(x: number, y: number): { x: number; y: number };
 }
 
-/** GalaxyLocation.RelatedCreatures (CreatureList; TODO(port) M4u: not on the TS GalaxyLocation yet — read as undefined/empty). */
+/** GalaxyLocation.RelatedCreatures (CreatureList; galaxyLocation.ts, M4z3). */
 type GalaxyLocationWithCreatures = GalaxyLocation & { relatedCreatures?: Creature[] | null };
 
 /** Galaxy.4.cs 2012 DetermineGalaxyLocationsInRangeAtPoint(x, y, range, type). */

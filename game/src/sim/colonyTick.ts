@@ -346,8 +346,8 @@ export function checkSatisfaction(galaxy: Galaxy, habitat: Habitat): void {
         }
         let flag = false;
         const dominantRace = habitat.population != null ? habitat.population.dominantRace : null;
-        // TODO(port) M4u: Galaxy.ShakturiActualRace (story events) — null in a normal game.
-        const shakturiActualRace: Race | null = null;
+        // Galaxy.ShakturiActualRace (set by the story's GenerateShakturi; null otherwise).
+        const shakturiActualRace: Race | null = galaxy.shakturiActualRace;
         if (habitat.population != null && dominantRace !== null && dominantRace !== shakturiActualRace && ((troops !== null && troops.count > 0 && galaxy.rnd.next(0, 3) > 0) || habitat.warWithOurRace !== 0)) {
             let num8 = 1;
             const totalAmount = habitat.population.totalAmount;

@@ -104,6 +104,8 @@ export class Creature {
     currentTarget: StellarObject | null = null;
     attackers: StellarObject[] = [];
     pursuers: StellarObject[] = [];
+    /** StellarObject.cs 19 GameEventId = short.MinValue (M4z3: scenario GameEvent trigger). */
+    gameEventId = -32768;
 
     attackStrength = 0;
     pictureRef = 0;
@@ -717,8 +719,7 @@ export class Creature {
         return false;
     }
 
-    // Port of Creature.cs CompleteTeardown (line 948). TODO(port): GalaxyLocation.RelatedCreatures
-    // (not modelled on the TS GalaxyLocation; only story special zones set it).
+    // Port of Creature.cs CompleteTeardown (line 948).
     completeTeardown(): void {
         if (this.currentTarget !== null) {
             const pursuers = stellarPursuers(this.currentTarget);
@@ -744,6 +745,11 @@ export class Creature {
             if (system.creatures) {
                 while (system.creatures.includes(this)) removeFrom(system.creatures, this);
             }
+        }
+        // Creature.cs 990-995 (M4z3): drop it from every location's RelatedCreatures.
+        for (let index = 0; index < this.galaxy.galaxyLocations.length; ++index) {
+            const related = this.galaxy.galaxyLocations[index].relatedCreatures;
+            if (related != null && related.includes(this)) removeFrom(related, this);
         }
     }
 

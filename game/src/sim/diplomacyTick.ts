@@ -15,6 +15,8 @@
 //
 // Text: TextResolver.GetText(key) returns the key (M9 localises); string.Format substitutes {n} placeholders.
 
+import { checkTriggerEvent, getMatchingGameEventIdDiplomaticRelationChange } from './story/eventActions';
+import { EventTriggerType } from './story/gameEventModel';
 import { RaceEventType } from './eventTypes';
 import type { Galaxy } from './galaxy';
 import type { Empire } from './empire';
@@ -1231,10 +1233,18 @@ function checkEmpireBuildingVictoryWonderAtKnownColony(galaxy: Galaxy, self: Emp
     return null;
 }
 
-/** Galaxy.8.cs 1633 IdentifyShakturiEmpire. Galaxy.ShakturiActualRace is set only by the story (deferred) → null. */
+/** Galaxy.8.cs 1633 IdentifyShakturiEmpire (same as story/storyEvents.ts; kept local to avoid a module cycle). */
 export function identifyShakturiEmpire(galaxy: Galaxy): Empire | null {
-    void galaxy;
-    return null;
+    let result: Empire | null = null;
+    if (galaxy.shakturiActualRace !== null) {
+        for (let i = 0; i < galaxy.empires.length; i++) {
+            if (galaxy.empires[i].pirateEmpireBaseHabitat === null && galaxy.empires[i].dominantRace !== null && galaxy.empires[i].dominantRace === galaxy.shakturiActualRace) {
+                result = galaxy.empires[i];
+                break;
+            }
+        }
+    }
+    return result;
 }
 
 /** Empire.8.cs 36 EvaluateShouldAttackWonderBuildingEmpire. */
@@ -2074,7 +2084,7 @@ function calculateWarValueHabitat(galaxy: Galaxy, habitat: Habitat): number {
 }
 
 /** Galaxy.3.cs 447 CalculateEmpireWarValue(empire, out builtObjectWarValue, out colonyWarValue). */
-function calculateEmpireWarValue(galaxy: Galaxy, empire: Empire): { builtObject: number; colony: number } {
+export function calculateEmpireWarValue(galaxy: Galaxy, empire: Empire): { builtObject: number; colony: number } {
     let builtObjectWarValue = 0;
     let colonyWarValue = 0;
     for (let i = 0; i < empire.builtObjects.length; i++) builtObjectWarValue = (builtObjectWarValue + calculateWarValueBuiltObject(empire.builtObjects[i])) | 0;
@@ -2485,7 +2495,6 @@ function checkWhetherKnowAnySystemsOfOtherEmpire(galaxy: Galaxy, self: Empire, e
     return false;
 }
 
-const T_gameEvents = registerTodo('M4r', 'GetMatchingGameEventIdDiplomaticRelationChange/CheckTriggerEvent (scenario game events)');
 
 /**
  * Empire.8.cs 2553-2568 ChangeDiplomaticRelation(currentDiplomaticRelation, newType[, blockFlowonEffects[, locked[, allianceName]]]).
@@ -2678,9 +2687,11 @@ export function changeDiplomaticRelation(
     diplomaticRelation3.startDateOfLastChange = galaxyStarDate(galaxy);
     diplomaticRelation3.lastDiplomacyTradeOfferDate = galaxyStarDate(galaxy);
     diplomaticRelation3.allianceName = allianceName;
-    // Galaxy.GetMatchingGameEventIdDiplomaticRelationChange + CheckTriggerEvent (×2): scenario GameEvents — none in a normal
-    // game (deferred with ProcessDelayedEventActions).
-    todo(T_gameEvents);
+    // Empire.8.cs 2817-2820: GetMatchingGameEventIdDiplomaticRelationChange + CheckTriggerEvent, both directions (story/eventActions.ts, M4z3).
+    let matchingGameEventIdDiplomaticRelationChange = getMatchingGameEventIdDiplomaticRelationChange(galaxy, currentDiplomaticRelation.thisEmpire, currentDiplomaticRelation.otherEmpire, newDiplomaticRelationType);
+    checkTriggerEvent(galaxy, matchingGameEventIdDiplomaticRelationChange, self, EventTriggerType.DiplomaticRelationChange, null);
+    matchingGameEventIdDiplomaticRelationChange = getMatchingGameEventIdDiplomaticRelationChange(galaxy, currentDiplomaticRelation.otherEmpire, currentDiplomaticRelation.thisEmpire, newDiplomaticRelationType);
+    checkTriggerEvent(galaxy, matchingGameEventIdDiplomaticRelationChange, self, EventTriggerType.DiplomaticRelationChange, null);
     return true;
 }
 

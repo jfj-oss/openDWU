@@ -140,8 +140,11 @@ describe('pirate empire steps', () => {
     it('CheckSendPirateRaid only fires once, when the pre-warp flags are clear', () => {
         const galaxy = freshGalaxy();
         const empire = galaxy.empires.find((e) => e.capital !== null)!;
-        // Tech level 0.5 start: the game-start aggregate flag is set, so no raid.
+        // Tech level 0.5 start: the game-start aggregate flag is set, and Start.2.cs 1127 sets SendPirateRaid for every
+        // empire (M4z3), so no raid.
         expect(empire.preWarpProgressEventsOccurred).toBe(true);
+        expect(empire.preWarpProgressEventOccurredSendPirateRaid).toBe(true);
+        empire.preWarpProgressEventOccurredSendPirateRaid = false;
         checkSendPirateRaid(galaxy, empire);
         expect(empire.preWarpProgressEventOccurredSendPirateRaid).toBe(false);
         empire.preWarpProgressEventsOccurred = false;

@@ -3,6 +3,7 @@
 // omitted (out of scope).
 
 import type { Race } from './data/races';
+import type { Creature } from './creature';
 import type { BuiltObject } from './builtObject';
 
 export enum GalaxyLocationType {
@@ -54,6 +55,8 @@ export class GalaxyLocation {
     relatedRace: Race | null;
     /** GalaxyLocation.cs 203 RelatedBuiltObject (planet destroyer projects, restricted-area abandoned ships; M4u reads it). */
     relatedBuiltObject: BuiltObject | null = null;
+    /** GalaxyLocation.cs 32 _RelatedCreatures = new CreatureList() (M4z3: story special zones / planet-destroyer guardians). */
+    relatedCreatures: Creature[] = [];
 
     constructor(name: string, type: GalaxyLocationType, x: number, y: number, width: number, height: number, pictureRef: number) {
         this.name = name;

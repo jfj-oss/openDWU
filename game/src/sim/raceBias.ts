@@ -17,9 +17,17 @@ interface RaceBiasesStatic {
     raceFamilyBiases: BiasMatrix;
 }
 let raceBiasesStatic: RaceBiasesStatic | null = null;
+/**
+ * M4z3: RaceBiasList.SetBias (RaceBiasList.cs 50) writes into Race.Biases (ExecuteEventAction ChangeRaceBias). The TS derives
+ * Race.Biases from the static matrix on every read, so written values are kept here per race, keyed by the other race's
+ * name, and win over the matrix value. Reset with the static tables. TODO(port): not written to saves (C# serializes the
+ * Galaxy's RaceList with the game).
+ */
+let raceBiasOverrides = new Map<Race, Map<string, number>>();
 
 export function setRaceBiasesStatic(races: Race[], raceBiases: BiasMatrix, raceFamilyCount: number, raceFamilyBiases: BiasMatrix): void {
     raceBiasesStatic = { races, raceBiases, raceFamilyCount, raceFamilyBiases };
+    raceBiasOverrides = new Map();
 }
 
 // Race.Biases after Galaxy.cs LoadRaceBiases (2049-2069): null when not Populated.
@@ -39,7 +47,33 @@ function raceBiasList(s: RaceBiasesStatic, race: Race): { key: string; value: nu
     }
     // RaceBiasList.LoadBiases: only Populated when races.Count == biases.Count.
     if (s.races.length !== list5.length) return null;
-    return s.races.map((r, index) => ({ key: r.name, value: list5[index] }));
+    const overrides = raceBiasOverrides.get(race);
+    return s.races.map((r, index) => ({ key: r.name, value: overrides?.get(r.name) ?? list5[index] }));
+}
+
+/** RaceBiasList.cs 38 Race.Biases.GetBias(race): 0 for a null race or a race without a populated list. No Rnd. */
+export function raceBiasesGetBias(race: Race, otherRace: Race | null): number {
+    if (otherRace === null) return 0;
+    const s = raceBiasesStatic;
+    if (s === null) throw new Error('raceBiasesGetBias: setRaceBiasesStatic was not called');
+    const biases = raceBiasList(s, race);
+    if (biases === null) return 0;
+    for (const b of biases) if (b.key === otherRace.name) return b.value;
+    return 0;
+}
+
+/** RaceBiasList.cs 50 Race.Biases.SetBias(raceName, value): only replaces an existing key (unpopulated list: no-op). No Rnd. */
+export function raceBiasesSetBias(race: Race, raceName: string, value: number): void {
+    const s = raceBiasesStatic;
+    if (s === null) throw new Error('raceBiasesSetBias: setRaceBiasesStatic was not called');
+    const biases = raceBiasList(s, race);
+    if (biases === null || !biases.some((b) => b.key === raceName)) return;
+    let m = raceBiasOverrides.get(race);
+    if (m === undefined) {
+        m = new Map();
+        raceBiasOverrides.set(race, m);
+    }
+    m.set(raceName, value);
 }
 
 // Galaxy.cs ResolveStandardRaceBias(race, otherRace) (2086).

@@ -19,6 +19,9 @@
 // Scripted game events (GameEvents) are empty in a normal game (plan §0.3): GetMatchingGameEventIdEmpireEncounter
 // returns no id and CheckTriggerEvent does nothing — omitted with TODO(port) notes.
 
+import { doSingleEmpireEncounterShakturiStory } from './story/storyEvents';
+import { checkTriggerEvent, getMatchingGameEventIdEmpireEncounter } from './story/eventActions';
+import { EventTriggerType } from './story/gameEventModel';
 import type { Galaxy } from './galaxy';
 import type { Empire } from './empire';
 import { BuiltObject } from './builtObject';
@@ -599,15 +602,15 @@ function doSingleEmpireEncounter(galaxy: Galaxy, discoverer: Empire | null, othe
         }
         if (diplomaticRelation.type !== DiplomaticRelationType.NotMet || galaxy.pirateEmpires.includes(otherEmpire) || otherEmpire === galaxy.independentEmpire) return;
         const systemName = nearestSystemNameForDiscovery(galaxy, discoveryLocation);
-        const flag = true;
+        let flag = true;
         if (galaxy.storyReturnOfTheShakturiEnabled) {
-            // TODO(port) M4u (story, deferred): Galaxy.7.cs 4016-4140 — Mechanoid / Erutkah encounters (flag = false for
-            // a Mechanoid discoverer; player messages, +10000 money) and the Shakturi bias adjustments. Only reachable
-            // with the Return of the Shakturi story enabled (off in a normal game).
+            // Galaxy.7.cs 4018-4139: Mechanoid / Erutkah encounters and the Shakturi bias adjustments (story/storyEvents.ts, M4z3).
+            flag = doSingleEmpireEncounterShakturiStory(galaxy, discoverer, otherEmpire, discoveryLocation, systemName);
         }
         diplomaticRelation.type = DiplomaticRelationType.None;
-        // TODO(port) M4u: GetMatchingGameEventIdEmpireEncounter + CheckTriggerEvent(EmpireEncounter) (Galaxy.7.cs 4143) —
-        // GameEvents is empty in a normal game, so no event fires.
+        // Galaxy.7.cs 4141-4142: scripted game events (story/eventActions.ts, M4z3).
+        const matchingGameEventIdEmpireEncounter = getMatchingGameEventIdEmpireEncounter(galaxy, discoverer, otherEmpire);
+        checkTriggerEvent(galaxy, matchingGameEventIdEmpireEncounter, discoverer, EventTriggerType.EmpireEncounter, null);
         if (flag) {
             if (discoverer.dominantRace !== otherEmpire.dominantRace) {
                 const empireEvaluation5 = obtainEmpireEvaluation(galaxy, discoverer, otherEmpire);

@@ -26,7 +26,8 @@ import type { BuiltObject } from './builtObject';
 import type { Habitat } from './types';
 import type { Race } from './data/races';
 import { HabitatType, Habitat as HabitatClass } from './types';
-import { Creature as CreatureClass, type Creature } from './creature';
+import { Creature as CreatureClass, CreatureType, type Creature } from './creature';
+import { shadowsBuildFirstMilitaryShip, shadowsFirstContactNormalEmpire, shadowsFirstHyperjump } from './story/storyEvents';
 import { Empire as EmpireClass, empireGovernmentAttributes } from './empire';
 import { PreWarpProgressEventType } from './exploration';
 import { GalaxyLocationType, type GalaxyLocation } from './galaxyLocation';
@@ -64,7 +65,9 @@ import {
 } from './characters';
 import { BuiltObjectMissionType, type BuiltObjectMission } from './missions/mission';
 import { nextAllowableLeaderChangeDate } from './characterRuntime';
-import { doCharacterEventRuntime, EventMessageType, DisasterEventType, RaceEventType, sendEventMessageToEmpire, sendNewsBroadcast, galaxyPlagues } from './events';
+import { doCharacterEventRuntime, sendEventMessageToEmpire, sendNewsBroadcast } from './events';
+// Enums from the leaf module (not the events.ts re-export) so a module cycle through events.ts cannot see them uninitialised.
+import { EventMessageType, DisasterEventType, RaceEventType, galaxyPlagues } from './eventTypes';
 import { empireShipGroups, forceCompleteMission, type ShipGroup } from './fleets/shipGroup';
 import { compareShipGroups, selectFleetBase } from './fleets/shipGroupTasks';
 import { takeOwnershipOfBuiltObject } from './combat/ownership';
@@ -1646,9 +1649,8 @@ function initiateRaceEvent(galaxy: Galaxy, empire: Empire, race: Race | null, ra
  * and a final Next(0, 20) resource appearance.
  */
 export function reviewEmpireEvents(galaxy: Galaxy, empire: Empire): void {
-    // DominantRace == _Galaxy.ShakturiActualRace: the Shakturi story race is only set by story events (deferred, plan §0.3);
-    // null otherwise, and DominantRace is never null for a normal empire.
-    const shakturiActualRace: Race | null = null;
+    // DominantRace == _Galaxy.ShakturiActualRace (set by the story's GenerateShakturi; null otherwise).
+    const shakturiActualRace: Race | null = galaxy.shakturiActualRace;
     if (empire.dominantRace === shakturiActualRace) return;
     if (galaxy.gameRaceSpecificEventsEnabled && empire.raceEventEndDate < galaxyStarDate(galaxy)) doRaceEvent(galaxy, empire, empire.dominantRace);
     const num = (calculateRelativeEmpireSize(galaxy, empire) + calculateRelativeEmpireMilitaryStrength(galaxy, empire)) / 2.0;
@@ -1984,8 +1986,8 @@ function researchNodeComponent(galaxy: Galaxy, researchNode: TechNode): { compon
 
 /**
  * Empire.7.cs 3416/3421/3426 CheckSendPreWarpProgressEventMessage(eventType, subject[, empire[, hint]]). Rnd:
- * BuildFirstResearchStation Next(0, 2), DiscoverHyperspaceTech Next(0, 3) (+ GenerateNewCharacter's); the story branches
- * (Galaxy.StoryShadowsEnabled) are deferred (plan §0.3) and throw when enabled.
+ * BuildFirstResearchStation Next(0, 2), DiscoverHyperspaceTech Next(0, 3) (+ GenerateNewCharacter's); the "Shadows" story
+ * branches (Galaxy.StoryShadowsEnabled) are story/storyEvents.ts shadows* (M4z3; FirstHyperjump: their Rnd + Next(2, 4)).
  */
 export function checkSendPreWarpProgressEventMessage(galaxy: Galaxy, self: Empire, eventType: PreWarpProgressEventType, subject: unknown, empire: Empire | null = null, hint = ''): boolean {
     if (self === galaxy.independentEmpire) return false;
@@ -2057,8 +2059,8 @@ export function checkSendPreWarpProgressEventMessage(galaxy: Galaxy, self: Empir
                 const message13 = gameText('PreWarpProgressEvent Message BuildFirstMilitaryShip', builtObject.name);
                 sendEventMessageToEmpire(self, EventMessageType.GeneralDiscovery, text18, message13, subject, subject);
                 if (galaxy.storyShadowsEnabled) {
-                    // Empire.7.cs 3555-3611: pirate raid on the first colony / mining station (story "Shadows").
-                    throw new Error('TODO(port) deferred (story events, plan §0.3): Empire.7.cs 3555 BuildFirstMilitaryShip Shadows raid');
+                    // Empire.7.cs 3554-3612: pirate raid on the first colony / mining station (story "Shadows", M4z3).
+                    shadowsBuildFirstMilitaryShip(galaxy, self);
                 }
             }
             setPreWarpProgressEventOccurred(self, eventType);
@@ -2130,13 +2132,12 @@ export function checkSendPreWarpProgressEventMessage(galaxy: Galaxy, self: Empir
         case PreWarpProgressEventType.FirstContactNormalEmpire:
             if (preWarpProgressEventOccurred(self, eventType)) break;
             if (empire !== null) {
-                const flag = false;
-                if (galaxy.storyShadowsEnabled && empire.pirateEmpireBaseHabitat === null) {
-                    // Empire.7.cs 3702-3717: a hostile neighbour declares war (story "Shadows").
-                    throw new Error('TODO(port) deferred (story events, plan §0.3): Empire.7.cs 3702 FirstContactNormalEmpire Shadows war');
-                }
+                // Empire.7.cs 3702-3717: a hostile neighbour declares war (story "Shadows", M4z3).
+                const flag = shadowsFirstContactNormalEmpire(galaxy, self, empire);
                 if (flag) {
-                    // (the Shadows war message; unreachable while the branch above is deferred)
+                    const text7 = gameText('PreWarpProgressEvent Title FirstContactNormalEmpire');
+                    const message6 = gameText('PreWarpProgressEvent Message FirstContactNormalEmpire War', empire.name, empire.dominantRace!.name);
+                    sendEventMessageToEmpire(self, EventMessageType.GeneralDiscovery, text7, message6, subject, subject);
                 } else {
                     const text8 = gameText('PreWarpProgressEvent Title FirstContactNormalEmpire');
                     const message7 = gameText('PreWarpProgressEvent Message FirstContactNormalEmpire', empire.name, empire.dominantRace!.name);
@@ -2162,16 +2163,23 @@ export function checkSendPreWarpProgressEventMessage(galaxy: Galaxy, self: Empir
         case PreWarpProgressEventType.FirstHyperjump:
             if (preWarpProgressEventOccurred(self, eventType)) break;
             if (builtObject !== null) {
-                const habitat2: Habitat | null = null;
+                let habitat2: Habitat | null = null;
                 if (galaxy.storyShadowsEnabled) {
-                    // Empire.7.cs 3764-3809: Kaltor outbreak site, pirate raids on the capital, the player warning (story "Shadows").
-                    throw new Error('TODO(port) deferred (story events, plan §0.3): Empire.7.cs 3764 FirstHyperjump Shadows events');
+                    // Empire.7.cs 3764-3809: Kaltor outbreak site, pirate raids on the first colony, the player warning (story "Shadows", M4z3).
+                    habitat2 = shadowsFirstHyperjump(galaxy, self, builtObject);
                 }
-                // habitat2 stays null without the story branch, so the creature-outbreak message (3810-3820) is not reached.
-                void habitat2;
-                const text3 = gameText('PreWarpProgressEvent Title FirstHyperjump');
-                const message2 = gameText('PreWarpProgressEvent Message FirstHyperjump', builtObject.name);
-                sendEventMessageToEmpire(self, EventMessageType.GeneralDiscovery, text3, message2, subject, subject);
+                if (habitat2 !== null && galaxy.creaturePrevalence > 0.0 && galaxy.allowGiantKaltorGeneration) {
+                    // Empire.7.cs 3810-3820: Next(2, 4) Kaltors at the outbreak world.
+                    const num3 = galaxy.rnd.next(2, 4);
+                    for (let j = 0; j < num3; j++) galaxy.generateCreatureAtHabitat(CreatureType.Kaltor, habitat2, false);
+                    const text2 = gameText('PreWarpProgressEvent Title FirstHyperjump');
+                    const message = gameText('PreWarpProgressEvent Message FirstHyperjump Creature Outbreak', builtObject.name, habitat2.name);
+                    sendEventMessageToEmpire(self, EventMessageType.GeneralDiscovery, text2, message, subject, habitat2);
+                } else {
+                    const text3 = gameText('PreWarpProgressEvent Title FirstHyperjump');
+                    const message2 = gameText('PreWarpProgressEvent Message FirstHyperjump', builtObject.name);
+                    sendEventMessageToEmpire(self, EventMessageType.GeneralDiscovery, text3, message2, subject, subject);
+                }
             }
             setPreWarpProgressEventOccurred(self, eventType);
             return true;
