@@ -15,7 +15,7 @@
 //   Empire.3.cs 3093 DoCrashResearch, 3023 SelectResearchNodeToCrash, 3005 ResolveEmpireRaceTendency,
 //     3204 InitiateCrashResearchProgram; Galaxy.6.cs 848 CalculateCrashResearchProgramCost;
 //   Galaxy.2.cs 4852-4980 ChanceScientistPromotion / ChanceNewScientist / ChanceNewScientistCriticalSuccess;
-//   Empire.7.cs 2986-3398 SendNewsBroadcast (the ResearchBreakthrough case, run synchronously);
+//   Empire.3.cs 1933 SendNewsBroadcast(ResearchBreakthrough) → events.ts sendNewsBroadcast;
 //   CharacterList.cs 369-520 (GetFirstCharacterWithSkill/Trait, GetScientistsAtResearchStations,
 //     TotalDiminishingResearchBonuses*).
 // The ResearchNode / ResearchNodeList model and ResearchSystem.Update live in researchSystem.ts.
@@ -100,7 +100,7 @@ import {
     type ResearchSystem,
     type TechNode,
 } from './researchSystem';
-import { EmpireMessage, EmpireMessageType, resolveDescription, sendEmpireMessage, sendMessageToEmpire, sendMessageToEmpireWithTitle } from './messages';
+import { EmpireMessageType, resolveDescription, sendMessageToEmpire, sendMessageToEmpireWithTitle } from './messages';
 import {
     CharacterEventType,
     CharacterRole,
@@ -119,9 +119,8 @@ import {
 import { charactersCanGenerateAmountNonIntelligenceAgent } from './troops';
 import { ColonyResourceEffect, resourceBonusTotalByEffectType } from './developmentLevel';
 import { reviewDesignComponentsAvailable, canBuildDesign } from './designGeneration';
-import { obtainPirateRelation } from './pirateRelations';
 import { checkWonderBuilt } from './construction/wonders';
-import { checkSendPreWarpProgressEventMessage } from './events';
+import { DisasterEventType, EventMessageType, checkSendPreWarpProgressEventMessage, sendNewsBroadcast } from './events';
 import { PreWarpProgressEventType } from './exploration';
 import { disbandShipGroup, empireShipGroups, shipGroupWarpSpeed, type ShipGroup } from './fleets/shipGroup';
 import { REAL_SECONDS_IN_GALACTIC_YEAR } from './tick/simTime';
@@ -546,31 +545,6 @@ export function chanceScientistPromotion(galaxy: Galaxy, empire: Empire | null, 
         }
     }
     if (characterList.length > 0) doResearchCharacterEvent(galaxy, eventType, researchProject, characterList);
-}
-
-// ---------------------------------------------------------------------------
-// Galactic NewsNet (Empire.7.cs 2986 SendNewsBroadcast → SendNewsBroadcastCore 3008), ResearchBreakthrough case.
-// ---------------------------------------------------------------------------
-
-/**
- * SendNewsBroadcast(EventMessageType.Undefined, researchNode, DisasterEventType.Undefined, false, false,
- * EmpireMessageType.ResearchBreakthrough, this). C# queues SendNewsBroadcastCore on the ThreadPool; the port runs it
- * synchronously (single-threaded scheduler). With eventType Undefined and no war/wonder flag, no empire in
- * DiplomaticRelations qualifies; every active pirate faction gets the message (ObtainPirateRelation may create the
- * relation).
- */
-function sendNewsBroadcastResearchBreakthrough(galaxy: Galaxy, empire: Empire, researchNode: TechNode): void {
-    const text = gameText('The EMPIRE has made a breakthrough in the key technology of X', empire.name, researchNode.def.name);
-    for (let j = 0; j < galaxy.pirateEmpires.length; j++) {
-        const empire7 = galaxy.pirateEmpires[j];
-        if (empire7 === null || !empire7.active || empire7.pirateEmpireBaseHabitat === null) continue;
-        obtainPirateRelation(empire, empire7);
-        const newsNet = gameText('Galactic NewsNet').toUpperCase();
-        const empireMessage2 = new EmpireMessage(empire, EmpireMessageType.GalacticNewsNet, researchNode);
-        empireMessage2.description = newsNet + ': ' + empire.name + ' - ' + text;
-        empireMessage2.title = newsNet + ': ' + empire.name;
-        sendEmpireMessage(empireMessage2, empire7);
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1470,7 +1444,7 @@ function performResearchProjects(galaxy: Galaxy, empire: Empire, timePassed: num
             num -= Math.fround(researchNode.cost - progress);
             if (empire.controlResearch && projects.length <= 0) selectNextResearchProject(galaxy, empire, industry, projects);
             if (!chanceNewScientist(galaxy, empire, researchNode)) chanceScientistPromotion(galaxy, empire, researchNode);
-            if (researchNode.def.specialFunctionCode === 2 || researchNode.def.specialFunctionCode === 4) sendNewsBroadcastResearchBreakthrough(galaxy, empire, researchNode);
+            if (researchNode.def.specialFunctionCode === 2 || researchNode.def.specialFunctionCode === 4) sendNewsBroadcast(empire, EventMessageType.Undefined, researchNode, DisasterEventType.Undefined, false, false, EmpireMessageType.ResearchBreakthrough, empire); // Empire.3.cs 1933
         } else {
             num = 0.0;
         }

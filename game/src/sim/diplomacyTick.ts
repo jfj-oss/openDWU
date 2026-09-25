@@ -79,7 +79,7 @@ import {
     prepareFleetsForWarCaptureObjectives,
 } from './fleets/militaryAI';
 import { cancelBlockades as cancelBlockadesImpl, getBlockadesAgainstEmpire, type Blockade } from './fleets/blockades';
-import { chanceNewAmbassador, doCharacterEventRuntime } from './events';
+import { chanceNewAmbassador, doCharacterEventRuntime, sendNewsBroadcastWarStartEnd } from './events';
 import { galaxyColonyFillFactor } from './colonyTick';
 import { isObjectVisibleToThisEmpire } from './independentTraders';
 import { TradeableItem, TradeableItemType, processTradeDealMessage, determineAcceptGalaxyMapTrade, determineAcceptTerritoryMapTrade, isTechNode } from './tradeItems';
@@ -2653,14 +2653,6 @@ export function changeDiplomaticRelation(
     return true;
 }
 
-const T_sendNewsBroadcast = registerTodo('M4r', 'SendNewsBroadcastWarStartEnd (GalacticNewsNet messages, UI)');
-
-/** Empire.7.cs 2966 SendNewsBroadcastWarStartEnd(relation) → ThreadPool SendNewsBroadcastCore (GalacticNewsNet messages
- *  to every empire; no Rnd). TODO(port) M9: news broadcasts. */
-export function sendNewsBroadcastWarStartEnd(_relation: DiplomaticRelation): void {
-    todo(T_sendNewsBroadcast);
-}
-
 /** Empire.7.cs 4868-4883 DeclareWar(target[, persuader[, lockedWar[, blockFlowonEffects]]]). */
 export function declareWar(galaxy: Galaxy, self: Empire, target: Empire | null, persuader: Empire | null = null, lockedWar = false, blockFlowonEffects = false): void {
     if (target === null) return;
@@ -2677,9 +2669,7 @@ export function declareWar(galaxy: Galaxy, self: Empire, target: Empire | null, 
         const description = generateMessageDescriptionRelation(diplomaticRelation, DiplomaticRelationType.War, 0);
         if (persuader !== null) sendMessageToEmpire(self, target, EmpireMessageType.DiplomaticRelationChange, DiplomaticRelationType.War, description, NO_POINT, 'PERSUADED');
         else sendMessageToEmpire(self, target, EmpireMessageType.DiplomaticRelationChange, DiplomaticRelationType.War, description);
-        // Empire.7.cs 2966 SendNewsBroadcastWarStartEnd → ThreadPool SendNewsBroadcastCore (GalacticNewsNet messages to every
-        // empire; no Rnd). TODO(port) M9: news broadcasts.
-        todo(T_sendNewsBroadcast);
+        sendNewsBroadcastWarStartEnd(self, diplomaticRelation); // Empire.7.cs 4909
         if (diplomaticRelation.warObjective === WarObjective.Undefined) setWarObjectives(galaxy, self, diplomaticRelation);
         sendAttackFleets(galaxy, self, target);
         if (self.controlMilitaryAttacks !== MANUAL && self.policy!.useExplorationShipsToScoutEnemySystems) sendScoutShipsToEnemyLocations(galaxy, self, [target]);
@@ -3421,7 +3411,7 @@ export function considerTreatyProposals(galaxy: Galaxy, empire: Empire): void {
                 sendMessageToEmpire(self, thisEmpire, EmpireMessageType.AcceptDiplomaticRelation, DiplomaticRelationType.None, getText('We agree to end this war. We will cease hostilities immediately.'));
                 processEndOfWarWithEmpire(galaxy, self, thisEmpire);
                 processEndOfWarWithEmpire(galaxy, thisEmpire, self);
-                todo(T_sendNewsBroadcast); // SendNewsBroadcastWarStartEnd(diplomaticRelation2)
+                sendNewsBroadcastWarStartEnd(self, dr2); // Empire.3.cs 3675 / 3719 SendNewsBroadcastWarStartEnd(diplomaticRelation2)
                 continue;
             }
         }
@@ -3448,7 +3438,7 @@ export function considerTreatyProposals(galaxy: Galaxy, empire: Empire): void {
                                 thisEmpire.empiresViewable.push(self);
                                 thisEmpire.empiresViewableExpiry.push(num);
                             }
-                            todo(T_sendNewsBroadcast); // SendNewsBroadcastWarStartEnd(diplomaticRelation2)
+                            sendNewsBroadcastWarStartEnd(self, dr2); // Empire.3.cs 3675 / 3719 SendNewsBroadcastWarStartEnd(diplomaticRelation2)
                             // _Galaxy.DoCharacterEventLeader(Subjugated, ...): empty source list → no-op (Galaxy.1.cs 3756/3783).
                         } else {
                             sendMessageToEmpire(self, thisEmpire, EmpireMessageType.RefuseDiplomaticRelation, DiplomaticRelationType.SubjugatedDominion, getText('We refuse to become your slaves - we will fight on.'));

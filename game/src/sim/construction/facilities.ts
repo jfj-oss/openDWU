@@ -47,6 +47,8 @@ import { empireApprovalRating } from '../taxes';
 import { calculatePirateCashflow, habitatPirateControlByFacilityControl, habitatPirateControlHighest, pirateEconomyPerformExpense } from '../pirates/pirateAI';
 import { PirateExpenseType } from '../pirates/pirateEconomy';
 import { EmpireMessageType, sendMessageToEmpire } from '../messages';
+import { DisasterEventType, EventMessageType } from '../eventTypes';
+import { sendNewsBroadcast } from '../events';
 import { galaxyStarDate } from '../tick/simTime';
 import { REAL_SECONDS_IN_GALACTIC_YEAR } from '../galaxyTime';
 import { Population } from '../population';
@@ -438,8 +440,9 @@ export function constructFacilities(galaxy: Galaxy, habitat: Habitat, timePassed
             }
             if (empire !== null) {
                 if (planetaryFacility.type === PlanetaryFacilityType.Wonder) {
-                    // TODO(port) M9: SendEventMessageToEmpire(WonderBuilt, title, message, facility, this) and
-                    // SendNewsBroadcast(WonderBuilt, ...) — event pop-up / news ticker; no sim state.
+                    // TODO(port) M9: SendEventMessageToEmpire(WonderBuilt, title, message, facility, this) (Habitat.cs 2127-2130,
+                    // needs Galaxy.ResolveWonderDescription) — event pop-up; no sim state.
+                    sendNewsBroadcast(empire, EventMessageType.WonderBuilt, planetaryFacility, DisasterEventType.Undefined, false, false, EmpireMessageType.Undefined, habitat); // Habitat.cs 2131
                 } else if (empire.pirateEmpireBaseHabitat !== null) {
                     if (planetaryFacility.type === PlanetaryFacilityType.PirateCriminalNetwork) {
                         if (habitat.empire !== null && habitat.empire !== galaxy.independentEmpire) {
