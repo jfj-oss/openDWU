@@ -67,8 +67,9 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         const hits = r.todoHits;
         // Every tick family reached its stubs. (M4r: every diplomacy entry point reached is fully ported; M4s1 ported
         // reviewPirateMissionsAndAssign, so its marker is pirateCollectIncomeFromControlledColonies; M4e ported
-        // autoRefuelRepairShip, which was the first marker.)
-        for (const key of ['M4q scanForNewOwnerHabitat', 'M4s pirateAssignShipMissions', 'M4s pirateCollectIncomeFromControlledColonies', 'M4l performFleetTasks']) {
+        // autoRefuelRepairShip, which was the first marker; M4l ported performFleetTasks, so the BuiltObject periodic block
+        // is detected by healTroops.)
+        for (const key of ['M4q scanForNewOwnerHabitat', 'M4s pirateAssignShipMissions', 'M4s pirateCollectIncomeFromControlledColonies', 'M4q healTroops']) {
             expect(hits[key] ?? 0, key).toBeGreaterThan(0);
         }
         const summary = { digest: stateDigest(long), counts: stateCounts(long), rndDraws: long.rnd.drawCount };
@@ -143,7 +144,15 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // Character SendDeathMessage + Kill run for characters on destroyed ships / bombarded colonies, CleanupInvalidShips
         // and IdentifyPirateSpaceport without the extra fallback loop, and Weapon.LastFired defaults to DateTime.MinValue
         // (MIN_TIME) so a never-fired weapon is available at once (Weapon.cs 18/183).
-        expect(summary.digest).toBe('00268e34a10c8f1f');
+        // M4l: moved from 198918104ea2794b — the independent/pirate Empire constructor now sets the Empire.cs 4218-4235
+        // automation flags (they were missing). Only ControlResearch moves this run: pirate factions now pick research
+        // projects in PerformResearch (Rnd draws; with ControlResearch false the old digest comes back). The fleet code
+        // itself draws nothing here: the createGame empires have no warships and pirate escorts are not fleet candidates.
+        // Merge of M4l onto the M4u + M4o merge (from 00268e34a10c8f1f / M4l's da61bc3c07a9db45): both sets of changes, plus
+        // the merge fixes (M4i's real AssignFleetRetrofit and M4l's QueueMission / SubsequentMissions replace the stubs on
+        // either side, fleet speeds read the modelled admiral bonuses, ShipGroup battle stats are finalised with M4o's
+        // ResolveNearestLocation + DoCharacterEvent(SpaceBattle)).
+        expect(summary.digest).toBe('af6355042f443986');
     }, 600000);
 });
 

@@ -134,7 +134,7 @@ describe('Empire.DoTasks intervals (Empire.1.cs 3427, >= on seconds, touches fir
         short: 'M4m respondToIncomingEnemyFleetsAndPlanetDestroyers',
         regular: reviewDesignsProbe(() => probeEmpire!), // (no stub left in the regular block: detected by a probe)
         periodic: 'M4s checkSendPirateRaid',
-        intermediate: 'M4l reviewFleetAdmiralBonuses',
+        intermediate: 'M4m taskResupplyShips', // (M4l ported reviewFleetAdmiralBonuses)
         long: 'M4f reviewMigrationTourism', // (M4i ported ReviewColonyWonders; same block)
         huge: 'M4s checkColoniesForPirateFacilitiesAndAttack', // (M4o ported CleanupInvalidShips; M4u ResetRaceEvents before that)
     };
@@ -286,14 +286,24 @@ describe('BuiltObject.DoTasks (BuiltObject.cs 3614)', () => {
 
 describe('ShipGroup.DoTasks (ShipGroup.cs 97)', () => {
     it('stamps the first touch, runs the periodic block on the first call, then >= spans', () => {
-        const markers = { intermediate: 'M4l checkForMissionCompletion', periodic: 'M4l checkRefuelManual' };
+        // The block subroutines are ported (M4l), so a block is detected by the touch it stamps at its end
+        // (the intermediate block stamps _LastTouch, the periodic block _LastPeriodicTouch).
         const sg = new ShipGroup(galaxy);
         sg.empire = galaxy.empires[1];
-        expect(firedBlocks(markers, () => shipGroupDoTasks(galaxy, sg, 1000))).toEqual(['periodic']);
+        const fired = (time: number): string[] => {
+            const touch = sg.lastTouch;
+            const periodic = sg.lastPeriodicTouch;
+            shipGroupDoTasks(galaxy, sg, time);
+            const out: string[] = [];
+            if (sg.lastTouch !== touch && touch !== MIN_TIME) out.push('intermediate');
+            if (sg.lastPeriodicTouch !== periodic) out.push('periodic');
+            return out;
+        };
+        expect(fired(1000)).toEqual(['periodic']);
         expect(sg.lastTouch).toBe(1000);
-        expect(firedBlocks(markers, () => shipGroupDoTasks(galaxy, sg, 3999))).toEqual([]);
-        expect(firedBlocks(markers, () => shipGroupDoTasks(galaxy, sg, 4000))).toEqual(['intermediate']);
-        expect(firedBlocks(markers, () => shipGroupDoTasks(galaxy, sg, 11000))).toEqual(['intermediate', 'periodic']);
+        expect(fired(3999)).toEqual([]);
+        expect(fired(4000)).toEqual(['intermediate']);
+        expect(fired(11000)).toEqual(['intermediate', 'periodic']);
     });
 });
 

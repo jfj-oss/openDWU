@@ -23,6 +23,7 @@ import { HabitatType, type Habitat } from '../types';
 import { CreatureType, type Creature } from '../creature';
 import { AutomationLevel, type Empire } from '../empire';
 import type { ShipGroup } from '../fleets/shipGroup';
+import { shipGroupObtainCharacters } from '../fleets/shipGroupTasks';
 import type { Weapon } from '../weapon';
 import type { BuiltObjectComponent } from '../builtObjectComponent';
 import { ComponentStatus, csInt, toShort } from '../builtObjectComponent';
@@ -1842,4 +1843,18 @@ export function creatureDamageTarget(galaxy: Galaxy, creature: Creature, abstrac
     // RND: DamageTarget → built-object component damage draws — not drawn until M4o.
     /* TODO(port) M4o */ todo(T_creatureDamageTarget);
     return false;
+}
+
+/**
+ * ShipGroup.cs 213-216 / 1158-1161 (CheckForCompletedBattle / CheckForMissionCompletion): BattleStats.Location =
+ * Galaxy.ResolveNearestLocation(attackedTarget, LeadShip, out nearby); BattleStats.NearLocation = nearby;
+ * Galaxy.DoCharacterEvent(SpaceBattle, BattleStats, ObtainCharacters()). The caller then clears ShipGroup.BattleStats.
+ */
+export function finalizeShipGroupBattleStats(galaxy: Galaxy, shipGroup: ShipGroup, attackedTarget: StellarObject | null): void {
+    const battleStats = shipGroup.battleStats as SpaceBattleStats | null;
+    if (battleStats === null) return;
+    const r = resolveNearestLocation(galaxy, attackedTarget, shipGroup.leadShip);
+    battleStats.location = r.habitat;
+    battleStats.nearLocation = r.nearby;
+    doCharacterEventForList(galaxy, CharacterEventType.SpaceBattle, battleStats, shipGroupObtainCharacters(shipGroup), false, null);
 }

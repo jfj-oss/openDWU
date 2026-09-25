@@ -11,7 +11,8 @@
 // NextDouble; 3030).
 
 import type { BuiltObject } from '../builtObject';
-import type { ShipGroup } from '../fleets/shipGroup';
+import { shipGroupWarpSpeed, type ShipGroup } from '../fleets/shipGroup';
+import { shipGroupCruiseSpeed, shipGroupRemoveShipsWithoutHyperdrive, shipGroupTopSpeed } from '../fleets/shipGroupTasks';
 import type { CommandHandler } from './executeCommands';
 import { BuiltObjectMissionType, CommandAction, Command, builtObjectMission } from './mission';
 import { clearPreviousMissionRequirements } from './assign';
@@ -39,10 +40,6 @@ import {
     doMovement,
     returnLaunchedFighters,
     sendShipTowardsEdgeOfGravityWell,
-    shipGroupCruiseSpeed,
-    shipGroupRemoveShipsWithoutHyperdrive,
-    shipGroupTopSpeed,
-    shipGroupWarpSpeed,
     shouldSendShipTowardEdgeOfGravityWell,
     updateIndexesForMovement,
     updatePosition,

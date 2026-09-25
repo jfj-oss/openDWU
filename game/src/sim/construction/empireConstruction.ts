@@ -102,7 +102,8 @@ import { PirateRelationType, obtainPirateRelation } from '../pirateRelations';
 import { SystemVisibilityStatus } from '../visibility';
 import { isObjectVisibleToThisEmpire } from '../independentTraders';
 import { checkColonizationLikeliness } from '../tradeItems';
-import { type ShipGroup, empireShipGroups, shipGroupAssignMission, shipGroupQueueMission, shipGroupSubsequentMissionsContainsType } from '../fleets/shipGroup';
+import { type ShipGroup, empireShipGroups, shipGroupAssignMission } from '../fleets/shipGroup';
+import { shipGroupQueueMission } from '../fleets/shipGroupTasks';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants (Galaxy.3.cs 4996-5138 defaults)
@@ -1378,7 +1379,7 @@ export function doRetrofit(galaxy: Galaxy, empire: Empire, builtObjects: BuiltOb
             const mission = shipGroup.mission;
             if (mission === null || mission.type === BuiltObjectMissionType.Undefined || mission.priority === BuiltObjectMissionPriority.Low) {
                 if (mission === null || mission.type !== BuiltObjectMissionType.Retrofit) assignFleetRetrofit(galaxy, empire, shipGroup, null, !manuallyInitiated);
-            } else if ((mission === null || mission.type !== BuiltObjectMissionType.Retrofit) && !shipGroupSubsequentMissionsContainsType(galaxy, shipGroup, BuiltObjectMissionType.Retrofit)) {
+            } else if ((mission === null || mission.type !== BuiltObjectMissionType.Retrofit) && !missionListContainsType(shipGroup.subsequentMissions, BuiltObjectMissionType.Retrofit)) {
                 shipGroupQueueMission(galaxy, shipGroup, BuiltObjectMissionType.Retrofit, null, null, BuiltObjectMissionPriority.Normal);
             }
         }

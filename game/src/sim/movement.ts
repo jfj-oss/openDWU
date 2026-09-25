@@ -58,7 +58,7 @@ import { clearPreviousMissionRequirements, initiateUndeploy } from './missions/a
 import { evaluateRelativeToParent } from './missions/executeCommands';
 import { BuiltObjectMissionType, Command, CommandAction, builtObjectMission } from './missions/mission';
 import type { ShipGroup } from './fleets/shipGroup';
-import { leaveShipGroup } from './fleets/shipGroup';
+import { shipGroupObtainCharacters } from './fleets/shipGroupTasks';
 import { fighterReturnToCarrier } from './combat/fighters';
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -136,73 +136,18 @@ function captainShipManeuveringBonus(bo: BuiltObject): number {
     return (captainBonuses(bo)?.shipManeuvering ?? 100) / 100.0;
 }
 
-/** ShipGroup.cs 87 HyperjumpSpeedBonus. TODO(port) M4l: admiral bonuses not on the TS ShipGroup yet — 1.0 until M4l. */
+/** ShipGroup.cs 87 HyperjumpSpeedBonus. */
 function shipGroupHyperjumpSpeedBonus(shipGroup: ShipGroup): number {
-    return (shipGroup as ShipGroup & { hyperjumpSpeedBonus?: number }).hyperjumpSpeedBonus ?? 1.0;
+    return shipGroup.hyperjumpSpeedBonus;
 }
 
-/** ShipGroup.cs 71 ShipManeuveringBonus. TODO(port) M4l: admiral bonuses not on the TS ShipGroup yet — 1.0 until M4l. */
+/** ShipGroup.cs 71 ShipManeuveringBonus. */
 function shipGroupShipManeuveringBonus(shipGroup: ShipGroup): number {
-    return (shipGroup as ShipGroup & { shipManeuveringBonus?: number }).shipManeuveringBonus ?? 1.0;
+    return shipGroup.shipManeuveringBonus;
 }
 
-/** ShipGroup.cs 3241 WarpSpeed. */
-export function shipGroupWarpSpeed(shipGroup: ShipGroup): number {
-    if (shipGroup.ships.length <= 0) return 0;
-    let num = 536870911;
-    for (let index = 0; index < shipGroup.ships.length; ++index) {
-        const ship = shipGroup.ships[index];
-        if (ship.builtAt === null && ship.warpSpeed < num) num = ship.warpSpeed;
-    }
-    return csInt(num * shipGroupHyperjumpSpeedBonus(shipGroup));
-}
-
-/** ShipGroup.cs 3258 CruiseSpeed. */
-export function shipGroupCruiseSpeed(shipGroup: ShipGroup): number {
-    if (shipGroup.ships.length <= 0) return 0;
-    let cruiseSpeed = 536870911;
-    for (let index = 0; index < shipGroup.ships.length; ++index) {
-        const ship = shipGroup.ships[index];
-        if (ship.cruiseSpeed < cruiseSpeed) cruiseSpeed = ship.cruiseSpeed;
-    }
-    return cruiseSpeed;
-}
-
-/** ShipGroup.cs 3274 TopSpeed. */
-export function shipGroupTopSpeed(shipGroup: ShipGroup): number {
-    if (shipGroup.ships.length <= 0) return 0;
-    let topSpeed = 536870911;
-    for (let index = 0; index < shipGroup.ships.length; ++index) {
-        const ship = shipGroup.ships[index];
-        if (ship.topSpeed < topSpeed) topSpeed = ship.topSpeed;
-    }
-    return topSpeed;
-}
-
-/** ShipGroup.cs 1310 ObtainCharacters. */
-export function shipGroupObtainCharacters(shipGroup: ShipGroup): unknown[] {
-    const characters: unknown[] = [];
-    if (shipGroup.ships !== null) {
-        for (let index = 0; index < shipGroup.ships.length; ++index) {
-            const ship = shipGroup.ships[index];
-            if (ship != null && ship.characters !== null && ship.characters.length > 0) {
-                for (let i = 0; i < ship.characters.length; i++) characters.push(ship.characters[i]);
-            }
-        }
-    }
-    return characters;
-}
-
-/** ShipGroup.cs 3226 RemoveShipsWithoutHyperdrive. */
-export function shipGroupRemoveShipsWithoutHyperdrive(galaxy: Galaxy, shipGroup: ShipGroup): void {
-    if (shipGroupWarpSpeed(shipGroup) <= 0) return;
-    const builtObjectList: BuiltObject[] = [];
-    for (let index = 0; index < shipGroup.ships.length; ++index) {
-        const ship = shipGroup.ships[index];
-        if (ship.warpSpeed <= 0 && ship.builtAt === null) builtObjectList.push(ship);
-    }
-    for (let i = 0; i < builtObjectList.length; i++) leaveShipGroup(galaxy, builtObjectList[i]);
-}
+// ShipGroup.cs 3241 WarpSpeed (fleets/shipGroup.ts), 3258 CruiseSpeed / 3274 TopSpeed / 1310 ObtainCharacters /
+// 3226 RemoveShipsWithoutHyperdrive (fleets/shipGroupTasks.ts).
 
 /** BuiltObject.cs 572 WarpSpeedWithBonuses. */
 export function warpSpeedWithBonuses(builtObject: BuiltObject): number {

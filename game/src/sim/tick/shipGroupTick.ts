@@ -14,6 +14,8 @@ import {
     reviewCharacterLocationBonuses,
 } from '../fleets/shipGroup';
 import { checkAssignUnloadTroopsAtColonyNeedingThemMission, loadTroopsIfNecessaryAndPossible } from '../combat/troopsRuntime';
+// M4l: registers the ShipGroup bodies behind fleets/shipGroup.ts's entry points (see fleets/shipGroupTasks.ts).
+import '../fleets/shipGroupTasks';
 
 /** ShipGroup.cs 97 DoTasks(DateTime time); `time` in game ms. */
 export function shipGroupDoTasks(galaxy: Galaxy, shipGroup: ShipGroup, time: number): void {
