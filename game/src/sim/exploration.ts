@@ -46,6 +46,7 @@ import { determineEmpireSystems } from './forceStructure';
 import { strategicValue } from './territory';
 import { generateDesignFromSpec } from './designGeneration';
 import { selectRandomRace } from './pirates';
+import { gameText } from './colonyTick';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants
@@ -86,10 +87,6 @@ const SCIENTIFIC_DATA_FOR_RUINS = 90;
 /** ComponentStatus.Normal (ComponentStatus.cs). */
 const COMPONENT_STATUS_NORMAL = 0;
 
-/** GameText keys (TextResolver.GetText, not ported — M9) with their arguments, as message descriptions. */
-function gameText(key: string, ...args: string[]): string {
-    return args.length > 0 ? `${key}: ${args.join(', ')}` : key;
-}
 
 // ---------------------------------------------------------------------------------------------------------------
 // Shared helpers

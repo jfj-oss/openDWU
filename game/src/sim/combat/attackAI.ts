@@ -20,7 +20,8 @@ import type { Empire } from '../empire';
 import type { Habitat } from '../types';
 import { HabitatCategoryType } from '../types';
 import type { Weapon } from '../weapon';
-import { CreatureType } from '../creature';
+import { CreatureType, resolveCreatureDescription } from '../creature';
+import { gameText } from '../colonyTick';
 import { BattleTactics, BuiltObjectRole } from '../data/designSpecifications';
 import { BuiltObjectSubRole } from '../builtObjectTypes';
 import { BuiltObjectStance } from '../design';
@@ -28,7 +29,7 @@ import { ComponentType } from '../data/components';
 import { ComponentCategoryType } from '../data/policies';
 import { ComponentStatus } from '../builtObjectComponent';
 import { DEFAULT_BASE_TECH_COST } from '../componentStatic';
-import { researchComponentTechPoints } from '../designGeneration';
+import { researchComponentTechPoints, resolveSubRoleDescription } from '../designGeneration';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from '../diplomacy';
 import { PirateRelationType, obtainPirateRelation } from '../pirateRelations';
 import { checkSystemOwnership } from '../stationPlacement';
@@ -425,22 +426,23 @@ export function notifyOfAttackBuiltObject(galaxy: Galaxy, attacker: StellarObjec
         distressSignal2.attacker = attackingEmpire;
         distressSignal2.attackStrength = attackerStrength(attacker);
         empireDistressSignals(builtObjectUnderAttack.empire).push(distressSignal2);
-        // 3012-3038: attacker description text (TODO(port) M9 TextResolver / ResolveDescription).
+        // 3012-3038: attacker description text (GetText("Pirate").ToLower() + ResolveDescription(SubRole).ToLower(), or
+        // ResolveDescription(CreatureType)); the message stays a gameText() tag + arguments (resolved for display).
         let text = '';
         if (isBuiltObject(attacker)) {
             if (attacker.empire!.pirateEmpireBaseHabitat !== null) {
                 text = text + 'pirate ';
             }
-            text += `${attacker.subRole}`;
+            text += resolveSubRoleDescription(attacker.subRole).toLowerCase();
             text = text + ' (' + attacker.name + ')';
         } else if (isCreature(attacker)) {
             distressSignal2.attackStrength = attacker.attackStrength * 5;
-            text += `${attacker.type}`;
+            text += resolveCreatureDescription(attacker.type);
             if (attacker.type === CreatureType.Kaltor) {
                 checkSendPreWarpProgressEventMessage(galaxy, builtObjectUnderAttack.empire, PreWarpProgressEventType.EncounterFirstKaltor, attacker);
             }
         }
-        const description = builtObjectUnderAttack.role !== BuiltObjectRole.Base ? `X Y is under attack from ATTACKER|${builtObjectUnderAttack.subRole}|${builtObjectUnderAttack.name}|${text}` : `X is under attack from ATTACKER|${builtObjectUnderAttack.name}|${text}`;
+        const description = builtObjectUnderAttack.role !== BuiltObjectRole.Base ? gameText('X Y is under attack from ATTACKER', resolveSubRoleDescription(builtObjectUnderAttack.subRole), builtObjectUnderAttack.name, text) : gameText('X is under attack from ATTACKER', builtObjectUnderAttack.name, text);
         sendMessageToEmpire(builtObjectUnderAttack.empire, builtObjectUnderAttack.empire, EmpireMessageType.BattleUnderAttack, builtObjectUnderAttack, description);
     } else if (isNewAttack) {
         distressSignal.attackStrength += attackerStrength(attacker);

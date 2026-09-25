@@ -48,7 +48,8 @@ import { PirateRelationType, obtainPirateRelation } from './pirateRelations';
 import { isObjectVisibleToThisEmpire, isStellarObjectDockable } from './independentTraders';
 import { determineEmpireSystems } from './forceStructure';
 import { fastFindNearestSpacePort, getBuiltObjectsAtLocation } from './stationPlacement';
-import { findNewestCanBuild } from './designGeneration';
+import { findNewestCanBuild, resolveSubRoleDescription } from './designGeneration';
+import { gameText } from './colonyTick';
 import { checkRuinsHaveBenefit } from './exploration';
 import { EmpireMessageType, sendMessageToEmpire } from './messages';
 import { doCharacterEventRuntime } from './events';
@@ -2098,8 +2099,8 @@ export function checkForStrandedShips(galaxy: Galaxy, empire: Empire): void {
             if (builtObject.nearestSystemStar !== null) {
                 arg = builtObject.nearestSystemStar.name;
             }
-            // TODO(port) M9: TextResolver "Stranded Ship SHIPTYPE NAME SYSTEM" with ResolveDescription(SubRole), Name, system.
-            const description = `Stranded Ship SHIPTYPE NAME SYSTEM|${builtObject.subRole}|${builtObject.name}|${arg}`;
+            // string.Format(TextResolver.GetText("Stranded Ship SHIPTYPE NAME SYSTEM"), ResolveDescription(SubRole), Name, arg).
+            const description = gameText('Stranded Ship SHIPTYPE NAME SYSTEM', resolveSubRoleDescription(builtObject.subRole), builtObject.name, arg);
             sendMessageToEmpire(empire, empire, EmpireMessageType.ShipNeedsRepair, builtObject, description);
             builtObject.strandedMessageSent = true;
         }

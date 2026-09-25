@@ -126,6 +126,7 @@ import { PreWarpProgressEventType } from './exploration';
 import { disbandShipGroup, empireShipGroups, shipGroupWarpSpeed, type ShipGroup } from './fleets/shipGroup';
 import { REAL_SECONDS_IN_GALACTIC_YEAR } from './tick/simTime';
 import { netSort } from './netSort';
+import { gameText } from './colonyTick';
 import { registerTodo, todo } from './tick/todo';
 import { galaxyStarDate } from './tick/simTime';
 import { PirateExpenseType } from './pirates/pirateEconomy';
@@ -147,13 +148,6 @@ function conditionCheckLimit(condition: boolean, maximumIterations: number, iter
     return condition;
 }
 
-/**
- * TextResolver.GetText(key) + string.Format stand-in: the GameText key with its arguments.
- * TODO(port) M9: localized text.
- */
-function gameText(key: string, ...args: (string | number)[]): string {
-    return args.length > 0 ? `${key}: ${args.join(', ')}` : key;
-}
 
 /** Component.TypesIntersect (Component.cs 108). */
 function typesIntersect(types1: readonly ComponentType[], types2: readonly ComponentType[]): boolean {
