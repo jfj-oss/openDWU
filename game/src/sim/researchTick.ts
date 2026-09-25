@@ -120,7 +120,7 @@ import { obtainPirateRelation } from './pirateRelations';
 import { checkWonderBuilt } from './construction/wonders';
 import { checkSendPreWarpProgressEventMessage } from './events';
 import { PreWarpProgressEventType } from './exploration';
-import { disbandShipGroup, empireShipGroups } from './fleets/shipGroup';
+import { disbandShipGroup, empireShipGroups, shipGroupWarpSpeed, type ShipGroup } from './fleets/shipGroup';
 import { REAL_SECONDS_IN_GALACTIC_YEAR } from './tick/simTime';
 import { netSort } from './netSort';
 import { registerTodo, todo } from './tick/todo';
@@ -654,7 +654,6 @@ export function doResearchAbilityBreakthrough(empire: Empire, researchProject: T
     return { text, relatedObject };
 }
 
-const T_disbandImmobileFleets = registerTodo('M4l', 'ShipGroup.WarpSpeed (DoResearchBreakthrough hyperspace-tech fleet disband)');
 
 // Empire.3.cs DoResearchBreakthrough(researchProject, selfResearched, blockMessages, suppressUpdate) (2500).
 export function doResearchBreakthrough(galaxy: Galaxy, empire: Empire, researchProject: TechNode, selfResearched: boolean, blockMessages = false, suppressUpdate = false): void {
@@ -683,15 +682,19 @@ export function doResearchBreakthrough(galaxy: Galaxy, empire: Empire, researchP
         if (def.specialFunctionCode === 2 || flag) empire.reviewDesignsAndRetrofitImportantBreakthrough = true;
     }
     if (def.specialFunctionCode === 2 && empire.controlMilitaryFleets && empire.shipGroups !== null) {
-        // 2532-2551: disband auto-controlled fleets whose WarpSpeed <= 0 (DisbandShipGroup, M4l).
+        // 2532-2551: disband auto-controlled fleets whose WarpSpeed <= 0 (DisbandShipGroup; ported by M4l).
         const shipGroups = empireShipGroups(empire);
+        const shipGroupList: ShipGroup[] = [];
         for (let j = 0; j < shipGroups.length; j++) {
             const shipGroup = shipGroups[j];
-            if (shipGroup !== null && shipGroup.leadShip !== null) {
-                // TODO(port) M4l: BuiltObject.IsAutoControlled / ShipGroup.WarpSpeed — select the groups with
-                // LeadShip.IsAutoControlled && WarpSpeed <= 0, then disbandShipGroup(galaxy, empire, group) each.
-                todo(T_disbandImmobileFleets);
-                void disbandShipGroup;
+            if (shipGroup !== null && shipGroup.leadShip !== null && shipGroup.leadShip.isAutoControlled && shipGroupWarpSpeed(shipGroup) <= 0) {
+                shipGroupList.push(shipGroup);
+            }
+        }
+        for (let k = 0; k < shipGroupList.length; k++) {
+            const shipGroup2 = shipGroupList[k];
+            if (shipGroup2 !== null) {
+                disbandShipGroup(galaxy, empire, shipGroup2);
             }
         }
     }

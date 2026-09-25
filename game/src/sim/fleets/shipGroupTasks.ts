@@ -91,7 +91,8 @@ import {
     setDefendFleets,
 } from './militaryAI';
 import { findNearestBaseForPirateAttack, findNearestKnownBaseOfEmpireForPirateAttack } from '../pirates/pirateAI';
-import { ShipGroup, empireShipGroups, registerShipGroupTasks } from './shipGroup';
+import { ShipGroup, empireShipGroups, registerShipGroupTasks, shipGroupWarpSpeed } from './shipGroup';
+export { shipGroupWarpSpeed };
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants (Galaxy.3.cs 4972-5083 static readonly values)
@@ -2410,17 +2411,6 @@ export function shipGroupRemoveShipsWithoutHyperdrive(galaxy: Galaxy, shipGroup:
         if (ship.warpSpeed <= 0 && ship.builtAt === null) builtObjectList.push(ship);
     }
     for (let i = 0; i < builtObjectList.length; i++) leaveShipGroup(galaxy, builtObjectList[i]);
-}
-
-/** ShipGroup.cs 3241 WarpSpeed. */
-export function shipGroupWarpSpeed(shipGroup: ShipGroup): number {
-    if (shipGroup.ships.length <= 0) return 0;
-    let num = 536870911;
-    for (let index = 0; index < shipGroup.ships.length; ++index) {
-        const ship = shipGroup.ships[index];
-        if (ship.builtAt === null && ship.warpSpeed < num) num = ship.warpSpeed;
-    }
-    return Math.trunc(num * shipGroup.hyperjumpSpeedBonus);
 }
 
 /** ShipGroup.cs 3258 CruiseSpeed. */

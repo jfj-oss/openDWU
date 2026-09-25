@@ -172,6 +172,17 @@ export function shipGroupSetTroopLoadoutsFromPolicy(shipGroup: ShipGroup, policy
     }
 }
 
+/** ShipGroup.cs 3241 WarpSpeed. */
+export function shipGroupWarpSpeed(shipGroup: ShipGroup): number {
+    if (shipGroup.ships.length <= 0) return 0;
+    let num = 536870911;
+    for (let index = 0; index < shipGroup.ships.length; ++index) {
+        const ship = shipGroup.ships[index];
+        if (ship.builtAt === null && ship.warpSpeed < num) num = ship.warpSpeed;
+    }
+    return Math.trunc(num * shipGroup.hyperjumpSpeedBonus);
+}
+
 /** ShipGroup.RepairBonus => _RepairBonus + _RepairBonusExtra (ShipGroup.cs 85). */
 export function shipGroupRepairBonus(shipGroup: ShipGroup): number {
     return shipGroup.repairBonus;
