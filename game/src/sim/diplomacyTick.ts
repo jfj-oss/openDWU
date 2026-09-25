@@ -82,7 +82,8 @@ import { cancelBlockades as cancelBlockadesImpl, getBlockadesAgainstEmpire, type
 import { chanceNewAmbassador, doCharacterEventRuntime } from './events';
 import { galaxyColonyFillFactor } from './colonyTick';
 import { isObjectVisibleToThisEmpire } from './independentTraders';
-import { TradeableItem, TradeableItemType, processTradeDealMessage, determineAcceptGalaxyMapTrade, determineAcceptTerritoryMapTrade } from './tradeItems';
+import { TradeableItem, TradeableItemType, processTradeDealMessage, determineAcceptGalaxyMapTrade, determineAcceptTerritoryMapTrade, isTechNode } from './tradeItems';
+import { doResearchBreakthrough, reviewDesignsBuiltObjectsImprovedComponents } from './researchTick';
 import { determineDesirePirateProtection, pirateEconomyPerformIncome } from './pirates/pirateAI';
 import { PirateIncomeType } from './pirates/pirateEconomy';
 import { acceptPirateProtection, calculatePirateProtectionPricePerMonth } from './pirates/pirateRelationsAI';
@@ -2858,7 +2859,6 @@ function removeMilitaryForcesFromSystem(galaxy: Galaxy, self: Empire, systemStar
     return -1;
 }
 
-const T_offerTrade = registerTodo('M4r', 'ProcessMessages OfferTrade research purchase (M4k research)');
 const T_ordersForRelinquishedColony = registerTodo('M4r', 'RemoveColoniesFromSystem order/contract cleanup (M4d Galaxy.Orders.GetOrders)');
 
 /** Empire.3.cs 4240 ProcessMessages: handles and then clears the empire's message queue. */
@@ -2987,11 +2987,21 @@ export function processMessages(galaxy: Galaxy, empire: Empire): void {
                 } else {
                     if (tradeableItem.type !== TradeableItemType.ResearchProject || !(tradeableItem.value <= self.stateMoney)) break;
                     const num14 = self.stateMoney * (0.25 + galaxy.rnd.nextDouble() * 0.25);
-                    if (self.stateMoney >= num14 && tradeableItem.item !== null) {
-                        // TODO(port) M4k: Research.TechTree.GetEquivalent(node); if not researched → DoResearchBreakthrough(…,
-                        // selfResearched false, blockMessages, suppressUpdate), Research.Update, ReviewDesignsBuiltObjectsImprovedComponents,
-                        // ReviewResearchAbilities, then the payment. Research items are not offered until M4k's research model exists.
-                        todo(T_offerTrade);
+                    if (self.stateMoney >= num14 && isTechNode(tradeableItem.item)) {
+                        // Empire.3.cs 4467-4481: buy the research project.
+                        const researchNode = tradeableItem.item;
+                        const tree = self.research.techTree;
+                        // ResearchNodeList.GetEquivalent (this[ResearchNodeId]); C# reads it unguarded.
+                        const equivalent = tree.length > researchNode.def.projectId ? tree[researchNode.def.projectId] : null;
+                        if (!equivalent!.isResearched) {
+                            doResearchBreakthrough(galaxy, self, equivalent!, false, true, true);
+                            self.research.update(self.dominantRace);
+                            reviewDesignsBuiltObjectsImprovedComponents(self);
+                            self.reviewResearchAbilities();
+                            self.stateMoney -= tradeableItem.value;
+                            sender!.stateMoney += tradeableItem.value;
+                            pirateEconomyPerformIncome(galaxy, sender!, tradeableItem.value, PirateIncomeType.SellInfo, galaxyStarDate(galaxy));
+                        }
                     }
                 }
                 break;

@@ -82,6 +82,7 @@ import { findNearestAvailableFleet } from '../fleets/militaryAI';
 import { FleetPosture, checkTaskAuthorized, AdvisorMessageType } from '../diplomacyTick';
 import { checkColonizationLikeliness } from '../tradeItems';
 import type { ColonizationTarget } from '../civilianAI';
+import { resolveMoreAdvancedProjectsIncludeSpecial } from '../espionage';
 import {
     clearColony as clearColonyImpl,
     takeOwnershipOfBuiltObject as takeOwnershipOfBuiltObjectImpl,
@@ -929,30 +930,6 @@ function raidCountdownOf(target: BuiltObject | Habitat): number {
     return target.raidCountdown;
 }
 
-/** ResearchSystem.cs 240 ResolveMoreAdvancedProjects(giverEmpire) (includeSpecialTech: true). No Rnd. */
-export function resolveMoreAdvancedProjects(self: Empire, giverEmpire: Empire): TechNode[] {
-    const research = self.research;
-    const researchNodeList: TechNode[] = [];
-    if (research.latestProjects === null || research.nextProjects === null) research.refreshLatestNextProjects(self.dominantRace);
-    const giverTree = giverEmpire.research.techTree;
-    for (const researchNode of research.nextProjects!.slice()) {
-        if (researchNode != null) {
-            // ResearchNodeList.GetEquivalent: this[ResearchNodeId] (the tech tree is in id order).
-            const equivalent = giverTree.length > researchNode.def.projectId ? giverTree[researchNode.def.projectId] : null;
-            if (equivalent!.isResearched) researchNodeList.push(equivalent!);
-        }
-    }
-    for (let index = 0; index < giverTree.length; ++index) {
-        const researchNode = giverTree[index];
-        if (researchNode.isResearched && giverEmpire.research.allowedRacesCount(researchNode) > 0) {
-            const tree = research.techTree;
-            const equivalent = tree.length > researchNode.def.projectId ? tree[researchNode.def.projectId] : null;
-            if (!equivalent!.isResearched && !researchNodeList.includes(researchNode) && research.canResearchNode(equivalent!)) researchNodeList.push(researchNode);
-        }
-    }
-    return researchNodeList;
-}
-
 /** DoRaidBonuses case 1 fallback: a queue head from a random industry (Galaxy.5.cs 5040-5062 / 5105-5127). Rnd: Next(0, 3). */
 function randomQueueHead(galaxy: Galaxy, attackingEmpire: Empire): TechNode | null {
     let researchNode: TechNode | null = null;
@@ -1051,7 +1028,7 @@ export function doRaidBonuses(galaxy: Galaxy, attackingEmpire: Empire | null, ta
             text = formatText(getText('X credits'), num4.toFixed(0));
             break;
         case 1: {
-            const researchNodeList = resolveMoreAdvancedProjects(attackingEmpire, empire!);
+            const researchNodeList = resolveMoreAdvancedProjectsIncludeSpecial(attackingEmpire, empire!, true) // ResearchSystem.cs 238 overload (includeSpecialTech: true);
             if (researchNodeList.length > 0) {
                 let researchNodeList2 = researchNodeList;
                 switch (industryType) {

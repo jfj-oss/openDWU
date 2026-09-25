@@ -66,6 +66,14 @@ import { takeOwnershipOfBuiltObject, takeOwnershipOfColonyRuntime } from './comb
 import { haveRevolution } from './treasury';
 import { GalaxyLocation } from './galaxyLocation';
 import { galaxyColonyFillFactor } from './colonyTick';
+import type { TechNode } from './researchSystem';
+import { nodeCategory, resolveResearchAbilityType, ResearchAbilityType } from './researchSystem';
+import { resolveMoreAdvancedProjectsIncludeSpecial } from './espionage';
+import { doResearchBreakthrough } from './researchTick';
+import type { Component } from './data/components';
+import { ComponentType } from './data/components';
+import { ComponentCategoryType } from './data/policies';
+import { DesignSpecificationComponentRuleType, resolveComponentCategoryForType, type DesignSpecification } from './data/designSpecifications';
 
 // TradeableItemType.cs (member order exact).
 export enum TradeableItemType {
@@ -236,22 +244,150 @@ export function resolveTradeableItemsMaps(galaxy: Galaxy, giver: Empire, receive
     return list;
 }
 
-const T_researchProjects = registerTodo('M4r', 'ResolveTradeableItemsResearchProjects (research trading — needs M4k ResearchSystem NextProjects / GetEquivalent)');
+/** TradeableItem.Item is ResearchNode (TechNode is an interface: its runtime shape). */
+export function isTechNode(item: unknown): item is TechNode {
+    return item !== null && typeof item === 'object' && 'def' in (item as object) && 'isResearched' in (item as object);
+}
 
-/**
- * Galaxy.4.cs 4305/4310 ResolveTradeableItemsResearchProjects(giver, receiver, refactor, includeSpecialTech).
- * TODO(port) M4k: ResearchSystem.ResolveMoreAdvancedProjects (ResearchSystem.cs 240: NextProjects, TechTree.GetEquivalent,
- * CanResearchNode) and Galaxy.4.cs 4551 ValueResearchProjectForEmpire (DesignSpecifications.CheckAnyDesignSpecificationsUseComponent)
- * — the research runtime model is M4k's. Returns no projects until then.
- */
-export function resolveTradeableItemsResearchProjects(galaxy: Galaxy, giver: Empire, receiver: Empire, refactorValuesForEmpire: boolean, includeSpecialTech: boolean): TradeableItem[] {
-    void galaxy;
-    void giver;
-    void receiver;
-    void refactorValuesForEmpire;
-    void includeSpecialTech;
-    todo(T_researchProjects);
-    return [];
+/** ResearchNode.cs 140 IsEquivalent(researchNode): same Name, Industry, Category, TechLevel and Row. */
+function researchNodeIsEquivalent(a: TechNode, b: TechNode): boolean {
+    return b.def.name === a.def.name && b.def.industry === a.def.industry && b.def.category === a.def.category && b.def.techLevel === a.def.techLevel && b.def.row === a.def.row;
+}
+
+/** ResearchNodeList.cs 1063 IndexOf(researchNode): the first equivalent node. */
+function researchNodeListIndexOf(list: readonly TechNode[], researchNode: TechNode): number {
+    for (let index = 0; index < list.length; ++index) if (researchNodeIsEquivalent(list[index], researchNode)) return index;
+    return -1;
+}
+
+/** ResearchNodeList.cs 1050 GetEquivalent(researchNode): this[ResearchNodeId] when in range. */
+function techTreeGetEquivalent(tree: readonly TechNode[], researchNode: TechNode | null): TechNode | null {
+    return researchNode != null && tree.length > researchNode.def.projectId ? tree[researchNode.def.projectId] : null;
+}
+
+/** Component by id (ResearchNode.Components / ComponentImprovement.ImprovedComponent). */
+function componentById(galaxy: Galaxy, componentId: number): Component | null {
+    return galaxy.researchStatic?.componentsById.get(componentId) ?? null;
+}
+
+/** ResearchNode.cs 73 CheckAnyComponentTypeMatches(type). */
+function researchNodeCheckAnyComponentTypeMatches(galaxy: Galaxy, node: TechNode, type: ComponentType): boolean {
+    if (node.def.components != null) {
+        for (let index = 0; index < node.def.components.length; ++index) {
+            const component = componentById(galaxy, node.def.components[index]);
+            if (component != null && component.type === type) return true;
+        }
+        for (let index = 0; index < node.def.componentImprovements.length; ++index) {
+            const improved = componentById(galaxy, node.def.componentImprovements[index].componentId);
+            if (improved != null && improved.type === type) return true;
+        }
+    }
+    return false;
+}
+
+/** DesignSpecificationList.cs 108 CheckAnyDesignSpecificationsUseComponent → ComponentRuleList.cs 14 CheckAnyRulesUseComponent. */
+function checkAnyDesignSpecificationsUseComponent(specs: readonly (DesignSpecification | null)[], component: Component): boolean {
+    for (let index = 0; index < specs.length; ++index) {
+        const designSpecification = specs[index];
+        if (designSpecification == null || designSpecification.componentRules == null) continue;
+        for (let i = 0; i < designSpecification.componentRules.length; ++i) {
+            const rule = designSpecification.componentRules[i];
+            if (rule != null && (rule.componentRuleType === DesignSpecificationComponentRuleType.MustHave || rule.componentRuleType === DesignSpecificationComponentRuleType.ShouldHave)) {
+                if (rule.componentType !== ComponentType.Undefined) {
+                    if (component.type === rule.componentType) return true;
+                } else if (rule.componentCategory !== ComponentCategoryType.Undefined && resolveComponentCategoryForType(component.type) === rule.componentCategory) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+/** Galaxy.4.cs 4551 ValueResearchProjectForEmpire(project, requestingEmpire). No Rnd. */
+export function valueResearchProjectForEmpire(galaxy: Galaxy, project: TechNode | null, requestingEmpire: Empire): number {
+    let num = -1;
+    if (project != null) {
+        // C# dereferences GetEquivalent(project) unguarded.
+        const num2 = Math.trunc(project.cost - techTreeGetEquivalent(requestingEmpire.research.techTree, project)!.progress);
+        let num3 = 0;
+        for (let i = 0; i < galaxy.empires.length; i++) {
+            const empire = galaxy.empires[i];
+            if (techTreeGetEquivalent(empire.research.techTree, project)!.isResearched) num3++;
+        }
+        num = Math.trunc(num2 * 3.0);
+        if (requestingEmpire.research.allowedRacesCount(project) > 0) num *= 5;
+        if (num3 > 1) num = Math.trunc(num / Math.sqrt(num3));
+        let flag = false;
+        const def = project.def;
+        if ((def.components.length > 0 || def.componentImprovements.length > 0) && def.abilities.length <= 0 && def.fighters.length <= 0 && def.facilityId == null) {
+            if (def.components.length > 0) {
+                for (let j = 0; j < def.components.length; j++) {
+                    const component = componentById(galaxy, def.components[j]);
+                    if (component != null && requestingEmpire.designSpecifications != null && checkAnyDesignSpecificationsUseComponent(requestingEmpire.designSpecifications, component)) {
+                        flag = true;
+                        break;
+                    }
+                }
+            }
+            if (def.componentImprovements.length > 0) {
+                for (let k = 0; k < def.componentImprovements.length; k++) {
+                    const componentImprovement = def.componentImprovements[k];
+                    if (componentImprovement != null) {
+                        const improvedComponent = componentById(galaxy, componentImprovement.componentId);
+                        if (improvedComponent != null && requestingEmpire.designSpecifications != null && checkAnyDesignSpecificationsUseComponent(requestingEmpire.designSpecifications, improvedComponent)) {
+                            flag = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        if (requestingEmpire !== galaxy.playerEmpire && !flag) num = 0;
+        if (requestingEmpire === galaxy.playerEmpire) num = Math.trunc(num * (galaxy.playerEmpire.difficultyLevel * galaxy.playerEmpire.difficultyLevel));
+        if (num > 1073741823) num = 1073741823;
+    }
+    return num | 0;
+}
+
+/** Galaxy.4.cs 4305 ResolveTradeableItemsResearchProjects(giver, receiver, refactor, includeSpecialTech) → 4310 (includeWarpColonizationWeapons: true). */
+export function resolveTradeableItemsResearchProjects(galaxy: Galaxy, giver: Empire, receiver: Empire, refactorValuesForEmpire: boolean, includeSpecialTech: boolean, includeWarpColonizationWeapons = true): TradeableItem[] {
+    const tradeableItemList: TradeableItem[] = [];
+    const researchNodeList = resolveMoreAdvancedProjectsIncludeSpecial(receiver, giver, includeSpecialTech);
+    for (let i = 0; i < researchNodeList.length; i++) {
+        const researchNode = researchNodeList[i];
+        if (!researchNode.selfResearched) continue;
+        let flag = true;
+        if (!includeWarpColonizationWeapons) {
+            switch (nodeCategory(researchNode)) {
+                case ComponentCategoryType.WeaponBeam:
+                case ComponentCategoryType.WeaponTorpedo:
+                case ComponentCategoryType.WeaponArea:
+                case ComponentCategoryType.WeaponPointDefense:
+                case ComponentCategoryType.WeaponIon:
+                case ComponentCategoryType.WeaponGravity:
+                case ComponentCategoryType.AssaultPod:
+                case ComponentCategoryType.Fighter:
+                case ComponentCategoryType.HyperDrive:
+                case ComponentCategoryType.WeaponSuperBeam:
+                case ComponentCategoryType.WeaponSuperArea:
+                case ComponentCategoryType.WeaponSuperTorpedo:
+                    flag = false;
+                    break;
+            }
+            if (resolveResearchAbilityType(researchNode) === ResearchAbilityType.ColonizeHabitatType) flag = false;
+            if (researchNodeCheckAnyComponentTypeMatches(galaxy, researchNode, ComponentType.HabitationColonization)) flag = false;
+        }
+        if (flag) {
+            let num = valueResearchProjectForEmpire(galaxy, researchNode, receiver);
+            const num2 = 0.67 / galaxy.difficultyLevel;
+            if (giver === galaxy.playerEmpire) num = Math.trunc(num * num2);
+            else if (receiver === galaxy.playerEmpire) num = Math.trunc(num / num2);
+            if (num >= 0 && refactorValuesForEmpire) num = refactorValueForEmpire(galaxy, num, receiver, giver);
+            if (num > 0) tradeableItemList.push(new TradeableItem(TradeableItemType.ResearchProject, researchNode, num));
+        }
+    }
+    return tradeableItemList;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -1162,7 +1298,6 @@ export function addLocationHint(self: Empire, location: { x: number; y: number }
     self.locationHints.push(location);
 }
 
-const T_giveResearch = registerTodo('M4r', 'GiveTradeableItem ResearchProject (M4k DoResearchBreakthrough / research queues)');
 
 /** Galaxy.4.cs 3857 GiveTradeableItem(giver, receiver, item, exchangedItems). */
 export function giveTradeableItem(galaxy: Galaxy, giver: Empire, receiver: Empire, item: TradeableItem, exchangedItems: readonly TradeableItem[] | null): void {
@@ -1244,11 +1379,23 @@ export function giveTradeableItem(galaxy: Galaxy, giver: Empire, receiver: Empir
                 addLocationHint(receiver, { x: Math.trunc(item.item.xpos), y: Math.trunc(item.item.ypos) });
             }
             break;
-        case TradeableItemType.ResearchProject:
-            // TODO(port) M4k: remove the node from the receiver's research queues, DoResearchBreakthrough (not self-researched),
-            // Research.Update. Research items are not offered until resolveTradeableItemsResearchProjects is ported.
-            if (item.item !== null) todo(T_giveResearch);
+        case TradeableItemType.ResearchProject: {
+            // Galaxy.4.cs 4005-4036: drop the (equivalent) node from the receiver's queues, then the breakthrough.
+            const researchNode = isTechNode(item.item) ? item.item : null;
+            if (researchNode !== null) {
+                const research = receiver.research;
+                let num = researchNodeListIndexOf(research.researchQueueEnergy, researchNode);
+                if (num >= 0) research.researchQueueEnergy.splice(num, 1);
+                num = researchNodeListIndexOf(research.researchQueueHighTech, researchNode);
+                if (num >= 0) research.researchQueueHighTech.splice(num, 1);
+                num = researchNodeListIndexOf(research.researchQueueWeapons, researchNode);
+                if (num >= 0) research.researchQueueWeapons.splice(num, 1);
+                num = researchNodeListIndexOf(research.techTree, researchNode);
+                if (num >= 0) doResearchBreakthrough(galaxy, receiver, research.techTree[num], false, true, true);
+                research.update(receiver.dominantRace);
+            }
             break;
+        }
         case TradeableItemType.AdoptGovernmentStyle:
             if (giver.pirateEmpireBaseHabitat === null) {
                 const gov = item.item as { governmentId?: number } | null;
