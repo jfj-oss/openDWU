@@ -92,6 +92,8 @@ describe('Order / OrderList model (Order.cs, OrderList.cs)', () => {
         const g = newGalaxy();
         const e = g.empires[0];
         const colony = e.colonies[0];
+        // M4z6: the game-start EvaluateColonyVariables now places colony orders; start from an empty order list.
+        for (const x of [...g.orders.items]) g.orders.remove(x);
         const now = galaxyStarDate(g);
         const o = galaxyCreateOrder(g, colony, new ResourceRef(0), 800, false);
         // (int)(1000.0 * 600 * 1000.0)

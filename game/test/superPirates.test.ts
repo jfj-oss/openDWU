@@ -220,26 +220,28 @@ describe('UpgradeMilitaryShipDesignMoreWeapons / MoreEngines (Galaxy.8.cs 4121 /
 // steps and StartStarDate + 30000000, so the Rnd stream moves.
 // (re-pinned M4m: the game-start Empire.DoTasks runs the military AI — IdentifyMilitaryObjectives Next(0, EmpireEvaluations.Count), CheckTemptingTargets Next(0, Empires.Count), DetermineRandomAttacks Next(0, n) — which shifts the Rnd stream.)
 // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
+// (re-pinned M4z6: the game-start EvaluateColonyVariables colony orders (Empire.4.cs 2357 / 3186) shift the Rnd stream
+// before the super-pirate generation.)
 const PINNED: unknown[] = [
     [
-        "Escort:Dominator II:32",
-        "Frigate:Praetor II:43",
-        "Destroyer:Apulon II:55",
-        "Cruiser:Decimator II:90",
-        "CapitalShip:Venator:136",
+        "Escort:Centurion II:32",
+        "Frigate:Enforcer II:43",
+        "Destroyer:Sovereign II:55",
+        "Cruiser:Titan II:90",
+        "CapitalShip:Decurion:136",
         "Carrier:CX-2 Carrier:108",
         "DefensiveBase:Phantom Pirate Defensive Base:123",
         "GenericBase:Phantom Pirate Base:217"
     ],
     [
-        "GenericBase:Desperado Lair",
+        "GenericBase:Smugglers Nest",
+        "DefensiveBase:Dhayu 7 Orbital Battery",
         "DefensiveBase:Dhayu 7 Defensive Base",
-        "DefensiveBase:Dhayu 7 Weapons Platform",
-        "DefensiveBase:Dhayu 7 Defensive Base",
-        "Destroyer:Mighty Surprise",
-        "Frigate:Lethal Claw",
-        "Destroyer:Invincible Repulser",
-        "Frigate:Iron Eclipse"
+        "DefensiveBase:Dhayu 7 Orbital Battery",
+        "Destroyer:Courageous Affliction",
+        "Destroyer:Sly Revenge",
+        "Cruiser:Grand Destiny",
+        "Escort:Red Sentry"
     ],
-    26
+    30
 ];

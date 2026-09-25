@@ -38,7 +38,11 @@ import {
 } from './orders';
 import { calculateMaximumOrderFulfillmentDistance } from './orders';
 import type { Empire } from '../empire';
-import { registerTodo, todo } from '../tick/todo';
+import { netSort } from '../netSort';
+import { DiplomaticRelationType, obtainDiplomaticRelation } from '../diplomacy';
+import { determineResourcesEmpireSupplies } from '../diplomacyTick';
+import { habitatDevelopmentLevel } from '../developmentLevel';
+import { conditionCheckLimit } from '../tick/builtObjectTick';
 
 // Galaxy.3.cs 5123-5128 ResourceLevel*Quantity.
 const RESOURCE_LEVEL_ONE_QUANTITY = 4000.0;
@@ -418,27 +422,284 @@ function checkResourceMeetsMinimumLevelGalaxy(resource: ResourceRef, minimumReso
 // ---- Added by M4j: the order-side parts of Empire.4.cs EvaluateColonyVariables (2943) / EvaluateColonyVariablesPirate
 // (2579). None of them draws Galaxy.Rnd; none affects the growth / development state M4j computes.
 
-const T_prepareColonyLuxuryResourceLists = registerTodo('M4d', 'prepareColonyLuxuryResourceLists');
+/** Resource with its SortTag (Resource.cs 16, double.MinValue by default) — the ShowCheapestLuxuryResources list element. */
+interface SortedResource {
+    ref: ResourceRef;
+    sortTag: number;
+}
+
+/** ResourceList.Contains(resource) (ResourceList.cs 78): by ResourceID. */
+function resourceListContains(list: readonly ResourceRef[] | readonly number[], resourceId: number): boolean {
+    for (const r of list) if ((typeof r === 'number' ? r : r.resourceId) === resourceId) return true;
+    return false;
+}
+
+/** Galaxy.3.cs 412 ShowCheapestLuxuryResources. */
+function showCheapestLuxuryResources(galaxy: Galaxy): SortedResource[] {
+    const resourceList: SortedResource[] = [];
+    const resources = galaxy.resourceSystem.resources;
+    const prices = galaxyResourceCurrentPrices(galaxy);
+    for (let i = 0; i < resources.length; i++) {
+        const resourceDefinition = resources[i];
+        if (resourceGroupOf(resourceDefinition) === ResourceGroup.Luxury && resourceDefinition.superLuxuryBonusAmount <= 0) {
+            // ResourceCurrentPrices[i]: indexed by the Resources position (== ResourceID in the data files).
+            resourceList.push({ ref: new ResourceRef(resourceDefinition.resourceId), sortTag: prices[i] });
+        }
+    }
+    // Resource.CompareTo (Resource.cs 44): SortTag > double.MinValue → SortTag.CompareTo (prices are never MinValue / NaN).
+    netSort(resourceList, (x, y) => (x.sortTag < y.sortTag ? -1 : x.sortTag > y.sortTag ? 1 : 0));
+    return resourceList;
+}
+
+/** Galaxy.3.cs 431 UpdateResourcesFromSuppliedResources(resources, resource, supplied). */
+function updateResourcesFromSuppliedResources(resources: number[], resourceId: number, supplied: readonly number[]): number[] {
+    if (resourceListContains(supplied, resourceId) && !resourceListContains(resources, resourceId)) resources.push(resourceId);
+    return resources;
+}
+
+/** Galaxy.3.cs 355 ShowAvailableRestrictedResourcesForEmpireSelfSupplied(empire) (resource ids). */
+function showAvailableRestrictedResourcesForEmpireSelfSupplied(galaxy: Galaxy, empire: Empire): number[] {
+    let resourceList: number[] = [];
+    const supplied = determineResourcesEmpireSupplies(empire);
+    const superLuxury = galaxy.resourceSystem.superLuxuryResources;
+    for (let i = 0; i < superLuxury.length; i++) resourceList = updateResourcesFromSuppliedResources(resourceList, superLuxury[i].resourceId, supplied);
+    return resourceList;
+}
+
+/** Galaxy.3.cs 367 ShowAvailableRestrictedResourcesForEmpire(empire) (resource ids). */
+function showAvailableRestrictedResourcesForEmpire(galaxy: Galaxy, empire: Empire): number[] {
+    let resourceList: number[] = [];
+    const superLuxury = galaxy.resourceSystem.superLuxuryResources;
+    for (let i = 0; i < galaxy.empires.length; i++) {
+        const empire2 = galaxy.empires[i];
+        if (empire2 === empire) {
+            const supplied = determineResourcesEmpireSupplies(empire);
+            for (let j = 0; j < superLuxury.length; j++) resourceList = updateResourcesFromSuppliedResources(resourceList, superLuxury[j].resourceId, supplied);
+        } else {
+            const diplomaticRelation = obtainDiplomaticRelation(empire2, empire);
+            if (diplomaticRelation.type !== DiplomaticRelationType.NotMet && diplomaticRelation.supplyRestrictedResources) {
+                const supplied2 = determineResourcesEmpireSupplies(empire2);
+                for (let k = 0; k < superLuxury.length; k++) resourceList = updateResourcesFromSuppliedResources(resourceList, superLuxury[k].resourceId, supplied2);
+            }
+        }
+        if (resourceList.length >= 3) break;
+    }
+    return resourceList;
+}
+
+/** The three lists EvaluateColonyVariables builds once per call (Empire.4.cs 2959-2961). */
+export interface ColonyLuxuryResourceLists {
+    resourceList: SortedResource[];
+    resourceList2: number[];
+    resourceList3: number[];
+}
+
 /**
- * Empire.4.cs 2958-2982 (2589-2613 pirate): resourceList = Galaxy.ShowCheapestLuxuryResources(), resourceList2/3 =
+ * Empire.4.cs 2959-2982 (2590-2613 pirate): resourceList = Galaxy.ShowCheapestLuxuryResources(), resourceList2/3 =
  * ShowAvailableRestrictedResourcesForEmpire(SelfSupplied)(this), `_SelfSuppliedLuxuryResources ??= new ResourceList()`,
- * then the self-supplied-first / unavailable-last reorder. Returns an opaque bundle for orderColonyLuxuryResources.
+ * then the self-supplied-first / unavailable-last reorder (RemoveAt by the snapshot's index, as in the C#). No Rnd.
  */
-export function prepareColonyLuxuryResourceLists(galaxy: Galaxy, empire: Empire): unknown {
-    /* TODO(port) M4d */ todo(T_prepareColonyLuxuryResourceLists);
-    return null;
+export function prepareColonyLuxuryResourceLists(galaxy: Galaxy, empire: Empire): ColonyLuxuryResourceLists {
+    const resourceList = showCheapestLuxuryResources(galaxy);
+    const resourceList2 = showAvailableRestrictedResourcesForEmpire(galaxy, empire);
+    const resourceList3 = showAvailableRestrictedResourcesForEmpireSelfSupplied(galaxy, empire);
+    if (empire.selfSuppliedLuxuryResources === null) empire.selfSuppliedLuxuryResources = [];
+    const array = resourceList.slice();
+    for (let num2 = array.length - 1; num2 > 0; num2--) {
+        if (resourceListContains(empire.selfSuppliedLuxuryResources, array[num2].ref.resourceId)) {
+            resourceList.splice(num2, 1);
+            resourceList.splice(0, 0, array[num2]);
+        }
+    }
+    for (let i = 0; i < array.length; i++) {
+        if (resourceListContains(empire.unavailableLuxuryResources, array[i].ref.resourceId)) {
+            resourceList.splice(i, 1);
+            resourceList.push(array[i]);
+        }
+    }
+    return { resourceList, resourceList2, resourceList3 };
 }
 
-const T_maintainColonyCriticalResourceLevels = registerTodo('M4d', 'maintainColonyCriticalResourceLevels');
-/** Empire.MaintainColonyCriticalResourceLevels(spacePort, colony) (called when _ControlColonyStockLevels). */
+/**
+ * Empire.4.cs 4144 CheckResourcesMeetingMinimumLevel(resourceGroup, minimumResourceLevel, colony, colonyOrders): how many
+ * distinct commodity entries exceed the level. The C# dedupes with List<Resource>.IndexOf — reference equality (Resource
+ * does not override Equals) — so here the key is the cargo / order commodity object, not its id.
+ */
+function checkResourcesMeetingMinimumLevel(galaxy: Galaxy, resourceGroupValue: ResourceGroup, minimumResourceLevel: number, colony: Habitat, colonyOrders: OrderList): number {
+    let num = 0;
+    const resourceList: unknown[] = [];
+    const list: number[] = [];
+    const owner = colony.owner;
+    if (colony.cargo !== null && owner !== null) {
+        // CargoList.IndexOf(resourceGroup, empire, startIndex) (CargoList.cs 601).
+        const items = colony.cargo.items;
+        for (let num5 = 0; num5 < items.length; num5++) {
+            const cargo = items[num5];
+            if (cargo.commodityIsComponent || cargoEmpireId(cargo) !== owner.empireId || resourceGroup(galaxy, cargo.commodity.resourceId) !== resourceGroupValue) continue;
+            const num2 = (cargo.amount - cargo.reserved) | 0;
+            const num3 = resourceList.indexOf(cargo.commodity);
+            if (num3 < 0) {
+                resourceList.push(cargo.commodity);
+                list.push(num2);
+            } else {
+                list[num3] += num2;
+            }
+        }
+    }
+    // OrderList.IndexOf(resourceGroup, startIndex) (OrderList.cs 260).
+    for (let num6 = 0; num6 < colonyOrders.items.length; num6++) {
+        const order = colonyOrders.items[num6];
+        const commodity = order.commodityResource;
+        if (commodity === null || resourceGroup(galaxy, commodity.resourceId) !== resourceGroupValue) continue;
+        const num4 = order.amountRequested;
+        const num3 = resourceList.indexOf(commodity);
+        if (num3 < 0) {
+            resourceList.push(commodity);
+            list.push(num4);
+        } else {
+            list[num3] += num4;
+        }
+    }
+    for (let i = 0; i < list.length; i++) {
+        if (list[i] > minimumResourceLevel) num++;
+    }
+    return num;
+}
+
+/** List<Resource> indexer: the C# throws ArgumentOutOfRangeException past the end. */
+function resourceListAt(list: SortedResource[], index: number): SortedResource {
+    if (index < 0 || index >= list.length) throw new Error(`ArgumentOutOfRangeException: luxury resourceList[${index}] (Empire.4.cs 3206)`);
+    return list[index];
+}
+
+/**
+ * Empire.4.cs 3186-3301 (2817-2932 pirate): OrderList orders = Galaxy.Orders.GetOrders(habitat) (+ the space port's),
+ * CheckResourcesMeetingMinimumLevel(Luxury, num6), and when _ControlColonyDevelopment the luxury / restricted CreateOrder
+ * loop. num6 / num7 / val are CalculateMinimumLuxuryResourceLevel[Restricted] taken at Empire.4.cs 3036-3038. No Rnd.
+ */
+export function orderColonyLuxuryResources(galaxy: Galaxy, empire: Empire, habitat: Habitat, builtObject: BuiltObject | null, lists: ColonyLuxuryResourceLists, num6: number, num7: number, val: number): void {
+    const { resourceList, resourceList2, resourceList3 } = lists;
+    const orders = galaxy.orders.getOrdersForHabitat(habitat);
+    if (builtObject !== null) {
+        const orders2 = galaxy.orders.getOrdersForBuiltObject(builtObject);
+        orders.addRange(orders2.items);
+    }
+    let num21 = 10;
+    if (habitat.population.totalAmount < 200000000) num21 = 5;
+    let num22 = 0;
+    num22 += checkResourcesMeetingMinimumLevel(galaxy, ResourceGroup.Luxury, num6, habitat, orders);
+    const num23 = num21 - num22;
+    let resource: ResourceRef | null = null;
+    if (!empire.controlColonyDevelopment) return;
+    const prices = galaxyResourceCurrentPrices(galaxy);
+    for (let num24 = 0; num24 < num23; num24++) {
+        resource = resourceListAt(resourceList, num24).ref;
+        const iterationCount = { count: 0 };
+        let flag3 = false;
+        do {
+            flag3 = false;
+            resource = resourceListAt(resourceList, num24).ref;
+            for (const resource5 of habitat.resources) {
+                if (resource5.resourceId === resource.resourceId) {
+                    flag3 = true;
+                    num24++;
+                }
+            }
+        } while (conditionCheckLimit(flag3, 100, iterationCount));
+        const maximumResourceLevel = csInt(num6 * 1.5);
+        const amountToOrder = checkResourceMeetsMinimumLevelHabitat(galaxy, resource, num6, maximumResourceLevel, habitat, orders).amountToOrder; // Empire.4.cs 4101
+        if (amountToOrder <= 0) continue;
+        const num25 = amountToOrder * prices[resource.resourceId];
+        if (num25 < getPrivateFunds(empire)) {
+            if (builtObject !== null && builtObject.isSpacePort) empireCreateOrder(galaxy, empire, builtObject, resource, amountToOrder, false, OrderType.Standard, true);
+            else empireCreateOrder(galaxy, empire, habitat, resource, amountToOrder, false, OrderType.Standard, true);
+        }
+    }
+    if (resourceList2.length > 0 && habitatDevelopmentLevel(habitat) >= 80) {
+        let num26 = 0;
+        const maximumResourceLevel2 = num7 * 2;
+        let resource2: ResourceRef | null = null;
+        let num27 = 0;
+        const superLuxury = galaxy.resourceSystem.superLuxuryResources;
+        const candidates = resourceList3 !== null && resourceList3.length > 0 ? resourceList3 : resourceList2;
+        for (let num28 = 0; num28 < superLuxury.length; num28++) {
+            const resource3 = new ResourceRef(superLuxury[num28].resourceId);
+            if (resourceListContains(candidates, resource3.resourceId)) {
+                const amountToOrder2 = checkResourceMeetsMinimumLevelHabitat(galaxy, resource3, num7, maximumResourceLevel2, habitat, orders).amountToOrder;
+                if (amountToOrder2 > num26) {
+                    num26 = amountToOrder2;
+                    resource2 = resource3;
+                }
+            }
+        }
+        num27 = Math.max(val, num26);
+        if (resource2 !== null && num27 > 0) {
+            const num30 = num27 * prices[resource2.resourceId];
+            if (num30 < getPrivateFunds(empire)) {
+                if (builtObject !== null && builtObject.isSpacePort) empireCreateOrder(galaxy, empire, builtObject, resource2, num27, false, OrderType.Standard, true);
+                else empireCreateOrder(galaxy, empire, habitat, resource2, num27, false, OrderType.Standard, true);
+            }
+        }
+    }
+}
+
+/** Empire.4.cs 2330 MaintainColonyCriticalResourceLevels(spacePort, colony) (called when _ControlColonyStockLevels). No Rnd. */
 export function maintainColonyCriticalResourceLevels(galaxy: Galaxy, empire: Empire, spacePort: BuiltObject | null, colony: Habitat): void {
-    /* TODO(port) M4d */ todo(T_maintainColonyCriticalResourceLevels);
+    if (colony == null || colony.hasBeenDestroyed) return;
+    const resourceList = determineCriticalResources(galaxy, colony);
+    if (resourceList.length <= 0) return;
+    const orders = galaxy.orders.getOrdersForHabitat(colony);
+    if (spacePort !== null && spacePort.isSpacePort) {
+        const orders2 = galaxy.orders.getOrdersForBuiltObject(spacePort);
+        if (orders2.count > 0) orders.addRange(orders2.items);
+    }
+    for (let i = 0; i < resourceList.length; i++) {
+        // Empire.4.cs 2488: the (…, isCriticalResource) overload forwards isCriticalResource: false (C# oddity kept).
+        checkAndOrderResourceEmpire(galaxy, empire, colony, orders, spacePort, new ResourceRef(resourceList[i]), false, 0);
+    }
 }
 
-const T_maintainColonyResourceLevels = registerTodo('M4d', 'maintainColonyResourceLevels');
-/** Empire.MaintainColonyResourceLevels(spacePort, colony) (called when _ControlColonyStockLevels). */
+/** Empire.4.cs 2357 MaintainColonyResourceLevels(spacePort, colony) (called when _ControlColonyStockLevels). No Rnd. */
 export function maintainColonyResourceLevels(galaxy: Galaxy, empire: Empire, spacePort: BuiltObject | null, colony: Habitat): void {
-    /* TODO(port) M4d */ todo(T_maintainColonyResourceLevels);
+    const orders = galaxy.orders.getOrdersForHabitat(colony);
+    if (spacePort !== null && spacePort.isSpacePort) {
+        const orders2 = galaxy.orders.getOrdersForBuiltObject(spacePort);
+        if (orders2.count > 0) orders.addRange(orders2.items);
+    }
+    let num = 0;
+    if (empire.shipGroups != null) {
+        for (let i = 0; i < empire.shipGroups.length; i++) {
+            const shipGroup = empire.shipGroups[i] as { gatherPoint: unknown; ships: BuiltObject[] } | null;
+            if (shipGroup != null && shipGroup.gatherPoint != null && shipGroup.gatherPoint === colony) {
+                // ShipGroup.cs 2755 TotalFuelCapacity.
+                let totalFuelCapacity = 0;
+                for (let index = 0; index < shipGroup.ships.length; ++index) totalFuelCapacity += shipGroup.ships[index].fuelCapacity;
+                num += totalFuelCapacity;
+            }
+        }
+    }
+    const ordered = galaxy.resourceSystem.strategicResourcesOrderedByRelativeImportance;
+    for (let j = 0; j < ordered.length; j++) {
+        const resourceDefinition = ordered[j];
+        if (resourceDefinition != null) {
+            const resource = new ResourceRef(resourceDefinition.resourceId);
+            if (resourceDefinition.isFuel) checkAndOrderResourceEmpire(galaxy, empire, colony, orders, spacePort, resource, false, num);
+            else checkAndOrderResourceEmpire(galaxy, empire, colony, orders, spacePort, resource, false, 0);
+        }
+    }
+}
+
+/** Empire.4.cs 2493 CheckAndOrderResource(colony, colonyOrders, colonySpacePort, resource, isCriticalResource, fleetFuelAmount). */
+function checkAndOrderResourceEmpire(galaxy: Galaxy, empire: Empire, colony: Habitat, colonyOrders: OrderList, colonySpacePort: BuiltObject | null, resource: ResourceRef, isCriticalResource: boolean, fleetFuelAmount: number): void {
+    const num = calculateResourceLevelHabitat(galaxy, resource.resourceId, colony, false, false, isCriticalResource, fleetFuelAmount);
+    const minimumResourceLevel = csInt(num * 0.6);
+    const r = checkResourceMeetsMinimumLevelHabitat(galaxy, resource, minimumResourceLevel, num, colony, colonyOrders); // Empire.4.cs 4101 (same body as Habitat.cs 7360)
+    if (r.meets) return;
+    const num2 = r.amountToOrder * galaxyResourceCurrentPrices(galaxy)[resource.resourceId];
+    if (num2 < getPrivateFunds(empire)) {
+        if (colonySpacePort !== null && colonySpacePort.isSpacePort) empireCreateOrder(galaxy, empire, colonySpacePort, resource, r.amountToOrder, false, OrderType.Standard);
+        else empireCreateOrder(galaxy, empire, colony, resource, r.amountToOrder, false, OrderType.Standard);
+    }
 }
 
 /** Galaxy.CalculateMaximumOrderFulfillmentDistance(habitat) (Galaxy.3.cs 1864; result unused at Empire.4.cs 3035). */
@@ -446,13 +707,3 @@ export function calculateMaximumOrderFulfillmentDistanceForHabitat(galaxy: Galax
     return calculateMaximumOrderFulfillmentDistance(galaxy, habitat.xpos, habitat.ypos);
 }
 
-const T_orderColonyLuxuryResources = registerTodo('M4d', 'orderColonyLuxuryResources');
-/**
- * Empire.4.cs 3183-3301 (2814-2932 pirate): OrderList orders = Galaxy.Orders.GetOrders(habitat) (+ the space port's),
- * CheckResourcesMeetingMinimumLevel(Luxury, num6 = habitat.CalculateMinimumLuxuryResourceLevel()), and when
- * _ControlColonyDevelopment the luxury / restricted (num7 = CalculateMinimumLuxuryResourceLevelRestricted()) CreateOrder
- * loop. `lists` is prepareColonyLuxuryResourceLists' result.
- */
-export function orderColonyLuxuryResources(galaxy: Galaxy, empire: Empire, habitat: Habitat, spacePort: BuiltObject | null, lists: unknown): void {
-    /* TODO(port) M4d */ todo(T_orderColonyLuxuryResources);
-}

@@ -198,7 +198,11 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // Moved from 2689770786790d6a by M4q (its base digest fc77d2b53feed820): InvadeUnwillingColonizationTargets draws
         // Rnd.NextDouble in each Empire.DoTasks (game start included); ground invasion, boarding, assault pods, ownership transfer.
         // Moved from 3718bd4b31a849ad: M4q merged on top of M4s2 + M4y + M4m (InvadeUnwillingColonizationTargets NextDouble per Empire.DoTasks, invasions / boarding / ownership transfer; pirate colony control wired to M4s2's model; see the M4q reason above)
-        expect(summary.digest).toBe('dea5e410d47ea503');
+        // Moved from dea5e410d47ea503 by M4z6: EvaluateColonyVariables places the colony strategic / critical / luxury orders
+        // (Empire.4.cs 2330 / 2357 / 3186, game start included), GiveTradeableItem / ProcessMessages book the PirateEconomy
+        // ledger, Creature.DamageTarget (Creature.cs 1347) damages its targets, bombardment tests PlanetaryFacilityType by
+        // value, and the StellarObject readers see Fighters' FirepowerRaw / TopSpeed.
+        expect(summary.digest).toBe('2fb83dc55600537f');
     }, 600000);
 });
 

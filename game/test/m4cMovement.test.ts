@@ -276,7 +276,10 @@ describe('harness: ships with missions move and hyperjump', () => {
             const s = start.get(b);
             expect(Number.isFinite(b.xpos) && Number.isFinite(b.ypos)).toBe(true);
             const idx = g.resolveIndex(b.xpos, b.ypos);
-            if (!b.hasBeenDestroyed) expect(g.builtObjectIndexGrid[idx.x][idx.y]).toContain(b);
+            // An unowned ship parked at an orbiting habitat follows it without an index update: BuiltObject.2.cs 450
+            // ExecuteCommands returns before UpdateIndexesForMovement when Empire == null (C# behaviour; seen from M4z6's
+            // re-pinned start, a derelict at an asteroid crossing a cell edge).
+            if (!b.hasBeenDestroyed && b.empire !== null) expect(g.builtObjectIndexGrid[idx.x][idx.y]).toContain(b);
             // (Ships built during the run — M4i DirectConstruction — have no start position.)
             if (s !== undefined && Math.hypot(b.xpos - s.x, b.ypos - s.y) > 100000) farMovers++;
         }
