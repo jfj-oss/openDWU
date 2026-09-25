@@ -9,6 +9,8 @@ import { PlanetaryFacilityType } from '../src/sim/researchSystem';
 import { PlanetaryFacility, definitionsFindFacilityByType, planetaryFacilityDefinitionsStatic } from '../src/sim/construction/facilities';
 import { inflictBombardDamage, selectRandomFacility } from '../src/sim/combat/damage';
 import { PirateColonyControl, checkColonyRevenueFromPirateControl } from '../src/sim/pirates/pirateColonyControl';
+import { Fighter, identifyLatestFighterSpecification } from '../src/sim/combat/fighters';
+import { stellarCurrentSpeed, stellarFirepowerRaw, stellarIsFunctional, stellarTopSpeed } from '../src/sim/combat/threats';
 
 let gameData: GameData;
 beforeAll(async () => {
@@ -57,6 +59,21 @@ describe('M4z6 (2) InflictBombardDamage facility types (BuiltObject.2.cs 5877-59
         expect(cap.facilities).toEqual([]);
         expect(control.hasFacilityControl).toBe(false);
         expect(control.controlLevel).toBe(Math.min(Math.fround(0.49), Math.max(Math.fround(0.01), Math.fround(Math.fround(0.8) - Math.fround(0.2)))));
+    });
+});
+
+describe('M4z6 (4) StellarObject readers on a Fighter (StellarObject.cs 37-41)', () => {
+    it('FirepowerRaw / TopSpeed / CurrentSpeed are the fighter\'s own fields; IsFunctional is never set (false)', () => {
+        const g = createTickGame(gameData).galaxy;
+        const carrier = g.builtObjects.find((b) => b !== null && b.empire === g.playerEmpire)!;
+        if (carrier.fighters === null) carrier.fighters = [];
+        const f = new Fighter(g, identifyLatestFighterSpecification(g.playerEmpire!)!, carrier);
+        expect(f.firepowerRaw).toBeGreaterThan(0);
+        expect(stellarFirepowerRaw(f)).toBe(f.firepowerRaw);
+        expect(stellarTopSpeed(f)).toBe(f.topSpeed);
+        f.currentSpeed = 12;
+        expect(stellarCurrentSpeed(f)).toBe(12);
+        expect(stellarIsFunctional(f)).toBe(false);
     });
 });
 
