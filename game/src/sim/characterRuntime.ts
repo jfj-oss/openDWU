@@ -313,18 +313,18 @@ export function countEmpiresWeHaveMet(empire: Empire): number {
 }
 
 /**
- * Empire.3.cs 823 CumulateFacilityValue1(facilityType, mustBeCompleted). The PlanetaryFacility model is M4i's: an empty
- * Habitat.facilities list sums to 0; a non-empty one throws.
+ * Empire.3.cs 823 CumulateFacilityValue1(facilityType, mustBeCompleted) with PlanetaryFacilityList.cs 243
+ * CumulateValue1ByType / 254 CumulateValue1ByTypeCompleted inlined (ported by M4z4). No Rnd.
  */
 export function cumulateFacilityValue1(empire: Empire, facilityType: PlanetaryFacilityType, mustBeCompleted: boolean): number {
-    const num = 0;
+    let num = 0;
     for (let i = 0; i < empire.colonies.length; i++) {
         const habitat = empire.colonies[i];
-        if (habitat != null && habitat.facilities !== null && habitat.facilities.length > 0) {
-            void facilityType;
-            void mustBeCompleted;
-            // TODO(port) M4i: PlanetaryFacilityList.CumulateValue1ByType / CumulateValue1ByTypeCompleted.
-            throw new Error('TODO(port) M4i: Empire.CumulateFacilityValue1 (PlanetaryFacility model)');
+        if (habitat != null && habitat.facilities !== null) {
+            const list = habitat.facilities;
+            for (let index = 0; index < list.length; ++index) {
+                if (list[index].type === facilityType && (!mustBeCompleted || list[index].constructionProgress >= 1.0)) num += list[index].value1;
+            }
         }
     }
     return num;
@@ -393,7 +393,7 @@ function averageSubRolePerColony(empire: Empire, subRole: BuiltObjectSubRole): n
  * Empire.2.cs 3071 AverageHappiness: population-weighted running mean. `double num3 = totalAmount / Math.Max(1L, num2)` is
  * a long division (0 or 1) — ported as is.
  */
-function averageHappiness(galaxy: Galaxy, empire: Empire): number {
+export function averageHappiness(galaxy: Galaxy, empire: Empire): number {
     let num = 0.0;
     let num2 = 0;
     for (let i = 0; i < empire.colonies.length; i++) {

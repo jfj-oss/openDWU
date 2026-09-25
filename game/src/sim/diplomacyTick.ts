@@ -1231,7 +1231,7 @@ function checkEmpireBuildingVictoryWonderAtKnownColony(galaxy: Galaxy, self: Emp
 }
 
 /** Galaxy.8.cs 1633 IdentifyShakturiEmpire. Galaxy.ShakturiActualRace is set only by the story (deferred) → null. */
-function identifyShakturiEmpire(galaxy: Galaxy): Empire | null {
+export function identifyShakturiEmpire(galaxy: Galaxy): Empire | null {
     void galaxy;
     return null;
 }

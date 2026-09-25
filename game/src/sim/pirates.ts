@@ -40,6 +40,7 @@
 //   GenerateStartingCharacters(base) (Galaxy.8.cs 4822): characters.ts (its own Rnd draws).
 // Only designs the faction can build are used (FindNewestCanBuild); a missing design skips that
 // group and its draws (the escort Next(0,3) is still drawn).
+import { difficultyScalingForPlayer, type VictoryConditionProgress } from './victory';
 import type { Galaxy } from './galaxy';
 import { generateStartingCharacters } from './characters';
 import { HabitatCategoryType, type Habitat, type SystemInfo } from './types';
@@ -143,13 +144,13 @@ export function pirateFactionModifiers(style: PiratePlayStyle): PirateFactionMod
     };
 }
 
-// Galaxy.cs SetEmpireDifficultyFactors (non-player branch for AI; victory-scaling
-// branch TODO) + BaconGalaxy.SetEmpireDifficultyFactors. All *Default constants are 1.0
+// Galaxy.cs 1417 SetEmpireDifficultyFactors(empire, conditionProgresses) (victory scaling: victory.ts) + BaconGalaxy.SetEmpireDifficultyFactors. All *Default constants are 1.0
 // (Galaxy.3.cs 5129-5137).
-export function setEmpireDifficultyFactors(galaxy: Galaxy, empire: Empire, galaxyDifficultyLevel: number): void {
+export function setEmpireDifficultyFactors(galaxy: Galaxy, empire: Empire, galaxyDifficultyLevel: number, conditionProgresses: VictoryConditionProgress[] | null = null): void {
     if (empire === galaxy.playerEmpire) {
         empire.difficultyLevel = galaxyDifficultyLevel + empire.difficultyLevelModifier;
-        // TODO(port): DifficultyLevelScalesAsPlayerApproachesVictory.
+        // Galaxy.cs 1423-1442 DifficultyLevelScalesAsPlayerApproachesVictory (victory.ts, M4z4).
+        difficultyScalingForPlayer(galaxy, empire, galaxyDifficultyLevel, conditionProgresses);
     } else {
         empire.difficultyLevel = 1.0 + (1.0 - Math.sqrt(galaxyDifficultyLevel));
         empire.difficultyLevel += empire.difficultyLevelModifier;

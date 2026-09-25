@@ -16,6 +16,7 @@
 //
 // Rnd: HaveRevolution (SelectSuitableGovernment, per-colony damage, disruption) draws Galaxy.Rnd; nothing else here does.
 
+import { generateVictoryConditionProgresses } from './victory';
 import type { Galaxy } from './galaxy';
 import type { Empire } from './empire';
 import type { Habitat } from './types';
@@ -771,20 +772,20 @@ export function reviewSpecialBonusesRuinsWonders(galaxy: Galaxy, empire: Empire)
 
 /**
  * Galaxy.cs 1452 ReviewEmpireDifficultyFactors → SetEmpireDifficultyFactors(empire, conditionProgresses) (pirates.ts).
- * TODO(port) deferred (victory): GenerateVictoryConditionProgresses(this, GlobalVictoryConditions, true) — only read by
- * the player branch when DifficultyLevelScalesAsPlayerApproachesVictory (see pirates.ts setEmpireDifficultyFactors).
+ * GenerateVictoryConditionProgresses (victory.ts, M4z4) is empty while Galaxy.GlobalVictoryConditions is null.
  */
 export function reviewEmpireDifficultyFactors(galaxy: Galaxy): void {
+    const conditionProgresses = generateVictoryConditionProgresses(galaxy, galaxy.globalVictoryConditions, true);
     for (let i = 0; i < galaxy.empires.length; i++) {
         const empire = galaxy.empires[i];
         if (empire != null && empire.active) {
-            setEmpireDifficultyFactors(galaxy, empire, galaxy.difficultyLevel);
+            setEmpireDifficultyFactors(galaxy, empire, galaxy.difficultyLevel, conditionProgresses);
         }
     }
     for (let j = 0; j < galaxy.pirateEmpires.length; j++) {
         const empire2 = galaxy.pirateEmpires[j];
         if (empire2 != null && empire2.active) {
-            setEmpireDifficultyFactors(galaxy, empire2, galaxy.difficultyLevel);
+            setEmpireDifficultyFactors(galaxy, empire2, galaxy.difficultyLevel, conditionProgresses);
         }
     }
 }
