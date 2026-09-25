@@ -84,8 +84,8 @@ import { galaxyColonyFillFactor } from './colonyTick';
 import { isObjectVisibleToThisEmpire } from './independentTraders';
 import { TradeableItem, TradeableItemType, processTradeDealMessage, determineAcceptGalaxyMapTrade, determineAcceptTerritoryMapTrade, isTechNode } from './tradeItems';
 import { doResearchBreakthrough, reviewDesignsBuiltObjectsImprovedComponents } from './researchTick';
-import { determineDesirePirateProtection, pirateEconomyPerformIncome } from './pirates/pirateAI';
-import { PirateIncomeType } from './pirates/pirateEconomy';
+import { determineDesirePirateProtection, pirateEconomyPerformExpense, pirateEconomyPerformIncome } from './pirates/pirateAI';
+import { PirateExpenseType, PirateIncomeType } from './pirates/pirateEconomy';
 import { acceptPirateProtection, calculatePirateProtectionPricePerMonth } from './pirates/pirateRelationsAI';
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -2329,8 +2329,6 @@ function checkCancelRestrictedResourceTrading(galaxy: Galaxy, self: Empire, othe
     }
 }
 
-const T_pirateEconomyExpense = registerTodo('M4r', 'PirateEconomy.PerformExpense (gift bookkeeping; PirateEconomy not ported)');
-
 /**
  * Empire.8.cs 1723 GiveGiftSmallWhenSufficientTimePassed (small: StateMoney / 40, PirateExpenseType.Undefined) and 1762
  * GiveGiftWhenSufficientTimePassed (StateMoney / 10, PirateExpenseType.Construction). Rnd.Next(100, num3) once the gift
@@ -2352,9 +2350,8 @@ function giveGiftWhenSufficientTimePassed(galaxy: Galaxy, self: Empire, otherEmp
         if (checkTaskAuthorized(galaxy, self, self.controlDiplomacyGifts, { value: 0 }, generateAutomationMessageDiplomaticGift(otherEmpire, val), otherEmpire, AdvisorMessageType.DiplomaticGift, null, val, null)) {
             empireMessage.money = Math.trunc(val);
             self.stateMoney -= val;
-            // TODO(port): PirateEconomy.PerformExpense(val, Undefined/Construction, date) — the PirateEconomy ledger (empire.ts
-            // placeholder class) is statistics only.
-            todo(T_pirateEconomyExpense);
+            // Empire.8.cs 1754 / 1791: PirateEconomy.PerformExpense(val, Undefined (small) / Construction, CurrentStarDate).
+            pirateEconomyPerformExpense(galaxy, self, val, small ? PirateExpenseType.Undefined : PirateExpenseType.Construction, galaxyStarDate(galaxy));
             empireMessage.description = formatText(getText('Please accept our gift of X credits'), formatThousands(val));
             sendEmpireMessage(empireMessage, otherEmpire);
         }
