@@ -5,10 +5,10 @@
 // Galaxy.4.cs 3550 GetRefactorForEmpire (+ BaconGalaxy.cs 266 RefactorValueForEmpire), 3680 ValueTerritoryMapForEmpire,
 // 3808 GiveTerritoryMap, 4377 ResolveTradeableItemsMaps, 4623 ValueGalaxyMapForEmpire.
 //
-// Not ported yet (r2 remaining, see the report): Empire.7.cs 1779 EvaluateTradeOffer, 2411 DetermineOfferedTradeItemsForTarget,
-// 2485 DetermineOfferedTradeItems, 2060 ReviewEnemyHelpEnlistment, 2205 ReviewDisputedTerritory; Galaxy.4.cs 3857
-// GiveTradeableItem, 4176-4474 ResolveTradeableItems / Diplomacy / ColoniesBases (BaconGalaxy) / PirateInfo, 3589/3607
-// colony / base values, 4519-4770 diplomacy values.
+// Also (below): Empire.7.cs 1779 EvaluateTradeOffer, 2411/2485 DetermineOfferedTradeItems*, 2060 ReviewEnemyHelpEnlistment,
+// 2205 ReviewDisputedTerritory; Galaxy.4.cs 3857 GiveTradeableItem, 4176-4406 ResolveTradeableItems*, colony / base /
+// diplomacy values. Still TODO(port): 4474 ResolveTradeableItemsPirateInfo. The player's side (trade screen, task 17e2) is
+// player/tradeNegotiation.ts.
 
 import type { Galaxy } from './galaxy';
 import type { Empire } from './empire';
