@@ -48,8 +48,10 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         expect(ra.rndDraws).toBe(rb.rndDraws);
         digest120 = stateDigest(a);
         // Moved "7e883fd654919362" → "de44201fa725100c": 17d: human player starts with C# automation defaults (Start.2.cs:2122) (2026-09-25)
+        // Moved "de44201fa725100c" → "1cc3c565afacad34": dataload: BaconSettings.txt applied at game start (BaconMain.cs 1101 ReadBaconSettings, 605-1062 BaconInitialize): installed file sets tradeEverything=true (758), HyperJumpThreshhold=4000 (606), BaseHyperJumpAccuracy=666 (610), TroopGarrisonMinimumPerColony=20 (614), useStarGravityWells=false (618), shipMarkupFactor=9 (770), allowAsteroidColonies/allowInfrastructureImprovements=true, etc.; populated independent habitats get Cargo/Troops lists (Galaxy.5.cs 1611/1751) (2026-09-25)
         expect(digest120).toMatchPin('tickDeterminism.digest120');
         // Moved 5019 → 4959: 17d: human player starts with C# automation defaults (Start.2.cs:2122) (2026-09-25)
+        // Moved 4959 → 6130: dataload: BaconSettings.txt applied at game start (BaconMain.cs 1101 ReadBaconSettings, 605-1062 BaconInitialize): installed file sets tradeEverything=true (758), HyperJumpThreshhold=4000 (606), BaseHyperJumpAccuracy=666 (610), TroopGarrisonMinimumPerColony=20 (614), useStarGravityWells=false (618), shipMarkupFactor=9 (770), allowAsteroidColonies/allowInfrastructureImprovements=true, etc.; populated independent habitats get Cargo/Troops lists (Galaxy.5.cs 1611/1751) (2026-09-25)
         expect(ra.rndDraws).toMatchPin('tickDeterminism.rndDraws120');
         expect(stateDigest(b)).toBe(digest120);
         long = a;
@@ -208,11 +210,14 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // value, and the StellarObject readers see Fighters' FirepowerRaw / TopSpeed.
         // Moved from 2fb83dc55600537f: research trading is live (Galaxy.4.cs 4310/4551 ResolveTradeableItemsResearchProjects offers projects; GiveTradeableItem / Empire.3.cs 4467 research purchase run DoResearchBreakthrough)
         // Moved "d4e45fea75fa52d8" → "a59640a37d6c8238": 17d: human player starts with C# automation defaults (Start.2.cs:2122) (2026-09-25)
+        // Moved "a59640a37d6c8238" → "7a64641af669b6b0": dataload: BaconSettings.txt applied at game start (BaconMain.cs 1101 ReadBaconSettings, 605-1062 BaconInitialize): installed file sets tradeEverything=true (758), HyperJumpThreshhold=4000 (606), BaseHyperJumpAccuracy=666 (610), TroopGarrisonMinimumPerColony=20 (614), useStarGravityWells=false (618), shipMarkupFactor=9 (770), allowAsteroidColonies/allowInfrastructureImprovements=true, etc.; populated independent habitats get Cargo/Troops lists (Galaxy.5.cs 1611/1751) (2026-09-25)
         expect(summary.digest).toMatchPin('tickDeterminism.digest600');
         // (counts and Galaxy.Rnd draws pinned with the digest, tasks/M4-plan.md §5.3.4.)
         // Moved #f1aebd5dcd → #d21f9fe281: 17d: human player starts with C# automation defaults (Start.2.cs:2122) (2026-09-25)
+        // Moved #d21f9fe281 → #0c48c52ad2: dataload: BaconSettings.txt applied at game start (BaconMain.cs 1101 ReadBaconSettings, 605-1062 BaconInitialize): installed file sets tradeEverything=true (758), HyperJumpThreshhold=4000 (606), BaseHyperJumpAccuracy=666 (610), TroopGarrisonMinimumPerColony=20 (614), useStarGravityWells=false (618), shipMarkupFactor=9 (770), allowAsteroidColonies/allowInfrastructureImprovements=true, etc.; populated independent habitats get Cargo/Troops lists (Galaxy.5.cs 1611/1751) (2026-09-25)
         expect(summary.counts).toMatchPin('tickDeterminism.counts600');
         // Moved 389082 → 384537: 17d: human player starts with C# automation defaults (Start.2.cs:2122) (2026-09-25)
+        // Moved 384537 → 529241: dataload: BaconSettings.txt applied at game start (BaconMain.cs 1101 ReadBaconSettings, 605-1062 BaconInitialize): installed file sets tradeEverything=true (758), HyperJumpThreshhold=4000 (606), BaseHyperJumpAccuracy=666 (610), TroopGarrisonMinimumPerColony=20 (614), useStarGravityWells=false (618), shipMarkupFactor=9 (770), allowAsteroidColonies/allowInfrastructureImprovements=true, etc.; populated independent habitats get Cargo/Troops lists (Galaxy.5.cs 1611/1751) (2026-09-25)
         expect(summary.rndDraws).toMatchPin('tickDeterminism.rndDraws600');
     }, 600000);
 });
