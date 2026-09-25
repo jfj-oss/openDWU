@@ -10,6 +10,7 @@ import { isHabitat, type StellarObject } from './missions/mission';
 import { creatureAttackTarget, creatureCheckForAttackers, creatureCheckForTargets, creatureCheckTargetInRange } from './events';
 import { stellarAttackers, stellarPursuers } from './combat/threats';
 import { checkEmpireHasHyperDriveTech } from './forceStructure';
+import { clearFightersTargeting } from './combat/fighters';
 
 // Port of DistantWorlds.Types.CreatureType (member order exact; byte enum).
 export enum CreatureType {
@@ -716,8 +717,7 @@ export class Creature {
         return false;
     }
 
-    // Port of Creature.cs CompleteTeardown (line 948). TODO(port): Fighter.AbandonAttackTarget / EvaluateThreats
-    // (Fighter unported; BuiltObject.fighters is always empty) and GalaxyLocation.RelatedCreatures
+    // Port of Creature.cs CompleteTeardown (line 948). TODO(port): GalaxyLocation.RelatedCreatures
     // (not modelled on the TS GalaxyLocation; only story special zones set it).
     completeTeardown(): void {
         if (this.currentTarget !== null) {
@@ -735,7 +735,8 @@ export class Creature {
                 const index3 = bo.pursuers !== null ? bo.pursuers.indexOf(this) : -1;
                 if (index3 >= 0) bo.pursuers!.splice(index3, 1);
                 if (bo.currentTarget === this) bo.currentTarget = null;
-                if (bo.fighters != null && bo.fighters.length > 0) throw new Error('TODO(port): Creature.cs CompleteTeardown fighters (Fighter.AbandonAttackTarget)');
+                // 969-982: fighters targeting this creature abandon it, re-evaluate threats, patrol (combat/fighters.ts).
+                if (bo.fighters != null && bo.fighters.length > 0) clearFightersTargeting(this.galaxy, bo, (t) => t === this);
             }
         }
         removeFrom(this.galaxy.creatures, this);

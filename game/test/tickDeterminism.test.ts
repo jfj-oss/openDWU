@@ -165,7 +165,13 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // Moved from 2689770786790d6a: tick harness now models the default age-1 start (every empire starts at Age 1,
         // "Starting": larger colonies, positive cashflow, DirectConstruction queues ships at once; see helpers/tickGame.ts).
         // Moved from 00ea05e8d2465a22: interim harness configuration after the M4x merge (age-0 empires, galaxy age 0, see test/helpers/tickGame.ts) until M4y flips it to the true age-1 default
-        expect(summary.digest).toBe('2689770786790d6a');
+        // M4p: carriers build fighters (BuildNewFighters / ManufactureRepairFighters, no Rnd) — the player's capital space
+        // port fills its fighter bays — and launch them when threats appear (LaunchFighter: Next(0, 2) + RandomHeadingOffset
+        // NextDouble); launched fighters patrol (PerformPatrol NextDouble / Next(0, 2) + RandomHeadingOffset), attack creatures
+        // near the port (DetermineHitTarget NextDouble + Next(0, 12), FighterWeapon.Fire NextDouble + Next(0, 2), InflictDamage),
+        // and ApplyLocationEffectsNEW draws in storms. Moved from 2689770786790d6a.
+        // Moved from REPIN: M4p merged on top of the interim harness configuration (fighters launch, patrol and fight; see the M4p reason above)
+        expect(summary.digest).toBe('09580cc5f62634cb');
     }, 600000);
 });
 

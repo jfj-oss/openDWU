@@ -37,6 +37,7 @@ import { Weapon, weaponsDetermineNotInSuppliedList, weaponsQuickCompareEquivalen
 import { MIN_TIME } from './tick/simTime';
 import type { BuiltObjectMission } from './missions/mission';
 import { builtObjectReDefineConstructionQueue } from './construction/constructionYard';
+import { fighterCompleteTeardown, type Fighter } from './combat/fighters';
 
 // Port of EngineType.cs (byte enum, member order exact).
 export enum EngineType {
@@ -279,7 +280,7 @@ export class BuiltObject {
     fuelType: ResourceRef | null = null;
     // BuiltObject._ManufacturingQueue (M4g, manufacturingQueue.ts; set by ReDefine).
     private _manufacturingQueue: unknown = null;
-    // TODO(port): Fighter / FighterList (Fighter.cs) — only the list is created.
+    /** BuiltObject.cs 468 Fighters (FighterList of combat/fighters.ts Fighter; typed via fightersOf). */
     fighters: unknown[] | null = null;
     fighterCapacity = 0;
     fighterRepairRate = 0;
@@ -1123,8 +1124,9 @@ export class BuiltObject {
         } else if (this.fighters !== null && this.fighters.length <= 0) {
             this.fighters = null;
         } else if (this.fighters !== null && this.fighters.length > 0) {
-            // TODO(port): Fighter.CompleteTeardown(_Galaxy) for each fighter (Fighter.cs).
-            throw new Error('TODO(port): Fighter.CompleteTeardown');
+            // 2901-2906: tear down every fighter of a copy of the list (Fighter.cs 448 CompleteTeardown, M4p).
+            const fighterList = [...this.fighters];
+            for (let m = 0; m < fighterList.length; m++) fighterCompleteTeardown(this._galaxy, fighterList[m] as Fighter);
         }
         const actualEmpireForCargo = this.actualEmpire;
         if (this.parentHabitat !== null && this.role === BuiltObjectRole.Base && this.parentHabitat.population.items.length > 0 && this.parentHabitat.empire === actualEmpireForCargo) {
@@ -1471,6 +1473,8 @@ export class BuiltObject {
     /** BuiltObject.CareerBattleStats (SpaceBattleStats, combat/damage.ts; null until BaconSpaceBattleStats.AddLatestCombatStats). */
     careerBattleStats: unknown = null;
     // ---- M4p fields (fighters) ----
+    /** BuiltObject.cs 554 _FighterFiringCounter (short; FireAtNearbyFighters). */
+    fighterFiringCounter = 0;
     // ---- M4q fields (boarding, troops, capture) ----
     // ---- M4r fields (diplomacy) ----
     // ---- M4s fields (pirates) ----

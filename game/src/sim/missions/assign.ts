@@ -21,6 +21,7 @@ import { startNewBattleStats } from '../combat/damage';
 import { implementBlockade } from '../fleets/militaryAI';
 import { assignRetrofitMission, determineHabitatsBeingMinedIncludingBuildingMiningStations, determineHabitatsWithBasesIncludingBuilding } from '../construction/empireConstruction';
 import { checkForPlanetDestroyerWeaponFiringDelayOnHyperExit } from '../combat/weapons';
+import { isFighter } from '../combat/fighters';
 import {
     BuiltObjectMission,
     BuiltObjectMissionPriority,
@@ -152,8 +153,11 @@ export function assignMission(galaxy: Galaxy, bo: BuiltObject, missionType: Buil
             if (pursuers !== null && !pursuers.includes(bo)) {
                 pursuers.push(bo);
             }
+        } else if (isFighter(target)) {
+            // 7681-7688 (M4p): a Fighter target (only a player order can make one a mission target).
+            const pursuers = target.pursuers;
+            if (!pursuers.includes(bo)) pursuers.push(bo);
         }
-        // TODO(port) M4p: `target is Fighter` → fighter.Pursuers.Add(this) (Fighter is not a MissionTarget yet).
     }
     // 7690-7693
     if (missionType === BuiltObjectMissionType.Refuel && target !== null && (isBuiltObject(target) || isHabitat(target) || isCreature(target))) {

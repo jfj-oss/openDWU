@@ -20,6 +20,7 @@ import { CharacterDeathType, characterSendDeathMessage } from '../characterRunti
 import { galaxyNow } from '../tick/simTime';
 import { stellarAttackers, stellarPursuers } from './threats';
 import { inflictDamageFull, type FighterLike } from './damage';
+import { clearFightersTargeting, fighterTargetEmpire } from './fighters';
 import { checkForPlanetDestroyerWeaponFiringDelayOnHyperExit } from './weapons';
 import { updatePosition } from '../movement';
 
@@ -57,7 +58,7 @@ function removeFirst(list: unknown[] | null, item: unknown): void {
 
 /**
  * BuiltObject.2.cs 5562 ClearAllMissionsForTarget(builtObject, Empire target, missionType, dropOutOfHyperspace).
- * TODO(port) M4p: the Fighters loop (AbandonAttackTarget / EvaluateThreats / MissionType = Patrol) — no fighters exist yet.
+ * The Fighters loop (AbandonAttackTarget / EvaluateThreats / MissionType = Patrol) is combat/fighters.ts clearFightersTargeting.
  */
 export function clearAllMissionsForTargetEmpire(galaxy: Galaxy, self: BuiltObject, builtObject: BuiltObject, target: Empire | null, missionType: BuiltObjectMissionType, dropOutOfHyperspace: boolean): void {
     void self;
@@ -98,7 +99,8 @@ export function clearAllMissionsForTargetEmpire(galaxy: Galaxy, self: BuiltObjec
     }
     for (let j = 0; j < builtObjectMissionList.length; j++) removeFirst(subsequentMissions, builtObjectMissionList[j]);
     if (builtObject.fighters === null || builtObject.fighters.length <= 0) return;
-    // TODO(port) M4p: Fighter.AbandonAttackTarget / EvaluateThreats / MissionType (Fighter.cs 1992 / 518).
+    // 5618-5629 (M4p): fighters targeting the empire abandon, re-evaluate threats, patrol.
+    clearFightersTargeting(galaxy, builtObject, (t) => fighterTargetEmpire(t) === target);
 }
 
 /** BuiltObject.2.cs 5635 ClearAllMissionsForTarget(builtObject, BuiltObject target) = (…, Undefined, dropOutOfHyperspace: false). */
@@ -108,7 +110,7 @@ export function clearAllMissionsForTarget(galaxy: Galaxy, self: BuiltObject, bui
 
 /**
  * BuiltObject.2.cs 5640 ClearAllMissionsForTarget(builtObject, BuiltObject target, missionType, dropOutOfHyperspace).
- * TODO(port) M4p: the Fighters loop (AbandonAttackTarget / EvaluateThreats / MissionType = Patrol) — no fighters exist yet.
+ * The Fighters loop (AbandonAttackTarget / EvaluateThreats / MissionType = Patrol) is combat/fighters.ts clearFightersTargeting.
  */
 export function clearAllMissionsForTargetBuiltObject(galaxy: Galaxy, self: BuiltObject, builtObject: BuiltObject | null, target: BuiltObject, missionType: BuiltObjectMissionType, dropOutOfHyperspace: boolean): void {
     void self;
@@ -165,7 +167,8 @@ export function clearAllMissionsForTargetBuiltObject(galaxy: Galaxy, self: Built
     }
     const fighters = builtObject.fighters;
     if (fighters === null || fighters.length <= 0) return;
-    // TODO(port) M4p: Fighter.AbandonAttackTarget / EvaluateThreats / MissionType (Fighter.cs 1992 / 518).
+    // 5731-5742 (M4p): fighters targeting `target` abandon, re-evaluate threats, patrol.
+    clearFightersTargeting(galaxy, builtObject, (t) => t === target);
 }
 
 /**

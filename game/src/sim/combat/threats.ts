@@ -44,6 +44,7 @@ import { startNewShipGroupBattleStats } from './damage';
 import { shipGroupAssignMission, shipGroupCompleteMission, shipGroupTotalOverallStrengthFactor, type ShipGroup } from '../fleets/shipGroup';
 import { withinFuelRange, withinFuelRangeAndRefuel } from '../movement';
 import { checkColonyShipMissionCancelled, determineDestroyOrCaptureTarget, shouldAttack } from './attackAI';
+import { determineThreatLevelFighter, isFighter, type Fighter } from './fighters';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Galaxy constants (Galaxy.3.cs static ctor 4971-5055)
@@ -445,7 +446,7 @@ export function determineThreatLevelCreature(galaxy: Galaxy, creature: Creature,
 }
 
 /** Galaxy.7.cs 3425 DetermineThreatLevel(StellarObject threat, object target) (the public 2-argument form). */
-export function determineThreatLevel(galaxy: Galaxy, threat: StellarObject, target: ThreatTarget): number {
+export function determineThreatLevel(galaxy: Galaxy, threat: StellarObject | Fighter, target: ThreatTarget): number {
     let num = -1.0;
     let num2 = -1.0;
     let num3: number = THREAT_RANGE;
@@ -494,7 +495,10 @@ export function determineThreatLevel(galaxy: Galaxy, threat: StellarObject, targ
     if (isBuiltObject(threat)) {
         return determineThreatLevelBuiltObject(galaxy, threat, target, empire, Math.trunc(num), Math.trunc(num2), scanRangeSquared);
     }
-    // 3486: `threat is Fighter` → DetermineThreatLevel(Fighter …) — Fighters are M4p (not a StellarObject here).
+    // 3495: `threat is Fighter` → DetermineThreatLevel(Fighter …) (M4p, combat/fighters.ts).
+    if (isFighter(threat)) {
+        return determineThreatLevelFighter(galaxy, threat, target, empire, Math.trunc(num), Math.trunc(num2), scanRangeSquared);
+    }
     if (isCreature(threat)) {
         return determineThreatLevelCreature(galaxy, threat, target, empire, Math.trunc(num), Math.trunc(num2), scanRangeSquared);
     }

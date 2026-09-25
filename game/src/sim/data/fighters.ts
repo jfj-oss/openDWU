@@ -56,14 +56,14 @@ export function parseFighters(text: string): Fighter[] {
         const fighterId = parseInt(parts[0], 10);
         const name = parts[1];
         const type = parseInt(parts[2], 10);
-        const techLevel = parseInt(parts[3], 10);
+        const techLevel = parseFloat(parts[3]); // double
 
         const energyCapacity = parseInt(parts[4], 10);
-        const energyRechargeRate = parseInt(parts[5], 10);
+        const energyRechargeRate = parseFloat(parts[5]); // float
 
         const topSpeed = parseInt(parts[6], 10);
-        const topSpeedEnergyConsumptionRate = parseInt(parts[7], 10);
-        const accelerationRate = parseInt(parts[8], 10);
+        const topSpeedEnergyConsumptionRate = parseFloat(parts[7]); // float
+        const accelerationRate = parseFloat(parts[8]); // float
         const turnRate = parseFloat(parts[9]);
         const engineExhaustImageIndex = parseInt(parts[10], 10);
 
