@@ -485,6 +485,10 @@ export class Habitat {
     destroyedAsteroidFieldGenerated = false;
     // ---- M4p fields (fighters) ----
     // ---- M4q fields (invasion, troops) ----
+    /** Habitat.cs InvasionStats (combat/invasion.ts InvasionStats; null outside an invasion). */
+    invasionStats: unknown = null;
+    /** StellarObject.RaidCountdown (byte; set to 60 by a successful raid, counted down by UpdateRaidCountdown, M4s). */
+    raidCountdown = 0;
     /** Habitat.ColonyInvasion (ColonyInvasion.cs; null = no invasion in progress). */
     colonyInvasion: unknown = null;
     /** Habitat.cs 194/197 InvasionSpaceControlStrengthDefenders / Attackers = -1. */

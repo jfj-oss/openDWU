@@ -4434,6 +4434,9 @@ export class Galaxy {
     baconShipsToBeDestroyed = new Map<string, Cargo[]>();
     // ---- M4p fields (fighters) ----
     // ---- M4q fields (invasion, troops, boarding) ----
+    /** Galaxy.cs 599 / 601 InvasionSuccesses / InvasionFailures (ResolveInvasionBattles counters). */
+    invasionSuccesses = 0;
+    invasionFailures = 0;
     // ---- M4r fields (diplomacy runtime) ----
     /**
      * Galaxy.cs 1034 AggressionLevel (_AggressionLevel, Galaxy.4.cs 2151 ctor argument; default 1.0). Read by the

@@ -153,6 +153,18 @@ export class EmpireCounters {
     // EmpireCounters.cs 90-91 (M4s: CompletePirateMission, pirates/missionsMarket.ts).
     completedPirateMissionAttackCount = 0;
     completedPirateMissionDefendCount = 0;
+    // EmpireCounters.cs 44 / 59-66 / 88 / 95 (M4q: ProcessColonyConquest, ProcessBoardingAssault, DoRaidBonuses).
+    coloniesConqueredCount = 0;
+    lossesColoniesTotalCount = 0;
+    lossesColoniesPopulationAmount = 0; // long
+    lossesColoniesContinentalCount = 0;
+    lossesColoniesMarshySwampCount = 0;
+    lossesColoniesOceanCount = 0;
+    lossesColoniesDesertCount = 0;
+    lossesColoniesIceCount = 0;
+    lossesColoniesVolcanicCount = 0;
+    captureShipCount = 0;
+    raidSuccessCount = 0;
     constructor(empire: Empire) {
         this._empire = empire;
     }
@@ -1836,6 +1848,8 @@ export class Empire {
     // Empire.cs 101 RaceEventType (read by DetermineHitTarget, PredictiveHistory +20 targeting): declared in the M4u block.
     // ---- M4p fields (fighters) ----
     // ---- M4q fields (invasion, troops) ----
+    /** Empire.cs 204 DiscoveryActionAbandonedShipBase (GameOptions; 0 = prompt the player). */
+    discoveryActionAbandonedShipBase = 0;
     // ---- M4r fields (diplomacy runtime) ----
     /** Empire.cs 402 _RelativeEmpireSize (CalculateRelativeEmpireSize; added by M4a for the tick's assignment). */
     relativeEmpireSize = 0;

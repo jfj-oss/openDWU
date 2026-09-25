@@ -578,11 +578,54 @@ export function assignQueuedMission(galaxy: Galaxy, ship: BuiltObject, allowRepr
 
 // ---- stub added by M4u (Habitat.cs 7685 CompleteTeardown) ----
 
-const T_clearAllMissionsForTargetHabitat = registerTodo('M4b', 'clearAllMissionsForTargetHabitat');
 /**
- * BuiltObject.2.cs 5751 ClearAllMissionsForTarget(builtObject, habitatTarget, missionType, dropOutOfHyperspace): clears the
- * built object's mission / subsequent missions / fleet missions aimed at the habitat — stub.
+ * BuiltObject.2.cs 5751 ClearAllMissionsForTarget(builtObject, Habitat target, missionType, dropOutOfHyperspace) (5746:
+ * Undefined, false). Ported by M4q (invasion / ownership transfer cancels attacks on a colony). No Rnd. `bo` is the C#
+ * `this` (the hyper-exit check runs on it, as in the C#).
  */
-export function clearAllMissionsForTargetHabitat(galaxy: Galaxy, bo: BuiltObject, builtObject: BuiltObject, target: import('../types').Habitat, missionType: BuiltObjectMissionType, dropOutOfHyperspace: boolean): void {
-    /* TODO(port) M4b */ todo(T_clearAllMissionsForTargetHabitat);
+export function clearAllMissionsForTargetHabitat(galaxy: Galaxy, bo: BuiltObject, builtObject: BuiltObject | null, target: import('../types').Habitat, missionType: BuiltObjectMissionType, dropOutOfHyperspace: boolean): void {
+    if (builtObject === null) {
+        return;
+    }
+    const mission = builtObject.mission as BuiltObjectMission | null;
+    if (mission !== null && (missionType === BuiltObjectMissionType.Undefined || mission.type === missionType)) {
+        if (mission.targetHabitat !== null && mission.targetHabitat === target) {
+            clearPreviousMissionRequirements(galaxy, builtObject);
+            if (dropOutOfHyperspace && builtObject.currentSpeed > Math.fround(builtObject.topSpeed)) {
+                builtObject.currentSpeed = builtObject.cruiseSpeed;
+                builtObject.targetSpeed = builtObject.cruiseSpeed;
+                checkForPlanetDestroyerWeaponFiringDelayOnHyperExit(galaxy, bo, galaxy.nowMs);
+            }
+        }
+        if (mission.secondaryTargetHabitat !== null && mission.secondaryTargetHabitat === target) {
+            clearPreviousMissionRequirements(galaxy, builtObject);
+            if (dropOutOfHyperspace && builtObject.currentSpeed > Math.fround(builtObject.topSpeed)) {
+                builtObject.currentSpeed = builtObject.cruiseSpeed;
+                builtObject.targetSpeed = builtObject.cruiseSpeed;
+                checkForPlanetDestroyerWeaponFiringDelayOnHyperExit(galaxy, bo, galaxy.nowMs);
+            }
+        }
+    }
+    const subsequentMissions = builtObject.subsequentMissions as BuiltObjectMission[];
+    let builtObjectMissionList: BuiltObjectMission[] | null = null;
+    for (let i = 0; i < subsequentMissions.length; i++) {
+        const m = subsequentMissions[i];
+        if (m == null || (missionType !== BuiltObjectMissionType.Undefined && m.type !== missionType)) {
+            continue;
+        }
+        if (m.targetHabitat !== null && m.targetHabitat === target) {
+            if (builtObjectMissionList === null) builtObjectMissionList = [];
+            builtObjectMissionList.push(m);
+        }
+        if (m.secondaryTargetHabitat !== null && m.secondaryTargetHabitat === target) {
+            if (builtObjectMissionList === null) builtObjectMissionList = [];
+            builtObjectMissionList.push(m);
+        }
+    }
+    if (builtObjectMissionList !== null) {
+        for (let j = 0; j < builtObjectMissionList.length; j++) {
+            const idx = subsequentMissions.indexOf(builtObjectMissionList[j]);
+            if (idx >= 0) subsequentMissions.splice(idx, 1);
+        }
+    }
 }

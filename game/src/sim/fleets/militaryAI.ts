@@ -257,3 +257,32 @@ export function ensureSingleStellarObjectPerSystem(galaxy: Galaxy, stellarObject
     /* TODO(port) M4m */ todo(T_ensureSingleStellarObjectPerSystem);
     return stellarObjects;
 }
+
+// ---- stub added by M4q (Empire.4.cs 4449 InvadeUnwillingColonizationTargets) ----
+
+const T_findNearestAvailableFleet = registerTodo('M4m', 'findNearestAvailableFleet');
+/**
+ * Empire.9.cs 1457-1492 FindNearestAvailableFleet(x, y, maximumPriority, overallStrength, posture[, mustBeWithinFuelRange,
+ * fuelPortionMargin, mustBeAutomated, shouldBeSmallFleet, gatherPointMustBeBlank, mustBeWithinPostureRange,
+ * minimumTroopStrength, minimumBoardingStrength]) — stub: null (no fleet). No Rnd in the C#.
+ */
+export function findNearestAvailableFleet(
+    galaxy: Galaxy,
+    empire: Empire,
+    x: number,
+    y: number,
+    maximumPriority: number,
+    overallStrength: number,
+    posture: number,
+    mustBeWithinFuelRange = false,
+    fuelPortionMargin = 0.0,
+    mustBeAutomated = false,
+    shouldBeSmallFleet = false,
+    gatherPointMustBeBlank = false,
+    mustBeWithinPostureRange = false,
+    minimumTroopStrength = 0,
+    minimumBoardingStrength = 0,
+): ShipGroup | null {
+    /* TODO(port) M4m */ todo(T_findNearestAvailableFleet);
+    return null;
+}
