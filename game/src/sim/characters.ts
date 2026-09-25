@@ -69,6 +69,7 @@ import { Empire as EmpireClass } from './empire';
 import { Creature } from './creature';
 import { Troop, TroopType } from './cargo';
 import { EmpireMessageType, resolveDescription, sendMessageToEmpire } from './messages';
+import { INTELLIGENCE_MISSION, resolveEnumTextDescription } from './enumText';
 import { ComponentType } from './data/components';
 import { ComponentCategoryType } from './data/policies';
 import { PlanetaryFacilityType, ResearchAbilityType, nodeCategory, nodeIndustry, resolveComponentType, resolveResearchAbilityType, type TechNode } from './researchSystem';
@@ -5273,7 +5274,7 @@ function characterText(key: string, ...args: unknown[]): string {
     return args.length > 0 ? `${key}|${args.map((a) => String(a)).join('|')}` : key;
 }
 
-/** Galaxy.ResolveDescription(enum) stand-in (messages.ts resolveDescription). */
+/** Galaxy.2.cs ResolveDescription(enum) (messages.ts resolveDescription). */
 function rdRole(role: CharacterRole): string {
     return resolveDescription(CharacterRole, role);
 }
@@ -5285,8 +5286,9 @@ function rdSkill(skill: CharacterSkillType): string {
 }
 /** IntelligenceMissionType names (IntelligenceMissionType.cs) for ResolveDescription(intelligenceMission.Type). */
 const INTELLIGENCE_MISSION_TYPE_NAMES = ['Undefined', 'SabotageConstruction', 'StealGalaxyMap', 'StealOperationsMap', 'StealTechData', 'SabotageColony', 'DeepCover', 'InciteRevolution', 'CounterIntelligence', 'StealTerritoryMap', 'AssassinateCharacter', 'DestroyBase'];
+/** Galaxy.2.cs 2591 ResolveDescription(IntelligenceMissionType). */
 function rdMissionType(type: number): string {
-    return INTELLIGENCE_MISSION_TYPE_NAMES[type] ?? String(type);
+    return resolveEnumTextDescription(INTELLIGENCE_MISSION, INTELLIGENCE_MISSION_TYPE_NAMES[type]);
 }
 
 /** C# `eventData is BuiltObject` / `is Habitat` / `is Empire` / `is StellarObject`. */
