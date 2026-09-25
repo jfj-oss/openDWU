@@ -423,6 +423,8 @@ export class Habitat {
     // ---- M4d fields (orders, colony supply) ----
     // ---- M4e fields (docking) ----
     // ---- M4f fields (civilian mission AI) ----
+    /** Habitat.cs CurrentDefensiveForceAssigned (int; reset and summed by AssignShipMissions, Empire.4.cs 4798-4815). */
+    currentDefensiveForceAssigned = 0;
     // ---- M4g fields (extraction, industry) ----
     /** Habitat.cs 1033/1045/1057 _SolarRadiation / _XrayRadiation / _MicrowaveRadiation (byte; set on stars and gas clouds at generation, read by BuiltObject.IndustrialProcessing). */
     solarRadiation = 0;

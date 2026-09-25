@@ -57,3 +57,11 @@ export function thisYearsPrivateFuelCosts(galaxy: Galaxy, empire: Empire): numbe
     /* TODO(port) M4e */ todo(T_thisYearsPrivateFuelCosts);
     return 0.0;
 }
+
+// ---- stub added by M4f (called from civilianAI.ts AssignMissionToBuiltObject, Empire.5.cs 1445) ----
+
+const T_setupRefuelling = registerTodo('M4e', 'setupRefuelling');
+/** BuiltObject.cs 4774 SetupRefuelling() — stub: no refuel mission assigned (the C# assigns a Refuel mission or an order). */
+export function setupRefuelling(galaxy: Galaxy, builtObject: BuiltObject): void {
+    /* TODO(port) M4e */ todo(T_setupRefuelling);
+}

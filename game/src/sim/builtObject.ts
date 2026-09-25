@@ -33,6 +33,7 @@ import { redefineBuiltObjectManufacturingQueue, type ManufacturingQueue } from '
 import { PIRATE_SHIP_MAINTENANCE_FACTOR, SHIP_MAINTENANCE_COST_PER_SIZE_UNIT } from './forceStructure';
 import { Weapon, weaponsDetermineNotInSuppliedList, weaponsQuickCompareEquivalent, weaponsRemoveAndResetFirstMatchingWeaponById } from './weapon';
 import { MIN_TIME } from './tick/simTime';
+import { updatePosition } from './movement';
 import type { BuiltObjectMission } from './missions/mission';
 import { builtObjectReDefineConstructionQueue } from './construction/constructionYard';
 
@@ -1245,9 +1246,9 @@ export class BuiltObject {
         if (this.currentSpeed > this.topSpeed || this.targetSpeed > this.topSpeed || this.preferredSpeed > this.topSpeed) {
             this.targetSpeed = this.topSpeed;
             this.preferredSpeed = this.topSpeed;
-            // TODO(port): UpdatePosition() (BuiltObject movement) — unreachable for a new
-            // ship (CurrentSpeed / TargetSpeed / PreferredSpeed are 0, TopSpeed >= 0).
-            throw new Error('TODO(port): BuiltObject.UpdatePosition');
+            // BuiltObject.cs 3101 UpdatePosition() (M4c movement.ts): reached when a retrofit / component review lowers
+            // TopSpeed below the current speed of a moving ship.
+            updatePosition(this._galaxy, this);
         }
         if (this.minimumWeaponsRange >= 100000) this.minimumWeaponsRange = 0;
         if (this.beamWeaponsMinRange >= 100000) this.beamWeaponsMinRange = 0;

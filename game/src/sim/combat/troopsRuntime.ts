@@ -64,3 +64,28 @@ const T_baconHabitatHandlePrisoners = registerTodo('M4q', 'baconHabitatHandlePri
 export function baconHabitatHandlePrisoners(galaxy: Galaxy, habitat: Habitat, isPlayer: boolean): void {
     /* TODO(port) M4q */ todo(T_baconHabitatHandlePrisoners);
 }
+
+// ---- stub added by M4f (called from civilianAI.ts AssignMissionToBuiltObject, Empire.5.cs 1694/1874) ----
+
+const T_assignLoadTroopsMission = registerTodo('M4q', 'assignLoadTroopsMission');
+/** Empire.5.cs 808 AssignLoadTroopsMission(ship) → 823 (colony null, queueMission false, enforceMinimumTroopLimits true) — stub: false. */
+export function assignLoadTroopsMission(galaxy: Galaxy, empire: Empire, ship: BuiltObject): boolean {
+    /* TODO(port) M4q */ todo(T_assignLoadTroopsMission);
+    return false;
+}
+
+// ---- stubs added by M4f (called from civilianAI.ts AssignMissionToBuiltObject, Empire.5.cs 1879-1880) ----
+
+const T_checkAssignUnloadTroopsAtColonyNeedingThemMissionShip = registerTodo('M4q', 'checkAssignUnloadTroopsAtColonyNeedingThemMissionShip');
+/** Empire.5.cs 727 CheckAssignUnloadTroopsAtColonyNeedingThemMission(ship) (single-ship overload) — stub: false. */
+export function checkAssignUnloadTroopsAtColonyNeedingThemMissionShip(galaxy: Galaxy, empire: Empire, ship: BuiltObject): boolean {
+    /* TODO(port) M4q */ todo(T_checkAssignUnloadTroopsAtColonyNeedingThemMissionShip);
+    return false;
+}
+
+const T_checkAssignGarrisonTroopsAtPenalColonyMission = registerTodo('M4q', 'checkAssignGarrisonTroopsAtPenalColonyMission');
+/** Empire.5.cs 782 CheckAssignGarrisonTroopsAtPenalColonyMission(ship) — stub: false. */
+export function checkAssignGarrisonTroopsAtPenalColonyMission(galaxy: Galaxy, empire: Empire, ship: BuiltObject): boolean {
+    /* TODO(port) M4q */ todo(T_checkAssignGarrisonTroopsAtPenalColonyMission);
+    return false;
+}

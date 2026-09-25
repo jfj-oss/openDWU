@@ -35,6 +35,7 @@ import { loadDesignSpecification as loadDesignSpecificationData, type DesignSpec
 import { EmpireVisibility, SystemVisibilityStatus, type SystemVisibility, type VisibilityOwner, type VisibilityUnit } from './visibility';
 import type { ForceStructureProjectionList } from './forceStructureProjection';
 import type { HabitatPrioritization } from './resourceTargets';
+import type { ColonizationTarget, PrioritizedTarget } from './civilianAI';
 import { PirateRelationList, PirateRelationType, obtainPirateRelation, changePirateRelation, galaxyCurrentStarDate } from './pirateRelations';
 import { recalculateDevelopmentLevelBaseline } from './developmentLevel';
 import { recalculateColonyInfluenceRadius } from './territory';
@@ -243,7 +244,8 @@ export class Empire {
     knownPirateEmpires: Empire[] = [];
     // Empire.cs 493: public PirateRelationList PirateRelations (pirateRelations.ts).
     pirateRelations = new PirateRelationList();
-    colonizationTargets: { habitat: Habitat; priority: number }[] = [];
+    /** Empire.cs _ColonizationTargets (HabitatPrioritizationList; M4f IdentifyColonizationTargets, pirates: ReviewColoniesToControl). */
+    colonizationTargets: ColonizationTarget[] = [];
     // Galaxy.SetEmpireDifficultyFactors (pirates.ts setEmpireDifficultyFactors).
     difficultyLevel = 1.0;
     // Empire._BaseMaximumConstructionSize / _CanBuildCarriers / _CanBuildResupplyShips /
@@ -1526,6 +1528,22 @@ export class Empire {
     empireOrderCount = 0;
     // ---- M4e fields (docking, refuelling) ----
     // ---- M4f fields (civilian mission AI) ----
+    /** Empire.cs 310-322 _ResettleSources / _MigrationDestinations / _MigrationSources / _TourismDestinations / _TourismSources / _ResortBaseBuildLocations (PrioritizedTargetList; rebuilt by ReviewMigrationTourism, Empire.5.cs 3128). */
+    resettleSources: PrioritizedTarget[] = [];
+    migrationDestinations: PrioritizedTarget[] = [];
+    migrationSources: PrioritizedTarget[] = [];
+    tourismDestinations: PrioritizedTarget[] = [];
+    tourismSources: PrioritizedTarget[] = [];
+    resortBaseBuildLocations: PrioritizedTarget[] = [];
+    /** Empire.cs _SystemScouts (BuiltObjectList; null until the first exploration-ship assignment creates it, Empire.5.cs 2711). */
+    systemScouts: BuiltObject[] | null = null;
+    /** Empire.cs 113 _DangerousHabitats (HabitatList; filled at Empire.4.cs 4741-4745 by the system-threat review, M4m). */
+    dangerousHabitats: Habitat[] = [];
+    /** Empire.cs _IndependentColonyTargets (HabitatPrioritizationList; ReviewIndependentColonyTargets, Empire.5.cs 1298). */
+    independentColonyTargets: HabitatPrioritization[] = [];
+    /** Empire.cs _MonitoringHabitats / _MonitoringPoints (HabitatList / List<Point>; DetermineMonitoringStationLocation, Empire.5.cs 3769, M4i). */
+    monitoringHabitats: Habitat[] = [];
+    monitoringPoints: { x: number; y: number }[] = [];
     // ---- M4g fields (extraction, industry) ----
     /** Empire.cs 122 _EmpireResourceTargets (PrioritizeEmpireResourceNeeds; added by M4a for the tick's assignment). */
     empireResourceTargets: HabitatPrioritization[] = [];

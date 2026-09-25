@@ -274,7 +274,7 @@ export function determineHabitatsBuildingMiningStations(empire: Empire): Habitat
 }
 
 // Empire.9.cs CheckWhetherHabitatIsDangerous (4035).
-function checkWhetherHabitatIsDangerous(galaxy: Galaxy, _empire: Empire, habitat: Habitat): boolean {
+export function checkWhetherHabitatIsDangerous(galaxy: Galaxy, _empire: Empire, habitat: Habitat): boolean {
     const habitat2 = galaxy.determineHabitatSystemStar(habitat);
     // TODO(port): SystemVisibility[].Threats (pirate military ships/bases seen in the
     // system, ReviewSystemThreats) — empty at game start.

@@ -164,3 +164,11 @@ export function determineDesirePirateProtection(galaxy: Galaxy, empire: Empire, 
     /* TODO(port) M4s2 */ todo(T_determineDesirePirateProtection);
     return true;
 }
+
+// ---- stub added by M4f (called from missions/cmdReassign.ts, BuiltObject.2.cs 4017/4077/4126/4203/4219) ----
+
+const T_pirateAssignShipMission = registerTodo('M4s', 'pirateAssignShipMission');
+/** Empire.1.cs 4385-5505 PirateAssignShipMission(ship, starDate) (single-ship overload) — stub. RND: draws in the body — not drawn until M4s2. */
+export function pirateAssignShipMission(galaxy: Galaxy, empire: Empire, ship: BuiltObject, starDate: number): void {
+    /* TODO(port) M4s2 */ todo(T_pirateAssignShipMission);
+}

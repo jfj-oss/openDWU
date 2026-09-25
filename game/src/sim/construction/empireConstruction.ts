@@ -11,6 +11,7 @@ import type { BuiltObject } from '../builtObject';
 import type { Habitat } from '../types';
 import type { BuiltObjectSubRole } from '../builtObjectTypes';
 import { registerTodo, todo } from '../tick/todo';
+import { CargoList } from '../cargo';
 
 const T_reviewDesignsAndRetrofit = registerTodo('M4i', 'reviewDesignsAndRetrofit');
 /** Empire.1.cs 3403 ReviewDesignsAndRetrofit. */
@@ -56,9 +57,10 @@ export function determineMonitoringStationLocation(galaxy: Galaxy, empire: Empir
 // ---- stubs added by M4b (called from missions/assign.ts) ----
 
 const T_assignRetrofitMission = registerTodo('M4i', 'assignRetrofitMission');
-/** Empire.5.cs 126 AssignRetrofitMission(ship) — stub. */
-export function assignRetrofitMission(galaxy: Galaxy, empire: Empire, ship: BuiltObject): void {
+/** Empire.5.cs 126 AssignRetrofitMission(ship) → bool — stub: false (no retrofit mission assigned). */
+export function assignRetrofitMission(galaxy: Galaxy, empire: Empire, ship: BuiltObject): boolean {
     /* TODO(port) M4i */ todo(T_assignRetrofitMission);
+    return false;
 }
 
 const T_determineHabitatsWithBasesIncludingBuilding = registerTodo('M4i', 'determineHabitatsWithBasesIncludingBuilding');
@@ -85,4 +87,31 @@ const T_obtainBuildResourcesForConstructionShip = registerTodo('M4i', 'obtainBui
  */
 export function obtainBuildResourcesForConstructionShip(galaxy: Galaxy, empire: Empire, constructionShip: BuiltObject, newBuiltObject: BuiltObject): void {
     /* TODO(port) M4i */ todo(T_obtainBuildResourcesForConstructionShip);
+}
+
+// ---- stubs added by M4f (called from civilianAI.ts AssignMissionToBuiltObject / DirectPrivateConstruction) ----
+
+const T_assignScrapMission = registerTodo('M4i', 'assignScrapMission');
+/** Empire.6.cs 488 AssignScrapMission(builtObject) — stub: false (no retire mission; the C# tears down / assigns Retire). */
+export function assignScrapMission(galaxy: Galaxy, empire: Empire, builtObject: BuiltObject): boolean {
+    /* TODO(port) M4i */ todo(T_assignScrapMission);
+    return false;
+}
+
+const T_assignRepairMission = registerTodo('M4i', 'assignRepairMission');
+/** Empire.4.cs 4863 AssignRepairMission(builtObject) (FindNearestShipYard + ProcureConstructionComponents + Repair mission) — stub: false. */
+export function assignRepairMission(galaxy: Galaxy, empire: Empire, builtObject: BuiltObject): boolean {
+    /* TODO(port) M4i */ todo(T_assignRepairMission);
+    return false;
+}
+
+const T_procureConstructionComponents = registerTodo('M4i', 'procureConstructionComponents');
+/**
+ * Empire.6.cs 855 ProcureConstructionComponents(builtObjectToBuild, constructionYard, orderPreciseResourceAmounts, out resourcesToOrder):
+ * reserves yard cargo per unbuilt component and queues the rest on the yard's ManufacturingQueue.ComponentWaitQueue — stub:
+ * nothing reserved/queued, empty resourcesToOrder.
+ */
+export function procureConstructionComponents(galaxy: Galaxy, empire: Empire, builtObjectToBuild: BuiltObject, constructionYard: BuiltObject, orderPreciseResourceAmounts: boolean): CargoList {
+    /* TODO(port) M4i */ todo(T_procureConstructionComponents);
+    return new CargoList();
 }

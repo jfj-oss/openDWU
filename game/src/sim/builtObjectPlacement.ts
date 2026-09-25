@@ -27,6 +27,7 @@
 //   Escort / Frigate / Destroyer / TroopTransport and the first Cruiser / CapitalShip of a
 //   design use "<design name> 001" / "<design name>" — no Rnd.
 
+import { assignMissionsToBuiltObjectList as civilianAssignMissionsToBuiltObjectList } from './civilianAI';
 import { BuiltObject } from './builtObject';
 import { BuiltObjectSubRole } from './builtObjectTypes';
 import { Troop, TroopType } from './cargo';
@@ -226,26 +227,10 @@ export function fillShipsWithTroops(galaxy: Galaxy, empire: Empire): void {
 }
 
 /**
- * Empire.5.cs AssignMissionsToBuiltObjectList(builtObjectList, atWar, patrolMiningStations)
- * (1361) → AssignMissionToBuiltObject (1370) per ship. Called by Start.2.cs 1373-1374 right
- * after FillShipsWithTroops for the state and the private list.
- *
- * TODO(port): missions (BuiltObjectMission, ShipGroup, orders/contracts) are not ported, so
- * this is a no-op. It DOES draw Rnd in C# for idle ships at game start (none has a mission,
- * all are auto-controlled with TopSpeed > 0 and BuiltAt == null):
- *   - freighters: NextDouble (> num6 decides whether to look for resource clearance), then
- *     Next(0, colonies-without-spaceport.Count) and possibly Next(0, MiningStations.Count);
- *   - military ships (Escort … Carrier): Next(0, 2) patrol choice, Next(0, habitats.Count),
- *     Next(0, 2) / Next(0, _DangerousHabitats.Count), Next(0, 2) load-troops check,
- *     Next(0, 8), Next(0, Colonies.Count) …;
- *   - explorers / construction / colony / mining ships go through their own
- *     Assign*Mission paths (exploration target search etc.).
- * So the Rnd stream after the first empire's AssignMissions diverges from C# until missions
- * are ported.
+ * Empire.5.cs 1361 AssignMissionsToBuiltObjectList(builtObjectList, atWar, patrolMiningStations) → AssignMissionToBuiltObject
+ * (1370) per ship. Called by Start.2.cs 1373-1374 right after FillShipsWithTroops for the state and the private list.
+ * The body is the M4f port in civilianAI.ts (this wrapper keeps the game-start call site's signature).
  */
 export function assignMissionsToBuiltObjectList(empire: Empire, builtObjectList: BuiltObject[], atWar: boolean, patrolMiningStations: BuiltObject[] | null): void {
-    void empire;
-    void builtObjectList;
-    void atWar;
-    void patrolMiningStations;
+    civilianAssignMissionsToBuiltObjectList(empire.galaxy, empire, builtObjectList, atWar, patrolMiningStations);
 }

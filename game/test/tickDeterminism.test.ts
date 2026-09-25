@@ -111,7 +111,13 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // SelectCreatures population gating fix (Galaxy.5.cs 1648/1785): SelectCreatures(planet / moon) runs only when
         // the body has no population, which moves every galaxy-generation draw after the first populated body (creature
         // counts / positions, empire placement) and so everything downstream. (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
-        expect(summary.digest).toBe('198918104ea2794b');
+        // M4f: AssignMissionToBuiltObject runs at game start (Start.2.cs 1373) and every Empire short block
+        // (AssignShipMissions) — freighters draw NextDouble + Next(0, colonies) [+ Next(0, mining stations)], military
+        // ships Next(0, 2) / Next(0, 8) / Next(0, colonies), construction ships Next(0, 2) x2-4 (+ Next(0, ships)),
+        // exploration ships the FindNextHabitatToExplore jitter draws — so ships now get missions (Move / Explore /
+        // Patrol / Transport / Build / ExtractResources), the ReassignMission case reassigns explorers, and
+        // DirectPrivateConstruction draws Next(0, space ports) per long block. Moved from 198918104ea2794b.
+        expect(summary.digest).toBe('7a546c084a01ddcf');
     }, 600000);
 });
 
