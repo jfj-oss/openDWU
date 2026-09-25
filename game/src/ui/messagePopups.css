@@ -1,0 +1,220 @@
+/* Task 16d: message popup card, conversation queue chips and conversation dialog.
+   Dark-panel tokens as in coloniesList.css; z-index one below the screens' windows (1500). */
+
+.message-popup {
+    position: fixed;
+    top: 120px;
+    right: 10px;
+    width: 335px;
+    max-height: calc(100vh - 140px);
+    z-index: 1499;
+    pointer-events: auto;
+    font-family: 'Forgotten Futurist', sans-serif;
+    color: #e6e6e6;
+    background: rgba(14, 16, 20, 0.94);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.message-popup[hidden] {
+    display: none;
+}
+
+.message-popup-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 10px;
+    background: rgba(10, 11, 15, 0.9);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.message-popup-title {
+    font-size: 13px;
+    color: #e8d24a;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.message-popup-close,
+.message-conversation-close {
+    background: transparent;
+    border: none;
+    color: #ccc;
+    font-size: 15px;
+    cursor: pointer;
+    padding: 2px 6px;
+}
+.message-popup-close:hover,
+.message-conversation-close:hover {
+    color: #fff;
+}
+
+.message-popup-body {
+    padding: 8px 10px;
+    font-size: 12px;
+    line-height: 1.4;
+    white-space: pre-line;
+    overflow-y: auto;
+}
+
+.message-popup-footer {
+    padding: 0 10px 6px;
+    font-size: 10px;
+    color: #777;
+    text-align: right;
+}
+
+/* Conversation queue: a column of sender chips under the top-left bar. */
+.message-queue {
+    position: fixed;
+    top: 60px;
+    left: 10px;
+    z-index: 1499;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    pointer-events: none;
+    font-family: 'Forgotten Futurist', sans-serif;
+}
+
+.message-chip {
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 200px;
+    padding: 3px 8px;
+    font-family: inherit;
+    font-size: 12px;
+    color: #e6e6e6;
+    background: rgba(14, 16, 20, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    cursor: pointer;
+}
+.message-chip:hover,
+.message-chip-active {
+    background: rgba(40, 44, 54, 0.95);
+    border-color: rgba(232, 210, 74, 0.6);
+}
+
+.message-chip-name {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.message-swatch {
+    flex: none;
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.message-queue-more {
+    font-size: 11px;
+    color: #aaa;
+    padding-left: 4px;
+}
+
+/* Conversation dialog: a centred window like the other screens. */
+.message-conversation-wrap {
+    position: fixed;
+    inset: 0;
+    z-index: 1500;
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Forgotten Futurist', sans-serif;
+    color: #e6e6e6;
+}
+.message-conversation-wrap[hidden] {
+    display: none;
+}
+
+.message-conversation-window {
+    pointer-events: auto;
+    width: 440px;
+    max-width: calc(100vw - 16px);
+    max-height: calc(100vh - 96px);
+    background: rgba(14, 16, 20, 0.94);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.message-conversation-titlebar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: rgba(10, 11, 15, 0.9);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.message-conversation-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: #e8d24a;
+}
+
+.message-conversation-body {
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow-y: auto;
+}
+
+.message-conversation-heading {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #aaa;
+}
+
+.message-conversation-text {
+    font-size: 13px;
+    line-height: 1.45;
+    white-space: pre-line;
+}
+
+.message-conversation-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 8px 12px 10px;
+}
+
+.message-conversation-button {
+    font-family: inherit;
+    font-size: 12px;
+    color: #e6e6e6;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    padding: 4px 14px;
+    cursor: pointer;
+}
+.message-conversation-button:hover {
+    background: rgba(255, 255, 255, 0.14);
+    color: #fff;
+}
