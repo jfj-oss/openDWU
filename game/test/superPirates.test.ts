@@ -174,7 +174,26 @@ describe('generateSuperPirateFaction (seed 1, createGame, tech 4)', () => {
         };
         const a = fp();
         expect(fp()).toEqual(a);
-        expect(a).toEqual(PINNED);
+        // Seed 1: [super-pirate designs (subRole:name:component count), first 8 BuiltObjects, BuiltObject count].
+        // (re-pinned: generateSuperPirateFaction now runs on the full createGame state — stations, starting
+        // ships, characters, ruins and the game-start tail consumed Rnd and changed the tech/design inputs.)
+        // (re-pinned M4k: the game-start Empire.DoTasks now runs PerformResearch — SelectNextResearchProject draws
+        // Rnd (SelectRandomLowestProject) and research events draw Next(0, num4) per industry — so later game-start
+        // Rnd draws shift.)
+        // (re-pinned M4s1: ReviewPirateRelations draws Rnd.NextDouble in every game-start Empire long block and the Galaxy long
+        // block's independent-colony pirate offers draw per colony, so later game-start draws shift.)
+        // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
+        // (re-pinned M4u: game-start character reviews (ReviewCharacterTraits Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd) move the stream before the super-pirate generation.)
+        // (re-pinned M4f: Start.2.cs 1373 AssignMissionsToBuiltObjectList draws per idle ship at game start shift every later draw)
+        // (Merge of M4f onto M4u/M4o/M4l: re-pinned once against the combined code.)
+        // Re-pinned M4x: galaxyAge now defaults to 1 (standard preset, Start.cs 3298-3327). Before M4x these pins had Galaxy.Age 0
+        // with StartingAge 1 (a mix the C# cannot produce); Galaxy.Age 1 adds military starting ships, the int_5 > 0 game-start
+        // steps and StartStarDate + 30000000, so the Rnd stream moves.
+        // (re-pinned M4m: the game-start Empire.DoTasks runs the military AI — IdentifyMilitaryObjectives Next(0, EmpireEvaluations.Count), CheckTemptingTargets Next(0, Empires.Count), DetermineRandomAttacks Next(0, n) — which shifts the Rnd stream.)
+        // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
+        // (re-pinned M4z6: the game-start EvaluateColonyVariables colony orders (Empire.4.cs 2357 / 3186) shift the Rnd stream
+        // before the super-pirate generation.)
+        expect(a).toMatchPin('superPirates.faction');
     }, 60000);
 });
 
@@ -202,46 +221,3 @@ describe('UpgradeMilitaryShipDesignMoreWeapons / MoreEngines (Galaxy.8.cs 4121 /
         expect(upgradeMilitaryShipDesignMoreWeapons(null)).toBeNull();
     }, 60000);
 });
-
-// Seed 1: [super-pirate designs (subRole:name:component count), first 8 BuiltObjects, BuiltObject count].
-// (re-pinned: generateSuperPirateFaction now runs on the full createGame state — stations, starting
-// ships, characters, ruins and the game-start tail consumed Rnd and changed the tech/design inputs.)
-// (re-pinned M4k: the game-start Empire.DoTasks now runs PerformResearch — SelectNextResearchProject draws
-// Rnd (SelectRandomLowestProject) and research events draw Next(0, num4) per industry — so later game-start
-// Rnd draws shift.)
-// (re-pinned M4s1: ReviewPirateRelations draws Rnd.NextDouble in every game-start Empire long block and the Galaxy long
-// block's independent-colony pirate offers draw per colony, so later game-start draws shift.)
-// (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
-// (re-pinned M4u: game-start character reviews (ReviewCharacterTraits Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd) move the stream before the super-pirate generation.)
-// (re-pinned M4f: Start.2.cs 1373 AssignMissionsToBuiltObjectList draws per idle ship at game start shift every later draw)
-// (Merge of M4f onto M4u/M4o/M4l: re-pinned once against the combined code.)
-// Re-pinned M4x: galaxyAge now defaults to 1 (standard preset, Start.cs 3298-3327). Before M4x these pins had Galaxy.Age 0
-// with StartingAge 1 (a mix the C# cannot produce); Galaxy.Age 1 adds military starting ships, the int_5 > 0 game-start
-// steps and StartStarDate + 30000000, so the Rnd stream moves.
-// (re-pinned M4m: the game-start Empire.DoTasks runs the military AI — IdentifyMilitaryObjectives Next(0, EmpireEvaluations.Count), CheckTemptingTargets Next(0, Empires.Count), DetermineRandomAttacks Next(0, n) — which shifts the Rnd stream.)
-// (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
-// (re-pinned M4z6: the game-start EvaluateColonyVariables colony orders (Empire.4.cs 2357 / 3186) shift the Rnd stream
-// before the super-pirate generation.)
-const PINNED: unknown[] = [
-    [
-        "Escort:Centurion II:32",
-        "Frigate:Enforcer II:43",
-        "Destroyer:Sovereign II:55",
-        "Cruiser:Titan II:90",
-        "CapitalShip:Decurion:136",
-        "Carrier:CX-2 Carrier:108",
-        "DefensiveBase:Phantom Pirate Defensive Base:123",
-        "GenericBase:Phantom Pirate Base:217"
-    ],
-    [
-        "GenericBase:Smugglers Nest",
-        "DefensiveBase:Dhayu 7 Orbital Battery",
-        "DefensiveBase:Dhayu 7 Defensive Base",
-        "DefensiveBase:Dhayu 7 Orbital Battery",
-        "Destroyer:Courageous Affliction",
-        "Destroyer:Sly Revenge",
-        "Cruiser:Grand Destiny",
-        "Escort:Red Sentry"
-    ],
-    30
-];

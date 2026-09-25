@@ -25,7 +25,7 @@ import {
     IndustryType,
     type SystemInfo,
 } from './types';
-import type { Race } from './data/races';
+import { cloneGalaxyRaces, type Race } from './data/races';
 import type { Resource } from './data/resources';
 import { buildResourceSystem, type ResourceSystem } from './resourceSystem';
 import { netSort } from './netSort';
@@ -58,6 +58,7 @@ import type { SchedulerState } from './tick/scheduler';
 import type { Blockade } from './fleets/blockades';
 import { createGalaxyOrderList, type OrderList } from './logistics/orders';
 import { GameEventList, type EventActionExecutionPackage } from './story/gameEventModel';
+import { DiplomaticRelationType, obtainDiplomaticRelation } from './diplomacy';
 
 // Port of Galaxy.cs static fields (Galaxy.3.cs InitializeStatics sets
 // these): SectorSizeX = SectorSizeY = 2_000_000, IndexSize = 400_000.
@@ -115,6 +116,12 @@ export interface GenerateGalaxyOptions {
     // omitted/empty no race regions are created and SetupAlienRacePopulations
     // consumes zero Rnd calls (pre-01f1 behavior).
     empireStarts?: EmpireStart[];
+    /**
+     * This galaxy's own race list (cloneGalaxyRaces of gameData.races, made by createGame before it resolves the empire
+     * starts). Omitted: generateGalaxy clones gameData.races itself and maps each empireStarts resolvedRace (a GameData
+     * race) to its copy.
+     */
+    races?: Race[];
 }
 
 /** Scratch for Galaxy.ringSearch: [d, nx, ny] of the last closestIndexEdgesInto, read before any per-cell callback runs
@@ -783,14 +790,12 @@ export class Galaxy {
 
     // Port of Galaxy.cs CheckEmpireTerritoryCanColonizeHabitat(empire, habitat)
     // (3607) / the 3-arg overload with `out canColonizeBecauseAtWar` (3613).
-    // canColonizeBecauseAtWar is not consumed by any caller ported so far, so
-    // only the bool result is returned.
-    // TODO(port): DiplomaticRelation/war state (DiplomaticRelation.cs) is not
-    // modeled — at game start no wars have been declared yet, so the "at war"
-    // branch that would flip a hostile-territory colonization to allowed
-    // never applies, matching the value C# would read at this point.
-    checkEmpireTerritoryCanColonizeHabitat(empire: Empire, habitat: Habitat): boolean {
+    // The out flag is read only by the C# UI (ItemListPanel.cs 312, Main.Part3.cs 2998,
+    // HabitatPrioritizationListView.cs 465); it is returned via `out` when given.
+    checkEmpireTerritoryCanColonizeHabitat(empire: Empire, habitat: Habitat, out?: { canColonizeBecauseAtWar: boolean }): boolean {
+        if (out !== undefined) out.canColonizeBecauseAtWar = false;
         const systemStar = this.determineHabitatSystemStar(habitat);
+        // _EmpireTerritory.CheckSystemOwnership(this, systemStar, out disputed) (EmpireTerritory.cs 47).
         const sys = this.systems[systemStar.systemIndex] as SystemInfo | undefined;
         let ownerId = -1;
         let disputed = false;
@@ -801,8 +806,15 @@ export class Galaxy {
             ownerId = sys.dominantEmpire.empire.empireId;
         }
         if (ownerId >= 0 && ownerId !== empire.empireId) {
-            // C#: at war with the owner -> true (canColonizeBecauseAtWar).
-            // No wars exist yet at game start, so this is always false here.
+            // Galaxy.cs 3620-3626: Empires.GetByEmpireId(num) (Galaxy.Empires, no pirate factions; null if absent),
+            // empire.ObtainDiplomaticRelation(byEmpireId) (adds a NotMet relation for an unmet active empire), and
+            // at war with the territory's owner -> colonizable (canColonizeBecauseAtWar).
+            const byEmpireId = this.empires.find((e) => e.empireId === ownerId) ?? null;
+            const diplomaticRelation = obtainDiplomaticRelation(empire, byEmpireId);
+            if (diplomaticRelation.type === DiplomaticRelationType.War) {
+                if (out !== undefined) out.canColonizeBecauseAtWar = true;
+                return true;
+            }
             return false;
         }
         if (disputed) return false;
@@ -4596,20 +4608,19 @@ export class Galaxy {
     shakturiOriginalRace: Race | null = null;
     /**
      * Galaxy.cs 534 ShakturiActualRace (the Races["Shakturi"] instance once GenerateShakturi ran). The C# renames and
-     * re-levels the per-game Races["Shakturi"] object; the TS races are the shared GameData table, so GenerateShakturi
-     * gives this galaxy its own instance here (saved inline) and galaxyRace() substitutes it for shakturiRaceBase.
+     * re-levels the per-game Races["Shakturi"] object; GenerateShakturi gives this galaxy a separate instance here (saved
+     * inline; it predates per-galaxy races, cloneGalaxyRaces) and galaxyRace() substitutes it for shakturiRaceBase.
      */
     shakturiActualRace: Race | null = null;
-    /** The GameData race object shakturiActualRace stands in for in this galaxy (null until GenerateShakturi). */
+    /** The galaxy.races entry shakturiActualRace stands in for (null until GenerateShakturi). */
     shakturiRaceBase: Race | null = null;
     /** Galaxy.cs 536 StoryShakturiEnrageTimer = long.MaxValue (star date). */
     storyShakturiEnrageTimer = Number.MAX_SAFE_INTEGER;
 }
 
 /**
- * Galaxy.Races[i] as this galaxy sees it: the GameData race GenerateShakturi (Galaxy.8.cs 1348) renamed / re-levelled is
- * replaced by the galaxy's own instance (Galaxy.shakturiActualRace), so the mutation is per game and never touches the
- * shared GameData race.
+ * Galaxy.Races[i] as this galaxy sees it: the race GenerateShakturi (Galaxy.8.cs 1348) renamed / re-levelled is
+ * replaced by the galaxy's separate instance (Galaxy.shakturiActualRace).
  */
 export function galaxyRace(galaxy: Galaxy, race: Race): Race {
     return galaxy.shakturiRaceBase !== null && race === galaxy.shakturiRaceBase && galaxy.shakturiActualRace !== null ? galaxy.shakturiActualRace : race;
@@ -4624,14 +4635,26 @@ export function galaxyRace(galaxy: Galaxy, race: Race): Race {
 export function generateGalaxy(options: GenerateGalaxyOptions): Galaxy {
     const { seed, shape, starCount, sectorWidth, sectorHeight, systemNames, colonyPrevalence, gameData, cloudImageCount } = options;
     const galaxy = new Galaxy(seed, shape, starCount, sectorWidth, sectorHeight, systemNames, colonyPrevalence);
+    // Galaxy.4.cs 2132 `Races = LoadRaces(...)`: the galaxy's own Race objects (mutated in play, saved with the game).
+    let empireStarts = options.empireStarts ?? [];
+    let races = options.races;
+    if (races === undefined) {
+        const shared = gameData?.races ?? [];
+        races = cloneGalaxyRaces(shared);
+        const copies = races;
+        empireStarts = empireStarts.map((e) => {
+            const i = shared.indexOf(e.resolvedRace);
+            return i >= 0 ? { ...e, resolvedRace: copies[i] } : e;
+        });
+    }
     // ResourceSystem.Resources (Galaxy.4.cs ctor loads it before generation).
     galaxy.resources = gameData?.resources ?? [];
     galaxy.resourceSystem = buildResourceSystem(galaxy.resources, gameData?.components ?? []);
-    galaxy.researchStatic = gameData ? buildResearchStatic(gameData.research, gameData.components, gameData.races, gameData.policies, gameData.piratePolicies, buildComponentStatic(gameData), gameData.facilities, gameData.fighters, gameData.plagues) : null;
+    galaxy.researchStatic = gameData ? buildResearchStatic(gameData.research, gameData.components, races, gameData.policies, gameData.piratePolicies, buildComponentStatic(gameData), gameData.facilities, gameData.fighters, gameData.plagues) : null;
     galaxy.designSpecificationTexts = gameData?.designSpecificationTexts ?? new Map();
     galaxy.designNames = gameData?.designNames ?? [];
-    // Port of Galaxy.cs Races (loaded from GameData in the ctor).
-    galaxy.races = gameData?.races ?? [];
+    // Port of Galaxy.cs Races (Galaxy.4.cs 2132, loaded per galaxy in the ctor).
+    galaxy.races = races;
     // Galaxy.4.cs ctor 2133-2134: LoadAgentNames + SetRaceStartupCharacters inputs (characters.ts
     // builds the agent-name lists and Race.AvailableCharacters lazily; no Galaxy.Rnd use).
     galaxy.characterNames = gameData?.characterNames ?? null;
@@ -4653,7 +4676,7 @@ export function generateGalaxy(options: GenerateGalaxyOptions): Galaxy {
     // Galaxy.4.cs 2151 _AggressionLevel = aggressionLevel (task M4t: read by DoSingleEmpireEncounter).
     galaxy.aggressionLevel = aggressionLevel;
     const aggressiveRacesRequired = aggressionLevel >= 1.5 ? 3 : aggressionLevel >= 1.3 ? 2 : aggressionLevel >= 1.1 ? 1 : 0;
-    setupAlienRacePopulations(galaxy, options.empireStarts ?? [], aggressiveRacesRequired);
+    setupAlienRacePopulations(galaxy, empireStarts, aggressiveRacesRequired);
 
     // Per-star loop (Galaxy.4.cs 2278-2296). Each system's habitat list
     // (star + planets + moons + asteroids, from setupSolarSystem) forms one

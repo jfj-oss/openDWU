@@ -172,7 +172,25 @@ describe('createGame with piratePrevalence', () => {
         const b = fingerprint();
         expect(b).toEqual(a);
         // Pinned for seed 1 (TS port; C# parity ends at the first Empire.DoTasks).
-        expect(a).toEqual(PINNED_SEED1_PIRATES);
+        // Pinned for seed 1 (TS port; C# parity ends at the first Empire.DoTasks).
+        // (re-pinned: design generation + colonizable-habitat search)
+        // (re-pinned M3e: each faction now gets its SmallSpacePort base, fleet and mining stations —
+        // Galaxy.8.cs 4623-4820 — which draws Rnd (base name, headings, ship names, AddBuiltObjectToGalaxy
+        // offsets, station surface points), and FindNearestPirateFaction now finds factions, so the
+        // 1,000,000 spacing rule of GenerateNewPirateEmpires applies. The first faction is unchanged.)
+        // (re-pinned: createGame now runs the price reviews and the first galaxy tick's huge block and
+        // independent traders before GenerateNewPirateEmpires, pirate starting characters (Galaxy.8.cs 4822)
+        // draw between factions, and Start.2.cs 1493-1533 may add one more faction near the player.)
+        // (re-pinned M4k: the game-start Empire.DoTasks now runs PerformResearch — SelectNextResearchProject draws
+        // Rnd (SelectRandomLowestProject) and research events draw Next(0, num4) per industry — so later game-start
+        // Rnd draws shift.)
+        // (re-pinned M4s1: ReviewPirateRelations draws Rnd.NextDouble in every game-start Empire long block and the Galaxy long
+        // block's independent-colony pirate offers draw per colony, so GenerateNewPirateEmpires sees a different stream.)
+        // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
+        // Re-pinned M4u: game-start character reviews (ReviewCharacterTraits Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd) move the Rnd stream before pirate generation.
+        // (re-pinned M4m: the game-start Empire.DoTasks runs the military AI — IdentifyMilitaryObjectives Next(0, EmpireEvaluations.Count), CheckTemptingTargets Next(0, Empires.Count), DetermineRandomAttacks Next(0, n) — which shifts the Rnd stream.)
+        // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
+        expect(a).toMatchPin('pirates.factions');
     });
 
     it('piratePrevalence unset -> zero pirate empires', () => {
@@ -203,66 +221,3 @@ describe('generatePirateEmpireName', () => {
         expect(actual).toBe(expected);
     });
 });
-
-// Pinned for seed 1 (TS port; C# parity ends at the first Empire.DoTasks).
-// (re-pinned: design generation + colonizable-habitat search)
-// (re-pinned M3e: each faction now gets its SmallSpacePort base, fleet and mining stations —
-// Galaxy.8.cs 4623-4820 — which draws Rnd (base name, headings, ship names, AddBuiltObjectToGalaxy
-// offsets, station surface points), and FindNearestPirateFaction now finds factions, so the
-// 1,000,000 spacing rule of GenerateNewPirateEmpires applies. The first faction is unchanged.)
-// (re-pinned: createGame now runs the price reviews and the first galaxy tick's huge block and
-// independent traders before GenerateNewPirateEmpires, pirate starting characters (Galaxy.8.cs 4822)
-// draw between factions, and Start.2.cs 1493-1533 may add one more faction near the player.)
-// (re-pinned M4k: the game-start Empire.DoTasks now runs PerformResearch — SelectNextResearchProject draws
-// Rnd (SelectRandomLowestProject) and research events draw Next(0, num4) per industry — so later game-start
-// Rnd draws shift.)
-// (re-pinned M4s1: ReviewPirateRelations draws Rnd.NextDouble in every game-start Empire long block and the Galaxy long
-// block's independent-colony pirate offers draw per colony, so GenerateNewPirateEmpires sees a different stream.)
-// (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
-// Re-pinned M4u: game-start character reviews (ReviewCharacterTraits Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd) move the Rnd stream before pirate generation.
-// (re-pinned M4m: the game-start Empire.DoTasks runs the military AI — IdentifyMilitaryObjectives Next(0, EmpireEvaluations.Count), CheckTemptingTargets Next(0, Empires.Count), DetermineRandomAttacks Next(0, n) — which shifts the Rnd stream.)
-// (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
-const PINNED_SEED1_PIRATES: unknown[] = [
-    [
-        "S83 Prowlers",
-        "S66 1",
-        "Atuuk",
-        796684
-    ],
-    [
-        "Black Pillagers",
-        "S141 3",
-        "Mortalen",
-        4390912
-    ],
-    [
-        "S269 Confederacy",
-        "S162 6",
-        "Ikkuro",
-        26112
-    ],
-    [
-        "Deadly Storm Prowlers",
-        "S248 6",
-        "Atuuk",
-        5570576
-    ],
-    [
-        "S83 Confederacy",
-        "S288 4",
-        "Human",
-        8308
-    ],
-    [
-        "Vicious Bandits",
-        "VD884",
-        "Dhayut",
-        8323096
-    ],
-    [
-        "S160 Spaceways",
-        "S268 4",
-        "Ketarov",
-        16384
-    ]
-];

@@ -14,6 +14,9 @@ import { galaxyStarDate } from '../sim/tick/simTime';
 import { resolveStarDateDescription } from '../sim/galaxyTime';
 import { resolveGameText } from '../sim/textResolver';
 import { isProposalValid, proposalLabel, relationTypeLabel, acceptProposal, declineProposal } from './screens/diplomacyScreen';
+// [proposals] begin
+import { setDiplomacyMessageExpiry } from './screens/diplomacyScreen';
+// [proposals] end
 import { showToast } from './toast';
 import { rgbCss } from './hud';
 
@@ -255,6 +258,14 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
 
     const timer = setInterval(tick, 250);
     installed = { timer, popup, queueRoot, dialogRoot, queue, seen, closeDialog };
+    // [proposals] begin
+    // The player's own conversation (17e) expires the other empire's pending messages, as the C# does.
+    setDiplomacyMessageExpiry((empire) => {
+        if (expireDiplomacyMessagesForEmpire(queue, empire) === 0) return;
+        if (dialogEntry !== null && !queue.includes(dialogEntry)) closeDialog();
+        renderChips();
+    });
+    // [proposals] end
 }
 
 /** Stop polling and remove the popup, the queue and the dialog. No-op when not installed. */
@@ -263,9 +274,39 @@ export function removeMessagePopups(): void {
     const s = installed;
     installed = null;
     clearInterval(s.timer);
+    // [proposals] begin
+    setDiplomacyMessageExpiry(null);
+    // [proposals] end
     s.closeDialog();
     s.popup.remove();
     s.queueRoot.remove();
     s.dialogRoot.remove();
     s.queue.length = 0;
 }
+
+// [proposals] begin
+/**
+ * DiplomaticMessageQueue.cs:344 ExpireDiplomacyMessagesForEmpire(empire): drops the queued diplomacy messages from
+ * `empire` (DiplomaticRelationChange / ProposeDiplomaticRelation / RefuseDiplomaticRelation / OfferTrade). Returns how
+ * many were dropped. TODO(port): the AdvisorSuggestion cases (:357-380) — advisor entries are not queued yet (16d).
+ */
+export function expireDiplomacyMessagesForEmpire(queue: ConversationEntry[], empire: Empire | null): number {
+    if (empire === null) return 0;
+    let removed = 0;
+    for (let i = queue.length - 1; i >= 0; i--) {
+        const m = queue[i].message;
+        switch (m.messageType) {
+            case EmpireMessageType.DiplomaticRelationChange:
+            case EmpireMessageType.ProposeDiplomaticRelation:
+            case EmpireMessageType.RefuseDiplomaticRelation:
+            case EmpireMessageType.OfferTrade:
+                if (m.sender === empire) {
+                    queue.splice(i, 1);
+                    removed++;
+                }
+                break;
+        }
+    }
+    return removed;
+}
+// [proposals] end

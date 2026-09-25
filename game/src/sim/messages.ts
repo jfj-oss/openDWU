@@ -3,16 +3,22 @@
 // Empire.SendMessageToEmpire overloads (Empire.7.cs 2916-2960). The queue is Empire.Messages
 // (empire.ts `messages`); the UI reads it later (or attaches an IMessageRecipient). No Rnd.
 //
-// Galaxy.ResolveDescription (Galaxy.1/2/3.cs, ~3,000 lines of enum → localized text) is stubbed
-// as `resolveDescription`: it returns the enum member name (a GameText key stand-in). Full text is
-// M9's job.
+// Galaxy.ResolveDescription(enum) (Galaxy.2.cs per-enum overloads) is `resolveDescription`: the GameText text of the
+// member for the enums in enumText.ts, else the enum member name.
 
 import type { Empire } from './empire';
 import type { Galaxy } from './galaxy';
 import { BuiltObject } from './builtObject';
-import { Habitat } from './types';
+import { Habitat, HabitatCategoryType, HabitatType } from './types';
 import { Empire as EmpireClass } from './empire';
 import { galaxyStarDate } from './tick/simTime';
+import * as ET from './enumText';
+import { resolveEnumTextDescription, type EnumText } from './enumText';
+import { CharacterRole, CharacterSkillType, CharacterTraitType } from './characters';
+import { CharacterTraitType as RaceCharacterTraitType } from './data/races';
+import { BuiltObjectSubRole } from './builtObjectTypes';
+import { DisasterEventType, RaceEventType } from './eventTypes';
+import { DiplomaticRelationType } from './diplomacy';
 
 // EmpireMessageType.cs (enum, declaration order = values).
 export enum EmpireMessageType {
@@ -176,11 +182,34 @@ export function stampStarDate(galaxy: Galaxy, message: EmpireMessage): EmpireMes
     return message;
 }
 
+/** The enums whose Galaxy.2.cs ResolveDescription overload is ported (enumText.ts). Built on first use: the enum modules
+ *  import this one. */
+let enumTexts: Map<object, EnumText> | null = null;
+function enumTextTable(enumType: object): EnumText | undefined {
+    if (enumTexts === null) {
+        enumTexts = new Map<object, EnumText>([
+            [CharacterTraitType, ET.CHARACTER_TRAIT],
+            [RaceCharacterTraitType, ET.CHARACTER_TRAIT],
+            [CharacterSkillType, ET.CHARACTER_SKILL],
+            [CharacterRole, ET.CHARACTER_ROLE],
+            [BuiltObjectSubRole, ET.BUILT_OBJECT_SUB_ROLE],
+            [DisasterEventType, ET.DISASTER_EVENT],
+            [DiplomaticRelationType, ET.DIPLOMATIC_RELATION],
+            [HabitatCategoryType, ET.HABITAT_CATEGORY],
+            [HabitatType, ET.HABITAT_TYPE],
+            [RaceEventType, ET.RACE_EVENT],
+        ]);
+    }
+    return enumTexts.get(enumType);
+}
+
 /**
- * Galaxy.ResolveDescription(enum value) stand-in (Galaxy.1/2/3.cs, many overloads): returns the enum
- * member name, used as a GameText key. TODO(port) M9: localized descriptions.
+ * Galaxy.2.cs ResolveDescription(enum value) (one overload per enum): the GameText text of the member (enumText.ts;
+ * `enumType[value]` is the C# member name). An enum without a ported overload yields its member name.
  */
 export function resolveDescription(enumType: Record<number, string>, value: number): string {
+    const table = enumTextTable(enumType);
+    if (table !== undefined) return resolveEnumTextDescription(table, enumType[value]);
     return enumType[value] ?? String(value);
 }
 
