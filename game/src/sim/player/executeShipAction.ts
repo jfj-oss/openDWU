@@ -151,6 +151,8 @@ export interface ShipActionResult {
     message?: string;
     /** method_208(x): what the UI should select afterwards (`undefined`: leave the selection alone). */
     select?: ShipActionSelection;
+    /** Main.Part7.cs 1722-1735: drop the selection from the selection history and select the next entry in it. */
+    selectNextFromHistory?: boolean;
     /** method_593(action): open this build / fighter sub-menu. */
     openSubMenu?: ShipAction;
     /** method_592(): back to the top of the action menu. */
@@ -1393,8 +1395,9 @@ function executeForBuiltObjectList(ctx: Ctx, builtObjectList2: BuiltObject[], ac
                 builtObjectCompleteTeardown(galaxy, item10);
             }
         }
-        // list_5.Remove(selection); int_22 = …; method_209(next selection): the UI's selection-history list.
-        ctx.result.select = null;
+        // list_5.Remove(selection); int_22 = method_210(…); method_209(list_5[int_22] or null); method_212(): the UI's
+        // selection-history list picks the next selection.
+        ctx.result.selectNextFromHistory = true;
         return ctx.result;
     }
     // 1738-1759
