@@ -43,6 +43,7 @@ export interface DesignOwner {
 // BaconSettings.txt, but it runs only once a game exists (it reads
 // main._Game.Galaxy), i.e. after game-start generation.
 // TODO(port): BaconSettings.txt overrides (BaconMain.cs:770-777) after game start.
+// Intentionally the class default, not BaconSettings.txt line 93 `shipMarkupFactor=9`.
 export const SHIP_MARKUP_FACTOR = 5.0;
 export const SHIP_MARKUP_FACTOR_PIRATES = 2.5;
 

@@ -553,6 +553,8 @@ async function startTutorialGame(file: string): Promise<void> {
         sectorHeight: 4,
         systemNames,
         gameData,
+        // "Starting" era: Galaxy.Age 1 (= Galaxy.StartingAge), as the wizard's default Expansion slider.
+        galaxyAge: 1,
         player: { race: 'Human', homeSystemFavourability: 'Normal', startLocation: '(Random)', age: 1, techLevel: STARTING_TECH_LEVEL },
         aiEmpires: [ai, { ...ai }, { ...ai }],
     };
@@ -798,6 +800,8 @@ async function buildAutostartGame(
         sectorHeight,
         systemNames,
         gameData,
+        // "Starting" era: Galaxy.Age 1 (= Galaxy.StartingAge), as the wizard's default Expansion slider.
+        galaxyAge: 1,
         player: { race: 'Human', homeSystemFavourability: 'Normal', startLocation: '(Random)', age: 1, techLevel: STARTING_TECH_LEVEL },
         aiEmpires: [ai, { ...ai }, { ...ai }],
     };

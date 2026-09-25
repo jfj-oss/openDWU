@@ -157,6 +157,9 @@ describe('createGame full game start (seed 1, Spiral 300 stars, 8x8, Human + 3 A
 // Re-pinned M4u: the game-start Empire.DoTasks runs the character reviews (ReviewCharacterTraits / ApplyCharacterLocationBonus Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd); empire placement, names and pirates shift.
 // Re-pinned M4f: game-start AssignMissionsToBuiltObjectList draws move the empire-placement / ruins stream.
 // (Merge of M4f onto M4u/M4o/M4l: re-pinned once against the combined code.)
+// Re-pinned M4x: galaxyAge now defaults to 1 (standard preset, Start.cs 3298-3327). Before M4x these pins had Galaxy.Age 0
+// with StartingAge 1 (a mix the C# cannot produce); Galaxy.Age 1 adds military starting ships, the int_5 > 0 game-start
+// steps and StartStarDate + 30000000, so the Rnd stream moves.
 const PINNED_SUMMARY: unknown = {
     "empires": [
         {
@@ -167,15 +170,18 @@ const PINNED_SUMMARY: unknown = {
             "researchStations": 1,
             "miningStations": 6,
             "stateShips": {
-                "ExplorationShip": 7,
-                "ConstructionShip": 3
+                "Escort": 2,
+                "Frigate": 2,
+                "Destroyer": 2,
+                "ExplorationShip": 5,
+                "ConstructionShip": 2
             },
             "privateShips": {
                 "SmallFreighter": 1,
                 "GasMiningShip": 2,
                 "MiningShip": 2
             },
-            "troops": 10,
+            "troops": 11,
             "characters": 3,
             "taxRates": [
                 0.30000001192092896
@@ -189,6 +195,8 @@ const PINNED_SUMMARY: unknown = {
             "researchStations": 1,
             "miningStations": 6,
             "stateShips": {
+                "Escort": 4,
+                "Frigate": 5,
                 "ExplorationShip": 7,
                 "ConstructionShip": 3
             },
@@ -197,7 +205,7 @@ const PINNED_SUMMARY: unknown = {
                 "GasMiningShip": 2,
                 "MiningShip": 2
             },
-            "troops": 1,
+            "troops": 5,
             "characters": 3,
             "taxRates": [
                 0.28999999165534973
@@ -211,18 +219,20 @@ const PINNED_SUMMARY: unknown = {
             "researchStations": 1,
             "miningStations": 6,
             "stateShips": {
-                "ExplorationShip": 7,
-                "ConstructionShip": 3
+                "Escort": 2,
+                "Frigate": 4,
+                "ExplorationShip": 4,
+                "ConstructionShip": 1
             },
             "privateShips": {
                 "SmallFreighter": 1,
                 "GasMiningShip": 2,
                 "MiningShip": 2
             },
-            "troops": 1,
+            "troops": 5,
             "characters": 3,
             "taxRates": [
-                0.2199999988079071
+                0.25
             ]
         },
         {
@@ -233,6 +243,9 @@ const PINNED_SUMMARY: unknown = {
             "researchStations": 1,
             "miningStations": 6,
             "stateShips": {
+                "Escort": 3,
+                "Frigate": 3,
+                "Destroyer": 3,
                 "ExplorationShip": 7,
                 "ConstructionShip": 3
             },
@@ -241,7 +254,7 @@ const PINNED_SUMMARY: unknown = {
                 "GasMiningShip": 2,
                 "MiningShip": 2
             },
-            "troops": 1,
+            "troops": 5,
             "characters": 2,
             "taxRates": [
                 0.3100000023841858
@@ -354,7 +367,7 @@ const PINNED_SUMMARY: unknown = {
         }
     ],
     "independentTraders": 150,
-    "unownedBuiltObjects": 24,
-    "builtObjects": 324,
-    "ruins": 20
+    "unownedBuiltObjects": 20,
+    "builtObjects": 342,
+    "ruins": 27
 };

@@ -14,7 +14,7 @@ import { manufacturingQueueDoManufacturing } from '../industry';
 /**
  * BaconBuiltObject.cs 77 privateBuildCostToStateMoney = 1.0 (the class default; BaconSettings.txt sets 0.3, but the
  * port keeps the C# defaults for BaconMain.BaconInitialize settings, as builtObject.ts / colonyTick.ts do).
- * TODO(port): BaconSettings.txt overrides (BaconMain.cs 925).
+ * TODO(port): BaconSettings.txt overrides (BaconMain.cs 925). Intentionally not BaconSettings.txt line 156 (0.3).
  */
 export const BACON_PRIVATE_BUILD_COST_TO_STATE_MONEY = 1.0;
 
