@@ -43,6 +43,8 @@ import { calculateRacialReputationConcern, empireApprovalRating } from './taxes'
 import { fastFindNearestSpacePort } from './stationPlacement';
 import { Cargo, ResourceRef } from './cargo';
 import { findNewestCanBuild } from './designGeneration';
+import { latestDesignsFindNewestCanBuild } from './pirates';
+import { BuiltObjectRole } from './data/designSpecifications';
 import { generateBuiltObjectFromDesign, doEmpireEncounter } from './exploration';
 import { BuiltObject as BuiltObjectClass, determineBuiltObjectIsState } from './builtObject';
 import { giveTerritoryMap, addLocationHint } from './tradeItems';
@@ -431,10 +433,73 @@ function randomEventPirateControlledColonyGivesShip(galaxy: Galaxy, empire: Empi
     if (empire.pirateEmpireBaseHabitat === null) return;
     let habitat: Habitat | null = null;
     if (empire.colonies.length > 0) habitat = empire.colonies[galaxy.rnd.next(0, empire.colonies.length)];
-    if (habitat === null) return;
-    // TODO(port) M4s2: habitat.GetPirateControl().CheckFactionHasControl(this) (PirateColonyControl is not modelled; pirate
-    // factions own no colonies yet — characters.ts ResolveLocationsToDefend throws on them too).
-    throw new Error('TODO(port) M4s2: Habitat.GetPirateControl (Empire.1.cs 1215 RandomEventPirateControlledColonyGivesShip)');
+    // 1215-1300 (PirateColonyControl ported by M4s2).
+    if (habitat === null || !habitat.pirateColonyControl.checkFactionHasControl(empire)) return;
+    let design: import('./design').Design | null = null;
+    switch (galaxy.rnd.next(0, 5)) {
+        case 0:
+            design = latestDesignsFindNewestCanBuild(empire, BuiltObjectSubRole.SmallFreighter);
+            break;
+        case 1:
+            design = latestDesignsFindNewestCanBuild(empire, BuiltObjectSubRole.MediumFreighter);
+            break;
+        case 2:
+            design = latestDesignsFindNewestCanBuild(empire, BuiltObjectSubRole.Escort);
+            break;
+        case 3:
+            design = latestDesignsFindNewestCanBuild(empire, BuiltObjectSubRole.Frigate);
+            break;
+        case 4:
+            design = latestDesignsFindNewestCanBuild(empire, BuiltObjectSubRole.ConstructionShip);
+            break;
+    }
+    if (design === null) return;
+    const builtObject = generateNewBuiltObject(galaxy, empire, design, habitat);
+    if (builtObject === null) return;
+    let character: Character | null = null;
+    if (galaxy.rnd.next(0, 2) === 1) {
+        character = generateNewCharacter(galaxy, empire, CharacterRole.ShipCaptain, builtObject, true).character;
+    }
+    let additionalData: unknown = builtObject;
+    let empty = '';
+    let empty2 = '';
+    if (character !== null) {
+        additionalData = character;
+        switch (design.role) {
+            case BuiltObjectRole.Freight:
+                empty = gameText('Smuggler Joins Us');
+                empty2 = gameText('Pirate Event New Freighter With Captain', character.name, builtObject.name, habitat.name);
+                character.addTrait(CharacterTraitType.Smuggler, true, galaxy);
+                break;
+            case BuiltObjectRole.Military:
+                builtObject.name = galaxy.selectRandomUniqueMilitaryShipName();
+                empty = gameText('Bounty Hunter Joins Us');
+                empty2 = gameText('Pirate Event New Military Ship With Captain', character.name, builtObject.name, habitat.name);
+                character.addTrait(CharacterTraitType.BountyHunter, true, galaxy);
+                break;
+            default:
+                empty = gameText('Ship Captain Joins Us');
+                empty2 = gameText('Pirate Event New Ship With Captain', character.name, builtObject.name, habitat.name);
+                break;
+        }
+    } else {
+        switch (design.role) {
+            case BuiltObjectRole.Freight:
+                empty = gameText('Smuggling Ship Acquired');
+                empty2 = gameText('Pirate Event New Freighter', builtObject.name, habitat.name);
+                break;
+            case BuiltObjectRole.Military:
+                builtObject.name = galaxy.selectRandomUniqueMilitaryShipName();
+                empty = gameText('Military Ship Acquired');
+                empty2 = gameText('Pirate Event New Military Ship', habitat.name, builtObject.name);
+                break;
+            default:
+                empty = gameText('Ship Acquired');
+                empty2 = gameText('Pirate Event New Ship', habitat.name, builtObject.name);
+                break;
+        }
+    }
+    sendEventMessageToEmpire(empire, EventMessageType.FreeSuperShip, empty, empty2, additionalData, builtObject);
 }
 
 /** Empire.1.cs 1300 RandomEventRareResourceIntercepted(). No Rnd. */

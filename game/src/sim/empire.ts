@@ -908,9 +908,9 @@ export class Empire {
             get active(): boolean {
                 return self.active;
             },
-            // TODO(port) M4s: pirate factions also see systems whose habitats they control
-            // (habitat.GetPirateControl().GetByFaction(ourEmpire), Empire.9.cs 4740) — no pirate control model yet.
-            controlsHabitat: (h: Habitat) => h.owner === this,
+            // Empire.9.cs 4733-4740 (ourEmpire == this): pirate factions also see systems whose habitats they control
+            // (habitat.GetPirateControl().GetByFaction(ourEmpire); PirateColonyControl ported by M4s2).
+            controlsHabitat: (h: Habitat) => h.owner === this || (this.pirateEmpireBaseHabitat !== null && h.pirateColonyControl.getByFaction(this) !== null),
             // Empire.9.cs 4744-4759 CheckSystemVisible (task M4t): BuiltObjects then PrivateBuiltObjects.
             hasUnitInSystem: (star: Habitat, exclude: VisibilityUnit | null) => {
                 for (const b of this.builtObjects) {

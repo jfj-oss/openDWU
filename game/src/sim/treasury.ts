@@ -33,6 +33,7 @@ import {
     annualSubjugationTribute,
     annualTaxRevenue,
     calculateAnnualSubjugationTributeIncome,
+    habitatAnnualRevenue,
     recalculateAnnualTaxRevenue,
 } from './forceStructure';
 import { annualTroopMaintenance } from './troops';
@@ -42,7 +43,7 @@ import { determineMostSuitableGovernmentTypes } from './game';
 import { CharacterEventType, stellarObjectCharacters } from './characters';
 import { doCharacterEventRuntime, leaveEmpire } from './events';
 import { calculateOverallStrengthFactorWithoutShields } from './combat/threats';
-import { pirateEconomyPerformExpense } from './pirates/pirateAI';
+import { calculatePirateCashflow, pirateEconomyPerformExpense } from './pirates/pirateAI';
 import { PlanetaryFacilityType, WonderType } from './researchSystem';
 
 // ---------------------------------------------------------------------------
@@ -193,15 +194,18 @@ export function payForPlanetaryFacilities(galaxy: Galaxy, empire: Empire, timePa
 
 /**
  * Empire.3.cs 4161 CalculatePirateIncome (Empire.3.cs 4201: CalculateAccurateAnnualIncome for pirate factions).
- * TODO(port) M4s2: Habitat.GetPirateControl().GetByFaction (PirateColonyControl) — pirate factions own no colonies yet
- * (a colony throws). The PirateEconomy term is ported (M4s1).
+ * Colony term (PirateColonyControl) ported by M4s2; the PirateEconomy term by M4s1.
  */
 export function calculatePirateIncome(galaxy: Galaxy, empire: Empire): number {
     let num = 0.0;
     for (let i = 0; i < empire.colonies.length; i++) {
         const habitat = empire.colonies[i];
         if (habitat != null && !habitat.hasBeenDestroyed) {
-            throw new Error('TODO(port) M4s: Empire.CalculatePirateIncome pirate colony control (Habitat.GetPirateControl)');
+            const byFaction = habitat.pirateColonyControl.getByFaction(empire);
+            if (byFaction !== null && byFaction.empireId === empire.empireId) {
+                const num2 = habitatAnnualRevenue(galaxy, habitat) * byFaction.controlLevel * 0.5;
+                num += num2;
+            }
         }
     }
     for (let j = 0; j < empire.pirateRelations.count; j++) {
@@ -225,7 +229,7 @@ export function calculatePirateIncome(galaxy: Galaxy, empire: Empire): number {
 /** Empire.3.cs 4091 CalculateAnnualCashflow (normal empires; pirates → CalculatePirateCashflow). */
 export function calculateAnnualCashflow(galaxy: Galaxy, empire: Empire): number {
     if (empire.pirateEmpireBaseHabitat !== null) {
-        throw new Error('TODO(port) M4s: Empire.CalculatePirateCashflow');
+        return calculatePirateCashflow(galaxy, empire, false);
     }
     let num = annualStateMaintenanceExcludingUnderConstruction(empire) + empire.thisYearsStateFuelCosts + annualTroopMaintenance(empire) + annualSubjugationTribute(galaxy, empire) + annualPirateProtection(empire);
     const num2 = annualTaxRevenue(galaxy, empire) + thisYearsForeignTradeBonuses(empire) + thisYearsSpacePortIncome(galaxy, empire) + thisYearsResortIncome(galaxy, empire) + calculateAnnualSubjugationTributeIncome(galaxy, empire);

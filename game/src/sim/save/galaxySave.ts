@@ -28,6 +28,7 @@ import { Cargo, CargoList, ResourceRef, Troop, TroopList } from '../cargo';
 import { Empire, EmpireCounters, getGovernmentsStatic } from '../empire';
 import { PirateEconomy, PirateEconomyYear } from '../pirates/pirateEconomy';
 import { EmpireActivity, EmpireActivityList } from '../pirates/empireActivity';
+import { PirateColonyControl, PirateColonyControlList } from '../pirates/pirateColonyControl';
 import { EmpireVisibility, GalaxyResourceMap, SystemVisibility } from '../visibility';
 import { BuiltObject, DockingBay } from '../builtObject';
 import { BuiltObjectComponent, BuiltObjectComponentList } from '../builtObjectComponent';
@@ -106,6 +107,9 @@ const CLASSES: Record<string, object> = {
     PirateEconomyYear: PirateEconomyYear.prototype,
     EmpireActivity: EmpireActivity.prototype,
     EmpireActivityList: EmpireActivityList.prototype,
+    // M4s2: Habitat._PirateColonyControl (pirate factions' control of colonies).
+    PirateColonyControl: PirateColonyControl.prototype,
+    PirateColonyControlList: PirateColonyControlList.prototype,
     EmpireVisibility: EmpireVisibility.prototype,
     SystemVisibility: SystemVisibility.prototype,
     GalaxyResourceMap: GalaxyResourceMap.prototype,

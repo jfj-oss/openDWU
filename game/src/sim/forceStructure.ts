@@ -36,7 +36,7 @@ import { SHIP_MARKUP_FACTOR, findNewest, type Design } from './design';
 import { canBuildDesign, findNewestCanBuild } from './designGeneration';
 import { DEFAULT_BASE_TECH_COST } from './componentStatic';
 import { ForceStructureProjection, ForceStructureProjectionList } from './forceStructureProjection';
-import { facilitiesCalculateAnnualMaintenance, identifyEmpireCapitalsWithRegional } from './construction/facilities';
+import { facilitiesCalculateAnnualMaintenance, facilitiesFindBestPirateFacility, identifyEmpireCapitalsWithRegional } from './construction/facilities';
 import { HabitatType } from './types';
 import { ResearchAbilityType } from './researchSystem';
 import { obtainEmpireEvaluation, recalculateCriticalResourceSupplyBonuses, taxComplianceRate } from './taxes';
@@ -396,7 +396,17 @@ export function habitatCorruption(galaxy: Galaxy, h: Habitat): number {
         // GenerateEmpire's DoTasks, Empire.1.cs 3533 — empireGeneration.ts).
         const empireCorruption = empire.corruption;
         val = num2 * (1.0 + empireCorruption) * Math.sqrt(h.distanceFactor);
-        // TODO(port): _PirateColonyControl bonus — no pirate colony control at game start.
+        // Habitat.cs 792-809 _PirateColonyControl bonus (ported by M4s2).
+        if (h.pirateColonyControl != null && h.pirateColonyControl.count > 0) {
+            let num3 = 0.0;
+            const highestControl = h.pirateColonyControl.getHighestControl();
+            if (highestControl !== null) num3 = Math.fround(highestControl.controlLevel / Math.fround(10));
+            if (h.facilities != null) {
+                const planetaryFacility = facilitiesFindBestPirateFacility(h.facilities, true, true);
+                if (planetaryFacility !== null) num3 += planetaryFacility.value3 / 100.0;
+            }
+            val += num3;
+        }
         // Habitat.cs 810-818: colony characters (excluding leaders) + Empire.Leader.ColonyCorruption.
         const num4 = resolveCharacterColonyCorruptionBonus(h);
         const num5 = 1.0 - num4 / 100.0;

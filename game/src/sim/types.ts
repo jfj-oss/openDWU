@@ -9,6 +9,7 @@ import type { BuiltObject, DockingBay } from './builtObject';
 import type { Empire } from './empire';
 import type { Ruin } from './ruins';
 import type { PlanetaryFacility } from './construction/facilities';
+import { PirateColonyControlList } from './pirates/pirateColonyControl';
 import type { Weapon } from './weapon';
 import { MIN_TIME } from './tick/simTime';
 
@@ -492,6 +493,10 @@ export class Habitat {
     invasionSpaceControlStrengthAttackers = -1;
     // ---- M4r fields (diplomacy) ----
     // ---- M4s fields (pirates) ----
+    /** Habitat.cs 67 _PirateColonyControl (GetPirateControl(); pirates/pirateColonyControl.ts). */
+    pirateColonyControl = new PirateColonyControlList();
+    /** Habitat.cs RaidCountdown (byte; set to 60 by a pirate raid, counted down by UpdateRaidCountdown). */
+    raidCountdown = 0;
     // ---- M4t fields (exploration) ----
     /** Habitat.cs 107 _CulturalDistressFactor (float; ExertCulturalInfluence Empire.cs 4734). */
     culturalDistressFactor = 0;

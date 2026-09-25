@@ -7079,9 +7079,11 @@ export function resolveLocationsToDefend(galaxy: Galaxy, empire: Empire, include
                 if (builtObject !== null && !builtObject.hasBeenDestroyed && !stellarObjectList.includes(builtObject)) stellarObjectList.push(builtObject);
             }
         }
-        // TODO(port): Habitat.GetPirateControl().GetByFaction (PirateColonyControl) — pirate factions own
-        // no colonies at game start.
-        if (empire.colonies.length > 0) throw new Error('TODO(port): Empire.9.cs ResolveLocationsToDefend pirate colonies (PirateColonyControl)');
+        // Empire.9.cs 1763-1770 (PirateColonyControl ported by M4s2).
+        for (let j = 0; j < empire.colonies.length; j++) {
+            const habitat = empire.colonies[j];
+            if (habitat != null && !habitat.hasBeenDestroyed && habitat.pirateColonyControl.getByFaction(empire) !== null && !stellarObjectList.includes(habitat)) stellarObjectList.push(habitat);
+        }
     } else {
         const empireList = resolveEmpiresToDefendAgainst(empire);
         // Empire.9.cs 1775-1815 (completed by M4i: BuildDefensiveBases / ReviewColonyFacilities reach it once empires war).
