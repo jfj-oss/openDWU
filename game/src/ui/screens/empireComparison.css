@@ -1,0 +1,288 @@
+/* Empire Comparisons and Victory Conditions panel + game-end banner (task 15d).
+   Copied from coloniesList.css (Empires list / tutorial-window dark-panel tokens). */
+
+.empire-comparison-wrap {
+    position: fixed;
+    inset: 0;
+    z-index: 1500; /* above the HUD, like the in-game tutorial window */
+    pointer-events: none;
+    font-family: 'Forgotten Futurist', sans-serif;
+    color: #e6e6e6;
+}
+
+.empire-comparison-window {
+    position: absolute;
+    top: 64px;
+    left: 16px;
+    width: min(900px, calc(100vw - 32px));
+    max-height: calc(100vh - 96px);
+    pointer-events: auto;
+    background: rgba(14, 16, 20, 0.94);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.empire-comparison-titlebar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: rgba(10, 11, 15, 0.9);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.empire-comparison-heading {
+    font-size: 13px;
+    color: #e8d24a;
+}
+
+.empire-comparison-close {
+    background: transparent;
+    border: none;
+    color: #ccc;
+    font-size: 15px;
+    cursor: pointer;
+    padding: 2px 6px;
+}
+.empire-comparison-close:hover {
+    color: #fff;
+}
+
+/* "GAME OVER — Winner: X" line above the tabs once the game is finished. */
+.empire-comparison-gameover {
+    padding: 6px 12px;
+    font-size: 13px;
+    color: #ffff00;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.empire-comparison-tabs {
+    display: flex;
+    gap: 4px;
+    padding: 6px 8px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.empire-comparison-tab {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-bottom: none;
+    border-radius: 4px 4px 0 0;
+    color: #aaa;
+    font-family: inherit;
+    font-size: 12px;
+    padding: 5px 12px;
+    cursor: pointer;
+}
+.empire-comparison-tab:hover {
+    color: #fff;
+}
+.empire-comparison-tab-active {
+    background: rgba(255, 255, 255, 0.12);
+    color: #e8d24a;
+}
+
+.empire-comparison-body {
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    overflow-y: auto;
+}
+
+.empire-comparison-lines {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 4px 8px 8px;
+}
+
+.empire-comparison-line {
+    font-size: 12px;
+    color: #ccc;
+}
+
+.empire-comparison-emphasis {
+    color: #fff;
+    font-size: 13px;
+}
+
+.empire-comparison-subtle {
+    font-size: 11px;
+    color: #888;
+    padding: 2px 8px 6px;
+}
+
+.empire-comparison-section {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #e8d24a;
+    padding: 10px 8px 2px;
+}
+
+/* Table rows: grid, template set per table in the TS. */
+.empire-comparison-header {
+    display: grid;
+    align-items: center;
+    gap: 8px;
+    padding: 0 8px 2px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #777;
+}
+
+.empire-comparison-row {
+    display: grid;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 4px;
+    font-size: 12px;
+    color: #aaa;
+}
+
+.empire-comparison-cell {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.empire-comparison-row .empire-comparison-cell:first-child,
+.empire-comparison-bar-row .empire-comparison-cell:first-child {
+    color: #fff;
+    font-size: 13px;
+}
+
+.empire-comparison-number {
+    text-align: right;
+}
+
+.empire-comparison-player {
+    font-weight: bold;
+}
+.empire-comparison-player .empire-comparison-cell:first-child {
+    color: #e8d24a;
+}
+
+/* Comparison bars (EmpireComparison.cs:155 colours). */
+.empire-comparison-bar-row {
+    display: grid;
+    grid-template-columns: 14em minmax(0, 1fr) 9em;
+    align-items: center;
+    gap: 8px;
+    padding: 2px 8px;
+    font-size: 12px;
+    color: #aaa;
+}
+
+.empire-comparison-bar-track {
+    height: 10px;
+    background: rgba(32, 32, 128, 0.5);
+}
+
+.empire-comparison-bar {
+    height: 10px;
+    background: rgba(255, 0, 128, 0.6);
+}
+
+.empire-comparison-achievement {
+    padding: 5px 8px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 4px;
+}
+
+.empire-comparison-achievement-title {
+    font-size: 13px;
+    color: #fff;
+}
+
+.empire-comparison-level-tag {
+    margin-left: 6px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #e8d24a;
+    border: 1px solid rgba(232, 210, 74, 0.4);
+    border-radius: 3px;
+    padding: 0 4px;
+}
+
+.empire-comparison-achievement-desc {
+    font-size: 12px;
+    color: #aaa;
+}
+
+/* Game-end banner (Main.Part6.cs method_436). */
+.empire-comparison-banner {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1600;
+    pointer-events: none;
+    font-family: 'Forgotten Futurist', sans-serif;
+    color: #e6e6e6;
+}
+
+.empire-comparison-banner-panel {
+    pointer-events: auto;
+    min-width: 360px;
+    max-width: calc(100vw - 32px);
+    padding: 20px 28px;
+    text-align: center;
+    background: rgba(14, 16, 20, 0.94);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+}
+
+.empire-comparison-banner-headline {
+    font-size: 28px;
+    color: #ffff00;
+}
+
+.empire-comparison-banner-line {
+    font-size: 14px;
+    color: #e6e6e6;
+    min-height: 1em;
+    white-space: pre-wrap;
+}
+
+.empire-comparison-banner-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 16px;
+}
+
+.empire-comparison-button {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    color: #e6e6e6;
+    font-family: inherit;
+    font-size: 13px;
+    padding: 6px 14px;
+    cursor: pointer;
+}
+.empire-comparison-button:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.16);
+}
+.empire-comparison-button:disabled {
+    opacity: 0.4;
+    cursor: default;
+}

@@ -404,3 +404,18 @@ Importing the module pulls in its `.css`; vitest handles that.
 - `isKeyActionAvailable('empireComparisonScreen')` → true.
 
 Run `npm run typecheck && npm test`. keyboard.test.ts must still pass unchanged. With `npm run dev` on a private port (other agents share 5173), save `node scripts/shot.mjs 'http://localhost:<port>/?autostart=1' shots/15d-victory.png`. Do not open it. Then append `## Worker report` with: files changed, the shot.mjs console output, and anything left undone.
+
+## Worker report
+
+Files changed:
+- new `src/ui/screens/empireComparison.ts`, `src/ui/screens/empireComparison.css`, `test/empireComparison.test.ts`
+- `src/ui/keyboard.ts`: the three `[15d]` blocks
+- `src/main.ts`: the three `[15d]` blocks
+
+shot.mjs console output (`?autostart=1`, dev server on port 5463): `[debug] [vite] connecting...`, `[debug] [vite] connected.`, `saved shots/15d-victory.png`. There were no errors. A playwright script also pressed V, opened each tab, fired `onGameEnd` (Victory) through `/src/sim/victory.ts`, and clicked Victory Conditions, then Continue. It checked that `gameIsFinished` is true, the victor is the player, the game paused then resumed, and the banner closed. Escape closes the panel.
+
+Suite: `npx vitest run --testTimeout=300000 --maxWorkers=2`: 128 files, 1403 tests passed, exit 0.
+
+Left undone / notes:
+- `npm run typecheck` fails at HEAD 0bf6879 with a pre-existing error that is not from this task: `src/sim/galaxy.ts(4501/4541)` declares `shakturiDefeated` twice, from the m4z3 merge. src/sim is out of scope, so I did not fix it. No other type errors.
+- The autostart galaxy has `globalVictoryConditions = null`, so the Victory tab shows the race-specific + SANDBOX lines and no progress table, which is faithful to the original.

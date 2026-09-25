@@ -40,6 +40,7 @@ import { setSaveLoadProvider, createSaveLoadPanel, type LoadedGame } from './ui/
 import { type Game } from './sim/game';
 import { createGalaxyMap, type GalaxyMapScreen } from './ui/screens/galaxyMap';
 import { hideMapTooltip } from './ui/mapTooltip';
+import { closeEmpireComparison, closeGameEndBanner, installGameEndHandler, removeGameEndHandler } from './ui/screens/empireComparison'; // [15d]
 import './ui/hud.css';
 
 // ?shape= names accepted by the boot URL.
@@ -362,6 +363,9 @@ export async function startGameView(game: Game, zoomOverride?: number, extraBoot
         }
     };
     const refreshClockTimer = setInterval(refreshClockLabel, 250);
+    // [15d] Galaxy.GameEnd → Main.Part12.cs Galaxy_GameEnd / DoGameEnd (pause, IsFinished/Victor, banner).
+    installGameEndHandler(galaxy, time);
+    // [/15d]
 
     // Task 06l: extra boots run after the HUD/clock are wired (e.g. opening
     // a tutorial window that pauses/unpauses the clock).
@@ -476,6 +480,11 @@ export async function startGameView(game: Game, zoomOverride?: number, extraBoot
         setEmpireSummarySource(null);
         // The ticker buffer is module-level; the next game starts fresh.
         clearHudMessages();
+        // [15d]
+        removeGameEndHandler(galaxy);
+        closeEmpireComparison();
+        closeGameEndBanner();
+        // [/15d]
     };
 
     return time;
