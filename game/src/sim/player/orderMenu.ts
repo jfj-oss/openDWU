@@ -24,6 +24,7 @@
 // SelectRelativeParkingPoint). Only ever called from player input, never on the tick path.
 
 import type { Galaxy } from '../galaxy';
+import { galaxyNow, spanSeconds } from '../tick/simTime';
 import type { Empire } from '../empire';
 import { BUILD_COLONY_SHIP_POPULATION_REQUIREMENT } from '../empire';
 import { BuiltObject } from '../builtObject';
@@ -408,12 +409,14 @@ export function canDeployXaraktorVirus(galaxy: Galaxy, empire: Empire): { result
             if (empire.colonies.length > 0) {
                 const num = countColoniesWithWonder(empire, WonderType.RaceAchievement, 2);
                 if (num > 0) {
-                    // TODO(port): Empire.LastXaraktorVirusDeploy (Empire.cs 881) is not modelled — the C# compares
-                    // CurrentDateTime - LastXaraktorVirusDeploy > 150 s; with the field's DateTime.MinValue default that holds.
-                    void galaxy;
-                    return { result: true, virus, reason };
+                    // Empire.10.cs 4532: CurrentDateTime.Subtract(LastXaraktorVirusDeploy).TotalSeconds > 150.0
+                    if (spanSeconds(galaxyNow(galaxy), empire.lastXaraktorVirusDeploy) > 150.0) {
+                        return { result: true, virus, reason };
+                    }
+                    reason = T('Cannot Deploy Xaraktor Virus - too soon');
+                } else {
+                    reason = T('Cannot Deploy Xaraktor Virus - no facility');
                 }
-                reason = T('Cannot Deploy Xaraktor Virus - no facility');
             } else {
                 reason = T('Cannot Deploy Xaraktor Virus - no facility');
             }

@@ -35,7 +35,7 @@ import { Character, CharacterRole } from '../characters';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from '../diplomacy';
 import { formatText, FleetPosture } from '../diplomacyTick';
 import { netSort } from '../netSort';
-import { galaxyStarDate, REAL_SECONDS_IN_GALACTIC_YEAR } from '../tick/simTime';
+import { galaxyNow, galaxyStarDate, REAL_SECONDS_IN_GALACTIC_YEAR } from '../tick/simTime';
 import { ColonyResourceEffect, resourceBonusTotalByEffectType } from '../developmentLevel';
 import { ResourceGroup, resourceGroupOf } from '../resourceSystem';
 import { PlanetaryFacilityType, facilityType } from '../researchSystem';
@@ -980,8 +980,9 @@ function executeForHabitat(ctx: Ctx, habitat4: Habitat, action: ShipAction, from
                         const p = galaxy.selectRelativeHabitatSurfacePoint(habitat5);
                         galaxy.generateCreatureAtHabitat(CreatureType.Kaltor, habitat5, false, Math.trunc(p.x), Math.trunc(p.y));
                     }
-                    // TODO(port): Empire.LastXaraktorVirusDeploy = CurrentDateTime — Empire.cs:881 (field not modelled; read only by
-                    // the AI's Xaraktor virus use, Empire.10.cs:4532, which is not ported either).
+                    // Main.Part7.cs 1042: _Game.PlayerEmpire.LastXaraktorVirusDeploy = CurrentDateTime (read by
+                    // CanDeployXaraktorVirus, Empire.10.cs 4532).
+                    ctx.empire.lastXaraktorVirusDeploy = galaxyNow(galaxy);
                 }
                 break;
             }
