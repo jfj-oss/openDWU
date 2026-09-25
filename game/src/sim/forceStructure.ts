@@ -122,8 +122,8 @@ const shipMaintenanceSavings = (empire: Empire): number => empire.shipMaintenanc
 
 // Empire.ColonyCorruptionFactor / ColonyIncomeFactor (Empire.cs 409/425), set by
 // Galaxy.SetEmpireDifficultyFactors (pirates.ts) — Galaxy.*Default until then.
-const colonyCorruptionFactor = (empire: Empire): number => empire.difficultyFactors?.colonyCorruptionFactor ?? COLONY_CORRUPTION_FACTOR_DEFAULT;
-const colonyIncomeFactor = (empire: Empire): number => empire.difficultyFactors?.colonyIncomeFactor ?? COLONY_INCOME_FACTOR_DEFAULT;
+export const colonyCorruptionFactor = (empire: Empire): number => empire.difficultyFactors?.colonyCorruptionFactor ?? COLONY_CORRUPTION_FACTOR_DEFAULT;
+export const colonyIncomeFactor = (empire: Empire): number => empire.difficultyFactors?.colonyIncomeFactor ?? COLONY_INCOME_FACTOR_DEFAULT;
 
 
 // ---------------------------------------------------------------------------

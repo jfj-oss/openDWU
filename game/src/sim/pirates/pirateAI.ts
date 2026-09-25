@@ -1,15 +1,13 @@
-// M4s (s2) — pirate faction AI (missions, fleets, economy, construction, raids, control).
-//
-// Stubs created by M4a (tasks/M4-plan.md §3.1): the tick skeletons in src/sim/tick/ call these entry points in C#
-// order. Each is a no-op that does NOT draw Galaxy.Rnd (a `RND:` note marks C# draw sites that are skipped until the
-// owning package ports the body) and records a TODO hit (tick/todo.ts). The owning package replaces the bodies in
-// place, keeping the signatures (or adjusting the skeleton call in the same change).
+// M4s (s2) — pirate faction AI: the entry points the tick skeletons call (tick/pirateTick.ts, empireTick.ts,
+// habitatTick.ts, builtObjectTick.ts), PirateColonyControl (Habitat.GetPirateControl) accessors, BaconHabitat.cs 1388
+// ReviewPirateControl, raid countdowns and pirate base discovery. The larger bodies live in pirateShipMissions.ts
+// (PirateAssignShipMission(s)), pirateFleets.ts (PirateTaskFleets), pirateEmpireAI.ts (small empire steps, Bacon long-interval
+// steps), pirateRelationsAI.ts (relations, protection, info / tech offers) and pirateConstruction.ts (forces, construction).
 
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import type { BuiltObject } from '../builtObject';
 import type { Habitat } from '../types';
-import { registerTodo, todo } from '../tick/todo';
 import { BuiltObjectRole } from '../data/designSpecifications';
 import { BuiltObjectSubRole } from '../builtObjectTypes';
 import { HabitatType } from '../types';
@@ -23,113 +21,110 @@ import { facilitiesCountByType, facilitiesFindBestPirateFacility } from '../cons
 import { getEmpireById } from '../logistics/contracts';
 import { obtainPirateRelation, PirateRelationType } from '../pirateRelations';
 import { PirateColonyControl, PirateColonyControlList } from './pirateColonyControl';
-
-const f = Math.fround;
 import { annualFacilityMaintenance, annualStateMaintenance, annualTroopMaintenance } from '../forceStructure';
 import { annualStateMaintenanceExcludingUnderConstruction, calculatePirateIncome } from '../treasury';
 import type { PirateExpenseType, PirateIncomeType } from './pirateEconomy';
+import {
+    findNearestBaseForPirateAttackOwn,
+    findNearestKnownBaseOfEmpireForPirateAttackOwn,
+    pirateAssignShipMissionCore,
+    pirateAssignShipMissionsCore,
+} from './pirateShipMissions';
+import {
+    checkColoniesForPirateFacilitiesAndAttackCore,
+    checkSendPirateRaidCore,
+    doTaskPiratesLongIntervalCore,
+    maintainPirateSpaceportResourceLevelsCore,
+    pirateCollectIncomeFromControlledColoniesCore,
+    pirateRecalculateEmpireCorruptionCore,
+    pirateResetCivilianShipEmpireToIndependentCore,
+    pirateReviewSystemThreatsCore,
+    reviewPirateSystemInfluenceCore,
+} from './pirateEmpireAI';
+import { determineDesirePirateProtectionCore, pirateGenerateSellInfoOffersCore, pirateReviewEmpireRelationsCore, pirateTradeItemsCore } from './pirateRelationsAI';
+import { pirateDoConstructionCore, pirateProjectForcesCore } from './pirateConstruction';
+import { pirateTaskFleetsCore } from './pirateFleets';
 
-const T_checkSendPirateRaid = registerTodo('M4s', 'checkSendPirateRaid');
-/** Empire.1.cs 4065 CheckSendPirateRaid. */
+const f = Math.fround;
+
+/** Empire.1.cs 4065 CheckSendPirateRaid (normal empires, periodic block). No Rnd. */
 export function checkSendPirateRaid(galaxy: Galaxy, empire: Empire): void {
-    /* TODO(port) M4s */ todo(T_checkSendPirateRaid);
+    checkSendPirateRaidCore(galaxy, empire);
 }
 
-const T_pirateRecalculateEmpireCorruption = registerTodo('M4s', 'pirateRecalculateEmpireCorruption');
-/** Empire.4.cs 3406 / BaconEmpire.cs 1253 PirateRecalculateEmpireCorruption. */
+/** Empire.4.cs 3406 → BaconEmpire.cs 1253 PirateRecalculateEmpireCorruption. Rnd: one NextDouble. */
 export function pirateRecalculateEmpireCorruption(galaxy: Galaxy, empire: Empire): void {
-    // RND: 1 direct — not drawn until M4s.
-    /* TODO(port) M4s */ todo(T_pirateRecalculateEmpireCorruption);
+    pirateRecalculateEmpireCorruptionCore(galaxy, empire);
 }
 
-const T_pirateAssignShipMissions = registerTodo('M4s', 'pirateAssignShipMissions');
-/** Empire.1.cs 4385 PirateAssignShipMissions(starDate). */
+/** Empire.1.cs 4385 PirateAssignShipMissions(starDate) (pirateShipMissions.ts). */
 export function pirateAssignShipMissions(galaxy: Galaxy, empire: Empire, starDate: number): void {
-    // RND: draws in callees (d≤3) — not drawn until M4s.
-    /* TODO(port) M4s */ todo(T_pirateAssignShipMissions);
+    pirateAssignShipMissionsCore(galaxy, empire, starDate);
 }
 
-const T_pirateTaskFleets = registerTodo('M4s', 'pirateTaskFleets');
-/** Empire.9.cs 904 PirateTaskFleets. */
+/** Empire.9.cs 904 PirateTaskFleets (pirateFleets.ts; the M4m fleet-search helpers are stubs). */
 export function pirateTaskFleets(galaxy: Galaxy, empire: Empire): void {
-    /* TODO(port) M4s */ todo(T_pirateTaskFleets);
+    pirateTaskFleetsCore(galaxy, empire);
 }
 
-const T_pirateCollectIncomeFromControlledColonies = registerTodo('M4s', 'pirateCollectIncomeFromControlledColonies');
-/** Empire.2.cs 2895 PirateCollectIncomeFromControlledColonies(timePassed). */
+/** Empire.2.cs 2895 PirateCollectIncomeFromControlledColonies(timePassed). No Rnd. */
 export function pirateCollectIncomeFromControlledColonies(galaxy: Galaxy, empire: Empire, timePassed: number): void {
-    /* TODO(port) M4s */ todo(T_pirateCollectIncomeFromControlledColonies);
+    pirateCollectIncomeFromControlledColoniesCore(galaxy, empire, timePassed);
 }
 
-const T_pirateReviewSystemThreats = registerTodo('M4s', 'pirateReviewSystemThreats');
-/** Empire.9.cs 4139 PirateReviewSystemThreats. */
+/** Empire.9.cs 4139 PirateReviewSystemThreats. No Rnd. */
 export function pirateReviewSystemThreats(galaxy: Galaxy, empire: Empire): void {
-    /* TODO(port) M4s */ todo(T_pirateReviewSystemThreats);
+    pirateReviewSystemThreatsCore(galaxy, empire);
 }
 
-const T_pirateGenerateSellInfoOffers = registerTodo('M4s', 'pirateGenerateSellInfoOffers');
-/** Empire.1.cs 4359 PirateGenerateSellInfoOffers. */
+/** Empire.1.cs 4359 PirateGenerateSellInfoOffers (pirateRelationsAI.ts). */
 export function pirateGenerateSellInfoOffers(galaxy: Galaxy, empire: Empire): void {
-    // RND: 1 direct — not drawn until M4s.
-    /* TODO(port) M4s */ todo(T_pirateGenerateSellInfoOffers);
+    pirateGenerateSellInfoOffersCore(galaxy, empire);
 }
 
-const T_reviewPirateSystemInfluence = registerTodo('M4s', 'reviewPirateSystemInfluence');
-/** Empire.7.cs 2180 ReviewPirateSystemInfluence. */
+/** Empire.7.cs 2180 ReviewPirateSystemInfluence. No Rnd. */
 export function reviewPirateSystemInfluence(galaxy: Galaxy, empire: Empire): void {
-    /* TODO(port) M4s */ todo(T_reviewPirateSystemInfluence);
+    reviewPirateSystemInfluenceCore(galaxy, empire);
 }
 
-const T_doTaskPiratesLongInterval = registerTodo('M4s', 'doTaskPiratesLongInterval');
-/** BaconEmpire.cs 1099 DoTaskPiratesLongInterval(empire). */
+/** BaconEmpire.cs 1099 DoTaskPiratesLongInterval(empire). Clock-seeded Randoms → galaxy.baconPirateClockRnd. */
 export function doTaskPiratesLongInterval(galaxy: Galaxy, empire: Empire): void {
-    // RND: +clock×2 — not drawn until M4s.
-    /* TODO(port) M4s */ todo(T_doTaskPiratesLongInterval);
+    doTaskPiratesLongIntervalCore(galaxy, empire);
 }
 
-const T_maintainPirateSpaceportResourceLevels = registerTodo('M4s', 'maintainPirateSpaceportResourceLevels');
-/** Empire.4.cs 2399 MaintainPirateSpaceportResourceLevels. */
+/** Empire.4.cs 2399 MaintainPirateSpaceportResourceLevels. No Rnd. */
 export function maintainPirateSpaceportResourceLevels(galaxy: Galaxy, empire: Empire): void {
-    /* TODO(port) M4s */ todo(T_maintainPirateSpaceportResourceLevels);
+    maintainPirateSpaceportResourceLevelsCore(galaxy, empire);
 }
 
-const T_pirateReviewEmpireRelations = registerTodo('M4s', 'pirateReviewEmpireRelations');
-/** Empire.2.cs 2510 PirateReviewEmpireRelations(starDate, timePassed). */
+/** Empire.2.cs 2510 PirateReviewEmpireRelations(starDate, timePassed) (pirateRelationsAI.ts). No Rnd. */
 export function pirateReviewEmpireRelations(galaxy: Galaxy, empire: Empire, starDate: number, timePassed: number): void {
-    /* TODO(port) M4s */ todo(T_pirateReviewEmpireRelations);
+    pirateReviewEmpireRelationsCore(galaxy, empire, starDate, timePassed);
 }
 
-const T_pirateProjectForces = registerTodo('M4s', 'pirateProjectForces');
-/** Empire.2.cs 766 PirateProjectForces(starDate). */
+/** Empire.2.cs 766 PirateProjectForces(starDate) (pirateConstruction.ts). No Rnd. */
 export function pirateProjectForces(galaxy: Galaxy, empire: Empire, starDate: number): void {
-    /* TODO(port) M4s */ todo(T_pirateProjectForces);
+    pirateProjectForcesCore(galaxy, empire, starDate);
 }
 
-const T_pirateDoConstruction = registerTodo('M4s', 'pirateDoConstruction');
-/** Empire.2.cs 219 PirateDoConstruction. */
+/** Empire.2.cs 219 PirateDoConstruction (pirateConstruction.ts). */
 export function pirateDoConstruction(galaxy: Galaxy, empire: Empire): void {
-    // RND: draws in callees (d≤3) — not drawn until M4s.
-    /* TODO(port) M4s */ todo(T_pirateDoConstruction);
+    pirateDoConstructionCore(galaxy, empire);
 }
 
-const T_pirateResetCivilianShipEmpireToIndependent = registerTodo('M4s', 'pirateResetCivilianShipEmpireToIndependent');
-/** Empire.1.cs 4333 PirateResetCivilianShipEmpireToIndependent. */
+/** Empire.1.cs 4333 PirateResetCivilianShipEmpireToIndependent. No Rnd. */
 export function pirateResetCivilianShipEmpireToIndependent(galaxy: Galaxy, empire: Empire): void {
-    /* TODO(port) M4s */ todo(T_pirateResetCivilianShipEmpireToIndependent);
+    pirateResetCivilianShipEmpireToIndependentCore(galaxy, empire);
 }
 
-const T_pirateTradeItems = registerTodo('M4s', 'pirateTradeItems');
-/** Empire.7.cs 2666 PirateTradeItems. */
+/** Empire.7.cs 2666 PirateTradeItems (pirateRelationsAI.ts). */
 export function pirateTradeItems(galaxy: Galaxy, empire: Empire): void {
-    // RND: 2 direct — not drawn until M4s.
-    /* TODO(port) M4s */ todo(T_pirateTradeItems);
+    pirateTradeItemsCore(galaxy, empire);
 }
 
-const T_checkColoniesForPirateFacilitiesAndAttack = registerTodo('M4s', 'checkColoniesForPirateFacilitiesAndAttack');
-/** Empire.1.cs 4328 / BaconEmpire.cs 1499 CheckColoniesForPirateFacilitiesAndAttack. */
+/** Empire.1.cs 4328 → BaconEmpire.cs 1499 CheckColoniesForPirateFacilitiesAndAttack (normal empires, huge block). */
 export function checkColoniesForPirateFacilitiesAndAttack(galaxy: Galaxy, empire: Empire): void {
-    // RND: draws in callees (d≤3) — not drawn until M4s.
-    /* TODO(port) M4s */ todo(T_checkColoniesForPirateFacilitiesAndAttack);
+    checkColoniesForPirateFacilitiesAndAttackCore(galaxy, empire);
 }
 
 /** BaconHabitat.cs 37 pirateMaxPopulationInfluence (long; BaconMain.cs 1016 settings override not ported). */
@@ -320,17 +315,9 @@ export function pirateEconomyPerformExpense(galaxy: Galaxy, empire: Empire, amou
     empire.pirateEconomy.performExpense(amount, type as PirateExpenseType, starDate);
 }
 
-// ---- stub added by M4s s1 (Empire.2.cs 2490 ReviewPirateRelations) ----
-const T_determineDesirePirateProtection = registerTodo('M4s', 'determineDesirePirateProtection');
-/**
- * Empire.2.cs 2754 DetermineDesirePirateProtection(otherEmpire). TODO(port) M4s2: needs
- * CalculatePirateProtectionPricePerMonth (Empire.2.cs 2653: TotalColonyStrategicValue, BuiltObjectList
- * CalculateAttackingFirepowerNearEmpireTargets, CalculateAccurateAnnualCashflowIncludingUnderConstruction),
- * CalculateDistanceToNearestColony, CheckSufficientCashflow. No Rnd. Stub: true (the protection agreement is kept).
- */
+/** Empire.2.cs 2754 DetermineDesirePirateProtection(otherEmpire) (pirateRelationsAI.ts). No Rnd. */
 export function determineDesirePirateProtection(galaxy: Galaxy, empire: Empire, otherEmpire: Empire | null): boolean {
-    /* TODO(port) M4s2 */ todo(T_determineDesirePirateProtection);
-    return true;
+    return determineDesirePirateProtectionCore(galaxy, empire, otherEmpire);
 }
 
 // ---- stubs added by M4i (construction/facilities.ts: ConstructFacilities, PirateReviewColonyFacilities) ----
@@ -390,26 +377,21 @@ export function calculatePirateExpenses(empire: Empire, includeShipsUnderConstru
     return num + annualTroopMaintenance(empire);
 }
 
-// ---- stubs added by M4l (ShipGroup.CheckForMissionCompletion, pirate fleets) ----
+// ---- Galaxy.7.cs pirate attack base searches (called by ShipGroup.CheckForMissionCompletion, M4l) ----
 
-const T_findNearestBaseForPirateAttack = registerTodo('M4s', 'findNearestBaseForPirateAttack');
-/** Galaxy.7.cs 1210 FindNearestBaseForPirateAttack(x, y, empireToExclude) — stub: null (super-pirate fleets get no follow-up target). */
+/** Galaxy.7.cs 1210 FindNearestBaseForPirateAttack(x, y, empireToExclude). No Rnd. */
 export function findNearestBaseForPirateAttack(galaxy: Galaxy, x: number, y: number, empireToExclude: Empire | null): BuiltObject | null {
-    /* TODO(port) M4s */ todo(T_findNearestBaseForPirateAttack);
-    return null;
+    return findNearestBaseForPirateAttackOwn(galaxy, x, y, empireToExclude);
 }
 
-const T_findNearestKnownBaseOfEmpireForPirateAttack = registerTodo('M4s', 'findNearestKnownBaseOfEmpireForPirateAttack');
-/** Galaxy.7.cs 1056 FindNearestKnownBaseOfEmpireForPirateAttack(attackingPirateEmpire, x, y, targetEmpire, attackStrength) — stub: null. */
+/** Galaxy.7.cs 1056 FindNearestKnownBaseOfEmpireForPirateAttack(attackingPirateEmpire, x, y, targetEmpire, attackStrength). No Rnd. */
 export function findNearestKnownBaseOfEmpireForPirateAttack(galaxy: Galaxy, attackingPirateEmpire: Empire, x: number, y: number, targetEmpire: Empire, attackStrength: number): BuiltObject | null {
-    /* TODO(port) M4s */ todo(T_findNearestKnownBaseOfEmpireForPirateAttack);
-    return null;
+    return findNearestKnownBaseOfEmpireForPirateAttackOwn(galaxy, attackingPirateEmpire, x, y, targetEmpire, attackStrength);
 }
 
-// ---- stub added by M4f (called from missions/cmdReassign.ts, BuiltObject.2.cs 4017/4077/4126/4203/4219) ----
+// ---- called from missions/cmdReassign.ts (BuiltObject.2.cs 4017/4077/4126/4203/4219) ----
 
-const T_pirateAssignShipMission = registerTodo('M4s', 'pirateAssignShipMission');
-/** Empire.1.cs 4385-5505 PirateAssignShipMission(ship, starDate) (single-ship overload) — stub. RND: draws in the body — not drawn until M4s2. */
+/** Empire.1.cs 4424 PirateAssignShipMission(ship, starDate) (single ship; pirateShipMissions.ts). */
 export function pirateAssignShipMission(galaxy: Galaxy, empire: Empire, ship: BuiltObject, starDate: number): void {
-    /* TODO(port) M4s2 */ todo(T_pirateAssignShipMission);
+    pirateAssignShipMissionCore(galaxy, empire, ship, starDate);
 }

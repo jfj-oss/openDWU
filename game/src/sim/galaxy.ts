@@ -4443,6 +4443,11 @@ export class Galaxy {
     // ---- M4s fields (pirates runtime) ----
     /** Galaxy.cs 593 PirateMissions (EmpireActivityList: missions on offer / being bid on; pirates/missionsMarket.ts). */
     pirateMissions = new EmpireActivityList();
+    /**
+     * The clock-seeded `new Random()` of BaconEmpire.cs 1122 / 1156 (CheckPiratesBuildConstructionShipsAtIndependentPlanet,
+     * CheckPirateReinforcePirateBases) — one stream per galaxy, seeded from the galaxy seed (plan §0; pirates/pirateAI.ts).
+     */
+    baconPirateClockRnd: Random | null = null;
     // ---- M4t fields (visibility, exploration, territory) ----
     /**
      * Galaxy.cs _RegeneratingEmpireTerritory / _RegenerateEmpireTerritoryAgain (ReviewEmpireTerritoryCore 3384):

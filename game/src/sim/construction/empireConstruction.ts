@@ -159,7 +159,7 @@ function buildSpeed(galaxy: Galaxy, empire: Empire, builtObject: BuiltObject): n
 }
 
 /** ConstructionQueue as the typed value of Habitat / BuiltObject .ConstructionQueue (declared `unknown`). */
-function queueOf(o: Habitat | BuiltObject): ConstructionQueue | null {
+export function queueOf(o: Habitat | BuiltObject): ConstructionQueue | null {
     return (o.constructionQueue as ConstructionQueue | null) ?? null;
 }
 
@@ -698,7 +698,7 @@ export function checkShouldAttemptColonization(galaxy: Galaxy, empire: Empire, h
 }
 
 /** Empire.4.cs 2312 DetermineHabitatsBeingColonized. */
-function determineHabitatsBeingColonized(empire: Empire): Habitat[] {
+export function determineHabitatsBeingColonized(empire: Empire): Habitat[] {
     const habitatList: Habitat[] = [];
     const bos = empire.builtObjects as BuiltObject[];
     for (let i = 0; i < bos.length; i++) {
@@ -826,7 +826,7 @@ export function checkBuildoutResearchCapacityAtColonies(galaxy: Galaxy, empire: 
 // ---- advisor texts (Empire.10.cs 3640-3677). TODO(port) M9: GameText formatting (ResolveDescription, "###,###,##0"
 // money) — only the player reads these; the GameText key stands in for the format string. ----
 
-function formatMoney(value: number): string {
+export function formatMoney(value: number): string {
     return Math.round(value).toString();
 }
 
@@ -846,7 +846,7 @@ function generateAutomationMessageColonization(galaxy: Galaxy, newColony: Habita
 }
 
 /** Empire.10.cs 3662 GenerateAutomationMessageConstruction(builtObject, habitat, cost). */
-function generateAutomationMessageConstruction(galaxy: Galaxy, builtObject: BuiltObject, habitat: Habitat | null, cost: number): string {
+export function generateAutomationMessageConstruction(galaxy: Galaxy, builtObject: BuiltObject, habitat: Habitat | null, cost: number): string {
     let text = '';
     let text2 = '';
     let text3 = '';
@@ -1525,7 +1525,7 @@ export function reviewLatestDesigns(galaxy: Galaxy, empire: Empire): void {
 }
 
 /** The (location, resourcesToOrder) pairs DirectConstruction / BuildDefensiveBases collect (C# parallel lists). */
-interface PendingOrders<T> {
+export interface PendingOrders<T> {
     locations: T[];
     cargo: CargoList[];
 }
@@ -1534,7 +1534,7 @@ interface PendingOrders<T> {
  * Empire.6.cs 2842-2901 / Empire.10.cs 1346-1374: for every distinct location (first-seen order), merge its cargo lists
  * (CargoList.Add) and CreateOrder(location, resource, amount, isState: false, ConstructionShortage) per merged cargo.
  */
-function placeGroupedOrders<T extends Habitat | BuiltObject>(galaxy: Galaxy, empire: Empire, pending: PendingOrders<T>): void {
+export function placeGroupedOrders<T extends Habitat | BuiltObject>(galaxy: Galaxy, empire: Empire, pending: PendingOrders<T>): void {
     const distinct: T[] = [];
     for (const item of pending.locations) if (!distinct.includes(item)) distinct.push(item);
     for (const item2 of distinct) {

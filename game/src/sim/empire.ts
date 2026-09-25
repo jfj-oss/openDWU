@@ -1871,6 +1871,15 @@ export class Empire {
     /** EmpireCounters.cs diplomatic counters (diplomacy.ts DiplomacyCounters) until EmpireCounters is ported. */
     diplomacyCounters = new DiplomacyCounters();
     // ---- M4s fields (pirates runtime) ----
+    /** Empire.cs PirateInfluenceSystemIds (List<int>; ReviewPirateSystemInfluence, pirates/pirateAI.ts). */
+    pirateInfluenceSystemIds: number[] = [];
+    /**
+     * Empire.cs 815 PreWarpProgressEventOccurredSendPirateRaid (CheckSendPirateRaid). Counts as set when the game-start
+     * aggregate `preWarpProgressEventsOccurred` is true (Galaxy.7.cs 5189 / Galaxy.8.cs 4532 set it with the others).
+     */
+    preWarpProgressEventOccurredSendPirateRaid = false;
+    /** Empire.cs ColoniesNeedingTroops (HabitatList, null until first use; CheckColoniesForPirateFacilitiesAndAttack). */
+    coloniesNeedingTroops: Habitat[] | null = null;
     // ---- M4t fields (visibility, exploration) ----
     // _EmpiresViewable / _EmpiresViewableExpiry / LocationHints: declared in the M4r block (M4t expires / removes them).
     /** Empire.cs 147 _SystemExploredCount = 1 / 149 _ExplorationShipCount = 1 (UpdateSystemExplorationStatus). */

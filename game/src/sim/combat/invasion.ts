@@ -106,3 +106,16 @@ export function inflictTroopLosses(galaxy: Galaxy, habitat: Habitat, defendingEm
     // RND: troop loss distribution draws — not drawn until M4q.
     /* TODO(port) M4q */ todo(T_inflictTroopLosses);
 }
+
+// ---- Stub added by M4s2 (BaconEmpire.cs 1499 CheckColoniesForPirateFacilitiesAndAttack → Habitat.cs 3312) ----
+
+const T_generateDefensivePirateRaiders = registerTodo('M4q', 'generateDefensivePirateRaiders');
+/**
+ * Habitat.cs 3312-3321 InitiateAttackAgainstPirateFacilities body after its check: GenerateDefensivePirateRaiders(
+ * defendingPirateFaction, currentDefendingTroopsInvade) (Habitat.cs 3360 → BaconHabitat.GenerateDefensivePirateRaiders;
+ * RND: Next(0, 3) per raider group, BaconHabitat.cs 1315) and `InvasionStats ??= new InvasionStats(colony,
+ * attackingEmpire, defendingPirateFaction)` — stub.
+ */
+export function generateDefensivePirateRaiders(galaxy: Galaxy, colony: Habitat, defendingPirateFaction: Empire | null, currentDefendingTroopsInvade: boolean, attackingEmpire: Empire | null): void {
+    /* TODO(port) M4q */ todo(T_generateDefensivePirateRaiders);
+}
