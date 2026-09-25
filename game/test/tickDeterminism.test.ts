@@ -203,7 +203,8 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // ledger, Creature.DamageTarget (Creature.cs 1347) damages its targets, bombardment tests PlanetaryFacilityType by
         // value, and the StellarObject readers see Fighters' FirepowerRaw / TopSpeed.
         // Moved from 2fb83dc55600537f: research trading is live (Galaxy.4.cs 4310/4551 ResolveTradeableItemsResearchProjects offers projects; GiveTradeableItem / Empire.3.cs 4467 research purchase run DoResearchBreakthrough)
-        expect(summary.digest).toBe('d4e45fea75fa52d8');
+        // Moved from d4e45fea75fa52d8: 17d: human player starts with C# automation defaults (Start.2.cs:2122)
+        expect(summary.digest).toBe('a59640a37d6c8238');
     }, 600000);
 });
 

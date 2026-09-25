@@ -29,6 +29,9 @@ import { toggleShipsAndBasesList } from './screens/shipsAndBasesList';
 import { toggleMessageHistory } from './screens/messageHistory';
 import { toggleResearchScreen } from './screens/researchScreen'; // [15b]
 import { showToast } from './toast';
+// [policy] begin
+import { toggleEmpirePolicy } from './screens/empirePolicy';
+// [policy] end
 
 // Port of Main.Part12.cs LoadUiChromeButtons (381–520): the control → chrome
 // button image mapping. The original loads each control's image from
@@ -521,6 +524,16 @@ function buildTopBarButton(name: string, wiring: HudWiring): HTMLElement {
             return;
         }
         // [/15b]
+
+        // [policy] begin
+        // btnEmpirePolicy → Empire Policy panel (Main.Part2.cs:1184 btnEmpirePolicy_Click; task 17d).
+        if (name === 'btnEmpirePolicy') {
+            const src = getEmpireSummarySource();
+            if (src) toggleEmpirePolicy({ empire: src.empire });
+            return;
+        }
+        // [policy] end
+
         const screen = topBarScreen(name);
         if (screen === 'colonies') {
             // Main.Part9.cs tbtnColonies_Click: toggle the Colonies list.
