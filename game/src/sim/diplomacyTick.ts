@@ -73,6 +73,8 @@ import {
     sendAttackFleets,
     sendScoutsToSingleEnemyEmpire,
     setDefendFleets,
+    checkReadyForWarCaptureObjectives,
+    prepareFleetsForWarCaptureObjectives,
 } from './fleets/militaryAI';
 import { cancelBlockades as cancelBlockadesImpl, getBlockadesAgainstEmpire, type Blockade } from './fleets/blockades';
 import { chanceNewAmbassador, doCharacterEventRuntime } from './events';
@@ -1710,23 +1712,18 @@ export function reviewDiplomaticStrategies(galaxy: Galaxy, empire: Empire): void
 // Fleets for war (Empire.8.cs 1014 PrepareFleetsForWar; Empire.9.cs 4446 SendScoutShipsToEnemyLocations).
 // ---------------------------------------------------------------------------------------------------------------
 
-const T_prepareFleetsCapture = registerTodo('M4r', 'prepareFleetsForWar CaptureObjectives fleet assignment (M4l/M4m fleet model)');
-
 /**
- * Empire.8.cs 1014 PrepareFleetsForWar(otherEmpire): the number of fleets given an attack point.
- * The CaptureObjectives branch walks GenerateOrderedFleetsForTarget (ship groups) per objective: with no ship groups
- * every list is empty and it returns 0, as the C# does. TODO(port) M4l/M4m: the fleet assignment itself
- * (EstimatedDefensiveForceRequired, DetermineRequiredTroopStrength, DecideBestFleetRefuelPoint, GatherPoint/AttackPoint,
- * AssignMission(Refuel)) once ShipGroup is ported; until then fleets present → 0 fleets prepared (todo hit).
+ * Empire.8.cs 1014 PrepareFleetsForWar(otherEmpire): the number of fleets given an attack point (the CaptureObjectives
+ * fleet walk is fleets/militaryAI.ts prepareFleetsForWarCaptureObjectives, M4m).
  */
 export function prepareFleetsForWar(galaxy: Galaxy, self: Empire, otherEmpire: Empire): number {
-    const num = 0;
+    let num = 0;
     if (self.controlMilitaryFleets) {
         const diplomaticRelation = obtainDiplomaticRelation(self, otherEmpire);
         if (diplomaticRelation.warObjective === WarObjective.TotalConquest) {
             identifyMilitaryObjectives(galaxy, self);
         } else if (diplomaticRelation.warObjective === WarObjective.CaptureObjectives) {
-            if (empireShipGroups(self).length > 0 && (diplomaticRelation.warObjectiveColonies.length > 0 || diplomaticRelation.warObjectiveBases.length > 0)) todo(T_prepareFleetsCapture);
+            num = prepareFleetsForWarCaptureObjectives(galaxy, self, otherEmpire);
         }
     }
     return num;
@@ -2125,8 +2122,6 @@ export function determineWhetherWantToOfferSubjugation(galaxy: Galaxy, self: Emp
     return result;
 }
 
-const T_checkReadyForWarFleets = registerTodo('M4r', 'checkReadyForWar CaptureObjectives fleet readiness (M4l/M4m)');
-
 /** Empire.8.cs 1428 CheckReadyForWar(otherEmpire). */
 function checkReadyForWar(galaxy: Galaxy, self: Empire, otherEmpire: Empire): boolean {
     void galaxy;
@@ -2142,11 +2137,8 @@ function checkReadyForWar(galaxy: Galaxy, self: Empire, otherEmpire: Empire): bo
     if (num <= 0) return false;
     switch (diplomaticRelation.warObjective) {
         case WarObjective.CaptureObjectives:
-            // TODO(port) M4l/M4m: the per-fleet readiness walk (Empire.8.cs 1452-1506: AttackPoint / GatherPoint / Mission,
-            // DetermineFuelRequiredForFleet, AssignMission(Refuel)). Fleets exist only once M4l ports ShipGroup (num <= 0
-            // returns above until then); a fleet present counts as not ready, as C# does for a fleet still gathering.
-            todo(T_checkReadyForWarFleets);
-            result = false;
+            // Empire.8.cs 1451-1504: fleets/militaryAI.ts checkReadyForWarCaptureObjectives (M4m).
+            result = checkReadyForWarCaptureObjectives(galaxy, self);
             break;
         case WarObjective.TotalConquest:
             break;

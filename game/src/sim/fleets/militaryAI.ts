@@ -105,7 +105,7 @@ import { identifyDeficientEmpireResources } from '../industry';
 import { PrioritizedTarget, identifyColonizationTargetsFull, prioritizedTargetListAdd, sortPrioritizedTargets } from '../civilianAI';
 import { HabitatPrioritization } from '../resourceTargets';
 import { findNewestCanBuild } from '../designGeneration';
-import { determineEmpireSystems } from '../forceStructure';
+import { determineEmpireSystems, totalColonyStrategicValue } from '../forceStructure';
 import { fastFindNearestSpacePort as fastFindNearestSpacePortOf, habitatCompareTo } from '../stationPlacement';
 import { findLonelyHabitatAt } from '../gameStartTail';
 import { addWarObjectivesToList, resolveLocationsToDefend } from '../characters';
@@ -416,16 +416,6 @@ export function checkUseBombardmentAgainstEmpire(galaxy: Galaxy, attacker: Empir
         }
     }
     return result;
-}
-
-/** Empire.cs 1543 TotalColonyStrategicValue (int). */
-function totalColonyStrategicValue(empire: Empire): number {
-    let num = 0;
-    for (let i = 0; i < empire.colonies.length; i++) {
-        const h = empire.colonies[i];
-        if (h != null) num = (num + strategicValue(h)) | 0;
-    }
-    return num;
 }
 
 /** Galaxy.4.cs 675 SortEmpiresByMilitaryPriority(empire, targetEmpires): Array.Sort(keys, items) then Array.Reverse. */
@@ -4066,4 +4056,121 @@ export function coordinateFleetAttacksWithAlliesOf(galaxy: Galaxy, self: Empire,
         }
     }
     return false;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Fleet side of the war preparation (Empire.8.cs 1014 PrepareFleetsForWar, 1428 CheckReadyForWar) — the diplomacy
+// halves are in diplomacyTick.ts (M4r), which calls these for WarObjective.CaptureObjectives.
+// ---------------------------------------------------------------------------------------------------------------
+
+/** Empire.8.cs 1025-1140 PrepareFleetsForWar CaptureObjectives branch: fleets given an attack point. Rnd: Refuel missions. */
+export function prepareFleetsForWarCaptureObjectives(galaxy: Galaxy, self: Empire, otherEmpire: Empire): number {
+    let num = 0;
+    const diplomaticRelation = obtainDiplomaticRelation(self, otherEmpire);
+    for (let i = 0; i < diplomaticRelation.warObjectiveColonies.length; i++) {
+        const habitat = diplomaticRelation.warObjectiveColonies[i];
+        if (habitat == null) continue;
+        let num2 = estimatedDefensiveForceRequired(galaxy, habitat, true, galaxy.difficultyLevel);
+        const num3 = determineRequiredTroopStrength(galaxy, self, habitat);
+        if (self.visibility.checkSystemVisible(habitat.systemIndex)) num2 = determineDefendingStrength(galaxy, habitat, otherEmpire);
+        const shipGroupList = generateOrderedFleetsForTarget(galaxy, self, habitat.xpos, habitat.ypos, false);
+        if (shipGroupList.length <= 0) continue;
+        let num4 = 0;
+        let num5 = 0;
+        for (let j = 0; j < shipGroupList.length; j++) {
+            const shipGroup = shipGroupList[j];
+            if (shipGroup != null && shipGroup.leadShip !== null && shipGroup.leadShip.isAutoControlled && shipGroup.ships.length >= 10 && shipGroup.posture === FleetPosture.Attack && shipGroup.attackPoint === null && shipGroupTotalTroopAttackStrength(shipGroup) >= Math.trunc(num3 / 2)) {
+                let flag = false;
+                if (shipGroup.mission === null || shipGroup.mission.type === BuiltObjectMissionType.Undefined || shipGroup.mission.priority === BuiltObjectMissionPriority.Low) flag = true;
+                const requiredFuel = determineFuelRequiredForFleet(shipGroup).requiredFuel;
+                const stellarObject = decideBestFleetRefuelPoint(galaxy, self, habitat.xpos, habitat.ypos, self, requiredFuel, otherEmpire);
+                if (stellarObject !== null && shipGroupCheckFleetTargetWithinFuelRangeAndRefuel(galaxy, shipGroup, stellarObject.xpos, stellarObject.ypos, 0.0)) {
+                    const num6 = shipGroupMaximumRange(shipGroup);
+                    const num7 = galaxy.calculateDistance(stellarObject.xpos, stellarObject.ypos, habitat.xpos, habitat.ypos);
+                    if (num7 < num6 * 0.45) {
+                        shipGroup.gatherPoint = stellarObject;
+                        shipGroup.attackPoint = habitat;
+                        shipGroup.postureRangeSquared = POSTURE_RANGE_SQUARED_ATTACK_POINT;
+                        if (flag && stellarObject !== null) shipGroupAssignMission(galaxy, shipGroup, BuiltObjectMissionType.Refuel, stellarObject, null, BuiltObjectMissionPriority.Unavailable, true);
+                        num4 += shipGroupTotalOverallStrengthFactor(galaxy, shipGroup);
+                        num5 += shipGroupTotalTroopAttackStrength(shipGroup);
+                        num++;
+                    }
+                }
+            }
+            if (num4 >= num2 && num5 >= num3) break;
+        }
+    }
+    for (let k = 0; k < diplomaticRelation.warObjectiveBases.length; k++) {
+        const builtObject = diplomaticRelation.warObjectiveBases[k];
+        if (builtObject == null) continue;
+        let val = calculateOverallStrengthFactor(builtObject);
+        if (isObjectVisibleToThisEmpire(galaxy, self, builtObject)) val = determineDefendingStrength(galaxy, builtObject, otherEmpire);
+        val = Math.max(1, val);
+        const num8 = 0;
+        const shipGroupList2 = generateOrderedFleetsForTarget(galaxy, self, builtObject.xpos, builtObject.ypos, true);
+        if (shipGroupList2.length <= 0) continue;
+        let num9 = 0;
+        let num10 = 0;
+        for (let l = 0; l < shipGroupList2.length; l++) {
+            const shipGroup2 = shipGroupList2[l];
+            if (shipGroup2 != null && shipGroup2.leadShip !== null && shipGroup2.leadShip.isAutoControlled && shipGroup2.posture === FleetPosture.Attack && shipGroup2.attackPoint === null) {
+                let flag2 = false;
+                if (shipGroup2.mission === null || shipGroup2.mission.type === BuiltObjectMissionType.Undefined || shipGroup2.mission.priority === BuiltObjectMissionPriority.Low) flag2 = true;
+                const requiredFuel2 = determineFuelRequiredForFleet(shipGroup2).requiredFuel;
+                const stellarObject2 = decideBestFleetRefuelPoint(galaxy, self, builtObject.xpos, builtObject.ypos, self, requiredFuel2, otherEmpire);
+                if (stellarObject2 !== null && shipGroupCheckFleetTargetWithinFuelRangeAndRefuel(galaxy, shipGroup2, stellarObject2.xpos, stellarObject2.ypos, 0.0)) {
+                    const num11 = shipGroupMaximumRange(shipGroup2);
+                    const num12 = galaxy.calculateDistance(stellarObject2.xpos, stellarObject2.ypos, builtObject.xpos, builtObject.ypos);
+                    if (num12 < num11 * 0.45) {
+                        shipGroup2.gatherPoint = stellarObject2;
+                        shipGroup2.attackPoint = builtObject;
+                        shipGroup2.postureRangeSquared = POSTURE_RANGE_SQUARED_ATTACK_POINT;
+                        if (flag2 && stellarObject2 !== null) shipGroupAssignMission(galaxy, shipGroup2, BuiltObjectMissionType.Refuel, stellarObject2, null, BuiltObjectMissionPriority.Unavailable, true);
+                        num9 += shipGroupTotalOverallStrengthFactor(galaxy, shipGroup2);
+                        num10 += shipGroupTotalTroopAttackStrength(shipGroup2);
+                        num++;
+                    }
+                }
+            }
+            if (num9 >= val && num10 >= num8) break;
+        }
+    }
+    return num;
+}
+
+/** Empire.8.cs 1451-1504 CheckReadyForWar CaptureObjectives branch: false while an attack fleet is still refuelling / gathering. */
+export function checkReadyForWarCaptureObjectives(galaxy: Galaxy, self: Empire): boolean {
+    let result = true;
+    const shipGroups = shipGroupsOf(self);
+    for (let j = 0; j < shipGroups.length; j++) {
+        const shipGroup2 = shipGroups[j];
+        if (shipGroup2.posture !== FleetPosture.Attack || shipGroup2.attackPoint === null || shipGroup2.leadShip === null || !shipGroup2.leadShip.isAutoControlled || shipGroup2.gatherPoint === null) continue;
+        if (shipGroup2.mission !== null && shipGroup2.mission.type === BuiltObjectMissionType.Refuel) {
+            result = false;
+        } else if (shipGroup2.mission === null || shipGroup2.mission.type === BuiltObjectMissionType.Undefined) {
+            const num2 = galaxy.calculateDistance(shipGroup2.leadShip.xpos, shipGroup2.leadShip.ypos, shipGroup2.gatherPoint.xpos, shipGroup2.gatherPoint.ypos);
+            const d = determineFuelRequiredForFleet(shipGroup2);
+            const fleetFuelCapacity = d.fleetFuelCapacity;
+            let num3 = 0;
+            for (let k = 0; k < d.requiredFuel.length; k++) num3 += Math.trunc(d.requiredFuel[k].sortTag);
+            const num4 = (fleetFuelCapacity - num3) / fleetFuelCapacity;
+            if (num2 > 48000.0 && shipGroup2.gatherPoint !== null) {
+                shipGroupAssignMission(galaxy, shipGroup2, BuiltObjectMissionType.Refuel, shipGroup2.gatherPoint, null, BuiltObjectMissionPriority.Unavailable, true);
+                result = false;
+            } else if ((!(num2 <= 48000.0) || !(num4 > 0.75)) && shipGroup2.gatherPoint !== null) {
+                shipGroupAssignMission(galaxy, shipGroup2, BuiltObjectMissionType.Refuel, shipGroup2.gatherPoint, null, BuiltObjectMissionPriority.Unavailable, true);
+                result = false;
+            }
+        } else if (shipGroup2.mission !== null && shipGroup2.mission.priority === BuiltObjectMissionPriority.Low && shipGroup2.mission.type === BuiltObjectMissionType.Move && shipGroup2.mission.target === shipGroup2.gatherPoint) {
+            result = false;
+        } else if (shipGroup2.mission !== null && shipGroup2.mission.type === BuiltObjectMissionType.Blockade && shipGroup2.mission.target !== null) {
+            const point = shipGroup2.mission.resolveTargetCoordinates(shipGroup2.mission);
+            const num5 = galaxy.calculateDistance(shipGroup2.leadShip.xpos, shipGroup2.leadShip.ypos, point.x, point.y);
+            if (num5 > 48000.0) result = false;
+        } else if (shipGroup2.gatherPoint !== null && self !== galaxy.playerEmpire) {
+            result = false;
+        }
+    }
+    return result;
 }

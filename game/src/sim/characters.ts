@@ -82,7 +82,11 @@ import { habitatAnnualRevenue, identifyEmpireCapitals, totalColonyStrategicValue
 import { strategicValue as habitatStrategicValue } from './territory';
 import { PirateRelationType } from './pirateRelations';
 import { DiplomaticRelationType, DiplomaticStrategy, WarObjective, obtainDiplomaticRelation, resolveEmpiresToDefendAgainst as resolveEmpiresToDefendAgainstDiplomatic, DiplomaticRelation } from './diplomacy';
-import { identifyEmpireWarObjectives } from './diplomacyTick';
+import { FleetPosture, identifyEmpireWarObjectives } from './diplomacyTick';
+import { empireShipGroups, type ShipGroup } from './fleets/shipGroup';
+import { shipGroupDetermineStrongestShip, shipGroupDetermineStrongestTroopTransport, shipGroupListIdentifyLargestFleet, shipGroupObtainCharacters, shipGroupTotalFighterCount, shipGroupTotalOverallStrengthFactor } from './fleets/shipGroupTasks';
+import { generateOrderedFleetsBy } from './fleets/militaryAI';
+import { BuiltObjectMissionPriority, BuiltObjectMissionType } from './missions/mission';
 import { habitatResourcesHaveSuperLuxury } from './exploration';
 
 /** C# StellarObject (Habitat or BuiltObject) as a character location. */
@@ -6886,6 +6890,19 @@ function checkLocationSafeForDemoralizingCharacterAt(empire: Empire, location: S
     return true;
 }
 
+// Empire.7.cs 453/462 CheckLocationSafeForDemoralizingCharacter(characterIsDemoralizing, ShipGroup fleet, characterToExclude).
+function checkLocationSafeForDemoralizingCharacterFleet(characterIsDemoralizing: boolean, fleet: ShipGroup | null, characterToExclude: Character | null): boolean {
+    if (!characterIsDemoralizing) return true;
+    if (fleet !== null) {
+        const characterList = shipGroupObtainCharacters(fleet);
+        if (characterList !== null) {
+            const nonTransferringCharacters = getNonTransferringCharacters(characterList, CharacterRole.Undefined, characterToExclude);
+            if (nonTransferringCharacters !== null && nonTransferringCharacters.length > 0) return false;
+        }
+    }
+    return true;
+}
+
 // Empire.3.cs IdentifyResearchStationHighestBonus (2691).
 export function identifyResearchStationHighestBonus(empire: Empire, industry: IndustryType): BuiltObject | null {
     let result: BuiltObject | null = null;
@@ -7274,8 +7291,20 @@ export function reviewCharacterLocation(galaxy: Galaxy, empire: Empire, characte
                     }
                 } else {
                     if (empire.shipGroups === null || empire.shipGroups.length <= 0) break;
-                    // TODO(port): ShipGroups.IdentifyLargestFleet (Empire.7.cs 736-748) — fleets unported.
-                    throw new Error('TODO(port): Empire.7.cs ReviewCharacterLocation PirateLeader fleets (ShipGroup)');
+                    // Empire.7.cs 721-742 (ShipGroupList.IdentifyLargestFleet).
+                    const shipGroup9 = shipGroupListIdentifyLargestFleet(empireShipGroups(empire) as ShipGroup[]);
+                    if (shipGroup9 !== null && shipGroup9.leadShip !== null) {
+                        if (character.location !== shipGroup9.leadShip && checkLocationSafeForDemoralizingCharacterFleet(flag, shipGroup9, character)) {
+                            if (transferToLocation) character.transferToNewLocation(shipGroup9.leadShip, galaxy);
+                            return shipGroup9.leadShip;
+                        }
+                        break;
+                    }
+                    const builtObject6 = identifyPirateBase(empire);
+                    if (builtObject6 !== null && !builtObject6.hasBeenDestroyed && character.location !== builtObject6 && checkLocationSafeForDemoralizingCharacter(empire, flag, builtObject6, character)) {
+                        if (transferToLocation) character.transferToNewLocation(builtObject6, galaxy);
+                        return builtObject6;
+                    }
                 }
                 break;
             }
@@ -7318,22 +7347,57 @@ export function reviewCharacterLocation(galaxy: Galaxy, empire: Empire, characte
                 break;
             }
             case CharacterRole.FleetAdmiral: {
-                const shipGroup5 = character.determineFleet();
+                // Empire.7.cs 838-935.
+                const shipGroup5 = character.determineFleet() as ShipGroup | null;
                 let flag3 = true;
                 if (shipGroup5 !== null) {
-                    // TODO(port): ShipGroup.Mission priority test (Empire.7.cs 563-569).
-                    throw new Error('TODO(port): Empire.7.cs ReviewCharacterLocation FleetAdmiral in a fleet (ShipGroup)');
+                    flag3 = false;
+                    const m5 = shipGroup5.mission;
+                    if (m5 === null || m5.type === BuiltObjectMissionType.Undefined || m5.priority === BuiltObjectMissionPriority.Low || m5.priority === BuiltObjectMissionPriority.Normal) flag3 = true;
                 }
                 if (!flag3) break;
                 const charactersByRole5 = getCharactersByRole(characters, CharacterRole.FleetAdmiral);
+                const shipGroupList3: ShipGroup[] = [];
                 for (let num17 = 0; num17 < charactersByRole5.length; num17++) {
-                    if (charactersByRole5[num17].determineFleet() !== null) throw new Error('TODO(port): Empire.7.cs ReviewCharacterLocation FleetAdmiral fleets (ShipGroup)');
+                    const shipGroup6 = charactersByRole5[num17].determineFleet() as ShipGroup | null;
+                    if (shipGroup6 !== null && !shipGroupList3.includes(shipGroup6)) shipGroupList3.push(shipGroup6);
                 }
-                // GenerateOrderedFleetsByOverallStrength / ByFighterStrength over ShipGroups.
-                if (empire.shipGroups.length > 0) throw new Error('TODO(port): Empire.7.cs ReviewCharacterLocation FleetAdmiral GenerateOrderedFleetsBy* (ShipGroup)');
-                flag3 = true;
-                // shipGroup7 == null and shipGroup5 == null → break.
-                break;
+                let shipGroup7: ShipGroup | null = null;
+                if (shipGroup5 !== null && shipGroup5.posture === FleetPosture.Attack && checkLocationSafeForDemoralizingCharacterFleet(flag, shipGroup5, character)) shipGroup7 = shipGroup5;
+                let num18 = 0.0;
+                let flag6 = false;
+                let shipGroupList4 = generateOrderedFleetsBy(galaxy, empire, 'overallStrength');
+                if (character.fighters > character.countermeasures && character.fighters > character.targeting && character.fighters > character.shipManeuvering) {
+                    flag6 = true;
+                    shipGroupList4 = generateOrderedFleetsBy(galaxy, empire, 'fighterStrength');
+                    if (shipGroup7 !== null) num18 = shipGroupTotalFighterCount(shipGroup7);
+                } else {
+                    shipGroupList4 = generateOrderedFleetsBy(galaxy, empire, 'overallStrength');
+                    if (shipGroup7 !== null) num18 = shipGroupTotalOverallStrengthFactor(galaxy, shipGroup7);
+                }
+                for (let num19 = 0; num19 < shipGroupList4.length; num19++) {
+                    const shipGroup8 = shipGroupList4[num19];
+                    if (shipGroup8.posture === FleetPosture.Attack && !shipGroupList3.includes(shipGroup8)) {
+                        const num20 = !flag6 ? shipGroupTotalOverallStrengthFactor(galaxy, shipGroup8) : shipGroupTotalFighterCount(shipGroup8);
+                        if (num20 > num18 && checkLocationSafeForDemoralizingCharacterFleet(flag, shipGroup8, character)) {
+                            shipGroup7 = shipGroup8;
+                            num18 = num20;
+                        }
+                    }
+                }
+                if (shipGroup7 !== null && shipGroup7 !== shipGroup5 && shipGroup7.leadShip !== null) {
+                    let builtObject3 = shipGroupDetermineStrongestShip(galaxy, shipGroup7, null, false, null);
+                    if (builtObject3 === null) builtObject3 = shipGroup7.leadShip;
+                    if (transferToLocation) character.transferToNewLocation(builtObject3, galaxy);
+                    return builtObject3;
+                }
+                if (shipGroup5 === null) break;
+                const builtObject4 = shipGroupDetermineStrongestShip(galaxy, shipGroup5, null, false, null);
+                if (character.location !== builtObject4) {
+                    if (transferToLocation) character.transferToNewLocation(builtObject4!, galaxy);
+                    return builtObject4;
+                }
+                return character.location;
             }
             case CharacterRole.Leader: {
                 const capital = empire.capital;
@@ -7447,10 +7511,12 @@ export function reviewCharacterLocation(galaxy: Galaxy, empire: Empire, characte
             }
             case CharacterRole.TroopGeneral: {
                 if (character.troopGroundAttack >= character.troopGroundDefense) {
-                    const shipGroup = character.determineFleet();
+                    const shipGroup = character.determineFleet() as ShipGroup | null;
                     let flag2 = true;
                     if (shipGroup !== null) {
-                        throw new Error('TODO(port): Empire.7.cs ReviewCharacterLocation TroopGeneral in a fleet (ShipGroup)');
+                        // Empire.7.cs 1141-1147: the C# sets `flag2 = true` (already true) — the mission test has no effect.
+                        const m = shipGroup.mission;
+                        if (m === null || m.type === BuiltObjectMissionType.Undefined || m.priority === BuiltObjectMissionPriority.Low || m.priority === BuiltObjectMissionPriority.Normal) flag2 = true;
                     } else if (character.location !== null && character.location.empire !== null && character.location.empire !== character.empire && !isBuiltObjectLocation(character.location)) {
                         const habitat3 = character.location;
                         const invading = habitatInvadingCharacterList(habitat3);
@@ -7458,12 +7524,32 @@ export function reviewCharacterLocation(galaxy: Galaxy, empire: Empire, characte
                     }
                     if (!flag2) break;
                     const charactersByRole = getCharactersByRole(characters, CharacterRole.TroopGeneral);
+                    const shipGroupList: ShipGroup[] = [];
                     for (let l = 0; l < charactersByRole.length; l++) {
-                        if (charactersByRole[l].determineFleet() !== null) throw new Error('TODO(port): Empire.7.cs ReviewCharacterLocation TroopGeneral fleets (ShipGroup)');
+                        const shipGroup2 = charactersByRole[l].determineFleet() as ShipGroup | null;
+                        if (shipGroup2 !== null && !shipGroupList.includes(shipGroup2)) shipGroupList.push(shipGroup2);
                     }
-                    // GenerateOrderedFleetsByTroopAttackStrength over ShipGroups.
-                    if (empire.shipGroups.length > 0) throw new Error('TODO(port): Empire.7.cs ReviewCharacterLocation TroopGeneral GenerateOrderedFleetsByTroopAttackStrength (ShipGroup)');
-                    // shipGroup3 == null → break.
+                    let shipGroup3: ShipGroup | null = null;
+                    if (shipGroup !== null && shipGroup.posture === FleetPosture.Attack && checkLocationSafeForDemoralizingCharacterFleet(flag, shipGroup, character)) shipGroup3 = shipGroup;
+                    let num = 0.0;
+                    const shipGroupList2 = generateOrderedFleetsBy(galaxy, empire, 'troopAttackStrength');
+                    if (shipGroup3 !== null) num = shipGroup3.totalTroopAttackStrength;
+                    for (let m = 0; m < shipGroupList2.length; m++) {
+                        const shipGroup4 = shipGroupList2[m];
+                        if (shipGroup4.posture === FleetPosture.Attack && !shipGroupList.includes(shipGroup4)) {
+                            const num2 = shipGroup4.totalTroopAttackStrength;
+                            if (num2 > num && checkLocationSafeForDemoralizingCharacterFleet(flag, shipGroup4, character)) {
+                                shipGroup3 = shipGroup4;
+                                num = num2;
+                            }
+                        }
+                    }
+                    if (shipGroup3 === null || shipGroup3 === shipGroup) break;
+                    const builtObject2 = shipGroupDetermineStrongestTroopTransport(shipGroup3);
+                    if (builtObject2 !== null) {
+                        if (transferToLocation) character.transferToNewLocation(builtObject2, galaxy);
+                        return builtObject2;
+                    }
                     break;
                 }
                 const charactersByRole2 = getCharactersByRole(characters, CharacterRole.TroopGeneral);
