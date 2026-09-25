@@ -40,7 +40,7 @@ import { setColonyResources } from './colony';
 import { raceDesignPictureFamilyIndexPirates } from './empire';
 import { SystemVisibilityStatus } from './visibility';
 import { Galaxy, generateGalaxy } from './galaxy';
-import { Empire } from './empire';
+import { AutomationLevel, Empire } from './empire';
 import { generateEmpire } from './empireGeneration';
 import { makeHabitatIntoColony } from './colony';
 import { netSort } from './netSort';
@@ -703,6 +703,96 @@ function spawnPirateNearPlayer(galaxy: Galaxy, ctx: PirateGenerationContext, xpo
     }
 }
 
+/** The GameOptions automation fields Start.2.cs 2122-2146 copies onto the human player's empire. */
+export interface GameOptionsAutomation {
+    controlColonizationDefault: AutomationLevel;
+    controlColonyTaxRatesDefault: boolean;
+    controlShipDesignDefault: boolean;
+    controlDiplomaticGiftsDefault: AutomationLevel;
+    controlWarTradeSanctionsDefault: AutomationLevel;
+    controlTreatyNegotiationDefault: AutomationLevel;
+    controlAttacksOnEnemiesDefault: AutomationLevel;
+    controlFleetFormationDefault: boolean;
+    controlShipBuildingDefault: AutomationLevel;
+    controlTroopRecruitmentDefault: boolean;
+    controlAgentAssignmentDefault: AutomationLevel;
+    controlResearchDefault: boolean;
+    controlColonyFacilitiesDefault: AutomationLevel;
+    controlCharacterLocationsDefault: boolean;
+    controlPopulationPolicyDefault: boolean;
+    controlOfferPirateMissionsDefault: AutomationLevel;
+    attackOverMatchFactor: number;
+    attackRangePatrol: number;
+    attackRangeEscort: number;
+    attackRangeOther: number;
+    fleetAttackRefuelPortion: number;
+    fleetAttackGatherPortion: number;
+    discoveryActionRuin: number;
+    discoveryActionAbandonedShipBase: number;
+    newShipsAutomated: boolean;
+}
+
+// Port of Main.Part9.cs:2711-2809 method_260 (new GameOptions when no defaultOptions file exists; Start.cs:2733-2736
+// calls it before the wizard): the automation defaults. AutomationLevel.Manual is the TS AutomationLevel.Undefined
+// and SemiAutomated is PartiallyAutomated (AutomationLevel.cs: Manual, SemiAutomated, FullyAutomated).
+export const DEFAULT_GAME_OPTIONS_AUTOMATION: Readonly<GameOptionsAutomation> = Object.freeze({
+    controlAgentAssignmentDefault: AutomationLevel.PartiallyAutomated, // 2716
+    controlAttacksOnEnemiesDefault: AutomationLevel.PartiallyAutomated, // 2717
+    controlColonizationDefault: AutomationLevel.FullyAutomated, // 2718
+    controlColonyTaxRatesDefault: true, // 2719
+    controlDiplomaticGiftsDefault: AutomationLevel.Undefined, // 2720 Manual
+    controlFleetFormationDefault: true, // 2721
+    controlShipBuildingDefault: AutomationLevel.PartiallyAutomated, // 2722
+    controlShipDesignDefault: true, // 2723
+    controlTreatyNegotiationDefault: AutomationLevel.PartiallyAutomated, // 2724
+    controlTroopRecruitmentDefault: true, // 2725
+    controlWarTradeSanctionsDefault: AutomationLevel.PartiallyAutomated, // 2726
+    controlResearchDefault: true, // 2727
+    controlColonyFacilitiesDefault: AutomationLevel.PartiallyAutomated, // 2728
+    controlPopulationPolicyDefault: true, // 2729
+    controlCharacterLocationsDefault: true, // 2730
+    controlOfferPirateMissionsDefault: AutomationLevel.PartiallyAutomated, // 2731
+    attackOverMatchFactor: 2, // 2782
+    attackRangePatrol: 48000, // 2783
+    attackRangeEscort: 2000, // 2784
+    attackRangeOther: 48000, // 2786
+    fleetAttackRefuelPortion: Math.fround(0.3), // 2791
+    fleetAttackGatherPortion: Math.fround(0.3), // 2792
+    discoveryActionRuin: 0, // 2805
+    discoveryActionAbandonedShipBase: 0, // 2806
+    newShipsAutomated: true, // 2808
+});
+
+// Port of Start.2.cs:2122-2146 (CreateGameFromSettings): game2.PlayerEmpire.Control* / attack settings =
+// main_0.gameOptions_0.*Default, statement for statement (AttackRangeAttack is not copied there).
+export function applyStartAutomationSettings(empire: Empire, o: Readonly<GameOptionsAutomation>): void {
+    empire.controlColonization = o.controlColonizationDefault;
+    empire.controlColonyTaxRates = o.controlColonyTaxRatesDefault;
+    empire.controlDesigns = o.controlShipDesignDefault;
+    empire.controlDiplomacyGifts = o.controlDiplomaticGiftsDefault;
+    empire.controlDiplomacyOffense = o.controlWarTradeSanctionsDefault;
+    empire.controlDiplomacyTreaties = o.controlTreatyNegotiationDefault;
+    empire.controlMilitaryAttacks = o.controlAttacksOnEnemiesDefault;
+    empire.controlMilitaryFleets = o.controlFleetFormationDefault;
+    empire.controlStateConstruction = o.controlShipBuildingDefault;
+    empire.controlTroopGeneration = o.controlTroopRecruitmentDefault;
+    empire.controlAgentAssignment = o.controlAgentAssignmentDefault;
+    empire.controlResearch = o.controlResearchDefault;
+    empire.controlColonyFacilities = o.controlColonyFacilitiesDefault;
+    empire.controlCharacterLocations = o.controlCharacterLocationsDefault;
+    empire.controlPopulationPolicy = o.controlPopulationPolicyDefault;
+    empire.controlOfferPirateMissions = o.controlOfferPirateMissionsDefault;
+    empire.attackOvermatchFactor = o.attackOverMatchFactor;
+    empire.attackRangePatrol = o.attackRangePatrol;
+    empire.attackRangeEscort = o.attackRangeEscort;
+    empire.attackRangeOther = o.attackRangeOther;
+    empire.fleetAttackRefuelPortion = o.fleetAttackRefuelPortion;
+    empire.fleetAttackGatherPortion = o.fleetAttackGatherPortion;
+    // TODO(port): empire.DiscoveryActionRuin = gameOptions.DiscoveryActionRuin (Start.2.cs 2144) — Empire.cs field not ported.
+    empire.discoveryActionAbandonedShipBase = o.discoveryActionAbandonedShipBase;
+    empire.newShipsAutomated = o.newShipsAutomated;
+}
+
 // createGame: the sim entry point the wizard calls (non-pirate play).
 export function createGame(opts: CreateGameOptions): Game {
     const gd = opts.gameData;
@@ -1171,6 +1261,9 @@ export function createGame(opts: CreateGameOptions): Game {
     // Start.2.cs 2026: galaxy.GlobalVictoryConditions = victoryConditions_0 (2118-2120 also hand them to the Game object;
     // the TS keeps the Game's copies on the Galaxy: PlayerVictoryConditionsToAchieve / ToPrevent are scenario-only, null).
     galaxy.globalVictoryConditions = opts.victoryConditions ?? null;
+    // 17d: Start.2.cs 2122-2146 — the human player's automation settings come from GameOptions (the defaults of
+    // Main.Part9.cs method_260 when no options file exists); AI empires keep the ctor's FullyAutomated.
+    applyStartAutomationSettings(empire2, DEFAULT_GAME_OPTIONS_AUTOMATION);
     // TODO(port): the rest of CreateGameFromSettings (see header).
     stopAt('tail');
     return result();

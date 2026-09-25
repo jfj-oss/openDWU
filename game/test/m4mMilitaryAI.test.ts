@@ -8,7 +8,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 import { createTickGame } from './helpers/tickGame';
 import type { Galaxy } from '../src/sim/galaxy';
-import type { Empire } from '../src/sim/empire';
+import { AutomationLevel, type Empire } from '../src/sim/empire';
 import type { GameData } from '../src/sim/data/gameData';
 import { BuiltObjectMission, BuiltObjectMissionPriority, BuiltObjectMissionType, Command, CommandAction, builtObjectMission } from '../src/sim/missions/mission';
 import { assignMission } from '../src/sim/missions/assign';
@@ -263,6 +263,9 @@ function fleetScenario(): { g: Galaxy; a: Empire; b: Empire } {
         }
     }
     a.controlMilitaryFleets = true;
+    // 17d: `a` is the human player, which now starts with the C# GameOptions defaults (Start.2.cs:2128 Attacks on
+    // Enemies = SemiAutomated → suggestions only); the scenario exercises the fully automated AI path.
+    a.controlMilitaryAttacks = AutomationLevel.FullyAutomated;
     maintainShipGroups(g, a);
     for (const sg of empireShipGroups(a)) {
         sg!.mission = null;
