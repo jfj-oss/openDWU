@@ -6,6 +6,7 @@
 
 import { Camera } from '../render/camera';
 import { GalaxyTime } from '../sim/clock';
+import { toggleDiplomacyScreen } from './screens/diplomacyScreen'; // [15a]
 import {
     GALAXY_LEVEL_ZOOM,
     PLANET_LEVEL_ZOOM,
@@ -246,6 +247,13 @@ export function dispatchKey(
         case 'messageHistoryScreen':
             handlers.messageHistoryScreen?.();
             break;
+        // [15a] F5: Diplomacy screen (task 15a).
+        case 'diplomacyScreen': {
+            const src = getEmpireSummarySource();
+            if (src) toggleDiplomacyScreen({ player: src.empire });
+            break;
+        }
+        // [/15a]
         case 'empireSummaryScreen':
             toggleEmpireSummary();
             break;
@@ -435,6 +443,7 @@ export function cycleActionArgs(action: string): { kind: CycleKind; dir: 1 | -1;
  * colony cycler (task 12n; the other cyclers only toast "No <x> yet"). */
 export const IMPLEMENTED_KEY_ACTIONS: ReadonlySet<string> = new Set([
     'togglePause', 'speedUp', 'speedDown',
+    'diplomacyScreen', // [15a]
     'zoomIn', 'zoomOut', 'zoomToSelection',
     'zoomSystemLevel', 'zoomSectorLevel', 'zoomGalaxyLevel', 'zoomPlanetLevel',
     'scrollUp', 'scrollDown', 'scrollLeft', 'scrollRight',
