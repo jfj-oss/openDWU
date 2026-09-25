@@ -202,7 +202,8 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // (Empire.4.cs 2330 / 2357 / 3186, game start included), GiveTradeableItem / ProcessMessages book the PirateEconomy
         // ledger, Creature.DamageTarget (Creature.cs 1347) damages its targets, bombardment tests PlanetaryFacilityType by
         // value, and the StellarObject readers see Fighters' FirepowerRaw / TopSpeed.
-        expect(summary.digest).toBe('2fb83dc55600537f');
+        // Moved from 2fb83dc55600537f: research trading is live (Galaxy.4.cs 4310/4551 ResolveTradeableItemsResearchProjects offers projects; GiveTradeableItem / Empire.3.cs 4467 research purchase run DoResearchBreakthrough)
+        expect(summary.digest).toBe('d4e45fea75fa52d8');
     }, 600000);
 });
 
