@@ -49,6 +49,7 @@ import { takeOwnershipOfColonyDockingBays } from '../logistics/dockingBays';
 import { recalculateColonyDistancesFromCapital, reviewPlanetaryFacilities, checkRemoveFacilityTracking } from '../construction/facilities';
 import { determineMiningStationAtHabitat } from '../resourceTargets';
 import { builtObjectCompleteTeardown, clearAllMissionsForTargetBuiltObject } from './teardown';
+import { fighterCompleteTeardown, type Fighter } from './fighters';
 import { cancelPirateMissionsForTarget } from '../pirates/missionsMarket';
 import { EmpireActivityType } from '../pirates/empireActivity';
 import { eliminatePirateFaction } from '../pirates/pirateGalaxyTick';
@@ -789,13 +790,15 @@ export function takeOwnershipOfBuiltObject(galaxy: Galaxy, self: Empire, builtOb
     builtObject.reDefine();
     if (builtObject.fighters !== null && builtObject.fighters.length > 0) {
         if (newEmpire === null) {
-            // Fighter.CompleteTeardown (Fighter.cs) — M4p.
-            throw new Error('TODO(port) M4p: Fighter.CompleteTeardown for the fighters of a ship left without owner (Empire.1.cs 787)');
-        }
-        for (let n = 0; n < builtObject.fighters.length; n++) {
-            const fighter = builtObject.fighters[n] as unknown as FighterOwnerLike;
-            fighter.empire = newEmpire;
-            fighter.owner = newEmpire;
+            // Empire.1.cs 787-793: Fighter.CompleteTeardown (Fighter.cs 448) on a copy of the list (M4z1).
+            const array = (builtObject.fighters as unknown as Fighter[]).slice();
+            for (let m = 0; m < array.length; m++) fighterCompleteTeardown(galaxy, array[m]);
+        } else {
+            for (let n = 0; n < builtObject.fighters.length; n++) {
+                const fighter = builtObject.fighters[n] as unknown as FighterOwnerLike;
+                fighter.empire = newEmpire;
+                fighter.owner = newEmpire;
+            }
         }
     }
     const chars = builtObject.characters as Character[] | null;

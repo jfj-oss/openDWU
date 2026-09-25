@@ -62,6 +62,17 @@ import { CreatureType } from './creature';
 import { REAL_SECONDS_IN_GALACTIC_YEAR, galaxyNow } from './tick/simTime';
 import { EmpireMessageType, sendMessageToEmpire, sendMessageToEmpireWithTitle } from './messages';
 import { clearColony } from './combat/invasion';
+import { obtainDiplomaticRelation, obtainEmpireEvaluation, processRelationChange, type EmpireEvaluation } from './diplomacy';
+import { obtainPirateRelation } from './pirateRelations';
+import { cancelBlockades, cancelBlockadeBuiltObject, cancelBlockadeColony, conditionCheckLimit, getBlockadesForEmpire } from './fleets/blockades';
+import { cancelAttacksAgainstEmpire } from './pirates/pirateRelationsAI';
+import { clearPirateColonyFacilities } from './pirates/pirateGalaxyTick';
+import { leaveShipGroup, type ShipGroup } from './fleets/shipGroup';
+import { takeOwnershipOfBuiltObject, takeOwnershipOfCargo } from './combat/ownership';
+import { identifyMechanoidEmpire } from './fleets/militaryAI';
+import { totalColonyStrategicValue } from './forceStructure';
+import type { IntelligenceMission } from './characters';
+import type { GalaxyResourceMap } from './visibility';
 
 /** Empire.7.cs 3400 SendEventMessageToEmpire(eventMessageType, title, message, additionalData, location): only the attached UI recipient sees it. */
 export function sendEventMessageToEmpire(empire: Empire, eventMessageType: EventMessageType, title: string, message: string, additionalData: unknown, location: unknown): void {
@@ -817,21 +828,315 @@ export function habitatCompleteTeardown(galaxy: Galaxy, habitat: Habitat): void 
 }
 
 /**
- * Empire.cs 4874/4879 CompleteTeardown(conqueror[, removeFromGalaxy, sendMessages]) — an eliminated empire: news broadcast,
- * relations / evaluations / pirate relations removed from every other empire, blockades and attacks cancelled, fleets
- * dissolved, ships and cargo handed to the conqueror, colonies / characters / research cleaned up, removal from the galaxy
- * lists. TODO(port) M4u: not ported — its only caller, Empire.TakeOwnershipOfColony's "last colony lost" branch
- * (Empire.1.cs 216/221), is itself unported (M4q), and most of what it touches (EmpireCounters.ProcessEmpireElimination,
- * CancelBlockades, ClearPirateColonyFacilities, TakeOwnershipOfCargo / TakeOwnershipOfBuiltObject, ShipGroup.GatherPoint)
- * has no TS model yet. Throws so a caller cannot silently leave a defeated empire active.
+ * EmpireCounters.cs 119 ProcessEmpireElimination(empire, galaxy, thisEmpire) (`counters` is thisEmpire.Counters). No Rnd.
+ * Galaxy.IdentifyShakturiEmpire needs Galaxy.ShakturiActualRace, set only by the Return of the Shakturi story (deferred,
+ * plan §0.3) → null.
  */
+export function processEmpireElimination(galaxy: Galaxy, thisEmpire: Empire | null, empire: Empire | null): void {
+    if (empire === null) return;
+    const empire1 = identifyMechanoidEmpire(galaxy);
+    const empire2: Empire | null = null; // Galaxy.8.cs 1633 IdentifyShakturiEmpire (story, deferred).
+    if (empire1 !== null && empire === empire1 && thisEmpire !== null) thisEmpire.haveDefeatedAncientGuardians = true;
+    if (empire2 !== null && empire === empire2 && thisEmpire !== null) thisEmpire.haveDefeatedShakturi = true;
+    const counters = thisEmpire!.counters;
+    if (empire.pirateEmpireBaseHabitat === null) {
+        counters.eliminateEmpireCount = (counters.eliminateEmpireCount + 1) | 0;
+        counters.eliminateEmpireStrategicValue = (counters.eliminateEmpireStrategicValue + totalColonyStrategicValue(empire)) | 0;
+    } else {
+        counters.eliminatePirateEmpireCount = (counters.eliminatePirateEmpireCount + 1) | 0;
+    }
+}
+
+/** Empire.cs 4874 CompleteTeardown(conqueror) → CompleteTeardown(conqueror, removeFromGalaxy: true, sendMessages: true). */
 export function empireCompleteTeardown(galaxy: Galaxy, empire: Empire, conqueror: Empire | null, removeFromGalaxy = true, sendMessages = true): void {
-    void galaxy;
-    void empire;
-    void conqueror;
-    void removeFromGalaxy;
-    void sendMessages;
-    throw new Error('TODO(port) M4u: Empire.cs 4879 CompleteTeardown (empire elimination)');
+    empireCompleteTeardownFull(galaxy, empire, conqueror, removeFromGalaxy, sendMessages);
+}
+
+/**
+ * Empire.cs 4879 CompleteTeardown(conqueror, removeFromGalaxy, sendMessages) — an eliminated empire: news broadcast,
+ * relations / evaluations / pirate relations removed from every other empire, blockades and attacks cancelled, fleets
+ * dissolved, ships and cargo handed to the conqueror (or torn down), troops / characters / targets cleared, removal from
+ * the galaxy lists. No Rnd of its own (TakeOwnershipOfBuiltObject / BuiltObject.CompleteTeardown / Character.Kill draw
+ * none either). `self` is the C# `this`.
+ */
+function empireCompleteTeardownFull(galaxy: Galaxy, self: Empire, conqueror: Empire | null, removeFromGalaxy: boolean, sendMessages: boolean): void {
+    // 4881-4882: Galaxy.GetMatchingGameEventIdEmpireEliminated (Galaxy.9.cs 1231) scans Galaxy.GameEvents — only scenario
+    // game events fill it (deferred, plan §0.3), so the id is -1 and CheckTriggerEvent(-1, ...) returns at once.
+    if (conqueror !== null && conqueror.counters !== null) processEmpireElimination(galaxy, conqueror, self);
+    self.active = false;
+    sendNewsBroadcast(self, EventMessageType.Undefined, self, DisasterEventType.Undefined, false, false, EmpireMessageType.EmpireDefeated, conqueror);
+    const empireList: (Empire | null)[] = [];
+    empireList.push(galaxy.independentEmpire);
+    for (const e of galaxy.empires) empireList.push(e);
+    for (const e of galaxy.pirateEmpires) empireList.push(e);
+    const currentStarDate = galaxyStarDate(galaxy);
+    for (let i = 0; i < empireList.length; i++) {
+        const empire = empireList[i];
+        if (empire == null || empire === self) continue;
+        if (self.pirateEmpireBaseHabitat === null && empire.pirateEmpireBaseHabitat === null) {
+            // 4900: ObtainDiplomaticRelation never adds here (Active is already false) — the independent empire gets a
+            // detached None relation.
+            const diplomaticRelation = obtainDiplomaticRelation(empire, self);
+            if (diplomaticRelation != null) {
+                if (sendMessages && conqueror !== null) {
+                    switch (diplomaticRelation.type) {
+                        case DiplomaticRelationType.TradeSanctions:
+                        case DiplomaticRelationType.War:
+                        case DiplomaticRelationType.Truce:
+                            if (conqueror !== empire && conqueror !== galaxy.independentEmpire) {
+                                sendMessageToEmpire(conqueror, empire, EmpireMessageType.EmpireDefeated, self, gameText('We have wiped out your enemy, the X', self.name));
+                            }
+                            break;
+                        case DiplomaticRelationType.MutualDefensePact:
+                        case DiplomaticRelationType.Protectorate:
+                            if (conqueror !== empire && conqueror !== galaxy.independentEmpire) {
+                                sendMessageToEmpire(conqueror, empire, EmpireMessageType.EmpireDefeated, self, gameText('We have wiped out your allies, the X', self.name));
+                            }
+                            break;
+                        case DiplomaticRelationType.SubjugatedDominion:
+                            if (diplomaticRelation.initiator === self) {
+                                if (conqueror !== empire && conqueror !== galaxy.independentEmpire) {
+                                    sendMessageToEmpire(conqueror, empire, EmpireMessageType.EmpireDefeated, self, gameText('We have liberated you from the X', self.name));
+                                }
+                            } else if (conqueror !== empire && conqueror !== galaxy.independentEmpire) {
+                                sendMessageToEmpire(conqueror, empire, EmpireMessageType.EmpireDefeated, self, gameText('We have eliminated your slaves, the X', self.name));
+                            }
+                            break;
+                        case DiplomaticRelationType.None:
+                        case DiplomaticRelationType.FreeTradeAgreement:
+                            if (conqueror !== empire && conqueror !== galaxy.independentEmpire) {
+                                sendMessageToEmpire(conqueror, empire, EmpireMessageType.EmpireDefeated, self, gameText('We have wiped out the X', self.name));
+                            }
+                            break;
+                    }
+                }
+                // 4952: `Type != 0` (NotMet is 0).
+                if (diplomaticRelation.type !== DiplomaticRelationType.NotMet) {
+                    processRelationChange(empire.diplomacyCounters, empire, diplomaticRelation, self, DiplomaticRelationType.None, currentStarDate);
+                }
+                empire.diplomaticRelations.remove(diplomaticRelation);
+            }
+            if (empire.empireEvaluations != null) {
+                // 4960: ObtainEmpireEvaluation never adds here either (Active is false).
+                const empireEvaluation = obtainEmpireEvaluation(galaxy, empire, self);
+                if (empireEvaluation != null) {
+                    const evaluations = empire.empireEvaluations as EmpireEvaluation[];
+                    const idx = evaluations.indexOf(empireEvaluation);
+                    if (idx >= 0) evaluations.splice(idx, 1);
+                }
+            }
+            if (empire.pirateRelations != null) {
+                // 4968: ObtainPirateRelation adds a NotMet relation when missing (AddPirateRelation) — removed again at once.
+                const pirateRelation = obtainPirateRelation(empire, self);
+                if (pirateRelation != null) empire.pirateRelations.remove(pirateRelation);
+            }
+        } else if (empire.pirateRelations != null) {
+            const pirateRelation2 = obtainPirateRelation(empire, self);
+            if (pirateRelation2 != null) empire.pirateRelations.remove(pirateRelation2);
+        }
+        const shared = empire.visibility.empiresSharedVisibility;
+        if (shared != null && shared.includes(self.visibility)) shared.splice(shared.indexOf(self.visibility), 1);
+        if (empire.characters != null && empire.characters.length > 0) {
+            for (const character2 of empire.characters as Character[]) {
+                if (character2 == null) continue;
+                // Character.Mission (IntelligenceMission; espionage runtime is deferred, so missions are rare).
+                const mission = character2.mission as IntelligenceMission | null;
+                if (mission != null && mission.type !== 0 && mission.targetEmpire === self) {
+                    // 5007-5014: both branches (DeepCover SucceedNotDetect or not) clear the mission.
+                    character2.mission = null;
+                }
+            }
+        }
+        if (empire.empiresViewable != null) {
+            for (let num = empire.empiresViewable.indexOf(self); num >= 0; num = empire.empiresViewable.indexOf(self)) {
+                empire.empiresViewable.splice(num, 1);
+                empire.empiresViewableExpiry.splice(num, 1);
+            }
+        }
+        cancelBlockades(galaxy, empire, self);
+        cancelAttacksAgainstEmpire(galaxy, empire, self);
+        if (empire.pirateMissions != null) {
+            const iterationCount = { value: 0 };
+            while (conditionCheckLimit(empire.pirateMissions.containsEmpire(self), 1000, iterationCount)) {
+                const num2 = empire.pirateMissions.indexOfEmpire(self);
+                if (num2 >= 0) empire.pirateMissions.items.splice(num2, 1);
+            }
+        }
+        if (empire.knownPirateEmpires != null && empire.knownPirateEmpires.includes(self)) {
+            empire.knownPirateEmpires.splice(empire.knownPirateEmpires.indexOf(self), 1);
+        }
+    }
+    clearPirateColonyFacilities(galaxy, self, conqueror);
+    if (self.shipGroups != null) {
+        const shipGroupList = (self.shipGroups as ShipGroup[]).slice();
+        for (let j = 0; j < shipGroupList.length; j++) {
+            const shipGroup = shipGroupList[j];
+            if (shipGroup == null) continue;
+            if (shipGroup.ships != null) {
+                const builtObjectList = shipGroup.ships.slice();
+                for (let k = 0; k < builtObjectList.length; k++) {
+                    const builtObject = builtObjectList[k];
+                    leaveShipGroup(galaxy, builtObject);
+                }
+                shipGroup.ships.length = 0;
+            }
+            shipGroup.empire = null;
+            shipGroup.gatherPoint = null;
+            shipGroup.leadShip = null;
+            shipGroup.mission = null;
+            shipGroup.attackPoint = null;
+        }
+        self.shipGroups.length = 0;
+    }
+    if (conqueror !== null && conqueror !== galaxy.independentEmpire) {
+        let builtObjectList2: BuiltObject[] = [];
+        if (self.privateBuiltObjects != null) {
+            builtObjectList2 = self.privateBuiltObjects.slice();
+            for (let l = 0; l < builtObjectList2.length; l++) {
+                const builtObject2 = builtObjectList2[l];
+                if (builtObject2 == null) continue;
+                takeOwnershipOfCargo(galaxy, builtObject2.cargo, self, conqueror);
+                if (builtObject2.empire !== conqueror) {
+                    if (builtObject2.mission !== null) {
+                        clearPreviousMissionRequirements(galaxy, builtObject2);
+                        builtObject2.subsequentMissions.length = 0;
+                    }
+                    takeOwnershipOfBuiltObject(galaxy, self, builtObject2, conqueror, true);
+                }
+            }
+            self.privateBuiltObjects.length = 0;
+        }
+        builtObjectList2.length = 0;
+        if (self.builtObjects != null) {
+            builtObjectList2 = self.builtObjects.slice();
+            for (let m = 0; m < builtObjectList2.length; m++) {
+                const builtObject3 = builtObjectList2[m];
+                if (builtObject3 == null) continue;
+                takeOwnershipOfCargo(galaxy, builtObject3.cargo, self, conqueror);
+                if (builtObject3.empire !== conqueror) {
+                    if (builtObject3.mission !== null) {
+                        clearPreviousMissionRequirements(galaxy, builtObject3);
+                        builtObject3.subsequentMissions.length = 0;
+                    }
+                    takeOwnershipOfBuiltObject(galaxy, self, builtObject3, conqueror, true);
+                }
+            }
+            self.builtObjects.length = 0;
+        }
+    } else {
+        let builtObjectList3: BuiltObject[] = [];
+        if (self.privateBuiltObjects != null) {
+            builtObjectList3 = self.privateBuiltObjects.slice();
+            for (let n = 0; n < builtObjectList3.length; n++) {
+                const builtObject4 = builtObjectList3[n];
+                if (builtObject4 != null) {
+                    builtObjectCompleteTeardown(galaxy, builtObject4, false);
+                    removeFromGalaxyBuiltObjects(galaxy, builtObject4);
+                }
+            }
+            self.privateBuiltObjects.length = 0;
+        }
+        builtObjectList3.length = 0;
+        if (self.builtObjects != null) {
+            builtObjectList3 = self.builtObjects.slice();
+            for (let num3 = 0; num3 < builtObjectList3.length; num3++) {
+                const builtObject5 = builtObjectList3[num3];
+                if (builtObject5 != null) {
+                    builtObjectCompleteTeardown(galaxy, builtObject5, false);
+                    removeFromGalaxyBuiltObjects(galaxy, builtObject5);
+                }
+            }
+            self.builtObjects.length = 0;
+        }
+    }
+    if (self.shipGroups != null) self.shipGroups.length = 0;
+    const blockadesForEmpire = getBlockadesForEmpire(galaxy, self);
+    if (blockadesForEmpire != null) {
+        for (const item of blockadesForEmpire) {
+            if (item != null) {
+                if (item.targetIsColony) cancelBlockadeColony(galaxy, self, item.colony!);
+                else cancelBlockadeBuiltObject(galaxy, self, item.builtObject!);
+            }
+        }
+    }
+    // 5170-5174: _ResourceMap._ResourcesKnown = null; _ResourceMap = null.
+    if (self.visibility.resourceMap != null) {
+        (self.visibility.resourceMap as { resourcesKnown: Uint8Array | null }).resourcesKnown = null;
+        (self.visibility as { resourceMap: GalaxyResourceMap | null }).resourceMap = null;
+    }
+    if (self.troops != null) {
+        for (let num4 = 0; num4 < self.troops.count; num4++) {
+            const troop = self.troops.items[num4];
+            if (troop == null) continue;
+            if (conqueror !== null && conqueror.counters !== null) conqueror.counters.processTroopDestruction(troop);
+            const troopBuiltObject = troop.builtObject as BuiltObject | null;
+            if (troopBuiltObject !== null) {
+                if (troopBuiltObject.troops != null) troopBuiltObject.troops.remove(troop);
+                troop.builtObject = null;
+            }
+            const troopColony = troop.colony as Habitat | null;
+            if (troopColony !== null) {
+                if (troopColony.troops != null) troopColony.troops.remove(troop);
+                if (troopColony.troopsToRecruit != null) troopColony.troopsToRecruit.remove(troop);
+                if (troopColony.invadingTroops != null) troopColony.invadingTroops.remove(troop);
+                troop.colony = null;
+            }
+            troop.empire = null;
+        }
+        self.troops.clear();
+    }
+    if (self.characters != null) {
+        const array = (self.characters as Character[]).slice();
+        for (const character of array) {
+            if (character != null) {
+                if (conqueror !== null && conqueror.counters !== null) conqueror.counters.processCharacterDeath(character);
+                character.kill(galaxy);
+            }
+        }
+    }
+    if (self.outlaws != null) self.outlaws.length = 0;
+    self.researchBonusWeaponsStation = null;
+    self.researchBonusEnergyStation = null;
+    self.researchBonusHighTechStation = null;
+    if (self.empireEvaluations != null) {
+        const evaluations = self.empireEvaluations as (EmpireEvaluation | null)[];
+        for (let num6 = 0; num6 < evaluations.length; num6++) evaluations[num6]?.clear();
+        evaluations.length = 0;
+    }
+    if (self.pirateRelations != null) self.pirateRelations.clear();
+    if (self.colonizationTargets != null) {
+        for (let num7 = 0; num7 < self.colonizationTargets.length; num7++) habitatPrioritizationClear(self.colonizationTargets[num7]);
+        self.colonizationTargets.length = 0;
+    }
+    if (self.resourceTargets != null) {
+        for (let num8 = 0; num8 < self.resourceTargets.length; num8++) habitatPrioritizationClear(self.resourceTargets[num8]);
+        self.resourceTargets.length = 0;
+    }
+    if (self.desiredForeignColonies != null) {
+        for (let num9 = 0; num9 < self.desiredForeignColonies.length; num9++) habitatPrioritizationClear(self.desiredForeignColonies[num9]);
+        self.desiredForeignColonies.length = 0;
+    }
+    if (self.empiresWithDesiredColonies != null) self.empiresWithDesiredColonies.length = 0;
+    if (self.empiresToAttack != null) self.empiresToAttack.length = 0;
+    if (!removeFromGalaxy) return;
+    if (galaxy.empires.includes(self)) {
+        galaxy.empires.splice(galaxy.empires.indexOf(self), 1);
+        if (!galaxy.defeatedEmpires.includes(self)) galaxy.defeatedEmpires.push(self);
+    }
+    if (galaxy.pirateEmpires.includes(self)) galaxy.pirateEmpires.splice(galaxy.pirateEmpires.indexOf(self), 1);
+}
+
+/** HabitatPrioritization.cs 18 Clear(): Habitat = null, AssignedShip = null. */
+function habitatPrioritizationClear(item: { habitat: Habitat | null; assignedShip?: unknown } | null): void {
+    if (item == null) return;
+    item.habitat = null;
+    item.assignedShip = null;
+}
+
+/** Galaxy.BuiltObjects.Remove(builtObject) (List.Remove: first occurrence; CompleteTeardown already nulled its slot). */
+function removeFromGalaxyBuiltObjects(galaxy: Galaxy, builtObject: BuiltObject): void {
+    const idx = galaxy.builtObjects.indexOf(builtObject);
+    if (idx >= 0) galaxy.builtObjects.splice(idx, 1);
 }
 
 /** Galaxy.5.cs 2867 ClearCompletedPlanetDestroyerProjects: drop planet-destroyer project locations whose ship is built or gone. No Rnd. */
