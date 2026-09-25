@@ -161,41 +161,10 @@ describe('troops (game start)', () => {
         // (re-pinned M4u: game-start character reviews (ReviewCharacterTraits Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd) move the empires / garrisons.)
         // (re-pinned M4m: the game-start Empire.DoTasks runs the military AI — IdentifyMilitaryObjectives Next(0, EmpireEvaluations.Count), CheckTemptingTargets Next(0, Empires.Count), DetermineRandomAttacks Next(0, n) — which shifts the Rnd stream.)
         // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
-        expect(a.capitals.map((c) => [c.edfr, c.levelRequired, c.troops])).toEqual([
-            [
-                1263,
-                946,
-                12
-            ],
-            [
-                1473,
-                1104,
-                13
-            ],
-            [
-                1764,
-                1323,
-                14
-            ],
-            [
-                612,
-                459,
-                5
-            ]
-        ]);
-        expect(a.colonyTroops).toEqual([
-            12,
-            10,
-            13,
-            2
-        ]);
-        expect(a.maintenance).toEqual([
-            24000,
-            20700,
-            24300,
-            6300
-        ]);
-        expect(a.processDraws).toEqual(["", "", "", ""]); // garrisons already meet TroopLevelRequired
+        expect(a.capitals.map((c) => [c.edfr, c.levelRequired, c.troops])).toMatchPin('troops.capitals');
+        expect(a.colonyTroops).toMatchPin('troops.colonyTroops');
+        expect(a.maintenance).toMatchPin('troops.maintenance');
+        expect(a.processDraws).toMatchPin('troops.processDraws'); // garrisons already meet TroopLevelRequired
         expect(run(true)).toEqual(a);
     }, 120000);
 
@@ -207,28 +176,13 @@ describe('troops (game start)', () => {
         // (re-pinned M4u: game-start character reviews (ReviewCharacterTraits Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd) move the empires / garrisons.)
         // (re-pinned M4m: the game-start Empire.DoTasks runs the military AI — IdentifyMilitaryObjectives Next(0, EmpireEvaluations.Count), CheckTemptingTargets Next(0, Empires.Count), DetermineRandomAttacks Next(0, n) — which shifts the Rnd stream.)
         // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
-        expect(b.capitals.map((c) => c.troops)).toEqual([
-            12,
-            12,
-            13,
-            5
-        ]);
-        expect(b.maintenance).toEqual([
-            12000,
-            10800,
-            11700,
-            4500
-        ]);
+        expect(b.capitals.map((c) => c.troops)).toMatchPin('troops.recruitCapitalTroops');
+        expect(b.maintenance).toMatchPin('troops.recruitMaintenance');
         // The under-garrisoned capitals recruit troops; each completion draws ChanceNewTroopGeneralFromRecruitment's
         // Next(0, 70 / race general-appearance chance).
-        expect(b.processDraws).toEqual([
-            "",
-            "",
-            "",
-            ""
-        ]);
+        expect(b.processDraws).toMatchPin('troops.recruitProcessDraws');
         // No roll is 1 → no Empire.GenerateNewCharacter(TroopGeneral) call.
-        expect(b.troopGenerals.length).toBe(0);
+        expect(b.troopGenerals.length).toMatchPin('troops.recruitTroopGenerals', 0);
         expect(run(false)).toEqual(b);
     }, 120000);
 });

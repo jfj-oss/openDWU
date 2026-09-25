@@ -552,10 +552,9 @@ export function chanceScientistPromotion(galaxy: Galaxy, empire: Empire | null, 
 // ---------------------------------------------------------------------------
 
 // Empire.3.cs ReviewDesignsBuiltObjectsImprovedComponents (2043).
+// The body lives on Empire (empire.ts reviewDesignsBuiltObjectsImprovedComponents); this free function is kept for its callers.
 export function reviewDesignsBuiltObjectsImprovedComponents(empire: Empire): void {
-    for (let i = 0; i < empire.designs.length; i++) empire.designs[i].reDefine();
-    for (let j = 0; j < empire.builtObjects.length; j++) empire.builtObjects[j].reDefine();
-    for (let k = 0; k < empire.privateBuiltObjects.length; k++) empire.privateBuiltObjects[k].reDefine();
+    empire.reviewDesignsBuiltObjectsImprovedComponents();
 }
 
 /** Empire.3.cs ReviewColonizationTypes / ReviewPopulationGrowthRates / ReviewMaximumConstructionSize / ReviewCanBuildShipTypes / ReviewTroopTypes. */

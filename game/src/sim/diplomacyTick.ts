@@ -2818,7 +2818,7 @@ const MAX_SOLAR_SYSTEM_SIZE = 23000; // Galaxy.MaxSolarSystemSize
  * TODO(port) M4b: the Refuel missions (ClearPreviousMissionRequirements + AssignMission(Refuel, depot, Unavailable)) —
  * counted as todo hits.
  */
-function removeMilitaryForcesFromSystem(galaxy: Galaxy, self: Empire, systemStar: Habitat, requester: Empire): number {
+export function removeMilitaryForcesFromSystem(galaxy: Galaxy, self: Empire, systemStar: Habitat, requester: Empire): number {
     const num = determineRelativeStrength(galaxy, militaryPotency(self), requester);
     let flag = false;
     if (self.pirateEmpireBaseHabitat === null && requester.pirateEmpireBaseHabitat === null) {

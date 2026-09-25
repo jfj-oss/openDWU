@@ -217,3 +217,78 @@
     font-size: 11px;
     padding: 1px 0;
 }
+
+/* [proposals] begin — task 17e "Propose..." block (the player's conversation options). */
+.diplomacy-propose {
+    margin-top: 4px;
+}
+.diplomacy-propose-group {
+    display: grid;
+    grid-template-columns: 8.5em minmax(0, 1fr);
+    gap: 6px;
+    align-items: baseline;
+    padding: 2px 0;
+}
+.diplomacy-propose-label {
+    font-size: 11px;
+    color: #aaa;
+}
+.diplomacy-propose-options {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+.diplomacy-propose-followups {
+    margin: 2px 0 4px;
+}
+.diplomacy-propose-option {
+    font-family: inherit;
+    font-size: 11px;
+    color: #e6e6e6;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    padding: 2px 8px;
+    cursor: pointer;
+}
+.diplomacy-propose-option:hover:not(:disabled) {
+    background: rgba(232, 210, 74, 0.16);
+    border-color: rgba(232, 210, 74, 0.55);
+    color: #fff;
+}
+.diplomacy-propose-option:disabled {
+    color: #666;
+    border-color: rgba(255, 255, 255, 0.08);
+    cursor: default;
+}
+.diplomacy-reply {
+    font-size: 12px;
+    padding: 4px 6px;
+    margin: 2px 0 4px;
+    border-left: 2px solid #888;
+    background: rgba(255, 255, 255, 0.04);
+    white-space: pre-line;
+}
+.diplomacy-reply-accepted {
+    border-left-color: #90ee90;
+}
+.diplomacy-reply-refused {
+    border-left-color: #ffa500;
+}
+.diplomacy-reply-error {
+    border-left-color: #ff4040;
+    color: #aaa;
+}
+.diplomacy-reply-speaker {
+    color: #e8d24a;
+    margin-right: 6px;
+}
+.diplomacy-propose-automation {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 11px;
+    color: #ccc;
+    padding: 2px 0 4px;
+}
+/* [proposals] end */
