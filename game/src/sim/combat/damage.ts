@@ -80,3 +80,15 @@ const T_startNewShipGroupBattleStats = registerTodo('M4o', 'startNewShipGroupBat
 export function startNewShipGroupBattleStats(galaxy: Galaxy, shipGroup: ShipGroup): void {
     /* TODO(port) M4o */ todo(T_startNewShipGroupBattleStats);
 }
+
+// ---- stub added by M4i (Empire.6.cs 519 AssignScrapMission) ----
+const T_inflictDamage = registerTodo('M4o', 'inflictDamage');
+/**
+ * BuiltObject.InflictDamage(attacker, weapon, damage, time, galaxy, …) — stub (the base is not damaged). M4i calls it as
+ * InflictDamage(self, null, 100000.0, CurrentDateTime, galaxy, 0f, allowRecursion: false, 0.0,
+ * allowArmorInvulnerability: false) to scrap a non-space-port base.
+ */
+export function inflictDamage(galaxy: Galaxy, builtObject: BuiltObject, attacker: BuiltObject | Creature | null, weapon: unknown, damage: number): void {
+    // RND: damage resolution / explosion draws — not drawn until M4o.
+    /* TODO(port) M4o */ todo(T_inflictDamage);
+}

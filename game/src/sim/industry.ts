@@ -41,7 +41,7 @@ import { ResourceGroup, resourceGroupOf } from './resourceSystem';
 import { HabitatPrioritization, checkEmpireTerritoryCanBuildAtHabitat, determineHabitatsBuildingMiningStations, habitatPrioritizationIndexOf } from './resourceTargets';
 import { checkResourceSupplyMeetsExpectedBool, fastFindNearestSpacePort } from './stationPlacement';
 import { netSort } from './netSort';
-import { builtObjectManufacturingQueue, componentCargoNotModelled, habitatManufacturingQueue, listAddComponentToManufacture, type ManufacturedComponent, type Manufacturer, type ManufacturingQueue } from './manufacturingQueue';
+import { builtObjectManufacturingQueue, habitatManufacturingQueue, listAddComponentToManufacture, type ManufacturedComponent, type Manufacturer, type ManufacturingQueue } from './manufacturingQueue';
 import type { CargoList } from './cargo';
 import { IndustryType } from './types';
 import { EmpireMessageType, sendMessageToEmpire } from './messages';
@@ -797,8 +797,9 @@ function processSingleManufacturer(queue: ManufacturingQueue, manufacturer: Manu
         const iterationCount = { count: 0 };
         while (conditionCheckLimit(manufacturer.component !== null && manufacturer.progress >= manufacturer.component.size, 1000, iterationCount)) {
             completedComponents.push(manufacturer.component!);
-            // parentCargo.Add(new Cargo(manufacturer.Component, 1, parentEmpire, 1)).
-            componentCargoNotModelled();
+            // parentCargo.Add(new Cargo(manufacturer.Component, 1, parentEmpire, 1)) (component cargo: cargo.ts M4h; reached
+            // once Empire.ProcureConstructionComponents fills the wait queue, M4i).
+            parentCargo.add(Cargo.ofComponent(manufacturer.component!, 1, parentEmpire, 1));
             const industry = manufacturer.component!.industry;
             manufacturer.progress = Math.fround(manufacturer.progress - Math.fround(manufacturer.component!.size));
             manufacturer.component = null;

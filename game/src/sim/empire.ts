@@ -1540,6 +1540,11 @@ export class Empire {
     capitalSystemStars: Habitat[] = [];
     /** Empire.cs TrackedWonders (PlanetaryFacilityBuildDateList; null until the first wonder completes). */
     trackedWonders: PlanetaryFacilityBuildDate[] | null = null;
+    /** Empire.cs 206 NewShipsAutomated = true (GameOptions.NewShipsAutomated for the player; NewBuiltObjectShouldBeAutomated). */
+    newShipsAutomated = true;
+    /** Empire.cs 271/274 _MonitoringHabitats / _MonitoringPoints (DetermineMonitoringStationLocation, empireConstruction.ts). */
+    monitoringHabitats: Habitat[] = [];
+    monitoringPoints: { x: number; y: number }[] = [];
     // ---- M4j fields (colony growth, treasury, government) ----
     /** Empire.cs 220-230 ColonyGrowthRateContinental .. Volcanic = 1f (float; ReviewPopulationGrowthRates). */
     colonyGrowthRateContinental = 1;

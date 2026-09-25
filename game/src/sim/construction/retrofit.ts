@@ -8,6 +8,8 @@ import type { BuiltObject } from '../builtObject';
 import type { Empire } from '../empire';
 import type { Habitat } from '../types';
 import type { ConstructionQueue } from './constructionQueue';
+import type { ManufacturingQueue } from '../manufacturingQueue';
+import { manufacturingQueueDoManufacturing } from '../industry';
 
 /**
  * BaconBuiltObject.cs 77 privateBuildCostToStateMoney = 1.0 (the class default; BaconSettings.txt sets 0.3, but the
@@ -19,12 +21,31 @@ export const BACON_PRIVATE_BUILD_COST_TO_STATE_MONEY = 1.0;
 /**
  * BuiltObject.2.cs 6023 ReviewRetrofitConstructionQueue(time, starDate): runs a colony-built base's retrofit queues
  * (RetrofitBaseManufacturingQueue, RetrofitBaseConstructionQueue) while they hold work, and drops them when empty.
- * Rnd: DoConstruction's Next(0, yards).
+ * Rnd: DoManufacturing's Next(0, manufacturers) (parent with cargo), then DoConstruction's Next(0, yards).
  */
 export function reviewRetrofitConstructionQueue(galaxy: Galaxy, builtObject: BuiltObject, time: number, starDate: number): void {
-    void starDate;
-    // 6025-6051: RetrofitBaseManufacturingQueue (ManufacturingQueue, M4g) — TODO(port) M4g/M4i: the BuiltObject field
-    // does not exist yet; it is only set by Empire.5.cs AssignRetrofitMission (M4i), so the C# sees null here.
+    // 6025-6051: RetrofitBaseManufacturingQueue (set by Empire.5.cs AssignRetrofitMission, construction/empireConstruction.ts).
+    const retrofitBaseManufacturingQueue = builtObject.retrofitBaseManufacturingQueue as ManufacturingQueue | null;
+    if (retrofitBaseManufacturingQueue !== null) {
+        let flag = false;
+        if (retrofitBaseManufacturingQueue.componentWaitQueue !== null && retrofitBaseManufacturingQueue.componentWaitQueue.length > 0) {
+            flag = true;
+        }
+        const manufacturers = retrofitBaseManufacturingQueue.manufacturers;
+        if (manufacturers !== null && manufacturers.length > 0) {
+            for (let i = 0; i < manufacturers.length; i++) {
+                const manufacturer = manufacturers[i];
+                if (manufacturer != null && manufacturer.component !== null) {
+                    flag = true;
+                }
+            }
+        }
+        if (flag) {
+            manufacturingQueueDoManufacturing(retrofitBaseManufacturingQueue, galaxy, time, starDate);
+        } else {
+            builtObject.retrofitBaseManufacturingQueue = null;
+        }
+    }
     const retrofitBaseConstructionQueue = builtObject.retrofitBaseConstructionQueue as ConstructionQueue | null;
     if (retrofitBaseConstructionQueue === null) {
         return;

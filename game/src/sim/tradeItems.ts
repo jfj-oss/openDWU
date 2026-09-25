@@ -476,7 +476,7 @@ function clampValue(num: number): number {
 }
 
 /** Galaxy.1.cs 1367 CheckColonizationLikeliness(potentialColony, colonizingRace). */
-function checkColonizationLikeliness(galaxy: Galaxy, potentialColony: Habitat, colonizingRace: Race): number {
+export function checkColonizationLikeliness(galaxy: Galaxy, potentialColony: Habitat, colonizingRace: Race): number {
     let num = colonizingRace.friendliness - colonizingRace.aggression;
     let num2 = 100;
     if (potentialColony.empire === galaxy.independentEmpire && potentialColony.population != null && potentialColony.population.dominantRace !== null) {

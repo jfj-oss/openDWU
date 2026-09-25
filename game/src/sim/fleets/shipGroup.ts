@@ -237,3 +237,18 @@ export function shipGroupCompleteMission(galaxy: Galaxy, shipGroup: ShipGroup): 
     /* TODO(port) M4l */ todo(T_shipGroupCompleteMission);
     return false;
 }
+
+// ---- stubs added by M4i (Empire.6.cs 3466 DoRetrofit) ----
+const T_shipGroupSubsequentMissionsContainsType = registerTodo('M4l', 'shipGroupSubsequentMissionsContainsType');
+/** ShipGroup.SubsequentMissions.ContainsType(missionType) — stub: false (the model has no SubsequentMissions yet). */
+export function shipGroupSubsequentMissionsContainsType(galaxy: Galaxy, shipGroup: ShipGroup, missionType: BuiltObjectMissionType): boolean {
+    /* TODO(port) M4l */ todo(T_shipGroupSubsequentMissionsContainsType);
+    return false;
+}
+
+const T_shipGroupQueueMission = registerTodo('M4l', 'shipGroupQueueMission');
+/** ShipGroup.cs 2392 QueueMission(missionType, target, target2, priority) — stub (nothing is queued). */
+export function shipGroupQueueMission(galaxy: Galaxy, shipGroup: ShipGroup, missionType: BuiltObjectMissionType, target: MissionTarget | null, target2: MissionTarget | null, priority: BuiltObjectMissionPriority): boolean {
+    /* TODO(port) M4l */ todo(T_shipGroupQueueMission);
+    return false;
+}

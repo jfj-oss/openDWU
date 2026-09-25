@@ -35,6 +35,7 @@ import { Weapon, weaponsDetermineNotInSuppliedList, weaponsQuickCompareEquivalen
 import { MIN_TIME } from './tick/simTime';
 import type { BuiltObjectMission } from './missions/mission';
 import { builtObjectReDefineConstructionQueue } from './construction/constructionYard';
+import { updatePosition } from './movement';
 
 // Port of EngineType.cs (byte enum, member order exact).
 export enum EngineType {
@@ -1245,9 +1246,9 @@ export class BuiltObject {
         if (this.currentSpeed > this.topSpeed || this.targetSpeed > this.topSpeed || this.preferredSpeed > this.topSpeed) {
             this.targetSpeed = this.topSpeed;
             this.preferredSpeed = this.topSpeed;
-            // TODO(port): UpdatePosition() (BuiltObject movement) — unreachable for a new
-            // ship (CurrentSpeed / TargetSpeed / PreferredSpeed are 0, TopSpeed >= 0).
-            throw new Error('TODO(port): BuiltObject.UpdatePosition');
+            // UpdatePosition() (BaconBuiltObject.cs 4329, movement.ts M4c; reached by ReDefine on a moving ship whose
+            // TopSpeed dropped, e.g. ReviewDesignsBuiltObjectsImprovedComponents after a research breakthrough).
+            updatePosition(this._galaxy, this);
         }
         if (this.minimumWeaponsRange >= 100000) this.minimumWeaponsRange = 0;
         if (this.beamWeaponsMinRange >= 100000) this.beamWeaponsMinRange = 0;
@@ -1443,6 +1444,8 @@ export class BuiltObject {
     /** BuiltObject.cs RetrofitBaseConstructionQueue (a colony-built base's retrofit queue; Empire.5.cs 159-163, M4i). */
     retrofitBaseConstructionQueue: unknown = null;
     // ---- M4i fields (empire construction) ----
+    /** BuiltObject.cs 429 RetrofitBaseManufacturingQueue (ManufacturingQueue; set by Empire.5.cs AssignRetrofitMission for a base away from its colony). */
+    retrofitBaseManufacturingQueue: unknown = null;
     // ---- M4j fields (economy) ----
     // ---- M4k fields (research) ----
     // ---- M4l fields (ship groups) ----
