@@ -9,9 +9,10 @@
 // player's designs with the original's columns and shows the selected design's
 // stats and components.
 //
-// TODO(port): design editor — design validation is UI-side in the original (Main.Part6.cs:226 GetDesignWarningMessages, :164 btnDesignsSaveDesign_Click) and no sim API exposes it for the player
-// TODO(port): Upgrade column toggle — Empire.SetDesignSubRoleShouldBeUpgraded (Main.Part8.cs:1105) has no sim setter
-// TODO(port): copy / delete / auto-upgrade / manual-upgrade buttons, load/save design files, design images — not in 16b
+// Task 17f: Add New / Edit / Copy As New / Manually Upgrade / Delete open the design editor (designEditor.ts) or
+// act through src/sim/player/designEditor.ts; the Upgrade toggle is Empire.SetDesignSubRoleShouldBeUpgraded.
+// TODO(port): "Auto Upgrade Selected Designs" (BaconMain.cs:2471 btnDesignsUpgrade_Click), load/save design files,
+//   design images, multi-select delete — not ported.
 
 import './shipDesigns.css';
 import type { Empire } from '../../sim/empire';
@@ -29,6 +30,18 @@ import {
 } from '../../sim/designGeneration';
 import { designCalculateMaintenanceCosts } from '../../sim/construction/empireConstruction';
 import { formatMoney, rgbCss } from '../hud';
+// [designeditor] begin
+import { getText, resolveGameText } from '../../sim/textResolver';
+import {
+    deleteDesign,
+    deleteDesignQuestion,
+    isDesignInUse,
+    newDesignDraft,
+    setDesignSubRoleShouldBeUpgraded,
+    type DesignDraftSource,
+} from '../../sim/player/designEditor';
+import { openDesignEditor, type DesignEditorHandle } from './designEditor';
+// [designeditor] end
 
 /** cmbDesignsFilter items (Main.Part8.cs:1006-1028). */
 export enum DesignFilter { Latest, LatestBuildable, NonObsolete, BuildableNonObsolete, All }
@@ -360,6 +373,11 @@ function createShipDesigns(opts: ShipDesignsOptions): OpenState {
     const player = opts.empire;
     const galaxy = opts.empire.galaxy as Galaxy;
     let selected: Design | null = null;
+    // [designeditor] begin
+    let editor: DesignEditorHandle | null = null;
+    let pendingDelete: Design | null = null;
+    let notice = '';
+    // [designeditor] end
 
     const root = el('div', 'ship-designs-wrap');
     const win = el('div', 'ship-designs-window');
@@ -394,6 +412,13 @@ function createShipDesigns(opts: ShipDesignsOptions): OpenState {
         makeSelect(DESIGN_FILTER_LABELS, filterIndex, (v) => { filterIndex = v as DesignFilter; }),
         makeSelect(DESIGN_TYPE_FILTER_LABELS, typeFilterIndex, (v) => { typeFilterIndex = v as DesignTypeFilter; }),
     );
+    // [designeditor] begin
+    // btnDesignsAddNew (Main.Part3.cs:837, Main.Part6.cs:1047).
+    const addNewBtn = el('button', 'ship-designs-button', getText('Add New'));
+    addNewBtn.type = 'button';
+    addNewBtn.addEventListener('click', () => openEditor({ kind: 'blank' }));
+    toolbar.appendChild(addNewBtn);
+    // [designeditor] end
     win.appendChild(toolbar);
 
     const body = el('div', 'ship-designs-body');
@@ -498,11 +523,83 @@ function createShipDesigns(opts: ShipDesignsOptions): OpenState {
         });
         buttons.append(obsoleteBtn, retrofitBtn);
         detailPane.appendChild(buttons);
+        // [designeditor] begin
+        renderEditorButtons(design);
+        // [designeditor] end
     }
+
+    // [designeditor] begin
+    // The Designs panel's editing buttons (Main.Part3.cs:837-841, Main.Part8.cs:1063-1069) and the Upgrade column
+    // toggle (Main.Part8.cs:1096-1122 ctlDesignsList_CellClick → Empire.SetDesignSubRoleShouldBeUpgraded).
+    function renderEditorButtons(design: Design): void {
+        const row = el('div', 'ship-designs-buttons');
+        const mk = (text: string, onClick: () => void): HTMLButtonElement => {
+            const b = el('button', 'ship-designs-button', text);
+            b.type = 'button';
+            b.addEventListener('click', onClick);
+            row.appendChild(b);
+            return b;
+        };
+        const upgrade = checkDesignSubRoleShouldBeUpgraded(player, design.subRole);
+        mk(`${getText('Upgrade')}: ${getText(upgrade ? 'Automatic' : 'Manual')}`, () => {
+            setDesignSubRoleShouldBeUpgraded(player, design.subRole, !upgrade);
+            render();
+        });
+        mk(getText('Edit'), () => openEditor({ kind: 'edit', design }));
+        mk(getText('Copy As New'), () => openEditor({ kind: 'copy', design }));
+        mk(getText('Manually Upgrade Design'), () => openEditor({ kind: 'upgrade', design }));
+        if (pendingDelete === design) {
+            // btnDesignsDelete_Click's "Are you sure…" question, inline.
+            const q = deleteDesignQuestion(1);
+            row.appendChild(el('span', 'ship-designs-confirm', resolveGameText(q.message)));
+            mk(getText('Yes'), () => {
+                pendingDelete = null;
+                const r = deleteDesign((design.empire as Empire | null) ?? player, [design]);
+                notice = r.message !== undefined ? resolveGameText(r.message) : '';
+                render();
+            });
+            mk(getText('No'), () => { pendingDelete = null; render(); });
+        } else {
+            mk(getText('Delete'), () => {
+                // Main.Part6.cs:1128-1149: an in-use design is refused before the question.
+                if (isDesignInUse((design.empire as Empire | null) ?? player, design)) {
+                    notice = getText('This design is in use and cannot be deleted');
+                } else {
+                    pendingDelete = design;
+                }
+                render();
+            });
+        }
+        detailPane.appendChild(row);
+        if (notice !== '') detailPane.appendChild(el('div', 'ship-designs-notice', notice));
+    }
+
+    function openEditor(source: DesignDraftSource): void {
+        if (editor !== null) return;
+        notice = '';
+        pendingDelete = null;
+        const draft = newDesignDraft(galaxy, player, source);
+        editor = openDesignEditor({
+            galaxy,
+            empire: player,
+            draft,
+            sourceKind: source.kind,
+            sourceDesign: source.kind === 'blank' ? null : source.design,
+            onClose: (saved) => {
+                editor = null;
+                if (saved !== null) selected = saved;
+                render();
+            },
+        });
+    }
+    // [designeditor] end
 
     render();
 
     function close(): void {
+        // [designeditor] begin
+        editor?.close();
+        // [designeditor] end
         document.removeEventListener('keydown', onKeyDown);
         root.remove();
         open = null;
@@ -513,6 +610,12 @@ function createShipDesigns(opts: ShipDesignsOptions): OpenState {
         if (e.key === 'Escape') {
             e.preventDefault();
             e.stopImmediatePropagation();
+            // [designeditor] begin
+            if (editor !== null) {
+                editor.close(); // Escape cancels the editor first
+                return;
+            }
+            // [designeditor] end
             close();
         }
     }

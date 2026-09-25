@@ -1,0 +1,284 @@
+/* Design editor panel (task 17f). Same dark-panel tokens as the Ship Designs panel. */
+
+.design-editor-wrap {
+    position: fixed;
+    inset: 0;
+    z-index: 1510; /* above the Ship Designs panel (1500) */
+    pointer-events: none;
+    font-family: 'Forgotten Futurist', sans-serif;
+    color: #e6e6e6;
+}
+
+.design-editor-window {
+    position: absolute;
+    top: 72px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 1180px;
+    max-width: calc(100vw - 16px);
+    max-height: calc(100vh - 96px);
+    pointer-events: auto;
+    background: rgba(14, 16, 20, 0.97);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 6px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.7);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.design-editor-titlebar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: rgba(10, 11, 15, 0.9);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.design-editor-heading {
+    font-size: 13px;
+    color: #e8d24a;
+}
+
+.design-editor-close {
+    background: transparent;
+    border: none;
+    color: #ccc;
+    font-size: 15px;
+    cursor: pointer;
+    padding: 2px 6px;
+}
+.design-editor-close:hover {
+    color: #fff;
+}
+
+.design-editor-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: rgba(232, 210, 74, 0.1);
+    border-bottom: 1px solid rgba(232, 210, 74, 0.25);
+    font-size: 12px;
+}
+.design-editor-banner-text {
+    flex: 1;
+}
+
+.design-editor-header,
+.design-editor-behaviour {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px 0;
+    font-size: 12px;
+}
+
+.design-editor-input {
+    font-family: inherit;
+    font-size: 13px;
+    color: #fff;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    padding: 3px 6px;
+    width: 220px;
+}
+
+.design-editor-select {
+    font-family: inherit;
+    font-size: 12px;
+    color: #e6e6e6;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    padding: 3px 6px;
+}
+.design-editor-select option {
+    background: #15171c;
+}
+
+.design-editor-check {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    color: #ccc;
+}
+
+.design-editor-size,
+.design-editor-cost {
+    color: #bbb;
+}
+.design-editor-cost {
+    flex: 1;
+}
+
+.design-editor-field {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.design-editor-field-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #888;
+}
+
+.design-editor-explanation {
+    padding: 6px 12px 0;
+    font-size: 11px;
+    color: #999;
+}
+
+.design-editor-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 300px;
+    gap: 8px;
+    padding: 8px 12px;
+    min-height: 0;
+}
+
+.design-editor-pane {
+    overflow-y: auto;
+    max-height: 62vh;
+    padding: 4px 8px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 4px;
+}
+
+.design-editor-section {
+    margin: 2px 0 4px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #777;
+}
+
+.design-editor-divider {
+    margin: 8px 0 4px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.design-editor-family {
+    margin-bottom: 4px;
+}
+.design-editor-family-label {
+    cursor: pointer;
+    font-size: 11px;
+    color: #e8d24a;
+    padding: 2px 0;
+}
+
+.design-editor-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 4px;
+    font-size: 12px;
+    border-radius: 3px;
+}
+.design-editor-row:hover {
+    background: rgba(255, 255, 255, 0.07);
+}
+.design-editor-row-count {
+    width: 28px;
+    text-align: right;
+    color: #e8d24a;
+}
+.design-editor-row-name {
+    flex: 1;
+    color: #ddd;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.design-editor-row-size {
+    width: 36px;
+    text-align: right;
+    color: #999;
+}
+
+.design-editor-mini {
+    font-family: system-ui, sans-serif; /* the HUD font has no visible '+' / '−' */
+    font-size: 11px;
+    min-width: 26px;
+    color: #e6e6e6;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 3px;
+    padding: 0 4px;
+    cursor: pointer;
+}
+.design-editor-mini:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.16);
+}
+.design-editor-mini:disabled {
+    color: rgb(96, 96, 96);
+    cursor: default;
+}
+
+.design-editor-warnings {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.design-editor-warning {
+    font-size: 12px;
+    line-height: 1.3;
+}
+.design-editor-must {
+    color: #ff5a4a;
+}
+.design-editor-should {
+    color: #e8c84a;
+}
+
+.design-editor-stats {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 8px;
+    row-gap: 1px;
+    font-size: 12px;
+}
+.design-editor-stat-label {
+    color: #999;
+}
+.design-editor-stat-value {
+    text-align: right;
+}
+
+.design-editor-empty {
+    font-size: 12px;
+    color: #777;
+}
+
+.design-editor-status {
+    min-height: 16px;
+    padding: 0 12px 8px;
+    font-size: 12px;
+    color: #ff7a6a;
+}
+
+.design-editor-button {
+    font-family: inherit;
+    font-size: 12px;
+    color: #e6e6e6;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    padding: 3px 12px;
+    cursor: pointer;
+}
+.design-editor-button:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.14);
+    color: #fff;
+}
+.design-editor-save {
+    border-color: rgba(232, 210, 74, 0.5);
+}
