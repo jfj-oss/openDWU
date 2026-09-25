@@ -32,6 +32,7 @@ import { EmpireTerritory, strategicValue } from './territory';
 import { buildResearchStatic, type ResearchStatic } from './researchSystem';
 import { buildComponentStatic } from './componentStatic';
 import { ensureHabitatManufacturingQueue } from './manufacturingQueue';
+import { createHabitatDockingBays, createPopulatedHabitatDockingBays } from './logistics/dockingBays';
 
 // C# string.CompareTo (culture-sensitive; .NET 5+ uses ICU).
 const NAME_COLLATOR = new Intl.Collator('en-US');
@@ -3422,8 +3423,9 @@ export class Galaxy {
         newHabitatConstructionQueue(this, habitat);
         // Galaxy.8.cs 484 (M4g): habitat.ManufacturingQueue = new ManufacturingQueue(habitat, galaxy).
         ensureHabitatManufacturingQueue(this, habitat);
-        // TODO(port): Cargo/Troops/TroopsToRecruit/InvadingTroops/20 DockingBays (component 74) — Galaxy.8.cs
-        // GenerateContinentalPlanet.
+        // Galaxy.8.cs 485-493 (M4e): 20 DockingBays (component 74, capacity 100) + DockingBayWaitQueue. No Rnd.
+        createHabitatDockingBays(habitat, 20);
+        // TODO(port): Cargo/Troops/TroopsToRecruit/InvadingTroops — Galaxy.8.cs GenerateContinentalPlanet.
         return habitat;
     }
 
@@ -3972,10 +3974,12 @@ export class Galaxy {
                     this.selectPopulation(planet, sunHabitat);
                 }
                 // Galaxy.5.cs 1609-1618: a populated planet gets `ConstructionQueue` (M4h, 1617) and `ManufacturingQueue` (M4g, 1618).
-                // TODO(port): the other containers of that block (Cargo, Troops, Characters, DockingBays; no Rnd).
+                // TODO(port): the other containers of that block (Cargo, Troops, Characters; no Rnd).
                 if (planet.population.items.length > 0) {
                     newHabitatConstructionQueue(this, planet);
                     ensureHabitatManufacturingQueue(this, planet);
+                    // Galaxy.5.cs 1619-1644 (M4e): DockingBays (20, or 1 for asteroids / barren rock / other types) + wait queue.
+                    createPopulatedHabitatDockingBays(planet);
                 } else {
                     // Galaxy.5.cs 1648: SelectCreatures(habitat2) runs only in the
                     // else-branch of `if (habitat2.Population.Count > 0)`.
@@ -4072,6 +4076,8 @@ export class Galaxy {
                     if (moon.population.items.length > 0) {
                         newHabitatConstructionQueue(this, moon);
                         ensureHabitatManufacturingQueue(this, moon);
+                        // Galaxy.5.cs 1757-1781 (M4e): DockingBays + wait queue, as for planets.
+                        createPopulatedHabitatDockingBays(moon);
                     } else {
                         // Galaxy.5.cs 1785: SelectCreatures(habitat2) only when the moon
                         // has no population (else-branch, as for planets).

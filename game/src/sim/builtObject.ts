@@ -13,6 +13,7 @@
 // contracts, missions, UpdatePosition.
 
 import { BuiltObjectSubRole } from './builtObjectTypes';
+import { DockingBay } from './dockingBay';
 import { BuiltObjectComponent, BuiltObjectComponentList, ComponentStatus, csInt, toByte, toShort } from './builtObjectComponent';
 import { CargoList, ResourceRef, TroopList, type Troop } from './cargo';
 import { DEFAULT_BASE_TECH_COST, componentImprovementFromComponent, type ComponentImprovementEntry } from './componentStatic';
@@ -55,25 +56,9 @@ export enum TurnDirection {
     Right,
 }
 
-// Port of DockingBay.cs.
-export class DockingBay {
-    private _dockedShip: BuiltObject | null = null;
-    _capacity: number;
-    private _componentId: number; // short
-    private _builtObjectComponentId: number; // short
-
-    constructor(componentId: number, builtObjectComponentId: number, capacity: number) {
-        this._capacity = capacity;
-        this._componentId = toShort(componentId);
-        this._builtObjectComponentId = builtObjectComponentId;
-    }
-
-    get parentBuiltObjectComponentId(): number { return this._builtObjectComponentId; }
-    get parentComponentId(): number { return this._componentId; }
-    get dockedShip(): BuiltObject | null { return this._dockedShip; }
-    set dockedShip(v: BuiltObject | null) { this._dockedShip = v; }
-    get capacity(): number { return this._capacity; }
-}
+// Port of DockingBay.cs: moved to dockingBay.ts (M4e) so habitat-bay creation can reach it from empire.ts / galaxy.ts
+// without pulling builtObject.ts into their import cycles.
+export { DockingBay };
 
 // DockingBayList.IndexOf(BuiltObjectComponent) (DockingBayList.cs 91).
 function dockingBayIndexOf(list: DockingBay[], builtObjectComponent: BuiltObjectComponent | null): number {
@@ -1432,6 +1417,15 @@ export class BuiltObject {
     hyperjumpDisabledLocation = false;
     // ---- M4d fields (orders, cargo) ----
     // ---- M4e fields (docking, refuelling) ----
+    /** BuiltObject.cs 397 _LastDockDistance = 100000000.0 (case Dock's arrival overshoot test). */
+    lastDockDistance = 100000000.0;
+    /** BuiltObject.cs 433-439 refuel reservation: _RefuelResourceId = byte.MaxValue, _RefuelAmount (short), _RefuelLocationIsBuiltObject, _RefuelLocationId = -1. */
+    refuelResourceId = 255;
+    refuelAmount = 0;
+    refuelLocationIsBuiltObject = false;
+    refuelLocationId = -1;
+    /** BuiltObject.cs 557 _RefuellingLocation (StellarObject; cached by CheckForRefuelling, read as CachedRefuellingLocation). */
+    refuellingLocation: BuiltObject | Habitat | Creature | null = null;
     // ---- M4f fields (civilian mission AI) ----
     // ---- M4g fields (extraction, industry) ----
     /** BuiltObject.cs _DoingMining / _DoingGasMining / _DoingConstruction (reset and set by IndustrialProcessing; read by the UI and ship animations). */

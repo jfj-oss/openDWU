@@ -337,7 +337,8 @@ describe('BuiltObject.AssignMission (BuiltObject.2.cs 7620) / ClearPreviousMissi
         expect(ship.currentSpeed).toBe(ship.cruiseSpeed);
         expect(ship.targetSpeed).toBe(ship.cruiseSpeed);
         const hits = todoHits();
-        expect(hits['M4e checkCancelRefuelData']).toBe(1); // Refuel mission → CheckCancelRefuelData
+        // Refuel mission → CheckCancelRefuelData (ported by M4e; no reservation to release here): no M4e stub is reached.
+        expect(Object.keys(hits).filter((k) => k.startsWith('M4e '))).toEqual([]);
         // UpdatePosition is ported (M4c): no stub hit.
         expect(hits['M4c updatePosition']).toBeUndefined();
     });
@@ -450,7 +451,8 @@ describe('ExecuteCommands (BuiltObject.2.cs 399-4579)', () => {
         expect(ship.preferredSpeed).toBe(0);
         expect(ship.targetSpeed).toBe(0);
         const hits = todoHits();
-        expect(hits['M4e autoRefuelRepairShip']).toBe(1);
+        // RevertToPreviousMission → AutoRefuelRepairShip (ported by M4e): no M4e stub is reached.
+        expect(Object.keys(hits).filter((k) => k.startsWith('M4e '))).toEqual([]);
         // AccelerateToTargetSpeed / CalculateCurrentHeading are ported (M4c): no M4c stub is reached.
         expect(Object.keys(hits).some((k) => k.startsWith('M4c '))).toBe(false);
         expect(Object.keys(hits).some((k) => k.startsWith('M4b '))).toBe(false);
@@ -555,6 +557,7 @@ describe('harness smoke (M4b ported, other packages stubbed)', () => {
         expect(stateDigest(a)).toBe(stateDigest(b));
         expect(ra.rndDraws).toBe(rb.rndDraws);
         expect(Object.keys(ra.todoHits).filter((k) => k.startsWith('M4b '))).toEqual([]);
-        expect(ra.todoHits['M4e autoRefuelRepairShip'] ?? 0).toBeGreaterThan(0);
+        // M4e is fully ported (the AutoRefuelRepairShip marker that used to be asserted here is gone).
+        expect(Object.keys(ra.todoHits).filter((k) => k.startsWith('M4e '))).toEqual([]);
     }, 300000);
 });

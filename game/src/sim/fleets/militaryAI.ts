@@ -156,3 +156,27 @@ const T_clearDefendFleets = registerTodo('M4m', 'clearDefendFleets');
 export function clearDefendFleets(galaxy: Galaxy, empire: Empire): void {
     /* TODO(port) M4m */ todo(T_clearDefendFleets);
 }
+
+// ---- stubs added by M4e (logistics/docking.ts CheckMissionStillValid, BuiltObject.1.cs 4527-4600; the C# block that
+// reads them is unreachable, see checkMissionStillValid) ----
+
+const T_galaxyBlockadeFor = registerTodo('M4m', 'galaxyBlockadeFor');
+/** Galaxy.Blockades[target] (BlockadeList.cs 14/28 indexers) — stub: null (no Blockade model before M4m). */
+export function galaxyBlockadeFor(galaxy: Galaxy, target: BuiltObject | Habitat): { initiator: Empire | null } | null {
+    /* TODO(port) M4m */ todo(T_galaxyBlockadeFor);
+    return null;
+}
+
+const T_determineBuiltObjectStrengthAtLocation = registerTodo('M4m', 'determineBuiltObjectStrengthAtLocation');
+/** Galaxy.7.cs 117 DetermineBuiltObjectStrengthAtLocation(x, y, empire, unarmedStrength, includeAllies, out ships) — stub: 0. */
+export function determineBuiltObjectStrengthAtLocation(galaxy: Galaxy, x: number, y: number, empire: Empire | null, unarmedStrength: number, includeAllies: boolean): number {
+    /* TODO(port) M4m */ todo(T_determineBuiltObjectStrengthAtLocation);
+    return 0;
+}
+
+const T_calculateCautionFactor = registerTodo('M4m', 'calculateCautionFactor');
+/** Empire.2.cs 4380 CalculateCautionFactor() — stub: 1.0. */
+export function calculateCautionFactor(galaxy: Galaxy, empire: Empire): number {
+    /* TODO(port) M4m */ todo(T_calculateCautionFactor);
+    return 1.0;
+}

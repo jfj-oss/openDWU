@@ -11,6 +11,7 @@ import type { BuiltObject } from '../builtObject';
 import type { Habitat } from '../types';
 import type { ShipGroup } from '../fleets/shipGroup';
 import { registerTodo, todo } from '../tick/todo';
+import type { CommandContext } from '../missions/executeCommands';
 
 const T_recruitAttackTroops = registerTodo('M4q', 'recruitAttackTroops');
 /** Empire.4.cs 3908 RecruitAttackTroops. */
@@ -63,4 +64,18 @@ const T_baconHabitatHandlePrisoners = registerTodo('M4q', 'baconHabitatHandlePri
  */
 export function baconHabitatHandlePrisoners(galaxy: Galaxy, habitat: Habitat, isPlayer: boolean): void {
     /* TODO(port) M4q */ todo(T_baconHabitatHandlePrisoners);
+}
+
+// ---- stub added by M4e (missions/cmdDocking.ts case Load) ----
+
+const T_cmdLoadTroops = registerTodo('M4q', 'cmdLoadTroops');
+/**
+ * BuiltObject.2.cs 3363-3540: case Load, `command.Troops` branch (docked; pick troops by the ship / fleet loadout from
+ * the dock's Troops or InvadingTroops, move them aboard, transfer invading characters, then complete the command).
+ * Receives the case locals and returns the case `result`. Stub: 0.0 (the ship waits on the Load command; no Rnd in the
+ * C# branch). LoadTroops missions are created by M4q.
+ */
+export function cmdLoadTroops(ctx: CommandContext): number {
+    /* TODO(port) M4q */ todo(T_cmdLoadTroops);
+    return 0.0;
 }
