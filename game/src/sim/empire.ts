@@ -388,6 +388,25 @@ export class Empire {
         if (policy !== null && !isIndependentEmpire) this.policy = policy;
         this.allowableGovernmentTypes = Empire.resolveDefaultAllowableGovernmentTypes(dominantRace, true);
         this.troops = new TroopList();
+        // Empire.cs 4218-4235 (added by M4l: pirate factions need ControlMilitaryFleets for MaintainShipGroups).
+        this.controlColonization = AutomationLevel.FullyAutomated;
+        this.controlColonyDevelopment = true;
+        this.controlColonyStockLevels = true;
+        this.controlColonyTaxRates = true;
+        this.controlDesigns = true;
+        this.controlDiplomacyGifts = AutomationLevel.FullyAutomated;
+        this.controlDiplomacyOffense = AutomationLevel.FullyAutomated;
+        this.controlDiplomacyTreaties = AutomationLevel.FullyAutomated;
+        this.controlMilitaryAttacks = AutomationLevel.FullyAutomated;
+        this.controlMilitaryFleets = true;
+        this.controlStateConstruction = AutomationLevel.FullyAutomated;
+        this.controlTroopGeneration = true;
+        this.controlAgentAssignment = AutomationLevel.FullyAutomated;
+        this.controlResearch = true;
+        this.controlPopulationPolicy = true;
+        this.controlColonyFacilities = AutomationLevel.FullyAutomated;
+        this.controlCharacterLocations = true;
+        this.controlOfferPirateMissions = AutomationLevel.FullyAutomated;
         this.selectEmpireColors(false, (main, secondary) => {
             this.mainColor = main;
             this.secondaryColor = secondary;
@@ -1600,6 +1619,14 @@ export class Empire {
     reviewDesignsAndRetrofitFlag = false;
     reviewDesignsAndRetrofitImportantBreakthrough = false;
     // ---- M4l fields (ship groups) ----
+    /** Empire.cs 576 _FleetIdentity (GetNextFleetNumberDescription counter). */
+    fleetIdentity = 0;
+    /**
+     * Empire.cs 375/378 FleetAttackRefuelPortion / FleetAttackGatherPortion (float, 0.3f; SetAutomationSettingsFullyAutomated
+     * keeps 0.3f, the player's SetAutomationSettings copies GameOptions 0.05f — TODO(port) M9 game options).
+     */
+    fleetAttackRefuelPortion = Math.fround(0.3);
+    fleetAttackGatherPortion = Math.fround(0.3);
     // ---- M4m fields (military AI) ----
     // ---- M4n fields (threats) ----
     /** Empire.cs 137 _EmpiresToAttack (EmpireList; CheckForRandomAttackTargets consumes, M4m DetermineRandomAttacks fills). */

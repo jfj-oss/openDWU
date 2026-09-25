@@ -80,3 +80,16 @@ const T_startNewShipGroupBattleStats = registerTodo('M4o', 'startNewShipGroupBat
 export function startNewShipGroupBattleStats(galaxy: Galaxy, shipGroup: ShipGroup): void {
     /* TODO(port) M4o */ todo(T_startNewShipGroupBattleStats);
 }
+
+// ---- stub added by M4l (ShipGroup.CheckForCompletedBattle 208-212 / CheckForMissionCompletion 1155-1162) ----
+
+const T_finalizeShipGroupBattleStats = registerTodo('M4o', 'finalizeShipGroupBattleStats');
+/**
+ * ShipGroup.cs 208-211 / 1158-1161: BattleStats.Location = Galaxy.ResolveNearestLocation(attackedTarget, LeadShip, out
+ * nearby); BattleStats.NearLocation = nearby; Galaxy.DoCharacterEvent(SpaceBattle, BattleStats, ObtainCharacters()) — the
+ * caller then clears ShipGroup.BattleStats. Stub (only reachable once startNewShipGroupBattleStats creates the stats).
+ */
+export function finalizeShipGroupBattleStats(galaxy: Galaxy, shipGroup: ShipGroup, attackedTarget: BuiltObject | Habitat | Creature | null): void {
+    // RND: DoCharacterEvent(SpaceBattle) draws — not drawn until M4o.
+    /* TODO(port) M4o */ todo(T_finalizeShipGroupBattleStats);
+}

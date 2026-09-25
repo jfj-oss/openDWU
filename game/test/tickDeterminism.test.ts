@@ -66,8 +66,9 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         checkInvariants(long);
         const hits = r.todoHits;
         // Every tick family reached its stubs. (M4r: every diplomacy entry point reached is fully ported; M4s1 ported
-        // reviewPirateMissionsAndAssign, so its marker is pirateCollectIncomeFromControlledColonies.)
-        for (const key of ['M4e autoRefuelRepairShip', 'M4q scanForNewOwnerHabitat', 'M4s pirateAssignShipMissions', 'M4s pirateCollectIncomeFromControlledColonies', 'M4l performFleetTasks']) {
+        // reviewPirateMissionsAndAssign, so its marker is pirateCollectIncomeFromControlledColonies; M4l ported performFleetTasks,
+        // so the BuiltObject periodic block is detected by healTroops.)
+        for (const key of ['M4e autoRefuelRepairShip', 'M4q scanForNewOwnerHabitat', 'M4s pirateAssignShipMissions', 'M4s pirateCollectIncomeFromControlledColonies', 'M4q healTroops']) {
             expect(hits[key] ?? 0, key).toBeGreaterThan(0);
         }
         const summary = { digest: stateDigest(long), counts: stateCounts(long), rndDraws: long.rnd.drawCount };
