@@ -130,7 +130,22 @@ describe('pirate base + fleet (createGame, piratePrevalence 1.0)', () => {
         ]);
         const a = fp();
         expect(fp()).toEqual(a);
-        expect(a).toEqual(PINNED_SEED1_FLEETS);
+        // Seed 1, StartingAge 1: [state BuiltObjects, private BuiltObjects] per faction.
+        // (re-pinned: createGame now runs the price reviews, the first galaxy tick's huge block and the
+        // independent traders before GenerateNewPirateEmpires, plus pirate starting characters and the
+        // Start.2.cs 1493-1533 near-player faction.)
+        // (re-pinned M4k: the game-start Empire.DoTasks now runs PerformResearch — SelectNextResearchProject draws
+        // Rnd (SelectRandomLowestProject) and research events draw Next(0, num4) per industry — so later game-start
+        // Rnd draws shift.)
+        // (re-pinned M4s1: ReviewPirateRelations draws Rnd.NextDouble in every game-start Empire long block and the Galaxy long
+        // block's independent-colony pirate offers draw per colony, so GenerateNewPirateEmpires sees a different stream.)
+        // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
+        // Re-pinned M4u: game-start character reviews (ReviewCharacterTraits Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd) move the Rnd stream before pirate generation.
+        // Re-pinned M4x: opts() now sets galaxyAge = age (Galaxy.StartingAge is the galaxy age, Galaxy.cs 982), so the age-1
+        // runs use Galaxy.Age 1 (Start.2.cs int_5 > 0 game-start steps, StartStarDate + 30000000): the Rnd stream moves.
+        // (re-pinned M4m: the game-start Empire.DoTasks runs the military AI — IdentifyMilitaryObjectives Next(0, EmpireEvaluations.Count), CheckTemptingTargets Next(0, Empires.Count), DetermineRandomAttacks Next(0, n) — which shifts the Rnd stream.)
+        // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
+        expect(a).toMatchPin('pirateBases.fleets');
     }, 60000);
 
     it('super-pirate event cannot fire on this start (ColonyFillRatio <= 0.2)', () => {
@@ -195,49 +210,3 @@ function spyRnd(g: Galaxy): { k: string; v: number }[] {
     };
     return log;
 }
-
-// Seed 1, StartingAge 1: [state BuiltObjects, private BuiltObjects] per faction.
-// (re-pinned: createGame now runs the price reviews, the first galaxy tick's huge block and the
-// independent traders before GenerateNewPirateEmpires, plus pirate starting characters and the
-// Start.2.cs 1493-1533 near-player faction.)
-// (re-pinned M4k: the game-start Empire.DoTasks now runs PerformResearch — SelectNextResearchProject draws
-// Rnd (SelectRandomLowestProject) and research events draw Next(0, num4) per industry — so later game-start
-// Rnd draws shift.)
-// (re-pinned M4s1: ReviewPirateRelations draws Rnd.NextDouble in every game-start Empire long block and the Galaxy long
-// block's independent-colony pirate offers draw per colony, so GenerateNewPirateEmpires sees a different stream.)
-// (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
-// Re-pinned M4u: game-start character reviews (ReviewCharacterTraits Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd) move the Rnd stream before pirate generation.
-// Re-pinned M4x: opts() now sets galaxyAge = age (Galaxy.StartingAge is the galaxy age, Galaxy.cs 982), so the age-1
-// runs use Galaxy.Age 1 (Start.2.cs int_5 > 0 game-start steps, StartStarDate + 30000000): the Rnd stream moves.
-// (re-pinned M4m: the game-start Empire.DoTasks runs the military AI — IdentifyMilitaryObjectives Next(0, EmpireEvaluations.Count), CheckTemptingTargets Next(0, Empires.Count), DetermineRandomAttacks Next(0, n) — which shifts the Rnd stream.)
-// (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
-const PINNED_SEED1_FLEETS: unknown[] = [
-    [
-        "SmallSpacePort:S66 Outpost|Escort:Elite Scorpion|Escort:Bleak Fury|ConstructionShip:S66 Chance",
-        "SmallFreighter:Surly Ploy|GasMiningStation:S66 2 Gas Mining Station"
-    ],
-    [
-        "SmallSpacePort:S141 Fortress|Escort:Indomitable Enforcer|Escort:Worthy Firelance|ConstructionShip:Idle Expedition",
-        "SmallFreighter:Celestial Echo|GasMiningStation:S12 4 Gas Mining Station"
-    ],
-    [
-        "SmallSpacePort:Villainous Station|Escort:Terrible Raider|ExplorationShip:Hidden Aspiration|ConstructionShip:S162 Adversity",
-        "SmallFreighter:S162 Jewel|SmallFreighter:S162 Renegade|MiningShip:Vanishing Subterfuge|GasMiningShip:Eager Wayfarer|GasMiningStation:S293 6 Gas Mining Station|GasMiningStation:S162 5 Gas Mining Station"
-    ],
-    [
-        "SmallSpacePort:Bounty Hunters Fortress|Escort:Reckless Demise|Escort:Sinister Cataclysm|ConstructionShip:Lively Ranger",
-        "SmallFreighter:Smiling Nightstar|GasMiningStation:S248 5 Gas Mining Station"
-    ],
-    [
-        "SmallSpacePort:Secluded Cave|Escort:Growling Enigma|ExplorationShip:Surly Orbit|ConstructionShip:S288 Bargain",
-        "SmallFreighter:Intrepid Pathway|SmallFreighter:Eager Dawn|MiningShip:Lucky Smuggler|GasMiningShip:Far Memory|GasMiningStation:S288 7 Gas Mining Station|MiningStation:Rhoaf Mining Station"
-    ],
-    [
-        "SmallSpacePort:Secluded Den|Escort:Majestic Dominator|ExplorationShip:Tenacious Lurker|ConstructionShip:Solemn Way",
-        "SmallFreighter:Fortunate Princess|MiningShip:Lawless Illusion|GasMiningShip:Jubilant Guide|GasMiningStation:KM532 Gas Mining Station|GasMiningStation:HU986 Gas Mining Station"
-    ],
-    [
-        "SmallSpacePort:Outlaws Cave|ExplorationShip:Merry Expedition|ConstructionShip:S268 Discovery",
-        "SmallFreighter:Silent Fantasy|SmallFreighter:Daring Novelty|SmallFreighter:Extravagant Queen|SmallFreighter:Quiet Trader|MiningShip:Vain Subterfuge|GasMiningShip:S268 Wager|GasMiningStation:S268 3 Gas Mining Station|GasMiningStation:S230 5 Gas Mining Station|MiningStation:KP588, Asteroid Field Mining Station"
-    ]
-];

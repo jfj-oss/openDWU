@@ -106,7 +106,7 @@ function latestDesignsFindNewestCanBuild(empire: Empire, subRole: BuiltObjectSub
 }
 
 /** Galaxy.cs 1765 CreateOrder(colony, resource, amount, isState, expiryDate) = Empire.4.cs 4063 (Type Standard). */
-function createOrderWithExpiry(galaxy: Galaxy, colony: Habitat, resourceId: number, amount: number, isState: boolean, type: OrderType, expiryDate: number): Order {
+export function createOrderWithExpiry(galaxy: Galaxy, colony: Habitat, resourceId: number, amount: number, isState: boolean, type: OrderType, expiryDate: number): Order {
     const maximumFulfillmentDistance = calculateMaximumOrderFulfillmentDistance(galaxy, colony.xpos, colony.ypos);
     const order = new Order(galaxy, colony, new ResourceRef(resourceId), amount, expiryDate, maximumFulfillmentDistance);
     order.type = type;

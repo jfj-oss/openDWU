@@ -42,12 +42,29 @@ You port one M4 work package of a faithful TypeScript port of the C# game Distan
 8. Tests: add focused tests in `game/test/m4<X>*.test.ts` (unit tests of ported functions against hand-worked
    C# expectations, plus a harness smoke test via `runGameSeconds` from `tick/harness.ts` if relevant).
    Run `npm run typecheck` and `npm test` in `game/` before each commit (full suite ~90 s). All tests must pass.
-   Seed pins that move (e.g. `test/tickDeterminism.test.ts` digest, createGame pins): re-pin and write in the
-   test comment *why* they moved. List every re-pinned value in your final report.
+   Seed pins that move (e.g. `test/tickDeterminism.test.ts` digest, createGame pins): re-pin with
+   `npm run repin -- --reason "<why>"` (see "Seed pins" below), never by hand. List the moved pins in your report.
 9. Commit messages: `game: task M4<X> <summary>` ending with the attribution trailer lines the running
    session specifies.
    Never put model names/identifiers in code, comments or commits.
 10. Performance: faithful first; but don't write gratuitously quadratic code where the C# isn't.
+
+## Seed pins (`npm run repin`)
+Exact seed-1 values (digests, names, counts, Rnd draw logs) are asserted with
+`expect(actual).toMatchPin('<scenario>.<name>')`: the value lives in `test/pins/seed1.json` (or, for a small literal,
+in place as the second argument: `toMatchPin('troops.recruitTroopGenerals', 0)`). `test/pins/manifest.json` lists
+every pin. Do not edit pinned values, seed1.json or the manifest by hand.
+- When your change legitimately moves the Rnd stream: `npm run repin -- --reason "M4x: <site> draws Next(0, n) per …"`.
+  It re-runs the pinned test files with `DWU_PIN_CAPTURE` set (toMatchPin then records the actual value instead of
+  asserting), rewrites seed1.json and the in-place literals, and appends `Moved <old> → <new>: <reason>` to the comment
+  above each moved pin and to `test/pins/HISTORY.md`. Then run the full suite: tests that only happen to rely on the
+  seed-1 layout (not pins) may still need a hand fix.
+- `npm run repin -- --dry-run` prints what would move (with a line diff) and writes nothing.
+- `npm run repin -- --check` exits 1 if any pin would change, the manifest is stale, a seed1.json key has no test, a
+  pinned test failed before reaching its pin, or a new `PINNED_*` constant / 16-hex `toBe` digest bypasses
+  `toMatchPin`. The merge gate runs it; it takes ~80 s (pinned files only; `--workers N`, default 2).
+- New seed-dependent exact values: use `toMatchPin` with a new key (put the value in seed1.json by running
+  `npm run repin -- --reason "new pin"`) and keep a comment above it saying what the value is.
 
 ## Scope management
 Your package is large. Prioritise the entry points the tick actually reaches at runtime (check hit counts:

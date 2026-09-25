@@ -35,7 +35,8 @@ describe('GenerateShakturi race instance is per galaxy', () => {
         expect({ ...shared }).toEqual(snap);
 
         const g2 = createGame(storyOptions(gameData)).galaxy;
-        expect(galaxyRaceByName(g2, 'Shakturi')).toBe(shared);
+        expect(galaxyRaceByName(g2, 'Shakturi')).toBe(g2.races.find((r) => r.name === 'Shakturi'));
+        expect(galaxyRaceByName(g2, 'Shakturi')!.name).toBe('Shakturi');
         expect(galaxyRaceByName(g2, 'Erutkah')).toBeNull();
 
         const loaded = galaxyFromJSON(JSON.parse(JSON.stringify(galaxyToJSON(g))), gameData);
@@ -43,7 +44,7 @@ describe('GenerateShakturi race instance is per galaxy', () => {
         expect(erutkah2.dominantRace).toBe(loaded.shakturiActualRace);
         expect(erutkah2.dominantRace!.name).toBe('Erutkah');
         expect(erutkah2.dominantRace!.aggression).toBe(75);
-        expect(loaded.shakturiRaceBase).toBe(shared);
+        expect(loaded.shakturiRaceBase).toBe(loaded.races.find((r) => r.name === 'Shakturi'));
         expect(galaxyRaceByName(loaded, 'Erutkah')).toBe(loaded.shakturiActualRace);
         expect({ ...shared }).toEqual(snap);
     }, 300000);

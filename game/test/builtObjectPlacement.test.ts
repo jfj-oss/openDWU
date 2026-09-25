@@ -150,8 +150,23 @@ describe('CreateStateShips / CreatePrivateShips at game start (tech 0.5, age 1)'
         const ships = expected.get(player)!.ships;
         const own = ships.filter((b) => player.builtObjects.includes(b));
         const priv = ships.filter((b) => player.privateBuiltObjects.includes(b));
-        // Pinned for seed 1 (TS port; PINNED_NAMES below).
-        expect(own.filter((b) => !MILITARY.has(b.subRole)).slice(0, 9).map((b) => [S[b.subRole], b.name])).toEqual(PINNED_NAMES);
+        // Pinned for seed 1 (TS port). (re-pinned: createGame now runs the price reviews, the first
+        // galaxy tick (independent traders) and the per-empire station/tax setup before the player's
+        // CreateStateShips, so the name draws come later in the Rnd stream.)
+        // (re-pinned M4k: the game-start Empire.DoTasks now runs PerformResearch — SelectNextResearchProject draws
+        // Rnd (SelectRandomLowestProject) and research events draw Next(0, num4) per industry — so later game-start
+        // Rnd draws shift.)
+        // Re-pinned M4s1: ReviewPirateRelations (Empire.2.cs 2427) draws one Rnd.NextDouble in every Empire long block,
+        // including the game-start Empire.DoTasks of each generated empire, and the Galaxy long block's independent-colony
+        // pirate offers draw per colony, so the stream reaching CreateStateShips moved.
+        // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
+        // Re-pinned by M4u: the game-start Empire.DoTasks now runs the character reviews (ReviewCharacterTraits Rnd) and
+        // ReviewEmpireEvents (DoRaceEvent Rnd), moving every later draw.
+        // Re-pinned M4x: galaxyAge defaults to 1 (standard preset), so Galaxy.Age 1 projects military ships too and moves the
+        // Rnd stream (see the createGameFull.summary pin).
+        // (re-pinned M4m: the game-start Empire.DoTasks runs the military AI — IdentifyMilitaryObjectives Next(0, EmpireEvaluations.Count), CheckTemptingTargets Next(0, Empires.Count), DetermineRandomAttacks Next(0, n) — which shifts the Rnd stream.)
+        // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
+        expect(own.filter((b) => !MILITARY.has(b.subRole)).slice(0, 9).map((b) => [S[b.subRole], b.name])).toMatchPin('builtObjectPlacement.playerCivilianNames');
         // M4x (Galaxy.Age 1): the projection now includes 2 Escorts / Frigates / Destroyers and 5 explorers, 2 construction ships.
         expect(own.map((b) => S[b.subRole])).toEqual(['Escort', 'Escort', 'Frigate', 'Frigate', 'Destroyer', 'Destroyer', ...Array(5).fill('ExplorationShip'), ...Array(2).fill('ConstructionShip')]);
         expect(priv.map((b) => S[b.subRole])).toEqual(['SmallFreighter', 'GasMiningShip', 'GasMiningShip', 'MiningShip', 'MiningShip']);
@@ -294,50 +309,3 @@ describe('FindNearestBuiltObject / FindNearestPirateFaction', () => {
         expect(findNearestPirateFaction(g, 0, 0, null, true)).toBeNull();
     }, 60000);
 });
-
-// Pinned for seed 1 (TS port). (re-pinned: createGame now runs the price reviews, the first
-// galaxy tick (independent traders) and the per-empire station/tax setup before the player's
-// CreateStateShips, so the name draws come later in the Rnd stream.)
-// (re-pinned M4k: the game-start Empire.DoTasks now runs PerformResearch — SelectNextResearchProject draws
-// Rnd (SelectRandomLowestProject) and research events draw Next(0, num4) per industry — so later game-start
-// Rnd draws shift.)
-// Re-pinned M4s1: ReviewPirateRelations (Empire.2.cs 2427) draws one Rnd.NextDouble in every Empire long block,
-// including the game-start Empire.DoTasks of each generated empire, and the Galaxy long block's independent-colony
-// pirate offers draw per colony, so the stream reaching CreateStateShips moved.
-// (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
-// Re-pinned by M4u: the game-start Empire.DoTasks now runs the character reviews (ReviewCharacterTraits Rnd) and
-// ReviewEmpireEvents (DoRaceEvent Rnd), moving every later draw.
-// Re-pinned M4x: galaxyAge defaults to 1 (standard preset), so Galaxy.Age 1 projects military ships too and moves the
-// Rnd stream (see createGameFull PINNED_SUMMARY).
-// (re-pinned M4m: the game-start Empire.DoTasks runs the military AI — IdentifyMilitaryObjectives Next(0, EmpireEvaluations.Count), CheckTemptingTargets Next(0, Empires.Count), DetermineRandomAttacks Next(0, n) — which shifts the Rnd stream.)
-// (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
-const PINNED_NAMES: unknown[] = [
-    [
-        "ExplorationShip",
-        "Outrageous Odyssey"
-    ],
-    [
-        "ExplorationShip",
-        "Enchanted Treasure"
-    ],
-    [
-        "ExplorationShip",
-        "Meagre Deal"
-    ],
-    [
-        "ExplorationShip",
-        "Sol Rimrunner"
-    ],
-    [
-        "ExplorationShip",
-        "Devious Adventure"
-    ],
-    [
-        "ConstructionShip",
-        "Conspicuous Splendor"
-    ],
-    [
-        "ConstructionShip",
-        "Enchanted Empress"
-    ]
-];

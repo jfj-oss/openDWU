@@ -1279,8 +1279,21 @@ export class Empire {
         this.reviewTroopTypes();
     }
 
-    // TODO(port): ReviewDesignsBuiltObjectsImprovedComponents — Empire.cs.
-    reviewDesignsBuiltObjectsImprovedComponents(): void {}
+    // Port of Empire.3.cs ReviewDesignsBuiltObjectsImprovedComponents (2043-2057): re-run Design.ReDefine
+    // (design.ts; which itself ends in BaconDesign.Redefine → BuiltObject.ReDefine of that design's ships) and
+    // BuiltObject.ReDefine over the empire's designs, built objects and private built objects, so research
+    // improvements reach firepower / speeds / shields / weapons. No Galaxy.Rnd use.
+    reviewDesignsBuiltObjectsImprovedComponents(): void {
+        for (let i = 0; i < this.designs.length; i++) {
+            this.designs[i].reDefine();
+        }
+        for (let j = 0; j < this.builtObjects.length; j++) {
+            this.builtObjects[j].reDefine();
+        }
+        for (let k = 0; k < this.privateBuiltObjects.length; k++) {
+            this.privateBuiltObjects[k].reDefine();
+        }
+    }
 
     // TODO(port): ReviewColonizationTypes — Empire.cs.
     // Port of Empire.3.cs ReviewColonizationTypes (2184).

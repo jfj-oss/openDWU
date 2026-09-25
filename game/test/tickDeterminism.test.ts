@@ -47,6 +47,10 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         expect(a.nowMs).toBe(120000);
         expect(ra.rndDraws).toBe(rb.rndDraws);
         digest120 = stateDigest(a);
+        // Moved "7e883fd654919362" → "de44201fa725100c": 17d: human player starts with C# automation defaults (Start.2.cs:2122) (2026-09-25)
+        expect(digest120).toMatchPin('tickDeterminism.digest120');
+        // Moved 5019 → 4959: 17d: human player starts with C# automation defaults (Start.2.cs:2122) (2026-09-25)
+        expect(ra.rndDraws).toMatchPin('tickDeterminism.rndDraws120');
         expect(stateDigest(b)).toBe(digest120);
         long = a;
     }, 300000);
@@ -203,8 +207,13 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // ledger, Creature.DamageTarget (Creature.cs 1347) damages its targets, bombardment tests PlanetaryFacilityType by
         // value, and the StellarObject readers see Fighters' FirepowerRaw / TopSpeed.
         // Moved from 2fb83dc55600537f: research trading is live (Galaxy.4.cs 4310/4551 ResolveTradeableItemsResearchProjects offers projects; GiveTradeableItem / Empire.3.cs 4467 research purchase run DoResearchBreakthrough)
-        // Moved from d4e45fea75fa52d8: 17d: human player starts with C# automation defaults (Start.2.cs:2122)
-        expect(summary.digest).toBe('a59640a37d6c8238');
+        // Moved "d4e45fea75fa52d8" → "a59640a37d6c8238": 17d: human player starts with C# automation defaults (Start.2.cs:2122) (2026-09-25)
+        expect(summary.digest).toMatchPin('tickDeterminism.digest600');
+        // (counts and Galaxy.Rnd draws pinned with the digest, tasks/M4-plan.md §5.3.4.)
+        // Moved #f1aebd5dcd → #d21f9fe281: 17d: human player starts with C# automation defaults (Start.2.cs:2122) (2026-09-25)
+        expect(summary.counts).toMatchPin('tickDeterminism.counts600');
+        // Moved 389082 → 384537: 17d: human player starts with C# automation defaults (Start.2.cs:2122) (2026-09-25)
+        expect(summary.rndDraws).toMatchPin('tickDeterminism.rndDraws600');
     }, 600000);
 });
 

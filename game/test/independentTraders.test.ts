@@ -90,17 +90,9 @@ describe('independent traders (Galaxy.7.cs GenerateIndependentTraders)', () => {
         // (re-pinned M4u: game-start character reviews (ReviewCharacterTraits Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd) move the stream)
         // (re-pinned M4m: the game-start Empire.DoTasks runs the military AI — IdentifyMilitaryObjectives Next(0, EmpireEvaluations.Count), CheckTemptingTargets Next(0, Empires.Count), DetermineRandomAttacks Next(0, n) — which shifts the Rnd stream.)
         // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
-        expect(g.popularDesigns.slice(0, 3).map((d) => d.name)).toEqual([
-            "QJ1000 Merchant Freighter",
-            "ZY1000 Light Transport",
-            "SA1000 Merchant Freighter"
-        ]);
+        expect(g.popularDesigns.slice(0, 3).map((d) => d.name)).toMatchPin('independentTraders.popularSmallFreighters');
         // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
-        expect(g.popularDesigns.slice(3, 6).map((d) => d.name)).toEqual([
-            "XG1000 Cargo Hauler",
-            "LO1000 Cargo Hauler",
-            "BO1000 Cargo Freighter"
-        ]);
+        expect(g.popularDesigns.slice(3, 6).map((d) => d.name)).toMatchPin('independentTraders.popularMediumFreighters');
     }, 60000);
 
     it('seed 1: count, ownership, placement at non-visible independent colonies', () => {
@@ -108,14 +100,14 @@ describe('independent traders (Galaxy.7.cs GenerateIndependentTraders)', () => {
         const ind = g.independentEmpire!;
         const cols = g.independentColonies;
         // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
-        expect(cols.length).toBe(10);
+        expect(cols.length).toMatchPin('independentTraders.independentColonies', 10);
         let pop = 0;
         for (const c of cols) pop += c.population.totalAmount;
         // min(pop / 20000000, 10 * 15) - 0 existing non-pirate private ships.
         // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
-        expect(Math.min(Math.trunc(pop / 20000000), cols.length * 15)).toBe(150);
+        expect(Math.min(Math.trunc(pop / 20000000), cols.length * 15)).toMatchPin('independentTraders.target', 150);
         // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
-        expect(traders.length).toBe(150);
+        expect(traders.length).toMatchPin('independentTraders.traders', 150);
         expect(ind.privateBuiltObjects).toEqual(traders);
         expect(ind.builtObjects.length).toBe(0);
         const freighters = g.popularDesigns.filter((d) => d.warpSpeed > 5000 && (d.subRole === BuiltObjectSubRole.SmallFreighter || d.subRole === BuiltObjectSubRole.MediumFreighter));
@@ -135,7 +127,7 @@ describe('independent traders (Galaxy.7.cs GenerateIndependentTraders)', () => {
             expect(g.builtObjects).toContain(t);
         }
         // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
-        expect(freighters.reduce((s, d) => s + d.buildCount, 0)).toBe(150);
+        expect(freighters.reduce((s, d) => s + d.buildCount, 0)).toBe(traders.length);
         // Player's capital system colony (Wailnas, system 128) is visible → never used.
         expect(traders.some((t) => t.parentHabitat!.name === 'Wailnas')).toBe(false);
         const perColony = new Map<string, number>();
@@ -146,29 +138,9 @@ describe('independent traders (Galaxy.7.cs GenerateIndependentTraders)', () => {
         // (re-pinned M4u: game-start character reviews (ReviewCharacterTraits Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd) move the stream)
         // (re-pinned M4m: the game-start Empire.DoTasks runs the military AI — IdentifyMilitaryObjectives Next(0, EmpireEvaluations.Count), CheckTemptingTargets Next(0, Empires.Count), DetermineRandomAttacks Next(0, n) — which shifts the Rnd stream.)
         // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
-        expect(Object.fromEntries(perColony)).toEqual({
-            "Atoaklo": 26,
-            "S269 2": 11,
-            "S1 2": 16,
-            "S212 3": 16,
-            "S1 3": 11,
-            "S83 12": 11,
-            "Eroy": 14,
-            "Dhayu 3": 13,
-            "S269 4": 19,
-            "Haako 4": 13
-        });
+        expect(Object.fromEntries(perColony)).toMatchPin('independentTraders.perColony');
         // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
-        expect(traders.slice(0, 2).map((t) => [t.name, t.design.name])).toEqual([
-            [
-                "Worthy Rebel",
-                "SA1000 Merchant Freighter"
-            ],
-            [
-                "Express Hope",
-                "QJ1000 Merchant Freighter"
-            ]
-        ]);
+        expect(traders.slice(0, 2).map((t) => [t.name, t.design.name])).toMatchPin('independentTraders.firstTraders');
     }, 60000);
 
     it('seed 1: exact Rnd draws, deterministic', () => {
@@ -182,60 +154,11 @@ describe('independent traders (Galaxy.7.cs GenerateIndependentTraders)', () => {
         // (re-pinned M4u: game-start character reviews (ReviewCharacterTraits Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd) move the stream)
         // (re-pinned M4m: the game-start Empire.DoTasks runs the military AI — IdentifyMilitaryObjectives Next(0, EmpireEvaluations.Count), CheckTemptingTargets Next(0, Empires.Count), DetermineRandomAttacks Next(0, n) — which shifts the Rnd stream.)
         // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
-        expect(a.log.length).toBe(1565);
+        expect(a.log.length).toMatchPin('independentTraders.draws', 1565);
         // (re-pinned M4m: the game-start Empire.DoTasks runs the military AI, whose Rnd draws shift the stream.)
-        expect(a.log.slice(-25)).toEqual([
-            "Next(0,2)=0",
-            "Next(0,2)=1",
-            "Next(0,0)=0",
-            "Next(0,2)=0",
-            "Next(0,2)=0",
-            "Next(0,2)=0",
-            "Next(0,2)=1",
-            "Next(0,0)=0",
-            "Next(0,2)=0",
-            "Next(0,2)=1",
-            "Next(0,0)=0",
-            "Next(0,2)=1",
-            "Next(0,0)=0",
-            "Next(0,2)=1",
-            "Next(0,0)=0",
-            "Next(0,30)=15",
-            "Next(0,30)=8",
-            "Next(0,30)=24",
-            "Next(0,30)=28",
-            "Next(0,30)=8",
-            "Next(0,30)=18",
-            "Next(0,30)=27",
-            "Next(0,30)=24",
-            "Next(0,30)=8",
-            "Next(0,30)=23"
-        ]);
+        expect(a.log.slice(-25)).toMatchPin('independentTraders.lastDraws');
         // (re-pinned M4m: the game-start Empire.DoTasks runs the military AI, whose Rnd draws shift the stream.)
-        expect(a.log.slice(0, 22)).toEqual([
-            "Next(0,3)=2",
-            "Next(0,3)=2",
-            "Next(0,10)=9",
-            "Next(0,127)=61",
-            "Next(0,125)=117",
-            "Next(0,7)=3",
-            "NextDouble",
-            "NextDouble",
-            "Next(0,2)=0",
-            "NextDouble",
-            "Next(0,3)=0",
-            "Next(0,3)=0",
-            "Next(0,10)=9",
-            "Next(0,127)=76",
-            "Next(0,125)=4",
-            "Next(0,7)=3",
-            "NextDouble",
-            "NextDouble",
-            "Next(0,2)=1",
-            "NextDouble",
-            "Next(0,3)=0",
-            "Next(0,3)=1"
-        ]);
+        expect(a.log.slice(0, 22)).toMatchPin('independentTraders.firstDraws');
         const b = runStartTick();
         expect(b.log).toEqual(a.log);
         expect(b.traders.map((t) => [t.name, t.design.name, t.parentHabitat!.name, t.xpos, t.ypos])).toEqual(a.traders.map((t) => [t.name, t.design.name, t.parentHabitat!.name, t.xpos, t.ypos]));
@@ -249,7 +172,7 @@ describe('independent traders (Galaxy.7.cs GenerateIndependentTraders)', () => {
         assignIndependentTraderMissions(g); // no-op at game start
         expect(log.length).toBe(0);
         // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
-        expect(g.independentEmpire!.privateBuiltObjects.length).toBe(150);
+        expect(g.independentEmpire!.privateBuiltObjects.length).toMatchPin('independentTraders.tradersAfterSecondCall', 150);
     }, 60000);
 
     it('fallback: no popular freighters → designs generated from the independent spec per playable race', () => {
@@ -261,7 +184,7 @@ describe('independent traders (Galaxy.7.cs GenerateIndependentTraders)', () => {
         const traders = generateIndependentTraders(g);
         const ind = g.independentEmpire!;
         // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
-        expect(traders.length).toBe(150);
+        expect(traders.length).toMatchPin('independentTraders.fallbackTraders', 150);
         const player = g.playerEmpire!.dominantRace!;
         const races = g.races.filter((r) => r.playable && r !== player);
         const kept = races.filter((r) => r.designsPictureFamilyIndex !== player.designsPictureFamilyIndex).length;
