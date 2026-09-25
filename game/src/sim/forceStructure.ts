@@ -49,7 +49,7 @@ export { ForceStructureProjection, ForceStructureProjectionList } from './forceS
 
 // --- Galaxy statics (Galaxy.3.cs InitializeStatics / Galaxy.cs) ---
 export const ALLOWABLE_YEARS_MAINTENANCE_FROM_CASH_ON_HAND = 3.0; // Galaxy.3.cs 5050
-export const SHIP_MAINTENANCE_COST_PER_SIZE_UNIT = 1.0; // 5084
+export const SHIP_MAINTENANCE_COST_PER_SIZE_UNIT = 1.0; // 5084 (intentionally not BaconSettings.txt line 90 `shipMaintenanceCostPerSizeUnit=2`)
 export const COLONY_STATE_SUPPORT_COST = 1000.0; // 5087
 export const COLONY_REVENUE_DIVISOR = 3500000.0; // 5088
 export const REVENUE_DROPOFF_POPULATION_THRESHHOLD_MIN = 20000000000; // 5089 (long)

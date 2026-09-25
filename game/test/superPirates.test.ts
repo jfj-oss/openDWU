@@ -215,26 +215,29 @@ describe('UpgradeMilitaryShipDesignMoreWeapons / MoreEngines (Galaxy.8.cs 4121 /
 // (re-pinned M4u: game-start character reviews (ReviewCharacterTraits Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd) move the stream before the super-pirate generation.)
 // (re-pinned M4f: Start.2.cs 1373 AssignMissionsToBuiltObjectList draws per idle ship at game start shift every later draw)
 // (Merge of M4f onto M4u/M4o/M4l: re-pinned once against the combined code.)
+// Re-pinned M4x: galaxyAge now defaults to 1 (standard preset, Start.cs 3298-3327). Before M4x these pins had Galaxy.Age 0
+// with StartingAge 1 (a mix the C# cannot produce); Galaxy.Age 1 adds military starting ships, the int_5 > 0 game-start
+// steps and StartStarDate + 30000000, so the Rnd stream moves.
 const PINNED: unknown[] = [
     [
-        "Escort:Praetor II:33",
-        "Frigate:Sovereign II:46",
-        "Destroyer:Dominator II:56",
-        "Cruiser:Executor II:90",
-        "CapitalShip:Javelin:137",
-        "Carrier:CX-2 Carrier:110",
+        "Escort:Centurion II:32",
+        "Frigate:Titan II:43",
+        "Destroyer:Javelin II:55",
+        "Cruiser:Sovereign II:90",
+        "CapitalShip:Venator:136",
+        "Carrier:CX-2 Carrier:108",
         "DefensiveBase:Phantom Pirate Defensive Base:123",
         "GenericBase:Phantom Pirate Base:217"
     ],
     [
-        "GenericBase:Dhayu Station",
+        "GenericBase:Dhayu Shelter",
+        "DefensiveBase:Dhayu 7 Orbital Battery",
+        "DefensiveBase:Dhayu 7 Defensive Base",
         "DefensiveBase:Dhayu 7 Defense Battery",
-        "DefensiveBase:Dhayu 7 Weapons Platform",
-        "DefensiveBase:Dhayu 7 Defense Battery",
-        "Frigate:Worthy Stealth",
-        "Destroyer:Crushing Champion",
-        "Carrier:Ultimate Exile",
-        "Cruiser:Sly Monarch"
+        "Escort:Discarded Terror",
+        "Carrier:Lamented Mauler",
+        "Cruiser:Courageous Legacy",
+        "Cruiser:Indomitable Destiny"
     ],
-    33
+    32
 ];

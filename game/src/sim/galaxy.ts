@@ -216,7 +216,7 @@ export class Galaxy {
     private raceIndependentColonyCount: number[] | null = null;
     independentCount = 0;
     lifePrevalence = 1000;
-    age = 0; // C#: _Age (always 0 in new-game generation; set from galaxy age at load time only)
+    age = 0; // C#: _Age (Start.2.cs 113 `galaxy_0.Age = int_5`, the Expansion slider; createGame copies CreateGameOptions.galaxyAge)
     // Port of Galaxy.cs _PiratePrevalence (double; set by GenerateGalaxy, Galaxy.4.cs 2144, and
     // Start.2.cs 107 `galaxy_0.PiratePrevalence = double_3`). Read by SelectRuins (ruins.ts);
     // createGame must copy CreateGameOptions.piratePrevalence here before ruins are placed.
@@ -838,8 +838,9 @@ export class Galaxy {
     builtObjects: BuiltObject[] = [];
     nextBuiltObjectId = 0;
     /**
-     * C#: Galaxy.StartingAge (Start.2.cs sets it from the player's age setting before
-     * empire generation). Read by CreateStateShips. The caller wiring createGame sets it.
+     * C#: Galaxy.StartingAge (Galaxy.cs 982 `StartingAge => _Age`, i.e. the galaxy age set by
+     * Start.2.cs 113). Read by CreateStateShips / CreateMiningStations / GeneratePirateEmpire.
+     * createGame sets it equal to `age`.
      */
     startingAge = 0;
     /** C#: Galaxy._AsteroidFields (Galaxy.cs 587): each system's main asteroid belt (Galaxy.4.cs 2286). Task M3d. */

@@ -39,6 +39,8 @@ function opts(playAsPirate = false): CreateGameOptions {
             : { race: 'Human', homeSystemFavourability: 'Normal', startLocation: '(Random)', age: 1, techLevel: 0.5 },
         aiEmpires: [ai('(Random)'), ai('(Random)'), ai('(Random)')],
         piratePrevalence: 1.0,
+        // M4x: galaxyAge now defaults to 1; this test's pins / asserts are for Galaxy.Age 0 (START_STAR_DATE etc.).
+        galaxyAge: 0,
     };
 }
 

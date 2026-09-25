@@ -13,6 +13,8 @@ export function tickGameOptions(gameData: GameData): CreateGameOptions {
         systemNames: Array.from({ length: 300 }, (_, i) => `S${i}`), gameData,
         player: s('Human'), aiEmpires: [s('(Random)'), s('(Random)'), s('(Random)')],
         piratePrevalence: 1.0,
+        // Pre-warp galaxy (Galaxy.Age / StartingAge 0) with age-0 empires, as before galaxyAge defaulted to 1 (M4x).
+        galaxyAge: 0,
     };
 }
 
