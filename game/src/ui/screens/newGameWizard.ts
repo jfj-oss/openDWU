@@ -40,6 +40,7 @@ import { parseRaceFamilies, type RaceFamily } from '../../sim/data/raceFamilies'
 import { parseGovernments, type Government } from '../../sim/data/governments';
 import { fetchText } from '../../sim/data/fetchData';
 import { resolveDataUrl } from '../../sim/data/paths';
+import { DEFAULT_RACE_FILES } from '../../sim/data/gameData';
 
 const CHROME = '/assets/dwu/images/ui/chrome/';
 const RACES_DIR = '/assets/dwu/images/units/races/';
@@ -214,6 +215,58 @@ function randomSeed(): number {
     return Math.floor(Math.random() * 2147483647);
 }
 
+let wizardManifest: Promise<Record<string, unknown> | null> | null = null;
+/** public/asset-manifest.json (folder listings the browser cannot make), fetched once. */
+function loadWizardManifest(): Promise<Record<string, unknown> | null> {
+    wizardManifest ??= fetchText(['/asset-manifest.json'])
+        .then((t) => JSON.parse(t) as Record<string, unknown>)
+        .catch(() => null);
+    return wizardManifest;
+}
+
+/** Stock install flag shapes: images/ui/flagshapes/flag00.png … flag40.png. */
+export const STOCK_FLAG_SHAPE_COUNT = 41;
+
+/** Flag shape tile URLs, index = flag shape index. Port of Galaxy.4.cs
+ * LoadFlagShapes: every *.png directly in images/ui/flagshapes/, sorted
+ * (Array.Sort), the shape index being the position in that list; Start.cs 1348
+ * fills cmbFlagShape with one item per loaded shape. The listing comes from
+ * the asset manifest ("ui/flagshapes"); without it the stock 41 files. */
+export function flagShapeTileUrls(manifestFlagShapes: unknown): string[] {
+    if (Array.isArray(manifestFlagShapes)) {
+        const files = manifestFlagShapes.filter((f): f is string => typeof f === 'string' && /\.png$/i.test(f));
+        if (files.length > 0) return files.map((f) => `/assets/dwu/images/ui/flagshapes/${f}`);
+    }
+    return Array.from({ length: STOCK_FLAG_SHAPE_COUNT }, (_, i) => flagShapeUrl(i));
+}
+
+/** Placeholder of the empty "Empire Name" box. The original's default
+ * YourEmpireName is "" (Main.Part9.cs 2686); an empty name makes the Empire
+ * generate one from its race (Empire.cs 4482 GenerateEmpireName: race name —
+ * or, for Humans and half the others, the capital's star — plus a
+ * government noun such as "Empire"), which src/sim/empire.ts ports. */
+export function empireNamePlaceholder(raceName: string): string {
+    return raceName === '' ? 'Generated at start' : `Generated at start, e.g. "${raceName} Empire"`;
+}
+
+/** The race files the wizard loads: the races/ folder listing from the asset
+ * manifest (Galaxy.LoadRaces reads the whole folder, Start.cs 1318), else the
+ * stock install's 22 files (gameData.ts DEFAULT_RACE_FILES). */
+export function wizardRaceFiles(manifestRaces: unknown): string[] {
+    if (Array.isArray(manifestRaces)) {
+        const files = manifestRaces.filter((f): f is string => typeof f === 'string' && /\.txt$/i.test(f));
+        if (files.length > 0) return files;
+    }
+    return [...DEFAULT_RACE_FILES];
+}
+
+/** Races offered on "Your Race": RaceList.ResolvePlayableRaces (Start.cs 1321)
+ * keeps the races whose Playable flag is set; the list is sorted by name
+ * (raceList_0.Sort(), Start.cs 1328). */
+export function playableRacesSorted(races: readonly Race[]): Race[] {
+    return races.filter((r) => r.playable).sort((a, b) => a.name.localeCompare(b.name));
+}
+
 /** Load all races (races/*.txt) plus raceFamilies.txt via the same URL
  * resolution the engine uses (Customization/<set>/ first, base last). A race
  * file that is absent from the install (or a customization set) makes the dev
@@ -221,14 +274,9 @@ function randomSeed(): number {
  * detect that and skip the file rather than parsing garbage, so a partial
  * install still lists every race it actually has. */
 async function loadWizardRaceData(): Promise<{ races: Race[]; families: RaceFamily[]; missing: string[] }> {
-    // Same 22 files the game loads (GameData default raceFileNames).
-    const raceFiles = [
-        'human.txt', 'mechanoid.txt', 'evuck.txt', 'ackdarians.txt', 'teekan.txt',
-        'kaltor.txt', 'dryad.txt', 'illo.txt', 'evuckian.txt', 'tao.txt',
-        'shaktur.txt', 'mithrilar.txt', 'human_pirate.txt', 'mechanoid_pirate.txt',
-        'draxian.txt', 'magellan.txt', 'dhayut.txt', 'sentinel.txt', 'thrynn.txt',
-        'soulless.txt', 'human_cai.txt', 'mechanoid_ancient.txt',
-    ];
+    // Galaxy.LoadRaces (Start.cs 1318) reads every file of the races/ folder;
+    // the asset manifest is that folder listing (same source loadGameData uses).
+    const raceFiles = wizardRaceFiles((await loadWizardManifest())?.races);
     const familyText = await fetchText(resolveDataUrl('raceFamilies.txt'));
     const races: Race[] = [];
     const missing: string[] = [];
@@ -244,10 +292,7 @@ async function loadWizardRaceData(): Promise<{ races: Race[]; families: RaceFami
     cachedRaces = races;
     // Task 06e: record each playable race's index in the sorted list so the
     // "Your Empire" page can derive deterministic flag colours by race index.
-    [...races]
-        .filter((r) => r.playable)
-        .sort((a, b) => a.name.localeCompare(b.name))
-        .forEach((r, i) => PLAYABLE_RACE_INDEX.set(r.name, i));
+    playableRacesSorted(races).forEach((r, i) => PLAYABLE_RACE_INDEX.set(r.name, i));
     return { races, families, missing };
 }
 
@@ -789,7 +834,7 @@ function buildOtherEmpiresPage(options: StartGameOptions): HTMLDivElement {
             listPreview.textContent = `Manual list — ${o.manual.length} specified empire${o.manual.length === 1 ? '' : 's'} (overrides auto-generation)`;
         } else {
             listPreview.textContent = o.autogenerate
-                ? `${o.empireCount} empires will be generated`
+                ? `${o.empireCount} ${o.empireCount === 1 ? 'empire' : 'empires'} will be generated`
                 : `No manual empires — ${o.empireCount} random empires (auto-generation off)`;
         }
     }
@@ -1126,10 +1171,12 @@ function buildEmpirePage(options: StartGameOptions): HTMLDivElement {
     nameInput.type = 'text';
     nameInput.className = 'wizard-empire-name-input';
     nameInput.value = options.empireName;
+    // The name stays empty (engine-generated, see empireNamePlaceholder)
+    // until the user types one; a typed name survives race changes.
+    let nameCustomised = options.empireName !== '';
     nameInput.addEventListener('input', () => {
-        // Any user edit marks the name as customised — applyEmpireDefaults
-        // will then leave it alone when the race changes.
-        options.empireName = nameInput.value;
+        options.empireName = nameInput.value.trim() === '' ? '' : nameInput.value;
+        nameCustomised = options.empireName !== '';
     });
     nameRow.appendChild(nameInput);
     wrap.appendChild(nameRow);
@@ -1293,7 +1340,7 @@ function buildEmpirePage(options: StartGameOptions): HTMLDivElement {
     wrap.appendChild(flagSection);
 
     function updateFlagPreview(): void {
-        const url = flagShapeUrl(options.flagShapeIndex >= 0 ? options.flagShapeIndex : 0);
+        const url = shapeUrl(options.flagShapeIndex >= 0 ? options.flagShapeIndex : 0);
         previewBg.style.background = options.primaryColor || '#808080';
         previewShape.style.backgroundColor = options.secondaryColor || '#ffffff';
         previewShape.style.maskImage = `url(${url})`;
@@ -1314,19 +1361,37 @@ function buildEmpirePage(options: StartGameOptions): HTMLDivElement {
         updateFlagPreview();
     }
 
-    for (let i = 0; i < 83; i++) {
-        const tile = document.createElement('button');
-        tile.type = 'button';
-        tile.className = 'wizard-empire-flag-tile';
-        tile.dataset.index = String(i);
-        const img = document.createElement('img');
-        img.src = flagShapeUrl(i);
-        img.alt = `Flag shape ${i}`;
-        img.loading = 'lazy';
-        tile.appendChild(img);
-        tile.addEventListener('click', () => selectFlagShape(i));
-        flagGrid.appendChild(tile);
+    let flagUrls: string[] = flagShapeTileUrls(undefined);
+    const shapeUrl = (i: number): string => flagUrls[i] ?? flagShapeUrl(i);
+    function buildFlagTiles(): void {
+        flagGrid.replaceChildren();
+        flagUrls.forEach((url, i) => {
+            const tile = document.createElement('button');
+            tile.type = 'button';
+            tile.className = 'wizard-empire-flag-tile';
+            tile.dataset.index = String(i);
+            tile.classList.toggle('selected', i === options.flagShapeIndex);
+            const img = document.createElement('img');
+            img.src = url;
+            img.alt = `Flag shape ${i}`;
+            img.loading = 'lazy';
+            tile.appendChild(img);
+            tile.addEventListener('click', () => selectFlagShape(i));
+            flagGrid.appendChild(tile);
+        });
     }
+    /** A default shape index past the loaded shapes wraps (Start.1.cs 3453
+     * only selects YourEmpireFlagShape when it is below the item count). */
+    function clampFlagShape(): void {
+        if (options.flagShapeIndex >= flagUrls.length) options.flagShapeIndex %= flagUrls.length;
+    }
+    buildFlagTiles();
+    void loadWizardManifest().then((m) => {
+        flagUrls = flagShapeTileUrls(m?.['ui/flagshapes']);
+        clampFlagShape();
+        buildFlagTiles();
+        updateFlagPreview();
+    });
 
     /** Task 06e: re-apply the "Your Empire" defaults when the race changes
      * (name auto-update rule + deterministic flag colours by race index),
@@ -1334,7 +1399,12 @@ function buildEmpirePage(options: StartGameOptions): HTMLDivElement {
     function onRaceChanged(raceName: string, prevRaceName?: string): void {
         const raceIndex = Math.max(0, PLAYABLE_RACE_INDEX.get(raceName) ?? 0);
         applyEmpireDefaults(options, raceIndex, prevRaceName);
+        // applyEmpireDefaults fills "<Race> Empire"; the original leaves the
+        // box empty so the engine generates the name (empireNamePlaceholder).
+        if (!nameCustomised) options.empireName = '';
+        clampFlagShape();
         nameInput.value = options.empireName;
+        nameInput.placeholder = empireNamePlaceholder(raceName);
         const colorInputs = colorRow.querySelectorAll<HTMLInputElement>('input[type="color"]');
         if (colorInputs.length >= 2) {
             colorInputs[0].value = options.primaryColor;
@@ -1571,7 +1641,7 @@ function buildStartPage(options: StartGameOptions): HTMLDivElement {
             ['Tech Level', TECH_LEVEL_TICKS[options.empireTechLevelIndex ?? 1] ?? `index ${options.empireTechLevelIndex}`],
             ['Difficulty', DIFFICULTY_TICKS[options.difficultyIndex] ?? `index ${options.difficultyIndex}` + (options.difficultyScaling ? ' (scales near victory)' : '')],
             ['Your Race', options.raceName || '(not chosen)'],
-            ['Empire Name', options.empireName || '(not set)'],
+            ['Empire Name', options.empireName || '(generated at start)'],
             ['Government', options.governmentId >= 0 ? `#${options.governmentId}` : '(not chosen)'],
             ['Flag', `shape ${options.flagShapeIndex} · ${options.primaryColor} / ${options.secondaryColor}`],
             // Task 06h: colonization & territory summary.

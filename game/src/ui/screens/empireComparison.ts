@@ -43,6 +43,7 @@ import { DiplomaticRelationType } from '../../sim/diplomacy';
 import { resolveStarDateDescription } from '../../sim/galaxyTime';
 import { parseGameText } from '../../sim/data/gameText';
 import type { GameText } from '../../sim/data/gameText';
+import { countLabel } from '../plural';
 
 // ---------------------------------------------------------------------------
 // Formatting helpers (pure)
@@ -72,7 +73,8 @@ const COMPARISON_KINDS: readonly ComparisonKind[] = ['population', 'territory', 
 export function formatComparisonValue(kind: ComparisonKind, v: number): string {
     switch (kind) {
         case 'population': return `${Math.round(v / 1e6)}M`;
-        case 'territory': return `${Math.round(v)} colonies`;
+        // GameText "colonies format" is '#0 colonies'; singular for exactly 1.
+        case 'territory': return countLabel(Math.round(v), 'colony', 'colonies');
         case 'economy': return `${Math.round(v / 1000)}K credits`;
         case 'strategicValue': return `${Math.round(v / 1000)}K`;
         case 'military': return `${Math.round(v)} firepower`;

@@ -165,6 +165,11 @@ function copyAssetManifest(): Plugin {
 
 export default defineConfig({
     base: './',
+    // Per-checkout dep-optimizer cache. node_modules is a symlink shared by
+    // every git worktree, so the default node_modules/.vite cache was
+    // rewritten by other worktrees' dev servers mid-boot (504 Outdated
+    // Optimize Dep). `.vite/` at the game root is gitignored.
+    cacheDir: path.join(here, '.vite'),
     test: {
         // Registers expect(...).toMatchPin(key) for the seed pins (test/pins/pin.ts, scripts/repin.mjs).
         setupFiles: ['test/pins/pin.ts'],

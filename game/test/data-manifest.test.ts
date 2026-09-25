@@ -36,6 +36,17 @@ describe('gen-asset-manifest.mjs', () => {
         }
     });
 
+    // fix4ui (playtest #4): Galaxy.4.cs LoadFlagShapes = every *.png of images/ui/flagshapes, sorted.
+    (installLinked ? it : it.skip)('lists images/ui/flagshapes/*.png (the wizard flag grid)', () => {
+        const dir = resolve(dwuRoot, 'images', 'ui', 'flagshapes');
+        if (!existsSync(dir)) return;
+        const expected = readdirSync(dir, { withFileTypes: true })
+            .filter((e) => e.isFile() && e.name.toLowerCase().endsWith('.png'))
+            .map((e) => e.name.toLowerCase())
+            .sort();
+        expect(manifest['ui/flagshapes'].map((f) => f.toLowerCase())).toEqual(expected);
+    });
+
     (installLinked ? it : it.skip)('lists races/*.txt sorted case-insensitively', () => {
         const expected = readdirSync(resolve(dwuRoot, 'races'))
             .filter((f) => f.toLowerCase().endsWith('.txt'))
