@@ -17,6 +17,7 @@
 
 import { RaceEventType } from './eventTypes';
 import type { Galaxy } from './galaxy';
+import { galaxyRace } from './galaxy';
 import type { Empire } from './empire';
 import { Habitat, HabitatType, recalculateMaximumPopulation } from './types';
 import type { Race } from './data/races';
@@ -1196,7 +1197,7 @@ export function reviewRacePeriodicChanges(galaxy: Galaxy): void {
     const actualStartDate = currentStarDate - galaxy.nowMs;
     const playerEmpire = galaxy.playerEmpire;
     for (let i = 0; i < galaxy.races.length; i++) {
-        const race = galaxy.races[i];
+        const race = galaxyRace(galaxy, galaxy.races[i]);
         const interval = raceChangePeriodYearsInterval(race);
         const length = raceChangePeriodYearsLength(race);
         if (interval <= 0 || length <= 0) {

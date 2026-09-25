@@ -180,12 +180,11 @@ function generateDesignNamePrefix(galaxy: Galaxy): string {
 // minimum usage count across all slots, or minimum+1 only if all slots are
 // tied), a *second* Random instance seeded from the current time is
 // substituted (Galaxy.SetRandom(new Random((int)DateTime.Now.Ticks)) at
-// Empire.cs:3159) and up to another 50 draws are made against it. That
-// reseed (wall-clock seeded in C#; seeded from the galaxy seed here) mutates the
-// *shared* galaxy Rnd stream for everything after it -- this port reproduces
-// it faithfully (including the stream-mutating side effect) since the task
-// requires matching C# exactly, but note this path should never be
-// exercised by any real design-name family (all shipped families have >1
+// Empire.cs:3159) and up to another 50 draws are made against it. In C# that
+// replaces the *shared* galaxy Rnd stream for everything after it; this port
+// draws the fallback from a separate Random derived from the galaxy seed and
+// never reseeds galaxy.rnd (M4-plan §0 determinism contract). This path should
+// never be exercised by a real design-name family (all shipped families have >1
 // name and the usage-count logic guarantees some slot is under `num`).
 function getNewProperDesignName(
     galaxy: Galaxy,
@@ -224,14 +223,17 @@ function getNewProperDesignName(
         iterations++;
     }
     if (text === '') {
-        // Empire.cs:3159 `Galaxy.SetRandom(new Random((int)DateTime.Now.Ticks))`.
-        // Reseeds and replaces the *shared* galaxy Rnd stream. The clock seed is
-        // replaced by one derived from the galaxy seed (project convention for
-        // C# clock-seeded Randoms) so games stay reproducible.
-        galaxy.rnd = new Random((galaxy.randomSeed ^ 0x3159) | 0);
+        // Empire.cs:3159 `Galaxy.SetRandom(new Random((int)DateTime.Now.Ticks))`
+        // replaces the shared Galaxy.Rnd with a clock-seeded one. The M4 determinism
+        // contract (tasks/M4-plan.md §0) forbids reseeding galaxy.rnd, so these
+        // (up to 50) draws come from a separate Random derived from the galaxy seed
+        // and galaxy.rnd is left untouched. Deviation (documented): in C# every later
+        // Galaxy.Rnd draw would continue on the new clock-seeded stream, which is
+        // non-reproducible anyway.
+        const fallbackRnd = new Random((galaxy.randomSeed ^ 0x3159) | 0);
         iterations = 0;
         while (text === '' && iterations < 50) {
-            const index = galaxy.rnd.next(0, family.length);
+            const index = fallbackRnd.next(0, family.length);
             if (state.designNamesUsage[index] < num) {
                 text = family[index];
                 state.designNamesUsage[index]++;

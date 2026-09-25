@@ -56,7 +56,7 @@ import { strategicValue } from './territory';
 import { BuiltObjectRole } from './data/designSpecifications';
 import { BuiltObjectSubRole } from './builtObjectTypes';
 import { SystemVisibilityStatus } from './visibility';
-import type { ContactFromGalaxyMapHook, EmpireVisibility } from './visibility';
+import { mergeGalaxyMap } from './exploration';
 import { HabitatPrioritization } from './resourceTargets';
 import { netSort } from './netSort';
 import { CharacterEventType, CharacterRole, getCharactersByRole, getEmpireCharacters, type Character } from './characters';
@@ -82,9 +82,10 @@ import { cancelBlockades as cancelBlockadesImpl, getBlockadesAgainstEmpire, type
 import { chanceNewAmbassador, doCharacterEventRuntime } from './events';
 import { galaxyColonyFillFactor } from './colonyTick';
 import { isObjectVisibleToThisEmpire } from './independentTraders';
-import { TradeableItem, TradeableItemType, processTradeDealMessage, determineAcceptGalaxyMapTrade, determineAcceptTerritoryMapTrade, galaxyMergeGalaxyMap } from './tradeItems';
-import { determineDesirePirateProtection, pirateEconomyPerformIncome } from './pirates/pirateAI';
-import { PirateIncomeType } from './pirates/pirateEconomy';
+import { TradeableItem, TradeableItemType, processTradeDealMessage, determineAcceptGalaxyMapTrade, determineAcceptTerritoryMapTrade, isTechNode } from './tradeItems';
+import { doResearchBreakthrough, reviewDesignsBuiltObjectsImprovedComponents } from './researchTick';
+import { determineDesirePirateProtection, pirateEconomyPerformExpense, pirateEconomyPerformIncome } from './pirates/pirateAI';
+import { PirateExpenseType, PirateIncomeType } from './pirates/pirateEconomy';
 import { acceptPirateProtection, calculatePirateProtectionPricePerMonth } from './pirates/pirateRelationsAI';
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -2328,8 +2329,6 @@ function checkCancelRestrictedResourceTrading(galaxy: Galaxy, self: Empire, othe
     }
 }
 
-const T_pirateEconomyExpense = registerTodo('M4r', 'PirateEconomy.PerformExpense (gift bookkeeping; PirateEconomy not ported)');
-
 /**
  * Empire.8.cs 1723 GiveGiftSmallWhenSufficientTimePassed (small: StateMoney / 40, PirateExpenseType.Undefined) and 1762
  * GiveGiftWhenSufficientTimePassed (StateMoney / 10, PirateExpenseType.Construction). Rnd.Next(100, num3) once the gift
@@ -2351,9 +2350,8 @@ function giveGiftWhenSufficientTimePassed(galaxy: Galaxy, self: Empire, otherEmp
         if (checkTaskAuthorized(galaxy, self, self.controlDiplomacyGifts, { value: 0 }, generateAutomationMessageDiplomaticGift(otherEmpire, val), otherEmpire, AdvisorMessageType.DiplomaticGift, null, val, null)) {
             empireMessage.money = Math.trunc(val);
             self.stateMoney -= val;
-            // TODO(port): PirateEconomy.PerformExpense(val, Undefined/Construction, date) — the PirateEconomy ledger (empire.ts
-            // placeholder class) is statistics only.
-            todo(T_pirateEconomyExpense);
+            // Empire.8.cs 1754 / 1791: PirateEconomy.PerformExpense(val, Undefined (small) / Construction, CurrentStarDate).
+            pirateEconomyPerformExpense(galaxy, self, val, small ? PirateExpenseType.Undefined : PirateExpenseType.Construction, galaxyStarDate(galaxy));
             empireMessage.description = formatText(getText('Please accept our gift of X credits'), formatThousands(val));
             sendEmpireMessage(empireMessage, otherEmpire);
         }
@@ -2429,60 +2427,20 @@ export function cancelBlockades(galaxy: Galaxy, self: Empire, targetEmpire: Empi
 // ChangeDiplomaticRelation (Empire.8.cs 2568) and DeclareWar (Empire.7.cs 4883).
 // ---------------------------------------------------------------------------------------------------------------
 
-/** Galaxy.4.cs 3700 MergeGalaxyMap contact block (3724-3775): the hook Set/ClearEmpireSharedVisibility pass to visibility.ts. */
-export function contactFromGalaxyMapHook(galaxy: Galaxy, receiver: Empire): ContactFromGalaxyMapHook {
-    return (_rv: EmpireVisibility, systemInfo: SystemInfo): void => {
-        const dominant = systemInfo.dominantEmpire;
-        if (dominant != null && dominant.empire != null) {
-            if (receiver.pirateEmpireBaseHabitat !== null) {
-                const pirateRelation = obtainPirateRelation(receiver, dominant.empire);
-                if (pirateRelation.type === PirateRelationType.NotMet) {
-                    changePirateRelation(receiver, dominant.empire, PirateRelationType.None, galaxyStarDate(galaxy));
-                    sendContactMessage(receiver, dominant.empire);
-                }
-            } else {
-                const diplomaticRelation = obtainDiplomaticRelation(receiver, dominant.empire);
-                if (diplomaticRelation.type === DiplomaticRelationType.NotMet) {
-                    changeDiplomaticRelation(galaxy, receiver, diplomaticRelation, DiplomaticRelationType.None);
-                    sendContactMessage(receiver, dominant.empire);
-                }
-            }
-        }
-        if (systemInfo.otherEmpires != null && systemInfo.otherEmpires.length > 0) {
-            for (let j = 0; j < systemInfo.otherEmpires.length; j++) {
-                const empireSystemSummary = systemInfo.otherEmpires[j];
-                if (empireSystemSummary == null || empireSystemSummary.empire == null) continue;
-                // Galaxy.4.cs 3753-3772: the pirate branch changes the relation with DominantEmpire.Empire (C# quirk kept);
-                // both branches send the message from DominantEmpire.Empire.
-                if (receiver.pirateEmpireBaseHabitat !== null) {
-                    const pirateRelation2 = obtainPirateRelation(receiver, empireSystemSummary.empire);
-                    if (pirateRelation2.type === PirateRelationType.NotMet) {
-                        changePirateRelation(receiver, systemInfo.dominantEmpire!.empire, PirateRelationType.None, galaxyStarDate(galaxy));
-                        sendContactMessage(receiver, systemInfo.dominantEmpire!.empire);
-                    }
-                } else {
-                    const diplomaticRelation2 = obtainDiplomaticRelation(receiver, empireSystemSummary.empire);
-                    if (diplomaticRelation2.type === DiplomaticRelationType.NotMet) {
-                        changeDiplomaticRelation(galaxy, receiver, diplomaticRelation2, DiplomaticRelationType.None);
-                        sendContactMessage(receiver, systemInfo.dominantEmpire!.empire);
-                    }
-                }
-            }
-        }
-    };
-}
-function sendContactMessage(receiver: Empire, dominant: Empire): void {
-    const description = formatText(getText('Empire Contact From Galaxy Map'), receiver.name);
-    sendMessageToEmpire(dominant, dominant, EmpireMessageType.EmpireDiscovered, receiver, description);
-}
-
-/** Empire.9.cs 2975 SetEmpireSharedVisibility(otherEmpire) → Galaxy.MergeGalaxyMap(otherEmpire, this). */
+/** Empire.9.cs 2975 SetEmpireSharedVisibility(otherEmpire) → Galaxy.MergeGalaxyMap(otherEmpire, this) (Galaxy.4.cs 3700, exploration.ts). */
 export function setEmpireSharedVisibility(galaxy: Galaxy, self: Empire, otherEmpire: Empire): void {
-    self.visibility.setEmpireSharedVisibility(otherEmpire.visibility, contactFromGalaxyMapHook(galaxy, self));
+    if (!self.visibility.empiresSharedVisibility.includes(otherEmpire.visibility)) {
+        mergeGalaxyMap(galaxy, otherEmpire, self);
+        self.visibility.empiresSharedVisibility.push(otherEmpire.visibility);
+    }
 }
 /** Empire.9.cs 2984 ClearEmpireSharedVisibility(otherEmpire). */
 export function clearEmpireSharedVisibility(galaxy: Galaxy, self: Empire, otherEmpire: Empire): void {
-    self.visibility.clearEmpireSharedVisibility(otherEmpire.visibility, contactFromGalaxyMapHook(galaxy, self));
+    const i = self.visibility.empiresSharedVisibility.indexOf(otherEmpire.visibility);
+    if (i >= 0) {
+        mergeGalaxyMap(galaxy, otherEmpire, self);
+        self.visibility.empiresSharedVisibility.splice(i, 1);
+    }
 }
 
 /** Empire.8.cs 2336 CheckWhetherKnowAnySystemsOfOtherEmpire(empire). */
@@ -2898,7 +2856,6 @@ function removeMilitaryForcesFromSystem(galaxy: Galaxy, self: Empire, systemStar
     return -1;
 }
 
-const T_offerTrade = registerTodo('M4r', 'ProcessMessages OfferTrade research purchase (M4k research)');
 const T_ordersForRelinquishedColony = registerTodo('M4r', 'RemoveColoniesFromSystem order/contract cleanup (M4d Galaxy.Orders.GetOrders)');
 
 /** Empire.3.cs 4240 ProcessMessages: handles and then clears the empire's message queue. */
@@ -3020,17 +2977,28 @@ export function processMessages(galaxy: Galaxy, empire: Empire): void {
                     }
                 } else if (tradeableItem.type === TradeableItemType.GalaxyMap) {
                     if (determineAcceptGalaxyMapTrade(galaxy, self, tradeableItem.value, sender!)) {
-                        galaxyMergeGalaxyMap(galaxy, sender!, self);
-                        galaxyMergeGalaxyMap(galaxy, self, sender!);
+                        // Empire.3.cs: _Galaxy.MergeGalaxyMap(sender, this) / (this, sender) — the full Galaxy.4.cs 3700 port.
+                        mergeGalaxyMap(galaxy, sender!, self);
+                        mergeGalaxyMap(galaxy, self, sender!);
                     }
                 } else {
                     if (tradeableItem.type !== TradeableItemType.ResearchProject || !(tradeableItem.value <= self.stateMoney)) break;
                     const num14 = self.stateMoney * (0.25 + galaxy.rnd.nextDouble() * 0.25);
-                    if (self.stateMoney >= num14 && tradeableItem.item !== null) {
-                        // TODO(port) M4k: Research.TechTree.GetEquivalent(node); if not researched → DoResearchBreakthrough(…,
-                        // selfResearched false, blockMessages, suppressUpdate), Research.Update, ReviewDesignsBuiltObjectsImprovedComponents,
-                        // ReviewResearchAbilities, then the payment. Research items are not offered until M4k's research model exists.
-                        todo(T_offerTrade);
+                    if (self.stateMoney >= num14 && isTechNode(tradeableItem.item)) {
+                        // Empire.3.cs 4467-4481: buy the research project.
+                        const researchNode = tradeableItem.item;
+                        const tree = self.research.techTree;
+                        // ResearchNodeList.GetEquivalent (this[ResearchNodeId]); C# reads it unguarded.
+                        const equivalent = tree.length > researchNode.def.projectId ? tree[researchNode.def.projectId] : null;
+                        if (!equivalent!.isResearched) {
+                            doResearchBreakthrough(galaxy, self, equivalent!, false, true, true);
+                            self.research.update(self.dominantRace);
+                            reviewDesignsBuiltObjectsImprovedComponents(self);
+                            self.reviewResearchAbilities();
+                            self.stateMoney -= tradeableItem.value;
+                            sender!.stateMoney += tradeableItem.value;
+                            pirateEconomyPerformIncome(galaxy, sender!, tradeableItem.value, PirateIncomeType.SellInfo, galaxyStarDate(galaxy));
+                        }
                     }
                 }
                 break;

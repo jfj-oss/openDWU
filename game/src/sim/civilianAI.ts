@@ -3146,14 +3146,63 @@ export function processTourists(galaxy: Galaxy, builtObject: BuiltObject, touris
 
 // ---- stub added by M4o (called from combat/damage.ts ProvideBonusFromPirateBase, BuiltObject.2.cs 4991) ----
 
-const T_findLonelyColonyLocation = registerTodo('M4f', 'findLonelyColonyLocation');
 /**
- * Galaxy.3.cs 1542 FindLonelyColonyLocation(empire): a random offset from the capital, then FindNearestColonizableHabitat*
- * (EmptySystem / UnoccupiedSystem / any) or FindNearestUncolonizedHabitat(Ice) — stub: null.
+ * Galaxy.3.cs 1542 FindLonelyColonyLocation(empire): a random offset (±300 000) from the capital, clamped to the galaxy,
+ * then FindNearestColonizableHabitatEmptySystem / UnoccupiedSystem / any, else FindNearestUncolonizedHabitat(Ice).
+ * Rnd: NextDouble ×2. (C# dereferences empire.Capital unguarded.)
  */
 export function findLonelyColonyLocation(galaxy: Galaxy, empire: Empire): Habitat | null {
-    void galaxy; void empire;
-    // RND: NextDouble ×2 (the capital offset) — not drawn until M4f.
-    /* TODO(port) M4f */ todo(T_findLonelyColonyLocation);
-    return null;
+    let xpos = empire.capital!.xpos;
+    let ypos = empire.capital!.ypos;
+    const num = galaxy.rnd.nextDouble() * 600000.0 - 300000.0;
+    const num2 = galaxy.rnd.nextDouble() * 600000.0 - 300000.0;
+    xpos += num;
+    ypos += num2;
+    xpos = Math.max(0.0, Math.min(galaxy.sizeX, xpos));
+    ypos = Math.max(0.0, Math.min(galaxy.sizeY, ypos));
+    let habitat = findNearestColonizableHabitatEmptySystem(galaxy, xpos, ypos, empire);
+    if (habitat === null) habitat = galaxy.findNearestColonizableHabitatUnoccupiedSystem(xpos, ypos, empire);
+    if (habitat === null) habitat = galaxy.findNearestColonizableHabitat(xpos, ypos, empire);
+    if (habitat === null) habitat = galaxy.findNearestUncolonizedHabitat(xpos, ypos, HabitatType.Ice);
+    return habitat;
+}
+
+/**
+ * Galaxy.7.cs 1820 FindNearestColonizableHabitatEmptySystem(x, y, empire) + 2172 FindNearestColonizableHabitatEmptySystemInIndex:
+ * the nearest free habitat the newest colony-ship design can colonize, in a system no other empire dominates and with no
+ * built object within 2.1 system sizes of its star. No Rnd.
+ */
+export function findNearestColonizableHabitatEmptySystem(galaxy: Galaxy, x: number, y: number, empire: Empire): Habitat | null {
+    const ix = Math.trunc(x);
+    const iy = Math.trunc(y);
+    const design = findNewestCanBuild(empire.designs, BuiltObjectSubRole.ColonyShip, empire.designs.length > 0 ? (empire.designs[0].empire as Empire | null) : null);
+    if (design === null) return null;
+    return galaxy.ringSearch(x, y, (cx, cy) => {
+        let habitat: Habitat | null = null;
+        let distance = Number.MAX_VALUE;
+        let num = -1;
+        let flag = false;
+        const habitatList = galaxy.habitatIndexGrid[cx][cy];
+        for (let i = 0; i < habitatList.length; i++) {
+            const h = habitatList[i];
+            if (num !== h.systemIndex) {
+                const dominantEmpire = galaxy.systems[h.systemIndex].dominantEmpire ?? null;
+                flag = dominantEmpire !== null && dominantEmpire.empire !== null && dominantEmpire.empire !== empire;
+                num = h.systemIndex;
+            }
+            if (flag || (h.empire !== null && h.empire !== galaxy.independentEmpire)) continue;
+            const num2 = galaxy.calculateDistanceSquared(ix, iy, h.xpos, h.ypos);
+            if (!(num2 < distance) || !empire.canDesignColonizeHabitat(design, h)) continue;
+            const star = galaxy.systems[h.systemIndex].systemStar;
+            const builtObject = galaxy.findNearestBuiltObjectOfEmpire(Math.trunc(star.xpos), Math.trunc(star.ypos), null);
+            if (builtObject !== null) {
+                const num3 = galaxy.calculateDistance(star.xpos, star.ypos, builtObject.xpos, builtObject.ypos);
+                if (num3 < galaxy.maxSolarSystemSize * 2.1) continue;
+            }
+            habitat = h;
+            distance = num2;
+        }
+        if (habitat !== null) distance = galaxy.calculateDistance(ix, iy, habitat.xpos, habitat.ypos);
+        return { item: habitat, distance };
+    });
 }

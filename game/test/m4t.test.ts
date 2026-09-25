@@ -20,6 +20,7 @@ import { galaxyStarDate } from '../src/sim/tick/simTime';
 import {
     checkKnownPirateBases,
     checkRuinsHaveBenefit,
+    investigateRuins,
     clearExpiredViewableEmpires,
     doEmpireEncounter,
     exertCulturalInfluence,
@@ -217,6 +218,27 @@ describe('Galaxy.5.cs CheckRuinsHaveBenefit', () => {
     });
 });
 
+describe('Galaxy.5.cs 4045 InvestigateRuins', () => {
+    it('pays the treasure, reveals maps and clears the bonuses so the ruin is investigated once', () => {
+        const g = createTickGame(gameData).galaxy;
+        const e = g.empires[1];
+        const habitat = g.habitats.find((h) => h.ruin === null && h.category === HabitatCategoryType.Planet)!;
+        const ruin = new Ruin('R', 0, 0, 0, 0, 0, 2, 1234);
+        ruin.type = RuinType.Standard;
+        habitat.ruin = ruin;
+        const money0 = e.stateMoney;
+        const explored0 = e.systemVisibility.filter((v) => v.status !== SystemVisibilityStatus.Unexplored && v.status !== SystemVisibilityStatus.Undefined).length;
+        investigateRuins(g, e, habitat);
+        expect(e.stateMoney).toBeCloseTo(money0 + 1234, 6);
+        const explored1 = e.systemVisibility.filter((v) => v.status !== SystemVisibilityStatus.Unexplored && v.status !== SystemVisibilityStatus.Undefined).length;
+        expect(explored1).toBeGreaterThanOrEqual(explored0);
+        expect(ruin.moneyBonus).toBe(0);
+        expect(ruin.mapSystemReveal).toBe(0);
+        expect(checkRuinsHaveBenefit(g, ruin, e)).toBe(false);
+        habitat.ruin = null;
+    });
+});
+
 describe('Empire.cs ExertCulturalInfluence', () => {
     it("sets our colonies' CulturalDistressFactor = (1 − SV / (foreign SV / 5)) × 30 when below 1", () => {
         const e = galaxy.empires[0];
@@ -264,7 +286,7 @@ describe('territory scheduling and UpdateSystemInfo(playerEmpire)', () => {
 });
 
 describe('harness smoke (seed 1, 600 game-s, ships parked)', () => {
-    it('exploration state evolves and only the unported InvestigateRuins stub of M4t remains', () => {
+    it('exploration state evolves and no M4t stub remains', () => {
         const g = createTickGame(gameData).galaxy;
         const known0 = g.empires.map((e) => g.habitats.filter((h) => e.resourceMap.checkResourcesKnown(h)).length);
         const r = runGameSeconds(g, 600);
@@ -272,7 +294,7 @@ describe('harness smoke (seed 1, 600 game-s, ships parked)', () => {
         for (let i = 0; i < known0.length; i++) expect(known1[i]).toBeGreaterThanOrEqual(known0[i]);
         expect(known1.some((k, i) => k > known0[i])).toBe(true);
         const m4t = Object.keys(r.todoHits).filter((k) => k.startsWith('M4t '));
-        expect(m4t.filter((k) => k !== 'M4t investigateRuins')).toEqual([]);
+        expect(m4t).toEqual([]);
         for (const e of g.empires) expect(e.systemExploredCount).toBeGreaterThan(0);
     }, 600000);
 });

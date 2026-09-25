@@ -450,7 +450,10 @@ export function determineGalaxyLocationsInRangeAtPoint(galaxy: Galaxy, x: number
     return result;
 }
 
-// Port of Galaxy.4.cs MergeGalaxyMap(giver, receiver) (line 3700).
+// Partial port of Galaxy.4.cs MergeGalaxyMap(giver, receiver) (line 3700): resource map + system status only
+// (used by the EmpireVisibility shared-visibility methods and their tests). The sim's trades and shared
+// visibility use the complete port, exploration.ts mergeGalaxyMap (SystemsVisible, KnownGalaxyLocations,
+// KnownPirateBases, player ReviewEmpireTerritory).
 export function mergeGalaxyMap(galaxy: Galaxy, giver: EmpireVisibility, receiver: EmpireVisibility, onContact?: ContactFromGalaxyMapHook): void {
     receiver.resourceMap.mergeMap(giver.resourceMap.resourcesKnown);
     for (let i = 0; i < giver.systemVisibility.length; i++) {

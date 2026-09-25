@@ -31,6 +31,7 @@ import type { Habitat } from './types';
 import { getCharacterMaintenanceBonuses } from './characters';
 import { ColonyResourceEffect, resourceBonusTotalByEffectType } from './developmentLevel';
 import { empireGovernmentAttributes } from './empire';
+import { countResourceSupplyLocations } from './logistics/orders';
 import { redefineBuiltObjectManufacturingQueue, type ManufacturingQueue } from './manufacturingQueue';
 import { PIRATE_SHIP_MAINTENANCE_FACTOR, SHIP_MAINTENANCE_COST_PER_SIZE_UNIT } from './forceStructure';
 import { Weapon, weaponsDetermineNotInSuppliedList, weaponsQuickCompareEquivalent, weaponsRemoveAndResetFirstMatchingWeaponById } from './weapon';
@@ -1566,9 +1567,88 @@ function baconModMyShip(ship: BuiltObject): void {
     }
     if (ship.role === BuiltObjectRole.Base) baconModWeaponRangeForBases(ship);
     if (baconIsMyShip(ship)) {
-        // TODO(port): the "Romulan" empire bonuses (BaconBuiltObject.cs 2823-2905) need
-        // Empire.CountResourceSupplyLocations; no generated empire name contains "Romulan".
-        throw new Error('TODO(port): BaconBuiltObject.ModMyShip Romulan bonuses');
+        // BaconBuiltObject.cs 2823-2905: the "Romulan" empire bonuses, inside a try/catch that swallows any exception.
+        try {
+            baconModMyShipRomulanBonuses(ship);
+        } catch {
+            // C# catch (Exception) { } — ignored.
+        }
+    }
+}
+
+// BaconBuiltObject.cs 2825-2900 (ModMyShip, IsMyShip branch): speed / fuel / assault / cargo / construction / weapon bonuses
+// scaled by the empire's supply locations of resources 3, 8 (Hydrogen fuel), 18 (Caslon fuel), 4, 6, 0, 1. No Rnd.
+function baconModMyShipRomulanBonuses(ship: BuiltObject): void {
+    const empire = ship.empire as Empire;
+    const galaxy = ship._galaxy;
+    const count = (resourceId: number): number => Math.min(10, Math.max(0, countResourceSupplyLocations(galaxy, empire, resourceId, true)));
+    const num1 = count(3);
+    const num2 = count(8);
+    const num3 = count(18);
+    const num4 = count(4);
+    const num5 = count(6);
+    const num6 = count(0);
+    const num7 = count(1);
+    let num8 = 0;
+    const fuelName = ship.fuelType !== null ? (galaxy.resourceSystem.byId.get(ship.fuelType.resourceId)?.name ?? null) : null;
+    if (ship.fuelType !== null && fuelName === 'Hydrogen') num8 = num2;
+    else if (ship.fuelType !== null && fuelName === 'Caslon') num8 = num3;
+    ship.cruiseSpeed = toShort(ship.cruiseSpeed + toShort(Math.trunc((num8 * ship.cruiseSpeed) / 10)));
+    ship.topSpeed = toShort(ship.topSpeed + toShort(Math.trunc((num8 * ship.topSpeed) / 10)));
+    ship.warpSpeed = (ship.warpSpeed + Math.trunc((num1 * ship.warpSpeed) / 10)) | 0;
+    ship.cruiseSpeedFuelBurn = toShort(Math.trunc(ship.cruiseSpeedFuelBurn / 2));
+    ship.topSpeedFuelBurn = toShort(Math.trunc(ship.topSpeedFuelBurn / 2));
+    ship.warpSpeedFuelBurn = Math.trunc(ship.warpSpeedFuelBurn / 2);
+    ship.turnRate = Math.fround(ship.turnRate * 2);
+    if (ship.role === BuiltObjectRole.Military && ship.assaultStrength > 0) {
+        ship.assaultStrength = toShort(ship.assaultStrength * 4);
+        ship.assaultShieldPenetration = toShort(ship.assaultShieldPenetration * 4);
+    }
+    // FieldInfo _CargoCapacity .SetValue(ship, CargoCapacity * 5) (reflection on the private field).
+    (ship as unknown as { _cargoCapacity: number })._cargoCapacity = (ship.cargoCapacity * 5) | 0;
+    const queue = ship.constructionQueue as { constructionYards: { constructionSpeed: number }[] | null } | null;
+    queue?.constructionYards?.forEach((x) => {
+        x.constructionSpeed = (x.constructionSpeed * 10) | 0;
+    });
+    for (const weapon of ship.weapons ?? []) {
+        const range = weapon.range;
+        if (weapon.component != null) {
+            // new ComponentImprovement((Component)weapon.Component): the base component values.
+            const componentImprovement = componentImprovementFromComponent(weapon.component.def);
+            switch (weapon.component.category) {
+                case ComponentCategoryType.WeaponBeam:
+                case ComponentCategoryType.WeaponSuperBeam: {
+                    const num9 = weapon._improvedComponent.value2;
+                    componentImprovement.value2 = (num9 + Math.trunc((num4 * num9) / 10)) | 0;
+                    const num11 = weapon._improvedComponent.value4;
+                    componentImprovement.value4 = (num11 + Math.trunc((num4 * num11) / 10)) | 0;
+                    break;
+                }
+                case ComponentCategoryType.WeaponTorpedo: {
+                    componentImprovement.value2 = (range + Math.trunc((num5 * range) / 10)) | 0;
+                    const num14 = weapon._improvedComponent.value4;
+                    let num15 = (num14 + Math.trunc((num5 * num14) / 10)) | 0;
+                    if (num15 < ship.topSpeed) num15 = ship.topSpeed;
+                    componentImprovement.value4 = num15;
+                    break;
+                }
+                case ComponentCategoryType.WeaponArea:
+                case ComponentCategoryType.WeaponSuperArea:
+                    componentImprovement.value2 = (range + Math.trunc((num7 * range) / 10)) | 0;
+                    break;
+                case ComponentCategoryType.WeaponIon:
+                case ComponentCategoryType.WeaponGravity:
+                    componentImprovement.value2 = (range + Math.trunc((num6 * range) / 10)) | 0;
+                    break;
+            }
+            weapon._improvedComponent = componentImprovement;
+        }
+    }
+    if (ship.weapons != null && ship.weapons.length > 0) {
+        // OrderByDescending(x => x.Range).ToList()[0].Range: the maximum range.
+        let max = ship.weapons[0].range;
+        for (const w of ship.weapons) if (w.range > max) max = w.range;
+        ship.maximumWeaponsRange = max;
     }
 }
 

@@ -4587,10 +4587,25 @@ export class Galaxy {
     storyShakturiEnraged = false;
     /** Galaxy.cs 531 ShakturiOriginalRace (copy of the Shakturi race's levels/names before GenerateShakturi renames it). */
     shakturiOriginalRace: Race | null = null;
-    /** Galaxy.cs 534 ShakturiActualRace (the Races["Shakturi"] instance once GenerateShakturi ran). */
+    /**
+     * Galaxy.cs 534 ShakturiActualRace (the Races["Shakturi"] instance once GenerateShakturi ran). The C# renames and
+     * re-levels the per-game Races["Shakturi"] object; the TS races are the shared GameData table, so GenerateShakturi
+     * gives this galaxy its own instance here (saved inline) and galaxyRace() substitutes it for shakturiRaceBase.
+     */
     shakturiActualRace: Race | null = null;
+    /** The GameData race object shakturiActualRace stands in for in this galaxy (null until GenerateShakturi). */
+    shakturiRaceBase: Race | null = null;
     /** Galaxy.cs 536 StoryShakturiEnrageTimer = long.MaxValue (star date). */
     storyShakturiEnrageTimer = Number.MAX_SAFE_INTEGER;
+}
+
+/**
+ * Galaxy.Races[i] as this galaxy sees it: the GameData race GenerateShakturi (Galaxy.8.cs 1348) renamed / re-levelled is
+ * replaced by the galaxy's own instance (Galaxy.shakturiActualRace), so the mutation is per game and never touches the
+ * shared GameData race.
+ */
+export function galaxyRace(galaxy: Galaxy, race: Race): Race {
+    return galaxy.shakturiRaceBase !== null && race === galaxy.shakturiRaceBase && galaxy.shakturiActualRace !== null ? galaxy.shakturiActualRace : race;
 }
 
 // Port of Galaxy.4.cs Galaxy constructor (star-cluster setup, star loop,

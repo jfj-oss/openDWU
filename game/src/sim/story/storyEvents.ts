@@ -43,7 +43,7 @@ import { declareWar } from '../diplomacyTick';
 import { resolveStandardRaceBias } from '../raceBias';
 import { MAX_SOLAR_SYSTEM_SIZE } from '../visibility';
 import { BuiltObjectRole } from '../data/designSpecifications';
-import { Galaxy as GalaxyClass } from '../galaxy';
+import { Galaxy as GalaxyClass, galaxyRace } from '../galaxy';
 import { getGovernmentsStatic } from '../empire';
 import type { Government } from '../data/governments';
 import { generateEmpire } from '../empireGeneration';
@@ -107,9 +107,10 @@ export function identifyShakturiEmpire(galaxy: Galaxy): Empire | null {
 
 export { identifyMechanoidEmpire };
 
-/** RaceList this[raceName] (RaceList.cs 15): case-insensitive name match. */
+/** RaceList this[raceName] (RaceList.cs 15): case-insensitive name match (over this galaxy's race instances, galaxyRace). */
 export function galaxyRaceByName(galaxy: Galaxy, raceName: string): Race | null {
-    for (const race of galaxy.races) {
+    for (const baseRace of galaxy.races) {
+        const race = galaxyRace(galaxy, baseRace);
         if (race.name.toLowerCase() === raceName.toLowerCase()) return race;
     }
     return null;
@@ -433,17 +434,20 @@ function newRaceCopy(race: Race): Race {
  * race is renamed Erutkah with friendly levels (the originals kept in ShakturiOriginalRace), an age-2 tech-7 empire is
  * generated at the colony with the "Palace of Eternal Darkness" ruin, set up like a starting empire, and every empire's
  * evaluation bias toward / from it is raised to at least 0. Rnd: Next(7000, 10000) then the set-up's (see file header).
- * TODO(port): the TS Race objects are the shared GameData races (the C# loads a RaceList per game), so the rename and
- * levels change them for every galaxy in the process and are not written to saves.
+ * The C# mutates the per-game Races["Shakturi"]; the TS races are the shared GameData table, so the rename and levels go
+ * to a per-galaxy instance (Galaxy.shakturiActualRace, saved inline; galaxyRace() substitutes it for the GameData race).
  */
 export function generateShakturi(galaxy: Galaxy, startingColony: Habitat | null): void {
     if (galaxy.nextEmpireId >= galaxy.maximumEmpireCount) return;
-    const race = galaxyRaceByName(galaxy, 'Shakturi');
-    if (race === null) return;
+    const baseRace = galaxyRaceByName(galaxy, 'Shakturi');
+    if (baseRace === null) return;
     if (startingColony === null) throw new Error('NullReferenceException: Galaxy.8.cs 1386 GenerateEmpire(startingColony: null)');
     const age = 2;
-    const race2 = newRaceCopy(race);
+    const race2 = newRaceCopy(baseRace);
     galaxy.shakturiOriginalRace = race2;
+    // This galaxy's own Races["Shakturi"] instance (the C# mutates the per-game object in place).
+    const race: Race = { ...baseRace };
+    galaxy.shakturiRaceBase = baseRace;
     galaxy.shakturiActualRace = race;
     race.aggression = 75;
     race.caution = 105;

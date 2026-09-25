@@ -5049,9 +5049,13 @@ function characterGalaxyState(galaxy: Galaxy): CharacterGalaxyState {
     return state;
 }
 
-/** Race.AvailableCharacters for this galaxy (null for a race outside galaxy.races). */
+/**
+ * Race.AvailableCharacters for this galaxy (null for a race outside galaxy.races). The per-galaxy Shakturi instance
+ * (galaxy.ts galaxyRace) is the same C# Race object as its GameData race, so it shares that race's list.
+ */
 export function raceAvailableCharacters(galaxy: Galaxy, race: Race): Character[] | null {
-    return characterGalaxyState(galaxy).raceAvailableCharacters.get(race) ?? null;
+    const key = race === galaxy.shakturiActualRace && galaxy.shakturiRaceBase !== null ? galaxy.shakturiRaceBase : race;
+    return characterGalaxyState(galaxy).raceAvailableCharacters.get(key) ?? null;
 }
 
 // Galaxy.4.cs LoadCharacters (1231/1236): characters\<race.Name>.txt (customization first); a
