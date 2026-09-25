@@ -1,0 +1,711 @@
+{
+    "builtObjectPlacement": {
+        "playerCivilianNames": [
+            ["ExplorationShip", "Outrageous Odyssey"],
+            ["ExplorationShip", "Enchanted Treasure"],
+            ["ExplorationShip", "Meagre Deal"],
+            ["ExplorationShip", "Sol Rimrunner"],
+            ["ExplorationShip", "Devious Adventure"],
+            ["ConstructionShip", "Conspicuous Splendor"],
+            ["ConstructionShip", "Enchanted Empress"]
+        ]
+    },
+    "characters": {
+        "drawsPerEmpire": [53, 57, 49, 21],
+        "humanSummary": {
+            "race": "Human",
+            "leader": "Loras Dokari",
+            "characters": [
+                {
+                    "role": "Ambassador",
+                    "name": "Than Bendu",
+                    "race": "Human",
+                    "skills": ["Diplomacy:25"],
+                    "traits": ["Tolerant", "EloquentSpeaker"],
+                    "location": "Sol 2",
+                    "bonusesKnown": false
+                },
+                {
+                    "role": "Leader",
+                    "name": "Loras Dokari",
+                    "race": "Human",
+                    "skills": ["ColonyHappiness:-5", "TroopMaintenance:2", "ColonyIncome:-4", "Diplomacy:2"],
+                    "traits": ["Organized"],
+                    "location": "Sol 2",
+                    "bonusesKnown": true
+                },
+                {
+                    "role": "IntelligenceAgent",
+                    "name": "Indo Nesalio",
+                    "race": "Human",
+                    "skills": ["Assassination:-4"],
+                    "traits": ["IntelligenceXenophobic"],
+                    "location": "Sol 2",
+                    "bonusesKnown": false
+                }
+            ]
+        },
+        "otherEmpires": [
+            [
+                "Haakonish",
+                "Gobar Daghrun",
+                ["ColonyGovernor:Yentor Zhukziban", "Leader:Gobar Daghrun", "IntelligenceAgent:Ebari Ruuntul"]
+            ],
+            ["Dhayut", "Lerz Uktab", ["TroopGeneral:Maqtor Aklon", "Leader:Lerz Uktab", "IntelligenceAgent:Sawa Okel"]],
+            ["Ugnari", "Lutar Thanda", ["IntelligenceAgent:Tek Ixito", "Leader:Lutar Thanda"]]
+        ],
+        "drawLog60": [
+            "0,31=15",
+            "0,26=19",
+            "0,2=1",
+            "0,2=1",
+            "0,2=1",
+            "0,3=2",
+            "0,4=2",
+            "0,3=1",
+            "0,20=18",
+            "0,3=0",
+            "0,4=1",
+            "0,3=0",
+            "0,4=2",
+            "0,3=0",
+            "0,4=0",
+            "0,4=1",
+            "-5,-1=-5",
+            "0,4=0",
+            "2,10=2",
+            "0,4=1",
+            "-5,-1=-4",
+            "0,4=0",
+            "2,10=2",
+            "0,2=0",
+            "0,41=25",
+            "0,4=3",
+            "0,31=18",
+            "0,26=16",
+            "0,2=0",
+            "0,3=1",
+            "0,3=2",
+            "0,4=1",
+            "-5,-1=-4",
+            "0,2=0",
+            "0,14=9",
+            "0,5=0",
+            "0,20=6",
+            "0,80=47",
+            "0,5=3",
+            "0,20=15",
+            "0,80=34",
+            "0,5=0",
+            "0,20=1",
+            "0,80=26",
+            "0,5=0",
+            "0,20=11",
+            "0,80=55",
+            "0,5=3",
+            "0,20=2",
+            "0,80=19",
+            "0,5=2",
+            "0,20=8",
+            "0,80=38",
+            "0,38=36",
+            "0,29=5",
+            "0,2=0",
+            "0,3=2",
+            "0,4=3",
+            "0,4=1",
+            "-5,-1=-3"
+        ],
+        "pirateRoles": ["PirateLeader", "IntelligenceAgent"]
+    },
+    "createGameFull": {
+        "summary": {
+            "empires": [
+                {
+                    "name": "Sol Commonwealth",
+                    "race": "Human",
+                    "colonies": 1,
+                    "spacePorts": 1,
+                    "researchStations": 1,
+                    "miningStations": 6,
+                    "stateShips": {"Escort": 2, "Frigate": 2, "Destroyer": 2, "ExplorationShip": 5, "ConstructionShip": 2},
+                    "privateShips": {"SmallFreighter": 1, "GasMiningShip": 2, "MiningShip": 2},
+                    "troops": 11,
+                    "characters": 3,
+                    "taxRates": [0.30000001192092896]
+                },
+                {
+                    "name": "Free S160 Consortium",
+                    "race": "Haakonish",
+                    "colonies": 1,
+                    "spacePorts": 1,
+                    "researchStations": 1,
+                    "miningStations": 6,
+                    "stateShips": {"Escort": 4, "Frigate": 5, "ExplorationShip": 7, "ConstructionShip": 3},
+                    "privateShips": {"SmallFreighter": 1, "GasMiningShip": 2, "MiningShip": 2},
+                    "troops": 5,
+                    "characters": 3,
+                    "taxRates": [0.28999999165534973]
+                },
+                {
+                    "name": "S285 Empire",
+                    "race": "Dhayut",
+                    "colonies": 1,
+                    "spacePorts": 1,
+                    "researchStations": 0,
+                    "miningStations": 6,
+                    "stateShips": {"Escort": 2, "Frigate": 3, "ExplorationShip": 3, "ConstructionShip": 1},
+                    "privateShips": {"SmallFreighter": 1, "GasMiningShip": 2, "MiningShip": 2},
+                    "troops": 8,
+                    "characters": 3,
+                    "taxRates": [0.25]
+                },
+                {
+                    "name": "S43 Industries",
+                    "race": "Ugnari",
+                    "colonies": 1,
+                    "spacePorts": 1,
+                    "researchStations": 0,
+                    "miningStations": 6,
+                    "stateShips": {"Escort": 3, "Frigate": 3, "Destroyer": 3, "ExplorationShip": 7, "ConstructionShip": 3},
+                    "privateShips": {"SmallFreighter": 1, "GasMiningShip": 2, "MiningShip": 2},
+                    "troops": 5,
+                    "characters": 2,
+                    "taxRates": [0.3100000023841858]
+                }
+            ],
+            "pirates": [
+                {
+                    "name": "S83 Prowlers",
+                    "bases": 1,
+                    "fleet": {"Escort": 2, "ConstructionShip": 1},
+                    "private": {"SmallFreighter": 1, "GasMiningStation": 1},
+                    "characters": 2
+                },
+                {
+                    "name": "Black Pillagers",
+                    "bases": 1,
+                    "fleet": {"Escort": 2, "ConstructionShip": 1},
+                    "private": {"SmallFreighter": 1, "GasMiningStation": 1},
+                    "characters": 2
+                },
+                {
+                    "name": "S269 Confederacy",
+                    "bases": 1,
+                    "fleet": {"Escort": 1, "ExplorationShip": 1, "ConstructionShip": 1},
+                    "private": {"SmallFreighter": 2, "MiningShip": 1, "GasMiningShip": 1, "GasMiningStation": 2},
+                    "characters": 2
+                },
+                {
+                    "name": "Deadly Storm Prowlers",
+                    "bases": 1,
+                    "fleet": {"Escort": 2, "ConstructionShip": 1},
+                    "private": {"SmallFreighter": 1, "GasMiningStation": 1},
+                    "characters": 2
+                },
+                {
+                    "name": "S83 Confederacy",
+                    "bases": 1,
+                    "fleet": {"Escort": 1, "ExplorationShip": 1, "ConstructionShip": 1},
+                    "private": {
+                        "SmallFreighter": 2,
+                        "MiningShip": 1,
+                        "GasMiningShip": 1,
+                        "GasMiningStation": 1,
+                        "MiningStation": 1
+                    },
+                    "characters": 2
+                },
+                {
+                    "name": "Vicious Bandits",
+                    "bases": 1,
+                    "fleet": {"Escort": 1, "ExplorationShip": 1, "ConstructionShip": 1},
+                    "private": {"SmallFreighter": 1, "MiningShip": 1, "GasMiningShip": 1, "GasMiningStation": 2},
+                    "characters": 2
+                },
+                {
+                    "name": "S160 Spaceways",
+                    "bases": 1,
+                    "fleet": {"ExplorationShip": 1, "ConstructionShip": 1},
+                    "private": {
+                        "SmallFreighter": 4,
+                        "MiningShip": 1,
+                        "GasMiningShip": 1,
+                        "GasMiningStation": 2,
+                        "MiningStation": 1
+                    },
+                    "characters": 2
+                }
+            ],
+            "independentTraders": 150,
+            "unownedBuiltObjects": 20,
+            "builtObjects": 339,
+            "ruins": 31
+        }
+    },
+    "forceStructure": {
+        "playerPrivate": [["SmallFreighter", 3], ["MediumFreighter", 1], ["GasMiningShip", 2], ["MiningShip", 2]],
+        "age0Private": [[], [], [], []]
+    },
+    "game": {"capitals": ["Sol", "S186", "S212", "S297"]},
+    "independentTraders": {
+        "popularSmallFreighters": ["QJ1000 Merchant Freighter", "ZY1000 Light Transport", "SA1000 Merchant Freighter"],
+        "popularMediumFreighters": ["XG1000 Cargo Hauler", "LO1000 Cargo Hauler", "BO1000 Cargo Freighter"],
+        "perColony": {
+            "Atoaklo": 26,
+            "S269 2": 11,
+            "S1 2": 16,
+            "S212 3": 16,
+            "S1 3": 11,
+            "S83 12": 11,
+            "Eroy": 14,
+            "Dhayu 3": 13,
+            "S269 4": 19,
+            "Haako 4": 13
+        },
+        "firstTraders": [["Worthy Rebel", "SA1000 Merchant Freighter"], ["Express Hope", "QJ1000 Merchant Freighter"]],
+        "lastDraws": [
+            "Next(0,2)=0",
+            "Next(0,2)=1",
+            "Next(0,0)=0",
+            "Next(0,2)=0",
+            "Next(0,2)=0",
+            "Next(0,2)=0",
+            "Next(0,2)=1",
+            "Next(0,0)=0",
+            "Next(0,2)=0",
+            "Next(0,2)=1",
+            "Next(0,0)=0",
+            "Next(0,2)=1",
+            "Next(0,0)=0",
+            "Next(0,2)=1",
+            "Next(0,0)=0",
+            "Next(0,30)=15",
+            "Next(0,30)=8",
+            "Next(0,30)=24",
+            "Next(0,30)=28",
+            "Next(0,30)=8",
+            "Next(0,30)=18",
+            "Next(0,30)=27",
+            "Next(0,30)=24",
+            "Next(0,30)=8",
+            "Next(0,30)=23"
+        ],
+        "firstDraws": [
+            "Next(0,3)=2",
+            "Next(0,3)=2",
+            "Next(0,10)=9",
+            "Next(0,127)=61",
+            "Next(0,125)=117",
+            "Next(0,7)=3",
+            "NextDouble",
+            "NextDouble",
+            "Next(0,2)=0",
+            "NextDouble",
+            "Next(0,3)=0",
+            "Next(0,3)=0",
+            "Next(0,10)=9",
+            "Next(0,127)=76",
+            "Next(0,125)=4",
+            "Next(0,7)=3",
+            "NextDouble",
+            "NextDouble",
+            "Next(0,2)=1",
+            "NextDouble",
+            "Next(0,3)=0",
+            "Next(0,3)=1"
+        ]
+    },
+    "pirateBases": {
+        "fleets": [
+            [
+                "SmallSpacePort:S66 Outpost|Escort:Elite Scorpion|Escort:Bleak Fury|ConstructionShip:S66 Chance",
+                "SmallFreighter:Surly Ploy|GasMiningStation:S66 2 Gas Mining Station"
+            ],
+            [
+                "SmallSpacePort:S141 Fortress|Escort:Indomitable Enforcer|Escort:Worthy Firelance|ConstructionShip:Idle Expedition",
+                "SmallFreighter:Celestial Echo|GasMiningStation:S12 4 Gas Mining Station"
+            ],
+            [
+                "SmallSpacePort:Villainous Station|Escort:Terrible Raider|ExplorationShip:Hidden Aspiration|ConstructionShip:S162 Adversity",
+                "SmallFreighter:S162 Jewel|SmallFreighter:S162 Renegade|MiningShip:Vanishing Subterfuge|GasMiningShip:Eager Wayfarer|GasMiningStation:S293 6 Gas Mining Station|GasMiningStation:S162 5 Gas Mining Station"
+            ],
+            [
+                "SmallSpacePort:Bounty Hunters Fortress|Escort:Reckless Demise|Escort:Sinister Cataclysm|ConstructionShip:Lively Ranger",
+                "SmallFreighter:Smiling Nightstar|GasMiningStation:S248 5 Gas Mining Station"
+            ],
+            [
+                "SmallSpacePort:Secluded Cave|Escort:Growling Enigma|ExplorationShip:Surly Orbit|ConstructionShip:S288 Bargain",
+                "SmallFreighter:Intrepid Pathway|SmallFreighter:Eager Dawn|MiningShip:Lucky Smuggler|GasMiningShip:Far Memory|GasMiningStation:S288 7 Gas Mining Station|MiningStation:Rhoaf Mining Station"
+            ],
+            [
+                "SmallSpacePort:Secluded Den|Escort:Majestic Dominator|ExplorationShip:Tenacious Lurker|ConstructionShip:Solemn Way",
+                "SmallFreighter:Fortunate Princess|MiningShip:Lawless Illusion|GasMiningShip:Jubilant Guide|GasMiningStation:KM532 Gas Mining Station|GasMiningStation:HU986 Gas Mining Station"
+            ],
+            [
+                "SmallSpacePort:Outlaws Cave|ExplorationShip:Merry Expedition|ConstructionShip:S268 Discovery",
+                "SmallFreighter:Silent Fantasy|SmallFreighter:Daring Novelty|SmallFreighter:Extravagant Queen|SmallFreighter:Quiet Trader|MiningShip:Vain Subterfuge|GasMiningShip:S268 Wager|GasMiningStation:S268 3 Gas Mining Station|GasMiningStation:S230 5 Gas Mining Station|MiningStation:KP588, Asteroid Field Mining Station"
+            ]
+        ]
+    },
+    "pirates": {
+        "factions": [
+            ["S83 Prowlers", "S66 1", "Atuuk", 796684],
+            ["Black Pillagers", "S141 3", "Mortalen", 4390912],
+            ["S269 Confederacy", "S162 6", "Ikkuro", 26112],
+            ["Deadly Storm Prowlers", "S248 6", "Atuuk", 5570576],
+            ["S83 Confederacy", "S288 4", "Human", 8308],
+            ["Vicious Bandits", "VD884", "Dhayut", 8323096],
+            ["S160 Spaceways", "S268 4", "Ketarov", 16384]
+        ]
+    },
+    "startingColonies": {"colonyCounts": [2, 2, 2, 2], "colonyTypes": [[11, 11], [11, 11], [10, 11], [9, 11]]},
+    "stationPlacement": {
+        "bases": [
+            [
+                151,
+                "Sol Commonwealth",
+                "MediumSpacePort",
+                "Sol 2 Space Port",
+                "Sol 2",
+                4568460,
+                2362844,
+                -0.8207922577857971
+            ],
+            [
+                152,
+                "Sol Commonwealth",
+                "EnergyResearchStation",
+                "S96 Research Facility",
+                "S96 2",
+                3994306,
+                2307490,
+                -2.5411815643310547
+            ],
+            [
+                153,
+                "Sol Commonwealth",
+                "MiningStation",
+                "Epautox Mining Station",
+                "Epautox",
+                4574686,
+                2379430,
+                2.9553675651550293
+            ],
+            [
+                154,
+                "Sol Commonwealth",
+                "MiningStation",
+                "Sol 1 Mining Station",
+                "Sol 1",
+                4565984,
+                2367464,
+                1.5796560049057007
+            ],
+            [
+                155,
+                "Sol Commonwealth",
+                "MiningStation",
+                "Sol 5 Mining Station",
+                "Sol 5",
+                4574705,
+                2379487,
+                2.532393217086792
+            ],
+            [
+                156,
+                "Sol Commonwealth",
+                "MiningStation",
+                "LD741 Mining Station",
+                "LD741",
+                4559189,
+                2371749,
+                -2.6509978771209717
+            ],
+            [
+                157,
+                "Sol Commonwealth",
+                "MiningStation",
+                "S185 1 Mining Station",
+                "S185 1",
+                4707442,
+                2968481,
+                -1.9944566488265991
+            ],
+            [
+                158,
+                "Sol Commonwealth",
+                "MiningStation",
+                "Ahous Mining Station",
+                "Ahous",
+                4709027,
+                2980920,
+                -2.130112648010254
+            ],
+            [
+                159,
+                "Free S160 Consortium",
+                "MediumSpacePort",
+                "S160 3 Space Port",
+                "S160 3",
+                2950686,
+                7974446,
+                0.16904862225055695
+            ],
+            [
+                160,
+                "Free S160 Consortium",
+                "HighTechResearchStation",
+                "S139 Station",
+                "S139 1",
+                2818906,
+                8094843,
+                0.2866320013999939
+            ],
+            [
+                161,
+                "Free S160 Consortium",
+                "GasMiningStation",
+                "S160 6 Gas Mining Station",
+                "S160 6",
+                2946390,
+                7988382,
+                -2.8277010917663574
+            ],
+            [
+                162,
+                "Free S160 Consortium",
+                "MiningStation",
+                "Amsoi Mining Station",
+                "Amsoi",
+                2946434,
+                7988602,
+                -0.49007323384284973
+            ],
+            [
+                163,
+                "Free S160 Consortium",
+                "MiningStation",
+                "Glex Mining Station",
+                "Glex",
+                2950884,
+                7971723,
+                -1.8192083835601807
+            ],
+            [
+                164,
+                "Free S160 Consortium",
+                "MiningStation",
+                "Delf Mining Station",
+                "Delf",
+                2959718,
+                7979063,
+                1.5007612705230713
+            ],
+            [
+                165,
+                "Free S160 Consortium",
+                "MiningStation",
+                "NW1 Mining Station",
+                "NW1",
+                2948142,
+                7985404,
+                1.1630359888076782
+            ],
+            [
+                166,
+                "Free S160 Consortium",
+                "MiningStation",
+                "S160 1 Mining Station",
+                "S160 1",
+                2959653,
+                7979142,
+                2.951711416244507
+            ],
+            [
+                167,
+                "S285 Empire",
+                "MediumSpacePort",
+                "S285 1 Space Port",
+                "S285 1",
+                11085282,
+                8034523,
+                0.3425038754940033
+            ],
+            [
+                168,
+                "S285 Empire",
+                "GasMiningStation",
+                "S285 3 Gas Mining Station",
+                "S285 3",
+                11090629,
+                8050309,
+                1.3717567920684814
+            ],
+            [
+                169,
+                "S285 Empire",
+                "GasMiningStation",
+                "S285 4 Gas Mining Station",
+                "S285 4",
+                11097810,
+                8048197,
+                1.3075592517852783
+            ],
+            [
+                170,
+                "S285 Empire",
+                "GasMiningStation",
+                "KU220 Gas Mining Station",
+                "KU220",
+                10933123,
+                7876375,
+                -2.513340950012207
+            ],
+            [
+                171,
+                "S285 Empire",
+                "MiningStation",
+                "Epeynane Mining Station",
+                "Epeynane",
+                11106119,
+                8047831,
+                -0.3951752781867981
+            ],
+            [
+                172,
+                "S285 Empire",
+                "MiningStation",
+                "Oyertaud Mining Station",
+                "Oyertaud",
+                11097758,
+                8048225,
+                -0.15376242995262146
+            ],
+            [
+                173,
+                "S285 Empire",
+                "MiningStation",
+                "S285 2 Mining Station",
+                "S285 2",
+                11084834,
+                8036790,
+                1.2252635955810547
+            ],
+            [
+                174,
+                "S43 Industries",
+                "MediumSpacePort",
+                "S43 4 Space Port",
+                "S43 4",
+                6061376,
+                4617561,
+                0.03190780058503151
+            ],
+            [
+                175,
+                "S43 Industries",
+                "GasMiningStation",
+                "S43 3 Gas Mining Station",
+                "S43 3",
+                6068035,
+                4588353,
+                2.6656837463378906
+            ],
+            [
+                176,
+                "S43 Industries",
+                "MiningStation",
+                "Gaulkevi Mining Station",
+                "Gaulkevi",
+                5966838,
+                4650650,
+                2.5913093090057373
+            ],
+            [
+                177,
+                "S43 Industries",
+                "MiningStation",
+                "Ejoiph Mining Station",
+                "Ejoiph",
+                6067973,
+                4588541,
+                -1.4353326559066772
+            ],
+            [
+                178,
+                "S43 Industries",
+                "MiningStation",
+                "Aneurted Mining Station",
+                "Aneurted",
+                6061330,
+                4617555,
+                -0.23902904987335205
+            ],
+            [
+                179,
+                "S43 Industries",
+                "MiningStation",
+                "Equai Mining Station",
+                "Equai",
+                5961525,
+                4658069,
+                0.4720560610294342
+            ],
+            [
+                180,
+                "S43 Industries",
+                "MiningStation",
+                "WO307 Mining Station",
+                "WO307",
+                5966201,
+                4645355,
+                2.335200786590576
+            ]
+        ],
+        "researchPhases": ["research", "research", "none", "none"],
+        "miningPhases": ["mining6plusSkip", "mining6", "mining6", "mining6"]
+    },
+    "superPirates": {
+        "faction": [
+            [
+                "Escort:Centurion II:32",
+                "Frigate:Enforcer II:43",
+                "Destroyer:Sovereign II:55",
+                "Cruiser:Titan II:90",
+                "CapitalShip:Decurion:136",
+                "Carrier:CX-2 Carrier:108",
+                "DefensiveBase:Phantom Pirate Defensive Base:123",
+                "GenericBase:Phantom Pirate Base:217"
+            ],
+            [
+                "GenericBase:Smugglers Nest",
+                "DefensiveBase:Dhayu 7 Orbital Battery",
+                "DefensiveBase:Dhayu 7 Defensive Base",
+                "DefensiveBase:Dhayu 7 Orbital Battery",
+                "Destroyer:Courageous Affliction",
+                "Destroyer:Sly Revenge",
+                "Cruiser:Grand Destiny",
+                "Escort:Red Sentry"
+            ],
+            30
+        ]
+    },
+    "taxes": {"taxRates": [0.30000001192092896, 0.28999999165534973, 0.25, 0.3100000023841858]},
+    "tickDeterminism": {
+        "digest600": "d4e45fea75fa52d8",
+        "counts600": {"empires": 4, "pirateEmpires": 7, "habitats": 12853, "builtObjects": 473, "creatures": 266, "colonies": 4},
+        "rndDraws600": 389082,
+        "digest120": "7e883fd654919362",
+        "rndDraws120": 5019
+    },
+    "troops": {
+        "capitals": [[1263, 946, 12], [1473, 1104, 13], [1764, 1323, 14], [612, 459, 5]],
+        "colonyTroops": [12, 10, 13, 2],
+        "maintenance": [24000, 20700, 24300, 6300],
+        "processDraws": ["", "", "", ""],
+        "recruitCapitalTroops": [12, 12, 13, 5],
+        "recruitMaintenance": [12000, 10800, 11700, 4500],
+        "recruitProcessDraws": ["", "", "", ""]
+    }
+}
