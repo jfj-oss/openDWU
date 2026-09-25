@@ -420,6 +420,8 @@ export async function startGameView(
             return;
         }
         const action = dispatchKey(e, keyHandlers);
+        // Space must not also activate a focused HUD button (a second toggle).
+        if (action === 'togglePause') e.preventDefault();
         if (action === 'togglePause' || action === 'speedUp' || action === 'speedDown') {
             refreshClockLabel();
         }
@@ -1057,6 +1059,8 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
             return;
         }
         const action = dispatchKey(e, keyHandlers);
+        // Space must not also activate a focused HUD button (a second toggle).
+        if (action === 'togglePause') e.preventDefault();
         if (action === 'togglePause' || action === 'speedUp' || action === 'speedDown') {
             refreshClockLabel();
         }

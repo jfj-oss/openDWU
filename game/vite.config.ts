@@ -164,6 +164,11 @@ function copyAssetManifest(): Plugin {
 
 export default defineConfig({
     base: './',
+    // Per-checkout dep-optimizer cache. node_modules is a symlink shared by
+    // every git worktree, so the default node_modules/.vite cache was
+    // rewritten by other worktrees' dev servers mid-boot (504 Outdated
+    // Optimize Dep). `.vite/` at the game root is gitignored.
+    cacheDir: path.join(here, '.vite'),
     plugins: [dwuProbe(), dwuCaseInsensitive(), copyAssetManifest()],
     build: {
         // Do not copy public/ (the assets/dwu symlink is ~4 GB); only the

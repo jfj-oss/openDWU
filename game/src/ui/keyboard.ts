@@ -172,7 +172,9 @@ export function findBinding(
 ): KeyBinding | null {
     // KeyboardEvent.key is lowercase for unshifted letters ('g'); the table
     // uses the original's key names (Keys.G), so compare letters uppercased.
-    const k = key.length === 1 ? key.toUpperCase() : key;
+    // The space bar's KeyboardEvent.key is ' '; the table names it 'Space'
+    // (Main.Part7.cs Main_KeyUp: Keys.Pause / Keys.Space -> ToglePause).
+    const k = key === ' ' ? 'Space' : key.length === 1 ? key.toUpperCase() : key;
     for (const b of bindings) {
         if (b.key !== k) continue;
         if (b.modifiers.ctrl !== mods.ctrl) continue;

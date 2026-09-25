@@ -4,6 +4,7 @@
 //   - EVERY folder under the DW:U install's images/environment/ (*.png),
 //     keys relative to images/environment/, e.g. "planets/ocean".
 //   - races/ (*.txt), key "races".
+//   - images/ui/flagshapes/ (*.png, top level), key "ui/flagshapes".
 //   - Policy/ (*.txt, top level only), key "Policy".
 //   - Policy/pirate/ (*.txt), key "Policy/pirate".
 //   - designTemplates/<race>/ (*.txt, top level only) for every subfolder of
@@ -148,6 +149,14 @@ if (dwuRoot) {
     const races = listTxtFiles(join(dwuRoot, 'races'));
     if (races.length > 0) {
         manifest['races'] = races;
+    }
+
+    // images/ui/flagshapes/*.png (top level only): Galaxy.4.cs LoadFlagShapes
+    // takes Directory.GetFiles("*.png") sorted; a flag shape index is the
+    // position in that list (the new-game wizard's flag grid).
+    const flagShapes = listFiles(join(dwuRoot, 'images', 'ui', 'flagshapes'), '.png');
+    if (flagShapes.length > 0) {
+        manifest['ui/flagshapes'] = flagShapes;
     }
 
     // Policy/*.txt (top level only; the pirate/ subfolder is listed separately)

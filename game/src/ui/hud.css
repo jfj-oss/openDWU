@@ -27,6 +27,7 @@
 /* Interactive controls re-enable pointer events. */
 .hud-btn {
     pointer-events: auto;
+    font-family: inherit; /* buttons do not inherit the HUD font by default */
     background: transparent;
     border: none;
     padding: 0;
@@ -234,6 +235,7 @@
    "›" arrow into each icon, so chips are labels instead — task 05d). */
 .hud-chip {
     pointer-events: auto;
+    font-family: inherit;
     background: transparent;
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 999px;
@@ -314,14 +316,19 @@
 
 /* "Keyboard shortcuts" overlay (task 10a): centered, content-sized panel. */
 #keyboard-shortcuts-overlay {
-    position: absolute;
+    /* Appended to <body>, outside #hud: carry the HUD font/colour itself,
+       sit above the HUD and be opaque. */
+    font-family: 'Forgotten Futurist', sans-serif;
+    color: #fff;
+    background: rgb(14, 16, 20);
+    position: fixed;
     left: 50%;
     top: 50%;
     transform: translate(-50%, -50%);
     width: min(640px, calc(100vw - 40px));
     max-height: calc(100vh - 80px);
     overflow-y: auto;
-    z-index: 10;
+    z-index: 1500; /* above the HUD, like the other screens */
 }
 .hud-keyboard-close {
     position: absolute;
