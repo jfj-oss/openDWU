@@ -517,8 +517,7 @@ function getNextFighterID(galaxy: Galaxy): number {
         galaxy.nextFighterID++;
         return galaxy.nextFighterID;
     }
-    galaxy.nextFighterID = 0;
-    return galaxy.nextFighterID;
+    throw new Error('Maximum allowable fighter number exceeded!');
 }
 
 /** BaconShipImageHelper.cs 13 ResolveNewFighterImageIndex(fighterSpec, empireRace, isPirates) (Fighter.cs 213 passes Empire.DominantRace). */
