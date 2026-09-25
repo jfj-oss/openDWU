@@ -117,6 +117,10 @@ export interface GenerateGalaxyOptions {
     empireStarts?: EmpireStart[];
 }
 
+/** Scratch for Galaxy.ringSearch: [d, nx, ny] of the last closestIndexEdgesInto, read before any per-cell callback runs
+ *  (so a nested search cannot clobber it). Module-level so it is not a Galaxy field (the save codec walks those). */
+const RING_EDGES = new Float64Array(3);
+
 export class Galaxy {
     rnd: Random;
     // Port of Galaxy.cs static CryptoRnd (CryptoRandom, unseeded). The C#
@@ -481,81 +485,131 @@ export class Galaxy {
     // (Galaxy.7.cs DetermineSectorBoundaries 2513 + BuildIndexListForSearching
     // 2603). `inIndex` is the per-cell search (C# *InIndex), returning the
     // cell's best habitat and its (non-squared) distance.
+    //
+    // Perf (no behaviour change): the bounds, the edge result and the per-ring cell list are plain locals / a scratch
+    // array instead of per-iteration objects and a [cx, cy][] list; cells are visited in the same order (row
+    // l..r, then column t..b skipping the row), so the per-cell searches, tie-breaks and result are unchanged.
     ringSearch<T>(x: number, y: number, inIndex: (cx: number, cy: number) => { item: T | null; distance: number }): T | null {
         const ix = Math.trunc(x);
         const iy = Math.trunc(y);
+        const maxX = this.indexMaxX;
+        const maxY = this.indexMaxY;
+        const edges = RING_EDGES;
         let num = Number.MAX_VALUE;
         let result: T | null = null;
         const start = this.resolveIndex(ix, iy);
-        const bounds = { l: start.x, r: start.x, t: start.y, b: start.y };
+        let l = start.x;
+        let r = start.x;
+        let t = start.y;
+        let b = start.y;
         let num2 = 0;
         let num3 = 0;
         let iterationCount = 0;
         while (iterationCount < 10000 && (iterationCount++, num > num3)) {
             // DetermineSectorBoundaries
-            let e = this.determineClosestIndexEdges(ix, iy, bounds.l, bounds.r, bounds.t, bounds.b);
             let row = -1;
             let col = -1;
             if (num2 === 0) {
-                row = bounds.t;
-                col = bounds.l;
-                num3 = e.d;
+                row = t;
+                col = l;
+                num3 = this.closestIndexEdgesInto(edges, ix, iy, l, r, t, b);
             } else {
-                if (e.nx === -1) {
-                    bounds.l--;
-                    if (bounds.l < 0) {
-                        bounds.r++;
-                        bounds.l = 0;
-                        if (bounds.r > this.indexMaxX - 1) bounds.r = this.indexMaxX - 1;
-                        col = bounds.r;
-                    } else col = bounds.l;
-                } else if (e.nx === 1) {
-                    bounds.r++;
-                    if (bounds.r > this.indexMaxX - 1) {
-                        bounds.l--;
-                        bounds.r = this.indexMaxX - 1;
-                        if (bounds.l < 0) bounds.l = 0;
-                        col = bounds.l;
-                    } else col = bounds.r;
+                this.closestIndexEdgesInto(edges, ix, iy, l, r, t, b);
+                const nx = edges[1];
+                const ny = edges[2];
+                if (nx === -1) {
+                    l--;
+                    if (l < 0) {
+                        r++;
+                        l = 0;
+                        if (r > maxX - 1) r = maxX - 1;
+                        col = r;
+                    } else col = l;
+                } else if (nx === 1) {
+                    r++;
+                    if (r > maxX - 1) {
+                        l--;
+                        r = maxX - 1;
+                        if (l < 0) l = 0;
+                        col = l;
+                    } else col = r;
                 }
-                if (e.ny === -1) {
-                    bounds.t--;
-                    if (bounds.t < 0) {
-                        bounds.b++;
-                        bounds.t = 0;
-                        if (bounds.b > this.indexMaxY - 1) bounds.b = this.indexMaxY - 1;
-                        row = bounds.b;
-                    } else row = bounds.t;
-                } else if (e.ny === 1) {
-                    bounds.b++;
-                    if (bounds.b > this.indexMaxY - 1) {
-                        bounds.t--;
-                        bounds.b = this.indexMaxY - 1;
-                        if (bounds.t < 0) bounds.t = 0;
-                        row = bounds.t;
-                    } else row = bounds.b;
+                if (ny === -1) {
+                    t--;
+                    if (t < 0) {
+                        b++;
+                        t = 0;
+                        if (b > maxY - 1) b = maxY - 1;
+                        row = b;
+                    } else row = t;
+                } else if (ny === 1) {
+                    b++;
+                    if (b > maxY - 1) {
+                        t--;
+                        b = maxY - 1;
+                        if (t < 0) t = 0;
+                        row = t;
+                    } else row = b;
                 }
-                e = this.determineClosestIndexEdges(ix, iy, bounds.l, bounds.r, bounds.t, bounds.b);
-                num3 = e.d;
+                num3 = this.closestIndexEdgesInto(edges, ix, iy, l, r, t, b);
             }
-            // BuildIndexListForSearching
-            const cells: [number, number][] = [];
-            for (let i = bounds.l; i <= bounds.r; i++) cells.push([i, row]);
-            for (let j = bounds.t; j <= bounds.b; j++) if (j !== row) cells.push([col, j]);
-            for (const [cx, cy] of cells) {
-                // C# indexes the jagged arrays directly; -1 rows/cols never
-                // occur because both edges always move on a later step.
-                if (cx < 0 || cy < 0 || cx >= this.indexMaxX || cy >= this.indexMaxY) continue;
-                const r = inIndex(cx, cy);
-                if (r.distance < num) {
-                    result = r.item;
-                    num = r.distance;
+            // BuildIndexListForSearching: row l..r, then column col over t..b except the row.
+            // C# indexes the jagged arrays directly; -1 rows/cols never occur because both edges always move on a
+            // later step (out-of-range cells are skipped).
+            if (row >= 0 && row < maxY) {
+                for (let cx = l < 0 ? 0 : l; cx <= r && cx < maxX; cx++) {
+                    const res = inIndex(cx, row);
+                    if (res.distance < num) {
+                        result = res.item;
+                        num = res.distance;
+                    }
+                }
+            }
+            if (col >= 0 && col < maxX) {
+                for (let cy = t < 0 ? 0 : t; cy <= b && cy < maxY; cy++) {
+                    if (cy === row) continue;
+                    const res = inIndex(col, cy);
+                    if (res.distance < num) {
+                        result = res.item;
+                        num = res.distance;
+                    }
                 }
             }
             num2++;
-            if (num2 > this.indexMaxX) break;
+            if (num2 > maxX) break;
         }
         return result;
+    }
+
+    /** determineClosestIndexEdges writing [d, nx, ny] into `out`; returns d. */
+    private closestIndexEdgesInto(out: Float64Array, x: number, y: number, l: number, r: number, t: number, b: number): number {
+        let num = x - INDEX_SIZE * l;
+        if (num < 0) num = 536870911;
+        let num2 = INDEX_SIZE * (r + 1) - x;
+        if (num2 > this.indexMaxX * INDEX_SIZE) num2 = 536870911;
+        let num3 = y - INDEX_SIZE * t;
+        if (num3 < 0) num3 = 536870911;
+        let num4 = INDEX_SIZE * (b + 1) - y;
+        if (num4 > this.indexMaxY * INDEX_SIZE) num4 = 536870911;
+        let val: number;
+        if (num < num2) {
+            val = num;
+            out[1] = -1;
+        } else {
+            val = num2;
+            out[1] = 1;
+        }
+        let val2: number;
+        if (num3 < num4) {
+            val2 = num3;
+            out[2] = -1;
+        } else {
+            val2 = num4;
+            out[2] = 1;
+        }
+        const d = Math.min(val, val2);
+        out[0] = d;
+        return d;
     }
 
     private static nearestIn(list: readonly Habitat[], x: number, y: number, pred: (h: Habitat) => boolean, calc: (a: number, b: number, c: number, d: number) => number): { item: Habitat | null; distance: number } {

@@ -334,32 +334,15 @@ function backgroundPass(galaxy: Galaxy, state: SchedulerState, time: number, sta
         const builtObjectList: BuiltObject[] = [];
         // (a) 3627-3664 in-battle scan. The decompiled loop never assigns `builtObject` inside the `while`, so it spins
         // until num2 wraps back to num3 and breaks out of the `for`: no object is added and int_49 keeps its value
-        // (always 0). Ported literally; the guard only protects against a cursor the C# would spin on forever.
-        let num2 = state.inBattleCursor;
+        // (always 0).
+        // Perf: the loop body only walks num2 once around the list (num2++ with wrap) until it meets num3 again, so its
+        // outcome is closed-form — num2 === num3 after the first `for` iteration — and nothing else is touched. Walking it
+        // cost O(builtObjects) per frame. A cursor at or past the end never meets num3 (the C# spins forever; the literal
+        // port threw after length + 1 spins), so that case still throws.
         const num3 = state.inBattleCursor;
-        for (let n = 0; n < int42; n++) {
-            if (num2 >= galaxy.builtObjects.length) {
-                num2 = 0;
-            }
-            let flag = false;
-            const builtObject = null as BuiltObject | null;
-            let spins = 0;
-            while (builtObject === null || !builtObject.inBattle) {
-                num2++;
-                if (num2 >= galaxy.builtObjects.length) {
-                    num2 = 0;
-                }
-                if (num2 === num3) {
-                    flag = true;
-                    break;
-                }
-                if (++spins > galaxy.builtObjects.length + 1) {
-                    throw new Error('scheduler: in-battle scan cursor out of range (C# would loop forever)');
-                }
-            }
-            if (flag) {
-                break;
-            }
+        const num2 = num3;
+        if (int42 > 0 && num3 >= galaxy.builtObjects.length) {
+            throw new Error('scheduler: in-battle scan cursor out of range (C# would loop forever)');
         }
         // (b) 3665-3682: next int_43 BOs round-robin, skipping those ticked in view.
         let num4 = state.builtObjectCursor;
