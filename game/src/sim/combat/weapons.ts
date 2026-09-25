@@ -880,8 +880,9 @@ export function handlePlanetDestroyerFiring(galaxy: Galaxy, self: BuiltObject, w
 export function handleWeaponsFiringBuiltObject(galaxy: Galaxy, builtObject: BuiltObject, timePassed: number, time: number): void {
     const self = builtObject;
     const tempNow = galaxy.nowMs;
-    const num = weaponRangeIncrementForDamageLoss(self);
-    void num;
+    // BuiltObject.1.cs 3739: `float num = BaconBuiltObject.WeaponRangeIncrementForDamageLoss(this);` — computed and never
+    // read. It is pure (three Empire.Name.Contains("Romulan") tests, no Rnd, no writes), so the call is skipped: it was
+    // ~2% of frame time as a per-ship-per-frame string search.
     let flag = true;
     let ourLongRangeWeaponsDamage = 0;
     if (self.tractorBeamRange > 0) {
