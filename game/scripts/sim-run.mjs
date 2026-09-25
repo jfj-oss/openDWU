@@ -12,8 +12,14 @@
 // driver continues with the next chunk (soak mode — the sim itself is not wrapped). With `--split a,b` the run is two
 // runGameSeconds calls of a and b seconds (determinism check: 300,300 vs 600).
 //
-// The TS sources are loaded through Vite's SSR module loader (vite is a devDependency; no build step).
+// The TS sources are bundled with rolldown (Vite's bundler) into a temp dir and imported as plain ESM, so cross-module
+// calls are direct like in the app build. `--loader vite` uses Vite's SSR module loader instead (as vitest does): every
+// imported binding is then read through a getter on the module namespace, which inflates per-call cost ~1.5x and skews
+// the profile toward call-heavy functions.
 import { createServer } from 'vite';
+import { build } from 'rolldown';
+import { tmpdir } from 'node:os';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { writeFileSync } from 'node:fs';
@@ -40,6 +46,7 @@ const split = arg('split', null);
 const profile = arg('profile', false) === true;
 const top = Number(arg('top', 15));
 const jsonOut = arg('json', null);
+const loader = String(arg('loader', 'bundle'));
 const sectors = Math.max(4, Math.min(15, Math.round(Math.sqrt(stars / 4.7))));
 
 const heap = { peak: 0, sample() { const h = process.memoryUsage().heapUsed; if (h > this.peak) this.peak = h; return h; } };
@@ -76,18 +83,29 @@ function analyseProfile(p) {
     return { entry: sorted(entry), self: sorted(self, (k) => !k.startsWith('(')), incl: sorted(incl, (k) => k.includes('src/sim/')) };
 }
 
-const server = await createServer({ root, logLevel: 'error', server: { middlewareMode: true, hmr: false }, appType: 'custom', optimizeDeps: { noDiscovery: true },
-    // test/helpers/loadGameDataFs.ts (the Node game-data loader the tests use) reads __dirname, which the SSR loader lacks.
-    define: { __dirname: JSON.stringify(resolve(root, 'test/helpers')) },
-});
-const out = { seed, stars, empires, seconds, age, pirates, exceptions: [] };
+const MODULES = { game: '/src/sim/game.ts', types: '/src/sim/types.ts', load: '/test/helpers/loadGameDataFs.ts', harness: '/src/sim/tick/harness.ts',
+    scheduler: '/src/sim/tick/scheduler.ts', digest: '/src/sim/tick/digest.ts' };
+// test/helpers/loadGameDataFs.ts (the Node game-data loader the tests use) reads __dirname, which neither loader provides.
+const dirnameDefine = { __dirname: JSON.stringify(resolve(root, 'test/helpers')) };
+let server = null, bundleDir = null;
+let load;
+if (loader === 'vite') {
+    server = await createServer({ root, logLevel: 'error', server: { middlewareMode: true, hmr: false, ws: false }, appType: 'custom', optimizeDeps: { noDiscovery: true }, define: dirnameDefine });
+    load = (key) => server.ssrLoadModule(MODULES[key]);
+} else {
+    bundleDir = mkdtempSync(resolve(tmpdir(), 'dwu-sim-run-'));
+    await build({ cwd: root, input: Object.fromEntries(Object.entries(MODULES).map(([k, v]) => [k, '.' + v])), platform: 'node', transform: { define: dirnameDefine },
+        output: { dir: bundleDir, format: 'esm' }, write: true, logLevel: 'warn' });
+    load = (key) => import(resolve(bundleDir, key + '.js'));
+}
+const out = { loader, seed, stars, empires, seconds, age, pirates, exceptions: [] };
 try {
-    const { createGame } = await server.ssrLoadModule('/src/sim/game.ts');
-    const { GalaxyShape } = await server.ssrLoadModule('/src/sim/types.ts');
-    const { loadGameDataFs } = await server.ssrLoadModule('/test/helpers/loadGameDataFs.ts');
-    const { runGameSeconds } = await server.ssrLoadModule('/src/sim/tick/harness.ts');
-    const { schedulerState } = await server.ssrLoadModule('/src/sim/tick/scheduler.ts');
-    const { stateDigest, stateCounts } = await server.ssrLoadModule('/src/sim/tick/digest.ts');
+    const { createGame } = await load('game');
+    const { GalaxyShape } = await load('types');
+    const { loadGameDataFs } = await load('load');
+    const { runGameSeconds } = await load('harness');
+    const { schedulerState } = await load('scheduler');
+    const { stateDigest, stateCounts } = await load('digest');
 
     const gameData = await loadGameDataFs();
     const s = (race) => ({ race, homeSystemFavourability: 'Normal', proximityDistance: 'Random', startLocation: '(Random)', age, techLevel: tech });
@@ -100,7 +118,7 @@ try {
     });
     const createMs = performance.now() - t;
     const g = game.galaxy;
-    console.log(`createGame: seed ${seed}, ${stars} stars (${sectors}x${sectors}), ${empires} empires, age ${age}, pirates ${pirates} — ${createMs.toFixed(0)} ms`);
+    console.log(`[${loader}] createGame: seed ${seed}, ${stars} stars (${sectors}x${sectors}), ${empires} empires, age ${age}, pirates ${pirates} — ${createMs.toFixed(0)} ms`);
     console.log('start digest', stateDigest(g), JSON.stringify(stateCounts(g)));
     globalThis.gc?.();
     const heapStart = heap.sample();
@@ -169,5 +187,6 @@ try {
         profile: prof && { entry: prof.entry.slice(0, 60), incl: prof.incl.slice(0, 60), self: prof.self.slice(0, 60) } });
     if (jsonOut !== null) writeFileSync(String(jsonOut), JSON.stringify(out, null, 1));
 } finally {
-    await server.close();
+    await server?.close();
+    if (bundleDir !== null) rmSync(bundleDir, { recursive: true, force: true });
 }
