@@ -130,6 +130,9 @@ export class Design {
     cruiseSpeed = 0;
     warpSpeed = 0;
     hyperjumpInitiate = 0;
+    // Design.cs _MaxFuel / _Firepower / _MaxShields / _Price: serialized legacy fields that no C# code assigns
+    // (only Load/Save touch them, Design.cs 631-639 / 766-774), so they stay 0. Firepower shown in the UI and
+    // read by the AI is FirepowerRaw (set by ReDefine; e.g. Main.Part9.cs 5081 lblDesignWeaponFirepowerValue).
     maxFuel = 0;
     firepower = 0;
     maxShields = 0;
