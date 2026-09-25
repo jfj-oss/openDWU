@@ -33,6 +33,7 @@ import { toggleBuildOrder } from './screens/buildOrder'; import { toggleConstruc
 import { toggleResearchScreen } from './screens/researchScreen'; // [15b]
 import { toggleEmpireComparison } from './screens/empireComparison';
 import { showToast } from './toast';
+import { countLabel } from './plural';
 
 // Port of Main.Part12.cs LoadUiChromeButtons (381–520): the control → chrome
 // button image mapping. The original loads each control's image from
@@ -1049,7 +1050,7 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         if (sel.shipGroup) {
             nameEl.textContent = fleetName(sel.shipGroup);
             nameEl.classList.remove('hud-muted');
-            subEl.textContent = `Fleet · ${sel.shipGroup.ships.length} ships · ${fleetSystemName(sel.shipGroup)}`;
+            subEl.textContent = `Fleet · ${countLabel(sel.shipGroup.ships.length, 'ship')} · ${fleetSystemName(sel.shipGroup)}`;
         } else // [/15c]
         if (sel.builtObject) {
             // Task 13c: ship/base header — name + sub-role label and system.

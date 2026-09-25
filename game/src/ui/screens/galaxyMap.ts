@@ -21,6 +21,7 @@ import { HabitatCategoryType, HabitatType, type Habitat } from '../../sim/types'
 import { NebulaCloudGenerator } from '../../render/nebulaClouds';
 import { BACKDROP_URLS } from '../../render/assets';
 import './galaxyMap.css';
+import { countLabel } from '../plural';
 
 // ---------------------------------------------------------------------------
 // Pure helpers (tested)
@@ -559,7 +560,7 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
             const planets = hs.filter((x) => x.category === HabitatCategoryType.Planet).length;
             const moons = hs.filter((x) => x.category === HabitatCategoryType.Moon).length;
             const pops = hs.filter((x) => x.population.totalAmount > 0).length;
-            info.append(el('div', 'gmap-muted', `${planets} planets · ${moons} moons${pops > 0 ? ` · ${pops} populated` : ''}`));
+            info.append(el('div', 'gmap-muted', `${countLabel(planets, 'planet')} · ${countLabel(moons, 'moon')}${pops > 0 ? ` · ${pops} populated` : ''}`));
         }
     };
 
@@ -571,7 +572,7 @@ export function createGalaxyMap(opts: GalaxyMapOptions): GalaxyMapScreen {
             return;
         }
         list.hidden = false;
-        list.append(el('div', 'gmap-list-head', `${hs.length} ${hs.length === 1 ? 'match' : 'matches'} in ${selection.systems?.length ?? 0} systems`));
+        list.append(el('div', 'gmap-list-head', `${hs.length} ${hs.length === 1 ? 'match' : 'matches'} in ${countLabel(selection.systems?.length ?? 0, 'system')}`));
         for (const h of hs.slice(0, 200)) {
             const b = el('button', 'gmap-list-row', h.name);
             b.type = 'button';

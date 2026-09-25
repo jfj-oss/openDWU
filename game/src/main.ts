@@ -33,7 +33,7 @@ import { closeEmpireSummary, setEmpireSummarySource } from './ui/screens/empireS
 import { closeMessageHistory } from './ui/screens/messageHistory';
 import { closeFleetsList } from './ui/screens/fleetsList'; // [15c]
 import { closeBuildOrder } from './ui/screens/buildOrder'; import { closeConstructionYards } from './ui/screens/constructionYards'; // [16c]
-import { createEmpireMessageFeed } from './ui/empireMessageFeed';
+import { createEmpireMessageFeed, recordTickerMessage, savedHistoryLines } from './ui/empireMessageFeed';
 import { createMainMenu } from './ui/screens/mainMenu';
 import { openOptionsModal } from './ui/screens/mainMenu';
 import { createTutorialsScreen, openTutorialWindow } from './ui/screens/tutorials';
@@ -308,7 +308,17 @@ export async function startGameView(
         time.paused = savedClock.paused;
     }
     const simLoop = createSimLoop(galaxy, time, camera, simViewEnabledFromUrl(window.location.search));
-    pushHudMessage(foundingMessage, resolveStarDateDescription(time.currentStarDate));
+    if (savedClock === undefined) {
+        // New game: the founding line, dated at the game start.
+        pushHudMessage(foundingMessage, resolveStarDateDescription(time.currentStarDate));
+    } else {
+        // Loaded game: rebuild the ticker/history from the saved message
+        // history (Empire.MessageHistory) instead of re-emitting the founding
+        // line at the load date.
+        for (const line of savedHistoryLines(game.playerEmpire)) {
+            pushHudMessage(line.text, line.starDate > 0 ? resolveStarDateDescription(line.starDate) : '');
+        }
+    }
     // Debug / screenshot hook: the created game (galaxy + player empire).
     // Task 06l: also exposes the running clock (`time`) so the tutorial
     // window's "Play This Game" button can unpause it.
@@ -370,7 +380,8 @@ export async function startGameView(
                 camera,
             );
         }
-        for (const text of messageFeed.poll(game.playerEmpire)) {
+        for (const { message, text } of messageFeed.pollMessages(game.playerEmpire)) {
+            recordTickerMessage(game.playerEmpire, message, time.currentStarDate);
             pushHudMessage(text, resolveStarDateDescription(time.currentStarDate));
         }
     };

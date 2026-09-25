@@ -834,7 +834,7 @@ function buildOtherEmpiresPage(options: StartGameOptions): HTMLDivElement {
             listPreview.textContent = `Manual list — ${o.manual.length} specified empire${o.manual.length === 1 ? '' : 's'} (overrides auto-generation)`;
         } else {
             listPreview.textContent = o.autogenerate
-                ? `${o.empireCount} empires will be generated`
+                ? `${o.empireCount} ${o.empireCount === 1 ? 'empire' : 'empires'} will be generated`
                 : `No manual empires — ${o.empireCount} random empires (auto-generation off)`;
         }
     }
