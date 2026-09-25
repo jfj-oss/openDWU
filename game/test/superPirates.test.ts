@@ -219,26 +219,27 @@ describe('UpgradeMilitaryShipDesignMoreWeapons / MoreEngines (Galaxy.8.cs 4121 /
 // with StartingAge 1 (a mix the C# cannot produce); Galaxy.Age 1 adds military starting ships, the int_5 > 0 game-start
 // steps and StartStarDate + 30000000, so the Rnd stream moves.
 // (re-pinned M4m: the game-start Empire.DoTasks runs the military AI — IdentifyMilitaryObjectives Next(0, EmpireEvaluations.Count), CheckTemptingTargets Next(0, Empires.Count), DetermineRandomAttacks Next(0, n) — which shifts the Rnd stream.)
+// (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
 const PINNED: unknown[] = [
     [
-        "Escort:Imperator II:32",
-        "Frigate:Dominator II:44",
-        "Destroyer:Royale II:54",
-        "Cruiser:Excelsior:89",
-        "CapitalShip:Argossia:136",
-        "Carrier:CX-2 Carrier:105",
+        "Escort:Dominator II:32",
+        "Frigate:Praetor II:43",
+        "Destroyer:Apulon II:55",
+        "Cruiser:Decimator II:90",
+        "CapitalShip:Venator:136",
+        "Carrier:CX-2 Carrier:108",
         "DefensiveBase:Phantom Pirate Defensive Base:123",
         "GenericBase:Phantom Pirate Base:217"
     ],
     [
-        "GenericBase:Smugglers Station",
+        "GenericBase:Desperado Lair",
         "DefensiveBase:Dhayu 7 Defensive Base",
-        "DefensiveBase:Dhayu 7 Orbital Battery",
         "DefensiveBase:Dhayu 7 Weapons Platform",
-        "Escort:Formidable Eclipse",
-        "Destroyer:Shattering Inquisitor",
-        "Escort:Growling Mystery",
-        "Cruiser:Potent Assassin"
+        "DefensiveBase:Dhayu 7 Defensive Base",
+        "Destroyer:Mighty Surprise",
+        "Frigate:Lethal Claw",
+        "Destroyer:Invincible Repulser",
+        "Frigate:Iron Eclipse"
     ],
-    29
+    26
 ];

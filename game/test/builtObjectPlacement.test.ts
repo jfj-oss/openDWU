@@ -310,33 +310,34 @@ describe('FindNearestBuiltObject / FindNearestPirateFaction', () => {
 // Re-pinned M4x: galaxyAge defaults to 1 (standard preset), so Galaxy.Age 1 projects military ships too and moves the
 // Rnd stream (see createGameFull PINNED_SUMMARY).
 // (re-pinned M4m: the game-start Empire.DoTasks runs the military AI — IdentifyMilitaryObjectives Next(0, EmpireEvaluations.Count), CheckTemptingTargets Next(0, Empires.Count), DetermineRandomAttacks Next(0, n) — which shifts the Rnd stream.)
+// (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
 const PINNED_NAMES: unknown[] = [
     [
         "ExplorationShip",
-        "Secretive Hoard"
+        "Outrageous Odyssey"
     ],
     [
         "ExplorationShip",
-        "Feeble Distress"
+        "Enchanted Treasure"
     ],
     [
         "ExplorationShip",
-        "Outrageous Empress"
+        "Meagre Deal"
     ],
     [
         "ExplorationShip",
-        "Sol Chance"
+        "Sol Rimrunner"
     ],
     [
         "ExplorationShip",
-        "Meagre Rendezvous"
+        "Devious Adventure"
     ],
     [
         "ConstructionShip",
-        "Smiling Nightstar"
+        "Conspicuous Splendor"
     ],
     [
         "ConstructionShip",
-        "Doubtful Starfire"
+        "Enchanted Empress"
     ]
 ];

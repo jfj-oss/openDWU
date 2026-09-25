@@ -32,6 +32,7 @@
 // construction/empireConstruction.ts the GameText key stands in for the format string and enum values for
 // Galaxy.ResolveDescription (TODO(port) M9 GameText formatting).
 
+import { calculatePopulationStrength } from '../combat/invasion';
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import type { BuiltObject } from '../builtObject';
@@ -346,7 +347,7 @@ export function determineRequiredTroopStrength(galaxy: Galaxy, empire: Empire | 
     let num3 = 0;
     if (target != null && isHabitat(target)) {
         const habitat = target;
-        num3 = calculatePopulationStrength(habitat);
+        num3 = calculatePopulationStrength(galaxy, habitat, null, null).result; // Habitat.cs 4317 overload (combat/invasion.ts)
         if (isObjectVisibleToThisEmpire(galaxy, empire!, habitat)) {
             if (habitat.troops !== null) {
                 num = habitat.troops.totalDefendStrength + num2 + num3;
@@ -359,15 +360,6 @@ export function determineRequiredTroopStrength(galaxy: Galaxy, empire: Empire | 
     }
     if (empire !== null) num = csDoubleToInt(num * empire.policy!.invasionOverkillFactor);
     return num;
-}
-
-/** Habitat.cs 4317 CalculatePopulationStrength(out isDefending) — the strength part (isDefending is not read by callers here). */
-function calculatePopulationStrength(habitat: Habitat): number {
-    let result = 0;
-    if (habitat.population !== null && habitat.population.dominantRace !== null) {
-        result = Math.imul(Math.trunc(habitat.population.totalAmount / 5000000) | 0, habitat.population.dominantRace.aggression);
-    }
-    return result;
 }
 
 /** Galaxy.4.cs 609 CheckUsePlanetDestroyerAgainstEmpire(attacker, target). */
@@ -3885,7 +3877,7 @@ export function sendAttackFleets(galaxy: Galaxy, empire: Empire, targetEmpire: E
 }
 
 /** Empire.3.cs 3399 ClearAttackersFromEmpire(ship, empire). */
-function clearAttackersFromEmpire(ship: BuiltObject, empire: Empire): void {
+export function clearAttackersFromEmpire(ship: BuiltObject, empire: Empire): void {
     const attackers = (ship.attackers ?? []) as StellarObject[];
     const stellarObjectList: StellarObject[] = [];
     for (const attacker of attackers) {

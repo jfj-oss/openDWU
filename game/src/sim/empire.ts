@@ -63,6 +63,15 @@ let takeOwnershipOfColonyHooks: TakeOwnershipOfColonyHooks | null = null;
 export function registerTakeOwnershipOfColonyHooks(hooks: TakeOwnershipOfColonyHooks): void {
     takeOwnershipOfColonyHooks = hooks;
 }
+/**
+ * The full Empire.1.cs 64 TakeOwnershipOfColony (combat/ownership.ts, M4q; registered at its module load, which every
+ * game path reaches through the tick modules). Empire.takeOwnershipOfColony delegates to it once registered.
+ */
+export type TakeOwnershipOfColonyFull = (galaxy: Galaxy, self: Empire, colony: Habitat, newEmpire: Empire | null, destroyBases: boolean, destroyTroops: boolean) => void;
+let takeOwnershipOfColonyFullHook: TakeOwnershipOfColonyFull | null = null;
+export function registerTakeOwnershipOfColonyFull(fn: TakeOwnershipOfColonyFull): void {
+    takeOwnershipOfColonyFullHook = fn;
+}
 function requireTakeOwnershipOfColonyHooks(): TakeOwnershipOfColonyHooks {
     if (takeOwnershipOfColonyHooks === null) throw new Error('takeOwnershipOfColony: import ./taxes first (registers the Empire.1.cs 240/241/269 callees)');
     return takeOwnershipOfColonyHooks;
@@ -154,6 +163,18 @@ export class EmpireCounters {
     // EmpireCounters.cs 90-91 (M4s: CompletePirateMission, pirates/missionsMarket.ts).
     completedPirateMissionAttackCount = 0;
     completedPirateMissionDefendCount = 0;
+    // EmpireCounters.cs 44 / 59-66 / 88 / 95 (M4q: ProcessColonyConquest, ProcessBoardingAssault, DoRaidBonuses).
+    coloniesConqueredCount = 0;
+    lossesColoniesTotalCount = 0;
+    lossesColoniesPopulationAmount = 0; // long
+    lossesColoniesContinentalCount = 0;
+    lossesColoniesMarshySwampCount = 0;
+    lossesColoniesOceanCount = 0;
+    lossesColoniesDesertCount = 0;
+    lossesColoniesIceCount = 0;
+    lossesColoniesVolcanicCount = 0;
+    captureShipCount = 0;
+    raidSuccessCount = 0;
     constructor(empire: Empire) {
         this._empire = empire;
     }
@@ -941,6 +962,10 @@ export class Empire {
     // blockades/attacks cancellation, tax rate, population policy, bases and
     // mining stations, empire defeat/teardown — Empire.1.cs 64-370.
     takeOwnershipOfColony(colony: Habitat, newEmpire: Empire | null): void {
+        if (takeOwnershipOfColonyFullHook !== null) {
+            takeOwnershipOfColonyFullHook(this.galaxy, this, colony, newEmpire, false, false);
+            return;
+        }
         const empire = colony.empire;
         let flag = false;
         if (empire !== null) {
@@ -1842,6 +1867,10 @@ export class Empire {
     // Empire.cs 101 RaceEventType (read by DetermineHitTarget, PredictiveHistory +20 targeting): declared in the M4u block.
     // ---- M4p fields (fighters) ----
     // ---- M4q fields (invasion, troops) ----
+    /** Empire.cs 204 DiscoveryActionAbandonedShipBase (GameOptions; 0 = prompt the player). */
+    discoveryActionAbandonedShipBase = 0;
+    /** Empire.cs 301 ColoniesNeedingTroops (HabitatList; the C# only ever removes from it). */
+    coloniesNeedingTroops: Habitat[] = [];
     // ---- M4r fields (diplomacy runtime) ----
     /** Empire.cs 402 _RelativeEmpireSize (CalculateRelativeEmpireSize; added by M4a for the tick's assignment). */
     relativeEmpireSize = 0;
@@ -1884,8 +1913,7 @@ export class Empire {
      * aggregate `preWarpProgressEventsOccurred` is true (Galaxy.7.cs 5189 / Galaxy.8.cs 4532 set it with the others).
      */
     preWarpProgressEventOccurredSendPirateRaid = false;
-    /** Empire.cs ColoniesNeedingTroops (HabitatList, null until first use; CheckColoniesForPirateFacilitiesAndAttack). */
-    coloniesNeedingTroops: Habitat[] | null = null;
+    // Empire.cs 301 ColoniesNeedingTroops: declared in the M4q block (CheckColoniesForPirateFacilitiesAndAttack adds to it).
     // ---- M4t fields (visibility, exploration) ----
     // _EmpiresViewable / _EmpiresViewableExpiry / LocationHints: declared in the M4r block (M4t expires / removes them).
     /** Empire.cs 147 _SystemExploredCount = 1 / 149 _ExplorationShipCount = 1 (UpdateSystemExplorationStatus). */

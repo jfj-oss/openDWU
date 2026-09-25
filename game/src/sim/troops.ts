@@ -137,7 +137,7 @@ export function raceCharacterRandomAppearanceChanceGeneral(race: Race): number {
 
 // Race.cs LoadFromFile 1063-1074: an empty TroopNameArmored / TroopNameArtillery /
 // TroopNameSpecialForces falls back to TroopName (races.ts keeps the raw file values).
-function raceTroopNameFallback(race: Race, name: string): string {
+export function raceTroopNameFallback(race: Race, name: string): string {
     if (race.troopName !== '' && name === '') return race.troopName;
     return name;
 }

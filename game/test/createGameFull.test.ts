@@ -161,6 +161,7 @@ describe('createGame full game start (seed 1, Spiral 300 stars, 8x8, Human + 3 A
 // with StartingAge 1 (a mix the C# cannot produce); Galaxy.Age 1 adds military starting ships, the int_5 > 0 game-start
 // steps and StartStarDate + 30000000, so the Rnd stream moves.
 // (re-pinned M4m: the game-start Empire.DoTasks runs the military AI — IdentifyMilitaryObjectives Next(0, EmpireEvaluations.Count), CheckTemptingTargets Next(0, Empires.Count), DetermineRandomAttacks Next(0, n) — which shifts the Rnd stream.)
+// (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks; the full
 const PINNED_SUMMARY: unknown = {
     "empires": [
         {
@@ -189,7 +190,7 @@ const PINNED_SUMMARY: unknown = {
             ]
         },
         {
-            "name": "Haakonish Corporation",
+            "name": "Free S160 Consortium",
             "race": "Haakonish",
             "colonies": 1,
             "spacePorts": 1,
@@ -209,20 +210,20 @@ const PINNED_SUMMARY: unknown = {
             "troops": 5,
             "characters": 3,
             "taxRates": [
-                0.2800000011920929
+                0.28999999165534973
             ]
         },
         {
-            "name": "Dhayut Nation",
+            "name": "S285 Empire",
             "race": "Dhayut",
             "colonies": 1,
             "spacePorts": 1,
-            "researchStations": 1,
+            "researchStations": 0,
             "miningStations": 6,
             "stateShips": {
                 "Escort": 2,
-                "Frigate": 4,
-                "ExplorationShip": 4,
+                "Frigate": 3,
+                "ExplorationShip": 3,
                 "ConstructionShip": 1
             },
             "privateShips": {
@@ -230,18 +231,18 @@ const PINNED_SUMMARY: unknown = {
                 "GasMiningShip": 2,
                 "MiningShip": 2
             },
-            "troops": 5,
+            "troops": 8,
             "characters": 3,
             "taxRates": [
-                0.2199999988079071
+                0.25
             ]
         },
         {
-            "name": "Free Ugnari Consortium",
+            "name": "S43 Industries",
             "race": "Ugnari",
             "colonies": 1,
             "spacePorts": 1,
-            "researchStations": 1,
+            "researchStations": 0,
             "miningStations": 6,
             "stateShips": {
                 "Escort": 3,
@@ -258,13 +259,39 @@ const PINNED_SUMMARY: unknown = {
             "troops": 5,
             "characters": 2,
             "taxRates": [
-                0.3199999928474426
+                0.3100000023841858
             ]
         }
     ],
     "pirates": [
         {
-            "name": "Dread Force",
+            "name": "S83 Prowlers",
+            "bases": 1,
+            "fleet": {
+                "Escort": 2,
+                "ConstructionShip": 1
+            },
+            "private": {
+                "SmallFreighter": 1,
+                "GasMiningStation": 1
+            },
+            "characters": 2
+        },
+        {
+            "name": "Black Pillagers",
+            "bases": 1,
+            "fleet": {
+                "Escort": 2,
+                "ConstructionShip": 1
+            },
+            "private": {
+                "SmallFreighter": 1,
+                "GasMiningStation": 1
+            },
+            "characters": 2
+        },
+        {
+            "name": "S269 Confederacy",
             "bases": 1,
             "fleet": {
                 "Escort": 1,
@@ -280,38 +307,7 @@ const PINNED_SUMMARY: unknown = {
             "characters": 2
         },
         {
-            "name": "Red Storm Gang",
-            "bases": 1,
-            "fleet": {
-                "Escort": 1,
-                "ExplorationShip": 1,
-                "ConstructionShip": 1
-            },
-            "private": {
-                "SmallFreighter": 1,
-                "MiningShip": 1,
-                "GasMiningShip": 1,
-                "GasMiningStation": 2
-            },
-            "characters": 2
-        },
-        {
-            "name": "Fierce Company",
-            "bases": 1,
-            "fleet": {
-                "ExplorationShip": 1,
-                "ConstructionShip": 1
-            },
-            "private": {
-                "SmallFreighter": 4,
-                "MiningShip": 1,
-                "GasMiningShip": 1,
-                "GasMiningStation": 3
-            },
-            "characters": 2
-        },
-        {
-            "name": "Ugnar Pillagers",
+            "name": "Deadly Storm Prowlers",
             "bases": 1,
             "fleet": {
                 "Escort": 2,
@@ -324,39 +320,7 @@ const PINNED_SUMMARY: unknown = {
             "characters": 2
         },
         {
-            "name": "Dirty Prowlers",
-            "bases": 1,
-            "fleet": {
-                "Escort": 1,
-                "ExplorationShip": 1,
-                "ConstructionShip": 1
-            },
-            "private": {
-                "SmallFreighter": 1,
-                "MiningShip": 1,
-                "GasMiningShip": 1,
-                "GasMiningStation": 2
-            },
-            "characters": 2
-        },
-        {
-            "name": "Deadly Buccaneers",
-            "bases": 1,
-            "fleet": {
-                "Escort": 1,
-                "ExplorationShip": 1,
-                "ConstructionShip": 1
-            },
-            "private": {
-                "SmallFreighter": 1,
-                "MiningShip": 1,
-                "GasMiningShip": 1,
-                "GasMiningStation": 2
-            },
-            "characters": 2
-        },
-        {
-            "name": "Dread Star Authority",
+            "name": "S83 Confederacy",
             "bases": 1,
             "fleet": {
                 "Escort": 1,
@@ -373,7 +337,7 @@ const PINNED_SUMMARY: unknown = {
             "characters": 2
         },
         {
-            "name": "Red Rock Bandits",
+            "name": "Vicious Bandits",
             "bases": 1,
             "fleet": {
                 "Escort": 1,
@@ -384,13 +348,29 @@ const PINNED_SUMMARY: unknown = {
                 "SmallFreighter": 1,
                 "MiningShip": 1,
                 "GasMiningShip": 1,
-                "MiningStation": 2
+                "GasMiningStation": 2
             },
-            "characters": 3
+            "characters": 2
+        },
+        {
+            "name": "S160 Spaceways",
+            "bases": 1,
+            "fleet": {
+                "ExplorationShip": 1,
+                "ConstructionShip": 1
+            },
+            "private": {
+                "SmallFreighter": 4,
+                "MiningShip": 1,
+                "GasMiningShip": 1,
+                "GasMiningStation": 2,
+                "MiningStation": 1
+            },
+            "characters": 2
         }
     ],
     "independentTraders": 150,
     "unownedBuiltObjects": 20,
-    "builtObjects": 358,
-    "ruins": 24
+    "builtObjects": 339,
+    "ruins": 33
 };

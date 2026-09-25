@@ -32,11 +32,12 @@ describe('createGame', () => {
         // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
         // (re-pinned M4u: game-start character reviews (ReviewCharacterTraits Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd))
         // (re-pinned M4m: the game-start Empire.DoTasks runs the military AI — IdentifyMilitaryObjectives Next(0, EmpireEvaluations.Count), CheckTemptingTargets Next(0, Empires.Count), DetermineRandomAttacks Next(0, n) — which shifts the Rnd stream.)
+        // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
         expect(a.map((e) => e.capital)).toEqual([
             "Sol",
-            "S288",
-            "S278",
-            "S144"
+            "S186",
+            "S212",
+            "S297"
         ]);
         expect(a.map((e) => e.colonies)).toEqual([1, 1, 1, 1]);
         expect(a.length).toBe(4);

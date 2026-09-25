@@ -486,6 +486,10 @@ export class Habitat {
     destroyedAsteroidFieldGenerated = false;
     // ---- M4p fields (fighters) ----
     // ---- M4q fields (invasion, troops) ----
+    /** Habitat.cs InvasionStats (combat/invasion.ts InvasionStats; null outside an invasion). */
+    invasionStats: unknown = null;
+    /** StellarObject.RaidCountdown (byte; set to 60 by a successful raid, counted down by UpdateRaidCountdown, M4s). */
+    raidCountdown = 0;
     /** Habitat.ColonyInvasion (ColonyInvasion.cs; null = no invasion in progress). */
     colonyInvasion: unknown = null;
     /** Habitat.cs 194/197 InvasionSpaceControlStrengthDefenders / Attackers = -1. */
@@ -495,8 +499,7 @@ export class Habitat {
     // ---- M4s fields (pirates) ----
     /** Habitat.cs 67 _PirateColonyControl (GetPirateControl(); pirates/pirateColonyControl.ts). */
     pirateColonyControl = new PirateColonyControlList();
-    /** Habitat.cs RaidCountdown (byte; set to 60 by a pirate raid, counted down by UpdateRaidCountdown). */
-    raidCountdown = 0;
+    // StellarObject.RaidCountdown: declared in the M4q block (UpdateRaidCountdown counts it down).
     // ---- M4t fields (exploration) ----
     /** Habitat.cs 107 _CulturalDistressFactor (float; ExertCulturalInfluence Empire.cs 4734). */
     culturalDistressFactor = 0;

@@ -65,7 +65,10 @@ import {
 import { BuiltObjectMissionType, type BuiltObjectMission } from './missions/mission';
 import { nextAllowableLeaderChangeDate } from './characterRuntime';
 import { doCharacterEventRuntime, EventMessageType, DisasterEventType, RaceEventType, sendEventMessageToEmpire, sendNewsBroadcast, galaxyPlagues } from './events';
-import { empireShipGroups, type ShipGroup } from './fleets/shipGroup';
+import { empireShipGroups, forceCompleteMission, type ShipGroup } from './fleets/shipGroup';
+import { compareShipGroups, selectFleetBase } from './fleets/shipGroupTasks';
+import { takeOwnershipOfBuiltObject } from './combat/ownership';
+import { netSort } from './netSort';
 import { nodeCategory, nodeIndustry, type TechNode } from './researchSystem';
 import { removeNonRaceSpecificProjectTypes, resolveRaceSpecificComponents } from './researchTick';
 import { IndustryType } from './types';
@@ -786,17 +789,36 @@ export function empireEventRogueFleetDefectsTo(galaxy: Galaxy, empire: Empire, e
 /**
  * Empire.1.cs 1698 DefectFleet(fleet, newEmpire): incident evaluation −25, event message to the fleet's empire, a warning to
  * the new empire, SubsequentMissions.Clear, ForceCompleteMission, move the fleet (TakeOwnershipOfBuiltObject per ship,
- * ShipGroups.Add + Sort), GatherPoint = SelectFleetBase. No Rnd of its own.
- * TODO(port) M4l: the TS ShipGroup has no Name / SortTag / SubsequentMissions / GatherPoint yet (ShipGroup model), and
- * TakeOwnershipOfBuiltObject is an M4q stub — reached only by the rogue-fleet / empire-split events (4+ years in, very unhappy
- * large empires).
+ * ShipGroups.Add + Sort), GatherPoint = SelectFleetBase. No Rnd of its own. (Ported by M4q, with the ownership transfer.)
  */
 export function defectFleet(galaxy: Galaxy, empire: Empire, fleet: ShipGroup, newEmpire: Empire): void {
-    void galaxy;
     void empire;
-    void fleet;
-    void newEmpire;
-    throw new Error('TODO(port) M4l: Empire.1.cs 1698 DefectFleet (ShipGroup Name/SubsequentMissions/GatherPoint/Sort model)');
+    const fleetEmpire = fleet.empire!;
+    const empireEvaluation = obtainEmpireEvaluation(galaxy, fleetEmpire, newEmpire);
+    empireEvaluation.incidentEvaluation = empireEvaluation.incidentEvaluationRaw - 25.0;
+    const message = gameText('Rogue Fleet Defects Detail', fleet.name, newEmpire.name);
+    const text = gameText('Rogue Fleet Defects!');
+    sendEventMessageToEmpire(fleetEmpire, EventMessageType.RogueFleetDefectsFromUs, text, message, newEmpire, fleet.leadShip);
+    if (fleetEmpire !== galaxy.playerEmpire) {
+        const description = gameText('Rogue Fleet Defects Warning', fleet.name);
+        sendMessageToEmpire(fleetEmpire, newEmpire, EmpireMessageType.GeneralWarning, fleet, description);
+    }
+    fleet.subsequentMissions.length = 0;
+    forceCompleteMission(galaxy, fleet);
+    const groups = empireShipGroups(fleetEmpire);
+    const idx = groups.indexOf(fleet);
+    if (idx >= 0) groups.splice(idx, 1);
+    for (let i = 0; i < fleet.ships.length; i++) {
+        const builtObject = fleet.ships[i];
+        takeOwnershipOfBuiltObject(galaxy, newEmpire, builtObject, newEmpire, true, false);
+    }
+    const newGroups = empireShipGroups(newEmpire);
+    if (!newGroups.includes(fleet)) {
+        newGroups.push(fleet);
+        netSort(newGroups, compareShipGroups);
+    }
+    fleet.empire = newEmpire;
+    fleet.gatherPoint = selectFleetBase(galaxy, newEmpire, fleet);
 }
 
 // ---------------------------------------------------------------------------
@@ -1676,8 +1698,8 @@ function initiateEmpireSplitRandom(galaxy: Galaxy, empire: Empire, splinterPorti
  * Empire.1.cs 1102 InitiateEmpireSplit(splinterPortion, declareWar) → 2883 SplinterEmpire: a new empire is created at runtime
  * around the colony nearest a random point ≥ 4.5 sectors from the capital (ObtainRandomGalaxyCoordinates Rnd), takes a share
  * of the colonies, ships (ConsiderTakeoverOfBuiltObject Rnd per ship) and fleets (NextDouble per fleet), then war / incident
- * penalties and messages. TODO(port) M4q/M4l: runtime empire creation needs TakeOwnershipOfColony(destroyAll: false),
- * TakeOwnershipOfBuiltObject (M4q stub), ShipGroup.GatherPoint / Sort (M4l ShipGroup model), Research.Clone,
+ * penalties and messages. TODO(port) M4u: runtime empire creation (the ownership transfers it needs — TakeOwnershipOfColony /
+ * TakeOwnershipOfBuiltObject, combat/ownership.ts — are ported by M4q), Research.Clone,
  * MergeGalaxyMap, ChangeGovernment / GenerateEmpireName — reached only 4+ years in, by very unhappy large empires.
  */
 export function initiateEmpireSplit(galaxy: Galaxy, empire: Empire, splinterPortion: number, declareWar: boolean): void {

@@ -101,30 +101,10 @@ describe('ProjectForceStructure / ProjectPrivateForceStructure at game start', (
         // empire's capital neighbour has known resources, so only it projects freighters and mining ships.)
         // Re-pinned M4u (game-start character reviews / DoRaceEvent Rnd move empire placement): now only the fourth empire's capital neighbour has known resources.
         // (re-pinned M4m: the game-start Empire.DoTasks runs the military AI — IdentifyMilitaryObjectives Next(0, EmpireEvaluations.Count), CheckTemptingTargets Next(0, Empires.Count), DetermineRandomAttacks Next(0, n) — which shifts the Rnd stream.)
+        // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
         expect(a.map((e) => e.private)).toEqual([
             [],
-            [
-                [
-                    "SmallFreighter",
-                    2
-                ],
-                [
-                    "MediumFreighter",
-                    1
-                ],
-                [
-                    "LargeFreighter",
-                    1
-                ],
-                [
-                    "GasMiningShip",
-                    2
-                ],
-                [
-                    "MiningShip",
-                    2
-                ]
-            ],
+            [],
             [],
             []
         ]);

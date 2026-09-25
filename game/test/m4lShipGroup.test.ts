@@ -51,19 +51,21 @@ beforeEach(async () => {
     gameData ??= await loadGameDataFs();
     galaxy = createTickGame(gameData).galaxy;
     const escorts = (e: Empire): BuiltObject[] => e.builtObjects.filter((b) => b.role === BuiltObjectRole.Military && b.subRole === BuiltObjectSubRole.Escort && b.topSpeed > 0);
-    // The pirate faction with the most escorts, topped up to three ships from other factions' escorts.
+    // The pirate faction with the most escorts, topped up to four ships from other factions' escorts. (Four since the M4q
+    // merge: seed 1's factions now have at most two escorts each, and with three military ships MaintainShipGroups'
+    // fleet count rounds to zero at the 60% FleetMilitaryProportionForFleets policy — Empire.9.cs 2503-2583.)
     pirate = [...galaxy.pirateEmpires].sort((a, b) => escorts(b).length - escorts(a).length)[0];
     ships = escorts(pirate);
     for (const other of galaxy.pirateEmpires) {
         for (const s of escorts(other)) {
-            if (ships.length >= 3 || other === pirate) break;
+            if (ships.length >= 4 || other === pirate) break;
             other.builtObjects.splice(other.builtObjects.indexOf(s), 1);
             s.empire = pirate;
             pirate.builtObjects.push(s);
             ships.push(s);
         }
     }
-    expect(ships.length).toBeGreaterThanOrEqual(3);
+    expect(ships.length).toBeGreaterThanOrEqual(4);
     // Escorts are never fleet candidates (FindAvailableMilitaryShip, Empire.8.cs 5222): re-role them as idle frigates.
     for (const s of ships) {
         s.subRole = BuiltObjectSubRole.Frigate;

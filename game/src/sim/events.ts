@@ -11,6 +11,10 @@
 // FindNearestColonyInSystem / FindNearestInfectableColonyWithNoPlague; Galaxy.6.cs 2838 FastFindNearestShipInSystem;
 // Galaxy.8.cs 1287 FindNearestEmpireCapital; Empire.6.cs 3941 ProcessCharacters; Creature.cs 1196-1345 creature combat.
 
+import { shipGroupOf as shipGroupOfBuiltObject } from './combat/threats';
+import { empireWarWeariness } from './taxes';
+import { charactersCanGenerateAmountNonIntelligenceAgent } from './troops';
+import { CharacterRole, CharacterTraitType, generateNewCharacter } from './characters';
 import type { Galaxy } from './galaxy';
 import type { Empire } from './empire';
 import type { BuiltObject } from './builtObject';
@@ -56,7 +60,7 @@ import type { Population } from './population';
 import { gameText } from './colonyTick';
 import { CreatureType } from './creature';
 import { REAL_SECONDS_IN_GALACTIC_YEAR, galaxyNow } from './tick/simTime';
-import { EmpireMessageType, sendMessageToEmpire } from './messages';
+import { EmpireMessageType, sendMessageToEmpire, sendMessageToEmpireWithTitle } from './messages';
 import { clearColony } from './combat/invasion';
 
 /** Empire.7.cs 3400 SendEventMessageToEmpire(eventMessageType, title, message, additionalData, location): only the attached UI recipient sees it. */
@@ -945,7 +949,7 @@ export function checkSendPreWarpProgressEventMessage(galaxy: Galaxy, empire: Emp
 }
 
 /** Habitat.cs 5888 IdentifyLeavingEmpire. No Rnd. */
-function identifyLeavingEmpire(galaxy: Galaxy, habitat: Habitat): Empire | null {
+export function identifyLeavingEmpire(galaxy: Galaxy, habitat: Habitat): Empire | null {
     let result = galaxy.independentEmpire;
     if (habitat.quality > 0.5) {
         if (habitat.invadingTroops !== null && habitat.invadingTroops.count > 0) {
@@ -1244,28 +1248,110 @@ export function doPlanetDestroyAsteroidField(galaxy: Galaxy, habitat: Habitat): 
     /* TODO(port) M4u */ todo(T_doPlanetDestroyAsteroidField);
 }
 
-const T_chanceRaceEvent = registerTodo('M4u', 'chanceRaceEvent');
-/** Galaxy.9.cs ChanceRaceEvent(builtObjectDestroyed, destroyer) (BuiltObject.2.cs 6577; race events, Empire.1.cs 1731-2881) — stub. */
-export function chanceRaceEvent(galaxy: Galaxy, builtObjectDestroyed: BuiltObject, destroyer: BuiltObject): void {
-    void galaxy; void builtObjectDestroyed; void destroyer;
-    // RND: race event chance draws — not drawn until M4u.
-    /* TODO(port) M4u */ todo(T_chanceRaceEvent);
-}
-
-const T_chanceNewShipCaptain = registerTodo('M4u', 'chanceNewShipCaptain');
-/** Galaxy.2.cs 5022 ChanceNewShipCaptain(targetDestroyed, empire, location) → 5027 — stub: false (no captain appears). */
-export function chanceNewShipCaptain(galaxy: Galaxy, targetDestroyed: BuiltObject, empire: Empire | null, location: BuiltObject | Habitat | null): boolean {
-    void galaxy; void targetDestroyed; void empire; void location;
-    // RND: Rnd.Next(0, num) — not drawn until M4u.
-    /* TODO(port) M4u */ todo(T_chanceNewShipCaptain);
+/**
+ * Galaxy.2.cs 4980 ChanceRaceEvent(targetDestroyed, destroyer) (BuiltObject.2.cs 6577; ported at the wave-4 merge, when the
+ * merged harness first destroyed a warship). Rnd: Next(0, num) [+ NextDouble].
+ */
+export function chanceRaceEvent(galaxy: Galaxy, targetDestroyed: BuiltObject | null, destroyer: BuiltObject | null): boolean {
+    if (targetDestroyed !== null && destroyer !== null && shipGroupOfBuiltObject(destroyer) !== null) {
+        let num = 0;
+        if (targetDestroyed.subRole === BuiltObjectSubRole.MediumSpacePort) num = 6;
+        if (targetDestroyed.subRole === BuiltObjectSubRole.LargeSpacePort) num = 3;
+        if (targetDestroyed.subRole === BuiltObjectSubRole.Carrier) num = 10;
+        else if (targetDestroyed.subRole === BuiltObjectSubRole.ResupplyShip) num = 6;
+        else if (targetDestroyed.subRole === BuiltObjectSubRole.CapitalShip) {
+            num = 8;
+            if (targetDestroyed.isPlanetDestroyer || targetDestroyed.size > 2000) num = 2;
+        }
+        const destroyerEmpire = destroyer.empire;
+        if (
+            num > 0 &&
+            galaxy.rnd.next(0, num) === 1 &&
+            destroyerEmpire !== null &&
+            empireWarWeariness(destroyerEmpire) !== 0.0 &&
+            destroyerEmpire.dominantRace !== null &&
+            empireEvents.raceEventsContainsEventType(destroyerEmpire.dominantRace, RaceEventType.NeverSurrenderWarWearinessReset)
+        ) {
+            const num2 = 0.4 + galaxy.rnd.nextDouble() * 0.2;
+            destroyerEmpire.warWearinessRaw *= num2;
+            const title = resolveDescription(RaceEventType as unknown as Record<number, string>, RaceEventType.NeverSurrenderWarWearinessReset);
+            const message = gameText('Race Event Description NeverSurrenderWarWearinessReset', shipGroupOfBuiltObject(destroyer)!.name);
+            sendEventMessageToEmpire(destroyerEmpire, EventMessageType.RaceEvent, title, message, RaceEventType.NeverSurrenderWarWearinessReset, destroyer);
+            return true;
+        }
+    }
     return false;
 }
 
-const T_chanceNewFleetAdmiral = registerTodo('M4u', 'chanceNewFleetAdmiral');
-/** Galaxy.2.cs 5092 ChanceNewFleetAdmiral(targetDestroyed, empire, location) → 5097 — stub: false. */
-export function chanceNewFleetAdmiral(galaxy: Galaxy, targetDestroyed: BuiltObject, empire: Empire | null, location: BuiltObject | Habitat | null): boolean {
-    void galaxy; void targetDestroyed; void empire; void location;
-    // RND: Rnd.Next(0, num) — not drawn until M4u.
-    /* TODO(port) M4u */ todo(T_chanceNewFleetAdmiral);
+/**
+ * Galaxy.2.cs 5022 ChanceNewShipCaptain(targetDestroyed, empire, location) → 5027 (…, targetCaptured, smuggler) (ported at the
+ * wave-4 merge; the captured overload is M4q's boarding caller). Rnd: Next(0, num) [+ GenerateNewCharacter draws].
+ */
+export function chanceNewShipCaptain(galaxy: Galaxy, targetDestroyed: BuiltObject | null, empire: Empire | null, location: BuiltObject | Habitat | null, targetCaptured = false, smuggler = false): boolean {
+    if (targetDestroyed !== null && empire !== null && location !== null && !location.hasBeenDestroyed) {
+        let num = 0;
+        if (targetDestroyed.role === BuiltObjectRole.Base && targetDestroyed.size > 500) num = 7;
+        if (targetDestroyed.subRole === BuiltObjectSubRole.MediumSpacePort) num = 6;
+        if (targetDestroyed.subRole === BuiltObjectSubRole.LargeSpacePort) num = 3;
+        if (targetDestroyed.subRole === BuiltObjectSubRole.Carrier) num = 8;
+        else if (targetDestroyed.subRole === BuiltObjectSubRole.Cruiser) num = 11;
+        else if (targetDestroyed.subRole === BuiltObjectSubRole.Destroyer) num = 25;
+        else if (targetDestroyed.subRole === BuiltObjectSubRole.ResupplyShip) num = 7;
+        else if (targetDestroyed.subRole === BuiltObjectSubRole.CapitalShip) {
+            num = 5;
+            if (targetDestroyed.isPlanetDestroyer || targetDestroyed.size > 2000) num = 2;
+        }
+        if (num > 0) {
+            if (empire.dominantRace !== null) num = Math.max(2, csDoubleToIntEv(num / empire.dominantRace.characterRandomAppearanceChanceShipCaptain));
+            if (galaxy.rnd.next(0, num) === 1 && charactersCanGenerateAmountNonIntelligenceAgent(empire) > 0) {
+                const character = generateNewCharacter(galaxy, empire, CharacterRole.ShipCaptain, location).character;
+                if (smuggler) character.addTrait(CharacterTraitType.Smuggler, true, galaxy);
+                const title = gameText('New Character Event Title', resolveDescription(CharacterRole as unknown as Record<number, string>, character.role));
+                const description = !targetCaptured
+                    ? gameText('New Character Event Ship Captain', targetDestroyed.name, character.name)
+                    : !smuggler
+                      ? gameText('New Character Event Ship Captain Capture', targetDestroyed.name, character.name)
+                      : gameText('New Character Event Ship Captain Smuggler Capture', targetDestroyed.name, character.name);
+                sendMessageToEmpireWithTitle(empire, empire, EmpireMessageType.CharacterAppearance, character, description, title);
+                return true;
+            }
+        }
+    }
     return false;
+}
+
+/**
+ * Galaxy.2.cs 5092 ChanceNewFleetAdmiral(targetDestroyed, empire, location) → 5097 (…, targetCaptured) (ported at the wave-4
+ * merge). Rnd: Next(0, num) [+ GenerateNewCharacter draws].
+ */
+export function chanceNewFleetAdmiral(galaxy: Galaxy, targetDestroyed: BuiltObject | null, empire: Empire | null, location: BuiltObject | Habitat | null, targetCaptured = false): boolean {
+    if (targetDestroyed !== null && empire !== null && location !== null && !location.hasBeenDestroyed) {
+        let num = 0;
+        if (targetDestroyed.role === BuiltObjectRole.Base && targetDestroyed.empire !== null && targetDestroyed.empire.pirateEmpireBaseHabitat !== null) num = 10;
+        if (targetDestroyed.subRole === BuiltObjectSubRole.MediumSpacePort) num = 8;
+        if (targetDestroyed.subRole === BuiltObjectSubRole.LargeSpacePort) num = 4;
+        if (targetDestroyed.subRole === BuiltObjectSubRole.Carrier) num = 12;
+        else if (targetDestroyed.subRole === BuiltObjectSubRole.Cruiser) num = 16;
+        else if (targetDestroyed.subRole === BuiltObjectSubRole.Destroyer) num = 40;
+        else if (targetDestroyed.subRole === BuiltObjectSubRole.ResupplyShip) num = 10;
+        else if (targetDestroyed.subRole === BuiltObjectSubRole.CapitalShip) {
+            num = 8;
+            if (targetDestroyed.isPlanetDestroyer || targetDestroyed.size > 2000) num = 2;
+        }
+        if (num > 0 && galaxy.rnd.next(0, num) === 1 && charactersCanGenerateAmountNonIntelligenceAgent(empire) > 0) {
+            const character = generateNewCharacter(galaxy, empire, CharacterRole.FleetAdmiral, location).character;
+            const title = gameText('New Character Event Title', resolveDescription(CharacterRole as unknown as Record<number, string>, character.role));
+            const description = !targetCaptured
+                ? gameText('New Character Event Fleet Admiral', targetDestroyed.name, character.name)
+                : gameText('New Character Event Fleet Admiral Capture', targetDestroyed.name, character.name);
+            sendMessageToEmpireWithTitle(empire, empire, EmpireMessageType.CharacterAppearance, character, description, title);
+            return true;
+        }
+    }
+    return false;
+}
+
+/** C# (int)double: truncation (the operands here are finite and small). */
+function csDoubleToIntEv(v: number): number {
+    return Math.trunc(v);
 }

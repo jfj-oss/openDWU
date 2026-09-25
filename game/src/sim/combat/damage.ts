@@ -38,7 +38,7 @@ import type { Population } from '../population';
 import { BuiltObjectMissionType, builtObjectMission, isBuiltObject, isCreature, isHabitat, type StellarObject } from '../missions/mission';
 import { MIN_TIME, galaxyNow, galaxyStarDate } from '../tick/simTime';
 import { registerTodo, todo } from '../tick/todo';
-import { CharacterEventType, captainBonuses, doCharacterEventForList, stellarObjectCharacters, type Character } from '../characters';
+import { CharacterEventType, captainBonuses, doCharacterEventForList, habitatInvadingCharacterList, stellarObjectCharacters, type Character } from '../characters';
 import { conditionCheckLimit } from '../tick/builtObjectTick';
 import { EventMessageType, chanceNewFleetAdmiral, chanceNewShipCaptain, chanceRaceEvent, doPlanetDestroyAsteroidField, doPlanetRemove, sendEventMessageToEmpire } from '../events';
 import { CharacterDeathType, characterSendDeathMessage } from '../characterRuntime';
@@ -1486,7 +1486,14 @@ export function inflictBombardDamage(galaxy: Galaxy, self: BuiltObject, habitat:
             characterSendDeathMessage(galaxy, character, CharacterDeathType.ColonyBombardment);
             character.kill(galaxy);
         }
-        // TODO(port) M4q: Habitat.InvadingCharacters (ColonyInvasion) — not modelled; RND: Next(0, 1000) / Next(0, Count) not drawn until M4q.
+        // BuiltObject.2.cs 5859-5868 (M4q): Habitat.InvadingCharacters.
+        const invadingChars = habitatInvadingCharacterList(habitat);
+        if (invadingChars !== null && invadingChars.length > 0 && galaxy.rnd.next(0, 1000) < bombardPower) {
+            const character2 = invadingChars[galaxy.rnd.next(0, invadingChars.length)];
+            if (self.empire !== null && self.empire.counters !== null) self.empire.counters.processCharacterDeath(character2);
+            characterSendDeathMessage(galaxy, character2, CharacterDeathType.ColonyBombardment);
+            character2.kill(galaxy);
+        }
         if (habitat.empire !== null && habitat.empire.troops !== null && habitat.troopsToRecruit !== null && habitat.troopsToRecruit.count > 0) {
             for (let i = 0; i < habitat.troopsToRecruit.count; i++) habitat.empire.troops.remove(habitat.troopsToRecruit.items[i]);
             habitat.troopsToRecruit.clear();
@@ -1546,7 +1553,13 @@ export function inflictBombardDamage(galaxy: Galaxy, self: BuiltObject, habitat:
                     characterSendDeathMessage(galaxy, array[l], CharacterDeathType.ColonyBombardment);
                     array[l].kill(galaxy);
                 }
-                // TODO(port) M4q: the InvadingCharacters death loop (none modelled).
+                // BuiltObject.2.cs 5951-5960 (M4q): ListHelper.ToArrayThreadSafe(habitat.InvadingCharacters).
+                const array2 = (habitatInvadingCharacterList(habitat) ?? []).slice();
+                for (let m = 0; m < array2.length; m++) {
+                    if (self.empire !== null && self.empire.counters !== null) self.empire.counters.processCharacterDeath(array2[m]);
+                    characterSendDeathMessage(galaxy, array2[m], CharacterDeathType.ColonyBombardment);
+                    array2[m].kill(galaxy);
+                }
                 clearColony(galaxy, habitat, self.actualEmpire);
             }
             habitat.population.recalculateTotalAmount();

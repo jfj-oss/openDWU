@@ -246,7 +246,11 @@ describe('BuiltObject.2.cs 804 case Escort', () => {
  */
 function fleetScenario(): { g: Galaxy; a: Empire; b: Empire } {
     const g = fresh();
-    const [a, b] = normalEmpires(g);
+    // `b` is the normal empire whose capital is nearest `a`'s (since the M4q merge seed 1's second empire lies beyond the
+    // fleet's refuelling reach: CheckFleetTargetWithinFuelRangeAndRefuel finds no refuelling point for the whole fleet).
+    const [a, ...others] = normalEmpires(g);
+    const dist = (e: Empire): number => g.calculateDistance(a.capital!.xpos, a.capital!.ypos, e.capital!.xpos, e.capital!.ypos);
+    const b = others.filter((e) => e.capital !== null).sort((x, y) => dist(x) - dist(y))[0];
     for (const p of g.pirateEmpires) {
         for (const s of p.builtObjects.filter((x) => x.role === BuiltObjectRole.Military && x.topSpeed > 0 && x.warpSpeed > 0)) {
             p.builtObjects.splice(p.builtObjects.indexOf(s), 1);

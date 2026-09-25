@@ -439,6 +439,23 @@ function setStellarObjectCharacters(o: StellarObject, list: Character[]): void {
 export function habitatInvadingCharacterList(h: Habitat): Character[] | null {
     return habitatInvadingCharacters.get(h) ?? null;
 }
+/** `o.Characters ??= new CharacterList()` (added by M4q: Habitat.IndependentColoniesRecruitAndTrainTroops, invasions). */
+export function ensureStellarObjectCharacters(o: StellarObject): Character[] {
+    let list = stellarObjectCharacters(o);
+    if (list === null) setStellarObjectCharacters(o, (list = []));
+    return list;
+}
+/** `h.InvadingCharacters ??= new CharacterList()` (added by M4q). */
+export function ensureHabitatInvadingCharacters(h: Habitat): Character[] {
+    let list = habitatInvadingCharacters.get(h) ?? null;
+    if (list === null) habitatInvadingCharacters.set(h, (list = []));
+    return list;
+}
+/** `h.InvadingCharacters = list` (added by M4q: ClearColony / TakeOwnershipOfColony reset it). */
+export function setHabitatInvadingCharacters(h: Habitat, list: Character[] | null): void {
+    if (list === null) habitatInvadingCharacters.delete(h);
+    else habitatInvadingCharacters.set(h, list);
+}
 
 function removeFirst<T>(list: T[], item: T): boolean {
     const i = list.indexOf(item);

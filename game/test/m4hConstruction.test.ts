@@ -222,7 +222,9 @@ describe('M4h milestone on the headless harness', () => {
         // (at the age-1 default start, seed 1) its idle-warship cases give Escort / Low-priority Patrol missions (Empire.5.cs
         // 1740-1862).
         // since M4m the Escort case runs (Empire.5.cs AssignMissionToBuiltObject), so it may be escorting a civilian ship.
-        expect(m === null || m.type === BuiltObjectMissionType.Move || m.type === BuiltObjectMissionType.Undefined || m.type === BuiltObjectMissionType.Attack || m.type === BuiltObjectMissionType.Escape || m.type === BuiltObjectMissionType.Refuel || m.type === BuiltObjectMissionType.Patrol || m.type === BuiltObjectMissionType.Escort).toBe(true);
+        // (M4q: with the seed-1 stream shifted by InvadeUnwillingColonizationTargets' NextDouble, the empire's design review
+        // may already have queued the new escort for a Retrofit to a newer design.)
+        expect(m === null || m.type === BuiltObjectMissionType.Move || m.type === BuiltObjectMissionType.Undefined || m.type === BuiltObjectMissionType.Attack || m.type === BuiltObjectMissionType.Escape || m.type === BuiltObjectMissionType.Refuel || m.type === BuiltObjectMissionType.Patrol || m.type === BuiltObjectMissionType.Escort || m.type === BuiltObjectMissionType.Retrofit).toBe(true);
         expect(g.builtObjects).toContain(bo);
     }, 300000);
 

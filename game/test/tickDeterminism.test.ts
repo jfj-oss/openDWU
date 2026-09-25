@@ -70,13 +70,11 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // reviewPirateMissionsAndAssign, so its marker is pirateCollectIncomeFromControlledColonies; M4e ported
         // autoRefuelRepairShip, which was the first marker; M4l ported performFleetTasks, so the BuiltObject periodic block
         // is detected by healTroops.)
-        // (M4s2 ported the pirate faction AI: DoTasksPirates is detected by the M4m stub PirateTaskFleets calls for the
-        // faction's space ports, EnsureBaseDefendedByFleet.)
-        // (M4m ported EnsureBaseDefendedByFleet, the last pirate-only stub: DoTasksPirates is now detected by every pirate
-        // faction's intermediate touch (Empire.1.cs 4095-4130, set only when the 60 s block runs) during this continuation.)
-        for (const key of ['M4q scanForNewOwnerHabitat', 'M4q healTroops']) {
-            expect(hits[key] ?? 0, key).toBeGreaterThan(0);
-        }
+        // (M4q ported ScanForNewOwner (Habitat periodic) and HealTroops (BuiltObject periodic), the last stubs of those
+        // families: they are now detected by the periodic touches stamped during this continuation (Habitat.cs 1497,
+        // BuiltObject.cs periodic block).)
+        expect(long.empires[0].capital!.lastPeriodicTouch).toBeGreaterThan(120000);
+        expect(long.builtObjects.some((b) => b != null && !b.hasBeenDestroyed && b.lastPeriodicTouch > 120000)).toBe(true);
         const factions = long.pirateEmpires.filter((p) => p.pirateEmpireBaseHabitat !== null);
         expect(factions.length).toBeGreaterThan(0);
         for (const p of factions) expect(p.lastIntermediateTouch, p.name).toBeGreaterThan(120000);
@@ -197,7 +195,10 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // game-start DoTasks draws them too (createGame pins moved); the Escort / Blockade command cases run, and
         // WarnOfIncomingEnemyFleets / blockades feed the incoming-fleet and docking logic.
         // Moved from 7fa509b3737717ba: M4m merged on top of M4s2 + M4y (military AI draws in every Empire periodic / long block, fleet tasking, blockades; the pirate AI uses M4m's FindNearestAvailableFleet / CalculateDefendingStrength / EnsureBaseDefendedByFleet; see the M4m reason above)
-        expect(summary.digest).toBe('3718bd4b31a849ad');
+        // Moved from 2689770786790d6a by M4q (its base digest fc77d2b53feed820): InvadeUnwillingColonizationTargets draws
+        // Rnd.NextDouble in each Empire.DoTasks (game start included); ground invasion, boarding, assault pods, ownership transfer.
+        // Moved from 3718bd4b31a849ad: M4q merged on top of M4s2 + M4y + M4m (InvadeUnwillingColonizationTargets NextDouble per Empire.DoTasks, invasions / boarding / ownership transfer; pirate colony control wired to M4s2's model; see the M4q reason above)
+        expect(summary.digest).toBe('dea5e410d47ea503');
     }, 600000);
 });
 

@@ -221,53 +221,48 @@ describe('generatePirateEmpireName', () => {
 // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
 // Re-pinned M4u: game-start character reviews (ReviewCharacterTraits Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd) move the Rnd stream before pirate generation.
 // (re-pinned M4m: the game-start Empire.DoTasks runs the military AI — IdentifyMilitaryObjectives Next(0, EmpireEvaluations.Count), CheckTemptingTargets Next(0, Empires.Count), DetermineRandomAttacks Next(0, n) — which shifts the Rnd stream.)
+// (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
 const PINNED_SEED1_PIRATES: unknown[] = [
     [
-        "Dread Force",
-        "S243 3",
-        "Kiadian",
-        88
+        "S83 Prowlers",
+        "S66 1",
+        "Atuuk",
+        796684
     ],
     [
-        "Red Storm Gang",
-        "S247 4",
-        "Dhayut",
-        8323096
-    ],
-    [
-        "Fierce Company",
-        "S276 7",
-        "Teekan",
-        3153920
-    ],
-    [
-        "Ugnar Pillagers",
-        "LI613",
+        "Black Pillagers",
+        "S141 3",
         "Mortalen",
         4390912
     ],
     [
-        "Dirty Prowlers",
-        "S258 5",
+        "S269 Confederacy",
+        "S162 6",
+        "Ikkuro",
+        26112
+    ],
+    [
+        "Deadly Storm Prowlers",
+        "S248 6",
+        "Atuuk",
+        5570576
+    ],
+    [
+        "S83 Confederacy",
+        "S288 4",
+        "Human",
+        8308
+    ],
+    [
+        "Vicious Bandits",
+        "VD884",
         "Dhayut",
-        17408
+        8323096
     ],
     [
-        "Deadly Buccaneers",
-        "S160 6",
-        "Sluken",
-        5513343
-    ],
-    [
-        "Dread Star Authority",
-        "S181 6",
-        "Ackdarian",
-        32639
-    ],
-    [
-        "Red Rock Bandits",
-        "S180 2",
-        "Sluken",
-        5579530
+        "S160 Spaceways",
+        "S268 4",
+        "Ketarov",
+        16384
     ]
 ];

@@ -40,7 +40,7 @@ import { gameText } from '../colonyTick';
 import { PlanetaryFacilityType } from '../researchSystem';
 import { facilitiesFindBestPirateFacility, type PlanetaryFacility } from '../construction/facilities';
 import { getEmpireById } from '../logistics/contracts';
-import { generateDefensivePirateRaiders } from '../combat/invasion';
+import { InvasionStats, generateDefensivePirateRaiders } from '../combat/invasion';
 import { PirateIncomeType } from './pirateEconomy';
 
 const f = Math.fround;
@@ -444,10 +444,9 @@ function checkCanInitiateAttackAgainstPirateFacilities(galaxy: Galaxy, habitat: 
 function initiateAttackAgainstPirateFacilities(galaxy: Galaxy, habitat: Habitat, attackingEmpire: Empire, pirateFacility: PlanetaryFacility): void {
     if (checkCanInitiateAttackAgainstPirateFacilities(galaxy, habitat, attackingEmpire, pirateFacility)) {
         const empire = checkFacilityOwner(galaxy, habitat, pirateFacility);
-        // GenerateDefensivePirateRaiders(empire, currentDefendingTroopsInvade: true) + `InvasionStats ??= new
-        // InvasionStats(this, attackingEmpire, empire)` — the invasion model is M4q's.
-        // RND: BaconHabitat.cs 1315 Next(0, 3) per raider group — not drawn until M4q.
-        generateDefensivePirateRaiders(galaxy, habitat, empire, true, attackingEmpire);
+        // RND: BaconHabitat.cs 1315 Next(0, 3) per raider group — GenerateDefensivePirateRaiders is still a stub.
+        generateDefensivePirateRaiders(galaxy, habitat, empire, true);
+        if (habitat.invasionStats === null) habitat.invasionStats = new InvasionStats(habitat, attackingEmpire, empire);
     }
 }
 

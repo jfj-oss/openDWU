@@ -54,7 +54,8 @@ describe('starting colonies (extra colonies at age >= 2)', () => {
         // are, and separately note (via the pin below) which are not.
         // (re-pinned M4u: game-start character reviews / DoRaceEvent Rnd move placement; now 3 already-populated colonies.)
         // (re-pinned M4m: the game-start Empire.DoTasks runs the military AI — IdentifyMilitaryObjectives Next(0, EmpireEvaluations.Count), CheckTemptingTargets Next(0, Empires.Count), DetermineRandomAttacks Next(0, n) — which shifts the Rnd stream.)
-        const alreadyInhabitedExceptions = 1; // Haakonish Corporation's 2nd colony (found already-populated; re-pinned M4k, M4s1; re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785)).
+        // (re-pinned M4q: InvadeUnwillingColonizationTargets' game-start NextDouble moves placement; now 1.)
+        const alreadyInhabitedExceptions = 2; // Haakonish Corporation's 2nd colony (found already-populated; re-pinned M4k, M4s1; re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785)).
         let outsideColonizable = 0;
         for (const e of a) {
             for (const t of e.colonyTypes) {
@@ -69,22 +70,23 @@ describe('starting colonies (extra colonies at age >= 2)', () => {
         // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
         // (re-pinned M4u: see above.)
         // (re-pinned M4m: see above.)
+        // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
         expect(a.map((e) => e.colonyTypes)).toEqual([
             [
-                HabitatType.Continental,
-                HabitatType.Continental
+                11,
+                11
             ],
             [
-                HabitatType.Continental,
-                HabitatType.Desert
+                11,
+                11
             ],
             [
-                HabitatType.MarshySwamp,
-                HabitatType.MarshySwamp
+                10,
+                11
             ],
             [
-                HabitatType.Desert,
-                HabitatType.Desert
+                9,
+                11
             ]
         ]);
         // Determinism.
