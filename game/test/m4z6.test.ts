@@ -10,6 +10,7 @@ import { PlanetaryFacility, definitionsFindFacilityByType, planetaryFacilityDefi
 import { inflictBombardDamage, selectRandomFacility } from '../src/sim/combat/damage';
 import { PirateColonyControl, checkColonyRevenueFromPirateControl } from '../src/sim/pirates/pirateColonyControl';
 import { Fighter, identifyLatestFighterSpecification } from '../src/sim/combat/fighters';
+import { TradeableItem, TradeableItemType, giveTradeableItem } from '../src/sim/tradeItems';
 import { stellarCurrentSpeed, stellarFirepowerRaw, stellarIsFunctional, stellarTopSpeed } from '../src/sim/combat/threats';
 
 let gameData: GameData;
@@ -74,6 +75,23 @@ describe('M4z6 (4) StellarObject readers on a Fighter (StellarObject.cs 37-41)',
         f.currentSpeed = 12;
         expect(stellarCurrentSpeed(f)).toBe(12);
         expect(stellarIsFunctional(f)).toBe(false);
+    });
+});
+
+describe('M4z6 (5) PirateEconomy.PerformIncome through the one pirateAI entry point', () => {
+    it('GiveTradeableItem Money books SellInfo when contacts / maps are exchanged, otherwise Undefined (Galaxy.4.cs 3864-3886)', () => {
+        const g = createTickGame(gameData).galaxy;
+        const giver = aiEmpire(g);
+        const pirate = g.pirateEmpires[0];
+        const other = g.empires.find((e) => e !== giver)!;
+        const sell0 = pirate.pirateEconomy.thisYear.sellInfoIncome;
+        const other0 = pirate.pirateEconomy.thisYear.otherIncome;
+        const exp0 = giver.pirateEconomy.thisYear.otherExpenses;
+        giveTradeableItem(g, giver, pirate, new TradeableItem(TradeableItemType.Money, 1000, 1000), [new TradeableItem(TradeableItemType.ContactEmpire, other, 0)]);
+        expect(pirate.pirateEconomy.thisYear.sellInfoIncome).toBe(sell0 + 1000);
+        expect(giver.pirateEconomy.thisYear.otherExpenses).toBe(exp0 + 1000);
+        giveTradeableItem(g, giver, pirate, new TradeableItem(TradeableItemType.Money, 500, 500), null);
+        expect(pirate.pirateEconomy.thisYear.otherIncome).toBe(other0 + 500);
     });
 });
 

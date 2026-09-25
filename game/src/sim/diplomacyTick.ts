@@ -81,7 +81,8 @@ import { chanceNewAmbassador, doCharacterEventRuntime } from './events';
 import { galaxyColonyFillFactor } from './colonyTick';
 import { isObjectVisibleToThisEmpire } from './independentTraders';
 import { TradeableItem, TradeableItemType, processTradeDealMessage, determineAcceptGalaxyMapTrade, determineAcceptTerritoryMapTrade, galaxyMergeGalaxyMap } from './tradeItems';
-import { determineDesirePirateProtection } from './pirates/pirateAI';
+import { determineDesirePirateProtection, pirateEconomyPerformIncome } from './pirates/pirateAI';
+import { PirateIncomeType } from './pirates/pirateEconomy';
 import { acceptPirateProtection, calculatePirateProtectionPricePerMonth } from './pirates/pirateRelationsAI';
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -2797,14 +2798,6 @@ export function valueMoneyGiftFromEmpire(galaxy: Galaxy, self: Empire, giver: Em
     return num2 * (1.0 + specialBonusDiplomacy(giver));
 }
 
-const T_pirateEconomyIncome = registerTodo('M4r', 'PirateEconomy.PerformIncome (ledger; PirateEconomy not ported)');
-/** PirateEconomy.PerformIncome(amount, type, date) — statistics ledger (empire.ts PirateEconomy placeholder). TODO(port). */
-function pirateEconomyPerformIncome(e: Empire, amount: number): void {
-    void e;
-    void amount;
-    todo(T_pirateEconomyIncome);
-}
-
 /** Galaxy.ResolveDescription(DiplomaticRelationType). */
 function relationTypeName(t: DiplomaticRelationType): string {
     return resolveDescription(DiplomaticRelationType, t);
@@ -2947,7 +2940,7 @@ export function processMessages(galaxy: Galaxy, empire: Empire): void {
                     diplomaticRelation5.type = DiplomaticRelationType.None;
                     self.stateMoney -= empireMessage.money;
                     sender!.stateMoney += empireMessage.money;
-                    pirateEconomyPerformIncome(sender!, empireMessage.money);
+                    pirateEconomyPerformIncome(galaxy, sender!, empireMessage.money, PirateIncomeType.SellInfo, galaxyStarDate(galaxy)); // Empire.3.cs 4311-4376
                 }
                 break;
             }
@@ -2963,7 +2956,7 @@ export function processMessages(galaxy: Galaxy, empire: Empire): void {
                     self.systemVisibility[habitat4.systemIndex].status = SystemVisibilityStatus.Explored;
                     self.stateMoney -= empireMessage.money;
                     sender!.stateMoney += empireMessage.money;
-                    pirateEconomyPerformIncome(sender!, empireMessage.money);
+                    pirateEconomyPerformIncome(galaxy, sender!, empireMessage.money, PirateIncomeType.SellInfo, galaxyStarDate(galaxy)); // Empire.3.cs 4311-4376
                 }
                 break;
             }
@@ -2973,7 +2966,7 @@ export function processMessages(galaxy: Galaxy, empire: Empire): void {
                         self.systemVisibility[subject.systemIndex].status = SystemVisibilityStatus.Explored;
                         self.stateMoney -= empireMessage.money;
                         sender!.stateMoney += empireMessage.money;
-                        pirateEconomyPerformIncome(sender!, empireMessage.money);
+                        pirateEconomyPerformIncome(galaxy, sender!, empireMessage.money, PirateIncomeType.SellInfo, galaxyStarDate(galaxy)); // Empire.3.cs 4311-4376
                     }
                 }
                 break;
@@ -2982,7 +2975,7 @@ export function processMessages(galaxy: Galaxy, empire: Empire): void {
                     self.systemVisibility[subject.systemIndex].status = SystemVisibilityStatus.Explored;
                     self.stateMoney -= empireMessage.money;
                     sender!.stateMoney += empireMessage.money;
-                    pirateEconomyPerformIncome(sender!, empireMessage.money);
+                    pirateEconomyPerformIncome(galaxy, sender!, empireMessage.money, PirateIncomeType.SellInfo, galaxyStarDate(galaxy)); // Empire.3.cs 4311-4376
                 }
                 break;
             case EmpireMessageType.SellInfoDebrisField:
@@ -2992,7 +2985,7 @@ export function processMessages(galaxy: Galaxy, empire: Empire): void {
                     if (!self.visibility.knownGalaxyLocations.includes(subject)) self.visibility.knownGalaxyLocations.push(subject);
                     self.stateMoney -= empireMessage.money;
                     sender!.stateMoney += empireMessage.money;
-                    pirateEconomyPerformIncome(sender!, empireMessage.money);
+                    pirateEconomyPerformIncome(galaxy, sender!, empireMessage.money, PirateIncomeType.SellInfo, galaxyStarDate(galaxy)); // Empire.3.cs 4311-4376
                 }
                 break;
             case EmpireMessageType.OfferTrade: {
@@ -3042,7 +3035,7 @@ export function processMessages(galaxy: Galaxy, empire: Empire): void {
                 }
                 setCivilityRating(sender!, sender!.civilityRating + num15 * 0.1);
                 self.stateMoney += empireMessage.money;
-                pirateEconomyPerformIncome(self, empireMessage.money);
+                pirateEconomyPerformIncome(galaxy, self, empireMessage.money, PirateIncomeType.Undefined, galaxyStarDate(galaxy)); // Empire.3.cs 4500
                 sendMessageToEmpire(self, sender, EmpireMessageType.Informational, null, getText('Thank you for your gift.'));
                 if (sender!.pirateEmpireBaseHabitat === null && self.pirateEmpireBaseHabitat === null) {
                     diplomaticRelation = obtainDiplomaticRelation(sender!, self);
