@@ -14,3 +14,14 @@ behaviour.
 
 Needs from 17: 17e proposal API (list legal proposals + evaluate), 17b executeShipAction, 17d policy fields.
 Structured brief per call: race traits (races.txt), treaties, attitude score, strength ratio, recent incidents.
+
+## 18a (first): chat-commanded advisor
+User (2026-09-25): talk to the model in a chat panel; if it agrees it issues move / attack / refuel / smaller
+orders. Design: brief = selection + player's fleets/idle ships + nearby systems/colonies by name + the legal
+ShipActions for those objects (17b validity port); the model's output is grammar-constrained (llama.cpp GBNF) to
+{ reply: string, commands: Command[] } where Command references objects by id from the brief; each command is
+validated and executed through executeShipAction (never bypasses rules), echoed back, and appended to the command
+log. Persona = a real character of the empire (e.g. the fleet admiral) fed sim facts so it can object with reasons
+(fuel, ally, undefended colony); "do it anyway" overrides; war declarations require an explicit confirm.
+Ambiguity → clarifying question. Needs only 17a/17b/17d. Then 18b diplomat voice (needs 17e), 18c advisor-level
+decisions for AI empires.
