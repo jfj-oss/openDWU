@@ -14,6 +14,8 @@ import type { Galaxy } from './galaxy';
 import type { Empire } from './empire';
 import { registerTodo, todo } from './tick/todo';
 import { galaxyStarDate, REAL_SECONDS_IN_GALACTIC_YEAR } from './tick/simTime';
+import { pirateEconomyPerformExpense, pirateEconomyPerformIncome } from './pirates/pirateAI';
+import { PirateExpenseType, PirateIncomeType } from './pirates/pirateEconomy';
 import { DiplomaticRelationType, DiplomaticStrategy, obtainEmpireEvaluation } from './diplomacy';
 import { obtainPirateRelation } from './pirateRelations';
 import { EmpireMessageType, sendMessageToEmpire } from './messages';
@@ -1170,7 +1172,6 @@ export function addLocationHint(self: Empire, location: { x: number; y: number }
 }
 
 const T_giveResearch = registerTodo('M4r', 'GiveTradeableItem ResearchProject (M4k DoResearchBreakthrough / research queues)');
-const T_pirateEconomyTrade = registerTodo('M4r', 'GiveTradeableItem Money: PirateEconomy.PerformExpense/PerformIncome (ledger)');
 
 /** Galaxy.4.cs 3857 GiveTradeableItem(giver, receiver, item, exchangedItems). */
 export function giveTradeableItem(galaxy: Galaxy, giver: Empire, receiver: Empire, item: TradeableItem, exchangedItems: readonly TradeableItem[] | null): void {
@@ -1178,10 +1179,24 @@ export function giveTradeableItem(galaxy: Galaxy, giver: Empire, receiver: Empir
         case TradeableItemType.Money: {
             const num2 = typeof item.item === 'number' ? item.item : 0.0;
             giver.stateMoney -= num2;
+            // Galaxy.4.cs 3872-3886: the PirateEconomy ledger (SellInfo when money buys contacts / locations / maps).
+            let flag = false;
+            if (
+                exchangedItems !== null &&
+                exchangedItems.length > 0 &&
+                exchangedItems.some(
+                    (x) =>
+                        x.type === TradeableItemType.ContactEmpire ||
+                        x.type === TradeableItemType.IndependentColonyLocation ||
+                        x.type === TradeableItemType.SecretLocation ||
+                        x.type === TradeableItemType.SystemMap,
+                )
+            ) {
+                flag = true;
+            }
+            pirateEconomyPerformExpense(galaxy, giver, num2, PirateExpenseType.Undefined, galaxyStarDate(galaxy));
             receiver.stateMoney += num2;
-            // PirateEconomy.PerformExpense / PerformIncome(SellInfo or Undefined) — statistics ledger. TODO(port).
-            todo(T_pirateEconomyTrade);
-            void exchangedItems;
+            pirateEconomyPerformIncome(galaxy, receiver, num2, flag ? PirateIncomeType.SellInfo : PirateIncomeType.Undefined, galaxyStarDate(galaxy));
             break;
         }
         case TradeableItemType.Base:

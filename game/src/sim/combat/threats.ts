@@ -72,32 +72,37 @@ export function stellarEmpire(o: StellarObject | null): Empire | null {
     return o.empire;
 }
 
-/** StellarObject.FirepowerRaw: 0 for a Habitat (bases are separate objects) and a Creature (Creature.cs never sets it). */
-export function stellarFirepowerRaw(o: StellarObject): number {
-    return isBuiltObject(o) ? o.firepowerRaw : 0;
+/**
+ * StellarObject.FirepowerRaw (StellarObject.cs 37): a BuiltObject's and a Fighter's (Fighter.cs 242 sets it from its
+ * weapons); 0 for a Habitat (bases are separate objects) and a Creature (Creature.cs never sets it). Fighters reach the
+ * StellarObject readers below through Pursuers / Attackers / CurrentTarget (M4p).
+ */
+export function stellarFirepowerRaw(o: StellarObject | Fighter): number {
+    return isBuiltObject(o) || isFighter(o) ? o.firepowerRaw : 0;
 }
 
 /** StellarObject.TopSpeed. */
-export function stellarTopSpeed(o: StellarObject): number {
-    if (isBuiltObject(o) || isCreature(o)) return o.topSpeed;
+export function stellarTopSpeed(o: StellarObject | Fighter): number {
+    if (isBuiltObject(o) || isCreature(o) || isFighter(o)) return o.topSpeed;
     return 0;
 }
 
 /** StellarObject.IsFunctional (Creature.cs never sets it: false). */
-export function stellarIsFunctional(o: StellarObject): boolean {
-    return isBuiltObject(o) ? o.isFunctional : false;
+export function stellarIsFunctional(o: StellarObject | Fighter): boolean {
+    return isBuiltObject(o) || isFighter(o) ? o.isFunctional : false;
 }
 
 /** StellarObject.CurrentSpeed. */
-export function stellarCurrentSpeed(o: StellarObject): number {
-    if (isBuiltObject(o) || isCreature(o)) return o.currentSpeed;
+export function stellarCurrentSpeed(o: StellarObject | Fighter): number {
+    if (isBuiltObject(o) || isCreature(o) || isFighter(o)) return o.currentSpeed;
     return 0;
 }
 
 /** StellarObject.CurrentTarget. */
-export function stellarCurrentTarget(o: StellarObject): StellarObject | null {
+export function stellarCurrentTarget(o: StellarObject | Fighter): StellarObject | null {
     if (isBuiltObject(o)) return o.currentTarget as StellarObject | null;
     if (isCreature(o)) return o.currentTarget;
+    if (isFighter(o)) return o.currentTarget as StellarObject | null;
     return null;
 }
 

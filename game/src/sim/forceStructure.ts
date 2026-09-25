@@ -27,6 +27,7 @@
 
 import type { Galaxy } from './galaxy';
 import type { Habitat } from './types';
+import { checkColonyRevenueFromPirateControl } from './pirates/pirateColonyControl';
 import { calculatePirateIncome } from './treasury';
 import { Empire, empireGovernmentAttributes } from './empire';
 import { BuiltObjectSubRole } from './builtObjectTypes';
@@ -504,9 +505,6 @@ export function recalculateColonyTaxRevenues(galaxy: Galaxy, empire: Empire): vo
 // Empire economy (Empire.cs properties)
 // ---------------------------------------------------------------------------
 
-// TODO(port): Habitat.CheckColonyRevenueFromPirateControl (pirate colony control)
-// — no PirateColonyControl exists at game start.
-const checkColonyRevenueFromPirateControl = (_h: Habitat, _empire: Empire): boolean => false;
 // TODO(port): Habitat.Rebelling — no colony rebels at game start.
 const habitatRebelling = (_h: Habitat): boolean => false;
 

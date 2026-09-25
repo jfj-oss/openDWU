@@ -42,7 +42,8 @@ import { CharacterEventType, captainBonuses, doCharacterEventForList, habitatInv
 import { conditionCheckLimit } from '../tick/builtObjectTick';
 import { EventMessageType, chanceNewFleetAdmiral, chanceNewShipCaptain, chanceRaceEvent, doPlanetDestroyAsteroidField, doPlanetRemove, sendEventMessageToEmpire } from '../events';
 import { CharacterDeathType, characterSendDeathMessage } from '../characterRuntime';
-import { EmpireMessageType, sendMessageToEmpire } from '../messages';
+import { EmpireMessageType, sendMessageToEmpire, sendMessageToEmpireWithTitle } from '../messages';
+import { takeOwnershipOfColonyFull } from './ownership';
 import { clearColony, inflictTroopLosses, takeOwnershipOfBuiltObject } from './invasion';
 import { obtainEmpireEvaluation } from '../diplomacy';
 import { declareWar } from '../diplomacyTick';
@@ -58,7 +59,8 @@ import { generateDesignFromSpec } from '../designGeneration';
 import { generateAbandonedBuiltObject, getMonitoringStationDesignSpec } from '../gameStartTail';
 import { findLonelyColonyLocation } from '../civilianAI';
 import { getEmpireById } from '../logistics/contracts';
-import { facilitiesFindBestPirateFacility } from '../construction/facilities';
+import { checkRemoveFacilityTracking, facilitiesFindBestPirateFacility, type PlanetaryFacility } from '../construction/facilities';
+import { PlanetaryFacilityType } from '../researchSystem';
 import { gameText } from '../colonyTick';
 import { strategicValue } from '../territory';
 import { SystemVisibilityStatus } from '../visibility';
@@ -1433,17 +1435,13 @@ export function getArtilleryTroopDefendStrength(troops: TroopList): number {
     return troopDefendStrength;
 }
 
-/** PlanetaryFacility surface read here (the class is M4i's; Habitat.facilities is `unknown[]`). */
-interface PlanetaryFacilityLike {
-    type: unknown;
-    name: string;
+/** BuiltObject.2.cs 5883 / 5891: the PirateBase / PirateFortress / PirateCriminalNetwork type test. */
+function isPirateFacilityType(type: PlanetaryFacilityType): boolean {
+    return type === PlanetaryFacilityType.PirateBase || type === PlanetaryFacilityType.PirateFortress || type === PlanetaryFacilityType.PirateCriminalNetwork;
 }
-/** PlanetaryFacilityType members compared here by member name (PlanetaryFacilityType.cs; the TS facility list is untyped). */
-const PIRATE_FACILITY_TYPES = ['PirateBase', 'PirateFortress', 'PirateCriminalNetwork'];
-const T_planetaryFacilityType = registerTodo('M4i', 'planetaryFacilityTypeValues');
 /** PlanetaryFacilityList.cs 214 SelectRandomFacility(excludeType). Rnd: Next(0, Count) × (1..11). */
-export function selectRandomFacility(galaxy: Galaxy, facilities: PlanetaryFacilityLike[], excludeType: unknown): PlanetaryFacilityLike | null {
-    let planetaryFacility: PlanetaryFacilityLike | null = null;
+export function selectRandomFacility(galaxy: Galaxy, facilities: PlanetaryFacility[], excludeType: PlanetaryFacilityType): PlanetaryFacility | null {
+    let planetaryFacility: PlanetaryFacility | null = null;
     if (facilities.length > 0) {
         let num = 0;
         for (planetaryFacility = facilities[galaxy.rnd.next(0, facilities.length)]; (planetaryFacility == null || planetaryFacility.type === excludeType) && num < 10; ++num) {
@@ -1498,20 +1496,17 @@ export function inflictBombardDamage(galaxy: Galaxy, self: BuiltObject, habitat:
             for (let i = 0; i < habitat.troopsToRecruit.count; i++) habitat.empire.troops.remove(habitat.troopsToRecruit.items[i]);
             habitat.troopsToRecruit.clear();
         }
-        const facilities = habitat.facilities as PlanetaryFacilityLike[] | null;
+        const facilities = habitat.facilities;
         if (facilities !== null && facilities.length > 0 && galaxy.rnd.next(0, 3000) < bombardPower) {
-            // TODO(port) M4i: PlanetaryFacilityType enum / PlanetaryFacility class (the TS facility list is untyped): the
-            // exclude type PirateCriminalNetwork and the pirate-facility checks compare `type` by member name.
-            todo(T_planetaryFacilityType);
-            const planetaryFacility = selectRandomFacility(galaxy, facilities, 'PirateCriminalNetwork');
+            // BuiltObject.2.cs 5879-5891: PlanetaryFacility.Type (PlanetaryFacilityType enum) comparisons.
+            const planetaryFacility = selectRandomFacility(galaxy, facilities, PlanetaryFacilityType.PirateCriminalNetwork);
             if (planetaryFacility !== null) {
                 let flag = true;
-                const isPirateFacility = PIRATE_FACILITY_TYPES.includes(String(planetaryFacility.type));
-                if (isPirateFacility && galaxy.rnd.next(0, 2) === 1) flag = false;
+                if (isPirateFacilityType(planetaryFacility.type) && galaxy.rnd.next(0, 2) === 1) flag = false;
                 if (flag) {
                     facilities.splice(facilities.indexOf(planetaryFacility), 1);
-                    // TODO(port) M4i: habitat.CheckRemoveFacilityTracking(planetaryFacility).
-                    if (isPirateFacility) {
+                    checkRemoveFacilityTracking(habitat, planetaryFacility);
+                    if (isPirateFacilityType(planetaryFacility.type)) {
                         // BuiltObject.2.cs 5896-5911 (PirateColonyControl ported by M4s2).
                         const byFacilityControl = habitat.pirateColonyControl.getByFacilityControl();
                         if (byFacilityControl !== null) {
@@ -1527,7 +1522,7 @@ export function inflictBombardDamage(galaxy: Galaxy, self: BuiltObject, habitat:
                             }
                         }
                     } else if (habitat.empire !== null) {
-                        const description2 = `Bombardment by ${self.name} destroys the ${planetaryFacility.name}`;
+                        const description2 = gameText('Bombardment Destroys Facility Description', planetaryFacility.name, self.name);
                         sendMessageToEmpire(habitat.empire, habitat.empire, EmpireMessageType.PlanetaryFacilityDestroyed, planetaryFacility, description2);
                     }
                 }
@@ -1863,17 +1858,196 @@ export function checkSelfDestruct(galaxy: Galaxy, builtObject: BuiltObject): voi
     }
 }
 
-// ---- stub added by M4u (Creature.cs 1299 AttackTarget, events.ts creatureAttackTarget) ----
+// ---- Creature.cs 1347 DamageTarget (called from Creature.cs 1299 AttackTarget, events.ts creatureAttackTarget) ----
 
-const T_creatureDamageTarget = registerTodo('M4o', 'creatureDamageTarget');
 /**
  * Creature.cs 1347 DamageTarget(abstractTarget, damage, tempNow, timePassed): creature vs creature (DamageCreature),
- * habitat (SilverMist population / quality damage, colony wipe-out) and built object (component damage, explosions) —
- * stub: no damage, returns false ("target not destroyed"). `tempNow` in sim ms.
+ * habitat (SilverMist population / quality damage, colony wipe-out) and built object (armor, component damage, the
+ * destruction explosion). Returns true when the target was destroyed / emptied. `tempNow` in sim ms.
+ * Rnd: built object destroyed → Next(0, 10) (+ the recursive calls for ships under construction); otherwise
+ * Next(0, Components.Count) × (1..11) per damaged component [+ Next(0, Troops.Count) for a StorageTroop hit].
  */
 export function creatureDamageTarget(galaxy: Galaxy, creature: Creature, abstractTarget: BuiltObject | Habitat | Creature, damage: number, tempNow: number, timePassed: number): boolean {
-    // RND: DamageTarget → built-object component damage draws — not drawn until M4o.
-    /* TODO(port) M4o */ todo(T_creatureDamageTarget);
+    if (isCreature(abstractTarget)) {
+        const creature2 = abstractTarget;
+        if (creature2.damageCreature(damage)) {
+            creature2.completeTeardown();
+            creature.currentTarget = null;
+        }
+    } else if (isHabitat(abstractTarget)) {
+        const habitat = abstractTarget;
+        if (creature.type === CreatureType.SilverMist && habitat.population != null && habitat.population.items.length > 0) {
+            if (habitat.quality > 0.0) {
+                if (habitat.damage <= 0.0 && habitat.empire !== null && habitat.empire !== galaxy.independentEmpire) {
+                    const habitatSystemStar = galaxy.determineHabitatSystemStar(habitat);
+                    const description = gameText('Colony Under Attack From Silvermist Description', habitat.name, habitatSystemStar?.name ?? '', creature.name);
+                    sendMessageToEmpire(habitat.empire, habitat.empire, EmpireMessageType.GeneralBadEvent, habitat, description);
+                }
+                const num = Math.fround(timePassed * 0.01);
+                habitat.damage = Math.fround(habitat.damage + num);
+                habitat.damage = Math.min(habitat.damage, habitat.baseQuality);
+                // habitat.RecalculateQuality(): the TS Quality is a live getter (types.ts).
+            }
+            const val2 = Math.trunc(timePassed * 1000000.0 * creature.attackStrength);
+            const num1 = Math.min(habitat.population.totalAmount, val2);
+            const num2 = Math.trunc(num1 / habitat.population.items.length);
+            if (creature.size < creature.maxSize) {
+                creature.size += Math.max(1, Math.min(csInt(num1 / 1000000.0), 10));
+                creature.size = Math.min(creature.size, creature.maxSize);
+                creature.attackStrength = csInt(creature.size / 10.0);
+                creature.damageKillThreshold = csInt(creature.size * 3.0);
+            }
+            const populationList: Population[] = [];
+            for (let index = 0; index < habitat.population.items.length; ++index) {
+                const population = habitat.population.items[index];
+                population.amount -= num2;
+                if (population.amount <= 0) populationList.push(population);
+            }
+            for (let index = 0; index < populationList.length; ++index) habitat.population.remove(populationList[index]);
+            if (habitat.population.items.length <= 0 && habitat.empire !== null) {
+                if (habitat.empire !== null && habitat.empire !== galaxy.independentEmpire) {
+                    const habitatSystemStar = galaxy.determineHabitatSystemStar(habitat);
+                    const text = gameText('SilverMist Wipes Out Colony');
+                    const description = gameText('Colony Wiped Out From Silvermist Description', habitat.name, habitatSystemStar?.name ?? '', creature.name);
+                    sendMessageToEmpireWithTitle(habitat.empire, habitat.empire, EmpireMessageType.GeneralBadEvent, habitat, description, text);
+                }
+                // Empire.TakeOwnershipOfColony(habitat, null, true) → (…, destroyBases: true, destroyTroops: true) (Empire.1.cs 59).
+                takeOwnershipOfColonyFull(galaxy, habitat.empire, habitat, null, true, true);
+                const troopLists = [habitat.troops, habitat.troopsToRecruit, habitat.invadingTroops];
+                for (const list of troopLists) {
+                    if (list === null) continue;
+                    for (let index = 0; index < list.items.length; ++index) {
+                        list.items[index].builtObject = null;
+                        list.items[index].colony = null;
+                        list.items[index].empire = null;
+                        list.items[index].race = null;
+                    }
+                }
+                for (const list of troopLists) list?.clear();
+                const arrayThreadSafe1 = (stellarObjectCharacters(habitat) ?? []).slice();
+                for (let index = 0; index < arrayThreadSafe1.length; ++index) {
+                    characterSendDeathMessage(galaxy, arrayThreadSafe1[index], CharacterDeathType.GenericDeath);
+                    arrayThreadSafe1[index].kill(galaxy);
+                }
+                const arrayThreadSafe2 = (habitatInvadingCharacterList(habitat) ?? []).slice();
+                for (let index = 0; index < arrayThreadSafe2.length; ++index) {
+                    characterSendDeathMessage(galaxy, arrayThreadSafe2[index], CharacterDeathType.GenericDeath);
+                    arrayThreadSafe2[index].kill(galaxy);
+                }
+                habitat.empire = null;
+                habitat.manufacturingQueue = null;
+                habitat.constructionQueue = null;
+            }
+            habitat.population.recalculateTotalAmount();
+            if (habitat.population.totalAmount <= 0) return true;
+        }
+    } else if (isBuiltObject(abstractTarget)) {
+        const excludeBuiltObject = abstractTarget;
+        const components = excludeBuiltObject.components.items;
+        let num3 = 0;
+        for (let index = 0; index < components.length; ++index) {
+            if (components[index].status === ComponentStatus.Normal) num3 += components[index].size;
+        }
+        if (num3 <= damage) {
+            const explosion = new Explosion();
+            explosion.explosionStart = tempNow;
+            explosion.explosionSize = 30;
+            explosion.explosionProgression = 0;
+            explosion.explosionOffsetX = 0;
+            explosion.explosionOffsetY = 0;
+            explosion.explosionImageIndex = toShort(galaxy.rnd.next(0, 10));
+            explosion.explosionWillDestroy = true;
+            excludeBuiltObject.explosions.push(explosion);
+            excludeBuiltObject.hasBeenDestroyed = true;
+            if (excludeBuiltObject.empire !== null) excludeBuiltObject.empire.visibility.resolveSystemVisibilityAt(excludeBuiltObject.xpos, excludeBuiltObject.ypos, excludeBuiltObject, null);
+            const constructionQueue = excludeBuiltObject.constructionQueue as { constructionYards: { shipUnderConstruction: BuiltObject | null }[] | null } | null;
+            if (constructionQueue !== null && constructionQueue.constructionYards !== null && countUnderConstruction(constructionQueue.constructionYards) > 0) {
+                for (const constructionYard of constructionQueue.constructionYards) {
+                    const underConstruction = constructionYard.shipUnderConstruction;
+                    if (underConstruction !== null) creatureDamageTarget(galaxy, creature, underConstruction, 2147483647, tempNow, timePassed);
+                }
+            }
+            excludeBuiltObject.reDefine();
+            return true;
+        }
+        let component = firstComponentByCategoryAndStatus(components, ComponentCategoryType.Armor, ComponentStatus.Normal);
+        const iterationCount1 = { count: 0 };
+        while (conditionCheckLimit(component !== null && damage > 0, 200, iterationCount1)) {
+            if (component!.value2 > 0 && damage <= component!.value2) damage = 0;
+            if (damage > 0) {
+                component!.status = ComponentStatus.Damaged;
+                damage -= component!.value1;
+                component = firstComponentByCategoryAndStatus(components, ComponentCategoryType.Armor, ComponentStatus.Normal);
+            }
+        }
+        let damageReduction = excludeBuiltObject.damageReduction;
+        const shipGroup = shipGroupOf(excludeBuiltObject);
+        if (shipGroup !== null) damageReduction *= shipGroup.damageControlBonus;
+        const num4 = damageReduction * captainDamageControlBonus(excludeBuiltObject);
+        damage = csInt(damage + 0.49 - damage * num4);
+        let index1 = 0;
+        for (const iterationCount2 = { count: 0 }; conditionCheckLimit(damage > 0, 500, iterationCount2); damage -= components[index1].size) {
+            let num5 = 0;
+            do {
+                index1 = galaxy.rnd.next(0, components.length);
+                ++num5;
+            } while (num5 <= 10 && components[index1].status === ComponentStatus.Damaged);
+            components[index1].status = ComponentStatus.Damaged;
+            if (excludeBuiltObject.role === BuiltObjectRole.Base) continue;
+            switch (components[index1].type) {
+                case ComponentType.StorageFuel: {
+                    const num6 = components[index1].value1;
+                    if (excludeBuiltObject.currentFuel > 0.0) {
+                        excludeBuiltObject.currentFuel -= num6;
+                        if (excludeBuiltObject.currentFuel < 0.0) excludeBuiltObject.currentFuel = 0.0;
+                    }
+                    break;
+                }
+                case ComponentType.StorageCargo: {
+                    let num7 = components[index1].value1;
+                    const cargoItems = excludeBuiltObject.cargo;
+                    // CargoList.TotalUnits (CargoList.cs 524): the sum of Amount.
+                    let totalUnits = 0;
+                    if (cargoItems !== null) for (const c of cargoItems.items) totalUnits += c.amount;
+                    if (cargoItems !== null && totalUnits > 0) {
+                        const cargoList: Cargo[] = [];
+                        for (const cargo of cargoItems.items) {
+                            if (num7 > 0) {
+                                if (cargo.amount > num7) {
+                                    cargo.amount -= num7;
+                                    break;
+                                }
+                                if (cargo.amount > 0) {
+                                    num7 -= cargo.amount;
+                                    cargoList.push(cargo);
+                                }
+                            } else {
+                                break;
+                            }
+                        }
+                        for (const current of cargoList) cargoItems.remove(current);
+                    }
+                    break;
+                }
+                case ComponentType.StorageTroop: {
+                    const num8 = components[index1].value1;
+                    if (excludeBuiltObject.troops !== null && excludeBuiltObject.troops.totalSize > 0) {
+                        excludeBuiltObject.troopCapacity -= num8;
+                        if (excludeBuiltObject.troops.totalSize > excludeBuiltObject.troopCapacity) {
+                            const index2 = galaxy.rnd.next(0, excludeBuiltObject.troops.count);
+                            if (index2 < excludeBuiltObject.troops.count) {
+                                if (excludeBuiltObject.empire !== null && excludeBuiltObject.empire.troops !== null) excludeBuiltObject.empire.troops.remove(excludeBuiltObject.troops.items[index2]);
+                                excludeBuiltObject.troops.items.splice(index2, 1);
+                            }
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+        excludeBuiltObject.reDefine();
+        if (excludeBuiltObject.role !== BuiltObjectRole.Base && excludeBuiltObject.damagedComponentCount > 0) excludeBuiltObject.repairForNextMission = true;
+    }
     return false;
 }
 

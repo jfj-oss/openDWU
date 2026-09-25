@@ -115,3 +115,15 @@ export class PirateColonyControlList {
         return null;
     }
 }
+
+/**
+ * Habitat.cs 6070 CheckColonyRevenueFromPirateControl(revenueEmpire): true when a pirate faction draws revenue from a
+ * colony it does not own. No Rnd.
+ */
+export function checkColonyRevenueFromPirateControl(habitat: { empire: Empire | null }, revenueEmpire: Empire | null): boolean {
+    if (revenueEmpire !== null && revenueEmpire.pirateEmpireBaseHabitat !== null) {
+        if (habitat.empire === revenueEmpire) return false;
+        return true;
+    }
+    return false;
+}

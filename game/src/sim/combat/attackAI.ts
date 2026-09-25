@@ -104,7 +104,7 @@ export function determineSpacePortAtColony(galaxy: Galaxy, colony: Habitat): Bui
 
 /**
  * Weapon.cs 181 IsAvailableWithoutEnergyConsideration(time): DistanceTravelled < 0 && LastFired + FireRate ms <= time.
- * Weapon.lastFired is kept in game ms by the M4o firing code (0 = never fired: DateTime.MinValue + FireRate <= any time).
+ * Weapon.lastFired is kept in game ms by the M4o firing code (MIN_TIME = never fired: DateTime.MinValue + FireRate <= any time).
  */
 export function weaponIsAvailableWithoutEnergyConsideration(weapon: Weapon, time: number): boolean {
     return weapon.distanceTravelled < 0.0 && weapon.lastFired + weapon.fireRate <= time;

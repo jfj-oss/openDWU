@@ -33,6 +33,7 @@ import { processColonyTroops } from './troops';
 import { CharacterSkillType, colonyCharactersHighestSkillExcludeLeaders, resolveColonyWarWearinessDivisors, resolveEmpireLeaderWarWearinessDivisor, resolveLeaderColonyHappiness } from './characters';
 import type { Galaxy } from './galaxy';
 import type { Habitat } from './types';
+import { checkColonyRevenueFromPirateControl } from './pirates/pirateColonyControl';
 import type { Race } from './data/races';
 import { resolveStandardRaceBias } from './raceBias';
 import { Empire, empireGovernmentAttributes, registerTakeOwnershipOfColonyHooks } from './empire';
@@ -527,8 +528,6 @@ export function setColonyTaxRate(galaxy: Galaxy, empire: Empire, colony: Habitat
     recalculateAnnualTaxRevenue(galaxy, colony);
 }
 
-// TODO(port): Habitat.CheckColonyRevenueFromPirateControl (pirate colony control) — none at game start.
-const checkColonyRevenueFromPirateControl = (_h: Habitat, _empire: Empire): boolean => false;
 
 // Empire.10.cs ReviewTaxes (158).
 export function reviewTaxes(galaxy: Galaxy, empire: Empire): void {
