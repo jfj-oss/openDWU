@@ -39,6 +39,10 @@ export interface GraphCodecOptions {
     classes: Record<string, object>;
     /** Prototype → own fields to leave out (rebuilt by the caller after load). */
     skipFields?: Map<object, ReadonlySet<string>>;
+    /** Prototype → hook run on each rebuilt instance right after Object.create, before its saved fields are
+     *  assigned: restores state a constructor sets up that is not an own enumerable field (e.g. non-enumerable
+     *  counters defined with Object.defineProperty). */
+    revive?: Map<object, (instance: object) => void>;
 }
 
 const TYPED_ARRAYS: [string, { new (values: ArrayLike<number>): ArrayLike<number>; prototype: object }][] = [
@@ -60,6 +64,11 @@ export class GraphEncoder {
     constructor(options: GraphCodecOptions, private readonly externals: Map<object, ExternalRef>) {
         for (const name of Object.keys(options.classes)) this.nameByPrototype.set(options.classes[name], name);
         this.skipFields = options.skipFields ?? new Map();
+    }
+
+    /** Every object encoded so far (not externals), in visit order. */
+    visited(): IterableIterator<object> {
+        return this.memo.keys();
     }
 
     encode(value: unknown, path = '$'): Encoded {
@@ -193,6 +202,7 @@ export class GraphDecoder {
                 const proto = this.options.classes[name];
                 if (proto === undefined) throw new Error(`Unknown class ${name} at ${path}.`);
                 const out = Object.create(proto) as Record<string, unknown>;
+                this.options.revive?.get(proto)?.(out);
                 this.memo.push(out);
                 const fields = value.$f as { [key: string]: Encoded };
                 for (const key of Object.keys(fields)) out[key] = this.decode(fields[key], `${path}.${key}`);

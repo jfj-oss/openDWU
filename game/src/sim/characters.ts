@@ -423,8 +423,8 @@ export function isBuiltObjectLocation(o: StellarObject): o is BuiltObject {
     return (o as BuiltObject).builtObjectID !== undefined && (o as BuiltObject).design !== undefined;
 }
 
-const habitatCharacters = new WeakMap<Habitat, Character[]>();
-const habitatInvadingCharacters = new WeakMap<Habitat, Character[]>();
+export const habitatCharacters = new WeakMap<Habitat, Character[]>();
+export const habitatInvadingCharacters = new WeakMap<Habitat, Character[]>();
 
 /** StellarObject.Characters (StellarObject.cs 29): null when never assigned. */
 export function stellarObjectCharacters(o: StellarObject): Character[] | null {
@@ -5002,7 +5002,7 @@ export function getHighestAppearanceOrder(list: Character[]): number {
 // Per-galaxy character data (Galaxy ctor: LoadAgentNames + SetRaceStartupCharacters)
 // ---------------------------------------------------------------------------
 
-interface CharacterGalaxyState {
+export interface CharacterGalaxyState {
     agentFirstNames: string[][];
     agentLastNames: string[][];
     /** Race.AvailableCharacters (Race.cs 107) per race of galaxy.races. */
@@ -5010,7 +5010,7 @@ interface CharacterGalaxyState {
     /** Galaxy.RndStatic stand-in (clock-seeded in C#). */
     rndStatic: Random;
 }
-const galaxyStates = new WeakMap<Galaxy, CharacterGalaxyState>();
+export const galaxyStates = new WeakMap<Galaxy, CharacterGalaxyState>();
 
 function characterGalaxyState(galaxy: Galaxy): CharacterGalaxyState {
     let state = galaxyStates.get(galaxy);
@@ -6556,7 +6556,7 @@ export interface CaptainBonuses {
     repair: number;
     hyperjumpSpeed: number;
 }
-const captainBonusMap = new WeakMap<BuiltObject, CaptainBonuses>();
+export const captainBonusMap = new WeakMap<BuiltObject, CaptainBonuses>();
 /** BuiltObject._Captain*Bonus (100 each until ReviewCaptainBonuses runs, C# field defaults are 0 but
  * ReviewCaptainBonuses runs in the BuiltObject ctor paths). TODO(port): move to BuiltObject fields. */
 export function captainBonuses(builtObject: BuiltObject): CaptainBonuses | null {
