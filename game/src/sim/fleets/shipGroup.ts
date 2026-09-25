@@ -44,6 +44,24 @@ export class ShipGroup {
     /** ShipGroup.cs 38/49 _WeaponsRangeBonus = 1.0 / _WeaponsRangeBonusExtra (WeaponsRangeBonus => sum; M4l ReviewFleetBonuses sets them). */
     weaponsRangeBonusBase = 1.0;
     weaponsRangeBonusExtra = 0.0;
+    // ---- fields added by M4o (read by combat/weapons.ts, damage.ts; ShipGroup.cs 30-50 base = 1.0 / extra = 0.0, M4l ReviewFleetBonuses sets them) ----
+    weaponsDamageBonusBase = 1.0;
+    weaponsDamageBonusExtra = 0.0;
+    shieldRechargeRateBonusBase = 1.0;
+    shieldRechargeRateBonusExtra = 0.0;
+    targetingBonusBase = 1.0;
+    targetingBonusExtra = 0.0;
+    countermeasuresBonusBase = 1.0;
+    countermeasuresBonusExtra = 0.0;
+    damageControlBonusBase = 1.0;
+    damageControlBonusExtra = 0.0;
+    /** ShipGroup.cs 67-83 the summed bonus properties. */
+    get weaponsRangeBonus(): number { return this.weaponsRangeBonusBase + this.weaponsRangeBonusExtra; }
+    get weaponsDamageBonus(): number { return this.weaponsDamageBonusBase + this.weaponsDamageBonusExtra; }
+    get shieldRechargeRateBonus(): number { return this.shieldRechargeRateBonusBase + this.shieldRechargeRateBonusExtra; }
+    get targetingBonus(): number { return this.targetingBonusBase + this.targetingBonusExtra; }
+    get countermeasuresBonus(): number { return this.countermeasuresBonusBase + this.countermeasuresBonusExtra; }
+    get damageControlBonus(): number { return this.damageControlBonusBase + this.damageControlBonusExtra; }
 
     // ShipGroup(Galaxy galaxy) (ShipGroup.cs 89).
     constructor(galaxy: Galaxy) {

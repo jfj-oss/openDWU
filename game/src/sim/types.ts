@@ -463,6 +463,15 @@ export class Habitat {
     // ---- M4m fields (military AI) ----
     // ---- M4n fields (threats) ----
     // ---- M4o fields (weapons, damage) ----
+    /** Habitat.cs 63 GiantIonCannonPresent / GiantIonCannon (Weapon; set by the planetary-facility code, M4i). */
+    giantIonCannonPresent = false;
+    giantIonCannon: unknown = null;
+    /** StellarObject.Attackers on a planet (StellarObjectList; read by Habitat.ShouldAttack, Habitat.cs 2707). */
+    attackers: unknown[] | null = null;
+    /** Habitat.TeardownEmpire (the empire that fired the planet destroyer; read by DoPlanetRemove). */
+    teardownEmpire: Empire | null = null;
+    /** Habitat.cs _DestroyedAsteroidFieldGenerated (DoExplosion 6362). */
+    destroyedAsteroidFieldGenerated = false;
     // ---- M4p fields (fighters) ----
     // ---- M4q fields (invasion, troops) ----
     /** Habitat.ColonyInvasion (ColonyInvasion.cs; null = no invasion in progress). */

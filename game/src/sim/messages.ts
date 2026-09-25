@@ -183,3 +183,12 @@ export function stampStarDate(galaxy: Galaxy, message: EmpireMessage): EmpireMes
 export function resolveDescription(enumType: Record<number, string>, value: number): string {
     return enumType[value] ?? String(value);
 }
+
+/**
+ * Empire.7.cs 3400 SendEventMessageToEmpire(eventMessageType, title, message, additionalData, location): an EventMessage
+ * popup for the player (UI). `eventMessageType` is the EventMessageType member name. Stub added by M4o: no queue yet —
+ * TODO(port) M4a/M9: the EventMessage list. Draws nothing.
+ */
+export function sendEventMessageToEmpire(empire: Empire | null, eventMessageType: string, title: string, message: string, additionalData: unknown, location: unknown): void {
+    void empire; void eventMessageType; void title; void message; void additionalData; void location;
+}

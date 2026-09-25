@@ -4419,6 +4419,8 @@ export class Galaxy {
     /** Galaxy.cs 597 InvasionAttempts (counter, BuiltObject.2.cs 2270). */
     invasionAttempts = 0;
     // ---- M4o fields (weapons, damage, teardown) ----
+    /** The clock-seeded `new Random()` of BaconBuiltObject.CollectScrapFromDestroyedBuiltObjects (5183): one stream per galaxy, seeded from the galaxy seed (plan §0). */
+    baconCombatClockRnd: Random | null = null;
     // ---- M4p fields (fighters) ----
     // ---- M4q fields (invasion, troops, boarding) ----
     // ---- M4r fields (diplomacy runtime) ----

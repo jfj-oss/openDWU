@@ -1461,6 +1461,18 @@ export class BuiltObject {
     /** BuiltObject.cs _LastInvasionDistance (double; the Attack case's invasion approach). */
     lastInvasionDistance = 536870911.0;
     // ---- M4o fields (weapons, damage, teardown) ----
+    /** BuiltObject.cs LastShieldStrike (DateTime → game ms; MIN_TIME = never) / LastShieldStrikeDirection (float). */
+    lastShieldStrike = MIN_TIME;
+    lastShieldStrikeDirection = 0;
+    /** BuiltObject.cs IonStrikeSoundPlayed / LastIonStrike (UI sound flag + game ms of the last ion hit). */
+    ionStrikeSoundPlayed = false;
+    lastIonStrike = MIN_TIME;
+    /** BuiltObject.cs ShieldAreaRechargeStartTime (DateTime.MinValue until CheckNearbyBuiltObjectsForShieldAreaRecharge). */
+    shieldAreaRechargeStartTime = MIN_TIME;
+    /** BuiltObject.cs _AssaultPodFiringCounter (short; BaconBuiltObject.InterceptMissiles and FireAtAssaultPods share it). */
+    assaultPodFiringCounter = 0;
+    /** BuiltObject.CareerBattleStats (SpaceBattleStats, combat/damage.ts; null until BaconSpaceBattleStats.AddLatestCombatStats). */
+    careerBattleStats: unknown = null;
     // ---- M4p fields (fighters) ----
     // ---- M4q fields (boarding, troops, capture) ----
     // ---- M4r fields (diplomacy) ----

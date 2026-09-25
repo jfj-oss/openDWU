@@ -86,3 +86,13 @@ const T_obtainBuildResourcesForConstructionShip = registerTodo('M4i', 'obtainBui
 export function obtainBuildResourcesForConstructionShip(galaxy: Galaxy, empire: Empire, constructionShip: BuiltObject, newBuiltObject: BuiltObject): void {
     /* TODO(port) M4i */ todo(T_obtainBuildResourcesForConstructionShip);
 }
+
+// ---- stub added by M4o (called from combat/damage.ts DetermineScrapDamagedShip, Galaxy.7.cs 2876) ----
+
+const T_findNearestAvailableConstructionShip = registerTodo('M4i', 'findNearestAvailableConstructionShip');
+/** Empire.9.cs 4631 FindNearestAvailableConstructionShip(x, y) — stub: null. */
+export function findNearestAvailableConstructionShip(galaxy: Galaxy, empire: Empire, x: number, y: number): BuiltObject | null {
+    void galaxy; void empire; void x; void y;
+    /* TODO(port) M4i */ todo(T_findNearestAvailableConstructionShip);
+    return null;
+}

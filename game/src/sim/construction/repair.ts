@@ -3,6 +3,9 @@
 
 import type { Galaxy } from '../galaxy';
 import type { BuiltObject } from '../builtObject';
+import type { Empire } from '../empire';
+import type { Habitat } from '../types';
+import { registerTodo, todo } from '../tick/todo';
 import { BuiltObjectRole } from '../data/designSpecifications';
 import { BuiltObjectSubRole } from '../builtObjectTypes';
 import { ComponentStatus, csInt } from '../builtObjectComponent';
@@ -152,4 +155,14 @@ export function checkForRepairs(galaxy: Galaxy, builtObject: BuiltObject): void 
     } else if (!builtObject.repairForNextMission && builtObject.unbuiltOrDamagedComponentCount > 0 && builtObject.builtAt === null) {
         builtObject.repairForNextMission = true;
     }
+}
+
+// ---- stub added by M4o (called from combat/damage.ts DetermineScrapDamagedShip, Galaxy.7.cs 2858) ----
+
+const T_findNearestShipYard = registerTodo('M4h', 'findNearestShipYard');
+/** Empire.5.cs 397 FindNearestShipYard(ship, canRepairOrBuild, includeVerySmallYards) — stub: null (no yard found). */
+export function findNearestShipYard(galaxy: Galaxy, empire: Empire, ship: BuiltObject, canRepairOrBuild: boolean, includeVerySmallYards: boolean): BuiltObject | Habitat | null {
+    void galaxy; void empire; void ship; void canRepairOrBuild; void includeVerySmallYards;
+    /* TODO(port) M4h */ todo(T_findNearestShipYard);
+    return null;
 }

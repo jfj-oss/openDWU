@@ -97,8 +97,44 @@ function halveRgb(color: number): number {
 }
 
 // Port of EmpireCounters.cs (revenue parts, M4j): the income / extermination totals and their Process* methods
-// (EmpireCounters.cs 67-72, 220-230). TODO(port) M4o/M4r: the destruction / diplomacy / espionage counters.
+// (EmpireCounters.cs 67-72, 220-230). M4o: the destruction counters (EmpireCounters.cs 20-58, 138, 333-513).
+// TODO(port) M4r: the diplomacy / espionage counters.
 export class EmpireCounters {
+    /** EmpireCounters.cs _Empire. */
+    private readonly _empire: Empire;
+    // EmpireCounters.cs 20-58 destruction / losses counters (int).
+    destroyedEnemyMilitaryShipCount = 0;
+    destroyedEnemyMilitaryShipSize = 0;
+    destroyedEnemyMilitaryShipFirepower = 0;
+    destroyedEnemyMilitaryShipCountEscort = 0;
+    destroyedEnemyMilitaryShipCountFrigate = 0;
+    destroyedEnemyMilitaryShipCountDestroyer = 0;
+    destroyedEnemyMilitaryShipCountCruiser = 0;
+    destroyedEnemyMilitaryShipCountCapitalShip = 0;
+    destroyedEnemyMilitaryShipCountTroopTransport = 0;
+    destroyedEnemyMilitaryShipCountCarrier = 0;
+    destroyedEnemyMilitaryShipCountResupplyShip = 0;
+    destroyedEnemyCivilianShipCount = 0;
+    destroyedEnemyCivilianShipSize = 0;
+    destroyedEnemyCivilianShipCountResearchStation = 0;
+    destroyedEnemyCivilianShipCountMiningStation = 0;
+    destroyedEnemyCivilianShipCountSpaceport = 0;
+    destroyedEnemyCivilianShipCountDefensiveBase = 0;
+    destroyedEnemyCivilianShipCountFreighter = 0;
+    destroyedEnemyCivilianShipCountPassengerShip = 0;
+    destroyedEnemyCivilianShipCountMiningShip = 0;
+    destroyedEnemyCivilianShipCountOtherBases = 0;
+    destroyedEnemyTroopCount = 0;
+    lossesMilitaryShipCount = 0;
+    lossesMilitaryShipSize = 0;
+    lossesMilitaryShipFirepower = 0;
+    lossesCivilianShipCount = 0;
+    lossesCivilianShipSize = 0;
+    lossesSpaceportCount = 0;
+    lossesOtherBasesCount = 0;
+    lossesTroopCount = 0;
+    lossesCharactersKilledCount = 0;
+    killEnemyCharactersCount = 0;
     exterminatedPopulationAmount = 0; // long
     tradeIncomeStateBonus = 0.0;
     tradeIncomeTotalVolume = 0.0;
@@ -114,7 +150,126 @@ export class EmpireCounters {
     // EmpireCounters.cs 90-91 (M4s: CompletePirateMission, pirates/missionsMarket.ts).
     completedPirateMissionAttackCount = 0;
     completedPirateMissionDefendCount = 0;
-    constructor(_empire: Empire) {}
+    constructor(empire: Empire) {
+        this._empire = empire;
+    }
+    /** EmpireCounters.cs 138 ProcessCharacterDeath(character). */
+    processCharacterDeath(character: { empire: Empire | null } | null): void {
+        if (character == null || character.empire === this._empire) return;
+        ++this.killEnemyCharactersCount;
+        if (character.empire === null) return;
+        ++character.empire.counters.lossesCharactersKilledCount;
+    }
+    /** EmpireCounters.cs 505 ProcessTroopDestruction(troop). */
+    processTroopDestruction(troop: { empire: unknown } | null): void {
+        if (troop == null) return;
+        ++this.destroyedEnemyTroopCount;
+        const troopEmpire = troop.empire as Empire | null;
+        if (troopEmpire == null) return;
+        ++troopEmpire.counters.lossesTroopCount;
+    }
+    /** EmpireCounters.cs 333 ProcessBuiltObjectDestruction(builtObject). */
+    processBuiltObjectDestruction(builtObject: BuiltObject | null): void {
+        if (builtObject == null) return;
+        if (builtObject.characters != null) {
+            for (let index = 0; index < builtObject.characters.length; ++index) this.processCharacterDeath(builtObject.characters[index] as { empire: Empire | null });
+        }
+        if (builtObject.troops != null) {
+            for (let index = 0; index < builtObject.troops.count; ++index) this.processTroopDestruction(builtObject.troops.items[index]);
+        }
+        const S = BuiltObjectSubRole;
+        if (builtObject.empire != null) {
+            if (builtObject.owner == null) {
+                ++this.lossesCivilianShipCount;
+                if (builtObject.design != null) this.lossesCivilianShipSize += builtObject.design.size;
+                if (builtObject.role === BuiltObjectRole.Base && builtObject.subRole !== S.SmallSpacePort && builtObject.subRole !== S.MediumSpacePort && builtObject.subRole !== S.LargeSpacePort) ++this.lossesOtherBasesCount;
+            } else {
+                switch (builtObject.subRole) {
+                    case S.Escort:
+                    case S.Frigate:
+                    case S.Destroyer:
+                    case S.Cruiser:
+                    case S.CapitalShip:
+                    case S.TroopTransport:
+                    case S.Carrier:
+                    case S.ResupplyShip:
+                        ++builtObject.empire.counters.lossesMilitaryShipCount;
+                        if (builtObject.design != null) {
+                            builtObject.empire.counters.lossesMilitaryShipFirepower += builtObject.design.firepowerRaw;
+                            builtObject.empire.counters.lossesMilitaryShipSize += builtObject.design.size;
+                        }
+                        break;
+                    case S.SmallSpacePort:
+                    case S.MediumSpacePort:
+                    case S.LargeSpacePort:
+                        ++builtObject.empire.counters.lossesSpaceportCount;
+                        break;
+                    default:
+                        if (builtObject.role === BuiltObjectRole.Base) ++this.lossesOtherBasesCount;
+                        break;
+                }
+            }
+        }
+        if (builtObject.owner == null) {
+            ++this.destroyedEnemyCivilianShipCount;
+            if (builtObject.design != null) this.destroyedEnemyCivilianShipSize += builtObject.design.size;
+            switch (builtObject.subRole) {
+                case S.SmallFreighter:
+                case S.MediumFreighter:
+                case S.LargeFreighter:
+                    ++this.destroyedEnemyCivilianShipCountFreighter;
+                    break;
+                case S.PassengerShip:
+                    ++this.destroyedEnemyCivilianShipCountPassengerShip;
+                    break;
+                case S.GasMiningShip:
+                case S.MiningShip:
+                    ++this.destroyedEnemyCivilianShipCountMiningShip;
+                    break;
+                case S.GasMiningStation:
+                case S.MiningStation:
+                    ++this.destroyedEnemyCivilianShipCountMiningStation;
+                    break;
+                default:
+                    if (builtObject.role === BuiltObjectRole.Base) ++this.destroyedEnemyCivilianShipCountOtherBases;
+                    break;
+            }
+        } else {
+            if (builtObject.role === BuiltObjectRole.Military) {
+                ++this.destroyedEnemyMilitaryShipCount;
+                if (builtObject.design != null) {
+                    this.destroyedEnemyMilitaryShipFirepower += builtObject.design.firepowerRaw;
+                    this.destroyedEnemyMilitaryShipSize += builtObject.design.size;
+                }
+            }
+            switch (builtObject.subRole) {
+                case S.Escort: ++this.destroyedEnemyMilitaryShipCountEscort; break;
+                case S.Frigate: ++this.destroyedEnemyMilitaryShipCountFrigate; break;
+                case S.Destroyer: ++this.destroyedEnemyMilitaryShipCountDestroyer; break;
+                case S.Cruiser: ++this.destroyedEnemyMilitaryShipCountCruiser; break;
+                case S.CapitalShip: ++this.destroyedEnemyMilitaryShipCountCapitalShip; break;
+                case S.TroopTransport: ++this.destroyedEnemyMilitaryShipCountTroopTransport; break;
+                case S.Carrier: ++this.destroyedEnemyMilitaryShipCountCarrier; break;
+                case S.ResupplyShip: ++this.destroyedEnemyMilitaryShipCountResupplyShip; break;
+                case S.SmallSpacePort:
+                case S.MediumSpacePort:
+                case S.LargeSpacePort:
+                    ++this.destroyedEnemyCivilianShipCountSpaceport;
+                    break;
+                case S.EnergyResearchStation:
+                case S.WeaponsResearchStation:
+                case S.HighTechResearchStation:
+                    ++this.destroyedEnemyCivilianShipCountResearchStation;
+                    break;
+                case S.DefensiveBase:
+                    ++this.destroyedEnemyCivilianShipCountDefensiveBase;
+                    break;
+                default:
+                    if (builtObject.role === BuiltObjectRole.Base) ++this.destroyedEnemyCivilianShipCountOtherBases;
+                    break;
+            }
+        }
+    }
     /** EmpireCounters.cs 220 ProcessColonyRevenue(amount). */
     processColonyRevenue(amount: number): void {
         this.colonyPrivateRevenueTotal += amount;
@@ -1611,6 +1766,16 @@ export class Empire {
     /** Empire.cs 844 PirateExtortionOfferMade. */
     pirateExtortionOfferMade = false;
     // ---- M4o fields (weapons, damage) ----
+    /** Empire.cs 417/419 TargettingFactor / CountermeasuresFactor = Galaxy.*FactorDefault (1.0; Galaxy.3.cs 5133-5134). TODO(port) M4j: ReviewEmpireAbilityBonuses sets them. */
+    targettingFactor = 1.0;
+    countermeasuresFactor = 1.0;
+    /** Empire.DefeatedLegendaryPiratesCount (ProvideBonusFromPirateBase, BuiltObject.2.cs 4975). */
+    defeatedLegendaryPiratesCount = 0;
+    /**
+     * Empire.cs 101 RaceEventType (the active race event; 0 = Undefined). Read by DetermineHitTarget (PredictiveHistory
+     * +20 targeting). TODO(port) M4u: race events set it (Empire.1.cs 1731-2881).
+     */
+    raceEventType = 0;
     // ---- M4p fields (fighters) ----
     // ---- M4q fields (invasion, troops) ----
     // ---- M4r fields (diplomacy runtime) ----

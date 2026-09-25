@@ -100,3 +100,12 @@ export function reviewPirateEmpireActivities(galaxy: Galaxy): void {
         }
     }
 }
+
+// ---- stub added by M4o (called from combat/damage.ts FearfulPirateFactionJoinsPlayer / ProvideBonusFromPirateBase) ----
+
+const T_eliminatePirateFaction = registerTodo('M4s', 'eliminatePirateFaction');
+/** Galaxy.8.cs 3026 EliminatePirateFaction(pirateFaction, conqueror) — stub: the faction keeps its assets. */
+export function eliminatePirateFaction(galaxy: Galaxy, pirateFaction: Empire, conqueror: Empire | null): void {
+    void galaxy; void pirateFaction; void conqueror;
+    /* TODO(port) M4s */ todo(T_eliminatePirateFaction);
+}

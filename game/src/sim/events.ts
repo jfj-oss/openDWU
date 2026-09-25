@@ -264,3 +264,22 @@ export function chanceNewAmbassador(galaxy: Galaxy, empire: Empire, newRelationT
     /* TODO(port) M4u */ todo(T_chanceNewAmbassador);
     return false;
 }
+
+// ---- stubs added by M4o (called from combat/damage.ts and combat/teardown.ts) ----
+
+const T_doPlanetDestroyAsteroidField = registerTodo('M4u', 'doPlanetDestroyAsteroidField');
+/** Habitat.cs DoPlanetDestroyAsteroidField (started on a Thread by DoExplosion, Habitat.cs 6365) — stub. */
+export function doPlanetDestroyAsteroidField(galaxy: Galaxy, habitat: Habitat): void {
+    // RND: asteroid field generation draws — not drawn until M4u.
+    /* TODO(port) M4u */ todo(T_doPlanetDestroyAsteroidField);
+}
+
+const T_characterSendDeathMessageAndKill = registerTodo('M4u', 'characterSendDeathMessageAndKill');
+/**
+ * Character.cs 4472 SendDeathMessage(deathType, galaxy) + 4546 Kill(galaxy) (ship / base destroyed, colony bombardment)
+ * — stub: the character stays alive. `deathType` is the CharacterDeathType member name.
+ */
+export function characterSendDeathMessageAndKill(galaxy: Galaxy, character: unknown, deathType: string): void {
+    void galaxy; void character; void deathType;
+    /* TODO(port) M4u */ todo(T_characterSendDeathMessageAndKill);
+}
