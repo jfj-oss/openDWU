@@ -103,7 +103,7 @@ describe('PreWarp (tech level 0) start (Start.2.cs 1146 / 1308 / 1314 / 1367 gat
 
 describe('state ledger, galaxy age 0 / tech 0.5, seed 1, 600 game-s', () => {
     it('state money rises (Empire.6.cs 741 DirectPrivateConstruction pays the state the private purchase price)', () => {
-        const g = createGame(tickGameOptions(gameData)).galaxy;
+        const g = createGame({ ...tickGameOptions(gameData), galaxyAge: 0 }).galaxy;
         const player = g.playerEmpire!;
         const before = player.stateMoney;
         runGameSeconds(g, 600);

@@ -215,29 +215,29 @@ describe('UpgradeMilitaryShipDesignMoreWeapons / MoreEngines (Galaxy.8.cs 4121 /
 // (re-pinned M4u: game-start character reviews (ReviewCharacterTraits Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd) move the stream before the super-pirate generation.)
 // (re-pinned M4f: Start.2.cs 1373 AssignMissionsToBuiltObjectList draws per idle ship at game start shift every later draw)
 // (Merge of M4f onto M4u/M4o/M4l: re-pinned once against the combined code.)
-// Re-pinned M4x: Galaxy.StartingAge is now the galaxy age (Galaxy.cs 982; unset galaxyAge = 0 here) instead of the
-// player's age 1, so CreateStateShips builds a third of the ships (Galaxy.8.cs 931), CreateMiningStations targets 6 (808)
-// and GeneratePirateEmpire skips the 0.5 difficulty modifier (4518): the game-start Rnd stream moves.
+// Re-pinned M4x: galaxyAge now defaults to 1 (standard preset, Start.cs 3298-3327). Before M4x these pins had Galaxy.Age 0
+// with StartingAge 1 (a mix the C# cannot produce); Galaxy.Age 1 adds military starting ships, the int_5 > 0 game-start
+// steps and StartStarDate + 30000000, so the Rnd stream moves.
 const PINNED: unknown[] = [
     [
-        "Escort:Decurion II:32",
-        "Frigate:Praefectus II:43",
-        "Destroyer:Vengeance II:55",
-        "Cruiser:Quaestor:90",
-        "CapitalShip:Shadow:137",
-        "Carrier:CX-2 Carrier:109",
+        "Escort:Centurion II:32",
+        "Frigate:Titan II:43",
+        "Destroyer:Javelin II:55",
+        "Cruiser:Sovereign II:90",
+        "CapitalShip:Venator:136",
+        "Carrier:CX-2 Carrier:108",
         "DefensiveBase:Phantom Pirate Defensive Base:123",
         "GenericBase:Phantom Pirate Base:217"
     ],
     [
-        "GenericBase:Gamblers Stronghold",
+        "GenericBase:Dhayu Shelter",
         "DefensiveBase:Dhayu 7 Orbital Battery",
+        "DefensiveBase:Dhayu 7 Defensive Base",
         "DefensiveBase:Dhayu 7 Defense Battery",
-        "DefensiveBase:Dhayu 7 Weapons Platform",
-        "Cruiser:Dreadful Warrior",
-        "Destroyer:Ruinous Nova",
-        "Cruiser:Crushing Rampage",
-        "Frigate:Mighty Revolt"
+        "Escort:Discarded Terror",
+        "Carrier:Lamented Mauler",
+        "Cruiser:Courageous Legacy",
+        "Cruiser:Indomitable Destiny"
     ],
-    26
+    32
 ];

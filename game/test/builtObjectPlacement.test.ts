@@ -1,3 +1,4 @@
+import { findNewestCanBuildFullEvaluate } from '../src/sim/designGeneration';
 import { BuiltObjectMissionType, builtObjectMission } from '../src/sim/missions/mission';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { createGame, type CreateGameOptions } from '../src/sim/game';
@@ -36,7 +37,7 @@ function opts(): CreateGameOptions {
 const S = BuiltObjectSubRole;
 
 interface ShipRecord {
-    state: number; // amounts C# builds: state as projected, a third when StartingAge == 0 (Galaxy.8.cs 931)
+    state: number; // amounts C# builds: state as projected (StartingAge != 0)
     priv: number; // freighters * 0.6
     ships: BuiltObject[]; // the ships the 1365-1375 loop added for this empire
     stateProjectionsAfter: number;
@@ -55,13 +56,9 @@ function buildAll(): { g: Galaxy; expected: Map<Empire, ShipRecord>; ships: Buil
             if (phase === 'empireSetup') shipsStartIndex = gal.builtObjects.length;
             if (phase === 'startingShips') shipsEndIndex = gal.builtObjects.length;
             if (phase === 'ships:start') {
-                // Galaxy.8.cs 931-934: StartingAge (the galaxy age, 0 here) == 0 with one colony builds a third
-                // (at least 1) of each non-construction projection.
-                const third = gal.startingAge === 0 && e!.colonies.length === 1;
-                const state = e!.stateForceStructureProjections!.items.reduce((n, p) => {
-                    const a = third && p.amount > 0 && p.subRole !== S.ConstructionShip ? Math.max(1, Math.trunc(p.amount / 3)) : p.amount;
-                    return n + Math.max(0, a);
-                }, 0);
+                // Galaxy.8.cs 929-930: a projection without a buildable design builds nothing (M4x: with Galaxy.Age 1 an
+                // empire can project e.g. a Carrier it has no design for).
+                const state = e!.stateForceStructureProjections!.items.reduce((n, p) => n + (findNewestCanBuildFullEvaluate(e!.designs, p.subRole, null) === null ? 0 : Math.max(0, p.amount)), 0);
                 const priv = e!.privateForceStructureProjections!.items.reduce((n, p) => {
                     const a = p.subRole === S.SmallFreighter || p.subRole === S.MediumFreighter || p.subRole === S.LargeFreighter ? Math.trunc(p.amount * 0.6) : p.amount;
                     return n + Math.max(0, a);
@@ -142,8 +139,10 @@ describe('CreateStateShips / CreatePrivateShips at game start (tech 0.5, age 1)'
         const { g, expected } = buildAll();
         const player = g.empires[0];
         // SelectRandomUniqueStandardShipName: "<adj> <noun>", "<star> <noun>" or "<noun> of <star>".
+        // M4x: with Galaxy.Age 1 empires also start with military ships, named "<design> NNN" (Galaxy.4.cs 2371).
+        const MILITARY = new Set([S.Escort, S.Frigate, S.Destroyer, S.Cruiser, S.CapitalShip, S.Carrier, S.TroopTransport]);
         for (const rec of expected.values()) {
-            for (const b of rec.ships) {
+            for (const b of rec.ships.filter((x) => !MILITARY.has(x.subRole))) {
                 expect(b.name).toMatch(/^\S+ \S+$|^\S+ of \S+$/);
                 expect(b.name).not.toMatch(/ \d{3}$/);
             }
@@ -152,9 +151,9 @@ describe('CreateStateShips / CreatePrivateShips at game start (tech 0.5, age 1)'
         const own = ships.filter((b) => player.builtObjects.includes(b));
         const priv = ships.filter((b) => player.privateBuiltObjects.includes(b));
         // Pinned for seed 1 (TS port; PINNED_NAMES below).
-        expect(own.slice(0, 9).map((b) => [S[b.subRole], b.name])).toEqual(PINNED_NAMES);
-        // M4x: StartingAge 0 (galaxy age) with one colony: a third of the 7 projected explorers (Galaxy.8.cs 931).
-        expect(own.map((b) => S[b.subRole])).toEqual([...Array(2).fill('ExplorationShip'), ...Array(3).fill('ConstructionShip')]);
+        expect(own.filter((b) => !MILITARY.has(b.subRole)).slice(0, 9).map((b) => [S[b.subRole], b.name])).toEqual(PINNED_NAMES);
+        // M4x (Galaxy.Age 1): the projection now includes 2 Escorts / Frigates / Destroyers and 5 explorers, 2 construction ships.
+        expect(own.map((b) => S[b.subRole])).toEqual(['Escort', 'Escort', 'Frigate', 'Frigate', 'Destroyer', 'Destroyer', ...Array(5).fill('ExplorationShip'), ...Array(2).fill('ConstructionShip')]);
         expect(priv.map((b) => S[b.subRole])).toEqual(['SmallFreighter', 'GasMiningShip', 'GasMiningShip', 'MiningShip', 'MiningShip']);
     }, 60000);
 
@@ -172,7 +171,16 @@ describe('CreateStateShips / CreatePrivateShips at game start (tech 0.5, age 1)'
         g.rnd.next = (...a: number[]) => { calls.push(`next(${a.join(',')})`); return next(...a); };
         g.rnd.nextDouble = () => { calls.push('nextDouble'); return nextDouble(); };
         createStateShips(g, e);
-        expect(calls.slice(0, 11)).toEqual([
+        // M4x: with Galaxy.Age 1 the player projects Escorts first; they are named "<design> NNN" (no name draws).
+        expect(calls.slice(0, 5)).toEqual([
+            'nextDouble', // SelectRandomHeading
+            'nextDouble', 'next(0,2)', 'nextDouble', // SelectRelativeParkingPoint
+            'next(0,1)', // SelectRandomColony
+        ]);
+        // The first standard-named ship (an explorer).
+        const k = calls.indexOf('next(0,127)');
+        expect(k).toBeGreaterThan(0);
+        expect(calls.slice(k, k + 11)).toEqual([
             'next(0,127)', 'next(0,125)', 'next(0,7)', // GenerateBuiltObjectName(design) — standard ship name
             'nextDouble', // SelectRandomHeading
             'nextDouble', 'next(0,2)', 'nextDouble', // SelectRelativeParkingPoint
@@ -299,12 +307,14 @@ describe('FindNearestBuiltObject / FindNearestPirateFaction', () => {
 // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
 // Re-pinned by M4u: the game-start Empire.DoTasks now runs the character reviews (ReviewCharacterTraits Rnd) and
 // ReviewEmpireEvents (DoRaceEvent Rnd), moving every later draw.
-// Re-pinned M4x: Galaxy.StartingAge is now the galaxy age (0 here, Galaxy.cs 982), so CreateStateShips builds a
-// third of the explorers (Galaxy.8.cs 931) and adds 1000 state money; the name draws are the same stream.
+// Re-pinned M4x: galaxyAge defaults to 1 (standard preset), so Galaxy.Age 1 projects military ships too and moves the
+// Rnd stream (see createGameFull PINNED_SUMMARY).
 const PINNED_NAMES: unknown[] = [
-    ['ExplorationShip', 'Lively Destiny'],
-    ['ExplorationShip', 'Sol Smuggler'],
-    ['ConstructionShip', 'Charming Culprit'],
-    ['ConstructionShip', 'Worthy Impulse'],
-    ['ConstructionShip', 'Frugal Smuggler'],
+    ['ExplorationShip', 'Silent Disturbance'],
+    ['ExplorationShip', 'Sol Whim'],
+    ['ExplorationShip', 'Daring Courage'],
+    ['ExplorationShip', 'Majestic Obsession'],
+    ['ExplorationShip', 'Sol Enterprise'],
+    ['ConstructionShip', 'Conspicuous Encounter'],
+    ['ConstructionShip', 'Brazen Memory'],
 ];

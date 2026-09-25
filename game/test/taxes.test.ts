@@ -25,6 +25,8 @@ function opts(): CreateGameOptions {
         systemNames: Array.from({ length: 300 }, (_, i) => `S${i}`), gameData,
         player: { race: 'Human', homeSystemFavourability: 'Normal', startLocation: '(Random)', age: 1, techLevel: 0.5 },
         aiEmpires: [ai('(Random)'), ai('(Random)'), ai('(Random)')],
+        // M4x: galaxyAge now defaults to 1; this test's pins / asserts are for Galaxy.Age 0 (START_STAR_DATE etc.).
+        galaxyAge: 0,
     };
 }
 

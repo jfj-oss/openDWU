@@ -88,7 +88,7 @@ export interface CreateGameOptions {
     gameData: GameData;
     colonyPrevalence?: number;
     /** Galaxy.Age (0-6): the wizard's galaxy Expansion slider (Start.1.cs 3695 / Start.2.cs 113). Also
-     *  Galaxy.StartingAge (Galaxy.cs 982). Unset = 0 (PreWarp). */
+     *  Galaxy.StartingAge (Galaxy.cs 982). Unset = 1 (standard preset, Start.cs 3298-3327). */
     galaxyAge?: number;
     colonyNames?: string[];
     player: EmpireStartOptions;
@@ -702,7 +702,10 @@ export function createGame(opts: CreateGameOptions): Game {
         gameData: gd,
         empireStarts: all.filter((e) => e.resolvedRace !== null).map((e) => ({ resolvedRace: e.resolvedRace!, projectedColonyAmount: e.projectedColonyAmount })),
     });
-    galaxy.age = opts.galaxyAge ?? 0;
+    // Unset galaxyAge = 1: the game's standard preset (Start.cs 3298-3327: Expansion 1 / empire tech Normal 0.5).
+    // The C# option-screen defaults (Main.Part9.cs 2664 / 2689: GalaxyExpansion 0, YourEmpireTechLevel 0) are a
+    // pre-warp start instead; callers wanting age 0 pass galaxyAge: 0.
+    galaxy.age = opts.galaxyAge ?? 1;
     // Start.2.cs 107-108 and the starting age / difficulty used throughout game start.
     galaxy.piratePrevalence = opts.piratePrevalence ?? 0;
     galaxy.raceFamilies = gd.raceFamilies;

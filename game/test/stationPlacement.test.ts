@@ -30,6 +30,8 @@ function opts(): CreateGameOptions {
         seed: 1, shape: GalaxyShape.Spiral, starCount: 300, sectorWidth: 8, sectorHeight: 8,
         systemNames: Array.from({ length: 300 }, (_, i) => `S${i}`), gameData,
         player: s('Human'), aiEmpires: [s('(Random)'), s('(Random)'), s('(Random)')],
+        // M4x: galaxyAge now defaults to 1; this test's pins / asserts are for Galaxy.Age 0 (START_STAR_DATE etc.).
+        galaxyAge: 0,
     };
 }
 

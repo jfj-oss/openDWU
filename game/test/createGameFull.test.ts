@@ -157,9 +157,9 @@ describe('createGame full game start (seed 1, Spiral 300 stars, 8x8, Human + 3 A
 // Re-pinned M4u: the game-start Empire.DoTasks runs the character reviews (ReviewCharacterTraits / ApplyCharacterLocationBonus Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd); empire placement, names and pirates shift.
 // Re-pinned M4f: game-start AssignMissionsToBuiltObjectList draws move the empire-placement / ruins stream.
 // (Merge of M4f onto M4u/M4o/M4l: re-pinned once against the combined code.)
-// Re-pinned M4x: Galaxy.StartingAge is now the galaxy age (Galaxy.cs 982; unset galaxyAge = 0 here) instead of the
-// player's age 1 (explorers 7 -> 2), so CreateStateShips builds a third of the ships (Galaxy.8.cs 931), CreateMiningStations targets 6 (808)
-// and GeneratePirateEmpire skips the 0.5 difficulty modifier (4518): the game-start Rnd stream moves.
+// Re-pinned M4x: galaxyAge now defaults to 1 (standard preset, Start.cs 3298-3327). Before M4x these pins had Galaxy.Age 0
+// with StartingAge 1 (a mix the C# cannot produce); Galaxy.Age 1 adds military starting ships, the int_5 > 0 game-start
+// steps and StartStarDate + 30000000, so the Rnd stream moves.
 const PINNED_SUMMARY: unknown = {
     "empires": [
         {
@@ -170,15 +170,18 @@ const PINNED_SUMMARY: unknown = {
             "researchStations": 1,
             "miningStations": 6,
             "stateShips": {
-                "ExplorationShip": 2,
-                "ConstructionShip": 3
+                "Escort": 2,
+                "Frigate": 2,
+                "Destroyer": 2,
+                "ExplorationShip": 5,
+                "ConstructionShip": 2
             },
             "privateShips": {
                 "SmallFreighter": 1,
                 "GasMiningShip": 2,
                 "MiningShip": 2
             },
-            "troops": 10,
+            "troops": 11,
             "characters": 3,
             "taxRates": [
                 0.30000001192092896
@@ -192,7 +195,9 @@ const PINNED_SUMMARY: unknown = {
             "researchStations": 1,
             "miningStations": 6,
             "stateShips": {
-                "ExplorationShip": 2,
+                "Escort": 4,
+                "Frigate": 5,
+                "ExplorationShip": 7,
                 "ConstructionShip": 3
             },
             "privateShips": {
@@ -200,7 +205,7 @@ const PINNED_SUMMARY: unknown = {
                 "GasMiningShip": 2,
                 "MiningShip": 2
             },
-            "troops": 1,
+            "troops": 5,
             "characters": 3,
             "taxRates": [
                 0.28999999165534973
@@ -214,18 +219,20 @@ const PINNED_SUMMARY: unknown = {
             "researchStations": 1,
             "miningStations": 6,
             "stateShips": {
-                "ExplorationShip": 2,
-                "ConstructionShip": 3
+                "Escort": 2,
+                "Frigate": 4,
+                "ExplorationShip": 4,
+                "ConstructionShip": 1
             },
             "privateShips": {
                 "SmallFreighter": 1,
                 "GasMiningShip": 2,
                 "MiningShip": 2
             },
-            "troops": 1,
+            "troops": 5,
             "characters": 3,
             "taxRates": [
-                0.2199999988079071
+                0.25
             ]
         },
         {
@@ -236,7 +243,10 @@ const PINNED_SUMMARY: unknown = {
             "researchStations": 1,
             "miningStations": 6,
             "stateShips": {
-                "ExplorationShip": 2,
+                "Escort": 3,
+                "Frigate": 3,
+                "Destroyer": 3,
+                "ExplorationShip": 7,
                 "ConstructionShip": 3
             },
             "privateShips": {
@@ -244,7 +254,7 @@ const PINNED_SUMMARY: unknown = {
                 "GasMiningShip": 2,
                 "MiningShip": 2
             },
-            "troops": 1,
+            "troops": 5,
             "characters": 2,
             "taxRates": [
                 0.3100000023841858
@@ -256,10 +266,9 @@ const PINNED_SUMMARY: unknown = {
             "name": "Venomous Marauders",
             "bases": 1,
             "fleet": {
-                "Escort": 3,
-                "ExplorationShip": 2,
-                "ConstructionShip": 1,
-                "ResupplyShip": 1
+                "Escort": 1,
+                "ExplorationShip": 1,
+                "ConstructionShip": 1
             },
             "private": {
                 "SmallFreighter": 1,
@@ -270,45 +279,12 @@ const PINNED_SUMMARY: unknown = {
             "characters": 2
         },
         {
-            "name": "Sol Ravagers",
-            "bases": 1,
-            "fleet": {
-                "Escort": 4,
-                "ExplorationShip": 1,
-                "ConstructionShip": 1,
-                "ResupplyShip": 1
-            },
-            "private": {
-                "SmallFreighter": 1,
-                "GasMiningStation": 1
-            },
-            "characters": 2
-        },
-        {
-            "name": "Fearsome Transport",
+            "name": "Iron League",
             "bases": 1,
             "fleet": {
                 "Escort": 1,
-                "ExplorationShip": 2,
-                "ConstructionShip": 1,
-                "ResupplyShip": 1
-            },
-            "private": {
-                "SmallFreighter": 4,
-                "MiningShip": 1,
-                "GasMiningShip": 1,
-                "GasMiningStation": 3
-            },
-            "characters": 2
-        },
-        {
-            "name": "Dread Authority",
-            "bases": 1,
-            "fleet": {
-                "Escort": 2,
-                "ExplorationShip": 2,
-                "ConstructionShip": 1,
-                "ResupplyShip": 1
+                "ExplorationShip": 1,
+                "ConstructionShip": 1
             },
             "private": {
                 "SmallFreighter": 2,
@@ -319,13 +295,27 @@ const PINNED_SUMMARY: unknown = {
             "characters": 2
         },
         {
-            "name": "Savage Fang Mining",
+            "name": "S1 Ravagers",
             "bases": 1,
             "fleet": {
                 "Escort": 1,
-                "ExplorationShip": 2,
-                "ConstructionShip": 1,
-                "ResupplyShip": 1
+                "ExplorationShip": 1,
+                "ConstructionShip": 1
+            },
+            "private": {
+                "SmallFreighter": 1,
+                "MiningShip": 1,
+                "GasMiningShip": 1,
+                "GasMiningStation": 2
+            },
+            "characters": 2
+        },
+        {
+            "name": "Fearsome Claw Interstellar",
+            "bases": 1,
+            "fleet": {
+                "ExplorationShip": 1,
+                "ConstructionShip": 1
             },
             "private": {
                 "SmallFreighter": 4,
@@ -337,43 +327,47 @@ const PINNED_SUMMARY: unknown = {
             "characters": 2
         },
         {
-            "name": "S269 League",
+            "name": "Sinister Moon Marauders",
             "bases": 1,
             "fleet": {
                 "Escort": 2,
-                "ExplorationShip": 2,
-                "ConstructionShip": 1,
-                "ResupplyShip": 1
+                "ConstructionShip": 1
             },
             "private": {
-                "SmallFreighter": 2,
-                "MiningShip": 1,
-                "GasMiningShip": 1,
-                "GasMiningStation": 1,
-                "MiningStation": 1
+                "SmallFreighter": 1,
+                "GasMiningStation": 1
             },
             "characters": 2
         },
         {
-            "name": "Iron Claw Guild",
+            "name": "Dirty Pirates",
             "bases": 1,
             "fleet": {
-                "Escort": 1,
-                "ExplorationShip": 2,
-                "ConstructionShip": 1,
-                "ResupplyShip": 1
+                "Escort": 2,
+                "ConstructionShip": 1
             },
             "private": {
-                "SmallFreighter": 4,
-                "MiningShip": 1,
-                "GasMiningShip": 1,
-                "GasMiningStation": 3
+                "SmallFreighter": 1,
+                "GasMiningStation": 1
+            },
+            "characters": 2
+        },
+        {
+            "name": "Sol Pirates",
+            "bases": 1,
+            "fleet": {
+                "Escort": 2,
+                "ConstructionShip": 1
+            },
+            "private": {
+                "SmallFreighter": 1,
+                "GasMiningStation": 1
             },
             "characters": 2
         }
     ],
     "independentTraders": 150,
-    "unownedBuiltObjects": 24,
-    "builtObjects": 340,
-    "ruins": 32
+    "unownedBuiltObjects": 20,
+    "builtObjects": 342,
+    "ruins": 27
 };
