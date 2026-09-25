@@ -20,7 +20,7 @@ import { GalaxyLocationEffectType, GalaxyLocationType, type GalaxyLocation } fro
 import { getBuiltObjectsAtLocation } from './stationPlacement';
 import { MAX_SOLAR_SYSTEM_SIZE } from './visibility';
 import { BuiltObjectRole } from './data/designSpecifications';
-import { builtObjectInflictDamage, creatureDamageTarget } from './combat/damage';
+import { creatureDamageTarget, inflictDamageFull } from './combat/damage';
 import { builtObjectCompleteTeardown } from './combat/teardown';
 import { clearAllMissionsForTargetHabitat, clearPreviousMissionRequirements } from './missions/assign';
 import { BuiltObjectMissionType } from './missions/mission';
@@ -30,6 +30,7 @@ import type { ConstructionQueue } from './construction/constructionQueue';
 import { determineAngle, type Creature } from './creature';
 import { isBuiltObject, isCreature, isHabitat, type StellarObject } from './missions/mission';
 import { notifyOfAttackBuiltObject, notifyOfAttackHabitat } from './combat/attackAI';
+import { stellarAttackers, stellarPursuers } from './combat/threats';
 import { doCharacterEventForList, type Character, type CharacterEventType } from './characters';
 import * as characterRuntime from './characterRuntime';
 import { EventMessageType, DisasterEventType, RaceEventType, raceImmuneToPlagues, galaxyPlagues, getPlagueUnhappinessFactorWithPlague } from './eventTypes';
@@ -198,7 +199,7 @@ export function doLocationEffects(galaxy: Galaxy, builtObject: BuiltObject, time
     if (builtObject.shipDamageAmountLocation > 0) {
         const hitPower = builtObject.shipDamageAmountLocation * timePassed;
         // TODO(port) M4o: InflictDamage (BuiltObject.2.cs 6221) — stub, no damage applied.
-        builtObjectInflictDamage(galaxy, builtObject, builtObject, null, hitPower, time, 0, false, -Number.MAX_VALUE, false);
+        inflictDamageFull(galaxy, builtObject, builtObject, null, hitPower, time, 0, false, -Number.MAX_VALUE, false);
     }
     if (builtObject.shipPullAmountLocation > 0) {
         const num = builtObject.shipPullAmountLocation * timePassed;
@@ -281,7 +282,7 @@ export function applyLocationEffects(galaxy: Galaxy, builtObject: BuiltObject, t
                 num8 = galaxy.rnd.nextDouble() * 5.0;
             }
             // TODO(port) M4o: InflictDamage (BuiltObject.2.cs 6221) — stub, no damage applied.
-            builtObjectInflictDamage(galaxy, builtObject, builtObject, null, num8, time, 0, false, -Number.MAX_VALUE, true);
+            inflictDamageFull(galaxy, builtObject, builtObject, null, num8, time, 0, false, -Number.MAX_VALUE, true);
             builtObject.lastLocationEffectTouch = time;
         }
     }
@@ -464,12 +465,12 @@ export function processPlague(galaxy: Galaxy, habitat: Habitat, timePassed: numb
                     for (let m = 0; m < builtObjectList.length; m++) {
                         const builtObject2 = builtObjectList[m];
                         // TODO(port) M4o: InflictDamage (BuiltObject.2.cs 6221) — stub, no damage applied (the C# destroys the base).
-                        builtObjectInflictDamage(galaxy, builtObject2, builtObject2, null, 1000000.0, galaxyNow(galaxy), 0, false, 0.0, false);
+                        inflictDamageFull(galaxy, builtObject2, builtObject2, null, 1000000.0, galaxyNow(galaxy), 0, false, 0.0, false);
                     }
                     for (let n = 0; n < habitat.basesAtHabitat.length; n++) {
                         const builtObject3 = habitat.basesAtHabitat[n];
                         // TODO(port) M4o: InflictDamage (BuiltObject.2.cs 6221) — stub, no damage applied.
-                        if (builtObject3 != null) builtObjectInflictDamage(galaxy, builtObject3, builtObject3, null, 1000000.0, galaxyNow(galaxy), 0, false, 0.0, false);
+                        if (builtObject3 != null) inflictDamageFull(galaxy, builtObject3, builtObject3, null, 1000000.0, galaxyNow(galaxy), 0, false, 0.0, false);
                     }
                     // TODO(port) M4q: ClearColony(null, sendMessages: true, removeEmpireWhenNoColonies: true) (Habitat.cs 7450) — stub.
                     clearColony(galaxy, habitat, null);
@@ -1041,19 +1042,7 @@ export function chanceNewAmbassador(galaxy: Galaxy, empire: Empire, newRelationT
 // AttackTarget). Creature times are game seconds (creature.ts); DamageTarget is combat damage (M4o stub).
 // ---------------------------------------------------------------------------
 
-/** StellarObject.Attackers (null for habitats: the C# never initialises them). */
-export function stellarAttackers(o: StellarObject): StellarObject[] | null {
-    if (isBuiltObject(o)) return o.attackers as StellarObject[] | null;
-    if (isCreature(o)) return o.attackers;
-    return null;
-}
-
-/** StellarObject.Pursuers (null for habitats). */
-export function stellarPursuers(o: StellarObject): StellarObject[] | null {
-    if (isBuiltObject(o)) return o.pursuers as StellarObject[] | null;
-    if (isCreature(o)) return o.pursuers;
-    return null;
-}
+// StellarObject.Attackers / Pursuers: combat/threats.ts stellarAttackers / stellarPursuers.
 
 /** StellarObject.CurrentSpeed (float; a habitat's is never set → 0). */
 function stellarCurrentSpeed(o: StellarObject): number {
@@ -1244,4 +1233,39 @@ export function creatureAttackTarget(galaxy: Galaxy, creature: Creature, timePas
     } else {
         creature.targetSpeed = Math.fround(creature.movementSpeed);
     }
+}
+
+// ---- stubs added by M4o (called from combat/damage.ts and combat/teardown.ts) ----
+
+const T_doPlanetDestroyAsteroidField = registerTodo('M4u', 'doPlanetDestroyAsteroidField');
+/** Habitat.cs DoPlanetDestroyAsteroidField (started on a Thread by DoExplosion, Habitat.cs 6365) — stub. */
+export function doPlanetDestroyAsteroidField(galaxy: Galaxy, habitat: Habitat): void {
+    // RND: asteroid field generation draws — not drawn until M4u.
+    /* TODO(port) M4u */ todo(T_doPlanetDestroyAsteroidField);
+}
+
+const T_chanceRaceEvent = registerTodo('M4u', 'chanceRaceEvent');
+/** Galaxy.9.cs ChanceRaceEvent(builtObjectDestroyed, destroyer) (BuiltObject.2.cs 6577; race events, Empire.1.cs 1731-2881) — stub. */
+export function chanceRaceEvent(galaxy: Galaxy, builtObjectDestroyed: BuiltObject, destroyer: BuiltObject): void {
+    void galaxy; void builtObjectDestroyed; void destroyer;
+    // RND: race event chance draws — not drawn until M4u.
+    /* TODO(port) M4u */ todo(T_chanceRaceEvent);
+}
+
+const T_chanceNewShipCaptain = registerTodo('M4u', 'chanceNewShipCaptain');
+/** Galaxy.2.cs 5022 ChanceNewShipCaptain(targetDestroyed, empire, location) → 5027 — stub: false (no captain appears). */
+export function chanceNewShipCaptain(galaxy: Galaxy, targetDestroyed: BuiltObject, empire: Empire | null, location: BuiltObject | Habitat | null): boolean {
+    void galaxy; void targetDestroyed; void empire; void location;
+    // RND: Rnd.Next(0, num) — not drawn until M4u.
+    /* TODO(port) M4u */ todo(T_chanceNewShipCaptain);
+    return false;
+}
+
+const T_chanceNewFleetAdmiral = registerTodo('M4u', 'chanceNewFleetAdmiral');
+/** Galaxy.2.cs 5092 ChanceNewFleetAdmiral(targetDestroyed, empire, location) → 5097 — stub: false. */
+export function chanceNewFleetAdmiral(galaxy: Galaxy, targetDestroyed: BuiltObject, empire: Empire | null, location: BuiltObject | Habitat | null): boolean {
+    void galaxy; void targetDestroyed; void empire; void location;
+    // RND: Rnd.Next(0, num) — not drawn until M4u.
+    /* TODO(port) M4u */ todo(T_chanceNewFleetAdmiral);
+    return false;
 }

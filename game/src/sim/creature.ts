@@ -7,7 +7,8 @@ import type { Galaxy } from './galaxy';
 import { GalaxyLocationEffectType } from './galaxyLocation';
 import { HabitatCategoryType, HabitatType, type Habitat } from './types';
 import { isHabitat, type StellarObject } from './missions/mission';
-import { creatureAttackTarget, creatureCheckForAttackers, creatureCheckForTargets, creatureCheckTargetInRange, stellarAttackers, stellarPursuers } from './events';
+import { creatureAttackTarget, creatureCheckForAttackers, creatureCheckForTargets, creatureCheckTargetInRange } from './events';
+import { stellarAttackers, stellarPursuers } from './combat/threats';
 import { checkEmpireHasHyperDriveTech } from './forceStructure';
 
 // Port of DistantWorlds.Types.CreatureType (member order exact; byte enum).

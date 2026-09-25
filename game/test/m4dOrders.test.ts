@@ -315,11 +315,14 @@ describe('harness smoke (seed 1, 600 game-s)', () => {
         // Since M4n a freighter that sights a creature within attack range flees (BuiltObject.1.cs 1621 ShouldFleeFrom,
         // FleeWhen = EnemyMilitarySighted); ClearPreviousMissionRequirements then cancels its contracts, which the C#
         // CancelContract leaves on the order with AmountToFulfill = AmountDelivered (0). Only live contracts are checked.
-        const live = contracted.filter((o) => o.contracts.some((c) => c !== null && c.amountToFulfill > 0));
+        // A fully delivered contract also stays on its Order (the C# never removes contracts from Order.Contracts), with
+        // AmountToFulfill == AmountDelivered and the freighter released: live means AmountToFulfill > AmountDelivered.
+        const isLive = (c: Contract | null): c is Contract => c !== null && c.amountToFulfill > 0 && c.amountToFulfill > c.amountDelivered;
+        const live = contracted.filter((o) => o.contracts.some(isLive));
         expect(live.length).toBeGreaterThan(0);
         for (const o of live) {
             for (const c of o.contracts) {
-                if (c === null || c.amountToFulfill <= 0) continue;
+                if (!isLive(c)) continue;
                 expect(c!.freighter).not.toBeNull();
                 expect(builtObjectContracts(c!.freighter!)).toContain(c);
                 expect(builtObjectMission(c!.freighter!.mission)?.type).toBe(BuiltObjectMissionType.Transport);

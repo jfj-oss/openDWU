@@ -77,6 +77,29 @@ function reviewDesignsProbe(getEmpire: () => Empire): BlockProbe {
     };
 }
 
+/**
+ * CleanupInvalidShips probe (Empire.8.cs 2896, combat/teardown.ts): a docking bay of an auto-controlled base holding a
+ * ship whose DockedAt is null is emptied by the huge block.
+ */
+function cleanupInvalidShipsProbe(getEmpire: () => Empire): BlockProbe {
+    let bay: { dockedShip: unknown } | null = null;
+    return {
+        arm: () => {
+            const e = getEmpire();
+            const host = (e.builtObjects as unknown as { inView: boolean; isAutoControlled: boolean; dockingBays: { dockedShip: unknown }[] | null }[])
+                .find((b) => !b.inView && b.isAutoControlled && b.dockingBays !== null && b.dockingBays.length > 0);
+            expect(host).toBeDefined();
+            bay = host!.dockingBays![0];
+            bay.dockedShip = { dockedAt: null };
+        },
+        fired: () => {
+            const fired = bay !== null && bay.dockedShip === null;
+            if (bay !== null) bay.dockedShip = null;
+            return fired;
+        },
+    };
+}
+
 function setEmpireTouches(e: Empire, ms: number): void {
     e.lastShortTouch = e.lastRegularTouch = e.lastPeriodicTouch = e.lastIntermediateTouch = e.lastLongTouch = e.lastHugeTouch = ms;
 }
@@ -113,7 +136,7 @@ describe('Empire.DoTasks intervals (Empire.1.cs 3427, >= on seconds, touches fir
         periodic: 'M4s checkSendPirateRaid',
         intermediate: 'M4l reviewFleetAdmiralBonuses',
         long: 'M4f reviewMigrationTourism', // (M4i ported ReviewColonyWonders; same block)
-        huge: 'M4o cleanupInvalidShips', // (M4u ported ResetRaceEvents, the previous marker)
+        huge: 'M4s checkColoniesForPirateFacilitiesAndAttack', // (M4o ported CleanupInvalidShips; M4u ResetRaceEvents before that)
     };
     const at = (ms: number): string[] => {
         const e = galaxy.empires[1];
@@ -163,7 +186,9 @@ describe('Empire.DoTasks intervals (Empire.1.cs 3427, >= on seconds, touches fir
             periodic: 'M4s pirateRecalculateEmpireCorruption',
             intermediate: 'M4s pirateCollectIncomeFromControlledColonies',
             long: 'M4s doTaskPiratesLongInterval',
-            huge: 'M4o cleanupInvalidShips', // (M4u ported PirateReviewRandomEvents, the previous marker)
+            // No stub left in the pirate huge block (M4u PirateReviewRandomEvents, M4d MaintainBaseResourceLevels, M4o
+            // CleanupInvalidShips): detected by a probe on CleanupInvalidShips.
+            huge: cleanupInvalidShipsProbe(() => galaxy.pirateEmpires[0]),
         };
         const p = galaxy.pirateEmpires[0];
         expect(p.pirateEmpireBaseHabitat).not.toBeNull();
@@ -226,7 +251,7 @@ describe('Habitat.DoTasks intervals (Habitat.cs 1399, strict >)', () => {
 
 describe('BuiltObject.DoTasks (BuiltObject.cs 3614)', () => {
     const markers = {
-        intermediate: 'M4o checkShieldAreaRechargeReset', // was 'M4n checkNearTarget' until M4n ported it
+        intermediate: 'M4q processBoardingAssault', // was 'M4o checkShieldAreaRechargeReset' until M4o ported it (and 'M4n checkNearTarget' before that)
         periodic: 'M4q healTroops', // (was M4e checkClearDocking until M4e ported it; before that M4h checkRepairMissionStillValid)
         long: 'M4q baconBuiltObjectHugeProcessingSpanActions',
     };

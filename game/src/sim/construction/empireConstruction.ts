@@ -46,7 +46,7 @@ import type { ComponentDefinition } from '../componentStatic';
 import { DEFAULT_BASE_TECH_COST } from '../componentStatic';
 import { ComponentStatus } from '../builtObjectComponent';
 import { Cargo, CargoList, ResourceRef } from '../cargo';
-import { galaxyStarDate } from '../tick/simTime';
+import { galaxyNow, galaxyStarDate } from '../tick/simTime';
 import { REAL_SECONDS_IN_GALACTIC_YEAR } from '../galaxyTime';
 import { netSort } from '../netSort';
 import { ComponentType } from '../data/components';
@@ -91,7 +91,7 @@ import { assignMission, clearPreviousMissionRequirements } from '../missions/ass
 import { BuiltObjectMission, BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission, missionListContainsType, type MissionTarget, type StellarObject } from '../missions/mission';
 import { withinFuelRange } from '../movement';
 import { builtObjectCompleteTeardown } from '../combat/teardown';
-import { inflictDamage } from '../combat/damage';
+import { identifyPirateSpaceport, inflictDamageFull } from '../combat/damage';
 import { determineSpacePortAtColony } from '../combat/attackAI';
 import { checkWithinCreatureAttackRange, fastFindNearestColony } from '../combat/threats';
 import { checkInStorm, checkNearPirateBase, checkConstructionShipAndMiningStationCanSurviveStorms } from '../resourceTargets';
@@ -913,35 +913,7 @@ export function findNearestShipYard(galaxy: Galaxy, empire: Empire, ship: BuiltO
     return result;
 }
 
-/** Galaxy.9.cs 252 IdentifyPirateSpaceport(pirateFaction). No Rnd. */
-export function identifyPirateSpaceport(pirateFaction: Empire | null): BuiltObject | null {
-    const isPort = (s: BuiltObjectSubRole) => s === BuiltObjectSubRole.SmallSpacePort || s === BuiltObjectSubRole.MediumSpacePort || s === BuiltObjectSubRole.LargeSpacePort;
-    if (pirateFaction !== null && pirateFaction.builtObjects != null && pirateFaction.pirateEmpireBaseHabitat !== null) {
-        let builtObject: BuiltObject | null = null;
-        const bases = pirateFaction.pirateEmpireBaseHabitat.basesAtHabitat;
-        if (bases != null) {
-            for (let i = 0; i < bases.length; i++) {
-                const b2 = bases[i];
-                if (b2.role === BuiltObjectRole.Base && b2.actualEmpire === pirateFaction && isPort(b2.subRole) && b2.parentHabitat !== null && b2.parentHabitat === pirateFaction.pirateEmpireBaseHabitat && b2.extractionGas > 0 && (builtObject === null || builtObject.size < b2.size)) builtObject = b2;
-            }
-        }
-        const bos = pirateFaction.builtObjects as BuiltObject[];
-        if (builtObject === null) {
-            for (let j = 0; j < bos.length; j++) {
-                const b3 = bos[j];
-                if (b3.role === BuiltObjectRole.Base && isPort(b3.subRole) && b3.extractionGas > 0 && (builtObject === null || builtObject.size < b3.size)) builtObject = b3;
-            }
-        }
-        if (builtObject === null) {
-            for (let k = 0; k < bos.length; k++) {
-                const b4 = bos[k];
-                if (b4.role === BuiltObjectRole.Base && isPort(b4.subRole) && (builtObject === null || builtObject.size < b4.size)) builtObject = b4;
-            }
-        }
-        return builtObject;
-    }
-    return null;
-}
+// Galaxy.9.cs 252 IdentifyPirateSpaceport: combat/damage.ts.
 
 /** Empire.9.cs 590 CheckFleetNeedsRetrofit(fleet, isAutoRetrofit). No Rnd. */
 export function checkFleetNeedsRetrofit(galaxy: Galaxy, empire: Empire, fleet: ShipGroup | null, isAutoRetrofit: boolean): boolean {
@@ -1015,7 +987,7 @@ export function assignScrapMission(galaxy: Galaxy, empire: Empire, builtObject: 
     }
     if (builtObject.role === BuiltObjectRole.Base && builtObject.subRole !== BuiltObjectSubRole.SmallSpacePort && builtObject.subRole !== BuiltObjectSubRole.MediumSpacePort && builtObject.subRole !== BuiltObjectSubRole.LargeSpacePort) {
         // builtObject.InflictDamage(builtObject, null, 100000.0, CurrentDateTime, galaxy, 0f, allowRecursion: false, 0.0, allowArmorInvulnerability: false).
-        inflictDamage(galaxy, builtObject, builtObject, null, 100000.0);
+        inflictDamageFull(galaxy, builtObject, builtObject, null, 100000.0, galaxyNow(galaxy), 0, false, 0.0, false);
         return true;
     }
     const builtObject2 = builtObjectsFindShortestConstructionWaitQueueCloseToBuiltObject(galaxy, empire.spacePorts, builtObject).builtObject;
@@ -1443,7 +1415,7 @@ export function doRetrofit(galaxy: Galaxy, empire: Empire, builtObjects: BuiltOb
                 if (builtObject.subRole === BuiltObjectSubRole.SmallSpacePort || builtObject.subRole === BuiltObjectSubRole.MediumSpacePort || builtObject.subRole === BuiltObjectSubRole.LargeSpacePort) {
                     if (empire.pirateEmpireBaseHabitat !== null) {
                         let design2 = dlFindNewestCanBuild(designs, builtObject.subRole);
-                        const builtObject2 = identifyPirateSpaceport(empire);
+                        const builtObject2 = identifyPirateSpaceport(galaxy, empire);
                         if (builtObject === builtObject2) {
                             if (builtObject.subRole === BuiltObjectSubRole.SmallSpacePort) {
                                 const design3 = dlFindNewestCanBuild(designs, BuiltObjectSubRole.MediumSpacePort);
@@ -2165,4 +2137,14 @@ const T_ensureStrategicResourceSupply = registerTodo('M4i', 'ensureStrategicReso
 export function ensureStrategicResourceSupply(galaxy: Galaxy, empire: Empire): void {
     // RND: draws in callees (ForceResourceSupply / mission assignment) — not drawn until M4i.
     /* TODO(port) M4i */ todo(T_ensureStrategicResourceSupply);
+}
+
+// ---- stub added by M4o (called from combat/damage.ts DetermineScrapDamagedShip, Galaxy.7.cs 2876) ----
+
+const T_findNearestAvailableConstructionShip = registerTodo('M4i', 'findNearestAvailableConstructionShip');
+/** Empire.9.cs 4631 FindNearestAvailableConstructionShip(x, y) — stub: null. */
+export function findNearestAvailableConstructionShip(galaxy: Galaxy, empire: Empire, x: number, y: number): BuiltObject | null {
+    void galaxy; void empire; void x; void y;
+    /* TODO(port) M4i */ todo(T_findNearestAvailableConstructionShip);
+    return null;
 }

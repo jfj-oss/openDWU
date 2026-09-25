@@ -57,17 +57,9 @@ import { DiplomaticRelationType } from './diplomacy';
 import { PlanetaryFacilityType } from './researchSystem';
 import { findNewestCanBuild } from './designGeneration';
 import { empireApprovalRating, empireWarWeariness } from './taxes';
-import {
-    annualFacilityMaintenance,
-    annualPirateProtection,
-    annualSubjugationTribute,
-    annualTaxRevenue,
-    annualTroopMaintenance,
-    annualPrivateMaintenanceExcludingUnderConstruction,
-    calculateAnnualSubjugationTributeIncome,
-    habitatCorruption,
-} from './forceStructure';
-import { annualStateMaintenanceExcludingUnderConstruction, calculatePirateIncome } from './treasury';
+import { annualTaxRevenue, habitatCorruption } from './forceStructure';
+import { annualStateMaintenanceExcludingUnderConstruction } from './treasury';
+import { calculateAccurateAnnualCashflow } from './construction/empireConstruction';
 import { empireGovernmentAttributes } from './empire';
 import { charactersCanGenerateAmountNonIntelligenceAgent } from './troops';
 import { EventMessageType, sendEventMessageToEmpire, sendNewsBroadcast } from './events';
@@ -362,30 +354,7 @@ export function nextAllowableLeaderChangeDatePortion(empire: Empire, portion: nu
 // Cashflow and averages (ReviewCharacterTraits inputs)
 // ---------------------------------------------------------------------------
 
-/** Empire.3.cs 4142 CalculatePirateCashflow(includeShipsUnderConstruction) = CalculatePirateIncome − CalculatePirateExpenses. */
-export function calculatePirateCashflow(galaxy: Galaxy, empire: Empire, includeShipsUnderConstruction: boolean): number {
-    const num = calculatePirateIncome(galaxy, empire);
-    // Empire.3.cs 4154 CalculatePirateExpenses.
-    let num2 = 0.0;
-    if (includeShipsUnderConstruction) {
-        // TODO(port) M4s: CalculatePirateExpenses(includeShipsUnderConstruction: true) (AnnualStateMaintenance) — not reached
-        // from M4u (CalculateAccurateAnnualCashflow passes false).
-        throw new Error('TODO(port): Empire.CalculatePirateExpenses(includeShipsUnderConstruction: true)');
-    }
-    num2 = annualStateMaintenanceExcludingUnderConstruction(empire) + annualFacilityMaintenance(empire);
-    num2 += annualTroopMaintenance(empire);
-    return num - num2;
-}
-
-/** Empire.3.cs 4122 CalculateAccurateAnnualCashflow. */
-export function calculateAccurateAnnualCashflow(galaxy: Galaxy, empire: Empire): number {
-    if (empire.pirateEmpireBaseHabitat !== null) return calculatePirateCashflow(galaxy, empire, false);
-    let num = annualStateMaintenanceExcludingUnderConstruction(empire) + annualTroopMaintenance(empire) + annualSubjugationTribute(galaxy, empire) + annualPirateProtection(empire);
-    const num2 = annualTaxRevenue(galaxy, empire) + calculateAnnualSubjugationTributeIncome(galaxy, empire);
-    const gov = empireGovernmentAttributes(empire);
-    if (gov !== null && gov.specialFunctionCode === 1) num += annualPrivateMaintenanceExcludingUnderConstruction(empire);
-    return num2 - num;
-}
+// Empire.3.cs 4122 CalculateAccurateAnnualCashflow: construction/empireConstruction.ts (CalculatePirateCashflow: pirates/pirateAI.ts).
 
 /** Empire.2.cs 2955 AverageStateCashPerPopulation. */
 function averageStateCashPerPopulation(empire: Empire): number {

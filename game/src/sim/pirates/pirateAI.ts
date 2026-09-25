@@ -10,6 +10,8 @@ import type { Empire } from '../empire';
 import type { BuiltObject } from '../builtObject';
 import type { Habitat } from '../types';
 import { registerTodo, todo } from '../tick/todo';
+import { annualFacilityMaintenance, annualStateMaintenance, annualTroopMaintenance } from '../forceStructure';
+import { annualStateMaintenanceExcludingUnderConstruction, calculatePirateIncome } from '../treasury';
 import type { PirateExpenseType, PirateIncomeType } from './pirateEconomy';
 
 const T_checkSendPirateRaid = registerTodo('M4s', 'checkSendPirateRaid');
@@ -195,17 +197,17 @@ export function habitatPirateControlHighest(galaxy: Galaxy, habitat: Habitat): P
     return null;
 }
 
-const T_calculatePirateCashflow = registerTodo('M4s', 'calculatePirateCashflow');
-/**
- * Empire.3.cs 4142 CalculatePirateCashflow(includeShipsUnderConstruction) — stub added by M4i. TODO(port) M4s2: needs
- * CalculatePirateIncome (PirateColonyControl GetByFaction, PirateRelation protection fees, PirateEconomy years). Only
- * reached for pirate factions from CalculateAccurateAnnualCashflowIncludingUnderConstruction, which the pirate tick
- * does not call yet; throws if reached.
- */
+/** Empire.3.cs 4142 CalculatePirateCashflow(includeShipsUnderConstruction) = CalculatePirateIncome − CalculatePirateExpenses. */
 export function calculatePirateCashflow(galaxy: Galaxy, empire: Empire, includeShipsUnderConstruction: boolean): number {
-    void galaxy;
-    void empire;
-    void includeShipsUnderConstruction;
-    todo(T_calculatePirateCashflow);
-    throw new Error('TODO(port) M4s2: Empire.CalculatePirateCashflow');
+    const num = calculatePirateIncome(galaxy, empire);
+    const num2 = calculatePirateExpenses(empire, includeShipsUnderConstruction);
+    return num - num2;
+}
+
+/** Empire.3.cs 4154 CalculatePirateExpenses(includeShipsUnderConstruction). No Rnd. */
+export function calculatePirateExpenses(empire: Empire, includeShipsUnderConstruction: boolean): number {
+    const num = !includeShipsUnderConstruction
+        ? annualStateMaintenanceExcludingUnderConstruction(empire) + annualFacilityMaintenance(empire)
+        : annualStateMaintenance(empire) + annualFacilityMaintenance(empire);
+    return num + annualTroopMaintenance(empire);
 }

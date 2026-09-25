@@ -101,16 +101,18 @@ export function stellarCurrentTarget(o: StellarObject): StellarObject | null {
 }
 
 /**
- * StellarObject.Attackers / Pursuers (StellarObjectList). Only BuiltObject carries the lists in the TS model;
- * TODO(port) M4u (creature combat hooks): Creature.Attackers / Pursuers — an empty list is seen here for creatures and
- * habitats (the C# lists on a Creature are filled only by ships/fighters targeting it).
+ * StellarObject.Attackers / Pursuers (StellarObjectList) of a BuiltObject or Creature (creature.ts lists, M4u creature
+ * combat). A habitat's lists are never initialised in the C# (null): a fresh empty list is returned, so reads see
+ * nothing and a push has no effect.
  */
 export function stellarAttackers(o: StellarObject): StellarObject[] {
     if (isBuiltObject(o)) return (o.attackers ?? []) as StellarObject[];
+    if (isCreature(o)) return o.attackers as StellarObject[];
     return [];
 }
 export function stellarPursuers(o: StellarObject): StellarObject[] {
     if (isBuiltObject(o)) return (o.pursuers ?? []) as StellarObject[];
+    if (isCreature(o)) return o.pursuers as StellarObject[];
     return [];
 }
 

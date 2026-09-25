@@ -474,6 +474,13 @@ export class Habitat {
     // ---- M4m fields (military AI) ----
     // ---- M4n fields (threats) ----
     // ---- M4o fields (weapons, damage) ----
+    // Habitat.cs 63 GiantIonCannonPresent / GiantIonCannon and 61 PlanetaryShieldPresent: declared in the M4i block.
+    /** StellarObject.Attackers on a planet (StellarObjectList; read by Habitat.ShouldAttack, Habitat.cs 2707). */
+    attackers: unknown[] | null = null;
+    /** Habitat.cs 203 TeardownEmpire (the empire that fired the planet destroyer; read by DoPlanetRemove, ClearColony in CompleteTeardown). */
+    teardownEmpire: Empire | null = null;
+    /** Habitat.cs _DestroyedAsteroidFieldGenerated (DoExplosion 6362). */
+    destroyedAsteroidFieldGenerated = false;
     // ---- M4p fields (fighters) ----
     // ---- M4q fields (invasion, troops) ----
     /** Habitat.ColonyInvasion (ColonyInvasion.cs; null = no invasion in progress). */
@@ -496,8 +503,7 @@ export class Habitat {
     rebelling = false;
     /** Habitat.RaceEventType (events.ts RaceEventType; set by race events, cleared by Empire.ResetRaceEvents). */
     raceEventType = 0;
-    /** Habitat.cs 203 TeardownEmpire (the empire that destroyed the planet; ClearColony(TeardownEmpire) in CompleteTeardown). */
-    teardownEmpire: import('./empire').Empire | null = null;
+    // Habitat.cs 203 TeardownEmpire (ClearColony(TeardownEmpire) in CompleteTeardown): declared in the M4o block.
 }
 
 /**

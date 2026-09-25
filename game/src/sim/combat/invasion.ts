@@ -96,3 +96,13 @@ const T_characterCompleteLocationTransferInvading = registerTodo('M4q', 'charact
 export function characterCompleteLocationTransferInvading(galaxy: Galaxy, character: Character, colony: Habitat): void {
     /* TODO(port) M4q */ todo(T_characterCompleteLocationTransferInvading);
 }
+
+// ---- stub added by M4o (called from combat/damage.ts InflictBombardDamage, BuiltObject.2.cs 5843/5847) ----
+
+const T_inflictTroopLosses = registerTodo('M4q', 'inflictTroopLosses');
+/** Habitat.cs 4973 InflictTroopLosses(defendingEmpire, inflicter, losses, troops, attackingTroops, galaxy) — stub. */
+export function inflictTroopLosses(galaxy: Galaxy, habitat: Habitat, defendingEmpire: Empire | null, inflicter: Empire | null, losses: number, troops: unknown, attackingTroops: unknown): void {
+    void habitat; void defendingEmpire; void inflicter; void losses; void troops; void attackingTroops;
+    // RND: troop loss distribution draws — not drawn until M4q.
+    /* TODO(port) M4q */ todo(T_inflictTroopLosses);
+}

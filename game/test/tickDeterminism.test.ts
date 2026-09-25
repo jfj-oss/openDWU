@@ -133,7 +133,17 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // resource appearance Next(0, 20)), ReviewRandomEvents / PirateReviewRandomEvents rolls and ProcessPlague; creatures
         // now target and pursue ships (Creature.cs 1206 CheckForTargets → NotifyOfAttack distress signals; DamageTarget is an
         // M4o stub), and the M4u pins moved createGame (empire placement) too.
-        expect(summary.digest).toBe('60414368e7e93744');
+        // M4o: weapons actually fire — FireWeaponsAtTarget draws the per-weapon fire-rate jitter NextDouble every call
+        // (~157k calls in 600 s on this seed: pirate ships attacking), DetermineHitTarget (NextDouble, Next(0, 12)) and
+        // Weapon.Fire (NextDouble, Next(0, 2)) per shot, InflictDamage's armor / component / explosion draws per hit,
+        // CheckNearbyBuiltObjectsForShieldAreaRecharge's Next(0, Count); shields recharge (energy), ships take damage and
+        // are torn down (CompleteTeardown nulls galaxy.BuiltObjects entries, cleans empire lists), Explosions accumulate.
+        // Merge of M4o onto M4u (from 60414368e7e93744 / M4o's e01a949ad05e47a1): both sets of changes above, plus the
+        // merge fixes: creatures' DamageTarget still a stub, M4u storm damage now goes through M4o's real InflictDamage,
+        // Character SendDeathMessage + Kill run for characters on destroyed ships / bombarded colonies, CleanupInvalidShips
+        // and IdentifyPirateSpaceport without the extra fallback loop, and Weapon.LastFired defaults to DateTime.MinValue
+        // (MIN_TIME) so a never-fired weapon is available at once (Weapon.cs 18/183).
+        expect(summary.digest).toBe('00268e34a10c8f1f');
     }, 600000);
 });
 

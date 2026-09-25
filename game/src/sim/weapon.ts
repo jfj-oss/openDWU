@@ -7,6 +7,7 @@ import { BuiltObjectComponent, ComponentStatus } from './builtObjectComponent';
 import { componentImprovementFromComponent, type ComponentDefinition, type ComponentImprovementEntry } from './componentStatic';
 import { ComponentType } from './data/components';
 import { ComponentCategoryType } from './data/policies';
+import { MIN_TIME } from './tick/simTime';
 
 /** The Empire surface Weapon.ReviewValues needs (Empire.Research). */
 export interface WeaponEmpire {
@@ -30,7 +31,11 @@ function isSuperWeaponType(type: ComponentType): boolean {
 export class Weapon {
     power = 0; // float
     headingMissFactor = 0; // float
-    lastFired = 0; // DateTime (ticks)
+    /**
+     * Weapon.cs 18 DateTime LastFired, as game ms. Unset in the C# ctor, so it is DateTime.MinValue and a never-fired weapon
+     * passes IsAvailable (Weapon.cs 183 LastFired.AddMilliseconds(FireRate) <= time) at once: MIN_TIME (tick/simTime.ts).
+     */
+    lastFired = MIN_TIME;
     distanceTravelled = -1; // float
     distanceFromTarget = Math.fround(2e9); // float
     willHitTarget = false;

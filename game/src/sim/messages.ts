@@ -183,3 +183,5 @@ export function stampStarDate(galaxy: Galaxy, message: EmpireMessage): EmpireMes
 export function resolveDescription(enumType: Record<number, string>, value: number): string {
     return enumType[value] ?? String(value);
 }
+
+// Empire.7.cs 3400 SendEventMessageToEmpire: events.ts.
