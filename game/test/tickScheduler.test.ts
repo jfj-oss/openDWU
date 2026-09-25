@@ -68,7 +68,7 @@ describe('Empire.DoTasks intervals (Empire.1.cs 3427, >= on seconds, touches fir
         regular: 'M4i reviewDesignsAndRetrofit', // (M4b ported processDistressSignals; the block is detected by its M4i stub)
         periodic: 'M4s checkSendPirateRaid',
         intermediate: 'M4l reviewFleetAdmiralBonuses',
-        long: 'M4i reviewColonyWonders',
+        long: 'M4f reviewMigrationTourism', // (M4i ported ReviewColonyWonders; same block)
         huge: 'M4u resetRaceEvents',
     };
     const at = (ms: number): string[] => {
@@ -313,7 +313,7 @@ describe('game-start switch-over entry points (tick/gameStart.ts)', () => {
         for (const e of galaxy.empires) {
             resetEmpireTouchTimesForAge(galaxy, e);
             // Start.2.cs 1114-1121 back-dates all six touches by 121 s: short..long fire at 1341, huge does not.
-            expect(firedBlocks({ long: 'M4i reviewColonyWonders', huge: 'M4u resetRaceEvents' }, () => runGameStartEmpireTick(galaxy, e))).toEqual(['long']);
+            expect(firedBlocks({ long: 'M4f reviewMigrationTourism', huge: 'M4u resetRaceEvents' }, () => runGameStartEmpireTick(galaxy, e))).toEqual(['long']);
             staggerEmpireTouchTimes(galaxy, e, 17);
             expect(e.lastLongTouch).toBe(-17000);
             expect(e.lastHugeTouch).toBe(-17000); // Start.2.cs 1350 sets LastHugeTouch too

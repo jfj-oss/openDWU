@@ -111,7 +111,10 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // SelectCreatures population gating fix (Galaxy.5.cs 1648/1785): SelectCreatures(planet / moon) runs only when
         // the body has no population, which moves every galaxy-generation draw after the first populated body (creature
         // counts / positions, empire placement) and so everything downstream. (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
-        expect(summary.digest).toBe('198918104ea2794b');
+        // M4i (facilities/wonders): Empire.RefreshColonyFacilityInfo now fills Empire.Capitals every long block, so the
+        // leader's PopulationGrowth bonus at the capital (EvaluateColonyVariables, Empire.4.cs) applies; facility AI runs
+        // (ReviewColonyFacilities may draw Rnd.Next(0, 2) for a space-port colony once a FortifiedBunker is buildable).
+        expect(summary.digest).toBe('9ff05468d492c478');
     }, 600000);
 });
 

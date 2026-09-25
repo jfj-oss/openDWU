@@ -1537,7 +1537,7 @@ export function performResearch(galaxy: Galaxy, empire: Empire, timePassed: numb
 // ---------------------------------------------------------------------------
 
 // Empire.3.cs ResolveEmpireRaceTendency (3005).
-function resolveEmpireRaceTendency(race: Race): number {
+export function resolveEmpireRaceTendency(race: Race): number {
     // TODO(port) M4j: Race.AggressionLevel / CautionLevel periodic levels (Race.cs 350-377); base levels read here.
     if (race.aggression > race.caution && race.aggression > race.intelligence) return 3;
     if (race.caution > race.aggression && race.caution > race.intelligence) return 2;

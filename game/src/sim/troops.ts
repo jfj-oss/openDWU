@@ -36,6 +36,8 @@
 //   Habitat.RaceEventType: Undefined. Habitat.DefensiveFortressBonus: 0. Facilities: none.
 
 import { Troop, TroopList, TroopType } from './cargo';
+import { PlanetaryFacilityType } from './researchSystem';
+import { checkTroopFacilitiesPresent } from './construction/facilities';
 import { calculateTroopMaintenanceMultiplier, generateNewTroop } from './builtObjectPlacement';
 import { BuiltObjectSubRole } from './builtObjectTypes';
 import type { Race } from './data/races';
@@ -110,23 +112,12 @@ function colonyCharacters(colony: Habitat): Character[] | null {
     return stellarObjectCharacters(colony);
 }
 
-// Habitat.cs CheckTroopFacilitiesPresent (6791). TODO(port): PlanetaryFacility model —
-// no facilities at game start (result false).
-export function checkTroopFacilitiesPresent(colony: Habitat): boolean {
-    const result = false;
-    if (colony.facilities !== null && colony.facilities.length > 0) {
-        throw new Error('TODO(port): PlanetaryFacility model (Habitat.CheckTroopFacilitiesPresent)');
-    }
-    return result;
-}
+// Habitat.cs CheckTroopFacilitiesPresent (6791): construction/facilities.ts (M4i).
+export { checkTroopFacilitiesPresent };
 
-// TODO(port): Habitat.DefensiveFortressBonus (byte, set by ReviewPlanetaryFacilities from a
-// FortifiedBunker) — 0 at game start (no facilities).
+// Habitat.DefensiveFortressBonus (byte, set by ReviewPlanetaryFacilities, construction/facilities.ts).
 function defensiveFortressBonus(colony: Habitat): number {
-    if (colony.facilities !== null && colony.facilities.length > 0) {
-        throw new Error('TODO(port): PlanetaryFacility model (Habitat.DefensiveFortressBonus)');
-    }
-    return 0;
+    return colony.defensiveFortressBonus;
 }
 
 // Race.cs TroopRegenerationFactor (224, default 1.0; LoadFromFile 1591 clamps to [0.2, 5]).
@@ -404,9 +395,37 @@ export function habitatGenerateNewTroop(galaxy: Galaxy, habitat: Habitat, troopT
         // (num *= 1.1) — RaceEventType.Undefined at game start.
         switch (troopType) {
             case TroopType.Infantry:
-                if (habitat.facilities !== null && habitat.facilities.length > 0) {
-                    // CloningFacility / RoboticTroopFoundry / TroopTrainingCenter troops (7047-7084).
-                    throw new Error('TODO(port): PlanetaryFacility model (Habitat.GenerateNewTroop facility troops)');
+                // Habitat.cs 7047-7084: CloningFacility / RoboticTroopFoundry / TroopTrainingCenter troops.
+                if (habitat.facilities !== null) {
+                    for (let i = 0; i < habitat.facilities.length; i++) {
+                        const planetaryFacility = habitat.facilities[i];
+                        if (!(planetaryFacility.constructionProgress >= 1)) continue;
+                        switch (planetaryFacility.type) {
+                            case PlanetaryFacilityType.CloningFacility:
+                                if (empireBestTroop === null && habitat.empire !== null) {
+                                    empireBestTroop = identifyStrongestRaceAttackTroop(habitat.empire);
+                                }
+                                if (empireBestTroop !== null && empireBestTroop.race != null) {
+                                    troop = generateNewTroop(empire.generateTroopDescription('Clone Trooper Battalion'), TroopType.Infantry, empireBestTroop.attackStrength, empire, empireBestTroop.race as Race, false);
+                                    troop.setDefendStrength(empireBestTroop.defendStrength);
+                                    troop.readiness = 0;
+                                    troop.colony = habitat;
+                                }
+                                break;
+                            case PlanetaryFacilityType.RoboticTroopFoundry:
+                                troop = generateNewTroop(empire.generateTroopDescription('BattleBot Group'), TroopType.Infantry, 60, empire, null, false);
+                                troop.maintenanceMultiplier = 0.25;
+                                troop.readiness = 0;
+                                troop.pictureRef = galaxy.races.length;
+                                troop.colony = habitat;
+                                break;
+                            case PlanetaryFacilityType.TroopTrainingCenter:
+                                troop = generateNewTroop(empire.generateTroopDescription(`Elite ${dominantRace.troopName}`), TroopType.Infantry, Math.trunc(Math.fround(Math.fround(num) * 1.5)), empire, dominantRace);
+                                troop.readiness = 0;
+                                troop.colony = habitat;
+                                break;
+                        }
+                    }
                 }
                 if (troop === null || recruitDefaultTroops) {
                     troop = generateNewTroop(empire.generateTroopDescription(dominantRace.troopName), TroopType.Infantry, csDoubleToInt(num), empire, dominantRace);

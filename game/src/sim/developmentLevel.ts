@@ -51,9 +51,10 @@ export function recalculateDevelopmentLevelBaseline(h: Habitat): void {
 // Habitat.cs DevelopmentLevel (447) — the property (baseline + _DevelopmentLevel + bonuses).
 export function habitatDevelopmentLevel(h: Habitat): number {
     let val = 0;
-    const val2 = 0;
+    let val2 = 0;
     if (h.ruin !== null) val = Math.trunc(h.ruin.developmentBonus * 100.0);
-    // TODO(port): WonderForDevelopment (PlanetaryFacility model) — null at game start.
+    // WonderForDevelopment (set by ReviewPlanetaryFacilities, construction/facilities.ts).
+    if (h.wonderForDevelopment !== null) val2 = h.wonderForDevelopment.value1;
     let num = Math.max(val, val2);
     // _RestrictedResourcesPresent (set by EvaluateColonyVariables, colonyTick.ts).
     if (h.restrictedResourcesPresent) num += 30;

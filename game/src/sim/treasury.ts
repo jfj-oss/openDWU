@@ -43,6 +43,7 @@ import { CharacterEventType, stellarObjectCharacters } from './characters';
 import { doCharacterEventRuntime, leaveEmpire } from './events';
 import { calculateOverallStrengthFactorWithoutShields } from './combat/threats';
 import { pirateEconomyPerformExpense } from './pirates/pirateAI';
+import { PlanetaryFacilityType, WonderType } from './researchSystem';
 
 // ---------------------------------------------------------------------------
 // Money (Empire intermediate / long blocks)
@@ -610,8 +611,6 @@ export function reviewEmpireAbilityBonuses(galaxy: Galaxy, empire: Empire): void
 
 /**
  * Empire.3.cs 939 ReviewSpecialBonusesRuinsWonders.
- * TODO(port) M4i: the Wonder half (completed PlanetaryFacility wonders: Value2, WonderType) — the TS Habitat.facilities
- * holds no facility objects yet; a non-empty list throws like the other facility readers.
  */
 export function reviewSpecialBonusesRuinsWonders(galaxy: Galaxy, empire: Empire): void {
     let num = 0.0;
@@ -620,7 +619,7 @@ export function reviewSpecialBonusesRuinsWonders(galaxy: Galaxy, empire: Empire)
     let num4 = 0.0;
     let num5 = 0.0;
     let num6 = 0.0;
-    const num7 = 0.0;
+    let num7 = 0.0;
     let specialBonusResearchEnergyRuin = null;
     let specialBonusResearchHighTechRuin = null;
     let specialBonusResearchWeaponsRuin = null;
@@ -632,7 +631,7 @@ export function reviewSpecialBonusesRuinsWonders(galaxy: Galaxy, empire: Empire)
     let specialBonusResearchWeaponsWonder: unknown = null;
     let specialBonusWealthWonder: unknown = null;
     let specialBonusHappinessWonder: unknown = null;
-    const specialBonusPopulationGrowthWonder: unknown = null;
+    let specialBonusPopulationGrowthWonder: unknown = null;
     for (let i = 0; i < empire.colonies.length; i++) {
         const habitat: Habitat = empire.colonies[i];
         const ruin = habitat.ruin;
@@ -670,7 +669,76 @@ export function reviewSpecialBonusesRuinsWonders(galaxy: Galaxy, empire: Empire)
         if (habitat.facilities === null || habitat.facilities.length <= 0) {
             continue;
         }
-        throw new Error('TODO(port) M4i: PlanetaryFacility model (Empire.ReviewSpecialBonusesRuinsWonders wonders)');
+        // Empire.3.cs 994-1092: completed wonders (facility model: construction/facilities.ts, M4i).
+        for (let j = 0; j < habitat.facilities.length; j++) {
+            const planetaryFacility = habitat.facilities[j];
+            if (planetaryFacility === null || planetaryFacility.type !== PlanetaryFacilityType.Wonder || !(planetaryFacility.constructionProgress >= 1)) continue;
+            switch (planetaryFacility.wonderType) {
+                case WonderType.EmpireResearchWeapons: {
+                    const num14 = planetaryFacility.value2 / 100.0;
+                    if (num14 > num3) {
+                        num3 = num14;
+                        specialBonusResearchWeaponsWonder = planetaryFacility;
+                        specialBonusResearchWeaponsRuin = null;
+                    }
+                    break;
+                }
+                case WonderType.EmpireResearchEnergy: {
+                    const num10 = planetaryFacility.value2 / 100.0;
+                    if (num10 > num) {
+                        num = num10;
+                        specialBonusResearchEnergyWonder = planetaryFacility;
+                        specialBonusResearchEnergyRuin = null;
+                    }
+                    break;
+                }
+                case WonderType.EmpireResearchHighTech: {
+                    const num12 = planetaryFacility.value2 / 100.0;
+                    if (num12 > num2) {
+                        num2 = num12;
+                        specialBonusResearchHighTechWonder = planetaryFacility;
+                        specialBonusResearchHighTechRuin = null;
+                    }
+                    break;
+                }
+                case WonderType.EmpireHappiness: {
+                    const num9 = planetaryFacility.value2 / 100.0;
+                    if (num9 > num5) {
+                        num5 = num9;
+                        specialBonusHappinessWonder = planetaryFacility;
+                        specialBonusHappinessRuin = null;
+                    }
+                    break;
+                }
+                case WonderType.EmpireIncome: {
+                    const num13 = planetaryFacility.value2 / 100.0;
+                    if (num13 > num4) {
+                        num4 = num13;
+                        specialBonusWealthWonder = planetaryFacility;
+                        specialBonusWealthRuin = null;
+                    }
+                    break;
+                }
+                case WonderType.EmpirePopulationGrowth: {
+                    const num11 = planetaryFacility.value2 / 100.0;
+                    if (num11 > num7) {
+                        num7 = num11;
+                        specialBonusPopulationGrowthWonder = planetaryFacility;
+                    }
+                    break;
+                }
+                case WonderType.RaceAchievement:
+                    if (planetaryFacility.value2 === 1) {
+                        const num8 = 0.75;
+                        if (num8 > num2) {
+                            num2 = num8;
+                            specialBonusResearchHighTechWonder = planetaryFacility;
+                            specialBonusResearchHighTechRuin = null;
+                        }
+                    }
+                    break;
+            }
+        }
     }
     empire.specialBonusResearchEnergy = num;
     empire.specialBonusResearchHighTech = num2;

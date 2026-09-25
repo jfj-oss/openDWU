@@ -608,9 +608,9 @@ export function setOptimalAttackRanges(galaxy: Galaxy, bo: BuiltObject, target: 
     bo.optimalMinimumAttackRange = Math.max(0.0, Math.min(bo.optimalMaximumAttackRange - 10.0, bo.optimalMinimumAttackRange));
 }
 
-/** Habitat.PlanetaryShieldPresent (a planetary-shield facility; TODO(port) M4i facilities — false until the field exists). */
+/** Habitat.PlanetaryShieldPresent (set by ReviewPlanetaryFacilities, construction/facilities.ts). */
 export function habitatPlanetaryShieldPresent(habitat: Habitat): boolean {
-    return (habitat as Habitat & { planetaryShieldPresent?: boolean }).planetaryShieldPresent ?? false;
+    return habitat.planetaryShieldPresent;
 }
 
 /** ShipGroup.WeaponsRangeBonus (ShipGroup.cs 79): base + extra. */

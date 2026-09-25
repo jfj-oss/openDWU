@@ -36,6 +36,7 @@ import { SHIP_MARKUP_FACTOR, findNewest, type Design } from './design';
 import { canBuildDesign, findNewestCanBuild } from './designGeneration';
 import { DEFAULT_BASE_TECH_COST } from './componentStatic';
 import { ForceStructureProjection, ForceStructureProjectionList } from './forceStructureProjection';
+import { facilitiesCalculateAnnualMaintenance, identifyEmpireCapitalsWithRegional } from './construction/facilities';
 import { HabitatType } from './types';
 import { ResearchAbilityType } from './researchSystem';
 import { obtainEmpireEvaluation, recalculateCriticalResourceSupplyBonuses, taxComplianceRate } from './taxes';
@@ -124,11 +125,6 @@ const shipMaintenanceSavings = (empire: Empire): number => empire.shipMaintenanc
 const colonyCorruptionFactor = (empire: Empire): number => empire.difficultyFactors?.colonyCorruptionFactor ?? COLONY_CORRUPTION_FACTOR_DEFAULT;
 const colonyIncomeFactor = (empire: Empire): number => empire.difficultyFactors?.colonyIncomeFactor ?? COLONY_INCOME_FACTOR_DEFAULT;
 
-function assertEmptyFacilities(h: Habitat, what: string): void {
-    if (h.facilities !== null && h.facilities.length > 0) {
-        throw new Error(`TODO(port): PlanetaryFacility model (${what})`);
-    }
-}
 
 // ---------------------------------------------------------------------------
 // BuiltObjectList.cs helpers
@@ -346,21 +342,20 @@ export function checkAtWar(empire: Empire): boolean {
 // Colony revenue (Habitat.cs)
 // ---------------------------------------------------------------------------
 
-// Empire.4.cs IdentifyEmpireCapitals (3340).
+// Empire.4.cs IdentifyEmpireCapitals (3340): construction/facilities.ts (M4i, with the regional capitals).
 export function identifyEmpireCapitals(empire: Empire): Habitat[] {
-    const habitatList: Habitat[] = [];
-    // TODO(port): Habitat.HasBeenDestroyed — false at game start.
-    if (empire.capital !== null) habitatList.push(empire.capital);
-    // IdentifyEmpireRegionalCapitals (3360): colonies with a completed
-    // RegionalCapital facility. TODO(port): PlanetaryFacility model — no
-    // facilities exist at game start.
-    for (const colony of empire.colonies) assertEmptyFacilities(colony, 'Empire.IdentifyEmpireRegionalCapitals');
-    return habitatList;
+    return identifyEmpireCapitalsWithRegional(empire);
 }
 
 // Habitat.cs RecalculateDistanceFactor() (6121) / (empireCapitals) (6127).
 export function recalculateDistanceFactor(galaxy: Galaxy, h: Habitat): void {
+    // C#: Empire.IdentifyEmpireCapitals() (NullReferenceException without an owner; callers pass colonies).
     const empireCapitals = h.empire !== null ? identifyEmpireCapitals(h.empire) : null;
+    recalculateDistanceFactorWithCapitals(galaxy, h, empireCapitals);
+}
+
+// Habitat.cs RecalculateDistanceFactor(empireCapitals) (6127).
+export function recalculateDistanceFactorWithCapitals(galaxy: Galaxy, h: Habitat, empireCapitals: Habitat[] | null): void {
     if (h.empire !== null && empireCapitals !== null && empireCapitals.length > 0) {
         let num = Number.MAX_VALUE;
         for (const cap of empireCapitals) {
@@ -580,6 +575,14 @@ export function annualStateMaintenance(empire: Empire): number {
     return num - num2;
 }
 
+// Empire.cs AnnualPrivateMaintenance (2116) (added by M4i: CalculateAccurateAnnualCashflowIncludingUnderConstruction).
+export function annualPrivateMaintenance(empire: Empire): number {
+    let num = 0.0;
+    for (const builtObject of builtObjectsOf(empire.privateBuiltObjects)) num += builtObject.annualSupportCost;
+    const num2 = num * shipMaintenanceSavings(empire);
+    return num - num2;
+}
+
 // Empire.cs AnnualPrivateMaintenanceExcludingUnderConstruction (2138).
 export function annualPrivateMaintenanceExcludingUnderConstruction(empire: Empire): number {
     let num = 0.0;
@@ -651,11 +654,10 @@ export function annualPirateProtection(empire: Empire): number {
 
 // Empire.cs AnnualFacilityMaintenance (1739).
 export function annualFacilityMaintenance(empire: Empire): number {
-    const num = 0.0;
+    let num = 0.0;
     for (const habitat of empire.colonies) {
         if (habitat != null && habitat.owner === empire && habitat.facilities !== null) {
-            // PlanetaryFacilityList.CalculateAnnualMaintenance: 0 for an empty list.
-            assertEmptyFacilities(habitat, 'PlanetaryFacilityList.CalculateAnnualMaintenance');
+            num += facilitiesCalculateAnnualMaintenance(habitat.facilities);
         }
     }
     return num;
