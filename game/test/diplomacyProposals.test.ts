@@ -47,7 +47,7 @@ describe('listProposals gating (Main.Part9.cs:46 method_238)', () => {
         expect(listProposals(galaxy, player, player)).toEqual([]);
     });
 
-    it('met, no relation: TREATY_PROPOSAL None case, gifts, warnings, trade (disabled)', () => {
+    it('met, no relation: TREATY_PROPOSAL None case, gifts, warnings, trade (17e2)', () => {
         setRelation(player, ai, DiplomaticRelationType.None);
         const pact = militaryPotency(player) / militaryPotency(ai) > 5.0 ? 'OFFER_PROTECTORATE' : 'OFFER_MUTUALDEFENSE';
         expect(ids(ai)).toEqual([
@@ -56,7 +56,8 @@ describe('listProposals gating (Main.Part9.cs:46 method_238)', () => {
             'WARNING_INTELLIGENCEMISSIONS', 'WARNING_ATTACKS', 'WARNING_REMOVEFORCESSYSTEM',
             'OFFER_DEAL', 'DEAL_BEGIN:trade',
         ]);
-        expect(enabledIds(ai)).not.toContain('OFFER_DEAL');
+        expect(enabledIds(ai)).toContain('OFFER_DEAL');
+        expect(enabledIds(ai)).toContain('DEAL_BEGIN:trade');
         // GIFT_PROPOSE (:522): StateMoney / 8, / 2, / 4.
         const gifts = listProposals(galaxy, player, ai).filter((o) => o.part === 'GIFT_GIVE');
         expect(gifts.map((g) => g.cost)).toEqual([2500, 5000, 10000]);
@@ -79,14 +80,14 @@ describe('listProposals gating (Main.Part9.cs:46 method_238)', () => {
         expect(list).not.toContain('WARNING_REMOVEFORCESSYSTEM');
     });
 
-    it('at war: end-war options, no warnings, negotiated end of war (disabled); a locked war falls through to the trade entries', () => {
+    it('at war: end-war options, no warnings, negotiated end of war; a locked war falls through to the trade entries', () => {
         setRelation(player, ai, DiplomaticRelationType.War);
         expect(ids(ai)).toEqual([
             'WAR_END', 'WAR_END_SUBJUGATIONDEMAND', 'WAR_END_SUBJUGATIONOFFER',
             'GIFT_GIVE:small', 'GIFT_GIVE:medium', 'GIFT_GIVE:large',
             'WARNING', 'DEAL_BEGIN:end-war',
         ]);
-        expect(enabledIds(ai)).toEqual(['WAR_END', 'WAR_END_SUBJUGATIONDEMAND', 'WAR_END_SUBJUGATIONOFFER', 'GIFT_GIVE:small', 'GIFT_GIVE:medium', 'GIFT_GIVE:large']);
+        expect(enabledIds(ai)).toEqual(['WAR_END', 'WAR_END_SUBJUGATIONDEMAND', 'WAR_END_SUBJUGATIONOFFER', 'GIFT_GIVE:small', 'GIFT_GIVE:medium', 'GIFT_GIVE:large', 'DEAL_BEGIN:end-war']);
         obtainDiplomaticRelation(player, ai).locked = true;
         expect(ids(ai).slice(-2)).toEqual(['OFFER_DEAL', 'DEAL_BEGIN:trade']);
     });
@@ -201,7 +202,9 @@ describe('submitProposal (Main.Part10.cs:3957 method_237)', () => {
         expect(obtainDiplomaticRelation(ai, player).type).toBe(DiplomaticRelationType.None);
         expect(submitProposal(galaxy, player, ai, 'MININGRIGHTS_OFFER').reply).toBe('GREETING_FRIENDLY');
         expect(obtainDiplomaticRelation(player, ai).miningRightsToOther).toBe(true);
-        expect(submitProposal(galaxy, player, ai, 'DEAL_BEGIN:trade')).toMatchObject({ ok: false, message: 'Trade negotiation is not available yet' });
+        const deal = submitProposal(galaxy, player, ai, 'DEAL_BEGIN:trade');
+        expect(deal).toMatchObject({ ok: true, reply: 'DEAL_BEGIN' });
+        expect(deal.trade?.kind).toBe('trade');
     });
 
     it('treaty actions answer the automation message box only when asked', () => {
@@ -280,7 +283,7 @@ describe('screen helpers ([proposals] in diplomacyScreen / messagePopups)', () =
         const groups = proposalGroups(listProposals(galaxy, player, ai));
         expect(groups.map((g) => g.label)).toEqual(['Change relationship', 'Send a gift', 'Send a warning', 'Swap maps or tech', 'Negotiate a trade proposal...']);
         const set = new DialogSet('WARNING_REMOVEFORCESSYSTEM_RESPONSE_REFUSE ;Our ships are leaving the {0} system.\n');
-        const res = { ok: true, accepted: false, message: 'WARNING_REMOVEFORCESSYSTEM_RESPONSE_REFUSE', reply: 'WARNING_REMOVEFORCESSYSTEM_RESPONSE_REFUSE' as const, replyArgs: ['Sol'], followUps: [], expireMessagesFor: null, automationPrompt: false };
+        const res = { ok: true, accepted: false, message: 'WARNING_REMOVEFORCESSYSTEM_RESPONSE_REFUSE', reply: 'WARNING_REMOVEFORCESSYSTEM_RESPONSE_REFUSE' as const, replyArgs: ['Sol'], followUps: [], expireMessagesFor: null, automationPrompt: false, trade: null };
         expect(proposalReplyText(set, res, 'Human')).toBe('Our ships are leaving the Sol system.');
         expect(proposalReplyText(null, { ...res, ok: false, reply: null, message: 'No longer on offer' }, 'Human')).toBe('No longer on offer');
     });
