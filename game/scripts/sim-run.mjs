@@ -134,10 +134,10 @@ try {
     const plan = split !== null && split !== true ? String(split).split(',').map(Number) : [];
     if (plan.length === 0) for (let left = seconds; left > 0; left -= chunk) plan.push(Math.min(chunk, left));
     const timings = {}, todo = {}, chunks = [];
-    let frames = 0, draws = 0;
+    let frames = 0, draws = 0, cpuTotal = 0;
     t = performance.now();
     for (const secs of plan) {
-        const c0 = performance.now(), f0 = schedulerState(g).frames, d0 = g.rnd.drawCount;
+        const cpu0 = process.cpuUsage(), c0 = performance.now(), f0 = schedulerState(g).frames, d0 = g.rnd.drawCount;
         try {
             const r = runGameSeconds(g, secs, profile ? { profileClock: () => performance.now() } : {});
             for (const [k, v] of Object.entries(r.timings)) timings[k] = (timings[k] ?? 0) + v;
@@ -151,7 +151,9 @@ try {
         const f = schedulerState(g).frames - f0;
         frames += f; draws += g.rnd.drawCount - d0;
         const ms = performance.now() - c0;
-        chunks.push({ endS: g.nowMs / 1000, frames: f, ms, msPerFrame: ms / Math.max(1, f), heap: heap.sample(), bo: g.builtObjects.length });
+        const cu = process.cpuUsage(cpu0), cpuMs = (cu.user + cu.system) / 1000;
+        cpuTotal += cpuMs;
+        chunks.push({ endS: g.nowMs / 1000, frames: f, ms, msPerFrame: ms / Math.max(1, f), cpuMsPerFrame: cpuMs / Math.max(1, f), heap: heap.sample(), bo: g.builtObjects.length });
     }
     const runMs = performance.now() - t;
     let prof = null;
@@ -164,10 +166,10 @@ try {
     const heapEnd = heap.sample();
 
     const digest = stateDigest(g), counts = stateCounts(g);
-    console.log(`ran ${seconds} game-s: ${frames} frames in ${runMs.toFixed(0)} ms (${(runMs / frames).toFixed(3)} ms/frame), Rnd draws ${draws}`);
+    console.log(`ran ${seconds} game-s: ${frames} frames in ${runMs.toFixed(0)} ms wall (${(runMs / frames).toFixed(3)} ms/frame), ${cpuTotal.toFixed(0)} ms cpu (${(cpuTotal / frames).toFixed(3)} ms/frame; cpu includes GC threads), Rnd draws ${draws}`);
     console.log('digest', digest, JSON.stringify(counts));
     const first = chunks[0], last = chunks[chunks.length - 1];
-    console.log(`ms/frame first chunk ${first.msPerFrame.toFixed(3)} (to ${first.endS}s), last chunk ${last.msPerFrame.toFixed(3)} (to ${last.endS}s); builtObjects ${first.bo} → ${last.bo}`);
+    console.log(`ms/frame wall|cpu: first chunk ${first.msPerFrame.toFixed(3)}|${first.cpuMsPerFrame.toFixed(3)} (to ${first.endS}s), last chunk ${last.msPerFrame.toFixed(3)}|${last.cpuMsPerFrame.toFixed(3)} (to ${last.endS}s); builtObjects ${first.bo} → ${last.bo}`);
     console.log(`heap: start ${mb(heapStart)}, peak sampled ${mb(heap.peak)}, end after gc ${mb(heapEnd)}${globalThis.gc ? '' : ' (run with --expose-gc for gc-settled numbers)'}`);
     console.log(`exceptions: ${out.exceptions.length}`);
     const hits = Object.entries(todo).sort((a, b) => b[1] - a[1]);
@@ -183,7 +185,7 @@ try {
         console.log(`top ${top} functions (sampled ms, self):`);
         for (const [k, v] of prof.self.slice(0, top)) console.log(`  ${v.toFixed(0).padStart(10)}  ${k}`);
     }
-    Object.assign(out, { createMs, digest, counts, frames, rndDraws: draws, runMs, heapStart, heapPeak: heap.peak, heapEnd, todo, timings, chunks,
+    Object.assign(out, { createMs, digest, counts, frames, rndDraws: draws, runMs, cpuMs: cpuTotal, heapStart, heapPeak: heap.peak, heapEnd, todo, timings, chunks,
         profile: prof && { entry: prof.entry.slice(0, 60), incl: prof.incl.slice(0, 60), self: prof.self.slice(0, 60) } });
     if (jsonOut !== null) writeFileSync(String(jsonOut), JSON.stringify(out, null, 1));
 } finally {
