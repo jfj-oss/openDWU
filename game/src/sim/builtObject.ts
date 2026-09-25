@@ -1432,6 +1432,15 @@ export class BuiltObject {
     hyperjumpDisabledLocation = false;
     // ---- M4d fields (orders, cargo) ----
     // ---- M4e fields (docking, refuelling) ----
+    /** BuiltObject.cs 397 _LastDockDistance = 100000000.0 (case Dock's arrival overshoot test). */
+    lastDockDistance = 100000000.0;
+    /** BuiltObject.cs 433-439 refuel reservation: _RefuelResourceId = byte.MaxValue, _RefuelAmount (short), _RefuelLocationIsBuiltObject, _RefuelLocationId = -1. */
+    refuelResourceId = 255;
+    refuelAmount = 0;
+    refuelLocationIsBuiltObject = false;
+    refuelLocationId = -1;
+    /** BuiltObject.cs 557 _RefuellingLocation (StellarObject; cached by CheckForRefuelling, read as CachedRefuellingLocation). */
+    refuellingLocation: BuiltObject | Habitat | Creature | null = null;
     // ---- M4f fields (civilian mission AI) ----
     // ---- M4g fields (extraction, industry) ----
     /** BuiltObject.cs _DoingMining / _DoingGasMining / _DoingConstruction (reset and set by IndustrialProcessing; read by the UI and ship animations). */

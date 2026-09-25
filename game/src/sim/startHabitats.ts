@@ -22,6 +22,7 @@ import type { Empire } from './empire';
 import type { Resource } from './data/resources';
 import { CargoList, TroopList } from './cargo';
 import { ensureHabitatManufacturingQueue } from './manufacturingQueue';
+import { createHabitatDockingBays } from './logistics/dockingBays';
 import { Habitat, HabitatCategoryType, HabitatType, IndustryType } from './types';
 
 // GalaxyImages.cs 30 / 55.
@@ -61,10 +62,11 @@ function generatePlanet(galaxy: Galaxy, sun: Habitat, selector: PlanetSelector, 
         habitat.invadingTroops = new TroopList();
         // Galaxy.8.cs 275/314/353/483/522/561 (M4h): habitat.ConstructionQueue = new ConstructionQueue(habitat, galaxy).
         newHabitatConstructionQueue(galaxy, habitat);
-        // TODO(port): 20 DockingBays of
-        // component 74 / DockingBayWaitQueue (no Rnd, no ID counters) — models not ported.
         // Galaxy.8.cs 276/315/354/523/562 (M4g): habitat.ManufacturingQueue = new ManufacturingQueue(habitat, galaxy).
         ensureHabitatManufacturingQueue(galaxy, habitat);
+        // Galaxy.8.cs 277-285/316-324/355-363/524-532/563-571 (M4e): 20 DockingBays (component 74, capacity 100) +
+        // DockingBayWaitQueue. No Rnd, no id counters.
+        createHabitatDockingBays(habitat, 20);
     }
     return habitat;
 }

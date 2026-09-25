@@ -7,6 +7,8 @@
 
 import type { Galaxy } from './galaxy';
 import type { Empire } from './empire';
+import type { BuiltObject } from './builtObject';
+import type { Population } from './population';
 import { registerTodo, todo } from './tick/todo';
 
 const T_assignShipMissions = registerTodo('M4f', 'assignShipMissions');
@@ -40,4 +42,19 @@ const T_reviewIndependentColonyTargets = registerTodo('M4f', 'reviewIndependentC
 /** Empire.5.cs 1298 ReviewIndependentColonyTargets. */
 export function reviewIndependentColonyTargets(galaxy: Galaxy, empire: Empire): void {
     /* TODO(port) M4f */ todo(T_reviewIndependentColonyTargets);
+}
+
+// ---- stub added by M4e (missions/cmdDocking.ts case Unload, BuiltObject.2.cs 3981) ----
+
+const T_processTourists = registerTodo('M4f', 'processTourists');
+/**
+ * BuiltObject.2.cs 4825 ProcessTourists(tourists): tourism income when passengers unload at a resort base (owner state
+ * money, pirate smuggling share, EmpireCounters.ProcessTourismIncome, AddResortIncome) or at a scenic colony. Stub: no
+ * income. RND: DoCharacterEvent(TourismIncome, …) at 4857 / the colony branch not drawn until M4f (and M4u).
+ */
+export function processTourists(galaxy: Galaxy, builtObject: BuiltObject, tourists: Population): void {
+    void galaxy;
+    void builtObject;
+    void tourists;
+    /* TODO(port) M4f */ todo(T_processTourists);
 }

@@ -64,16 +64,12 @@ function missionIsIdle(bo: BuiltObject): boolean {
 }
 
 /**
- * StellarObject.DockingBayWaitQueue for a habitat. TODO(port) M4e: habitat docking bays / wait queues are not modeled
- * (types.ts has no field). The C# creates the queue for every generated or colonised habitat (Galaxy.8.cs 285-532,
- * Empire.1.cs 131), i.e. for every habitat the trading-post scans below can reach, and ships only join it through
- * docking (M4e). Until M4e adds the field this reads as an existing empty queue.
+ * `habitat.DockingBayWaitQueue != null ? habitat.DockingBayWaitQueue.Count` (null → the C# `!= null` test fails). M4e
+ * creates the queues at the C# sites (Galaxy.8.cs 285-571, Galaxy.5.cs 1644/1781, Empire.1.cs 131).
  */
 function habitatDockingBayWaitQueueCount(habitat: Habitat): number | null {
-    // TODO(port) M4e: types.ts now declares Habitat.dockingBayWaitQueue (M4b block) but nothing creates the queues at
-    // the C# sites yet (Galaxy.8.cs 285-532, Empire.1.cs 131), so a null queue still reads as the existing empty one.
     const q = habitat.dockingBayWaitQueue;
-    return q === null ? 0 : q.length;
+    return q === null ? null : q.length;
 }
 
 /** Habitat.IsBlockaded (Habitat.cs 119). TODO(port) M4m: blockades not modeled on Habitat yet (false until then). */

@@ -44,6 +44,7 @@ import { MIN_TIME } from './tick/simTime';
 import type { DeclinedTask } from './missions/distress';
 import type { IMessageRecipient } from './messages';
 import { ensureHabitatManufacturingQueue } from './manufacturingQueue';
+import { takeOwnershipOfColonyDockingBays } from './logistics/dockingBays';
 import type { FuelSourceSystemList } from './movement';
 
 // Empire.1.cs TakeOwnershipOfColony callees that live in modules importing empire.ts
@@ -778,6 +779,8 @@ export class Empire {
         takeOwnershipOfColonyConstructionQueue(this.galaxy, colony);
         // Empire.1.cs 116-119 (M4g): if (colony.ManufacturingQueue == null) colony.ManufacturingQueue = new ManufacturingQueue(colony, _Galaxy).
         ensureHabitatManufacturingQueue(this.galaxy, colony);
+        // Empire.1.cs 120-131 (M4e): DockingBays (20) / DockingBayWaitQueue when missing. No Rnd.
+        takeOwnershipOfColonyDockingBays(colony);
         colony.owner = newEmpire;
         colony.empire = newEmpire;
         if (empire !== null && flag) {
@@ -1525,6 +1528,12 @@ export class Empire {
     /** Empire.cs _EmpireOrderCount (set by CheckMarketOrders, Empire.4.cs 792). */
     empireOrderCount = 0;
     // ---- M4e fields (docking, refuelling) ----
+    /** Empire.cs 574 AutoRefuelStateShips = true (read by BuiltObject.AutoRefuelRepairShip). */
+    autoRefuelStateShips = true;
+    /** Empire.cs 809 _ThisYearsPrivateFuelCosts and the PurchaseStateFuel / PurchasePrivateFuel year markers (Empire.6.cs 2254-2278). */
+    thisYearsPrivateFuelCostsValue = 0.0;
+    dateOfLastStateFuelCost = 0;
+    dateOfLastPrivateFuelCost = 0;
     // ---- M4f fields (civilian mission AI) ----
     // ---- M4g fields (extraction, industry) ----
     /** Empire.cs 122 _EmpireResourceTargets (PrioritizeEmpireResourceNeeds; added by M4a for the tick's assignment). */

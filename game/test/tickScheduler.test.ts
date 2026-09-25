@@ -180,7 +180,7 @@ describe('Habitat.DoTasks intervals (Habitat.cs 1399, strict >)', () => {
 describe('BuiltObject.DoTasks (BuiltObject.cs 3614)', () => {
     const markers = {
         intermediate: 'M4o checkShieldAreaRechargeReset', // was 'M4n checkNearTarget' until M4n ported it
-        periodic: 'M4e checkClearDocking', // (was M4h checkRepairMissionStillValid, ported by M4h)
+        periodic: 'M4q healTroops', // (was M4e checkClearDocking until M4e ported it; before that M4h checkRepairMissionStillValid)
         long: 'M4q baconBuiltObjectHugeProcessingSpanActions',
     };
 
@@ -200,14 +200,15 @@ describe('BuiltObject.DoTasks (BuiltObject.cs 3614)', () => {
         expect(firedBlocks(markers, () => builtObjectDoTasks(galaxy, bo, t + 60000, 0))).toEqual(['intermediate', 'periodic', 'long']);
     });
 
-    it('runs the ExecuteCommands loop once for a ship without a mission (the epilogue reaches the M4e AutoRefuelRepairShip stub, then returns 0)', () => {
+    it('runs the ExecuteCommands loop once for a ship without a mission (the epilogue reaches AutoRefuelRepairShip, ported by M4e, and no M4e stub)', () => {
         // M4b ported ExecuteCommands: with no mission the no-command epilogue (BuiltObject.2.cs 4494-4574) runs
-        // AssignQueuedMission (no queued missions) then RevertToPreviousMission → AutoRefuelRepairShip (M4e stub) once.
+        // AssignQueuedMission (no queued missions) then RevertToPreviousMission → AutoRefuelRepairShip. That was the M4e
+        // stub marker here until M4e ported it; now the call must not reach any remaining M4e stub.
         const bo = galaxy.builtObjects[1];
         builtObjectDoTasks(galaxy, bo, 5000, 0); // first call: _LastTouch = now, dt = 0 ⇒ no ExecuteCommands
         resetTodoCounts();
         builtObjectDoTasks(galaxy, bo, 6000, 0);
-        expect(todoHits()['M4e autoRefuelRepairShip']).toBe(1);
+        expect(Object.keys(todoHits()).filter((k) => k.startsWith('M4e '))).toEqual([]);
     });
 });
 

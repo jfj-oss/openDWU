@@ -13,6 +13,8 @@ import { BuiltObjectMissionType, builtObjectMission } from '../missions/mission'
 import { shipGroupRepairBonus, type ShipGroup } from '../fleets/shipGroup';
 import { battleStatsDamageRepairedUs } from '../combat/damage';
 import type { ConstructionQueue } from './constructionQueue';
+import type { Empire } from '../empire';
+import { registerTodo, todo } from '../tick/todo';
 
 /** BaconBuiltObject.cs 66-70 shipFreeRepairTimeFromCrewSkill* (seconds per component; BaconSettings.txt has the same values). */
 const SHIP_FREE_REPAIR_TIME_AVERAGE = 160;
@@ -152,4 +154,21 @@ export function checkForRepairs(galaxy: Galaxy, builtObject: BuiltObject): void 
     } else if (!builtObject.repairForNextMission && builtObject.unbuiltOrDamagedComponentCount > 0 && builtObject.builtAt === null) {
         builtObject.repairForNextMission = true;
     }
+}
+
+// ---- stub added by M4e (logistics/refuel.ts AutoRefuelRepairShip, BuiltObject.2.cs 4728) ----
+
+const T_assignRepairMission = registerTodo('M4h', 'assignRepairMission');
+/**
+ * Empire.4.cs 4863 AssignRepairMission(builtObject): FindNearestShipYard(builtObject, canRepairOrBuild: true,
+ * includeVerySmallYards: true), orders shortage resources for unbuilt components, then ClearPreviousMissionRequirements +
+ * AssignMission(Repair, yard, null, VeryHigh) → true. Stub: false (no repair mission; the caller clears RevertMission).
+ * No Rnd in the C# body itself.
+ */
+export function assignRepairMission(galaxy: Galaxy, empire: Empire, builtObject: BuiltObject): boolean {
+    void galaxy;
+    void empire;
+    void builtObject;
+    /* TODO(port) M4h */ todo(T_assignRepairMission);
+    return false;
 }
