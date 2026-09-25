@@ -219,47 +219,48 @@ describe('generatePirateEmpireName', () => {
 // (re-pinned M4s1: ReviewPirateRelations draws Rnd.NextDouble in every game-start Empire long block and the Galaxy long
 // block's independent-colony pirate offers draw per colony, so GenerateNewPirateEmpires sees a different stream.)
 // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
+// Re-pinned M4u: game-start character reviews (ReviewCharacterTraits Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd) move the Rnd stream before pirate generation.
 const PINNED_SEED1_PIRATES: unknown[] = [
     [
-        'Dread Force',
-        'S243 3',
-        'Kiadian',
-        88,
+        "Venomous Marauders",
+        "OI626",
+        "Naxxilian",
+        4331580
     ],
     [
-        'Red Storm Gang',
-        'S247 4',
-        'Dhayut',
-        8323096,
+        "Iron League",
+        "S162 6",
+        "Kiadian",
+        88
     ],
     [
-        'Fierce Company',
-        'S276 7',
-        'Teekan',
-        3153920,
+        "S1 Ravagers",
+        "S278 6",
+        "Dhayut",
+        8323096
     ],
     [
-        'Ugnar Pillagers',
-        'LI613',
-        'Mortalen',
-        4390912,
+        "Fearsome Claw Interstellar",
+        "S285 4",
+        "Shandar",
+        8336399
     ],
     [
-        'Red Marauders',
-        'S43 3',
-        'Boskara',
-        3674214,
+        "Sinister Moon Marauders",
+        "WB225",
+        "Mortalen",
+        4390912
     ],
     [
-        'Iron Confederation',
-        'S156 6',
-        'Ackdarian',
-        32639,
+        "Dirty Pirates",
+        "S48 6",
+        "Gizurean",
+        8355600
     ],
     [
-        'Grim Ventures',
-        'S181 9',
-        'Haakonish',
-        7364656,
-    ],
+        "Sol Pirates",
+        "S96 2",
+        "Atuuk",
+        796684
+    ]
 ];

@@ -46,16 +46,34 @@ function firedBlocks(markers: Record<string, string | BlockProbe>, fn: () => voi
 
 /**
  * The regular block has no stub left (M4b ported ProcessDistressSignals, M4i ReviewDesignsAndRetrofit): arm
- * Empire._ReviewDesignsAndRetrofit (with ControlDesigns off) and see ReviewDesignsAndRetrofit clear it.
+ * Empire._ReviewDesignsAndRetrofit (with ControlDesigns off) and see ReviewDesignsAndRetrofit clear it. The clear is
+ * recorded through an instance accessor, because a later block in the same frame may set the flag again (a research
+ * breakthrough, researchTick.ts DoResearchBreakthrough, once the M4u race events / character reviews run in the frame).
  */
 function reviewDesignsProbe(getEmpire: () => Empire): BlockProbe {
+    let cleared = false;
     return {
         arm: () => {
             const e = getEmpire();
             e.controlDesigns = false;
-            e.reviewDesignsAndRetrofitFlag = true;
+            let value = true;
+            cleared = false;
+            Object.defineProperty(e, 'reviewDesignsAndRetrofitFlag', {
+                configurable: true,
+                enumerable: true,
+                get: () => value,
+                set: (v: boolean) => {
+                    if (value && !v) cleared = true;
+                    value = v;
+                },
+            });
         },
-        fired: () => !getEmpire().reviewDesignsAndRetrofitFlag,
+        fired: () => {
+            const e = getEmpire();
+            const value = e.reviewDesignsAndRetrofitFlag;
+            Object.defineProperty(e, 'reviewDesignsAndRetrofitFlag', { configurable: true, enumerable: true, writable: true, value });
+            return cleared;
+        },
     };
 }
 
@@ -95,7 +113,7 @@ describe('Empire.DoTasks intervals (Empire.1.cs 3427, >= on seconds, touches fir
         periodic: 'M4s checkSendPirateRaid',
         intermediate: 'M4l reviewFleetAdmiralBonuses',
         long: 'M4f reviewMigrationTourism', // (M4i ported ReviewColonyWonders; same block)
-        huge: 'M4u resetRaceEvents',
+        huge: 'M4o cleanupInvalidShips', // (M4u ported ResetRaceEvents, the previous marker)
     };
     const at = (ms: number): string[] => {
         const e = galaxy.empires[1];
@@ -138,13 +156,14 @@ describe('Empire.DoTasks intervals (Empire.1.cs 3427, >= on seconds, touches fir
 
     it('pirate factions branch to DoTasksPirates with the same intervals', () => {
         const pirateMarkers = {
-            short: 'M4u processCharacters',
+            // short: M4u ported ProcessCharacters (the previous marker); the block's other call (ShipGroup.DoTasks) only
+            // reaches stubs when the faction has fleets, so the short block is not checked here.
             // M4s1 ported PirateCheckMissionsOnOffer, M4i ReviewDesignsAndRetrofit (4173): detected by a probe.
             regular: reviewDesignsProbe(() => galaxy.pirateEmpires[0]),
             periodic: 'M4s pirateRecalculateEmpireCorruption',
             intermediate: 'M4s pirateCollectIncomeFromControlledColonies',
             long: 'M4s doTaskPiratesLongInterval',
-            huge: 'M4u pirateReviewRandomEvents',
+            huge: 'M4o cleanupInvalidShips', // (M4u ported PirateReviewRandomEvents, the previous marker)
         };
         const p = galaxy.pirateEmpires[0];
         expect(p.pirateEmpireBaseHabitat).not.toBeNull();
@@ -154,8 +173,8 @@ describe('Empire.DoTasks intervals (Empire.1.cs 3427, >= on seconds, touches fir
             return firedBlocks(pirateMarkers, () => empireDoTasks(galaxy, p));
         };
         expect(pat(2999)).toEqual([]);
-        expect(pat(10000)).toEqual(['short', 'regular']);
-        expect(pat(60000)).toEqual(['short', 'regular', 'periodic', 'intermediate']);
+        expect(pat(10000)).toEqual(['regular']);
+        expect(pat(60000)).toEqual(['regular', 'periodic', 'intermediate']);
         expect(pat(240000)).toEqual(Object.keys(pirateMarkers));
         // Normal-empire-only steps never run for a pirate.
         expect(firedBlocks({ x: 'M4m respondToIncomingEnemyFleetsAndPlanetDestroyers' }, () => {
@@ -171,8 +190,8 @@ describe('Habitat.DoTasks intervals (Habitat.cs 1399, strict >)', () => {
     // touch write (Habitat.cs 1440 _LastIntermediateTouch = _tempNow) instead of a stub hit.
     const markers = {
         periodic: 'M4q scanForNewOwnerHabitat',
-        // M4c ported ReviewWhetherRefuellingDepot; CheckHabitatIsEmpire (M4u stub, SpawnNewEmpires on) marks the block.
-        long: 'M4u checkHabitatIsEmpire',
+        // M4c ported ReviewWhetherRefuellingDepot, M4u CheckHabitatIsEmpire; UpdateRaidCountdown (M4s stub) marks the block.
+        long: 'M4s updateRaidCountdownHabitat',
         huge: 'M4q clearTroopsAwaitingPickup',
     };
     const at = (ms: number): string[] => {
@@ -342,7 +361,7 @@ describe('game-start switch-over entry points (tick/gameStart.ts)', () => {
         for (const e of galaxy.empires) {
             resetEmpireTouchTimesForAge(galaxy, e);
             // Start.2.cs 1114-1121 back-dates all six touches by 121 s: short..long fire at 1341, huge does not.
-            expect(firedBlocks({ long: 'M4f reviewMigrationTourism', huge: 'M4u resetRaceEvents' }, () => runGameStartEmpireTick(galaxy, e))).toEqual(['long']);
+            expect(firedBlocks({ long: 'M4f reviewMigrationTourism', huge: 'M4o cleanupInvalidShips' }, () => runGameStartEmpireTick(galaxy, e))).toEqual(['long']);
             staggerEmpireTouchTimes(galaxy, e, 17);
             expect(e.lastLongTouch).toBe(-17000);
             expect(e.lastHugeTouch).toBe(-17000); // Start.2.cs 1350 sets LastHugeTouch too

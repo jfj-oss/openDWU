@@ -137,7 +137,9 @@ describe('GenerateStartingCharacters (normal empires, seed 1)', () => {
         // (re-pinned M4k: the game-start Empire.DoTasks now runs PerformResearch, whose research-queue selection and research events draw Rnd)
         // (re-pinned M4s1: ReviewPirateRelations draws one Rnd.NextDouble per Empire long block, incl. the game-start DoTasks)
         // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
-        expect(draws).toEqual([49, 38, 59, 27]);
+        // (re-pinned M4u: the game-start Empire.DoTasks runs the character reviews and ReviewEmpireEvents, whose Rnd moves the
+        // empire placement and races)
+        expect(draws).toEqual([44, 85, 58, 26]);
         expect(log.filter((d) => d.startsWith('d=')).length).toBe(0);
         const summary = g.empires.map((e) => ({ race: e.dominantRace!.name, leader: e.leader?.name, characters: getEmpireCharacters(e).map(describeCharacter) }));
         // (re-pinned: createGame now runs the price reviews, first galaxy tick, per-empire setup,
@@ -145,127 +147,154 @@ describe('GenerateStartingCharacters (normal empires, seed 1)', () => {
         // Rnd stream; draw counts per character are unchanged in shape.)
         // (re-pinned M4k: game-start research shifts the Rnd stream before this step.)
         // (re-pinned M4s1: ReviewPirateRelations draws Rnd.NextDouble in each game-start Empire.DoTasks long block.)
+        // re-pinned M4u: the game-start Empire.DoTasks runs the character reviews (ReviewCharacterTraits / ApplyCharacterLocationBonus Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd), moving the Rnd stream (and empire placement / races) from the first empire on.
         expect(summary[0]).toEqual({
-            race: 'Human',
-            leader: 'Matthia Obarria',
-            characters: [
+            "race": "Human",
+            "leader": "Gudan Trebulo",
+            "characters": [
                 {
-                    role: 'Ambassador',
-                    name: 'Than Bendu',
-                    race: 'Human',
-                    skills: [
-                        'Diplomacy:25',
+                    "role": "Ambassador",
+                    "name": "Than Bendu",
+                    "race": "Human",
+                    "skills": [
+                        "Diplomacy:25"
                     ],
-                    traits: [
-                        'Tolerant',
-                        'EloquentSpeaker',
+                    "traits": [
+                        "Tolerant",
+                        "EloquentSpeaker"
                     ],
-                    location: 'Sol 2',
-                    bonusesKnown: false,
+                    "location": "Sol 2",
+                    "bonusesKnown": false
                 },
                 {
-                    role: 'Leader',
-                    name: 'Matthia Obarria',
-                    race: 'Human',
-                    skills: [
-                        'PopulationGrowth:5',
-                        'Diplomacy:6',
+                    "role": "Leader",
+                    "name": "Gudan Trebulo",
+                    "race": "Human",
+                    "skills": [
+                        "PopulationGrowth:4"
                     ],
-                    traits: [
-                        'Expansionist',
+                    "traits": [
+                        "Generous",
+                        "Demoralizing"
                     ],
-                    location: 'Sol 2',
-                    bonusesKnown: true,
+                    "location": "Sol 2",
+                    "bonusesKnown": true
                 },
                 {
-                    role: 'IntelligenceAgent',
-                    name: 'Hugo Callosk',
-                    race: 'Human',
-                    skills: [
-                        'Espionage:5',
-                        'CounterEspionage:10',
+                    "role": "IntelligenceAgent",
+                    "name": "Gerrin Tarfan",
+                    "race": "Human",
+                    "skills": [
+                        "Concealment:10",
+                        "Espionage:7"
                     ],
-                    traits: [
-                        'IntelligenceCorrupt',
+                    "traits": [
+                        "IntelligenceLawful",
+                        "IntelligenceSober"
                     ],
-                    location: 'Sol 2',
-                    bonusesKnown: false,
-                },
-            ],
+                    "location": "Sol 2",
+                    "bonusesKnown": false
+                }
+            ]
         });
         expect(summary.slice(1).map((s) => [s.race, s.leader, s.characters.map((c) => `${c.role}:${c.name}`)])).toEqual([
-            ['Haakonish', 'Gar Takruan', ['ColonyGovernor:Yentor Zhukziban', 'Leader:Gar Takruan', 'IntelligenceAgent:Mok Kawass']],
-            ['Dhayut', 'Wia Noskri', ['TroopGeneral:Maqtor Aklon', 'Leader:Wia Noskri', 'IntelligenceAgent:Wek Woppit']],
-            ['Ugnari', 'Cudas Wodos', ['IntelligenceAgent:Tek Ixito', 'Leader:Cudas Wodos']],
+            [
+                "Haakonish",
+                "Sabri Gepkiy",
+                [
+                    "ColonyGovernor:Yentor Zhukziban",
+                    "Leader:Sabri Gepkiy",
+                    "IntelligenceAgent:Sarriq Shiddai"
+                ]
+            ],
+            [
+                "Dhayut",
+                "Darrat Nassiki",
+                [
+                    "TroopGeneral:Maqtor Aklon",
+                    "Leader:Darrat Nassiki",
+                    "IntelligenceAgent:Iko Urtion"
+                ]
+            ],
+            [
+                "Ugnari",
+                "Ossan Assari",
+                [
+                    "IntelligenceAgent:Tek Ixito",
+                    "Leader:Ossan Assari"
+                ]
+            ]
         ]);
         // Human empire full draw sequence: Leader (15: name 2, skill count, skill picks + levels, trait
         // count, trait), one agent (16: Next(0,4) race roll + ...), then 6 × (CharacterTransferLocation +
         // CharacterStart: Next(0,5), Next(0,20), Next(0,80) each) for the 3 characters; the second empire's draws follow.
         // (re-pinned M4s1: the Rnd stream reaching this step moved, see above.)
         // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785): the Human empire now activates 3 characters, so the 60-draw window spills into the next empire.)
+        // (re-pinned M4u: see the summary pin above.)
         expect(log.slice(0, 60)).toEqual([
-            '0,31=4',
-            '0,26=15',
-            '0,2=1',
-            '0,2=0',
-            '0,3=2',
-            '0,4=3',
-            '0,3=0',
-            '0,4=0',
-            '0,4=2',
-            '2,10=5',
-            '0,4=2',
-            '2,10=6',
-            '0,2=0',
-            '0,41=10',
-            '0,4=0',
-            '0,31=29',
-            '0,26=10',
-            '0,2=1',
-            '0,2=0',
-            '0,3=0',
-            '0,3=0',
-            '0,3=0',
-            '0,3=0',
-            '0,3=0',
-            '0,3=1',
-            '0,4=0',
-            '5,16=5',
-            '0,4=0',
-            '5,16=10',
-            '0,2=0',
-            '0,14=12',
-            '0,5=2',
-            '0,20=0',
-            '0,80=47',
-            '0,5=4',
-            '0,20=9',
-            '0,80=2',
-            '0,5=0',
-            '0,20=19',
-            '0,80=18',
-            '0,5=2',
-            '0,20=8',
-            '0,80=58',
-            '0,5=3',
-            '0,20=10',
-            '0,80=15',
-            '0,5=1',
-            '0,20=6',
-            '0,80=51',
-            '0,38=17',
-            '0,29=6',
-            '0,2=0',
-            '0,3=0',
-            '0,4=2',
-            '0,4=1',
-            '-5,-1=-5',
-            '0,2=0',
-            '0,41=27',
-            '0,4=3',
-            '0,38=19',
+            "0,31=1",
+            "0,26=8",
+            "0,2=0",
+            "0,3=0",
+            "0,4=3",
+            "0,4=0",
+            "2,10=4",
+            "0,2=1",
+            "0,41=19",
+            "0,41=2",
+            "0,4=2",
+            "0,31=19",
+            "0,26=9",
+            "0,2=1",
+            "0,2=0",
+            "0,3=1",
+            "0,3=1",
+            "0,3=2",
+            "0,3=0",
+            "0,4=0",
+            "5,16=10",
+            "0,4=0",
+            "5,16=7",
+            "0,2=1",
+            "0,14=13",
+            "0,14=6",
+            "0,5=0",
+            "0,20=15",
+            "0,80=44",
+            "0,5=3",
+            "0,20=0",
+            "0,80=60",
+            "0,5=4",
+            "0,20=9",
+            "0,80=19",
+            "0,5=2",
+            "0,20=11",
+            "0,80=24",
+            "0,5=0",
+            "0,20=6",
+            "0,80=26",
+            "0,5=4",
+            "0,20=7",
+            "0,80=51",
+            "0,38=30",
+            "0,29=8",
+            "0,2=1",
+            "0,2=1",
+            "0,2=1",
+            "0,3=1",
+            "0,20=10",
+            "0,3=0",
+            "0,4=0",
+            "0,3=1",
+            "0,20=9",
+            "0,3=2",
+            "0,4=0",
+            "0,3=1",
+            "0,20=6",
+            "0,4=1"
         ]);
-        expect(log.slice(31, 49).map((d) => d.split('=')[0])).toEqual(Array.from({ length: 6 }, () => ['0,5', '0,20', '0,80']).flat());
+        // (M4u: Leader 11 + agent 15 draws now, so the activations start at 26.)
+        expect(log.slice(26, 44).map((d) => d.split('=')[0])).toEqual(Array.from({ length: 6 }, () => ['0,5', '0,20', '0,80']).flat());
 
         for (const e of g.empires) {
             const chars = getEmpireCharacters(e);
@@ -310,7 +339,8 @@ describe('GenerateStartingCharacters (normal empires, seed 1)', () => {
         // Habitat.cs 616-624: colony characters excluding leaders count only when BonusesKnown (none) + leader.
         expect(resolveCharacterColonyHappinessBonus(cap)).toBe(leader.colonyHappiness);
         // pinned for seed 1 (re-pinned M4k: game-start research shifts the Rnd stream; re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
-        expect(leader.colonyHappiness).toBe(-10);
+        // (re-pinned M4u: game-start character reviews / race events shift the Rnd stream; the new Dhayut leader.)
+        expect(leader.colonyHappiness).toBe(0);
         expect(resolveCharacterColonyIncomeBonus(cap)).toBe(leader.colonyIncome);
         expect(resolveCharacterColonyCorruptionBonus(cap)).toBe(leader.colonyCorruption);
         expect(resolveEmpireLeaderWarWearinessDivisor(dhayut)).toBe(1.0 + leader.warWeariness / 100.0);

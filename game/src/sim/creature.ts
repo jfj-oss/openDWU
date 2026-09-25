@@ -1,12 +1,14 @@
 // Port of DistantWorlds.Types.CreatureType (CreatureType.cs) and
 // DistantWorlds.Types.Creature (Creature.cs): constructor, movement and AI
-// tick (task 08h). Combat against ships/bases is TODO(port) until a
-// BuiltObject model exists — CurrentTarget is always null and Attackers
-// always empty, so those branches never consume Rnd.
+// tick (task 08h). Combat (CheckForAttackers / CheckForTargets / AttackTarget, Creature.cs 1196-1345) is in
+// events.ts (M4u); DamageTarget (Creature.cs 1347) is an M4o stub.
 
 import type { Galaxy } from './galaxy';
 import { GalaxyLocationEffectType } from './galaxyLocation';
 import { HabitatCategoryType, HabitatType, type Habitat } from './types';
+import { isHabitat, type StellarObject } from './missions/mission';
+import { creatureAttackTarget, creatureCheckForAttackers, creatureCheckForTargets, creatureCheckTargetInRange, stellarAttackers, stellarPursuers } from './events';
+import { checkEmpireHasHyperDriveTech } from './forceStructure';
 
 // Port of DistantWorlds.Types.CreatureType (member order exact; byte enum).
 export enum CreatureType {
@@ -71,6 +73,11 @@ export interface AnchorPoint {
     y: number;
 }
 
+/** `target is Habitat` for a StellarObject. */
+function isHabitatTarget(o: StellarObject): o is Habitat {
+    return isHabitat(o);
+}
+
 function removeFrom<T>(list: T[], item: T): void {
     const i = list.indexOf(item);
     if (i >= 0) list.splice(i, 1);
@@ -91,8 +98,10 @@ export class Creature {
     topSpeed = 0; // C#: short StellarObject.TopSpeed (never set for creatures)
     parentHabitat: Habitat | null = null;
     hasBeenDestroyed = false;
-    // TODO(port): CurrentTarget / Attackers / Pursuers — need BuiltObject.
-    readonly currentTarget: null = null;
+    /** StellarObject.CurrentTarget / Attackers / Pursuers (Creature.cs 324-325: the lists are created by the ctor). */
+    currentTarget: StellarObject | null = null;
+    attackers: StellarObject[] = [];
+    pursuers: StellarObject[] = [];
 
     attackStrength = 0;
     pictureRef = 0;
@@ -351,16 +360,17 @@ export class Creature {
         const totalSeconds1 = time - this.lastShortTouch;
         const totalSeconds2 = time - this.lastPeriodicTouch;
         const totalSeconds3 = time - this.lastLongTouch;
-        this.move(timePassed);
+        this.move(timePassed, time);
         this.doLocationEffects(timePassed);
         if (totalSeconds1 >= 3.0) {
-            // TODO(port): CheckForAttackers / AttackTarget — need BuiltObject.
+            creatureCheckForAttackers(this.galaxy, this);
+            creatureAttackTarget(this.galaxy, this, totalSeconds1, time);
             this.heal(totalSeconds1);
             this.applyLocationEffects();
             this.lastShortTouch = time;
         }
         if (totalSeconds2 >= 10.0) {
-            // TODO(port): if (IsVisible) CheckForTargets() — need BuiltObject.
+            if (this.isVisible) creatureCheckForTargets(this.galaxy, this);
             if (this.hasBeenDestroyed) {
                 this.completeTeardown();
             }
@@ -371,6 +381,7 @@ export class Creature {
             this.split();
             this.chooseAction();
             this.reproduce(totalSeconds3);
+            this.attackers.length = 0;
             this.lastLongTouch = time;
         }
         this.lastTouch = time;
@@ -587,8 +598,10 @@ export class Creature {
                         this.galaxy.calculateDistance(habitats[index].xpos, habitats[index].ypos, this.xpos, this.ypos) < 1000000.0
                     ) {
                         habitat = habitats[index];
-                        // TODO(port): a DominantEmpire without hyperdrive tech rejects the
-                        // system — no empires yet, so the reject flag is always false.
+                        let flag = false;
+                        const sys = this.galaxy.systems[this.galaxy.determineHabitatSystemStar(habitat).systemIndex];
+                        if (sys.dominantEmpire != null && sys.dominantEmpire.empire != null && !checkEmpireHasHyperDriveTech(sys.dominantEmpire.empire)) flag = true;
+                        if (flag) habitat = null;
                     }
                     ++index;
                     if (index >= habitats.length) index = 0;
@@ -653,7 +666,9 @@ export class Creature {
         if (g.systems.length > this.nearestSystemStar.systemIndex) {
             const list = g.systems[this.nearestSystemStar.systemIndex].creatures;
             if (list) {
-                const num = 20; // TODO(port): 4 when the system has a DominantEmpire.
+                let num = 20;
+                const system = g.systems[this.nearestSystemStar.systemIndex];
+                if (system.dominantEmpire != null && system.dominantEmpire.empire != null) num = 4;
                 if (list.length > num) return;
             }
         }
@@ -700,11 +715,16 @@ export class Creature {
         return false;
     }
 
-    // Port of Creature.cs CompleteTeardown (line 948). CurrentTarget is always null here (the
-    // target block 950-956 reduces away). TODO(port): Fighter.AbandonAttackTarget / EvaluateThreats
+    // Port of Creature.cs CompleteTeardown (line 948). TODO(port): Fighter.AbandonAttackTarget / EvaluateThreats
     // (Fighter unported; BuiltObject.fighters is always empty) and GalaxyLocation.RelatedCreatures
     // (not modelled on the TS GalaxyLocation; only story special zones set it).
     completeTeardown(): void {
+        if (this.currentTarget !== null) {
+            const pursuers = stellarPursuers(this.currentTarget);
+            if (pursuers !== null) removeFrom(pursuers, this as StellarObject);
+            const attackers = stellarAttackers(this.currentTarget);
+            if (attackers !== null) removeFrom(attackers, this as StellarObject);
+        }
         const builtObjects = this.galaxy.builtObjects;
         for (let index1 = 0; index1 < builtObjects.length; ++index1) {
             const bo = builtObjects[index1];
@@ -725,15 +745,25 @@ export class Creature {
         }
     }
 
-    // Port of Creature.cs Move (line 998). CurrentTarget is always null and
-    // IsBenign always false (no BuiltObjects), so the target, flee and lunge
-    // branches reduce away.
-    private move(timePassed: number): void {
+    // Port of Creature.cs Move (line 998); `tempNow` in game seconds (the lunge clock).
+    private move(timePassed: number, tempNow: number): void {
         const g = this.galaxy;
         if (this.targetSpeed > 0.0 || this.currentSpeed > 0.0) {
-            let num1: number;
-            let num2: number;
-            if (this.parentHabitat !== null) {
+            let num1 = this.xpos;
+            let num2 = this.ypos;
+            if (!this.isBenign && this.currentTarget !== null) {
+                if (creatureCheckTargetInRange(g, this, this.currentTarget)) {
+                    num1 = this.currentTarget.xpos;
+                    num2 = this.currentTarget.ypos;
+                    this.targetSpeed = Math.fround(this.movementSpeed);
+                } else {
+                    this.currentTarget = null;
+                    this.distanceToTarget = Number.MAX_VALUE;
+                    this.targetSpeed = 0;
+                }
+            } else if (this.isBenign && this.attackers.length > 0) {
+                this.fleeFromAttacker(this.attackers[0]);
+            } else if (this.parentHabitat !== null) {
                 num1 = this.parentHabitat.xpos + this.parentOffsetX;
                 num2 = this.parentHabitat.ypos + this.parentOffsetY;
             } else if (this.anchorPoint !== null) {
@@ -747,18 +777,42 @@ export class Creature {
             if (num1 !== this.xpos && num2 !== this.ypos) {
                 this.targetHeading = Math.fround(determineAngle(this.xpos, this.ypos, num1, num2));
             }
-            const accelerationRate = this.accelerationRate;
+            let accelerationRate = this.accelerationRate;
+            if (this.currentTarget !== null && this.lungeSpeed > 0) {
+                const timeSpan = tempNow - this.lastLunge;
+                if (timeSpan <= this.lungeLength) {
+                    this.targetSpeed = Math.fround(this.lungeSpeed);
+                    accelerationRate = this.lungeAccelerationRate;
+                } else if (timeSpan > this.lungeInterval) {
+                    if (Math.abs(this.targetHeading - this.currentHeading) < 0.5 && g.calculateDistance(this.currentTarget.xpos, this.currentTarget.ypos, this.xpos, this.ypos) < this.lungeLength * this.lungeSpeed) {
+                        this.lastLunge = tempNow;
+                        this.targetSpeed = Math.fround(this.lungeSpeed);
+                        accelerationRate = this.lungeAccelerationRate;
+                    }
+                } else {
+                    this.targetSpeed = Math.fround(this.movementSpeed);
+                    this.currentSpeed = Math.fround(this.movementSpeed);
+                    accelerationRate = this.accelerationRate;
+                }
+            }
             this.calculateCurrentHeading(timePassed);
             this.accelerateToTargetSpeed(timePassed, accelerationRate);
             const num3 = this.currentSpeed * timePassed;
             if (this.parentHabitat !== null) {
-                // CalculateCurrentParentOffset + step + ApplyCurrentParentOffset.
-                this.parentX = this.xpos - this.parentHabitat.xpos;
-                this.parentY = this.ypos - this.parentHabitat.ypos;
-                this.parentX += Math.cos(this.currentHeading) * num3;
-                this.parentY += Math.sin(this.currentHeading) * num3;
-                this.xpos = this.parentHabitat.xpos + this.parentX;
-                this.ypos = this.parentHabitat.ypos + this.parentY;
+                if (this.currentTarget === null) {
+                    // CalculateCurrentParentOffset + step + ApplyCurrentParentOffset.
+                    this.parentX = this.xpos - this.parentHabitat.xpos;
+                    this.parentY = this.ypos - this.parentHabitat.ypos;
+                    this.parentX += Math.cos(this.currentHeading) * num3;
+                    this.parentY += Math.sin(this.currentHeading) * num3;
+                    this.xpos = this.parentHabitat.xpos + this.parentX;
+                    this.ypos = this.parentHabitat.ypos + this.parentY;
+                } else {
+                    this.xpos += Math.cos(this.currentHeading) * num3;
+                    this.ypos += Math.sin(this.currentHeading) * num3;
+                    this.parentX = this.xpos - this.parentHabitat.xpos;
+                    this.parentY = this.ypos - this.parentHabitat.ypos;
+                }
             } else {
                 this.xpos += Math.cos(this.currentHeading) * num3;
                 this.ypos += Math.sin(this.currentHeading) * num3;
@@ -766,6 +820,10 @@ export class Creature {
             const arrived = this.checkWhetherArrived(this.xpos, this.ypos, num1, num2, 30.0);
             if (arrived.arrived) {
                 this.targetSpeed = 0;
+                if (this.currentTarget !== null && !isHabitatTarget(this.currentTarget)) {
+                    this.targetSpeed = this.currentTarget.currentSpeed;
+                    if (this.targetSpeed > this.movementSpeed) this.targetSpeed = Math.fround(this.movementSpeed);
+                }
                 if (this.currentSpeed <= this.movementSpeed || this.currentSpeed <= this.lungeSpeed) return;
                 // Arriving from hyperspeed: drop out at a hyperjump exit point.
                 this.currentSpeed = this.movementSpeed;
@@ -793,10 +851,24 @@ export class Creature {
                 this.anchorHabitat = null;
             }
         } else {
+            if (this.currentTarget !== null) {
+                if (!isHabitatTarget(this.currentTarget)) {
+                    this.targetSpeed = this.currentTarget.currentSpeed;
+                    if (this.targetSpeed > this.movementSpeed) this.targetSpeed = Math.fround(this.movementSpeed);
+                } else {
+                    this.targetSpeed = Math.fround(this.movementSpeed);
+                }
+            }
             if (this.parentHabitat === null) return;
             this.xpos = this.parentHabitat.xpos + this.parentX;
             this.ypos = this.parentHabitat.ypos + this.parentY;
         }
+    }
+
+    // Port of Creature.cs FleeFromAttacker (line 1190).
+    private fleeFromAttacker(attacker: StellarObject): void {
+        this.targetHeading = Math.fround(determineAngle(attacker.xpos, attacker.ypos, this.xpos, this.ypos));
+        this.targetSpeed = Math.fround(this.movementSpeed);
     }
 
     // Port of Creature.cs CheckWhetherArrived (line 1150).

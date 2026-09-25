@@ -3,6 +3,7 @@
 // omitted (out of scope).
 
 import type { Race } from './data/races';
+import type { BuiltObject } from './builtObject';
 
 export enum GalaxyLocationType {
     Undefined = 0,
@@ -51,6 +52,8 @@ export class GalaxyLocation {
     // Port of GalaxyLocation.cs RelatedRace (set by SetupAlienRacePopulations
     // for RaceRegion locations).
     relatedRace: Race | null;
+    /** GalaxyLocation.cs 203 RelatedBuiltObject (planet destroyer projects, restricted-area abandoned ships; M4u reads it). */
+    relatedBuiltObject: BuiltObject | null = null;
 
     constructor(name: string, type: GalaxyLocationType, x: number, y: number, width: number, height: number, pictureRef: number) {
         this.name = name;

@@ -92,3 +92,31 @@ export function inflictDamage(galaxy: Galaxy, builtObject: BuiltObject, attacker
     // RND: damage resolution / explosion draws — not drawn until M4o.
     /* TODO(port) M4o */ todo(T_inflictDamage);
 }
+
+// ---- stub added by M4u (events.ts DoLocationEffects / ApplyLocationEffects) ----
+
+const T_builtObjectInflictDamage = registerTodo('M4o', 'builtObjectInflictDamage');
+/**
+ * BuiltObject.2.cs 6221 InflictDamage(abstractTarget, weapon, hitPower, time, galaxy, weaponDistanceTravelled,
+ * allowRecursion, strikeAngle, allowArmorInvulnerability) on `builtObject` (the C# `this`). Stub: no damage, returns
+ * false ("target not destroyed"). M4u calls it for storm/location damage with target = builtObject, weapon = null.
+ */
+export function builtObjectInflictDamage(galaxy: Galaxy, builtObject: BuiltObject, abstractTarget: BuiltObject | Habitat | Creature | null, weapon: unknown, hitPower: number, time: number, weaponDistanceTravelled: number, allowRecursion: boolean, strikeAngle: number, allowArmorInvulnerability: boolean): boolean {
+    // RND: component / damage-spread draws inside InflictDamage — not drawn until M4o.
+    /* TODO(port) M4o */ todo(T_builtObjectInflictDamage);
+    return false;
+}
+
+// ---- stub added by M4u (Creature.cs 1299 AttackTarget, events.ts creatureAttackTarget) ----
+
+const T_creatureDamageTarget = registerTodo('M4o', 'creatureDamageTarget');
+/**
+ * Creature.cs 1347 DamageTarget(abstractTarget, damage, tempNow, timePassed): creature vs creature (DamageCreature),
+ * habitat (SilverMist population / quality damage, colony wipe-out) and built object (component damage, explosions) —
+ * stub: no damage, returns false ("target not destroyed"). `tempNow` in sim ms.
+ */
+export function creatureDamageTarget(galaxy: Galaxy, creature: Creature, abstractTarget: BuiltObject | Habitat | Creature, damage: number, tempNow: number, timePassed: number): boolean {
+    // RND: DamageTarget → built-object component damage draws — not drawn until M4o.
+    /* TODO(port) M4o */ todo(T_creatureDamageTarget);
+    return false;
+}

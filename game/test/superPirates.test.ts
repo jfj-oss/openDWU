@@ -212,26 +212,27 @@ describe('UpgradeMilitaryShipDesignMoreWeapons / MoreEngines (Galaxy.8.cs 4121 /
 // (re-pinned M4s1: ReviewPirateRelations draws Rnd.NextDouble in every game-start Empire long block and the Galaxy long
 // block's independent-colony pirate offers draw per colony, so later game-start draws shift.)
 // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
+// (re-pinned M4u: game-start character reviews (ReviewCharacterTraits Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd) move the stream before the super-pirate generation.)
 const PINNED: unknown[] = [
     [
-        'Escort:Excelsior II:32',
-        'Frigate:Enforcer II:44',
-        'Destroyer:Maximus II:54',
-        'Cruiser:Argossia:89',
-        'CapitalShip:Consul:136',
-        'Carrier:CX-2 Carrier:105',
-        'DefensiveBase:Phantom Pirate Defensive Base:123',
-        'GenericBase:Phantom Pirate Base:217',
+        "Escort:Cossack II:32",
+        "Frigate:Enforcer II:44",
+        "Destroyer:Dominator II:54",
+        "Cruiser:Vengeance:89",
+        "CapitalShip:Praetor:136",
+        "Carrier:CX-2 Carrier:106",
+        "DefensiveBase:Phantom Pirate Defensive Base:123",
+        "GenericBase:Phantom Pirate Base:217"
     ],
     [
-        'GenericBase:Dhayu Hideout',
-        'DefensiveBase:Dhayu 7 Defense Battery',
-        'DefensiveBase:Dhayu 7 Orbital Battery',
-        'DefensiveBase:Dhayu 7 Defense Battery',
-        'Destroyer:Swift Fury',
-        'Frigate:Decisive Protector',
-        'Destroyer:Discarded Fury',
-        'Frigate:Invincible Moon',
+        "GenericBase:Secluded Station",
+        "DefensiveBase:Dhayu 7 Defensive Base",
+        "DefensiveBase:Dhayu 7 Defense Battery",
+        "DefensiveBase:Dhayu 7 Defensive Base",
+        "Cruiser:Wailing Death",
+        "Destroyer:Growling Night",
+        "Escort:Potent Invader",
+        "Destroyer:Looming Annihilation"
     ],
-    33,
+    26
 ];

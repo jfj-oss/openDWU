@@ -257,10 +257,16 @@ describe('M4k crash research, station bonuses, race wonder victory', () => {
 });
 
 describe('M4k harness milestone', () => {
-    it('research completes over runGameSeconds(600) on the tick galaxy', () => {
+    it('research completes over runGameSeconds on the tick galaxy', () => {
         const g = createTickGame(gameData).galaxy;
-        runGameSeconds(g, 600);
-        const completed = g.empires.reduce((s, e) => s + e.research.recentProjects.length, 0);
+        // At the base rate (~90k/yr per industry, first projects cost 240k) a project needs ~1400 game-seconds; the old
+        // 600 s window only passed because one empire got a research boost in that galaxy. After M4u the tick galaxy's
+        // AI races differ, so run in 300 s steps until the first completion (bounded at 1800 s).
+        let completed = 0;
+        for (let t = 0; t < 1800 && completed === 0; t += 300) {
+            runGameSeconds(g, 300);
+            completed = g.empires.reduce((s, e) => s + e.research.recentProjects.length, 0);
+        }
         expect(completed).toBeGreaterThan(0);
         for (const e of g.empires) {
             // AI empires keep all three queues busy.

@@ -494,6 +494,10 @@ export class Habitat {
     // ---- M4u fields (events, rebellion, plague) ----
     /** Habitat.cs 109 _Rebelling. */
     rebelling = false;
+    /** Habitat.RaceEventType (events.ts RaceEventType; set by race events, cleared by Empire.ResetRaceEvents). */
+    raceEventType = 0;
+    /** Habitat.cs 203 TeardownEmpire (the empire that destroyed the planet; ClearColony(TeardownEmpire) in CompleteTeardown). */
+    teardownEmpire: import('./empire').Empire | null = null;
 }
 
 /**

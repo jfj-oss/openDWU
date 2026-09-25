@@ -123,7 +123,17 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // M4i (empire construction): DirectConstruction runs in every long block (RefactorForceStructureProjectionsToCosts
         // draws Rnd.Next(0, Count) per wanted sub-role; ships are queued and paid for once the cashflow allows), plus
         // ReviewLatestDesigns, RetireOldBuiltObjects, DetermineMonitoringStationLocation, BuildDefensiveBases.
-        expect(summary.digest).toBe('e0520d7458e142c1');
+        // Moved from 198918104ea2794b by M4u: DoCharacterEvent runtime (Galaxy.1.cs 3781: Next(0,5)/Next(0,20)/Next(0,80) per
+        // character, trait cases, skill progress) now runs for the M4j/M4k/M4r/M4d events, Character.DoTasks completes
+        // location transfers, ApplyLocationEffects draws for lightning / shield-reduction storms and slows ships in
+        // nebulae, and ClearEmptyDebrisFields removes empty debris-field locations.
+        // Moved from 9ba92363c1bf5e89 by M4u (character runtime + events): the game-start and periodic Empire.DoTasks run the
+        // character reviews (ReviewCharacterTraits Next(0, n) / Next(0, 90), ApplyCharacterLocationBonusToOtherCharacters,
+        // CheckForCharacterAppearance, leader changes), ReviewEmpireEvents (DoRaceEvent Next + NextDouble, race events,
+        // resource appearance Next(0, 20)), ReviewRandomEvents / PirateReviewRandomEvents rolls and ProcessPlague; creatures
+        // now target and pursue ships (Creature.cs 1206 CheckForTargets → NotifyOfAttack distress signals; DamageTarget is an
+        // M4o stub), and the M4u pins moved createGame (empire placement) too.
+        expect(summary.digest).toBe('60414368e7e93744');
     }, 600000);
 });
 

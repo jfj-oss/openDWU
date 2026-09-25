@@ -15,6 +15,7 @@
 // draws per recruit. The Bacon market-price noise uses clock-seeded `new Random()` in C# — here
 // galaxy.baconHabitatClockRnd (derived from the galaxy seed, plan §0; never touches Galaxy.Rnd).
 
+import { RaceEventType } from './eventTypes';
 import type { Galaxy } from './galaxy';
 import type { Empire } from './empire';
 import { Habitat, HabitatType, recalculateMaximumPopulation } from './types';
@@ -1118,9 +1119,7 @@ export function reviewColonyPopulationPolicy(galaxy: Galaxy, empire: Empire, tim
             continue;
         }
         num20++;
-        // TODO(port) M4u: Habitat.RaceEventType (AntiXenoRiotsExterminate / DeathCultExterminate exclusions) — race
-        // events are not modelled (Undefined).
-        if (!empire.penalColonies.includes(habitat4) && !habitatList4.includes(habitat4)) {
+        if (!empire.penalColonies.includes(habitat4) && !habitatList4.includes(habitat4) && habitat4.raceEventType !== RaceEventType.AntiXenoRiotsExterminate && habitat4.raceEventType !== RaceEventType.DeathCultExterminate) {
             if (habitat4.colonyPopulationPolicy === ColonyPopulationPolicy.Enslave) {
                 habitat4.colonyPopulationPolicy = ColonyPopulationPolicy.Resettle;
             }

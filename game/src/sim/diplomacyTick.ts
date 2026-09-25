@@ -15,6 +15,7 @@
 //
 // Text: TextResolver.GetText(key) returns the key (M9 localises); string.Format substitutes {n} placeholders.
 
+import { RaceEventType } from './eventTypes';
 import type { Galaxy } from './galaxy';
 import type { Empire } from './empire';
 import { AutomationLevel, empireGovernmentAttributes } from './empire';
@@ -941,10 +942,9 @@ function governmentAttributesStrict(self: Empire) {
     return gov;
 }
 
-/** Empire.cs 101 RaceEventType == GrandPerformanceDiplomacyBonus. TODO(port) M4u: race events — Undefined until then. */
+/** Empire.cs 101 RaceEventType == GrandPerformanceDiplomacyBonus (set by Empire.1.cs InitiateRaceEvent, empireEvents.ts). */
 function raceEventIsGrandPerformanceDiplomacyBonus(self: Empire): boolean {
-    void self;
-    return false;
+    return self.raceEventType === RaceEventType.GrandPerformanceDiplomacyBonus;
 }
 
 /** Blockade.cs fields read by diplomacy (the Blockade model is not ported — M4m). */

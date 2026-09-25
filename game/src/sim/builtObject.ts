@@ -12,6 +12,7 @@
 // ReDefine for shipyards / manufacturers), fighters (FighterList), characters,
 // contracts, missions, UpdatePosition.
 
+import { updatePosition } from './movement';
 import { BuiltObjectSubRole } from './builtObjectTypes';
 import { DockingBay } from './dockingBay';
 import { BuiltObjectComponent, BuiltObjectComponentList, ComponentStatus, csInt, toByte, toShort } from './builtObjectComponent';
@@ -36,7 +37,6 @@ import { Weapon, weaponsDetermineNotInSuppliedList, weaponsQuickCompareEquivalen
 import { MIN_TIME } from './tick/simTime';
 import type { BuiltObjectMission } from './missions/mission';
 import { builtObjectReDefineConstructionQueue } from './construction/constructionYard';
-import { updatePosition } from './movement';
 
 // Port of EngineType.cs (byte enum, member order exact).
 export enum EngineType {
@@ -1469,6 +1469,16 @@ export class BuiltObject {
      */
     baconValues: Map<string, unknown> | null = null;
     // ---- M4u fields (events, location effects) ----
+    /** BuiltObject.cs 499 _LastLocationEffectTouch (game ms; C# default DateTime.MinValue). */
+    lastLocationEffectTouch = MIN_TIME;
+    /** BuiltObject.cs _ShipDamageAmountLocation / _ShipPullAngleLocation (float). */
+    shipDamageAmountLocation = 0;
+    shipPullAngleLocation = 0;
+    /** BuiltObject.cs _MovementSlowedLocation / _ShieldsReducedLocation. */
+    movementSlowedLocation = false;
+    shieldsReducedLocation = false;
+    /** BuiltObject.cs 542 LocationEffects (List<GalaxyLocationEffectType>). */
+    locationEffects: number[] = [];
 }
 
 // `int i = list.IndexOf(this); if (i >= 0) list.RemoveAt(i);`

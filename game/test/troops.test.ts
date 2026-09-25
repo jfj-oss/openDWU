@@ -158,9 +158,10 @@ describe('troops (game start)', () => {
         // Re-pinned by M4s1: ReviewPirateRelations draws Rnd.NextDouble in each game-start Empire.DoTasks long block, so
         // the empires / garrison rolls move.
         // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
-        expect(a.capitals.map((c) => [c.edfr, c.levelRequired, c.troops])).toEqual([[1263, 946, 0], [1565, 1173, 1], [1810, 1357, 1], [614, 460, 5]]);
-        expect(a.colonyTroops).toEqual([10, 17, 18, 2]);
-        expect(a.maintenance).toEqual([10000, 16200, 16150, 6300]);
+        // (re-pinned M4u: game-start character reviews (ReviewCharacterTraits Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd) move the empires / garrisons.)
+        expect(a.capitals.map((c) => [c.edfr, c.levelRequired, c.troops])).toEqual([[1263, 946, 7], [1473, 1104, 5], [1712, 1284, 5], [646, 484, 7]]);
+        expect(a.colonyTroops).toEqual([9, 7, 15, 2]);
+        expect(a.maintenance).toEqual([16000, 10800, 18000, 8100]);
         expect(a.processDraws).toEqual(['', '', '', '']); // garrisons already meet TroopLevelRequired
         expect(run(true)).toEqual(a);
     }, 120000);
@@ -170,11 +171,12 @@ describe('troops (game start)', () => {
         // (re-pinned at the M4 wave-1 merge: M4k PerformResearch at game start, see above)
         // (re-pinned M4s1: ReviewPirateRelations' game-start Rnd draw moves the empires / garrison rolls.)
         // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
-        expect(b.capitals.map((c) => c.troops)).toEqual([0, 14, 1, 0]);
-        expect(b.maintenance).toEqual([0, 12600, 850, 0]);
-        // The under-garrisoned capitals recruit two troops each; each completion draws ChanceNewTroopGeneralFromRecruitment's
+        // (re-pinned M4u: game-start character reviews (ReviewCharacterTraits Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd) move the empires / garrisons.)
+        expect(b.capitals.map((c) => c.troops)).toEqual([7, 5, 2, 7]);
+        expect(b.maintenance).toEqual([7000, 4500, 1800, 6300]);
+        // The under-garrisoned capitals recruit troops; each completion draws ChanceNewTroopGeneralFromRecruitment's
         // Next(0, 70 / race general-appearance chance).
-        expect(b.processDraws).toEqual(['Next(0,70)=41 Next(0,70)=7', '', 'Next(0,70)=62 Next(0,70)=30', 'Next(0,70)=62 Next(0,70)=44']);
+        expect(b.processDraws).toEqual(['Next(0,70)=37', '', 'Next(0,70)=24 Next(0,70)=51', '']);
         // No roll is 1 → no Empire.GenerateNewCharacter(TroopGeneral) call.
         expect(b.troopGenerals.length).toBe(0);
         expect(run(false)).toEqual(b);

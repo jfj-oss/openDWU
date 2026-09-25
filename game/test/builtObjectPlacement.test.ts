@@ -286,14 +286,16 @@ describe('FindNearestBuiltObject / FindNearestPirateFaction', () => {
 // including the game-start Empire.DoTasks of each generated empire, and the Galaxy long block's independent-colony
 // pirate offers draw per colony, so the stream reaching CreateStateShips moved.
 // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
+// Re-pinned by M4u: the game-start Empire.DoTasks now runs the character reviews (ReviewCharacterTraits Rnd) and
+// ReviewEmpireEvents (DoRaceEvent Rnd), moving every later draw.
 const PINNED_NAMES: unknown[] = [
-    ['ExplorationShip', 'Wild Impulse'],
-    ['ExplorationShip', 'Sol Aspiration'],
-    ['ExplorationShip', 'Mocking Impulse'],
-    ['ExplorationShip', 'Imposter of Sol'],
-    ['ExplorationShip', 'Solitary Guardian'],
-    ['ExplorationShip', 'Forbidden Starway'],
-    ['ExplorationShip', 'Pristine Deal'],
-    ['ConstructionShip', 'Roaming Courage'],
-    ['ConstructionShip', 'Secretive Hoard'],
+    ['ExplorationShip', 'Lively Destiny'],
+    ['ExplorationShip', 'Sol Smuggler'],
+    ['ExplorationShip', 'Charming Culprit'],
+    ['ExplorationShip', 'Worthy Impulse'],
+    ['ExplorationShip', 'Frugal Smuggler'],
+    ['ExplorationShip', 'Sol Pearl'],
+    ['ExplorationShip', 'Foolish Renegade'],
+    ['ConstructionShip', 'Galactic Challenge'],
+    ['ConstructionShip', 'Frugal Scoundrel'],
 ];

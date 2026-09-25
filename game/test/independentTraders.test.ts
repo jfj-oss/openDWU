@@ -87,8 +87,17 @@ describe('independent traders (Galaxy.7.cs GenerateIndependentTraders)', () => {
         // (re-pinned M4k: game-start research changes the Rnd stream before the design names are drawn)
         // (re-pinned M4s1: ReviewPirateRelations draws Rnd.NextDouble in each game-start Empire.DoTasks long block)
         // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
-        expect(g.popularDesigns.slice(0, 3).map((d) => d.name)).toEqual(['SZ1000 Light Freighter', 'LO1000 Light Hauler', 'BB1000 Merchant Freighter']);
-        expect(g.popularDesigns.slice(3, 6).map((d) => d.name)).toEqual(['KX1000 Freight Hauler', 'NL1000 Cargo Ferry', 'VW1000 Cargo Freighter']);
+        // (re-pinned M4u: game-start character reviews (ReviewCharacterTraits Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd) move the stream)
+        expect(g.popularDesigns.slice(0, 3).map((d) => d.name)).toEqual([
+            "SZ1000 Light Freighter",
+            "ZY1000 Light Transport",
+            "PF1000 Light Hauler"
+        ]);
+        expect(g.popularDesigns.slice(3, 6).map((d) => d.name)).toEqual([
+            "KX1000 Freight Hauler",
+            "LO1000 Cargo Hauler",
+            "KR1000 Cargo Ferry"
+        ]);
     }, 60000);
 
     it('seed 1: count, ownership, placement at non-visible independent colonies', () => {
@@ -127,8 +136,29 @@ describe('independent traders (Galaxy.7.cs GenerateIndependentTraders)', () => {
         // (re-pinned M4k: the game-start Empire.DoTasks now runs PerformResearch, whose research-queue selection and research events draw Rnd)
         // (re-pinned M4s1: ReviewPirateRelations draws Rnd.NextDouble in each game-start Empire.DoTasks long block)
         // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
-        expect(Object.fromEntries(perColony)).toEqual({ 'Haako 4': 15, 'Dhayu 3': 13, 'S1 2': 16, Atoaklo: 23, 'S212 3': 17, 'S1 3': 14, Eroy: 12, 'S269 2': 11, 'S269 4': 18, 'S83 12': 11 });
-        expect(traders.slice(0, 2).map((t) => [t.name, t.design.name])).toEqual([['Grimy Wayfarer', 'LO1000 Light Hauler'], ['Vanishing Moon', 'LO1000 Light Hauler']]);
+        // (re-pinned M4u: game-start character reviews (ReviewCharacterTraits Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd) move the stream)
+        expect(Object.fromEntries(perColony)).toEqual({
+            "S1 3": 12,
+            "Haako 4": 17,
+            "S269 4": 20,
+            "S269 2": 13,
+            "Atoaklo": 22,
+            "S1 2": 18,
+            "Dhayu 3": 13,
+            "Eroy": 14,
+            "S212 3": 13,
+            "S83 12": 8
+        });
+        expect(traders.slice(0, 2).map((t) => [t.name, t.design.name])).toEqual([
+            [
+                "Majestic Mystery",
+                "LO1000 Cargo Hauler"
+            ],
+            [
+                "Radiant Evasion",
+                "KX1000 Freight Hauler"
+            ]
+        ]);
     }, 60000);
 
     it('seed 1: exact Rnd draws, deterministic', () => {
@@ -139,22 +169,46 @@ describe('independent traders (Galaxy.7.cs GenerateIndependentTraders)', () => {
         // IndependentColoniesMakeDefendOffersToPirates draws Next(0, 30) per colony (Galaxy.cs 3203-3276).
         // (re-pinned M4s1: ReviewPirateRelations draws Rnd.NextDouble in each game-start Empire.DoTasks long block)
         // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
-        expect(a.log.length).toBe(1563);
+        // (re-pinned M4u: game-start character reviews (ReviewCharacterTraits Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd) move the stream)
+        expect(a.log.length).toBe(1561);
         expect(a.log.slice(-25)).toEqual([
-            'Next(0,2)=1', 'Next(0,0)=0', 'Next(0,2)=0', 'Next(0,2)=1', 'Next(0,0)=0', 'Next(0,2)=1', 'Next(0,0)=0', 'Next(0,2)=1',
-            'Next(0,0)=0', 'Next(0,2)=0', 'Next(0,2)=0', 'Next(0,2)=0', 'Next(0,2)=0', 'Next(0,2)=1', 'Next(0,0)=0',
-            ...['10', '21', '14', '26', '2', '26', '22', '20', '11', '12'].map((v) => `Next(0,30)=${v}`),
+            "Next(0,0)=0",
+            "Next(0,2)=0",
+            "Next(0,2)=1",
+            "Next(0,0)=0",
+            "Next(0,2)=1",
+            "Next(0,0)=0",
+            "Next(0,2)=1",
+            "Next(0,0)=0",
+            "Next(0,2)=0",
+            "Next(0,2)=0",
+            "Next(0,2)=1",
+            "Next(0,0)=0",
+            "Next(0,2)=0",
+            "Next(0,2)=1",
+            "Next(0,0)=0",
+            "Next(0,30)=11",
+            "Next(0,30)=17",
+            "Next(0,30)=29",
+            "Next(0,30)=2",
+            "Next(0,30)=1",
+            "Next(0,30)=24",
+            "Next(0,30)=15",
+            "Next(0,30)=11",
+            "Next(0,30)=3",
+            "Next(0,30)=7"
         ]);
         expect(a.log.slice(0, 22)).toEqual([
             // trader 0: Next(0,3) freighter-size roll; Next(0,3) index; Next(0,10) start colony;
             // SelectRandomUniqueStandardShipName (Next(0,127), Next(0,125), Next(0,7) >= 2 → no extra draw);
             // SelectRandomHeading; SelectRelativeParkingPoint.
-            'Next(0,3)=0', 'Next(0,3)=1', 'Next(0,10)=1', 'Next(0,127)=122', 'Next(0,125)=10', 'Next(0,7)=6',
-            'NextDouble', 'NextDouble', 'Next(0,2)=1', 'NextDouble',
+            // (re-pinned M4u: game-start character reviews / DoRaceEvent Rnd move the stream.)
+            'Next(0,3)=1', 'Next(0,3)=1', 'Next(0,10)=3', 'Next(0,127)=24', 'Next(0,125)=43', 'Next(0,7)=5',
+            'NextDouble', 'NextDouble', 'Next(0,2)=0', 'NextDouble',
             // trader 1: same shape.
-            'Next(0,3)=2', 'Next(0,3)=1', 'Next(0,10)=0', 'Next(0,127)=118', 'Next(0,125)=18', 'Next(0,7)=3',
+            'Next(0,3)=1', 'Next(0,3)=0', 'Next(0,10)=1', 'Next(0,127)=21', 'Next(0,125)=118', 'Next(0,7)=2',
             'NextDouble', 'NextDouble', 'Next(0,2)=1', 'NextDouble',
-            'Next(0,3)=2', 'Next(0,3)=2',
+            'Next(0,3)=0', 'Next(0,3)=0',
         ]);
         const b = runStartTick();
         expect(b.log).toEqual(a.log);

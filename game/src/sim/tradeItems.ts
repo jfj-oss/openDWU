@@ -1159,7 +1159,7 @@ export function evaluateTradeOffer(galaxy: Galaxy, self: Empire, offeringEmpire:
 // ---------------------------------------------------------------------------------------------------------------
 
 /** Empire.cs 2807 AddLocationHint(location): skipped when an existing hint lies within MaxSolarSystemSize (Rectangle.Contains). */
-function addLocationHint(self: Empire, location: { x: number; y: number }): void {
+export function addLocationHint(self: Empire, location: { x: number; y: number }): void {
     const left = location.x - MAX_SOLAR_SYSTEM_SIZE;
     const top = location.y - MAX_SOLAR_SYSTEM_SIZE;
     const size = MAX_SOLAR_SYSTEM_SIZE * 2;

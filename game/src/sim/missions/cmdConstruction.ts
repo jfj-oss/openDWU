@@ -410,7 +410,7 @@ export const cmdBuild: CommandHandler = (ctx) => {
                         const y2 = bo.ypos - 600.0;
                         const name = `${builtObject.name} Project`; // TextResolver "X Project"
                         const galaxyLocation = new GalaxyLocation(name, GalaxyLocationType.PlanetDestroyer, x2, y2, 1200.0, 1200.0, -1);
-                        // TODO(port): GalaxyLocation.RelatedBuiltObject = builtObject (not modelled on the TS GalaxyLocation).
+                        galaxyLocation.relatedBuiltObject = builtObject;
                         galaxyLocation.showName = true;
                         galaxy.galaxyLocations.push(galaxyLocation);
                         galaxy.addGalaxyLocationIndex(galaxyLocation);

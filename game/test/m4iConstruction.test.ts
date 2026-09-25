@@ -195,7 +195,11 @@ describe('M4i harness: empire construction entry points', () => {
     it('DirectConstruction with ample funds queues state ships at the space port, pays for them, and they get built', () => {
         const g = createTickGame(gameData).galaxy;
         runGameSeconds(g, 60);
-        const e = g.empires[0];
+        // Pick an empire whose long Empire.DoTasks block (ProjectForceStructure) has already re-run: the game-start
+        // CreateStateShips (Galaxy.8.cs 955) clears StateForceStructureProjections, and the per-empire timers are staggered,
+        // so which empires have re-projected by t=60 depends on the galaxy (after M4u it is no longer empires[0]).
+        const e = g.empires.find((x) => (x.stateForceStructureProjections?.count ?? 0) > 0 && x.spacePorts.length > 0)!;
+        expect(e).toBeDefined();
         e.stateMoney = 5e6;
         const q = e.spacePorts[0].constructionQueue as { constructionWaitQueue: unknown[]; constructionYards: { shipUnderConstruction: unknown }[] };
         const countBefore = e.builtObjects.length + e.privateBuiltObjects.length;

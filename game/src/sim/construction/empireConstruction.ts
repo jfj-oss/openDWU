@@ -32,6 +32,7 @@
 //     (ObtainCoordinatesFromPoint) per fall-back point attempt.
 //   Retirement / retrofit / scrapping: none directly (CompleteTeardown / InflictDamage are M4o's).
 
+import { registerTodo, todo } from '../tick/todo';
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import { AutomationLevel, empireGovernmentAttributes } from '../empire';
@@ -2152,4 +2153,16 @@ export function determineMonitoringStationLocation(galaxy: Galaxy, empire: Empir
     }
     empire.monitoringHabitats = habitatList2;
     empire.monitoringPoints = list2;
+}
+
+// ---- stub added by M4u (Habitat.cs 5424 CheckHabitatIsEmpire: a new empire secures its fuel / strategic supply) ----
+
+const T_ensureStrategicResourceSupply = registerTodo('M4i', 'ensureStrategicResourceSupply');
+/**
+ * Empire.6.cs 1656 EnsureStrategicResourceSupply: ForceResourceSupply / CheckResourceSupply per fuel resource, then
+ * construction ships are sent to build mining stations at the chosen habitats — stub.
+ */
+export function ensureStrategicResourceSupply(galaxy: Galaxy, empire: Empire): void {
+    // RND: draws in callees (ForceResourceSupply / mission assignment) — not drawn until M4i.
+    /* TODO(port) M4i */ todo(T_ensureStrategicResourceSupply);
 }

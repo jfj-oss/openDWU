@@ -8,6 +8,7 @@
 // (SetDevelopmentLevel / GetDevelopmentLevel); the C# DevelopmentLevel property is
 // habitatDevelopmentLevel(h) below.
 
+import { RaceEventType } from './eventTypes';
 import type { Habitat } from './types';
 
 // ColonyResourceEffect.cs (byte enum, member order exact).
@@ -59,7 +60,7 @@ export function habitatDevelopmentLevel(h: Habitat): number {
     // _RestrictedResourcesPresent (set by EvaluateColonyVariables, colonyTick.ts).
     if (h.restrictedResourcesPresent) num += 30;
     num += Math.trunc(resourceBonusTotalByEffectType(h, ColonyResourceEffect.Development));
-    // TODO(port): RaceEventType (TodashGalacticChampionships / PredictiveHistory +5) — Undefined at game start.
+    if (h.raceEventType === RaceEventType.TodashGalacticChampionships || h.raceEventType === RaceEventType.PredictiveHistory) num += 5;
     // BaconHabitat.cs 879 GetDevelopmentLevel (infrastructure spending; 0 while BaconValues is null).
     const bacon = baconGetDevelopmentLevel(h);
     return (h.developmentLevelBaseline + h.developmentLevel + num + bacon) | 0;
