@@ -434,8 +434,8 @@ function newRaceCopy(race: Race): Race {
  * race is renamed Erutkah with friendly levels (the originals kept in ShakturiOriginalRace), an age-2 tech-7 empire is
  * generated at the colony with the "Palace of Eternal Darkness" ruin, set up like a starting empire, and every empire's
  * evaluation bias toward / from it is raised to at least 0. Rnd: Next(7000, 10000) then the set-up's (see file header).
- * The C# mutates the per-game Races["Shakturi"]; the TS races are the shared GameData table, so the rename and levels go
- * to a per-galaxy instance (Galaxy.shakturiActualRace, saved inline; galaxyRace() substitutes it for the GameData race).
+ * The C# mutates the per-game Races["Shakturi"]; the rename and levels go to a separate per-galaxy instance
+ * (Galaxy.shakturiActualRace, saved inline; galaxyRace() substitutes it for the galaxy.races entry).
  */
 export function generateShakturi(galaxy: Galaxy, startingColony: Habitat | null): void {
     if (galaxy.nextEmpireId >= galaxy.maximumEmpireCount) return;

@@ -249,7 +249,8 @@ function num(v: number): string {
 export function designStatRows(design: Design): { label: string; value: string }[] {
     const rows: { label: string; value: string }[] = [];
     rows.push({ label: 'Size', value: num(design.size) });
-    rows.push({ label: 'Firepower', value: num(design.firepower) });
+    // Main.Part9.cs 5081: lblDesignWeaponFirepowerValue.Text = design_0.FirepowerRaw (Design._Firepower is never assigned).
+    rows.push({ label: 'Firepower', value: num(design.firepowerRaw) });
     rows.push({ label: 'Shields', value: num(design.shieldsCapacity) });
     rows.push({ label: 'Shield Recharge Rate', value: num(design.shieldRechargeRate) });
     rows.push({ label: 'Armor', value: num(design.armor) });

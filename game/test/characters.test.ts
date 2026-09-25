@@ -145,7 +145,7 @@ describe('GenerateStartingCharacters (normal empires, seed 1)', () => {
         // (re-pinned M4m: the game-start Empire.DoTasks runs the military AI — IdentifyMilitaryObjectives Next(0, EmpireEvaluations.Count), CheckTemptingTargets Next(0, Empires.Count), DetermineRandomAttacks Next(0, n) — which shifts the Rnd stream.)
         // (M4m merge onto M4s2/M4y: re-pinned once against the merged code.)
         // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
-        expect(draws).toEqual([53, 57, 49, 21]);
+        expect(draws).toMatchPin('characters.drawsPerEmpire');
         expect(log.filter((d) => d.startsWith('d=')).length).toBe(0);
         const summary = g.empires.map((e) => ({ race: e.dominantRace!.name, leader: e.leader?.name, characters: getEmpireCharacters(e).map(describeCharacter) }));
         // (re-pinned: createGame now runs the price reviews, first galaxy tick, per-empire setup,
@@ -156,84 +156,9 @@ describe('GenerateStartingCharacters (normal empires, seed 1)', () => {
         // re-pinned M4u: the game-start Empire.DoTasks runs the character reviews (ReviewCharacterTraits / ApplyCharacterLocationBonus Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd), moving the Rnd stream (and empire placement / races) from the first empire on.
         // (re-pinned M4m: the game-start Empire.DoTasks runs the military AI, shifting the Rnd stream before this step.)
         // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
-        expect(summary[0]).toEqual({
-            "race": "Human",
-            "leader": "Loras Dokari",
-            "characters": [
-                {
-                    "role": "Ambassador",
-                    "name": "Than Bendu",
-                    "race": "Human",
-                    "skills": [
-                        "Diplomacy:25"
-                    ],
-                    "traits": [
-                        "Tolerant",
-                        "EloquentSpeaker"
-                    ],
-                    "location": "Sol 2",
-                    "bonusesKnown": false
-                },
-                {
-                    "role": "Leader",
-                    "name": "Loras Dokari",
-                    "race": "Human",
-                    "skills": [
-                        "ColonyHappiness:-5",
-                        "TroopMaintenance:2",
-                        "ColonyIncome:-4",
-                        "Diplomacy:2"
-                    ],
-                    "traits": [
-                        "Organized"
-                    ],
-                    "location": "Sol 2",
-                    "bonusesKnown": true
-                },
-                {
-                    "role": "IntelligenceAgent",
-                    "name": "Indo Nesalio",
-                    "race": "Human",
-                    "skills": [
-                        "Assassination:-4"
-                    ],
-                    "traits": [
-                        "IntelligenceXenophobic"
-                    ],
-                    "location": "Sol 2",
-                    "bonusesKnown": false
-                }
-            ]
-        });
+        expect(summary[0]).toMatchPin('characters.humanSummary');
         // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
-        expect(summary.slice(1).map((s) => [s.race, s.leader, s.characters.map((c) => `${c.role}:${c.name}`)])).toEqual([
-            [
-                "Haakonish",
-                "Gobar Daghrun",
-                [
-                    "ColonyGovernor:Yentor Zhukziban",
-                    "Leader:Gobar Daghrun",
-                    "IntelligenceAgent:Ebari Ruuntul"
-                ]
-            ],
-            [
-                "Dhayut",
-                "Lerz Uktab",
-                [
-                    "TroopGeneral:Maqtor Aklon",
-                    "Leader:Lerz Uktab",
-                    "IntelligenceAgent:Sawa Okel"
-                ]
-            ],
-            [
-                "Ugnari",
-                "Lutar Thanda",
-                [
-                    "IntelligenceAgent:Tek Ixito",
-                    "Leader:Lutar Thanda"
-                ]
-            ]
-        ]);
+        expect(summary.slice(1).map((s) => [s.race, s.leader, s.characters.map((c) => `${c.role}:${c.name}`)])).toMatchPin('characters.otherEmpires');
         // Human empire full draw sequence: Leader (15: name 2, skill count, skill picks + levels, trait
         // count, trait), one agent (16: Next(0,4) race roll + ...), then 6 × (CharacterTransferLocation +
         // CharacterStart: Next(0,5), Next(0,20), Next(0,80) each) for the 3 characters; the second empire's draws follow.
@@ -243,75 +168,17 @@ describe('GenerateStartingCharacters (normal empires, seed 1)', () => {
         // (re-pinned M4f: the game-start AssignMissionsToBuiltObjectList draws shift the stream reaching this step.)
         // (Merge of M4f onto M4u/M4o/M4l: re-pinned once against the combined code.)
         // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
-        expect(log.slice(0, 60)).toEqual([
-            "0,31=15",
-            "0,26=19",
-            "0,2=1",
-            "0,2=1",
-            "0,2=1",
-            "0,3=2",
-            "0,4=2",
-            "0,3=1",
-            "0,20=18",
-            "0,3=0",
-            "0,4=1",
-            "0,3=0",
-            "0,4=2",
-            "0,3=0",
-            "0,4=0",
-            "0,4=1",
-            "-5,-1=-5",
-            "0,4=0",
-            "2,10=2",
-            "0,4=1",
-            "-5,-1=-4",
-            "0,4=0",
-            "2,10=2",
-            "0,2=0",
-            "0,41=25",
-            "0,4=3",
-            "0,31=18",
-            "0,26=16",
-            "0,2=0",
-            "0,3=1",
-            "0,3=2",
-            "0,4=1",
-            "-5,-1=-4",
-            "0,2=0",
-            "0,14=9",
-            "0,5=0",
-            "0,20=6",
-            "0,80=47",
-            "0,5=3",
-            "0,20=15",
-            "0,80=34",
-            "0,5=0",
-            "0,20=1",
-            "0,80=26",
-            "0,5=0",
-            "0,20=11",
-            "0,80=55",
-            "0,5=3",
-            "0,20=2",
-            "0,80=19",
-            "0,5=2",
-            "0,20=8",
-            "0,80=38",
-            "0,38=36",
-            "0,29=5",
-            "0,2=0",
-            "0,3=2",
-            "0,4=3",
-            "0,4=1",
-            "-5,-1=-3"
-        ]);
+        expect(log.slice(0, 60)).toMatchPin('characters.drawLog60');
         // (M4u: Leader 11 + agent 15 draws, activations at 26; M4f: at 40. Merged code: the Human leader activates with 20
         // trait rolls (Next(0, 1)), then the agent, so the activations start at 44.)
         // (M4x: Galaxy.Age 1 stream: the activations start at 45.)
         // (M4m merge: the merged stream generates a leader and an agent with fewer rolls (no 20 trait rolls): the
         // activations start at 19.)
         // (M4q merge: the merged stream's first leader rolls more traits again: the activations start at 35.)
-        expect(log.slice(35, 53).map((d) => d.split('=')[0])).toEqual(Array.from({ length: 6 }, () => ['0,5', '0,20', '0,80']).flat());
+        const activations = Array.from({ length: 6 }, () => ['0,5', '0,20', '0,80']).flat();
+        const activationsAt = log.findIndex((_, i) => activations.every((a, j) => log[i + j]?.split('=')[0] === a));
+        expect(activationsAt).toMatchPin('characters.activationsAt', 35);
+        expect(log.slice(activationsAt, activationsAt + 18).map((d) => d.split('=')[0])).toEqual(activations);
 
         for (const e of g.empires) {
             const chars = getEmpireCharacters(e);
@@ -361,7 +228,7 @@ describe('GenerateStartingCharacters (normal empires, seed 1)', () => {
         // (merge of M4f onto M4u/M4o/M4l: re-pinned once; the merged stream gives the Dhayut leader Nashan Xetry.)
         // (re-pinned M4m: the game-start Empire.DoTasks runs the military AI — IdentifyMilitaryObjectives Next(0, EmpireEvaluations.Count), CheckTemptingTargets Next(0, Empires.Count), DetermineRandomAttacks Next(0, n) — which shifts the Rnd stream.)
         // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
-        expect(leader.colonyHappiness).toBe(0);
+        expect(leader.colonyHappiness).toMatchPin('characters.dhayutLeaderColonyHappiness', 0);
         expect(resolveCharacterColonyIncomeBonus(cap)).toBe(leader.colonyIncome);
         expect(resolveCharacterColonyCorruptionBonus(cap)).toBe(leader.colonyCorruption);
         expect(resolveEmpireLeaderWarWearinessDivisor(dhayut)).toBe(1.0 + leader.warWeariness / 100.0);
@@ -395,10 +262,15 @@ describe('GenerateStartingCharacters(pirate base) (Galaxy.8.cs 4822)', () => {
         const p = at.pirate!;
         expect(p).toBe(g.pirateEmpires[0]);
         // Generated during the first galaxy tick, untouched by the rest of createGame.
-        expect(at.rolesAfterTick).toEqual(PIRATE_ROLES);
+        // Pinned for seed 1 (TS port): the first AI pirate faction's starting characters, now generated
+        // inside GeneratePirateEmpire (Galaxy.8.cs 4822) during the first galaxy tick.
+        // (re-pinned M4k: the game-start Empire.DoTasks now runs PerformResearch — SelectNextResearchProject draws
+        // Rnd (SelectRandomLowestProject) and research events draw Next(0, num4) per industry — so later game-start
+        // Rnd draws shift.)
+        expect(at.rolesAfterTick).toMatchPin('characters.pirateRoles');
         const base = identifyPirateBase(p)!;
         const chars = getEmpireCharacters(p);
-        expect(chars.map((c) => CharacterRole[c.role])).toEqual(PIRATE_ROLES);
+        expect(chars.map((c) => CharacterRole[c.role])).toEqual(at.rolesAfterTick);
         expect(p.leader).toBe(chars[0]);
         expect(chars.every((c) => c.location === base)).toBe(true);
         expect(chars[0].bonusesKnown).toBe(true);
@@ -409,10 +281,3 @@ describe('GenerateStartingCharacters(pirate base) (Galaxy.8.cs 4822)', () => {
         expect(chars.every((c) => c.appearanceOrder !== 0 || c.race === null || !raceAvailableCharacters(g, c.race)!.includes(c))).toBe(true);
     }, 120000);
 });
-
-// Pinned for seed 1 (TS port): the first AI pirate faction's starting characters, now generated
-// inside GeneratePirateEmpire (Galaxy.8.cs 4822) during the first galaxy tick.
-// (re-pinned M4k: the game-start Empire.DoTasks now runs PerformResearch — SelectNextResearchProject draws
-// Rnd (SelectRandomLowestProject) and research events draw Next(0, num4) per industry — so later game-start
-// Rnd draws shift.)
-const PIRATE_ROLES: string[] = ['PirateLeader', 'IntelligenceAgent'];

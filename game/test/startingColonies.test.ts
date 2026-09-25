@@ -55,40 +55,23 @@ describe('starting colonies (extra colonies at age >= 2)', () => {
         // (re-pinned M4u: game-start character reviews / DoRaceEvent Rnd move placement; now 3 already-populated colonies.)
         // (re-pinned M4m: the game-start Empire.DoTasks runs the military AI — IdentifyMilitaryObjectives Next(0, EmpireEvaluations.Count), CheckTemptingTargets Next(0, Empires.Count), DetermineRandomAttacks Next(0, n) — which shifts the Rnd stream.)
         // (re-pinned M4q: InvadeUnwillingColonizationTargets' game-start NextDouble moves placement; now 1.)
-        const alreadyInhabitedExceptions = 2; // Haakonish Corporation's 2nd colony (found already-populated; re-pinned M4k, M4s1; re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785)).
         let outsideColonizable = 0;
         for (const e of a) {
             for (const t of e.colonyTypes) {
                 if (!e.colonizable.includes(t)) outsideColonizable++;
             }
         }
-        expect(outsideColonizable).toBe(alreadyInhabitedExceptions);
+        // Haakonish Corporation's 2nd colony (found already-populated; re-pinned M4k, M4s1; re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785)).
+        expect(outsideColonizable).toMatchPin('startingColonies.alreadyInhabitedExceptions', 2);
         // Pinned for seed 1 (TS port; C# parity ends at the first Empire.DoTasks, unported).
-        expect(a.map((e) => e.colonyCount)).toEqual([2, 2, 2, 2]);
+        expect(a.map((e) => e.colonyCount)).toMatchPin('startingColonies.colonyCounts');
         // (re-pinned M4k: game-start research shifts the Rnd stream.)
         // (re-pinned M4s1: ReviewPirateRelations draws Rnd.NextDouble in each game-start Empire.DoTasks long block.)
         // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
         // (re-pinned M4u: see above.)
         // (re-pinned M4m: see above.)
         // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
-        expect(a.map((e) => e.colonyTypes)).toEqual([
-            [
-                11,
-                11
-            ],
-            [
-                11,
-                11
-            ],
-            [
-                10,
-                11
-            ],
-            [
-                9,
-                11
-            ]
-        ]);
+        expect(a.map((e) => e.colonyTypes)).toMatchPin('startingColonies.colonyTypes');
         // Determinism.
         expect(summary(opts(2, 0.5))).toEqual(a);
     }, 60000);
