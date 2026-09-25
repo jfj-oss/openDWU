@@ -77,10 +77,17 @@ function writeConfig(installDir) {
 }
 
 /**
- * Find the DW:U install dir: saved config → platform default guesses →
- * open-directory dialog. Returns null if the user cancels the dialog.
+ * Find the DW:U install dir: $DWU_DIR (not saved; for scripts/tests, same
+ * variable as `npm run import-assets`) → saved config → platform default
+ * guesses → open-directory dialog. Returns null if the user cancels the dialog.
  */
 async function findInstallDir() {
+    const envDir = process.env.DWU_DIR;
+    if (envDir) {
+        if (isValidInstallDir(envDir)) return envDir;
+        console.warn(`DWU_DIR=${envDir} has no images/ subfolder; ignoring it.`);
+    }
+
     const saved = readConfigInstallDir();
     if (saved) return saved;
 
