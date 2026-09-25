@@ -56,3 +56,21 @@ const T_fighterReturnToCarrier = registerTodo('M4p', 'fighterReturnToCarrier');
 export function fighterReturnToCarrier(galaxy: Galaxy, fighter: unknown): void {
     /* TODO(port) M4p */ todo(T_fighterReturnToCarrier);
 }
+
+// ---- stubs added by M4o (called from combat/weapons.ts DefendBase / DefendShipFromAttackers) ----
+
+const T_fireWeaponsAtFighter = registerTodo('M4p', 'fireWeaponsAtFighter');
+/** BuiltObject.cs 4096 FireWeaponsAtFighter(galaxy, fighter, time, out allWeaponsAssigned) — stub: nothing fired, returns false. */
+export function fireWeaponsAtFighter(galaxy: Galaxy, builtObject: BuiltObject, fighter: unknown, time: number): boolean {
+    void builtObject; void fighter; void time;
+    // RND: DetermineHitTarget + Weapon.Fire draws — not drawn until M4p.
+    /* TODO(port) M4p */ todo(T_fireWeaponsAtFighter);
+    return false;
+}
+
+const T_fighterAbandonAttackTarget = registerTodo('M4p', 'fighterAbandonAttackTarget');
+/** Fighter.cs 1992 AbandonAttackTarget — stub. */
+export function fighterAbandonAttackTarget(galaxy: Galaxy, fighter: unknown): void {
+    void fighter;
+    /* TODO(port) M4p */ todo(T_fighterAbandonAttackTarget);
+}

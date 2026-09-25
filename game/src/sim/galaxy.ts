@@ -9,6 +9,7 @@
 
 import { EmpireActivityList } from './pirates/empireActivity';
 import { Random } from './random';
+import type { Cargo } from './cargo';
 import { newHabitatConstructionQueue } from './construction/constructionYard';
 import { Creature, CreatureType } from './creature';
 import { GalaxyLocation, GalaxyLocationEffectType, GalaxyLocationShape, GalaxyLocationType } from './galaxyLocation';
@@ -4421,6 +4422,8 @@ export class Galaxy {
     // ---- M4o fields (weapons, damage, teardown) ----
     /** The clock-seeded `new Random()` of BaconBuiltObject.CollectScrapFromDestroyedBuiltObjects (5183): one stream per galaxy, seeded from the galaxy seed (plan §0). */
     baconCombatClockRnd: Random | null = null;
+    /** BaconBuiltObject.cs 78 static `shipsToBeDestroyed` (ship name → saved resource cargo; SaveShipInfoBeforeDestruction / CollectScrap), kept per galaxy. */
+    baconShipsToBeDestroyed = new Map<string, Cargo[]>();
     // ---- M4p fields (fighters) ----
     // ---- M4q fields (invasion, troops, boarding) ----
     // ---- M4r fields (diplomacy runtime) ----

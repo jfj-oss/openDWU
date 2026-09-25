@@ -283,3 +283,29 @@ export function characterSendDeathMessageAndKill(galaxy: Galaxy, character: unkn
     void galaxy; void character; void deathType;
     /* TODO(port) M4u */ todo(T_characterSendDeathMessageAndKill);
 }
+
+const T_chanceRaceEvent = registerTodo('M4u', 'chanceRaceEvent');
+/** Galaxy.9.cs ChanceRaceEvent(builtObjectDestroyed, destroyer) (BuiltObject.2.cs 6577; race events, Empire.1.cs 1731-2881) — stub. */
+export function chanceRaceEvent(galaxy: Galaxy, builtObjectDestroyed: BuiltObject, destroyer: BuiltObject): void {
+    void galaxy; void builtObjectDestroyed; void destroyer;
+    // RND: race event chance draws — not drawn until M4u.
+    /* TODO(port) M4u */ todo(T_chanceRaceEvent);
+}
+
+const T_chanceNewShipCaptain = registerTodo('M4u', 'chanceNewShipCaptain');
+/** Galaxy.2.cs 5022 ChanceNewShipCaptain(targetDestroyed, empire, location) → 5027 — stub: false (no captain appears). */
+export function chanceNewShipCaptain(galaxy: Galaxy, targetDestroyed: BuiltObject, empire: Empire | null, location: BuiltObject | Habitat | null): boolean {
+    void galaxy; void targetDestroyed; void empire; void location;
+    // RND: Rnd.Next(0, num) — not drawn until M4u.
+    /* TODO(port) M4u */ todo(T_chanceNewShipCaptain);
+    return false;
+}
+
+const T_chanceNewFleetAdmiral = registerTodo('M4u', 'chanceNewFleetAdmiral');
+/** Galaxy.2.cs 5092 ChanceNewFleetAdmiral(targetDestroyed, empire, location) → 5097 — stub: false. */
+export function chanceNewFleetAdmiral(galaxy: Galaxy, targetDestroyed: BuiltObject, empire: Empire | null, location: BuiltObject | Habitat | null): boolean {
+    void galaxy; void targetDestroyed; void empire; void location;
+    // RND: Rnd.Next(0, num) — not drawn until M4u.
+    /* TODO(port) M4u */ todo(T_chanceNewFleetAdmiral);
+    return false;
+}

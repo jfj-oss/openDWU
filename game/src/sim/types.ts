@@ -472,6 +472,8 @@ export class Habitat {
     teardownEmpire: Empire | null = null;
     /** Habitat.cs _DestroyedAsteroidFieldGenerated (DoExplosion 6362). */
     destroyedAsteroidFieldGenerated = false;
+    /** Habitat.PlanetaryShieldPresent (read by InflictBombardDamage, BuiltObject.2.cs 5819). TODO(port) M4i: the planetary-shield facility sets it. */
+    planetaryShieldPresent = false;
     // ---- M4p fields (fighters) ----
     // ---- M4q fields (invasion, troops) ----
     /** Habitat.ColonyInvasion (ColonyInvasion.cs; null = no invasion in progress). */

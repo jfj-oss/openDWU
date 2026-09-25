@@ -7,6 +7,7 @@
 
 import type { Galaxy } from './galaxy';
 import type { Empire } from './empire';
+import type { Habitat } from './types';
 import { registerTodo, todo } from './tick/todo';
 
 const T_assignShipMissions = registerTodo('M4f', 'assignShipMissions');
@@ -40,4 +41,18 @@ const T_reviewIndependentColonyTargets = registerTodo('M4f', 'reviewIndependentC
 /** Empire.5.cs 1298 ReviewIndependentColonyTargets. */
 export function reviewIndependentColonyTargets(galaxy: Galaxy, empire: Empire): void {
     /* TODO(port) M4f */ todo(T_reviewIndependentColonyTargets);
+}
+
+// ---- stub added by M4o (called from combat/damage.ts ProvideBonusFromPirateBase, BuiltObject.2.cs 4991) ----
+
+const T_findLonelyColonyLocation = registerTodo('M4f', 'findLonelyColonyLocation');
+/**
+ * Galaxy.3.cs 1542 FindLonelyColonyLocation(empire): a random offset from the capital, then FindNearestColonizableHabitat*
+ * (EmptySystem / UnoccupiedSystem / any) or FindNearestUncolonizedHabitat(Ice) — stub: null.
+ */
+export function findLonelyColonyLocation(galaxy: Galaxy, empire: Empire): Habitat | null {
+    void galaxy; void empire;
+    // RND: NextDouble ×2 (the capital offset) — not drawn until M4f.
+    /* TODO(port) M4f */ todo(T_findLonelyColonyLocation);
+    return null;
 }
