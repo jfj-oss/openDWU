@@ -60,6 +60,8 @@ import {
     maintainColonyCriticalResourceLevels,
     maintainColonyResourceLevels,
     orderColonyLuxuryResources,
+    calculateMinimumLuxuryResourceLevel,
+    calculateMinimumLuxuryResourceLevelRestricted,
     prepareColonyLuxuryResourceLists,
 } from './logistics/colonySupply';
 import { netSort } from './netSort';
@@ -344,8 +346,8 @@ export function checkSatisfaction(galaxy: Galaxy, habitat: Habitat): void {
         }
         let flag = false;
         const dominantRace = habitat.population != null ? habitat.population.dominantRace : null;
-        // TODO(port) M4u: Galaxy.ShakturiActualRace (story events) — null in a normal game.
-        const shakturiActualRace: Race | null = null;
+        // Galaxy.ShakturiActualRace (set by the story's GenerateShakturi; null otherwise).
+        const shakturiActualRace: Race | null = galaxy.shakturiActualRace;
         if (habitat.population != null && dominantRace !== null && dominantRace !== shakturiActualRace && ((troops !== null && troops.count > 0 && galaxy.rnd.next(0, 3) > 0) || habitat.warWithOurRace !== 0)) {
             let num8 = 1;
             const totalAmount = habitat.population.totalAmount;
@@ -771,7 +773,10 @@ function evaluateColonyVariablesCore(galaxy: Galaxy, empire: Empire, timePassed:
             dominantRace = empire.dominantRace;
         }
         calculateMaximumOrderFulfillmentDistanceForHabitat(galaxy, habitat);
-        // num6 / num7 / val (CalculateMinimumLuxuryResourceLevel[Restricted]) feed only the orders (M4d, below).
+        // Empire.4.cs 3036-3038: num6 / num7 / val feed only the luxury orders (below).
+        const num6 = calculateMinimumLuxuryResourceLevel(habitat);
+        const num7 = calculateMinimumLuxuryResourceLevelRestricted(habitat);
+        const val = Math.trunc(num7 * 1.5);
         const num8 = calculateStrategicResourceSupplyGrowthFactor(galaxy, habitat);
         if (num8 > 0.0) {
             let num9 = (timePassed / REAL_SECONDS_IN_GALACTIC_YEAR) * COLONY_DEVELOPMENT_LEVEL_MAXIMUM_ANNUAL_CHANGE;
@@ -901,7 +906,7 @@ function evaluateColonyVariablesCore(galaxy: Galaxy, empire: Empire, timePassed:
         }
         habitat.population.recalculateTotalAmount();
         // 3183-3301 (pirate 2814-2932): orders for luxury / restricted resources (M4d).
-        orderColonyLuxuryResources(galaxy, empire, habitat, builtObject, lists);
+        orderColonyLuxuryResources(galaxy, empire, habitat, builtObject, lists, num6, num7, val);
         recalculateAnnualTaxRevenue(galaxy, habitat);
         processColonyTroopsFull(
             galaxy, empire, habitat, strongestEmpireTroop, troopStrengthNeutralizationAmount, troopSizeRegenerationAmount, troopRecruitmentAmount,

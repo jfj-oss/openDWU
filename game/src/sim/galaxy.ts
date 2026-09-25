@@ -7,6 +7,7 @@
 // population and creatures are ported (01f2: SelectPopulation, 01f3:
 // SelectCreatures) — see the `TODO(port)` markers below for what remains.
 
+import type { VictoryConditions, EmpireVictoryConditions } from './victory';
 import { EmpireActivityList } from './pirates/empireActivity';
 import { Random } from './random';
 import type { Cargo } from './cargo';
@@ -56,6 +57,7 @@ import { canEmpireColonizeHabitat, habitatResourcesHaveSuperLuxury } from './exp
 import type { SchedulerState } from './tick/scheduler';
 import type { Blockade } from './fleets/blockades';
 import { createGalaxyOrderList, type OrderList } from './logistics/orders';
+import { GameEventList, type EventActionExecutionPackage } from './story/gameEventModel';
 
 // Port of Galaxy.cs static fields (Galaxy.3.cs InitializeStatics sets
 // these): SectorSizeX = SectorSizeY = 2_000_000, IndexSize = 400_000.
@@ -1484,7 +1486,7 @@ export class Galaxy {
     // already-placed gas-cloud/asteroid habitats. Semantically equivalent
     // (same nearest-neighbor result), just O(n) instead of index-accelerated.
     // TODO(port): rebuild via GalaxyIndex sectors if this becomes a perf issue.
-    private findNearestSystemGasCloudAsteroid(x: number, y: number): Habitat | null {
+    findNearestSystemGasCloudAsteroid(x: number, y: number): Habitat | null {
         let best: Habitat | null = null;
         let bestDistance = Number.MAX_VALUE;
         for (const habitat of this.habitats) {
@@ -2419,7 +2421,7 @@ export class Galaxy {
         }
     }
 
-    private selectBarrenRockPlanet(): { type: HabitatType; diameter: number; minOrbitDistance: number; maxOrbitDistance: number; pictureRef: number; landscapePictureRef: number } {
+    selectBarrenRockPlanet(): { type: HabitatType; diameter: number; minOrbitDistance: number; maxOrbitDistance: number; pictureRef: number; landscapePictureRef: number } {
         const diameter = this.rnd.next(80, 340);
         const minOrbitDistance = 2500;
         const maxOrbitDistance = 11500;
@@ -4470,6 +4472,9 @@ export class Galaxy {
      */
     regeneratingEmpireTerritory = false;
     regenerateEmpireTerritoryAgain = false;
+    // ---- M4z2 fields (espionage) ----
+    /** The clock-seeded `new Random()` of BaconCharacter.Kill / BaconHabitat & BaconBuiltObject SpyEscaped / SpyDefected: one galaxy-seeded stream (plan §0; espionagePrisoners.ts). */
+    baconSpyClockRnd: Random | null = null;
     // ---- M4u fields (events, disasters, characters) ----
     /** Galaxy.cs 721 GameRaceSpecificEventsEnabled = true (Start.2.cs 504: VictoryConditions.EnableRaceSpecificEvents). */
     gameRaceSpecificEventsEnabled = true;
@@ -4478,6 +4483,60 @@ export class Galaxy {
      * are deferred (tasks/M4-plan.md §0.3): the M4u branches that read it throw TODO(port) when it is true.
      */
     storyShadowsEnabled = false;
+    // ---- M4z1 fields (empire lifecycle) ----
+    /** Galaxy.cs DefeatedEmpires (EmpireList; Empire.CompleteTeardown adds each empire it removes from Empires). */
+    defeatedEmpires: Empire[] = [];
+    // ---- M4z4 fields (victory, achievements, stats) ----
+    /**
+     * Galaxy.GlobalVictoryConditions (VictoryConditions; victory.ts). createGame assigns the wizard's conditions at the end
+     * of game start (Start.2.cs 2026); null for a galaxy built without them (no global victory, no progress list).
+     * DefendHabitat / TargetHabitat on it are set only by story events (Galaxy.8.cs 2223-2226 GenerateFreedomAlliance).
+     */
+    globalVictoryConditions: VictoryConditions | null = null;
+    /** Galaxy.cs 719 GameRaceSpecificVictoryConditionsEnabled = true (Start.2.cs 505: VictoryConditions.EnableRaceSpecificVictoryConditions). */
+    gameRaceSpecificVictoryConditionsEnabled = true;
+    /** Galaxy.DifficultyLevelScalesAsPlayerApproachesVictory (read by SetEmpireDifficultyFactors, Galaxy.cs 1423). */
+    difficultyLevelScalesAsPlayerApproachesVictory = false;
+    /** Galaxy.cs 538 ShakturiDefeated (CheckGlobalVictoryConditions TargetHabitat branch, Galaxy.1.cs 431). */
+    shakturiDefeated = false;
+    /**
+     * Game.IsFinished / Game.Victor (UI Game object; Main.Part12.cs 3426-3427 DoGameEnd sets them) and
+     * Game.PlayerVictoryConditionsToAchieve / ToPrevent (Start.2.cs 2119-2120; scenario-only, null in a normal game).
+     * The frame driver passes them to Galaxy.DoTasks (Main.Part12.cs 3980).
+     */
+    gameIsFinished = false;
+    gameVictor: Empire | null = null;
+    playerVictoryConditionsToAchieve: EmpireVictoryConditions | null = null;
+    playerVictoryConditionsToPrevent: EmpireVictoryConditions | null = null;
+    /**
+     * Local record of the achievements the C# would unlock on Steam for the player (Empire.1.cs 3992
+     * SteamAPI.SetAchievementIfNecessary: ResolveAchievementName, achievements.ts). No Steam in the port.
+     */
+    unlockedAchievementNames: string[] = [];
+    // ---- M4z3 fields (story, scripted game events; src/sim/story/*) ----
+    /** Galaxy.cs 33 GameEvents (scenario editor events; empty in a generated game). */
+    gameEvents: GameEventList = new GameEventList();
+    /** Galaxy.cs 696 DelayedActions (EventActionExecutionPackageList; ExecuteOrDelayEventAction / Bacon scripted actions). */
+    delayedActions: EventActionExecutionPackage[] = [];
+    /** Galaxy.cs 502 StoryCluesEnabled (set by the first GenerateStoryClue). */
+    storyCluesEnabled = false;
+    /** Galaxy.cs 504 StoryClueLocations (List<StellarObject>; Start.2.cs 1769-1844 fills it). */
+    storyClueLocations: (Habitat | BuiltObject | null)[] = [];
+    /** Galaxy.cs 506 / 508 StoryClueUsed / StorySecondaryClueUsed. */
+    storyClueUsed: boolean[] = [];
+    storySecondaryClueUsed: boolean[] = [];
+    /** Galaxy.cs 525 StoryReturnOfTheShakturiEventLevel. */
+    storyReturnOfTheShakturiEventLevel = 0;
+    /** Galaxy.cs 527 ShakturiTriggerHabitat (the "Beacon of Shaktur" ruin habitat). */
+    shakturiTriggerHabitat: Habitat | null = null;
+    /** Galaxy.cs 529 StoryShakturiEnraged. */
+    storyShakturiEnraged = false;
+    /** Galaxy.cs 531 ShakturiOriginalRace (copy of the Shakturi race's levels/names before GenerateShakturi renames it). */
+    shakturiOriginalRace: Race | null = null;
+    /** Galaxy.cs 534 ShakturiActualRace (the Races["Shakturi"] instance once GenerateShakturi ran). */
+    shakturiActualRace: Race | null = null;
+    /** Galaxy.cs 536 StoryShakturiEnrageTimer = long.MaxValue (star date). */
+    storyShakturiEnrageTimer = Number.MAX_SAFE_INTEGER;
 }
 
 // Port of Galaxy.4.cs Galaxy constructor (star-cluster setup, star loop,

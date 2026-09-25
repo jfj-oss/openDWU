@@ -18,23 +18,23 @@
 // Blocks (in C# order; gameStartTail() runs them all):
 //   1568-1583 capitalCreatureTeardown          no Rnd
 //   1585-1729 homeAsteroidFieldsAtStart          (galaxy.Age == 0) Rnd — see the function
-//   1730-1767 shakturiStoryAtStart               story only → TODO(port) (throws when enabled)
-//   1768-1844 distantWorldsStoryCluesAtStart     story only → TODO(port) (throws when enabled)
+//   1730-1767 shakturiStoryAtStart               story only → story/storyStart.ts (M4z3)
+//   1768-1844 distantWorldsStoryCluesAtStart     story only → story/storyStart.ts (M4z3)
 //   1845-1852 setKnownGalacticHistoryLocationsAtStart  no Rnd
 //   1853-1856 setRestrictedResources             Rnd
 //   1857-1860 generateSilverMistRuins            Rnd
 //   1861-1864 generateSpecialBonusRuins          Rnd
-//   1865-1967 placeSpecialRuinsAtStart           Rnd (Origins sub-block story only → TODO(port))
-//   1968-2010 debrisFieldsAtStart                story only → TODO(port) (throws when enabled)
+//   1865-1967 placeSpecialRuinsAtStart           Rnd (Origins sub-block: story/storyStart.ts, M4z3)
+//   1968-2010 debrisFieldsAtStart                story only → story/storyStart.ts (M4z3)
 //   2011      abandonedShipsAtStart (method_87)  Rnd
 //   2012      asteroidAbandonedShipsAtStart (method_85) Rnd
-//   2013-2016 method_86                          story only → TODO(port) (throws when enabled)
+//   2013-2016 method_86                          story only → story/storyStart.ts (M4z3)
 //   2017-2038 gameObjectAtStart                  DeferEventsForGameStart, Game flags; TODO(port)
 //             Habitat.DoTasks for the player capital (Habitat.cs 1399, unported; unknown Rnd).
 //
 // Story blocks: Galaxy.StoryReturnOfTheShakturiEnabled / StoryDistantWorldsEnabled default to
-// false on the TS Galaxy (C#: VictoryConditions.EnableStoryEvents / the wizard's DW story box);
-// enabling either makes the corresponding block throw TODO(port) rather than silently skip it.
+// false on the TS Galaxy (C#: VictoryConditions.EnableStoryEvents / the wizard's DW story box;
+// createGame's story options set them); the blocks are ported in story/storyStart.ts (M4z3).
 //
 // "gameStartResets_0 == null || GalaxyFilepath empty || Reset*" conditions are always true for a
 // new game (no galaxy file) and are not modelled.
@@ -74,6 +74,7 @@ import { generatePirateBaseName, selectRandomRace } from './pirates';
 import { Ruin, RuinType, generateRuinName, selectRuinDescription, selectRuins } from './ruins';
 import { HabitatCategoryType, HabitatType, type Habitat } from './types';
 import { determineGalaxyLocationsInRangeAtPoint } from './visibility';
+import * as storyStart from './story/storyStart';
 
 // ---------------------------------------------------------------------------
 // BuiltObject encounter members (BuiltObject.cs 311-319, 505-507). Not on the TS BuiltObject
@@ -139,7 +140,7 @@ function getBySubRole(list: readonly (DesignSpecification | null)[], subRole: Bu
 
 // Galaxy.DesignSpecifications (static, Galaxy.3.cs 4960-5721).
 let galaxyDesignSpecifications: DesignSpecification[] | null = null;
-function galaxyDesignSpecificationBySubRole(subRole: BuiltObjectSubRole): DesignSpecification | null {
+export function galaxyDesignSpecificationBySubRole(subRole: BuiltObjectSubRole): DesignSpecification | null {
     if (galaxyDesignSpecifications === null) galaxyDesignSpecifications = buildDefaultDesignSpecifications();
     return getDefaultDesignSpecificationBySubRole(galaxyDesignSpecifications, subRole);
 }
@@ -793,6 +794,9 @@ export interface GameStartTailContext {
     creaturePrevalence?: number;
     /** Start.2.cs int_1 (wizard star count). Default galaxy.starCount. */
     starCount?: number;
+    /** Start.2.cs xpos / ypos: the player's start (capital, or pirate base) — read by the story blocks. Default 0. */
+    xpos?: number;
+    ypos?: number;
     /** empireStart_0.TechLevel (player tech level; only read with the Shakturi story). */
     playerTechLevel?: number;
     /** empireStart_0.Age (Game.AgeOfShadows when 0). Default galaxy.age. */
@@ -951,35 +955,19 @@ export function homeAsteroidFieldsAtStart(galaxy: Galaxy, creaturePrevalence: nu
 }
 
 /**
- * Start.2.cs 1730-1767 `if (empireStart_0.TechLevel != 0.0 && galaxy.StoryReturnOfTheShakturiEnabled)`:
- * "Utopia" + GenerateAncientHelpers near a random point 2 sectors from the player's view.
- * TODO(port): ObtainRandomGalaxyCoordinatesFromPoint (NextDouble per try), FindNearestHabitat-
- * UnoccupiedSystem chain, Population.Clear, Galaxy.GenerateAncientHelpers (Galaxy.*.cs) — story
- * only (the TS Galaxy's StoryReturnOfTheShakturiEnabled defaults to false).
+ * Start.2.cs 1730-1767 `if (empireStart_0.TechLevel != 0.0 && galaxy.StoryReturnOfTheShakturiEnabled)`: the Ancient Guardians
+ * on "Utopia" near the player's start (xpos, ypos) — story/storyStart.ts (M4z3).
  */
-export function shakturiStoryAtStart(galaxy: Galaxy, playerTechLevel: number): void {
-    if (playerTechLevel !== 0.0 && galaxy.storyReturnOfTheShakturiEnabled) {
-        throw new Error('TODO(port): Start.2.cs 1730-1767 Return of the Shakturi story start (GenerateAncientHelpers)');
-    }
+export function shakturiStoryAtStart(galaxy: Galaxy, playerTechLevel: number, xpos = 0.0, ypos = 0.0): void {
+    storyStart.shakturiStoryAtStart(galaxy, playerTechLevel, xpos, ypos);
 }
 
 /**
- * Start.2.cs 1768-1844: `galaxyLocationList3 = new GalaxyLocationList()`, then, when
- * StoryDistantWorldsEnabled: the story clue locations (lonely BarrenRock ruin, Signal Intercept
- * Station XL5, Devastator + Pozdac Weapons Testing Range, Ecatur Special Projects Outpost + Dead
- * Zone + 40 Kaltors, Scoundrels Refuge), StoryClueUsed / StorySecondaryClueUsed, and
- * max(1, StarCount/200) each of GenerateSpecialZoneWeaponsTestingRange / ResearchFacility /
- * SupplyDepot. Returns galaxyLocationList3 (the restricted zones created).
- * TODO(port): the whole story block (GenerateStoryAbandonedBuiltObject, GenerateRestrictedZone,
- * FindLonelyNebulaLocation, GenerateResearchStationDesign, DesignPirateBase, GenerateSpecialZone*)
- * — throws when StoryDistantWorldsEnabled.
+ * Start.2.cs 1768-1844: the Distant Worlds story clue locations and special zones; returns galaxyLocationList3 (the
+ * restricted zones created) — story/storyStart.ts (M4z3).
  */
-export function distantWorldsStoryCluesAtStart(galaxy: Galaxy): GalaxyLocation[] {
-    const galaxyLocationList3: GalaxyLocation[] = [];
-    if (galaxy.storyDistantWorldsEnabled) {
-        throw new Error('TODO(port): Start.2.cs 1769-1844 Distant Worlds story clue locations and special zones');
-    }
-    return galaxyLocationList3;
+export function distantWorldsStoryCluesAtStart(galaxy: Galaxy, xpos = 0.0, ypos = 0.0): GalaxyLocation[] {
+    return storyStart.distantWorldsStoryCluesAtStart(galaxy, xpos, ypos);
 }
 
 /**
@@ -1182,7 +1170,7 @@ export function generateSpecialBonusRuins(galaxy: Galaxy): void {
  *   Refugees at the galactic edge, num70 = max(1, n/110) LostBuiltObject, num71 = max(1, n/170)
  *   LostColony, [story: num72 = min(6, max(1, n/160)) Origins], num73 = max(1, n/140) NewPopulation
  *   (SleepersAwake). Rnd: FindLonelyHabitat + SelectSpecialRuins draws per ruin.
- * The Origins sub-block (StoryDistantWorldsEnabled) is TODO(port): throws when enabled.
+ * The Origins sub-block (StoryDistantWorldsEnabled) is story/storyStart.ts originsRuinsAtStart (M4z3).
  */
 export function placeSpecialRuinsAtStart(galaxy: Galaxy, int1: number = galaxy.starCount, raceFamilies?: readonly RaceFamily[]): void {
     const num69 = Math.max(1, Math.trunc(int1 / 270.0));
@@ -1231,14 +1219,7 @@ export function placeSpecialRuinsAtStart(galaxy: Galaxy, int1: number = galaxy.s
         habitat20 = findLonelyHabitat(galaxy, 0.0, 1.0, RuinType.LostColony);
         selectSpecialRuins(galaxy, habitat20, SpecialRuinsEventType.LostColonyCoordinates, raceFamilies);
     }
-    if (galaxy.storyDistantWorldsEnabled) {
-        // TODO(port): Start.2.cs 1921-1961 Origins ruins (num72 = min(6, max(1, n/160))): per ruin
-        // Next(10,14) + a second Next(10,14) for cases 0-5 (Human, Boskara, Kiadian, Sluken, Ackdarian,
-        // Gizurean; odd cases negated), SelectRandomRace(75) when the race is missing, FindLonelyHabitat
-        // (Origins, BarrenRock), SelectSpecialRuins(OriginsDiscovery, race, value). Story only.
-        void num72;
-        throw new Error('TODO(port): Start.2.cs 1921-1961 Origins ruins (Distant Worlds story)');
-    }
+    storyStart.originsRuinsAtStart(galaxy, num72, raceFamilies); // 1921-1961 (Distant Worlds story; story/storyStart.ts)
     for (let num82 = 0; num82 < num73; num82++) {
         habitat20 = findLonelyHabitat(galaxy, 0.0, 1.0, RuinType.NewPopulation, HabitatType.BarrenRock);
         selectSpecialRuins(galaxy, habitat20, SpecialRuinsEventType.SleepersAwake, raceFamilies);
@@ -1246,21 +1227,15 @@ export function placeSpecialRuinsAtStart(galaxy: Galaxy, int1: number = galaxy.s
 }
 
 /**
- * Start.2.cs 1968-2010: `galaxyLocationList4 = GalaxyLocations.FindLocations(DebrisField)`; when
- * StoryDistantWorldsEnabled: large/small debris fields and planet destroyers by star count.
- * TODO(port): GenerateDebrisFieldLarge / GenerateDebrisFieldSmall / GeneratePlanetDestroyer —
- * story only; throws when enabled.
+ * Start.2.cs 1968-2010: `galaxyLocationList4 = GalaxyLocations.FindLocations(DebrisField)`; when StoryDistantWorldsEnabled:
+ * large/small debris fields and planet destroyers by the wizard star count (int_1) — story/storyStart.ts (M4z3).
  */
-export function debrisFieldsAtStart(galaxy: Galaxy): void {
-    const galaxyLocationList4 = galaxy.galaxyLocations.filter((l) => l.type === GalaxyLocationType.DebrisField);
-    void galaxyLocationList4;
-    if (galaxy.storyDistantWorldsEnabled) {
-        throw new Error('TODO(port): Start.2.cs 1969-2009 debris fields / planet destroyers (Distant Worlds story)');
-    }
+export function debrisFieldsAtStart(galaxy: Galaxy, int1: number = galaxy.starCount): void {
+    storyStart.debrisFieldsAtStart(galaxy, int1);
 }
 
 /** Start.2.cs 2725 method_93(galaxy, min, max): random point in a ring around the galaxy centre. Rnd: NextDouble ×2, Next(0,2) ×2. */
-function method93(galaxy: Galaxy, double1: number, double2: number): { x: number; y: number } {
+export function method93(galaxy: Galaxy, double1: number, double2: number): { x: number; y: number } {
     const num = galaxy.sizeX / 2.0;
     const num2 = galaxy.sizeY / 2.0;
     const num3 = galaxy.sizeX / 2.0;
@@ -1533,14 +1508,11 @@ export function asteroidAbandonedShipsAtStart(galaxy: Galaxy): void {
 }
 
 /**
- * Start.2.cs 2013-2016 `if (galaxy.StoryReturnOfTheShakturiEnabled) method_86(galaxy)` (2390):
- * (int)(sqrt(StarCount) * 0.3) abandoned Shakturi warships.
- * TODO(port): story only — throws when enabled.
+ * Start.2.cs 2013-2016 `if (galaxy.StoryReturnOfTheShakturiEnabled) method_86(galaxy)` (2390): (int)(sqrt(StarCount) * 0.3)
+ * abandoned Shakturi warships — story/storyStart.ts (M4z3).
  */
 export function shakturiAbandonedShipsAtStart(galaxy: Galaxy): void {
-    if (galaxy.storyReturnOfTheShakturiEnabled) {
-        throw new Error('TODO(port): Start.2.cs method_86 abandoned Shakturi ships (Return of the Shakturi story)');
-    }
+    storyStart.shakturiAbandonedShipsAtStart(galaxy);
 }
 
 /**
@@ -1567,14 +1539,14 @@ export function gameStartTail(galaxy: Galaxy, ctx: GameStartTailContext): GameSt
     const empireList = ctx.empireList ?? galaxy.empires;
     capitalCreatureTeardown(galaxy); // 1568-1583
     homeAsteroidFieldsAtStart(galaxy, ctx.creaturePrevalence ?? galaxy.creaturePrevalence); // 1585-1729
-    shakturiStoryAtStart(galaxy, ctx.playerTechLevel ?? 0.0); // 1730-1767
-    const galaxyLocationList3 = distantWorldsStoryCluesAtStart(galaxy); // 1768-1844
+    shakturiStoryAtStart(galaxy, ctx.playerTechLevel ?? 0.0, ctx.xpos ?? 0.0, ctx.ypos ?? 0.0); // 1730-1767
+    const galaxyLocationList3 = distantWorldsStoryCluesAtStart(galaxy, ctx.xpos ?? 0.0, ctx.ypos ?? 0.0); // 1768-1844
     setKnownGalacticHistoryLocationsAtStart(galaxy, empireList, galaxyLocationList3); // 1845-1852
     setRestrictedResources(galaxy); // 1853-1856
     generateSilverMistRuins(galaxy); // 1857-1860
     generateSpecialBonusRuins(galaxy); // 1861-1864
     placeSpecialRuinsAtStart(galaxy, ctx.starCount ?? galaxy.starCount, ctx.raceFamilies); // 1865-1967
-    debrisFieldsAtStart(galaxy); // 1968-2010
+    debrisFieldsAtStart(galaxy, ctx.starCount ?? galaxy.starCount); // 1968-2010
     abandonedShipsAtStart(galaxy); // 2011 method_87
     asteroidAbandonedShipsAtStart(galaxy); // 2012 method_85
     shakturiAbandonedShipsAtStart(galaxy); // 2013-2016 method_86

@@ -728,7 +728,7 @@ export function pirateTradeItemsCore(galaxy: Galaxy, empire: Empire): void {
 // ---------------------------------------------------------------------------------------------------------------
 
 /** Empire.3.cs 3443 CancelAttacksAgainstEmpire(empire): ship / fleet attack missions (M4m) then ClearOutlawsFromEmpire. */
-function cancelAttacksAgainstEmpire(galaxy: Galaxy, self: Empire, empire: Empire): void {
+export function cancelAttacksAgainstEmpire(galaxy: Galaxy, self: Empire, empire: Empire): void {
     cancelAttackMissionsAgainstEmpire(galaxy, self, empire);
     clearOutlawsFromEmpire(self, empire);
 }

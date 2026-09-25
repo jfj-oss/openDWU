@@ -162,6 +162,8 @@ describe('createGame full game start (seed 1, Spiral 300 stars, 8x8, Human + 3 A
 // steps and StartStarDate + 30000000, so the Rnd stream moves.
 // (re-pinned M4m: the game-start Empire.DoTasks runs the military AI — IdentifyMilitaryObjectives Next(0, EmpireEvaluations.Count), CheckTemptingTargets Next(0, Empires.Count), DetermineRandomAttacks Next(0, n) — which shifts the Rnd stream.)
 // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks; the full
+// (re-pinned M4z6: the game-start EvaluateColonyVariables now places the colony strategic / luxury orders (Empire.4.cs
+// 2357 / 3186); the changed market demand and freight contracts move the later Rnd consumers: ruins 33 -> 31.)
 const PINNED_SUMMARY: unknown = {
     "empires": [
         {
@@ -372,5 +374,5 @@ const PINNED_SUMMARY: unknown = {
     "independentTraders": 150,
     "unownedBuiltObjects": 20,
     "builtObjects": 339,
-    "ruins": 33
+    "ruins": 31
 };

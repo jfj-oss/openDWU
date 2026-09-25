@@ -20,6 +20,7 @@
 // Normal (0.5, SetTechTreeStartingDefaults) and Level 1-6. AI pirate factions
 // are generated when piratePrevalence > 0 (pirates.ts).
 
+import { applyVictoryConditionsToGalaxy, type VictoryConditions } from './victory';
 import { reviewComponentPrices, reviewResourcePrices } from './market';
 import { selectPopularDesignCandidates } from './independentTraders';
 import { gameStartColonyRecalc, gameStartReviewTaxes } from './taxes';
@@ -105,6 +106,28 @@ export interface CreateGameOptions {
     difficultyLevel?: number;
     /** VictoryConditions.EnableDisasterEvents (Start.2.cs 503; default true). */
     disasterEventsEnabled?: boolean;
+    /**
+     * M4z4: victoryConditions_0 (the runtime VictoryConditions, victory.ts victoryConditionsFromWizard). When set it
+     * becomes Galaxy.GlobalVictoryConditions (Start.2.cs 2026) and drives Start.2.cs 501-506 (overriding
+     * disasterEventsEnabled). Unset = no global victory conditions (progress list empty, no threshold victory).
+     */
+    victoryConditions?: VictoryConditions | null;
+    /** M4z4: EmpireStart.DifficultyScaling → Galaxy.DifficultyLevelScalesAsPlayerApproachesVictory (Start.2.cs 496). */
+    difficultyLevelScalesAsPlayerApproachesVictory?: boolean;
+    /**
+     * VictoryConditions.EnableStoryEvents → Galaxy.StoryReturnOfTheShakturiEnabled (Start.2.cs 501): the "Return of the
+     * Shakturi" story line. Default false (a normal TS game; the C# wizard defaults it on).
+     */
+    storyReturnOfTheShakturiEnabled?: boolean;
+    /** Start.2.cs bool_7 → Galaxy.StoryDistantWorldsEnabled (502): the "Distant Worlds" galactic-history story. Default false. */
+    storyDistantWorldsEnabled?: boolean;
+    /**
+     * VictoryConditions.EnableStoryEventsShadows → Galaxy.StoryShadowsEnabled (506) and GenerateEmpire's pre-warp progress
+     * events (Galaxy.7.cs 5187) and Start.2.cs 2031: the "Shadows" pre-warp story. Default false.
+     */
+    storyShadowsEnabled?: boolean;
+    /** VictoryConditions.EnableRaceSpecificEvents → Galaxy.GameRaceSpecificEventsEnabled (504; Legends race events). Default true. */
+    raceSpecificEventsEnabled?: boolean;
     /** Galaxy.EmpireTerritoryColonyInfluenceRangeFactor from the wizard (<= 0 = auto). */
     empireTerritoryColonyInfluenceRangeFactor?: number;
     /**
@@ -715,6 +738,12 @@ export function createGame(opts: CreateGameOptions): Game {
     galaxy.difficultyLevel = opts.difficultyLevel ?? 1.0;
     // Start.2.cs 500: no race (AvailableCharacters) starting characters until 1478.
     galaxy.allowRaceStartingCharacters = false;
+    // Start.2.cs 501-506 (M4z3): the story lines and Legends event switches (VictoryConditions / the wizard's story box).
+    // GameDisasterEventsEnabled (503) is set before the first galaxy tick below.
+    galaxy.storyReturnOfTheShakturiEnabled = opts.storyReturnOfTheShakturiEnabled ?? false;
+    galaxy.storyDistantWorldsEnabled = opts.storyDistantWorldsEnabled ?? false;
+    galaxy.gameRaceSpecificEventsEnabled = opts.raceSpecificEventsEnabled ?? true;
+    galaxy.storyShadowsEnabled = opts.storyShadowsEnabled ?? false;
     registerTroopGeneralHook((g, e, location) => {
         // Galaxy.2.cs 5230: GenerateNewCharacter(TroopGeneral, location). TODO(port): 5231-5233 message.
         generateNewCharacter(g, e, CharacterRole.TroopGeneral, location);
@@ -829,7 +858,7 @@ export function createGame(opts: CreateGameOptions): Game {
             }
         }
         habitat = found;
-        const player = generateEmpire(galaxy, true, opts.player.name ?? '', habitat, race, designPictureFamilyIndex, num2, homeSystemFactor, opts.player.homeSystemFavourability, opts.player.age, opts.player.techLevel, opts.player.corruptionMultiplier ?? 1.0);
+        const player = generateEmpire(galaxy, true, opts.player.name ?? '', habitat, race, designPictureFamilyIndex, num2, homeSystemFactor, opts.player.homeSystemFavourability, opts.player.age, opts.player.techLevel, opts.player.corruptionMultiplier ?? 1.0, galaxy.storyShadowsEnabled);
         empire2 = player.empire;
         playerExpansion = player.expansion;
         if (opts.player.age === 0) clearIndependentColoniesFromSystem(galaxy, independentColonies, habitat.systemIndex);
@@ -884,7 +913,7 @@ export function createGame(opts: CreateGameOptions): Game {
         if (cap === null) throw new Error('Could not locate capital!');
         let dpfi = es.opts.designPictureFamilyIndex ?? -1;
         if (dpfi < 0) dpfi = aiRace.designsPictureFamilyIndex;
-        const r = generateEmpire(galaxy, false, es.opts.name ?? '', cap, aiRace, dpfi, num2, home.homeSystemFactor, es.opts.homeSystemFavourability, es.opts.age, es.opts.techLevel, es.opts.corruptionMultiplier ?? 1.0);
+        const r = generateEmpire(galaxy, false, es.opts.name ?? '', cap, aiRace, dpfi, num2, home.homeSystemFactor, es.opts.homeSystemFavourability, es.opts.age, es.opts.techLevel, es.opts.corruptionMultiplier ?? 1.0, galaxy.storyShadowsEnabled);
         if (es.opts.age === 0) clearIndependentColoniesFromSystem(galaxy, independentColonies, cap.systemIndex);
         empireList.push(r.empire);
         list3.push(r.expansion);
@@ -1016,6 +1045,10 @@ export function createGame(opts: CreateGameOptions): Game {
     // block runs, then the long block (independent traders, GenerateNewPirateEmpires) — then DeferEventsForGameStart.
     galaxy.independentColonies = independentColonies;
     galaxy.gameDisasterEventsEnabled = opts.disasterEventsEnabled ?? true;
+    // Start.2.cs 496 / 501-506 (M4z4): DifficultyLevelScalesAsPlayerApproachesVictory and the Galaxy switches taken from
+    // victoryConditions_0 — only when the caller passes the conditions (else the fields keep their defaults).
+    galaxy.difficultyLevelScalesAsPlayerApproachesVictory = opts.difficultyLevelScalesAsPlayerApproachesVictory ?? false;
+    if (opts.victoryConditions !== undefined && opts.victoryConditions !== null) applyVictoryConditionsToGalaxy(galaxy, opts.victoryConditions);
     galaxy.pirateProximity = pirateSettings.pirateProximity;
     galaxy.maximumEmpireAmount = pirateSettings.maximumEmpireAmount;
     let stoppedAtHuge = false;
@@ -1035,9 +1068,9 @@ export function createGame(opts: CreateGameOptions): Game {
         if (stopAt('empire:colonyRecalc', empire3)) return result();
         // 1114-1121 touch times (int_5 > 0): the second DoTasks below runs its blocks only then.
         if (int5 > 0) resetEmpireTouchTimesForAge(galaxy, empire3);
-        // 1122-1137: PreWarpProgressEventOccurredSendPirateRaid = true always; all 13 flags when
-        // tech > 0. TODO(port): the TS Empire keeps one combined flag, so SendPirateRaid alone
-        // (tech 0) is not representable.
+        // 1122-1137: PreWarpProgressEventOccurredSendPirateRaid = true always (Empire.preWarpProgressEventOccurredSendPirateRaid,
+        // M4s); all 13 flags when tech > 0 (the combined TS flag).
+        empire3.preWarpProgressEventOccurredSendPirateRaid = true;
         if (tech > 0.0) empire3.preWarpProgressEventsOccurred = true;
         if (tech > 0.0) {
             // 1139-1146
@@ -1122,7 +1155,12 @@ export function createGame(opts: CreateGameOptions): Game {
     if (stopAt('startRuins')) return result();
     clearRuinBonusesForAge(galaxy);
     if (stopAt('ruins')) return result();
-    gameStartTail(galaxy, { playerEmpire: empire2, empireList, playerTechLevel: opts.player.techLevel, playerAge: opts.player.age, playAsPirate, raceFamilies: gd.raceFamilies });
+    const tailResult = gameStartTail(galaxy, { playerEmpire: empire2, empireList, playerTechLevel: opts.player.techLevel, playerAge: opts.player.age, playAsPirate, raceFamilies: gd.raceFamilies, xpos: viewX, ypos: viewY, enableStoryEventsShadows: galaxy.storyShadowsEnabled });
+    // Start.2.cs 2031-2034 (Shadows story): a non-pirate age-of-shadows player gets its first pirate raid.
+    if (tailResult.clearPreWarpSendPirateRaid) empire2.preWarpProgressEventOccurredSendPirateRaid = false;
+    // Start.2.cs 2026: galaxy.GlobalVictoryConditions = victoryConditions_0 (2118-2120 also hand them to the Game object;
+    // the TS keeps the Game's copies on the Galaxy: PlayerVictoryConditionsToAchieve / ToPrevent are scenario-only, null).
+    galaxy.globalVictoryConditions = opts.victoryConditions ?? null;
     // TODO(port): the rest of CreateGameFromSettings (see header).
     stopAt('tail');
     return result();

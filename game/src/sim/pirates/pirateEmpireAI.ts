@@ -18,6 +18,7 @@ import type { Empire } from '../empire';
 import { AutomationLevel } from '../empire';
 import { BuiltObject } from '../builtObject';
 import type { Habitat } from '../types';
+import { checkColonyRevenueFromPirateControl } from './pirateColonyControl';
 import type { Design } from '../design';
 import { Random } from '../random';
 import { ComponentStatus, csInt } from '../builtObjectComponent';
@@ -126,8 +127,7 @@ export function pirateCollectIncomeFromControlledColoniesCore(galaxy: Galaxy, em
     for (let i = 0; i < empire.colonies.length; i++) {
         const habitat = empire.colonies[i];
         if (habitat == null || habitat.hasBeenDestroyed) continue;
-        // Habitat.CheckColonyRevenueFromPirateControl(this) is false when habitat.Empire == this (Habitat.cs 6070).
-        if (habitat.empire === empire) {
+        if (habitat.empire === empire && !checkColonyRevenueFromPirateControl(habitat, empire)) {
             flag = true;
             continue;
         }
@@ -440,11 +440,10 @@ function checkCanInitiateAttackAgainstPirateFacilities(galaxy: Galaxy, habitat: 
     return false;
 }
 
-/** Habitat.cs 3312 InitiateAttackAgainstPirateFacilities(attackingEmpire, pirateFacility). Rnd: GenerateDefensivePirateRaiders' (M4q). */
+/** Habitat.cs 3312 InitiateAttackAgainstPirateFacilities(attackingEmpire, pirateFacility). Rnd: GenerateDefensivePirateRaiders' Next(0, 3) (combat/invasion.ts). */
 function initiateAttackAgainstPirateFacilities(galaxy: Galaxy, habitat: Habitat, attackingEmpire: Empire, pirateFacility: PlanetaryFacility): void {
     if (checkCanInitiateAttackAgainstPirateFacilities(galaxy, habitat, attackingEmpire, pirateFacility)) {
         const empire = checkFacilityOwner(galaxy, habitat, pirateFacility);
-        // RND: BaconHabitat.cs 1315 Next(0, 3) per raider group — GenerateDefensivePirateRaiders is still a stub.
         generateDefensivePirateRaiders(galaxy, habitat, empire, true);
         if (habitat.invasionStats === null) habitat.invasionStats = new InvasionStats(habitat, attackingEmpire, empire);
     }

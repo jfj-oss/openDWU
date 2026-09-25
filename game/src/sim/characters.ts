@@ -56,6 +56,8 @@
 // deviation) is used only for "?" fields in characters/<race>.txt (none in the shipped data), and
 // the unseeded `new Random()` for "?" appearance orders likewise.
 
+import { checkTriggerEvent, getMatchingGameEventIdCharacterAppears, getMatchingGameEventIdCharacterKilled } from './story/eventActions';
+import { EventTriggerType } from './story/gameEventModel';
 import type { Galaxy } from './galaxy';
 import type { Empire } from './empire';
 import type { Race } from './data/races';
@@ -88,6 +90,7 @@ import type { ShipGroup } from './fleets/shipGroup';
 import { shipGroupDetermineStrongestShip, shipGroupDetermineStrongestTroopTransport, shipGroupListIdentifyLargestFleet, shipGroupTotalFighterCount, shipGroupTotalOverallStrengthFactor } from './fleets/shipGroupTasks';
 import { checkFleetSafeForDemoralizingCharacter, generateOrderedFleetsByFighterStrength, generateOrderedFleetsByOverallStrength, generateOrderedFleetsByTroopAttackStrength } from './fleets/fleetOrdering';
 import { habitatResourcesHaveSuperLuxury } from './exploration';
+import { determineColonizationValue } from './tradeItems';
 
 /** C# StellarObject (Habitat or BuiltObject) as a character location. */
 export type StellarObject = Habitat | BuiltObject;
@@ -1953,9 +1956,9 @@ function baconIncrementSkillProgress(character: Character): number {
 
 /**
  * BaconCharacter.cs 31 Kill(character): true ⇒ Character.Kill completes the death. A "Romulan" empire keeps its
- * intelligence agents and turns its leader into a colony governor. The rest runs only when the caller two frames up is
- * Empire.PerformIntelligenceMissions (espionage, deferred — not M4): the clock-seeded `new Random()` draw
- * (spyCaptureChance 1f > NextDouble, always true) has no other effect, so it is not modelled.
+ * intelligence agents and turns its leader into a colony governor. The rest (spy capture / ransom) runs only when the caller
+ * two frames up is Empire.PerformIntelligenceMissions: espionagePrisoners.ts characterKillFromPerformIntelligenceMissions
+ * (M4z2) handles those calls; every other caller gets only the Romulan checks here.
  */
 function baconCharacterKill(character: Character): boolean {
     let flag1 = true;
@@ -1970,18 +1973,31 @@ function baconCharacterKill(character: Character): boolean {
 }
 
 /**
- * IntelligenceMission.cs (espionage is deferred, tasks/M4-plan.md §0.3): the data a runtime character mission carries.
- * Only the CounterIntelligence ctor (75) is reached (CheckForCharacterAppearance puts new agents on counter-intelligence).
+ * IntelligenceMission.cs: the data a runtime character mission carries. The constructor is the CounterIntelligence ctor
+ * (IntelligenceMission.cs 75); the other five ctors (empire / research / built object / habitat / character targets) and
+ * the Difficulty / Target getters are free functions in espionage.ts (M4z2).
  */
 export class IntelligenceMission {
     originatingEmpire: Empire | null;
     agent: Character | null;
-    /** IntelligenceMissionType (IntelligenceMissionType.cs; 8 = CounterIntelligence). */
+    /** IntelligenceMissionType (espionage.ts; 8 = CounterIntelligence). */
     type: number;
     startDate: number;
     timeLength: number;
+    // ---- M4z2 fields (espionage) ----
+    /** IntelligenceMissionOutcome (espionage.ts; 0 = Undefined). */
+    outcome = 0;
     targetEmpire: Empire | null;
+    targetHabitat: Habitat | null = null;
+    targetBuiltObject: BuiltObject | null = null;
+    /** _TargetResearchNode (a node of the target empire's tech tree, researchSystem.ts TechNode). */
+    targetResearchNode: TechNode | null = null;
+    targetCharacter: Character | null = null;
     targetIsEmpire: boolean;
+    targetIsHabitat = false;
+    targetIsBuiltObject = false;
+    targetIsResearch = false;
+    targetIsCharacter = false;
 
     // IntelligenceMission(originatingEmpire, agent, startDate) (IntelligenceMission.cs 75).
     constructor(originatingEmpire: Empire | null, agent: Character | null, startDate: number) {
@@ -2003,7 +2019,7 @@ export class Character {
     private _endDate = 0;
     private _active = false;
     private _empire: Empire | null = null;
-    // TODO(port): IntelligenceMission (IntelligenceMission.cs) — null at game start.
+    /** Character.cs _Mission (IntelligenceMission; espionage.ts). */
     private _mission: unknown = null;
     private _appearanceOrder = 0;
     private _location: StellarObject | null = null;
@@ -2350,12 +2366,14 @@ export class Character {
         }
     }
 
-    // Character.cs Kill (4546). M4u. BaconCharacter.Kill (BaconCharacter.cs 31) decides whether the character dies. The
-    // game-event trigger (GetMatchingGameEventIdCharacterKilled + CheckTriggerEvent(CharacterKilled)) is a scripted game
-    // event — none exist in a normal game (deferred with ProcessDelayedEventActions).
+    // Character.cs Kill (4546). M4u. BaconCharacter.Kill (BaconCharacter.cs 31) decides whether the character dies; then the
+    // CharacterKilled scripted game event (4551-4552, story/eventActions.ts, M4z3).
     kill(galaxy: Galaxy | null): void {
-        void galaxy;
         if (baconCharacterKill(this)) {
+            if (galaxy !== null) {
+                const matchingGameEventIdCharacterKilled = getMatchingGameEventIdCharacterKilled(galaxy, this);
+                checkTriggerEvent(galaxy, matchingGameEventIdCharacterKilled, this.empire, EventTriggerType.CharacterKilled, this);
+            }
             this.completeEmpireChange(null);
             this.completeLocationTransfer(null, null);
             this._transferDestination = null;
@@ -6832,9 +6850,8 @@ function baconEnhanceCharacter(empire: Empire | null, character: Character): voi
     character.bonusesKnown = true;
 }
 
-// Empire.6.cs GenerateNewCharacter (4413/4419/4424). The `activate` path's
-// _Galaxy.GetMatchingGameEventIdCharacterAppears / CheckTriggerEvent (scenario GameEvents) is a
-// TODO(port) no-op: a new game defines no GameEvents.
+// Empire.6.cs GenerateNewCharacter (4413/4419/4424). The `activate` path fires the CharacterAppears scripted game event
+// (story/eventActions.ts, M4z3).
 export function generateNewCharacter(galaxy: Galaxy, empire: Empire, role: CharacterRole, location: StellarObject | null, activate = true): { character: Character; isRandomCharacter: boolean } {
     let isRandomCharacter = false;
     let character = obtainNextCharacter(empire.availableCharacters, role);
@@ -6860,7 +6877,8 @@ export function generateNewCharacter(galaxy: Galaxy, empire: Empire, role: Chara
         if (activate && location !== null) {
             character.activate(galaxy, empire, location);
             doCharacterEvent(galaxy, CharacterEventType.CharacterStart, character, character);
-            // TODO(port): GetMatchingGameEventIdCharacterAppears + CheckTriggerEvent(CharacterAppears) — no GameEvents.
+            const matchingGameEventIdCharacterAppears = getMatchingGameEventIdCharacterAppears(galaxy, character);
+            checkTriggerEvent(galaxy, matchingGameEventIdCharacterAppears, empire, EventTriggerType.CharacterAppears, character);
         }
     }
     baconEnhanceCharacter(empire, character);
@@ -6883,7 +6901,8 @@ export function generateNewCharacterRandom(galaxy: Galaxy, empire: Empire, role:
     if (activate && location !== null) {
         character.activate(galaxy, empire, location);
         doCharacterEvent(galaxy, CharacterEventType.CharacterStart, character, character);
-        // TODO(port): GetMatchingGameEventIdCharacterAppears + CheckTriggerEvent(CharacterAppears) — no GameEvents.
+        const matchingGameEventIdCharacterAppears = getMatchingGameEventIdCharacterAppears(galaxy, character);
+        checkTriggerEvent(galaxy, matchingGameEventIdCharacterAppears, empire, EventTriggerType.CharacterAppears, character);
     }
     return character;
 }
@@ -7164,11 +7183,10 @@ export function resolveLocationsToDefend(galaxy: Galaxy, empire: Empire, include
 
 /**
  * Empire.7.cs ReviewCharacterLocation (479). Ported branches: pre-checks, Demoralizing relocation,
- * Leader, ColonyGovernor (revenue branch), PirateLeader (Empire.7.cs 698-746), Scientist, FleetAdmiral
+ * Leader, ColonyGovernor (revenue and population-growth branches), PirateLeader (Empire.7.cs 698-746), Scientist, FleetAdmiral
  * (Empire.7.cs 838-918), TroopGeneral (1135-), ShipCaptain; IntelligenceAgent has no case (keeps its location).
  * Ambassador: DiplomaticRelations loop (diplomacy.ts).
- * TODO(port) (throw when reached with non-empty inputs): ColonyGovernor population-growth branch
- * (Habitat.MaximumPopulation / DetermineColonizationValue), DiplomaticRelation-driven parts of ResolveLocationsToDefend.
+ * TODO(port) (throw when reached with non-empty inputs): DiplomaticRelation-driven parts of ResolveLocationsToDefend.
  */
 export function reviewCharacterLocation(galaxy: Galaxy, empire: Empire, character: Character | null, transferToLocation: boolean): StellarObject | null {
     if (character !== null && character.transferDestination === null && character.transferTimeRemaining <= 0) {
@@ -7275,9 +7293,36 @@ export function reviewCharacterLocation(galaxy: Galaxy, empire: Empire, characte
                     }
                 } else {
                     if (character.populationGrowth <= character.colonyIncome || character.populationGrowth <= character.colonyHappiness) break;
-                    // TODO(port): Empire.7.cs 667-718 (Habitat.MaximumPopulation, DetermineColonizationValue).
-                    void locationEmpire;
-                    throw new Error('TODO(port): Empire.7.cs ReviewCharacterLocation ColonyGovernor population-growth branch (MaximumPopulation / DetermineColonizationValue)');
+                    // Empire.7.cs 650-697 (M4z1). C# `empire` here is the local DetermineLocationEmpire() (TS `locationEmpire`);
+                    // Colonies / CheckLocationSafeForDemoralizingCharacter / DetermineColonizationValue are `this`'s (TS `empire`).
+                    // Habitat.MaximumPopulation is _MaxPopulation (Habitat.cs 271). No Rnd.
+                    let habitat7: Habitat | null = null;
+                    if (character.location !== null && isHabitatData(character.location) && locationEmpire === empire) {
+                        habitat7 = character.location;
+                        if (habitat7.population != null) {
+                            const num8 = Math.min(1000000000, habitat7.maxPopulation - 10000000);
+                            if (habitat7.population.totalAmount < num8) return habitat7;
+                        }
+                    }
+                    let habitat8 = habitat7;
+                    let num9 = 0.0;
+                    if (habitat8 !== null) num9 = determineColonizationValue(galaxy, empire, habitat8);
+                    for (let num10 = 0; num10 < empire.colonies.length; num10++) {
+                        const habitat9 = empire.colonies[num10];
+                        if (habitat9.population == null) continue;
+                        const num11 = Math.min(1000000000, habitat9.maxPopulation - 10000000);
+                        if (habitat9.population.totalAmount < num11) {
+                            const num12 = determineColonizationValue(galaxy, empire, habitat9);
+                            if (num12 > num9 && findCharactersAtLocationOrTransferring(charactersByRole3, habitat9).length <= 0 && checkLocationSafeForDemoralizingCharacter(empire, flag, habitat9, character)) {
+                                habitat8 = habitat9;
+                                num9 = num12;
+                            }
+                        }
+                    }
+                    if (habitat8 !== null && habitat8 !== habitat7) {
+                        if (transferToLocation) character.transferToNewLocation(habitat8, galaxy);
+                        return habitat8;
+                    }
                 }
                 break;
             }

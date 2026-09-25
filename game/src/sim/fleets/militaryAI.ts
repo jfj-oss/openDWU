@@ -1912,11 +1912,29 @@ function resolveAttackWarningDescription(fleetAttack: FleetAttack): string {
 }
 
 /**
+ * Empire.6.cs 1838-1850 / 1864-1876 (inside WarnOfIncomingEnemyFleetsAndPlanetDestroyers, flag2 = the planet destroyer
+ * targets the victory habitat): every MutualDefensePact partner of `empire` gets the FleetAttack (if not listed yet) and
+ * the IncomingEnemyFleet message, sent by `empire`. No Rnd.
+ */
+function warnMutualDefenseAlliesOfPlanetDestroyer(galaxy: Galaxy, empire: Empire, builtObject: BuiltObject, target: unknown, description: string): void {
+    for (let j = 0; j < empire.diplomaticRelations.count; j++) {
+        const diplomaticRelation = empire.diplomaticRelations.at(j);
+        const other = diplomaticRelation.otherEmpire;
+        if (other !== empire && other !== null && diplomaticRelation.type === DiplomaticRelationType.MutualDefensePact) {
+            const otherIncoming = incomingOf(other);
+            if (fleetAttackIndexOf(otherIncoming, builtObject) < 0) otherIncoming.push(new FleetAttack(builtObject, target, galaxyStarDate(galaxy)));
+            sendMessageToEmpire(empire, other, EmpireMessageType.IncomingEnemyFleet, builtObject, description);
+        }
+    }
+}
+
+/**
  * Empire.6.cs 1776 WarnOfIncomingEnemyFleetsAndPlanetDestroyers(attackedEmpire) on `empire` — called every frame by the
  * frame driver (Main.Part12.cs 3559-3571, tick/scheduler.ts). Fills the attacked empire's
  * IncomingEnemyFleetsAndPlanetDestroyers list (read by RespondToIncomingEnemyFleetsAndPlanetDestroyers) and sends
- * IncomingEnemyFleet messages. Galaxy.GlobalVictoryConditions (DefendHabitat / TargetHabitat) are not modelled
- * (deferred victory conditions, plan §0.3): null, so flag2 stays false. No Rnd.
+ * IncomingEnemyFleet messages. A planet destroyer heading for the Galaxy.GlobalVictoryConditions DefendHabitat /
+ * TargetHabitat (set only by story events) is also reported to the attacked empire's mutual-defence allies (flag2,
+ * wired by M4z4). No Rnd.
  */
 export function warnOfIncomingEnemyFleetsAndPlanetDestroyers(galaxy: Galaxy, empire: Empire, empireToWarn: Empire | null): void {
     const self = empire;
@@ -1941,8 +1959,16 @@ export function warnOfIncomingEnemyFleetsAndPlanetDestroyers(galaxy: Galaxy, emp
             if (!flag) continue;
             const empire2 = BuiltObjectMission.resolveMissionTargetEmpire(mission!);
             if (empire2 !== attackedEmpire) continue;
-            // 1811-1822 GlobalVictoryConditions: not modelled (null) → flag2 = false.
-            const flag2 = false;
+            // 1811-1822 GlobalVictoryConditions DefendHabitat / TargetHabitat is the mission target.
+            let flag2 = false;
+            const gvc = galaxy.globalVictoryConditions;
+            if (gvc !== null) {
+                if (gvc.defendHabitat !== null && gvc.defendHabitat === mission!.target) {
+                    flag2 = true;
+                } else if (gvc.targetHabitat !== null && gvc.targetHabitat === mission!.target) {
+                    flag2 = true;
+                }
+            }
             const incoming = incomingOf(empire2);
             const num = fleetAttackIndexOf(incoming, builtObject);
             if (num >= 0) {
@@ -1953,6 +1979,7 @@ export function warnOfIncomingEnemyFleetsAndPlanetDestroyers(galaxy: Galaxy, emp
                 const description = resolveAttackWarningDescription(fleetAttack);
                 sendMessageToEmpire(empire2, empire2, EmpireMessageType.IncomingEnemyFleet, builtObject, description);
                 if (!flag2) continue;
+                warnMutualDefenseAlliesOfPlanetDestroyer(galaxy, empire2, builtObject, mission!.target, description);
             } else {
                 if (obtainDiplomaticRelation(empire2, builtObject.empire).type !== DiplomaticRelationType.War || !isObjectVisibleToThisEmpire(galaxy, empire2, builtObject)) continue;
                 const fleetAttack2 = new FleetAttack(builtObject, mission!.target, galaxyStarDate(galaxy));
@@ -1960,6 +1987,7 @@ export function warnOfIncomingEnemyFleetsAndPlanetDestroyers(galaxy: Galaxy, emp
                 const description2 = resolveAttackWarningDescription(fleetAttack2);
                 sendMessageToEmpire(empire2, empire2, EmpireMessageType.IncomingEnemyFleet, builtObject, description2);
                 if (!flag2) continue;
+                warnMutualDefenseAlliesOfPlanetDestroyer(galaxy, empire2, builtObject, mission!.target, description2);
             }
         }
     }
@@ -2001,8 +2029,8 @@ function isAttackOrBombardMission(type: BuiltObjectMissionType): boolean {
 }
 
 /**
- * Empire.1.cs 3198 RespondToIncomingEnemyFleetsAndPlanetDestroyers. GlobalVictoryConditions are not modelled (null), so
- * the planet-destroyer "defend the victory habitat" exception never applies. Rnd: the MoveAndWait fleet missions.
+ * Empire.1.cs 3198 RespondToIncomingEnemyFleetsAndPlanetDestroyers (the planet-destroyer "defend the ally's victory
+ * habitat" exception reads Galaxy.GlobalVictoryConditions, M4z4). Rnd: the MoveAndWait fleet missions.
  */
 export function respondToIncomingEnemyFleetsAndPlanetDestroyers(galaxy: Galaxy, empire: Empire): void {
     const self = empire;
@@ -2022,9 +2050,14 @@ export function respondToIncomingEnemyFleetsAndPlanetDestroyers(galaxy: Galaxy, 
                 }
                 const empire2 = BuiltObjectMission.resolveMissionTargetEmpire(pdMission);
                 if (empire2 !== self) {
-                    // 3218-3230: the MutualDefensePact / Protectorate exception needs GlobalVictoryConditions (null here).
-                    const flag = true;
-                    obtainDiplomaticRelation(self, empire2);
+                    // 3218-3230: an ally's victory habitat (Galaxy.GlobalVictoryConditions, story-set) is defended too.
+                    let flag = true;
+                    const diplomaticRelation = obtainDiplomaticRelation(self, empire2);
+                    const gvc = galaxy.globalVictoryConditions;
+                    if ((diplomaticRelation.type === DiplomaticRelationType.MutualDefensePact || (diplomaticRelation.type === DiplomaticRelationType.Protectorate && diplomaticRelation.initiator === self)) && gvc !== null) {
+                        if (gvc.defendHabitat !== null && gvc.defendHabitat === pdMission.target) flag = false;
+                        if (gvc.targetHabitat !== null && gvc.targetHabitat === pdMission.target) flag = false;
+                    }
                     if (flag) {
                         fleetAttackList.push(fleetAttack);
                         continue;
@@ -2814,7 +2847,7 @@ export function identifyThreatenedSystemsPrioritized(galaxy: Galaxy, self: Empir
     return habitatPrioritizationList;
 }
 
-/** Empire.9.cs 1162 TaskShipGroups. GlobalVictoryConditions are not modelled (null). Rnd: HuntPirates, fleet missions. */
+/** Empire.9.cs 1162 TaskShipGroups. Rnd: HuntPirates, fleet missions. */
 export function taskShipGroups(galaxy: Galaxy, empire: Empire): void {
     const self = empire;
     const shipGroups = shipGroupsOf(self);
@@ -2835,7 +2868,15 @@ export function taskShipGroups(galaxy: Galaxy, empire: Empire): void {
         }
     }
     const habitatList: Habitat[] = [];
-    // 1185-1195 GlobalVictoryConditions (DefendHabitat / TargetHabitat): not modelled (null).
+    // 1184-1195 Galaxy.GlobalVictoryConditions: this empire's victory habitat to defend / attack first (story-set).
+    const gvc = galaxy.globalVictoryConditions;
+    if (gvc !== null) {
+        if (gvc.defendHabitat !== null && gvc.defendHabitatEmpire === self) {
+            habitatList.push(gvc.defendHabitat);
+        } else if (gvc.targetHabitat !== null && gvc.targetHabitatEmpire === self) {
+            habitatList.push(gvc.targetHabitat);
+        }
+    }
     if (checkAtWar(self)) {
         const habitatList2: Habitat[] = self.colonies.slice();
         netSort(habitatList2, habitatCompareTo);

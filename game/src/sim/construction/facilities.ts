@@ -16,6 +16,8 @@
 // PirateColonyControl (Habitat.GetPirateControl) is not modelled yet (M4s2): its lookups are the stubs in
 // pirates/pirateAI.ts, which return null — what the C# sees for a colony with an empty PirateColonyControlList.
 
+import { checkTriggerEvent } from '../story/eventActions';
+import { EventTriggerType } from '../story/gameEventModel';
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import { empireGovernmentAttributes } from '../empire';
@@ -363,7 +365,6 @@ export function reviewPlanetaryFacilities(galaxy: Galaxy, habitat: Habitat, empi
     if (empire !== null) recalculateColonyDistancesFromCapital(galaxy, empire);
 }
 
-const T_checkTriggerEvent = registerTodo('deferred', 'Galaxy.CheckTriggerEvent (facility built)');
 
 /** Habitat.cs 2039 ConstructFacilities(timePassed). */
 export function constructFacilities(galaxy: Galaxy, habitat: Habitat, timePassed: number): void {
@@ -423,9 +424,8 @@ export function constructFacilities(galaxy: Galaxy, habitat: Habitat, timePassed
                 break;
         }
         if (planetaryFacility.constructionProgress > 1) {
-            // TODO(port) deferred: _Galaxy.CheckTriggerEvent(GameEventId, Empire, EventTriggerType.Build, facility) — game
-            // events (ExecuteEventAction) are deferred; a generated galaxy registers none.
-            todo(T_checkTriggerEvent);
+            // Habitat.cs 2112: _Galaxy.CheckTriggerEvent(GameEventId, Empire, Build, facility) (story/eventActions.ts, M4z3).
+            checkTriggerEvent(galaxy, habitat.gameEventId, habitat.empire, EventTriggerType.Build, planetaryFacility);
             num = f32(planetaryFacility.constructionProgress - 1);
             planetaryFacility.constructionProgress = 1;
             flag = true;

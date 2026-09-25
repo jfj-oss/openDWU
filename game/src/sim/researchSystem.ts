@@ -303,6 +303,31 @@ export class ResearchSystem {
         this.updateParentNodes();
     }
 
+    /**
+     * ResearchSystem.cs 60 Clone(race) (added by M4z1 for Empire.1.cs 2883 SplinterEmpire): TechTree.Clone() (ResearchNodeList.cs
+     * 483 → ResearchNode.cs 66: `new ResearchNode(id)` — Cost is the static definition cost, not the race-scaled one — with
+     * IsResearched / IsRushing / Progress copied; IsEnabled true, SelfResearched false, SortTag 0 and ParentNodes /
+     * ParentIsRequired null, which every C# reader treats like an empty list), then Update(race). No Rnd.
+     */
+    clone(race: Race | null): ResearchSystem {
+        const researchSystem = new ResearchSystem(this.stat);
+        const costs = this.componentStatic?.researchCostByProjectId;
+        researchSystem.techTree = this.techTree.map((n) => ({
+            def: n.def,
+            isResearched: n.isResearched,
+            isEnabled: true,
+            progress: n.progress,
+            selfResearched: false,
+            cost: Math.fround(costs?.get(n.def.projectId) ?? 0),
+            isRushing: n.isRushing,
+            parentNodes: [],
+            parentIsRequired: [],
+            sortTag: 0,
+        }));
+        researchSystem.update(race);
+        return researchSystem;
+    }
+
     // Port of ResearchNodeDefinitionList.UpdateProjectCostsForRace (842). Race.ResearchColonizationCostFactor*
     // (Race.cs 186-196, default 1.0; LoadFromFile 1456-1472 clamps to [0.2, 5]).
     private updateProjectCostsForRace(race: Race | null): void {

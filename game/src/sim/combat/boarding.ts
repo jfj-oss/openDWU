@@ -62,7 +62,7 @@ import {
 } from './weapons';
 import { baconIsMyShip, calculateBuiltObjectLootingValue, empireColonyIncomeFactor, identifyPirateSpaceport, inflictDamageFull } from './damage';
 import { colonyInvasionUi, doRaidBonuses, empireRaidBonusFactor, failPirateDefendMission, generateDefensivePirateRaiders, getNearestBuiltObject, InvasionStats, invasionStatsOf, pirateColonyControl, takeOwnershipOfBuiltObject } from './invasion';
-import { getSpiesInPrison } from './troopsRuntime';
+import { handleAIPrisoners, handlePlayerPrisoners } from '../espionagePrisoners';
 
 const f32 = Math.fround;
 
@@ -254,7 +254,7 @@ export function handleAssaultPodMovement(galaxy: Galaxy, builtObject: BuiltObjec
     }
 }
 
-/** Habitat.cs 3324 PiratesDefendAgainstRaid(raidingEmpire). Rnd: GenerateDefensivePirateRaiders' (a stub, see invasion.ts). */
+/** Habitat.cs 3324 PiratesDefendAgainstRaid(raidingEmpire). Rnd: GenerateDefensivePirateRaiders' (Next(0, 3), combat/invasion.ts). */
 export function piratesDefendAgainstRaid(galaxy: Galaxy, habitat: Habitat, raidingEmpire: Empire): void {
     const control = pirateColonyControl(habitat);
     if (control === null || control.count <= 0) return;
@@ -462,7 +462,7 @@ function assignNearestSystemStarIfNull(galaxy: Galaxy, ship: BuiltObject): void 
 
 /**
  * BaconBuiltObject.cs 4083 HugeProcessingSpanActions(ship): AssignNearestSystemStarIfNull, then (clock Random > 0.25 →
- * return) the prisoners (captured spies: espionage, deferred — the lists stay absent).
+ * return) the prisoners (captured spies; handlers ported by M4z2 in espionagePrisoners.ts).
  */
 export function baconBuiltObjectHugeProcessingSpanActions(galaxy: Galaxy, builtObject: BuiltObject): void {
     const ship = builtObject;
@@ -470,16 +470,11 @@ export function baconBuiltObjectHugeProcessingSpanActions(galaxy: Galaxy, builtO
     if (baconBoardingClockRnd(galaxy).nextDouble() > 0.25) return;
     if (ship.actualEmpire !== null && ship.actualEmpire === galaxy.playerEmpire) {
         // 4105 HandlePlayerPrisoners (the C# try/catch swallows everything).
-        if (ship.baconValues === null) return;
-        const spiesInPrison = getSpiesInPrison(ship);
-        if (spiesInPrison === null || spiesInPrison.length === 0) return;
-        throw new Error('TODO(port) deferred espionage: BaconBuiltObject.HandlePlayerPrisoners captured spies');
+        handlePlayerPrisoners(galaxy, ship);
+    } else {
+        // 4138 HandleAIPrisoners.
+        handleAIPrisoners(galaxy, ship);
     }
-    // 4138 HandleAIPrisoners.
-    if (ship.actualEmpire === galaxy.playerEmpire || ship.baconValues === null) return;
-    const spiesInPrison = getSpiesInPrison(ship);
-    if (spiesInPrison === null || spiesInPrison.length === 0) return;
-    throw new Error('TODO(port) deferred espionage: BaconBuiltObject.HandleAIPrisoners captured spies');
 }
 
 // ---------------------------------------------------------------------------------------------------------------

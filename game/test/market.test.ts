@@ -57,9 +57,13 @@ describe('market price review', () => {
         resources.forEach((r, i) => expect(r.resourceId).toBe(i));
         // Initial state = Galaxy ctor (Galaxy.4.cs:2175-2178): BasePrice.
         a.initialResources.forEach((p, i) => expect(p).toBe(Math.fround(resources[i].basePrice)));
-        // Orders are empty at game start, so demand = 0: every price halves toward its floor
-        // (BasePrice*0.1667, or BasePrice/2 for super-luxuries); 20 halvings reach it.
+        // A resource no colony has ordered has demand 0: its price halves toward its floor (BasePrice*0.1667, or
+        // BasePrice/2 for super-luxuries); 20 halvings reach it. (M4z6: the game-start Empire.DoTasks now runs the
+        // ported EvaluateColonyVariables colony orders — Empire.4.cs 2357 / 3186 — so ordered resources have demand.)
+        const ordered = new Set(a.galaxy.orders.items.map((o) => o.commodityResource?.resourceId));
+        expect(ordered.size).toBeGreaterThan(0);
         for (let i = 0; i < resources.length; i++) {
+            if (ordered.has(i)) continue;
             const base = Math.fround(resources[i].basePrice);
             const floor = resources[i].superLuxuryBonusAmount > 0 ? base / 2.0 : base * 0.1667;
             const cap = resources[i].superLuxuryBonusAmount > 0 ? base * 3.0 : base * 0.35;

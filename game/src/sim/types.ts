@@ -514,6 +514,9 @@ export class Habitat {
     /** Habitat.RaceEventType (events.ts RaceEventType; set by race events, cleared by Empire.ResetRaceEvents). */
     raceEventType = 0;
     // Habitat.cs 203 TeardownEmpire (ClearColony(TeardownEmpire) in CompleteTeardown): declared in the M4o block.
+    // ---- M4z3 fields (story, scripted game events) ----
+    /** StellarObject.cs 19 GameEventId = short.MinValue (a scenario GameEvent trigger on this habitat). */
+    gameEventId = -32768;
 }
 
 /**

@@ -42,6 +42,7 @@ import { netSort } from '../netSort';
 import { compareDouble } from '../diplomacyTick';
 import { assignFleetUnloadTroops } from './invasion';
 import { listRemove } from '../researchSystem';
+import { handleAIPrisoners, handlePlayerPrisoners } from '../espionagePrisoners';
 
 const f32 = Math.fround;
 
@@ -370,39 +371,14 @@ export function clearTroopsAwaitingPickup(galaxy: Galaxy, habitat: Habitat): voi
     }
 }
 
-/** BaconHabitat.cs 566 GetSpiesInPrison(planet) / BaconBuiltObject.cs 4097 GetSpiesInPrison(ship): BaconValues["capturedSpies"]. */
-export function getSpiesInPrison(o: { baconValues: Map<string, unknown> | null }): Character[] | null {
-    if (o.baconValues === null) return null;
-    const baconValues = o.baconValues;
-    return !baconValues.has('capturedSpies') ? null : (baconValues.get('capturedSpies') as Character[]);
-}
-
 /**
  * BaconHabitat.cs 575 HandlePlayerPrisoners / 608 HandleAIPrisoners (captured spies, BaconValues "capturedSpies"; clock
- * Randoms only). Added by M4j (BaconHabitat.HugeProcessingSpanActions, colonyTick.ts). Only the espionage code (deferred,
- * tasks/M4-plan.md §0.3: Empire.5.cs 4183-6110) puts spies in prison, so the lists stay absent/empty until it is ported.
+ * Randoms only). Added by M4j (BaconHabitat.HugeProcessingSpanActions, colonyTick.ts); the handlers are ported by M4z2
+ * (espionagePrisoners.ts).
  */
 export function baconHabitatHandlePrisoners(galaxy: Galaxy, habitat: Habitat, isPlayer: boolean): void {
-    const planet = habitat;
-    if (isPlayer) {
-        // 575 HandlePlayerPrisoners.
-        if (planet.baconValues === null) return;
-        const spiesInPrison = getSpiesInPrison(planet);
-        if (spiesInPrison === null) return;
-        for (const character1 of spiesInPrison) {
-            if (character1.empire !== galaxy.playerEmpire) {
-                // TODO(port) deferred espionage: BaconHabitat.SpyEscaped / SpyDefected (clock Randoms, BaconCharacter events).
-                throw new Error('TODO(port): BaconHabitat.HandlePlayerPrisoners captured spies (espionage, deferred)');
-            }
-        }
-        return;
-    }
-    // 608 HandleAIPrisoners.
-    if (planet.empire === galaxy.playerEmpire || planet.baconValues === null) return;
-    const spiesInPrison = getSpiesInPrison(planet);
-    if (spiesInPrison === null || spiesInPrison.length === 0) return;
-    // TODO(port) deferred espionage: SpyEscaped / SpyDefected / ShouldRansomSpy and the transfer to the player capital's list.
-    throw new Error('TODO(port): BaconHabitat.HandleAIPrisoners captured spies (espionage, deferred)');
+    if (isPlayer) handlePlayerPrisoners(galaxy, habitat);
+    else handleAIPrisoners(galaxy, habitat);
 }
 
 // ---------------------------------------------------------------------------------------------------------------

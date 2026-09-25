@@ -1021,7 +1021,7 @@ function largestFleetStrength(galaxy: Galaxy, empire: Empire): number {
 }
 
 /** EmpireEvaluationList.cs 42 GetLowestEvaluationKnownEmpire(empire, excludeEmpires). */
-function getLowestEvaluationKnownEmpire(empire: Empire, excludeEmpires: Empire[]): { empire: Empire; overallAttitude: number } | null {
+export function getLowestEvaluationKnownEmpire(empire: Empire, excludeEmpires: Empire[]): { empire: Empire; overallAttitude: number } | null {
     let best: Empire | null = null;
     let bestAttitude = 0;
     const evaluations = empire.empireEvaluations as (EmpireEvaluation | null)[];

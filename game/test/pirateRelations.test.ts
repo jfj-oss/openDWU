@@ -144,7 +144,16 @@ describe('Empire pirate-relation methods', () => {
         expect(g.pirateEmpires.length).toBeGreaterThan(0);
         const p = g.pirateEmpires[0];
         const e = g.empires[0];
-        for (const x of [...g.empires, ...g.pirateEmpires]) expect(x.pirateRelations.count).toBe(0);
+        // M4z4: the first Galaxy.DoTasks at game start (Start.2.cs 1109) runs ReviewAchievements, whose race-condition
+        // progress for the pirate factions calls ObtainPirateRelation(PlayerEmpire, bestEmpire) (Galaxy.cs 4690) and so
+        // adds NotMet relations to the player's list, as the C# does. Only those exist; clear them for this test.
+        for (const x of [...g.empires, ...g.pirateEmpires]) {
+            for (let i = 0; i < x.pirateRelations.count; i++) {
+                expect(x).toBe(g.playerEmpire);
+                expect(x.pirateRelations.get(i).type).toBe(PirateRelationType.NotMet);
+            }
+            x.pirateRelations = new PirateRelationList();
+        }
 
         expect(obtainPirateRelation(e, null).type).toBe(PirateRelationType.None);
         const self = obtainPirateRelation(e, e);

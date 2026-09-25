@@ -11,6 +11,8 @@
 //
 // Time: `_LastProcessed` and `tempNow` are sim ms (tick/simTime.ts); TimeSpan.TotalMilliseconds = the ms difference.
 
+import { checkTriggerEvent, getMatchingGameEventIdPlanetDestroyerConstructionCompleted } from '../story/eventActions';
+import { EventTriggerType } from '../story/gameEventModel';
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import type { BuiltObject } from '../builtObject';
@@ -441,7 +443,8 @@ export class ConstructionQueue {
                     }
                     continue;
                 }
-                // 437: _Galaxy.CheckTriggerEvent(GameEventId, Empire, Destroy) — TODO(port) deferred (scripted game events; none in a normal game).
+                // 437: _Galaxy.CheckTriggerEvent(ship.GameEventId, Empire, Destroy) (story/eventActions.ts, M4z3).
+                checkTriggerEvent(this._galaxy, ship.gameEventId, this.empire, EventTriggerType.Destroy, null);
                 // 438-487: research bonus from disassembling unresearched technology.
                 const queueEmpire = this.empire;
                 if (queueEmpire !== null && queueEmpire.research != null) {
@@ -750,7 +753,9 @@ export class ConstructionQueue {
         }
         if (ship.isPlanetDestroyer && ship.topSpeed > 0) {
             ship.currentFuel = ship.fuelCapacity;
-            // GetMatchingGameEventIdPlanetDestroyerConstructionCompleted + CheckTriggerEvent — TODO(port) deferred (scripted game events).
+            // 843-844: GetMatchingGameEventIdPlanetDestroyerConstructionCompleted + CheckTriggerEvent (story/eventActions.ts, M4z3).
+            const matchingGameEventIdPlanetDestroyerConstructionCompleted = getMatchingGameEventIdPlanetDestroyerConstructionCompleted(galaxy, empire4);
+            checkTriggerEvent(galaxy, matchingGameEventIdPlanetDestroyerConstructionCompleted, empire4, EventTriggerType.PlanetDestroyerConstructionCompleted, ship);
         }
         // 841-896
         let eventType = CharacterEventType.BuildCivilianShip;
@@ -928,7 +933,8 @@ export class ConstructionQueue {
                 }
             }
         }
-        // 1049-1052: CheckTriggerEvent(ParentHabitat.GameEventId, Empire, Build, ship) — TODO(port) deferred (scripted game events).
+        // 1049-1052: CheckTriggerEvent(ParentHabitat.GameEventId, Empire, Build, ship) (story/eventActions.ts, M4z3).
+        if (ship.parentHabitat !== null) checkTriggerEvent(this._galaxy, ship.parentHabitat.gameEventId, this.empire, EventTriggerType.Build, ship);
         ship.currentFuel += num14;
         ship.currentEnergy = Math.max(ship.currentEnergy, 0.0);
         if (
@@ -1449,7 +1455,8 @@ export function canBuiltObjectColonizeHabitat(galaxy: Galaxy, empire: Empire, bu
             newPopulationAmount = builtObjectComponent.value1;
         }
     }
-    // Galaxy.ShakturiActualRace: null unless the Return of the Shakturi story runs (off in a normal game) — TODO(port) story events.
+    // Empire.7.cs 1452-1455: a Shakturi colony ship settles a billion.
+    if (galaxy.shakturiActualRace !== null && builtObject.nativeRace !== null && builtObject.nativeRace === galaxy.shakturiActualRace) newPopulationAmount = 1000000000;
     if (!galaxy.checkEmpireTerritoryCanColonizeHabitat(empire, habitat)) return { result: false, newPopulationAmount };
     if (habitat.population.totalAmount > 0 && (habitat.empire === null || habitat.empire === galaxy.independentEmpire)) return { result: true, newPopulationAmount };
     if (builtObject.subRole === BuiltObjectSubRole.ColonyShip && builtObject.nativeRace !== null && builtObject.nativeRace.nativeHabitatType === habitat.type) {

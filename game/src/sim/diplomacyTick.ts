@@ -15,6 +15,8 @@
 //
 // Text: TextResolver.GetText(key) returns the key (M9 localises); string.Format substitutes {n} placeholders.
 
+import { checkTriggerEvent, getMatchingGameEventIdDiplomaticRelationChange } from './story/eventActions';
+import { EventTriggerType } from './story/gameEventModel';
 import { RaceEventType } from './eventTypes';
 import type { Galaxy } from './galaxy';
 import type { Empire } from './empire';
@@ -81,7 +83,8 @@ import { chanceNewAmbassador, doCharacterEventRuntime } from './events';
 import { galaxyColonyFillFactor } from './colonyTick';
 import { isObjectVisibleToThisEmpire } from './independentTraders';
 import { TradeableItem, TradeableItemType, processTradeDealMessage, determineAcceptGalaxyMapTrade, determineAcceptTerritoryMapTrade, galaxyMergeGalaxyMap } from './tradeItems';
-import { determineDesirePirateProtection } from './pirates/pirateAI';
+import { determineDesirePirateProtection, pirateEconomyPerformIncome } from './pirates/pirateAI';
+import { PirateIncomeType } from './pirates/pirateEconomy';
 import { acceptPirateProtection, calculatePirateProtectionPricePerMonth } from './pirates/pirateRelationsAI';
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -1230,10 +1233,18 @@ function checkEmpireBuildingVictoryWonderAtKnownColony(galaxy: Galaxy, self: Emp
     return null;
 }
 
-/** Galaxy.8.cs 1633 IdentifyShakturiEmpire. Galaxy.ShakturiActualRace is set only by the story (deferred) → null. */
-function identifyShakturiEmpire(galaxy: Galaxy): Empire | null {
-    void galaxy;
-    return null;
+/** Galaxy.8.cs 1633 IdentifyShakturiEmpire (same as story/storyEvents.ts; kept local to avoid a module cycle). */
+export function identifyShakturiEmpire(galaxy: Galaxy): Empire | null {
+    let result: Empire | null = null;
+    if (galaxy.shakturiActualRace !== null) {
+        for (let i = 0; i < galaxy.empires.length; i++) {
+            if (galaxy.empires[i].pirateEmpireBaseHabitat === null && galaxy.empires[i].dominantRace !== null && galaxy.empires[i].dominantRace === galaxy.shakturiActualRace) {
+                result = galaxy.empires[i];
+                break;
+            }
+        }
+    }
+    return result;
 }
 
 /** Empire.8.cs 36 EvaluateShouldAttackWonderBuildingEmpire. */
@@ -2073,7 +2084,7 @@ function calculateWarValueHabitat(galaxy: Galaxy, habitat: Habitat): number {
 }
 
 /** Galaxy.3.cs 447 CalculateEmpireWarValue(empire, out builtObjectWarValue, out colonyWarValue). */
-function calculateEmpireWarValue(galaxy: Galaxy, empire: Empire): { builtObject: number; colony: number } {
+export function calculateEmpireWarValue(galaxy: Galaxy, empire: Empire): { builtObject: number; colony: number } {
     let builtObjectWarValue = 0;
     let colonyWarValue = 0;
     for (let i = 0; i < empire.builtObjects.length; i++) builtObjectWarValue = (builtObjectWarValue + calculateWarValueBuiltObject(empire.builtObjects[i])) | 0;
@@ -2484,7 +2495,6 @@ function checkWhetherKnowAnySystemsOfOtherEmpire(galaxy: Galaxy, self: Empire, e
     return false;
 }
 
-const T_gameEvents = registerTodo('M4r', 'GetMatchingGameEventIdDiplomaticRelationChange/CheckTriggerEvent (scenario game events)');
 
 /**
  * Empire.8.cs 2553-2568 ChangeDiplomaticRelation(currentDiplomaticRelation, newType[, blockFlowonEffects[, locked[, allianceName]]]).
@@ -2677,9 +2687,11 @@ export function changeDiplomaticRelation(
     diplomaticRelation3.startDateOfLastChange = galaxyStarDate(galaxy);
     diplomaticRelation3.lastDiplomacyTradeOfferDate = galaxyStarDate(galaxy);
     diplomaticRelation3.allianceName = allianceName;
-    // Galaxy.GetMatchingGameEventIdDiplomaticRelationChange + CheckTriggerEvent (×2): scenario GameEvents — none in a normal
-    // game (deferred with ProcessDelayedEventActions).
-    todo(T_gameEvents);
+    // Empire.8.cs 2817-2820: GetMatchingGameEventIdDiplomaticRelationChange + CheckTriggerEvent, both directions (story/eventActions.ts, M4z3).
+    let matchingGameEventIdDiplomaticRelationChange = getMatchingGameEventIdDiplomaticRelationChange(galaxy, currentDiplomaticRelation.thisEmpire, currentDiplomaticRelation.otherEmpire, newDiplomaticRelationType);
+    checkTriggerEvent(galaxy, matchingGameEventIdDiplomaticRelationChange, self, EventTriggerType.DiplomaticRelationChange, null);
+    matchingGameEventIdDiplomaticRelationChange = getMatchingGameEventIdDiplomaticRelationChange(galaxy, currentDiplomaticRelation.otherEmpire, currentDiplomaticRelation.thisEmpire, newDiplomaticRelationType);
+    checkTriggerEvent(galaxy, matchingGameEventIdDiplomaticRelationChange, self, EventTriggerType.DiplomaticRelationChange, null);
     return true;
 }
 
@@ -2795,14 +2807,6 @@ export function valueMoneyGiftFromEmpire(galaxy: Galaxy, self: Empire, giver: Em
     }
     num2 = Math.max(0.0, Math.min(num2, 15.0));
     return num2 * (1.0 + specialBonusDiplomacy(giver));
-}
-
-const T_pirateEconomyIncome = registerTodo('M4r', 'PirateEconomy.PerformIncome (ledger; PirateEconomy not ported)');
-/** PirateEconomy.PerformIncome(amount, type, date) — statistics ledger (empire.ts PirateEconomy placeholder). TODO(port). */
-function pirateEconomyPerformIncome(e: Empire, amount: number): void {
-    void e;
-    void amount;
-    todo(T_pirateEconomyIncome);
 }
 
 /** Galaxy.ResolveDescription(DiplomaticRelationType). */
@@ -2947,7 +2951,7 @@ export function processMessages(galaxy: Galaxy, empire: Empire): void {
                     diplomaticRelation5.type = DiplomaticRelationType.None;
                     self.stateMoney -= empireMessage.money;
                     sender!.stateMoney += empireMessage.money;
-                    pirateEconomyPerformIncome(sender!, empireMessage.money);
+                    pirateEconomyPerformIncome(galaxy, sender!, empireMessage.money, PirateIncomeType.SellInfo, galaxyStarDate(galaxy)); // Empire.3.cs 4311-4376
                 }
                 break;
             }
@@ -2963,7 +2967,7 @@ export function processMessages(galaxy: Galaxy, empire: Empire): void {
                     self.systemVisibility[habitat4.systemIndex].status = SystemVisibilityStatus.Explored;
                     self.stateMoney -= empireMessage.money;
                     sender!.stateMoney += empireMessage.money;
-                    pirateEconomyPerformIncome(sender!, empireMessage.money);
+                    pirateEconomyPerformIncome(galaxy, sender!, empireMessage.money, PirateIncomeType.SellInfo, galaxyStarDate(galaxy)); // Empire.3.cs 4311-4376
                 }
                 break;
             }
@@ -2973,7 +2977,7 @@ export function processMessages(galaxy: Galaxy, empire: Empire): void {
                         self.systemVisibility[subject.systemIndex].status = SystemVisibilityStatus.Explored;
                         self.stateMoney -= empireMessage.money;
                         sender!.stateMoney += empireMessage.money;
-                        pirateEconomyPerformIncome(sender!, empireMessage.money);
+                        pirateEconomyPerformIncome(galaxy, sender!, empireMessage.money, PirateIncomeType.SellInfo, galaxyStarDate(galaxy)); // Empire.3.cs 4311-4376
                     }
                 }
                 break;
@@ -2982,7 +2986,7 @@ export function processMessages(galaxy: Galaxy, empire: Empire): void {
                     self.systemVisibility[subject.systemIndex].status = SystemVisibilityStatus.Explored;
                     self.stateMoney -= empireMessage.money;
                     sender!.stateMoney += empireMessage.money;
-                    pirateEconomyPerformIncome(sender!, empireMessage.money);
+                    pirateEconomyPerformIncome(galaxy, sender!, empireMessage.money, PirateIncomeType.SellInfo, galaxyStarDate(galaxy)); // Empire.3.cs 4311-4376
                 }
                 break;
             case EmpireMessageType.SellInfoDebrisField:
@@ -2992,7 +2996,7 @@ export function processMessages(galaxy: Galaxy, empire: Empire): void {
                     if (!self.visibility.knownGalaxyLocations.includes(subject)) self.visibility.knownGalaxyLocations.push(subject);
                     self.stateMoney -= empireMessage.money;
                     sender!.stateMoney += empireMessage.money;
-                    pirateEconomyPerformIncome(sender!, empireMessage.money);
+                    pirateEconomyPerformIncome(galaxy, sender!, empireMessage.money, PirateIncomeType.SellInfo, galaxyStarDate(galaxy)); // Empire.3.cs 4311-4376
                 }
                 break;
             case EmpireMessageType.OfferTrade: {
@@ -3042,7 +3046,7 @@ export function processMessages(galaxy: Galaxy, empire: Empire): void {
                 }
                 setCivilityRating(sender!, sender!.civilityRating + num15 * 0.1);
                 self.stateMoney += empireMessage.money;
-                pirateEconomyPerformIncome(self, empireMessage.money);
+                pirateEconomyPerformIncome(galaxy, self, empireMessage.money, PirateIncomeType.Undefined, galaxyStarDate(galaxy)); // Empire.3.cs 4500
                 sendMessageToEmpire(self, sender, EmpireMessageType.Informational, null, getText('Thank you for your gift.'));
                 if (sender!.pirateEmpireBaseHabitat === null && self.pirateEmpireBaseHabitat === null) {
                     diplomaticRelation = obtainDiplomaticRelation(sender!, self);

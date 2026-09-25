@@ -290,6 +290,11 @@ export class PirateRelationList implements Iterable<PirateRelation> {
         this.items.push(pirateRelation);
     }
 
+    /** List<T>.Clear (PirateRelationList does not override it: the _OtherEmpireIndexes stay, lookups check Count). Added by M4z1. */
+    clear(): void {
+        this.items.length = 0;
+    }
+
     remove(pirateRelation: PirateRelation): void {
         if (pirateRelation.otherEmpireId >= 0 && this._otherEmpireIndexes.length > pirateRelation.otherEmpireId) {
             this._otherEmpireIndexes[pirateRelation.otherEmpireId & 0xff] = -1;

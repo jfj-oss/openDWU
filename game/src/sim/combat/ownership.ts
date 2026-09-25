@@ -18,6 +18,9 @@
 import { cancelBlockadeColony } from '../fleets/blockades';
 import { checkPirateEmpireTerminated } from '../pirates/pirateGalaxyTick';
 import { clearAttackersFromEmpire } from '../fleets/militaryAI';
+import { checkForStoryLocationHint, generateStoryClue } from '../story/storyEvents';
+import { checkTriggerEvent } from '../story/eventActions';
+import { EventTriggerType } from '../story/gameEventModel';
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import type { BuiltObject } from '../builtObject';
@@ -49,6 +52,7 @@ import { takeOwnershipOfColonyDockingBays } from '../logistics/dockingBays';
 import { recalculateColonyDistancesFromCapital, reviewPlanetaryFacilities, checkRemoveFacilityTracking } from '../construction/facilities';
 import { determineMiningStationAtHabitat } from '../resourceTargets';
 import { builtObjectCompleteTeardown, clearAllMissionsForTargetBuiltObject } from './teardown';
+import { fighterCompleteTeardown, type Fighter } from './fighters';
 import { cancelPirateMissionsForTarget } from '../pirates/missionsMarket';
 import { EmpireActivityType } from '../pirates/empireActivity';
 import { eliminatePirateFaction } from '../pirates/pirateGalaxyTick';
@@ -65,6 +69,7 @@ import { getGovernmentsStatic, registerTakeOwnershipOfColonyFull } from '../empi
 import { fastFindNearestUnexploredHabitat } from '../civilianAI';
 import { SystemVisibilityStatus } from '../visibility';
 import { selectRandomNextResearchProjectExcludeSuperWeapons } from '../construction/constructionQueue';
+import { checkCancelIntelligenceMissionsWithTarget as espionageCheckCancelIntelligenceMissionsWithTarget } from '../espionage';
 import { doResearchBreakthrough, reviewDesignsBuiltObjectsImprovedComponents } from '../researchTick';
 import { pirateEconomyPerformIncome } from '../pirates/pirateAI';
 import { PirateIncomeType } from '../pirates/pirateEconomy';
@@ -271,27 +276,9 @@ export function cancelAllCharacterTransfers(galaxy: Galaxy, colony: Habitat): vo
     }
 }
 
-/**
- * Galaxy.8.cs 3563 CheckCancelIntelligenceMissionsWithTarget(target). Intelligence missions are only created by the
- * (deferred) espionage code, so every agent's Mission is null; a set mission throws the deferred TODO. No Rnd.
- */
+/** Galaxy.8.cs 3563 CheckCancelIntelligenceMissionsWithTarget(target): ported by M4z2 (espionage.ts). No Rnd. */
 export function checkCancelIntelligenceMissionsWithTarget(galaxy: Galaxy, target: StellarObject | null): void {
-    if (target === null) return;
-    for (let i = 0; i < galaxy.empires.length; i++) {
-        const empire = galaxy.empires[i];
-        if (empire == null || empire.characters == null) continue;
-        const chars = charactersOf(empire);
-        for (let j = 0; j < chars.length; j++) {
-            const character = chars[j];
-            if (character == null || character.role !== CharacterRole.IntelligenceAgent) continue;
-            const mission = character.mission as { target: unknown } | null;
-            if (mission == null || mission.target == null) continue;
-            if (mission.target === target) {
-                // Empire.CancelIntelligenceMission(mission); character.Mission = null — espionage is deferred.
-                throw new Error('TODO(port) deferred espionage: Empire.CancelIntelligenceMission (Galaxy.8.cs 3563)');
-            }
-        }
-    }
+    espionageCheckCancelIntelligenceMissionsWithTarget(galaxy, target as Habitat | BuiltObject | null);
 }
 
 /** Galaxy.7.cs 4274 ReevaluateMissionsAgainstHabitat(habitat, newEmpire). No Rnd. */
@@ -453,8 +440,8 @@ function queueOf(o: { constructionQueue: unknown }): QueueLike | null {
  */
 export function takeOwnershipOfColonyFull(galaxy: Galaxy, self: Empire, colony: Habitat, newEmpire: Empire | null, destroyBases: boolean, destroyTroops: boolean): void {
     const empire = colony.empire;
-    // _Galaxy.CheckTriggerEvent(colony.GameEventId, newEmpire, Capture, null): scripted game events are deferred (plan §0.3);
-    // a new game defines none.
+    // Empire.1.cs 67 _Galaxy.CheckTriggerEvent(colony.GameEventId, newEmpire, Capture, null) (story/eventActions.ts, M4z3).
+    checkTriggerEvent(galaxy, colony.gameEventId, newEmpire, EventTriggerType.Capture, null);
     let flag = false;
     if (colony.empire !== null) {
         if (colony.empire.capital === colony) flag = true;
@@ -644,7 +631,8 @@ interface FighterOwnerLike {
  */
 export function takeOwnershipOfBuiltObject(galaxy: Galaxy, self: Empire, builtObject: BuiltObject, newEmpire: Empire | null, setDesignAsObsolete = false, removeFromFleet = true): void {
     const actualEmpire = builtObject.actualEmpire;
-    // _Galaxy.CheckTriggerEvent(builtObject.GameEventId, newEmpire, Capture, null): scripted game events are deferred.
+    // Empire.1.cs 528 _Galaxy.CheckTriggerEvent(builtObject.GameEventId, newEmpire, Capture, null) (story/eventActions.ts, M4z3).
+    checkTriggerEvent(galaxy, builtObject.gameEventId, newEmpire, EventTriggerType.Capture, null);
     if (removeFromFleet && builtObject.shipGroup !== null) leaveShipGroup(galaxy, builtObject);
     if (actualEmpire !== null) {
         removeAt(actualEmpire.spacePorts, builtObject);
@@ -789,13 +777,15 @@ export function takeOwnershipOfBuiltObject(galaxy: Galaxy, self: Empire, builtOb
     builtObject.reDefine();
     if (builtObject.fighters !== null && builtObject.fighters.length > 0) {
         if (newEmpire === null) {
-            // Fighter.CompleteTeardown (Fighter.cs) — M4p.
-            throw new Error('TODO(port) M4p: Fighter.CompleteTeardown for the fighters of a ship left without owner (Empire.1.cs 787)');
-        }
-        for (let n = 0; n < builtObject.fighters.length; n++) {
-            const fighter = builtObject.fighters[n] as unknown as FighterOwnerLike;
-            fighter.empire = newEmpire;
-            fighter.owner = newEmpire;
+            // Empire.1.cs 787-793: Fighter.CompleteTeardown (Fighter.cs 448) on a copy of the list (M4z1).
+            const array = (builtObject.fighters as unknown as Fighter[]).slice();
+            for (let m = 0; m < array.length; m++) fighterCompleteTeardown(galaxy, array[m]);
+        } else {
+            for (let n = 0; n < builtObject.fighters.length; n++) {
+                const fighter = builtObject.fighters[n] as unknown as FighterOwnerLike;
+                fighter.empire = newEmpire;
+                fighter.owner = newEmpire;
+            }
         }
     }
     const chars = builtObject.characters as Character[] | null;
@@ -1300,20 +1290,28 @@ export function investigateAbandonedBuiltObject(galaxy: Galaxy, investigatingEmp
     // case Acquire.
     let flag = false;
     if (abandonedBuiltObject.name.toLowerCase().includes(getText('Refugee').toLowerCase())) flag = true;
-    const text2 = '';
-    // investigatingEmpire == PlayerEmpire && !flag && StoryDistantWorldsEnabled → GenerateStoryClue: the story is deferred
-    // (plan §0.3) and off in a normal game, so text2 stays empty.
+    let text2 = '';
+    // 5306-5308: the Distant Worlds story clue carried by the ship (story/storyEvents.ts, M4z3).
+    if (investigatingEmpire === galaxy.playerEmpire && !flag && galaxy.storyDistantWorldsEnabled) text2 = generateStoryClue(galaxy, abandonedBuiltObject);
     takeOwnershipOfBuiltObject(galaxy, investigatingEmpire, abandonedBuiltObject, investigatingEmpire, true);
     abandonedBuiltObject.supportCostFactor = 0.5;
     abandonedBuiltObject.isAutoControlled = true;
-    // GameEventId >= 0 && CheckTriggerEvent(Investigate): scripted game events are deferred; abandoned ships carry none.
-    if (abandonedBuiltObject.gameEventId >= 0) throw new Error('TODO(port) deferred game events: CheckTriggerEvent(Investigate) (Galaxy.5.cs 5305)');
+    // 5313-5322: GameEventId >= 0 && CheckTriggerEvent(Investigate) (story/eventActions.ts, M4z3) — a triggered event replaces the message.
+    if (abandonedBuiltObject.gameEventId >= 0 && checkTriggerEvent(galaxy, abandonedBuiltObject.gameEventId, investigatingEmpire, EventTriggerType.Investigate, null)) {
+        abandonedBuiltObject.playerEmpireEncounterAction = BuiltObjectEncounterAction.None;
+        return;
+    }
     const text3 = generateLocationDescription(galaxy, abandonedBuiltObject.xpos, abandonedBuiltObject.ypos);
     empty = !flag
         ? formatText(getText('Abandoned Ship Acquire Intro'), resolveDescription(BuiltObjectSubRole as unknown as Record<number, string>, abandonedBuiltObject.subRole), abandonedBuiltObject.name, text3)
         : formatText(getText('Abandoned Ship Acquire Intro Refugee'), resolveDescription(BuiltObjectSubRole as unknown as Record<number, string>, abandonedBuiltObject.subRole), text3);
     if (flag) empty = empty + '. ' + getText('Abandoned Ship Acquire Transfer Refugee');
-    else empty = empty + '. ' + getText('Abandoned Ship Acquire Transfer');
+    else if (text2 !== '') {
+        empty += '.\n\n';
+        empty += formatText(getText('Abandoned Ship Acquire Message'), text.toLowerCase());
+        empty = empty + text2 + '\n\n';
+        empty += formatText(getText('Abandoned Ship Acquire Transfer X'), text.toLowerCase());
+    } else empty = empty + '. ' + getText('Abandoned Ship Acquire Transfer');
     if (abandonedBuiltObject.role === BuiltObjectRole.Military && investigatingEmpire === galaxy.playerEmpire) {
         const num = resolveTechBonusFactor(investigatingEmpire, galaxy, abandonedBuiltObject);
         if (num > 1.0) empty = empty + '\n\n' + getText('Abandoned Ship Acquire Tech Bonus');
@@ -1385,10 +1383,15 @@ export function investigateAbandonedBuiltObject(galaxy: Galaxy, investigatingEmp
         abandonedBuiltObject.encounterTechAdvanceCount = 0;
     }
     if (text2 === '' && investigatingEmpire === galaxy.playerEmpire && !flag) {
-        // CheckForStoryLocationHint(): StoryCluesEnabled is off in a normal game (story deferred) → empty.
-        const text5 = '';
+        // 5457 CheckForStoryLocationHint() (story/storyEvents.ts, M4z3; empty while story clues are off).
+        const text5 = checkForStoryLocationHint(galaxy);
         if (text5 !== '') {
+            empty += '\n\n';
+            empty += '*** ';
+            empty = empty + formatText(getText('Abandoned Ship Acquire NAVIGATIONAL DIRECTIONS'), text.toLowerCase()) + ' ';
             empty += text5;
+            empty += '. ***\n\n';
+            empty += getText('We should send a ship to investigate this location.');
         } else if (!flag && galaxy.rnd.next(0, 2) === 1) {
             const text6 = generateNavigationalBonusMessage(galaxy, abandonedBuiltObject.xpos, abandonedBuiltObject.ypos, investigatingEmpire);
             if (text6 !== '') {
@@ -1410,7 +1413,13 @@ export function investigateAbandonedBuiltObject(galaxy: Galaxy, investigatingEmp
     if ((abandonedBuiltObject.playerEmpireEncounterAction ?? BuiltObjectEncounterAction.Prompt) === BuiltObjectEncounterAction.Notify) {
         sendMessageToEmpire(investigatingEmpire, investigatingEmpire, EmpireMessageType.ExplorationBuiltObject, abandonedBuiltObject, empty);
     } else {
-        sendEventMessageToEmpire(investigatingEmpire, EventMessageType.FreeSuperShip, text7, empty, abandonedBuiltObject, abandonedBuiltObject);
+        let eventMessageType = EventMessageType.FreeSuperShip;
+        if (text2 !== '') {
+            // 5504-5508: a story clue ship (M4z3).
+            text7 = getText('Galactic History Uncovered');
+            eventMessageType = EventMessageType.StoryClue;
+        }
+        sendEventMessageToEmpire(investigatingEmpire, eventMessageType, text7, empty, abandonedBuiltObject, abandonedBuiltObject);
     }
     abandonedBuiltObject.playerEmpireEncounterAction = BuiltObjectEncounterAction.None;
 }

@@ -89,6 +89,10 @@ export interface GalaxySaveJSON {
  * Tutorial (static data), SortableStellarObjectList (freight.ts scratch list), MissionResolveError (an Error),
  * Fnv (tick digest), SimDriver (scheduler; its state lives on the galaxy as plain fields), GraphEncoder/GraphDecoder.
  */
+import { EmpireVictoryConditions, VictoryConditions } from '../victory';
+import { Achievement } from '../achievements';
+import { EventAction, EventActionExecutionPackage, EventActionList, GameEvent, GameEventList } from '../story/gameEventModel';
+
 const CLASSES: Record<string, object> = {
     // builtObject.ts
     BuiltObject: BuiltObject.prototype,
@@ -206,6 +210,15 @@ const CLASSES: Record<string, object> = {
     SystemVisibility: SystemVisibility.prototype,
     // weapon.ts
     Weapon: Weapon.prototype,
+    // victory.ts / achievements.ts / story/gameEventModel.ts (M4z4, M4z3; merged from main).
+    EmpireVictoryConditions: EmpireVictoryConditions.prototype,
+    VictoryConditions: VictoryConditions.prototype,
+    Achievement: Achievement.prototype,
+    EventAction: EventAction.prototype,
+    EventActionExecutionPackage: EventActionExecutionPackage.prototype,
+    EventActionList: EventActionList.prototype,
+    GameEvent: GameEvent.prototype,
+    GameEventList: GameEventList.prototype,
 };
 
 /** Galaxy fields that hold GameData tables (re-wired from gameData on load,
