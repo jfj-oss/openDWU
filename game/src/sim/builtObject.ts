@@ -38,6 +38,7 @@ import { MIN_TIME } from './tick/simTime';
 import type { BuiltObjectMission } from './missions/mission';
 import { builtObjectReDefineConstructionQueue } from './construction/constructionYard';
 import { fighterCompleteTeardown, type Fighter } from './combat/fighters';
+import { clearPreviousMissionRequirements } from './missions/assign';
 
 // Port of EngineType.cs (byte enum, member order exact).
 export enum EngineType {
@@ -1259,8 +1260,8 @@ export class BuiltObject {
                         }
                     }
                     if (!flag12) {
-                        // TODO(port): DockedShip.ClearPreviousMissionRequirements() (missions).
-                        throw new Error('TODO(port): BuiltObject.ClearPreviousMissionRequirements');
+                        // BuiltObject.cs 3149 DockedShip.ClearPreviousMissionRequirements() (missions/assign.ts).
+                        clearPreviousMissionRequirements(this._galaxy, this.dockingBays[num51].dockedShip!);
                     }
                     this.dockingBays[num51].dockedShip = null;
                 }

@@ -123,7 +123,13 @@ export function galaxyDoTasks(
         flag = true;
         selectPopularDesignCandidates(galaxy);
         // DoGalaxyEvents (Galaxy.cs 3297, pirates.ts): RND Next(0, n) when enabled.
+        // A super-pirate faction created here gets the Empire ctor touch times at CurrentDateTime (Empire.cs 4320), as
+        // GenerateNewPirateEmpires' factions below.
+        const superPirateCountBefore = galaxy.pirateEmpires.length;
         doGalaxyEventsSuperPirates(galaxy, pirateContext(galaxy), { gameDisasterEventsEnabled: galaxy.gameDisasterEventsEnabled, piratePrevalence: galaxy.piratePrevalence });
+        for (let i = superPirateCountBefore; i < galaxy.pirateEmpires.length; i++) {
+            initEmpireTouchTimes(galaxy, galaxy.pirateEmpires[i]);
+        }
         cleanupInvalidShipsInIndexes(galaxy);
         // 3088 ReseedRandom(): dropped (see above).
     }
