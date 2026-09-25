@@ -213,7 +213,8 @@ describe('M4h milestone on the headless harness', () => {
         });
         expect(bo.unbuiltComponentCount).toBe(0);
         expect(bo.builtAt).toBeNull();
-        expect(e.countersBuildMilitaryShipCount).toBe(milBefore + 1);
+        // At least this escort (with the stock BaconSettings.txt the empire's own yards may complete another warship in 1200 s).
+        expect(e.countersBuildMilitaryShipCount).toBeGreaterThanOrEqual(milBefore + 1);
         const m = builtObjectMission(bo.mission);
         // A new ship without a fleet gets a Move mission to a parking point by the port (unless its mission ran already);
         // since M4n its ThreatEvaluation (BuiltObject.1.cs 243) may already have switched it to Attack on a nearby threat, and

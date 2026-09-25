@@ -32,7 +32,7 @@ import {
     withinFuelRangeWithFactor,
 } from '../src/sim/movement';
 import { currentRange as freightCurrentRange, withinFuelRange as freightWithinFuelRange, warpSpeedWithBonuses as freightWarp } from '../src/sim/logistics/freight';
-import { MAX_SOLAR_SYSTEM_SIZE, warpSpeedWithBonuses } from '../src/sim/movement';
+import { MAX_SOLAR_SYSTEM_SIZE, baconMovementSettings, warpSpeedWithBonuses } from '../src/sim/movement';
 
 let gameData: GameData;
 beforeAll(async () => {
@@ -221,9 +221,10 @@ describe('fuel ranges (one implementation, re-exported by logistics/freight.ts)'
         b.currentEnergy = 0;
         checkFuelHandicap(g, b);
         expect(b._fuelHandicapped).toBe(true);
-        expect(b.topSpeed).toBe(Math.trunc(top * Math.fround(0.33)));
-        expect(b.cruiseSpeed).toBe(Math.trunc(cruise * Math.fround(0.33)));
-        expect(b.warpSpeed).toBe(Math.trunc(warp * Math.fround(0.33)));
+        // createGame applied the stock BaconSettings.txt (noFuel* 0.90 / 0.90 / 0.50, lines 137-139; class defaults 0.33).
+        expect(b.topSpeed).toBe(Math.trunc(top * Math.fround(0.9)));
+        expect(b.cruiseSpeed).toBe(Math.trunc(cruise * Math.fround(0.9)));
+        expect(b.warpSpeed).toBe(Math.trunc(warp * Math.fround(0.5)));
         b.currentFuel = 10;
         checkFuelHandicap(g, b);
         expect(b._fuelHandicapped).toBe(false);
@@ -241,11 +242,16 @@ describe('fuel ranges (one implementation, re-exported by logistics/freight.ts)'
             if (c.category === ComponentCategoryType.HyperDrive && c.value4 > 0 && c.value5 > 0) mitigation = Math.min(mitigation, c.value4 / c.value5);
         }
         const radius = 23000 * (sum / 100) * mitigation;
+        // The stock BaconSettings.txt turns the wells off (useStarGravityWells=false); this checks the well geometry itself.
+        baconMovementSettings.useStarGravityWells = true;
         b.nearestSystemStar = star;
         b.xpos = star.xpos + radius * 0.99;
         b.ypos = star.ypos;
         expect(isOutsideStarGravityWell(g, b)).toBe(false);
         b.xpos = star.xpos + radius * 1.01;
+        expect(isOutsideStarGravityWell(g, b)).toBe(true);
+        baconMovementSettings.useStarGravityWells = false;
+        b.xpos = star.xpos + radius * 0.99;
         expect(isOutsideStarGravityWell(g, b)).toBe(true);
     });
 });

@@ -308,9 +308,14 @@ describe('fleet scenarios (Empire.8.cs 4266 IdentifyMilitaryObjectives / 4845 Fo
         expect(sg.mission!.type).toBe(BuiltObjectMissionType.Blockade);
         const colony = sg.mission!.targetHabitat!;
         expect(colony.empire).toBe(b);
-        runGameSeconds(g, 300);
-        expect(colony.isBlockaded).toBe(true);
-        expect(galaxyBlockadeFor(g, colony)!.initiator).toBe(a);
+        // Since the stock BaconSettings.txt (no gravity wells, HyperJumpThreshhold 4000) the fleet jumps in and blockades
+        // within ~40 s, and later reviews move it on; check the blockade on arrival, sampled every 10 s.
+        let blockadedByA = false;
+        for (let t = 0; t < 30 && !blockadedByA; t++) {
+            runGameSeconds(g, 10);
+            blockadedByA = colony.isBlockaded && galaxyBlockadeFor(g, colony)?.initiator === a;
+        }
+        expect(blockadedByA).toBe(true);
     }, 300000);
 });
 
