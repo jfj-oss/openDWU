@@ -5,6 +5,7 @@
 // handlers; every other action is registered but inert via console.info.
 
 import { Camera } from '../render/camera';
+import { toggleExpansionPlanner } from './screens/expansionPlanner'; import { selectHabitat } from './hud'; // [16a]
 import { GalaxyTime } from '../sim/clock';
 import { toggleDiplomacyScreen } from './screens/diplomacyScreen'; // [15a]
 import {
@@ -15,12 +16,15 @@ import {
     getSelection,
 } from './hud';
 import { helpTopicKeyForHabitat, toggleGalactopedia } from './screens/galactopedia';
+import { toggleShipDesigns } from './screens/shipDesigns'; // [16b]
 import { toggleResearchScreen } from './screens/researchScreen'; // [15b]
 import { getEmpireSummarySource, toggleEmpireSummary } from './screens/empireSummary';
 import { toggleColoniesList } from './screens/coloniesList';
+import { toggleBuildOrder } from './screens/buildOrder'; import { toggleConstructionYards } from './screens/constructionYards'; import { selectStellarObject } from './hud'; // [16c]
 import { toggleFleetsList } from './screens/fleetsList'; import { selectShipGroup } from './hud'; // [15c]
 import { toggleShipsAndBasesList } from './screens/shipsAndBasesList';
 import { toggleMessageHistory } from './screens/messageHistory';
+import { toggleGameOptionsPanel } from './screens/gameOptionsPanel'; // [16d]
 import { toggleEmpireComparison } from './screens/empireComparison'; // [15d]
 import { showToast } from './toast';
 
@@ -244,6 +248,13 @@ export function dispatchKey(
         case 'scrollRight':
             handlers.scrollRight?.();
             break;
+        // [16a] F3: Expansion Planner (task 16a); a row selects + zooms to the planet.
+        case 'expansionPlannerScreen': {
+            const src = getEmpireSummarySource();
+            if (src) toggleExpansionPlanner({ empire: src.empire, onSelect: (h) => selectHabitat(h, true) });
+            break;
+        }
+        // [/16a]
         case 'galaxyMap':
             handlers.galaxyMap?.();
             break;
@@ -267,6 +278,13 @@ export function dispatchKey(
             break;
         }
         // [/15b]
+        // [16b] F8: Ship Designs (task 16b).
+        case 'shipDesignsScreen': {
+            const src = getEmpireSummarySource();
+            if (src) toggleShipDesigns({ empire: src.empire });
+            break;
+        }
+        // [/16b]
         case 'coloniesScreen':
             handlers.coloniesScreen?.();
             break;
@@ -283,6 +301,13 @@ export function dispatchKey(
         case 'gameMenu':
             handlers.gameMenu?.();
             break;
+        // [16d] O: Game Options — Automation + message options (task 16d).
+        case 'gameOptionsScreen': {
+            const src = getEmpireSummarySource();
+            if (src) toggleGameOptionsPanel({ empire: src.empire });
+            break;
+        }
+        // [/16d]
         case 'galactopediaHelp':
             handlers.galactopediaHelp?.();
             break;
@@ -293,6 +318,18 @@ export function dispatchKey(
             break;
         }
         // [/15d]
+        // [16c] F9: Build Order, F10: Construction Yards (task 16c).
+        case 'buildOrderScreen': {
+            const src = getEmpireSummarySource();
+            if (src) toggleBuildOrder({ empire: src.empire });
+            break;
+        }
+        case 'constructionYardsScreen': {
+            const src = getEmpireSummarySource();
+            if (src) toggleConstructionYards({ empire: src.empire, onSelect: (t) => selectStellarObject(t, true) });
+            break;
+        }
+        // [/16c]
         default:
             // Registered but not implemented yet.
             console.info(`TODO(key): ${binding.action}`);
@@ -468,15 +505,19 @@ export function cycleActionArgs(action: string): { kind: CycleKind; dir: 1 | -1;
 export const IMPLEMENTED_KEY_ACTIONS: ReadonlySet<string> = new Set([
     'togglePause', 'speedUp', 'speedDown',
     'diplomacyScreen', // [15a]
+    'expansionPlannerScreen', // [16a]
     'zoomIn', 'zoomOut', 'zoomToSelection',
     'zoomSystemLevel', 'zoomSectorLevel', 'zoomGalaxyLevel', 'zoomPlanetLevel',
     'researchScreen', // [15b]
+    'shipDesignsScreen', // [16b]
     'scrollUp', 'scrollDown', 'scrollLeft', 'scrollRight',
     'galaxyMap', 'messageHistoryScreen', 'empireSummaryScreen', 'coloniesScreen', 'shipsAndBasesScreen',
     'fleetsScreen', // [15c]
+    'buildOrderScreen', 'constructionYardsScreen', // [16c]
     'gameMenu', 'galactopediaHelp',
     'cycleColonies', 'cycleColoniesBackward', 'cycleColoniesMoveView',
     'empireComparisonScreen', // [15d]
+    'gameOptionsScreen', // [16d]
 ]);
 
 /** True when pressing the binding's key does something today. Pure. */

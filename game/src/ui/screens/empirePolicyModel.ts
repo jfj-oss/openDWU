@@ -22,6 +22,7 @@ import { IndustryType } from '../../sim/types';
 import { BuiltObjectSubRole } from '../../sim/builtObjectTypes';
 import { resolveSubRoleDescription } from '../../sim/designGeneration';
 import { formatNet, tryGetText } from '../../sim/textResolver';
+import { AUTOMATION_ROWS, setAutomationValue } from './gameOptionsPanel';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Text
@@ -699,9 +700,15 @@ export const POLICY_AUTOMATION_CONTROLS: readonly (readonly [string, PolicyAutom
     ['AutomationConstruction', 'controlStateConstruction', 'level', false],
 ];
 
-/** Write one automation value onto the empire (the method_597 cast: a level combo's index is the AutomationLevel). */
+/**
+ * Write one automation value onto the empire through the Game Options panel's setter (task 16d, Main.Part6.cs:2544
+ * method_419), which the coordinator asked the two panels to share. For the indices the combos can hold (0-2) it is
+ * the method_597 cast `(AutomationLevel)index` / `Convert.ToBoolean(index)`.
+ */
 export function setPolicyAutomation(empire: Empire, field: PolicyAutomationField, value: number | boolean): void {
-    (empire as unknown as Record<string, number | boolean>)[field] = typeof value === 'boolean' ? value : (value as AutomationLevel);
+    const row = AUTOMATION_ROWS.find((r) => r.field === field);
+    if (row === undefined) throw new Error(`no Game Options automation row for ${field}`);
+    setAutomationValue(empire, row, value);
 }
 
 // ---------------------------------------------------------------------------------------------------------------

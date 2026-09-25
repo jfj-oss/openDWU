@@ -23,10 +23,13 @@ import { setGameMenuHandler, setCycleHandler, type CycleKind } from './keyboard'
 import { uiClickSounds } from '../audio/effectsPlayer';
 import { helpTopicKeyForHabitat, toggleGalactopedia } from './screens/galactopedia';
 import { toggleEmpiresList } from './screens/empiresList';
+import { toggleExpansionPlanner } from './screens/expansionPlanner'; // [16a]
 import { setEmpireSummarySource, getEmpireSummarySource, toggleEmpireSummary } from './screens/empireSummary';
 import { toggleColoniesList } from './screens/coloniesList';
+import { toggleShipDesigns } from './screens/shipDesigns'; // [16b]
 import { toggleShipsAndBasesList } from './screens/shipsAndBasesList';
 import { toggleMessageHistory } from './screens/messageHistory';
+import { toggleBuildOrder } from './screens/buildOrder'; import { toggleConstructionYards } from './screens/constructionYards'; // [16c]
 import { toggleResearchScreen } from './screens/researchScreen'; // [15b]
 import { showToast } from './toast';
 // [policy] begin
@@ -200,6 +203,14 @@ export function getSelection(): Selection | null {
     return currentSelection;
 }
 
+// [16c] Ship/base/colony selection hook: buildSelectionPanel registers it; the
+// Construction Yards panel's Go to calls selectStellarObject (method_208 + method_157).
+let stellarObjectSelectHandler: ((target: BuiltObject | Habitat, moveView: boolean) => void) | null = null;
+export function selectStellarObject(target: BuiltObject | Habitat, moveView = true): void {
+    stellarObjectSelectHandler?.(target, moveView);
+}
+// [/16c]
+
 /** Test hook: set the current selection directly (bypasses the panel's own
  * setter, which also refreshes its DOM). */
 export function setSelection(sel: Selection | null): void {
@@ -213,6 +224,13 @@ export function selectShipGroup(sg: ShipGroup, moveView = true): void {
     shipGroupSelectHandler?.(sg, moveView);
 }
 // [/15c]
+// [16a] Habitat selection hook: buildSelectionPanel registers it; the Expansion
+// Planner calls selectHabitat (Main.Part4.cs:3027/3038 GotoTarget / SelectTarget).
+let habitatSelectHandler: ((h: Habitat, moveView: boolean) => void) | null = null;
+export function selectHabitat(h: Habitat, moveView = true): void {
+    habitatSelectHandler?.(h, moveView);
+}
+// [/16a]
 
 /** Build the HUD overlay and append it to document.body. */
 export function createHud(wiring: HudWiring = {}): HudRefs {
@@ -524,6 +542,13 @@ function buildTopBarButton(name: string, wiring: HudWiring): HTMLElement {
             return;
         }
         // [/15b]
+        // [16a] btnExpansionPlanner → Expansion Planner (Main.Part4.cs:2974 btnExpansionPlanner_Click).
+        if (name === 'btnExpansionPlanner') {
+            const src = getEmpireSummarySource();
+            if (src) toggleExpansionPlanner({ empire: src.empire, onSelect: (h) => selectHabitat(h, true) });
+            return;
+        }
+        // [/16a]
 
         // [policy] begin
         // btnEmpirePolicy → Empire Policy panel (Main.Part2.cs:1184 btnEmpirePolicy_Click; task 17d).
@@ -571,6 +596,19 @@ function buildTopBarButton(name: string, wiring: HudWiring): HTMLElement {
                 },
             });
         } else {
+            // [16c] btnBuildOrder → Build Order (Main.Part2.cs:1196 btnBuildOrder_Click);
+            // tbtnConstructionYards → Construction Yards (Main.Part6.cs:3243 tbtnConstructionYards_Click).
+            if (name === 'btnBuildOrder') {
+                const src = getEmpireSummarySource();
+                if (src) toggleBuildOrder({ empire: src.empire });
+                return;
+            }
+            if (name === 'tbtnConstructionYards') {
+                const src = getEmpireSummarySource();
+                if (src) toggleConstructionYards({ empire: src.empire, onSelect: (t) => selectStellarObject(t, true) });
+                return;
+            }
+            // [/16c]
             // [15c] tbtnShipGroups → Fleets list (Main.Part9.cs:3153 tbtnShipGroups_Click).
             if (name === 'tbtnShipGroups') {
                 const src = getEmpireSummarySource();
@@ -578,6 +616,13 @@ function buildTopBarButton(name: string, wiring: HudWiring): HTMLElement {
                 return;
             }
             // [/15c]
+            // [16b] tbtnDesigns → Designs panel (Main.Part9.cs:4339 tbtnDesigns_Click).
+            if (name === 'tbtnDesigns') {
+                const src = getEmpireSummarySource();
+                if (src) toggleShipDesigns({ empire: src.empire });
+                return;
+            }
+            // [/16b]
             console.log(`TODO(screen): ${label ?? name}`);
             showToast(`${label ?? name} — not yet available`);
         }
@@ -825,6 +870,28 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         footer.appendChild(b);
     }
     panel.appendChild(footer);
+    // [16c] Select a construction site: a colony selects itself; a ship/base selects its
+    // nearest system with builtObject set (as the Bases cycler does). Optionally move the view.
+    stellarObjectSelectHandler = (target, moveView) => {
+        const galaxy = wiring.galaxy;
+        if (!galaxy) return;
+        if (target instanceof Habitat) {
+            const h = target;
+            const system = galaxy.systems.find((s) => s.habitats.includes(h)) ?? galaxy.systems[h.systemIndex];
+            if (!system) return;
+            wiring.onSelectionChange?.({ habitat: h, system });
+        } else {
+            const system = nearestSystem(galaxy.systems, target.xpos, target.ypos);
+            if (!system) return;
+            wiring.onSelectionChange?.({ habitat: system.systemStar, system, builtObject: target });
+        }
+        const cam = wiring.camera;
+        if (moveView && cam) {
+            cam.centerOn(target.xpos, target.ypos);
+            cam.zoomAt(SYSTEM_LEVEL_ZOOM, cam.width / 2, cam.height / 2);
+        }
+    };
+    // [/16c]
 
     // Task 12n: the C/P/M/Y/X/F/I hotkeys route here. A plain/Shift cycle
     // selects without moving the view; Ctrl (MoveView) also moves it. The
@@ -853,6 +920,20 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         }
     };
     // [/15c]
+    // [16a] Select a habitat (the same calls as the colony cycler) and optionally move the view.
+    habitatSelectHandler = (h, moveView) => {
+        const galaxy = wiring.galaxy;
+        if (!galaxy) return;
+        const system = galaxy.systems.find((s) => s.habitats.includes(h)) ?? galaxy.systems[h.systemIndex];
+        if (!system) return;
+        wiring.onSelectionChange?.({ habitat: h, system });
+        const cam = wiring.camera;
+        if (moveView && cam) {
+            cam.centerOn(h.xpos, h.ypos);
+            cam.zoomAt(SYSTEM_LEVEL_ZOOM, cam.width / 2, cam.height / 2);
+        }
+    };
+    // [/16a]
 
     // Refresh the header/body from the current selection.
     const gameData = wiring.gameData;
