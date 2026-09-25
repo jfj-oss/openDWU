@@ -15,6 +15,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { defineConfig, type Plugin } from 'vite';
+import type {} from 'vitest/config'; // types the `test` block below
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -164,6 +165,10 @@ function copyAssetManifest(): Plugin {
 
 export default defineConfig({
     base: './',
+    test: {
+        // Registers expect(...).toMatchPin(key) for the seed pins (test/pins/pin.ts, scripts/repin.mjs).
+        setupFiles: ['test/pins/pin.ts'],
+    },
     plugins: [dwuProbe(), dwuCaseInsensitive(), copyAssetManifest()],
     build: {
         // Do not copy public/ (the assets/dwu symlink is ~4 GB); only the

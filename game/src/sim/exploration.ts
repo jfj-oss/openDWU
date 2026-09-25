@@ -1222,7 +1222,8 @@ export function investigateRuins(galaxy: Galaxy, investigatingEmpire: Empire | n
                         empty3 = gameText('Ruins Origins Negative', originsRace.name);
                         break;
                 }
-                // Race.SatisfactionModifier (int) on the galaxy's Race object.
+                // Galaxy.5.cs 4472 `ruin.OriginsRace.SatisfactionModifier += ruin.OriginsApprovalRatingBonus` (int): the
+                // galaxy's own Race object (cloneGalaxyRaces; saved in the raceFields side table), not the GameData race.
                 originsRace.satisfactionModifier = (originsRace.satisfactionModifier + ruin.originsApprovalRatingBonus) | 0;
                 text += gameText('Ruins Origins', ruin.name, originsRace.name);
                 text += '\n\n';

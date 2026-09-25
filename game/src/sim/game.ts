@@ -46,7 +46,7 @@ import { makeHabitatIntoColony } from './colony';
 import { netSort } from './netSort';
 import { Random } from './random';
 import type { GameData } from './data/gameData';
-import type { Race } from './data/races';
+import { cloneGalaxyRaces, type Race } from './data/races';
 import type { Government } from './data/governments';
 import { setGovernmentsStatic } from './empire';
 import { setGovernmentBiasesStatic } from './diplomacy';
@@ -712,7 +712,9 @@ export function createGame(opts: CreateGameOptions): Game {
     // Galaxy.cs LoadRaceBiases (Race.Biases) / Galaxy.RaceFamiliesStatic biases (raceBias.ts).
     setRaceBiasesStatic(gd.races, gd.raceBiases, gd.raceFamilies.length, gd.raceFamilyBiases);
     const clockRnd = new Random(opts.seed ^ 0x5eed); // stands in for the C# clock-seeded Randoms
-    const normalRaces = gd.races.filter((r) => r.canBeNormalEmpire);
+    // Galaxy.4.cs 2132 / Start.2.cs 98: the new galaxy's own Race objects (per game, saved with it).
+    const galaxyRaces = cloneGalaxyRaces(gd.races);
+    const normalRaces = galaxyRaces.filter((r) => r.canBeNormalEmpire);
     // empireStartList = player + AIs, Update(raceList) before the Galaxy ctor.
     const playerStart: ResolvedStart = { opts: opts.player, resolvedRace: null, projectedColonyAmount: 0 };
     const aiStarts: ResolvedStart[] = opts.aiEmpires.map((o) => ({ opts: o, resolvedRace: null, projectedColonyAmount: 0 }));
@@ -728,6 +730,7 @@ export function createGame(opts: CreateGameOptions): Game {
         systemNames: opts.systemNames,
         colonyPrevalence: opts.colonyPrevalence,
         gameData: gd,
+        races: galaxyRaces,
         empireStarts: all.filter((e) => e.resolvedRace !== null).map((e) => ({ resolvedRace: e.resolvedRace!, projectedColonyAmount: e.projectedColonyAmount })),
     });
     // Unset galaxyAge = 1: the game's standard preset (Start.cs 3298-3327: Expansion 1 / empire tech Normal 0.5).

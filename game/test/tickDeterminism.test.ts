@@ -47,6 +47,8 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         expect(a.nowMs).toBe(120000);
         expect(ra.rndDraws).toBe(rb.rndDraws);
         digest120 = stateDigest(a);
+        expect(digest120).toMatchPin('tickDeterminism.digest120');
+        expect(ra.rndDraws).toMatchPin('tickDeterminism.rndDraws120');
         expect(stateDigest(b)).toBe(digest120);
         long = a;
     }, 300000);
@@ -203,7 +205,10 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // ledger, Creature.DamageTarget (Creature.cs 1347) damages its targets, bombardment tests PlanetaryFacilityType by
         // value, and the StellarObject readers see Fighters' FirepowerRaw / TopSpeed.
         // Moved from 2fb83dc55600537f: research trading is live (Galaxy.4.cs 4310/4551 ResolveTradeableItemsResearchProjects offers projects; GiveTradeableItem / Empire.3.cs 4467 research purchase run DoResearchBreakthrough)
-        expect(summary.digest).toBe('d4e45fea75fa52d8');
+        expect(summary.digest).toMatchPin('tickDeterminism.digest600');
+        // (counts and Galaxy.Rnd draws pinned with the digest, tasks/M4-plan.md §5.3.4.)
+        expect(summary.counts).toMatchPin('tickDeterminism.counts600');
+        expect(summary.rndDraws).toMatchPin('tickDeterminism.rndDraws600');
     }, 600000);
 });
 

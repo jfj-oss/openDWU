@@ -92,7 +92,24 @@ describe('createGame full game start (seed 1, Spiral 300 stars, 8x8, Human + 3 A
         const g = createGame(opts(0.5, 1)).galaxy;
         const a = summary(g);
         // Pinned for seed 1 (TS port).
-        expect(a).toEqual(PINNED_SUMMARY);
+        // Seed 1, techLevel 0.5, age 1, piratePrevalence 1.0 (TS port). Tax rates are C# floats.
+        // Re-pinned at the M4 wave-1 merge: the game-start Empire.DoTasks now runs PerformResearch (M4k: queue picks and
+        // research-event rolls draw Rnd, completed research changes components / troop types) and EvaluateColonyVariables /
+        // ProcessColonyTroops recruitment (M4j), so every later Rnd consumer (names, pirates, placement) shifts.
+        // Re-pinned M4s1: ReviewPirateRelations draws Rnd.NextDouble in every game-start Empire long block and the Galaxy long
+        // block's independent-colony pirate offers draw per colony (IndependentColoniesMake{Smuggling,Defend}OffersToPirates).
+        // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
+        // Re-pinned M4u: the game-start Empire.DoTasks runs the character reviews (ReviewCharacterTraits / ApplyCharacterLocationBonus Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd); empire placement, names and pirates shift.
+        // Re-pinned M4f: game-start AssignMissionsToBuiltObjectList draws move the empire-placement / ruins stream.
+        // (Merge of M4f onto M4u/M4o/M4l: re-pinned once against the combined code.)
+        // Re-pinned M4x: galaxyAge now defaults to 1 (standard preset, Start.cs 3298-3327). Before M4x these pins had Galaxy.Age 0
+        // with StartingAge 1 (a mix the C# cannot produce); Galaxy.Age 1 adds military starting ships, the int_5 > 0 game-start
+        // steps and StartStarDate + 30000000, so the Rnd stream moves.
+        // (re-pinned M4m: the game-start Empire.DoTasks runs the military AI — IdentifyMilitaryObjectives Next(0, EmpireEvaluations.Count), CheckTemptingTargets Next(0, Empires.Count), DetermineRandomAttacks Next(0, n) — which shifts the Rnd stream.)
+        // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks; the full
+        // (re-pinned M4z6: the game-start EvaluateColonyVariables now places the colony strategic / luxury orders (Empire.4.cs
+        // 2357 / 3186); the changed market demand and freight contracts move the later Rnd consumers: ruins 33 -> 31.)
+        expect(a).toMatchPin('createGameFull.summary');
         // Every normal empire: a space port at the capital, ships, troops and a leader.
         for (const e of g.empires.filter((x) => x.pirateEmpireBaseHabitat === null)) {
             expect(e.spacePorts.length).toBeGreaterThan(0);
@@ -146,233 +163,3 @@ describe('createGame full game start (seed 1, Spiral 300 stars, 8x8, Human + 3 A
         expect(fingerprint(createGame(o()).galaxy)).toEqual(fingerprint(g));
     }, 120000);
 });
-
-// Seed 1, techLevel 0.5, age 1, piratePrevalence 1.0 (TS port). Tax rates are C# floats.
-// Re-pinned at the M4 wave-1 merge: the game-start Empire.DoTasks now runs PerformResearch (M4k: queue picks and
-// research-event rolls draw Rnd, completed research changes components / troop types) and EvaluateColonyVariables /
-// ProcessColonyTroops recruitment (M4j), so every later Rnd consumer (names, pirates, placement) shifts.
-// Re-pinned M4s1: ReviewPirateRelations draws Rnd.NextDouble in every game-start Empire long block and the Galaxy long
-// block's independent-colony pirate offers draw per colony (IndependentColoniesMake{Smuggling,Defend}OffersToPirates).
-// (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
-// Re-pinned M4u: the game-start Empire.DoTasks runs the character reviews (ReviewCharacterTraits / ApplyCharacterLocationBonus Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd); empire placement, names and pirates shift.
-// Re-pinned M4f: game-start AssignMissionsToBuiltObjectList draws move the empire-placement / ruins stream.
-// (Merge of M4f onto M4u/M4o/M4l: re-pinned once against the combined code.)
-// Re-pinned M4x: galaxyAge now defaults to 1 (standard preset, Start.cs 3298-3327). Before M4x these pins had Galaxy.Age 0
-// with StartingAge 1 (a mix the C# cannot produce); Galaxy.Age 1 adds military starting ships, the int_5 > 0 game-start
-// steps and StartStarDate + 30000000, so the Rnd stream moves.
-// (re-pinned M4m: the game-start Empire.DoTasks runs the military AI — IdentifyMilitaryObjectives Next(0, EmpireEvaluations.Count), CheckTemptingTargets Next(0, Empires.Count), DetermineRandomAttacks Next(0, n) — which shifts the Rnd stream.)
-// (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks; the full
-// (re-pinned M4z6: the game-start EvaluateColonyVariables now places the colony strategic / luxury orders (Empire.4.cs
-// 2357 / 3186); the changed market demand and freight contracts move the later Rnd consumers: ruins 33 -> 31.)
-const PINNED_SUMMARY: unknown = {
-    "empires": [
-        {
-            "name": "Sol Commonwealth",
-            "race": "Human",
-            "colonies": 1,
-            "spacePorts": 1,
-            "researchStations": 1,
-            "miningStations": 6,
-            "stateShips": {
-                "Escort": 2,
-                "Frigate": 2,
-                "Destroyer": 2,
-                "ExplorationShip": 5,
-                "ConstructionShip": 2
-            },
-            "privateShips": {
-                "SmallFreighter": 1,
-                "GasMiningShip": 2,
-                "MiningShip": 2
-            },
-            "troops": 11,
-            "characters": 3,
-            "taxRates": [
-                0.30000001192092896
-            ]
-        },
-        {
-            "name": "Free S160 Consortium",
-            "race": "Haakonish",
-            "colonies": 1,
-            "spacePorts": 1,
-            "researchStations": 1,
-            "miningStations": 6,
-            "stateShips": {
-                "Escort": 4,
-                "Frigate": 5,
-                "ExplorationShip": 7,
-                "ConstructionShip": 3
-            },
-            "privateShips": {
-                "SmallFreighter": 1,
-                "GasMiningShip": 2,
-                "MiningShip": 2
-            },
-            "troops": 5,
-            "characters": 3,
-            "taxRates": [
-                0.28999999165534973
-            ]
-        },
-        {
-            "name": "S285 Empire",
-            "race": "Dhayut",
-            "colonies": 1,
-            "spacePorts": 1,
-            "researchStations": 0,
-            "miningStations": 6,
-            "stateShips": {
-                "Escort": 2,
-                "Frigate": 3,
-                "ExplorationShip": 3,
-                "ConstructionShip": 1
-            },
-            "privateShips": {
-                "SmallFreighter": 1,
-                "GasMiningShip": 2,
-                "MiningShip": 2
-            },
-            "troops": 8,
-            "characters": 3,
-            "taxRates": [
-                0.25
-            ]
-        },
-        {
-            "name": "S43 Industries",
-            "race": "Ugnari",
-            "colonies": 1,
-            "spacePorts": 1,
-            "researchStations": 0,
-            "miningStations": 6,
-            "stateShips": {
-                "Escort": 3,
-                "Frigate": 3,
-                "Destroyer": 3,
-                "ExplorationShip": 7,
-                "ConstructionShip": 3
-            },
-            "privateShips": {
-                "SmallFreighter": 1,
-                "GasMiningShip": 2,
-                "MiningShip": 2
-            },
-            "troops": 5,
-            "characters": 2,
-            "taxRates": [
-                0.3100000023841858
-            ]
-        }
-    ],
-    "pirates": [
-        {
-            "name": "S83 Prowlers",
-            "bases": 1,
-            "fleet": {
-                "Escort": 2,
-                "ConstructionShip": 1
-            },
-            "private": {
-                "SmallFreighter": 1,
-                "GasMiningStation": 1
-            },
-            "characters": 2
-        },
-        {
-            "name": "Black Pillagers",
-            "bases": 1,
-            "fleet": {
-                "Escort": 2,
-                "ConstructionShip": 1
-            },
-            "private": {
-                "SmallFreighter": 1,
-                "GasMiningStation": 1
-            },
-            "characters": 2
-        },
-        {
-            "name": "S269 Confederacy",
-            "bases": 1,
-            "fleet": {
-                "Escort": 1,
-                "ExplorationShip": 1,
-                "ConstructionShip": 1
-            },
-            "private": {
-                "SmallFreighter": 2,
-                "MiningShip": 1,
-                "GasMiningShip": 1,
-                "GasMiningStation": 2
-            },
-            "characters": 2
-        },
-        {
-            "name": "Deadly Storm Prowlers",
-            "bases": 1,
-            "fleet": {
-                "Escort": 2,
-                "ConstructionShip": 1
-            },
-            "private": {
-                "SmallFreighter": 1,
-                "GasMiningStation": 1
-            },
-            "characters": 2
-        },
-        {
-            "name": "S83 Confederacy",
-            "bases": 1,
-            "fleet": {
-                "Escort": 1,
-                "ExplorationShip": 1,
-                "ConstructionShip": 1
-            },
-            "private": {
-                "SmallFreighter": 2,
-                "MiningShip": 1,
-                "GasMiningShip": 1,
-                "GasMiningStation": 1,
-                "MiningStation": 1
-            },
-            "characters": 2
-        },
-        {
-            "name": "Vicious Bandits",
-            "bases": 1,
-            "fleet": {
-                "Escort": 1,
-                "ExplorationShip": 1,
-                "ConstructionShip": 1
-            },
-            "private": {
-                "SmallFreighter": 1,
-                "MiningShip": 1,
-                "GasMiningShip": 1,
-                "GasMiningStation": 2
-            },
-            "characters": 2
-        },
-        {
-            "name": "S160 Spaceways",
-            "bases": 1,
-            "fleet": {
-                "ExplorationShip": 1,
-                "ConstructionShip": 1
-            },
-            "private": {
-                "SmallFreighter": 4,
-                "MiningShip": 1,
-                "GasMiningShip": 1,
-                "GasMiningStation": 2,
-                "MiningStation": 1
-            },
-            "characters": 2
-        }
-    ],
-    "independentTraders": 150,
-    "unownedBuiltObjects": 20,
-    "builtObjects": 339,
-    "ruins": 31
-};
