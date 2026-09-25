@@ -40,6 +40,7 @@ export const DEFAULT_RACE_FILES: readonly string[] = [
 
 import { designSpecificationFallbackFiles } from './designSpecifications';
 import { parseCharacterFile, parseCharacterNames, type CharacterFileRow, type CharacterNames } from './characters';
+import { loadText } from '../textResolver';
 
 // Sub role names Empire.GenerateDesignSpecifications (Empire.cs 4108) loads a
 // design template for, plus "PlanetDestroyer" (same method,
@@ -199,6 +200,7 @@ export async function loadGameData(
 
         policyTexts,
         raceFileResults,
+        gameTextText,
     ] = await Promise.all([
         // 04a non-race files
         fetchText(resolveDataUrl('raceFamilies.txt', customizationSet)),
@@ -230,7 +232,12 @@ export async function loadGameData(
 
         // Individual race files
         Promise.all(raceFiles.map((fileName) => fetchText(resolveDataUrl(`races/${fileName}`, customizationSet)))),
+
+        // Start.cs 885-899: TextResolver.LoadText(GameText.txt), the customization set's copy replacing the
+        // stock one when present (LoadText clears first). Display text only; a missing file leaves tags unresolved.
+        fetchText(resolveDataUrl('GameText.txt', customizationSet)).catch(() => ''),
     ]);
+    if (gameTextText !== '') loadText(gameTextText);
 
     // Parse races from individual files
     const raceFamilies = parseRaceFamilies(raceFamiliesText);

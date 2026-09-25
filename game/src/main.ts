@@ -38,7 +38,7 @@ import { createCreditsScreen } from './ui/screens/credits';
 import { startMusic } from './audio/musicPlayer';
 import { createNewGameWizard } from './ui/screens/newGameWizard';
 import { openGalactopedia } from './ui/screens/galactopedia';
-import { defaultStartGameOptions, piratesFor, STARTING_TECH_LEVEL, toCreateGameOptions, type StartGameOptions } from './sim/startGameOptions';
+import { defaultStartGameOptions, piratesFor, STARTING_TECH_LEVEL, toCreateGameOptions, type StartGameOptions, maximumEmpireAmountFor, starCountFor } from './sim/startGameOptions';
 import { serializeGame, deserializeGame } from './sim/save/gameSave';
 import { setSaveLoadProvider, createSaveLoadPanel, type LoadedGame } from './ui/screens/saveLoad';
 import { type Game } from './sim/game';
@@ -830,9 +830,26 @@ function defaultDevGameOptions(
         // "Starting" era: Galaxy.Age 1 (= Galaxy.StartingAge), as the wizard's default Expansion slider.
         galaxyAge: 1,
         piratePrevalence: piratesFor(defaultStartGameOptions().piratesIndex),
+        // Galaxy.MaximumEmpireAmount comes from the star-count slider (BaconStart.cs 84 method_61), not from the
+        // number of empires in the game: it drives the pirate faction count (Galaxy.9.cs 22).
+        maximumEmpireAmount: maximumEmpireAmountFor(starCountIndexFor(starCount), gameData.races.filter((r) => r.playable).length),
         player: { race: 'Human', homeSystemFavourability: 'Normal', startLocation: '(Random)', age: 1, techLevel: STARTING_TECH_LEVEL },
         aiEmpires: [ai, { ...ai }, { ...ai }],
     };
+}
+
+/** Inverse of startGameOptions.ts starCountFor for the dev/tutorial paths (nearest slider index; 700 stars → 3). */
+function starCountIndexFor(starCount: number): number {
+    let best = 3;
+    let bestDiff = Infinity;
+    for (let i = 0; i <= 6; i++) {
+        const d = Math.abs(starCountFor(i) - starCount);
+        if (d < bestDiff) {
+            bestDiff = d;
+            best = i;
+        }
+    }
+    return best;
 }
 
 async function buildAutostartGame(

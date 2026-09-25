@@ -440,6 +440,13 @@ export function runSimFrame(galaxy: Galaxy, frameMs: number, opts: FrameOptions 
 export class SimDriver {
     private realAccumulator = 0;
 
+    /**
+     * Live pause probe, read before EVERY sim frame (not only once per advance): the C# game-end (Main.Part12.cs
+     * method_154 DoGameEnd) pauses from inside a tick, and the next frame must not run. The app binds it to the HUD
+     * clock (`() => time.paused`).
+     */
+    isPaused: (() => boolean) | null = null;
+
     constructor(
         readonly galaxy: Galaxy,
         public speed = 1.0,
@@ -447,11 +454,16 @@ export class SimDriver {
         public maxFrames = 4,
     ) {}
 
+    private pausedNow(): boolean {
+        return this.paused || (this.isPaused !== null && this.isPaused());
+    }
+
     advance(realDtMs: number, opts: FrameOptions = {}): number {
-        if (this.paused) return 0;
+        if (this.pausedNow()) return 0;
         this.realAccumulator += realDtMs;
         let frames = 0;
         while (this.realAccumulator >= FRAME_REAL_MS && frames < this.maxFrames) {
+            if (this.pausedNow()) break;
             this.realAccumulator -= FRAME_REAL_MS;
             runSimFrame(this.galaxy, nextFrameMs(schedulerState(this.galaxy), this.speed), opts);
             frames++;

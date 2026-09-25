@@ -53,7 +53,6 @@ import { ComponentType } from '../data/components';
 import { ShipDesignFocus } from '../researchSystem';
 import { findNewestCanBuild, findNewestCanBuildFullEvaluate, canBuildDesign, createNewDesigns } from '../designGeneration';
 import {
-    PIRATE_SHIP_MAINTENANCE_FACTOR,
     SHIP_MAINTENANCE_COST_PER_SIZE_UNIT,
     ALLOWABLE_YEARS_MAINTENANCE_FROM_CASH_ON_HAND,
     annualStateMaintenance,
@@ -220,10 +219,10 @@ export function designCalculateMaintenanceCosts(galaxy: Galaxy, design: Design, 
     const gov = empireGovernmentAttributes(empire);
     if (gov !== null) num5 = gov.maintenanceCosts;
     if (empire.pirateEmpireBaseHabitat !== null) {
-        // TODO(port): Galaxy.BaseTechCost / PirateShipMaintenanceFactor (game options) are not kept on the TS Galaxy;
-        // their defaults stand in (as in forceStructure.ts calculateSupportCost).
+        // TODO(port): Galaxy.BaseTechCost (game option) is not kept on the TS Galaxy; its default stands in
+        // (as in forceStructure.ts calculateSupportCost).
         const num6 = Math.sqrt(DEFAULT_BASE_TECH_COST / 120000.0);
-        num5 *= PIRATE_SHIP_MAINTENANCE_FACTOR * num6;
+        num5 *= galaxy.pirateShipMaintenanceFactor * num6;
     }
     return (num1 - num4) * num5;
 }

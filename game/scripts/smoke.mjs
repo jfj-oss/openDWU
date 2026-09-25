@@ -217,15 +217,24 @@ async function main() {
             // slower than wall-clock time here. Poll for up to 20s instead of
             // a bare 3s sleep so the check is robust to that environment
             // quirk rather than flaky.
+            // The HUD date is the galaxy clock (galaxyStarDate(nowMs)); the label only changes once a game day has
+            // passed, which under load (a few fps × ≤4 sim frames each) can take well over 20 s. Assert on the
+            // simulation clock itself first, then wait (bounded) for the label.
+            const nowMs0 = await page.evaluate(() => window.__dwu?.game?.galaxy?.nowMs ?? -1);
             let after = before;
-            const deadline = Date.now() + 20000;
+            let nowMs1 = nowMs0;
+            const deadline = Date.now() + 60000;
             while (Date.now() < deadline) {
                 await page.waitForTimeout(500);
+                nowMs1 = await page.evaluate(() => window.__dwu?.game?.galaxy?.nowMs ?? -1);
                 after = await page.textContent(dateSel);
                 if (after !== before) break;
             }
+            if (nowMs0 < 0 || nowMs1 <= nowMs0) {
+                throw new Error(`galaxy.nowMs did not advance within 60s of clicking play (${nowMs0} -> ${nowMs1})`);
+            }
             if (after === before) {
-                throw new Error(`date label did not change within 20s of clicking play (still "${before}")`);
+                console.log(`  WARN: sim clock advanced ${nowMs1 - nowMs0} ms but the day label did not change within 60s (slow headless renderer)`);
             }
             await page.click('button[title="Faster"]');
             await page.click('button[title="Faster"]');
