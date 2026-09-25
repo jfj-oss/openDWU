@@ -13,7 +13,9 @@
 // - DistantWorlds/Main.Part10.cs:3930 method_235 (remove a proposal / decline).
 // This is not the original 1:1 EmpireDetailView: no race portrait, no
 // ambassador card, no conversation dialogs, no trade screen.
-// TODO(port): proposing treaties from the player (Main.Part2.cs:1935 conversation path), pirate relations (Empire.7.cs:4270 pirate branch), ambassador card (EmpireDetailView.cs:613) — not in 15a
+// Proposals (task 17e): the player's conversation options (Main.Part9.cs:46 method_238 / Main.Part10.cs:3957 method_237,
+// sim/player/diplomacyProposals.ts) as a compact "Propose..." list on the selected empire, with the reply inline.
+// TODO(port): pirate relations (Empire.7.cs:4270 pirate branch), ambassador card (EmpireDetailView.cs:613) — not in 15a
 
 import './diplomacyScreen.css';
 import type { Empire } from '../../sim/empire';
@@ -38,6 +40,15 @@ import { galaxyStarDate } from '../../sim/tick/simTime';
 import { REAL_SECONDS_IN_GALACTIC_YEAR } from '../../sim/galaxyTime';
 import { EmpireMessageType, empireMessages } from '../../sim/messages';
 import { showToast } from '../toast';
+// [proposals] begin
+import { listProposals, submitProposal, type ProposalOption, type ProposalResult } from '../../sim/player/diplomacyProposals';
+import { DialogSet, raceDialogFileName } from '../../sim/data/dialogSet';
+import { fetchText } from '../../sim/data/fetchData';
+import { resolveDataUrl } from '../../sim/data/paths';
+import { formatNet, resolveGameText } from '../../sim/textResolver';
+import { AutomationLevel } from '../../sim/empire';
+import { MANUAL } from '../../sim/diplomacyTick';
+// [proposals] end
 
 /** EmpireDetailView relation colours (_NotMetColor … _TruceColor). */
 export const RELATION_COLORS: Record<DiplomaticRelationType, number> = {
@@ -378,6 +389,64 @@ export function playerGovernmentName(player: Empire): string {
     return getGovernmentsStatic()[player.governmentId]?.name ?? '';
 }
 
+// [proposals] begin
+export interface ProposalGroup {
+    /** The greeting-menu entry (GameText key, resolveGameText for display). */
+    label: string;
+    options: ProposalOption[];
+}
+
+/** Main.Part9.cs:208-249 greeting menu: listProposals' options grouped under their menu entry, in list order. */
+export function proposalGroups(options: readonly ProposalOption[]): ProposalGroup[] {
+    const groups: ProposalGroup[] = [];
+    for (const o of options) {
+        let g = groups.find((x) => x.label === o.menuLabel);
+        if (!g) {
+            g = { label: o.menuLabel, options: [] };
+            groups.push(g);
+        }
+        g.options.push(o);
+    }
+    return groups;
+}
+
+/** Main.Part10.cs:3590 method_230: the reply line, string.Format(dialogSet.ResolveDialog(type, race), args); a refused
+ *  submit shows its hint; null set = dialog files not loaded yet. */
+export function proposalReplyText(set: DialogSet | null, result: ProposalResult, raceName: string): string {
+    if (!result.ok) return result.message;
+    if (result.reply === null) return '';
+    if (set === null) return '…';
+    return formatNet(set.resolveDialog(result.reply, raceName), result.replyArgs);
+}
+
+let expireDiplomacyMessages: ((empire: Empire) => void) | null = null;
+
+/** messagePopups (16d) registers its conversation queue's ExpireDiplomacyMessagesForEmpire here. */
+export function setDiplomacyMessageExpiry(fn: ((empire: Empire) => void) | null): void {
+    expireDiplomacyMessages = fn;
+}
+
+// DialogSet.cs:21 Initialize: base_dialog.txt plus the race's file, loaded on first use.
+let dialogLoad: Promise<DialogSet | null> | null = null;
+const raceDialogLoads = new Map<string, Promise<void>>();
+function loadDialogSet(raceName: string): Promise<DialogSet | null> {
+    dialogLoad ??= fetchText(resolveDataUrl('dialog/base_dialog.txt'))
+        .then((t) => new DialogSet(t))
+        .catch(() => null);
+    return dialogLoad.then((set) => {
+        if (set === null || raceName === '' || set.hasRace(raceName)) return set;
+        let p = raceDialogLoads.get(raceName);
+        if (!p) {
+            p = fetchText(resolveDataUrl(`dialog/${raceDialogFileName(raceName)}`))
+                .then((t) => set.addRace(raceName, t))
+                .catch(() => undefined);
+            raceDialogLoads.set(raceName, p);
+        }
+        return p.then(() => set);
+    });
+}
+// [proposals] end
+
 // ---------------------------------------------------------------------------
 // DOM
 // ---------------------------------------------------------------------------
@@ -529,6 +598,10 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
                 : el('div', 'diplomacy-line diplomacy-muted', '(none)'),
         );
 
+        // [proposals] begin
+        detail.appendChild(proposalsBlock(player, row.empire));
+        // [proposals] end
+
         detail.appendChild(el('div', 'diplomacy-line diplomacy-strategy', `Our strategy: ${row.ourStrategy}`));
 
         if (row.treaties.length > 0) {
@@ -554,6 +627,83 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
         list.scrollTop = listScroll;
         detail.scrollTop = detailScroll;
     }
+
+    // [proposals] begin
+    // The "Propose..." block is rebuilt only when its options or the reply change (refresh in place).
+    const proposalReplies = new Map<Empire, ProposalResult>();
+    let proposalVersion = 0;
+    let proposalBuilt: { other: Empire; key: string; node: HTMLElement } | null = null;
+
+    function proposalsBlock(player: Empire, other: Empire): HTMLElement {
+        const options = listProposals(player.galaxy, player, other);
+        const reply = proposalReplies.get(other) ?? null;
+        const key = `${proposalVersion};${player.controlDiplomacyTreaties};` + options.map((o) => `${o.id}|${o.label}|${o.enabled}`).join(';');
+        if (proposalBuilt !== null && proposalBuilt.other === other && proposalBuilt.key === key) return proposalBuilt.node;
+
+        const box = el('div', 'diplomacy-propose');
+        box.appendChild(el('div', 'diplomacy-section-heading', 'Propose…'));
+        const submit = (o: ProposalOption | string): void => {
+            const res = submitProposal(player.galaxy, player, other, o);
+            proposalReplies.set(other, res);
+            proposalVersion++;
+            if (res.expireMessagesFor !== null) expireDiplomacyMessages?.(res.expireMessagesFor);
+            render();
+        };
+        const optionButton = (o: ProposalOption): HTMLButtonElement => {
+            const b = el('button', 'diplomacy-propose-option', resolveGameText(o.label)) as HTMLButtonElement;
+            b.type = 'button';
+            b.disabled = !o.enabled;
+            if (o.hint) b.title = o.hint;
+            b.addEventListener('click', () => submit(o));
+            return b;
+        };
+
+        if (reply !== null) {
+            const cls = !reply.ok ? 'diplomacy-reply-error' : reply.accepted ? 'diplomacy-reply-accepted' : 'diplomacy-reply-refused';
+            const line = el('div', `diplomacy-reply ${cls}`);
+            line.appendChild(el('span', 'diplomacy-reply-speaker', `${other.name}:`));
+            const raceName = other.dominantRace?.name ?? '';
+            const text = el('span', 'diplomacy-reply-text', proposalReplyText(null, reply, raceName));
+            line.appendChild(text);
+            box.appendChild(line);
+            if (reply.ok && reply.reply !== null) {
+                void loadDialogSet(raceName).then((set) => {
+                    text.textContent = set !== null ? proposalReplyText(set, reply, raceName) : reply.reply;
+                });
+            }
+            if (reply.followUps.length > 0) {
+                const row = el('div', 'diplomacy-propose-options diplomacy-propose-followups');
+                for (const f of reply.followUps) row.appendChild(optionButton(f));
+                box.appendChild(row);
+            }
+            // Main.Part10.cs:4150 GenerateAutomationMessageBox("Treaty Negotiation"): offered after the action here.
+            if (reply.automationPrompt && player.controlDiplomacyTreaties === AutomationLevel.FullyAutomated) {
+                const auto = el('div', 'diplomacy-propose-automation');
+                auto.appendChild(el('span', '', `${resolveGameText('Treaty Negotiation')} is automated`));
+                const off = el('button', 'diplomacy-propose-option', 'Turn off') as HTMLButtonElement;
+                off.type = 'button';
+                off.addEventListener('click', () => {
+                    player.controlDiplomacyTreaties = MANUAL;
+                    render();
+                });
+                auto.appendChild(off);
+                box.appendChild(auto);
+            }
+        }
+
+        if (options.length === 0) box.appendChild(el('div', 'diplomacy-line diplomacy-muted', '(nothing to propose)'));
+        for (const g of proposalGroups(options)) {
+            const group = el('div', 'diplomacy-propose-group');
+            group.appendChild(el('div', 'diplomacy-propose-label', resolveGameText(g.label)));
+            const row = el('div', 'diplomacy-propose-options');
+            for (const o of g.options) row.appendChild(optionButton(o));
+            group.appendChild(row);
+            box.appendChild(group);
+        }
+        proposalBuilt = { other, key, node: box };
+        return box;
+    }
+    // [proposals] end
 
     render();
     const timer = setInterval(render, 1000);

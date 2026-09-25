@@ -272,3 +272,26 @@ describe('dialog texts (DialogSet.cs)', () => {
         expect([...l.entries()]).toEqual([['GIFT_THANKS', 'one']]);
     });
 });
+
+describe('screen helpers ([proposals] in diplomacyScreen / messagePopups)', () => {
+    it('groups the options under their greeting-menu entry and formats the reply', async () => {
+        const { proposalGroups, proposalReplyText } = await import('../src/ui/screens/diplomacyScreen');
+        setRelation(player, ai, DiplomaticRelationType.None);
+        const groups = proposalGroups(listProposals(galaxy, player, ai));
+        expect(groups.map((g) => g.label)).toEqual(['Change relationship', 'Send a gift', 'Send a warning', 'Swap maps or tech', 'Negotiate a trade proposal...']);
+        const set = new DialogSet('WARNING_REMOVEFORCESSYSTEM_RESPONSE_REFUSE ;Our ships are leaving the {0} system.\n');
+        const res = { ok: true, accepted: false, message: 'WARNING_REMOVEFORCESSYSTEM_RESPONSE_REFUSE', reply: 'WARNING_REMOVEFORCESSYSTEM_RESPONSE_REFUSE' as const, replyArgs: ['Sol'], followUps: [], expireMessagesFor: null, automationPrompt: false };
+        expect(proposalReplyText(set, res, 'Human')).toBe('Our ships are leaving the Sol system.');
+        expect(proposalReplyText(null, { ...res, ok: false, reply: null, message: 'No longer on offer' }, 'Human')).toBe('No longer on offer');
+    });
+
+    it('ExpireDiplomacyMessagesForEmpire drops only that sender\'s diplomacy messages', async () => {
+        const { expireDiplomacyMessagesForEmpire } = await import('../src/ui/messagePopups');
+        const { EmpireMessage, EmpireMessageType } = await import('../src/sim/messages');
+        const other = galaxy.empires.find((e) => e !== player && e !== ai)!;
+        const mk = (sender: Empire, t: number) => ({ message: new EmpireMessage(sender, t, null), conversation: 'WAR_DECLARE' as const, sender });
+        const queue = [mk(ai, EmpireMessageType.ProposeDiplomaticRelation), mk(other, EmpireMessageType.DiplomaticRelationChange), mk(ai, EmpireMessageType.GiveGift), mk(ai, EmpireMessageType.OfferTrade)];
+        expect(expireDiplomacyMessagesForEmpire(queue, ai)).toBe(2);
+        expect(queue.map((e) => [e.sender, e.message.messageType])).toEqual([[other, EmpireMessageType.DiplomaticRelationChange], [ai, EmpireMessageType.GiveGift]]);
+    });
+});
