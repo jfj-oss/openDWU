@@ -15,9 +15,11 @@ import {
     getSelection,
 } from './hud';
 import { helpTopicKeyForHabitat, toggleGalactopedia } from './screens/galactopedia';
+import { toggleShipDesigns } from './screens/shipDesigns'; // [16b]
 import { toggleResearchScreen } from './screens/researchScreen'; // [15b]
 import { getEmpireSummarySource, toggleEmpireSummary } from './screens/empireSummary';
 import { toggleColoniesList } from './screens/coloniesList';
+import { toggleBuildOrder } from './screens/buildOrder'; import { toggleConstructionYards } from './screens/constructionYards'; import { selectStellarObject } from './hud'; // [16c]
 import { toggleFleetsList } from './screens/fleetsList'; import { selectShipGroup } from './hud'; // [15c]
 import { toggleShipsAndBasesList } from './screens/shipsAndBasesList';
 import { toggleMessageHistory } from './screens/messageHistory';
@@ -267,6 +269,13 @@ export function dispatchKey(
             break;
         }
         // [/15b]
+        // [16b] F8: Ship Designs (task 16b).
+        case 'shipDesignsScreen': {
+            const src = getEmpireSummarySource();
+            if (src) toggleShipDesigns({ empire: src.empire });
+            break;
+        }
+        // [/16b]
         case 'coloniesScreen':
             handlers.coloniesScreen?.();
             break;
@@ -293,6 +302,18 @@ export function dispatchKey(
             break;
         }
         // [/15d]
+        // [16c] F9: Build Order, F10: Construction Yards (task 16c).
+        case 'buildOrderScreen': {
+            const src = getEmpireSummarySource();
+            if (src) toggleBuildOrder({ empire: src.empire });
+            break;
+        }
+        case 'constructionYardsScreen': {
+            const src = getEmpireSummarySource();
+            if (src) toggleConstructionYards({ empire: src.empire, onSelect: (t) => selectStellarObject(t, true) });
+            break;
+        }
+        // [/16c]
         default:
             // Registered but not implemented yet.
             console.info(`TODO(key): ${binding.action}`);
@@ -471,9 +492,11 @@ export const IMPLEMENTED_KEY_ACTIONS: ReadonlySet<string> = new Set([
     'zoomIn', 'zoomOut', 'zoomToSelection',
     'zoomSystemLevel', 'zoomSectorLevel', 'zoomGalaxyLevel', 'zoomPlanetLevel',
     'researchScreen', // [15b]
+    'shipDesignsScreen', // [16b]
     'scrollUp', 'scrollDown', 'scrollLeft', 'scrollRight',
     'galaxyMap', 'messageHistoryScreen', 'empireSummaryScreen', 'coloniesScreen', 'shipsAndBasesScreen',
     'fleetsScreen', // [15c]
+    'buildOrderScreen', 'constructionYardsScreen', // [16c]
     'gameMenu', 'galactopediaHelp',
     'cycleColonies', 'cycleColoniesBackward', 'cycleColoniesMoveView',
     'empireComparisonScreen', // [15d]

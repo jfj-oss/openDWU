@@ -44,3 +44,7 @@ branch `wip/<id>`, merge main before finishing, do not push.
 Follow `tasks/UI-agent-brief.md`, with one exception: they may *assign* public fields of the player's `Empire` /
 `Habitat` (automation levels, policy settings, tax rate) exactly where the C# does, and call `src/sim/player/*`. They
 still must not edit `src/sim/**` except to add a missing setter that the C# has, cited.
+
+## Helpers
+An agent may spawn **one read-only Explore helper** for research (e.g. "which existing src/sim functions port these C#
+helpers"); never a second editing agent in the same worktree (conflicts, and the session rate cap is shared).
