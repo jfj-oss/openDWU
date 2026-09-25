@@ -20,6 +20,7 @@ import { toggleColoniesList } from './screens/coloniesList';
 import { toggleFleetsList } from './screens/fleetsList'; import { selectShipGroup } from './hud'; // [15c]
 import { toggleShipsAndBasesList } from './screens/shipsAndBasesList';
 import { toggleMessageHistory } from './screens/messageHistory';
+import { toggleEmpireComparison } from './screens/empireComparison'; // [15d]
 import { showToast } from './toast';
 
 /** Modifier state of a key event (Ctrl/Alt/Shift). */
@@ -277,6 +278,13 @@ export function dispatchKey(
         case 'galactopediaHelp':
             handlers.galactopediaHelp?.();
             break;
+        // [15d] V: Empire Comparison and Victory Conditions (task 15d).
+        case 'empireComparisonScreen': {
+            const src = getEmpireSummarySource();
+            if (src) toggleEmpireComparison({ player: src.empire });
+            break;
+        }
+        // [/15d]
         default:
             // Registered but not implemented yet.
             console.info(`TODO(key): ${binding.action}`);
@@ -459,6 +467,7 @@ export const IMPLEMENTED_KEY_ACTIONS: ReadonlySet<string> = new Set([
     'fleetsScreen', // [15c]
     'gameMenu', 'galactopediaHelp',
     'cycleColonies', 'cycleColoniesBackward', 'cycleColoniesMoveView',
+    'empireComparisonScreen', // [15d]
 ]);
 
 /** True when pressing the binding's key does something today. Pure. */
