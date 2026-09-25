@@ -135,7 +135,7 @@ describe('ship designs helpers (16b)', () => {
     it('designStatRows: no movement and no cargo', () => {
         const p = makePlayer();
         const d = makeDesign(p, 'Base', S.GenericBase, 1, {
-            topSpeed: 0, cruiseSpeed: 0, warpSpeed: 0, cargoCapacity: 0, firepower: 0, shieldsCapacity: 0, shieldRechargeRate: 0,
+            topSpeed: 0, cruiseSpeed: 0, warpSpeed: 0, cargoCapacity: 0, firepowerRaw: 0, shieldsCapacity: 0, shieldRechargeRate: 0,
             armor: 0, armorReactive: 0, reactorPowerOutput: 0, staticEnergyConsumption: 0, fuelCapacity: 0, reactorStorageCapacity: 0,
             troopCapacity: 0, fighterCapacity: 0, constructionYardCount: 0, maximumRange: () => 0,
         });

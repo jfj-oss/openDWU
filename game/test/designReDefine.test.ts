@@ -8,6 +8,7 @@ import { ComponentCategoryType } from '../src/sim/data/policies';
 import { ComponentType } from '../src/sim/data/components';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 import { tickGameOptions } from './helpers/tickGame';
+import { designStatRows } from '../src/ui/screens/shipDesigns';
 
 // Design.ReDefine (Design.cs 1240-1983) + BaconDesign.Redefine (BaconDesign.cs 138) and
 // Empire.ReviewDesignsBuiltObjectsImprovedComponents (Empire.3.cs 2043), checked against values
@@ -79,6 +80,8 @@ describe('Design.ReDefine hand-worked values (seed 1 tick game)', () => {
         expect(d.isRefuellingDepot).toBe(false);
         expect(d.turnRate).toBe(0.1 + (6 * 2.0) / 152);
         expect(d.accelerationRate).toBe((39 / 8.0 + 0.5) * Math.min(Math.sqrt(Math.sqrt(113 / 30)), 2.0));
+        // The Ship Designs screen shows FirepowerRaw (Main.Part9.cs 5081).
+        expect(designStatRows(d).find((r) => r.label === 'Firepower')?.value).toBe('10');
     });
 
     it("pirate TroopTransport 'Royale'", () => {
