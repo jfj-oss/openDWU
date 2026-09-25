@@ -171,6 +171,8 @@ export default defineConfig({
         copyPublicDir: false,
     },
     server: {
+        // The DW:U install is symlinked under public/assets/dwu (thousands of files): never watch it.
+        watch: { ignored: ['**/public/assets/dwu/**'] },
         fs: {
             // Allow serving the (symlinked) DW:U install outside the root.
             allow: [existsSync('public/assets/dwu') ? '..' : '.'],
