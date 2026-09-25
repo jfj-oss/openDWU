@@ -7,6 +7,7 @@
 //
 // Free functions, C# `this` first (plan §3.1). Every Galaxy.Rnd draw is on galaxy.rnd in C# order.
 
+import { calculateDefendingStrength, fastFindNearestFuelHabitatAlternate } from '../fleets/militaryAI';
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import type { BuiltObject } from '../builtObject';
@@ -124,19 +125,6 @@ export function getShipsAtHabitatNotLeaving(list: readonly (BuiltObject | null)[
     return builtObjectList;
 }
 
-/**
- * Empire.8.cs 1358/1364 CalculateDefendingStrength(target) for a BuiltObject target (the only kind the pirate AI
- * passes). No Rnd. TODO(port) M4m: the Habitat / Creature branches (DetermineRequiredTroopStrength) when needed.
- */
-export function calculateDefendingStrengthBuiltObject(galaxy: Galaxy, empire: Empire, builtObject: BuiltObject): number {
-    let result = calculateOverallStrengthFactor(builtObject);
-    if (isObjectVisibleToThisEmpire(galaxy, empire, builtObject)) {
-        result = determineDefendingStrength(galaxy, builtObject, builtObject.empire!);
-    }
-    result = Math.max(1, result);
-    return result;
-}
-
 /** Galaxy.7.cs 1126 FindNearestKnownBaseForPirateAttack(attackingPirateEmpire, x, y) + InIndex 1170. No Rnd. */
 export function findNearestKnownBaseForPirateAttackOwn(galaxy: Galaxy, attackingPirateEmpire: Empire, x: number, y: number): BuiltObject | null {
     const empireList = attackingPirateEmpire.pirateRelations.resolveEmpiresWithProtection();
@@ -182,7 +170,7 @@ export function findNearestKnownBaseOfEmpireForPirateAttackOwn(galaxy: Galaxy, a
             const num = galaxy.calculateDistanceSquared(x, y, builtObject2.xpos, builtObject2.ypos);
             if (num < distance && isObjectVisibleToThisEmpire(galaxy, attackingEmpire, builtObject2, true, false)) {
                 let num2 = 0;
-                if (attackStrength < 2147483647) num2 = calculateDefendingStrengthBuiltObject(galaxy, attackingEmpire, builtObject2);
+                if (attackStrength < 2147483647) num2 = calculateDefendingStrength(galaxy, attackingEmpire, builtObject2).strength;
                 if (attackStrength >= num2) {
                     builtObject = builtObject2;
                     distance = num;
@@ -242,42 +230,6 @@ export function fastFindNearestUncolonizedOwnedSystem(galaxy: Galaxy, x: number,
         if (systemStar !== null) distance = galaxy.calculateDistance(ix, iy, systemStar.xpos, systemStar.ypos);
         return { item: systemStar, distance };
     });
-}
-
-/** Galaxy.7.cs 2409 FastFindNearestFuelHabitatAlternate(x, y, resourceId, habitatToExclude, empire, systemToExclude, allowBases). No Rnd. */
-export function fastFindNearestFuelHabitatAlternate(galaxy: Galaxy, x: number, y: number, resourceId: number, habitatToExclude: Habitat | null, empire: Empire | null, systemToExclude: Habitat | null, allowBases: boolean): Habitat | null {
-    let result: Habitat | null = null;
-    let num = Number.MAX_VALUE;
-    if (empire !== null && empire.fuelSystemsSources != null) {
-        let fuelSourceSystemList = null;
-        for (let i = 0; i < empire.fuelSystemsSources.length; i++) {
-            const fuelSourceSystemList2 = empire.fuelSystemsSources[i];
-            if (fuelSourceSystemList2 != null && fuelSourceSystemList2.resourceId === resourceId) {
-                fuelSourceSystemList = fuelSourceSystemList2;
-                break;
-            }
-        }
-        if (fuelSourceSystemList !== null) {
-            for (let j = 0; j < fuelSourceSystemList.items.length; j++) {
-                const fuelSourceSystem = fuelSourceSystemList.items[j];
-                if (fuelSourceSystem == null) continue;
-                for (let k = 0; k < fuelSourceSystem.knownFuelSources.length; k++) {
-                    const habitat = fuelSourceSystem.knownFuelSources[k];
-                    if (habitat === habitatToExclude || (!allowBases && habitat.basesAtHabitat != null && habitat.basesAtHabitat.length > 0)) continue;
-                    const num2 = galaxy.calculateDistanceSquared(x, y, habitat.xpos, habitat.ypos);
-                    if (num2 < num) {
-                        let flag = true;
-                        if (systemToExclude !== null && habitat.systemIndex === systemToExclude.systemIndex) flag = false;
-                        if (flag) {
-                            result = habitat;
-                            num = num2;
-                        }
-                    }
-                }
-            }
-        }
-    }
-    return result;
 }
 
 /** Galaxy.9.cs 126 IdentifyPirateNewHomeLocation(pirateFaction). Rnd: 2 NextDouble per attempt (≤ 50 attempts). */
@@ -649,7 +601,7 @@ function pirateAssignMilitaryShip(galaxy: Galaxy, empire: Empire, ship: BuiltObj
     if (builtObject !== null && withinFuelRange(galaxy, ship, builtObject.xpos, builtObject.ypos, 0.1)) {
         let num10 = calculateOverallStrengthFactor(builtObject);
         if (builtObject.nearestSystemStar !== null && empire.visibility.checkSystemVisible(builtObject.nearestSystemStar.systemIndex)) {
-            num10 = calculateDefendingStrengthBuiltObject(galaxy, empire, builtObject);
+            num10 = calculateDefendingStrength(galaxy, empire, builtObject).strength;
         }
         if (calculateOverallStrengthFactor(ship) >= num10) {
             let maxValue = 3;

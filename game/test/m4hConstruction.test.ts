@@ -186,7 +186,9 @@ describe('M4h milestone on the headless harness', () => {
         expect(bo.parentHabitat === colony || builtObjectMission(bo.mission) !== null).toBe(true);
         // (Before the age-1 default start this also checked that the capital's component cargo was used up; at age 1
         // the capital manufactures and receives components for its own base builds during the run, so the stocked
-        // units are indistinguishable from those — unbuiltComponentCount above covers the construction.)
+        // units are indistinguishable from those — unbuiltComponentCount above covers the construction. M4m's variant,
+        // reading the cargo the frame the builder completes, does not hold at age 1 either: components for the capital's
+        // own builds are already there by then.)
         expect(Number.isFinite(bo.xpos) && Number.isFinite(bo.ypos)).toBe(true);
     }, 300000);
 
@@ -219,6 +221,7 @@ describe('M4h milestone on the headless harness', () => {
         // since M4f AssignMissionToBuiltObject (Empire.5.cs 1445) sends a low-fuel idle ship to refuel (SetupRefuelling), and
         // (at the age-1 default start, seed 1) its idle-warship cases give Escort / Low-priority Patrol missions (Empire.5.cs
         // 1740-1862).
+        // since M4m the Escort case runs (Empire.5.cs AssignMissionToBuiltObject), so it may be escorting a civilian ship.
         expect(m === null || m.type === BuiltObjectMissionType.Move || m.type === BuiltObjectMissionType.Undefined || m.type === BuiltObjectMissionType.Attack || m.type === BuiltObjectMissionType.Escape || m.type === BuiltObjectMissionType.Refuel || m.type === BuiltObjectMissionType.Patrol || m.type === BuiltObjectMissionType.Escort).toBe(true);
         expect(g.builtObjects).toContain(bo);
     }, 300000);

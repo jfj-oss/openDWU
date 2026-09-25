@@ -5,7 +5,7 @@
 // galaxy (seed 1), plus a harness smoke run.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { createTickGame, createTickGameAtAge } from './helpers/tickGame';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { BuiltObject } from '../src/sim/builtObject';
 import type { GameData } from '../src/sim/data/gameData';
@@ -46,7 +46,10 @@ function countDraws(f: () => void): number {
 }
 beforeAll(async () => {
     gameData = await loadGameDataFs();
-    galaxy = createTickGame(gameData).galaxy;
+    // Age-0 (PreWarp) galaxy fixture: these tests need two pirate factions with two warships each (a victim / teardown
+    // ship besides shipA / shipB); since the M4m merge the seed-1 age-1 galaxy has only one such faction (age-1 factions
+    // start with halved escorts, see pirateBases.test.ts).
+    galaxy = createTickGameAtAge(gameData, 0).galaxy;
     // The createGame empires start with no military ships; the pirate factions do (see m4n.test.ts).
     // Factions with at least two warships (the age-1 tick galaxy gives some pirate factions a single one).
     const isWarship = (b: BuiltObject) => b.role === BuiltObjectRole.Military && b.warpSpeed > 0 && b.firepowerRaw > 0 && b.isFunctional && b.topSpeed > 0;

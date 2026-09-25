@@ -88,15 +88,16 @@ describe('independent traders (Galaxy.7.cs GenerateIndependentTraders)', () => {
         // (re-pinned M4s1: ReviewPirateRelations draws Rnd.NextDouble in each game-start Empire.DoTasks long block)
         // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
         // (re-pinned M4u: game-start character reviews (ReviewCharacterTraits Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd) move the stream)
+        // (re-pinned M4m: the game-start Empire.DoTasks runs the military AI — IdentifyMilitaryObjectives Next(0, EmpireEvaluations.Count), CheckTemptingTargets Next(0, Empires.Count), DetermineRandomAttacks Next(0, n) — which shifts the Rnd stream.)
         expect(g.popularDesigns.slice(0, 3).map((d) => d.name)).toEqual([
-            "SZ1000 Light Freighter",
-            "ZY1000 Light Transport",
-            "PF1000 Light Hauler"
+            "QJ1000 Merchant Freighter",
+            "OL1000 Light Freighter",
+            "ST1000 Cargo Shuttle"
         ]);
         expect(g.popularDesigns.slice(3, 6).map((d) => d.name)).toEqual([
-            "KX1000 Freight Hauler",
-            "LO1000 Cargo Hauler",
-            "KR1000 Cargo Ferry"
+            "XG1000 Cargo Hauler",
+            "LU1000 Cargo Hauler",
+            "MY1000 Medium Freighter"
         ]);
     }, 60000);
 
@@ -137,26 +138,27 @@ describe('independent traders (Galaxy.7.cs GenerateIndependentTraders)', () => {
         // (re-pinned M4s1: ReviewPirateRelations draws Rnd.NextDouble in each game-start Empire.DoTasks long block)
         // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
         // (re-pinned M4u: game-start character reviews (ReviewCharacterTraits Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd) move the stream)
+        // (re-pinned M4m: the game-start Empire.DoTasks runs the military AI — IdentifyMilitaryObjectives Next(0, EmpireEvaluations.Count), CheckTemptingTargets Next(0, Empires.Count), DetermineRandomAttacks Next(0, n) — which shifts the Rnd stream.)
         expect(Object.fromEntries(perColony)).toEqual({
-            "S1 3": 12,
-            "Haako 4": 17,
-            "S269 4": 20,
-            "S269 2": 13,
-            "Atoaklo": 22,
-            "S1 2": 18,
+            "Haako 4": 15,
             "Dhayu 3": 13,
-            "Eroy": 14,
-            "S212 3": 13,
-            "S83 12": 8
+            "S1 2": 16,
+            "Atoaklo": 23,
+            "S212 3": 17,
+            "S1 3": 14,
+            "Eroy": 12,
+            "S269 2": 11,
+            "S269 4": 18,
+            "S83 12": 11
         });
         expect(traders.slice(0, 2).map((t) => [t.name, t.design.name])).toEqual([
             [
-                "Majestic Mystery",
-                "LO1000 Cargo Hauler"
+                "Grimy Wayfarer",
+                "OL1000 Light Freighter"
             ],
             [
-                "Radiant Evasion",
-                "KX1000 Freight Hauler"
+                "Vanishing Moon",
+                "OL1000 Light Freighter"
             ]
         ]);
     }, 60000);
@@ -170,45 +172,60 @@ describe('independent traders (Galaxy.7.cs GenerateIndependentTraders)', () => {
         // (re-pinned M4s1: ReviewPirateRelations draws Rnd.NextDouble in each game-start Empire.DoTasks long block)
         // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
         // (re-pinned M4u: game-start character reviews (ReviewCharacterTraits Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd) move the stream)
-        expect(a.log.length).toBe(1561);
+        // (re-pinned M4m: the game-start Empire.DoTasks runs the military AI — IdentifyMilitaryObjectives Next(0, EmpireEvaluations.Count), CheckTemptingTargets Next(0, Empires.Count), DetermineRandomAttacks Next(0, n) — which shifts the Rnd stream.)
+        expect(a.log.length).toBe(1563);
+        // (re-pinned M4m: the game-start Empire.DoTasks runs the military AI, whose Rnd draws shift the stream.)
         expect(a.log.slice(-25)).toEqual([
-            "Next(0,0)=0",
-            "Next(0,2)=0",
-            "Next(0,2)=1",
-            "Next(0,0)=0",
-            "Next(0,2)=1",
-            "Next(0,0)=0",
-            "Next(0,2)=1",
-            "Next(0,0)=0",
-            "Next(0,2)=0",
-            "Next(0,2)=0",
             "Next(0,2)=1",
             "Next(0,0)=0",
             "Next(0,2)=0",
             "Next(0,2)=1",
             "Next(0,0)=0",
-            "Next(0,30)=11",
-            "Next(0,30)=17",
-            "Next(0,30)=29",
+            "Next(0,2)=1",
+            "Next(0,0)=0",
+            "Next(0,2)=1",
+            "Next(0,0)=0",
+            "Next(0,2)=0",
+            "Next(0,2)=0",
+            "Next(0,2)=0",
+            "Next(0,2)=0",
+            "Next(0,2)=1",
+            "Next(0,0)=0",
+            "Next(0,30)=10",
+            "Next(0,30)=21",
+            "Next(0,30)=14",
+            "Next(0,30)=26",
             "Next(0,30)=2",
-            "Next(0,30)=1",
-            "Next(0,30)=24",
-            "Next(0,30)=15",
+            "Next(0,30)=26",
+            "Next(0,30)=22",
+            "Next(0,30)=20",
             "Next(0,30)=11",
-            "Next(0,30)=3",
-            "Next(0,30)=7"
+            "Next(0,30)=12"
         ]);
+        // (re-pinned M4m: the game-start Empire.DoTasks runs the military AI, whose Rnd draws shift the stream.)
         expect(a.log.slice(0, 22)).toEqual([
-            // trader 0: Next(0,3) freighter-size roll; Next(0,3) index; Next(0,10) start colony;
-            // SelectRandomUniqueStandardShipName (Next(0,127), Next(0,125), Next(0,7) >= 2 → no extra draw);
-            // SelectRandomHeading; SelectRelativeParkingPoint.
-            // (re-pinned M4u: game-start character reviews / DoRaceEvent Rnd move the stream.)
-            'Next(0,3)=1', 'Next(0,3)=1', 'Next(0,10)=3', 'Next(0,127)=24', 'Next(0,125)=43', 'Next(0,7)=5',
-            'NextDouble', 'NextDouble', 'Next(0,2)=0', 'NextDouble',
-            // trader 1: same shape.
-            'Next(0,3)=1', 'Next(0,3)=0', 'Next(0,10)=1', 'Next(0,127)=21', 'Next(0,125)=118', 'Next(0,7)=2',
-            'NextDouble', 'NextDouble', 'Next(0,2)=1', 'NextDouble',
-            'Next(0,3)=0', 'Next(0,3)=0',
+            "Next(0,3)=0",
+            "Next(0,3)=1",
+            "Next(0,10)=1",
+            "Next(0,127)=122",
+            "Next(0,125)=10",
+            "Next(0,7)=6",
+            "NextDouble",
+            "NextDouble",
+            "Next(0,2)=1",
+            "NextDouble",
+            "Next(0,3)=2",
+            "Next(0,3)=1",
+            "Next(0,10)=0",
+            "Next(0,127)=118",
+            "Next(0,125)=18",
+            "Next(0,7)=3",
+            "NextDouble",
+            "NextDouble",
+            "Next(0,2)=1",
+            "NextDouble",
+            "Next(0,3)=2",
+            "Next(0,3)=2"
         ]);
         const b = runStartTick();
         expect(b.log).toEqual(a.log);

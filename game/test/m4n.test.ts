@@ -51,7 +51,11 @@ beforeAll(async () => {
     // The createGame empires start with no military ships (tech level 0.5, civilian + base only); the pirate factions do.
     // Factions with at least two warships (the age-1 tick galaxy gives some pirate factions a single one).
     const isWarship = (b: BuiltObject) => b.role === BuiltObjectRole.Military && b.warpSpeed > 0 && b.firepowerRaw > 0 && b.isFunctional && b.topSpeed > 0;
-    const factions = galaxy.pirateEmpires.filter((p) => p.builtObjects.filter(isWarship).length >= 2);
+    // (Since the M4m merge the seed-1 age-1 galaxy has one faction with two warships, so A's faction needs two — for
+    // sameEmpireShip — and B's faction one.)
+    const warships = (p: (typeof galaxy.pirateEmpires)[number]) => p.builtObjects.filter(isWarship).length;
+    const factionA = galaxy.pirateEmpires.find((p) => warships(p) >= 2)!;
+    const factions = [factionA, galaxy.pirateEmpires.find((p) => p !== factionA && warships(p) >= 1)!];
     const military = (e: number) => factions[e].builtObjects.find(isWarship)!;
     shipA = military(0);
     shipB = military(1);

@@ -7043,7 +7043,7 @@ function resolveEmpiresToDefendAgainst(empire: Empire): Empire[] {
 
 // Empire.9.cs AddWarObjectivesToList(relation, objectives, calculateWarObjectivesIfNotPresent, includeBases) (1861/1866)
 // (added by M4i).
-function addWarObjectivesToList(galaxy: Galaxy, relation: DiplomaticRelation | null, objectives: StellarObject[], calculateWarObjectivesIfNotPresent: boolean, includeBases: boolean): StellarObject[] {
+export function addWarObjectivesToList(galaxy: Galaxy, relation: DiplomaticRelation | null, objectives: StellarObject[], calculateWarObjectivesIfNotPresent: boolean, includeBases: boolean): StellarObject[] {
     if (relation !== null) {
         if (relation.warObjective === WarObjective.CaptureObjectives) {
             for (let i = 0; i < relation.warObjectiveColonies.length; i++) {
@@ -7071,8 +7071,7 @@ function addWarObjectivesToList(galaxy: Galaxy, relation: DiplomaticRelation | n
     return objectives;
 }
 
-// Empire.9.cs ResolveLocationsToDefend (1742/1747). Habitat.HasBeenDestroyed is false at game start
-// (not modelled on the TS Habitat).
+// Empire.9.cs ResolveLocationsToDefend (1742/1747).
 export function resolveLocationsToDefend(galaxy: Galaxy, empire: Empire, includeBases: boolean): StellarObject[] {
     let stellarObjectList: StellarObject[] = [];
     if (empire.pirateEmpireBaseHabitat !== null) {
@@ -7122,7 +7121,7 @@ export function resolveLocationsToDefend(galaxy: Galaxy, empire: Empire, include
         if (capitals !== null) {
             for (let n = 0; n < capitals.length; n++) {
                 const habitat2 = capitals[n];
-                if (habitat2 !== null) {
+                if (habitat2 !== null && !habitat2.hasBeenDestroyed) {
                     const builtObject2 = determineSpacePortAtColony(galaxy, habitat2);
                     if (!stellarObjectList.includes(habitat2) && (builtObject2 === null || !stellarObjectList.includes(builtObject2))) stellarObjectList.push(habitat2);
                 }

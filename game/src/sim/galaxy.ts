@@ -54,6 +54,7 @@ import { BuiltObjectSubRole } from './builtObjectTypes';
 import { MIN_TIME } from './tick/simTime';
 import { canEmpireColonizeHabitat, habitatResourcesHaveSuperLuxury } from './exploration';
 import type { SchedulerState } from './tick/scheduler';
+import type { Blockade } from './fleets/blockades';
 import { createGalaxyOrderList, type OrderList } from './logistics/orders';
 
 // Port of Galaxy.cs static fields (Galaxy.3.cs InitializeStatics sets
@@ -4425,6 +4426,8 @@ export class Galaxy {
     researchSpeedModifier = 1.0;
     // ---- M4l fields (ship groups) ----
     // ---- M4m fields (military AI) ----
+    /** Galaxy.cs 580 Blockades (BlockadeList, fleets/blockades.ts). */
+    blockades: Blockade[] = [];
     // ---- M4n fields (threats, attack AI) ----
     /** Galaxy.cs 597 InvasionAttempts (counter, BuiltObject.2.cs 2270). */
     invasionAttempts = 0;

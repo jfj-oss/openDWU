@@ -16,6 +16,7 @@ import {
     shipGroupObtainCharacters,
     shipGroupTotalFighterCount,
     shipGroupTotalOverallStrengthFactor,
+    shipGroupTotalTroopDefendStrength,
 } from './shipGroupTasks';
 
 // ShipGroupList.Sort() (List<ShipGroup>.Sort → ShipGroup.CompareTo, ShipGroup.cs 3574), Reverse(), ClearSortTags().
@@ -57,6 +58,18 @@ export function generateOrderedFleetsByTroopAttackStrength(empire: Empire): Ship
     for (let i = 0; i < shipGroups.length; i++) {
         const shipGroup = shipGroups[i]!;
         shipGroup.sortTag = shipGroup.totalTroopAttackStrength;
+        shipGroupList.push(shipGroup);
+    }
+    return sortReverseClear(shipGroupList);
+}
+
+/** Empire.8.cs 4800 GenerateOrderedFleetsByTroopDefendStrength (ported by M4m; no caller yet). */
+export function generateOrderedFleetsByTroopDefendStrength(empire: Empire): ShipGroup[] {
+    const shipGroups = empireShipGroups(empire);
+    const shipGroupList: ShipGroup[] = [];
+    for (let i = 0; i < shipGroups.length; i++) {
+        const shipGroup = shipGroups[i]!;
+        shipGroup.sortTag = shipGroupTotalTroopDefendStrength(shipGroup);
         shipGroupList.push(shipGroup);
     }
     return sortReverseClear(shipGroupList);

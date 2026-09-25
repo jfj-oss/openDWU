@@ -218,26 +218,27 @@ describe('UpgradeMilitaryShipDesignMoreWeapons / MoreEngines (Galaxy.8.cs 4121 /
 // Re-pinned M4x: galaxyAge now defaults to 1 (standard preset, Start.cs 3298-3327). Before M4x these pins had Galaxy.Age 0
 // with StartingAge 1 (a mix the C# cannot produce); Galaxy.Age 1 adds military starting ships, the int_5 > 0 game-start
 // steps and StartStarDate + 30000000, so the Rnd stream moves.
+// (re-pinned M4m: the game-start Empire.DoTasks runs the military AI — IdentifyMilitaryObjectives Next(0, EmpireEvaluations.Count), CheckTemptingTargets Next(0, Empires.Count), DetermineRandomAttacks Next(0, n) — which shifts the Rnd stream.)
 const PINNED: unknown[] = [
     [
-        "Escort:Centurion II:32",
-        "Frigate:Titan II:43",
-        "Destroyer:Javelin II:55",
-        "Cruiser:Sovereign II:90",
-        "CapitalShip:Venator:136",
-        "Carrier:CX-2 Carrier:108",
+        "Escort:Imperator II:32",
+        "Frigate:Dominator II:44",
+        "Destroyer:Royale II:54",
+        "Cruiser:Excelsior:89",
+        "CapitalShip:Argossia:136",
+        "Carrier:CX-2 Carrier:105",
         "DefensiveBase:Phantom Pirate Defensive Base:123",
         "GenericBase:Phantom Pirate Base:217"
     ],
     [
-        "GenericBase:Dhayu Shelter",
-        "DefensiveBase:Dhayu 7 Orbital Battery",
+        "GenericBase:Smugglers Station",
         "DefensiveBase:Dhayu 7 Defensive Base",
-        "DefensiveBase:Dhayu 7 Defense Battery",
-        "Escort:Discarded Terror",
-        "Carrier:Lamented Mauler",
-        "Cruiser:Courageous Legacy",
-        "Cruiser:Indomitable Destiny"
+        "DefensiveBase:Dhayu 7 Orbital Battery",
+        "DefensiveBase:Dhayu 7 Weapons Platform",
+        "Escort:Formidable Eclipse",
+        "Destroyer:Shattering Inquisitor",
+        "Escort:Growling Mystery",
+        "Cruiser:Potent Assassin"
     ],
-    32
+    29
 ];

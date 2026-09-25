@@ -13,6 +13,7 @@ import { Habitat, HabitatCategoryType, HabitatType } from '../src/sim/types';
 import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
 import { Cargo, CargoList, ResourceRef } from '../src/sim/cargo';
 import { galaxyStarDate } from '../src/sim/tick/simTime';
+import { identifyNearestResponseFleet } from '../src/sim/fleets/militaryAI';
 import { resetTodoCounts, todoHits } from '../src/sim/tick/todo';
 import { runGameSeconds } from '../src/sim/tick/harness';
 import { stateDigest } from '../src/sim/tick/digest';
@@ -525,7 +526,7 @@ describe('distress signals / declined tasks', () => {
         empire.declinedTasks = [];
     });
 
-    it('ProcessDistressSignals: bases and habitats ask the M4n/M4m stubs, ships are skipped', () => {
+    it('ProcessDistressSignals: bases and habitats ask for a response fleet (none without fleets), ships are skipped', () => {
         const now = galaxyStarDate(galaxy);
         const base = empire.spacePorts[0];
         const list = empireDistressSignals(empire);
@@ -541,17 +542,20 @@ describe('distress signals / declined tasks', () => {
         processDistressSignals(galaxy, empire);
         const hits = todoHits();
         // M4n ported DetermineDefendingStrength (Galaxy.6.cs 4674 / 4745): only the signals whose defenders fall short of
-        // 0.75 × the attack strength reach the M4m response-fleet lookup (Empire.3.cs 4934 / 4989).
+        // 0.75 × the attack strength reach the response-fleet lookup (Empire.3.cs 4934 / 4989), ported by M4m: the
+        // createGame empire has no fleets, so IdentifyNearestResponseFleet finds none and no fleet is sent.
         const responses = [base, planet].filter((t) => determineDefendingStrength(galaxy, t, empire) < Math.trunc(1000 * 0.75)).length;
         expect(responses).toBeGreaterThan(0);
-        expect(hits['M4m identifyNearestResponseFleet']).toBe(responses);
+        expect(empire.shipGroups.length).toBe(0);
+        expect(identifyNearestResponseFleet(galaxy, empire, base.xpos, base.ypos, true, 0.1, 48000.0)).toBeNull();
+        expect(Object.keys(hits).filter((k) => k.startsWith('M4m'))).toEqual([]);
         list.length = 0;
         // no attack strength ⇒ defenders (0) >= 0.75 × 0 ⇒ no response fleet lookup
         const s4 = new DistressSignal(base, DistressSignalType.UnderAttack, now);
         list.push(s4);
         resetTodoCounts();
         processDistressSignals(galaxy, empire);
-        expect(todoHits()['M4m identifyNearestResponseFleet']).toBeUndefined();
+        expect(Object.keys(todoHits()).filter((k) => k.startsWith('M4m'))).toEqual([]);
         list.length = 0;
     });
 });

@@ -309,12 +309,34 @@ describe('FindNearestBuiltObject / FindNearestPirateFaction', () => {
 // ReviewEmpireEvents (DoRaceEvent Rnd), moving every later draw.
 // Re-pinned M4x: galaxyAge defaults to 1 (standard preset), so Galaxy.Age 1 projects military ships too and moves the
 // Rnd stream (see createGameFull PINNED_SUMMARY).
+// (re-pinned M4m: the game-start Empire.DoTasks runs the military AI — IdentifyMilitaryObjectives Next(0, EmpireEvaluations.Count), CheckTemptingTargets Next(0, Empires.Count), DetermineRandomAttacks Next(0, n) — which shifts the Rnd stream.)
 const PINNED_NAMES: unknown[] = [
-    ['ExplorationShip', 'Silent Disturbance'],
-    ['ExplorationShip', 'Sol Whim'],
-    ['ExplorationShip', 'Daring Courage'],
-    ['ExplorationShip', 'Majestic Obsession'],
-    ['ExplorationShip', 'Sol Enterprise'],
-    ['ConstructionShip', 'Conspicuous Encounter'],
-    ['ConstructionShip', 'Brazen Memory'],
+    [
+        "ExplorationShip",
+        "Secretive Hoard"
+    ],
+    [
+        "ExplorationShip",
+        "Feeble Distress"
+    ],
+    [
+        "ExplorationShip",
+        "Outrageous Empress"
+    ],
+    [
+        "ExplorationShip",
+        "Sol Chance"
+    ],
+    [
+        "ExplorationShip",
+        "Meagre Rendezvous"
+    ],
+    [
+        "ConstructionShip",
+        "Smiling Nightstar"
+    ],
+    [
+        "ConstructionShip",
+        "Doubtful Starfire"
+    ]
 ];

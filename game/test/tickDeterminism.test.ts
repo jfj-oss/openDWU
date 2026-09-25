@@ -72,9 +72,14 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // is detected by healTroops.)
         // (M4s2 ported the pirate faction AI: DoTasksPirates is detected by the M4m stub PirateTaskFleets calls for the
         // faction's space ports, EnsureBaseDefendedByFleet.)
-        for (const key of ['M4q scanForNewOwnerHabitat', 'M4m ensureBaseDefendedByFleet', 'M4q healTroops']) {
+        // (M4m ported EnsureBaseDefendedByFleet, the last pirate-only stub: DoTasksPirates is now detected by every pirate
+        // faction's intermediate touch (Empire.1.cs 4095-4130, set only when the 60 s block runs) during this continuation.)
+        for (const key of ['M4q scanForNewOwnerHabitat', 'M4q healTroops']) {
             expect(hits[key] ?? 0, key).toBeGreaterThan(0);
         }
+        const factions = long.pirateEmpires.filter((p) => p.pirateEmpireBaseHabitat !== null);
+        expect(factions.length).toBeGreaterThan(0);
+        for (const p of factions) expect(p.lastIntermediateTouch, p.name).toBeGreaterThan(120000);
         const summary = { digest: stateDigest(long), counts: stateCounts(long), rndDraws: long.rnd.drawCount };
         console.log('[tick] seed 1, 600 game-s:', JSON.stringify(summary), 'stubs reached:', Object.keys(hits).length);
         // Seed pin: moves whenever createGame or a package changes Rnd use or ticked state (re-pin, say why).
@@ -185,7 +190,14 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // M4y's ReviewCharacterLocation FleetAdmiral / TroopGeneral / PirateLeader fleet branches (Empire.7.cs 698-918,
         // 1135-1206) ported so the fleets that form are reviewed instead of throwing.
         // Moved from 2d0371380457abff: M4y merged on top of M4s2 (harness at the true age-1 default start with the pirate faction AI; see both reasons above)
-        expect(summary.digest).toBe('7fa509b3737717ba');
+        // Moved from 2689770786790d6a by M4m: the military AI runs: IdentifyMilitaryObjectives draws Next(0, EmpireEvaluations.Count)
+        // every Empire periodic block (and SendScoutShipsToEnemyLocations / strike-point rolls at war), CheckTemptingTargets
+        // Next(0, Empires.Count) (+ per Conquer/Punish empire) and DetermineRandomAttacks Next(0, n) every long block,
+        // TaskResupplyShips / ReviewSystemThreats / SendAvailableFleetsToGuard their SelectRelativePoint / parking draws; the
+        // game-start DoTasks draws them too (createGame pins moved); the Escort / Blockade command cases run, and
+        // WarnOfIncomingEnemyFleets / blockades feed the incoming-fleet and docking logic.
+        // Moved from 7fa509b3737717ba: M4m merged on top of M4s2 + M4y (military AI draws in every Empire periodic / long block, fleet tasking, blockades; the pirate AI uses M4m's FindNearestAvailableFleet / CalculateDefendingStrength / EnsureBaseDefendedByFleet; see the M4m reason above)
+        expect(summary.digest).toBe('3718bd4b31a849ad');
     }, 600000);
 });
 

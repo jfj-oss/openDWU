@@ -23,7 +23,7 @@ import {
     shipGroupListResolveFleetsWithWaitTarget,
     shipGroupTotalTroopAttackStrengthNearby,
 } from '../fleets/shipGroupTasks';
-import { assignFleetRefuellingExcludeGatheringShips, ensureBaseDefendedByFleet, findNearestAvailableFleet, type FindNearestAvailableFleetArgs } from '../fleets/militaryAI';
+import { assignFleetRefuellingExcludeGatheringShips, calculateDefendingStrength, ensureBaseDefendedByFleet, findNearestAvailableFleet, isShipGroupAvailable } from '../fleets/militaryAI';
 import { FleetPosture, AdvisorMessageType, checkTaskAuthorized, type RefCount } from '../diplomacyTick';
 import { DiplomaticRelationType, DiplomaticStrategy, obtainDiplomaticRelation } from '../diplomacy';
 import { PirateRelationType, obtainPirateRelation } from '../pirateRelations';
@@ -38,34 +38,13 @@ import { netSort } from '../netSort';
 import { gameText } from '../colonyTick';
 import { EmpireActivityType } from './empireActivity';
 import { calculateOverallStrengthFactor } from './missionsMarket';
-import { calculateDefendingStrengthBuiltObject, findNearestKnownBaseForPirateAttackOwn } from './pirateShipMissions';
+import { findNearestKnownBaseForPirateAttackOwn } from './pirateShipMissions';
 
 const f = Math.fround;
 
 /** FindNearestAvailableFleet's trailing arguments as PirateTaskFleets passes them (mustBeWithinFuelRange: true, 0.1, false, false, false, true, troops, boarding). */
-function fleetArgs(minimumTroopStrength: number, minimumBoardingStrength = 0): FindNearestAvailableFleetArgs {
-    return { mustBeWithinFuelRange: true, fuelPortionMargin: 0.1, mustBeAutomated: false, shouldBeSmallFleet: false, gatherPointMustBeBlank: false, mustBeWithinPostureRange: true, minimumTroopStrength, minimumBoardingStrength };
-}
-
-/** Empire.9.cs 2401 IsShipGroupAvailable(shipGroup, maximumPriorityToInclude, minimumTroopLevel). No Rnd. */
-function isShipGroupAvailable(galaxy: Galaxy, shipGroup: ShipGroup, maximumPriorityToInclude: BuiltObjectMissionPriority, minimumTroopLevel: number): boolean {
-    return (minimumTroopLevel <= 0 || shipGroupTotalTroopAttackStrengthNearby(galaxy, shipGroup, 0.3) >= minimumTroopLevel) && (shipGroup.mission === null || shipGroup.mission.type === BuiltObjectMissionType.Undefined || shipGroup.mission.priority <= maximumPriorityToInclude);
-}
-
-/**
- * Empire.8.cs 1364 CalculateDefendingStrength(target, out troopStrength) for a Habitat target. No Rnd.
- * TODO(port) M4q: troopStrength = Galaxy.5.cs 123 DetermineRequiredTroopStrength(this, habitat) (Habitat.CalculatePopulationStrength
- * is not ported) — 0 here; its only reader is FindNearestAvailableFleet's minimum troop strength (an M4m stub).
- */
-function calculateDefendingStrengthHabitat(galaxy: Galaxy, empire: Empire, habitat: Habitat): { strength: number; troopStrength: number } {
-    let result = estimatedDefensiveForceRequired(galaxy, habitat, true, galaxy.difficultyLevel);
-    const troopStrength = 0;
-    if (empire.visibility.checkSystemVisible(habitat.systemIndex)) {
-        result = determineDefendingStrength(galaxy, habitat, habitat.empire!);
-    } else if (empire.visibility.checkSystemExplored(habitat.systemIndex)) {
-        result = determineBaseStrengthAtHabitat(galaxy, habitat, habitat.empire);
-    }
-    return { strength: result, troopStrength };
+function fleetArgs(minimumTroopStrength: number, minimumBoardingStrength = 0): [boolean, number, boolean, boolean, boolean, boolean, number, number] {
+    return [true, 0.1, false, false, false, true, minimumTroopStrength, minimumBoardingStrength];
 }
 
 /** The "is this empire friendly" check shared by 4175 / 4265 (DiplomaticStrategy / relation types, or pirate Protection). */
@@ -218,7 +197,7 @@ export function pirateTaskFleetsCore(galaxy: Galaxy, empire: Empire): void {
                     let overallStrength = (target as { firepowerRaw?: number }).firepowerRaw ?? 0;
                     const targetIsBuiltObject = !('population' in target);
                     if (targetIsBuiltObject) overallStrength = calculateOverallStrengthFactor(target as BuiltObject);
-                    const shipGroup3 = findNearestAvailableFleet(galaxy, empire, target.xpos, target.ypos, BuiltObjectMissionPriority.Normal, overallStrength, FleetPosture.Attack, fleetArgs(0));
+                    const shipGroup3 = findNearestAvailableFleet(galaxy, empire, target.xpos, target.ypos, BuiltObjectMissionPriority.Normal, overallStrength, FleetPosture.Attack, ...fleetArgs(0));
                     if (shipGroup3 !== null && shipGroup3.leadShip !== null) {
                         let missionType2 = BuiltObjectMissionType.Attack;
                         if (targetIsBuiltObject) missionType2 = determineDestroyOrCaptureTargetForFleet(galaxy, empire, shipGroup3, target as BuiltObject);
@@ -231,8 +210,8 @@ export function pirateTaskFleetsCore(galaxy: Galaxy, empire: Empire): void {
                 case EmpireActivityType.Defend: {
                     const shipGroupList = shipGroupListResolveFleetsWithWaitTarget(shipGroups, target);
                     if (shipGroupList.length > 0) break;
-                    let shipGroup2 = findNearestAvailableFleet(galaxy, empire, target.xpos, target.ypos, BuiltObjectMissionPriority.Normal, 1, FleetPosture.Defend, fleetArgs(0));
-                    if (shipGroup2 === null) shipGroup2 = findNearestAvailableFleet(galaxy, empire, target.xpos, target.ypos, BuiltObjectMissionPriority.Normal, 1, FleetPosture.Attack, fleetArgs(0));
+                    let shipGroup2 = findNearestAvailableFleet(galaxy, empire, target.xpos, target.ypos, BuiltObjectMissionPriority.Normal, 1, FleetPosture.Defend, ...fleetArgs(0));
+                    if (shipGroup2 === null) shipGroup2 = findNearestAvailableFleet(galaxy, empire, target.xpos, target.ypos, BuiltObjectMissionPriority.Normal, 1, FleetPosture.Attack, ...fleetArgs(0));
                     if (shipGroup2 !== null && shipGroup2.leadShip !== null) {
                         const missionType = BuiltObjectMissionType.MoveAndWait;
                         if (shipGroup2.leadShip.isAutoControlled && empire.controlMilitaryFleets) {
@@ -263,7 +242,7 @@ export function pirateTaskFleetsCore(galaxy: Galaxy, empire: Empire): void {
                 if (pirateRelation.type === PirateRelationType.Protection) flag = false;
             }
             if (!flag) continue;
-            const shipGroup4 = findNearestAvailableFleet(galaxy, empire, habitat.xpos, habitat.ypos, BuiltObjectMissionPriority.Normal, 0, FleetPosture.Attack, fleetArgs(troopLevelRequired(galaxy, habitat, galaxy.difficultyLevel) * 100));
+            const shipGroup4 = findNearestAvailableFleet(galaxy, empire, habitat.xpos, habitat.ypos, BuiltObjectMissionPriority.Normal, 0, FleetPosture.Attack, ...fleetArgs(troopLevelRequired(galaxy, habitat, galaxy.difficultyLevel) * 100));
             if (shipGroup4 !== null && (shipGroup4.leadShip!.isAutoControlled || empire.controlMilitaryAttacks === AutomationLevel.PartiallyAutomated)) {
                 const taskDescription = habitat.empire !== galaxy.independentEmpire ? automationMessage('Automation Attack Enemy', habitat.name) : automationMessage('Automation Invade Independent', habitat.name);
                 if (checkTaskAuthorized(galaxy, empire, empire.controlMilitaryAttacks, refusalCount, taskDescription, habitat, AdvisorMessageType.EnemyAttack, null, shipGroup4, null)) {
@@ -292,8 +271,8 @@ export function pirateTaskFleetsCore(galaxy: Galaxy, empire: Empire): void {
             if (habitatPrioritization == null || habitatPrioritization.habitat === null) continue;
             const builtObject2 = determineMiningStationAtHabitat(habitatPrioritization.habitat) as BuiltObject | null;
             if (builtObject2 == null) continue;
-            const overallStrength2 = calculateDefendingStrengthBuiltObject(galaxy, empire, builtObject2);
-            const shipGroup5 = findNearestAvailableFleet(galaxy, empire, builtObject2.xpos, builtObject2.ypos, BuiltObjectMissionPriority.Normal, overallStrength2, FleetPosture.Attack, fleetArgs(0));
+            const overallStrength2 = calculateDefendingStrength(galaxy, empire, builtObject2).strength;
+            const shipGroup5 = findNearestAvailableFleet(galaxy, empire, builtObject2.xpos, builtObject2.ypos, BuiltObjectMissionPriority.Normal, overallStrength2, FleetPosture.Attack, ...fleetArgs(0));
             if (shipGroup5 === null || !shipGroupCheckFleetTargetWithinFuelRangeAndRefuel(galaxy, shipGroup5, builtObject2.xpos, builtObject2.ypos, 0.1) || (!shipGroup5.leadShip!.isAutoControlled && empire.controlMilitaryAttacks !== AutomationLevel.PartiallyAutomated)) continue;
             const firstByTargetAndType = empire.pirateMissions.getFirstByTargetAndType(builtObject2, EmpireActivityType.Defend);
             if (firstByTargetAndType === null) {
@@ -311,10 +290,10 @@ export function pirateTaskFleetsCore(galaxy: Galaxy, empire: Empire): void {
             const habitatPrioritization2 = habitatPrioritizationList2[m];
             if (habitatPrioritization2 == null || habitatPrioritization2.habitat === null) continue;
             const h2 = habitatPrioritization2.habitat;
-            const ds = calculateDefendingStrengthHabitat(galaxy, empire, h2);
+            const ds = calculateDefendingStrength(galaxy, empire, h2);
             const overallStrength3 = ds.strength;
             const troopStrength = ds.troopStrength;
-            const shipGroup6 = findNearestAvailableFleet(galaxy, empire, h2.xpos, h2.ypos, BuiltObjectMissionPriority.Normal, overallStrength3, FleetPosture.Attack, fleetArgs(0, Math.trunc(troopStrength * 0.5)));
+            const shipGroup6 = findNearestAvailableFleet(galaxy, empire, h2.xpos, h2.ypos, BuiltObjectMissionPriority.Normal, overallStrength3, FleetPosture.Attack, ...fleetArgs(0, Math.trunc(troopStrength * 0.5)));
             if (shipGroup6 === null || !shipGroupCheckFleetTargetWithinFuelRangeAndRefuel(galaxy, shipGroup6, h2.xpos, h2.ypos, 0.1) || (!shipGroup6.leadShip!.isAutoControlled && empire.controlMilitaryAttacks !== AutomationLevel.PartiallyAutomated)) continue;
             const firstByTargetAndType2 = empire.pirateMissions.getFirstByTargetAndType(h2, EmpireActivityType.Defend);
             if (firstByTargetAndType2 === null) {
@@ -333,8 +312,8 @@ export function pirateTaskFleetsCore(galaxy: Galaxy, empire: Empire): void {
         if (other.pirateEmpireBaseHabitat !== null) builtObject3 = findNearestKnownBaseForPirateAttackOwn(galaxy, empire, other.pirateEmpireBaseHabitat.xpos, other.pirateEmpireBaseHabitat.ypos);
         else if (other.capital !== null) builtObject3 = findNearestKnownBaseForPirateAttackOwn(galaxy, empire, other.capital.xpos, other.capital.ypos);
         if (builtObject3 !== null && !builtObject3.hasBeenDestroyed) {
-            const overallStrength4 = calculateDefendingStrengthBuiltObject(galaxy, empire, builtObject3);
-            const shipGroup7 = findNearestAvailableFleet(galaxy, empire, builtObject3.xpos, builtObject3.ypos, BuiltObjectMissionPriority.Normal, overallStrength4, FleetPosture.Attack, fleetArgs(0));
+            const overallStrength4 = calculateDefendingStrength(galaxy, empire, builtObject3).strength;
+            const shipGroup7 = findNearestAvailableFleet(galaxy, empire, builtObject3.xpos, builtObject3.ypos, BuiltObjectMissionPriority.Normal, overallStrength4, FleetPosture.Attack, ...fleetArgs(0));
             if (shipGroup7 !== null && shipGroup7.leadShip !== null) {
                 const missionType3 = determineDestroyOrCaptureTargetForFleet(galaxy, empire, shipGroup7, builtObject3);
                 if ((shipGroup7.leadShip.isAutoControlled || empire.controlMilitaryAttacks === AutomationLevel.PartiallyAutomated) && checkTaskAuthorized(galaxy, empire, empire.controlMilitaryAttacks, refusalCount, automationMessage('Automation Pirates Attack Pirates', builtObject3.name), builtObject3, AdvisorMessageType.EnemyAttack, null, shipGroup7, null)) {

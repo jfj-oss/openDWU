@@ -168,4 +168,5 @@ describe('taxes (ReviewTaxes at game start)', () => {
 // (re-pinned M4s1: ReviewPirateRelations draws Rnd.NextDouble in each game-start Empire.DoTasks long block.)
 // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
 // (re-pinned M4u: game-start character reviews / DoRaceEvent Rnd change the empires and their capitals.)
-const PINNED_TAX_RATES: number[] = [0.3, 0.29, 0.22, 0.31].map(Math.fround);
+// (re-pinned M4m: the game-start Empire.DoTasks runs the military AI — IdentifyMilitaryObjectives Next(0, EmpireEvaluations.Count), CheckTemptingTargets Next(0, Empires.Count), DetermineRandomAttacks Next(0, n) — which shifts the Rnd stream.)
+const PINNED_TAX_RATES: number[] = [0.3, 0.28, 0.22, 0.32].map(Math.fround);
