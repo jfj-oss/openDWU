@@ -37,7 +37,7 @@ import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import { AutomationLevel, empireGovernmentAttributes } from '../empire';
 import { BuiltObject } from '../builtObject';
-import { Habitat, IndustryType } from '../types';
+import { Habitat, HabitatType, IndustryType } from '../types';
 import type { Design } from '../design';
 import { SHIP_MARKUP_FACTOR, SHIP_MARKUP_FACTOR_PIRATES, galaxyComponentCurrentPrices } from '../design';
 import { BuiltObjectSubRole } from '../builtObjectTypes';
@@ -2303,4 +2303,247 @@ export function buildNewShips(galaxy: Galaxy, empire: Empire, designs: (Design |
     placeGroupedOrders(galaxy, empire, bases);
     placeGroupedOrders(galaxy, empire, colonies);
     return { ok: true, built };
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Empire.6.cs 1991-2180 PurchaseNewBuiltObject — buy one design at a given yard (the player's Build orders,
+// Main.Part7.cs 379 / 1180, Main.Part4.cs 2867 method_539, ConstructionYardPurchaser). Player input only here: the
+// tick-path caller (BuiltObject.2.cs 1110, cmdTroops Colonize ColonyActionForNewBuildDesign) is still a TODO(port).
+// ---------------------------------------------------------------------------------------------------------------
+
+/**
+ * Galaxy.6.cs 2737 CalculateAngleFromCoords. Ported here as a free function because Galaxy's private copy
+ * (galaxy.ts calculateAngleFromCoords) negates the (x >= centerX, y < centerY) branch, which the C# does not.
+ */
+function calculateAngleFromCoords(x: number, y: number, centerX: number, centerY: number, distance: number): number {
+    const num2 = Math.PI / 2.0;
+    const num3 = num2 * -1.0;
+    if (x < centerX) {
+        if (y < centerY) {
+            return num3 - (num2 + Math.asin((y - centerY) / distance));
+        }
+        return num2 + (num2 - Math.asin((y - centerY) / distance));
+    }
+    if (y < centerY) {
+        return Math.asin((y - centerY) / distance);
+    }
+    return Math.asin((y - centerY) / distance);
+}
+
+/** Empire.7.cs 1565 ColonizableHabitatTypesForEmpireTechOnly(empire). No Rnd. */
+export function colonizableHabitatTypesForEmpireTechOnly(empire: Empire): HabitatType[] {
+    const list: HabitatType[] = [];
+    if (empire.canColonizeContinental) list.push(HabitatType.Continental);
+    if (empire.canColonizeMarshySwamp) list.push(HabitatType.MarshySwamp);
+    if (empire.canColonizeOcean) list.push(HabitatType.Ocean);
+    if (empire.canColonizeDesert) list.push(HabitatType.Desert);
+    if (empire.canColonizeIce) list.push(HabitatType.Ice);
+    if (empire.canColonizeVolcanic) list.push(HabitatType.Volcanic);
+    return list;
+}
+
+function isSpacePortSubRole(subRole: BuiltObjectSubRole): boolean {
+    return subRole === BuiltObjectSubRole.SmallSpacePort || subRole === BuiltObjectSubRole.MediumSpacePort || subRole === BuiltObjectSubRole.LargeSpacePort;
+}
+
+/** Empire.6.cs 2070-2083 / 2155-2168: pay for the purchase (pirate empires and state purchases from StateMoney). */
+function payForPurchase(galaxy: Galaxy, empire: Empire, num: number, isStateOwned: boolean): void {
+    if (empire.pirateEmpireBaseHabitat !== null) {
+        empire.stateMoney -= num;
+        pirateEconomyPerformExpense(galaxy, empire, num, PirateExpenseType.Construction, galaxyStarDate(galaxy));
+    } else if (isStateOwned) {
+        empire.stateMoney -= num;
+        pirateEconomyPerformExpense(galaxy, empire, num, PirateExpenseType.Construction, galaxyStarDate(galaxy));
+    } else {
+        performPrivateTransaction(galaxy, empire, 0.0 - num);
+    }
+}
+
+/**
+ * Empire.6.cs 1991 PurchaseNewBuiltObject(design, Habitat constructionYard, isStateOwned, isAutoControlled) (the
+ * habitat overload passes the yard's own (int)Xpos/(int)Ypos, 1993) and Empire.6.cs 2098 PurchaseNewBuiltObject(design,
+ * BuiltObject constructionYard, isStateOwned, isAutoControlled). Returns the queued BuiltObject, or null when
+ * unaffordable, refused by the yard, or (BuiltObject yard) a space-port design.
+ * Rnd: see purchaseNewBuiltObjectAt / purchaseNewBuiltObjectAtBuiltObject.
+ */
+export function purchaseNewBuiltObject(galaxy: Galaxy, empire: Empire, design: Design, constructionYard: Habitat | BuiltObject, isStateOwned: boolean, isAutoControlled: boolean): BuiltObject | null {
+    if (constructionYard instanceof BuiltObject) {
+        return purchaseNewBuiltObjectAtBuiltObject(galaxy, empire, design, constructionYard, isStateOwned, isAutoControlled);
+    }
+    // Empire.6.cs:1993.
+    return purchaseNewBuiltObjectAt(galaxy, empire, design, constructionYard, Math.trunc(constructionYard.xpos), Math.trunc(constructionYard.ypos), isStateOwned, isAutoControlled);
+}
+
+/**
+ * Empire.6.cs 1996 PurchaseNewBuiltObject(design, Habitat constructionYard, int x, int y, isStateOwned, isAutoControlled).
+ * (x, y) is the galaxy point the player chose (the yard's own position = "no point": the base goes at a random spot).
+ * Rnd, C# order, only when affordable: GenerateBuiltObjectName(design, yard) (space ports: none — "<yard> Space Port");
+ * then, when the yard accepts it and it is a base sub-role (space port / research station / monitoring station /
+ * defensive / generic base): with (x, y) within 3 of the yard SelectRelativeHabitatSurfacePoint (2 draws) then
+ * SelectRelativePoint (space ports, 2 draws) or DetermineOrbitalBaseLocation (other bases); then SelectRandomHeading
+ * (1 draw). AddBuiltObjectToGalaxy(offsetLocationFromParent: false) draws nothing.
+ */
+export function purchaseNewBuiltObjectAt(galaxy: Galaxy, empire: Empire, design: Design, constructionYard: Habitat, x: number, y: number, isStateOwned: boolean, isAutoControlled: boolean): BuiltObject | null {
+    // Empire.6.cs:1998-2000.
+    let builtObject: BuiltObject | null = null;
+    let resourcesToOrder = new CargoList();
+    const num = design.calculateCurrentPurchasePrice(galaxy);
+    // Empire.6.cs:2001-2012.
+    let flag = false;
+    if (isStateOwned) {
+        if (num <= empire.stateMoney) flag = true;
+    } else if (num <= getPrivateFunds(empire)) {
+        flag = true;
+    }
+    if (flag) {
+        // Empire.6.cs:2015-2018 (the ternary at 2016).
+        design.buildCount++;
+        builtObject = !isSpacePortSubRole(design.subRole)
+            ? new BuiltObject(design, galaxy.generateBuiltObjectName(design, constructionYard), galaxy)
+            : new BuiltObject(design, constructionYard.name + ' ' + getText('Space Port'), galaxy);
+        builtObject.isAutoControlled = isAutoControlled;
+        builtObject.purchasePrice = num;
+        // Empire.6.cs:2019.
+        const q = queueOf(constructionYard);
+        if (q !== null && q.addBuiltObjectToConstruct(builtObject)) {
+            let x2 = 0.0;
+            let y2 = 0.0;
+            // Empire.6.cs:2023.
+            const sr = builtObject.subRole;
+            if (
+                isSpacePortSubRole(sr) ||
+                sr === BuiltObjectSubRole.EnergyResearchStation ||
+                sr === BuiltObjectSubRole.WeaponsResearchStation ||
+                sr === BuiltObjectSubRole.HighTechResearchStation ||
+                sr === BuiltObjectSubRole.MonitoringStation ||
+                sr === BuiltObjectSubRole.DefensiveBase ||
+                sr === BuiltObjectSubRole.GenericBase
+            ) {
+                builtObject.parentHabitat = constructionYard;
+                // Empire.6.cs:2026-2043: no point chosen — a random spot at the yard.
+                if (Math.abs(x - constructionYard.xpos) < 3.0 && Math.abs(y - constructionYard.ypos) < 3.0) {
+                    let p = galaxy.selectRelativeHabitatSurfacePoint(constructionYard);
+                    x2 = p.x;
+                    y2 = p.y;
+                    switch (builtObject.subRole) {
+                        case BuiltObjectSubRole.SmallSpacePort:
+                        case BuiltObjectSubRole.MediumSpacePort:
+                        case BuiltObjectSubRole.LargeSpacePort: {
+                            // Habitat.Diameter is a short: integer division.
+                            const range = Math.trunc(constructionYard.diameter / 6) + 15.0;
+                            p = galaxy.selectRelativePoint(range);
+                            x2 = p.x;
+                            y2 = p.y;
+                            break;
+                        }
+                        default:
+                            p = determineOrbitalBaseLocation(galaxy, constructionYard);
+                            x2 = p.x;
+                            y2 = p.y;
+                            break;
+                    }
+                } else {
+                    // Empire.6.cs:2044-2059: the chosen point, pulled in to the yard's range.
+                    x2 = x - constructionYard.xpos;
+                    y2 = y - constructionYard.ypos;
+                    let num2 = Math.trunc(constructionYard.diameter / 2) + 250.0;
+                    if (isSpacePortSubRole(builtObject.subRole)) {
+                        num2 = Math.trunc(constructionYard.diameter / 8) + 10.0;
+                    }
+                    const num3 = galaxy.calculateDistance(x2, y2, 0.0, 0.0);
+                    if (num3 > num2) {
+                        const num4 = calculateAngleFromCoords(x2, y2, 0.0, 0.0, num3);
+                        x2 = Math.cos(num4) * num2;
+                        y2 = Math.sin(num4) * num2;
+                    }
+                }
+                // Empire.6.cs:2061-2065.
+                builtObject.parentOffsetX = x2;
+                builtObject.parentOffsetY = y2;
+                builtObject.heading = galaxy.selectRandomHeading();
+                builtObject.targetHeading = builtObject.heading;
+                builtObject.nearestSystemStar = galaxy.determineHabitatSystemStar(constructionYard);
+            }
+            // Empire.6.cs:2067-2069.
+            empire.addBuiltObjectToGalaxy(builtObject, constructionYard, false, isStateOwned, Math.trunc(x2), Math.trunc(y2));
+            builtObject.builtAt = constructionYard;
+            resourcesToOrder = procureConstructionComponentsAtColony(galaxy, empire, builtObject, constructionYard);
+            // Empire.6.cs:2070-2083.
+            payForPurchase(galaxy, empire, num, isStateOwned);
+        } else {
+            // Empire.6.cs:2085-2089 (the yard refused it).
+            design.buildCount--;
+            builtObject = null;
+        }
+    }
+    // Empire.6.cs:2091-2094.
+    createOrdersFor(galaxy, empire, constructionYard, resourcesToOrder, OrderType.ConstructionShortage);
+    return builtObject;
+}
+
+/**
+ * Empire.6.cs 2098 PurchaseNewBuiltObject(design, BuiltObject constructionYard, isStateOwned, isAutoControlled).
+ * Rnd, C# order, only when affordable: (mining / gas mining station: none — "<yard> Mining Station") else
+ * GenerateBuiltObjectName(design) and, when the yard has a ParentHabitat, GenerateBuiltObjectName(design, parent) again;
+ * then, when the yard accepts a mining station, SelectRelativeHabitatSurfacePoint (2) + SelectRandomHeading (1).
+ * AddBuiltObjectToGalaxy with a BuiltObject parent draws nothing.
+ */
+export function purchaseNewBuiltObjectAtBuiltObject(galaxy: Galaxy, empire: Empire, design: Design, constructionYard: BuiltObject, isStateOwned: boolean, isAutoControlled: boolean): BuiltObject | null {
+    // Empire.6.cs:2100-2105.
+    let builtObject: BuiltObject | null = null;
+    let resourcesToOrder = new CargoList();
+    if (isSpacePortSubRole(design.subRole)) {
+        return null;
+    }
+    const num = design.calculateCurrentPurchasePrice(galaxy);
+    // Empire.6.cs:2107-2118.
+    let flag = false;
+    if (isStateOwned) {
+        if (num <= empire.stateMoney) flag = true;
+    } else if (num <= getPrivateFunds(empire)) {
+        flag = true;
+    }
+    if (flag) {
+        // Empire.6.cs:2121-2139.
+        design.buildCount++;
+        if (design.subRole === BuiltObjectSubRole.MiningStation) {
+            builtObject = new BuiltObject(design, constructionYard.name + ' ' + getText('Mining Station'), galaxy);
+        } else if (design.subRole === BuiltObjectSubRole.GasMiningStation) {
+            builtObject = new BuiltObject(design, constructionYard.name + ' ' + getText('Gas Mining Station'), galaxy);
+        } else {
+            builtObject = new BuiltObject(design, galaxy.generateBuiltObjectName(design), galaxy);
+            if (constructionYard.parentHabitat !== null) {
+                builtObject.name = galaxy.generateBuiltObjectName(design, constructionYard.parentHabitat);
+            }
+        }
+        builtObject.isAutoControlled = isAutoControlled;
+        builtObject.purchasePrice = num;
+        // Empire.6.cs:2140.
+        const q = queueOf(constructionYard);
+        if (q !== null && q.addBuiltObjectToConstruct(builtObject)) {
+            // Empire.6.cs:2142-2151 (C# dereferences constructionYard.ParentHabitat without a null check.)
+            if (builtObject.subRole === BuiltObjectSubRole.MiningStation || builtObject.subRole === BuiltObjectSubRole.GasMiningStation) {
+                builtObject.parentHabitat = constructionYard.parentHabitat;
+                const p = galaxy.selectRelativeHabitatSurfacePoint(constructionYard.parentHabitat);
+                builtObject.parentOffsetX = p.x;
+                builtObject.parentOffsetY = p.y;
+                builtObject.heading = galaxy.selectRandomHeading();
+                builtObject.targetHeading = builtObject.heading;
+                builtObject.nearestSystemStar = galaxy.determineHabitatSystemStar(constructionYard.parentHabitat!);
+            }
+            // Empire.6.cs:2152-2154.
+            empire.addBuiltObjectToGalaxy(builtObject, constructionYard, false, isStateOwned);
+            builtObject.builtAt = constructionYard;
+            resourcesToOrder = procureConstructionComponentsAtBuiltObject(galaxy, empire, builtObject, constructionYard, true);
+            // Empire.6.cs:2155-2168.
+            payForPurchase(galaxy, empire, num, isStateOwned);
+        } else {
+            // Empire.6.cs:2170-2174 (the yard refused it).
+            design.buildCount--;
+            builtObject = null;
+        }
+    }
+    // Empire.6.cs:2176-2180.
+    createOrdersFor(galaxy, empire, constructionYard, resourcesToOrder, OrderType.ConstructionShortage);
+    return builtObject;
 }

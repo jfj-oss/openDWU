@@ -10,6 +10,7 @@ import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 import { packager } from '@electron/packager';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -31,6 +32,10 @@ function parseArgs(argv) {
 }
 
 const { platform, arch } = parseArgs(process.argv);
+
+// Package with the Electron that `npm install` put in node_modules (the one
+// `desktop:dev` runs), instead of a hard-coded version that drifts on upgrades.
+const electronVersion = createRequire(import.meta.url)('electron/package.json').version;
 
 // 1. Build the game (dist/).
 console.log('Building game (npm run build)...');
@@ -57,15 +62,21 @@ fs.cpSync(path.join(root, 'dist'), distResDir, { recursive: true });
 
 // 4. Package.
 const outDirs = await packager({
-    dir: 'release/stage',
+    // Absolute paths: packager resolves relative ones against process.cwd(),
+    // which is only the game dir when run through npm.
+    dir: stageDir,
     name: 'dwu',
     platform,
     arch,
-    out: 'release',
+    out: path.join(root, 'release'),
     overwrite: true,
     appVersion: '0.1.0',
-    electronVersion: '44.4.5',
-    extraResource: ['release/dwu-dist'],
+    electronVersion,
+    extraResource: [distResDir],
+    // macOS bundle metadata (ignored on Linux); defaults are com.electron.dwu
+    // and the developer-tools category.
+    appBundleId: 'local.dwureup.dwu',
+    appCategoryType: 'public.app-category.strategy-games',
     asar: true,
 });
 
@@ -76,7 +87,7 @@ let totalBytes = 0;
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
         const p = path.join(dir, entry.name);
         if (entry.isDirectory()) walk(p);
-        else totalBytes += fs.statSync(p).size;
+        else totalBytes += fs.lstatSync(p).size; // lstat: macOS framework symlinks would double-count
     }
 })(outDir);
 console.log(`Packaged: ${outDir} (${(totalBytes / 1024 / 1024).toFixed(1)} MB)`);

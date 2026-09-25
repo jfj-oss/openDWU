@@ -180,7 +180,7 @@ function addSuperPirates(game: Game): Empire {
 // 1800 s with the normal pirate factions (piratePrevalence 1.0). The super-pirate run stops at 600 s: with them the
 // seed-1 game reaches the unported Empire.CompleteTeardown (TODO(port) M4u, events.ts) at ~660 s.
 for (const [label, seconds, superPirates] of [['pirates, 1800 s', 1800, false], ['super pirates, 600 s', 600, true]] as const) {
-    describe(`game save/load: seed 1 with ${label}`, { timeout: 900000 }, () => {
+    describe(`game save/load: seed 1 with ${label}`, { timeout: 2400000 }, () => {
         let game: Game;
         let rt: ReturnType<typeof roundTrip>;
         let superPirate: Empire | null = null;
@@ -189,7 +189,7 @@ for (const [label, seconds, superPirates] of [['pirates, 1800 s', 1800, false], 
             if (superPirates) superPirate = addSuperPirates(game);
             runGameSeconds(game, seconds);
             rt = roundTrip(game);
-        }, 900000);
+        }, 2400000); // 40 min: the 1800 s soak runs at ~1/3 speed while other suites load the machine
 
         it('round trip is byte-identical', () => {
             expect(rt.text2).toBe(rt.text);

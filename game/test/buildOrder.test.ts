@@ -6,7 +6,15 @@ import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
 import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
 import {
     BUILD_ORDER_SUBROLES,
+    ORDER_AMOUNT_MAX,
     buildableDesignsBySubRole,
+    buildOrderPurchaseLists,
+    buildOrderTotals,
+    checkEmpireHasOwnedColonies,
+    clampOrderAmount,
+    orderAmountEnabled,
+    purchaseButtonState,
+    purchaseResultText,
     buildOrderRow,
     buildOrderRows,
     isPrivateBuildSubRole,
@@ -99,5 +107,76 @@ describe('Build Order rows', () => {
         expect(rows).toHaveLength(16);
         expect(rows[0].designText).toBe('(No buildable designs)');
         expect(rows[0].unitCost).toBe(0);
+    });
+});
+
+describe('Build Order purchase (Main.Part2.cs 911-1179)', () => {
+    it('clamps the Order Amount like the NumericUpDown (0..1000, integer)', () => {
+        expect(ORDER_AMOUNT_MAX).toBe(1000);
+        expect(clampOrderAmount('3')).toBe(3);
+        expect(clampOrderAmount('2.7')).toBe(2);
+        expect(clampOrderAmount('-4')).toBe(0);
+        expect(clampOrderAmount('5000')).toBe(1000);
+        expect(clampOrderAmount('')).toBe(0);
+        expect(clampOrderAmount('abc')).toBe(0);
+        expect(clampOrderAmount(7)).toBe(7);
+    });
+    it('rows without a design, and a colony-less pirate\'s resupply / construction rows, are locked', () => {
+        const e = fakeEmpire([design('Guard', S.Escort), design('Builder', S.ConstructionShip)]);
+        expect(orderAmountEnabled(e, buildOrderRow(e, galaxy, S.Escort))).toBe(true);
+        expect(orderAmountEnabled(e, buildOrderRow(e, galaxy, S.Frigate))).toBe(false);
+        expect(orderAmountEnabled(e, buildOrderRow(e, galaxy, S.ConstructionShip))).toBe(true);
+        const colony = { facilities: null } as Record<string, unknown>;
+        const pirate = fakeEmpire([design('Guard', S.Escort), design('Builder', S.ConstructionShip)], { pirateEmpireBaseHabitat: {}, colonies: [colony] });
+        colony.owner = null;
+        const pg = { pirateShipMaintenanceFactor: 1 } as unknown as Galaxy;
+        expect(checkEmpireHasOwnedColonies(pirate)).toBe(false);
+        expect(orderAmountEnabled(pirate, buildOrderRow(pirate, pg, S.ConstructionShip))).toBe(false);
+        expect(orderAmountEnabled(pirate, buildOrderRow(pirate, pg, S.Escort))).toBe(true);
+        colony.owner = pirate;
+        expect(checkEmpireHasOwnedColonies(pirate)).toBe(true);
+        expect(orderAmountEnabled(pirate, buildOrderRow(pirate, pg, S.ConstructionShip))).toBe(true);
+    });
+    it('method_643 lists: rows with a design and amount > 0, in Escort … PassengerShip order', () => {
+        const e = fakeEmpire([design('Guard', S.Escort), design('Hauler', S.SmallFreighter), design('Builder', S.ConstructionShip)]);
+        const rows = buildOrderRows(e, galaxy);
+        const amounts = rows.map(() => 0);
+        const idx = (s: BuiltObjectSubRole) => BUILD_ORDER_SUBROLES.indexOf(s);
+        amounts[idx(S.SmallFreighter)] = 4;
+        amounts[idx(S.Escort)] = 2;
+        amounts[idx(S.Frigate)] = 9; // no design: dropped
+        amounts[idx(S.ConstructionShip)] = 0; // zero: dropped
+        const lists = buildOrderPurchaseLists(rows, amounts);
+        expect(lists.designs.map((d) => d.name)).toEqual(['Guard', 'Hauler']);
+        expect(lists.amounts).toEqual([2, 4]);
+        // Rows out of panel order still come back in C# order.
+        const rev = buildOrderPurchaseLists([...rows].reverse(), [...amounts].reverse());
+        expect(rev.designs.map((d) => d.name)).toEqual(['Guard', 'Hauler']);
+        expect(buildOrderPurchaseLists(rows, rows.map(() => 0))).toEqual({ designs: [], amounts: [] });
+    });
+    it('method_632 totals: row cost / maintenance and the panel totals (private rows add no maintenance)', () => {
+        const e = fakeEmpire([design('Guard', S.Escort), design('Hauler', S.SmallFreighter)]);
+        const rows = buildOrderRows(e, galaxy);
+        const amounts = rows.map(() => 0);
+        amounts[BUILD_ORDER_SUBROLES.indexOf(S.Escort)] = 2;
+        amounts[BUILD_ORDER_SUBROLES.indexOf(S.SmallFreighter)] = 3;
+        const t = buildOrderTotals(galaxy, e, rows, amounts);
+        expect(t.rowCost[0]).toBe(2000);
+        expect(t.rowMaintenance[0]).toBe(602);
+        expect(t.rowCost[BUILD_ORDER_SUBROLES.indexOf(S.SmallFreighter)]).toBe(3000);
+        expect(t.rowMaintenance[BUILD_ORDER_SUBROLES.indexOf(S.SmallFreighter)]).toBe(0);
+        expect(t.total).toBe(5000);
+        expect(t.maintenance).toBe(602);
+        expect(buildOrderTotals(galaxy, e, rows, rows.map(() => 0)).total).toBe(0);
+    });
+    it('method_631 button: enabled "Purchase for X credits" only with a positive total', () => {
+        expect(purchaseButtonState(0)).toEqual({ enabled: false, label: 'Purchase' });
+        expect(purchaseButtonState(12345.6)).toEqual({ enabled: true, label: 'Purchase for 12,346 credits' });
+    });
+    it('result text: the cannot-afford message box, or the count queued', () => {
+        expect(purchaseResultText({ ok: true, built: [{}, {}, {}] as never[] })).toBe('Build order placed: 3 ships queued for construction');
+        expect(purchaseResultText({ ok: true, built: [{}] as never[] })).toBe('Build order placed: 1 ship queued for construction');
+        // No text table loaded in unit tests: resolveGameText returns the encoded text; newlines collapse to spaces.
+        expect(purchaseResultText({ ok: false, title: 'T', message: 'a\n\nb', built: [] })).toBe('T: a b');
     });
 });
