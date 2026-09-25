@@ -26,6 +26,7 @@ import { closeColoniesList } from './ui/screens/coloniesList';
 import { closeShipsAndBasesList } from './ui/screens/shipsAndBasesList';
 import { closeEmpireSummary, setEmpireSummarySource } from './ui/screens/empireSummary';
 import { closeMessageHistory } from './ui/screens/messageHistory';
+import { closeFleetsList } from './ui/screens/fleetsList'; // [15c]
 import { createEmpireMessageFeed } from './ui/empireMessageFeed';
 import { createMainMenu } from './ui/screens/mainMenu';
 import { openOptionsModal } from './ui/screens/mainMenu';
@@ -473,6 +474,7 @@ export async function startGameView(game: Game, zoomOverride?: number, extraBoot
         closeShipsAndBasesList();
         closeEmpireSummary();
         closeMessageHistory();
+        closeFleetsList(); // [15c]
         setEmpireSummarySource(null);
         // The ticker buffer is module-level; the next game starts fresh.
         clearHudMessages();

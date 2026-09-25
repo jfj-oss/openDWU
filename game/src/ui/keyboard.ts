@@ -16,6 +16,7 @@ import {
 import { helpTopicKeyForHabitat, toggleGalactopedia } from './screens/galactopedia';
 import { getEmpireSummarySource, toggleEmpireSummary } from './screens/empireSummary';
 import { toggleColoniesList } from './screens/coloniesList';
+import { toggleFleetsList } from './screens/fleetsList'; import { selectShipGroup } from './hud'; // [15c]
 import { toggleShipsAndBasesList } from './screens/shipsAndBasesList';
 import { toggleMessageHistory } from './screens/messageHistory';
 import { showToast } from './toast';
@@ -255,6 +256,13 @@ export function dispatchKey(
         case 'shipsAndBasesScreen':
             handlers.shipsAndBasesScreen?.();
             break;
+        // [15c] F12: Fleets list (task 15c); a row selects + zooms to the fleet.
+        case 'fleetsScreen': {
+            const src = getEmpireSummarySource();
+            if (src) toggleFleetsList({ empire: src.empire, onSelect: (sg) => selectShipGroup(sg, true) });
+            break;
+        }
+        // [/15c]
         case 'gameMenu':
             handlers.gameMenu?.();
             break;
@@ -439,6 +447,7 @@ export const IMPLEMENTED_KEY_ACTIONS: ReadonlySet<string> = new Set([
     'zoomSystemLevel', 'zoomSectorLevel', 'zoomGalaxyLevel', 'zoomPlanetLevel',
     'scrollUp', 'scrollDown', 'scrollLeft', 'scrollRight',
     'galaxyMap', 'messageHistoryScreen', 'empireSummaryScreen', 'coloniesScreen', 'shipsAndBasesScreen',
+    'fleetsScreen', // [15c]
     'gameMenu', 'galactopediaHelp',
     'cycleColonies', 'cycleColoniesBackward', 'cycleColoniesMoveView',
 ]);

@@ -1,0 +1,123 @@
+/* Fleets list panel (task 15c), copied from the Ships and Bases list. Styling follows the Empires list /
+   tutorial-window dark-panel tokens. */
+
+.fleets-list-wrap {
+    position: fixed;
+    inset: 0;
+    z-index: 1500; /* above the HUD, like the in-game tutorial window */
+    pointer-events: none;
+    font-family: 'Forgotten Futurist', sans-serif;
+    color: #e6e6e6;
+}
+
+.fleets-list-window {
+    position: absolute;
+    top: 64px;
+    left: 16px;
+    width: 760px;
+    max-width: calc(100vw - 16px);
+    max-height: calc(100vh - 96px);
+    pointer-events: auto;
+    background: rgba(14, 16, 20, 0.94);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.fleets-list-titlebar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: rgba(10, 11, 15, 0.9);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.fleets-list-heading {
+    font-size: 13px;
+    color: #e8d24a;
+}
+
+.fleets-list-close {
+    background: transparent;
+    border: none;
+    color: #ccc;
+    font-size: 15px;
+    cursor: pointer;
+    padding: 2px 6px;
+}
+.fleets-list-close:hover {
+    color: #fff;
+}
+
+.fleets-list-body {
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    overflow-y: auto;
+}
+
+/* Column headers, same grid as the rows (Name | Ships | Power | Troops | Home base | Mission | System). */
+.fleets-list-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 3.5em 4.5em 4em 8em 7em 7em;
+    align-items: center;
+    gap: 8px;
+    padding: 0 8px 2px;
+}
+
+.fleets-list-header-cell {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #777;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.fleets-list-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 3.5em 4.5em 4em 8em 7em 7em;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 4px;
+    cursor: pointer;
+}
+.fleets-list-row:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.fleets-list-name {
+    font-size: 13px;
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.fleets-list-cell {
+    font-size: 12px;
+    color: #bbb;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.fleets-list-empty {
+    padding: 8px;
+    font-size: 12px;
+    color: #777;
+}
+.fleets-list-number {
+    text-align: right;
+}
