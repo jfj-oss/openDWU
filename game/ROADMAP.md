@@ -71,8 +71,30 @@ Further slices exist on the cloud-lane-C2 branch but haven't been merged into th
 - **C2f** ship designs at game start: components, `DesignSpecification`/policy parsing, `PlaceComponentsOnDesign`, design generation wired into the one ported fragment of `Empire.DoTasks`. Known gaps: `Design.ReDefine` (speed/firepower/weapons) unported, optimized designs not loaded, planet-destroyer design generation throws (unreachable today).
 - **C2g** play-as-pirate player start, player policy overrides (enslavement etc.) for both normal and pirate starts.
 
-## M3–M10
-Not started as dedicated milestones (design/component/policy data models from the unmerged C2f work above will feed M3 once merged). Order per the spec: M3 Ships & space ops → M4 Combat → M5 Research → M6 Diplomacy & espionage → M7 AI & automation → M8 Content & storylines → M9 UI completeness → M10 Persistence & modding (11a save/load above is a down payment on M10). Each will be split into pre-mapped small tasks (source file + line ranges) before it starts, the same way M1/M2 were.
+## M3 — Ships & space ops, M4 — the running simulation ✅ (2026-09-25)
+Cloud lane C ported the M3 game start (designs, starting ships/bases, pirates, characters, taxes). The whole running
+simulation (lane C's M4 plan: 21 packages M4a–u/s1/s2, then the deferred z1–z6) was ported locally by parallel Opus agents
+and merged: missions & movement, docking/refuel, orders/contracts/freight, industry, construction & shipyards, empire
+construction/facilities AI, colony growth/treasury, research progress, fleets & military AI, threats/weapons/damage,
+fighters, invasions/boarding/troops, diplomacy runtime, pirates (marketplace + faction AI), exploration/territory,
+events/characters/creatures, espionage, story & scripted events, victory/achievements, super pirates/planet destroyers,
+empire teardown/splits. Determinism: one seeded `galaxy.rnd`, fixed-order scheduler, 600 s digest pinned
+(`test/tickDeterminism.test.ts`); save/load round-trips the full runtime graph. `src/simLoop.ts` drives the scheduler
+from the render loop, so the browser game runs it live. Perf tooling: `scripts/sim-run.mjs` (soak 1,400 stars /
+20 empires / 30 game-min without exceptions). See `tasks/M4-plan.md`, `tasks/M4-deferred-plan.md`.
+
+Known gaps: espionage/story/victory are ported but only lightly exercised; `tasks/M4-deferred-plan.md` §follow-ups
+(Origins ruin race mutation, territory at-war branch, ticker message templates).
+
+## M9 — UI (in progress)
+Streamlined HUD + screens over the live sim: Empires list, Colonies (F2), Empire Summary (F6), Ships & Bases (F11),
+Message History (H), Galaxy Map (G), Diplomacy (F5), Research (F7), Fleets (F12), Victory / Comparison (V), save/load,
+options, tutorials, Galactopedia. Remaining: expansion planner, ship design screen, construction yards, policy screen,
+game editor, full tutorials wiring, message popups/diplomatic conversation dialog.
+
+## M5–M8, M10
+Research/diplomacy/AI/content runtime landed inside M4; remaining per the spec: content completeness checks (M8),
+persistence extras (autosave, stats XML output, themes/modding — M10), and the cross-cutting perf/stability gates.
 
 ## Platforms
 Native apps for **macOS arm64** and **Linux x86_64** (Electron shell, tasks 03/03b — done). The game reads art/data from the user's DW:U install folder at runtime; nothing from the original game is committed.
