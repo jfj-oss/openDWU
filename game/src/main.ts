@@ -30,6 +30,7 @@ import { closeResearchScreen } from './ui/screens/researchScreen'; // [15b]
 import { closeEmpireSummary, setEmpireSummarySource } from './ui/screens/empireSummary';
 import { closeMessageHistory } from './ui/screens/messageHistory';
 import { closeFleetsList } from './ui/screens/fleetsList'; // [15c]
+import { closeBuildOrder } from './ui/screens/buildOrder'; import { closeConstructionYards } from './ui/screens/constructionYards'; // [16c]
 import { createEmpireMessageFeed } from './ui/empireMessageFeed';
 import { createMainMenu } from './ui/screens/mainMenu';
 import { openOptionsModal } from './ui/screens/mainMenu';
@@ -500,6 +501,7 @@ export async function startGameView(
         closeEmpireSummary();
         closeMessageHistory();
         closeFleetsList(); // [15c]
+        closeBuildOrder(); closeConstructionYards(); // [16c]
         setEmpireSummarySource(null);
         // The ticker buffer is module-level; the next game starts fresh.
         clearHudMessages();
