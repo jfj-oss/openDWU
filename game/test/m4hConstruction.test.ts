@@ -160,6 +160,9 @@ describe('M4h milestone on the headless harness', () => {
     it('a construction ship queued at a colony is built from component cargo and joins the galaxy', () => {
         const g = createTickGame(gameData).galaxy;
         const e = g.empires[0];
+        // M4f DirectPrivateConstruction queues private ships at the capital's space port (shared colony cargo) in the
+        // Empire long block and would consume the stocked components first; this test exercises the yard alone.
+        e.initiateConstruction = false;
         const colony = capitalOf(e);
         const design = findNewestCanBuild(e.designs, BuiltObjectSubRole.ConstructionShip, e, colony)!;
         expect(design).not.toBeNull();
@@ -186,6 +189,7 @@ describe('M4h milestone on the headless harness', () => {
     it('a warship queued at a space port is built (yard ticked as IndustrialProcessing would) and parks', () => {
         const g = createTickGame(gameData).galaxy;
         const e = g.empires[0];
+        e.initiateConstruction = false; // see above
         const port = e.spacePorts[0];
         const design = findNewestCanBuild(e.designs, BuiltObjectSubRole.Escort, e)!;
         const bo = new BuiltObject(design, 'Test Escort', g);

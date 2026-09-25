@@ -2581,7 +2581,7 @@ export function findShortestConstructionWaitQueue(galaxy: Galaxy, bol: readonly 
             if (queue !== null && queue.constructionYards !== null) num2 = queue.constructionYards.length;
             if (!includeVerySmallYards && builtObject2.extractionGas > 0 && num2 <= 1) flag1 = false;
             // Empire.CanBuildBuiltObject(ship) (forceStructure.ts canBuildBuiltObject takes the design).
-            if (flag1 && canBuildBuiltObject(builtObject2.empire!, ship.design) && !builtObject2.name.startsWith('--') && Math.trunc((queue!.constructionWaitQueue!.length + (num2 - 1)) / num2) <= maximumQueueDepth) {
+            if (flag1 && canBuildBuiltObject(builtObject2.empire!, ship.design) && !builtObject2.name.startsWith('--') && Math.trunc(((queue?.constructionWaitQueue?.length ?? 0) + (num2 - 1)) / num2) <= maximumQueueDepth) {
                 let num3 = Number.MAX_VALUE;
                 if (queue !== null) num3 = queue.estimateCurrentWaitQueueTime();
                 if (num3 < shortestWaitQueueTime) {

@@ -44,6 +44,11 @@ beforeAll(async () => {
     galaxy = createTickGame(gameData).galaxy;
     empire = galaxy.empires[1];
     ship = empire.builtObjects.find((b) => b.role !== BuiltObjectRole.Base && b.empire === empire && b.warpSpeed > 0)!;
+    // M4f: Start.2.cs 1373 AssignMissionsToBuiltObjectList gives the ship a game-start mission (parent cleared); these
+    // tests want a fresh, parked ship.
+    ship.mission = null;
+    ship.revertMission = null;
+    ship.parentHabitat = empire.capital;
     planet = galaxy.habitats.find((h) => h.category === HabitatCategoryType.Planet)!;
 }, 180000);
 
@@ -424,6 +429,9 @@ describe('ExecuteCommands (BuiltObject.2.cs 399-4579)', () => {
 
     it('frame: destroyed command target completes the command and returns timePassed (470-481)', () => {
         const other = galaxy.empires[2].builtObjects.find((b) => b.role !== BuiltObjectRole.Base)!;
+        // M4f: the target may carry a game-start mission with a hyperjump, which makes the Attack stack use
+        // ConditionalHyperTo(x, y) instead of the target object (BuiltObjectMission.cs 703-723); use an idle target.
+        other.mission = null;
         assignMission(galaxy, ship, BuiltObjectMissionType.Attack, other, null, BuiltObjectMissionPriority.High);
         const m = builtObjectMission(ship.mission)!;
         m.completeCommand(); // skip ClearParent → ConditionalHyperTo(other)

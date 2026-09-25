@@ -66,8 +66,20 @@ import { FuelSourceSystem } from '../movement';
 import { DiplomacyCounters } from '../diplomacy';
 import { OrderList } from '../logistics/orders';
 import { EmpireMessage } from '../messages';
+import { BuiltObjectMission, Command, Sector } from '../missions/mission';
+import { Contract } from '../logistics/contracts';
+import { Order, ComponentRef } from '../logistics/orders';
+import { PrioritizedTarget } from '../civilianAI';
 const CLASSES: Record<string, object> = {
     EmpireMessage: EmpireMessage.prototype,
+    // M4f: ships carry missions from game start (Start.2.cs 1373); freighter contracts, orders, migration/tourism targets.
+    BuiltObjectMission: BuiltObjectMission.prototype,
+    Command: Command.prototype,
+    Sector: Sector.prototype,
+    Contract: Contract.prototype,
+    Order: Order.prototype,
+    ComponentRef: ComponentRef.prototype,
+    PrioritizedTarget: PrioritizedTarget.prototype,
     OrderList: OrderList.prototype,
     DiplomacyCounters: DiplomacyCounters.prototype,
     FuelSourceSystem: FuelSourceSystem.prototype,

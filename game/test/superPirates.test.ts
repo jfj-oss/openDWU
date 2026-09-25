@@ -212,26 +212,27 @@ describe('UpgradeMilitaryShipDesignMoreWeapons / MoreEngines (Galaxy.8.cs 4121 /
 // (re-pinned M4s1: ReviewPirateRelations draws Rnd.NextDouble in every game-start Empire long block and the Galaxy long
 // block's independent-colony pirate offers draw per colony, so later game-start draws shift.)
 // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
+// (re-pinned M4f: Start.2.cs 1373 AssignMissionsToBuiltObjectList draws per idle ship at game start shift every later draw)
 const PINNED: unknown[] = [
     [
-        'Escort:Excelsior II:32',
-        'Frigate:Enforcer II:44',
-        'Destroyer:Maximus II:54',
-        'Cruiser:Argossia:89',
-        'CapitalShip:Consul:136',
-        'Carrier:CX-2 Carrier:105',
+        'Escort:Senator II:33',
+        'Frigate:Sovereign II:46',
+        'Destroyer:Medusa II:56',
+        'Cruiser:Consul II:90',
+        'CapitalShip:Excelsior:136',
+        'Carrier:CX-2 Carrier:107',
         'DefensiveBase:Phantom Pirate Defensive Base:123',
         'GenericBase:Phantom Pirate Base:217',
     ],
     [
-        'GenericBase:Dhayu Hideout',
+        'GenericBase:Secluded Station',
         'DefensiveBase:Dhayu 7 Defense Battery',
-        'DefensiveBase:Dhayu 7 Orbital Battery',
         'DefensiveBase:Dhayu 7 Defense Battery',
-        'Destroyer:Swift Fury',
-        'Frigate:Decisive Protector',
-        'Destroyer:Discarded Fury',
-        'Frigate:Invincible Moon',
+        'DefensiveBase:Dhayu 7 Defensive Base',
+        'Frigate:Cruel Stealth',
+        'Cruiser:Terrible Master',
+        'Destroyer:Discarded Courage',
+        'Destroyer:Elusive Battle',
     ],
-    33,
+    32,
 ];

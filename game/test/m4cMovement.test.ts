@@ -271,7 +271,8 @@ describe('harness: ships with missions move and hyperjump', () => {
         expect(exits).toBeGreaterThan(0);
         let farMovers = 0;
         for (const b of g.builtObjects) {
-            const s = start.get(b)!;
+            const s = start.get(b);
+            if (s === undefined) continue; // built during the run (M4f DirectPrivateConstruction)
             expect(Number.isFinite(b.xpos) && Number.isFinite(b.ypos)).toBe(true);
             const idx = g.resolveIndex(b.xpos, b.ypos);
             if (!b.hasBeenDestroyed) expect(g.builtObjectIndexGrid[idx.x][idx.y]).toContain(b);

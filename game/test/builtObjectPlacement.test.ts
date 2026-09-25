@@ -1,3 +1,4 @@
+import { BuiltObjectMissionType, builtObjectMission } from '../src/sim/missions/mission';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { createGame, type CreateGameOptions } from '../src/sim/game';
 import { setGovernmentsStatic, type Empire } from '../src/sim/empire';
@@ -96,6 +97,9 @@ describe('CreateStateShips / CreatePrivateShips at game start (tech 0.5, age 1)'
             for (const b of priv) expect(b.owner).toBeNull();
             for (const b of exp.ships) {
                 expect(b.empire).toBe(e);
+                // M4f: Start.2.cs 1373 AssignMissionsToBuiltObjectList runs right after placement; a ship that got a
+                // mission with resolvable commands has its parent cleared (BuiltObjectMission.cs 531-538).
+                if (builtObjectMission(b.mission) !== null && builtObjectMission(b.mission)!.type !== BuiltObjectMissionType.Undefined) continue;
                 expect(e.colonies).toContain(b.parentHabitat);
                 // SelectRelativeParkingPoint(): distance in [150, 300), truncated to int.
                 expect(Number.isInteger(b.parentOffsetX) && Number.isInteger(b.parentOffsetY)).toBe(true);

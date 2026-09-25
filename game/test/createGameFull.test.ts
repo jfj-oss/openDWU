@@ -359,5 +359,5 @@ const PINNED_SUMMARY: unknown = {
     independentTraders: 150,
     unownedBuiltObjects: 24,
     builtObjects: 334,
-    ruins: 31,
+    ruins: 34, // re-pinned M4f: game-start AssignMissionsToBuiltObjectList draws move the empire-placement/ruins stream
 };
