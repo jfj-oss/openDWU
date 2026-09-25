@@ -1363,7 +1363,7 @@ export function sortStellarObjectsByDistance<T extends { xpos: number; ypos: num
 
 // .NET ArraySortHelper<TKey, TValue>.IntrospectiveSort over parallel keys/items (Array.Sort(keys, items)) — the
 // key/value twin of netSort.ts. Keys are finite doubles (Comparer<double>.Default ordering).
-function arraySortKeysItems<T>(keys: number[], items: T[]): void {
+export function arraySortKeysItems<T>(keys: number[], items: T[]): void {
     if (keys.length > 1) {
         kvIntroSort(keys, items, 0, keys.length - 1, 2 * (31 - Math.clz32(keys.length) + 1));
     }

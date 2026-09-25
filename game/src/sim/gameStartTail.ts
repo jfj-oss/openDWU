@@ -480,7 +480,7 @@ export function findNearestHabitatEmptySystem(galaxy: Galaxy, x: number, y: numb
 }
 
 /** Galaxy.3.cs 1524 FindLonelyHabitat(x, y[, habitatTypeToExclude = Undefined]). No Rnd. */
-function findLonelyHabitatAt(galaxy: Galaxy, x: number, y: number, habitatTypeToExclude: HabitatType = HabitatType.Undefined): Habitat | null {
+export function findLonelyHabitatAt(galaxy: Galaxy, x: number, y: number, habitatTypeToExclude: HabitatType = HabitatType.Undefined): Habitat | null {
     let habitat = findNearestHabitatEmptySystem(galaxy, x, y);
     if (habitat === null || (habitatTypeToExclude !== HabitatType.Undefined && habitat.type === habitatTypeToExclude)) habitat = galaxy.findNearestUncolonizedHabitat(x, y, HabitatType.Desert);
     if (habitat === null || (habitatTypeToExclude !== HabitatType.Undefined && habitat.type === habitatTypeToExclude)) habitat = galaxy.findNearestUncolonizedHabitat(x, y, HabitatType.Ice);

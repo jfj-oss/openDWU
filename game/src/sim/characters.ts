@@ -7040,7 +7040,7 @@ function resolveEmpiresToDefendAgainst(empire: Empire): Empire[] {
 
 // Empire.9.cs AddWarObjectivesToList(relation, objectives, calculateWarObjectivesIfNotPresent, includeBases) (1861/1866)
 // (added by M4i).
-function addWarObjectivesToList(galaxy: Galaxy, relation: DiplomaticRelation | null, objectives: StellarObject[], calculateWarObjectivesIfNotPresent: boolean, includeBases: boolean): StellarObject[] {
+export function addWarObjectivesToList(galaxy: Galaxy, relation: DiplomaticRelation | null, objectives: StellarObject[], calculateWarObjectivesIfNotPresent: boolean, includeBases: boolean): StellarObject[] {
     if (relation !== null) {
         if (relation.warObjective === WarObjective.CaptureObjectives) {
             for (let i = 0; i < relation.warObjectiveColonies.length; i++) {

@@ -48,6 +48,7 @@ import type { IMessageRecipient } from './messages';
 import { ensureHabitatManufacturingQueue } from './manufacturingQueue';
 import { takeOwnershipOfColonyDockingBays } from './logistics/dockingBays';
 import type { FuelSourceSystemList } from './movement';
+import type { FleetAttack } from './fleets/militaryAI';
 
 // Empire.1.cs TakeOwnershipOfColony callees that live in modules importing empire.ts
 // (forceStructure.ts RecalculateDistanceFactor / RecalculateAnnualTaxRevenue, taxes.ts
@@ -1818,6 +1819,11 @@ export class Empire {
     fleetAttackRefuelPortion = Math.fround(0.3);
     fleetAttackGatherPortion = Math.fround(0.3);
     // ---- M4m fields (military AI) ----
+    /** Empire.cs 519 TargetHabitat / 521 DefendHabitat (set only by story / victory events, deferred: null). */
+    targetHabitat: Habitat | null = null;
+    defendHabitat: Habitat | null = null;
+    /** Empire.cs 879 IncomingEnemyFleetsAndPlanetDestroyers (FleetAttackList, fleets/militaryAI.ts FleetAttack). */
+    incomingEnemyFleetsAndPlanetDestroyers: FleetAttack[] = [];
     // ---- M4n fields (threats) ----
     /** Empire.cs 137 _EmpiresToAttack (EmpireList; CheckForRandomAttackTargets consumes, M4m DetermineRandomAttacks fills). */
     empiresToAttack: Empire[] = [];

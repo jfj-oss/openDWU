@@ -74,6 +74,7 @@ import {
     sendScoutsToSingleEnemyEmpire,
     setDefendFleets,
 } from './fleets/militaryAI';
+import { cancelBlockades as cancelBlockadesImpl, getBlockadesAgainstEmpire, type Blockade } from './fleets/blockades';
 import { chanceNewAmbassador, doCharacterEventRuntime } from './events';
 import { galaxyColonyFillFactor } from './colonyTick';
 import { isObjectVisibleToThisEmpire } from './independentTraders';
@@ -947,15 +948,9 @@ function raceEventIsGrandPerformanceDiplomacyBonus(self: Empire): boolean {
     return self.raceEventType === RaceEventType.GrandPerformanceDiplomacyBonus;
 }
 
-/** Blockade.cs fields read by diplomacy (the Blockade model is not ported — M4m). */
-interface BlockadeView {
-    initiator: Empire | null;
-}
-/** BlockadeList.cs 42 Galaxy.Blockades.GetBlockadesAgainstEmpire(target). TODO(port) M4m: Galaxy.Blockades — empty until blockades exist. */
-function galaxyBlockadesAgainstEmpire(galaxy: Galaxy, target: Empire): BlockadeView[] {
-    void galaxy;
-    void target;
-    return [];
+/** BlockadeList.cs 42 Galaxy.Blockades.GetBlockadesAgainstEmpire(target) (fleets/blockades.ts, M4m). */
+function galaxyBlockadesAgainstEmpire(galaxy: Galaxy, target: Empire): Blockade[] {
+    return getBlockadesAgainstEmpire(galaxy, target);
 }
 
 /**
@@ -2420,18 +2415,9 @@ export function offerMiningRights(self: Empire, otherEmpire: Empire): void {
     }
 }
 
-const T_cancelBlockades = registerTodo('M4r', 'cancelBlockades (Galaxy.Blockades not ported — M4m)');
-
-/**
- * Empire.8.cs 3855 CancelBlockades(targetEmpire). TODO(port) M4m: Galaxy.Blockades / BlockadeList.GetBlockadesForEmpire,
- * ShipGroup/BuiltObject ClearAllMissionsForTarget(Blockade), colony/port IsBlockaded, BlockadeCancelled messages — no
- * blockades exist until blockade missions are ported, so the C# loop body never runs.
- */
+/** Empire.8.cs 3855 CancelBlockades(targetEmpire) (fleets/blockades.ts, M4m). */
 export function cancelBlockades(galaxy: Galaxy, self: Empire, targetEmpire: Empire): void {
-    void galaxy;
-    void self;
-    void targetEmpire;
-    todo(T_cancelBlockades);
+    cancelBlockadesImpl(galaxy, self, targetEmpire);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
