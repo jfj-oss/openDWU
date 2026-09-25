@@ -4,7 +4,29 @@
 // (src/sim/player/orderMenu.ts) returns; this file only draws it and reports the picked entry.
 // Also the small automation confirm dialog (GenerateAutomationMessageBox) used after an order.
 import './orderMenu.css';
-import type { OrderMenuItem } from '../sim/player/orderMenu';
+import type { Galaxy } from '../sim/galaxy';
+import type { Empire } from '../sim/empire';
+import type { GalaxyTime } from '../sim/galaxyTime';
+import { BuiltObject } from '../sim/builtObject';
+import { Habitat } from '../sim/types';
+import { ShipGroup } from '../sim/fleets/shipGroup';
+import { BuiltObjectMissionType } from '../sim/missions/mission';
+import { resolveGameText, tryGetText } from '../sim/textResolver';
+import { ShipAction, ShipActionType } from '../sim/player/shipAction';
+import { executeShipAction, type ShipActionMouseHoverMode, type ShipActionSelection } from '../sim/player/executeShipAction';
+import {
+    applyAutomationOff,
+    fleetPointClick,
+    openActionMenu,
+    resolveHoverOrder,
+    rightClickOrder,
+    selectionAfterClick,
+    selectionButtons,
+    selectionRefreshPage,
+    type OrderMenuItem,
+    type SelectionButton,
+} from '../sim/player/orderMenu';
+import { showToast } from './toast';
 
 export interface OrderMenuHandlers {
     /** An enabled entry with an action (or an idle-ship entry) was clicked; `shift` = Shift held (queue the order). */
@@ -238,4 +260,390 @@ export function confirmAutomationOff(taskText: string): Promise<boolean> {
         document.body.appendChild(wrap);
         off.focus();
     });
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// The order layer: executing a picked ShipAction (Main.Part7.cs 1846 actionMenu_ItemClicked → method_347) and
+// applying its UI effects, the main view's right click (Main.Part10.cs 3049 / Main.Part8.cs 1332) and the selection
+// panel's eight action buttons (Main.Part3.cs 1120-3805).
+// ---------------------------------------------------------------------------------------------------------------
+
+/** What the order layer needs from the running game view (installed by main.ts). */
+export interface OrderUiDeps {
+    galaxy: Galaxy;
+    /** _Game.PlayerEmpire. */
+    empire: Empire;
+    clock?: GalaxyTime;
+    /** _Game.SelectedObject. */
+    getSelected: () => ShipActionSelection;
+    /** method_208: select an object (null clears the selection). */
+    select: (target: ShipActionSelection) => void;
+}
+
+/** The subset of MainView the order layer drives (kept structural so tests / other views can supply it). */
+export interface OrderMainView {
+    readonly zoomFactor: number;
+    pickOrderTarget(sx: number, sy: number): unknown;
+    onRightClick?: (sx: number, sy: number, e: MouseEvent) => void;
+    onLeftClickIntercept?: (sx: number, sy: number) => boolean;
+    onPointerRest?: (sx: number, sy: number, clientX: number, clientY: number) => void;
+}
+export interface OrderCamera {
+    screenToWorld(sx: number, sy: number): { x: number; y: number };
+    centerOn(x: number, y: number): void;
+}
+
+let deps: OrderUiDeps | null = null;
+/** mouseHoverMode_0 after SetFleetAttackPoint / SetFleetHomeBase: the next map click picks the point. */
+let fleetPointMode: { mode: ShipActionMouseHoverMode; fleet: ShipGroup } | null = null;
+let statusEl: HTMLElement | null = null;
+let bar: SelectionBar | null = null;
+
+function T(key: string): string {
+    return tryGetText(key) ?? key;
+}
+
+/** Install the order layer for a game view; returns the teardown. */
+export function installOrderUi(d: OrderUiDeps, view: OrderMainView, camera: OrderCamera): () => void {
+    deps = d;
+    fleetPointMode = null;
+    statusEl = document.createElement('div');
+    statusEl.className = 'order-status';
+    statusEl.hidden = true;
+    document.body.appendChild(statusEl);
+
+    view.onRightClick = (sx, sy, e) => {
+        if (deps === null) return;
+        const { galaxy, empire } = deps;
+        fleetPointMode = null; // mouseHoverMode_0 = Undefined after any click
+        const w = camera.screenToWorld(sx, sy);
+        const x = Math.trunc(w.x);
+        const y = Math.trunc(w.y);
+        const selected = deps.getSelected();
+        const target = view.pickOrderTarget(sx, sy);
+        const hover = resolveHoverOrder({ galaxy, empire, selected, x, y, target, shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey });
+        const r = rightClickOrder(galaxy, empire, selected, hover.action, { ctrl: e.ctrlKey, alt: e.altKey }, view.zoomFactor);
+        if (r.kind === 'order') {
+            bar?.render(true);
+        } else if (r.kind === 'idleShips') {
+            openOrderMenu(r.items, e.clientX, e.clientY, { onPick: (item) => item.select !== undefined && deps?.select(item.select) });
+            return;
+        } else if (r.kind === 'center') {
+            camera.centerOn(w.x, w.y);
+        }
+        // actionMenu_Opening: the ContextMenuStrip opens on the same click unless the default order was given.
+        const items = openActionMenu({ galaxy, empire, selected, cursorX: x, cursorY: y, zoomFactor: view.zoomFactor, pickAt: () => target }, hover.action, e.ctrlKey);
+        if (items !== null && items.length > 0) {
+            openOrderMenu(items, e.clientX, e.clientY, {
+                onPick: (item, shift) => {
+                    if (item.action === null) return;
+                    if (shift) item.action.isSubsequentAction = true; // queue after the current mission
+                    void performAction(item.action, true, { x, y });
+                },
+            });
+        }
+    };
+    view.onLeftClickIntercept = (sx, sy) => {
+        if (deps === null || fleetPointMode === null) return false;
+        const { mode, fleet } = fleetPointMode;
+        fleetPointMode = null;
+        const target = view.pickOrderTarget(sx, sy);
+        fleetPointClick(deps.galaxy, deps.empire, fleet, mode, target);
+        bar?.render(true);
+        return true;
+    };
+    view.onPointerRest = (sx, sy, clientX, clientY) => {
+        if (deps === null || statusEl === null) return;
+        if (isOrderMenuOpen()) {
+            statusEl.hidden = true;
+            return;
+        }
+        void clientX;
+        void clientY;
+        if (fleetPointMode !== null) {
+            statusEl.textContent = fleetPointMode.mode === 'SetFleetAttackPoint' ? T('Set Attack Target') : T('Set Home Base');
+            statusEl.hidden = false;
+            return;
+        }
+        const w = camera.screenToWorld(sx, sy);
+        const hover = resolveHoverOrder({
+            galaxy: deps.galaxy,
+            empire: deps.empire,
+            selected: deps.getSelected(),
+            x: Math.trunc(w.x),
+            y: Math.trunc(w.y),
+            target: view.pickOrderTarget(sx, sy),
+            shift: false,
+            alt: false,
+            ctrl: false,
+        });
+        statusEl.textContent = hover.text;
+        statusEl.hidden = hover.text === '';
+    };
+    return () => {
+        closeOrderMenu();
+        view.onRightClick = undefined;
+        view.onLeftClickIntercept = undefined;
+        view.onPointerRest = undefined;
+        statusEl?.remove();
+        statusEl = null;
+        fleetPointMode = null;
+        deps = null;
+    };
+}
+
+/**
+ * Execute a player order (method_347 via executeShipAction) and apply what the C# does to the UI: the new selection,
+ * the selection buttons' page, the fleet point-pick mode, messages, and the automation prompts (asked after the
+ * order with the game paused — the C# message box is modal).
+ */
+export async function performAction(action: ShipAction, fromActionMenu: boolean, actionMenuPoint?: { x: number; y: number }): Promise<void> {
+    if (deps === null) return;
+    const { galaxy, empire } = deps;
+    const selected = deps.getSelected();
+    const r = executeShipAction(galaxy, empire, selected, action, fromActionMenu, { actionMenuPoint });
+    if (r.message !== undefined && r.message !== '') showToast(resolveGameText(r.message));
+    if (r.mouseHoverMode !== undefined && selected instanceof ShipGroup) {
+        fleetPointMode = { mode: r.mouseHoverMode, fleet: selected };
+        showToast(r.mouseHoverMode === 'SetFleetAttackPoint' ? T('Set Attack Target') : T('Set Home Base'));
+    }
+    if (r.showSmugglingResourceSelection) {
+        // TODO(port): Main.Part8.cs 5067 method_345 (the smuggling-mission resource picker panel) — use the colony's
+        // right-click menu ("Assign Mercenary Smuggling Mission") meanwhile.
+        showToast(T('Assign Mercenary Smuggling Mission'));
+    }
+    if (r.openForm !== undefined) {
+        // TODO(port): the Bacon mod forms (planetCargoDataForm / CustomizeShipForm / InvasionCommandForm).
+        showToast(`${r.openForm}: not available`);
+    }
+    if (r.select !== undefined) deps.select(r.select);
+    else if (r.selectNextFromHistory) deps.select(null); // no selection history in the streamlined HUD
+    if (bar !== null) {
+        if (r.openSubMenu !== undefined) bar.page = r.openSubMenu;
+        if (r.returnToTop) bar.page = null;
+        if (!fromActionMenu) {
+            const next = selectionAfterClick(action);
+            if (next !== undefined) bar.page = next;
+        }
+        bar.render(true);
+    }
+    for (const task of r.automationPrompts) {
+        const clock = deps?.clock;
+        const wasPaused = clock?.paused ?? true;
+        if (clock) clock.paused = true;
+        const off = await confirmAutomationOff(T(task));
+        if (clock) clock.paused = wasPaused;
+        if (off && deps !== null) applyAutomationOff(deps.empire, task);
+    }
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Selection panel action buttons
+// ---------------------------------------------------------------------------------------------------------------
+
+/** A short caption for a button (the original shows only an icon; the long text is the hint). */
+export function selectionButtonLabel(b: SelectionButton): string {
+    const a = b.action;
+    if (a === null) return '';
+    if (a.actionType !== ShipActionType.Undefined) {
+        switch (a.actionType) {
+            case ShipActionType.RecruitTroops:
+                return (a.target2 as { name?: string } | null)?.name ?? T('Recruit Troops');
+            case ShipActionType.AutomateShip:
+                return T('Automate');
+            case ShipActionType.UnautomateShip:
+                return 'Manual';
+            case ShipActionType.JoinShipGroup:
+                return T('Join Fleet');
+            case ShipActionType.LeaveShipGroup:
+                return T('Leave Fleet');
+            case ShipActionType.BuildColonize:
+                return T('Colonize');
+            case ShipActionType.FighterOptions:
+                return 'Fighters';
+            case ShipActionType.FighterBuildFighter:
+                return 'Build Fighter';
+            case ShipActionType.FighterBuildBomber:
+                return 'Build Bomber';
+            case ShipActionType.FighterLaunchFighters:
+                return 'Launch Fighters';
+            case ShipActionType.FighterLaunchBombers:
+                return 'Launch Bombers';
+            case ShipActionType.FighterRetrieveFighters:
+                return 'Recall Fighters';
+            case ShipActionType.FighterRetrieveBombers:
+                return 'Recall Bombers';
+            case ShipActionType.FighterUpgradeAll:
+                return 'Upgrade';
+            case ShipActionType.BuildOptions:
+                return 'Build…';
+            case ShipActionType.BuildOptionsPrivate:
+                return 'Civilian…';
+            case ShipActionType.ColonyBuildOptions:
+                return 'Facilities…';
+            case ShipActionType.ColonyBuildWonder:
+                return 'Wonders…';
+            case ShipActionType.ReturnToTop:
+                return '‹ Back';
+            case ShipActionType.CreateNewFleet:
+                return T('New Fleet');
+            case ShipActionType.BuildPlanetaryFacility:
+                return (a.target as { name?: string } | null)?.name ?? '';
+            case ShipActionType.AssignAttack:
+                return T('Attack');
+            case ShipActionType.SetFleetPosture:
+                return 'Posture';
+            case ShipActionType.SetFleetRange:
+                return 'Range';
+            case ShipActionType.SetFleetAttackPoint:
+                return 'Target';
+            case ShipActionType.SetFleetHomeBase:
+                return 'Home Base';
+            case ShipActionType.GeneratePirateMissionAttack:
+                return 'Merc. Attack';
+            case ShipActionType.GeneratePirateMissionDefend:
+                return 'Merc. Defense';
+            case ShipActionType.GeneratePirateMissionSmuggling:
+                return 'Merc. Smuggling';
+            case ShipActionType.DeployVirus:
+                return 'Virus';
+        }
+        return '';
+    }
+    switch (a.missionType) {
+        case BuiltObjectMissionType.Hold:
+            return T('Stop');
+        case BuiltObjectMissionType.Escape:
+            return T('Escape');
+        case BuiltObjectMissionType.Refuel:
+            return T('Refuel');
+        case BuiltObjectMissionType.Repair:
+            return T('Repair');
+        case BuiltObjectMissionType.Retrofit:
+            return T('Retrofit');
+        case BuiltObjectMissionType.Retire:
+            return 'Scrap';
+        case BuiltObjectMissionType.LoadTroops:
+            return T('Load Troops');
+        case BuiltObjectMissionType.Move:
+            return T('Return to base');
+        case BuiltObjectMissionType.Explore:
+            return T('Explore');
+        case BuiltObjectMissionType.Build:
+            return a.design !== null ? a.design.name : T('Repair');
+    }
+    return '';
+}
+
+interface SelectionBar {
+    element: HTMLElement;
+    /** The button page: null = the top level (method_592), else the sub-menu ShipAction (method_593). */
+    page: ShipAction | null;
+    /** Rebuild the buttons (`force`: also pages that draw galaxy.rnd). */
+    render(force: boolean): void;
+}
+
+/** The selected object the buttons act on, as the C# SelectedObject (fleet, else ship / base, else habitat). */
+export function selectionTarget(sel: { habitat: Habitat; builtObject?: BuiltObject; shipGroup?: ShipGroup } | null): ShipActionSelection {
+    if (sel === null) return null;
+    return sel.shipGroup ?? sel.builtObject ?? sel.habitat;
+}
+
+/** The eight btnSelectionAction buttons for the HUD selection panel (hud.ts [ordermenu] block). */
+export function createSelectionActionBar(): HTMLElement {
+    const element = document.createElement('div');
+    element.className = 'order-actions';
+    let buttons: SelectionButton[] = [];
+    let lastSel: ShipActionSelection = null;
+    const self: SelectionBar = {
+        element,
+        page: null,
+        render(force: boolean): void {
+            if (deps === null) {
+                element.replaceChildren();
+                return;
+            }
+            const selected = deps.getSelected();
+            if (selected !== lastSel) {
+                lastSel = selected;
+                self.page = null; // method_209 → method_592
+                force = true;
+            }
+            // The 500 ms refresh skips pages whose method_593 draws galaxy.rnd (an unowned habitat's build buttons, a
+            // colony's Build Options): they are rebuilt only on player input (selection change, a click), keeping
+            // galaxy.rnd player-input-only (the C# redraws them every 500 ms, Main.Part11.cs 661).
+            if (!force && isUnownedHabitat(deps, selected) && self.page === null) return;
+            if (!force && self.page !== null && self.page.actionType === ShipActionType.BuildOptions && selected instanceof Habitat) return;
+            const next = selectionButtons({ galaxy: deps.galaxy, empire: deps.empire, selected }, self.page);
+            if (next === null) return; // the C# leaves the buttons as they are
+            buttons = next;
+            draw();
+        },
+    };
+    // Eight persistent buttons, updated in place (no DOM rebuild on refresh).
+    const btns: HTMLButtonElement[] = [];
+    for (let i = 0; i < 8; i++) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'order-action-btn';
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const b = buttons[i];
+            if (b === undefined || b.action === null || !b.enabled) return;
+            void performAction(b.action, false); // method_594 → method_347(action, false)
+        });
+        btns.push(btn);
+    }
+    const draw = (): void => {
+        if (buttons.every((b) => b.action === null)) {
+            element.replaceChildren();
+            return;
+        }
+        if (element.childElementCount !== 8) element.replaceChildren(...btns);
+        buttons.forEach((b, i) => {
+            const btn = btns[i];
+            btn.className = 'order-action-btn';
+            if (b.style !== '') btn.classList.add(`order-style-${b.style}`);
+            if (b.action === null) btn.classList.add('order-action-empty');
+            btn.textContent = selectionButtonLabel(b);
+            if (b.count > 0) {
+                const c = document.createElement('span');
+                c.className = 'order-action-count';
+                c.textContent = String(b.count);
+                btn.appendChild(c);
+            }
+            btn.title = b.hint;
+            btn.disabled = !b.enabled;
+        });
+    };
+    bar = self;
+    // Main.Part11.cs 661-728: refresh the page every 500 ms from the first button's Tag.
+    const timer = window.setInterval(() => {
+        if (!element.isConnected) {
+            window.clearInterval(timer);
+            if (bar === self) bar = null;
+            return;
+        }
+        if (deps === null) return;
+        const selected = deps.getSelected();
+        if (selected !== lastSel) {
+            self.render(true);
+            return;
+        }
+        const next = selectionRefreshPage(selected, buttons[0]?.action ?? null);
+        if (next === undefined) return;
+        self.page = next;
+        self.render(false);
+    }, 500);
+    return element;
+}
+
+/** An unowned / independent habitat: its top page (method_593 2941-3200) draws galaxy.rnd. */
+function isUnownedHabitat(d: OrderUiDeps, selected: ShipActionSelection): boolean {
+    return selected instanceof Habitat && (selected.owner === null || selected.owner === d.galaxy.independentEmpire);
+}
+
+/** Re-render the selection buttons now (selection changed / after an order). */
+export function refreshSelectionActionBar(): void {
+    bar?.render(true);
 }

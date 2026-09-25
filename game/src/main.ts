@@ -49,6 +49,7 @@ import { createGalaxyMap, type GalaxyMapScreen } from './ui/screens/galaxyMap';
 import { hideMapTooltip } from './ui/mapTooltip';
 import { closeEmpireComparison, closeGameEndBanner, installGameEndHandler, removeGameEndHandler } from './ui/screens/empireComparison'; // [15d]
 import { installMessagePopups, removeMessagePopups } from './ui/messagePopups'; import { closeGameOptionsPanel } from './ui/screens/gameOptionsPanel'; // [16d]
+import { installOrderUi, selectionTarget } from './ui/orderMenu'; import { getSelection as getHudSelection, selectShipGroup, selectStellarObject } from './ui/hud'; import { ShipGroup } from './sim/fleets/shipGroup'; import { Fighter } from './sim/combat/fighters'; // [ordermenu]
 import './ui/hud.css';
 
 // ?shape= names accepted by the boot URL.
@@ -396,6 +397,27 @@ export async function startGameView(
     installMessagePopups({ player: game.playerEmpire, galaxy });
     // [/16d]
 
+    // [ordermenu] begin
+    // 17c: right-click orders / the action menu in the main view and the selection panel's action buttons.
+    const orderUiCleanup = installOrderUi(
+        {
+            galaxy,
+            empire: game.playerEmpire,
+            clock: time,
+            getSelected: () => selectionTarget(getHudSelection()),
+            select: (t) => {
+                if (t === null) hud.onSelectionChange?.(null);
+                else if (t instanceof ShipGroup) selectShipGroup(t, false);
+                else if (Array.isArray(t)) {
+                    if (t.length > 0) selectStellarObject(t[0], false); // no multi-selection in the streamlined HUD
+                } else if (!(t instanceof Fighter)) selectStellarObject(t, false); // (a Fighter is not selectable here)
+            },
+        },
+        view,
+        camera,
+    );
+    // [ordermenu] end
+
     // Task 06l: extra boots run after the HUD/clock are wired (e.g. opening
     // a tutorial window that pauses/unpauses the clock).
     for (const boot of extraBoots ?? []) {
@@ -522,6 +544,7 @@ export async function startGameView(
         removeMessagePopups();
         closeGameOptionsPanel();
         // [/16d]
+        orderUiCleanup(); // [ordermenu]
     };
 
     return time;

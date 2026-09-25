@@ -894,6 +894,14 @@ export class MainView {
     onBuiltObjectSelect?: (bo: BuiltObject) => void;
     /** Task 08g: set by main.ts — star double-clicked at galaxy/sector zoom. */
     onDoubleClickStar?: (h: Habitat) => void;
+    // [ordermenu] begin
+    /** 17c: a right click without drag (< 4 px between down and up); replaces the default centre-on-click. */
+    onRightClick?: (sx: number, sy: number, e: MouseEvent) => void;
+    /** 17c: a left click the order layer consumes (fleet attack point / home base pick); return true to skip selection. */
+    onLeftClickIntercept?: (sx: number, sy: number) => boolean;
+    /** 17c: the pointer rested on the map (debounced like the hover tooltip). */
+    onPointerRest?: (sx: number, sy: number, clientX: number, clientY: number) => void;
+    // [ordermenu] end
 
     /** Task M3: map overlay toggle state (src/ui/mapOverlays.ts), shared
      * with the HUD's options list. Defaults to a fresh state so existing
@@ -983,6 +991,36 @@ export class MainView {
         const w = this.camera.screenToWorld(screenX, screenY);
         return this.builtObjectLayer.pick(w.x, w.y, 1 / this.camera.zoom, this.galaxy.playerEmpire);
     }
+
+    // [ordermenu] begin
+    /** 17c: double_0, the zoom as galaxy units per screen pixel (> 100: sector / galaxy level). */
+    get zoomFactor(): number {
+        return 1 / this.camera.zoom;
+    }
+
+    /**
+     * 17c: Main.Part11.cs 1330 method_143 (the object under a screen point) from the renderer's pickers: a ship / base
+     * (its fleet when it leads one at zoom factor > 100), else the habitat drawn there — its SystemInfo when it is a
+     * star picked at zoom factor > 100 — else null.
+     * TODO(port): method_145's exact radii (fleet lead ship within 10 px scaled, systems within their dominant empire's
+     * strategic radius) and creature picking; this reuses the 13d / 08g pickers.
+     */
+    pickOrderTarget(sx: number, sy: number): unknown {
+        const f = this.zoomFactor;
+        const bo = this.pickBuiltObject(sx, sy);
+        if (bo !== null) {
+            const g = bo.shipGroup as { leadShip?: BuiltObject | null } | null;
+            if (f > 100 && g !== null && g !== undefined && g.leadShip === bo) return g;
+            return bo;
+        }
+        const h = this.pick(sx, sy);
+        if (h === null) return null;
+        if (f > 100 && h.category === HabitatCategoryType.Star) {
+            return this.galaxy.systems.find((s) => s.systemStar === h) ?? h;
+        }
+        return h;
+    }
+    // [ordermenu] end
 
     /** Load textures, build all scene objects, attach input handlers. */
     async init(): Promise<void> {
@@ -1329,6 +1367,8 @@ export class MainView {
         const canvas = this.app.canvas;
         let downX = 0;
         let downY = 0;
+        let rightDownX = 0; // [ordermenu] the right button's press point (click vs drag)
+        let rightDownY = 0;
         canvas.addEventListener(
             'wheel',
             (e: WheelEvent) => {
@@ -1347,6 +1387,8 @@ export class MainView {
                 const rect = canvas.getBoundingClientRect();
                 this.lastDragX = e.clientX - rect.left;
                 this.lastDragY = e.clientY - rect.top;
+                rightDownX = this.lastDragX;
+                rightDownY = this.lastDragY;
             } else if (e.button === 0) {
                 const rect = canvas.getBoundingClientRect();
                 downX = e.clientX - rect.left;
@@ -1378,6 +1420,7 @@ export class MainView {
                     hideMapTooltip();
                     return;
                 }
+                this.onPointerRest?.(x, y, e.clientX, e.clientY); // [ordermenu]
                 const hit = this.pick(x, y);
                 if (hit === null) {
                     hideMapTooltip();
@@ -1399,6 +1442,12 @@ export class MainView {
                 const rect = canvas.getBoundingClientRect();
                 const x = e.clientX - rect.left;
                 const y = e.clientY - rect.top;
+                // [ordermenu] begin: a right click without drag goes to the order layer (17c) when installed.
+                if (this.onRightClick !== undefined) {
+                    if (Math.hypot(x - rightDownX, y - rightDownY) < 4) this.onRightClick(x, y, e);
+                    return;
+                }
+                // [ordermenu] end
                 if (Math.hypot(x - this.lastDragX, y - this.lastDragY) < 4) {
                     // Right-click on empty space centers the view there.
                     const w = this.camera.screenToWorld(x, y);
@@ -1414,6 +1463,7 @@ export class MainView {
                 if (Math.hypot(x - downX, y - downY) >= 4) {
                     return;
                 }
+                if (this.onLeftClickIntercept?.(x, y)) return; // [ordermenu]
                 const bo = this.pickBuiltObject(x, y);
                 if (bo !== null) {
                     this.selectedHabitat = null;
