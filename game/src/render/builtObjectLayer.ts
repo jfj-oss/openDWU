@@ -404,7 +404,6 @@ export class BuiltObjectLayer {
         if (!p) {
             p = (async () => {
                 const texture = await this.store.loadFirst([url], () => makeDotTexture('#cccccc', 32));
-                useMinifyingFilter(texture);
                 let metrics: ShipImageMetrics | null = null;
                 if (this.store.dwuPresent) {
                     try {
@@ -546,26 +545,3 @@ async function measureShipImage(url: string): Promise<ShipImageMetrics> {
     return m;
 }
 
-/**
- * Sample ship art the way the original's draw path effectively does. The C#
- * never minifies the raw PNG on the GPU: PrepareBuiltObjectImageNEW
- * (Main.Part12.cs:4533-4555, zoom 1.0) first redraws the crop into a bitmap
- * of the 100% size with InterpolationMode.HighQualityBicubic (okQtJmsUqH,
- * Main.Part12.cs:5064-5074), and MainView.1.cs:1018-1024 uploads that, drawn
- * with SamplerState.AnisotropicClamp (MainView.cs:1511-1517). We draw the raw
- * 100-340 px PNG straight to 10-80 px sprites, which with plain bilinear
- * sampling skips most texels and turns the hull into black/white speckle.
- * A full trilinear mip chain is the GPU equivalent of that filtered
- * pre-scale, and keeps the art clean at every zoom factor up to 500.
- */
-export function useMinifyingFilter(texture: Texture): void {
-    const source = texture.source;
-    if (source.autoGenerateMipmaps && source.scaleMode === 'linear') return;
-    source.autoGenerateMipmaps = true;
-    // Sets mag, min and mipmap filters to linear (trilinear minification).
-    source.scaleMode = 'linear';
-    source.maxAnisotropy = 16;
-    // Mip levels are allocated when the source is first uploaded; drop any
-    // earlier GPU copy so the next render re-creates it with the chain.
-    source.unload();
-}

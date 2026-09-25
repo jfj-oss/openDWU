@@ -15,6 +15,7 @@
 
 import { Texture } from 'pixi.js';
 import { Random } from '../sim/random';
+import { useMinifyingFilter } from './assets';
 
 export interface RgbaColor {
     r: number;
@@ -834,7 +835,10 @@ export class NebulaCloudGenerator {
         const ctx = canvas.getContext('2d')!;
         const data = new Uint8ClampedArray(result.image.buffer, result.image.byteOffset, result.image.byteLength);
         ctx.putImageData(new ImageData(data as unknown as Uint8ClampedArray<ArrayBuffer>, result.width, result.height), 0, 0);
-        return Texture.from(canvas);
+        const texture = Texture.from(canvas);
+        // Stretched over the location rect, so minified at sector/galaxy zoom.
+        useMinifyingFilter(texture);
+        return texture;
     }
 }
 
