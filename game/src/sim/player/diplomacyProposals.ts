@@ -19,9 +19,9 @@
 // NextDouble of DetermineWhetherWantToOfferSubjugation when the other empire is winning; declaring war and treaty
 // changes draw whatever ChangeDiplomaticRelation / DeclareWar draw (mutual-defense flow-on, character events).
 //
-// TODO(port): the trade-negotiation screen (DEAL_BEGIN / OFFER_DEAL: DiplomacyTradeTree, Main.Part10.cs:4230-4499
-//   — gifts of tech / territory / bases, demands, map swaps, negotiated end of war / lifting of sanctions); offered as
-//   disabled options.
+// Trade negotiation (task 17e2, player/tradeNegotiation.ts): OFFER_DEAL answers OFFER_DEAL_RESPONSE with the quick
+// map / tech offers as follow-ups (OFFER_DEAL_TERRITORYMAP / _GALAXYMAP / _COMPONENT:<id>); DEAL_BEGIN returns the
+// negotiation (ProposalResult.trade) the screen's trade panel works on.
 // TODO(port): the pirate conversation (Main.Part9.cs:175-206 PIRATE_* options, Main.Part10.cs:5088-5160) — pirate
 //   empires get no options here.
 // TODO(port): the automation message box "Treaty Negotiation" (Main.Part10.cs:4150 GenerateAutomationMessageBox) is not
@@ -68,6 +68,7 @@ import { PirateExpenseType, PirateIncomeType } from '../pirates/pirateEconomy';
 import { BuiltObjectRole } from '../data/designSpecifications';
 import { BuiltObjectSubRole } from '../builtObjectTypes';
 import { BuiltObjectMissionType, builtObjectMission } from '../missions/mission';
+import { beginTradeNegotiation, offerDealOptions, submitOfferDeal, type TradeNegotiation, type TradeNegotiationKind } from './tradeNegotiation';
 
 /** The greeting-menu entry (Main.Part9.cs:208-249) an option sits under. FOLLOW_UP: a reply's own options. */
 export type ProposalMenu = 'TREATY_PROPOSAL' | 'GIFT_PROPOSE' | 'WARNING' | 'DEAL_BEGIN' | 'OFFER_DEAL' | 'FOLLOW_UP';
@@ -115,6 +116,8 @@ export interface ProposalResult {
     expireMessagesFor: Empire | null;
     /** The C# would have shown the "Treaty Negotiation" automation message box. */
     automationPrompt: boolean;
+    /** DEAL_BEGIN: the trade negotiation to show (Main.Part10.cs:4324 method_302); null otherwise. */
+    trade: TradeNegotiation | null;
 }
 
 const MENU_LABEL: Record<Exclude<ProposalMenu, 'FOLLOW_UP'>, string> = {
@@ -124,8 +127,6 @@ const MENU_LABEL: Record<Exclude<ProposalMenu, 'FOLLOW_UP'>, string> = {
     DEAL_BEGIN: 'Negotiate a trade proposal...',
     OFFER_DEAL: 'Swap maps or tech',
 };
-
-const TRADE_SCREEN_HINT = 'Trade negotiation is not available yet';
 
 /** Galaxy.2.cs:2488 ResolveDescription(DiplomaticRelationType): GameText "DiplomaticRelationType <name>", else SplitString. */
 function relationTypeDescription(type: DiplomaticRelationType): string {
@@ -197,14 +198,14 @@ export function listProposals(galaxy: Galaxy, player: Empire, other: Empire): Pr
         list.push(option('WARNING', 'WARNING', 'WARNING', 'Send a warning', null, 0.0, false, 'Not offered while at war'));
     }
 
-    // Main.Part9.cs:219-248: trade negotiation (TODO(port): DiplomacyTradeTree).
+    // Main.Part9.cs:225-257: trade negotiation (player/tradeNegotiation.ts).
     if (diplomaticRelation.type === DiplomaticRelationType.War && !diplomaticRelation.locked) {
-        list.push(option('DEAL_BEGIN:end-war', 'DEAL_BEGIN', 'DEAL_BEGIN', 'Negotiate an end to this war...', null, 0.0, false, TRADE_SCREEN_HINT));
+        list.push(option('DEAL_BEGIN:end-war', 'DEAL_BEGIN', 'DEAL_BEGIN', 'Negotiate an end to this war...'));
     } else if (diplomaticRelation.type === DiplomaticRelationType.TradeSanctions && !diplomaticRelation.locked) {
-        list.push(option('DEAL_BEGIN:lift-sanctions', 'DEAL_BEGIN', 'DEAL_BEGIN', 'Negotiate lifting trade sanctions...', null, 0.0, false, TRADE_SCREEN_HINT));
+        list.push(option('DEAL_BEGIN:lift-sanctions', 'DEAL_BEGIN', 'DEAL_BEGIN', 'Negotiate lifting trade sanctions...'));
     } else if (!other.reclusive) {
-        list.push(option('OFFER_DEAL', 'OFFER_DEAL', 'OFFER_DEAL', 'Swap maps or tech', null, 0.0, false, TRADE_SCREEN_HINT));
-        list.push(option('DEAL_BEGIN:trade', 'DEAL_BEGIN', 'DEAL_BEGIN', 'Negotiate a trade proposal...', null, 0.0, false, TRADE_SCREEN_HINT));
+        list.push(option('OFFER_DEAL', 'OFFER_DEAL', 'OFFER_DEAL', 'Swap maps or tech'));
+        list.push(option('DEAL_BEGIN:trade', 'DEAL_BEGIN', 'DEAL_BEGIN', 'Negotiate a trade proposal...'));
     }
     return list;
 }
@@ -281,9 +282,13 @@ function treatyProposalOptions(galaxy: Galaxy, player: Empire, empire: Empire, d
     return list;
 }
 
-/** Main.Part9.cs:493-496 case WAR_END_SUBJUGATIONDEMAND: the options after the other empire demands our subjugation. */
-function followUpOptions(reply: DialogPartType, other: Empire): ProposalOption[] {
+/** Main.Part9.cs:493-496 case WAR_END_SUBJUGATIONDEMAND: the options after the other empire demands our subjugation;
+ *  Main.Part9.cs:273 case OFFER_DEAL_RESPONSE: the quick map / tech offers (tradeNegotiation.offerDealOptions). */
+function followUpOptions(reply: DialogPartType, other: Empire, galaxy: Galaxy | null = null, player: Empire | null = null): ProposalOption[] {
     switch (reply) {
+        case 'OFFER_DEAL_RESPONSE':
+            if (galaxy === null || player === null) return [];
+            return offerDealOptions(galaxy, player, other).map((o) => option(o.id, o.part, 'FOLLOW_UP', o.label, null, o.cost));
         case 'WAR_END_SUBJUGATIONDEMAND':
             return [
                 option('SUBJUGATIONDEMAND_ACCEPT', 'SUBJUGATIONDEMAND_ACCEPT', 'FOLLOW_UP', 'Yes, we accept defeat and acknowledge your status as our ruler', other),
@@ -385,7 +390,7 @@ export function determineTopThreatenedSystem(galaxy: Galaxy, self: Empire, empir
 }
 
 function refused(hint: string): ProposalResult {
-    return { ok: false, accepted: false, message: hint, reply: null, replyArgs: [], followUps: [], expireMessagesFor: null, automationPrompt: false };
+    return { ok: false, accepted: false, message: hint, reply: null, replyArgs: [], followUps: [], expireMessagesFor: null, automationPrompt: false, trade: null };
 }
 
 /** The parts whose C# case opens with the "Treaty Negotiation" automation message box. */
@@ -414,6 +419,13 @@ export function submitProposal(
         if (!canSpeak(galaxy, player, other)) return refused('');
         if (obtainDiplomaticRelation(player, other).type !== DiplomaticRelationType.War) return refused('Not at war');
         chosen = followUpOptions('WAR_END_SUBJUGATIONDEMAND', other).find((o) => o.id === id);
+    } else if (id.startsWith('OFFER_DEAL_')) {
+        // Follow-up of OFFER_DEAL_RESPONSE (Main.Part9.cs:273), settled at once (Main.Part10.cs:4230-4323).
+        if (!canSpeak(galaxy, player, other)) return refused('');
+        if (!listProposals(galaxy, player, other).some((o) => o.id === 'OFFER_DEAL' && o.enabled)) return refused('No longer on offer');
+        const r = submitOfferDeal(galaxy, player, other, id);
+        if (!r.ok) return refused(r.message);
+        return { ok: true, accepted: r.accepted, message: r.message, reply: r.reply, replyArgs: [], followUps: [], expireMessagesFor: null, automationPrompt: false, trade: null };
     } else {
         chosen = listProposals(galaxy, player, other).find((o) => o.id === id);
     }
@@ -424,7 +436,7 @@ export function submitProposal(
 
 /** Main.Part10.cs:3957 method_237, the cases for the options listProposals offers. */
 function evaluateProposal(galaxy: Galaxy, initiator: Empire, empire: Empire, option0: ProposalOption, opts: SubmitProposalOptions): ProposalResult {
-    const result: ProposalResult = { ok: true, accepted: false, message: '', reply: null, replyArgs: [], followUps: [], expireMessagesFor: null, automationPrompt: false };
+    const result: ProposalResult = { ok: true, accepted: false, message: '', reply: null, replyArgs: [], followUps: [], expireMessagesFor: null, automationPrompt: false, trade: null };
     const now = galaxyStarDate(galaxy);
     const num = attitudeClass(galaxy, empire, initiator); // Main.Part10.cs:3966
     const reply = (part: DialogPartType): void => {
@@ -721,6 +733,18 @@ function evaluateProposal(galaxy: Galaxy, initiator: Empire, empire: Empire, opt
             reply('GREETING_ANGRY');
             result.accepted = true;
             break;
+        case 'OFFER_DEAL': // Main.Part10.cs:4227
+            reply('OFFER_DEAL_RESPONSE');
+            result.followUps = followUpOptions('OFFER_DEAL_RESPONSE', empire, galaxy, initiator);
+            break;
+        case 'DEAL_BEGIN': { // Main.Part10.cs:4324 (the reply stays DEAL_BEGIN: "What do you propose?")
+            const kind = option0.id.substring('DEAL_BEGIN:'.length) as TradeNegotiationKind;
+            const trade = beginTradeNegotiation(galaxy, initiator, empire, kind);
+            if (trade === null) return refused('No longer on offer');
+            reply('DEAL_BEGIN');
+            result.trade = trade;
+            break;
+        }
         default:
             return refused(option0.hint);
     }

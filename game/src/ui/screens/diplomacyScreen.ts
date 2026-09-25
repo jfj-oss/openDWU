@@ -50,6 +50,11 @@ import { AutomationLevel } from '../../sim/empire';
 import { MANUAL } from '../../sim/diplomacyTick';
 // [proposals] end
 
+// [tradenego] begin
+import { closeTradePanel, openTradePanel } from './tradePanel';
+import type { DialogPartType } from '../../sim/data/dialogSet';
+// [tradenego] end
+
 /** EmpireDetailView relation colours (_NotMetColor … _TruceColor). */
 export const RELATION_COLORS: Record<DiplomaticRelationType, number> = {
     [DiplomaticRelationType.NotMet]: 0xd2b48c, // Color.Tan
@@ -647,6 +652,24 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
             proposalReplies.set(other, res);
             proposalVersion++;
             if (res.expireMessagesFor !== null) expireDiplomacyMessages?.(res.expireMessagesFor);
+            // [tradenego] begin
+            // DEAL_BEGIN (Main.Part10.cs:4324 method_302): the trade trees open beside the conversation.
+            if (res.trade !== null) {
+                openTradePanel({
+                    galaxy: player.galaxy,
+                    negotiation: res.trade,
+                    resolveReply: (part: DialogPartType, e: Empire) => {
+                        const raceName = e.dominantRace?.name ?? '';
+                        return loadDialogSet(raceName).then((set) => (set !== null ? formatNet(set.resolveDialog(part, raceName), []) : part));
+                    },
+                    expireMessagesFor: (e) => expireDiplomacyMessages?.(e),
+                    onChange: () => {
+                        proposalVersion++;
+                        render();
+                    },
+                });
+            }
+            // [tradenego] end
             render();
         };
         const optionButton = (o: ProposalOption): HTMLButtonElement => {
@@ -710,6 +733,9 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
 
     function close(): void {
         clearInterval(timer);
+        // [tradenego] begin
+        closeTradePanel();
+        // [tradenego] end
         document.removeEventListener('keydown', onKeyDown);
         root.remove();
         open = null;
