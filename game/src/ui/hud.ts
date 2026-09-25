@@ -27,6 +27,7 @@ import { setEmpireSummarySource, getEmpireSummarySource, toggleEmpireSummary } f
 import { toggleColoniesList } from './screens/coloniesList';
 import { toggleShipsAndBasesList } from './screens/shipsAndBasesList';
 import { toggleMessageHistory } from './screens/messageHistory';
+import { toggleResearchScreen } from './screens/researchScreen'; // [15b]
 import { showToast } from './toast';
 
 // Port of Main.Part12.cs LoadUiChromeButtons (381–520): the control → chrome
@@ -513,6 +514,13 @@ function buildTopBarButton(name: string, wiring: HudWiring): HTMLElement {
     // the unmapped ones below still toast; tbtnColonies / btnEmpireSummary /
     // btnHistoryMessages toggle their screens.
     btn.addEventListener('click', () => {
+        // [15b] tbtnResearch → Research screen (Main.Part9.cs tbtnResearch_Click; task 15b).
+        if (name === 'tbtnResearch') {
+            const src = getEmpireSummarySource();
+            if (src) toggleResearchScreen({ empire: src.empire });
+            return;
+        }
+        // [/15b]
         const screen = topBarScreen(name);
         if (screen === 'colonies') {
             // Main.Part9.cs tbtnColonies_Click: toggle the Colonies list.

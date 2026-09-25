@@ -1,0 +1,276 @@
+/* Research screen (task 15b). Styling follows the Colonies / Empires list
+   dark-panel tokens. */
+
+.research-wrap {
+    position: fixed;
+    inset: 0;
+    z-index: 1500; /* above the HUD, like the in-game tutorial window */
+    pointer-events: none;
+    font-family: 'Forgotten Futurist', sans-serif;
+    color: #e6e6e6;
+}
+
+.research-window {
+    position: absolute;
+    top: 64px;
+    left: 16px;
+    width: min(980px, calc(100vw - 32px));
+    max-height: calc(100vh - 96px);
+    pointer-events: auto;
+    background: rgba(14, 16, 20, 0.94);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.research-titlebar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: rgba(10, 11, 15, 0.9);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.research-heading {
+    font-size: 13px;
+    color: #e8d24a;
+}
+
+.research-close {
+    background: transparent;
+    border: none;
+    color: #ccc;
+    font-size: 15px;
+    cursor: pointer;
+    padding: 2px 6px;
+}
+.research-close:hover {
+    color: #fff;
+}
+
+.research-body {
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    overflow-y: auto;
+}
+
+.research-summary {
+    font-size: 12px;
+    color: #aaa;
+}
+
+.research-tabs {
+    display: flex;
+    gap: 6px;
+}
+
+.research-tab {
+    flex: 1 1 0;
+    min-width: 0;
+    text-align: left;
+    font-family: inherit;
+    color: #ccc;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 4px 4px 0 0;
+    padding: 5px 8px;
+    cursor: pointer;
+}
+.research-tab:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+.research-tab-selected {
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+}
+
+.research-tab-label {
+    font-size: 13px;
+}
+
+.research-tab-minor {
+    font-size: 10px;
+    color: #999;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.research-output {
+    font-size: 12px;
+    color: #aaa;
+}
+
+.research-section {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #777;
+    margin-top: 4px;
+}
+
+.research-queue {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.research-empty {
+    font-size: 12px;
+    color: #777;
+    padding: 2px 8px;
+}
+
+.research-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 160px 3em auto;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 4px;
+}
+.research-row-current {
+    border-color: rgba(255, 255, 0, 0.5);
+}
+
+.research-row-name {
+    font-size: 13px;
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.research-row-percent {
+    font-size: 12px;
+    color: #aaa;
+    text-align: right;
+}
+
+.research-row-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+}
+
+/* DrawBarGraph colours: yellow fill on dark olive. */
+.research-bar,
+.research-node-bar {
+    height: 4px;
+    background: rgba(48, 48, 0, 1);
+    overflow: hidden;
+}
+.research-node-bar {
+    height: 2px;
+    margin-top: 2px;
+}
+.research-bar-fill {
+    height: 100%;
+    background: #ffff00;
+}
+
+.research-crash {
+    font-family: inherit;
+    font-size: 11px;
+    color: #e8d24a;
+    background: transparent;
+    border: 1px solid rgba(232, 210, 74, 0.5);
+    border-radius: 3px;
+    padding: 1px 6px;
+    cursor: pointer;
+}
+.research-crash:hover {
+    background: rgba(232, 210, 74, 0.15);
+}
+
+.research-crash-tag {
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    color: #ff4060;
+    border: 1px solid rgba(255, 64, 96, 0.5);
+    border-radius: 3px;
+    padding: 0 4px;
+}
+
+.research-remove {
+    background: transparent;
+    border: none;
+    color: #ccc;
+    font-size: 13px;
+    cursor: pointer;
+    padding: 0 4px;
+}
+.research-remove:hover:not(:disabled) {
+    color: #fff;
+}
+.research-remove:disabled {
+    color: #444;
+    cursor: default;
+}
+
+.research-tree {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+}
+
+.research-column {
+    flex: 0 0 150px;
+}
+
+.research-column-heading {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #777;
+    margin-bottom: 4px;
+}
+
+.research-node {
+    font-size: 11px;
+    border-radius: 3px;
+    padding: 3px 5px;
+    margin-bottom: 3px;
+    border: 1px solid transparent;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.research-node-completed {
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+}
+.research-node-researching {
+    border: 1px solid #ffff00;
+    color: #fff;
+}
+.research-node-queued {
+    border: 1px dashed #e8d24a;
+}
+.research-node-available {
+    color: #aaa;
+    cursor: pointer;
+}
+.research-node-available:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+.research-node-locked {
+    color: #555;
+}
+.research-node-disabled,
+.research-node-restricted {
+    color: #555;
+    text-decoration: line-through;
+}

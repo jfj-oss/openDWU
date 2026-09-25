@@ -286,3 +286,18 @@ Run `npm run typecheck && npm test`. keyboard.test.ts (with the step-6 edits), h
 With `npm run dev` on a private port (other agents share 5173), save a screenshot: `node scripts/shot.mjs 'http://localhost:<port>/?autostart=1' shots/15b-research.png`. Do not open it.
 
 Then append `## Worker report`: files changed, the shot.mjs console output, and anything left undone.
+
+## Worker report
+
+Files changed:
+- new `src/ui/screens/researchScreen.ts`, `src/ui/screens/researchScreen.css`, `test/researchScreen.test.ts`
+- `src/ui/keyboard.ts`, `src/ui/hud.ts`, `src/main.ts`: only the `[15b]` hook blocks
+- `test/keyboard.test.ts`: the two step-6 assertions
+
+Screenshot: `shots/15b-research.png` (a playwright script loads `?autostart=1` and presses F7; it also tests queue-by-click, the Energy tab, Escape and the top-bar Research button). No console errors or warnings.
+
+Notes / deviations:
+- The 1 s refresh updates progress text and bars in place. It rebuilds the DOM only when the queues, node statuses or crash affordability change. A full rebuild every second detached buttons mid-click and lost clicks.
+- Each tab also shows `completed / total` for its industry, taken from `researchCounts().byIndustry`.
+- Suite: `npx vitest run --testTimeout=300000 --maxWorkers=2` gives 128 files / 1393 tests passed, exit 0.
+- `npm run typecheck` reports two errors at HEAD in `src/sim/galaxy.ts` (duplicate `shakturiDefeated`). That file is outside this task's scope. The new code adds no type errors.
