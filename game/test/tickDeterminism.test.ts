@@ -152,7 +152,17 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // the merge fixes (M4i's real AssignFleetRetrofit and M4l's QueueMission / SubsequentMissions replace the stubs on
         // either side, fleet speeds read the modelled admiral bonuses, ShipGroup battle stats are finalised with M4o's
         // ResolveNearestLocation + DoCharacterEvent(SpaceBattle)).
-        expect(summary.digest).toBe('af6355042f443986');
+        // M4f: AssignMissionToBuiltObject runs at game start (Start.2.cs 1373) and every Empire short block
+        // (AssignShipMissions) — freighters draw NextDouble + Next(0, colonies) [+ Next(0, mining stations)], military
+        // ships Next(0, 2) / Next(0, 8) / Next(0, colonies), construction ships Next(0, 2) x2-4 (+ Next(0, ships)),
+        // exploration ships the FindNextHabitatToExplore jitter draws — so ships now get missions (Move / Explore /
+        // Patrol / Transport / Build / ExtractResources), the ReassignMission case reassigns explorers, and
+        // DirectPrivateConstruction draws Next(0, space ports) per long block. Moved from 198918104ea2794b.
+        // Merge of M4f onto the M4u/M4o/M4l merge (from af6355042f443986 / M4f's 7a546c084a01ddcf): both sets of changes,
+        // plus the merge fixes (civilianAI uses M4i's real AssignScrapMission / ProcureConstructionComponents, M4e's
+        // SetupRefuelling and the shared GetBuiltObjectsAtLocation / HabitatCompareTo / DesignCalculateMaintenanceCosts
+        // instead of its own copies), re-pinned once.
+        expect(summary.digest).toBe('2689770786790d6a');
     }, 600000);
 });
 

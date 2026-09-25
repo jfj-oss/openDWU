@@ -203,8 +203,11 @@ describe('M4i harness: empire construction entry points', () => {
         e.stateMoney = 5e6;
         const q = e.spacePorts[0].constructionQueue as { constructionWaitQueue: unknown[]; constructionYards: { shipUnderConstruction: unknown }[] };
         const countBefore = e.builtObjects.length + e.privateBuiltObjects.length;
+        // Since M4f, DirectPrivateConstruction may already have queued private ships (paid from private funds): only the
+        // objects DirectConstruction adds are checked.
+        const before = new Set<BuiltObject>([...e.builtObjects, ...e.privateBuiltObjects] as BuiltObject[]);
         directConstruction(g, e);
-        const queued = ([...e.builtObjects, ...e.privateBuiltObjects] as BuiltObject[]).filter((b) => b.builtAt !== null);
+        const queued = ([...e.builtObjects, ...e.privateBuiltObjects] as BuiltObject[]).filter((b) => b.builtAt !== null && !before.has(b));
         expect(queued.length).toBeGreaterThan(0);
         let paid = 0;
         for (const b of queued) paid += b.purchasePrice;

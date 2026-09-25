@@ -26,7 +26,8 @@ import { gameStartColonyRecalc, gameStartReviewTaxes } from './taxes';
 import { checkColoniesForBaseFacilities, createMiningStations, createResearchStations, createSpacePorts, determineNewSpacePortLocations, determineResearchStationLocation, setLuxuryResourcesAtColonies } from './stationPlacement';
 import { applyResearchBonusGasGiant, ensureImportantPreWarpResources } from './startHabitats';
 import { clearRuinBonusesForAge, placeRuinsUnlockTech, placeStartRuins } from './ruins';
-import { assignMissionsToBuiltObjectList, createPrivateShips, createStateShips, fillShipsWithTroops } from './builtObjectPlacement';
+import { createPrivateShips, createStateShips, fillShipsWithTroops } from './builtObjectPlacement';
+import { assignMissionsToBuiltObjectList } from './civilianAI';
 import { meetPiratesAtStart } from './pirateRelations';
 import { CharacterRole, generateNewCharacter, generateStartingCharacters } from './characters';
 import { registerTroopGeneralHook } from './troops';
@@ -1084,8 +1085,8 @@ export function createGame(opts: CreateGameOptions): Game {
             if (stopAt('ships:private', empire4)) return result();
             fillShipsWithTroops(galaxy, empire4);
             if (stopAt('ships:troops', empire4)) return result();
-            assignMissionsToBuiltObjectList(empire4, empire4.builtObjects, false, null);
-            assignMissionsToBuiltObjectList(empire4, empire4.privateBuiltObjects, false, null);
+            assignMissionsToBuiltObjectList(galaxy, empire4, empire4.builtObjects, false, null);
+            assignMissionsToBuiltObjectList(galaxy, empire4, empire4.privateBuiltObjects, false, null);
             if (stopAt('ships:missions', empire4)) return result();
         }
     }

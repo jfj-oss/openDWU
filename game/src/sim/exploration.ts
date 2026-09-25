@@ -147,7 +147,7 @@ function fastFindNearestColony(galaxy: Galaxy, x: number, y: number, empire: Emp
 }
 
 /** Empire.4.cs 4408 CanEmpireColonizeHabitatRange(empire, habitat). */
-function canEmpireColonizeHabitatRange(galaxy: Galaxy, empire: Empire, habitat: Habitat): boolean {
+export function canEmpireColonizeHabitatRange(galaxy: Galaxy, empire: Empire, habitat: Habitat): boolean {
     let result = false;
     if (COLONIZATION_RANGE_ENFORCE_LIMIT) {
         const habitat2 = fastFindNearestColony(galaxy, habitat.xpos, habitat.ypos, empire, 0);

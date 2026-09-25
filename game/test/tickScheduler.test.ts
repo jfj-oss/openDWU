@@ -100,6 +100,17 @@ function cleanupInvalidShipsProbe(getEmpire: () => Empire): BlockProbe {
     };
 }
 
+/**
+ * A block with no unconditional stub left is detected by its touch: Empire.1.cs 3470-3500 sets _Last<Block>Touch to
+ * CurrentDateTime before running the block, and only when the block fires.
+ */
+function touchProbe(galaxyOf: () => Galaxy, getEmpire: () => Empire, field: 'lastLongTouch' | 'lastHugeTouch'): BlockProbe {
+    return {
+        arm: () => {},
+        fired: () => getEmpire()[field] === galaxyOf().nowMs,
+    };
+}
+
 function setEmpireTouches(e: Empire, ms: number): void {
     e.lastShortTouch = e.lastRegularTouch = e.lastPeriodicTouch = e.lastIntermediateTouch = e.lastLongTouch = e.lastHugeTouch = ms;
 }
@@ -135,7 +146,7 @@ describe('Empire.DoTasks intervals (Empire.1.cs 3427, >= on seconds, touches fir
         regular: reviewDesignsProbe(() => probeEmpire!), // (no stub left in the regular block: detected by a probe)
         periodic: 'M4s checkSendPirateRaid',
         intermediate: 'M4m taskResupplyShips', // (M4l ported reviewFleetAdmiralBonuses)
-        long: 'M4f reviewMigrationTourism', // (M4i ported ReviewColonyWonders; same block)
+        long: touchProbe(() => galaxy, () => probeEmpire!, 'lastLongTouch'), // (M4f ported ReviewMigrationTourism, M4i ReviewColonyWonders)
         huge: 'M4s checkColoniesForPirateFacilitiesAndAttack', // (M4o ported CleanupInvalidShips; M4u ResetRaceEvents before that)
     };
     const at = (ms: number): string[] => {
@@ -376,9 +387,12 @@ describe('frame driver (Main.Part12.cs method_86)', () => {
         s.habitatCursor = n - 10;
         runSimFrame(g, 17);
         const ticked = g.habitats.map((h, i) => (h.lastTouch === g.nowMs ? i : -1)).filter((i) => i >= 0);
-        expect(ticked).toHaveLength(1000);
-        expect(ticked.slice(0, 990)).toEqual(Array.from({ length: 990 }, (_, i) => i));
-        expect(ticked.slice(990)).toEqual(Array.from({ length: 10 }, (_, i) => n - 10 + i));
+        // Every habitat in the round-robin window is ticked. Since M4f ships have missions, a ship whose MoveTo targets a
+        // moon also ticks the moon's parent planet (BuiltObject.2.cs ExecuteCommands, missions/executeCommands.ts), so a
+        // planet outside the window may carry this frame's touch too.
+        const window = [...Array.from({ length: 990 }, (_, i) => i), ...Array.from({ length: 10 }, (_, i) => n - 10 + i)];
+        for (const i of window) expect(ticked).toContain(i);
+        for (const i of ticked.filter((x) => !window.includes(x))) expect(g.habitats.some((m) => m.parent === g.habitats[i])).toBe(true);
         expect(s.habitatCursor).toBe(990);
     });
 
@@ -396,7 +410,8 @@ describe('game-start switch-over entry points (tick/gameStart.ts)', () => {
         for (const e of galaxy.empires) {
             resetEmpireTouchTimesForAge(galaxy, e);
             // Start.2.cs 1114-1121 back-dates all six touches by 121 s: short..long fire at 1341, huge does not.
-            expect(firedBlocks({ long: 'M4f reviewMigrationTourism', huge: 'M4o cleanupInvalidShips' }, () => runGameStartEmpireTick(galaxy, e))).toEqual(['long']);
+            // (No unconditional stub is left in the long / huge blocks: detected by their touches.)
+            expect(firedBlocks({ long: touchProbe(() => galaxy, () => e, 'lastLongTouch'), huge: touchProbe(() => galaxy, () => e, 'lastHugeTouch') }, () => runGameStartEmpireTick(galaxy, e))).toEqual(['long']);
             staggerEmpireTouchTimes(galaxy, e, 17);
             expect(e.lastLongTouch).toBe(-17000);
             expect(e.lastHugeTouch).toBe(-17000); // Start.2.cs 1350 sets LastHugeTouch too

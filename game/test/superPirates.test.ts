@@ -213,26 +213,28 @@ describe('UpgradeMilitaryShipDesignMoreWeapons / MoreEngines (Galaxy.8.cs 4121 /
 // block's independent-colony pirate offers draw per colony, so later game-start draws shift.)
 // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
 // (re-pinned M4u: game-start character reviews (ReviewCharacterTraits Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd) move the stream before the super-pirate generation.)
+// (re-pinned M4f: Start.2.cs 1373 AssignMissionsToBuiltObjectList draws per idle ship at game start shift every later draw)
+// (Merge of M4f onto M4u/M4o/M4l: re-pinned once against the combined code.)
 const PINNED: unknown[] = [
     [
-        "Escort:Cossack II:32",
-        "Frigate:Enforcer II:44",
-        "Destroyer:Dominator II:54",
-        "Cruiser:Vengeance:89",
-        "CapitalShip:Praetor:136",
-        "Carrier:CX-2 Carrier:106",
+        "Escort:Praetor II:33",
+        "Frigate:Sovereign II:46",
+        "Destroyer:Dominator II:56",
+        "Cruiser:Executor II:90",
+        "CapitalShip:Javelin:137",
+        "Carrier:CX-2 Carrier:110",
         "DefensiveBase:Phantom Pirate Defensive Base:123",
         "GenericBase:Phantom Pirate Base:217"
     ],
     [
-        "GenericBase:Secluded Station",
-        "DefensiveBase:Dhayu 7 Defensive Base",
+        "GenericBase:Dhayu Station",
         "DefensiveBase:Dhayu 7 Defense Battery",
-        "DefensiveBase:Dhayu 7 Defensive Base",
-        "Cruiser:Wailing Death",
-        "Destroyer:Growling Night",
-        "Escort:Potent Invader",
-        "Destroyer:Looming Annihilation"
+        "DefensiveBase:Dhayu 7 Weapons Platform",
+        "DefensiveBase:Dhayu 7 Defense Battery",
+        "Frigate:Worthy Stealth",
+        "Destroyer:Crushing Champion",
+        "Carrier:Ultimate Exile",
+        "Cruiser:Sly Monarch"
     ],
-    26
+    33
 ];

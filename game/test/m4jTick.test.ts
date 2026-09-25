@@ -29,7 +29,9 @@ describe('M4j on the headless harness', () => {
             expect(pop, e.name).toBeGreaterThan(before[i].pop);
             expect(e.totalPopulation).toBeGreaterThan(before[i].pop); // _TotalPopulation: snapshot of the last EvaluateColonyVariables
             expect(e.stateMoney).not.toBe(before[i].state);
-            expect(e.privateMoney).toBeGreaterThan(before[i].priv);
+            // Private money moves; since M4f DirectPrivateConstruction spends it on new private ships, so it may fall
+            // (the private revenue total below still grows).
+            expect(e.privateMoney).not.toBe(before[i].priv);
             expect(e.counters.colonyPrivateRevenueTotal).toBeGreaterThan(before[i].revenue);
             expect(Number.isFinite(e.stateMoney) && Number.isFinite(e.privateMoney)).toBe(true);
             for (const c of e.colonies) {

@@ -377,8 +377,10 @@ describe('harness smoke (seed 1, 600 game-s)', () => {
         let maxDocked = 0;
         let sawRefuelMission = false;
         let sawLoadOrUnload = false;
+        let thirstyMaxFuel = thirsty.currentFuel;
         runGameSeconds(g, 600, {
             onFrame: () => {
+                thirstyMaxFuel = Math.max(thirstyMaxFuel, thirsty.currentFuel);
                 if (g.scheduler!.frames % 60 !== 0) return;
                 let docked = 0;
                 for (const b of g.builtObjects) {
@@ -394,8 +396,9 @@ describe('harness smoke (seed 1, 600 game-s)', () => {
         expect(maxDocked).toBeGreaterThan(0);
         expect(sawLoadOrUnload).toBe(true);
         expect(sawRefuelMission).toBe(true);
-        // ... and it flies there, docks, takes on fuel (case Refuel) and undocks.
-        expect(thirsty.currentFuel).toBeGreaterThan(thirsty.fuelCapacity * 0.9);
+        // ... and it flies there, docks, takes on fuel (case Refuel) and undocks. (Since M4f the explorer then gets an
+        // Explore mission and burns fuel again, so the peak level is checked.)
+        expect(thirstyMaxFuel).toBeGreaterThan(thirsty.fuelCapacity * 0.9);
         // Docked ships sit in a bay of their dock.
         for (const b of g.builtObjects) {
             if (b.dockedAt !== null && !b.hasBeenDestroyed) {

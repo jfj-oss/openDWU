@@ -155,6 +155,8 @@ describe('createGame full game start (seed 1, Spiral 300 stars, 8x8, Human + 3 A
 // block's independent-colony pirate offers draw per colony (IndependentColoniesMake{Smuggling,Defend}OffersToPirates).
 // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
 // Re-pinned M4u: the game-start Empire.DoTasks runs the character reviews (ReviewCharacterTraits / ApplyCharacterLocationBonus Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd); empire placement, names and pirates shift.
+// Re-pinned M4f: game-start AssignMissionsToBuiltObjectList draws move the empire-placement / ruins stream.
+// (Merge of M4f onto M4u/M4o/M4l: re-pinned once against the combined code.)
 const PINNED_SUMMARY: unknown = {
     "empires": [
         {
@@ -354,5 +356,5 @@ const PINNED_SUMMARY: unknown = {
     "independentTraders": 150,
     "unownedBuiltObjects": 24,
     "builtObjects": 324,
-    "ruins": 35
+    "ruins": 20
 };

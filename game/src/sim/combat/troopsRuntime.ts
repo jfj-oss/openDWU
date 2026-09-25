@@ -92,3 +92,19 @@ export function assignLoadTroopsMission(galaxy: Galaxy, empire: Empire, ship: Bu
     /* TODO(port) M4q */ todo(T_assignLoadTroopsMission);
     return false;
 }
+
+// ---- stubs added by M4f (called from civilianAI.ts AssignMissionToBuiltObject, Empire.5.cs 1879-1880) ----
+
+const T_checkAssignUnloadTroopsAtColonyNeedingThemMissionShip = registerTodo('M4q', 'checkAssignUnloadTroopsAtColonyNeedingThemMissionShip');
+/** Empire.5.cs 727 CheckAssignUnloadTroopsAtColonyNeedingThemMission(ship) (single-ship overload) — stub: false. */
+export function checkAssignUnloadTroopsAtColonyNeedingThemMissionShip(galaxy: Galaxy, empire: Empire, ship: BuiltObject): boolean {
+    /* TODO(port) M4q */ todo(T_checkAssignUnloadTroopsAtColonyNeedingThemMissionShip);
+    return false;
+}
+
+const T_checkAssignGarrisonTroopsAtPenalColonyMission = registerTodo('M4q', 'checkAssignGarrisonTroopsAtPenalColonyMission');
+/** Empire.5.cs 782 CheckAssignGarrisonTroopsAtPenalColonyMission(ship) — stub: false. */
+export function checkAssignGarrisonTroopsAtPenalColonyMission(galaxy: Galaxy, empire: Empire, ship: BuiltObject): boolean {
+    /* TODO(port) M4q */ todo(T_checkAssignGarrisonTroopsAtPenalColonyMission);
+    return false;
+}
