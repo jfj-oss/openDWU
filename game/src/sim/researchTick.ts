@@ -178,8 +178,8 @@ interface ResearchBonusFieldsOwnedElsewhere {
     /** RaceEventType as its numeric value. */
     raceEventType?: number;
 }
-/** RaceEventType.cs HistoricalDiscoveryExploreRuinsForResearchBoost. */
-const RACE_EVENT_HISTORICAL_DISCOVERY_EXPLORE_RUINS_FOR_RESEARCH_BOOST = 18;
+/** RaceEventType.cs HistoricalDiscoveryExploreRuinsForResearchBoost (the 30th member, value 29). */
+const RACE_EVENT_HISTORICAL_DISCOVERY_EXPLORE_RUINS_FOR_RESEARCH_BOOST = 29;
 
 // ---------------------------------------------------------------------------
 // CharacterList helpers (CharacterList.cs)

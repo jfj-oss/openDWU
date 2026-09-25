@@ -28,6 +28,7 @@
 //   BaconValues null.
 // - DiplomaticRelations empty → CheckAtWar false; no pirate colony control.
 
+import { RaceEventType, getPlagueUnhappinessFactorWithPlague } from './eventTypes';
 import { processColonyTroops } from './troops';
 import { CharacterSkillType, colonyCharactersHighestSkillExcludeLeaders, resolveColonyWarWearinessDivisors, resolveEmpireLeaderWarWearinessDivisor, resolveLeaderColonyHappiness } from './characters';
 import type { Galaxy } from './galaxy';
@@ -319,12 +320,9 @@ export function raidEconomyDamageFactor(_h: Habitat): number {
     return 0.0;
 }
 
-// Habitat.cs GetPlagueUnhappinessFactor (1869).
-export function getPlagueUnhappinessFactor(_h: Habitat): number {
-    // Habitat.PlagueId (short, default -1). TODO(port) M4u: Galaxy.PlaguesStatic / plague model.
-    const plagueId = _h.plagueId;
-    if (plagueId >= 0) throw new Error('TODO(port): plagues (Habitat.GetPlagueUnhappinessFactor)');
-    return 0.0;
+// Habitat.cs GetPlagueUnhappinessFactor (1869) — events.ts (M4u).
+export function getPlagueUnhappinessFactor(galaxy: Galaxy, _h: Habitat): number {
+    return getPlagueUnhappinessFactorWithPlague(galaxy, _h).result;
 }
 
 // Habitat.cs EmpireApprovalRating (534).
@@ -332,9 +330,8 @@ export function empireApprovalRating(galaxy: Galaxy, h: Habitat): number {
     const empire = h.empire;
     const taxApproval = habitatTaxApproval(h);
     let inputValue = 0.0;
-    // TODO(port): Empire._LeaderChangeInfluence (Empire.6.cs leader change) — 0.0 at game start.
-    const leaderChangeInfluence = 0.0;
-    if (empire !== null && leaderChangeInfluence !== 0.0) inputValue = leaderChangeInfluence * 20.0;
+    // Empire.LeaderChangeInfluence (Empire.6.cs 5084 ProcessLeaderChangeInfluence; characterRuntime.ts).
+    if (empire !== null && empire.leaderChangeInfluence !== 0.0) inputValue = empire.leaderChangeInfluence * 20.0;
     let num = 0.0;
     let inputValue2 = 0.0;
     let num2 = 0.0;
@@ -350,7 +347,7 @@ export function empireApprovalRating(galaxy: Galaxy, h: Habitat): number {
         }
         const num4 = resourceBonusTotalByEffectType(h, ColonyResourceEffect.WarWearinessReduction) / 100.0;
         if (num4 > 0.0) num /= 1.0 + num4;
-        // TODO(port): RaceEventType.TodashGalacticChampionships (*0.9) — no race event at game start.
+        if (h.raceEventType === RaceEventType.TodashGalacticChampionships) num *= 0.9;
         // Habitat.cs 567-578: Empire.Leader.WarWeariness, then Characters (excluding leaders) WarWeariness.
         const wwDivisors = resolveColonyWarWearinessDivisors(h);
         if (wwDivisors.leaderDivisor !== null) num /= wwDivisors.leaderDivisor;
@@ -384,11 +381,11 @@ export function empireApprovalRating(galaxy: Galaxy, h: Habitat): number {
     const num19 = modifyApprovalValueByEmpireAttributes(galaxy, h, inputValue4);
     const inputValue5 = raidEconomyDamageFactor(h) * -20.0;
     const num20 = modifyApprovalValueByEmpireAttributes(galaxy, h, inputValue5);
-    const plagueUnhappinessFactor = getPlagueUnhappinessFactor(h);
+    const plagueUnhappinessFactor = getPlagueUnhappinessFactor(galaxy, h);
     const num21 = modifyApprovalValueByEmpireAttributes(galaxy, h, plagueUnhappinessFactor);
     let num22 = num8 + num12 + num9 + num13 + num10 + num11 + num14 + num2 + num15 + num16 + num17 + num18 + num19 + num20 + num21;
     num22 += resourceBonusTotalByEffectType(h, ColonyResourceEffect.Happiness);
-    // TODO(port): RaceEventType.NepthysWineVintage (+5) — no race event at game start.
+    if (h.raceEventType === RaceEventType.NepthysWineVintage) num22 += 5.0;
     let num23 = 0;
     num23 += colonyCharactersHighestSkill(h);
     if (empire !== null) num23 += leaderColonyHappiness(empire);
@@ -419,7 +416,7 @@ export function calculateUnmodifiedApproval(galaxy: Galaxy, h: Habitat, value: n
     if (h.facilities !== null && h.facilities.length > 0) throw new Error('TODO(port): PlanetaryFacility model (Habitat.CalculateUnmodifiedApproval)');
     if (subtractAdditives) {
         value -= resourceBonusTotalByEffectType(h, ColonyResourceEffect.Happiness);
-        // TODO(port): RaceEventType.NepthysWineVintage (-5) — no race event at game start.
+        if (h.raceEventType === RaceEventType.NepthysWineVintage) value -= 5.0;
     }
     const num4 = modifyApprovalValueByEmpireAttributes(galaxy, h, value);
     value = num4;

@@ -19,35 +19,17 @@ import { builtObjectInflictDamage } from './combat/damage';
 import { determineAngle } from './creature';
 import { doCharacterEventForList, type Character, type CharacterEventType } from './characters';
 import * as characterRuntime from './characterRuntime';
-
-/** EventMessageType.cs (enum, declaration order). */
-export enum EventMessageType {
-    Undefined, NewEmpireRaceAbility, ExoticTechDiscovered, SpecialGovernmentType, CreatureOutbreak, GalacticRefugees, SleepersAwake,
-    NewEmpireEmerges, OriginsDiscovery, LostBuiltObjectCoordinates, LostColonyCoordinates, FreeSuperShip, PirateFactionJoinsYou,
-    TreasureFound, LostColonyFound, AncientBattleDebrisField, IndependentPopulation, GeneralRuinsDiscovery, EncounterRuins,
-    EncounterBuiltObject, BuiltObjectExplodes, PirateAmbush, CreatureSwarm, StoryClue, SpecialArea, RestrictedResourceDiscovered,
-    RuinsEmpireBonus, RogueFleetDefectsToUs, RogueFleetDefectsFromUs, EmpireSplits, UncoverPirateAttackFundingAnotherEmpire,
-    UncoverPirateAttackFundingYourEmpire, UncoverPlanetDestroyerConstruction, UncoverKnownLocation, RareResourceIntercepted,
-    GeneralDiscovery, DisasterEvent, ResourceAppearance, ResourceDepletion, RaceEvent, WonderBuilt, CharacterEvent, PhantomPirates,
-    LeaderChange,
-}
-
-/** DisasterEventType.cs (enum, declaration order). */
-export enum DisasterEventType {
-    Undefined, Earthquake, Sinkhole, Tsunami, Sandstorm, Blizzard, Eruption, Plague, EconomicCrisis,
-}
-
-/** RaceEventType.cs (byte enum, declaration order). */
-export enum RaceEventType {
-    Undefined, NepthysWineVintage, UnderwaterLeviathan, GreatHuntStrongTroops, SuppressedKnowledgeLoseResearch,
-    ShakturiArtifactWeaponResearch, WarriorWaveTroopRecruitment, SwarmsFullTroopTransport, CannibalismPopulationShrinks,
-    MetamorphosisCharacterChange, StrengthInNumbersMaintenanceLowerForSmallShips, AntiXenoRiotsExterminate, XenophobiaNoAssimilate,
-    DestinyCharacterTraits, NaturalHarmonyColonyQualityIncreased, SecurityConcernsCharacterReplaced, NeverSurrenderWarWearinessReset,
-    ScientificBreakthroughResearchProgress, ForcedRetirementLeaderReplaced, TodashGalacticChampionships,
-    HistoricalKnowledgeUncoverHiddenLocation, IsolationistsResetFirstContactPenalty, GrandPerformanceDiplomacyBonus,
-    FriendsInManyPlacesRevealTerritory, LuckyAvertColonyDisaster, SupremeWarriorNewGeneral, DeathCultExterminate,
-    CreativeReengineeringFreeCrashResearch, PredictiveHistory, HistoricalDiscoveryExploreRuinsForResearchBoost,
-}
+import { EventMessageType, DisasterEventType, RaceEventType, raceImmuneToPlagues, galaxyPlagues, getPlagueUnhappinessFactorWithPlague } from './eventTypes';
+export { EventMessageType, DisasterEventType, RaceEventType, raceImmuneToPlagues, galaxyPlagues, getPlagueUnhappinessFactorWithPlague };
+import * as empireEvents from './empireEvents';
+import type { Race } from './data/races';
+import type { PlagueStatic } from './researchSystem';
+import type { Population } from './population';
+import { gameText } from './colonyTick';
+import { CreatureType } from './creature';
+import { REAL_SECONDS_IN_GALACTIC_YEAR, galaxyNow } from './tick/simTime';
+import { EmpireMessageType, sendMessageToEmpire } from './messages';
+import { clearColony } from './combat/invasion';
 
 /** Empire.7.cs 3400 SendEventMessageToEmpire(eventMessageType, title, message, additionalData, location): only the attached UI recipient sees it. */
 export function sendEventMessageToEmpire(empire: Empire, eventMessageType: EventMessageType, title: string, message: string, additionalData: unknown, location: unknown): void {
@@ -131,11 +113,9 @@ export function processCharacters(galaxy: Galaxy, empire: Empire, timePassed: nu
     }
 }
 
-const T_checkReviewSpecialPirateEvents = registerTodo('M4u', 'checkReviewSpecialPirateEvents');
-/** Empire.7.cs 3408 CheckReviewSpecialPirateEvents. */
+/** Empire.7.cs 3408 CheckReviewSpecialPirateEvents (empireEvents.ts). */
 export function checkReviewSpecialPirateEvents(galaxy: Galaxy, empire: Empire): void {
-    // RND: draws in callees (d≤3) — not drawn until M4u.
-    /* TODO(port) M4u */ todo(T_checkReviewSpecialPirateEvents);
+    empireEvents.checkReviewSpecialPirateEvents(galaxy, empire);
 }
 
 /** Empire.6.cs 3990 CheckForCharacterAppearance (characterRuntime.ts). */
@@ -166,31 +146,24 @@ export function reviewDemoralizingCharacters(galaxy: Galaxy, empire: Empire): vo
 export function reviewCharacterLocations(galaxy: Galaxy, empire: Empire): void {
     characterRuntime.reviewCharacterLocations(galaxy, empire);
 }
-const T_resetRaceEvents = registerTodo('M4u', 'resetRaceEvents');
-/** Empire.1.cs 2094 ResetRaceEvents. */
+/** Empire.1.cs 2094 ResetRaceEvents (empireEvents.ts). */
 export function resetRaceEvents(galaxy: Galaxy, empire: Empire): void {
-    /* TODO(port) M4u */ todo(T_resetRaceEvents);
+    empireEvents.resetRaceEvents(galaxy, empire);
 }
 
-const T_reviewRandomEvents = registerTodo('M4u', 'reviewRandomEvents');
-/** Empire.1.cs 1758 ReviewRandomEvents. */
+/** Empire.1.cs 1758 ReviewRandomEvents (empireEvents.ts). */
 export function reviewRandomEvents(galaxy: Galaxy, empire: Empire): void {
-    // RND: 5 direct — not drawn until M4u.
-    /* TODO(port) M4u */ todo(T_reviewRandomEvents);
+    empireEvents.reviewRandomEvents(galaxy, empire);
 }
 
-const T_reviewEmpireEvents = registerTodo('M4u', 'reviewEmpireEvents');
-/** Empire.1.cs 2811 ReviewEmpireEvents. */
+/** Empire.1.cs 2811 ReviewEmpireEvents (empireEvents.ts). */
 export function reviewEmpireEvents(galaxy: Galaxy, empire: Empire): void {
-    // RND: 8 direct, +clock×1 — not drawn until M4u.
-    /* TODO(port) M4u */ todo(T_reviewEmpireEvents);
+    empireEvents.reviewEmpireEvents(galaxy, empire);
 }
 
-const T_pirateReviewRandomEvents = registerTodo('M4u', 'pirateReviewRandomEvents');
-/** Empire.1.cs 1731 PirateReviewRandomEvents. */
+/** Empire.1.cs 1731 PirateReviewRandomEvents (empireEvents.ts). */
 export function pirateReviewRandomEvents(galaxy: Galaxy, empire: Empire): void {
-    // RND: 4 direct — not drawn until M4u.
-    /* TODO(port) M4u */ todo(T_pirateReviewRandomEvents);
+    empireEvents.pirateReviewRandomEvents(galaxy, empire);
 }
 
 /** BuiltObject.cs 3448 DoLocationEffects(timePassed, time). */
@@ -314,11 +287,183 @@ export function applyLocationEffects(galaxy: Galaxy, builtObject: BuiltObject, t
     builtObject.shieldsReducedLocation = flag4;
 }
 
-const T_processPlague = registerTodo('M4u', 'processPlague');
-/** Habitat.cs 1678 ProcessPlague(timePassed). */
+/** Galaxy.3.cs 1693 FindNearestInfectableColonyInIndexWithNoPlague(x, y, index, out distance). */
+function findNearestInfectableColonyInIndexWithNoPlague(galaxy: Galaxy, x: number, y: number, cx: number, cy: number): { item: Habitat | null; distance: number } {
+    let habitat: Habitat | null = null;
+    const habitatList = galaxy.habitatIndexGrid[cx][cy];
+    let distance = Number.MAX_VALUE;
+    for (let i = 0; i < habitatList.length; i++) {
+        const habitat2 = habitatList[i];
+        if (habitat2 == null || habitat2.population == null || habitat2.population.items.length <= 0) continue;
+        let flag = false;
+        for (let j = 0; j < habitat2.population.items.length; j++) {
+            const population = habitat2.population.items[j];
+            if (population != null && population.race != null && !raceImmuneToPlagues(population.race)) {
+                flag = true;
+                break;
+            }
+        }
+        if (flag && habitat2.plagueId < 0 && habitat2.plagueTimeRemaining <= 0) {
+            const num = galaxy.calculateDistanceSquared(x, y, habitat2.xpos, habitat2.ypos);
+            if (num < distance) {
+                distance = num;
+                habitat = habitat2;
+            }
+        }
+    }
+    if (habitat !== null) distance = galaxy.calculateDistance(x, y, habitat.xpos, habitat.ypos);
+    return { item: habitat, distance };
+}
+
+/** Galaxy.3.cs 1659 FindNearestInfectableColonyWithNoPlague(x, y) (the shared sector ring search). No Rnd. */
+export function findNearestInfectableColonyWithNoPlague(galaxy: Galaxy, x: number, y: number): Habitat | null {
+    return galaxy.ringSearch(x, y, (cx, cy) => findNearestInfectableColonyInIndexWithNoPlague(galaxy, x, y, cx, cy));
+}
+
+/** Habitat.cs 1838 InfectWithPlague(plague, infectingColony). Rnd: NextDouble when a population can be infected. */
+export function infectWithPlague(galaxy: Galaxy, habitat: Habitat, plague: PlagueStatic, infectingColony: Habitat | null): void {
+    let flag = false;
+    for (let i = 0; i < habitat.population.items.length; i++) {
+        const population = habitat.population.items[i];
+        if (population != null && population.race != null && !raceImmuneToPlagues(population.race)) {
+            flag = true;
+            break;
+        }
+    }
+    if (!flag) return;
+    habitat.plagueId = plague.plagueId;
+    // PlagueTimeRemaining = plague.Duration + (float)((Rnd.NextDouble() - 0.5) * ((double)plague.Duration * 0.3)) (float field).
+    habitat.plagueTimeRemaining = Math.fround(Math.fround(plague.duration) + Math.fround((galaxy.rnd.nextDouble() - 0.5) * (Math.fround(plague.duration) * 0.3)));
+    const habitat2 = galaxy.determineHabitatSystemStar(habitat);
+    galaxy.systems[habitat2.systemIndex].plagueId = plague.plagueId;
+    const description = plague.description;
+    let title = gameText('Colony Disaster Plague Spreads') + '!';
+    if (infectingColony === null) title = gameText('Colony Disaster Plague') + '!';
+    const empty = infectingColony !== null
+        ? gameText('Colony Disaster Plague Spreads Description', plague.name, infectingColony.name, habitat.name, habitat2.name, description)
+        : gameText('Colony Disaster Plague Description', plague.name, habitat.name, habitat2.name, description);
+    // C# derefs Empire (the caller only infects owned colonies).
+    sendEventMessageToEmpire(habitat.empire!, EventMessageType.DisasterEvent, title, empty, DisasterEventType.Plague, habitat);
+    sendNewsBroadcast(habitat.empire!, EventMessageType.DisasterEvent, habitat, DisasterEventType.Plague, false, false);
+}
+
+/**
+ * Habitat.cs 1678 ProcessPlague(timePassed). Rnd: Next(0, 1000) per call while plagued; InfectWithPlague's NextDouble and
+ * Next(10, 16) (special function 1: Kaltor outbreak) when the plague spreads.
+ */
 export function processPlague(galaxy: Galaxy, habitat: Habitat, timePassed: number): void {
-    // RND: 2 direct, +clock×1 — not drawn until M4u.
-    /* TODO(port) M4u */ todo(T_processPlague);
+    if (habitat.plagueId < 0 || !(habitat.plagueTimeRemaining > 0)) return;
+    let num = 0.0;
+    let num2 = 1000;
+    const plague = galaxyPlagues(galaxy)[habitat.plagueId];
+    if (plague != null) {
+        num = plague.mortalityRate;
+        num2 = plague.infectionChance;
+        let num3 = num2;
+        if (plague.exceptionRaceName !== '') {
+            const dominantRace = habitat.population.dominantRace;
+            if (dominantRace !== null && dominantRace.name === plague.exceptionRaceName) num3 = plague.exceptionInfectionChance;
+        }
+        const num4 = galaxy.rnd.next(0, 1000);
+        if (num4 > 1000 - num3) {
+            const habitat2 = findNearestInfectableColonyWithNoPlague(galaxy, habitat.xpos, habitat.ypos);
+            if (habitat2 !== null) {
+                const num5 = galaxy.calculateDistance(habitat.xpos, habitat.ypos, habitat2.xpos, habitat2.ypos);
+                let num6 = galaxy.sectorSize * 0.8;
+                num6 += galaxy.sectorSize * 2.0 * (Math.sqrt(num3) / Math.sqrt(1000.0));
+                if (num5 < num6 && habitat2.population != null && habitat2.empire !== null && (habitat2.empire !== galaxy.independentEmpire || plague.specialFunctionCode === 1)) {
+                    infectWithPlague(galaxy, habitat2, plague, habitat);
+                    if (plague.specialFunctionCode === 1) {
+                        galaxy.allowGiantKaltorGeneration = true;
+                        const num7 = galaxy.rnd.next(10, 16);
+                        for (let i = 0; i < num7; i++) galaxy.generateCreatureAtHabitat(CreatureType.Kaltor, habitat2, false);
+                    }
+                }
+            }
+        }
+        if (habitat.population != null) {
+            let num8 = num;
+            if (plague.exceptionRaceName !== '') {
+                const dominantRace2 = habitat.population.dominantRace;
+                if (dominantRace2 !== null && dominantRace2.name === plague.exceptionRaceName) num8 = plague.exceptionMortalityRate;
+            }
+            const num9 = habitat.population.totalAmount;
+            let val = num8 * (timePassed / REAL_SECONDS_IN_GALACTIC_YEAR) * num9;
+            let num10 = 10000000.0;
+            if (num8 > 1.0) num10 *= num8;
+            val = Math.max(num10, val);
+            if (num9 > num10 || plague.canCompletelyEliminatePopulation) {
+                const populationList: Population[] = [];
+                for (let j = 0; j < habitat.population.items.length; j++) {
+                    const population = habitat.population.items[j];
+                    if (population == null) continue;
+                    let num11 = num;
+                    let num12 = val;
+                    if (plague.exceptionRaceName !== '' && population.race != null && population.race.name === plague.exceptionRaceName) {
+                        num11 = plague.exceptionMortalityRate;
+                        num12 = plague.exceptionMortalityRate * (timePassed / REAL_SECONDS_IN_GALACTIC_YEAR) * num9;
+                    }
+                    if (!raceImmuneToPlagues(population.race)) {
+                        const num13 = population.amount / num9;
+                        let val2 = num12 * num13;
+                        let num14 = 5000000.0;
+                        if (num11 > 1.0) num14 *= num11;
+                        val2 = Math.max(num14, val2);
+                        let num15 = population.amount - csDoubleToLong(val2);
+                        if (!plague.canCompletelyEliminatePopulation) num15 = Math.max(num15, 1000000);
+                        population.amount = num15;
+                        if (population.amount <= 0) {
+                            population.amount = 0;
+                            populationList.push(population);
+                        }
+                    }
+                }
+                for (let k = 0; k < populationList.length; k++) habitat.population.remove(populationList[k]);
+                habitat.population.recalculateTotalAmount();
+                if (habitat.population.totalAmount <= 0 || habitat.population.items.length <= 0) {
+                    if (habitat.empire !== null) {
+                        const title = gameText('COLONY wiped out by PLAGUE', habitat.name, plague.name);
+                        const description = gameText('Our colony COLONY has been completely wiped out by PLAGUE', habitat.name, plague.name);
+                        sendMessageToEmpire(habitat.empire, habitat.empire, EmpireMessageType.ColonyLost, habitat, description, { x: Math.trunc(habitat.xpos), y: Math.trunc(habitat.ypos) }, '', title);
+                        sendNewsBroadcast(habitat.empire, EventMessageType.DisasterEvent, habitat, DisasterEventType.Plague, false, false, EmpireMessageType.ColonyLost, plague);
+                    }
+                    const builtObjectList: BuiltObject[] = [];
+                    if (habitat.empire !== null && habitat.empire.builtObjects != null) {
+                        for (let l = 0; l < habitat.empire.builtObjects.length; l++) {
+                            const builtObject = habitat.empire.builtObjects[l];
+                            if (builtObject != null && builtObject.role === BuiltObjectRole.Base && builtObject.parentHabitat === habitat) builtObjectList.push(builtObject);
+                        }
+                    }
+                    for (let m = 0; m < builtObjectList.length; m++) {
+                        const builtObject2 = builtObjectList[m];
+                        // TODO(port) M4o: InflictDamage (BuiltObject.2.cs 6221) — stub, no damage applied (the C# destroys the base).
+                        builtObjectInflictDamage(galaxy, builtObject2, builtObject2, null, 1000000.0, galaxyNow(galaxy), 0, false, 0.0, false);
+                    }
+                    for (let n = 0; n < habitat.basesAtHabitat.length; n++) {
+                        const builtObject3 = habitat.basesAtHabitat[n];
+                        // TODO(port) M4o: InflictDamage (BuiltObject.2.cs 6221) — stub, no damage applied.
+                        if (builtObject3 != null) builtObjectInflictDamage(galaxy, builtObject3, builtObject3, null, 1000000.0, galaxyNow(galaxy), 0, false, 0.0, false);
+                    }
+                    // TODO(port) M4q: ClearColony(null, sendMessages: true, removeEmpireWhenNoColonies: true) (Habitat.cs 7450) — stub.
+                    clearColony(galaxy, habitat, null);
+                    habitat.plagueId = -1;
+                    habitat.plagueTimeRemaining = 0;
+                }
+            }
+        }
+    }
+    const num16 = Math.fround(habitat.plagueTimeRemaining - Math.fround(timePassed));
+    if (num16 <= 0) {
+        habitat.plagueId = -1;
+        habitat.plagueTimeRemaining = 0;
+    } else {
+        habitat.plagueTimeRemaining = num16;
+    }
+}
+
+/** C# (long)double: truncation toward zero (values here stay far inside the long range). */
+function csDoubleToLong(v: number): number {
+    return Math.trunc(v);
 }
 
 const T_checkHabitatIsEmpire = registerTodo('M4u', 'checkHabitatIsEmpire');
@@ -332,11 +477,19 @@ export function checkHabitatIsEmpire(galaxy: Galaxy, habitat: Habitat): void {
 export function chanceColonyGovernorPromotion(galaxy: Galaxy, empire: Empire, habitat: Habitat): void {
     characterRuntime.chanceColonyGovernorPromotion(galaxy, empire, habitat);
 }
-const T_spawnCreatures = registerTodo('M4u', 'spawnCreatures');
-/** Habitat.cs 1619 SpawnCreatures. */
+/** Habitat.cs 1619 SpawnCreatures. Rnd: GenerateCreatureAtHabitat's draws when no desert slug is left at the habitat. */
 export function spawnCreatures(galaxy: Galaxy, habitat: Habitat): void {
-    // RND: draws in callees (d≤3) — not drawn until M4u.
-    /* TODO(port) M4u */ todo(T_spawnCreatures);
+    // Resources.ContainsName("Korabbian Spice").
+    if (!habitat.resources.some((r) => galaxy.resourceSystem.byId.get(r.resourceId)?.name === 'Korabbian Spice')) return;
+    let num = 0;
+    const creatures = galaxy.systems[habitat.systemIndex].creatures ?? [];
+    if (creatures.length > 0) {
+        for (let i = 0; i < creatures.length; i++) {
+            const creature = creatures[i];
+            if (creature != null && !creature.hasBeenDestroyed && creature.parentHabitat === habitat && creature.type === CreatureType.DesertSpaceSlug) num++;
+        }
+    }
+    if (num <= 0) galaxy.generateCreatureAtHabitat(CreatureType.DesertSpaceSlug, habitat, true);
 }
 
 const T_doPlanetRemove = registerTodo('M4u', 'doPlanetRemove');
@@ -412,15 +565,12 @@ export function updateAchievements(galaxy: Galaxy, empire: Empire): void {
     /* TODO(port) deferred (not M4) */ todo(T_updateAchievements);
 }
 
-const T_checkSendPreWarpProgressEventMessage = registerTodo('M4u', 'checkSendPreWarpProgressEventMessage');
 /**
- * Empire.7.cs 3426 CheckSendPreWarpProgressEventMessage(eventType, subject, empire, hint). Stub added by M4t
- * (Galaxy.7.cs 3957 DoEmpireEncounter). `eventType` is a PreWarpProgressEventType (exploration.ts). Returns false.
+ * Empire.7.cs 3426 CheckSendPreWarpProgressEventMessage(eventType, subject, empire, hint) (empireEvents.ts). `eventType` is a
+ * PreWarpProgressEventType (exploration.ts).
  */
 export function checkSendPreWarpProgressEventMessage(galaxy: Galaxy, empire: Empire, eventType: number, subject: unknown, otherEmpire: Empire | null = null, hint = ''): boolean {
-    // RND: 7 direct — not drawn until M4u.
-    /* TODO(port) M4u */ todo(T_checkSendPreWarpProgressEventMessage);
-    return false;
+    return empireEvents.checkSendPreWarpProgressEventMessage(galaxy, empire, eventType, subject, otherEmpire, hint);
 }
 
 const T_leaveEmpire = registerTodo('M4u', 'leaveEmpire');

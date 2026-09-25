@@ -35,6 +35,7 @@
 //   Empire.PenalColonies: empty. Empire.Capitals: only Capital at game start.
 //   Habitat.RaceEventType: Undefined. Habitat.DefensiveFortressBonus: 0. Facilities: none.
 
+import { RaceEventType } from './eventTypes';
 import { Troop, TroopList, TroopType } from './cargo';
 import { calculateTroopMaintenanceMultiplier, generateNewTroop } from './builtObjectPlacement';
 import { BuiltObjectSubRole } from './builtObjectTypes';
@@ -400,8 +401,7 @@ export function habitatGenerateNewTroop(galaxy: Galaxy, habitat: Habitat, troopT
         }
         const bonusTotalByEffectType = resourceBonusTotalByEffectType(habitat, ColonyResourceEffect.RecruitedTroopStrength);
         num += bonusTotalByEffectType;
-        // TODO(port): Habitat.RaceEventType GreatHuntStrongTroops / WarriorWaveTroopRecruitment
-        // (num *= 1.1) — RaceEventType.Undefined at game start.
+        if (habitat.raceEventType === RaceEventType.GreatHuntStrongTroops || habitat.raceEventType === RaceEventType.WarriorWaveTroopRecruitment) num *= 1.1;
         switch (troopType) {
             case TroopType.Infantry:
                 if (habitat.facilities !== null && habitat.facilities.length > 0) {
@@ -646,7 +646,7 @@ export function processColonyTroopsFull(
     if (race !== null) {
         troopSizeRegenerationAmount *= raceTroopRegenerationFactor(race);
     }
-    // TODO(port): Habitat.RaceEventType WarriorWaveTroopRecruitment (× 1.2) — Undefined at game start.
+    if (colony.raceEventType === RaceEventType.WarriorWaveTroopRecruitment) troopSizeRegenerationAmount *= 1.2;
     const gov = empireGovernmentAttributes(empire);
     if (gov !== null) {
         troopRecruitmentAmount *= gov.troopRecruitment;
