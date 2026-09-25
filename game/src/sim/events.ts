@@ -1306,24 +1306,10 @@ export function performIntelligenceMissions(galaxy: Galaxy, empire: Empire): voi
     /* TODO(port) deferred (not M4) */ todo(T_performIntelligenceMissions);
 }
 
-const T_reviewAchievements = registerTodo('deferred', 'reviewAchievements');
-/** Galaxy.1.cs 2935 ReviewAchievements. */
-export function reviewAchievements(galaxy: Galaxy): void {
-    /* TODO(port) deferred (not M4) */ todo(T_reviewAchievements);
-}
-
-const T_checkVictoryConditions = registerTodo('deferred', 'checkVictoryConditions');
-/** Galaxy.1.cs 88 CheckVictoryConditions(playerEmpire, globalVictoryConditions, playerConditionsToAchieve, playerConditionsToPrevent). */
-export function checkVictoryConditions(galaxy: Galaxy, playerEmpire: Empire | null): void {
-    // RND: draws in callees (d≤3) — not drawn until ported.
-    /* TODO(port) deferred (not M4) */ todo(T_checkVictoryConditions);
-}
-
-const T_updateAchievements = registerTodo('deferred', 'updateAchievements');
-/** Empire.1.cs 3969 UpdateAchievements. */
-export function updateAchievements(galaxy: Galaxy, empire: Empire): void {
-    /* TODO(port) deferred (not M4) */ todo(T_updateAchievements);
-}
+// Galaxy.1.cs 2935 ReviewAchievements, Galaxy.1.cs 88 CheckVictoryConditions, Empire.1.cs 3969 UpdateAchievements:
+// ported by M4z4 in achievements.ts / victory.ts (re-exported here for the tick skeletons).
+export { reviewAchievements, updateAchievements } from './achievements';
+export { checkVictoryConditions } from './victory';
 
 /**
  * Empire.7.cs 3426 CheckSendPreWarpProgressEventMessage(eventType, subject, empire, hint) (empireEvents.ts). `eventType` is a

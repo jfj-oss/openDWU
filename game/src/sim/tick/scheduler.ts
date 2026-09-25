@@ -16,6 +16,7 @@
 // - Paused ⇒ no frames (the C# loop keeps calling DoTasks with a frozen clock; with dt = 0 only the round-robin
 //   cursors would move).
 
+import { gameVictoryArgs } from '../victory';
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import type { BuiltObject } from '../builtObject';
@@ -152,8 +153,9 @@ function drainQueue(galaxy: Galaxy, state: SchedulerState): void {
         const obj = state.queue[i];
         const t0 = profile !== null ? now() : 0;
         if (obj === galaxy) {
-            // ((Galaxy)obj).DoTasks(_Game.IsFinished, _Game.PlayerEmpire, …) — no victory state yet: gameFinished false.
-            galaxyDoTasks(galaxy, false, galaxy.playerEmpire);
+            // ((Galaxy)obj).DoTasks(_Game.IsFinished, _Game.PlayerEmpire, _Game.GlobalVictoryConditions,
+            // _Game.PlayerVictoryConditionsToAchieve, _Game.PlayerVictoryConditionsToPrevent) — Game stand-ins on the Galaxy (M4z4).
+            galaxyDoTasks(galaxy, galaxy.gameIsFinished, galaxy.playerEmpire, undefined, gameVictoryArgs(galaxy));
             addProfile('galaxy', t0);
         } else {
             const empire = obj as Empire;
@@ -268,7 +270,8 @@ function backgroundPass(galaxy: Galaxy, state: SchedulerState, time: number, sta
         state.galaxyFrameCounter = 0;
     }
     state.galaxyFrameCounter++;
-    // 3551-3554 GlobalVictoryConditions hand-over: victory conditions are deferred (not M4).
+    // 3551-3554 `if (Galaxy.GlobalVictoryConditions == null && _Game.GlobalVictoryConditions != null)` hand-over: createGame
+    // assigns Galaxy.globalVictoryConditions itself (Start.2.cs 2026) and the TS keeps no separate Game copy — nothing to do.
     // 3555-3570 UI fleet warnings.
     const empire = identifyMechanoidEmpire(galaxy);
     for (let i = 0; i < galaxy.empires.length; i++) {

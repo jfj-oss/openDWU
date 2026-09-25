@@ -76,6 +76,8 @@ import { Order, ComponentRef } from '../logistics/orders';
 import { PrioritizedTarget } from '../civilianAI';
 import { Fighter, FighterSpecification, FighterWeapon } from '../combat/fighters';
 import { Explosion, SpaceBattleStats } from '../combat/damage';
+import { EmpireVictoryConditions, VictoryConditions } from '../victory';
+import { Achievement } from '../achievements';
 const CLASSES: Record<string, object> = {
     EmpireMessage: EmpireMessage.prototype,
     // M4f: ships carry missions from game start (Start.2.cs 1373); freighter contracts, orders, migration/tourism targets.
@@ -159,6 +161,10 @@ const CLASSES: Record<string, object> = {
     FighterSpecification: FighterSpecification.prototype,
     Explosion: Explosion.prototype,
     SpaceBattleStats: SpaceBattleStats.prototype,
+    // M4z4: Galaxy.GlobalVictoryConditions / Game player conditions, Empire.Achievements.
+    VictoryConditions: VictoryConditions.prototype,
+    EmpireVictoryConditions: EmpireVictoryConditions.prototype,
+    Achievement: Achievement.prototype,
 };
 
 /** Galaxy fields that hold GameData tables (re-wired from gameData on load,

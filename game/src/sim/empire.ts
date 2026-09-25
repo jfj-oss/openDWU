@@ -8,6 +8,7 @@
 // Anything the constructors call but that isn't ported yet is a stub method
 // marked TODO(port) so the constructor's order of operations stays visible.
 
+import type { Achievement } from './achievements';
 import { takeOwnershipOfColonyConstructionQueue } from './construction/constructionYard';
 import type { Galaxy } from './galaxy';
 import { HabitatCategoryType, HabitatType } from './types';
@@ -177,6 +178,12 @@ export class EmpireCounters {
     raidSuccessCount = 0;
     // ---- M4z1 fields (empire lifecycle) ----
     /** EmpireCounters.cs 78/79/89 EliminateEmpireCount / EliminateEmpireStrategicValue / EliminatePirateEmpireCount (int; events.ts ProcessEmpireElimination). */
+    // ---- M4z4: EmpireCounters.cs 39-43 / 78-79 / 89 (ProcessCreatureDeath 481, ProcessEmpireElimination 119; victory.ts) ----
+    destroyedCreatureCountKaltor = 0;
+    destroyedCreatureCountSpaceSlug = 0;
+    destroyedCreatureCountSandSlug = 0;
+    destroyedCreatureCountArdilus = 0;
+    destroyedCreatureCountSilverMist = 0;
     eliminateEmpireCount = 0;
     eliminateEmpireStrategicValue = 0;
     eliminatePirateEmpireCount = 0;
@@ -1938,12 +1945,18 @@ export class Empire {
     preWarpProgressEventOccurredFlags: boolean[] = [];
     /** Empire.cs 37 _EventMessageRecipient (IEventMessageRecipient; the UI attaches one, headless runs leave it null). */
     eventMessageRecipient: { receiveEventMessage(eventType: number, title: string, message: string, additionalData: unknown, location: unknown): void } | null = null;
-    // ---- M4z1 fields (empire lifecycle) ----
-    /** Empire.cs 289 EmpireSplitCount (SplinterEmpire, empireEvents.ts). */
+    // ---- M4z4 fields (victory, achievements) ----
+    /** Empire.cs 97 Achievements = new AchievementList() (Galaxy.1.cs 2942 ReviewAchievements replaces it; UpdateAchievements merges). */
+    achievements: Achievement[] = [];
+    /** Empire.cs 351 _Score (Galaxy.1.cs 2943 CalculateEmpireScore). */
+    score = 0;
+    /** Empire.cs 289 EmpireSplitCount (incremented by the civil-war split, Empire.1.cs 2902). */
     empireSplitCount = 0;
-    /** Empire.cs 292/295 HaveDefeatedAncientGuardians / HaveDefeatedShakturi (EmpireCounters.ProcessEmpireElimination). */
+    /** Empire.cs 292 / 295 HaveDefeatedAncientGuardians / HaveDefeatedShakturi (EmpireCounters.ProcessEmpireElimination, CheckGlobalVictoryConditions). */
     haveDefeatedAncientGuardians = false;
     haveDefeatedShakturi = false;
+    /** Empire.cs 341 VictoryBonus (float; Galaxy.9.cs 2623 event action adds Value / 100f). */
+    victoryBonus = 0;
 }
 
 // Task M3b: Empire.GovernmentAttributes (Empire.cs 2805: _Galaxy.Governments[_GovernmentId],

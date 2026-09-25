@@ -40,6 +40,7 @@ import {
 } from '../pirates/missionsMarket';
 import { checkForTerminatedPirateEmpires, checkMergePirateFactions, doSuperPirateTasks, generateNewPirateShips, reviewPirateEmpireActivities } from '../pirates/pirateGalaxyTick';
 import { reviewEmpireTerritorySystemsOnly } from '../exploration';
+import type { GalaxyVictoryArgs } from '../victory';
 import { checkVictoryConditions, clearCompletedPlanetDestroyerProjects, clearEmptyDebrisFields, processDelayedEventActions, reviewAchievements } from '../events';
 
 /** Galaxy.cs 3039 DoTasksTimeSensitive() → 3046 DoTasksTimeSensitive(starDate, time). */
@@ -91,13 +92,15 @@ function maximumEmpireAmount(galaxy: Galaxy): number {
 
 /**
  * Galaxy.cs 3054 DoTasks(gameFinished, playerEmpire, globalVictoryConditions, playerConditionsToAchieve,
- * playerConditionsToPrevent). The victory-condition arguments go to the (deferred) CheckVictoryConditions stub.
+ * playerConditionsToPrevent). The three victory-condition arguments are `victoryArgs` (null at game start, Start.2.cs
+ * 1109 / 1486; the frame driver passes the Game's, Main.Part12.cs 3980) and only reach CheckVictoryConditions.
  */
 export function galaxyDoTasks(
     galaxy: Galaxy,
     gameFinished = false,
     playerEmpire: Empire | null = galaxy.playerEmpire,
     afterHugeBlock?: () => boolean,
+    victoryArgs: GalaxyVictoryArgs | null = null,
 ): void {
     // 3056-3058
     const currentDateTime = galaxyNow(galaxy);
@@ -191,7 +194,7 @@ export function galaxyDoTasks(
         reviewEmpireDifficultyFactors(galaxy);
         reviewAchievements(galaxy);
         if (!gameFinished) {
-            checkVictoryConditions(galaxy, playerEmpire);
+            checkVictoryConditions(galaxy, playerEmpire, victoryArgs);
         }
     }
 }
@@ -210,6 +213,7 @@ export function runGameStartGalaxyTick(
     galaxy: Galaxy,
     playerEmpire: Empire | null = galaxy.playerEmpire,
     afterHugeBlock?: () => boolean,
+    victoryArgs: GalaxyVictoryArgs | null = null,
 ): void {
     resetLastTouchTimes(galaxy);
     galaxyDoTasks(galaxy, false, playerEmpire, afterHugeBlock);

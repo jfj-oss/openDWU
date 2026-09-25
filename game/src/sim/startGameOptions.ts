@@ -1,4 +1,5 @@
 // New-game wizard options (task 06b). Headless — no DOM/Pixi imports.
+import { victoryConditionsFromWizard } from './victory';
 import { GalaxyShape } from './types';
 import type { Race } from './data/races';
 import type { GameData } from './data/gameData';
@@ -104,6 +105,14 @@ export interface VictoryConditions {
     /** C# field VictoryThresholdPercentage (default 1.0); the original UI
      * exposes it via lblVictoryThresholdPercentage on this page. */
     victoryThresholdPercentage: number;
+    /** M4z4: chkVictoryTimeStart (VictoryConditionsApplyWhen): apply the conditions only after startDateYears
+     * (Start.1.cs 3792). Unset = unchecked. */
+    timeStart?: boolean;
+    /** M4z4: chkStoryReturnOfTheShakturi → VictoryConditions.EnableStoryEvents (Start.1.cs 3800). Unset = unchecked
+     * (story events are deferred). */
+    enableStoryEvents?: boolean;
+    /** M4z4: chkStoryShadows → VictoryConditions.EnableStoryEventsShadows (Start.1.cs 3805). Unset = unchecked. */
+    enableStoryEventsShadows?: boolean;
 }
 
 /** Min/max bounds of the wizard's numeric victory controls, straight from
@@ -686,6 +695,10 @@ export function toCreateGameOptions(
         allowEmpiresInSameSystem: o.colonization.allowSameSystemAsOtherEmpires,
         // Only meaningful when the range limits are enforced; <= 0 lets
         // createGame fall back to its auto value.
+        // M4z4: Start.1.cs 3772-3805 VictoryConditions from the victory page (Galaxy.GlobalVictoryConditions,
+        // Start.2.cs 501-506 / 2026) and Start.2.cs 496 difficulty scaling.
+        victoryConditions: victoryConditionsFromWizard(o.victory, value),
+        difficultyLevelScalesAsPlayerApproachesVictory: o.difficultyScaling,
         empireTerritoryColonyInfluenceRangeFactor: o.colonization.enforceRangeLimits
             ? o.colonization.colonyInfluenceRangePercent
             : undefined,
@@ -695,10 +708,7 @@ export function toCreateGameOptions(
         //   - space creatures (spaceCreaturesIndex → spaceCreaturesFor)
         //   - pirates (piratesIndex → piratesFor): pirate empires are unported
         //   - aggression (aggressionIndex → aggressionFor)
-        //   - difficulty (difficultyIndex → difficultyFor) + difficultyScaling
-        //     (SetEmpireDifficultyFactors is an unported TODO(port))
-        //   - victory conditions (o.victory): applied post-creation, not a
-        //     generation input
+        //   - difficulty (difficultyIndex → difficultyFor); difficultyScaling is passed (M4z4)
         //   - colonization range (colonizationRangeKly) enforcement radius
     };
 }

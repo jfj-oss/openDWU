@@ -7,6 +7,7 @@
 // population and creatures are ported (01f2: SelectPopulation, 01f3:
 // SelectCreatures) — see the `TODO(port)` markers below for what remains.
 
+import type { VictoryConditions, EmpireVictoryConditions } from './victory';
 import { EmpireActivityList } from './pirates/empireActivity';
 import { Random } from './random';
 import type { Cargo } from './cargo';
@@ -4481,6 +4482,33 @@ export class Galaxy {
     // ---- M4z1 fields (empire lifecycle) ----
     /** Galaxy.cs DefeatedEmpires (EmpireList; Empire.CompleteTeardown adds each empire it removes from Empires). */
     defeatedEmpires: Empire[] = [];
+    // ---- M4z4 fields (victory, achievements, stats) ----
+    /**
+     * Galaxy.GlobalVictoryConditions (VictoryConditions; victory.ts). createGame assigns the wizard's conditions at the end
+     * of game start (Start.2.cs 2026); null for a galaxy built without them (no global victory, no progress list).
+     * DefendHabitat / TargetHabitat on it are set only by story events (Galaxy.8.cs 2223-2226 GenerateFreedomAlliance).
+     */
+    globalVictoryConditions: VictoryConditions | null = null;
+    /** Galaxy.cs 719 GameRaceSpecificVictoryConditionsEnabled = true (Start.2.cs 505: VictoryConditions.EnableRaceSpecificVictoryConditions). */
+    gameRaceSpecificVictoryConditionsEnabled = true;
+    /** Galaxy.DifficultyLevelScalesAsPlayerApproachesVictory (read by SetEmpireDifficultyFactors, Galaxy.cs 1423). */
+    difficultyLevelScalesAsPlayerApproachesVictory = false;
+    /** Galaxy.cs 538 ShakturiDefeated (CheckGlobalVictoryConditions TargetHabitat branch, Galaxy.1.cs 431). */
+    shakturiDefeated = false;
+    /**
+     * Game.IsFinished / Game.Victor (UI Game object; Main.Part12.cs 3426-3427 DoGameEnd sets them) and
+     * Game.PlayerVictoryConditionsToAchieve / ToPrevent (Start.2.cs 2119-2120; scenario-only, null in a normal game).
+     * The frame driver passes them to Galaxy.DoTasks (Main.Part12.cs 3980).
+     */
+    gameIsFinished = false;
+    gameVictor: Empire | null = null;
+    playerVictoryConditionsToAchieve: EmpireVictoryConditions | null = null;
+    playerVictoryConditionsToPrevent: EmpireVictoryConditions | null = null;
+    /**
+     * Local record of the achievements the C# would unlock on Steam for the player (Empire.1.cs 3992
+     * SteamAPI.SetAchievementIfNecessary: ResolveAchievementName, achievements.ts). No Steam in the port.
+     */
+    unlockedAchievementNames: string[] = [];
 }
 
 // Port of Galaxy.4.cs Galaxy constructor (star-cluster setup, star loop,

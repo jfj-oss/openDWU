@@ -31,7 +31,7 @@
 //   Galaxy.DifficultyLevel is not on the TS Galaxy → passed explicitly (`difficultyLevel`).
 //   Empire.Leader / Habitat.Characters / Habitat.InvadingCharacters: read through characters.ts
 //   (none before Start.2.cs 1483, where the starting characters are generated).
-//   Galaxy.GlobalVictoryConditions: null (no DefendHabitat / TargetHabitat).
+//   Galaxy.GlobalVictoryConditions: read (victory.ts); DefendHabitat / TargetHabitat are set only by story events.
 //   Empire.PenalColonies: empty. Empire.Capitals: only Capital at game start.
 //   Habitat.RaceEventType: Undefined. Habitat.DefensiveFortressBonus: 0. Facilities: none.
 
@@ -172,9 +172,12 @@ export function estimatedDefensiveForceRequired(galaxy: Galaxy, habitat: Habitat
     if (atWar && ((owner !== null && habitat === owner.capital) || sv > 500000)) {
         result = csDoubleToInt(result * 1.3);
     }
-    // TODO(port): Galaxy.GlobalVictoryConditions DefendHabitat / TargetHabitat (× 2.0) — null at game start.
+    // Habitat.cs 5506-5509: Galaxy.GlobalVictoryConditions DefendHabitat / TargetHabitat (story-set) × 2.0, else the policy.
     const empire = habitat.empire;
-    if (empire !== null && empire.policy != null) {
+    const gvc = galaxy.globalVictoryConditions;
+    if (gvc !== null && ((gvc.defendHabitat !== null && gvc.defendHabitat === habitat) || (gvc.targetHabitat !== null && gvc.targetHabitat === habitat))) {
+        result = csDoubleToInt(result * 2.0);
+    } else if (empire !== null && empire.policy != null) {
         if (habitat === empire.homeWorld) {
             result = csDoubleToInt(result * empire.policy.homeworldDefensePriority);
         } else if (colonyCharacters(habitat) !== null && countCharactersByRole(colonyCharacters(habitat)!, CharacterRole.Leader) > 0 && empire.policy.protectLeaderAtAllCosts) {

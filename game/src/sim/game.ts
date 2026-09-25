@@ -20,6 +20,7 @@
 // Normal (0.5, SetTechTreeStartingDefaults) and Level 1-6. AI pirate factions
 // are generated when piratePrevalence > 0 (pirates.ts).
 
+import { applyVictoryConditionsToGalaxy, type VictoryConditions } from './victory';
 import { reviewComponentPrices, reviewResourcePrices } from './market';
 import { selectPopularDesignCandidates } from './independentTraders';
 import { gameStartColonyRecalc, gameStartReviewTaxes } from './taxes';
@@ -105,6 +106,14 @@ export interface CreateGameOptions {
     difficultyLevel?: number;
     /** VictoryConditions.EnableDisasterEvents (Start.2.cs 503; default true). */
     disasterEventsEnabled?: boolean;
+    /**
+     * M4z4: victoryConditions_0 (the runtime VictoryConditions, victory.ts victoryConditionsFromWizard). When set it
+     * becomes Galaxy.GlobalVictoryConditions (Start.2.cs 2026) and drives Start.2.cs 501-506 (overriding
+     * disasterEventsEnabled). Unset = no global victory conditions (progress list empty, no threshold victory).
+     */
+    victoryConditions?: VictoryConditions | null;
+    /** M4z4: EmpireStart.DifficultyScaling → Galaxy.DifficultyLevelScalesAsPlayerApproachesVictory (Start.2.cs 496). */
+    difficultyLevelScalesAsPlayerApproachesVictory?: boolean;
     /** Galaxy.EmpireTerritoryColonyInfluenceRangeFactor from the wizard (<= 0 = auto). */
     empireTerritoryColonyInfluenceRangeFactor?: number;
     /**
@@ -1016,6 +1025,10 @@ export function createGame(opts: CreateGameOptions): Game {
     // block runs, then the long block (independent traders, GenerateNewPirateEmpires) — then DeferEventsForGameStart.
     galaxy.independentColonies = independentColonies;
     galaxy.gameDisasterEventsEnabled = opts.disasterEventsEnabled ?? true;
+    // Start.2.cs 496 / 501-506 (M4z4): DifficultyLevelScalesAsPlayerApproachesVictory and the Galaxy switches taken from
+    // victoryConditions_0 — only when the caller passes the conditions (else the fields keep their defaults).
+    galaxy.difficultyLevelScalesAsPlayerApproachesVictory = opts.difficultyLevelScalesAsPlayerApproachesVictory ?? false;
+    if (opts.victoryConditions !== undefined && opts.victoryConditions !== null) applyVictoryConditionsToGalaxy(galaxy, opts.victoryConditions);
     galaxy.pirateProximity = pirateSettings.pirateProximity;
     galaxy.maximumEmpireAmount = pirateSettings.maximumEmpireAmount;
     let stoppedAtHuge = false;
@@ -1123,6 +1136,9 @@ export function createGame(opts: CreateGameOptions): Game {
     clearRuinBonusesForAge(galaxy);
     if (stopAt('ruins')) return result();
     gameStartTail(galaxy, { playerEmpire: empire2, empireList, playerTechLevel: opts.player.techLevel, playerAge: opts.player.age, playAsPirate, raceFamilies: gd.raceFamilies });
+    // Start.2.cs 2026: galaxy.GlobalVictoryConditions = victoryConditions_0 (2118-2120 also hand them to the Game object;
+    // the TS keeps the Game's copies on the Galaxy: PlayerVictoryConditionsToAchieve / ToPrevent are scenario-only, null).
+    galaxy.globalVictoryConditions = opts.victoryConditions ?? null;
     // TODO(port): the rest of CreateGameFromSettings (see header).
     stopAt('tail');
     return result();
