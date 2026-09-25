@@ -7,7 +7,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { createTickGame, createTickGameAtAge } from './helpers/tickGame';
 import { runGameSeconds } from '../src/sim/tick/harness';
 import { stateCounts, stateDigest } from '../src/sim/tick/digest';
 import type { Galaxy } from '../src/sim/galaxy';
@@ -162,8 +162,19 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // plus the merge fixes (civilianAI uses M4i's real AssignScrapMission / ProcureConstructionComponents, M4e's
         // SetupRefuelling and the shared GetBuiltObjectsAtLocation / HabitatCompareTo / DesignCalculateMaintenanceCosts
         // instead of its own copies), re-pinned once.
-        expect(summary.digest).toBe('2689770786790d6a');
+        // Moved from 2689770786790d6a: tick harness now models the default age-1 start (every empire starts at Age 1,
+        // "Starting": larger colonies, positive cashflow, DirectConstruction queues ships at once; see helpers/tickGame.ts).
+        expect(summary.digest).toBe('00ea05e8d2465a22');
     }, 600000);
+});
+
+describe('pre-warp start (age 0) stays covered', () => {
+    it('createGame with every empire at age 0 (the PreWarp start) runs 120 game-s without throwing', () => {
+        const g = createTickGameAtAge(gameData, 0).galaxy;
+        runGameSeconds(g, 120);
+        expect(g.nowMs).toBe(120000);
+        checkInvariants(g);
+    }, 300000);
 });
 
 describe('no real-clock or unseeded randomness under src/sim (plan §5.1)', () => {

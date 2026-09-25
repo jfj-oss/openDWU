@@ -48,7 +48,10 @@ beforeAll(async () => {
     gameData = await loadGameDataFs();
     galaxy = createTickGame(gameData).galaxy;
     // The createGame empires start with no military ships; the pirate factions do (see m4n.test.ts).
-    const military = (e: number, skip: BuiltObject[] = []) => galaxy.pirateEmpires[e].builtObjects.find((b) => !skip.includes(b) && b.role === BuiltObjectRole.Military && b.warpSpeed > 0 && b.firepowerRaw > 0 && b.isFunctional && b.topSpeed > 0)!;
+    // Factions with at least two warships (the age-1 tick galaxy gives some pirate factions a single one).
+    const isWarship = (b: BuiltObject) => b.role === BuiltObjectRole.Military && b.warpSpeed > 0 && b.firepowerRaw > 0 && b.isFunctional && b.topSpeed > 0;
+    const factions = galaxy.pirateEmpires.filter((p) => p.builtObjects.filter(isWarship).length >= 2);
+    const military = (e: number, skip: BuiltObject[] = []) => factions[e].builtObjects.find((b) => !skip.includes(b) && isWarship(b))!;
     shipA = military(0);
     shipB = military(1);
     shipB.xpos = shipA.xpos + 1000;
@@ -209,7 +212,7 @@ describe('BuiltObject.2.cs 6216 InflictDamage', () => {
         expect(shipB.damagedComponentCount).toBeGreaterThanOrEqual(damagedBefore);
     });
     it('an overwhelming hit destroys the target: counters on both empires, a destroying explosion, then DoExplosions tears it down', () => {
-        const victim = galaxy.pirateEmpires[1].builtObjects.find((b) => b !== shipB && b.role === BuiltObjectRole.Military && b.warpSpeed > 0)!;
+        const victim = shipB.empire!.builtObjects.find((b) => b !== shipB && b.role === BuiltObjectRole.Military && b.warpSpeed > 0)!;
         const victimEmpire = victim.empire!;
         const attackerEmpire = shipA.empire!;
         const killsBefore = attackerEmpire.counters.destroyedEnemyMilitaryShipCount;
@@ -234,7 +237,7 @@ describe('BuiltObject.2.cs 6216 InflictDamage', () => {
 
 describe('BuiltObject.2.cs 5171 CompleteTeardown / Empire.8.cs 2896 CleanupInvalidShips', () => {
     it('CompleteTeardown(removeFromEmpire: false) keeps the empire list entry; CleanupInvalidShips tears destroyed ships down', () => {
-        const empire = galaxy.pirateEmpires[0];
+        const empire = shipA.empire!;
         const ship = empire.builtObjects.find((b) => b !== shipA && b.role === BuiltObjectRole.Military && !b.hasBeenDestroyed)!;
         builtObjectCompleteTeardown(galaxy, ship, false);
         expect(ship.hasBeenDestroyed).toBe(true);

@@ -11,6 +11,7 @@ import type { BuiltObject } from '../src/sim/builtObject';
 import type { GameData } from '../src/sim/data/gameData';
 import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
 import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
+import { HabitatCategoryType } from '../src/sim/types';
 import { BuiltObjectMission, BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission } from '../src/sim/missions/mission';
 import { galaxyStarDate } from '../src/sim/tick/simTime';
 import { FleetPosture } from '../src/sim/diplomacyTick';
@@ -206,7 +207,10 @@ describe('fleet missions (ShipGroup.cs AssignMission 2097, CheckForMissionComple
         const sg = new ShipGroup(galaxy);
         sg.empire = pirate;
         shipGroupAddShipToFleet(galaxy, sg, ships[0]);
-        const star = ships[0].nearestSystemStar!;
+        // The ship's own system may be a nebula (GasCloud-category system "star", no parking-offset draws) — in the age-1
+        // tick galaxy it is; target the nearest real Star then.
+        const near = ships[0].nearestSystemStar!;
+        const star = near.category === HabitatCategoryType.Star ? near : galaxy.habitats.filter((h) => h.category === HabitatCategoryType.Star).sort((a, b) => galaxy.calculateDistance(ships[0].xpos, ships[0].ypos, a.xpos, a.ypos) - galaxy.calculateDistance(ships[0].xpos, ships[0].ypos, b.xpos, b.ypos))[0];
         const before = galaxy.rnd.drawCount;
         shipGroupAssignMission(galaxy, sg, BuiltObjectMissionType.Move, star, null, BuiltObjectMissionPriority.Normal, false);
         // ≥ 2 (star offset) + 2 (the ship's SelectRelativePoint) draws; ResolveCommandsForMission may add more.

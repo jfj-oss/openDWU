@@ -5,7 +5,7 @@
 //   Empire.6.cs DirectConstruction does: AddBuiltObjectToConstruct + AddBuiltObjectToGalaxy + BuiltAt).
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { createTickGame, createTickGameAtAge } from './helpers/tickGame';
 import { runGameSeconds } from '../src/sim/tick/harness';
 import type { GameData } from '../src/sim/data/gameData';
 import type { Galaxy } from '../src/sim/galaxy';
@@ -158,7 +158,11 @@ function queueAtColony(g: Galaxy, e: Empire, colony: Habitat, design: Design, na
 
 describe('M4h milestone on the headless harness', () => {
     it('a construction ship queued at a colony is built from component cargo and joins the galaxy', () => {
-        const g = createTickGame(gameData).galaxy;
+        // Age 0 (PreWarp) fixture: at the default age-1 start the empires form fleets within this run and
+        // Empire.7.cs ReviewCharacterLocation's FleetAdmiral / TroopGeneral ShipGroup branches (838-, 1150-,
+        // GenerateOrderedFleetsBy*, Empire.8.cs) are still TODO(port) throws in characters.ts; back to
+        // createTickGame once they are ported.
+        const g = createTickGameAtAge(gameData, 0).galaxy;
         const e = g.empires[0];
         // M4f DirectPrivateConstruction queues private ships at the capital's space port (shared colony cargo) in the
         // Empire long block and would consume the stocked components first; this test exercises the yard alone.
@@ -187,7 +191,11 @@ describe('M4h milestone on the headless harness', () => {
     }, 300000);
 
     it('a warship queued at a space port is built (yard ticked as IndustrialProcessing would) and parks', () => {
-        const g = createTickGame(gameData).galaxy;
+        // Age 0 (PreWarp) fixture: at the default age-1 start the empires form fleets within this run and
+        // Empire.7.cs ReviewCharacterLocation's FleetAdmiral / TroopGeneral ShipGroup branches (838-, 1150-,
+        // GenerateOrderedFleetsBy*, Empire.8.cs) are still TODO(port) throws in characters.ts; back to
+        // createTickGame once they are ported.
+        const g = createTickGameAtAge(gameData, 0).galaxy;
         const e = g.empires[0];
         e.initiateConstruction = false; // see above
         const port = e.spacePorts[0];

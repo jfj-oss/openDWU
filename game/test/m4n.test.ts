@@ -49,10 +49,13 @@ beforeAll(async () => {
     gameData = await loadGameDataFs();
     galaxy = createTickGame(gameData).galaxy;
     // The createGame empires start with no military ships (tech level 0.5, civilian + base only); the pirate factions do.
-    const military = (e: number) => galaxy.pirateEmpires[e].builtObjects.find((b) => b.role === BuiltObjectRole.Military && b.warpSpeed > 0 && b.firepowerRaw > 0 && b.isFunctional && b.topSpeed > 0)!;
+    // Factions with at least two warships (the age-1 tick galaxy gives some pirate factions a single one).
+    const isWarship = (b: BuiltObject) => b.role === BuiltObjectRole.Military && b.warpSpeed > 0 && b.firepowerRaw > 0 && b.isFunctional && b.topSpeed > 0;
+    const factions = galaxy.pirateEmpires.filter((p) => p.builtObjects.filter(isWarship).length >= 2);
+    const military = (e: number) => factions[e].builtObjects.find(isWarship)!;
     shipA = military(0);
     shipB = military(1);
-    sameEmpireShip = galaxy.pirateEmpires[0].builtObjects.find((b) => b !== shipA && b.role === BuiltObjectRole.Military)!;
+    sameEmpireShip = factions[0].builtObjects.find((b) => b !== shipA && b.role === BuiltObjectRole.Military)!;
     // Put B in A's system, 1000 units away, and in A's index cell (the C# index is maintained by movement, M4c).
     shipB.xpos = shipA.xpos + 1000;
     shipB.ypos = shipA.ypos;
@@ -251,6 +254,10 @@ describe('BuiltObject.2.cs 1698 case Attack (missions/cmdAttack.ts)', () => {
         shipA.firstExecutionOfCommand = true;
         shipA.currentTarget = null;
         shipA.attackers = [];
+        // Face A at B (dead ahead, +x): the age-1 tick galaxy picks a ship heading away from B, and DoMovement's
+        // WillMeetDestination turn check would then cut the full-speed target speed set by the first execution.
+        shipA.heading = Math.fround(determineAngle(shipA.xpos, shipA.ypos, shipB.xpos, shipB.ypos));
+        shipA.targetHeading = shipA.heading;
         const signalsBefore = empireDistressSignals(shipB.empire!).length;
         const result = cmdAttackBombardCaptureRaid(c);
         expect(result).toBe(0);
