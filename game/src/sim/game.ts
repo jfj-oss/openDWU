@@ -102,7 +102,10 @@ export interface CreateGameOptions {
     pirateProximity?: number;
     /** Galaxy.PirateShipMaintenanceFactor (Start.2.cs 498, the wizard's pirate strength; default 0.4, Galaxy.cs 375). */
     pirateShipMaintenanceFactor?: number;
-    /** Galaxy.MaximumEmpireAmount (defaults to player + AI count). */
+    /** Galaxy.MaximumEmpireAmount (Start.2.cs 115; the wizard passes BaconStart.method_61 of the star-density
+     *  slider, startGameOptions.ts maximumEmpireAmountFor — 20 at 700 stars). Unset = player + AI count, a TS
+     *  fallback for direct callers (dev start, tests) that the C# never uses; it scales the pirate-faction count
+     *  (Galaxy.9.cs 22: trunc(2 * PiratePrevalence * MaximumEmpireAmount)). */
     maximumEmpireAmount?: number;
     /** Galaxy.DifficultyLevel (default 1.0). */
     difficultyLevel?: number;
@@ -1032,7 +1035,7 @@ export function createGame(opts: CreateGameOptions): Game {
     const pirateSettings = {
         piratePrevalence,
         pirateProximity: opts.pirateProximity ?? 0,
-        maximumEmpireAmount: opts.maximumEmpireAmount ?? 1 + opts.aiEmpires.length,
+        maximumEmpireAmount: opts.maximumEmpireAmount ?? 1 + opts.aiEmpires.length, // TODO(port): not C# — see CreateGameOptions.maximumEmpireAmount
     };
 
     // Start.2.cs 1099-1104.

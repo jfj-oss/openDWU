@@ -320,6 +320,30 @@ export function starCountFor(index: number): number {
 }
 
 /**
+ * Port of BaconStart.cs 84 method_61 (Start.cs 4410; Start.1.cs 3688 `num2 = method_61(star-density slider,
+ * raceList_0)`, raceList_0 = the playable races, Start.cs 1321 ResolvePlayableRaces). The value reaches
+ * CreateGameFromSettings as int_2 and becomes Galaxy.MaximumEmpireAmount (Start.2.cs 115 / Galaxy.4.cs 2152),
+ * which scales the pirate-faction count (Galaxy.9.cs 22) and caps new empires (events.ts).
+ */
+export function maximumEmpireAmountFor(starCountIndex: number, playableRaceCount: number): number {
+    switch (starCountIndex) {
+        case 0:
+            return 12;
+        case 1:
+            return 15;
+        case 2:
+            return 18;
+        case 3:
+        case 4:
+        case 5:
+        case 6:
+            return Math.max(playableRaceCount, 20);
+        default:
+            return 10;
+    }
+}
+
+/**
  * Port of Start.cs Start.method_69 (physical-size slider values, sectors per
  * side). Tiny/Small/Medium/Large/Huge; out-of-range defaults to (10,10).
  */
@@ -731,6 +755,8 @@ export function toCreateGameOptions(
         systemNames,
         gameData,
         colonyPrevalence: colonyPrevalenceFor(o.colonyPrevalenceIndex),
+        // Start.1.cs 3688 num2 = method_61(star density, playable races) → Galaxy.MaximumEmpireAmount (Start.2.cs 115).
+        maximumEmpireAmount: maximumEmpireAmountFor(o.starCountIndex, gameData.races.filter((r) => r.playable).length),
         player,
         aiEmpires,
         allowEmpiresInSameSystem: o.colonization.allowSameSystemAsOtherEmpires,
