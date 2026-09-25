@@ -12,6 +12,7 @@
 // ReDefine for shipyards / manufacturers), fighters (FighterList), characters,
 // contracts, missions, UpdatePosition.
 
+import { updatePosition } from './movement';
 import { BuiltObjectSubRole } from './builtObjectTypes';
 import { BuiltObjectComponent, BuiltObjectComponentList, ComponentStatus, csInt, toByte, toShort } from './builtObjectComponent';
 import { CargoList, ResourceRef, TroopList, type Troop } from './cargo';
@@ -1245,9 +1246,9 @@ export class BuiltObject {
         if (this.currentSpeed > this.topSpeed || this.targetSpeed > this.topSpeed || this.preferredSpeed > this.topSpeed) {
             this.targetSpeed = this.topSpeed;
             this.preferredSpeed = this.topSpeed;
-            // TODO(port): UpdatePosition() (BuiltObject movement) — unreachable for a new
-            // ship (CurrentSpeed / TargetSpeed / PreferredSpeed are 0, TopSpeed >= 0).
-            throw new Error('TODO(port): BuiltObject.UpdatePosition');
+            // BuiltObject.UpdatePosition (movement.ts, M4c) — reached at runtime when a refit/research ReDefine lowers
+            // TopSpeed below a moving ship's speed (wired by M4u).
+            updatePosition(this._galaxy, this);
         }
         if (this.minimumWeaponsRange >= 100000) this.minimumWeaponsRange = 0;
         if (this.beamWeaponsMinRange >= 100000) this.beamWeaponsMinRange = 0;

@@ -115,7 +115,13 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // character, trait cases, skill progress) now runs for the M4j/M4k/M4r/M4d events, Character.DoTasks completes
         // location transfers, ApplyLocationEffects draws for lightning / shield-reduction storms and slows ships in
         // nebulae, and ClearEmptyDebrisFields removes empty debris-field locations.
-        expect(summary.digest).toBe('9ba92363c1bf5e89');
+        // Moved from 9ba92363c1bf5e89 by M4u (character runtime + events): the game-start and periodic Empire.DoTasks run the
+        // character reviews (ReviewCharacterTraits Next(0, n) / Next(0, 90), ApplyCharacterLocationBonusToOtherCharacters,
+        // CheckForCharacterAppearance, leader changes), ReviewEmpireEvents (DoRaceEvent Next + NextDouble, race events,
+        // resource appearance Next(0, 20)), ReviewRandomEvents / PirateReviewRandomEvents rolls and ProcessPlague; creatures
+        // now target and pursue ships (Creature.cs 1206 CheckForTargets → NotifyOfAttack distress signals; DamageTarget is an
+        // M4o stub), and the M4u pins moved createGame (empire placement) too.
+        expect(summary.digest).toBe('d4b59001cffa8051');
     }, 600000);
 });
 

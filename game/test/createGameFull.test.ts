@@ -154,210 +154,205 @@ describe('createGame full game start (seed 1, Spiral 300 stars, 8x8, Human + 3 A
 // Re-pinned M4s1: ReviewPirateRelations draws Rnd.NextDouble in every game-start Empire long block and the Galaxy long
 // block's independent-colony pirate offers draw per colony (IndependentColoniesMake{Smuggling,Defend}OffersToPirates).
 // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
+// Re-pinned M4u: the game-start Empire.DoTasks runs the character reviews (ReviewCharacterTraits / ApplyCharacterLocationBonus Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd); empire placement, names and pirates shift.
 const PINNED_SUMMARY: unknown = {
-    empires: [
+    "empires": [
         {
-            name: 'Sol Commonwealth',
-            race: 'Human',
-            colonies: 1,
-            spacePorts: 1,
-            researchStations: 1,
-            miningStations: 6,
-            stateShips: {
-                ExplorationShip: 7,
-                ConstructionShip: 3,
+            "name": "Sol Commonwealth",
+            "race": "Human",
+            "colonies": 1,
+            "spacePorts": 1,
+            "researchStations": 1,
+            "miningStations": 6,
+            "stateShips": {
+                "ExplorationShip": 7,
+                "ConstructionShip": 3
             },
-            privateShips: {
-                SmallFreighter: 1,
-                GasMiningShip: 2,
-                MiningShip: 2,
+            "privateShips": {
+                "SmallFreighter": 1,
+                "GasMiningShip": 2,
+                "MiningShip": 2
             },
-            troops: 10,
-            characters: 3,
-            taxRates: [
-                0.30000001192092896,
-            ],
+            "troops": 10,
+            "characters": 3,
+            "taxRates": [
+                0.30000001192092896
+            ]
         },
         {
-            name: 'Free S288 Syndicate',
-            race: 'Haakonish',
-            colonies: 1,
-            spacePorts: 1,
-            researchStations: 1,
-            miningStations: 6,
-            stateShips: {
-                ExplorationShip: 7,
-                ConstructionShip: 3,
+            "name": "Free S160 Consortium",
+            "race": "Haakonish",
+            "colonies": 1,
+            "spacePorts": 1,
+            "researchStations": 1,
+            "miningStations": 6,
+            "stateShips": {
+                "ExplorationShip": 7,
+                "ConstructionShip": 3
             },
-            privateShips: {
-                SmallFreighter: 1,
-                GasMiningShip: 2,
-                MiningShip: 2,
+            "privateShips": {
+                "SmallFreighter": 1,
+                "GasMiningShip": 2,
+                "MiningShip": 2
             },
-            troops: 1,
-            characters: 3,
-            taxRates: [
-                0.2800000011920929,
-            ],
+            "troops": 1,
+            "characters": 3,
+            "taxRates": [
+                0.28999999165534973
+            ]
         },
         {
-            name: 'Grand Dhayut Territory',
-            race: 'Dhayut',
-            colonies: 1,
-            spacePorts: 1,
-            researchStations: 1,
-            miningStations: 6,
-            stateShips: {
-                ExplorationShip: 7,
-                ConstructionShip: 3,
+            "name": "Combined S144 Alliance",
+            "race": "Dhayut",
+            "colonies": 1,
+            "spacePorts": 1,
+            "researchStations": 1,
+            "miningStations": 6,
+            "stateShips": {
+                "ExplorationShip": 7,
+                "ConstructionShip": 3
             },
-            privateShips: {
-                SmallFreighter: 1,
-                GasMiningShip: 2,
-                MiningShip: 2,
+            "privateShips": {
+                "SmallFreighter": 1,
+                "GasMiningShip": 2,
+                "MiningShip": 2
             },
-            troops: 2,
-            characters: 3,
-            taxRates: [
-                0.27000001072883606,
-            ],
+            "troops": 1,
+            "characters": 3,
+            "taxRates": [
+                0.2199999988079071
+            ]
         },
         {
-            name: 'Free Ugnari Industries',
-            race: 'Ugnari',
-            colonies: 1,
-            spacePorts: 1,
-            researchStations: 1,
-            miningStations: 6,
-            stateShips: {
-                ExplorationShip: 7,
-                ConstructionShip: 3,
+            "name": "Ugnari Corporation",
+            "race": "Ugnari",
+            "colonies": 1,
+            "spacePorts": 1,
+            "researchStations": 1,
+            "miningStations": 6,
+            "stateShips": {
+                "ExplorationShip": 7,
+                "ConstructionShip": 3
             },
-            privateShips: {
-                SmallFreighter: 1,
-                GasMiningShip: 2,
-                MiningShip: 2,
+            "privateShips": {
+                "SmallFreighter": 1,
+                "GasMiningShip": 2,
+                "MiningShip": 2
             },
-            troops: 1,
-            characters: 2,
-            taxRates: [
-                0.3100000023841858,
-            ],
-        },
+            "troops": 1,
+            "characters": 2,
+            "taxRates": [
+                0.3100000023841858
+            ]
+        }
     ],
-    pirates: [
+    "pirates": [
         {
-            name: 'Dread Force',
-            bases: 1,
-            fleet: {
-                Escort: 1,
-                ExplorationShip: 1,
-                ConstructionShip: 1,
+            "name": "Venomous Marauders",
+            "bases": 1,
+            "fleet": {
+                "Escort": 1,
+                "ExplorationShip": 1,
+                "ConstructionShip": 1
             },
-            private: {
-                SmallFreighter: 2,
-                MiningShip: 1,
-                GasMiningShip: 1,
-                GasMiningStation: 2,
+            "private": {
+                "SmallFreighter": 1,
+                "MiningShip": 1,
+                "GasMiningShip": 1,
+                "GasMiningStation": 2
             },
-            characters: 2,
+            "characters": 2
         },
         {
-            name: 'Red Storm Gang',
-            bases: 1,
-            fleet: {
-                Escort: 1,
-                ExplorationShip: 1,
-                ConstructionShip: 1,
+            "name": "Iron League",
+            "bases": 1,
+            "fleet": {
+                "Escort": 1,
+                "ExplorationShip": 1,
+                "ConstructionShip": 1
             },
-            private: {
-                SmallFreighter: 1,
-                MiningShip: 1,
-                GasMiningShip: 1,
-                GasMiningStation: 2,
+            "private": {
+                "SmallFreighter": 2,
+                "MiningShip": 1,
+                "GasMiningShip": 1,
+                "GasMiningStation": 2
             },
-            characters: 2,
+            "characters": 2
         },
         {
-            name: 'Fierce Company',
-            bases: 1,
-            fleet: {
-                ExplorationShip: 1,
-                ConstructionShip: 1,
+            "name": "S1 Ravagers",
+            "bases": 1,
+            "fleet": {
+                "Escort": 1,
+                "ExplorationShip": 1,
+                "ConstructionShip": 1
             },
-            private: {
-                SmallFreighter: 4,
-                MiningShip: 1,
-                GasMiningShip: 1,
-                GasMiningStation: 3,
+            "private": {
+                "SmallFreighter": 1,
+                "MiningShip": 1,
+                "GasMiningShip": 1,
+                "GasMiningStation": 2
             },
-            characters: 2,
+            "characters": 2
         },
         {
-            name: 'Ugnar Pillagers',
-            bases: 1,
-            fleet: {
-                Escort: 2,
-                ConstructionShip: 1,
+            "name": "Fearsome Claw Interstellar",
+            "bases": 1,
+            "fleet": {
+                "ExplorationShip": 1,
+                "ConstructionShip": 1
             },
-            private: {
-                SmallFreighter: 1,
-                GasMiningStation: 1,
+            "private": {
+                "SmallFreighter": 4,
+                "MiningShip": 1,
+                "GasMiningShip": 1,
+                "GasMiningStation": 2,
+                "MiningStation": 1
             },
-            characters: 2,
+            "characters": 2
         },
         {
-            name: 'Red Marauders',
-            bases: 1,
-            fleet: {
-                Escort: 1,
-                ExplorationShip: 1,
-                ConstructionShip: 1,
+            "name": "Sinister Moon Marauders",
+            "bases": 1,
+            "fleet": {
+                "Escort": 2,
+                "ConstructionShip": 1
             },
-            private: {
-                SmallFreighter: 1,
-                MiningShip: 1,
-                GasMiningShip: 1,
-                GasMiningStation: 2,
+            "private": {
+                "SmallFreighter": 1,
+                "GasMiningStation": 1
             },
-            characters: 2,
+            "characters": 2
         },
         {
-            name: 'Iron Confederation',
-            bases: 1,
-            fleet: {
-                Escort: 1,
-                ExplorationShip: 1,
-                ConstructionShip: 1,
+            "name": "Dirty Pirates",
+            "bases": 1,
+            "fleet": {
+                "Escort": 2,
+                "ConstructionShip": 1
             },
-            private: {
-                SmallFreighter: 2,
-                MiningShip: 1,
-                GasMiningShip: 1,
-                GasMiningStation: 1,
-                MiningStation: 1,
+            "private": {
+                "SmallFreighter": 1,
+                "GasMiningStation": 1
             },
-            characters: 2,
+            "characters": 2
         },
         {
-            name: 'Grim Ventures',
-            bases: 1,
-            fleet: {
-                ExplorationShip: 1,
-                ConstructionShip: 1,
+            "name": "Sol Pirates",
+            "bases": 1,
+            "fleet": {
+                "Escort": 2,
+                "ConstructionShip": 1
             },
-            private: {
-                SmallFreighter: 4,
-                MiningShip: 1,
-                GasMiningShip: 1,
-                GasMiningStation: 1,
-                MiningStation: 2,
+            "private": {
+                "SmallFreighter": 1,
+                "GasMiningStation": 1
             },
-            characters: 2,
-        },
+            "characters": 2
+        }
     ],
-    independentTraders: 150,
-    unownedBuiltObjects: 24,
-    builtObjects: 334,
-    ruins: 31,
+    "independentTraders": 150,
+    "unownedBuiltObjects": 24,
+    "builtObjects": 324,
+    "ruins": 35
 };
