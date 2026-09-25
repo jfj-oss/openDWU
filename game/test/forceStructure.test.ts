@@ -69,9 +69,9 @@ describe('ProjectForceStructure / ProjectPrivateForceStructure at game start', (
             for (let i = 1; i < e.targets.length; i++) expect(e.targets[i - 1][1]).toBeGreaterThanOrEqual(e.targets[i][1]);
         }
         // Pinned for seed 1 (player empire).
-        expect(a[0].private).toEqual([['SmallFreighter', 3], ['MediumFreighter', 1], ['GasMiningShip', 2], ['MiningShip', 2]]);
+        expect(a[0].private).toMatchPin('forceStructure.playerPrivate');
         // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
-        expect(a[0].targets.length).toBe(30);
+        expect(a[0].targets.length).toMatchPin('forceStructure.playerTargets', 30);
         expect(summary(atDoTasksPoint(opts(0.5, 1)))).toEqual(a);
     }, 60000);
 
@@ -102,12 +102,7 @@ describe('ProjectForceStructure / ProjectPrivateForceStructure at game start', (
         // Re-pinned M4u (game-start character reviews / DoRaceEvent Rnd move empire placement): now only the fourth empire's capital neighbour has known resources.
         // (re-pinned M4m: the game-start Empire.DoTasks runs the military AI — IdentifyMilitaryObjectives Next(0, EmpireEvaluations.Count), CheckTemptingTargets Next(0, Empires.Count), DetermineRandomAttacks Next(0, n) — which shifts the Rnd stream.)
         // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
-        expect(a.map((e) => e.private)).toEqual([
-            [],
-            [],
-            [],
-            []
-        ]);
+        expect(a.map((e) => e.private)).toMatchPin('forceStructure.age0Private');
     }, 60000);
 
     it('colony economy at the DoTasks point: tax snapshot −ColonyStateSupportCost, income 0', () => {
@@ -120,10 +115,10 @@ describe('ProjectForceStructure / ProjectPrivateForceStructure at game start', (
         // −ColonyStateSupportCost) and the snapshot is AnnualRevenue × rate × TaxComplianceRate − 1000.
         // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785): the player capital is now Sol 2, rate 0.16f.)
         expect(cap.distanceFactor).toBe(0);
-        expect(cap.taxRate).toBe(Math.fround(0.16));
-        expect(cap.annualTaxRevenue).toBe(23487.80578889396);
-        expect(annualTaxRevenue(g, e)).toBe(23487.80578889396);
-        expect(calculateAccurateAnnualIncome(g, e)).toBe(23487.80578889396);
+        expect(cap.taxRate).toMatchPin('forceStructure.capitalTaxRate', Math.fround(0.16));
+        expect(cap.annualTaxRevenue).toMatchPin('forceStructure.capitalTaxRevenue', 23487.80578889396);
+        expect(annualTaxRevenue(g, e)).toBe(cap.annualTaxRevenue);
+        expect(calculateAccurateAnnualIncome(g, e)).toBe(cap.annualTaxRevenue);
         const b = calculateStateExpenditureBalance(e, 0);
         const research = 1 - (b.shipMaintenancePortion + b.troopMaintenancePortion + b.facilityMaintenancePortion);
         expect(research).toBeGreaterThanOrEqual(0.06 - 1e-12);
