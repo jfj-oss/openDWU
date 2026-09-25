@@ -58,7 +58,7 @@ import { findNearestPirateFaction } from '../pirates';
 import { inflictDamageFull } from './damage';
 import { BuiltObjectEncounterAction, BuiltObjectEncounterEventType, cloneDesign } from '../gameStartTail';
 import { galaxyNow, galaxyStarDate } from '../tick/simTime';
-import { getGovernmentsStatic } from '../empire';
+import { getGovernmentsStatic, registerTakeOwnershipOfColonyFull } from '../empire';
 import { fastFindNearestUnexploredHabitat } from '../civilianAI';
 import { SystemVisibilityStatus } from '../visibility';
 import { selectRandomNextResearchProjectExcludeSuperWeapons } from '../construction/constructionQueue';
@@ -397,7 +397,8 @@ export function takeOwnershipOfCargo(galaxy: Galaxy, cargoList: CargoList | null
     for (let i = 0; i < cargoList.items.length; i++) {
         const cargo = cargoList.items[i];
         const empireId = cargo != null ? cargoEmpireId(cargo) : 0;
-        if (cargo != null && (empireId === num || empireId < 0 || empireId === galaxy.independentEmpire!.empireId)) {
+        // (Galaxy.IndependentEmpire always exists in a C# game; unit-test galaxies without one match no independent cargo.)
+        if (cargo != null && (empireId === num || empireId < 0 || (galaxy.independentEmpire !== null && empireId === galaxy.independentEmpire.empireId))) {
             let cargo2: Cargo | null = null;
             if (cargo.commodityIsComponent) cargo2 = Cargo.ofComponent(cargo.commodityComponent!, cargo.amount, newEmpire, cargo.reserved);
             else if (cargo.commodityIsResource) cargo2 = new Cargo(cargo.commodity, cargo.amount, newEmpire, cargo.reserved);
@@ -1448,3 +1449,7 @@ export function investigateAbandonedBuiltObject(galaxy: Galaxy, investigatingEmp
     }
     abandonedBuiltObject.playerEmpireEncounterAction = BuiltObjectEncounterAction.None;
 }
+
+
+// Empire.takeOwnershipOfColony (empire.ts) runs the full port once this module is loaded.
+registerTakeOwnershipOfColonyFull(takeOwnershipOfColonyFull);

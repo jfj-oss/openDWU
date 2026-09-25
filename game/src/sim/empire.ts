@@ -62,6 +62,15 @@ let takeOwnershipOfColonyHooks: TakeOwnershipOfColonyHooks | null = null;
 export function registerTakeOwnershipOfColonyHooks(hooks: TakeOwnershipOfColonyHooks): void {
     takeOwnershipOfColonyHooks = hooks;
 }
+/**
+ * The full Empire.1.cs 64 TakeOwnershipOfColony (combat/ownership.ts, M4q; registered at its module load, which every
+ * game path reaches through the tick modules). Empire.takeOwnershipOfColony delegates to it once registered.
+ */
+export type TakeOwnershipOfColonyFull = (galaxy: Galaxy, self: Empire, colony: Habitat, newEmpire: Empire | null, destroyBases: boolean, destroyTroops: boolean) => void;
+let takeOwnershipOfColonyFullHook: TakeOwnershipOfColonyFull | null = null;
+export function registerTakeOwnershipOfColonyFull(fn: TakeOwnershipOfColonyFull): void {
+    takeOwnershipOfColonyFullHook = fn;
+}
 function requireTakeOwnershipOfColonyHooks(): TakeOwnershipOfColonyHooks {
     if (takeOwnershipOfColonyHooks === null) throw new Error('takeOwnershipOfColony: import ./taxes first (registers the Empire.1.cs 240/241/269 callees)');
     return takeOwnershipOfColonyHooks;
@@ -952,6 +961,10 @@ export class Empire {
     // blockades/attacks cancellation, tax rate, population policy, bases and
     // mining stations, empire defeat/teardown — Empire.1.cs 64-370.
     takeOwnershipOfColony(colony: Habitat, newEmpire: Empire | null): void {
+        if (takeOwnershipOfColonyFullHook !== null) {
+            takeOwnershipOfColonyFullHook(this.galaxy, this, colony, newEmpire, false, false);
+            return;
+        }
         const empire = colony.empire;
         let flag = false;
         if (empire !== null) {

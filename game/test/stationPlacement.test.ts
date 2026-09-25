@@ -382,7 +382,7 @@ const PINNED: unknown[] = [
     ],
     [
         152,
-        "Dhayut Territory",
+        "Grand Dhayut Authority",
         "MediumSpacePort",
         "S1 3 Space Port",
         "S1 3",
@@ -392,7 +392,7 @@ const PINNED: unknown[] = [
     ],
     [
         153,
-        "Dhayut Territory",
+        "Grand Dhayut Authority",
         "HighTechResearchStation",
         "S188 Research Center",
         "S188 4",
@@ -402,7 +402,7 @@ const PINNED: unknown[] = [
     ],
     [
         154,
-        "Dhayut Territory",
+        "Grand Dhayut Authority",
         "GasMiningStation",
         "S6 2 Gas Mining Station",
         "S6 2",
@@ -412,7 +412,7 @@ const PINNED: unknown[] = [
     ],
     [
         155,
-        "Dhayut Territory",
+        "Grand Dhayut Authority",
         "MiningStation",
         "DN169, Asteroid Field Mining Station",
         "DN169, Asteroid Field",
@@ -422,7 +422,7 @@ const PINNED: unknown[] = [
     ],
     [
         156,
-        "Dhayut Territory",
+        "Grand Dhayut Authority",
         "MiningStation",
         "XO112, Asteroid Field Mining Station",
         "XO112, Asteroid Field",
@@ -432,7 +432,7 @@ const PINNED: unknown[] = [
     ],
     [
         157,
-        "Dhayut Territory",
+        "Grand Dhayut Authority",
         "MiningStation",
         "PW425, Asteroid Field Mining Station",
         "PW425, Asteroid Field",
@@ -442,7 +442,7 @@ const PINNED: unknown[] = [
     ],
     [
         158,
-        "Dhayut Territory",
+        "Grand Dhayut Authority",
         "MiningStation",
         "Eshoa Mining Station",
         "Eshoa",
@@ -452,7 +452,7 @@ const PINNED: unknown[] = [
     ],
     [
         159,
-        "Dhayut Territory",
+        "Grand Dhayut Authority",
         "MiningStation",
         "S188 3 Mining Station",
         "S188 3",

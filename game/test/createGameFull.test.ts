@@ -157,7 +157,8 @@ describe('createGame full game start (seed 1, Spiral 300 stars, 8x8, Human + 3 A
 // Re-pinned M4u: the game-start Empire.DoTasks runs the character reviews (ReviewCharacterTraits / ApplyCharacterLocationBonus Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd); empire placement, names and pirates shift.
 // Re-pinned M4f: game-start AssignMissionsToBuiltObjectList draws move the empire-placement / ruins stream.
 // (Merge of M4f onto M4u/M4o/M4l: re-pinned once against the combined code.)
-// (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
+// (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks; the full
+// TakeOwnershipOfColony port renames the fourth empire.)
 const PINNED_SUMMARY: unknown = {
     "empires": [
         {
@@ -205,7 +206,7 @@ const PINNED_SUMMARY: unknown = {
             ]
         },
         {
-            "name": "Dhayut Territory",
+            "name": "Grand Dhayut Authority",
             "race": "Dhayut",
             "colonies": 1,
             "spacePorts": 1,
