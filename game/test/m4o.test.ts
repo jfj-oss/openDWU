@@ -256,7 +256,6 @@ describe('harness', () => {
             expect(Number.isFinite(b.currentShields) && Number.isFinite(b.currentEnergy)).toBe(true);
             expect(b.currentShields).toBeGreaterThanOrEqual(0);
             expect(b.currentShields).toBeLessThanOrEqual(Math.fround(b.shieldsCapacity));
-            for (const w of b.weapons) expect(w.status === undefined || true).toBe(true);
         }
     }, 300000);
 });
