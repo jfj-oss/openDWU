@@ -5,6 +5,7 @@
 // handlers; every other action is registered but inert via console.info.
 
 import { Camera } from '../render/camera';
+import { toggleExpansionPlanner } from './screens/expansionPlanner'; import { selectHabitat } from './hud'; // [16a]
 import { GalaxyTime } from '../sim/clock';
 import { toggleDiplomacyScreen } from './screens/diplomacyScreen'; // [15a]
 import {
@@ -244,6 +245,13 @@ export function dispatchKey(
         case 'scrollRight':
             handlers.scrollRight?.();
             break;
+        // [16a] F3: Expansion Planner (task 16a); a row selects + zooms to the planet.
+        case 'expansionPlannerScreen': {
+            const src = getEmpireSummarySource();
+            if (src) toggleExpansionPlanner({ empire: src.empire, onSelect: (h) => selectHabitat(h, true) });
+            break;
+        }
+        // [/16a]
         case 'galaxyMap':
             handlers.galaxyMap?.();
             break;
@@ -468,6 +476,7 @@ export function cycleActionArgs(action: string): { kind: CycleKind; dir: 1 | -1;
 export const IMPLEMENTED_KEY_ACTIONS: ReadonlySet<string> = new Set([
     'togglePause', 'speedUp', 'speedDown',
     'diplomacyScreen', // [15a]
+    'expansionPlannerScreen', // [16a]
     'zoomIn', 'zoomOut', 'zoomToSelection',
     'zoomSystemLevel', 'zoomSectorLevel', 'zoomGalaxyLevel', 'zoomPlanetLevel',
     'researchScreen', // [15b]
