@@ -111,7 +111,12 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // SelectCreatures population gating fix (Galaxy.5.cs 1648/1785): SelectCreatures(planet / moon) runs only when
         // the body has no population, which moves every galaxy-generation draw after the first populated body (creature
         // counts / positions, empire placement) and so everything downstream. (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
-        expect(summary.digest).toBe('198918104ea2794b');
+        // M4o: weapons actually fire — FireWeaponsAtTarget draws the per-weapon fire-rate jitter NextDouble every call
+        // (~157k calls in 600 s on this seed: pirate ships attacking), DetermineHitTarget (NextDouble, Next(0, 12)) and
+        // Weapon.Fire (NextDouble, Next(0, 2)) per shot, InflictDamage's armor / component / explosion draws per hit,
+        // CheckNearbyBuiltObjectsForShieldAreaRecharge's Next(0, Count); shields recharge (energy), ships take damage and
+        // are torn down (CompleteTeardown nulls galaxy.BuiltObjects entries, cleans empire lists), Explosions accumulate.
+        expect(summary.digest).toBe('e01a949ad05e47a1');
     }, 600000);
 });
 
