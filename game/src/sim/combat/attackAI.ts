@@ -40,6 +40,7 @@ import { DISTRESS_SIGNAL_DATE_RANGE, DistressSignal, DistressSignalType, empireD
 import { BuiltObjectMission, BuiltObjectMissionPriority, BuiltObjectMissionType, CommandAction, builtObjectMission, isBuiltObject, isCreature, isHabitat, isShipGroup, type StellarObject } from '../missions/mission';
 import { assignMission, clearPreviousMissionRequirements, recordRevertMission } from '../missions/assign';
 import { withinFuelRangeAndRefuel } from '../movement';
+import { isFighter } from './fighters';
 import { shipGroupOf, stellarAttackers, stellarCurrentSpeed, stellarCurrentTarget, stellarFirepowerRaw, stellarTopSpeed, builtObjectThreats, calculateOverallStrengthFactor, evaluateThreats, getBuiltObjectsAtLocationByArrays, shouldFleeFrom, type Threat } from './threats';
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -734,14 +735,15 @@ export function setAttackRangeWhenNoMission(galaxy: Galaxy, builtObject: BuiltOb
 // BuiltObject.1.cs 951 ShouldAttack / 1689 ShouldCounterAttack / 1185 CheckForAttack / 1852 CheckForRandomAttackTargets
 // ---------------------------------------------------------------------------------------------------------------
 
-/** StellarObjectList.ContainsFighterOrBuiltObject(builtObject) (StellarObjectList.cs 98); Fighters are M4p (identity match only). */
+/** StellarObjectList.ContainsFighterOrBuiltObject(builtObject) (StellarObjectList.cs 98). */
 export function attackersContainsFighterOrBuiltObject(attackers: readonly StellarObject[], builtObject: BuiltObject): boolean {
     for (let index = 0; index < attackers.length; ++index) {
         const a = attackers[index];
         if (isBuiltObject(a)) {
             if (a === builtObject) return true;
+        } else if (isFighter(a) && a.parentBuiltObject === builtObject) {
+            return true;
         }
-        // else if (a is Fighter && a.ParentBuiltObject == builtObject) return true; — M4p
     }
     return false;
 }

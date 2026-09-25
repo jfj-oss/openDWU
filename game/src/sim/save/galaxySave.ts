@@ -70,6 +70,8 @@ import { BuiltObjectMission, Command, Sector } from '../missions/mission';
 import { Contract } from '../logistics/contracts';
 import { Order, ComponentRef } from '../logistics/orders';
 import { PrioritizedTarget } from '../civilianAI';
+import { Fighter, FighterSpecification, FighterWeapon } from '../combat/fighters';
+import { Explosion, SpaceBattleStats } from '../combat/damage';
 const CLASSES: Record<string, object> = {
     EmpireMessage: EmpireMessage.prototype,
     // M4f: ships carry missions from game start (Start.2.cs 1373); freighter contracts, orders, migration/tourism targets.
@@ -138,6 +140,13 @@ const CLASSES: Record<string, object> = {
     CharacterSkillList: CharacterSkillList.prototype,
     CharacterEvent: CharacterEvent.prototype,
     IntelligenceMission: IntelligenceMission.prototype,
+    // M4p: BuiltObject.Fighters (FighterList) and their weapons / specifications; the explosions and battle stats (M4o
+    // types) that fighters and combat attach to ships.
+    Fighter: Fighter.prototype,
+    FighterWeapon: FighterWeapon.prototype,
+    FighterSpecification: FighterSpecification.prototype,
+    Explosion: Explosion.prototype,
+    SpaceBattleStats: SpaceBattleStats.prototype,
 };
 
 /** Galaxy fields that hold GameData tables (re-wired from gameData on load,

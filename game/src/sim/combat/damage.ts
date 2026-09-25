@@ -472,15 +472,18 @@ export function calculateWarValueHabitat(galaxy: Galaxy, habitat: Habitat): numb
     return result;
 }
 
-const T_calculateWarValueFighter = registerTodo('M4p', 'calculateWarValueFighter');
-/** Galaxy.3.cs 517 InflictWarDamage(inflictingEmpire, fighter): + CalculateWarValue(fighter) — TODO(port) M4p: Galaxy.3.cs CalculateWarValue(Fighter) (the Fighter class). */
+/** Galaxy.3.cs 468 CalculateWarValue(Fighter): always 1 (combat/fighters.ts calculateWarValueFighter). */
+function calculateWarValueFighter(fighter: FighterLike): number {
+    void fighter;
+    return 1;
+}
+
+/** Galaxy.3.cs 517 InflictWarDamage(inflictingEmpire, fighter). */
 export function inflictWarDamageFighter(galaxy: Galaxy, inflictingEmpire: Empire | null, target: FighterLike): void {
     void galaxy;
     if (target.empire !== null) {
         const diplomaticRelation = target.empire.diplomaticRelations.byEmpire(inflictingEmpire);
-        if (diplomaticRelation !== null) {
-            /* TODO(port) M4p */ todo(T_calculateWarValueFighter);
-        }
+        if (diplomaticRelation !== null) diplomaticRelation.warDamageBuiltObject = (diplomaticRelation.warDamageBuiltObject + calculateWarValueFighter(target)) | 0;
     }
 }
 

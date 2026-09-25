@@ -4433,6 +4433,11 @@ export class Galaxy {
     /** BaconBuiltObject.cs 78 static `shipsToBeDestroyed` (ship name → saved resource cargo; SaveShipInfoBeforeDestruction / CollectScrap), kept per galaxy. */
     baconShipsToBeDestroyed = new Map<string, Cargo[]>();
     // ---- M4p fields (fighters) ----
+    /** Galaxy.cs 128 _NextFighterID (GetNextFighterID, Galaxy.cs 1313). */
+    nextFighterID = 0;
+    /** BaconFighter.cs 55 CheckForLevelGain / 785 AssignCAP clock-seeded `new Random()`: one galaxy-seeded stream each (plan §0). */
+    baconFighterLevelGainRnd: Random | null = null;
+    baconFighterAssignCapRnd: Random | null = null;
     // ---- M4q fields (invasion, troops, boarding) ----
     // ---- M4r fields (diplomacy runtime) ----
     /**
