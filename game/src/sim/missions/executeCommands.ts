@@ -30,6 +30,8 @@ import { cmdAttackBombardCaptureRaid } from './cmdAttack';
 import { cmdReassignMission } from './cmdReassign';
 import { cmdBlockade, cmdEscort } from './cmdMilitary';
 import { cmdColonize } from './cmdTroops';
+import { gameText } from '../colonyTick';
+import { resolveSubRoleDescription } from '../designGeneration';
 
 /** Galaxy.3.cs 4988-4989 ParentRelativeRange = 700 / ParentRelativeRangeSquared = 490000. */
 export const PARENT_RELATIVE_RANGE = 700;
@@ -547,8 +549,8 @@ export function executeCommands(galaxy: Galaxy, builtObject: BuiltObject, timePa
             result = timePassed;
         } else {
             if (!bo.isAutoControlled && bo.empire !== null && bo.empire !== galaxy.independentEmpire && bo.empire.pirateEmpireBaseHabitat === null && bo.role !== BuiltObjectRole.Base && bo.shipGroup === null && !bo.missionCompleteMessageSent) {
-                // TODO(port) M9: TextResolver "SHIPTYPE NAME has completed its mission" with ResolveDescription(SubRole), Name.
-                const description3 = `SHIPTYPE NAME has completed its mission|${bo.subRole}|${bo.name}`;
+                // string.Format(TextResolver.GetText("SHIPTYPE NAME has completed its mission"), ResolveDescription(SubRole), Name).
+                const description3 = gameText('SHIPTYPE NAME has completed its mission', resolveSubRoleDescription(bo.subRole), bo.name);
                 sendMessageToEmpire(bo.empire, bo.empire, EmpireMessageType.ShipMissionComplete, bo, description3);
                 bo.missionCompleteMessageSent = true;
             }
