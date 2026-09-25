@@ -70,7 +70,7 @@ function summary(g: Galaxy) {
             characters: getEmpireCharacters(p).length,
         })),
         independentTraders: ind.privateBuiltObjects.filter((b) => b.subRole === S.SmallFreighter || b.subRole === S.MediumFreighter).length,
-        unownedBuiltObjects: g.builtObjects.filter((b) => b.empire === null).length,
+        unownedBuiltObjects: (g.builtObjects as BuiltObject[]).filter((b) => b.empire === null).length,
         builtObjects: g.builtObjects.length,
         ruins: g.ruinCount,
     };
@@ -80,7 +80,7 @@ function summary(g: Galaxy) {
 function fingerprint(g: Galaxy) {
     return {
         summary: summary(g),
-        objects: g.builtObjects.map((b) => [b.builtObjectID, b.empire?.name ?? null, S[b.subRole], b.name, b.xpos, b.ypos]),
+        objects: (g.builtObjects as BuiltObject[]).map((b) => [b.builtObjectID, b.empire?.name ?? null, S[b.subRole], b.name, b.xpos, b.ypos]),
         characters: g.empires.map((e) => getEmpireCharacters(e).map((c) => `${c.role}:${c.name}:${c.location?.name ?? ''}`)),
         ruins: g.habitats.filter((h) => h.ruin !== null).map((h) => `${h.name}:${h.ruin!.name}`),
         rnd: JSON.stringify(g.rnd),

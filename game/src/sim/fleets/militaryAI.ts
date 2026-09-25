@@ -163,7 +163,7 @@ import {
 // Constants (Galaxy.3.cs 4972-5120 static values)
 // ---------------------------------------------------------------------------------------------------------------
 
-/** Galaxy.ParentRelativeRange (Galaxy.3.cs 4988) / EscortRange (4977). */
+/** Galaxy.ParentRelativeRange (Galaxy.3.cs 4988) / EscortRange (4977). (HyperJumpThreshhold: movement.ts baconMovementSettings.) */
 export const PARENT_RELATIVE_RANGE = 700;
 export const ESCORT_RANGE = 200;
 /** Galaxy.SectorSize / IndexSize. */

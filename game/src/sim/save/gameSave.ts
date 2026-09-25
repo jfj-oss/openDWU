@@ -6,7 +6,7 @@
 // the headless sim. Key order is fixed so round-tripped strings compare
 // byte-for-byte equal.
 
-import { baconInitializeSettings } from '../baconInitialize';
+import { baconInitializeSettings } from '../baconSettings';
 import type { Game } from '../game';
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';

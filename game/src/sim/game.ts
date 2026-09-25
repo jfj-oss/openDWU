@@ -20,7 +20,7 @@
 // Normal (0.5, SetTechTreeStartingDefaults) and Level 1-6. AI pirate factions
 // are generated when piratePrevalence > 0 (pirates.ts).
 
-import { baconInitializeSettings, resetBaconSettingsToDefaults } from './baconInitialize';
+import { baconInitializeSettings, resetBaconSettings } from './baconSettings';
 import { applyVictoryConditionsToGalaxy, type VictoryConditions } from './victory';
 import { reviewComponentPrices, reviewResourcePrices } from './market';
 import { selectPopularDesignCandidates } from './independentTraders';
@@ -798,7 +798,7 @@ export function applyStartAutomationSettings(empire: Empire, o: Readonly<GameOpt
 export function createGame(opts: CreateGameOptions): Game {
     const gd = opts.gameData;
     // BaconInitialize has not run while a fresh launch generates its galaxy: the Bacon statics are the C# defaults.
-    resetBaconSettingsToDefaults();
+    resetBaconSettings();
     govs = gd.governments;
     setGovernmentsStatic(gd.governments);
     setGovernmentBiasesStatic(gd.governmentBiases); // GovernmentBiasList.LoadFromFile (M4r: NaturalAffinity)
@@ -1268,8 +1268,9 @@ export function createGame(opts: CreateGameOptions): Game {
     // Main.Part9.cs method_260 when no options file exists); AI empires keep the ctor's FullyAutomated.
     applyStartAutomationSettings(empire2, DEFAULT_GAME_OPTIONS_AUTOMATION);
     // TODO(port): the rest of CreateGameFromSettings (see header).
-    stopAt('tail');
-    // Main.Part12.cs 3151 BaconMain.BaconInitialize once the new game starts: BaconSettings.txt takes effect.
+    // Main.Part12.cs 3151 BaconMain.BaconInitialize(this) once Main starts the new game: the loaded BaconSettings.txt
+    // takes effect (baconSettings.ts; the settings part only).
     baconInitializeSettings(galaxy, gd.baconSettings);
+    stopAt('tail');
     return result();
 }

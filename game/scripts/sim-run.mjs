@@ -4,7 +4,8 @@
 // per tick entry point / subsystem (V8 sampling profiler over the run only — no code in src/sim is touched).
 //
 //   node --expose-gc scripts/sim-run.mjs --seed 1 --stars 700 --empires 10 --seconds 600
-//        [--age 1] [--tech 0.5] [--pirates 1] [--chunk 60] [--profile] [--top 15] [--json out.json]
+//        [--age 1] [--tech 0.5] [--pirates 1] [--sectors N] [--chunk 60] [--profile] [--top 15] [--json out.json]
+// (--sectors defaults to round(sqrt(stars / 4.7)) clamped to 4..15; the New Game wizard default is 700 stars in 8x8)
 //
 // Defaults match test/helpers/tickGame.ts (age 1, tech 0.5, pirates 1) so `--stars 300 --empires 4 --seconds 600`
 // reproduces the tickDeterminism pin. The run is driven in `--chunk`-second runGameSeconds calls (chunking is
@@ -47,7 +48,7 @@ const profile = arg('profile', false) === true;
 const top = Number(arg('top', 15));
 const jsonOut = arg('json', null);
 const loader = String(arg('loader', 'bundle'));
-const sectors = Math.max(4, Math.min(15, Math.round(Math.sqrt(stars / 4.7))));
+const sectors = Number(arg('sectors', Math.max(4, Math.min(15, Math.round(Math.sqrt(stars / 4.7))))));
 
 const heap = { peak: 0, sample() { const h = process.memoryUsage().heapUsed; if (h > this.peak) this.peak = h; return h; } };
 const mb = (b) => (b / 1048576).toFixed(0) + ' MB';
@@ -172,6 +173,23 @@ try {
     console.log(`ms/frame wall|cpu: first chunk ${first.msPerFrame.toFixed(3)}|${first.cpuMsPerFrame.toFixed(3)} (to ${first.endS}s), last chunk ${last.msPerFrame.toFixed(3)}|${last.cpuMsPerFrame.toFixed(3)} (to ${last.endS}s); builtObjects ${first.bo} → ${last.bo}`);
     console.log(`heap: start ${mb(heapStart)}, peak sampled ${mb(heap.peak)}, end after gc ${mb(heapEnd)}${globalThis.gc ? '' : ' (run with --expose-gc for gc-settled numbers)'}`);
     console.log(`exceptions: ${out.exceptions.length}`);
+    // First contact / exploration summary: met = diplomatic relations whose Type != NotMet (0) with a real empire;
+    // an explorer (sub role ExplorationShip = 9) is "away" when it is > 23000 (MaxSolarSystemSize) from its capital's star.
+    const contact = g.empires.filter((e) => e !== null).map((e) => {
+        let met = 0;
+        for (const r of e.diplomaticRelations) if (r.type !== 0 && r.otherEmpire !== null && r.otherEmpire !== g.independentEmpire && g.empires.includes(r.otherEmpire)) met++;
+        const cap = e.capital, star = cap === null ? null : g.systems[cap.systemIndex]?.systemStar ?? null;
+        let explorers = 0, away = 0;
+        for (const b of e.builtObjects) {
+            if (b === null || b.subRole !== 9 || b.hasBeenDestroyed) continue;
+            explorers++;
+            if (star !== null && Math.hypot(b.xpos - star.xpos, b.ypos - star.ypos) > 23000) away++;
+        }
+        return { name: e.name, player: e === g.playerEmpire, met, explorers, away, explored: e.systemVisibility.filter((v) => v.status >= 2).length };
+    });
+    out.contact = contact;
+    console.log(`contact after ${(g.nowMs / 1000 / 600 * 365).toFixed(0)} game-days: ${contact.filter((c) => c.met > 0).length}/${contact.length} empires met someone`);
+    for (const c of contact) console.log(`  ${c.player ? '*' : ' '} ${c.name.padEnd(28)} met ${c.met}, explorers away ${c.away}/${c.explorers}, systems explored/visible ${c.explored}`);
     const hits = Object.entries(todo).sort((a, b) => b[1] - a[1]);
     console.log(`TODO(port) stubs reached: ${hits.length}`);
     for (const [k, v] of hits.slice(0, 25)) console.log(`  ${String(v).padStart(10)}  ${k}`);

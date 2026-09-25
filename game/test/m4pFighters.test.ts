@@ -33,7 +33,7 @@ import {
     manufactureRepairFighters,
     returnToCarrier,
 } from '../src/sim/combat/fighters';
-import { resetBaconSettingsToDefaults } from '../src/sim/baconInitialize';
+import { resetBaconSettings } from '../src/sim/baconSettings';
 
 let gameData: GameData;
 beforeAll(async () => {
@@ -42,7 +42,7 @@ beforeAll(async () => {
 
 /** The player's capital space port (a fighter carrier at game start on the tick-test seed). */
 function playerCarrier(g: Galaxy): BuiltObject {
-    const port = g.builtObjects.find((b) => b !== null && b.empire === g.playerEmpire && b.fighterCapacity > 0);
+    const port = g.builtObjects.find((b): b is BuiltObject => b !== null && b.empire === g.playerEmpire && b.fighterCapacity > 0);
     if (port === undefined) throw new Error('no player carrier');
     return port;
 }
@@ -121,7 +121,7 @@ describe('M4p unit: specifications and carriers', () => {
         const g = createTickGame(gameData).galaxy;
         // Hand-worked with the C# class defaults (fighterBuildSpeedDivisor 2f, fighterBuildCost 0), not the installed
         // BaconSettings.txt (40 / 6) that createGame applied.
-        resetBaconSettingsToDefaults();
+        resetBaconSettings();
         const port = playerCarrier(g);
         buildNewFighters(g, port);
         const fighters = fightersOf(port)!;

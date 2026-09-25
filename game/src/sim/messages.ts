@@ -12,6 +12,7 @@ import { BuiltObject } from './builtObject';
 import { Habitat, HabitatCategoryType, HabitatType } from './types';
 import { Empire as EmpireClass } from './empire';
 import { galaxyStarDate } from './tick/simTime';
+import { netSort } from './netSort';
 import * as ET from './enumText';
 import { resolveEnumTextDescription, type EnumText } from './enumText';
 import { CharacterRole, CharacterSkillType, CharacterTraitType } from './characters';
@@ -173,6 +174,41 @@ export function sendEmpireMessage(message: EmpireMessage, recipientEmpire: Empir
         if (recipientEmpire.messageRecipient !== null) {
             recipientEmpire.messageRecipient.receiveMessage(message);
         }
+    }
+}
+
+/** EmpireMessage.cs 261 IComparable<EmpireMessage>.CompareTo: by StarDate. */
+function compareEmpireMessages(a: EmpireMessage, b: EmpireMessage): number {
+    return a.starDate < b.starDate ? -1 : a.starDate > b.starDate ? 1 : 0;
+}
+
+/** Empire.MessageHistory as the typed list (empire.ts declares it `unknown[]`). */
+export function empireMessageHistory(empire: Empire): EmpireMessage[] {
+    return empire.messageHistory as EmpireMessage[];
+}
+
+/**
+ * Empire.cs 4697 AddHistoryMessage(message). The C# UI calls it for every player message it shows except
+ * Informational ones (Main.Part9.cs 1508-1517).
+ */
+export function addHistoryMessage(empire: Empire, message: EmpireMessage): void {
+    const history = empireMessageHistory(empire);
+    if (!history.includes(message)) history.push(message);
+}
+
+/** Empire.cs 4708 RemoveOldHistoryMessages: keeps the newest _MaximumHistoryMessages (GalacticHistory ones always). */
+export function removeOldHistoryMessages(empire: Empire): void {
+    const history = empireMessageHistory(empire);
+    if (history.length <= empire.maximumHistoryMessages) return;
+    netSort(history, compareEmpireMessages);
+    history.reverse();
+    const empireMessageList: EmpireMessage[] = [];
+    for (let i = empire.maximumHistoryMessages; i < history.length; i++) {
+        if (history[i].messageType !== EmpireMessageType.GalacticHistory) empireMessageList.push(history[i]);
+    }
+    for (let j = 0; j < empireMessageList.length; j++) {
+        const index = history.indexOf(empireMessageList[j]);
+        if (index >= 0) history.splice(index, 1);
     }
 }
 

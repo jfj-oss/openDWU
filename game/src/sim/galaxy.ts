@@ -7,10 +7,12 @@
 // population and creatures are ported (01f2: SelectPopulation, 01f3:
 // SelectCreatures) — see the `TODO(port)` markers below for what remains.
 
+import { CargoList, TroopList } from './cargo';
+import { ensureHabitatInvadingCharacters, ensureStellarObjectCharacters } from './characters';
 import type { VictoryConditions, EmpireVictoryConditions } from './victory';
 import { EmpireActivityList } from './pirates/empireActivity';
 import { Random } from './random';
-import { CargoList, TroopList, type Cargo } from './cargo';
+import type { Cargo } from './cargo';
 import { newHabitatConstructionQueue } from './construction/constructionYard';
 import { Creature, CreatureType } from './creature';
 import { GalaxyLocation, GalaxyLocationEffectType, GalaxyLocationShape, GalaxyLocationType } from './galaxyLocation';
@@ -909,7 +911,7 @@ export class Galaxy {
 
     // ---- Task M3c: BuiltObjects in the galaxy (Galaxy.cs / Galaxy.4-7.cs) ----
     // C#: BuiltObjectList BuiltObjects (Galaxy.cs), _NextBuiltObjectID (starts at 0).
-    builtObjects: BuiltObject[] = [];
+    builtObjects: (BuiltObject | null)[] = [];
     nextBuiltObjectId = 0;
     /**
      * C#: Galaxy.StartingAge (Galaxy.cs 982 `StartingAge => _Age`, i.e. the galaxy age set by
@@ -2801,7 +2803,7 @@ export class Galaxy {
     // Port of ResourceDefinitionList.cs ResolveValidResourcesForHabitatExcludeManufactured
     // (line 111): resource IDs with a prevalence valid for this habitat
     // (same test as CheckPrevalenceValidForHabitat), excluding manufactured.
-    private resolveValidResourcesForHabitatExcludeManufactured(habitat: Habitat): number[] {
+    resolveValidResourcesForHabitatExcludeManufactured(habitat: Habitat): number[] {
         const list: number[] = [];
         for (const def of this.resources) {
             if (def === null || def.colonyManufacturingLevel > 0 || def.distributions.length <= 0) continue;
@@ -4049,14 +4051,15 @@ export class Galaxy {
                 for (let p = 0; p < populationRolls; p++) {
                     this.selectPopulation(planet, sunHabitat);
                 }
-                // Galaxy.5.cs 1609-1618: a populated planet gets `ConstructionQueue` (M4h, 1617) and `ManufacturingQueue` (M4g, 1618).
-                // Galaxy.5.cs 1611-1614: Cargo / Troops / TroopsToRecruit / InvadingTroops.
-                // TODO(port): Characters / InvadingCharacters (1615-1616; no Habitat fields yet; no Rnd).
+                // Galaxy.5.cs 1609-1618: a populated planet gets Cargo, Troops, TroopsToRecruit, InvadingTroops, Characters,
+                // InvadingCharacters (1611-1616), `ConstructionQueue` (M4h, 1617) and `ManufacturingQueue` (M4g, 1618). No Rnd.
                 if (planet.population.items.length > 0) {
                     planet.cargo = new CargoList();
                     planet.troops = new TroopList();
                     planet.troopsToRecruit = new TroopList();
                     planet.invadingTroops = new TroopList();
+                    ensureStellarObjectCharacters(planet); // new CharacterList() on a freshly generated habitat
+                    ensureHabitatInvadingCharacters(planet);
                     newHabitatConstructionQueue(this, planet);
                     ensureHabitatManufacturingQueue(this, planet);
                     // Galaxy.5.cs 1619-1644 (M4e): DockingBays (20, or 1 for asteroids / barren rock / other types) + wait queue.
@@ -4153,9 +4156,9 @@ export class Galaxy {
                     for (let p = 0; p < moonPopulationRolls; p++) {
                         this.selectPopulation(moon, sunHabitat);
                     }
-                    // Galaxy.5.cs 1745-1756: as for planets above (ConstructionQueue 1755, ManufacturingQueue 1756).
+                    // Galaxy.5.cs 1745-1756: Cargo, Troops, TroopsToRecruit, InvadingTroops (1749-1752; no Characters for moons),
+                    // ConstructionQueue 1753, ManufacturingQueue 1754. No Rnd.
                     if (moon.population.items.length > 0) {
-                        // Galaxy.5.cs 1751-1754: Cargo / Troops / TroopsToRecruit / InvadingTroops.
                         moon.cargo = new CargoList();
                         moon.troops = new TroopList();
                         moon.troopsToRecruit = new TroopList();

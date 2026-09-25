@@ -19,6 +19,7 @@
 import { generateVictoryConditionProgresses } from './victory';
 import type { Galaxy } from './galaxy';
 import type { Empire } from './empire';
+import type { BuiltObject } from './builtObject';
 import type { Habitat } from './types';
 import type { Race } from './data/races';
 import type { Government } from './data/governments';
@@ -101,6 +102,77 @@ export function thisYearsSpacePortIncome(galaxy: Galaxy, empire: Empire): number
         }
     }
     return num;
+}
+
+/**
+ * Empire.6.cs 2196 CheckAgeVariableIncome. Only the UI calls it (Main.Part11.cs 841, the money panel refresh for the
+ * player): it switches ThisYearsSpacePortIncome to averaged mode and, at a new galactic year, ages the variable income and
+ * resets the per-base yearly income.
+ */
+export function checkAgeVariableIncome(galaxy: Galaxy, empire: Empire): void {
+    empire.useAveragedVariableIncome = true;
+    const currentStarDate = galaxyStarDate(galaxy);
+    const num = currentStarDate % (REAL_SECONDS_IN_GALACTIC_YEAR * 1000);
+    const num2 = currentStarDate - num;
+    if (empire.lastVariableIncomeUpdate < num2) {
+        ageVariableIncomeValues(empire, thisYearsSpacePortIncome(galaxy, empire) + thisYearsResortIncome(galaxy, empire));
+        resetYearlyIncome(empire);
+        empire.lastVariableIncomeUpdate = num2;
+    }
+}
+
+/** Empire.6.cs 2212 ResetYearlyIncome. */
+function resetYearlyIncome(empire: Empire): void {
+    for (let i = 0; i < empire.spacePorts.length; i++) empire.spacePorts[i].currentYearsIncome = 0.0;
+    for (let j = 0; j < empire.miningStations.length; j++) empire.miningStations[j].currentYearsIncome = 0.0;
+    for (let k = 0; k < empire.resortBases.length; k++) (empire.resortBases[k] as BuiltObject).currentYearsIncome = 0.0;
+}
+
+/** Empire.6.cs 2226 AgeVariableIncomeValues(thisYearsVariableIncome): keeps the last 3 years, newest first. */
+function ageVariableIncomeValues(empire: Empire, thisYearsVariableIncome: number): void {
+    if (empire.variableIncome === null) empire.variableIncome = [];
+    const num = 3;
+    empire.variableIncome.splice(0, 0, thisYearsVariableIncome);
+    if (empire.variableIncome.length > num) empire.variableIncome.splice(empire.variableIncome.length - 1, 1);
+}
+
+/** Empire.6.cs 2240 ObtainAveragedVariableIncome: weights 0.7^(i+1) (NaN for an empty list, as the C# 0/0). */
+export function obtainAveragedVariableIncome(empire: Empire): number {
+    let num = 0.0;
+    let num2 = 0.0;
+    let num3 = 0.7;
+    const list = empire.variableIncome!;
+    for (let i = 0; i < list.length; i++) {
+        num += list[i] * num3;
+        num2 += num3;
+        num3 *= 0.7;
+    }
+    return num / num2;
+}
+
+/**
+ * Main.Part11.cs 832 method_126: the top-right money panel's Cashflow (AheLexjQsu) and Bonus Income values for the player,
+ * before the `+##,###,##0;-##,###,##0` formatting. Mutates like the C# (CheckAgeVariableIncome, ThisYears*Income resets);
+ * the UI calls it, never the tick. null when there is no player empire, or for a pirate player without an economy
+ * (the C# then leaves the previous strings).
+ */
+export function moneyPanelIncome(galaxy: Galaxy, empire: Empire | null): { cashflow: number; bonusIncome: number } | null {
+    if (empire === null) return null;
+    if (empire.pirateEmpireBaseHabitat === null) {
+        checkAgeVariableIncome(galaxy, empire);
+        // 842 `ObtainAveragedVariableIncome();` — result discarded, no side effect.
+        const num = annualTaxRevenue(galaxy, empire) + calculateAnnualSubjugationTributeIncome(galaxy, empire);
+        const num2 = thisYearsForeignTradeBonuses(empire) + thisYearsResortIncome(galaxy, empire) + thisYearsSpacePortIncome(galaxy, empire);
+        const num3 = annualStateMaintenanceExcludingUnderConstruction(empire) + annualTroopMaintenance(empire) + annualFacilityMaintenance(empire) + annualSubjugationTribute(galaxy, empire) + empire.thisYearsStateFuelCosts + annualPirateProtection(empire);
+        return { cashflow: num - num3, bonusIncome: num2 };
+    }
+    if (empire.pirateEconomy !== null) {
+        // 850-857
+        let pirateEconomyYear = empire.pirateEconomy.lastYear;
+        if (pirateEconomyYear === null) pirateEconomyYear = empire.pirateEconomy.thisYear;
+        return { cashflow: pirateEconomyYear.stableCashflow, bonusIncome: empire.pirateEconomy.thisYear.bonusIncome };
+    }
+    return null;
 }
 
 /** Empire.1.cs 996 ProcessSubjugationTribute(timePassed). */

@@ -34,7 +34,7 @@ import { characterKillFromPerformIntelligenceMissions, getCharacterValue, getSpi
 import { DiplomaticRelationType, DiplomaticStrategy, LONG_MAX_VALUE, obtainDiplomaticRelation, obtainEmpireEvaluation } from '../src/sim/diplomacy';
 import { galaxyCurrentStarDate } from '../src/sim/pirateRelations';
 import { cautionLevel } from '../src/sim/diplomacyTick';
-import { resetBaconSettingsToDefaults } from '../src/sim/baconInitialize';
+import { resetBaconSettings } from '../src/sim/baconSettings';
 
 let gameData: GameData;
 beforeAll(async () => {
@@ -270,7 +270,7 @@ describe('captured spies (BaconCharacter.cs 31 Kill from PerformIntelligenceMiss
     it('between two AI empires the spy\'s empire pays GetCharacterValue to the target and the spy lives', () => {
         const { galaxy } = createTickGame(gameData);
         // Hand-worked with the C# default spyBaseValue 25000 (the installed BaconSettings.txt sets 250000).
-        resetBaconSettingsToDefaults();
+        resetBaconSettings();
         const [a, b] = aiEmpires(galaxy);
         const spy = newAgent(galaxy, a, 'Spy');
         spy.mission = newIntelligenceMissionAgainstEmpire(a, spy, T.StealGalaxyMap, 0, b);

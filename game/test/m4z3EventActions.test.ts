@@ -437,10 +437,10 @@ describe('ExecuteEventAction per action type (Galaxy.9.cs 1503-2860)', () => {
         const n = g.builtObjects.length;
         executeEventAction(g, action(EventActionType.GenerateBuiltObject, h, { builtObjectSubRole: BuiltObjectSubRole.Frigate, techLevel: 1 }), e, null);
         expect(g.builtObjects.length).toBe(n + 1);
-        expect(g.builtObjects[n].empire).toBeNull();
-        expect(g.builtObjects[n].subRole).toBe(BuiltObjectSubRole.Frigate);
+        expect((g.builtObjects as BuiltObject[])[n].empire).toBeNull();
+        expect((g.builtObjects as BuiltObject[])[n].subRole).toBe(BuiltObjectSubRole.Frigate);
         executeEventAction(g, action(EventActionType.GenerateRefugeeFleet, h, { race: e.dominantRace }), e, null);
-        const added = g.builtObjects.slice(n + 1);
+        const added = (g.builtObjects as BuiltObject[]).slice(n + 1);
         expect(added.map((b) => b.subRole)).toEqual([BuiltObjectSubRole.ColonyShip, BuiltObjectSubRole.Frigate, BuiltObjectSubRole.Cruiser]);
         expect(added[0].nativeRace).toBe(e.dominantRace);
         // Galaxy.9.cs 2105 ResolveDescription(BuiltObjectSubRole.ColonyShip) = GameText "Ship SubRole ColonyShip" (enumText.ts).

@@ -40,10 +40,9 @@ import { checkSendPreWarpProgressEventMessage } from '../events';
 import { DISTRESS_SIGNAL_DATE_RANGE, DistressSignal, DistressSignalType, empireDistressSignals } from '../missions/distress';
 import { BuiltObjectMission, BuiltObjectMissionPriority, BuiltObjectMissionType, CommandAction, builtObjectMission, isBuiltObject, isCreature, isHabitat, isShipGroup, type StellarObject } from '../missions/mission';
 import { assignMission, clearPreviousMissionRequirements, recordRevertMission } from '../missions/assign';
-import { withinFuelRangeAndRefuel } from '../movement';
+import { baconMovementSettings, withinFuelRangeAndRefuel } from '../movement';
 import { isFighter } from './fighters';
 import { shipGroupOf, stellarAttackers, stellarCurrentSpeed, stellarCurrentTarget, stellarFirepowerRaw, stellarTopSpeed, builtObjectThreats, calculateOverallStrengthFactor, evaluateThreats, getBuiltObjectsAtLocationByArrays, shouldFleeFrom, type Threat } from './threats';
-import { baconSettings } from '../data/baconSettings';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Galaxy constants (Galaxy.3.cs static ctor)
@@ -1195,7 +1194,7 @@ export function checkNearTarget(galaxy: Galaxy, builtObject: BuiltObject): void 
         }
     }
     const mission2 = builtObjectMission(ship.mission);
-    if (mission2 !== null && galaxy.calculateDistanceSquared(ship.xpos, ship.ypos, x2, y2) <= baconSettings.hyperJumpThreshhold * baconSettings.hyperJumpThreshhold) {
+    if (mission2 !== null && galaxy.calculateDistanceSquared(ship.xpos, ship.ypos, x2, y2) <= baconMovementSettings.hyperJumpThreshhold * baconMovementSettings.hyperJumpThreshhold) {
         mission2.completeCommand();
         const mission3 = builtObjectMission(ship.mission);
         if (mission3 !== null && mission3.target !== null && mission3.fastPeekCurrentCommand()?.action === CommandAction.MoveTo && mission3.showNextCommand()?.action === CommandAction.ConditionalHyperTo) mission3.completeCommand();

@@ -21,7 +21,7 @@ import { CharacterRole, countCharactersByRole, stellarObjectCharacters, type Cha
 import { EmpireMessageType, sendMessageToEmpire } from '../messages';
 import { PirateRelationType, changePirateRelation, obtainPirateRelation } from '../pirateRelations';
 import { strategicValue } from '../territory';
-import { doMovement, withinFuelRange } from '../movement';
+import { baconMovementSettings, doMovement, withinFuelRange } from '../movement';
 import { declareWar } from '../diplomacyTick';
 import { bombardTarget, firePlanetDestroyerAtHabitat, fireWeaponsAtTarget, modifyDiplomacyFromAttackEmpire } from '../combat/weapons';
 import { checkLaunchAssaultPodsAtTarget, shipGroupTotalAvailableBoardingAssaultStrengthCapturingTarget } from '../combat/boarding';
@@ -47,7 +47,6 @@ import {
 } from '../combat/attackAI';
 import { BuiltObjectMissionType, Command, CommandAction, builtObjectMission, isBuiltObject, isCreature, type StellarObject } from './mission';
 import type { CommandHandler } from './executeCommands';
-import { baconSettings } from '../data/baconSettings';
 
 /** The threat-slot rejection test repeated at 1743 / 1774 / 1860 / 2004 / 2094 / 2270. */
 function threatRejected(bo: BuiltObject, t: Threat | null): boolean {
@@ -312,7 +311,7 @@ export const cmdAttackBombardCaptureRaid: CommandHandler = (ctx) => {
     if (currentTarget !== null && !currentTarget.hasBeenDestroyed) {
         num63 = galaxy.calculateDistance(bo.xpos, bo.ypos, currentTarget.xpos, currentTarget.ypos);
     }
-    if (num63 > baconSettings.hyperJumpThreshhold) {
+    if (num63 > baconMovementSettings.hyperJumpThreshhold) {
         // currentTarget is non-null here (num63 > 0 requires it).
         const ct = currentTarget!;
         if (bo.warpSpeed > 0) {
@@ -426,7 +425,7 @@ export const cmdAttackBombardCaptureRaid: CommandHandler = (ctx) => {
                         }
                     }
                     const num70 = galaxy.calculateDistance(bo.xpos, bo.ypos, num67, num68);
-                    if (num70 > baconSettings.hyperJumpThreshhold) {
+                    if (num70 > baconMovementSettings.hyperJumpThreshhold) {
                         if (bo.warpSpeed > 0) {
                             const command7 = Command.at(CommandAction.ConditionalHyperTo, num67, num68);
                             mission.insertCommandAtTop(command7);

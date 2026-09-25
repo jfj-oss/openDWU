@@ -7,7 +7,7 @@ import { resolve } from 'node:path';
 
 import { baconSettings, defaultBaconSettings, parseBaconSettings, readBaconSettings, setBaconSettings } from '../src/sim/data/baconSettings';
 import { loadGameData, type FetchText, type GameData } from '../src/sim/data/gameData';
-import { baconInitializeSettings, resetBaconSettingsToDefaults } from '../src/sim/baconInitialize';
+import { baconInitializeSettings, resetBaconSettings } from '../src/sim/baconSettings';
 import { baconMovementSettings } from '../src/sim/movement';
 import { createGame, type CreateGameOptions } from '../src/sim/game';
 import { GalaxyShape } from '../src/sim/types';
@@ -231,11 +231,11 @@ describe('game start applies the settings (BaconInitialize)', () => {
         const g = game.galaxy;
         const giver = g.empires.find((e) => e !== g.playerEmpire && e.colonies.length > 0)!;
         const receiver = giver;
-        resetBaconSettingsToDefaults();
+        resetBaconSettings();
         const off = resolveTradeableItemsColoniesBases(g, giver, receiver, false);
         baconInitializeSettings(g, { ...defaultBaconSettings(), tradeEverything: true });
         const on = resolveTradeableItemsColoniesBases(g, giver, receiver, false);
-        resetBaconSettingsToDefaults();
+        resetBaconSettings();
         expect(on.length).toBeGreaterThan(off.length);
         expect(off.length).toBe(resolveTradeableItemsColoniesBases(g, giver, receiver, false).length);
     });

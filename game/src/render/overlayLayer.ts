@@ -146,7 +146,7 @@ export function travelVectorFor(bo: BuiltObject): TravelVector | null {
 // TODO(port): other empires' fleets (method_258 + IsObjectVisibleToThisEmpire), selected-fleet yellow, SpecialHighlightBuiltObjects red, arrow head (texture2D_35)
 // Port of MainView.2.cs method_250 (5925-5956) travel-vector filter + method_258 (player fleets, State only)
 export function travelVectorsFor(
-    galaxy: { builtObjects: readonly BuiltObject[] },
+    galaxy: { builtObjects: readonly (BuiltObject | null)[] },
     player: Empire | null,
     kind: TravelVectorKind,
 ): TravelVector[] {
