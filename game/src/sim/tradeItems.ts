@@ -20,7 +20,8 @@ import { DiplomaticRelationType, DiplomaticStrategy, obtainEmpireEvaluation } fr
 import { obtainPirateRelation } from './pirateRelations';
 import { EmpireMessageType, sendMessageToEmpire } from './messages';
 import { determineEmpireSystems } from './forceStructure';
-import { SystemVisibilityStatus, mergeGalaxyMap } from './visibility';
+import { SystemVisibilityStatus } from './visibility';
+import { mergeGalaxyMap } from './exploration';
 import { HabitatCategoryType } from './types';
 import { habitatCompareTo } from './stationPlacement';
 import { GalaxyLocationType } from './galaxyLocation';
@@ -31,7 +32,6 @@ import {
     cautionLevel,
     changeDiplomaticRelation,
     compareDouble,
-    contactFromGalaxyMapHook,
     declareWar,
     determineDesiredDiplomaticRelationTypical,
     determineEmpireDominatedSystems,
@@ -299,15 +299,6 @@ export function determineAcceptGalaxyMapTrade(galaxy: Galaxy, self: Empire, offe
         if (offeredValue >= num3 && !checkKnowledgeOfSecretLocations(self, offeringEmpire)) return true;
     }
     return false;
-}
-
-/**
- * Galaxy.4.cs 3700 MergeGalaxyMap(giver, receiver): visibility.ts ports the map merge; the contact block is diplomacy's hook.
- * TODO(port) M4t: SystemsVisible / KnownGalaxyLocations / KnownPirateBases merge and the player's ReviewEmpireTerritory
- * (visibility.ts mergeGalaxyMap only merges the resource map and system visibility).
- */
-export function galaxyMergeGalaxyMap(galaxy: Galaxy, giver: Empire, receiver: Empire): void {
-    mergeGalaxyMap(galaxy, giver.visibility, receiver.visibility, contactFromGalaxyMapHook(galaxy, receiver));
 }
 
 /** Galaxy.4.cs 3808 GiveTerritoryMap(giver, receiver). TODO(port) M4t: the player's ReviewEmpireTerritory(onlySystems) refresh. */
@@ -1209,7 +1200,7 @@ export function giveTradeableItem(galaxy: Galaxy, giver: Empire, receiver: Empir
             giveTerritoryMap(galaxy, giver, receiver);
             break;
         case TradeableItemType.GalaxyMap:
-            galaxyMergeGalaxyMap(galaxy, giver, receiver);
+            mergeGalaxyMap(galaxy, giver, receiver); // Galaxy.4.cs 3700 (exploration.ts)
             break;
         case TradeableItemType.ContactEmpire: {
             const empire3 = item.item as Empire | null;

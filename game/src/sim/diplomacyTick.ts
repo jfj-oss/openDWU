@@ -56,7 +56,7 @@ import { strategicValue } from './territory';
 import { BuiltObjectRole } from './data/designSpecifications';
 import { BuiltObjectSubRole } from './builtObjectTypes';
 import { SystemVisibilityStatus } from './visibility';
-import type { ContactFromGalaxyMapHook, EmpireVisibility } from './visibility';
+import { mergeGalaxyMap } from './exploration';
 import { HabitatPrioritization } from './resourceTargets';
 import { netSort } from './netSort';
 import { CharacterEventType, CharacterRole, getCharactersByRole, getEmpireCharacters, type Character } from './characters';
@@ -82,7 +82,7 @@ import { cancelBlockades as cancelBlockadesImpl, getBlockadesAgainstEmpire, type
 import { chanceNewAmbassador, doCharacterEventRuntime } from './events';
 import { galaxyColonyFillFactor } from './colonyTick';
 import { isObjectVisibleToThisEmpire } from './independentTraders';
-import { TradeableItem, TradeableItemType, processTradeDealMessage, determineAcceptGalaxyMapTrade, determineAcceptTerritoryMapTrade, galaxyMergeGalaxyMap } from './tradeItems';
+import { TradeableItem, TradeableItemType, processTradeDealMessage, determineAcceptGalaxyMapTrade, determineAcceptTerritoryMapTrade } from './tradeItems';
 import { determineDesirePirateProtection, pirateEconomyPerformIncome } from './pirates/pirateAI';
 import { PirateIncomeType } from './pirates/pirateEconomy';
 import { acceptPirateProtection, calculatePirateProtectionPricePerMonth } from './pirates/pirateRelationsAI';
@@ -2429,60 +2429,20 @@ export function cancelBlockades(galaxy: Galaxy, self: Empire, targetEmpire: Empi
 // ChangeDiplomaticRelation (Empire.8.cs 2568) and DeclareWar (Empire.7.cs 4883).
 // ---------------------------------------------------------------------------------------------------------------
 
-/** Galaxy.4.cs 3700 MergeGalaxyMap contact block (3724-3775): the hook Set/ClearEmpireSharedVisibility pass to visibility.ts. */
-export function contactFromGalaxyMapHook(galaxy: Galaxy, receiver: Empire): ContactFromGalaxyMapHook {
-    return (_rv: EmpireVisibility, systemInfo: SystemInfo): void => {
-        const dominant = systemInfo.dominantEmpire;
-        if (dominant != null && dominant.empire != null) {
-            if (receiver.pirateEmpireBaseHabitat !== null) {
-                const pirateRelation = obtainPirateRelation(receiver, dominant.empire);
-                if (pirateRelation.type === PirateRelationType.NotMet) {
-                    changePirateRelation(receiver, dominant.empire, PirateRelationType.None, galaxyStarDate(galaxy));
-                    sendContactMessage(receiver, dominant.empire);
-                }
-            } else {
-                const diplomaticRelation = obtainDiplomaticRelation(receiver, dominant.empire);
-                if (diplomaticRelation.type === DiplomaticRelationType.NotMet) {
-                    changeDiplomaticRelation(galaxy, receiver, diplomaticRelation, DiplomaticRelationType.None);
-                    sendContactMessage(receiver, dominant.empire);
-                }
-            }
-        }
-        if (systemInfo.otherEmpires != null && systemInfo.otherEmpires.length > 0) {
-            for (let j = 0; j < systemInfo.otherEmpires.length; j++) {
-                const empireSystemSummary = systemInfo.otherEmpires[j];
-                if (empireSystemSummary == null || empireSystemSummary.empire == null) continue;
-                // Galaxy.4.cs 3753-3772: the pirate branch changes the relation with DominantEmpire.Empire (C# quirk kept);
-                // both branches send the message from DominantEmpire.Empire.
-                if (receiver.pirateEmpireBaseHabitat !== null) {
-                    const pirateRelation2 = obtainPirateRelation(receiver, empireSystemSummary.empire);
-                    if (pirateRelation2.type === PirateRelationType.NotMet) {
-                        changePirateRelation(receiver, systemInfo.dominantEmpire!.empire, PirateRelationType.None, galaxyStarDate(galaxy));
-                        sendContactMessage(receiver, systemInfo.dominantEmpire!.empire);
-                    }
-                } else {
-                    const diplomaticRelation2 = obtainDiplomaticRelation(receiver, empireSystemSummary.empire);
-                    if (diplomaticRelation2.type === DiplomaticRelationType.NotMet) {
-                        changeDiplomaticRelation(galaxy, receiver, diplomaticRelation2, DiplomaticRelationType.None);
-                        sendContactMessage(receiver, systemInfo.dominantEmpire!.empire);
-                    }
-                }
-            }
-        }
-    };
-}
-function sendContactMessage(receiver: Empire, dominant: Empire): void {
-    const description = formatText(getText('Empire Contact From Galaxy Map'), receiver.name);
-    sendMessageToEmpire(dominant, dominant, EmpireMessageType.EmpireDiscovered, receiver, description);
-}
-
-/** Empire.9.cs 2975 SetEmpireSharedVisibility(otherEmpire) → Galaxy.MergeGalaxyMap(otherEmpire, this). */
+/** Empire.9.cs 2975 SetEmpireSharedVisibility(otherEmpire) → Galaxy.MergeGalaxyMap(otherEmpire, this) (Galaxy.4.cs 3700, exploration.ts). */
 export function setEmpireSharedVisibility(galaxy: Galaxy, self: Empire, otherEmpire: Empire): void {
-    self.visibility.setEmpireSharedVisibility(otherEmpire.visibility, contactFromGalaxyMapHook(galaxy, self));
+    if (!self.visibility.empiresSharedVisibility.includes(otherEmpire.visibility)) {
+        mergeGalaxyMap(galaxy, otherEmpire, self);
+        self.visibility.empiresSharedVisibility.push(otherEmpire.visibility);
+    }
 }
 /** Empire.9.cs 2984 ClearEmpireSharedVisibility(otherEmpire). */
 export function clearEmpireSharedVisibility(galaxy: Galaxy, self: Empire, otherEmpire: Empire): void {
-    self.visibility.clearEmpireSharedVisibility(otherEmpire.visibility, contactFromGalaxyMapHook(galaxy, self));
+    const i = self.visibility.empiresSharedVisibility.indexOf(otherEmpire.visibility);
+    if (i >= 0) {
+        mergeGalaxyMap(galaxy, otherEmpire, self);
+        self.visibility.empiresSharedVisibility.splice(i, 1);
+    }
 }
 
 /** Empire.8.cs 2336 CheckWhetherKnowAnySystemsOfOtherEmpire(empire). */
@@ -3020,8 +2980,9 @@ export function processMessages(galaxy: Galaxy, empire: Empire): void {
                     }
                 } else if (tradeableItem.type === TradeableItemType.GalaxyMap) {
                     if (determineAcceptGalaxyMapTrade(galaxy, self, tradeableItem.value, sender!)) {
-                        galaxyMergeGalaxyMap(galaxy, sender!, self);
-                        galaxyMergeGalaxyMap(galaxy, self, sender!);
+                        // Empire.3.cs: _Galaxy.MergeGalaxyMap(sender, this) / (this, sender) — the full Galaxy.4.cs 3700 port.
+                        mergeGalaxyMap(galaxy, sender!, self);
+                        mergeGalaxyMap(galaxy, self, sender!);
                     }
                 } else {
                     if (tradeableItem.type !== TradeableItemType.ResearchProject || !(tradeableItem.value <= self.stateMoney)) break;
