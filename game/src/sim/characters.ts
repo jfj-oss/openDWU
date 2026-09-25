@@ -7085,8 +7085,7 @@ export function addWarObjectivesToList(galaxy: Galaxy, relation: DiplomaticRelat
     return objectives;
 }
 
-// Empire.9.cs ResolveLocationsToDefend (1742/1747). Habitat.HasBeenDestroyed is false at game start
-// (not modelled on the TS Habitat).
+// Empire.9.cs ResolveLocationsToDefend (1742/1747).
 export function resolveLocationsToDefend(galaxy: Galaxy, empire: Empire, includeBases: boolean): StellarObject[] {
     let stellarObjectList: StellarObject[] = [];
     if (empire.pirateEmpireBaseHabitat !== null) {
@@ -7134,7 +7133,7 @@ export function resolveLocationsToDefend(galaxy: Galaxy, empire: Empire, include
         if (capitals !== null) {
             for (let n = 0; n < capitals.length; n++) {
                 const habitat2 = capitals[n];
-                if (habitat2 !== null) {
+                if (habitat2 !== null && !habitat2.hasBeenDestroyed) {
                     const builtObject2 = determineSpacePortAtColony(galaxy, habitat2);
                     if (!stellarObjectList.includes(habitat2) && (builtObject2 === null || !stellarObjectList.includes(builtObject2))) stellarObjectList.push(habitat2);
                 }
