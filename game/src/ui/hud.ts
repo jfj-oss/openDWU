@@ -32,7 +32,9 @@ import { toggleShipsAndBasesList } from './screens/shipsAndBasesList';
 import { toggleMessageHistory } from './screens/messageHistory';
 import { toggleBuildOrder } from './screens/buildOrder'; import { toggleConstructionYards } from './screens/constructionYards'; // [16c]
 import { toggleResearchScreen } from './screens/researchScreen'; // [15b]
+import { toggleEmpireComparison } from './screens/empireComparison';
 import { showToast } from './toast';
+import { countLabel } from './plural';
 // [policy] begin
 import { toggleEmpirePolicy } from './screens/empirePolicy';
 // [policy] end
@@ -87,6 +89,81 @@ export function chromeButtonFile(name: string): string | null {
 // interactive children re-enable it.
 // ---------------------------------------------------------------------------
 
+/** Hover hints of the HUD controls: port of Main.Part10.cs method_206 (the
+ * control-under-cursor switch; TextResolver.GetText English text plus the
+ * shortcut in brackets). Tooltips and toasts use these, never control names. */
+export const CONTROL_HINTS: Record<string, string> = {
+    btnGameSpeedIncrease: 'Increase game speed (+)',
+    btnGameSpeedDecrease: 'Decrease game speed (-)',
+    btnGalacticHistory: 'Open Galactic History screen',
+    btnHistoryMessages: 'Open Message History screen (H)',
+    btnHelp: 'Open Galactopedia Help screen (F1)',
+    tbtnBuiltObjects: 'Open Ships and Bases screen (F11)',
+    tbtnColonies: 'Open Colonies screen (F2)',
+    tbtnConstructionYards: 'Open Construction Yards screen (F10)',
+    tbtnDesigns: 'Open Designs screen (F8)',
+    tbtnEmpires: 'Open Diplomacy screen (F5)',
+    tbtnGalaxyMap: 'Open Galaxy Map screen (G)',
+    tbtnIntelligenceAgents: 'Open Intelligence Agents screen (F4)',
+    tbtnResearch: 'Open Research screen (F7)',
+    tbtnShipGroups: 'Open Fleets screen (F12)',
+    tbtnTroops: 'Open Troops screen',
+    btnEmpirePolicy: 'Open Empire Policy screen',
+    btnBuildOrder: 'Open Build Order screen (F9)',
+    btnGameEditor: 'Switch to Game Editor',
+    btnEmpireGraphs: 'Open Empire Comparison and Victory Conditions (V)',
+    btnEmpireSummary: 'Open Your Empire Summary screen (F6)',
+    btnExpansionPlanner: 'Open Expansion Planner screen (F3)',
+    btnGameMenu: 'Show Game Menu: load & save, options, exit (Esc)',
+    lstMessages: 'Messages: click a message for more information',
+};
+
+/** Hover hint of a HUD control (CONTROL_HINTS), '' when it has none. */
+export function controlHint(name: string): string {
+    return CONTROL_HINTS[name] ?? '';
+}
+
+/** Toast text for a control whose screen is not ported yet: its hint without
+ * the "Open"/"Switch to" verb and the shortcut, e.g. "Empire Policy screen —
+ * not yet available". Never the internal control name. */
+export function unavailableControlText(name: string): string {
+    const hint = controlHint(name)
+        .replace(/\s*\([^)]*\)$/, '')
+        .replace(/^(Open|Switch to)\s+/, '');
+    return `${hint || 'This screen'} — not yet available`;
+}
+
+/** Pause button hint (Main.Part10.cs method_206 btnPlayPause). */
+export function playPauseHint(paused: boolean): string {
+    return paused ? 'Resume the game' : 'Pause the game (Pause or Spacebar)';
+}
+
+/** Cycle chip hints (Main.Part10.cs method_206 btnCycle*). */
+export const CYCLE_CHIP_HINTS: Record<CycleKind, string> = {
+    colonies: 'Next Colony (C)',
+    bases: 'Next Space Port (P)',
+    military: 'Next Military ship (M)',
+    construction: 'Next Construction ship (Y)',
+    other: 'Next Exploration or Colony ship (X)',
+    fleets: 'Next Fleet (F)',
+    idleShips: 'Next Idle ship (I)',
+};
+
+/** Toast when a cycler has nothing to select (the original silently does
+ * nothing; this is UI feedback only, never an empire message). */
+export function cycleEmptyText(kind: CycleKind): string {
+    const what: Record<CycleKind, string> = {
+        colonies: 'colonies',
+        bases: 'space ports',
+        military: 'military ships',
+        construction: 'construction ships',
+        other: 'exploration or colony ships',
+        fleets: 'fleets',
+        idleShips: 'idle ships',
+    };
+    return `No ${what[kind]} to cycle`;
+}
+
 /** Human labels for chrome-less top-bar buttons (never the control name). */
 const TOP_BAR_TEXT_LABELS: Record<string, string> = {
     btnEmpireSummary: 'Empire',
@@ -118,10 +195,15 @@ export const PLANET_LEVEL_ZOOM = 1;
  * (no window access) so node-based tests can exercise the mapping: the
  * bottom-left selection panel is the only element anchored to the bottom edge,
  * and every other element anchors top-left except the special cases below. */
-export function hudTransformOrigin(name: string, _rect: Rect): string {
+export function hudTransformOrigin(name: string, rect: Rect, viewportWidth?: number): string {
     if (name === 'pnlOptionsList') return '100% 100%'; // bottom-right anchored
     if (name === 'pnlMoney') return '100% 0'; // top-right anchored
     if (name === 'lstMessages' || (TOP_BAR_BUTTONS as readonly string[]).includes(name)) {
+        // Top-middle group (message panel, launch row, envelope/hourglass):
+        // every element scales about the same point — the screen's top centre
+        // — so the group grows as one and its members never overlap (each
+        // scaling about its own centre made neighbours overlap at 125%).
+        if (viewportWidth !== undefined) return `${viewportWidth / 2 - rect.x}px ${-rect.y}px`;
         return '50% 0'; // top-middle: scale from top-centre
     }
     if (name === 'pnlSelection') return '0 100%'; // bottom-left anchored
@@ -137,8 +219,9 @@ export function applyHudScale(refs: HudRefs): void {
     for (const [name, el] of refs.elements) {
         const rect = layout[name];
         if (!rect) continue;
-        el.style.transformOrigin = hudTransformOrigin(name, rect);
+        el.style.transformOrigin = hudTransformOrigin(name, rect, window.innerWidth);
         el.style.transform = s === 1 ? '' : `scale(${s})`;
+        if (name === 'pnlSelection') anchorSelectionPanel(el, rect);
     }
 }
 
@@ -303,6 +386,7 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
             el.style.top = '';
             el.style.bottom = `${Math.max(0, window.innerHeight - rect.y - rect.h)}px`;
         }
+        if (name === 'pnlSelection') anchorSelectionPanel(el, rect);
         root.appendChild(el);
         elements.set(name, el);
     }
@@ -336,6 +420,29 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
     return refs;
 }
 
+/** Space kept free above the bottom-left selection panel: the top-left bar
+ * (y 10-50) plus a margin, in unscaled CSS px. */
+export const SELECTION_PANEL_TOP_RESERVE = 70;
+
+/** Max CSS height of the selection panel so that, scaled by `scale` about its
+ * bottom-left corner and anchored `bottomGap` px above the window bottom, it
+ * never extends above SELECTION_PANEL_TOP_RESERVE. */
+export function selectionPanelMaxHeight(viewportHeight: number, bottomGap: number, scale: number): number {
+    return Math.max(120, Math.floor((viewportHeight - bottomGap - SELECTION_PANEL_TOP_RESERVE) / scale));
+}
+
+/** The selection panel grows with its content (a ship has more rows than a
+ * planet), so it is anchored to the bottom edge with a content height capped
+ * by selectionPanelMaxHeight; its body scrolls beyond that (hud.css). */
+function anchorSelectionPanel(el: HTMLElement, rect: Rect): void {
+    const bottomGap = Math.max(0, window.innerHeight - rect.y - rect.h);
+    el.style.top = '';
+    el.style.bottom = `${bottomGap}px`;
+    el.style.height = '';
+    el.style.minHeight = `${rect.h}px`;
+    el.style.maxHeight = `${selectionPanelMaxHeight(window.innerHeight, bottomGap, uiScaleFactor())}px`;
+}
+
 function applyRect(el: HTMLElement, rect: Rect): void {
     el.style.left = `${rect.x}px`;
     el.style.top = `${rect.y}px`;
@@ -358,6 +465,7 @@ export function layoutHud(refs: HudRefs): void {
             el.style.top = '';
             el.style.bottom = `${Math.max(0, window.innerHeight - rect.y - rect.h)}px`;
         }
+        if (name === 'pnlSelection' && rect) anchorSelectionPanel(el, rect);
     }
     // Task 10f: keep the UI scale applied after a re-layout.
     applyHudScale(refs);
@@ -367,10 +475,14 @@ export function layoutHud(refs: HudRefs): void {
 // Element builders
 // ---------------------------------------------------------------------------
 
-/** Top-middle message panel: five placeholder lines + envelope/hourglass. */
+/** Top-middle message panel: five message lines. The envelope (Message
+ * History) and hourglass (Galactic History) are the btnHistoryMessages /
+ * btnGalacticHistory art buttons beside it, so the panel has no duplicate
+ * glyph buttons. */
 function buildMessagesPanel(): HTMLElement {
     const panel = document.createElement('div');
     panel.className = 'hud-panel hud-messages';
+    panel.title = controlHint('lstMessages');
     const lines = document.createElement('div');
     lines.className = 'hud-message-lines';
     for (let i = 0; i < 5; i++) {
@@ -379,12 +491,6 @@ function buildMessagesPanel(): HTMLElement {
         lines.appendChild(line);
     }
     panel.appendChild(lines);
-    const actions = document.createElement('div');
-    actions.className = 'hud-message-actions';
-    const env = makeGlyphButton('✉', 'Messages');
-    const hourglass = makeGlyphButton('⧗', 'Historical messages');
-    actions.append(env, hourglass);
-    panel.appendChild(actions);
     return panel;
 }
 
@@ -395,11 +501,11 @@ function buildTopLeftBar(clock: GalaxyTime, onGameMenu: () => void): HTMLElement
 
     // The ≡ button toggles the in-game Escape menu (task 10c) instead of the
     // generic TODO log other chrome buttons still use.
-    const menu = makeIconButton('btnGameMenu', 'Menu');
+    const menu = makeIconButton('btnGameMenu', controlHint('btnGameMenu'));
     menu.addEventListener('click', () => {
         onGameMenu();
     });
-    const help = makeIconButton('btnHelp', 'Help');
+    const help = makeIconButton('btnHelp', controlHint('btnHelp'));
     // Main.Part5.cs btnHelp_Click: toggle the Galactopedia at the selection's topic.
     help.addEventListener('click', () => {
         toggleGalactopedia(helpTopicKeyForHabitat(getSelection()?.habitat ?? null));
@@ -407,20 +513,24 @@ function buildTopLeftBar(clock: GalaxyTime, onGameMenu: () => void): HTMLElement
     bar.append(menu, help);
     bar.appendChild(makeSeparator());
 
-    const pauseBtn = makeGlyphButton(clock.paused ? '▶' : '⏸', 'Play / pause');
+    const pauseBtn = makeGlyphButton(clock.paused ? '▶' : '⏸', playPauseHint(clock.paused));
+    pauseBtn.dataset.hudCtl = 'playPause'; // stable hook (the title follows the clock state)
     const refreshPauseGlyph = (): void => {
         pauseBtn.textContent = clock.paused ? '▶' : '⏸';
+        pauseBtn.title = playPauseHint(clock.paused);
     };
     pauseBtn.addEventListener('click', () => {
         clock.togglePause();
         refreshPauseGlyph();
     });
-    const dec = makeGlyphButton('−', 'Slower');
+    const dec = makeGlyphButton('−', controlHint('btnGameSpeedDecrease'));
+    dec.dataset.hudCtl = 'slower';
     dec.addEventListener('click', () => {
         clock.slower();
         refreshDateLabel(dateEl, clock);
     });
-    const inc = makeGlyphButton('+', 'Faster');
+    const inc = makeGlyphButton('+', controlHint('btnGameSpeedIncrease'));
+    inc.dataset.hudCtl = 'faster';
     inc.addEventListener('click', () => {
         clock.faster();
         refreshDateLabel(dateEl, clock);
@@ -484,11 +594,7 @@ function makeIconButton(controlName: string, title: string): HTMLButtonElement {
         btn.classList.add('hud-btn-bare');
         btn.textContent = title;
     }
-    // TODO(screen): open the original's panel/screen for this control.
-    btn.addEventListener('click', () => {
-        console.log(`TODO(screen): ${title}`);
-        showToast(`${title} — not yet available`);
-    });
+    // The caller attaches the control's real click handler.
     return btn;
 }
 
@@ -521,7 +627,7 @@ function buildTopBarButton(name: string, wiring: HudWiring): HTMLElement {
     const label = TOP_BAR_TEXT_LABELS[name];
     const file = chromeButtonFile(name);
     if (file) {
-        btn.title = label ?? name;
+        btn.title = controlHint(name) || label || '';
         const img = document.createElement('img');
         img.src = `/assets/dwu/images/ui/chrome/${file}`;
         img.alt = '';
@@ -531,7 +637,7 @@ function buildTopBarButton(name: string, wiring: HudWiring): HTMLElement {
         // No art file: render a small text label, never the control name.
         btn.classList.add('hud-btn-bare');
         btn.textContent = label ?? '';
-        btn.title = label ?? '';
+        btn.title = controlHint(name) || label || '';
     }
     // TODO(screen): open the original's panel/screen for this control — only
     // the unmapped ones below still toast; tbtnColonies / btnEmpireSummary /
@@ -568,13 +674,8 @@ function buildTopBarButton(name: string, wiring: HudWiring): HTMLElement {
             if (!src) return;
             toggleColoniesList({
                 empire: src.empire,
-                onZoomTo: (h) => {
-                    const cam = wiring.camera;
-                    if (!cam) return;
-                    // Same camera calls as the Empires button's onZoomTo.
-                    cam.centerOn(h.xpos, h.ypos);
-                    cam.zoomAt(SYSTEM_LEVEL_ZOOM, cam.width / 2, cam.height / 2);
-                },
+                // A row selects the colony and moves the view (as F12/F10 rows do).
+                onZoomTo: (h) => selectHabitat(h, true),
             });
         } else if (screen === 'empireSummary') {
             // Main.Part8.cs btnEmpireSummary_Click: toggle the Empire Summary.
@@ -590,12 +691,8 @@ function buildTopBarButton(name: string, wiring: HudWiring): HTMLElement {
             toggleShipsAndBasesList({
                 empire: src.empire,
                 selected: sel ? (sel.builtObject ?? sel.habitat) : null,
-                onZoomTo: (bo) => {
-                    const cam = wiring.camera;
-                    if (!cam) return;
-                    cam.centerOn(bo.xpos, bo.ypos);
-                    cam.zoomAt(SYSTEM_LEVEL_ZOOM, cam.width / 2, cam.height / 2);
-                },
+                // A row selects the ship/base and moves the view to it.
+                onZoomTo: (bo) => selectStellarObject(bo, true),
             });
         } else {
             // [16c] btnBuildOrder → Build Order (Main.Part2.cs:1196 btnBuildOrder_Click);
@@ -625,8 +722,15 @@ function buildTopBarButton(name: string, wiring: HudWiring): HTMLElement {
                 return;
             }
             // [/16b]
-            console.log(`TODO(screen): ${label ?? name}`);
-            showToast(`${label ?? name} — not yet available`);
+            // Main.Part7.cs 2037 btnEmpireGraphs_Click: its hint (Main.Part10.cs
+            // method_206) is "Open Empire Comparison and Victory Conditions (V)".
+            if (name === 'btnEmpireGraphs') {
+                const src = getEmpireSummarySource();
+                if (src) toggleEmpireComparison({ player: src.empire });
+                return;
+            }
+            console.log(`TODO(screen): ${name}`);
+            showToast(unavailableControlText(name));
         }
     });
     return btn;
@@ -779,7 +883,8 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
     const back = makeGlyphButton('‹', 'Previous');
     const fwd = makeGlyphButton('›', 'Next');
     let activeChip: CycleKind = 'colonies';
-    const chipLabel = (): string => CYCLE_CHIPS.find((c) => c.key === activeChip)?.label ?? activeChip;
+    // Idle-ship cycler position (Main builtObject_4 / shipGroup_1).
+    let idleCycle: IdleCycleState = { builtObject: null, shipGroup: null };
     // Task 13c: each BuiltObject cycle kind (bases/military/construction/other)
     // remembers its own last-cycled object, like the original's builtObject_0..3.
     const lastCycled = new Map<CycleKind, BuiltObject>();
@@ -795,7 +900,7 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
                 if (!game) return;
                 const list = fleetCycleList(game.playerEmpire as Empire);
                 if (list.length === 0) {
-                    pushHudMessage('No Fleets yet');
+                    showToast(cycleEmptyText('fleets'));
                     return;
                 }
                 const next = nextInCycle(list, currentSelection?.shipGroup ?? null, dir);
@@ -804,8 +909,19 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
             }
             // [/15c]
             if (kind === 'idleShips') {
-                // TODO(cycle): ShipGroup / BuiltObject.mission not ported (Main.Part7.cs 1863 btnCycleIdleShips_Click)
-                pushHudMessage(`No ${chipLabel()} yet`);
+                // Port of Main.Part7.cs 1863 btnCycleIdleShips_Click / Main.Part4.cs 3897
+                // btnCycleIdleShipsBack_Click: select (method_208) and, when moving the
+                // view, centre on (method_157) the next idle ship or fleet.
+                const game = wiring.game;
+                if (!game) return;
+                idleCycle = cycleIdleShips(game.playerEmpire as unknown as IdleCycleEmpire, idleCycle, dir);
+                if (idleCycle.shipGroup) {
+                    shipGroupSelectHandler?.(idleCycle.shipGroup, moveView);
+                } else if (idleCycle.builtObject) {
+                    stellarObjectSelectHandler?.(idleCycle.builtObject, moveView);
+                } else {
+                    showToast(cycleEmptyText(kind));
+                }
                 return;
             }
             // Port of Main.Part9.cs btnCycle{Bases,Military,Construction,Other}_Click
@@ -816,10 +932,9 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
             const cam = wiring.camera;
             const galaxy = wiring.galaxy;
             if (!game || !cam || !galaxy) return;
-            const label = CYCLE_CHIPS.find((c) => c.key === kind)?.label ?? kind;
             const list = builtObjectCycleList(game.playerEmpire as Empire, kind);
             if (list.length === 0) {
-                pushHudMessage(`No ${label} yet`);
+                showToast(cycleEmptyText(kind));
                 return;
             }
             const next = nextInCycle(list, lastCycled.get(kind) ?? null, dir);
@@ -840,7 +955,7 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         if (!game || !cam || !galaxy) return;
         const colonies = playerColonyList(galaxy, game.playerEmpire as Empire);
         if (colonies.length === 0) {
-            pushHudMessage('No Colonies yet');
+            showToast(cycleEmptyText('colonies'));
             return;
         }
         const current = currentSelection?.habitat ?? null;
@@ -865,7 +980,8 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         const b = document.createElement('button');
         b.type = 'button';
         b.className = 'hud-chip';
-        b.title = chip.label;
+        b.dataset.kind = chip.key;
+        b.title = CYCLE_CHIP_HINTS[chip.key];
         // Text pill, not the original's cycle<X>.png art: that art bakes a
         // "›" arrow into each icon (task 05d).
         b.textContent = chip.label;
@@ -908,8 +1024,7 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
     setCycleHandler((kind, dir, moveView) => {
         activeChip = kind;
         footer.querySelectorAll('.hud-chip').forEach((c) => c.classList.remove('hud-chip-active'));
-        const label = CYCLE_CHIPS.find((c) => c.key === kind)?.label ?? '';
-        footer.querySelector(`.hud-chip[title="${label}"]`)?.classList.add('hud-chip-active');
+        footer.querySelector(`.hud-chip[data-kind="${kind}"]`)?.classList.add('hud-chip-active');
         stepCycle(dir, kind, moveView);
     });
     // [15c] Select a fleet: the lead ship's nearest system, builtObject = lead ship
@@ -959,7 +1074,7 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         if (sel.shipGroup) {
             nameEl.textContent = fleetName(sel.shipGroup);
             nameEl.classList.remove('hud-muted');
-            subEl.textContent = `Fleet · ${sel.shipGroup.ships.length} ships · ${fleetSystemName(sel.shipGroup)}`;
+            subEl.textContent = `Fleet · ${countLabel(sel.shipGroup.ships.length, 'ship')} · ${fleetSystemName(sel.shipGroup)}`;
         } else // [/15c]
         if (sel.builtObject) {
             // Task 13c: ship/base header — name + sub-role label and system.
@@ -1157,6 +1272,101 @@ export function builtObjectCycleList(
         default:
             return [];
     }
+}
+
+/** The player's state lists the idle-ship cycler walks (Empire.BuiltObjects
+ * / Empire.ShipGroups; null holes are skipped as non-idle). */
+export interface IdleCycleEmpire {
+    builtObjects: readonly (BuiltObject | null)[];
+    shipGroups: readonly unknown[];
+}
+
+/** Current position of the idle-ship cycler (Main builtObject_4 / shipGroup_1). */
+export interface IdleCycleState {
+    builtObject: BuiltObject | null;
+    shipGroup: ShipGroup | null;
+}
+
+function missionIsIdle(mission: unknown): boolean {
+    const m = mission as { type?: BuiltObjectMissionType } | null;
+    return m == null || m.type === BuiltObjectMissionType.Undefined;
+}
+
+/** Port of Main.Part7.cs method_349: from index `start`, step `dir` to the
+ * next ShipGroup with no mission (or an Undefined one); null past the end. */
+export function nextIdleShipGroup(empire: IdleCycleEmpire, start: number, dir: 1 | -1): ShipGroup | null {
+    const groups = empire.shipGroups as readonly (ShipGroup | null)[];
+    if (groups.length === 0) return null;
+    let i = start;
+    let num = 0;
+    for (;;) {
+        i += dir;
+        num++;
+        if (dir === 1 ? i >= groups.length : i < 0) return null;
+        const g = groups[i];
+        if (g && missionIsIdle(g.mission)) return g;
+        if (num >= groups.length) return null;
+    }
+}
+
+/** Port of Main.Part7.cs method_350: from index `start`, step `dir` to the
+ * next idle ship — no ShipGroup, no mission (or Undefined), not a Base, not
+ * under construction (BuiltAt == null) and not automated (!IsAutoControlled). */
+export function nextIdleBuiltObject(empire: IdleCycleEmpire, start: number, dir: 1 | -1): BuiltObject | null {
+    const list = empire.builtObjects;
+    if (list.length === 0) return null;
+    let i = start;
+    let num = 0;
+    for (;;) {
+        i += dir;
+        num++;
+        if (dir === 1 ? i >= list.length : i < 0) return null;
+        const b = list[i];
+        if (
+            b &&
+            b.shipGroup == null &&
+            missionIsIdle(b.mission) &&
+            b.role !== BuiltObjectRole.Base &&
+            b.builtAt == null &&
+            !b.isAutoControlled
+        ) {
+            return b;
+        }
+        if (num >= list.length) return null;
+    }
+}
+
+/** Port of Main.Part7.cs btnCycleIdleShips_Click (dir 1) and Main.Part4.cs
+ * btnCycleIdleShipsBack_Click (dir -1): continue from the last idle ship or
+ * fleet, wrapping between the ship list and the fleet list. Returns the new
+ * cycler state (both null when nothing is idle). */
+export function cycleIdleShips(empire: IdleCycleEmpire, state: IdleCycleState, dir: 1 | -1): IdleCycleState {
+    let bo: BuiltObject | null = null;
+    let sg: ShipGroup | null = null;
+    const boEnd = dir === 1 ? -1 : empire.builtObjects.length;
+    const sgEnd = dir === 1 ? -1 : empire.shipGroups.length;
+    if (state.builtObject !== null) {
+        bo = nextIdleBuiltObject(empire, empire.builtObjects.indexOf(state.builtObject), dir);
+        if (bo === null) {
+            sg = nextIdleShipGroup(empire, sgEnd, dir);
+            if (sg === null) bo = nextIdleBuiltObject(empire, boEnd, dir);
+        }
+    } else if (state.shipGroup !== null) {
+        sg = nextIdleShipGroup(empire, empire.shipGroups.indexOf(state.shipGroup), dir);
+        if (sg === null) {
+            bo = nextIdleBuiltObject(empire, boEnd, dir);
+            if (bo === null) sg = nextIdleShipGroup(empire, sgEnd, dir);
+        }
+    } else if (dir === 1) {
+        bo = nextIdleBuiltObject(empire, boEnd, dir);
+        if (bo === null) sg = nextIdleShipGroup(empire, sgEnd, dir);
+    } else {
+        sg = nextIdleShipGroup(empire, sgEnd, dir);
+        if (sg === null) bo = nextIdleBuiltObject(empire, boEnd, dir);
+    }
+    if (bo !== null) return { builtObject: bo, shipGroup: null };
+    if (sg !== null) return { builtObject: null, shipGroup: sg };
+    return { builtObject: null, shipGroup: null };
 }
 
 /** Human label for a built-object sub-role: the enum name split into words

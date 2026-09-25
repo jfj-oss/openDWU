@@ -191,6 +191,9 @@ describe('dispatchKey (task 10a)', () => {
         expect(time.paused).toBe(false);
         expect(dispatchKey(fakeEvent('Pause'), handlers)).toBe('togglePause');
         expect(time.paused).toBe(true);
+        // fix4ui: the space bar's real KeyboardEvent.key is ' '.
+        expect(dispatchKey(fakeEvent(' '), handlers)).toBe('togglePause');
+        expect(time.paused).toBe(false);
     });
 
     it('changes game speed with + / -', () => {
@@ -323,7 +326,7 @@ describe('isKeyActionAvailable (task 12q)', () => {
 
     it('marks unimplemented actions as unavailable', () => {
         expect(isKeyActionAvailable('intelligenceAgentsScreen')).toBe(false);
-        expect(isKeyActionAvailable('cycleFleets')).toBe(false);
+        expect(isKeyActionAvailable('lockView')).toBe(false); // fix4ui: every cycler (F included) is implemented now
         expect(isKeyActionAvailable('commandRefuel')).toBe(false);
         expect(isKeyActionAvailable('nonsense')).toBe(false);
     });

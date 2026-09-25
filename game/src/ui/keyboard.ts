@@ -178,7 +178,9 @@ export function findBinding(
 ): KeyBinding | null {
     // KeyboardEvent.key is lowercase for unshifted letters ('g'); the table
     // uses the original's key names (Keys.G), so compare letters uppercased.
-    const k = key.length === 1 ? key.toUpperCase() : key;
+    // The space bar's KeyboardEvent.key is ' '; the table names it 'Space'
+    // (Main.Part7.cs Main_KeyUp: Keys.Pause / Keys.Space -> ToglePause).
+    const k = key === ' ' ? 'Space' : key.length === 1 ? key.toUpperCase() : key;
     for (const b of bindings) {
         if (b.key !== k) continue;
         if (b.modifiers.ctrl !== mods.ctrl) continue;
@@ -409,10 +411,9 @@ export function buildDefaultHandlers(
             if (src) {
                 toggleColoniesList({
                     empire: src.empire,
-                    onZoomTo: (h) => {
-                        camera.centerOn(h.xpos, h.ypos);
-                        camera.zoomAt(SYSTEM_LEVEL_ZOOM, cx(), cy());
-                    },
+                    // A row selects the colony and moves the view to it, like
+                    // the other lists (selectHabitat: method_208 + method_157).
+                    onZoomTo: (h) => selectHabitat(h, true),
                 });
             }
         },
@@ -425,10 +426,8 @@ export function buildDefaultHandlers(
             toggleShipsAndBasesList({
                 empire: src.empire,
                 selected: sel ? (sel.builtObject ?? sel.habitat) : null,
-                onZoomTo: (bo) => {
-                    camera.centerOn(bo.xpos, bo.ypos);
-                    camera.zoomAt(SYSTEM_LEVEL_ZOOM, cx(), cy());
-                },
+                // A row selects the ship/base and moves the view to it.
+                onZoomTo: (bo) => selectStellarObject(bo, true),
             });
         },
         // F1 (KeyMappingFriendlyNames.OpenHelp -> btnHelp_Click, Main.Part7.cs).
@@ -514,7 +513,7 @@ export function cycleActionArgs(action: string): { kind: CycleKind; dir: 1 | -1;
 // ---------------------------------------------------------------------------
 
 /** Actions with a real handler today: the `case`s of dispatchKey plus the
- * colony cycler (task 12n; the other cyclers only toast "No <x> yet"). */
+ * seven cyclers (task 12n). */
 export const IMPLEMENTED_KEY_ACTIONS: ReadonlySet<string> = new Set([
     'togglePause', 'speedUp', 'speedDown',
     'diplomacyScreen', // [15a]
@@ -528,7 +527,9 @@ export const IMPLEMENTED_KEY_ACTIONS: ReadonlySet<string> = new Set([
     'fleetsScreen', // [15c]
     'buildOrderScreen', 'constructionYardsScreen', // [16c]
     'gameMenu', 'galactopediaHelp',
-    'cycleColonies', 'cycleColoniesBackward', 'cycleColoniesMoveView',
+    // Every C/P/M/Y/X/F/I cycler (hud.ts stepCycle; I = Main.Part7.cs btnCycleIdleShips_Click).
+    ...['Colonies', 'SpacePorts', 'MilitaryShips', 'ConstructionShips', 'ExplorationShips', 'Fleets', 'IdleShips']
+        .flatMap((k) => [`cycle${k}`, `cycle${k}Backward`, `cycle${k}MoveView`]),
     'empireComparisonScreen', // [15d]
     'gameOptionsScreen', // [16d]
 ]);

@@ -8,6 +8,8 @@
 import './empiresList.css';
 import type { Empire } from '../../sim/empire';
 import type { Habitat } from '../../sim/types';
+import { DiplomaticRelationType } from '../../sim/diplomacy';
+import { PirateRelationType } from '../../sim/pirateRelations';
 
 export interface EmpiresListOptions {
     /** galaxy.empires — every empire in the galaxy. */
@@ -27,11 +29,33 @@ export interface EmpireRow {
     capitalName: string;
 }
 
-/** Rows for the panel: empires with an empty name or no capital are excluded
- * (they cannot be shown or zoomed to); the player comes first, then the rest
- * sorted by name (localeCompare). */
+/** The empires the player knows. Port of DiplomaticRelationListView.cs
+ * 160-176 BindData: the player, then every diplomatic relation whose Type is
+ * not NotMet, then every pirate relation whose Type is not NotMet — never the
+ * galaxy's independent empire. */
+export function knownEmpires(player: Empire): Set<Empire> {
+    const known = new Set<Empire>([player]);
+    const independent = player.galaxy?.independentEmpire ?? null;
+    for (const rel of player.diplomaticRelations ?? []) {
+        if (rel.type !== DiplomaticRelationType.NotMet && rel.otherEmpire != null && rel.otherEmpire !== independent) {
+            known.add(rel.otherEmpire);
+        }
+    }
+    for (const rel of player.pirateRelations ?? []) {
+        if (rel.type !== PirateRelationType.NotMet && rel.otherEmpire != null && rel.otherEmpire !== independent) {
+            known.add(rel.otherEmpire);
+        }
+    }
+    return known;
+}
+
+/** Rows for the panel: only empires the player has met (knownEmpires);
+ * empires with an empty name or no capital are excluded (they cannot be
+ * shown or zoomed to); the player comes first, then the rest sorted by name
+ * (localeCompare). */
 export function empireRows(empires: Empire[], player: Empire): EmpireRow[] {
-    const visible = empires.filter((e) => e.name !== '' && e.capital != null);
+    const known = knownEmpires(player);
+    const visible = empires.filter((e) => known.has(e) && e.name !== '' && e.capital != null);
     const rest = visible
         .filter((e) => e !== player)
         .sort((a, b) => a.name.localeCompare(b.name));

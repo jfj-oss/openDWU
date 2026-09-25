@@ -49,22 +49,66 @@ export function formatEmpireMessage(message: EmpireMessage, player: Empire | nul
 
 export interface EmpireMessageFeed {
     poll(empire: Empire | null): string[];
+    /** Like poll, with the message each ticker line came from. */
+    pollMessages(empire: Empire | null): Array<{ message: EmpireMessage; text: string }>;
 }
 
 export function createEmpireMessageFeed(): EmpireMessageFeed {
     const seen = new WeakSet<EmpireMessage>();
-    return {
-        poll(empire: Empire | null): string[] {
-            if (empire === null) return [];
-            const out: string[] = [];
-            for (const m of empireMessages(empire)) {
-                if (m == null || seen.has(m)) continue;
-                seen.add(m);
-                if (m.messageType !== EmpireMessageType.Informational) addHistoryMessage(empire, m);
-                const text = formatEmpireMessage(m, empire);
-                if (text !== null) out.push(text);
-            }
-            return out;
-        },
+    const pollMessages = (empire: Empire | null): Array<{ message: EmpireMessage; text: string }> => {
+        if (empire === null) return [];
+        const out: Array<{ message: EmpireMessage; text: string }> = [];
+        for (const m of empireMessages(empire)) {
+            if (m == null || seen.has(m)) continue;
+            seen.add(m);
+            const text = formatEmpireMessage(m, empire);
+            if (text !== null) out.push({ message: m, text });
+        }
+        return out;
     };
+    return {
+        poll: (empire) => pollMessages(empire).map((e) => e.text),
+        pollMessages,
+    };
+}
+
+/** The player's persisted message history (C# Empire.MessageHistory,
+ * Empire.cs 1727) when the sim model carries it; duck-typed so the UI works
+ * whether or not the running save has the field. */
+function messageHistoryOf(empire: Empire): EmpireMessage[] | null {
+    const h = (empire as unknown as { messageHistory?: unknown }).messageHistory;
+    if (Array.isArray(h)) return h as EmpireMessage[];
+    // EmpireMessageList-style wrapper with an items array / iterator.
+    if (h !== null && typeof h === 'object' && Symbol.iterator in (h as object)) {
+        return [...(h as Iterable<EmpireMessage>)];
+    }
+    return null;
+}
+
+/** Port of Main.Part9.cs ReceiveMessageInternal 2404-2410 + 1512-1518: a
+ * message shown in the ticker is stamped with the current star date and,
+ * unless it is Informational, added to the player's message history
+ * (Empire.AddHistoryMessage, which skips duplicates). */
+export function recordTickerMessage(player: Empire, message: EmpireMessage, currentStarDate: number): void {
+    message.starDate = currentStarDate;
+    if (message.messageType === EmpireMessageType.Informational) return;
+    addHistoryMessage(player, message); // Empire.cs 4697 (sim port; skips duplicates)
+}
+
+/** Ticker/history lines rebuilt from a loaded game's persisted message
+ * history, oldest first (Main.Part4.cs 2987 method_542 sorts MessageHistory
+ * by StarDate, EmpireMessage.cs 261). Empty when the model has no history. */
+export function savedHistoryLines(player: Empire): Array<{ text: string; starDate: number }> {
+    const history = messageHistoryOf(player);
+    if (history === null) return [];
+    const out: Array<{ text: string; starDate: number }> = [];
+    const sorted = history
+        .filter((m): m is EmpireMessage => m != null)
+        .map((m, i) => ({ m, i }))
+        .sort((a, b) => a.m.starDate - b.m.starDate || a.i - b.i);
+    for (const { m } of sorted) {
+        const text = formatEmpireMessage(m, player);
+        if (text !== null) out.push({ text, starDate: m.starDate });
+    }
+    return out;
 }

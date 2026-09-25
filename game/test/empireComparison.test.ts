@@ -29,6 +29,7 @@ describe('formatting', () => {
     it('formatComparisonValue', () => {
         expect(formatComparisonValue('population', 2_600_000_000)).toBe('2600M');
         expect(formatComparisonValue('territory', 7)).toBe('7 colonies');
+        expect(formatComparisonValue('territory', 1)).toBe('1 colony');
         expect(formatComparisonValue('economy', 12_345)).toBe('12K credits');
         expect(formatComparisonValue('strategicValue', 250_000)).toBe('250K');
         expect(formatComparisonValue('military', 42)).toBe('42 firepower');

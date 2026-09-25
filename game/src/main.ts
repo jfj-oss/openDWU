@@ -14,7 +14,7 @@ import { createGame, type CreateGameOptions } from './sim/game';
 import { parseSystemNames } from './sim/data';
 import { loadGameData, type FetchText, type GameData } from './sim/data/gameData';
 import { GalaxyShape } from './sim/types';
-import { clearHudMessages, createHud, layoutHud, nearestSystem, nearestSystemName, pushHudMessage, setSelection as setHudSelection, type HudRefs } from './ui/hud';
+import { clearHudMessages, playPauseHint, createHud, layoutHud, nearestSystem, nearestSystemName, pushHudMessage, setSelection as setHudSelection, type HudRefs } from './ui/hud';
 import { GalaxyTime } from './sim/clock';
 import { resolveStarDateDescription } from './sim/galaxyTime';
 import { createSimLoop, simViewEnabledFromUrl } from './simLoop';
@@ -39,7 +39,7 @@ import { closeAdvisorPanel } from './ui/advisorPanel';
 import { closeMessageHistory } from './ui/screens/messageHistory';
 import { closeFleetsList } from './ui/screens/fleetsList'; // [15c]
 import { closeBuildOrder } from './ui/screens/buildOrder'; import { closeConstructionYards } from './ui/screens/constructionYards'; // [16c]
-import { createEmpireMessageFeed } from './ui/empireMessageFeed';
+import { createEmpireMessageFeed, recordTickerMessage, savedHistoryLines } from './ui/empireMessageFeed';
 // [policy] begin
 import { closeEmpirePolicy } from './ui/screens/empirePolicy';
 // [policy] end
@@ -318,9 +318,17 @@ export async function startGameView(
         time.paused = savedClock.paused;
     }
     const simLoop = createSimLoop(galaxy, time, camera, simViewEnabledFromUrl(window.location.search));
-    // The founding line is the new game's first ticker message only: a loaded save (savedClock set) keeps its
-    // dated history and must not re-send it at the load date.
-    if (savedClock === undefined) pushHudMessage(foundingMessage, resolveStarDateDescription(time.currentStarDate));
+    if (savedClock === undefined) {
+        // New game: the founding line, dated at the game start.
+        pushHudMessage(foundingMessage, resolveStarDateDescription(time.currentStarDate));
+    } else {
+        // Loaded game: rebuild the ticker/history from the saved message
+        // history (Empire.MessageHistory) instead of re-emitting the founding
+        // line at the load date.
+        for (const line of savedHistoryLines(game.playerEmpire)) {
+            pushHudMessage(line.text, line.starDate > 0 ? resolveStarDateDescription(line.starDate) : '');
+        }
+    }
     // Debug / screenshot hook: the created game (galaxy + player empire).
     // Task 06l: also exposes the running clock (`time`) so the tutorial
     // window's "Play This Game" button can unpause it.
@@ -350,7 +358,7 @@ export async function startGameView(
     });
     const systemNameEl = hud.elements.get('pnlMoney')?.querySelector('.hud-system-name');
     const dateEl = hud.elements.get('pnlTopLeftBar')?.querySelector('.hud-date');
-    const pauseBtn = hud.elements.get('pnlTopLeftBar')?.querySelector<HTMLButtonElement>('button[title="Play / pause"]');
+    const pauseBtn = hud.elements.get('pnlTopLeftBar')?.querySelector<HTMLButtonElement>('button[data-hud-ctl="playPause"]');
     const setSelection = (h: Habitat | null): void => {
         if (h === null) {
             hud.onSelectionChange?.(null);
@@ -382,7 +390,8 @@ export async function startGameView(
                 camera,
             );
         }
-        for (const text of messageFeed.poll(game.playerEmpire)) {
+        for (const { message, text } of messageFeed.pollMessages(game.playerEmpire)) {
+            recordTickerMessage(game.playerEmpire, message, time.currentStarDate);
             pushHudMessage(text, resolveStarDateDescription(time.currentStarDate));
         }
     };
@@ -398,6 +407,7 @@ export async function startGameView(
         }
         if (pauseBtn) {
             pauseBtn.textContent = time.paused ? '▶' : '⏸';
+            pauseBtn.title = playPauseHint(time.paused);
         }
     };
     const refreshClockTimer = setInterval(refreshClockLabel, 250);
@@ -453,6 +463,8 @@ export async function startGameView(
             return;
         }
         const action = dispatchKey(e, keyHandlers);
+        // Space must not also activate a focused HUD button (a second toggle).
+        if (action === 'togglePause') e.preventDefault();
         if (action === 'togglePause' || action === 'speedUp' || action === 'speedDown') {
             refreshClockLabel();
         }
@@ -1032,7 +1044,7 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     });
     const systemNameEl = hud.elements.get('pnlMoney')?.querySelector('.hud-system-name');
     const dateEl = hud.elements.get('pnlTopLeftBar')?.querySelector('.hud-date');
-    const pauseBtn = hud.elements.get('pnlTopLeftBar')?.querySelector<HTMLButtonElement>('button[title="Play / pause"]');
+    const pauseBtn = hud.elements.get('pnlTopLeftBar')?.querySelector<HTMLButtonElement>('button[data-hud-ctl="playPause"]');
     // Task 08g: push a Main View pick (or null) to the HUD selection panel.
     const setSelection = (h: Habitat | null): void => {
         if (h === null) {
@@ -1080,6 +1092,7 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
         }
         if (pauseBtn) {
             pauseBtn.textContent = time.paused ? '▶' : '⏸';
+            pauseBtn.title = playPauseHint(time.paused);
         }
     };
     setInterval(refreshClockLabel, 250);
@@ -1102,6 +1115,8 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
             return;
         }
         const action = dispatchKey(e, keyHandlers);
+        // Space must not also activate a focused HUD button (a second toggle).
+        if (action === 'togglePause') e.preventDefault();
         if (action === 'togglePause' || action === 'speedUp' || action === 'speedDown') {
             refreshClockLabel();
         }
