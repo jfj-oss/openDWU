@@ -1392,7 +1392,7 @@ export function determineCharacterEventRelevantToRole(eventType: CharacterEventT
 }
 
 // Galaxy.1.cs IntersectTraitLists.
-function intersectTraitLists(traits1: CharacterTraitType[] | null, traits2: CharacterTraitType[] | null): CharacterTraitType[] {
+export function intersectTraitLists(traits1: CharacterTraitType[] | null, traits2: CharacterTraitType[] | null): CharacterTraitType[] {
     const list: CharacterTraitType[] = [];
     if (traits1 !== null && traits2 !== null) {
         for (let i = 0; i < traits1.length; i++) {

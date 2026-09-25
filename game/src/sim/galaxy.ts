@@ -4439,6 +4439,13 @@ export class Galaxy {
     regeneratingEmpireTerritory = false;
     regenerateEmpireTerritoryAgain = false;
     // ---- M4u fields (events, disasters, characters) ----
+    /** Galaxy.cs 721 GameRaceSpecificEventsEnabled = true (Start.2.cs 504: VictoryConditions.EnableRaceSpecificEvents). */
+    gameRaceSpecificEventsEnabled = true;
+    /**
+     * Galaxy.StoryShadowsEnabled (VictoryConditions.EnableStoryEventsShadows — the pre-warp "Shadows" story). Story events
+     * are deferred (tasks/M4-plan.md §0.3): the M4u branches that read it throw TODO(port) when it is true.
+     */
+    storyShadowsEnabled = false;
 }
 
 // Port of Galaxy.4.cs Galaxy constructor (star-cluster setup, star loop,

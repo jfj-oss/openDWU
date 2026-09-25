@@ -384,7 +384,7 @@ export class Empire {
         this.visibility = new EmpireVisibility(galaxy, this.visibilityOwner(isIndependentEmpire));
         this.name = name === '' ? 'Independent' : name;
         this.dominantRace = dominantRace;
-        this.lastDisasterDate = START_STAR_DATE;
+        this.lastDisasterDate = galaxyCurrentStarDate(galaxy); // Empire.cs 3772 / 4163: LastDisasterDate = galaxy.CurrentStarDate (M4u)
         if (policy !== null && !isIndependentEmpire) this.policy = policy;
         this.allowableGovernmentTypes = Empire.resolveDefaultAllowableGovernmentTypes(dominantRace, true);
         this.troops = new TroopList();
@@ -485,7 +485,7 @@ export class Empire {
             capital.name = galaxy.colonyNames[galaxy.colonyNameIndex];
             galaxy.colonyNameIndex++;
         }
-        this.lastDisasterDate = START_STAR_DATE;
+        this.lastDisasterDate = galaxyCurrentStarDate(galaxy); // Empire.cs 3772 / 4163: LastDisasterDate = galaxy.CurrentStarDate (M4u)
         if (this.dominantRace !== null) {
             // TODO(port): Policy.ResearchDesign* fields — Policy.cs (policy
             // data model not ported); values are carried on the race itself.
@@ -648,7 +648,7 @@ export class Empire {
         void newSize;
         this.reviewCanBuildShipTypes();
         this.reviewTroopTypes();
-        this.lastLeaderChangeDate = START_STAR_DATE;
+        this.lastLeaderChangeDate = galaxyCurrentStarDate(galaxy); // Empire.cs 3972: LastLeaderChangeDate = _Galaxy.CurrentStarDate (M4u)
     }
 
     // Port of Empire.cs SetStartupColonyResourceCargo (Empire.cs ~3960).
@@ -1654,6 +1654,19 @@ export class Empire {
     systemExploredCount = 1;
     explorationShipCount = 1;
     // ---- M4u fields (events, characters) ----
+    /** Empire.cs 868 _LeaderChangeInfluence. */
+    leaderChangeInfluence = 0.0;
+    /** Empire.cs 101/103/106 RaceEventType / RaceEventEndDate / RaceEventData (events.ts RaceEventType). */
+    raceEventType = 0;
+    raceEventEndDate = 0;
+    raceEventData: unknown = null;
+    /**
+     * Empire.cs PreWarpProgressEventOccurred* (13 bools), indexed by exploration.ts PreWarpProgressEventType. A flag counts
+     * as set when this entry or the game-start aggregate `preWarpProgressEventsOccurred` is true.
+     */
+    preWarpProgressEventOccurredFlags: boolean[] = [];
+    /** Empire.cs 37 _EventMessageRecipient (IEventMessageRecipient; the UI attaches one, headless runs leave it null). */
+    eventMessageRecipient: { receiveEventMessage(eventType: number, title: string, message: string, additionalData: unknown, location: unknown): void } | null = null;
 }
 
 // Task M3b: Empire.GovernmentAttributes (Empire.cs 2805: _Galaxy.Governments[_GovernmentId],

@@ -18,6 +18,53 @@ import { BuiltObjectRole } from './data/designSpecifications';
 import { builtObjectInflictDamage } from './combat/damage';
 import { determineAngle } from './creature';
 import { doCharacterEventForList, type Character, type CharacterEventType } from './characters';
+import * as characterRuntime from './characterRuntime';
+
+/** EventMessageType.cs (enum, declaration order). */
+export enum EventMessageType {
+    Undefined, NewEmpireRaceAbility, ExoticTechDiscovered, SpecialGovernmentType, CreatureOutbreak, GalacticRefugees, SleepersAwake,
+    NewEmpireEmerges, OriginsDiscovery, LostBuiltObjectCoordinates, LostColonyCoordinates, FreeSuperShip, PirateFactionJoinsYou,
+    TreasureFound, LostColonyFound, AncientBattleDebrisField, IndependentPopulation, GeneralRuinsDiscovery, EncounterRuins,
+    EncounterBuiltObject, BuiltObjectExplodes, PirateAmbush, CreatureSwarm, StoryClue, SpecialArea, RestrictedResourceDiscovered,
+    RuinsEmpireBonus, RogueFleetDefectsToUs, RogueFleetDefectsFromUs, EmpireSplits, UncoverPirateAttackFundingAnotherEmpire,
+    UncoverPirateAttackFundingYourEmpire, UncoverPlanetDestroyerConstruction, UncoverKnownLocation, RareResourceIntercepted,
+    GeneralDiscovery, DisasterEvent, ResourceAppearance, ResourceDepletion, RaceEvent, WonderBuilt, CharacterEvent, PhantomPirates,
+    LeaderChange,
+}
+
+/** DisasterEventType.cs (enum, declaration order). */
+export enum DisasterEventType {
+    Undefined, Earthquake, Sinkhole, Tsunami, Sandstorm, Blizzard, Eruption, Plague, EconomicCrisis,
+}
+
+/** RaceEventType.cs (byte enum, declaration order). */
+export enum RaceEventType {
+    Undefined, NepthysWineVintage, UnderwaterLeviathan, GreatHuntStrongTroops, SuppressedKnowledgeLoseResearch,
+    ShakturiArtifactWeaponResearch, WarriorWaveTroopRecruitment, SwarmsFullTroopTransport, CannibalismPopulationShrinks,
+    MetamorphosisCharacterChange, StrengthInNumbersMaintenanceLowerForSmallShips, AntiXenoRiotsExterminate, XenophobiaNoAssimilate,
+    DestinyCharacterTraits, NaturalHarmonyColonyQualityIncreased, SecurityConcernsCharacterReplaced, NeverSurrenderWarWearinessReset,
+    ScientificBreakthroughResearchProgress, ForcedRetirementLeaderReplaced, TodashGalacticChampionships,
+    HistoricalKnowledgeUncoverHiddenLocation, IsolationistsResetFirstContactPenalty, GrandPerformanceDiplomacyBonus,
+    FriendsInManyPlacesRevealTerritory, LuckyAvertColonyDisaster, SupremeWarriorNewGeneral, DeathCultExterminate,
+    CreativeReengineeringFreeCrashResearch, PredictiveHistory, HistoricalDiscoveryExploreRuinsForResearchBoost,
+}
+
+/** Empire.7.cs 3400 SendEventMessageToEmpire(eventMessageType, title, message, additionalData, location): only the attached UI recipient sees it. */
+export function sendEventMessageToEmpire(empire: Empire, eventMessageType: EventMessageType, title: string, message: string, additionalData: unknown, location: unknown): void {
+    if (empire.eventMessageRecipient !== null) {
+        empire.eventMessageRecipient.receiveEventMessage(eventMessageType, title, message, additionalData, location);
+    }
+}
+
+const T_sendNewsBroadcast = registerTodo('deferred', 'SendNewsBroadcast (GalacticNewsNet messages, UI)');
+/**
+ * Empire.7.cs 2961-2990 SendNewsBroadcast(eventType, subject[, disasterType, warStartEnd, wonderBegun[, messageType], extraData])
+ * → ThreadPool SendNewsBroadcastCore (3008): GalacticNewsNet messages to every empire; no Rnd. TODO(port) M9: news broadcasts.
+ */
+export function sendNewsBroadcast(empire: Empire, eventType: EventMessageType, subject: unknown, disasterType: DisasterEventType = DisasterEventType.Undefined, warStartEnd = false, wonderBegun = false, messageType = 0, extraData: unknown = null): void {
+    void empire; void eventType; void subject; void disasterType; void warStartEnd; void wonderBegun; void messageType; void extraData;
+    todo(T_sendNewsBroadcast);
+}
 
 /** Galaxy.5.cs 3372 FindAbandonedShipsInDebrisField(location). */
 export function findAbandonedShipsInDebrisField(galaxy: Galaxy, location: GalaxyLocation | null): BuiltObject[] {
@@ -91,54 +138,34 @@ export function checkReviewSpecialPirateEvents(galaxy: Galaxy, empire: Empire): 
     /* TODO(port) M4u */ todo(T_checkReviewSpecialPirateEvents);
 }
 
-const T_checkForCharacterAppearance = registerTodo('M4u', 'checkForCharacterAppearance');
-/** Empire.6.cs 3990 CheckForCharacterAppearance. */
+/** Empire.6.cs 3990 CheckForCharacterAppearance (characterRuntime.ts). */
 export function checkForCharacterAppearance(galaxy: Galaxy, empire: Empire): void {
-    // RND: 2 direct, +clock×1 — not drawn until M4u.
-    /* TODO(port) M4u */ todo(T_checkForCharacterAppearance);
+    characterRuntime.checkForCharacterAppearance(galaxy, empire);
 }
-
-const T_reviewCharacterLeaderChange = registerTodo('M4u', 'reviewCharacterLeaderChange');
-/** Empire.6.cs 4769 ReviewCharacterLeaderChange(timePassed). */
+/** Empire.6.cs 4769 ReviewCharacterLeaderChange(timePassed) (characterRuntime.ts). */
 export function reviewCharacterLeaderChange(galaxy: Galaxy, empire: Empire, timePassed: number): void {
-    // RND: 1 direct, +clock×1 — not drawn until M4u.
-    /* TODO(port) M4u */ todo(T_reviewCharacterLeaderChange);
+    characterRuntime.reviewCharacterLeaderChange(galaxy, empire, timePassed);
 }
-
-const T_processLeaderChangeInfluence = registerTodo('M4u', 'processLeaderChangeInfluence');
-/** Empire.6.cs 5084 ProcessLeaderChangeInfluence(timePassed). */
+/** Empire.6.cs 5084 ProcessLeaderChangeInfluence(timePassed) (characterRuntime.ts). */
 export function processLeaderChangeInfluence(galaxy: Galaxy, empire: Empire, timePassed: number): void {
-    // RND: 4 direct, +clock×1 — not drawn until M4u.
-    /* TODO(port) M4u */ todo(T_processLeaderChangeInfluence);
+    characterRuntime.processLeaderChangeInfluence(galaxy, empire, timePassed);
 }
-
-const T_reviewCharacterBonusesKnown = registerTodo('M4u', 'reviewCharacterBonusesKnown');
-/** Empire.6.cs 4716 ReviewCharacterBonusesKnown. */
+/** Empire.6.cs 4716 ReviewCharacterBonusesKnown (characterRuntime.ts). */
 export function reviewCharacterBonusesKnown(galaxy: Galaxy, empire: Empire): void {
-    /* TODO(port) M4u */ todo(T_reviewCharacterBonusesKnown);
+    characterRuntime.reviewCharacterBonusesKnown(galaxy, empire);
 }
-
-const T_reviewCharacterTraits = registerTodo('M4u', 'reviewCharacterTraits');
-/** Empire.7.cs 16 ReviewCharacterTraits. */
+/** Empire.7.cs 16 ReviewCharacterTraits (characterRuntime.ts). */
 export function reviewCharacterTraits(galaxy: Galaxy, empire: Empire): void {
-    // RND: 3 direct — not drawn until M4u.
-    /* TODO(port) M4u */ todo(T_reviewCharacterTraits);
+    characterRuntime.reviewCharacterTraits(galaxy, empire);
 }
-
-const T_reviewDemoralizingCharacters = registerTodo('M4u', 'reviewDemoralizingCharacters');
-/** Empire.7.cs 319 ReviewDemoralizingCharacters. */
+/** Empire.7.cs 319 ReviewDemoralizingCharacters (characterRuntime.ts). */
 export function reviewDemoralizingCharacters(galaxy: Galaxy, empire: Empire): void {
-    // RND: 1 direct, +clock×1 — not drawn until M4u.
-    /* TODO(port) M4u */ todo(T_reviewDemoralizingCharacters);
+    characterRuntime.reviewDemoralizingCharacters(galaxy, empire);
 }
-
-const T_reviewCharacterLocations = registerTodo('M4u', 'reviewCharacterLocations');
-/** Empire.7.cs 348 ReviewCharacterLocations (per character = characters.ts reviewCharacterLocation). */
+/** Empire.7.cs 348 ReviewCharacterLocations (characterRuntime.ts; per character = characters.ts reviewCharacterLocation). */
 export function reviewCharacterLocations(galaxy: Galaxy, empire: Empire): void {
-    // RND: draws in callees (d≤3) — not drawn until M4u.
-    /* TODO(port) M4u */ todo(T_reviewCharacterLocations);
+    characterRuntime.reviewCharacterLocations(galaxy, empire);
 }
-
 const T_resetRaceEvents = registerTodo('M4u', 'resetRaceEvents');
 /** Empire.1.cs 2094 ResetRaceEvents. */
 export function resetRaceEvents(galaxy: Galaxy, empire: Empire): void {
@@ -301,13 +328,10 @@ export function checkHabitatIsEmpire(galaxy: Galaxy, habitat: Habitat): void {
     /* TODO(port) M4u */ todo(T_checkHabitatIsEmpire);
 }
 
-const T_chanceColonyGovernorPromotion = registerTodo('M4u', 'chanceColonyGovernorPromotion');
-/** Galaxy.2.cs 4784 ChanceColonyGovernorPromotion(empire, colony). */
+/** Galaxy.2.cs 4784 ChanceColonyGovernorPromotion(empire, colony) (characterRuntime.ts). */
 export function chanceColonyGovernorPromotion(galaxy: Galaxy, empire: Empire, habitat: Habitat): void {
-    // RND: 2 direct — not drawn until M4u.
-    /* TODO(port) M4u */ todo(T_chanceColonyGovernorPromotion);
+    characterRuntime.chanceColonyGovernorPromotion(galaxy, empire, habitat);
 }
-
 const T_spawnCreatures = registerTodo('M4u', 'spawnCreatures');
 /** Habitat.cs 1619 SpawnCreatures. */
 export function spawnCreatures(galaxy: Galaxy, habitat: Habitat): void {
@@ -419,10 +443,7 @@ export function doCharacterEventRuntime(galaxy: Galaxy, eventType: number, event
     doCharacterEventForList(galaxy, eventType as CharacterEventType, eventData, sourceCharacters as Character[] | null, includeLeader, leaderEmpire);
 }
 
-const T_chanceNewAmbassador = registerTodo('M4u', 'chanceNewAmbassador');
-/** Galaxy.2.cs 4819 ChanceNewAmbassador(empire, newRelationType, otherEmpire) — a treaty may bring a new ambassador character. */
+/** Galaxy.2.cs 4819 ChanceNewAmbassador(empire, newRelationType, otherEmpire) (characterRuntime.ts). */
 export function chanceNewAmbassador(galaxy: Galaxy, empire: Empire, newRelationType: number, otherEmpire: Empire): boolean {
-    // RND: Rnd.Next(0, num) when num < 100 (every treaty type) — not drawn until M4u.
-    /* TODO(port) M4u */ todo(T_chanceNewAmbassador);
-    return false;
+    return characterRuntime.chanceNewAmbassador(galaxy, empire, newRelationType, otherEmpire);
 }

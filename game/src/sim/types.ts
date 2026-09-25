@@ -483,6 +483,8 @@ export class Habitat {
     // ---- M4u fields (events, rebellion, plague) ----
     /** Habitat.cs 109 _Rebelling. */
     rebelling = false;
+    /** Habitat.RaceEventType (events.ts RaceEventType; set by race events, cleared by Empire.ResetRaceEvents). */
+    raceEventType = 0;
 }
 
 /**
