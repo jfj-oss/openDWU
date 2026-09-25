@@ -216,8 +216,10 @@ describe('M4h milestone on the headless harness', () => {
         // A new ship without a fleet gets a Move mission to a parking point by the port (unless its mission ran already);
         // since M4n its ThreatEvaluation (BuiltObject.1.cs 243) may already have switched it to Attack on a nearby threat, and
         // since M4u (creatures now target ships, Creature.cs 1206) FleeFromHopelessBattle may send it off on Escape, and
-        // since M4f AssignMissionToBuiltObject (Empire.5.cs 1445) sends a low-fuel idle ship to refuel (SetupRefuelling).
-        expect(m === null || m.type === BuiltObjectMissionType.Move || m.type === BuiltObjectMissionType.Undefined || m.type === BuiltObjectMissionType.Attack || m.type === BuiltObjectMissionType.Escape || m.type === BuiltObjectMissionType.Refuel).toBe(true);
+        // since M4f AssignMissionToBuiltObject (Empire.5.cs 1445) sends a low-fuel idle ship to refuel (SetupRefuelling), and
+        // (at the age-1 default start, seed 1) its idle-warship cases give Escort / Low-priority Patrol missions (Empire.5.cs
+        // 1740-1862).
+        expect(m === null || m.type === BuiltObjectMissionType.Move || m.type === BuiltObjectMissionType.Undefined || m.type === BuiltObjectMissionType.Attack || m.type === BuiltObjectMissionType.Escape || m.type === BuiltObjectMissionType.Refuel || m.type === BuiltObjectMissionType.Patrol || m.type === BuiltObjectMissionType.Escort).toBe(true);
         expect(g.builtObjects).toContain(bo);
     }, 300000);
 

@@ -165,7 +165,10 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // Moved from 2689770786790d6a: tick harness now models the default age-1 start (every empire starts at Age 1,
         // "Starting": larger colonies, positive cashflow, DirectConstruction queues ships at once; see helpers/tickGame.ts).
         // Moved from 00ea05e8d2465a22: interim harness configuration after the M4x merge (age-0 empires, galaxy age 0, see test/helpers/tickGame.ts) until M4y flips it to the true age-1 default
-        expect(summary.digest).toBe('2689770786790d6a');
+        // Moved from 2689770786790d6a: harness galaxy is now the true age-1 default (military starting ships), with
+        // M4y's ReviewCharacterLocation FleetAdmiral / TroopGeneral / PirateLeader fleet branches (Empire.7.cs 698-918,
+        // 1135-1206) ported so the fleets that form are reviewed instead of throwing.
+        expect(summary.digest).toBe('31aff566c1af10c2');
     }, 600000);
 });
 
