@@ -1,0 +1,234 @@
+// 18a — the chat advisor panel (T): talk to the empire's fleet admiral, backed by a local model server
+// (advisorClient.ts). Orders the admiral agrees to go through the player command layer and are echoed with ✓ / ✗ and
+// the sim's message; clarifying questions appear inline; a war declaration shows a Confirm chip. The panel stays
+// read-only (input disabled) until the configured endpoint (settings.ts advisorEndpoint / advisorModel) answers.
+// No original counterpart (the original has no advisor chat); styling follows the house dark panels.
+
+import './advisorPanel.css';
+import type { Galaxy } from '../sim/galaxy';
+import type { Empire } from '../sim/empire';
+import type { AdvisorBrief, AdvisorSelection } from '../sim/player/advisorBrief';
+import { advisorCharacter } from '../sim/player/advisorBrief';
+import { executeAdvisorCommands, type AdvisorCommandResult } from '../sim/player/advisorCommands';
+import { probeAdvisorEndpoint, runAdvisorTurn, type AdvisorApi, type ChatMessage } from './advisorClient';
+import { getSettings } from './settings';
+import { getSelection } from './hud';
+
+export interface AdvisorPanelOptions {
+    galaxy: Galaxy;
+    player: Empire;
+}
+
+/** One rendered line of the conversation (pure, for tests). */
+export interface AdvisorLine {
+    kind: 'user' | 'advisor' | 'question' | 'ok' | 'fail' | 'confirm' | 'error' | 'system';
+    text: string;
+    /** Confirm chip: the command id to re-run with confirm: true. */
+    confirmId?: string;
+}
+
+/** The ✓ / ✗ / confirm lines for executed commands. */
+export function resultLines(results: readonly AdvisorCommandResult[]): AdvisorLine[] {
+    return results.map((r): AdvisorLine => {
+        if (r.status === 'needs-confirm') return { kind: 'confirm', text: `${r.text} — ${r.message}`, confirmId: r.id };
+        return { kind: r.ok ? 'ok' : 'fail', text: `${r.ok ? '✓' : '✗'} ${r.text}${r.message ? ` — ${r.message}` : ''}` };
+    });
+}
+
+/** The HUD selection as the brief's selection (fleet, else ship/base, else the selected habitat). */
+export function advisorSelectionFromHud(): AdvisorSelection {
+    const sel = getSelection();
+    if (sel === null) return null;
+    return sel.shipGroup ?? sel.builtObject ?? sel.habitat;
+}
+
+interface OpenState {
+    root: HTMLElement;
+    close: () => void;
+}
+
+let open: OpenState | null = null;
+
+/** Open the advisor chat, or close it if it is open. */
+export function toggleAdvisorPanel(opts: AdvisorPanelOptions): void {
+    if (open) open.close();
+    else open = createAdvisorPanel(opts);
+}
+
+/** Close the advisor chat (no-op when closed; game teardown). */
+export function closeAdvisorPanel(): void {
+    open?.close();
+}
+
+// The conversation survives closing / reopening the panel within one game (cleared when the player changes).
+let history: ChatMessage[] = [];
+let lines: AdvisorLine[] = [];
+let historyOwner: Empire | null = null;
+
+function createAdvisorPanel(opts: AdvisorPanelOptions): OpenState {
+    if (historyOwner !== opts.player) {
+        history = [];
+        lines = [];
+        historyOwner = opts.player;
+    }
+    const settings = getSettings();
+    const admiral = advisorCharacter(opts.player);
+    let api: AdvisorApi | null = null;
+    let busy = false;
+    let lastBrief: AdvisorBrief | null = null;
+    const abort = new AbortController();
+
+    const root = document.createElement('div');
+    root.className = 'advisor-wrap';
+    const win = document.createElement('div');
+    win.className = 'advisor-window';
+
+    const titlebar = document.createElement('div');
+    titlebar.className = 'advisor-titlebar';
+    const heading = document.createElement('div');
+    heading.className = 'advisor-heading';
+    heading.textContent = admiral !== null ? `Advisor — ${admiral.name}` : 'Advisor — Fleet Admiral';
+    const status = document.createElement('span');
+    status.className = 'advisor-status';
+    status.textContent = 'connecting…';
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'advisor-close';
+    closeBtn.title = 'Close';
+    closeBtn.textContent = '✕';
+    titlebar.append(heading, status, closeBtn);
+
+    const list = document.createElement('div');
+    list.className = 'advisor-messages';
+
+    const form = document.createElement('form');
+    form.className = 'advisor-input-row';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'advisor-input';
+    input.placeholder = 'Give an order…';
+    input.disabled = true;
+    const send = document.createElement('button');
+    send.type = 'submit';
+    send.className = 'advisor-send';
+    send.textContent = 'Send';
+    send.disabled = true;
+    form.append(input, send);
+
+    win.append(titlebar, list, form);
+    root.appendChild(win);
+    document.body.appendChild(root);
+
+    function renderLine(l: AdvisorLine): HTMLElement {
+        const el = document.createElement('div');
+        el.className = `advisor-line advisor-${l.kind}`;
+        el.textContent = l.text;
+        if (l.kind === 'confirm' && l.confirmId !== undefined) {
+            const chip = document.createElement('button');
+            chip.type = 'button';
+            chip.className = 'advisor-confirm-chip';
+            chip.textContent = 'Confirm';
+            const id = l.confirmId;
+            chip.addEventListener('click', () => {
+                chip.disabled = true;
+                if (lastBrief === null) return;
+                const results = executeAdvisorCommands(opts.galaxy, opts.player, lastBrief, [{ id, confirm: true }]);
+                history.push({ role: 'user', content: 'Confirmed.' });
+                history.push({ role: 'assistant', content: results.map((r) => `[${r.ok ? 'done' : 'failed'}: ${r.text}]`).join(' ') });
+                add(...resultLines(results));
+            });
+            el.appendChild(chip);
+        }
+        return el;
+    }
+    function add(...ls: AdvisorLine[]): void {
+        for (const l of ls) {
+            lines.push(l);
+            list.appendChild(renderLine(l));
+        }
+        list.scrollTop = list.scrollHeight;
+    }
+    for (const l of lines) list.appendChild(renderLine(l));
+
+    function setReady(ready: boolean, text: string): void {
+        status.textContent = text;
+        status.classList.toggle('advisor-status-on', ready);
+        input.disabled = !ready || busy;
+        send.disabled = !ready || busy;
+        if (ready && !busy) input.focus();
+    }
+
+    async function connect(): Promise<void> {
+        setReady(false, 'connecting…');
+        api = await probeAdvisorEndpoint({ endpoint: settings.advisorEndpoint, model: settings.advisorModel, api: settings.advisorApi });
+        if (open === null || open.root !== root) return;
+        if (api === null) {
+            setReady(false, 'offline');
+            add({ kind: 'system', text: `No model server at ${settings.advisorEndpoint}. Start Ollama (ollama serve; ollama pull ${settings.advisorModel}) or a llama-server, then reopen (T).` });
+            return;
+        }
+        setReady(true, `${settings.advisorModel}`);
+        if (lines.length === 0) add({ kind: 'system', text: 'Orders: e.g. "send my explorer to the nearest unexplored system", "refuel the fleet".' });
+    }
+
+    async function submit(text: string): Promise<void> {
+        if (api === null || busy || text.trim() === '') return;
+        busy = true;
+        setReady(true, 'thinking…');
+        add({ kind: 'user', text });
+        const turn = await runAdvisorTurn({
+            galaxy: opts.galaxy,
+            player: opts.player,
+            selection: advisorSelectionFromHud(),
+            history,
+            text,
+            cfg: { endpoint: settings.advisorEndpoint, model: settings.advisorModel, api, think: settings.advisorThink },
+            signal: abort.signal,
+        });
+        busy = false;
+        if (open === null || open.root !== root) return;
+        lastBrief = turn.brief;
+        history.push(...turn.history);
+        const secs = `${(turn.latencyMs / 1000).toFixed(1)} s`;
+        if (turn.reply !== '') add({ kind: 'advisor', text: turn.reply });
+        if (turn.clarify !== undefined) add({ kind: 'question', text: turn.clarify });
+        add(...resultLines(turn.results));
+        for (const r of turn.rejected) add({ kind: 'fail', text: `✗ ${r.reason}` });
+        if (turn.error !== undefined) add({ kind: 'error', text: turn.error });
+        root.dataset.lastLatencyMs = String(turn.latencyMs);
+        root.dataset.lastRaw = turn.raw;
+        setReady(true, `${settings.advisorModel} · ${secs}`);
+    }
+
+    form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const text = input.value;
+        input.value = '';
+        void submit(text);
+    });
+    // Keep typing out of the game's key bindings ('?', Space …); Escape still reaches the document handler below.
+    input.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape') e.stopPropagation();
+    });
+
+    function close(): void {
+        document.removeEventListener('keydown', onKeyDown);
+        abort.abort();
+        root.remove();
+        open = null;
+    }
+    function onKeyDown(e: KeyboardEvent): void {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            close();
+        }
+    }
+    document.addEventListener('keydown', onKeyDown);
+    closeBtn.addEventListener('click', () => close());
+
+    const state: OpenState = { root, close };
+    open = state;
+    void connect();
+    return state;
+}
