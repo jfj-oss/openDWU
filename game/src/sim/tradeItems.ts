@@ -261,7 +261,7 @@ function researchNodeListIndexOf(list: readonly TechNode[], researchNode: TechNo
 }
 
 /** ResearchNodeList.cs 1050 GetEquivalent(researchNode): this[ResearchNodeId] when in range. */
-function techTreeGetEquivalent(tree: readonly TechNode[], researchNode: TechNode | null): TechNode | null {
+export function techTreeGetEquivalent(tree: readonly TechNode[], researchNode: TechNode | null): TechNode | null {
     return researchNode != null && tree.length > researchNode.def.projectId ? tree[researchNode.def.projectId] : null;
 }
 
@@ -589,7 +589,7 @@ export function getMoneyRate(galaxy: Galaxy): number {
 }
 
 /** Galaxy.4.cs 3583 ValueMoney(moneyAmount). */
-function valueMoney(moneyAmount: number): number {
+export function valueMoney(moneyAmount: number): number {
     return Math.trunc(moneyAmount);
 }
 
@@ -828,7 +828,7 @@ export function updateValueDeclareWarOnEmpire(value: number, requester: Empire, 
 }
 
 /** Galaxy.4.cs 4732 ValueEndWarAgainstUs(attackingEmpire, targetEmpire). */
-function valueEndWarAgainstUs(galaxy: Galaxy, attackingEmpire: Empire, targetEmpire: Empire): number {
+export function valueEndWarAgainstUs(galaxy: Galaxy, attackingEmpire: Empire, targetEmpire: Empire): number {
     let num = -1;
     if (attackingEmpire !== targetEmpire) {
         const diplomaticRelation = obtainDiplomaticRelation(attackingEmpire, targetEmpire);
@@ -851,7 +851,7 @@ function valueEndWarAgainstUs(galaxy: Galaxy, attackingEmpire: Empire, targetEmp
 }
 
 /** Galaxy.5.cs 59 ValueLiftTradeSanctionsAgainstUs(attackingEmpire, targetEmpire). */
-function valueLiftTradeSanctionsAgainstUs(galaxy: Galaxy, attackingEmpire: Empire, targetEmpire: Empire): number {
+export function valueLiftTradeSanctionsAgainstUs(galaxy: Galaxy, attackingEmpire: Empire, targetEmpire: Empire): number {
     let num = -1;
     if (attackingEmpire !== targetEmpire) {
         const diplomaticRelation = obtainDiplomaticRelation(attackingEmpire, targetEmpire);
