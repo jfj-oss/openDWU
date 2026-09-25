@@ -55,6 +55,10 @@ import { closeTradePanel, openTradePanel } from './tradePanel';
 import type { DialogPartType } from '../../sim/data/dialogSet';
 // [tradenego] end
 
+// [diplovoice] begin
+import { counterNote, diplomatVoiceConfig, voiceDiplomatReply, voiceSwitch, voicedLineToggle, voicingIndicator, type VoicedReply } from '../diplomatVoice';
+// [diplovoice] end
+
 /** EmpireDetailView relation colours (_NotMetColor … _TruceColor). */
 export const RELATION_COLORS: Record<DiplomaticRelationType, number> = {
     [DiplomaticRelationType.NotMet]: 0xd2b48c, // Color.Tan
@@ -98,34 +102,6 @@ export function relationDescription(rel: DiplomaticRelation, player: Empire): st
     return text;
 }
 
-/** Empire.4.cs:55 ResolveFeelingDescription (sequential ifs; later ones overwrite). */
-export function feelingDescription(overallAttitude: number): string {
-    let result = '';
-    if (overallAttitude <= -45) result = 'Furious';
-    if (overallAttitude >= -44 && overallAttitude <= -20) result = 'Angry';
-    if (overallAttitude >= -19 && overallAttitude <= -5) result = 'Annoyed';
-    if (overallAttitude >= -4 && overallAttitude <= 7) result = 'Cautious';
-    if (overallAttitude >= 8 && overallAttitude <= 20) result = 'Pleased';
-    if (overallAttitude >= 21 && overallAttitude <= 44) result = 'Friendly';
-    if (overallAttitude >= 45) result = 'Delighted';
-    return result;
-}
-
-/** Empire.10.cs:681 CivilityDescription (if / else if chain verbatim). */
-export function civilityDescription(rating: number): string {
-    if (rating < -50.0) return 'Diabolical';
-    else if (rating >= -50.0 && rating <= -30.0) return 'Evil';
-    else if (rating >= -30.0 && rating <= -20.0) return 'Notorious';
-    else if (rating >= -20.0 && rating <= -10.0) return 'Nasty';
-    else if (rating >= -10.0 && rating <= -1.0) return 'Dubious';
-    else if (rating >= -1.0 && rating <= 4.0) return 'Satisfactory';
-    else if (rating >= 4.0 && rating <= 10.0) return 'Respectable';
-    else if (rating >= 10.0 && rating <= 16.0) return 'Admired';
-    else if (rating >= 16.0 && rating <= 22.0) return 'Noble';
-    else if (rating > 22.0) return 'Heroic';
-    return '';
-}
-
 /** C# ToString("+0;-0;0"): round half away from zero, then '+N', '-N' or '0'. */
 export function formatSigned(v: number): string {
     const n = Math.sign(v) * Math.round(Math.abs(v));
@@ -134,74 +110,9 @@ export function formatSigned(v: number): string {
     return '0';
 }
 
-export interface RelationshipFactor {
-    value: number;
-    description: string;
-}
-
-/** Empire.7.cs:4164 DetermineEmpireRelationshipFactors, non-pirate branch
- * (`this` = the player, `otherEmpire` = the viewed empire). */
-export function relationshipFactors(player: Empire, other: Empire, playerGovernmentName: string): RelationshipFactor[] {
-    if (other.pirateEmpireBaseHabitat !== null || player.pirateEmpireBaseHabitat !== null) return [];
-    const ev = empireEvaluationByEmpire(empireEvaluationsOf(other), player);
-    if (ev === null) return [];
-    const list: RelationshipFactor[] = [];
-    const add = (value: number, description: string): void => {
-        list.push({ value, description });
-    };
-    if (ev.firstContactPenalty < 0.0) add(ev.firstContactPenalty, 'Our ignorance of your strange alien ways causes us to distrust you');
-    if (ev.militaryForcesInSystems < 0) add(ev.militaryForcesInSystems, 'Your military forces in our systems violate our territory');
-    if (ev.relationshipWithFriendsPositiveCumulative > 0.0) add(ev.relationshipWithFriendsPositiveCumulative, 'You have formed beneficial treaties with our friends');
-    if (ev.relationshipWithFriendsNegativeCumulative < 0.0) add(ev.relationshipWithFriendsNegativeCumulative, 'You have trade sanctions or are at war with our friends');
-    if (ev.systemCompetitionCumulative < 0.0) add(ev.systemCompetitionCumulative, 'Your colonies and bases trespass in our systems!');
-    const reputation = ev.reputationWeighted;
-    if (reputation > 0.0) add(reputation, `We respect your good reputation (${civilityDescription(player.civilityRating)})`);
-    else if (reputation < 0.0) add(reputation, `We are troubled by your poor reputation (${civilityDescription(player.civilityRating)})`);
-    if (ev.tradeVolume > 0) {
-        const tv = ev.tradeVolume;
-        add(
-            tv,
-            tv > 20
-                ? 'Our empires generate a colossal amount of trade'
-                : tv > 13
-                  ? 'Our empires produce a large amount of trade'
-                  : tv <= 6
-                    ? 'Our empires share a small volume of trade'
-                    : 'Our empires share a fair amount of trade',
-        );
-    }
-    if (ev.governmentStyleAffinityCumulative < 0.0) add(ev.governmentStyleAffinityCumulative, `We are unhappy with your style of government (${playerGovernmentName})`);
-    if (ev.governmentStyleAffinityCumulative > 0.0) add(ev.governmentStyleAffinityCumulative, `We like your style of government (${playerGovernmentName})`);
-    if (ev.covetousnessCumulative < 0.0) add(ev.covetousnessCumulative, 'We covet your colonies and resources...');
-    if (ev.blockades < 0) add(ev.blockades, 'You have blockaded our colonies and space ports!');
-    if (ev.biasRaw > 0.0) add(ev.biasRaw, 'We naturally like you');
-    else if (ev.biasRaw < 0.0) add(ev.biasRaw, 'We instinctively dislike you');
-    if (ev.envy < 0) add(ev.envy, 'We are envious of your huge strength and power');
-    if (ev.restrictedResourceTrading < 0.0) add(ev.restrictedResourceTrading, 'We are upset that you refuse to trade valuable resources with us');
-    if (ev.restrictedResourceTrading > 0.0) add(ev.restrictedResourceTrading, 'We are happy that you trade valuable resources with us');
-    if (ev.militaryRefueling > 0) add(ev.militaryRefueling, 'We appreciate your help with military refueling');
-    if (ev.miningRights > 0) add(ev.miningRights, 'We appreciate mining rights within your territory');
-    if (ev.incidentEvaluationRaw < 0.0) add(ev.incidentEvaluationRaw, 'Our past dealings with you have been terrible');
-    if (ev.incidentEvaluationRaw > 0.0) add(ev.incidentEvaluationRaw, 'Our past dealings with you have been good');
-    if (ev.slaveryOffense < 0.0) add(ev.slaveryOffense, 'We are angry at your enslavement of our race at your colonies');
-    if (ev.racialOffense < 0.0) add(ev.racialOffense, 'We are outraged at your extermination of our race at your colonies');
-
-    const aggression = player.galaxy.aggressionLevel;
-    for (const f of list) {
-        if (f.value > 0.0) {
-            f.value /= aggression;
-            f.value *= ev.diplomacyFactor;
-        } else {
-            f.value *= aggression;
-            f.value /= ev.diplomacyFactor;
-        }
-    }
-    // C# list.Sort(); list.Reverse() → descending by value. .NET's List.Sort is
-    // unstable for ties; Array.prototype.sort is stable, so tie order here is
-    // insertion order (may differ from the original for equal values).
-    list.sort((a, b) => b.value - a.value);
-    return list;
-}
+// Moved to sim/player/relationFactors.ts (shared with the 18b diplomat brief).
+export { feelingDescription, civilityDescription, relationshipFactors, type RelationshipFactor } from '../../sim/player/relationFactors';
+import { relationshipFactors, feelingDescription, type RelationshipFactor } from '../../sim/player/relationFactors';
 
 /** EmpireDetailView.cs:639-706 flag3: is the other empire's offer still open?
  * The C# also removes invalid proposals while drawing; the panel does not (no
@@ -637,6 +548,38 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
     // The "Propose..." block is rebuilt only when its options or the reply change (refresh in place).
     const proposalReplies = new Map<Empire, ProposalResult>();
     let proposalVersion = 0;
+    // [diplovoice] begin
+    let closed = false;
+    // 18b: the voiced line per reply (pending while the model answers; null = not voiced, the original stays).
+    const voiced = new Map<ProposalResult, { pending: boolean; reply: VoicedReply | null; view: { showOriginal: boolean } }>();
+    function startVoice(player: Empire, other: Empire, res: ProposalResult, label: string, optionId: string): void {
+        if (!res.ok || res.reply === null || res.reply === 'DEAL_BEGIN') return;
+        const raceName = other.dominantRace?.name ?? '';
+        void diplomatVoiceConfig().then(async (cfg) => {
+            if (cfg === null || closed) return;
+            const set = await loadDialogSet(raceName);
+            const original = set !== null ? proposalReplyText(set, res, raceName) : (res.reply ?? '');
+            const state = { pending: true, reply: null as VoicedReply | null, view: { showOriginal: false } };
+            voiced.set(res, state);
+            proposalVersion++;
+            render();
+            const current = (): boolean => !closed && proposalReplies.get(other) === res;
+            const v = await voiceDiplomatReply({
+                galaxy: player.galaxy,
+                ai: other,
+                player,
+                context: { kind: 'proposal', optionId, label, accepted: res.accepted, reply: res.reply, original },
+                cfg,
+                applyCounter: current,
+            });
+            state.pending = false;
+            state.reply = v;
+            if (closed) return;
+            proposalVersion++;
+            render();
+        });
+    }
+    // [diplovoice] end
     let proposalBuilt: { other: Empire; key: string; node: HTMLElement } | null = null;
 
     function proposalsBlock(player: Empire, other: Empire): HTMLElement {
@@ -646,12 +589,19 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
         if (proposalBuilt !== null && proposalBuilt.other === other && proposalBuilt.key === key) return proposalBuilt.node;
 
         const box = el('div', 'diplomacy-propose');
-        box.appendChild(el('div', 'diplomacy-section-heading', 'Propose…'));
+        const heading = el('div', 'diplomacy-section-heading', 'Propose…');
+        // [diplovoice] begin
+        heading.appendChild(voiceSwitch(() => render()));
+        // [diplovoice] end
+        box.appendChild(heading);
         const submit = (o: ProposalOption | string): void => {
             const res = submitProposal(player.galaxy, player, other, o);
             proposalReplies.set(other, res);
             proposalVersion++;
             if (res.expireMessagesFor !== null) expireDiplomacyMessages?.(res.expireMessagesFor);
+            // [diplovoice] begin
+            startVoice(player, other, res, typeof o === 'string' ? o : resolveGameText(o.label), typeof o === 'string' ? o : o.id);
+            // [diplovoice] end
             // [tradenego] begin
             // DEAL_BEGIN (Main.Part10.cs:4324 method_302): the trade trees open beside the conversation.
             if (res.trade !== null) {
@@ -663,6 +613,21 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
                         return loadDialogSet(raceName).then((set) => (set !== null ? formatNet(set.resolveDialog(part, raceName), []) : part));
                     },
                     expireMessagesFor: (e) => expireDiplomacyMessages?.(e),
+                    // [diplovoice] begin
+                    voice: async (ctx, isCurrent, onStart) => {
+                        const cfg = await diplomatVoiceConfig();
+                        if (cfg === null || !isCurrent()) return null;
+                        onStart();
+                        return voiceDiplomatReply({
+                            galaxy: player.galaxy,
+                            ai: other,
+                            player,
+                            context: { kind: 'trade', theyGive: ctx.theyGive, weGive: ctx.weGive, accepted: ctx.accepted, reply: ctx.reply, original: ctx.original },
+                            cfg,
+                            applyCounter: isCurrent,
+                        });
+                    },
+                    // [diplovoice] end
                     onChange: () => {
                         proposalVersion++;
                         render();
@@ -689,7 +654,18 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
             const text = el('span', 'diplomacy-reply-text', proposalReplyText(null, reply, raceName));
             line.appendChild(text);
             box.appendChild(line);
-            if (reply.ok && reply.reply !== null) {
+            // [diplovoice] begin
+            const voice = voiced.get(reply);
+            const isVoiced = voice !== undefined && !voice.pending && voice.reply !== null && voice.reply.voiced;
+            if (isVoiced) {
+                line.appendChild(voicedLineToggle(text, voice.reply!.text, voice.reply!.original, voice.view));
+                const note = counterNote(voice.reply!.counter);
+                if (note !== null) box.appendChild(note);
+            } else if (voice?.pending === true) {
+                line.appendChild(voicingIndicator());
+            }
+            // [diplovoice] end
+            if (!isVoiced && reply.ok && reply.reply !== null) {
                 void loadDialogSet(raceName).then((set) => {
                     text.textContent = set !== null ? proposalReplyText(set, reply, raceName) : reply.reply;
                 });
@@ -732,6 +708,9 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
     const timer = setInterval(render, 1000);
 
     function close(): void {
+        // [diplovoice] begin
+        closed = true;
+        // [diplovoice] end
         clearInterval(timer);
         // [tradenego] begin
         closeTradePanel();
