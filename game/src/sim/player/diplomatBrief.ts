@@ -130,7 +130,7 @@ export interface DiplomatBrief {
 // ---------------------------------------------------------------------------------------------------------------
 
 /** races.txt header, Race Family column: 0=Humanoid, 1=Ursidian, 2=Insectoid, 3=Reptilian, 4=Amphibian, 5=Rodent, 6=Machine. */
-const RACE_FAMILY_NAMES = ['Humanoid', 'Ursidian', 'Insectoid', 'Reptilian', 'Amphibian', 'Rodent', 'Machine'];
+export const RACE_FAMILY_NAMES = ['Humanoid', 'Ursidian', 'Insectoid', 'Reptilian', 'Amphibian', 'Rodent', 'Machine'];
 
 // Plain-word readings of a trait value against the file's "normal = 100": [very low, low, high, very high].
 // Flavour only (the sim uses the raw numbers); bands: < 80, < 95, 95..105 ordinary, > 105, > 120.
@@ -165,7 +165,7 @@ export function raceTraits(race: Race | null): BriefTrait[] {
     return rows.map(([trait, value]) => ({ trait, value, reads: traitReading(trait, value) }));
 }
 
-function raceBonuses(race: Race | null): string[] {
+export function raceBonuses(race: Race | null): string[] {
     if (race === null) return [];
     const out: string[] = [];
     const add = (name: string, v: number): void => {
@@ -181,7 +181,7 @@ function raceBonuses(race: Race | null): string[] {
     return out;
 }
 
-function governmentName(e: Empire): string {
+export function governmentName(e: Empire): string {
     if (e.governmentId < 0) return '';
     return getGovernmentsStatic()[e.governmentId]?.name ?? '';
 }
@@ -468,8 +468,10 @@ export function buildDiplomatBrief(galaxy: Galaxy, ai: Empire, player: Empire, c
     };
 }
 
-/** The persona lines of the system prompt: the race's non-ordinary traits in plain words, plus the speaker's traits. */
-export function personaLines(brief: DiplomatBrief): string[] {
+/** The persona lines of the system prompt: the race's non-ordinary traits in plain words, plus the speaker's traits.
+ *  (Also 18c's strategic brief, which carries the same persona fields.) */
+export type PersonaFields = Pick<DiplomatBrief, 'race' | 'raceBonuses' | 'speaker'> & { empire: Pick<DiplomatBrief['empire'], 'race' | 'government'> };
+export function personaLines(brief: PersonaFields): string[] {
     const lines: string[] = [];
     const words = brief.race.filter((t) => t.reads !== '').map((t) => `${t.reads} (${t.trait} ${t.value})`);
     lines.push(
