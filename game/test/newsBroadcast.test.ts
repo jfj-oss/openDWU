@@ -17,7 +17,7 @@ import { EmpireMessageType, empireMessages, type EmpireMessage } from '../src/si
 import { gameText } from '../src/sim/colonyTick';
 import { SystemVisibilityStatus } from '../src/sim/visibility';
 import { PirateRelationType, obtainPirateRelation } from '../src/sim/pirateRelations';
-import { isTextLoaded, resolveGameText } from '../src/sim/textResolver';
+import { getText, isTextLoaded, resolveGameText } from '../src/sim/textResolver';
 
 let gameData: GameData;
 beforeAll(async () => {
@@ -100,7 +100,9 @@ describe('Empire.1.cs 2090 colony disaster → SendNewsBroadcastCore 3120-3153',
         const disasterText = n[0].description.split(' - ').slice(1).join(' - ');
         const parts = disasterText.split('|');
         expect(parts[0]).toBe('Disaster at COLONY');
-        expect(parts[1]).toMatch(/^Colony Disaster (Earthquake|Tsunami|Sinkhole|Sandstorm|Blizzard|Eruption|Plague)$/);
+        const colonyDisasters = [DisasterEventType.Earthquake, DisasterEventType.Sinkhole, DisasterEventType.Tsunami, DisasterEventType.Sandstorm, DisasterEventType.Blizzard, DisasterEventType.Eruption, DisasterEventType.Plague];
+        expect(colonyDisasters.map((t) => resolveDisasterDescription(t))).toContain(parts[1]);
+        expect(parts[1]).not.toBe('');
         expect(parts[2]).toBe(colony.name);
         expect(news(b)).toEqual([]); // met but has not explored the system (3294-3299)
     });
@@ -108,7 +110,8 @@ describe('Empire.1.cs 2090 colony disaster → SendNewsBroadcastCore 3120-3153',
     it('economic crisis news is ResolveDescription(EconomicCrisis) and goes to every met empire', () => {
         const { player, a, b } = setup();
         sendNewsBroadcast(a, EventMessageType.DisasterEvent, null, DisasterEventType.EconomicCrisis, false, false);
-        expect(resolveDisasterDescription(DisasterEventType.EconomicCrisis)).toBe('Empire Disaster Economic Crisis');
-        for (const r of [player, b]) expect(news(r).map((m) => m.description)).toEqual([gameText('Galactic NewsNet').toUpperCase() + ': ' + a.name + ' - Empire Disaster Economic Crisis']);
+        // Galaxy.2.cs 2478: GameText 'Empire Disaster Economic Crisis' ("Economic Crisis" with the table loaded).
+        expect(resolveDisasterDescription(DisasterEventType.EconomicCrisis)).toBe(isTextLoaded() ? getText('Empire Disaster Economic Crisis') : 'Empire Disaster Economic Crisis');
+        for (const r of [player, b]) expect(news(r).map((m) => m.description)).toEqual([gameText('Galactic NewsNet').toUpperCase() + ': ' + a.name + ' - ' + resolveDisasterDescription(DisasterEventType.EconomicCrisis)]);
     });
 });

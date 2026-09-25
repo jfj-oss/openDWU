@@ -91,19 +91,9 @@ export function sendEventMessageToEmpire(empire: Empire, eventMessageType: Event
 // Galactic NewsNet — Empire.7.cs 2961-3398 SendNewsBroadcast* / SendNewsBroadcastCore. No Rnd anywhere in the path.
 // ---------------------------------------------------------------------------
 
-/** Galaxy.2.cs 2472 ResolveDescription(DisasterEventType): the GameText key (M9 localises). */
+/** Galaxy.2.cs 2472 ResolveDescription(DisasterEventType) (messages.ts resolveDescription / enumText.ts DISASTER_EVENT). */
 export function resolveDisasterDescription(disasterType: DisasterEventType): string {
-    switch (disasterType) {
-        case DisasterEventType.Blizzard: return gameText('Colony Disaster Blizzard');
-        case DisasterEventType.Earthquake: return gameText('Colony Disaster Earthquake');
-        case DisasterEventType.EconomicCrisis: return gameText('Empire Disaster Economic Crisis');
-        case DisasterEventType.Eruption: return gameText('Colony Disaster Eruption');
-        case DisasterEventType.Plague: return gameText('Colony Disaster Plague');
-        case DisasterEventType.Sandstorm: return gameText('Colony Disaster Sandstorm');
-        case DisasterEventType.Sinkhole: return gameText('Colony Disaster Sinkhole');
-        case DisasterEventType.Tsunami: return gameText('Colony Disaster Tsunami');
-        default: return '';
-    }
+    return resolveDescription(DisasterEventType as unknown as Record<number, string>, disasterType);
 }
 
 /** `subject is PlanetaryFacilityDefinition` (the TS definition is the plain facilities.txt record). */
