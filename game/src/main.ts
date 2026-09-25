@@ -14,7 +14,7 @@ import { createGame, type CreateGameOptions } from './sim/game';
 import { parseSystemNames } from './sim/data';
 import { loadGameData, type FetchText, type GameData } from './sim/data/gameData';
 import { GalaxyShape } from './sim/types';
-import { clearHudMessages, createHud, layoutHud, nearestSystem, nearestSystemName, pushHudMessage, setSelection as setHudSelection, type HudRefs } from './ui/hud';
+import { clearHudMessages, playPauseHint, createHud, layoutHud, nearestSystem, nearestSystemName, pushHudMessage, setSelection as setHudSelection, type HudRefs } from './ui/hud';
 import { GalaxyTime } from './sim/clock';
 import { resolveStarDateDescription } from './sim/galaxyTime';
 import { createSimLoop, simViewEnabledFromUrl } from './simLoop';
@@ -397,6 +397,7 @@ export async function startGameView(
         }
         if (pauseBtn) {
             pauseBtn.textContent = time.paused ? '▶' : '⏸';
+            pauseBtn.title = playPauseHint(time.paused);
         }
     };
     const refreshClockTimer = setInterval(refreshClockLabel, 250);
@@ -1048,6 +1049,7 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
         }
         if (pauseBtn) {
             pauseBtn.textContent = time.paused ? '▶' : '⏸';
+            pauseBtn.title = playPauseHint(time.paused);
         }
     };
     setInterval(refreshClockLabel, 250);
