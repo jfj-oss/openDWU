@@ -33,7 +33,7 @@ import { ColonyResourceEffect, resourceBonusTotalByEffectType } from './developm
 import { empireGovernmentAttributes } from './empire';
 import { countResourceSupplyLocations } from './logistics/orders';
 import { redefineBuiltObjectManufacturingQueue, type ManufacturingQueue } from './manufacturingQueue';
-import { PIRATE_SHIP_MAINTENANCE_FACTOR, SHIP_MAINTENANCE_COST_PER_SIZE_UNIT } from './forceStructure';
+import { SHIP_MAINTENANCE_COST_PER_SIZE_UNIT } from './forceStructure';
 import { Weapon, weaponsDetermineNotInSuppliedList, weaponsQuickCompareEquivalent, weaponsRemoveAndResetFirstMatchingWeaponById } from './weapon';
 import { MIN_TIME } from './tick/simTime';
 import type { BuiltObjectMission } from './missions/mission';
@@ -428,7 +428,7 @@ export class BuiltObject {
             // componentStatic default stands in (as in forceStructure.ts calculateSupportCost).
             let d = DEFAULT_BASE_TECH_COST / 120000.0;
             d = Math.sqrt(d);
-            num8 *= PIRATE_SHIP_MAINTENANCE_FACTOR * d;
+            num8 *= this._galaxy.pirateShipMaintenanceFactor * d;
         }
         if (actualEmpire !== null) {
             // Empire.ShipMaintenancePrivateFactor / ShipMaintenanceStateFactor (Empire.cs 437/440, 1.0;

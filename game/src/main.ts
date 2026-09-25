@@ -24,12 +24,15 @@ import { createMapOverlayState, type MapOverlayState, type OverlayKey } from './
 import { buildDefaultHandlers, createShortcutsOverlay, dispatchKey, setCycleHandler, setGameMenuHandler } from './ui/keyboard';
 import { closeEmpiresList } from './ui/screens/empiresList';
 import { closeDiplomacyScreen } from './ui/screens/diplomacyScreen'; // [15a]
+import { closeExpansionPlanner } from './ui/screens/expansionPlanner'; // [16a]
 import { closeColoniesList } from './ui/screens/coloniesList';
 import { closeShipsAndBasesList } from './ui/screens/shipsAndBasesList';
 import { closeResearchScreen } from './ui/screens/researchScreen'; // [15b]
+import { closeShipDesigns } from './ui/screens/shipDesigns'; // [16b]
 import { closeEmpireSummary, setEmpireSummarySource } from './ui/screens/empireSummary';
 import { closeMessageHistory } from './ui/screens/messageHistory';
 import { closeFleetsList } from './ui/screens/fleetsList'; // [15c]
+import { closeBuildOrder } from './ui/screens/buildOrder'; import { closeConstructionYards } from './ui/screens/constructionYards'; // [16c]
 import { createEmpireMessageFeed } from './ui/empireMessageFeed';
 import { createMainMenu } from './ui/screens/mainMenu';
 import { openOptionsModal } from './ui/screens/mainMenu';
@@ -38,13 +41,14 @@ import { createCreditsScreen } from './ui/screens/credits';
 import { startMusic } from './audio/musicPlayer';
 import { createNewGameWizard } from './ui/screens/newGameWizard';
 import { openGalactopedia } from './ui/screens/galactopedia';
-import { defaultStartGameOptions, piratesFor, STARTING_TECH_LEVEL, toCreateGameOptions, type StartGameOptions } from './sim/startGameOptions';
+import { defaultStartGameOptions, piratesFor, STARTING_TECH_LEVEL, toCreateGameOptions, type StartGameOptions, maximumEmpireAmountFor, starCountFor } from './sim/startGameOptions';
 import { serializeGame, deserializeGame } from './sim/save/gameSave';
 import { setSaveLoadProvider, createSaveLoadPanel, type LoadedGame } from './ui/screens/saveLoad';
 import { type Game } from './sim/game';
 import { createGalaxyMap, type GalaxyMapScreen } from './ui/screens/galaxyMap';
 import { hideMapTooltip } from './ui/mapTooltip';
 import { closeEmpireComparison, closeGameEndBanner, installGameEndHandler, removeGameEndHandler } from './ui/screens/empireComparison'; // [15d]
+import { installMessagePopups, removeMessagePopups } from './ui/messagePopups'; import { closeGameOptionsPanel } from './ui/screens/gameOptionsPanel'; // [16d]
 import './ui/hud.css';
 
 // ?shape= names accepted by the boot URL.
@@ -388,6 +392,9 @@ export async function startGameView(
     // [15d] Galaxy.GameEnd → Main.Part12.cs Galaxy_GameEnd / DoGameEnd (pause, IsFinished/Victor, banner).
     installGameEndHandler(galaxy, time);
     // [/15d]
+    // [16d] Player messages → popups + the diplomatic conversation queue (Main.Part9.cs ReceiveMessageInternal).
+    installMessagePopups({ player: game.playerEmpire, galaxy });
+    // [/16d]
 
     // Task 06l: extra boots run after the HUD/clock are wired (e.g. opening
     // a tutorial window that pauses/unpauses the clock).
@@ -494,12 +501,15 @@ export async function startGameView(
         // document keydown listener: close them and drop their source.
         closeEmpiresList();
         closeDiplomacyScreen(); // [15a]
+        closeExpansionPlanner(); // [16a]
         closeColoniesList();
         closeShipsAndBasesList();
         closeResearchScreen(); // [15b]
+        closeShipDesigns(); // [16b]
         closeEmpireSummary();
         closeMessageHistory();
         closeFleetsList(); // [15c]
+        closeBuildOrder(); closeConstructionYards(); // [16c]
         setEmpireSummarySource(null);
         // The ticker buffer is module-level; the next game starts fresh.
         clearHudMessages();
@@ -508,6 +518,10 @@ export async function startGameView(
         closeEmpireComparison();
         closeGameEndBanner();
         // [/15d]
+        // [16d]
+        removeMessagePopups();
+        closeGameOptionsPanel();
+        // [/16d]
     };
 
     return time;
@@ -822,9 +836,26 @@ function defaultDevGameOptions(
         // "Starting" era: Galaxy.Age 1 (= Galaxy.StartingAge), as the wizard's default Expansion slider.
         galaxyAge: 1,
         piratePrevalence: piratesFor(defaultStartGameOptions().piratesIndex),
+        // Galaxy.MaximumEmpireAmount comes from the star-count slider (BaconStart.cs 84 method_61), not from the
+        // number of empires in the game: it drives the pirate faction count (Galaxy.9.cs 22).
+        maximumEmpireAmount: maximumEmpireAmountFor(starCountIndexFor(starCount), gameData.races.filter((r) => r.playable).length),
         player: { race: 'Human', homeSystemFavourability: 'Normal', startLocation: '(Random)', age: 1, techLevel: STARTING_TECH_LEVEL },
         aiEmpires: [ai, { ...ai }, { ...ai }],
     };
+}
+
+/** Inverse of startGameOptions.ts starCountFor for the dev/tutorial paths (nearest slider index; 700 stars → 3). */
+function starCountIndexFor(starCount: number): number {
+    let best = 3;
+    let bestDiff = Infinity;
+    for (let i = 0; i <= 6; i++) {
+        const d = Math.abs(starCountFor(i) - starCount);
+        if (d < bestDiff) {
+            bestDiff = d;
+            best = i;
+        }
+    }
+    return best;
 }
 
 async function buildAutostartGame(

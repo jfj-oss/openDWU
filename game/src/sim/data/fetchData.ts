@@ -8,11 +8,41 @@
 // engine's "look in Customization/<set>/ first, fall back to base" behavior
 // (see Galaxy.cs ~1967-1978), implemented here as sequential fetch attempts
 // since the browser has no File.Exists.
+// The data loaders fire hundreds of fetches at once (every race × design template sub-role × pirate variant is
+// its own file). A dev server or a busy machine then resets connections (net::ERR_CONNECTION_RESET), so game
+// start fails. Gate the number of requests in flight and retry a transport failure once.
+const MAX_IN_FLIGHT = 24;
+let inFlight = 0;
+const waiters: Array<() => void> = [];
+async function withSlot<T>(fn: () => Promise<T>): Promise<T> {
+    if (inFlight >= MAX_IN_FLIGHT) {
+        await new Promise<void>((resolve) => waiters.push(resolve));
+    }
+    inFlight++;
+    try {
+        return await fn();
+    } finally {
+        inFlight--;
+        waiters.shift()?.();
+    }
+}
+
+async function fetchOnce(url: string): Promise<Response> {
+    try {
+        return await withSlot(() => fetch(url));
+    } catch (err) {
+        // TypeError = transport failure (reset, refused); give the server a moment and try once more.
+        if (!(err instanceof TypeError)) throw err;
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        return await withSlot(() => fetch(url));
+    }
+}
+
 export async function fetchText(candidates: string[]): Promise<string> {
     let lastError: unknown = undefined;
     for (const url of candidates) {
         try {
-            const response = await fetch(url);
+            const response = await fetchOnce(url);
             if (response.ok) {
                 return await response.text();
             }

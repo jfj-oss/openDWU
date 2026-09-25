@@ -60,7 +60,6 @@ export const COLONY_CORRUPTION_POPULATION_THRESHHOLD = 100000000; // 5097 (long)
 export const SPENDING_TROOP_PERCENTAGE = 0.3; // 5103
 export const TROOP_ANNUAL_MAINTENANCE = 1000.0; // 5040
 export const SUBJUGATION_TRIBUTE_PERCENTAGE = 0.1; // 5068
-export const PIRATE_SHIP_MAINTENANCE_FACTOR = 0.4; // Galaxy.cs 375
 const COLONY_CORRUPTION_FACTOR_DEFAULT = 1.0; // Galaxy.3.cs 5129
 const COLONY_INCOME_FACTOR_DEFAULT = 1.0; // Galaxy.3.cs 5137
 
@@ -780,7 +779,7 @@ export function calculateSupportCost(galaxy: Galaxy, empire: Empire, design: Des
             // the TS Galaxy; the componentStatic default stands in (pirates never reach here yet).
             let d = DEFAULT_BASE_TECH_COST / 120000.0;
             d = Math.sqrt(d);
-            num5 *= PIRATE_SHIP_MAINTENANCE_FACTOR * d;
+            num5 *= galaxy.pirateShipMaintenanceFactor * d;
             switch (design.subRole) {
                 case BuiltObjectSubRole.SmallFreighter:
                 case BuiltObjectSubRole.MediumFreighter:

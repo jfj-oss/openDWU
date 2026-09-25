@@ -26,6 +26,8 @@ import {
     OTHER_EMPIRES_COUNT_MAX,
     OTHER_EMPIRES_COUNT_MIN,
     piratesFor,
+    pirateProximityFor,
+    pirateShipMaintenanceFactorFor,
     sectorsFor,
     spaceCreaturesFor,
     starCountFor,
@@ -101,7 +103,11 @@ describe('defaultStartGameOptions (task 06b)', () => {
         expect(opts.colonyPrevalenceIndex).toBe(2);
         expect(opts.alienLifeIndex).toBe(2);
         expect(opts.spaceCreaturesIndex).toBe(1);
-        expect(opts.piratesIndex).toBe(2);
+        // Pirates page: Start.cs 3302-3303 standard preset / Main.Part9.cs 2665-2667 (Pirates 3, proximity
+        // Average, strength 2) — was the guessed middle tick 2 before the pirate settings were mapped.
+        expect(opts.piratesIndex).toBe(3);
+        expect(opts.pirateProximityIndex).toBe(1);
+        expect(opts.pirateStrengthIndex).toBe(2);
         expect(opts.aggressionIndex).toBe(2);
         expect(opts.difficultyIndex).toBe(2);
         expect(opts.difficultyScaling).toBe(false);
@@ -384,6 +390,13 @@ describe('spaceCreaturesFor (task 06f, Start.cs Start.method_62)', () => {
     });
 });
 
+describe('pirate proximity / strength (Start.1.cs method_190, 3722-3736)', () => {
+    it('maps the proximity combo and the strength slider', () => {
+        expect([0, 1, 2, 3, -1].map(pirateProximityFor)).toEqual([0, 1, 2, 0, 0]);
+        expect([0, 1, 2, 3, 4].map(pirateShipMaintenanceFactorFor)).toEqual([1.0, 0.7, 0.4, 0.25, 0.4]);
+    });
+});
+
 describe('piratesFor (task 06f, Start.cs Start.method_66)', () => {
     it('maps the six pirates slider ticks', () => {
         expect(piratesFor(0)).toBe(0.0);
@@ -660,6 +673,28 @@ describe('toCreateGameOptions (task 06i)', () => {
         expect(c.systemNames).toBe(NAMES);
         expect(c.gameData).toBe(gameData);
         expect(c.colonyPrevalence).toBe(colonyPrevalenceFor(2));
+    });
+
+    it('maps the Pirates page onto piratePrevalence / pirateProximity / pirateShipMaintenanceFactor', () => {
+        // Start.1.cs 3691 method_66, 3692 method_190, 3722-3736 strength switch; Start.2.cs 107 / 108 / 498.
+        const d = toCreateGameOptions(defaultStartGameOptions(), gameData, NAMES);
+        expect(d.piratePrevalence).toBe(0.4);
+        expect(d.pirateProximity).toBe(1);
+        expect(d.pirateShipMaintenanceFactor).toBe(0.4);
+        const o = { ...defaultStartGameOptions(), piratesIndex: 5, pirateProximityIndex: 0, pirateStrengthIndex: 0 };
+        const c = toCreateGameOptions(o, gameData, NAMES);
+        expect(c.piratePrevalence).toBe(1.0);
+        expect(c.pirateProximity).toBe(0);
+        expect(c.pirateShipMaintenanceFactor).toBe(1.0);
+        const none = toCreateGameOptions({ ...o, piratesIndex: 0 }, gameData, NAMES);
+        expect(none.piratePrevalence).toBe(0.0);
+        // Unset (older saves): Average proximity, strength 2.
+        const legacy = { ...defaultStartGameOptions() } as StartGameOptions;
+        delete legacy.pirateProximityIndex;
+        delete legacy.pirateStrengthIndex;
+        const l = toCreateGameOptions(legacy, gameData, NAMES);
+        expect(l.pirateProximity).toBe(1);
+        expect(l.pirateShipMaintenanceFactor).toBe(0.4);
     });
 
     it('passes the seed straight through', () => {

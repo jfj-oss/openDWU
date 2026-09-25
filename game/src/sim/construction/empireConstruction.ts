@@ -53,7 +53,6 @@ import { ComponentType } from '../data/components';
 import { ShipDesignFocus } from '../researchSystem';
 import { findNewestCanBuild, findNewestCanBuildFullEvaluate, canBuildDesign, createNewDesigns } from '../designGeneration';
 import {
-    PIRATE_SHIP_MAINTENANCE_FACTOR,
     SHIP_MAINTENANCE_COST_PER_SIZE_UNIT,
     ALLOWABLE_YEARS_MAINTENANCE_FROM_CASH_ON_HAND,
     annualStateMaintenance,
@@ -78,7 +77,8 @@ import { annualTroopMaintenance, estimatedDefensiveForceRequired } from '../troo
 import { ForceStructureProjection, ForceStructureProjectionList } from '../forceStructureProjection';
 import { determineNewSpacePortLocations, analyzeNewResearchFacilities } from '../stationPlacement';
 import { determineOrbitalBaseLocation } from '../pirates';
-import { AdvisorMessageType, checkTaskAuthorized, formatText, getText, type RefCount } from '../diplomacyTick';
+import { AdvisorMessageType, checkTaskAuthorized, formatText, formatThousands, getText, type RefCount } from '../diplomacyTick';
+import { gameText } from '../colonyTick';
 import { EmpireMessage, EmpireMessageType, sendEmpireMessage } from '../messages';
 import { ConstructionQueue, canBuiltObjectColonizeHabitat, resolveBuildSpeed } from './constructionQueue';
 import { componentListDiff, resolveComponentList } from './constructionYard';
@@ -220,10 +220,10 @@ export function designCalculateMaintenanceCosts(galaxy: Galaxy, design: Design, 
     const gov = empireGovernmentAttributes(empire);
     if (gov !== null) num5 = gov.maintenanceCosts;
     if (empire.pirateEmpireBaseHabitat !== null) {
-        // TODO(port): Galaxy.BaseTechCost / PirateShipMaintenanceFactor (game options) are not kept on the TS Galaxy;
-        // their defaults stand in (as in forceStructure.ts calculateSupportCost).
+        // TODO(port): Galaxy.BaseTechCost (game option) is not kept on the TS Galaxy; its default stands in
+        // (as in forceStructure.ts calculateSupportCost).
         const num6 = Math.sqrt(DEFAULT_BASE_TECH_COST / 120000.0);
-        num5 *= PIRATE_SHIP_MAINTENANCE_FACTOR * num6;
+        num5 *= galaxy.pirateShipMaintenanceFactor * num6;
     }
     return (num1 - num4) * num5;
 }
@@ -2148,4 +2148,159 @@ export function findNearestAvailableConstructionShip(galaxy: Galaxy, empire: Emp
     void galaxy; void empire; void x; void y;
     /* TODO(port) M4i */ todo(T_findNearestAvailableConstructionShip);
     return null;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// 17a — the player's Build Order panel (Main.Part2.cs 929-1165) → Empire.6.cs 3017 BuildNewShips.
+// Player input only: nothing here runs on the tick path.
+// ---------------------------------------------------------------------------------------------------------------
+
+/**
+ * Main.Part2.cs 929 method_632 / 950 method_633 / 1112 method_641: the Build Order total — Σ amount ×
+ * design.CalculateCurrentPurchasePrice(galaxy) over the panel rows, and the maintenance total, which (method_633's
+ * flag) counts every row but SmallFreighter / MediumFreighter / LargeFreighter / MiningShip / GasMiningShip /
+ * PassengerShip (method_632 sums those into a discarded second accumulator). `designs` / `amounts` are the rows in
+ * panel order (Escort … PassengerShip, method_643's order); the row's sub-role is the design's (method_642 reads the
+ * design from that sub-role's drop-down). No Rnd.
+ */
+export function buildOrderTotalCost(galaxy: Galaxy, empire: Empire, designs: readonly (Design | null)[], amounts: readonly number[]): { total: number; maintenance: number } {
+    let num = 0.0;
+    let double_7 = 0.0;
+    for (let i = 0; i < designs.length && i < amounts.length; i++) {
+        const design = designs[i];
+        // 952: method_640 — the row's NumericUpDown amount.
+        const amount = Math.trunc(amounts[i]);
+        // 953: (double)num * method_641 (0 without a design).
+        const result = amount * (design != null ? design.calculateCurrentPurchasePrice(galaxy) : 0.0);
+        let num2 = 0.0;
+        let flag = true;
+        // 966-978: civilian rows add no maintenance.
+        if (design != null) {
+            switch (design.subRole) {
+                case BuiltObjectSubRole.SmallFreighter:
+                case BuiltObjectSubRole.MediumFreighter:
+                case BuiltObjectSubRole.LargeFreighter:
+                case BuiltObjectSubRole.PassengerShip:
+                case BuiltObjectSubRole.GasMiningShip:
+                case BuiltObjectSubRole.MiningShip:
+                    flag = false;
+                    break;
+                default:
+                    flag = true;
+                    break;
+            }
+        }
+        // 980-984.
+        if (flag && design != null) {
+            num2 = designCalculateMaintenanceCosts(galaxy, design, empire);
+            num2 *= amount;
+        }
+        double_7 += num2;
+        num += result;
+    }
+    return { total: num, maintenance: double_7 };
+}
+
+/** Result of the Build Order purchase (btnBuildOrderPurchase_Click + Empire.BuildNewShips). */
+export interface BuildNewShipsResult {
+    ok: boolean;
+    /** The GameText the original's message box shows (colonyTick gameText encoding; resolveGameText displays it). */
+    message?: string;
+    /** The message box caption. */
+    title?: string;
+    /** The BuiltObjects queued, in queueing order. */
+    built: BuiltObject[];
+}
+
+/**
+ * Main.Part2.cs 1135 btnBuildOrderPurchase_Click (the affordability check) then Empire.6.cs 3017 BuildNewShips(designs,
+ * amounts). `designs` / `amounts` are method_643's lists (rows with a design and amount > 0, panel order).
+ * Rnd per ship queued, C# order: Galaxy.GenerateBuiltObjectName(design) (SelectUniqueBuiltObjectName draws for
+ * non-numbered names), then GenerateBuiltObjectName(design, yard colony) again when the yard has a colony (always for a
+ * colony-built construction / resupply ship), then AddBuiltObjectToGalaxy (offsetLocationFromParent: false → no draws).
+ * A ship the yard refuses still drew its first name.
+ */
+export function buildNewShips(galaxy: Galaxy, empire: Empire, designs: (Design | null)[], amounts: number[]): BuildNewShipsResult {
+    // Main.Part2.cs 1137-1145: method_632 total against StateMoney.
+    const num0 = buildOrderTotalCost(galaxy, empire, designs, amounts).total;
+    if (num0 > empire.stateMoney) {
+        return {
+            ok: false,
+            message: gameText('Build Order Purchase Cannot Afford', formatThousands(num0), formatThousands(empire.stateMoney)),
+            title: gameText('Cannot afford build order'),
+            built: [],
+        };
+    }
+    const built: BuiltObject[] = [];
+    // Empire.6.cs:3019-3022.
+    if (designs == null || designs.length <= 0 || amounts == null || amounts.length <= 0 || designs.length !== amounts.length) {
+        return { ok: false, built };
+    }
+    // Empire.6.cs:3023-3028.
+    let num = 0.0;
+    const bases: PendingOrders<BuiltObject> = { locations: [], cargo: [] };
+    const colonies: PendingOrders<Habitat> = { locations: [], cargo: [] };
+    // Empire.6.cs:3029-3106.
+    for (let i = 0; i < designs.length; i++) {
+        const design = designs[i];
+        if (design == null) continue;
+        const num2 = amounts[i];
+        if (num2 <= 0) continue;
+        for (let j = 0; j < num2; j++) {
+            // Empire.6.cs:3043-3051.
+            const num3 = design.calculateCurrentPurchasePrice(galaxy);
+            if (!(num + num3 <= empire.stateMoney)) continue;
+            design.buildCount++;
+            const builtObject = new BuiltObject(design, galaxy.generateBuiltObjectName(design), galaxy);
+            builtObject.purchasePrice = num3;
+            // Empire.6.cs:3052-3078: construction / resupply ships are built at colonies (long wait queues allowed).
+            if (builtObject.subRole === BuiltObjectSubRole.ConstructionShip || builtObject.subRole === BuiltObjectSubRole.ResupplyShip) {
+                const habitat = habitatsFindShortestConstructionWaitQueue(galaxy, empire.colonies, builtObject, true).habitat;
+                if (habitat !== null) {
+                    const q = queueOf(habitat);
+                    if (q !== null && q.addBuiltObjectToConstruct(builtObject)) {
+                        num += num3;
+                        builtObject.name = galaxy.generateBuiltObjectName(design, habitat);
+                        empire.addBuiltObjectToGalaxy(builtObject, habitat, false, true);
+                        builtObject.builtAt = habitat;
+                        builtObject.isAutoControlled = newBuiltObjectShouldBeAutomated(empire, builtObject.subRole);
+                        colonies.cargo.push(procureConstructionComponentsAtColony(galaxy, empire, builtObject, habitat));
+                        colonies.locations.push(habitat);
+                        built.push(builtObject);
+                    } else {
+                        design.buildCount--;
+                    }
+                } else {
+                    design.buildCount--;
+                }
+                continue;
+            }
+            // Empire.6.cs:3079-3105: everything else at the shortest-wait space port (no very small yards).
+            const builtObject2 = builtObjectsFindShortestConstructionWaitQueue(empire.spacePorts, builtObject, false).builtObject;
+            if (builtObject2 !== null) {
+                const q = queueOf(builtObject2);
+                if (q !== null && q.addBuiltObjectToConstruct(builtObject)) {
+                    num += num3;
+                    if (builtObject2.parentHabitat !== null) builtObject.name = galaxy.generateBuiltObjectName(design, builtObject2.parentHabitat);
+                    empire.addBuiltObjectToGalaxy(builtObject, builtObject2, false, true);
+                    builtObject.builtAt = builtObject2;
+                    builtObject.isAutoControlled = newBuiltObjectShouldBeAutomated(empire, builtObject.subRole);
+                    bases.cargo.push(procureConstructionComponentsAtBuiltObject(galaxy, empire, builtObject, builtObject2, true));
+                    bases.locations.push(builtObject2);
+                    built.push(builtObject);
+                } else {
+                    design.buildCount--;
+                }
+            } else {
+                design.buildCount--;
+            }
+        }
+    }
+    // Empire.6.cs:3107-3108.
+    empire.stateMoney -= num;
+    pirateEconomyPerformExpense(galaxy, empire, num, PirateExpenseType.Construction, galaxyStarDate(galaxy));
+    // Empire.6.cs:3109-3135: shortage orders per distinct space port, then Empire.6.cs:3136-3162 per distinct colony.
+    placeGroupedOrders(galaxy, empire, bases);
+    placeGroupedOrders(galaxy, empire, colonies);
+    return { ok: true, built };
 }

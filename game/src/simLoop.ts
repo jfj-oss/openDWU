@@ -13,7 +13,8 @@
 import type { Camera } from './render/camera';
 import type { Galaxy } from './sim/galaxy';
 import type { GalaxyTime } from './sim/galaxyTime';
-import { SimDriver, type SimView } from './sim/tick/scheduler';
+import { SimDriver, schedulerState, type SimView } from './sim/tick/scheduler';
+import { showToast } from './ui/toast';
 
 /** Main.Part11.cs 507 method_123 inputs from the Pixi camera: int_13/int_14 = view centre (galaxy units),
  * mainView.Width/Height = base.ClientRectangle size (px, Main.Part12.cs 1712), double_0 = galaxy units per px. */
@@ -77,8 +78,20 @@ export function createSimLoop(galaxy: Galaxy, time: GalaxyTime, camera: Camera, 
             // Pause / speed come from the HUD clock (buttons, keyboard, game menu, tutorial "Play This Game").
             driver.speed = time.speed;
             driver.paused = time.paused;
+            driver.isPaused = () => time.paused;
             const t0 = performance.now();
-            const frames = driver.advance(realDtMs, useView ? { view: simViewFromCamera(camera) } : {});
+            let frames = 0;
+            try {
+                frames = driver.advance(realDtMs, useView ? { view: simViewFromCamera(camera) } : {});
+            } catch (err) {
+                // Pixi's Ticker only schedules the next animation frame after update() returns, so an exception here
+                // would freeze the sim, the view and rendering for good. Contain it: drop the half-drained tick queue
+                // (as scripts/sim-run.mjs does), pause, and tell the player.
+                console.error('Simulation error (paused):', err);
+                schedulerState(galaxy).queue.length = 0;
+                time.paused = true;
+                showToast('Simulation error — game paused (see console)');
+            }
             const dt = performance.now() - t0;
             stats.renderFrames++;
             stats.simFrames += frames;

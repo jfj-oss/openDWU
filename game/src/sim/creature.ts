@@ -52,7 +52,7 @@ export function determineAngle(x1: number, y1: number, x2: number, y2: number): 
 }
 
 // Port of Galaxy.2.cs ResolveDescription(CreatureType) (English text).
-function resolveCreatureDescription(type: CreatureType): string {
+export function resolveCreatureDescription(type: CreatureType): string {
     switch (type) {
         case CreatureType.Ardilus:
             return 'Ardilus';
