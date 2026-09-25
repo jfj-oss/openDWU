@@ -436,7 +436,9 @@ export class BuiltObjectLayer {
         if (!this.root.visible) return;
         // TODO(port): Empire.IsObjectVisibleToThisEmpire(BuiltObject) (MainView.1.cs:883) — not in sim; all objects drawn
         for (const bo of this.galaxy.builtObjects) {
-            if (bo.hasBeenDestroyed) continue;
+            // MainView.1.cs:867 `if (builtObject5 == null) continue;` — Galaxy.BuiltObjects keeps null holes after
+            // CompleteTeardown (BuiltObject.2.cs:5522) until RemoveNullBuiltObjects (Galaxy.9.cs:2862) compacts it.
+            if (bo === null || bo.hasBeenDestroyed) continue;
             const s = cam.worldToScreen(bo.xpos, bo.ypos);
             let sprite = this.sprites.get(bo);
             // Cull more than 100 px outside the viewport.
@@ -507,7 +509,7 @@ export class BuiltObjectLayer {
     pick(wx: number, wy: number, f: number, player: Empire | null): BuiltObject | null {
         // ships are not drawn at f >= 500 (DrawShipSymbolXna not ported), so they are not pickable there
         if (f >= BUILT_OBJECT_MAX_FACTOR) return null;
-        const list = this.galaxy.builtObjects.filter((b) => !b.hasBeenDestroyed);
+        const list = this.galaxy.builtObjects.filter((b): b is BuiltObject => b !== null && !b.hasBeenDestroyed);
         if (f <= BUILT_OBJECT_PICK_SYSTEM_MAX_FACTOR) {
             return pickBuiltObjectBySize(list, wx, wy, f, (b) => this.drawnSizePx(b));
         }

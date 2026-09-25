@@ -2,8 +2,9 @@
 // (Main.Part9.cs ReceiveMessageInternal / method_250).
 // The C# Main registers itself as the player's IMessageRecipient. Here we poll the queue
 // instead, because Empire.messageRecipient is saved by the save codec and a function on it
-// cannot be serialized. The feed only reads messages; it never mutates them.
-import { EmpireMessageType, empireMessages, type EmpireMessage } from '../sim/messages';
+// cannot be serialized. The feed never mutates the messages; like the C# receiver (Main.Part9.cs 1508-1517) it adds
+// each one except Informational to the player's saved Empire.MessageHistory.
+import { EmpireMessageType, addHistoryMessage, empireMessages, type EmpireMessage } from '../sim/messages';
 import type { Empire } from '../sim/empire';
 import { formatNet, resolveGameText, tryGetText } from '../sim/textResolver';
 import { getMessageOptions, routeEmpireMessage } from './messageRouting';
@@ -91,13 +92,7 @@ function messageHistoryOf(empire: Empire): EmpireMessage[] | null {
 export function recordTickerMessage(player: Empire, message: EmpireMessage, currentStarDate: number): void {
     message.starDate = currentStarDate;
     if (message.messageType === EmpireMessageType.Informational) return;
-    const add = (player as unknown as { addHistoryMessage?: (m: EmpireMessage) => void }).addHistoryMessage;
-    if (typeof add === 'function') {
-        add.call(player, message);
-        return;
-    }
-    const history = (player as unknown as { messageHistory?: unknown }).messageHistory;
-    if (Array.isArray(history) && !history.includes(message)) history.push(message);
+    addHistoryMessage(player, message); // Empire.cs 4697 (sim port; skips duplicates)
 }
 
 /** Ticker/history lines rebuilt from a loaded game's persisted message

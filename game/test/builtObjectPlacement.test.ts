@@ -68,18 +68,18 @@ function buildAll(): { g: Galaxy; expected: Map<Empire, ShipRecord>; ships: Buil
             }
             if (phase === 'ships:troops') {
                 const rec = expected.get(e!)!;
-                rec.ships = gal.builtObjects.slice(before);
+                rec.ships = (gal.builtObjects as BuiltObject[]).slice(before);
                 rec.stateProjectionsAfter = e!.stateForceStructureProjections!.count;
                 rec.privateProjectionsAfter = e!.privateForceStructureProjections!.count;
             }
         },
     }).galaxy;
-    return { g, expected, ships: g.builtObjects.slice(shipsStartIndex, shipsEndIndex) };
+    return { g, expected, ships: (g.builtObjects as BuiltObject[]).slice(shipsStartIndex, shipsEndIndex) };
 }
 
 function summary(g: Galaxy) {
     // Unowned abandoned ships (gameStartTail, Start.2.cs 2011-2012) have no empire.
-    return g.builtObjects.map((b) => [b.builtObjectID, b.empire?.name ?? null, S[b.subRole], b.name, b.xpos, b.ypos, b.heading, b.parentHabitat?.name ?? null, b.troops?.items.length ?? -1]);
+    return (g.builtObjects as BuiltObject[]).map((b) => [b.builtObjectID, b.empire?.name ?? null, S[b.subRole], b.name, b.xpos, b.ypos, b.heading, b.parentHabitat?.name ?? null, b.troops?.items.length ?? -1]);
 }
 
 describe('CreateStateShips / CreatePrivateShips at game start (tech 0.5, age 1)', () => {
@@ -290,7 +290,7 @@ describe('FindNearestBuiltObject / FindNearestPirateFaction', () => {
         const dist = (o: BuiltObject, x: number, y: number) => Math.hypot(o.xpos - x, o.ypos - y);
         const bruteNearest = (x: number, y: number, pred: (o: BuiltObject) => boolean) => {
             let best: BuiltObject | null = null;
-            for (const o of g.builtObjects) if (pred(o) && (best === null || dist(o, x, y) < dist(best, x, y))) best = o;
+            for (const o of (g.builtObjects as BuiltObject[])) if (pred(o) && (best === null || dist(o, x, y) < dist(best, x, y))) best = o;
             return best;
         };
         expect(g.findNearestBuiltObject(b.xpos, b.ypos)).toBe(b);

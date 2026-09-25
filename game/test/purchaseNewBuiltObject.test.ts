@@ -50,7 +50,7 @@ describe('Build at the space port (Main.Part7.cs 379 → Empire.6.cs 2098 Purcha
         expect(r.ok).toBe(true);
         expect(r.message).toBeUndefined();
         expect(g.builtObjects.length).toBe(bos0 + 1);
-        const b = g.builtObjects[bos0];
+        const b = g.builtObjects[bos0]!;
         expect(q.constructionWaitQueue!.slice(wait0)).toEqual([b]);
         // Escorts take GenerateBuiltObjectName's numbered branch: "<design> <BuildCount:000>" (Empire.6.cs 2121/2132/2135).
         expect(b.name).toBe(numbered(d.name, buildCount0 + 1));
@@ -123,7 +123,7 @@ describe('BuildColonize (Main.Part7.cs 880-895 → Main.Part4.cs 2826 method_539
 
         expect(r.ok).toBe(true);
         expect(g.builtObjects.length).toBe(bos0 + 1);
-        const b = g.builtObjects[bos0];
+        const b = g.builtObjects[bos0]!;
         expect(b.subRole).toBe(BuiltObjectSubRole.ColonyShip);
         // One colony: method_539's yard loop picks it (population ≥ BuildColonyShipPopulationRequirement).
         expect(e.colonies.length).toBe(1);

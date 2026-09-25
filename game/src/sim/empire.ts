@@ -518,6 +518,12 @@ export class Empire {
     resupplyShips: unknown[] = [];
     planetDestroyers: unknown[] = [];
     messages: unknown[] = [];
+    /**
+     * Empire.cs 82 _MessageHistory = new EmpireMessageList() (EmpireMessage[]; messages.ts addHistoryMessage /
+     * removeOldHistoryMessages) and 84 _MaximumHistoryMessages = 1000. Saved with the empire (the Message History screen).
+     */
+    messageHistory: unknown[] = [];
+    maximumHistoryMessages = 1000;
     empireEvaluations: unknown[] = [];
     get systemVisibility(): SystemVisibility[] {
         return this.visibility.systemVisibility;
@@ -1896,6 +1902,9 @@ export class Empire {
     capitals: Habitat[] = [];
     /** Empire.cs 800 _UseAveragedVariableIncome (set only by the UI's CheckAgeVariableIncome for the player; ThisYearsSpacePortIncome). */
     useAveragedVariableIncome = false;
+    /** Empire.cs _VariableIncome (List<double>, null until AgeVariableIncomeValues) / _LastVariableIncomeUpdate (long). */
+    variableIncome: number[] | null = null;
+    lastVariableIncomeUpdate = 0;
     /** Empire.cs _ThisYearsResortIncome / _LastResortIncomeAddDate (AddResortIncome, Empire.6.cs 2183 — tourism, M4f). */
     thisYearsResortIncomeValue = 0.0;
     lastResortIncomeAddDate = 0;

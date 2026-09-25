@@ -11,7 +11,7 @@ function msg(sender: Empire | null, type: EmpireMessageType, description: string
 }
 
 describe('formatEmpireMessage', () => {
-    const player = { name: 'Us', messages: [] } as unknown as Empire;
+    const player = { name: 'Us', messages: [], messageHistory: [] } as unknown as Empire;
     const zorg = { name: 'Zorg', messages: [] } as unknown as Empire;
     const f = (m: EmpireMessage): string | null => formatEmpireMessage(m, player);
 
@@ -43,7 +43,7 @@ describe('createEmpireMessageFeed().poll', () => {
     });
 
     it('shows each message once, in queue order', () => {
-        const player = { name: 'Us', messages: [] } as unknown as Empire;
+        const player = { name: 'Us', messages: [], messageHistory: [] } as unknown as Empire;
         const zorg = { name: 'Zorg', messages: [] } as unknown as Empire;
         const queue = player.messages as unknown[];
         const feed = createEmpireMessageFeed();
@@ -66,7 +66,7 @@ describe('createEmpireMessageFeed().poll', () => {
     });
 
     it('does not share the seen set between feeds', () => {
-        const player = { name: 'Us', messages: [] } as unknown as Empire;
+        const player = { name: 'Us', messages: [], messageHistory: [] } as unknown as Empire;
         const queue = player.messages as unknown[];
         queue.push(msg(player, EmpireMessageType.Informational, 'A'));
         expect(createEmpireMessageFeed().poll(player)).toEqual(['A']);

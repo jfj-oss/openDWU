@@ -12,7 +12,7 @@
 // ReDefine for shipyards / manufacturers), fighters (FighterList), characters,
 // contracts, missions, UpdatePosition.
 
-import { updatePosition } from './movement';
+import { baconMovementSettings, updatePosition } from './movement';
 import { BuiltObjectSubRole } from './builtObjectTypes';
 import { DockingBay } from './dockingBay';
 import { BuiltObjectComponent, BuiltObjectComponentList, ComponentStatus, csInt, toByte, toShort } from './builtObjectComponent';
@@ -1512,9 +1512,9 @@ function removeFrom(list: unknown[], item: unknown): void {
 
 // BaconBuiltObject static settings (BaconBuiltObject.cs 47-55). BaconMain.BaconInitialize
 // overrides some from BaconSettings.txt, but only once a game exists (after game-start
-// generation). TODO(port): BaconSettings.txt overrides (BaconMain.cs:640/821).
+// generation): sublightFuelBurnDivisor (BaconMain.cs 638) is applied by baconSettings.ts into
+// baconMovementSettings. TODO(port): weaponRangeMultiplierForBases override (BaconMain.cs 821).
 const MY_CARGO_BAY_CAPACITY_MULTIPLIER = 5;
-const SUBLIGHT_FUEL_BURN_DIVISOR = Math.fround(1);
 const WEAPON_RANGE_MULTIPLIER_FOR_BASES = Math.fround(1);
 
 function nameContainsRomulan(empire: Empire | null): boolean {
@@ -1554,9 +1554,10 @@ function baconModWeaponRangeForBases(ship: BuiltObject): void {
 
 // BaconBuiltObject.ModMyShip (BaconBuiltObject.cs 2810).
 function baconModMyShip(ship: BuiltObject): void {
-    if (Math.abs(SUBLIGHT_FUEL_BURN_DIVISOR - 1) > 0.01 && Math.abs(SUBLIGHT_FUEL_BURN_DIVISOR) > 0.01) {
-        const val1_1 = Math.fround(Math.fround(ship.cruiseSpeedFuelBurn) / SUBLIGHT_FUEL_BURN_DIVISOR);
-        const val1_2 = Math.fround(Math.fround(ship.topSpeedFuelBurn) / SUBLIGHT_FUEL_BURN_DIVISOR);
+    const sublightFuelBurnDivisor = baconMovementSettings.sublightFuelBurnDivisor;
+    if (Math.abs(sublightFuelBurnDivisor - 1) > 0.01 && Math.abs(sublightFuelBurnDivisor) > 0.01) {
+        const val1_1 = Math.fround(Math.fround(ship.cruiseSpeedFuelBurn) / sublightFuelBurnDivisor);
+        const val1_2 = Math.fround(Math.fround(ship.topSpeedFuelBurn) / sublightFuelBurnDivisor);
         ship.cruiseSpeedFuelBurn = Math.max(toShort(csInt(val1_1)), 1);
         ship.topSpeedFuelBurn = Math.max(toShort(csInt(val1_2)), 1);
     }

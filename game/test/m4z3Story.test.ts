@@ -2,6 +2,7 @@
 // start-of-game story set-up (Start.2.cs 1730-2016), the Return of the Shakturi runtime (Galaxy.8.cs 1348-2056, Empire.2.cs
 // 3474-3777), the Distant Worlds story clues (Galaxy.5.cs 3622-3942), the Shadows pre-warp branches (Empire.7.cs) and the
 // Legends gateway convoys (Empire.1.cs 3899). Plus a harness run with every story line on.
+import type { BuiltObject } from '../src/sim/builtObject';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 import { tickGameOptions } from './helpers/tickGame';
@@ -108,7 +109,7 @@ describe('story set-up at game start (Start.2.cs 1730-2016)', () => {
             expect(guardians!.capital!.ruin?.name).toBe('Ancient Galactic Archives');
             expect(guardians!.defendHabitat).toBe(guardians!.capital);
         }
-        const shakturiShips = g.builtObjects.filter((b) => b.empire === null && (b.encounterDescription ?? '').startsWith('The sight of this ship gives you an eerie feeling'));
+        const shakturiShips = (g.builtObjects as BuiltObject[]).filter((b) => b.empire === null && (b.encounterDescription ?? '').startsWith('The sight of this ship gives you an eerie feeling'));
         expect(shakturiShips.length).toBe(Math.trunc(Math.sqrt(300) * 0.3)); // 5
     });
 

@@ -1,5 +1,6 @@
 // M4t — visibility, exploration, first contact, territory runtime (src/sim/exploration.ts). Unit checks of the ported
 // C# functions against hand-worked expectations on a createGame galaxy (seed 1), plus a harness smoke run.
+import type { BuiltObject } from '../src/sim/builtObject';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 import { createTickGame } from './helpers/tickGame';
@@ -79,8 +80,8 @@ describe('Empire.1.cs CheckKnownPirateBases', () => {
     it('forgets bases no longer owned by a pirate faction', () => {
         const e = galaxy.empires[0];
         const pirate = galaxy.pirateEmpires[0];
-        const pirateBase = galaxy.builtObjects.find((b) => b.empire === pirate)!;
-        const other = galaxy.builtObjects.find((b) => b.empire === galaxy.empires[1])!;
+        const pirateBase = (galaxy.builtObjects as BuiltObject[]).find((b) => b.empire === pirate)!;
+        const other = (galaxy.builtObjects as BuiltObject[]).find((b) => b.empire === galaxy.empires[1])!;
         e.knownPirateBases = [other, pirateBase];
         checkKnownPirateBases(galaxy, e);
         expect(e.knownPirateBases).toEqual([pirateBase]);
@@ -118,7 +119,7 @@ describe('Galaxy.4.cs MergeGalaxyMap', () => {
         const giverSystems = giver.systemVisibility.map((v, i) => (v.status >= SystemVisibilityStatus.Explored ? i : -1)).filter((i) => i >= 0);
         const newForReceiver = giverSystems.filter((i) => receiver.systemVisibility[i].status <= SystemVisibilityStatus.Unexplored);
         expect(newForReceiver.length).toBeGreaterThan(0);
-        const pirateBase = galaxy.builtObjects.find((b) => b.empire === galaxy.pirateEmpires[0])!;
+        const pirateBase = (galaxy.builtObjects as BuiltObject[]).find((b) => b.empire === galaxy.pirateEmpires[0])!;
         giver.knownPirateBases = [pirateBase];
         mergeGalaxyMap(galaxy, giver, receiver);
         for (const i of newForReceiver) {
@@ -138,7 +139,7 @@ describe('Galaxy.4.cs MergeGalaxyMap', () => {
 describe('BuiltObject.1.cs ScanArea / ScanForLocations, BuiltObject.cs pre-warp visibility', () => {
     it('surveys unsurveyed habitats within sensor range and draws Next(0, 800) once per non-independent one', () => {
         // First empire ship / base with a habitat in sensor range (which one depends on the seed's game start).
-        const habitatsInRange = (ship: (typeof galaxy.builtObjects)[number]) => {
+        const habitatsInRange = (ship: BuiltObject) => {
             const r = ship.sensorResourceProfileSensorRange;
             return getHabitatsAtLocation(galaxy, ship.xpos, ship.ypos, r + 46000).filter(
                 (h) =>
@@ -149,7 +150,7 @@ describe('BuiltObject.1.cs ScanArea / ScanForLocations, BuiltObject.cs pre-warp 
                     galaxy.calculateDistanceSquared(h.xpos, h.ypos, ship.xpos, ship.ypos) <= r * r,
             );
         };
-        const ship = galaxy.builtObjects.find(
+        const ship = (galaxy.builtObjects as BuiltObject[]).find(
             (b) => b.empire !== null && b.empire !== galaxy.independentEmpire && b.sensorResourceProfileSensorRange > 0 && habitatsInRange(b).length > 0,
         )!;
         const empire = ship.empire as Empire;
@@ -173,7 +174,7 @@ describe('BuiltObject.1.cs ScanArea / ScanForLocations, BuiltObject.cs pre-warp 
     });
 
     it('ScanForLocations removes location hints the ship has reached (46000 inside a system, 5000 outside)', () => {
-        const ship = galaxy.builtObjects.find((b) => b.empire === galaxy.empires[0] && b.nearestSystemStar !== null)!;
+        const ship = (galaxy.builtObjects as BuiltObject[]).find((b) => b.empire === galaxy.empires[0] && b.nearestSystemStar !== null)!;
         const e = galaxy.empires[0];
         e.locationHints = [
             { x: Math.trunc(ship.xpos) + 45000, y: Math.trunc(ship.ypos) },
@@ -186,7 +187,7 @@ describe('BuiltObject.1.cs ScanArea / ScanForLocations, BuiltObject.cs pre-warp 
 
     it('a pre-warp ship in a system makes it Visible for its empire (and sets NearestSystemStar)', () => {
         const e = galaxy.empires[1];
-        const ship = galaxy.builtObjects.find((b) => b.empire === e && b.role !== BuiltObjectRole.Base)!;
+        const ship = (galaxy.builtObjects as BuiltObject[]).find((b) => b.empire === e && b.role !== BuiltObjectRole.Base)!;
         const target = galaxy.systems.find((s) => s.systemStar.category === HabitatCategoryType.Star && e.systemVisibility[s.systemStar.systemIndex].status === SystemVisibilityStatus.Unexplored)!.systemStar;
         const saved = { x: ship.xpos, y: ship.ypos, warp: ship.warpSpeed, star: ship.nearestSystemStar };
         ship.xpos = target.xpos + 1000;

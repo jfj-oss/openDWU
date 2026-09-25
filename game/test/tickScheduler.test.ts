@@ -331,7 +331,7 @@ describe('BuiltObject.DoTasks (BuiltObject.cs 3614)', () => {
     };
 
     it('back-dates the touches on the first call so every block fires, then uses >=', () => {
-        const bo = galaxy.builtObjects[0];
+        const bo = galaxy.builtObjects[0]!;
         bo.lastTouch = bo.lastIntermediateTouch = bo.lastPeriodicTouch = bo.lastLongTouch = MIN_TIME;
         const t = 500000;
         expect(fire(bo, t)).toEqual(['intermediate', 'periodic', 'long']);
@@ -350,7 +350,7 @@ describe('BuiltObject.DoTasks (BuiltObject.cs 3614)', () => {
         // M4b ported ExecuteCommands: with no mission the no-command epilogue (BuiltObject.2.cs 4494-4574) runs
         // AssignQueuedMission (no queued missions) then RevertToPreviousMission → AutoRefuelRepairShip. That was the M4e
         // stub marker here until M4e ported it; now the call must not reach any remaining M4e stub.
-        const bo = galaxy.builtObjects[1];
+        const bo = galaxy.builtObjects[1]!;
         builtObjectDoTasks(galaxy, bo, 5000, 0); // first call: _LastTouch = now, dt = 0 ⇒ no ExecuteCommands
         resetTodoCounts();
         builtObjectDoTasks(galaxy, bo, 6000, 0);
