@@ -1,6 +1,7 @@
 // Task 16d: popup card (Main.Part9.cs:2381 pnlMessagePopup), conversation queue (DiplomaticMessageQueue.cs)
 // and conversation dialog (method_254) for the player's EmpireMessages, routed by messageRouting.ts.
-// Like the ticker feed (empireMessageFeed.ts) it polls Empire.Messages and dedupes by identity.
+// Like the ticker feed (empireMessageFeed.ts) it polls Empire.Messages, dedupes by identity and resolves the
+// sim's gameText() encodings (textResolver.ts).
 // TODO(port): the original DialogPart conversation texts and reply options (Main.Part10.cs); here the dialog shows the message text with Accept/Decline for treaty offers and OK otherwise
 // TODO(port): popup "go to subject" click (Main.Part9.cs:784 method_244)
 
@@ -11,6 +12,7 @@ import type { Empire } from '../sim/empire';
 import type { Galaxy } from '../sim/galaxy';
 import { galaxyStarDate } from '../sim/tick/simTime';
 import { resolveStarDateDescription } from '../sim/galaxyTime';
+import { resolveGameText } from '../sim/textResolver';
 import { isProposalValid, proposalLabel, relationTypeLabel, acceptProposal, declineProposal } from './screens/diplomacyScreen';
 import { showToast } from './toast';
 import { rgbCss } from './hud';
@@ -56,12 +58,12 @@ export function conversationHeading(entry: ConversationEntry, player: Empire, st
         }
     }
     if (typeof subject === 'number') return relationTypeLabel(subject);
-    return entry.message.title;
+    return resolveGameText(entry.message.title);
 }
 
 /** The popup card's header text. */
 export function popupTitle(message: EmpireMessage): string {
-    return message.title || message.sender?.name || 'Message';
+    return resolveGameText(message.title) || message.sender?.name || 'Message';
 }
 
 export interface MessagePopupsOptions {
@@ -133,7 +135,7 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
 
     function showPopup(m: EmpireMessage): void {
         popupTitleEl.textContent = popupTitle(m);
-        popupBody.textContent = m.description;
+        popupBody.textContent = resolveGameText(m.description);
         popupFooter.textContent = resolveStarDateDescription(galaxyStarDate(galaxy));
         popup.hidden = false;
     }
@@ -177,7 +179,7 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
         const body = el('div', 'message-conversation-body');
         body.append(
             el('div', 'message-conversation-heading', conversationHeading(entry, player, starDate)),
-            el('div', 'message-conversation-text', entry.message.description),
+            el('div', 'message-conversation-text', resolveGameText(entry.message.description)),
         );
 
         const buttons = el('div', 'message-conversation-buttons');
@@ -223,7 +225,7 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
             const chip = el('button', 'message-chip') as HTMLButtonElement;
             chip.type = 'button';
             if (entry === dialogEntry) chip.classList.add('message-chip-active');
-            chip.title = entry.message.description;
+            chip.title = resolveGameText(entry.message.description);
             chip.append(swatch(entry.sender), el('span', 'message-chip-name', entry.sender?.name ?? 'Message'));
             chip.addEventListener('click', () => openDialog(entry));
             queueRoot.appendChild(chip);
