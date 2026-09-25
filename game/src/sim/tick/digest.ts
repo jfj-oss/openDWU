@@ -101,6 +101,11 @@ export function stateDigest(galaxy: Galaxy): string {
     }
     h.num(galaxy.builtObjects.length);
     for (const bo of galaxy.builtObjects) {
+        // Galaxy.BuiltObjects keeps null holes after BuiltObject.CompleteTeardown until RemoveNullBuiltObjects (huge block).
+        if (bo == null) {
+            h.num(-1);
+            continue;
+        }
         h.num(bo.builtObjectID);
         h.num(bo.xpos);
         h.num(bo.ypos);

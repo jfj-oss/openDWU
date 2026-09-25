@@ -144,10 +144,10 @@ describe('Empire.DoTasks intervals (Empire.1.cs 3427, >= on seconds, touches fir
     const markers = {
         short: 'M4m respondToIncomingEnemyFleetsAndPlanetDestroyers',
         regular: reviewDesignsProbe(() => probeEmpire!), // (no stub left in the regular block: detected by a probe)
-        periodic: 'M4s checkSendPirateRaid',
+        periodic: 'deferred performIntelligenceMissions', // (M4s2 ported CheckSendPirateRaid)
         intermediate: 'M4m taskResupplyShips', // (M4l ported reviewFleetAdmiralBonuses)
         long: touchProbe(() => galaxy, () => probeEmpire!, 'lastLongTouch'), // (M4f ported ReviewMigrationTourism, M4i ReviewColonyWonders)
-        huge: 'M4s checkColoniesForPirateFacilitiesAndAttack', // (M4o ported CleanupInvalidShips; M4u ResetRaceEvents before that)
+        huge: touchProbe(() => galaxy, () => probeEmpire!, 'lastHugeTouch'), // (M4s2 ported CheckColoniesForPirateFacilitiesAndAttack, M4o CleanupInvalidShips)
     };
     const at = (ms: number): string[] => {
         const e = galaxy.empires[1];
@@ -194,9 +194,10 @@ describe('Empire.DoTasks intervals (Empire.1.cs 3427, >= on seconds, touches fir
             // reaches stubs when the faction has fleets, so the short block is not checked here.
             // M4s1 ported PirateCheckMissionsOnOffer, M4i ReviewDesignsAndRetrofit (4173): detected by a probe.
             regular: reviewDesignsProbe(() => galaxy.pirateEmpires[0]),
-            periodic: 'M4s pirateRecalculateEmpireCorruption',
-            intermediate: 'M4s pirateCollectIncomeFromControlledColonies',
-            long: 'M4s doTaskPiratesLongInterval',
+            // M4s2 ported the pirate periodic / intermediate / long steps: other stubs (or the touch) mark the blocks.
+            periodic: 'deferred performIntelligenceMissions',
+            intermediate: 'M4m taskResupplyShips',
+            long: touchProbe(() => galaxy, () => galaxy.pirateEmpires[0], 'lastLongTouch'),
             // No stub left in the pirate huge block (M4u PirateReviewRandomEvents, M4d MaintainBaseResourceLevels, M4o
             // CleanupInvalidShips): detected by a probe on CleanupInvalidShips.
             huge: cleanupInvalidShipsProbe(() => galaxy.pirateEmpires[0]),
@@ -226,8 +227,8 @@ describe('Habitat.DoTasks intervals (Habitat.cs 1399, strict >)', () => {
     // touch write (Habitat.cs 1440 _LastIntermediateTouch = _tempNow) instead of a stub hit.
     const markers = {
         periodic: 'M4q scanForNewOwnerHabitat',
-        // M4c ported ReviewWhetherRefuellingDepot, M4u CheckHabitatIsEmpire; UpdateRaidCountdown (M4s stub) marks the block.
-        long: 'M4s updateRaidCountdownHabitat',
+        // M4c ported ReviewWhetherRefuellingDepot, M4u CheckHabitatIsEmpire, M4s2 UpdateRaidCountdown; the M4q stub marks the block.
+        long: 'M4q independentColoniesRecruitAndTrainTroops',
         huge: 'M4q clearTroopsAwaitingPickup',
     };
     const at = (ms: number): string[] => {
@@ -319,7 +320,7 @@ describe('ShipGroup.DoTasks (ShipGroup.cs 97)', () => {
 });
 
 describe('Galaxy.DoTasks (Galaxy.cs 3054) and DoTasksTimeSensitive (3046)', () => {
-    const markers = { long: 'M4s checkForTerminatedPirateEmpires' };
+    const markers = { long: 'M4s doSuperPirateTasks' }; // (M4s2 ported CheckForTerminatedPirateEmpires)
     // ReviewEmpireTerritory(onlySystems: true) is ported (M4t): detected through the EmpireTerritory call.
     const withTerritory = (fn: () => void): string[] => {
         const spy = vi.spyOn(galaxy.empireTerritory, 'reviewEmpireTerritoryOnlySystems');
@@ -398,9 +399,14 @@ describe('frame driver (Main.Part12.cs method_86)', () => {
 
     it('ticks every built object each frame while there are at most 1000 (cursor ends at Count)', () => {
         const s = schedulerState(g);
+        // The deferred Empire / Galaxy ticks at the end of the frame can add ships (M4s2 pirate construction), so the
+        // cursor is compared with the list as it was when the built objects were ticked.
+        const before = g.builtObjects.slice();
+        // A full round (Count iterations) from cursor c ends back at c, or at Count when c is 0 / past the end.
+        const start = s.builtObjectCursor;
         runSimFrame(g, 16);
-        expect(g.builtObjects.every((b) => b.lastTouch === g.nowMs)).toBe(true);
-        expect(s.builtObjectCursor).toBe(g.builtObjects.length);
+        expect(before.every((b) => b == null || b.lastTouch === g.nowMs)).toBe(true);
+        expect(s.builtObjectCursor).toBe(start === 0 || start >= before.length ? before.length : start);
     });
 });
 
@@ -419,7 +425,7 @@ describe('game-start switch-over entry points (tick/gameStart.ts)', () => {
         resetTodoCounts();
         runGameStartGalaxyTick(galaxy);
         expect([galaxy.lastGalaxyProcessTime, galaxy.lastGalaxyHugeProcessTime]).toEqual([0, 0]);
-        expect(todoHits()['M4s checkForTerminatedPirateEmpires']).toBe(1);
+        expect(todoHits()['M4s doSuperPirateTasks']).toBe(1);
         expect(runGameStartHabitatTick(galaxy, galaxy.empires[0].capital!)).toBe(true);
     });
 });

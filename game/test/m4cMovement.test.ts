@@ -259,6 +259,7 @@ describe('harness: ships with missions move and hyperjump', () => {
         const r = runGameSeconds(g, 600, {
             onFrame: (gal) => {
                 for (const b of gal.builtObjects) {
+                    if (b == null) continue; // teardown null holes
                     if (b.hyperjumpJustExited) exits++;
                     const m = b.mission as { fastPeekCurrentCommand(): { action: CommandAction } | null } | null;
                     const c = m?.fastPeekCurrentCommand();
@@ -271,6 +272,7 @@ describe('harness: ships with missions move and hyperjump', () => {
         expect(exits).toBeGreaterThan(0);
         let farMovers = 0;
         for (const b of g.builtObjects) {
+            if (b == null) continue; // teardown null holes
             const s = start.get(b);
             expect(Number.isFinite(b.xpos) && Number.isFinite(b.ypos)).toBe(true);
             const idx = g.resolveIndex(b.xpos, b.ypos);

@@ -416,7 +416,10 @@ describe('harness smoke (seed 1, 480 game-s)', () => {
         expect(hasDefend()).toBe(true);
         expect(offers.some((a) => a!.type === EmpireActivityType.Smuggle && a!.requestingEmpire === g.independentEmpire)).toBe(true);
         // Independent smuggling offers carry a related state order at the colony.
-        for (const a of offers) if (a!.type === EmpireActivityType.Smuggle) expect(g.orders.contains(a!.relatedOrder!)).toBe(true);
+        // (M4s2: the loop can now run past an offer's expiry; Galaxy.1.cs CancelExpiredOrders then drops its order while the
+        // expired offer is still listed, so only live offers are checked.)
+        const now = galaxyStarDate(g);
+        for (const a of offers) if (a!.type === EmpireActivityType.Smuggle && a!.expiryDate > now) expect(g.orders.contains(a!.relatedOrder!)).toBe(true);
         expect(g.pirateEmpires.some((p) => p.pirateMissions.count > 0)).toBe(true);
     }, 300000);
 });

@@ -62,6 +62,7 @@ import { loadEmpirePolicy } from './researchSystem';
 import { SystemVisibilityStatus } from './visibility';
 import { BuiltObjectSubRole } from './builtObjectTypes';
 import { BattleTactics, BuiltObjectFleeWhen, BuiltObjectRole, InvasionTactics, buildDefaultDesignSpecifications, getDefaultDesignSpecificationBySubRole } from './data/designSpecifications';
+import { countResourceSourcesForEmpire } from './stationPlacement';
 
 // Port of PiratePlayStyle.cs (member order exact).
 export enum PiratePlayStyle {
@@ -400,48 +401,8 @@ function checkSystemOwnership(galaxy: Galaxy, systemStar: Habitat | null): { emp
     return { empire: null, disputed };
 }
 
-// Galaxy.7.cs CountResourceSourcesForEmpire(empire, resourceId,
-// includeConstructionShipsBuildingMiningStations) (445). No Rnd.
-function countResourceSourcesForEmpire(galaxy: Galaxy, empire: Empire | null, resourceId: number, includeConstructionShipsBuildingMiningStations: boolean): number {
-    void galaxy;
-    let num = 0;
-    const habitatList: Habitat[] = [];
-    if (empire !== null) {
-        if (empire.colonies != null) {
-            for (let i = 0; i < empire.colonies.length; i++) {
-                const habitat = empire.colonies[i];
-                if (habitat != null && habitat.resources != null) {
-                    const num2 = habitat.resources.findIndex((r) => r.resourceId === resourceId);
-                    if (num2 >= 0) {
-                        habitatList.push(habitat);
-                        num++;
-                    }
-                }
-            }
-        }
-        if (empire.miningStations != null) {
-            for (let j = 0; j < empire.miningStations.length; j++) {
-                const builtObject = empire.miningStations[j];
-                if (builtObject == null) continue;
-                const parentHabitat = builtObject.parentHabitat;
-                if (parentHabitat !== null && parentHabitat.resources != null) {
-                    const num3 = parentHabitat.resources.findIndex((r) => r.resourceId === resourceId);
-                    if (num3 >= 0) {
-                        habitatList.push(parentHabitat);
-                        num++;
-                    }
-                }
-            }
-        }
-        if (includeConstructionShipsBuildingMiningStations && empire.constructionShips != null) {
-            // TODO(port): BuiltObject.Mission (Build missions with a TargetHabitat) — missions
-            // are not ported; no construction ship has a mission during game setup, so C# counts
-            // nothing here.
-        }
-    }
-    return num;
-}
-
+// Galaxy.7.cs 445 CountResourceSourcesForEmpire: the shared port in stationPlacement.ts (M4s2 reconciled the former
+// private copy here, which skipped the construction-ship Build-mission branch, Galaxy.7.cs 487-503).
 // Empire.6.cs CheckResourceSupplyMeetsExpected(resource, isCriticalEmpireResource,
 // oversupplyFactor) (1540; the 2-arg overload 1535 passes 1.0). No Rnd.
 function checkResourceSupplyMeetsExpectedBool(galaxy: Galaxy, empire: Empire, resourceId: number, isCriticalEmpireResource: boolean, oversupplyFactor = 1.0): boolean {
@@ -483,7 +444,7 @@ function checkResourceSupplyMeetsExpectedBool(galaxy: Galaxy, empire: Empire, re
         num = 1;
     }
     num = Math.trunc(num * oversupplyFactor);
-    const num5 = countResourceSourcesForEmpire(galaxy, empire, resourceId, true);
+    const num5 = countResourceSourcesForEmpire(empire, resourceId, true);
     if (num5 < num) {
         return false;
     }
