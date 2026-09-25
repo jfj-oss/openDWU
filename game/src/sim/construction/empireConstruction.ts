@@ -33,7 +33,7 @@
 //   Retirement / retrofit / scrapping: none directly (CompleteTeardown / InflictDamage are M4o's).
 
 import { registerTodo, todo } from '../tick/todo';
-import type { Galaxy } from '../galaxy';
+import { calculateAngleFromCoords, type Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import { AutomationLevel, empireGovernmentAttributes } from '../empire';
 import { BuiltObject } from '../builtObject';
@@ -2307,28 +2307,9 @@ export function buildNewShips(galaxy: Galaxy, empire: Empire, designs: (Design |
 
 // ---------------------------------------------------------------------------------------------------------------
 // Empire.6.cs 1991-2180 PurchaseNewBuiltObject — buy one design at a given yard (the player's Build orders,
-// Main.Part7.cs 379 / 1180, Main.Part4.cs 2867 method_539, ConstructionYardPurchaser). Player input only here: the
-// tick-path caller (BuiltObject.2.cs 1110, cmdTroops Colonize ColonyActionForNewBuildDesign) is still a TODO(port).
+// Main.Part7.cs 379 / 1180, Main.Part4.cs 2867 method_539, ConstructionYardPurchaser) and the tick-path caller
+// BuiltObject.2.cs 1110 (missions/cmdTroops.ts Colonize, Policy.ColonyActionForNewBuildDesign).
 // ---------------------------------------------------------------------------------------------------------------
-
-/**
- * Galaxy.6.cs 2737 CalculateAngleFromCoords. Ported here as a free function because Galaxy's private copy
- * (galaxy.ts calculateAngleFromCoords) negates the (x >= centerX, y < centerY) branch, which the C# does not.
- */
-function calculateAngleFromCoords(x: number, y: number, centerX: number, centerY: number, distance: number): number {
-    const num2 = Math.PI / 2.0;
-    const num3 = num2 * -1.0;
-    if (x < centerX) {
-        if (y < centerY) {
-            return num3 - (num2 + Math.asin((y - centerY) / distance));
-        }
-        return num2 + (num2 - Math.asin((y - centerY) / distance));
-    }
-    if (y < centerY) {
-        return Math.asin((y - centerY) / distance);
-    }
-    return Math.asin((y - centerY) / distance);
-}
 
 /** Empire.7.cs 1565 ColonizableHabitatTypesForEmpireTechOnly(empire). No Rnd. */
 export function colonizableHabitatTypesForEmpireTechOnly(empire: Empire): HabitatType[] {
