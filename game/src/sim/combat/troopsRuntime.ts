@@ -465,7 +465,7 @@ export function checkAssignGarrisonTroopsAtPenalColonyMission(galaxy: Galaxy, em
 }
 
 /** TroopList.cs 402 GetTroopsNotGarrisonedNotAwaitingPickup(). */
-function getTroopsNotGarrisonedNotAwaitingPickup(list: TroopList): TroopList {
+export function getTroopsNotGarrisonedNotAwaitingPickup(list: TroopList): TroopList {
     const result = new TroopList();
     for (let index = 0; index < list.count; ++index) {
         const troop = list.items[index];
