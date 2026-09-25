@@ -2803,7 +2803,7 @@ export class Galaxy {
     // Port of ResourceDefinitionList.cs ResolveValidResourcesForHabitatExcludeManufactured
     // (line 111): resource IDs with a prevalence valid for this habitat
     // (same test as CheckPrevalenceValidForHabitat), excluding manufactured.
-    private resolveValidResourcesForHabitatExcludeManufactured(habitat: Habitat): number[] {
+    resolveValidResourcesForHabitatExcludeManufactured(habitat: Habitat): number[] {
         const list: number[] = [];
         for (const def of this.resources) {
             if (def === null || def.colonyManufacturingLevel > 0 || def.distributions.length <= 0) continue;

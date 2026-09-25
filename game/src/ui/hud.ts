@@ -36,6 +36,7 @@ import { showToast } from './toast';
 // [policy] begin
 import { toggleEmpirePolicy } from './screens/empirePolicy';
 // [policy] end
+import { createSelectionActionBar, refreshSelectionActionBar } from './orderMenu'; // [ordermenu]
 
 // Port of Main.Part12.cs LoadUiChromeButtons (381–520): the control → chrome
 // button image mapping. The original loads each control's image from
@@ -767,6 +768,11 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
     body.className = 'hud-selection-body';
     panel.appendChild(body);
 
+    // [ordermenu] begin
+    // 17c: btnSelectionAction1-8 (Main.Part3.cs 1120-3805, method_593) under the rows; src/ui/orderMenu.ts.
+    panel.appendChild(createSelectionActionBar());
+    // [ordermenu] end
+
     // Footer: ‹ › cycler pair + seven cycle chips.
     const footer = document.createElement('div');
     footer.className = 'hud-selection-footer';
@@ -974,6 +980,7 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
     wiring.onSelectionChange = (sel) => {
         currentSelection = sel;
         refresh();
+        refreshSelectionActionBar(); // [ordermenu]
         wiring.afterSelectionChange?.(sel);
     };
     // Task 14b: ship/base status (speed, fuel, mission) changes every tick — re-render

@@ -20,7 +20,6 @@ import type { Galaxy } from './galaxy';
 import type { Empire } from './empire';
 import type { BuiltObject } from './builtObject';
 import type { Habitat } from './types';
-import { registerTodo, todo } from './tick/todo';
 import { GalaxyLocationEffectType, GalaxyLocationType, type GalaxyLocation } from './galaxyLocation';
 import { getBuiltObjectsAtLocation } from './stationPlacement';
 import { MAX_SOLAR_SYSTEM_SIZE } from './visibility';
@@ -36,7 +35,7 @@ import { determineAngle, type Creature } from './creature';
 import { isBuiltObject, isCreature, isHabitat, type StellarObject } from './missions/mission';
 import { notifyOfAttackBuiltObject, notifyOfAttackHabitat } from './combat/attackAI';
 import { stellarAttackers, stellarPursuers } from './combat/threats';
-import { doCharacterEventForList, type Character, type CharacterEventType } from './characters';
+import { Character, doCharacterEventForList, type CharacterEventType } from './characters';
 import * as characterRuntime from './characterRuntime';
 import { EventMessageType, DisasterEventType, RaceEventType, raceImmuneToPlagues, galaxyPlagues, getPlagueUnhappinessFactorWithPlague } from './eventTypes';
 export { EventMessageType, DisasterEventType, RaceEventType, raceImmuneToPlagues, galaxyPlagues, getPlagueUnhappinessFactorWithPlague };
@@ -63,10 +62,14 @@ import type { Population } from './population';
 import { gameText } from './colonyTick';
 import { CreatureType } from './creature';
 import { REAL_SECONDS_IN_GALACTIC_YEAR, galaxyNow } from './tick/simTime';
-import { EmpireMessageType, sendMessageToEmpire, sendMessageToEmpireWithTitle } from './messages';
+import { EmpireMessage, EmpireMessageType, sendEmpireMessage, sendMessageToEmpire, sendMessageToEmpireWithTitle } from './messages';
 import { clearColony } from './combat/invasion';
-import { obtainDiplomaticRelation, obtainEmpireEvaluation, processRelationChange, type EmpireEvaluation } from './diplomacy';
-import { obtainPirateRelation } from './pirateRelations';
+import { DiplomaticRelation, obtainDiplomaticRelation, obtainEmpireEvaluation, processRelationChange, type EmpireEvaluation } from './diplomacy';
+import { obtainPirateRelation, PirateRelationType } from './pirateRelations';
+import { PlanetaryFacility } from './construction/facilities';
+import type { Facility } from './data/facilities';
+import type { Plague } from './data/plagues';
+import { facilityType, type TechNode } from './researchSystem';
 import { cancelBlockades, cancelBlockadeBuiltObject, cancelBlockadeColony, conditionCheckLimit, getBlockadesForEmpire } from './fleets/blockades';
 import { cancelAttacksAgainstEmpire } from './pirates/pirateRelationsAI';
 import { clearPirateColonyFacilities } from './pirates/pirateGalaxyTick';
@@ -84,14 +87,276 @@ export function sendEventMessageToEmpire(empire: Empire, eventMessageType: Event
     }
 }
 
-const T_sendNewsBroadcast = registerTodo('deferred', 'SendNewsBroadcast (GalacticNewsNet messages, UI)');
-/**
- * Empire.7.cs 2961-2990 SendNewsBroadcast(eventType, subject[, disasterType, warStartEnd, wonderBegun[, messageType], extraData])
- * → ThreadPool SendNewsBroadcastCore (3008): GalacticNewsNet messages to every empire; no Rnd. TODO(port) M9: news broadcasts.
- */
-export function sendNewsBroadcast(empire: Empire, eventType: EventMessageType, subject: unknown, disasterType: DisasterEventType = DisasterEventType.Undefined, warStartEnd = false, wonderBegun = false, messageType = 0, extraData: unknown = null): void {
-    void empire; void eventType; void subject; void disasterType; void warStartEnd; void wonderBegun; void messageType; void extraData;
-    todo(T_sendNewsBroadcast);
+// ---------------------------------------------------------------------------
+// Galactic NewsNet — Empire.7.cs 2961-3398 SendNewsBroadcast* / SendNewsBroadcastCore. No Rnd anywhere in the path.
+// ---------------------------------------------------------------------------
+
+/** Galaxy.2.cs 2472 ResolveDescription(DisasterEventType) (messages.ts resolveDescription / enumText.ts DISASTER_EVENT). */
+export function resolveDisasterDescription(disasterType: DisasterEventType): string {
+    return resolveDescription(DisasterEventType as unknown as Record<number, string>, disasterType);
+}
+
+/** `subject is PlanetaryFacilityDefinition` (the TS definition is the plain facilities.txt record). */
+function isPlanetaryFacilityDefinition(o: unknown): o is Facility {
+    return typeof o === 'object' && o !== null && !(o instanceof PlanetaryFacility) && 'facilityId' in o && 'wonderType' in o;
+}
+
+/** `subject is ResearchNode` (the TS node is the TechNode record; Name = def.name). */
+function isResearchNode(o: unknown): o is TechNode {
+    return typeof o === 'object' && o !== null && 'def' in o && 'isResearched' in o;
+}
+
+/** `extraData is Plague` (plain plagues.txt record). */
+function isPlague(o: unknown): o is Plague {
+    return typeof o === 'object' && o !== null && 'plagueId' in o && 'mortalityRate' in o;
+}
+
+/** Empire.7.cs 2961 SendNewsBroadcast(eventType, subject) and the 2976 / 2981 / 2986 overloads (defaults = the C# chain). */
+export function sendNewsBroadcast(
+    empire: Empire,
+    eventType: EventMessageType,
+    subject: unknown,
+    disasterType: DisasterEventType = DisasterEventType.Undefined,
+    warStartEnd = false,
+    wonderBegun = false,
+    messageType: EmpireMessageType = EmpireMessageType.Undefined,
+    extraData: unknown = null,
+): void {
+    // Empire.7.cs 2986-2990: the C# queues SendNewsBroadcastCallback (2992) on the ThreadPool; the port runs
+    // SendNewsBroadcastCore synchronously at the call site (single-threaded sim; the Core draws no Rnd).
+    sendNewsBroadcastCore(empire, eventType, subject, disasterType, warStartEnd, wonderBegun, messageType, extraData);
+}
+
+/** Empire.7.cs 2966 SendNewsBroadcastWarStartEnd(relation). */
+export function sendNewsBroadcastWarStartEnd(empire: Empire, relation: DiplomaticRelation): void {
+    sendNewsBroadcast(empire, EventMessageType.Undefined, relation, DisasterEventType.Undefined, true, false);
+}
+
+/** Empire.7.cs 2971 SendNewsBroadcastWonderBegin(wonder, colony). */
+export function sendNewsBroadcastWonderBegin(empire: Empire, wonder: Facility, colony: Habitat): void {
+    sendNewsBroadcast(empire, EventMessageType.Undefined, wonder, DisasterEventType.Undefined, false, true, EmpireMessageType.Undefined, colony);
+}
+
+/** Empire.7.cs 3008-3398 SendNewsBroadcastCore. `this` = empire; `_Galaxy` = empire.galaxy. */
+export function sendNewsBroadcastCore(
+    empire: Empire,
+    eventType: EventMessageType,
+    subject: unknown,
+    disasterType: DisasterEventType,
+    warStartEnd: boolean,
+    wonderBegun: boolean,
+    messageType: EmpireMessageType,
+    extraData: unknown,
+): void {
+    const galaxy = empire.galaxy;
+    let text = '';
+    // 3011-3268: build the news text.
+    switch (messageType) {
+        case EmpireMessageType.EmpireDefeated: {
+            // 3013-3029
+            if (!(subject instanceof EmpireClass)) break;
+            const empire5 = subject;
+            let empire6: Empire | null = null;
+            if (extraData != null && extraData instanceof EmpireClass) empire6 = extraData;
+            text = empire6 != null ? gameText('X has been defeated by Y', empire5.name, empire6.name) : gameText('X has been defeated', empire5.name);
+            break;
+        }
+        case EmpireMessageType.ResearchBreakthrough: {
+            // 3031-3047
+            if (subject == null || !isResearchNode(subject)) break;
+            const researchNode = subject;
+            let empire4: Empire | null = null;
+            if (extraData != null && extraData instanceof EmpireClass) empire4 = extraData;
+            text = empire4 != null
+                ? gameText('The EMPIRE has made a breakthrough in the key technology of X', empire4.name, researchNode.def.name)
+                : gameText('An empire has made a breakthrough in the key technology of X', researchNode.def.name);
+            break;
+        }
+        default:
+            if (warStartEnd) {
+                // 3049-3066
+                if (!(subject instanceof DiplomaticRelation)) break;
+                const diplomaticRelation = subject;
+                const empire1 = diplomaticRelation.initiator;
+                const empire2 = diplomaticRelation.thisEmpire !== empire1 ? diplomaticRelation.thisEmpire : diplomaticRelation.otherEmpire;
+                if (empire1 != null && empire2 != null) {
+                    text = diplomaticRelation.type !== DiplomaticRelationType.War
+                        ? gameText('The war between X and Y has ended', empire1.name, empire2.name)
+                        : gameText('X has declared war on Y', empire1.name, empire2.name);
+                }
+            } else if (wonderBegun) {
+                // 3067-3093
+                if (!isPlanetaryFacilityDefinition(subject)) break;
+                const planetaryFacilityDefinition = subject;
+                if (facilityType(planetaryFacilityDefinition) !== PlanetaryFacilityType.Wonder) break;
+                if (extraData != null && isHabitat(extraData)) {
+                    const habitat = extraData;
+                    const habitat2 = galaxy.determineHabitatSystemStar(habitat);
+                    text = gameText('Wonder construction begun WONDER COLONY SYSTEM', planetaryFacilityDefinition.name, habitat.name, habitat2.name);
+                } else {
+                    text = gameText('Wonder construction begun WONDER', planetaryFacilityDefinition.name);
+                }
+            } else {
+                // 3094-3266
+                if (eventType === EventMessageType.Undefined) break;
+                switch (eventType) {
+                    case EventMessageType.CreatureOutbreak: {
+                        // 3102-3119
+                        if (subject == null || !isCreature(subject)) break;
+                        const creature = subject;
+                        if (creature.type === CreatureType.SilverMist && extraData != null && isHabitat(extraData)) {
+                            const habitat3 = extraData;
+                            const habitat4 = galaxy.determineHabitatSystemStar(habitat3);
+                            const arg = empireEvents.resolveSectorDescription(galaxy, habitat3.xpos, habitat3.ypos);
+                            text = gameText('SilverMist Released Broadcast', habitat3.name, habitat4.name, arg);
+                        }
+                        break;
+                    }
+                    case EventMessageType.DisasterEvent:
+                        // 3120-3153
+                        if (disasterType === DisasterEventType.EconomicCrisis) {
+                            text = resolveDisasterDescription(disasterType);
+                        } else {
+                            if (subject == null || !isHabitat(subject)) break;
+                            const habitat7 = subject;
+                            if (messageType === EmpireMessageType.ColonyLost && disasterType === DisasterEventType.Plague) {
+                                let arg2 = '';
+                                let arg3 = '';
+                                if (habitat7.empire != null) arg2 = habitat7.empire.name;
+                                if (extraData != null && isPlague(extraData)) arg3 = extraData.name;
+                                text = gameText('News EMPIRE COLONY has been completely wiped out by PLAGUE', arg2, habitat7.name, arg3);
+                            } else {
+                                text = gameText('Disaster at COLONY', resolveDisasterDescription(disasterType), habitat7.name);
+                            }
+                        }
+                        break;
+                    case EventMessageType.WonderBuilt: {
+                        // 3154-3183
+                        if (!(subject instanceof PlanetaryFacility)) break;
+                        const planetaryFacility = subject;
+                        if (planetaryFacility.type !== PlanetaryFacilityType.Wonder) break;
+                        if (extraData != null && isHabitat(extraData)) {
+                            const habitat5 = extraData;
+                            const habitat6 = galaxy.determineHabitatSystemStar(habitat5);
+                            text = gameText('Wonder construction completed WONDER COLONY SYSTEM', planetaryFacility.name, habitat5.name, habitat6.name);
+                        } else {
+                            text = gameText('Wonder construction completed WONDER', planetaryFacility.name);
+                        }
+                        break;
+                    }
+                    case EventMessageType.LeaderChange:
+                        // 3184-3193
+                        if (subject != null && subject instanceof Character) {
+                            const character2 = subject;
+                            if (character2.role === CharacterRole.Leader) text = gameText('Empire Leader Replaced', empire.name, character2.name);
+                        }
+                        break;
+                    case EventMessageType.PhantomPirates:
+                        // 3194-3202
+                        if (subject != null && subject instanceof EmpireClass) text = gameText('Phantom Pirates encountered', subject.name);
+                        break;
+                    case EventMessageType.CharacterEvent:
+                        // 3203-3212
+                        if (subject != null && subject instanceof Character) {
+                            const character = subject;
+                            if (character.role === CharacterRole.Leader || character.role === CharacterRole.PirateLeader) text = gameText('Empire Leader killed', empire.name, character.name);
+                        }
+                        break;
+                }
+            }
+            break;
+    }
+    // 3269-3334: every met, non-pirate empire in this empire's DiplomaticRelations.
+    const newsNet = gameText('Galactic NewsNet').toUpperCase(); // .ToUpper(CultureInfo.InvariantCulture)
+    if (empire.diplomaticRelations != null) {
+        const relations = empire.diplomaticRelations;
+        for (let i = 0; i < relations.count; i++) {
+            const diplomaticRelation2 = relations.at(i);
+            if (diplomaticRelation2 == null || diplomaticRelation2.type === DiplomaticRelationType.NotMet || diplomaticRelation2.otherEmpire == null || diplomaticRelation2.otherEmpire === empire || diplomaticRelation2.otherEmpire.pirateEmpireBaseHabitat != null) continue;
+            const otherEmpire = diplomaticRelation2.otherEmpire;
+            let flag = false;
+            if (messageType === EmpireMessageType.EmpireDefeated) flag = true;
+            else if (warStartEnd) flag = true;
+            else if (wonderBegun) flag = true;
+            else if (eventType !== EventMessageType.Undefined) {
+                switch (eventType) {
+                    case EventMessageType.DisasterEvent:
+                        if (disasterType === DisasterEventType.EconomicCrisis) {
+                            flag = true;
+                        } else if (isHabitat(subject)) {
+                            if (otherEmpire.visibility.checkSystemExplored(subject.systemIndex)) flag = true;
+                        }
+                        break;
+                    case EventMessageType.WonderBuilt:
+                    case EventMessageType.CreatureOutbreak:
+                    case EventMessageType.PhantomPirates:
+                    case EventMessageType.LeaderChange:
+                        flag = true;
+                        break;
+                    case EventMessageType.CharacterEvent:
+                        if (text !== '') flag = true;
+                        break;
+                }
+            }
+            if (flag) {
+                const empireMessage = new EmpireMessage(empire, EmpireMessageType.GalacticNewsNet, subject);
+                empireMessage.description = newsNet + ': ' + empire.name + ' - ' + text;
+                empireMessage.title = newsNet + ': ' + empire.name;
+                sendEmpireMessage(empireMessage, diplomaticRelation2.otherEmpire);
+            }
+        }
+    }
+    // 3335-3397: every active pirate faction, filtered by this empire's pirate relation with it.
+    for (let j = 0; j < galaxy.pirateEmpires.length; j++) {
+        const empire7 = galaxy.pirateEmpires[j];
+        if (empire7 == null || !empire7.active || empire7.pirateEmpireBaseHabitat == null) continue;
+        const pirateRelation = obtainPirateRelation(empire, empire7); // may AddPirateRelation (NotMet), as in the C#
+        const met = pirateRelation.type !== PirateRelationType.NotMet;
+        let flag2 = false;
+        switch (messageType) {
+            case EmpireMessageType.EmpireDefeated:
+                if (met) flag2 = true;
+                break;
+            case EmpireMessageType.ResearchBreakthrough:
+                flag2 = true;
+                break;
+            default:
+                if (warStartEnd) {
+                    if (met) flag2 = true;
+                } else if (wonderBegun) {
+                    if (met) flag2 = true;
+                } else {
+                    if (eventType === EventMessageType.Undefined) break;
+                    switch (eventType) {
+                        case EventMessageType.DisasterEvent:
+                            if (disasterType === DisasterEventType.EconomicCrisis) {
+                                if (met) flag2 = true;
+                            } else if (isHabitat(subject)) {
+                                if (empire7.visibility.checkSystemExplored(subject.systemIndex)) flag2 = true;
+                            }
+                            break;
+                        case EventMessageType.WonderBuilt:
+                        case EventMessageType.CreatureOutbreak:
+                        case EventMessageType.LeaderChange:
+                            if (met) flag2 = true;
+                            break;
+                        case EventMessageType.PhantomPirates:
+                            flag2 = true;
+                            break;
+                        case EventMessageType.CharacterEvent:
+                            if (text !== '' && met) flag2 = true;
+                            break;
+                    }
+                }
+                break;
+        }
+        if (flag2) {
+            const empireMessage2 = new EmpireMessage(empire, EmpireMessageType.GalacticNewsNet, subject);
+            empireMessage2.description = newsNet + ': ' + empire.name + ' - ' + text;
+            empireMessage2.title = newsNet + ': ' + empire.name;
+            sendEmpireMessage(empireMessage2, empire7);
+        }
+    }
 }
 
 /** Galaxy.5.cs 3372 FindAbandonedShipsInDebrisField(location). */

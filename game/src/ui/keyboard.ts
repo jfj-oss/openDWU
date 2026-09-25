@@ -27,6 +27,9 @@ import { toggleMessageHistory } from './screens/messageHistory';
 import { toggleGameOptionsPanel } from './screens/gameOptionsPanel'; // [16d]
 import { toggleEmpireComparison } from './screens/empireComparison'; // [15d]
 import { showToast } from './toast';
+// [advisor] begin
+import { toggleAdvisorPanel } from './advisorPanel';
+// [advisor] end
 
 /** Modifier state of a key event (Ctrl/Alt/Shift). */
 export interface KeyModifiers {
@@ -74,6 +77,9 @@ export const KEY_BINDINGS: KeyBinding[] = [
     { key: 'H', modifiers: NONE, action: 'messageHistoryScreen', description: 'Message History' },
     { key: 'V', modifiers: NONE, action: 'empireComparisonScreen', description: 'Empire Comparison and Victory Conditions screen' },
     { key: 'O', modifiers: NONE, action: 'gameOptionsScreen', description: 'Game Options screen' },
+    // [advisor] begin — 18a: not in the original table (the original has no advisor chat).
+    { key: 'T', modifiers: NONE, action: 'advisorChat', description: 'Talk to your fleet admiral (advisor chat, needs a local model server)' },
+    // [advisor] end
     // "Pause or Spacebar": both keys pause/resume.
     { key: 'Pause', modifiers: NONE, action: 'togglePause', description: 'Pauses or resumes the game' },
     { key: 'Space', modifiers: NONE, action: 'togglePause', description: 'Pauses or resumes the game' },
@@ -330,6 +336,13 @@ export function dispatchKey(
             break;
         }
         // [/16c]
+        // [advisor] begin T: chat advisor (task 18a).
+        case 'advisorChat': {
+            const src = getEmpireSummarySource();
+            if (src) toggleAdvisorPanel({ galaxy: src.empire.galaxy, player: src.empire });
+            break;
+        }
+        // [advisor] end
         default:
             // Registered but not implemented yet.
             console.info(`TODO(key): ${binding.action}`);
