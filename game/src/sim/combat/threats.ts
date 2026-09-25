@@ -36,7 +36,8 @@ import { strategicValue } from '../territory';
 import { determineClosestIndexEdgesCustom } from '../stationPlacement';
 import { EmpireMessageType, sendMessageToEmpire } from '../messages';
 import { CharacterEventType, CharacterSkillType, doCharacterEventForList, type Character } from '../characters';
-import { checkSendPreWarpProgressEventMessage } from '../events';
+import { EventMessageType, checkSendPreWarpProgressEventMessage, sendEventMessageToEmpire, sendNewsBroadcast } from '../events';
+import { gameText } from '../colonyTick';
 import { PreWarpProgressEventType, doEmpireEncounter } from '../exploration';
 import { BuiltObjectMissionPriority, BuiltObjectMissionType, CommandAction, builtObjectMission, isBuiltObject, isCreature, type BuiltObjectMission, type StellarObject } from '../missions/mission';
 import { assignMission, clearPreviousMissionRequirements, recordRevertMission } from '../missions/assign';
@@ -279,9 +280,8 @@ function isShipGroupTarget(target: ThreatTarget): target is ShipGroup {
 }
 
 /**
- * Galaxy.7.cs 3936 DoSuperPirateEmpireEncounter(discoverer, pirateEmpire, x, y). Its only effects are the phantom-pirates event
- * message + news broadcast (TODO(port) M9 UI text: SendEventMessageToEmpire / SendNewsBroadcast are not queued); the
- * side-effect-free nearest-system lookup is kept in C# order.
+ * Galaxy.7.cs 3936 DoSuperPirateEmpireEncounter(discoverer, pirateEmpire, x, y): the phantom-pirates event message and
+ * the Galactic NewsNet broadcast.
  */
 export function doSuperPirateEmpireEncounter(galaxy: Galaxy, discoverer: Empire | null, pirateEmpire: Empire | null, x: number, y: number): void {
     if (discoverer === null || pirateEmpire === null || pirateEmpire.pirateEmpireBaseHabitat === null || !pirateEmpire.pirateEmpireSuperPirates || discoverer.knownPirateEmpires.includes(pirateEmpire)) {
@@ -295,7 +295,10 @@ export function doSuperPirateEmpireEncounter(galaxy: Galaxy, discoverer: Empire 
             habitat = null;
         }
     }
-    // 3949-3950: discoverer.SendEventMessageToEmpire(PhantomPirates, …) + SendNewsBroadcast — UI-only message queues.
+    // 3948-3954
+    const message = habitat === null ? gameText('Encounter Message Phantom Pirates', pirateEmpire.name, '') : gameText('Encounter Message Phantom Pirates', pirateEmpire.name, habitat.name);
+    sendEventMessageToEmpire(discoverer, EventMessageType.PhantomPirates, gameText('Phantom Pirates Encountered') + '!', message, pirateEmpire, habitat);
+    sendNewsBroadcast(discoverer, EventMessageType.PhantomPirates, pirateEmpire);
 }
 
 /** The pirate-relation switch shared by the BuiltObject / Fighter DetermineThreatLevel bodies (3543-3559 / 3719-3735). */

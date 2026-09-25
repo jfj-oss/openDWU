@@ -45,10 +45,10 @@ import {
     pirateRelationEvaluation,
     processEndOfWarWithEmpire,
     resetAttitudeLevelsAtEndOfWar,
-    sendNewsBroadcastWarStartEnd,
     setCivilityRating,
     weightedMilitaryPotency,
 } from './diplomacyTick';
+import { sendNewsBroadcastWarStartEnd } from './events';
 import type { BuiltObject } from './builtObject';
 import { Habitat as HabitatClass, HabitatType, type Habitat, type SystemInfo } from './types';
 import type { Race } from './data/races';
@@ -1419,7 +1419,7 @@ export function giveTradeableItem(galaxy: Galaxy, giver: Empire, receiver: Empir
                 processEndOfWarWithEmpire(galaxy, giver, receiver);
                 processEndOfWarWithEmpire(galaxy, receiver, giver);
                 changeDiplomaticRelation(galaxy, giver, dr, DiplomaticRelationType.None);
-                sendNewsBroadcastWarStartEnd(dr);
+                sendNewsBroadcastWarStartEnd(giver, dr);
             }
             break;
         case TradeableItemType.LiftTradeSanctions:
@@ -1448,7 +1448,7 @@ export function giveTradeableItem(galaxy: Galaxy, giver: Empire, receiver: Empir
                     processEndOfWarWithEmpire(galaxy, empire5, giver);
                     changeDiplomaticRelation(galaxy, giver, dr, DiplomaticRelationType.None);
                     sendMessageToEmpire(giver, empire5, EmpireMessageType.DiplomaticRelationChange, DiplomaticRelationType.None, getText('We are ending our war with you'), { x: 0, y: 0 }, resolveDescription(DiplomaticRelationType, DiplomaticRelationType.War));
-                    sendNewsBroadcastWarStartEnd(dr);
+                    sendNewsBroadcastWarStartEnd(giver, dr);
                 }
             }
             break;

@@ -19,6 +19,7 @@ import { AdvisorMessageType, checkTaskAuthorized, type RefCount } from '../diplo
 import { gameText } from '../colonyTick';
 import { EmpireMessageType, sendMessageToEmpire } from '../messages';
 import { galaxyStarDate } from '../tick/simTime';
+import { sendNewsBroadcastWonderBegin } from '../events';
 import { doResearchBreakthrough } from '../researchTick';
 import { pirateEconomyPerformExpense } from '../pirates/pirateAI';
 import { PirateExpenseType } from '../pirates/pirateEconomy';
@@ -354,7 +355,7 @@ export function reviewColonyWonders(galaxy: Galaxy, empire: Empire): void {
                     break;
             }
             if (habitat2 !== null) {
-                // TODO(port) M9: SendNewsBroadcastWonderBegin(wonder, colony) (Empire.7.cs 2971) — ThreadPool news item, no sim state.
+                sendNewsBroadcastWonderBegin(empire, planetaryFacilityDefinition, habitat2); // Empire.3.cs 203
             }
         }
     }
