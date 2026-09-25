@@ -26,14 +26,23 @@ import { closeEmpiresList } from './ui/screens/empiresList';
 import { closeDiplomacyScreen } from './ui/screens/diplomacyScreen'; // [15a]
 import { closeExpansionPlanner } from './ui/screens/expansionPlanner'; // [16a]
 import { closeColoniesList } from './ui/screens/coloniesList';
+// [tradenego] begin
+import { closeTradePanel } from './ui/screens/tradePanel';
+// [tradenego] end
 import { closeShipsAndBasesList } from './ui/screens/shipsAndBasesList';
 import { closeResearchScreen } from './ui/screens/researchScreen'; // [15b]
 import { closeShipDesigns } from './ui/screens/shipDesigns'; // [16b]
 import { closeEmpireSummary, setEmpireSummarySource } from './ui/screens/empireSummary';
+// [advisor] begin
+import { closeAdvisorPanel } from './ui/advisorPanel';
+// [advisor] end
 import { closeMessageHistory } from './ui/screens/messageHistory';
 import { closeFleetsList } from './ui/screens/fleetsList'; // [15c]
 import { closeBuildOrder } from './ui/screens/buildOrder'; import { closeConstructionYards } from './ui/screens/constructionYards'; // [16c]
 import { createEmpireMessageFeed } from './ui/empireMessageFeed';
+// [policy] begin
+import { closeEmpirePolicy } from './ui/screens/empirePolicy';
+// [policy] end
 import { createMainMenu } from './ui/screens/mainMenu';
 import { openOptionsModal } from './ui/screens/mainMenu';
 import { createTutorialsScreen, openTutorialWindow } from './ui/screens/tutorials';
@@ -503,6 +512,9 @@ export async function startGameView(
         closeDiplomacyScreen(); // [15a]
         closeExpansionPlanner(); // [16a]
         closeColoniesList();
+        // [tradenego] begin
+        closeTradePanel();
+        // [tradenego] end
         closeShipsAndBasesList();
         closeResearchScreen(); // [15b]
         closeShipDesigns(); // [16b]
@@ -510,6 +522,11 @@ export async function startGameView(
         closeMessageHistory();
         closeFleetsList(); // [15c]
         closeBuildOrder(); closeConstructionYards(); // [16c]
+
+        // [policy] begin
+        closeEmpirePolicy();
+        // [policy] end
+
         setEmpireSummarySource(null);
         // The ticker buffer is module-level; the next game starts fresh.
         clearHudMessages();
@@ -522,6 +539,9 @@ export async function startGameView(
         removeMessagePopups();
         closeGameOptionsPanel();
         // [/16d]
+        // [advisor] begin
+        closeAdvisorPanel();
+        // [advisor] end
     };
 
     return time;

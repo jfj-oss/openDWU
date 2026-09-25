@@ -28,3 +28,4 @@ Then, before M5+ (UI completeness etc.):
 - purchase: per-row design drop-down (Main.Part2.cs method_630), Advisor Suggest column.
 - galaxy.ts private calculateAngleFromCoords negates one branch the C# (Galaxy.6.cs:2737) does not; generation uses it, so fixing it moves createGame pins — do it as its own package with `npm run repin` after 17d/fix4 land (purchasebo agent finding).
 - cmdTroops.ts:222 tick-path caller of PurchaseNewBuiltObject (BuiltObject.2.cs:1110) still a TODO — wire it (pins will move; re-pin with reason).
+- BaconSettings.txt: the installed file sets `tradeEverything=true` (and other Bacon options); the port keeps the default `false`. The C# reads BaconSettings.txt at start-up (BaconSettings.cs) — load it from /assets/dwu/BaconSettings.txt like the other data files and route every option the sim reads through it (grep the Bacon* readers). Pins may move.

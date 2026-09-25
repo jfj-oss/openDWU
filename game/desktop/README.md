@@ -13,8 +13,9 @@ Worlds: Universe install folder via the privileged `dwu://` scheme.
   the original is a Windows game) and streams the file with
   `net.fetch(pathToFileURL(...))`. Path traversal is blocked: the resolved
   path must stay inside the install root.
-- Install dir discovery: `<userData>/config.json` (`{"installDir": "..."}`)
-  → platform default guesses (Steam library paths, `~/Games/...` on macOS)
+- Install dir discovery: `$DWU_DIR` (not saved; used by
+  `scripts/desktop-check.mjs`) → `<userData>/config.json`
+  (`{"installDir": "..."}`) → platform default guesses (Steam library paths, `~/Games/...` on macOS)
   → an open-directory dialog titled "Locate your Distant Worlds: Universe
   folder". A valid folder must contain an `images/` subfolder; the choice is
   saved back to `config.json`. If you cancel, the game still launches with
@@ -71,27 +72,39 @@ Run the packaged binary directly:
 release/dwu-linux-x64/dwu
 ```
 
-Headless smoke test (needs xvfb-run):
+Headless check of the packaged app (needs `kwin_wayland`; Electron's
+`--ozone-platform=headless` segfaults here):
 
 ```sh
-timeout 20 xvfb-run -a release/dwu-linux-x64/dwu --no-sandbox
+npm run package:linux
+node scripts/desktop-check.mjs               # add --compare-dev to diff against the Vite dev server
 ```
 
-(`--no-sandbox` is only needed when running as root / without user namespaces.)
+It starts `kwin_wayland --virtual` on a private socket, runs the package with
+`--ozone-platform=wayland --remote-debugging-port=9333` and `DWU_DIR` set,
+drives it over CDP (main menu → `?autostart=1` game → unpause → F5 / F8) and
+saves 1920×1080 captures to `shots/pkg-*.png`. It fails on page/console
+errors and on any `/assets/dwu/` request that does not go through `dwu://` or
+fails; 404s for optional files the install lacks (e.g.
+`designTemplates/<race>/pirate/planetdestroyer.txt`) are listed but tolerated.
 
 ### macOS
 
-Copy `release/dwu-darwin-arm64/` to the Mac and re-sign ad-hoc, because
-packaging on another platform leaves the binaries unsigned/quarantined:
+Transfer `release/dwu-darwin-arm64/` as an archive (Electron Framework
+relies on symlinks, which `scp -r` / plain copies flatten), then re-sign the
+`.app` ad-hoc on the Mac, because packaging on another platform leaves the
+binaries unsigned (arm64 macOS refuses to run unsigned code):
 
 ```sh
-xattr -cr dwu-darwin-arm64
-codesign --force --deep -s - dwu-darwin-arm64
-open dwu-darwin-arm64
+tar czf dwu-darwin-arm64.tgz -C release dwu-darwin-arm64    # on Linux
+tar xzf dwu-darwin-arm64.tgz                                 # on the Mac
+xattr -cr dwu-darwin-arm64/dwu.app
+codesign --force --deep -s - dwu-darwin-arm64/dwu.app
+open dwu-darwin-arm64/dwu.app
 ```
 
 If Gatekeeper still complains (e.g. after transferring over the network):
 
 ```sh
-xattr -dr com.apple.quarantine dwu-darwin-arm64
+xattr -dr com.apple.quarantine dwu-darwin-arm64/dwu.app
 ```
