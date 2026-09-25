@@ -24,6 +24,7 @@ import { toggleBuildOrder } from './screens/buildOrder'; import { toggleConstruc
 import { toggleFleetsList } from './screens/fleetsList'; import { selectShipGroup } from './hud'; // [15c]
 import { toggleShipsAndBasesList } from './screens/shipsAndBasesList';
 import { toggleMessageHistory } from './screens/messageHistory';
+import { toggleGameOptionsPanel } from './screens/gameOptionsPanel'; // [16d]
 import { toggleEmpireComparison } from './screens/empireComparison'; // [15d]
 import { showToast } from './toast';
 
@@ -300,6 +301,13 @@ export function dispatchKey(
         case 'gameMenu':
             handlers.gameMenu?.();
             break;
+        // [16d] O: Game Options — Automation + message options (task 16d).
+        case 'gameOptionsScreen': {
+            const src = getEmpireSummarySource();
+            if (src) toggleGameOptionsPanel({ empire: src.empire });
+            break;
+        }
+        // [/16d]
         case 'galactopediaHelp':
             handlers.galactopediaHelp?.();
             break;
@@ -509,6 +517,7 @@ export const IMPLEMENTED_KEY_ACTIONS: ReadonlySet<string> = new Set([
     'gameMenu', 'galactopediaHelp',
     'cycleColonies', 'cycleColoniesBackward', 'cycleColoniesMoveView',
     'empireComparisonScreen', // [15d]
+    'gameOptionsScreen', // [16d]
 ]);
 
 /** True when pressing the binding's key does something today. Pure. */
