@@ -30,10 +30,9 @@ import { Creature as CreatureClass, type Creature } from './creature';
 import { Empire as EmpireClass, empireGovernmentAttributes } from './empire';
 import { PreWarpProgressEventType } from './exploration';
 import { GalaxyLocationType, type GalaxyLocation } from './galaxyLocation';
-import { BuiltObjectRole } from './data/designSpecifications';
 import { BuiltObjectSubRole } from './builtObjectTypes';
 import { gameText, raceChangePeriodActive } from './colonyTick';
-import { galaxyStarDate, galaxyNow, REAL_SECONDS_IN_GALACTIC_YEAR } from './tick/simTime';
+import { galaxyStarDate, REAL_SECONDS_IN_GALACTIC_YEAR } from './tick/simTime';
 import { EmpireMessageType, resolveDescription, sendMessageToEmpire } from './messages';
 import { DiplomaticRelationType, obtainDiplomaticRelation, obtainEmpireEvaluation, empireEvaluationsOf, FIRST_CONTACT_PENALTY_START_AMOUNT } from './diplomacy';
 import { obtainPirateRelation, PirateRelationType, changePirateEvaluation, PirateRelationEvaluationType } from './pirateRelations';
@@ -55,7 +54,6 @@ import {
     CharacterRole,
     CharacterTraitType,
     determineValidTraitsForRole,
-    findCharactersAtLocationNotTransferring,
     generateNewCharacter,
     getCharactersByRole,
     getEmpireCharacters,
@@ -65,13 +63,11 @@ import {
 import { BuiltObjectMissionType, type BuiltObjectMission } from './missions/mission';
 import { nextAllowableLeaderChangeDate } from './characterRuntime';
 import { doCharacterEventRuntime, EventMessageType, DisasterEventType, RaceEventType, sendEventMessageToEmpire, sendNewsBroadcast, galaxyPlagues } from './events';
-import { forceCompleteMission, empireShipGroups, type ShipGroup } from './fleets/shipGroup';
-import { takeOwnershipOfBuiltObject } from './combat/invasion';
+import { empireShipGroups, type ShipGroup } from './fleets/shipGroup';
 import { nodeCategory, nodeIndustry, type TechNode } from './researchSystem';
 import { removeNonRaceSpecificProjectTypes, resolveRaceSpecificComponents } from './researchTick';
 import { IndustryType } from './types';
 import { ColonyPopulationPolicy, ComponentCategoryType } from './data/policies';
-import { registerTodo, todo } from './tick/todo';
 
 // ---------------------------------------------------------------------------
 // Race / list / galaxy helpers

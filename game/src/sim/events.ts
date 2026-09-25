@@ -1,11 +1,15 @@
-// M4u — events, disasters, location effects, rebellion, plague, creatures, character runtime. Also the
-// DEFERRED stubs (not M4, tasks/M4-plan.md §3.3 "Deferred"): story events, scripted game events,
-// espionage, achievements / victory. They stay no-ops that count as TODO hits.
+// M4u — events, disasters, location effects, rebellion, plague, creatures, character runtime (tasks/M4-plan.md §3.3 row
+// M4u). The tick skeletons in src/sim/tick/ call these entry points in C# order; the Empire event bodies live in
+// empireEvents.ts, the character reviews in characterRuntime.ts (the per-character model in characters.ts), the event enums
+// and plague lookups in eventTypes.ts. Also the DEFERRED stubs (plan §0.3): story events, scripted game events, espionage,
+// achievements / victory — no-ops that count as TODO hits (their story branches throw only when enabled).
 //
-// Stubs created by M4a (tasks/M4-plan.md §3.1): the tick skeletons in src/sim/tick/ call these entry points in C#
-// order. Each is a no-op that does NOT draw Galaxy.Rnd (a `RND:` note marks C# draw sites that are skipped until the
-// owning package ports the body) and records a TODO hit (tick/todo.ts). The owning package replaces the bodies in
-// place, keeping the signatures (or adjusting the skeleton call in the same change).
+// Ported here: Galaxy.5.cs 2867 ClearCompletedPlanetDestroyerProjects, 2893 ClearEmptyDebrisFields, 3372
+// FindAbandonedShipsInDebrisField; BuiltObject.cs 3448 DoLocationEffects, 3934 ApplyLocationEffects; Habitat.cs 1619
+// SpawnCreatures, 1678 ProcessPlague, 1838 InfectWithPlague, 5230 CheckHabitatIsEmpire, 5888 IdentifyLeavingEmpire, 5948
+// LeaveEmpire, 6379 DoPlanetRemove, 7613 CompleteTeardown; Galaxy.9.cs 3124 RemoveHabitat; Galaxy.3.cs 1568/1659
+// FindNearestColonyInSystem / FindNearestInfectableColonyWithNoPlague; Galaxy.6.cs 2838 FastFindNearestShipInSystem;
+// Galaxy.8.cs 1287 FindNearestEmpireCapital; Empire.6.cs 3941 ProcessCharacters; Creature.cs 1196-1345 creature combat.
 
 import type { Galaxy } from './galaxy';
 import type { Empire } from './empire';
@@ -17,6 +21,12 @@ import { getBuiltObjectsAtLocation } from './stationPlacement';
 import { MAX_SOLAR_SYSTEM_SIZE } from './visibility';
 import { BuiltObjectRole } from './data/designSpecifications';
 import { builtObjectInflictDamage, creatureDamageTarget } from './combat/damage';
+import { builtObjectCompleteTeardown } from './combat/teardown';
+import { clearAllMissionsForTargetHabitat, clearPreviousMissionRequirements } from './missions/assign';
+import { BuiltObjectMissionType } from './missions/mission';
+import { empireShipGroups, shipGroupCompleteMission } from './fleets/shipGroup';
+import { yardsIndexOfShip } from './construction/constructionYard';
+import type { ConstructionQueue } from './construction/constructionQueue';
 import { determineAngle, type Creature } from './creature';
 import { isBuiltObject, isCreature, isHabitat, type StellarObject } from './missions/mission';
 import { notifyOfAttackBuiltObject, notifyOfAttackHabitat } from './combat/attackAI';
@@ -40,7 +50,6 @@ import { fastFindNearestColony } from './diplomacyTick';
 import { reviewEmpireAbilityBonusesFull } from './treasury';
 import { resolveDescription } from './messages';
 import { HabitatCategoryType } from './types';
-import type { Race } from './data/races';
 import type { PlagueStatic } from './researchSystem';
 import type { Population } from './population';
 import { gameText } from './colonyTick';
@@ -637,10 +646,187 @@ export function spawnCreatures(galaxy: Galaxy, habitat: Habitat): void {
     if (num <= 0) galaxy.generateCreatureAtHabitat(CreatureType.DesertSpaceSlug, habitat, true);
 }
 
-const T_doPlanetRemove = registerTodo('M4u', 'doPlanetRemove');
-/** Habitat.cs 6379 DoPlanetRemove (a new Thread in C#, synchronous in TS). */
+/**
+ * Habitat.cs 6379 DoPlanetRemove (a new Thread in C#, synchronous in TS): Galaxy.RemoveHabitat when the habitat is still at
+ * its index. The DoingTasks wait loop never spins single-threaded. No Rnd.
+ */
 export function doPlanetRemove(galaxy: Galaxy, habitat: Habitat): void {
-    /* TODO(port) M4u */ todo(T_doPlanetRemove);
+    habitat.doingRemove = true;
+    if (galaxy.habitats.includes(habitat) && galaxy.habitats.length > habitat.habitatIndex && galaxy.habitats[habitat.habitatIndex] === habitat) {
+        removeHabitat(galaxy, habitat);
+    }
+    habitat.doingRemove = false;
+}
+
+/** Galaxy.9.cs 3124 RemoveHabitat(habitat). No Rnd. */
+export function removeHabitat(galaxy: Galaxy, habitat: Habitat): boolean {
+    if (habitat.category === HabitatCategoryType.Star || habitat.category === HabitatCategoryType.GasCloud) return false;
+    // 3133-3142: the moons of a destroyed planet are only read (`_ = Habitats[i].HasBeenDestroyed`).
+    habitatCompleteTeardown(galaxy, habitat); // RemoveSingleHabitat
+    const num = habitat.habitatIndex;
+    const num2 = galaxy.habitats.length - 1;
+    const movement = -1;
+    galaxy['fixResourceMaps'](num, num2, movement, null);
+    removeNullBuiltObjects(galaxy);
+    return true;
+}
+
+/** Galaxy.9.cs 2862 RemoveNullBuiltObjects. */
+function removeNullBuiltObjects(galaxy: Galaxy): void {
+    const list: number[] = [];
+    for (let i = 0; i < galaxy.builtObjects.length; i++) {
+        if (galaxy.builtObjects[i] == null) list.push(i);
+    }
+    for (let num = list.length - 1; num >= 0; num--) galaxy.builtObjects.splice(list[num], 1);
+}
+
+/** HabitatPrioritizationList purge (Habitat.cs 8005 PurgeHabitatPrioritizations): drop the entries for `habitat`. */
+function purgeHabitatPrioritizations<T extends { habitat: Habitat | null }>(list: T[] | null, habitat: Habitat): void {
+    if (list == null) return;
+    const toRemove = list.filter((p) => p.habitat === habitat);
+    for (const item of toRemove) {
+        const i = list.indexOf(item);
+        if (i >= 0) list.splice(i, 1);
+    }
+}
+
+/**
+ * Habitat.cs 7613 CompleteTeardown: clears the colony, tears down bases / docked / under-construction ships, detaches ships and
+ * creatures, completes fleet missions against it, and removes the habitat from the galaxy lists, indexes and empire target
+ * lists. No Rnd of its own. The TS Empire has no MonitoringHabitats / DangerousHabitats / ResortHabitats /
+ * MigrationSources / MigrationDestinations / TourismSources / TourismDestinations / ResortBaseBuildLocations lists (their
+ * owners are unported), so there is nothing to purge there.
+ */
+export function habitatCompleteTeardown(galaxy: Galaxy, habitat: Habitat): void {
+    let num = -1;
+    // TODO(port) M4q: ClearColony(TeardownEmpire) (Habitat.cs 7450) — stub.
+    clearColony(galaxy, habitat, habitat.teardownEmpire);
+    galaxy.orders.updateHabitatIndexes(habitat.habitatIndex, -1);
+    for (let i = 0; i < galaxy.builtObjects.length; i++) {
+        const builtObject = galaxy.builtObjects[i];
+        if (builtObject != null && builtObject.parentHabitat === habitat) {
+            if (builtObject.role === BuiltObjectRole.Base || builtObject.dockedAt === habitat || builtObject.builtAt === habitat) {
+                clearPreviousMissionRequirements(galaxy, builtObject);
+                // TODO(port) M4o: BuiltObject.CompleteTeardown(galaxy, removeFromEmpire: true) — stub.
+                builtObjectCompleteTeardown(galaxy, builtObject, true);
+            } else {
+                builtObject.parentHabitat = null;
+                builtObject.parentOffsetX = -2000000001.0;
+                builtObject.parentOffsetY = -2000000001.0;
+            }
+        }
+    }
+    const creatureList: Creature[] = [];
+    for (let j = 0; j < galaxy.creatures.length; j++) {
+        const creature = galaxy.creatures[j];
+        if (creature != null && creature.parentHabitat === habitat) {
+            if (creature.type === CreatureType.RockSpaceSlug || creature.type === CreatureType.DesertSpaceSlug) creatureList.push(creature);
+            else creature.parentHabitat = null;
+        }
+    }
+    for (const item of creatureList) item.completeTeardown();
+    if (habitat.dockingBays !== null) {
+        for (const dockingBay of habitat.dockingBays) {
+            if (dockingBay.dockedShip !== null) builtObjectCompleteTeardown(galaxy, dockingBay.dockedShip, true);
+            dockingBay.dockedShip = null;
+        }
+    }
+    for (let k = 0; k < galaxy.empires.length; k++) {
+        const empire = galaxy.empires[k];
+        if (empire == null || empire.shipGroups == null) continue;
+        const shipGroups = empireShipGroups(empire);
+        for (let l = 0; l < shipGroups.length; l++) {
+            const shipGroup = shipGroups[l];
+            if (shipGroup == null) continue;
+            const mission = shipGroup.mission;
+            if (mission !== null) {
+                // TODO(port) M4l: ShipGroup.CompleteMission — stub.
+                if (mission.targetHabitat !== null && mission.targetHabitat === habitat) shipGroupCompleteMission(galaxy, shipGroup);
+                if (mission.secondaryTargetHabitat !== null && mission.secondaryTargetHabitat === habitat) shipGroupCompleteMission(galaxy, shipGroup);
+            }
+        }
+    }
+    for (let m = 0; m < galaxy.builtObjects.length; m++) {
+        const builtObject2 = galaxy.builtObjects[m];
+        if (builtObject2 == null) continue;
+        // TODO(port) M4b: BuiltObject.ClearAllMissionsForTarget(builtObject2, this, Undefined, dropOutOfHyperspace: true) — stub.
+        clearAllMissionsForTargetHabitat(galaxy, builtObject2, builtObject2, habitat, BuiltObjectMissionType.Undefined, true);
+        if (builtObject2.nearestSystemStar === habitat) {
+            clearPreviousMissionRequirements(galaxy, builtObject2);
+            builtObjectCompleteTeardown(galaxy, builtObject2, true);
+            continue;
+        }
+        if (builtObject2.dockedAt === habitat) {
+            num = -1;
+            if (habitat.dockingBays !== null) num = habitat.dockingBays.findIndex((bay) => bay.dockedShip === builtObject2);
+            if (num >= 0) {
+                const docked = habitat.dockingBays![num].dockedShip;
+                if (docked !== null) builtObjectCompleteTeardown(galaxy, docked, true);
+                continue;
+            }
+        }
+        const queue = habitat.constructionQueue as ConstructionQueue | null;
+        if (builtObject2.builtAt === habitat && queue !== null && queue.constructionYards !== null) {
+            num = yardsIndexOfShip(queue.constructionYards, builtObject2);
+            if (num >= 0) {
+                const underConstruction = queue.constructionYards[num].shipUnderConstruction;
+                if (underConstruction !== null) builtObjectCompleteTeardown(galaxy, underConstruction, true);
+            }
+        }
+    }
+    const ri = galaxy.ruinsHabitats.indexOf(habitat);
+    if (ri >= 0) galaxy.ruinsHabitats.splice(ri, 1);
+    if (galaxy.systems != null && habitat.systemIndex >= 0 && habitat.systemIndex < galaxy.systems.length) {
+        const systemInfo = galaxy.systems[habitat.systemIndex];
+        // Systems[i].Habitats (the TS SystemInfo.habitats also holds the star at [0]; RemoveAt(IndexOf(this)) is the same).
+        if (systemInfo != null && systemInfo.habitats != null) {
+            num = systemInfo.habitats.indexOf(habitat);
+            if (num >= 0) systemInfo.habitats.splice(num, 1);
+        }
+    }
+    for (let n = 0; n < galaxy.empires.length; n++) {
+        const empire2 = galaxy.empires[n];
+        if (empire2 == null) continue;
+        purgeHabitatPrioritizations(empire2.resourceTargets, habitat);
+        purgeHabitatPrioritizations(empire2.colonizationTargets, habitat);
+        purgeHabitatPrioritizations(empire2.desiredForeignColonies, habitat);
+        purgeHabitatPrioritizations(empire2.empireResourceTargets, habitat);
+    }
+    if (habitat.systemIndex >= 0 && galaxy.systems.length > habitat.systemIndex) {
+        const systemInfo2 = galaxy.systems[habitat.systemIndex];
+        if (systemInfo2 != null && systemInfo2.systemStar === habitat) {
+            // Habitat.cs 7903-7988: a system star's teardown (SystemsIndex, per-empire SystemVisibility / SystemsVisible).
+            // Only Galaxy.RemoveSystem tears a star down (RemoveHabitat refuses stars) — not reachable from M4u.
+            throw new Error('TODO(port): Habitat.cs 7903 CompleteTeardown of a system star (Galaxy.RemoveSystem)');
+        }
+    }
+    for (let num5 = 0; num5 < galaxy.indexMaxX; num5++) {
+        for (let num6 = 0; num6 < galaxy.indexMaxY; num6++) {
+            const cell = galaxy.habitatIndexGrid[num5][num6];
+            num = cell.indexOf(habitat);
+            if (num >= 0) cell.splice(num, 1);
+        }
+    }
+    const hi = galaxy.habitats.indexOf(habitat);
+    if (hi >= 0) galaxy.habitats.splice(hi, 1);
+}
+
+/**
+ * Empire.cs 4874/4879 CompleteTeardown(conqueror[, removeFromGalaxy, sendMessages]) — an eliminated empire: news broadcast,
+ * relations / evaluations / pirate relations removed from every other empire, blockades and attacks cancelled, fleets
+ * dissolved, ships and cargo handed to the conqueror, colonies / characters / research cleaned up, removal from the galaxy
+ * lists. TODO(port) M4u: not ported — its only caller, Empire.TakeOwnershipOfColony's "last colony lost" branch
+ * (Empire.1.cs 216/221), is itself unported (M4q), and most of what it touches (EmpireCounters.ProcessEmpireElimination,
+ * CancelBlockades, ClearPirateColonyFacilities, TakeOwnershipOfCargo / TakeOwnershipOfBuiltObject, ShipGroup.GatherPoint)
+ * has no TS model yet. Throws so a caller cannot silently leave a defeated empire active.
+ */
+export function empireCompleteTeardown(galaxy: Galaxy, empire: Empire, conqueror: Empire | null, removeFromGalaxy = true, sendMessages = true): void {
+    void galaxy;
+    void empire;
+    void conqueror;
+    void removeFromGalaxy;
+    void sendMessages;
+    throw new Error('TODO(port) M4u: Empire.cs 4879 CompleteTeardown (empire elimination)');
 }
 
 /** Galaxy.5.cs 2867 ClearCompletedPlanetDestroyerProjects: drop planet-destroyer project locations whose ship is built or gone. No Rnd. */
@@ -655,32 +841,54 @@ export function clearCompletedPlanetDestroyerProjects(galaxy: Galaxy): void {
     for (const item of galaxyLocationList) removeGalaxyLocation(galaxy, item);
 }
 
+/**
+ * Galaxy.9.cs 1474 ProcessDelayedEventActions(starDate): returns at once while Galaxy.DelayedActions is empty. Only scripted
+ * game events (deferred, plan §0.3) fill that list, so it is always empty here.
+ */
 const T_processDelayedEventActions = registerTodo('deferred', 'processDelayedEventActions');
-/** Galaxy.9.cs 1474 ProcessDelayedEventActions(starDate) — scripted game events (DelayedActions is empty in a normal game). */
 export function processDelayedEventActions(galaxy: Galaxy, starDate: number): void {
-    // RND: draws in callees (d≤3), +clock×6 — not drawn until ported.
-    /* TODO(port) deferred (not M4) */ todo(T_processDelayedEventActions);
+    void galaxy;
+    void starDate;
+    // Counted as a deferred hit (the ExecuteEventAction half, Galaxy.9.cs 1503-2860, is not ported); the tick-structure
+    // tests use the count as the DoTasksTimeSensitive marker.
+    todo(T_processDelayedEventActions);
 }
 
-const T_shakturiSendConvoy = registerTodo('deferred', 'shakturiSendConvoy');
-/** Empire.2.cs 3487 ShakturiSendConvoy (story). */
+/**
+ * Empire.2.cs 3487 ShakturiSendConvoy (story): returns before its Rnd.Next(0, 3) unless this empire is the Shakturi story
+ * empire (Galaxy.IdentifyShakturiEmpire needs Galaxy.ShakturiActualRace, only set by the "Return of the Shakturi" story —
+ * deferred, plan §0.3). Throws if the story were enabled.
+ */
 export function shakturiSendConvoy(galaxy: Galaxy, empire: Empire): void {
-    // RND: 1 direct — not drawn until ported.
-    /* TODO(port) deferred (not M4) */ todo(T_shakturiSendConvoy);
+    void empire;
+    if (galaxy.storyReturnOfTheShakturiEnabled) throw new Error('TODO(port) deferred (story events, plan §0.3): Empire.2.cs 3487 ShakturiSendConvoy');
 }
 
-const T_checkOfferStoryHint = registerTodo('deferred', 'checkOfferStoryHint');
-/** Empire.2.cs 3508 CheckOfferStoryHint (story). */
+/**
+ * Empire.2.cs 3508 CheckOfferStoryHint (story): returns at once unless the "Return of the Shakturi" or "Distant Worlds"
+ * story is enabled (deferred, plan §0.3; throws if enabled).
+ */
 export function checkOfferStoryHint(galaxy: Galaxy, empire: Empire): void {
-    // RND: 1 direct — not drawn until ported.
-    /* TODO(port) deferred (not M4) */ todo(T_checkOfferStoryHint);
+    if ((!galaxy.storyReturnOfTheShakturiEnabled && !galaxy.storyDistantWorldsEnabled) || galaxy.playerEmpire === null || empire.dominantRace === null) return;
+    throw new Error('TODO(port) deferred (story events, plan §0.3): Empire.2.cs 3508 CheckOfferStoryHint');
 }
 
-const T_checkSendShipConvoysViaGateway = registerTodo('deferred', 'checkSendShipConvoysViaGateway');
-/** Empire.1.cs 3899 CheckSendShipConvoysViaGateway(timePassed) (story). */
+/**
+ * Empire.1.cs 3899 CheckSendShipConvoysViaGateway(timePassed): only a colony with a RaceAchievement wonder (Value2 == 3, the
+ * story gateway) sends convoys (then Rnd.Next(0, 10) etc.). The TS Habitat.facilities holds no facility objects yet
+ * (PlanetaryFacility model, M4i): with no facilities the C# returns before any draw; a non-empty list throws like the other
+ * facility readers.
+ */
 export function checkSendShipConvoysViaGateway(galaxy: Galaxy, empire: Empire, timePassed: number): void {
-    // RND: 4 direct — not drawn until ported.
-    /* TODO(port) deferred (not M4) */ todo(T_checkSendShipConvoysViaGateway);
+    void galaxy;
+    void timePassed;
+    if (empire.colonies != null) {
+        for (let i = 0; i < empire.colonies.length; i++) {
+            const habitat = empire.colonies[i];
+            if (habitat == null || habitat.facilities == null) continue;
+            if (habitat.facilities.length > 0) throw new Error('TODO(port) M4i: PlanetaryFacility model (Empire.1.cs 3899 CheckSendShipConvoysViaGateway)');
+        }
+    }
 }
 
 const T_assignSpecialMissions = registerTodo('deferred', 'assignSpecialMissions');

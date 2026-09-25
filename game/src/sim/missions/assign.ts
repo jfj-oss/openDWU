@@ -6,6 +6,7 @@
 // Rnd: none directly; the BuiltObjectMission constructor draws through ResolveCommandsForMission (resolveCommands.ts).
 
 import type { Galaxy } from '../galaxy';
+import { registerTodo, todo } from '../tick/todo';
 import type { BuiltObject, DockingBay } from '../builtObject';
 import type { CargoList, TroopList } from '../cargo';
 import type { PopulationList } from '../population';
@@ -573,4 +574,15 @@ export function assignQueuedMission(galaxy: Galaxy, ship: BuiltObject, allowRepr
         subsequentMissions.splice(0, 1);
     }
     return true;
+}
+
+// ---- stub added by M4u (Habitat.cs 7685 CompleteTeardown) ----
+
+const T_clearAllMissionsForTargetHabitat = registerTodo('M4b', 'clearAllMissionsForTargetHabitat');
+/**
+ * BuiltObject.2.cs 5751 ClearAllMissionsForTarget(builtObject, habitatTarget, missionType, dropOutOfHyperspace): clears the
+ * built object's mission / subsequent missions / fleet missions aimed at the habitat — stub.
+ */
+export function clearAllMissionsForTargetHabitat(galaxy: Galaxy, bo: BuiltObject, builtObject: BuiltObject, target: import('../types').Habitat, missionType: BuiltObjectMissionType, dropOutOfHyperspace: boolean): void {
+    /* TODO(port) M4b */ todo(T_clearAllMissionsForTargetHabitat);
 }

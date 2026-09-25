@@ -66,7 +66,6 @@ import {
     annualPrivateMaintenanceExcludingUnderConstruction,
     calculateAnnualSubjugationTributeIncome,
     habitatCorruption,
-    totalColonyStrategicValue,
 } from './forceStructure';
 import { annualStateMaintenanceExcludingUnderConstruction, calculatePirateIncome } from './treasury';
 import { empireGovernmentAttributes } from './empire';
