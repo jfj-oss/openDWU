@@ -150,4 +150,17 @@ describe('gen-asset-manifest.mjs', () => {
             }
         }
     });
+    (installLinked ? it : it.skip)('lists designTemplates/<race>/pirate/*.txt and characters/*.txt (always present, [] when absent)', () => {
+        const templatesDir = resolve(dwuRoot, 'designTemplates');
+        for (const race of readdirSync(templatesDir, { withFileTypes: true }).filter((e) => e.isDirectory())) {
+            const key = `designTemplates/${race.name}/pirate`;
+            expect(manifest[key], `manifest missing key ${key}`).toBeDefined();
+            const pirateDir = resolve(templatesDir, race.name, 'pirate');
+            const expected = existsSync(pirateDir) ? readdirSync(pirateDir).filter((f) => f.toLowerCase().endsWith('.txt')) : [];
+            expect(new Set(manifest[key])).toEqual(new Set(expected));
+        }
+        const charactersDir = resolve(dwuRoot, 'characters');
+        const expected = existsSync(charactersDir) ? readdirSync(charactersDir).filter((f) => f.toLowerCase().endsWith('.txt')) : [];
+        expect(new Set(manifest['characters'])).toEqual(new Set(expected));
+    });
 });

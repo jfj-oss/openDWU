@@ -134,6 +134,29 @@ async function fetchManifest(fetchText: FetchText): Promise<AssetManifest | null
 }
 
 /**
+ * The C# File.Exists for an install-relative data file, answered from public/asset-manifest.json (the browser cannot
+ * probe for a file without requesting it, and a missing file is a 404). Windows paths are case-insensitive, so the
+ * folder key and the file name match case-insensitively. Returns the on-disk relative path when the manifest lists the
+ * file, null when it lists the folder without the file (the C# File.Exists is false: do not request it), and undefined
+ * when the manifest does not cover the folder (no manifest, an older manifest, or a customization set is active — its
+ * folders are not in the manifest): then the caller requests the file and treats a failure as missing.
+ */
+export function manifestFileLookup(manifest: AssetManifest | null, relPath: string, customizationSet?: string): string | null | undefined {
+    if (manifest === null) return undefined;
+    if (customizationSet && customizationSet.trim() !== '' && customizationSet.trim().toLowerCase() !== 'default') return undefined;
+    const slash = relPath.lastIndexOf('/');
+    if (slash < 0) return undefined;
+    const folder = relPath.slice(0, slash).toLowerCase();
+    const file = relPath.slice(slash + 1).toLowerCase();
+    for (const key of Object.keys(manifest)) {
+        if (key.toLowerCase() !== folder) continue;
+        const hit = manifest[key].find((name) => name.toLowerCase() === file);
+        return hit === undefined ? null : `${key}/${hit}`;
+    }
+    return undefined;
+}
+
+/**
  * Load all game data from remote URLs via fetch.
  * @param fetchText Browser fetch wrapper that tries multiple candidate URLs
  * @param customizationSet Optional customization folder name (e.g. "DistantWorldsExpanded")
@@ -164,6 +187,8 @@ export async function loadGameData(
     // always supplies all three, from touching /asset-manifest.json).
     const needManifest = raceFileNames === undefined || designTemplateFiles === undefined || policyFileNames === undefined;
     const manifest = needManifest ? await fetchManifest(fetchText) : null;
+    // File.Exists stand-in (see manifestFileLookup); undefined = unknown, request the file.
+    const exists = (relPath: string): string | null | undefined => manifestFileLookup(manifest, relPath, customizationSet);
 
     // Default: the manifest's races/ listing when available, else the 22
     // race files of the stock DW:U install.
@@ -291,14 +316,27 @@ export async function loadGameData(
             designTemplates.set(subRoleName, parseDesignSpecification(text, subRoleName, subRole, true));
         }
     }
-    // Port of Galaxy.4.cs LoadEmpirePolicy (1696) file lookup, prefetched per race.
+    // Port of Galaxy.4.cs LoadEmpirePolicy (1696) file lookup, prefetched per race: File.Exists(Policy\[pirate\]<name>.txt)
+    // else the default policy. A file already fetched above (policyFiles, keyed like "pirate/Human.txt") is parsed from
+    // that text instead of being requested again (a fresh EmpirePolicy per map, as the C# loads one per call).
+    const policyTextByFile = new Map<string, string>();
+    for (let i = 0; i < policyFiles.length; i++) {
+        if (policyTexts[i] !== '') policyTextByFile.set(policyFiles[i].toLowerCase(), policyTexts[i]);
+    }
     const policies = new Map<string, EmpirePolicy>();
     const piratePolicies = new Map<string, EmpirePolicy>();
     await Promise.all(
         races.flatMap((r) =>
-            ([[policies, 'Policy/'], [piratePolicies, 'Policy/pirate/']] as const).map(async ([map, dir]) => {
+            ([[policies, '', 'Policy/'], [piratePolicies, 'pirate/', 'Policy/pirate/']] as const).map(async ([map, sub, dir]) => {
+                const known = policyTextByFile.get(`${sub}${r.name}.txt`.toLowerCase());
+                if (known !== undefined) {
+                    map.set(r.name, parseEmpirePolicy(known));
+                    return;
+                }
+                const found = exists(`${dir}${r.name}.txt`);
+                if (found === null) return; // File.Exists false → default policy
                 try {
-                    map.set(r.name, parseEmpirePolicy(await fetchText(resolveDataUrl(`${dir}${r.name}.txt`, customizationSet))));
+                    map.set(r.name, parseEmpirePolicy(await fetchText(resolveDataUrl(found ?? `${dir}${r.name}.txt`, customizationSet))));
                 } catch {
                     // missing file → default policy
                 }
@@ -326,8 +364,11 @@ export async function loadGameData(
     }
     await Promise.all(
         [...designSpecificationFiles].map(async (file) => {
+            // DesignSpecification.cs 206-216: File.Exists picks the pirate / race file; a missing one is never opened.
+            const found = exists(file);
+            if (found === null) return;
             try {
-                const text = await fetchText(resolveDataUrl(file, customizationSet));
+                const text = await fetchText(resolveDataUrl(found ?? file, customizationSet));
                 if (!isMissingResponse(text)) designSpecificationTexts.set(file, text);
             } catch {
                 // missing file → absent; loadDesignSpecification falls back.
@@ -336,9 +377,10 @@ export async function loadGameData(
     );
 
     // Galaxy.4.cs LoadDesignNames (designNames.txt).
+    // (designNames.txt / characterNames.txt were fetched above; parse the same text rather than requesting it again.)
     let designNames: string[][] | undefined;
     try {
-        designNames = parseDesignNames(await fetchText(resolveDataUrl('designNames.txt', customizationSet)));
+        designNames = parseDesignNames(designNamesText);
     } catch {
         designNames = undefined;
     }
@@ -348,7 +390,7 @@ export async function loadGameData(
     // case-insensitive, the shipped files are lower-case).
     let characterNames: CharacterNames | undefined;
     try {
-        characterNames = parseCharacterNames(await fetchText(resolveDataUrl('characterNames.txt', customizationSet)), raceFamilies.length);
+        characterNames = parseCharacterNames(characterNamesText, raceFamilies.length);
     } catch {
         characterNames = undefined;
     }
@@ -356,9 +398,17 @@ export async function loadGameData(
     await Promise.all(
         races.map(async (r) => {
             const file = `characters/${r.name}.txt`;
+            // Galaxy.4.cs 1236 LoadCharacters: File.Exists(characters\<race.Name>.txt) (case-insensitive); a missing file
+            // gives an empty list without being opened. The manifest names the on-disk file, requested once.
+            const found = exists(file);
+            if (found === null) return;
             let text: string;
             try {
-                text = await fetchText([...resolveDataUrl(file, customizationSet), ...resolveDataUrl(`characters/${r.name.toLowerCase()}.txt`, customizationSet)]);
+                text = await fetchText(
+                    found !== undefined
+                        ? resolveDataUrl(found, customizationSet)
+                        : [...resolveDataUrl(file, customizationSet), ...resolveDataUrl(`characters/${r.name.toLowerCase()}.txt`, customizationSet)],
+                );
             } catch {
                 return; // missing file → no race starting characters
             }

@@ -7,7 +7,10 @@
 //   - Policy/ (*.txt, top level only), key "Policy".
 //   - Policy/pirate/ (*.txt), key "Policy/pirate".
 //   - designTemplates/<race>/ (*.txt, top level only) for every subfolder of
-//     designTemplates/ (including DEFAULT), key "designTemplates/<race>".
+//     designTemplates/ (including DEFAULT), key "designTemplates/<race>", and
+//     its pirate/ subfolder, key "designTemplates/<race>/pirate" (always
+//     written, [] when absent).
+//   - characters/ (*.txt), key "characters" (always written).
 //   - Help/ (*.mht, top level only; folder looked up case-insensitively),
 //     key "Help".
 //   - Customization/<set>/help/ (*.mht) for every subfolder <set> of
@@ -40,7 +43,8 @@ import { dirname, join } from 'node:path';
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..');
 const dwuLink = join(root, 'public', 'assets', 'dwu');
-const outPath = join(root, 'public', 'asset-manifest.json');
+// ASSET_MANIFEST_OUT overrides the output file (tests write a private copy instead of racing on public/).
+const outPath = process.env.ASSET_MANIFEST_OUT || join(root, 'public', 'asset-manifest.json');
 
 // Windows Directory.GetFiles order: case-insensitive ordinal (char-code) sort.
 function windowsOrdinal(a, b) {
@@ -169,7 +173,15 @@ if (dwuRoot) {
         if (files.length > 0) {
             manifest[`designTemplates/${race}`] = files;
         }
+        // designTemplates/<race>/pirate/*.txt, written even when empty or absent: gameData.ts answers the C#
+        // File.Exists checks of DesignSpecification.LoadFromFile from these lists instead of requesting (404) files.
+        const pirateEntry = findSubentry(join(designTemplatesDir, race), 'pirate');
+        manifest[`designTemplates/${race}/pirate`] = pirateEntry?.isDirectory() ? listTxtFiles(join(designTemplatesDir, race, pirateEntry.name)) : [];
     }
+
+    // characters/*.txt (always written): Galaxy.4.cs LoadCharacters' File.Exists(characters\<race>.txt).
+    const charactersEntry = findSubentry(dwuRoot, 'characters');
+    manifest['characters'] = charactersEntry?.isDirectory() ? listTxtFiles(join(dwuRoot, charactersEntry.name)) : [];
 
     // Help/*.mht (top level only; the folder is "Help" on disk but may be
     // cased differently — Galaxy.9.cs AddGameInfoTopics/AddThemeTopics).
