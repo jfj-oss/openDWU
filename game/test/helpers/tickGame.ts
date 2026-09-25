@@ -7,13 +7,15 @@ import { GalaxyShape } from '../../src/sim/types';
 import type { GameData } from '../../src/sim/data/gameData';
 
 export function tickGameOptions(gameData: GameData): CreateGameOptions {
-    const s = (race: string) => ({ race, homeSystemFavourability: 'Normal' as const, proximityDistance: 'Random', startLocation: '(Random)', age: 1, techLevel: 0.5 });
+    const s = (race: string) => ({ race, homeSystemFavourability: 'Normal' as const, proximityDistance: 'Random', startLocation: '(Random)', age: 0, techLevel: 0.5 });
     return {
         seed: 1, shape: GalaxyShape.Spiral, starCount: 300, sectorWidth: 8, sectorHeight: 8,
         systemNames: Array.from({ length: 300 }, (_, i) => `S${i}`), gameData,
         player: s('Human'), aiEmpires: [s('(Random)'), s('(Random)'), s('(Random)')],
         piratePrevalence: 1.0,
-        // Pre-warp galaxy (Galaxy.Age / StartingAge 0) with age-0 empires, as before galaxyAge defaulted to 1 (M4x).
+        // INTERIM: pre-warp galaxy with age-0 empires (the M4x-branch configuration). The true default start
+        // (galaxy age 1: military starting ships → fleets) is blocked on the M4y FleetAdmiral/TroopGeneral
+        // location-review port; M4y flips this to the default and re-pins once.
         galaxyAge: 0,
     };
 }
