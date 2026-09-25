@@ -2718,8 +2718,8 @@ export function directPrivateConstruction(galaxy: Galaxy, empire: Empire): void 
 
 /** Galaxy.7.cs 1527 ResolveSector(x, y) + Galaxy.6.cs 3822 CorrectSectorCoords. */
 export function resolveSector(galaxy: Galaxy, x: number, y: number): Sector {
-    let x2 = Math.trunc(Math.trunc(x) / SECTOR_SIZE);
-    let y2 = Math.trunc(Math.trunc(y) / SECTOR_SIZE);
+    let x2 = Math.trunc(Math.trunc(x) / SECTOR_SIZE) | 0; // int division (no -0)
+    let y2 = Math.trunc(Math.trunc(y) / SECTOR_SIZE) | 0;
     if (x2 < 0) x2 = 0;
     else if (x2 >= galaxy.sectorWidth) x2 = galaxy.sectorWidth - 1;
     if (y2 < 0) y2 = 0;
