@@ -1472,6 +1472,11 @@ export class BuiltObject {
     careerBattleStats: unknown = null;
     // ---- M4p fields (fighters) ----
     // ---- M4q fields (boarding, troops, capture) ----
+    /** BuiltObject.cs AssaultDefenseValueDefault / AssaultDefenseValueFixed (short; ProcessBoardingAssault caches). */
+    assaultDefenseValueDefault = 0;
+    assaultDefenseValueFixed = 0;
+    /** BuiltObject.cs _TractorBeamFiringCounter (short; FireTractorBeamsAtInvadingTroopTransports). */
+    tractorBeamFiringCounter = 0;
     // ---- M4r fields (diplomacy) ----
     // ---- M4s fields (pirates) ----
     // ---- M4t fields (scanning, exploration) ----

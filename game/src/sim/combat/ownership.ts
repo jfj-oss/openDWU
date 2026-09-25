@@ -67,7 +67,6 @@ import { pirateEconomyPerformIncome } from '../pirates/pirateAI';
 import { PirateIncomeType } from '../pirates/pirateEconomy';
 import { addLocationHint } from '../tradeItems';
 import { GalaxyLocationType } from '../galaxyLocation';
-import { resolveSectorDescription } from '../empireEvents';
 import { netSort } from '../netSort';
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -1126,9 +1125,10 @@ export function scanForNewOwnerBuiltObject(galaxy: Galaxy, builtObject: BuiltObj
 // Galaxy.5.cs 5240 InvestigateAbandonedBuiltObject (+ navigational hints)
 // ---------------------------------------------------------------------------------------------------------------
 
-/** Galaxy.5.cs 4815 GenerateLocationDescription(x, y) — text only (TODO(port) M9: the nearest-habitat description). */
+/** Galaxy.5.cs 4815 GenerateLocationDescription(x, y) — message text only (TODO(port) M9: the nearest-habitat / sector wording). */
 function generateLocationDescription(galaxy: Galaxy, x: number, y: number): string {
-    return resolveSectorDescription(galaxy, x, y);
+    void galaxy;
+    return `(${Math.trunc(x)}, ${Math.trunc(y)})`;
 }
 
 /** Galaxy.5.cs 4689 FindNearestUnknownIndependentColony(x, y, empire). No Rnd. */

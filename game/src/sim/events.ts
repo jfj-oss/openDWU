@@ -1269,3 +1269,23 @@ export function chanceNewFleetAdmiral(galaxy: Galaxy, targetDestroyed: BuiltObje
     /* TODO(port) M4u */ todo(T_chanceNewFleetAdmiral);
     return false;
 }
+
+// ---- stubs added by M4q (BuiltObject.1.cs 3121-3124 ProcessBoardingAssault: a captured ship) ----
+
+const T_chanceNewShipCaptainCaptured = registerTodo('M4u', 'chanceNewShipCaptainCaptured');
+/** Galaxy.2.cs 5027 ChanceNewShipCaptain(targetDestroyed, empire, location, targetCaptured, smuggler) — stub: false. */
+export function chanceNewShipCaptainCaptured(galaxy: Galaxy, targetDestroyed: BuiltObject, empire: Empire | null, location: BuiltObject | Habitat | null, targetCaptured: boolean, smuggler: boolean): boolean {
+    void galaxy; void targetDestroyed; void empire; void location; void targetCaptured; void smuggler;
+    // RND: Rnd.Next(0, num) (+ GenerateNewCharacter draws) — not drawn until M4u.
+    /* TODO(port) M4u */ todo(T_chanceNewShipCaptainCaptured);
+    return false;
+}
+
+const T_chanceNewFleetAdmiralCaptured = registerTodo('M4u', 'chanceNewFleetAdmiralCaptured');
+/** Galaxy.2.cs 5097 ChanceNewFleetAdmiral(targetDestroyed, empire, location, targetCaptured) — stub: false. */
+export function chanceNewFleetAdmiralCaptured(galaxy: Galaxy, targetDestroyed: BuiltObject, empire: Empire | null, location: BuiltObject | Habitat | null, targetCaptured: boolean): boolean {
+    void galaxy; void targetDestroyed; void empire; void location; void targetCaptured;
+    // RND: Rnd.Next(0, num) (+ GenerateNewCharacter draws) — not drawn until M4u.
+    /* TODO(port) M4u */ todo(T_chanceNewFleetAdmiralCaptured);
+    return false;
+}

@@ -4437,6 +4437,8 @@ export class Galaxy {
     /** Galaxy.cs 599 / 601 InvasionSuccesses / InvasionFailures (ResolveInvasionBattles counters). */
     invasionSuccesses = 0;
     invasionFailures = 0;
+    /** The clock-seeded `new Random()` of BaconBuiltObject.HugeProcessingSpanActions (4089): one stream per galaxy, seeded from the galaxy seed (plan §0). */
+    baconBoardingClockRnd: Random | null = null;
     // ---- M4r fields (diplomacy runtime) ----
     /**
      * Galaxy.cs 1034 AggressionLevel (_AggressionLevel, Galaxy.4.cs 2151 ctor argument; default 1.0). Read by the
