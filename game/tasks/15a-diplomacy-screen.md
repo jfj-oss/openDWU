@@ -378,3 +378,15 @@ Build an evaluation with `new EmpireEvaluation(player, galaxy)`, pushed onto `ot
 Do not unit-test `acceptProposal`: it needs a real galaxy. It is exercised by hand.
 
 Run `npm run typecheck && npm test`; keyboard.test.ts must still pass unchanged. With `npm run dev` on a private port (other agents share 5173), save `node scripts/shot.mjs 'http://localhost:<port>/?autostart=1' shots/15a-diplomacy.png`. Do not open it. Then append `## Worker report` with: the files changed, the shot.mjs console output, and anything left undone.
+
+## Worker report
+
+Files changed: `src/ui/screens/diplomacyScreen.ts` (new), `src/ui/screens/diplomacyScreen.css` (new), `test/diplomacyScreen.test.ts` (new, 17 tests), `src/ui/keyboard.ts` (three `[15a]` blocks), `src/main.ts` (two `[15a]` lines).
+
+Checks: full suite `npx vitest run --testTimeout=300000 --maxWorkers=2` → 128 files / 1398 tests passed, exit 0. `npm run typecheck` reports only two errors, both already at HEAD 0bf6879 and outside this task: `src/sim/galaxy.ts(4501/4541)` duplicate `shakturiDefeated` (merge artifact from wip/m4z3). Nothing from 15a's files.
+
+Screenshot console output (dev server on port 5617, `?autostart=1`, F5): no errors or page errors. At game start no empire has been met yet, so the panel shows "No empires met yet" (`shots/15a-diplomacy.png`). A second playwright run seeded three relations in the page through `window.__dwu.galaxy` (Free Trade, War with an incoming None offer and message, Protectorate) and captured list + details, Accept Offer (War → No relationship, toast "Treaty accepted") and the Free Trade row with outgoing offer and treaties (`shots/15a-diplomacy-seeded*.png`). Escape closes the panel.
+
+Test note: the fakes use empire ids ≥ 1, because `DiplomaticRelationList.byEmpire` indexes by `empireId - 1` (id 0 is never found).
+
+Not done: nothing from the spec. `acceptProposal` is exercised only by hand (as specified).

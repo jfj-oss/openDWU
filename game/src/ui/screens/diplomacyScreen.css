@@ -1,0 +1,219 @@
+/* Diplomacy screen (task 15a). Copied from coloniesList.css (prefix
+   diplomacy- instead of colonies-list-); dark-panel tokens. */
+
+.diplomacy-wrap {
+    position: fixed;
+    inset: 0;
+    z-index: 1500; /* above the HUD, like the in-game tutorial window */
+    pointer-events: none;
+    font-family: 'Forgotten Futurist', sans-serif;
+    color: #e6e6e6;
+}
+
+.diplomacy-window {
+    position: absolute;
+    top: 64px;
+    left: 16px;
+    width: 760px;
+    max-width: calc(100vw - 16px);
+    max-height: calc(100vh - 96px);
+    pointer-events: auto;
+    background: rgba(14, 16, 20, 0.94);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.diplomacy-titlebar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: rgba(10, 11, 15, 0.9);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.diplomacy-heading {
+    font-size: 13px;
+    color: #e8d24a;
+}
+
+.diplomacy-close {
+    background: transparent;
+    border: none;
+    color: #ccc;
+    font-size: 15px;
+    cursor: pointer;
+    padding: 2px 6px;
+}
+.diplomacy-close:hover {
+    color: #fff;
+}
+
+/* Two panes: empire list | details of the selected empire. */
+.diplomacy-body {
+    display: grid;
+    grid-template-columns: 300px minmax(0, 1fr);
+    gap: 8px;
+    padding: 8px;
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow: hidden;
+}
+.diplomacy-body-empty {
+    display: block;
+}
+
+.diplomacy-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    overflow-y: auto;
+    min-height: 0;
+}
+
+.diplomacy-detail {
+    overflow-y: auto;
+    min-height: 0;
+    padding: 4px 8px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 4px;
+}
+
+.diplomacy-empty {
+    font-size: 12px;
+    color: #888;
+    padding: 8px;
+}
+
+.diplomacy-row {
+    display: grid;
+    grid-template-columns: 10px minmax(0, 1fr) 8.5em 3em;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 4px;
+    cursor: pointer;
+}
+.diplomacy-row:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+.diplomacy-row-selected,
+.diplomacy-row-selected:hover {
+    background: rgba(232, 210, 74, 0.14);
+    border-color: rgba(232, 210, 74, 0.5);
+}
+
+.diplomacy-swatch {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.diplomacy-name {
+    font-size: 13px;
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.diplomacy-relation {
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.diplomacy-attitude {
+    font-size: 12px;
+    text-align: right;
+}
+
+.diplomacy-detail-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.diplomacy-detail-name {
+    font-size: 14px;
+    color: #fff;
+}
+
+.diplomacy-section-heading {
+    margin-top: 8px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #777;
+}
+
+.diplomacy-line {
+    font-size: 12px;
+    padding: 2px 0;
+}
+.diplomacy-muted {
+    color: #777;
+}
+.diplomacy-strategy {
+    margin-top: 8px;
+    color: #ccc;
+}
+
+.diplomacy-message {
+    font-size: 11px;
+    font-style: italic;
+    color: #aaa;
+    padding: 2px 0;
+}
+
+.diplomacy-buttons {
+    display: flex;
+    gap: 6px;
+    padding: 4px 0;
+}
+
+.diplomacy-button {
+    font-family: inherit;
+    font-size: 12px;
+    color: #e6e6e6;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    padding: 3px 10px;
+    cursor: pointer;
+}
+.diplomacy-button:hover {
+    background: rgba(255, 255, 255, 0.14);
+    color: #fff;
+}
+
+.diplomacy-treaties {
+    margin: 2px 0;
+    padding-left: 16px;
+}
+.diplomacy-treaty {
+    font-size: 12px;
+    color: #ccc;
+}
+
+.diplomacy-feeling {
+    font-size: 13px;
+}
+
+.diplomacy-factor {
+    font-size: 11px;
+    padding: 1px 0;
+}

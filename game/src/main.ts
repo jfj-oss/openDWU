@@ -22,6 +22,7 @@ import { Habitat, HabitatCategoryType } from './sim/types';
 import { createMapOverlayState, type MapOverlayState, type OverlayKey } from './ui/mapOverlays';
 import { buildDefaultHandlers, createShortcutsOverlay, dispatchKey, setCycleHandler, setGameMenuHandler } from './ui/keyboard';
 import { closeEmpiresList } from './ui/screens/empiresList';
+import { closeDiplomacyScreen } from './ui/screens/diplomacyScreen'; // [15a]
 import { closeColoniesList } from './ui/screens/coloniesList';
 import { closeShipsAndBasesList } from './ui/screens/shipsAndBasesList';
 import { closeEmpireSummary, setEmpireSummarySource } from './ui/screens/empireSummary';
@@ -469,6 +470,7 @@ export async function startGameView(game: Game, zoomOverride?: number, extraBoot
         // Module-level panels hold the old game's Empire/camera and a
         // document keydown listener: close them and drop their source.
         closeEmpiresList();
+        closeDiplomacyScreen(); // [15a]
         closeColoniesList();
         closeShipsAndBasesList();
         closeEmpireSummary();
