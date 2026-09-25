@@ -12,7 +12,6 @@ import { EmpireMessageType, sendMessageToEmpire } from '../messages';
 import { obtainPirateRelation } from '../pirateRelations';
 import { galaxyStarDate } from '../tick/simTime';
 import { gameText } from '../colonyTick';
-import { registerTodo, todo } from '../tick/todo';
 import { EmpireActivityType, type EmpireActivity } from './empireActivity';
 import type { BuiltObject } from '../builtObject';
 import { determineBuiltObjectIsState } from '../builtObject';
@@ -35,9 +34,17 @@ import { PlanetaryFacilityType } from '../researchSystem';
 import { checkRemoveFacilityTracking, type PlanetaryFacility } from '../construction/facilities';
 import { countSpaceports } from './pirateShipMissions';
 import { price0, resourceName, smugglingCompletedPirateText } from './missionsMarket';
+import { ShipGroup, empireShipGroups, shipGroupAssignMission } from '../fleets/shipGroup';
+import { addShipsToShipGroup, compareShipGroups } from '../fleets/shipGroupTasks';
+import { FleetPosture } from '../diplomacyTick';
+import { BuiltObjectMissionPriority, BuiltObjectMissionType } from '../missions/mission';
+import { netSort } from '../netSort';
+import { findNearestBaseForPirateAttack } from './pirateAI';
 
 const f = Math.fround;
 const BYTE_MAX = 255;
+/** int.MaxValue. */
+const INT_MAX = 2147483647;
 
 /** Galaxy.8.cs 3053 CheckPirateEmpireTerminated(pirateFaction). No Rnd. */
 export function checkPirateEmpireTerminated(galaxy: Galaxy, pirateFaction: Empire | null): boolean {
@@ -146,11 +153,71 @@ export function generateNewPirateShips(galaxy: Galaxy): void {
     void galaxy;
 }
 
-const T_doSuperPirateTasks = registerTodo('M4s', 'doSuperPirateTasks');
-/** Galaxy.9.cs 208 DoSuperPirateTasks. */
+/** Galaxy.9.cs 208 DoSuperPirateTasks(): DoSuperPirateTasks(empire) for every super-pirate faction, in PirateEmpires order. */
 export function doSuperPirateTasks(galaxy: Galaxy): void {
-    // RND: draws in callees (d≤3) — not drawn until M4s.
-    /* TODO(port) M4s */ todo(T_doSuperPirateTasks);
+    for (let i = 0; i < galaxy.pirateEmpires.length; i++) {
+        const empire = galaxy.pirateEmpires[i];
+        if (empire.pirateEmpireSuperPirates) {
+            doSuperPirateTasksForFaction(galaxy, empire);
+        }
+    }
+}
+
+/**
+ * Galaxy.9.cs 284 DoSuperPirateTasks(superPirateFaction): gather every idle, undamaged, non-escort warship into the single
+ * "Phantom Fleet" (ShipGroups[0]), keep it on Attack posture with unlimited range, and send it against the nearest foreign
+ * base (FindNearestBaseForPirateAttack from the faction's base) whenever it has no mission.
+ * Rnd: only in callees — AddShipsToShipGroup (per ship AssignFleetWaypointMission) and ShipGroup.AssignMission (per-ship
+ * SelectRelativePoint + ResolveCommandsForMission).
+ */
+export function doSuperPirateTasksForFaction(galaxy: Galaxy, superPirateFaction: Empire): void {
+    // 286-289: ShipGroups is never null in TS (Empire field initialiser); the null check has nothing to do.
+    const shipGroups = empireShipGroups(superPirateFaction);
+    // 290-298
+    const builtObjectList: BuiltObject[] = [];
+    for (let i = 0; i < superPirateFaction.builtObjects.length; i++) {
+        const builtObject = superPirateFaction.builtObjects[i];
+        if (builtObject.role === BuiltObjectRole.Military && builtObject.builtAt === null && builtObject.shipGroup === null && builtObject.topSpeed > 0 && builtObject.damagedComponentCount === 0 && builtObject.subRole !== BuiltObjectSubRole.Escort) {
+            builtObjectList.push(builtObject);
+        }
+    }
+    // 299
+    const builtObject2 = identifyPirateBase(superPirateFaction);
+    // 300-314: the first time, form the Phantom Fleet at the pirate base.
+    if (shipGroups.length === 0 && builtObjectList.length > 0) {
+        const shipGroup = new ShipGroup(galaxy);
+        shipGroup.empire = superPirateFaction;
+        shipGroup.shipTargetAmount = INT_MAX;
+        shipGroup.troopTargetStrength = 0;
+        shipGroup.gatherPoint = builtObject2;
+        addShipsToShipGroup(galaxy, superPirateFaction, shipGroup, builtObjectList, INT_MAX, true, builtObject2);
+        if (shipGroup.ships.length > 0) {
+            shipGroup.name = gameText('Phantom Fleet');
+            shipGroups.push(shipGroup);
+            netSort(shipGroups, compareShipGroups);
+        }
+    }
+    // 315-323
+    if (shipGroups.length <= 0) {
+        return;
+    }
+    const shipGroup2 = shipGroups[0];
+    if (shipGroup2 == null) {
+        return;
+    }
+    // 324-329
+    shipGroup2.posture = FleetPosture.Attack;
+    shipGroup2.postureRangeSquared = Number.MAX_VALUE;
+    if (builtObjectList.length > 0) {
+        addShipsToShipGroup(galaxy, superPirateFaction, shipGroup2, builtObjectList, INT_MAX, true, builtObject2);
+    }
+    // 330-337
+    if ((shipGroup2.mission === null || shipGroup2.mission.type === BuiltObjectMissionType.Undefined) && builtObject2 !== null) {
+        const builtObject3 = findNearestBaseForPirateAttack(galaxy, builtObject2.xpos, builtObject2.ypos, superPirateFaction);
+        if (builtObject3 !== null) {
+            shipGroupAssignMission(galaxy, shipGroup2, BuiltObjectMissionType.Attack, builtObject3, null, BuiltObjectMissionPriority.High, false);
+        }
+    }
 }
 
 /** Galaxy.8.cs 2950 FindNearestPirateFactionKnownToFaction(x, y, pirateFaction, pirateFactionsToCheck, out nearestDistanceSquared). No Rnd. */

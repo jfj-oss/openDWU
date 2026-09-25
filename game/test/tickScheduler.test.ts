@@ -113,6 +113,16 @@ function touchProbe(galaxyOf: () => Galaxy, getEmpire: () => Empire, field: 'las
     };
 }
 
+/** Galaxy.DoTasks long block (Galaxy.cs 3090): arm DeferEventsForGameStart and see its first statement clear it. */
+function deferEventsProbe(galaxyOf: () => Galaxy): BlockProbe {
+    return {
+        arm: () => {
+            galaxyOf().deferEventsForGameStart = true;
+        },
+        fired: () => !galaxyOf().deferEventsForGameStart,
+    };
+}
+
 /**
  * The short block has no stub left (M4m ported RespondToIncomingEnemyFleetsAndPlanetDestroyers): arm a warning whose
  * planet destroyer has no mission and see Respond… drop it (Empire.1.cs 3208-3212).
@@ -359,7 +369,9 @@ describe('ShipGroup.DoTasks (ShipGroup.cs 97)', () => {
 });
 
 describe('Galaxy.DoTasks (Galaxy.cs 3054) and DoTasksTimeSensitive (3046)', () => {
-    const markers = { long: 'M4s doSuperPirateTasks' }; // (M4s2 ported CheckForTerminatedPirateEmpires)
+    // The long block has no stub left (M4z5 ported DoSuperPirateTasks): detected by its first statement,
+    // Galaxy.cs 3092 DeferEventsForGameStart = false.
+    const markers = { long: deferEventsProbe(() => galaxy) };
     // ReviewEmpireTerritory(onlySystems: true) is ported (M4t): detected through the EmpireTerritory call.
     const withTerritory = (fn: () => void): string[] => {
         const spy = vi.spyOn(galaxy.empireTerritory, 'reviewEmpireTerritoryOnlySystems');
@@ -462,9 +474,10 @@ describe('game-start switch-over entry points (tick/gameStart.ts)', () => {
             expect(e.lastHugeTouch).toBe(-17000); // Start.2.cs 1350 sets LastHugeTouch too
         }
         resetTodoCounts();
+        galaxy.deferEventsForGameStart = true;
         runGameStartGalaxyTick(galaxy);
         expect([galaxy.lastGalaxyProcessTime, galaxy.lastGalaxyHugeProcessTime]).toEqual([0, 0]);
-        expect(todoHits()['M4s doSuperPirateTasks']).toBe(1);
+        expect(galaxy.deferEventsForGameStart).toBe(false); // the long block ran (Galaxy.cs 3092)
         expect(runGameStartHabitatTick(galaxy, galaxy.empires[0].capital!)).toBe(true);
     });
 });

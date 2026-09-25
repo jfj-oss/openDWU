@@ -1099,9 +1099,8 @@ function assignMissionConstructionShip(galaxy: Galaxy, empire: Empire, ship: Bui
         const galaxyLocationList = empire.visibility.knownGalaxyLocations.filter((l) => l.type === GalaxyLocationType.PlanetDestroyer);
         if (galaxyLocationList.length > 0) {
             for (let num20 = 0; num20 < galaxyLocationList.length; num20++) {
-                // TODO(port): GalaxyLocation.RelatedBuiltObject (the unfinished planet destroyer at the location) is not on the TS
-                // GalaxyLocation (planet-destroyer runtime is deferred) — null, so the C# `continue` is taken.
-                const relatedBuiltObject = (galaxyLocationList[num20] as { relatedBuiltObject?: BuiltObject | null }).relatedBuiltObject ?? null;
+                // GalaxyLocation.RelatedBuiltObject: the unfinished planet destroyer (set by cmdConstruction.ts, BuiltObject.2.cs 1601).
+                const relatedBuiltObject = galaxyLocationList[num20].relatedBuiltObject;
                 if (relatedBuiltObject == null || relatedBuiltObject.unbuiltComponentCount <= 0 || relatedBuiltObject.builtAt !== null || relatedBuiltObject.empire !== null || relatedBuiltObject.hasBeenDestroyed) {
                     continue;
                 }

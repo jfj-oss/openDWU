@@ -54,7 +54,7 @@ import { DiplomaticRelationType } from './diplomacy';
 import { fastFindNearestColony } from './diplomacyTick';
 import { reviewEmpireAbilityBonusesFull } from './treasury';
 import { resolveDescription } from './messages';
-import { HabitatCategoryType } from './types';
+import { HabitatCategoryType, HabitatType } from './types';
 import type { PlagueStatic } from './researchSystem';
 import type { Population } from './population';
 import { gameText } from './colonyTick';
@@ -1241,11 +1241,77 @@ export function creatureAttackTarget(galaxy: Galaxy, creature: Creature, timePas
 
 // ---- stubs added by M4o (called from combat/damage.ts and combat/teardown.ts) ----
 
-const T_doPlanetDestroyAsteroidField = registerTodo('M4u', 'doPlanetDestroyAsteroidField');
-/** Habitat.cs DoPlanetDestroyAsteroidField (started on a Thread by DoExplosion, Habitat.cs 6365) — stub. */
+/**
+ * Habitat.cs 6399 DoPlanetDestroyAsteroidField (started on a Thread by DoExplosion, Habitat.cs 6361; run inline in TS, plan §0):
+ * a destroyed non-asteroid habitat leaves an asteroid field of Diameter/2 + (int)(NextDouble × Diameter × 0.125) asteroids,
+ * rounded up to the next multiple of 8, in the orbit of the nearest system, inserted next to the destroyed habitat's star.
+ * Rnd: NextDouble; GenerateAsteroidField (per asteroid Next(10,25), Next(0,30)[, Next(26,45)], Next(0,10), NextDouble ×4
+ * [+ NextDouble ×2], GenerateCodeName, SelectResources, SelectHabitatPictures, Next(0,1300)[→ treasure]). The resource
+ * order is shuffled on Galaxy.CryptoRnd (ResourceSystem.cs 225), not Galaxy.Rnd.
+ */
 export function doPlanetDestroyAsteroidField(galaxy: Galaxy, habitat: Habitat): void {
-    // RND: asteroid field generation draws — not drawn until M4u.
-    /* TODO(port) M4u */ todo(T_doPlanetDestroyAsteroidField);
+    // lock (_Galaxy._LockObject): no-op single-threaded.
+    if (habitat.category !== HabitatCategoryType.Asteroid) {
+        let num = Math.trunc(habitat.diameter / 2) + Math.trunc(galaxy.rnd.nextDouble() * habitat.diameter * 0.125);
+        num = (Math.trunc(num / 8) + 1) * 8;
+        const nearestSystemStar = galaxy.determineHabitatSystemStar(habitat);
+        const randomOrderedResources = galaxy['generateRandomOrderedResources']();
+        const habitatList = generateAsteroidFieldNearestSystem(galaxy, num, habitat.xpos, habitat.ypos, habitat.orbitDirection, habitat.orbitSpeed, 1.3, 0.8, randomOrderedResources);
+        galaxy.addAsteroidField(habitatList, nearestSystemStar);
+        // _Galaxy.OnRefreshView(new RefreshViewEventArgs(Xpos, Ypos, habitatList, false)): UI event, no sim effect.
+    }
+}
+
+/**
+ * Galaxy.9.cs 3463 GenerateAsteroidField(asteroidCount, x, y, orbitDirection, orbitSpeed, distanceSpreadFactor,
+ * arcSpreadFactor, randomOrderedResources): orbit the nearest parentless habitat (FindNearestSystemGasCloudAsteroid) at
+ * its (int) distance, BarrenRock, then the 3482 overload. Rnd: as the 3482 overload.
+ */
+function generateAsteroidFieldNearestSystem(galaxy: Galaxy, asteroidCount: number, x: number, y: number, orbitDirection: boolean, orbitSpeed: number, distanceSpreadFactor: number, arcSpreadFactor: number, randomOrderedResources: ReturnType<Galaxy['generateRandomOrderedResources']>): Habitat[] {
+    const habitat = findNearestSystemGasCloudAsteroid(galaxy, x, y)!;
+    const orbitDistance = Math.trunc(galaxy.calculateDistance(habitat.xpos, habitat.ypos, x, y));
+    return galaxy['generateAsteroidFieldAt'](asteroidCount, x, y, habitat, orbitDirection, orbitSpeed, orbitDistance, distanceSpreadFactor, arcSpreadFactor, HabitatType.BarrenRock, randomOrderedResources);
+}
+
+/**
+ * Galaxy.6.cs 3714 FindNearestSystemGasCloudAsteroid(double x, double y) + 2814 FindNearestSystemGasCloudAsteroidInIndex:
+ * ring search of HabitatIndex for the nearest habitat with Parent == null (stars, gas clouds, system-level asteroid
+ * fields), distances from the (int)-truncated point. No Rnd. (galaxy.ts has a private generation-time stand-in of the same
+ * name that filters on GasCloud/Asteroid category instead; this is the C# runtime search.)
+ */
+export function findNearestSystemGasCloudAsteroid(galaxy: Galaxy, x: number, y: number): Habitat | null {
+    const ix = Math.trunc(x);
+    const iy = Math.trunc(y);
+    if (galaxy.habitatIndexGrid.length === 0) {
+        // Galaxies built without the index grids (unit-test fixtures): same nearest-parentless search, linear.
+        let best: Habitat | null = null;
+        let bestDistance = Number.MAX_VALUE;
+        for (const h of galaxy.habitats) {
+            if (h.parent !== null) continue;
+            const d = galaxy.calculateDistanceSquared(ix, iy, h.xpos, h.ypos);
+            if (d < bestDistance) {
+                best = h;
+                bestDistance = d;
+            }
+        }
+        return best;
+    }
+    return galaxy.ringSearch<Habitat>(x, y, (cx, cy) => {
+        let habitat: Habitat | null = null;
+        let distance = Number.MAX_VALUE;
+        const habitatList = galaxy.habitatIndexGrid[cx][cy];
+        for (let i = 0; i < habitatList.length; i++) {
+            if (habitatList[i].parent === null) {
+                const num = galaxy.calculateDistanceSquared(ix, iy, habitatList[i].xpos, habitatList[i].ypos);
+                if (num < distance) {
+                    habitat = habitatList[i];
+                    distance = num;
+                }
+            }
+        }
+        if (habitat !== null) distance = galaxy.calculateDistance(ix, iy, habitat.xpos, habitat.ypos);
+        return { item: habitat, distance };
+    });
 }
 
 /**
