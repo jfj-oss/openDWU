@@ -18,6 +18,7 @@ import type { Empire } from '../empire';
 import { AutomationLevel } from '../empire';
 import { BuiltObject } from '../builtObject';
 import type { Habitat } from '../types';
+import { checkColonyRevenueFromPirateControl } from './pirateColonyControl';
 import type { Design } from '../design';
 import { Random } from '../random';
 import { ComponentStatus, csInt } from '../builtObjectComponent';
@@ -126,8 +127,7 @@ export function pirateCollectIncomeFromControlledColoniesCore(galaxy: Galaxy, em
     for (let i = 0; i < empire.colonies.length; i++) {
         const habitat = empire.colonies[i];
         if (habitat == null || habitat.hasBeenDestroyed) continue;
-        // Habitat.CheckColonyRevenueFromPirateControl(this) is false when habitat.Empire == this (Habitat.cs 6070).
-        if (habitat.empire === empire) {
+        if (habitat.empire === empire && !checkColonyRevenueFromPirateControl(habitat, empire)) {
             flag = true;
             continue;
         }
