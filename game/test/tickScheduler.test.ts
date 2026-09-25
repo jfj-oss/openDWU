@@ -15,6 +15,8 @@ import { builtObjectDoTasks } from '../src/sim/tick/builtObjectTick';
 import { galaxyDoTasks, galaxyDoTasksTimeSensitive } from '../src/sim/tick/galaxyTick';
 import { shipGroupDoTasks } from '../src/sim/tick/shipGroupTick';
 import { ShipGroup } from '../src/sim/fleets/shipGroup';
+import { FleetAttack } from '../src/sim/fleets/militaryAI';
+import type { BuiltObject } from '../src/sim/builtObject';
 import { createSchedulerState, nextFrameMs, runSimFrame, schedulerState } from '../src/sim/tick/scheduler';
 import type { GameData } from '../src/sim/data/gameData';
 import { resetEmpireTouchTimesForAge, runGameStartEmpireTick, runGameStartGalaxyTick, runGameStartHabitatTick, staggerEmpireTouchTimes } from '../src/sim/tick/gameStart';
@@ -111,6 +113,36 @@ function touchProbe(galaxyOf: () => Galaxy, getEmpire: () => Empire, field: 'las
     };
 }
 
+/**
+ * The short block has no stub left (M4m ported RespondToIncomingEnemyFleetsAndPlanetDestroyers): arm a warning whose
+ * planet destroyer has no mission and see Respond… drop it (Empire.1.cs 3208-3212).
+ */
+function incomingFleetsProbe(getEmpire: () => Empire): BlockProbe {
+    let entry: FleetAttack | null = null;
+    return {
+        arm: () => {
+            entry = new FleetAttack({ mission: null } as unknown as BuiltObject, null, 0);
+            getEmpire().incomingEnemyFleetsAndPlanetDestroyers.push(entry);
+        },
+        fired: () => {
+            const list = getEmpire().incomingEnemyFleetsAndPlanetDestroyers;
+            const i = list.indexOf(entry!);
+            if (i >= 0) list.splice(i, 1);
+            return i < 0;
+        },
+    };
+}
+
+/** The intermediate block is detected by ReviewSystemThreats (M4m), which zeroes every SystemVisibility.EmpireStrength first. */
+function systemThreatsProbe(getEmpire: () => Empire): BlockProbe {
+    return {
+        arm: () => {
+            getEmpire().visibility.systemVisibility[0].empireStrength = -12345;
+        },
+        fired: () => getEmpire().visibility.systemVisibility[0].empireStrength !== -12345,
+    };
+}
+
 function setEmpireTouches(e: Empire, ms: number): void {
     e.lastShortTouch = e.lastRegularTouch = e.lastPeriodicTouch = e.lastIntermediateTouch = e.lastLongTouch = e.lastHugeTouch = ms;
 }
@@ -142,10 +174,10 @@ describe('time model (tick/simTime.ts, scheduler frame length)', () => {
 describe('Empire.DoTasks intervals (Empire.1.cs 3427, >= on seconds, touches first)', () => {
     let probeEmpire: Empire | null = null;
     const markers = {
-        short: 'M4m respondToIncomingEnemyFleetsAndPlanetDestroyers',
+        short: incomingFleetsProbe(() => probeEmpire!), // (M4m ported RespondToIncomingEnemyFleetsAndPlanetDestroyers)
         regular: reviewDesignsProbe(() => probeEmpire!), // (no stub left in the regular block: detected by a probe)
         periodic: 'M4s checkSendPirateRaid',
-        intermediate: 'M4m taskResupplyShips', // (M4l ported reviewFleetAdmiralBonuses)
+        intermediate: systemThreatsProbe(() => probeEmpire!), // (M4l ported reviewFleetAdmiralBonuses, M4m TaskResupplyShips)
         long: touchProbe(() => galaxy, () => probeEmpire!, 'lastLongTouch'), // (M4f ported ReviewMigrationTourism, M4i ReviewColonyWonders)
         huge: 'M4s checkColoniesForPirateFacilitiesAndAttack', // (M4o ported CleanupInvalidShips; M4u ResetRaceEvents before that)
     };
@@ -213,7 +245,7 @@ describe('Empire.DoTasks intervals (Empire.1.cs 3427, >= on seconds, touches fir
         expect(pat(60000)).toEqual(['regular', 'periodic', 'intermediate']);
         expect(pat(240000)).toEqual(Object.keys(pirateMarkers));
         // Normal-empire-only steps never run for a pirate.
-        expect(firedBlocks({ x: 'M4m respondToIncomingEnemyFleetsAndPlanetDestroyers' }, () => {
+        expect(firedBlocks({ x: incomingFleetsProbe(() => p) }, () => {
             setEmpireTouches(p, 0);
             galaxy.nowMs = 240000;
             empireDoTasks(galaxy, p);

@@ -172,7 +172,14 @@ describe('M4h milestone on the headless harness', () => {
         expect(bo.unbuiltComponentCount).toBe(design.components.length);
         const civBefore = e.countersBuildCivilianShipCount;
         const q = habitatConstructionQueue(colony)!;
-        const r = runGameSeconds(g, 1200);
+        // The component cargo is read the frame the builder completes: later in the run the colony may receive
+        // components again (e.g. manufactured for its own orders), since M4m's Rnd draws changed this seed's game.
+        let leftAtCompletion: (Cargo | null)[] | null = null;
+        const r = runGameSeconds(g, 1200, {
+            onFrame: () => {
+                if (leftAtCompletion === null && bo.unbuiltComponentCount === 0) leftAtCompletion = design.components.map((c) => colony.cargo!.getCargoComponent(c.componentId, e));
+            },
+        });
         expect(Object.keys(r.todoHits).filter((k) => k.startsWith('M4h '))).toEqual([]);
         expect(bo.unbuiltComponentCount).toBe(0);
         expect(bo.builtAt).toBeNull();
@@ -182,7 +189,8 @@ describe('M4h milestone on the headless harness', () => {
         expect(e.constructionShips).toContain(bo); // ReDefine registers the finished builder
         expect(bo.parentHabitat === colony || builtObjectMission(bo.mission) !== null).toBe(true);
         // Each component used up one component cargo unit.
-        for (const c of design.components) expect(colony.cargo!.getCargoComponent(c.componentId, e)).toBeNull();
+        expect(leftAtCompletion).not.toBeNull();
+        for (const left of leftAtCompletion!) expect(left).toBeNull();
         expect(Number.isFinite(bo.xpos) && Number.isFinite(bo.ypos)).toBe(true);
     }, 300000);
 
@@ -212,8 +220,9 @@ describe('M4h milestone on the headless harness', () => {
         // A new ship without a fleet gets a Move mission to a parking point by the port (unless its mission ran already);
         // since M4n its ThreatEvaluation (BuiltObject.1.cs 243) may already have switched it to Attack on a nearby threat, and
         // since M4u (creatures now target ships, Creature.cs 1206) FleeFromHopelessBattle may send it off on Escape, and
-        // since M4f AssignMissionToBuiltObject (Empire.5.cs 1445) sends a low-fuel idle ship to refuel (SetupRefuelling).
-        expect(m === null || m.type === BuiltObjectMissionType.Move || m.type === BuiltObjectMissionType.Undefined || m.type === BuiltObjectMissionType.Attack || m.type === BuiltObjectMissionType.Escape || m.type === BuiltObjectMissionType.Refuel).toBe(true);
+        // since M4f AssignMissionToBuiltObject (Empire.5.cs 1445) sends a low-fuel idle ship to refuel (SetupRefuelling), and
+        // since M4m (the Escort case runs, and its Rnd draws changed this seed's game) it may be escorting a civilian ship.
+        expect(m === null || m.type === BuiltObjectMissionType.Move || m.type === BuiltObjectMissionType.Undefined || m.type === BuiltObjectMissionType.Attack || m.type === BuiltObjectMissionType.Escape || m.type === BuiltObjectMissionType.Refuel || m.type === BuiltObjectMissionType.Escort).toBe(true);
         expect(g.builtObjects).toContain(bo);
     }, 300000);
 

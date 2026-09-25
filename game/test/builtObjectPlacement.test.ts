@@ -292,14 +292,42 @@ describe('FindNearestBuiltObject / FindNearestPirateFaction', () => {
 // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
 // Re-pinned by M4u: the game-start Empire.DoTasks now runs the character reviews (ReviewCharacterTraits Rnd) and
 // ReviewEmpireEvents (DoRaceEvent Rnd), moving every later draw.
+// (re-pinned M4m: the game-start Empire.DoTasks runs the military AI — IdentifyMilitaryObjectives Next(0, EmpireEvaluations.Count), CheckTemptingTargets Next(0, Empires.Count), DetermineRandomAttacks Next(0, n) — which shifts the Rnd stream.)
 const PINNED_NAMES: unknown[] = [
-    ['ExplorationShip', 'Lively Destiny'],
-    ['ExplorationShip', 'Sol Smuggler'],
-    ['ExplorationShip', 'Charming Culprit'],
-    ['ExplorationShip', 'Worthy Impulse'],
-    ['ExplorationShip', 'Frugal Smuggler'],
-    ['ExplorationShip', 'Sol Pearl'],
-    ['ExplorationShip', 'Foolish Renegade'],
-    ['ConstructionShip', 'Galactic Challenge'],
-    ['ConstructionShip', 'Frugal Scoundrel'],
+    [
+        "ExplorationShip",
+        "Audacious Endeavour"
+    ],
+    [
+        "ExplorationShip",
+        "Sol Adversity"
+    ],
+    [
+        "ExplorationShip",
+        "Subterfuge of Sol"
+    ],
+    [
+        "ExplorationShip",
+        "Adversity of Sol"
+    ],
+    [
+        "ExplorationShip",
+        "Enchanted Jewel"
+    ],
+    [
+        "ExplorationShip",
+        "Daring Wayfarer"
+    ],
+    [
+        "ExplorationShip",
+        "Friendly Profit"
+    ],
+    [
+        "ConstructionShip",
+        "Sombre Adversity"
+    ],
+    [
+        "ConstructionShip",
+        "Swift Mystery"
+    ]
 ];

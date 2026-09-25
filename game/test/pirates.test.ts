@@ -220,47 +220,48 @@ describe('generatePirateEmpireName', () => {
 // block's independent-colony pirate offers draw per colony, so GenerateNewPirateEmpires sees a different stream.)
 // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
 // Re-pinned M4u: game-start character reviews (ReviewCharacterTraits Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd) move the Rnd stream before pirate generation.
+// (re-pinned M4m: the game-start Empire.DoTasks runs the military AI — IdentifyMilitaryObjectives Next(0, EmpireEvaluations.Count), CheckTemptingTargets Next(0, Empires.Count), DetermineRandomAttacks Next(0, n) — which shifts the Rnd stream.)
 const PINNED_SEED1_PIRATES: unknown[] = [
     [
-        "Venomous Marauders",
-        "OI626",
-        "Naxxilian",
-        4331580
-    ],
-    [
-        "Iron League",
-        "S162 6",
+        "Dread Force",
+        "S243 3",
         "Kiadian",
         88
     ],
     [
-        "S1 Ravagers",
-        "S278 6",
+        "Red Storm Gang",
+        "S247 4",
         "Dhayut",
         8323096
     ],
     [
-        "Fearsome Claw Interstellar",
-        "S285 4",
-        "Shandar",
-        8336399
+        "Fierce Company",
+        "S276 7",
+        "Teekan",
+        3153920
     ],
     [
-        "Sinister Moon Marauders",
-        "WB225",
+        "Ugnar Pillagers",
+        "LI613",
         "Mortalen",
         4390912
     ],
     [
-        "Dirty Pirates",
-        "S48 6",
-        "Gizurean",
-        8355600
+        "Dirty Prowlers",
+        "S258 5",
+        "Dhayut",
+        17408
     ],
     [
-        "Sol Pirates",
-        "S96 2",
-        "Atuuk",
-        796684
+        "Deadly Buccaneers",
+        "S160 6",
+        "Sluken",
+        5513343
+    ],
+    [
+        "Dread Star Authority",
+        "S181 6",
+        "Ackdarian",
+        32639
     ]
 ];

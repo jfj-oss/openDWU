@@ -100,17 +100,20 @@ describe('ProjectForceStructure / ProjectPrivateForceStructure at game start', (
         // empires land elsewhere. (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785): now only the second
         // empire's capital neighbour has known resources, so only it projects freighters and mining ships.)
         // Re-pinned M4u (game-start character reviews / DoRaceEvent Rnd move empire placement): now only the fourth empire's capital neighbour has known resources.
+        // (re-pinned M4m: the game-start Empire.DoTasks runs the military AI — IdentifyMilitaryObjectives Next(0, EmpireEvaluations.Count), CheckTemptingTargets Next(0, Empires.Count), DetermineRandomAttacks Next(0, n) — which shifts the Rnd stream.)
         expect(a.map((e) => e.private)).toEqual([
-            [],
-            [],
             [],
             [
                 [
                     "SmallFreighter",
-                    3
+                    2
                 ],
                 [
                     "MediumFreighter",
+                    1
+                ],
+                [
+                    "LargeFreighter",
                     1
                 ],
                 [
@@ -121,7 +124,9 @@ describe('ProjectForceStructure / ProjectPrivateForceStructure at game start', (
                     "MiningShip",
                     2
                 ]
-            ]
+            ],
+            [],
+            []
         ]);
     }, 60000);
 

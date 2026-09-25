@@ -162,7 +162,13 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // plus the merge fixes (civilianAI uses M4i's real AssignScrapMission / ProcureConstructionComponents, M4e's
         // SetupRefuelling and the shared GetBuiltObjectsAtLocation / HabitatCompareTo / DesignCalculateMaintenanceCosts
         // instead of its own copies), re-pinned once.
-        expect(summary.digest).toBe('2689770786790d6a');
+        // M4m: moved from 2689770786790d6a — the military AI runs: IdentifyMilitaryObjectives draws Next(0, EmpireEvaluations.Count)
+        // every Empire periodic block (and SendScoutShipsToEnemyLocations / strike-point rolls at war), CheckTemptingTargets
+        // Next(0, Empires.Count) (+ per Conquer/Punish empire) and DetermineRandomAttacks Next(0, n) every long block,
+        // TaskResupplyShips / ReviewSystemThreats / SendAvailableFleetsToGuard their SelectRelativePoint / parking draws; the
+        // game-start DoTasks draws them too (createGame pins moved); the Escort / Blockade command cases run, and
+        // WarnOfIncomingEnemyFleets / blockades feed the incoming-fleet and docking logic.
+        expect(summary.digest).toBe('f27e84ba6b6fe8b2');
     }, 600000);
 });
 
