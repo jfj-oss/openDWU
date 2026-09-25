@@ -56,6 +56,8 @@
 // deviation) is used only for "?" fields in characters/<race>.txt (none in the shipped data), and
 // the unseeded `new Random()` for "?" appearance orders likewise.
 
+import { checkTriggerEvent, getMatchingGameEventIdCharacterAppears, getMatchingGameEventIdCharacterKilled } from './story/eventActions';
+import { EventTriggerType } from './story/gameEventModel';
 import type { Galaxy } from './galaxy';
 import type { Empire } from './empire';
 import type { Race } from './data/races';
@@ -2350,12 +2352,14 @@ export class Character {
         }
     }
 
-    // Character.cs Kill (4546). M4u. BaconCharacter.Kill (BaconCharacter.cs 31) decides whether the character dies. The
-    // game-event trigger (GetMatchingGameEventIdCharacterKilled + CheckTriggerEvent(CharacterKilled)) is a scripted game
-    // event — none exist in a normal game (deferred with ProcessDelayedEventActions).
+    // Character.cs Kill (4546). M4u. BaconCharacter.Kill (BaconCharacter.cs 31) decides whether the character dies; then the
+    // CharacterKilled scripted game event (4551-4552, story/eventActions.ts, M4z3).
     kill(galaxy: Galaxy | null): void {
-        void galaxy;
         if (baconCharacterKill(this)) {
+            if (galaxy !== null) {
+                const matchingGameEventIdCharacterKilled = getMatchingGameEventIdCharacterKilled(galaxy, this);
+                checkTriggerEvent(galaxy, matchingGameEventIdCharacterKilled, this.empire, EventTriggerType.CharacterKilled, this);
+            }
             this.completeEmpireChange(null);
             this.completeLocationTransfer(null, null);
             this._transferDestination = null;
@@ -6832,9 +6836,8 @@ function baconEnhanceCharacter(empire: Empire | null, character: Character): voi
     character.bonusesKnown = true;
 }
 
-// Empire.6.cs GenerateNewCharacter (4413/4419/4424). The `activate` path's
-// _Galaxy.GetMatchingGameEventIdCharacterAppears / CheckTriggerEvent (scenario GameEvents) is a
-// TODO(port) no-op: a new game defines no GameEvents.
+// Empire.6.cs GenerateNewCharacter (4413/4419/4424). The `activate` path fires the CharacterAppears scripted game event
+// (story/eventActions.ts, M4z3).
 export function generateNewCharacter(galaxy: Galaxy, empire: Empire, role: CharacterRole, location: StellarObject | null, activate = true): { character: Character; isRandomCharacter: boolean } {
     let isRandomCharacter = false;
     let character = obtainNextCharacter(empire.availableCharacters, role);
@@ -6860,7 +6863,8 @@ export function generateNewCharacter(galaxy: Galaxy, empire: Empire, role: Chara
         if (activate && location !== null) {
             character.activate(galaxy, empire, location);
             doCharacterEvent(galaxy, CharacterEventType.CharacterStart, character, character);
-            // TODO(port): GetMatchingGameEventIdCharacterAppears + CheckTriggerEvent(CharacterAppears) — no GameEvents.
+            const matchingGameEventIdCharacterAppears = getMatchingGameEventIdCharacterAppears(galaxy, character);
+            checkTriggerEvent(galaxy, matchingGameEventIdCharacterAppears, empire, EventTriggerType.CharacterAppears, character);
         }
     }
     baconEnhanceCharacter(empire, character);
@@ -6883,7 +6887,8 @@ export function generateNewCharacterRandom(galaxy: Galaxy, empire: Empire, role:
     if (activate && location !== null) {
         character.activate(galaxy, empire, location);
         doCharacterEvent(galaxy, CharacterEventType.CharacterStart, character, character);
-        // TODO(port): GetMatchingGameEventIdCharacterAppears + CheckTriggerEvent(CharacterAppears) — no GameEvents.
+        const matchingGameEventIdCharacterAppears = getMatchingGameEventIdCharacterAppears(galaxy, character);
+        checkTriggerEvent(galaxy, matchingGameEventIdCharacterAppears, empire, EventTriggerType.CharacterAppears, character);
     }
     return character;
 }

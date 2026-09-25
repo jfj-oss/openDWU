@@ -15,6 +15,8 @@
 //
 // Time: `time` (= _tempNow) is game ms; Weapon.lastFired is game ms (MIN_TIME = never fired, the C# DateTime.MinValue).
 
+import { checkTriggerEvent } from '../story/eventActions';
+import { EventTriggerType } from '../story/gameEventModel';
 import type { Galaxy } from '../galaxy';
 import type { BuiltObject } from '../builtObject';
 import type { Habitat } from '../types';
@@ -582,7 +584,8 @@ export function firePlanetDestroyerAtHabitat(galaxy: Galaxy, builtObject: BuiltO
                 const description = `The ${self.empire!.name} have destroyed your colony ${target.name} in the ${habitat.name} system`;
                 sendMessageToEmpire(target.empire, target.empire, EmpireMessageType.ColonyDestroyed, target, description);
             }
-            // _Galaxy.CheckTriggerEvent(target.GameEventId, ActualEmpire, EventTriggerType.Destroy, null): scripted game events, deferred.
+            // BuiltObject.1.cs 4879 _Galaxy.CheckTriggerEvent(target.GameEventId, ActualEmpire, Destroy, null) (story/eventActions.ts, M4z3).
+            checkTriggerEvent(galaxy, target.gameEventId, self.actualEmpire, EventTriggerType.Destroy, null);
             w.willHitTarget = true;
             w.heading = Math.fround(determineAngle(self.xpos, self.ypos, target.xpos, target.ypos));
             w.lastFired = tempNow;

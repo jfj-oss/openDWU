@@ -32,6 +32,8 @@
 // `BaconBuiltObject.myMain` (the UI Main) is non-null in any running game, as elsewhere in the port.
 // BaconSettings.txt overrides are not loaded; the C# class defaults are used (HANDOFF known follow-ups).
 
+import { checkTriggerEvent } from '../story/eventActions';
+import { EventTriggerType } from '../story/gameEventModel';
 import type { Galaxy } from '../galaxy';
 import type { BuiltObject } from '../builtObject';
 import type { Empire } from '../empire';
@@ -2206,7 +2208,8 @@ export function fighterInflictDamageFull(
                 if (selfGroupStats !== null) selfGroupStats.targetDestroyedEnemyByFighter(builtObject);
                 if (targetStats !== null) targetStats.targetDestroyedFriendlyByFighter(builtObject);
                 if (targetGroupStats !== null) targetGroupStats.targetDestroyedFriendlyByFighter(builtObject);
-                // 1310 galaxy.CheckTriggerEvent(builtObject.GameEventId, Empire, EventTriggerType.Destroy, null): scripted game events, deferred.
+                // Fighter.cs 1374 galaxy.CheckTriggerEvent(builtObject.GameEventId, Empire, Destroy, null) (story/eventActions.ts, M4z3).
+                checkTriggerEvent(galaxy, builtObject.gameEventId, self.empire, EventTriggerType.Destroy, null);
                 if (self.empire !== null && self.empire !== galaxy.independentEmpire && builtObject.empire !== null && builtObject.empire.pirateEmpireBaseHabitat !== null) {
                     let num12 = 0.05;
                     switch (builtObject.subRole) {

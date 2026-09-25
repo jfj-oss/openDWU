@@ -313,18 +313,19 @@ export function countEmpiresWeHaveMet(empire: Empire): number {
 }
 
 /**
- * Empire.3.cs 823 CumulateFacilityValue1(facilityType, mustBeCompleted). The PlanetaryFacility model is M4i's: an empty
- * Habitat.facilities list sums to 0; a non-empty one throws.
+ * Empire.3.cs 823 CumulateFacilityValue1(facilityType, mustBeCompleted): the Value1 total of the colonies' facilities of the type
+ * (PlanetaryFacilityList.cs 243 CumulateValue1ByType / 254 CumulateValue1ByTypeCompleted: ConstructionProgress >= 1). No Rnd.
+ * (M4z3: reached once a colony with facilities — e.g. the story's Ancient Guardians — reviews its characters.)
  */
 export function cumulateFacilityValue1(empire: Empire, facilityType: PlanetaryFacilityType, mustBeCompleted: boolean): number {
-    const num = 0;
+    let num = 0;
     for (let i = 0; i < empire.colonies.length; i++) {
         const habitat = empire.colonies[i];
-        if (habitat != null && habitat.facilities !== null && habitat.facilities.length > 0) {
-            void facilityType;
-            void mustBeCompleted;
-            // TODO(port) M4i: PlanetaryFacilityList.CumulateValue1ByType / CumulateValue1ByTypeCompleted.
-            throw new Error('TODO(port) M4i: Empire.CumulateFacilityValue1 (PlanetaryFacility model)');
+        if (habitat != null && habitat.facilities != null) {
+            for (let index = 0; index < habitat.facilities.length; ++index) {
+                const f = habitat.facilities[index];
+                if (f.type === facilityType && (!mustBeCompleted || f.constructionProgress >= 1.0)) num += f.value1;
+            }
         }
     }
     return num;

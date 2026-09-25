@@ -34,6 +34,8 @@
 //   Callees not drawn until their packages land: DoCharacterEvent (M4u) for CriticalResearch*/ResearchAdvance*
 //     with a non-empty character list; GenerateNewCharacter draws itself (ported, characters.ts).
 
+import { checkTriggerEvent, getMatchingGameEventIdResearchBreakthrough } from './story/eventActions';
+import { EventTriggerType } from './story/gameEventModel';
 import type { Galaxy } from './galaxy';
 import { checkGenerateAncientHelpers } from './story/storyEvents';
 import { empireGovernmentAttributes, type Empire } from './empire';
@@ -671,8 +673,9 @@ export function doResearchBreakthrough(galaxy: Galaxy, empire: Empire, researchP
     researchProject.isResearched = true;
     researchProject.selfResearched = selfResearched;
     researchProject.progress = researchProject.cost;
-    // 2505-2506 GetMatchingGameEventIdResearchBreakthrough + CheckTriggerEvent: scripted game events are deferred
-    // (not M4); Galaxy.GameEvents is empty in a normal game, so the C# sees id -1 and nothing triggers.
+    // 2505-2506 GetMatchingGameEventIdResearchBreakthrough + CheckTriggerEvent (story/eventActions.ts, M4z3).
+    const matchingGameEventIdResearchBreakthrough = getMatchingGameEventIdResearchBreakthrough(galaxy, empire, researchProject.def.projectId);
+    checkTriggerEvent(galaxy, matchingGameEventIdResearchBreakthrough, empire, EventTriggerType.ResearchBreakthrough, null);
     const def = researchProject.def;
     if (def.components.length > 0 || (def.abilities.length > 0 && abilityTypeFromFile(def.abilities[0].type) === ResearchAbilityType.ConstructionSize)) {
         empire.reviewDesignsAndRetrofitFlag = true;

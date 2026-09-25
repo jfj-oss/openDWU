@@ -456,8 +456,8 @@ function queueOf(o: { constructionQueue: unknown }): QueueLike | null {
  */
 export function takeOwnershipOfColonyFull(galaxy: Galaxy, self: Empire, colony: Habitat, newEmpire: Empire | null, destroyBases: boolean, destroyTroops: boolean): void {
     const empire = colony.empire;
-    // _Galaxy.CheckTriggerEvent(colony.GameEventId, newEmpire, Capture, null): scripted game events are deferred (plan §0.3);
-    // a new game defines none.
+    // Empire.1.cs 67 _Galaxy.CheckTriggerEvent(colony.GameEventId, newEmpire, Capture, null) (story/eventActions.ts, M4z3).
+    checkTriggerEvent(galaxy, colony.gameEventId, newEmpire, EventTriggerType.Capture, null);
     let flag = false;
     if (colony.empire !== null) {
         if (colony.empire.capital === colony) flag = true;
@@ -647,7 +647,8 @@ interface FighterOwnerLike {
  */
 export function takeOwnershipOfBuiltObject(galaxy: Galaxy, self: Empire, builtObject: BuiltObject, newEmpire: Empire | null, setDesignAsObsolete = false, removeFromFleet = true): void {
     const actualEmpire = builtObject.actualEmpire;
-    // _Galaxy.CheckTriggerEvent(builtObject.GameEventId, newEmpire, Capture, null): scripted game events are deferred.
+    // Empire.1.cs 528 _Galaxy.CheckTriggerEvent(builtObject.GameEventId, newEmpire, Capture, null) (story/eventActions.ts, M4z3).
+    checkTriggerEvent(galaxy, builtObject.gameEventId, newEmpire, EventTriggerType.Capture, null);
     if (removeFromFleet && builtObject.shipGroup !== null) leaveShipGroup(galaxy, builtObject);
     if (actualEmpire !== null) {
         removeAt(actualEmpire.spacePorts, builtObject);

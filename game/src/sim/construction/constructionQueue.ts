@@ -11,6 +11,8 @@
 //
 // Time: `_LastProcessed` and `tempNow` are sim ms (tick/simTime.ts); TimeSpan.TotalMilliseconds = the ms difference.
 
+import { checkTriggerEvent, getMatchingGameEventIdPlanetDestroyerConstructionCompleted } from '../story/eventActions';
+import { EventTriggerType } from '../story/gameEventModel';
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import type { BuiltObject } from '../builtObject';
@@ -441,7 +443,8 @@ export class ConstructionQueue {
                     }
                     continue;
                 }
-                // 437: _Galaxy.CheckTriggerEvent(GameEventId, Empire, Destroy) — TODO(port) deferred (scripted game events; none in a normal game).
+                // 437: _Galaxy.CheckTriggerEvent(ship.GameEventId, Empire, Destroy) (story/eventActions.ts, M4z3).
+                checkTriggerEvent(this._galaxy, ship.gameEventId, this.empire, EventTriggerType.Destroy, null);
                 // 438-487: research bonus from disassembling unresearched technology.
                 const queueEmpire = this.empire;
                 if (queueEmpire !== null && queueEmpire.research != null) {
@@ -750,7 +753,9 @@ export class ConstructionQueue {
         }
         if (ship.isPlanetDestroyer && ship.topSpeed > 0) {
             ship.currentFuel = ship.fuelCapacity;
-            // GetMatchingGameEventIdPlanetDestroyerConstructionCompleted + CheckTriggerEvent — TODO(port) deferred (scripted game events).
+            // 843-844: GetMatchingGameEventIdPlanetDestroyerConstructionCompleted + CheckTriggerEvent (story/eventActions.ts, M4z3).
+            const matchingGameEventIdPlanetDestroyerConstructionCompleted = getMatchingGameEventIdPlanetDestroyerConstructionCompleted(galaxy, empire4);
+            checkTriggerEvent(galaxy, matchingGameEventIdPlanetDestroyerConstructionCompleted, empire4, EventTriggerType.PlanetDestroyerConstructionCompleted, ship);
         }
         // 841-896
         let eventType = CharacterEventType.BuildCivilianShip;
@@ -928,7 +933,8 @@ export class ConstructionQueue {
                 }
             }
         }
-        // 1049-1052: CheckTriggerEvent(ParentHabitat.GameEventId, Empire, Build, ship) — TODO(port) deferred (scripted game events).
+        // 1049-1052: CheckTriggerEvent(ParentHabitat.GameEventId, Empire, Build, ship) (story/eventActions.ts, M4z3).
+        if (ship.parentHabitat !== null) checkTriggerEvent(this._galaxy, ship.parentHabitat.gameEventId, this.empire, EventTriggerType.Build, ship);
         ship.currentFuel += num14;
         ship.currentEnergy = Math.max(ship.currentEnergy, 0.0);
         if (

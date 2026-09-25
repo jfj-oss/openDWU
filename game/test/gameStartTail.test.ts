@@ -352,14 +352,14 @@ describe('gameStartTail blocks (Start.2.cs 1568-2038) on a createGame galaxy', (
         });
     }
 
-    it('story blocks throw TODO(port) when enabled', () => {
+    it('story blocks are no-ops (no Rnd) while their story line is off', () => {
+        // M4z3 ported them (story/storyStart.ts; m4z3Story.test.ts covers the enabled paths).
         const g = createGame(opts(1)).galaxy;
-        g.storyReturnOfTheShakturiEnabled = true;
-        expect(() => tail.shakturiStoryAtStart(g, 0.5)).toThrow(/TODO\(port\)/);
-        expect(() => tail.shakturiStoryAtStart(g, 0.0)).not.toThrow();
-        expect(() => tail.shakturiAbandonedShipsAtStart(g)).toThrow(/TODO\(port\)/);
-        g.storyDistantWorldsEnabled = true;
-        expect(() => tail.distantWorldsStoryCluesAtStart(g)).toThrow(/TODO\(port\)/);
-        expect(() => tail.debrisFieldsAtStart(g)).toThrow(/TODO\(port\)/);
+        const d = g.rnd.drawCount;
+        tail.shakturiStoryAtStart(g, 0.5);
+        tail.shakturiAbandonedShipsAtStart(g);
+        expect(tail.distantWorldsStoryCluesAtStart(g)).toEqual([]);
+        tail.debrisFieldsAtStart(g);
+        expect(g.rnd.drawCount).toBe(d);
     });
 });

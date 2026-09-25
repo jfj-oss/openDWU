@@ -17,6 +17,8 @@
 // Clock-seeded `new Random()` (BaconBuiltObject.cs 5183) → galaxy.baconCombatClockRnd, seeded from the galaxy seed
 // (plan §0). Galaxy.ReseedRandom() inside InflictDamage (BuiltObject.2.cs 6663) is NOT performed (plan §0).
 
+import { checkTriggerEvent } from '../story/eventActions';
+import { EventTriggerType } from '../story/gameEventModel';
 import type { Galaxy } from '../galaxy';
 import type { BuiltObject } from '../builtObject';
 import { HabitatType, type Habitat } from '../types';
@@ -972,7 +974,8 @@ export function inflictDamageFull(
         // TODO(port) M4u: Creature.cs 926 DamageCreature(damager, damage, weapon) — the TS overload ignores damager / weapon.
         if (creature.damageCreature(csInt(hitPower))) {
             if (creature.type === CreatureType.SilverMist && self.empire !== null) self.empire.civilityRating += DESTROY_SILVER_MIST_REPUTATION_BONUS;
-            // _Galaxy.CheckTriggerEvent(creature.GameEventId, ActualEmpire, EventTriggerType.Destroy, null): scripted game events, deferred (plan §0.3).
+            // BuiltObject.2.cs 6233 _Galaxy.CheckTriggerEvent(creature.GameEventId, ActualEmpire, Destroy, null) (story/eventActions.ts, M4z3).
+            checkTriggerEvent(galaxy, creature.gameEventId, self.actualEmpire, EventTriggerType.Destroy, null);
             creature.completeTeardown();
             return true;
         }
@@ -1155,7 +1158,8 @@ export function inflictDamageFull(
                 if (selfGroupStats !== null) selfGroupStats.targetDestroyedEnemy(builtObject);
                 if (targetStats !== null) targetStats.targetDestroyedFriendly(builtObject);
                 if (targetGroupStats !== null) targetGroupStats.targetDestroyedFriendly(builtObject);
-                // _Galaxy.CheckTriggerEvent(builtObject.GameEventId, ActualEmpire, EventTriggerType.Destroy, null): scripted game events, deferred.
+                // BuiltObject.2.cs 6568 _Galaxy.CheckTriggerEvent(builtObject.GameEventId, ActualEmpire, Destroy, null) (story/eventActions.ts, M4z3).
+                checkTriggerEvent(galaxy, builtObject.gameEventId, self.actualEmpire, EventTriggerType.Destroy, null);
                 if (self.empire !== null && self.empire !== galaxy.independentEmpire && builtObject.empire !== null && builtObject.empire.pirateEmpireBaseHabitat !== null) {
                     let num15 = 0.05;
                     switch (builtObject.subRole) {
@@ -1340,7 +1344,8 @@ export function inflictIonDamage(galaxy: Galaxy, self: BuiltObject, target: Stel
         const creature = target;
         // TODO(port) M4u: Creature.cs 926 DamageCreature(damager, damage, weapon) — the TS overload ignores damager / weapon.
         if (creature.type === CreatureType.SilverMist && creature.damageCreature(csInt(hitPower))) {
-            // CheckTriggerEvent(creature.GameEventId, Empire, Destroy): scripted game events, deferred.
+            // BuiltObject.2.cs 6135 CheckTriggerEvent(creature.GameEventId, Empire, Destroy) (story/eventActions.ts, M4z3).
+            checkTriggerEvent(galaxy, creature.gameEventId, self.empire, EventTriggerType.Destroy, null);
             if (creature.type === CreatureType.SilverMist && self.empire !== null) self.empire.civilityRating += DESTROY_SILVER_MIST_REPUTATION_BONUS;
             creature.completeTeardown();
         }
@@ -1390,7 +1395,8 @@ export function habitatInflictIonDamage(galaxy: Galaxy, self: Habitat, target: S
         const creature = target;
         // TODO(port) M4u: Creature.cs 926 DamageCreature(damager, damage, weapon) — the TS overload ignores damager / weapon.
         if (creature.damageCreature(csInt(hitPower))) {
-            // CheckTriggerEvent(creature.GameEventId, Empire, Destroy): scripted game events, deferred.
+            // Habitat.cs 2357 CheckTriggerEvent(creature.GameEventId, Empire, Destroy) (story/eventActions.ts, M4z3).
+            checkTriggerEvent(galaxy, creature.gameEventId, self.empire, EventTriggerType.Destroy, null);
             if (creature.type === CreatureType.SilverMist && self.empire !== null) self.empire.civilityRating += DESTROY_SILVER_MIST_REPUTATION_BONUS;
             creature.completeTeardown();
         }

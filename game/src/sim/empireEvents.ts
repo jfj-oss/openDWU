@@ -65,7 +65,9 @@ import {
 } from './characters';
 import { BuiltObjectMissionType, type BuiltObjectMission } from './missions/mission';
 import { nextAllowableLeaderChangeDate } from './characterRuntime';
-import { doCharacterEventRuntime, EventMessageType, DisasterEventType, RaceEventType, sendEventMessageToEmpire, sendNewsBroadcast, galaxyPlagues } from './events';
+import { doCharacterEventRuntime, sendEventMessageToEmpire, sendNewsBroadcast } from './events';
+// Enums from the leaf module (not the events.ts re-export) so a module cycle through events.ts cannot see them uninitialised.
+import { EventMessageType, DisasterEventType, RaceEventType, galaxyPlagues } from './eventTypes';
 import { empireShipGroups, forceCompleteMission, type ShipGroup } from './fleets/shipGroup';
 import { compareShipGroups, selectFleetBase } from './fleets/shipGroupTasks';
 import { takeOwnershipOfBuiltObject } from './combat/ownership';

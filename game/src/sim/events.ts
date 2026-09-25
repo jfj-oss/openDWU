@@ -11,6 +11,7 @@
 // FindNearestColonyInSystem / FindNearestInfectableColonyWithNoPlague; Galaxy.6.cs 2838 FastFindNearestShipInSystem;
 // Galaxy.8.cs 1287 FindNearestEmpireCapital; Empire.6.cs 3941 ProcessCharacters; Creature.cs 1196-1345 creature combat.
 
+import { EventTriggerType } from './story/gameEventModel';
 import { shipGroupOf as shipGroupOfBuiltObject } from './combat/threats';
 import { empireWarWeariness } from './taxes';
 import { charactersCanGenerateAmountNonIntelligenceAgent } from './troops';
@@ -1180,8 +1181,8 @@ export function creatureAttackTarget(galaxy: Galaxy, creature: Creature, timePas
                     creature.damageKillThreshold = Math.min(creature.damageKillThreshold, Math.trunc(creature.size * 3.0));
                 }
             }
-            // Galaxy.CheckTriggerEvent(CurrentTarget.GameEventId, null, Destroy, null): scripted game events are deferred
-            // (plan §0.3; no object carries a GameEventId in a normal game).
+            // Creature.cs 1329 Galaxy.CheckTriggerEvent(CurrentTarget.GameEventId, null, Destroy, null) (story/eventActions.ts, M4z3).
+            storyEventActions.checkTriggerEvent(galaxy, target.gameEventId, null, EventTriggerType.Destroy, null);
             creature.distanceToTarget = Number.MAX_VALUE;
             const attackers = stellarAttackers(target);
             if (attackers !== null) {
