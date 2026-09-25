@@ -31,6 +31,16 @@ export interface UiSettings {
     advisorApi: 'auto' | 'ollama' | 'openai';
     /** Let a thinking model reason first (Ollama `think`): better at "the most distant …" style orders, ~10x slower. */
     advisorThink: boolean;
+    // [aiadvisor] begin — 18c: the same model makes strategic choices for AI empires (off by default).
+    /** Let the model decide AI empires' strategic choices (war, treaties, tech emphasis, policy) every few game-days. */
+    aiAdvisor: boolean;
+    /** Game-days between two decision rounds (star-date days: 30 per month). */
+    aiAdvisorIntervalDays: number;
+    /** Which AI empires: only those the player has met, or all. */
+    aiAdvisorEmpires: 'met' | 'all';
+    /** At most this many empires per round. */
+    aiAdvisorMaxEmpires: number;
+    // [aiadvisor] end
     // [advisor] end
 
     // [diplovoice] begin — 18b: AI empires' diplomatic replies voiced by the same local model (off unless it answers).
@@ -55,6 +65,12 @@ export const DEFAULT_SETTINGS: UiSettings = {
     advisorModel: 'qwen3:4b',
     advisorApi: 'auto',
     advisorThink: false,
+    // [aiadvisor] begin
+    aiAdvisor: false,
+    aiAdvisorIntervalDays: 30,
+    aiAdvisorEmpires: 'met',
+    aiAdvisorMaxEmpires: 4,
+    // [aiadvisor] end
     // [advisor] end
 
     // [diplovoice] begin
@@ -108,6 +124,12 @@ export function loadSettings(): UiSettings {
         if (typeof parsed.advisorModel === 'string' && parsed.advisorModel.trim() !== '') out.advisorModel = parsed.advisorModel.trim();
         if (parsed.advisorApi === 'auto' || parsed.advisorApi === 'ollama' || parsed.advisorApi === 'openai') out.advisorApi = parsed.advisorApi;
         if (typeof parsed.advisorThink === 'boolean') out.advisorThink = parsed.advisorThink;
+        // [aiadvisor] begin
+        if (typeof parsed.aiAdvisor === 'boolean') out.aiAdvisor = parsed.aiAdvisor;
+        if (typeof parsed.aiAdvisorIntervalDays === 'number' && Number.isFinite(parsed.aiAdvisorIntervalDays)) out.aiAdvisorIntervalDays = Math.min(3600, Math.max(1, Math.round(parsed.aiAdvisorIntervalDays)));
+        if (parsed.aiAdvisorEmpires === 'met' || parsed.aiAdvisorEmpires === 'all') out.aiAdvisorEmpires = parsed.aiAdvisorEmpires;
+        if (typeof parsed.aiAdvisorMaxEmpires === 'number' && Number.isFinite(parsed.aiAdvisorMaxEmpires)) out.aiAdvisorMaxEmpires = Math.min(16, Math.max(1, Math.round(parsed.aiAdvisorMaxEmpires)));
+        // [aiadvisor] end
         // [advisor] end
 
         // [diplovoice] begin
