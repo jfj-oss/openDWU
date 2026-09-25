@@ -90,8 +90,9 @@ describe('shipGroupSelectionRows', () => {
 });
 
 describe('keyboard', () => {
-    it('F12 fleets screen is available; fleet cycling is not listed', () => {
+    it('F12 fleets screen and the F fleet cycler are available', () => {
         expect(isKeyActionAvailable('fleetsScreen')).toBe(true);
-        expect(isKeyActionAvailable('cycleFleets')).toBe(false);
+        // fix4ui: F / Shift+F / Ctrl+F cycle fleets (hud.ts stepCycle, Main.Part8.cs btnCycleShipGroups_Click).
+        expect(isKeyActionAvailable('cycleFleets')).toBe(true);
     });
 });

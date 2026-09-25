@@ -187,8 +187,21 @@
     color: #9aa3ad;
     font-size: 11px;
 }
+/* The panel is bottom-anchored with a capped height (hud.ts
+   anchorSelectionPanel): header and cycle chips stay visible, the rows scroll. */
+.hud-selection {
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+}
+.hud-selection-header,
+.hud-selection-footer {
+    flex: 0 0 auto;
+}
 .hud-selection-body {
+    flex: 1 1 auto;
     min-height: 70px;
+    overflow-y: auto;
 }
 /* Resources row: label + a run of small icons, each with its abundance %. */
 .hud-resource-row {
