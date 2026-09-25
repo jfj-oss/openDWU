@@ -909,7 +909,7 @@ export class Galaxy {
 
     // ---- Task M3c: BuiltObjects in the galaxy (Galaxy.cs / Galaxy.4-7.cs) ----
     // C#: BuiltObjectList BuiltObjects (Galaxy.cs), _NextBuiltObjectID (starts at 0).
-    builtObjects: BuiltObject[] = [];
+    builtObjects: (BuiltObject | null)[] = [];
     nextBuiltObjectId = 0;
     /**
      * C#: Galaxy.StartingAge (Galaxy.cs 982 `StartingAge => _Age`, i.e. the galaxy age set by

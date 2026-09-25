@@ -107,6 +107,11 @@ export interface GameData {
      * SetRaceStartupCharacters). A missing file is absent (C#: File.Exists false → empty list).
      */
     characterFiles?: Map<string, CharacterFileRow[]>;
+    /**
+     * BaconSettings.txt of the install root (BaconMain.cs 1101 ReadBaconSettings reads it from the working directory, not
+     * the customization set). Absent / '' when missing (the C# catches FileNotFoundException → no overrides).
+     */
+    baconSettingsText?: string;
 }
 
 /** Shape of public/asset-manifest.json entries this loader consumes. */
@@ -356,9 +361,14 @@ export async function loadGameData(
         }),
     );
 
+    // BaconMain.cs 1101 ReadBaconSettings: `new StreamReader("BaconSettings.txt")` in the install root.
+    let baconSettingsText = await fetchText(['/assets/dwu/BaconSettings.txt']).catch(() => '');
+    if (isMissingResponse(baconSettingsText)) baconSettingsText = '';
+
     return {
         characterNames,
         characterFiles,
+        baconSettingsText,
         designNames,
         policies,
         piratePolicies,

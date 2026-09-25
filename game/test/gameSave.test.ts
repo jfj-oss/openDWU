@@ -130,7 +130,7 @@ describe('game save/load: M3 built objects, designs and characters', { timeout: 
     });
 
     it('names, designs, positions and owners of every built object match', () => {
-        const [a, b] = [game.galaxy.builtObjects, restored.game.galaxy.builtObjects];
+        const [a, b] = [(game.galaxy.builtObjects as BuiltObject[]), (restored.game.galaxy.builtObjects as BuiltObject[])];
         const empiresA = flatEmpireList(game.galaxy);
         const empiresB = flatEmpireList(restored.game.galaxy);
         for (let i = 0; i < a.length; i++) {
@@ -151,7 +151,7 @@ describe('game save/load: M3 built objects, designs and characters', { timeout: 
     });
 
     it('object identity is preserved across the lists that share an instance', () => {
-        const galaxyById = new Map(restored.game.galaxy.builtObjects.map((b) => [b.builtObjectID, b]));
+        const galaxyById = new Map((restored.game.galaxy.builtObjects as BuiltObject[]).map((b) => [b.builtObjectID, b]));
         for (const [, e] of pairedEmpires()) {
             for (const list of ['builtObjects', 'privateBuiltObjects', 'spacePorts', 'miningStations'] as const) {
                 for (const bo of e[list]) expect(galaxyById.get(bo.builtObjectID), `${e.name}.${list}`).toBe(bo);

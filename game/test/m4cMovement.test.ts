@@ -44,7 +44,7 @@ function newGalaxy(): Galaxy {
 }
 
 function aShip(g: Galaxy): BuiltObject {
-    return g.builtObjects.find((b) => b.role !== BuiltObjectRole.Base && b.warpSpeed > 0 && b.empire !== null)!;
+    return (g.builtObjects as BuiltObject[]).find((b) => b.role !== BuiltObjectRole.Base && b.warpSpeed > 0 && b.empire !== null)!;
 }
 
 describe('per-frame upkeep', () => {
@@ -253,7 +253,7 @@ describe('fuel ranges (one implementation, re-exported by logistics/freight.ts)'
 describe('harness: ships with missions move and hyperjump', () => {
     it('freighters contracted by CheckMarketOrders travel (HyperTo exits happen) within 600 game-s', () => {
         const g = newGalaxy();
-        const start = new Map(g.builtObjects.map((b) => [b, { x: b.xpos, y: b.ypos }]));
+        const start = new Map((g.builtObjects as BuiltObject[]).map((b) => [b, { x: b.xpos, y: b.ypos }]));
         let exits = 0;
         const actions = new Set<CommandAction>();
         const r = runGameSeconds(g, 600, {

@@ -19,8 +19,7 @@ import { Habitat } from '../types';
 import type { ComponentDefinition } from '../componentStatic';
 import { assignMission } from '../missions/assign';
 import { BuiltObjectMissionPriority } from '../missions/mission';
-import { HYPER_JUMP_THRESHHOLD } from '../combat/attackAI';
-import { MAX_SOLAR_SYSTEM_SIZE } from '../movement';
+import { MAX_SOLAR_SYSTEM_SIZE, baconMovementSettings } from '../movement';
 import { OrderType, empireCreateOrder } from '../logistics/orders';
 import { findNearestShipYard, procureConstructionComponentsAtBuiltObject, procureConstructionComponentsAtColony } from './empireConstruction';
 
@@ -180,7 +179,7 @@ export function assignRepairMission(galaxy: Galaxy, empire: Empire, builtObject:
     const stellarObject = findNearestShipYard(galaxy, empire, builtObject, true, true);
     if (stellarObject !== null) {
         const num = galaxy.calculateDistance(builtObject.xpos, builtObject.ypos, stellarObject.xpos, stellarObject.ypos);
-        if (builtObject.warpSpeed <= 0 && num > HYPER_JUMP_THRESHHOLD && (builtObject.topSpeed <= 0 || !(num < MAX_SOLAR_SYSTEM_SIZE))) {
+        if (builtObject.warpSpeed <= 0 && num > baconMovementSettings.hyperJumpThreshhold && (builtObject.topSpeed <= 0 || !(num < MAX_SOLAR_SYSTEM_SIZE))) {
             return false;
         }
     }

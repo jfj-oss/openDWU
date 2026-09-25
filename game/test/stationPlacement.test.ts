@@ -1,3 +1,4 @@
+import type { BuiltObject } from '../src/sim/builtObject';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { createGame, type CreateGameOptions } from '../src/sim/game';
 import { setGovernmentsStatic } from '../src/sim/empire';
@@ -115,7 +116,7 @@ function beforeEmpireSetup(): Galaxy {
 
 // The bases of the per-empire setup (independent traders from the first galaxy tick excluded).
 function summary(g: Galaxy) {
-    return g.builtObjects.filter((b) => b.empire !== g.independentEmpire).map((b) => [b.builtObjectID, b.empire!.name, S[b.subRole], b.name, b.parentHabitat!.name, Math.round(b.xpos), Math.round(b.ypos), b.heading]);
+    return (g.builtObjects as BuiltObject[]).filter((b) => b.empire !== g.independentEmpire).map((b) => [b.builtObjectID, b.empire!.name, S[b.subRole], b.name, b.parentHabitat!.name, Math.round(b.xpos), Math.round(b.ypos), b.heading]);
 }
 
 describe('M3d station placement at game start (tech 0.5, age 1)', () => {

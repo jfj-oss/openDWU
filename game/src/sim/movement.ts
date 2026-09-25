@@ -81,7 +81,9 @@ export const MINIMUM_LEVEL_FOR_REFUELLING_POINT = 600;
 
 /**
  * Game statics the movement code reads that the Bacon mod lets BaconSettings.txt override (BaconMain.cs 606-631, 979)
- * — the class / Galaxy.InitializeStatics defaults here.
+ * — the class / Galaxy.InitializeStatics defaults here; baconSettings.ts baconInitializeSettings applies the file
+ * (BaconSettings.txt of the stock install: HyperJumpThreshhold=4000, BaseHyperJumpAccuracy=666,
+ * useStarGravityWells=false, sublightFuelBurnDivisor=20, noFuel* 0.90 / 0.90 / 0.50) once a game exists.
  */
 export const baconMovementSettings = {
     /** Galaxy.3.cs 4971 HyperJumpThreshhold. */
@@ -98,7 +100,12 @@ export const baconMovementSettings = {
     noFuelHyperSpeedMultiplier: Math.fround(0.33),
     /** BaconMain.cs 82 useStargates. */
     useStargates: false,
+    /** BaconBuiltObject.cs 51 sublightFuelBurnDivisor (float 1f; BaconBuiltObject.ModMyShip divides sublight burn by it). */
+    sublightFuelBurnDivisor: Math.fround(1),
 };
+
+/** The class / InitializeStatics defaults of baconMovementSettings (restored before a new game applies the file). */
+export const BACON_MOVEMENT_SETTINGS_DEFAULTS: Readonly<typeof baconMovementSettings> = { ...baconMovementSettings };
 
 /** BaconBuiltObject.cs 64 starGravityWellRangeSquared = MaxSolarSystemSize². */
 const STAR_GRAVITY_WELL_RANGE_SQUARED = MAX_SOLAR_SYSTEM_SIZE * MAX_SOLAR_SYSTEM_SIZE;

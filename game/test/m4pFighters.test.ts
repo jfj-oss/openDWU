@@ -41,7 +41,7 @@ beforeAll(async () => {
 
 /** The player's capital space port (a fighter carrier at game start on the tick-test seed). */
 function playerCarrier(g: Galaxy): BuiltObject {
-    const port = g.builtObjects.find((b) => b !== null && b.empire === g.playerEmpire && b.fighterCapacity > 0);
+    const port = g.builtObjects.find((b): b is BuiltObject => b !== null && b.empire === g.playerEmpire && b.fighterCapacity > 0);
     if (port === undefined) throw new Error('no player carrier');
     return port;
 }

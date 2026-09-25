@@ -29,7 +29,7 @@ function newGalaxy(): Galaxy {
 }
 
 function aShip(g: Galaxy): BuiltObject {
-    return g.builtObjects.find((b) => b.role !== BuiltObjectRole.Base && b.warpSpeed > 0 && b.empire !== null && b.empire.capital !== null && b.fuelType !== null && b.fuelCapacity > 200)!;
+    return (g.builtObjects as BuiltObject[]).find((b) => b.role !== BuiltObjectRole.Base && b.warpSpeed > 0 && b.empire !== null && b.empire.capital !== null && b.fuelType !== null && b.fuelCapacity > 200)!;
 }
 
 function ctxFor(g: Galaxy, bo: BuiltObject, mission: BuiltObjectMission, command: Command, timePassed: number): CommandContext {
@@ -187,7 +187,7 @@ describe('cases Dock / Undock (BuiltObject.2.cs 2731, 3642)', () => {
     it('Dock: with every bay taken the ship waits in the queue', () => {
         const bo = aShip(g);
         const host = bo.empire!.capital!;
-        const other = g.builtObjects.find((b) => b !== bo && b.role !== BuiltObjectRole.Base)!;
+        const other = (g.builtObjects as BuiltObject[]).find((b) => b !== bo && b.role !== BuiltObjectRole.Base)!;
         for (const bay of host.dockingBays!) bay.dockedShip = other;
         bo.dockedAt = null;
         host.dockingBayWaitQueue!.length = 0;
@@ -243,7 +243,7 @@ describe('cases Load / Unload (BuiltObject.2.cs 3232, 3698)', () => {
     it('Load moves Capacity×dt units per call from the dock to the hold; Unload moves them back', () => {
         // (M4q: since InvadeUnwillingColonizationTargets draws its NextDouble the seed-1 empires start without private
         // freighters, so an independent trader docks at empire 0's capital.)
-        const bo = g.builtObjects.find((b) => b.role === BuiltObjectRole.Freight && b.empire !== null && b.cargoCapacity > 500)!;
+        const bo = (g.builtObjects as BuiltObject[]).find((b) => b.role === BuiltObjectRole.Freight && b.empire !== null && b.cargoCapacity > 500)!;
         const host = g.empires[0].capital!;
         for (const bay of host.dockingBays!) bay.dockedShip = null;
         dockAt(bo, host);
@@ -374,7 +374,7 @@ describe('harness smoke (seed 1, 600 game-s)', () => {
         const g = newGalaxy();
         // Within 600 s no ship drains far enough on its own (the threshold is ~5% of FuelCapacity), so one auto-controlled
         // empire ship (an explorer) starts nearly empty: the periodic CheckForRefuelling must send it on a Refuel mission.
-        const thirsty = g.builtObjects.find((b) => b.role === BuiltObjectRole.Exploration && b.isAutoControlled && b.empire !== null && b.empire.capital !== null && b.fuelType !== null && b.fuelCapacity > 0)!;
+        const thirsty = (g.builtObjects as BuiltObject[]).find((b) => b.role === BuiltObjectRole.Exploration && b.isAutoControlled && b.empire !== null && b.empire.capital !== null && b.fuelType !== null && b.fuelCapacity > 0)!;
         thirsty.currentFuel = 1;
         let maxDocked = 0;
         let sawRefuelMission = false;

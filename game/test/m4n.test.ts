@@ -294,7 +294,7 @@ describe('harness', () => {
         const g = createTickGame(gameData).galaxy;
         const r = runGameSeconds(g, 60);
         expect(Object.keys(r.todoHits).filter((k) => k.startsWith('M4n '))).toEqual([]);
-        for (const b of g.builtObjects) {
+        for (const b of g.builtObjects as BuiltObject[]) {
             expect(Number.isFinite(b.optimalMaximumAttackRange) && Number.isFinite(b.optimalMinimumAttackRange)).toBe(true);
             if (b.threats !== null) expect(b.threats.length).toBe(b.threatLevels!.length);
         }

@@ -22,8 +22,8 @@ import { BuiltObjectRole } from '../data/designSpecifications';
 import type { Design } from '../design';
 import type { CommandHandler } from './executeCommands';
 import { Command, CommandAction } from './mission';
-import { MOVEMENT_PRECISION, IMPULSE_MARGIN } from '../movement';
-import { HYPER_JUMP_THRESHHOLD, checkColonyShipMissionCancelled } from '../combat/attackAI';
+import { MOVEMENT_PRECISION, IMPULSE_MARGIN, baconMovementSettings } from '../movement';
+import { checkColonyShipMissionCancelled } from '../combat/attackAI';
 import { canBuiltObjectColonizeHabitat, selectRandomNextResearchProjectExcludeSuperWeapons } from '../construction/constructionQueue';
 import { checkColonizationLikeliness } from '../tradeItems';
 import { checkAtWar, checkEmpireHasColonizationTech } from '../forceStructure';
@@ -244,7 +244,7 @@ export const cmdColonize: CommandHandler = (ctx) => {
             const command13 = Command.forTarget(CommandAction.MoveTo, targetHabitat10);
             const boMission = bo.mission as typeof mission;
             boMission.insertCommandAtTop(command13);
-            if (num105 > HYPER_JUMP_THRESHHOLD && bo.warpSpeed > 0) {
+            if (num105 > baconMovementSettings.hyperJumpThreshhold && bo.warpSpeed > 0) {
                 const command14 = Command.forTarget(CommandAction.ConditionalHyperTo, targetHabitat10);
                 boMission.insertCommandAtTop(command14);
             }
