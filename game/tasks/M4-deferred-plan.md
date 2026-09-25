@@ -26,3 +26,5 @@ Then, before M5+ (UI completeness etc.):
 - Mac arm64: no .icns icon, no signing/notarization, CFBundleName "dwu", no CrossOver/Whisky/Flatpak install guesses; untested on a Mac.
 - 17f design editor: "Only Show Latest Components" filter, picture combo, weapons grid, repair-priority template, multi-select delete.
 - purchase: per-row design drop-down (Main.Part2.cs method_630), Advisor Suggest column.
+- galaxy.ts private calculateAngleFromCoords negates one branch the C# (Galaxy.6.cs:2737) does not; generation uses it, so fixing it moves createGame pins — do it as its own package with `npm run repin` after 17d/fix4 land (purchasebo agent finding).
+- cmdTroops.ts:222 tick-path caller of PurchaseNewBuiltObject (BuiltObject.2.cs:1110) still a TODO — wire it (pins will move; re-pin with reason).
