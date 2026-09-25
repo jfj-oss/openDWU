@@ -57,7 +57,7 @@ export function clearColony(galaxy: Galaxy, habitat: Habitat, newOwner: Empire |
 
 const T_takeOwnershipOfBuiltObject = registerTodo('M4q', 'takeOwnershipOfBuiltObject');
 /** Empire.1.cs 524 TakeOwnershipOfBuiltObject(builtObject, newOwner, setDesignAsObsolete) — a traded base changes hands. */
-export function takeOwnershipOfBuiltObject(galaxy: Galaxy, empire: Empire, builtObject: BuiltObject, newOwner: Empire, setDesignAsObsolete: boolean): void {
+export function takeOwnershipOfBuiltObject(galaxy: Galaxy, empire: Empire, builtObject: BuiltObject, newOwner: Empire | null, setDesignAsObsolete: boolean): void {
     /* TODO(port) M4q */ todo(T_takeOwnershipOfBuiltObject);
 }
 

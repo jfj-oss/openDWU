@@ -35,6 +35,9 @@ import { SECTOR_SIZE } from '../logistics/orders';
 import { resolveTradeableItemsResearchProjects, TradeableItemType, type TradeableItem } from '../tradeItems';
 import { findNodeById, type TechNode } from '../researchSystem';
 import { PirateIncomeType } from './pirateEconomy';
+import { EmpireActivityType } from './empireActivity';
+import { clearOutlawsFromEmpire } from '../diplomacyTick';
+import { cancelAttackMissionsAgainstEmpire } from '../fleets/militaryAI';
 
 const f = Math.fround;
 
@@ -718,4 +721,38 @@ export function pirateTradeItemsCore(galaxy: Galaxy, empire: Empire): void {
             sendMessageToEmpire(empire, otherEmpire, EmpireMessageType.OfferTrade, tradeableItem, description);
         }
     }
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Empire.3.cs 4213 AcceptPirateProtection (ProcessMessages PirateOfferProtection, diplomacyTick.ts)
+// ---------------------------------------------------------------------------------------------------------------
+
+/** Empire.3.cs 3443 CancelAttacksAgainstEmpire(empire): ship / fleet attack missions (M4m) then ClearOutlawsFromEmpire. */
+function cancelAttacksAgainstEmpire(galaxy: Galaxy, self: Empire, empire: Empire): void {
+    cancelAttackMissionsAgainstEmpire(galaxy, self, empire);
+    clearOutlawsFromEmpire(self, empire);
+}
+
+/** Empire.3.cs 4213 AcceptPirateProtection(pirateEmpire, monthlyPrice). No Rnd. */
+export function acceptPirateProtection(galaxy: Galaxy, empire: Empire, pirateEmpire: Empire, monthlyPrice: number): void {
+    changePirateRelation(pirateEmpire, empire, PirateRelationType.Protection, galaxyStarDate(galaxy), monthlyPrice);
+    let num = pirateEmpire.pirateMissions.indexOfTarget(empire, EmpireActivityType.Attack);
+    let iterationCount = 0;
+    while ((iterationCount++, iterationCount <= 200) && num >= 0) {
+        const empireActivity = pirateEmpire.pirateMissions.at(num);
+        if (empireActivity !== null && empireActivity.requestingEmpire !== null && empireActivity.requestingEmpire !== pirateEmpire && pirateEmpire !== null) {
+            const pirateRelation = obtainPirateRelation(empireActivity.requestingEmpire, pirateEmpire);
+            pirateRelation.evaluationPirateMissionsFail = f(pirateRelation.evaluationPirateMissionsFail - 20);
+        }
+        pirateEmpire.pirateMissions.items.splice(num, 1);
+        num = pirateEmpire.pirateMissions.indexOfTarget(empire, EmpireActivityType.Attack);
+    }
+    if (monthlyPrice > 0.0) {
+        empire.stateMoney -= monthlyPrice;
+        pirateEmpire.stateMoney += monthlyPrice;
+        pirateEmpire.pirateEconomy.performIncome(monthlyPrice, PirateIncomeType.ProtectionAgreement, galaxyStarDate(galaxy));
+        pirateEmpire.counters.pirateProtectionIncome += monthlyPrice;
+    }
+    cancelAttacksAgainstEmpire(galaxy, pirateEmpire, empire);
+    cancelAttacksAgainstEmpire(galaxy, empire, pirateEmpire);
 }
