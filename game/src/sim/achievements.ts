@@ -771,7 +771,7 @@ function roundHalfEven(x: number): number {
     return Math.abs(x % 1) === 0.5 && r % 2 !== 0 ? r - 1 : r;
 }
 
-/** .NET Core double.ToString(InvariantCulture): shortest round-trip digits, scientific below 1e-5 / from 1e15. */
+/** .NET Core double.ToString(InvariantCulture) ("G"): shortest round-trip digits; scientific when the exponent is <= -5 or >= 15 (float: 7). */
 export function doubleToInvariantString(x: number, isFloat = false): string {
     if (Number.isNaN(x)) return 'NaN';
     if (!Number.isFinite(x)) return x > 0 ? '∞' : '-∞';
@@ -792,7 +792,7 @@ export function doubleToInvariantString(x: number, isFloat = false): string {
     }
     const neg = x < 0 ? '-' : '';
     const maxExp = isFloat ? 7 : 15;
-    if (exp >= maxExp || exp < -5) {
+    if (exp >= maxExp || exp <= -5) {
         const mant = digits.length > 1 ? digits[0] + '.' + digits.slice(1) : digits;
         const ae = Math.abs(exp);
         return `${neg}${mant}E${exp < 0 ? '-' : '+'}${ae < 10 ? '0' + ae : String(ae)}`;

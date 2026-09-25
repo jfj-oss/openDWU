@@ -1547,8 +1547,9 @@ export function raceVictoryConditionMetCompareEmpires(galaxy: Galaxy, empire: Em
         const num = own.num;
         const obj = own.obj;
         // 4100-4166
+        // The Oldest… types are in the C# "num > 0" group here (Galaxy.cs 4127-4128), unlike in the ranking switch below.
         let flag = false;
-        if (MOST_TYPES.has(condition.type)) {
+        if (MOST_TYPES.has(condition.type) || condition.type === T.OldestMutualDefensePact || condition.type === T.OldestFreeTradeAgreement) {
             if (num > 0.0) flag = true;
         } else if (LEAST_TYPES.has(condition.type)) {
             flag = true;
