@@ -23,6 +23,7 @@ import { setGameMenuHandler, setCycleHandler, type CycleKind } from './keyboard'
 import { uiClickSounds } from '../audio/effectsPlayer';
 import { helpTopicKeyForHabitat, toggleGalactopedia } from './screens/galactopedia';
 import { toggleEmpiresList } from './screens/empiresList';
+import { toggleExpansionPlanner } from './screens/expansionPlanner'; // [16a]
 import { setEmpireSummarySource, getEmpireSummarySource, toggleEmpireSummary } from './screens/empireSummary';
 import { toggleColoniesList } from './screens/coloniesList';
 import { toggleShipDesigns } from './screens/shipDesigns'; // [16b]
@@ -220,6 +221,13 @@ export function selectShipGroup(sg: ShipGroup, moveView = true): void {
     shipGroupSelectHandler?.(sg, moveView);
 }
 // [/15c]
+// [16a] Habitat selection hook: buildSelectionPanel registers it; the Expansion
+// Planner calls selectHabitat (Main.Part4.cs:3027/3038 GotoTarget / SelectTarget).
+let habitatSelectHandler: ((h: Habitat, moveView: boolean) => void) | null = null;
+export function selectHabitat(h: Habitat, moveView = true): void {
+    habitatSelectHandler?.(h, moveView);
+}
+// [/16a]
 
 /** Build the HUD overlay and append it to document.body. */
 export function createHud(wiring: HudWiring = {}): HudRefs {
@@ -531,6 +539,13 @@ function buildTopBarButton(name: string, wiring: HudWiring): HTMLElement {
             return;
         }
         // [/15b]
+        // [16a] btnExpansionPlanner → Expansion Planner (Main.Part4.cs:2974 btnExpansionPlanner_Click).
+        if (name === 'btnExpansionPlanner') {
+            const src = getEmpireSummarySource();
+            if (src) toggleExpansionPlanner({ empire: src.empire, onSelect: (h) => selectHabitat(h, true) });
+            return;
+        }
+        // [/16a]
         const screen = topBarScreen(name);
         if (screen === 'colonies') {
             // Main.Part9.cs tbtnColonies_Click: toggle the Colonies list.
@@ -892,6 +907,20 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         }
     };
     // [/15c]
+    // [16a] Select a habitat (the same calls as the colony cycler) and optionally move the view.
+    habitatSelectHandler = (h, moveView) => {
+        const galaxy = wiring.galaxy;
+        if (!galaxy) return;
+        const system = galaxy.systems.find((s) => s.habitats.includes(h)) ?? galaxy.systems[h.systemIndex];
+        if (!system) return;
+        wiring.onSelectionChange?.({ habitat: h, system });
+        const cam = wiring.camera;
+        if (moveView && cam) {
+            cam.centerOn(h.xpos, h.ypos);
+            cam.zoomAt(SYSTEM_LEVEL_ZOOM, cam.width / 2, cam.height / 2);
+        }
+    };
+    // [/16a]
 
     // Refresh the header/body from the current selection.
     const gameData = wiring.gameData;

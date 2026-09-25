@@ -5,6 +5,7 @@
 // handlers; every other action is registered but inert via console.info.
 
 import { Camera } from '../render/camera';
+import { toggleExpansionPlanner } from './screens/expansionPlanner'; import { selectHabitat } from './hud'; // [16a]
 import { GalaxyTime } from '../sim/clock';
 import { toggleDiplomacyScreen } from './screens/diplomacyScreen'; // [15a]
 import {
@@ -23,6 +24,7 @@ import { toggleBuildOrder } from './screens/buildOrder'; import { toggleConstruc
 import { toggleFleetsList } from './screens/fleetsList'; import { selectShipGroup } from './hud'; // [15c]
 import { toggleShipsAndBasesList } from './screens/shipsAndBasesList';
 import { toggleMessageHistory } from './screens/messageHistory';
+import { toggleGameOptionsPanel } from './screens/gameOptionsPanel'; // [16d]
 import { toggleEmpireComparison } from './screens/empireComparison'; // [15d]
 import { showToast } from './toast';
 
@@ -246,6 +248,13 @@ export function dispatchKey(
         case 'scrollRight':
             handlers.scrollRight?.();
             break;
+        // [16a] F3: Expansion Planner (task 16a); a row selects + zooms to the planet.
+        case 'expansionPlannerScreen': {
+            const src = getEmpireSummarySource();
+            if (src) toggleExpansionPlanner({ empire: src.empire, onSelect: (h) => selectHabitat(h, true) });
+            break;
+        }
+        // [/16a]
         case 'galaxyMap':
             handlers.galaxyMap?.();
             break;
@@ -292,6 +301,13 @@ export function dispatchKey(
         case 'gameMenu':
             handlers.gameMenu?.();
             break;
+        // [16d] O: Game Options — Automation + message options (task 16d).
+        case 'gameOptionsScreen': {
+            const src = getEmpireSummarySource();
+            if (src) toggleGameOptionsPanel({ empire: src.empire });
+            break;
+        }
+        // [/16d]
         case 'galactopediaHelp':
             handlers.galactopediaHelp?.();
             break;
@@ -489,6 +505,7 @@ export function cycleActionArgs(action: string): { kind: CycleKind; dir: 1 | -1;
 export const IMPLEMENTED_KEY_ACTIONS: ReadonlySet<string> = new Set([
     'togglePause', 'speedUp', 'speedDown',
     'diplomacyScreen', // [15a]
+    'expansionPlannerScreen', // [16a]
     'zoomIn', 'zoomOut', 'zoomToSelection',
     'zoomSystemLevel', 'zoomSectorLevel', 'zoomGalaxyLevel', 'zoomPlanetLevel',
     'researchScreen', // [15b]
@@ -500,6 +517,7 @@ export const IMPLEMENTED_KEY_ACTIONS: ReadonlySet<string> = new Set([
     'gameMenu', 'galactopediaHelp',
     'cycleColonies', 'cycleColoniesBackward', 'cycleColoniesMoveView',
     'empireComparisonScreen', // [15d]
+    'gameOptionsScreen', // [16d]
 ]);
 
 /** True when pressing the binding's key does something today. Pure. */
