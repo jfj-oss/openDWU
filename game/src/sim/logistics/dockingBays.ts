@@ -1,11 +1,11 @@
 // M4e — habitat docking-bay / wait-queue creation (the block the C# repeats at every habitat site).
 //
 // Split out of docking.ts because empire.ts / galaxy.ts / startHabitats.ts call it: this module only imports
-// builtObject.ts (DockingBay) and types.ts, so it does not pull the mission / diplomacy modules into their import
+// dockingBay.ts (DockingBay) and types.ts, so it does not pull the mission / diplomacy modules into their import
 // cycles. Sites: Galaxy.8.cs 277-285 (and 316/355/485/524/563, the Generate*Planet helpers), Galaxy.5.cs 1619-1644 /
 // 1757-1781 (SetupSolarSystem, populated planets / moons), Empire.1.cs 120-131 (TakeOwnershipOfColony). No Rnd.
 
-import { DockingBay } from '../builtObject';
+import { DockingBay } from '../dockingBay';
 import { HabitatCategoryType, HabitatType, type Habitat } from '../types';
 
 /** Component 74 (Docking Bay) — the BuiltObjectComponent the C# news up for each habitat bay (its BuiltObjectComponentId keeps the field default -1, BuiltObjectComponent.cs 17). */
