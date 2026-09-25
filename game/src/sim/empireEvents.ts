@@ -69,6 +69,15 @@ import { empireShipGroups, forceCompleteMission, type ShipGroup } from './fleets
 import { compareShipGroups, selectFleetBase } from './fleets/shipGroupTasks';
 import { takeOwnershipOfBuiltObject } from './combat/ownership';
 import { netSort } from './netSort';
+import { declareWar as declareWarImpl, fastFindNearestColony } from './diplomacyTick';
+import { conditionCheckLimit } from './fleets/blockades';
+import { stellarEmpire } from './combat/threats';
+import { selectSuitableGovernment, changeGovernment } from './treasury';
+import { loadEmpirePolicy } from './researchSystem';
+import { takeOwnershipOfColonyFull } from './combat/ownership';
+import { recalculateEmpirePopulation } from './taxes';
+import { PopulationList } from './population';
+import { mergeGalaxyMap } from './exploration';
 import { nodeCategory, nodeIndustry, type TechNode } from './researchSystem';
 import { removeNonRaceSpecificProjectTypes, resolveRaceSpecificComponents } from './researchTick';
 import { IndustryType } from './types';
@@ -1695,19 +1704,248 @@ function initiateEmpireSplitRandom(galaxy: Galaxy, empire: Empire, splinterPorti
 }
 
 /**
- * Empire.1.cs 1102 InitiateEmpireSplit(splinterPortion, declareWar) → 2883 SplinterEmpire: a new empire is created at runtime
- * around the colony nearest a random point ≥ 4.5 sectors from the capital (ObtainRandomGalaxyCoordinates Rnd), takes a share
- * of the colonies, ships (ConsiderTakeoverOfBuiltObject Rnd per ship) and fleets (NextDouble per fleet), then war / incident
- * penalties and messages. TODO(port) M4u: runtime empire creation (the ownership transfers it needs — TakeOwnershipOfColony /
- * TakeOwnershipOfBuiltObject, combat/ownership.ts — are ported by M4q), Research.Clone,
- * MergeGalaxyMap, ChangeGovernment / GenerateEmpireName — reached only 4+ years in, by very unhappy large empires.
+ * Empire.1.cs 1102 InitiateEmpireSplit(splinterPortion, declareWar) (M4z1). Rnd: SplinterEmpire's, then DeclareWar's.
+ * The C# picks the message relation by the inverted test (a pirate splitting empire reads DiplomaticRelations, a normal one
+ * PirateRelations — ObtainPirateRelation adds a NotMet relation when missing); ported as written.
  */
-export function initiateEmpireSplit(galaxy: Galaxy, empire: Empire, splinterPortion: number, declareWar: boolean): void {
-    void galaxy;
-    void empire;
-    void splinterPortion;
-    void declareWar;
-    throw new Error('TODO(port) M4q/M4l: Empire.1.cs 1102 InitiateEmpireSplit / 2883 SplinterEmpire (runtime empire creation)');
+export function initiateEmpireSplit(galaxy: Galaxy, self: Empire, splinterPortion: number, declareWar: boolean): void {
+    const coloniesLost: Habitat[] = [];
+    const empire = splinterEmpire(galaxy, self, self, splinterPortion, coloniesLost);
+    if (empire === null) return;
+    if (self.pirateEmpireBaseHabitat === null) {
+        if (declareWar) {
+            const empireEvaluation = obtainEmpireEvaluation(galaxy, self, empire);
+            empireEvaluation.incidentEvaluation = empireEvaluation.incidentEvaluationRaw - 40.0;
+            declareWarImpl(galaxy, self, empire);
+        } else {
+            const empireEvaluation2 = obtainEmpireEvaluation(galaxy, self, empire);
+            empireEvaluation2.incidentEvaluation = empireEvaluation2.incidentEvaluationRaw - 10.0;
+        }
+    }
+    let text = '';
+    let text2 = '';
+    if (declareWar) {
+        text2 = gameText('Civil War in the EMPIRE', self.name);
+        text = text + gameText('A civil war is underway in the OTHEREMPIRE', self.name) + '\n\n';
+    } else {
+        text2 = gameText('Revolution in the EMPIRE', self.name);
+        text = text + gameText('A split has occurred in the OTHEREMPIRE', self.name) + '\n\n';
+    }
+    text += gameText('Empire Split Detail COLONYCOUNT EMPIRE NEWEMPIRE', coloniesLost.length.toString(), self.name, empire.name);
+    let text3 = gameText('Revolution!');
+    let text4 = gameText('Your Empire Split Detail COLONYCOUNT NEWEMPIRE', coloniesLost.length.toString(), empire.name);
+    if (declareWar) {
+        text3 = gameText('Civil War!');
+        text4 = text4 + '\n\n' + gameText('We are now at war with these traitors');
+    }
+    for (let i = 0; i < galaxy.empires.length; i++) {
+        const empire2 = galaxy.empires[i];
+        if (empire2 === self) {
+            sendEventMessageToEmpire(empire2, EventMessageType.EmpireSplits, text3, text4, empire, empire.capital);
+        } else {
+            if (empire2 === empire) continue;
+            let flag = false;
+            if (self.pirateEmpireBaseHabitat !== null) {
+                const diplomaticRelation = obtainDiplomaticRelation(empire2, self);
+                if (diplomaticRelation.type !== DiplomaticRelationType.NotMet) flag = true;
+            } else {
+                const pirateRelation = obtainPirateRelation(empire2, self);
+                if (pirateRelation.type !== PirateRelationType.NotMet) flag = true;
+            }
+            if (flag) sendEventMessageToEmpire(empire2, EventMessageType.EmpireSplits, text2, text, empire, empire.capital);
+        }
+    }
+    for (let j = 0; j < galaxy.pirateEmpires.length; j++) {
+        const empire3 = galaxy.pirateEmpires[j];
+        if (empire3 === self) {
+            sendEventMessageToEmpire(empire3, EventMessageType.EmpireSplits, text3, text4, empire, empire.capital);
+        } else if (empire3 !== empire) {
+            let flag2 = false;
+            const pirateRelation2 = obtainPirateRelation(empire3, self);
+            if (pirateRelation2.type !== PirateRelationType.NotMet) flag2 = true;
+            if (flag2) sendEventMessageToEmpire(empire3, EventMessageType.EmpireSplits, text2, text, empire, empire.capital);
+        }
+    }
+    self.lastDisasterDate = galaxyStarDate(galaxy);
+}
+
+/**
+ * Empire.1.cs 2883 SplinterEmpire(sourceEmpire, splinterPortion, out coloniesLost) (M4z1; `coloniesLost` is filled in place).
+ * Rnd, in order: ObtainRandomGalaxyCoordinates (NextDouble ×2 per try, up to 50 tries), SelectSuitableGovernment, the
+ * Empire ctor's draws, the second SelectSuitableGovernment + ChangeGovernment + GenerateEmpireName when the lost colonies'
+ * dominant race differs, GenerateDesignSpecifications, ConsiderTakeoverOfBuiltObject per non-base ship (NextDouble) and
+ * NextDouble per fleet without a gather point in the new empire.
+ * C# quirks kept: the distance test is CalculateDistance(y, y, capital); PopulationList.Add merges same-race populations into
+ * the first colony's Population objects; GenerateEmpireName runs on the source empire (its race and capital); the
+ * foreach loops over SyncLists are index-based, so fleets / ships removed during the loop skip their successor, and a moved
+ * fleet keeps ShipGroup.Empire = the source empire.
+ */
+function splinterEmpire(galaxy: Galaxy, self: Empire, sourceEmpire: Empire, splinterPortion: number, coloniesLost: Habitat[]): Empire | null {
+    let empire: Empire | null = null;
+    coloniesLost.length = 0;
+    if (galaxy.nextEmpireId < galaxy.maximumEmpireCount) {
+        const num = Math.max(1, Math.trunc(splinterPortion * sourceEmpire.colonies.length));
+        let x = 0.0;
+        let y = 0.0;
+        let num2 = 0.0;
+        const iterationCount = { value: 0 };
+        while (conditionCheckLimit(num2 < galaxy.sectorSize * 4.5, 50, iterationCount)) {
+            // Galaxy.5.cs 2830 ObtainRandomGalaxyCoordinates(out x, out y).
+            x = galaxy.rnd.nextDouble() * galaxy.sizeX;
+            y = galaxy.rnd.nextDouble() * galaxy.sizeY;
+            num2 = galaxy.calculateDistance(y, y, sourceEmpire.capital!.xpos, sourceEmpire.capital!.ypos);
+        }
+        const habitat = fastFindNearestColony(galaxy, Math.trunc(x), Math.trunc(y), sourceEmpire, 20000, sourceEmpire.capital);
+        if (habitat !== null) {
+            self.empireSplitCount++;
+            const dominantRace = sourceEmpire.dominantRace!;
+            let allowableGovernmentTypes = EmpireClass.resolveDefaultAllowableGovernmentTypes(dominantRace);
+            const governmentId = selectSuitableGovernment(galaxy, dominantRace, -1, allowableGovernmentTypes);
+            const developmentLevel = habitat.developmentLevel; // Habitat.cs 5602 GetDevelopmentLevel (_DevelopmentLevel)
+            const policy = loadEmpirePolicy(galaxy.researchStatic, dominantRace, false);
+            empire = new EmpireClass(galaxy, '', habitat, dominantRace, governmentId, 1.0, policy);
+            takeOwnershipOfColonyFull(galaxy, empire, habitat, empire, false, false);
+            coloniesLost.push(habitat);
+            habitat.setDevelopmentLevel(developmentLevel);
+            if (num > 1) {
+                let colonyApproval = colonyApprovalAverage(galaxy, self);
+                colonyApproval = !(colonyApproval < 0.0) ? colonyApproval * 2.0 : colonyApproval / 2.0;
+                for (let i = 0; i < num - 1; i++) {
+                    const habitat2 = fastFindNearestColonyBelowApproval(galaxy, Math.trunc(habitat.xpos), Math.trunc(habitat.ypos), sourceEmpire, colonyApproval);
+                    if (habitat2 !== null) {
+                        takeOwnershipOfColonyFull(galaxy, empire, habitat2, empire, false, false);
+                        coloniesLost.push(habitat2);
+                    }
+                }
+            }
+            recalculateEmpirePopulation(empire);
+            const populationList = new PopulationList();
+            for (let j = 0; j < coloniesLost.length; j++) {
+                for (let k = 0; k < coloniesLost[j].population.items.length; k++) populationList.add(coloniesLost[j].population.items[k]);
+            }
+            populationList.recalculateTotalAmount();
+            if (populationList.dominantRace !== dominantRace) {
+                const dominantRace2 = populationList.dominantRace!;
+                allowableGovernmentTypes = EmpireClass.resolveDefaultAllowableGovernmentTypes(dominantRace2);
+                const governmentId2 = selectSuitableGovernment(galaxy, dominantRace2, -1, allowableGovernmentTypes);
+                // Empire.cs 2673 DominantRace setter: also sets _DesignPictureFamilyIndex.
+                empire.dominantRace = dominantRace2;
+                empire.designPictureFamilyIndex = dominantRace2.designsPictureFamilyIndex;
+                changeGovernment(galaxy, empire, governmentId2);
+                empire.name = self.generateEmpireName(governmentId2);
+            }
+            empire.generateDesignSpecifications(galaxy, empire.dominantRace!, false, empire.dominantRace!.name);
+            empire.research = sourceEmpire.research.clone(sourceEmpire.dominantRace);
+            mergeGalaxyMap(galaxy, sourceEmpire, empire);
+            let diplomaticRelation = obtainDiplomaticRelation(sourceEmpire, empire);
+            diplomaticRelation.type = DiplomaticRelationType.None;
+            diplomaticRelation = obtainDiplomaticRelation(empire, sourceEmpire);
+            diplomaticRelation.type = DiplomaticRelationType.None;
+            for (let d = 0; d < sourceEmpire.diplomaticRelations.count; d++) {
+                const diplomaticRelation4 = sourceEmpire.diplomaticRelations.at(d);
+                if (diplomaticRelation4.type !== DiplomaticRelationType.NotMet) {
+                    const diplomaticRelation2 = obtainDiplomaticRelation(empire, diplomaticRelation4.otherEmpire);
+                    diplomaticRelation2.type = DiplomaticRelationType.None;
+                    const diplomaticRelation3 = obtainDiplomaticRelation(diplomaticRelation4.otherEmpire!, empire);
+                    diplomaticRelation3.type = DiplomaticRelationType.None;
+                }
+            }
+            const num3 = splinterPortion * 0.7;
+            const builtObjectList = sourceEmpire.privateBuiltObjects.slice();
+            for (const item of builtObjectList) {
+                if (considerTakeoverOfBuiltObject(galaxy, item, sourceEmpire, empire, num3)) takeOwnershipOfBuiltObject(galaxy, empire, item, empire, true);
+            }
+            const builtObjectList2 = sourceEmpire.builtObjects.slice();
+            for (const item2 of builtObjectList2) {
+                if (considerTakeoverOfBuiltObject(galaxy, item2, sourceEmpire, empire, num3)) takeOwnershipOfBuiltObject(galaxy, empire, item2, empire, true);
+            }
+            const shipGroupList: ShipGroup[] = [];
+            const sourceGroups = empireShipGroups(sourceEmpire);
+            for (let g = 0; g < sourceGroups.length; g++) {
+                const shipGroup = sourceGroups[g]!;
+                if ((shipGroup.gatherPoint === null || stellarEmpire(shipGroup.gatherPoint) !== empire) && !(galaxy.rnd.nextDouble() < num3)) continue;
+                shipGroupList.push(shipGroup);
+                const newGroups = empireShipGroups(empire);
+                newGroups.push(shipGroup);
+                netSort(newGroups, compareShipGroups);
+                for (let s = 0; s < shipGroup.ships.length; s++) {
+                    const ship = shipGroup.ships[s];
+                    takeOwnershipOfBuiltObject(galaxy, empire, ship, empire, true);
+                }
+            }
+            for (const item3 of shipGroupList) {
+                const idx = sourceGroups.indexOf(item3);
+                if (idx >= 0) sourceGroups.splice(idx, 1);
+            }
+            galaxy.empires.push(empire);
+        }
+    }
+    return empire;
+}
+
+/** Galaxy.3.cs 1640 FastFindNearestColonyBelowApproval(x, y, empire, empireApprovalThreshold). No Rnd. */
+function fastFindNearestColonyBelowApproval(galaxy: Galaxy, x: number, y: number, empire: Empire, empireApprovalThreshold: number): Habitat | null {
+    let num = Number.MAX_VALUE;
+    let result: Habitat | null = null;
+    for (let i = 0; i < empire.colonies.length; i++) {
+        if (empireApprovalRating(galaxy, empire.colonies[i]) < empireApprovalThreshold) {
+            const num2 = galaxy.calculateDistanceSquared(x, y, empire.colonies[i].xpos, empire.colonies[i].ypos);
+            if (num2 < num) {
+                result = empire.colonies[i];
+                num = num2;
+            }
+        }
+    }
+    return result;
+}
+
+/** Empire.1.cs 3010 ConsiderTakeoverOfBuiltObject(builtObject, sourceEmpire, newEmpire, chance). Rnd: NextDouble for a non-base ship not yet claimed. */
+function considerTakeoverOfBuiltObject(galaxy: Galaxy, builtObject: BuiltObject, sourceEmpire: Empire, newEmpire: Empire, chance: number): boolean {
+    let flag = false;
+    if (builtObject.parentHabitat !== null && builtObject.parentHabitat.empire === newEmpire) flag = true;
+    if (builtObject.parentBuiltObject !== null && builtObject.parentBuiltObject.empire === newEmpire) flag = true;
+    const mission = builtObject.mission as BuiltObjectMission | null;
+    if (mission !== null) {
+        switch (mission.type) {
+            case BuiltObjectMissionType.Patrol:
+            case BuiltObjectMissionType.Escort:
+            case BuiltObjectMissionType.Retire:
+            case BuiltObjectMissionType.Retrofit:
+            case BuiltObjectMissionType.Hold:
+            case BuiltObjectMissionType.MoveAndWait:
+            case BuiltObjectMissionType.Refuel:
+            case BuiltObjectMissionType.LoadTroops:
+            case BuiltObjectMissionType.UnloadTroops:
+            case BuiltObjectMissionType.Repair:
+            case BuiltObjectMissionType.Move:
+                if (mission.targetBuiltObject !== null && mission.targetBuiltObject.empire === newEmpire) flag = true;
+                if (mission.targetHabitat !== null && mission.targetHabitat.empire === newEmpire) flag = true;
+                break;
+            case BuiltObjectMissionType.Transport:
+                if (mission.targetBuiltObject !== null && mission.targetBuiltObject.empire === newEmpire) flag = true;
+                if (mission.secondaryTargetBuiltObject !== null && mission.secondaryTargetBuiltObject.empire === newEmpire) flag = true;
+                if (mission.targetHabitat !== null && mission.targetHabitat.empire === newEmpire) flag = true;
+                if (mission.secondaryTargetHabitat !== null && mission.secondaryTargetHabitat.empire === newEmpire) flag = true;
+                break;
+            case BuiltObjectMissionType.WaitAndAttack:
+            case BuiltObjectMissionType.WaitAndBombard:
+                if (mission.secondaryTargetBuiltObject !== null && mission.secondaryTargetBuiltObject.empire === newEmpire) flag = true;
+                if (mission.secondaryTargetHabitat !== null && mission.secondaryTargetHabitat.empire === newEmpire) flag = true;
+                break;
+        }
+    }
+    if (!flag && builtObject.role === BuiltObjectRole.Base) {
+        let num = Number.MAX_VALUE;
+        let num2 = Number.MAX_VALUE;
+        const habitat = fastFindNearestColony(galaxy, Math.trunc(builtObject.xpos), Math.trunc(builtObject.ypos), sourceEmpire, 0);
+        if (habitat !== null) num = galaxy.calculateDistance(habitat.xpos, habitat.ypos, builtObject.xpos, builtObject.ypos);
+        const habitat2 = fastFindNearestColony(galaxy, Math.trunc(builtObject.xpos), Math.trunc(builtObject.ypos), newEmpire, 0);
+        if (habitat2 !== null) num2 = galaxy.calculateDistance(habitat2.xpos, habitat2.ypos, builtObject.xpos, builtObject.ypos);
+        if (num2 < num) flag = true;
+    }
+    if (!flag && builtObject.role !== BuiltObjectRole.Base && galaxy.rnd.nextDouble() < chance) flag = true;
+    if (builtObject.shipGroup !== null) flag = false;
+    return flag;
 }
 
 // ---------------------------------------------------------------------------

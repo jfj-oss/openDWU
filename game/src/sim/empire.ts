@@ -175,6 +175,11 @@ export class EmpireCounters {
     lossesColoniesVolcanicCount = 0;
     captureShipCount = 0;
     raidSuccessCount = 0;
+    // ---- M4z1 fields (empire lifecycle) ----
+    /** EmpireCounters.cs 78/79/89 EliminateEmpireCount / EliminateEmpireStrategicValue / EliminatePirateEmpireCount (int; events.ts ProcessEmpireElimination). */
+    eliminateEmpireCount = 0;
+    eliminateEmpireStrategicValue = 0;
+    eliminatePirateEmpireCount = 0;
     constructor(empire: Empire) {
         this._empire = empire;
     }
@@ -1933,6 +1938,12 @@ export class Empire {
     preWarpProgressEventOccurredFlags: boolean[] = [];
     /** Empire.cs 37 _EventMessageRecipient (IEventMessageRecipient; the UI attaches one, headless runs leave it null). */
     eventMessageRecipient: { receiveEventMessage(eventType: number, title: string, message: string, additionalData: unknown, location: unknown): void } | null = null;
+    // ---- M4z1 fields (empire lifecycle) ----
+    /** Empire.cs 289 EmpireSplitCount (SplinterEmpire, empireEvents.ts). */
+    empireSplitCount = 0;
+    /** Empire.cs 292/295 HaveDefeatedAncientGuardians / HaveDefeatedShakturi (EmpireCounters.ProcessEmpireElimination). */
+    haveDefeatedAncientGuardians = false;
+    haveDefeatedShakturi = false;
 }
 
 // Task M3b: Empire.GovernmentAttributes (Empire.cs 2805: _Galaxy.Governments[_GovernmentId],

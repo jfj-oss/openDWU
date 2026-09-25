@@ -88,6 +88,7 @@ import type { ShipGroup } from './fleets/shipGroup';
 import { shipGroupDetermineStrongestShip, shipGroupDetermineStrongestTroopTransport, shipGroupListIdentifyLargestFleet, shipGroupTotalFighterCount, shipGroupTotalOverallStrengthFactor } from './fleets/shipGroupTasks';
 import { checkFleetSafeForDemoralizingCharacter, generateOrderedFleetsByFighterStrength, generateOrderedFleetsByOverallStrength, generateOrderedFleetsByTroopAttackStrength } from './fleets/fleetOrdering';
 import { habitatResourcesHaveSuperLuxury } from './exploration';
+import { determineColonizationValue } from './tradeItems';
 
 /** C# StellarObject (Habitat or BuiltObject) as a character location. */
 export type StellarObject = Habitat | BuiltObject;
@@ -7164,11 +7165,10 @@ export function resolveLocationsToDefend(galaxy: Galaxy, empire: Empire, include
 
 /**
  * Empire.7.cs ReviewCharacterLocation (479). Ported branches: pre-checks, Demoralizing relocation,
- * Leader, ColonyGovernor (revenue branch), PirateLeader (Empire.7.cs 698-746), Scientist, FleetAdmiral
+ * Leader, ColonyGovernor (revenue and population-growth branches), PirateLeader (Empire.7.cs 698-746), Scientist, FleetAdmiral
  * (Empire.7.cs 838-918), TroopGeneral (1135-), ShipCaptain; IntelligenceAgent has no case (keeps its location).
  * Ambassador: DiplomaticRelations loop (diplomacy.ts).
- * TODO(port) (throw when reached with non-empty inputs): ColonyGovernor population-growth branch
- * (Habitat.MaximumPopulation / DetermineColonizationValue), DiplomaticRelation-driven parts of ResolveLocationsToDefend.
+ * TODO(port) (throw when reached with non-empty inputs): DiplomaticRelation-driven parts of ResolveLocationsToDefend.
  */
 export function reviewCharacterLocation(galaxy: Galaxy, empire: Empire, character: Character | null, transferToLocation: boolean): StellarObject | null {
     if (character !== null && character.transferDestination === null && character.transferTimeRemaining <= 0) {
@@ -7275,9 +7275,36 @@ export function reviewCharacterLocation(galaxy: Galaxy, empire: Empire, characte
                     }
                 } else {
                     if (character.populationGrowth <= character.colonyIncome || character.populationGrowth <= character.colonyHappiness) break;
-                    // TODO(port): Empire.7.cs 667-718 (Habitat.MaximumPopulation, DetermineColonizationValue).
-                    void locationEmpire;
-                    throw new Error('TODO(port): Empire.7.cs ReviewCharacterLocation ColonyGovernor population-growth branch (MaximumPopulation / DetermineColonizationValue)');
+                    // Empire.7.cs 650-697 (M4z1). C# `empire` here is the local DetermineLocationEmpire() (TS `locationEmpire`);
+                    // Colonies / CheckLocationSafeForDemoralizingCharacter / DetermineColonizationValue are `this`'s (TS `empire`).
+                    // Habitat.MaximumPopulation is _MaxPopulation (Habitat.cs 271). No Rnd.
+                    let habitat7: Habitat | null = null;
+                    if (character.location !== null && isHabitatData(character.location) && locationEmpire === empire) {
+                        habitat7 = character.location;
+                        if (habitat7.population != null) {
+                            const num8 = Math.min(1000000000, habitat7.maxPopulation - 10000000);
+                            if (habitat7.population.totalAmount < num8) return habitat7;
+                        }
+                    }
+                    let habitat8 = habitat7;
+                    let num9 = 0.0;
+                    if (habitat8 !== null) num9 = determineColonizationValue(galaxy, empire, habitat8);
+                    for (let num10 = 0; num10 < empire.colonies.length; num10++) {
+                        const habitat9 = empire.colonies[num10];
+                        if (habitat9.population == null) continue;
+                        const num11 = Math.min(1000000000, habitat9.maxPopulation - 10000000);
+                        if (habitat9.population.totalAmount < num11) {
+                            const num12 = determineColonizationValue(galaxy, empire, habitat9);
+                            if (num12 > num9 && findCharactersAtLocationOrTransferring(charactersByRole3, habitat9).length <= 0 && checkLocationSafeForDemoralizingCharacter(empire, flag, habitat9, character)) {
+                                habitat8 = habitat9;
+                                num9 = num12;
+                            }
+                        }
+                    }
+                    if (habitat8 !== null && habitat8 !== habitat7) {
+                        if (transferToLocation) character.transferToNewLocation(habitat8, galaxy);
+                        return habitat8;
+                    }
                 }
                 break;
             }

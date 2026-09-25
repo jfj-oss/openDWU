@@ -4478,6 +4478,9 @@ export class Galaxy {
      * are deferred (tasks/M4-plan.md §0.3): the M4u branches that read it throw TODO(port) when it is true.
      */
     storyShadowsEnabled = false;
+    // ---- M4z1 fields (empire lifecycle) ----
+    /** Galaxy.cs DefeatedEmpires (EmpireList; Empire.CompleteTeardown adds each empire it removes from Empires). */
+    defeatedEmpires: Empire[] = [];
 }
 
 // Port of Galaxy.4.cs Galaxy constructor (star-cluster setup, star loop,

@@ -254,7 +254,7 @@ export function handleAssaultPodMovement(galaxy: Galaxy, builtObject: BuiltObjec
     }
 }
 
-/** Habitat.cs 3324 PiratesDefendAgainstRaid(raidingEmpire). Rnd: GenerateDefensivePirateRaiders' (a stub, see invasion.ts). */
+/** Habitat.cs 3324 PiratesDefendAgainstRaid(raidingEmpire). Rnd: GenerateDefensivePirateRaiders' (Next(0, 3), combat/invasion.ts). */
 export function piratesDefendAgainstRaid(galaxy: Galaxy, habitat: Habitat, raidingEmpire: Empire): void {
     const control = pirateColonyControl(habitat);
     if (control === null || control.count <= 0) return;
