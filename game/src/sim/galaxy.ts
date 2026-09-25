@@ -4537,8 +4537,6 @@ export class Galaxy {
     shakturiActualRace: Race | null = null;
     /** Galaxy.cs 536 StoryShakturiEnrageTimer = long.MaxValue (star date). */
     storyShakturiEnrageTimer = Number.MAX_SAFE_INTEGER;
-    /** Galaxy.cs 538 ShakturiDefeated (set by the victory check, Galaxy.1.cs 431). */
-    shakturiDefeated = false;
 }
 
 // Port of Galaxy.4.cs Galaxy constructor (star-cluster setup, star loop,
