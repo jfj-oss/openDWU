@@ -40,6 +40,8 @@ import * as characterRuntime from './characterRuntime';
 import { EventMessageType, DisasterEventType, RaceEventType, raceImmuneToPlagues, galaxyPlagues, getPlagueUnhappinessFactorWithPlague } from './eventTypes';
 export { EventMessageType, DisasterEventType, RaceEventType, raceImmuneToPlagues, galaxyPlagues, getPlagueUnhappinessFactorWithPlague };
 import * as empireEvents from './empireEvents';
+import * as storyEventActions from './story/eventActions';
+import * as storyEvents from './story/storyEvents';
 import { Empire as EmpireClass, AutomationLevel } from './empire';
 import { BuiltObjectSubRole } from './builtObjectTypes';
 import { findNewest } from './design';
@@ -846,65 +848,24 @@ export function clearCompletedPlanetDestroyerProjects(galaxy: Galaxy): void {
     for (const item of galaxyLocationList) removeGalaxyLocation(galaxy, item);
 }
 
-/**
- * Galaxy.9.cs 1474 ProcessDelayedEventActions(starDate): returns at once while Galaxy.DelayedActions is empty. Only scripted
- * game events (deferred, plan §0.3) fill that list, so it is always empty here.
- */
-const T_processDelayedEventActions = registerTodo('deferred', 'processDelayedEventActions');
+/** Galaxy.9.cs 1474 ProcessDelayedEventActions(starDate): story/eventActions.ts (M4z3). */
 export function processDelayedEventActions(galaxy: Galaxy, starDate: number): void {
-    void galaxy;
-    void starDate;
-    // Counted as a deferred hit (the ExecuteEventAction half, Galaxy.9.cs 1503-2860, is not ported); the tick-structure
-    // tests use the count as the DoTasksTimeSensitive marker.
-    todo(T_processDelayedEventActions);
+    storyEventActions.processDelayedEventActions(galaxy, starDate);
 }
 
-/**
- * Empire.2.cs 3487 ShakturiSendConvoy (story): returns before its Rnd.Next(0, 3) unless this empire is the Shakturi story
- * empire (Galaxy.IdentifyShakturiEmpire needs Galaxy.ShakturiActualRace, only set by the "Return of the Shakturi" story —
- * deferred, plan §0.3). Throws if the story were enabled.
- */
+/** Empire.2.cs 3487 ShakturiSendConvoy: story/storyEvents.ts (M4z3). */
 export function shakturiSendConvoy(galaxy: Galaxy, empire: Empire): void {
-    void empire;
-    if (galaxy.storyReturnOfTheShakturiEnabled) throw new Error('TODO(port) deferred (story events, plan §0.3): Empire.2.cs 3487 ShakturiSendConvoy');
+    storyEvents.shakturiSendConvoy(galaxy, empire);
 }
 
-/**
- * Empire.2.cs 3508 CheckOfferStoryHint (story): returns at once unless the "Return of the Shakturi" or "Distant Worlds"
- * story is enabled (deferred, plan §0.3; throws if enabled).
- */
+/** Empire.2.cs 3508 CheckOfferStoryHint: story/storyEvents.ts (M4z3). */
 export function checkOfferStoryHint(galaxy: Galaxy, empire: Empire): void {
-    if ((!galaxy.storyReturnOfTheShakturiEnabled && !galaxy.storyDistantWorldsEnabled) || galaxy.playerEmpire === null || empire.dominantRace === null) return;
-    throw new Error('TODO(port) deferred (story events, plan §0.3): Empire.2.cs 3508 CheckOfferStoryHint');
+    storyEvents.checkOfferStoryHint(galaxy, empire);
 }
 
-/**
- * Port of Empire.1.cs 3899 CheckSendShipConvoysViaGateway(timePassed): only a colony with a RaceAchievement wonder whose Value2
- * is 3 (the story gateway) sends convoys. Without one the C# returns before any draw. With one it draws Rnd.Next(0, 10) etc.
- * and calls Galaxy.GenerateMilitaryConvoy / GenerateCivilianConvoy (story content, deferred per plan §0.3), so that branch
- * throws.
- */
+/** Empire.1.cs 3899 CheckSendShipConvoysViaGateway(timePassed): story/storyEvents.ts (M4z3). */
 export function checkSendShipConvoysViaGateway(galaxy: Galaxy, empire: Empire, timePassed: number): void {
-    void galaxy;
-    void timePassed;
-    let flag = false;
-    if (empire.colonies != null) {
-        for (let i = 0; i < empire.colonies.length; i++) {
-            const habitat = empire.colonies[i];
-            if (habitat == null || habitat.facilities == null) continue;
-            for (let j = 0; j < habitat.facilities.length; j++) {
-                const planetaryFacility = habitat.facilities[j];
-                if (planetaryFacility != null && planetaryFacility.type === PlanetaryFacilityType.Wonder && planetaryFacility.wonderType === WonderType.RaceAchievement && planetaryFacility.value2 === 3) {
-                    flag = true;
-                    break;
-                }
-            }
-            if (flag) break;
-        }
-    }
-    if (!flag) return;
-    // Empire.1.cs 3931-3955: supportCostFactor (Shakturi 0.2), Rnd.Next(0, 10) < 8 → Rnd.Next(0, 3) → Rnd.Next(7, 22) convoy.
-    throw new Error('TODO(port) deferred (story events, plan §0.3): Empire.1.cs 3937 GenerateMilitaryConvoy/GenerateCivilianConvoy (gateway convoys)');
+    storyEvents.checkSendShipConvoysViaGateway(galaxy, empire, timePassed);
 }
 
 const T_assignSpecialMissions = registerTodo('deferred', 'assignSpecialMissions');

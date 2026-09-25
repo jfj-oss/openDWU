@@ -51,6 +51,7 @@ export function generateEmpire(
     techLevel: number,
     corruptionMultiplier: number,
     enableStoryEventsShadows = false,
+    raceNameOverride: string = race.name,
 ): GenerateEmpireResult {
     const rnd = galaxy.rnd;
     let actualTechLevel = 1.0;
@@ -142,7 +143,7 @@ export function generateEmpire(
     empire.expansion = expansion;
     empire.privateMoney = 40000.0 + (expansion + 2.0) * 3000.0;
     empire.stateMoney = 15000.0 + (expansion + 2.0) * 1500.0;
-    empire.generateDesignSpecifications(galaxy, race, false, race.name);
+    empire.generateDesignSpecifications(galaxy, race, false, raceNameOverride); // Galaxy.7.cs 5282 (raceNameOverride: race.Name unless given, 5081-5085)
     // ResearchNodeDefinitionsStatic.SetTechTreeLevel(techLevel) (draws Rnd only
     // for fractional levels) + Research.Update.
     if (galaxy.researchStatic !== null) empire.research.setTechTreeLevel(rnd, race, techLevel, false);

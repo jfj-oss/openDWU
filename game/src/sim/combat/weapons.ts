@@ -1242,7 +1242,7 @@ export function handleWeaponsFiringBuiltObject(galaxy: Galaxy, builtObject: Buil
                     const galaxyLocationList = determineGalaxyLocationsInRangeAtPoint(galaxy, self.xpos, self.ypos, self.maximumWeaponsRange, GalaxyLocationType.RestrictedArea);
                     if (galaxyLocationList !== null && galaxyLocationList.length > 0) {
                         creatureList = [];
-                        // TODO(port) M4u: GalaxyLocation.RelatedCreatures (not modelled on the TS GalaxyLocation) — the list stays empty.
+                        for (let k = 0; k < galaxyLocationList.length; k++) creatureList.push(...galaxyLocationList[k].relatedCreatures);
                     }
                 }
                 if (creatureList === null || creatureList.length <= 0) break;

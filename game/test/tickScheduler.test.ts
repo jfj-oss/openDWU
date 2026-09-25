@@ -19,10 +19,21 @@ import { ShipGroup } from '../src/sim/fleets/shipGroup';
 import { FleetAttack } from '../src/sim/fleets/militaryAI';
 import { createSchedulerState, nextFrameMs, runSimFrame, schedulerState } from '../src/sim/tick/scheduler';
 import type { GameData } from '../src/sim/data/gameData';
+import { EventAction, EventActionExecutionPackage, EventActionType } from '../src/sim/story/gameEventModel';
+import '../src/sim/story/eventActions';
 import { resetEmpireTouchTimesForAge, runGameStartEmpireTick, runGameStartGalaxyTick, runGameStartHabitatTick, staggerEmpireTouchTimes } from '../src/sim/tick/gameStart';
 
 let gameData: GameData;
 let galaxy: Galaxy;
+
+/** A due scripted action (Galaxy.DelayedActions) that raises the empire's reputation by 1 when executed (no Rnd). */
+function reputationProbe(e: Empire): EventActionExecutionPackage {
+    const a = new EventAction(null, EventActionType.ChangeEmpireReputation);
+    a.empire = e;
+    a.value = 1;
+    a.executionDate = -1;
+    return new EventActionExecutionPackage(a, null, null);
+}
 beforeAll(async () => {
     gameData = await loadGameDataFs();
     galaxy = createTickGame(gameData).galaxy;
@@ -385,11 +396,16 @@ describe('Galaxy.DoTasks (Galaxy.cs 3054) and DoTasksTimeSensitive (3046)', () =
     });
 
     it('DoTasksTimeSensitive runs every call and stamps its own touch', () => {
-        resetTodoCounts();
+        // M4s1 ported ReviewPirateMissionsAndAssign; ProcessDelayedEventActions (3050) runs in the same call — M4z3 ported
+        // it, so the probe is a due scripted action (ChangeEmpireReputation +1, no Rnd) queued before each call.
+        const e = galaxy.empires[0];
+        const before = e.civilityRating;
+        galaxy.delayedActions.push(reputationProbe(e));
         galaxyDoTasksTimeSensitive(galaxy, 0, 1234);
+        galaxy.delayedActions.push(reputationProbe(e));
         galaxyDoTasksTimeSensitive(galaxy, 0, 1250);
-        // M4s1 ported ReviewPirateMissionsAndAssign; ProcessDelayedEventActions (3050) runs in the same call.
-        expect(todoHits()['deferred processDelayedEventActions']).toBe(2);
+        expect(e.civilityRating - before).toBe(2);
+        expect(galaxy.delayedActions).toEqual([]);
         expect(galaxy.lastGalaxyProcessTimeSensitive).toBe(1250);
     });
 });
@@ -402,7 +418,13 @@ describe('frame driver (Main.Part12.cs method_86)', () => {
 
     it('enqueues the galaxy every 100th frame, one empire / pirate faction every 10th frame, one empire fleet pass every 5th', () => {
         resetTodoCounts();
-        for (let f = 0; f < 21; f++) runSimFrame(g, nextFrameMs(schedulerState(g), 1));
+        const probeEmpire = g.empires[0];
+        let civilityFromProbe = 0;
+        for (let f = 0; f < 21; f++) {
+            g.delayedActions.push(reputationProbe(probeEmpire));
+            runSimFrame(g, nextFrameMs(schedulerState(g), 1));
+            if (g.delayedActions.length === 0) civilityFromProbe++;
+        }
         const s = schedulerState(g);
         expect(s.frames).toBe(21);
         expect(s.galaxyFrameCounter).toBe(21);
@@ -411,8 +433,9 @@ describe('frame driver (Main.Part12.cs method_86)', () => {
         expect([s.fleetEmpireCursor, s.fleetFrameCounter]).toEqual([1, 1]);
         expect(s.inBattleCursor).toBe(0); // the in-battle scan loop is a no-op
         expect(s.queue).toEqual([]);
-        // DoTasksTimeSensitive every frame (ReviewPirateMissionsAndAssign is ported by M4s1; ProcessDelayedEventActions is the stub).
-        expect(todoHits()['deferred processDelayedEventActions']).toBe(21);
+        // DoTasksTimeSensitive every frame (ReviewPirateMissionsAndAssign is ported by M4s1; ProcessDelayedEventActions by
+        // M4z3): the due probe action queued before each frame was consumed in every frame.
+        expect(civilityFromProbe).toBe(21);
         // Empires 0..2 were ticked (at frames 1, 11, 21); empire 3 not yet — it keeps createGame's
         // Start.2.cs 1344-1350 stagger (all six touches = now − Rnd.Next(1, 120) s).
         expect(g.empires[0].lastShortTouch).toBeGreaterThan(0);

@@ -56,6 +56,7 @@ import { canEmpireColonizeHabitat, habitatResourcesHaveSuperLuxury } from './exp
 import type { SchedulerState } from './tick/scheduler';
 import type { Blockade } from './fleets/blockades';
 import { createGalaxyOrderList, type OrderList } from './logistics/orders';
+import { GameEventList, type EventActionExecutionPackage } from './story/gameEventModel';
 
 // Port of Galaxy.cs static fields (Galaxy.3.cs InitializeStatics sets
 // these): SectorSizeX = SectorSizeY = 2_000_000, IndexSize = 400_000.
@@ -1484,7 +1485,7 @@ export class Galaxy {
     // already-placed gas-cloud/asteroid habitats. Semantically equivalent
     // (same nearest-neighbor result), just O(n) instead of index-accelerated.
     // TODO(port): rebuild via GalaxyIndex sectors if this becomes a perf issue.
-    private findNearestSystemGasCloudAsteroid(x: number, y: number): Habitat | null {
+    findNearestSystemGasCloudAsteroid(x: number, y: number): Habitat | null {
         let best: Habitat | null = null;
         let bestDistance = Number.MAX_VALUE;
         for (const habitat of this.habitats) {
@@ -2419,7 +2420,7 @@ export class Galaxy {
         }
     }
 
-    private selectBarrenRockPlanet(): { type: HabitatType; diameter: number; minOrbitDistance: number; maxOrbitDistance: number; pictureRef: number; landscapePictureRef: number } {
+    selectBarrenRockPlanet(): { type: HabitatType; diameter: number; minOrbitDistance: number; maxOrbitDistance: number; pictureRef: number; landscapePictureRef: number } {
         const diameter = this.rnd.next(80, 340);
         const minOrbitDistance = 2500;
         const maxOrbitDistance = 11500;
@@ -4478,6 +4479,32 @@ export class Galaxy {
      * are deferred (tasks/M4-plan.md §0.3): the M4u branches that read it throw TODO(port) when it is true.
      */
     storyShadowsEnabled = false;
+    // ---- M4z3 fields (story, scripted game events; src/sim/story/*) ----
+    /** Galaxy.cs 33 GameEvents (scenario editor events; empty in a generated game). */
+    gameEvents: GameEventList = new GameEventList();
+    /** Galaxy.cs 696 DelayedActions (EventActionExecutionPackageList; ExecuteOrDelayEventAction / Bacon scripted actions). */
+    delayedActions: EventActionExecutionPackage[] = [];
+    /** Galaxy.cs 502 StoryCluesEnabled (set by the first GenerateStoryClue). */
+    storyCluesEnabled = false;
+    /** Galaxy.cs 504 StoryClueLocations (List<StellarObject>; Start.2.cs 1769-1844 fills it). */
+    storyClueLocations: (Habitat | BuiltObject | null)[] = [];
+    /** Galaxy.cs 506 / 508 StoryClueUsed / StorySecondaryClueUsed. */
+    storyClueUsed: boolean[] = [];
+    storySecondaryClueUsed: boolean[] = [];
+    /** Galaxy.cs 525 StoryReturnOfTheShakturiEventLevel. */
+    storyReturnOfTheShakturiEventLevel = 0;
+    /** Galaxy.cs 527 ShakturiTriggerHabitat (the "Beacon of Shaktur" ruin habitat). */
+    shakturiTriggerHabitat: Habitat | null = null;
+    /** Galaxy.cs 529 StoryShakturiEnraged. */
+    storyShakturiEnraged = false;
+    /** Galaxy.cs 531 ShakturiOriginalRace (copy of the Shakturi race's levels/names before GenerateShakturi renames it). */
+    shakturiOriginalRace: Race | null = null;
+    /** Galaxy.cs 534 ShakturiActualRace (the Races["Shakturi"] instance once GenerateShakturi ran). */
+    shakturiActualRace: Race | null = null;
+    /** Galaxy.cs 536 StoryShakturiEnrageTimer = long.MaxValue (star date). */
+    storyShakturiEnrageTimer = Number.MAX_SAFE_INTEGER;
+    /** Galaxy.cs 538 ShakturiDefeated (set by the victory check, Galaxy.1.cs 431). */
+    shakturiDefeated = false;
 }
 
 // Port of Galaxy.4.cs Galaxy constructor (star-cluster setup, star loop,

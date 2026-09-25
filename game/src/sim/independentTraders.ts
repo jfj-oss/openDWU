@@ -123,10 +123,8 @@ function resolvePlayableRaces(races: Race[]): Race[] {
 // ------------------------------------------------------------------------------------------
 // Galaxy.7.cs FindPopularDesigns (4663). `state` carries the two C# ref ints. No Rnd.
 function findPopularDesigns(galaxy: Galaxy, designs: Design[], empire: Empire, subRole: BuiltObjectSubRole, state: { lowestDesignIndex: number; lowestDesignAmount: number }): Design[] {
-    // C#: DominantRace == ShakturiActualRace; Galaxy.ShakturiActualRace is only set by the story
-    // setup (Galaxy.8.cs 1361) — null in a normal game, so only a null DominantRace would match,
-    // and that is excluded by the `DominantRace != null` guard.
-    const shakturiActualRace: Race | null = null;
+    // C#: DominantRace == ShakturiActualRace (set by the story's GenerateShakturi, Galaxy.8.cs 1361; null otherwise).
+    const shakturiActualRace: Race | null = galaxy.shakturiActualRace;
     if (empire.dominantRace !== null && (empire.dominantRace.name.toLowerCase() === 'mechanoid' || empire.dominantRace === shakturiActualRace)) {
         return designs;
     }

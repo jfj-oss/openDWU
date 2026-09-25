@@ -16,6 +16,7 @@
 // Text: TextResolver.GetText(key) returns the key (M9 localises); string.Format substitutes {n} placeholders.
 
 import { RaceEventType } from './eventTypes';
+import { identifyShakturiEmpire as storyIdentifyShakturiEmpire } from './story/storyEvents';
 import type { Galaxy } from './galaxy';
 import type { Empire } from './empire';
 import { AutomationLevel, empireGovernmentAttributes } from './empire';
@@ -1230,10 +1231,9 @@ function checkEmpireBuildingVictoryWonderAtKnownColony(galaxy: Galaxy, self: Emp
     return null;
 }
 
-/** Galaxy.8.cs 1633 IdentifyShakturiEmpire. Galaxy.ShakturiActualRace is set only by the story (deferred) → null. */
+/** Galaxy.8.cs 1633 IdentifyShakturiEmpire (story/storyEvents.ts, M4z3). */
 function identifyShakturiEmpire(galaxy: Galaxy): Empire | null {
-    void galaxy;
-    return null;
+    return storyIdentifyShakturiEmpire(galaxy);
 }
 
 /** Empire.8.cs 36 EvaluateShouldAttackWonderBuildingEmpire. */
@@ -2073,7 +2073,7 @@ function calculateWarValueHabitat(galaxy: Galaxy, habitat: Habitat): number {
 }
 
 /** Galaxy.3.cs 447 CalculateEmpireWarValue(empire, out builtObjectWarValue, out colonyWarValue). */
-function calculateEmpireWarValue(galaxy: Galaxy, empire: Empire): { builtObject: number; colony: number } {
+export function calculateEmpireWarValue(galaxy: Galaxy, empire: Empire): { builtObject: number; colony: number } {
     let builtObjectWarValue = 0;
     let colonyWarValue = 0;
     for (let i = 0; i < empire.builtObjects.length; i++) builtObjectWarValue = (builtObjectWarValue + calculateWarValueBuiltObject(empire.builtObjects[i])) | 0;

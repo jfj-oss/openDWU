@@ -76,6 +76,7 @@ import { Order, ComponentRef } from '../logistics/orders';
 import { PrioritizedTarget } from '../civilianAI';
 import { Fighter, FighterSpecification, FighterWeapon } from '../combat/fighters';
 import { Explosion, SpaceBattleStats } from '../combat/damage';
+import { EventAction, EventActionExecutionPackage, EventActionList, GameEvent, GameEventList } from '../story/gameEventModel';
 const CLASSES: Record<string, object> = {
     EmpireMessage: EmpireMessage.prototype,
     // M4f: ships carry missions from game start (Start.2.cs 1373); freighter contracts, orders, migration/tourism targets.
@@ -159,6 +160,12 @@ const CLASSES: Record<string, object> = {
     FighterSpecification: FighterSpecification.prototype,
     Explosion: Explosion.prototype,
     SpaceBattleStats: SpaceBattleStats.prototype,
+    // M4z3: Galaxy.GameEvents (scenario events) and Galaxy.DelayedActions (scripted / Bacon delayed actions).
+    GameEventList: GameEventList.prototype,
+    GameEvent: GameEvent.prototype,
+    EventActionList: EventActionList.prototype,
+    EventAction: EventAction.prototype,
+    EventActionExecutionPackage: EventActionExecutionPackage.prototype,
 };
 
 /** Galaxy fields that hold GameData tables (re-wired from gameData on load,

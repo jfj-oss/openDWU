@@ -35,6 +35,7 @@
 //     with a non-empty character list; GenerateNewCharacter draws itself (ported, characters.ts).
 
 import type { Galaxy } from './galaxy';
+import { checkGenerateAncientHelpers } from './story/storyEvents';
 import { empireGovernmentAttributes, type Empire } from './empire';
 import type { BuiltObject } from './builtObject';
 import { RaceVictoryConditionType, type Race } from './data/races';
@@ -719,7 +720,7 @@ export function doResearchBreakthrough(galaxy: Galaxy, empire: Empire, researchP
     }
     if (def.specialFunctionCode === 2) {
         if (checkSendPreWarpProgressEventMessage(galaxy, empire, PreWarpProgressEventType.DiscoverHyperspaceTech, researchProject) && empire === galaxy.playerEmpire) {
-            // TODO(port) M4u: Galaxy.8.cs 1889 CheckGenerateAncientHelpers (player empire only; story content).
+            checkGenerateAncientHelpers(galaxy); // Galaxy.8.cs 1889 (story/storyEvents.ts, M4z3; returns unless the Shakturi story is on)
         }
     } else if (def.specialFunctionCode === 4) {
         checkSendPreWarpProgressEventMessage(galaxy, empire, PreWarpProgressEventType.DiscoverColonizationTech, researchProject);

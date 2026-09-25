@@ -1449,7 +1449,8 @@ export function canBuiltObjectColonizeHabitat(galaxy: Galaxy, empire: Empire, bu
             newPopulationAmount = builtObjectComponent.value1;
         }
     }
-    // Galaxy.ShakturiActualRace: null unless the Return of the Shakturi story runs (off in a normal game) — TODO(port) story events.
+    // Empire.7.cs 1452-1455: a Shakturi colony ship settles a billion.
+    if (galaxy.shakturiActualRace !== null && builtObject.nativeRace !== null && builtObject.nativeRace === galaxy.shakturiActualRace) newPopulationAmount = 1000000000;
     if (!galaxy.checkEmpireTerritoryCanColonizeHabitat(empire, habitat)) return { result: false, newPopulationAmount };
     if (habitat.population.totalAmount > 0 && (habitat.empire === null || habitat.empire === galaxy.independentEmpire)) return { result: true, newPopulationAmount };
     if (builtObject.subRole === BuiltObjectSubRole.ColonyShip && builtObject.nativeRace !== null && builtObject.nativeRace.nativeHabitatType === habitat.type) {

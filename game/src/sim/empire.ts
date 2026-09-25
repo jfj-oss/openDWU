@@ -1933,6 +1933,9 @@ export class Empire {
     preWarpProgressEventOccurredFlags: boolean[] = [];
     /** Empire.cs 37 _EventMessageRecipient (IEventMessageRecipient; the UI attaches one, headless runs leave it null). */
     eventMessageRecipient: { receiveEventMessage(eventType: number, title: string, message: string, additionalData: unknown, location: unknown): void } | null = null;
+    // ---- M4z3 fields (story, scripted game events) ----
+    /** Empire.cs 341 VictoryBonus (float; ExecuteEventAction VictoryConditionBonus adds Value / 100f; read by CheckVictoryConditions). */
+    victoryBonus = 0;
 }
 
 // Task M3b: Empire.GovernmentAttributes (Empire.cs 2805: _Galaxy.Governments[_GovernmentId],
