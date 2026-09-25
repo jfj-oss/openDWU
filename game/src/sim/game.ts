@@ -100,6 +100,8 @@ export interface CreateGameOptions {
     piratePrevalence?: number;
     /** Galaxy.PirateProximity: 0 near (default), 1 medium, 2 far. */
     pirateProximity?: number;
+    /** Galaxy.PirateShipMaintenanceFactor (Start.2.cs 498, the wizard's pirate strength; default 0.4, Galaxy.cs 375). */
+    pirateShipMaintenanceFactor?: number;
     /** Galaxy.MaximumEmpireAmount (defaults to player + AI count). */
     maximumEmpireAmount?: number;
     /** Galaxy.DifficultyLevel (default 1.0). */
@@ -1050,6 +1052,8 @@ export function createGame(opts: CreateGameOptions): Game {
     galaxy.difficultyLevelScalesAsPlayerApproachesVictory = opts.difficultyLevelScalesAsPlayerApproachesVictory ?? false;
     if (opts.victoryConditions !== undefined && opts.victoryConditions !== null) applyVictoryConditionsToGalaxy(galaxy, opts.victoryConditions);
     galaxy.pirateProximity = pirateSettings.pirateProximity;
+    // Start.2.cs 498 galaxy.PirateShipMaintenanceFactor = empireStart_0.PirateShipMaintenanceFactor.
+    galaxy.pirateShipMaintenanceFactor = opts.pirateShipMaintenanceFactor ?? 0.4;
     galaxy.maximumEmpireAmount = pirateSettings.maximumEmpireAmount;
     let stoppedAtHuge = false;
     runGameStartGalaxyTick(galaxy, galaxy.playerEmpire, () => (stoppedAtHuge = stopAt('firstGalaxyTick:huge')));

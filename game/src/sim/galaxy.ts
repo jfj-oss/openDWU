@@ -4444,6 +4444,8 @@ export class Galaxy {
     resetRandom = false;
     /** Galaxy._PirateProximity (0 near / 1 medium / 2 far) — wizard option, read by GenerateNewPirateEmpires. */
     pirateProximity = 0;
+    /** Galaxy.PirateShipMaintenanceFactor (Galaxy.cs 375, default 0.4) — the wizard's pirate strength (Start.2.cs 498). */
+    pirateShipMaintenanceFactor = 0.4;
     /** Galaxy.MaximumEmpireAmount — wizard option; 0 = derive (player + AIs = empires at game start). */
     maximumEmpireAmount = 0;
     /** Galaxy.SpawnNewEmpires (Start.2.cs 116, wizard option) — gates Habitat CheckHabitatIsEmpire. */

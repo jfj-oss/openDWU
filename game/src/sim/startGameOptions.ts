@@ -39,6 +39,12 @@ export interface StartGameOptions {
     spaceCreaturesIndex: number;
     /** Task 06f: index into the pirates slider (0..5), see piratesFor. */
     piratesIndex: number;
+    /** "Pirate Proximity" combo (cmbStartNewGameTheGalaxyPirateProximity: 0 Nearby, 1 Average, 2 Distant;
+     * Start.1.cs 4774), see pirateProximityFor. Optional so older saves still load (unset = 1, Main.Part9.cs 2667). */
+    pirateProximityIndex?: number;
+    /** "Pirate Strength" slider (tbarStartNewGameTheGalaxyPirateStrength, 0..3), see
+     * pirateShipMaintenanceFactorFor. Unset = 2 (Main.Part9.cs 2666). */
+    pirateStrengthIndex?: number;
     /** Task 06f: index into the aggression slider (0..4), see aggressionFor. */
     aggressionIndex: number;
     /** Task 06f: index into the difficulty slider (0..4), see difficultyFor. */
@@ -423,6 +429,38 @@ export function piratesFor(index: number): number {
     }
 }
 
+/** Port of Start.1.cs 3192 Start.method_190 (pirate-proximity combo → Galaxy.PirateProximity). */
+export function pirateProximityFor(index: number): number {
+    switch (index) {
+        case 0:
+            return 0;
+        case 1:
+            return 1;
+        case 2:
+            return 2;
+        default:
+            return 0;
+    }
+}
+
+/** Start.1.cs 3722-3736: pirate-strength slider → EmpireStart.PirateShipMaintenanceFactor (then
+ * Galaxy.PirateShipMaintenanceFactor, Start.2.cs 498). Out of range keeps the EmpireStart default 0.4
+ * (EmpireStart.cs 35). */
+export function pirateShipMaintenanceFactorFor(index: number): number {
+    switch (index) {
+        case 0:
+            return 1.0;
+        case 1:
+            return 0.7;
+        case 2:
+            return 0.4;
+        case 3:
+            return 0.25;
+        default:
+            return 0.4;
+    }
+}
+
 /**
  * Port of Start.cs Start.method_71 (aggression slider values).
  * Out-of-range defaults to 0.
@@ -545,8 +583,7 @@ export function applyEmpireDefaults(options: StartGameOptions, raceIndex: number
  * Empire" fields start uncustomised so applyEmpireDefaults can fill them.
  * Task 06f galaxy-option sliders: the original's default slider positions
  * are not visible in the task context, so each defaults to its middle tick
- * (colony prevalence / alien life 2 of 5, space creatures 1 of 4, pirates
- * 2 of 6, aggression 2 of 5, difficulty 2 of 5); difficulty scaling is off.
+ * (colony prevalence / alien life 2 of 5, space creatures 1 of 4, aggression 2 of 5, difficulty 2 of 5); difficulty scaling is off.
  * Task 06g: victory conditions start at the C# defaults (all types
  * unchecked = sandbox mode; see defaultVictoryConditions). Task 06h:
  * colonization and other-empires options start at the wizard control
@@ -566,7 +603,11 @@ export function defaultStartGameOptions(): StartGameOptions {
         colonyPrevalenceIndex: 2,
         alienLifeIndex: 2,
         spaceCreaturesIndex: 1,
-        piratesIndex: 2,
+        // Pirates page: the standard preset Start.cs 3302-3303 (Pirates 3 = 0.4, proximity 1 = Average) and
+        // Main.Part9.cs 2665-2667 (GalaxyPirates 3, GalaxyPirateStrength 2, GalaxyPirateProximity 1).
+        piratesIndex: 3,
+        pirateProximityIndex: 1,
+        pirateStrengthIndex: 2,
         aggressionIndex: 2,
         difficultyIndex: 2,
         difficultyScaling: false,
@@ -702,11 +743,16 @@ export function toCreateGameOptions(
         empireTerritoryColonyInfluenceRangeFactor: o.colonization.enforceRangeLimits
             ? o.colonization.colonyInfluenceRangePercent
             : undefined,
+        // Pirates page: Start.1.cs 3691 num6 = method_66(tbarStartNewGameTheGalaxyPirates.Value) → Galaxy.PiratePrevalence
+        // (Start.2.cs 107); 3692 num7 = method_190() → Galaxy.PirateProximity (Start.2.cs 108); 3722-3736 pirate
+        // strength → Galaxy.PirateShipMaintenanceFactor (Start.2.cs 498).
+        piratePrevalence: piratesFor(o.piratesIndex),
+        pirateProximity: pirateProximityFor(o.pirateProximityIndex ?? 1),
+        pirateShipMaintenanceFactor: pirateShipMaintenanceFactorFor(o.pirateStrengthIndex ?? 2),
         // TODO(createGame): fields createGame does not accept yet stay on
         // StartGameOptions and are ignored here:
         //   - alien life (alienLifeIndex → alienLifeFor): independent-life count
         //   - space creatures (spaceCreaturesIndex → spaceCreaturesFor)
-        //   - pirates (piratesIndex → piratesFor): pirate empires are unported
         //   - aggression (aggressionIndex → aggressionFor)
         //   - difficulty (difficultyIndex → difficultyFor); difficultyScaling is passed (M4z4)
         //   - colonization range (colonizationRangeKly) enforcement radius
