@@ -113,10 +113,9 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // the body has no population, which moves every galaxy-generation draw after the first populated body (creature
         // counts / positions, empire placement) and so everything downstream. (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
         // M4l: moved from 198918104ea2794b — the independent/pirate Empire constructor now sets the Empire.cs 4218-4235
-        // automation flags (they were missing), so pirate factions run MaintainShipGroups / UpdateFleetLeadShips /
-        // ReviewFleetPostures, research (controlResearch) and design reviews in DoTasksPirates, and the independent
-        // empire's ControlOfferPirateMissions is FullyAutomated; the ShipGroup / fleet-maintenance bodies are ported
-        // (fleets form from idle Frigate..Carrier warships; AssignFleetWaypointMission / SelectFleetBase / AssignMission draws).
+        // automation flags (they were missing). Only ControlResearch moves this run: pirate factions now pick research
+        // projects in PerformResearch (Rnd draws; with ControlResearch false the old digest comes back). The fleet code
+        // itself draws nothing here: the createGame empires have no warships and pirate escorts are not fleet candidates.
         expect(summary.digest).toBe('da61bc3c07a9db45');
     }, 600000);
 });
