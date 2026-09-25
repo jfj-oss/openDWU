@@ -26,6 +26,9 @@ import { closeEmpiresList } from './ui/screens/empiresList';
 import { closeDiplomacyScreen } from './ui/screens/diplomacyScreen'; // [15a]
 import { closeExpansionPlanner } from './ui/screens/expansionPlanner'; // [16a]
 import { closeColoniesList } from './ui/screens/coloniesList';
+// [tradenego] begin
+import { closeTradePanel } from './ui/screens/tradePanel';
+// [tradenego] end
 import { closeShipsAndBasesList } from './ui/screens/shipsAndBasesList';
 import { closeResearchScreen } from './ui/screens/researchScreen'; // [15b]
 import { closeShipDesigns } from './ui/screens/shipDesigns'; // [16b]
@@ -503,6 +506,9 @@ export async function startGameView(
         closeDiplomacyScreen(); // [15a]
         closeExpansionPlanner(); // [16a]
         closeColoniesList();
+        // [tradenego] begin
+        closeTradePanel();
+        // [tradenego] end
         closeShipsAndBasesList();
         closeResearchScreen(); // [15b]
         closeShipDesigns(); // [16b]
