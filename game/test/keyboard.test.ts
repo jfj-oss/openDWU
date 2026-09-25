@@ -322,7 +322,7 @@ describe('isKeyActionAvailable (task 12q)', () => {
     });
 
     it('marks unimplemented actions as unavailable', () => {
-        expect(isKeyActionAvailable('researchScreen')).toBe(false);
+        expect(isKeyActionAvailable('shipDesignsScreen')).toBe(false);
         expect(isKeyActionAvailable('cycleFleets')).toBe(false);
         expect(isKeyActionAvailable('commandRefuel')).toBe(false);
         expect(isKeyActionAvailable('nonsense')).toBe(false);
@@ -337,10 +337,10 @@ describe('isKeyActionAvailable (task 12q)', () => {
 
     it('unavailable actions fall through to dispatchKey default branch', () => {
         const action = dispatchKey(
-            { key: 'F7', ctrlKey: false, altKey: false, shiftKey: false, target: null },
+            { key: 'F8', ctrlKey: false, altKey: false, shiftKey: false, target: null },
             {},
         );
-        expect(action).toBe('researchScreen');
+        expect(action).toBe('shipDesignsScreen');
         expect(isKeyActionAvailable(action!)).toBe(false);
     });
 });

@@ -24,6 +24,7 @@ import { buildDefaultHandlers, createShortcutsOverlay, dispatchKey, setCycleHand
 import { closeEmpiresList } from './ui/screens/empiresList';
 import { closeColoniesList } from './ui/screens/coloniesList';
 import { closeShipsAndBasesList } from './ui/screens/shipsAndBasesList';
+import { closeResearchScreen } from './ui/screens/researchScreen'; // [15b]
 import { closeEmpireSummary, setEmpireSummarySource } from './ui/screens/empireSummary';
 import { closeMessageHistory } from './ui/screens/messageHistory';
 import { createEmpireMessageFeed } from './ui/empireMessageFeed';
@@ -471,6 +472,7 @@ export async function startGameView(game: Game, zoomOverride?: number, extraBoot
         closeEmpiresList();
         closeColoniesList();
         closeShipsAndBasesList();
+        closeResearchScreen(); // [15b]
         closeEmpireSummary();
         closeMessageHistory();
         setEmpireSummarySource(null);

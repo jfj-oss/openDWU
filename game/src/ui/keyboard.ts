@@ -14,6 +14,7 @@ import {
     getSelection,
 } from './hud';
 import { helpTopicKeyForHabitat, toggleGalactopedia } from './screens/galactopedia';
+import { toggleResearchScreen } from './screens/researchScreen'; // [15b]
 import { getEmpireSummarySource, toggleEmpireSummary } from './screens/empireSummary';
 import { toggleColoniesList } from './screens/coloniesList';
 import { toggleShipsAndBasesList } from './screens/shipsAndBasesList';
@@ -249,6 +250,13 @@ export function dispatchKey(
         case 'empireSummaryScreen':
             toggleEmpireSummary();
             break;
+        // [15b] F7: Research screen (task 15b).
+        case 'researchScreen': {
+            const src = getEmpireSummarySource();
+            if (src) toggleResearchScreen({ empire: src.empire });
+            break;
+        }
+        // [/15b]
         case 'coloniesScreen':
             handlers.coloniesScreen?.();
             break;
@@ -437,6 +445,7 @@ export const IMPLEMENTED_KEY_ACTIONS: ReadonlySet<string> = new Set([
     'togglePause', 'speedUp', 'speedDown',
     'zoomIn', 'zoomOut', 'zoomToSelection',
     'zoomSystemLevel', 'zoomSectorLevel', 'zoomGalaxyLevel', 'zoomPlanetLevel',
+    'researchScreen', // [15b]
     'scrollUp', 'scrollDown', 'scrollLeft', 'scrollRight',
     'galaxyMap', 'messageHistoryScreen', 'empireSummaryScreen', 'coloniesScreen', 'shipsAndBasesScreen',
     'gameMenu', 'galactopediaHelp',
