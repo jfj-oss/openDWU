@@ -117,7 +117,13 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // generation, space ports order fuel (CheckForFuelOrdering) and low-fuel ships get Refuel missions
         // (CheckForRefuelling / SetupRefuelling / AutoRefuelRepairShip, InitiateRefuelData reservations). No new Rnd
         // site is reached on this seed (the smuggler-detection roll needs scanner-equipped bases).
-        expect(summary.digest).toBe('6f4a0ca4d01107b8');
+        // M4i (facilities/wonders): Empire.RefreshColonyFacilityInfo now fills Empire.Capitals every long block, so the
+        // leader's PopulationGrowth bonus at the capital (EvaluateColonyVariables, Empire.4.cs) applies; facility AI runs
+        // (ReviewColonyFacilities may draw Rnd.Next(0, 2) for a space-port colony once a FortifiedBunker is buildable).
+        // M4i (empire construction): DirectConstruction runs in every long block (RefactorForceStructureProjectionsToCosts
+        // draws Rnd.Next(0, Count) per wanted sub-role; ships are queued and paid for once the cashflow allows), plus
+        // ReviewLatestDesigns, RetireOldBuiltObjects, DetermineMonitoringStationLocation, BuildDefensiveBases.
+        expect(summary.digest).toBe('e0520d7458e142c1');
     }, 600000);
 });
 

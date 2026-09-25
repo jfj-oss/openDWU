@@ -62,6 +62,8 @@ import {
     prepareColonyLuxuryResourceLists,
 } from './logistics/colonySupply';
 import { netSort } from './netSort';
+import { PlanetaryFacilityType } from './researchSystem';
+import { facilitiesFindBestPirateFacility } from './construction/facilities';
 
 const f32 = Math.fround;
 
@@ -277,16 +279,22 @@ export function regenerateDamage(galaxy: Galaxy, habitat: Habitat, timePassed: n
 }
 
 /**
- * BaconHabitat.cs 243 TerraformColony(habitat, timePassed) (via Habitat.cs 7211).
- * TODO(port) M4i: PlanetaryFacility model — the completed TerraformingFacility's Value1/2/3 are read here; the TS
- * Habitat.facilities holds no facility objects yet, so a non-empty list throws (as the other facility readers do).
+ * BaconHabitat.cs 243 TerraformColony(habitat, timePassed) (via Habitat.cs 7211). Reads the completed
+ * TerraformingFacility's Value1/2/3 (facility model: construction/facilities.ts, M4i).
  */
 export function terraformColony(galaxy: Galaxy, habitat: Habitat, timePassed: number): void {
-    const num1 = f32(0);
-    const num2 = f32(0);
+    let num1 = f32(0);
+    let num2 = f32(0);
     let num3 = f32(0);
-    if (habitat.facilities !== null && habitat.facilities.length > 0) {
-        throw new Error('TODO(port) M4i: PlanetaryFacility model (BaconHabitat.TerraformColony)');
+    if (habitat.facilities !== null) {
+        for (let index = 0; index < habitat.facilities.length; ++index) {
+            if (habitat.facilities[index].constructionProgress >= 1.0 && habitat.facilities[index].type === PlanetaryFacilityType.TerraformingFacility) {
+                num1 = f32(f32(habitat.facilities[index].value1) / 1000);
+                num2 = f32(f32(habitat.facilities[index].value2) / 1000);
+                num3 = f32(habitat.facilities[index].value3);
+                break;
+            }
+        }
     }
     if (num1 > 0.0) {
         const num4 = f32(f32(f32(timePassed) / REAL_SECONDS_IN_GALACTIC_YEAR) * num1);
@@ -623,9 +631,12 @@ function decayInfrastructure(galaxy: Galaxy, planet: Habitat): void {
 /** BaconHabitat.cs 984 DecayPirateBase(planet). */
 function decayPirateBase(galaxy: Galaxy, planet: Habitat): void {
     if (planet.baconValues === null || !planet.baconValues.has('piratebase') || planet.facilities === null) return;
-    // TODO(port) M4i: PlanetaryFacilityList.FindBestPirateFacility(true) — no facility objects yet (an empty list → null).
-    if (planet.facilities.length > 0) throw new Error('TODO(port) M4i: PlanetaryFacility model (BaconHabitat.DecayPirateBase)');
-    planet.baconValues.delete('piratebase');
+    if (facilitiesFindBestPirateFacility(planet.facilities, true) === null) {
+        planet.baconValues.delete('piratebase');
+    } else {
+        const baconValue = Math.trunc(planet.baconValues.get('piratebase') as number);
+        planet.baconValues.set('piratebase', Math.trunc(baconValue * 0.89999997615814209));
+    }
 }
 
 // ---------------------------------------------------------------------------

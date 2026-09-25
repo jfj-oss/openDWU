@@ -60,10 +60,11 @@ import type { Design } from './design';
 import { findNewestCanBuild } from './designGeneration';
 import { COLONY_ANNUAL_LUXURY_RESOURCE_CONSUMPTION_RATE, MINIMUM_LUXURY_RESOURCE_REORDER_AMOUNT, type Empire } from './empire';
 import { checkEmpireHasHyperDriveTech } from './forceStructure';
-import { CharacterRole, CharacterTraitType, empireCharactersHaveTrait } from './characters';
 import type { Galaxy } from './galaxy';
 import { netSort } from './netSort';
 import { ShipDesignFocus } from './researchSystem';
+import { annualResearchPotential, researchPotential } from './researchTick';
+import type { ConstructionQueue } from './construction/constructionQueue';
 import { ResourceGroup, resourceGroupOf } from './resourceSystem';
 import {
     checkConstructionShipAndMiningStationCanSurviveStorms,
@@ -604,48 +605,7 @@ export function determineResearchStationLocation(galaxy: Galaxy, empire: Empire,
     return habitatList3;
 }
 
-// Empire.cs AnnualResearchPotential (1817), non-pirate branch (the pirate branch is below).
-function annualResearchPotential(empire: Empire): number {
-    const researchRate = empire.difficultyFactors?.researchRate ?? 1.0; // Empire.ResearchRate (SetEmpireDifficultyFactors)
-    if (empire.pirateEmpireBaseHabitat !== null) {
-        let num = 0.0;
-        if (empire.builtObjects.length > 0) num = Math.sqrt(empire.builtObjects.length) * 10000.0;
-        if (empire.researchFacilities != null && empire.researchFacilities.length > 0) {
-            let num2 = 0.0;
-            for (const builtObject of empire.researchFacilities as BuiltObject[]) {
-                if (builtObject != null && !builtObject.hasBeenDestroyed && (builtObject.subRole === S.WeaponsResearchStation || builtObject.subRole === S.EnergyResearchStation || builtObject.subRole === S.HighTechResearchStation)) {
-                    num2 += 0.5 * (builtObject.researchEnergy + builtObject.researchHighTech + builtObject.researchWeapons);
-                }
-            }
-            num += num2;
-        }
-        // TODO(port): CalculatePirateResearchBonusFromFacilities (pirate planetary facilities) and the
-        // UltraGenius scientist bonus — not modeled; research stations are only placed for normal empires.
-        void num;
-        throw new Error('TODO(port): Empire.AnnualResearchPotential pirate branch (CalculatePirateResearchBonusFromFacilities)');
-    }
-    let num4 = Math.sqrt(Math.sqrt(empire.totalPopulation / 1000.0)) * 10000.0;
-    num4 *= empire.economyEfficiency;
-    // Empire.cs 1852-1855.
-    if (empireCharactersHaveTrait(empire, CharacterRole.Scientist, CharacterTraitType.UltraGenius)) {
-        num4 *= 1.2;
-    }
-    return num4 * researchRate;
-}
-
-// Empire.cs ResearchEnergyPotential / ResearchHighTechPotential / ResearchWeaponsPotential (1860/1881/1902).
-function researchPotential(empire: Empire, field: 'researchEnergy' | 'researchHighTech' | 'researchWeapons', factor: number): number {
-    let num = 0.0;
-    const builtObjectList: BuiltObject[] = [];
-    builtObjectList.push(...empire.builtObjects);
-    builtObjectList.push(...empire.privateBuiltObjects);
-    for (const item of builtObjectList) {
-        if (item != null && item.isResearchLab) num += item[field];
-    }
-    const val = Math.max(12000.0, Math.trunc(empire.totalPopulation / 1000000) * 3.0);
-    num = Math.max(val, num);
-    return num * factor;
-}
+// Empire.cs AnnualResearchPotential / Research{Energy,HighTech,Weapons}Potential: researchTick.ts (M4k).
 
 // Empire.5.cs AnalyzeNewResearchFacilities(out weapons, out energy, out highTech) (3495).
 export function analyzeNewResearchFacilities(empire: Empire): { result: Design | null; weaponsResearchStation: Design | null; energyResearchStation: Design | null; highTechResearchStation: Design | null } {
@@ -653,17 +613,39 @@ export function analyzeNewResearchFacilities(empire: Empire): { result: Design |
     const energyResearchStation = designsFindNewestCanBuild(empire.designs, S.EnergyResearchStation);
     const weaponsResearchStation = designsFindNewestCanBuild(empire.designs, S.WeaponsResearchStation);
     const highTechResearchStation = designsFindNewestCanBuild(empire.designs, S.HighTechResearchStation);
-    // Empire.ResearchEnergyFactor / ResearchHighTechFactor / ResearchWeaponsFactor: 1.0 for normal
-    // empires, the play-style modifiers for pirates (Empire.cs 443-449 / 3718-3729).
-    const mods = empire.pirateFactionModifiers;
-    let num = researchPotential(empire, 'researchEnergy', mods !== null && mods.researchEnergyFactor !== 0 ? mods.researchEnergyFactor : 1.0);
-    let num2 = researchPotential(empire, 'researchHighTech', mods !== null && mods.researchHighTechFactor !== 0 ? mods.researchHighTechFactor : 1.0);
-    let num3 = researchPotential(empire, 'researchWeapons', mods !== null && mods.researchWeaponsFactor !== 0 ? mods.researchWeaponsFactor : 1.0);
-    // TODO(port): ConstructionShips with a Build mission for a research base / GenericBase add their
-    // design's research values — BuiltObject.Mission is not ported, and no construction ship exists
-    // yet when the starting research stations are placed (Start.2.cs 1311 runs before 1370).
-    // TODO(port): Habitat.ConstructionQueue.GetUnderConstruction(research/generic/space-port sub-roles)
-    // — ConstructionQueue is not ported; nothing is under construction at game start (adds 0).
+    let num = researchPotential(empire, IndustryType.Energy);
+    let num2 = researchPotential(empire, IndustryType.HighTech);
+    let num3 = researchPotential(empire, IndustryType.Weapon);
+    // Empire.5.cs 3504-3517: construction ships building a research base / GenericBase.
+    const constructionShips = empire.constructionShips as BuiltObject[];
+    for (let i = 0; i < constructionShips.length; i++) {
+        const builtObject = constructionShips[i];
+        const mission = builtObjectMission(builtObject.mission);
+        if (mission !== null && mission.type !== BuiltObjectMissionType.Undefined && mission.type === BuiltObjectMissionType.Build && mission.design !== null) {
+            const design = mission.design;
+            if (design.subRole === S.GenericBase || design.subRole === S.EnergyResearchStation || design.subRole === S.WeaponsResearchStation || design.subRole === S.HighTechResearchStation) {
+                num += design.researchEnergy;
+                num2 += design.researchHighTech;
+                num3 += design.researchWeapons;
+            }
+        }
+    }
+    // Empire.5.cs 3518-3548: research bases / generic bases / space ports under construction at colonies.
+    const subRoles = [S.EnergyResearchStation, S.HighTechResearchStation, S.WeaponsResearchStation, S.GenericBase, S.SmallSpacePort, S.MediumSpacePort, S.LargeSpacePort];
+    for (let j = 0; j < empire.colonies.length; j++) {
+        const habitat = empire.colonies[j];
+        if (habitat === null || habitat.constructionQueue === null) continue;
+        const underConstruction = (habitat.constructionQueue as ConstructionQueue).getUnderConstruction(subRoles);
+        if (underConstruction === null || underConstruction.length <= 0) continue;
+        for (let k = 0; k < underConstruction.length; k++) {
+            const builtObject2 = underConstruction[k];
+            if (builtObject2 !== null && builtObject2.design !== null) {
+                num += builtObject2.design.researchEnergy;
+                num2 += builtObject2.design.researchHighTech;
+                num3 += builtObject2.design.researchWeapons;
+            }
+        }
+    }
     const num4 = num + num2 + num3;
     let num5 = annualResearchPotential(empire) * 1.25;
     num5 *= empire.policy!.researchPriority;

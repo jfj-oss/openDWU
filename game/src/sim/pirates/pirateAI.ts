@@ -164,3 +164,48 @@ export function determineDesirePirateProtection(galaxy: Galaxy, empire: Empire, 
     /* TODO(port) M4s2 */ todo(T_determineDesirePirateProtection);
     return true;
 }
+
+// ---- stubs added by M4i (construction/facilities.ts: ConstructFacilities, PirateReviewColonyFacilities) ----
+
+/** PirateColonyControl.cs (the fields the facility code reads/writes). Not modelled yet (M4s2). */
+export interface PirateColonyControlView {
+    empireId: number;
+    controlLevel: number;
+    hasFacilityControl: boolean;
+}
+
+const T_pirateControlByFacilityControl = registerTodo('M4s', 'habitatPirateControlByFacilityControl');
+/**
+ * Habitat.GetPirateControl().GetByFacilityControl() (PirateColonyControlList.cs) — stub: null. TODO(port) M4s2: the
+ * Habitat._PirateColonyControl list is not modelled; an empty list returns null, which is what this returns.
+ */
+export function habitatPirateControlByFacilityControl(galaxy: Galaxy, habitat: Habitat): PirateColonyControlView | null {
+    void galaxy;
+    void habitat;
+    todo(T_pirateControlByFacilityControl);
+    return null;
+}
+
+const T_pirateControlHighest = registerTodo('M4s', 'habitatPirateControlHighest');
+/** Habitat.GetPirateControl().GetHighestControl() — stub: null (see habitatPirateControlByFacilityControl). */
+export function habitatPirateControlHighest(galaxy: Galaxy, habitat: Habitat): PirateColonyControlView | null {
+    void galaxy;
+    void habitat;
+    todo(T_pirateControlHighest);
+    return null;
+}
+
+const T_calculatePirateCashflow = registerTodo('M4s', 'calculatePirateCashflow');
+/**
+ * Empire.3.cs 4142 CalculatePirateCashflow(includeShipsUnderConstruction) — stub added by M4i. TODO(port) M4s2: needs
+ * CalculatePirateIncome (PirateColonyControl GetByFaction, PirateRelation protection fees, PirateEconomy years). Only
+ * reached for pirate factions from CalculateAccurateAnnualCashflowIncludingUnderConstruction, which the pirate tick
+ * does not call yet; throws if reached.
+ */
+export function calculatePirateCashflow(galaxy: Galaxy, empire: Empire, includeShipsUnderConstruction: boolean): number {
+    void galaxy;
+    void empire;
+    void includeShipsUnderConstruction;
+    todo(T_calculatePirateCashflow);
+    throw new Error('TODO(port) M4s2: Empire.CalculatePirateCashflow');
+}

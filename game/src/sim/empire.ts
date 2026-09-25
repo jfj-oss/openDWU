@@ -12,6 +12,7 @@ import { takeOwnershipOfColonyConstructionQueue } from './construction/construct
 import type { Galaxy } from './galaxy';
 import { HabitatCategoryType, HabitatType } from './types';
 import type { Habitat } from './types';
+import type { PlanetaryFacilityBuildDate } from './construction/facilities';
 import type { Race } from './data/races';
 import type { Ruin } from './ruins';
 import type { Government } from './data/governments';
@@ -1544,6 +1545,15 @@ export class Empire {
     countersBuildMilitaryShipCount = 0;
     countersBuildCivilianShipCount = 0;
     // ---- M4i fields (empire construction, facilities) ----
+    /** Empire.cs CapitalSystemStars = new HabitatList() (RefreshColonyFacilityInfo, Empire.3.cs 107). */
+    capitalSystemStars: Habitat[] = [];
+    /** Empire.cs TrackedWonders (PlanetaryFacilityBuildDateList; null until the first wonder completes). */
+    trackedWonders: PlanetaryFacilityBuildDate[] | null = null;
+    /** Empire.cs 206 NewShipsAutomated = true (GameOptions.NewShipsAutomated for the player; NewBuiltObjectShouldBeAutomated). */
+    newShipsAutomated = true;
+    /** Empire.cs 271/274 _MonitoringHabitats / _MonitoringPoints (DetermineMonitoringStationLocation, empireConstruction.ts). */
+    monitoringHabitats: Habitat[] = [];
+    monitoringPoints: { x: number; y: number }[] = [];
     // ---- M4j fields (colony growth, treasury, government) ----
     /** Empire.cs 220-230 ColonyGrowthRateContinental .. Volcanic = 1f (float; ReviewPopulationGrowthRates). */
     colonyGrowthRateContinental = 1;

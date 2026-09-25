@@ -39,6 +39,7 @@ import { BuiltObjectSubRole } from './builtObjectTypes';
 import { ResourceRef } from './cargo';
 import { checkAtWar, recalculateAnnualTaxRevenue, recalculateDistanceFactor } from './forceStructure';
 import { ColonyResourceEffect, habitatDevelopmentLevel, resourceBonusTotalByEffectType } from './developmentLevel';
+import { PlanetaryFacilityType, WonderType } from './researchSystem';
 
 export { recalculateColonyTaxRevenues } from './forceStructure';
 export { ColonyResourceEffect, habitatDevelopmentLevel, recalculateDevelopmentLevelBaseline, resourceBonusTotalByEffectType } from './developmentLevel';
@@ -81,11 +82,26 @@ export function recalculateCriticalResourceSupplyFactors(galaxy: Galaxy, h: Habi
     if (h.population != null && h.population.totalAmount > 0 && h.population.dominantRace !== null && h.empire !== null && h.empire !== galaxy.independentEmpire) {
         const num3 = 1.0;
         const num4 = 1.0;
-        // TODO(port): completed ColonyIncome / ColonyPopulationGrowth wonders (PlanetaryFacility
-        // model) — no facilities at game start.
-        if (h.facilities !== null && h.facilities.length > 0) throw new Error('TODO(port): PlanetaryFacility model (Habitat.RecalculateCriticalResourceSupplyFactors)');
-        num *= num4;
-        num2 *= num3;
+        let num3v = num3;
+        let num4v = num4;
+        // Completed ColonyIncome / ColonyPopulationGrowth wonders (Habitat.cs 5132-5149; facility model: M4i).
+        if (h.facilities !== null && h.facilities.length > 0) {
+            for (let i = 0; i < h.facilities.length; i++) {
+                const planetaryFacility = h.facilities[i];
+                if (planetaryFacility !== null && planetaryFacility.constructionProgress >= 1 && planetaryFacility.type === PlanetaryFacilityType.Wonder) {
+                    switch (planetaryFacility.wonderType) {
+                        case WonderType.ColonyIncome:
+                            num3v = Math.max(num3v, 1.0 + planetaryFacility.value2 / 100.0);
+                            break;
+                        case WonderType.ColonyPopulationGrowth:
+                            num4v = Math.max(num4v, 1.0 + planetaryFacility.value2 / 100.0);
+                            break;
+                    }
+                }
+            }
+        }
+        num *= num4v;
+        num2 *= num3v;
     }
     h.growthFactor = num;
     h.incomeFactor = num2;
@@ -398,10 +414,27 @@ export function empireApprovalRating(galaxy: Galaxy, h: Habitat): number {
         if (num22 > 0.0) num22 *= 1.0 + specialBonusHappiness(empire);
         else if (num22 < 0.0) num22 /= 1.0 + specialBonusHappiness(empire);
     }
-    // ColonyHappiness wonder (completed PlanetaryFacility) — TODO(port): facility model;
-    // no facilities at game start (num25 = 0).
-    if (h.facilities !== null && h.facilities.length > 0) throw new Error('TODO(port): PlanetaryFacility model (Habitat.EmpireApprovalRating)');
+    // Habitat.cs 638-660: ColonyHappiness wonder (completed PlanetaryFacility; facility model: M4i).
+    const num25 = colonyHappinessWonderFactor(h);
+    if (num25 > 0.0) {
+        if (num22 > 0.0) num22 *= 1.0 + num25;
+        else if (num22 < 0.0) num22 /= 1.0 + num25;
+    }
     return num22;
+}
+
+/** Habitat.cs 638-649 / 5822-5832: Value2 / 100 of the last completed ColonyHappiness wonder (0 when none). */
+function colonyHappinessWonderFactor(h: Habitat): number {
+    let num = 0.0;
+    if (h.facilities !== null && h.facilities.length > 0) {
+        for (let i = 0; i < h.facilities.length; i++) {
+            const planetaryFacility = h.facilities[i];
+            if (planetaryFacility !== null && planetaryFacility.constructionProgress >= 1 && planetaryFacility.type === PlanetaryFacilityType.Wonder && planetaryFacility.wonderType === WonderType.ColonyHappiness) {
+                num = planetaryFacility.value2 / 100.0;
+            }
+        }
+    }
+    return num;
 }
 
 // Habitat.cs CalculateUnmodifiedApproval(value, subtractAdditives) (5798).
@@ -415,8 +448,12 @@ export function calculateUnmodifiedApproval(galaxy: Galaxy, h: Habitat, value: n
         if (value > 0.0) value /= 1.0 + specialBonusHappiness(h.empire);
         else if (value < 0.0) value *= 1.0 + specialBonusHappiness(h.empire);
     }
-    // ColonyHappiness wonder — TODO(port): facility model; none at game start (num3 = 0).
-    if (h.facilities !== null && h.facilities.length > 0) throw new Error('TODO(port): PlanetaryFacility model (Habitat.CalculateUnmodifiedApproval)');
+    // Habitat.cs 5822-5843: ColonyHappiness wonder (facility model: M4i).
+    const num3 = colonyHappinessWonderFactor(h);
+    if (num3 > 0.0) {
+        if (value > 0.0) value /= 1.0 + num3;
+        else if (value < 0.0) value *= 1.0 + num3;
+    }
     if (subtractAdditives) {
         value -= resourceBonusTotalByEffectType(h, ColonyResourceEffect.Happiness);
         // TODO(port): RaceEventType.NepthysWineVintage (-5) — no race event at game start.

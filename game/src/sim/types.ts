@@ -8,6 +8,8 @@ import type { CargoList, TroopList } from './cargo';
 import type { BuiltObject, DockingBay } from './builtObject';
 import type { Empire } from './empire';
 import type { Ruin } from './ruins';
+import type { PlanetaryFacility } from './construction/facilities';
+import type { Weapon } from './weapon';
 import { MIN_TIME } from './tick/simTime';
 
 // Port of DistantWorlds.Types.HabitatType (HabitatType.cs)
@@ -220,8 +222,8 @@ export class Habitat {
     invadingTroops: TroopList | null = null;
     // C#: float _ColonyInfluenceRadius (Habitat.RecalculateColonyInfluenceRadius, territory.ts).
     colonyInfluenceRadius = 0;
-    // C#: PlanetaryFacilityList Facilities. TODO(port): PlanetaryFacility model.
-    facilities: unknown[] | null = null;
+    // C#: PlanetaryFacilityList Facilities (construction/facilities.ts, M4i).
+    facilities: PlanetaryFacility[] | null = null;
     // Task M3b (colony economy, forceStructure.ts): C# double _AnnualTaxRevenue
     // (a snapshot written by Habitat.RecalculateAnnualTaxRevenue), float _TaxRate
     // (written by Empire.SetColonyTaxRate, taxes.ts) and float _DistanceFactor = 1f
@@ -434,6 +436,15 @@ export class Habitat {
     /** Habitat.ConstructionQueue (ConstructionQueue; null until M4h creates it). */
     constructionQueue: unknown = null;
     // ---- M4i fields (facilities, wonders) ----
+    /** Habitat.cs 61 PlanetaryShieldPresent (ReviewPlanetaryFacilities). */
+    planetaryShieldPresent = false;
+    /** Habitat.cs GiantIonCannonPresent / GiantIonCannon (Weapon) (ReviewPlanetaryFacilities). */
+    giantIonCannonPresent = false;
+    giantIonCannon: Weapon | null = null;
+    /** Habitat.cs DefensiveFortressBonus (byte; ReviewPlanetaryFacilities). */
+    defensiveFortressBonus = 0;
+    /** Habitat.cs 178 WonderForDevelopment (ReviewPlanetaryFacilities; read by DevelopmentLevel). */
+    wonderForDevelopment: PlanetaryFacility | null = null;
     // ---- M4j fields (colony growth, happiness) ----
     /** Habitat.cs 53 _MaxPopulation (long; BaconHabitat.RecalculateMaximumPopulation, read by GrowPopulation). */
     maxPopulation = 0;

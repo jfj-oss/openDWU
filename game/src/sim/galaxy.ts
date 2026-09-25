@@ -4403,6 +4403,8 @@ export class Galaxy {
     /** Clock-seeded `new Random()` of BaconBuiltObject.DoRepairs (4787): a galaxy-seed-derived stream (plan §0). */
     baconRepairClockRnd: Random | null = null;
     // ---- M4i fields (empire construction, facilities, wonders) ----
+    /** Galaxy.cs 822 _WondersBuilt (bool per PlanetaryFacilityDefinitionsStatic id; construction/wonders.ts). */
+    wondersBuilt: boolean[] | null = null;
     // ---- M4j fields (colony growth, treasury, government) ----
     /** Galaxy.cs 665 _ColonyFillFactor = 1.0 (ReviewColonyFillFactor). */
     colonyFillFactor = 1.0;

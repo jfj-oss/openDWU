@@ -271,11 +271,12 @@ describe('harness: ships with missions move and hyperjump', () => {
         expect(exits).toBeGreaterThan(0);
         let farMovers = 0;
         for (const b of g.builtObjects) {
-            const s = start.get(b)!;
+            const s = start.get(b);
             expect(Number.isFinite(b.xpos) && Number.isFinite(b.ypos)).toBe(true);
             const idx = g.resolveIndex(b.xpos, b.ypos);
             if (!b.hasBeenDestroyed) expect(g.builtObjectIndexGrid[idx.x][idx.y]).toContain(b);
-            if (Math.hypot(b.xpos - s.x, b.ypos - s.y) > 100000) farMovers++;
+            // (Ships built during the run — M4i DirectConstruction — have no start position.)
+            if (s !== undefined && Math.hypot(b.xpos - s.x, b.ypos - s.y) > 100000) farMovers++;
         }
         expect(farMovers).toBeGreaterThan(0);
     }, 300000);

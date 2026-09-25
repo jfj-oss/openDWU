@@ -37,7 +37,7 @@ import {
     stellarObjectCharacters,
 } from '../characters';
 import { charactersCanGenerateAmountNonIntelligenceAgent } from '../troops';
-import { getProjectsByCategory, findNodeById, type TechNode } from '../researchSystem';
+import { PlanetaryFacilityType, WonderType, getProjectsByCategory, findNodeById, type TechNode } from '../researchSystem';
 import { doResearchBreakthrough } from '../researchTick';
 import { EmpireMessageType, resolveDescription, sendMessageToEmpire, sendMessageToEmpireWithTitle } from '../messages';
 import { assignMission, clearPreviousMissionRequirements } from '../missions/assign';
@@ -117,15 +117,20 @@ function raceColonyConstructionFactorForType(race: Race, habitatType: HabitatTyp
 }
 
 /**
- * The completed ColonyConstructionSpeed wonders of a colony (PlanetaryFacility Type Wonder, WonderType
- * ColonyConstructionSpeed, ConstructionProgress >= 1): TODO(port) M4i — PlanetaryFacility model. The TS Habitat.facilities
- * holds no facility objects yet; a non-empty list throws like the other facility readers (colonyTick.ts, treasury.ts).
+ * The Value2 of each completed ColonyConstructionSpeed wonder of a colony, in list order (BaconConstructionQueue.cs 63:
+ * facility != null && Type == Wonder && WonderType == ColonyConstructionSpeed && ConstructionProgress >= 1).
  */
 function colonyConstructionSpeedWonderValues(habitat: Habitat): number[] {
-    if (habitat.facilities !== null && habitat.facilities.length > 0) {
-        throw new Error('TODO(port) M4i: PlanetaryFacility model (BaconConstructionQueue.ReviewConstructionSpeed wonders)');
+    const values: number[] = [];
+    if (habitat.facilities !== null) {
+        for (let index = 0; index < habitat.facilities.length; ++index) {
+            const facility = habitat.facilities[index];
+            if (facility !== null && facility.type === PlanetaryFacilityType.Wonder && facility.wonderType === WonderType.ColonyConstructionSpeed && facility.constructionProgress >= 1.0) {
+                values.push(facility.value2);
+            }
+        }
     }
-    return [];
+    return values;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
