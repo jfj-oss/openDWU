@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { GalaxyTime, SPEED_MAX, SPEED_MIN, START_STAR_DATE } from '../src/sim/galaxyTime';
+import { GalaxyTime, SPEED_MAX, SPEED_MIN, START_STAR_DATE, startStarDateForAge } from '../src/sim/galaxyTime';
 
 describe('GalaxyTime clock (task 07b)', () => {
     it('starts paused at 1x on the start star date', () => {
@@ -37,5 +37,21 @@ describe('GalaxyTime clock (task 07b)', () => {
         expect(t.speed).toBe(SPEED_MIN); // 0.25
         t.slower();
         expect(t.speed).toBe(SPEED_MIN); // stays
+    });
+
+    it('bound to a galaxy it is a view over galaxy.nowMs and the galaxy start date', () => {
+        const galaxy = { nowMs: 0, age: 1 };
+        const t = new GalaxyTime().bindGalaxy(galaxy);
+        expect(t.startStarDate).toBe(startStarDateForAge(1));
+        expect(t.currentStarDate).toBe(START_STAR_DATE + 30_000_000);
+        galaxy.nowMs = 12_345;
+        expect(t.elapsedMs).toBe(12_345);
+        expect(t.currentStarDate).toBe(START_STAR_DATE + 30_000_000 + 12_345);
+        // The scheduler owns the clock: a bound clock is never advanced/set by itself.
+        t.togglePause();
+        expect(() => t.advance(1000)).toThrow(/scheduler/);
+        expect(() => (t.elapsedMs = 5)).toThrow(/scheduler/);
+        t.togglePause();
+        expect(t.advance(1000)).toBe(0);
     });
 });

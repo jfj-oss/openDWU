@@ -16,7 +16,8 @@ import { loadGameData, type FetchText, type GameData } from './sim/data/gameData
 import { GalaxyShape } from './sim/types';
 import { clearHudMessages, createHud, layoutHud, nearestSystem, nearestSystemName, pushHudMessage, setSelection as setHudSelection, type HudRefs } from './ui/hud';
 import { GalaxyTime } from './sim/clock';
-import { resolveStarDateDescription, START_STAR_DATE } from './sim/galaxyTime';
+import { resolveStarDateDescription } from './sim/galaxyTime';
+import { createSimLoop, simViewEnabledFromUrl } from './simLoop';
 import { formatClockLabel, SECTOR_LEVEL_ZOOM, SYSTEM_LEVEL_ZOOM, type Selection } from './ui/hud';
 import { Habitat, HabitatCategoryType } from './sim/types';
 import { createMapOverlayState, type MapOverlayState, type OverlayKey } from './ui/mapOverlays';
@@ -37,7 +38,7 @@ import { createCreditsScreen } from './ui/screens/credits';
 import { startMusic } from './audio/musicPlayer';
 import { createNewGameWizard } from './ui/screens/newGameWizard';
 import { openGalactopedia } from './ui/screens/galactopedia';
-import { defaultStartGameOptions, STARTING_TECH_LEVEL, toCreateGameOptions, type StartGameOptions } from './sim/startGameOptions';
+import { defaultStartGameOptions, piratesFor, STARTING_TECH_LEVEL, toCreateGameOptions, type StartGameOptions } from './sim/startGameOptions';
 import { serializeGame, deserializeGame } from './sim/save/gameSave';
 import { setSaveLoadProvider, createSaveLoadPanel, type LoadedGame } from './ui/screens/saveLoad';
 import { type Game } from './sim/game';
@@ -234,8 +235,15 @@ function createGalaxyMapFor(galaxy: Galaxy, camera: Camera): GalaxyMapScreen {
  * save-load — centres the camera on the player's capital at Sector zoom,
  * wires the HUD/clock/input, and sets `window.__dwu` (camera, galaxy, view,
  * app, game). Returns the GalaxyTime it created so callers (the save/load
- * provider, task 11a3) can serialize the running game. */
-export async function startGameView(game: Game, zoomOverride?: number, extraBoots?: Array<() => void>): Promise<GalaxyTime> {
+ * provider, task 11a3) can serialize the running game. The clock is a view
+ * over the galaxy's sim clock (galaxy.nowMs, start date from Galaxy.Age);
+ * `savedClock` carries a loaded save's pause/speed controls. */
+export async function startGameView(
+    game: Game,
+    zoomOverride?: number,
+    extraBoots?: Array<() => void>,
+    savedClock?: { speed: number; paused: boolean },
+): Promise<GalaxyTime> {
     const dwuPresent = await detectDwuPresent();
     if (dwuPresent) {
         // Real-art file lists (scripts/gen-asset-manifest.mjs, predev/prebuild).
@@ -289,12 +297,19 @@ export async function startGameView(game: Game, zoomOverride?: number, extraBoot
     const view = new MainView(app, camera, galaxy, store, overlays);
     await view.init();
 
-    const time = new GalaxyTime(START_STAR_DATE);
+    // One clock: the HUD's GalaxyTime is bound to galaxy.nowMs by createSimLoop (the scheduler advances it).
+    const time = new GalaxyTime();
+    if (savedClock !== undefined) {
+        time.speed = savedClock.speed;
+        time.paused = savedClock.paused;
+    }
+    const simLoop = createSimLoop(galaxy, time, camera, simViewEnabledFromUrl(window.location.search));
     pushHudMessage(foundingMessage, resolveStarDateDescription(time.currentStarDate));
     // Debug / screenshot hook: the created game (galaxy + player empire).
     // Task 06l: also exposes the running clock (`time`) so the tutorial
     // window's "Play This Game" button can unpause it.
     (window as unknown as { __dwu?: unknown }).__dwu = buildDwuDebugObject({ camera, galaxy, view, app, game, time });
+    Object.assign((window as unknown as { __dwu: Record<string, unknown> }).__dwu, { sim: simLoop.driver, simStats: simLoop.stats });
     // Task 10d: the HUD's money panel refreshes from the player empire.
     // Task C3: Galaxy Map screen (G key / HUD "Galaxy map (G)" row).
     const galaxyMap = createGalaxyMapFor(galaxy, camera);
@@ -404,11 +419,9 @@ export async function startGameView(game: Game, zoomOverride?: number, extraBoot
     };
     window.addEventListener('keydown', keydownHandler);
 
+    // Plan §1.1/§5.1: whole sim frames from the real scheduler (orbits, creatures, empires, fleets, ships...).
     app.ticker.add(() => {
-        const gameMs = time.advance(app.ticker.deltaMS);
-        if (gameMs > 0) {
-            galaxy.step(gameMs);
-        }
+        simLoop.tick(app.ticker.deltaMS);
         view.update();
     });
     app.renderer.on('resize', () => {
@@ -563,20 +576,7 @@ async function startTutorialGame(file: string): Promise<void> {
         console.error('DW:U game data is required to start a tutorial but failed to load.');
         return;
     }
-    const ai = { race: '(Random)', homeSystemFavourability: 'Normal' as const, proximityDistance: 'Random', age: 1, techLevel: STARTING_TECH_LEVEL };
-    const opts: CreateGameOptions = {
-        seed: 1,
-        shape: GalaxyShape.Spiral,
-        starCount: 700,
-        sectorWidth: 4,
-        sectorHeight: 4,
-        systemNames,
-        gameData,
-        // "Starting" era: Galaxy.Age 1 (= Galaxy.StartingAge), as the wizard's default Expansion slider.
-        galaxyAge: 1,
-        player: { race: 'Human', homeSystemFavourability: 'Normal', startLocation: '(Random)', age: 1, techLevel: STARTING_TECH_LEVEL },
-        aiEmpires: [ai, { ...ai }, { ...ai }],
-    };
+    const opts = defaultDevGameOptions(1, GalaxyShape.Spiral, 700, 4, 4, systemNames, gameData);
     let game: Game | null = null;
     try {
         game = createGame(opts);
@@ -621,7 +621,7 @@ function teardownActiveGameView(): void {
  * deserialized by the save panel's loadSave), rebooting through the shared
  * startGameView. */
 async function bootLoadedGame(loaded: LoadedGame): Promise<void> {
-    const { game, startOptions } = loaded as unknown as {
+    const { game, time, startOptions } = loaded as unknown as {
         game: Game;
         time: GalaxyTime;
         startOptions: StartGameOptions;
@@ -631,7 +631,8 @@ async function bootLoadedGame(loaded: LoadedGame): Promise<void> {
     activeMainMenu = null;
     await ensureStaticData();
     teardownActiveGameView();
-    await startGameView(game);
+    // The sim time itself is galaxy.nowMs (saved with the galaxy); the save's clock only restores pause/speed.
+    await startGameView(game, undefined, undefined, { speed: time.speed, paused: time.paused });
 }
 
 async function main(): Promise<void> {
@@ -797,6 +798,35 @@ function paramsHasAutostart(): boolean {
     return new URLSearchParams(window.location.search).has('autostart');
 }
 
+/** createGame options for the dev autostart and tutorial games: Human + 3 random AI empires in the wizard's
+ * default "Starting" era, with the wizard's default pirate prevalence (piratesIndex 2 → piratesFor = 0.2;
+ * createGame's own default is 0 = no pirates). */
+function defaultDevGameOptions(
+    seed: number,
+    shape: GalaxyShape,
+    starCount: number,
+    sectorWidth: number,
+    sectorHeight: number,
+    systemNames: string[],
+    gameData: GameData,
+): CreateGameOptions {
+    const ai = { race: '(Random)', homeSystemFavourability: 'Normal' as const, proximityDistance: 'Random', age: 1, techLevel: STARTING_TECH_LEVEL };
+    return {
+        seed,
+        shape,
+        starCount,
+        sectorWidth,
+        sectorHeight,
+        systemNames,
+        gameData,
+        // "Starting" era: Galaxy.Age 1 (= Galaxy.StartingAge), as the wizard's default Expansion slider.
+        galaxyAge: 1,
+        piratePrevalence: piratesFor(defaultStartGameOptions().piratesIndex),
+        player: { race: 'Human', homeSystemFavourability: 'Normal', startLocation: '(Random)', age: 1, techLevel: STARTING_TECH_LEVEL },
+        aiEmpires: [ai, { ...ai }, { ...ai }],
+    };
+}
+
 async function buildAutostartGame(
     seed: number,
     shape: GalaxyShape,
@@ -810,20 +840,7 @@ async function buildAutostartGame(
         console.warn('?autostart=1 needs DW:U game data (races/governments); falling back to generateGalaxy');
         return null;
     }
-    const ai = { race: '(Random)', homeSystemFavourability: 'Normal' as const, proximityDistance: 'Random', age: 1, techLevel: STARTING_TECH_LEVEL };
-    const opts: CreateGameOptions = {
-        seed,
-        shape,
-        starCount,
-        sectorWidth,
-        sectorHeight,
-        systemNames,
-        gameData,
-        // "Starting" era: Galaxy.Age 1 (= Galaxy.StartingAge), as the wizard's default Expansion slider.
-        galaxyAge: 1,
-        player: { race: 'Human', homeSystemFavourability: 'Normal', startLocation: '(Random)', age: 1, techLevel: STARTING_TECH_LEVEL },
-        aiEmpires: [ai, { ...ai }, { ...ai }],
-    };
+    const opts = defaultDevGameOptions(seed, shape, starCount, sectorWidth, sectorHeight, systemNames, gameData);
     try {
         const game = createGame(opts);
         // Saves need start options (metadata only; the galaxy itself is saved).
@@ -922,7 +939,10 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     // list drives the camera and overlay toggles; the selection panel is
     // refreshed as the camera moves (demo: nearest star/planet to the view
     // centre).
-    const time = new GalaxyTime(START_STAR_DATE);
+    // One clock (galaxy.nowMs), advanced by the real scheduler below; generateGalaxy leaves Galaxy.Age 0.
+    const time = new GalaxyTime();
+    const simLoop = createSimLoop(galaxy, time, camera, simViewEnabledFromUrl(window.location.search));
+    Object.assign(debugHook, { time, sim: simLoop.driver, simStats: simLoop.stats });
     // Task C3: Galaxy Map screen (G key / HUD "Galaxy map (G)" row).
     const galaxyMap = createGalaxyMapFor(galaxy, camera);
     debugHook.galaxyMap = galaxyMap;
@@ -1011,13 +1031,9 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
         }
     });
 
-    // Task 07b: drive galaxy time each frame — advance the clock by real
-    // time, then advance planet/moon orbits by the game ms advanced.
+    // Task 07b / plan §1.1: run whole sim frames of the real scheduler each render frame.
     app.ticker.add(() => {
-        const gameMs = time.advance(app.ticker.deltaMS);
-        if (gameMs > 0) {
-            galaxy.step(gameMs);
-        }
+        simLoop.tick(app.ticker.deltaMS);
         view.update();
     });
     app.renderer.on('resize', () => {
