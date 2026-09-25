@@ -4470,6 +4470,9 @@ export class Galaxy {
      */
     regeneratingEmpireTerritory = false;
     regenerateEmpireTerritoryAgain = false;
+    // ---- M4z2 fields (espionage) ----
+    /** The clock-seeded `new Random()` of BaconCharacter.Kill / BaconHabitat & BaconBuiltObject SpyEscaped / SpyDefected: one galaxy-seeded stream (plan §0; espionagePrisoners.ts). */
+    baconSpyClockRnd: Random | null = null;
     // ---- M4u fields (events, disasters, characters) ----
     /** Galaxy.cs 721 GameRaceSpecificEventsEnabled = true (Start.2.cs 504: VictoryConditions.EnableRaceSpecificEvents). */
     gameRaceSpecificEventsEnabled = true;
