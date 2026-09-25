@@ -193,12 +193,14 @@ describe('#15 message history after load (Main.Part9.cs ReceiveMessageInternal, 
         expect(history).toEqual([built]);
     });
 
-    it('prefers the sim Empire.addHistoryMessage when present', () => {
-        const added: EmpireMessage[] = [];
-        const player = { name: 'Us', messages: [], addHistoryMessage: (m: EmpireMessage) => added.push(m) } as unknown as Empire;
+    it('records through the sim addHistoryMessage (Empire.cs 4697): no duplicates, Informational skipped', () => {
+        const player = { name: 'Us', messages: [], messageHistory: [] } as unknown as Empire;
         const m = msg(EmpireMessageType.NewColony, 'Colony founded');
         recordTickerMessage(player, m, 5);
-        expect(added).toEqual([m]);
+        recordTickerMessage(player, m, 6);
+        recordTickerMessage(player, msg(EmpireMessageType.Informational, 'info'), 7);
+        expect((player as unknown as { messageHistory: EmpireMessage[] }).messageHistory).toEqual([m]);
+        expect(m.starDate).toBe(6);
     });
 
     it('rebuilds ticker lines from the saved history, oldest first', () => {
