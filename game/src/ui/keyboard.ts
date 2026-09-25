@@ -15,6 +15,7 @@ import {
     getSelection,
 } from './hud';
 import { helpTopicKeyForHabitat, toggleGalactopedia } from './screens/galactopedia';
+import { toggleShipDesigns } from './screens/shipDesigns'; // [16b]
 import { toggleResearchScreen } from './screens/researchScreen'; // [15b]
 import { getEmpireSummarySource, toggleEmpireSummary } from './screens/empireSummary';
 import { toggleColoniesList } from './screens/coloniesList';
@@ -267,6 +268,13 @@ export function dispatchKey(
             break;
         }
         // [/15b]
+        // [16b] F8: Ship Designs (task 16b).
+        case 'shipDesignsScreen': {
+            const src = getEmpireSummarySource();
+            if (src) toggleShipDesigns({ empire: src.empire });
+            break;
+        }
+        // [/16b]
         case 'coloniesScreen':
             handlers.coloniesScreen?.();
             break;
@@ -471,6 +479,7 @@ export const IMPLEMENTED_KEY_ACTIONS: ReadonlySet<string> = new Set([
     'zoomIn', 'zoomOut', 'zoomToSelection',
     'zoomSystemLevel', 'zoomSectorLevel', 'zoomGalaxyLevel', 'zoomPlanetLevel',
     'researchScreen', // [15b]
+    'shipDesignsScreen', // [16b]
     'scrollUp', 'scrollDown', 'scrollLeft', 'scrollRight',
     'galaxyMap', 'messageHistoryScreen', 'empireSummaryScreen', 'coloniesScreen', 'shipsAndBasesScreen',
     'fleetsScreen', // [15c]

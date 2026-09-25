@@ -25,6 +25,7 @@ import { helpTopicKeyForHabitat, toggleGalactopedia } from './screens/galactoped
 import { toggleEmpiresList } from './screens/empiresList';
 import { setEmpireSummarySource, getEmpireSummarySource, toggleEmpireSummary } from './screens/empireSummary';
 import { toggleColoniesList } from './screens/coloniesList';
+import { toggleShipDesigns } from './screens/shipDesigns'; // [16b]
 import { toggleShipsAndBasesList } from './screens/shipsAndBasesList';
 import { toggleMessageHistory } from './screens/messageHistory';
 import { toggleResearchScreen } from './screens/researchScreen'; // [15b]
@@ -565,6 +566,13 @@ function buildTopBarButton(name: string, wiring: HudWiring): HTMLElement {
                 return;
             }
             // [/15c]
+            // [16b] tbtnDesigns → Designs panel (Main.Part9.cs:4339 tbtnDesigns_Click).
+            if (name === 'tbtnDesigns') {
+                const src = getEmpireSummarySource();
+                if (src) toggleShipDesigns({ empire: src.empire });
+                return;
+            }
+            // [/16b]
             console.log(`TODO(screen): ${label ?? name}`);
             showToast(`${label ?? name} — not yet available`);
         }
