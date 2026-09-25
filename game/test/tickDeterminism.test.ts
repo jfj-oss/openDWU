@@ -164,7 +164,8 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // instead of its own copies), re-pinned once.
         // Moved from 2689770786790d6a: tick harness now models the default age-1 start (every empire starts at Age 1,
         // "Starting": larger colonies, positive cashflow, DirectConstruction queues ships at once; see helpers/tickGame.ts).
-        expect(summary.digest).toBe('00ea05e8d2465a22');
+        // Moved from 00ea05e8d2465a22: interim harness configuration after the M4x merge (age-0 empires, galaxy age 0, see test/helpers/tickGame.ts) until M4y flips it to the true age-1 default
+        expect(summary.digest).toBe('2689770786790d6a');
     }, 600000);
 });
 
