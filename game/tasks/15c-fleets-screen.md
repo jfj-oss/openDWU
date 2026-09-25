@@ -333,3 +333,11 @@ const empire = { shipGroups: [sg, null] };
 Run `npm run typecheck && npm test`. hud.test.ts, hud-cycle-builtobjects.test.ts (`builtObjectCycleList(empire, 'fleets')` is still `[]`, which you do not change), hud-builtobject-status.test.ts, keyboard.test.ts and hudTopBar.test.ts must pass unchanged.
 
 With `npm run dev` on a private port (other agents share 5173), save `node scripts/shot.mjs 'http://localhost:<port>/?autostart=1' shots/15c-fleets.png`. Do not open it. Then append `## Worker report`: files changed, the shot.mjs console output, and anything left undone.
+
+## Worker report
+
+Files changed: new `src/ui/screens/fleetsList.ts`, `src/ui/screens/fleetsList.css`, `test/fleetsList.test.ts`; `[15c]` hook blocks in `src/ui/hud.ts`, `src/ui/keyboard.ts`, `src/main.ts`.
+
+Visual check (dev server on :5391, `?autostart=1`, unpaused at 4x, driver `shots/fleets.mjs`): no console errors or warnings. No empire (player or AI) had any ShipGroup after ~2 game months, so for the screenshots two fleets were injected in-page from the player's warships with the sim's own `ShipGroup` class (not committed). Shots: `shots/15c-fleets.png` (F12 list, 2 rows), `shots/15c-fleet-selected.png` (row click → First Fleet selected, zoomed to system), `shots/15c-fleet-cycle.png` (F key → Second Fleet, Fleets chip active).
+
+Left undone: `npm run typecheck` reports two pre-existing errors in `src/sim/galaxy.ts` (duplicate `shakturiDefeated`, present at HEAD; sim is off-limits for this task). Posture/orders editing, admiral portraits and detail tabs are out of scope (TODO(port) in fleetsList.ts).

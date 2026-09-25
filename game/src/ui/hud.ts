@@ -12,6 +12,10 @@ import type { BuiltObject } from '../sim/builtObject';
 import { BuiltObjectSubRole } from '../sim/builtObjectTypes';
 import { BuiltObjectRole } from '../sim/data/designSpecifications';
 import { BuiltObjectMissionType, builtObjectMission, type BuiltObjectMission } from '../sim/missions/mission';
+// [15c]
+import type { ShipGroup } from '../sim/fleets/shipGroup';
+import { fleetCycleList, fleetName, fleetSystemName, shipGroupSelectionRows, toggleFleetsList } from './screens/fleetsList';
+// [/15c]
 import { SystemVisibilityStatus } from '../sim/visibility';
 import { flagShapeUrl } from '../sim/startGameOptions';
 import { createGameMenu, type GameMenuRefs } from './screens/gameMenu';
@@ -181,6 +185,8 @@ export interface Selection {
     /** Task 13c: the selected ship/base when cycling Bases/Military/Constr./
      * Other. `habitat` is then the nearest system's star. */
     builtObject?: BuiltObject;
+    /** [15c] The selected fleet; `builtObject` is then its lead ship and `habitat` the nearest star. */
+    shipGroup?: ShipGroup;
 }
 
 let currentSelection: Selection | null = null;
@@ -195,6 +201,14 @@ export function getSelection(): Selection | null {
 export function setSelection(sel: Selection | null): void {
     currentSelection = sel;
 }
+
+// [15c] Fleet selection hook: buildSelectionPanel registers it; the Fleets list,
+// F12 and the fleet cycler call selectShipGroup (Main.Part8.cs method_208 for a ShipGroup).
+let shipGroupSelectHandler: ((sg: ShipGroup, moveView: boolean) => void) | null = null;
+export function selectShipGroup(sg: ShipGroup, moveView = true): void {
+    shipGroupSelectHandler?.(sg, moveView);
+}
+// [/15c]
 
 /** Build the HUD overlay and append it to document.body. */
 export function createHud(wiring: HudWiring = {}): HudRefs {
@@ -536,6 +550,13 @@ function buildTopBarButton(name: string, wiring: HudWiring): HTMLElement {
                 },
             });
         } else {
+            // [15c] tbtnShipGroups → Fleets list (Main.Part9.cs:3153 tbtnShipGroups_Click).
+            if (name === 'tbtnShipGroups') {
+                const src = getEmpireSummarySource();
+                if (src) toggleFleetsList({ empire: src.empire, onSelect: (sg) => selectShipGroup(sg, true) });
+                return;
+            }
+            // [/15c]
             console.log(`TODO(screen): ${label ?? name}`);
             showToast(`${label ?? name} — not yet available`);
         }
@@ -694,7 +715,21 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
      * on it at System zoom. */
     const stepCycle = (dir: 1 | -1, kind: CycleKind = activeChip, moveView = true): void => {
         if (kind !== 'colonies') {
-            if (kind === 'fleets' || kind === 'idleShips') {
+            // [15c] Port of Main.Part8.cs:1243 btnCycleShipGroups_Click (F / Shift+F / Ctrl+F).
+            if (kind === 'fleets') {
+                const game = wiring.game;
+                if (!game) return;
+                const list = fleetCycleList(game.playerEmpire as Empire);
+                if (list.length === 0) {
+                    pushHudMessage('No Fleets yet');
+                    return;
+                }
+                const next = nextInCycle(list, currentSelection?.shipGroup ?? null, dir);
+                if (next) shipGroupSelectHandler?.(next, moveView);
+                return;
+            }
+            // [/15c]
+            if (kind === 'idleShips') {
                 // TODO(cycle): ShipGroup / BuiltObject.mission not ported (Main.Part7.cs 1863 btnCycleIdleShips_Click)
                 pushHudMessage(`No ${chipLabel()} yet`);
                 return;
@@ -781,6 +816,22 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         footer.querySelector(`.hud-chip[title="${label}"]`)?.classList.add('hud-chip-active');
         stepCycle(dir, kind, moveView);
     });
+    // [15c] Select a fleet: the lead ship's nearest system, builtObject = lead ship
+    // (so the map ring and live refresh follow it), and optionally move the view.
+    shipGroupSelectHandler = (sg, moveView) => {
+        const lead = sg.leadShip;
+        const galaxy = wiring.galaxy;
+        if (!lead || !galaxy) return;
+        const system = nearestSystem(galaxy.systems, lead.xpos, lead.ypos);
+        if (!system) return;
+        wiring.onSelectionChange?.({ habitat: system.systemStar, system, builtObject: lead, shipGroup: sg });
+        const cam = wiring.camera;
+        if (moveView && cam) {
+            cam.centerOn(lead.xpos, lead.ypos);
+            cam.zoomAt(SYSTEM_LEVEL_ZOOM, cam.width / 2, cam.height / 2);
+        }
+    };
+    // [/15c]
 
     // Refresh the header/body from the current selection.
     const gameData = wiring.gameData;
@@ -794,6 +845,12 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
             return;
         }
         const h = sel.habitat;
+        // [15c] fleet header: name + ship count and system.
+        if (sel.shipGroup) {
+            nameEl.textContent = fleetName(sel.shipGroup);
+            nameEl.classList.remove('hud-muted');
+            subEl.textContent = `Fleet · ${sel.shipGroup.ships.length} ships · ${fleetSystemName(sel.shipGroup)}`;
+        } else // [/15c]
         if (sel.builtObject) {
             // Task 13c: ship/base header — name + sub-role label and system.
             nameEl.textContent = sel.builtObject.name;
@@ -1446,6 +1503,12 @@ export function buildSelectionRows(sel: Selection, gameData?: GameData, player: 
         line.append(k, v);
         rows.push({ element: line });
     };
+    // [15c] A selected fleet shows its own rows instead of the lead ship's.
+    if (sel.shipGroup) {
+        for (const r of shipGroupSelectionRows(sel.shipGroup, player)) addColorRow(r);
+        return rows;
+    }
+    // [/15c]
     // Task 13c: a selected ship/base shows only its own rows (Owner / Design /
     // Size / Location / Troops) instead of the habitat's detail rows.
     if (sel.builtObject) {
