@@ -57,6 +57,9 @@ import { doResearchBreakthrough, reviewDesignsBuiltObjectsImprovedComponents } f
 import { generateDesignFromSpec } from '../designGeneration';
 import { generateAbandonedBuiltObject, getMonitoringStationDesignSpec } from '../gameStartTail';
 import { findLonelyColonyLocation } from '../civilianAI';
+import { getEmpireById } from '../logistics/contracts';
+import { facilitiesFindBestPirateFacility } from '../construction/facilities';
+import { gameText } from '../colonyTick';
 import { strategicValue } from '../territory';
 import { SystemVisibilityStatus } from '../visibility';
 import { resolveTechBonusFactor } from './attackAI';
@@ -1502,7 +1505,20 @@ export function inflictBombardDamage(galaxy: Galaxy, self: BuiltObject, habitat:
                     facilities.splice(facilities.indexOf(planetaryFacility), 1);
                     // TODO(port) M4i: habitat.CheckRemoveFacilityTracking(planetaryFacility).
                     if (isPirateFacility) {
-                        // TODO(port) M4s: habitat.GetPirateControl().GetByFacilityControl() → HasFacilityControl / ControlLevel, PlanetaryFacilityDestroyed message.
+                        // BuiltObject.2.cs 5896-5911 (PirateColonyControl ported by M4s2).
+                        const byFacilityControl = habitat.pirateColonyControl.getByFacilityControl();
+                        if (byFacilityControl !== null) {
+                            const planetaryFacility2 = facilitiesFindBestPirateFacility(habitat.facilities ?? [], true);
+                            if (planetaryFacility2 === null) {
+                                byFacilityControl.hasFacilityControl = false;
+                                byFacilityControl.controlLevel = Math.min(Math.fround(0.49), Math.max(Math.fround(0.01), Math.fround(byFacilityControl.controlLevel - Math.fround(0.2))));
+                            }
+                            const empireById = getEmpireById(galaxy, byFacilityControl.empireId);
+                            if (empireById !== null) {
+                                const description = gameText('Bombardment Destroys Facility Description', planetaryFacility.name, self.name);
+                                sendMessageToEmpire(empireById, empireById, EmpireMessageType.PlanetaryFacilityDestroyed, planetaryFacility, description);
+                            }
+                        }
                     } else if (habitat.empire !== null) {
                         const description2 = `Bombardment by ${self.name} destroys the ${planetaryFacility.name}`;
                         sendMessageToEmpire(habitat.empire, habitat.empire, EmpireMessageType.PlanetaryFacilityDestroyed, planetaryFacility, description2);

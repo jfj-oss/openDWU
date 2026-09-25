@@ -311,7 +311,7 @@ export function checkEmpireTechCanSurviveStorms(empire: Empire): boolean {
 }
 
 /** BuiltObjectList.cs 452 CountBuiltObjectsWithTargetHabitat(habitat, subRoles). */
-function countBuiltObjectsWithTargetHabitat(list: readonly BuiltObject[], habitat: Habitat, subRoles: readonly BuiltObjectSubRole[]): number {
+export function countBuiltObjectsWithTargetHabitat(list: readonly BuiltObject[], habitat: Habitat, subRoles: readonly BuiltObjectSubRole[]): number {
     let num = 0;
     for (let i = 0; i < list.length; i++) {
         const builtObject = list[i];
@@ -1567,7 +1567,7 @@ function cargoTotalUnits(cargo: CargoList, empire: Empire): number {
 }
 
 /** Empire.5.cs 3955 CheckMiningStationForResourceClearance(ship, miningStation, empireDeficientResources). No Rnd. */
-function checkMiningStationForResourceClearance(galaxy: Galaxy, empire: Empire, ship: BuiltObject, miningStation: BuiltObject, empireDeficientResources: readonly number[]): boolean {
+export function checkMiningStationForResourceClearance(galaxy: Galaxy, empire: Empire, ship: BuiltObject, miningStation: BuiltObject, empireDeficientResources: readonly number[]): boolean {
     if (miningStation.empire === null) return false;
     let result = false;
     if (miningStation != null && miningStation.role === BuiltObjectRole.Base && miningStation.isResourceExtractor && miningStation.subRole !== BuiltObjectSubRole.SmallSpacePort && miningStation.subRole !== BuiltObjectSubRole.MediumSpacePort && miningStation.subRole !== BuiltObjectSubRole.LargeSpacePort) {
@@ -1689,7 +1689,7 @@ export function determineResortBaseAtHabitat(habitat: Habitat): BuiltObject | nu
 }
 
 /** Empire.5.cs 2859 AssignBuildResortBaseMissionToBuiltObject(builtObject, resortBaseDesign). Rnd: Next(0, min(5, sources)), NextDouble per candidate. */
-function assignBuildResortBaseMissionToBuiltObject(galaxy: Galaxy, empire: Empire, builtObject: BuiltObject, resortBaseDesign: Design | null): boolean {
+export function assignBuildResortBaseMissionToBuiltObject(galaxy: Galaxy, empire: Empire, builtObject: BuiltObject, resortBaseDesign: Design | null): boolean {
     if (builtObject.subRole === BuiltObjectSubRole.ConstructionShip && resortBaseDesign !== null && empire.policy!.engageInTourism && empire.resortBaseBuildLocations.length > 0 && empire.tourismSources.length > 0) {
         const maxValue = Math.min(5, empire.tourismSources.length);
         const index = galaxy.rnd.next(0, maxValue);
@@ -1753,7 +1753,7 @@ function assignBuildResortBaseMissionToBuiltObject(galaxy: Galaxy, empire: Empir
 }
 
 /** Empire.5.cs 2947 AssignMigrationMissionToBuiltObject(builtObject). Rnd: Next(0, 2), Next(0, resettle) | Next(0, destinations) + NextDouble per source. */
-function assignMigrationMissionToBuiltObject(galaxy: Galaxy, empire: Empire, builtObject: BuiltObject): boolean {
+export function assignMigrationMissionToBuiltObject(galaxy: Galaxy, empire: Empire, builtObject: BuiltObject): boolean {
     if (builtObject.subRole === BuiltObjectSubRole.PassengerShip) {
         let num = 0;
         if (empire.resettleSources.length > 0 && empire.migrationSources.length > 0 && empire.migrationDestinations.length > 0) {
@@ -1827,7 +1827,7 @@ function assignMigrationMissionToBuiltObject(galaxy: Galaxy, empire: Empire, bui
 }
 
 /** Empire.5.cs 3040 AssignTourismMissionToBuiltObject(builtObject). Rnd: Next(0, sources), NextDouble per destination. */
-function assignTourismMissionToBuiltObject(galaxy: Galaxy, empire: Empire, builtObject: BuiltObject): boolean {
+export function assignTourismMissionToBuiltObject(galaxy: Galaxy, empire: Empire, builtObject: BuiltObject): boolean {
     if (builtObject.subRole === BuiltObjectSubRole.PassengerShip && empire.tourismDestinations.length > 0 && empire.tourismSources.length > 0) {
         const populationList = new PopulationList();
         const index = galaxy.rnd.next(0, empire.tourismSources.length);
@@ -2092,7 +2092,7 @@ export function determineMigrationDestinations(empire: Empire): PrioritizedTarge
 // ---------------------------------------------------------------------------------------------------------------
 
 /** Empire.5.cs 3357 DetermineWhetherShouldRepair(repairShip, builtObject). */
-function determineWhetherShouldRepair(galaxy: Galaxy, empire: Empire, repairShip: BuiltObject, builtObject: BuiltObject): boolean {
+export function determineWhetherShouldRepair(galaxy: Galaxy, empire: Empire, repairShip: BuiltObject, builtObject: BuiltObject): boolean {
     // Empire.5.cs 3432 CheckNearPirateBase(ship, x, y): scanRange = Max(SensorProximityArrayRange, (int)(MaxSolarSystemSize * 2.1)).
     const scanRange = Math.max(repairShip.sensorProximityArrayRange, Math.trunc(MAX_SOLAR_SYSTEM_SIZE * 2.1));
     if (builtObject.unbuiltOrDamagedComponentCount > 0 && builtObject.role === BuiltObjectRole.Base && builtObject.builtAt === null) {
@@ -2133,7 +2133,7 @@ export function checkTargetOfRepairMission(empire: Empire, target: BuiltObject):
 }
 
 /** Empire.5.cs 1042 CheckWhetherAtLocation(x, y). */
-function checkWhetherAtLocation(empire: Empire, x: number, y: number): GalaxyLocation | null {
+export function checkWhetherAtLocation(empire: Empire, x: number, y: number): GalaxyLocation | null {
     for (let i = 0; i < empire.visibility.knownGalaxyLocations.length; i++) {
         const l = empire.visibility.knownGalaxyLocations[i];
         const num = l.xpos - l.width / 2.0;
@@ -2146,7 +2146,7 @@ function checkWhetherAtLocation(empire: Empire, x: number, y: number): GalaxyLoc
 }
 
 /** Empire.5.cs 1058 SelectBestSalvageableShip(location). */
-function selectBestSalvageableShip(galaxy: Galaxy, location: GalaxyLocation | null): BuiltObject | null {
+export function selectBestSalvageableShip(galaxy: Galaxy, location: GalaxyLocation | null): BuiltObject | null {
     let builtObject: BuiltObject | null = null;
     if (location !== null && location.type === GalaxyLocationType.DebrisField) {
         const builtObjectList = findAbandonedShipsInDebrisField(galaxy, location);

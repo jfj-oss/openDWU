@@ -14,22 +14,136 @@ import { galaxyStarDate } from '../tick/simTime';
 import { gameText } from '../colonyTick';
 import { registerTodo, todo } from '../tick/todo';
 import { EmpireActivityType, type EmpireActivity } from './empireActivity';
+import type { BuiltObject } from '../builtObject';
+import { determineBuiltObjectIsState } from '../builtObject';
+import { BuiltObjectSubRole } from '../builtObjectTypes';
+import { BuiltObjectFleeWhen, BuiltObjectRole } from '../data/designSpecifications';
+import { BuiltObjectStance } from '../design';
+import { PirateRelationType } from '../pirateRelations';
+import { findNearestPirateFaction, pirateReviewColoniesToControl } from '../pirates';
+import { identifyPirateBase } from '../characters';
+import { countBySubRole, totalMobileMilitaryFirepower } from '../forceStructure';
+import { calculateAnnualCashflow } from '../treasury';
+import { calculateAccurateAnnualCashflow } from '../construction/empireConstruction';
+import { getPrivateAnnualCashflow } from '../civilianAI';
+import { takeOwnershipOfBuiltObject } from '../combat/invasion';
+import { builtObjectCompleteTeardown } from '../combat/teardown';
+import { empireCompleteTeardown, EventMessageType, sendEventMessageToEmpire } from '../events';
+import { clearPreviousMissionRequirements } from '../missions/assign';
+import { mergeGalaxyMap } from '../exploration';
+import { PlanetaryFacilityType } from '../researchSystem';
+import { checkRemoveFacilityTracking, type PlanetaryFacility } from '../construction/facilities';
+import { countSpaceports } from './pirateShipMissions';
 import { price0, resourceName, smugglingCompletedPirateText } from './missionsMarket';
 
 const f = Math.fround;
 const BYTE_MAX = 255;
 
-const T_checkForTerminatedPirateEmpires = registerTodo('M4s', 'checkForTerminatedPirateEmpires');
-/** Galaxy.8.cs 3268 CheckForTerminatedPirateEmpires. */
-export function checkForTerminatedPirateEmpires(galaxy: Galaxy): void {
-    // RND: 1 direct, +clock×3 — not drawn until M4s.
-    /* TODO(port) M4s */ todo(T_checkForTerminatedPirateEmpires);
+/** Galaxy.8.cs 3053 CheckPirateEmpireTerminated(pirateFaction). No Rnd. */
+export function checkPirateEmpireTerminated(galaxy: Galaxy, pirateFaction: Empire | null): boolean {
+    void galaxy;
+    if (pirateFaction !== null) {
+        const builtObject = identifyPirateBase(pirateFaction);
+        if (builtObject === null && (pirateFaction.colonies == null || pirateFaction.colonies.length <= 0) && countBySubRole(pirateFaction.builtObjects, BuiltObjectSubRole.ConstructionShip) <= 0 && countBySubRole(pirateFaction.builtObjects, BuiltObjectSubRole.ResupplyShip) <= 0) {
+            return true;
+        }
+    }
+    return false;
 }
 
-const T_generateNewPirateShips = registerTodo('M4s', 'generateNewPirateShips');
-/** Galaxy.8.cs 2774 GenerateNewPirateShips. */
+/** Galaxy.8.cs 3380 ClearFromKnownPirateBases(pirateEmpire). No Rnd. */
+export function clearFromKnownPirateBases(galaxy: Galaxy, pirateEmpire: Empire): void {
+    for (let i = 0; i < galaxy.empires.length; i++) {
+        const empire = galaxy.empires[i];
+        let builtObject: BuiltObject | null = null;
+        for (let j = 0; j < empire.knownPirateBases.length; j++) {
+            const builtObject2 = empire.knownPirateBases[j];
+            if (builtObject2.empire === pirateEmpire) {
+                builtObject = builtObject2;
+                break;
+            }
+        }
+        if (builtObject !== null) {
+            const idx = empire.knownPirateBases.indexOf(builtObject);
+            if (idx >= 0) empire.knownPirateBases.splice(idx, 1);
+        }
+    }
+}
+
+/** Galaxy.8.cs 3268 CheckForTerminatedPirateEmpires. Rnd: Next(0, 2) per military ship of a terminated faction with a neighbour. */
+export function checkForTerminatedPirateEmpires(galaxy: Galaxy): void {
+    const empireList: Empire[] = [];
+    for (let i = 0; i < galaxy.pirateEmpires.length; i++) {
+        const empire = galaxy.pirateEmpires[i];
+        if (!checkPirateEmpireTerminated(galaxy, empire)) continue;
+        // `if (empire == PlayerEmpire) OnGameEnd(Defeat)` — UI game-over event (M9).
+        const empire2 = findNearestPirateFaction(galaxy, empire.pirateEmpireBaseHabitat!.xpos, empire.pirateEmpireBaseHabitat!.ypos, empire, true);
+        const builtObjectList: BuiltObject[] = [];
+        builtObjectList.push(...empire.builtObjects);
+        builtObjectList.push(...empire.privateBuiltObjects);
+        for (let j = 0; j < builtObjectList.length; j++) {
+            const builtObject = builtObjectList[j];
+            switch (builtObject.subRole) {
+                case BuiltObjectSubRole.SmallFreighter:
+                case BuiltObjectSubRole.MediumFreighter:
+                case BuiltObjectSubRole.LargeFreighter:
+                    takeOwnershipOfBuiltObject(galaxy, galaxy.independentEmpire!, builtObject, galaxy.independentEmpire!, false);
+                    break;
+                case BuiltObjectSubRole.Escort:
+                case BuiltObjectSubRole.Frigate:
+                case BuiltObjectSubRole.Destroyer:
+                case BuiltObjectSubRole.Cruiser:
+                case BuiltObjectSubRole.CapitalShip:
+                case BuiltObjectSubRole.TroopTransport:
+                case BuiltObjectSubRole.Carrier:
+                case BuiltObjectSubRole.ResupplyShip:
+                    if (empire2 !== null) {
+                        if (galaxy.rnd.next(0, 2) === 1) {
+                            const description2 = gameText('Pirate Ship Joins Us', builtObject.name, builtObject.empire?.name ?? '');
+                            takeOwnershipOfBuiltObject(galaxy, empire2, builtObject, empire2, false);
+                            sendMessageToEmpire(empire2, empire2, EmpireMessageType.Informational, builtObject, description2);
+                        } else {
+                            builtObjectCompleteTeardown(galaxy, builtObject);
+                        }
+                    } else {
+                        builtObjectCompleteTeardown(galaxy, builtObject);
+                    }
+                    break;
+                case BuiltObjectSubRole.ConstructionShip:
+                case BuiltObjectSubRole.GasMiningShip:
+                case BuiltObjectSubRole.MiningShip:
+                case BuiltObjectSubRole.GasMiningStation:
+                case BuiltObjectSubRole.MiningStation:
+                case BuiltObjectSubRole.ResortBase:
+                case BuiltObjectSubRole.EnergyResearchStation:
+                case BuiltObjectSubRole.WeaponsResearchStation:
+                case BuiltObjectSubRole.HighTechResearchStation:
+                    // IndependentEmpire.TakeOwnershipOfBuiltObject(builtObject, null).
+                    takeOwnershipOfBuiltObject(galaxy, galaxy.independentEmpire!, builtObject, null, false);
+                    break;
+                default:
+                    builtObjectCompleteTeardown(galaxy, builtObject);
+                    break;
+            }
+        }
+        clearFromKnownPirateBases(galaxy, empire);
+        empireList.push(empire);
+    }
+    for (const item of empireList) {
+        for (let k = 0; k < galaxy.empires.length; k++) {
+            const empire3 = galaxy.empires[k];
+            const idx = empire3.knownPirateEmpires.indexOf(item);
+            if (idx >= 0) empire3.knownPirateEmpires.splice(idx, 1);
+        }
+        const pidx = galaxy.pirateEmpires.indexOf(item);
+        if (pidx >= 0) galaxy.pirateEmpires.splice(pidx, 1);
+        empireCompleteTeardown(galaxy, item, null, true, false);
+    }
+}
+
+/** Galaxy.8.cs 2774 GenerateNewPirateShips — an empty method in the C#. */
 export function generateNewPirateShips(galaxy: Galaxy): void {
-    /* TODO(port) M4s */ todo(T_generateNewPirateShips);
+    void galaxy;
 }
 
 const T_doSuperPirateTasks = registerTodo('M4s', 'doSuperPirateTasks');
@@ -39,11 +153,75 @@ export function doSuperPirateTasks(galaxy: Galaxy): void {
     /* TODO(port) M4s */ todo(T_doSuperPirateTasks);
 }
 
-const T_checkMergePirateFactions = registerTodo('M4s', 'checkMergePirateFactions');
-/** Galaxy.8.cs 2907 CheckMergePirateFactions. */
+/** Galaxy.8.cs 2950 FindNearestPirateFactionKnownToFaction(x, y, pirateFaction, pirateFactionsToCheck, out nearestDistanceSquared). No Rnd. */
+function findNearestPirateFactionKnownToFaction(galaxy: Galaxy, x: number, y: number, pirateFaction: Empire, pirateFactionsToCheck: Empire[] | null): { empire: Empire | null; nearestDistanceSquared: number } {
+    let empire: Empire | null = null;
+    let nearestDistanceSquared = Number.MAX_VALUE;
+    if (pirateFactionsToCheck !== null) {
+        for (let i = 0; i < pirateFactionsToCheck.length; i++) {
+            const empire2 = pirateFactionsToCheck[i];
+            if (empire2 == null || empire2.pirateEmpireBaseHabitat === null) continue;
+            const pirateRelation = obtainPirateRelation(pirateFaction, empire2);
+            if (pirateRelation.type !== PirateRelationType.NotMet) {
+                const num = galaxy.calculateDistanceSquared(x, y, empire2.pirateEmpireBaseHabitat.xpos, empire2.pirateEmpireBaseHabitat.ypos);
+                if (empire === null || num < nearestDistanceSquared) {
+                    empire = empire2;
+                    nearestDistanceSquared = num;
+                }
+            }
+        }
+    }
+    return { empire, nearestDistanceSquared };
+}
+
+/** Galaxy.8.cs 2976 CheckPirateFactionCanAcceptMerge(pirateFaction). No Rnd. */
+function checkPirateFactionCanAcceptMerge(galaxy: Galaxy, pirateFaction: Empire | null): boolean {
+    if (pirateFaction !== null && pirateFaction.builtObjects != null) {
+        const num = totalMobileMilitaryFirepower(pirateFaction.builtObjects);
+        const num2 = countSpaceports(pirateFaction.builtObjects);
+        const num3 = calculateAnnualCashflow(galaxy, pirateFaction);
+        if (num > 200 && num2 >= 1 && pirateFaction.stateMoney > 0.0 && num3 > 0.0) return true;
+    }
+    return false;
+}
+
+/** Galaxy.8.cs 2991 CheckPirateFactionShouldBeMerged(pirateFaction). No Rnd. */
+function checkPirateFactionShouldBeMerged(galaxy: Galaxy, pirateFaction: Empire | null): boolean {
+    if (pirateFaction !== null && pirateFaction.builtObjects != null) {
+        const num = totalMobileMilitaryFirepower(pirateFaction.builtObjects);
+        const num2 = countSpaceports(pirateFaction.builtObjects);
+        const num3 = calculateAnnualCashflow(galaxy, pirateFaction);
+        if (num < 200 && num2 <= 0 && pirateFaction.stateMoney < 0.0 && num3 < 0.0) return true;
+    }
+    return false;
+}
+
+/** Galaxy.8.cs 2907 CheckMergePirateFactions. No Rnd of its own (EliminatePirateFaction's callees). */
 export function checkMergePirateFactions(galaxy: Galaxy): void {
-    // RND: draws in callees (d≤3) — not drawn until M4s.
-    /* TODO(port) M4s */ todo(T_checkMergePirateFactions);
+    const empireList: Empire[] = [];
+    const empireList2: Empire[] = [];
+    for (let i = 0; i < galaxy.pirateEmpires.length; i++) {
+        const empire = galaxy.pirateEmpires[i];
+        if (empire != null && empire.active) {
+            if (checkPirateFactionShouldBeMerged(galaxy, empire)) empireList.push(empire);
+            else if (checkPirateFactionCanAcceptMerge(galaxy, empire)) empireList2.push(empire);
+        }
+    }
+    if (empireList.length <= 0 || empireList2.length <= 0) return;
+    for (let j = 0; j < empireList.length; j++) {
+        const empire2 = empireList[j];
+        if (empire2 != null && empire2 !== galaxy.playerEmpire && empire2.pirateEmpireBaseHabitat !== null) {
+            const r = findNearestPirateFactionKnownToFaction(galaxy, empire2.pirateEmpireBaseHabitat.xpos, empire2.pirateEmpireBaseHabitat.ypos, empire2, empireList2);
+            const empire3 = r.empire;
+            if (empire3 !== null && r.nearestDistanceSquared < 64000000000000.0) {
+                const habitat = galaxy.determineHabitatSystemStar(empire2.pirateEmpireBaseHabitat);
+                const message = gameText('Weak Pirate Faction Joins', empire2.name, habitat.name);
+                eliminatePirateFaction(galaxy, empire2, empire3);
+                const text = gameText('Pirate Faction Joins Your Empire');
+                sendEventMessageToEmpire(empire3, EventMessageType.PirateFactionJoinsYou, text, message, empire2, habitat);
+            }
+        }
+    }
 }
 
 /** Galaxy.8.cs 3398 ReviewPirateEmpireActivities (Galaxy long block): expire accepted Attack / Smuggle missions. No Rnd. */
@@ -101,11 +279,176 @@ export function reviewPirateEmpireActivities(galaxy: Galaxy): void {
     }
 }
 
-// ---- stub added by M4o (called from combat/damage.ts FearfulPirateFactionJoinsPlayer / ProvideBonusFromPirateBase) ----
+// ---- Galaxy.8.cs 3021 / 3026 EliminatePirateFaction (also called from combat/damage.ts, M4o) ----
 
-const T_eliminatePirateFaction = registerTodo('M4s', 'eliminatePirateFaction');
-/** Galaxy.8.cs 3026 EliminatePirateFaction(pirateFaction, conqueror) — stub: the faction keeps its assets. */
+/** Galaxy.8.cs 3021 EliminatePirateFaction(pirateFaction): the nearest other faction conquers it. */
+export function eliminatePirateFactionNearest(galaxy: Galaxy, pirateFaction: Empire): void {
+    const conqueror = findNearestPirateFaction(galaxy, pirateFaction.pirateEmpireBaseHabitat!.xpos, pirateFaction.pirateEmpireBaseHabitat!.ypos, pirateFaction, true);
+    eliminatePirateFaction(galaxy, pirateFaction, conqueror);
+}
+
+/** Galaxy.8.cs 3026 EliminatePirateFaction(pirateFaction, conqueror). No Rnd of its own (TakeOwnershipOfBuiltObject / teardown callees). */
 export function eliminatePirateFaction(galaxy: Galaxy, pirateFaction: Empire, conqueror: Empire | null): void {
-    void galaxy; void pirateFaction; void conqueror;
-    /* TODO(port) M4s */ todo(T_eliminatePirateFaction);
+    // `if (pirateFaction == PlayerEmpire) OnGameEnd(Defeat)` — UI game-over event (M9).
+    let num = 0.0;
+    let num2 = 0.0;
+    if (conqueror !== null) {
+        num = calculateAccurateAnnualCashflow(galaxy, conqueror);
+        num2 = getPrivateAnnualCashflow(galaxy, conqueror);
+    }
+    let flag = true;
+    if (conqueror !== null && conqueror.pirateEmpireBaseHabitat === null) flag = false;
+    let num3 = 0.0;
+    let num4 = 0.0;
+    const builtObjectList: BuiltObject[] = [];
+    builtObjectList.push(...pirateFaction.builtObjects);
+    builtObjectList.push(...pirateFaction.privateBuiltObjects);
+    for (const item of builtObjectList) {
+        let flag2 = true;
+        if (determineBuiltObjectIsState(item.subRole) || flag) {
+            if (num3 + item.annualSupportCost > num) flag2 = false;
+            else num3 += item.annualSupportCost;
+        } else if (num4 + item.annualSupportCost > num2) {
+            flag2 = false;
+        } else {
+            num4 += item.annualSupportCost;
+        }
+        if (!flag2) {
+            builtObjectCompleteTeardown(galaxy, item);
+        } else if (conqueror !== null) {
+            if (!flag) {
+                if (item.role === BuiltObjectRole.Military) {
+                    item.stance = BuiltObjectStance.AttackEnemies;
+                    item.fleeWhen = BuiltObjectFleeWhen.Shields20;
+                    item.design!.stance = BuiltObjectStance.AttackEnemies;
+                    item.design!.fleeWhen = BuiltObjectFleeWhen.Shields20;
+                } else {
+                    item.stance = BuiltObjectStance.AttackIfAttacked;
+                    item.fleeWhen = BuiltObjectFleeWhen.Shields20;
+                    item.design!.stance = BuiltObjectStance.AttackIfAttacked;
+                    item.design!.fleeWhen = BuiltObjectFleeWhen.Shields20;
+                }
+            }
+            switch (item.subRole) {
+                case BuiltObjectSubRole.SmallFreighter:
+                case BuiltObjectSubRole.MediumFreighter:
+                case BuiltObjectSubRole.LargeFreighter:
+                    clearPreviousMissionRequirements(galaxy, item);
+                    takeOwnershipOfBuiltObject(galaxy, galaxy.independentEmpire!, item, galaxy.independentEmpire!, false);
+                    break;
+                case BuiltObjectSubRole.Escort:
+                case BuiltObjectSubRole.Frigate:
+                case BuiltObjectSubRole.Destroyer:
+                case BuiltObjectSubRole.Cruiser:
+                case BuiltObjectSubRole.CapitalShip:
+                case BuiltObjectSubRole.TroopTransport:
+                case BuiltObjectSubRole.Carrier:
+                case BuiltObjectSubRole.ResupplyShip: {
+                    clearPreviousMissionRequirements(galaxy, item);
+                    const description3 = gameText('Pirate Ship Joins Us', item.name, item.empire?.name ?? '');
+                    takeOwnershipOfBuiltObject(galaxy, conqueror, item, conqueror, true);
+                    sendMessageToEmpire(conqueror, conqueror, EmpireMessageType.Informational, item, description3);
+                    break;
+                }
+                case BuiltObjectSubRole.ConstructionShip:
+                case BuiltObjectSubRole.GasMiningShip:
+                case BuiltObjectSubRole.MiningShip:
+                case BuiltObjectSubRole.GasMiningStation:
+                case BuiltObjectSubRole.MiningStation:
+                case BuiltObjectSubRole.ResortBase:
+                case BuiltObjectSubRole.EnergyResearchStation:
+                case BuiltObjectSubRole.WeaponsResearchStation:
+                case BuiltObjectSubRole.HighTechResearchStation:
+                    // IndependentEmpire.TakeOwnershipOfBuiltObject(item, null).
+                    takeOwnershipOfBuiltObject(galaxy, galaxy.independentEmpire!, item, null, false);
+                    break;
+                case BuiltObjectSubRole.SmallSpacePort:
+                case BuiltObjectSubRole.MediumSpacePort:
+                case BuiltObjectSubRole.LargeSpacePort:
+                case BuiltObjectSubRole.DefensiveBase: {
+                    if (item.parentHabitat !== null && conqueror.resourceMap != null) conqueror.resourceMap.setResourcesKnown(item.parentHabitat, true);
+                    const description2 = gameText('Pirate Ship Joins Us', item.name, item.empire?.name ?? '');
+                    takeOwnershipOfBuiltObject(galaxy, conqueror, item, conqueror, true);
+                    sendMessageToEmpire(conqueror, conqueror, EmpireMessageType.Informational, item, description2);
+                    break;
+                }
+                default:
+                    builtObjectCompleteTeardown(galaxy, item);
+                    break;
+            }
+        } else {
+            builtObjectCompleteTeardown(galaxy, item);
+        }
+    }
+    clearPirateColonyFacilities(galaxy, pirateFaction, conqueror);
+    if (conqueror !== null && conqueror.pirateEmpireBaseHabitat !== null) mergeGalaxyMap(galaxy, pirateFaction, conqueror);
+    clearFromKnownPirateBases(galaxy, pirateFaction);
+    for (let i = 0; i < galaxy.empires.length; i++) {
+        const empire = galaxy.empires[i];
+        const idx = empire.knownPirateEmpires.indexOf(pirateFaction);
+        if (idx >= 0) empire.knownPirateEmpires.splice(idx, 1);
+    }
+    const pidx = galaxy.pirateEmpires.indexOf(pirateFaction);
+    if (pidx >= 0) galaxy.pirateEmpires.splice(pidx, 1);
+    if (conqueror !== null) sendMessageToEmpire(conqueror, pirateFaction, EmpireMessageType.EmpireDefeated, pirateFaction, gameText('You have been defeated!'));
+    else sendMessageToEmpire(pirateFaction, pirateFaction, EmpireMessageType.EmpireDefeated, pirateFaction, gameText('You have been defeated!'));
+    empireCompleteTeardown(galaxy, pirateFaction, conqueror, true, false);
+}
+
+/** Galaxy.8.cs 3183 ClearPirateColonyFacilities(pirateFaction, conqueror). No Rnd. */
+export function clearPirateColonyFacilities(galaxy: Galaxy, pirateFaction: Empire, conqueror: Empire | null): void {
+    // `pirateFaction.PirateReviewColoniesToControl()` — the result is discarded; it rebuilds pirateFaction.Colonies.
+    pirateReviewColoniesToControl(galaxy, pirateFaction, galaxy.independentColonies);
+    if (conqueror === null || conqueror.pirateEmpireBaseHabitat === null) {
+        for (let i = 0; i < pirateFaction.colonies.length; i++) {
+            const habitat = pirateFaction.colonies[i];
+            if (habitat == null || habitat.hasBeenDestroyed) continue;
+            const byFaction = habitat.pirateColonyControl.getByFaction(pirateFaction);
+            if (byFaction === null) continue;
+            if (byFaction.hasFacilityControl) {
+                const planetaryFacilityList: PlanetaryFacility[] = [];
+                const facilities = habitat.facilities!;
+                for (let j = 0; j < facilities.length; j++) {
+                    const planetaryFacility = facilities[j];
+                    if (planetaryFacility != null) {
+                        switch (planetaryFacility.type) {
+                            case PlanetaryFacilityType.PirateBase:
+                            case PlanetaryFacilityType.PirateFortress:
+                            case PlanetaryFacilityType.PirateCriminalNetwork:
+                                planetaryFacilityList.push(planetaryFacility);
+                                break;
+                        }
+                    }
+                }
+                for (let k = 0; k < planetaryFacilityList.length; k++) {
+                    const idx = facilities.indexOf(planetaryFacilityList[k]);
+                    if (idx >= 0) facilities.splice(idx, 1);
+                    checkRemoveFacilityTracking(habitat, planetaryFacilityList[k]);
+                }
+                byFaction.hasFacilityControl = false;
+            }
+            habitat.pirateColonyControl.remove(byFaction);
+        }
+        pirateFaction.colonies.length = 0;
+        return;
+    }
+    for (let l = 0; l < pirateFaction.colonies.length; l++) {
+        const habitat2 = pirateFaction.colonies[l];
+        if (habitat2 == null || habitat2.hasBeenDestroyed) continue;
+        const byFaction2 = habitat2.pirateColonyControl.getByFaction(pirateFaction);
+        const byFaction3 = habitat2.pirateColonyControl.getByFaction(conqueror);
+        if (byFaction2 === null) continue;
+        if (byFaction3 === null) {
+            byFaction2.empireId = conqueror.empireId & 0xff;
+        } else {
+            byFaction3.controlLevel = Math.max(byFaction3.controlLevel, byFaction2.controlLevel);
+            if (byFaction2.hasFacilityControl) {
+                byFaction2.hasFacilityControl = false;
+                byFaction3.hasFacilityControl = true;
+            }
+            habitat2.pirateColonyControl.remove(byFaction2);
+        }
+        if (!conqueror.colonies.includes(habitat2)) conqueror.colonies.push(habitat2);
+    }
+    pirateFaction.colonies.length = 0;
 }

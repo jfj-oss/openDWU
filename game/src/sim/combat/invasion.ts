@@ -57,7 +57,7 @@ export function clearColony(galaxy: Galaxy, habitat: Habitat, newOwner: Empire |
 
 const T_takeOwnershipOfBuiltObject = registerTodo('M4q', 'takeOwnershipOfBuiltObject');
 /** Empire.1.cs 524 TakeOwnershipOfBuiltObject(builtObject, newOwner, setDesignAsObsolete) — a traded base changes hands. */
-export function takeOwnershipOfBuiltObject(galaxy: Galaxy, empire: Empire, builtObject: BuiltObject, newOwner: Empire, setDesignAsObsolete: boolean): void {
+export function takeOwnershipOfBuiltObject(galaxy: Galaxy, empire: Empire, builtObject: BuiltObject, newOwner: Empire | null, setDesignAsObsolete: boolean): void {
     /* TODO(port) M4q */ todo(T_takeOwnershipOfBuiltObject);
 }
 
@@ -105,4 +105,17 @@ export function inflictTroopLosses(galaxy: Galaxy, habitat: Habitat, defendingEm
     void habitat; void defendingEmpire; void inflicter; void losses; void troops; void attackingTroops;
     // RND: troop loss distribution draws — not drawn until M4q.
     /* TODO(port) M4q */ todo(T_inflictTroopLosses);
+}
+
+// ---- Stub added by M4s2 (BaconEmpire.cs 1499 CheckColoniesForPirateFacilitiesAndAttack → Habitat.cs 3312) ----
+
+const T_generateDefensivePirateRaiders = registerTodo('M4q', 'generateDefensivePirateRaiders');
+/**
+ * Habitat.cs 3312-3321 InitiateAttackAgainstPirateFacilities body after its check: GenerateDefensivePirateRaiders(
+ * defendingPirateFaction, currentDefendingTroopsInvade) (Habitat.cs 3360 → BaconHabitat.GenerateDefensivePirateRaiders;
+ * RND: Next(0, 3) per raider group, BaconHabitat.cs 1315) and `InvasionStats ??= new InvasionStats(colony,
+ * attackingEmpire, defendingPirateFaction)` — stub.
+ */
+export function generateDefensivePirateRaiders(galaxy: Galaxy, colony: Habitat, defendingPirateFaction: Empire | null, currentDefendingTroopsInvade: boolean, attackingEmpire: Empire | null): void {
+    /* TODO(port) M4q */ todo(T_generateDefensivePirateRaiders);
 }

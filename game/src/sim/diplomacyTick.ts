@@ -78,6 +78,8 @@ import { chanceNewAmbassador, doCharacterEventRuntime } from './events';
 import { galaxyColonyFillFactor } from './colonyTick';
 import { isObjectVisibleToThisEmpire } from './independentTraders';
 import { TradeableItem, TradeableItemType, processTradeDealMessage, determineAcceptGalaxyMapTrade, determineAcceptTerritoryMapTrade, galaxyMergeGalaxyMap } from './tradeItems';
+import { determineDesirePirateProtection } from './pirates/pirateAI';
+import { acceptPirateProtection, calculatePirateProtectionPricePerMonth } from './pirates/pirateRelationsAI';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants (Galaxy.3.cs 4990-5140 InitializeStatics; BaconEmpire.cs statics with their default settings).
@@ -2914,7 +2916,6 @@ function removeMilitaryForcesFromSystem(galaxy: Galaxy, self: Empire, systemStar
     return -1;
 }
 
-const T_pirateProtectionOffer = registerTodo('M4r', 'PirateOfferProtection (DetermineDesirePirateProtection / AcceptPirateProtection — M4s)');
 const T_offerTrade = registerTodo('M4r', 'ProcessMessages OfferTrade research purchase (M4k research)');
 const T_ordersForRelinquishedColony = registerTodo('M4r', 'RemoveColoniesFromSystem order/contract cleanup (M4d Galaxy.Orders.GetOrders)');
 
@@ -2943,10 +2944,11 @@ export function processMessages(galaxy: Galaxy, empire: Empire): void {
                 }
                 break;
             case EmpireMessageType.PirateOfferProtection:
-                if (self.controlDiplomacyTreaties === FULLY_AUTOMATED) {
-                    // TODO(port) M4s: DetermineDesirePirateProtection(sender) → AcceptPirateProtection(sender, Money or
-                    // CalculatePirateProtectionPricePerMonth) (Empire.2.cs; no Rnd). Pirate protection offers come from M4s.
-                    todo(T_pirateProtectionOffer);
+                // Empire.3.cs 4272-4281 (ported by M4s2).
+                if (self.controlDiplomacyTreaties === FULLY_AUTOMATED && determineDesirePirateProtection(galaxy, self, sender)) {
+                    let num13 = empireMessage.money;
+                    if (num13 <= 0.0) num13 = calculatePirateProtectionPricePerMonth(galaxy, sender!, self).price;
+                    acceptPirateProtection(galaxy, self, sender!, num13);
                 }
                 break;
             case EmpireMessageType.SellInfoUnmetEmpire: {
@@ -3342,7 +3344,7 @@ export function resetAttitudeLevelsAtEndOfWar(galaxy: Galaxy, diplomaticRelation
 }
 
 /** Empire.3.cs 3383 ClearOutlawsFromEmpire(empire, outlawEmpire). */
-function clearOutlawsFromEmpire(empire: Empire, outlawEmpire: Empire): void {
+export function clearOutlawsFromEmpire(empire: Empire, outlawEmpire: Empire): void {
     const outlaws = empire.outlaws as BuiltObject[];
     const builtObjectList: BuiltObject[] = [];
     for (const outlaw of outlaws) {

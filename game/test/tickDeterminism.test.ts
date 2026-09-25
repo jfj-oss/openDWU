@@ -23,6 +23,7 @@ function checkInvariants(g: Galaxy): void {
         expect(Number.isFinite(h.xpos) && Number.isFinite(h.ypos)).toBe(true);
     }
     for (const b of g.builtObjects) {
+        if (b == null) continue; // teardown null holes (removed by the huge block's RemoveNullBuiltObjects)
         expect(Number.isFinite(b.xpos) && Number.isFinite(b.ypos)).toBe(true);
         expect(Number.isFinite(b.currentFuel) && b.currentFuel >= 0).toBe(true);
         expect(Number.isFinite(b.currentEnergy)).toBe(true);
@@ -69,7 +70,9 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // reviewPirateMissionsAndAssign, so its marker is pirateCollectIncomeFromControlledColonies; M4e ported
         // autoRefuelRepairShip, which was the first marker; M4l ported performFleetTasks, so the BuiltObject periodic block
         // is detected by healTroops.)
-        for (const key of ['M4q scanForNewOwnerHabitat', 'M4s pirateAssignShipMissions', 'M4s pirateCollectIncomeFromControlledColonies', 'M4q healTroops']) {
+        // (M4s2 ported the pirate faction AI: DoTasksPirates is detected by the M4m stub PirateTaskFleets calls for the
+        // faction's space ports, EnsureBaseDefendedByFleet.)
+        for (const key of ['M4q scanForNewOwnerHabitat', 'M4m ensureBaseDefendedByFleet', 'M4q healTroops']) {
             expect(hits[key] ?? 0, key).toBeGreaterThan(0);
         }
         const summary = { digest: stateDigest(long), counts: stateCounts(long), rndDraws: long.rnd.drawCount };
@@ -171,7 +174,14 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // near the port (DetermineHitTarget NextDouble + Next(0, 12), FighterWeapon.Fire NextDouble + Next(0, 2), InflictDamage),
         // and ApplyLocationEffectsNEW draws in storms. Moved from 2689770786790d6a.
         // Moved from REPIN: M4p merged on top of the interim harness configuration (fighters launch, patrol and fight; see the M4p reason above)
-        expect(summary.digest).toBe('09580cc5f62634cb');
+        // Moved from 2689770786790d6a by M4s2: the pirate faction AI runs (PirateAssignShipMissions draws Rnd per idle ship —
+        // exploration / patrol / raid target picks, IdentifyPirateNewHomeLocation —; PirateRecalculateEmpireCorruption one
+        // NextDouble per periodic block; PirateGenerateSellInfoOffers / PirateTradeItems / GeneratePirateOffersForSingleEmpire
+        // draws; PirateDoConstruction builds ships (names, headings, RefactorForceStructureProjectionsToCosts order));
+        // ReviewPirateControl gives factions colony control (pirate income, corruption, facilities); teardown null holes are
+        // digested as -1.
+        // Moved from REPIN: M4s2 merged (pirate faction AI draws Rnd and builds ships; see the M4s2 reason above)
+        expect(summary.digest).toBe('2d0371380457abff');
     }, 600000);
 });
 

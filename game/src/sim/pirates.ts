@@ -62,6 +62,7 @@ import { loadEmpirePolicy } from './researchSystem';
 import { SystemVisibilityStatus } from './visibility';
 import { BuiltObjectSubRole } from './builtObjectTypes';
 import { BattleTactics, BuiltObjectFleeWhen, BuiltObjectRole, InvasionTactics, buildDefaultDesignSpecifications, getDefaultDesignSpecificationBySubRole } from './data/designSpecifications';
+import { countResourceSourcesForEmpire } from './stationPlacement';
 
 // Port of PiratePlayStyle.cs (member order exact).
 export enum PiratePlayStyle {
@@ -246,25 +247,32 @@ export function findNearestPirateFaction(galaxy: Galaxy, x: number, y: number, p
     return result;
 }
 
-// Empire.1.cs PirateReviewColoniesToControl + PirateCheckControlColony (no Rnd).
-// Pirate colony control records and CurrentDefensiveForceAssigned are not ported (none / 0).
+// Empire.1.cs 3103 PirateReviewColoniesToControl + 3143 PirateCheckControlColony (no Rnd). PirateColonyControl and
+// Habitat.CurrentDefensiveForceAssigned wired in by M4s2.
 export function pirateReviewColoniesToControl(galaxy: Galaxy, empire: Empire, independentColonies: Habitat[]): { habitat: Habitat; priority: number }[] {
     const toControl: { habitat: Habitat; priority: number }[] = [];
     const controlled: Habitat[] = [];
-    for (const h of empire.colonies) if (h.empire === empire && !controlled.includes(h)) controlled.push(h);
+    for (let i = 0; i < empire.colonies.length; i++) {
+        const h = empire.colonies[i];
+        if (h != null && !h.hasBeenDestroyed && h.empire === empire && !controlled.includes(h)) controlled.push(h);
+    }
     const base = empire.pirateEmpireBaseHabitat;
     if (base !== null) {
-        const check = (colony: Habitat) => {
-            if (colony.population.totalAmount <= 0 || (colony.empire !== null && colony.empire.reclusive)) return;
-            if (colony.empire === empire) {
+        const check = (colony: Habitat | null) => {
+            if (colony == null || colony.hasBeenDestroyed || colony.population == null || colony.population.totalAmount <= 0 || (colony.empire !== null && colony.empire.reclusive)) return;
+            const byFaction = colony.pirateColonyControl.getByFaction(empire);
+            if (colony.empire === empire || byFaction !== null) {
                 if (!controlled.includes(colony)) controlled.push(colony);
                 return;
             }
             if (!empire.visibility.checkSystemExplored(colony.systemIndex)) return;
             let flag = false;
-            const num = 0.0; // CurrentDefensiveForceAssigned
+            let num = 0.0;
             if (colony.empire === galaxy.independentEmpire) flag = true;
-            else if (colony.empire !== null && colony.population.totalAmount < 2000000000) flag = true;
+            else if (colony.empire !== null && colony.population != null && colony.population.totalAmount < 2000000000) {
+                num = colony.currentDefensiveForceAssigned;
+                flag = true;
+            }
             if (!flag) return;
             const num2 = galaxy.calculateDistance(base.xpos, base.ypos, colony.xpos, colony.ypos);
             let num3 = galaxy.sizeX * 0.25;
@@ -276,8 +284,11 @@ export function pirateReviewColoniesToControl(galaxy: Galaxy, empire: Empire, in
                 toControl.push({ habitat: colony, priority: Math.trunc(num4) });
             }
         };
-        for (const c of independentColonies) check(c);
-        for (const e of galaxy.empires) if (e.active) for (const c of e.colonies) check(c);
+        for (let j = 0; j < independentColonies.length; j++) check(independentColonies[j]);
+        for (let k = 0; k < galaxy.empires.length; k++) {
+            const e = galaxy.empires[k];
+            if (e != null && e.active && e.colonies != null) for (let l = 0; l < e.colonies.length; l++) check(e.colonies[l]);
+        }
         netSort(toControl, (a, b) => (a.priority < b.priority ? -1 : a.priority > b.priority ? 1 : 0));
         toControl.reverse();
         empire.colonies = controlled;
@@ -301,7 +312,7 @@ function relativeImportanceOf(galaxy: Galaxy, resourceId: number): number {
 // (FindNewestCanBuildFullEvaluate: `design3 != null`); its Count is always > 0.
 // Dropping the nulls keeps both lookups identical (latestDesigns[subRole] is null
 // whenever the filtered list is empty).
-function latestDesignsFindNewestCanBuild(empire: Empire, subRole: BuiltObjectSubRole): Design | null {
+export function latestDesignsFindNewestCanBuild(empire: Empire, subRole: BuiltObjectSubRole): Design | null {
     const latest = empire.latestDesigns.filter((d): d is Design => d !== null);
     return findNewestCanBuild(latest, subRole, empire);
 }
@@ -390,48 +401,8 @@ function checkSystemOwnership(galaxy: Galaxy, systemStar: Habitat | null): { emp
     return { empire: null, disputed };
 }
 
-// Galaxy.7.cs CountResourceSourcesForEmpire(empire, resourceId,
-// includeConstructionShipsBuildingMiningStations) (445). No Rnd.
-function countResourceSourcesForEmpire(galaxy: Galaxy, empire: Empire | null, resourceId: number, includeConstructionShipsBuildingMiningStations: boolean): number {
-    void galaxy;
-    let num = 0;
-    const habitatList: Habitat[] = [];
-    if (empire !== null) {
-        if (empire.colonies != null) {
-            for (let i = 0; i < empire.colonies.length; i++) {
-                const habitat = empire.colonies[i];
-                if (habitat != null && habitat.resources != null) {
-                    const num2 = habitat.resources.findIndex((r) => r.resourceId === resourceId);
-                    if (num2 >= 0) {
-                        habitatList.push(habitat);
-                        num++;
-                    }
-                }
-            }
-        }
-        if (empire.miningStations != null) {
-            for (let j = 0; j < empire.miningStations.length; j++) {
-                const builtObject = empire.miningStations[j];
-                if (builtObject == null) continue;
-                const parentHabitat = builtObject.parentHabitat;
-                if (parentHabitat !== null && parentHabitat.resources != null) {
-                    const num3 = parentHabitat.resources.findIndex((r) => r.resourceId === resourceId);
-                    if (num3 >= 0) {
-                        habitatList.push(parentHabitat);
-                        num++;
-                    }
-                }
-            }
-        }
-        if (includeConstructionShipsBuildingMiningStations && empire.constructionShips != null) {
-            // TODO(port): BuiltObject.Mission (Build missions with a TargetHabitat) — missions
-            // are not ported; no construction ship has a mission during game setup, so C# counts
-            // nothing here.
-        }
-    }
-    return num;
-}
-
+// Galaxy.7.cs 445 CountResourceSourcesForEmpire: the shared port in stationPlacement.ts (M4s2 reconciled the former
+// private copy here, which skipped the construction-ship Build-mission branch, Galaxy.7.cs 487-503).
 // Empire.6.cs CheckResourceSupplyMeetsExpected(resource, isCriticalEmpireResource,
 // oversupplyFactor) (1540; the 2-arg overload 1535 passes 1.0). No Rnd.
 function checkResourceSupplyMeetsExpectedBool(galaxy: Galaxy, empire: Empire, resourceId: number, isCriticalEmpireResource: boolean, oversupplyFactor = 1.0): boolean {
@@ -473,7 +444,7 @@ function checkResourceSupplyMeetsExpectedBool(galaxy: Galaxy, empire: Empire, re
         num = 1;
     }
     num = Math.trunc(num * oversupplyFactor);
-    const num5 = countResourceSourcesForEmpire(galaxy, empire, resourceId, true);
+    const num5 = countResourceSourcesForEmpire(empire, resourceId, true);
     if (num5 < num) {
         return false;
     }

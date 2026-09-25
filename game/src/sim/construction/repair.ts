@@ -14,7 +14,15 @@ import { shipGroupRepairBonus, type ShipGroup } from '../fleets/shipGroup';
 import { battleStatsDamageRepairedUs } from '../combat/damage';
 import type { ConstructionQueue } from './constructionQueue';
 import type { Empire } from '../empire';
-import { registerTodo, todo } from '../tick/todo';
+import { BuiltObject as BuiltObjectClass } from '../builtObject';
+import { Habitat } from '../types';
+import type { ComponentDefinition } from '../componentStatic';
+import { assignMission } from '../missions/assign';
+import { BuiltObjectMissionPriority } from '../missions/mission';
+import { HYPER_JUMP_THRESHHOLD } from '../combat/attackAI';
+import { MAX_SOLAR_SYSTEM_SIZE } from '../movement';
+import { OrderType, empireCreateOrder } from '../logistics/orders';
+import { findNearestShipYard, procureConstructionComponentsAtBuiltObject, procureConstructionComponentsAtColony } from './empireConstruction';
 
 /** BaconBuiltObject.cs 66-70 shipFreeRepairTimeFromCrewSkill* (seconds per component; BaconSettings.txt has the same values). */
 const SHIP_FREE_REPAIR_TIME_AVERAGE = 160;
@@ -156,19 +164,56 @@ export function checkForRepairs(galaxy: Galaxy, builtObject: BuiltObject): void 
     }
 }
 
-// ---- stub added by M4e (logistics/refuel.ts AutoRefuelRepairShip, BuiltObject.2.cs 4728) ----
+// ---- Empire.4.cs 4863 AssignRepairMission (stub added by M4e for logistics/refuel.ts AutoRefuelRepairShip; ported at the
+// wave-4 M4s2 merge, where pirate AssignMissionsToBuiltObjectList (BaconEmpire PirateShipMissions) first reached it) ----
 
-const T_assignRepairMission = registerTodo('M4h', 'assignRepairMission');
 /**
- * Empire.4.cs 4863 AssignRepairMission(builtObject): FindNearestShipYard(builtObject, canRepairOrBuild: true,
- * includeVerySmallYards: true), orders shortage resources for unbuilt components, then ClearPreviousMissionRequirements +
- * AssignMission(Repair, yard, null, VeryHigh) → true. Stub: false (no repair mission; the caller clears RevertMission).
- * No Rnd in the C# body itself.
+ * Empire.4.cs 4863-4914 AssignRepairMission(builtObject): FindNearestShipYard(builtObject, canRepairOrBuild: true,
+ * includeVerySmallYards: true); a non-warp ship too far away gives up; orders ConstructionShortage resources for the
+ * unbuilt components (ResolveUnbuiltComponents 4916), then ClearPreviousMissionRequirements + AssignMission(Repair, yard,
+ * null, VeryHigh) → true. No Rnd in the body. `empire` is the C# `this` (unused by the body beyond its helpers).
  */
 export function assignRepairMission(galaxy: Galaxy, empire: Empire, builtObject: BuiltObject): boolean {
-    void galaxy;
-    void empire;
-    void builtObject;
-    /* TODO(port) M4h */ todo(T_assignRepairMission);
+    const actualEmpire = builtObject.actualEmpire;
+    if (actualEmpire === null || actualEmpire === galaxy.independentEmpire) return false;
+    if (builtObject.role !== BuiltObjectRole.Base && builtObject.topSpeed <= 0) return false;
+    const stellarObject = findNearestShipYard(galaxy, empire, builtObject, true, true);
+    if (stellarObject !== null) {
+        const num = galaxy.calculateDistance(builtObject.xpos, builtObject.ypos, stellarObject.xpos, stellarObject.ypos);
+        if (builtObject.warpSpeed <= 0 && num > HYPER_JUMP_THRESHHOLD && (builtObject.topSpeed <= 0 || !(num < MAX_SOLAR_SYSTEM_SIZE))) {
+            return false;
+        }
+    }
+    if (stellarObject !== null) {
+        if (builtObject.unbuiltComponentCount > 0) {
+            const componentList = resolveUnbuiltComponents(builtObject);
+            if (componentList.length > 0) {
+                if (stellarObject instanceof BuiltObjectClass) {
+                    const resourcesToOrder = procureConstructionComponentsAtBuiltObject(galaxy, empire, builtObject, stellarObject, true, componentList);
+                    for (const item of resourcesToOrder.items) {
+                        empireCreateOrder(galaxy, empire, stellarObject, item.commodity, item.amount, false, OrderType.ConstructionShortage);
+                    }
+                } else if (stellarObject instanceof Habitat) {
+                    const resourcesToOrder = procureConstructionComponentsAtColony(galaxy, empire, builtObject, stellarObject, componentList);
+                    for (const item2 of resourcesToOrder.items) {
+                        empireCreateOrder(galaxy, empire, stellarObject, item2.commodity, item2.amount, false, OrderType.ConstructionShortage);
+                    }
+                }
+            }
+        }
+        clearPreviousMissionRequirements(galaxy, builtObject);
+        assignMission(galaxy, builtObject, BuiltObjectMissionType.Repair, stellarObject, null, BuiltObjectMissionPriority.VeryHigh);
+        return true;
+    }
     return false;
+}
+
+/** Empire.4.cs 4916 ResolveUnbuiltComponents: `new Component(ComponentID)` for each Unbuilt component, in order. */
+function resolveUnbuiltComponents(builtObject: BuiltObject): ComponentDefinition[] {
+    const componentList: ComponentDefinition[] = [];
+    for (let i = 0; i < builtObject.components.items.length; i++) {
+        const builtObjectComponent = builtObject.components.items[i];
+        if (builtObjectComponent.status === ComponentStatus.Unbuilt) componentList.push(builtObjectComponent.def);
+    }
+    return componentList;
 }

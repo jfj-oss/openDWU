@@ -253,17 +253,26 @@ function researchFactor(empire: Empire, industry: IndustryType): number {
     }
 }
 
-// Empire.3.cs CalculatePirateResearchBonusFromFacilities (2657).
-const T_pirateColonyControl = registerTodo('M4s', 'Habitat.GetPirateControl (CalculatePirateResearchBonusFromFacilities)');
+// Empire.3.cs CalculatePirateResearchBonusFromFacilities (2657). PirateColonyControl lookup ported by M4s2.
 export function calculatePirateResearchBonusFromFacilities(empire: Empire): number {
-    const num = 1.0;
+    let num = 1.0;
     for (let i = 0; i < empire.colonies.length; i++) {
         const habitat = empire.colonies[i];
         if (habitat === null || habitat.hasBeenDestroyed) continue;
-        // TODO(port) M4s: habitat.GetPirateControl().GetByFacilityControl() (PirateColonyControl) — not modeled;
-        // with it: for a facility control owned by this empire, add Value1 / 100 of every completed PirateBase /
-        // PirateFortress / PirateCriminalNetwork facility (Habitat.Facilities, M4i).
-        todo(T_pirateColonyControl);
+        const byFacilityControl = habitat.pirateColonyControl.getByFacilityControl();
+        if (byFacilityControl === null || byFacilityControl.empireId !== empire.empireId || habitat.facilities === null) continue;
+        for (let j = 0; j < habitat.facilities.length; j++) {
+            const planetaryFacility = habitat.facilities[j];
+            if (planetaryFacility != null && planetaryFacility.constructionProgress >= 1) {
+                switch (planetaryFacility.type) {
+                    case PlanetaryFacilityType.PirateBase:
+                    case PlanetaryFacilityType.PirateFortress:
+                    case PlanetaryFacilityType.PirateCriminalNetwork:
+                        num += planetaryFacility.value1 / 100.0;
+                        break;
+                }
+            }
+        }
     }
     return num;
 }

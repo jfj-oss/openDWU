@@ -257,3 +257,44 @@ export function ensureSingleStellarObjectPerSystem(galaxy: Galaxy, stellarObject
     /* TODO(port) M4m */ todo(T_ensureSingleStellarObjectPerSystem);
     return stellarObjects;
 }
+
+// ---- Stubs added by M4s2 (callees of Empire.9.cs 904 PirateTaskFleets; fleet tasking owned by M4m) ----
+
+/** Arguments of Empire.9.cs 1457-1492 FindNearestAvailableFleet (the overloads' defaults filled in by the caller). */
+export interface FindNearestAvailableFleetArgs {
+    mustBeWithinFuelRange: boolean;
+    fuelPortionMargin: number;
+    mustBeAutomated: boolean;
+    shouldBeSmallFleet: boolean;
+    gatherPointMustBeBlank: boolean;
+    mustBeWithinPostureRange: boolean;
+    minimumTroopStrength: number;
+    minimumBoardingStrength: number;
+}
+
+const T_findNearestAvailableFleet = registerTodo('M4m', 'findNearestAvailableFleet');
+/**
+ * Empire.9.cs 1492 FindNearestAvailableFleet(x, y, maximumPriority, overallStrength, posture, ...) — stub: null (no fleet is
+ * available). RND: Next(0, 3) at Empire.9.cs 1606 on its known-pirate-bases path — not drawn until M4m.
+ */
+export function findNearestAvailableFleet(galaxy: Galaxy, empire: Empire, x: number, y: number, maximumPriority: number, overallStrength: number, posture: number, args: FindNearestAvailableFleetArgs): ShipGroup | null {
+    /* TODO(port) M4m */ todo(T_findNearestAvailableFleet);
+    return null;
+}
+
+const T_assignFleetRefuellingExcludeGatheringShips = registerTodo('M4m', 'assignFleetRefuellingExcludeGatheringShips');
+/**
+ * Empire.9.cs 691 AssignFleetRefuellingExcludeGatheringShips(refuelFleet, requiredFuel): scales requiredFuel SortTags by 1.2,
+ * DecideBestFleetRefuelPoint (265) at the fleet's approximate location; the per-ship loop is `j > Ships.Count` in C# and never
+ * runs — stub: false (no refuel point is searched).
+ */
+export function assignFleetRefuellingExcludeGatheringShips(galaxy: Galaxy, empire: Empire, refuelFleet: ShipGroup, requiredFuel: FuelTypeRef[]): boolean {
+    /* TODO(port) M4m */ todo(T_assignFleetRefuellingExcludeGatheringShips);
+    return false;
+}
+
+const T_ensureBaseDefendedByFleet = registerTodo('M4m', 'ensureBaseDefendedByFleet');
+/** Empire.9.cs 1276 EnsureBaseDefendedByFleet(builtObject) (FindNearestDefensiveFleet + FindNearestAvailableFleet → Move) — stub. */
+export function ensureBaseDefendedByFleet(galaxy: Galaxy, empire: Empire, builtObject: BuiltObject): void {
+    /* TODO(port) M4m */ todo(T_ensureBaseDefendedByFleet);
+}
