@@ -1850,6 +1850,8 @@ export class Empire {
     // ---- M4q fields (invasion, troops) ----
     /** Empire.cs 204 DiscoveryActionAbandonedShipBase (GameOptions; 0 = prompt the player). */
     discoveryActionAbandonedShipBase = 0;
+    /** Empire.cs 301 ColoniesNeedingTroops (HabitatList; the C# only ever removes from it). */
+    coloniesNeedingTroops: Habitat[] = [];
     // ---- M4r fields (diplomacy runtime) ----
     /** Empire.cs 402 _RelativeEmpireSize (CalculateRelativeEmpireSize; added by M4a for the tick's assignment). */
     relativeEmpireSize = 0;
