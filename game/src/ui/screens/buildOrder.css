@@ -170,3 +170,53 @@
     opacity: 0.4;
     cursor: default;
 }
+
+/* Purchase follow-up: Order Amount spinner (Main.Part2.cs method_637 / method_634 highlight), totals row. */
+.build-order-header,
+.build-order-row {
+    grid-template-columns: 9em 6em 5.5em minmax(0, 1fr) 7em 6em;
+}
+
+.build-order-amount {
+    width: 4.5em;
+    font-family: inherit;
+    font-size: 12px;
+    text-align: center;
+    color: #aaa;
+    background: #333;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
+    padding: 1px 2px;
+}
+.build-order-amount.build-order-amount-set {
+    color: #ff0;
+    font-weight: bold;
+}
+.build-order-amount:disabled {
+    opacity: 0.35;
+}
+
+.build-order-total {
+    grid-template-columns: minmax(0, 1fr) 7em 6em;
+    margin-top: 4px;
+}
+.build-order-total .build-order-name {
+    font-size: 11px;
+    color: #aaa;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+.build-order-total .build-order-cell {
+    color: #ff0;
+}
+
+.build-order-footer {
+    gap: 8px;
+}
+.build-order-purchase:not(:disabled) {
+    color: #ff0;
+    border-color: rgba(255, 255, 0, 0.4);
+}
+.build-order-window {
+    width: 800px;
+}
