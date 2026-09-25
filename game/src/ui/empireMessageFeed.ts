@@ -5,12 +5,18 @@
 // cannot be serialized. The feed only reads messages; it never mutates them.
 import { EmpireMessageType, empireMessages, type EmpireMessage } from '../sim/messages';
 import type { Empire } from '../sim/empire';
+import { getMessageOptions, routeEmpireMessage } from './messageRouting';
 
-// TODO(port): _Game.DisplayMessage<Category> options (all on by default), popups (bool_), and the diplomatic conversation queue — Main.Part9.cs ReceiveMessageInternal
+// Task 16d: the DisplayMessage<Category> options filter the ticker (messageRouting.ts); popups and the conversation queue are messagePopups.ts.
 // Port of Main.Part9.cs ReceiveMessageInternal (ticker text + bool_2) and method_250
 export function formatEmpireMessage(message: EmpireMessage, player: Empire | null): string | null {
     const t = message.messageType;
     if (t === EmpireMessageType.AdvisorSuggestion) return null;
+    // [16d] Game.DisplayMessage<Category> (Main.Part9.cs:1572 bool_2): a category switched off in Game
+    // Options hides the line. Uncategorised messages and conversations keep the 14a behaviour.
+    const route = routeEmpireMessage(message, player, getMessageOptions());
+    if (route.category !== null && route.conversation === null && !route.ticker) return null;
+    // [/16d]
     if (
         (t === EmpireMessageType.DiplomaticRelationChange ||
             t === EmpireMessageType.ProposeDiplomaticRelation ||

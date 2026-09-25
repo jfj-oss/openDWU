@@ -45,6 +45,7 @@ import { type Game } from './sim/game';
 import { createGalaxyMap, type GalaxyMapScreen } from './ui/screens/galaxyMap';
 import { hideMapTooltip } from './ui/mapTooltip';
 import { closeEmpireComparison, closeGameEndBanner, installGameEndHandler, removeGameEndHandler } from './ui/screens/empireComparison'; // [15d]
+import { installMessagePopups, removeMessagePopups } from './ui/messagePopups'; import { closeGameOptionsPanel } from './ui/screens/gameOptionsPanel'; // [16d]
 import './ui/hud.css';
 
 // ?shape= names accepted by the boot URL.
@@ -388,6 +389,9 @@ export async function startGameView(
     // [15d] Galaxy.GameEnd → Main.Part12.cs Galaxy_GameEnd / DoGameEnd (pause, IsFinished/Victor, banner).
     installGameEndHandler(galaxy, time);
     // [/15d]
+    // [16d] Player messages → popups + the diplomatic conversation queue (Main.Part9.cs ReceiveMessageInternal).
+    installMessagePopups({ player: game.playerEmpire, galaxy });
+    // [/16d]
 
     // Task 06l: extra boots run after the HUD/clock are wired (e.g. opening
     // a tutorial window that pauses/unpauses the clock).
@@ -508,6 +512,10 @@ export async function startGameView(
         closeEmpireComparison();
         closeGameEndBanner();
         // [/15d]
+        // [16d]
+        removeMessagePopups();
+        closeGameOptionsPanel();
+        // [/16d]
     };
 
     return time;
