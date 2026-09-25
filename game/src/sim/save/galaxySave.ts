@@ -15,6 +15,7 @@
 
 import { Galaxy } from '../galaxy';
 import type { GameData } from '../data/gameData';
+import { cloneGalaxyRaces, raceScalarFields } from '../data/races';
 import { buildResourceSystem } from '../resourceSystem';
 import { buildResearchStatic, ResearchSystem } from '../researchSystem';
 import { buildComponentStatic } from '../componentStatic';
@@ -289,12 +290,15 @@ function staticTablesOfGalaxy(galaxy: Galaxy): StaticTables {
 }
 
 function staticTablesOfGameData(gameData: GameData): StaticTables {
+    // The galaxy's own Race copies (Galaxy.4.cs 2132; cloneGalaxyRaces as in generateGalaxy). Referenced by index like
+    // the other tables; their in-play state comes back from the raceFields side table.
+    const races = cloneGalaxyRaces(gameData.races);
     return {
-        races: gameData.races,
+        races,
         raceFamilies: gameData.raceFamilies,
         resources: gameData.resources,
         // generateGalaxy's wiring (galaxy.ts): facilities, fighters (Galaxy.FighterSpecificationsStatic, M4p) and plagues too.
-        researchStatic: buildResearchStatic(gameData.research, gameData.components, gameData.races, gameData.policies, gameData.piratePolicies, buildComponentStatic(gameData), gameData.facilities, gameData.fighters, gameData.plagues),
+        researchStatic: buildResearchStatic(gameData.research, gameData.components, races, gameData.policies, gameData.piratePolicies, buildComponentStatic(gameData), gameData.facilities, gameData.fighters, gameData.plagues),
         resourceSystem: buildResourceSystem(gameData.resources, gameData.components),
         designSpecificationTexts: gameData.designSpecificationTexts ?? new Map(),
         designNames: gameData.designNames ?? [],
@@ -445,7 +449,9 @@ function rebuildIndexGrids(galaxy: Galaxy): void {
  * - StellarObject.Characters for habitats and Habitat.InvadingCharacters (characters.ts WeakMaps);
  * - BuiltObject._Captain*Bonus (characters.ts captainBonusMap);
  * - Race.AvailableCharacters and Galaxy.RndStatic (characters.ts per-galaxy CharacterGalaxyState);
- * - Plague.LatestTechLevelUpdate (ResearchSystem.ReviewPlagues mutates the galaxy's PlaguesStatic copies).
+ * - Plague.LatestTechLevelUpdate (ResearchSystem.ReviewPlagues mutates the galaxy's PlaguesStatic copies);
+ * - the scalar fields of the galaxy's Race objects (Galaxy.Races is saved with the C# game; play mutates it, e.g.
+ *   Galaxy.5.cs 4472 the Origins ruin's SatisfactionModifier).
  * Maps are keyed by graph objects, so they are encoded by the same encoder right after the galaxy.
  */
 interface SideTables {
@@ -456,6 +462,8 @@ interface SideTables {
     captainBonuses: Map<BuiltObject, CaptainBonuses>;
     characterState: { raceAvailableCharacters: CharacterGalaxyState['raceAvailableCharacters']; rndStatic: Random } | null;
     plagueLatestTechLevelUpdate: number[];
+    /** raceScalarFields of galaxy.races[i] (absent in saves written before races were per galaxy). */
+    raceFields?: Record<string, string | number | boolean>[];
     /** Random.drawCount of every saved stream (a non-enumerable diagnostic counter; the harness reports deltas). */
     randomDraws: Map<Random, number>;
 }
@@ -469,6 +477,7 @@ function collectSideTables(galaxy: Galaxy, visited: readonly object[]): SideTabl
         captainBonuses: new Map(),
         characterState: null,
         plagueLatestTechLevelUpdate: (galaxy.researchStatic?.plagues ?? []).map((p) => p.latestTechLevelUpdate),
+        raceFields: galaxy.races.map(raceScalarFields),
         randomDraws: new Map(),
     };
     // Every habitat / built object in the saved graph, in visit order (deterministic).
@@ -508,6 +517,9 @@ function restoreSideTables(galaxy: Galaxy, t: SideTables): void {
     }
     // The revive hook defined `draws` (non-enumerable, writable); plain assignment keeps it non-enumerable.
     for (const [rnd, draws] of t.randomDraws ?? []) (rnd as unknown as { draws: number }).draws = draws;
+    t.raceFields?.forEach((fields, i) => {
+        if (i < galaxy.races.length) Object.assign(galaxy.races[i], fields);
+    });
     const plagues = galaxy.researchStatic?.plagues ?? [];
     t.plagueLatestTechLevelUpdate.forEach((v, i) => {
         if (i < plagues.length) plagues[i].latestTechLevelUpdate = v;

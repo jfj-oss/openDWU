@@ -109,7 +109,15 @@ describe('taxes (ReviewTaxes at game start)', () => {
         // approval 10; two ReviewTaxes passes). Re-pin if colony generation changes upstream.
         // (re-pinned: createGame now runs the taxes after that empire's space port, stations and
         // luxury-resource setup (Start.2.cs 1139-1318), which change development and approval.)
-        expect(a.colonies.map((c) => c.taxRate)).toEqual(PINNED_TAX_RATES);
+        // (re-pinned M4k: the game-start Empire.DoTasks now runs PerformResearch — SelectNextResearchProject draws
+        // Rnd (SelectRandomLowestProject) and research events draw Next(0, num4) per industry — so later game-start
+        // Rnd draws shift.)
+        // (re-pinned M4s1: ReviewPirateRelations draws Rnd.NextDouble in each game-start Empire.DoTasks long block.)
+        // (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
+        // (re-pinned M4u: game-start character reviews / DoRaceEvent Rnd change the empires and their capitals.)
+        // (re-pinned M4m: the game-start Empire.DoTasks runs the military AI — IdentifyMilitaryObjectives Next(0, EmpireEvaluations.Count), CheckTemptingTargets Next(0, Empires.Count), DetermineRandomAttacks Next(0, n) — which shifts the Rnd stream.)
+        // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
+        expect(a.colonies.map((c) => c.taxRate)).toMatchPin('taxes.taxRates');
         for (const c of a.colonies) {
             // Rounded to 2 decimals (Math.Round(num3, 2)) and stored as float.
             expect(Math.fround(netRound(c.taxRate, 2))).toBe(c.taxRate);
@@ -161,18 +169,3 @@ describe('taxes (ReviewTaxes at game start)', () => {
         expect(netRound(1.5, 0)).toBe(2);
     });
 });
-
-// (re-pinned M4k: the game-start Empire.DoTasks now runs PerformResearch — SelectNextResearchProject draws
-// Rnd (SelectRandomLowestProject) and research events draw Next(0, num4) per industry — so later game-start
-// Rnd draws shift.)
-// (re-pinned M4s1: ReviewPirateRelations draws Rnd.NextDouble in each game-start Empire.DoTasks long block.)
-// (re-pinned after M4s1 (ReviewPirateRelations NextDouble per Empire long block; independent-colony pirate offers) and the SelectCreatures population gating fix (Galaxy.5.cs 1648/1785))
-// (re-pinned M4u: game-start character reviews / DoRaceEvent Rnd change the empires and their capitals.)
-// (re-pinned M4m: the game-start Empire.DoTasks runs the military AI — IdentifyMilitaryObjectives Next(0, EmpireEvaluations.Count), CheckTemptingTargets Next(0, Empires.Count), DetermineRandomAttacks Next(0, n) — which shifts the Rnd stream.)
-// (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
-const PINNED_TAX_RATES: number[] = [
-    0.30000001192092896,
-    0.28999999165534973,
-    0.25,
-    0.3100000023841858
-].map(Math.fround);

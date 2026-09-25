@@ -411,6 +411,23 @@ function parseTraitField(raw: string | undefined): CharacterTraitType {
     return b <= CharacterTraitType.BountyHunter ? b : CharacterTraitType.Undefined;
 }
 
+/**
+ * The galaxy's own RaceList (Galaxy.4.cs 2132 `Races = LoadRaces(...)` in the Galaxy ctor; Start.2.cs 98 on game start):
+ * every C# galaxy loads fresh Race objects, which it mutates in play (e.g. Galaxy.5.cs 4472 the Origins ruin's
+ * `ruin.OriginsRace.SatisfactionModifier += ...`) and serializes with the game. The parsed GameData races stay pristine;
+ * a galaxy gets shallow copies (the nested lists are load-time data nothing mutates).
+ */
+export function cloneGalaxyRaces(races: readonly Race[]): Race[] {
+    return races.map((r) => ({ ...r }));
+}
+
+/** The mutable scalar state of a galaxy race (every primitive-valued field), for the save side table. */
+export function raceScalarFields(race: Race): Record<string, string | number | boolean> {
+    const out: Record<string, string | number | boolean> = {};
+    for (const [k, v] of Object.entries(race)) if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') out[k] = v;
+    return out;
+}
+
 // Port of Race.cs LoadFromFile (line 752). `text` is the full content of a
 // races/*.txt file (e.g. races/human.txt).
 export function parseRace(text: string): Race {

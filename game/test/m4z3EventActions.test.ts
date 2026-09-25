@@ -443,7 +443,8 @@ describe('ExecuteEventAction per action type (Galaxy.9.cs 1503-2860)', () => {
         const added = g.builtObjects.slice(n + 1);
         expect(added.map((b) => b.subRole)).toEqual([BuiltObjectSubRole.ColonyShip, BuiltObjectSubRole.Frigate, BuiltObjectSubRole.Cruiser]);
         expect(added[0].nativeRace).toBe(e.dominantRace);
-        expect(added[0].name).toBe('Refugee SHIPTYPE|ColonyShip');
+        // Galaxy.9.cs 2105 ResolveDescription(BuiltObjectSubRole.ColonyShip) = GameText "Ship SubRole ColonyShip" (enumText.ts).
+        expect(added[0].name).toBe('Refugee SHIPTYPE|Colony Ship');
     });
 
     it('IntergalacticConvoyMilitary / Civilian: Value ships of the empire arrive at the galaxy edge and move to its capital', () => {
