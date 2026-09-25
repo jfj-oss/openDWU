@@ -322,6 +322,8 @@ export function galaxyFromJSON(obj: GalaxySaveJSON, gameData: GameData): Galaxy 
         }
     }
     for (const builtObject of galaxy.builtObjects) {
+        // BuiltObject.CompleteTeardown nulls its Galaxy.BuiltObjects slot; RemoveNullBuiltObjects compacts later (M4z1).
+        if (builtObject == null) continue;
         const cell = galaxy.resolveIndex(builtObject.xpos, builtObject.ypos);
         galaxy.builtObjectIndexGrid[cell.x][cell.y].push(builtObject);
     }

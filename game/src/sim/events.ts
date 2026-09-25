@@ -54,7 +54,7 @@ import { DiplomaticRelationType } from './diplomacy';
 import { fastFindNearestColony } from './diplomacyTick';
 import { reviewEmpireAbilityBonusesFull } from './treasury';
 import { resolveDescription } from './messages';
-import { HabitatCategoryType } from './types';
+import { HabitatCategoryType, type SystemInfo } from './types';
 import type { PlagueStatic } from './researchSystem';
 import type { Population } from './population';
 import { gameText } from './colonyTick';
@@ -687,6 +687,54 @@ export function removeHabitat(galaxy: Galaxy, habitat: Habitat): boolean {
     return true;
 }
 
+/**
+ * Galaxy.9.cs 3151 RemoveSystem(system) (M4z1): tears down the ships whose nearest star it is, its creatures, its habitats and
+ * star (RemoveSingleHabitat → Habitat.CompleteTeardown), drops the SystemInfo, re-indexes habitats (FixResourceMaps) and
+ * system indexes (CompactSystemIndexes). No Rnd. Only the galaxy editor (Main.Part10.cs 2648/2696) and BaconGalaxy
+ * RemoveAllGasClouds (no caller) reach it. The TS SystemInfo.habitats also holds the star, so the C# movement
+ * -(Habitats.Count + 1) is -(habitats.length) here.
+ */
+export function removeSystem(galaxy: Galaxy, system: SystemInfo): void {
+    const systemStar = system.systemStar;
+    const builtObjectList: BuiltObject[] = [];
+    for (const builtObject of galaxy.builtObjects) {
+        if (builtObject != null && builtObject.nearestSystemStar === system.systemStar) builtObjectList.push(builtObject);
+    }
+    for (const item of builtObjectList) {
+        clearPreviousMissionRequirements(galaxy, item);
+        builtObjectCompleteTeardown(galaxy, item, true);
+    }
+    const array = (system.creatures ?? []).slice();
+    for (const creature of array) creature.completeTeardown();
+    if (system.creatures !== undefined) system.creatures.length = 0;
+    const systemIndex = systemStar.systemIndex;
+    const habitatIndex = system.systemStar.habitatIndex;
+    const movement = -1 * system.habitats.length;
+    const array3 = system.habitats.slice();
+    for (const habitat of array3) {
+        if (habitat.category !== HabitatCategoryType.Star && habitat.category !== HabitatCategoryType.GasCloud) habitatCompleteTeardown(galaxy, habitat);
+    }
+    habitatCompleteTeardown(galaxy, system.systemStar);
+    if (systemIndex >= 0) galaxy.systems.splice(systemIndex, 1);
+    const endIndex = galaxy.habitats.length - 1;
+    galaxy['fixResourceMaps'](habitatIndex, endIndex, movement, null);
+    system.habitats.length = 0;
+    system.dominantEmpire = null;
+    system.otherEmpires = null;
+    (system as { sector: { x: number; y: number } | null }).sector = null;
+    (system as { systemStar: Habitat | null }).systemStar = null;
+    compactSystemIndexes(galaxy, systemIndex, systemIndex);
+    removeNullBuiltObjects(galaxy);
+}
+
+/** Galaxy.9.cs 3583 CompactSystemIndexes(startIndex, endIndex). */
+function compactSystemIndexes(galaxy: Galaxy, startIndex: number, endIndex: number): void {
+    const num = endIndex - startIndex + 1;
+    for (let i = 0; i < galaxy.habitats.length; i++) {
+        if (galaxy.habitats[i].systemIndex >= startIndex) galaxy.habitats[i].systemIndex -= num;
+    }
+}
+
 /** Galaxy.9.cs 2862 RemoveNullBuiltObjects. */
 function removeNullBuiltObjects(galaxy: Galaxy): void {
     const list: number[] = [];
@@ -811,9 +859,41 @@ export function habitatCompleteTeardown(galaxy: Galaxy, habitat: Habitat): void 
     if (habitat.systemIndex >= 0 && galaxy.systems.length > habitat.systemIndex) {
         const systemInfo2 = galaxy.systems[habitat.systemIndex];
         if (systemInfo2 != null && systemInfo2.systemStar === habitat) {
-            // Habitat.cs 7903-7988: a system star's teardown (SystemsIndex, per-empire SystemVisibility / SystemsVisible).
-            // Only Galaxy.RemoveSystem tears a star down (RemoveHabitat refuses stars) — not reachable from M4u.
-            throw new Error('TODO(port): Habitat.cs 7903 CompleteTeardown of a system star (Galaxy.RemoveSystem)');
+            // Habitat.cs 7909-7985 (M4z1): a system star's teardown. Only Galaxy.RemoveSystem tears a star down
+            // (RemoveHabitat refuses stars).
+            const galaxyIndex2 = galaxy.resolveIndex(habitat.xpos, habitat.ypos);
+            const systemsCell = galaxy.systemsIndexGrid[galaxyIndex2.x][galaxyIndex2.y];
+            if (systemsCell.includes(systemInfo2)) systemsCell.splice(systemsCell.indexOf(systemInfo2), 1);
+            const removeStarVisibility = (e: Empire): void => {
+                const systemVisibility = e.visibility.systemVisibility;
+                if (systemVisibility != null) {
+                    for (let num2 = 0; num2 < systemVisibility.length; num2++) {
+                        if (systemVisibility[num2].systemStar === habitat) {
+                            systemVisibility.splice(num2, 1);
+                            break;
+                        }
+                    }
+                }
+            };
+            const removeStarVisible = (e: Empire): void => {
+                if (e.visibility.systemsVisible != null) {
+                    num = e.visibility.systemsVisible.indexOf(systemInfo2.systemStar);
+                    if (num >= 0) e.visibility.systemsVisible.splice(num, 1);
+                }
+            };
+            for (const empire3 of galaxy.empires) {
+                if (empire3 == null) continue;
+                removeStarVisibility(empire3);
+                removeStarVisible(empire3);
+            }
+            for (const pirateEmpire of galaxy.pirateEmpires) {
+                if (pirateEmpire == null) continue;
+                removeStarVisibility(pirateEmpire);
+                removeStarVisible(pirateEmpire);
+            }
+            if (galaxy.independentEmpire !== null) removeStarVisibility(galaxy.independentEmpire);
+            removeStarVisible(galaxy.independentEmpire!);
+            (systemInfo2 as { systemStar: Habitat | null }).systemStar = null;
         }
     }
     for (let num5 = 0; num5 < galaxy.indexMaxX; num5++) {

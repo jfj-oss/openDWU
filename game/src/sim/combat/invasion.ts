@@ -31,7 +31,9 @@ import type { Empire } from '../empire';
 import type { BuiltObject } from '../builtObject';
 import { HabitatType, type Habitat } from '../types';
 import type { Race } from '../data/races';
-import { Cargo, TroopList, TroopType, type Troop } from '../cargo';
+import { Cargo, Troop as TroopClass, TroopList, TroopType, type Troop } from '../cargo';
+import { empireRaidStrengthFactor } from './boarding';
+import { ensureHabitatInvadingCharacters, ensureStellarObjectCharacters } from '../characters';
 import { BuiltObjectRole } from '../data/designSpecifications';
 import { BuiltObjectSubRole } from '../builtObjectTypes';
 import { BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission, isBuiltObject, isHabitat, type StellarObject } from '../missions/mission';
@@ -2012,13 +2014,65 @@ export function takeOwnershipOfColonyRuntime(galaxy: Galaxy, empire: Empire, col
 
 // ---- Stub added by M4s2 (BaconEmpire.cs 1499 CheckColoniesForPirateFacilitiesAndAttack → Habitat.cs 3312) ----
 
-const T_generateDefensivePirateRaiders = registerTodo('M4q', 'generateDefensivePirateRaiders');
+/** BaconHabitat.cs 34-36 pirateBaseTroops / pirateFortressTroops / pirateCriminalNetworkTroops (BaconMain settings file may override; defaults). */
+const PIRATE_BASE_TROOPS = 7;
+const PIRATE_FORTRESS_TROOPS = 12;
+const PIRATE_CRIMINAL_NETWORK_TROOPS = 18;
 /**
  * Habitat.cs 3360 GenerateDefensivePirateRaiders(defendingPirateFaction, currentDefendingTroopsInvade) →
- * BaconHabitat.GenerateDefensivePirateRaiders (RND: Next(0, 3) per raider group, BaconHabitat.cs 1315) — stub. Callers:
- * Habitat.cs 3312 InitiateAttackAgainstPirateFacilities (pirates/pirateEmpireAI.ts) and 3324 PiratesDefendAgainstRaid
- * (combat/boarding.ts).
+ * BaconHabitat.cs 1269 GenerateDefensivePirateRaiders (M4z1). Rnd: Next(0, 3) (raider count). Callers: Habitat.cs 3312
+ * InitiateAttackAgainstPirateFacilities (pirates/pirateEmpireAI.ts) and 3324 PiratesDefendAgainstRaid (combat/boarding.ts).
+ * The "piratebase" BaconValue is only set by the player's AddFundsToPirateBase console command (UI), so d stays 0 in a
+ * headless game; the 1327-1335 "pirate base under attack" prompt is UI (TODO(port) M9). The raiders go into
+ * planet.Troops / faction.Troops without Troop.Colony, as in the C#.
  */
-export function generateDefensivePirateRaiders(galaxy: Galaxy, colony: Habitat, defendingPirateFaction: Empire | null, currentDefendingTroopsInvade: boolean): void {
-    /* TODO(port) M4q */ todo(T_generateDefensivePirateRaiders);
+export function generateDefensivePirateRaiders(galaxy: Galaxy, planet: Habitat, defendingPirateFaction: Empire | null, currentDefendingTroopsInvade: boolean): void {
+    let num1 = Math.fround(50);
+    let d = 0;
+    if (defendingPirateFaction === null || defendingPirateFaction.dominantRace === null) return;
+    if (currentDefendingTroopsInvade) {
+        const items1: Troop[] = planet.troops !== null ? planet.troops.items.slice() : [];
+        const planetCharacters = ensureStellarObjectCharacters(planet);
+        const items2 = planetCharacters.slice();
+        planet.troops!.clear();
+        planetCharacters.length = 0;
+        for (const t of items1) planet.invadingTroops!.add(t);
+        const invadingCharacters = ensureHabitatInvadingCharacters(planet);
+        for (const c of items2) invadingCharacters.push(c);
+    }
+    let num2 = 1;
+    let planetaryFacility: PlanetaryFacility | null = null;
+    if (planet.facilities !== null) planetaryFacility = facilitiesFindBestPirateFacility(planet.facilities, true, true);
+    if (planetaryFacility !== null) {
+        switch (planetaryFacility.type) {
+            case PlanetaryFacilityType.PirateBase:
+                num2 = PIRATE_BASE_TROOPS;
+                break;
+            case PlanetaryFacilityType.PirateFortress:
+                num2 = PIRATE_FORTRESS_TROOPS;
+                break;
+            case PlanetaryFacilityType.PirateCriminalNetwork:
+                num2 = PIRATE_CRIMINAL_NETWORK_TROOPS;
+                break;
+        }
+    }
+    if (planet.baconValues !== null && planet.baconValues.has('piratebase')) {
+        d = Math.trunc((planet.baconValues.get('piratebase') as number) / 1000);
+        const num3 = d <= 100 ? Math.trunc(Math.sqrt(d)) : 10 + Math.trunc(d / 20);
+        num2 += num3;
+        num1 = Math.fround(Math.max(100.0, 60.0 + num3));
+    }
+    const num4 = num2 + galaxy.rnd.next(0, 3);
+    const num5 = defendingPirateFaction.dominantRace.troopStrength / 100.0;
+    const raidStrengthFactor = empireRaidStrengthFactor(defendingPirateFaction);
+    const num6 = Math.trunc(num1 * num5 * raidStrengthFactor);
+    for (let index = 0; index < num4; ++index) {
+        const troop = new TroopClass(defendingPirateFaction.generateTroopDescription(formatText(getText('RACE Pirate Raider'), defendingPirateFaction.dominantRace.name)), TroopType.PirateRaider, num6, num6, 100, 100, defendingPirateFaction, defendingPirateFaction.dominantRace);
+        // Race.PictureRef ← races.txt PictureIndex (as combat/boarding.ts PerformRaidColonyInvasion).
+        if (defendingPirateFaction.dominantRace !== null) troop.pictureRef = defendingPirateFaction.dominantRace.pictureIndex;
+        if (troop !== null) {
+            planet.troops!.add(troop);
+            defendingPirateFaction.troops.add(troop);
+        }
+    }
 }

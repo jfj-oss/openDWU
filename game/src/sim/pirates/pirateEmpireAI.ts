@@ -440,11 +440,10 @@ function checkCanInitiateAttackAgainstPirateFacilities(galaxy: Galaxy, habitat: 
     return false;
 }
 
-/** Habitat.cs 3312 InitiateAttackAgainstPirateFacilities(attackingEmpire, pirateFacility). Rnd: GenerateDefensivePirateRaiders' (M4q). */
+/** Habitat.cs 3312 InitiateAttackAgainstPirateFacilities(attackingEmpire, pirateFacility). Rnd: GenerateDefensivePirateRaiders' Next(0, 3) (combat/invasion.ts). */
 function initiateAttackAgainstPirateFacilities(galaxy: Galaxy, habitat: Habitat, attackingEmpire: Empire, pirateFacility: PlanetaryFacility): void {
     if (checkCanInitiateAttackAgainstPirateFacilities(galaxy, habitat, attackingEmpire, pirateFacility)) {
         const empire = checkFacilityOwner(galaxy, habitat, pirateFacility);
-        // RND: BaconHabitat.cs 1315 Next(0, 3) per raider group — GenerateDefensivePirateRaiders is still a stub.
         generateDefensivePirateRaiders(galaxy, habitat, empire, true);
         if (habitat.invasionStats === null) habitat.invasionStats = new InvasionStats(habitat, attackingEmpire, empire);
     }
