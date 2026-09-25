@@ -94,3 +94,17 @@ export function builtObjectInflictDamage(galaxy: Galaxy, builtObject: BuiltObjec
     /* TODO(port) M4o */ todo(T_builtObjectInflictDamage);
     return false;
 }
+
+// ---- stub added by M4u (Creature.cs 1299 AttackTarget, events.ts creatureAttackTarget) ----
+
+const T_creatureDamageTarget = registerTodo('M4o', 'creatureDamageTarget');
+/**
+ * Creature.cs 1347 DamageTarget(abstractTarget, damage, tempNow, timePassed): creature vs creature (DamageCreature),
+ * habitat (SilverMist population / quality damage, colony wipe-out) and built object (component damage, explosions) —
+ * stub: no damage, returns false ("target not destroyed"). `tempNow` in sim ms.
+ */
+export function creatureDamageTarget(galaxy: Galaxy, creature: Creature, abstractTarget: BuiltObject | Habitat | Creature, damage: number, tempNow: number, timePassed: number): boolean {
+    // RND: DamageTarget → built-object component damage draws — not drawn until M4o.
+    /* TODO(port) M4o */ todo(T_creatureDamageTarget);
+    return false;
+}

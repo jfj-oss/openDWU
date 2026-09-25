@@ -14,14 +14,32 @@ import type { Habitat } from './types';
 import { registerTodo, todo } from './tick/todo';
 import { GalaxyLocationEffectType, GalaxyLocationType, type GalaxyLocation } from './galaxyLocation';
 import { getBuiltObjectsAtLocation } from './stationPlacement';
+import { MAX_SOLAR_SYSTEM_SIZE } from './visibility';
 import { BuiltObjectRole } from './data/designSpecifications';
-import { builtObjectInflictDamage } from './combat/damage';
-import { determineAngle } from './creature';
+import { builtObjectInflictDamage, creatureDamageTarget } from './combat/damage';
+import { determineAngle, type Creature } from './creature';
+import { isBuiltObject, isCreature, isHabitat, type StellarObject } from './missions/mission';
+import { notifyOfAttackBuiltObject, notifyOfAttackHabitat } from './combat/attackAI';
 import { doCharacterEventForList, type Character, type CharacterEventType } from './characters';
 import * as characterRuntime from './characterRuntime';
 import { EventMessageType, DisasterEventType, RaceEventType, raceImmuneToPlagues, galaxyPlagues, getPlagueUnhappinessFactorWithPlague } from './eventTypes';
 export { EventMessageType, DisasterEventType, RaceEventType, raceImmuneToPlagues, galaxyPlagues, getPlagueUnhappinessFactorWithPlague };
 import * as empireEvents from './empireEvents';
+import { Empire as EmpireClass, AutomationLevel } from './empire';
+import { BuiltObjectSubRole } from './builtObjectTypes';
+import { findNewest } from './design';
+import { generateBuiltObjectFromDesign } from './exploration';
+import { determineMostSuitableGovernmentTypes } from './game';
+import { loadEmpirePolicy } from './researchSystem';
+import { checkEmpireHasHyperDriveTech } from './forceStructure';
+import { empireDoTasks } from './tick/empireTick';
+import { ensureStrategicResourceSupply } from './construction/empireConstruction';
+import { galaxyStarDate } from './tick/simTime';
+import { DiplomaticRelationType } from './diplomacy';
+import { fastFindNearestColony } from './diplomacyTick';
+import { reviewEmpireAbilityBonusesFull } from './treasury';
+import { resolveDescription } from './messages';
+import { HabitatCategoryType } from './types';
 import type { Race } from './data/races';
 import type { PlagueStatic } from './researchSystem';
 import type { Population } from './population';
@@ -466,11 +484,138 @@ function csDoubleToLong(v: number): number {
     return Math.trunc(v);
 }
 
-const T_checkHabitatIsEmpire = registerTodo('M4u', 'checkHabitatIsEmpire');
-/** Habitat.cs 5230 CheckHabitatIsEmpire(galaxy). */
+/** Galaxy.3.cs 5007-5008 HabitatToEmpireThreshhold / HabitatToEmpireMinimumIntelligence. */
+const HABITAT_TO_EMPIRE_THRESHHOLD = 270000000000;
+const HABITAT_TO_EMPIRE_MINIMUM_INTELLIGENCE = 69;
+
+/** Galaxy.8.cs 1287 FindNearestEmpireCapital(x, y, empiresToExclude). No Rnd. */
+function findNearestEmpireCapital(galaxy: Galaxy, x: number, y: number, empiresToExclude: Empire[] | null): Empire | null {
+    let result: Empire | null = null;
+    let num = Number.MAX_VALUE;
+    for (let i = 0; i < galaxy.empires.length; i++) {
+        const e = galaxy.empires[i];
+        if (e.active && e.pirateEmpireBaseHabitat === null && (empiresToExclude === null || !empiresToExclude.includes(e)) && e.capital !== null) {
+            const num2 = galaxy.calculateDistance(x, y, e.capital.xpos, e.capital.ypos);
+            if (num2 < num) {
+                result = e;
+                num = num2;
+            }
+        }
+    }
+    return result;
+}
+
+/** One starting ship for a new empire (Habitat.cs 5315-5413: FindNewest, BuildCount++, GenerateBuiltObjectFromDesign, parking point). */
+function newEmpireStartingShip(galaxy: Galaxy, empire: Empire, habitat: Habitat, subRole: BuiltObjectSubRole, isState: boolean, x: number, y: number): void {
+    const design = findNewest(empire.designs, subRole);
+    if (design !== null) {
+        design.buildCount++;
+        const builtObject = generateBuiltObjectFromDesign(galaxy, empire, design, galaxy.generateBuiltObjectName(design, habitat), isState, x, y);
+        builtObject.parentHabitat = habitat;
+        builtObject.dateBuilt = galaxyStarDate(galaxy);
+        builtObject.dateRetrofit = galaxyStarDate(galaxy);
+        const p = galaxy.selectRelativeParkingPoint();
+        builtObject.parentOffsetX = p.x;
+        builtObject.parentOffsetY = p.y;
+        builtObject.heading = galaxy.selectRandomHeading();
+    }
+}
+
+/**
+ * Habitat.cs 5230 CheckHabitatIsEmpire(galaxy): a populous, intelligent independent colony becomes a new empire.
+ * Rnd: Next(0, 5) once the population / empire-count gates pass; then the new empire's generation draws (Empire ctor,
+ * SetTechTreeLevel, its first Empire.DoTasks, ship names / parking points / headings).
+ */
 export function checkHabitatIsEmpire(galaxy: Galaxy, habitat: Habitat): void {
-    // RND: 1 direct, +clock×2 — not drawn until M4u.
-    /* TODO(port) M4u */ todo(T_checkHabitatIsEmpire);
+    if (galaxy.nextEmpireId >= galaxy.maximumEmpireCount || habitat.owner !== galaxy.independentEmpire) return;
+    let num = 0;
+    if (habitat.population == null || habitat.population.items.length <= 0 || habitat.population.dominantRace === null || habitat.population.dominantRace.intelligence < HABITAT_TO_EMPIRE_MINIMUM_INTELLIGENCE) return;
+    for (let i = 0; i < habitat.population.items.length; i++) {
+        const population = habitat.population.items[i];
+        if (population != null && population.race != null) num += population.race.intelligence * population.amount;
+    }
+    if (num < HABITAT_TO_EMPIRE_THRESHHOLD || galaxy.empires.length >= galaxy.maximumEmpireAmount || galaxy.rnd.next(0, 5) !== 2) return;
+    const race = habitat.population.dominantRace;
+    const governmentAttributesList = determineMostSuitableGovernmentTypes(race, EmpireClass.resolveDefaultAllowableGovernmentTypes(race));
+    const policy = loadEmpirePolicy(galaxy.researchStatic, race, false);
+    const empire = new EmpireClass(galaxy, '', habitat, race, governmentAttributesList[0].governmentId, 1.0, policy);
+    habitat.isRefuellingDepot = true;
+    let num2 = 1;
+    let num3 = 2;
+    let num4 = 1;
+    let num5 = 5;
+    const num6 = 0;
+    let num7 = 1;
+    const empiresToExclude: Empire[] = [];
+    const empire2 = findNearestEmpireCapital(galaxy, habitat.xpos, habitat.ypos, empiresToExclude);
+    if (empire2 !== null && empire2.research != null && !checkEmpireHasHyperDriveTech(empire2)) {
+        if (galaxy.researchStatic !== null) empire.research.setTechTreeLevel(galaxy.rnd, empire.dominantRace, 0.0, false);
+        // TechTree.FindNodeBySpecialFunctionCode(2).IsEnabled = true (the first node with that code).
+        const researchNode = empire.research.techTree.find((n) => n.def.specialFunctionCode === 2) ?? null;
+        if (researchNode !== null) researchNode.isEnabled = true;
+        empire.research.update(empire.dominantRace);
+        empire.reviewResearchAbilities();
+        empire.reviewDesignsBuiltObjectsImprovedComponents();
+        num2 = 0;
+        num3 = 0;
+        num4 = 0;
+        num5 = 0;
+        num7 = 0;
+    }
+    empire.takeOwnershipOfColony(habitat, empire);
+    empire.controlColonization = AutomationLevel.FullyAutomated;
+    empire.controlColonyDevelopment = true;
+    empire.controlColonyStockLevels = true;
+    empire.controlColonyTaxRates = true;
+    empire.controlDesigns = true;
+    empire.controlDiplomacyGifts = AutomationLevel.FullyAutomated;
+    empire.controlDiplomacyOffense = AutomationLevel.FullyAutomated;
+    empire.controlDiplomacyTreaties = AutomationLevel.FullyAutomated;
+    empire.controlMilitaryAttacks = AutomationLevel.FullyAutomated;
+    empire.controlMilitaryFleets = true;
+    empire.controlStateConstruction = AutomationLevel.FullyAutomated;
+    empire.controlTroopGeneration = true;
+    empire.controlAgentAssignment = AutomationLevel.FullyAutomated;
+    empire.controlResearch = true;
+    empire.controlPopulationPolicy = true;
+    empire.controlColonyFacilities = AutomationLevel.FullyAutomated;
+    empire.controlCharacterLocations = true;
+    empire.controlOfferPirateMissions = AutomationLevel.FullyAutomated;
+    if (habitat.population.dominantRace !== null) empire.designPictureFamilyIndex = habitat.population.dominantRace.designsPictureFamilyIndex;
+    empire.generateDesignSpecifications(galaxy, habitat.population.dominantRace!, false, habitat.population.dominantRace!.name);
+    empire.initiateConstruction = false;
+    empireDoTasks(galaxy, empire);
+    empire.initiateConstruction = true;
+    for (let j = 0; j < num2; j++) newEmpireStartingShip(galaxy, empire, habitat, BuiltObjectSubRole.GasMiningShip, false, habitat.xpos + 100.0, habitat.ypos - 50.0);
+    for (let k = 0; k < num2; k++) newEmpireStartingShip(galaxy, empire, habitat, BuiltObjectSubRole.MiningShip, false, habitat.xpos + 50.0, habitat.ypos + 100.0);
+    for (let l = 0; l < num3; l++) newEmpireStartingShip(galaxy, empire, habitat, BuiltObjectSubRole.ConstructionShip, true, habitat.xpos, habitat.ypos);
+    for (let m = 0; m < num4; m++) newEmpireStartingShip(galaxy, empire, habitat, BuiltObjectSubRole.ExplorationShip, true, habitat.xpos, habitat.ypos);
+    for (let n = 0; n < num5; n++) newEmpireStartingShip(galaxy, empire, habitat, BuiltObjectSubRole.SmallFreighter, false, habitat.xpos - 50.0, habitat.ypos - 100.0);
+    for (let num8 = 0; num8 < num6; num8++) newEmpireStartingShip(galaxy, empire, habitat, BuiltObjectSubRole.MediumFreighter, false, habitat.xpos - 50.0, habitat.ypos - 100.0);
+    if (num7 > 0) {
+        const design = findNewest(empire.designs, BuiltObjectSubRole.MediumSpacePort);
+        if (design !== null) {
+            design.buildCount++;
+            const builtObject = generateBuiltObjectFromDesign(galaxy, empire, design, empire.capital!.name + ' ' + gameText('Space Port'), true, habitat.xpos, habitat.ypos);
+            builtObject.parentHabitat = habitat;
+            builtObject.dateBuilt = galaxyStarDate(galaxy);
+            builtObject.dateRetrofit = galaxyStarDate(galaxy);
+            const p = galaxy.selectRelativeHabitatSurfacePoint(habitat);
+            builtObject.parentOffsetX = p.x;
+            builtObject.parentOffsetY = p.y;
+            builtObject.heading = galaxy.selectRandomHeading();
+            builtObject.reDefine();
+            if (!empire.spacePorts.includes(builtObject)) empire.spacePorts.push(builtObject);
+            if (!empire.constructionYards.includes(builtObject)) empire.constructionYards.push(builtObject);
+            if (!empire.manufacturers.includes(builtObject)) empire.manufacturers.push(builtObject);
+            if (!empire.refuellingDepots.includes(builtObject)) empire.refuellingDepots.push(builtObject);
+            builtObject.reDefine();
+        }
+    }
+    // TODO(port) M4i: EnsureStrategicResourceSupply (Empire.6.cs 1656) — stub.
+    ensureStrategicResourceSupply(galaxy, empire);
+    empire.resolveSystemVisibility(habitat.xpos, habitat.ypos);
+    galaxy.empires.push(empire);
 }
 
 /** Galaxy.2.cs 4784 ChanceColonyGovernorPromotion(empire, colony) (characterRuntime.ts). */
@@ -498,10 +643,16 @@ export function doPlanetRemove(galaxy: Galaxy, habitat: Habitat): void {
     /* TODO(port) M4u */ todo(T_doPlanetRemove);
 }
 
-const T_clearCompletedPlanetDestroyerProjects = registerTodo('M4u', 'clearCompletedPlanetDestroyerProjects');
-/** Galaxy.5.cs 2867 ClearCompletedPlanetDestroyerProjects (planet destroyer runtime: deferred). */
+/** Galaxy.5.cs 2867 ClearCompletedPlanetDestroyerProjects: drop planet-destroyer project locations whose ship is built or gone. No Rnd. */
 export function clearCompletedPlanetDestroyerProjects(galaxy: Galaxy): void {
-    /* TODO(port) M4u */ todo(T_clearCompletedPlanetDestroyerProjects);
+    const galaxyLocationList: GalaxyLocation[] = [];
+    for (let i = 0; i < galaxy.galaxyLocations.length; i++) {
+        const galaxyLocation = galaxy.galaxyLocations[i];
+        if (galaxyLocation.type === GalaxyLocationType.PlanetDestroyer && galaxyLocation.relatedBuiltObject !== null && (galaxyLocation.relatedBuiltObject.unbuiltComponentCount === 0 || galaxyLocation.relatedBuiltObject.hasBeenDestroyed)) {
+            galaxyLocationList.push(galaxyLocation);
+        }
+    }
+    for (const item of galaxyLocationList) removeGalaxyLocation(galaxy, item);
 }
 
 const T_processDelayedEventActions = registerTodo('deferred', 'processDelayedEventActions');
@@ -573,13 +724,81 @@ export function checkSendPreWarpProgressEventMessage(galaxy: Galaxy, empire: Emp
     return empireEvents.checkSendPreWarpProgressEventMessage(galaxy, empire, eventType, subject, otherEmpire, hint);
 }
 
-const T_leaveEmpire = registerTodo('M4u', 'leaveEmpire');
+/** Habitat.cs 5888 IdentifyLeavingEmpire. No Rnd. */
+function identifyLeavingEmpire(galaxy: Galaxy, habitat: Habitat): Empire | null {
+    let result = galaxy.independentEmpire;
+    if (habitat.quality > 0.5) {
+        if (habitat.invadingTroops !== null && habitat.invadingTroops.count > 0) {
+            for (let i = 0; i < habitat.invadingTroops.count; i++) {
+                const troop = habitat.invadingTroops.items[i];
+                if (troop != null && troop.empire !== null && troop.empire !== galaxy.independentEmpire) {
+                    result = troop.empire as Empire;
+                    break;
+                }
+            }
+        } else {
+            const empireList: Empire[] = [];
+            const owner = habitat.owner!;
+            for (const diplomaticRelation of owner.diplomaticRelations) {
+                const other = diplomaticRelation.otherEmpire!;
+                if (diplomaticRelation.type === DiplomaticRelationType.FreeTradeAgreement || diplomaticRelation.type === DiplomaticRelationType.Protectorate || diplomaticRelation.type === DiplomaticRelationType.MutualDefensePact) {
+                    if (other !== owner) empireList.push(other);
+                } else if (habitat.population != null && habitat.population.dominantRace !== null && other.dominantRace === habitat.population.dominantRace && other !== owner) {
+                    empireList.push(other);
+                }
+            }
+            if (empireList.length > 0) {
+                let num = Number.MAX_VALUE;
+                let habitat3: Habitat | null = null;
+                for (const item of empireList) {
+                    const habitat2 = fastFindNearestColony(galaxy, Math.trunc(habitat.xpos), Math.trunc(habitat.ypos), item, 0);
+                    if (habitat2 !== null) {
+                        const num2 = galaxy.calculateDistance(habitat2.xpos, habitat2.ypos, habitat.xpos, habitat.ypos);
+                        if (num2 < num) {
+                            num = num2;
+                            habitat3 = habitat2;
+                        }
+                    }
+                }
+                if (habitat3 !== null && num < galaxy.sectorSize * 0.8) result = habitat3.empire;
+            }
+        }
+    }
+    return result;
+}
+
 /**
- * Habitat.cs 5947 LeaveEmpire (rebellion: IdentifyLeavingEmpire → TakeOwnershipOfColony + messages + ability review).
- * Added by M4j (CheckSatisfaction, Empire.HaveRevolution).
+ * Habitat.cs 5948 LeaveEmpire (rebellion: the colony joins a friendly / same-race neighbour or becomes independent). No Rnd
+ * of its own (TakeOwnershipOfColony / ReviewEmpireAbilityBonuses callees). Called by M4j (CheckSatisfaction, HaveRevolution).
  */
 export function leaveEmpire(galaxy: Galaxy, habitat: Habitat): void {
-    /* TODO(port) M4u */ todo(T_leaveEmpire);
+    if (habitat.owner === null || habitat.owner === galaxy.independentEmpire || (habitat.invadingTroops !== null && habitat.invadingTroops.count !== 0)) return;
+    habitat.culturalDistressFactor = 0;
+    habitat.rebelling = false;
+    const empire = identifyLeavingEmpire(galaxy, habitat);
+    if (empire !== galaxy.independentEmpire) {
+        let description = gameText('Colony Leaves Empire', habitat.name, empire!.name);
+        sendMessageToEmpire(habitat.owner, habitat.owner, EmpireMessageType.ColonyLost, habitat, description);
+        empire!.takeOwnershipOfColony(habitat, empire);
+        description = gameText('Colony Leaves Empire Joins Us', habitat.name);
+        sendMessageToEmpire(empire, empire, EmpireMessageType.ColonyGained, habitat, description);
+        if (habitat.population == null || habitat.population.dominantRace === null) return;
+        const r = reviewEmpireAbilityBonusesFull(galaxy, empire!);
+        const list = r.descriptions;
+        const raceChanged = r.raceChanged;
+        if (list.length <= 0 || raceChanged === null) return;
+        let text = gameText('Revolt New Race Ability', resolveDescription(HabitatCategoryType as unknown as Record<number, string>, habitat.category).toLowerCase(), habitat.name, raceChanged.name);
+        text += '\n';
+        for (const item of list) text = text + '\n' + item;
+        const text2 = gameText('New Ability for our Empire');
+        sendEventMessageToEmpire(empire!, EventMessageType.NewEmpireRaceAbility, text2, text, raceChanged, habitat);
+    } else {
+        const description2 = gameText('Colony Leaves Empire Independent', habitat.name);
+        sendMessageToEmpire(habitat.owner, habitat.owner, EmpireMessageType.ColonyLost, habitat, description2);
+        // TODO(port) M4q: TakeOwnershipOfColony(this, IndependentEmpire, destroyAllBuiltObjectsAndTroopsAtColony: true) — the TS
+        // takeOwnershipOfColony has no destroy-bases/troops branch yet (Empire.1.cs 64-370 TODO in empire.ts).
+        galaxy.independentEmpire!.takeOwnershipOfColony(habitat, galaxy.independentEmpire);
+    }
 }
 
 /**
@@ -596,4 +815,214 @@ export function doCharacterEventRuntime(galaxy: Galaxy, eventType: number, event
 /** Galaxy.2.cs 4819 ChanceNewAmbassador(empire, newRelationType, otherEmpire) (characterRuntime.ts). */
 export function chanceNewAmbassador(galaxy: Galaxy, empire: Empire, newRelationType: number, otherEmpire: Empire): boolean {
     return characterRuntime.chanceNewAmbassador(galaxy, empire, newRelationType, otherEmpire);
+}
+
+// ---------------------------------------------------------------------------
+// Creature.cs 1196-1345 creature combat (CheckForAttackers, CheckForTargets, ScanForTarget, CheckTargetInRange,
+// AttackTarget). Creature times are game seconds (creature.ts); DamageTarget is combat damage (M4o stub).
+// ---------------------------------------------------------------------------
+
+/** StellarObject.Attackers (null for habitats: the C# never initialises them). */
+export function stellarAttackers(o: StellarObject): StellarObject[] | null {
+    if (isBuiltObject(o)) return o.attackers as StellarObject[] | null;
+    if (isCreature(o)) return o.attackers;
+    return null;
+}
+
+/** StellarObject.Pursuers (null for habitats). */
+export function stellarPursuers(o: StellarObject): StellarObject[] | null {
+    if (isBuiltObject(o)) return o.pursuers as StellarObject[] | null;
+    if (isCreature(o)) return o.pursuers;
+    return null;
+}
+
+/** StellarObject.CurrentSpeed (float; a habitat's is never set → 0). */
+function stellarCurrentSpeed(o: StellarObject): number {
+    if (isBuiltObject(o) || isCreature(o)) return o.currentSpeed;
+    return 0;
+}
+
+/** StellarObject.CurrentTarget setter for an attacker (BuiltObject / Creature; habitats never attack). */
+function setStellarCurrentTarget(o: StellarObject, target: StellarObject | null): void {
+    if (isBuiltObject(o)) o.currentTarget = target;
+    else if (isCreature(o)) o.currentTarget = target;
+}
+
+/** List.Remove (first occurrence). */
+function removeFirstOf<T>(list: T[], item: T): void {
+    const i = list.indexOf(item);
+    if (i >= 0) list.splice(i, 1);
+}
+
+/** Creature.cs 1196 CheckForAttackers. No Rnd. */
+export function creatureCheckForAttackers(galaxy: Galaxy, creature: Creature): void {
+    void galaxy;
+    if (creature.attackers.length <= 0) return;
+    creature.currentTarget = creature.attackers[0];
+    const pursuers = stellarPursuers(creature.currentTarget);
+    if (pursuers !== null && pursuers.indexOf(creature) < 0) pursuers.push(creature);
+    creature.targetSpeed = Math.fround(creature.movementSpeed);
+}
+
+/** Creature.cs 1206 CheckForTargets. No Rnd (NotifyOfAttack's callees aside). */
+export function creatureCheckForTargets(galaxy: Galaxy, creature: Creature): void {
+    if (creature.currentTarget !== null || galaxy.deferEventsForGameStart) return;
+    const stellarObject = creatureScanForTarget(galaxy, creature);
+    if (stellarObject === null) return;
+    if (creature.currentTarget !== null) {
+        const t = creature.currentTarget as StellarObject;
+        const p = stellarPursuers(t);
+        if (p !== null) removeFirstOf(p, creature as StellarObject);
+        const a = stellarAttackers(t);
+        if (a !== null) removeFirstOf(a, creature as StellarObject);
+    }
+    creature.currentTarget = stellarObject;
+    if (isHabitat(stellarObject)) {
+        const num1 = creature.xpos - stellarObject.xpos;
+        const num2 = creature.ypos - stellarObject.ypos;
+        creature.parentHabitat = stellarObject;
+        creature.anchorHabitat = creature.parentHabitat;
+        creature.parentX = num1;
+        creature.parentY = num2;
+        creature.parentOffsetX = num1;
+        creature.parentOffsetY = num2;
+    }
+    const pursuers = stellarPursuers(creature.currentTarget);
+    if (pursuers !== null && pursuers.indexOf(creature) < 0) pursuers.push(creature);
+    creature.targetSpeed = Math.fround(creature.movementSpeed);
+    if (isBuiltObject(stellarObject)) notifyOfAttackBuiltObject(galaxy, creature, null, stellarObject, true);
+    else if (isHabitat(stellarObject)) notifyOfAttackHabitat(galaxy, creature, null, stellarObject, false, true, true);
+}
+
+/** Galaxy.3.cs 1568 FindNearestColonyInSystem(system, x, y). No Rnd. */
+function findNearestColonyInSystem(galaxy: Galaxy, systemIndex: number, x: number, y: number): Habitat | null {
+    let num = Number.MAX_VALUE;
+    let result: Habitat | null = null;
+    const habitats = galaxy.systemHabitatsOf(systemIndex);
+    for (let i = 0; i < habitats.length; i++) {
+        const habitat = habitats[i];
+        if (habitat != null && !habitat.hasBeenDestroyed && habitat.empire !== null && habitat.population != null && habitat.population.items.length > 0) {
+            const num2 = galaxy.calculateDistance(x, y, habitat.xpos, habitat.ypos);
+            if (num2 < num) {
+                result = habitat;
+                num = num2;
+            }
+        }
+    }
+    return result;
+}
+
+/** Galaxy.6.cs 2838 FastFindNearestShipInSystem(x, y, systemStar). No Rnd. */
+function fastFindNearestShipInSystem(galaxy: Galaxy, x: number, y: number, systemStar: Habitat): BuiltObject | null {
+    let result: BuiltObject | null = null;
+    let num = Number.MAX_VALUE;
+    const builtObjectsAtLocation = getBuiltObjectsAtLocation(galaxy, x, y, MAX_SOLAR_SYSTEM_SIZE * 2);
+    for (let i = 0; i < builtObjectsAtLocation.length; i++) {
+        const builtObject = builtObjectsAtLocation[i];
+        if (builtObject != null && builtObject.nearestSystemStar === systemStar) {
+            const num2 = galaxy.calculateDistanceSquared(x, y, builtObject.xpos, builtObject.ypos);
+            if (num2 < num) {
+                num = num2;
+                result = builtObjectsAtLocation[i];
+            }
+        }
+    }
+    return result;
+}
+
+/** Creature.cs 1245 ScanForTarget. No Rnd. */
+function creatureScanForTarget(galaxy: Galaxy, creature: Creature): StellarObject | null {
+    if (creature.currentSpeed > creature.movementSpeed) return null;
+    let target: StellarObject | null = null;
+    if (creature.nearestSystemStar === null) {
+        // FindNearestBuiltObject((int)Xpos, (int)Ypos, (Empire)null) (Galaxy.7.cs 795): every built object.
+        target = galaxy.findNearestBuiltObject(Math.trunc(creature.xpos), Math.trunc(creature.ypos));
+    } else if (creature.type === CreatureType.SilverMist) {
+        if (creature.nearestSystemStar.systemIndex >= 0 && creature.nearestSystemStar.systemIndex < galaxy.systems.length) {
+            const system = galaxy.systems[creature.nearestSystemStar.systemIndex];
+            if (system != null && ((system.independentColonyCount ?? 0) > 0 || (system.dominantEmpire != null && system.dominantEmpire.empire != null))) {
+                target = findNearestColonyInSystem(galaxy, creature.nearestSystemStar.systemIndex, creature.xpos, creature.ypos);
+            }
+        }
+        if (target === null) target = fastFindNearestShipInSystem(galaxy, creature.xpos, creature.ypos, creature.nearestSystemStar);
+    } else {
+        target = fastFindNearestShipInSystem(galaxy, creature.xpos, creature.ypos, creature.nearestSystemStar);
+    }
+    return target !== null && (target as { empire: Empire | null }).empire !== null && creatureCheckTargetInRange(galaxy, creature, target) ? target : null;
+}
+
+/** Creature.cs 1268 CheckTargetInRange(target). No Rnd. */
+export function creatureCheckTargetInRange(galaxy: Galaxy, creature: Creature, target: StellarObject): boolean {
+    let val2 = creature.anchorRange;
+    let num1: number;
+    if (target !== null && (!creature.locationLocked || (creature.anchorHabitat === null && creature.anchorPoint === null))) {
+        num1 = galaxy.calculateDistance(creature.xpos, creature.ypos, target.xpos, target.ypos);
+    } else if (creature.anchorHabitat !== null) {
+        num1 = galaxy.calculateDistance(creature.anchorHabitat.xpos, creature.anchorHabitat.ypos, target.xpos, target.ypos);
+        if (creature.anchorHabitat.category === HabitatCategoryType.GasCloud) val2 = Math.trunc(creature.anchorHabitat.diameter / 2);
+    } else {
+        num1 = creature.anchorPoint === null ? galaxy.calculateDistance(creature.xpos, creature.ypos, target.xpos, target.ypos) : galaxy.calculateDistance(creature.anchorPoint.x, creature.anchorPoint.y, target.xpos, target.ypos);
+    }
+    const num2 = Math.max(creature.attackRange, val2);
+    if (num1 < num2) {
+        creature.targetSpeed = num1 >= 30.0 ? Math.fround(creature.movementSpeed) : stellarCurrentSpeed(target);
+        return true;
+    }
+    if (creature.currentTarget !== null) {
+        const t = creature.currentTarget as StellarObject;
+        const p = stellarPursuers(t);
+        if (p !== null) removeFirstOf(p, creature as StellarObject);
+        const a = stellarAttackers(t);
+        if (a !== null) removeFirstOf(a, creature as StellarObject);
+    }
+    return false;
+}
+
+/**
+ * Creature.cs 1299 AttackTarget(timePassed, tempNow). `tempNow` in game seconds (creature.ts clock). No Rnd of its own
+ * (DamageTarget is M4o's).
+ */
+export function creatureAttackTarget(galaxy: Galaxy, creature: Creature, timePassed: number, tempNow: number): void {
+    creature.isVisible = true;
+    if (creature.currentTarget === null || creature.attackStrength <= 0) return;
+    let target = creature.currentTarget as StellarObject;
+    creature.distanceToTarget = galaxy.calculateDistance(creature.xpos, creature.ypos, target.xpos, target.ypos);
+    if (creature.distanceToTarget <= 50.0) {
+        creature.targetSpeed = isHabitat(target) ? Math.fround(target.orbitSpeed + 3) : stellarCurrentSpeed(target);
+        // TODO(port) M4o: Creature.cs 1347 DamageTarget — stub (no damage, never destroys the target).
+        if (creatureDamageTarget(galaxy, creature, target, Math.max(1, Math.trunc(creature.attackStrength * timePassed)), Math.round(tempNow * 1000), timePassed)) {
+            if (!isHabitat(target)) {
+                const size = target.size;
+                if (creature.size < creature.maxSize) {
+                    let num1 = Math.min(4, Math.trunc(size / 50.0));
+                    let num2 = Math.trunc(size / 10.0);
+                    if (creature.type === CreatureType.SilverMist) {
+                        num1 = Math.min(40, Math.trunc(size / 25.0));
+                        num2 = Math.trunc(size / 5.0);
+                    }
+                    creature.attackStrength += num1;
+                    creature.size += num2;
+                    creature.size = Math.min(creature.size, creature.maxSize);
+                    creature.damageKillThreshold += Math.trunc(size / 10.0);
+                    creature.damageKillThreshold = Math.min(creature.damageKillThreshold, Math.trunc(creature.size * 3.0));
+                }
+            }
+            // Galaxy.CheckTriggerEvent(CurrentTarget.GameEventId, null, Destroy, null): scripted game events are deferred
+            // (plan §0.3; no object carries a GameEventId in a normal game).
+            creature.distanceToTarget = Number.MAX_VALUE;
+            const attackers = stellarAttackers(target);
+            if (attackers !== null) {
+                for (const attacker of attackers) setStellarCurrentTarget(attacker, null);
+            }
+            creature.currentTarget = null;
+            creature.parentHabitat = creature.anchorHabitat;
+        }
+        if (creature.currentTarget === null) return;
+        target = creature.currentTarget as StellarObject;
+        const targetAttackers = stellarAttackers(target);
+        if (targetAttackers === null || targetAttackers.indexOf(creature) >= 0) return;
+        targetAttackers.push(creature);
+    } else {
+        creature.targetSpeed = Math.fround(creature.movementSpeed);
+    }
 }
