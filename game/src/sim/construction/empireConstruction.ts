@@ -1146,7 +1146,7 @@ export function retireOldBuiltObjects(galaxy: Galaxy, empire: Empire): void {
 // ---------------------------------------------------------------------------------------------------------------
 
 /** Empire.5.cs 37 DetermineRetrofitAffordability(builtObject, design, out cost, out componentsToProcure). */
-function determineRetrofitAffordability(galaxy: Galaxy, empire: Empire, builtObject: BuiltObject | null, design: Design | null): { result: boolean; cost: number; componentsToProcure: ComponentDefinition[] | null } {
+export function determineRetrofitAffordability(galaxy: Galaxy, empire: Empire, builtObject: BuiltObject | null, design: Design | null): { result: boolean; cost: number; componentsToProcure: ComponentDefinition[] | null } {
     let cost = 0.0;
     let componentsToProcure: ComponentDefinition[] | null = null;
     if (design !== null && builtObject !== null && builtObject.design !== design) {
