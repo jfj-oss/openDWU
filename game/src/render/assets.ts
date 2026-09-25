@@ -469,13 +469,15 @@ export class AssetStore {
         }
         if (!this.dwuPresent || urls.length === 0) {
             const tex = fallback();
+            useMinifyingFilter(tex);
             this.cache.set(key, tex);
             return Promise.resolve(tex);
         }
         const promise = (async () => {
             for (const url of urls) {
                 try {
-                    const tex = await Assets.load(absoluteUrl(url));
+                    const tex: Texture = await Assets.load(absoluteUrl(url));
+                    useMinifyingFilter(tex);
                     this.cache.set(key, tex);
                     return tex;
                 } catch {
@@ -484,6 +486,7 @@ export class AssetStore {
                 }
             }
             const tex = fallback();
+            useMinifyingFilter(tex);
             this.cache.set(key, tex);
             return tex;
         })();
@@ -511,10 +514,40 @@ export class AssetStore {
                 if (result === null) {
                     result = fb();
                 }
+                useMinifyingFilter(result);
                 this.cache.set(key, result);
                 out.set(key, result);
             }),
         );
         return out;
     }
+}
+
+/**
+ * Give a map texture a trilinear mip chain. The main view draws planets, moons,
+ * stars, corona frames, map-star icons, rocks, gas clouds, the backdrop and
+ * ship art far smaller than their source images at system/sector zoom; with
+ * Pixi's default (bilinear, no mips) that skips most texels and speckles the
+ * art. The C# never minifies raw art that way — e.g. for ships
+ * PrepareBuiltObjectImageNEW
+ * (Main.Part12.cs:4533-4555, zoom 1.0) first redraws the art at
+ * the 100% size with InterpolationMode.HighQualityBicubic (okQtJmsUqH,
+ * Main.Part12.cs:5064-5074), and MainView.1.cs:1018-1024 uploads that, drawn
+ * with SamplerState.AnisotropicClamp (MainView.cs:1511-1517). A full
+ * trilinear mip chain is the GPU equivalent of that filtered pre-scale.
+ * Applied centrally by AssetStore to every texture it hands out (loaded art
+ * and procedural fallbacks); the shared Texture.EMPTY / Texture.WHITE are left
+ * alone. Render-only: no sim state is touched.
+ */
+export function useMinifyingFilter(texture: Texture): void {
+    if (texture === Texture.EMPTY || texture === Texture.WHITE) return;
+    const source = texture.source;
+    if (source.autoGenerateMipmaps && source.scaleMode === 'linear') return;
+    source.autoGenerateMipmaps = true;
+    // Sets mag, min and mipmap filters to linear (trilinear minification).
+    source.scaleMode = 'linear';
+    source.maxAnisotropy = 16;
+    // Mip levels are allocated when the source is first uploaded; drop any
+    // earlier GPU copy so the next render re-creates it with the chain.
+    source.unload();
 }

@@ -165,21 +165,29 @@ export function resolveDrawPictureRef(bo: {
 
 /** Crop + content-size metrics of a ship image (see shipImageMetrics). */
 export interface ShipImageMetrics {
-    /** C# imageData.Size = image area / content-pixel count (measured on the
-     * 30×30 rescale, so this is the scale-free equivalent). */
+    /** DetermineBuiltObjectSizeNEW's num3: crop-bitmap area / content-pixel
+     * count (imageData.Size) of the full-size image data. */
     areaRatio: number;
-    /** Side of the padded square crop (bbox + 4 px padding each side). */
+    /** Side of the C# square crop bitmap (padded bbox extent + 1). */
     cropSide: number;
-    /** Centre of the content bbox in raw-image pixels (anchor point). */
+    /** Centre of that crop square in raw-image pixel-edge coordinates (anchor). */
     cropCenterX: number;
     cropCenterY: number;
 }
 
 /**
  * Pure port of CropImageContent (padding 4) + DetermineImageContentSize on the
- * raw RGBA. A content pixel is opaque and not opaque black (the C# also
- * excludes transparent-white and fully-transparent pixels, which already fail
- * `a > 0`). Returns null when the image has no content pixels.
+ * raw RGBA (BuiltObjectImageCache.cs CropImageContent / LoadSingleBuiltObjectImage).
+ * A content pixel is opaque and not opaque black (the C# also excludes
+ * transparent-white and fully-transparent pixels, which already fail `a > 0`).
+ * Returns null when the image has no content pixels.
+ *
+ * The crop is the C#'s integer maths: pad the bbox by 4, then square it about
+ * the padded bbox — `num10 = num + num9 / 2 - num8 / 2` (or the y analogue) —
+ * into `new Bitmap(num11 - num10 + 1, num13 - num12 + 1)`, so the square is
+ * one pixel wider than the padded extent. The main view draws the full-size
+ * image data (BuiltObjectImageCache.FastGetImageData), whose Image is that
+ * crop bitmap, so DetermineBuiltObjectSizeNEW's image area is cropSide².
  */
 export function shipImageMetrics(rgba: ArrayLike<number>, w: number, h: number): ShipImageMetrics | null {
     let minX = Infinity;
@@ -204,15 +212,31 @@ export function shipImageMetrics(rgba: ArrayLike<number>, w: number, h: number):
         }
     }
     if (count === 0) return null;
-    // Padded bbox (±4) made into a square centred on the bbox.
-    const cropSide = Math.max(maxX - minX, maxY - minY) + 8;
-    // C# measures on the 30×30 rescale, so this is the scale-free equivalent.
-    const areaRatio = (cropSide * cropSide) / count;
+    // num3/num4 = minY/maxY, num/num2 = minX/maxX, padded by 4.
+    const num = minX - 4;
+    const num2 = maxX + 4;
+    const num3 = minY - 4;
+    const num4 = maxY + 4;
+    const num8 = num4 - num3; // padded height
+    const num9 = num2 - num; // padded width
+    let left: number;
+    let top: number;
+    let side: number;
+    if (num8 > num9) {
+        left = num + Math.trunc(num9 / 2) - Math.trunc(num8 / 2);
+        top = num3;
+        side = num8 + 1;
+    } else {
+        top = num3 + Math.trunc(num8 / 2) - Math.trunc(num9 / 2);
+        left = num;
+        side = num9 + 1;
+    }
     return {
-        areaRatio,
-        cropSide,
-        cropCenterX: (minX + maxX) / 2,
-        cropCenterY: (minY + maxY) / 2,
+        areaRatio: (side * side) / count,
+        cropSide: side,
+        // Centre of the crop square in raw-image pixel-edge coordinates.
+        cropCenterX: left + side / 2,
+        cropCenterY: top + side / 2,
     };
 }
 
@@ -520,3 +544,4 @@ async function measureShipImage(url: string): Promise<ShipImageMetrics> {
     if (m === null) throw new Error(`no content pixels: ${url}`);
     return m;
 }
+
