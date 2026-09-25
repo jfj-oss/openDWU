@@ -28,6 +28,7 @@ import { toggleColoniesList } from './screens/coloniesList';
 import { toggleShipDesigns } from './screens/shipDesigns'; // [16b]
 import { toggleShipsAndBasesList } from './screens/shipsAndBasesList';
 import { toggleMessageHistory } from './screens/messageHistory';
+import { toggleBuildOrder } from './screens/buildOrder'; import { toggleConstructionYards } from './screens/constructionYards'; // [16c]
 import { toggleResearchScreen } from './screens/researchScreen'; // [15b]
 import { showToast } from './toast';
 
@@ -197,6 +198,14 @@ let currentSelection: Selection | null = null;
 export function getSelection(): Selection | null {
     return currentSelection;
 }
+
+// [16c] Ship/base/colony selection hook: buildSelectionPanel registers it; the
+// Construction Yards panel's Go to calls selectStellarObject (method_208 + method_157).
+let stellarObjectSelectHandler: ((target: BuiltObject | Habitat, moveView: boolean) => void) | null = null;
+export function selectStellarObject(target: BuiltObject | Habitat, moveView = true): void {
+    stellarObjectSelectHandler?.(target, moveView);
+}
+// [/16c]
 
 /** Test hook: set the current selection directly (bypasses the panel's own
  * setter, which also refreshes its DOM). */
@@ -559,6 +568,19 @@ function buildTopBarButton(name: string, wiring: HudWiring): HTMLElement {
                 },
             });
         } else {
+            // [16c] btnBuildOrder → Build Order (Main.Part2.cs:1196 btnBuildOrder_Click);
+            // tbtnConstructionYards → Construction Yards (Main.Part6.cs:3243 tbtnConstructionYards_Click).
+            if (name === 'btnBuildOrder') {
+                const src = getEmpireSummarySource();
+                if (src) toggleBuildOrder({ empire: src.empire });
+                return;
+            }
+            if (name === 'tbtnConstructionYards') {
+                const src = getEmpireSummarySource();
+                if (src) toggleConstructionYards({ empire: src.empire, onSelect: (t) => selectStellarObject(t, true) });
+                return;
+            }
+            // [/16c]
             // [15c] tbtnShipGroups → Fleets list (Main.Part9.cs:3153 tbtnShipGroups_Click).
             if (name === 'tbtnShipGroups') {
                 const src = getEmpireSummarySource();
@@ -820,6 +842,28 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         footer.appendChild(b);
     }
     panel.appendChild(footer);
+    // [16c] Select a construction site: a colony selects itself; a ship/base selects its
+    // nearest system with builtObject set (as the Bases cycler does). Optionally move the view.
+    stellarObjectSelectHandler = (target, moveView) => {
+        const galaxy = wiring.galaxy;
+        if (!galaxy) return;
+        if (target instanceof Habitat) {
+            const h = target;
+            const system = galaxy.systems.find((s) => s.habitats.includes(h)) ?? galaxy.systems[h.systemIndex];
+            if (!system) return;
+            wiring.onSelectionChange?.({ habitat: h, system });
+        } else {
+            const system = nearestSystem(galaxy.systems, target.xpos, target.ypos);
+            if (!system) return;
+            wiring.onSelectionChange?.({ habitat: system.systemStar, system, builtObject: target });
+        }
+        const cam = wiring.camera;
+        if (moveView && cam) {
+            cam.centerOn(target.xpos, target.ypos);
+            cam.zoomAt(SYSTEM_LEVEL_ZOOM, cam.width / 2, cam.height / 2);
+        }
+    };
+    // [/16c]
 
     // Task 12n: the C/P/M/Y/X/F/I hotkeys route here. A plain/Shift cycle
     // selects without moving the view; Ctrl (MoveView) also moves it. The
