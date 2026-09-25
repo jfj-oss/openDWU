@@ -6,6 +6,7 @@ import { createMapOverlayState, OVERLAY_ROWS, toggleOverlay, type MapOverlayStat
 import { Camera } from '../render/camera';
 import { Galaxy } from '../sim/galaxy';
 import type { GameData } from '../sim/data/gameData';
+import { moneyPanelIncome } from '../sim/treasury';
 import { Habitat, HabitatCategoryType, HabitatType, IndustryType, SystemInfo } from '../sim/types';
 import type { Empire } from '../sim/empire';
 import type { BuiltObject } from '../sim/builtObject';
@@ -264,7 +265,7 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
                 el = buildTopLeftBar(clock, () => gameMenu.toggle());
                 break;
             case 'pnlMoney':
-                el = buildMoneyPanel(wiring.game);
+                el = buildMoneyPanel(wiring.game, wiring.galaxy);
                 break;
             case 'pnlSelection':
             {
@@ -692,8 +693,8 @@ export function colorHueRotate(rgb: number): number {
 
 /** Top-right money block + nearest-system name (existing behaviour kept).
  * Task 10d: Money is refreshed live from the player empire's state money;
- * Cashflow and Bonus Income show '—' until the sim tracks them. */
-function buildMoneyPanel(game?: { playerEmpire: { name: string; mainColor: number; stateMoney: number; flagShape: number } }): HTMLElement {
+ * Cashflow and Bonus Income come from treasury.ts moneyPanelIncome (Main.Part11.cs 832 method_126). */
+function buildMoneyPanel(game?: { playerEmpire: { name: string; mainColor: number; stateMoney: number; flagShape: number } }, galaxy?: Galaxy): HTMLElement {
     const panel = document.createElement('div');
     panel.className = 'hud-panel hud-money';
     const valueEls: Record<string, HTMLElement> = {};
@@ -721,12 +722,13 @@ function buildMoneyPanel(game?: { playerEmpire: { name: string; mainColor: numbe
         // on Empire — see the TODO(sim) notes below.
         const refreshMoney = (): void => {
             valueEls['Money'].textContent = formatMoney(Math.round(game.playerEmpire.stateMoney));
-            // TODO(sim): Empire has no cashflow field yet (src/sim/empire.ts) —
-            // show '—' until the economy port adds it.
-            // TODO(sim): Empire has no bonus-income field yet (src/sim/empire.ts) —
-            // show '—' until the economy port adds it.
-            valueEls['Cashflow'].textContent = '—';
-            valueEls['Bonus Income'].textContent = '—';
+            // Main.Part11.cs 838-857: Cashflow / Bonus Income, `+##,###,##0;-##,###,##0` (the C# keeps the previous
+            // strings when there is nothing to show).
+            const income = galaxy === undefined ? null : moneyPanelIncome(galaxy, galaxy.playerEmpire);
+            if (income !== null) {
+                valueEls['Cashflow'].textContent = formatSignedMoney(income.cashflow);
+                valueEls['Bonus Income'].textContent = formatSignedMoney(income.bonusIncome);
+            }
         };
         refreshMoney();
         setInterval(refreshMoney, 250);
@@ -1377,6 +1379,16 @@ export function formatPopulation(n: number): string {
 export function formatMoney(n: number): string {
     const sign = n < 0 ? '-' : '';
     return sign + Math.abs(Math.trunc(n)).toLocaleString('en-US');
+}
+
+/**
+ * .NET `n.ToString("+##,###,##0;-##,###,##0")`: rounded to an integer (half away from zero), grouped, always signed;
+ * a value that rounds to 0 uses the first section (`+0`). NaN → "NaN" as in .NET.
+ */
+export function formatSignedMoney(n: number): string {
+    if (Number.isNaN(n)) return 'NaN';
+    const r = Math.sign(n) * Math.round(Math.abs(n));
+    return (r < 0 ? '-' : '+') + Math.abs(r).toLocaleString('en-US');
 }
 
 /** Cashflow style: signed, in parentheses — `(+213,959)` / `(-5,000)` / `(0)`. */

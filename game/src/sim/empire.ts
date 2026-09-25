@@ -518,6 +518,12 @@ export class Empire {
     resupplyShips: unknown[] = [];
     planetDestroyers: unknown[] = [];
     messages: unknown[] = [];
+    /**
+     * Empire.cs 82 _MessageHistory = new EmpireMessageList() (EmpireMessage[]; messages.ts addHistoryMessage /
+     * removeOldHistoryMessages) and 84 _MaximumHistoryMessages = 1000. Saved with the empire (the Message History screen).
+     */
+    messageHistory: unknown[] = [];
+    maximumHistoryMessages = 1000;
     empireEvaluations: unknown[] = [];
     get systemVisibility(): SystemVisibility[] {
         return this.visibility.systemVisibility;

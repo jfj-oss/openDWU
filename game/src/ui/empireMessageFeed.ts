@@ -2,8 +2,9 @@
 // (Main.Part9.cs ReceiveMessageInternal / method_250).
 // The C# Main registers itself as the player's IMessageRecipient. Here we poll the queue
 // instead, because Empire.messageRecipient is saved by the save codec and a function on it
-// cannot be serialized. The feed only reads messages; it never mutates them.
-import { EmpireMessageType, empireMessages, type EmpireMessage } from '../sim/messages';
+// cannot be serialized. The feed never mutates the messages; like the C# receiver (Main.Part9.cs 1508-1517) it adds
+// each one except Informational to the player's saved Empire.MessageHistory.
+import { EmpireMessageType, addHistoryMessage, empireMessages, type EmpireMessage } from '../sim/messages';
 import type { Empire } from '../sim/empire';
 import { formatNet, resolveGameText, tryGetText } from '../sim/textResolver';
 import { getMessageOptions, routeEmpireMessage } from './messageRouting';
@@ -59,6 +60,7 @@ export function createEmpireMessageFeed(): EmpireMessageFeed {
             for (const m of empireMessages(empire)) {
                 if (m == null || seen.has(m)) continue;
                 seen.add(m);
+                if (m.messageType !== EmpireMessageType.Informational) addHistoryMessage(empire, m);
                 const text = formatEmpireMessage(m, empire);
                 if (text !== null) out.push(text);
             }

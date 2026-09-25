@@ -308,7 +308,9 @@ export async function startGameView(
         time.paused = savedClock.paused;
     }
     const simLoop = createSimLoop(galaxy, time, camera, simViewEnabledFromUrl(window.location.search));
-    pushHudMessage(foundingMessage, resolveStarDateDescription(time.currentStarDate));
+    // The founding line is the new game's first ticker message only: a loaded save (savedClock set) keeps its
+    // dated history and must not re-send it at the load date.
+    if (savedClock === undefined) pushHudMessage(foundingMessage, resolveStarDateDescription(time.currentStarDate));
     // Debug / screenshot hook: the created game (galaxy + player empire).
     // Task 06l: also exposes the running clock (`time`) so the tutorial
     // window's "Play This Game" button can unpause it.
