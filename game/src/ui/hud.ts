@@ -509,6 +509,7 @@ function buildTopLeftBar(clock: GalaxyTime, onGameMenu: () => void): HTMLElement
     bar.appendChild(makeSeparator());
 
     const pauseBtn = makeGlyphButton(clock.paused ? '▶' : '⏸', playPauseHint(clock.paused));
+    pauseBtn.dataset.hudCtl = 'playPause'; // stable hook (the title follows the clock state)
     const refreshPauseGlyph = (): void => {
         pauseBtn.textContent = clock.paused ? '▶' : '⏸';
         pauseBtn.title = playPauseHint(clock.paused);
@@ -518,11 +519,13 @@ function buildTopLeftBar(clock: GalaxyTime, onGameMenu: () => void): HTMLElement
         refreshPauseGlyph();
     });
     const dec = makeGlyphButton('−', controlHint('btnGameSpeedDecrease'));
+    dec.dataset.hudCtl = 'slower';
     dec.addEventListener('click', () => {
         clock.slower();
         refreshDateLabel(dateEl, clock);
     });
     const inc = makeGlyphButton('+', controlHint('btnGameSpeedIncrease'));
+    inc.dataset.hudCtl = 'faster';
     inc.addEventListener('click', () => {
         clock.faster();
         refreshDateLabel(dateEl, clock);

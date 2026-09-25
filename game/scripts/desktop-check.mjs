@@ -194,7 +194,7 @@ async function runFlow(page, base, tag, results) {
     try {
         const nowMs = () => page.evaluate(() => window.__dwu?.game?.galaxy?.nowMs ?? -1);
         const t0 = await nowMs();
-        await page.click('button[title="Play / pause"]');
+        await page.click('button[data-hud-ctl="playPause"]');
         let t1 = t0;
         const deadline = Date.now() + 60000;
         while (Date.now() < deadline) {

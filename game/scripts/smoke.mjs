@@ -209,7 +209,7 @@ async function main() {
         try {
             const dateSel = '.hud-date';
             const before = await page.textContent(dateSel);
-            await page.click('button[title="Play / pause"]');
+            await page.click('button[data-hud-ctl="playPause"]');
             // The spec calls for a 3s wait, but this headless Chromium/
             // swiftshader setup throttles requestAnimationFrame heavily (a
             // few frames/second, each clamped to Pixi's ticker deltaMS cap),
@@ -236,8 +236,8 @@ async function main() {
             if (after === before) {
                 console.log(`  WARN: sim clock advanced ${nowMs1 - nowMs0} ms but the day label did not change within 60s (slow headless renderer)`);
             }
-            await page.click('button[title="Faster"]');
-            await page.click('button[title="Faster"]');
+            await page.click('button[data-hud-ctl="faster"]');
+            await page.click('button[data-hud-ctl="faster"]');
             await page.waitForTimeout(100);
             const speedLabel = await page.textContent(dateSel);
             if (!speedLabel.includes('(4x)')) {

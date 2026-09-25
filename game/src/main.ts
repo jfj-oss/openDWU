@@ -348,7 +348,7 @@ export async function startGameView(
     });
     const systemNameEl = hud.elements.get('pnlMoney')?.querySelector('.hud-system-name');
     const dateEl = hud.elements.get('pnlTopLeftBar')?.querySelector('.hud-date');
-    const pauseBtn = hud.elements.get('pnlTopLeftBar')?.querySelector<HTMLButtonElement>('button[title="Play / pause"]');
+    const pauseBtn = hud.elements.get('pnlTopLeftBar')?.querySelector<HTMLButtonElement>('button[data-hud-ctl="playPause"]');
     const setSelection = (h: Habitat | null): void => {
         if (h === null) {
             hud.onSelectionChange?.(null);
@@ -1001,7 +1001,7 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     });
     const systemNameEl = hud.elements.get('pnlMoney')?.querySelector('.hud-system-name');
     const dateEl = hud.elements.get('pnlTopLeftBar')?.querySelector('.hud-date');
-    const pauseBtn = hud.elements.get('pnlTopLeftBar')?.querySelector<HTMLButtonElement>('button[title="Play / pause"]');
+    const pauseBtn = hud.elements.get('pnlTopLeftBar')?.querySelector<HTMLButtonElement>('button[data-hud-ctl="playPause"]');
     // Task 08g: push a Main View pick (or null) to the HUD selection panel.
     const setSelection = (h: Habitat | null): void => {
         if (h === null) {
