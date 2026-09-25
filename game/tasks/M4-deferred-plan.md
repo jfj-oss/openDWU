@@ -19,3 +19,13 @@ Then, before M5+ (UI completeness etc.):
 - **Code review** of the merged M4 tree by an Opus reviewer: cross-package duplicates left after the merges,
   registered save classes vs model classes, RND notes vs actual draws.
 - **Invariant tests** (plan §5.3.5) run after every harness test.
+
+## Follow-ups noted 2026-09-25 (afternoon)
+- Loader requests 50 files the install lacks (designTemplates/<race>/pirate/planetdestroyer.txt ×45, characters/Mechanoid.txt + Shakturi.txt in two cases): skip them like the C# does (check the C# load path) so the packaged app logs no 404s.
+- "Black band across the top 270 px" seen at 1920×1080 in both dev and package (linuxpkg captures shots/pkg-*.png) — verify whether it is the HUD top bar or a layout bug (UI scale?).
+- Mac arm64: no .icns icon, no signing/notarization, CFBundleName "dwu", no CrossOver/Whisky/Flatpak install guesses; untested on a Mac.
+- 17f design editor: "Only Show Latest Components" filter, picture combo, weapons grid, repair-priority template, multi-select delete.
+- purchase: per-row design drop-down (Main.Part2.cs method_630), Advisor Suggest column.
+- galaxy.ts private calculateAngleFromCoords negates one branch the C# (Galaxy.6.cs:2737) does not; generation uses it, so fixing it moves createGame pins — do it as its own package with `npm run repin` after 17d/fix4 land (purchasebo agent finding).
+- cmdTroops.ts:222 tick-path caller of PurchaseNewBuiltObject (BuiltObject.2.cs:1110) still a TODO — wire it (pins will move; re-pin with reason).
+- BaconSettings.txt: the installed file sets `tradeEverything=true` (and other Bacon options); the port keeps the default `false`. The C# reads BaconSettings.txt at start-up (BaconSettings.cs) — load it from /assets/dwu/BaconSettings.txt like the other data files and route every option the sim reads through it (grep the Bacon* readers). Pins may move.

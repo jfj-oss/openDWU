@@ -18,7 +18,7 @@
 
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
-import { AutomationLevel } from '../empire';
+import { AutomationLevel, BUILD_COLONY_SHIP_POPULATION_REQUIREMENT } from '../empire';
 import type { BuiltObject } from '../builtObject';
 import { BuiltObject as BuiltObjectClass } from '../builtObject';
 import { BuiltObjectRole } from '../data/designSpecifications';
@@ -76,7 +76,16 @@ import {
 } from '../fleets/shipGroupTasks';
 import { checkAssignFleetWaitAndAttackMission, identifyNearestAvailableFleet, implementBlockade } from '../fleets/militaryAI';
 import { blockadeFor } from '../fleets/blockades';
-import { assignFleetRetrofit, assignRetrofitMission, findNearestShipYard, newBuiltObjectShouldBeAutomated } from '../construction/empireConstruction';
+import {
+    assignFleetRetrofit,
+    assignRetrofitMission,
+    colonizableHabitatTypesForEmpireTechOnly,
+    findNearestShipYard,
+    newBuiltObjectShouldBeAutomated,
+    purchaseNewBuiltObject,
+    purchaseNewBuiltObjectAt,
+    queueOf,
+} from '../construction/empireConstruction';
 import { componentListDiff, resolveComponentList } from '../construction/constructionYard';
 import {
     calculatePlanetaryFacilityCost,
@@ -561,9 +570,12 @@ function executeForBase(ctx: Ctx, builtObject: BuiltObject, action: ShipAction):
                 }
                 let isAutoControlled = newBuiltObjectShouldBeAutomated(builtObject.empire!, subRole);
                 if (!flag) isAutoControlled = true;
-                void isAutoControlled;
-                // TODO(port): Empire.PurchaseNewBuiltObject(design, builtObject, isStateOwned: flag, isAutoControlled) — Empire.6.cs:1991
-                return todoPort(ctx, 'Empire.PurchaseNewBuiltObject — Empire.6.cs:1991 (Main.Part7.cs:385)');
+                // 379-381: builtObject.Empire.PurchaseNewBuiltObject(design, builtObject, flag, isAutoControlled) (Empire.6.cs 2098);
+                // a null result has an empty body in the C# — no message box (the action menu already disables
+                // unaffordable designs, Main.Part8.cs 1843).
+                if (purchaseNewBuiltObject(galaxy, builtObject.empire!, action.design, builtObject, flag, isAutoControlled) === null) {
+                    return ctx.fail('PurchaseNewBuiltObject returned null (Main.Part7.cs:379: no message)');
+                }
             } else if (builtObject.damagedComponentCount > 0 && builtObject.empire === empire) {
                 const ship = fastFindBestConstructionShip(galaxy, builtObject.xpos, builtObject.ypos, builtObject.empire);
                 if (ship !== null) {
@@ -1002,11 +1014,11 @@ function executeForHabitat(ctx: Ctx, habitat4: Habitat, action: ShipAction, from
         if (habitat4.empire !== null && habitat4.empire === empire) {
             let isAutoControlled2 = newBuiltObjectShouldBeAutomated(habitat4.empire, action.design.subRole);
             if (!flag5) isAutoControlled2 = true;
-            void isAutoControlled2;
-            void int_;
-            void int_2;
-            // TODO(port): Empire.PurchaseNewBuiltObject(design, habitat4, int_, int_2, isStateOwned: flag5, isAutoControlled2) — Empire.6.cs:1991
-            return todoPort(ctx, 'Empire.PurchaseNewBuiltObject — Empire.6.cs:1991 (Main.Part7.cs:1177)');
+            // 1180-1182: habitat4.Empire.PurchaseNewBuiltObject(design, habitat4, int_, int_2, flag5, isAutoControlled2)
+            // (Empire.6.cs 1996); a null result has an empty body in the C# — no message box.
+            if (purchaseNewBuiltObjectAt(galaxy, habitat4.empire, action.design, habitat4, int_, int_2, flag5, isAutoControlled2) === null) {
+                return ctx.fail('PurchaseNewBuiltObject returned null (Main.Part7.cs:1180: no message)');
+            }
         } else if (action.design.subRole !== BuiltObjectSubRole.MiningStation && action.design.subRole !== BuiltObjectSubRole.GasMiningStation) {
             if (action.design.role === BuiltObjectRole.Base) {
                 let num12 = 0.0;
@@ -1748,10 +1760,55 @@ function buildPlanetaryFacility(ctx: Ctx, habitat4: Habitat, action: ShipAction)
 
 /** Main.Part4.cs 2826 method_539(habitat): buy a colony ship at the best colony and send it to colonize. */
 function buildColonyShipFor(ctx: Ctx, habitat9: Habitat): ShipActionResult {
-    void habitat9;
-    // TODO(port): method_539 needs Empire.PurchaseNewBuiltObject — Empire.6.cs:1991 (Main.Part4.cs:2826-2869; also
-    // ColonizableHabitatTypesForEmpireTechOnly and ConstructionQueue.EstimateCurrentWaitQueueTime for the yard choice).
-    return todoPort(ctx, 'Empire.PurchaseNewBuiltObject — Empire.6.cs:1991 (method_539, Main.Part4.cs:2826)');
+    const { galaxy, empire } = ctx;
+    // 2828-2831
+    if (habitat9 === null) {
+        return ctx.fail('no habitat');
+    }
+    // 2832-2837
+    let colonizableHabitatTypes = empire.colonizableHabitatTypesForEmpire();
+    const design = findNewestCanBuild(empire.designs, BuiltObjectSubRole.ColonyShip, empire);
+    if (design === null || !canEmpireColonizeHabitat(galaxy, empire, empire, habitat9, colonizableHabitatTypes, design)) {
+        return ctx.fail('cannot colonize');
+    }
+    // 2838-2863: the colony with the lowest (wait time + 1) × √distance that may build a ship for this habitat type.
+    colonizableHabitatTypes = colonizableHabitatTypesForEmpireTechOnly(empire);
+    let habitat: Habitat | null = null;
+    let num = Number.MAX_VALUE;
+    for (const colony of empire.colonies) {
+        if (
+            (habitat9.empire === galaxy.independentEmpire || colonizableHabitatTypes.includes(habitat9.type) || colony.population.dominantRace!.nativeHabitatType === habitat9.type) &&
+            colony.population.totalAmount >= BUILD_COLONY_SHIP_POPULATION_REQUIREMENT
+        ) {
+            const num2 = galaxy.calculateDistance(colony.xpos, colony.ypos, habitat9.xpos, habitat9.ypos);
+            let num3 = 600.0;
+            const queue = queueOf(colony);
+            if (queue !== null) {
+                num3 = queue.estimateCurrentWaitQueueTime();
+                num3 += 1.0;
+            }
+            let num4 = num3 * num2;
+            if (num2 > 0.0) {
+                num4 = num3 * Math.sqrt(num2);
+            }
+            if (num4 < num) {
+                num = num4;
+                habitat = colony;
+            }
+        }
+    }
+    // 2864-2868: PurchaseNewBuiltObject(design, habitat, isStateOwned: true, isAutoControlled) (Empire.6.cs 1991)
+    // ?.AssignMission(Colonize, habitat_9, null, Normal, manuallyAssigned: true). No message either way.
+    if (habitat !== null) {
+        const isAutoControlled = newBuiltObjectShouldBeAutomated(empire, BuiltObjectSubRole.ColonyShip);
+        const builtObject = purchaseNewBuiltObject(galaxy, empire, design, habitat, true, isAutoControlled);
+        if (builtObject === null) {
+            return ctx.fail('PurchaseNewBuiltObject returned null (Main.Part4.cs:2867: no message)');
+        }
+        assignMission(galaxy, builtObject, BuiltObjectMissionType.Colonize, habitat9, null, BuiltObjectMissionPriority.Normal, { manuallyAssigned: true });
+        return ctx.result;
+    }
+    return ctx.fail('no colony can build the colony ship');
 }
 
 /** Main.Part4.cs 2871 method_540(builtObject, habitat): send a construction ship to build a (gas) mining station. */
