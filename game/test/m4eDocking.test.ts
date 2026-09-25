@@ -384,6 +384,9 @@ describe('harness smoke (seed 1, 600 game-s)', () => {
                 if (g.scheduler!.frames % 60 !== 0) return;
                 let docked = 0;
                 for (const b of g.builtObjects) {
+                    // CompleteTeardown nulls the Galaxy.BuiltObjects slot (BuiltObject.2.cs 5171, since M4s2); the age-1
+                    // harness destroys ships within this run.
+                    if (b == null) continue;
                     if (b.dockedAt !== null) docked++;
                     const m = b.mission as BuiltObjectMission | null;
                     if (m !== null && m.type === BuiltObjectMissionType.Refuel) sawRefuelMission = true;
@@ -401,7 +404,7 @@ describe('harness smoke (seed 1, 600 game-s)', () => {
         expect(thirstyMaxFuel).toBeGreaterThan(thirsty.fuelCapacity * 0.9);
         // Docked ships sit in a bay of their dock.
         for (const b of g.builtObjects) {
-            if (b.dockedAt !== null && !b.hasBeenDestroyed) {
+            if (b != null && b.dockedAt !== null && !b.hasBeenDestroyed) {
                 expect(b.dockedAt.dockingBays!.some((bay) => bay.dockedShip === b)).toBe(true);
             }
         }

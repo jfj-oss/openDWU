@@ -4,7 +4,7 @@
 // - save round trip of a galaxy with fighters.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { createTickGame, createTickGameAtAge } from './helpers/tickGame';
 import { runGameSeconds } from '../src/sim/tick/harness';
 import type { GameData } from '../src/sim/data/gameData';
 import type { Galaxy } from '../src/sim/galaxy';
@@ -263,7 +263,9 @@ describe('M4p combat against a ship', () => {
 
 describe('M4p harness', () => {
     it('fighters launch and attack a space slug within range of their carrier', () => {
-        const g = createTickGame(gameData).galaxy;
+        // Age-0 (PreWarp) galaxy fixture: the seed-1 age-0 layout has space slugs in Sol that the capital port sees as
+        // threats within 5 s; the default age-1 galaxy (M4y) places its creatures elsewhere (none within reach of Sol).
+        const g = createTickGameAtAge(gameData, 0).galaxy;
         const port = playerCarrier(g);
         const fighters = readyFighters(g, port);
         // A creature the port already sees as a threat (Sol's space slugs), moved next to it: fighters engage within

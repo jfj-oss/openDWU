@@ -3,7 +3,7 @@
 // Galaxy.CalculatePlanetaryFacilityCost, and a harness run of the facility AI.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame, createTickGameAtAge } from './helpers/tickGame';
+import { createTickGame } from './helpers/tickGame';
 import { runGameSeconds } from '../src/sim/tick/harness';
 import type { GameData } from '../src/sim/data/gameData';
 import type { Galaxy } from '../src/sim/galaxy';
@@ -130,11 +130,7 @@ describe('M4i unit: facilities', () => {
 
 describe('M4i harness: facility AI', () => {
     it('1200 game-seconds: facilities queued by the AI progress and never exceed 1', () => {
-        // Age 0 (PreWarp) fixture: at the default age-1 start the empires form fleets within this run and
-        // Empire.7.cs ReviewCharacterLocation's FleetAdmiral / TroopGeneral ShipGroup branches (838-, 1150-,
-        // GenerateOrderedFleetsBy*, Empire.8.cs) are still TODO(port) throws in characters.ts; back to
-        // createTickGame once they are ported.
-        const g = createTickGameAtAge(gameData, 0).galaxy;
+        const g = createTickGame(gameData).galaxy;
         const r = runGameSeconds(g, 1200);
         for (const e of g.empires) {
             for (const c of e.colonies) {

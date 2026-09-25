@@ -171,7 +171,9 @@ describe('Creature.cs 1206-1297 creature combat targeting', () => {
         kaltor.ypos = ship.ypos;
         kaltor.nearestSystemStar = star;
         galaxy.creatures.push(kaltor);
-        galaxy.systems[star.systemIndex].creatures!.push(kaltor);
+        // SystemInfo.Creatures is created lazily (Galaxy GenerateCreatureAtHabitat): at the age-1 default start the first
+        // human ship can sit in a system without creatures.
+        (galaxy.systems[star.systemIndex].creatures ??= []).push(kaltor);
         expect(creatureCheckTargetInRange(galaxy, kaltor, ship)).toBe(true);
         const signals0 = empireDistressSignals(human).length;
         const defer = galaxy.deferEventsForGameStart;

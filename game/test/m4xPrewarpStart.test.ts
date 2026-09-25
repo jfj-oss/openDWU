@@ -4,7 +4,7 @@
 // over a seed-1 harness run now that DirectPrivateConstruction pays the state (M4f).
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { tickGameOptions } from './helpers/tickGame';
+import { createTickGameAtAge, tickGameOptions } from './helpers/tickGame';
 import { createGame, type CreateGameOptions } from '../src/sim/game';
 import type { GameData } from '../src/sim/data/gameData';
 import { runGameSeconds } from '../src/sim/tick/harness';
@@ -103,7 +103,9 @@ describe('PreWarp (tech level 0) start (Start.2.cs 1146 / 1308 / 1314 / 1367 gat
 
 describe('state ledger, galaxy age 0 / tech 0.5, seed 1, 600 game-s', () => {
     it('state money rises (Empire.6.cs 741 DirectPrivateConstruction pays the state the private purchase price)', () => {
-        const g = createGame({ ...tickGameOptions(gameData), galaxyAge: 0 }).galaxy;
+        // Galaxy age 0 with age-0 empires (the PreWarp start this ledger was pinned on): tickGameOptions' empires are age 1
+        // since the harness models the true default start (M4y), and galaxy 0 + age-1 empires is an unpinned mix.
+        const g = createTickGameAtAge(gameData, 0).galaxy;
         const player = g.playerEmpire!;
         const before = player.stateMoney;
         runGameSeconds(g, 600);

@@ -181,7 +181,11 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // ReviewPirateControl gives factions colony control (pirate income, corruption, facilities); teardown null holes are
         // digested as -1.
         // Moved from REPIN: M4s2 merged (pirate faction AI draws Rnd and builds ships; see the M4s2 reason above)
-        expect(summary.digest).toBe('2d0371380457abff');
+        // Moved from 2689770786790d6a by M4y: harness galaxy is now the true age-1 default (military starting ships), with
+        // M4y's ReviewCharacterLocation FleetAdmiral / TroopGeneral / PirateLeader fleet branches (Empire.7.cs 698-918,
+        // 1135-1206) ported so the fleets that form are reviewed instead of throwing.
+        // Moved from 2d0371380457abff: M4y merged on top of M4s2 (harness at the true age-1 default start with the pirate faction AI; see both reasons above)
+        expect(summary.digest).toBe('7fa509b3737717ba');
     }, 600000);
 });
 
