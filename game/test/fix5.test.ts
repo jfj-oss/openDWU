@@ -12,6 +12,8 @@ import { MIN_TIME } from '../src/sim/tick/simTime';
 import { ShipActionType, createShipAction } from '../src/sim/player/shipAction';
 import { executeShipAction } from '../src/sim/player/executeShipAction';
 import { canDeployXaraktorVirus } from '../src/sim/player/orderMenu';
+import { checkWithinDistancePotential } from '../src/sim/movement';
+import { checkWithinDistancePotential as damageCheckWithinDistancePotential } from '../src/sim/combat/damage';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 import { createTickGame } from './helpers/tickGame';
 
@@ -70,5 +72,18 @@ describe('item 1: Empire.LastXaraktorVirusDeploy (Empire.cs 881; Main.Part7.cs 1
         const text = serializeGame(game, timeOf(game), startOptions);
         const restored = deserializeGame(text, gameData);
         expect(restored.game.galaxy.playerEmpire!.lastXaraktorVirusDeploy).toBe(player.lastXaraktorVirusDeploy);
+    });
+});
+
+describe('item 2: Galaxy.7.cs 747 CheckWithinDistancePotential (distance doubled, axes ORed)', () => {
+    it('is one shared port and matches the C# test', () => {
+        expect(damageCheckWithinDistancePotential).toBe(checkWithinDistancePotential);
+        // distance += distance; |x1 - x2| < distance || |y1 - y2| < distance
+        expect(checkWithinDistancePotential(100, 0, 0, 150, 150)).toBe(true); // within 2d on both (the old copy: false)
+        expect(checkWithinDistancePotential(100, 0, 0, 199, 50000)).toBe(true); // one axis suffices (OR)
+        expect(checkWithinDistancePotential(100, 0, 0, 50000, -199.5)).toBe(true);
+        expect(checkWithinDistancePotential(100, 0, 0, 200, 200)).toBe(false); // strict <
+        expect(checkWithinDistancePotential(100, 0, 0, 300, -250)).toBe(false);
+        expect(checkWithinDistancePotential(400.0, 1000, 1000, 1000 + 799.9, 1000 + 5000)).toBe(true);
     });
 });

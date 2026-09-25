@@ -50,6 +50,7 @@ import {
     SpaceBattleStats,
     battleStatsOf,
     calculateBuiltObjectLootingValue,
+    checkWithinDistancePotential,
     destroyHabitat,
     empireColonyIncomeFactor,
     empireLootingFactor,
@@ -1409,7 +1410,7 @@ export function defendShipFromAttackers(galaxy: Galaxy, builtObject: BuiltObject
             if (attackers.includes(stellarObject)) removeFromAttackers(self, stellarObject);
             stellarObjectList.push(stellarObject);
         } else if (isFighterTarget(stellarObject) && !allWeaponsAssigned) {
-            if (!checkWithinDistancePotentialLocal(num, self.xpos, self.ypos, stellarObject.xpos, stellarObject.ypos)) continue;
+            if (!checkWithinDistancePotential(num, self.xpos, self.ypos, stellarObject.xpos, stellarObject.ypos)) continue;
             const num2 = galaxy.calculateDistance(self.xpos, self.ypos, stellarObject.xpos, stellarObject.ypos);
             if (!(num2 <= num)) continue;
             let flag = true;
@@ -1424,7 +1425,7 @@ export function defendShipFromAttackers(galaxy: Galaxy, builtObject: BuiltObject
                 allWeaponsAssigned = fireWeaponsAtFighter(galaxy, self, fighter, time);
             }
         } else {
-            if (isFighterTarget(stellarObject) || !checkWithinDistancePotentialLocal(self.maximumWeaponsRange, self.xpos, self.ypos, stellarObject.xpos, stellarObject.ypos)) continue;
+            if (isFighterTarget(stellarObject) || !checkWithinDistancePotential(self.maximumWeaponsRange, self.xpos, self.ypos, stellarObject.xpos, stellarObject.ypos)) continue;
             const num3 = galaxy.calculateDistance(self.xpos, self.ypos, stellarObject.xpos, stellarObject.ypos);
             if (!(num3 <= self.maximumWeaponsRange)) continue;
             let flag2 = true;
@@ -1452,11 +1453,6 @@ export function defendShipFromAttackers(galaxy: Galaxy, builtObject: BuiltObject
     for (let j = 0; j < stellarObjectList.length; j++) removeFromAttackers(self, stellarObjectList[j]);
 }
 
-/** Galaxy.cs CheckWithinDistancePotential (bounding box; combat/damage.ts exports the same). */
-function checkWithinDistancePotentialLocal(distance: number, x1: number, y1: number, x2: number, y2: number): boolean {
-    return Math.abs(x1 - x2) <= distance && Math.abs(y1 - y2) <= distance;
-}
-
 /** BuiltObject.cs 4557 DefendBase(time). Rnd: FireWeaponsAtTarget / assault pod / fighter draws. */
 export function defendBase(galaxy: Galaxy, builtObject: BuiltObject, time: number): void {
     const self = builtObject;
@@ -1474,7 +1470,7 @@ export function defendBase(galaxy: Galaxy, builtObject: BuiltObject, time: numbe
             if (isFighterTarget(stellarObject) && !allWeaponsAssigned) {
                 if (stellarObject.parentBuiltObject === null || !shouldAttack(galaxy, self, stellarObject.parentBuiltObject, time, false)) continue;
                 flag = true;
-                if (checkWithinDistancePotentialLocal(num, self.xpos, self.ypos, stellarObject.xpos, stellarObject.ypos)) {
+                if (checkWithinDistancePotential(num, self.xpos, self.ypos, stellarObject.xpos, stellarObject.ypos)) {
                     const num2 = galaxy.calculateDistance(self.xpos, self.ypos, stellarObject.xpos, stellarObject.ypos);
                     if (num2 <= num) {
                         const fighter = stellarObject;
@@ -1493,7 +1489,7 @@ export function defendBase(galaxy: Galaxy, builtObject: BuiltObject, time: numbe
                     builtObjectMissionType = determineDestroyOrCaptureTarget(galaxy, self.empire!, self, bo, false);
                     if (builtObjectMissionType === BuiltObjectMissionType.Capture) num3 = Math.max(num3, self.assaultRange);
                 }
-                if (checkWithinDistancePotentialLocal(num3, self.xpos, self.ypos, stellarObject.xpos, stellarObject.ypos)) {
+                if (checkWithinDistancePotential(num3, self.xpos, self.ypos, stellarObject.xpos, stellarObject.ypos)) {
                     const num4 = galaxy.calculateDistance(self.xpos, self.ypos, stellarObject.xpos, stellarObject.ypos);
                     if (num4 <= num3) {
                         if (builtObjectMissionType === BuiltObjectMissionType.Capture) {
@@ -1520,7 +1516,7 @@ export function defendBase(galaxy: Galaxy, builtObject: BuiltObject, time: numbe
                 if (fighters === null || fighters.length <= 0) continue;
                 for (let j = 0; j < fighters.length; j++) {
                     const fighter2 = fighters[j];
-                    if (!fighter2.onboardCarrier && !fighter2.hasBeenDestroyed && checkWithinDistancePotentialLocal(num, self.xpos, self.ypos, fighter2.xpos, fighter2.ypos)) {
+                    if (!fighter2.onboardCarrier && !fighter2.hasBeenDestroyed && checkWithinDistancePotential(num, self.xpos, self.ypos, fighter2.xpos, fighter2.ypos)) {
                         const num7 = galaxy.calculateDistance(self.xpos, self.ypos, fighter2.xpos, fighter2.ypos);
                         if (num7 <= num) allWeaponsAssigned = fireWeaponsAtFighter(galaxy, self, fighter2, time);
                     }

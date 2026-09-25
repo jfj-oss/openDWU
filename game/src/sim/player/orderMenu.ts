@@ -66,7 +66,7 @@ import { fastFindNearestSpacePort, checkResearchStationAtLocation } from '../sta
 import { determineOrbitalBaseLocation } from '../pirates';
 import { canBuildBuiltObject as canBuildBuiltObjectFor, getPrivateFunds } from '../forceStructure';
 import { determineFuelRequired } from '../logistics/refuel';
-import { checkEmpireCanRefuelAtEmpire, fastFindNearestRefuellingPoint } from '../movement';
+import { checkEmpireCanRefuelAtEmpire, checkWithinDistancePotential, fastFindNearestRefuellingPoint } from '../movement';
 import { evaluateThreats } from '../combat/threats';
 import { findNearestShipYard, reviewLatestDesigns, determineRetrofitAffordability } from '../construction/empireConstruction';
 import { canBuiltObjectColonizeHabitat } from '../construction/constructionQueue';
@@ -558,11 +558,6 @@ function m315(ctx: OrderMenuContext, missionType: BuiltObjectMissionType, target
 // Target list helpers (Main.Part11.cs 1138-1283 method_133-139)
 // ---------------------------------------------------------------------------------------------------------------
 
-/** Galaxy.CheckWithinDistancePotential(range, x1, y1, x2, y2): the axis-aligned pre-test before CalculateDistance. */
-function withinDistancePotential(range: number, x1: number, y1: number, x2: number, y2: number): boolean {
-    return Math.abs(x1 - x2) <= range && Math.abs(y1 - y2) <= range;
-}
-
 /** Main.Part11.cs 1138 method_133(x, y, range): fleets (lead ship) within range that the player can see, sorted. */
 function fleetsNear(ctx: OrderMenuContext, x: number, y: number, range: number): ShipGroup[] {
     const list: ShipGroup[] = [];
@@ -570,7 +565,7 @@ function fleetsNear(ctx: OrderMenuContext, x: number, y: number, range: number):
         for (const shipGroup of playerShipGroups(empire)) {
             const lead = shipGroup.leadShip;
             if (lead === null) continue;
-            if (withinDistancePotential(range, lead.xpos, lead.ypos, x, y)) {
+            if (checkWithinDistancePotential(range, lead.xpos, lead.ypos, x, y)) {
                 const num = ctx.galaxy.calculateDistance(lead.xpos, lead.ypos, x, y);
                 if (Math.trunc(num) <= range && visibleTo(ctx, lead)) list.push(shipGroup);
             }
@@ -588,7 +583,7 @@ function builtObjectsInIndexCell(galaxy: Galaxy, x: number, y: number): BuiltObj
 function shipsNear(ctx: OrderMenuContext, x: number, y: number, range: number): BuiltObject[] {
     const list: BuiltObject[] = [];
     for (const bo of builtObjectsInIndexCell(ctx.galaxy, x, y)) {
-        if (bo !== null && bo.role !== BuiltObjectRole.Base && withinDistancePotential(range, bo.xpos, bo.ypos, x, y)) {
+        if (bo !== null && bo.role !== BuiltObjectRole.Base && checkWithinDistancePotential(range, bo.xpos, bo.ypos, x, y)) {
             const num = ctx.galaxy.calculateDistance(bo.xpos, bo.ypos, x, y);
             if (Math.trunc(num) <= range) list.push(bo);
         }
@@ -599,7 +594,7 @@ function shipsNear(ctx: OrderMenuContext, x: number, y: number, range: number): 
 function basesNear(ctx: OrderMenuContext, x: number, y: number, range: number): BuiltObject[] {
     const list: BuiltObject[] = [];
     for (const bo of builtObjectsInIndexCell(ctx.galaxy, x, y)) {
-        if (bo !== null && bo.role === BuiltObjectRole.Base && withinDistancePotential(range, bo.xpos, bo.ypos, x, y)) {
+        if (bo !== null && bo.role === BuiltObjectRole.Base && checkWithinDistancePotential(range, bo.xpos, bo.ypos, x, y)) {
             const num = ctx.galaxy.calculateDistance(bo.xpos, bo.ypos, x, y);
             if (Math.trunc(num) <= range && visibleTo(ctx, bo)) list.push(bo);
         }
