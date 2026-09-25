@@ -11,6 +11,8 @@ import { Design } from '../src/sim/design';
 import { Character, getEmpireCharacters } from '../src/sim/characters';
 import type { Empire } from '../src/sim/empire';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
+import { runGameSeconds } from '../src/sim/tick/harness';
+import { galaxyStarDate } from '../src/sim/tick/simTime';
 
 const systemNames = Array.from({ length: 200 }, (_, i) => `Test System ${i}`);
 
@@ -47,6 +49,23 @@ describe('game save/load (11a2)', { timeout: 60000 }, () => {
 
         expect(restored.game.playerEmpire.name).toBe(game.playerEmpire.name);
         expect(restored.game.playerEmpire.colonies.length).toBe(game.playerEmpire.colonies.length);
+    });
+
+    it('a clock bound to the galaxy saves the sim time and resumes at the same star date', () => {
+        const game = createGame(toCreateGameOptions(startOptions, gameData, systemNames));
+        const time = new GalaxyTime().bindGalaxy(game.galaxy);
+        time.speed = 2;
+        runGameSeconds(game, 5, { speed: 2 });
+        expect(time.currentStarDate).toBe(galaxyStarDate(game.galaxy));
+
+        const text = serializeGame(game, time, startOptions);
+        const restored = deserializeGame(text, gameData);
+        expect(restored.time.elapsedMs).toBe(game.galaxy.nowMs);
+        expect(restored.game.galaxy.nowMs).toBe(game.galaxy.nowMs);
+        const rebound = new GalaxyTime().bindGalaxy(restored.game.galaxy);
+        expect(rebound.currentStarDate).toBe(restored.time.currentStarDate);
+        expect(rebound.currentStarDate).toBe(galaxyStarDate(game.galaxy));
+        expect(restored.time.speed).toBe(2);
     });
 
     it('rejects the pre-M3 version-1 format', () => {

@@ -1,5 +1,5 @@
 // Galaxy time: game-year constants, star-date formatting, and the
-// pause/speed clock that drives Galaxy.step. Ports of Galaxy.3.cs
+// pause/speed clock (the app's view over the galaxy's sim clock). Ports of Galaxy.3.cs
 // InitializeStatics (RealSecondsInGalacticYear/YearLength/StartStarDate),
 // Galaxy.cs CurrentStarDate/ResolveStarDateDescription, Start.2.cs
 // startStarDate = StartStarDate + age * 30000000, and Main.Part4.cs speed
@@ -36,19 +36,63 @@ export function startStarDateForAge(age: number): number {
     return START_STAR_DATE + age * 30_000_000;
 }
 
+// The galaxy's sim clock as GalaxyTime reads it when bound (a Galaxy satisfies it: `nowMs` is the scheduler's
+// integer game-ms clock, tick/simTime.ts; `age` fixes _StartStarDate, Start.2.cs 450-451).
+export interface GalaxyClockSource {
+    nowMs: number;
+    age: number;
+}
+
 // Galaxy time clock: game time runs at TimeSpeed × real time; Pause stops
 // the clock. advance(realDtMs) returns the game ms advanced (0 when paused).
+//
+// Bound to a galaxy (bindGalaxy), it is a thin view over the one sim clock: elapsed ms is `galaxy.nowMs` (advanced
+// only by the scheduler, tick/scheduler.ts runSimFrame) and the start date is the galaxy's (startStarDateForAge), so
+// currentStarDate === galaxyStarDate(galaxy); only the pause/speed controls live here. The app binds its clock; an
+// unbound clock keeps its own elapsed ms (headless tests, save-format fixtures).
 export class GalaxyTime {
     // Port of Galaxy.cs _StartStarDate (set from StartStarDate or
     // startStarDateForAge in Start.2.cs).
-    startStarDate: number;
-    elapsedMs = 0;
+    private ownStartStarDate: number;
+    private ownElapsedMs = 0;
+    // Not initialised by gameSave.ts's Object.create revival: treat undefined as unbound.
+    private source: GalaxyClockSource | null = null;
     // C# starts paused until the player resumes (Main.Part4.cs Pause/Resume).
     paused = true;
     speed = 1.0;
 
     constructor(startStarDate: number = START_STAR_DATE) {
-        this.startStarDate = startStarDate;
+        this.ownStartStarDate = startStarDate;
+    }
+
+    /** Make this clock a view over `galaxy`'s sim clock (see the class comment). */
+    bindGalaxy(galaxy: GalaxyClockSource): this {
+        this.source = galaxy;
+        return this;
+    }
+
+    get boundGalaxy(): GalaxyClockSource | null {
+        return this.source ?? null;
+    }
+
+    get startStarDate(): number {
+        const src = this.source;
+        return src != null ? startStarDateForAge(src.age) : this.ownStartStarDate;
+    }
+
+    set startStarDate(value: number) {
+        this.ownStartStarDate = value;
+    }
+
+    /** Game ms since the start (bound: `galaxy.nowMs`). */
+    get elapsedMs(): number {
+        const src = this.source;
+        return src != null ? src.nowMs : this.ownElapsedMs;
+    }
+
+    set elapsedMs(value: number) {
+        if (this.source != null) throw new Error('GalaxyTime: a bound clock is advanced by the sim scheduler, not set');
+        this.ownElapsedMs = value;
     }
 
     // Port of Galaxy.cs CurrentStarDate: ms of game time elapsed + start.
@@ -61,6 +105,7 @@ export class GalaxyTime {
         if (this.paused) {
             return 0;
         }
+        if (this.source != null) throw new Error('GalaxyTime: a bound clock is advanced by the sim scheduler (SimDriver)');
         const advanced = realDtMs * this.speed;
         this.elapsedMs += advanced;
         return advanced;

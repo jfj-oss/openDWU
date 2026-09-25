@@ -273,6 +273,11 @@ export class Galaxy {
     // (port of Habitat.cs Move, called every tick from Habitat.DoTasks),
     // parents before children — stars have no parent, planets move before
     // their moons. The depth-sorted order is computed once and cached.
+    /**
+     * @deprecated Not the simulation: the app runs the real scheduler (tick/scheduler.ts runSimFrame via SimDriver,
+     * src/simLoop.ts), which moves orbits (habitatTick.ts Move) and ticks creatures itself, and advances `nowMs`
+     * (this does not). Kept only for the orbit/creature unit tests that predate M4.
+     */
     step(gameMs: number): void {
         if (this.stepOrderDirty) {
             this.rebuildStepOrder();

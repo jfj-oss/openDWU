@@ -1,7 +1,7 @@
 // Usage: node scripts/smoke.mjs
 // End-to-end smoke test: starts its own Vite dev server on a free port, then
 // drives the app through the main menu -> new-game wizard -> Main View + HUD
-// -> play/speed -> game menu -> selection -> G-key zoom out -> panel hotkeys
+// -> play/speed -> simulation runs (date + fleets/missions) -> game menu -> selection -> G-key zoom out -> panel hotkeys
 // (message history / colonies list / empire summary) -> save -> main menu ->
 // load round trip, saving a screenshot at each step
 // (game/shots/smoke-<n>.png) and printing a PASS/FAIL line per step.
@@ -239,6 +239,50 @@ async function main() {
         } catch (err) {
             fail('4. play + speed up to 4x', err);
             await shot(page, 'play + speed (failed)').catch(() => {});
+        }
+
+        // --- Step 4b: simulation runs in the app ------------------------------
+        // The render loop drives the real scheduler (src/simLoop.ts): galaxy.nowMs advances, the date label
+        // follows it, and the AI has fleets / ships on missions. Bounded poll: headless swiftshader renders only a
+        // few frames/s (the driver runs <= 4 sim frames per render frame), so wait up to 30 s for >= 2 game s.
+        try {
+            const read = () =>
+                page.evaluate(() => {
+                    const d = window.__dwu;
+                    const g = d.game.galaxy;
+                    const ai = g.empires.filter((e) => e !== d.game.playerEmpire);
+                    return {
+                        nowMs: g.nowMs,
+                        starDate: d.time.currentStarDate,
+                        date: document.querySelector('.hud-date')?.textContent ?? '',
+                        simFrames: d.simStats?.simFrames ?? 0,
+                        shipGroups: ai.reduce((n, e) => n + (e.shipGroups?.length ?? 0), 0),
+                        withMission: g.builtObjects.filter((b) => b && b.mission).length,
+                    };
+                });
+            const before = await read();
+            let after = before;
+            const deadline = Date.now() + 30000;
+            while (Date.now() < deadline) {
+                await page.waitForTimeout(500);
+                after = await read();
+                if (after.nowMs - before.nowMs >= 2000) break;
+            }
+            const advanced = after.nowMs - before.nowMs;
+            if (advanced < 2000) {
+                throw new Error(`galaxy.nowMs advanced only ${advanced} ms in 30 s at 4x (sim frames ${after.simFrames})`);
+            }
+            if (after.starDate - before.starDate !== advanced) {
+                throw new Error(`HUD clock (${after.starDate - before.starDate} ms) is not the galaxy clock (${advanced} ms)`);
+            }
+            if (after.shipGroups === 0 && after.withMission === 0) {
+                throw new Error('no AI ShipGroup and no ship with a mission after running the simulation');
+            }
+            await shot(page, 'simulation running');
+            pass(`4b. simulation runs in the app (+${advanced} game ms, date "${before.date}" -> "${after.date}", ${after.shipGroups} AI fleets, ${after.withMission} ships on missions)`);
+        } catch (err) {
+            fail('4b. simulation runs in the app', err);
+            await shot(page, 'simulation (failed)').catch(() => {});
         }
 
         // --- Step 5: game menu ---------------------------------------------
