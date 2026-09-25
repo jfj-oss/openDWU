@@ -114,7 +114,10 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // M4i (facilities/wonders): Empire.RefreshColonyFacilityInfo now fills Empire.Capitals every long block, so the
         // leader's PopulationGrowth bonus at the capital (EvaluateColonyVariables, Empire.4.cs) applies; facility AI runs
         // (ReviewColonyFacilities may draw Rnd.Next(0, 2) for a space-port colony once a FortifiedBunker is buildable).
-        expect(summary.digest).toBe('9ff05468d492c478');
+        // M4i (empire construction): DirectConstruction runs in every long block (RefactorForceStructureProjectionsToCosts
+        // draws Rnd.Next(0, Count) per wanted sub-role; ships are queued and paid for once the cashflow allows), plus
+        // ReviewLatestDesigns, RetireOldBuiltObjects, DetermineMonitoringStationLocation, BuildDefensiveBases.
+        expect(summary.digest).toBe('6e84fc5696db693a');
     }, 600000);
 });
 

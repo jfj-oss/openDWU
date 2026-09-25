@@ -73,7 +73,9 @@ import { selectRandomRace } from './pirates';
 import { habitatAnnualRevenue, identifyEmpireCapitals, totalColonyStrategicValue } from './forceStructure';
 import { strategicValue as habitatStrategicValue } from './territory';
 import { PirateRelationType } from './pirateRelations';
-import { DiplomaticRelationType, DiplomaticStrategy, resolveEmpiresToDefendAgainst as resolveEmpiresToDefendAgainstDiplomatic } from './diplomacy';
+import { DiplomaticRelationType, DiplomaticStrategy, WarObjective, obtainDiplomaticRelation, resolveEmpiresToDefendAgainst as resolveEmpiresToDefendAgainstDiplomatic, type DiplomaticRelation } from './diplomacy';
+import { identifyEmpireWarObjectives } from './diplomacyTick';
+import { habitatResourcesHaveSuperLuxury } from './exploration';
 
 /** C# StellarObject (Habitat or BuiltObject) as a character location. */
 export type StellarObject = Habitat | BuiltObject;
@@ -5668,10 +5670,39 @@ function resolveEmpiresToDefendAgainst(empire: Empire): Empire[] {
     return empireList;
 }
 
+// Empire.9.cs AddWarObjectivesToList(relation, objectives, calculateWarObjectivesIfNotPresent, includeBases) (1861/1866)
+// (added by M4i).
+function addWarObjectivesToList(galaxy: Galaxy, relation: DiplomaticRelation | null, objectives: StellarObject[], calculateWarObjectivesIfNotPresent: boolean, includeBases: boolean): StellarObject[] {
+    if (relation !== null) {
+        if (relation.warObjective === WarObjective.CaptureObjectives) {
+            for (let i = 0; i < relation.warObjectiveColonies.length; i++) {
+                if (!objectives.includes(relation.warObjectiveColonies[i])) objectives.push(relation.warObjectiveColonies[i]);
+            }
+            if (includeBases) {
+                for (let j = 0; j < relation.warObjectiveBases.length; j++) {
+                    const b = relation.warObjectiveBases[j];
+                    if (!objectives.includes(b) && b.parentHabitat !== null && b.parentHabitat.resources != null && habitatResourcesHaveSuperLuxury(galaxy, b.parentHabitat)) objectives.push(b);
+                }
+            }
+        } else if (calculateWarObjectivesIfNotPresent && relation.thisEmpire !== null && relation.otherEmpire !== null) {
+            const targets = identifyEmpireWarObjectives(galaxy, relation.thisEmpire, relation.otherEmpire);
+            for (let k = 0; k < targets.colonies.length; k++) {
+                if (!objectives.includes(targets.colonies[k])) objectives.push(targets.colonies[k]);
+            }
+            if (includeBases) {
+                for (let l = 0; l < targets.bases.length; l++) {
+                    const b = targets.bases[l];
+                    if (!objectives.includes(b) && b.parentHabitat !== null && b.parentHabitat.resources != null && habitatResourcesHaveSuperLuxury(galaxy, b.parentHabitat)) objectives.push(b);
+                }
+            }
+        }
+    }
+    return objectives;
+}
+
 // Empire.9.cs ResolveLocationsToDefend (1742/1747). Habitat.HasBeenDestroyed is false at game start
 // (not modelled on the TS Habitat).
 export function resolveLocationsToDefend(galaxy: Galaxy, empire: Empire, includeBases: boolean): StellarObject[] {
-    void includeBases;
     let stellarObjectList: StellarObject[] = [];
     if (empire.pirateEmpireBaseHabitat !== null) {
         if (empire.spacePorts !== null) {
@@ -5685,9 +5716,33 @@ export function resolveLocationsToDefend(galaxy: Galaxy, empire: Empire, include
         if (empire.colonies.length > 0) throw new Error('TODO(port): Empire.9.cs ResolveLocationsToDefend pirate colonies (PirateColonyControl)');
     } else {
         const empireList = resolveEmpiresToDefendAgainst(empire);
-        // TODO(port): the three DiplomaticRelation loops (AddWarObjectivesToList) — empireList is empty
-        // while DiplomaticRelation is unported.
-        if (empireList.length > 0) throw new Error('TODO(port): Empire.9.cs ResolveLocationsToDefend AddWarObjectivesToList');
+        // Empire.9.cs 1775-1815 (completed by M4i: BuildDefensiveBases / ReviewColonyFacilities reach it once empires war).
+        for (let k = 0; k < empireList.length; k++) {
+            const diplomaticRelation = obtainDiplomaticRelation(empireList[k], empire);
+            if (diplomaticRelation.type === DiplomaticRelationType.War) stellarObjectList = addWarObjectivesToList(galaxy, diplomaticRelation, stellarObjectList, false, includeBases);
+        }
+        for (let l = 0; l < empireList.length; l++) {
+            const empire2 = empireList[l];
+            const diplomaticRelation2 = obtainDiplomaticRelation(empire, empire2);
+            if (diplomaticRelation2.type !== DiplomaticRelationType.War) {
+                const relation = obtainDiplomaticRelation(empire2, empire);
+                switch (diplomaticRelation2.strategy) {
+                    case DiplomaticStrategy.Defend:
+                    case DiplomaticStrategy.DefendPlacate:
+                    case DiplomaticStrategy.DefendUndermine:
+                        stellarObjectList = addWarObjectivesToList(galaxy, relation, stellarObjectList, true, includeBases);
+                        break;
+                }
+            }
+        }
+        for (let m = 0; m < empireList.length; m++) {
+            const empire3 = empireList[m];
+            const diplomaticRelation3 = obtainDiplomaticRelation(empire, empire3);
+            if (diplomaticRelation3.type !== DiplomaticRelationType.War) {
+                const relation2 = obtainDiplomaticRelation(empire3, empire);
+                if (diplomaticRelation3.strategy === DiplomaticStrategy.Conquer) stellarObjectList = addWarObjectivesToList(galaxy, relation2, stellarObjectList, true, includeBases);
+            }
+        }
         const homeWorld = empire.homeWorld;
         if (homeWorld !== null && homeWorld.empire === empire && (empire.policy?.homeworldDefensePriority ?? 1.0) > 1.0 && !stellarObjectList.includes(homeWorld)) stellarObjectList.push(homeWorld);
         const capitals = empireCapitals(empire);
