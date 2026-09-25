@@ -11,6 +11,7 @@ import { creatureAttackTarget, creatureCheckForAttackers, creatureCheckForTarget
 import { stellarAttackers, stellarPursuers } from './combat/threats';
 import { checkEmpireHasHyperDriveTech } from './forceStructure';
 import { clearFightersTargeting } from './combat/fighters';
+import { baconSettings } from './data/baconSettings';
 
 // Port of DistantWorlds.Types.CreatureType (member order exact; byte enum).
 export enum CreatureType {
@@ -32,9 +33,8 @@ export enum TurnDirection {
 // Sentinel used by the C# Creature ctor overloads for "no explicit offset".
 export const CREATURE_OFFSET_UNSET = -2000000001;
 
-// Port of Galaxy.3.cs InitializeStatics (4971-4972).
-const HyperJumpThreshhold = 12000;
-const BaseHyperJumpAccuracy = 3000.0;
+// Galaxy.baconSettings.hyperJumpThreshhold / baconSettings.baseHyperJumpAccuracy (Galaxy.3.cs 4971-4972): BaconSettings.txt statics (BaconMain.cs
+// 606 / 610), read from `baconSettings`.
 
 // Port of Galaxy.7.cs ConditionCheckLimit (iterationCount passed by ref).
 function conditionCheckLimit(condition: boolean, maximumIterations: number, it: { n: number }): boolean {
@@ -835,7 +835,7 @@ export class Creature {
                 if (this.currentSpeed <= this.movementSpeed || this.currentSpeed <= this.lungeSpeed) return;
                 // Arriving from hyperspeed: drop out at a hyperjump exit point.
                 this.currentSpeed = this.movementSpeed;
-                const exit = g.selectHyperJumpExitPoint(BaseHyperJumpAccuracy);
+                const exit = g.selectHyperJumpExitPoint(baconSettings.baseHyperJumpAccuracy);
                 this.xpos = num1 + exit.x;
                 this.ypos = num2 + exit.y;
                 this.nearestSystemStar = g.fastFindNearestSystem(this.xpos, this.ypos);
@@ -844,7 +844,7 @@ export class Creature {
                 }
             } else {
                 this.targetSpeed = this.movementSpeed;
-                if (this.hyperSpeed <= 0 || arrived.currentDistance <= HyperJumpThreshhold || this.targetSpeed >= this.hyperSpeed) return;
+                if (this.hyperSpeed <= 0 || arrived.currentDistance <= baconSettings.hyperJumpThreshhold || this.targetSpeed >= this.hyperSpeed) return;
                 if (this.hyperCountdown === 0) this.hyperCountdown = g.rnd.next(8000, 14000);
                 this.hyperCountdown -= Math.trunc(timePassed * 1000.0);
                 if (this.hyperCountdown > 0) return;

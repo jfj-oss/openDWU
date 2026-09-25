@@ -43,13 +43,12 @@ import { assignMission, clearPreviousMissionRequirements, recordRevertMission } 
 import { withinFuelRangeAndRefuel } from '../movement';
 import { isFighter } from './fighters';
 import { shipGroupOf, stellarAttackers, stellarCurrentSpeed, stellarCurrentTarget, stellarFirepowerRaw, stellarTopSpeed, builtObjectThreats, calculateOverallStrengthFactor, evaluateThreats, getBuiltObjectsAtLocationByArrays, shouldFleeFrom, type Threat } from './threats';
+import { baconSettings } from '../data/baconSettings';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Galaxy constants (Galaxy.3.cs static ctor)
 // ---------------------------------------------------------------------------------------------------------------
 
-/** Galaxy.HyperJumpThreshhold = 12000 (Galaxy.3.cs 4971). */
-export const HYPER_JUMP_THRESHHOLD = 12000;
 /** Galaxy.InvasionDropoffRange = 15 / MovementDecelerationRangeInvasion = 50 / MovementImpulseSpeed = 3 (4981-4984). */
 export const INVASION_DROPOFF_RANGE = 15;
 export const MOVEMENT_DECELERATION_RANGE_INVASION = 50;
@@ -1196,7 +1195,7 @@ export function checkNearTarget(galaxy: Galaxy, builtObject: BuiltObject): void 
         }
     }
     const mission2 = builtObjectMission(ship.mission);
-    if (mission2 !== null && galaxy.calculateDistanceSquared(ship.xpos, ship.ypos, x2, y2) <= HYPER_JUMP_THRESHHOLD * HYPER_JUMP_THRESHHOLD) {
+    if (mission2 !== null && galaxy.calculateDistanceSquared(ship.xpos, ship.ypos, x2, y2) <= baconSettings.hyperJumpThreshhold * baconSettings.hyperJumpThreshhold) {
         mission2.completeCommand();
         const mission3 = builtObjectMission(ship.mission);
         if (mission3 !== null && mission3.target !== null && mission3.fastPeekCurrentCommand()?.action === CommandAction.MoveTo && mission3.showNextCommand()?.action === CommandAction.ConditionalHyperTo) mission3.completeCommand();

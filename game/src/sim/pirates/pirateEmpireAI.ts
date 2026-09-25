@@ -43,15 +43,12 @@ import { facilitiesFindBestPirateFacility, type PlanetaryFacility } from '../con
 import { getEmpireById } from '../logistics/contracts';
 import { InvasionStats, generateDefensivePirateRaiders } from '../combat/invasion';
 import { PirateIncomeType } from './pirateEconomy';
+import { baconSettings } from '../data/baconSettings';
 
 const f = Math.fround;
 
-/** BaconHabitat.cs 33 pirateControlLevelToBuildShipsAtIndependentPlanets (float 0.9f; BaconMain settings override not ported). */
-export const PIRATE_CONTROL_LEVEL_TO_BUILD_SHIPS_AT_INDEPENDENT_PLANETS = f(0.9);
-/** BaconHabitat.cs 34-36 pirateBaseTroops / pirateFortressTroops / pirateCriminalNetworkTroops. */
-export const PIRATE_BASE_TROOPS = 7;
-export const PIRATE_FORTRESS_TROOPS = 12;
-export const PIRATE_CRIMINAL_NETWORK_TROOPS = 18;
+// BaconHabitat.cs 33-36 pirateControlLevelToBuildShipsAtIndependentPlanets / pirateBaseTroops / pirateFortressTroops /
+// pirateCriminalNetworkTroops: BaconSettings.txt statics (BaconMain.cs 875 / 987-995), read from `baconSettings`.
 
 /** The clock-seeded `new Random()` of BaconEmpire.cs 1122 / 1156 — one galaxy-seeded stream (plan §0). */
 function baconPirateClockRnd(galaxy: Galaxy): Random {
@@ -242,7 +239,7 @@ export function buildShipForPirate(galaxy: Galaxy, planet: Habitat, pirateEmpire
         return;
     }
     const pirateColonyControl = pirateControl.getByFaction(pirateEmpire.empireId);
-    if (pirateColonyControl === null || pirateColonyControl.controlLevel < PIRATE_CONTROL_LEVEL_TO_BUILD_SHIPS_AT_INDEPENDENT_PLANETS) {
+    if (pirateColonyControl === null || pirateColonyControl.controlLevel < baconSettings.pirateControlLevelToBuildShipsAtIndependentPlanets) {
         // PauseAndShowMessageBox (UI only).
         return;
     }
@@ -278,7 +275,7 @@ function checkPiratesBuildConstructionShipsAtIndependentPlanet(galaxy: Galaxy, e
     for (const x of empire.builtObjects) {
         if (x.subRole === BuiltObjectSubRole.ConstructionShip && x.warpSpeed >= 1000 && x.damagedComponentCount < 10) constructionShipCount++;
     }
-    if (PIRATE_CONTROL_LEVEL_TO_BUILD_SHIPS_AT_INDEPENDENT_PLANETS > 100.0 || constructionShipCount > 20) return;
+    if (baconSettings.pirateControlLevelToBuildShipsAtIndependentPlanets > 100.0 || constructionShipCount > 20) return;
     const stateMoney = empire.stateMoney;
     const newestCanBuild = designsFindNewestCanBuild(empire.designs, BuiltObjectSubRole.ConstructionShip);
     if (newestCanBuild === null) return;
@@ -290,7 +287,7 @@ function checkPiratesBuildConstructionShipsAtIndependentPlanet(galaxy: Galaxy, e
     const habitatList: Habitat[] = [];
     for (const colony of empire.colonies) {
         const pirateColonyControl = colony.pirateColonyControl.items.find((x) => x.empireId === empire.empireId) ?? null;
-        if (pirateColonyControl !== null && pirateColonyControl.controlLevel > PIRATE_CONTROL_LEVEL_TO_BUILD_SHIPS_AT_INDEPENDENT_PLANETS && determineDefendingFirepower(galaxy, colony, empire) > 250) habitatList.push(colony);
+        if (pirateColonyControl !== null && pirateColonyControl.controlLevel > baconSettings.pirateControlLevelToBuildShipsAtIndependentPlanets && determineDefendingFirepower(galaxy, colony, empire) > 250) habitatList.push(colony);
     }
     if (habitatList.length > 0) {
         const index = random.next(0, habitatList.length);
@@ -468,13 +465,13 @@ export function checkColoniesForPirateFacilitiesAndAttackCore(galaxy: Galaxy, em
                 let num1 = 0;
                 switch (attack.type) {
                     case PlanetaryFacilityType.PirateBase:
-                        num1 = 1 + Math.trunc(PIRATE_BASE_TROOPS * 0.67000001668930054);
+                        num1 = 1 + Math.trunc(baconSettings.pirateBaseTroops * 0.67000001668930054);
                         break;
                     case PlanetaryFacilityType.PirateFortress:
-                        num1 = 1 + Math.trunc(PIRATE_FORTRESS_TROOPS * 0.67000001668930054);
+                        num1 = 1 + Math.trunc(baconSettings.pirateFortressTroops * 0.67000001668930054);
                         break;
                     case PlanetaryFacilityType.PirateCriminalNetwork:
-                        num1 = 1 + Math.trunc(PIRATE_CRIMINAL_NETWORK_TROOPS * 0.67000001668930054);
+                        num1 = 1 + Math.trunc(baconSettings.pirateCriminalNetworkTroops * 0.67000001668930054);
                         break;
                 }
                 const num2 = num1 * 50 * 100;

@@ -28,7 +28,6 @@ import { checkLaunchAssaultPodsAtTarget, shipGroupTotalAvailableBoardingAssaultS
 import { addInvasionStatsTroopsDamageToInvaders, characterCompleteLocationTransferInvading, habitatStopRebelling, targetInvadingShips } from '../combat/invasion';
 import { builtObjectThreats, builtObjectThreatLevels, determineShipGroupTarget, shipGroupOf, shouldInvadeColony, stellarAttackers, stellarCurrentSpeed, stellarCurrentTarget, stellarEmpire, stellarFirepowerRaw, stellarTopSpeed, type Threat } from '../combat/threats';
 import {
-    HYPER_JUMP_THRESHHOLD,
     INVASION_DROPOFF_RANGE,
     MOVEMENT_DECELERATION_RANGE_INVASION,
     MOVEMENT_IMPULSE_SPEED,
@@ -48,6 +47,7 @@ import {
 } from '../combat/attackAI';
 import { BuiltObjectMissionType, Command, CommandAction, builtObjectMission, isBuiltObject, isCreature, type StellarObject } from './mission';
 import type { CommandHandler } from './executeCommands';
+import { baconSettings } from '../data/baconSettings';
 
 /** The threat-slot rejection test repeated at 1743 / 1774 / 1860 / 2004 / 2094 / 2270. */
 function threatRejected(bo: BuiltObject, t: Threat | null): boolean {
@@ -312,7 +312,7 @@ export const cmdAttackBombardCaptureRaid: CommandHandler = (ctx) => {
     if (currentTarget !== null && !currentTarget.hasBeenDestroyed) {
         num63 = galaxy.calculateDistance(bo.xpos, bo.ypos, currentTarget.xpos, currentTarget.ypos);
     }
-    if (num63 > HYPER_JUMP_THRESHHOLD) {
+    if (num63 > baconSettings.hyperJumpThreshhold) {
         // currentTarget is non-null here (num63 > 0 requires it).
         const ct = currentTarget!;
         if (bo.warpSpeed > 0) {
@@ -426,7 +426,7 @@ export const cmdAttackBombardCaptureRaid: CommandHandler = (ctx) => {
                         }
                     }
                     const num70 = galaxy.calculateDistance(bo.xpos, bo.ypos, num67, num68);
-                    if (num70 > HYPER_JUMP_THRESHHOLD) {
+                    if (num70 > baconSettings.hyperJumpThreshhold) {
                         if (bo.warpSpeed > 0) {
                             const command7 = Command.at(CommandAction.ConditionalHyperTo, num67, num68);
                             mission.insertCommandAtTop(command7);

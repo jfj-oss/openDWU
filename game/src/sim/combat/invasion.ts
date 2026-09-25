@@ -91,6 +91,7 @@ import {
     scanForNewOwnerBuiltObject as scanForNewOwnerBuiltObjectImpl,
     cancelAttacksHabitat,
 } from './ownership';
+import { baconSettings } from '../data/baconSettings';
 
 /** Galaxy.ResolveDescription(HabitatCategoryType) key table. */
 const HabitatCategoryDesc = HabitatCategoryType as unknown as Record<number, string>;
@@ -533,8 +534,6 @@ function roundTo2Even(value: number): number {
     return r / 100.0;
 }
 
-/** BaconMain.cs 100 useInvasionModifierReputation (default true; BaconSettings overrides are not loaded). */
-const USE_INVASION_MODIFIER_REPUTATION = true;
 
 /**
  * Habitat.cs 4428/4435 CalculateForceStrengths → BaconHabitat.cs 1188 CalculateForceStrengths(planet, defender, attacker,
@@ -555,7 +554,7 @@ export function calculateForceStrengths(
     if (
         attacker !== null &&
         defender !== null &&
-        USE_INVASION_MODIFIER_REPUTATION &&
+        baconSettings.useInvasionModifierReputation &&
         attackingTroops !== null &&
         attackingTroops.count > 0 &&
         attackingTroops.items[0].type !== TroopType.PirateRaider &&
@@ -1991,10 +1990,6 @@ export function takeOwnershipOfColonyRuntime(galaxy: Galaxy, empire: Empire, col
 
 // ---- Stub added by M4s2 (BaconEmpire.cs 1499 CheckColoniesForPirateFacilitiesAndAttack → Habitat.cs 3312) ----
 
-/** BaconHabitat.cs 34-36 pirateBaseTroops / pirateFortressTroops / pirateCriminalNetworkTroops (BaconMain settings file may override; defaults). */
-const PIRATE_BASE_TROOPS = 7;
-const PIRATE_FORTRESS_TROOPS = 12;
-const PIRATE_CRIMINAL_NETWORK_TROOPS = 18;
 /**
  * Habitat.cs 3360 GenerateDefensivePirateRaiders(defendingPirateFaction, currentDefendingTroopsInvade) →
  * BaconHabitat.cs 1269 GenerateDefensivePirateRaiders (M4z1). Rnd: Next(0, 3) (raider count). Callers: Habitat.cs 3312
@@ -2023,13 +2018,13 @@ export function generateDefensivePirateRaiders(galaxy: Galaxy, planet: Habitat, 
     if (planetaryFacility !== null) {
         switch (planetaryFacility.type) {
             case PlanetaryFacilityType.PirateBase:
-                num2 = PIRATE_BASE_TROOPS;
+                num2 = baconSettings.pirateBaseTroops;
                 break;
             case PlanetaryFacilityType.PirateFortress:
-                num2 = PIRATE_FORTRESS_TROOPS;
+                num2 = baconSettings.pirateFortressTroops;
                 break;
             case PlanetaryFacilityType.PirateCriminalNetwork:
-                num2 = PIRATE_CRIMINAL_NETWORK_TROOPS;
+                num2 = baconSettings.pirateCriminalNetworkTroops;
                 break;
         }
     }

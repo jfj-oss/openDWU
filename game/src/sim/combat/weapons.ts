@@ -61,6 +61,7 @@ import {
     provideBonusFromPirateBase,
     type FighterLike,
 } from './damage';
+import { baconSettings } from '../data/baconSettings';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants
@@ -70,8 +71,6 @@ import {
 export const TORPEDO_WEAPON_HIT_RANGE = 25.0;
 /** RaceEventType.cs: PredictiveHistory (member 28; 0 = Undefined). */
 const RACE_EVENT_TYPE_PREDICTIVE_HISTORY = 28;
-/** BaconBuiltObject.cs 74 pointDefenseAffectsMissiles (BaconMain.cs 916 reads the settings file; default true). */
-const POINT_DEFENSE_AFFECTS_MISSILES = true;
 
 // ---------------------------------------------------------------------------------------------------------------
 // Typed views
@@ -1545,7 +1544,7 @@ export function defendBase(galaxy: Galaxy, builtObject: BuiltObject, time: numbe
 /** BaconBuiltObject.cs 5032 InterceptMissiles(ship, time, inView). Rnd: Fire draws (NextDouble, Next(0, 2)) per interception. */
 export function interceptMissiles(galaxy: Galaxy, builtObject: BuiltObject, time: number, inView: boolean): void {
     const ship = builtObject;
-    if (!POINT_DEFENSE_AFFECTS_MISSILES) return;
+    if (!baconSettings.pointDefenseAffectsMissiles) return;
     if (ship.assaultPodFiringCounter >= 32766) ship.assaultPodFiringCounter = 0;
     ++ship.assaultPodFiringCounter;
     if (inView && ship.assaultPodFiringCounter % 5 !== 0) return;

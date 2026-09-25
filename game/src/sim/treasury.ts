@@ -27,7 +27,6 @@ import { REAL_SECONDS_IN_GALACTIC_YEAR, galaxyStarDate } from './tick/simTime';
 import { DiplomaticRelationType } from './diplomacy';
 import { PirateRelationType } from './pirateRelations';
 import {
-    SUBJUGATION_TRIBUTE_PERCENTAGE,
     annualFacilityMaintenance,
     annualPirateProtection,
     annualPrivateMaintenanceExcludingUnderConstruction,
@@ -46,6 +45,7 @@ import { doCharacterEventRuntime, leaveEmpire } from './events';
 import { calculateOverallStrengthFactorWithoutShields } from './combat/threats';
 import { calculatePirateCashflow, pirateEconomyPerformExpense } from './pirates/pirateAI';
 import { PlanetaryFacilityType, WonderType } from './researchSystem';
+import { baconSettings } from './data/baconSettings';
 
 // ---------------------------------------------------------------------------
 // Money (Empire intermediate / long blocks)
@@ -109,7 +109,7 @@ export function processSubjugationTribute(galaxy: Galaxy, empire: Empire, timePa
         const diplomaticRelation = empire.diplomaticRelations.at(i);
         if (diplomaticRelation.type === DiplomaticRelationType.SubjugatedDominion && diplomaticRelation.initiator !== empire) {
             const num = annualTaxRevenue(galaxy, empire) + thisYearsForeignTradeBonuses(empire) + thisYearsSpacePortIncome(galaxy, empire);
-            const num2 = num * SUBJUGATION_TRIBUTE_PERCENTAGE;
+            const num2 = num * baconSettings.subjugationTributePercentage;
             const num3 = timePassed / REAL_SECONDS_IN_GALACTIC_YEAR;
             const num4 = num2 * num3;
             diplomaticRelation.initiator!.stateMoney += num4;

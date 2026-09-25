@@ -41,6 +41,7 @@ export const DEFAULT_RACE_FILES: readonly string[] = [
 import { designSpecificationFallbackFiles } from './designSpecifications';
 import { parseCharacterFile, parseCharacterNames, type CharacterFileRow, type CharacterNames } from './characters';
 import { loadText } from '../textResolver';
+import { parseBaconSettings, type BaconSettings } from './baconSettings';
 
 // Sub role names Empire.GenerateDesignSpecifications (Empire.cs 4108) loads a
 // design template for, plus "PlanetDestroyer" (same method,
@@ -107,6 +108,11 @@ export interface GameData {
      * SetRaceStartupCharacters). A missing file is absent (C#: File.Exists false → empty list).
      */
     characterFiles?: Map<string, CharacterFileRow[]>;
+    /**
+     * BaconSettings.txt (BaconMain.cs 1101 ReadBaconSettings + 605-1062), parsed onto the C# defaults; a missing file
+     * gives the defaults. Absent (hand-built GameData) = the defaults. Applied at game start (sim/baconInitialize.ts).
+     */
+    baconSettings?: BaconSettings;
 }
 
 /** Shape of public/asset-manifest.json entries this loader consumes. */
@@ -201,6 +207,7 @@ export async function loadGameData(
         policyTexts,
         raceFileResults,
         gameTextText,
+        baconSettingsText,
     ] = await Promise.all([
         // 04a non-race files
         fetchText(resolveDataUrl('raceFamilies.txt', customizationSet)),
@@ -236,6 +243,10 @@ export async function loadGameData(
         // Start.cs 885-899: TextResolver.LoadText(GameText.txt), the customization set's copy replacing the
         // stock one when present (LoadText clears first). Display text only; a missing file leaves tags unresolved.
         fetchText(resolveDataUrl('GameText.txt', customizationSet)).catch(() => ''),
+
+        // BaconMain.cs 1107: new StreamReader("BaconSettings.txt") — relative to the working directory (the install
+        // root), never a customization set; FileNotFoundException → empty dictionary → every setting at its default.
+        fetchText(resolveDataUrl('BaconSettings.txt')).catch(() => null),
     ]);
     if (gameTextText !== '') loadText(gameTextText);
 
@@ -357,6 +368,7 @@ export async function loadGameData(
     );
 
     return {
+        baconSettings: parseBaconSettings(baconSettingsText === null || isMissingResponse(baconSettingsText) ? null : baconSettingsText),
         characterNames,
         characterFiles,
         designNames,

@@ -30,7 +30,7 @@
 // Clock-seeded / hash-seeded `new Random()` in BaconFighter (CheckForLevelGain 55, GainFighterLevel 70 `new Random(Name.GetHashCode())`,
 // AssignCAP 785) → Randoms derived from the galaxy seed without drawing galaxy.rnd (plan §0; cf. damage.ts baconCombatClockRnd).
 // `BaconBuiltObject.myMain` (the UI Main) is non-null in any running game, as elsewhere in the port.
-// BaconSettings.txt overrides are not loaded; the C# class defaults are used (HANDOFF known follow-ups).
+// BaconSettings.txt statics (fighterRangeMultiple, ammoExhaustChance*, ...) are read from `baconSettings` (sim/baconInitialize.ts).
 
 import { checkTriggerEvent } from '../story/eventActions';
 import { EventTriggerType } from '../story/gameEventModel';
@@ -101,6 +101,7 @@ import {
     weaponFire,
     weaponIsAvailable,
 } from './weapons';
+import { baconSettings } from '../data/baconSettings';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants (BaconFighter.cs 18-26, BaconBuiltObject.cs 71-79)
@@ -108,29 +109,14 @@ import {
 
 /** BaconFighter.cs 18 maximumTargetDistanceSquared. */
 const MAXIMUM_TARGET_DISTANCE_SQUARED = 225.0;
-/** BaconFighter.cs 19 fighterRangeMultiple (BaconMain.cs 644 settings override not loaded). */
-const FIGHTER_RANGE_MULTIPLE = 1.0;
 /** BaconFighter.cs 20 starbaseFighterRangeMultiplier. */
 const STARBASE_FIGHTER_RANGE_MULTIPLIER = 2.0;
 /** BaconFighter.cs 21 myDamageMultiplier. */
 const MY_DAMAGE_MULTIPLIER = 3.0;
-/** BaconFighter.cs 22 / 23 ammoExhaustChanceMissile / Torpedo (float). */
-const AMMO_EXHAUST_CHANCE_MISSILE = Math.fround(0.2);
-const AMMO_EXHAUST_CHANCE_TORPEDO = Math.fround(0.25);
-/** BaconFighter.cs 24 fighterBuildSpeedDivisor (float). */
-const FIGHTER_BUILD_SPEED_DIVISOR = Math.fround(2);
-/** BaconFighter.cs 25 fighterBuildCost. */
-const FIGHTER_BUILD_COST = 0;
-/** BaconFighter.cs 26 fighterOnBomberDamageMultiplier (float). */
-const FIGHTER_ON_BOMBER_DAMAGE_MULTIPLIER = Math.fround(1);
-/** BaconBuiltObject.cs 71-73 bay labels. */
-const FIGHTER_BAY_LABEL = 'fighter';
-const BOMBER_BAY_LABEL = 'bomber';
-const MIXED_BAY_LABEL = 'assault';
-/** BaconBuiltObject.cs 75 limitNewFighterBuildToColonies. */
-const LIMIT_NEW_FIGHTER_BUILD_TO_COLONIES = false;
-/** BaconBuiltObject.cs 79 tailGunnerResearch. */
-const TAIL_GUNNER_RESEARCH = 'Point Defense Weapons';
+// BaconSettings.txt statics (BaconFighter.cs 19 / 22-26, BaconBuiltObject.cs 71-75 / 79; set by BaconMain.cs 642-658 /
+// 718 / 899-910 / 967 / 975): fighterRangeMultiple, ammoExhaustChance*, fighterBuildSpeedDivisor, fighterBuildCost,
+// fighterOnBomberDamageMultiplier, the bay labels, limitNewFighterBuildToColonies and tailGunnerResearch are read from
+// `baconSettings` at use time.
 /** ShipImageHelper.cs 27 ShipSetFighterImageCount. */
 const SHIP_SET_FIGHTER_IMAGE_COUNT = 2;
 const F_0_7 = Math.fround(0.7);
@@ -981,8 +967,8 @@ function fighterCheckCarrierDestroyed(galaxy: Galaxy, fighter: Fighter): void {
 export function calculateMaximumTargetRange(fighter: Fighter): number {
     const parentBuiltObject = fighter.parentBuiltObject;
     return parentBuiltObject !== null && parentBuiltObject.role === BuiltObjectRole.Base
-        ? MAXIMUM_TARGET_DISTANCE_SQUARED * FIGHTER_RANGE_MULTIPLE * fighter.topSpeed * fighter.topSpeed * STARBASE_FIGHTER_RANGE_MULTIPLIER
-        : MAXIMUM_TARGET_DISTANCE_SQUARED * FIGHTER_RANGE_MULTIPLE * fighter.topSpeed * fighter.topSpeed;
+        ? MAXIMUM_TARGET_DISTANCE_SQUARED * baconSettings.fighterRangeMultiple * fighter.topSpeed * fighter.topSpeed * STARBASE_FIGHTER_RANGE_MULTIPLIER
+        : MAXIMUM_TARGET_DISTANCE_SQUARED * baconSettings.fighterRangeMultiple * fighter.topSpeed * fighter.topSpeed;
 }
 
 /** BaconFighter.cs 131 CheckReturnToCarrier(fighter, galaxy) (via Fighter.cs 435). */
@@ -1835,10 +1821,10 @@ function checkOutOfAmmo(galaxy: Galaxy, fighter: Fighter, i: number): void {
     }
     const num2 = galaxy.rnd.nextDouble();
     if (fighter.weapons.filter((x) => x.type === ComponentType.WeaponMissile).length > 0) {
-        if (num2 * num1 >= AMMO_EXHAUST_CHANCE_MISSILE) return;
+        if (num2 * num1 >= baconSettings.ammoExhaustChanceMissile) return;
         fighter.name += '*';
     } else {
-        if (fighter.weapons.filter((x) => x.type === ComponentType.WeaponTorpedo).length <= 0 || num2 * num1 >= AMMO_EXHAUST_CHANCE_TORPEDO) return;
+        if (fighter.weapons.filter((x) => x.type === ComponentType.WeaponTorpedo).length <= 0 || num2 * num1 >= baconSettings.ammoExhaustChanceTorpedo) return;
         fighter.name += '*';
     }
 }
@@ -2387,7 +2373,7 @@ function isMyFighter(fighter: Fighter): boolean {
 function inflictDamageFighterMultiplier(fighter: Fighter): number {
     let num = 1.0;
     if (isMyFighter(fighter)) num = MY_DAMAGE_MULTIPLIER;
-    if (fighter.specification.type === FighterType.Interceptor && isFighter(fighter.currentTarget) && fighter.currentTarget.specification.type === FighterType.Bomber) num *= FIGHTER_ON_BOMBER_DAMAGE_MULTIPLIER;
+    if (fighter.specification.type === FighterType.Interceptor && isFighter(fighter.currentTarget) && fighter.currentTarget.specification.type === FighterType.Bomber) num *= baconSettings.fighterOnBomberDamageMultiplier;
     return num;
 }
 
@@ -2444,8 +2430,8 @@ function payWhenFighterIsBuilt(galaxy: Galaxy, fighter: Fighter): void {
         sendMessageToEmpire(fighter.empire, fighter.empire, EmpireMessageType.Undefined, null, 'All Fighters and bombers on ' + parent.name + ' have been repaired.', { x: 0, y: 0 }, 'fighterRepaired');
     }
     let num = Math.fround(1);
-    if (FIGHTER_BUILD_COST !== 0 && fighter.empire === galaxy.playerEmpire) num = getCustomBomberPriceMultiplier(fighter);
-    fighter.empire.stateMoney -= FIGHTER_BUILD_COST * fighter.size * num;
+    if (baconSettings.fighterBuildCost !== 0 && fighter.empire === galaxy.playerEmpire) num = getCustomBomberPriceMultiplier(fighter);
+    fighter.empire.stateMoney -= baconSettings.fighterBuildCost * fighter.size * num;
 }
 
 /** BaconFighter.cs 113 GetCustomBomberPriceMultiplier(fighter). */
@@ -2695,11 +2681,11 @@ function carrierBayCapacity(carrier: BuiltObject): { fighter: number; bomber: nu
         const componentImprovement = actualEmpire === null || actualEmpire.research === null ? componentImprovementFromComponent(items[index].def) : actualEmpire.research.resolveImprovedComponentValues(items[index].def);
         if (componentImprovement.improvedComponent.category === ComponentCategoryType.Fighter) {
             const name = componentImprovement.improvedComponent.name.toLowerCase();
-            if (name.includes(FIGHTER_BAY_LABEL)) {
+            if (name.includes(baconSettings.fighterBayLabel)) {
                 num5 += componentImprovement.value1;
-            } else if (name.includes(BOMBER_BAY_LABEL)) {
+            } else if (name.includes(baconSettings.bomberBayLabel)) {
                 num6 += componentImprovement.value1;
-            } else if (name.includes(MIXED_BAY_LABEL)) {
+            } else if (name.includes(baconSettings.mixedBayLabel)) {
                 num5 += Math.trunc(componentImprovement.value1 / 2);
                 num6 += Math.trunc(componentImprovement.value1 / 2);
             }
@@ -2771,7 +2757,7 @@ export function buildFighter(galaxy: Galaxy, carrier: BuiltObject, fighterSpecif
         if (carrier.fighterCapacity - fighterListTotalSize(fightersOf(carrier)!) >= fighterSpecification.size) {
             const fighter = new Fighter(galaxy, fighterSpecification, carrier);
             const latestProjects = carrier.actualEmpire!.research.latestProjects ?? [];
-            if (latestProjects.find((x) => x.def.name === TAIL_GUNNER_RESEARCH && x.isResearched) !== undefined) {
+            if (latestProjects.find((x) => x.def.name === baconSettings.tailGunnerResearch && x.isResearched) !== undefined) {
                 for (let index = 0; index < Math.trunc(fighter.size / 10); ++index) addWeaponToFighter(fighter, 'defensiveGun');
             }
         }
@@ -2805,16 +2791,16 @@ export function manufactureRepairFighters(galaxy: Galaxy, carrier: BuiltObject, 
     if (fighters === null || carrier.fighterCapacity <= 0 || carrier.fighterRepairRate <= 0) return;
     let num1 = Math.fround(timePassed * carrier.fighterRepairRate * 0.01);
     if (baconIsMyShip(carrier)) num1 = Math.fround(num1 * 2);
-    if (carrier.role === BuiltObjectRole.Base && LIMIT_NEW_FIGHTER_BUILD_TO_COLONIES) num1 = Math.fround(num1 * 2);
+    if (carrier.role === BuiltObjectRole.Base && baconSettings.limitNewFighterBuildToColonies) num1 = Math.fround(num1 * 2);
     let flag = true;
-    if (LIMIT_NEW_FIGHTER_BUILD_TO_COLONIES && carrier.role !== BuiltObjectRole.Base && carrier.actualEmpire === galaxy.playerEmpire) flag = isShipInSystemWithFriendlyColony(carrier);
+    if (baconSettings.limitNewFighterBuildToColonies && carrier.role !== BuiltObjectRole.Base && carrier.actualEmpire === galaxy.playerEmpire) flag = isShipInSystemWithFriendlyColony(carrier);
     for (let index = 0; index < fighters.length; ++index) {
         const fighter = fighters[index];
         if (fighter.onboardCarrier) {
             if (fighter.underConstruction) {
                 if (flag) {
                     if (fighter.health < 1.0) {
-                        const num2 = Math.fround(Math.fround(Math.fround(num1 / FIGHTER_BUILD_SPEED_DIVISOR) * 10) / Math.max(1, fighter.size));
+                        const num2 = Math.fround(Math.fround(Math.fround(num1 / baconSettings.fighterBuildSpeedDivisor) * 10) / Math.max(1, fighter.size));
                         let num3: number;
                         if (1.0 - fighter.health <= num2) {
                             num3 = Math.fround(num2 - Math.fround(1 - fighter.health));
@@ -2825,7 +2811,7 @@ export function manufactureRepairFighters(galaxy: Galaxy, carrier: BuiltObject, 
                             fighter.health = Math.fround(fighter.health + num2);
                             num3 = 0;
                         }
-                        num1 = Math.fround(Math.fround((num3 * fighter.size) / 10.0) * FIGHTER_BUILD_SPEED_DIVISOR);
+                        num1 = Math.fround(Math.fround((num3 * fighter.size) / 10.0) * baconSettings.fighterBuildSpeedDivisor);
                     } else {
                         fighter.underConstruction = false;
                     }

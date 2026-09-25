@@ -19,17 +19,13 @@ import { Habitat } from '../types';
 import type { ComponentDefinition } from '../componentStatic';
 import { assignMission } from '../missions/assign';
 import { BuiltObjectMissionPriority } from '../missions/mission';
-import { HYPER_JUMP_THRESHHOLD } from '../combat/attackAI';
 import { MAX_SOLAR_SYSTEM_SIZE } from '../movement';
 import { OrderType, empireCreateOrder } from '../logistics/orders';
 import { findNearestShipYard, procureConstructionComponentsAtBuiltObject, procureConstructionComponentsAtColony } from './empireConstruction';
+import { baconSettings } from '../data/baconSettings';
 
-/** BaconBuiltObject.cs 66-70 shipFreeRepairTimeFromCrewSkill* (seconds per component; BaconSettings.txt has the same values). */
-const SHIP_FREE_REPAIR_TIME_AVERAGE = 160;
-const SHIP_FREE_REPAIR_TIME_EXPERIENCED = 120;
-const SHIP_FREE_REPAIR_TIME_VETERAN = 80;
-const SHIP_FREE_REPAIR_TIME_ELITE = 40;
-const SHIP_FREE_REPAIR_TIME_LEGENDARY = 20;
+// BaconBuiltObject.cs 66-70 shipFreeRepairTimeFromCrewSkill* (seconds per component): BaconSettings.txt statics
+// (BaconMain.cs 879-895), read from `baconSettings`.
 
 /** The clock-seeded `new Random()` of DoRepairs (plan §0): one galaxy-seed-derived stream. */
 function repairClockRnd(galaxy: Galaxy): Random {
@@ -69,11 +65,11 @@ export function doRepairs(galaxy: Galaxy, builtObject: BuiltObject, timePassed: 
     let num1 = ship.damageRepair;
     let num2 = 0;
     switch (calculateCrewLevel(ship)) {
-        case 'average': num2 = SHIP_FREE_REPAIR_TIME_AVERAGE; break;
-        case 'experienced': num2 = SHIP_FREE_REPAIR_TIME_EXPERIENCED; break;
-        case 'veteran': num2 = SHIP_FREE_REPAIR_TIME_VETERAN; break;
-        case 'elite': num2 = SHIP_FREE_REPAIR_TIME_ELITE; break;
-        case 'legendary': num2 = SHIP_FREE_REPAIR_TIME_LEGENDARY; break;
+        case 'average': num2 = baconSettings.shipFreeRepairTimeFromCrewSkillAverage; break;
+        case 'experienced': num2 = baconSettings.shipFreeRepairTimeFromCrewSkillExperienced; break;
+        case 'veteran': num2 = baconSettings.shipFreeRepairTimeFromCrewSkillVeteran; break;
+        case 'elite': num2 = baconSettings.shipFreeRepairTimeFromCrewSkillElite; break;
+        case 'legendary': num2 = baconSettings.shipFreeRepairTimeFromCrewSkillLegendary; break;
     }
     if (num2 !== 0 && (num2 < num1 || num1 === 0)) num1 = num2;
     if (ship.empire !== null && num1 > 0 && ship.damagedComponentCount > 0) {
@@ -180,7 +176,7 @@ export function assignRepairMission(galaxy: Galaxy, empire: Empire, builtObject:
     const stellarObject = findNearestShipYard(galaxy, empire, builtObject, true, true);
     if (stellarObject !== null) {
         const num = galaxy.calculateDistance(builtObject.xpos, builtObject.ypos, stellarObject.xpos, stellarObject.ypos);
-        if (builtObject.warpSpeed <= 0 && num > HYPER_JUMP_THRESHHOLD && (builtObject.topSpeed <= 0 || !(num < MAX_SOLAR_SYSTEM_SIZE))) {
+        if (builtObject.warpSpeed <= 0 && num > baconSettings.hyperJumpThreshhold && (builtObject.topSpeed <= 0 || !(num < MAX_SOLAR_SYSTEM_SIZE))) {
             return false;
         }
     }

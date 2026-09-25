@@ -33,7 +33,7 @@ import { ComponentType } from '../data/components';
 import { ComponentCategoryType } from '../data/policies';
 import { BuiltObjectSubRole } from '../builtObjectTypes';
 import { BuiltObjectFleeWhen, BuiltObjectRole } from '../data/designSpecifications';
-import { BuiltObjectStance, SHIP_MARKUP_FACTOR, SHIP_MARKUP_FACTOR_PIRATES } from '../design';
+import { BuiltObjectStance } from '../design';
 import { Random } from '../random';
 import { Cargo, ResourceRef, TroopType, type Troop, type TroopList } from '../cargo';
 import type { Population } from '../population';
@@ -72,6 +72,7 @@ import { findNearestShipYard } from '../construction/empireConstruction';
 import { findNearestAvailableConstructionShip } from '../construction/empireConstruction';
 import { MAX_SOLAR_SYSTEM_SIZE } from '../movement';
 import { builtObjectCompleteTeardown } from './teardown';
+import { baconSettings } from '../data/baconSettings';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants (Galaxy.3.cs SetDefaults)
@@ -429,8 +430,8 @@ export function isFighterLike(o: unknown): o is FighterLike {
 export function calculateBuiltObjectLootingValue(builtObject: BuiltObject): number {
     let objectLootingValue = 0.0;
     if (builtObject !== null) objectLootingValue = 1.0 * builtObject.size;
-    if (builtObject.empire !== null && builtObject.empire.pirateEmpireBaseHabitat !== null) objectLootingValue *= SHIP_MARKUP_FACTOR_PIRATES / 2.5;
-    else if (builtObject.empire !== null) objectLootingValue *= SHIP_MARKUP_FACTOR / 5.0;
+    if (builtObject.empire !== null && builtObject.empire.pirateEmpireBaseHabitat !== null) objectLootingValue *= baconSettings.shipMarkupFactorPirates / 2.5;
+    else if (builtObject.empire !== null) objectLootingValue *= baconSettings.shipMarkupFactor / 5.0;
     return objectLootingValue;
 }
 

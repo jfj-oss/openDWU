@@ -20,6 +20,7 @@
 // Normal (0.5, SetTechTreeStartingDefaults) and Level 1-6. AI pirate factions
 // are generated when piratePrevalence > 0 (pirates.ts).
 
+import { baconInitializeSettings, resetBaconSettingsToDefaults } from './baconInitialize';
 import { applyVictoryConditionsToGalaxy, type VictoryConditions } from './victory';
 import { reviewComponentPrices, reviewResourcePrices } from './market';
 import { selectPopularDesignCandidates } from './independentTraders';
@@ -706,6 +707,8 @@ function spawnPirateNearPlayer(galaxy: Galaxy, ctx: PirateGenerationContext, xpo
 // createGame: the sim entry point the wizard calls (non-pirate play).
 export function createGame(opts: CreateGameOptions): Game {
     const gd = opts.gameData;
+    // BaconInitialize has not run while a fresh launch generates its galaxy: the Bacon statics are the C# defaults.
+    resetBaconSettingsToDefaults();
     govs = gd.governments;
     setGovernmentsStatic(gd.governments);
     setGovernmentBiasesStatic(gd.governmentBiases); // GovernmentBiasList.LoadFromFile (M4r: NaturalAffinity)
@@ -1173,5 +1176,7 @@ export function createGame(opts: CreateGameOptions): Game {
     galaxy.globalVictoryConditions = opts.victoryConditions ?? null;
     // TODO(port): the rest of CreateGameFromSettings (see header).
     stopAt('tail');
+    // Main.Part12.cs 3151 BaconMain.BaconInitialize once the new game starts: BaconSettings.txt takes effect.
+    baconInitializeSettings(galaxy, gd.baconSettings);
     return result();
 }

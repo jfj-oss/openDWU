@@ -11,8 +11,8 @@ import { BuiltObjectMissionType, Command, CommandAction, builtObjectMission } fr
 import { accelerateToTargetSpeed, doMovement } from '../movement';
 import { detectShipsDockingAtHabitat, detectShipsDockingAtSpacePort } from '../logistics/docking';
 import { evaluateAdequateAttackers, threatEvaluation } from '../combat/threats';
-import { HYPER_JUMP_THRESHHOLD } from '../combat/attackAI';
 import { setupBlockadeBuiltObject, setupBlockadeColony } from '../fleets/blockades';
+import { baconSettings } from '../data/baconSettings';
 
 /** Galaxy.ParentRelativeRange (Galaxy.3.cs 4988) / EscortRange (4977). */
 const PARENT_RELATIVE_RANGE = 700;
@@ -94,7 +94,7 @@ export const cmdEscort: CommandHandler = (ctx) => {
         return result;
     }
     const num39 = galaxy.calculateDistance(bo.xpos, bo.ypos, targetBuiltObject5.xpos, targetBuiltObject5.ypos);
-    if (num39 > HYPER_JUMP_THRESHHOLD && bo.warpSpeed > 0) {
+    if (num39 > baconSettings.hyperJumpThreshhold && bo.warpSpeed > 0) {
         const mission2 = builtObjectMission(targetBuiltObject5.mission);
         let command3: Command | null = null;
         if (mission2 !== null) command3 = mission2.showCurrentCommand();
@@ -119,7 +119,7 @@ export const cmdEscort: CommandHandler = (ctx) => {
                 num41 = command3.ypos;
             }
             const num42 = galaxy.calculateDistance(bo.xpos, bo.ypos, num40, num41);
-            if (num42 > HYPER_JUMP_THRESHHOLD && bo.warpSpeed > 0) {
+            if (num42 > baconSettings.hyperJumpThreshhold && bo.warpSpeed > 0) {
                 const command4 = Command.at(CommandAction.ConditionalHyperTo, num40, num41);
                 mission.insertCommandAtTop(command4);
                 bo.firstExecutionOfCommand = true;

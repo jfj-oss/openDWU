@@ -10,13 +10,10 @@ import type { Habitat } from '../types';
 import type { ConstructionQueue } from './constructionQueue';
 import type { ManufacturingQueue } from '../manufacturingQueue';
 import { manufacturingQueueDoManufacturing } from '../industry';
+import { baconSettings } from '../data/baconSettings';
 
-/**
- * BaconBuiltObject.cs 77 privateBuildCostToStateMoney = 1.0 (the class default; BaconSettings.txt sets 0.3, but the
- * port keeps the C# defaults for BaconMain.BaconInitialize settings, as builtObject.ts / colonyTick.ts do).
- * TODO(port): BaconSettings.txt overrides (BaconMain.cs 925). Intentionally not BaconSettings.txt line 156 (0.3).
- */
-export const BACON_PRIVATE_BUILD_COST_TO_STATE_MONEY = 1.0;
+// BaconBuiltObject.cs 77 privateBuildCostToStateMoney: a BaconSettings.txt static (BaconMain.cs 923), read from
+// `baconSettings`.
 
 /**
  * BuiltObject.2.cs 6023 ReviewRetrofitConstructionQueue(time, starDate): runs a colony-built base's retrofit queues
@@ -92,8 +89,8 @@ export function selectRandomSpacePortColony(galaxy: Galaxy, empire: Empire, colo
  * UI-only.)
  */
 export function privateSectorBuildOrRefitInvestInInfrastructure(galaxy: Galaxy, ship: BuiltObject, cost: number): number {
-    const num1 = (1.0 - BACON_PRIVATE_BUILD_COST_TO_STATE_MONEY) * cost;
-    const num2 = BACON_PRIVATE_BUILD_COST_TO_STATE_MONEY * cost;
+    const num1 = (1.0 - baconSettings.privateBuildCostToStateMoney) * cost;
+    const num2 = baconSettings.privateBuildCostToStateMoney * cost;
     const actualEmpire = ship.actualEmpire!;
     const coloniesToExclude: BuiltObject[] = [];
     for (const spacePort of actualEmpire.spacePorts) {

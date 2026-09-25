@@ -10,6 +10,7 @@
 
 import { RaceEventType } from './eventTypes';
 import type { Habitat } from './types';
+import { baconSettings } from './data/baconSettings';
 
 // ColonyResourceEffect.cs (byte enum, member order exact).
 export enum ColonyResourceEffect {
@@ -76,11 +77,10 @@ export function convertToInt32(value: number): number {
     return r;
 }
 
-/** BaconHabitat.cs 29-30 infrasetuctureDurability = 0.9f / colonyInfrastructureSpendingPopulationFactor = 300000000L. */
-export const BACON_INFRASTRUCTURE_DURABILITY = Math.fround(0.9);
+/** BaconHabitat.cs 30 colonyInfrastructureSpendingPopulationFactor = 300000000L. */
 export const BACON_COLONY_INFRASTRUCTURE_SPENDING_POPULATION_FACTOR = 300000000;
-/** BaconHabitat.cs 27 infrastructureSpendingPerDevelopmentLevel = 50000. */
-export const BACON_INFRASTRUCTURE_SPENDING_PER_DEVELOPMENT_LEVEL = 50000;
+// BaconHabitat.cs 27 infrastructureSpendingPerDevelopmentLevel / 29 infrasetuctureDurability: BaconSettings.txt statics
+// (BaconMain.cs 831 / 847), read from `baconSettings`.
 
 /** BaconHabitat.cs 879 GetDevelopmentLevel(planet). */
 export function baconGetDevelopmentLevel(planet: Habitat): number {
@@ -98,7 +98,7 @@ export function determineDevelopmentLevelBonusFromInfrastructureSpending(planet:
         if (planet.population != null && planet.population.totalAmount > 0) num1 = planet.population.totalAmount;
         const f = BACON_COLONY_INFRASTRUCTURE_SPENDING_POPULATION_FACTOR;
         const num2 = (num1 + f) / (num1 + f / 3.0);
-        infrastructureSpending = convertToInt32((baconValue * num2) / BACON_INFRASTRUCTURE_SPENDING_PER_DEVELOPMENT_LEVEL);
+        infrastructureSpending = convertToInt32((baconValue * num2) / baconSettings.infrastructureSpendingPerDevelopmentLevel);
     }
     return infrastructureSpending;
 }

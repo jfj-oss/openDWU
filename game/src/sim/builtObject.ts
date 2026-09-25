@@ -33,13 +33,13 @@ import { ColonyResourceEffect, resourceBonusTotalByEffectType } from './developm
 import { empireGovernmentAttributes } from './empire';
 import { countResourceSupplyLocations } from './logistics/orders';
 import { redefineBuiltObjectManufacturingQueue, type ManufacturingQueue } from './manufacturingQueue';
-import { SHIP_MAINTENANCE_COST_PER_SIZE_UNIT } from './forceStructure';
 import { Weapon, weaponsDetermineNotInSuppliedList, weaponsQuickCompareEquivalent, weaponsRemoveAndResetFirstMatchingWeaponById } from './weapon';
 import { MIN_TIME } from './tick/simTime';
 import type { BuiltObjectMission } from './missions/mission';
 import { builtObjectReDefineConstructionQueue } from './construction/constructionYard';
 import { fighterCompleteTeardown, type Fighter } from './combat/fighters';
 import { clearPreviousMissionRequirements } from './missions/assign';
+import { baconSettings } from './data/baconSettings';
 
 // Port of EngineType.cs (byte enum, member order exact).
 export enum EngineType {
@@ -399,7 +399,7 @@ export class BuiltObject {
     get annualSupportCostBase(): number { return this._annualSupportCost; }
     // BuiltObject.AnnualSupportCost (BuiltObject.cs 782-830). Returns int.
     get annualSupportCost(): number {
-        const num = SHIP_MAINTENANCE_COST_PER_SIZE_UNIT * this.size;
+        const num = baconSettings.shipMaintenanceCostPerSizeUnit * this.size;
         let num2 = this._annualSupportCost + num;
         if (this.role !== BuiltObjectRole.Base && this.design != null && this.design.warpSpeed <= 0) {
             num2 *= 0.8;
@@ -1510,12 +1510,9 @@ function removeFrom(list: unknown[], item: unknown): void {
     if (index >= 0) list.splice(index, 1);
 }
 
-// BaconBuiltObject static settings (BaconBuiltObject.cs 47-55). BaconMain.BaconInitialize
-// overrides some from BaconSettings.txt, but only once a game exists (after game-start
-// generation). TODO(port): BaconSettings.txt overrides (BaconMain.cs:640/821).
+// BaconBuiltObject static settings (BaconBuiltObject.cs 47-55). sublightFuelBurnDivisor and
+// weaponRangeMultiplierForBases are BaconSettings.txt statics (BaconMain.cs 638 / 819), read from `baconSettings`.
 const MY_CARGO_BAY_CAPACITY_MULTIPLIER = 5;
-const SUBLIGHT_FUEL_BURN_DIVISOR = Math.fround(1);
-const WEAPON_RANGE_MULTIPLIER_FOR_BASES = Math.fround(1);
 
 function nameContainsRomulan(empire: Empire | null): boolean {
     return empire !== null && empire.name.includes('Romulan');
@@ -1540,7 +1537,7 @@ function baconModWeaponRangeForBases(ship: BuiltObject): void {
         const range = weapon.range;
         if (weapon.component !== null) {
             const ci = componentImprovementFromComponent(weapon.component.def);
-            ci.value2 = convertToInt32(Math.fround(Math.fround(range) * WEAPON_RANGE_MULTIPLIER_FOR_BASES));
+            ci.value2 = convertToInt32(Math.fround(Math.fround(range) * baconSettings.weaponRangeMultiplierForBases));
             ci.value4 = weapon._improvedComponent.value4 * 2;
             weapon._improvedComponent = ci;
         }
@@ -1554,9 +1551,9 @@ function baconModWeaponRangeForBases(ship: BuiltObject): void {
 
 // BaconBuiltObject.ModMyShip (BaconBuiltObject.cs 2810).
 function baconModMyShip(ship: BuiltObject): void {
-    if (Math.abs(SUBLIGHT_FUEL_BURN_DIVISOR - 1) > 0.01 && Math.abs(SUBLIGHT_FUEL_BURN_DIVISOR) > 0.01) {
-        const val1_1 = Math.fround(Math.fround(ship.cruiseSpeedFuelBurn) / SUBLIGHT_FUEL_BURN_DIVISOR);
-        const val1_2 = Math.fround(Math.fround(ship.topSpeedFuelBurn) / SUBLIGHT_FUEL_BURN_DIVISOR);
+    if (Math.abs(baconSettings.sublightFuelBurnDivisor - 1) > 0.01 && Math.abs(baconSettings.sublightFuelBurnDivisor) > 0.01) {
+        const val1_1 = Math.fround(Math.fround(ship.cruiseSpeedFuelBurn) / baconSettings.sublightFuelBurnDivisor);
+        const val1_2 = Math.fround(Math.fround(ship.topSpeedFuelBurn) / baconSettings.sublightFuelBurnDivisor);
         ship.cruiseSpeedFuelBurn = Math.max(toShort(csInt(val1_1)), 1);
         ship.topSpeedFuelBurn = Math.max(toShort(csInt(val1_2)), 1);
     }

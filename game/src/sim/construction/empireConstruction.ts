@@ -39,7 +39,7 @@ import { AutomationLevel, empireGovernmentAttributes } from '../empire';
 import { BuiltObject } from '../builtObject';
 import { Habitat, IndustryType } from '../types';
 import type { Design } from '../design';
-import { SHIP_MARKUP_FACTOR, SHIP_MARKUP_FACTOR_PIRATES, galaxyComponentCurrentPrices } from '../design';
+import { galaxyComponentCurrentPrices } from '../design';
 import { BuiltObjectSubRole } from '../builtObjectTypes';
 import { BuiltObjectRole } from '../data/designSpecifications';
 import type { ComponentDefinition } from '../componentStatic';
@@ -53,7 +53,6 @@ import { ComponentType } from '../data/components';
 import { ShipDesignFocus } from '../researchSystem';
 import { findNewestCanBuild, findNewestCanBuildFullEvaluate, canBuildDesign, createNewDesigns } from '../designGeneration';
 import {
-    SHIP_MAINTENANCE_COST_PER_SIZE_UNIT,
     ALLOWABLE_YEARS_MAINTENANCE_FROM_CASH_ON_HAND,
     annualStateMaintenance,
     annualPrivateMaintenance,
@@ -104,6 +103,7 @@ import { isObjectVisibleToThisEmpire } from '../independentTraders';
 import { checkColonizationLikeliness } from '../tradeItems';
 import { type ShipGroup, empireShipGroups, shipGroupAssignMission } from '../fleets/shipGroup';
 import { shipGroupQueueMission } from '../fleets/shipGroupTasks';
+import { baconSettings } from '../data/baconSettings';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants (Galaxy.3.cs 4996-5138 defaults)
@@ -210,7 +210,7 @@ function getLeaderMaintenanceBonuses(design: Design, empire: Empire | null): num
 /** BaconDesign.cs 163 CalculateMaintenanceCosts(design, galaxy, empire) (Design.cs 1132). */
 export function designCalculateMaintenanceCosts(galaxy: Galaxy, design: Design, empire: Empire): number {
     const price = design.calculateCurrentPurchasePrice(galaxy);
-    const num1 = (empire.pirateEmpireBaseHabitat !== null ? Math.trunc(price / (SHIP_MARKUP_FACTOR_PIRATES * 2.0)) + 1 : Math.trunc(price / SHIP_MARKUP_FACTOR) + 1) + SHIP_MAINTENANCE_COST_PER_SIZE_UNIT * design.size;
+    const num1 = (empire.pirateEmpireBaseHabitat !== null ? Math.trunc(price / (baconSettings.shipMarkupFactorPirates * 2.0)) + 1 : Math.trunc(price / baconSettings.shipMarkupFactor) + 1) + baconSettings.shipMaintenanceCostPerSizeUnit * design.size;
     // TODO(port) M4u: Race.ChangePeriodActive && PeriodicRaceEvent == StrengthInNumbersMaintenanceLowerForSmallShips &&
     // Size <= 200 → num2 = 0.25 — periodic race events are not modelled (outside such a period the C# sees 0).
     const num2 = 0.0;
@@ -1153,8 +1153,8 @@ function determineRetrofitAffordability(galaxy: Galaxy, empire: Empire, builtObj
         componentsToProcure = componentListDiff(resolveComponentList(builtObject.components), design.components);
         const prices = galaxyComponentCurrentPrices(galaxy);
         for (const item of componentsToProcure) cost += prices[item.componentId];
-        if (empire.pirateEmpireBaseHabitat !== null) cost *= SHIP_MARKUP_FACTOR_PIRATES;
-        else cost *= SHIP_MARKUP_FACTOR;
+        if (empire.pirateEmpireBaseHabitat !== null) cost *= baconSettings.shipMarkupFactorPirates;
+        else cost *= baconSettings.shipMarkupFactor;
         if (builtObject.owner === null) {
             if (cost > getPrivateFunds(builtObject.empire!)) return { result: false, cost, componentsToProcure };
         } else if (cost > builtObject.owner.stateMoney) {

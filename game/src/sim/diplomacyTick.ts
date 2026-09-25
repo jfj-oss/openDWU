@@ -87,6 +87,7 @@ import { doResearchBreakthrough, reviewDesignsBuiltObjectsImprovedComponents } f
 import { determineDesirePirateProtection, pirateEconomyPerformExpense, pirateEconomyPerformIncome } from './pirates/pirateAI';
 import { PirateExpenseType, PirateIncomeType } from './pirates/pirateEconomy';
 import { acceptPirateProtection, calculatePirateProtectionPricePerMonth } from './pirates/pirateRelationsAI';
+import { baconSettings } from './data/baconSettings';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants (Galaxy.3.cs 4990-5140 InitializeStatics; BaconEmpire.cs statics with their default settings).
@@ -110,10 +111,8 @@ const IDEAL_TIME_BETWEEN_GIFTS = 1200000; // 5118 (long)
 const MINIMUM_WAR_LENGTH_PERIOD_YEARS = 0.5; // 5122
 const WAR_WEARINESS_FACTOR_DEFAULT = 1.0; // 5136
 const SECTOR_SIZE = 2000000; // Galaxy.3.cs SectorSize
-/** Galaxy.WarWearinessMaximum = 40.0 (5107; the BaconMain settings key "WarWearinessMaximum" may override — default kept). */
-const WAR_WEARINESS_MAXIMUM = 40.0;
-/** BaconEmpire.cs 24 warWearinessReduction = -2 (BaconMain settings key "warWearinessReduction" may override — default kept). */
-const BACON_WAR_WEARINESS_REDUCTION = -2;
+// Galaxy.WarWearinessMaximum (5107) and BaconEmpire.cs 24 warWearinessReduction: BaconSettings.txt statics (keys
+// warWearinessMax / warWearinessReduction, BaconMain.cs 778 / 790), read from `baconSettings`.
 
 // FleetPosture.cs (byte enum).
 export enum FleetPosture {
@@ -1125,13 +1124,13 @@ export function evaluatePoliticalSituation(galaxy: Galaxy, empire: Empire, timeP
             num20 *= 1.0 - num23;
         }
     } else {
-        num20 *= BACON_WAR_WEARINESS_REDUCTION; // BaconEmpire.cs 338 AdjustWarWearinessWhenAtPeace
+        num20 *= baconSettings.warWearinessReduction; // BaconEmpire.cs 338 AdjustWarWearinessWhenAtPeace
     }
     num20 *= timePassedMs / 60000.0;
     num20 *= warWearinessFactor(self);
     self.warWearinessRaw += num20;
     if (empireWarWeariness(self) < 0.0) self.warWearinessRaw = 0.0;
-    else if (empireWarWeariness(self) > WAR_WEARINESS_MAXIMUM) self.warWearinessRaw = WAR_WEARINESS_MAXIMUM;
+    else if (empireWarWeariness(self) > baconSettings.warWearinessMaximum) self.warWearinessRaw = baconSettings.warWearinessMaximum;
     if (num17 === 0 && self.civilityRating < 10.0) {
         const num24 = CIVILITY_RATING_ANNUAL_RISE_AMOUNT * (totalSeconds / REAL_SECONDS_IN_GALACTIC_YEAR);
         setCivilityRating(self, self.civilityRating + num24);

@@ -15,7 +15,6 @@ import { ForceStructureProjection, ForceStructureProjectionList } from '../src/s
 import { calculateSupportCost, currentStateForceStructure } from '../src/sim/forceStructure';
 import { galaxyStarDate } from '../src/sim/tick/simTime';
 import { findNewestCanBuild, findNewestCanBuildFullEvaluate } from '../src/sim/designGeneration';
-import { SHIP_MARKUP_FACTOR } from '../src/sim/design';
 import { habitatConstructionQueue } from '../src/sim/construction/constructionQueue';
 import {
     assignScrapMission,
@@ -36,6 +35,7 @@ import {
 } from '../src/sim/construction/empireConstruction';
 import { BuiltObjectMissionPriority, BuiltObjectMissionType } from '../src/sim/missions/mission';
 import { habitatManufacturingQueue } from '../src/sim/manufacturingQueue';
+import { baconSettings } from '../src/sim/data/baconSettings';
 
 let gameData: GameData;
 beforeAll(async () => {
@@ -52,7 +52,7 @@ describe('M4i unit: construction helpers', () => {
         const e = aiEmpire(g);
         const design = findNewestCanBuild(e.designs, BuiltObjectSubRole.Escort, e)!;
         const price = design.calculateCurrentPurchasePrice(g);
-        const num1 = Math.trunc(price / SHIP_MARKUP_FACTOR) + 1 + 1.0 * design.size;
+        const num1 = Math.trunc(price / baconSettings.shipMarkupFactor) + 1 + 1.0 * design.size;
         const leaderBonus = e.leader !== null ? e.leader.militaryShipMaintenance : 0;
         const num4 = Math.min(1.0, design.maintenanceSavings + leaderBonus / 100.0) * num1;
         const gov = empireGovernmentAttributes(e);

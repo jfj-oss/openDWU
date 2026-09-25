@@ -6,10 +6,11 @@ import { BuiltObject } from '../src/sim/builtObject';
 import { BuiltObjectComponentList, BuiltObjectComponent, ComponentStatus, toShort } from '../src/sim/builtObjectComponent';
 import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
 import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
-import { Design, galaxyComponentCurrentPrices, SHIP_MARKUP_FACTOR, SHIP_MARKUP_FACTOR_PIRATES } from '../src/sim/design';
+import { Design, galaxyComponentCurrentPrices } from '../src/sim/design';
 import type { Galaxy } from '../src/sim/galaxy';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 import type { GameData } from '../src/sim/data/gameData';
+import { baconSettings } from '../src/sim/data/baconSettings';
 
 // Task M3a — Design.ReDefine / CalculateCurrentPurchasePrice and BuiltObject ctor + ReDefine.
 let gameData: GameData;
@@ -90,7 +91,7 @@ describe('Design.ReDefine + BuiltObject (seed 1, tech 0.5)', () => {
                 // Purchase price: component prices × markup.
                 const prices = galaxyComponentCurrentPrices(g);
                 const sum = d.components.reduce((a, c) => a + prices[c.componentId], 0);
-                const markup = empire.pirateEmpireBaseHabitat !== null ? SHIP_MARKUP_FACTOR_PIRATES : SHIP_MARKUP_FACTOR;
+                const markup = empire.pirateEmpireBaseHabitat !== null ? baconSettings.shipMarkupFactorPirates : baconSettings.shipMarkupFactor;
                 expect(bo.purchasePrice).toBe(sum * markup);
                 expect(bo.purchasePrice).toBeGreaterThan(0);
                 expect(bo.annualSupportCostBase).toBe(Math.trunc(sum));
