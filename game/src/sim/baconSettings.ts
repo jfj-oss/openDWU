@@ -1,30 +1,25 @@
 // BaconSettings.txt: the DistantWorldsExpanded settings file in the install root, read by BaconMain.BaconInitialize
-// once a game exists (Main.Part12.cs 3151 after a new game / load, Main.Part11.cs 2224 on resume). Pure: the file text
-// comes from GameData.baconSettingsText.
+// once a game exists (Main.Part12.cs 3151 after a new game / load, Main.Part11.cs 2224 on resume). Pure: the caller
+// passes the settings dictionary (ReadBaconSettings' result).
 import { BACON_MOVEMENT_SETTINGS_DEFAULTS, baconMovementSettings } from './movement';
 
 /**
- * Port of BaconMain.cs 1101 ReadBaconSettings: `KEY=VALUE` lines; lines starting with "//" and empty lines are skipped;
- * the key is the text before the first '=', the value the text after the last '=' with ',' replaced by '.'.
- * `dictionary.Add` throws on a duplicate key and the catch returns what was read so far.
+ * The BaconSettings.txt keys baconInitializeSettings reads, as shipped in the stock install root (BaconMain.cs 1101
+ * ReadBaconSettings: `KEY=VALUE`, value after the last '=' with ',' → '.'): BaconSettings.txt lines 11, 14, 22, 25, 29,
+ * 137-139 (useStargates is absent from the file, so it keeps its class default).
+ * TODO(port): read these from the loaded BaconSettings.txt once the sim data loader provides it (dataload), and pass that
+ * dictionary to baconInitializeSettings instead of this constant.
  */
-export function readBaconSettings(text: string | null | undefined): Map<string, string> {
-    const dictionary = new Map<string, string>();
-    if (text === null || text === undefined) return dictionary; // catch (FileNotFoundException)
-    // StreamReader.ReadLine: "\r\n", "\n" or "\r" end a line; a final line without a terminator still counts.
-    const lines = text.split(/\r\n|\n|\r/);
-    if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
-    for (const line of lines) {
-        if (!line.startsWith('//') && line !== '') {
-            const array = line.split('=');
-            const key = array[0];
-            const value = array[array.length - 1].replace(/,/g, '.');
-            if (dictionary.has(key)) return dictionary; // ArgumentException → catch (Exception)
-            dictionary.set(key, value);
-        }
-    }
-    return dictionary;
-}
+export const STOCK_BACON_SETTINGS: ReadonlyMap<string, string> = new Map([
+    ['HyperJumpThreshhold', '4000'],
+    ['BaseHyperJumpAccuracy', '666'],
+    ['useStarGravityWells', 'false'],
+    ['smallShipsJumpSooner', 'false'],
+    ['sublightFuelBurnDivisor', '20'],
+    ['noFuelCruiseSpeedMultiplier', '0.90'],
+    ['noFuelTopSpeedMultiplier', '0.90'],
+    ['noFuelHyperSpeedMultiplier', '0.50'],
+]);
 
 // .NET parsing helpers (whitespace allowed around the number, as NumberStyles.Integer / Float allow).
 const INT_RE = /^\s*[+-]?\d+\s*$/;
@@ -67,8 +62,7 @@ export function resetBaconSettings(): void {
  * stats files (559-600), AddOtherDelayedEvents (1075; RND: Galaxy.Rnd.Next(10, 12) not drawn), ModAllShips (1090),
  * BaconDesign.RedefineAllBases — BaconMain.cs 551-1073.
  */
-export function baconInitializeSettings(settingsText: string | null | undefined): void {
-    const dictionary = readBaconSettings(settingsText);
+export function baconInitializeSettings(dictionary: ReadonlyMap<string, string> = STOCK_BACON_SETTINGS): void {
     const s = baconMovementSettings;
     let value: string | undefined;
     let n: number | null;

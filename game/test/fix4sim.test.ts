@@ -13,7 +13,9 @@ import { runGameSeconds } from '../src/sim/tick/harness';
 import { stateDigest } from '../src/sim/tick/digest';
 import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
 import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
-import { baconInitializeSettings, readBaconSettings, resetBaconSettings } from '../src/sim/baconSettings';
+import { STOCK_BACON_SETTINGS, baconInitializeSettings, resetBaconSettings } from '../src/sim/baconSettings';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { BACON_MOVEMENT_SETTINGS_DEFAULTS, baconMovementSettings, isOutsideStarGravityWell } from '../src/sim/movement';
 import { HabitatCategoryType } from '../src/sim/types';
 import { checkAgeVariableIncome, moneyPanelIncome, obtainAveragedVariableIncome, thisYearsForeignTradeBonuses, thisYearsResortIncome, thisYearsSpacePortIncome, annualStateMaintenanceExcludingUnderConstruction } from '../src/sim/treasury';
@@ -71,17 +73,16 @@ describe('bug 1: a torn-down ship leaves a null hole in galaxy.builtObjects (Bui
     });
 });
 
-describe('bug 16: BaconSettings.txt (BaconMain.cs 551 BaconInitialize, 1101 ReadBaconSettings)', { timeout: 600000 }, () => {
-    it('ReadBaconSettings: KEY=VALUE, // comments and blank lines skipped, "," → ".", last "=" segment, duplicate stops', () => {
-        const d = readBaconSettings('// c\r\n\r\nA=1\nB=x=2,5\nC=3\nA=9\nD=4\n');
-        expect([...d.entries()]).toEqual([['A', '1'], ['B', '2.5'], ['C', '3']]);
-        expect(readBaconSettings(undefined).size).toBe(0);
+describe('bug 16: BaconSettings.txt overrides (BaconMain.cs 551 BaconInitialize)', { timeout: 600000 }, () => {
+    it('STOCK_BACON_SETTINGS matches the installed BaconSettings.txt lines it cites', () => {
+        const text = readFileSync(resolve(__dirname, '../public/assets/dwu/BaconSettings.txt'), 'utf-8');
+        for (const [k, v] of STOCK_BACON_SETTINGS) expect(text.split(/\r?\n/)).toContain(`${k}=${v}`);
     });
 
     it('the stock file turns the star gravity wells off and sets the hyperjump / fuel statics', () => {
         resetBaconSettings();
         expect(baconMovementSettings.useStarGravityWells).toBe(true);
-        baconInitializeSettings(gameData.baconSettingsText);
+        baconInitializeSettings();
         expect(baconMovementSettings.useStarGravityWells).toBe(false); // BaconSettings.txt useStarGravityWells=false
         expect(baconMovementSettings.hyperJumpThreshhold).toBe(4000);
         expect(baconMovementSettings.baseHyperJumpAccuracy).toBe(666);
@@ -92,7 +93,7 @@ describe('bug 16: BaconSettings.txt (BaconMain.cs 551 BaconInitialize, 1101 Read
         expect(baconMovementSettings.noFuelHyperSpeedMultiplier).toBe(Math.fround(0.5));
         // noFuelTopSpeedMultiplier is clamped to [0.1, 1] and never below the cruise multiplier (BaconMain.cs 863-870).
         resetBaconSettings();
-        baconInitializeSettings('noFuelCruiseSpeedMultiplier=0.8\nnoFuelTopSpeedMultiplier=0.05\nuseStarGravityWells=TRUE\n');
+        baconInitializeSettings(new Map([['noFuelCruiseSpeedMultiplier', '0.8'], ['noFuelTopSpeedMultiplier', '0.05'], ['useStarGravityWells', 'TRUE']]));
         expect(baconMovementSettings.noFuelTopSpeedMultiplier).toBe(Math.fround(0.8));
         expect(baconMovementSettings.useStarGravityWells).toBe(true); // "TRUE" fails `value.Trim() == "true"`
         resetBaconSettings();

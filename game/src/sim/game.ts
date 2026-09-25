@@ -20,7 +20,7 @@
 // Normal (0.5, SetTechTreeStartingDefaults) and Level 1-6. AI pirate factions
 // are generated when piratePrevalence > 0 (pirates.ts).
 
-import { baconInitializeSettings, resetBaconSettings } from './baconSettings';
+import { STOCK_BACON_SETTINGS, baconInitializeSettings, resetBaconSettings } from './baconSettings';
 import { applyVictoryConditionsToGalaxy, type VictoryConditions } from './victory';
 import { reviewComponentPrices, reviewResourcePrices } from './market';
 import { selectPopularDesignCandidates } from './independentTraders';
@@ -1178,7 +1178,7 @@ export function createGame(opts: CreateGameOptions): Game {
     // TODO(port): the rest of CreateGameFromSettings (see header).
     // Main.Part12.cs 3151 BaconMain.BaconInitialize(this) once Main starts the new game: BaconSettings.txt overrides
     // (baconSettings.ts; the settings part only).
-    baconInitializeSettings(gd.baconSettingsText);
+    baconInitializeSettings(STOCK_BACON_SETTINGS); // TODO(port): the loaded BaconSettings.txt (dataload)
     stopAt('tail');
     return result();
 }
