@@ -10,6 +10,7 @@
 // Note: the player's `controlResearch` is true, so performResearchProjects
 // (researchTick.ts) auto-picks a project whenever a queue runs empty.
 
+import { stolenTechMarker } from '../../sim/scenario/emergent/espionageView';
 import './researchScreen.css';
 import { ResearchSystem, nodeIndustry, type TechNode } from '../../sim/researchSystem';
 import { IndustryType } from '../../sim/types';
@@ -384,6 +385,12 @@ function createResearchScreen(opts: ResearchScreenOptions): OpenState {
                     chip.addEventListener('click', () => {
                         issuePlayerCommand(empire.galaxy, empire, 'queueResearch', [node], () => render());
                     });
+                }
+                // 19d3 (scenario `espionageConsequences`): a "stolen" marker on projects acquired by theft.
+                const stolen = stolenTechMarker(empire.galaxy, empire, node.def.projectId);
+                if (stolen !== '') {
+                    chip.appendChild(el('span', 'research-node-stolen', ' (stolen)'));
+                    chip.title = stolen;
                 }
                 if (node.progress > 0 && !node.isResearched) {
                     const frac = (): number => (node.cost > 0 ? Math.min(1, node.progress / node.cost) : 0);

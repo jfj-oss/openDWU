@@ -81,6 +81,8 @@ import { characterKillFromPerformIntelligenceMissions } from './espionagePrisone
 import type { ConstructionQueue } from './construction/constructionQueue';
 import { formatGameTextNow } from './textResolver';
 import { scenarioEmit } from './scenario/hooks';
+import { scenarioFlag } from './scenario/state';
+import { ESPIONAGE_FLAG, espionageHooks } from './scenario/emergent/espionageHooks';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Enums (IntelligenceMissionType.cs / IntelligenceMissionOutcome.cs, member order exact)
@@ -1127,6 +1129,8 @@ function assignAgentForSabotageMission(galaxy: Galaxy, self: Empire, targetEmpir
             intelligenceMission.agent = character;
             if (checkTaskAuthorized(galaxy, self, self.controlAgentAssignment, refusalCount, generateAutomationMessageAgentMission(self, intelligenceMission), intelligenceMission, AdvisorMessageType.IntelligenceMission, intelligenceMission.targetEmpire, character, null)) {
                 character.mission = intelligenceMission;
+                // 19d3 §C10 (scenario only): an AI may frame a third empire for this sabotage mission.
+                if (scenarioFlag(galaxy, ESPIONAGE_FLAG)) espionageHooks.sabotageAssigned?.(galaxy, self, targetEmpire, intelligenceMission);
                 return true;
             }
             intelligenceMission.agent = null;
@@ -1416,21 +1420,36 @@ export function performIntelligenceMissions(galaxy: Galaxy, self: Empire): void 
             const num17 = Math.min(30, Math.trunc(intelligenceMissionDifficulty(mission3) / 8));
             mission3.outcome = intelligenceMissionOutcome;
             const targetEmpire = mission3.targetEmpire!;
+            // 19d3 §C11 (scenario only): a framed agent's act is blamed on the framed empire unless seen through. Flag off:
+            // ff === null, blamed === self and every statement below is the ported one (Empire.5.cs 5890-5990).
+            const ff = scenarioFlag(galaxy, ESPIONAGE_FLAG) ? (espionageHooks.attribution?.(galaxy, self, targetEmpire, mission3, character3, intelligenceMissionOutcome) ?? null) : null;
+            const blamed = ff === null ? self : ff.blamed;
+            const spyEmpire = ff === null ? character3.empire : blamed;
             let empireEvaluation2: EmpireEvaluation | null = null;
             let pirateRelation3: PirateRelation | null = null;
-            if (targetEmpire.pirateEmpireBaseHabitat === null && self.pirateEmpireBaseHabitat === null) empireEvaluation2 = obtainEmpireEvaluation(galaxy, targetEmpire, self);
+            if (targetEmpire.pirateEmpireBaseHabitat === null && self.pirateEmpireBaseHabitat === null) empireEvaluation2 = obtainEmpireEvaluation(galaxy, targetEmpire, blamed);
             else pirateRelation3 = obtainPirateRelation(targetEmpire, self);
             let empty = '';
             // 5910: `Galaxy.Rnd.NextDouble(); _ = EspionageBonus; _ = (double)mission3.Difficulty / 10.0;` — a discarded draw.
             galaxy.rnd.nextDouble();
             const applyIncident = (): void => {
-                if (empireEvaluation2 !== null) empireEvaluation2.incidentEvaluation = empireEvaluation2.incidentEvaluationRaw - num17;
-                else if (pirateRelation3 !== null) pirateRelation3.evaluationDetectedIntelligenceMissions = Math.fround(pirateRelation3.evaluationDetectedIntelligenceMissions - num17);
-                if (flag) lowerCivility(character3.empire!, num17);
+                if (ff === null) {
+                    if (empireEvaluation2 !== null) empireEvaluation2.incidentEvaluation = empireEvaluation2.incidentEvaluationRaw - num17;
+                    else if (pirateRelation3 !== null) pirateRelation3.evaluationDetectedIntelligenceMissions = Math.fround(pirateRelation3.evaluationDetectedIntelligenceMissions - num17);
+                    if (flag) lowerCivility(character3.empire!, num17);
+                } else {
+                    // 19d3 §C11: ×1.5 on the framed empire (no civility loss), or twice on the unmasked originator.
+                    for (let r = 0; r < ff.repeats; r++) {
+                        if (empireEvaluation2 !== null) empireEvaluation2.incidentEvaluation = empireEvaluation2.incidentEvaluationRaw - num17 * ff.factor;
+                        if (flag && ff.civility) lowerCivility(character3.empire!, num17);
+                    }
+                }
+                // 19d3 §A1 (scenario only, no Rnd): the exposure feeds the yearly crisis review.
+                if (scenarioFlag(galaxy, ESPIONAGE_FLAG)) espionageHooks.exposure?.(galaxy, blamed, targetEmpire, mission3, character3, ff === null ? num17 : num17 * ff.factor * ff.repeats, intelligenceMissionOutcome);
             };
             switch (intelligenceMissionOutcome) {
                 case O.Capture: {
-                    markEmpireAsRecentSpy(galaxy, character3.empire, targetEmpire);
+                    markEmpireAsRecentSpy(galaxy, spyEmpire, targetEmpire);
                     applyIncident();
                     characterList2.push(character3);
                     doCharacterEvent(galaxy, CharacterEventType.IntelligenceAgentOursCaptured, character3, character3, true, character3.empire);
@@ -1440,12 +1459,12 @@ export function performIntelligenceMissions(galaxy: Galaxy, self: Empire): void 
                     }
                     empty = gameText('Our Agent Captured In Act', character3.name, resolveIntelligenceMissionDescription(mission3, self));
                     sendMessageToEmpire(self, self, EmpireMessageType.CharacterDeath, character3, empty);
-                    empty = gameText('Enemy Agent Captured In Act', character3.name, self.name, resolveIntelligenceMissionDescription(mission3, targetEmpire));
+                    empty = gameText('Enemy Agent Captured In Act', character3.name, blamed.name, resolveIntelligenceMissionDescription(mission3, targetEmpire));
                     sendMessageToEmpire(targetEmpire, targetEmpire, EmpireMessageType.CharacterDeath, character3, empty);
                     break;
                 }
                 case O.FailDetect: {
-                    markEmpireAsRecentSpy(galaxy, character3.empire, targetEmpire);
+                    markEmpireAsRecentSpy(galaxy, spyEmpire, targetEmpire);
                     applyIncident();
                     if (isEspionageType(mission3.type)) doCharacterEvent(galaxy, CharacterEventType.IntelligenceMissionFailEspionage, mission3, character3, true, character3.empire);
                     else if (isSabotageType(mission3.type)) doCharacterEvent(galaxy, CharacterEventType.IntelligenceMissionFailSabotage, mission3, character3, true, character3.empire);
@@ -1455,12 +1474,12 @@ export function performIntelligenceMissions(galaxy: Galaxy, self: Empire): void 
                     }
                     empty = gameText('Our Agent Detect Fail', character3.name, resolveIntelligenceMissionDescription(mission3, self));
                     sendMessageToEmpire(self, self, EmpireMessageType.CharacterMissionFailure, character3, empty);
-                    empty = gameText('Enemy Agent Detect Fail', character3.name, self.name, resolveIntelligenceMissionDescription(mission3, targetEmpire));
+                    empty = gameText('Enemy Agent Detect Fail', character3.name, blamed.name, resolveIntelligenceMissionDescription(mission3, targetEmpire));
                     sendMessageToEmpire(targetEmpire, targetEmpire, EmpireMessageType.CharacterMissionFailure, character3, empty);
                     break;
                 }
                 case O.SucceedDetect: {
-                    markEmpireAsRecentSpy(galaxy, character3.empire, targetEmpire);
+                    markEmpireAsRecentSpy(galaxy, spyEmpire, targetEmpire);
                     if (isEspionageType(mission3.type) || mission3.type === T.CounterIntelligence) {
                         const characterList3: Character[] = [];
                         characterList3.push(character3);
@@ -1473,7 +1492,7 @@ export function performIntelligenceMissions(galaxy: Galaxy, self: Empire): void 
                     empty = gameText('Our Agent Detect Succeed', character3.name, resolveIntelligenceMissionDescription(mission3, self));
                     completeIntelligenceMission(galaxy, self, mission3);
                     sendMessageToEmpire(self, self, EmpireMessageType.CharacterMissionAccomplished, character3, empty);
-                    empty = gameText('Enemy Agent Detect Succeed', character3.name, self.name, resolveIntelligenceMissionDescription(mission3, targetEmpire));
+                    empty = gameText('Enemy Agent Detect Succeed', character3.name, blamed.name, resolveIntelligenceMissionDescription(mission3, targetEmpire));
                     sendMessageToEmpire(targetEmpire, targetEmpire, EmpireMessageType.CharacterMissionFailure, character3, empty);
                     break;
                 }
@@ -1568,6 +1587,8 @@ export function calculateIntelligenceMissionSuccessChance(self: Empire, mission:
 
 /** Empire.6.cs 90 CancelIntelligenceMission(mission): a cancelled deep-cover mission drops its permanent view of the target. */
 export function cancelIntelligenceMission(self: Empire, mission: IntelligenceMission): void {
+    // 19d3 §C9 (scenario only, no Rnd): a cancelled mission loses its frame.
+    if (self.galaxy !== null && self.galaxy !== undefined && scenarioFlag(self.galaxy, ESPIONAGE_FLAG)) espionageHooks.missionEnded?.(self.galaxy, mission);
     const type = mission.type;
     if (type !== T.DeepCover) return;
     let num = 0;
@@ -1738,6 +1759,8 @@ export function completeIntelligenceMission(galaxy: Galaxy, self: Empire, missio
                 equivalent.progress = Math.fround(equivalent.progress + num);
                 if (equivalent.progress >= equivalent.cost) doResearchBreakthrough(galaxy, self, equivalent, true, false, false);
                 intelligenceMissionResetResearchProject(mission, equivalent);
+                // 19d3 §B5 (scenario only, no Rnd): provenance of the stolen project.
+                if (scenarioFlag(galaxy, ESPIONAGE_FLAG)) espionageHooks.stolenTech?.(galaxy, self, mission.targetEmpire, equivalent);
             }
             break;
         }

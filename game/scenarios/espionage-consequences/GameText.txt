@@ -1,0 +1,43 @@
+' [19d3] begin — espionage consequences (tasks/19d3-espionage-consequences.md). Tags start with "Emergent ".
+Emergent Exposure Captured;captured while
+Emergent Exposure Detected;caught while
+Emergent Exposure Detected After;exposed after
+Emergent Exposure Cause;agent {0} {1} {2}
+Emergent Spy Crisis Title;Espionage crisis: {0}
+Emergent Spy Crisis Demand;The {0} have exposed our covert operations against them ({1}).\n\nThey demand that we {2} within one year. You will pay for this perfidy, they warn, if we refuse!
+Emergent Spy Crisis Opened;Our counter-intelligence has exposed the covert operations of the {0} against us ({1}). We have recalled our ambassadors and demanded that they {2}.
+Emergent Spy Crisis Victim Question;Our counter-intelligence has exposed the covert operations of the {0} against us ({1}).\n\nHow should we respond to this outrageous treachery?
+Emergent Spy Crisis News;The {0} accuse the {1} of espionage: {2}. Ambassadors have been recalled.
+Emergent Spy Crisis Refused;The {0} refuse to {1}.
+Emergent Spy Crisis Sanctions;The {0} have imposed trade sanctions on the {1} over the unresolved espionage crisis.
+Emergent Spy Crisis War;The {0} have declared war on the {1} after a year of unanswered espionage outrages.
+Emergent Spy Crisis Resolved;The espionage crisis between the {0} and the {1} is over: {2}.
+Emergent Demand Recall;recall all their agents operating against us
+Emergent Demand Apology;issue a formal apology
+Emergent Demand Reparations;pay {0} credits in reparations
+Emergent Option Recall;Recall our agents
+Emergent Option Apologise;Apologise
+Emergent Option Pay;Pay {0} credits
+Emergent Option Refuse;Refuse
+Emergent Option Demand Recall;Demand they recall their agents
+Emergent Option Demand Apology;Demand an apology
+Emergent Option Demand Reparations;Demand reparations ({0} credits)
+Emergent Option Sanctions Now;Impose trade sanctions now
+Emergent Option Ignore;Ignore it
+Emergent Option Sanctions;Impose trade sanctions
+Emergent Option War;Declare war
+Emergent Option Let Go;Let it go
+Emergent Resolution Recall;the agents were recalled
+Emergent Resolution Apology;a formal apology was issued
+Emergent Resolution Reparations;{0} credits were paid in reparations
+Emergent Resolution Ignored;the incident was ignored
+Emergent Resolution Let Go;the matter was let go
+Emergent Resolution Faded;the matter faded after years without new incidents
+Emergent Resolution Peace;the war over it has ended
+Emergent Resolution Gone;one of the empires is gone
+Emergent Stolen Tech Spread Title;Stolen technology spreads
+Emergent Stolen Tech Spread;Our intelligence network has discovered that the {0} technology stolen from us by the {1} is now in the hands of the {2}!
+Emergent Framed Rumour Title;We are being framed
+Emergent Framed Rumour;Rumours reach us that the {0} blame us for an act of sabotage against them ({1}). Our agents suspect a false flag operation.
+Emergent False Flag Exposed;The {0} have exposed a false flag operation: agents of the {1} posed as agents of the {2}.
+' [19d3] end

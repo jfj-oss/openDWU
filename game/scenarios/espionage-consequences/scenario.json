@@ -1,0 +1,13 @@
+{
+  "id": "espionage-consequences",
+  "name": "Espionage Consequences",
+  "description": "Exposed agents open diplomatic crises (demands, sanctions, war), stolen technology is resold on the black market, and false-flag sabotage can turn rivals against each other. Package 19d3 of the Emergent Galaxy set; everything else is the faithful game.",
+  "flags": [
+    { "name": "espionageConsequences", "label": "Espionage consequences", "description": "Diplomatic crises after exposed agents, stolen-tech provenance and resale, false-flag missions.", "default": true }
+  ],
+  "params": [
+    { "name": "crisisSeverityThreshold", "label": "Crisis severity threshold", "default": 12, "min": 0, "max": 60 },
+    { "name": "falseFlagAiChance", "label": "AI false-flag chance", "default": 0.3, "min": 0, "max": 1 },
+    { "name": "techLeakChance", "label": "Yearly stolen-tech resale chance", "default": 0.25, "min": 0, "max": 1 }
+  ]
+}

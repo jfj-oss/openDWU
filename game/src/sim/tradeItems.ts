@@ -71,6 +71,8 @@ import type { TechNode } from './researchSystem';
 import { nodeCategory, resolveResearchAbilityType, ResearchAbilityType } from './researchSystem';
 import { resolveMoreAdvancedProjectsIncludeSpecial } from './espionage';
 import { doResearchBreakthrough } from './researchTick';
+import { scenarioFlag } from './scenario/state';
+import { ESPIONAGE_FLAG, espionageHooks } from './scenario/emergent/espionageHooks';
 import type { Component } from './data/components';
 import { ComponentType } from './data/components';
 import { ComponentCategoryType } from './data/policies';
@@ -1415,6 +1417,8 @@ export function giveTradeableItem(galaxy: Galaxy, giver: Empire, receiver: Empir
                 num = researchNodeListIndexOf(research.techTree, researchNode);
                 if (num >= 0) doResearchBreakthrough(galaxy, receiver, research.techTree[num], false, true, true);
                 research.update(receiver.dominantRace);
+                // 19d3 §B6 (scenario only, no Rnd): a stolen project changing hands records its new holder.
+                if (scenarioFlag(galaxy, ESPIONAGE_FLAG)) espionageHooks.techTransfer?.(galaxy, giver, receiver, researchNode);
             }
             break;
         }

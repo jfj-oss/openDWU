@@ -34,6 +34,9 @@ import { approveSuggestion, declineSuggestion } from './advisorSuggestions';
 import { expireOldAdvisorSuggestions } from '../advisorQueue';
 import { galaxyStarDate } from '../tick/simTime';
 import { cancelIntelligenceMission, characterMission } from '../espionage';
+import { scenarioFlag } from '../scenario/state';
+import { ESPIONAGE_FLAG } from '../scenario/emergent/espionageHooks';
+import { setMissionFrame } from '../scenario/emergent/espionage';
 import {
     acceptProposal,
     declineProposal,
@@ -128,6 +131,9 @@ export const PLAYER_OPS = {
         agent.mission = null;
         return true;
     },
+    /** 19d3 (scenario `espionageConsequences` only; not a port): blame another empire for the agent's mission (false flag). */
+    setAgentMissionFrame: (galaxy: Galaxy, _empire: Empire, mission: IntelligenceMission, framed: Empire | null) =>
+        scenarioFlag(galaxy, ESPIONAGE_FLAG) ? setMissionFrame(galaxy, mission, framed) : false,
     /** Main.Part6.cs 3351 btnIntelligenceAgentsDisband_Click: `Mission = null; Kill(galaxy)`. */
     dismissCharacter: (galaxy: Galaxy, _empire: Empire, character: Character) => {
         character.mission = null;
