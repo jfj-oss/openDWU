@@ -239,6 +239,14 @@ function getDefaultTextStore(): SaveTextStore {
     return defaultTextStore;
 }
 
+// [leftovers] begin
+/** The shared save text store (IndexedDB, created once per module): the autosave (ui/autosave.ts) writes through it
+ *  like the panel's Save does, so autosaves appear in the Load list. */
+export function defaultSaveTextStore(): SaveTextStore {
+    return getDefaultTextStore();
+}
+// [leftovers] end
+
 /** Trigger a browser download of `text` as `<baseName>.dwusave`. */
 export function downloadSaveFile(baseName: string, text: string): void {
     const blob = new Blob([text], { type: 'application/octet-stream' });

@@ -72,6 +72,12 @@ import { createNewGameWizard } from './ui/screens/newGameWizard';
 import { openGalactopedia } from './ui/screens/galactopedia';
 import { defaultStartGameOptions, piratesFor, STARTING_TECH_LEVEL, toCreateGameOptions, type StartGameOptions, maximumEmpireAmountFor, starCountFor } from './sim/startGameOptions';
 import { serializeGame, deserializeGame } from './sim/save/gameSave';
+// [leftovers] begin
+import { closeGalacticHistory } from './ui/screens/galacticHistory';
+import { installEventMessages, removeEventMessages } from './ui/eventMessages';
+import { installAutosave, removeAutosave } from './ui/autosave';
+import { isGameOptionsPanelOpen } from './ui/screens/gameOptionsPanel';
+// [leftovers] end
 import { setSaveLoadProvider, createSaveLoadPanel, type LoadedGame } from './ui/screens/saveLoad';
 import { type Game } from './sim/game';
 import { createGalaxyMap, type GalaxyMapScreen } from './ui/screens/galaxyMap';
@@ -512,6 +518,16 @@ export async function startGameView(
     installMessageStubList({ player: game.playerEmpire, galaxy, clock: time });
     // [popupstubs] end
 
+    // [leftovers] begin
+    // The player's EventMessageRecipient (Main.Part12.cs:2881) → history messages + the wonder-built popup.
+    installEventMessages({ player: game.playerEmpire, galaxy, onGoTo: (t) => selectStellarObject(t, true) });
+    // Autosave every GameOptions.AutoSaveInterval minutes (Main.Part12.cs:4013 method_97).
+    installAutosave({
+        serialize: () => (lastStartOptions !== null ? serializeGame(game, time, lastStartOptions) : null),
+        isBlocked: () => isGameOptionsPanelOpen(),
+    });
+    // [leftovers] end
+
     // [ordermenu] begin
     // 17c: right-click orders / the action menu in the main view and the selection panel's action buttons.
     const orderUiCleanup = installOrderUi(
@@ -715,6 +731,12 @@ export async function startGameView(
         // [popupstubs] begin
         removeMessageStubList();
         // [popupstubs] end
+
+        // [leftovers] begin
+        removeEventMessages();
+        removeAutosave();
+        closeGalacticHistory();
+        // [leftovers] end
         // The ticker buffer is module-level; the next game starts fresh.
         clearHudMessages();
         // [15d]

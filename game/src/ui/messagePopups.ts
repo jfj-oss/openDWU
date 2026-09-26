@@ -484,3 +484,54 @@ export function expireConversationsForEmpire(empire: Empire): void {
     expireDiplomacyMessagesForEmpire(installed.queue, empire);
 }
 // [suggest] end
+
+// [leftovers] begin
+/** An event message (Empire.EventMessageRecipient, Main.Part4.cs:487 method_523) shown on the popup card. */
+export interface EventPopup {
+    title: string;
+    text: string;
+    /** The event's picture (method_523 `bitmap`), or null. */
+    imageUrl: string | null;
+    /** Footer text (the star date). */
+    footer: string;
+    /** btnEventMessageGoto (Main.Part4.cs:216-229): shown when the event has a location. */
+    onGoTo?: (() => void) | null;
+}
+
+/**
+ * Show an event message on the 16d popup card (replacing the card's current message, as a new popup does).
+ * Returns false when the popups are not installed. The event panel's layout (image above title + text, Go To / Close)
+ * is Main.Part4.cs:115-229 method_508; here it is the card with the picture on top.
+ */
+export function showEventMessagePopup(p: EventPopup): boolean {
+    if (installed === null) return false;
+    const popup = installed.popup;
+    const titleEl = popup.querySelector('.message-popup-title');
+    const body = popup.querySelector('.message-popup-body');
+    const footer = popup.querySelector('.message-popup-footer');
+    if (titleEl === null || body === null || footer === null) return false;
+    titleEl.textContent = resolveGameText(p.title);
+    body.replaceChildren();
+    if (p.imageUrl !== null) {
+        const img = el('img', 'message-popup-image') as HTMLImageElement;
+        img.src = p.imageUrl;
+        img.alt = '';
+        img.draggable = false;
+        body.appendChild(img);
+    }
+    body.appendChild(el('div', 'message-popup-event-text', resolveGameText(p.text)));
+    if (p.onGoTo) {
+        const onGoTo = p.onGoTo;
+        const go = el('button', 'message-popup-goto', 'Go To') as HTMLButtonElement;
+        go.type = 'button';
+        go.addEventListener('click', () => {
+            popup.hidden = true;
+            onGoTo();
+        });
+        body.appendChild(go);
+    }
+    footer.textContent = p.footer;
+    popup.hidden = false;
+    return true;
+}
+// [leftovers] end
