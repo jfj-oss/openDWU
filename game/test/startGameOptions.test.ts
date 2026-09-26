@@ -115,9 +115,9 @@ describe('defaultStartGameOptions (task 06b)', () => {
         // unchecked = sandbox mode; percents 33; time limit 10y; time start
         // 3y; all event toggles on; threshold 1.0).
         expect(opts.victory).toEqual(defaultVictoryConditions());
-        // Task 06h: colonization options default to the wizard control values
-        // from Start.InitializeComponent.cs (enforcement off, range 4000 Kly,
-        // influence 100 %, same-system option off).
+        // Task 06h (fixed wizdefaults): colonization options default to the C#
+        // StartGameOptions defaults (Main.Part9.cs 2674-2675: enforcement on,
+        // range 2000 Kly = 2 sectors; influence 100 %, same-system option off).
         expect(opts.colonization).toEqual(defaultColonizationOptions());
         // Task 06h: other empires default to auto-generate with 10 empires.
         expect(opts.otherEmpires).toEqual(defaultOtherEmpiresOptions());
@@ -503,11 +503,11 @@ describe('clampVictory (task 06g)', () => {
     });
 });
 
-describe('defaultColonizationOptions (task 06h, Start.InitializeComponent.cs)', () => {
-    it('matches the wizard control values: enforcement off, range 4000 Kly, influence 100 %, same-system off', () => {
+describe('defaultColonizationOptions (task 06h, fixed wizdefaults: Main.Part9.cs 2674-2675)', () => {
+    it('matches the C# default StartGameOptions: enforcement on, range 2000 Kly (2 sectors), influence 100 %, same-system off', () => {
         expect(defaultColonizationOptions()).toEqual({
-            enforceRangeLimits: false,
-            colonizationRangeKly: 4000,
+            enforceRangeLimits: true,
+            colonizationRangeKly: 2000,
             colonyInfluenceRangePercent: 100,
             allowSameSystemAsOtherEmpires: false,
         });

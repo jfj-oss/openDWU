@@ -184,7 +184,8 @@ export interface ColonizationOptions {
      * colonization-range limits below. */
     enforceRangeLimits: boolean;
     /** sldStartNewGameColonizationTerritoryColonizationRange (500..5000 Kly,
-     * default 4000). The player may only colonise systems within this range
+     * default 2000 — the C# default's 2 sectors * 1000, Main.Part9.cs
+     * 2674-2675). The player may only colonise systems within this range
      * of their home system when enforcement is on. */
     colonizationRangeKly: number;
     /** sldStartNewGameColonizationTerritoryColonyInfluenceRange (10..200 %,
@@ -204,13 +205,20 @@ export const COLONIZATION_RANGE_KLY_MAX = 5000;
 export const COLONY_INFLUENCE_RANGE_PCT_MIN = 10;
 export const COLONY_INFLUENCE_RANGE_PCT_MAX = 200;
 
-/** Task 06h: default ColonizationOptions matching the wizard control values
- * from Start.InitializeComponent.cs: enforcement off, colonization range
- * 4000 Kly, colony influence range 100 %, same-system option unchecked. */
+/** Task 06h (fixed wizdefaults): default ColonizationOptions matching the C#
+ * default StartGameOptions, not the WinForms designer placeholders on the
+ * slider/checkbox (those are overwritten at runtime). The actual defaults
+ * come from method_259() in Main.Part9.cs:2674-2675:
+ *   startGameOptions.ColonizationRangeEnforceLimit = true;
+ *   startGameOptions.ColonizationRange = 2f;
+ * ColonizationRange is in sectors; the wizard slider displays it * 1000
+ * (Start.1.cs:3449 `val2 = (int)(startGameOptions.ColonizationRange * 1000f)`),
+ * so 2f -> 2000 Kly. Colony influence range 100 %, same-system option
+ * unchecked (unaffected by this fix). */
 export function defaultColonizationOptions(): ColonizationOptions {
     return {
-        enforceRangeLimits: false,
-        colonizationRangeKly: 4000,
+        enforceRangeLimits: true,
+        colonizationRangeKly: 2000,
         colonyInfluenceRangePercent: 100,
         allowSameSystemAsOtherEmpires: false,
     };
