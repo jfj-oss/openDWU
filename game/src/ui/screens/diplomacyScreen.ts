@@ -37,6 +37,8 @@ import {
     resetAttitudeLevelsAtEndOfWar,
 } from '../../sim/diplomacyTick';
 import { galaxyStarDate } from '../../sim/tick/simTime';
+import { rimTraderTermsRows, type RimTraderTermsRows } from '../scenario/rimTraderRows';
+import { rimTraderEmpire } from '../../sim/scenario/rimTrade/common';
 import { REAL_SECONDS_IN_GALACTIC_YEAR } from '../../sim/galaxyTime';
 import { EmpireMessageType, empireMessages } from '../../sim/messages';
 import { showToast } from '../toast';
@@ -358,6 +360,44 @@ function el(tag: string, className: string, text?: string): HTMLElement {
     return e;
 }
 
+// [rimTrader] begin
+/** Scenario 19a: the Concord (rim trader) of the player's galaxy, or null. */
+function rimTraderEmpireOf(player: Empire): Empire | null {
+    return player.galaxy != null && player.galaxy.scenario !== null ? rimTraderEmpire(player.galaxy) : null;
+}
+
+/** Scenario 19a (tasks/19a-rim-trader.md §8.1): the Concord's "Trade terms" block. */
+function rimTraderTermsBlock(t: RimTraderTermsRows): HTMLElement {
+    const box = el('div', 'diplomacy-rimterms');
+    box.appendChild(el('div', 'diplomacy-section-heading', t.title));
+    const goods = (label: string, rows: RimTraderTermsRows['wanted']): HTMLElement => {
+        const line = el('div', 'diplomacy-rimterms-goods');
+        line.appendChild(el('span', 'diplomacy-rimterms-label', label));
+        for (const g of rows) {
+            const item = el('span', 'diplomacy-rimterms-good');
+            const img = document.createElement('img');
+            img.src = g.iconUrl;
+            img.alt = g.name;
+            item.append(img, el('span', '', g.name));
+            line.appendChild(item);
+        }
+        return line;
+    };
+    box.appendChild(goods(t.lines[0].label, t.wanted));
+    box.appendChild(goods(t.lines[1].label, t.offered));
+    for (const l of t.lines.slice(2)) {
+        const line = el('div', 'diplomacy-rimterms-line');
+        line.append(el('span', 'diplomacy-rimterms-label', l.label), el('span', 'diplomacy-rimterms-value', l.value));
+        box.appendChild(line);
+    }
+    const access = box.lastElementChild?.querySelector<HTMLElement>('.diplomacy-rimterms-value');
+    if (access) access.style.color = t.open ? LIGHT_GREEN : RED;
+    box.appendChild(el('div', 'diplomacy-line diplomacy-muted', t.where));
+    box.appendChild(el('div', 'diplomacy-line diplomacy-muted', `${t.noWar} ${t.treaties}`));
+    return box;
+}
+// [rimTrader] end
+
 function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
     const root = el('div', 'diplomacy-wrap');
     const win = el('div', 'diplomacy-window');
@@ -448,6 +488,11 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
             }
         }
         // [charters] end
+
+        // [rimTrader] begin
+        const rimTerms = row.empire === rimTraderEmpireOf(player) ? rimTraderTermsRows(player.galaxy, player) : null;
+        if (rimTerms !== null) detail.appendChild(rimTraderTermsBlock(rimTerms));
+        // [rimTrader] end
 
         detail.appendChild(el('div', 'diplomacy-section-heading', 'Treaty on Offer'));
         if (row.incoming) {

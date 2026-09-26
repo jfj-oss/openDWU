@@ -1,0 +1,2 @@
+'Scenario rimTrade: the Oranthi row (the merge pads the other rows' Oranthi column with 0).
+22, Oranthi,	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 10

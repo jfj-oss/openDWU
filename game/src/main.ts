@@ -71,7 +71,7 @@ import { getMessageOptions } from './ui/messageRouting';
 // [audio] end
 import { createNewGameWizard } from './ui/screens/newGameWizard';
 import { openGalactopedia } from './ui/screens/galactopedia';
-import { colonizationRangeFor, defaultStartGameOptions, piratesFor, STARTING_TECH_LEVEL, toCreateGameOptions, type StartGameOptions, maximumEmpireAmountFor, starCountFor, defaultScenarioChoice } from './sim/startGameOptions';
+import { colonizationRangeFor, defaultStartGameOptions, piratesFor, STARTING_TECH_LEVEL, toCreateGameOptions, type StartGameOptions, maximumEmpireAmountFor, starCountFor, defaultScenarioChoice, type StartScenarioChoice } from './sim/startGameOptions';
 import { serializeGame, deserializeGame, savedScenarioId } from './sim/save/gameSave';
 import { loadScenarioIndex, loadScenarioOverlay } from './sim/scenario/fetchScenario';
 import { applyScenarioOverlay, resolveScenarioIncludes, type ScenarioOverlay } from './sim/scenario/overlay';
@@ -1210,21 +1210,28 @@ async function buildAutostartGame(
         console.warn('?autostart=1 needs DW:U game data (races/governments); falling back to generateGalaxy');
         return null;
     }
-    // [modlayer-autostart] begin
-    // Dev: `?autostart=1&scenario=<id>` starts the autostart game with a scenario at its manifest defaults.
-    const scenarioId = new URLSearchParams(window.location.search).get('scenario');
+    let opts = defaultDevGameOptions(seed, shape, starCount, sectorWidth, sectorHeight, systemNames, gameData);
     let playData = gameData;
+    // [scenarioAutostart] begin
+    // Dev / screenshot hook: `?autostart=1&scenario=<id>[&aiRace=<race>]` starts the dev game with a scenario overlay
+    // (manifest-default flags and params); aiRace forces the first AI empire's race.
+    const scenarioParams = new URLSearchParams(window.location.search);
+    const scenarioId = scenarioParams.get('scenario');
+    let scenarioChoice: StartScenarioChoice | null = null;
     if (scenarioId !== null && scenarioId !== '') {
         await preloadScenarioOverlays();
-        try {
+        const overlay = scenarioOverlays.get(scenarioId);
+        if (overlay === undefined) {
+            console.warn(`?scenario=${scenarioId}: no such scenario`);
+        } else {
             playData = gameDataWithScenario(gameData, scenarioId);
-        } catch (err) {
-            console.warn('?scenario= could not be applied; starting without it', err);
+            lastPlayedGameData = playData;
+            scenarioChoice = defaultScenarioChoice(overlay.manifest);
+            const aiRace = scenarioParams.get('aiRace');
+            opts = { ...opts, gameData: playData, scenarioFlags: scenarioChoice.flags, scenarioParams: scenarioChoice.params, aiEmpires: aiRace !== null ? [{ ...opts.aiEmpires[0], race: aiRace }, ...opts.aiEmpires.slice(1)] : opts.aiEmpires };
         }
     }
-    const scenarioChoice = playData.scenario !== undefined ? defaultScenarioChoice(playData.scenario.manifest) : null;
-    // [modlayer-autostart] end
-    const opts = { ...defaultDevGameOptions(seed, shape, starCount, sectorWidth, sectorHeight, systemNames, playData), ...(scenarioChoice !== null ? { scenarioFlags: scenarioChoice.flags, scenarioParams: scenarioChoice.params } : {}) };
+    // [scenarioAutostart] end
     try {
         const game = createGame(opts);
         lastPlayedGameData = playData;

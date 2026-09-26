@@ -35,6 +35,7 @@ import {
     calculateResourceLevelCargoHabitat,
 } from './colonySupply';
 import { Contract, builtObjectContracts, calculateCurrentContractValueResource, initiateContract, initiateContractForOrder, type StellarObject } from './contracts';
+import { rimTraderImportBlocked, rimTraderOnlyTradingPost } from '../scenario/rimTrade/common';
 import {
     INDEPENDENT_TRADER_FREIGHT_RANGE,
     MAXIMUM_EMPIRE_COUNT,
@@ -137,7 +138,7 @@ function generateValidSpaceports(empire: Empire): SortableStellarObjectList {
 }
 
 /** Empire.4.cs 453 GenerateValidTradingPosts(empire) (`self` is the C# `this`). */
-function generateValidTradingPosts(galaxy: Galaxy, self: Empire, empire: Empire): SortableStellarObjectList {
+export function generateValidTradingPosts(galaxy: Galaxy, self: Empire, empire: Empire): SortableStellarObjectList {
     const list = new SortableStellarObjectList();
     const num = 50;
     const queueOk = (bo: BuiltObject): boolean => {
@@ -177,7 +178,7 @@ function generateValidTradingPosts(galaxy: Galaxy, self: Empire, empire: Empire)
                 if (empire2 === empire || empire2 == null || empire2.policy == null || !empire2.policy.tradeWithOtherEmpires) continue;
                 const diplomaticRelation = obtainDiplomaticRelation(empire, empire2);
                 if (diplomaticRelation.type === DiplomaticRelationType.NotMet || diplomaticRelation.type === DiplomaticRelationType.TradeSanctions || diplomaticRelation.type === DiplomaticRelationType.War) continue;
-                addForeignTradingPosts(empire, empire2, list, queueOk);
+                addForeignTradingPosts(galaxy, empire, empire2, list, queueOk);
             }
         }
         for (let num3 = 0; num3 < empire.pirateRelations.count; num3++) {
@@ -185,7 +186,7 @@ function generateValidTradingPosts(galaxy: Galaxy, self: Empire, empire: Empire)
             if (pirateRelation == null || pirateRelation.type !== PirateRelationType.Protection) continue;
             const otherEmpire = pirateRelation.otherEmpire;
             if (otherEmpire === empire || otherEmpire == null || otherEmpire.policy == null || !otherEmpire.policy.tradeWithOtherEmpires) continue;
-            addForeignTradingPosts(empire, otherEmpire, list, queueOk);
+            addForeignTradingPosts(galaxy, empire, otherEmpire, list, queueOk);
         }
     }
     if (empire === galaxy.independentEmpire) {
@@ -213,7 +214,7 @@ function generateValidTradingPosts(galaxy: Galaxy, self: Empire, empire: Empire)
 }
 
 /** Empire.4.cs 540-576 / 590-625: another empire's explored, unblockaded space ports and mining-station ports. */
-function addForeignTradingPosts(empire: Empire, other: Empire, list: SortableStellarObjectList, queueOk: (bo: BuiltObject) => boolean): void {
+function addForeignTradingPosts(galaxy: Galaxy, empire: Empire, other: Empire, list: SortableStellarObjectList, queueOk: (bo: BuiltObject) => boolean): void {
     // Mod layer 19c: a company's single export point (tasks/19c-chartered-companies.md §4.7).
     if (other.galaxy.scenario !== null) {
         const single = scenarioQuery(other.galaxy, 'foreignTradingPosts', undefined, { empire, other });
@@ -222,8 +223,11 @@ function addForeignTradingPosts(empire: Empire, other: Empire, list: SortableSte
             return;
         }
     }
+    // Mod layer 19a: foreign traders use only the Concord's port (tasks/19a-rim-trader.md R6)
+    const onlyPost = galaxy.scenario !== null ? rimTraderOnlyTradingPost(galaxy, other) : undefined;
     for (let n = 0; n < other.spacePorts.length; n++) {
         const builtObject3 = other.spacePorts[n];
+        if (onlyPost !== undefined && builtObject3 !== onlyPost) continue;
         if (builtObject3 != null && builtObject3.isSpacePort) {
             let flag2 = false;
             if (builtObject3.nearestSystemStar !== null && empire.visibility.checkSystemExplored(builtObject3.nearestSystemStar.systemIndex)) flag2 = true;
@@ -232,6 +236,7 @@ function addForeignTradingPosts(empire: Empire, other: Empire, list: SortableSte
     }
     for (let num2 = 0; num2 < other.miningStations.length; num2++) {
         const builtObject4 = other.miningStations[num2];
+        if (onlyPost !== undefined) break; // Mod layer 19a R6
         if (builtObject4 != null && builtObject4.isSpacePort && builtObject4.isResourceExtractor) {
             let flag3 = false;
             if (builtObject4.nearestSystemStar !== null && empire.visibility.checkSystemExplored(builtObject4.nearestSystemStar.systemIndex)) flag3 = true;
@@ -544,6 +549,8 @@ function attemptToFulfillOrderAtTradingPost(ctx: FulfillContext, tradingPost: St
         if (tradingPost === requestingBuiltObject) return 0;
     }
     const tradingPostEmpire = tradingPost.empire as Empire | null;
+    // Mod layer 19a: the Concord's rim imports come from foreign sellers (tasks/19a-rim-trader.md R4)
+    if (galaxy.scenario !== null && rimTraderImportBlocked(galaxy, order, tradingPostEmpire)) return 0;
     if (orderResource !== null && resourceIsRestricted) {
         if (tradingPostEmpire !== null && tradingPostEmpire !== empire) {
             if (tradingPostEmpire.pirateEmpireBaseHabitat !== null || empire!.pirateEmpireBaseHabitat !== null) return 0;

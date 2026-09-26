@@ -1,0 +1,20 @@
+'Scenario rimTrade: texts of the rim trader (tasks/19a-rim-trader.md §2.6).
+Scenario RimTrade Terms Title;The Oranthi Concord
+Scenario RimTrade Terms;The {0} trade their {1} only with those who bring {2}. Sell them these goods to earn standing.
+Scenario RimTrade Access Opened;The {0} have opened their port at {1} to our merchants: {2} may now be bought.
+Scenario RimTrade Access Closed;Our standing with the {0} is spent. They will sell us nothing more until we bring {1}.
+Scenario RimTrade No War;The {0} do not make war.
+Scenario RimTrade Treaty Refused;The {0} bind themselves to no one. They will accept only free trade.
+Scenario RimTrade Standing;Standing with the {0}: {1} (needed: {2})
+Scenario RimTrade Trade Terms;Trade terms
+Scenario RimTrade Wanted;Wanted (rim goods)
+Scenario RimTrade Offered;Offered (rare goods)
+Scenario RimTrade Access;Access
+Scenario RimTrade Access Open;Open
+Scenario RimTrade Access Shut;Closed
+Scenario RimTrade Where;Where to find rim goods: outer ring beyond {0}% radius
+Scenario RimTrade Tag;Rim trader
+Scenario RimTrade Rim Good;(rim good)
+Scenario RimTrade Port;Trading port
+Scenario RimTrade News Opened;The {0} have opened their port at {1} to the {2}.
+Scenario RimTrade Empire Name;Oranthi Concord

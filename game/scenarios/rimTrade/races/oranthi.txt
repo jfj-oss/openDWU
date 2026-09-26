@@ -1,0 +1,58 @@
+'Scenario rimTrade: the Oranthi Concord — a new race built on the Ackdarian record (art, designs); the key lines below
+'replace the parent's. Expanding must stay Y (a non-expanding race is reclusive, which switches restricted trade off);
+'the colony cap is a scenario rule instead.
+BasedOn		;ackdarian.txt
+Name		;Oranthi
+PictureIndex		;7
+RaceFamily		;0
+ReproductionRate		;0.95
+Intelligence		;125
+Aggression		;35
+Caution		;150
+Friendliness		;95
+Loyalty		;160
+DesignsPictureFamilyIndex		;7
+DesignNamesIndex		;3
+ShipMaintenanceSavings		;0
+ResearchBonus		;15
+EspionageBonus		;0
+TradeBonus		;40
+SatisfactionModifier		;10
+OverallShipDesignFocus		;3
+TechFocus1		;11
+TechFocus2		;10
+NativePlanetType		;0
+SpecialComponent		;-1
+SpecialGovernment		;-1
+PreferredStartingGovernment		;2
+CanChangeGovernment		;N
+Expanding		;Y
+CanBePirate		;N
+CanBeNormalEmpire		;Y
+Playable		;Y
+ShipSizeFactorCivilian		;1.3
+ShipSizeFactorMilitary		;0.9
+ConstructionSpeedFactor		;1.0
+HomeSystemName		;Oranth
+TroopStrength		;80
+TroopName		;Oranthi Jade Guard
+TroopNameArmored		;Oranthi Lantern Armor
+TroopNamePlanetaryDefense		;Oranthi Wall Guard
+TroopNameSpecialForces		;Oranthi Silent Hand
+Resource1Type		;44
+Resource1Effect		;1
+Resource1Amount		;10
+Resource1AppliesOnlyToSource		;N
+Resource2Type		;-1
+Resource2Effect		;0
+Resource2Amount		;0
+Resource2AppliesOnlyToSource		;N
+Resource3Type		;-1
+Resource3Effect		;0
+Resource3Amount		;0
+Resource3AppliesOnlyToSource		;N
+FreeTradeIncomeFactor		;1.5
+TourismIncomeFactor		;1.3
+DefaultPrimaryColor		;4
+DefaultSecondaryColor		;11
+DefaultFlagDesign		;17

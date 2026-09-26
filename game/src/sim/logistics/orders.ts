@@ -29,6 +29,8 @@ import type { Contract } from './contracts';
 import { cancelContract } from './contracts';
 import { determineResourcesEmpireSupplies } from '../diplomacyTick';
 import { baconSettings } from '../data/baconSettings';
+import { scenarioFlag } from '../scenario/state';
+import { isRimTraderAI, rimTraderAccessChanged, rimTraderAllowsRestrictedTrade } from '../scenario/rimTrade/common';
 
 export { checkMarketOrders } from './freight';
 
@@ -693,7 +695,9 @@ export function checkEmpireSuppliesRestrictedResources(galaxy: Galaxy, empire: E
 }
 
 /** Empire.4.cs 4359 DetermineWhetherTradeRestrictedResourcesWithEmpire(otherEmpire). */
-export function determineWhetherTradeRestrictedResourcesWithEmpire(empire: Empire, otherEmpire: Empire | null): boolean {
+export function determineWhetherTradeRestrictedResourcesWithEmpire(galaxy: Galaxy, empire: Empire, otherEmpire: Empire | null): boolean {
+    // Mod layer 19a: the Concord's standing ledger decides (tasks/19a-rim-trader.md R3)
+    if (scenarioFlag(galaxy, 'rimTrader') && isRimTraderAI(galaxy, empire)) return rimTraderAllowsRestrictedTrade(galaxy, empire, otherEmpire);
     let result = false;
     const diplomaticRelation = obtainDiplomaticRelation(empire, otherEmpire);
     switch (diplomaticRelation.strategy) {
@@ -742,7 +746,7 @@ export function reviewRestrictedResourceTrading(galaxy: Galaxy, empire: Empire):
     for (let i = 0; i < empire.diplomaticRelations.count; i++) {
         const diplomaticRelation = empire.diplomaticRelations.at(i);
         if (diplomaticRelation.otherEmpire === empire) continue;
-        const flag = determineWhetherTradeRestrictedResourcesWithEmpire(empire, diplomaticRelation.otherEmpire);
+        const flag = determineWhetherTradeRestrictedResourcesWithEmpire(galaxy, empire, diplomaticRelation.otherEmpire);
         if (flag === diplomaticRelation.supplyRestrictedResources) continue;
         // AdvisorMessageType Allow/DisallowTradeRestrictedResources and the automation text
         // (GenerateAutomationMessageTradeRestrictedResources, Empire.10.cs 4038) only feed the player prompt.
@@ -760,6 +764,8 @@ export function reviewRestrictedResourceTrading(galaxy: Galaxy, empire: Empire):
             }
             sendMessageToEmpire(empire, diplomaticRelation.otherEmpire, empireMessageType, empire, empty);
             diplomaticRelation.supplyRestrictedResources = flag;
+            // Mod layer 19a: access opened / closed message (tasks/19a-rim-trader.md R3)
+            if (scenarioFlag(galaxy, 'rimTrader') && isRimTraderAI(galaxy, empire)) rimTraderAccessChanged(galaxy, empire, diplomaticRelation.otherEmpire, flag);
         }
     }
 }

@@ -76,6 +76,9 @@ import { PirateRelationEvaluationType, PirateRelationType, changePirateEvaluatio
 import { acceptPirateProtection, calculatePirateProtectionPricePerMonth } from '../pirates/pirateRelationsAI';
 import { determineDesirePirateProtection } from '../pirates/pirateAI';
 import { price0 } from '../pirates/missionsMarket';
+import { scenarioFlag } from '../scenario/state';
+import { scenarioText } from '../scenario/messages';
+import { isRimTraderAI } from '../scenario/rimTrade/common';
 
 /** The greeting-menu entry (Main.Part9.cs:208-249) an option sits under. FOLLOW_UP: a reply's own options. GREETING: a
  *  greeting-menu entry that acts itself (the pirate player's protection entries, Main.Part9.cs:175-189). */
@@ -475,9 +478,25 @@ export function submitProposal(
     return evaluateProposal(galaxy, player, other, chosen, opts);
 }
 
+/** Mod layer 19a (R7): proposals the Concord refuses → the stock reject reply. */
+const RIM_TRADER_REFUSED_PARTS: ReadonlyMap<DialogPartType, DialogPartType> = new Map<DialogPartType, DialogPartType>([
+    ['OFFER_PROTECTORATE', 'PROTECTORATE_REJECT'],
+    ['OFFER_MUTUALDEFENSE', 'MUTUALDEFENSE_REJECT'],
+    ['WAR_END_SUBJUGATIONDEMAND', 'SUBJUGATIONDEMAND_REJECT'],
+]);
+
 /** Main.Part10.cs:3957 method_237, the cases for the options listProposals offers. */
 function evaluateProposal(galaxy: Galaxy, initiator: Empire, empire: Empire, option0: ProposalOption, opts: SubmitProposalOptions): ProposalResult {
     const result: ProposalResult = { ok: true, accepted: false, message: '', reply: null, replyArgs: [], followUps: [], expireMessagesFor: null, automationPrompt: false, trade: null };
+    // Mod layer 19a: the Concord refuses defence treaties and subjugation (tasks/19a-rim-trader.md R7); before any stock draw.
+    if (scenarioFlag(galaxy, 'rimTrader') && isRimTraderAI(galaxy, empire)) {
+        const refusal = RIM_TRADER_REFUSED_PARTS.get(option0.part);
+        if (refusal !== undefined) {
+            result.reply = refusal;
+            result.message = scenarioText('Scenario RimTrade Treaty Refused', empire.name);
+            return result;
+        }
+    }
     const now = galaxyStarDate(galaxy);
     const num = attitudeClass(galaxy, empire, initiator); // Main.Part10.cs:3966
     const reply = (part: DialogPartType): void => {

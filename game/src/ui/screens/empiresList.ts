@@ -14,6 +14,7 @@ import { PirateRelationType } from '../../sim/pirateRelations';
 import { companyTag, toggleChartersScreen } from './charters';
 import { scenarioFlag } from '../../sim/scenario/state';
 // [charters] end
+import { rimTraderTag } from '../scenario/rimTraderRows';
 
 export interface EmpiresListOptions {
     /** galaxy.empires — every empire in the galaxy. */
@@ -165,6 +166,10 @@ function createEmpiresList(opts: EmpiresListOptions): OpenState {
         const tag = charterGalaxy !== null ? companyTag(charterGalaxy, row.empire) : '';
         if (tag !== '') name.textContent = `${row.label} — ${tag}`;
         // [charters] end
+        // [rimTrader] begin
+        const rimTag = row.empire.galaxy != null ? rimTraderTag(row.empire.galaxy, row.empire) : '';
+        if (rimTag !== '') name.appendChild(Object.assign(document.createElement('span'), { className: 'empires-list-tag', textContent: rimTag }));
+        // [rimTrader] end
 
         const count = document.createElement('span');
         count.className = 'empires-list-colonies';
