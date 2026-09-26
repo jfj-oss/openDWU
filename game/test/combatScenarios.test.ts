@@ -48,6 +48,23 @@ import { assignMission } from '../src/sim/missions/assign';
 import { inflictDamage } from '../src/sim/combat/damage';
 import { Fighter, FighterMissionType, buildNewFighters, calculateMaximumTargetRange, fighterDoTasks, fightersOf, launchAllFighters } from '../src/sim/combat/fighters';
 import { baconSettings } from '../src/sim/data/baconSettings';
+import { MERCENARY, describeCast, pirateEscort, pirateExplorer, pirateFaction, pirateMissileBase, pirateRaider, playerCarrierPort, playerShip } from './helpers/combatCast';
+
+/** The seed-1 cast the hand-worked values below were derived for (update this line after a generation change). */
+const CAST: string[] = [
+    'escort: Praefectus 001 (Escort, Royal Sol Commonwealth)',
+    'pirateExplorer: Graceful Impasse (ExplorationShip, S105 Ravagers)',
+    'pirateBase: Bandits Sanctuary (SmallSpacePort, S78 Gangsters)',
+    'frigate0: Minotaur 001 (Frigate, Royal Sol Commonwealth)',
+    'frigate1: Minotaur 002 (Frigate, Royal Sol Commonwealth)',
+    'destroyer0: Venator 001 (Destroyer, Royal Sol Commonwealth)',
+    'destroyer1: Venator 002 (Destroyer, Royal Sol Commonwealth)',
+    'carrier: Skaif Space Port (MediumSpacePort, Royal Sol Commonwealth)',
+    'pirateEscort: Evasive Vengeance (Escort, S78 Gangsters)',
+    'boarder: Evasive Vengeance (Escort, S78 Gangsters)',
+    'boarded: Muffled Pride (ExplorationShip, Royal Sol Commonwealth)',
+    'independentColony: Toinsa (Independent)',
+];
 
 let gameData: GameData;
 beforeAll(async () => {
@@ -100,22 +117,51 @@ const damagedCount = (b: BuiltObject) => b.components.items.filter((c) => c.stat
 const f32 = Math.fround;
 
 // ---------------------------------------------------------------------------------------------------------------
+// The cast (picked by role, test/helpers/combatCast.ts): a galaxy-generation change shows up here as a one-line diff.
+// ---------------------------------------------------------------------------------------------------------------
+
+describe('seed-1 cast', () => {
+    it('the scenarios pick their ships by owner / sub-role / weapons / pirate play style', () => {
+        const g = cachedTickGame(gameData).galaxy;
+        const colony = [...g.independentColonies].filter((h) => h.population.totalAmount > 0 && (h.troops === null || h.troops.count === 0)).sort((a, b) => b.population.totalAmount - a.population.totalAmount)[0];
+        const cast = describeCast({
+            escort: playerShip(g, BuiltObjectSubRole.Escort, 0),
+            pirateExplorer: pirateExplorer(g, 0),
+            pirateBase: pirateMissileBase(g),
+            frigate0: playerShip(g, BuiltObjectSubRole.Frigate, 0),
+            frigate1: playerShip(g, BuiltObjectSubRole.Frigate, 1),
+            destroyer0: playerShip(g, BuiltObjectSubRole.Destroyer, 0),
+            destroyer1: playerShip(g, BuiltObjectSubRole.Destroyer, 1),
+            carrier: playerCarrierPort(g),
+            pirateEscort: pirateEscort(g, 0),
+            boarder: pirateRaider(g, pirateFaction(g, MERCENARY)),
+            boarded: playerShip(g, BuiltObjectSubRole.ExplorationShip, 2),
+            independentColony: colony,
+        });
+        expect(cast).toEqual(CAST);
+    });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
 // (1) One escort vs one pirate ship
 // ---------------------------------------------------------------------------------------------------------------
 
 describe('(1) a player escort ordered to Attack a pirate ship', () => {
     /**
-     * Seed-1 cast: the player's Javelin 001 (Escort: 2 × Standard Beam — RawDamage 5, Range 190, Energy 12, Speed 360,
-     * FireRate 1240 ms; 3 armour plates) and S269 Confederacy's Hidden Aspiration (pirate explorer: unarmed, shields 100,
+     * Seed-1 cast: the player's Praefectus 001 (Escort: 2 × Standard Beam — RawDamage 5, Range 190, Energy 12, Speed 360,
+     * FireRate 1240 ms; 3 armour plates) and S105 Ravagers' Graceful Impasse (pirate explorer: unarmed, shields 100,
      * 4 armour plates Value1 10 / Value2 2, 37 components), staged 60 apart in empty space. The target's design flee rule is
      * set to Never and it is not auto-controlled, so it holds still (its stock FleeWhen would make it Escape at 50% shields,
      * BuiltObject.1.cs 1520 ShouldFleeFrom — a behaviour, not what is being measured here).
      */
     function stage(distance: number, disableEngines = false): { g: Galaxy; esc: BuiltObject; pir: BuiltObject } {
         const g = cachedTickGame(gameData).galaxy;
-        const esc = ship(g, 'Javelin 001');
-        const pir = ship(g, 'Hidden Aspiration');
+        const esc = playerShip(g, BuiltObjectSubRole.Escort, 0);
+        const pir = pirateExplorer(g, 0);
         expect(pir.empire!.pirateEmpireBaseHabitat).not.toBeNull();
+        // Staged: no countermeasure bonus on the target's empire (Empire.CountermeasuresFactor, a research / race factor —
+        // 1.0 unless researched), so the hand-worked hit roll below has no modifiers.
+        pir.empire!.countermeasuresFactor = 1;
         const s = emptySpot(g);
         builtObjectMission(pir.mission)?.clear();
         pir.isAutoControlled = false;
@@ -134,9 +180,9 @@ describe('(1) a player escort ordered to Attack a pirate ship', () => {
         place(g, esc, s.x, s.y);
         place(g, pir, s.x + distance, s.y);
         esc.currentEnergy = esc.reactorStorageCapacity;
-        // The Javelin design's tactics are AllWeapons: SetOptimalAttackRanges (BuiltObject.2.cs 131) holds it at
+        // The Praefectus design's tactics are AllWeapons: SetOptimalAttackRanges (BuiltObject.2.cs 131) holds it at
         // [BeamWeaponsMinRange × 0.65, × 0.9] = [123, 171], where the Bacon fall-off leaves a 5-damage beam < 1 — a hull
-        // hit of (int)(0.67 + 0.5) = 1 never beats an armour plate's Value2 2 (BuiltObject.2.cs 6437), so a lone Javelin
+        // hit of (int)(0.67 + 0.5) = 1 never beats an armour plate's Value2 2 (BuiltObject.2.cs 6437), so a lone Praefectus
         // can empty the shields but never destroy anything (faithful). Point Blank tactics (a design setting) hold it at
         // [PointBlankWeaponsRange 50 × 0.7, 50] where a beam hits for ~3.7.
         esc.design.tacticsWeakerShips = BattleTactics.PointBlank;
@@ -420,16 +466,15 @@ describe('(1) a player escort ordered to Attack a pirate ship', () => {
 
 describe('(2) a 4-ship fleet ordered to attack a pirate base', () => {
     /**
-     * S83 Prowlers' S66 Outpost (SmallSpacePort: 8 Missile [6 / 520], 24 Rail Gun [6 / 120], 4 Assault Pod, 1 Tractor Beam;
-     * shields 1800) and the player's Enforcer 001/002 (Frigate, size 207) and Colossia 001/002 (Destroyer, size 227), put in
+     * The first pirate base with missiles (seed-1: S78 Gangsters' Bandits Sanctuary — SmallSpacePort: Missiles [6 / 520], beams, assault pods;
+     * shields 1800) and the player's Minotaur 001/002 (Frigate, size 207) and Venator 001/002 (Destroyer, size 227), put in
      * a new fleet and staged at 450 / 500 / 400 / 480 from the base (inside Missile range 520).
      */
     function stage(): { g: Galaxy; base: BuiltObject; fleetShips: BuiltObject[] } {
         const g = cachedTickGame(gameData).galaxy;
-        const base = ship(g, 'S66 Outpost');
-        const names = ['Enforcer 001', 'Enforcer 002', 'Colossia 001', 'Colossia 002'];
+        const base = pirateMissileBase(g);
         const offsets = [450, 500, 400, 480];
-        const fleetShips = names.map((n) => ship(g, n));
+        const fleetShips = [playerShip(g, BuiltObjectSubRole.Frigate, 0), playerShip(g, BuiltObjectSubRole.Frigate, 1), playerShip(g, BuiltObjectSubRole.Destroyer, 0), playerShip(g, BuiltObjectSubRole.Destroyer, 1)];
         fleetShips.forEach((s, i) => {
             builtObjectMission(s.mission)?.clear();
             place(g, s, base.xpos - offsets[i], base.ypos);
@@ -454,9 +499,9 @@ describe('(2) a 4-ship fleet ordered to attack a pirate base', () => {
         const { g, base, fleetShips } = stage();
         const [e1, e2, c1, c2] = fleetShips;
         expect(fleetShips.map((s) => s.size)).toEqual([207, 207, 227, 227]);
-        // Hand-worked: Colossia 001 at 400: (20000 − 400)² / 1e6 × 50 × 22 = 384.16 × 1100 = 422 576;
-        // Colossia 002 at 480: 381.0304 × 1100 = 419 133; Enforcer 001 at 450: 382.2025 × 50 × 20 = 382 202;
-        // Enforcer 002 at 500: 380.25 × 1000 = 380 250 (the base's coordinates are truncated to int, 3446-3447, which moves these by < 50).
+        // Hand-worked: Venator 001 at 400: (20000 − 400)² / 1e6 × 50 × 22 = 384.16 × 1100 = 422 576;
+        // Venator 002 at 480: 381.0304 × 1100 = 419 133; Minotaur 001 at 450: 382.2025 × 50 × 20 = 382 202;
+        // Minotaur 002 at 500: 380.25 × 1000 = 380 250 (the base's coordinates are truncated to int, 3446-3447, which moves these by < 50).
         expect(handThreatLevel(g, base, c1)).toBeCloseTo(422576, -2);
         expect(handThreatLevel(g, base, c2)).toBeCloseTo(419133, -2);
         expect(handThreatLevel(g, base, e1)).toBeCloseTo(382202, -2);
@@ -464,7 +509,7 @@ describe('(2) a 4-ship fleet ordered to attack a pirate base', () => {
         const { threats, threatLevels } = evaluateThreats(g, base);
         const ours = threats.map((t, i) => ({ t, l: threatLevels[i] })).filter((x) => fleetShips.includes(x.t as BuiltObject));
         // EvaluateThreats (Galaxy.7.cs 3403-3406): sorted by level, descending.
-        expect(ours.map((x) => (x.t as BuiltObject).name)).toEqual(['Colossia 001', 'Colossia 002', 'Enforcer 001', 'Enforcer 002']);
+        expect(ours.map((x) => x.t as BuiltObject)).toEqual([c1, c2, e1, e2]);
         for (const x of ours) expect(x.l).toBe(handThreatLevel(g, base, x.t as BuiltObject));
         for (let i = 1; i < threatLevels.length; i++) expect(threatLevels[i - 1]).toBeGreaterThanOrEqual(threatLevels[i]);
     });
@@ -510,7 +555,7 @@ describe('(2) a 4-ship fleet ordered to attack a pirate base', () => {
             expect(builtObjectMission(s.mission)!.targetBuiltObject).toBe(base);
         }
         const expectedFirst = [...fleetShips].sort((a, b) => handThreatLevel(g, base, b) - handThreatLevel(g, base, a))[0];
-        expect(expectedFirst.name).toBe('Colossia 001');
+        expect(expectedFirst).toBe(fleetShips[2]); // destroyer 0 at 400
         const baseLast = base.weapons.map((w) => w.lastFired);
         const fleetLast = fleetShips.map((s) => s.weapons.map((w) => w.lastFired));
         let firstBaseShot: { frame: number; target: unknown; type: ComponentType } | null = null;
@@ -555,7 +600,7 @@ describe('(2) a 4-ship fleet ordered to attack a pirate base', () => {
         });
         expect(fleet.allowImmediateThreatEvaluation).toBe(false);
         // DefendBase (BuiltObject.cs 4557) walks Threats in order: the first base shot is a Missile (the only weapon that
-        // reaches 400-500) at the top threat, Colossia 001.
+        // reaches 400-500) at the top threat, Venator 001.
         expect(firstBaseShot).not.toBeNull();
         expect(firstBaseShot!.frame).toBeLessThanOrEqual(60);
         expect(firstBaseShot!.type).toBe(ComponentType.WeaponMissile);
@@ -572,10 +617,10 @@ describe('(2) a 4-ship fleet ordered to attack a pirate base', () => {
 // ---------------------------------------------------------------------------------------------------------------
 
 describe('(3) fighters launched by a carrier engage and return per the C# rules', () => {
-    /** The player's Sol 2 Space Port (FighterCapacity 160 → 16 Standard Fighters) with its fighters built and ready. */
+    /** The player's Skaif Space Port (FighterCapacity 160 → 16 Standard Fighters) with its fighters built and ready. */
     function stage(): { g: Galaxy; port: BuiltObject; fighters: Fighter[] } {
         const g = cachedTickGame(gameData).galaxy;
-        const port = ship(g, 'Sol 2 Space Port');
+        const port = playerCarrierPort(g);
         expect(port.fighterCapacity).toBe(160);
         buildNewFighters(g, port);
         const fighters = fightersOf(port)!;
@@ -653,13 +698,14 @@ describe('(3) fighters launched by a carrier engage and return per the C# rules'
 
     it('on the harness: the base launches its fighters at a pirate within 3000 (ShouldAttack, BuiltObject.1.cs 956), they attack it, fire and wear it down', () => {
         const { g, port, fighters } = stage();
-        const pir = ship(g, 'Elite Scorpion');
+        const pir = pirateEscort(g, 0);
         builtObjectMission(pir.mission)?.clear();
         pir.isAutoControlled = false;
         pir.design.fleeWhen = BuiltObjectFleeWhen.Never;
         for (const c of pir.components.items) if (c.category === ComponentCategoryType.Engine) c.status = ComponentStatus.Damaged;
         pir.reDefine(); // engines out: it holds position (see (1))
-        place(g, pir, port.xpos + 1500, port.ypos + 500);
+        // Within the out-of-view fighter leash (1500 from the carrier, Fighter.cs 1805-1829) even as the orbiting base moves.
+        place(g, pir, port.xpos + 600, port.ypos + 300);
         // A base (WarpSpeed 0) only engages within 3000 (9 000 000 squared, BuiltObject.1.cs 973).
         expect(g.calculateDistanceSquared(port.xpos, port.ypos, pir.xpos, pir.ypos)).toBeLessThan(9000000);
         expect(shouldAttack(g, port, pir, g.nowMs)).toBe(true);
@@ -692,14 +738,14 @@ describe('(3) fighters launched by a carrier engage and return per the C# rules'
 
 describe('(4) boarding: an assault-pod ship boards and captures a disabled ship', () => {
     /**
-     * Black Pillagers' Worthy Firelance (1 Assault Pod: RawDamage 50, Range 140; empire BoardingAttackFactor 1, dominant
-     * race TroopStrength 138, pirate RaidStrengthFactor 1.25) against the player's Sol Starseeker (3 Hab Modules, no troops;
+     * S78 Gangsters' Evasive Vengeance (1 Assault Pod: RawDamage 50, Range 140; empire BoardingAttackFactor 1, dominant
+     * race TroopStrength 138, pirate RaidStrengthFactor 1.25) against the player's Muffled Pride (3 Hab Modules, no troops;
      * BoardingDefenseFactor 1, TroopStrength 121) with its shields down and engines knocked out, 100 apart.
      */
     function stage(): { g: Galaxy; att: BuiltObject; tgt: BuiltObject } {
         const g = cachedTickGame(gameData).galaxy;
-        const att = ship(g, 'Worthy Firelance');
-        const tgt = ship(g, 'Sol Starseeker');
+        const att = pirateRaider(g, pirateFaction(g, MERCENARY));
+        const tgt = playerShip(g, BuiltObjectSubRole.ExplorationShip, 2);
         builtObjectMission(tgt.mission)?.clear();
         tgt.isAutoControlled = false;
         for (const c of tgt.components.items) if (c.category === ComponentCategoryType.Engine) c.status = ComponentStatus.Damaged;
@@ -799,13 +845,14 @@ describe('(4) boarding: an assault-pod ship boards and captures a disabled ship'
 // ---------------------------------------------------------------------------------------------------------------
 
 describe('(5) troop transports invade an independent colony', () => {
-    /** Seed-1: Dhayu 3 (independent, 567 345 080 Dhayut, no troops yet); the player's Sabre troop-transport design. */
+    /** Seed-1: the most populous independent colony without troops (Toinsa); the player's troop-transport design. */
     function stage(): { g: Galaxy; colony: Habitat; transport: BuiltObject } {
         const g = cachedTickGame(gameData).galaxy;
         const p = g.playerEmpire!;
-        const colony = g.independentColonies.find((h) => h.name === 'Dhayu 3')!;
+        // The most populous independent colony without troops.
+        const colony = [...g.independentColonies].filter((h) => h.population.totalAmount > 0 && (h.troops === null || h.troops.count === 0)).sort((a, b) => b.population.totalAmount - a.population.totalAmount)[0];
         expect(colony.empire).toBe(g.independentEmpire);
-        const design = p.designs.find((d) => d.name === 'Sabre')!;
+        const design = p.designs.find((d) => d.subRole === BuiltObjectSubRole.TroopTransport)!;
         // Empire.cs 4341 GenerateBuiltObjectFromDesign: every component Normal (4346) — a working transport.
         const transport = generateBuiltObjectFromDesign(g, p, design, 'Trooper 1', true, colony.xpos + 800, colony.ypos);
         expect(transport.components.items.every((c) => c.status === ComponentStatus.Normal)).toBe(true); // was Unbuilt (fixed)
