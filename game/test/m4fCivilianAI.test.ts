@@ -3,7 +3,7 @@
 // galaxy (seed 1), and a harness smoke run.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { cachedTickGame, cachedTickGameRun } from './helpers/gameCache';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { GameData } from '../src/sim/data/gameData';
 import { HabitatCategoryType, HabitatType, Habitat } from '../src/sim/types';
@@ -30,7 +30,7 @@ let galaxy: Galaxy;
 
 beforeAll(async () => {
     gameData = await loadGameDataFs();
-    galaxy = createTickGame(gameData).galaxy;
+    galaxy = cachedTickGame(gameData).galaxy;
 }, 300000);
 
 function missionType(bo: BuiltObject): BuiltObjectMissionType {
@@ -146,8 +146,8 @@ describe('game start (Start.2.cs 1373-1374 AssignMissionsToBuiltObjectList) and 
     });
 
     it('600 game-s: no M4f stub is reached and missions keep being assigned', () => {
-        const g = createTickGame(gameData).galaxy;
-        const r = runGameSeconds(g, 600);
+        const { game, run: r } = cachedTickGameRun(gameData, { seconds: 600 }); // createTickGame + runGameSeconds(g, 600), built once and cached (test/helpers/gameCache.ts)
+        const g = game.galaxy;
         expect(Object.keys(r.todoHits).filter((k) => k.startsWith('M4f '))).toEqual([]);
         const types = new Set<BuiltObjectMissionType>();
         for (const empire of g.empires) {

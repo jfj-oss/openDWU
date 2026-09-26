@@ -4,6 +4,7 @@
 // the ruin must not touch the shared GameData race, a second galaxy must not see it, and it must survive save/load.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
+import { cachedTickGame } from './helpers/gameCache';
 import { tickGameOptions } from './helpers/tickGame';
 import { createGame } from '../src/sim/game';
 import type { GameData } from '../src/sim/data/gameData';
@@ -18,7 +19,7 @@ beforeAll(async () => {
 
 describe('Origins ruin satisfaction modifier is per galaxy', () => {
     it('mutates the galaxy race only and round-trips through the save', () => {
-        const game = createGame(tickGameOptions(gameData));
+        const game = cachedTickGame(gameData);
         const g = game.galaxy;
         const player = g.playerEmpire!;
         const race = player.dominantRace!;
@@ -38,7 +39,7 @@ describe('Origins ruin satisfaction modifier is per galaxy', () => {
 
         expect(race.satisfactionModifier).toBe(before + 12);
         expect(shared.satisfactionModifier).toBe(before);
-        const g2 = createGame(tickGameOptions(gameData)).galaxy;
+        const g2 = createGame(tickGameOptions(gameData)).galaxy; // a new galaxy (built here, not the test game cache)
         expect(g2.races.find((r) => r.name === race.name)!.satisfactionModifier).toBe(before);
 
         const loaded = galaxyFromJSON(JSON.parse(JSON.stringify(galaxyToJSON(g))), gameData);

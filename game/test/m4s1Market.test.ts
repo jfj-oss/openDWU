@@ -4,7 +4,7 @@
 // PirateEconomy.cs).
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { cachedTickGame, cachedTickGameRun } from './helpers/gameCache';
 import type { GameData } from '../src/sim/data/gameData';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { Empire } from '../src/sim/empire';
@@ -63,7 +63,7 @@ beforeAll(async () => {
 
 /** A seed-1 tick galaxy with every mission list emptied (game start may already have posted offers). */
 function freshGalaxy(): Galaxy {
-    const g = createTickGame(gameData).galaxy;
+    const g = cachedTickGame(gameData).galaxy;
     g.pirateMissions.items.length = 0;
     for (const e of [...g.empires, ...g.pirateEmpires, g.independentEmpire!]) e.pirateMissions.items.length = 0;
     return g;
@@ -405,8 +405,7 @@ describe('ReviewPirateRelations (Empire.2.cs 2401)', () => {
 
 describe('harness smoke (seed 1, 480 game-s)', () => {
     it('independents post Defend / Smuggle offers, and a faction accepts one', () => {
-        const g = createTickGame(gameData).galaxy;
-        runGameSeconds(g, 480);
+        const g = cachedTickGameRun(gameData, { seconds: 480 }).game.galaxy; // createTickGame + runGameSeconds(g, 480), built once and cached (test/helpers/gameCache.ts)
         const offers = g.pirateMissions.items;
         const hasDefend = () => offers.some((a) => a!.type === EmpireActivityType.Defend && a!.requestingEmpire === g.independentEmpire);
         // IndependentColoniesMakeDefendOffersToPirates posts an offer on a Next(0, 30) === 1 roll per independent colony per

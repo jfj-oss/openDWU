@@ -5,7 +5,7 @@
 // C# GameText keys. createGame galaxy (seed 1, Human + 3 AIs, pirates on).
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { cachedTickGame } from './helpers/gameCache';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { GameData } from '../src/sim/data/gameData';
 import type { Empire } from '../src/sim/empire';
@@ -36,7 +36,7 @@ function setMet(a: Empire, b: Empire, met: boolean): void {
 }
 
 function setup(): { galaxy: Galaxy; player: Empire; a: Empire; b: Empire; c: Empire } {
-    const galaxy = createTickGame(gameData).galaxy;
+    const galaxy = cachedTickGame(gameData).galaxy;
     const player = galaxy.playerEmpire!;
     const [a, b, c] = galaxy.empires.filter((e) => e !== player && e.pirateEmpireBaseHabitat === null);
     // player and B know A (and each other); C knows neither A nor B.

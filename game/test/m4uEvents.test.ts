@@ -3,7 +3,7 @@
 // SpawnCreatures, Creature.cs 1196-1345 combat) on a createGame galaxy (seed 1), plus a harness smoke run.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { cachedTickGame, cachedTickGameRun } from './helpers/gameCache';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { GameData } from '../src/sim/data/gameData';
 import type { Empire } from '../src/sim/empire';
@@ -38,7 +38,7 @@ let galaxy: Galaxy;
 let human: Empire;
 beforeAll(async () => {
     gameData = await loadGameDataFs();
-    galaxy = createTickGame(gameData).galaxy;
+    galaxy = cachedTickGame(gameData).galaxy;
     human = galaxy.empires.find((e) => e.dominantRace?.name === 'Human')!;
 }, 120000);
 
@@ -192,8 +192,8 @@ describe('Creature.cs 1206-1297 creature combat targeting', () => {
 
 describe('M4u harness smoke', () => {
     it('600 game-s with the event / character runtime: no throw, events keep empire state finite', () => {
-        const g = createTickGame(gameData).galaxy;
-        const r = runGameSeconds(g, 600);
+        const { game, run: r } = cachedTickGameRun(gameData, { seconds: 600 }); // createTickGame + runGameSeconds(g, 600), built once and cached (test/helpers/gameCache.ts)
+        const g = game.galaxy;
         expect(r.frames).toBe(36000);
         for (const e of g.empires) {
             expect(Number.isFinite(e.leaderChangeInfluence)).toBe(true);

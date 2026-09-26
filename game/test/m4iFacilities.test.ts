@@ -3,7 +3,7 @@
 // Galaxy.CalculatePlanetaryFacilityCost, and a harness run of the facility AI.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { cachedTickGame, cachedTickGameRun } from './helpers/gameCache';
 import { runGameSeconds } from '../src/sim/tick/harness';
 import type { GameData } from '../src/sim/data/gameData';
 import type { Galaxy } from '../src/sim/galaxy';
@@ -40,7 +40,7 @@ function aiEmpire(g: Galaxy): Empire {
 
 describe('M4i unit: facilities', () => {
     it('CalculatePlanetaryFacilityCost is the definition BuildCost for a normal empire (factor 1)', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const e = aiEmpire(g);
         const defs = planetaryFacilityDefinitionsStatic(g);
         expect(defs.length).toBeGreaterThan(0);
@@ -49,7 +49,7 @@ describe('M4i unit: facilities', () => {
     });
 
     it('QueueFacilityConstruction adds one unbuilt facility per type, refuses a second of the same type', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const cap = aiEmpire(g).capital!;
         const n = cap.facilities?.length ?? 0;
         expect(queueFacilityConstruction(g, cap, PlanetaryFacilityType.PlanetaryShield)).toBe(true);
@@ -60,7 +60,7 @@ describe('M4i unit: facilities', () => {
     });
 
     it('ConstructFacilities advances progress by (float)(timePassed / clamp(100000 × 600 / StrategicValue, 90, 1800))', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const e = aiEmpire(g);
         const cap = e.capital!;
         cap.facilities = [];
@@ -75,7 +75,7 @@ describe('M4i unit: facilities', () => {
     });
 
     it('a completed PlanetaryShield / FortifiedBunker set the habitat flags in ReviewPlanetaryFacilities', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const e = aiEmpire(g);
         const cap = e.capital!;
         cap.facilities = [];
@@ -95,7 +95,7 @@ describe('M4i unit: facilities', () => {
     });
 
     it('ReviewWondersBuilt marks completed wonders only; a built wonder can no longer be queued anywhere', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const e = aiEmpire(g);
         const cap = e.capital!;
         const wonders = definitionsGetWonders(planetaryFacilityDefinitionsStatic(g));
@@ -113,7 +113,7 @@ describe('M4i unit: facilities', () => {
     });
 
     it('TrackedWonders AddUpdateBuildDate replaces the (colony, facility) entry', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const cap = aiEmpire(g).capital!;
         const list: PlanetaryFacilityBuildDate[] = [];
         trackedWondersAddUpdateBuildDate(list, cap, 7, 100);
@@ -130,8 +130,11 @@ describe('M4i unit: facilities', () => {
 
 describe('M4i harness: facility AI', () => {
     it('1200 game-seconds: facilities queued by the AI progress and never exceed 1', () => {
-        const g = createTickGame(gameData).galaxy;
-        const r = runGameSeconds(g, 1200);
+        // 1200 s = the cached 600 s game (test/helpers/gameCache.ts) + 600 s; the stub hits of both halves.
+        const { game, run: r0 } = cachedTickGameRun(gameData, { seconds: 600 });
+        const g = game.galaxy;
+        const r1 = runGameSeconds(g, 600);
+        const r = { todoHits: { ...r0.todoHits, ...r1.todoHits } };
         for (const e of g.empires) {
             for (const c of e.colonies) {
                 for (const f of c.facilities ?? []) {

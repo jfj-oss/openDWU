@@ -1,7 +1,7 @@
 // M4k — research progress (Empire.3.cs PerformResearch / DoResearchBreakthrough / SelectNextResearchProject /
 // DoCrashResearch / ReviewResearchStationBonuses; ResearchNodeList helpers). Hand-worked C# expectations.
 import { beforeAll, describe, expect, it } from 'vitest';
-import { generateGalaxy } from '../src/sim/galaxy';
+import { generateGalaxy, type Galaxy } from '../src/sim/galaxy';
 import { setGovernmentsStatic } from '../src/sim/empire';
 import { generateEmpire } from '../src/sim/empireGeneration';
 import {
@@ -29,7 +29,7 @@ import { EmpireMessageType } from '../src/sim/messages';
 import { GalaxyShape, HabitatCategoryType, IndustryType } from '../src/sim/types';
 import { Random } from '../src/sim/random';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { cachedTickGame, cachedTickGameRun } from './helpers/gameCache';
 import { runGameSeconds } from '../src/sim/tick/harness';
 import type { GameData } from '../src/sim/data/gameData';
 
@@ -258,14 +258,23 @@ describe('M4k crash research, station bonuses, race wonder victory', () => {
 
 describe('M4k harness milestone', () => {
     it('research completes over runGameSeconds on the tick galaxy', () => {
-        const g = createTickGame(gameData).galaxy;
         // At the base rate (~90k/yr per industry, first projects cost 240k) a project needs ~1400 game-seconds; the old
         // 600 s window only passed because one empire got a research boost in that galaxy. After M4u the tick galaxy's
         // AI races differ, so run in 300 s steps until the first completion (bounded at 1800 s).
-        let completed = 0;
-        for (let t = 0; t < 1800 && completed === 0; t += 300) {
+        // The first steps come from the test game cache (test/helpers/gameCache.ts): the tick galaxy after 300 s, then
+        // after 600 s (runGameSeconds in 300 s steps equals one call: 300 s is a frame boundary).
+        const completedOf = (x: Galaxy) => x.empires.reduce((s, e) => s + e.research.recentProjects.length, 0);
+        let g = cachedTickGameRun(gameData, { seconds: 300 }).game.galaxy;
+        let completed = completedOf(g);
+        let t = 300;
+        if (completed === 0) {
+            g = cachedTickGameRun(gameData, { seconds: 600 }).game.galaxy;
+            completed = completedOf(g);
+            t = 600;
+        }
+        for (; t < 1800 && completed === 0; t += 300) {
             runGameSeconds(g, 300);
-            completed = g.empires.reduce((s, e) => s + e.research.recentProjects.length, 0);
+            completed = completedOf(g);
         }
         expect(completed).toBeGreaterThan(0);
         for (const e of g.empires) {

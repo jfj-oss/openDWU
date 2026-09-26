@@ -1,8 +1,9 @@
+// @slow — soak: two 1200 s met-empires runs (test:slow tier; see vite.config.ts testTier).
 // M4r — diplomacy runtime (politics / strategy / treaties / messages). Unit tests against hand-worked C# values
 // (Empire.8.cs, Empire.3.cs, EmpireEvaluation.cs) plus a harness smoke test in which the starting empires have met.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { cachedTickGame } from './helpers/gameCache';
 import { runGameSeconds } from '../src/sim/tick/harness';
 import { stateDigest } from '../src/sim/tick/digest';
 import type { GameData } from '../src/sim/data/gameData';
@@ -57,7 +58,7 @@ function meetAll(g: Galaxy): void {
 
 describe('EmpireEvaluation (EmpireEvaluation.cs)', () => {
     it('OverallAttitude weighs each part by AggressionLevel and DiplomacyFactor, truncating the sum', () => {
-        const { galaxy } = createTickGame(gameData);
+        const { galaxy } = cachedTickGame(gameData);
         const [a, b] = galaxy.empires;
         const ev = new EmpireEvaluation(b, galaxy);
         // ctor: FirstContactPenalty = -15 * AggressionLevel (1.0).
@@ -79,7 +80,7 @@ describe('EmpireEvaluation (EmpireEvaluation.cs)', () => {
     });
 
     it('IncidentEvaluation setter clamps to [-150, 80]; CivilityRating clamps to [-100, 30]', () => {
-        const { galaxy } = createTickGame(gameData);
+        const { galaxy } = cachedTickGame(gameData);
         const ev = new EmpireEvaluation(galaxy.empires[1], galaxy);
         ev.incidentEvaluation = 500;
         expect(ev.incidentEvaluationRaw).toBe(80);
@@ -93,7 +94,7 @@ describe('EmpireEvaluation (EmpireEvaluation.cs)', () => {
     });
 
     it('ObtainEmpireEvaluation adds one evaluation per active empire with the race bias', () => {
-        const { galaxy } = createTickGame(gameData);
+        const { galaxy } = cachedTickGame(gameData);
         const [a, b] = galaxy.empires;
         const before = empireEvaluationsOf(a).length;
         const ev = obtainEmpireEvaluation(galaxy, a, b);
@@ -115,7 +116,7 @@ describe('politics helpers (Empire.7.cs / Empire.8.cs / Empire.9.cs)', () => {
     });
 
     it('EvaluateMilitaryPotency / DetermineRelativeStrength thresholds', () => {
-        const { galaxy } = createTickGame(gameData);
+        const { galaxy } = cachedTickGame(gameData);
         const ai = galaxy.empires.find((e) => e !== galaxy.playerEmpire)!;
         expect(evaluateMilitaryPotency(galaxy, 100, 201, ai)).toBe(-1);
         expect(evaluateMilitaryPotency(galaxy, 100, 150, ai)).toBe(0);
@@ -130,7 +131,7 @@ describe('politics helpers (Empire.7.cs / Empire.8.cs / Empire.9.cs)', () => {
     });
 
     it('DetermineVictorInWar (integer damage ratio) and DetermineSubjugationOfLoserInWar', () => {
-        const { galaxy } = createTickGame(gameData);
+        const { galaxy } = cachedTickGame(gameData);
         const [a, b] = galaxy.empires;
         const ra = obtainDiplomaticRelation(a, b);
         const rb = obtainDiplomaticRelation(b, a);
@@ -145,7 +146,7 @@ describe('politics helpers (Empire.7.cs / Empire.8.cs / Empire.9.cs)', () => {
     });
 
     it('CalculateRelativeEmpireSize: own strategic value over the mean of the others', () => {
-        const { galaxy } = createTickGame(gameData);
+        const { galaxy } = cachedTickGame(gameData);
         const e = galaxy.empires[0];
         let sum = 0;
         for (const o of galaxy.empires) if (o !== e && o.active) sum += totalColonyStrategicValue(o);
@@ -153,7 +154,7 @@ describe('politics helpers (Empire.7.cs / Empire.8.cs / Empire.9.cs)', () => {
     });
 
     it('CalculateNextAllowableProposalDate: 1.25 years × ColonyFillFactor × clamp(met / empires, 0.3, 1) × 2', () => {
-        const { galaxy } = createTickGame(gameData);
+        const { galaxy } = cachedTickGame(gameData);
         const [a, b] = galaxy.empires;
         const r = obtainDiplomaticRelation(a, b);
         r.lastDiplomacyTradeOfferDate = 1000;
@@ -163,7 +164,7 @@ describe('politics helpers (Empire.7.cs / Empire.8.cs / Empire.9.cs)', () => {
     });
 
     it('ClearInvalidDiplomaticRelations drops relations with inactive empires; ReviewEmpireEndsAllWars fixes the war counter', () => {
-        const { galaxy } = createTickGame(gameData);
+        const { galaxy } = cachedTickGame(gameData);
         const [a, b] = galaxy.empires;
         obtainDiplomaticRelation(a, b);
         b.active = false;
@@ -179,7 +180,7 @@ describe('politics helpers (Empire.7.cs / Empire.8.cs / Empire.9.cs)', () => {
 
 describe('ChangeDiplomaticRelation (Empire.8.cs 2568)', () => {
     it('treaty: both sides change, initiator/start dates set, counters untouched, trade bonus kept', () => {
-        const { galaxy } = createTickGame(gameData);
+        const { galaxy } = cachedTickGame(gameData);
         meetAll(galaxy);
         const [a, b] = galaxy.empires;
         const r = obtainDiplomaticRelation(a, b);
@@ -197,7 +198,7 @@ describe('ChangeDiplomaticRelation (Empire.8.cs 2568)', () => {
     });
 
     it('war: incident −40 on the victim, reputation −1, refuelling/mining rights revoked, war counters', () => {
-        const { galaxy } = createTickGame(gameData);
+        const { galaxy } = cachedTickGame(gameData);
         meetAll(galaxy);
         const [a, b] = galaxy.empires;
         const evBA = obtainEmpireEvaluation(galaxy, b, a);
@@ -217,7 +218,7 @@ describe('ChangeDiplomaticRelation (Empire.8.cs 2568)', () => {
 
 describe('ProcessMessages / ConsiderTreatyProposals (Empire.3.cs)', () => {
     it('GiveGift: recipient gains money and incident evaluation, sender gains reputation, the queue is cleared', () => {
-        const { galaxy } = createTickGame(gameData);
+        const { galaxy } = cachedTickGame(gameData);
         meetAll(galaxy);
         const [a, b] = galaxy.empires;
         a.stateMoney = 80000;
@@ -240,7 +241,7 @@ describe('ProcessMessages / ConsiderTreatyProposals (Empire.3.cs)', () => {
     });
 
     it('a treaty proposal is answered (accepted or refused) and removed from the proposed list', () => {
-        const { galaxy } = createTickGame(gameData);
+        const { galaxy } = cachedTickGame(gameData);
         meetAll(galaxy);
         const [a, b] = galaxy.empires.filter((e) => e !== galaxy.playerEmpire);
         const proposal = new DiplomaticRelation(DiplomaticRelationType.FreeTradeAgreement, a, a, b, galaxyStarDate(galaxy), false);
@@ -260,7 +261,7 @@ describe('ProcessMessages / ConsiderTreatyProposals (Empire.3.cs)', () => {
     });
 
     it('EvaluatePoliticalSituation trends the evaluation of met empires (first-contact penalty wears off)', () => {
-        const { galaxy } = createTickGame(gameData);
+        const { galaxy } = cachedTickGame(gameData);
         meetAll(galaxy);
         const [a, b] = galaxy.empires;
         const ev = obtainEmpireEvaluation(galaxy, a, b);
@@ -273,7 +274,7 @@ describe('ProcessMessages / ConsiderTreatyProposals (Empire.3.cs)', () => {
 
 describe('harness: diplomacy evolves once the empires have met', () => {
     function runMet(seconds: number): Galaxy {
-        const { galaxy } = createTickGame(gameData);
+        const { galaxy } = cachedTickGame(gameData);
         meetAll(galaxy);
         runGameSeconds(galaxy, seconds);
         return galaxy;
@@ -299,7 +300,7 @@ describe('harness: diplomacy evolves once the empires have met', () => {
 describe('trade offers (Empire.7.cs 2576 TradeItems, Galaxy.4.cs values)', () => {
     it('RefactorValueForEmpire scales by the offering empire\'s attitude (and the player difficulty)', async () => {
         const { getRefactorForEmpire, refactorValueForEmpire } = await import('../src/sim/tradeItems');
-        const { galaxy } = createTickGame(gameData);
+        const { galaxy } = cachedTickGame(gameData);
         const [a, b] = galaxy.empires.filter((e) => e !== galaxy.playerEmpire);
         const ev = obtainEmpireEvaluation(galaxy, b, a);
         const att = ev.overallAttitude;
@@ -310,7 +311,7 @@ describe('trade offers (Empire.7.cs 2576 TradeItems, Galaxy.4.cs values)', () =>
 
     it('allies/friends are offered a map; the recipient answers in ProcessMessages', async () => {
         const { tradeItems, TradeableItem } = await import('../src/sim/tradeItems');
-        const { galaxy } = createTickGame(gameData);
+        const { galaxy } = cachedTickGame(gameData);
         meetAll(galaxy);
         const [a, b] = galaxy.empires.filter((e) => e !== galaxy.playerEmpire);
         const r = obtainDiplomaticRelation(a, b);

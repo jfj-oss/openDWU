@@ -8,5 +8,6 @@ tasks/*.log
 tasks/queue.status
 tasks/.gate-failure.txt
 tasks/.queue.lock
+test/.cache/
 .vite/
 node_modules

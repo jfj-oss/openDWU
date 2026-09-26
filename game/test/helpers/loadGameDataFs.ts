@@ -1,5 +1,6 @@
 // Node.js filesystem version of loadGameData for tests.
 
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -12,8 +13,20 @@ function readDwu(relPath: string): string {
     return readFileSync(resolve(dwuRoot, relPath), 'utf-8');
 }
 
-// Create a FetchText mock that reads from filesystem instead of fetching
-const fetchTextFs: FetchText = async (candidates: string[]): Promise<string> => {
+/** Content fingerprint of each loaded GameData: a hash of every file its load read (see gameDataFingerprint). */
+const fingerprints = new WeakMap<GameData, string>();
+
+/**
+ * The content fingerprint of a GameData returned by loadGameDataFs (sha1 over the customization set and every data
+ * file read, path + content), or null for GameData built some other way. test/helpers/gameCache.ts keys its on-disk
+ * games with it.
+ */
+export function gameDataFingerprint(gameData: GameData): string | null {
+    return fingerprints.get(gameData) ?? null;
+}
+
+// Create a FetchText mock that reads from filesystem instead of fetching; every file read is recorded in `reads`.
+const fetchTextFs = (reads: Map<string, string>): FetchText => async (candidates: string[]): Promise<string> => {
     for (const candidate of candidates) {
         try {
             // Convert /assets/dwu/... to file path
@@ -24,7 +37,9 @@ const fetchTextFs: FetchText = async (candidates: string[]): Promise<string> => 
             if (!existsSync(filePath)) {
                 continue;
             }
-            return readDwu(relPath);
+            const content = readDwu(relPath);
+            reads.set(relPath, content);
+            return content;
         } catch (err) {
             // Try next candidate
             continue;
@@ -75,5 +90,10 @@ export async function loadGameDataFs(customizationSet?: string): Promise<GameDat
         }
     }
 
-    return loadGameData(fetchTextFs, customizationSet, raceFileNames, designTemplateFiles, policyFileNames);
+    const reads = new Map<string, string>();
+    const gameData = await loadGameData(fetchTextFs(reads), customizationSet, raceFileNames, designTemplateFiles, policyFileNames);
+    const hash = createHash('sha1').update(`customization:${customizationSet ?? ''}\0`);
+    for (const path of [...reads.keys()].sort()) hash.update(`${path}\0${reads.get(path)!}\0`);
+    fingerprints.set(gameData, hash.digest('hex'));
+    return gameData;
 }

@@ -27,7 +27,7 @@ import { EmpireMessage, EmpireMessageType, addHistoryMessage, empireMessageHisto
 import { createEmpireMessageFeed } from '../src/ui/empireMessageFeed';
 import { formatSignedMoney } from '../src/ui/hud';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { cachedTickGame } from './helpers/gameCache';
 
 let gameData: GameData;
 beforeAll(async () => {
@@ -45,7 +45,7 @@ function timeOf(game: Game): GalaxyTime {
 
 describe('bug 1: a torn-down ship leaves a null hole in galaxy.builtObjects (BuiltObject.2.cs 5519-5523)', { timeout: 600000 }, () => {
     it('keeps the index as null like the C#, and digest, save/load and further ticks tolerate it', () => {
-        const game = createTickGame(gameData);
+        const game = cachedTickGame(gameData);
         runGameSeconds(game, 5);
         const g = game.galaxy;
         const list = g.builtObjects;
@@ -115,7 +115,7 @@ describe('bug 16: BaconSettings.txt overrides (BaconMain.cs 551 BaconInitialize)
     });
 
     it('createGame applies the file once the game exists; starting explorers are outside the gravity-well rule and jump out', () => {
-        const game = createTickGame(gameData);
+        const game = cachedTickGame(gameData);
         const g = game.galaxy;
         expect(baconMovementSettings.useStarGravityWells).toBe(false);
         const explorers = g.playerEmpire!.builtObjects.filter((b) => b.subRole === BuiltObjectSubRole.ExplorationShip && b.warpSpeed > 0);
@@ -129,7 +129,7 @@ describe('bug 16: BaconSettings.txt overrides (BaconMain.cs 551 BaconInitialize)
     });
 
     it('Galaxy.5.cs 1609-1616 / 1747-1752: every populated generated planet and moon has its troop lists', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const populated = g.habitats.filter((h) => h.population.items.length > 0 && (h.category === HabitatCategoryType.Planet || h.category === HabitatCategoryType.Moon));
         expect(populated.some((h) => h.category === HabitatCategoryType.Moon)).toBe(true);
         for (const h of populated) {
@@ -143,7 +143,7 @@ describe('bug 16: BaconSettings.txt overrides (BaconMain.cs 551 BaconInitialize)
 
 describe('bug 7: money panel Cashflow / Bonus Income (Main.Part11.cs 832 method_126)', { timeout: 600000 }, () => {
     it('cashflow = tax + tribute income − maintenance terms; bonus = trade + resort + space port; finite numbers', () => {
-        const game = createTickGame(gameData);
+        const game = cachedTickGame(gameData);
         runGameSeconds(game, 20);
         const g = game.galaxy;
         const e = g.playerEmpire!;
@@ -159,7 +159,7 @@ describe('bug 7: money panel Cashflow / Bonus Income (Main.Part11.cs 832 method_
     });
 
     it('CheckAgeVariableIncome ages the variable income once per galactic year (Empire.6.cs 2196-2250)', () => {
-        const game = createTickGame(gameData);
+        const game = cachedTickGame(gameData);
         const g = game.galaxy;
         const e = g.playerEmpire!;
         checkAgeVariableIncome(g, e);
@@ -183,7 +183,7 @@ describe('bug 7: money panel Cashflow / Bonus Income (Main.Part11.cs 832 method_
 
 describe('bug 15: Empire.MessageHistory is kept and saved (Empire.cs 82, 4697 AddHistoryMessage, 4708 RemoveOldHistoryMessages)', { timeout: 600000 }, () => {
     it('the feed adds every shown message except Informational, once; the history survives save/load', () => {
-        const game = createTickGame(gameData);
+        const game = cachedTickGame(gameData);
         const g = game.galaxy;
         const e = g.playerEmpire!;
         const m1 = new EmpireMessage(null, EmpireMessageType.NewColony, null);
@@ -208,7 +208,7 @@ describe('bug 15: Empire.MessageHistory is kept and saved (Empire.cs 82, 4697 Ad
     });
 
     it('RemoveOldHistoryMessages keeps the newest MaximumHistoryMessages plus every GalacticHistory message', () => {
-        const e = createTickGame(gameData).galaxy.playerEmpire!;
+        const e = cachedTickGame(gameData).galaxy.playerEmpire!;
         e.maximumHistoryMessages = 3;
         const mk = (date: number, type = EmpireMessageType.NewColony) => {
             const m = new EmpireMessage(null, type, null);

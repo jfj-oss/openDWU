@@ -5,6 +5,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 import { createTickGame } from './helpers/tickGame';
+import { cachedTickGame } from './helpers/gameCache';
 import type { GameData } from '../src/sim/data/gameData';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { Empire } from '../src/sim/empire';
@@ -29,7 +30,7 @@ beforeAll(async () => {
 
 /** The createTickGame galaxy plus a super-pirate faction (tech 4) at an unowned fuel habitat, as superPirates.test.ts. */
 function galaxyWithSuperPirates(): { g: Galaxy; p: Empire } {
-    const g = createTickGame(gameData).galaxy;
+    const g = cachedTickGame(gameData).galaxy;
     const fuel = g.resourceSystem.fuelResources[0].resourceId;
     const home = g.habitats.find(
         (x) => x.category !== HabitatCategoryType.GasCloud && x.category !== HabitatCategoryType.Star && x.empire === null && x.basesAtHabitat.length === 0 && x.resources.some((r) => r.resourceId === fuel),
@@ -122,7 +123,7 @@ describe('DoSuperPirateTasks (Galaxy.9.cs 208 / 284)', () => {
     }, 120000);
 
     it('skips ordinary pirate factions', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         expect(g.pirateEmpires.length).toBeGreaterThan(0);
         const before = g.pirateEmpires.map((e) => empireShipGroups(e).length);
         const draws = g.rnd.drawCount;
@@ -134,7 +135,7 @@ describe('DoSuperPirateTasks (Galaxy.9.cs 208 / 284)', () => {
 
 describe('FindNearestSystemGasCloudAsteroid (Galaxy.6.cs 3714)', () => {
     it('returns the nearest parentless habitat (ring search equals a brute-force scan)', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const pts = [
             [0, 0],
             [g.sizeX / 2, g.sizeY / 2],
@@ -166,7 +167,7 @@ describe('planet destroyer aftermath (DestroyHabitat → DoExplosion → DoPlane
     }
 
     it('asteroid count = (⌊(⌊D/2⌋ + ⌊r·D·0.125⌋)/8⌋ + 1)·8, inserted after the star system; the planet is removed at the end', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const planet = targetPlanet(g);
         const star = g.determineHabitatSystemStar(planet);
         const shooter = g.empires[0].builtObjects.find((b) => b.role === BuiltObjectRole.Military) ?? g.empires[0].builtObjects[0];
@@ -226,7 +227,7 @@ describe('planet destroyer aftermath (DestroyHabitat → DoExplosion → DoPlane
     }, 120000);
 
     it('an asteroid leaves no field and draws nothing', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const asteroid = g.habitats.find((h) => h.category === HabitatCategoryType.Asteroid)!;
         const len = g.habitats.length;
         const draws = g.rnd.drawCount;

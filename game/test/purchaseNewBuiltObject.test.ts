@@ -3,7 +3,7 @@
 // Main.Part4.cs 2826 method_539 BuildColonize), on the seed-1 harness game. Expectations are hand-worked from the C#.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { cachedTickGame } from './helpers/gameCache';
 import type { GameData } from '../src/sim/data/gameData';
 import type { Game } from '../src/sim/game';
 import { HabitatCategoryType, HabitatType, type Habitat } from '../src/sim/types';
@@ -22,7 +22,7 @@ beforeAll(async () => {
 }, 120000);
 
 function newGame(): Game {
-    return createTickGame(gameData);
+    return cachedTickGame(gameData);
 }
 
 /** Galaxy.4.cs GenerateBuiltObjectName numbered names: BuildCount as "000". */
