@@ -28,6 +28,7 @@ import { commandLog } from '../src/sim/player/commandLog';
 import { AiAdvisorDriver, STAR_DATE_DAY_MS, aiAdvisorSettingsWithUrl, buildStrategicSystemPrompt, runStrategicTurn, selectAdvisedEmpires, type AiAdvisorSettings } from '../src/ui/aiAdvisorDriver';
 import { councilLogEntry } from '../src/ui/aiAdvisorLog';
 import { galaxyStarDate } from '../src/sim/tick/simTime';
+import { DEFAULT_SETTINGS, loadSettings, setSettingsStorage } from '../src/ui/settings';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Fake model server (Ollama protocol)
@@ -213,6 +214,24 @@ describe('strategic decisions through the fake model server', () => {
         expect(news[0].sender).toBe(w.ai);
     }, 300000);
 
+    it('treaty offer from the AI side: OfferFreeTrade puts the proposal and its message in the player inbox', async () => {
+        const w = world();
+        const rel = obtainDiplomaticRelation(w.ai, w.player);
+        rel.strategy = DiplomaticStrategy.Befriend;
+        rel.lastDiplomacyTradeOfferDate = 0;
+        const id = `offer-free-trade:${strategicEmpireRef(w.player)}`;
+        expect(listStrategicOptions(w.galaxy, w.ai).map((o) => o.id)).toContain(id);
+        const msgs = empireMessages(w.player).length;
+        handler = ollamaAnswer({ rationale: 'Trade binds friends.', decisions: [{ id }] });
+        const turn = await runStrategicTurn({ galaxy: w.galaxy, ai: w.ai, cfg: cfg() });
+        expect(turn.results.map((r) => [r.id, r.status])).toEqual([[id, 'applied']]);
+        expect(w.player.proposedDiplomaticRelations.byEmpire(w.ai)?.type).toBe(DiplomaticRelationType.FreeTradeAgreement);
+        expect(empireMessages(w.player).slice(msgs).some((m) => m.sender === w.ai && m.messageType === EmpireMessageType.ProposeDiplomaticRelation)).toBe(true);
+        // Offer pending: the same move is no longer legal (no double offers).
+        expect(listStrategicOptions(w.galaxy, w.ai).map((o) => o.id)).not.toContain(id);
+        expect(commandLog(w.galaxy).map((e) => [e.decisionId, e.status])).toEqual([[id, 'applied']]);
+    }, 300000);
+
     it('tech emphasis change lands in the empire policy fields (a new policy object)', async () => {
         const w = world();
         const slot = openTechFocusSlot(w.galaxy, w.ai);
@@ -268,6 +287,20 @@ describe('strategic decisions through the fake model server', () => {
         expect(w.player.proposedDiplomaticRelations.byEmpire(w.ai)).toBeNull();
         expect(validateStrategicResponse(brief, 'not json').error).toBeDefined();
     }, 300000);
+});
+
+describe('settings', () => {
+    it('defaults off / 30 days / met / 4; stored values are clamped', () => {
+        expect(DEFAULT_SETTINGS).toMatchObject({ aiAdvisor: false, aiAdvisorIntervalDays: 30, aiAdvisorEmpires: 'met', aiAdvisorMaxEmpires: 4 });
+        const store = new Map<string, string>();
+        setSettingsStorage({ getItem: (k) => store.get(k) ?? null, setItem: (k, v) => void store.set(k, v), removeItem: (k) => void store.delete(k) });
+        try {
+            store.set('dwu-ui-settings', JSON.stringify({ aiAdvisor: true, aiAdvisorIntervalDays: 0, aiAdvisorEmpires: 'some', aiAdvisorMaxEmpires: 99 }));
+            expect(loadSettings()).toMatchObject({ aiAdvisor: true, aiAdvisorIntervalDays: 1, aiAdvisorEmpires: 'met', aiAdvisorMaxEmpires: 16 });
+        } finally {
+            setSettingsStorage(null);
+        }
+    });
 });
 
 describe('feature off / no model: the scheduler path is untouched', () => {
