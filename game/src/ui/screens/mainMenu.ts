@@ -6,7 +6,7 @@ import './mainMenu.css';
 import { buildOptionsPanel, type MusicAdapter } from './gameMenu';
 import { createCreditsScreen } from './credits';
 import { createTutorialsScreen } from './tutorials';
-import { startMusic } from '../../audio/musicPlayer';
+import { musicControls, stopAllMusic } from '../../audio/musicPlayer';
 import { openGalactopedia } from './galactopedia';
 import { showToast } from '../toast';
 
@@ -68,10 +68,10 @@ function preloadImage(src: string): void {
 }
 
 /** Lazily fetch the real music player for the Options panel (created by
- * startMusic at boot); null if audio is unavailable. */
+ * musicPlayer.ts musicControls); null if audio is unavailable. */
 function menuMusic(): MusicAdapter | null {
     try {
-        return startMusic();
+        return musicControls();
     } catch {
         return null;
     }
@@ -195,6 +195,7 @@ export function createMainMenu(callbacks: MainMenuCallbacks): MainMenuRefs {
                     }
                     break;
                 case 'exit':
+                    stopAllMusic(); // [audio] Start.cs:2427 lnkExit: musicPlayer_0.Stop(); musicPlayer_1.Stop()
                     if (isDesktopShell()) {
                         window.close();
                     } else {

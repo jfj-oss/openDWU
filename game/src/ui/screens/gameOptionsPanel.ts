@@ -1,12 +1,15 @@
 // Task 16d: streamlined Game Options (O): the Automation group (Main.Part6.cs:2524-2560) and the Popup /
 // Scrolling Messages groups (Main.Part3.cs:934-972, Main.Part6.cs:2406-2489). Options apply immediately.
-// TODO(port): the rest of pnlGameOptions (display, sound, auto-save, encounters) — the Esc menu Options modal covers display/sound; semi-automated "Suggest …" needs the sim's AdvisorSuggestion prompt (diplomacyTick.ts checkTaskAuthorized TODO)
+// TODO(port): the rest of pnlGameOptions (display, sound, encounters) — the Esc menu Options modal covers display/sound; semi-automated "Suggest …" needs the sim's AdvisorSuggestion prompt (diplomacyTick.ts checkTaskAuthorized TODO)
 
 // [popupstubs] begin
 import { getSettings, updateSettings } from '../settings';
 // [popupstubs] end
 import './gameOptionsPanel.css';
 import { AutomationLevel, type Empire } from '../../sim/empire';
+// [leftovers] begin
+import { clampAutoSaveMinutes } from '../settings';
+// [leftovers] end
 import {
     getMessageOptions,
     MessageCategory,
@@ -193,6 +196,13 @@ export function closeGameOptionsPanel(): void {
     open?.close();
 }
 
+// [leftovers] begin
+/** pnlGameOptions.Visible: the autosave waits while the panel is open (Main.Part12.cs:4015). */
+export function isGameOptionsPanelOpen(): boolean {
+    return open !== null;
+}
+// [leftovers] end
+
 function el(tag: string, className: string, text?: string): HTMLElement {
     const e = document.createElement(tag);
     e.className = className;
@@ -283,7 +293,37 @@ function createGameOptionsPanel(opts: GameOptionsPanelOptions): OpenState {
     msgs.appendChild(autoOpen);
     // [popupstubs] end
 
+    // [leftovers] begin
+    // Auto Save group (grpOptionsAutoSave, Main.Part6.cs:1817-1826 / 2516-2522 / 2592-2601): "Every [N] minutes".
+    const save = el('section', 'game-options-section');
+    save.appendChild(el('div', 'game-options-section-title', 'Auto Save'));
+    const saveLine = el('label', 'game-options-row');
+    const minutes = document.createElement('input');
+    minutes.type = 'number';
+    minutes.className = 'game-options-select game-options-minutes';
+    minutes.min = '10';
+    minutes.max = '60';
+    minutes.value = String(clampAutoSaveMinutes(getSettings().autoSaveMinutes));
+    minutes.disabled = !getSettings().autoSave;
+    minutes.addEventListener('change', () => {
+        const v = clampAutoSaveMinutes(Number(minutes.value) || 10);
+        minutes.value = String(v);
+        updateSettings({ autoSaveMinutes: v });
+    });
+    const saveCheck = checkbox(getSettings().autoSave, (v) => {
+        minutes.disabled = !v; // chkOptionsAutoSave_CheckedChanged (Start.1.cs:4710)
+        updateSettings({ autoSave: v });
+    });
+    const every = el('span', 'game-options-label game-options-autosave');
+    every.append(saveCheck, document.createTextNode(' Every '), minutes, document.createTextNode(' minutes'));
+    saveLine.appendChild(every);
+    save.appendChild(saveLine);
+    // [leftovers] end
+
     body.append(auto, msgs);
+    // [leftovers] begin
+    body.appendChild(save);
+    // [leftovers] end
     win.appendChild(body);
     root.appendChild(win);
     document.body.appendChild(root);

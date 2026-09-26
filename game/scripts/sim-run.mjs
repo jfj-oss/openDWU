@@ -482,7 +482,7 @@ try {
     for (const secs of plan) {
         const cpu0 = process.cpuUsage(), c0 = performance.now(), f0 = schedulerState(g).frames, d0 = g.rnd.drawCount;
         try {
-            const r = runGameSeconds(g, secs, { ...(profile || statsDays > 0 ? { profileClock: () => performance.now() } : {}), ...(combat ? { onFrame: watchCombat } : {}) });
+            const r = runGameSeconds(g, secs, { ...((profile || statsDays > 0) ? { profileClock: () => performance.now() } : {}), ...(combat ? { onFrame: watchCombat } : {}) });
             for (const [k, v] of Object.entries(r.timings)) { timings[k] = (timings[k] ?? 0) + v; periodTimings[k] = (periodTimings[k] ?? 0) + v; }
             for (const [k, v] of Object.entries(r.todoHits)) { todo[k] = (todo[k] ?? 0) + v; periodTodo[k] = (periodTodo[k] ?? 0) + v; }
         } catch (e) {

@@ -48,7 +48,9 @@ import { calculatePirateCashflow, habitatPirateControlByFacilityControl, habitat
 import { PirateExpenseType } from '../pirates/pirateEconomy';
 import { EmpireMessageType, sendMessageToEmpire } from '../messages';
 import { DisasterEventType, EventMessageType } from '../eventTypes';
-import { sendNewsBroadcast } from '../events';
+import { sendEventMessageToEmpire, sendNewsBroadcast } from '../events';
+import { formatGameTextNow } from '../textResolver';
+import { resolvePirateFacilityDescription, resolveWonderDescription } from './facilityText';
 import { galaxyStarDate } from '../tick/simTime';
 import { REAL_SECONDS_IN_GALACTIC_YEAR } from '../galaxyTime';
 import { Population } from '../population';
@@ -440,8 +442,11 @@ export function constructFacilities(galaxy: Galaxy, habitat: Habitat, timePassed
             }
             if (empire !== null) {
                 if (planetaryFacility.type === PlanetaryFacilityType.Wonder) {
-                    // TODO(port) M9: SendEventMessageToEmpire(WonderBuilt, title, message, facility, this) (Habitat.cs 2127-2130,
-                    // needs Galaxy.ResolveWonderDescription) — event pop-up; no sim state.
+                    // Habitat.cs 2127-2130: the wonder-built event pop-up (facilityText.ts ResolveWonderDescription). No Rnd, no state.
+                    const title = formatGameTextNow('Wonder Build Title', [planetaryFacility.name]) + '!';
+                    const arg = resolveWonderDescription(planetaryFacility.def);
+                    const message = formatGameTextNow('Wonder Build Description', [planetaryFacility.name, habitat.name, arg]);
+                    sendEventMessageToEmpire(empire, EventMessageType.WonderBuilt, title, message, planetaryFacility, habitat);
                     sendNewsBroadcast(empire, EventMessageType.WonderBuilt, planetaryFacility, DisasterEventType.Undefined, false, false, EmpireMessageType.Undefined, habitat); // Habitat.cs 2131
                 } else if (empire.pirateEmpireBaseHabitat !== null) {
                     if (planetaryFacility.type === PlanetaryFacilityType.PirateCriminalNetwork) {
@@ -451,7 +456,11 @@ export function constructFacilities(galaxy: Galaxy, habitat: Habitat, timePassed
                         }
                         empire.takeOwnershipOfColony(habitat, empire);
                     }
-                    // TODO(port) M9: SendEventMessageToEmpire(WonderBuilt, "Pirate Facility Build Title", ...) — event pop-up.
+                    // Habitat.cs 2144-2147: the pirate-facility-built event pop-up (facilityText.ts ResolvePirateFacilityDescription).
+                    const title2 = formatGameTextNow('Pirate Facility Build Title', [planetaryFacility.name]) + '!';
+                    const arg2 = resolvePirateFacilityDescription(planetaryFacility.def);
+                    const message2 = formatGameTextNow('Pirate Facility Build Description', [planetaryFacility.name, habitat.name, arg2]);
+                    sendEventMessageToEmpire(empire, EventMessageType.WonderBuilt, title2, message2, planetaryFacility, habitat);
                 } else {
                     const description2 = gameText('We have completed construction of a new FACILITY', planetaryFacility.name, habitat.name, habitat2.name);
                     sendMessageToEmpire(empire, empire, EmpireMessageType.ColonyFacilityCompleted, habitat, description2);
