@@ -3,5 +3,6 @@
 // Keep the list sorted; a package's code only runs behind its scenario id / flags.
 import './threats/cult';
 import './threats/darkFarms';
+import './threats/doppelgangers';
 import './threats/greyTide';
 import './threats/silence';
