@@ -63,9 +63,9 @@ describe('N2 ship-order and selection keys (Main.Part7.cs Main_KeyUp)', () => {
         expect(seen).toEqual(['commandEscape', 'commandRefuel', 'automateShip', 'stopShip', 'cycleEngagementStance', 'selectNearestMilitaryShip', 'selectionForward', 'selectionBackward', 'lockView']);
     });
 
-    it('#12: only F4 (no Intelligence Agents screen yet) stays unavailable in the ? overlay', () => {
+    it('#12: every bound key action is available in the ? overlay (F4 landed with the intel screen)', () => {
         const unavailable = [...new Set(KEY_BINDINGS.map((b) => b.action))].filter((a) => !isKeyActionAvailable(a));
-        expect(unavailable).toEqual(['intelligenceAgentsScreen']);
+        expect(unavailable).toEqual([]);
     });
 
     it('RrhupiLdOr cycles 0 → 4,000,000 → 2.304E+09 → 0 (other values → 2.304E+09)', () => {
