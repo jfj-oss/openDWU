@@ -34,6 +34,7 @@ import { Weapon } from '../src/sim/weapon';
 import { BuiltObjectFleeWhen } from '../src/sim/data/designSpecifications';
 import { builtObjectMission } from '../src/sim/missions/mission';
 import {
+    bombardTarget,
     checkFireAreaWeaponAtTarget,
     handleWeaponsFiringBuiltObject,
     interceptMissiles,
@@ -41,6 +42,14 @@ import {
     weaponFire,
 } from '../src/sim/combat/weapons';
 import { fireAtAssaultPods, handleAssaultPodMovement } from '../src/sim/combat/boarding';
+import { getArtilleryTroopDefendStrength, inflictBombardDamage } from '../src/sim/combat/damage';
+import { obtainEmpireEvaluation } from '../src/sim/diplomacy';
+import { galaxyPlagues } from '../src/sim/eventTypes';
+import { canDeployXaraktorVirus } from '../src/sim/player/orderMenu';
+import { ShipActionType, createShipAction } from '../src/sim/player/shipAction';
+import { executeShipAction } from '../src/sim/player/executeShipAction';
+import { CreatureType } from '../src/sim/creature';
+import type { Habitat } from '../src/sim/types';
 
 let gameData: GameData;
 let componentDefs: Map<number, ComponentDefinition>;
@@ -473,5 +482,158 @@ describe('(2) missiles and point defence', () => {
         for (let k = 0; k < 40 && pod.distanceTravelled >= 0; k++) handleAssaultPodMovement(g, wf, 0.1);
         expect(pod.distanceTravelled).toBe(-1);
         expect(jav.assaultAttackValue).toBeGreaterThan(attack0);
+    });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// (3) Planetary bombardment and the Xaraktor virus
+// ---------------------------------------------------------------------------------------------------------------
+
+describe('(3) planetary bombardment', () => {
+    function capitalOf(g: Galaxy, name: string): Habitat {
+        const e = g.empires.find((x) => x.name === name);
+        if (e === undefined || e.capital === null) throw new Error(`no capital for ${name}`);
+        return e.capital;
+    }
+
+    it('InflictBombardDamage hand-worked: artillery cuts the bombard strength, Damage += power/8000, each race loses power × 250 000 by share, the bomber loses reputation and the victim remembers the incident (BuiltObject.2.cs 5816-5992)', () => {
+        const g = cachedTickGame(gameData).galaxy;
+        const col = ship(g, 'Colossia 001');
+        const player = g.playerEmpire!;
+        const colony = capitalOf(g, 'S285 Empire');
+        const victim = colony.empire!;
+        expect(colony.planetaryShieldPresent).toBe(false);
+        for (const bp of [3, 40]) {
+            // Strength (5822-5836): artillery → num = √(Σ artillery defend × InterceptBonusFactor / 7500) + 0.5, ≥ 1; power / num.
+            let art = getArtilleryTroopDefendStrength(colony.troops!);
+            let power = bp;
+            if (art > 0) {
+                art *= f32(victim.troopPlanetaryDefenseInterceptBonusFactor);
+                const num = Math.max(1.0, 0.5 + Math.sqrt(art / 7500.0));
+                power = Math.max(1, Math.trunc(bp / num));
+            }
+            const damage0 = colony.damage;
+            const pops0 = colony.population.items.map((p) => [p, p.amount] as const);
+            const total0 = colony.population.totalAmount;
+            const civ0 = player.civilityRating;
+            const civVictim = victim.civilityRating;
+            const ev = obtainEmpireEvaluation(g, victim, player);
+            const inc0 = ev.incidentEvaluationRaw;
+            inflictBombardDamage(g, col, colony, bp);
+            expect(colony.damage).toBe(Math.min(1, f32(damage0 + f32(f32(power) / 8000))));
+            // Population (5920-5935): num4 = power × 250 000 split by each race's share (truncated per race).
+            const num4 = power * 250000;
+            for (const [p, a0] of pops0) expect(p.amount).toBe(a0 - Math.trunc(num4 * (a0 / total0)));
+            // Reputation (5962-5989): num7 = num4 / 5e7, × (1 + civility/30) for a reputable victim (else × Max(0.01, 1 + civility/50)).
+            let num7 = num4 / 50000000.0;
+            num7 *= civVictim > 0.0 ? 1.0 + civVictim / 30.0 : Math.max(0.01, 1.0 + civVictim / 50.0);
+            expect(player.civilityRating).toBeCloseTo(civ0 - Math.max(num7, 0.0), 10);
+            // The victim's IncidentEvaluation of the bomber = raw − power (clamped to [-150, 80]).
+            expect(ev.incidentEvaluationRaw).toBeCloseTo(Math.max(-150, inc0 - power), 10);
+        }
+    });
+
+    it('a pirate or independent bomber costs no reputation; a planetary shield blocks everything but the explosion (5818, 5962)', () => {
+        const g = cachedTickGame(gameData).galaxy;
+        const colony = capitalOf(g, 'S285 Empire');
+        const pirate = ship(g, 'Worthy Firelance');
+        const pe = pirate.empire!;
+        const civ0 = pe.civilityRating;
+        const amt0 = colony.population.totalAmount;
+        inflictBombardDamage(g, pirate, colony, 3);
+        expect(pe.civilityRating).toBe(civ0);
+        expect(colony.population.totalAmount).toBeLessThan(amt0);
+        // Planetary shield: nothing but the explosion (5 draws: Next(0, 10), Next(0, d), Next(0, 2), Next(0, d), Next(0, 2)).
+        const shield = colony as unknown as { planetaryShieldPresent: boolean };
+        Object.defineProperty(colony, 'planetaryShieldPresent', { value: true, configurable: true });
+        expect(shield.planetaryShieldPresent).toBe(true);
+        const d0 = colony.damage;
+        const amt1 = colony.population.totalAmount;
+        const sh = shadowRnd(g);
+        inflictBombardDamage(g, pirate, colony, 40);
+        const dd = Math.trunc(colony.diameter * 0.15);
+        sh.next(0, 10);
+        sh.next(0, dd);
+        sh.next(0, 2);
+        sh.next(0, dd);
+        sh.next(0, 2);
+        expect(g.rnd.getState()).toEqual(sh.getState());
+        expect(colony.damage).toBe(d0);
+        expect(colony.population.totalAmount).toBe(amt1);
+    });
+
+    it('BombardTarget fires a bombard weapon at the colony (jitter ±250 ms, heading ±0.2), the shell flies unguided and InflictBombardDamage lands with the weapon\'s BombardDamage (BuiltObject.1.cs 4899, 4113-4150)', () => {
+        const g = cachedTickGame(gameData).galaxy;
+        const col = ship(g, 'Colossia 001');
+        hold(col);
+        const colony = capitalOf(g, 'S285 Empire');
+        const nd = newWeapon(11); // Nuclear Devastator: WeaponBombard, range 210, energy 15, speed 50, fire rate 6000, bombard 3
+        expect([ComponentType[nd.component.type], nd.range, nd.energyRequired, nd.speed, nd.fireRate, nd.bombardDamage]).toEqual(['WeaponBombard', 210, 15, 50, 6000, 3]);
+        col.weapons.length = 0;
+        col.weapons.push(nd);
+        place(g, col, colony.xpos - 200, colony.ypos);
+        col.currentEnergy = col.reactorStorageCapacity;
+        const e0 = col.currentEnergy;
+        const t0 = g.nowMs;
+        bombardTarget(g, col, 200, colony);
+        expect(nd.lastFired).toBe(t0);
+        expect(nd.target).toBe(colony);
+        expect(nd.willHitTarget).toBe(true);
+        expect(nd.distanceTravelled).toBe(1);
+        expect(Math.abs(nd.heading - 0)).toBeLessThanOrEqual(0.2 + 1e-6); // DetermineAngle(→ +x) = 0, ± NextDouble × 0.2
+        expect(col.currentEnergy).toBe(e0 - 15);
+        // Out of range (> 210): no shot.
+        nd.reset();
+        nd.lastFired = MIN_TIME;
+        bombardTarget(g, col, 211, colony);
+        expect(nd.distanceTravelled).toBe(-1);
+        bombardTarget(g, col, 200, colony);
+        const heading = nd.heading;
+        const damage0 = colony.damage;
+        let step = 0;
+        while (step < 80 && !nd.resetNext) {
+            step++;
+            g.nowMs = t0 + step * 100;
+            handleWeaponsFiringBuiltObject(g, col, 0.1, g.nowMs);
+            expect(nd.heading).toBe(heading); // a Habitat target is never re-aimed (4116)
+        }
+        expect(nd.resetNext).toBe(true);
+        expect(nd.target).toBeNull(); // 4145 weapon.Target = null after InflictBombardDamage
+        expect(colony.damage).toBeGreaterThan(damage0);
+        // Launch 10, then 50 × 0.1 = 5 per step (a bombard shell has no missile ramp): the closest approach is reached after
+        // (200 − 11) / 5 ≈ 38 steps, give or take the ±0.2 heading.
+        expect(step).toBeGreaterThanOrEqual(37);
+        expect(step).toBeLessThanOrEqual(41);
+    });
+
+    it('the Xaraktor virus: CanDeployXaraktorVirus needs the researched plague and a Race Achievement wonder (Empire.10.cs 4518); DeployVirus infects the colony, spawns Next(15, 20) Kaltors and stamps LastXaraktorVirusDeploy (Main.Part7.cs 1020-1043)', () => {
+        const g = cachedTickGame(gameData).galaxy;
+        const player = g.playerEmpire!;
+        const colony = capitalOf(g, 'S285 Empire');
+        // The stock plagues.txt has no SpecialFunctionCode 1 entry (the header documents it: "1=Xaraktor virus"); a mod
+        // adds one. Stand one in: Dekara Virus (id 1) flagged as the Xaraktor virus.
+        expect(galaxyPlagues(g).some((p) => p.specialFunctionCode === 1)).toBe(false);
+        const xar = { ...galaxyPlagues(g)[1], specialFunctionCode: 1 };
+        // Not researched: no virus, no reason.
+        expect(canDeployXaraktorVirus(g, player)).toEqual({ result: false, virus: null, reason: '' });
+        player.research!.enabledPlagues.push(xar);
+        const r = canDeployXaraktorVirus(g, player);
+        expect(r.virus).toBe(xar);
+        expect(r.result).toBe(false); // no Race Achievement wonder (Value2 2) at any colony
+        expect(r.reason).toMatch(/Xaraktor Virus - no /); // TextResolver 'Cannot Deploy Xaraktor Virus - no facility'
+        // DeployVirus (the player's order; the menu greys it out when CanDeploy is false, the order itself does not check).
+        const kaltors0 = g.creatures.filter((c) => c.type === CreatureType.Kaltor).length;
+        const sh = shadowRnd(g);
+        const action = createShipAction(ShipActionType.DeployVirus, colony);
+        action.target2 = xar;
+        executeShipAction(g, player, colony, action, true);
+        // InflictWithPlague: PlagueTimeRemaining = Duration + (NextDouble − 0.5) × Duration × 0.3 (float).
+        expect(colony.plagueId).toBe(xar.plagueId);
+        const r1 = sh.nextDouble();
+        expect(colony.plagueTimeRemaining).toBe(f32(f32(xar.duration) + f32((r1 - 0.5) * (f32(xar.duration) * 0.3))));
+        const n = g.creatures.filter((c) => c.type === CreatureType.Kaltor).length - kaltors0;
+        expect(n).toBeGreaterThanOrEqual(15);
+        expect(n).toBeLessThan(20);
+        expect(player.lastXaraktorVirusDeploy).toBe(g.nowMs);
     });
 });
