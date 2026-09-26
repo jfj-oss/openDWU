@@ -27,7 +27,11 @@ weapons. Zero research focus after the cap (replaces the spec's "high research")
 Treasure fleet: a Concord-only design template "Treasure Ship" (size 1100 freighter hull: cargo bays, fuel, shields, a few
 weapons) + escorts, sailing as ONE large state convoy on a fixed circuit of foreign space ports (Empire.1.cs 3899 convoy
 code reused; 19e-9 shows the route) that sells rare goods / buys rim goods at each stop — the visible, escortable, raidable
-face of the trade; losing it hurts standing. Params: convoy size, circuit interval, treasure ship size.
+face of the trade; losing it hurts standing. **Always visible (user, 2026-09-26):** the treasure fleet is revealed to every
+empire regardless of sensors/fog — its ships carry a scenario "beacon" so the visibility pass treats them as known to all
+(like the original's planet destroyer / story announcements: a galaxy-wide position broadcast), with a fleet marker at
+galaxy zoom, a message + news item when it leaves port and when it arrives at a foreign port, and a route line on the
+freight overlay. Params: convoy size, circuit interval, treasure ship size, beacon on/off.
 
 ## 19b — "Dark Farms" end-game storyline (user idea, 2026-09-26)
 An overdeveloped colony gets a small yearly chance to spawn a hidden self-replicating factory; it produces
