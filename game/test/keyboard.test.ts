@@ -326,8 +326,9 @@ describe('isKeyActionAvailable (task 12q)', () => {
 
     it('marks unimplemented actions as unavailable', () => {
         expect(isKeyActionAvailable('intelligenceAgentsScreen')).toBe(false);
-        expect(isKeyActionAvailable('lockView')).toBe(false); // fix4ui: every cycler (F included) is implemented now
-        expect(isKeyActionAvailable('commandRefuel')).toBe(false);
+        // fix6ui: the ship-order and selection keys (E/R/A/S/, Z/N/B/L) are implemented now; only F4 is left.
+        expect(isKeyActionAvailable('lockView')).toBe(true);
+        expect(isKeyActionAvailable('commandRefuel')).toBe(true);
         expect(isKeyActionAvailable('nonsense')).toBe(false);
     });
 
