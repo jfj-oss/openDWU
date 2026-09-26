@@ -69,3 +69,6 @@ year 10 (1–8 per empire). Follow-ups:
 - Wars stay rare (1 in 10 years) and no invasions at all in 10 years; United Dhayut Union sat at 1 colony for 10 years
   (col 1, cashflow +62k): check its colonisation target selection (range/enforcement) — likely the wizard 2-sector limit.
 - Attack-message creature name fixed (this branch).
+- 10-year run oddity: GalacticNewsNet "S218 Kingdom - Empire Leader killed|Obidar Dokari" is dated day 0 (the S218
+  leader died on the first game day; two pirate leaders died the same day 697). Check character death rolls at game start
+  (Galaxy.2.cs character events; a day-0 death is unlikely in the C#).
