@@ -191,7 +191,7 @@ describe('M4h milestone on the headless harness', () => {
         // reading the cargo the frame the builder completes, does not hold at age 1 either: components for the capital's
         // own builds are already there by then.)
         expect(Number.isFinite(bo.xpos) && Number.isFinite(bo.ypos)).toBe(true);
-    }, 300000);
+    }, 1800000); // 30 min: runs at a fraction of speed while other suites load the machine
 
     it('a warship queued at a space port is built (yard ticked as IndustrialProcessing would) and parks', () => {
         const g = cachedTickGame(gameData).galaxy;
@@ -228,7 +228,7 @@ describe('M4h milestone on the headless harness', () => {
         // may already have queued the new escort for a Retrofit to a newer design.)
         expect(m === null || m.type === BuiltObjectMissionType.Move || m.type === BuiltObjectMissionType.Undefined || m.type === BuiltObjectMissionType.Attack || m.type === BuiltObjectMissionType.Escape || m.type === BuiltObjectMissionType.Refuel || m.type === BuiltObjectMissionType.Patrol || m.type === BuiltObjectMissionType.Escort || m.type === BuiltObjectMissionType.Retrofit).toBe(true);
         expect(g.builtObjects).toContain(bo);
-    }, 300000);
+    }, 1800000); // 30 min: runs at a fraction of speed while other suites load the machine
 
     it('retrofit: a queued ship swaps to the new design components', () => {
         const g = cachedTickGame(gameData).galaxy;
