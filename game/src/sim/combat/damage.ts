@@ -21,7 +21,7 @@ import { checkTriggerEvent } from '../story/eventActions';
 import { EventTriggerType } from '../story/gameEventModel';
 import type { Galaxy } from '../galaxy';
 import type { BuiltObject } from '../builtObject';
-import { HabitatType, type Habitat } from '../types';
+import { HabitatType, planetsOf, type Habitat } from '../types';
 import { CreatureType, type Creature } from '../creature';
 import { AutomationLevel, type Empire } from '../empire';
 import type { ShipGroup } from '../fleets/shipGroup';
@@ -1669,9 +1669,10 @@ export function destroyHabitat(galaxy: Galaxy, self: BuiltObject, habitat: Habit
     inflictHabitatDestructionAreaDamage(galaxy, self, habitat);
     const habitat2 = galaxy.determineHabitatSystemStar(habitat);
     const systemInfo = galaxy.systems[habitat2.systemIndex];
-    if (systemInfo.habitats === null || systemInfo.habitats.length <= 0) return;
+    const sysHabitats = planetsOf(systemInfo); // BuiltObject.1.cs 3539-3544 systemInfo.Habitats: no star
+    if (sysHabitats === null || sysHabitats.length <= 0) return;
     const habitatList: Habitat[] = [];
-    for (const habitat3 of systemInfo.habitats) {
+    for (const habitat3 of sysHabitats) {
         if (habitat3.parent === habitat) habitatList.push(habitat3);
     }
     for (const item of habitatList) destroyHabitat(galaxy, self, item);

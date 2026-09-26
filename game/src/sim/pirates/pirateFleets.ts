@@ -10,7 +10,7 @@ import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import { AutomationLevel } from '../empire';
 import type { BuiltObject } from '../builtObject';
-import type { Habitat } from '../types';
+import { planetsOf, type Habitat } from '../types';
 import { BuiltObjectMissionPriority, BuiltObjectMissionType, type MissionTarget } from '../missions/mission';
 import { empireShipGroups, shipGroupAssignMission, shipGroupWarpSpeed, type ShipGroup } from '../fleets/shipGroup';
 import {
@@ -84,7 +84,7 @@ export function identifyDesiredEnemyMiningStations(galaxy: Galaxy, empire: Empir
     for (let i = 0; i < svs.length; i++) {
         if (!empire.visibility.checkSystemExplored(i)) continue;
         const builtObject = fastFindNearestSpacePort(galaxy, svs[i].systemStar.xpos, svs[i].systemStar.ypos, empire);
-        const habitats = galaxy.systems[svs[i].systemStar.systemIndex].habitats;
+        const habitats = planetsOf(galaxy.systems[svs[i].systemStar.systemIndex]); // Empire.2.cs 4186 Systems[].Habitats: no star
         for (let j = 0; j < habitats.length; j++) {
             const habitat = habitats[j];
             if (habitat.resources.length <= 0 || !empire.resourceMap.checkResourcesKnown(habitat)) continue;
@@ -124,7 +124,7 @@ export function identifyRaidableColonies(galaxy: Galaxy, empire: Empire, maximum
         if (!empire.visibility.checkSystemExplored(i) || galaxy.systems == null || galaxy.systems.length <= i) continue;
         const systemInfo = galaxy.systems[i];
         if (systemInfo == null || ((systemInfo.dominantEmpire == null || systemInfo.dominantEmpire.empire == null) && (systemInfo.independentColonyCount ?? 0) <= 0)) continue;
-        const habitats = galaxy.systems[i].habitats;
+        const habitats = planetsOf(galaxy.systems[i]); // Empire.2.cs 4279 Systems[i].Habitats: no star
         if (habitats == null) continue;
         for (let j = 0; j < habitats.length; j++) {
             const habitat = habitats[j];
