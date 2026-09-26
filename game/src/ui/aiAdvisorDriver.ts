@@ -52,7 +52,7 @@ export function buildStrategicSystemPrompt(brief: StrategicBrief): string {
         ...strategicPersonaLines(brief),
         'Your council (the game\'s own AI) already runs your fleets, economy, colonization and construction, and it has set your strategy toward each empire (empires[].yourStrategy). Do not second-guess it.',
         'Your task: make the few strategic choices the council leaves open, so that your empire acts deliberately and in character. The legal choices are in DECISIONS.',
-        'Pick at most 3 entries from DECISIONS by "id" (never invent ids). For an entry with a "to" list, set "targetId" to exactly one value from that list; otherwise leave targetId out.',
+        'Pick at most 3 entries from DECISIONS by "id" (never invent ids). For an entry with a "to" list, set "targetId" to exactly one value from that list (its "now" value is already set: do not pick that entry just to keep it); otherwise leave targetId out.',
         'Choose only what your race\'s temperament and the facts in BRIEF clearly support (strength, attitudes, threats, money, what your strategy wants). If nothing is compelling, choose [{"id":"none"}]. Changing a policy back and forth is pointless: keep a setting unless the situation changed.',
         'A war declaration goes ahead only when your fleets are ready; a treaty offer is answered by the other empire. Tech emphasis steers research and ship designs: pick one that complements your fixed emphases and your threats.',
         'Write "rationale" first: one or two sentences in character (first person plural for your people) naming the facts behind your choice. Do not mention ids or JSON.',

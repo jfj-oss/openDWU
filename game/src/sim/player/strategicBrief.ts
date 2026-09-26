@@ -97,6 +97,8 @@ export interface StrategicDecisionOption {
     note?: string;
     /** Choice decisions (tech-focus / policy): the allowed `targetId` values. */
     to?: string[];
+    /** Choice decisions: the current value (answering it means "keep", i.e. no change). */
+    now?: string;
 }
 
 /** A decision with the sim objects it acts on (never serialized). */
@@ -327,6 +329,7 @@ export function listStrategicOptions(galaxy: Galaxy, ai: Empire): StrategicOptio
                     what: `Set tech emphasis ${slot} (research and ship design preference)`,
                     note: `now ${techFocusName(current)}; your race's fixed emphases: ${fixed.join(', ') || 'none'}`,
                     to: [...choices.keys()],
+                    now: techFocusName(current),
                     slot,
                     choices,
                 });
@@ -349,6 +352,7 @@ export function listStrategicOptions(galaxy: Galaxy, ai: Empire): StrategicOptio
                     what: `Set ${f.label}`,
                     note: `now ${PRIORITY_LEVELS[cur].name}; your race's usual level is ${PRIORITY_LEVELS[home].name}`,
                     to: [...choices.keys()],
+                    now: PRIORITY_LEVELS[cur].name,
                     field: f.field,
                     choices,
                 });
@@ -551,11 +555,12 @@ export function buildStrategicBrief(galaxy: Galaxy, ai: Empire): StrategicBrief 
         empires,
         threats: strategicThreats(galaxy, ai),
         incidents: strategicIncidents(ai),
-        decisions: listStrategicOptions(galaxy, ai).map(({ id, kind, what, target, note, to }) => {
+        decisions: listStrategicOptions(galaxy, ai).map(({ id, kind, what, target, note, to, now }) => {
             const d: StrategicDecisionOption = { id, kind, what };
             if (target !== undefined) d.target = target;
             if (note !== undefined) d.note = note;
             if (to !== undefined) d.to = to;
+            if (now !== undefined) d.now = now;
             return d;
         }),
     };

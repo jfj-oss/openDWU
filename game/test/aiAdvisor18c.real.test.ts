@@ -21,12 +21,19 @@ describe.skipIf(!REAL)('18c with a real local model', () => {
     it('two met AI empires, 2 game months', async () => {
         const gameData = await loadGameDataFs();
         const o = tickGameOptions(gameData);
-        const seed = Number(process.env.DWU_LLM_SEED ?? 1);
         const ai = (race: string) => ({ ...o.aiEmpires[0], race, proximityDistance: 'Nearby' });
-        const game = createGame({ ...o, seed, starCount: 200, aiEmpires: [ai('(Random)'), ai('(Random)'), { ...o.aiEmpires[0] }] });
+        // The first seed (from DWU_LLM_SEED) whose start already has the player meeting two AI empires (Start.2.cs 1376
+        // meetEmpiresAtStart: shared visible systems) — no relation is forced.
+        let seed = Number(process.env.DWU_LLM_SEED ?? 1);
+        let game = createGame({ ...o, seed, starCount: 200, aiEmpires: [ai('(Random)'), ai('(Random)'), { ...o.aiEmpires[0] }] });
+        for (let tries = 0; tries < 40 && selectAdvisedEmpires(game.galaxy, game.galaxy.playerEmpire, 'met', 2).length < 2; tries++) {
+            seed++;
+            game = createGame({ ...o, seed, starCount: 200, aiEmpires: [ai('(Random)'), ai('(Random)'), { ...o.aiEmpires[0] }] });
+        }
         const galaxy = game.galaxy;
         const player = galaxy.playerEmpire!;
         const met = selectAdvisedEmpires(galaxy, player, 'met', 2);
+        process.stdout.write(`[18c] seed ${seed}: met ${met.map((e) => e.name).join(', ')}\n`);
         const metRel = met.map((e) => DiplomaticRelationType[player.diplomaticRelations.byEmpire(e)!.type]);
         const days = Number(process.env.DWU_LLM_DAYS ?? 10);
         const log: unknown[] = [];
@@ -84,6 +91,6 @@ describe.skipIf(!REAL)('18c with a real local model', () => {
             commandLog: commandLog(galaxy),
         };
         writeFileSync(process.env.DWU_LLM_OUT ?? 'llm18c-real.json', JSON.stringify(out, null, 1));
-        expect(met.length).toBeGreaterThan(0);
+        expect(met.length).toBe(2);
     }, 3600000);
 });

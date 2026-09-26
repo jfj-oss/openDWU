@@ -254,6 +254,12 @@ describe('strategic decisions through the fake model server', () => {
         // The other slots are the race's own.
         expect(p.researchDesignTechFocus.map(techFocusIndex).filter((_, i) => i !== slot - 1)).toEqual(inUse.filter((_, i) => i !== slot - 1));
         expect(commandLog(w.galaxy).map((e) => e.command.kind)).toEqual(['SetTechFocus', 'SetPolicy']);
+        // Answering a choice with its current value means "keep": dropped, neither applied nor rejected.
+        const b2 = buildStrategicBrief(w.galaxy, w.ai);
+        expect(b2.decisions.find((d) => d.id === 'tech-focus')?.now).toBe(pick);
+        const keep = validateStrategicResponse(b2, JSON.stringify({ rationale: 'Keep.', decisions: [{ id: 'tech-focus', targetId: pick }, { id: 'policy:ResearchPriority', targetId: 'High' }] }));
+        expect(keep.decisions).toEqual([]);
+        expect(keep.rejected).toEqual([]);
     }, 300000);
 
     it('illegal ids and targets are rejected; nothing changes', async () => {

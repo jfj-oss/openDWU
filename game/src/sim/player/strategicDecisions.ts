@@ -99,7 +99,7 @@ export interface ValidatedStrategicResponse {
 }
 
 /** Parse and check the model's answer against the brief: unknown ids and targetIds outside a decision's `to` list are
- *  rejected; "none" and duplicates are dropped; at most MAX_STRATEGIC_DECISIONS are kept. */
+ *  rejected; "none", duplicates and a choice decision answered with its current value ("keep") are dropped; at most MAX_STRATEGIC_DECISIONS are kept. */
 export function validateStrategicResponse(brief: StrategicBrief, raw: string): ValidatedStrategicResponse {
     const out: ValidatedStrategicResponse = { rationale: '', decisions: [], rejected: [] };
     let obj: unknown;
@@ -137,6 +137,8 @@ export function validateStrategicResponse(brief: StrategicBrief, raw: string): V
             continue;
         }
         if (opt.kind === 'NoChange' || seen.has(d.id)) continue;
+        // The current value of a choice decision means "keep it": no change, not an error.
+        if (opt.to !== undefined && opt.now !== undefined && targetId === opt.now) continue;
         if (opt.to !== undefined) {
             if (targetId === undefined || !opt.to.includes(targetId)) {
                 out.rejected.push({ id: d.id, ...(targetId !== undefined ? { targetId } : {}), reason: `targetId must be one of: ${opt.to.join(', ')}` });
