@@ -9,6 +9,7 @@ import type { Race } from '../data/races';
 import type { Habitat } from '../types';
 import type { Empire } from '../empire';
 import type { BuiltObject } from '../builtObject';
+import type { Creature } from '../creature';
 import { YEAR_LENGTH } from '../galaxyTime';
 import { galaxyStarDate } from '../tick/simTime';
 
@@ -238,6 +239,12 @@ export function scenarioEmit<E extends ScenarioEventName>(galaxy: Galaxy, event:
 export interface ScenarioQueries {
     /** taxes.ts empireApprovalRating(h) (Habitat.cs approval of its empire): the rating; an additive term goes here. */
     empireApprovalRating: { value: number; args: { habitat: Habitat; empire: Empire | null } };
+    /** industry.ts industrialProcessing (BuiltObject.2.cs 7859 extraction block): true = the extractor mines nothing this pass. */
+    extractionBlocked: { value: boolean; args: { builtObject: BuiltObject } };
+    /** civilianAI.ts resolvePrioritizedPatrolMiningStations (Empire.5.cs 1331): a station's wanted escort (SortTag, firepower). */
+    miningStationPatrolPriority: { value: number; args: { builtObject: BuiltObject; empire: Empire } };
+    /** events.ts creatureScanForTarget (Creature.cs 1245): true = the creature leaves this target alone. */
+    creatureIgnoresTarget: { value: boolean; args: { creature: Creature; target: unknown } };
 }
 export type ScenarioQueryName = keyof ScenarioQueries;
 

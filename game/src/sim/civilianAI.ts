@@ -117,6 +117,7 @@ import { ForceStructureProjectionList } from './forceStructureProjection';
 import type { ManufacturingQueue } from './manufacturingQueue';
 import { determineColonizationValue } from './tradeItems';
 import { baconSettings } from './data/baconSettings';
+import { scenarioQuery } from './scenario/hooks';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Galaxy statics (Galaxy.3.cs 4996-5033) and Bacon settings used here.
@@ -498,6 +499,8 @@ export function resolvePrioritizedPatrolMiningStations(galaxy: Galaxy, empire: E
             else if (!flag) num /= 5.0;
             num /= 50.0;
             num = Math.min(num, 60.0);
+            // mod layer: miningStationPatrolPriority (19g-7 stations under herd pressure); no-op without a scenario.
+            if (galaxy.scenario !== null) num = scenarioQuery(galaxy, 'miningStationPatrolPriority', num, { builtObject, empire });
             if (builtObject.currentEscortForceAssigned < Math.trunc(num)) {
                 builtObject.sortTag = num;
                 builtObjectList.push(builtObject);
