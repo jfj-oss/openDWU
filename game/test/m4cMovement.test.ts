@@ -22,6 +22,7 @@ import {
     doDeployment,
     fuelUnitPerEnergyUnit,
     getCurrentTurnRate,
+    anyStarWithinSystemRange,
     isOutsideStarGravityWell,
     maximumFuelRange,
     performEnergyCollection,
@@ -256,6 +257,58 @@ describe('fuel ranges (one implementation, re-exported by logistics/freight.ts)'
         baconMovementSettings.useStarGravityWells = false;
         b.xpos = star.xpos + radius * 0.99;
         expect(isOutsideStarGravityWell(g, b)).toBe(true);
+    });
+});
+
+describe('isOutsideStarGravityWell star-range cell cache (fix9 A8, behaviour-neutral)', () => {
+    // The pre-cache body of BaconBuiltObject.cs 2493 IsOutsideStarGravityWell for a ship with no nearestSystemStar.
+    function reference(g: Galaxy, x: number, y: number): { star: unknown } {
+        const n = g.fastFindNearestSystem(x, y);
+        const dx = n === null ? 0 : x - n.xpos;
+        const dy = n === null ? 0 : y - n.ypos;
+        const star = n !== null && dx * dx + dy * dy < MAX_SOLAR_SYSTEM_SIZE * MAX_SOLAR_SYSTEM_SIZE + 1000000 ? n : null;
+        return { star };
+    }
+    it('gives the ring-search result on random, near-star, border and off-map positions', () => {
+        const g = newGalaxy();
+        const b = aShip(g);
+        const saved = { x: b.xpos, y: b.ypos, s: b.nearestSystemStar, w: baconMovementSettings.useStarGravityWells };
+        let seed = 12345;
+        const rnd = (): number => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+        const points: [number, number][] = [];
+        for (let i = 0; i < 4000; i++) points.push([rnd() * g.sizeX, rnd() * g.sizeY]);
+        for (const sys of g.systems.slice(0, 300)) {
+            const r = Math.sqrt(MAX_SOLAR_SYSTEM_SIZE * MAX_SOLAR_SYSTEM_SIZE + 1000000);
+            for (const f of [0, 0.5, 0.999, 0.99999, 1.00001, 1.001, 1.5, 3]) {
+                const a = rnd() * Math.PI * 2;
+                points.push([sys.systemStar.xpos + Math.cos(a) * r * f, sys.systemStar.ypos + Math.sin(a) * r * f]);
+            }
+        }
+        for (const v of [-5, 0, 399999.5, 400000, 400000.5, g.sizeX - 0.5, g.sizeX, g.sizeX + 1000]) points.push([v, 1234567], [2345678, v], [v, v]);
+        let near = 0;
+        try {
+            for (const useWells of [false, true]) {
+                baconMovementSettings.useStarGravityWells = useWells;
+                for (const [x, y] of points) {
+                    const ref = reference(g, x, y);
+                    if (ref.star !== null) near++;
+                    // The cache may only say "no star in range" where the ring search finds none.
+                    if (!anyStarWithinSystemRange(g, x, y)) expect(ref.star).toBeNull();
+                    b.xpos = x;
+                    b.ypos = y;
+                    b.nearestSystemStar = null;
+                    const out = isOutsideStarGravityWell(g, b);
+                    expect(b.nearestSystemStar).toBe(ref.star);
+                    if (ref.star === null) expect(out).toBe(true);
+                }
+            }
+        } finally {
+            b.xpos = saved.x;
+            b.ypos = saved.y;
+            b.nearestSystemStar = saved.s;
+            baconMovementSettings.useStarGravityWells = saved.w;
+        }
+        expect(near).toBeGreaterThan(1000);
     });
 });
 

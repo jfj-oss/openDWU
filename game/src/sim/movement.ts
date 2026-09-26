@@ -880,6 +880,57 @@ function gravityWellRangeSquared(ship: BuiltObject, habitat: Habitat): number {
     return STAR_GRAVITY_WELL_RANGE_SQUARED * (num / 100.0) * (num / 100.0) * reductionForSmallShip * reductionForSmallShip * mitigationForHyperDrive * mitigationForHyperDrive;
 }
 
+/** Squared range IsOutsideStarGravityWell accepts the nearest system star within (BaconBuiltObject.cs 2500). */
+const SYSTEM_RANGE_SQUARED = MAX_SOLAR_SYSTEM_SIZE * MAX_SOLAR_SYSTEM_SIZE + 1000000;
+
+interface StarRangeCache {
+    grid: readonly unknown[];
+    systems: readonly unknown[];
+    systemCount: number;
+    maxX: number;
+    maxY: number;
+    /** Per index cell (x * maxY + y): the stars within SYSTEM_RANGE of some point of the cell. */
+    cells: Habitat[][];
+}
+const starRangeCaches = new WeakMap<Galaxy, StarRangeCache>();
+
+function starRangeCache(galaxy: Galaxy): StarRangeCache {
+    const grid = galaxy.systemsIndexGrid;
+    let cache = starRangeCaches.get(galaxy);
+    if (cache !== undefined && cache.grid === grid && cache.systems === galaxy.systems && cache.systemCount === galaxy.systems.length && cache.maxX === galaxy.indexMaxX && cache.maxY === galaxy.indexMaxY) return cache;
+    const maxX = galaxy.indexMaxX;
+    const maxY = galaxy.indexMaxY;
+    const cells: Habitat[][] = Array.from({ length: maxX * maxY }, () => []);
+    // Pad the range by 2 so float rounding at cell borders can only add candidates, never drop one.
+    const reach = Math.sqrt(SYSTEM_RANGE_SQUARED) + 2;
+    for (const system of galaxy.systems) {
+        const star = system.systemStar;
+        const x0 = Math.max(0, Math.floor((star.xpos - reach) / INDEX_SIZE));
+        const x1 = Math.min(maxX - 1, Math.floor((star.xpos + reach) / INDEX_SIZE));
+        const y0 = Math.max(0, Math.floor((star.ypos - reach) / INDEX_SIZE));
+        const y1 = Math.min(maxY - 1, Math.floor((star.ypos + reach) / INDEX_SIZE));
+        for (let cx = x0; cx <= x1; cx++) for (let cy = y0; cy <= y1; cy++) cells[cx * maxY + cy].push(star);
+    }
+    cache = { grid, systems: galaxy.systems, systemCount: galaxy.systems.length, maxX, maxY, cells };
+    starRangeCaches.set(galaxy, cache);
+    return cache;
+}
+
+/**
+ * True unless no system star lies within SYSTEM_RANGE of (x, y) (conservative: true also outside the index area or when
+ * the index is not built, where the caller runs the full search).
+ */
+export function anyStarWithinSystemRange(galaxy: Galaxy, x: number, y: number): boolean {
+    if (galaxy.systemsIndexGrid.length === 0) return true;
+    const cache = starRangeCache(galaxy);
+    if (!(x >= 0 && y >= 0 && x < cache.maxX * INDEX_SIZE && y < cache.maxY * INDEX_SIZE)) return true;
+    const cell = cache.cells[Math.floor(x / INDEX_SIZE) * cache.maxY + Math.floor(y / INDEX_SIZE)];
+    for (const star of cell) {
+        if (distSq(x, y, star.xpos, star.ypos) < SYSTEM_RANGE_SQUARED) return true;
+    }
+    return false;
+}
+
 /**
  * BaconBuiltObject.cs 2493 IsOutsideStarGravityWell. BaconBuiltObject.myMain (the UI Main) is set in any running game,
  * so its null checks are taken as not null (as in colonyTick.ts).
@@ -887,6 +938,11 @@ function gravityWellRangeSquared(ship: BuiltObject, habitat: Habitat): number {
 export function isOutsideStarGravityWell(galaxy: Galaxy, ship: BuiltObject): boolean {
     let habitat = ship.nearestSystemStar;
     if (habitat === null) {
+        // Perf (no behaviour change): the C# result only differs from `true` when some star lies within
+        // sqrt(MaxSolarSystemSize² + 1e6) of the ship (the nearest system is then that close too). Ships in hyperspace
+        // are almost never that close, so a per-index-cell list of the stars that close to the cell answers "none" without
+        // the full FastFindNearestSystem ring search every frame; otherwise the original search runs unchanged.
+        if (!anyStarWithinSystemRange(galaxy, ship.xpos, ship.ypos)) return true;
         const nearestSystem = galaxy.fastFindNearestSystem(ship.xpos, ship.ypos);
         if (nearestSystem !== null && distSq(ship.xpos, ship.ypos, nearestSystem.xpos, nearestSystem.ypos) < MAX_SOLAR_SYSTEM_SIZE * MAX_SOLAR_SYSTEM_SIZE + 1000000) {
             habitat = nearestSystem;
