@@ -1,39 +1,16 @@
 {
     "builtObjectPlacement": {
         "playerCivilianNames": [
-            [
-                "ExplorationShip",
-                "Honest Profit"
-            ],
-            [
-                "ExplorationShip",
-                "Tired Pearl"
-            ],
-            [
-                "ExplorationShip",
-                "Whim of Sol"
-            ],
-            [
-                "ExplorationShip",
-                "Illusion of Sol"
-            ],
-            [
-                "ConstructionShip",
-                "Obscure Nightstar"
-            ],
-            [
-                "ConstructionShip",
-                "Decrepit Guardian"
-            ]
+            ["ExplorationShip", "Honest Profit"],
+            ["ExplorationShip", "Tired Pearl"],
+            ["ExplorationShip", "Whim of Sol"],
+            ["ExplorationShip", "Illusion of Sol"],
+            ["ConstructionShip", "Obscure Nightstar"],
+            ["ConstructionShip", "Decrepit Guardian"]
         ]
     },
     "characters": {
-        "drawsPerEmpire": [
-            37,
-            62,
-            53,
-            40
-        ],
+        "drawsPerEmpire": [37, 62, 53, 40],
         "humanSummary": {
             "race": "Human",
             "leader": "Yuri Trebulo",
@@ -42,13 +19,8 @@
                     "role": "Ambassador",
                     "name": "Than Bendu",
                     "race": "Human",
-                    "skills": [
-                        "Diplomacy:25"
-                    ],
-                    "traits": [
-                        "Tolerant",
-                        "EloquentSpeaker"
-                    ],
+                    "skills": ["Diplomacy:25"],
+                    "traits": ["Tolerant", "EloquentSpeaker"],
                     "location": "Skaif",
                     "bonusesKnown": false
                 },
@@ -56,12 +28,8 @@
                     "role": "Leader",
                     "name": "Yuri Trebulo",
                     "race": "Human",
-                    "skills": [
-                        "Diplomacy:2"
-                    ],
-                    "traits": [
-                        "Lawful"
-                    ],
+                    "skills": ["Diplomacy:2"],
+                    "traits": ["Lawful"],
                     "location": "Skaif",
                     "bonusesKnown": true
                 },
@@ -69,12 +37,8 @@
                     "role": "IntelligenceAgent",
                     "name": "Cobi Tarfan",
                     "race": "Human",
-                    "skills": [
-                        "CounterEspionage:8"
-                    ],
-                    "traits": [
-                        "IntelligenceWeak"
-                    ],
+                    "skills": ["CounterEspionage:8"],
+                    "traits": ["IntelligenceWeak"],
                     "location": "Skaif",
                     "bonusesKnown": false
                 }
@@ -84,29 +48,14 @@
             [
                 "Haakonish",
                 "Gar Jandirrosk",
-                [
-                    "ColonyGovernor:Yentor Zhukziban",
-                    "Leader:Gar Jandirrosk",
-                    "IntelligenceAgent:Cwedo Argria"
-                ]
+                ["ColonyGovernor:Yentor Zhukziban", "Leader:Gar Jandirrosk", "IntelligenceAgent:Cwedo Argria"]
             ],
             [
                 "Dhayut",
                 "Tek Fossit",
-                [
-                    "TroopGeneral:Maqtor Aklon",
-                    "Leader:Tek Fossit",
-                    "IntelligenceAgent:Wunta Wradu"
-                ]
+                ["TroopGeneral:Maqtor Aklon", "Leader:Tek Fossit", "IntelligenceAgent:Wunta Wradu"]
             ],
-            [
-                "Ugnari",
-                "Olbar Thanda",
-                [
-                    "IntelligenceAgent:Tek Ixito",
-                    "Leader:Olbar Thanda"
-                ]
-            ]
+            ["Ugnari", "Olbar Thanda", ["IntelligenceAgent:Tek Ixito", "Leader:Olbar Thanda"]]
         ],
         "drawLog60": [
             "0,31=7",
@@ -170,10 +119,7 @@
             "0,1=0",
             "0,1=0"
         ],
-        "pirateRoles": [
-            "PirateLeader",
-            "IntelligenceAgent"
-        ]
+        "pirateRoles": ["PirateLeader", "IntelligenceAgent"]
     },
     "createGameFull": {
         "summary": {
@@ -185,24 +131,11 @@
                     "spacePorts": 1,
                     "researchStations": 1,
                     "miningStations": 6,
-                    "stateShips": {
-                        "Escort": 2,
-                        "Frigate": 2,
-                        "Destroyer": 2,
-                        "ExplorationShip": 4,
-                        "ConstructionShip": 2
-                    },
-                    "privateShips": {
-                        "SmallFreighter": 7,
-                        "MediumFreighter": 4,
-                        "GasMiningShip": 2,
-                        "MiningShip": 2
-                    },
+                    "stateShips": {"Escort": 2, "Frigate": 2, "Destroyer": 2, "ExplorationShip": 4, "ConstructionShip": 2},
+                    "privateShips": {"SmallFreighter": 7, "MediumFreighter": 4, "GasMiningShip": 2, "MiningShip": 2},
                     "troops": 6,
                     "characters": 3,
-                    "taxRates": [
-                        0.28999999165534973
-                    ]
+                    "taxRates": [0.28999999165534973]
                 },
                 {
                     "name": "S78 Consortium",
@@ -211,23 +144,11 @@
                     "spacePorts": 1,
                     "researchStations": 1,
                     "miningStations": 6,
-                    "stateShips": {
-                        "Escort": 4,
-                        "Frigate": 5,
-                        "ExplorationShip": 7,
-                        "ConstructionShip": 3
-                    },
-                    "privateShips": {
-                        "SmallFreighter": 9,
-                        "MediumFreighter": 4,
-                        "GasMiningShip": 2,
-                        "MiningShip": 2
-                    },
+                    "stateShips": {"Escort": 4, "Frigate": 5, "ExplorationShip": 7, "ConstructionShip": 3},
+                    "privateShips": {"SmallFreighter": 9, "MediumFreighter": 4, "GasMiningShip": 2, "MiningShip": 2},
                     "troops": 6,
                     "characters": 3,
-                    "taxRates": [
-                        0.2800000011920929
-                    ]
+                    "taxRates": [0.2800000011920929]
                 },
                 {
                     "name": "Great S105 Authority",
@@ -236,12 +157,7 @@
                     "spacePorts": 1,
                     "researchStations": 0,
                     "miningStations": 6,
-                    "stateShips": {
-                        "Escort": 2,
-                        "Frigate": 3,
-                        "ExplorationShip": 3,
-                        "ConstructionShip": 1
-                    },
+                    "stateShips": {"Escort": 2, "Frigate": 3, "ExplorationShip": 3, "ConstructionShip": 1},
                     "privateShips": {
                         "SmallFreighter": 6,
                         "MediumFreighter": 5,
@@ -251,9 +167,7 @@
                     },
                     "troops": 4,
                     "characters": 3,
-                    "taxRates": [
-                        0.2199999988079071
-                    ]
+                    "taxRates": [0.2199999988079071]
                 },
                 {
                     "name": "Ugnari Corporation",
@@ -262,13 +176,7 @@
                     "spacePorts": 1,
                     "researchStations": 0,
                     "miningStations": 6,
-                    "stateShips": {
-                        "Escort": 3,
-                        "Frigate": 3,
-                        "Destroyer": 3,
-                        "ExplorationShip": 7,
-                        "ConstructionShip": 3
-                    },
+                    "stateShips": {"Escort": 3, "Frigate": 3, "Destroyer": 3, "ExplorationShip": 7, "ConstructionShip": 3},
                     "privateShips": {
                         "SmallFreighter": 7,
                         "MediumFreighter": 5,
@@ -278,125 +186,63 @@
                     },
                     "troops": 5,
                     "characters": 2,
-                    "taxRates": [
-                        0.3100000023841858
-                    ]
+                    "taxRates": [0.3100000023841858]
                 }
             ],
             "pirates": [
                 {
                     "name": "S78 Gangsters",
                     "bases": 1,
-                    "fleet": {
-                        "Escort": 2,
-                        "ConstructionShip": 1
-                    },
-                    "private": {
-                        "SmallFreighter": 1,
-                        "GasMiningStation": 1
-                    },
+                    "fleet": {"Escort": 2, "ConstructionShip": 1},
+                    "private": {"SmallFreighter": 1, "GasMiningStation": 1},
                     "characters": 2
                 },
                 {
                     "name": "S105 Ravagers",
                     "bases": 1,
-                    "fleet": {
-                        "Escort": 1,
-                        "ExplorationShip": 1,
-                        "ConstructionShip": 1
-                    },
-                    "private": {
-                        "SmallFreighter": 1,
-                        "MiningShip": 1,
-                        "GasMiningShip": 1,
-                        "GasMiningStation": 2
-                    },
+                    "fleet": {"Escort": 1, "ExplorationShip": 1, "ConstructionShip": 1},
+                    "private": {"SmallFreighter": 1, "MiningShip": 1, "GasMiningShip": 1, "GasMiningStation": 2},
                     "characters": 2
                 },
                 {
                     "name": "S269 Starfreight",
                     "bases": 1,
-                    "fleet": {
-                        "ExplorationShip": 1,
-                        "ConstructionShip": 1
-                    },
-                    "private": {
-                        "SmallFreighter": 4,
-                        "MiningShip": 1,
-                        "GasMiningShip": 1,
-                        "GasMiningStation": 3
-                    },
+                    "fleet": {"ExplorationShip": 1, "ConstructionShip": 1},
+                    "private": {"SmallFreighter": 4, "MiningShip": 1, "GasMiningShip": 1, "GasMiningStation": 3},
                     "characters": 2
                 },
                 {
                     "name": "Savage Fang Clan",
                     "bases": 1,
-                    "fleet": {
-                        "Escort": 1,
-                        "ExplorationShip": 1,
-                        "ConstructionShip": 1
-                    },
-                    "private": {
-                        "SmallFreighter": 2,
-                        "MiningShip": 1,
-                        "GasMiningShip": 1,
-                        "GasMiningStation": 2
-                    },
+                    "fleet": {"Escort": 1, "ExplorationShip": 1, "ConstructionShip": 1},
+                    "private": {"SmallFreighter": 2, "MiningShip": 1, "GasMiningShip": 1, "GasMiningStation": 2},
                     "characters": 2
                 },
                 {
                     "name": "Dread Ventures",
                     "bases": 1,
-                    "fleet": {
-                        "ExplorationShip": 1,
-                        "ConstructionShip": 1
-                    },
-                    "private": {
-                        "SmallFreighter": 4,
-                        "MiningShip": 1,
-                        "GasMiningShip": 1,
-                        "GasMiningStation": 3
-                    },
+                    "fleet": {"ExplorationShip": 1, "ConstructionShip": 1},
+                    "private": {"SmallFreighter": 4, "MiningShip": 1, "GasMiningShip": 1, "GasMiningStation": 3},
                     "characters": 2
                 },
                 {
                     "name": "S83 Authority",
                     "bases": 1,
-                    "fleet": {
-                        "Escort": 1,
-                        "ExplorationShip": 1,
-                        "ConstructionShip": 1
-                    },
-                    "private": {
-                        "SmallFreighter": 2,
-                        "MiningShip": 1,
-                        "GasMiningShip": 1,
-                        "GasMiningStation": 2
-                    },
+                    "fleet": {"Escort": 1, "ExplorationShip": 1, "ConstructionShip": 1},
+                    "private": {"SmallFreighter": 2, "MiningShip": 1, "GasMiningShip": 1, "GasMiningStation": 2},
                     "characters": 2
                 },
                 {
                     "name": "S83 Minerals",
                     "bases": 1,
-                    "fleet": {
-                        "ExplorationShip": 1,
-                        "ConstructionShip": 1
-                    },
-                    "private": {
-                        "SmallFreighter": 4,
-                        "MiningShip": 1,
-                        "GasMiningShip": 1,
-                        "GasMiningStation": 3
-                    },
+                    "fleet": {"ExplorationShip": 1, "ConstructionShip": 1},
+                    "private": {"SmallFreighter": 4, "MiningShip": 1, "GasMiningShip": 1, "GasMiningStation": 3},
                     "characters": 2
                 },
                 {
                     "name": "S255 Mining",
                     "bases": 1,
-                    "fleet": {
-                        "ExplorationShip": 1,
-                        "ConstructionShip": 1
-                    },
+                    "fleet": {"ExplorationShip": 1, "ConstructionShip": 1},
                     "private": {
                         "SmallFreighter": 4,
                         "MiningShip": 1,
@@ -413,51 +259,15 @@
             "ruins": 23
         }
     },
+    "empireLifecycle": {"aiSplitDigest": "42159d821d5440d8:288980"},
     "forceStructure": {
-        "playerPrivate": [
-            [
-                "SmallFreighter",
-                3
-            ],
-            [
-                "MediumFreighter",
-                1
-            ],
-            [
-                "GasMiningShip",
-                2
-            ],
-            [
-                "MiningShip",
-                2
-            ]
-        ],
-        "age0Private": [
-            [],
-            [],
-            [],
-            []
-        ]
+        "playerPrivate": [["SmallFreighter", 3], ["MediumFreighter", 1], ["GasMiningShip", 2], ["MiningShip", 2]],
+        "age0Private": [[], [], [], []]
     },
-    "game": {
-        "capitals": [
-            "Sol",
-            "S78",
-            "S1",
-            "S81"
-        ]
-    },
+    "game": {"capitals": ["Sol", "S78", "S1", "S81"]},
     "independentTraders": {
-        "popularSmallFreighters": [
-            "AJ1000 Merchant Freighter",
-            "FE1000 Light Trader",
-            "KS1000 Light Transport"
-        ],
-        "popularMediumFreighters": [
-            "JN1000 Cargo Ferry",
-            "AS1000 Cargo Ferry",
-            "NI1000 Freight Hauler"
-        ],
+        "popularSmallFreighters": ["AJ1000 Merchant Freighter", "FE1000 Light Trader", "KS1000 Light Transport"],
+        "popularMediumFreighters": ["JN1000 Cargo Ferry", "AS1000 Cargo Ferry", "NI1000 Freight Hauler"],
         "perColony": {
             "S269 2": 15,
             "Haako 4": 11,
@@ -470,16 +280,7 @@
             "Toinsa": 15,
             "Atoaklo": 12
         },
-        "firstTraders": [
-            [
-                "Lively Mirage",
-                "JN1000 Cargo Ferry"
-            ],
-            [
-                "Eager Starway",
-                "KS1000 Light Transport"
-            ]
-        ],
+        "firstTraders": [["Lively Mirage", "JN1000 Cargo Ferry"], ["Eager Starway", "KS1000 Light Transport"]],
         "lastDraws": [
             "Next(0,0)=0",
             "Next(0,2)=1",
@@ -570,82 +371,17 @@
     },
     "pirates": {
         "factions": [
-            [
-                "S78 Gangsters",
-                "S173 3",
-                "Mortalen",
-                4390912
-            ],
-            [
-                "S105 Ravagers",
-                "S229 1",
-                "Dhayut",
-                8323096
-            ],
-            [
-                "S269 Starfreight",
-                "S162 6",
-                "Shandar",
-                8336399
-            ],
-            [
-                "Savage Fang Clan",
-                "S296 4",
-                "Ackdarian",
-                32639
-            ],
-            [
-                "Dread Ventures",
-                "S82 4",
-                "Ugnari",
-                8323199
-            ],
-            [
-                "S83 Authority",
-                "S268 3",
-                "Human",
-                8308
-            ],
-            [
-                "S83 Minerals",
-                "YN566",
-                "Teekan",
-                3153920
-            ],
-            [
-                "S255 Mining",
-                "S79 2",
-                "Teekan",
-                5570576
-            ]
+            ["S78 Gangsters", "S173 3", "Mortalen", 4390912],
+            ["S105 Ravagers", "S229 1", "Dhayut", 8323096],
+            ["S269 Starfreight", "S162 6", "Shandar", 8336399],
+            ["Savage Fang Clan", "S296 4", "Ackdarian", 32639],
+            ["Dread Ventures", "S82 4", "Ugnari", 8323199],
+            ["S83 Authority", "S268 3", "Human", 8308],
+            ["S83 Minerals", "YN566", "Teekan", 3153920],
+            ["S255 Mining", "S79 2", "Teekan", 5570576]
         ]
     },
-    "startingColonies": {
-        "colonyCounts": [
-            2,
-            2,
-            2,
-            2
-        ],
-        "colonyTypes": [
-            [
-                11,
-                11
-            ],
-            [
-                11,
-                11
-            ],
-            [
-                10,
-                11
-            ],
-            [
-                9,
-                11
-            ]
-        ]
-    },
+    "startingColonies": {"colonyCounts": [2, 2, 2, 2], "colonyTypes": [[11, 11], [11, 11], [10, 11], [9, 11]]},
     "stationPlacement": {
         "bases": [
             [
@@ -959,18 +695,8 @@
                 -0.7642702460289001
             ]
         ],
-        "researchPhases": [
-            "research",
-            "research",
-            "research",
-            "none"
-        ],
-        "miningPhases": [
-            "mining6",
-            "mining6plusSkip",
-            "mining6plusSkip",
-            "mining6"
-        ]
+        "researchPhases": ["research", "research", "research", "none"],
+        "miningPhases": ["mining6", "mining6plusSkip", "mining6plusSkip", "mining6"]
     },
     "superPirates": {
         "faction": [
@@ -997,89 +723,21 @@
             26
         ]
     },
-    "taxes": {
-        "taxRates": [
-            0.28999999165534973,
-            0.2800000011920929,
-            0.18000000715255737,
-            0.3100000023841858
-        ]
-    },
+    "taxes": {"taxRates": [0.28999999165534973, 0.2800000011920929, 0.18000000715255737, 0.3100000023841858]},
     "tickDeterminism": {
         "digest600": "09dbdbc868a2ce9a",
-        "counts600": {
-            "empires": 4,
-            "pirateEmpires": 8,
-            "habitats": 13326,
-            "builtObjects": 594,
-            "creatures": 318,
-            "colonies": 4
-        },
+        "counts600": {"empires": 4, "pirateEmpires": 8, "habitats": 13326, "builtObjects": 594, "creatures": 318, "colonies": 4},
         "rndDraws600": 594013,
         "digest120": "fc924a497a41e134",
         "rndDraws120": 11133
     },
     "troops": {
-        "capitals": [
-            [
-                1177,
-                882,
-                7
-            ],
-            [
-                1564,
-                1173,
-                8
-            ],
-            [
-                1758,
-                1318,
-                2
-            ],
-            [
-                617,
-                462,
-                11
-            ]
-        ],
-        "colonyTroops": [
-            4,
-            9,
-            12,
-            4
-        ],
-        "maintenance": [
-            11000,
-            15300,
-            11900,
-            13500
-        ],
-        "processDraws": [
-            "",
-            "",
-            "",
-            ""
-        ],
-        "recruitCapitalTroops": [
-            7,
-            0,
-            2,
-            6
-        ],
-        "recruitMaintenance": [
-            7000,
-            0,
-            1700,
-            5400
-        ],
-        "recruitProcessDraws": [
-            "",
-            "Next(0,70)=40 Next(0,70)=20",
-            "Next(0,70)=31 Next(0,70)=67",
-            ""
-        ]
-    },
-    "empireLifecycle": {
-        "aiSplitDigest": "42159d821d5440d8:288980"
+        "capitals": [[1177, 882, 7], [1564, 1173, 8], [1758, 1318, 2], [617, 462, 11]],
+        "colonyTroops": [4, 9, 12, 4],
+        "maintenance": [11000, 15300, 11900, 13500],
+        "processDraws": ["", "", "", ""],
+        "recruitCapitalTroops": [7, 0, 2, 6],
+        "recruitMaintenance": [7000, 0, 1700, 5400],
+        "recruitProcessDraws": ["", "Next(0,70)=40 Next(0,70)=20", "Next(0,70)=31 Next(0,70)=67", ""]
     }
 }
