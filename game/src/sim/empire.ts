@@ -1808,6 +1808,10 @@ export class Empire {
     attackRangeAttackManual = -1;
     /** Empire.cs _DeclinedTasks (DeclinedTaskList; CheckTaskAuthorized adds, ClearExpiredDeclinedTasks removes). */
     declinedTasks: DeclinedTask[] = [];
+    // ---- suggest fields (advisor suggestions; advisorQueue.ts) ----
+    /** The AdvisorSuggestion entries of the C# DiplomaticMessageQueue (Main.Part9.cs 1053 / 2226): EmpireMessage[]
+     *  awaiting the player's Approve / Decline (player/advisorSuggestions.ts). */
+    advisorSuggestions: unknown[] = [];
     // ---- M4c fields (movement, fuel) ----
     /** Empire.cs 729 FuelSystemsUpdating (volatile guard around UpdateSystemFuelSourceStatus). */
     fuelSystemsUpdating = false;

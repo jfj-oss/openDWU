@@ -1,0 +1,82 @@
+/* suggest: advisor suggestion entries (DiplomaticMessageQueue.cs advisor colour 144,144,144 / 170,170,170) and the
+   Advisor Suggestion window (pnlAdvisorSuggestion 355x448, centred; "Show me first" moves it to (20, 20)). */
+
+.advisor-queue {
+    position: fixed;
+    top: 60px;
+    left: 220px;
+    z-index: 1499;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    pointer-events: none;
+    font-family: 'Forgotten Futurist', sans-serif;
+}
+
+.advisor-chip {
+    border-color: rgba(170, 170, 170, 0.45);
+    background: rgba(48, 48, 56, 0.92);
+}
+
+.advisor-chip-icon {
+    flex: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: rgba(170, 170, 170, 0.9);
+    color: #14161a;
+    font-size: 10px;
+    line-height: 14px;
+    text-align: center;
+    font-weight: bold;
+}
+
+.advisor-suggestion-window {
+    width: 380px;
+}
+
+.advisor-suggestion-wrap.advisor-suggestion-shown {
+    align-items: flex-start;
+    justify-content: flex-start;
+    padding: 20px;
+}
+
+.advisor-suggestion-title {
+    font-size: 15px;
+    color: #e8d24a;
+    text-align: center;
+}
+
+.advisor-suggestion-cost {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 13px;
+}
+
+.advisor-suggestion-cost-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #aaa;
+}
+
+.advisor-suggestion-cost-value {
+    color: #e6e6e6;
+}
+
+.advisor-suggestion-cost-money {
+    font-size: 11px;
+    color: #888;
+}
+
+.advisor-suggestion-automation {
+    font-size: 11px;
+    color: #8a8a8a;
+}
+
+.advisor-suggestion-window .message-conversation-button:disabled {
+    opacity: 0.4;
+    cursor: default;
+}

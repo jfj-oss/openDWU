@@ -36,7 +36,7 @@ import { calculateAngleFromCoords, type Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import { AutomationLevel, empireGovernmentAttributes } from '../empire';
 import { BuiltObject } from '../builtObject';
-import { Habitat, HabitatType, IndustryType } from '../types';
+import { Habitat, HabitatCategoryType, HabitatType, IndustryType } from '../types';
 import type { Design } from '../design';
 import { galaxyComponentCurrentPrices } from '../design';
 import { BuiltObjectSubRole } from '../builtObjectTypes';
@@ -78,7 +78,8 @@ import { determineNewSpacePortLocations, analyzeNewResearchFacilities, countReso
 import { determineOrbitalBaseLocation } from '../pirates';
 import { AdvisorMessageType, checkTaskAuthorized, determineResourcesEmpireSupplies, formatText, formatThousands, getText, type RefCount } from '../diplomacyTick';
 import { gameText } from '../colonyTick';
-import { EmpireMessage, EmpireMessageType, sendEmpireMessage } from '../messages';
+import { EmpireMessage, EmpireMessageType, resolveDescription, sendEmpireMessage } from '../messages';
+import { advisorText } from '../advisorQueue';
 import { ConstructionQueue, canBuiltObjectColonizeHabitat, resolveBuildSpeed } from './constructionQueue';
 import { componentListDiff, resolveComponentList } from './constructionYard';
 import { ManufacturingQueue, builtObjectManufacturingQueue, habitatManufacturingQueue } from '../manufacturingQueue';
@@ -123,7 +124,7 @@ export const MAXIMUM_CONSTRUCTION_QUEUE_WAIT_TIME_YEARS = 2.5;
 const MAX_SOLAR_SYSTEM_SIZE = 23000;
 
 /** DesignList.FindNewestCanBuild(subRole[, colony]) (DesignList.cs 140/148): the empire is the first design's owner. */
-function dlFindNewestCanBuild(designs: Design[], subRole: BuiltObjectSubRole, colony: Habitat | null = null): Design | null {
+export function dlFindNewestCanBuild(designs: Design[], subRole: BuiltObjectSubRole, colony: Habitat | null = null): Design | null {
     let empire: Empire | null = null;
     if (designs.length > 0 && designs[0] != null) empire = designs[0].empire as Empire | null;
     return findNewestCanBuild(designs, subRole, empire, colony);
@@ -634,7 +635,7 @@ export function procureConstructionComponentsAtColony(galaxy: Galaxy, empire: Em
 }
 
 /** `foreach (Cargo c in list) CreateOrder(requester, c.CommodityResource, c.Amount, isState: false, type)`. */
-function createOrdersFor(galaxy: Galaxy, empire: Empire, requester: Habitat | BuiltObject, cargo: CargoList, type: OrderType): void {
+export function createOrdersFor(galaxy: Galaxy, empire: Empire, requester: Habitat | BuiltObject, cargo: CargoList, type: OrderType): void {
     for (const item of cargo.items) empireCreateOrder(galaxy, empire, requester, new ResourceRef(item.commodity.resourceId), item.amount, false, type);
 }
 
@@ -854,11 +855,12 @@ export function generateAutomationMessageConstruction(galaxy: Galaxy, builtObjec
     if (habitat !== null) {
         const habitat2 = galaxy.determineHabitatSystemStar(habitat);
         text3 = habitat.name;
-        text = String(habitat.type);
-        text2 = String(habitat.category);
+        text = resolveDescription(HabitatType, habitat.type);
+        text2 = resolveDescription(HabitatCategoryType, habitat.category);
         text4 = habitat2.name;
     }
-    return formatText(getText('Automation Construction Colony'), builtObject.subRole, builtObject.design!.name, formatMoney(cost), text, text2, text3, text4);
+    // 3676: Galaxy.ResolveDescription(SubRole), cost.ToString("###,###,###,##0").
+    return advisorText('Automation Construction Colony', resolveDescription(BuiltObjectSubRole, builtObject.subRole), builtObject.design!.name, formatThousands(cost), text, text2, text3, text4);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
