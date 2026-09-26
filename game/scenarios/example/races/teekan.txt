@@ -1,0 +1,2 @@
+'Scenario overlay patch: the key lines below replace those of the base races/teekan.txt (all others are kept).
+Name		;Teekan Guild

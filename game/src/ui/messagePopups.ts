@@ -32,6 +32,7 @@ import { empireMessageHistory } from '../sim/messages';
 import { isConversationExpired } from './messageStubs';
 import { pushMessageStub, markMessageStubRead } from './messageStubList';
 import { getSettings } from './settings';
+import { answerScenarioDecision, isScenarioDecision } from '../sim/scenario/decisions';
 // [popupstubs] end
 
 export interface ConversationEntry {
@@ -230,6 +231,21 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
         // [popupstubs] begin
         popupFooter.textContent = resolveStarDateDescription(m.starDate > 0 ? m.starDate : galaxyStarDate(galaxy));
         popupMessage = m;
+        // Mod layer: a pending scenario decision shows its options; a click answers it (scenario/decisions.ts).
+        const decision = m.subject;
+        if (isScenarioDecision(decision) && decision.answer === null) {
+            const row = el('div', 'message-conversation-buttons');
+            for (const o of decision.options) {
+                const b = el('button', 'message-conversation-button', o.label) as HTMLButtonElement;
+                b.type = 'button';
+                b.addEventListener('click', () => {
+                    answerScenarioDecision(galaxy, decision.id, o.id, 'player');
+                    closePopup();
+                });
+                row.appendChild(b);
+            }
+            popupFooter.appendChild(row);
+        }
         markMessageStubRead(m);
         if (popup.hidden) document.addEventListener('keydown', onPopupKeyDown);
         // [popupstubs] end

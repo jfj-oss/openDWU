@@ -73,6 +73,7 @@ import { findNearestAvailableConstructionShip } from '../construction/empireCons
 import { MAX_SOLAR_SYSTEM_SIZE, checkWithinDistancePotential } from '../movement';
 import { builtObjectCompleteTeardown } from './teardown';
 import { baconSettings } from '../data/baconSettings';
+import { scenarioEmit } from '../scenario/hooks';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants (Galaxy.3.cs SetDefaults)
@@ -1606,6 +1607,7 @@ export function inflictBombardDamage(galaxy: Galaxy, self: BuiltObject, habitat:
     explosion.explosionWillDestroy = false;
     if (habitat.explosions === null) habitat.explosions = [];
     (habitat.explosions as Explosion[]).push(explosion);
+    if (galaxy.scenario !== null) scenarioEmit(galaxy, 'habitatBombarded', { builtObject: self, habitat, bombardPower }); // mod layer
 }
 
 // ---------------------------------------------------------------------------------------------------------------

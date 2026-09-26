@@ -76,6 +76,7 @@ import { PirateIncomeType } from '../pirates/pirateEconomy';
 import { addLocationHint } from '../tradeItems';
 import { GalaxyLocationType } from '../galaxyLocation';
 import { netSort } from '../netSort';
+import { scenarioEmit } from '../scenario/hooks';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Small helpers
@@ -611,6 +612,7 @@ export function takeOwnershipOfColonyFull(galaxy: Galaxy, self: Empire, colony: 
         evaluateSystemLinks(galaxy, empire);
     }
     if (newEmpire !== null) evaluateSystemLinks(galaxy, newEmpire);
+    if (galaxy.scenario !== null) scenarioEmit(galaxy, 'colonyOwnerChanged', { colony, from: empire, to: newEmpire }); // mod layer
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -847,6 +849,7 @@ export function takeOwnershipOfBuiltObject(galaxy: Galaxy, self: Empire, builtOb
     if (actualEmpire !== null) actualEmpire.visibility.resolveSystemVisibilityAt(builtObject.xpos, builtObject.ypos, null, null);
     if (newEmpire !== null) newEmpire.visibility.resolveSystemVisibilityAt(builtObject.xpos, builtObject.ypos, null, null);
     builtObject.isAutoControlled = true;
+    if (galaxy.scenario !== null) scenarioEmit(galaxy, 'builtObjectOwnerChanged', { builtObject, from: actualEmpire, to: newEmpire }); // mod layer
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -1424,6 +1427,7 @@ export function investigateAbandonedBuiltObject(galaxy: Galaxy, investigatingEmp
         sendEventMessageToEmpire(investigatingEmpire, eventMessageType, text7, empty, abandonedBuiltObject, abandonedBuiltObject);
     }
     abandonedBuiltObject.playerEmpireEncounterAction = BuiltObjectEncounterAction.None;
+    if (galaxy.scenario !== null) scenarioEmit(galaxy, 'abandonedShipClaimed', { builtObject: abandonedBuiltObject, empire: investigatingEmpire }); // mod layer
 }
 
 

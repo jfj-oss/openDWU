@@ -99,6 +99,7 @@ export interface GalaxySaveJSON {
 import { EmpireVictoryConditions, VictoryConditions } from '../victory';
 import { Achievement } from '../achievements';
 import { EventAction, EventActionExecutionPackage, EventActionList, GameEvent, GameEventList } from '../story/gameEventModel';
+import { GalaxyScenario } from '../scenario/state';
 
 const CLASSES: Record<string, object> = {
     // advisorQueue.ts: a pirate-protection suggestion's AdvisorMessageData (Empire.advisorSuggestions; suggest).
@@ -228,6 +229,8 @@ const CLASSES: Record<string, object> = {
     EventActionList: EventActionList.prototype,
     GameEvent: GameEvent.prototype,
     GameEventList: GameEventList.prototype,
+    // scenario/state.ts: Galaxy.scenario (mod layer).
+    GalaxyScenario: GalaxyScenario.prototype,
 };
 
 /** Galaxy fields that hold GameData tables (re-wired from gameData on load,
@@ -581,6 +584,8 @@ export function galaxyFromJSON(obj: GalaxySaveJSON, gameData: GameData): Galaxy 
     g.stepOrder = [];
     g.stepOrderDirty = true;
     if (GALAXY_INDEX_FIELDS.some((field) => g[field] === undefined)) rebuildIndexes(galaxy); // saves without the grids: the C# load rule (Start.cs 1846 RebuildIndexes)
+    // Mod layer: saves made before Galaxy.scenario existed are faithful games.
+    if (g.scenario === undefined) Object.defineProperty(g, 'scenario', { value: null, writable: true, enumerable: true, configurable: true });
 
     // --- Visibility owner hooks (closures over the empire; see Empire ctor).
     for (const empire of flatEmpireList(galaxy)) {

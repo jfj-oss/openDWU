@@ -130,6 +130,7 @@ import { formatGameTextNow } from './textResolver';
 import { registerTodo, todo } from './tick/todo';
 import { galaxyStarDate } from './tick/simTime';
 import { PirateExpenseType } from './pirates/pirateEconomy';
+import { scenarioEmit } from './scenario/hooks';
 
 // ---------------------------------------------------------------------------
 // Small C# semantics helpers
@@ -746,6 +747,7 @@ export function doResearchBreakthrough(galaxy: Galaxy, empire: Empire, researchP
         reviewDesignsBuiltObjectsImprovedComponents(empire);
         reviewResearchAbilityEffects(empire);
     }
+    if (galaxy.scenario !== null) scenarioEmit(galaxy, 'researchCompleted', { empire, project: researchProject }); // mod layer
 }
 
 // ---------------------------------------------------------------------------

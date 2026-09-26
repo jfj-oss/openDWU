@@ -45,6 +45,7 @@ import { pirateColonyControl } from '../combat/invasion';
 import { takeOwnershipOfColonyFull } from '../combat/ownership';
 import { purchaseNewBuiltObject } from '../construction/empireConstruction';
 import { determineBuiltObjectIsState } from '../builtObject';
+import { scenarioEmit } from '../scenario/hooks';
 
 
 /** Empire.3.cs 3557 CheckPirateEmpireHasCriminalNetwork(empire). No Rnd. */
@@ -182,6 +183,7 @@ export const cmdColonize: CommandHandler = (ctx) => {
                             }
                         }
                         sendMessageToEmpire(empire, empire, EmpireMessageType.NewColony, targetHabitat10, empty2);
+                        if (galaxy.scenario !== null) scenarioEmit(galaxy, 'colonyFounded', { colony: targetHabitat10, empire }); // mod layer
                         builtObjectCompleteTeardown(galaxy, bo);
                         if (flag33) return result;
                         let race2 = dominantRace;

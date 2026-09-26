@@ -92,6 +92,7 @@ import { shipGroupDetermineStrongestShip, shipGroupDetermineStrongestTroopTransp
 import { checkFleetSafeForDemoralizingCharacter, generateOrderedFleetsByFighterStrength, generateOrderedFleetsByOverallStrength, generateOrderedFleetsByTroopAttackStrength } from './fleets/fleetOrdering';
 import { habitatResourcesHaveSuperLuxury } from './exploration';
 import { determineColonizationValue } from './tradeItems';
+import { scenarioEmit } from './scenario/hooks';
 
 /** C# StellarObject (Habitat or BuiltObject) as a character location. */
 export type StellarObject = Habitat | BuiltObject;
@@ -6888,6 +6889,7 @@ export function generateNewCharacter(galaxy: Galaxy, empire: Empire, role: Chara
         }
     }
     baconEnhanceCharacter(empire, character);
+    if (galaxy.scenario !== null) scenarioEmit(galaxy, 'characterCreated', { character, empire }); // mod layer
     return { character, isRandomCharacter };
 }
 

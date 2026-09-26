@@ -80,6 +80,7 @@ import { totalColonyStrategicValue } from './forceStructure';
 import type { IntelligenceMission } from './characters';
 import type { GalaxyResourceMap } from './visibility';
 import { formatGameTextNow } from './textResolver';
+import { scenarioEmit } from './scenario/hooks';
 
 /** Empire.7.cs 3400 SendEventMessageToEmpire(eventMessageType, title, message, additionalData, location): only the attached UI recipient sees it. */
 export function sendEventMessageToEmpire(empire: Empire, eventMessageType: EventMessageType, title: string, message: string, additionalData: unknown, location: unknown): void {
@@ -126,6 +127,8 @@ export function sendNewsBroadcast(
     // Empire.7.cs 2986-2990: the C# queues SendNewsBroadcastCallback (2992) on the ThreadPool; the port runs
     // SendNewsBroadcastCore synchronously at the call site (single-threaded sim; the Core draws no Rnd).
     sendNewsBroadcastCore(empire, eventType, subject, disasterType, warStartEnd, wonderBegun, messageType, extraData);
+    // Mod layer: every disaster is broadcast through here.
+    if (empire.galaxy.scenario !== null && eventType === EventMessageType.DisasterEvent) scenarioEmit(empire.galaxy, 'disaster', { empire, habitat: isHabitat(subject) ? subject : null, disasterType });
 }
 
 /** Empire.7.cs 2966 SendNewsBroadcastWarStartEnd(relation). */
@@ -1198,6 +1201,7 @@ export function processEmpireElimination(galaxy: Galaxy, thisEmpire: Empire | nu
 
 /** Empire.cs 4874 CompleteTeardown(conqueror) → CompleteTeardown(conqueror, removeFromGalaxy: true, sendMessages: true). */
 export function empireCompleteTeardown(galaxy: Galaxy, empire: Empire, conqueror: Empire | null, removeFromGalaxy = true, sendMessages = true): void {
+    if (galaxy.scenario !== null) scenarioEmit(galaxy, 'empireEliminated', { empire, conqueror }); // mod layer
     empireCompleteTeardownFull(galaxy, empire, conqueror, removeFromGalaxy, sendMessages);
 }
 

@@ -612,8 +612,8 @@ describe('manual empire list round-trip (task 06j)', () => {
 });
 
 describe('wizard page order (task 06h, Start.InitializeComponent.cs navigation)', () => {
-    it('follows the original order: The Galaxy → Colonization and Territory → Your Race → Your Empire → Other Empires → Victory Conditions → Start', () => {
-        expect(WIZARD_PAGES).toEqual(['galaxy', 'colonization', 'race', 'empire', 'empires', 'victory', 'start']);
+    it('follows the original order: The Galaxy → Colonization and Territory → Your Race → Your Empire → Other Empires → Victory Conditions → (mod layer: Scenario) → Start', () => {
+        expect(WIZARD_PAGES).toEqual(['galaxy', 'colonization', 'race', 'empire', 'empires', 'victory', 'scenario', 'start']);
     });
 
     it('titles each page after its original panel name', () => {
@@ -624,6 +624,7 @@ describe('wizard page order (task 06h, Start.InitializeComponent.cs navigation)'
             empire: 'Your Empire',
             empires: 'Other Empires',
             victory: 'Victory Conditions',
+            scenario: 'Scenario',
             start: 'Start',
         });
     });
@@ -636,7 +637,8 @@ describe('wizard page order (task 06h, Start.InitializeComponent.cs navigation)'
             empire: '← Your Race',
             empires: '← Your Empire',
             victory: '← Other Empires',
-            start: '← Victory Conditions',
+            scenario: '← Victory Conditions',
+            start: '← Scenario',
         });
     });
 
@@ -647,7 +649,8 @@ describe('wizard page order (task 06h, Start.InitializeComponent.cs navigation)'
             race: 'Your Empire →',
             empire: 'Other Empires →',
             empires: 'Victory Conditions →',
-            victory: 'Start →',
+            victory: 'Scenario →',
+            scenario: 'Start →',
             start: 'Start Game',
         });
     });

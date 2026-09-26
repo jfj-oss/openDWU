@@ -59,6 +59,9 @@ import { setRaceBiasesStatic } from './raceBias';
 import { GalaxyLocationType } from './galaxyLocation';
 import { GalaxyShape, HabitatCategoryType, HabitatType, type Habitat } from './types';
 import { Cargo, CargoList, ResourceRef } from './cargo';
+import { createGalaxyScenario } from './scenario/state';
+import { scenarioFindHomeHabitat, scenarioGameStart } from './scenario/hooks';
+import './scenario/packages'; // mod layer: registers the scenario packages' hooks
 
 export type HomeSystem = 'Harsh' | 'Trying' | 'Normal' | 'Agreeable' | 'Excellent';
 
@@ -152,6 +155,12 @@ export interface CreateGameOptions {
      *  (EmpireStart.cs 42 / Galaxy.cs 732). */
     colonizationRange?: number;
     // [todosweep2] end
+    /**
+     * Mod layer (tasks/MODLAYER-DESIGN.md): flag / param choices for the scenario whose overlay `gameData.scenario`
+     * carries. Ignored when gameData has no scenario; with none the game is the faithful one.
+     */
+    scenarioFlags?: Record<string, boolean>;
+    scenarioParams?: Record<string, number>;
     /**
      * TEST-ONLY seam (not part of the game API; the wizard never sets it). Called at each
      * game-start phase boundary *after* the named step has run (see GameStartPhase); returning
@@ -883,6 +892,8 @@ export function createGame(opts: CreateGameOptions): Game {
         colonyPrevalence: opts.colonyPrevalence,
         gameData: gd,
         races: galaxyRaces,
+        // Mod layer: galaxy.scenario before generation (its placement rules apply there); null without an overlay.
+        scenario: gd.scenario !== undefined ? createGalaxyScenario(gd.scenario.manifest, { flags: opts.scenarioFlags, params: opts.scenarioParams }, gd.resources) : null,
         empireStarts: all.filter((e) => e.resolvedRace !== null).map((e) => ({ resolvedRace: e.resolvedRace!, projectedColonyAmount: e.projectedColonyAmount })),
         // Start.2.cs 485 new Galaxy(..., double_4, ...) (Galaxy.4.cs 2088 baseTechCost).
         baseTechCost: opts.baseTechCost,
@@ -1008,7 +1019,8 @@ export function createGame(opts: CreateGameOptions): Game {
         // Player capital (non-pirate branch).
         const { homeSystemFactor } = Galaxy.resolveHomeSystem(opts.player.homeSystemFavourability);
         const capitalHabitatType = race.nativeHabitatType;
-        let found: Habitat | null = null;
+        // Mod layer: a scenario homePlacement rule for the race picks the capital first (no draws without one).
+        let found: Habitat | null = galaxy.scenario !== null ? scenarioFindHomeHabitat(galaxy, race, capitalHabitatType, { randomPointInRing, inNebula }, 0) : null;
         let num10 = 0;
         let num11 = 0.0;
         let num12 = 0.0;
@@ -1075,7 +1087,9 @@ export function createGame(opts: CreateGameOptions): Game {
         const { sector } = proximityDistance(galaxy, prox);
         galaxy.rnd.nextDouble();
         const home = Galaxy.resolveHomeSystem(es.opts.homeSystemFavourability);
-        const cap = findAiCapital(galaxy, aiRace, prox, habitat, aiRace.nativeHabitatType, playAsPirate, num14 + 1, sector);
+        // Mod layer: a scenario homePlacement rule for the race picks the capital first (no draws without one).
+        const scenarioCap = galaxy.scenario !== null ? scenarioFindHomeHabitat(galaxy, aiRace, aiRace.nativeHabitatType, { randomPointInRing, inNebula }, galaxy.sectorSize * 0.7) : null;
+        const cap = scenarioCap ?? findAiCapital(galaxy, aiRace, prox, habitat, aiRace.nativeHabitatType, playAsPirate, num14 + 1, sector);
         if (cap === null) throw new Error('Could not locate capital!');
         let dpfi = es.opts.designPictureFamilyIndex ?? -1;
         if (dpfi < 0) dpfi = aiRace.designsPictureFamilyIndex;
@@ -1340,6 +1354,8 @@ export function createGame(opts: CreateGameOptions): Game {
     // Main.Part12.cs 3151 BaconMain.BaconInitialize(this) once Main starts the new game: the loaded BaconSettings.txt
     // takes effect (baconSettings.ts; the settings part only).
     baconInitializeSettings(galaxy, gd.baconSettings);
+    // Mod layer: the scenario game-start hook (after every stock start step, before the first frame; no-op without one).
+    if (galaxy.scenario !== null) scenarioGameStart(galaxy, { randomPointInRing, inNebula });
     stopAt('tail');
     return result();
 }

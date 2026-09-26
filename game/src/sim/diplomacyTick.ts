@@ -95,6 +95,7 @@ import { PirateExpenseType, PirateIncomeType } from './pirates/pirateEconomy';
 import { acceptPirateProtection, calculatePirateProtectionPricePerMonth } from './pirates/pirateRelationsAI';
 import { baconSettings } from './data/baconSettings';
 import { formatNet, tryGetText } from './textResolver';
+import { scenarioEmit } from './scenario/hooks';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants (Galaxy.3.cs 4990-5140 InitializeStatics; BaconEmpire.cs statics with their default settings).
@@ -2527,6 +2528,7 @@ export function changeDiplomaticRelation(
     locked = false,
     allianceName = '',
 ): boolean {
+    const scenarioFromType = currentDiplomaticRelation.type; // mod layer (diplomaticRelationChanged payload)
     const selfCharacters = getEmpireCharacters(self);
     const isTreaty = (t: DiplomaticRelationType): boolean => t === DiplomaticRelationType.FreeTradeAgreement || t === DiplomaticRelationType.MutualDefensePact || t === DiplomaticRelationType.Protectorate;
     switch (newDiplomaticRelationType) {
@@ -2709,6 +2711,7 @@ export function changeDiplomaticRelation(
     checkTriggerEvent(galaxy, matchingGameEventIdDiplomaticRelationChange, self, EventTriggerType.DiplomaticRelationChange, null);
     matchingGameEventIdDiplomaticRelationChange = getMatchingGameEventIdDiplomaticRelationChange(galaxy, currentDiplomaticRelation.otherEmpire, currentDiplomaticRelation.thisEmpire, newDiplomaticRelationType);
     checkTriggerEvent(galaxy, matchingGameEventIdDiplomaticRelationChange, self, EventTriggerType.DiplomaticRelationChange, null);
+    if (galaxy.scenario !== null && currentDiplomaticRelation.otherEmpire !== null) scenarioEmit(galaxy, 'diplomaticRelationChanged', { empire: self, other: currentDiplomaticRelation.otherEmpire, from: scenarioFromType, to: newDiplomaticRelationType }); // mod layer
     return true;
 }
 

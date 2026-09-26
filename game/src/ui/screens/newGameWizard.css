@@ -752,3 +752,19 @@
 .wizard-btn:hover {
     filter: brightness(1.15);
 }
+
+/* --- Scenario page (mod layer, tasks/MODLAYER-DESIGN.md §3). --- */
+.wizard-page.wizard-scenario-page {
+    flex: 1;
+    justify-content: center;
+}
+
+.wizard-scenario-description {
+    font-size: 13px;
+    color: #c9d1d9;
+    line-height: 1.4;
+}
+
+.wizard-scenario-note {
+    padding-left: 23px; /* indent under the checkbox */
+}

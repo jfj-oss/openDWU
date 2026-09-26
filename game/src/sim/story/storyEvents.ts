@@ -491,8 +491,12 @@ export function generateShakturi(galaxy: Galaxy, startingColony: Habitat | null)
     }
 }
 
-/** Galaxy.8.cs 1400-1446: GenerateShakturi's starting-empire set-up (after the policy tweak). */
-function empireStorySetup(galaxy: Galaxy, empire: Empire, spacePortDivisor: number, allowSameSystem: boolean): void {
+/**
+ * Galaxy.8.cs 1400-1446: GenerateShakturi's starting-empire set-up (after the policy tweak). Exported for the mod layer's
+ * createEmpireMidGame (scenario/empireMidGame.ts), which passes runGalaxyTasks = false (the closing Galaxy.DoTasks is
+ * the C#'s; a scenario creates empires from inside the galaxy tick).
+ */
+export function empireStorySetup(galaxy: Galaxy, empire: Empire, spacePortDivisor: number, allowSameSystem: boolean, runGalaxyTasks = true): void {
     recalculateEmpirePopulation(empire);
     checkColoniesForBaseFacilities(empire);
     recalculateEmpireCorruption(empire);
@@ -521,7 +525,7 @@ function empireStorySetup(galaxy: Galaxy, empire: Empire, spacePortDivisor: numb
     fillShipsWithTroops(galaxy, empire);
     assignMissionsToBuiltObjectList(galaxy, empire, empire.builtObjects, false, null);
     assignMissionsToBuiltObjectList(galaxy, empire, empire.privateBuiltObjects, false, null);
-    galaxyDoTasks(galaxy, false, galaxy.playerEmpire);
+    if (runGalaxyTasks) galaxyDoTasks(galaxy, false, galaxy.playerEmpire);
 }
 
 /**

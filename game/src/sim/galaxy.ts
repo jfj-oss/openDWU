@@ -62,6 +62,8 @@ import type { SchedulerState } from './tick/scheduler';
 import type { Blockade } from './fleets/blockades';
 import { createGalaxyOrderList, type OrderList } from './logistics/orders';
 import { GameEventList, type EventActionExecutionPackage } from './story/gameEventModel';
+import type { GalaxyScenario } from './scenario/state';
+import { scenarioResourceAllowed } from './scenario/hooks';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from './diplomacy';
 
 // Port of Galaxy.cs static fields (Galaxy.3.cs InitializeStatics sets
@@ -129,6 +131,8 @@ export interface GenerateGalaxyOptions {
      * race) to its copy.
      */
     races?: Race[];
+    /** Mod layer: the scenario (galaxy.scenario) set before generation so its placement rules apply. Omitted = none. */
+    scenario?: GalaxyScenario | null;
 }
 
 /** Scratch for Galaxy.ringSearch: [d, nx, ny] of the last closestIndexEdgesInto, read before any per-cell callback runs
@@ -2917,6 +2921,10 @@ export class Galaxy {
                 break;
             }
             const resourceDefinition = randomOrderedResources[k];
+            // Mod layer: a scenario resource-placement rule (distance from centre) can keep this resource off the habitat.
+            if (this.scenario !== null && resourceDefinition !== null && !scenarioResourceAllowed(this, habitat, resourceDefinition.resourceId)) {
+                continue;
+            }
             if (
                 resourceDefinition === null ||
                 resourceDefinition.colonyManufacturingLevel > 0 ||
@@ -4645,6 +4653,9 @@ export class Galaxy {
     shakturiRaceBase: Race | null = null;
     /** Galaxy.cs 536 StoryShakturiEnrageTimer = long.MaxValue (star date). */
     storyShakturiEnrageTimer = Number.MAX_SAFE_INTEGER;
+    // ---- modlayer fields (scenario mod layer, not a port; src/sim/scenario/*, tasks/MODLAYER-DESIGN.md) ----
+    /** The scenario this game runs (saved), or null for the faithful game. Read through scenarioFlag / scenarioParam. */
+    scenario: GalaxyScenario | null = null;
 }
 
 /**
@@ -4675,6 +4686,7 @@ export function generationHabitatDoTasks(galaxy: Galaxy, habitat: Habitat): void
 export function generateGalaxy(options: GenerateGalaxyOptions): Galaxy {
     const { seed, shape, starCount, sectorWidth, sectorHeight, systemNames, colonyPrevalence, gameData, cloudImageCount } = options;
     const galaxy = new Galaxy(seed, shape, starCount, sectorWidth, sectorHeight, systemNames, colonyPrevalence);
+    galaxy.scenario = options.scenario ?? null;
     // Galaxy.4.cs 2132 `Races = LoadRaces(...)`: the galaxy's own Race objects (mutated in play, saved with the game).
     let empireStarts = options.empireStarts ?? [];
     let races = options.races;

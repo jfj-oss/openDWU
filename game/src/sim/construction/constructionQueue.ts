@@ -64,6 +64,7 @@ import {
     yardsIndexOfShip,
 } from './constructionYard';
 import { formatGameTextNow } from '../textResolver';
+import { scenarioEmit } from '../scenario/hooks';
 
 /** Galaxy.3.cs 5086 ColonyShipBuildFactor = 10.0. */
 export const COLONY_SHIP_BUILD_FACTOR = 10.0;
@@ -987,6 +988,7 @@ export class ConstructionQueue {
         if (actualEmpire !== null && actualEmpire.builtObjects !== null && actualEmpire.builtObjects.includes(ship)) {
             sendMessageToEmpire(actualEmpire, actualEmpire, EmpireMessageType.ShipBaseCompleted, ship, empty2);
         }
+        if (galaxy.scenario !== null) scenarioEmit(galaxy, 'builtObjectBuilt', { builtObject: ship, empire: actualEmpire }); // mod layer
         this.processWaitQueue();
         void num14;
     }

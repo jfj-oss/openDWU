@@ -113,6 +113,14 @@ export interface GameData {
      * gives the defaults. Absent (hand-built GameData) = the defaults. Applied at game start (sim/baconInitialize.ts).
      */
     baconSettings?: BaconSettings;
+    /**
+     * Mod layer (tasks/MODLAYER-DESIGN.md): the raw text of the key;value files a scenario overlay may patch, keyed by
+     * lower-cased install-relative path ("races/human.txt", "policy/human.txt", "policy/pirate/human.txt" — policies by
+     * race name). Display/data only; nothing in the sim reads it.
+     */
+    sourceTexts?: Map<string, string>;
+    /** The scenario overlay applied to this GameData (scenario/overlay.ts applyScenarioOverlay); absent = base game. */
+    scenario?: import('../scenario/overlay').LoadedScenario;
 }
 
 /** Shape of public/asset-manifest.json entries this loader consumes. */
@@ -278,6 +286,8 @@ export async function loadGameData(
     // Parse races from individual files
     const raceFamilies = parseRaceFamilies(raceFamiliesText);
     const races = raceFileResults.map((text) => parseRace(text));
+    const sourceTexts = new Map<string, string>();
+    raceFiles.forEach((file, i) => sourceTexts.set(`races/${file}`.toLowerCase(), raceFileResults[i]));
 
     // 04d2 policies: one EmpirePolicy per successfully-fetched policy file,
     // keyed by its policyFiles entry (see GameData.policiesByFile doc comment).
@@ -331,12 +341,15 @@ export async function loadGameData(
                 const known = policyTextByFile.get(`${sub}${r.name}.txt`.toLowerCase());
                 if (known !== undefined) {
                     map.set(r.name, parseEmpirePolicy(known));
+                    sourceTexts.set(`policy/${sub}${r.name}.txt`.toLowerCase(), known);
                     return;
                 }
                 const found = exists(`${dir}${r.name}.txt`);
                 if (found === null) return; // File.Exists false → default policy
                 try {
-                    map.set(r.name, parseEmpirePolicy(await fetchText(resolveDataUrl(found ?? `${dir}${r.name}.txt`, customizationSet))));
+                    const text = await fetchText(resolveDataUrl(found ?? `${dir}${r.name}.txt`, customizationSet));
+                    map.set(r.name, parseEmpirePolicy(text));
+                    sourceTexts.set(`policy/${sub}${r.name}.txt`.toLowerCase(), text);
                 } catch {
                     // missing file → default policy
                 }
@@ -451,12 +464,14 @@ export async function loadGameData(
 
         // 04d3 data
         designTemplates,
+
+        sourceTexts,
     };
 }
 
 // Case-insensitive match of a sub-role file name against BuiltObjectSubRole
 // member names (the same matching parseShipNames uses for shipNames.txt keys).
-function resolveBuiltObjectSubRole(name: string): BuiltObjectSubRole {
+export function resolveBuiltObjectSubRole(name: string): BuiltObjectSubRole {
     const lower = name.toLowerCase();
     for (const key of Object.keys(BuiltObjectSubRole) as (keyof typeof BuiltObjectSubRole)[]) {
         if (typeof BuiltObjectSubRole[key] !== 'number') {

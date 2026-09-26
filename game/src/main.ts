@@ -71,7 +71,9 @@ import { getMessageOptions } from './ui/messageRouting';
 import { createNewGameWizard } from './ui/screens/newGameWizard';
 import { openGalactopedia } from './ui/screens/galactopedia';
 import { defaultStartGameOptions, piratesFor, STARTING_TECH_LEVEL, toCreateGameOptions, type StartGameOptions, maximumEmpireAmountFor, starCountFor } from './sim/startGameOptions';
-import { serializeGame, deserializeGame } from './sim/save/gameSave';
+import { serializeGame, deserializeGame, savedScenarioId } from './sim/save/gameSave';
+import { loadScenarioIndex, loadScenarioOverlay } from './sim/scenario/fetchScenario';
+import { applyScenarioOverlay, resolveScenarioIncludes, type ScenarioOverlay } from './sim/scenario/overlay';
 // [leftovers] begin
 import { closeGalacticHistory } from './ui/screens/galacticHistory';
 import { installEventMessages, removeEventMessages } from './ui/eventMessages';
@@ -207,6 +209,41 @@ async function loadGameDataOrNone(dwuPresent: boolean): Promise<GameData | null>
 // data is remembered so a later "Load Game" can deserialize saved games
 // (deserializeGame needs the static race/resource/research tables).
 let lastGameData: GameData | null = null;
+/** Mod layer: the GameData of the game on screen (the base data with its scenario overlay, if any). */
+let lastPlayedGameData: GameData | null = null;
+/** Mod layer: scenario overlays fetched this session (small text files), by id — saves re-apply them synchronously. */
+const scenarioOverlays = new Map<string, ScenarioOverlay>();
+
+/** Mod layer: fetch every scenario overlay listed in /assets/scenarios/index.json (errors leave the list short). */
+async function preloadScenarioOverlays(): Promise<void> {
+    try {
+        for (const m of await loadScenarioIndex(fetchTextBrowser)) {
+            if (scenarioOverlays.has(m.id)) continue;
+            try {
+                scenarioOverlays.set(m.id, await loadScenarioOverlay(fetchTextBrowser, m));
+            } catch (err) {
+                console.warn(`Scenario ${m.id} failed to load`, err);
+            }
+        }
+    } catch (err) {
+        console.warn('Scenario index failed to load', err);
+    }
+}
+
+/** Mod layer: the base data, or the base data with a scenario overlay applied (throws when it is not available). */
+function gameDataWithScenario(base: GameData, scenarioId: string | null): GameData {
+    if (scenarioId === null) return base;
+    const overlay = scenarioOverlays.get(scenarioId);
+    if (overlay === undefined) throw new Error(`Scenario "${scenarioId}" is not available; cannot load this game.`);
+    return applyScenarioOverlay(base, resolveScenarioIncludes(overlay, scenarioOverlays));
+}
+
+/** Mod layer: the GameData a save needs (its scenario's overlay over the base data). */
+function gameDataForSave(text: string): GameData {
+    if (lastGameData === null) throw new Error('DW:U game data is required to load a save');
+    lastPlayedGameData = gameDataWithScenario(lastGameData, savedScenarioId(text));
+    return lastPlayedGameData;
+}
 let lastStartOptions: StartGameOptions | null = null;
 let activeSavePanel: ReturnType<typeof createSaveLoadPanel> | null = null;
 /** Saves that could not be written to localStorage (quota), kept for this
@@ -221,6 +258,7 @@ async function ensureStaticData(): Promise<void> {
     if (lastGameData !== null) return;
     const dwuPresent = await detectDwuPresent();
     lastGameData = await loadGameDataOrNone(dwuPresent);
+    await preloadScenarioOverlays();
     if (dwuPresent) {
         await loadManifest();
     }
@@ -408,7 +446,7 @@ export async function startGameView(
         camera,
         galaxy,
         game,
-        gameData: lastGameData ?? undefined,
+        gameData: lastPlayedGameData ?? lastGameData ?? undefined,
         onGalaxyMap: () => galaxyMap.toggle(),
         onMainMenu: () => {
             teardownActiveGameView();
@@ -651,10 +689,7 @@ export async function startGameView(
                 serialize: () =>
                     lastStartOptions !== null ? serializeGame(game, time, lastStartOptions) : null,
                 loadSave: (text) => {
-                    if (lastGameData === null) {
-                        throw new Error('DW:U game data is required to load a save');
-                    }
-                    return deserializeGame(text, lastGameData) as unknown as LoadedGame;
+                    return deserializeGame(text, gameDataForSave(text)) as unknown as LoadedGame;
                 },
             });
         }
@@ -669,10 +704,7 @@ export async function startGameView(
         serialize: () =>
             lastStartOptions !== null ? serializeGame(game, time, lastStartOptions) : null,
         loadSave: (text) => {
-            if (lastGameData === null) {
-                throw new Error('DW:U game data is required to load a save');
-            }
-            return deserializeGame(text, lastGameData) as unknown as LoadedGame;
+            return deserializeGame(text, gameDataForSave(text)) as unknown as LoadedGame;
         },
         memorySaves,
     });
@@ -829,7 +861,20 @@ async function bootGameFromWizard(startOptions: StartGameOptions): Promise<void>
 
     lastGameData = gameData;
     lastStartOptions = startOptions;
-    const game: Game = createGame(toCreateGameOptions(startOptions, gameData, systemNames));
+    // Mod layer: a chosen scenario's overlay goes over the base data before createGame.
+    let playData: GameData = gameData;
+    if (startOptions.scenario != null) {
+        await preloadScenarioOverlays();
+        try {
+            playData = gameDataWithScenario(gameData, startOptions.scenario.id);
+        } catch (err) {
+            console.error(err);
+            return;
+        }
+        if (playData.scenario !== undefined && playData.scenario.warnings.length > 0) console.warn('Scenario overlay warnings', playData.scenario.warnings);
+    }
+    lastPlayedGameData = playData;
+    const game: Game = createGame(toCreateGameOptions(startOptions, playData, systemNames));
     // Task 10d: the wizard's chosen flag shape/colour is not forwarded to
     // createGame yet (see TODO(createGame) in startGameOptions.ts), so apply
     // it to the player empire here for the HUD's empires button.
@@ -864,6 +909,7 @@ async function startTutorialGame(file: string): Promise<void> {
     }
     // Saves need start options (metadata only; the galaxy itself is saved).
     lastGameData = gameData;
+    lastPlayedGameData = gameData;
     lastStartOptions = { ...defaultStartGameOptions(), seed: opts.seed };
     // The clock is created inside startGameView and starts paused; the
     // tutorial window's "Play This Game" button resumes it (method_455).
@@ -1002,10 +1048,7 @@ function showMainMenu(): void {
                     getMainMenuSavePanel().show();
                 },
                 loadSave: (text) => {
-                    if (lastGameData === null) {
-                        throw new Error('DW:U game data is required to load a save');
-                    }
-                    return deserializeGame(text, lastGameData) as unknown as LoadedGame;
+                    return deserializeGame(text, gameDataForSave(text)) as unknown as LoadedGame;
                 },
             });
             getMainMenuSavePanel().show();
@@ -1027,10 +1070,7 @@ function getMainMenuSavePanel() {
             loadOnly: true,
             memorySaves: sessionSaves,
             loadSave: (text) => {
-                if (lastGameData === null) {
-                    throw new Error('DW:U game data is required to load a save');
-                }
-                return deserializeGame(text, lastGameData) as unknown as LoadedGame;
+                return deserializeGame(text, gameDataForSave(text)) as unknown as LoadedGame;
             },
         });
     }
@@ -1159,6 +1199,7 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     // Task 11a3: remember the loaded game data so later loads (main menu or
     // mid-game) can deserialize saved games against the same static tables.
     lastGameData = gameData;
+    lastPlayedGameData = gameData;
     // Real-art file lists (scripts/gen-asset-manifest.mjs, predev/prebuild).
     if (dwuPresent) {
         await loadManifest();

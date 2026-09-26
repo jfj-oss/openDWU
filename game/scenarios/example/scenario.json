@@ -1,0 +1,8 @@
+{
+  "id": "example",
+  "name": "Example Scenario",
+  "description": "Mod-layer example: the Teekan are renamed the Teekan Guild and one GameText line is added. Nothing else changes.",
+  "flags": [
+    { "name": "exampleFlag", "label": "Example flag", "description": "Does nothing; shows how a scenario switch appears in the wizard.", "default": false }
+  ]
+}

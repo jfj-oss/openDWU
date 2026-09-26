@@ -5,6 +5,7 @@ import type { Race } from './data/races';
 import type { GameData } from './data/gameData';
 import type { CreateGameOptions, EmpireStartOptions } from './game';
 import { Random } from './random';
+import type { ScenarioManifest } from './scenario/manifest';
 
 export interface StartGameOptions {
     shape: GalaxyShape;
@@ -77,6 +78,37 @@ export interface StartGameOptions {
     /** Task M4x: "Your Empire" tech-level slider (tbarStartNewGameYourEmpireTechLevel, 0..8 = PreWarp, Normal,
      * Level 1..7; Start.cs 3460 / method_75). Unset = 1 (Normal, tech 0.5). */
     empireTechLevelIndex?: number;
+    /**
+     * Mod layer (tasks/MODLAYER-DESIGN.md §3): the wizard's "Scenario" page. Absent / null = None (the faithful game).
+     * The caller loads the scenario's overlay into the GameData it passes to toCreateGameOptions.
+     */
+    scenario?: StartScenarioChoice | null;
+}
+
+/** The chosen scenario and its flag / param values (manifest defaults when absent). */
+export interface StartScenarioChoice {
+    id: string;
+    flags: Record<string, boolean>;
+    params: Record<string, number>;
+}
+
+/** The wizard's initial choice for a scenario: every flag / param at its manifest default. */
+export function defaultScenarioChoice(manifest: ScenarioManifest): StartScenarioChoice {
+    const flags: Record<string, boolean> = {};
+    const params: Record<string, number> = {};
+    for (const f of manifest.flags) flags[f.name] = f.default;
+    for (const p of manifest.params) params[p.name] = p.default;
+    return { id: manifest.id, flags, params };
+}
+
+/** Start-page summary text of a scenario choice ("None" without one). */
+export function scenarioChoiceSummary(choice: StartScenarioChoice | null | undefined, manifests: readonly ScenarioManifest[]): string {
+    if (choice == null) return 'None';
+    const m = manifests.find((x) => x.id === choice.id);
+    const on = (m?.flags ?? []).filter((f) => choice.flags[f.name]).map((f) => f.label);
+    const params = (m?.params ?? []).map((p) => `${p.label} ${choice.params[p.name] ?? p.default}`);
+    const extras = [...on, ...params];
+    return `${m?.name ?? choice.id}${extras.length > 0 ? ` (${extras.join(', ')})` : ''}`;
 }
 
 /**
@@ -830,6 +862,8 @@ export function toCreateGameOptions(
         baseTechCost: baseTechCostFor(o.galaxyResearchSpeed),
         colonizationRangeEnforceLimit: o.colonization.enforceRangeLimits,
         colonizationRange: colonizationRangeFor(clampColonization(o.colonization).colonizationRangeKly),
+        // Mod layer: the scenario's switches (the overlay itself comes in with gameData.scenario).
+        ...(o.scenario != null ? { scenarioFlags: { ...o.scenario.flags }, scenarioParams: { ...o.scenario.params } } : {}),
         // TODO(createGame): fields createGame does not accept yet stay on
         // StartGameOptions and are ignored here:
         //   - alien life (alienLifeIndex → alienLifeFor): independent-life count
