@@ -164,6 +164,25 @@ export function raceAggressionLevel(galaxy: Galaxy, race: Race): number {
     return raceChangePeriodActive(galaxy, race) ? racePeriodicLevel(race, 'PeriodicFactorsAggression') : race.aggression;
 }
 
+/** Race.cs 368 CautionLevel (PeriodicCautionLevel while ChangePeriodActive). */
+export function raceCautionLevel(galaxy: Galaxy, race: Race): number {
+    return raceChangePeriodActive(galaxy, race) ? racePeriodicLevel(race, 'PeriodicFactorsCaution') : race.caution;
+}
+
+/** Race.cs 384 FriendlinessLevel (PeriodicFriendlinessLevel while ChangePeriodActive). */
+export function raceFriendlinessLevel(galaxy: Galaxy, race: Race): number {
+    return raceChangePeriodActive(galaxy, race) ? racePeriodicLevel(race, 'PeriodicFactorsFriendliness') : race.friendliness;
+}
+
+/**
+ * Race.cs 119 PeriodicRaceEvent (RaceEventType, default Undefined): races.txt "PeriodicChangeCycleEvent", kept only
+ * when Enum.IsDefined(typeof(RaceEventType), (byte)value) (Race.cs 1360-1367).
+ */
+export function racePeriodicRaceEvent(race: Race): RaceEventType {
+    const b11 = raceExtraInt(race, 'PeriodicChangeCycleEvent', 0) & 0xff;
+    return RaceEventType[b11] !== undefined ? (b11 as RaceEventType) : RaceEventType.Undefined;
+}
+
 // ---------------------------------------------------------------------------
 // Habitat helpers
 // ---------------------------------------------------------------------------

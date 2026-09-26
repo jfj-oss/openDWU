@@ -28,20 +28,19 @@
 import type { Galaxy } from './galaxy';
 import type { Habitat } from './types';
 import { checkColonyRevenueFromPirateControl } from './pirates/pirateColonyControl';
-import { calculatePirateIncome } from './treasury';
+import { calculatePirateIncome, thisYearsForeignTradeBonuses, thisYearsSpacePortIncome } from './treasury';
 import { Empire, empireGovernmentAttributes } from './empire';
 import { BuiltObjectSubRole } from './builtObjectTypes';
 import { BuiltObjectRole } from './data/designSpecifications';
 import { ComponentType } from './data/components';
-import { findNewest, type Design } from './design';
+import { findNewest, galaxyResourceCurrentPrices, type Design } from './design';
 import { baconSettings } from './data/baconSettings';
 import { canBuildDesign, findNewestCanBuild } from './designGeneration';
 import { DEFAULT_BASE_TECH_COST } from './componentStatic';
 import { ForceStructureProjection, ForceStructureProjectionList } from './forceStructureProjection';
 import { facilitiesCalculateAnnualMaintenance, facilitiesFindBestPirateFacility, identifyEmpireCapitalsWithRegional } from './construction/facilities';
 import { HabitatType } from './types';
-import { ResearchAbilityType } from './researchSystem';
-import { obtainEmpireEvaluation, recalculateCriticalResourceSupplyBonuses, taxComplianceRate } from './taxes';
+import { obtainEmpireEvaluation, raidEconomyDamageFactor as habitatRaidEconomyDamageFactor, recalculateCriticalResourceSupplyBonuses, taxComplianceRate } from './taxes';
 import { ColonyResourceEffect, habitatDevelopmentLevel, resourceBonusTotalByEffectType } from './developmentLevel';
 import { DiplomaticRelationType, DiplomaticStrategy, type DiplomaticRelation } from './diplomacy';
 import { resolveCharacterColonyCorruptionBonus, resolveCharacterColonyIncomeBonus } from './characters';
@@ -87,12 +86,7 @@ export { DiplomaticRelationType, DiplomaticStrategy };
 // PirateRelationType.cs: canonical enum in pirateRelations.ts.
 export { PirateRelationType };
 
-/**
- * The BuiltObject members this module reads.
- * TODO(port): replace with the BuiltObject class (src/sim/builtObject.ts, in
- * progress); Empire.builtObjects / privateBuiltObjects are `unknown[]` and
- * empty at game start, so none of these reads happen yet.
- */
+/** The BuiltObject members this module reads (the lists it walks are typed loosely by some callers). */
 export interface BuiltObjectView {
     role: BuiltObjectRole;
     subRole: BuiltObjectSubRole;
@@ -115,10 +109,7 @@ const diplomaticRelationsOf = (empire: Empire): DiplomaticRelationView[] => empi
 // (C# `for (i = 0; i < PirateRelations.Count; i++) PirateRelations[i]`).
 const pirateRelationsOf = (empire: Empire): PirateRelation[] => empire.pirateRelations.toArray();
 
-// Empire._ShipMaintenanceSavings (Empire.cs 2991). TODO(port): set by
-// ReviewEmpireAbilityBonuses (long DoTasks block, not ported); 0.0 until then,
-// and only ever multiplies built-object support costs (none at game start).
-// Empire._ShipMaintenanceSavings (ReviewEmpireAbilityBonuses, treasury.ts).
+// Empire._ShipMaintenanceSavings (Empire.cs 2991; set by ReviewEmpireAbilityBonuses, treasury.ts).
 const shipMaintenanceSavings = (empire: Empire): number => empire.shipMaintenanceSavings;
 
 // Empire.ColonyCorruptionFactor / ColonyIncomeFactor (Empire.cs 409/425), set by
@@ -165,14 +156,14 @@ export function countCompletedBySubRole(list: unknown[], subRole: BuiltObjectSub
 // ---------------------------------------------------------------------------
 
 /**
- * Galaxy.ResourceCurrentPrices[resourceId] (Galaxy.4.cs 2175: ResourceDefinition.BasePrice,
- * a float). TODO(port): Galaxy.ReviewResourcePrices (Start.2.cs 1103 / Galaxy.DoTasks,
- * needs the resource market) — constructor values until then.
+ * Galaxy.ResourceCurrentPrices[resourceId] (Galaxy.cs; initialised from ResourceDefinition.BasePrice, Galaxy.4.cs 2175,
+ * then moved by Galaxy.ReviewResourcePrices — market.ts, Start.2.cs 1103 and every long Galaxy.DoTasks). The shared
+ * per-galaxy array lives in design.ts (galaxyResourceCurrentPrices).
  * (Galaxy.ComponentCurrentPrices / Design.CalculateCurrentPurchasePrice /
  * Design.MaintenanceSavings / ExtractionLuxury come from design.ts, task M3a.)
  */
 export function resourceCurrentPrice(galaxy: Galaxy, resourceId: number): number {
-    return f32(galaxy.resourceSystem.resources[resourceId].basePrice);
+    return galaxyResourceCurrentPrices(galaxy)[resourceId];
 }
 
 // DesignList.cs FindNewestCanBuild(subRole) (140): the empire is the first design's owner.
@@ -239,31 +230,17 @@ export function checkEmpireHasColonizationTech(empire: Empire | null): boolean {
 }
 
 /**
- * The TroopCanRecruit* flags of Empire.3.cs ReviewTroopTypes (2299-2454):
- * a Troop research ability whose RelatedObject is that TroopType (research.txt
- * AbilityRelatedObject 1-4, ResearchNodeDefinitionList.cs 580-596).
- * TODO(port): Empire.reviewTroopTypes is still a stub (empire.ts); move this there.
+ * Empire.TroopCanRecruitInfantry / Armored / Artillery / SpecialForces (Empire.cs), the flags Empire.3.cs
+ * ReviewTroopTypes (2299-2454, empire.ts reviewTroopTypes) writes — read directly by
+ * CalculateStateExpenditureBalance (Empire.9.cs 4944).
  */
 export function troopCanRecruitFlags(empire: Empire): { infantry: boolean; armored: boolean; artillery: boolean; specialForces: boolean } {
-    const flags = { infantry: false, armored: false, artillery: false, specialForces: false };
-    for (const a of empire.research.abilities) {
-        if (a.type !== ResearchAbilityType.Troop) continue;
-        switch (a.relatedObjectIndex) {
-            case 1:
-                flags.infantry = true;
-                break;
-            case 2:
-                flags.armored = true;
-                break;
-            case 3:
-                flags.artillery = true;
-                break;
-            case 4:
-                flags.specialForces = true;
-                break;
-        }
-    }
-    return flags;
+    return {
+        infantry: empire.troopCanRecruitInfantry,
+        armored: empire.troopCanRecruitArmored,
+        artillery: empire.troopCanRecruitArtillery,
+        specialForces: empire.troopCanRecruitSpecialForces,
+    };
 }
 
 // Empire.cs TotalColonyStrategicValue (1543) / Habitat.cs StrategicValue (309).
@@ -309,15 +286,12 @@ export function determineLargestColonyInEachSystem(galaxy: Galaxy, empire: Empir
     return habitatList;
 }
 
-// HabitatList.cs CountMigrationFactorBelow (553).
+// HabitatList.cs CountMigrationFactorBelow (553): (double)habitat.MigrationFactor < (double)migrationFactor, both
+// float (Habitat._MigrationFactor is written by CalculateMigrationFactor, Habitat.cs 1162, colonyTick.ts).
 function countMigrationFactorBelow(colonies: Habitat[], migrationFactor: number): number {
     let num = 0;
     for (const habitat of colonies) {
-        // TODO(port): Habitat._MigrationFactor (float, Habitat.CalculateMigrationFactor
-        // 1162, run by Habitat.DoTasks) — 0f until the first colony tick.
-        // TODO(port): Habitat.HasBeenDestroyed — false for every colony at game start.
-        const habitatMigrationFactor = 0;
-        if (habitat != null && habitatMigrationFactor < f32(migrationFactor)) num++;
+        if (habitat != null && !habitat.hasBeenDestroyed && f32(habitat.migrationFactor) < f32(migrationFactor)) num++;
     }
     return num;
 }
@@ -326,7 +300,7 @@ function countMigrationFactorBelow(colonies: Habitat[], migrationFactor: number)
 function countPopulationAbove(colonies: Habitat[], populationAmount: number): number {
     let num = 0;
     for (const habitat of colonies) {
-        if (habitat != null && habitat.population != null && habitat.population.totalAmount > populationAmount) num++;
+        if (habitat != null && !habitat.hasBeenDestroyed && habitat.population != null && habitat.population.totalAmount > populationAmount) num++;
     }
     return num;
 }
@@ -457,7 +431,11 @@ export function habitatAnnualRevenue(galaxy: Galaxy, h: Habitat): number {
     const num5 = resolveCharacterColonyIncomeBonus(h);
     const num6 = 1.0 + num5 / 100.0;
     num *= num6;
-    // TODO(port): RaidCountdown / RaidEconomyDamageFactor — 0 at game start.
+    // Habitat.cs 878-882: a raided colony loses RaidEconomyDamageFactor of its revenue.
+    if (h.raidCountdown > 0) {
+        const raidEconomyDamageFactor = habitatRaidEconomyDamageFactor(h);
+        num *= 1.0 - raidEconomyDamageFactor;
+    }
     if (empire !== null) num *= colonyIncomeFactor(empire);
     return num;
 }
@@ -505,8 +483,8 @@ export function recalculateColonyTaxRevenues(galaxy: Galaxy, empire: Empire): vo
 // Empire economy (Empire.cs properties)
 // ---------------------------------------------------------------------------
 
-// TODO(port): Habitat.Rebelling — no colony rebels at game start.
-const habitatRebelling = (_h: Habitat): boolean => false;
+// Habitat.Rebelling (Empire.cs 1683 AnnualTaxRevenue skips a rebelling colony's revenue).
+const habitatRebelling = (h: Habitat): boolean => h.rebelling;
 
 function revenueDropoff(num: number, totalPopulation: number, empire: Empire): number {
     if (totalPopulation > REVENUE_DROPOFF_POPULATION_THRESHHOLD_MIN) {
@@ -620,8 +598,8 @@ export function calculateAnnualSubjugationTributeIncome(galaxy: Galaxy, empire: 
     for (const diplomaticRelation of diplomaticRelationsOf(empire)) {
         if (diplomaticRelation.type === DiplomaticRelationType.SubjugatedDominion && diplomaticRelation.initiator === empire) {
             const otherEmpire = diplomaticRelation.otherEmpire;
-            // TODO(port): ThisYearsForeignTradeBonuses / ThisYearsSpacePortIncome (EmpireCounters).
-            const num2 = annualTaxRevenue(galaxy, otherEmpire) + 0.0 + 0.0;
+            // Empire.1.cs 1021: otherEmpire.AnnualTaxRevenue + ThisYearsForeignTradeBonuses + ThisYearsSpacePortIncome.
+            const num2 = annualTaxRevenue(galaxy, otherEmpire) + thisYearsForeignTradeBonuses(otherEmpire) + thisYearsSpacePortIncome(galaxy, otherEmpire);
             num += num2 * baconSettings.subjugationTributePercentage;
         }
     }
@@ -631,8 +609,8 @@ export function calculateAnnualSubjugationTributeIncome(galaxy: Galaxy, empire: 
 // Empire.cs AnnualSubjugationTribute (1756).
 export function annualSubjugationTribute(galaxy: Galaxy, empire: Empire): number {
     let num = 0.0;
-    // TODO(port): ThisYearsForeignTradeBonuses / ThisYearsSpacePortIncome (EmpireCounters) — 0 at game start.
-    const num2 = annualTaxRevenue(galaxy, empire) + 0.0 + 0.0;
+    // Empire.cs 1761: AnnualTaxRevenue + ThisYearsForeignTradeBonuses + ThisYearsSpacePortIncome.
+    const num2 = annualTaxRevenue(galaxy, empire) + thisYearsForeignTradeBonuses(empire) + thisYearsSpacePortIncome(galaxy, empire);
     for (const diplomaticRelation of diplomaticRelationsOf(empire)) {
         if (diplomaticRelation.type === DiplomaticRelationType.SubjugatedDominion && diplomaticRelation.initiator !== empire) {
             const num3 = num2 * baconSettings.subjugationTributePercentage;
@@ -689,8 +667,8 @@ export function calculateSpareAnnualRevenue(galaxy: Galaxy, empire: Empire, newC
     num -= Math.max(annualTroopMaintenanceIncludeRecruiting(empire), minimumTroopSpending(galaxy, empire));
     num -= annualSubjugationTribute(galaxy, empire);
     num -= annualPirateProtection(empire);
-    // TODO(port): Empire._ThisYearsStateFuelCosts (fuel purchases) — 0 at game start.
-    num -= 0.0;
+    // Empire.9.cs 5351: ThisYearsStateFuelCosts (written by the refuelling code, logistics/refuel.ts).
+    num -= empire.thisYearsStateFuelCosts;
     num -= annualFacilityMaintenance(empire);
     return num - newCosts;
 }
@@ -850,9 +828,8 @@ export function projectPrivateForceStructure(galaxy: Galaxy, empire: Empire, ctx
     empire.privateForceStructureProjections = projections;
     const currentStarDate = ctx.currentStarDate;
     const habitatList = determineLargestColonyInEachSystem(galaxy, empire);
-    // TODO(port): Galaxy.Orders.GetOrders(this) (OrderList.cs 217) — the order
-    // system is not ported; no orders exist at game start.
-    const ordersCount = 0;
+    // Empire.9.cs 4772: OrderList orders = _Galaxy.Orders.GetOrders(this) (OrderList.cs 217).
+    const ordersCount = galaxy.orders.getOrdersForEmpire(empire).count;
     let num = 1 + csToInt32(ordersCount * 0.45 * 0.85);
     let num2 = 1 + csToInt32(ordersCount * 0.35 * 0.85);
     let num3 = 1 + csToInt32(ordersCount * 0.2 * 0.85);

@@ -21,14 +21,16 @@ import type { Galaxy } from './galaxy';
 import { HabitatCategoryType, type Habitat } from './types';
 import type { Empire } from './empire';
 import { BuiltObjectSubRole } from './builtObjectTypes';
-import { BuiltObjectRole } from './data/designSpecifications';
 import { ComponentCategoryType } from './data/policies';
 import { findNewest } from './design';
 import { GalaxyLocationEffectType, GalaxyLocationType } from './galaxyLocation';
 import { netSort } from './netSort';
 import { csToInt32, resourceCurrentPrice, type BuiltObjectView } from './forceStructure';
 import { findNearestPirateFaction } from './pirates';
-import { PirateRelationType, obtainPirateRelation } from './pirateRelations';
+import { obtainDiplomaticRelation } from './diplomacy';
+import { determineDefendingFirepower } from './pirates/pirateEmpireAI';
+import { obtainPirateRelation, PirateRelationType } from './pirateRelations';
+import { BuiltObjectRole } from './data/designSpecifications';
 import type { BuiltObject } from './builtObject';
 
 // Galaxy.MaxSolarSystemSize (Galaxy.3.cs InitializeStatics).
@@ -38,7 +40,7 @@ const MAX_SOLAR_SYSTEM_SIZE = 23000;
 export class HabitatPrioritization {
     habitat: Habitat | null;
     priority: number; // C#: int
-    /** C#: BuiltObject AssignedShip. TODO(port): BuiltObject type (src/sim/builtObject.ts). */
+    /** C#: BuiltObject AssignedShip (typed loosely; callers cast to BuiltObject). */
     assignedShip: unknown = null;
 
     constructor(habitat: Habitat, priority: number) {
@@ -154,8 +156,8 @@ export function checkNearPirateBase(galaxy: Galaxy, owner: Empire, stellarObject
                 }
             }
         }
-        // Empire.KnownPirateBases: filled only by visibility scans (BuiltObject.1.cs 1902/1928,
-        // Galaxy.4.cs 3798 — TODO(port)); empty at game start.
+        // Empire.KnownPirateBases: filled by PirateBaseDiscovery (BuiltObject.1.cs 1889, pirates/pirateAI.ts), shared
+        // visibility (Empire.1.cs 1072) and trades (Galaxy.4.cs 3798).
         if (owner.knownPirateBases != null && builtObject !== null && owner.knownPirateBases.includes(builtObject) && stellarObject !== null) {
             const num = galaxy.calculateDistance(stellarObject.xpos, stellarObject.ypos, builtObject.xpos, builtObject.ypos);
             if (num < scanRange) return true;
@@ -184,19 +186,14 @@ export function checkEmpireTerritoryCanBuildAtHabitat(galaxy: Galaxy, empire: Em
         const byEmpireId = galaxy.empires.find((e) => e.empireId === num) ?? null;
         if (byEmpireId !== null) {
             if (empire.pirateEmpireBaseHabitat !== null || byEmpireId.pirateEmpireBaseHabitat !== null) return true;
-            // TODO(port): byEmpireId.ObtainDiplomaticRelation(empire) (Empire.4.cs 140) —
-            // creates a NotMet DiplomaticRelation on first contact (side effect not
-            // modeled); its MiningRightsToOther is false for a new relation.
-            const miningRightsToOther = false;
-            if (miningRightsToOther) return true;
+            // Galaxy.cs 3659-3663: ObtainDiplomaticRelation (Empire.4.cs 140; creates a NotMet relation on first contact).
+            const diplomaticRelation = obtainDiplomaticRelation(byEmpireId, empire);
+            if (diplomaticRelation != null && diplomaticRelation.miningRightsToOther) return true;
         }
-        // BaconGalaxy.CheckEmpireTerritoryCanBuildAtHabitat: buildAnywhere (false) ||
-        // (empire == PlayerEmpire && DetermineDefendingFirepower(habitat, empire) > 300).
-        // TODO(port): Galaxy.DetermineDefendingFirepower (Galaxy.6.cs 4696: ships near the
-        // habitat + BasesAtHabitat firepower) — 0 before any built object exists.
+        // Galaxy.cs 3665 → BaconGalaxy.cs 157 CheckEmpireTerritoryCanBuildAtHabitat: buildAnywhere (false) ||
+        // (empire == PlayerEmpire && DetermineDefendingFirepower(habitat, empire) > 300) (Galaxy.6.cs 4696).
         const buildAnywhere = false;
-        const defendingFirepower = 0;
-        return buildAnywhere || (empire === galaxy.playerEmpire && defendingFirepower > 300);
+        return buildAnywhere || (empire === galaxy.playerEmpire && determineDefendingFirepower(galaxy, habitat, empire) > 300);
     }
     return true;
 }
@@ -275,22 +272,24 @@ export function determineHabitatsBuildingMiningStations(empire: Empire): Habitat
     return habitatPrioritizationList;
 }
 
-/**
- * Empire.9.cs 4035 CheckWhetherHabitatIsDangerous(habitat): a pirate military ship in the system's threat list (not a
- * Protection pirate) or a visible attacking space creature near the habitat. The threat list is the empire's per-system
- * cache written by the threat evaluations (combat/threats.ts). No Rnd.
- */
+// Empire.9.cs CheckWhetherHabitatIsDangerous (4035): pirate military ships among the system's cached threats
+// (SystemVisibility.Threats, written by the threat evaluations — combat/threats.ts), unless we pay them protection,
+// and visible attacking creatures in range. No Rnd (ObtainPirateRelation may add a relation).
 export function checkWhetherHabitatIsDangerous(galaxy: Galaxy, empire: Empire, habitat: Habitat): boolean {
     if (habitat != null) {
         const habitat2 = galaxy.determineHabitatSystemStar(habitat);
-        const sv = habitat2 != null ? empire.systemVisibility[habitat2.systemIndex] : undefined;
-        if (habitat2 != null && sv != null && sv.threats != null && sv.threats.length > 0) {
-            for (let i = 0; i < sv.threats.length; i++) {
-                const builtObject = sv.threats[i];
-                if (builtObject == null || builtObject.empire === null || builtObject.empire.pirateEmpireBaseHabitat === null || builtObject.role !== BuiltObjectRole.Military) continue;
+        const threats = habitat2 != null ? empire.visibility.systemVisibility[habitat2.systemIndex].threats : null;
+        if (habitat2 != null && threats != null && threats.length > 0) {
+            for (let i = 0; i < threats.length; i++) {
+                const builtObject = threats[i];
+                if (builtObject == null || builtObject.empire == null || builtObject.empire.pirateEmpireBaseHabitat === null || builtObject.role !== BuiltObjectRole.Military) {
+                    continue;
+                }
                 const pirateRelation = obtainPirateRelation(empire, builtObject.empire);
-                if (pirateRelation.type === PirateRelationType.Protection) continue;
-                // 4054: unreachable after the Military filter above; kept as in the C#.
+                if (pirateRelation.type === PirateRelationType.Protection) {
+                    continue;
+                }
+                // (Unreachable in C# too: Role is Military here.)
                 if ((builtObject.role as BuiltObjectRole) === BuiltObjectRole.Base) {
                     const num = galaxy.calculateDistanceSquared(habitat.xpos, habitat.ypos, builtObject.xpos, builtObject.ypos);
                     if (num < 1000000.0) return true;
@@ -323,18 +322,17 @@ export function identifyResourceCentres(galaxy: Galaxy, empire: Empire, filterOu
     const habitatPrioritizationList: HabitatPrioritization[] = [];
     const stellarObjectList: Positioned[] = [];
     if (empire.pirateEmpireBaseHabitat !== null) {
-        // TODO(port): BuiltObject positions (Empire.SpacePorts).
+        // Empire.4.cs 1964: stellarObjectList.AddRange(SpacePorts).
         stellarObjectList.push(...(empire.spacePorts as Positioned[]));
     } else {
         for (const builtObject of empire.builtObjects as (BuiltObjectView & Positioned)[]) {
             if (builtObject != null && !builtObject.hasBeenDestroyed && isSpacePort(builtObject.subRole)) stellarObjectList.push(builtObject);
         }
         for (const habitat of empire.colonies) {
-            // TODO(port): Habitat.HasBeenDestroyed (false: no planet destruction at game start).
-            // Habitat.HasSpacePort is the field set by CheckForSpacePortFacilities
+            // Empire.4.cs 1975. Habitat.HasSpacePort is the field set by CheckForSpacePortFacilities
             // (stationPlacement.ts checkColoniesForBaseFacilities).
             const hasSpacePort = habitat.hasSpacePort;
-            if (habitat != null && !hasSpacePort && habitat.population != null && habitat.population.totalAmount >= 500000000) stellarObjectList.push(habitat);
+            if (habitat != null && !habitat.hasBeenDestroyed && !hasSpacePort && habitat.population != null && habitat.population.totalAmount >= 500000000) stellarObjectList.push(habitat);
         }
     }
     const design = findNewest(empire.designs, BuiltObjectSubRole.MiningStation);
