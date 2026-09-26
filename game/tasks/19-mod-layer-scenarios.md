@@ -167,5 +167,21 @@ dims the outer band. Effort: ~1 agent-day; build with 19h; must not change any s
    ignoring it drops relations and makes herds aggressive.
 7. AI: cautious rim AIs take the protectorate path, aggressive ones conquest — different outcomes per neighbour.
 Reuses: race traits, protectorate relations, character joining, resource system, 19d-6 independents as actors, 19g-7 herd
-rules. Effort: medium (~1–2 agent-days). Flag off = byte-identical. Effort: medium (~1 agent-day);
+rules. Effort: medium (~1–2 agent-days). Flag off = byte-identical.
+
+## 19k — Big galaxies: 60 empires + independents as real actors (ACCEPTED by the user 2026-09-26)
+1. 60-empire games: the wizard cap is already 100 (startGameOptions.ts OTHER_EMPIRES_COUNT_MAX; the C# lists no bound), so
+   this is verification, not a cap change: (a) a 60-empire / 1400-star soak must hold the 36 game-days/min budget or the
+   wizard warns above the measured limit; (b) Galaxy.cs SelectColorFromKey has 20 key colours → with >20 empires colours
+   repeat as in the original; add a scenario option for an extended palette (data) so 60 empires stay distinguishable;
+   (c) 22 races → duplicate-race empires (original behaviour) keep distinct names/flags (83 flag shapes); (d) diplomacy
+   screen / empire lists must scroll and stay usable at 60 (UI check); (e) 19h-6 map scale is the natural pairing.
+2. Independents as actors (extends 19d-6): the independent empire gets, per independent colony and scaled by population
+   like Galaxy.7.cs GenerateIndependentTraders already does for freighters, (a) a small defence fleet (escorts/frigates
+   from its own designs, stance defend-home), (b) mining stations in its home system placed by an independent
+   construction ship (stationPlacement rules), (c) freighters (already ported), (d) a militia refresh when ships die —
+   but NO colony ships / colonisation and no expansion beyond the home system (hard cap param: systems per independent
+   colony = 1, fleet size cap, station cap) so they never become a 61st empire on their own. Herder independents (19j)
+   use tamed creatures instead of ships for (a)–(c). Flag off = byte-identical (the base independents stay pure C#).
+Effort: 1 ≈ half a day (soak + palette + UI check); 2 ≈ 1 agent-day. Effort: medium (~1 agent-day);
 build after 19d2 (unrest plumbing) alongside 19g-7 rim fauna; 19a/19c tests must still pass with 19h on.
