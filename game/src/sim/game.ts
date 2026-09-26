@@ -60,6 +60,7 @@ import { GalaxyShape, HabitatCategoryType, HabitatType, type Habitat } from './t
 import { Cargo, CargoList, ResourceRef } from './cargo';
 import { createGalaxyScenario } from './scenario/state';
 import { scenarioFindHomeHabitat } from './scenario/hooks';
+import './scenario/packages'; // mod layer: registers the scenario packages' hooks
 
 export type HomeSystem = 'Harsh' | 'Trying' | 'Normal' | 'Agreeable' | 'Excellent';
 

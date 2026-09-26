@@ -18,10 +18,11 @@ game/scenarios/                      repo-owned, text only (no art, nothing copy
   <id>/GameText.txt                  additions / overrides (same line format as the stock file)
 ```
 
-Served at `/assets/scenarios/<id>/<file>`: the Vite dev middleware serves `game/scenarios/`, the build copies it to
-`dist/assets/scenarios/` (the Electron shell serves dist/ as-is), and `/assets/scenarios/index.json` is generated
-(dev: on request; build: at closeBundle) from every `<id>/scenario.json` plus the list of files under `<id>/`
-(the browser cannot list folders). A user scenario folder (e.g. `<userData>/scenarios/`) is a later addition: the
+Served at `/assets/scenarios/<id>/<file>`: the Vite dev middleware (`vite.config.ts` scenarioAssets) serves
+`game/scenarios/`, the build copies it to `dist/assets/scenarios/` (the Electron shell serves dist/ as-is), and
+`/assets/scenarios/index.json` is generated (dev: on request; build: at closeBundle; `scripts/scenarioIndex.mjs`) from
+every `<id>/scenario.json` plus the list of files under `<id>/` (the browser cannot list folders). Race and policy
+overlays are **patches** (only the changed key lines), so no stock data file is ever copied into the repo. A user scenario folder (e.g. `<userData>/scenarios/`) is a later addition: the
 desktop shell maps a second root under the same URL prefix and merges its index.
 
 Manifest (`scenario.json`):
@@ -38,13 +39,14 @@ which — like `loadGameData` — goes into the global text table):
 - **Record files** (resources, components, facilities, fighters, plagues, research): the overlay file holds only
   changed/new records; a record whose name matches a base record replaces it in place, others are appended. Id
   collisions of appended records are reported in `overlay.warnings`.
-- **races/**: an overlay race whose Name matches a base race replaces it; an overlay file with the same *file name*
-  as a base race but a different Name is a **rename** — the renamed race inherits the old name's Policy,
-  pirate Policy, design templates, character file and raceBiases row/column unless the overlay supplies them; any
-  other race file is appended.
+- **races/**: an overlay file with the same path as a base race file is a key-line patch over the base text (the
+  base loader keeps the raw texts in `GameData.sourceTexts`); if the patch changes Name it is a **rename** — the renamed
+  race keeps its list position and inherits the old name's Policy, pirate Policy, design templates, character file and
+  raceBiases row/column unless the overlay supplies them. Any other race file is a complete new race, appended.
 - **raceBiases.txt**: rows merged by name; every row padded with 0 to the new race count (the C# only populates
   Race.Biases when rows == races).
-- **Policy / designTemplates / characters**: whole-file replace or add, keyed like the base maps.
+- **Policy/[pirate/]<Race>.txt**: key-line patch over the race's base policy text (or a new policy).
+- **designTemplates / characters**: whole-file replace or add, keyed like the base maps.
 - **GameText.txt**: tags added or overridden (no clear).
 - The returned GameData carries `scenario: { manifest, files }`; the base GameData object is never mutated.
 - Empty overlay ⇒ every GameData field deep-equal to the base and the same seed-1 game (test).
@@ -81,8 +83,11 @@ A "Scenario" page between Victory Conditions and Start: "None" (default) plus ev
 | Yearly scenario tick: handlers registered with `registerScenarioYearly({ id, order, flag?, run })`, run in (order, id) order when the game year advances | end of `galaxyDoTasks`' long block (after CheckVictoryConditions) | `galaxy.scenario === null` check |
 | `createEmpireMidGame(galaxy, spec)` (normal empire at a habitat, or a pirate faction at a base): race by name, name, age/tech, government, relation defaults (evaluation bias both ways, optional war / pirate relation), AI on, touch times, standard empire set-up | `src/sim/scenario/empireMidGame.ts`, generalising `generateShakturi` / `generatePirateEmpire` | none (only called by scenarios) |
 | Home-system placement: `homePlacement` rule for a race ⇒ capital searched in a radius ring | `createGame`, before `findAiCapital` / the player capital search | `galaxy.scenario !== null` check |
-| Resource placement: `resourcePlacement` rule ⇒ the resource only rolls on habitats whose distance-from-centre fraction is inside the ring | `Galaxy.selectResources` resource loop | one null check per call |
+| Resource placement: `resourcePlacement` rule ⇒ the resource only rolls on habitats whose distance-from-centre fraction is inside the ring (the selectResources prevalence rolls; super-luxury / race-critical placements are not filtered) | `Galaxy.selectResources` resource loop | one null check per resource |
 | Messages / news: `scenarioMessage(galaxy, empire, title, text, …)`, `scenarioNews(galaxy, source, text, filter?)` | `src/sim/scenario/messages.ts` | none |
+
+Packages register their hooks at module load; each package module is imported from `src/sim/scenario/packages.ts`
+(which game.ts imports), so app and tests see the same registrations.
 
 **Rnd policy.** Scenario code draws from `galaxy.rnd` only inside its own hooks: its yearly tick handler, the
 generation hooks when its manifest defines a rule, and functions it calls from there (e.g. createEmpireMidGame). It
@@ -100,5 +105,6 @@ by `sizeX / 2` (the scale `randomPointInRing` uses).
 
 ## API for scenario packages (`src/sim/scenario/index.ts`)
 `scenarioActive`, `scenarioFlag`, `scenarioParam`, `scenarioState`, `registerScenarioYearly`,
-`createEmpireMidGame`, `scenarioMessage`, `scenarioNews`, `radiusFraction`, plus the data-side
-`applyScenarioOverlay` / `parseScenarioManifest`.
+`createEmpireMidGame`, `scenarioMessage`, `scenarioNews`, `scenarioText`, `radiusFraction`, plus the data-side
+`applyScenarioOverlay` / `parseScenarioManifest` and (UI) `scenario/fetchScenario.ts` loadScenarioIndex /
+loadScenarioOverlay. Tests: `test/modlayer.test.ts`.
