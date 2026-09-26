@@ -22,7 +22,7 @@ import type { Galaxy } from './galaxy';
 import type { Empire } from './empire';
 import { AutomationLevel, empireGovernmentAttributes } from './empire';
 import type { BuiltObject } from './builtObject';
-import { Habitat } from './types';
+import { Habitat, planetsOf } from './types';
 import type { SystemInfo } from './types';
 import { registerTodo, todo } from './tick/todo';
 import { Cargo } from './cargo';
@@ -1327,8 +1327,9 @@ export function identifyOurDisputedColonies(galaxy: Galaxy, self: Empire, empire
     for (let i = 0; i < habitatList2.length; i++) {
         const bySystemIndex = galaxy.systems[habitatList2[i].systemIndex];
         if (bySystemIndex.habitats == null) continue;
-        for (let j = 0; j < bySystemIndex.habitats.length; j++) {
-            const habitat2 = bySystemIndex.habitats[j];
+        const sysHabitats = planetsOf(bySystemIndex); // Empire.9.cs 3531 bySystemIndex.Habitats: no star
+        for (let j = 0; j < sysHabitats.length; j++) {
+            const habitat2 = sysHabitats[j];
             if (habitat2.empire !== null && habitat2.empire !== galaxy.independentEmpire && habitat2.empire !== empire && (checkSystemExplored(self, habitat2.systemIndex) || isObjectVisibleToThisEmpire(galaxy, self, habitat2))) habitatList.push(habitat2);
         }
     }
@@ -3144,7 +3145,10 @@ export function processMessages(galaxy: Galaxy, empire: Empire): void {
                 let num6 = 0;
                 const habitat = subject;
                 const habitatList: Habitat[] = [];
-                const habitats = galaxy.systems[galaxy.determineHabitatSystemStar(habitat).systemIndex].habitats; // Galaxy.Systems[habitat]
+                // Empire.3.cs 4562 `_Galaxy.Systems[habitat].Habitats` (no star). TODO(port): the C# indexer matches SystemStar
+                // only (SystemInfoList.cs 16), so for a colony subject it returns null and .Habitats throws; kept as the
+                // subject's own system.
+                const habitats = planetsOf(galaxy.systems[galaxy.determineHabitatSystemStar(habitat).systemIndex]);
                 for (const item7 of habitats) {
                     for (let num7 = self.colonies.indexOf(item7); num7 >= 0; num7 = num7 >= self.colonies.length - 1 ? -1 : self.colonies.indexOf(item7, num7 + 1)) {
                         habitatList.push(self.colonies[num7]);

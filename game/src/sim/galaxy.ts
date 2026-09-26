@@ -25,6 +25,7 @@ import {
     HabitatCategoryType,
     HabitatType,
     IndustryType,
+    planetsOf,
     type SystemInfo,
 } from './types';
 import { cloneGalaxyRaces, type Race } from './data/races';
@@ -1475,13 +1476,11 @@ export class Galaxy {
             .map((e) => e.s);
     }
 
-    // C# Systems[i].Habitats (excludes the star; TS SystemInfo.habitats has it at [0]).
-    // TODO(port): audit the remaining direct `systems[i].habitats` reads against their C# `Systems[].Habitats` (fix7 fixed
-    // the exploration searches and the Rnd.Next(0, Habitats.Count) sites; e.g. movement.ts's gas-cloud fuel scan,
-    // tradeItems.ts, events.ts, player/orderMenu.ts still iterate the star too) — Galaxy.6.cs 4611 DetermineHabitatsInSystem.
+    // C# Systems[i].Habitats (excludes the star; TS SystemInfo.habitats has it at [0]) — planetsOf (types.ts).
+    // Every direct `systems[i].habitats` reader is audited in tasks/STAR-LIST-AUDIT-2026-09-26.md.
     systemHabitatsOf(systemIndex: number): Habitat[] {
         const system = this.systems[systemIndex];
-        return system === undefined ? [] : system.habitats.filter((h) => h !== system.systemStar);
+        return system === undefined ? [] : planetsOf(system);
     }
 
     // Rebuilds the cached step order: habitats that have a parent, sorted by

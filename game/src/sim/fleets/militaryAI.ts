@@ -36,7 +36,7 @@ import { calculatePopulationStrength } from '../combat/invasion';
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import type { BuiltObject } from '../builtObject';
-import type { Habitat } from '../types';
+import { planetsOf, type Habitat } from '../types';
 import type { ShipGroup } from './shipGroup';
 import type { FuelTypeRef } from '../movement';
 import type { EmpireEvaluation } from '../diplomacy';
@@ -4009,7 +4009,7 @@ export function sendScoutsToSingleEnemyEmpire(galaxy: Galaxy, empire: Empire, en
         const builtObject = findAvailableExplorationShip(empire);
         if (builtObject === null) continue;
         let habitat: Habitat | null = null;
-        const habitats = systemInfoDistanceList[j].systemInfo.habitats;
+        const habitats = planetsOf(systemInfoDistanceList[j].systemInfo); // Empire.9.cs 4528 SystemInfo.Habitats: no star
         if (habitats == null || habitats.length <= 0) continue;
         let num2 = 0;
         let num3 = habitats.length - 1;
