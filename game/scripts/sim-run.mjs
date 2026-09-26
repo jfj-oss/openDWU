@@ -4,7 +4,10 @@
 // per tick entry point / subsystem (V8 sampling profiler over the run only — no code in src/sim is touched).
 //
 //   node --expose-gc scripts/sim-run.mjs --seed 1 --stars 700 --empires 10 --seconds 600
-//        [--age 1] [--tech 0.5] [--pirates 1] [--sectors N] [--chunk 60] [--profile] [--top 15] [--json out.json]
+//        [--age 1] [--tech 0.5] [--pirates 1] [--sectors N] [--chunk 60] [--profile] [--top 15] [--json out.json] [--combat]
+// --combat: a battle report (tasks/COMBAT-VERIFICATION-2026-09-26.md) — every ship / base destroyed (by empire and sub
+// role) and every closed SpaceBattleStats record (a ship's BattleStats replaced at AssignMission, BuiltObject.2.cs 7643,
+// or nulled at mission completion, 4517-4532) with any weapon activity, plus the records still open at the end.
 // (--sectors defaults to round(sqrt(stars / 4.7)) clamped to 4..15; the New Game wizard default is 700 stars in 8x8)
 //
 // Defaults match test/helpers/tickGame.ts (age 1, tech 0.5, pirates 1) so `--stars 300 --empires 4 --seconds 600`
@@ -48,6 +51,7 @@ const profile = arg('profile', false) === true;
 const top = Number(arg('top', 15));
 const jsonOut = arg('json', null);
 const loader = String(arg('loader', 'bundle'));
+const combat = arg('combat', false) === true;
 // --probe-days 1,30,60: extra chunk boundaries at these game days; at each one print every empire's capital
 // construction speed and its explorers' missions. Colony ships are tracked every chunk (day completed / day removed).
 const probeDays = String(arg('probe-days', '1,30,60')).split(',').map(Number).filter((d) => Number.isFinite(d) && d > 0);
@@ -189,6 +193,34 @@ try {
         }
         for (const [b, r] of colonyShips) if (r.removed === null && !alive.has(b)) r.removed = day();
     };
+    // --combat: per-frame watch of every BuiltObject's BattleStats and HasBeenDestroyed (read-only).
+    const SUB = ['Undefined', 'Escort', 'Frigate', 'Destroyer', 'Cruiser', 'CapitalShip', 'TroopTransport', 'Carrier', 'ResupplyShip', 'ExplorationShip',
+        'SmallFreighter', 'MediumFreighter', 'LargeFreighter', 'ColonyShip', 'PassengerShip', 'ConstructionShip', 'GasMiningShip', 'MiningShip',
+        'GasMiningStation', 'MiningStation', 'SmallSpacePort', 'MediumSpacePort', 'LargeSpacePort', 'ResortBase', 'GenericBase', 'EnergyResearchStation',
+        'WeaponsResearchStation', 'HighTechResearchStation', 'MonitoringStation', 'DefensiveBase'];
+    const battle = { seenStats: new Map(), battles: [], destroyed: [], destroyedSeen: new Set() };
+    const active = (st) => st !== null && typeof st === 'object' && (st.weaponsHits > 0 || st.weaponsMisses > 0 || st.damageToUs > 0 || st.shieldsDamageAbsorbed > 0);
+    const summary = (bo, st, open) => ({ day: day(), open, ship: bo.name, empire: bo.empire?.name ?? '-', subRole: SUB[bo.subRole] ?? bo.subRole,
+        location: st.location?.name ?? null, hits: st.weaponsHits, misses: st.weaponsMisses, damageToEnemy: +st.weaponsDamageToEnemy.toFixed(1),
+        shieldsAbsorbed: +st.shieldsDamageAbsorbed.toFixed(1), hullDamageToUs: st.damageToUs,
+        enemyShipsDestroyed: st.destroyedEnemyShipsEscort + st.destroyedEnemyShipsFrigate + st.destroyedEnemyShipsDestroyer + st.destroyedEnemyShipsCruiser +
+            st.destroyedEnemyShipsCapitalShip + st.destroyedEnemyShipsCarrier + st.destroyedEnemyShipsTroopTransport + st.destroyedEnemyShipsResupplyShip +
+            st.destroyedEnemyShipsOtherShips, enemyBasesDestroyed: st.destroyedEnemyShipsSpaceport + st.destroyedEnemyShipsDefensiveBase + st.destroyedEnemyShipsOtherBase,
+        enemyFightersDestroyed: st.destroyedEnemyFighters, lost: bo.hasBeenDestroyed });
+    const watchCombat = () => {
+        for (const bo of g.builtObjects) {
+            if (bo === null) continue;
+            const prev = battle.seenStats.get(bo);
+            if (prev !== undefined && prev !== bo.battleStats && active(prev)) battle.battles.push(summary(bo, prev, false));
+            if (bo.battleStats !== prev) battle.seenStats.set(bo, bo.battleStats);
+            if (bo.hasBeenDestroyed && !battle.destroyedSeen.has(bo)) {
+                battle.destroyedSeen.add(bo);
+                battle.destroyed.push({ day: day(), ship: bo.name, empire: bo.empire?.name ?? '-', subRole: SUB[bo.subRole] ?? bo.subRole });
+                const st = bo.battleStats;
+                if (active(st)) { battle.battles.push(summary(bo, st, false)); battle.seenStats.set(bo, null); }
+            }
+        }
+    };
     const timings = {}, todo = {}, chunks = [];
     let frames = 0, draws = 0, cpuTotal = 0;
     // Expansion summary: game-day each empire first holds more than one colony.
@@ -198,7 +230,7 @@ try {
     for (const secs of plan) {
         const cpu0 = process.cpuUsage(), c0 = performance.now(), f0 = schedulerState(g).frames, d0 = g.rnd.drawCount;
         try {
-            const r = runGameSeconds(g, secs, profile ? { profileClock: () => performance.now() } : {});
+            const r = runGameSeconds(g, secs, { ...(profile ? { profileClock: () => performance.now() } : {}), ...(combat ? { onFrame: watchCombat } : {}) });
             for (const [k, v] of Object.entries(r.timings)) timings[k] = (timings[k] ?? 0) + v;
             for (const [k, v] of Object.entries(r.todoHits)) todo[k] = (todo[k] ?? 0) + v;
         } catch (e) {
@@ -271,6 +303,16 @@ try {
     console.log(`colony ships: ${out.colonyShips.length}`);
     for (const r of out.colonyShips) console.log(`  ${r.empire.padEnd(28)} ${r.name.padEnd(20)} at ${r.at}: built day ${r.built === null ? '-' : r.built.toFixed(0)}, removed day ${r.removed === null ? '-' : r.removed.toFixed(0)}, last ${r.last}`);
     for (const m of colonyMessages) console.log(`  day ${m.day.toFixed(0)} ${m.empire}: ${m.type} ${m.description}`);
+    if (combat) {
+        for (const bo of g.builtObjects) if (bo !== null && active(bo.battleStats)) battle.battles.push(summary(bo, bo.battleStats, true));
+        out.combat = { battles: battle.battles, destroyed: battle.destroyed };
+        const closed = battle.battles.filter((b) => !b.open);
+        console.log(`combat: ${battle.battles.length} SpaceBattleStats records with weapon activity (${closed.length} closed, ${battle.battles.length - closed.length} still open); ${battle.destroyed.length} ships/bases destroyed`);
+        const by = new Map();
+        for (const d of battle.destroyed) by.set(`${d.empire} ${d.subRole}`, (by.get(`${d.empire} ${d.subRole}`) ?? 0) + 1);
+        for (const [k, v] of [...by].sort((a, b) => b[1] - a[1])) console.log(`  destroyed ${String(v).padStart(4)}  ${k}`);
+        for (const b of battle.battles) console.log(`  battle day ${b.day.toFixed(1)}${b.open ? ' (open)' : ''} ${b.empire} ${b.subRole} ${b.ship}${b.location ? ' near ' + b.location : ''}: hits ${b.hits}, misses ${b.misses}, dmg ${b.damageToEnemy}, shields absorbed ${b.shieldsAbsorbed}, hull dmg taken ${b.hullDamageToUs}, kills ${b.enemyShipsDestroyed}+${b.enemyBasesDestroyed} bases+${b.enemyFightersDestroyed} fighters${b.lost ? ', LOST' : ''}`);
+    }
     const hits = Object.entries(todo).sort((a, b) => b[1] - a[1]);
     console.log(`TODO(port) stubs reached: ${hits.length}`);
     for (const [k, v] of hits.slice(0, 25)) console.log(`  ${String(v).padStart(10)}  ${k}`);

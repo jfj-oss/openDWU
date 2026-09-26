@@ -808,6 +808,7 @@ describe('(5) troop transports invade an independent colony', () => {
         const design = p.designs.find((d) => d.name === 'Sabre')!;
         // Empire.cs 4341 GenerateBuiltObjectFromDesign: every component Normal (4346) — a working transport.
         const transport = generateBuiltObjectFromDesign(g, p, design, 'Trooper 1', true, colony.xpos + 800, colony.ypos);
+        expect(transport.components.items.every((c) => c.status === ComponentStatus.Normal)).toBe(true); // was Unbuilt (fixed)
         expect(transport.subRole).toBe(BuiltObjectSubRole.TroopTransport);
         expect(transport.troopCapacity).toBe(300);
         expect(transport.topSpeed).toBeGreaterThan(0);
