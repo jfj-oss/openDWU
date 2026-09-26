@@ -78,6 +78,10 @@ export interface GalaxySaveJSON {
     /** Galaxy state the TS keeps outside the object graph (module WeakMaps / static-table copies; see
      *  SideTables), encoded with the same reference ids as `galaxy`. Absent in older saves. */
     sideTables?: Encoded;
+    /** Galaxy.BaseTechCost: the static research costs / component tech points are rebuilt with it on load (Main.Part12.cs
+     *  2869-2872 SetResearchCosts / SetHyperDriveSpeeds / SetResearchComponentMaxTechPoints(_Game.Galaxy.BaseTechCost)).
+     *  Absent in older saves (then 120000, the only value those could hold). */
+    baseTechCost?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -292,7 +296,7 @@ function staticTablesOfGalaxy(galaxy: Galaxy): StaticTables {
     };
 }
 
-function staticTablesOfGameData(gameData: GameData): StaticTables {
+function staticTablesOfGameData(gameData: GameData, baseTechCost: number): StaticTables {
     // The galaxy's own Race copies (Galaxy.4.cs 2132; cloneGalaxyRaces as in generateGalaxy). Referenced by index like
     // the other tables; their in-play state comes back from the raceFields side table.
     const races = cloneGalaxyRaces(gameData.races);
@@ -301,7 +305,7 @@ function staticTablesOfGameData(gameData: GameData): StaticTables {
         raceFamilies: gameData.raceFamilies,
         resources: gameData.resources,
         // generateGalaxy's wiring (galaxy.ts): facilities, fighters (Galaxy.FighterSpecificationsStatic, M4p) and plagues too.
-        researchStatic: buildResearchStatic(gameData.research, gameData.components, races, gameData.policies, gameData.piratePolicies, buildComponentStatic(gameData), gameData.facilities, gameData.fighters, gameData.plagues),
+        researchStatic: buildResearchStatic(gameData.research, gameData.components, races, gameData.policies, gameData.piratePolicies, buildComponentStatic(gameData, { baseTechCost }), gameData.facilities, gameData.fighters, gameData.plagues),
         resourceSystem: buildResourceSystem(gameData.resources, gameData.components),
         designSpecificationTexts: gameData.designSpecificationTexts ?? new Map(),
         designNames: gameData.designNames ?? [],
@@ -380,7 +384,7 @@ export function galaxyToJSON(galaxy: Galaxy): GalaxySaveJSON {
     const encoder = new GraphEncoder(CODEC_OPTIONS, externalsByObject(staticTablesOfGalaxy(galaxy)));
     const encoded = encoder.encode(galaxy, 'galaxy');
     const sideTables = encoder.encode(collectSideTables(galaxy, [...encoder.visited()]), 'sideTables');
-    return { version: 2, galaxy: encoded, territory: encodeTerritory(territoryGrid(galaxy.empireTerritory)), sideTables };
+    return { version: 2, galaxy: encoded, territory: encodeTerritory(territoryGrid(galaxy.empireTerritory)), sideTables, baseTechCost: galaxy.baseTechCost };
 }
 
 /**
@@ -572,7 +576,7 @@ function decodeTerritory(rows: number[][] | null): TerritoryGrid {
  *  gameData, mirroring generateGalaxy's wiring. */
 export function galaxyFromJSON(obj: GalaxySaveJSON, gameData: GameData): Galaxy {
     if (obj.version !== 2) throw new Error(`Unsupported galaxy save version ${String((obj as { version: unknown }).version)}.`);
-    const tables = staticTablesOfGameData(gameData);
+    const tables = staticTablesOfGameData(gameData, obj.baseTechCost ?? 120000);
     const externals = externalsByRef(tables);
     const decoder = new GraphDecoder(CODEC_OPTIONS, (ref) => externals.get(`${ref.kind}:${ref.key}`));
     const galaxy = decoder.decode(obj.galaxy, 'galaxy') as Galaxy;

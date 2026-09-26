@@ -45,6 +45,12 @@ export interface StartGameOptions {
     /** "Pirate Strength" slider (tbarStartNewGameTheGalaxyPirateStrength, 0..3), see
      * pirateShipMaintenanceFactorFor. Unset = 2 (Main.Part9.cs 2666). */
     pirateStrengthIndex?: number;
+    // [todosweep2] begin
+    /** StartGameOptions.GalaxyResearchSpeed (StartGameOptions.cs 21): the research-cost box numStartNewGameTheGalaxyResearchBaseTech
+     * (1..999, thousands; Start.1.cs 3296 / 3413). The "Research Costs" slider only sets it (Start.1.cs 4408
+     * tbarStartNewGameTheGalaxyResearchSpeed_ValueChanged). Unset = 120 (Main.Part9.cs 2668). */
+    galaxyResearchSpeed?: number;
+    // [todosweep2] end
     /** Task 06f: index into the aggression slider (0..4), see aggressionFor. */
     aggressionIndex: number;
     /** Task 06f: index into the difficulty slider (0..4), see difficultyFor. */
@@ -320,6 +326,46 @@ export function starCountFor(index: number): number {
             return 400;
     }
 }
+
+// [todosweep2] begin
+/** Research-cost box bounds (Start.cs 3140-3141 / Start.1.cs 4412-4413: Minimum 1, Maximum 999). */
+export const GALAXY_RESEARCH_SPEED_MIN = 1;
+export const GALAXY_RESEARCH_SPEED_MAX = 999;
+
+/** Start.1.cs 4394 meEawywtba: "Research Costs" slider index (0 Very Expensive .. 4 Very Cheap, Start.cs 3200) → base tech
+ * cost; the slider's ValueChanged (4408) writes `num / 1000` into the research-cost box. */
+export function researchBaseTechCostForSliderIndex(index: number): number {
+    switch (index) {
+        case 0: return 480000;
+        case 1: return 240000;
+        case 2: return 120000;
+        case 3: return 60000;
+        case 4: return 30000;
+        default: return 120000;
+    }
+}
+
+/** Start.1.cs 4372 method_209: base tech cost → "Research Costs" slider index (Start.1.cs 3412). */
+export function researchSpeedSliderIndexFor(baseTechCost: number): number {
+    if (baseTechCost <= 30000) return 4;
+    if (baseTechCost <= 60000) return 3;
+    if (baseTechCost <= 120000) return 2;
+    if (baseTechCost <= 240000) return 1;
+    return 0;
+}
+
+/** Start.1.cs 3693 `num8 = (double)(numStartNewGameTheGalaxyResearchBaseTech.Value * 1000m)` → CreateGameFromSettings double_4. */
+export function baseTechCostFor(galaxyResearchSpeed: number | undefined): number {
+    const v = Math.min(GALAXY_RESEARCH_SPEED_MAX, Math.max(GALAXY_RESEARCH_SPEED_MIN, Math.trunc(galaxyResearchSpeed ?? 120)));
+    return v * 1000;
+}
+
+/** Start.1.cs 3747 `empireStart.ColonizationRange = (float)sld…ColonizationRange.Value / 1000f * (float)Galaxy.SectorSize`
+ * (float arithmetic; the slider value is thousandths of a sector, SectorSize = 2000000, Galaxy.3.cs 4970). */
+export function colonizationRangeFor(sliderValue: number): number {
+    return Math.fround(Math.fround(Math.fround(sliderValue) / 1000) * 2000000);
+}
+// [todosweep2] end
 
 /**
  * Port of BaconStart.cs 84 method_61 (Start.cs 4410; Start.1.cs 3688 `num2 = method_61(star-density slider,
@@ -635,6 +681,7 @@ export function defaultStartGameOptions(): StartGameOptions {
         piratesIndex: 3,
         pirateProximityIndex: 1,
         pirateStrengthIndex: 2,
+        galaxyResearchSpeed: 120, // [todosweep2] Main.Part9.cs 2668
         aggressionIndex: 2,
         difficultyIndex: 2,
         difficultyScaling: false,
@@ -778,13 +825,17 @@ export function toCreateGameOptions(
         piratePrevalence: piratesFor(o.piratesIndex),
         pirateProximity: pirateProximityFor(o.pirateProximityIndex ?? 1),
         pirateShipMaintenanceFactor: pirateShipMaintenanceFactorFor(o.pirateStrengthIndex ?? 2),
+        // [todosweep2] Start.1.cs 3693 num8 (research-cost box × 1000) → CreateGameFromSettings double_4 → Galaxy ctor
+        // baseTechCost; Start.1.cs 3746-3747 → EmpireStart.ColonizationRangeEnforceLimit / ColonizationRange → Start.2.cs 508-509.
+        baseTechCost: baseTechCostFor(o.galaxyResearchSpeed),
+        colonizationRangeEnforceLimit: o.colonization.enforceRangeLimits,
+        colonizationRange: colonizationRangeFor(clampColonization(o.colonization).colonizationRangeKly),
         // TODO(createGame): fields createGame does not accept yet stay on
         // StartGameOptions and are ignored here:
         //   - alien life (alienLifeIndex → alienLifeFor): independent-life count
         //   - space creatures (spaceCreaturesIndex → spaceCreaturesFor)
         //   - aggression (aggressionIndex → aggressionFor)
         //   - difficulty (difficultyIndex → difficultyFor); difficultyScaling is passed (M4z4)
-        //   - colonization range (colonizationRangeKly) enforcement radius
     };
 }
 

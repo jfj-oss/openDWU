@@ -74,7 +74,6 @@ import { haveRevolution } from './treasury';
 import { getDevelopmentLevel, setDevelopmentLevel } from './combat/invasion';
 import { inflictDamageFull } from './combat/damage';
 import { ComponentStatus, csInt } from './builtObjectComponent';
-import { DEFAULT_BASE_TECH_COST } from './componentStatic';
 import { doResearchBreakthrough } from './researchTick';
 import { RaceEventType } from './eventTypes';
 import { REAL_SECONDS_IN_GALACTIC_YEAR, galaxyNow } from './tick/simTime';
@@ -1728,9 +1727,8 @@ export function completeIntelligenceMission(galaxy: Galaxy, self: Empire, missio
             const tree = self.research.techTree;
             const equivalent = tree.length > researchNode.def.projectId ? tree[researchNode.def.projectId] : null;
             if (equivalent !== null) {
-                // TODO(port): Galaxy.BaseTechCost (game option) is not kept on the TS Galaxy — DEFAULT_BASE_TECH_COST stands in
-                // (as in constructionQueue.ts).
-                let num = Math.fround(DEFAULT_BASE_TECH_COST * 0.5 * (mission.agent!.espionageFactored / 25.0));
+                // Empire.6.cs 320 (float)((double)_Galaxy.BaseTechCost * 0.5 * (EspionageFactored / 25.0)).
+                let num = Math.fround(galaxy.baseTechCost * 0.5 * (mission.agent!.espionageFactored / 25.0));
                 if (mission.agent !== null) num = Math.fround(num * Math.fround(mission.agent.espionageFactored / 25.0));
                 let num2 = Math.fround(1);
                 if (self.research.allowedRacesCount(equivalent) > 0 && (self.dominantRace === null || !self.research.allowedRacesContains(equivalent, self.dominantRace))) num2 = Math.fround(2);

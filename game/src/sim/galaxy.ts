@@ -119,6 +119,9 @@ export interface GenerateGalaxyOptions {
     // omitted/empty no race regions are created and SetupAlienRacePopulations
     // consumes zero Rnd calls (pre-01f1 behavior).
     empireStarts?: EmpireStart[];
+    // [todosweep2] Galaxy.4.cs 2088 ctor `double baseTechCost` (Start.2.cs 480/485 double_4): research costs
+    // (SetResearchCosts), component tech points (SetResearchComponentMaxTechPoints) and Galaxy.BaseTechCost. Default 120000.
+    baseTechCost?: number;
     /**
      * This galaxy's own race list (cloneGalaxyRaces of gameData.races, made by createGame before it resolves the empire
      * starts). Omitted: generateGalaxy clones gameData.races itself and maps each empireStarts resolvedRace (a GameData
@@ -4476,6 +4479,19 @@ export class Galaxy {
     maximumEmpireAmount = 0;
     /** Galaxy.SpawnNewEmpires (Start.2.cs 116, wizard option) — gates Habitat CheckHabitatIsEmpire. */
     spawnNewEmpires = true;
+    // [todosweep2] begin
+    /**
+     * Galaxy.cs 619/908 _BaseTechCost: the Galaxy ctor sets `(int)baseTechCost` (Galaxy.4.cs 2148; Start.2.cs 111 on a
+     * reset galaxy) from the wizard's research-cost box (Start.1.cs 3693 numStartNewGameTheGalaxyResearchBaseTech × 1000).
+     * generateGalaxy writes it; the TS default is the value componentStatic.ts / InitializeResearchNodeDefinitions use
+     * (Galaxy.3.cs 4662 SetResearchCosts(120000, …)), not the unreachable field initializer 60000.
+     */
+    baseTechCost = 120000;
+    /** Galaxy.cs 729 ColonizationRangeEnforceLimit (Start.2.cs 508 = EmpireStart.ColonizationRangeEnforceLimit). */
+    colonizationRangeEnforceLimit = true;
+    /** Galaxy.cs 732 ColonizationRange (float; Start.2.cs 509 = EmpireStart.ColonizationRange). */
+    colonizationRange = 3000000;
+    // [todosweep2] end
     /** Frame-driver state (cursors int_48..int_58, frame carry; tick/scheduler.ts). Created lazily. */
     scheduler: SchedulerState | null = null;
     // ---- M4b fields (missions & command dispatcher) ----
@@ -4657,7 +4673,11 @@ export function generateGalaxy(options: GenerateGalaxyOptions): Galaxy {
     // ResourceSystem.Resources (Galaxy.4.cs ctor loads it before generation).
     galaxy.resources = gameData?.resources ?? [];
     galaxy.resourceSystem = buildResourceSystem(galaxy.resources, gameData?.components ?? []);
-    galaxy.researchStatic = gameData ? buildResearchStatic(gameData.research, gameData.components, races, gameData.policies, gameData.piratePolicies, buildComponentStatic(gameData), gameData.facilities, gameData.fighters, gameData.plagues) : null;
+    // Galaxy.4.cs 2148 _BaseTechCost = (int)baseTechCost; Start.2.cs 485-489 SetResearchCosts / SetHyperDriveSpeeds /
+    // SetResearchComponentMaxTechPoints((int)double_4) before the ctor (componentStatic.ts; designGeneration.ts reads
+    // galaxy.baseTechCost for the tech points).
+    galaxy.baseTechCost = Math.trunc(options.baseTechCost ?? galaxy.baseTechCost);
+    galaxy.researchStatic = gameData ? buildResearchStatic(gameData.research, gameData.components, races, gameData.policies, gameData.piratePolicies, buildComponentStatic(gameData, { baseTechCost: galaxy.baseTechCost }), gameData.facilities, gameData.fighters, gameData.plagues) : null;
     galaxy.designSpecificationTexts = gameData?.designSpecificationTexts ?? new Map();
     galaxy.designNames = gameData?.designNames ?? [];
     // Port of Galaxy.cs Races (Galaxy.4.cs 2132, loaded per galaxy in the ctor).
