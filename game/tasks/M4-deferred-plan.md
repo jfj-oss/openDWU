@@ -52,3 +52,8 @@ Then, before M5+ (UI completeness etc.):
 - 19d3 follow-up: a 5-year seed-1 soak showed no AI offensive espionage missions at all, so the crisis/stolen-tech
   acceptance counts (DWU_ESPIONAGE_SOAK_STRICT=1, 30 years) are unconfirmed. Check the base AI's mission assignment
   (Empire.*.cs intelligence AI: does it run offensive missions before a threshold of agents/relations?) before tuning 19d3.
+- Component cargo (2026-09-26): the 30-year crash (ManufacturingQueue.clear on an in-progress component, reached via
+  threatEvaluation → clearPreviousMissionRequirements once ProcureConstructionComponents was ported) is fixed on
+  wip/compcargo (ManufacturingQueue.cs Clear 386, CargoList.cs Clone 767, BaconBuiltObjectMission.cs 290-311). Remaining
+  component-cargo TODO(port) notes in logistics/freight.ts, contracts.ts, orders.ts are still open (freighters carrying
+  components) — cheap follow-up. Re-run the 19d2 30-year soak (DWU_CRISES_SOAK=1) after this merges.
