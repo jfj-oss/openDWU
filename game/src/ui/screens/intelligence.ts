@@ -55,7 +55,7 @@ import { resolveStarDateDescription } from '../../sim/galaxyTime';
 import { REAL_SECONDS_IN_GALACTIC_YEAR } from '../../sim/tick/simTime';
 import { AutomationLevel } from '../../sim/empire';
 import { CHARACTER_ROLE, CHARACTER_SKILL, CHARACTER_TRAIT, INTELLIGENCE_MISSION, resolveEnumTextDescription } from '../../sim/enumText';
-import { formatNet, getText, isTextLoaded } from '../../sim/textResolver';
+import { formatNet, getText, isTextLoaded, resolveGameText } from '../../sim/textResolver';
 import { confirmAutomationOff } from '../orderMenu';
 
 const MT = IntelligenceMissionType;
@@ -233,10 +233,10 @@ export function resolveDescriptionCharacterTask(c: Character | null, galaxy: Gal
     return result;
 }
 
-/** The sim's gameText() "tag|arg…" encoding → the English text (resolveIntelligenceMissionDescription returns it). */
+/** A sim text (resolveIntelligenceMissionDescription formats it now, like Galaxy.2.cs 5563; a gameText() "tag|arg…"
+ *  encoding is still decoded) → the English text. */
 function resolveText(encoded: string): string {
-    const parts = encoded.split('|');
-    return T(parts[0], ...parts.slice(1));
+    return resolveGameText(encoded);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
