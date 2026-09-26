@@ -58,6 +58,7 @@ import { issuePlayerCommand } from '../../sim/player/playerCommands';
 import { CHARACTER_ROLE, CHARACTER_SKILL, CHARACTER_TRAIT, INTELLIGENCE_MISSION, resolveEnumTextDescription } from '../../sim/enumText';
 import { formatNet, getText, isTextLoaded, resolveGameText } from '../../sim/textResolver';
 import { confirmAutomationOff } from '../orderMenu';
+import { politicsDetail, politicsRowCells, politicsVisible } from '../emergentPolitics'; // [emergent]
 
 const MT = IntelligenceMissionType;
 
@@ -687,6 +688,13 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
     const listWrap = el('div', 'intel-list');
     const header = el('div', 'intel-row intel-header');
     for (const h of [T('Name'), T('Role'), T('Location'), T('Mission')]) header.appendChild(el('span', 'intel-cell', h));
+    // [emergent] begin — 19d1 internal politics: Loyalty / Ambition columns (flag on only)
+    const showPolitics = politicsVisible(galaxy);
+    if (showPolitics) {
+        listWrap.classList.add('intel-politics');
+        for (const h of ['Loyalty', 'Ambition']) header.appendChild(el('span', 'intel-cell intel-num', h));
+    }
+    // [emergent] end
     listWrap.appendChild(header);
     const listBody = el('div', 'intel-list-body');
     listWrap.appendChild(listBody);
@@ -702,6 +710,10 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
     const dTraits = el('div', 'intel-d-traits');
     const dSkills = el('div', 'intel-d-skills');
     detail.append(dName, dRole, dTask, dLoc, dTraits, dSkills);
+    // [emergent] begin — 19d1 internal politics: the Politics block
+    const dPolitics = el('div', 'intel-politics-block');
+    detail.appendChild(dPolitics);
+    // [emergent] end
     side.appendChild(detail);
 
     const mission = el('div', 'intel-mission');
@@ -747,7 +759,7 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
             let entry = rowEls.get(r.character);
             if (!entry) {
                 const row = el('div', 'intel-row');
-                const cells = [0, 1, 2, 3].map(() => el('span', 'intel-cell'));
+                const cells = (showPolitics ? [0, 1, 2, 3, 4, 5] : [0, 1, 2, 3]).map((k) => el('span', k >= 4 ? 'intel-cell intel-num' : 'intel-cell'));
                 row.append(...cells);
                 row.title = T('Double-click to move to location');
                 const c = r.character;
@@ -760,6 +772,13 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
                 rowEls.set(c, entry);
             }
             const vals = [r.name, r.role, r.location, r.mission];
+            // [emergent] begin
+            if (showPolitics) {
+                const p = politicsRowCells(galaxy, r.character);
+                vals.push(p.loyalty, p.ambition);
+                entry.row.classList.toggle('intel-row-risk', p.risk);
+            }
+            // [emergent] end
             entry.cells.forEach((cell, k) => {
                 if (cell.textContent !== vals[k]) cell.textContent = vals[k];
             });
@@ -781,6 +800,7 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
         dismissBtn.disabled = c === null;
         if (c === null) {
             for (const d of [dName, dRole, dTask, dLoc, dTraits]) d.textContent = '';
+            dPolitics.replaceChildren(); // [emergent]
             dSkills.replaceChildren();
             return;
         }
@@ -789,6 +809,7 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
         dTask.textContent = resolveDescriptionCharacterTask(c, galaxy);
         dLoc.textContent = `${T('Location')}: ${resolveCharacterLocationDescription(c)}`;
         dTraits.textContent = characterTraitsLine(c);
+        renderPolitics(c); // [emergent]
         const lines = characterSkillLines(c);
         const key = lines.map((l) => `${l.name}|${l.value}|${l.progress}`).join(';');
         if (dSkills.dataset.key !== key) {
@@ -806,6 +827,37 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
             );
         }
     }
+
+    // [emergent] begin — 19d1 internal politics: loyalty, trend, causes, Honour / Arrest / Purge (command queue)
+    function renderPolitics(c: Character): void {
+        const p = politicsDetail(galaxy, player, c);
+        const key = p === null ? '' : JSON.stringify(p);
+        if (dPolitics.dataset.key === key) return;
+        dPolitics.dataset.key = key;
+        dPolitics.replaceChildren();
+        if (p === null) return;
+        dPolitics.appendChild(el('div', 'intel-m-title', 'Politics'));
+        dPolitics.appendChild(el('div', 'intel-pol-line', `Loyalty ${p.loyalty}   (last year ${p.trend})${p.exposed ? '   — plot uncovered' : ''}`));
+        if (p.causes.length > 0) dPolitics.appendChild(el('div', 'intel-pol-causes', p.causes.join(' · ')));
+        if (p.grievances.length > 0) dPolitics.appendChild(el('div', 'intel-pol-grievances', `Grievances: ${p.grievances.join(' · ')}`));
+        const buttons = el('div', 'intel-m-buttons');
+        for (const b of p.buttons) {
+            const btn = el('button', 'intel-btn', b.label);
+            btn.type = 'button';
+            btn.disabled = !b.enabled;
+            btn.title = b.reason;
+            btn.addEventListener('click', () => {
+                if (b.action === 'purge' && !window.confirm(`Purge ${c.name}? Every other official will resent it.`)) return;
+                issuePlayerCommand(galaxy, player, 'politicsAction', [b.action, c], () => {
+                    dPolitics.dataset.key = '';
+                    render();
+                });
+            });
+            buttons.appendChild(btn);
+        }
+        dPolitics.appendChild(buttons);
+    }
+    // [emergent] end
 
     function renderSummary(): void {
         summary.textContent = resolveCharacterSummary(player);

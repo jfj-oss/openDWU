@@ -32,7 +32,7 @@ import { empireShipGroups, shipGroupTotalOverallStrengthFactor, type ShipGroup }
 import { EmpireMessageType } from '../../messages';
 import { YEAR_LENGTH } from '../../galaxyTime';
 import { galaxyStarDate } from '../../tick/simTime';
-import { registerScenarioYearly } from '../hooks';
+import { registerScenarioEvent, registerScenarioGameStart, registerScenarioYearly } from '../hooks';
 import { registerScenarioDecision, raiseScenarioDecision, type ScenarioDecision } from '../decisions';
 import { scenarioFlag, scenarioParam, scenarioState } from '../state';
 import { scenarioMessage, scenarioNews, scenarioText } from '../messages';
@@ -798,4 +798,22 @@ export function reviewPolitics(galaxy: Galaxy, year: number): void {
     }
 }
 
+/** First sight of every character: at game start and on creation (entries only; no Rnd). */
+export function seedPoliticsEntries(galaxy: Galaxy): void {
+    for (const e of galaxy.empires) {
+        if (!isPoliticalEmpire(galaxy, e)) continue;
+        for (const c of getEmpireCharacters(e)) if (c.active) politicsEntry(galaxy, c);
+    }
+}
+
 registerScenarioYearly({ id: 'emergent.politics', flag: POLITICS_FLAG, order: 10, run: reviewPolitics });
+registerScenarioGameStart({ id: 'emergent.politics', flag: POLITICS_FLAG, run: (galaxy) => seedPoliticsEntries(galaxy) });
+registerScenarioEvent({
+    id: 'emergent.politics',
+    flag: POLITICS_FLAG,
+    event: 'characterCreated',
+    run: (galaxy, p) => {
+        const c = p.character as Character;
+        if (isPoliticalEmpire(galaxy, p.empire) && c.empire === p.empire) politicsEntry(galaxy, c);
+    },
+});
