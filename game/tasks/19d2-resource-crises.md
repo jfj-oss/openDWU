@@ -204,7 +204,14 @@ Deviations / notes:
   < 10 % fuel with no stock of its fuel at the empire's colonies / ports (stands in for "no reachable refuelling point").
 - AI rule 3 export bookkeeping uses the `contractInitiated` scenario event (seller → resource → buyer, this/last year).
 
+- Soak (`test/emergentCrisesSoak.test.ts`, opt-in `DWU_CRISES_SOAK=1`): the one 30-year run so far threw the base
+  sim's `TODO(port) M4d: component cargo` (manufacturingQueue.ts ManufacturingQueue.clear ← missions/assign.ts
+  clearPreviousMissionRequirements ← combat/threats.ts threatEvaluation) mid-run, so the §8 soak acceptance
+  (depletion + crisis price seen, bounded unrest, no flip-flop, calibration 40–80 years) is unverified. Unknown whether the
+  flag-on economy makes that path reachable or it is a long-run base gap.
+
 TODO (optional / not done):
+- TODO(19d2): make the 30-year soak pass (see the M4d note above) and turn it back on by default.
 - TODO(19d2): AI rule 4 test (pirate acceptance order of a crisis-priced vs a normal smuggle offer on the harness).
 - TODO(19d2): resource icons in the Empire Summary crises rows; a crisis badge on a market / price panel (the UI has
   no panel showing `galaxyResourceCurrentPrices` yet).
