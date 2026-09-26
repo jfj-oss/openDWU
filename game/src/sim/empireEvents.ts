@@ -1711,9 +1711,37 @@ function initiateEmpireSplitRandom(galaxy: Galaxy, empire: Empire, splinterPorti
  * PirateRelations — ObtainPirateRelation adds a NotMet relation when missing); ported as written.
  */
 export function initiateEmpireSplit(galaxy: Galaxy, self: Empire, splinterPortion: number, declareWar: boolean): void {
+    initiateEmpireSplitAt(galaxy, self, splinterPortion, declareWar, null);
+}
+
+/** What a targeted split (19d1 secession) hands the new empire on top of the C# split's own picks. */
+export interface EmpireSplitExtras {
+    /** Ships / bases of the splitting empire that go to the new empire (TakeOwnershipOfBuiltObject, as the split's own). */
+    ships?: readonly BuiltObject[];
+    /** Characters of the splitting empire that defect to the new empire, arriving at its capital (Character.DefectToEmpire). */
+    characters?: readonly Character[];
+}
+
+/**
+ * Empire.1.cs 1102 InitiateEmpireSplit(splinterPortion, declareWar), split for 19d1 targeted secession; no behaviour change:
+ * `seedColony === null` is the C# path (SplinterEmpire's random-coordinate search picks the first colony) and draws exactly
+ * the C# Rnd. With a seed colony (one of `self`'s colonies, not its capital — the C# search excludes the capital), the
+ * search and its draws are skipped and the split runs SplinterEmpire's body from that colony on (splinterEmpireAt).
+ * `extras` (not in the C#: caller-chosen ships / characters) are handed over right after SplinterEmpire, before the
+ * war / incident and the EmpireSplits messages, with the stock primitives (Empire.1.cs 2969 TakeOwnershipOfBuiltObject
+ * as the split's own ship loop; Character.cs 4451 DefectToEmpire). Returns the new empire (null when no split happened).
+ */
+export function initiateEmpireSplitAt(galaxy: Galaxy, self: Empire, splinterPortion: number, declareWar: boolean, seedColony: Habitat | null, extras: EmpireSplitExtras | null = null): Empire | null {
     const coloniesLost: Habitat[] = [];
-    const empire = splinterEmpire(galaxy, self, self, splinterPortion, coloniesLost);
-    if (empire === null) return;
+    let empire: Empire | null;
+    if (seedColony === null) {
+        empire = splinterEmpire(galaxy, self, self, splinterPortion, coloniesLost);
+    } else {
+        if (seedColony.empire !== self || seedColony === self.capital) return null;
+        empire = splinterEmpireAt(galaxy, self, self, splinterPortion, seedColony, coloniesLost);
+    }
+    if (empire === null) return null;
+    if (extras !== null) giveSplitExtras(galaxy, self, empire, extras);
     if (self.pirateEmpireBaseHabitat === null) {
         if (declareWar) {
             const empireEvaluation = obtainEmpireEvaluation(galaxy, self, empire);
@@ -1769,6 +1797,23 @@ export function initiateEmpireSplit(galaxy: Galaxy, self: Empire, splinterPortio
         }
     }
     self.lastDisasterDate = galaxyStarDate(galaxy);
+    return empire;
+}
+
+/** initiateEmpireSplitAt's caller-chosen extras (not in the C#; see there). No Rnd. */
+function giveSplitExtras(galaxy: Galaxy, self: Empire, empire: Empire, extras: EmpireSplitExtras): void {
+    if (extras.ships) {
+        for (const ship of extras.ships) {
+            // Empire.1.cs 2969/2978: empire.TakeOwnershipOfBuiltObject(item, empire, setDesignAsObsolete: true) (leaves its fleet).
+            if (ship.empire === self && !ship.hasBeenDestroyed) takeOwnershipOfBuiltObject(galaxy, empire, ship, empire, true);
+        }
+    }
+    if (extras.characters) {
+        for (const character of extras.characters) {
+            // Character.cs 4451 DefectToEmpire(newEmpire, destination): CompleteLocationTransfer + CompleteEmpireChange.
+            if (character.empire === self) character.defectToEmpire(empire, empire.capital);
+        }
+    }
 }
 
 /**
@@ -1786,7 +1831,7 @@ function splinterEmpire(galaxy: Galaxy, self: Empire, sourceEmpire: Empire, spli
     let empire: Empire | null = null;
     coloniesLost.length = 0;
     if (galaxy.nextEmpireId < galaxy.maximumEmpireCount) {
-        const num = Math.max(1, Math.trunc(splinterPortion * sourceEmpire.colonies.length));
+        // 2889 `num` (the colony count to take) is computed in splinterEmpireAt (pure).
         let x = 0.0;
         let y = 0.0;
         let num2 = 0.0;
@@ -1798,6 +1843,21 @@ function splinterEmpire(galaxy: Galaxy, self: Empire, sourceEmpire: Empire, spli
             num2 = galaxy.calculateDistance(y, y, sourceEmpire.capital!.xpos, sourceEmpire.capital!.ypos);
         }
         const habitat = fastFindNearestColony(galaxy, Math.trunc(x), Math.trunc(y), sourceEmpire, 20000, sourceEmpire.capital);
+        empire = splinterEmpireAt(galaxy, self, sourceEmpire, splinterPortion, habitat, coloniesLost);
+    }
+    return empire;
+}
+
+/**
+ * Empire.1.cs 2883 SplinterEmpire from `if (habitat != null)` on (2900-3000), split for 19d1 targeted secession; no behaviour
+ * change: statement for statement the C# body after the seed-colony search (the `NextEmpireId < MaximumEmpireCount` guard and
+ * `num` are re-evaluated here, both pure). Rnd: as SplinterEmpire's, minus the coordinate search.
+ */
+function splinterEmpireAt(galaxy: Galaxy, self: Empire, sourceEmpire: Empire, splinterPortion: number, habitat: Habitat | null, coloniesLost: Habitat[]): Empire | null {
+    let empire: Empire | null = null;
+    coloniesLost.length = 0;
+    if (galaxy.nextEmpireId < galaxy.maximumEmpireCount) {
+        const num = Math.max(1, Math.trunc(splinterPortion * sourceEmpire.colonies.length));
         if (habitat !== null) {
             self.empireSplitCount++;
             const dominantRace = sourceEmpire.dominantRace!;

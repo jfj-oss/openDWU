@@ -94,3 +94,7 @@ Appended by `npm run repin -- --reason "<why>"` (scripts/repin.mjs).
 - `tickDeterminism.digest600` (test/tickDeterminism.test.ts): Moved "247aef9d4d98670a" → "3d1470d82df29893": merge: todosweep generation ports on top of combattest fixes (GenerateGasCloud in nebulae, SetupSun spacing retries, components Normal, raid strength)
 - `tickDeterminism.counts600` (test/tickDeterminism.test.ts): Moved #4894cc7f13 → #331d4338ad: merge: todosweep generation ports on top of combattest fixes (GenerateGasCloud in nebulae, SetupSun spacing retries, components Normal, raid strength)
 - `tickDeterminism.rndDraws600` (test/tickDeterminism.test.ts): Moved 586223 → 669918: merge: todosweep generation ports on top of combattest fixes (GenerateGasCloud in nebulae, SetupSun spacing retries, components Normal, raid strength)
+
+## 2026-09-26 — new pin: empireLifecycle.aiSplitDigest (faithful InitiateEmpireSplit on seed 1, recorded on the pre-refactor code)
+
+- `empireLifecycle.aiSplitDigest` (test/empireLifecycleExtras.test.ts): Moved (new) → "a8b312e8d6f7df18:288951": new pin: empireLifecycle.aiSplitDigest (faithful InitiateEmpireSplit on seed 1, recorded on the pre-refactor code)

@@ -259,6 +259,7 @@
             "ruins": 23
         }
     },
+    "empireLifecycle": {"aiSplitDigest": "a8b312e8d6f7df18:288951"},
     "forceStructure": {
         "playerPrivate": [["SmallFreighter", 3], ["MediumFreighter", 1], ["GasMiningShip", 2], ["MiningShip", 2]],
         "age0Private": [[], [], [], []]
