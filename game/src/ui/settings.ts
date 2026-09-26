@@ -46,6 +46,13 @@ export interface UiSettings {
     // [diplovoice] begin — 18b: AI empires' diplomatic replies voiced by the same local model (off unless it answers).
     diplomatVoice: boolean;
     // [diplovoice] end
+
+    // [leftovers] begin — GameOptions.AutoSaveInterval (GameOptions.cs:240): 0 = off, else minutes (10-60, Main.InitializeComponent.cs:10739-10744).
+    /** chkOptionsAutoSave. */
+    autoSave: boolean;
+    /** numOptionsAutoSaveMinutes. */
+    autoSaveMinutes: number;
+    // [leftovers] end
 }
 
 const STORAGE_KEY = 'dwu-ui-settings';
@@ -76,6 +83,11 @@ export const DEFAULT_SETTINGS: UiSettings = {
     // [diplovoice] begin
     diplomatVoice: true,
     // [diplovoice] end
+
+    // [leftovers] begin — Main.Part9.cs:2781 default AutoSaveInterval = 30.
+    autoSave: true,
+    autoSaveMinutes: 30,
+    // [leftovers] end
 };
 
 /** Minimal storage shape (localStorage-compatible). */
@@ -135,11 +147,23 @@ export function loadSettings(): UiSettings {
         // [diplovoice] begin
         if (typeof parsed.diplomatVoice === 'boolean') out.diplomatVoice = parsed.diplomatVoice;
         // [diplovoice] end
+
+        // [leftovers] begin
+        if (typeof parsed.autoSave === 'boolean') out.autoSave = parsed.autoSave;
+        if (typeof parsed.autoSaveMinutes === 'number' && Number.isFinite(parsed.autoSaveMinutes)) out.autoSaveMinutes = clampAutoSaveMinutes(parsed.autoSaveMinutes);
+        // [leftovers] end
     } catch {
         // Corrupt blob: keep the defaults.
     }
     return out;
 }
+
+// [leftovers] begin
+/** numOptionsAutoSaveMinutes range (Main.InitializeComponent.cs:10739-10740: 10..60) and Math.Max(10, …) (Main.Part6.cs:2595). */
+export function clampAutoSaveMinutes(v: number): number {
+    return Math.min(60, Math.max(10, Math.round(v)));
+}
+// [leftovers] end
 
 /** Persist the given settings to storage. */
 export function saveSettings(settings: UiSettings): void {
