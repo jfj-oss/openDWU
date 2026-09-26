@@ -22,7 +22,7 @@ Then, before M5+ (UI completeness etc.):
 
 ## Follow-ups noted 2026-09-25 (afternoon)
 - Loader requests 50 files the install lacks (designTemplates/<race>/pirate/planetdestroyer.txt ×45, characters/Mechanoid.txt + Shakturi.txt in two cases): skip them like the C# does (check the C# load path) so the packaged app logs no 404s.
-- "Black band across the top 270 px" seen at 1920×1080 in both dev and package (linuxpkg captures shots/pkg-*.png) — verify whether it is the HUD top bar or a layout bug (UI scale?).
+- (resolved 2026-09-26, fix8ui) the "black band across the top" is empty space past the galaxy's top edge; the C# draws no backdrop there either (MainView.1.cs:4237) — faithful, not a bug.
 - Mac arm64: no .icns icon, no signing/notarization, CFBundleName "dwu", no CrossOver/Whisky/Flatpak install guesses; untested on a Mac.
 - 17f design editor: "Only Show Latest Components" filter, picture combo, weapons grid, repair-priority template, multi-select delete.
 - purchase: per-row design drop-down (Main.Part2.cs method_630), Advisor Suggest column.
