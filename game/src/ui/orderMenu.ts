@@ -12,7 +12,7 @@ import { Habitat } from '../sim/types';
 import { ShipGroup } from '../sim/fleets/shipGroup';
 import { BuiltObjectMissionType } from '../sim/missions/mission';
 import { resolveGameText, tryGetText } from '../sim/textResolver';
-import { ShipAction, ShipActionType } from '../sim/player/shipAction';
+import { ShipAction, ShipActionType, isSystemInfo } from '../sim/player/shipAction';
 import { executeShipAction, type ShipActionMouseHoverMode, type ShipActionSelection } from '../sim/player/executeShipAction';
 import {
     applyAutomationOff,
@@ -293,6 +293,20 @@ export interface OrderCamera {
     centerOn(x: number, y: number): void;
 }
 
+// [fix6ui] begin — N5: default orders at Sector / Galaxy zoom.
+/**
+ * The object the hover hint / default right-click order is resolved for. At Sector and Galaxy zoom the pick
+ * (Main.Part11.cs 1341 method_145, ported as MainView.pickOrderTarget) returns the SystemInfo; resolveHoverOrder
+ * (Main.Part10.cs 248-697 mainView_MouseMove) has cases for null / Habitat / BuiltObject / Creature only, so the
+ * system resolves as its star (SystemInfo.SystemStar), the same target the pick returns at System zoom. The C#
+ * mouse-move has no SystemInfo case (its default order is empty there); this is the playtest 2026-09-25-b N5
+ * change so Move / Explore / Patrol work at every zoom. The Ctrl / action menu still gets the SystemInfo pick.
+ */
+export function hoverOrderTarget(target: unknown): unknown {
+    return isSystemInfo(target) ? target.systemStar : target;
+}
+// [fix6ui] end
+
 let deps: OrderUiDeps | null = null;
 /** mouseHoverMode_0 after SetFleetAttackPoint / SetFleetHomeBase: the next map click picks the point. */
 let fleetPointMode: { mode: ShipActionMouseHoverMode; fleet: ShipGroup } | null = null;
@@ -321,7 +335,7 @@ export function installOrderUi(d: OrderUiDeps, view: OrderMainView, camera: Orde
         const y = Math.trunc(w.y);
         const selected = deps.getSelected();
         const target = view.pickOrderTarget(sx, sy);
-        const hover = resolveHoverOrder({ galaxy, empire, selected, x, y, target, shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey });
+        const hover = resolveHoverOrder({ galaxy, empire, selected, x, y, target: hoverOrderTarget(target) /* [fix6ui] N5 */, shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey });
         const r = rightClickOrder(galaxy, empire, selected, hover.action, { ctrl: e.ctrlKey, alt: e.altKey }, view.zoomFactor);
         if (r.kind === 'order') {
             bar?.render(true);
@@ -372,7 +386,7 @@ export function installOrderUi(d: OrderUiDeps, view: OrderMainView, camera: Orde
             selected: deps.getSelected(),
             x: Math.trunc(w.x),
             y: Math.trunc(w.y),
-            target: view.pickOrderTarget(sx, sy),
+            target: hoverOrderTarget(view.pickOrderTarget(sx, sy)), // [fix6ui] N5
             shift: false,
             alt: false,
             ctrl: false,

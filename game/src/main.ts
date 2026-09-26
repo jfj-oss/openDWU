@@ -59,6 +59,14 @@ import { hideMapTooltip } from './ui/mapTooltip';
 import { closeEmpireComparison, closeGameEndBanner, installGameEndHandler, removeGameEndHandler } from './ui/screens/empireComparison'; // [15d]
 import { installMessagePopups, removeMessagePopups } from './ui/messagePopups'; import { closeGameOptionsPanel } from './ui/screens/gameOptionsPanel'; // [16d]
 import { installOrderUi, selectionTarget } from './ui/orderMenu'; import { getSelection as getHudSelection, selectShipGroup, selectStellarObject } from './ui/hud'; import { ShipGroup } from './sim/fleets/shipGroup'; import { Fighter } from './sim/combat/fighters'; // [ordermenu]
+// [fix6ui] begin
+import { setShipCommandHandler } from './ui/keyboard';
+import { refreshSelectionActionBar } from './ui/orderMenu';
+import { selectHabitat } from './ui/hud';
+import { createShipCommandKeys, type ShipCommandKeys } from './ui/shipCommandKeys';
+import { showToast } from './ui/toast';
+// [fix6ui] end
+
 import './ui/hud.css';
 
 // ?shape= names accepted by the boot URL.
@@ -338,6 +346,10 @@ export async function startGameView(
     // Task C3: Galaxy Map screen (G key / HUD "Galaxy map (G)" row).
     const galaxyMap = createGalaxyMapFor(galaxy, camera);
     (window as unknown as { __dwu?: Record<string, unknown> }).__dwu!.galaxyMap = galaxyMap;
+    // [fix6ui] begin — ship-order / selection keys (created after the order UI below).
+    let shipKeys: ShipCommandKeys | null = null;
+    Object.assign((window as unknown as { __dwu: Record<string, unknown> }).__dwu, { simBudget: simLoop.budget });
+    // [fix6ui] end
     const hud: HudRefs = createHud({
         clock: time,
         overlays,
@@ -354,6 +366,7 @@ export async function startGameView(
         afterSelectionChange: (sel) => {
             view.selectedBuiltObject = sel?.builtObject ?? null;
             view.selectedHabitat = sel && !sel.builtObject ? sel.habitat : null;
+            shipKeys?.afterSelectionChange(sel); // [fix6ui] selection history + view lock
         },
     });
     const systemNameEl = hud.elements.get('pnlMoney')?.querySelector('.hud-system-name');
@@ -439,6 +452,28 @@ export async function startGameView(
     );
     // [ordermenu] end
 
+    // [fix6ui] begin — N2: E/R/A/S/, orders and Z/N/B/L selection keys (Main.Part7.cs Main_KeyUp).
+    shipKeys = createShipCommandKeys({
+        galaxy,
+        player: game.playerEmpire,
+        camera,
+        getSelection: getHudSelection,
+        getSelected: () => selectionTarget(getHudSelection()),
+        select: (o) => {
+            if (o === null) hud.onSelectionChange?.(null);
+            else if (o instanceof ShipGroup) selectShipGroup(o, false);
+            else if (o instanceof Habitat) selectHabitat(o, false);
+            else selectStellarObject(o, false);
+        },
+        refresh: () => {
+            refreshSelectionActionBar();
+            hud.onSelectionChange?.(getHudSelection());
+        },
+    });
+    const activeShipKeys = shipKeys;
+    setShipCommandHandler((action) => activeShipKeys.handle(action));
+    // [fix6ui] end
+
     // Task 06l: extra boots run after the HUD/clock are wired (e.g. opening
     // a tutorial window that pauses/unpauses the clock).
     for (const boot of extraBoots ?? []) {
@@ -456,6 +491,13 @@ export async function startGameView(
             galaxyMap.close();
             return;
         }
+        // [fix6ui] begin — N1: Escape closes the ? overlay first (not the Game Menu underneath).
+        if (e.key === 'Escape' && shortcuts.visible()) {
+            e.preventDefault();
+            shortcuts.hide();
+            return;
+        }
+        // [fix6ui] end
         // F1 is the Galactopedia binding (dispatchKey), not the overlay.
         if (e.key === '?') {
             e.preventDefault();
@@ -472,10 +514,15 @@ export async function startGameView(
     window.addEventListener('keydown', keydownHandler);
 
     // Plan §1.1/§5.1: whole sim frames from the real scheduler (orbits, creatures, empires, fleets, ships...).
+    // [fix6ui] begin — real elapsed time (elapsedMS: not capped at 100 ms like deltaMS) under the sim's wall-clock
+    // budget; a render exception is contained like a sim one (Pixi would stop scheduling frames).
+    const renderGuard = createRenderGuard();
     app.ticker.add(() => {
-        simLoop.tick(app.ticker.deltaMS);
-        view.update();
+        simLoop.tick(app.ticker.elapsedMS);
+        shipKeys?.frame();
+        renderGuard(() => view.update());
     });
+    // [fix6ui] end
     app.renderer.on('resize', () => {
         camera.setViewport(app.renderer.width, app.renderer.height);
         resizeHandler();
@@ -542,6 +589,10 @@ export async function startGameView(
         hud.gameMenu?.destroy();
         setGameMenuHandler(null);
         setCycleHandler(null);
+        // [fix6ui] begin
+        setShipCommandHandler(null);
+        shipKeys = null;
+        // [fix6ui] end
         // Module-level panels hold the old game's Empire/camera and a
         // document keydown listener: close them and drop their source.
         closeEmpiresList();
@@ -583,6 +634,29 @@ export async function startGameView(
 
     return time;
 }
+
+// [fix6ui] begin
+/**
+ * Wrap the per-frame view.update(): Pixi's Ticker schedules the next frame only after its listeners return, so an
+ * exception there would freeze rendering and the sim for good. Log it and toast once per burst (at most every 10 s)
+ * and keep the loop running.
+ */
+function createRenderGuard(): (fn: () => void) => void {
+    let lastToast = -Infinity;
+    return (fn) => {
+        try {
+            fn();
+        } catch (err) {
+            const t = performance.now();
+            if (t - lastToast >= 10000) {
+                lastToast = t;
+                console.error('Render error (continuing):', err);
+                showToast('Render error — see console');
+            }
+        }
+    };
+}
+// [fix6ui] end
 
 /** Open the new-game wizard (task 06b), replacing the main menu. Start Game
  * maps the chosen StartGameOptions onto createGame's options and boots the
@@ -1109,6 +1183,13 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
             galaxyMap.close();
             return;
         }
+        // [fix6ui] begin — N1: Escape closes the ? overlay first.
+        if (e.key === 'Escape' && shortcuts.visible()) {
+            e.preventDefault();
+            shortcuts.hide();
+            return;
+        }
+        // [fix6ui] end
         if (e.key === '?') {
             e.preventDefault();
             shortcuts.toggle();
@@ -1123,10 +1204,13 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     });
 
     // Task 07b / plan §1.1: run whole sim frames of the real scheduler each render frame.
+    // [fix6ui] begin — real elapsed time + contained render errors (as in startGameView).
+    const renderGuard = createRenderGuard();
     app.ticker.add(() => {
-        simLoop.tick(app.ticker.deltaMS);
-        view.update();
+        simLoop.tick(app.ticker.elapsedMS);
+        renderGuard(() => view.update());
     });
+    // [fix6ui] end
     app.renderer.on('resize', () => {
         camera.setViewport(app.renderer.width, app.renderer.height);
         layoutHud(hud);
