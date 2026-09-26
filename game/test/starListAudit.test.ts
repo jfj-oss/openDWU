@@ -9,6 +9,9 @@ import { investigateRuins } from '../src/sim/exploration';
 import { valueGalaxyMapForEmpire } from '../src/sim/tradeItems';
 import { updateEmpireRefuellingLocations } from '../src/sim/independentTraders';
 import type { BuiltObject } from '../src/sim/builtObject';
+import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
+import { assignShipSystemPatrol } from '../src/sim/player/executeShipAction';
+import { BuiltObjectMissionType, type BuiltObjectMission } from '../src/sim/missions/mission';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 import { createTickGame } from './helpers/tickGame';
 
@@ -81,5 +84,26 @@ describe('refuelling readers (Empire.6.cs 3905, Galaxy.6.cs 3219 / 3375)', () =>
         updateEmpireRefuellingLocations(g, empire);
         // C# only walks a star's bases when it is a gas cloud; a star's own bases are never in Systems[].Habitats.
         expect(empire.refuellingLocations.includes(port)).toBe(false);
+    });
+});
+
+describe('AI asset / target readers (Empire.9.cs 312, 4528; Empire.2.cs 4186 …)', () => {
+    it('AssignShipSystemPatrol ignores a base at the star: no assets, so the ship moves to the star', () => {
+        const g = createTickGame(gameData).galaxy;
+        const empire = g.empires.find((e) => e !== g.playerEmpire && e.pirateEmpireBaseHabitat === null && e.spacePorts.length > 0)!;
+        const port = empire.spacePorts[0] as BuiltObject;
+        const ship = empire.builtObjects.find((b) => b.role === BuiltObjectRole.Military) ?? empire.builtObjects.find((b) => b !== port && b.role !== BuiltObjectRole.Base)!;
+        expect(ship).toBeDefined();
+        const system = g.systems.find((s) => s.systemStar.category === HabitatCategoryType.Star && planetsOf(s).every((h) => h.owner !== empire && h.basesAtHabitat.every((b) => b.empire !== empire)))!;
+        const star = system.systemStar;
+        const from = port.parentHabitat!;
+        from.basesAtHabitat.splice(from.basesAtHabitat.indexOf(port), 1);
+        star.basesAtHabitat.push(port);
+        port.parentHabitat = star;
+        expect(assignShipSystemPatrol(g, empire, ship, system, false)).toBe(true);
+        const mission = ship.mission as BuiltObjectMission;
+        // Empire.9.cs 284-305: an empty asset list sends the ship to the star (Move), not on Patrol.
+        expect(mission.type).toBe(BuiltObjectMissionType.Move);
+        expect(mission.targetHabitat).toBe(star);
     });
 });

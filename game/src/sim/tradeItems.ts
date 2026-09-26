@@ -1618,8 +1618,9 @@ export function reviewDisputedTerritory(galaxy: Galaxy, empire: Empire): void {
             const systemInfo = galaxy.systems[habitat.systemIndex];
             // C# `OtherEmpires == null` never holds (DetermineSystemInfo always assigns a list); TS keeps null for "empty".
             if (systemInfo == null || !systemIsDisputed(systemInfo) || systemInfo.dominantEmpire == null || (systemInfo.dominantEmpire.empire !== other && !otherEmpiresContains(systemInfo, other)) || systemInfo.dominantEmpire.empire !== self || systemInfo.habitats == null) continue;
-            for (let l = 0; l < systemInfo.habitats.length; l++) {
-                const habitat2 = systemInfo.habitats[l];
+            const sysHabitats = planetsOf(systemInfo); // Empire.7.cs 2290 systemInfo.Habitats: no star
+            for (let l = 0; l < sysHabitats.length; l++) {
+                const habitat2 = sysHabitats[l];
                 if (habitat2 != null && habitat2.owner === other && habitat2.owner.capital !== habitat2) habitatList2.push(habitat2);
             }
         }
