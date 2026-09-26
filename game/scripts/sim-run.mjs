@@ -196,19 +196,18 @@ try {
     for (const c of contact) console.log(`  ${c.player ? '*' : ' '} ${c.name.padEnd(28)} met ${c.met}, explorers away ${c.away}/${c.explorers}, systems explored/visible ${c.explored}`);
     // Expansion: colonies per empire, the day of the first second colony, and every colony ship (sub role 13):
     // where it was built (Habitat colony yard or a base), components built / total, and its mission.
-    const days = (ms) => (ms / 1000 / 600 * 365).toFixed(0);
     out.expansion = g.empires.filter((e) => e !== null).map((e) => {
         const ships = e.builtObjects.filter((b) => b !== null && b.subRole === 13 && !b.hasBeenDestroyed).map((b) => {
             const at = b.builtAt;
             const built = b.components.items.filter((c) => c.status !== 0).length;
-            return { name: b.name, at: at === null ? '-' : `${at.constructor.name} ${at.name}`, built, total: b.components.count, ageDays: days(g.nowMs - b.dateBuilt), mission: b.mission?.type ?? null };
+            return { name: b.name, at: at === null ? '-' : `${at.constructor.name} ${at.name}`, built, total: b.components.count, mission: b.mission?.type ?? null };
         });
         return { name: e.name, player: e === g.playerEmpire, colonies: e.colonies.length, firstSecondDay: firstSecond.get(e) ?? null, ships };
     });
     console.log(`expansion: ${out.expansion.filter((x) => x.colonies > 1).length}/${out.expansion.length} empires have > 1 colony; total colonies ${out.expansion.reduce((a, x) => a + x.colonies, 0)}`);
     for (const x of out.expansion) {
         console.log(`  ${x.player ? '*' : ' '} ${x.name.padEnd(28)} colonies ${x.colonies}, first 2nd colony day ${x.firstSecondDay === null ? '-' : x.firstSecondDay.toFixed(0)}`);
-        for (const sh of x.ships) console.log(`      colony ship ${sh.name} at ${sh.at}: ${sh.built}/${sh.total} built, age ${sh.ageDays} d, mission ${sh.mission}`);
+        for (const sh of x.ships) console.log(`      colony ship ${sh.name} at ${sh.at}: ${sh.built}/${sh.total} built, mission ${sh.mission}`);
     }
     const hits = Object.entries(todo).sort((a, b) => b[1] - a[1]);
     console.log(`TODO(port) stubs reached: ${hits.length}`);

@@ -1742,6 +1742,11 @@ export function directConstruction(galaxy: Galaxy, empire: Empire): void {
             design5.buildCount++;
             const builtObject6 = new BuiltObject(design5, galaxy.generateBuiltObjectName(design5), galaxy);
             builtObject6.purchasePrice = num22;
+            // Colony ships are built only in colony (Habitat) yards, never at a space port (Empire.6.cs 2682-2698; also
+            // Empire.2.cs 318, and the force-structure loop 2784 sends only construction / resupply ships to colonies).
+            // A colony has one yard (ConstructionQueue.cs 178 Redefine(Habitat)) whose speed is
+            // 600 * min(1, sqrt(pop / 1e10)) * race factors (BaconConstructionQueue.cs 141-255), and a colony ship builds
+            // at a tenth of that (ConstructionQueue.cs 313-318, ColonyShipBuildFactor 10): ~36 components a year.
             let r: { habitat: Habitat | null; shortestWaitQueueTime: number };
             if (flag3) {
                 r = habitatsFindShortestConstructionWaitQueue(galaxy, empire.colonies, builtObject6, false, false);
