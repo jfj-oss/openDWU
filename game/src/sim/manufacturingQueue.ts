@@ -6,13 +6,12 @@
 // Rnd: DoManufacturing → ProcessManufacturing draws Galaxy.Rnd.Next(0, Manufacturers.Count) on every call where the
 // parent has cargo (ManufacturingQueue.cs 247).
 //
-// Reachability note: nothing in the C# puts a component into `_ComponentWaitQueue` except the queue itself
-// (ManufacturingQueue.AddComponentToManufacture has no callers; Redefine(BuiltObject) only moves a manufacturer's
-// in-progress component back to the wait queue, and a manufacturer only ever receives a component from the wait
-// queue). In a new game the wait queue therefore stays empty and no component is ever manufactured; the component
-// paths are ported for completeness. Component cargo (Cargo(Component, …)) is not modelled by cargo.ts — the two
-// sites that would create one throw a TODO(port) error (unreachable, see above).
-//
+// Reachability: Empire.ProcureConstructionComponents (Empire.6.cs, empireConstruction.ts) pushes a design's
+// components into a construction yard's / colony's `_ComponentWaitQueue`, ProcessWaitQueue hands them to idle
+// manufacturers, and a completed one lands in the parent's cargo as component cargo (Cargo(Component, 1, empire, 1),
+// cargo.ts). Clear() (BuiltObject.1.cs 1445, ClearPreviousMissionRequirements, reached when a construction ship is
+// re-tasked, e.g. by threat evaluation) returns every in-progress component to cargo the same way.
+
 // This module is imported by empire.ts / galaxy.ts / builtObject.ts / startHabitats.ts (queue creation), so it only
 // imports leaf modules; the processing half of the class (DoManufacturing, ProcessWaitQueue, ProcessManufacturing,
 // ProcessSingleManufacturer, NotifyResourceShortages, CargoList.GetResourcesForManufacturing) lives in industry.ts as
@@ -27,6 +26,8 @@ import { ComponentStatus } from './builtObjectComponent';
 import { ComponentType } from './data/components';
 import { ComponentCategoryType } from './data/policies';
 import { MIN_TIME } from './tick/simTime';
+import { Cargo } from './cargo';
+import type { CargoList } from './cargo';
 
 /** C# `Component` as the manufacturing queue sees it (ComponentID, Industry, Size, RequiredResources). */
 export type ManufacturedComponent = ComponentDefinition;
@@ -137,12 +138,6 @@ export class ResourceDatePairList {
     clear(): void {
         this.items = [];
     }
-}
-
-export function componentCargoNotModelled(): never {
-    // TODO(port) M4d: Cargo(Component, amount, empire, reserved) — component cargo is not modelled by cargo.ts.
-    // Unreachable in a new game (see the header: no component ever enters the wait queue).
-    throw new Error('TODO(port) M4d: component cargo (ManufacturingQueue completed component)');
 }
 
 // ManufacturingQueue.cs.
@@ -294,12 +289,24 @@ export class ManufacturingQueue {
         return true;
     }
 
-    /** Clear() (385). */
+    // Port of ManufacturingQueue.cs Clear() (386): the wait queue is dropped, and each manufacturer's in-progress
+    // component is put into the parent's cargo as `new Cargo(manufacturer.Component, 1, empire, 1)` (reserved 1).
     clear(): void {
         this._componentWaitQueue!.length = 0;
+        let cargo1: CargoList | null;
+        let empire: unknown;
+        if (this._parentBuiltObject !== null) {
+            cargo1 = this._parentBuiltObject.cargo;
+            empire = this._parentBuiltObject.empire;
+        } else {
+            cargo1 = this._parentHabitat!.cargo;
+            empire = this._parentHabitat!.empire;
+        }
         for (const manufacturer of this._manufacturerList!) {
             if (manufacturer.component !== null) {
-                componentCargoNotModelled(); // cargo1.Add(new Cargo(manufacturer.Component, 1, empire, 1))
+                // C# dereferences Cargo unconditionally; a manufacturer only receives a component while the parent has
+                // cargo (DoManufacturing's `cargo != null` guard), so this is non-null here.
+                cargo1!.add(Cargo.ofComponent(manufacturer.component, 1, empire, 1));
             }
             manufacturer.progress = 0.0;
             manufacturer.component = null;

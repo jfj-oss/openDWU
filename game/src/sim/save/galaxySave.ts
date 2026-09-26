@@ -245,6 +245,18 @@ const GALAXY_INDEX_FIELDS = ['habitatIndexGrid', 'systemsIndexGrid', 'builtObjec
 const CODEC_OPTIONS: GraphCodecOptions = {
     classes: CLASSES,
     revive: new Map<object, (instance: object) => void>([
+        // Cargo.commodityComponent (component cargo, cargo.ts) is absent from saves written before it existed: those
+        // cargo items are all resource cargo, so it defaults to null. The class fields are pre-defined in declaration
+        // order (commodity, amount, empire, reserved, commodityComponent) so the saved fields overwrite them in place
+        // and a loaded Cargo keeps the key order of a constructed one.
+        [
+            Cargo.prototype,
+            (c) => {
+                for (const [key, value] of [['commodity', undefined], ['amount', 0], ['empire', undefined], ['reserved', 0], ['commodityComponent', null]] as const) {
+                    Object.defineProperty(c, key, { value, writable: true, enumerable: true, configurable: true });
+                }
+            },
+        ],
         // Random keeps its draw counter and trace hook as non-enumerable own properties (random.ts ctor); they are
         // diagnostics, not generator state, so a loaded stream counts draws from 0.
         [

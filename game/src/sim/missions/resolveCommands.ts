@@ -247,9 +247,9 @@ export function resolveCommandsForMission(theThis: BuiltObjectMission, mission: 
                         if (component.status === ComponentStatus.Unbuilt) {
                             let flag = true;
                             if (cargoList1 !== null) {
-                                // TODO(port) M4d: CargoList.IndexOf(Component, Empire) — component cargo is not modelled (cargo.ts),
-                                // so the index is -1 and the component is always added.
-                                const index = -1;
+                                // BaconBuiltObjectMission.cs 301: cargoList1.IndexOf((Component) component, ActualEmpire) — a
+                                // prefabricated component in the ship's cargo (clone) is used instead of building it.
+                                const index = cargoList1.indexOfComponent(component.componentId, ship!.actualEmpire);
                                 if (index >= 0 && cargoList1.items[index].amount > 0) {
                                     flag = false;
                                     --cargoList1.items[index].amount;
