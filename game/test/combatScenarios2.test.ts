@@ -40,7 +40,7 @@ import {
     weaponDamageDropoff,
     weaponFire,
 } from '../src/sim/combat/weapons';
-import { fireAtAssaultPods } from '../src/sim/combat/boarding';
+import { fireAtAssaultPods, handleAssaultPodMovement } from '../src/sim/combat/boarding';
 
 let gameData: GameData;
 let componentDefs: Map<number, ComponentDefinition>;
@@ -246,5 +246,232 @@ describe('(1) area weapons', () => {
         expect(tgt.currentShields).toBe(0);
         const plates = tgt.components.items.filter((c) => c.category === ComponentCategoryType.Armor);
         expect(plates.some((c) => c.status === ComponentStatus.Damaged)).toBe(true);
+    });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// (2) Missiles and point defence
+// ---------------------------------------------------------------------------------------------------------------
+
+describe('(2) missiles and point defence', () => {
+    /**
+     * The player's Colossia 001 (Destroyer: 5 beams + 2 Concussion Missiles — components.txt id 10: damage 6, range 520,
+     * energy 18, speed 120, fire rate 2700) fires one missile at a stationary target `d` ahead. Stepped by hand at 0.1 s:
+     * the firer's HandleWeaponsFiring (BuiltObject.1.cs 3737), then the target's InterceptMissiles (BuiltObject.cs 3819 →
+     * BaconBuiltObject.cs 5032) — the order of one DoTasks pass each. Out of view (headless).
+     */
+    function stage(targetName: string, d: number) {
+        const g = cachedTickGame(gameData).galaxy;
+        const col = ship(g, 'Colossia 001');
+        const tgt = ship(g, targetName);
+        hold(col);
+        hold(tgt);
+        const s = emptySpot(g);
+        place(g, col, s.x, s.y);
+        place(g, tgt, s.x + d, s.y);
+        col.currentEnergy = col.reactorStorageCapacity;
+        tgt.currentEnergy = tgt.reactorStorageCapacity;
+        tgt.currentShields = tgt.shieldsCapacity;
+        const missile = col.weapons.find((w) => w.component.type === ComponentType.WeaponMissile)!;
+        for (const w of [...col.weapons, ...tgt.weapons]) {
+            w.reset();
+            w.lastFired = MIN_TIME;
+        }
+        return { g, col, tgt, missile };
+    }
+
+    /** The hand-worked missile run-up (4091-4111): DistanceTravelled 1 → +10 on launch, then (float)Max(3, Speed × DT/120) × dt below 120, Speed × dt above. */
+    function missileSteps(speed: number, n: number): { dt: number; num8: number }[] {
+        const out: { dt: number; num8: number }[] = [];
+        let dt = 1;
+        for (let k = 0; k < n; k++) {
+            let num8: number;
+            if (dt <= 1) num8 = 10;
+            else {
+                let num13 = f32(speed);
+                if (dt < 120) num13 = Math.max(3, f32(num13 * f32(dt / 120)));
+                num8 = f32(num13 * f32(0.1));
+            }
+            dt = f32(dt + num8);
+            out.push({ dt, num8 });
+        }
+        return out;
+    }
+
+    it('missile flight: launch +10, ramp to full speed over the first 120, home on the target, strike at full power when it overshoots (BuiltObject.1.cs 4091-4198); reload is FireRate, no ammunition', () => {
+        const { g, col, tgt, missile } = stage('Hidden Aspiration', 400);
+        expect([missile.component.componentId, missile.rawDamage, missile.range, missile.energyRequired, missile.speed, missile.fireRate]).toEqual([10, 6, 520, 18, 120, 2700]);
+        expect(col.shipGroup).toBeNull();
+        expect(tgt.firepowerRaw).toBe(0); // unarmed: nothing intercepts
+        const t0 = g.nowMs;
+        weaponFire(g, missile, col, tgt, 400, t0, true, 1.0);
+        expect(missile.distanceTravelled).toBe(1);
+        expect(missile.headingMissFactor).toBe(0); // a sure hit keeps HeadingMissFactor 0: it homes straight in (4116)
+        const plan = missileSteps(120, 60);
+        // The missile flies straight at the target (re-aimed every step), so before a step its distance to the target is
+        // 400 − (DT − 1); it strikes on the first step whose num8 is larger than that (out of view, 4137 `num8 > distanceFromTarget`).
+        let hitStep = -1;
+        for (let k = 1; k < plan.length; k++) {
+            if (plan[k].num8 > 400 - (plan[k - 1].dt - 1)) {
+                hitStep = k + 1;
+                break;
+            }
+        }
+        expect(hitStep).toBeGreaterThan(0);
+        let step = 0;
+        let struckAt = -1;
+        while (step < 60 && missile.distanceTravelled >= 0 && !missile.resetNext) {
+            step++;
+            g.nowMs = t0 + step * 100;
+            handleWeaponsFiringBuiltObject(g, col, 0.1, g.nowMs);
+            if (!missile.resetNext) expect(missile.distanceTravelled).toBe(plan[step - 1].dt);
+            if (struckAt < 0 && tgt.currentShields < tgt.shieldsCapacity) struckAt = step;
+        }
+        expect(struckAt).toBe(hitStep);
+        // Missiles do not lose power with distance (BaconBuiltObject.cs 3059): the full 6 comes off the shields.
+        expect(tgt.currentShields).toBe(tgt.shieldsCapacity - 6);
+        expect(missile.power).toBe(6);
+        // Reload: the launcher is available again FireRate 2700 ms after the launch (Weapon.cs 183 IsAvailable) — there is no
+        // ammunition count on ship weapons in the C# (only fighters run out, BaconFighter.cs 186 CheckOutOfAmmo).
+        g.nowMs = t0 + 2700;
+        handleWeaponsFiringBuiltObject(g, col, 0.1, g.nowMs); // clears ResetNext
+        expect(missile.distanceTravelled).toBe(-1);
+        expect(missile.lastFired + missile.fireRate <= t0 + 2700).toBe(true);
+        expect(missile.lastFired + missile.fireRate <= t0 + 2699).toBe(false);
+    });
+
+    it('Bacon intercept by beams: once the missile is within the defender\'s beam range (and has flown ≥ 100) the first available beam fires at it with a sure hit and the missile is gone (BaconBuiltObject.cs 5032-5080)', () => {
+        const { g, col, tgt, missile } = stage('Worthy Firelance', 400);
+        const beams = tgt.weapons.filter((w) => w.component.type === ComponentType.WeaponBeam);
+        expect(beams.map((w) => w.range)).toEqual([190, 190, 190, 190]);
+        const t0 = g.nowMs;
+        weaponFire(g, missile, col, tgt, 400, t0, true, 1.0);
+        expect(tgt.attackers).toContain(col); // FireInternal adds the firer: InterceptMissiles walks the target's Attackers
+        const counter0 = tgt.assaultPodFiringCounter;
+        let step = 0;
+        let intercepted = -1;
+        while (step < 60 && intercepted < 0) {
+            step++;
+            g.nowMs = t0 + step * 100;
+            handleWeaponsFiringBuiltObject(g, col, 0.1, g.nowMs);
+            const dist = missile.distanceFromTarget;
+            const flown = missile.distanceTravelled;
+            const sh = shadowRnd(g);
+            interceptMissiles(g, tgt, g.nowMs, false);
+            expect(tgt.assaultPodFiringCounter).toBe(counter0 + step); // shared with FireAtAssaultPods (++ every call)
+            if (missile.distanceTravelled < 0) {
+                intercepted = step;
+                // Conditions at the intercept: flown ≥ 100 and within the beam's Range 190 (5062-5070).
+                expect(flown).toBeGreaterThanOrEqual(100);
+                expect(dist).toBeLessThanOrEqual(190);
+                // The first beam fires at the missile: Weapon.Fire(weaponBlast) with willHit true (NextDouble × 0.15, Next(0, 2)).
+                expect(beams[0].targetWeapon).toBe(missile);
+                expect(beams[0].lastFired).toBe(g.nowMs);
+                expect(beams[0].willHitTarget).toBe(true);
+                sh.nextDouble();
+                sh.next(0, 2);
+                expect(g.rnd.getState()).toEqual(sh.getState());
+                // Weapon.Reset on the missile (5077): no target, power 0.
+                expect(missile.target).toBeNull();
+                expect(missile.power).toBe(0);
+            } else {
+                // Not yet in range (or flown < 100): nothing fires, no draws.
+                expect(dist > 190 || flown < 100).toBe(true);
+                expect(g.rnd.getState()).toEqual(sh.getState());
+            }
+        }
+        expect(intercepted).toBeGreaterThan(0);
+        // The target is never struck.
+        for (let k = 1; k <= 20; k++) handleWeaponsFiringBuiltObject(g, col, 0.1, (g.nowMs += 100));
+        expect(tgt.currentShields).toBe(tgt.shieldsCapacity);
+    });
+
+    it('point defence only engages a missile that has flown 100: a Point Defense Cannon (id 13, range 140) on the target waits, then shoots it down', () => {
+        const { g, col, tgt, missile } = stage('Hidden Aspiration', 130);
+        const pd = newWeapon(13);
+        expect([ComponentType[pd.component.type], pd.rawDamage, pd.range, pd.energyRequired, pd.speed, pd.fireRate]).toEqual(['WeaponPointDefense', 3, 140, 4, 430, 540]);
+        tgt.weapons.push(pd);
+        const t0 = g.nowMs;
+        weaponFire(g, missile, col, tgt, 130, t0, true, 1.0);
+        const plan = missileSteps(120, 60);
+        const firstFlown100 = plan.findIndex((p) => p.dt >= 100) + 1;
+        let step = 0;
+        let intercepted = -1;
+        let struck = false;
+        while (step < 60 && intercepted < 0 && !struck) {
+            step++;
+            g.nowMs = t0 + step * 100;
+            handleWeaponsFiringBuiltObject(g, col, 0.1, g.nowMs);
+            struck = tgt.currentShields < tgt.shieldsCapacity;
+            interceptMissiles(g, tgt, g.nowMs, false);
+            if (missile.distanceTravelled < 0 && !struck) intercepted = step;
+        }
+        // Within PD range from the start (130 < 140) but only intercepted on the first step with DistanceTravelled ≥ 100.
+        expect(struck).toBe(false);
+        expect(intercepted).toBe(firstFlown100);
+        expect(pd.targetWeapon).toBe(missile);
+    });
+
+    it('point defence against an assault pod: DetermineHitTarget(weaponBlast) draw for draw; a PD hit marks the pod Power = float.MaxValue / ResetNext — which the C# never acts on: the pod still lands (BuiltObject.1.cs 2905, 5202, 3873, 2626)', () => {
+        const g = cachedTickGame(gameData).galaxy;
+        const jav = ship(g, 'Javelin 001');
+        const wf = ship(g, 'Worthy Firelance');
+        hold(jav);
+        hold(wf);
+        const s = emptySpot(g);
+        place(g, jav, s.x, s.y);
+        place(g, wf, s.x + 100, s.y);
+        jav.currentEnergy = jav.reactorStorageCapacity;
+        const pd = newWeapon(13);
+        jav.weapons.push(pd);
+        jav.pointDefenseWeaponsRange = 140; // ReDefine's Max PD range (BuiltObject.cs 2800) for the one PD component added here
+        const pod = wf.weapons.find((w) => w.component.type === ComponentType.AssaultPod)!;
+        expect([pod.rawDamage, pod.range, pod.speed]).toEqual([50, 140, 50]);
+        expect(wf.assaultStrength).toBeGreaterThan(0);
+        const t0 = g.nowMs;
+        pod.reset();
+        weaponFire(g, pod, wf, jav, 100, t0, true, 1.0);
+        const sh = shadowRnd(g);
+        fireAtAssaultPods(g, jav, t0, false);
+        // Hand-worked (5202-5241): num = Range 140, num2 = 140 − 100 = 40, hitRangeChance = 0.15 + 40/140 = 0.4357;
+        // val = 10 / Max(1, pod Speed 50) = 0.2 → clamped 0.7 → × 2 = 1.4; no targeting modifiers: num6 = 1.4 × (0.4357 + r),
+        // always > 0.5 — a hit unless Next(0, 15) == 7.
+        const hrc = 0.15 + 40 / 140;
+        const r = sh.nextDouble();
+        let num6 = 1.4 * (hrc + r);
+        expect(num6 > 0.5).toBe(true);
+        if (sh.next(0, 15) === 7) num6 = 0;
+        const willHit = num6 > 0.5;
+        if (willHit) {
+            sh.nextDouble();
+            sh.next(0, 2);
+        } else {
+            sh.nextDouble();
+            sh.next(0, 2);
+        }
+        expect(g.rnd.getState()).toEqual(sh.getState());
+        expect(pd.targetWeapon).toBe(pod);
+        expect(pd.willHitTarget).toBe(willHit);
+        // Follow a hit to the pod (forced when the roll missed): the PD bolt flies at 430 and, out of view, strikes when its
+        // distance to the pod starts growing (3818-3826); the struck pod gets Power = float.MaxValue and ResetNext (3876).
+        pd.willHitTarget = true;
+        pd.heading = f32(Math.atan2(pod.y - jav.ypos, pod.x - jav.xpos));
+        let step = 0;
+        while (step < 10 && !pod.resetNext) {
+            step++;
+            g.nowMs = t0 + step * 100;
+            handleWeaponsFiringBuiltObject(g, jav, 0.1, g.nowMs);
+        }
+        expect(pod.resetNext).toBe(true);
+        expect(pod.power).toBe(f32(3.4028234663852886e38));
+        // HandleWeaponsFiring skips assault pods before its ResetNext check (3751) and HandleAssaultPodMovement reads neither
+        // ResetNext nor Power: the "shot-down" pod flies on and lands. Faithful C# (PD against pods is cosmetic).
+        const attack0 = jav.assaultAttackValue;
+        g.nowMs = t0 + 1000;
+        handleWeaponsFiringBuiltObject(g, wf, 0.1, g.nowMs);
+        expect(pod.distanceTravelled).toBeGreaterThanOrEqual(0);
+        for (let k = 0; k < 40 && pod.distanceTravelled >= 0; k++) handleAssaultPodMovement(g, wf, 0.1);
+        expect(pod.distanceTravelled).toBe(-1);
+        expect(jav.assaultAttackValue).toBeGreaterThan(attack0);
     });
 });
