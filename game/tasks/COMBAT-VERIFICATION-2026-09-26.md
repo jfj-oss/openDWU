@@ -139,12 +139,14 @@ AmountDelivered. The strict bound now applies only to orders without closed, del
 
 `test/combatScenarios2.test.ts` (test:fast tier, 25 tests): staged on the seed-1 harness game in empty space, each value
 hand-worked from the C# (cites next to the assertions), Rnd-dependent values replayed on a copy of `galaxy.rnd` or matched
-against the traced draws.
+against the traced draws. Both scenario files now pick their cast by role (owner, sub-role, weapons, pirate play style:
+`test/helpers/combatCast.ts`) instead of by name — the todosweep merge (gas clouds in nebulae, star spacing) renamed the whole
+seed-1 cast; part 1's names above are the pre-todosweep cast, `combatScenarios.test.ts` "seed-1 cast" lists the current picks.
 
 ## What was verified
 
 ### (1) Area weapons
-Javelin 001 with an Intimidator Surgewave (id 19: 35 dmg, range 220, speed 120).
+The player's first escort with an Intimidator Surgewave (id 19: 35 dmg, range 220, speed 120).
 - **Firing gate** (BuiltObject.1.cs 3706 CheckFireAreaWeaponAtTarget): no friendly ship within √(0.7) × Range of the target
   (184 blocks, 185 clears); the firer never blocks; Area Gravity measures with Value5 (Graviton Pulse: 200 blocks, 201 clears).
 - **Blast** (4340-4415): DistanceTravelled starts at 0; epicentre snaps to the target; ring grows 1, then (float)(120 × 0.1) = 12
@@ -169,7 +171,7 @@ Javelin 001 with an Intimidator Surgewave (id 19: 35 dmg, range 220, speed 120).
   neither, so the pod lands anyway (faithful; PD against pods is cosmetic).
 
 ### (3) Planetary bombardment
-- **InflictBombardDamage** (BuiltObject.2.cs 5816) for power 3 and 40 on S285 Empire's capital: artillery cut
+- **InflictBombardDamage** (BuiltObject.2.cs 5816) for power 3 and 40 on the first AI empire's capital: artillery cut
   (√(Σ artillery × intercept / 7500) + 0.5, ≥ 1), Damage += power/8000 (float), each race −(long)(power × 250 000 × share),
   bomber civility −num4/5e7 × (1 + civ/30) (or × Max(0.01, 1 + civ/50)), victim IncidentEvaluation = raw − power. Pirate
   bombers lose no reputation; a planetary shield leaves only the 5-draw explosion.
@@ -195,7 +197,7 @@ Javelin 001 with an Intimidator Surgewave (id 19: 35 dmg, range 220, speed 120).
   while the current target's shields ≤ half; Attack/Capture per DetermineDestroyOrCaptureTarget, Normal priority.
 - Fleet ships: refused while `AllowImmediateThreatEvaluation` is false **or while the mission still carries a (Conditional)HyperTo
   command** (a fresh fleet Attack order queues one); allowed once both clear.
-- Target destroyed → mission cleared → next ThreatEvaluation takes the top of the EvaluateThreats ranking (nearer armed escort).
+- Target destroyed → mission cleared → next ThreatEvaluation takes the top of the EvaluateThreats ranking (the nearer armed escort).
 - System threat list rebuilt at most every 5 s per empire/system (LatestThreatEvaluation, 224-231).
 
 ### (6) Repair and retreat

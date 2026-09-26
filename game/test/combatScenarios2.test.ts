@@ -66,7 +66,8 @@ import { canDeployXaraktorVirus } from '../src/sim/player/orderMenu';
 import { ShipActionType, createMissionShipActionAt, createShipAction } from '../src/sim/player/shipAction';
 import { executeShipAction } from '../src/sim/player/executeShipAction';
 import { CreatureType } from '../src/sim/creature';
-import type { Habitat } from '../src/sim/types';
+import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
+import { BALANCED, MERCENARY, PIRATE, SMUGGLER, aiCapital, pirateConstructionShip, pirateEscort, pirateExplorer, pirateFaction, pirateRaider, playerCarrierPort, playerMissileShip, playerShip } from './helpers/combatCast';
 
 let gameData: GameData;
 let componentDefs: Map<number, ComponentDefinition>;
@@ -103,12 +104,6 @@ function place(g: Galaxy, b: BuiltObject, x: number, y: number): void {
     updatePosition(g, b);
 }
 
-function ship(g: Galaxy, name: string): BuiltObject {
-    const b = g.builtObjects.find((x): x is BuiltObject => x !== null && x.name === name);
-    if (b === undefined) throw new Error(`no ship ${name}`);
-    return b;
-}
-
 /** Holds a ship still: no mission, not auto-controlled, never flees (BuiltObject.1.cs 1551 reads Design.FleeWhen). */
 function hold(b: BuiltObject): void {
     builtObjectMission(b.mission)?.clear();
@@ -134,6 +129,11 @@ function newWeapon(id: number): Weapon {
     return Weapon.fromBuiltObjectComponent(new BuiltObjectComponent(def, ComponentStatus.Normal));
 }
 
+/** The Mercenary faction's pod-and-beam escort (RaidStrength 1.25, RaidBonus 0.75, Looting 1.33). */
+function mercRaider(g: Galaxy): BuiltObject {
+    return pirateRaider(g, pirateFaction(g, MERCENARY));
+}
+
 const f32 = Math.fround;
 const damagedCount = (b: BuiltObject) => b.components.items.filter((c) => c.status === ComponentStatus.Damaged).length;
 
@@ -143,17 +143,17 @@ const damagedCount = (b: BuiltObject) => b.components.items.filter((c) => c.stat
 
 describe('(1) area weapons', () => {
     /**
-     * The player's Javelin 001 carries an Intimidator Surgewave (components.txt id 19, WeaponAreaDestruction: Value1 damage 35,
+     * The player's Praefectus 001 (the player's first escort) carries an Intimidator Surgewave (components.txt id 19, WeaponAreaDestruction: Value1 damage 35,
      * Value2 range 220, Value3 energy 54, Value4 expansion speed 120, Value5 13, Value6 fire rate 8200). The target is S269
-     * Confederacy's Hidden Aspiration 150 ahead; S83 Confederacy's Surly Orbit sits 50 beyond the target (a second enemy)
-     * and the player's own Javelin 002 is the friendly ship. All shields 100, no fleets, no captains.
+     * Confederacy's the pirate explorer 150 ahead; another faction's explorer sits 50 beyond the target (a second enemy)
+     * and the player's own Praefectus 002 is the friendly ship. All shields 100, no fleets, no captains.
      */
     function stage() {
         const g = cachedTickGame(gameData).galaxy;
-        const esc = ship(g, 'Javelin 001');
-        const tgt = ship(g, 'Hidden Aspiration');
-        const enemy2 = ship(g, 'Surly Orbit');
-        const friend = ship(g, 'Javelin 002');
+        const esc = playerShip(g, BuiltObjectSubRole.Escort, 0);
+        const tgt = pirateExplorer(g, 0);
+        const enemy2 = pirateExplorer(g, 0, [tgt.empire!]);
+        const friend = playerShip(g, BuiltObjectSubRole.Escort, 1);
         for (const b of [esc, tgt, enemy2, friend]) hold(b);
         const s = emptySpot(g);
         place(g, esc, s.x, s.y);
@@ -193,10 +193,10 @@ describe('(1) area weapons', () => {
     it('the blast: centred on the target, a ring growing 1 then Speed × dt per step; each ship is struck once as the ring passes it, for 35 × (1 − ring/Range); friendly ships inside are struck too; shields absorb; the ring overshoots Range with zero power (BuiltObject.1.cs 4340-4388)', () => {
         const { g, esc, tgt, enemy2, friend, area } = stage();
         const s0 = { x: tgt.xpos, y: tgt.ypos };
-        // The friendly Javelin 002 wanders into the blast after the shot (the gate only checks at firing time): 100 from
-        // the epicentre. A fourth ship, S269's S162 Adversity, stands 215 out, just inside Range 220.
+        // The friendly Praefectus 002 wanders into the blast after the shot (the gate only checks at firing time): 100 from
+        // the epicentre. A fourth ship, a pirate construction ship, stands 215 out, just inside Range 220.
         place(g, friend, s0.x, s0.y + 100);
-        const far = ship(g, 'S162 Adversity');
+        const far = pirateConstructionShip(g, 0);
         hold(far);
         place(g, far, s0.x + 215, s0.y); // same 400 000 index cell as the epicentre: the ring only scans that cell (4361)
         for (const b of [tgt, enemy2, friend, far]) b.currentShields = b.shieldsCapacity;
@@ -281,15 +281,15 @@ describe('(1) area weapons', () => {
 
 describe('(2) missiles and point defence', () => {
     /**
-     * The player's Colossia 001 (Destroyer: 5 beams + 2 Concussion Missiles — components.txt id 10: damage 6, range 520,
+     * The player's Venator 001 (the player's first missile ship: Destroyer: 5 beams + 2 Concussion Missiles — components.txt id 10: damage 6, range 520,
      * energy 18, speed 120, fire rate 2700) fires one missile at a stationary target `d` ahead. Stepped by hand at 0.1 s:
      * the firer's HandleWeaponsFiring (BuiltObject.1.cs 3737), then the target's InterceptMissiles (BuiltObject.cs 3819 →
      * BaconBuiltObject.cs 5032) — the order of one DoTasks pass each. Out of view (headless).
      */
-    function stage(targetName: string, d: number) {
+    function stage(target: (g: Galaxy) => BuiltObject, d: number) {
         const g = cachedTickGame(gameData).galaxy;
-        const col = ship(g, 'Colossia 001');
-        const tgt = ship(g, targetName);
+        const col = playerMissileShip(g, 0);
+        const tgt = target(g);
         hold(col);
         hold(tgt);
         const s = emptySpot(g);
@@ -325,7 +325,7 @@ describe('(2) missiles and point defence', () => {
     }
 
     it('missile flight: launch +10, ramp to full speed over the first 120, home on the target, strike at full power when it overshoots (BuiltObject.1.cs 4091-4198); reload is FireRate, no ammunition', () => {
-        const { g, col, tgt, missile } = stage('Hidden Aspiration', 400);
+        const { g, col, tgt, missile } = stage((g) => pirateExplorer(g, 0), 400);
         expect([missile.component.componentId, missile.rawDamage, missile.range, missile.energyRequired, missile.speed, missile.fireRate]).toEqual([10, 6, 520, 18, 120, 2700]);
         expect(col.shipGroup).toBeNull();
         expect(tgt.firepowerRaw).toBe(0); // unarmed: nothing intercepts
@@ -367,7 +367,7 @@ describe('(2) missiles and point defence', () => {
     });
 
     it('Bacon intercept by beams: once the missile is within the defender\'s beam range (and has flown ≥ 100) the first available beam fires at it with a sure hit and the missile is gone (BaconBuiltObject.cs 5032-5080)', () => {
-        const { g, col, tgt, missile } = stage('Worthy Firelance', 400);
+        const { g, col, tgt, missile } = stage((g) => mercRaider(g), 400);
         const beams = tgt.weapons.filter((w) => w.component.type === ComponentType.WeaponBeam);
         expect(beams.map((w) => w.range)).toEqual([190, 190, 190, 190]);
         const t0 = g.nowMs;
@@ -413,7 +413,7 @@ describe('(2) missiles and point defence', () => {
     });
 
     it('point defence only engages a missile that has flown 100: a Point Defense Cannon (id 13, range 140) on the target waits, then shoots it down', () => {
-        const { g, col, tgt, missile } = stage('Hidden Aspiration', 130);
+        const { g, col, tgt, missile } = stage((g) => pirateExplorer(g, 0), 130);
         const pd = newWeapon(13);
         expect([ComponentType[pd.component.type], pd.rawDamage, pd.range, pd.energyRequired, pd.speed, pd.fireRate]).toEqual(['WeaponPointDefense', 3, 140, 4, 430, 540]);
         tgt.weapons.push(pd);
@@ -440,8 +440,8 @@ describe('(2) missiles and point defence', () => {
 
     it('point defence against an assault pod: DetermineHitTarget(weaponBlast) draw for draw; a PD hit marks the pod Power = float.MaxValue / ResetNext — which the C# never acts on: the pod still lands (BuiltObject.1.cs 2905, 5202, 3873, 2626)', () => {
         const g = cachedTickGame(gameData).galaxy;
-        const jav = ship(g, 'Javelin 001');
-        const wf = ship(g, 'Worthy Firelance');
+        const jav = playerShip(g, BuiltObjectSubRole.Escort, 0);
+        const wf = mercRaider(g);
         hold(jav);
         hold(wf);
         const s = emptySpot(g);
@@ -507,17 +507,11 @@ describe('(2) missiles and point defence', () => {
 // ---------------------------------------------------------------------------------------------------------------
 
 describe('(3) planetary bombardment', () => {
-    function capitalOf(g: Galaxy, name: string): Habitat {
-        const e = g.empires.find((x) => x.name === name);
-        if (e === undefined || e.capital === null) throw new Error(`no capital for ${name}`);
-        return e.capital;
-    }
-
     it('InflictBombardDamage hand-worked: artillery cuts the bombard strength, Damage += power/8000, each race loses power × 250 000 by share, the bomber loses reputation and the victim remembers the incident (BuiltObject.2.cs 5816-5992)', () => {
         const g = cachedTickGame(gameData).galaxy;
-        const col = ship(g, 'Colossia 001');
+        const col = playerMissileShip(g, 0);
         const player = g.playerEmpire!;
-        const colony = capitalOf(g, 'S285 Empire');
+        const colony = aiCapital(g, 0);
         const victim = colony.empire!;
         expect(colony.planetaryShieldPresent).toBe(false);
         for (const bp of [3, 40]) {
@@ -552,8 +546,8 @@ describe('(3) planetary bombardment', () => {
 
     it('a pirate or independent bomber costs no reputation; a planetary shield blocks everything but the explosion (5818, 5962)', () => {
         const g = cachedTickGame(gameData).galaxy;
-        const colony = capitalOf(g, 'S285 Empire');
-        const pirate = ship(g, 'Worthy Firelance');
+        const colony = aiCapital(g, 0);
+        const pirate = mercRaider(g);
         const pe = pirate.empire!;
         const civ0 = pe.civilityRating;
         const amt0 = colony.population.totalAmount;
@@ -581,9 +575,9 @@ describe('(3) planetary bombardment', () => {
 
     it('BombardTarget fires a bombard weapon at the colony (jitter ±250 ms, heading ±0.2), the shell flies unguided and InflictBombardDamage lands with the weapon\'s BombardDamage (BuiltObject.1.cs 4899, 4113-4150)', () => {
         const g = cachedTickGame(gameData).galaxy;
-        const col = ship(g, 'Colossia 001');
+        const col = playerMissileShip(g, 0);
         hold(col);
-        const colony = capitalOf(g, 'S285 Empire');
+        const colony = aiCapital(g, 0);
         const nd = newWeapon(11); // Nuclear Devastator: WeaponBombard, range 210, energy 15, speed 50, fire rate 6000, bombard 3
         expect([ComponentType[nd.component.type], nd.range, nd.energyRequired, nd.speed, nd.fireRate, nd.bombardDamage]).toEqual(['WeaponBombard', 210, 15, 50, 6000, 3]);
         col.weapons.length = 0;
@@ -626,7 +620,7 @@ describe('(3) planetary bombardment', () => {
     it('the Xaraktor virus: CanDeployXaraktorVirus needs the researched plague and a Race Achievement wonder (Empire.10.cs 4518); DeployVirus infects the colony, spawns Next(15, 20) Kaltors and stamps LastXaraktorVirusDeploy (Main.Part7.cs 1020-1043)', () => {
         const g = cachedTickGame(gameData).galaxy;
         const player = g.playerEmpire!;
-        const colony = capitalOf(g, 'S285 Empire');
+        const colony = aiCapital(g, 0);
         // The stock plagues.txt has no SpecialFunctionCode 1 entry (the header documents it: "1=Xaraktor virus"); a mod
         // adds one. Stand one in: Dekara Virus (id 1) flagged as the Xaraktor virus.
         expect(galaxyPlagues(g).some((p) => p.specialFunctionCode === 1)).toBe(false);
@@ -673,13 +667,13 @@ describe('(4) pirate raids', () => {
     }
 
     /**
-     * Black Pillagers (Mercenary play style: RaidStrengthFactor 1.25, RaidBonusFactor 0.75, LootingFactor 1.33 —
-     * Galaxy.8.cs 4396 SetPirateFactionModifiers) raid the player's capital with Worthy Firelance's Assault Pod
+     * The Mercenary faction (seed-1: S78 Gangsters; play style: RaidStrengthFactor 1.25, RaidBonusFactor 0.75, LootingFactor 1.33 —
+     * Galaxy.8.cs 4396 SetPirateFactionModifiers) raid the player's capital with its escort's Assault Pod
      * (components.txt id 114: Value1 strength 50, speed 50). Dominant race troop strength 138.
      */
     function stage() {
         const g = cachedTickGame(gameData).galaxy;
-        const wf = ship(g, 'Worthy Firelance');
+        const wf = mercRaider(g);
         hold(wf);
         const player = g.playerEmpire!;
         const capital = player.capital!;
@@ -689,14 +683,13 @@ describe('(4) pirate raids', () => {
 
     it('play-style factors: Mercenary raids at 1.25 strength / 0.75 loot and loots at 1.33, Smuggler 0.75 / 0.75 / 0.75, Pirate 1.25 / 1.4 / 1.0 (Galaxy.8.cs 4396, BaconEmpire.cs 59-84)', () => {
         const { g, pe } = stage();
-        expect(pe.name).toBe('Black Pillagers');
+        expect(pe).toBe(pirateFaction(g, MERCENARY));
         expect(pe.dominantRace!.troopStrength).toBe(138);
-        const byName = (n: string) => g.pirateEmpires.find((e) => e.name === n)!;
         const f = (e: Empire) => [empireRaidStrengthFactor(e), empireRaidBonusFactor(e), empireLootingFactor(e)];
         expect(f(pe)).toEqual([1.25, 0.75, 1.33]); // Mercenary
-        expect(f(byName('S160 Spaceways'))).toEqual([0.75, 0.75, 0.75]); // Smuggler
-        expect(f(byName('Vicious Bandits'))).toEqual([1.25, 1.4, 1.0]); // Pirate
-        expect(f(byName('S269 Confederacy'))).toEqual([1.0, 1.0, 1.0]); // Balanced
+        expect(f(pirateFaction(g, SMUGGLER))).toEqual([0.75, 0.75, 0.75]); // Smuggler
+        expect(f(pirateFaction(g, PIRATE))).toEqual([1.25, 1.4, 1.0]); // Pirate
+        expect(f(pirateFaction(g, BALANCED))).toEqual([1.0, 1.0, 1.0]); // Balanced
         expect(f(g.playerEmpire!)).toEqual([1.0, 1.0, 1.0]); // not a pirate: the Empire.cs 431-455 defaults
     });
 
@@ -758,7 +751,7 @@ describe('(4) pirate raids', () => {
         num2 = Math.min(10, num2);
         const val = Math.min(90.0, Math.sqrt(num) * Math.sqrt(num2));
         const val2 = Math.min(95.0, Math.sqrt(Math.trunc(num4 / 50) + num5) * Math.sqrt(num2));
-        expect(num2).toBeGreaterThan(0); // Sol 2 Space Port is armed
+        expect(num2).toBeGreaterThan(0); // the capital's spaceport is armed
         expect(val2).toBeGreaterThan(0);
         const rel0 = obtainPirateRelation(player, pe).evaluationRaidsAgainstOurColonies;
         expect(capital.invadingTroops === null || capital.invadingTroops.count === 0).toBe(true);
@@ -830,8 +823,8 @@ describe('(4) pirate raids', () => {
 
     it('looting: a Mercenary kill pays CalculateBuiltObjectLootingValue × ColonyIncomeFactor × LootingFactor 1.33 after corruption (BuiltObject.1.cs 3915-3925) — fixed: LootingFactor used to read 1.0 for every faction', () => {
         const g = cachedTickGame(gameData).galaxy;
-        const wf = ship(g, 'Worthy Firelance');
-        const victim = ship(g, 'Sol Starseeker');
+        const wf = mercRaider(g);
+        const victim = playerShip(g, BuiltObjectSubRole.ExplorationShip, 2);
         hold(wf);
         hold(victim);
         const s = emptySpot(g);
@@ -867,15 +860,15 @@ describe('(4) pirate raids', () => {
 
 describe('(5) AI retargeting', () => {
     /**
-     * The player's Javelin 001, auto-controlled, attacks S269's unarmed Hidden Aspiration (A, 150 away) while Black
-     * Pillagers' Worthy Firelance (B: 4 beams + an assault pod) closes in at 300. Empty space (no NearestSystemStar), so
+     * The player's first escort, auto-controlled, attacks a pirate's unarmed explorer (A, 150 away) while the Mercenary
+     * faction's escort (B: beams + an assault pod) closes in at 300. Empty space (no NearestSystemStar), so
      * PerformThreatEvaluation takes the galaxy-wide EvaluateThreats list (BuiltObject.1.cs 219).
      */
     function stage() {
         const g = cachedTickGame(gameData).galaxy;
-        const jav = ship(g, 'Javelin 001');
-        const a = ship(g, 'Hidden Aspiration');
-        const b = ship(g, 'Worthy Firelance');
+        const jav = playerShip(g, BuiltObjectSubRole.Escort, 0);
+        const a = pirateExplorer(g, 0);
+        const b = mercRaider(g);
         for (const x of [jav, a, b]) hold(x);
         const s = emptySpot(g);
         place(g, jav, s.x, s.y);
@@ -895,8 +888,8 @@ describe('(5) AI retargeting', () => {
         assignMission(g, jav, BuiltObjectMissionType.Attack, a, null, BuiltObjectMissionPriority.Normal);
         const mission = builtObjectMission(jav.mission)!;
         expect(mission.targetBuiltObject).toBe(a);
-        // Levels (Galaxy.7.cs 3681 DetermineThreatLevel, viewer Javelin): num = level of the current target A,
-        // num2 = level of the threat B; Worthy Firelance is not a base (no ÷ 6).
+        // Levels (Galaxy.7.cs 3681 DetermineThreatLevel, viewer Praefectus): num = level of the current target A,
+        // num2 = level of the threat B; the escort is not a base (no ÷ 6).
         const num = determineThreatLevel(g, a, jav);
         const num2 = determineThreatLevel(g, b, jav);
         expect(num * 2.5 * 1.0 < num2).toBe(true); // an unarmed explorer ranks far below an armed escort
@@ -921,7 +914,7 @@ describe('(5) AI retargeting', () => {
 
     it('fleet ships: a fleet mission ignores other threats unless the fleet allows immediate threat evaluation (BuiltObject.1.cs 422-499)', () => {
         const { g, jav, a, b } = stage();
-        const jav2 = ship(g, 'Javelin 002');
+        const jav2 = playerShip(g, BuiltObjectSubRole.Escort, 1);
         hold(jav2);
         place(g, jav2, jav.xpos, jav.ypos + 30);
         const player = g.playerEmpire!;
@@ -950,7 +943,7 @@ describe('(5) AI retargeting', () => {
 
     it('when the target dies the mission is cleared and the next ThreatEvaluation takes the top-ranked attackable threat (EvaluateThreats order, Galaxy.7.cs 3403; BuiltObject.1.cs 346-385)', () => {
         const { g, jav, a, b } = stage();
-        const c = ship(g, 'Terrible Raider'); // S269's armed escort, farther out
+        const c = pirateEscort(g, 0, [b]); // another armed pirate escort, farther out
         hold(c);
         place(g, c, jav.xpos + 600, jav.ypos);
         c.nearestSystemStar = null;
@@ -975,7 +968,7 @@ describe('(5) AI retargeting', () => {
 
     it('the system threat list is re-evaluated at most every 5 s per empire and system (BuiltObject.1.cs 224-231 LatestThreatEvaluation)', () => {
         const g = cachedTickGame(gameData).galaxy;
-        const b = ship(g, 'Javelin 002');
+        const b = playerShip(g, BuiltObjectSubRole.Escort, 1);
         expect(b.nearestSystemStar).not.toBeNull();
         b.currentSpeed = 0;
         const sv = b.empire!.systemVisibility[b.nearestSystemStar!.systemIndex];
@@ -999,8 +992,8 @@ describe('(5) AI retargeting', () => {
 describe('(6) repair and retreat', () => {
     function stage() {
         const g = cachedTickGame(gameData).galaxy;
-        const jav = ship(g, 'Javelin 001');
-        const b = ship(g, 'Worthy Firelance');
+        const jav = playerShip(g, BuiltObjectSubRole.Escort, 0);
+        const b = mercRaider(g);
         hold(jav);
         hold(b);
         const s = emptySpot(g);
@@ -1072,7 +1065,7 @@ describe('(6) repair and retreat', () => {
 
     it('a damaged ship outside a fleet is sent to the nearest shipyard for repair (VeryHigh) as soon as one component is damaged, its old mission kept to revert to (BuiltObject.2.cs 4705-4760 AutoRefuelRepairShip, Empire.4.cs 4863 AssignRepairMission)', () => {
         const g = cachedTickGame(gameData).galaxy;
-        const jav = ship(g, 'Javelin 002');
+        const jav = playerShip(g, BuiltObjectSubRole.Escort, 1);
         const owner = jav.owner!;
         expect(owner.autoRefuelStateShips).toBe(true);
         expect(jav.shipGroup).toBeNull();
@@ -1097,8 +1090,8 @@ describe('(6) repair and retreat', () => {
 
     it('DoRepairs: (int)(dt / (DamageRepair / fleet & captain bonus)) components per call from a random start index, wrapping; BattleStats and the fleet\'s BattleStats record the repairs (BaconBuiltObject.cs 4763-4858) — fixed: the fleet record was missing', () => {
         const g = cachedTickGame(gameData).galaxy;
-        const jav = ship(g, 'Javelin 001');
-        const jav2 = ship(g, 'Javelin 002');
+        const jav = playerShip(g, BuiltObjectSubRole.Escort, 0);
+        const jav2 = playerShip(g, BuiltObjectSubRole.Escort, 1);
         const player = g.playerEmpire!;
         executeShipAction(g, player, [jav, jav2], createShipAction(ShipActionType.CreateNewFleet, null), true);
         const fleet = jav.shipGroup as ShipGroup;
@@ -1108,7 +1101,7 @@ describe('(6) repair and retreat', () => {
         const damagedIdx = [1, 4, 7, items.length - 1];
         for (const i of damagedIdx) items[i].status = ComponentStatus.Damaged;
         jav.reDefine();
-        (jav as unknown as { _damageRepair: number })._damageRepair = 10; // seconds per component (ReDefine sets it from DamageControl components; the Javelin has none)
+        (jav as unknown as { _damageRepair: number })._damageRepair = 10; // seconds per component (ReDefine sets it from DamageControl components; the Praefectus has none)
         expect(calculateCrewLevel(jav)).toBe('green'); // no crew-skill override (4769-4787)
         const bonus = shipGroupRepairBonus(fleet);
         const perComponent = 10 / bonus / 1.0; // no captain
@@ -1127,8 +1120,8 @@ describe('(6) repair and retreat', () => {
 
     it('at a shipyard the construction queue repairs damaged components first, in component order, one per build tick (ConstructionQueue.cs 765-790, 1142 IdentifyComponentToBuild)', () => {
         const g = cachedTickGame(gameData).galaxy;
-        const jav = ship(g, 'Javelin 002');
-        const port = ship(g, 'Sol 2 Space Port');
+        const jav = playerShip(g, BuiltObjectSubRole.Escort, 1);
+        const port = playerCarrierPort(g);
         const queue = builtObjectConstructionQueue(port)!;
         expect(queue).not.toBeNull();
         builtObjectMission(jav.mission)?.clear();
