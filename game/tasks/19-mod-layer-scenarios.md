@@ -48,3 +48,36 @@ panel); rival AI-chartered companies competing for the rim trade; a company HQ p
 point; requisition of the company fleet in war for a fee (loyalty cost); company shipyard so the fleet grows with
 profits; corruption/scandal story events (embezzlement, bought governor, pirate smuggling).
 Effort: ~1 week on top of 19a (charter action, tariff rule, company AI persona).
+
+## 19d — Emergent-gameplay additions (ACCEPTED by the user 2026-09-26 — "i love these ideas and i want them added"; ranked by emergence per effort)
+1. Internal politics: ambitious characters (traits/loyalty/events exist; empire split ported) → defections, secessions, coups when approval low.
+2. Resource crises: scarcity shocks propagate through the private economy (luxury loss → unrest, fuel-out → grounded fleets, price spikes → smuggling).
+3. Espionage consequences: exposed agents → diplomatic crises; stolen tech proliferates; false-flag missions start wars between rivals.
+4. Refugees & demographics: refugee fleets (events) settle and shift colony race mix (multi-race populations + race attitudes exist).
+5. Pirate evolution: rich factions go legitimate, ally, or serve as deniable proxies for empires.
+6. Independents as actors: leagues, hired pirate protection, protectorate petitions.
+7. Plague & ecology: disease along freighter routes (quarantine decisions), overdevelopment degrading planets (links to 19b).
+8. Galactic institutions: a council voting sanctions/embargoes → blocs.
+9. Finance: loans (on the port list), bonds, default, creditors seizing assets (links to 19c).
+10. Persona layer (18c) as the multiplier that makes empires weigh all of the above by their traits.
+Effort: 1–4 days each after the mod layer; 5–9 one to two weeks each.
+
+## Order of work (decided 2026-09-26)
+1. **modlayer** foundation (starts now): scenario/data overlay folder loaded over /assets/dwu (races, resources, policies, templates, GameText additions), wizard "Scenario" toggles, feature flags read by the sim (off = byte-identical faithful game, pins unchanged), story-event hook points and a scenario test harness.
+2. Then in parallel: 19a rim trader, 19b Dark Farms + robot army, 19c chartered companies, 19d items 1–4 (internal politics, resource crises, espionage consequences, refugees/demographics).
+3. Then 19d items 5–10 and the cheap 19e items (1 replay theatre, 4 chronicle, 9 freight overlay, 11 situational music).
+4. Then 19e medium (5 living characters, 7 wreckage/salvage, 8 space weather, 10 race designer).
+5. Then 19e ambitious (3 legacy galaxies, 6 spectator broadcast, 2 async multiplayer).
+
+## 19e — Second idea batch (ACCEPTED by the user 2026-09-26 — "i like all those ideas"; builds on replay, the persona layer, the seamless 4K map, the data overlay)
+1. Replay theatre: scrub a whole game as a time-lapse from seed + command log; jump to any moment; fork a "what if"; shareable replays (KB, not MB). [cheap]
+2. Async multiplayer via exchanged command logs (lockstep, no netcode). [ambitious, later]
+3. Legacy galaxies: a finished game seeds the next (wrecks → ruins, heroes → precursor lore, a rival survives as the rim power). [ambitious]
+4. Chronicle: the local model writes an in-character history from Galactic History/news (named wars/eras), in-game + export. [cheap]
+5. Living characters: governors/admirals with opinions, messages, grudges and rivalries affecting cooperation (ties to 19d-1). [medium]
+6. Spectator broadcast: AI-vs-AI galaxy with personas on and a commentator voice. [ambitious]
+7. Battle wreckage & salvage: persistent debris fields; salvage ships recover resources/foreign tech. [medium]
+8. Space weather: nebula storms / solar flares moving across the map, degrading sensors and blocking jumps. [medium]
+9. Freight-flow overlay: make the simulated private economy visible (flows, where money accumulates) — needed by 19a/19c anyway. [cheap]
+10. Race designer on the data overlay, with model-written bios. [medium]
+11. Situational music (battle/exploration/crisis mood selector). [cheap]

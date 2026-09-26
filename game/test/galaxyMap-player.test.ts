@@ -31,11 +31,11 @@ describe('empireGalaxyMapPlayer (task 13e)', () => {
     });
 
     it('Explored Systems shows explored systems only', () => {
-        // System 9 is a star (gas-cloud systems count as always explored, so
-        // they can't serve as the negative case).
+        // The negative case must be a star system (gas-cloud systems count as always explored).
         const sel = computeViewModeSelection(galaxy, GalaxyMapViewMode.ExploredSystems, p);
         expect(sel.systems).toContain(galaxy.systems[3].systemStar);
-        expect(sel.systems).not.toContain(galaxy.systems[9].systemStar);
+        const unexploredStar = galaxy.systems.find((s, i) => i !== 3 && s.systemStar.category === HabitatCategoryType.Star && !p.systemExplored(i))!;
+        expect(sel.systems).not.toContain(unexploredStar.systemStar);
     });
 
     it('resourcesKnown follows the empire resource map', () => {

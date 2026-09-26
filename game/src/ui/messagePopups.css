@@ -172,3 +172,28 @@
     background: rgba(255, 255, 255, 0.14);
     color: #fff;
 }
+
+/* [leftovers] begin — event message on the popup card (Main.Part4.cs method_508: picture, title, text, Go To). */
+.message-popup-image {
+    display: block;
+    max-width: 200px;
+    max-height: 200px;
+    margin: 0 auto 8px;
+    object-fit: contain;
+}
+.message-popup-goto {
+    display: block;
+    margin: 8px 0 0 auto;
+    padding: 3px 12px;
+    font: inherit;
+    font-size: 12px;
+    color: #e6e6e6;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 3px;
+    cursor: pointer;
+}
+.message-popup-goto:hover {
+    background: rgba(255, 255, 255, 0.16);
+}
+/* [leftovers] end */

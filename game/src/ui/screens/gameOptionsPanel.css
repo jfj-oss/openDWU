@@ -142,3 +142,14 @@
 .game-options-suppress {
     margin-top: 6px;
 }
+
+/* [leftovers] begin — Auto Save "Every [N] minutes" */
+.game-options-autosave {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.game-options-select.game-options-minutes {
+    width: 4em;
+}
+/* [leftovers] end */

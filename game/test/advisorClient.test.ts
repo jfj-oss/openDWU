@@ -99,13 +99,13 @@ describe('runAdvisorTurn (harness game, scripted model)', () => {
         const gameData = await loadGameDataFs();
         const galaxy = cachedTickGame(gameData).galaxy;
         const player = galaxy.playerEmpire!;
-        const ship = player.builtObjects.find((b) => b.name === 'Sublime Fantasy')!;
+        const ship = player.builtObjects.find((b) => b.name === 'Glowing Way')!;
         // The fake model reads the brief and picks the explorer's "nearest unexplored system" order.
         handler = (_q, body, res) => {
             const sys = (JSON.parse(body) as { messages: ChatMessage[] }).messages[0].content;
             const brief = JSON.parse(sys.slice(sys.indexOf('BRIEF:\n') + 7).split('\n\nEARLIER')[0]) as AdvisorBrief;
             const c = brief.commands.find((x) => x.who === `s${ship.builtObjectID}` && x.do === 'Explore' && x.note === 'nearest unexplored system')!;
-            json(res, { message: { content: JSON.stringify({ reply: 'Sublime Fantasy is on her way, Sovereign.', commands: [{ id: c.id }] }) } });
+            json(res, { message: { content: JSON.stringify({ reply: 'Glowing Way is on her way, Sovereign.', commands: [{ id: c.id }] }) } });
         };
         const history: ChatMessage[] = [{ role: 'user', content: 'status?' }, { role: 'assistant', content: 'All quiet.' }];
         const turn = await runAdvisorTurn({
@@ -117,18 +117,18 @@ describe('runAdvisorTurn (harness game, scripted model)', () => {
             cfg: { endpoint: url, model: 'qwen3:4b', api: 'ollama' },
         });
         expect(turn.error).toBeUndefined();
-        expect(turn.reply).toBe('Sublime Fantasy is on her way, Sovereign.');
+        expect(turn.reply).toBe('Glowing Way is on her way, Sovereign.');
         expect(turn.results).toHaveLength(1);
         expect(turn.results[0]).toMatchObject({ ok: true, status: 'done' });
         expect(builtObjectMission(ship.mission)?.type).toBe(BuiltObjectMissionType.Explore);
         expect(turn.history).toEqual([
             { role: 'user', content: 'send my explorer to the nearest unexplored system' },
-            { role: 'assistant', content: expect.stringMatching(/^"Sublime Fantasy is on her way, Sovereign\." \(orders Sublime Fantasy: Explore → .* carried out\)$/) },
+            { role: 'assistant', content: expect.stringMatching(/^"Glowing Way is on her way, Sovereign\." \(orders Glowing Way: Explore → .* carried out\)$/) },
         ]);
         // History and the new message follow the system prompt.
         const sent = requests[requests.length - 1].body as { messages: ChatMessage[] };
         expect(sent.messages.map((m) => m.role)).toEqual(['system', 'user']);
-        expect(sent.messages[0].content).toContain('You are Gerrin Walkin, ruling Leader acting as fleet admiral of the Sol Commonwealth');
+        expect(sent.messages[0].content).toContain('You are San Ikkuros, ruling Leader acting as fleet admiral of the Royal Sol Commonwealth');
         expect(sent.messages[0].content).toContain('EARLIER IN THIS CHAT (context only, do not copy):\nPlayer said: status?\nYou answered: All quiet.');
     }, 120000);
 
@@ -139,7 +139,7 @@ describe('runAdvisorTurn (harness game, scripted model)', () => {
         const other = galaxy.empires.find((e) => e !== player && e.active && e !== galaxy.independentEmpire)!;
         player.diplomaticRelations.byEmpire(other)!.type = DiplomaticRelationType.None;
         other.diplomaticRelations.byEmpire(player)!.type = DiplomaticRelationType.None;
-        const ship = player.builtObjects.find((b) => b.name === 'Sublime Fantasy')!;
+        const ship = player.builtObjects.find((b) => b.name === 'Glowing Way')!;
         handler = (_q, body, res) => {
             const sys = (JSON.parse(body) as { messages: ChatMessage[] }).messages[0].content;
             const brief = JSON.parse(sys.slice(sys.indexOf('BRIEF:\n') + 7).split('\n\nEARLIER')[0]) as AdvisorBrief;
