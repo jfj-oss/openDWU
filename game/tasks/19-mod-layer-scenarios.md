@@ -218,5 +218,20 @@ rules. Effort: medium (~1–2 agent-days). Flag off = byte-identical.
    isolated behaviour, the extra colony stays independent. Params: league radius, min members, chance per year, fleet
    multiplier, one-colony toggle. Ties: 19d-6 independents as actors, 19j herder leagues (herds pooled), 19a (a league on
    the rim becomes a trade partner bloc). Flag off = byte-identical.
-Effort: 1 ≈ half a day (soak + palette + UI check); 2 ≈ 1 agent-day; 3 ≈ 1 agent-day after 2. Effort: medium (~1 agent-day);
+Effort: 1 ≈ half a day (soak + palette + UI check); 2 ≈ 1 agent-day; 3 ≈ 1 agent-day after 2.
+
+## 19l — Livelier mid game (ACCEPTED by the user 2026-09-26 — "do only new ideas"; from the 10-year seed-1 run: 1 war, 0 invasions in 10 years)
+1. Ambition pressure: a per-empire drive that rises with idle military strength (warships not in a war, years since the
+   last war) and falls with each war/loss; above a threshold the war-review gates get a scenario-side bias (attitude
+   threshold relaxed by ambition × param) so a strong, peaceful AI eventually goes looking for a fight. Fixes the
+   "14 warships, 1 colony, forever" pattern. Data-driven; flag off = byte-identical.
+2. Border friction: overlapping territory (territory grid) generates yearly incidents — mining-station disputes, blockades,
+   seizures — fed into the 19d3 crisis machinery so tension builds toward war instead of appearing from nowhere.
+3. Smaller invasions: scenario option lowering the C# ≥10-ship troop-fleet minimum (Empire.8.cs 1047 PrepareFleetsForWar)
+   for weak targets (target troop strength ≤ param), so invasions happen in the mid game; off by default.
+4. Pirate ambition: rich factions (money/ships above params) graduate from raids to seizing an independent colony as a
+   permanent base and start acting like a small empire (colony defence, freighters), producing a real underworld enemy.
+5. Living calendar: festivals, elections, coronations as yearly events per empire with small diplomacy/approval effects
+   and messages, so the feed has texture between crises; ties to 19g-4 succession and the 19i rim calendar idea.
+Effort: 1, 3 cheap (data + one gate each); 2, 4 medium; 5 cheap. Build after the 19d wave is merged. Effort: medium (~1 agent-day);
 build after 19d2 (unrest plumbing) alongside 19g-7 rim fauna; 19a/19c tests must still pass with 19h on.
