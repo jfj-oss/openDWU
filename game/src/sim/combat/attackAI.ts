@@ -108,9 +108,16 @@ export function weaponIsAvailableWithoutEnergyConsideration(weapon: Weapon, time
     return weapon.distanceTravelled < 0.0 && weapon.lastFired + weapon.fireRate <= time;
 }
 
-/** Empire.RaidStrengthFactor (Empire.cs 431, default 1.0; TODO(port) M4s: pirate faction modifiers set it). */
-function empireRaidStrengthFactor(empire: Empire): number {
-    return (empire as Empire & { raidStrengthFactor?: number }).raidStrengthFactor ?? 1.0;
+/**
+ * Empire.RaidStrengthFactor (Empire.cs 431, default 1.0): set per pirate play style by BaconEmpire.cs 75
+ * SetPirateFactionModifiers (Galaxy.8.cs table; pirates.ts keeps it in Empire.pirateFactionModifiers); a 0 reads as 1.0
+ * (Empire.cs 3702). Combat verification 2026-09-26: this used to read a non-existent `empire.raidStrengthFactor` field
+ * (always 1.0), so a Pirate / Mercenary faction's assault pods counted 1.0 instead of 1.25 (Smuggler 0.75) in
+ * CalculateAvailableAssaultPodAttackStrength / CalculateBoardingDefenseValue / CalculateAssaultPodAttackValues.
+ */
+export function empireRaidStrengthFactor(empire: Empire): number {
+    const f = empire.pirateFactionModifiers !== null ? empire.pirateFactionModifiers.raidStrengthFactor : 1.0;
+    return f === 0.0 ? 1.0 : f;
 }
 
 /** BuiltObject.1.cs 3314 CalculateAvailableAssaultPodAttackStrength(time). */

@@ -478,9 +478,36 @@ export function uiClickSounds(): UiClickSounds {
 
 export interface SessionEffects {
     readonly player: EffectsPlayer;
+    /** Main.Part13.cs soundEffectRequestList_0 (at most int_3 = 10 pending; flushed once per Main View frame). */
+    readonly queue: SoundEffectQueue;
+    /** Main.method_0: add a request (dropped when 10 are pending); counted in soundRequestStats. */
+    request(req: SoundEffectRequest | null): boolean;
+    /** Main.method_1 / method_2: play the pending requests (called once per rendered frame). */
+    flush(): void;
     setVolume(v: number): void;
     mute(): void;
     unmute(): void;
+}
+
+/** Counters of Main.method_0 calls (debug hook `window.__dwu.audio` and the headless battle check). */
+export interface SoundRequestStats {
+    requested: number;
+    accepted: number;
+    dropped: number;
+    byFile: Record<string, number>;
+}
+
+const stats: SoundRequestStats = { requested: 0, accepted: 0, dropped: 0, byFile: {} };
+
+export function soundRequestStats(): SoundRequestStats {
+    return stats;
+}
+
+export function resetSoundRequestStats(): void {
+    stats.requested = 0;
+    stats.accepted = 0;
+    stats.dropped = 0;
+    stats.byFile = {};
 }
 
 let session: SessionEffects | null = null;
@@ -496,8 +523,27 @@ export function startEffects(): SessionEffects {
             player.volume = muted ? 0 : volume;
             uiClickSounds().volume = muted ? 0 : volume;
         };
+        const queue = new SoundEffectQueue(player);
         session = {
             player,
+            queue,
+            request(req: SoundEffectRequest | null): boolean {
+                // An empty filename (e.g. ResolveMessage for an unlisted type) still counts as a C# request.
+                if (req === null) return false;
+                stats.requested++;
+                const ok = queue.enqueue(req);
+                if (ok) {
+                    stats.accepted++;
+                    const key = req.filename.toLowerCase();
+                    stats.byFile[key] = (stats.byFile[key] ?? 0) + 1;
+                } else {
+                    stats.dropped++;
+                }
+                return ok;
+            },
+            flush(): void {
+                queue.flush();
+            },
             setVolume(v: number): void {
                 if (v < 0 || v > 1) return;
                 volume = v;

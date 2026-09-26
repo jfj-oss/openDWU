@@ -1,7 +1,7 @@
 // Unit tests for the pure helpers in src/audio/musicPlayer.ts (no audio).
 
 import { describe, expect, it } from 'vitest';
-import { MusicMood, fadeStep, pickTrackForMood } from '../src/audio/musicPlayer';
+import { MUSIC_FILES, MusicPlayer, THEME_MUSIC_FILE, fadeStep, pickNextTrack, type MediaBackend, type TimerSeam } from '../src/audio/musicPlayer';
 
 /** Deterministic PRNG so selection tests are reproducible. */
 function makeRand(seed: number): () => number {
@@ -15,48 +15,145 @@ function makeRand(seed: number): () => number {
     };
 }
 
-describe('pickTrackForMood', () => {
-    it('returns null for moods with no tracks', () => {
-        expect(pickTrackForMood(MusicMood.Undefined, null, makeRand(1))).toBeNull();
+describe('pickNextTrack (MusicPlayer.cs:347 EbsZqjqvhZ)', () => {
+    it('draws from every mp3 in the folder (no mood pools)', () => {
+        const rand = makeRand(42);
+        const seen = new Set<string>();
+        for (let i = 0; i < 2000; i++) seen.add(pickNextTrack(MUSIC_FILES, null, rand)!);
+        expect([...seen].sort()).toEqual([...MUSIC_FILES].sort());
     });
-
-    it('always returns a track from the mood pool', () => {
-        const pools: Record<number, string[]> = {
-            [MusicMood.Quiet]: ['Shadows.mp3', 'Suspense.mp3', 'Utopia.mp3'],
-            [MusicMood.Moderate]: ['OnTrack.mp3', 'Striving.mp3', 'Outlaw.mp3', 'BoldStroke.mp3'],
-            [MusicMood.Theme]: ['DistantWorldsTheme.mp3'],
-        };
-        for (const mood of [MusicMood.Quiet, MusicMood.Moderate, MusicMood.Intense, MusicMood.Theme]) {
-            const rand = makeRand(42);
-            for (let i = 0; i < 200; i++) {
-                const pick = pickTrackForMood(mood as MusicMood, null, rand);
-                expect(pick).not.toBeNull();
-                if (mood === MusicMood.Intense) {
-                    expect(['Action1.mp3', 'Action2.mp3', 'Desperate.mp3', 'Forceful.mp3', 'Frustrated.mp3', 'Gripping.mp3', 'Intensity.mp3', 'Pursuit.mp3', 'Shock.mp3', 'Strike.mp3']).toContain(pick);
-                } else {
-                    expect(pools[mood]).toContain(pick);
-                }
-            }
-        }
-    });
-
-    it('never repeats the current track when the pool has more than one', () => {
+    it('never repeats the current track when the folder has more than one', () => {
         const rand = makeRand(7);
-        for (let i = 0; i < 200; i++) {
-            const pick = pickTrackForMood(MusicMood.Quiet, 'Shadows.mp3', rand);
-            expect(pick).not.toBe('Shadows.mp3');
-        }
+        for (let i = 0; i < 200; i++) expect(pickNextTrack(MUSIC_FILES, 'Shadows.mp3', rand)).not.toBe('Shadows.mp3');
     });
-
-    it('may repeat the current track when the pool has exactly one', () => {
-        const pick = pickTrackForMood(MusicMood.Theme, 'DistantWorldsTheme.mp3', makeRand(1));
-        expect(pick).toBe('DistantWorldsTheme.mp3');
+    it('a single-file folder repeats; an empty one has nothing', () => {
+        expect(pickNextTrack(['A.mp3'], 'A.mp3', makeRand(1))).toBe('A.mp3');
+        expect(pickNextTrack([], null, makeRand(1))).toBeNull();
     });
+});
 
-    it('is deterministic for a given rand sequence', () => {
-        const a = pickTrackForMood(MusicMood.Intense, null, makeRand(99));
-        const b = pickTrackForMood(MusicMood.Intense, null, makeRand(99));
-        expect(a).toBe(b);
+class FakeMedia implements MediaBackend {
+    url: string | null = null;
+    playing = false;
+    pos = 0;
+    volume = 1;
+    onEnded: (() => void) | null = null;
+    played: string[] = [];
+    play(url: string): void {
+        this.url = url;
+        this.playing = true;
+        this.pos = 1;
+        this.played.push(url);
+    }
+    pause(): void {
+        this.playing = false;
+    }
+    resume(): void {
+        if (this.url !== null) this.playing = true;
+    }
+    stop(): void {
+        this.playing = false;
+        this.pos = 0;
+    }
+    get position(): number {
+        return this.pos;
+    }
+    end(): void {
+        this.playing = false;
+        this.pos = 0;
+        this.onEnded?.();
+    }
+}
+
+class ManualTimers implements TimerSeam {
+    active = new Set<number>();
+    private n = 0;
+    setInterval(): unknown {
+        this.active.add(++this.n);
+        return this.n;
+    }
+    clearInterval(h: unknown): void {
+        this.active.delete(h as number);
+    }
+}
+
+function makePlayer(seed = 3) {
+    const media = new FakeMedia();
+    const timers = new ManualTimers();
+    const p = new MusicPlayer({ media, timers, rand: makeRand(seed), folder: '/m/' });
+    return { p, media, timers };
+}
+
+function runFade(p: MusicPlayer, max = 2000): number {
+    let n = 0;
+    while (p.fadeTimerRunning && n < max) {
+        p.tick();
+        n++;
+    }
+    return n;
+}
+
+describe('MusicPlayer (MusicPlayer.cs)', () => {
+    it('StartTheme plays the theme; when it ends MediaEnded picks another random track', () => {
+        const { p, media } = makePlayer();
+        p.setVolume(0.5);
+        p.startTheme();
+        expect(media.url).toBe('/m/' + THEME_MUSIC_FILE);
+        expect(media.volume).toBeCloseTo(0.3, 10); // Volume * 0.6
+        media.end();
+        expect(media.url).not.toBe('/m/' + THEME_MUSIC_FILE);
+        expect(MUSIC_FILES.map((f) => '/m/' + f)).toContain(media.url);
+    });
+    it('ForceSwitch fades to silence, settles 20 ticks, then starts a different track at full volume', () => {
+        const { p, media } = makePlayer();
+        p.setVolume(1);
+        p.startTheme();
+        p.forceSwitch();
+        expect(p.isInitiatingFade).toBe(false); // ForceSwitch leaves bool_0 alone
+        const ticks = runFade(p);
+        expect(ticks).toBeGreaterThan(21);
+        expect(media.played.length).toBe(2);
+        expect(media.url).not.toBe('/m/' + THEME_MUSIC_FILE);
+        expect(media.volume).toBeCloseTo(0.6, 10);
+    });
+    it('FadePause pauses at silence, FadeResume fades back to the volume', () => {
+        const { p, media } = makePlayer();
+        p.setVolume(0.5);
+        p.startTheme();
+        p.fadePause();
+        expect(p.isInitiatingFade).toBe(true);
+        runFade(p);
+        expect(media.playing).toBe(false);
+        expect(media.volume).toBe(0);
+        expect(p.isPlaying).toBe(true); // PlayPosition > 0 while paused
+        p.fadeResume();
+        expect(media.playing).toBe(true);
+        expect(media.volume).toBe(0);
+        runFade(p);
+        expect(media.volume).toBeCloseTo(0.3, 10);
+        expect(media.played.length).toBe(1);
+    });
+    it('Stop unsubscribes MediaEnded (FadeStop ends the music for good)', () => {
+        const { p, media } = makePlayer();
+        p.startTheme();
+        p.fadeStop();
+        runFade(p);
+        expect(p.isPlaying).toBe(false);
+        media.end();
+        expect(media.played.length).toBe(1);
+    });
+    it('the Options mute is SetVolume(Mute) and unmute restores the slider', () => {
+        const { p, media } = makePlayer();
+        p.setUserVolume(0.8);
+        p.startTheme();
+        p.mute();
+        expect(p.volume).toBe(0);
+        expect(media.volume).toBe(0);
+        p.setUserVolume(0.4);
+        expect(media.volume).toBe(0);
+        p.unmute();
+        expect(p.volume).toBe(0.4);
+        expect(media.volume).toBeCloseTo(0.24, 10);
     });
 });
 

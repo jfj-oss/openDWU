@@ -62,10 +62,22 @@ import { openOptionsModal } from './ui/screens/mainMenu';
 import { createTutorialsScreen, openTutorialWindow } from './ui/screens/tutorials';
 import { createCreditsScreen } from './ui/screens/credits';
 import { startMusic } from './audio/musicPlayer';
+// [audio] begin
+import { installGameAudio } from './audio/gameAudio';
+import { installUiClickSounds } from './audio/uiClicks';
+import { soundRequestStats } from './audio/effectsPlayer';
+import { getMessageOptions } from './ui/messageRouting';
+// [audio] end
 import { createNewGameWizard } from './ui/screens/newGameWizard';
 import { openGalactopedia } from './ui/screens/galactopedia';
 import { defaultStartGameOptions, piratesFor, STARTING_TECH_LEVEL, toCreateGameOptions, type StartGameOptions, maximumEmpireAmountFor, starCountFor } from './sim/startGameOptions';
 import { serializeGame, deserializeGame } from './sim/save/gameSave';
+// [leftovers] begin
+import { closeGalacticHistory } from './ui/screens/galacticHistory';
+import { installEventMessages, removeEventMessages } from './ui/eventMessages';
+import { installAutosave, removeAutosave } from './ui/autosave';
+import { isGameOptionsPanelOpen } from './ui/screens/gameOptionsPanel';
+// [leftovers] end
 import { setSaveLoadProvider, createSaveLoadPanel, type LoadedGame } from './ui/screens/saveLoad';
 import { type Game } from './sim/game';
 import { createGalaxyMap, type GalaxyMapScreen } from './ui/screens/galaxyMap';
@@ -506,6 +518,16 @@ export async function startGameView(
     installMessageStubList({ player: game.playerEmpire, galaxy, clock: time });
     // [popupstubs] end
 
+    // [leftovers] begin
+    // The player's EventMessageRecipient (Main.Part12.cs:2881) → history messages + the wonder-built popup.
+    installEventMessages({ player: game.playerEmpire, galaxy, onGoTo: (t) => selectStellarObject(t, true) });
+    // Autosave every GameOptions.AutoSaveInterval minutes (Main.Part12.cs:4013 method_97).
+    installAutosave({
+        serialize: () => (lastStartOptions !== null ? serializeGame(game, time, lastStartOptions) : null),
+        isBlocked: () => isGameOptionsPanelOpen(),
+    });
+    // [leftovers] end
+
     // [ordermenu] begin
     // 17c: right-click orders / the action menu in the main view and the selection panel's action buttons.
     const orderUiCleanup = installOrderUi(
@@ -592,10 +614,15 @@ export async function startGameView(
     // [fix6ui] begin — real elapsed time (elapsedMS: not capped at 100 ms like deltaMS) under the sim's wall-clock
     // budget; a render exception is contained like a sim one (Pixi would stop scheduling frames).
     const renderGuard = createRenderGuard();
+    // [audio] begin — Main View sound requests (drawn weapons, explosions, hyperjumps, ...) + ambient music fade.
+    const gameAudio = installGameAudio({ galaxy, camera, time, suppressAllPopups: () => getMessageOptions().suppressAllPopups });
+    Object.assign((window as unknown as { __dwu: Record<string, unknown> }).__dwu, { audio: soundRequestStats() });
+    // [audio] end
     app.ticker.add(() => {
         simLoop.tick(app.ticker.elapsedMS);
         shipKeys?.frame();
         renderGuard(() => view.update());
+        renderGuard(() => gameAudio.frame()); // [audio]
     });
     // [fix6ui] end
     app.renderer.on('resize', () => {
@@ -704,6 +731,12 @@ export async function startGameView(
         // [popupstubs] begin
         removeMessageStubList();
         // [popupstubs] end
+
+        // [leftovers] begin
+        removeEventMessages();
+        removeAutosave();
+        closeGalacticHistory();
+        // [leftovers] end
         // The ticker buffer is module-level; the next game starts fresh.
         clearHudMessages();
         // [15d]
@@ -724,6 +757,8 @@ export async function startGameView(
         closeCouncilLog();
         // [aiadvisor] end
         orderUiCleanup(); // [ordermenu]
+
+        gameAudio.dispose(); // [audio]
     };
 
     return time;
@@ -876,6 +911,9 @@ async function bootLoadedGame(loaded: LoadedGame): Promise<void> {
 
 async function main(): Promise<void> {
     const params = new URLSearchParams(window.location.search);
+    // [audio] begin — GlassButton / HoverButton / HoverMenuItem / ListViewBase click sounds on every screen.
+    installUiClickSounds();
+    // [audio] end
     const skipMenu = SKIP_MENU_PARAMS.some((k) => params.has(k));
 
     if (params.get('screen') === 'wizard') {

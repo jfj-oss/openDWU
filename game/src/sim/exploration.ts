@@ -104,8 +104,12 @@ const FIRST_CONTACT_PENALTY_START_AMOUNT = -15.0;
 // BaconBuiltObject.cs 58-59 scientificDataForResourceSurvey / scientificDataForRuins: BaconSettings.txt statics
 // (BaconMain.cs 750 / 754), read from `baconSettings`.
 
-/** ComponentStatus.Normal (ComponentStatus.cs). */
-const COMPONENT_STATUS_NORMAL = 0;
+/**
+ * ComponentStatus.Normal (ComponentStatus.cs: Unbuilt 0, Normal 1, Damaged 2). Combat verification 2026-09-26: this was 0
+ * (Unbuilt), so every ship from GenerateBuiltObjectFromDesign (Empire.cs 4346 sets Normal) was born with all components
+ * unbuilt — no engines, reactor, weapons or troop bays.
+ */
+const COMPONENT_STATUS_NORMAL = 1;
 
 
 // ---------------------------------------------------------------------------------------------------------------
