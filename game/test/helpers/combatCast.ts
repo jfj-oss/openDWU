@@ -8,9 +8,6 @@ import type { Empire } from '../../src/sim/empire';
 import type { Habitat } from '../../src/sim/types';
 import { BuiltObjectSubRole } from '../../src/sim/builtObjectTypes';
 import { ComponentType } from '../../src/sim/data/components';
-import { empireRaidStrengthFactor } from '../../src/sim/combat/attackAI';
-import { empireRaidBonusFactor } from '../../src/sim/combat/invasion';
-import { empireLootingFactor } from '../../src/sim/combat/damage';
 
 const live = (list: readonly (BuiltObject | null)[]) => list.filter((b): b is BuiltObject => b !== null && !b.hasBeenDestroyed);
 const hasWeapon = (b: BuiltObject, t: ComponentType) => b.weapons.some((w) => w.component.type === t);
@@ -38,9 +35,10 @@ export function playerCarrierPort(g: Galaxy): BuiltObject {
 
 /** Pirate factions by play style (Galaxy.8.cs 4396 table: [RaidStrength, RaidBonus, Looting]). */
 export function pirateFaction(g: Galaxy, factors: [number, number, number], k = 0): Empire {
+    // Read the play-style table the empire was given (Empire.pirateFactionModifiers, SetPirateFactionModifiers).
     const list = g.pirateEmpires.filter((e) => {
-        const f = [empireRaidStrengthFactor(e), empireRaidBonusFactor(e), empireLootingFactor(e)];
-        return f[0] === factors[0] && f[1] === factors[1] && f[2] === factors[2];
+        const m = e.pirateFactionModifiers;
+        return m !== null && m.raidStrengthFactor === factors[0] && m.raidBonusFactor === factors[1] && m.lootingFactor === factors[2];
     });
     return pick(list, `pirate faction ${factors.join('/')}`, k);
 }
