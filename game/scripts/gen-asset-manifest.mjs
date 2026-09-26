@@ -37,7 +37,7 @@
 // public/assets/dwu by `npm run import-assets`. If the install is absent the
 // manifest is still written (all lists empty) so the renderer falls back to
 // generated textures and the dev server stays console-clean.
-import { readdirSync, writeFileSync, lstatSync, realpathSync, existsSync } from 'node:fs';
+import { readdirSync, writeFileSync, lstatSync, realpathSync, existsSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
@@ -140,7 +140,13 @@ try {
         }
     }
 } catch {
-    // symlink absent (no `npm run import-assets` run) -> empty manifest
+    // symlink absent (no `npm run import-assets` run): fall back to $DWU_DIR (same variable as import-assets and the
+    // desktop shell), so a fresh clone can `DWU_DIR=... npm run package:mac` without linking first.
+    const fromEnv = process.env.DWU_DIR;
+    if (fromEnv && existsSync(join(fromEnv, 'images', 'environment'))) {
+        dwuRoot = fromEnv;
+        envDir = join(fromEnv, 'images', 'environment');
+    }
 }
 
 const manifest = {};
@@ -214,6 +220,7 @@ if (dwuRoot) {
     }
 }
 
+mkdirSync(dirname(outPath), { recursive: true }); // public/ is fully gitignored, so a fresh clone lacks it
 writeFileSync(outPath, JSON.stringify(manifest, null, 2) + '\n');
 const total = Object.values(manifest).reduce((n, list) => n + list.length, 0);
 if (envDir) {

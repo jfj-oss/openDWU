@@ -50,7 +50,8 @@ npm run desktop:dev            # builds dist/, then launches electron desktop/ma
 
 The desktop shell finds your DW:U install the same way as the browser build
 (`$DWU_DIR`, then a saved config, then platform default guesses, then an
-open-directory dialog); it never needs `npm run import-assets`.
+open-directory dialog). Packaging bakes in the install's file list, so set
+`DWU_DIR` (or run `npm run import-assets` once) before `npm run package:*`.
 
 ### Packaging
 
