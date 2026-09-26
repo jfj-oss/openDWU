@@ -5,6 +5,7 @@ import type { Race } from './data/races';
 import type { GameData } from './data/gameData';
 import type { CreateGameOptions, EmpireStartOptions } from './game';
 import { Random } from './random';
+import type { ScenarioManifest } from './scenario/manifest';
 
 export interface StartGameOptions {
     shape: GalaxyShape;
@@ -83,6 +84,25 @@ export interface StartScenarioChoice {
     id: string;
     flags: Record<string, boolean>;
     params: Record<string, number>;
+}
+
+/** The wizard's initial choice for a scenario: every flag / param at its manifest default. */
+export function defaultScenarioChoice(manifest: ScenarioManifest): StartScenarioChoice {
+    const flags: Record<string, boolean> = {};
+    const params: Record<string, number> = {};
+    for (const f of manifest.flags) flags[f.name] = f.default;
+    for (const p of manifest.params) params[p.name] = p.default;
+    return { id: manifest.id, flags, params };
+}
+
+/** Start-page summary text of a scenario choice ("None" without one). */
+export function scenarioChoiceSummary(choice: StartScenarioChoice | null | undefined, manifests: readonly ScenarioManifest[]): string {
+    if (choice == null) return 'None';
+    const m = manifests.find((x) => x.id === choice.id);
+    const on = (m?.flags ?? []).filter((f) => choice.flags[f.name]).map((f) => f.label);
+    const params = (m?.params ?? []).map((p) => `${p.label} ${choice.params[p.name] ?? p.default}`);
+    const extras = [...on, ...params];
+    return `${m?.name ?? choice.id}${extras.length > 0 ? ` (${extras.join(', ')})` : ''}`;
 }
 
 /**

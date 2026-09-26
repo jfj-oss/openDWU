@@ -325,3 +325,15 @@ describe('scenario harness', () => {
         expect(o.manifest.name).toBe('Example Scenario');
     });
 });
+
+describe('wizard scenario choice', () => {
+    it('defaults to None; a chosen scenario starts at its manifest defaults', async () => {
+        const { defaultScenarioChoice, scenarioChoiceSummary } = await import('../src/sim/startGameOptions');
+        expect(defaultStartGameOptions().scenario).toBeUndefined();
+        const m = parseScenarioManifest({ id: 's', name: 'Rim', flags: [{ name: 'a', label: 'A on', default: true }, { name: 'b', default: false }], params: [{ name: 'n', label: 'Count', default: 3 }] });
+        const c = defaultScenarioChoice(m);
+        expect(c).toEqual({ id: 's', flags: { a: true, b: false }, params: { n: 3 } });
+        expect(scenarioChoiceSummary(null, [m])).toBe('None');
+        expect(scenarioChoiceSummary(c, [m])).toBe('Rim (A on, Count 3)');
+    });
+});

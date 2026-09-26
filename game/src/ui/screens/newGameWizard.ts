@@ -20,8 +20,10 @@ import {
     COLONY_INFLUENCE_RANGE_PCT_MAX,
     COLONY_INFLUENCE_RANGE_PCT_MIN,
     defaultRaceName,
+    defaultScenarioChoice,
     defaultStartGameOptions,
     FLAG_COLOR_PALETTE,
+    scenarioChoiceSummary,
     flagShapeUrl,
     OTHER_EMPIRES_COUNT_MAX,
     OTHER_EMPIRES_COUNT_MIN,
@@ -41,6 +43,8 @@ import { parseGovernments, type Government } from '../../sim/data/governments';
 import { fetchText } from '../../sim/data/fetchData';
 import { resolveDataUrl } from '../../sim/data/paths';
 import { DEFAULT_RACE_FILES } from '../../sim/data/gameData';
+import { loadScenarioIndex } from '../../sim/scenario/fetchScenario';
+import type { ScenarioManifest } from '../../sim/scenario/manifest';
 
 const CHROME = '/assets/dwu/images/ui/chrome/';
 const RACES_DIR = '/assets/dwu/images/units/races/';
@@ -110,8 +114,9 @@ export interface NewGameWizardRefs {
  * Your Empire and Victory Conditions, matching the original): The Galaxy →
  * Colonization and Territory → Your Race → Your Empire → Other Empires →
  * Victory Conditions → Start. */
-export type WizardPageId = 'galaxy' | 'colonization' | 'race' | 'empire' | 'empires' | 'victory' | 'start';
-export const WIZARD_PAGES: WizardPageId[] = ['galaxy', 'colonization', 'race', 'empire', 'empires', 'victory', 'start'];
+export type WizardPageId = 'galaxy' | 'colonization' | 'race' | 'empire' | 'empires' | 'victory' | 'scenario' | 'start';
+/** The mod layer's "Scenario" page (tasks/MODLAYER-DESIGN.md §3) sits between Victory Conditions and Start. */
+export const WIZARD_PAGES: WizardPageId[] = ['galaxy', 'colonization', 'race', 'empire', 'empires', 'victory', 'scenario', 'start'];
 
 /** Title-bar text per page ("Start a New Game: <page title>"). */
 export const WIZARD_PAGE_TITLES: Record<WizardPageId, string> = {
@@ -121,6 +126,7 @@ export const WIZARD_PAGE_TITLES: Record<WizardPageId, string> = {
     empire: 'Your Empire',
     empires: 'Other Empires',
     victory: 'Victory Conditions',
+    scenario: 'Scenario',
     start: 'Start',
 };
 
@@ -132,7 +138,8 @@ export const WIZARD_BACK_LABELS: Record<WizardPageId, string> = {
     empire: '← Your Race',
     empires: '← Your Empire',
     victory: '← Other Empires',
-    start: '← Victory Conditions',
+    scenario: '← Victory Conditions',
+    start: '← Scenario',
 };
 
 /** Footer forward-button label per page: names the next page in the wizard
@@ -144,7 +151,8 @@ export const WIZARD_FORWARD_LABELS: Record<WizardPageId, string> = {
     race: 'Your Empire →',
     empire: 'Other Empires →',
     empires: 'Victory Conditions →',
-    victory: 'Start →',
+    victory: 'Scenario →',
+    scenario: 'Start →',
     start: 'Start Game',
 };
 
@@ -351,6 +359,7 @@ export function createNewGameWizard(callbacks: NewGameWizardCallbacks): NewGameW
     const empirePage = buildEmpirePage(options);
     const empiresPage = buildOtherEmpiresPage(options);
     const victoryPage = buildVictoryPage(options);
+    const scenarioPage = buildScenarioPage(options);
     const startPage = buildStartPage(options);
     const pageEls: Record<WizardPageId, HTMLElement> = {
         galaxy: galaxyPage,
@@ -359,6 +368,7 @@ export function createNewGameWizard(callbacks: NewGameWizardCallbacks): NewGameW
         empire: empirePage,
         empires: empiresPage,
         victory: victoryPage,
+        scenario: scenarioPage,
         start: startPage,
     };
     for (const el of Object.values(pageEls)) {
@@ -1607,6 +1617,92 @@ function buildVictoryPage(options: StartGameOptions): HTMLDivElement {
 // Start page (task 06d): summary of the chosen options before booting.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Scenario page (mod layer, tasks/MODLAYER-DESIGN.md §3): "None" (default) or one of /assets/scenarios/index.json,
+// with the selected scenario's description, a checkbox per flag and a number box per param.
+// ---------------------------------------------------------------------------
+
+/** Scenarios listed by the Scenario page (filled when the index loads; read by the Start summary). */
+let wizardScenarios: ScenarioManifest[] = [];
+
+function buildScenarioPage(options: StartGameOptions): HTMLDivElement {
+    const wrap = document.createElement('div');
+    wrap.className = 'wizard-page wizard-scenario-page';
+
+    const intro = document.createElement('div');
+    intro.className = 'wizard-victory-sandbox';
+    intro.textContent = 'Scenarios add content and rules on top of the standard game. Choose “None” for the original game.';
+    wrap.appendChild(intro);
+
+    const listSection = document.createElement('div');
+    listSection.className = 'wizard-victory-section wizard-scenario-list';
+    wrap.appendChild(listSection);
+
+    const detail = document.createElement('div');
+    detail.className = 'wizard-victory-section wizard-scenario-detail';
+    wrap.appendChild(detail);
+
+    function renderDetail(): void {
+        detail.replaceChildren();
+        const choice = options.scenario ?? null;
+        const m = choice === null ? null : wizardScenarios.find((x) => x.id === choice.id) ?? null;
+        const desc = document.createElement('div');
+        desc.className = 'wizard-scenario-description';
+        desc.textContent = m === null ? 'The original game, unchanged.' : m.description || m.name;
+        detail.appendChild(desc);
+        if (m === null || choice === null) return;
+        for (const f of m.flags) {
+            makeVictoryCheckbox(detail, f.label, () => choice.flags[f.name] ?? f.default, (x) => {
+                choice.flags[f.name] = x;
+            });
+            if (f.description) {
+                const note = document.createElement('div');
+                note.className = 'wizard-todo wizard-scenario-note';
+                note.textContent = f.description;
+                detail.appendChild(note);
+            }
+        }
+        for (const p of m.params) {
+            makeVictoryNumberRow(detail, p.label, '', p.min ?? -Number.MAX_SAFE_INTEGER, p.max ?? Number.MAX_SAFE_INTEGER, () => choice.params[p.name] ?? p.default, (x) => {
+                choice.params[p.name] = x;
+            });
+        }
+    }
+
+    function renderList(): void {
+        listSection.replaceChildren();
+        const entries: Array<{ id: string | null; label: string }> = [{ id: null, label: 'None' }, ...wizardScenarios.map((m) => ({ id: m.id, label: m.name }))];
+        for (const e of entries) {
+            const row = document.createElement('label');
+            row.className = 'wizard-checkbox';
+            const radio = document.createElement('input');
+            radio.type = 'radio';
+            radio.name = 'wizard-scenario';
+            radio.checked = (options.scenario?.id ?? null) === e.id;
+            radio.addEventListener('change', () => {
+                if (!radio.checked) return;
+                const m = e.id === null ? null : wizardScenarios.find((x) => x.id === e.id) ?? null;
+                options.scenario = m === null ? null : defaultScenarioChoice(m);
+                renderDetail();
+            });
+            row.appendChild(radio);
+            const span = document.createElement('span');
+            span.textContent = e.label;
+            row.appendChild(span);
+            listSection.appendChild(row);
+        }
+    }
+
+    renderList();
+    renderDetail();
+    void loadScenarioIndex(fetchText).then((list) => {
+        wizardScenarios = list;
+        renderList();
+        renderDetail();
+    });
+    return wrap;
+}
+
 function buildStartPage(options: StartGameOptions): HTMLDivElement {
     const wrap = document.createElement('div');
     wrap.className = 'wizard-page wizard-start-page';
@@ -1675,6 +1771,8 @@ function buildStartPage(options: StartGameOptions): HTMLDivElement {
                         .join(', ') + ` (apply after ${options.victory.startDateYears}y)`
                     : 'Sandbox mode (no victory conditions)',
             ],
+            // Mod layer: the Scenario page's choice.
+            ['Scenario', scenarioChoiceSummary(options.scenario, wizardScenarios)],
             ['Seed', String(options.seed)],
         ];
         summary.replaceChildren(...rows.map(([k, v]) => {
