@@ -16,7 +16,7 @@ import type { Empire } from './empire';
 import { AutomationLevel, empireGovernmentAttributes } from './empire';
 import { BuiltObject } from './builtObject';
 import type { DockingBay } from './builtObject';
-import { HabitatCategoryType, HabitatType, IndustryType, type Habitat, type SystemInfo } from './types';
+import { HabitatCategoryType, HabitatType, IndustryType, planetsOf, type Habitat, type SystemInfo } from './types';
 import type { Race } from './data/races';
 import type { Design } from './design';
 import { findNewest } from './design';
@@ -2329,7 +2329,7 @@ export function identifyColonizationTargetsFull(galaxy: Galaxy, empire: Empire, 
             if (flag3 && flag) flag3 = false;
         }
         if (flag3) continue;
-        const habitats = galaxy.systems[systemVisibility[i].systemStar.systemIndex].habitats;
+        const habitats = planetsOf(galaxy.systems[systemVisibility[i].systemStar.systemIndex]); // Empire.4.cs 4713 Systems[].Habitats: no star
         for (let j = 0; j < habitats.length; j++) {
             const habitat = habitats[j];
             if (
@@ -2743,8 +2743,9 @@ export function findNextSystemToScout(galaxy: Galaxy, empire: Empire, exploratio
     if (explorationShip.nearestSystemStar !== null) {
         const systemInfo = galaxy.systems[explorationShip.nearestSystemStar.systemIndex];
         if (systemInfo.hasRuins ?? false) {
-            for (let i = 0; i < systemInfo.habitats.length; i++) {
-                const habitat = systemInfo.habitats[i];
+            const sysHabitats = planetsOf(systemInfo); // Galaxy.6.cs 4027 systemInfo.Habitats: no star
+            for (let i = 0; i < sysHabitats.length; i++) {
+                const habitat = sysHabitats[i];
                 if (habitat.ruin === null || empire.reclusive) continue;
                 let flag = false;
                 if (habitat.ruin.type === RuinType.UnlockResearchProject) {

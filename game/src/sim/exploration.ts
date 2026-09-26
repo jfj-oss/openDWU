@@ -50,7 +50,7 @@ import type { Galaxy } from './galaxy';
 import type { Empire } from './empire';
 import { BuiltObject } from './builtObject';
 import type { Design } from './design';
-import { HabitatCategoryType, type Habitat, type HabitatType } from './types';
+import { HabitatCategoryType, planetsOf, type Habitat, type HabitatType } from './types';
 import { registerTodo, todo } from './tick/todo';
 import { galaxyStarDate } from './tick/simTime';
 import { MAX_SOLAR_SYSTEM_SIZE, SystemVisibilityStatus } from './visibility';
@@ -967,8 +967,10 @@ export function investigateRuins(galaxy: Galaxy, investigatingEmpire: Empire | n
                     if (systemInfo == null || systemInfo.habitats == null) continue;
                     investigatingEmpire.systemVisibility[habitat.systemIndex].totallyExplored = true;
                     if (investigatingEmpire.resourceMap != null) {
-                        for (let j = 0; j < systemInfo.habitats.length; j++) {
-                            const habitat2 = systemInfo.habitats[j];
+                        // Galaxy.5.cs 4137 systemInfo.Habitats: the star is not in it (set on its own below).
+                        const sysHabitats = planetsOf(systemInfo);
+                        for (let j = 0; j < sysHabitats.length; j++) {
+                            const habitat2 = sysHabitats[j];
                             if (habitat2 != null) investigatingEmpire.resourceMap.setResourcesKnown(habitat2, true);
                         }
                         if (systemInfo.systemStar != null) investigatingEmpire.resourceMap.setResourcesKnown(systemInfo.systemStar, true);
@@ -1229,7 +1231,8 @@ export function investigateRuins(galaxy: Galaxy, investigatingEmpire: Empire | n
             }
             case RuinType.Refugees: {
                 let habitat4: Habitat | null = null;
-                const sysHabitats = galaxy.systems[ruinsHabitat.systemIndex].habitats;
+                // Galaxy.5.cs 4496 Systems[ruinsHabitat.SystemIndex].Habitats — the star is not a refugee target.
+                const sysHabitats = planetsOf(galaxy.systems[ruinsHabitat.systemIndex]);
                 if (sysHabitats != null) {
                     for (let k = 0; k < sysHabitats.length; k++) {
                         const habitat5 = sysHabitats[k];

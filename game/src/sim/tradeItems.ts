@@ -23,7 +23,7 @@ import { EmpireMessageType, sendMessageToEmpire } from './messages';
 import { determineEmpireSystems, totalColonyStrategicValue } from './forceStructure';
 import { SystemVisibilityStatus } from './visibility';
 import { mergeGalaxyMap } from './exploration';
-import { HabitatCategoryType } from './types';
+import { HabitatCategoryType, planetsOf } from './types';
 import { habitatCompareTo } from './stationPlacement';
 import { GalaxyLocationType } from './galaxyLocation';
 import {
@@ -221,7 +221,7 @@ export function valueGalaxyMapForEmpire(galaxy: Galaxy, mapEmpire: Empire, reque
     if (mapEmpire.resourceMap != null) {
         for (let i = 0; i < mapEmpire.systemVisibility.length; i++) {
             if (!mapEmpire.visibility.checkSystemExplored(i)) continue;
-            const habitats = galaxy.systems[i].habitats;
+            const habitats = planetsOf(galaxy.systems[i]); // Galaxy.4.cs 4635 Systems[i].Habitats: no star
             for (let j = 0; j < habitats.length; j++) {
                 if (habitats[j].category !== HabitatCategoryType.Asteroid && mapEmpire.resourceMap.checkResourcesKnown(habitats[j]) && !requestingEmpire.resourceMap.checkResourcesKnown(habitats[j])) num2++;
             }
@@ -442,8 +442,9 @@ export function giveTerritoryMap(galaxy: Galaxy, giver: Empire | null, receiver:
     if (giver === null || receiver === null) return;
     const habitatList = determineEmpireSystems(galaxy, giver);
     for (const item of habitatList) {
-        // DetermineHabitatsInSystem(item): the same test once per habitat of the system (idempotent).
-        const n = Math.max(1, galaxy.systems[item.systemIndex].habitats.length);
+        // Galaxy.4.cs 3817 DetermineHabitatsInSystem(item) (no star): the same test once per planet/moon of the system
+        // (idempotent) — so a star-only system is never set Explored.
+        const n = planetsOf(galaxy.systems[item.systemIndex]).length;
         for (let k = 0; k < n; k++) {
             const status = receiver.systemVisibility[item.systemIndex].status;
             if (status !== SystemVisibilityStatus.Visible) receiver.visibility.setSystemVisibility(item, SystemVisibilityStatus.Explored);
@@ -1641,8 +1642,9 @@ export function reviewDisputedTerritory(galaxy: Galaxy, empire: Empire): void {
             const systemInfo = galaxy.systems[habitat.systemIndex];
             // C# `OtherEmpires == null` never holds (DetermineSystemInfo always assigns a list); TS keeps null for "empty".
             if (systemInfo == null || !systemIsDisputed(systemInfo) || systemInfo.dominantEmpire == null || (systemInfo.dominantEmpire.empire !== other && !otherEmpiresContains(systemInfo, other)) || systemInfo.dominantEmpire.empire !== self || systemInfo.habitats == null) continue;
-            for (let l = 0; l < systemInfo.habitats.length; l++) {
-                const habitat2 = systemInfo.habitats[l];
+            const sysHabitats = planetsOf(systemInfo); // Empire.7.cs 2290 systemInfo.Habitats: no star
+            for (let l = 0; l < sysHabitats.length; l++) {
+                const habitat2 = sysHabitats[l];
                 if (habitat2 != null && habitat2.owner === other && habitat2.owner.capital !== habitat2) habitatList2.push(habitat2);
             }
         }

@@ -24,7 +24,7 @@ import { EventTriggerType } from '../story/gameEventModel';
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import type { BuiltObject } from '../builtObject';
-import type { Habitat } from '../types';
+import { planetsOf, type Habitat } from '../types';
 import { HabitatCategoryType, HabitatType } from '../types';
 import { CargoList, TroopList, Cargo, type Troop } from '../cargo';
 import { BuiltObjectRole } from '../data/designSpecifications';
@@ -1340,7 +1340,9 @@ export function investigateAbandonedBuiltObject(galaxy: Galaxy, investigatingEmp
             sv.totallyExplored = true;
             if (investigatingEmpire.resourceMap != null) {
                 const sys = galaxy.systems[habitat.systemIndex];
-                for (let j = 0; j < sys.habitats.length; j++) investigatingEmpire.resourceMap.setResourcesKnown(sys.habitats[j], true);
+                // Galaxy.5.cs 5393 Systems[].Habitats (no star; the star is set on its own below).
+                const sysHabitats = planetsOf(sys);
+                for (let j = 0; j < sysHabitats.length; j++) investigatingEmpire.resourceMap.setResourcesKnown(sysHabitats[j], true);
                 if (sys.systemStar != null) investigatingEmpire.resourceMap.setResourcesKnown(sys.systemStar, true);
             }
             const status = sv.status;

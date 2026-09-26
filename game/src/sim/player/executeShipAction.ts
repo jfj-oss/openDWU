@@ -25,7 +25,7 @@ import { BuiltObjectRole } from '../data/designSpecifications';
 import { BuiltObjectSubRole } from '../builtObjectTypes';
 import type { Design } from '../design';
 import { galaxyComponentCurrentPrices } from '../design';
-import { Habitat, HabitatCategoryType, HabitatType, type SystemInfo } from '../types';
+import { Habitat, HabitatCategoryType, HabitatType, planetsOf, type SystemInfo } from '../types';
 import { Creature, CreatureType } from '../creature';
 import { Troop, TroopList, TroopType, type CargoList } from '../cargo';
 import { BuiltObjectComponent, ComponentStatus } from '../builtObjectComponent';
@@ -2002,8 +2002,9 @@ export function systemForStar(galaxy: Galaxy, systemStar: Habitat): SystemInfo |
 /** Empire.9.cs 308 IdentifyEmpireAssetsInSystem(system). */
 function identifyEmpireAssetsInSystem(empire: Empire, system: SystemInfo): StellarObject[] {
     const stellarObjectList: StellarObject[] = [];
-    for (let i = 0; i < system.habitats.length; i++) {
-        const habitat = system.habitats[i];
+    const sysHabitats = planetsOf(system); // Empire.9.cs 312 system.Habitats: no star (nor its bases)
+    for (let i = 0; i < sysHabitats.length; i++) {
+        const habitat = sysHabitats[i];
         if (habitat.owner === empire) {
             stellarObjectList.push(habitat);
         } else {

@@ -24,7 +24,7 @@
 
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
-import type { Habitat } from '../types';
+import { planetsOf, type Habitat } from '../types';
 import { HabitatCategoryType, HabitatType } from '../types';
 import type { BuiltObject } from '../builtObject';
 import type { Design } from '../design';
@@ -799,7 +799,7 @@ export function generateAncientHelpers(galaxy: Galaxy, homeColony: Habitat): voi
         empire.policy.warAttacksHarassEnemies = false;
     }
     homeColony.baseQuality = 1;
-    const systemHabitats = galaxy.systems[homeColony.systemIndex].habitats;
+    const systemHabitats = planetsOf(galaxy.systems[homeColony.systemIndex]); // Galaxy.8.cs 1980 Systems[].Habitats: no star
     for (let i = 0; i < systemHabitats.length; i++) {
         const habitat = systemHabitats[i];
         if (habitat === homeColony) continue;

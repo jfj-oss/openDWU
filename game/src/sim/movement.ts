@@ -32,7 +32,7 @@ import type { Galaxy } from './galaxy';
 import type { Empire } from './empire';
 import type { BuiltObject } from './builtObject';
 import { TurnDirection } from './builtObject';
-import { HabitatCategoryType, HabitatType, type Habitat } from './types';
+import { HabitatCategoryType, HabitatType, planetsOf, type Habitat } from './types';
 import type { Creature } from './creature';
 import { determineAngle } from './creature';
 import type { CargoList } from './cargo';
@@ -1787,8 +1787,10 @@ function fastFindNearestRefuellingPointInIndex(
                 }
             }
         }
-        for (let k = 0; k < systemInfo.habitats.length; k++) {
-            const habitat = systemInfo.habitats[k];
+        // Galaxy.6.cs 3375 systemInfo.Habitats: no star (a gas-cloud star's bases are the branch above).
+        const sysHabitats = planetsOf(systemInfo);
+        for (let k = 0; k < sysHabitats.length; k++) {
+            const habitat = sysHabitats[k];
             const num4 = galaxy.calculateDistanceSquared(x, y, habitat.xpos, habitat.ypos);
             if (!(num4 < num)) continue;
             let flag3 = false;
@@ -1881,9 +1883,10 @@ export function identifyWhetherSystemIsRefuellingPointForEmpire(galaxy: Galaxy, 
                 }
             }
         }
-        const systemInfo = galaxy.systems[systemStar.systemIndex];
-        for (let i = 0; i < systemInfo.habitats.length; i++) {
-            const habitat = systemInfo.habitats[i];
+        // Galaxy.6.cs 3219 systemInfo.Habitats: no star (a gas-cloud star's bases are the branch above).
+        const systemHabitats = planetsOf(galaxy.systems[systemStar.systemIndex]);
+        for (let i = 0; i < systemHabitats.length; i++) {
+            const habitat = systemHabitats[i];
             if (habitat.basesAtHabitat.length > 0) {
                 for (const item2 of habitat.basesAtHabitat) {
                     if (!item2.isRefuellingDepot || item2.empire === null || !isStellarObjectDockable(galaxy, item2, empire)) continue;
@@ -2111,7 +2114,7 @@ export function updateSystemFuelSourceStatus(galaxy: Galaxy, empire: Empire): vo
                 }
             }
         }
-        const habitats = galaxy.systems[star.systemIndex].habitats;
+        const habitats = planetsOf(galaxy.systems[star.systemIndex]); // Empire.2.cs 3828 Systems[].Habitats: no star
         for (let n = 0; n < habitats.length; n++) {
             const habitat = habitats[n];
             if ((habitat.category !== HabitatCategoryType.GasCloud && habitat.type !== HabitatType.GasGiant) || (!systemVisibility.totallyExplored && (resourceMap == null || !resourceMap.checkResourcesKnown(habitat)))) {
