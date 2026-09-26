@@ -1,0 +1,107 @@
+/* popupstubs: the one-line message stubs under the top-right money panel (HUD panel tokens, hud.css .hud-panel).
+   Rows are the ticker's 18 px (ScrollingLinkList.cs LinkLabel.Height); position/width/scale are set in JS. */
+
+.message-stubs {
+    position: fixed;
+    z-index: 1499;
+    box-sizing: border-box;
+    pointer-events: auto;
+    font-family: 'Forgotten Futurist', sans-serif;
+    color: #e6e6e6;
+    background: rgba(14, 16, 20, 0.94);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 6px;
+    padding: 2px 0;
+    overflow: hidden;
+}
+.message-stubs[hidden] {
+    display: none;
+}
+
+.message-stubs-viewport {
+    overflow: hidden;
+}
+
+.message-stub {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+    height: 18px;
+    box-sizing: border-box;
+    padding: 0 6px 0 4px;
+    margin: 0;
+    font-family: inherit;
+    font-size: 11px;
+    line-height: 18px;
+    color: #c8c8c8;
+    background: transparent;
+    border: none;
+    border-left: 2px solid transparent;
+    text-align: left;
+    cursor: pointer;
+}
+.message-stub:hover,
+.message-stub-active {
+    background: rgba(255, 255, 255, 0.08);
+    color: #fff;
+}
+
+/* Conversations and advisor suggestions wait for an answer: gold edge, brighter title. */
+.message-stub-answer {
+    border-left-color: #e8d24a;
+    color: #eee;
+}
+.message-stub-suggestion {
+    border-left-color: #aaaaaa; /* DiplomaticMessageQueue.cs advisor colour 170,170,170 */
+}
+
+.message-stub-icon {
+    flex: none;
+    width: 14px;
+    height: 14px;
+    object-fit: contain;
+}
+
+.message-stub-title {
+    flex: 1 1 auto;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.message-stub-date {
+    flex: none;
+    font-size: 9px;
+    color: #777;
+}
+
+.message-stub-dot {
+    flex: none;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #e8d24a;
+}
+.message-stub-dot-read {
+    background: transparent;
+}
+
+.message-stubs-more {
+    padding: 0 6px;
+    font-size: 9px;
+    line-height: 12px;
+    color: #888;
+    text-align: right;
+}
+.message-stubs-more[hidden] {
+    display: none;
+}
+
+/* Plain messages: the sender's colour on the edge. */
+.message-stub-message {
+    border-left-color: var(--stub-color, transparent);
+}

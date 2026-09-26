@@ -2,6 +2,9 @@
 // Scrolling Messages groups (Main.Part3.cs:934-972, Main.Part6.cs:2406-2489). Options apply immediately.
 // TODO(port): the rest of pnlGameOptions (display, sound, auto-save, encounters) — the Esc menu Options modal covers display/sound; semi-automated "Suggest …" needs the sim's AdvisorSuggestion prompt (diplomacyTick.ts checkTaskAuthorized TODO)
 
+// [popupstubs] begin
+import { getSettings, updateSettings } from '../settings';
+// [popupstubs] end
 import './gameOptionsPanel.css';
 import { AutomationLevel, type Empire } from '../../sim/empire';
 import {
@@ -271,6 +274,14 @@ function createGameOptionsPanel(opts: GameOptionsPanelOptions): OpenState {
         checkbox(options.suppressAllPopups, (v) => setSuppressAllPopups(v)),
     );
     msgs.appendChild(suppress);
+    // [popupstubs] begin
+    const autoOpen = el('label', 'game-options-row game-options-suppress');
+    autoOpen.append(
+        el('span', 'game-options-label', 'Open messages automatically'),
+        checkbox(getSettings().openMessagesAutomatically, (v) => updateSettings({ openMessagesAutomatically: v })),
+    );
+    msgs.appendChild(autoOpen);
+    // [popupstubs] end
 
     body.append(auto, msgs);
     win.appendChild(body);

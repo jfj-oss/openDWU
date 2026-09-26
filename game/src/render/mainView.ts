@@ -76,8 +76,10 @@ export const MAP_FONT_FAMILY = 'Forgotten Futurist, sans-serif';
  */
 export async function loadMapFont(): Promise<void> {
     try {
-        await document.fonts.load('16px "Forgotten Futurist"');
-        await document.fonts.load('bold 16px "Forgotten Futurist"');
+        // Sample text is not a space: the @font-face unicode-range (hud.css)
+        // excludes U+0020, and load()'s default sample is ' '.
+        await document.fonts.load('16px "Forgotten Futurist"', 'Aa');
+        await document.fonts.load('bold 16px "Forgotten Futurist"', 'Aa');
     } catch {
         // Font unavailable (e.g. no DW:U install): continue with the fallback.
     }
@@ -118,6 +120,28 @@ export function orbitRingAlpha(z: number, maxOrbitDistance: number): number {
 // 1.25 / 1.1 above f = 10) and a minimum of 4 px (asteroids 1 px); stars
 // use the plain factor with a minimum of 4 px and no cap. The galaxy-level
 // map-star icon is D/f clamped to >= 10 px, plus 2 (MainView.2.cs:5465-5473).
+// Task fix8ui: system culling test. cam.width/height are screen pixels and
+// the star position / system extent are world units, so the half-extent of
+// the visible world rect is width/(2z); `extent` (farthest body from the
+// star, world units) and a screen-space margin are added on top. Mixing the
+// two units hid systems whose bodies orbit far from the star at 100% zoom
+// (a capital moon ~16000 units out was culled with its whole system).
+export function systemInView(
+    starX: number,
+    starY: number,
+    extent: number,
+    camX: number,
+    camY: number,
+    camW: number,
+    camH: number,
+    z: number,
+    screenMargin: number,
+): boolean {
+    const halfW = (camW / 2 + screenMargin) / z + extent;
+    const halfH = (camH / 2 + screenMargin) / z + extent;
+    return starX > camX - halfW && starX < camX + halfW && starY > camY - halfH && starY < camY + halfH;
+}
+
 export function planetZoomFactor(f: number): number {
     // Port of Main.Part11.cs CalculatePlanetZoomFactor.
     let result = f;
@@ -437,6 +461,7 @@ class SystemView {
                     if (moon.category === HabitatCategoryType.Moon && moon.parent === habitat) {
                         // Task 12p: moons render as planet-textured sprites, not dots.
                         planet.moons.push(new MoonView(this, moon, makePlanetTexture(PLANET_COLORS[moon.type] ?? '#888888')));
+                        this.maxExtent = Math.max(this.maxExtent, habitat.orbitDistance + moon.orbitDistance + 3000);
                     }
                 }
                 this.maxExtent = Math.max(this.maxExtent, habitat.orbitDistance + 3000);
@@ -470,11 +495,7 @@ class SystemView {
         const star = this.system.systemStar;
         // Culling: screen-space margin plus the farthest orbit so rings
         // don't pop in at the screen edge.
-        const margin = (300 + this.maxExtent * 0.3) / zoom;
-        const halfW = cam.width / 2 + margin;
-        const halfH = cam.height / 2 + margin;
-        const visible =
-            star.xpos > cam.x - halfW && star.xpos < cam.x + halfW && star.ypos > cam.y - halfH && star.ypos < cam.y + halfH;
+        const visible = systemInView(star.xpos, star.ypos, this.maxExtent, cam.x, cam.y, cam.width, cam.height, zoom, 300);
         this.root.visible = visible;
         if (!visible) {
             return;
@@ -1242,9 +1263,7 @@ export class MainView {
         for (const sv of this.systems) {
             // Cheap pre-cull before the (margin-inclusive) update.
             const star = sv.system.systemStar;
-            const halfW = cam.width / 2 + 400 / z + sv.maxExtent / z;
-            const halfH = cam.height / 2 + 400 / z + sv.maxExtent / z;
-            if (star.xpos < cam.x - halfW || star.xpos > cam.x + halfW || star.ypos < cam.y - halfH || star.ypos > cam.y + halfH) {
+            if (!systemInView(star.xpos, star.ypos, sv.maxExtent, cam.x, cam.y, cam.width, cam.height, z, 400)) {
                 sv.root.visible = false;
                 continue;
             }
