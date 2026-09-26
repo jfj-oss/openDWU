@@ -259,6 +259,7 @@
             "ruins": 23
         }
     },
+    "empireLifecycle": {"aiSplitDigest": "42159d821d5440d8:288980"},
     "forceStructure": {
         "playerPrivate": [["SmallFreighter", 3], ["MediumFreighter", 1], ["GasMiningShip", 2], ["MiningShip", 2]],
         "age0Private": [[], [], [], []]
@@ -701,34 +702,34 @@
         "faction": [
             [
                 "Escort:Decimator II:32",
-                "Frigate:Apulon II:44",
-                "Destroyer:Praefectus II:54",
-                "Cruiser:Venator II:89",
-                "CapitalShip:Sovereign:137",
-                "Carrier:CX-2 Carrier:109",
+                "Frigate:Apulon II:47",
+                "Destroyer:Praefectus II:57",
+                "Cruiser:Sovereign:81",
+                "CapitalShip:Decurion:139",
+                "Carrier:CX-2 Carrier:100",
                 "DefensiveBase:Phantom Pirate Defensive Base:123",
                 "GenericBase:Phantom Pirate Base:217"
             ],
             [
-                "GenericBase:Smugglers Retreat",
-                "DefensiveBase:Dhayu 7 Weapons Platform",
+                "GenericBase:Villainous Stronghold",
                 "DefensiveBase:Dhayu 7 Weapons Platform",
                 "DefensiveBase:Dhayu 7 Defense Battery",
-                "Frigate:Fatal Emancipator",
-                "CapitalShip:Decisive Stalker",
-                "Cruiser:Tenacious Rebellion",
-                "Destroyer:Invincible Assassin"
+                "DefensiveBase:Dhayu 7 Defense Battery",
+                "CapitalShip:Fearsome Raider",
+                "Destroyer:Overpowering Spectre",
+                "Carrier:Bleak Turmoil",
+                "Cruiser:Lethal Raider"
             ],
-            31
+            26
         ]
     },
     "taxes": {"taxRates": [0.28999999165534973, 0.2800000011920929, 0.18000000715255737, 0.3100000023841858]},
     "tickDeterminism": {
-        "digest600": "22f624f8012faa81",
-        "counts600": {"empires": 4, "pirateEmpires": 8, "habitats": 13326, "builtObjects": 603, "creatures": 320, "colonies": 4},
-        "rndDraws600": 669918,
-        "digest120": "6d114c3cf42fe29c",
-        "rndDraws120": 11409
+        "digest600": "09dbdbc868a2ce9a",
+        "counts600": {"empires": 4, "pirateEmpires": 8, "habitats": 13326, "builtObjects": 594, "creatures": 318, "colonies": 4},
+        "rndDraws600": 594013,
+        "digest120": "fc924a497a41e134",
+        "rndDraws120": 11133
     },
     "troops": {
         "capitals": [[1177, 882, 7], [1564, 1173, 8], [1758, 1318, 2], [617, 462, 11]],
