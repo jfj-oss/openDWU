@@ -178,10 +178,12 @@ rules. Effort: medium (~1–2 agent-days). Flag off = byte-identical.
    screen / empire lists must scroll and stay usable at 60 (UI check); (e) 19h-6 map scale is the natural pairing.
 2. Independents as actors (extends 19d-6): the independent empire gets, per independent colony and scaled by population
    like Galaxy.7.cs GenerateIndependentTraders already does for freighters, (a) a small defence fleet (escorts/frigates
-   from its own designs, stance defend-home), (b) mining stations in its home system placed by an independent
-   construction ship (stationPlacement rules), (c) freighters (already ported), (d) a militia refresh when ships die —
-   but NO colony ships / colonisation and no expansion beyond the home system (hard cap param: systems per independent
-   colony = 1, fleet size cap, station cap) so they never become a 61st empire on their own. Herder independents (19j)
+   from its own designs, stance defend-home), (b) mining stations placed by an independent construction ship
+   (stationPlacement rules) in its home system AND in nearby unclaimed systems within a radius param (user, 2026-09-26:
+   "let them build stations in other systems as well") — stations, not colonies, so their reach grows without their
+   borders; stations in a system another empire later claims become a friction point (buy-out / tolerate / clear), (c) freighters (already ported), (d) a militia refresh when ships die —
+   but NO colony ships / colonisation (hard cap params: station radius in sectors, stations per independent colony, fleet
+   size cap) so they never become a 61st empire on their own. Herder independents (19j)
    use tamed creatures instead of ships for (a)–(c). Flag off = byte-identical (the base independents stay pure C#).
 Effort: 1 ≈ half a day (soak + palette + UI check); 2 ≈ 1 agent-day. Effort: medium (~1 agent-day);
 build after 19d2 (unrest plumbing) alongside 19g-7 rim fauna; 19a/19c tests must still pass with 19h on.
