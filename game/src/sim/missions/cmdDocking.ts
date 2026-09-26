@@ -167,7 +167,7 @@ export function finalizeContractsNotPresentAtLoad(bo: BuiltObject, dockedAt: Doc
 }
 
 /** EmpireList.GetByEmpireId (Galaxy.PirateEmpires): the first empire with that id. */
-function pirateEmpireById(galaxy: Galaxy, empireId: number): Empire | null {
+export function pirateEmpireById(galaxy: Galaxy, empireId: number): Empire | null {
     for (let i = 0; i < galaxy.pirateEmpires.length; i++) {
         const e = galaxy.pirateEmpires[i];
         if (e != null && e.empireId === empireId) return e;
@@ -176,7 +176,7 @@ function pirateEmpireById(galaxy: Galaxy, empireId: number): Empire | null {
 }
 
 /** Empire.ColonyIncomeFactor (Empire.cs 425; SetEmpireDifficultyFactors) and SmugglingIncomeFactor (Empire.cs 428, 1.0). */
-function colonyIncomeFactor(empire: Empire): number {
+export function colonyIncomeFactor(empire: Empire): number {
     return empire.difficultyFactors?.colonyIncomeFactor ?? 1.0;
 }
 export function smugglingIncomeFactor(empire: Empire): number {

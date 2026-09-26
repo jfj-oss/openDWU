@@ -3,7 +3,7 @@
 // harness game (seed 1, the human player's start: one ship yard, "Sol 2 Space Port").
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { cachedTickGame } from './helpers/gameCache';
 import type { GameData } from '../src/sim/data/gameData';
 import type { Game } from '../src/sim/game';
 import { BuiltObject } from '../src/sim/builtObject';
@@ -25,7 +25,7 @@ beforeAll(async () => {
 }, 120000);
 
 function newGame(): Game {
-    return createTickGame(gameData);
+    return cachedTickGame(gameData);
 }
 
 /** Galaxy.4.cs GenerateBuiltObjectName numbered names: BuildCount as "000". */

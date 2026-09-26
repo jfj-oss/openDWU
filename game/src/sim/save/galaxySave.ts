@@ -580,7 +580,11 @@ export function galaxyFromJSON(obj: GalaxySaveJSON, gameData: GameData): Galaxy 
 
     // --- Static tables (generateGalaxy / createGame wiring).
     const g = galaxy as unknown as Record<string, unknown>;
-    for (const field of GALAXY_STATIC_FIELDS) g[field] = tables[field];
+    // (Defined, not assigned by computed key, when new: see GraphDecoder '$t' — the Galaxy would turn dictionary-mode.)
+    for (const field of GALAXY_STATIC_FIELDS) {
+        if (Object.prototype.hasOwnProperty.call(g, field)) g[field] = tables[field];
+        else Object.defineProperty(g, field, { value: tables[field], writable: true, enumerable: true, configurable: true });
+    }
 
     // --- State kept outside the graph (after the static tables: the price getters read them).
     if (obj.sideTables !== undefined) restoreSideTables(galaxy, decoder.decode(obj.sideTables, 'sideTables') as SideTables);

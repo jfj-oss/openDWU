@@ -25,6 +25,7 @@ import type { BuiltObject } from './builtObject';
 import { Habitat } from './types';
 import type { SystemInfo } from './types';
 import { registerTodo, todo } from './tick/todo';
+import { Cargo } from './cargo';
 import { galaxyStarDate, REAL_SECONDS_IN_GALACTIC_YEAR } from './tick/simTime';
 import {
     DiplomaticRelation,
@@ -66,8 +67,9 @@ import { CharacterEventType, CharacterRole, getCharactersByRole, getEmpireCharac
 import { PirateRelationEvaluationType, PirateRelationType, changePirateEvaluation, changePirateRelation, obtainPirateRelation, type PirateRelation } from './pirateRelations';
 import { GalaxyLocation } from './galaxyLocation';
 import { habitatDevelopmentLevel } from './developmentLevel';
-import { BuiltObjectMissionType, builtObjectMission } from './missions/mission';
-import { empireShipGroups, type ShipGroup } from './fleets/shipGroup';
+import { BuiltObjectMissionPriority as MissionPriority, BuiltObjectMissionType, builtObjectMission } from './missions/mission';
+import { empireShipGroups, shipGroupAssignMission, type ShipGroup } from './fleets/shipGroup';
+import { assignMission, clearPreviousMissionRequirements } from './missions/assign';
 import {
     cancelAttackMissionsAgainstEmpire,
     checkAttackFleetTargets,
@@ -2805,8 +2807,6 @@ function relationTypeName(t: DiplomaticRelationType): string {
     return resolveDescription(DiplomaticRelationType, t);
 }
 
-const T_missionsForMessages = registerTodo('M4r', 'LeaveSystem/RemoveMilitaryForcesFromSystem mission assignment (M4b AssignMission)');
-
 /** Nearest refuelling depot outside `systemStar` (Empire.3.cs 3949-3961 / 4058-4070). */
 function nearestRefuellingDepotOutsideSystem(galaxy: Galaxy, self: Empire, systemStar: Habitat): BuiltObject | null {
     let num2 = 536870911;
@@ -2826,12 +2826,12 @@ function nearestRefuellingDepotOutsideSystem(galaxy: Galaxy, self: Empire, syste
 }
 
 /**
- * Empire.3.cs 3945 LeaveSystem(systemStar): the offence value of moving our ships out. With no refuelling depot outside
- * the system (or no ship to move) it is 0 and nothing is ordered. TODO(port) M4b: the Move missions
- * (ShipGroup.AssignMission / BuiltObject.ClearPreviousMissionRequirements + AssignMission) — each ship that would be
- * ordered counts a todo hit and adds its C# value (10 per fleet ship, FirepowerRaw / 20 per lone ship).
+ * Port of Empire.3.cs 3945 LeaveSystem(systemStar): orders our non-base ships in / near the system to move to the
+ * nearest refuelling depot outside it (fleets idle / MoveAndWait / Hold: ShipGroup.AssignMission(Move, depot, Normal),
+ * +10 each ship; lone mobile ships: ClearPreviousMissionRequirements + AssignMission(Move, depot, Normal),
+ * +FirepowerRaw / 20) and returns the summed value. Rnd: inside the AssignMission calls only.
  */
-function leaveSystem(galaxy: Galaxy, self: Empire, systemStar: Habitat): number {
+export function leaveSystem(galaxy: Galaxy, self: Empire, systemStar: Habitat): number {
     let num = 0.0;
     const builtObject = nearestRefuellingDepotOutsideSystem(galaxy, self, systemStar);
     if (builtObject !== null) {
@@ -2843,10 +2843,11 @@ function leaveSystem(galaxy: Galaxy, self: Empire, systemStar: Habitat): number 
                 const shipGroup = (builtObject3 as unknown as { shipGroup?: ShipGroup | null }).shipGroup ?? null;
                 const sgMission = shipGroup !== null ? builtObjectMission(shipGroup.mission) : null;
                 if (shipGroup !== null && (sgMission === null || sgMission.type === BuiltObjectMissionType.Undefined || sgMission.type === BuiltObjectMissionType.MoveAndWait || sgMission.type === BuiltObjectMissionType.Hold)) {
-                    todo(T_missionsForMessages);
+                    shipGroupAssignMission(galaxy, shipGroup, BuiltObjectMissionType.Move, builtObject, null, MissionPriority.Normal, false); // 3975
                     num += 10.0;
                 } else if (shipGroup === null && builtObject3.topSpeed > 0 && builtObject !== null) {
-                    todo(T_missionsForMessages);
+                    clearPreviousMissionRequirements(galaxy, builtObject3); // 3980
+                    assignMission(galaxy, builtObject3, BuiltObjectMissionType.Move, builtObject, null, MissionPriority.Normal);
                     num += builtObject3.firepowerRaw / 20.0;
                 }
             }
@@ -2857,9 +2858,9 @@ function leaveSystem(galaxy: Galaxy, self: Empire, systemStar: Habitat): number 
 const MAX_SOLAR_SYSTEM_SIZE = 23000; // Galaxy.MaxSolarSystemSize
 
 /**
- * Empire.3.cs 4032 RemoveMilitaryForcesFromSystem(systemStar, requester): 1 ships ordered out, 0 none, -1 refused.
- * TODO(port) M4b: the Refuel missions (ClearPreviousMissionRequirements + AssignMission(Refuel, depot, Unavailable)) —
- * counted as todo hits.
+ * Port of Empire.3.cs 4032 RemoveMilitaryForcesFromSystem(systemStar, requester): 1 ships ordered out, 0 none, -1
+ * refused. Each armed military ship at the system gets ClearPreviousMissionRequirements + AssignMission(Refuel, nearest
+ * outside depot, Unavailable) (4080-4081).
  */
 export function removeMilitaryForcesFromSystem(galaxy: Galaxy, self: Empire, systemStar: Habitat, requester: Empire): number {
     const num = determineRelativeStrength(galaxy, militaryPotency(self), requester);
@@ -2879,7 +2880,8 @@ export function removeMilitaryForcesFromSystem(galaxy: Galaxy, self: Empire, sys
             for (let j = 0; j < self.builtObjects.length; j++) {
                 const bo = self.builtObjects[j];
                 if (bo.role === BuiltObjectRole.Military && bo.firepowerRaw > 0 && bo.nearestSystemStar === systemStar) {
-                    todo(T_missionsForMessages);
+                    clearPreviousMissionRequirements(galaxy, bo);
+                    assignMission(galaxy, bo, BuiltObjectMissionType.Refuel, builtObject, null, MissionPriority.Unavailable);
                     num2++;
                 }
             }
@@ -2889,7 +2891,55 @@ export function removeMilitaryForcesFromSystem(galaxy: Galaxy, self: Empire, sys
     return -1;
 }
 
-const T_ordersForRelinquishedColony = registerTodo('M4r', 'RemoveColoniesFromSystem order/contract cleanup (M4d Galaxy.Orders.GetOrders)');
+/**
+ * Port of Empire.3.cs 4587-4630 (ProcessMessages RemoveColoniesFromSystem, per relinquished colony): every order the
+ * colony placed (Galaxy.Orders.GetOrders(colony)) is removed; each contracted freighter's cargo of the ordered
+ * resource / component still owned by `self` is re-owned by the freighter's empire, and the freighter's mission
+ * requirements are cleared. No Rnd.
+ */
+export function relinquishColonyOrders(galaxy: Galaxy, self: Empire, item9: Habitat): void {
+    const orders = galaxy.orders.getOrdersForHabitat(item9);
+    if (orders.items.length > 0) {
+        for (const item10 of orders.items) {
+            if (item10.contracts != null) {
+                for (const contract of item10.contracts) {
+                    // C# dereferences each contract (a null entry would throw); the TS list may hold nulls.
+                    if (contract === null || contract.freighter === null) {
+                        continue;
+                    }
+                    const freighter = contract.freighter;
+                    if (item10.commodityResource !== null) {
+                        const commodityResource = item10.commodityResource;
+                        let num9 = -1;
+                        if (freighter.cargo !== null) {
+                            num9 = freighter.cargo.indexOf(commodityResource, self);
+                        }
+                        if (num9 >= 0) {
+                            const amount = freighter.cargo!.items[num9].amount;
+                            freighter.cargo!.items.splice(num9, 1);
+                            const cargo = new Cargo(commodityResource, amount, freighter.empire);
+                            freighter.cargo!.add(cargo);
+                        }
+                    } else if (item10.commodityComponent !== null) {
+                        const commodityComponent = item10.commodityComponent;
+                        let num10 = -1;
+                        if (freighter.cargo !== null) {
+                            num10 = freighter.cargo.indexOfComponent(commodityComponent.componentId, self);
+                        }
+                        if (num10 >= 0) {
+                            const amount2 = freighter.cargo!.items[num10].amount;
+                            freighter.cargo!.items.splice(num10, 1);
+                            const cargo2 = Cargo.ofComponent(commodityComponent, amount2, freighter.empire);
+                            freighter.cargo!.add(cargo2);
+                        }
+                    }
+                    clearPreviousMissionRequirements(galaxy, freighter);
+                }
+            }
+            galaxy.orders.remove(item10);
+        }
+    }
+}
 
 /** Empire.3.cs 4240 ProcessMessages: handles and then clears the empire's message queue. */
 export function processMessages(galaxy: Galaxy, empire: Empire): void {
@@ -3106,9 +3156,7 @@ export function processMessages(galaxy: Galaxy, empire: Empire): void {
                     const num8 = 50.0 * ((galaxy.rnd.nextDouble() * 40.0 + 80.0) * Math.pow(1.0 / num, 2.0));
                     if (num8 > Math.trunc(num6 / 1000000)) {
                         for (const item9 of habitatList) {
-                            // TODO(port) M4d: Galaxy.Orders.GetOrders(item9): freighters' contract cargo re-owned, missions cleared,
-                            // orders removed (Empire.3.cs 4586-4633).
-                            if (galaxy.orders.length > 0) todo(T_ordersForRelinquishedColony);
+                            relinquishColonyOrders(galaxy, self, item9); // Empire.3.cs 4587-4630
                             item9.owner = null;
                             item9.empire = null;
                             const ci = self.colonies.indexOf(item9);

@@ -2,7 +2,7 @@
 // harness smoke test (mining stations accumulate cargo over runGameSeconds).
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { cachedTickGame } from './helpers/gameCache';
 import type { GameData } from '../src/sim/data/gameData';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { BuiltObject } from '../src/sim/builtObject';
@@ -35,7 +35,7 @@ beforeAll(async () => {
 }, 120000);
 
 function newGalaxy(): Galaxy {
-    return createTickGame(gameData).galaxy;
+    return cachedTickGame(gameData).galaxy;
 }
 
 function allBuiltObjects(g: Galaxy): BuiltObject[] {

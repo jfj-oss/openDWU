@@ -79,6 +79,18 @@ export function thisYearsResortIncome(galaxy: Galaxy, empire: Empire): number {
     return empire.thisYearsResortIncomeValue;
 }
 
+/** Empire.6.cs 2183 AddResortIncome(amount): resets the running total at a new galactic year, then accumulates. */
+export function addResortIncome(galaxy: Galaxy, empire: Empire, amount: number): void {
+    const currentStarDate = galaxyStarDate(galaxy);
+    const num = currentStarDate % (REAL_SECONDS_IN_GALACTIC_YEAR * 1000);
+    const num2 = currentStarDate - num;
+    if (empire.lastResortIncomeAddDate < num2) {
+        empire.thisYearsResortIncomeValue = 0.0;
+    }
+    empire.thisYearsResortIncomeValue += amount;
+    empire.lastResortIncomeAddDate = currentStarDate;
+}
+
 /** Empire.cs 2282 ThisYearsSpacePortIncome (ages CurrentYearsIncome of space ports / mining stations at a new year). */
 export function thisYearsSpacePortIncome(galaxy: Galaxy, empire: Empire): number {
     let num = 0.0;

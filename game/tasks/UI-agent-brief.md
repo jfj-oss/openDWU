@@ -28,8 +28,8 @@ You port ONE screen of Distant Worlds: Universe into this TypeScript + PixiJS re
    check the console for errors. Describe what the capture shows in your report.
 5. Before finishing: `git merge` the main branch (`claude/deepseekharnessworkspace-distant-worlds-dekdzh` in
    `/home/justinf/projects/Dwureup`) into your branch and resolve conflicts yourself; then
-   `npm run typecheck` (0 errors), `npx vitest run --testTimeout=300000 --maxWorkers=2` (exit 0; use `npm run test:fast`
-   while iterating if it exists), `npm run smoke` if you touched main.ts.
+   `npm run typecheck` (0 errors), `npx vitest run --testTimeout=300000 --hookTimeout=2400000 --maxWorkers=2` (exit 0;
+   `npm run test:fast` while iterating, full suite before finishing), `npm run smoke` if you touched main.ts.
 6. Commit with `git -c user.name=dev -c user.email=dev@local commit`, message `game: <name> <summary>`, trailers
    `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>` and
    `Claude-Session: https://claude.ai/code/session_01JMNY5RcbJwx2upDy6tuKLr`. Never put model names in code.

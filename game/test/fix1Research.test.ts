@@ -2,7 +2,7 @@
 // GiveTradeableItem ResearchProject case (Galaxy.4.cs 4005-4036), on a createGame galaxy (seed 1).
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { cachedTickGame } from './helpers/gameCache';
 import type { GameData } from '../src/sim/data/gameData';
 import { TradeableItem, TradeableItemType, giveTradeableItem, resolveTradeableItemsResearchProjects, valueResearchProjectForEmpire } from '../src/sim/tradeItems';
 import { resolveMoreAdvancedProjectsIncludeSpecial } from '../src/sim/espionage';
@@ -14,7 +14,7 @@ beforeAll(async () => {
 
 describe('research trading', () => {
     it('offers only self-researched projects the receiver can research next, valued > 0', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const [giver, receiver] = g.empires;
         const advanced = resolveMoreAdvancedProjectsIncludeSpecial(receiver, giver, false);
         const items = resolveTradeableItemsResearchProjects(g, giver, receiver, false, false);
@@ -28,7 +28,7 @@ describe('research trading', () => {
     });
 
     it('GiveTradeableItem ResearchProject researches the equivalent receiver node (not self-researched)', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const [giver, receiver] = g.empires;
         const node = receiver.research.techTree.find((n) => !n.isResearched && receiver.research.canResearchNode(n))!;
         const giverNode = giver.research.techTree[node.def.projectId];

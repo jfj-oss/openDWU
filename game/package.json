@@ -11,6 +11,8 @@
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:fast": "DWU_TEST_TIER=fast vitest run",
+    "test:slow": "DWU_TEST_TIER=slow vitest run",
     "smoke": "node scripts/smoke.mjs",
     "repin": "node scripts/repin.mjs",
     "import-assets": "bash scripts/import-assets.sh",

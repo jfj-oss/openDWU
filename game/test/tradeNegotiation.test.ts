@@ -4,7 +4,7 @@
 // Galaxy.4.cs:3857 GiveTradeableItem — on the harness game.
 import { beforeEach, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { cachedTickGame } from './helpers/gameCache';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { Empire } from '../src/sim/empire';
 import type { GameData } from '../src/sim/data/gameData';
@@ -83,7 +83,7 @@ function offerMoney(tree: TradeTree, amount: number): void {
 
 beforeEach(async () => {
     gameData ??= await loadGameDataFs();
-    galaxy = createTickGame(gameData).galaxy;
+    galaxy = cachedTickGame(gameData).galaxy;
     player = galaxy.playerEmpire!;
     // An AI that drives a harder bargain than face value (acceptance factor > 1) and wants one of the player's techs.
     ai = galaxy.empires.find(

@@ -12,14 +12,15 @@
 
 import type { Galaxy } from './galaxy';
 import type { Empire } from './empire';
-import { registerTodo, todo } from './tick/todo';
+import { generateSaleableInfoForEmpire } from './pirates/pirateRelationsAI';
+import { netRound } from './taxes';
 import { galaxyStarDate, REAL_SECONDS_IN_GALACTIC_YEAR } from './tick/simTime';
 import { pirateEconomyPerformExpense, pirateEconomyPerformIncome } from './pirates/pirateAI';
 import { PirateExpenseType, PirateIncomeType } from './pirates/pirateEconomy';
 import { DiplomaticRelationType, DiplomaticStrategy, obtainEmpireEvaluation } from './diplomacy';
 import { obtainPirateRelation } from './pirateRelations';
 import { EmpireMessageType, sendMessageToEmpire } from './messages';
-import { determineEmpireSystems } from './forceStructure';
+import { determineEmpireSystems, totalColonyStrategicValue } from './forceStructure';
 import { SystemVisibilityStatus } from './visibility';
 import { mergeGalaxyMap } from './exploration';
 import { HabitatCategoryType } from './types';
@@ -1041,8 +1042,6 @@ export function resolveTradeableItemsDiplomacy(galaxy: Galaxy, giver: Empire, re
     return list;
 }
 
-const T_pirateInfo = registerTodo('M4r', 'ResolveTradeableItemsPirateInfo (GenerateSaleableInfoForEmpire — M4s)');
-
 /** Galaxy.4.cs 4401/4406 ResolveTradeableItems(giver, receiver, includeNearestColony, refactorValuesForEmpire[, includeAllItems]). */
 export function resolveTradeableItems(galaxy: Galaxy, giver: Empire, receiver: Empire, includeNearestColony: boolean, refactorValuesForEmpire: boolean, includeAllItems = false): TradeableItem[] {
     void includeNearestColony;
@@ -1069,9 +1068,34 @@ export function resolveTradeableItems(galaxy: Galaxy, giver: Empire, receiver: E
     }
     if (giver.pirateEmpireBaseHabitat === null && receiver.pirateEmpireBaseHabitat === null) list.push(...resolveTradeableItemsDiplomacy(galaxy, giver, receiver, refactorValuesForEmpire));
     if (giver.pirateEmpireBaseHabitat !== null) {
-        // TODO(port) M4s: Galaxy.4.cs 4474 ResolveTradeableItemsPirateInfo (Empire.GenerateSaleableInfoForEmpire).
-        todo(T_pirateInfo);
+        list.push(...resolveTradeableItemsPirateInfo(galaxy, giver, receiver, refactorValuesForEmpire));
     }
+    return list;
+}
+
+/**
+ * Port of Galaxy.4.cs 4474 ResolveTradeableItemsPirateInfo(pirateGiver, receiver, refactorValuesForEmpire): the
+ * information a pirate faction can sell (Empire.5.cs 1163 GenerateSaleableInfoForEmpire) — contacts with unmet empires
+ * (TotalColonyStrategicValue / 200, rounded, capped at 10 000), unexplored system maps (2000), independent colony
+ * locations (20 000) and ruins / debris fields / planet destroyers / restricted areas as secret locations (30 000).
+ * `refactorValuesForEmpire` is unused in the C#. No Rnd.
+ */
+export function resolveTradeableItemsPirateInfo(galaxy: Galaxy, pirateGiver: Empire, receiver: Empire, refactorValuesForEmpire: boolean): TradeableItem[] {
+    void refactorValuesForEmpire;
+    const list: TradeableItem[] = [];
+    const info = generateSaleableInfoForEmpire(galaxy, pirateGiver, receiver);
+    for (let i = 0; i < info.unmetEmpires.length; i++) {
+        let value = totalColonyStrategicValue(info.unmetEmpires[i]) / 200.0;
+        value = netRound(value, 0);
+        value = Math.min(value, 10000.0);
+        list.push(new TradeableItem(TradeableItemType.ContactEmpire, info.unmetEmpires[i], Math.trunc(value)));
+    }
+    for (let j = 0; j < info.unexploredSystems.length; j++) list.push(new TradeableItem(TradeableItemType.SystemMap, info.unexploredSystems[j], 2000));
+    for (let k = 0; k < info.independentColonies.length; k++) list.push(new TradeableItem(TradeableItemType.IndependentColonyLocation, info.independentColonies[k], 20000));
+    for (let l = 0; l < info.ruinHabitats.length; l++) list.push(new TradeableItem(TradeableItemType.SecretLocation, info.ruinHabitats[l], 30000));
+    for (let m = 0; m < info.debrisFieldLocations.length; m++) list.push(new TradeableItem(TradeableItemType.SecretLocation, info.debrisFieldLocations[m], 30000));
+    for (let n = 0; n < info.planetDestroyerLocations.length; n++) list.push(new TradeableItem(TradeableItemType.SecretLocation, info.planetDestroyerLocations[n], 30000));
+    for (let num = 0; num < info.restrictedAreaLocations.length; num++) list.push(new TradeableItem(TradeableItemType.SecretLocation, info.restrictedAreaLocations[num], 30000));
     return list;
 }
 

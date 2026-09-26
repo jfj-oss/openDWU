@@ -2,7 +2,7 @@
 // Unit tests against hand-worked C# values, plus a harness smoke test.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { cachedTickGame, cachedTickGameRun } from './helpers/gameCache';
 import type { GameData } from '../src/sim/data/gameData';
 import type { Galaxy } from '../src/sim/galaxy';
 import { Cargo, CargoList, ResourceRef } from '../src/sim/cargo';
@@ -41,7 +41,7 @@ beforeAll(async () => {
 }, 120000);
 
 function newGalaxy(): Galaxy {
-    return createTickGame(gameData).galaxy;
+    return cachedTickGame(gameData).galaxy;
 }
 
 describe('Order / OrderList model (Order.cs, OrderList.cs)', () => {
@@ -309,8 +309,7 @@ describe('freighter fuel range (BuiltObject.1.cs 2348-2390)', () => {
 
 describe('harness smoke (seed 1, 600 game-s)', () => {
     it('colonies place orders, CheckMarketOrders contracts freighters with Transport missions, seller cargo is reserved', () => {
-        const g = newGalaxy();
-        runGameSeconds(g, 600);
+        const g = cachedTickGameRun(gameData, { seconds: 600 }).game.galaxy; // createTickGame + runGameSeconds(g, 600), built once and cached (test/helpers/gameCache.ts)
         expect(g.orders.count).toBeGreaterThan(0);
         const contracted = g.orders.items.filter((o) => o.contracts.length > 0);
         expect(contracted.length).toBeGreaterThan(0);

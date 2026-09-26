@@ -2,7 +2,7 @@
 // (src/sim/player/executeShipAction.ts), on the seed-1 harness game. Expectations are hand-worked from the C#.
 import { beforeEach, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { cachedTickGame } from './helpers/gameCache';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { Empire } from '../src/sim/empire';
 import type { BuiltObject } from '../src/sim/builtObject';
@@ -21,7 +21,7 @@ let player: Empire;
 
 beforeEach(async () => {
     gameData ??= await loadGameDataFs();
-    galaxy = createTickGame(gameData).galaxy;
+    galaxy = cachedTickGame(gameData).galaxy;
     player = galaxy.playerEmpire!;
 });
 

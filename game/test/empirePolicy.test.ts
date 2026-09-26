@@ -6,10 +6,10 @@ import { ComponentType } from '../src/sim/data/components';
 import { ColonyPopulationPolicy, ComponentCategoryType, defaultEmpirePolicy, resolveTechFocuses } from '../src/sim/data/policies';
 import { BuiltObjectFleeWhen } from '../src/sim/data/designTemplates';
 import { IndustryType } from '../src/sim/types';
-import { createGame, DEFAULT_GAME_OPTIONS_AUTOMATION } from '../src/sim/game';
+import { DEFAULT_GAME_OPTIONS_AUTOMATION } from '../src/sim/game';
 import type { GameData } from '../src/sim/data/gameData';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { tickGameOptions } from './helpers/tickGame';
+import { cachedTickGame } from './helpers/gameCache';
 import {
     applyPolicyPanel,
     buildPolicyPanel,
@@ -199,7 +199,7 @@ describe('17d human player automation defaults (Start.2.cs 2122-2146)', () => {
     });
 
     it('a new game gives the human the method_260 GameOptions defaults and leaves AI empires FullyAutomated', () => {
-        const game = createGame(tickGameOptions(gameData));
+        const game = cachedTickGame(gameData);
         const p = game.playerEmpire;
         expect(p).toBe(game.galaxy.playerEmpire);
         expect(p.controlAgentAssignment).toBe(AutomationLevel.PartiallyAutomated);

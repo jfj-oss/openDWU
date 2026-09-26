@@ -2,7 +2,7 @@
 // ReviewEnemyHelpEnlistment, Galaxy.4.cs GiveTradeableItem, Empire.3.cs 4378 OfferTrade deals). Hand-worked expectations.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { cachedTickGame } from './helpers/gameCache';
 import type { GameData } from '../src/sim/data/gameData';
 import type { Galaxy } from '../src/sim/galaxy';
 import { DiplomaticRelationType, DiplomaticStrategy, obtainDiplomaticRelation, obtainEmpireEvaluation } from '../src/sim/diplomacy';
@@ -41,7 +41,7 @@ describe('TradeableItemList helpers', () => {
 
 describe('DetermineOfferedTradeItems (Empire.7.cs 2485)', () => {
     it('adds colonies (highest first) while under the value and under 1.5× the value', () => {
-        const { galaxy } = createTickGame(gameData);
+        const { galaxy } = cachedTickGame(gameData);
         const self = galaxy.empires[0];
         self.stateMoney = 0;
         const items = [item(TradeableItemType.Colony, 300), item(TradeableItemType.Colony, 500), item(TradeableItemType.Base, 200)];
@@ -50,7 +50,7 @@ describe('DetermineOfferedTradeItems (Empire.7.cs 2485)', () => {
     });
 
     it('tops up with 20% of state money, else returns null', () => {
-        const { galaxy } = createTickGame(gameData);
+        const { galaxy } = cachedTickGame(gameData);
         const self = galaxy.empires[0];
         self.stateMoney = 10000; // num2 = 2000 ≥ 1000 → Money 1000
         const r = determineOfferedTradeItems(self, 1000, [], 6)!;
@@ -62,7 +62,7 @@ describe('DetermineOfferedTradeItems (Empire.7.cs 2485)', () => {
     });
 
     it('an EndWar/LiftTradeSanctions set worth [value, 1.5 value) is offered alone', () => {
-        const { galaxy } = createTickGame(gameData);
+        const { galaxy } = cachedTickGame(gameData);
         const self = galaxy.empires[0];
         const items = [item(TradeableItemType.EndWar, 1200), item(TradeableItemType.Colony, 5000)];
         expect(determineOfferedTradeItems(self, 1000, items, 6)!.map((i) => i.type)).toEqual([TradeableItemType.EndWar]);
@@ -71,14 +71,14 @@ describe('DetermineOfferedTradeItems (Empire.7.cs 2485)', () => {
 
 describe('EvaluateTradeOffer (Empire.7.cs 1779)', () => {
     it('refuses null / self offers', () => {
-        const { galaxy } = createTickGame(gameData);
+        const { galaxy } = cachedTickGame(gameData);
         const [a] = galaxy.empires;
         expect(evaluateTradeOffer(galaxy, a, null, [], [], true)).toBe(TradeOfferResponse.Refuse);
         expect(evaluateTradeOffer(galaxy, a, a, [], [], true)).toBe(TradeOfferResponse.Refuse);
     });
 
     it('a generous offer is accepted and raises the incident evaluation by sqrt(sqrt(sqrt(surplus))) − 1.37', () => {
-        const { galaxy } = createTickGame(gameData);
+        const { galaxy } = cachedTickGame(gameData);
         meetAll(galaxy);
         const [a, b] = galaxy.empires.filter((e) => e !== galaxy.playerEmpire);
         const ev = obtainEmpireEvaluation(galaxy, a, b);
@@ -91,7 +91,7 @@ describe('EvaluateTradeOffer (Empire.7.cs 1779)', () => {
     });
 
     it('a demand for nothing costs min(num / 5000, 15) incident evaluation and is refused as unfair (or accepted under pressure)', () => {
-        const { galaxy } = createTickGame(gameData);
+        const { galaxy } = cachedTickGame(gameData);
         meetAll(galaxy);
         const [a, b] = galaxy.empires.filter((e) => e !== galaxy.playerEmpire);
         const ev = obtainEmpireEvaluation(galaxy, a, b);
@@ -105,7 +105,7 @@ describe('EvaluateTradeOffer (Empire.7.cs 1779)', () => {
     });
 
     it('asking for the capital is critical: Refuse', () => {
-        const { galaxy } = createTickGame(gameData);
+        const { galaxy } = cachedTickGame(gameData);
         meetAll(galaxy);
         const [a, b] = galaxy.empires.filter((e) => e !== galaxy.playerEmpire);
         const r = evaluateTradeOffer(galaxy, a, b, [item(TradeableItemType.Money, 1e9, 1e9)], [item(TradeableItemType.Colony, 10, a.capital)], true);
@@ -115,7 +115,7 @@ describe('EvaluateTradeOffer (Empire.7.cs 1779)', () => {
 
 describe('ProcessMessages OfferTrade deal (Empire.3.cs 4384)', () => {
     it('an accepted deal transfers the items and clears the queue', () => {
-        const { galaxy } = createTickGame(gameData);
+        const { galaxy } = cachedTickGame(gameData);
         meetAll(galaxy);
         const [a, b] = galaxy.empires.filter((e) => e !== galaxy.playerEmpire);
         (b.messages as EmpireMessage[]).length = 0;
@@ -133,7 +133,7 @@ describe('ProcessMessages OfferTrade deal (Empire.3.cs 4384)', () => {
 describe('ReviewEnemyHelpEnlistment / ReviewDisputedTerritory (Empire.7.cs 2060 / 2205)', () => {
     it('help requests carry [offered, requested] with a DeclareWarOther item; runs are deterministic', () => {
         const run = (): { draws: number; offers: number } => {
-            const { galaxy } = createTickGame(gameData);
+            const { galaxy } = cachedTickGame(gameData);
             meetAll(galaxy);
             const [a, b] = galaxy.empires.filter((e) => e !== galaxy.playerEmpire);
             obtainDiplomaticRelation(a, b).type = DiplomaticRelationType.War;

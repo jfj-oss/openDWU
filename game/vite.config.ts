@@ -10,7 +10,7 @@
 //   dist/ by the copyAssetManifest plugin below, so the packaged app keeps
 //   real-art rendering (without it loadManifest() no-ops and the game falls
 //   back to generated textures).
-import { existsSync, statSync, copyFileSync, readdirSync, createReadStream } from 'node:fs';
+import { existsSync, statSync, copyFileSync, readdirSync, readFileSync, createReadStream } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -163,6 +163,27 @@ function copyAssetManifest(): Plugin {
     };
 }
 
+/**
+ * Test tiers. A test file with a `// @slow` line in its header (first 15 lines) is a soak: `npm run test:fast`
+ * (DWU_TEST_TIER=fast) runs every other file, `npm run test:slow` (DWU_TEST_TIER=slow) only those; `npm test` (tier
+ * unset) runs all. Explicit file filters on the command line still apply within the tier.
+ */
+function slowTestFiles(): string[] {
+    const dir = path.join(here, 'test');
+    return readdirSync(dir)
+        .filter((f) => f.endsWith('.test.ts'))
+        .filter((f) => readFileSync(path.join(dir, f), 'utf8').split('\n', 15).some((l) => /^\s*\/\/\s*@slow\b/.test(l)))
+        .map((f) => `test/${f}`);
+}
+
+function testTier(): { include?: string[]; exclude?: string[] } {
+    const tier = process.env.DWU_TEST_TIER;
+    if (tier === undefined || tier === '' || tier === 'all') return {};
+    if (tier === 'fast') return { exclude: ['**/node_modules/**', '**/.git/**', ...slowTestFiles()] };
+    if (tier === 'slow') return { include: slowTestFiles() };
+    throw new Error(`DWU_TEST_TIER must be fast, slow or all (got ${tier})`);
+}
+
 export default defineConfig({
     base: './',
     // Per-checkout dep-optimizer cache. node_modules is a symlink shared by
@@ -173,6 +194,7 @@ export default defineConfig({
     test: {
         // Registers expect(...).toMatchPin(key) for the seed pins (test/pins/pin.ts, scripts/repin.mjs).
         setupFiles: ['test/pins/pin.ts'],
+        ...testTier(),
     },
     plugins: [dwuProbe(), dwuCaseInsensitive(), copyAssetManifest()],
     build: {

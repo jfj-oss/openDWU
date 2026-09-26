@@ -4,7 +4,7 @@
 // (Empire.6.cs 21 CalculateIntelligenceMissionSuccessChance via CharacterMission.cs GetMissionDifficulty*), hand-worked.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { cachedTickGame } from './helpers/gameCache';
 import type { GameData } from '../src/sim/data/gameData';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { Empire } from '../src/sim/empire';
@@ -60,7 +60,7 @@ function newAgent(g: Galaxy, empire: Empire, name: string): Character {
 
 /** a has met b; no leader / espionage bonus; b not reclusive: the StealGalaxyMap difficulty is (int)(20 × 3.5) = 70. */
 function setup() {
-    const { galaxy } = createTickGame(gameData);
+    const { galaxy } = cachedTickGame(gameData);
     const [a, b] = aiEmpires(galaxy);
     obtainDiplomaticRelation(a, b).type = DiplomaticRelationType.None;
     a.leader = null;

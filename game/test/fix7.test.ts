@@ -17,7 +17,7 @@ import { cmdColonize } from '../src/sim/missions/cmdTroops';
 import { EmpireMessageType, type EmpireMessage } from '../src/sim/messages';
 import { Random } from '../src/sim/random';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { cachedTickGame } from './helpers/gameCache';
 
 let gameData: GameData;
 beforeAll(async () => {
@@ -39,7 +39,7 @@ function predictJoins(galaxy: Galaxy, likeliness: number): boolean {
 }
 
 function setUp(): { g: Galaxy; empire: Empire; target: Habitat; ship: BuiltObjectClass } {
-    const game = createTickGame(gameData);
+    const game = cachedTickGame(gameData);
     const g = game.galaxy;
     const empire = g.empires.find((e) => e !== g.playerEmpire && e.pirateEmpireBaseHabitat === null)!;
     const colonyDesign = empire.designs.find((d) => d.subRole === BuiltObjectSubRole.ColonyShip)!;
@@ -108,7 +108,7 @@ describe('item 2: BuiltObject.2.cs 936 Colonize at an independent populated plan
 
 describe('item 3: Galaxy.6.cs 4360 FastFindNearestUnexploredHabitat on a star-only system', { timeout: 600000 }, () => {
     it('takes the Systems[].Habitats.Count == 0 branch (the C# list has no star) and returns the unexplored star', () => {
-        const game = createTickGame(gameData);
+        const game = cachedTickGame(gameData);
         const g = game.galaxy;
         const empire = g.empires.find((e) => e !== g.playerEmpire && e.pirateEmpireBaseHabitat === null)!;
         const sys = g.systems.find((s) => s.systemStar.category === HabitatCategoryType.Star && g.systemHabitatsOf(s.systemStar.systemIndex).length === 0)!;

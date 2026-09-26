@@ -3,7 +3,7 @@
 // 248-697 / 3310-3559 (the default right-click order and its execution). Seed-1 harness game; expectations follow the C#.
 import { beforeEach, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { cachedTickGame } from './helpers/gameCache';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { Empire } from '../src/sim/empire';
 import type { BuiltObject } from '../src/sim/builtObject';
@@ -35,7 +35,7 @@ let player: Empire;
 
 beforeEach(async () => {
     gameData ??= await loadGameDataFs();
-    galaxy = createTickGame(gameData).galaxy;
+    galaxy = cachedTickGame(gameData).galaxy;
     player = galaxy.playerEmpire!;
 });
 
@@ -307,7 +307,7 @@ describe('Main.Part10.cs — right-click orders', () => {
 
 describe('Rnd', () => {
     it('a ship menu over an enemy colony and the ship buttons draw no galaxy.rnd (only the build pages / "Build here" do)', () => {
-        const g3 = createTickGame(gameData).galaxy;
+        const g3 = cachedTickGame(gameData).galaxy;
         const ship = playerWarship();
         const target = enemyColony();
         buildActionMenu(ctxAt(ship, target));

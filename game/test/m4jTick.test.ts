@@ -3,7 +3,7 @@
 // point reached and no TODO hit left on the M4j stubs.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { cachedTickGame, cachedTickGameRun } from './helpers/gameCache';
 import { runGameSeconds } from '../src/sim/tick/harness';
 import type { GameData } from '../src/sim/data/gameData';
 
@@ -14,14 +14,14 @@ beforeAll(async () => {
 
 describe('M4j on the headless harness', () => {
     it('colonies grow and money flows over 600 game-s', () => {
-        const g = createTickGame(gameData).galaxy;
-        const before = g.empires.map((e) => ({
+        const before = cachedTickGame(gameData).galaxy.empires.map((e) => ({
             pop: e.colonies.reduce((n, c) => n + c.population.totalAmount, 0),
             state: e.stateMoney,
             priv: e.privateMoney,
             revenue: e.counters.colonyPrivateRevenueTotal,
         }));
-        const r = runGameSeconds(g, 600);
+        const { game, run: r } = cachedTickGameRun(gameData, { seconds: 600 }); // createTickGame + runGameSeconds(g, 600), built once and cached (test/helpers/gameCache.ts)
+        const g = game.galaxy;
         const m4jHits = Object.keys(r.todoHits).filter((k) => k.startsWith('M4j '));
         expect(m4jHits).toEqual([]);
         g.empires.forEach((e, i) => {
