@@ -419,8 +419,8 @@ describe('Galaxy.DoTasks (Galaxy.cs 3054) and DoTasksTimeSensitive (3046)', () =
         galaxy.delayedActions.push(reputationProbe(e));
         galaxyDoTasksTimeSensitive(galaxy, 0, 1250);
         expect(e.civilityRating - before).toBe(2);
-        // Only the (not yet due) BaconMain.cs 700-715 "ProcessEmpireScienceShips" action stays queued.
-        expect(galaxy.delayedActions.map((p) => p.action?.messageTitle)).toEqual(['ProcessEmpireScienceShips']);
+        // Only BaconInitialize's (not yet due) actions stay queued (BaconMain.cs 686-697 / 700-715 / 1075).
+        expect(galaxy.delayedActions.map((p) => p.action?.messageTitle)).toEqual(['SaveStats', 'ProcessEmpireScienceShips', 'ClearShipsAboutToBeDestroyed']);
         expect(galaxy.lastGalaxyProcessTimeSensitive).toBe(1250);
     });
 });
