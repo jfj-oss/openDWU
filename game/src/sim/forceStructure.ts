@@ -33,7 +33,8 @@ import { Empire, empireGovernmentAttributes } from './empire';
 import { BuiltObjectSubRole } from './builtObjectTypes';
 import { BuiltObjectRole } from './data/designSpecifications';
 import { ComponentType } from './data/components';
-import { SHIP_MARKUP_FACTOR, findNewest, type Design } from './design';
+import { findNewest, type Design } from './design';
+import { baconSettings } from './data/baconSettings';
 import { canBuildDesign, findNewestCanBuild } from './designGeneration';
 import { DEFAULT_BASE_TECH_COST } from './componentStatic';
 import { ForceStructureProjection, ForceStructureProjectionList } from './forceStructureProjection';
@@ -50,7 +51,8 @@ export { ForceStructureProjection, ForceStructureProjectionList } from './forceS
 
 // --- Galaxy statics (Galaxy.3.cs InitializeStatics / Galaxy.cs) ---
 export const ALLOWABLE_YEARS_MAINTENANCE_FROM_CASH_ON_HAND = 3.0; // Galaxy.3.cs 5050
-export const SHIP_MAINTENANCE_COST_PER_SIZE_UNIT = 1.0; // 5084 (intentionally not BaconSettings.txt line 90 `shipMaintenanceCostPerSizeUnit=2`)
+// ShipMaintenanceCostPerSizeUnit (5084), SubjugationTributePercentage (5068): BaconSettings.txt statics (BaconMain.cs
+// 766 / 814), read from `baconSettings`.
 export const COLONY_STATE_SUPPORT_COST = 1000.0; // 5087
 export const COLONY_REVENUE_DIVISOR = 3500000.0; // 5088
 export const REVENUE_DROPOFF_POPULATION_THRESHHOLD_MIN = 20000000000; // 5089 (long)
@@ -59,7 +61,6 @@ export const REVENUE_DROPOFF_RATE = 0.5; // 5091
 export const COLONY_CORRUPTION_POPULATION_THRESHHOLD = 100000000; // 5097 (long)
 export const SPENDING_TROOP_PERCENTAGE = 0.3; // 5103
 export const TROOP_ANNUAL_MAINTENANCE = 1000.0; // 5040
-export const SUBJUGATION_TRIBUTE_PERCENTAGE = 0.1; // 5068
 const COLONY_CORRUPTION_FACTOR_DEFAULT = 1.0; // Galaxy.3.cs 5129
 const COLONY_INCOME_FACTOR_DEFAULT = 1.0; // Galaxy.3.cs 5137
 
@@ -621,7 +622,7 @@ export function calculateAnnualSubjugationTributeIncome(galaxy: Galaxy, empire: 
             const otherEmpire = diplomaticRelation.otherEmpire;
             // TODO(port): ThisYearsForeignTradeBonuses / ThisYearsSpacePortIncome (EmpireCounters).
             const num2 = annualTaxRevenue(galaxy, otherEmpire) + 0.0 + 0.0;
-            num += num2 * SUBJUGATION_TRIBUTE_PERCENTAGE;
+            num += num2 * baconSettings.subjugationTributePercentage;
         }
     }
     return num;
@@ -634,7 +635,7 @@ export function annualSubjugationTribute(galaxy: Galaxy, empire: Empire): number
     const num2 = annualTaxRevenue(galaxy, empire) + 0.0 + 0.0;
     for (const diplomaticRelation of diplomaticRelationsOf(empire)) {
         if (diplomaticRelation.type === DiplomaticRelationType.SubjugatedDominion && diplomaticRelation.initiator !== empire) {
-            const num3 = num2 * SUBJUGATION_TRIBUTE_PERCENTAGE;
+            const num3 = num2 * baconSettings.subjugationTributePercentage;
             num += num3;
         }
     }
@@ -767,8 +768,8 @@ export const currentPrivateForceStructure = (empire: Empire, currentStarDate: nu
 export function calculateSupportCost(galaxy: Galaxy, empire: Empire, design: Design | null): number {
     let result = 0.0;
     if (design !== null) {
-        const num = design.calculateCurrentPurchasePrice(galaxy) / SHIP_MARKUP_FACTOR + 1.0;
-        const num2 = SHIP_MAINTENANCE_COST_PER_SIZE_UNIT * design.size;
+        const num = design.calculateCurrentPurchasePrice(galaxy) / baconSettings.shipMarkupFactor + 1.0;
+        const num2 = baconSettings.shipMaintenanceCostPerSizeUnit * design.size;
         const num3 = num + num2;
         const num4 = design.maintenanceSavings * num3;
         let num5 = 1.0;

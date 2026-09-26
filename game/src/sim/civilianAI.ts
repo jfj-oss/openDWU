@@ -114,6 +114,7 @@ import { ForceStructureProjectionList } from './forceStructureProjection';
 import type { ManufacturingQueue } from './manufacturingQueue';
 import { determineColonizationValue } from './tradeItems';
 import { registerTodo, todo } from './tick/todo';
+import { baconSettings } from './data/baconSettings';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Galaxy statics (Galaxy.3.cs 4996-5033) and Bacon settings used here.
@@ -129,8 +130,6 @@ export const MINING_STATION_RESOURCE_TRANSPORT_THRESHHOLD = 1000;
 export const COLONY_RESOURCE_TRANSPORT_THRESHHOLD = 300;
 /** Galaxy.3.cs 5033 MaximumConstructionQueueWaitTimeYears. */
 export const MAXIMUM_CONSTRUCTION_QUEUE_WAIT_TIME_YEARS = 2.5;
-/** BaconBuiltObject.cs 77 privateBuildCostToStateMoney (default 1.0; BaconMain.cs 925 reads a settings override). Intentionally not BaconSettings.txt line 156 (0.3). */
-export const PRIVATE_BUILD_COST_TO_STATE_MONEY = 1.0;
 
 /** System.Drawing.Point as the C# uses it here: Point.Empty is (0, 0) and IsEmpty tests exactly that. */
 export interface Point {
@@ -2466,8 +2465,8 @@ function selectRandomSpacePortColony(galaxy: Galaxy, empire: Empire, coloniesToE
  * (SelectRandomSpacePortColony) even though the default setting makes the infrastructure share 0.
  */
 function privateConstructionAddToInfrastructure(galaxy: Galaxy, empire: Empire, cost: number): number {
-    const num = (1.0 - PRIVATE_BUILD_COST_TO_STATE_MONEY) * cost;
-    const infrastructure = PRIVATE_BUILD_COST_TO_STATE_MONEY * cost;
+    const num = (1.0 - baconSettings.privateBuildCostToStateMoney) * cost;
+    const infrastructure = baconSettings.privateBuildCostToStateMoney * cost;
     const coloniesToExclude: (Habitat | BuiltObject)[] = [];
     for (const spacePort of empire.spacePorts) {
         if (spacePort.name.startsWith('--')) coloniesToExclude.push(spacePort);

@@ -44,6 +44,7 @@ import {
 import { determineDesirePirateProtectionCore, pirateGenerateSellInfoOffersCore, pirateReviewEmpireRelationsCore, pirateTradeItemsCore } from './pirateRelationsAI';
 import { pirateDoConstructionCore, pirateProjectForcesCore } from './pirateConstruction';
 import { pirateTaskFleetsCore } from './pirateFleets';
+import { baconSettings } from '../data/baconSettings';
 
 const f = Math.fround;
 
@@ -127,8 +128,6 @@ export function checkColoniesForPirateFacilitiesAndAttack(galaxy: Galaxy, empire
     checkColoniesForPirateFacilitiesAndAttackCore(galaxy, empire);
 }
 
-/** BaconHabitat.cs 37 pirateMaxPopulationInfluence (long; BaconMain.cs 1016 settings override not ported). */
-export const PIRATE_MAX_POPULATION_INFLUENCE = 1500000000;
 
 /** Galaxy.5.cs 3067 GetNearbyBuiltObjects(x, y, range). No Rnd. */
 export function getNearbyBuiltObjects(galaxy: Galaxy, x: number, y: number, range: number): BuiltObject[] {
@@ -165,8 +164,8 @@ export function reviewPirateControl(galaxy: Galaxy, planet: Habitat, timePassed:
     // BaconBuiltObject.myMain?._Game is always set in the TS sim.
     if (planet.population == null || planet.population.totalAmount <= 0) return;
     let val1_1 = f(1);
-    if (planet.population.totalAmount > PIRATE_MAX_POPULATION_INFLUENCE) {
-        val1_1 = Math.min(f(1), Math.max(f(0), f(f(1) - f(f(planet.population.totalAmount - PIRATE_MAX_POPULATION_INFLUENCE) / f(2e9)))));
+    if (planet.population.totalAmount > baconSettings.pirateMaxPopulationInfluence) {
+        val1_1 = Math.min(f(1), Math.max(f(0), f(f(1) - f(f(planet.population.totalAmount - baconSettings.pirateMaxPopulationInfluence) / f(2e9)))));
     }
     const colonyControlList1 = new PirateColonyControlList();
     const nearbyBuiltObjects = getNearbyBuiltObjects(galaxy, planet.xpos, planet.ypos, 1500.0);

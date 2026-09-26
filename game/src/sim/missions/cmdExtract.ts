@@ -6,31 +6,83 @@
 // is full, when the target has nothing this ship can extract, or when the target became owned by a real empire. The
 // extraction happens in BuiltObject.IndustrialProcessing (industry.ts) while the ship sits still at its parent habitat.
 // The case never sets `result`, so it always returns 0.0 (ExecuteCommands 399 `double result = 0.0`).
-// Rnd: none (the Bacon asteroid-colony check draws a clock-seeded `new Random()` only with allowAsteroidColonies on).
+// Rnd: none on Galaxy.Rnd. With allowAsteroidColonies on (BaconSettings.txt), the Bacon asteroid-colony check draws its
+// clock-seeded `new Random().NextDouble()` on galaxy.baconHabitatClockRnd (colonyTick.ts baconClockRnd, plan §0).
 
 import type { BuiltObject } from '../builtObject';
 import type { Galaxy } from '../galaxy';
 import { BuiltObjectSubRole } from '../builtObjectTypes';
-import { HabitatCategoryType } from '../types';
+import { HabitatCategoryType, type Habitat } from '../types';
+import { Cargo, CargoList, ResourceRef, Troop, TroopList, TroopType } from '../cargo';
+import { preWarpProgressEventOccurred } from '../empireEvents';
+import { PreWarpProgressEventType } from '../exploration';
+import { Population } from '../population';
+import { baconClockRnd } from '../colonyTick';
+import { baconSettings } from '../data/baconSettings';
 import { ResourceGroup, resourceGroupOf } from '../resourceSystem';
 import { builtObjectMission, type BuiltObjectMission } from './mission';
 import type { CommandHandler } from './executeCommands';
 
-/** BaconHabitat.cs 23 allowAsteroidColonies = false (BaconMain.cs 738 reads an override from BaconSettings.txt). */
-const BACON_ALLOW_ASTEROID_COLONIES = false;
-
-/** BaconHabitat.cs 378 CheckIfShouldBuildAsteroidColony(bom). */
+/** BaconHabitat.cs 378 CheckIfShouldBuildAsteroidColony(bom). BaconBuiltObject.myMain is set in any running game. */
 function checkIfShouldBuildAsteroidColony(galaxy: Galaxy, bom: BuiltObjectMission | null): void {
-    if (!BACON_ALLOW_ASTEROID_COLONIES) return;
+    if (!baconSettings.allowAsteroidColonies) return;
     const builtObject = bom?._builtObject ?? null;
     const targetHabitat = bom?.targetHabitat ?? null;
     if (builtObject === null || targetHabitat === null || targetHabitat.category !== HabitatCategoryType.Asteroid) return;
-    void galaxy;
-    // TODO(port) M4g: BaconHabitat.cs 386-396 (player/pirate/independent/pre-warp gates, the colony-count ratio, the
-    // clock-seeded `new Random().NextDouble() < 1 / ((n1 + n2) * asteroidColonyPrevalenceDivisor)` roll) and
-    // DeployAsteroidColony (298-330: StateMoney -= asteroidColonyCost, TakeOwnershipOfColony, 30000 population, two
-    // troop units, 250 of every strategic resource). Unreachable while allowAsteroidColonies is false (the default).
-    throw new Error('TODO(port) M4g: BaconHabitat.CheckIfShouldBuildAsteroidColony with allowAsteroidColonies');
+    const actualEmpire = builtObject.actualEmpire;
+    // 386-388
+    if (actualEmpire === null || actualEmpire === galaxy.independentEmpire || actualEmpire.pirateEmpireBaseHabitat !== null || actualEmpire === galaxy.playerEmpire || !preWarpProgressEventOccurred(actualEmpire, PreWarpProgressEventType.FirstHyperjump)) return;
+    // 389-392: non-asteroid / asteroid colony counts.
+    let num1 = 0;
+    let num2 = 0;
+    for (const x of actualEmpire.colonies) {
+        if (x.category !== HabitatCategoryType.Asteroid) num1++;
+        else num2++;
+    }
+    if (num1 > 0 && num2 >= num1) return;
+    // 393-395: float num3 = (float)(1.0 / ((double)(num1 + num2) * (double)asteroidColonyPrevalenceDivisor)); clock Random.
+    const num3 = Math.fround(1.0 / ((num1 + num2) * baconSettings.asteroidColonyPrevalenceDivisor));
+    if (baconClockRnd(galaxy).nextDouble() >= num3) return;
+    deployAsteroidColony(galaxy, builtObject, targetHabitat);
+}
+
+/** BaconHabitat.cs 298 DeployAsteroidColony(ship, asteroid): the body runs in a try with an empty catch. */
+function deployAsteroidColony(galaxy: Galaxy, ship: BuiltObject, asteroid: Habitat): void {
+    try {
+        if (asteroid.population !== null && asteroid.population.totalAmount > 0) return;
+        const empire = ship.empire!;
+        empire.stateMoney -= baconSettings.asteroidColonyCost;
+        empire.takeOwnershipOfColony(asteroid, empire);
+        // PopulationList.Add does not update TotalAmount (see population.ts).
+        asteroid.population.add(new Population(ship.nativeRace !== null ? ship.nativeRace : ship.actualEmpire!.dominantRace!, 30000));
+        const playerEmpire = galaxy.playerEmpire;
+        if (playerEmpire !== null && ship.empire !== playerEmpire && playerEmpire.resourceMap.checkResourcesKnown(asteroid)) {
+            playerEmpire.resourceMap.setResourcesKnown(asteroid, false);
+        }
+        if (asteroid.troops === null) asteroid.troops = new TroopList();
+        const owner = asteroid.empire!;
+        const troop1 = new Troop('asteroid cops', TroopType.Infantry, 100, 1000, 100, Math.fround(100), owner, owner.dominantRace);
+        const troop2 = new Troop('asteroid cops', TroopType.Infantry, 100, 1000, 100, Math.fround(100), owner, owner.dominantRace);
+        troop1.colony = asteroid;
+        troop2.colony = asteroid;
+        asteroid.troops.add(troop1);
+        asteroid.troops.add(troop2);
+        if (asteroid.cargo === null) asteroid.cargo = new CargoList();
+        if (asteroid.facilities === null) asteroid.facilities = [];
+        asteroid.cargo.clear();
+        giveAllStrategicResourcesCargoToPlanet(galaxy, asteroid, 250);
+        if (asteroid.baseQuality >= 1.0) return;
+        asteroid.baseQuality = Math.fround(1);
+    } catch {
+        // C# catch (Exception) { } — ignored.
+    }
+}
+
+/** BaconHabitat.cs 360 GiveAllStrategicResourcesCargoToPlanet(planet, amount). */
+function giveAllStrategicResourcesCargoToPlanet(galaxy: Galaxy, planet: Habitat, amount: number): void {
+    for (const resourceDefinition of [...galaxy.resourceSystem.strategicResources]) {
+        planet.cargo!.add(new Cargo(new ResourceRef(resourceDefinition.resourceId), amount, planet.empire));
+    }
 }
 
 /** BaconBuiltObject.cs 3567 CommandActionExtractResources(ship). */

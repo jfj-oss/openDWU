@@ -68,6 +68,7 @@ import {
 import { netSort } from './netSort';
 import { PlanetaryFacilityType } from './researchSystem';
 import { facilitiesFindBestPirateFacility } from './construction/facilities';
+import { baconSettings } from './data/baconSettings';
 
 const f32 = Math.fround;
 
@@ -428,18 +429,14 @@ export function calculateMigrationFactor(galaxy: Galaxy, habitat: Habitat): void
 // BaconHabitat.HugeProcessingSpanActions (economy parts)
 // ---------------------------------------------------------------------------
 
-/** BaconHabitat.cs 24 allowInfrastructureImprovements = false, 31 marketPriceUpdateChance = 1.0; BaconMain.cs 102 quartersOfCashAvailable = 4. */
-export const BACON_ALLOW_INFRASTRUCTURE_IMPROVEMENTS = false;
-export const BACON_MARKET_PRICE_UPDATE_CHANCE = 1.0;
-export const BACON_QUARTERS_OF_CASH_AVAILABLE = 4;
-/** BaconHabitat.cs 27-30. */
-const BACON_INFRASTRUCTURE_SPENDING_PER_DEVELOPMENT_LEVEL = 50000;
-const BACON_MAX_INFRASTRUCTURE_INVESTMENT_ALLOWED = 1000000;
-const BACON_INFRASTRUCTURE_DURABILITY = f32(0.9);
+// BaconHabitat.cs 24 allowInfrastructureImprovements, 27-29 infrastructureSpendingPerDevelopmentLevel /
+// maxInfrastructureInvestmentAllowed / infrasetuctureDurability, 31 marketPriceUpdateChance; BaconMain.cs 102
+// quartersOfCashAvailable: BaconSettings.txt statics (BaconMain.cs 823-863), read from `baconSettings`.
+/** BaconHabitat.cs 30. */
 const BACON_COLONY_INFRASTRUCTURE_SPENDING_POPULATION_FACTOR = 300000000;
 
 /** The clock-seeded `new Random()` stand-in (plan §0): one stream per galaxy, seeded from the galaxy seed. */
-function baconClockRnd(galaxy: Galaxy): Random {
+export function baconClockRnd(galaxy: Galaxy): Random {
     if (galaxy.baconHabitatClockRnd === null) galaxy.baconHabitatClockRnd = new Random((galaxy.randomSeed ^ 0x0b4c0434) | 0);
     return galaxy.baconHabitatClockRnd;
 }
@@ -459,7 +456,7 @@ export function baconHabitatHugeProcessingSpanActions(galaxy: Galaxy, planet: Ha
     }
     if (planet.empire !== null) {
         // `new Random().NextDouble() < marketPriceUpdateChance` (clock Random).
-        if (baconClockRnd(galaxy).nextDouble() < BACON_MARKET_PRICE_UPDATE_CHANCE) {
+        if (baconClockRnd(galaxy).nextDouble() < baconSettings.marketPriceUpdateChance) {
             updatePlanetResourcePrices(galaxy, planet);
         }
         updatePlanetMarketCash(galaxy, planet);
@@ -496,7 +493,7 @@ export function updatePlanetMarketCash(galaxy: Galaxy, planet: Habitat): void {
     let num4 = Math.max(0.01, num1 / num2) * num3 * 0.25;
     if (num4 < 0.0) num4 = 0.0;
     let val2 = baconValue + num4;
-    if (val2 > num4 * BACON_QUARTERS_OF_CASH_AVAILABLE) val2 = val2 * 0.8;
+    if (val2 > num4 * baconSettings.quartersOfCashAvailable) val2 = val2 * 0.8;
     planet.baconValues.set('marketcash', convertToInt32(Math.min(2147483647, val2)));
 }
 
@@ -577,9 +574,9 @@ function calculateResourcePriceEnvironmentalFactors(galaxy: Galaxy, planet: Habi
 /** BaconHabitat.cs 887 ChechAIShouldInvestInInfrastructure(planet). */
 function chechAIShouldInvestInInfrastructure(galaxy: Galaxy, planet: Habitat): void {
     const empire = planet.empire!;
-    if (!BACON_ALLOW_INFRASTRUCTURE_IMPROVEMENTS || empire.privateMoney < BACON_INFRASTRUCTURE_SPENDING_PER_DEVELOPMENT_LEVEL * 5 || planet.annualTaxRevenue < 30000.0) return;
+    if (!baconSettings.allowInfrastructureImprovements || empire.privateMoney < baconSettings.infrastructureSpendingPerDevelopmentLevel * 5 || planet.annualTaxRevenue < 30000.0) return;
     const random = baconClockRnd(galaxy);
-    const num1 = empire.privateMoney / BACON_INFRASTRUCTURE_SPENDING_PER_DEVELOPMENT_LEVEL;
+    const num1 = empire.privateMoney / baconSettings.infrastructureSpendingPerDevelopmentLevel;
     const num2 = random.nextDouble() * 100.0;
     if (num2 >= num1) return;
     const num3 = Math.min(empire.privateMoney * 0.8, Math.max(empire.privateMoney * 0.1, empire.privateMoney * (num1 - num2)));
@@ -588,7 +585,7 @@ function chechAIShouldInvestInInfrastructure(galaxy: Galaxy, planet: Habitat): v
 
 /** BaconHabitat.cs 920 InvestInInfastructure(main, input, useStateFunds, planetParameter) — the AI path (planet given). */
 function investInInfrastructure(galaxy: Galaxy, input: string, useStateFunds: boolean, habitat: Habitat): void {
-    if (!BACON_ALLOW_INFRASTRUCTURE_IMPROVEMENTS) return;
+    if (!baconSettings.allowInfrastructureImprovements) return;
     let flag = false;
     let result = 1000000;
     const strArray = input.split(' ');
@@ -605,9 +602,9 @@ function investInInfrastructure(galaxy: Galaxy, input: string, useStateFunds: bo
     if (habitat.baconValues === null) habitat.baconValues = new Map();
     let num2 = 0;
     if (habitat.baconValues.has('infrastructure')) num2 += habitat.baconValues.get('infrastructure') as number;
-    if (num2 + result > BACON_MAX_INFRASTRUCTURE_INVESTMENT_ALLOWED) {
+    if (num2 + result > baconSettings.maxInfrastructureInvestmentAllowed) {
         // (the player message box is UI; AI path)
-        if (!empire.name.includes('Romulan')) result = BACON_MAX_INFRASTRUCTURE_INVESTMENT_ALLOWED - num2;
+        if (!empire.name.includes('Romulan')) result = baconSettings.maxInfrastructureInvestmentAllowed - num2;
     }
     if (useStateFunds) empire.stateMoney -= result;
     else empire.privateMoney -= result;
@@ -617,13 +614,13 @@ function investInInfrastructure(galaxy: Galaxy, input: string, useStateFunds: bo
 
 /** BaconHabitat.cs 964 DecayInfrastructure(planet). */
 function decayInfrastructure(galaxy: Galaxy, planet: Habitat): void {
-    if (planet.baconValues === null || !planet.baconValues.has('infrastructure') || !BACON_ALLOW_INFRASTRUCTURE_IMPROVEMENTS) return;
+    if (planet.baconValues === null || !planet.baconValues.has('infrastructure') || !baconSettings.allowInfrastructureImprovements) return;
     let val1 = planet.baconValues.get('infrastructure') as number;
     let num1 = 1;
     if (planet.population != null && planet.population.totalAmount > 0) num1 = planet.population.totalAmount;
     const f = BACON_COLONY_INFRASTRUCTURE_SPENDING_POPULATION_FACTOR;
     const num2 = (num1 + f) / (num1 + f / 3.0);
-    const num3 = BACON_INFRASTRUCTURE_DURABILITY + num2 / 90.0;
+    const num3 = baconSettings.infrasetuctureDurability + num2 / 90.0;
     try {
         val1 = Math.min(val1, convertToInt32(val1 * num3));
     } catch {

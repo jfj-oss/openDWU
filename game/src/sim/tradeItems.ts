@@ -74,6 +74,7 @@ import type { Component } from './data/components';
 import { ComponentType } from './data/components';
 import { ComponentCategoryType } from './data/policies';
 import { DesignSpecificationComponentRuleType, resolveComponentCategoryForType, type DesignSpecification } from './data/designSpecifications';
+import { baconSettings } from './data/baconSettings';
 
 // TradeableItemType.cs (member order exact).
 export enum TradeableItemType {
@@ -168,8 +169,6 @@ const TRADE_GALAXY_MAP_THRESHHOLD = 15;
 const TRADE_RESEARCH_THRESHHOLD = 25;
 const TRADE_RESEARCH_SPECIAL_THRESHHOLD = 50;
 const MINIMUM_DIPLOMACY_TRADE_PROPOSAL_INTERVAL_YEARS = 1.25;
-/** BaconGalaxy.priceReductionFactor = 1 (BaconMain settings key "priceReductionFactor" may override — default kept). */
-const BACON_PRICE_REDUCTION_FACTOR = 1;
 /** Galaxy.cs 686 AllowTechTrading = true (Start wizard option, not in the TS CreateGameOptions yet). */
 const ALLOW_TECH_TRADING = true;
 
@@ -197,7 +196,7 @@ export function refactorValueForEmpire(galaxy: Galaxy, value: number, requesting
     const refactorForEmpire = getRefactorForEmpire(galaxy, requestingEmpire, offeringEmpire);
     let num = Math.trunc(value * refactorForEmpire);
     if (num > 1073741823) num = 1073741823;
-    return Math.trunc((num | 0) / BACON_PRICE_REDUCTION_FACTOR);
+    return Math.trunc((num | 0) / baconSettings.priceReductionFactor);
 }
 
 /** Galaxy.4.cs 3680 ValueTerritoryMapForEmpire(mapEmpire, requestingEmpire). */
@@ -952,7 +951,7 @@ export function resolveTradeableItemsColoniesBases(galaxy: Galaxy, giver: Empire
                 if (colony != null && colony.owner === giver && isObjectAreaKnownToThisEmpire(galaxy, receiver, colony)) {
                     const habitatSystemStar = galaxy.determineHabitatSystemStar(colony);
                     const sys = galaxy.systems[habitatSystemStar.systemIndex];
-                    if (BACON_TRADE_EVERYTHING) {
+                    if (baconSettings.tradeEverything) {
                         habitatList2.push(colony);
                     } else if (systemIsDisputed(sys) && sys.dominantEmpire != null && sys.dominantEmpire.empire === receiver) {
                         if (!habitatList1.includes(habitatSystemStar)) habitatList1.push(habitatSystemStar);
@@ -973,7 +972,7 @@ export function resolveTradeableItemsColoniesBases(galaxy: Galaxy, giver: Empire
         for (let index = 0; index < builtObjectList.length; index++) {
             const station = builtObjectList[index];
             const nss = station.nearestSystemStar;
-            if ((BACON_TRADE_EVERYTHING || (nss !== null && (habitatList1.includes(nss) || dominatedSystems.includes(nss)))) && isObjectAreaKnownToThisEmpire(galaxy, receiver, station)) {
+            if ((baconSettings.tradeEverything || (nss !== null && (habitatList1.includes(nss) || dominatedSystems.includes(nss)))) && isObjectAreaKnownToThisEmpire(galaxy, receiver, station)) {
                 let num = valueBaseForEmpire(galaxy, station, giver);
                 if (num >= 0 && refactorValuesForEmpire) num = refactorValueForEmpire(galaxy, num, receiver, giver);
                 if (num >= 0) list.push(new TradeableItem(TradeableItemType.Base, station, num));
@@ -983,8 +982,6 @@ export function resolveTradeableItemsColoniesBases(galaxy: Galaxy, giver: Empire
     }
     return list;
 }
-/** BaconGalaxy.tradeEverything = false (BaconMain settings key "tradeEverything" may override — default kept). */
-const BACON_TRADE_EVERYTHING = false;
 
 /** Galaxy.4.cs 4176 ResolveTradeableItemsDiplomacy(giver, receiver, refactorValuesForEmpire). */
 export function resolveTradeableItemsDiplomacy(galaxy: Galaxy, giver: Empire, receiver: Empire, refactorValuesForEmpire: boolean): TradeableItem[] {

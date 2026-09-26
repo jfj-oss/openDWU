@@ -28,6 +28,7 @@ import { calculateResourceLevelStockForBaseRetrofit } from './colonySupply';
 import type { Contract } from './contracts';
 import { cancelContract } from './contracts';
 import { determineResourcesEmpireSupplies } from '../diplomacyTick';
+import { baconSettings } from '../data/baconSettings';
 
 export { checkMarketOrders } from './freight';
 
@@ -51,8 +52,6 @@ export const COLONY_ANNUAL_LUXURY_RESOURCE_CONSUMPTION_RATE = 2e-8; // 5005
 export const COLONY_ANNUAL_RESTRICTED_RESOURCE_CONSUMPTION_RATE = 1e-8; // 5095
 export const COLONY_STRATEGIC_RESOURCE_CONSUMPTION_PER_MILLION_PER_YEAR = 0.33; // 5085
 export const SECTOR_SIZE = 2000000; // 4974
-/** BaconMain.cs 90 maximumResourceLevelToStockAtBaseNotAtColony (default; BaconMain reads an override from its settings file). */
-export const MAXIMUM_RESOURCE_LEVEL_TO_STOCK_AT_BASE_NOT_AT_COLONY = 50;
 
 // ------------------------------------------------------------------------------------------
 // Commodity references. C# Order/Contract/Cargo carry a Resource or a Component (by id); the TS CargoList only
@@ -821,7 +820,7 @@ function checkAndOrderResourceBaseNotAtColony(galaxy: Galaxy, empire: Empire, ba
 /** BaconEmpire.cs 667 CheckResourceMeetsMinimumLevelBaseNotAtColony (maximumResourceLevel overridden by BaconMain). */
 function checkResourceMeetsMinimumLevelBaseNotAtColony(resource: ResourceRef, minimumResourceLevel: number, maximumResourceLevel: number, baseNotAtColony: BuiltObject, baseOrders: OrderList): { meets: boolean; amountToOrder: number } {
     void maximumResourceLevel;
-    maximumResourceLevel = MAXIMUM_RESOURCE_LEVEL_TO_STOCK_AT_BASE_NOT_AT_COLONY;
+    maximumResourceLevel = baconSettings.maximumResourceLevelToStockAtBaseNotAtColony;
     let flag = false;
     let num = 0;
     let index1 = -1;

@@ -71,6 +71,7 @@ import { strategicValue } from './territory';
 import { generateDesignFromSpec } from './designGeneration';
 import { selectRandomRace } from './pirates';
 import { gameText } from './colonyTick';
+import { baconSettings } from './data/baconSettings';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants
@@ -104,9 +105,8 @@ const HABITAT_TO_EMPIRE_MINIMUM_INTELLIGENCE = 69;
 /** EmpireEvaluation.cs 49 FirstContactPenaltyStartAmount. */
 const FIRST_CONTACT_PENALTY_START_AMOUNT = -15.0;
 
-/** BaconBuiltObject.cs 58-59 scientificDataForResourceSurvey / scientificDataForRuins. */
-const SCIENTIFIC_DATA_FOR_RESOURCE_SURVEY = 3;
-const SCIENTIFIC_DATA_FOR_RUINS = 90;
+// BaconBuiltObject.cs 58-59 scientificDataForResourceSurvey / scientificDataForRuins: BaconSettings.txt statics
+// (BaconMain.cs 750 / 754), read from `baconSettings`.
 
 /** ComponentStatus.Normal (ComponentStatus.cs). */
 const COMPONENT_STATUS_NORMAL = 0;
@@ -233,7 +233,7 @@ function addScientificData(ship: BuiltObject, planet: Habitat, eventType: 'scanA
     let num: number;
     switch (eventType) {
         case 'scanArea':
-            ship.baconValues.set('scientificData', planet.resources.length * SCIENTIFIC_DATA_FOR_RESOURCE_SURVEY + baconValue);
+            ship.baconValues.set('scientificData', planet.resources.length * baconSettings.scientificDataForResourceSurvey + baconValue);
             return;
         case 'scientificData':
             num = planet.ruin !== null ? (!planet.ruin.playerEmpireEncountered ? 1 : 0) : 0;
@@ -243,7 +243,7 @@ function addScientificData(ship: BuiltObject, planet: Habitat, eventType: 'scanA
             break;
     }
     if (num === 0) return;
-    ship.baconValues.set('scientificData', SCIENTIFIC_DATA_FOR_RUINS + baconValue);
+    ship.baconValues.set('scientificData', baconSettings.scientificDataForRuins + baconValue);
 }
 
 /** Empire.10.cs 3372 ObtainDesignSpec(subRole): the first of Empire._DesignSpecifications with that sub-role. */

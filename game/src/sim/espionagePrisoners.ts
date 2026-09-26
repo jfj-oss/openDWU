@@ -23,12 +23,10 @@ import { csInt } from './builtObjectComponent';
 import { characterMission, intelligenceMissionTarget, newCounterIntelligenceMission } from './espionage';
 import { BuiltObject as BuiltObjectClass } from './builtObject';
 import { Habitat as HabitatClass } from './types';
+import { baconSettings } from './data/baconSettings';
 
-/** BaconCharacter.cs 18-21 (BaconSettings.txt keys spyCaptureChance / spyBaseValue / capturedSpyEscapeChance / capturedSpyDefectChance; defaults kept). */
-export const SPY_CAPTURE_CHANCE = Math.fround(1);
-export const SPY_BASE_VALUE = 25000;
-export const SPY_BASE_ESCAPE_CHANCE = 0.02;
-export const SPY_BASE_DEFECT_CHANCE = 0.02;
+// BaconCharacter.cs 18-21 spyCaptureChance / spyBaseValue / spyBaseEscapeChance / spyBaseDefectChance: BaconSettings.txt
+// statics (BaconMain.cs 794-806), read from `baconSettings`.
 
 /** A C# exception inside a Bacon try block (caught and ignored by the caller). */
 class CsException extends Error {}
@@ -112,10 +110,10 @@ function firstBuiltObject(empire: Empire | null): BuiltObject {
 export function getCharacterValue(character: Character): number {
     let num = Math.fround(0);
     if (character.empire === null) nre();
-    let d = character.empire.stateMoney / SPY_BASE_VALUE;
+    let d = character.empire.stateMoney / baconSettings.spyBaseValue;
     if (d > 1.0) d = Math.sqrt(d);
     for (const skill of character.skills.items) num = Math.fround(num + skill.level);
-    return Math.max(Math.trunc(SPY_BASE_VALUE / 2), csInt((1.0 + num / 100.0) * d * SPY_BASE_VALUE));
+    return Math.max(Math.trunc(baconSettings.spyBaseValue / 2), csInt((1.0 + num / 100.0) * d * baconSettings.spyBaseValue));
 }
 
 /** BaconCharacter.cs 125 GetSpyTargetEmpire(spy). */
@@ -171,7 +169,7 @@ export function characterKillFromPerformIntelligenceMissions(galaxy: Galaxy, cha
         }
     }
     try {
-        if (SPY_CAPTURE_CHANCE > spyClockRnd(galaxy).nextDouble()) {
+        if (baconSettings.spyCaptureChance > spyClockRnd(galaxy).nextDouble()) {
             const flag2 = true; // the caller is PerformIntelligenceMissions
             let flag3 = false;
             let flag4 = false;
@@ -225,7 +223,7 @@ function ownPrisonList(prison: Prison): Character[] {
 /** BaconHabitat.cs 662 / BaconBuiltObject.cs 4198 SpyEscaped(prison, spy): the spy returns home on counter-intelligence. */
 export function spyEscaped(galaxy: Galaxy, prison: Prison, spy: Character): boolean {
     try {
-        const baseEscapeChance = SPY_BASE_ESCAPE_CHANCE;
+        const baseEscapeChance = baconSettings.spyBaseEscapeChance;
         if (spyClockRnd(galaxy).nextDouble() > baseEscapeChance) return false;
         if (spy.empire === null) nre();
         getEmpireCharacters(spy.empire).push(spy);
@@ -252,7 +250,7 @@ export function spyEscaped(galaxy: Galaxy, prison: Prison, spy: Character): bool
 /** BaconHabitat.cs 703 / BaconBuiltObject.cs 4232 SpyDefected(prison, spy): the spy joins the jailer's empire. */
 export function spyDefected(galaxy: Galaxy, prison: Prison, spy: Character): boolean {
     try {
-        const baseDefectChance = SPY_BASE_DEFECT_CHANCE;
+        const baseDefectChance = baconSettings.spyBaseDefectChance;
         if (spyClockRnd(galaxy).nextDouble() > baseDefectChance) return false;
         if (prison instanceof HabitatClass) {
             const pe = prison.empire ?? nre();
