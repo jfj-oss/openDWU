@@ -48,6 +48,7 @@ describe('initiateEmpireSplitAt (Empire.1.cs 1102 / 2883, split for targeted sec
         // splinterEmpireAt / initiateEmpireSplitAt; must never move with that refactor).
         // Moved (new) → "a8b312e8d6f7df18:288951": new pin: empireLifecycle.aiSplitDigest (faithful InitiateEmpireSplit on seed 1, recorded on the pre-refactor code) (2026-09-26)
         // Moved "a8b312e8d6f7df18:288951" → "82600a40b8a35771:289000": merge: todosweep2 (planet DoTasks, ProcessEmpireScienceShips scheduling) on top of the integration branch's todosweep/combattest pins (2026-09-26)
+        // Moved "82600a40b8a35771:289000" → "42159d821d5440d8:288980": BaconMain.cs 686-697 BaconInitialize queues the SaveStats delayed action (1 day; BaconGalaxy.cs 319 re-queues it every statSaveIntervalInGameDays) and BaconMain.cs 1069/1075-1087 AddOtherDelayedEvents queues ClearShipsAboutToBeDestroyed with Galaxy.Rnd.Next(10, 12) after the 700-715 science-ship Next(26, 35) (2026-09-26)
         expect(`${stateDigest(galaxy)}:${galaxy.rnd.drawCount}`).toMatchPin('empireLifecycle.aiSplitDigest');
     }, 300000);
 

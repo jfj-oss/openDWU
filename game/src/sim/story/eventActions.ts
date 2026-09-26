@@ -24,6 +24,7 @@
 // ShipImageHelper picture picks (ShipImageHelper._Rnd, not Galaxy.Rnd).
 
 import { executeProcessEmpireScienceShips } from '../baconScienceShips';
+import { baconSettings } from '../data/baconSettings';
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import { Empire as EmpireClass } from '../empire';
@@ -1667,19 +1668,19 @@ function isNullOrWhiteSpace(s: string | null | undefined): boolean {
  * BaconGalaxy.cs 308 ExecuteEventAction(galaxy, eventAction, targetEmpire, gameEvent, flag): the Bacon mod's repeating
  * "delayed" actions, recognised by MessageTitle. Each handled one clears `flag` (no GeneralDiscovery message) and, for the
  * periodic ones, re-queues itself. `BaconBuiltObject.myMain != null` holds in a running game (the TS has no Main; it is
- * treated as set). "ProcessEmpireScienceShips" is queued by baconSettings.ts (BaconMain.cs 700-715); nothing in the TS queues
- * the others yet (SaveStats / ClearShipsAboutToBeDestroyed settings init BaconMain.cs 688 / 1077, BaconEmpire loans, BaconHabitat
- * scientific missions — the last two UI-driven). Returns the updated flag.
+ * treated as set). "SaveStats", "ProcessEmpireScienceShips" and "ClearShipsAboutToBeDestroyed" are queued by baconSettings.ts
+ * (BaconMain.cs 686-697 / 700-715 / 1075); nothing in the TS queues the others yet (BaconEmpire loans, BaconHabitat
+ * scientific missions — both UI-driven). Returns the updated flag.
  */
 export function baconGalaxyExecuteEventAction(galaxy: Galaxy, eventAction: EventAction, targetEmpire: Empire | null, gameEvent: GameEvent | null, flag: boolean): boolean {
     void targetEmpire;
     const day = Math.trunc((REAL_SECONDS_IN_GALACTIC_YEAR * 1000) / 360);
     const messageTitle = eventAction.messageTitle;
     if (messageTitle === 'SaveStats') {
-        // TODO(port) M9: BaconMain.ProcessGameStats(myMain) (stats files — UI / IO; no Rnd).
+        // TODO(port) M9: BaconMain.ProcessGameStats(myMain) (stats files — UI / IO; no Rnd; achievements.ts processGameStats).
         flag = false;
-        // TODO(port) M9: BaconMain.statSaveIntervalInGameDays (settings file; min 10) — the TS keeps no Bacon settings; 10 used.
-        eventAction.executionDate = galaxyStarDate(galaxy) + day * 10;
+        // BaconGalaxy.cs 319: + RealSecondsInGalacticYear * 1000 / 360 * (int)BaconMain.statSaveIntervalInGameDays.
+        eventAction.executionDate = galaxyStarDate(galaxy) + day * baconSettings.statSaveIntervalInGameDays;
         galaxy.delayedActions.push(new EventActionExecutionPackage(eventAction, gameEvent, galaxy.playerEmpire));
     } else if (messageTitle === 'ProcessEmpireScienceShips') {
         // BaconGalaxy.cs 322-329: BaconEmpire.ProcessScienceShips(myMain), then re-queue Next(26, 35) days later.
