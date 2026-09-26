@@ -67,6 +67,7 @@ import { thisYearsPrivateFuelCosts } from '../logistics/refuel';
 import { determineDesirePirateProtection } from './pirateAI';
 import { PirateIncomeType } from './pirateEconomy';
 import { EmpireActivity, EmpireActivityList, EmpireActivityType, type ActivityTarget } from './empireActivity';
+import { crisesBlocksSmuggleOffer, crisesOn, crisisSmuggleCap, empireHasColonyCrisis } from '../scenario/emergent/crisesCore';
 
 export { EmpireActivity, EmpireActivityList, EmpireActivityType };
 
@@ -548,6 +549,8 @@ export function calculatePirateSmugglePricePerUnit(galaxy: Galaxy, empire: Empir
     void empire;
     void colony;
     const num2 = galaxyResourceCurrentPrices(galaxy)[resourceId];
+    // 19d2 resource crises (scenario flag): crisis-priced goods fetch more than the stock 5-credit cap.
+    if (galaxy.scenario !== null && crisesOn(galaxy)) return Math.min(crisisSmuggleCap(galaxy), Math.max(0.1, num2 * 0.5));
     return Math.min(5.0, Math.max(0.1, num2 * 0.5));
 }
 
@@ -921,6 +924,8 @@ export function makeSmugglingOffersToPirates(galaxy: Galaxy, empire: Empire, sta
         switch (empire.policy!.offerSmugglingPirateMissions) {
             case 1:
                 if (checkAtWar(empire)) flag = true;
+                // 19d2 resource crises (scenario flag): a war-only empire also offers while a colony is in crisis. No Rnd.
+                else if (galaxy.scenario !== null && crisesOn(galaxy) && empireHasColonyCrisis(galaxy, empire)) flag = true;
                 break;
             case 2:
                 flag = true;
@@ -931,6 +936,8 @@ export function makeSmugglingOffersToPirates(galaxy: Galaxy, empire: Empire, sta
     const num = privateAnnualRevenue(galaxy, empire) - (annualPrivateMaintenanceExcludingUnderConstruction(empire) + annualTaxRevenue(galaxy, empire) + thisYearsPrivateFuelCosts(galaxy, empire));
     const { deficientColony, deficientResourceId, deficientResourceCount } = identifyResourceDeficientColony(galaxy, empire);
     if (deficientColony === null) return;
+    // 19d2 AI rule 3 (scenario flag): no smuggling offer for a resource the empire exports to a partner in crisis.
+    if (galaxy.scenario !== null && deficientResourceCount === 1 && empire !== galaxy.playerEmpire && crisesBlocksSmuggleOffer(galaxy, empire, deficientResourceId)) return;
     let num2 = 1.0;
     if (deficientResourceCount === 1) num2 = calculatePirateSmugglePricePerUnit(galaxy, empire, deficientColony, deficientResourceId);
     const num3 = num2 * 500.0;

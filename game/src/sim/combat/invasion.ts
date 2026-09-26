@@ -21,6 +21,7 @@
 // dead in the headless sim; colonyInvasionUi throws a TODO if a view is ever attached (UI port, M9).
 // Habitat._PirateColonyControl: M4s2's PirateColonyControlList (wired at the M4q merge; see pirateColonyControl below).
 
+import { recordRaidLoss } from '../scenario/emergent/crisesCore';
 import { registerTodo, todo } from '../tick/todo';
 import { cancelBlockadeColony } from '../fleets/blockades';
 import { getNearbyBuiltObjects } from '../pirates/pirateAI';
@@ -1093,6 +1094,8 @@ export function doRaidBonuses(galaxy: Galaxy, attackingEmpire: Empire | null, ta
                 }
             }
             if (cargoList2.length > 0) {
+                // 19d2 resource crises (scenario flag): remember what the raid took (the yearly review opens the crisis). No Rnd.
+                if (galaxy.scenario !== null) recordRaidLoss(galaxy, isHabitat(target) ? target : target.parentHabitat, cargoList2.map((c) => c.commodity.resourceId));
                 if (attackingEmpire.pirateEmpireBaseHabitat !== null) {
                     const builtObject2 = identifyPirateBase(attackingEmpire);
                     if (builtObject2 !== null && builtObject2.cargo !== null) {

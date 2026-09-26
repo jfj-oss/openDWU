@@ -1,0 +1,18 @@
+'Scenario overlay (19d2 resource crises): GameText lines added to the base GameText.txt. Tags start with "Emergent ".
+' [19d2] begin
+Emergent Reserves Low Title;Reserves Running Low
+Emergent Reserves Low RESOURCE HABITAT PERCENT;The {0} reserves at {1} are {2}% exhausted: extraction there is slowing.
+Emergent Shortage Title;Shortage
+Emergent Shortage COLONY RESOURCE;{0} has run out of {1}. The colonists are growing restless.
+Emergent Fleets Grounded Title;Fleets Grounded
+Emergent Fleets Grounded COUNT TOTAL RESOURCE FLEET;{0} of our {1} warships are grounded for lack of {2} ({3}).
+Emergent Crisis Resolved Title;Crisis Over
+Emergent Crisis Resolved RESOURCE PLACE;Supplies of {0} have been restored at {1}.
+Emergent Supply Shock RESOURCE HABITAT;Supply shock: the {0} source at {1} has been exhausted. Traders brace for shortages.
+Emergent Price Spike RESOURCE PRICE;Price spike: {0} now trades at {1} credits per unit amid galaxy-wide shortages.
+Emergent Fuel Decision Title;Fuel Crisis
+Emergent Fuel Decision RESOURCE;Our warships are running dry of {0}. How should we respond?
+Emergent Fuel Option Buy COST;Emergency purchase ({0} credits)
+Emergent Fuel Option Smuggle;Offer smuggling contracts
+Emergent Fuel Option Wait;Wait
+' [19d2] end

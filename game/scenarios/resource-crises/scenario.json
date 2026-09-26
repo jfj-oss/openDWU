@@ -1,0 +1,14 @@
+{
+  "id": "resource-crises",
+  "name": "Resource Crises",
+  "description": "Scarcity shocks propagate through the private economy: sources run dry, blockades and raids starve colonies, prices spike past the usual ceiling, lost luxuries stir unrest, fuel shortages ground fleets and smugglers chase the crisis prices. Everything else is the faithful game.",
+  "flags": [
+    { "name": "resourceCrises", "label": "Resource crises", "description": "Finite reserves, galaxy supply shocks, crisis prices, shortage unrest, fuel crisis reports and the smuggling pull.", "default": true }
+  ],
+  "params": [
+    { "name": "reserveUnitsPerAbundance", "label": "Reserve units per abundance point (0 = infinite)", "default": 250, "min": 0, "max": 100000 },
+    { "name": "crisisPriceCeiling", "label": "Crisis price ceiling (x base price)", "default": 1.5, "min": 0.35, "max": 5 },
+    { "name": "shortageShockChance", "label": "Yearly chance of a galaxy supply shock", "default": 0.15, "min": 0, "max": 1 },
+    { "name": "shortageUnrest", "label": "Approval penalty per luxury lost", "default": 6, "min": 0, "max": 20 }
+  ]
+}

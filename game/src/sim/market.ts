@@ -16,6 +16,7 @@ import type { Cargo } from './cargo';
 import { galaxyComponentCurrentPrices, galaxyResourceCurrentPrices } from './design';
 import type { Galaxy } from './galaxy';
 import type { Order } from './logistics/orders';
+import { crisisPrice } from './scenario/emergent/crisesCore';
 
 /**
  * The Order surface ReviewResourcePrices reads (Order.cs CommodityResource, AmountOutstandingToContract): the real
@@ -116,6 +117,8 @@ export function reviewResourcePrices(galaxy: Galaxy): void {
         }
         num7 = csMathMax(val, num7);
         num7 = csMathMin(val2, num7);
+        // 19d2 resource crises (scenario flag): a shortage lifts the ceiling (crisesCore.crisisPrice). No Rnd.
+        if (galaxy.scenario !== null) num7 = crisisPrice(galaxy, resourceDefinition, array[num3], array2[num3], num7, resourceCurrentPrices[num3]);
         if (Number.isNaN(num7)) {
             num7 = basePrice;
         }
