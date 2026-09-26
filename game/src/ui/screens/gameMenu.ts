@@ -5,7 +5,7 @@
 // music player + UI scale.
 import './gameMenu.css';
 import { GalaxyTime } from '../../sim/clock';
-import { startMusic } from '../../audio/musicPlayer';
+import { musicControls, stopAllMusic } from '../../audio/musicPlayer';
 import { startEffects } from '../../audio/effectsPlayer';
 import { getSettings, updateSettings, uiScaleFactor } from '../settings';
 import { showToast } from '../toast';
@@ -18,10 +18,10 @@ export interface MusicAdapter {
     unmute(): void;
 }
 
-/** Lazily fetch the real music player (created by startMusic at boot). */
+/** Lazily fetch the real music player (musicPlayer.ts musicControls: both players). */
 function defaultMusic(): MusicAdapter | null {
     try {
-        return startMusic();
+        return musicControls();
     } catch {
         return null;
     }
@@ -320,6 +320,7 @@ export function createGameMenu(
         const ok = window.confirm('Exit the game?');
         if (ok) {
             hide();
+            stopAllMusic(); // [audio] Main.Part7.cs:4568 btnGameMenuQuit: musicPlayer_0.Stop(); musicPlayer_1.Stop()
             if (callbacks.onExit) {
                 callbacks.onExit();
             } else if (isDesktopShell()) {

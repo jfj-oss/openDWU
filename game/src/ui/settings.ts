@@ -5,6 +5,7 @@
 // real localStorage.
 
 import { startEffects } from '../audio/effectsPlayer';
+import { applyMusicSettings } from '../audio/musicPlayer'; // [audio]
 
 /** One entry of the persisted settings blob. */
 export interface UiSettings {
@@ -221,6 +222,13 @@ function applySoundSettings(s: UiSettings): void {
     } catch {
         // Audio must never break a settings change.
     }
+    // [audio] begin — the music volume / mute apply to musicPlayer_0 and musicPlayer_1 (Main.Part9.cs:2816 SetVolume(MusicVolume)).
+    try {
+        applyMusicSettings(s.musicVolume, s.musicMuted);
+    } catch {
+        // Audio must never break a settings change.
+    }
+    // [audio] end
 }
 
 // ---------------------------------------------------------------------------

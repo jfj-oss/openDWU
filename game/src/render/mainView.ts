@@ -12,6 +12,7 @@
 // TODO(port): nebula-anchored gas-cloud placement / radiation fields —
 // Galaxy.4.cs GenerateGasCloud.
 
+import { playGridClick } from '../audio/gameAudio'; // [audio]
 import { Application, Container, Graphics, Sprite, Text, Texture, TilingSprite } from 'pixi.js';
 import { Camera } from './camera';
 import {
@@ -1465,6 +1466,9 @@ export class MainView {
                 }
                 if (this.onLeftClickIntercept?.(x, y)) return; // [ordermenu]
                 const bo = this.pickBuiltObject(x, y);
+                // [audio] begin — Main.Part10.cs:3304-3306 `if (obj3 != null) method_225()` (grid.wav) on a left-click pick.
+                if (bo !== null || this.pick(x, y) !== null) playGridClick();
+                // [audio] end
                 if (bo !== null) {
                     this.selectedHabitat = null;
                     this.selectedBuiltObject = bo;
