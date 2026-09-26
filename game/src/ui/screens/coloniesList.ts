@@ -14,6 +14,7 @@ import { empireApprovalRating } from '../../sim/taxes';
 import { habitatAnnualRevenue } from '../../sim/forceStructure';
 import { formatPopulation } from '../hud';
 import { colonyShortageMarker, crisesApprovalBreakdown } from '../../sim/scenario/emergent/crisesCore';
+import { governorLoyaltyText } from '../emergentPolitics'; // [emergent]
 
 export interface ColoniesListOptions {
     /** The empire whose colonies are listed (the player's). */
@@ -258,6 +259,10 @@ function createColoniesList(opts: ColoniesListOptions): OpenState {
         troops.textContent = row.troops;
 
         line.append(name, pop, dev, approval, gdp, tax, troops);
+        // [emergent] begin — 19d1 internal politics: the governor's loyalty as the name tooltip (flag on only)
+        const governor = governorLoyaltyText(opts.empire.galaxy, row.habitat);
+        if (governor !== null) name.title = `Governor ${governor}`;
+        // [emergent] end
         line.addEventListener('click', () => {
             close();
             opts.onZoomTo(row.habitat);

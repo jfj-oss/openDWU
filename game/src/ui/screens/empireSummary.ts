@@ -15,6 +15,7 @@ import { annualStateMaintenance, annualTaxRevenue } from '../../sim/forceStructu
 import { formatThousandsK } from './coloniesList';
 import { formatMoney, formatPopulation } from '../hud';
 import { crisesSummaryRows } from '../../sim/scenario/emergent/crisesCore';
+import { stabilityRow } from '../emergentPolitics'; // [emergent]
 
 /** The data the panel displays: the player's empire plus its government's
  * display name (null when unknown). */
@@ -184,7 +185,12 @@ function createEmpireSummary(src: EmpireSummarySource): OpenState {
     body.className = 'empire-summary-body';
 
     const scenarioRows = src.empire.galaxy?.scenario ? crisesSummaryRows(src.empire.galaxy, src.empire) : [];
-    for (const row of empireSummaryRows(src, empireSummaryExtra(src.empire), scenarioRows)) {
+    const summaryRows = empireSummaryRows(src, empireSummaryExtra(src.empire), scenarioRows);
+    // [emergent] begin — 19d1 internal politics: instability as a Stability row (flag on only)
+    const stability = src.empire.galaxy ? stabilityRow(src.empire.galaxy, src.empire) : null;
+    if (stability !== null) summaryRows.push(stability);
+    // [emergent] end
+    for (const row of summaryRows) {
         const line = document.createElement('div');
         line.className = 'empire-summary-row';
         const label = document.createElement('span');

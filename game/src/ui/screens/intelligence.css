@@ -123,3 +123,12 @@
 .intel-m-chance-value { font-size: 20px; color: #fff; min-height: 1.2em; }
 .intel-m-warning { font-size: 11px; color: #e8a04a; min-height: 1.2em; }
 .intel-m-buttons { display: flex; justify-content: flex-end; gap: 6px; }
+
+/* [emergent] begin — 19d1 internal politics */
+.intel-politics .intel-row { grid-template-columns: 1.1fr 0.9fr 1fr 2.2fr 3.6em 4.2em; }
+.intel-num { text-align: right; }
+.intel-row-risk .intel-cell:nth-child(5) { color: #ff7a5c; font-weight: 600; }
+.intel-politics-block { margin-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.12); padding-top: 6px; }
+.intel-pol-line { font-size: 12px; margin-bottom: 3px; }
+.intel-pol-causes, .intel-pol-grievances { font-size: 11px; opacity: 0.85; margin-bottom: 3px; }
+/* [emergent] end */

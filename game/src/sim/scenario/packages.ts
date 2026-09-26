@@ -6,4 +6,6 @@ import './rimTrade/rimTrader';
 import './emergent/espionage';
 import './threats/darkFarms';
 import './emergent/crises'; // 19d2 resource crises (flag resourceCrises)
+import './emergent/politics';
+import './emergent/politicsActions';
 export {};

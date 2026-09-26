@@ -37,6 +37,7 @@ import { cancelIntelligenceMission, characterMission } from '../espionage';
 import { scenarioFlag } from '../scenario/state';
 import { ESPIONAGE_FLAG } from '../scenario/emergent/espionageHooks';
 import { setMissionFrame } from '../scenario/emergent/espionage';
+import { grantAutonomy, runPoliticsAction, type PoliticsActionName } from '../scenario/emergent/politicsActions';
 import {
     acceptProposal,
     declineProposal,
@@ -173,6 +174,10 @@ export const PLAYER_OPS = {
     charterRenew: (galaxy: Galaxy, empire: Empire, company: Empire) => renewCharter(galaxy, empire, company),
     charterRelease: (galaxy: Galaxy, empire: Empire, company: Empire) => releaseCompany(galaxy, empire, company),
     charterNationalise: (galaxy: Galaxy, empire: Empire, company: Empire) => nationaliseCompany(galaxy, empire, company),
+    // [emergent] begin — scenario 19d1 internal politics (scenario/emergent/politicsActions.ts; flag-gated inside)
+    politicsAction: (galaxy: Galaxy, empire: Empire, action: PoliticsActionName, character: Character) => runPoliticsAction(galaxy, empire, action, character),
+    grantAutonomy: (galaxy: Galaxy, empire: Empire, colony: Habitat) => grantAutonomy(galaxy, empire, colony),
+    // [emergent] end
 } as const;
 
 export type PlayerOps = typeof PLAYER_OPS;
