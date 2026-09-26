@@ -1,0 +1,125 @@
+/* Intelligence Agents / Characters screen (F4). Dark-panel tokens as empiresList.css. */
+
+.intel-wrap {
+    position: fixed;
+    inset: 0;
+    z-index: 1500;
+    pointer-events: none;
+    font-family: 'Forgotten Futurist', sans-serif;
+    color: #e6e6e6;
+}
+
+.intel-window {
+    position: absolute;
+    top: 64px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 1020px;
+    max-width: calc(100vw - 16px);
+    height: min(770px, calc(100vh - 96px));
+    pointer-events: auto;
+    background: rgba(14, 16, 20, 0.94);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.intel-titlebar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: rgba(10, 11, 15, 0.9);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.intel-heading { font-size: 13px; color: #e8d24a; }
+.intel-close { background: transparent; border: none; color: #ccc; font-size: 15px; cursor: pointer; padding: 2px 6px; }
+.intel-close:hover { color: #fff; }
+
+.intel-top {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.intel-summary-box { flex: 1; min-width: 0; }
+.intel-summary { font-size: 11px; color: #cfcfcf; }
+.intel-ci-summary { font-size: 11px; color: #9fb4c8; margin-top: 2px; }
+
+.intel-btn {
+    background: rgba(40, 44, 60, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: #e6e6e6;
+    font: inherit;
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 3px;
+    cursor: pointer;
+}
+.intel-btn:hover:not(:disabled) { background: rgba(60, 66, 96, 0.95); color: #fff; }
+.intel-btn:disabled { opacity: 0.45; cursor: default; }
+
+.intel-body { flex: 1; min-height: 0; display: flex; gap: 10px; padding: 8px 10px 10px; }
+
+.intel-list { flex: 1 1 57%; min-width: 0; display: flex; flex-direction: column; }
+.intel-list-body { flex: 1; overflow-y: auto; }
+.intel-row {
+    display: grid;
+    grid-template-columns: 1.1fr 0.9fr 1fr 2.2fr;
+    gap: 6px;
+    padding: 4px 6px;
+    font-size: 11px;
+    border-radius: 3px;
+    cursor: pointer;
+}
+.intel-row:hover { background: rgba(255, 255, 255, 0.05); }
+.intel-row-agent .intel-cell:nth-child(2) { color: #e8d24a; }
+.intel-row-selected, .intel-row-selected:hover { background: rgba(80, 110, 170, 0.35); }
+.intel-header { cursor: default; color: #8f98a8; font-size: 10px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+.intel-header:hover { background: none; }
+.intel-cell { overflow: hidden; overflow-wrap: anywhere; }
+
+.intel-side { flex: 0 0 40%; min-width: 0; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; }
+.intel-detail, .intel-mission {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 4px;
+    padding: 8px 10px;
+}
+.intel-d-name { font-size: 15px; color: #fff; }
+.intel-d-role { font-size: 12px; color: #e8d24a; margin-top: 2px; }
+.intel-d-task, .intel-d-loc { font-size: 11px; color: #cfcfcf; margin-top: 3px; }
+.intel-d-traits { font-size: 11px; color: #b8c4d8; margin-top: 6px; }
+.intel-d-skills { margin-top: 6px; display: flex; flex-direction: column; gap: 2px; }
+.intel-skill { display: grid; grid-template-columns: 1fr 4em 6em; gap: 6px; font-size: 11px; align-items: center; }
+.intel-skill-name { text-align: right; color: #cfcfcf; }
+.intel-skill-value { font-size: 13px; }
+.intel-skill-progress { color: #8f98a8; font-size: 10px; text-align: center; }
+.intel-good { color: #5fd35f; }
+.intel-bad { color: #e05050; }
+
+.intel-m-title { font-size: 12px; color: #e8d24a; margin-bottom: 6px; }
+.intel-m-field { display: grid; grid-template-columns: 8.5em 1fr; gap: 6px; align-items: center; margin-bottom: 4px; }
+.intel-m-label { font-size: 11px; color: #aeb6c4; }
+.intel-select {
+    min-width: 0;
+    background: rgba(24, 27, 36, 0.95);
+    color: #e6e6e6;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 3px;
+    font: inherit;
+    font-size: 11px;
+    padding: 2px 4px;
+}
+.intel-select:disabled { opacity: 0.75; }
+.intel-m-chance { text-align: center; margin: 8px 0 6px; }
+.intel-m-chance-label { font-size: 11px; color: #aeb6c4; }
+.intel-m-chance-value { font-size: 20px; color: #fff; min-height: 1.2em; }
+.intel-m-warning { font-size: 11px; color: #e8a04a; min-height: 1.2em; }
+.intel-m-buttons { display: flex; justify-content: flex-end; gap: 6px; }

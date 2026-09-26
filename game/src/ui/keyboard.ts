@@ -31,6 +31,10 @@ import { showToast } from './toast';
 import { toggleAdvisorPanel } from './advisorPanel';
 // [advisor] end
 
+// [intel] begin
+import { toggleIntelligenceScreen } from './screens/intelligence';
+// [intel] end
+
 /** Modifier state of a key event (Ctrl/Alt/Shift). */
 export interface KeyModifiers {
     ctrl: boolean;
@@ -353,6 +357,15 @@ export function dispatchKey(
             break;
         }
         // [advisor] end
+
+        // [intel] begin F4: Intelligence Agents (Main.Part7.cs:3254 → Main.Part6.cs:3231 tbtnIntelligenceAgents_Click).
+        case 'intelligenceAgentsScreen': {
+            const src = getEmpireSummarySource();
+            if (src) toggleIntelligenceScreen({ player: src.empire, onZoomTo: (t) => selectStellarObject(t, true) });
+            break;
+        }
+        // [intel] end
+
         default:
             // Registered but not implemented yet.
             console.info(`TODO(key): ${binding.action}`);
@@ -573,6 +586,10 @@ export const IMPLEMENTED_KEY_ACTIONS: ReadonlySet<string> = new Set([
     'advisorChat', 'ctrlWithZoomKeys',
     ...SHIP_COMMAND_ACTIONS,
     // [fix6ui] end
+
+    // [intel] begin
+    'intelligenceAgentsScreen',
+    // [intel] end
 ]);
 
 /** True when pressing the binding's key does something today. Pure. */
