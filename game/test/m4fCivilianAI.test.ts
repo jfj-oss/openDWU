@@ -1,6 +1,7 @@
 // M4f — civilian mission AI (src/sim/civilianAI.ts, missions/cmdReassign.ts). Unit checks of the ported C# helpers
 // against hand-worked expectations, the game-start AssignMissionsToBuiltObjectList (Start.2.cs 1373) on a createGame
 // galaxy (seed 1), and a harness smoke run.
+import { SystemVisibilityStatus } from '../src/sim/visibility';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 import { createTickGame } from './helpers/tickGame';
@@ -125,8 +126,10 @@ describe('helpers', () => {
         const capital = empire.capital!;
         const h = fastFindNearestUnexploredHabitat(galaxy, capital.xpos, capital.ypos, empire);
         expect(h).not.toBeNull();
-        // The returned habitat is not yet resource-known (or a ruin of benefit) for the empire.
-        expect(empire.resourceMap.checkResourcesKnown(h!) && h!.ruin === null).toBe(false);
+        // The returned habitat is not yet resource-known (or a ruin of benefit) for the empire — or the star of an
+        // unexplored star-only / gas-cloud system (Galaxy.6.cs 4380-4410: stars are resource-known from the start).
+        const unexploredSystemStar = h === galaxy.systems[h!.systemIndex].systemStar && empire.systemVisibility[h!.systemIndex].status === SystemVisibilityStatus.Unexplored;
+        expect(unexploredSystemStar || !(empire.resourceMap.checkResourcesKnown(h!) && h!.ruin === null)).toBe(true);
     });
 });
 

@@ -41,7 +41,7 @@ function countsTowardFirepower(design: Design, i: number): boolean {
 }
 
 describe('Design.ReDefine hand-worked values (seed 1 tick game)', () => {
-    it("player Escort 'Javelin'", () => {
+    it("player Escort 'Praefectus'", () => {
         // Components (improved values at the player's starting tech):
         //  2x Maxos Blaster (beam, size 5, V1 5 V2 190)      3x Standard Armor (size 1, V1 10 V2 2)
         //  1x Corvidian Shields (size 10, V1 100 V2 3)       6x Proton Thruster (size 7, V1 1000 V2 5 V3 560 V4 2)
@@ -49,7 +49,7 @@ describe('Design.ReDefine hand-worked values (seed 1 tick game)', () => {
         //  2x Fission Reactor (size 22, V1 60 V2 105 V3 400) 1x Energy Collector (size 8, V1 24)
         //  2x Standard Fuel Cell (size 6, V1 65)             1x Command Center (size 2, energy 2)
         //  2x Life Support (size 1, energy 1, improved V1 85) 3x Hab Module (size 2, energy 1, V1 60)
-        const d = galaxy.empires[0].designs.find((x) => x.name === 'Javelin')!;
+        const d = galaxy.empires[0].designs.find((x) => x.name === 'Praefectus')!;
         expect(d.subRole).toBe(BuiltObjectSubRole.Escort);
         expect(d.size).toBe(2 * 5 + 3 + 10 + 6 * 7 + 2 + 11 + 2 * 22 + 8 + 2 * 6 + 2 + 2 + 3 * 2); // 152
         expect(d.staticEnergyConsumption).toBe(2 + 2 * 1 + 3 * 1); // 7
@@ -84,13 +84,14 @@ describe('Design.ReDefine hand-worked values (seed 1 tick game)', () => {
         expect(designStatRows(d).find((r) => r.label === 'Firepower')?.value).toBe('10');
     });
 
-    it("pirate TroopTransport 'Royale'", () => {
+    it("pirate TroopTransport 'Praetor'", () => {
         //  2x Maxos Blaster, 25x Standard Armor, 5x Corvidian Shields, 8x Proton Thruster, 1x Thrust Vector,
         //  1x Gerax HyperDrive, 2x Fission Reactor, 1x Energy Collector, 3x Standard Fuel Cell,
         //  3x Standard Troop Compartment (size 8, V1 100), 1x Command Center, 4x Life Support (V1 85),
         //  5x Hab Module, 1x Medical Center (size 4, energy 3, V1 100), 4x Assault Pod (size 8, V1 50 V2 140 V5 20).
-        const owner = galaxy.pirateEmpires.find((e) => e.designs.some((x) => x.name === 'Royale'))!;
-        const d = owner.designs.find((x) => x.name === 'Royale')!;
+        const isRoyale = (x: { name: string; subRole: BuiltObjectSubRole }) => x.name === 'Praetor' && x.subRole === BuiltObjectSubRole.TroopTransport;
+        const owner = galaxy.pirateEmpires.find((e) => e.designs.some(isRoyale))!;
+        const d = owner.designs.find(isRoyale)!;
         expect(d.subRole).toBe(BuiltObjectSubRole.TroopTransport);
         expect(d.size).toBe(2 * 5 + 25 + 5 * 10 + 8 * 7 + 2 + 11 + 2 * 22 + 8 + 3 * 6 + 3 * 8 + 2 + 4 + 5 * 2 + 4 + 4 * 8); // 300
         expect(d.staticEnergyConsumption).toBe(2 + 4 + 5 + 3); // 14

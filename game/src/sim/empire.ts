@@ -43,7 +43,7 @@ import type { Character } from './characters';
 import { DiplomacyCounters, DiplomaticRelationList } from './diplomacy';
 import { MIN_TIME } from './tick/simTime';
 import type { DeclinedTask } from './missions/distress';
-import { EmpireMessageType, sendMessageToEmpire, type IMessageRecipient } from './messages';
+import type { IMessageRecipient } from './messages';
 import { ensureHabitatManufacturingQueue } from './manufacturingQueue';
 import { takeOwnershipOfColonyDockingBays } from './logistics/dockingBays';
 import type { FuelSourceSystemList } from './movement';
@@ -413,6 +413,17 @@ export function getGovernmentsStatic(): readonly (Government | null)[] {
 // Per-galaxy empire-id counter standing in for Galaxy.GetNextEmpireID()
 // (Galaxy.cs). The TS Galaxy class has no such member and cannot be edited
 // for this task, so the counter lives here keyed by galaxy instance.
+
+/**
+ * Empire.7.cs 1429 SendMessageToEmpire(…, EmpireMessageType.ShipBasePurchased, builtObject, description): messages.ts
+ * registers the sender at load (a value import of messages.ts from here would close an import cycle through
+ * combat/ownership.ts before this module has initialised).
+ */
+type ShipBasePurchasedMessageSender = (empire: Empire, builtObject: BuiltObject, description: string) => void;
+let shipBasePurchasedMessageSender: ShipBasePurchasedMessageSender | null = null;
+export function registerShipBasePurchasedMessageSender(fn: ShipBasePurchasedMessageSender): void {
+    shipBasePurchasedMessageSender = fn;
+}
 
 // Galaxy.ColonyAnnualResourceConsumptionRate / ColonyAnnualLuxuryResourceConsumptionRate /
 // MinimumLuxuryResourceReorderAmount statics: Galaxy.3.cs InitializeStatics 5004-5005, 5026, 5039.
@@ -1725,8 +1736,8 @@ export class Empire {
             builtObject.setTroopLoadoutsFromPolicy(this.policy);
         }
         if (sendMessage) {
-            // Empire.7.cs 1427-1430.
-            sendMessageToEmpire(boEmpire, boEmpire, EmpireMessageType.ShipBasePurchased, builtObject, empty);
+            // Empire.7.cs 1427-1430: builtObject.Empire.SendMessageToEmpire(builtObject.Empire, ShipBasePurchased, builtObject, empty).
+            shipBasePurchasedMessageSender!(boEmpire, builtObject, empty);
         }
     }
 

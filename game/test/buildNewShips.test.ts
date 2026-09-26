@@ -77,7 +77,7 @@ describe('buildNewShips (Empire.6.cs 3017 BuildNewShips)', () => {
         expect(g.rnd.drawCount - draws0).toBe(0);
     }, 300000);
 
-    it('an exploration ship draws the C# name Rnd: 2 × SelectRandomUniqueStandardShipName = 6 draws', () => {
+    it('an exploration ship draws the C# name Rnd: 2 × SelectRandomUniqueStandardShipName = 7 draws', () => {
         const { galaxy: g, playerEmpire: e } = newGame();
         const d = findNewestCanBuild(e.designs, BuiltObjectSubRole.ExplorationShip, e)!;
         expect(d).not.toBeNull();
@@ -88,10 +88,10 @@ describe('buildNewShips (Empire.6.cs 3017 BuildNewShips)', () => {
         expect(r.ok).toBe(true);
         expect(r.built.length).toBe(1);
         expect(e.stateMoney).toBe(money0 - (0.0 + price));
-        // Galaxy.5.cs 2356 SelectRandomUniqueStandardShipName: Next(0, 127), Next(0, 125), Next(0, 7) (≥ 2 both times on this
-        // seed, so no Next(0, 3)) — once for the constructor's GenerateBuiltObjectName(design) and once for the rename at
-        // the yard's colony (Empire.6.cs 3088). AddBuiltObjectToGalaxy draws nothing (offsetLocationFromParent: false).
-        expect(g.rnd.drawCount - draws0).toBe(6);
+        // Galaxy.5.cs 2356 SelectRandomUniqueStandardShipName: Next(0, 127), Next(0, 125), Next(0, 7) (plus Next(0, 3) when the
+        // last one is < 2: once on this seed) — once for the constructor's GenerateBuiltObjectName(design) and once for the
+        // rename at the yard's colony (Empire.6.cs 3088). AddBuiltObjectToGalaxy draws nothing (offsetLocationFromParent: false).
+        expect(g.rnd.drawCount - draws0).toBe(7);
     }, 300000);
 
     it('a construction ship is queued at the shortest-wait colony (long wait queues allowed)', () => {

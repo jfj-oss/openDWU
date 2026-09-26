@@ -167,9 +167,12 @@ describe('CreateStateShips / CreatePrivateShips at game start (tech 0.5, age 1)'
         // (re-pinned M4m: the game-start Empire.DoTasks runs the military AI — IdentifyMilitaryObjectives Next(0, EmpireEvaluations.Count), CheckTemptingTargets Next(0, Empires.Count), DetermineRandomAttacks Next(0, n) — which shifts the Rnd stream.)
         // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
         expect(own.filter((b) => !MILITARY.has(b.subRole)).slice(0, 9).map((b) => [S[b.subRole], b.name])).toMatchPin('builtObjectPlacement.playerCivilianNames');
-        // M4x (Galaxy.Age 1): the projection now includes 2 Escorts / Frigates / Destroyers and 5 explorers, 2 construction ships.
-        expect(own.map((b) => S[b.subRole])).toEqual(['Escort', 'Escort', 'Frigate', 'Frigate', 'Destroyer', 'Destroyer', ...Array(5).fill('ExplorationShip'), ...Array(2).fill('ConstructionShip')]);
-        expect(priv.map((b) => S[b.subRole])).toEqual(['SmallFreighter', 'GasMiningShip', 'GasMiningShip', 'MiningShip', 'MiningShip']);
+        // M4x (Galaxy.Age 1): the projection now includes 2 Escorts / Frigates / Destroyers and explorers, 2 construction ships
+        // (4 explorers since the star-spacing fix of FindNearestSystemGasCloudAsteroid put fewer systems around Sol).
+        expect(own.map((b) => S[b.subRole])).toEqual(['Escort', 'Escort', 'Frigate', 'Frigate', 'Destroyer', 'Destroyer', ...Array(4).fill('ExplorationShip'), ...Array(2).fill('ConstructionShip')]);
+        // ProjectPrivateForceStructure sizes the freighter fleet by Galaxy.Orders.GetOrders(this).Count (Empire.9.cs 4772):
+        // the capital's orders placed before CreatePrivateShips add 6 small and 4 medium freighters.
+        expect(priv.map((b) => S[b.subRole])).toEqual([...Array(7).fill('SmallFreighter'), ...Array(4).fill('MediumFreighter'), 'GasMiningShip', 'GasMiningShip', 'MiningShip', 'MiningShip']);
     }, 60000);
 
     it('is deterministic', () => {

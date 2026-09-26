@@ -10,7 +10,7 @@ import type { Empire } from './empire';
 import type { Galaxy } from './galaxy';
 import { BuiltObject } from './builtObject';
 import { Habitat, HabitatCategoryType, HabitatType } from './types';
-import { Empire as EmpireClass } from './empire';
+import { Empire as EmpireClass, registerShipBasePurchasedMessageSender } from './empire';
 import { galaxyStarDate } from './tick/simTime';
 import { netSort } from './netSort';
 import * as ET from './enumText';
@@ -159,6 +159,11 @@ export function sendMessageToEmpire(
     empireMessage.hint = messageHint;
     sendEmpireMessage(empireMessage, recipientEmpire);
 }
+
+// Empire.7.cs 1429 (AddBuiltObjectToGalaxy): the purchase message, registered with empire.ts (see there).
+registerShipBasePurchasedMessageSender((empire, builtObject, description) => {
+    sendMessageToEmpire(empire, empire, EmpireMessageType.ShipBasePurchased, builtObject, description);
+});
 
 // Empire.7.cs 2921 SendMessageToEmpireWithTitle(recipient, type, subject, description, title).
 export function sendMessageToEmpireWithTitle(sender: Empire | null, recipientEmpire: Empire | null, messageType: EmpireMessageType, subject: unknown, description: string, title: string): void {
