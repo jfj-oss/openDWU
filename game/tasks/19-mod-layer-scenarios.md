@@ -117,3 +117,17 @@ Build after 19b lands; each is mostly data + a spread rule on the 19b hooks.
 8. First-contact protocol: short negotiation setting the starting attitude, voiced by personas. [cheap]
 9. Doctrines: exclusive empire-wide choices with lasting effects. [medium]
 13. AI personality packs via overlay presets. [cheap]
+
+## 19h — Rim frontier geography (ACCEPTED by the user 2026-09-26 — "do it"; stacks with 19a rim trader and the 19g-7 rim fauna)
+Makes the rim itself hard to reach and hold, independent of the fauna. Scenario layer, data-driven, flag off = byte-identical.
+1. Storm belts: nebula / ion storms generated on a distance-from-centre curve so the outer ring is a hazard band (base storm
+   rules apply: slower movement, hull damage without shields; Bacon checkInStorm / storm-survival checks already ported).
+2. Sparser rim: star placement thins past a radius (fewer waypoints, longer jumps) so hyperdrive range and fuel decide who
+   can reach the rim goods. Generation change → re-pins only inside the scenario (wizard-level option).
+3. Gravity shoals: a few fixed deep-space features that end hyperjumps early (Bacon gravity-well rule generalised to a
+   scenario feature), creating natural chokepoints / ambush points for pirates and herds.
+4. Fuel scarcity: caslon / hydrogen placement biased inward so rim outposts need supply lines, gas mining or 19c company depots.
+5. Sensor fog: a rim-wide sensor-range penalty until listening posts / long-range sensors are built, so herds and pirate bases
+   stay hidden longer.
+Params: belt inner radius, storm density, thinning radius/factor, shoal count, fuel bias, fog factor. Effort: medium (~1 agent-day);
+build after 19d2 (unrest plumbing) alongside 19g-7 rim fauna; 19a/19c tests must still pass with 19h on.
