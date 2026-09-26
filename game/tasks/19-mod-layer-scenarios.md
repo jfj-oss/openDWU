@@ -65,4 +65,33 @@ Effort: 1–4 days each after the mod layer; 5–9 one to two weeks each.
 ## Order of work (decided 2026-09-26)
 1. **modlayer** foundation (starts now): scenario/data overlay folder loaded over /assets/dwu (races, resources, policies, templates, GameText additions), wizard "Scenario" toggles, feature flags read by the sim (off = byte-identical faithful game, pins unchanged), story-event hook points and a scenario test harness.
 2. Then in parallel: 19a rim trader, 19b Dark Farms + robot army, 19c chartered companies, 19d items 1–4 (internal politics, resource crises, espionage consequences, refugees/demographics).
-3. Then 19d items 5–10.
+2b. Once 19b lands: the ten 19f hidden threats as data + spread rules on its hooks, in parallel, each behind its own scenario flag.
+3. Then 19d items 5–10 and the cheap 19e items (1 replay theatre, 4 chronicle, 9 freight overlay, 11 situational music).
+4. Then 19e medium (5 living characters, 7 wreckage/salvage, 8 space weather, 10 race designer).
+5. Then 19e ambitious (3 legacy galaxies, 6 spectator broadcast, 2 async multiplayer).
+
+## 19e — Second idea batch (ACCEPTED by the user 2026-09-26 — "i like all those ideas"; builds on replay, the persona layer, the seamless 4K map, the data overlay)
+1. Replay theatre: scrub a whole game as a time-lapse from seed + command log; jump to any moment; fork a "what if"; shareable replays (KB, not MB). [cheap]
+2. Async multiplayer via exchanged command logs (lockstep, no netcode). [ambitious, later]
+3. Legacy galaxies: a finished game seeds the next (wrecks → ruins, heroes → precursor lore, a rival survives as the rim power). [ambitious]
+4. Chronicle: the local model writes an in-character history from Galactic History/news (named wars/eras), in-game + export. [cheap]
+5. Living characters: governors/admirals with opinions, messages, grudges and rivalries affecting cooperation (ties to 19d-1). [medium]
+6. Spectator broadcast: AI-vs-AI galaxy with personas on and a commentator voice. [ambitious]
+7. Battle wreckage & salvage: persistent debris fields; salvage ships recover resources/foreign tech. [medium]
+8. Space weather: nebula storms / solar flares moving across the map, degrading sensors and blocking jumps. [medium]
+9. Freight-flow overlay: make the simulated private economy visible (flows, where money accumulates) — needed by 19a/19c anyway. [cheap]
+10. Race designer on the data overlay, with model-written bios. [medium]
+11. Situational music (battle/exploration/crisis mood selector). [cheap]
+
+## 19f — Dark-Farms-like hidden threats (ACCEPTED by the user 2026-09-26 — "ALL THESE IDEAS ARE BANGERS"; same hooks as 19b: hidden facility/flag, spread rule, trigger, new faction, dirty methods)
+1. Grey Tide: self-replicating mining swarm from an unexplored gas giant eats asteroid fields/mining stations; exponential; found by scanners, killed at spawn worlds.
+2. The Cult: belief spreading character→character (ambassadors/governors convert via traits/loyalty); converted colonies secede into a theocracy; assassins/martyrs; fought with agents and happiness.
+3. The Silence: ruin signal disables hyperdrives in a widening radius; pirates immune; expedition must shut the source.
+4. Doppelgangers: captured ships returned as sleepers with your own designs; recaptured ships are suspect.
+5. The Hive: independents are one hidden mind; each absorbed/protected world joins; declares itself at a threshold — the land-grab is the fuse.
+6. Time-bomb tech: precursor tech with huge bonuses and a small yearly planet-killing side-effect chance; tech leaders most exposed.
+7. Ghost Armada: battle wreckage reactivates under a dead empire's persona (LLM) and raids its destroyers.
+8. The Exchange: neutral trading megastation secretly funding both sides + sabotage; win = discover and blockade it.
+9. Robot mutiny: robotic troops galaxy-wide answer one hidden broadcast; robot-heavy empires lose planets first.
+10. Corporate coup: a chartered company (19c) buys governors and declares independence with its fleet/colonies.
+Build after 19b lands; each is mostly data + a spread rule on the 19b hooks.
