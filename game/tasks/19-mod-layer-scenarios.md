@@ -171,6 +171,27 @@ over the original art) — is an Opus package; the data/wiring pieces (name tabl
 weights, nav-light/glow params, minimap dimming) are a Sonnet package that consumes the Opus-built render hooks.
 Sub-agents cannot spawn sub-agents in this harness, so the orchestrator runs the two packages in sequence: Opus render first.
 
+**19i visual half — design note (Opus render package, wip/s19i).** `src/render/rimAtmosphereLayer.ts`, scenario
+`scenarios/rim-atmosphere/` (standalone, `include: []`), flag `rimAtmosphere` (default on in that scenario; off or no
+scenario = the layer adds nothing and touches no sprite — tested). Curve: centre = galaxy rect centre, radius = the
+98th-percentile star distance (render-side; no sim field); `rimWeight` = 0 inside `rimInner`, smoothstep to 1 across a
+band of `(1 − rimInner)/2` (clamped 0.04–0.3). Params:
+- `rimInner` (0.72): where the rim band starts, as a fraction of that radius. Moves every effect in or out.
+- `tintStrength` (0.6): item 1/4/13 — world-space radial wash over backdrop + nebula images (desaturating, dark cold
+  blue-violet), cold multiply tint on rim map-star icons and on the parallax starfield (by camera position), deep-field
+  thinning (starfield alpha drops), rim nebulae turning into dark dust lanes (item 3), and the screen vignette.
+- `murkStrength` (0.7): item 3 — grainy grey murk blobs over every rim system the player has not explored
+  (`EmpireVisibility.checkSystemExplored`, refreshed every 90 frames; the hook 19h-5 sensor fog can feed), plus the
+  item-13 film grain deep in the rim.
+- `silhouetteDensity` (1): item 6 — count (6 × density, max 24) and opacity of dark creature silhouettes (original
+  kaltor / space slug / silver mist / ardilus frames) drifting on slow rim orbits at galaxy zoom.
+- `derelictDensity` (1): item 5 — 80 × density decorative hulks (original station / ship art, dark-tinted, tumbling),
+  half near rim systems, half in deep rim space; not selectable (the selectable/sim derelicts belong to 19h / 19j).
+- `lightDimming` (0.6): item 7 — nav lights and planetary-shield glow alpha × (1 − dimming × weight) via
+  `AmbientLayer.lightScale`. (No city-glow draw exists yet; the same hook applies when one does.)
+For the Sonnet wiring package: `rimGeometry` / `rimFraction` / `rimWeight` / `rimParams` are exported for minimap
+outer-band dimming and the music / ambient weights. Dev capture: `?autostart=1&scenario=<id>`, `scripts/rim-shots.mjs`.
+
 ## 19j — Rim herders (ACCEPTED by the user 2026-09-26 — "yes"; rim independents coexist with and use the fauna; builds right after 19g-7)
 1. Herder peoples: a rim independent race trait "symbiotic" — herds are docile to that race's colonies/ships; herder worlds
    sit inside herd home ranges, so herds are their defence (attack a herder colony → the herd turns on you; leave them

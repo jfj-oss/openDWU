@@ -1184,11 +1184,27 @@ async function buildAutostartGame(
         console.warn('?autostart=1 needs DW:U game data (races/governments); falling back to generateGalaxy');
         return null;
     }
-    const opts = defaultDevGameOptions(seed, shape, starCount, sectorWidth, sectorHeight, systemNames, gameData);
+    // Dev hook: `&scenario=<id>` applies that scenario (manifest default flags / params) to the autostart game.
+    const scenarioId = new URLSearchParams(window.location.search).get('scenario');
+    let playData = gameData;
+    if (scenarioId !== null && scenarioId !== '') {
+        await preloadScenarioOverlays();
+        try {
+            playData = gameDataWithScenario(gameData, scenarioId);
+        } catch (err) {
+            console.warn('?scenario= not available; starting without it', err);
+        }
+    }
+    const opts = defaultDevGameOptions(seed, shape, starCount, sectorWidth, sectorHeight, systemNames, playData);
     try {
         const game = createGame(opts);
+        lastPlayedGameData = playData;
         // Saves need start options (metadata only; the galaxy itself is saved).
-        lastStartOptions = { ...defaultStartGameOptions(), seed };
+        lastStartOptions = {
+            ...defaultStartGameOptions(),
+            seed,
+            ...(playData.scenario !== undefined && scenarioId !== null ? { scenario: { id: scenarioId, flags: {}, params: {} } } : {}),
+        };
         return game;
     } catch (err) {
         console.warn('?autostart=1 createGame failed; falling back to generateGalaxy', err);
