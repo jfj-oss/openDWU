@@ -160,3 +160,39 @@ Branch `wip/todosweep`. Lines are those of the base commit `00bdcb7` (before the
 | 135 | `exploration.ts:1257` | design.PictureRef ShipImageHelper | ShipImageHelper | visual; own clock Random | — | dead |
 | 136 | `exploration.ts:1335` | Empire.DiscoveryActionRuin | Habitat.cs 2545 | yes (player ruin discovery; 1 hit age 0) | 1 line | port-now |
 
+
+## What was ported (the "port-now" rows)
+
+All port-now rows above were ported statement for statement with the C# cite at the statement, and the note removed
+(stale notes were rewritten to describe what is there). Tests: `test/todoSweep.test.ts` (harness game, seed 1) asserts the
+visible effect of each group. Two additions outside the 12 files were needed: `pirates.ts` setEmpireDifficultyFactors writes
+Empire.TargettingFactor / CountermeasuresFactor (BaconGalaxy.cs 137-138), `taxes.ts` raidEconomyDamageFactor reads
+Habitat.RaidCountdown (Habitat.cs 891), `colonyTick.ts` gains raceCautionLevel / raceFriendlinessLevel / racePeriodicRaceEvent
+(Race.cs 366-400, 1360), `messages.ts` registers the ShipBasePurchased sender (keeps empire.ts free of an import cycle).
+
+Items whose note said "empty / unreachable at game start" but that the probes hit in play (they were reachable):
+forceStructure MigrationFactor (163 hits), RaidCountdown (1284), Rebelling (79), Orders.GetOrders (170, and 20 during
+createGame), ResourceCurrentPrices (730941 calls against base prices); independentTraders RefuelForNextMission (1135),
+war/sanctions docking (2144), habitat blockade (39); resourceTargets threats (27581), mining rights (41332), player
+defending firepower (3256); diplomacyTick scout Mission.Priority (58); empire.ts ShipBasePurchased (987 at createGame);
+TargettingFactor (589 difficulty reviews with a factor != 1); FindNearestSystemGasCloudAsteroid and GenerateGasCloud
+(every galaxy). All of them move the seed pins.
+
+## Effect on a normal game (sim-run, seed 1, 700 stars, 10 empires, 30 game minutes)
+
+Before: start digest 3307e9fa3fd39a52, 26194 habitats, 17 colonies at the end. After: stars keep the C# 4 x MaxSolarSystemSize
+spacing and gas clouds sit in nebulae (the generated galaxy differs: 31833 habitats instead of 26194), 13 colonies at the end, 0 exceptions, the same 2 registerTodo stubs reached.
+
+## package-later list (C# size)
+
+| item | C# | size |
+|---|---|---|
+| Habitat.DoTasks at planet/moon generation (galaxy.ts 3479/4020/4128) | Galaxy.8.cs 215-680 → Habitat.cs 1399 | ~150 lines + callees; Rnd audit on a half-built galaxy |
+| Diplomacy counters (EmpireCounters ProcessRelationChange etc.) | EmpireCounters.cs 148-218 + 4 call sites | ~70 |
+| BaconEmpire.ProcessScienceShips + scheduling | BaconEmpire.cs 170-240, BaconMain.cs 703-716 | ~150 |
+| Bacon scientific missions (explore ruins / prospect) | BaconHabitat.cs 745-875 | ~130 (player UI) |
+| Bacon loans (MakeLoanPayment) | BaconEmpire | ~80 (player UI) |
+| Galaxy.BaseTechCost option (forceStructure 779, builtObject 427) | Start.2.cs 111 | option plumbing |
+| MaximumEmpireAmount option (game.ts 1134) | Start.2.cs 115 | option plumbing |
+| ColonizationRange / EnforceLimit options (exploration.ts 98) | Galaxy.cs 729/732 | option plumbing |
+| 4 registerTodo stubs in diplomacyTick.ts (excluded, other agents) | Empire.8.cs 4403-4480, Empire.3.cs 3945/4032/4586 | — |
