@@ -83,6 +83,7 @@ describe('19a rim trader — data overlay', () => {
         expect(p.alliancePriority).toBe(0.5);
         expect(p.colonizeContinentalPriority).toBe(0.5);
         expect(p.homeworldDefensePriority).toBe(4);
+        expect(p.colonyTaxRateLargeColony).toBe(3);
         expect(p.diplomacySendGiftsUpToAmount).toBe(0);
         expect(p.warAttacksHarassEnemies).toBe(false);
         expect(p.buildPlanetDestroyers).toBe(false);

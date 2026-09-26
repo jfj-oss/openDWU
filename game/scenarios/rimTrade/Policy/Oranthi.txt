@@ -1,4 +1,5 @@
 'Scenario rimTrade: the Concord's policy — key lines over its parent's (Ackdarian) policy.
+'Tax levels are 0-3 (3 = highest, taxes.ts); the Concord taxes every colony size high.
 TradeWithOtherEmpires		;Y
 TradePriority		;4
 ControlRestrictedResourcesPriority		;4
@@ -16,9 +17,9 @@ ColonizeIcePriority		;0.5
 ColonizeVolcanicPriority		;0.5
 ColonizeRuinsPriority		;0.5
 HomeworldDefensePriority		;4
-ColonyTaxRateLargeColony		;4
+ColonyTaxRateLargeColony		;3
 ColonyTaxRateMediumColony		;3
-ColonyTaxRateSmallColony		;1
+ColonyTaxRateSmallColony		;2
 DiplomacySendGiftsUpToAmount		;0
 WarAttacksHarassEnemies		;N
 EngageInTourism		;Y
