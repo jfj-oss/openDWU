@@ -47,7 +47,7 @@ import type { Empire } from './empire';
 import type { Galaxy } from './galaxy';
 import { REAL_SECONDS_IN_GALACTIC_YEAR, startStarDateForAge } from './galaxyTime';
 import { obtainPirateRelation, PirateRelationType } from './pirateRelations';
-import { HabitatCategoryType, type Habitat } from './types';
+import { HabitatCategoryType, planetsOf, type Habitat } from './types';
 import { SystemVisibilityStatus, THREAT_RANGE } from './visibility';
 
 // ShipImageHelper.cs 43 / 25.
@@ -634,8 +634,10 @@ export function updateEmpireRefuellingLocations(galaxy: Galaxy, empire: Empire):
             }
             continue;
         }
-        for (let m = 0; m < systemInfo.habitats.length; m++) {
-            const habitat = systemInfo.habitats[m];
+        // Empire.6.cs 3905 systemInfo.Habitats: no star.
+        const sysHabitats = planetsOf(systemInfo);
+        for (let m = 0; m < sysHabitats.length; m++) {
+            const habitat = sysHabitats[m];
             if (habitat == null) {
                 continue;
             }

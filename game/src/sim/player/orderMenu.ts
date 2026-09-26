@@ -32,7 +32,7 @@ import { BuiltObjectRole } from '../data/designSpecifications';
 import { BuiltObjectSubRole } from '../builtObjectTypes';
 import { ComponentType } from '../data/components';
 import type { Design } from '../design';
-import { Habitat, HabitatCategoryType, HabitatType, IndustryType, type SystemInfo } from '../types';
+import { Habitat, HabitatCategoryType, HabitatType, IndustryType, planetsOf, type SystemInfo } from '../types';
 import { Creature } from '../creature';
 import { Troop, TroopType } from '../cargo';
 import type { Race } from '../data/races';
@@ -579,7 +579,7 @@ function coloniesNear(ctx: OrderMenuContext, x: number, y: number, range: number
         if (status === SystemVisibilityStatus.Visible || status === SystemVisibilityStatus.Explored) {
             const systemInfo = ctx.galaxy.systems[habitat.systemIndex];
             if (systemInfo !== undefined && systemInfo !== null) {
-                for (const habitat2 of systemInfo.habitats) {
+                for (const habitat2 of planetsOf(systemInfo)) { // Main.Part11.cs 1217 systemInfo.Habitats: no star
                     if (habitat2.owner !== null && habitat2.owner !== ctx.galaxy.independentEmpire && habitat2.population.totalAmount > 0) {
                         list.push(habitat2);
                     } else if (includeIndependent && habitat2.owner === ctx.galaxy.independentEmpire && habitat2.population.totalAmount > 0) {
@@ -600,7 +600,7 @@ function foreignPopulatedNear(ctx: OrderMenuContext, x: number, y: number, range
     if (Math.trunc(num) <= range) {
         const systemInfo = ctx.galaxy.systems[habitat.systemIndex];
         if (systemInfo !== undefined && systemInfo !== null) {
-            for (const habitat2 of systemInfo.habitats) {
+            for (const habitat2 of planetsOf(systemInfo)) { // Main.Part11.cs 1245 systemInfo.Habitats: no star
                 if (habitat2 !== null && habitat2.population !== null && habitat2.population.items.length > 0 && (empire === null || habitat2.empire !== empire)) list.push(habitat2);
             }
         }
@@ -616,7 +616,7 @@ function colonizableNear(ctx: OrderMenuContext, ship: BuiltObject, x: number, y:
     if (Math.trunc(num) <= range) {
         const systemInfo = ctx.galaxy.systems[habitat.systemIndex];
         if (systemInfo !== undefined && systemInfo !== null) {
-            for (const habitat2 of systemInfo.habitats) {
+            for (const habitat2 of planetsOf(systemInfo)) { // Main.Part11.cs 1268 systemInfo.Habitats: no star
                 if (habitat2.owner === null || habitat2.owner === ctx.galaxy.independentEmpire) {
                     if (canBuiltObjectColonizeHabitat(ctx.galaxy, ctx.empire, ship, habitat2).result && canEmpireColonizeHabitatRange(ctx.galaxy, ctx.empire, habitat2)) list.push(habitat2);
                 }
@@ -3748,7 +3748,7 @@ function findNearestHabitatInSystem(galaxy: Galaxy, system: SystemInfo | null, x
                 result = system.systemStar;
             }
         }
-        for (const habitat of system.habitats) {
+        for (const habitat of planetsOf(system)) { // Galaxy.6.cs 3630 system.Habitats: no star (tested above)
             if (habitat === null) continue;
             const num3 = galaxy.calculateDistanceSquared(x, y, habitat.xpos, habitat.ypos);
             if (num3 < num) {

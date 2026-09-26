@@ -25,7 +25,7 @@
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import { Empire as EmpireClass } from '../empire';
-import type { Habitat } from '../types';
+import { planetsOf, type Habitat } from '../types';
 import type { BuiltObject } from '../builtObject';
 import { BuiltObject as BuiltObjectClass } from '../builtObject';
 import type { Creature } from '../creature';
@@ -1135,8 +1135,10 @@ export function executeEventAction(galaxy: Galaxy, eventAction: EventAction, tri
                 triggerEmpire.visibility.systemVisibility[habitat19.systemIndex].totallyExplored = true;
                 if (triggerEmpire.resourceMap != null) {
                     const sys = galaxy.systems[habitat19.systemIndex];
-                    for (let l = 0; l < sys.habitats.length; l++) {
-                        triggerEmpire.resourceMap.setResourcesKnown(sys.habitats[l], true);
+                    // Galaxy.9.cs 2269 Systems[].Habitats (no star; the star is set on its own below).
+                    const sysHabitats = planetsOf(sys);
+                    for (let l = 0; l < sysHabitats.length; l++) {
+                        triggerEmpire.resourceMap.setResourcesKnown(sysHabitats[l], true);
                     }
                     if (sys.systemStar != null) triggerEmpire.resourceMap.setResourcesKnown(sys.systemStar, true);
                 }
