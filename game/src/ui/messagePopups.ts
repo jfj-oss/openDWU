@@ -18,6 +18,9 @@ import { isProposalValid, proposalLabel, relationTypeLabel, acceptProposal, decl
 import { setDiplomacyMessageExpiry } from './screens/diplomacyScreen';
 // [proposals] end
 import { showToast } from './toast';
+// [diplovoice] begin
+import { diplomatVoiceConfig, rememberVoicedMessage, voiceDiplomatReply, voicedLineToggle, voicedMessageText, voicingIndicator } from './diplomatVoice';
+// [diplovoice] end
 import { rgbCss } from './hud';
 
 export interface ConversationEntry {
@@ -180,10 +183,12 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
         titlebar.append(title, close);
 
         const body = el('div', 'message-conversation-body');
-        body.append(
-            el('div', 'message-conversation-heading', conversationHeading(entry, player, starDate)),
-            el('div', 'message-conversation-text', resolveGameText(entry.message.description)),
-        );
+        const headingText = conversationHeading(entry, player, starDate);
+        const textEl = el('div', 'message-conversation-text', resolveGameText(entry.message.description));
+        body.append(el('div', 'message-conversation-heading', headingText), textEl);
+        // [diplovoice] begin
+        voiceIncoming(entry, headingText, textEl);
+        // [diplovoice] end
 
         const buttons = el('div', 'message-conversation-buttons');
         const button = (text: string, onClick: () => void): HTMLButtonElement => {
@@ -217,6 +222,42 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
         document.addEventListener('keydown', onDialogKeyDown);
         renderChips();
     }
+
+    // [diplovoice] begin
+    // 18b: the AI empire's message voiced by the local model (the original stays under "original" and in the tooltip).
+    // One voiced line per message; a counter-proposal's message reuses the reply that announced it.
+    function voiceIncoming(entry: ConversationEntry, heading: string, textEl: HTMLElement): void {
+        const sender = entry.sender;
+        if (sender === null || sender === player || sender === galaxy.independentEmpire || sender.pirateEmpireBaseHabitat !== null) return;
+        const original = resolveGameText(entry.message.description);
+        if (original.trim() === '') return;
+        const view = { showOriginal: false };
+        const show = (text: string): void => {
+            textEl.after(voicedLineToggle(textEl, text, original, view));
+        };
+        const cached = voicedMessageText(entry.message);
+        if (cached !== undefined) {
+            show(cached);
+            return;
+        }
+        void diplomatVoiceConfig().then(async (cfg) => {
+            if (cfg === null || dialogEntry !== entry) return;
+            const pending = voicingIndicator();
+            textEl.after(pending);
+            const v = await voiceDiplomatReply({
+                galaxy,
+                ai: sender,
+                player,
+                context: { kind: 'incoming', messageType: EmpireMessageType[entry.message.messageType] ?? '', heading, original },
+                cfg,
+            });
+            pending.remove();
+            if (!v.voiced) return;
+            rememberVoicedMessage(entry.message, v.text);
+            if (dialogEntry === entry) show(v.text);
+        });
+    }
+    // [diplovoice] end
 
     // Rebuilds the chips only when the queue (or the open entry) changed.
     function renderChips(): void {

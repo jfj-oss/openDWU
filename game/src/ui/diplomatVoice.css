@@ -1,0 +1,48 @@
+/* 18b diplomat voice: the "original" toggle, the voicing indicator and the counter-proposal note. */
+.dv-toggle {
+    margin-left: 6px;
+    padding: 0 5px;
+    font-size: 10px;
+    line-height: 15px;
+    color: #9fb4c8;
+    background: transparent;
+    border: 1px solid rgba(159, 180, 200, 0.45);
+    border-radius: 3px;
+    cursor: pointer;
+    vertical-align: 1px;
+}
+.dv-toggle:hover {
+    color: #fff;
+    border-color: #cfe0f0;
+}
+.dv-pending {
+    margin-left: 6px;
+    font-size: 10px;
+    color: #8a9aa8;
+    font-style: italic;
+}
+.dv-voiced {
+    font-style: italic;
+}
+.dv-counter {
+    margin-top: 3px;
+    font-size: 11px;
+    color: #c8b46a;
+}
+.dv-counter-muted {
+    color: #8a8a8a;
+}
+.dv-switch {
+    float: right;
+    font-size: 10px;
+    font-weight: normal;
+    color: #9fb4c8;
+    cursor: pointer;
+    user-select: none;
+    text-transform: none;
+    letter-spacing: 0;
+}
+.dv-switch input {
+    vertical-align: -2px;
+    margin: 0 3px 0 0;
+}
