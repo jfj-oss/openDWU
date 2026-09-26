@@ -45,9 +45,17 @@ import { BuiltObjectStance, Design, getDesignsBySubRoles } from './design';
 import { generateDesignFromSpec, resolveLegacySubRole } from './designGeneration';
 import type { Empire } from './empire';
 import type { Galaxy } from './galaxy';
-import { REAL_SECONDS_IN_GALACTIC_YEAR, startStarDateForAge } from './galaxyTime';
+import { REAL_SECONDS_IN_GALACTIC_YEAR } from './galaxyTime';
+import { galaxyStarDate } from './tick/simTime';
+import { DiplomaticRelationType, obtainDiplomaticRelation } from './diplomacy';
+import { builtObjectMission, BuiltObjectMissionPriority, BuiltObjectMissionType } from './missions/mission';
+import { assignMission } from './missions/assign';
+import { determineFuelRequired } from './logistics/refuel';
+import { fastFindNearestRefuellingPoint } from './movement';
+import { builtObjectCompleteTeardown } from './combat/teardown';
+import { empiresSharedVisibility } from './exploration';
 import { obtainPirateRelation, PirateRelationType } from './pirateRelations';
-import { HabitatCategoryType, type Habitat } from './types';
+import { Habitat, HabitatCategoryType } from './types';
 import { SystemVisibilityStatus, THREAT_RANGE } from './visibility';
 
 // ShipImageHelper.cs 43 / 25.
@@ -56,10 +64,9 @@ const SHIP_SET_IMAGE_COUNT = 24;
 // Galaxy.3.cs 5031: RetirementYears = 20.
 const RETIREMENT_YEARS = 20;
 
-// Galaxy.CurrentStarDate. TODO(port): no galaxy clock on the TS Galaxy; at game start it is the
-// start star date for Galaxy._Age (same stand-in as Empire.addBuiltObjectToGalaxy).
+// Galaxy.CurrentStarDate (Galaxy.cs): the galaxy clock (tick/simTime.ts).
 function currentStarDate(galaxy: Galaxy): number {
-    return startStarDateForAge(galaxy.age);
+    return galaxyStarDate(galaxy);
 }
 
 function isBuiltObject(o: Habitat | BuiltObject): o is BuiltObject {
@@ -254,8 +261,23 @@ function isBuiltObjectVisibleToThisEmpire(galaxy: Galaxy, empire: Empire, builtO
                 if (num3 <= num2) return true;
             }
         }
-        // TODO(port): Empire._EmpiresSharedVisibility (shared-visibility treaties, diplomacy) —
-        // empty at game start; its LongRangeScanners loop (3159-3180) is skipped.
+        // Empire.9.cs 3159-3180: the long-range scanners of the empires we share visibility with.
+        const sharedVisibility = empiresSharedVisibility(galaxy, empire);
+        if (sharedVisibility.length > 0) {
+            for (let j = 0; j < sharedVisibility.length; j++) {
+                const empire2 = sharedVisibility[j];
+                if (empire2 == null) continue;
+                for (let k = 0; k < empire2.longRangeScanners.length; k++) {
+                    const builtObject3 = empire2.longRangeScanners[k] as BuiltObject;
+                    if (builtObject3 != null) {
+                        const num4 = Math.fround(builtObject3.sensorLongRange) * builtObject.stealth;
+                        const num5 = num4 * num4;
+                        const num6 = galaxy.calculateDistanceSquared(builtObject3.xpos, builtObject3.ypos, builtObject.xpos, builtObject.ypos);
+                        if (num6 <= num5) return true;
+                    }
+                }
+            }
+        }
         if (empire.knownPirateBases != null && empire.knownPirateBases.includes(builtObject)) {
             return true;
         }
@@ -267,8 +289,9 @@ function isBuiltObjectVisibleToThisEmpire(galaxy: Galaxy, empire: Empire, builtO
 // TODO(port): the Fighter branch (fighters not ported).
 function isObjectVisibleToThisEmpireImprecise(galaxy: Galaxy, empire: Empire, objectToTest: Habitat | BuiltObject): boolean {
     if (objectToTest.empire === empire) return true;
-    // TODO(port): _EmpiresViewable / _EmpiresSharedVisibility (Empire.cs; filled by diplomacy and
-    // intelligence missions, Empire.3.cs 3716 / Empire.6.cs 124 / Empire.8.cs 2692) — empty at game start.
+    // Empire.9.cs 3071: _EmpiresViewable (intelligence missions) / _EmpiresSharedVisibility (treaties).
+    const objectEmpire = objectToTest.empire as Empire | null;
+    if (empire.empiresViewable.includes(objectEmpire as Empire) || empiresSharedVisibility(galaxy, empire).includes(objectEmpire as Empire)) return true;
     if (!isBuiltObject(objectToTest)) {
         const habitat = objectToTest;
         if (empire.visibility.checkSystemVisible(habitat.systemIndex)) return true;
@@ -292,7 +315,15 @@ export function isObjectVisibleToThisEmpire(galaxy: Galaxy, empire: Empire, obje
     const stealth = isBuiltObject(objectToTest) ? objectToTest.stealth : 1;
     const builtObject = findShipOutsideSystemWithScanRange(galaxy, empire, Math.trunc(objectToTest.xpos), Math.trunc(objectToTest.ypos), stealth, includeLongRangeScanners, includeShipsOutsideSystems);
     if (builtObject !== null) return true;
-    // TODO(port): _EmpiresSharedVisibility loop (3213-3224) — empty at game start.
+    // Empire.9.cs 3213-3224: a ship of an empire we share visibility with sees it.
+    const sharedVisibility = empiresSharedVisibility(galaxy, empire);
+    if (sharedVisibility.length > 0) {
+        for (let i = 0; i < sharedVisibility.length; i++) {
+            const empire2 = sharedVisibility[i];
+            const builtObject2 = findShipOutsideSystemWithScanRange(galaxy, empire2, Math.trunc(objectToTest.xpos), Math.trunc(objectToTest.ypos), stealth, includeLongRangeScanners, includeShipsOutsideSystems);
+            if (builtObject2 !== null) return true;
+        }
+    }
     return false;
 }
 
@@ -465,9 +496,8 @@ export function assignIndependentTraderMissions(galaxy: Galaxy): void {
     const builtObjectList: BuiltObject[] = [];
     for (let i = 0; i < independentEmpire.privateBuiltObjects.length; i++) {
         const builtObject = independentEmpire.privateBuiltObjects[i];
-        // TODO(port): builtObject.Mission.Type (mission system not ported; Mission is null here).
-        const mission = builtObject.mission as { type: number } | null;
-        if (builtObject.pirateEmpireId > 0 || builtObject.role !== BuiltObjectRole.Freight || (mission !== null && mission.type !== 0)) {
+        const mission = builtObjectMission(builtObject.mission);
+        if (builtObject.pirateEmpireId > 0 || builtObject.role !== BuiltObjectRole.Freight || (mission !== null && mission.type !== BuiltObjectMissionType.Undefined)) {
             continue;
         }
         if (builtObject.retireForNextMission || builtObject.dateBuilt <= num) {
@@ -478,17 +508,25 @@ export function assignIndependentTraderMissions(galaxy: Galaxy): void {
             if (!builtObject.refuelForNextMission) {
                 continue;
             }
-            // TODO(port): Galaxy.7.cs 4570-4588 — ResourceList fuelTypes = builtObject.DetermineFuelRequired();
-            // StellarObject stellarObject = FastFindNearestRefuellingPoint(Xpos, Ypos, fuelTypes, ActualEmpire, builtObject);
-            // then builtObject.AssignMission(BuiltObjectMissionType.Refuel, target, null, Normal) and
-            // RefuelForNextMission = false. Needs the mission system (AssignMission's Rnd use not audited).
-            // Unreachable at game start (RefuelForNextMission is false for every new trader).
+            // Galaxy.7.cs 4570-4588: send it to the nearest refuelling point (a BuiltObject or a Habitat target).
+            const fuelTypes = determineFuelRequired(builtObject);
+            const stellarObject = fastFindNearestRefuellingPoint(galaxy, builtObject.xpos, builtObject.ypos, fuelTypes, builtObject.actualEmpire, builtObject);
+            if (stellarObject !== null) {
+                if (stellarObject instanceof BuiltObject) {
+                    const target = stellarObject;
+                    assignMission(galaxy, builtObject, BuiltObjectMissionType.Refuel, target, null, BuiltObjectMissionPriority.Normal);
+                    builtObject.refuelForNextMission = false;
+                } else if (stellarObject instanceof Habitat) {
+                    const target2 = stellarObject;
+                    assignMission(galaxy, builtObject, BuiltObjectMissionType.Refuel, target2, null, BuiltObjectMissionPriority.Normal);
+                    builtObject.refuelForNextMission = false;
+                }
+            }
         }
     }
+    // Galaxy.7.cs 4591-4594: item.CompleteTeardown(this).
     for (const item of builtObjectList) {
-        // TODO(port): item.CompleteTeardown(this) (BuiltObject teardown: removes it from the galaxy,
-        // empire lists and indexes). Unreachable at game start (list is empty).
-        void item;
+        builtObjectCompleteTeardown(galaxy, item);
     }
 }
 
@@ -510,10 +548,9 @@ export function checkEmpireTerritoryCanBuildAtLocation(galaxy: Galaxy, empire: E
             if (empire.pirateEmpireBaseHabitat !== null || byEmpireId.pirateEmpireBaseHabitat !== null) {
                 return true;
             }
-            // TODO(port): byEmpireId.ObtainDiplomaticRelation(empire) (creates a NotMet relation on
-            // first contact) — diplomacy not ported; a new relation has MiningRightsToOther = false.
-            const miningRightsToOther = false;
-            if (miningRightsToOther) return true;
+            // Galaxy.cs 3681-3685 (ObtainDiplomaticRelation creates a NotMet relation on first contact).
+            const diplomaticRelation = obtainDiplomaticRelation(byEmpireId, empire);
+            if (diplomaticRelation != null && diplomaticRelation.miningRightsToOther) return true;
         }
         return false;
     }
@@ -572,9 +609,11 @@ export function isStellarObjectDockable(galaxy: Galaxy, stellarObject: Habitat |
                 return false;
             }
         } else {
-            // TODO(port): DiplomaticRelation diplomaticRelation = dockingEmpire.DiplomaticRelations[empire];
-            // false when Type is TradeSanctions or War. Diplomacy not ported; no such relation exists at
-            // game start (and the independent empire never has one), so this never returns here.
+            // Galaxy.3.cs 1832-1838: no docking with an empire we have trade sanctions against or are at war with.
+            const diplomaticRelation = dockingEmpire.diplomaticRelations.byEmpire(empire);
+            if (diplomaticRelation != null && (diplomaticRelation.type === DiplomaticRelationType.TradeSanctions || diplomaticRelation.type === DiplomaticRelationType.War)) {
+                return false;
+            }
         }
     } else if (empire === null) {
         return false;
@@ -582,7 +621,8 @@ export function isStellarObjectDockable(galaxy: Galaxy, stellarObject: Habitat |
     if (isBuiltObject(stellarObject)) {
         if (stellarObject.isBlockaded) return false;
     } else {
-        // TODO(port): Habitat.IsBlockaded (blockades not ported) — false at game start.
+        // Galaxy.3.cs 1851-1857.
+        if (stellarObject.isBlockaded) return false;
     }
     return true;
 }
