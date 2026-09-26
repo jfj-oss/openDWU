@@ -36,7 +36,6 @@ import { ComponentType } from './data/components';
 import { findNewest, galaxyResourceCurrentPrices, type Design } from './design';
 import { baconSettings } from './data/baconSettings';
 import { canBuildDesign, findNewestCanBuild } from './designGeneration';
-import { DEFAULT_BASE_TECH_COST } from './componentStatic';
 import { ForceStructureProjection, ForceStructureProjectionList } from './forceStructureProjection';
 import { facilitiesCalculateAnnualMaintenance, facilitiesFindBestPirateFacility, identifyEmpireCapitalsWithRegional } from './construction/facilities';
 import { HabitatType } from './types';
@@ -754,9 +753,8 @@ export function calculateSupportCost(galaxy: Galaxy, empire: Empire, design: Des
         const gov = empireGovernmentAttributes(empire);
         if (gov !== null) num5 = gov.maintenanceCosts;
         if (empire.pirateEmpireBaseHabitat !== null) {
-            // TODO(port): Galaxy.BaseTechCost (game option, Galaxy.cs 908) is not kept on
-            // the TS Galaxy; the componentStatic default stands in (pirates never reach here yet).
-            let d = DEFAULT_BASE_TECH_COST / 120000.0;
+            // Empire.2.cs 3612 (double)_Galaxy.BaseTechCost / 120000.0.
+            let d = galaxy.baseTechCost / 120000.0;
             d = Math.sqrt(d);
             num5 *= galaxy.pirateShipMaintenanceFactor * d;
             switch (design.subRole) {

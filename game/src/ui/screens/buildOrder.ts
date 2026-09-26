@@ -15,7 +15,8 @@ import type { Design } from '../../sim/design';
 import { BuiltObjectSubRole } from '../../sim/builtObjectTypes';
 import { findNewestCanBuild, getBuildableDesignsBySubRoles, resolveSubRoleDescription } from '../../sim/designGeneration';
 import type { BuildNewShipsResult } from '../../sim/construction/empireConstruction';
-import { buildNewShips, buildOrderTotalCost, designCalculateMaintenanceCosts } from '../../sim/construction/empireConstruction';
+import { buildOrderTotalCost, designCalculateMaintenanceCosts } from '../../sim/construction/empireConstruction';
+import { issuePlayerCommand } from '../../sim/player/playerCommands';
 import { checkPirateEmpireHasCriminalNetwork } from '../../sim/missions/cmdTroops';
 import { resolveGameText } from '../../sim/textResolver';
 import { formatThousands } from '../../sim/diplomacyTick';
@@ -383,16 +384,18 @@ function createBuildOrder(opts: BuildOrderOptions): OpenState {
         const lists = buildOrderPurchaseLists(rows, a);
         // The affordability check sums every row (method_632), which buildNewShips repeats over method_643's lists
         // (the same total: rows without a design or amount contribute 0).
-        const result = buildNewShips(galaxy, opts.empire, lists.designs, lists.amounts);
-        if (result.message !== undefined) {
-            // MessageBoxEx "Cannot afford build order": the panel stays open.
-            showToast(purchaseResultText(result), root, 6000);
-            render();
-            return;
-        }
-        // method_639: close the panel.
-        close();
-        showToast(purchaseResultText(result));
+        // Command log: queued, applied at the next frame boundary.
+        issuePlayerCommand(galaxy, opts.empire, 'buildNewShips', [lists.designs, lists.amounts], (result) => {
+            if (result.message !== undefined) {
+                // MessageBoxEx "Cannot afford build order": the panel stays open.
+                showToast(purchaseResultText(result), root, 6000);
+                render();
+                return;
+            }
+            // method_639: close the panel.
+            close();
+            showToast(purchaseResultText(result));
+        });
     });
 
     function close(): void {

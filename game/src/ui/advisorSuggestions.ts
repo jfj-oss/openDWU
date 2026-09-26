@@ -21,13 +21,12 @@ import type { EmpireMessage } from '../sim/messages';
 import { galaxyStarDate } from '../sim/tick/simTime';
 import { resolveGameText } from '../sim/textResolver';
 import { formatThousands } from '../sim/diplomacyTick';
-import { AdvisorMessageType, advisorSuggestions, expireOldAdvisorSuggestions } from '../sim/advisorQueue';
+import { ADVISOR_SUGGESTION_LIFETIME, AdvisorMessageType, advisorSuggestions } from '../sim/advisorQueue';
+import { issuePlayerCommand } from '../sim/player/playerCommands';
 import {
     advisorSuggestionCost,
     advisorSuggestionShowTarget,
     advisorSuggestionTitle,
-    approveSuggestion,
-    declineSuggestion,
     type AdvisorShowTarget,
 } from '../sim/player/advisorSuggestions';
 
@@ -156,6 +155,7 @@ export function installAdvisorSuggestions(opts: AdvisorSuggestionsOptions): void
     let current: EmpireMessage | null = null;
     let keyListening = false;
     let pausedByUs = false;
+    let expiryQueued = false;
     let restoreView: (() => void) | null = null;
 
     function onKey(e: KeyboardEvent): void {
@@ -227,8 +227,10 @@ export function installAdvisorSuggestions(opts: AdvisorSuggestionsOptions): void
             return b;
         };
         button('Approve', () => {
-            const r = approveSuggestion(galaxy, player, m);
-            for (const e of r.expireDiplomacyFor) opts.expireConversations?.(e);
+            // Command log: queued, applied at the next frame boundary.
+            issuePlayerCommand(galaxy, player, 'approveSuggestion', [m], (r) => {
+                for (const e of r.expireDiplomacyFor) opts.expireConversations?.(e);
+            });
             close();
         });
         const show = button('Show me first', () => {
@@ -239,7 +241,7 @@ export function installAdvisorSuggestions(opts: AdvisorSuggestionsOptions): void
         });
         show.disabled = !view.canShow;
         button('Decline', () => {
-            declineSuggestion(galaxy, player, m);
+            issuePlayerCommand(galaxy, player, 'declineSuggestion', [m]);
             close();
         });
         win.append(bar, body, buttons);
@@ -251,7 +253,12 @@ export function installAdvisorSuggestions(opts: AdvisorSuggestionsOptions): void
 
     function tick(): void {
         // DiplomaticMessageQueue.cs 864 method_3: expire old entries.
-        expireOldAdvisorSuggestions(player, galaxyStarDate(galaxy));
+        // The expiry changes saved state, so it is a command too (issued only when an entry is due, so the log stays small).
+        const due = galaxyStarDate(galaxy) - ADVISOR_SUGGESTION_LIFETIME;
+        if (advisorSuggestions(player).some((x) => x != null && x.starDate < due) && !expiryQueued) {
+            expiryQueued = true;
+            issuePlayerCommand(galaxy, player, 'expireAdvisorSuggestions', [], () => (expiryQueued = false));
+        }
         if (current !== null && !advisorSuggestions(player).includes(current)) close();
     }
 

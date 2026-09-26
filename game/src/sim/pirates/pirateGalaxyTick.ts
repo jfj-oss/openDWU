@@ -40,6 +40,7 @@ import { FleetPosture } from '../diplomacyTick';
 import { BuiltObjectMissionPriority, BuiltObjectMissionType } from '../missions/mission';
 import { netSort } from '../netSort';
 import { findNearestBaseForPirateAttack } from './pirateAI';
+import { formatGameTextNow } from '../textResolver';
 
 const f = Math.fround;
 const BYTE_MAX = 255;
@@ -192,7 +193,7 @@ export function doSuperPirateTasksForFaction(galaxy: Galaxy, superPirateFaction:
         shipGroup.gatherPoint = builtObject2;
         addShipsToShipGroup(galaxy, superPirateFaction, shipGroup, builtObjectList, INT_MAX, true, builtObject2);
         if (shipGroup.ships.length > 0) {
-            shipGroup.name = gameText('Phantom Fleet');
+            shipGroup.name = formatGameTextNow('Phantom Fleet'); // Galaxy.9.cs 310
             shipGroups.push(shipGroup);
             netSort(shipGroups, compareShipGroups);
         }
