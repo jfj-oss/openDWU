@@ -41,7 +41,8 @@ import { REAL_SECONDS_IN_GALACTIC_YEAR } from '../../sim/galaxyTime';
 import { EmpireMessageType, empireMessages } from '../../sim/messages';
 import { showToast } from '../toast';
 // [proposals] begin
-import { listProposals, submitProposal, type ProposalOption, type ProposalResult } from '../../sim/player/diplomacyProposals';
+import { listProposals, type ProposalOption, type ProposalResult } from '../../sim/player/diplomacyProposals';
+import { issuePlayerCommand } from '../../sim/player/playerCommands';
 import { DialogSet, raceDialogFileName } from '../../sim/data/dialogSet';
 import { fetchText } from '../../sim/data/fetchData';
 import { resolveDataUrl } from '../../sim/data/paths';
@@ -443,12 +444,13 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
             decline.type = 'button';
             const other = row.empire;
             accept.addEventListener('click', () => {
-                if (acceptProposal(player, other)) showToast('Treaty accepted');
-                render();
+                issuePlayerCommand(player.galaxy, player, 'acceptProposal', [other], (ok) => {
+                    if (ok) showToast('Treaty accepted');
+                    render();
+                });
             });
             decline.addEventListener('click', () => {
-                declineProposal(player, other);
-                render();
+                issuePlayerCommand(player.galaxy, player, 'declineProposal', [other], () => render());
             });
             buttons.append(accept, decline);
             detail.appendChild(buttons);
@@ -544,7 +546,10 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
         // [diplovoice] end
         box.appendChild(heading);
         const submit = (o: ProposalOption | string): void => {
-            const res = submitProposal(player.galaxy, player, other, o);
+            // Command log: queued, applied at the next frame boundary; the conversation updates then.
+            issuePlayerCommand(player.galaxy, player, 'submitProposal', [other, typeof o === 'string' ? o : o.id], (res) => submitted(o, res));
+        };
+        const submitted = (o: ProposalOption | string, res: ProposalResult): void => {
             proposalReplies.set(other, res);
             proposalVersion++;
             if (res.expireMessagesFor !== null) expireDiplomacyMessages?.(res.expireMessagesFor);
@@ -631,8 +636,7 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
                 const off = el('button', 'diplomacy-propose-option', 'Turn off') as HTMLButtonElement;
                 off.type = 'button';
                 off.addEventListener('click', () => {
-                    player.controlDiplomacyTreaties = MANUAL;
-                    render();
+                    issuePlayerCommand(player.galaxy, player, 'setEmpireControl', ['controlDiplomacyTreaties', MANUAL], () => render());
                 });
                 auto.appendChild(off);
                 box.appendChild(auto);

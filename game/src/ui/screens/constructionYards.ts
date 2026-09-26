@@ -8,6 +8,7 @@
 
 import './constructionYards.css';
 import type { Empire } from '../../sim/empire';
+import { issuePlayerCommand } from '../../sim/player/playerCommands';
 import type { Galaxy } from '../../sim/galaxy';
 import type { BuiltObject } from '../../sim/builtObject';
 import type { Habitat } from '../../sim/types';
@@ -281,8 +282,7 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
             const site = selectedSite;
             const wait = site ? siteQueue(site)?.constructionWaitQueue : null;
             if (!wait || selectedWait === null) return;
-            moveWaitQueueItem(wait, selectedWait, move);
-            render();
+            issuePlayerCommand(opts.empire.galaxy, opts.empire, 'moveWaitQueueItem', [siteTarget(site!), selectedWait, move], () => render());
         });
         moveButtons.push(b);
         buttons.appendChild(b);

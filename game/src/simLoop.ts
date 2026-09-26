@@ -19,6 +19,7 @@ import type { Galaxy } from './sim/galaxy';
 import type { GalaxyTime } from './sim/galaxyTime';
 import { FRAME_REAL_MS, SimDriver, schedulerState, type FrameOptions, type SimView } from './sim/tick/scheduler';
 import { drainCommandBoundary } from './sim/tick/commandBoundary';
+import { noteSimSpeed } from './sim/player/playerCommands';
 import { showToast } from './ui/toast';
 
 /** Main.Part11.cs 507 method_123 inputs from the Pixi camera: int_13/int_14 = view centre (galaxy units),
@@ -165,6 +166,8 @@ export function createSimLoop(galaxy: Galaxy, time: GalaxyTime, camera: Camera, 
                 // Command log: player orders queued since the last render frame apply now, at this frame boundary
                 // (also while paused, and even when the budget runs no step), so they land within one frame.
                 drainCommandBoundary(galaxy);
+                // The frame length is a sim input: journal speed changes at this boundary (replay runs the same frames).
+                if (!time.paused) noteSimSpeed(galaxy, time.speed);
                 // [fix6ui] steps by real time under a wall-clock budget (was driver.advance, at most 4 per frame).
                 frames = budget.run(driver, realDtMs, time.speed, time.paused, useView ? { view: simViewFromCamera(camera) } : {});
             } catch (err) {

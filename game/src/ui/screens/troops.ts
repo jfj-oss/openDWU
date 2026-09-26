@@ -30,8 +30,9 @@ import { compareShipGroups } from '../../sim/fleets/shipGroupTasks';
 import { netSort } from '../../sim/netSort';
 import { tryGetText } from '../../sim/textResolver';
 import { ShipActionType, createShipAction, type ShipAction } from '../../sim/player/shipAction';
-import { executeShipAction } from '../../sim/player/executeShipAction';
-import { resolveRecruitableTroopsForColony, applyAutomationOff } from '../../sim/player/orderMenu';
+import type { ShipActionResult } from '../../sim/player/executeShipAction';
+import { issuePlayerCommand } from '../../sim/player/playerCommands';
+import { resolveRecruitableTroopsForColony } from '../../sim/player/orderMenu';
 import { formatThousandsK } from './coloniesList';
 import { disbandTroops, setTroopsGarrisoned, renameTroop } from '../../sim/player/playerOrders';
 export { disbandTroops, setTroopsGarrisoned, renameTroop };
@@ -673,10 +674,12 @@ function createTroopsScreen(opts: TroopsScreenOptions): OpenState {
 
     async function recruit(o: RecruitOption): Promise<void> {
         if (filter.kind !== 'colony') return;
-        const r = executeShipAction(galaxy, empire, filter.colony, o.action, false, {});
+        // Command log: queued, applied at the next frame boundary.
+        const colony = filter.colony;
+        const r = await new Promise<ShipActionResult>((resolve) => issuePlayerCommand(galaxy, empire, 'shipAction', [colony, o.action, false], resolve));
         refresh();
         for (const task of r.automationPrompts) {
-            if (opts.confirmAutomationOff && (await opts.confirmAutomationOff(T(task, task)))) applyAutomationOff(empire, task);
+            if (opts.confirmAutomationOff && (await opts.confirmAutomationOff(T(task, task)))) issuePlayerCommand(galaxy, empire, 'automationOff', [task], () => refresh());
         }
     }
 
@@ -694,31 +697,31 @@ function createTroopsScreen(opts: TroopsScreenOptions): OpenState {
     async function disband(): Promise<void> {
         // Main.Part9.cs:4072: the automation prompt comes first.
         if (empire.controlTroopGeneration && opts.confirmAutomationOff && (await opts.confirmAutomationOff(T('Troop Recruitment', 'Troop Recruitment')))) {
-            empire.controlTroopGeneration = false;
+            issuePlayerCommand(galaxy, empire, 'setEmpireControl', ['controlTroopGeneration', false]);
         }
         const list = selectedTroops();
         if (list.length <= 0) return;
-        const num = disbandTroops(empire, list);
-        // The C# rebinds to all troops and reselects the troop at index num.
-        filter = { kind: 'all' };
-        renderFilters();
-        selected = new Set();
-        if (num >= 0 && num < empire.troops.count) selected.add(empire.troops.items[num]);
-        refresh();
+        issuePlayerCommand(galaxy, empire, 'disbandTroops', [list], (num) => {
+            // The C# rebinds to all troops and reselects the troop at index num.
+            filter = { kind: 'all' };
+            renderFilters();
+            selected = new Set();
+            if (num >= 0 && num < empire.troops.count) selected.add(empire.troops.items[num]);
+            refresh();
+        });
     }
 
     btnGoto.addEventListener('click', goTo);
     btnDisband.addEventListener('click', () => void disband());
     btnGarrison.addEventListener('click', () => {
-        setTroopsGarrisoned(empire, selectedTroops(), true);
-        refresh();
+        issuePlayerCommand(galaxy, empire, 'garrisonTroops', [selectedTroops(), true], () => refresh());
     });
     btnUngarrison.addEventListener('click', () => {
-        setTroopsGarrisoned(empire, selectedTroops(), false);
-        refresh();
+        issuePlayerCommand(galaxy, empire, 'garrisonTroops', [selectedTroops(), false], () => refresh());
     });
     nameInput.addEventListener('input', () => {
-        if (renameTroop(selectedTroop(), nameInput.value)) refresh();
+        const t = selectedTroop();
+        if (t !== null && nameInput.value.trim() !== '') issuePlayerCommand(galaxy, empire, 'renameTroop', [t, nameInput.value], (ok) => ok && refresh());
     });
 
     renderFilters();

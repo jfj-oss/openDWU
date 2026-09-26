@@ -22,6 +22,7 @@ import type { Empire } from '../../sim/empire';
 import type { Race } from '../../sim/data/races';
 import { formatMoney } from '../hud';
 import { showToast } from '../toast';
+import { issuePlayerCommand } from '../../sim/player/playerCommands';
 import { checkNodeValidForRace, queueResearchProject, dequeueResearchProject } from '../../sim/player/playerOrders';
 export { checkNodeValidForRace, queueResearchProject, dequeueResearchProject };
 
@@ -347,8 +348,7 @@ function createResearchScreen(opts: ResearchScreenOptions): OpenState {
                             return;
                         }
                         if (window.confirm(crashQuestion(row.node.def.name, o.cost))) {
-                            initiateCrashResearchProgram(empire.galaxy, empire, row.node, o.cost);
-                            render();
+                            issuePlayerCommand(empire.galaxy, empire, 'crashResearch', [row.node, o.cost], () => render());
                         }
                     });
                     actions.appendChild(crash);
@@ -362,8 +362,7 @@ function createResearchScreen(opts: ResearchScreenOptions): OpenState {
             } else {
                 remove.title = 'Remove from queue';
                 remove.addEventListener('click', () => {
-                    dequeueResearchProject(rs, row.node);
-                    render();
+                    issuePlayerCommand(empire.galaxy, empire, 'dequeueResearch', [row.node], () => render());
                 });
             }
             actions.appendChild(remove);
@@ -383,8 +382,7 @@ function createResearchScreen(opts: ResearchScreenOptions): OpenState {
                 if (status === 'available') {
                     chip.title = 'Click to queue research';
                     chip.addEventListener('click', () => {
-                        queueResearchProject(rs, node, empire.dominantRace);
-                        render();
+                        issuePlayerCommand(empire.galaxy, empire, 'queueResearch', [node], () => render());
                     });
                 }
                 if (node.progress > 0 && !node.isResearched) {

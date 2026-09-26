@@ -4,6 +4,7 @@
 
 import './gameOptionsPanel.css';
 import { AutomationLevel, type Empire } from '../../sim/empire';
+import { issuePlayerCommand } from '../../sim/player/playerCommands';
 import {
     getMessageOptions,
     MessageCategory,
@@ -113,14 +114,22 @@ function method419(index: number): AutomationLevel {
     }
 }
 
+/** Port of Main.Part6.cs:2524-2539: the Empire field and value one Automation control sets. */
+export function automationFieldValue(row: AutomationRow, value: number | boolean): { field: AutomationField; value: AutomationLevel | boolean } {
+    const f = row.field;
+    return isLevelField(f) ? { field: f, value: method419(typeof value === 'number' ? value : Number(value)) } : { field: f, value: Boolean(value) };
+}
+
 // Port of Main.Part6.cs:2524-2539: apply one Automation control to the player empire.
 export function setAutomationValue(empire: Empire, row: AutomationRow, value: number | boolean): void {
-    const f = row.field;
-    if (isLevelField(f)) {
-        empire[f] = method419(typeof value === 'number' ? value : Number(value));
-    } else {
-        empire[f as BoolField] = Boolean(value);
-    }
+    const fv = automationFieldValue(row, value);
+    (empire as unknown as Record<string, unknown>)[fv.field] = fv.value;
+}
+
+/** The same through the command log (queued, applied at the next frame boundary). */
+function issueAutomationValue(empire: Empire, row: AutomationRow, value: number | boolean): void {
+    const fv = automationFieldValue(row, value);
+    issuePlayerCommand(empire.galaxy, empire, 'setEmpireControl', [fv.field, fv.value]);
 }
 
 export interface MessageOptionRow {
@@ -238,10 +247,10 @@ function createGameOptionsPanel(opts: GameOptionsPanelOptions): OpenState {
                 select.appendChild(o);
             });
             select.value = String(value);
-            select.addEventListener('change', () => setAutomationValue(empire, row, Number(select.value)));
+            select.addEventListener('change', () => issueAutomationValue(empire, row, Number(select.value)));
             line.appendChild(select);
         } else {
-            line.appendChild(checkbox(value === true, (v) => setAutomationValue(empire, row, v)));
+            line.appendChild(checkbox(value === true, (v) => issueAutomationValue(empire, row, v)));
         }
         auto.appendChild(line);
     }

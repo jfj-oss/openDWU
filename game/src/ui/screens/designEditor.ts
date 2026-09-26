@@ -20,6 +20,7 @@ import { resolveSubRoleDescription } from '../../sim/designGeneration';
 import { designCalculateMaintenanceCosts } from '../../sim/construction/empireConstruction';
 import { getText, resolveGameText } from '../../sim/textResolver';
 import { gameText } from '../../sim/colonyTick';
+import { issuePlayerCommand } from '../../sim/player/playerCommands';
 import {
     BATTLE_TACTICS_CHOICES,
     DESIGN_SUBROLE_CHOICES,
@@ -34,7 +35,6 @@ import {
     resolveBattleTacticsDescription,
     resolveFleeWhenDescription,
     resolveInvasionTacticsDescription,
-    saveDesign,
     setDraftSubRole,
     summarizeComponents,
     toolboxByFamily,
@@ -116,7 +116,7 @@ export function openDesignEditor(opts: DesignEditorOptions): DesignEditorHandle 
         const off = button(getText('Turn off automation'));
         leave.addEventListener('click', () => banner.remove());
         off.addEventListener('click', () => {
-            empire.controlDesigns = false;
+            issuePlayerCommand(galaxy, empire, 'setEmpireControl', ['controlDesigns', false]);
             banner.remove();
         });
         banner.append(leave, off);
@@ -306,13 +306,15 @@ export function openDesignEditor(opts: DesignEditorOptions): DesignEditorHandle 
 
     saveBtn.addEventListener('click', () => {
         design.name = nameInput.value;
-        const r = saveDesign(galaxy, empire, draft);
-        if (!r.ok) {
-            statusLine.textContent = `${resolveGameText(r.title ?? '')}: ${resolveGameText(r.message ?? '')}`;
-            refresh();
-            return;
-        }
-        close(r.design);
+        // Command log: queued, applied at the next frame boundary.
+        issuePlayerCommand(galaxy, empire, 'saveDesign', [draft], (r) => {
+            if (!r.ok) {
+                statusLine.textContent = `${resolveGameText(r.title ?? '')}: ${resolveGameText(r.message ?? '')}`;
+                refresh();
+                return;
+            }
+            close(r.design);
+        });
     });
     cancelBtn.addEventListener('click', () => close(null));
     closeBtn.addEventListener('click', () => close(null));
