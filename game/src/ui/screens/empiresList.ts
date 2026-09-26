@@ -10,6 +10,7 @@ import type { Empire } from '../../sim/empire';
 import type { Habitat } from '../../sim/types';
 import { DiplomaticRelationType } from '../../sim/diplomacy';
 import { PirateRelationType } from '../../sim/pirateRelations';
+import { rimTraderTag } from '../scenario/rimTraderRows';
 
 export interface EmpiresListOptions {
     /** galaxy.empires — every empire in the galaxy. */
@@ -145,6 +146,10 @@ function createEmpiresList(opts: EmpiresListOptions): OpenState {
         const name = document.createElement('span');
         name.className = 'empires-list-name';
         name.textContent = row.label;
+        // [rimTrader] begin
+        const rimTag = row.empire.galaxy != null ? rimTraderTag(row.empire.galaxy, row.empire) : '';
+        if (rimTag !== '') name.appendChild(Object.assign(document.createElement('span'), { className: 'empires-list-tag', textContent: rimTag }));
+        // [rimTrader] end
 
         const count = document.createElement('span');
         count.className = 'empires-list-colonies';

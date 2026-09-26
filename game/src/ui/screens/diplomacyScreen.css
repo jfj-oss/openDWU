@@ -292,3 +292,11 @@
     padding: 2px 0 4px;
 }
 /* [proposals] end */
+
+/* [rimTrader] begin — scenario 19a trade terms block */
+.diplomacy-rimterms { border: 1px solid rgba(255, 179, 71, 0.45); border-radius: 4px; padding: 4px 8px 6px; margin: 6px 0; background: rgba(255, 179, 71, 0.06); }
+.diplomacy-rimterms-goods, .diplomacy-rimterms-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 3px 0; }
+.diplomacy-rimterms-label { color: #c8c8c8; min-width: 9em; }
+.diplomacy-rimterms-good { display: inline-flex; align-items: center; gap: 4px; }
+.diplomacy-rimterms-good img { width: 20px; height: 20px; image-rendering: pixelated; }
+/* [rimTrader] end */

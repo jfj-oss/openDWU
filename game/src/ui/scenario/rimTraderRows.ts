@@ -11,6 +11,8 @@ export interface RimGoodRow {
     name: string;
     /** Resource PictureRef (the stock resource icon index). */
     pictureRef: number;
+    /** The stock resource icon (as hud.ts resourceIconUrl). */
+    iconUrl: string;
 }
 
 export interface RimTraderTermsRows {
@@ -33,7 +35,8 @@ export interface RimTraderTermsRows {
 function goodRows(galaxy: Galaxy, ids: number[]): RimGoodRow[] {
     return ids.map((id) => {
         const r = galaxy.resourceSystem.byId.get(id);
-        return { resourceId: id, name: r?.name ?? String(id), pictureRef: r?.pictureRef ?? -1 };
+        const pictureRef = r?.pictureRef ?? -1;
+        return { resourceId: id, name: r?.name ?? String(id), pictureRef, iconUrl: `/assets/dwu/images/ui/resources/Resource_${pictureRef}.bmp` };
     });
 }
 

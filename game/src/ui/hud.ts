@@ -6,6 +6,7 @@ import { createMapOverlayState, OVERLAY_ROWS, toggleOverlay, type MapOverlayStat
 import { Camera } from '../render/camera';
 import { Galaxy } from '../sim/galaxy';
 import type { GameData } from '../sim/data/gameData';
+import { rimGoodMarker } from './scenario/rimTraderRows';
 import { moneyPanelIncome } from '../sim/treasury';
 import { Habitat, HabitatCategoryType, HabitatType, IndustryType, SystemInfo } from '../sim/types';
 import type { Empire } from '../sim/empire';
@@ -1937,6 +1938,13 @@ export function buildSelectionRows(sel: Selection, gameData?: GameData, player: 
             const pct = document.createElement('span');
             pct.className = 'hud-resource-pct';
             pct.textContent = `${r.abundance}%`;
+            // [rimTrader] begin
+            const rimMark = player !== null ? rimGoodMarker(player.galaxy, r.resourceId) : '';
+            if (rimMark !== '') {
+                img.title += ` ${rimMark}`;
+                pct.textContent += ` ${rimMark}`;
+            }
+            // [rimTrader] end
             icons.append(img, pct);
         }
         line.append(k, icons);

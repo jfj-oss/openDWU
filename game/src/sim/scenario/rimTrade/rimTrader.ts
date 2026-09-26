@@ -88,6 +88,8 @@ export function rimTraderGameStart(galaxy: Galaxy, ctx: HomePlacementHelpers): v
     }
     st.empireId = r.empireId;
     st.capital = r.capital;
+    // The AI Concord carries the scenario's name (a player who picks the Oranthi keeps the name they chose).
+    if (r !== galaxy.playerEmpire) r.name = scenarioText('Scenario RimTrade Empire Name');
     if (r.capital === null) return;
     seedRareGoods(galaxy, r, r.capital);
     seedPortStock(galaxy, r);
