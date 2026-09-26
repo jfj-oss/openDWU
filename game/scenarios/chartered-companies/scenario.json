@@ -1,0 +1,21 @@
+{
+  "id": "chartered-companies",
+  "name": "Chartered Companies",
+  "description": "Empires charter trading companies to settle distant worlds. A company is a sub-empire of its founder's race, bound by a Subjugated Dominion or Protectorate treaty, and pays its founder a tariff on its sales. Charters expire and can be renewed, released or nationalised; AI empires charter rival companies.",
+  "flags": [
+    { "name": "charteredCompanies", "label": "Chartered companies", "description": "Empires can charter trading companies to settle distant worlds; companies pay tariffs on their sales.", "default": true },
+    { "name": "aiCharters", "label": "AI empires charter companies", "description": "AI empires found rival companies.", "default": true },
+    { "name": "companyHqExportOnly", "label": "Company HQ is the only export point", "description": "Foreign freighters may buy from a company only at its capital port.", "default": false }
+  ],
+  "params": [
+    { "name": "charterFee", "label": "Charter fee (credits)", "default": 30000, "min": 5000, "max": 200000 },
+    { "name": "charterTariffPct", "label": "Default tariff on company sales (%)", "default": 15, "min": 0, "max": 50 },
+    { "name": "charterDurationYears", "label": "Default charter length (years)", "default": 20, "min": 1, "max": 100 },
+    { "name": "companyStartPopulation", "label": "Settlers (millions)", "default": 50, "min": 5, "max": 500 },
+    { "name": "companyEscorts", "label": "Escort ships", "default": 3, "min": 0, "max": 10 },
+    { "name": "companyFreighters", "label": "Freighters", "default": 2, "min": 0, "max": 8 },
+    { "name": "maxCompaniesPerFounder", "label": "Companies per empire", "default": 2, "min": 1, "max": 6 },
+    { "name": "aiCharterChancePct", "label": "AI charter chance per year (%)", "default": 25, "min": 0, "max": 100 },
+    { "name": "rimRadiusPct", "label": "Rim starts at (% of galaxy radius)", "default": 60, "min": 0, "max": 100 }
+  ]
+}

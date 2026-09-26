@@ -305,3 +305,33 @@ aiCharters: false }, options: <Oranthi as AI 0, as in 19a tests> })`; `runGameSe
 
 ~5–6 days on top of 19a: empireMidGame extension 0.5 d; grant/eligibility/ships/relations 1.5 d; tariff, war rules,
 yearly handler, nationalise/release 1 d; UI (dialog, Charters screen, hooks) 1.5 d; tests + soak tuning 1 d.
+
+## 13. Implementation status (branch wip/s19c)
+
+Built without 19a / 19e-9 (neither is in the tree), as a standalone scenario:
+- Scenario folder `scenarios/chartered-companies/` (flags §2.1 + param `rimRadiusPct`, GameText §2.2); package
+  `src/sim/scenario/charteredCompanies/charters.ts` (imported from `scenario/packages.ts`); handlers are gated by flag
+  only, so a later `rimTrade` scenario that declares the same flags gets them.
+- "Rim goods" = every resource (the §4.6 rule with 19a off: sales of any resource to anyone but the founder are taxed);
+  "rim worlds" = habitats at radius fraction ≥ `rimRadiusPct` / 100, which double a target's value in `charterTargets`.
+- `charterEligibility` calls `canEmpireColonizeHabitat` with `checkRange = false` (a company settles beyond the
+  founder's colonisation range).
+- New query hooks (`scenario/hooks.ts`): `declareWarBlocked` (first line of `declareWar`) and `foreignTradingPosts`
+  (top of `addForeignTradingPosts`; a company's capital space port only — no capital-habitat fallback).
+- Expiry (§4.9b) is a scenario decision (`charters.expiry`, options Renew / Release / Nationalise, default Renew after
+  360 days): the player answers from the message popup; an AI founder answers at once through the C5 rule.
+- Player actions are player commands (`player/playerOps.ts` `charterCompany`, `charterRenew`, `charterRelease`,
+  `charterNationalise`, and the generic `answerScenarioDecision`, which the popup now issues instead of calling the sim):
+  journaled in the command log, so seed + log replays them (tested).
+- UI: `src/ui/screens/charters.ts` (+ .css) holds both the Charters screen and the charter dialog; the "Charter a
+  company…" button sits in the selection panel (hud.ts `[charters]`); Empires list tag + Charters button; diplomacy
+  screen charter line + "Manage charter". Dev: `?autostart=1&scenario=<id>` starts the autostart game with a scenario.
+
+TODO (later):
+- TODO(19c): "Charter a company…" entry in the right-click order menu (`player/orderMenu.ts`), beside the selection
+  panel button.
+- TODO(19c + 19a): restrict the tariff to rim goods sold to the Concord and add the Concord war / single-port rules when
+  19a lands (`rimGoodIds`, `rimTraderEmpire`).
+- TODO(19c + 19e-9): freight overlay hub marker for company capitals and the tariff row (§4.13).
+- TODO(19c-2): the deferred items listed at the end of §4 (tradeable charter terms, exclusive luxury rights, fleet
+  requisition, scandal events, rival-company competition AI).

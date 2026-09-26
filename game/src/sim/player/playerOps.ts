@@ -47,6 +47,8 @@ import {
     toggleDesignObsolete,
     type WaitQueueMove,
 } from './playerOrders';
+import { answerScenarioDecision, pendingScenarioDecisions } from '../scenario/decisions';
+import { grantCharter, nationaliseCompany, releaseCompany, renewCharter, type CharterTerms } from '../scenario/charteredCompanies/charters';
 
 /** Automation / control fields of Empire the UI sets directly (Game Options panel and the automation prompts). */
 function isEmpireControlField(empire: Empire, field: string): boolean {
@@ -152,6 +154,19 @@ export const PLAYER_OPS = {
     // --- The local model (18a advisor chat, 18b diplomat counter-proposal) ---
     advisorCommands: (galaxy: Galaxy, empire: Empire, brief: AdvisorBrief, commands: (AdvisorCommand | ValidatedCommand)[]) => executeAdvisorCommands(galaxy, empire, brief, commands),
     diplomatCounter: (galaxy: Galaxy, player: Empire, ai: Empire, brief: DiplomatBrief, counterId: string) => proposeDiplomatCounter(galaxy, ai, player, brief, counterId),
+
+    // --- Mod layer (tasks/MODLAYER-DESIGN.md §4): scenario decisions and scenario actions are player input too ---
+    /** A scenario decision answered from its message popup (scenario/decisions.ts); only the empire's own questions. */
+    answerScenarioDecision: (galaxy: Galaxy, empire: Empire, decisionId: number, optionId: string) => {
+        const d = pendingScenarioDecisions(galaxy, empire).find((x) => x.id === decisionId);
+        return d !== undefined && answerScenarioDecision(galaxy, decisionId, optionId, 'player');
+    },
+    /** 19c: charter a company to settle `target` (tasks/19c-chartered-companies.md §4.4). */
+    charterCompany: (galaxy: Galaxy, empire: Empire, target: Habitat, terms: CharterTerms) => grantCharter(galaxy, empire, target, terms).ok,
+    /** 19c Charters screen: Renew / Release / Nationalise (§4.10 / §4.11). */
+    charterRenew: (galaxy: Galaxy, empire: Empire, company: Empire) => renewCharter(galaxy, empire, company),
+    charterRelease: (galaxy: Galaxy, empire: Empire, company: Empire) => releaseCompany(galaxy, empire, company),
+    charterNationalise: (galaxy: Galaxy, empire: Empire, company: Empire) => nationaliseCompany(galaxy, empire, company),
 } as const;
 
 export type PlayerOps = typeof PLAYER_OPS;
