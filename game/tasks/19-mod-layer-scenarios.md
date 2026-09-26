@@ -185,5 +185,17 @@ rules. Effort: medium (~1–2 agent-days). Flag off = byte-identical.
    but NO colony ships / colonisation (hard cap params: station radius in sectors, stations per independent colony, fleet
    size cap) so they never become a 61st empire on their own. Herder independents (19j)
    use tamed creatures instead of ships for (a)–(c). Flag off = byte-identical (the base independents stay pure C#).
-Effort: 1 ≈ half a day (soak + palette + UI check); 2 ≈ 1 agent-day. Effort: medium (~1 agent-day);
+3. Independent leagues (user, 2026-09-26): independent colonies within reach of each other (radius param, same or
+   compatible race attitudes, both under threat — pirate raids, a neighbour's expansion, herd losses — or simply prosperous)
+   may form a league: a named sub-faction of the independent empire (one league flag/colour, a council seat at the founding
+   colony). Effects while in a league: (a) pooled defence — the fleet cap rises with member count and league ships answer
+   raids on any member; (b) shared stations — the station radius grows and members share income; (c) exactly ONE extra
+   colony per league (never per member): the league sends one colony ship to the best nearby unclaimed world to simulate
+   reaching out of isolation, after which colonisation stops again; the new colony is a league member; (d) leagues negotiate
+   as a bloc — protectorate / trade offers go to the league, joining one member's empire pulls the rest toward it (relation
+   bonus) or splits the league if they refuse; (e) leagues can dissolve (a member conquered, relations collapse) → back to
+   isolated behaviour, the extra colony stays independent. Params: league radius, min members, chance per year, fleet
+   multiplier, one-colony toggle. Ties: 19d-6 independents as actors, 19j herder leagues (herds pooled), 19a (a league on
+   the rim becomes a trade partner bloc). Flag off = byte-identical.
+Effort: 1 ≈ half a day (soak + palette + UI check); 2 ≈ 1 agent-day; 3 ≈ 1 agent-day after 2. Effort: medium (~1 agent-day);
 build after 19d2 (unrest plumbing) alongside 19g-7 rim fauna; 19a/19c tests must still pass with 19h on.
