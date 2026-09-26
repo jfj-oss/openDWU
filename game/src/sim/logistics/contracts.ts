@@ -20,6 +20,7 @@ import { galaxyStarDate } from '../tick/simTime';
 import { countersProcessTradeBonus } from '../treasury';
 import { applyCorruptionToIncome, cargoGetCargo, cargoRemove, performPrivateTransaction, type ComponentRef, type Order } from './orders';
 import { scenarioEmit } from '../scenario/hooks';
+import { contractListenersActive, emitContractInitiated } from './contractEvents';
 
 /** A StellarObject (C# base of Habitat and BuiltObject). */
 export type StellarObject = Habitat | BuiltObject;
@@ -344,6 +345,7 @@ export function initiateContract(
         }
         performTradeTransaction(galaxy, diplomaticRelation2, transactionAmount, starDate);
     }
-    // Mod layer / 19e-9: observation hook (no Rnd in handlers, no state change unless a scenario flag is on).
+    // Mod layer / 19e-9: observation hook (no Rnd, no state change unless a scenario flag is on).
+    if (contractListenersActive()) emitContractInitiated(galaxy, { starDate: galaxyStarDate(galaxy), seller: empire, sellingPoint, buyer: requestingEmpire, destination: destination!, resourceId: resource?.resourceId ?? -1, componentId: component?.componentId ?? -1, amount: contract.amountToFulfill, value: transactionAmount, isState, freighter: contract.freighter });
     if (galaxy.scenario !== null) scenarioEmit(galaxy, 'contractInitiated', { seller: empire, buyer: requestingEmpire, sellingPoint, destination, resourceId: resource?.resourceId ?? -1, componentId: component?.componentId ?? -1, amount: contract.amountToFulfill, value: transactionAmount, isState, freighter: contract.freighter });
 }
