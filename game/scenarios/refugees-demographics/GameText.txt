@@ -1,0 +1,23 @@
+'Scenario overlay (refugees-demographics): GameText lines the demographics package (src/sim/scenario/emergent/demographics.ts) resolves through scenarioText.
+Emergent Refugee Stranded News;{0} refugees from {1} find no asylum and are lost ({2}).
+Emergent Refugee Asylum Title;Refugees seek asylum
+Emergent Refugee Asylum Text;{0} {1} refugees from {2} ({3}) ask for asylum at {4}.
+Emergent Refugee Asylum Accept;Accept
+Emergent Refugee Asylum Redirect;Redirect to another of your colonies
+Emergent Refugee Asylum Refuse;Refuse
+Emergent Refugee Convoy Title;Refugee convoy
+Emergent Refugee Convoy Overflow;{0} {1} refugees could not be carried and are lost in transit.
+Emergent Refugee Convoy Departed;A refugee convoy carrying {0} {1} has departed {2} for {3}.
+Emergent Refugee Convoy Inbound;A refugee convoy carrying {0} {1} from {2} is inbound.
+Emergent Refugee Convoy Settled;{0} {1} refugees have settled at {2}.
+Emergent Refugee Convoy Settled News;{0} {1} refugees have settled at {2}.
+Emergent Refugee Convoy Lost News;A refugee convoy carrying {0} {1} was lost.
+Emergent Refugee Convoy RACE;Refugee Convoy ({0})
+Emergent Exile Empire NAME;{0} Government in Exile
+Emergent Exile Empire Title;Government in exile
+Emergent Exile Empire Text;Survivors of {0} have founded a government in exile at {1}.
+Emergent Exile Empire News;The survivors of {0} have founded {1} at {2}.
+Emergent Demographics Tension Title;Ethnic tension
+Emergent Demographics Tension Text;Ethnic tension is running high at {0}.
+Emergent Demographics Dominant Race Title;Population shift
+Emergent Demographics Dominant Race Text;The dominant race at {0} has changed to {1}.

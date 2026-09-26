@@ -1,0 +1,13 @@
+{
+  "id": "refugees-demographics",
+  "name": "Refugees & Demographics",
+  "description": "War, bombardment, plague, disaster and harsh population policy send refugee convoys fleeing to asylum; colony race mix, ethnic tension and migration links follow.",
+  "flags": [
+    { "name": "refugees", "label": "Refugees & demographics", "description": "Refugee flows, asylum, ethnic tension, assimilation and migration links.", "default": true }
+  ],
+  "params": [
+    { "name": "refugeeShare", "label": "Refugee share", "description": "Share of a fleeing race's population that leaves per cause.", "default": 0.15, "min": 0, "max": 0.5 },
+    { "name": "tensionWeight", "label": "Tension weight", "description": "Scales the demographic-tension approval term.", "default": 1, "min": 0, "max": 3 },
+    { "name": "assimilationRate", "label": "Assimilation rate", "description": "Yearly share of unassimilated population that assimilates.", "default": 0.1, "min": 0, "max": 1 }
+  ]
+}

@@ -63,6 +63,7 @@ import { determineFuelRequired, setupRefuelling } from './logistics/refuel';
 import { findAbandonedShipsInDebrisField } from './events';
 import { assignLoadTroopsMission, checkAssignGarrisonTroopsAtPenalColonyMission, checkAssignUnloadTroopsAtColonyNeedingThemMissionShip } from './combat/troopsRuntime';
 import { identifyDeficientEmpireResources } from './industry';
+import { addChainMigrationDestinations, addChainMigrationSources, spawnRefugeeFlows } from './scenario/emergent/demographics';
 import {
     HabitatPrioritization,
     calculateCurrentCompleteResourceValue,
@@ -1897,9 +1898,16 @@ export function reviewMigrationTourism(galaxy: Galaxy, empire: Empire): void {
     empire.resettleSources = determineResettleSources(empire);
     empire.migrationDestinations = determineMigrationDestinations(empire);
     empire.migrationSources = determineMigrationSources(galaxy, empire);
+    // mod layer (19d4 §2.9): chain migration follows the migration-link graph on top of the ported target lists.
+    if (galaxy.scenario !== null) {
+        addChainMigrationDestinations(galaxy, empire, empire.migrationDestinations);
+        addChainMigrationSources(galaxy, empire, empire.migrationSources);
+    }
     empire.tourismDestinations = determineTourismDestinations(galaxy, empire);
     empire.tourismSources = determineTourismSources(galaxy, empire);
     empire.resortBaseBuildLocations = determineResortBaseBuildLocations(galaxy, empire);
+    // mod layer (19d4 §2.2): refugee flows start within the empire's own migration cadence, not a year later.
+    if (galaxy.scenario !== null) spawnRefugeeFlows(galaxy, empire);
 }
 
 /** Empire.5.cs 3138 DetermineTourismDestinations. */

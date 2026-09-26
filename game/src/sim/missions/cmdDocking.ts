@@ -43,6 +43,7 @@ import { processTourists } from '../civilianAI';
 import { checkCancelContracts, clearPreviousMissionRequirements, assignMission } from './assign';
 import { BuiltObjectMissionPriority, BuiltObjectMissionType, CommandAction, isBuiltObject, isHabitat } from './mission';
 import type { CommandHandler } from './executeCommands';
+import { refugeeConvoySkipLoad, settleRefugeeConvoyArrival } from '../scenario/emergent/demographics';
 
 const f = Math.fround;
 
@@ -421,6 +422,13 @@ export const cmdUndock: CommandHandler = (ctx) => {
 export const cmdLoad: CommandHandler = (ctx) => {
     const { galaxy, bo, mission, command, timePassed } = ctx;
     let result = 0.0;
+    // mod layer (19d4 §2.5): a refugee convoy is pre-loaded (its population already left the origin when its flow
+    // spawned) — skip the pickup leg instead of wiping and re-pulling it from the origin's live colony population.
+    if (galaxy.scenario !== null && refugeeConvoySkipLoad(galaxy, bo)) {
+        mission.completeCommand();
+        bo.firstExecutionOfCommand = true;
+        return timePassed;
+    }
     const dockedAt = bo.dockedAt;
     if (dockedAt === null) {
         checkCancelContracts(galaxy, bo);
@@ -797,6 +805,10 @@ export const cmdUnload: CommandHandler = (ctx) => {
                     processTourists(galaxy, bo, item9);
                 }
             }
+            // mod layer (19d4 §2.6): refugee convoys settle here — before bo.population is wiped below, so the hook
+            // still sees the arrived items (and can found an independent colony when dockedAt had none, which the
+            // stock code above silently drops).
+            if (galaxy.scenario !== null) settleRefugeeConvoyArrival(galaxy, bo, dockedAt);
             if (bo.population !== null) {
                 bo.population.items.length = 0;
                 bo.population.recalculateTotalAmount();
