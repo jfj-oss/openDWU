@@ -126,6 +126,7 @@ import { disbandShipGroup, empireShipGroups, shipGroupWarpSpeed, type ShipGroup 
 import { REAL_SECONDS_IN_GALACTIC_YEAR } from './tick/simTime';
 import { netSort } from './netSort';
 import { gameText } from './colonyTick';
+import { formatGameTextNow } from './textResolver';
 import { registerTodo, todo } from './tick/todo';
 import { galaxyStarDate } from './tick/simTime';
 import { PirateExpenseType } from './pirates/pirateEconomy';
@@ -581,8 +582,8 @@ export function doResearchAbilityBreakthrough(empire: Empire, researchProject: T
             const value = a.value;
             switch (abilityTypeFromFile(a.type)) {
                 case ResearchAbilityType.Boarding:
-                    if (a.value > 0) text += gameText('Improved Boarding attack strength').toLowerCase();
-                    else if (a.value < 0) text += gameText('Improved Boarding defense strength').toLowerCase();
+                    if (a.value > 0) text += formatGameTextNow('Improved Boarding attack strength', [], true);
+                    else if (a.value < 0) text += formatGameTextNow('Improved Boarding defense strength', [], true);
                     break;
                 case ResearchAbilityType.Troop: {
                     const troopType = abilityRelatedTroopType(a);
@@ -591,23 +592,23 @@ export function doResearchAbilityBreakthrough(empire: Empire, researchProject: T
                             const d = resolveDescription(TroopType, troopType);
                             text =
                                 a.value > 0
-                                    ? text + ' ' + gameText('Increases the Attack Strength of newly recruited TROOPTYPE', d).toLowerCase()
+                                    ? text + ' ' + formatGameTextNow('Increases the Attack Strength of newly recruited TROOPTYPE', [d], true)
                                     : a.value >= 0
                                       ? text + ' ' + gameText('the ability to recruit TROOPTYPE', d)
-                                      : text + ' ' + gameText('Increases the Defend Strength of newly recruited TROOPTYPE', d).toLowerCase();
+                                      : text + ' ' + formatGameTextNow('Increases the Defend Strength of newly recruited TROOPTYPE', [d], true);
                             relatedObject = troopType;
                         } else {
-                            text = text + ' ' + gameText('Lowers the maintenance costs of all troops').toLowerCase();
+                            text = text + ' ' + formatGameTextNow('Lowers the maintenance costs of all troops', [], true);
                         }
                     } else {
-                        text = text + ' ' + gameText('Lowers the maintenance costs of all troops').toLowerCase();
+                        text = text + ' ' + formatGameTextNow('Lowers the maintenance costs of all troops', [], true);
                     }
                     break;
                 }
                 case ResearchAbilityType.EnableShipSubRole: {
                     const subRole = abilityRelatedSubRole(a);
                     if (subRole !== null) {
-                        text = text + ' ' + gameText('the ability to build SHIPTYPE', resolveDescription(BuiltObjectSubRole, subRole));
+                        text = text + ' ' + formatGameTextNow('the ability to build SHIPTYPE', [resolveDescription(BuiltObjectSubRole, subRole)]);
                         relatedObject = subRole;
                     }
                     break;
@@ -615,16 +616,16 @@ export function doResearchAbilityBreakthrough(empire: Empire, researchProject: T
                 case ResearchAbilityType.ColonizeHabitatType:
                     if (value >= 1 && value <= 6) {
                         const h = HABITAT_TYPE_BY_ABILITY_VALUE[value];
-                        text = text + ' ' + gameText('the ability to colonize PLANETTYPE planets and moons', resolveDescription(HabitatType, h));
+                        text = text + ' ' + formatGameTextNow('the ability to colonize PLANETTYPE planets and moons', [resolveDescription(HabitatType, h)]);
                         relatedObject = h;
                     }
                     break;
                 case ResearchAbilityType.ConstructionSize:
-                    text = text + ' ' + gameText('an increase to the maximum construction sizes of ships and bases', value.toString(), (value * 3).toString());
+                    text = text + ' ' + formatGameTextNow('an increase to the maximum construction sizes of ships and bases', [value.toString(), (value * 3).toString()]);
                     break;
                 case ResearchAbilityType.PopulationGrowthRate:
                     if (value >= 1 && value <= 6) {
-                        text = text + ' ' + gameText('double population growth rate at all of our PLANETTYPE colonies', resolveDescription(HabitatType, HABITAT_TYPE_BY_ABILITY_VALUE[value]));
+                        text = text + ' ' + formatGameTextNow('double population growth rate at all of our PLANETTYPE colonies', [resolveDescription(HabitatType, HABITAT_TYPE_BY_ABILITY_VALUE[value])]);
                     }
                     break;
             }
@@ -698,7 +699,7 @@ export function doResearchBreakthrough(galaxy: Galaxy, empire: Empire, researchP
     if (!blockMessages) {
         if (def.components.length > 0) {
             const c0 = research.definitionFor(def.components[0]);
-            text = text + ' ' + gameText('the new component X for our ships and bases', c0?.name ?? '') + ', ';
+            text = text + ' ' + formatGameTextNow('the new component X for our ships and bases', [c0?.name ?? '']) + ', ';
             relatedObject = c0 ?? null;
         }
         if (def.componentImprovements.length > 0) {
@@ -706,35 +707,35 @@ export function doResearchBreakthrough(galaxy: Galaxy, empire: Empire, researchP
             const existing = research.componentImprovements.get(ci0.componentId);
             const improved = research.definitionFor(ci0.componentId);
             if (existing === undefined) {
-                text = text + ' ' + gameText('improvements to the existing component X', improved?.name ?? '') + ', ';
+                text = text + ' ' + formatGameTextNow('improvements to the existing component X', [improved?.name ?? '']) + ', ';
                 relatedObject = improved ?? null;
             } else if (ci0.techLevel > existing.techLevel) {
-                text = text + ' ' + gameText('improvements to the existing component X', improved?.name ?? '') + ', ';
+                text = text + ' ' + formatGameTextNow('improvements to the existing component X', [improved?.name ?? '']) + ', ';
                 relatedObject = improved ?? null;
             }
         }
         const facility = research.planetaryFacilityOf(researchProject);
         if (facility !== null && !research.buildablePlanetaryFacilities.includes(facility)) {
-            text = text + ' ' + gameText('the ability to build a new planetary facility X', facility.name) + ', ';
+            text = text + ' ' + formatGameTextNow('the ability to build a new planetary facility X', [facility.name]) + ', ';
             relatedObject = facility;
         }
         if (def.plagueChange !== null) {
             const plagueId = def.plagueChange.plagueId;
             const plagueName = galaxy.researchStatic?.plagues[plagueId]?.name ?? '';
-            text = !research.enabledPlagues.some((p) => p.plagueId === plagueId) ? text + ' ' + gameText('creates the new PLAGUE', plagueName) + ', ' : text + ' ' + gameText('changes to PLAGUE', plagueName) + ', ';
+            text = !research.enabledPlagues.some((p) => p.plagueId === plagueId) ? text + ' ' + formatGameTextNow('creates the new PLAGUE', [plagueName]) + ', ' : text + ' ' + formatGameTextNow('changes to PLAGUE', [plagueName]) + ', ';
         }
         if (def.fighters.length > 0) {
             for (let l = 0; l < def.fighters.length; l++) {
                 if (!research.researchedFighters.some((f) => f.fighterId === def.fighters[l])) {
                     const f = galaxy.researchStatic?.fighters.find((x) => x.fighterId === def.fighters[l]) ?? null;
-                    text = text + ' ' + gameText('access to a new fighter type X', f?.name ?? '') + ', ';
+                    text = text + ' ' + formatGameTextNow('access to a new fighter type X', [f?.name ?? '']) + ', ';
                     relatedObject = f;
                 }
             }
         }
-        let text2 = gameText('Our engineers have completed research in RESEARCHPROJECT', def.name);
+        let text2 = formatGameTextNow('Our engineers have completed research in RESEARCHPROJECT', [def.name]);
         if (text.length > 0) {
-            text2 = text2 + '. ' + gameText('This breakthrough provides BENEFITS', text);
+            text2 = text2 + '. ' + formatGameTextNow('This breakthrough provides BENEFITS', [text]);
             text2 = text2.substring(0, text2.length - 2);
         }
         void relatedObject; // UI-only (message subject in C# is the research node).

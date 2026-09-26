@@ -17,6 +17,7 @@ import { recalculateCriticalResourceSupplyBonuses } from './taxes';
 import { recalculateDevelopmentLevelBaseline } from './developmentLevel';
 import { recalculateAnnualTaxRevenue } from './forceStructure';
 import { RuinType } from './ruins';
+import type { ConstructionQueueHandle } from './construction/constructionYard';
 
 // Port of Galaxy.8.cs MakeHabitatIntoColony(galaxy, habitat, empire, age, race,
 // homeSystemFactor, hasSpacePort).
@@ -62,8 +63,14 @@ export function makeHabitatIntoColony(
     recalculateCriticalResourceSupplyBonuses(galaxy, habitat);
     recalculateDevelopmentLevelBaseline(habitat);
     recalculateAnnualTaxRevenue(galaxy, habitat);
-    // TODO(port): Habitat.DoTasks (680; a no-op at game start: all touch
-    // spans are ~0), ConstructionQueue.ReviewConstructionSpeed (683) — no Rnd.
+    // TODO(port): Habitat.DoTasks (680; a no-op at game start: all touch spans are ~0) — no Rnd.
+    // Galaxy.8.cs 681-684: if (habitat.ConstructionQueue != null) habitat.ConstructionQueue.ReviewConstructionSpeed();
+    // TakeOwnershipOfColony (above) created the queue before the population existed, so without this review the colony
+    // yard keeps the empty-colony speed (600 * sqrt(1e7 / ColonyBuildSpeedIdealPopulation) = 18) until the first
+    // LongProcessingSpan review (Habitat.cs 1506). No Rnd.
+    if (habitat.constructionQueue !== null) {
+        (habitat.constructionQueue as ConstructionQueueHandle).reviewConstructionSpeed();
+    }
     // Galaxy.8.cs 685-696: starting garrison (one NextDouble).
     generateColonyStartingTroops(galaxy, habitat, empire, race, galaxy.difficultyLevel);
     empire.resolveSystemVisibility(habitat.xpos, habitat.ypos);
