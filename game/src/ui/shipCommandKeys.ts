@@ -14,7 +14,8 @@ import { isObjectVisibleToThisEmpire } from '../sim/independentTraders';
 import type { ShipActionSelection } from '../sim/player/executeShipAction';
 import type { Selection } from './hud';
 import type { ShipCommandAction } from './keyboard';
-import { SelectionHistory, executeShipOrderKey, fastFindNearestAvailableMilitaryShip, isShipOrderKeyAction, type HistoryEntry } from './shipHotkeys';
+import { SelectionHistory, fastFindNearestAvailableMilitaryShip, isShipOrderKeyAction, type HistoryEntry } from './shipHotkeys';
+import { issuePlayerCommand } from '../sim/player/playerCommands';
 import { showToast } from './toast';
 
 export interface ShipCommandKeyDeps {
@@ -79,7 +80,8 @@ export function createShipCommandKeys(d: ShipCommandKeyDeps): ShipCommandKeys {
         },
         handle(action) {
             if (isShipOrderKeyAction(action)) {
-                if (executeShipOrderKey(d.galaxy, d.player, d.getSelected(), action)) d.refresh();
+                // Command log: queued, applied at the next frame boundary.
+                issuePlayerCommand(d.galaxy, d.player, 'shipOrderKey', [d.getSelected(), action], (changed) => changed && d.refresh());
                 return;
             }
             switch (action) {

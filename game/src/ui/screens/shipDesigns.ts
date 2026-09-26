@@ -29,6 +29,7 @@ import {
     resolveSubRoleDescription,
 } from '../../sim/designGeneration';
 import { designCalculateMaintenanceCosts } from '../../sim/construction/empireConstruction';
+import { issuePlayerCommand } from '../../sim/player/playerCommands';
 import { formatMoney, rgbCss } from '../hud';
 // [designeditor] begin
 import { getText, resolveGameText } from '../../sim/textResolver';
@@ -41,6 +42,8 @@ import {
     type DesignDraftSource,
 } from '../../sim/player/designEditor';
 import { openDesignEditor, type DesignEditorHandle } from './designEditor';
+import { isPrivateDesignSubRole, toggleDesignObsolete, toggleDesignAutoRetrofit } from '../../sim/player/playerOrders';
+export { isPrivateDesignSubRole, toggleDesignObsolete, toggleDesignAutoRetrofit };
 // [designeditor] end
 
 /** cmbDesignsFilter items (Main.Part8.cs:1006-1028). */
@@ -189,22 +192,6 @@ export function designDateCreatedText(dateCreated: number): string {
     return `${pad(num3, 4)}.${pad(num5 + 1, 2)}.${pad(num7 + 1, 2)}`;
 }
 
-// DesignListView.cs BindData / Main.Part8.cs:1082 ctlDesignsList_CellClick: the six private sub-roles
-// whose designs cannot be manually retrofitted.
-export function isPrivateDesignSubRole(subRole: BuiltObjectSubRole): boolean {
-    switch (subRole) {
-        case S.SmallFreighter:
-        case S.MediumFreighter:
-        case S.LargeFreighter:
-        case S.PassengerShip:
-        case S.GasMiningShip:
-        case S.MiningShip:
-            return true;
-        default:
-            return false;
-    }
-}
-
 // DesignListView.cs BindData "Amount": Empire.BuiltObjects + PrivateBuiltObjects of this design.
 export function designAmount(design: Design, empire: Empire): number {
     let n = 0;
@@ -303,25 +290,6 @@ export function componentSummary(design: Design): { name: string; count: number 
         }
     }
     return out;
-}
-
-// Main.Part8.cs:1091 ctlDesignsList_CellClick, "Obsolete" column.
-export function toggleDesignObsolete(design: Design): void {
-    design.isObsolete = !design.isObsolete;
-}
-
-// Main.Part8.cs:1082 ctlDesignsList_CellClick, "AutoRetrofit" column.
-export function toggleDesignAutoRetrofit(design: Design, empire: Empire): boolean {
-    if (isPrivateDesignSubRole(design.subRole)) return false;
-    design.allowAutoRetrofit = !design.allowAutoRetrofit;
-    const apply = (list: BuiltObject[]): void => {
-        for (const bo of list) {
-            if (bo !== null && bo.design === design) bo.suppressAutoRetrofit = !design.allowAutoRetrofit;
-        }
-    };
-    apply(empire.builtObjects);
-    apply(empire.privateBuiltObjects);
-    return true;
 }
 
 // ---- DOM ----
@@ -509,8 +477,7 @@ function createShipDesigns(opts: ShipDesignsOptions): OpenState {
         const obsoleteBtn = el('button', 'ship-designs-button', design.isObsolete ? 'Mark Not Obsolete' : 'Mark Obsolete');
         obsoleteBtn.type = 'button';
         obsoleteBtn.addEventListener('click', () => {
-            toggleDesignObsolete(design);
-            render();
+            issuePlayerCommand(player.galaxy, player, 'toggleDesignObsolete', [design], () => render());
         });
         const retrofitBtn = el('button', 'ship-designs-button', design.allowAutoRetrofit ? 'Retrofit: Automatic' : 'Retrofit: Manual');
         retrofitBtn.type = 'button';
@@ -519,7 +486,8 @@ function createShipDesigns(opts: ShipDesignsOptions): OpenState {
             retrofitBtn.title = LOCKED_TOOLTIP;
         }
         retrofitBtn.addEventListener('click', () => {
-            if (toggleDesignAutoRetrofit(design, (design.empire as Empire | null) ?? player)) render();
+            const owner = (design.empire as Empire | null) ?? player;
+            issuePlayerCommand(owner.galaxy, owner, 'toggleDesignAutoRetrofit', [design], (ok) => ok && render());
         });
         buttons.append(obsoleteBtn, retrofitBtn);
         detailPane.appendChild(buttons);
@@ -542,8 +510,7 @@ function createShipDesigns(opts: ShipDesignsOptions): OpenState {
         };
         const upgrade = checkDesignSubRoleShouldBeUpgraded(player, design.subRole);
         mk(`${getText('Upgrade')}: ${getText(upgrade ? 'Automatic' : 'Manual')}`, () => {
-            setDesignSubRoleShouldBeUpgraded(player, design.subRole, !upgrade);
-            render();
+            issuePlayerCommand(player.galaxy, player, 'setDesignSubRoleUpgrade', [design.subRole, !upgrade], () => render());
         });
         mk(getText('Edit'), () => openEditor({ kind: 'edit', design }));
         mk(getText('Copy As New'), () => openEditor({ kind: 'copy', design }));
@@ -554,9 +521,11 @@ function createShipDesigns(opts: ShipDesignsOptions): OpenState {
             row.appendChild(el('span', 'ship-designs-confirm', resolveGameText(q.message)));
             mk(getText('Yes'), () => {
                 pendingDelete = null;
-                const r = deleteDesign((design.empire as Empire | null) ?? player, [design]);
-                notice = r.message !== undefined ? resolveGameText(r.message) : '';
-                render();
+                const owner = (design.empire as Empire | null) ?? player;
+                issuePlayerCommand(owner.galaxy, owner, 'deleteDesign', [[design]], (r) => {
+                    notice = r.message !== undefined ? resolveGameText(r.message) : '';
+                    render();
+                });
             });
             mk(getText('No'), () => { pendingDelete = null; render(); });
         } else {

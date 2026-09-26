@@ -35,6 +35,9 @@ import {
     VICTORY_TIME_START_YEARS_MIN,
     type StartGameOptions,
 } from '../../sim/startGameOptions';
+// [todosweep2] begin
+import { GALAXY_RESEARCH_SPEED_MAX, GALAXY_RESEARCH_SPEED_MIN, researchBaseTechCostForSliderIndex, researchSpeedSliderIndexFor } from '../../sim/startGameOptions';
+// [todosweep2] end
 import { parseRace, type Race } from '../../sim/data/races';
 import { parseRaceFamilies, type RaceFamily } from '../../sim/data/raceFamilies';
 import { parseGovernments, type Government } from '../../sim/data/governments';
@@ -83,6 +86,8 @@ export const PIRATES_TICKS = ['None', 'Very Few', 'Few', 'Normal', 'Many', 'Very
 export const AGGRESSION_TICKS = ['Peaceful', 'Normal', 'Restless', 'Unstable', 'Chaos'];
 export const DIFFICULTY_TICKS = ['Easy', 'Normal', 'Hard', 'Very Hard', 'Extreme'];
 /** Task M4x: "The Galaxy" Expansion slider labels (Start.cs 3166-3174). */
+// [todosweep2] Start.cs 3200 tbarStartNewGameTheGalaxyResearchSpeed.SetLabels.
+export const RESEARCH_COST_TICKS = ['Very Expensive', 'Expensive', 'Normal', 'Cheap', 'Very Cheap'];
 export const EXPANSION_TICKS = ['Pre-Warp', 'Starting', 'Young', 'Expanding', 'Mature', 'Old'];
 /** Task M4x: "Your Empire" size slider labels (Start.cs 3451-3459). */
 export const EMPIRE_SIZE_TICKS = ['Random', 'Starting', 'Young', 'Expanding', 'Mature', 'Old'];
@@ -579,6 +584,34 @@ function buildGalaxyPage(options: StartGameOptions): HTMLDivElement {
     sliderGrid.appendChild(makeSlider('Expansion', EXPANSION_TICKS, options.galaxyExpansionIndex ?? 1, (i) => {
         options.galaxyExpansionIndex = i;
     }));
+
+    // [todosweep2] begin
+    // "Research Costs" (tbarStartNewGameTheGalaxyResearchSpeed, Start.cs 3200 labels) + the research-cost box
+    // (numStartNewGameTheGalaxyResearchBaseTech, 1..999 thousands). The slider only writes the box (Start.1.cs 4408
+    // meEawywtba / 1000); the box value is what the game uses (Start.1.cs 3693 × 1000 → Galaxy.BaseTechCost).
+    {
+        const researchSlider = makeSlider('Research Costs', RESEARCH_COST_TICKS, researchSpeedSliderIndexFor((options.galaxyResearchSpeed ?? 120) * 1000), (i) => {
+            options.galaxyResearchSpeed = researchBaseTechCostForSliderIndex(i) / 1000;
+            researchBox.value = String(options.galaxyResearchSpeed);
+        });
+        const researchBox = document.createElement('input');
+        researchBox.type = 'number';
+        researchBox.className = 'wizard-research-base-tech';
+        researchBox.min = String(GALAXY_RESEARCH_SPEED_MIN);
+        researchBox.max = String(GALAXY_RESEARCH_SPEED_MAX);
+        researchBox.value = String(options.galaxyResearchSpeed ?? 120);
+        researchBox.title = 'Base research cost (thousands)';
+        researchBox.addEventListener('input', () => {
+            const v = parseInt(researchBox.value, 10);
+            if (!Number.isNaN(v)) options.galaxyResearchSpeed = Math.min(GALAXY_RESEARCH_SPEED_MAX, Math.max(GALAXY_RESEARCH_SPEED_MIN, v));
+        });
+        const researchBoxLabel = document.createElement('span');
+        researchBoxLabel.textContent = 'K';
+        researchSlider.appendChild(researchBox);
+        researchSlider.appendChild(researchBoxLabel);
+        sliderGrid.appendChild(researchSlider);
+    }
+    // [todosweep2] end
 
     // "Difficulty scales as player nears victory" (chkStartNewGameTheGalaxyDifficultyScaling).
     const scalingRow = document.createElement('label');

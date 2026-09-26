@@ -19,6 +19,7 @@
 // Normal (0.5, SetTechTreeStartingDefaults) and Level 1-6. AI pirate factions
 // are generated when piratePrevalence > 0 (pirates.ts).
 
+import { rebuildIndexes } from './indexRebuild';
 import { baconInitializeSettings, resetBaconSettings } from './baconSettings';
 import { applyVictoryConditionsToGalaxy, type VictoryConditions } from './victory';
 import { reviewComponentPrices, reviewResourcePrices } from './market';
@@ -139,6 +140,18 @@ export interface CreateGameOptions {
     raceSpecificEventsEnabled?: boolean;
     /** Galaxy.EmpireTerritoryColonyInfluenceRangeFactor from the wizard (<= 0 = auto). */
     empireTerritoryColonyInfluenceRangeFactor?: number;
+    // [todosweep2] begin
+    /** Start.2.cs 446 CreateGameFromSettings double_4 = the wizard's research-cost box × 1000 (Start.1.cs 3693): the
+     *  Galaxy ctor's baseTechCost (research costs, component tech points, Galaxy.BaseTechCost). Unset = 120000
+     *  ("Normal", Main.Part9.cs 2668 GalaxyResearchSpeed = 120). */
+    baseTechCost?: number;
+    /** EmpireStart.ColonizationRangeEnforceLimit → Galaxy.ColonizationRangeEnforceLimit (Start.2.cs 508). Unset = true
+     *  (EmpireStart.cs 41 / Galaxy.cs 729). */
+    colonizationRangeEnforceLimit?: boolean;
+    /** EmpireStart.ColonizationRange (float, galaxy units) → Galaxy.ColonizationRange (Start.2.cs 509). Unset = 3000000
+     *  (EmpireStart.cs 42 / Galaxy.cs 732). */
+    colonizationRange?: number;
+    // [todosweep2] end
     /**
      * TEST-ONLY seam (not part of the game API; the wizard never sets it). Called at each
      * game-start phase boundary *after* the named step has run (see GameStartPhase); returning
@@ -871,6 +884,8 @@ export function createGame(opts: CreateGameOptions): Game {
         gameData: gd,
         races: galaxyRaces,
         empireStarts: all.filter((e) => e.resolvedRace !== null).map((e) => ({ resolvedRace: e.resolvedRace!, projectedColonyAmount: e.projectedColonyAmount })),
+        // Start.2.cs 485 new Galaxy(..., double_4, ...) (Galaxy.4.cs 2088 baseTechCost).
+        baseTechCost: opts.baseTechCost,
     });
     // Unset galaxyAge = 1: the game's standard preset (Start.cs 3298-3327: Expansion 1 / empire tech Normal 0.5).
     // The C# option-screen defaults (Main.Part9.cs 2664 / 2689: GalaxyExpansion 0, YourEmpireTechLevel 0) are a
@@ -883,6 +898,9 @@ export function createGame(opts: CreateGameOptions): Game {
     // Expansion slider), not the player's EmpireStart.Age.
     galaxy.startingAge = galaxy.age;
     galaxy.difficultyLevel = opts.difficultyLevel ?? 1.0;
+    // Start.2.cs 118 `galaxy_0.RebuildIndexes()` (method_78, after the 105-116 settings and LoadDesignNames): every
+    // index grid rebuilt from positions — habitats move from their star's cell (Galaxy.4.cs 2323-2333) to their own.
+    rebuildIndexes(galaxy);
     // Start.2.cs 500: no race (AvailableCharacters) starting characters until 1478.
     galaxy.allowRaceStartingCharacters = false;
     // Start.2.cs 501-506 (M4z3): the story lines and Legends event switches (VictoryConditions / the wizard's story box).
@@ -893,6 +911,10 @@ export function createGame(opts: CreateGameOptions): Game {
     galaxy.storyShadowsEnabled = opts.storyShadowsEnabled ?? false;
     registerGameHooks();
     galaxy.empireTerritoryColonyInfluenceRangeFactor = opts.empireTerritoryColonyInfluenceRangeFactor ?? galaxy.empireTerritoryColonyInfluenceRangeFactor;
+    // Start.2.cs 508-509 ColonizationRangeEnforceLimit / ColonizationRange = empireStart_0's (read by Empire.4.cs 4411
+    // CanEmpireColonizeHabitatRange, exploration.ts).
+    galaxy.colonizationRangeEnforceLimit = opts.colonizationRangeEnforceLimit ?? true;
+    galaxy.colonizationRange = Math.fround(opts.colonizationRange ?? 3000000);
     galaxy.colonyNames = opts.colonyNames ?? null;
     galaxy.colonyNameIndex = 0;
 

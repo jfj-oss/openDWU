@@ -419,7 +419,8 @@ describe('Galaxy.DoTasks (Galaxy.cs 3054) and DoTasksTimeSensitive (3046)', () =
         galaxy.delayedActions.push(reputationProbe(e));
         galaxyDoTasksTimeSensitive(galaxy, 0, 1250);
         expect(e.civilityRating - before).toBe(2);
-        expect(galaxy.delayedActions).toEqual([]);
+        // Only the (not yet due) BaconMain.cs 700-715 "ProcessEmpireScienceShips" action stays queued.
+        expect(galaxy.delayedActions.map((p) => p.action?.messageTitle)).toEqual(['ProcessEmpireScienceShips']);
         expect(galaxy.lastGalaxyProcessTimeSensitive).toBe(1250);
     });
 });
@@ -435,9 +436,10 @@ describe('frame driver (Main.Part12.cs method_86)', () => {
         const probeEmpire = g.empires[0];
         let civilityFromProbe = 0;
         for (let f = 0; f < 21; f++) {
-            g.delayedActions.push(reputationProbe(probeEmpire));
+            const probe = reputationProbe(probeEmpire);
+            g.delayedActions.push(probe);
             runSimFrame(g, nextFrameMs(schedulerState(g), 1));
-            if (g.delayedActions.length === 0) civilityFromProbe++;
+            if (!g.delayedActions.includes(probe)) civilityFromProbe++;
         }
         const s = schedulerState(g);
         expect(s.frames).toBe(21);

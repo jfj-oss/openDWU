@@ -17,11 +17,13 @@
 //     race + GenerateAbandonedBuiltObject's; GenerateCreatureSwarm per creature; GenerateResourceAtHabitat Next(300, 700);
 //     StartPlague / DisasterAtColony the empire events'; SplitEmpire* NextDouble (+ InitiateEmpireSplit, unported);
 //     ResearchBonusInProject NextDouble; IntergalacticConvoy* the convoy generators'; CharacterGenerate GenerateNewCharacter's.
-//   BaconGalaxy.ExecuteEventAction: "ProcessEmpireScienceShips" Next(26, 35).
+//   BaconGalaxy.ExecuteEventAction: "ProcessEmpireScienceShips" ProcessScienceShips' GetRandomResearchNode Next(0, n) per
+//     lab without a current project, then Next(26, 35).
 //
 // UI-only statements are TODO(port) M9 notes: Galaxy.LocationPinged (RevealObject), OnCharacterImageChanged,
 // ShipImageHelper picture picks (ShipImageHelper._Rnd, not Galaxy.Rnd).
 
+import { executeProcessEmpireScienceShips } from '../baconScienceShips';
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import { Empire as EmpireClass } from '../empire';
@@ -98,6 +100,7 @@ import { shipGroupAssignMission } from '../fleets/shipGroup';
 import { withinFuelRangeAndRefuel } from '../movement';
 import { generateCivilianConvoy, generateMilitaryConvoy } from './storyEvents';
 import type { Design } from '../design';
+import { formatGameTextNow } from '../textResolver';
 
 registerStellarObjectKinds({ isHabitat, isBuiltObject, isCreature });
 
@@ -995,12 +998,12 @@ export function executeEventAction(galaxy: Galaxy, eventAction: EventAction, tri
                     // TODO(port) M9: design{2,3,4}.PictureRef = ShipImageHelper.ResolveNewShipImageIndex(subRole, race, isPirates: false)
                     // (ShipImageHelper._Rnd, not Galaxy.Rnd).
                     const builtObject5 = generateAbandonedBuiltObject(galaxy, habitat, design2, false, false, BuiltObjectEncounterAction.Notify);
-                    builtObject5.name = gameText('Refugee SHIPTYPE', subRoleText(BuiltObjectSubRole.ColonyShip));
+                    builtObject5.name = formatGameTextNow('Refugee SHIPTYPE', [subRoleText(BuiltObjectSubRole.ColonyShip)]);
                     builtObject5.nativeRace = race;
                     const builtObject6 = generateAbandonedBuiltObject(galaxy, habitat, design3, false, false, BuiltObjectEncounterAction.Notify);
-                    builtObject6.name = gameText('Refugee SHIPTYPE', subRoleText(BuiltObjectSubRole.Frigate));
+                    builtObject6.name = formatGameTextNow('Refugee SHIPTYPE', [subRoleText(BuiltObjectSubRole.Frigate)]);
                     const builtObject7 = generateAbandonedBuiltObject(galaxy, habitat, design4, false, false, BuiltObjectEncounterAction.Notify);
-                    builtObject7.name = gameText('Refugee SHIPTYPE', subRoleText(BuiltObjectSubRole.Cruiser));
+                    builtObject7.name = formatGameTextNow('Refugee SHIPTYPE', [subRoleText(BuiltObjectSubRole.Cruiser)]);
                     const habitat22 = galaxy.determineHabitatSystemStar(habitat);
                     if (race === null) throw new Error('NullReferenceException: Galaxy.9.cs 2107 race.Name (no race of intelligence >= 75)');
                     text = gameText('GameEventAction Description GenerateRefugeeFleet', race.name, habitat22.name);
@@ -1665,8 +1668,9 @@ function isNullOrWhiteSpace(s: string | null | undefined): boolean {
  * BaconGalaxy.cs 308 ExecuteEventAction(galaxy, eventAction, targetEmpire, gameEvent, flag): the Bacon mod's repeating
  * "delayed" actions, recognised by MessageTitle. Each handled one clears `flag` (no GeneralDiscovery message) and, for the
  * periodic ones, re-queues itself. `BaconBuiltObject.myMain != null` holds in a running game (the TS has no Main; it is
- * treated as set). Nothing in the TS queues these actions yet (BaconMain.cs 688-715 / 1077 settings init, BaconEmpire loans,
- * BaconHabitat scientific missions — all UI-driven). Returns the updated flag.
+ * treated as set). "ProcessEmpireScienceShips" is queued by baconSettings.ts (BaconMain.cs 700-715); nothing in the TS queues
+ * the others yet (SaveStats / ClearShipsAboutToBeDestroyed settings init BaconMain.cs 688 / 1077, BaconEmpire loans, BaconHabitat
+ * scientific missions — the last two UI-driven). Returns the updated flag.
  */
 export function baconGalaxyExecuteEventAction(galaxy: Galaxy, eventAction: EventAction, targetEmpire: Empire | null, gameEvent: GameEvent | null, flag: boolean): boolean {
     void targetEmpire;
@@ -1679,8 +1683,9 @@ export function baconGalaxyExecuteEventAction(galaxy: Galaxy, eventAction: Event
         eventAction.executionDate = galaxyStarDate(galaxy) + day * 10;
         galaxy.delayedActions.push(new EventActionExecutionPackage(eventAction, gameEvent, galaxy.playerEmpire));
     } else if (messageTitle === 'ProcessEmpireScienceShips') {
-        // TODO(port) M4k/deferred: BaconEmpire.ProcessScienceShips(myMain) (lab progress on exploration ships) is not ported.
-        throw new Error('TODO(port): BaconEmpire.ProcessScienceShips (BaconGalaxy.cs 322) — scripted "ProcessEmpireScienceShips" action');
+        // BaconGalaxy.cs 322-329: BaconEmpire.ProcessScienceShips(myMain), then re-queue Next(26, 35) days later.
+        executeProcessEmpireScienceShips(galaxy, eventAction, gameEvent);
+        flag = false;
     } else if (messageTitle === 'missionExploreRuins') {
         throw new Error('TODO(port): BaconHabitat.ResolveScientificMissionExploreRuins (BaconGalaxy.cs 334)');
     } else if (messageTitle === 'missionProspectForResources') {

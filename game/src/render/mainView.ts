@@ -50,6 +50,9 @@ import { BuiltObjectLayer, BUILT_OBJECT_MAX_FACTOR } from './builtObjectLayer';
 // [ambientfx] begin
 import { AmbientLayer } from './ambientLayer';
 // [ambientfx] end
+// [fightersfx] begin
+import { FighterLayer } from './fighterLayer';
+// [fightersfx] end
 // [combatfx] begin
 import { updateCombatEffects } from './effectsLayer';
 // [combatfx] end
@@ -949,6 +952,9 @@ export class MainView {
     /** Engine exhaust, navigation lights, mining/construction animations, planetary shields. */
     private ambientLayer!: AmbientLayer;
     // [ambientfx] end
+    // [fightersfx] begin
+    private fighterLayer!: FighterLayer;
+    // [fightersfx] end
     private textures!: MainViewTextures;
     private minZoom = 1e-6;
     private lastGridZoom = -1;
@@ -1261,6 +1267,10 @@ export class MainView {
         // [ambientfx] begin
         this.ambientLayer = new AmbientLayer(this.galaxy, this.world, this.builtObjectLayer.root, this.store, (h, zz) => this.drawnSize(h, zz));
         // [ambientfx] end
+        // [fightersfx] begin
+        // Launched fighters / bombers above the ships and their ambient effects, below the combat effects.
+        this.fighterLayer = new FighterLayer(this.galaxy, this.world, this.store);
+        // [fightersfx] end
 
         this.attachInput();
     }
@@ -1378,6 +1388,9 @@ export class MainView {
         // [ambientfx] begin
         this.ambientLayer.update(z, cam);
         // [ambientfx] end
+        // [fightersfx] begin
+        this.fighterLayer.update(z, cam);
+        // [fightersfx] end
         // [combatfx] begin
         // Combat effects (weapon fire, explosions, shield strikes, hyperjump flashes) above the ships.
         updateCombatEffects(this.galaxy, this.world, this.store, this.builtObjectLayer, z, cam);

@@ -30,6 +30,7 @@ import { shipGroupDoTasks } from './shipGroupTick';
 import { empireShipGroups } from '../fleets/shipGroup';
 import { identifyMechanoidEmpire, warnOfIncomingEnemyFleetsAndPlanetDestroyers } from '../fleets/militaryAI';
 import { getBuiltObjectsAtLocation } from '../stationPlacement';
+import { drainCommandBoundary, enterSimFrame, leaveSimFrame } from './commandBoundary';
 
 /**
  * Optional per-pass timer (harness `profile`): accumulated wall ms per frame-driver pass. The wall clock is injected
@@ -418,6 +419,18 @@ export interface FrameOptions {
  * read CurrentDateTime / CurrentStarDate once, ProcessMain (with a view), method_86, then the worker queue.
  */
 export function runSimFrame(galaxy: Galaxy, frameMs: number, opts: FrameOptions = {}): void {
+    // Command log (tasks/M4-agent-brief.md): queued external commands apply here, at the frame boundary, stamped with
+    // the sim time before the clock advances. Nothing queued ⇒ nothing happens (the no-command digest is unchanged).
+    drainCommandBoundary(galaxy);
+    enterSimFrame();
+    try {
+        runSimFrameBody(galaxy, frameMs, opts);
+    } finally {
+        leaveSimFrame();
+    }
+}
+
+function runSimFrameBody(galaxy: Galaxy, frameMs: number, opts: FrameOptions): void {
     const state = schedulerState(galaxy);
     galaxy.nowMs += frameMs;
     syncLegacySecondsClock(galaxy);
@@ -459,7 +472,11 @@ export class SimDriver {
     }
 
     advance(realDtMs: number, opts: FrameOptions = {}): number {
-        if (this.pausedNow()) return 0;
+        if (this.pausedNow()) {
+            // Orders given while paused land at once (the clock is frozen: same boundary as the next frame's start).
+            drainCommandBoundary(this.galaxy);
+            return 0;
+        }
         this.realAccumulator += realDtMs;
         let frames = 0;
         while (this.realAccumulator >= FRAME_REAL_MS && frames < this.maxFrames) {
