@@ -179,7 +179,7 @@ const DESIRED_FOREIGN_COLONY_RESOURCE_THRESHHOLD = 40;
 /** Galaxy.ResupplyShipMinimumDistance (5109). */
 const RESUPPLY_SHIP_MINIMUM_DISTANCE = 1000000.0;
 /** Galaxy.FleetAssembleAttackWaitPeriodPerShip (5116, long ms). */
-const FLEET_ASSEMBLE_ATTACK_WAIT_PERIOD_PER_SHIP = 25000;
+export const FLEET_ASSEMBLE_ATTACK_WAIT_PERIOD_PER_SHIP = 25000;
 /** 2.304E+09 (48000²) — PostureRangeSquared for attack / blockade points (double). */
 const POSTURE_RANGE_SQUARED_ATTACK_POINT = 2304000000.0;
 /** 250000000000.0 (500000²) — PostureRangeSquared of defend fleets. */
@@ -301,7 +301,7 @@ function stellarObjectEmpire(o: StellarObject): Empire | null {
 }
 
 /** StellarObject.DockingBays (null for a creature). */
-function stellarDockingBays(o: StellarObject): unknown[] | null {
+export function stellarDockingBays(o: StellarObject): unknown[] | null {
     if (isHabitat(o) || isBuiltObject(o)) return o.dockingBays;
     return null;
 }
@@ -1155,7 +1155,7 @@ export function selectWayPointOnTheWay(galaxy: Galaxy, self: Empire, x: number, 
 }
 
 /** Empire.8.cs 3582/3587 DetermineLatestArrivalAtDestination(fleet, x, y). */
-function determineLatestArrivalAtDestination(galaxy: Galaxy, fleet: ShipGroup, x: number, y: number): number {
+export function determineLatestArrivalAtDestination(galaxy: Galaxy, fleet: ShipGroup, x: number, y: number): number {
     const currentStarDate = galaxyStarDate(galaxy);
     let num = currentStarDate;
     const val = shipGroupWarpSpeed(fleet);

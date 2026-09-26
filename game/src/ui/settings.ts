@@ -46,6 +46,13 @@ export interface UiSettings {
     // [diplovoice] begin — 18b: AI empires' diplomatic replies voiced by the same local model (off unless it answers).
     diplomatVoice: boolean;
     // [diplovoice] end
+
+    // [popupstubs] begin — messages first appear as stubs under the top-right panel.
+    /** Open the popup card by itself when a message arrives (the 16d behaviour); off: only the stub. */
+    openMessagesAutomatically: boolean;
+    /** Stubs shown at once (1..6); the rest scroll. */
+    messageStubsVisible: number;
+    // [popupstubs] end
 }
 
 const STORAGE_KEY = 'dwu-ui-settings';
@@ -76,6 +83,11 @@ export const DEFAULT_SETTINGS: UiSettings = {
     // [diplovoice] begin
     diplomatVoice: true,
     // [diplovoice] end
+
+    // [popupstubs] begin
+    openMessagesAutomatically: false,
+    messageStubsVisible: 6,
+    // [popupstubs] end
 };
 
 /** Minimal storage shape (localStorage-compatible). */
@@ -135,6 +147,13 @@ export function loadSettings(): UiSettings {
         // [diplovoice] begin
         if (typeof parsed.diplomatVoice === 'boolean') out.diplomatVoice = parsed.diplomatVoice;
         // [diplovoice] end
+
+        // [popupstubs] begin
+        if (typeof parsed.openMessagesAutomatically === 'boolean') out.openMessagesAutomatically = parsed.openMessagesAutomatically;
+        if (typeof parsed.messageStubsVisible === 'number' && Number.isFinite(parsed.messageStubsVisible)) {
+            out.messageStubsVisible = Math.min(6, Math.max(1, Math.round(parsed.messageStubsVisible)));
+        }
+        // [popupstubs] end
     } catch {
         // Corrupt blob: keep the defaults.
     }

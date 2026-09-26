@@ -29,6 +29,7 @@ import { calculateAnnualCashflow } from '../treasury';
 import { netRound } from '../taxes';
 import { CharacterRole, getCharactersByRole, type Character } from '../characters';
 import { AdvisorMessageType, checkTaskAuthorized, type RefCount } from '../diplomacyTick';
+import { BoxedPirateRelationType } from '../advisorQueue';
 import { calculateAccurateAnnualCashflowIncludingUnderConstruction } from '../construction/facilities';
 import { GalaxyLocationType, type GalaxyLocation } from '../galaxyLocation';
 import { SECTOR_SIZE } from '../logistics/orders';
@@ -357,7 +358,7 @@ export function pirateReviewEmpireRelationsCore(galaxy: Galaxy, empire: Empire, 
                 if (otherEmpire.pirateEmpireBaseHabitat !== null) {
                     if (starDate >= num4) {
                         const refusalCount2: RefCount = { value: 0 };
-                        if (checkTaskAuthorized(galaxy, empire, empire.controlDiplomacyTreaties, refusalCount2, automationMessage('Automation Pirate Protection To Pirates', otherEmpire.name), otherEmpire, AdvisorMessageType.TreatyOffer, null, PirateRelationType.Protection, null)) {
+                        if (checkTaskAuthorized(galaxy, empire, empire.controlDiplomacyTreaties, refusalCount2, automationMessage('Automation Pirate Protection To Pirates', otherEmpire.name), otherEmpire, AdvisorMessageType.TreatyOffer, null, new BoxedPirateRelationType(PirateRelationType.Protection), null)) {
                             const text = gameText('Pirate Offer Protection Other Pirate');
                             const empireMessage = new EmpireMessage(empire, EmpireMessageType.PirateOfferProtection, null);
                             empireMessage.description = text;
@@ -369,7 +370,7 @@ export function pirateReviewEmpireRelationsCore(galaxy: Galaxy, empire: Empire, 
                 } else if (checkWithinProximityOfNearestColony(galaxy, otherEmpire, empire, num) && starDate >= num4) {
                     const num11 = calculatePirateProtectionPricePerMonth(galaxy, empire, otherEmpire).price;
                     const refusalCount3: RefCount = { value: 0 };
-                    if (checkTaskAuthorized(galaxy, empire, empire.controlDiplomacyTreaties, refusalCount3, automationMessage('Automation Pirate Protection', otherEmpire.name, num11), otherEmpire, AdvisorMessageType.TreatyOffer, null, PirateRelationType.Protection, null)) {
+                    if (checkTaskAuthorized(galaxy, empire, empire.controlDiplomacyTreaties, refusalCount3, automationMessage('Automation Pirate Protection', otherEmpire.name, num11), otherEmpire, AdvisorMessageType.TreatyOffer, null, new BoxedPirateRelationType(PirateRelationType.Protection), null)) {
                         const text2 = gameText('Pirate Offer Protection');
                         const empireMessage2 = new EmpireMessage(empire, EmpireMessageType.PirateOfferProtection, null);
                         empireMessage2.description = text2;
@@ -383,7 +384,7 @@ export function pirateReviewEmpireRelationsCore(galaxy: Galaxy, empire: Empire, 
                 if (empire.pirateEmpireBaseHabitat !== null && !determineDesirePirateProtectionCore(galaxy, empire, otherEmpire) && starDate >= num5) {
                     const pirateRelation2 = obtainPirateRelation(otherEmpire, empire);
                     const refusalCount: RefCount = { value: 0 };
-                    if (checkTaskAuthorized(galaxy, empire, empire.controlDiplomacyTreaties, refusalCount, automationMessage('Automation Cancel Pirate Protection', otherEmpire.name, pirateRelation2.monthlyProtectionFeeToThisEmpire), otherEmpire, AdvisorMessageType.TreatyOffer, null, PirateRelationType.None, null)) {
+                    if (checkTaskAuthorized(galaxy, empire, empire.controlDiplomacyTreaties, refusalCount, automationMessage('Automation Cancel Pirate Protection', otherEmpire.name, pirateRelation2.monthlyProtectionFeeToThisEmpire), otherEmpire, AdvisorMessageType.TreatyOffer, null, new BoxedPirateRelationType(PirateRelationType.None), null)) {
                         changePirateRelation(empire, otherEmpire, PirateRelationType.None, starDate);
                         const description = otherEmpire.pirateEmpireBaseHabitat === null ? gameText('Pirates Cancel Pirate Protection Normal') : gameText('Pirates Cancel Pirate Protection Pirates');
                         sendMessageToEmpire(empire, otherEmpire, EmpireMessageType.CancelPirateProtection, empire, description);
