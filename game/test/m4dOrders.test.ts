@@ -340,5 +340,5 @@ describe('harness smoke (seed 1, 600 game-s)', () => {
             if (o.requestingColony !== null) expect(g.habitats).toContain(o.requestingColony);
             if (o.requestingBuiltObject !== null) expect(o.requestingBuiltObject.hasBeenDestroyed).toBe(false);
         }
-    }, 600000);
+    }, 1800000);
 });

@@ -104,7 +104,98 @@ Build after 19b lands; each is mostly data + a spread rule on the 19b hooks.
 4. Succession: leaders age/die, heirs, regencies, crises → persona shifts. [cheap-medium]
 5. Frontier autonomy: distance-based drift toward local rule, sector governors with power. [medium]
 6. Anomalies with branching investigations (derelicts, hazards, precursor caches) via the story system. [medium]
-7. Creature ecology: breeding, migration, hunting. [medium]
+7. Creature ecology: breeding, migration, hunting. [medium] — **Rim fauna design (user, 2026-09-26):** creature density
+   scales with distance from the galactic centre (far more herds at the rim than the core; the five ported CreatureTypes
+   keep their C# generation, the scenario adds rim herds on top); herds move as a group with a leader and a home range;
+   seasonal (yearly, Rnd-driven) migrations push herds into rim-adjacent territory; herds must feed: they graze gas
+   clouds, asteroid fields and mining stations' habitats, draining a resource-stock fraction and damaging/blocking
+   mining stations while feeding, so rim colonies face a recurring choice between defending the stations (killing
+   herds, which also shrinks the population and the migration pressure) and tolerating the losses (herd hunting yields
+   creature-specific resources/tech as in the base game). Tension hook: repeated losses raise colony unrest (19d2 crisis
+   plumbing) and the empire AI weighs escort/defence vs. relocation. Data-driven: herd size, feed rate, migration
+   radius/season, density curve as scenario params; flag off = byte-identical.
 8. First-contact protocol: short negotiation setting the starting attitude, voiced by personas. [cheap]
 9. Doctrines: exclusive empire-wide choices with lasting effects. [medium]
 13. AI personality packs via overlay presets. [cheap]
+
+## 19h — Rim frontier geography (ACCEPTED by the user 2026-09-26 — "do it"; stacks with 19a rim trader and the 19g-7 rim fauna)
+Makes the rim itself hard to reach and hold, independent of the fauna. Scenario layer, data-driven, flag off = byte-identical.
+1. Storm belts: nebula / ion storms generated on a distance-from-centre curve so the outer ring is a hazard band (base storm
+   rules apply: slower movement, hull damage without shields; Bacon checkInStorm / storm-survival checks already ported).
+2. Sparser rim: star placement thins past a radius (fewer waypoints, longer jumps) so hyperdrive range and fuel decide who
+   can reach the rim goods. Generation change → re-pins only inside the scenario (wizard-level option).
+3. Gravity shoals: a few fixed deep-space features that end hyperjumps early (Bacon gravity-well rule generalised to a
+   scenario feature), creating natural chokepoints / ambush points for pirates and herds.
+4. Fuel scarcity: caslon / hydrogen placement biased inward so rim outposts need supply lines, gas mining or 19c company depots.
+5. Sensor fog: a rim-wide sensor-range penalty until listening posts / long-range sensors are built, so herds and pirate bases
+   stay hidden longer.
+6. Map scale (user, 2026-09-26): a galaxy-extent multiplier (same star count spread wider, so the rim is far in travel time)
+   and a raised star cap above the wizard's 1400 for those with the CPU, both scenario/wizard options; sector grid stays
+   the C# constant (Galaxy.3.cs SectorSize 2,000,000) unless the multiplier demands otherwise (territory/index grids derive
+   from it). Re-pins only inside the scenario. Must ship with a speed check at the top setting (single-threaded sim; the
+   36 game-days/min budget must hold or the option is capped).
+Params: belt inner radius, storm density, thinning radius/factor, shoal count, fuel bias, fog factor, extent multiplier, star cap.
+
+## 19i — Rim atmosphere (ACCEPTED by the user 2026-09-26 — "yes"; presentation only, reads a distance-from-centre curve; flag off = untouched)
+Visual: (1) colour grading by radius — desaturate + cold blue-violet tint on star field/nebulae past the rim band, fading in
+over a band; (2) rim star types biased to dim red/brown dwarfs and white dwarfs (generation curve, re-pins only in the
+scenario); (3) dark dust lanes instead of bright nebula art, and 19h-5 sensor fog rendered as grainy grey murk for
+unexplored rim space; (4) thinner deep-field star layer / sparser background art; (5) derelicts, dead stations, gutted
+independent colonies on the rim curve from the original ruins/debris art (some become 19g-7 herd feeding sites);
+(6) distant creature silhouettes drifting in the background at galaxy zoom; (7) fewer nav lights / dimmer city glow on
+rim outposts. Audio: (8) 19e-11 music selector gets a "rim" mood weighted by radius (sparse drones, silences, original
+tracks that fit); (9) low wind/static ambient bed growing with distance, distant creature calls and hull creaks at system
+zoom; (10) faint static layer on advisor/diplomacy voice in the fog; garbled rim distress calls in the ticker. Text/UI:
+(11) bleaker rim name table, more numbered survey designations; (12) rim-specific exploration/colony message wording
+(lost contact, missing survey ship, unusual readings); (13) faint grain/vignette on the main view deep in the rim, minimap
+dims the outer band. Effort: ~1 agent-day; build with 19h; must not change any sim digest (render/audio/text only except 2).
+
+## 19j — Rim herders (ACCEPTED by the user 2026-09-26 — "yes"; rim independents coexist with and use the fauna; builds right after 19g-7)
+1. Herder peoples: a rim independent race trait "symbiotic" — herds are docile to that race's colonies/ships; herder worlds
+   sit inside herd home ranges, so herds are their defence (attack a herder colony → the herd turns on you; leave them
+   alone → herds ignore your freighters crossing the range).
+2. Living infrastructure: herder private-sector freighters/miners are tamed creatures — slow, self-fuelling, storm-immune —
+   the cheap way across 19h storm belts.
+3. Sustainable harvest: herds shed the creature resources the base game drops on a kill; herders gather without killing, so
+   their ports are the only steady source → plugs into 19a (the Concord wants herd products; rivals compete for herders).
+4. Drovers and guides: herder characters gained by diplomacy — a drover on a fleet lets it pass a herd; a guide on an
+   explorer reveals safe lanes through shoals/fog; they leave when goodwill is lost.
+5. Two paths per colony: protect the herd range → protectorate that keeps its herds and pays in herd goods; conquer →
+   herds go feral for years and migrate harder into your space; third route: steal herding tech via espionage (19d3
+   proliferation) and domesticate herds yourself.
+6. Migration-season events: herders warn friendly empires before a migration and ask warships out of the corridor;
+   ignoring it drops relations and makes herds aggressive.
+7. AI: cautious rim AIs take the protectorate path, aggressive ones conquest — different outcomes per neighbour.
+Reuses: race traits, protectorate relations, character joining, resource system, 19d-6 independents as actors, 19g-7 herd
+rules. Effort: medium (~1–2 agent-days). Flag off = byte-identical.
+
+## 19k — Big galaxies: 60 empires + independents as real actors (ACCEPTED by the user 2026-09-26)
+1. 60-empire games: the wizard cap is already 100 (startGameOptions.ts OTHER_EMPIRES_COUNT_MAX; the C# lists no bound), so
+   this is verification, not a cap change: (a) a 60-empire / 1400-star soak must hold the 36 game-days/min budget or the
+   wizard warns above the measured limit; (b) Galaxy.cs SelectColorFromKey has 20 key colours → with >20 empires colours
+   repeat as in the original; add a scenario option for an extended palette (data) so 60 empires stay distinguishable;
+   (c) 22 races → duplicate-race empires (original behaviour) keep distinct names/flags (83 flag shapes); (d) diplomacy
+   screen / empire lists must scroll and stay usable at 60 (UI check); (e) 19h-6 map scale is the natural pairing.
+2. Independents as actors (extends 19d-6): the independent empire gets, per independent colony and scaled by population
+   like Galaxy.7.cs GenerateIndependentTraders already does for freighters, (a) a small defence fleet (escorts/frigates
+   from its own designs, stance defend-home), (b) mining stations placed by an independent construction ship
+   (stationPlacement rules) in its home system AND in nearby unclaimed systems within a radius param (user, 2026-09-26:
+   "let them build stations in other systems as well") — stations, not colonies, so their reach grows without their
+   borders; stations in a system another empire later claims become a friction point (buy-out / tolerate / clear), (c) freighters (already ported), (d) a militia refresh when ships die —
+   but NO colony ships / colonisation (hard cap params: station radius in sectors, stations per independent colony, fleet
+   size cap) so they never become a 61st empire on their own. Herder independents (19j)
+   use tamed creatures instead of ships for (a)–(c). Flag off = byte-identical (the base independents stay pure C#).
+3. Independent leagues (user, 2026-09-26): independent colonies within reach of each other (radius param, same or
+   compatible race attitudes, both under threat — pirate raids, a neighbour's expansion, herd losses — or simply prosperous)
+   may form a league: a named sub-faction of the independent empire (one league flag/colour, a council seat at the founding
+   colony). Effects while in a league: (a) pooled defence — the fleet cap rises with member count and league ships answer
+   raids on any member; (b) shared stations — the station radius grows and members share income; (c) exactly ONE extra
+   colony per league (never per member): the league sends one colony ship to the best nearby unclaimed world to simulate
+   reaching out of isolation, after which colonisation stops again; the new colony is a league member; (d) leagues negotiate
+   as a bloc — protectorate / trade offers go to the league, joining one member's empire pulls the rest toward it (relation
+   bonus) or splits the league if they refuse; (e) leagues can dissolve (a member conquered, relations collapse) → back to
+   isolated behaviour, the extra colony stays independent. Params: league radius, min members, chance per year, fleet
+   multiplier, one-colony toggle. Ties: 19d-6 independents as actors, 19j herder leagues (herds pooled), 19a (a league on
+   the rim becomes a trade partner bloc). Flag off = byte-identical.
+Effort: 1 ≈ half a day (soak + palette + UI check); 2 ≈ 1 agent-day; 3 ≈ 1 agent-day after 2. Effort: medium (~1 agent-day);
+build after 19d2 (unrest plumbing) alongside 19g-7 rim fauna; 19a/19c tests must still pass with 19h on.

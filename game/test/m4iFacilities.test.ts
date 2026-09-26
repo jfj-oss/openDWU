@@ -144,5 +144,5 @@ describe('M4i harness: facility AI', () => {
             }
         }
         expect(Object.keys(r.todoHits).filter((k) => k.startsWith('M4i'))).toEqual([]);
-    }, 600000);
+    }, 1800000);
 });

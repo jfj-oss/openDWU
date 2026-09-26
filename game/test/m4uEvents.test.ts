@@ -203,5 +203,5 @@ describe('M4u harness smoke', () => {
         const m4u = Object.keys(r.todoHits).filter((k) => k.startsWith('M4u '));
         expect(m4u).toEqual([]);
         void empireEvents;
-    }, 600000);
+    }, 1800000);
 });

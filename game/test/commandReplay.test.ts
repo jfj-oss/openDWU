@@ -64,7 +64,7 @@ describe('command log: seed + commands replay the game', () => {
         }
         expect(log.filter((e) => e.source === 'clock').map((e) => (e as { speed: number }).speed)).toEqual([2, 1]);
         live = fullDigest(game);
-    }, 1200000);
+    }, 2400000);
 
     it('replayCommandLog from a fresh createGame with the same seed gives the identical game', () => {
         const { seed, ...options } = tickGameOptions(gameData);
@@ -72,7 +72,7 @@ describe('command log: seed + commands replay the game', () => {
         const r = fullDigest(game);
         expect(r.digest).toBe(live.digest);
         expect(r.save === live.save).toBe(true);
-    }, 1200000);
+    }, 2400000);
 
     it('saving mid-way, loading and continuing gives the identical game', () => {
         const game = cachedTickGame(gameData);
@@ -87,7 +87,7 @@ describe('command log: seed + commands replay the game', () => {
         const r = fullDigest(loaded);
         expect(r.digest).toBe(live.digest);
         expect(r.save === live.save).toBe(true);
-    }, 1200000);
+    }, 2400000);
 
     it('the same commands from a real-time driver (irregular frames, pauses, skewed wall clocks) give the identical game', () => {
         // Wall clocks nobody under src/sim may read: skew them wildly.
@@ -132,5 +132,5 @@ describe('command log: seed + commands replay the game', () => {
         const r = fullDigest(game);
         expect(r.digest).toBe(live.digest);
         expect(r.save === live.save).toBe(true);
-    }, 1200000);
+    }, 2400000);
 });

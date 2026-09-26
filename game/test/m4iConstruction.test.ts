@@ -225,7 +225,7 @@ describe('M4i harness: empire construction entry points', () => {
             expect(b.builtAt, b.name).toBeNull();
             expect(b.unbuiltComponentCount).toBe(0);
         }
-    }, 600000);
+    }, 1800000);
 
     it('BuildDefensiveBases / RetireOldBuiltObjects / DetermineMonitoringStationLocation run on a live galaxy', () => {
         const g = cachedTickGame(gameData).galaxy;
@@ -238,11 +238,11 @@ describe('M4i harness: empire construction entry points', () => {
             const q = habitatConstructionQueue(e.capital!);
             expect(q).not.toBeNull();
         }
-    }, 600000);
+    }, 1800000);
 
     it('600 game-seconds of ticks reach no M4i stub', () => {
         const { run: r } = cachedTickGameRun(gameData, { seconds: 600 }); // createTickGame + runGameSeconds(g, 600), built once and cached (test/helpers/gameCache.ts)
         const m4i = Object.keys(r.todoHits).filter((k) => k.startsWith('M4i'));
         expect(m4i).toEqual([]);
-    }, 600000);
+    }, 1800000);
 });

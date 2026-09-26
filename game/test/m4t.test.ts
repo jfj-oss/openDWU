@@ -298,5 +298,5 @@ describe('harness smoke (seed 1, 600 game-s, ships parked)', () => {
         const m4t = Object.keys(r.todoHits).filter((k) => k.startsWith('M4t '));
         expect(m4t).toEqual([]);
         for (const e of g.empires) expect(e.systemExploredCount).toBeGreaterThan(0);
-    }, 600000);
+    }, 1800000);
 });

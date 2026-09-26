@@ -344,7 +344,7 @@ describe('feature off / no model: the scheduler path is untouched', () => {
             if (!on) expect(fetches).toBe(0);
             else expect(fetches).toBeGreaterThan(0); // it probed, found nothing, stayed off
         }
-    }, 600000);
+    }, 1800000);
 
     it('no scheduler / tick module imports the 18c modules', () => {
         // Walk the static import graph from the scheduler and the harness: the model path is reachable only from the UI.

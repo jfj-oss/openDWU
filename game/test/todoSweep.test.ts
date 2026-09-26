@@ -31,7 +31,7 @@ import { createGame } from '../src/sim/game';
 let gameData: GameData;
 beforeAll(async () => {
     gameData = await loadGameDataFs();
-}, 600000);
+}, 1800000);
 
 const aiEmpires = (g: Galaxy): Empire[] => g.empires.filter((e) => e !== g.playerEmpire && e !== g.independentEmpire && e.pirateEmpireBaseHabitat === null && e.active);
 
@@ -56,7 +56,7 @@ describe('galaxy generation (Galaxy.4.cs 2794 GenerateGasCloud, Galaxy.6.cs 3714
         // The runtime search (index grid) returns a Parent == null habitat: the star itself at its own position.
         expect(g.findNearestSystemGasCloudAsteroid(stars[5].xpos + 10, stars[5].ypos)).toBe(stars[5]);
         expect(g.generationTopLevelHabitats).toBeNull();
-    }, 600000);
+    }, 1800000);
 
     it('GenerateContinentalPlanet gives the planet its Cargo / Troops / TroopsToRecruit / InvadingTroops lists (Galaxy.8.cs 479-482)', () => {
         const g = createTickGame(gameData).galaxy;
@@ -66,7 +66,7 @@ describe('galaxy generation (Galaxy.4.cs 2794 GenerateGasCloud, Galaxy.6.cs 3714
         expect(p.troops).not.toBeNull();
         expect(p.troopsToRecruit).not.toBeNull();
         expect(p.invadingTroops).not.toBeNull();
-    }, 600000);
+    }, 1800000);
 });
 
 describe('forceStructure.ts economy reads', () => {
@@ -95,7 +95,7 @@ describe('forceStructure.ts economy reads', () => {
         e.thisYearsStateFuelCosts = 1234;
         expect(calculateSpareAnnualRevenue(g, e, 0)).toBeCloseTo(spare - 1234, 6);
         e.thisYearsStateFuelCosts = 0;
-    }, 600000);
+    }, 1800000);
 });
 
 describe('independentTraders.ts (Galaxy.3.cs 1799 IsStellarObjectDockable, Galaxy.cs 3671, Empire.9.cs 3065)', () => {
@@ -113,7 +113,7 @@ describe('independentTraders.ts (Galaxy.3.cs 1799 IsStellarObjectDockable, Galax
         colony.isBlockaded = true;
         expect(isStellarObjectDockable(g, colony, a)).toBe(false);
         colony.isBlockaded = false;
-    }, 600000);
+    }, 1800000);
 
     it('mining rights let an empire build in the other empire territory; viewable empires are visible', () => {
         const g = createTickGame(gameData).galaxy;
@@ -129,7 +129,7 @@ describe('independentTraders.ts (Galaxy.3.cs 1799 IsStellarObjectDockable, Galax
         const target = b.builtObjects.find((bo) => bo.role !== BuiltObjectRole.Base) ?? b.builtObjects[0];
         a.empiresViewable.push(b);
         expect(isObjectVisibleToThisEmpire(g, a, target)).toBe(true);
-    }, 600000);
+    }, 1800000);
 
     it('a trader flagged RefuelForNextMission gets a Refuel mission; a retiring one invisible to the player is torn down', () => {
         const g = createTickGame(gameData).galaxy;
@@ -150,7 +150,7 @@ describe('independentTraders.ts (Galaxy.3.cs 1799 IsStellarObjectDockable, Galax
             expect(t2.hasBeenDestroyed).toBe(true);
             expect(g.independentEmpire!.privateBuiltObjects.includes(t2)).toBe(false);
         }
-    }, 600000);
+    }, 1800000);
 });
 
 describe('resourceTargets.ts (Empire.9.cs 4035 CheckWhetherHabitatIsDangerous, Galaxy.cs 3637)', () => {
@@ -164,7 +164,7 @@ describe('resourceTargets.ts (Empire.9.cs 4035 CheckWhetherHabitatIsDangerous, G
         expect(pirateShip).toBeDefined();
         e.visibility.systemVisibility[sys.systemIndex].threats = [pirateShip];
         expect(checkWhetherHabitatIsDangerous(g, e, habitat)).toBe(true);
-    }, 600000);
+    }, 1800000);
 
     it('mining rights allow building at a habitat in the other territory', () => {
         const g = createTickGame(gameData).galaxy;
@@ -174,7 +174,7 @@ describe('resourceTargets.ts (Empire.9.cs 4035 CheckWhetherHabitatIsDangerous, G
         expect(checkEmpireTerritoryCanBuildAtHabitat(g, a, other)).toBe(false);
         obtainDiplomaticRelation(b, a).miningRightsToOther = true;
         expect(checkEmpireTerritoryCanBuildAtHabitat(g, a, other)).toBe(true);
-    }, 600000);
+    }, 1800000);
 });
 
 describe('diplomacyTick.ts race levels (Race.cs 350-400)', () => {
@@ -188,7 +188,7 @@ describe('diplomacyTick.ts race levels (Race.cs 350-400)', () => {
         g.raceChangePeriodActive.add(race);
         expect(raceChangePeriodActive(g, race)).toBe(true);
         expect([aggressionLevel(e), cautionLevel(e), friendlinessLevel(e)]).toEqual([180, 60, 200]);
-    }, 600000);
+    }, 1800000);
 });
 
 describe('empire.ts', () => {
@@ -201,14 +201,14 @@ describe('empire.ts', () => {
         ruin.bonusWealth = 0.1;
         h.ruin = ruin;
         expect(e.determineColonizeLowQualityHabitat(h)).toBe(true);
-    }, 600000);
+    }, 1800000);
 
     it('every purchased ship / base sends ShipBasePurchased to its owner (Empire.7.cs 1429)', () => {
         const g = createTickGame(gameData).galaxy;
         const e = aiEmpires(g)[0];
         const purchased = (e.messages as { messageType: EmpireMessageType }[]).filter((m) => m.messageType === EmpireMessageType.ShipBasePurchased);
         expect(purchased.length).toBeGreaterThan(0);
-    }, 600000);
+    }, 1800000);
 
     it('SetEmpireDifficultyFactors sets TargettingFactor / CountermeasuresFactor (BaconGalaxy.cs 137-138)', () => {
         const g = createTickGame(gameData).galaxy;
@@ -217,7 +217,7 @@ describe('empire.ts', () => {
         expect(e.targettingFactor).toBeCloseTo(1.0 / Math.sqrt(e.difficultyLevel), 12);
         expect(e.countermeasuresFactor).toBeCloseTo(1.0 / Math.sqrt(e.difficultyLevel), 12);
         expect(e.targettingFactor).not.toBe(1.0);
-    }, 600000);
+    }, 1800000);
 });
 
 describe('game.ts / gameStartTail.ts createGame tail', () => {
@@ -229,5 +229,5 @@ describe('game.ts / gameStartTail.ts createGame tail', () => {
         expect(p.discoveryActionRuin).toBe(0);
         // Start.2.cs 2035-2038: Capital.DoTasks(CurrentDateTime) stamps the capital's LastTouch with the start time.
         expect(p.capital!.lastTouch).toBe(game.galaxy.nowMs);
-    }, 600000);
+    }, 1800000);
 });

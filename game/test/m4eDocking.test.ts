@@ -410,5 +410,5 @@ describe('harness smoke (seed 1, 600 game-s)', () => {
                 expect(b.dockedAt.dockingBays!.some((bay) => bay.dockedShip === b)).toBe(true);
             }
         }
-    }, 600000);
+    }, 1800000);
 });

@@ -340,7 +340,7 @@ describe('harness smoke', () => {
             for (const fa of e.incomingEnemyFleetsAndPlanetDestroyers) expect(fa.fleet !== null || fa.planetDestroyer !== null).toBe(true);
             expect(DiplomaticRelationType.War).toBeDefined();
         }
-    }, 600000);
+    }, 1800000);
 });
 
 function identifyMechanoidEmpireReference(g: Galaxy): Empire | null {

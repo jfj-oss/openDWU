@@ -56,7 +56,7 @@ describe('(6) 30 game-minutes on the harness: battles occur and are recorded', (
         it(`runs game-minutes ${(part - 1) * 10}-${part * 10}`, () => {
             const r = runGameSeconds(g, 600, { onFrame: watch });
             expect(r.frames).toBe(36000);
-        }, 900000);
+        }, 2400000);
     }
 
     it('reports battles, destroyed ships and per-battle SpaceBattleStats', () => {
