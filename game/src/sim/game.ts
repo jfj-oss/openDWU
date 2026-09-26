@@ -12,11 +12,10 @@
 // Randoms (not reproducible even in C#); here they use a Random seeded from
 // the galaxy seed.
 //
-// Not ported yet (TODO(port), in C# order after the starting colonies):
-// ReviewEmpireTerritoryCore, resource/component price reviews, Galaxy.DoTasks,
-// play-as-pirate (C2d covers AI pirate factions only), ruins, age-0 home asteroid
-// fields + slugs, special locations/characters/ships, empire flags.
-// Player plays a normal empire (play-as-pirate TODO); tech levels PreWarp (0),
+// After the starting colonies createGame follows Start.2.cs 1099-2146 in order: territory and price reviews, the
+// first Galaxy.DoTasks, per-empire setup, starting ships, contacts, characters, ruins and the game-start tail
+// (gameStartTail.ts, story/storyStart.ts). Empire flags (Galaxy.GenerateEmpireFlag) are UI-only and not modelled.
+// Tech levels PreWarp (0),
 // Normal (0.5, SetTechTreeStartingDefaults) and Level 1-6. AI pirate factions
 // are generated when piratePrevalence > 0 (pirates.ts).
 
@@ -33,7 +32,11 @@ import { assignMissionsToBuiltObjectList } from './civilianAI';
 import { meetPiratesAtStart } from './pirateRelations';
 import { CharacterRole, generateNewCharacter, generateStartingCharacters } from './characters';
 import { registerTroopGeneralHook } from './troops';
-import { resetEmpireTouchTimesForAge, runGameStartEmpireTick, runGameStartGalaxyTick, staggerEmpireTouchTimes } from './tick/gameStart';
+import { galaxyDoTasks } from './tick/galaxyTick';
+import { clearColony } from './combat/ownership';
+import { EmpireMessageType, resolveDescription, sendMessageToEmpireWithTitle } from './messages';
+import { gameText } from './colonyTick';
+import { resetEmpireTouchTimesForAge, runGameStartEmpireTick, runGameStartGalaxyTick, runGameStartHabitatTick, staggerEmpireTouchTimes } from './tick/gameStart';
 import { meetEmpiresAtStart } from './diplomacy';
 import { gameStartTail } from './gameStartTail';
 import { PiratePlayStyle, fastFindNearestIndependentHabitat, findNearestPirateFaction, generatePirateEmpire, generatePirateEmpireRandom, pirateReviewColoniesToControl, selectRandomRace, setEmpireDifficultyFactors, type PirateGenerationContext } from './pirates';
@@ -474,7 +477,10 @@ function findAiCapital(
         if (!flag && habitat === null) {
             const p = raceRegionPoint(galaxy, race, 0.0, 1.0, false, 0.0);
             const h3 = galaxy.findNearestHabitatOfType(p.x, p.y, HabitatType.MainSequence)!;
-            // TODO(port): AssignSystemName(h3, 1) when PlanetCount == 0 && name length <= 5.
+            // Start.cs 3952-3955.
+            if (galaxy.systemPlanetCount(galaxy.systems[h3.systemIndex]) === 0 && h3.name.length <= 5) {
+                galaxy.assignSystemName(h3, 1);
+            }
             galaxy.setColonizableHabitatsInSystem(h3, race, 1);
             habitat = galaxy.findNearestUncolonizedHabitat(h3.xpos, h3.ypos, habitatType);
             if (habitat === null) {
@@ -605,12 +611,8 @@ function reviewIndependentColonies(galaxy: Galaxy): Habitat[] {
 function clearIndependentColoniesFromSystem(galaxy: Galaxy, independentColonies: Habitat[], systemIndex: number): void {
     for (const h of galaxy.systemHabitatsOf(systemIndex)) {
         if (h.population.items.length > 0 && h.empire === galaxy.independentEmpire) {
-            // TODO(port): Habitat.ClearColony details (troops, characters, facilities, messages).
-            h.cargo = null;
-            h.population.items = [];
-            h.population.totalAmount = 0;
-            h.owner = null;
-            h.empire = null;
+            // Galaxy.6.cs 871: habitat.ClearColony(null) (combat/ownership.ts).
+            clearColony(galaxy, h, null);
             const i = independentColonies.indexOf(h);
             if (i >= 0) independentColonies.splice(i, 1);
         }
@@ -726,6 +728,11 @@ export interface GameOptionsAutomation {
     attackRangePatrol: number;
     attackRangeEscort: number;
     attackRangeOther: number;
+    attackRangeAttack: number;
+    attackRangePatrolManual: number;
+    attackRangeEscortManual: number;
+    attackRangeOtherManual: number;
+    attackRangeAttackManual: number;
     fleetAttackRefuelPortion: number;
     fleetAttackGatherPortion: number;
     discoveryActionRuin: number;
@@ -756,13 +763,32 @@ export const DEFAULT_GAME_OPTIONS_AUTOMATION: Readonly<GameOptionsAutomation> = 
     attackOverMatchFactor: 2, // 2782
     attackRangePatrol: 48000, // 2783
     attackRangeEscort: 2000, // 2784
+    attackRangeAttack: 2000, // 2785
     attackRangeOther: 48000, // 2786
+    attackRangePatrolManual: -1, // 2787
+    attackRangeEscortManual: -1, // 2788
+    attackRangeAttackManual: -1, // 2789
+    attackRangeOtherManual: -1, // 2790
     fleetAttackRefuelPortion: Math.fround(0.3), // 2791
     fleetAttackGatherPortion: Math.fround(0.3), // 2792
     discoveryActionRuin: 0, // 2805
     discoveryActionAbandonedShipBase: 0, // 2806
     newShipsAutomated: true, // 2808
 });
+
+// Port of Start.2.cs 1352-1363 (CreateGameFromSettings, after the per-empire DoTasks): the player empire's attack ranges
+// from GameOptions (main_0.gameOptions_0 != null). No Rnd.
+export function applyStartAttackRanges(empire: Empire, o: Readonly<GameOptionsAutomation>): void {
+    empire.attackRangePatrol = o.attackRangePatrol;
+    empire.attackRangeEscort = o.attackRangeEscort;
+    empire.attackRangeOther = o.attackRangeOther;
+    empire.attackRangeAttack = o.attackRangeAttack;
+    empire.attackOvermatchFactor = o.attackOverMatchFactor;
+    empire.attackRangePatrolManual = o.attackRangePatrolManual;
+    empire.attackRangeEscortManual = o.attackRangeEscortManual;
+    empire.attackRangeOtherManual = o.attackRangeOtherManual;
+    empire.attackRangeAttackManual = o.attackRangeAttackManual;
+}
 
 // Port of Start.2.cs:2122-2146 (CreateGameFromSettings): game2.PlayerEmpire.Control* / attack settings =
 // main_0.gameOptions_0.*Default, statement for statement (AttackRangeAttack is not copied there).
@@ -789,7 +815,7 @@ export function applyStartAutomationSettings(empire: Empire, o: Readonly<GameOpt
     empire.attackRangeOther = o.attackRangeOther;
     empire.fleetAttackRefuelPortion = o.fleetAttackRefuelPortion;
     empire.fleetAttackGatherPortion = o.fleetAttackGatherPortion;
-    // TODO(port): empire.DiscoveryActionRuin = gameOptions.DiscoveryActionRuin (Start.2.cs 2144) — Empire.cs field not ported.
+    empire.discoveryActionRuin = o.discoveryActionRuin; // Start.2.cs 2144
     empire.discoveryActionAbandonedShipBase = o.discoveryActionAbandonedShipBase;
     empire.newShipsAutomated = o.newShipsAutomated;
 }
@@ -845,9 +871,12 @@ export function createGame(opts: CreateGameOptions): Game {
     galaxy.storyDistantWorldsEnabled = opts.storyDistantWorldsEnabled ?? false;
     galaxy.gameRaceSpecificEventsEnabled = opts.raceSpecificEventsEnabled ?? true;
     galaxy.storyShadowsEnabled = opts.storyShadowsEnabled ?? false;
-    registerTroopGeneralHook((g, e, location) => {
-        // Galaxy.2.cs 5230: GenerateNewCharacter(TroopGeneral, location). TODO(port): 5231-5233 message.
-        generateNewCharacter(g, e, CharacterRole.TroopGeneral, location);
+    registerTroopGeneralHook((g, e, location, troopRecruited) => {
+        // Galaxy.2.cs 5230-5233: GenerateNewCharacter(TroopGeneral, location) + the CharacterAppearance message.
+        const character = generateNewCharacter(g, e, CharacterRole.TroopGeneral, location).character;
+        const title = gameText('New Character Event Title', resolveDescription(CharacterRole as unknown as Record<number, string>, character.role));
+        const description = gameText('New Character Event Troop Recruit Troop General', troopRecruited.name, character.name);
+        sendMessageToEmpireWithTitle(e, e, EmpireMessageType.CharacterAppearance, character, description, title);
     });
     galaxy.empireTerritoryColonyInfluenceRangeFactor = opts.empireTerritoryColonyInfluenceRangeFactor ?? galaxy.empireTerritoryColonyInfluenceRangeFactor;
     galaxy.colonyNames = opts.colonyNames ?? null;
@@ -1215,7 +1244,8 @@ export function createGame(opts: CreateGameOptions): Game {
         if (stopAt('empire:doTasks', empire3)) return result();
     }
     if (stopAt('empireSetup')) return result();
-    // TODO(port): 1354-1364 attack ranges from GameOptions (no Rnd).
+    // Start.2.cs 1352-1363: the player's attack ranges from GameOptions (Main.Part9.cs method_260 defaults). No Rnd.
+    applyStartAttackRanges(empire2, DEFAULT_GAME_OPTIONS_AUTOMATION);
     // Start.2.cs 1365-1375: starting ships.
     for (let num35 = 0; num35 < empireList.length; num35++) {
         const empire4 = empireList[num35];
@@ -1243,8 +1273,9 @@ export function createGame(opts: CreateGameOptions): Game {
     galaxy.allowRaceStartingCharacters = true;
     for (const e of empireList) if (e.dominantRace !== null) generateStartingCharacters(galaxy, e);
     if (stopAt('characters')) return result();
-    // 1484 galaxy.DoTasks: no touch interval has elapsed since the first tick (same game time),
-    // so nothing time-gated runs. TODO(port): its per-call (non-interval) work.
+    // 1484 galaxy.DoTasks(false, empire2): no touch interval has elapsed since the first tick (same game time), so only
+    // the per-call work runs (ProcessPirateFleets; Galaxy.cs 3079).
+    galaxyDoTasks(galaxy, false, empire2);
     galaxy.empireTerritory.reviewEmpireTerritory(galaxy); // 1485
     galaxy.updateSystemInfo(); // 1486
     if (stopAt('territoryReview')) return result();
@@ -1264,6 +1295,8 @@ export function createGame(opts: CreateGameOptions): Game {
     // Start.2.cs 2026: galaxy.GlobalVictoryConditions = victoryConditions_0 (2118-2120 also hand them to the Game object;
     // the TS keeps the Game's copies on the Galaxy: PlayerVictoryConditionsToAchieve / ToPrevent are scenario-only, null).
     galaxy.globalVictoryConditions = opts.victoryConditions ?? null;
+    // Start.2.cs 2035-2038: if (PlayerEmpire.Capital != null) PlayerEmpire.Capital.DoTasks(galaxy.CurrentDateTime).
+    if (empire2.capital !== null) runGameStartHabitatTick(galaxy, empire2.capital);
     // 17d: Start.2.cs 2122-2146 — the human player's automation settings come from GameOptions (the defaults of
     // Main.Part9.cs method_260 when no options file exists); AI empires keep the ctor's FullyAutomated.
     applyStartAutomationSettings(empire2, DEFAULT_GAME_OPTIONS_AUTOMATION);
