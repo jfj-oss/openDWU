@@ -65,6 +65,8 @@ import { createNewGameWizard } from './ui/screens/newGameWizard';
 import { openGalactopedia } from './ui/screens/galactopedia';
 import { defaultStartGameOptions, piratesFor, STARTING_TECH_LEVEL, toCreateGameOptions, type StartGameOptions, maximumEmpireAmountFor, starCountFor } from './sim/startGameOptions';
 import { serializeGame, deserializeGame } from './sim/save/gameSave';
+import { issuePlayerCommand } from './sim/player/playerCommands';
+import { commandLog } from './sim/player/commandLog';
 import { setSaveLoadProvider, createSaveLoadPanel, type LoadedGame } from './ui/screens/saveLoad';
 import { type Game } from './sim/game';
 import { createGalaxyMap, type GalaxyMapScreen } from './ui/screens/galaxyMap';
@@ -373,6 +375,8 @@ export async function startGameView(
     // [fix6ui] begin — ship-order / selection keys (created after the order UI below).
     let shipKeys: ShipCommandKeys | null = null;
     Object.assign((window as unknown as { __dwu: Record<string, unknown> }).__dwu, { simBudget: simLoop.budget });
+    // Command log (smoke / debugging): issue a player command through the queue and read the journal.
+    Object.assign((window as unknown as { __dwu: Record<string, unknown> }).__dwu, { commands: { issue: issuePlayerCommand, log: () => commandLog(galaxy) } });
     // [fix6ui] end
     const hud: HudRefs = createHud({
         clock: time,

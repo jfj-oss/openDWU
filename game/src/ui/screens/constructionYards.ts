@@ -8,6 +8,7 @@
 
 import './constructionYards.css';
 import type { Empire } from '../../sim/empire';
+import { issuePlayerCommand } from '../../sim/player/playerCommands';
 import type { Galaxy } from '../../sim/galaxy';
 import type { BuiltObject } from '../../sim/builtObject';
 import type { Habitat } from '../../sim/types';
@@ -16,6 +17,8 @@ import type { ConstructionYard } from '../../sim/construction/constructionYard';
 import { componentListDiff, yardsCountUnderConstruction } from '../../sim/construction/constructionYard';
 import { resolveSubRoleDescription, componentDefinitionsStatic } from '../../sim/designGeneration';
 import { formatMoney } from '../hud';
+import { moveWaitQueueItem, type WaitQueueMove } from '../../sim/player/playerOrders';
+export { moveWaitQueueItem, type WaitQueueMove };
 
 export type ConstructionSite = { kind: 'builtObject'; builtObject: BuiltObject } | { kind: 'colony'; habitat: Habitat };
 
@@ -141,44 +144,6 @@ export function waitRows(site: ConstructionSite): WaitRow[] {
         rows.push({ builtObject: bo, name: bo.name, type: resolveSubRoleDescription(bo.subRole), price: formatMoney(bo.purchasePrice) });
     }
     return rows;
-}
-
-export type WaitQueueMove = 'top' | 'up' | 'down' | 'bottom';
-
-// Main.Part5.cs:2147-2213 (Move to Top / Move Up / Move Down / Move to Bottom),
-// in place on the live wait queue. Returns whether the order changed.
-export function moveWaitQueueItem(queue: BuiltObject[], item: BuiltObject, move: WaitQueueMove): boolean {
-    const num = queue.indexOf(item);
-    switch (move) {
-        case 'top':
-            if (num > 0) {
-                queue.splice(num, 1);
-                queue.splice(0, 0, item);
-                return true;
-            }
-            return false;
-        case 'up':
-            if (num > 0) {
-                queue.splice(num, 1);
-                queue.splice(num - 1, 0, item);
-                return true;
-            }
-            return false;
-        case 'down':
-            if (num >= 0 && num < queue.length - 1) {
-                queue.splice(num, 1);
-                queue.splice(num + 1, 0, item);
-                return true;
-            }
-            return false;
-        case 'bottom':
-            if (num >= 0 && num < queue.length - 1) {
-                queue.splice(num, 1);
-                queue.splice(queue.length, 0, item);
-                return true;
-            }
-            return false;
-    }
 }
 
 export interface ConstructionYardsOptions {
@@ -317,8 +282,7 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
             const site = selectedSite;
             const wait = site ? siteQueue(site)?.constructionWaitQueue : null;
             if (!wait || selectedWait === null) return;
-            moveWaitQueueItem(wait, selectedWait, move);
-            render();
+            issuePlayerCommand(opts.empire.galaxy, opts.empire, 'moveWaitQueueItem', [siteTarget(site!), selectedWait, move], () => render());
         });
         moveButtons.push(b);
         buttons.appendChild(b);

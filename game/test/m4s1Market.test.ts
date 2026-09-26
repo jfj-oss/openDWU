@@ -418,7 +418,9 @@ describe('harness smoke (seed 1, 480 game-s)', () => {
         // (M4s2: the loop can run past an offer's expiry; Galaxy.1.cs CancelExpiredOrders then drops its order while the
         // expired offer is still listed, so only live offers are checked.)
         const now = galaxyStarDate(g);
-        for (const a of offers) if (a!.type === EmpireActivityType.Smuggle && a!.expiryDate > now) expect(g.orders.contains(a!.relatedOrder!)).toBe(true);
+        // (Only the independents' offers: an empire's offer for several deficient resources has no order, missionsMarket.ts
+        // Empire.2.cs resourceId == byte.MaxValue — seen on seed 1 since the Start.2.cs 118 RebuildIndexes port.)
+        for (const a of offers) if (a!.type === EmpireActivityType.Smuggle && a!.requestingEmpire === g.independentEmpire && a!.expiryDate > now) expect(g.orders.contains(a!.relatedOrder!)).toBe(true);
         // A faction's acceptance is also roll-timed, so keep running (bounded) until one does.
         const accepted = () => g.pirateEmpires.some((p) => p.pirateMissions.count > 0);
         for (let i = 0; i < 10 && !accepted(); i++) runGameSeconds(g, 240);

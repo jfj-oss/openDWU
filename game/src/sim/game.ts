@@ -20,6 +20,7 @@
 // Normal (0.5, SetTechTreeStartingDefaults) and Level 1-6. AI pirate factions
 // are generated when piratePrevalence > 0 (pirates.ts).
 
+import { rebuildIndexes } from './indexRebuild';
 import { baconInitializeSettings, resetBaconSettings } from './baconSettings';
 import { applyVictoryConditionsToGalaxy, type VictoryConditions } from './victory';
 import { reviewComponentPrices, reviewResourcePrices } from './market';
@@ -854,6 +855,9 @@ export function createGame(opts: CreateGameOptions): Game {
     // Expansion slider), not the player's EmpireStart.Age.
     galaxy.startingAge = galaxy.age;
     galaxy.difficultyLevel = opts.difficultyLevel ?? 1.0;
+    // Start.2.cs 118 `galaxy_0.RebuildIndexes()` (method_78, after the 105-116 settings and LoadDesignNames): every
+    // index grid rebuilt from positions — habitats move from their star's cell (Galaxy.4.cs 2323-2333) to their own.
+    rebuildIndexes(galaxy);
     // Start.2.cs 500: no race (AvailableCharacters) starting characters until 1478.
     galaxy.allowRaceStartingCharacters = false;
     // Start.2.cs 501-506 (M4z3): the story lines and Legends event switches (VictoryConditions / the wizard's story box).

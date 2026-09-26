@@ -15,7 +15,8 @@ import type { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
 import type { EmpireMessage } from '../sim/messages';
 import { buildDiplomatBrief, personaLines, type DiplomatBrief, type DiplomatContext } from '../sim/player/diplomatBrief';
-import { proposeDiplomatCounter, type DiplomatCounterOutcome } from '../sim/player/diplomatCounter';
+import { type DiplomatCounterOutcome } from '../sim/player/diplomatCounter';
+import { runPlayerCommand } from '../sim/player/playerCommands';
 import { probeAdvisorEndpoint, requestAdvisor, type AdvisorApi, type ChatMessage } from './advisorClient';
 import { getSettings, updateSettings } from './settings';
 import './diplomatVoice.css';
@@ -205,7 +206,8 @@ export async function voiceDiplomatReply(args: {
     if (p.rejectedCounterId !== undefined) out.counter = { id: p.rejectedCounterId, status: 'unknown', proposes: '', message: null };
     if (p.counterId !== null && (args.applyCounter?.() ?? true)) {
         // Between frames, like the click it stands for; the sim's evaluator decides.
-        out.counter = proposeDiplomatCounter(args.galaxy, args.ai, args.player, brief, p.counterId);
+        // (A frame boundary: the model's answer arrives in a promise callback.) Journaled in the command log.
+        out.counter = runPlayerCommand(args.galaxy, args.player, 'diplomatCounter', [args.ai, brief, p.counterId]);
         if (out.counter.message !== null) rememberVoicedMessage(out.counter.message, out.text);
     }
     return out;
