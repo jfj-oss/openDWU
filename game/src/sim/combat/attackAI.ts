@@ -479,7 +479,7 @@ export function notifyOfAttackHabitat(galaxy: Galaxy, attacker: StellarObject | 
                     text += `${attacker.subRole}`;
                     text = text + ' (' + attacker.name + ')';
                 } else if (isCreature(attacker)) {
-                    text += `${attacker.type}`;
+                    text += resolveCreatureDescription(attacker.type); // Galaxy.7.cs ResolveDescription(creature2.Type)
                     if (attacker.type === CreatureType.Kaltor) {
                         checkSendPreWarpProgressEventMessage(galaxy, habitatUnderAttack.empire, PreWarpProgressEventType.EncounterFirstKaltor, attacker);
                     }
