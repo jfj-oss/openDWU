@@ -325,7 +325,7 @@ describe('isKeyActionAvailable (task 12q)', () => {
     });
 
     it('marks unimplemented actions as unavailable', () => {
-        expect(isKeyActionAvailable('intelligenceAgentsScreen')).toBe(false);
+        expect(isKeyActionAvailable('intelligenceAgentsScreen')).toBe(true); // [intel] F4 screen
         expect(isKeyActionAvailable('lockView')).toBe(false); // fix4ui: every cycler (F included) is implemented now
         expect(isKeyActionAvailable('commandRefuel')).toBe(false);
         expect(isKeyActionAvailable('nonsense')).toBe(false);
@@ -340,10 +340,10 @@ describe('isKeyActionAvailable (task 12q)', () => {
 
     it('unavailable actions fall through to dispatchKey default branch', () => {
         const action = dispatchKey(
-            { key: 'F4', ctrlKey: false, altKey: false, shiftKey: false, target: null },
+            { key: 'L', ctrlKey: false, altKey: false, shiftKey: false, target: null },
             {},
         );
-        expect(action).toBe('intelligenceAgentsScreen');
+        expect(action).toBe('lockView');
         expect(isKeyActionAvailable(action!)).toBe(false);
     });
 });

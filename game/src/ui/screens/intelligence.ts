@@ -603,6 +603,10 @@ export function cancelMission(player: Empire, agent: Character): void {
 // DOM
 // ---------------------------------------------------------------------------------------------------------------
 
+// TODO(port): the panel pauses a running game while open and resumes on close — Main.Part6.cs:3098 method_425 / 3214 method_426 (bool_11).
+// TODO(port): CharacterSummary "Transfer to new location" (character transfer) — CharacterSummary.cs btnTransfer_Click / Main.Part6.cs:3325.
+// TODO(port): "Show Event History" (CharacterEventListView) and character portraits (CharacterImageCache) — Main.Part6.cs:3135, CharacterListView.cs BindData.
+// TODO(port): "Learn about Characters" / "Learn about Intelligence Missions" Galactopedia links — Main.Part6.cs:3124, CharacterMission.cs lnkMissionTypes_LinkClicked.
 export interface IntelligenceScreenOptions {
     player: Empire;
     /** CharacterDoubleClicked: move the view to the character's location. */
