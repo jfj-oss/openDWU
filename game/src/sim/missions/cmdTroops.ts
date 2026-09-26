@@ -31,7 +31,7 @@ import { reviewEmpireTerritory } from '../exploration';
 import { generateNewTroop, habitatGenerateNewTroop, reviewColonyTroopGarrison, charactersCanGenerateAmountNonIntelligenceAgent } from '../troops';
 import { doResearchBreakthrough } from '../researchTick';
 import { EmpireMessageType, resolveDescription, sendMessageToEmpire, sendMessageToEmpireWithTitle } from '../messages';
-import { formatText, getText } from '../diplomacyTick';
+import { formatGameTextNow } from '../textResolver';
 import { EventMessageType, sendEventMessageToEmpire } from '../events';
 import { reviewEmpireAbilityBonusesFull } from '../treasury';
 import { raceAggressionLevel } from '../colonyTick';
@@ -101,8 +101,8 @@ export function chanceNewColonyGovernor(galaxy: Galaxy, empire: Empire | null, c
         if (empire.dominantRace !== null) num = Math.max(2, Math.trunc(num / raceCharacterRandomAppearanceChanceGovernor(empire.dominantRace)));
         if (galaxy.rnd.next(0, num) === 1 && charactersCanGenerateAmountNonIntelligenceAgent(empire) > 0) {
             const character = generateNewCharacter(galaxy, empire, CharacterRole.ColonyGovernor, colony).character;
-            const title = formatText(getText('New Character Event Title'), resolveDescription(CharacterRole, character.role));
-            const description = formatText(getText('New Character Event Colony Governor'), colony.name, character.name);
+            const title = formatGameTextNow('New Character Event Title', [resolveDescription(CharacterRole, character.role)]);
+            const description = formatGameTextNow('New Character Event Colony Governor', [colony.name, character.name]);
             sendMessageToEmpireWithTitle(empire, empire, EmpireMessageType.CharacterAppearance, character, description, title);
             return true;
         }
@@ -139,8 +139,8 @@ export const cmdColonize: CommandHandler = (ctx) => {
                         if (num106 <= 0 && num106 < num107 && galaxy.rnd.next(0, 20) !== 1) flag32 = false;
                         if (galaxy.rnd.next(0, 20) === 8) flag32 = false;
                         text2 = !flag32
-                            ? ' ' + formatText(getText('The existing population repelled colonization'), dominantRace.name) + '.'
-                            : ' ' + formatText(getText('The existing population joined our empire'), dominantRace.name) + '.';
+                            ? ' ' + formatGameTextNow('The existing population repelled colonization', [dominantRace.name]) + '.'
+                            : ' ' + formatGameTextNow('The existing population joined our empire', [dominantRace.name]) + '.';
                     }
                     if (flag32) {
                         let flag33 = false;
@@ -154,14 +154,14 @@ export const cmdColonize: CommandHandler = (ctx) => {
                             makeHabitatIntoColonyRuntime(galaxy, empire, targetHabitat10, empire, empire.dominantRace!, newPopulationAmount);
                         }
                         reviewEmpireTerritory(galaxy, true);
-                        empty2 = empty2 + formatText(getText('NAME colonized'), targetHabitat10.name) + '.' + text2;
+                        empty2 = empty2 + formatGameTextNow('NAME colonized', [targetHabitat10.name]) + '.' + text2;
                         if (!flag33 && galaxy.rnd.next(0, 3) > 0 && dominantRace !== null) {
                             if (raceAggressionLevel(galaxy, dominantRace) > 110) {
                                 const troop4 = generateNewTroop(empire.generateTroopDescription(dominantRace.troopName), TroopType.Infantry, 100, empire, dominantRace);
                                 troop4.colony = targetHabitat10;
                                 targetHabitat10.troops!.add(troop4);
                                 empire.troops.add(troop4);
-                                empty2 = empty2 + ' ' + getText('They have trained some new troops for us');
+                                empty2 = empty2 + ' ' + formatGameTextNow('They have trained some new troops for us');
                                 reviewColonyTroopGarrison(galaxy, empire, targetHabitat10, checkAtWar(empire), galaxy.difficultyLevel);
                             } else if (dominantRace.intelligence > 110) {
                                 const researchNode = selectRandomNextResearchProjectExcludeSuperWeapons(galaxy, empire);
@@ -170,15 +170,15 @@ export const cmdColonize: CommandHandler = (ctx) => {
                                     researchNode.progress = Math.fround(researchNode.progress + num108);
                                     if (researchNode.progress >= researchNode.cost) {
                                         doResearchBreakthrough(galaxy, empire, researchNode, true, true, false);
-                                        empty2 = empty2 + ' ' + formatText(getText('They have advanced our understanding of X breakthrough'), researchNode.def.name);
+                                        empty2 = empty2 + ' ' + formatGameTextNow('They have advanced our understanding of X breakthrough', [researchNode.def.name]);
                                     } else {
-                                        empty2 = empty2 + ' ' + formatText(getText('They have advanced our understanding of X'), researchNode.def.name);
+                                        empty2 = empty2 + ' ' + formatGameTextNow('They have advanced our understanding of X', [researchNode.def.name]);
                                     }
                                 }
                             } else if (dominantRace.loyalty > 110) {
                                 const num109 = galaxy.rnd.next(7000, 20000);
                                 empire.stateMoney += num109;
-                                empty2 = empty2 + ' ' + formatText(getText('They have presented us with a gift of X credits'), String(num109));
+                                empty2 = empty2 + ' ' + formatGameTextNow('They have presented us with a gift of X credits', [String(num109)]);
                             }
                         }
                         sendMessageToEmpire(empire, empire, EmpireMessageType.NewColony, targetHabitat10, empty2);
@@ -199,10 +199,10 @@ export const cmdColonize: CommandHandler = (ctx) => {
                                     }
                                 }
                                 if (flag34) {
-                                    let text3 = formatText(getText('Colonization Race Ability Bonus'), resolveDescription(HabitatCategoryType as unknown as Record<number, string>, targetHabitat10.category).toLowerCase(), targetHabitat10.name, raceChanged.name);
+                                    let text3 = formatGameTextNow('Colonization Race Ability Bonus', [resolveDescription(HabitatCategoryType as unknown as Record<number, string>, targetHabitat10.category).toLowerCase(), targetHabitat10.name, raceChanged.name]);
                                     text3 += ':\n';
                                     for (const item2 of list2) text3 = text3 + '\n' + item2;
-                                    sendEventMessageToEmpire(empire, EventMessageType.NewEmpireRaceAbility, getText('New Ability for our Empire'), text3, raceChanged, targetHabitat10);
+                                    sendEventMessageToEmpire(empire, EventMessageType.NewEmpireRaceAbility, formatGameTextNow('New Ability for our Empire'), text3, raceChanged, targetHabitat10);
                                 }
                             }
                         }
@@ -225,7 +225,7 @@ export const cmdColonize: CommandHandler = (ctx) => {
                             purchaseNewBuiltObject(galaxy, empire, buildDesign, targetHabitat10, isStateOwned, true);
                         }
                     } else {
-                        empty2 += formatText(getText('Colonization attempt failed'), targetHabitat10.name);
+                        empty2 += formatGameTextNow('Colonization attempt failed', [targetHabitat10.name]);
                         empty2 = empty2 + '.' + text2;
                         sendMessageToEmpire(empire, empire, EmpireMessageType.NewColonyFailed, targetHabitat10, empty2);
                         builtObjectCompleteTeardown(galaxy, bo);

@@ -8,7 +8,7 @@
 // original until Empire.DoTasks exists. Other unported callees here don't
 // draw Rnd (checked): LoadEmpirePolicy, TakeOwnershipOfColony,
 // GenerateDesignSpecifications, Research.Update, LoadOptimizedDesigns,
-// GrowPopulation, Habitat.DoTasks at game start, EstimatedDefensiveForceRequired,
+// GrowPopulation, EstimatedDefensiveForceRequired,
 // GenerateNewTroop; SetTechTreeLevel draws only for fractional tech levels.
 // Of DoTasks only CreateNewDesigns, IdentifyResourceCentres and
 // ProjectForceStructure / ProjectPrivateForceStructure run (task M3b; none draws
@@ -26,6 +26,8 @@ import type { Habitat } from './types';
 import { Population } from './population';
 import { setEmpireExplorationAmount } from './visibility';
 import { runGameStartEmpireTick } from './tick/gameStart';
+import { habitatDoTasks } from './tick/habitatTick';
+import { galaxyNow } from './tick/simTime';
 
 export interface GenerateEmpireResult {
     empire: Empire;
@@ -154,7 +156,13 @@ export function generateEmpire(
     empire.reviewTroopTypes();
     empire.setStartupColonyResourceCargo(capital);
     capital.setDevelopmentLevel(10);
-    // capital.DoTasks(CurrentDateTime): no-op at game start (see colony.ts).
+    // Galaxy.7.cs 5290 capital.DoTasks(galaxy.CurrentDateTime) (Habitat.cs 1399). The capital was built during
+    // generation at the same game time, so its periodic/long/huge spans are 0 (Habitat.cs 6184-6187) and only the
+    // intermediate block runs (_LastIntermediateTouch is DateTime.MinValue): Move(0), HandleWeaponsFiring(0 s),
+    // CheckForShipsDiscoveringRuins (no ships yet; no Rnd). In particular it does NOT review the construction speed
+    // (that is the long block, Habitat.cs 1506-1509): unlike GenerateIndependentColony (Galaxy.8.cs 681-684) the C#
+    // leaves the capital at the empty-colony speed TakeOwnershipOfColony set until the first LongProcessingSpan review.
+    habitatDoTasks(galaxy, capital, galaxyNow(galaxy));
     // Galaxy.7.cs 5291-5316: capital garrison (one NextDouble).
     generateCapitalStartingTroops(galaxy, empire, capital, race, techLevel, galaxy.difficultyLevel);
     for (const h of galaxy.habitats) {

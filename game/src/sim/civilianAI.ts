@@ -845,7 +845,8 @@ function assignMissionMilitary(galaxy: Galaxy, empire: Empire, ship: BuiltObject
         const habitat13 = findNearestUncolonizedExploredSystem(galaxy, ship.xpos, ship.ypos, shipEmpire);
         if (habitat13 !== null) {
             let habitat14: Habitat | null = null;
-            const habitats = galaxy.systems[habitat13.systemIndex].habitats;
+            // Empire.5.cs 1646 Systems[].Habitats — the C# list excludes the star (Galaxy.6.cs 4611 DetermineHabitatsInSystem).
+            const habitats = galaxy.systemHabitatsOf(habitat13.systemIndex);
             if (habitats != null && habitats.length > 0) {
                 habitat14 = habitats[galaxy.rnd.next(0, habitats.length)];
             }
@@ -1650,7 +1651,8 @@ export function determineResortBaseBuildLocations(galaxy: Galaxy, empire: Empire
     for (let i = 0; i < galaxy.systems.length; i++) {
         const systemInfo = galaxy.systems[i];
         if (!(systemInfo.hasScenery ?? false) || !checkSystemExplored(empire, systemInfo.systemStar.systemIndex)) continue;
-        const habitatList: Habitat[] = [systemInfo.systemStar, ...systemInfo.habitats];
+        // Empire.5.cs 2815-2816: Add(SystemStar); AddRange(Habitats) — C# Habitats excludes the star (TS habitats has it at [0]).
+        const habitatList: Habitat[] = [systemInfo.systemStar, ...galaxy.systemHabitatsOf(i)];
         for (let j = 0; j < habitatList.length; j++) {
             const habitat = habitatList[j];
             const num = calculateScenicFactorIncludingRuinsWonders(habitat);
@@ -2822,7 +2824,8 @@ function findNearestUnexploredHabitatInSystemRanged(galaxy: Galaxy, x: number, y
     let result: Habitat | null = null;
     const num2 = asteroidRangeFactor * asteroidRangeFactor;
     if (systemStar !== null && empire.resourceMap != null) {
-        const habitats = galaxy.systems[systemStar.systemIndex].habitats;
+        // Galaxy.6.cs 3855 Systems[].Habitats (excludes the star; Galaxy.6.cs 4611 DetermineHabitatsInSystem).
+        const habitats = galaxy.systemHabitatsOf(systemStar.systemIndex);
         for (let i = 0; i < habitats.length; i++) {
             const habitat = habitats[i];
             let flag = false;
@@ -3004,7 +3007,11 @@ export function fastFindNearestUnexploredHabitat(galaxy: Galaxy, x: number, y: n
             if (habitat2 == null) continue;
             const systemInfo2 = galaxy.systems[habitat2.systemIndex];
             if (systemInfo2 == null || systemInfo2.systemStar == null || systemInfo2.habitats == null) continue;
-            if (systemInfo2.systemStar.category === HabitatCategoryType.Star && systemInfo2.habitats.length === 0) {
+            // C# Systems[].Habitats excludes the star (Galaxy.6.cs 4611 DetermineHabitatsInSystem); the TS list has it at
+            // [0], so a star-only system must take the Count == 0 branch, not the per-habitat one (whose known star
+            // marked the system TotallyExplored and left the nearest-unexplored search empty).
+            const systemHabitats2 = galaxy.systemHabitatsOf(habitat2.systemIndex);
+            if (systemInfo2.systemStar.category === HabitatCategoryType.Star && systemHabitats2.length === 0) {
                 const status = systemVisibility[habitat2.systemIndex].status;
                 if (status === SystemVisibilityStatus.Unexplored || status === SystemVisibilityStatus.Undefined) {
                     const systemStar = systemInfo2.systemStar;
@@ -3030,8 +3037,8 @@ export function fastFindNearestUnexploredHabitat(galaxy: Galaxy, x: number, y: n
                 }
             } else {
                 let flag = false;
-                for (let k = 0; k < systemInfo2.habitats.length; k++) {
-                    const habitat3 = systemInfo2.habitats[k];
+                for (let k = 0; k < systemHabitats2.length; k++) {
+                    const habitat3 = systemHabitats2[k];
                     if (
                         habitat3 != null &&
                         ((empire.resourceMap != null && !empire.resourceMap.checkResourcesKnown(habitat3) && habitat3.ruin === null) ||
@@ -3083,7 +3090,8 @@ export function fastFindNearestUnexploredHabitatInSector(galaxy: Galaxy, x: numb
         let habitat: Habitat | null = null;
         let num3 = Number.MAX_VALUE;
         const sys = galaxy.systems[array[j].systemIndex];
-        if (sys.systemStar.category === HabitatCategoryType.Star && sys.habitats.length === 0) {
+        const sysHabitats = galaxy.systemHabitatsOf(array[j].systemIndex); // C# Systems[].Habitats (no star), as in fastFindNearestUnexploredHabitat
+        if (sys.systemStar.category === HabitatCategoryType.Star && sysHabitats.length === 0) {
             const status = systemVisibility[array[j].systemIndex].status;
             if (status === SystemVisibilityStatus.Unexplored || status === SystemVisibilityStatus.Undefined) {
                 const systemStar = sys.systemStar;
@@ -3109,8 +3117,8 @@ export function fastFindNearestUnexploredHabitatInSector(galaxy: Galaxy, x: numb
             }
         } else {
             let flag = false;
-            for (let k = 0; k < sys.habitats.length; k++) {
-                const h = sys.habitats[k];
+            for (let k = 0; k < sysHabitats.length; k++) {
+                const h = sysHabitats[k];
                 if ((empire.resourceMap != null && !empire.resourceMap.checkResourcesKnown(h)) || checkRuinsHaveBenefit(galaxy, h.ruin, empire)) {
                     flag = true;
                     const habitat2 = h;

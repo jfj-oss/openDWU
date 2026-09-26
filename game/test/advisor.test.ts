@@ -59,7 +59,9 @@ describe('buildAdvisorBrief (seed-1 harness game)', () => {
         // 13 mobile ships, none in a fleet; bases are not ships.
         expect(brief.ships.length).toBe(13);
         expect(brief.ships.every((s) => s.ref.startsWith('s'))).toBe(true);
-        expect(brief.ships.find((s) => s.name === 'Sublime Fantasy')).toMatchObject({ type: 'ExplorationShip', fuel: 100, at: 'Sol', mission: 'None', idle: true });
+        expect(brief.ships.find((s) => s.name === 'Sublime Fantasy')).toMatchObject({ type: 'ExplorationShip', fuel: 100, at: 'Sol', mission: 'Explore' });
+        // fix7: the start explorer has an Explore mission (FastFindNearestUnexploredHabitat finds star-only systems, Galaxy.6.cs 4611).
+        expect(brief.ships.find((s) => s.name === 'Sublime Fantasy')!.idle).toBeFalsy();
         expect(brief.places.find((p) => p.name === 'Sol')).toMatchObject({ kind: 'System', explored: true, owner: 'you' });
         expect(brief.places.find((p) => p.name === 'Sol 2 Space Port')).toMatchObject({ kind: 'MediumSpacePort', refuel: true });
         // Ids are unique and every ref in the orders resolves.
@@ -171,10 +173,13 @@ describe('executeAdvisorCommands (scripted model replies)', () => {
         const brief = buildAdvisorBrief(galaxy, player, null);
         const ship = explorer();
         const v = validateAdvisorResponse(brief, { reply: '', commands: [{ id: commandFor(brief, shipRef(ship), 'Explore', 'nearest unexplored system') }] });
+        const missionBefore = builtObjectMission(ship.mission);
+        const typeBefore = missionBefore?.type ?? BuiltObjectMissionType.Undefined;
         ship.owner = null; // e.g. captured between the brief and the answer
         const [r] = executeAdvisorCommands(galaxy, player, brief, v.commands);
         expect(r).toMatchObject({ ok: false, status: 'failed', message: 'Sublime Fantasy can no longer take orders' });
-        expect(builtObjectMission(ship.mission)?.type ?? BuiltObjectMissionType.Undefined).toBe(BuiltObjectMissionType.Undefined);
+        expect(builtObjectMission(ship.mission)).toBe(missionBefore);
+        expect(builtObjectMission(ship.mission)?.type ?? BuiltObjectMissionType.Undefined).toBe(typeBefore);
     });
 
     it('Build goes through buildNewShips (affordability, yards) and charges the order', () => {
