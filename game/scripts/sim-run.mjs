@@ -155,7 +155,7 @@ try {
             if (e === null) continue;
             const speed = e.capital?.constructionQueue?.constructionSpeed ?? '-';
             const ex = e.builtObjects.filter((b) => b !== null && b.subRole === 9 && !b.hasBeenDestroyed)
-                .map((b) => `${b.name}:${MISSION[b.mission?.type ?? 0]}${b.mission?.target ? '→' + (b.mission.target.name ?? '?') : ''}`);
+                .map((b) => `${b.name}:${b.builtAt !== null ? '[building] ' : ''}${MISSION[b.mission?.type ?? 0]}${b.mission?.target ? '→' + (b.mission.target.name ?? '?') : ''}`);
             console.log(`  ${e.name.padEnd(28)} capital speed ${speed}; explorers ${ex.length}: ${ex.join(', ')}`);
         }
     };
