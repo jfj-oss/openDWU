@@ -47,9 +47,12 @@ describe('wizard research cost (numStartNewGameTheGalaxyResearchBaseTech)', () =
         // (float)1500 / 1000f * (float)2000000 = 3000000.
         expect(c.colonizationRange).toBe(3000000);
         expect(colonizationRangeFor(2333)).toBe(Math.fround(Math.fround(2.333) * 2000000));
+        // wizdefaults: default StartGameOptions now matches Main.Part9.cs 2674-2675 (method_259): enforcement
+        // on, 2 sectors -> (float)2000 / 1000f * (float)2000000 = 4000000.
         const d = toCreateGameOptions(defaultStartGameOptions(), gameData, []);
         expect(d.baseTechCost).toBe(120000);
-        expect(d.colonizationRangeEnforceLimit).toBe(false);
+        expect(d.colonizationRangeEnforceLimit).toBe(true);
+        expect(d.colonizationRange).toBe(4000000);
     });
 });
 
