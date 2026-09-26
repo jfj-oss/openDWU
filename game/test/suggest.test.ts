@@ -70,7 +70,7 @@ interface Built {
     price: number;
 }
 function builtSince(game: Game, n0: number): Built[] {
-    return game.galaxy.builtObjects.slice(n0).map((b: BuiltObject) => ({ subRole: b.subRole, design: b.design!.name, builtAt: b.builtAt, price: b.purchasePrice }));
+    return (game.galaxy.builtObjects.slice(n0) as BuiltObject[]).map((b) => ({ subRole: b.subRole, design: b.design!.name, builtAt: b.builtAt, price: b.purchasePrice }));
 }
 
 describe('DeclinedTaskList (DeclinedTaskList.cs)', () => {
@@ -240,8 +240,9 @@ describe('a SemiAutomated player is advised instead of building (Empire.6.cs 258
         expect(r.handled).toBe(true);
         const built = builtSince(semi, s0);
         expect(built.map((b) => ({ ...b, builtAt: (b.builtAt as Habitat).name }))).toEqual(fullBuilt.map((b) => ({ ...b, builtAt: (b.builtAt as Habitat).name })));
-        const bo = g.builtObjects[s0];
-        expect(queueOf(e.capital!)!.constructionWaitQueue!.includes(bo) || queueOf(e.capital!)!.construction.includes(bo)).toBe(true);
+        const bo = g.builtObjects[s0]!;
+        const yards = queueOf(e.capital!)!;
+        expect(yards.constructionWaitQueue!.includes(bo) || (yards.constructionYards ?? []).some((y) => y.shipUnderConstruction === bo)).toBe(true);
         expect(e.builtObjects).toContain(bo);
         // Main.Part2.cs 1427 StateMoney -= price; the tick path charges the same sum at Empire.6.cs 2840 (StateMoney -= num12).
         expect(e.stateMoney).toBe(money0 - built[0].price);
