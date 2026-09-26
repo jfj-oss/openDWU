@@ -50,6 +50,7 @@ import type { BuiltObject } from '../sim/builtObject';
 import { createMapOverlayState, type MapOverlayState } from '../ui/mapOverlays';
 import { showRegionLabels, showSystemNames } from '../ui/settings';
 import { hideMapTooltip, showMapTooltip, tooltipText } from '../ui/mapTooltip';
+import { boundsOnScreen, DrawKey } from './drawCache';
 
 export function fadeIn(v: number, a: number, b: number): number {
     if (v <= a) {
@@ -271,6 +272,10 @@ export function nebulaAlpha(z: number, m: number): number {
     return fadeOut(z, m * 2.5, m * 14);
 }
 
+/** Screen-pixel part of a system's cull bounds (render: perf pass): minimum sprite sizes, the map icon, and the
+ * planet / moon / system name labels, which are centred on a body's right edge or under the star. */
+export const SYSTEM_CULL_PX_MARGIN = 1000;
+
 function clamp(v: number, lo: number, hi: number): number {
     return Math.max(lo, Math.min(hi, v));
 }
@@ -309,12 +314,12 @@ class PlanetView {
         this.dot = new Sprite(dotTex);
         this.dot.anchor.set(0.5);
         this.dot.visible = false;
-        this.system.root.addChild(this.dot);
+        this.system.bodies.addChild(this.dot);
         this.sprite = new Sprite(makePlanetTexture(PLANET_COLORS[habitat.type] ?? '#888888'));
         this.sprite.anchor.set(0.5);
         this.sprite.visible = false;
         this.sprite.alpha = 0;
-        this.system.root.addChild(this.sprite);
+        this.system.bodies.addChild(this.sprite);
         // Task 12p (method_84): name centred on the drawn rect's right edge,
         // vertically centred on the body; 1 px black drop shadow (the XNA
         // offset is not recoverable from the C#).
@@ -329,7 +334,7 @@ class PlanetView {
         });
         this.label.anchor.set(0.5, 0.5);
         this.label.visible = false;
-        this.system.root.addChild(this.label);
+        this.system.bodies.addChild(this.label);
     }
 }
 
@@ -342,7 +347,7 @@ class MoonView {
         this.dot = new Sprite(tex);
         this.dot.anchor.set(0.5);
         this.dot.visible = false;
-        this.system.root.addChild(this.dot);
+        this.system.bodies.addChild(this.dot);
         // Task 12p: moons are full planet-textured sprites at system zoom
         // (MainView.1.cs:437-470 draws them like planets, factor via
         // CalculateMoonZoomFactor), with the same label rules as planets.
@@ -357,7 +362,7 @@ class MoonView {
         });
         this.label.anchor.set(0.5, 0.5);
         this.label.visible = false;
-        this.system.root.addChild(this.label);
+        this.system.bodies.addChild(this.label);
     }
 }
 
@@ -368,6 +373,14 @@ class SystemView {
     starSprite: Sprite;
     nameLabel: Text;
     ring: Graphics;
+    /** Planets, moons, their labels and the asteroid rocks, in habitat order (render: perf pass). One container so
+     * the whole group is skipped — by this update and by Pixi's scene traversal — while none of it is drawn
+     * (zoom factor >= 500). It sits where the bodies used to be among root's children, so draw order is unchanged. */
+    bodies: Container;
+    /** World-space radius around the star that holds everything this system draws, not counting pixel-sized
+     * extras (min sprite sizes, labels) — those are covered by SYSTEM_CULL_PX_MARGIN. */
+    drawRadius = 0;
+    private rocksShown: boolean | null = null;
     planets: PlanetView[] = [];
     asteroids: Sprite[] = [];
     rockHabitats: Habitat[] = [];
@@ -427,6 +440,11 @@ class SystemView {
 
         this.ring = new Graphics();
         this.root.addChild(this.ring);
+        this.bodies = new Container();
+        this.root.addChild(this.bodies);
+        // Star: discs + corona (<= 2.3 x the drawn size S = max(4, diameter*z) px) or the map icon (<= 26 px or
+        // diameter*z + 2 px), so 1.2 diameters plus the pixel margin.
+        let radius = 1.2 * star.diameter;
 
         // Planets and their moons (orbit positions relative to the star).
         for (const habitat of system.habitats) {
@@ -437,8 +455,12 @@ class SystemView {
                     if (moon.category === HabitatCategoryType.Moon && moon.parent === habitat) {
                         // Task 12p: moons render as planet-textured sprites, not dots.
                         planet.moons.push(new MoonView(this, moon, makePlanetTexture(PLANET_COLORS[moon.type] ?? '#888888')));
+                        // Moon orbit ring + moon sprite (<= 1.1 x diameter*z px).
+                        radius = Math.max(radius, habitat.orbitDistance + moon.orbitDistance + moon.diameter);
                     }
                 }
+                // Orbit ring + planet sprite (<= 1.25 x diameter*z px, or the 4 px minimum).
+                radius = Math.max(radius, habitat.orbitDistance + habitat.diameter);
                 this.maxExtent = Math.max(this.maxExtent, habitat.orbitDistance + 3000);
             } else if (habitat.category === HabitatCategoryType.Asteroid) {
                 const rock = new Sprite(textures.rock);
@@ -451,10 +473,13 @@ class SystemView {
                 rock.visible = false;
                 this.asteroids.push(rock);
                 this.rockHabitats.push(habitat);
-                this.root.addChild(rock);
+                this.bodies.addChild(rock);
+                radius = Math.max(radius, habitat.orbitDistance + habitat.diameter);
                 this.maxExtent = Math.max(this.maxExtent, habitat.orbitDistance + 3000);
             }
         }
+
+        this.drawRadius = radius;
 
         this.nameLabel = new Text({
             text: star.name,
@@ -468,13 +493,15 @@ class SystemView {
     /** Per-frame level-of-detail update (only for systems near the view). */
     update(zoom: number, cam: Camera, labelAllowed: boolean, dtSeconds: number): void {
         const star = this.system.systemStar;
-        // Culling: screen-space margin plus the farthest orbit so rings
-        // don't pop in at the screen edge.
+        // Culling (render: perf pass): skip the system only when everything it can draw — star, orbit rings,
+        // planets, moons, rocks (drawRadius, world units) plus labels and minimum sprite sizes (px margin) — is off
+        // screen. The previous margin mixed screen px with world units and culled almost nothing.
         const margin = (300 + this.maxExtent * 0.3) / zoom;
         const halfW = cam.width / 2 + margin;
         const halfH = cam.height / 2 + margin;
-        const visible =
+        const legacy =
             star.xpos > cam.x - halfW && star.xpos < cam.x + halfW && star.ypos > cam.y - halfH && star.ypos < cam.y + halfH;
+        const visible = legacy && boundsOnScreen(star.xpos, star.ypos, this.drawRadius, SYSTEM_CULL_PX_MARGIN, cam.x, cam.y, cam.width, cam.height, zoom);
         this.root.visible = visible;
         if (!visible) {
             return;
@@ -529,6 +556,29 @@ class SystemView {
             }
         }
 
+        // Render: perf pass — at f >= 500 no planet, moon, label or rock is drawn (sprites and labels need f < 500,
+        // rocks z > 0.05), so hide the group and skip the per-body work.
+        const bodiesShown = f < 500;
+        this.bodies.visible = bodiesShown;
+        if (bodiesShown) {
+            this.updateBodies(z, f);
+        }
+
+        // System name label under the star (small white text). Task 12p: only
+        // drawn above f = 150 (MainView.2.cs:5153/5627-5630) — nothing names
+        // stars at system zoom; offset uses the larger of the map icon and
+        // the drawn star size.
+        this.nameLabel.visible = labelAllowed && f > 150;
+        if (this.nameLabel.visible) {
+            const gpx = starGalaxySpritePx(star.diameter, z);
+            const iconPx = clamp(star.diameter * z * 30, 2.5, 26);
+            this.nameLabel.position.set(0, (Math.max(iconPx, gpx) * 0.5 + 10) / z);
+            this.nameLabel.scale.set(1 / z);
+        }
+    }
+
+    /** Planets, moons, their labels and the rocks (only called while f < 500). */
+    private updateBodies(z: number, f: number): void {
         // Task 12p (MainView.1.cs:437-470): no dot crossfade — planet sprites are
         // drawn while f < 500 at their compressed-factor size; the name
         // label follows the original's populated/planet rules (method_84).
@@ -586,20 +636,11 @@ class SystemView {
 
         // Asteroid fields: scattered rocks, only once they resolve to >1 px.
         const rocksVisible = z > 0.05;
-        for (const rock of this.asteroids) {
-            rock.visible = rocksVisible;
-        }
-
-        // System name label under the star (small white text). Task 12p: only
-        // drawn above f = 150 (MainView.2.cs:5153/5627-5630) — nothing names
-        // stars at system zoom; offset uses the larger of the map icon and
-        // the drawn star size.
-        this.nameLabel.visible = labelAllowed && f > 150;
-        if (this.nameLabel.visible) {
-            const gpx = starGalaxySpritePx(star.diameter, z);
-            const iconPx = clamp(star.diameter * z * 30, 2.5, 26);
-            this.nameLabel.position.set(0, (Math.max(iconPx, gpx) * 0.5 + 10) / z);
-            this.nameLabel.scale.set(1 / z);
+        if (rocksVisible !== this.rocksShown) {
+            this.rocksShown = rocksVisible;
+            for (const rock of this.asteroids) {
+                rock.visible = rocksVisible;
+            }
         }
     }
 
@@ -878,6 +919,10 @@ export class MainView {
     private textures!: MainViewTextures;
     private minZoom = 1e-6;
     private lastGridZoom = -1;
+    /** Screen x, y pairs of the system labels kept this frame (reused). */
+    private keptLabels: number[] = [];
+    /** Last parameters the selection ring was drawn with (redrawn only on change). */
+    private selectionKey = new DrawKey();
     private dragging = false;
     private lastPointer = { x: 0, y: 0 };
     private lastDragX = 0;
@@ -1238,9 +1283,16 @@ export class MainView {
 
         // Systems: greedy 80 px label-overlap suppression across systems.
         const labelZoom = m * 4; // system names appear at ~sector zoom
-        const kept: Array<{ x: number; y: number }> = [];
+        // Task 10f: the "Show system names" setting disables them entirely.
+        const namesOn = z > labelZoom && showSystemNames();
+        // Kept label positions as flat x, y pairs (reused across frames: no per-frame allocation).
+        const kept = this.keptLabels;
+        kept.length = 0;
+        const halfViewW = cam.width / 2;
+        const halfViewH = cam.height / 2;
         for (const sv of this.systems) {
-            // Cheap pre-cull before the (margin-inclusive) update.
+            // Pre-cull: the systems that take part in the greedy label pass below (unchanged, so the same labels
+            // are kept); SystemView.update then culls exactly by what the system draws.
             const star = sv.system.systemStar;
             const halfW = cam.width / 2 + 400 / z + sv.maxExtent / z;
             const halfH = cam.height / 2 + 400 / z + sv.maxExtent / z;
@@ -1249,20 +1301,21 @@ export class MainView {
                 continue;
             }
             // Decide label visibility greedily (min 80 px between labels).
-            // Task 10f: the "Show system names" setting disables them entirely.
-            const s = cam.worldToScreen(star.xpos, star.ypos);
-            let allow = z > labelZoom && showSystemNames();
+            let allow = namesOn;
             if (allow) {
-                for (const k of kept) {
-                    const dx = k.x - s.x;
-                    const dy = k.y - s.y;
+                // Camera.worldToScreen, inlined.
+                const sx = (star.xpos - cam.x) * z + halfViewW;
+                const sy = (star.ypos - cam.y) * z + halfViewH;
+                for (let i = 0; i < kept.length; i += 2) {
+                    const dx = kept[i] - sx;
+                    const dy = kept[i + 1] - sy;
                     if (dx * dx + dy * dy < 80 * 80) {
                         allow = false;
                         break;
                     }
                 }
                 if (allow) {
-                    kept.push(s);
+                    kept.push(sx, sy);
                 }
             }
             sv.update(z, cam, allow, dtSeconds);
@@ -1309,17 +1362,13 @@ export class MainView {
         if (selBo !== null && !selBo.hasBeenDestroyed && 1 / z < BUILT_OBJECT_MAX_FACTOR) {
             const s = cam.worldToScreen(selBo.xpos, selBo.ypos);
             const r = Math.max(this.builtObjectLayer.drawnSizePx(selBo), 8) * 0.5 + 4;
-            this.selectionRing.clear();
-            this.selectionRing.circle(s.x, s.y, r).stroke({ width: 1.5, color: 0x4fc3f7 });
-            this.selectionRing.visible = true;
+            this.drawSelectionRing(s.x, s.y, r);
         } else if (sel === null) {
             this.selectionRing.visible = false;
         } else {
             const s = cam.worldToScreen(sel.xpos, sel.ypos);
             const r = this.drawnSize(sel, z) * 0.5 + 4;
-            this.selectionRing.clear();
-            this.selectionRing.circle(s.x, s.y, r).stroke({ width: 1.5, color: 0x4fc3f7 });
-            this.selectionRing.visible = true;
+            this.drawSelectionRing(s.x, s.y, r);
         }
 
         // Screen-edge auto-scroll (original control scheme).
@@ -1342,6 +1391,15 @@ export class MainView {
                 cam.panByScreen(dx, dy);
             }
         }
+    }
+
+    /** The selection ring at screen (x, y) with radius r; the geometry is rebuilt only when one of them changes. */
+    private drawSelectionRing(x: number, y: number, r: number): void {
+        if (this.selectionKey.changed(x, y, r)) {
+            this.selectionRing.clear();
+            this.selectionRing.circle(x, y, r).stroke({ width: 1.5, color: 0x4fc3f7 });
+        }
+        this.selectionRing.visible = true;
     }
 
     private drawGrid(z: number): void {

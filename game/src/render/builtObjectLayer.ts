@@ -388,6 +388,8 @@ export class BuiltObjectLayer {
     private resolved = new Map<string, LoadedShipImage | null>();
     /** Task 13d: drawn size (px) of each built object at the last update. */
     private drawnPx = new Map<BuiltObject, number>();
+    /** Art URL per pictureRef (render: perf pass — built once instead of a string per ship per frame). */
+    private urlByPictureRef = new Map<number, string | null>();
 
     constructor(
         private galaxy: Galaxy,
@@ -434,20 +436,33 @@ export class BuiltObjectLayer {
         // Ships are drawn only while the original's zoom factor < 500.
         this.root.visible = f < BUILT_OBJECT_MAX_FACTOR;
         if (!this.root.visible) return;
+        // Camera.worldToScreen, inlined (no allocation per ship per frame).
+        const camX = cam.x;
+        const camY = cam.y;
+        const halfW = cam.width / 2;
+        const halfH = cam.height / 2;
+        const maxX = cam.width + 100;
+        const maxY = cam.height + 100;
         // TODO(port): Empire.IsObjectVisibleToThisEmpire(BuiltObject) (MainView.1.cs:883) — not in sim; all objects drawn
         for (const bo of this.galaxy.builtObjects) {
             // MainView.1.cs:867 `if (builtObject5 == null) continue;` — Galaxy.BuiltObjects keeps null holes after
             // CompleteTeardown (BuiltObject.2.cs:5522) until RemoveNullBuiltObjects (Galaxy.9.cs:2862) compacts it.
             if (bo === null || bo.hasBeenDestroyed) continue;
-            const s = cam.worldToScreen(bo.xpos, bo.ypos);
+            const sx = (bo.xpos - camX) * z + halfW;
+            const sy = (bo.ypos - camY) * z + halfH;
             let sprite = this.sprites.get(bo);
             // Cull more than 100 px outside the viewport.
-            if (s.x < -100 || s.x > cam.width + 100 || s.y < -100 || s.y > cam.height + 100) {
+            if (sx < -100 || sx > maxX || sy < -100 || sy > maxY) {
                 if (sprite !== undefined) sprite.visible = false;
                 this.drawnPx.delete(bo);
                 continue;
             }
-            const url = builtObjectImageUrl(resolveDrawPictureRef(bo));
+            const pictureRef = resolveDrawPictureRef(bo);
+            let url = this.urlByPictureRef.get(pictureRef);
+            if (url === undefined) {
+                url = builtObjectImageUrl(pictureRef);
+                this.urlByPictureRef.set(pictureRef, url);
+            }
             if (url === null) {
                 if (sprite !== undefined) sprite.visible = false;
                 this.drawnPx.delete(bo);
