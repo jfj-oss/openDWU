@@ -149,6 +149,11 @@ zoom; (10) faint static layer on advisor/diplomacy voice in the fog; garbled rim
 (11) bleaker rim name table, more numbered survey designations; (12) rim-specific exploration/colony message wording
 (lost contact, missing survey ship, unusual readings); (13) faint grain/vignette on the main view deep in the rim, minimap
 dims the outer band. Effort: ~1 agent-day; build with 19h; must not change any sim digest (render/audio/text only except 2).
+Model split (user, 2026-09-26): anything that CREATES visuals — colour-grading filters, dust-lane/murk rendering, creature
+silhouettes, grain/vignette, any procedural art (no art files are ever committed; new visuals are Pixi filters/graphics
+over the original art) — is an Opus package; the data/wiring pieces (name tables, message wording, music/ambient selector
+weights, nav-light/glow params, minimap dimming) are a Sonnet package that consumes the Opus-built render hooks.
+Sub-agents cannot spawn sub-agents in this harness, so the orchestrator runs the two packages in sequence: Opus render first.
 
 ## 19j — Rim herders (ACCEPTED by the user 2026-09-26 — "yes"; rim independents coexist with and use the fauna; builds right after 19g-7)
 1. Herder peoples: a rim independent race trait "symbiotic" — herds are docile to that race's colonies/ships; herder worlds
