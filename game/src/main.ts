@@ -43,6 +43,10 @@ import { createEmpireMessageFeed, recordTickerMessage, savedHistoryLines } from 
 // [policy] begin
 import { closeEmpirePolicy } from './ui/screens/empirePolicy';
 // [policy] end
+
+// [intel] begin
+import { closeIntelligenceScreen } from './ui/screens/intelligence';
+// [intel] end
 import { createMainMenu } from './ui/screens/mainMenu';
 import { openOptionsModal } from './ui/screens/mainMenu';
 import { createTutorialsScreen, openTutorialWindow } from './ui/screens/tutorials';
@@ -562,6 +566,10 @@ export async function startGameView(
         // [policy] begin
         closeEmpirePolicy();
         // [policy] end
+
+        // [intel] begin
+        closeIntelligenceScreen();
+        // [intel] end
 
         setEmpireSummarySource(null);
         // The ticker buffer is module-level; the next game starts fresh.

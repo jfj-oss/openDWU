@@ -38,6 +38,10 @@ import { countLabel } from './plural';
 // [policy] begin
 import { toggleEmpirePolicy } from './screens/empirePolicy';
 // [policy] end
+
+// [intel] begin
+import { toggleIntelligenceScreen } from './screens/intelligence';
+// [intel] end
 import { createSelectionActionBar, refreshSelectionActionBar } from './orderMenu'; // [ordermenu]
 
 // Port of Main.Part12.cs LoadUiChromeButtons (381–520): the control → chrome
@@ -666,6 +670,15 @@ function buildTopBarButton(name: string, wiring: HudWiring): HTMLElement {
             return;
         }
         // [policy] end
+
+        // [intel] begin
+        // tbtnIntelligenceAgents → Intelligence Agents / Characters (Main.Part6.cs:3231 tbtnIntelligenceAgents_Click).
+        if (name === 'tbtnIntelligenceAgents') {
+            const src = getEmpireSummarySource();
+            if (src) toggleIntelligenceScreen({ player: src.empire, onZoomTo: (t) => selectStellarObject(t, true) });
+            return;
+        }
+        // [intel] end
 
         const screen = topBarScreen(name);
         if (screen === 'colonies') {
