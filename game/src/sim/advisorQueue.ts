@@ -55,6 +55,37 @@ export enum AdvisorMessageType {
     DefendTarget,
 }
 
+/**
+ * A PirateRelationType as EmpireMessage.AdvisorMessageData. The C# boxes the enum, so the approve handler can tell it from
+ * a DiplomaticRelationType (Main.Part2.cs 1857 `is DiplomaticRelationType` / 1995 `is PirateRelationType`); in TS both
+ * are numbers, so the pirate-protection suggestions (Empire.2.cs 2800-2870, pirateRelationsAI.ts) carry this box.
+ * `pirateRelationType` is a PirateRelationType (pirateRelations.ts; not imported to keep this module light).
+ */
+export class BoxedPirateRelationType {
+    constructor(readonly pirateRelationType: number) {}
+}
+
+/**
+ * EmpireMessage.cs 86 ResolveTargetEmpireFromSubject over every subject class (messages.ts keeps typed slots only for
+ * Habitat / BuiltObject / Empire): BuiltObjectList → its first ship's empire, ShipGroup / Character → their empire,
+ * IntelligenceMission / pirate mission (EmpireActivity) → their TargetEmpire. Duck-typed on the one subject an advisor
+ * message carries.
+ */
+export function resolveAdvisorTargetEmpire(m: EmpireMessage): Empire | null {
+    const subject = m.subject as Record<string, unknown> | null;
+    let empire = m.resolveTargetEmpireFromSubject();
+    if (subject === null || typeof subject !== 'object') return empire;
+    if (Array.isArray(subject)) {
+        if (subject.length > 0 && subject[0] != null) empire = ((subject[0] as { empire?: Empire | null }).empire ?? null);
+        return empire;
+    }
+    if (empire === null) {
+        if ('targetEmpire' in subject) empire = (subject.targetEmpire as Empire | null) ?? null;
+        else if ('empire' in subject) empire = (subject.empire as Empire | null) ?? null;
+    }
+    return empire;
+}
+
 /** DiplomaticMessageQueue.cs 673: an entry older than 250 × Galaxy.RealSecondsInGalacticYear star-date units expires. */
 export const ADVISOR_SUGGESTION_LIFETIME = 250 * REAL_SECONDS_IN_GALACTIC_YEAR;
 
@@ -134,7 +165,7 @@ export function expireInvalidAdvisorSuggestions(queue: EmpireMessage[], newMessa
                 break;
             case T.TreatyOffer:
             case T.WarTradeSanctions:
-                flag = (t === T.TreatyOffer || t === T.WarTradeSanctions) && empireMessage.resolveTargetEmpireFromSubject() === newMessage.resolveTargetEmpireFromSubject();
+                flag = (t === T.TreatyOffer || t === T.WarTradeSanctions) && resolveAdvisorTargetEmpire(empireMessage) === resolveAdvisorTargetEmpire(newMessage);
                 break;
             case T.OfferMilitaryRefueling:
             case T.CancelMilitaryRefueling:
@@ -227,7 +258,7 @@ export function expireAdvisorSuggestionsForEmpire(player: Empire, empire: Empire
             case T.AllowTradeRestrictedResources:
             case T.DisallowTradeRestrictedResources:
             case T.PirateRaid:
-                if (m.resolveTargetEmpireFromSubject() === empire) {
+                if (resolveAdvisorTargetEmpire(m) === empire) {
                     queue.splice(i, 1);
                     removed++;
                 }

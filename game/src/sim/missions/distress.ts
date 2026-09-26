@@ -218,7 +218,7 @@ export function declinedTasksCheckAttackEmpireTargetValid(list: readonly Decline
     return flag;
 }
 
-/** Galaxy-level constants of the declined-task windows (Empire.8.cs 4428 / 4433, Main.Part2.cs 2744 / 2751). */
+/** The declined-task windows in star-date units (Empire.8.cs 4428 / 4433, Main.Part2.cs 2744 / 2751). */
 export const DECLINED_ATTACK_EMPIRE_WINDOW = 240000;
 export const DECLINED_TASK_TARGET_WINDOW = 600000;
 

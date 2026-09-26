@@ -123,7 +123,7 @@ export const MAXIMUM_CONSTRUCTION_QUEUE_WAIT_TIME_YEARS = 2.5;
 const MAX_SOLAR_SYSTEM_SIZE = 23000;
 
 /** DesignList.FindNewestCanBuild(subRole[, colony]) (DesignList.cs 140/148): the empire is the first design's owner. */
-function dlFindNewestCanBuild(designs: Design[], subRole: BuiltObjectSubRole, colony: Habitat | null = null): Design | null {
+export function dlFindNewestCanBuild(designs: Design[], subRole: BuiltObjectSubRole, colony: Habitat | null = null): Design | null {
     let empire: Empire | null = null;
     if (designs.length > 0 && designs[0] != null) empire = designs[0].empire as Empire | null;
     return findNewestCanBuild(designs, subRole, empire, colony);
@@ -634,7 +634,7 @@ export function procureConstructionComponentsAtColony(galaxy: Galaxy, empire: Em
 }
 
 /** `foreach (Cargo c in list) CreateOrder(requester, c.CommodityResource, c.Amount, isState: false, type)`. */
-function createOrdersFor(galaxy: Galaxy, empire: Empire, requester: Habitat | BuiltObject, cargo: CargoList, type: OrderType): void {
+export function createOrdersFor(galaxy: Galaxy, empire: Empire, requester: Habitat | BuiltObject, cargo: CargoList, type: OrderType): void {
     for (const item of cargo.items) empireCreateOrder(galaxy, empire, requester, new ResourceRef(item.commodity.resourceId), item.amount, false, type);
 }
 
