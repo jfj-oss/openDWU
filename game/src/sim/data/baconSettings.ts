@@ -5,7 +5,7 @@
 // process-wide statics with class defaults (Galaxy.3.cs InitializeStatics for the Galaxy.* ones); BaconInitialize
 // runs when a created or loaded game starts running (Main.Part7.cs 2190 / Part11.cs 2224 / Part12.cs 3151), i.e.
 // after the galaxy is generated. On a fresh launch the first galaxy is therefore generated with the class defaults and
-// the file's values apply from game start on; sim/baconInitialize.ts models exactly that for every game.
+// the file's values apply from game start on; sim/baconSettings.ts (baconInitializeSettings) models exactly that for every game.
 //
 // Pure parsing, no I/O: gameData.ts fetches the file (/assets/dwu/BaconSettings.txt; a missing file leaves every
 // field at its C# default, as the C# FileNotFoundException catch does).
