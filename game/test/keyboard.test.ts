@@ -325,8 +325,8 @@ describe('isKeyActionAvailable (task 12q)', () => {
     });
 
     it('marks unimplemented actions as unavailable', () => {
-        expect(isKeyActionAvailable('intelligenceAgentsScreen')).toBe(false);
-        // fix6ui: the ship-order and selection keys (E/R/A/S/, Z/N/B/L) are implemented now; only F4 is left.
+        // intel + fix6ui: F4, the ship-order keys and the selection keys are all implemented now.
+        expect(isKeyActionAvailable('intelligenceAgentsScreen')).toBe(true);
         expect(isKeyActionAvailable('lockView')).toBe(true);
         expect(isKeyActionAvailable('commandRefuel')).toBe(true);
         expect(isKeyActionAvailable('nonsense')).toBe(false);
@@ -341,10 +341,10 @@ describe('isKeyActionAvailable (task 12q)', () => {
 
     it('unavailable actions fall through to dispatchKey default branch', () => {
         const action = dispatchKey(
-            { key: 'F4', ctrlKey: false, altKey: false, shiftKey: false, target: null },
+            { key: 'L', ctrlKey: false, altKey: false, shiftKey: false, target: null },
             {},
         );
-        expect(action).toBe('intelligenceAgentsScreen');
+        expect(action).toBe('lockView');
         expect(isKeyActionAvailable(action!)).toBe(false);
     });
 });
