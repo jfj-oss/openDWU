@@ -17,7 +17,7 @@
 // keeps galaxy.ts untouched.
 
 import { newHabitatConstructionQueue } from './construction/constructionYard';
-import type { Galaxy } from './galaxy';
+import { generationHabitatDoTasks, type Galaxy } from './galaxy';
 import type { Empire } from './empire';
 import type { Resource } from './data/resources';
 import { CargoList, TroopList } from './cargo';
@@ -49,8 +49,8 @@ function generatePlanet(galaxy: Galaxy, sun: Habitat, selector: PlanetSelector, 
     habitat.pictureRef = sel.pictureRef;
     habitat.landscapePictureRef = sel.landscapePictureRef;
     habitat.baseQuality = galaxy.selectHabitatQuality(habitat, galaxy.colonyPrevalence);
-    // TODO(port): habitat.DoTasks(galaxy.CurrentDateTime) — Habitat.DoTasks is not ported
-    // (same TODO as Galaxy.generateContinentalPlanet).
+    // Galaxy.8.cs 215/240/265/304/343/417/512/551 habitat.DoTasks(galaxy.CurrentDateTime) (galaxy.ts generationHabitatDoTasks).
+    generationHabitatDoTasks(galaxy, habitat);
     habitat = galaxy.selectResources(habitat);
     if (galaxy.rnd.next(0, 5) === 2) {
         habitat.orbitDirection = false;

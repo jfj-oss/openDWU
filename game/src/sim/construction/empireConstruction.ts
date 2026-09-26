@@ -42,7 +42,6 @@ import { galaxyComponentCurrentPrices } from '../design';
 import { BuiltObjectSubRole } from '../builtObjectTypes';
 import { BuiltObjectRole } from '../data/designSpecifications';
 import type { ComponentDefinition } from '../componentStatic';
-import { DEFAULT_BASE_TECH_COST } from '../componentStatic';
 import { ComponentStatus } from '../builtObjectComponent';
 import { Cargo, CargoList, ResourceRef } from '../cargo';
 import { galaxyNow, galaxyStarDate } from '../tick/simTime';
@@ -221,9 +220,8 @@ export function designCalculateMaintenanceCosts(galaxy: Galaxy, design: Design, 
     const gov = empireGovernmentAttributes(empire);
     if (gov !== null) num5 = gov.maintenanceCosts;
     if (empire.pirateEmpireBaseHabitat !== null) {
-        // TODO(port): Galaxy.BaseTechCost (game option) is not kept on the TS Galaxy; its default stands in
-        // (as in forceStructure.ts calculateSupportCost).
-        const num6 = Math.sqrt(DEFAULT_BASE_TECH_COST / 120000.0);
+        // BaconDesign.cs 176 Math.Sqrt((double)galaxy.BaseTechCost / 120000.0).
+        const num6 = Math.sqrt(galaxy.baseTechCost / 120000.0);
         num5 *= galaxy.pirateShipMaintenanceFactor * num6;
     }
     return (num1 - num4) * num5;

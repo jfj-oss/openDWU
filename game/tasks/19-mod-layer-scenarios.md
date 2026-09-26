@@ -64,7 +64,7 @@ Effort: 1–4 days each after the mod layer; 5–9 one to two weeks each.
 
 ## Order of work (decided 2026-09-26)
 1. **modlayer** foundation (starts now): scenario/data overlay folder loaded over /assets/dwu (races, resources, policies, templates, GameText additions), wizard "Scenario" toggles, feature flags read by the sim (off = byte-identical faithful game, pins unchanged), story-event hook points and a scenario test harness.
-2. Then in parallel: 19a rim trader, 19b Dark Farms + robot army, 19c chartered companies, 19d items 1–4 (internal politics, resource crises, espionage consequences, refugees/demographics).
+2. Then: 19d1 internal politics FIRST (it holds the shared approval hook + player-decisions module the others reuse — see 19d1 §S), and in parallel with it 19a rim trader, 19b Dark Farms + robot army, 19e-9 freight overlay; then 19c chartered companies (needs 19a's ledger + the contract hook), 19d2–19d4. Specs: tasks/19a-rim-trader.md, 19b-dark-farms.md, 19c-chartered-companies.md, 19d1-…19d4-*.md, 19e9-freight-overlay.md, 19f-hidden-threats.md.
 2b. Once 19b lands: the ten 19f hidden threats as data + spread rules on its hooks, in parallel, each behind its own scenario flag.
 3. Then 19d items 5–10 and the cheap 19e items (1 replay theatre, 4 chronicle, 9 freight overlay, 11 situational music).
 4. Then 19e medium (5 living characters, 7 wreckage/salvage, 8 space weather, 10 race designer).

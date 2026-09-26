@@ -13,11 +13,11 @@ import type { Empire } from '../sim/empire';
 import { buildAdvisorBrief, type AdvisorBrief, type AdvisorSelection } from '../sim/player/advisorBrief';
 import {
     ADVISOR_RESPONSE_SCHEMA,
-    executeAdvisorCommands,
     validateAdvisorResponse,
     type AdvisorCommandResult,
     type RejectedCommand,
 } from '../sim/player/advisorCommands';
+import { runPlayerCommand } from '../sim/player/playerCommands';
 
 export type AdvisorApi = 'ollama' | 'openai';
 
@@ -252,8 +252,9 @@ export async function runAdvisorTurn(args: {
     if (v.clarify !== undefined) {
         turn.clarify = v.clarify;
     } else if (v.commands.length > 0) {
-        // Executed between frames, like the click it stands for.
-        turn.results = executeAdvisorCommands(args.galaxy, args.player, brief, v.commands);
+        // Executed between frames (a frame boundary: the model's answer arrives in a promise callback), like the click
+        // it stands for, and journaled in the command log.
+        turn.results = runPlayerCommand(args.galaxy, args.player, 'advisorCommands', [brief, v.commands]);
     }
     const parts: string[] = [];
     if (turn.reply !== '') parts.push(`"${turn.reply}"`);

@@ -74,12 +74,12 @@ import { haveRevolution } from './treasury';
 import { getDevelopmentLevel, setDevelopmentLevel } from './combat/invasion';
 import { inflictDamageFull } from './combat/damage';
 import { ComponentStatus, csInt } from './builtObjectComponent';
-import { DEFAULT_BASE_TECH_COST } from './componentStatic';
 import { doResearchBreakthrough } from './researchTick';
 import { RaceEventType } from './eventTypes';
 import { REAL_SECONDS_IN_GALACTIC_YEAR, galaxyNow } from './tick/simTime';
 import { characterKillFromPerformIntelligenceMissions } from './espionagePrisoners';
 import type { ConstructionQueue } from './construction/constructionQueue';
+import { formatGameTextNow } from './textResolver';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Enums (IntelligenceMissionType.cs / IntelligenceMissionOutcome.cs, member order exact)
@@ -1623,7 +1623,7 @@ export function completeIntelligenceMission(galaxy: Galaxy, self: Empire, missio
                 else if (builtObject2.nearestSystemStar !== null) habitat4 = builtObject2.nearestSystemStar;
                 let arg2 = '';
                 if (habitat4 !== null) arg2 = habitat4.name;
-                const description2 = gameText('Base Destroyed Sabotage Description', builtObject2.name, arg2);
+                const description2 = formatGameTextNow('Base Destroyed Sabotage Description', [builtObject2.name, arg2]);
                 const title2 = gameText('Base Destroyed Sabotage') + '!';
                 sendMessageToEmpire(builtObject2.empire, builtObject2.empire, EmpireMessageType.BattleUnderAttack, builtObject2, description2, { x: Math.trunc(builtObject2.xpos), y: Math.trunc(builtObject2.ypos) }, '', title2);
             }
@@ -1693,7 +1693,7 @@ export function completeIntelligenceMission(galaxy: Galaxy, self: Empire, missio
             if (flag && empire !== null && stellarObject !== null) {
                 let arg = '';
                 if (habitat2 !== null) arg = habitat2.name;
-                const description = gameText('Construction Sabotaged Description', stellarObject.name, arg);
+                const description = formatGameTextNow('Construction Sabotaged Description', [stellarObject.name, arg]);
                 const title = gameText('Construction Sabotaged') + '!';
                 sendMessageToEmpire(empire, empire, EmpireMessageType.BattleUnderAttack, stellarObject, description, { x: Math.trunc(stellarObject.xpos), y: Math.trunc(stellarObject.ypos) }, '', title);
             }
@@ -1728,9 +1728,8 @@ export function completeIntelligenceMission(galaxy: Galaxy, self: Empire, missio
             const tree = self.research.techTree;
             const equivalent = tree.length > researchNode.def.projectId ? tree[researchNode.def.projectId] : null;
             if (equivalent !== null) {
-                // TODO(port): Galaxy.BaseTechCost (game option) is not kept on the TS Galaxy — DEFAULT_BASE_TECH_COST stands in
-                // (as in constructionQueue.ts).
-                let num = Math.fround(DEFAULT_BASE_TECH_COST * 0.5 * (mission.agent!.espionageFactored / 25.0));
+                // Empire.6.cs 320 (float)((double)_Galaxy.BaseTechCost * 0.5 * (EspionageFactored / 25.0)).
+                let num = Math.fround(galaxy.baseTechCost * 0.5 * (mission.agent!.espionageFactored / 25.0));
                 if (mission.agent !== null) num = Math.fround(num * Math.fround(mission.agent.espionageFactored / 25.0));
                 let num2 = Math.fround(1);
                 if (self.research.allowedRacesCount(equivalent) > 0 && (self.dominantRace === null || !self.research.allowedRacesContains(equivalent, self.dominantRace))) num2 = Math.fround(2);
@@ -1806,14 +1805,14 @@ export function resolveIntelligenceMissionDescription(mission: IntelligenceMissi
         const empireText = (key: string): string =>
             mission.targetEmpire !== callingEmpire
                 ? !flag
-                    ? gameText(`IntelligenceMissionOutcome ${key} Fail`, mission.targetEmpire!.name)
-                    : gameText(`IntelligenceMissionOutcome ${key} Succeed`, mission.targetEmpire!.name)
+                    ? formatGameTextNow(`IntelligenceMissionOutcome ${key} Fail`, [mission.targetEmpire!.name])
+                    : formatGameTextNow(`IntelligenceMissionOutcome ${key} Succeed`, [mission.targetEmpire!.name])
                 : !flag
-                  ? gameText(`IntelligenceMissionOutcome ${key} OurEmpire Fail`)
-                  : gameText(`IntelligenceMissionOutcome ${key} OurEmpire Succeed`);
+                  ? formatGameTextNow(`IntelligenceMissionOutcome ${key} OurEmpire Fail`)
+                  : formatGameTextNow(`IntelligenceMissionOutcome ${key} OurEmpire Succeed`);
         switch (mission.type) {
             case T.CounterIntelligence:
-                result = gameText('IntelligenceMissionOutcome CounterIntelligence');
+                result = formatGameTextNow('IntelligenceMissionOutcome CounterIntelligence');
                 break;
             case T.DeepCover:
                 result = empireText('DeepCover');
@@ -1825,13 +1824,13 @@ export function resolveIntelligenceMissionDescription(mission: IntelligenceMissi
                 let arg2 = '';
                 if (target instanceof BuiltObjectClass) arg2 = target.name;
                 else if (target instanceof HabitatClass) arg2 = target.name;
-                result = !flag ? gameText('IntelligenceMissionOutcome SabotageColony Fail', arg2) : gameText('IntelligenceMissionOutcome SabotageColony Succeed', arg2);
+                result = !flag ? formatGameTextNow('IntelligenceMissionOutcome SabotageColony Fail', [arg2]) : formatGameTextNow('IntelligenceMissionOutcome SabotageColony Succeed', [arg2]);
                 break;
             }
             case T.DestroyBase: {
                 let arg = '';
                 if (target instanceof BuiltObjectClass) arg = target.name;
-                result = !flag ? gameText('IntelligenceMissionOutcome DestroyBase Fail', arg) : gameText('IntelligenceMissionOutcome DestroyBase Succeed', arg);
+                result = !flag ? formatGameTextNow('IntelligenceMissionOutcome DestroyBase Fail', [arg]) : formatGameTextNow('IntelligenceMissionOutcome DestroyBase Succeed', [arg]);
                 break;
             }
             case T.AssassinateCharacter: {
@@ -1841,14 +1840,14 @@ export function resolveIntelligenceMissionDescription(mission: IntelligenceMissi
                     arg4 = target.name;
                     if (target.location !== null) arg5 = target.location.name;
                 }
-                result = !flag ? gameText('IntelligenceMissionOutcome AssassinateCharacter Fail', arg4, arg5) : gameText('IntelligenceMissionOutcome AssassinateCharacter Succeed', arg4, arg5);
+                result = !flag ? formatGameTextNow('IntelligenceMissionOutcome AssassinateCharacter Fail', [arg4, arg5]) : formatGameTextNow('IntelligenceMissionOutcome AssassinateCharacter Succeed', [arg4, arg5]);
                 break;
             }
             case T.SabotageConstruction: {
                 let arg3 = '';
                 if (target instanceof BuiltObjectClass) arg3 = target.name;
                 else if (target instanceof HabitatClass) arg3 = target.name;
-                result = !flag ? gameText('IntelligenceMissionOutcome SabotageConstruction Fail', arg3) : gameText('IntelligenceMissionOutcome SabotageConstruction Succeed', arg3);
+                result = !flag ? formatGameTextNow('IntelligenceMissionOutcome SabotageConstruction Fail', [arg3]) : formatGameTextNow('IntelligenceMissionOutcome SabotageConstruction Succeed', [arg3]);
                 break;
             }
             case T.StealGalaxyMap:
@@ -1862,7 +1861,7 @@ export function resolveIntelligenceMissionDescription(mission: IntelligenceMissi
                 break;
             case T.StealTechData: {
                 if (mission.targetEmpire === callingEmpire) {
-                    result = !flag ? gameText('IntelligenceMissionOutcome StealTechData OurEmpire Fail') : gameText('IntelligenceMissionOutcome StealTechData OurEmpire Succeed');
+                    result = !flag ? formatGameTextNow('IntelligenceMissionOutcome StealTechData OurEmpire Fail') : formatGameTextNow('IntelligenceMissionOutcome StealTechData OurEmpire Succeed');
                     break;
                 }
                 let researchNode: TechNode | null = null;
@@ -1870,11 +1869,11 @@ export function resolveIntelligenceMissionDescription(mission: IntelligenceMissi
                 const en = mission.targetEmpire!.name;
                 result = !flag
                     ? researchNode === null
-                        ? gameText('IntelligenceMissionOutcome StealTechData Fail', en)
-                        : gameText('IntelligenceMissionOutcome StealTechData Project Fail', researchNode.def.name, en)
+                        ? formatGameTextNow('IntelligenceMissionOutcome StealTechData Fail', [en])
+                        : formatGameTextNow('IntelligenceMissionOutcome StealTechData Project Fail', [researchNode.def.name, en])
                     : researchNode === null
-                      ? gameText('IntelligenceMissionOutcome StealTechData Succeed', en)
-                      : gameText('IntelligenceMissionOutcome StealTechData Project Succeed', researchNode.def.name, en);
+                      ? formatGameTextNow('IntelligenceMissionOutcome StealTechData Succeed', [en])
+                      : formatGameTextNow('IntelligenceMissionOutcome StealTechData Project Succeed', [researchNode.def.name, en]);
                 break;
             }
         }

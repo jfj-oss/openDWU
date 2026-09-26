@@ -89,8 +89,8 @@ export function resolveAdvisorTargetEmpire(m: EmpireMessage): Empire | null {
 /**
  * An advisor suggestion's Description: `string.Format(TextResolver.GetText(key), args)` kept in the colonyTick gameText
  * encoding "key|arg0|arg1|…" (the sim does not localise; textResolver.resolveGameText renders it for the window).
- * TODO(port) M9: the automation texts of the other packages (militaryAI.ts, espionage.ts, civilianAI.ts, facilities.ts,
- * invasion.ts, pirate*.ts GenerateAutomationMessage*) still pass formatText(getText(key), …), which keeps the key only.
+ * The automation texts of the other packages (militaryAI.ts, blockades.ts, empireConstruction.ts, pirate*.ts
+ * GenerateAutomationMessage*) use diplomacyTick formatText(getText(key), …), which formats the GameText text now.
  */
 export function advisorText(key: string, ...args: unknown[]): string {
     return args.length > 0 ? `${key}|${args.map((a) => String(a)).join('|')}` : key;

@@ -54,8 +54,9 @@ import { checkAtWarWithEmpire } from '../../sim/fleets/shipGroupTasks';
 import { resolveStarDateDescription } from '../../sim/galaxyTime';
 import { REAL_SECONDS_IN_GALACTIC_YEAR } from '../../sim/tick/simTime';
 import { AutomationLevel } from '../../sim/empire';
+import { issuePlayerCommand } from '../../sim/player/playerCommands';
 import { CHARACTER_ROLE, CHARACTER_SKILL, CHARACTER_TRAIT, INTELLIGENCE_MISSION, resolveEnumTextDescription } from '../../sim/enumText';
-import { formatNet, getText, isTextLoaded } from '../../sim/textResolver';
+import { formatNet, getText, isTextLoaded, resolveGameText } from '../../sim/textResolver';
 import { confirmAutomationOff } from '../orderMenu';
 
 const MT = IntelligenceMissionType;
@@ -233,10 +234,10 @@ export function resolveDescriptionCharacterTask(c: Character | null, galaxy: Gal
     return result;
 }
 
-/** The sim's gameText() "tag|arg…" encoding → the English text (resolveIntelligenceMissionDescription returns it). */
+/** A sim text (resolveIntelligenceMissionDescription formats it now, like Galaxy.2.cs 5563; a gameText() "tag|arg…"
+ *  encoding is still decoded) → the English text. */
 function resolveText(encoded: string): string {
-    const parts = encoded.split('|');
-    return T(parts[0], ...parts.slice(1));
+    return resolveGameText(encoded);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -904,7 +905,8 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
     /** CharacterMission.cs btnAssign/CancelMission_Click: the ControlAgentAssignment automation prompt first. */
     async function automationPrompt(): Promise<void> {
         if (player.controlAgentAssignment === AutomationLevel.FullyAutomated) {
-            if (await confirmAutomationOff(T('Agent Assignment'))) player.controlAgentAssignment = AutomationLevel.Undefined; // C# AutomationLevel.Manual (0)
+            // C# AutomationLevel.Manual (0). Command log: queued, applied at the next frame boundary.
+            if (await confirmAutomationOff(T('Agent Assignment'))) issuePlayerCommand(galaxy, player, 'setEmpireControl', ['controlAgentAssignment', AutomationLevel.Undefined]);
         }
     }
     assignBtn.addEventListener('click', async () => {
@@ -912,15 +914,15 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
         if (c === null) return;
         await automationPrompt();
         if (open === null || selected !== c) return;
-        if (assignMission(galaxy, player, c, form)) render();
+        const state = buildMissionState(galaxy, player, c, form);
+        if (state !== null) issuePlayerCommand(galaxy, player, 'setAgentMission', [c, state], () => render());
     });
     cancelBtn.addEventListener('click', async () => {
         const c = selected;
         if (c === null) return;
         await automationPrompt();
         if (open === null || selected !== c) return;
-        cancelMission(player, c);
-        render();
+        issuePlayerCommand(galaxy, player, 'cancelAgentMission', [c], () => render());
     });
     dismissBtn.addEventListener('click', () => {
         const c = selected;
@@ -930,9 +932,10 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
             return;
         }
         if (!window.confirm(T('Are you sure that you wish to disband this character?'))) return;
-        dismissCharacter(galaxy, c);
-        selected = null;
-        render();
+        issuePlayerCommand(galaxy, player, 'dismissCharacter', [c], () => {
+            selected = null;
+            render();
+        });
     });
 
     const timer = setInterval(render, 1000);

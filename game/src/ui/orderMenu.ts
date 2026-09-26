@@ -14,11 +14,12 @@ import { BuiltObjectMissionType } from '../sim/missions/mission';
 import { resolveGameText, tryGetText } from '../sim/textResolver';
 import { ShipAction, ShipActionType, isSystemInfo } from '../sim/player/shipAction';
 import { playAttackClick, playOrderSting } from '../audio/gameAudio'; // [audio]
-import { executeShipAction, type ShipActionMouseHoverMode, type ShipActionSelection } from '../sim/player/executeShipAction';
+import { type ShipActionMouseHoverMode, type ShipActionResult, type ShipActionSelection } from '../sim/player/executeShipAction';
+import { issuePlayerCommand } from '../sim/player/playerCommands';
+import type { RightClickResult } from '../sim/player/orderMenu';
 import {
-    applyAutomationOff,
-    fleetPointClick,
     openActionMenu,
+    orderSubject,
     resolveHoverOrder,
     rightClickOrder,
     selectionAfterClick,
@@ -337,12 +338,20 @@ export function installOrderUi(d: OrderUiDeps, view: OrderMainView, camera: Orde
         const selected = deps.getSelected();
         const target = view.pickOrderTarget(sx, sy);
         const hover = resolveHoverOrder({ galaxy, empire, selected, x, y, target: hoverOrderTarget(target) /* [fix6ui] N5 */, shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey });
-        const r = rightClickOrder(galaxy, empire, selected, hover.action, { ctrl: e.ctrlKey, alt: e.altKey }, view.zoomFactor);
+        const keys = { ctrl: e.ctrlKey, alt: e.altKey };
+        const subject = orderSubject(empire, selected);
+        // Command log: the order branch changes the sim, so it is queued (applied at the next frame boundary); the
+        // other outcomes (idle-ships picker, centre the view) only read it and stay immediate.
+        const r = !keys.ctrl && hover.action !== null && (subject.ship !== null || subject.fleet !== null)
+            ? ({ kind: 'order', executed: true, attackClick: false } as const)
+            : rightClickOrder(galaxy, empire, selected, hover.action, keys, view.zoomFactor);
         if (r.kind === 'order') {
-            // [audio] begin — Main.Part10.cs:3401 / 3539 method_0(ResolveAttackClick()) for an attack / bombard order.
-            if (r.attackClick) playAttackClick();
-            // [audio] end
-            bar?.render(true);
+            issuePlayerCommand(galaxy, empire, 'rightClickOrder', [selected, hover.action!, keys, view.zoomFactor], (r: RightClickResult) => {
+                // [audio] begin — Main.Part10.cs:3401 / 3539 method_0(ResolveAttackClick()) for an attack / bombard order.
+                if (r.kind === 'order' && r.attackClick) playAttackClick();
+                // [audio] end
+                bar?.render(true);
+            });
         } else if (r.kind === 'idleShips') {
             openOrderMenu(r.items, e.clientX, e.clientY, { onPick: (item) => item.select !== undefined && deps?.select(item.select) });
             return;
@@ -366,8 +375,7 @@ export function installOrderUi(d: OrderUiDeps, view: OrderMainView, camera: Orde
         const { mode, fleet } = fleetPointMode;
         fleetPointMode = null;
         const target = view.pickOrderTarget(sx, sy);
-        fleetPointClick(deps.galaxy, deps.empire, fleet, mode, target);
-        bar?.render(true);
+        issuePlayerCommand(deps.galaxy, deps.empire, 'fleetPoint', [fleet, mode, target], () => bar?.render(true));
         return true;
     };
     view.onPointerRest = (sx, sy, clientX, clientY) => {
@@ -420,7 +428,11 @@ export async function performAction(action: ShipAction, fromActionMenu: boolean,
     const { galaxy, empire } = deps;
     const selected = deps.getSelected();
     playOrderSting(galaxy, empire, selected, action); // [audio] Main.Part7.cs:504 / 515 investigate → discovery.mp3
-    const r = executeShipAction(galaxy, empire, selected, action, fromActionMenu, { actionMenuPoint });
+    // Command log: queued, applied at the next frame boundary (within one frame); the UI follow-up runs then.
+    const r = await new Promise<ShipActionResult>((resolve) => {
+        issuePlayerCommand(galaxy, empire, 'shipAction', [selected, action, fromActionMenu, actionMenuPoint], resolve);
+    });
+    if (deps === null) return;
     if (r.message !== undefined && r.message !== '') showToast(resolveGameText(r.message));
     if (r.mouseHoverMode !== undefined && selected instanceof ShipGroup) {
         fleetPointMode = { mode: r.mouseHoverMode, fleet: selected };
@@ -452,7 +464,7 @@ export async function performAction(action: ShipAction, fromActionMenu: boolean,
         if (clock) clock.paused = true;
         const off = await confirmAutomationOff(T(task));
         if (clock) clock.paused = wasPaused;
-        if (off && deps !== null) applyAutomationOff(deps.empire, task);
+        if (off && deps !== null) issuePlayerCommand(deps.galaxy, deps.empire, 'automationOff', [task]);
     }
 }
 

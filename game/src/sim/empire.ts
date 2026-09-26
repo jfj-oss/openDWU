@@ -109,7 +109,8 @@ function halveRgb(color: number): number {
 
 // Port of EmpireCounters.cs (revenue parts, M4j): the income / extermination totals and their Process* methods
 // (EmpireCounters.cs 67-72, 220-230). M4o: the destruction counters (EmpireCounters.cs 20-58, 138, 333-513).
-// M4z2: the espionage counters (EmpireCounters.cs 45-50, 234). TODO(port) M4r: the diplomacy counters.
+// M4z2: the espionage counters (EmpireCounters.cs 45-50, 234). The diplomacy counters (EmpireCounters.cs 74-77, 96-117,
+// 148-218) live in Empire.diplomacyCounters (diplomacy.ts DiplomacyCounters / processRelationChange; M4r).
 export class EmpireCounters {
     /** EmpireCounters.cs _Empire. */
     private readonly _empire: Empire;

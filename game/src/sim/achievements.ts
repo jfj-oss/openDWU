@@ -30,7 +30,6 @@ import { militaryPotency } from './treasury';
 import { cumulateFacilityValue1, averageHappiness } from './characterRuntime';
 import { countFacilities } from './construction/facilities';
 import { PlanetaryFacilityType } from './researchSystem';
-import { DEFAULT_BASE_TECH_COST } from './componentStatic';
 import { galaxyStarDate, REAL_SECONDS_IN_GALACTIC_YEAR } from './tick/simTime';
 import { startStarDateForAge } from './galaxyTime';
 import { empireGovernmentAttributes, getGovernmentsStatic } from './empire';
@@ -146,15 +145,14 @@ export interface EmpireScore {
 
 /**
  * Galaxy.1.cs 2852 / 2863 CalculateEmpireScore(empire[, out population, economy, colonies, military, research, wonders]).
- * BaseTechCost: the TS Galaxy keeps no baseTechCost (Start.2.cs game option) — DEFAULT_BASE_TECH_COST, as
- * designGeneration.ts / builtObject.ts do.
+ * BaseTechCost: Galaxy.BaseTechCost (galaxy.baseTechCost, the wizard's research-cost option).
  */
 export function calculateEmpireScore(galaxy: Galaxy, empire: Empire | null): EmpireScore {
     const s: EmpireScore = { score: 0, population: 0, economy: 0, colonies: 0, military: 0, research: 0, wonders: 0 };
     if (empire !== null) {
         // (int)(CalculateTotalCostResearchedProjects() / (float)BaseTechCost * 20f): float arithmetic.
         const researchScore = (): number => {
-            const r = Math.trunc(Math.fround(Math.fround(calculateTotalCostResearchedProjects(empire.research.techTree) / Math.fround(DEFAULT_BASE_TECH_COST)) * 20));
+            const r = Math.trunc(Math.fround(Math.fround(calculateTotalCostResearchedProjects(empire.research.techTree) / Math.fround(galaxy.baseTechCost)) * 20));
             return Math.max(0, Math.min(1000000, r));
         };
         if (empire.pirateEmpireBaseHabitat === null) {

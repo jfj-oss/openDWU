@@ -45,6 +45,7 @@ import { BuiltObjectMissionType } from '../src/sim/missions/mission';
 import { PlanetaryFacility, planetaryFacilityDefinitionsStatic } from '../src/sim/construction/facilities';
 import { PlanetaryFacilityType, WonderType, facilityType } from '../src/sim/researchSystem';
 import { identifyMechanoidEmpire } from '../src/sim/fleets/militaryAI';
+import { formatGameTextNow } from '../src/sim/textResolver';
 
 let gameData: GameData;
 
@@ -79,7 +80,8 @@ describe('createGame story switches (Start.2.cs 501-506)', () => {
         expect([g.storyReturnOfTheShakturiEnabled, g.storyDistantWorldsEnabled, g.storyShadowsEnabled, g.gameRaceSpecificEventsEnabled]).toEqual([false, false, false, true]);
         expect(g.storyClueLocations).toEqual([]);
         expect(g.gameEvents.count).toBe(0);
-        expect(g.delayedActions).toEqual([]);
+        // Only BaconMain.cs 700-715's "ProcessEmpireScienceShips" (researchPerLab 1000) is queued; no story actions.
+        expect(g.delayedActions.map((p) => p.action?.messageTitle)).toEqual(['ProcessEmpireScienceShips']);
     }, 180000);
 
     it('explicit false story options give the same game as the defaults (no Rnd difference)', () => {
@@ -152,7 +154,7 @@ describe('Distant Worlds story clues (Galaxy.5.cs 3622-3942)', () => {
         expect(selectUnusedStoryClue(g)).toBe(1);
         expect(checkForStoryLocationHint(g)).toBe(''); // StoryCluesEnabled still off
         const station = g.storyClueLocations[1]!;
-        expect(generateStoryClue(g, station)).toBe('StoryClue2');
+        expect(generateStoryClue(g, station)).toBe(formatGameTextNow('StoryClue2')); // GetText("StoryClue2"), spliced into the acquire text
         expect(g.storyCluesEnabled).toBe(true);
         expect(g.storyClueUsed[1]).toBe(true);
         expect(selectUnusedStoryClue(g)).toBe(2);
