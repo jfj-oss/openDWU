@@ -27,6 +27,7 @@ import { countersProcessColonyRevenue } from '../treasury';
 import { calculateResourceLevelStockForBaseRetrofit } from './colonySupply';
 import type { Contract } from './contracts';
 import { cancelContract } from './contracts';
+import { determineResourcesEmpireSupplies } from '../diplomacyTick';
 import { baconSettings } from '../data/baconSettings';
 
 export { checkMarketOrders } from './freight';
@@ -675,27 +676,8 @@ export function processTradeBonuses(galaxy: Galaxy, empire: Empire, timePassed: 
 // ------------------------------------------------------------------------------------------
 // Empire.4.cs 4311 ReviewRestrictedResourceTrading. No Rnd.
 
-/** Empire.6.cs 1387 DetermineResourcesEmpireSupplies (ResourceList of ids, first-seen order). */
-export function determineResourcesEmpireSupplies(empire: Empire): number[] {
-    const resourceList: number[] = [];
-    if (empire.colonies != null) {
-        for (let i = 0; i < empire.colonies.length; i++) {
-            const habitat = empire.colonies[i];
-            if (habitat == null || habitat.resources == null) continue;
-            for (const resource2 of habitat.resources) {
-                if (resourceList.indexOf(resource2.resourceId) < 0) resourceList.push(resource2.resourceId);
-            }
-        }
-    }
-    for (let j = 0; j < empire.privateBuiltObjects.length; j++) {
-        const builtObject = empire.privateBuiltObjects[j];
-        if (builtObject == null || (builtObject.subRole !== BuiltObjectSubRole.GasMiningStation && builtObject.subRole !== BuiltObjectSubRole.MiningStation) || builtObject.parentHabitat == null || builtObject.parentHabitat.resources == null) continue;
-        for (const resource3 of builtObject.parentHabitat.resources) {
-            if (resourceList.indexOf(resource3.resourceId) < 0) resourceList.push(resource3.resourceId);
-        }
-    }
-    return resourceList;
-}
+/** Empire.6.cs 1387 DetermineResourcesEmpireSupplies: one port, diplomacyTick.ts. */
+export { determineResourcesEmpireSupplies };
 
 /** Empire.7.cs 4697 CheckEmpireSuppliesRestrictedResources(out resource). */
 export function checkEmpireSuppliesRestrictedResources(galaxy: Galaxy, empire: Empire): { supplies: boolean; resource: number } {

@@ -53,6 +53,7 @@ import { EmpireMessage, EmpireMessageType, resolveDescription, sendEmpireMessage
 import { empireWarWeariness } from './taxes';
 import { checkEmpireHasHyperDriveTech, determineEmpireSystems, identifyEmpireCapitals, totalColonyStrategicValue, totalMobileMilitaryFirepower } from './forceStructure';
 import { strategicValue } from './territory';
+import { fastFindNearestColony } from './combat/threats';
 import { BuiltObjectRole } from './data/designSpecifications';
 import { BuiltObjectSubRole } from './builtObjectTypes';
 import { SystemVisibilityStatus } from './visibility';
@@ -209,22 +210,8 @@ function distanceSquared(x1: number, y1: number, x2: number, y2: number): number
     return dx * dx + dy * dy;
 }
 
-/** Galaxy.3.cs 1616/1621 FastFindNearestColony(x, y, empire, strategicValueThreshhold[, colonyToExclude]). */
-export function fastFindNearestColony(galaxy: Galaxy, x: number, y: number, empire: Empire, strategicValueThreshhold: number, colonyToExclude: Habitat | null = null): Habitat | null {
-    void galaxy;
-    let num = Number.MAX_VALUE;
-    let result: Habitat | null = null;
-    for (let i = 0; i < empire.colonies.length; i++) {
-        if (strategicValue(empire.colonies[i]) >= strategicValueThreshhold && empire.colonies[i] !== colonyToExclude) {
-            const num2 = distanceSquared(x, y, empire.colonies[i].xpos, empire.colonies[i].ypos);
-            if (num2 < num) {
-                result = empire.colonies[i];
-                num = num2;
-            }
-        }
-    }
-    return result;
-}
+/** Galaxy.3.cs 1616/1621 FastFindNearestColony: one port, combat/threats.ts. */
+export { fastFindNearestColony };
 
 /** Galaxy.cs 3721 CalculateEmpireColonyProximityValueAtPoint. */
 function calculateEmpireColonyProximityValueAtPoint(empire: Empire, x: number, y: number, distanceThresholdSquared: number): number {
