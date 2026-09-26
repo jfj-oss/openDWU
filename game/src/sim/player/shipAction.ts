@@ -55,6 +55,8 @@ export enum ShipActionType {
     DeployVirus,
     DisbandShipGroup,
     ChangePirateHomeBase,
+    /** Mod layer (19b/19f): a scenario threat's player action (extraData = the action kind, e.g. "darkFarms.purge"). */
+    ScenarioThreatAction,
 }
 
 /** System.Drawing.Point (int X, int Y); `IsEmpty` is X == 0 && Y == 0. */

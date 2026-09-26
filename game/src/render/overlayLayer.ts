@@ -58,6 +58,23 @@ import type { ShipGroup } from '../sim/fleets/shipGroup';
 import { builtObjectMission } from '../sim/missions/mission';
 import { BuiltObjectRole } from '../sim/data/designSpecifications';
 import { DrawKey } from './drawCache';
+import { threatKnownSites, type KnownThreatSite } from '../sim/scenario/threats/framework';
+
+/** Scenario threat markers (19b "Threats" overlay): suspected = amber, confirmed = red. */
+export const THREAT_SUSPECTED_COLOR = 0xffa020;
+export const THREAT_CONFIRMED_COLOR = 0xff3030;
+
+/** Marker geometry for a known threat site at zoom z (world units): a ring around a colony, a diamond on a ship. */
+export function threatMarker(site: KnownThreatSite, z: number): { kind: 'ring' | 'diamond'; x: number; y: number; r: number; color: number } {
+    const t = site.target;
+    const color = site.level >= 3 ? THREAT_CONFIRMED_COLOR : THREAT_SUSPECTED_COLOR;
+    if (site.kind === 'colony') {
+        const h = t as Habitat;
+        return { kind: 'ring', x: h.xpos, y: h.ypos, r: Math.max(drawnPx(h, z) / 2 + 12 / z, 14 / z), color };
+    }
+    const b = t as BuiltObject;
+    return { kind: 'diamond', x: b.xpos, y: b.ypos, r: 10 / z, color };
+}
 
 /** The original's selection-ring yellow (MainView.cs `color_2` default,
  * `System.Drawing.Color.FromArgb(255, 255, 255, 0)`), reused by
@@ -216,6 +233,9 @@ export class OverlayLayer {
     private researchLocations: MarkerRing[] = [];
     private unsubscribe: () => void;
     private travelVectors = new Graphics();
+    private threats = new Graphics();
+    private threatSites: KnownThreatSite[] = [];
+    private threatFrame = 0;
 
     constructor(
         private galaxy: Galaxy,
@@ -225,6 +245,7 @@ export class OverlayLayer {
     ) {
         world.addChild(this.root);
         this.root.addChild(this.travelVectors);
+        this.root.addChild(this.threats);
         // Eligibility is computed once from the galaxy as built: nothing in
         // the current sim (no ship/colonization missions yet) changes
         // ownership, quality or exploration after createGame runs.
@@ -284,6 +305,37 @@ export class OverlayLayer {
         this.updateGroup(this.scenicLocations, atSystemZoom && this.state.scenicLocations, z, cam);
         this.updateGroup(this.researchLocations, atSystemZoom && this.state.researchLocations, z, cam);
         this.updateTravelVectors(z, cam);
+        this.updateThreats(z);
+    }
+
+    /** Threats overlay: every scenario threat site / carrier the player knows (level ≥ 2), at every zoom. The selector
+     * is re-read twice a second; the markers follow moving ships every frame. */
+    private updateThreats(z: number): void {
+        const g = this.threats;
+        const player = this.galaxy.playerEmpire;
+        if (!this.state.threats || player === null || this.galaxy.scenario === null) {
+            if (g.visible) {
+                g.clear();
+                g.visible = false;
+            }
+            return;
+        }
+        if (this.threatFrame++ % 30 === 0) this.threatSites = threatKnownSites(this.galaxy, player);
+        g.clear();
+        if (this.threatSites.length === 0) {
+            g.visible = false;
+            return;
+        }
+        for (const site of this.threatSites) {
+            const m = threatMarker(site, z);
+            if (m.kind === 'ring') {
+                g.circle(m.x, m.y, m.r).stroke({ width: 3 / z, color: m.color, alpha: 1 });
+                g.circle(m.x, m.y, m.r + 5 / z).stroke({ width: 1 / z, color: m.color, alpha: 0.6 });
+            } else {
+                g.moveTo(m.x, m.y - m.r).lineTo(m.x + m.r, m.y).lineTo(m.x, m.y + m.r).lineTo(m.x - m.r, m.y).closePath().stroke({ width: 2 / z, color: m.color, alpha: 1 });
+            }
+        }
+        g.visible = true;
     }
 
     /** Travel Vectors (State / Private): dashed grey line from each of the

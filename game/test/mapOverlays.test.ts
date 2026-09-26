@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { createMapOverlayState, OVERLAY_ROWS, onOverlayChange, toggleOverlay } from '../src/ui/mapOverlays';
 
 describe('map overlay state (task 05c)', () => {
-    it('starts with every overlay off except Empire Territory (task M3: the original always shades territory)', () => {
+    it('starts with every overlay off except Empire Territory (task M3: the original always shades territory) and scenario Threats', () => {
         const s = createMapOverlayState();
         for (const row of OVERLAY_ROWS) {
-            if (row.key === 'empireTerritory') {
+            if (row.key === 'empireTerritory' || row.key === 'threats') {
                 expect(s[row.key], row.label).toBe(true);
                 continue;
             }

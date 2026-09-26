@@ -12,6 +12,8 @@ export interface MapOverlayState {
     longRangeScanners: boolean;
     empireTerritory: boolean;
     fadeCivilianShips: boolean;
+    /** Scenario threats (19b/19f): farms, nests, carriers the player knows of (framework threatKnownSites). */
+    threats: boolean;
 }
 
 /** A fresh overlay state. Task M3: `empireTerritory` starts on, matching the
@@ -33,6 +35,8 @@ export function createMapOverlayState(): MapOverlayState {
         longRangeScanners: false,
         empireTerritory: true,
         fadeCivilianShips: false,
+        // On: it only ever draws what the player has discovered in a scenario game (nothing without one).
+        threats: true,
     };
 }
 
@@ -49,6 +53,7 @@ export const OVERLAY_ROWS: Array<{ key: OverlayKey; label: string }> = [
     { key: 'longRangeScanners', label: 'Long Range Scanners' },
     { key: 'empireTerritory', label: 'Empire Territory' },
     { key: 'fadeCivilianShips', label: 'Fade civilian ships and bases' },
+    { key: 'threats', label: 'Threats' },
 ];
 
 /** Toggle one overlay flag in place, then notify subscribers (task M3: lets

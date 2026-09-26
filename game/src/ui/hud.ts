@@ -1,4 +1,5 @@
 import { computeHudLayout, CYCLE_CHIPS, TOP_BAR_BUTTONS, VIEW_ROWS, type Rect, type ViewRowKey } from './hudLayout';
+import { threatKnownSites } from '../sim/scenario/threats/framework';
 import { onSettingsChange, uiScaleFactor } from './settings';
 import { GalaxyTime } from '../sim/clock';
 import { resolveStarDateDescription } from '../sim/galaxyTime';
@@ -1820,6 +1821,15 @@ export function ownerRows(h: Habitat): { label: string; value: string; color?: n
     return rows;
 }
 
+/** 19b/19f: a "Threat" row for a selected colony / ship the player knows as a scenario threat site (read-only, from the
+ * framework selector threatKnownSites; nothing without a scenario). */
+export function threatRows(target: Habitat | BuiltObject, player: Empire | null): { label: string; value: string; color?: number }[] {
+    if (player === null || player.galaxy.scenario === null) return [];
+    return threatKnownSites(player.galaxy, player)
+        .filter((s) => s.target === target)
+        .map((s) => ({ label: 'Threat', value: s.label }));
+}
+
 /** `${name} (${n} colon)` — "colony" when n === 1, "colonies" otherwise. */
 function colonyText(name: string, n: number): string {
     return `${name} (${n} ${n === 1 ? 'colony' : 'colonies'})`;
@@ -1902,10 +1912,12 @@ export function buildSelectionRows(sel: Selection, gameData?: GameData, player: 
     // Size / Location / Troops) instead of the habitat's detail rows.
     if (sel.builtObject) {
         for (const r of builtObjectRows(sel.builtObject)) addColorRow(r);
+        for (const r of threatRows(sel.builtObject, player)) addColorRow(r);
         for (const r of builtObjectStatusRows(sel.builtObject, player)) addColorRow(r);
         return rows;
     }
     for (const orow of ownerRows(h)) addColorRow(orow);
+    for (const r of threatRows(h, player)) addColorRow(r);
 
     // Quality: baseQuality × 100 as %, planets/moons only.
     if (h.category === HabitatCategoryType.Planet || h.category === HabitatCategoryType.Moon) {

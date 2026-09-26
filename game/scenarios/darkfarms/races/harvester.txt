@@ -1,0 +1,20 @@
+'Dark Farms: the Harvester Collective's machine race — key lines over the stock Mechanoid race (BasedOn). Not playable,
+'never chosen at game start; created mid-game when a Dark Farm turns (reuses the Mechanoid portrait and ship art).
+BasedOn		;mechanoid.txt
+Name		;Harvester
+Playable		;N
+CanBePirate		;N
+CanBeNormalEmpire		;N
+Expanding		;N
+PictureIndex		;21
+DesignsPictureFamilyIndex		;10
+TroopName		;Harvester Drone Group
+TroopNameArmored		;Harvester Siege Frame
+TroopNamePlanetaryDefense		;Harvester Bastion
+TroopNameSpecialForces		;Harvester Infiltrators
+Aggression		;90
+Caution		;70
+Friendliness		;10
+Loyalty		;100
+Intelligence		;110
+HomeSystemName		;The Farms
