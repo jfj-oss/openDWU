@@ -108,7 +108,7 @@ const EMPIRE_EVALUATION_TRENDING_FACTOR = 300.0; // 5056
 const INCIDENT_IMPACT_WHEN_DECLARE_WAR = 40; // 5057 (int)
 const DECLARE_WAR_REPUTATION_IMPACT = 1.0; // 5058
 const MAXIMUM_MISSION_REFUSALS = 1; // 5117
-const IDEAL_TIME_BETWEEN_GIFTS = 1200000; // 5118 (long)
+export const IDEAL_TIME_BETWEEN_GIFTS = 1200000; // 5118 (long)
 const MINIMUM_WAR_LENGTH_PERIOD_YEARS = 0.5; // 5122
 const WAR_WEARINESS_FACTOR_DEFAULT = 1.0; // 5136
 const SECTOR_SIZE = 2000000; // Galaxy.3.cs SectorSize
@@ -2123,7 +2123,7 @@ export function determineWhetherWantToOfferSubjugation(galaxy: Galaxy, self: Emp
 }
 
 /** Empire.8.cs 1428 CheckReadyForWar(otherEmpire). */
-function checkReadyForWar(galaxy: Galaxy, self: Empire, otherEmpire: Empire): boolean {
+export function checkReadyForWar(galaxy: Galaxy, self: Empire, otherEmpire: Empire): boolean {
     void galaxy;
     let result = true;
     if (!checkEmpireHasHyperDriveTech(self)) return false;
@@ -2150,7 +2150,7 @@ function checkReadyForWar(galaxy: Galaxy, self: Empire, otherEmpire: Empire): bo
 }
 
 /** Empire.8.cs 1515 StartWar(otherEmpire). */
-function startWar(galaxy: Galaxy, self: Empire, otherEmpire: Empire): void {
+export function startWar(galaxy: Galaxy, self: Empire, otherEmpire: Empire): void {
     if (self.controlDiplomacyOffense !== MANUAL) {
         if (checkTaskAuthorized(galaxy, self, self.controlDiplomacyOffense, { value: 0 }, generateAutomationMessageWarTradeSanctions(otherEmpire, DiplomaticRelationType.War), otherEmpire, AdvisorMessageType.WarTradeSanctions, null, DiplomaticRelationType.War, null)) {
             declareWar(galaxy, self, otherEmpire, null, false, false);
@@ -2176,7 +2176,7 @@ function subjugateRequest(galaxy: Galaxy, self: Empire, otherEmpire: Empire): vo
 }
 
 /** Empire.8.cs 1550 EndWarRequest(otherEmpire). */
-function endWarRequest(galaxy: Galaxy, self: Empire, otherEmpire: Empire): void {
+export function endWarRequest(galaxy: Galaxy, self: Empire, otherEmpire: Empire): void {
     const diplomaticRelation = obtainDiplomaticRelation(self, otherEmpire);
     if (diplomaticRelation == null || diplomaticRelation.type !== DiplomaticRelationType.War) return;
     const num = calculateNextAllowableProposalDate(galaxy, diplomaticRelation);
@@ -2195,7 +2195,7 @@ function endWarRequest(galaxy: Galaxy, self: Empire, otherEmpire: Empire): void 
 const NO_POINT = { x: 0, y: 0 };
 
 /** Empire.8.cs 1572 StartTradeSanctionsIfTimePassed. */
-function startTradeSanctionsIfTimePassed(galaxy: Galaxy, self: Empire, otherEmpire: Empire): void {
+export function startTradeSanctionsIfTimePassed(galaxy: Galaxy, self: Empire, otherEmpire: Empire): void {
     if (self.controlDiplomacyOffense !== MANUAL) {
         const currentStarDate = galaxyStarDate(galaxy);
         const relation = obtainDiplomaticRelation(self, otherEmpire);
@@ -2222,7 +2222,7 @@ export function startTradeSanctions(galaxy: Galaxy, self: Empire, otherEmpire: E
 }
 
 /** Empire.8.cs 1609 EndTradeSanctionsIfTimePassed. */
-function endTradeSanctionsIfTimePassed(galaxy: Galaxy, self: Empire, otherEmpire: Empire): void {
+export function endTradeSanctionsIfTimePassed(galaxy: Galaxy, self: Empire, otherEmpire: Empire): void {
     if (self.controlDiplomacyOffense !== MANUAL) {
         const currentStarDate = galaxyStarDate(galaxy);
         const relation = obtainDiplomaticRelation(self, otherEmpire);
@@ -2260,7 +2260,7 @@ function endSubjugation(galaxy: Galaxy, self: Empire, otherEmpire: Empire): void
 }
 
 /** Empire.8.cs 1657 CancelTreatiesIfTimePassed. */
-function cancelTreatiesIfTimePassed(galaxy: Galaxy, self: Empire, otherEmpire: Empire): void {
+export function cancelTreatiesIfTimePassed(galaxy: Galaxy, self: Empire, otherEmpire: Empire): void {
     if (self.controlDiplomacyOffense !== MANUAL) {
         const currentStarDate = galaxyStarDate(galaxy);
         const relation = obtainDiplomaticRelation(self, otherEmpire);
@@ -2320,7 +2320,7 @@ function checkCancelRestrictedResourceTrading(galaxy: Galaxy, self: Empire, othe
  * GiveGiftWhenSufficientTimePassed (StateMoney / 10, PirateExpenseType.Construction). Rnd.Next(100, num3) once the gift
  * interval has passed and StateMoney > 8400. (Neither sets LastGiftDate — the recipient's ProcessMessages does.)
  */
-function giveGiftWhenSufficientTimePassed(galaxy: Galaxy, self: Empire, otherEmpire: Empire, small: boolean): void {
+export function giveGiftWhenSufficientTimePassed(galaxy: Galaxy, self: Empire, otherEmpire: Empire, small: boolean): void {
     const diplomaticRelation = obtainDiplomaticRelation(self, otherEmpire);
     const num = diplomaticRelation.lastGiftDate + IDEAL_TIME_BETWEEN_GIFTS;
     if (galaxyStarDate(galaxy) < num) return;
@@ -2350,7 +2350,7 @@ export function formatThousands(v: number): string {
 }
 
 /** Empire.8.cs 1801 OfferFreeTrade. */
-function offerFreeTrade(galaxy: Galaxy, self: Empire, otherEmpire: Empire): void {
+export function offerFreeTrade(galaxy: Galaxy, self: Empire, otherEmpire: Empire): void {
     if (otherEmpire.reclusive || (!checkEmpireHasHyperDriveTech(self) && !checkEmpireHasHyperDriveTech(otherEmpire))) return;
     const diplomaticRelation = obtainDiplomaticRelation(self, otherEmpire);
     const num = calculateNextAllowableProposalDate(galaxy, diplomaticRelation);
@@ -2367,7 +2367,7 @@ function offerFreeTrade(galaxy: Galaxy, self: Empire, otherEmpire: Empire): void
 }
 
 /** Empire.8.cs 1824 OfferMutualDefense. */
-function offerMutualDefense(galaxy: Galaxy, self: Empire, otherEmpire: Empire): void {
+export function offerMutualDefense(galaxy: Galaxy, self: Empire, otherEmpire: Empire): void {
     if (otherEmpire.reclusive || (!checkEmpireHasHyperDriveTech(self) && !checkEmpireHasHyperDriveTech(otherEmpire))) return;
     const diplomaticRelation = obtainDiplomaticRelation(self, otherEmpire);
     const num = calculateNextAllowableProposalDate(galaxy, diplomaticRelation);

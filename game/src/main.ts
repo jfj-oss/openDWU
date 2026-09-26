@@ -36,6 +36,12 @@ import { closeEmpireSummary, setEmpireSummarySource } from './ui/screens/empireS
 // [advisor] begin
 import { closeAdvisorPanel } from './ui/advisorPanel';
 // [advisor] end
+
+// [aiadvisor] begin
+import { aiAdvisorSettingsWithUrl, startAiAdvisorDriver } from './ui/aiAdvisorDriver';
+import { closeCouncilLog, pushCouncilLog } from './ui/aiAdvisorLog';
+import { getSettings } from './ui/settings';
+// [aiadvisor] end
 import { closeMessageHistory } from './ui/screens/messageHistory';
 import { closeFleetsList } from './ui/screens/fleetsList'; // [15c]
 import { closeBuildOrder } from './ui/screens/buildOrder'; import { closeConstructionYards } from './ui/screens/constructionYards'; // [16c]
@@ -334,6 +340,17 @@ export async function startGameView(
     // window's "Play This Game" button can unpause it.
     (window as unknown as { __dwu?: unknown }).__dwu = buildDwuDebugObject({ camera, galaxy, view, app, game, time });
     Object.assign((window as unknown as { __dwu: Record<string, unknown> }).__dwu, { sim: simLoop.driver, simStats: simLoop.stats });
+
+    // [aiadvisor] begin — 18c: the local model's strategic decisions for AI empires (off unless enabled + a server).
+    const aiAdvisorParams = new URLSearchParams(window.location.search);
+    const aiAdvisor = startAiAdvisorDriver({
+        galaxy,
+        player: game.playerEmpire,
+        settings: () => aiAdvisorSettingsWithUrl(getSettings(), aiAdvisorParams),
+        onTurn: pushCouncilLog,
+    });
+    (window as unknown as { __dwu: Record<string, unknown> }).__dwu.aiAdvisor = aiAdvisor.driver;
+    // [aiadvisor] end
     // Task 10d: the HUD's money panel refreshes from the player empire.
     // Task C3: Galaxy Map screen (G key / HUD "Galaxy map (G)" row).
     const galaxyMap = createGalaxyMapFor(galaxy, camera);
@@ -578,6 +595,11 @@ export async function startGameView(
         // [advisor] begin
         closeAdvisorPanel();
         // [advisor] end
+
+        // [aiadvisor] begin
+        aiAdvisor.dispose();
+        closeCouncilLog();
+        // [aiadvisor] end
         orderUiCleanup(); // [ordermenu]
     };
 
