@@ -39,7 +39,7 @@ import { findNearestShipYard } from '../construction/empireConstruction';
 import { canBuiltObjectColonizeHabitat } from '../construction/constructionQueue';
 import { canEmpireColonizeHabitatRange } from '../exploration';
 import { findNearestUnexploredHabitat } from '../visibility';
-import { canBuildDesign, findNewestCanBuild } from '../designGeneration';
+import { findNewestCanBuild, getBuildableDesignsBySubRoles } from '../designGeneration';
 import { DiplomaticRelationType } from '../diplomacy';
 import { Character, CharacterRole } from '../characters';
 import { listProposals } from './diplomacyProposals';
@@ -327,7 +327,7 @@ export function retrofitDesignFor(player: Empire, ship: BuiltObject): Design | n
     if (ship.retrofitDesign !== null) return null;
     const m = builtObjectMission(ship.mission);
     if (m !== null && m.type === BuiltObjectMissionType.Retrofit) return null;
-    const buildable = player.designs.filter((d) => d.subRole === ship.subRole && !d.isObsolete && d !== ship.design && canBuildDesign(player, d));
+    const buildable = getBuildableDesignsBySubRoles(player.designs, [ship.subRole], player).filter((d) => d !== ship.design);
     if (buildable.length === 0) return null;
     const newest = findNewestCanBuild(player.designs, ship.subRole, player, ship.parentHabitat);
     return newest !== null && buildable.includes(newest) ? newest : buildable[0];
@@ -353,7 +353,7 @@ export const ADVISOR_BUILD_SUBROLES: readonly BuiltObjectSubRole[] = [
  * construction and resupply ships need none).
  */
 export function buildOrderDesign(player: Empire, subRole: BuiltObjectSubRole): Design | null {
-    const buildable = player.designs.filter((d) => d.subRole === subRole && !d.isObsolete && canBuildDesign(player, d));
+    const buildable = getBuildableDesignsBySubRoles(player.designs, [subRole], player);
     if (buildable.length === 0) return null;
     if (
         player.constructionYards.length <= 0 &&

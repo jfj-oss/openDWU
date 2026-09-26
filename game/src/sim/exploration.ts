@@ -64,7 +64,7 @@ import { empireApprovalRating, obtainEmpireEvaluation, type EmpireEvaluation } f
 import { EmpireMessageType, sendMessageToEmpire } from './messages';
 import { changeDiplomaticRelation } from './diplomacyTick';
 import { checkSendPreWarpProgressEventMessage } from './events';
-import { evaluateSystemThreats } from './combat/threats';
+import { evaluateSystemThreats, fastFindNearestColony } from './combat/threats';
 import { reviewEmpireAbilityBonuses } from './treasury';
 import { determineEmpireSystems } from './forceStructure';
 import { strategicValue } from './territory';
@@ -152,22 +152,6 @@ export function habitatResourcesHaveSuperLuxury(galaxy: Galaxy, habitat: Habitat
 /** Resource.cs 34 IsRestrictedResource (SuperLuxuryBonusAmount > 0). */
 function isRestrictedResource(galaxy: Galaxy, resourceId: number): boolean {
     return galaxy.resourceSystem.resources[resourceId].superLuxuryBonusAmount > 0;
-}
-
-/** Galaxy.3.cs 1621 FastFindNearestColony(x, y, empire, strategicValueThreshhold, colonyToExclude = null). */
-function fastFindNearestColony(galaxy: Galaxy, x: number, y: number, empire: Empire, strategicValueThreshhold: number): Habitat | null {
-    let num = Number.MAX_VALUE;
-    let result: Habitat | null = null;
-    for (let i = 0; i < empire.colonies.length; i++) {
-        if (strategicValue(empire.colonies[i]) >= strategicValueThreshhold) {
-            const num2 = galaxy.calculateDistanceSquared(x, y, empire.colonies[i].xpos, empire.colonies[i].ypos);
-            if (num2 < num) {
-                result = empire.colonies[i];
-                num = num2;
-            }
-        }
-    }
-    return result;
 }
 
 /** Empire.4.cs 4408 CanEmpireColonizeHabitatRange(empire, habitat). */

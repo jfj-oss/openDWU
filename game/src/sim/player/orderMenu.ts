@@ -49,13 +49,13 @@ import { ResourceGroup, resourceGroupOf } from '../resourceSystem';
 import { PlanetaryFacilityType, WonderType, facilityType } from '../researchSystem';
 import { generateNewTroop } from '../builtObjectPlacement';
 import { identifyStrongestRaceAttackTroop } from '../troops';
-import { canBuildDesign, findNewestCanBuild, findNewestCanBuildFullEvaluate, resolveSubRoleDescription, checkDesignWithinConstructionSize, canBuildDesignTech } from '../designGeneration';
-import { findNewestIncludingObsolete } from '../design';
+import { canBuildDesign, findNewestCanBuild, getBuildableDesignsBySubRoles, findNewestCanBuildFullEvaluate, resolveSubRoleDescription, checkDesignWithinConstructionSize, canBuildDesignTech } from '../designGeneration';
+import { findNewestIncludingObsolete, getDesignsBySubRoles } from '../design';
 import { checkRuinsHaveBenefit, canEmpireColonizeHabitat, canEmpireColonizeHabitatRange } from '../exploration';
 import { SystemVisibilityStatus, findNearestUnexploredHabitat } from '../visibility';
 import { isObjectVisibleToThisEmpire, checkEmpireTerritoryCanBuildAtLocation, isStellarObjectDockable } from '../independentTraders';
 import { checkEmpireTerritoryCanBuildAtHabitat } from '../resourceTargets';
-import { checkColonizingHabitat, checkBasesToBeBuiltAtHabitat, resolveSector, fastFindNearestUnexploredHabitat, fastFindNearestUnexploredHabitatInSector, PrioritizedTarget } from '../civilianAI';
+import { checkColonizingHabitat, checkBasesToBeBuiltAtHabitat, checkTargetOfRepairMission, resolveSector, fastFindNearestUnexploredHabitat, fastFindNearestUnexploredHabitatInSector, PrioritizedTarget } from '../civilianAI';
 import { resolveSectorDescription } from '../empireEvents';
 import { checkAlreadyHaveMiningStationAtHabitat } from '../missions/cmdConstruction';
 import { determineSpacePortAtHabitat } from '../logistics/colonySupply';
@@ -105,6 +105,7 @@ import {
     resolveBuildableFacilitiesPirates,
     resolveBuildableWonders,
     resolveCharactersValidForLocation,
+    systemForStar,
     type ShipActionSelection,
 } from './executeShipAction';
 
@@ -226,11 +227,6 @@ function nameOf(o: unknown): string {
 function playerShipGroups(empire: Empire): ShipGroup[] {
     return empireShipGroups(empire).filter((g): g is ShipGroup => g !== null);
 }
-/** The system whose star is `star` (Galaxy.Systems[habitat]). */
-function systemOfStar(galaxy: Galaxy, star: Habitat): SystemInfo | null {
-    const s = galaxy.systems[star.systemIndex];
-    return s !== undefined && s.systemStar === star ? s : (galaxy.systems.find((x) => x.systemStar === star) ?? null);
-}
 /** Galaxy.MaxSolarSystemSize. */
 function maxSolarSystemSize(galaxy: Galaxy): number {
     return galaxy.maxSolarSystemSize;
@@ -288,14 +284,6 @@ function findNewestIncludingObsoletePD(designs: Design[], subRole: BuiltObjectSu
     return result;
 }
 
-/** DesignList.cs 375/388 GetBuildableDesignsBySubRoles(subRoles, empire[, colony]). */
-function getBuildableDesignsBySubRoles(designs: Design[], subRoles: BuiltObjectSubRole[], empire: Empire, colony?: Habitat | null): Design[] {
-    const result: Design[] = [];
-    for (const design of designs) {
-        if (subRoles.includes(design.subRole) && !design.isObsolete && canBuildDesign(empire, design, true, colony ?? null)) result.push(design);
-    }
-    return result;
-}
 /** DesignList.cs 364 GetBuildablePlanetDestroyerDesigns(empire). */
 function getBuildablePlanetDestroyerDesigns(designs: Design[], empire: Empire): Design[] {
     const result: Design[] = [];
@@ -303,10 +291,6 @@ function getBuildablePlanetDestroyerDesigns(designs: Design[], empire: Empire): 
         if (design.role !== BuiltObjectRole.Base && design.isPlanetDestroyer && !design.isObsolete && canBuildDesign(empire, design)) result.push(design);
     }
     return result;
-}
-/** DesignList.cs 413 GetDesignsBySubRoles(subRoles). */
-function getDesignsBySubRoles(designs: Design[], subRoles: BuiltObjectSubRole[]): Design[] {
-    return designs.filter((d) => subRoles.includes(d.subRole) && !d.isObsolete);
 }
 /** DesignList.cs 15 ContainsSubRole. */
 function containsSubRole(designs: Design[], subRole: BuiltObjectSubRole): boolean {
@@ -342,25 +326,8 @@ function findNewestCanBuildFullEvaluateReasons(
     return { design, missingTech, sizeTooBig };
 }
 
-/** Empire.5.cs 3394 CheckTargetOfRepairMission(target). */
-export function checkTargetOfRepairMission(empire: Empire, target: BuiltObject): boolean {
-    for (const c of empire.constructionShips) {
-        const builtObject = c as BuiltObject;
-        const m = builtObjectMission(builtObject.mission);
-        if (m !== null) {
-            if (m.type === BuiltObjectMissionType.BuildRepair && m.secondaryTargetBuiltObject === target) return true;
-            if (m.type === BuiltObjectMissionType.Build && m.secondaryTargetBuiltObject === target) return true;
-        }
-        if (builtObject.subsequentMissions === null || builtObject.subsequentMissions.length <= 0) continue;
-        for (const sm of builtObject.subsequentMissions) {
-            const q = builtObjectMission(sm);
-            if (q === null) continue;
-            if (q.type === BuiltObjectMissionType.BuildRepair && q.secondaryTargetBuiltObject === target) return true;
-            if (q.type === BuiltObjectMissionType.Build && q.secondaryTargetBuiltObject === target) return true;
-        }
-    }
-    return false;
-}
+/** Empire.5.cs 3397 CheckTargetOfRepairMission: one port, civilianAI.ts. */
+export { checkTargetOfRepairMission };
 
 /** BuiltObject.cs 4378 CheckFightersNeedReturning. */
 function checkFightersNeedReturning(bo: BuiltObject): boolean {
@@ -4214,7 +4181,7 @@ function fleetRightClick(galaxy: Galaxy, shipGroup2: ShipGroup, shipAction0: Shi
         }
         if (missionType !== BuiltObjectMissionType.WaitAndAttack && missionType !== BuiltObjectMissionType.WaitAndBombard) {
             if (shipAction0.missionType === BuiltObjectMissionType.Patrol && isHabitat(shipAction0.target) && (shipAction0.target.category === HabitatCategoryType.GasCloud || shipAction0.target.category === HabitatCategoryType.Star)) {
-                const system = systemOfStar(galaxy, shipAction0.target);
+                const system = systemForStar(galaxy, shipAction0.target);
                 if (assignFleetSystemPatrol(galaxy, empire, shipGroup2, system)) return { kind: 'order', executed: true, attackClick: false };
             } else if (shipAction0.missionType === BuiltObjectMissionType.Patrol && isSystemInfo(shipAction0.target)) {
                 if (assignFleetSystemPatrol(galaxy, empire, shipGroup2, shipAction0.target)) return { kind: 'order', executed: true, attackClick: false };

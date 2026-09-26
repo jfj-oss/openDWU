@@ -87,7 +87,7 @@ import { OrderType, empireCreateOrder, performPrivateTransaction } from '../logi
 import { privateSectorBuildOrRefitInvestInInfrastructure } from './retrofit';
 import { pirateEconomyPerformExpense, calculatePirateCashflow } from '../pirates/pirateAI';
 import { PirateExpenseType } from '../pirates/pirateEconomy';
-import { assignMission, clearPreviousMissionRequirements } from '../missions/assign';
+import { assignMission, clearPreviousMissionRequirements, queueMission } from '../missions/assign';
 import { BuiltObjectMission, BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission, missionListContainsType, type MissionTarget, type StellarObject } from '../missions/mission';
 import { withinFuelRange } from '../movement';
 import { builtObjectCompleteTeardown } from '../combat/teardown';
@@ -865,13 +865,8 @@ export function generateAutomationMessageConstruction(galaxy: Galaxy, builtObjec
 // Mission helpers (queued missions, ship yards, fleets)
 // ---------------------------------------------------------------------------------------------------------------
 
-/** BuiltObject.2.cs 7506-7548 QueueMission(missionType, target, target2, [design,] priority): bases never queue. No Rnd. */
-export function queueMission(galaxy: Galaxy, bo: BuiltObject, missionType: BuiltObjectMissionType, target: MissionTarget | null, target2: MissionTarget | null, priority: BuiltObjectMissionPriority, design: Design | null = null): void {
-    if (bo.role !== BuiltObjectRole.Base) {
-        const item = new BuiltObjectMission(galaxy, bo, missionType, target, target2, priority, { design, allowReprocessing: true, allowBuiltObjectChanges: false });
-        bo.subsequentMissions.push(item);
-    }
-}
+/** BuiltObject.2.cs 7506-7548 QueueMission: one port, missions/assign.ts. */
+export { queueMission };
 
 /** Empire.5.cs 397 FindNearestShipYard(ship, canRepairOrBuild, includeVerySmallYards). No Rnd. */
 export function findNearestShipYard(galaxy: Galaxy, empire: Empire, ship: BuiltObject, canRepairOrBuild: boolean, includeVerySmallYards: boolean): StellarObject | null {
@@ -1487,7 +1482,7 @@ export function doRetrofit(galaxy: Galaxy, empire: Empire, builtObjects: BuiltOb
                         stellarObject = findNearestShipYard(galaxy, empire, builtObject, true, false);
                         break;
                 }
-                queueMission(galaxy, builtObject, BuiltObjectMissionType.Retrofit, stellarObject, null, BuiltObjectMissionPriority.Normal, design7);
+                queueMission(galaxy, builtObject, BuiltObjectMissionType.Retrofit, stellarObject, null, BuiltObjectMissionPriority.Normal, { design: design7 });
             }
         }
     }
