@@ -7,6 +7,8 @@ import { HabitatCategoryType, planetsOf, type Habitat } from '../src/sim/types';
 import { Ruin, RuinType } from '../src/sim/ruins';
 import { investigateRuins } from '../src/sim/exploration';
 import { valueGalaxyMapForEmpire } from '../src/sim/tradeItems';
+import { updateEmpireRefuellingLocations } from '../src/sim/independentTraders';
+import type { BuiltObject } from '../src/sim/builtObject';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 import { createTickGame } from './helpers/tickGame';
 
@@ -32,7 +34,7 @@ describe('map knowledge readers (Galaxy.4.cs 4635, Galaxy.5.cs 4496)', () => {
 
     it('InvestigateRuins Refugees spawn at the first planet > 400 from the ruin, never the star', () => {
         const g = createTickGame(gameData).galaxy;
-        const e = g.playerEmpire;
+        const e = g.playerEmpire!;
         // a ruin planet more than 400 from its star, with a later sibling also > 400 away
         const ruinsHabitat = g.habitats.find((h) => {
             if (h.category !== HabitatCategoryType.Planet || h.ruin !== null) return false;
@@ -57,5 +59,27 @@ describe('map knowledge readers (Galaxy.4.cs 4635, Galaxy.5.cs 4496)', () => {
             expect(dExpected).toBeLessThan(dStar);
         }
         expect(got.some((m) => m.message.includes(expected.name))).toBe(true);
+    });
+});
+
+describe('refuelling readers (Empire.6.cs 3905, Galaxy.6.cs 3219 / 3375)', () => {
+    it('a refuelling base parked at a (non gas cloud) star is no refuelling point', () => {
+        const g = createTickGame(gameData).galaxy;
+        const empire = g.empires.find((e) => e !== g.playerEmpire && e.pirateEmpireBaseHabitat === null && e.spacePorts.length > 0)!;
+        const port = empire.spacePorts[0] as BuiltObject;
+        expect(port.isRefuellingDepot).toBe(true);
+        // move the port from its colony to a normal star the empire has explored and that has no other refuelling point
+        const sysIndex = g.systems.findIndex((s, k) => s.systemStar.category === HabitatCategoryType.Star && empire.visibility.checkSystemExplored(k) && planetsOf(s).every((h) => h.basesAtHabitat.length === 0 && h.population.items.length === 0));
+        expect(sysIndex).toBeGreaterThanOrEqual(0);
+        const star = g.systems[sysIndex].systemStar;
+        const from = port.parentHabitat!;
+        from.basesAtHabitat.splice(from.basesAtHabitat.indexOf(port), 1);
+        star.basesAtHabitat.push(port);
+        port.parentHabitat = star;
+        port.xpos = star.xpos;
+        port.ypos = star.ypos;
+        updateEmpireRefuellingLocations(g, empire);
+        // C# only walks a star's bases when it is a gas cloud; a star's own bases are never in Systems[].Habitats.
+        expect(empire.refuellingLocations.includes(port)).toBe(false);
     });
 });
