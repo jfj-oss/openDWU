@@ -32,7 +32,17 @@ import { BuiltObjectComponent, ComponentStatus } from '../src/sim/builtObjectCom
 import { buildComponentStatic, type ComponentDefinition } from '../src/sim/componentStatic';
 import { Weapon } from '../src/sim/weapon';
 import { BuiltObjectFleeWhen } from '../src/sim/data/designSpecifications';
-import { builtObjectMission } from '../src/sim/missions/mission';
+import { BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission } from '../src/sim/missions/mission';
+import { assignMission } from '../src/sim/missions/assign';
+import { checkAssignAttackOnThreat, determineThreatLevel, evaluateThreats, performThreatEvaluation, shouldFleeFrom, threatEvaluation } from '../src/sim/combat/threats';
+import { autoRefuelRepairShip } from '../src/sim/logistics/refuel';
+import { calculateCrewLevel, doRepairs } from '../src/sim/construction/repair';
+import { findNearestShipYard } from '../src/sim/construction/empireConstruction';
+import { builtObjectConstructionQueue } from '../src/sim/construction/constructionQueue';
+import { shipGroupRepairBonus } from '../src/sim/fleets/shipGroup';
+import { determineDestroyOrCaptureTarget, empireRaidStrengthFactor } from '../src/sim/combat/attackAI';
+import type { ShipGroup } from '../src/sim/fleets/shipGroup';
+import { runGameSeconds } from '../src/sim/tick/harness';
 import {
     bombardTarget,
     checkFireAreaWeaponAtTarget,
@@ -41,12 +51,18 @@ import {
     weaponDamageDropoff,
     weaponFire,
 } from '../src/sim/combat/weapons';
-import { fireAtAssaultPods, handleAssaultPodMovement } from '../src/sim/combat/boarding';
-import { getArtilleryTroopDefendStrength, inflictBombardDamage } from '../src/sim/combat/damage';
+import { fireAtAssaultPods, handleAssaultPodMovement, performRaidColonyInvasion } from '../src/sim/combat/boarding';
+import { SpaceBattleStats, calculateBuiltObjectLootingValue, empireColonyIncomeFactor, inflictDamage, empireLootingFactor, getArtilleryTroopDefendStrength, inflictBombardDamage } from '../src/sim/combat/damage';
+import { doRaidBonuses, empireRaidBonusFactor, invasionStatsOf } from '../src/sim/combat/invasion';
+import { obtainPirateRelation } from '../src/sim/pirateRelations';
+import { applyCorruptionToIncome } from '../src/sim/logistics/orders';
+import { EmpireMessageType } from '../src/sim/messages';
+import { Troop, TroopType } from '../src/sim/cargo';
+import type { Empire } from '../src/sim/empire';
 import { obtainEmpireEvaluation } from '../src/sim/diplomacy';
 import { galaxyPlagues } from '../src/sim/eventTypes';
 import { canDeployXaraktorVirus } from '../src/sim/player/orderMenu';
-import { ShipActionType, createShipAction } from '../src/sim/player/shipAction';
+import { ShipActionType, createMissionShipActionAt, createShipAction } from '../src/sim/player/shipAction';
 import { executeShipAction } from '../src/sim/player/executeShipAction';
 import { CreatureType } from '../src/sim/creature';
 import type { Habitat } from '../src/sim/types';
@@ -635,5 +651,490 @@ describe('(3) planetary bombardment', () => {
         expect(n).toBeGreaterThanOrEqual(15);
         expect(n).toBeLessThan(20);
         expect(player.lastXaraktorVirusDeploy).toBe(g.nowMs);
+    });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// (4) Pirate raids
+// ---------------------------------------------------------------------------------------------------------------
+
+describe('(4) pirate raids', () => {
+    /** Records every raw InternalSample of galaxy.rnd during `f` (random.ts trace hook): NextDouble = sample / MBIG. */
+    function traced(g: Galaxy, f: () => void): number[] {
+        const out: number[] = [];
+        g.rnd.setTrace((v) => out.push(v / 2147483647));
+        try {
+            f();
+        } finally {
+            g.rnd.setTrace(null);
+        }
+        return out;
+    }
+
+    /**
+     * Black Pillagers (Mercenary play style: RaidStrengthFactor 1.25, RaidBonusFactor 0.75, LootingFactor 1.33 —
+     * Galaxy.8.cs 4396 SetPirateFactionModifiers) raid the player's capital with Worthy Firelance's Assault Pod
+     * (components.txt id 114: Value1 strength 50, speed 50). Dominant race troop strength 138.
+     */
+    function stage() {
+        const g = cachedTickGame(gameData).galaxy;
+        const wf = ship(g, 'Worthy Firelance');
+        hold(wf);
+        const player = g.playerEmpire!;
+        const capital = player.capital!;
+        const pe = wf.empire!;
+        return { g, wf, player, capital, pe };
+    }
+
+    it('play-style factors: Mercenary raids at 1.25 strength / 0.75 loot and loots at 1.33, Smuggler 0.75 / 0.75 / 0.75, Pirate 1.25 / 1.4 / 1.0 (Galaxy.8.cs 4396, BaconEmpire.cs 59-84)', () => {
+        const { g, pe } = stage();
+        expect(pe.name).toBe('Black Pillagers');
+        expect(pe.dominantRace!.troopStrength).toBe(138);
+        const byName = (n: string) => g.pirateEmpires.find((e) => e.name === n)!;
+        const f = (e: Empire) => [empireRaidStrengthFactor(e), empireRaidBonusFactor(e), empireLootingFactor(e)];
+        expect(f(pe)).toEqual([1.25, 0.75, 1.33]); // Mercenary
+        expect(f(byName('S160 Spaceways'))).toEqual([0.75, 0.75, 0.75]); // Smuggler
+        expect(f(byName('Vicious Bandits'))).toEqual([1.25, 1.4, 1.0]); // Pirate
+        expect(f(byName('S269 Confederacy'))).toEqual([1.0, 1.0, 1.0]); // Balanced
+        expect(f(g.playerEmpire!)).toEqual([1.0, 1.0, 1.0]); // not a pirate: the Empire.cs 431-455 defaults
+    });
+
+    it('a pod landing on a colony becomes a Pirate Raider troop of (int)(50 × 1.38 × 1.25) = 86 (BuiltObject.1.cs 2696-2733); a pod does not raid a colony its own empire is invading with regular troops', () => {
+        const { g, wf, capital, pe } = stage();
+        const pod = wf.weapons.find((w) => w.component.type === ComponentType.AssaultPod)!;
+        place(g, wf, capital.xpos + 50, capital.ypos);
+        pod.reset();
+        weaponFire(g, pod, wf, capital, 50, g.nowMs, true, 1.0);
+        pod.x = capital.xpos + 5; // within 10: lands on the next movement step (2651)
+        pod.y = capital.ypos;
+        const troops0 = pe.troops.count;
+        handleAssaultPodMovement(g, wf, 0.1);
+        expect(pod.distanceTravelled).toBe(-1); // Weapon.Reset after landing (2736)
+        const raiders = capital.invadingTroops!.items.filter((t) => t.type === TroopType.PirateRaider && t.empire === pe);
+        expect(raiders.length).toBe(1);
+        expect(raiders[0].attackStrength).toBe(Math.trunc(50 * 1.0 * (138 / 100.0) * 1.0 * 1.25));
+        expect(raiders[0].attackStrength).toBe(86);
+        expect(raiders[0].colony).toBe(capital);
+        expect(pe.troops.count).toBe(troops0 + 1);
+        // Same empire already invading with a regular troop (2705-2717): the pod is spent without raiding.
+        const regular = new Troop('x', TroopType.Infantry, 10, 10, 100, 100, pe, pe.dominantRace);
+        capital.invadingTroops!.add(regular);
+        const n0 = capital.invadingTroops!.count;
+        weaponFire(g, pod, wf, capital, 50, g.nowMs, true, 1.0);
+        pod.x = capital.xpos + 5;
+        pod.y = capital.ypos;
+        handleAssaultPodMovement(g, wf, 0.1);
+        expect(pod.distanceTravelled).toBe(-1);
+        expect(capital.invadingTroops!.count).toBe(n0);
+    });
+
+    it('PerformRaidColonyInvasion hand-worked: the defenders\' chance val2 = Min(95, √(bases + shield + intercepting artillery/50) × √count) to wound the raider by up to val = Min(90, …), relations and pirate evaluations (BuiltObject.1.cs 2779-2903)', () => {
+        const { g, wf, player, capital, pe } = stage();
+        // Hand-work the defence (2799-2840).
+        let num = 0;
+        let num2 = 0;
+        for (const b of capital.basesAtHabitat) {
+            if (b.firepowerRaw > 0) {
+                num += b.firepowerRaw;
+                num2++;
+            }
+        }
+        if (capital.planetaryShieldPresent) {
+            num += 1000;
+            num2++;
+        }
+        const num5 = num;
+        const art = capital.troops!.getByType(TroopType.Artillery);
+        let num3 = art.totalDefendStrength;
+        let num4 = 0;
+        if (art.count > 0) {
+            num3 = Math.trunc(f32(num3 * player.troopAttackStrengthBonusFactorArtillery));
+            num4 = Math.trunc(f32(num3 * player.troopPlanetaryDefenseInterceptBonusFactor));
+            num += Math.trunc(num3 / 50);
+            num2 += art.count;
+        }
+        num = Math.min(3000, num);
+        num2 = Math.min(10, num2);
+        const val = Math.min(90.0, Math.sqrt(num) * Math.sqrt(num2));
+        const val2 = Math.min(95.0, Math.sqrt(Math.trunc(num4 / 50) + num5) * Math.sqrt(num2));
+        expect(num2).toBeGreaterThan(0); // Sol 2 Space Port is armed
+        expect(val2).toBeGreaterThan(0);
+        const rel0 = obtainPirateRelation(player, pe).evaluationRaidsAgainstOurColonies;
+        expect(capital.invadingTroops === null || capital.invadingTroops.count === 0).toBe(true);
+        let troop: Troop | null = null;
+        let samples: number[] = [];
+        let tries = 0;
+        let losses = 0;
+        // Repeat raids until one is wounded (each landing rolls NextDouble × 100 < val2 once, 2856).
+        while (tries < 50) {
+            tries++;
+            const before = new Set(capital.invadingTroops?.items ?? []);
+            const dmg0 = invasionStatsOf(capital)?.troopsDamageToInvaders ?? 0;
+            samples = traced(g, () => performRaidColonyInvasion(g, wf, capital, 86));
+            troop = capital.invadingTroops!.items.find((t) => !before.has(t))!;
+            expect(troop.type).toBe(TroopType.PirateRaider);
+            expect([troop.attackStrength, troop.defendStrength]).toEqual([86, 86]);
+            if (troop.readiness < 100) {
+                // Readiness −= Min(Readiness × 0.9f, val × NextDouble) for a consecutive pair of draws (r1 × 100 < val2, r2).
+                const loss = f32(100 - troop.readiness);
+                const k = samples.findIndex((r1, i) => i + 1 < samples.length && r1 * 100 < val2 && f32(100 - f32(Math.min(f32(100 * f32(0.9)), val * samples[i + 1]))) === troop!.readiness);
+                expect(k).toBeGreaterThanOrEqual(0);
+                const val3 = Math.min(f32(100 * f32(0.9)), val * samples[k + 1]);
+                expect(loss).toBeCloseTo(val3, 4);
+                // InvasionStats.TroopsDamageToInvaders += (float)val3 (2866).
+                expect(invasionStatsOf(capital)!.troopsDamageToInvaders).toBe(f32(dmg0 + f32(val3)));
+                losses++;
+                break;
+            }
+        }
+        expect(losses).toBe(1);
+        // The first raid (no invaders yet) costs the pirates −10 RaidsAgainstOurColonies with the victim (2848); later raids
+        // on an already invaded colony do not.
+        expect(obtainPirateRelation(player, pe).evaluationRaidsAgainstOurColonies).toBe(f32(rel0 - 10));
+    });
+
+    it('DoRaidBonuses: a raid inside the countdown (> 55) loots nothing and sends both empires the failure message; otherwise credits = Max(100, Min(victim × 0.5, √(pop/10 000) × (30 + 20r) × income × RaidBonusFactor)) (Galaxy.5.cs 4953-5034)', () => {
+        const { g, player, capital, pe } = stage();
+        const nMsg = (e: Empire) => (e.messages ?? []).length;
+        capital.raidCountdown = 56;
+        const m0 = [nMsg(pe), nMsg(player)];
+        const money0 = [pe.stateMoney, player.stateMoney];
+        const d0 = g.rnd.drawCount;
+        doRaidBonuses(g, pe, capital, empireRaidBonusFactor(pe));
+        expect(g.rnd.drawCount).toBe(d0);
+        expect([pe.stateMoney, player.stateMoney]).toEqual(money0);
+        if (pe.messages !== null) expect(nMsg(pe)).toBe(m0[0] + 1);
+        if (player.messages !== null) {
+            expect(nMsg(player)).toBe(m0[1] + 1);
+            expect(player.messages[player.messages.length - 1].messageType).toBe(EmpireMessageType.RaidVictim);
+        }
+        // Countdown 0 → num = 1. Burn draws until the habitat's Next(0, 3) comes up 0 (the credits branch).
+        capital.raidCountdown = 0;
+        for (let k = 0; k < 20 && shadowRnd(g).next(0, 3) !== 0; k++) g.rnd.next();
+        const sh = shadowRnd(g);
+        expect(sh.next(0, 3)).toBe(0);
+        const r = sh.nextDouble();
+        const num3 = Math.trunc(capital.population.totalAmount / 10000);
+        let num4 = Math.sqrt(num3) * (30.0 + r * 20.0);
+        num4 *= empireColonyIncomeFactor(pe);
+        num4 *= 1.0;
+        num4 *= 0.75; // Mercenary RaidBonusFactor
+        num4 = Math.max(100.0, Math.min(player.stateMoney * 0.5, num4));
+        const pm0 = pe.stateMoney;
+        const vm0 = player.stateMoney;
+        doRaidBonuses(g, pe, capital, empireRaidBonusFactor(pe));
+        expect(pe.stateMoney).toBeCloseTo(pm0 + num4, 6);
+        expect(player.stateMoney).toBeCloseTo(vm0 - num4, 6);
+    });
+
+    it('looting: a Mercenary kill pays CalculateBuiltObjectLootingValue × ColonyIncomeFactor × LootingFactor 1.33 after corruption (BuiltObject.1.cs 3915-3925) — fixed: LootingFactor used to read 1.0 for every faction', () => {
+        const g = cachedTickGame(gameData).galaxy;
+        const wf = ship(g, 'Worthy Firelance');
+        const victim = ship(g, 'Sol Starseeker');
+        hold(wf);
+        hold(victim);
+        const s = emptySpot(g);
+        place(g, wf, s.x, s.y);
+        place(g, victim, s.x + 50, s.y);
+        wf.currentEnergy = wf.reactorStorageCapacity;
+        // A wreck: shields down, every component damaged → UndamagedComponentSize 0 ≤ any hull hit (BuiltObject.2.cs 6545).
+        victim.currentShields = 0;
+        for (const c of victim.components.items) c.status = ComponentStatus.Damaged;
+        victim.reDefine();
+        const pe = wf.empire!;
+        const loot = calculateBuiltObjectLootingValue(victim) * empireColonyIncomeFactor(pe) * 1.33;
+        const expected = applyCorruptionToIncome(pe, loot);
+        const beam = wf.weapons.find((w) => w.component.type === ComponentType.WeaponBeam)!;
+        for (const w of wf.weapons) w.reset();
+        const t0 = g.nowMs;
+        weaponFire(g, beam, wf, victim, 50, t0, true, 1.0);
+        beam.heading = 0;
+        const money0 = pe.stateMoney;
+        for (let step = 1; step <= 5 && !victim.hasBeenDestroyed; step++) {
+            g.nowMs = t0 + step * 100;
+            handleWeaponsFiringBuiltObject(g, wf, 0.1, g.nowMs);
+        }
+        expect(victim.hasBeenDestroyed).toBe(true);
+        expect(pe.stateMoney - money0).toBeCloseTo(expected, 6);
+        expect(expected).toBeGreaterThan(applyCorruptionToIncome(pe, loot / 1.33));
+    });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// (5) AI retargeting
+// ---------------------------------------------------------------------------------------------------------------
+
+describe('(5) AI retargeting', () => {
+    /**
+     * The player's Javelin 001, auto-controlled, attacks S269's unarmed Hidden Aspiration (A, 150 away) while Black
+     * Pillagers' Worthy Firelance (B: 4 beams + an assault pod) closes in at 300. Empty space (no NearestSystemStar), so
+     * PerformThreatEvaluation takes the galaxy-wide EvaluateThreats list (BuiltObject.1.cs 219).
+     */
+    function stage() {
+        const g = cachedTickGame(gameData).galaxy;
+        const jav = ship(g, 'Javelin 001');
+        const a = ship(g, 'Hidden Aspiration');
+        const b = ship(g, 'Worthy Firelance');
+        for (const x of [jav, a, b]) hold(x);
+        const s = emptySpot(g);
+        place(g, jav, s.x, s.y);
+        place(g, a, s.x + 150, s.y);
+        place(g, b, s.x + 300, s.y);
+        jav.isAutoControlled = true;
+        jav.design.fleeWhen = BuiltObjectFleeWhen.Never;
+        jav.currentEnergy = jav.reactorStorageCapacity;
+        return { g, jav, a, b };
+    }
+
+    it('CheckAssignAttackOnThreat: an Attack mission switches to a new threat only when its level beats the current target\'s × 2.5 × emphasis, and never while the current target\'s shields are down to half (BuiltObject.1.cs 520-560)', () => {
+        const { g, jav, a, b } = stage();
+        assignMission(g, jav, BuiltObjectMissionType.Attack, a, null, BuiltObjectMissionPriority.Normal);
+        const mission = builtObjectMission(jav.mission)!;
+        expect(mission.targetBuiltObject).toBe(a);
+        expect(jav.nearestSystemStar).toBeNull();
+        // Levels (Galaxy.7.cs 3681 DetermineThreatLevel, viewer Javelin): num = level of the current target A,
+        // num2 = level of the threat B; Worthy Firelance is not a base (no ÷ 6).
+        const num = determineThreatLevel(g, a, jav);
+        const num2 = determineThreatLevel(g, b, jav);
+        expect(num * 2.5 * 1.0 < num2).toBe(true); // an unarmed explorer ranks far below an armed escort
+        expect(g.calculateDistanceSquared(jav.xpos, jav.ypos, b.xpos, b.ypos)).toBeLessThan(jav.attackRangeSquared);
+        // Shields at half or less on the current target: stay on it (flag5, 546-552).
+        a.currentShields = Math.trunc(a.shieldsCapacity / 2);
+        expect(checkAssignAttackOnThreat(g, jav, b, mission, 1.0, num2)).toBe(false);
+        expect(builtObjectMission(jav.mission)!.targetBuiltObject).toBe(a);
+        // A higher emphasis on the current target (num × 2.5 × emphasis ≥ num2) also keeps it.
+        a.currentShields = a.shieldsCapacity;
+        const emphasis = num2 / (num * 2.5);
+        expect(checkAssignAttackOnThreat(g, jav, b, mission, emphasis, num2)).toBe(false);
+        // Otherwise (and not overwhelmed, within fuel range) the mission is re-assigned to the threat (553-559): Attack or
+        // Capture per DetermineDestroyOrCaptureTarget, the old mission kept as the revert mission.
+        const expectedType = determineDestroyOrCaptureTarget(g, jav.empire!, jav, b, false);
+        expect(checkAssignAttackOnThreat(g, jav, b, mission, 1.0, num2)).toBe(true);
+        const m2 = builtObjectMission(jav.mission)!;
+        expect(m2.type).toBe(expectedType);
+        expect(m2.targetBuiltObject).toBe(b);
+        expect(m2.priority).toBe(BuiltObjectMissionPriority.Normal);
+    });
+
+    it('fleet ships: a fleet mission ignores other threats unless the fleet allows immediate threat evaluation (BuiltObject.1.cs 422-499)', () => {
+        const { g, jav, a, b } = stage();
+        const jav2 = ship(g, 'Javelin 002');
+        hold(jav2);
+        place(g, jav2, jav.xpos, jav.ypos + 30);
+        const player = g.playerEmpire!;
+        executeShipAction(g, player, [jav, jav2], createShipAction(ShipActionType.CreateNewFleet, null), true);
+        const fleet = jav.shipGroup as ShipGroup;
+        executeShipAction(g, player, fleet, createMissionShipActionAt(BuiltObjectMissionType.Attack, a, Math.trunc(a.xpos), Math.trunc(a.ypos)), true);
+        const mission = builtObjectMission(jav.mission)!;
+        expect(mission.isShipGroupMission).toBe(true);
+        expect(mission.targetBuiltObject).toBe(a);
+        const num2 = determineThreatLevel(g, b, jav);
+        fleet.allowImmediateThreatEvaluation = false; // a player-ordered fleet (only the AI's fleet dispatch sets it)
+        expect(checkAssignAttackOnThreat(g, jav, b, mission, 1.0, num2)).toBe(false);
+        expect(builtObjectMission(jav.mission)!.targetBuiltObject).toBe(a);
+        fleet.allowImmediateThreatEvaluation = true;
+        expect(checkAssignAttackOnThreat(g, jav, b, mission, 1.0, num2)).toBe(true);
+        expect(builtObjectMission(jav.mission)!.targetBuiltObject).toBe(b);
+    });
+
+    it('when the target dies the mission is cleared and the next ThreatEvaluation takes the top-ranked attackable threat (EvaluateThreats order, Galaxy.7.cs 3403; BuiltObject.1.cs 346-385)', () => {
+        const { g, jav, a, b } = stage();
+        const c = ship(g, 'Terrible Raider'); // S269's armed escort, farther out
+        hold(c);
+        place(g, c, jav.xpos + 600, jav.ypos);
+        assignMission(g, jav, BuiltObjectMissionType.Attack, a, null, BuiltObjectMissionPriority.Normal);
+        // Destroy A outright (shields down, overwhelming hit).
+        a.currentShields = 0;
+        expect(inflictDamage(g, jav, a, jav.weapons[0], a.size + 1000, g.nowMs, 50, 0)).toBe(true);
+        runGameSeconds(g, 0.1); // DoExplosions → CompleteTeardown → ClearAllMissionsForTarget
+        expect(builtObjectMission(jav.mission)?.targetBuiltObject ?? null).not.toBe(a);
+        builtObjectMission(jav.mission)?.clear();
+        const { threats, threatLevels } = evaluateThreats(g, jav);
+        const ranked = threats.map((t, i) => ({ t, l: threatLevels[i] })).filter((x) => x.t === b || x.t === c);
+        expect(ranked.length).toBe(2);
+        for (let i = 1; i < threatLevels.length; i++) expect(threatLevels[i - 1]).toBeGreaterThanOrEqual(threatLevels[i]);
+        const top = ranked[0].t as BuiltObject;
+        expect(top).toBe(b); // closer and armed alike: the nearer one ranks higher ((20000 − d)² term)
+        threatEvaluation(g, jav, g.nowMs);
+        const m = builtObjectMission(jav.mission)!;
+        expect([BuiltObjectMissionType.Attack, BuiltObjectMissionType.Capture]).toContain(m.type);
+        expect(m.targetBuiltObject).toBe(top);
+    });
+
+    it('the system threat list is re-evaluated at most every 5 s per empire and system (BuiltObject.1.cs 224-231 LatestThreatEvaluation)', () => {
+        const g = cachedTickGame(gameData).galaxy;
+        const b = ship(g, 'Javelin 002');
+        expect(b.nearestSystemStar).not.toBeNull();
+        b.currentSpeed = 0;
+        const sv = b.empire!.systemVisibility[b.nearestSystemStar!.systemIndex];
+        const t = g.nowMs + 60000;
+        performThreatEvaluation(g, b, t);
+        expect(sv.latestThreatEvaluation).toBe(t);
+        const list = sv.threats;
+        performThreatEvaluation(g, b, t + 5000); // not < t + 5000 − 5000: kept
+        expect(sv.latestThreatEvaluation).toBe(t);
+        expect(sv.threats).toBe(list);
+        performThreatEvaluation(g, b, t + 5001);
+        expect(sv.latestThreatEvaluation).toBe(t + 5001);
+        expect(sv.threats).not.toBe(list);
+    });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// (6) Repair and retreat
+// ---------------------------------------------------------------------------------------------------------------
+
+describe('(6) repair and retreat', () => {
+    function stage() {
+        const g = cachedTickGame(gameData).galaxy;
+        const jav = ship(g, 'Javelin 001');
+        const b = ship(g, 'Worthy Firelance');
+        hold(jav);
+        hold(b);
+        const s = emptySpot(g);
+        place(g, jav, s.x, s.y);
+        place(g, b, s.x + 300, s.y);
+        return { g, jav, b };
+    }
+
+    it('ShouldFleeFrom thresholds per design FleeWhen: any damage (except Never / Armor50), Attacked, Shields50 ≤ (float)(cap/2), Shields20 ≤ (int)(cap × 0.2), Armor50; only attackers within 48 000 count (BuiltObject.1.cs 1520-1600)', () => {
+        const { g, jav, b } = stage();
+        jav.attackers!.length = 0;
+        const flee = () => shouldFleeFrom(g, jav);
+        const set = (w: BuiltObjectFleeWhen) => (jav.design.fleeWhen = w);
+        set(BuiltObjectFleeWhen.Attacked);
+        expect(flee()).toBeNull(); // no attackers
+        jav.attackers!.push(b);
+        expect(flee()).toBe(b);
+        place(g, b, jav.xpos + 48001, jav.ypos); // 48 001² > 2 304 000 000
+        expect(flee()).toBeNull();
+        place(g, b, jav.xpos + 300, jav.ypos);
+        const cap = jav.shieldsCapacity;
+        expect(cap).toBe(100);
+        set(BuiltObjectFleeWhen.Shields50);
+        jav.currentShields = 51;
+        expect(flee()).toBeNull();
+        jav.currentShields = 50;
+        expect(flee()).toBe(b);
+        set(BuiltObjectFleeWhen.Shields20);
+        jav.currentShields = 21;
+        expect(flee()).toBeNull();
+        jav.currentShields = 20;
+        expect(flee()).toBe(b);
+        // Any damaged component makes every setting but Never / Armor50 flee (1551).
+        jav.currentShields = 100;
+        const nonArmour = jav.components.items.find((c) => c.category === ComponentCategoryType.WeaponBeam)!;
+        nonArmour.status = ComponentStatus.Damaged;
+        jav.reDefine();
+        expect(flee()).toBe(b); // Shields20, shields full, but damaged
+        set(BuiltObjectFleeWhen.Never);
+        expect(flee()).toBeNull();
+        // Armor50: shields ≤ 20%, or a damaged non-armour component, or Armor / Design.Armor ≤ 0.5.
+        set(BuiltObjectFleeWhen.Armor50);
+        expect(flee()).toBe(b); // the damaged beam
+        nonArmour.status = ComponentStatus.Normal;
+        const plates = jav.components.items.filter((c) => c.type === ComponentType.Armor);
+        expect(plates.length).toBe(3);
+        plates[0].status = ComponentStatus.Damaged;
+        jav.reDefine();
+        expect(jav.armor / jav.design.armor).toBeGreaterThan(0.5); // 2 of 3 plates
+        expect(flee()).toBeNull();
+        plates[1].status = ComponentStatus.Damaged;
+        jav.reDefine();
+        expect(jav.armor / jav.design.armor).toBeLessThanOrEqual(0.5); // 1 of 3
+        expect(flee()).toBe(b);
+    });
+
+    it('a fleeing auto-controlled ship takes an Escape mission (High) away from the attacker (BuiltObject.1.cs 296-314)', () => {
+        const { g, jav, b } = stage();
+        jav.isAutoControlled = true;
+        jav.design.fleeWhen = BuiltObjectFleeWhen.Shields50;
+        jav.attackers!.push(b);
+        jav.currentShields = 10;
+        threatEvaluation(g, jav, g.nowMs);
+        const m = builtObjectMission(jav.mission)!;
+        expect(m.type).toBe(BuiltObjectMissionType.Escape);
+        expect(m.priority).toBe(BuiltObjectMissionPriority.High);
+        expect(m.targetBuiltObject).toBe(b);
+    });
+
+    it('a damaged ship outside a fleet is sent to the nearest shipyard for repair (VeryHigh) as soon as one component is damaged, its old mission kept to revert to (BuiltObject.2.cs 4705-4760 AutoRefuelRepairShip, Empire.4.cs 4863 AssignRepairMission)', () => {
+        const g = cachedTickGame(gameData).galaxy;
+        const jav = ship(g, 'Javelin 002');
+        const owner = jav.owner!;
+        expect(owner.autoRefuelStateShips).toBe(true);
+        expect(jav.shipGroup).toBeNull();
+        builtObjectMission(jav.mission)?.clear();
+        assignMission(g, jav, BuiltObjectMissionType.Patrol, jav.nearestSystemStar, null, BuiltObjectMissionPriority.Normal);
+        // Undamaged: no repair mission.
+        autoRefuelRepairShip(g, jav, false);
+        expect(builtObjectMission(jav.mission)!.type).not.toBe(BuiltObjectMissionType.Repair);
+        const beam = jav.components.items.find((c) => c.category === ComponentCategoryType.WeaponBeam)!;
+        beam.status = ComponentStatus.Damaged;
+        jav.reDefine();
+        expect(jav.damagedComponentCount).toBe(1);
+        const yard = findNearestShipYard(g, owner, jav, true, true);
+        expect(yard).not.toBeNull();
+        expect(autoRefuelRepairShip(g, jav, false)).toBe(true);
+        const m = builtObjectMission(jav.mission)!;
+        expect(m.type).toBe(BuiltObjectMissionType.Repair);
+        expect(m.priority).toBe(BuiltObjectMissionPriority.VeryHigh);
+        expect(m.target).toBe(yard);
+        expect(jav.revertMission?.type).toBe(BuiltObjectMissionType.Patrol);
+    });
+
+    it('DoRepairs: (int)(dt / (DamageRepair / fleet & captain bonus)) components per call from a random start index, wrapping; BattleStats and the fleet\'s BattleStats record the repairs (BaconBuiltObject.cs 4763-4858) — fixed: the fleet record was missing', () => {
+        const g = cachedTickGame(gameData).galaxy;
+        const jav = ship(g, 'Javelin 001');
+        const jav2 = ship(g, 'Javelin 002');
+        const player = g.playerEmpire!;
+        executeShipAction(g, player, [jav, jav2], createShipAction(ShipActionType.CreateNewFleet, null), true);
+        const fleet = jav.shipGroup as ShipGroup;
+        fleet.battleStats = new SpaceBattleStats();
+        jav.battleStats = new SpaceBattleStats();
+        const items = jav.components.items;
+        const damagedIdx = [1, 4, 7, items.length - 1];
+        for (const i of damagedIdx) items[i].status = ComponentStatus.Damaged;
+        jav.reDefine();
+        jav.damageRepair = 10; // seconds per component (ReDefine sets it from DamageControl components; the Javelin has none)
+        expect(calculateCrewLevel(jav)).toBe('green'); // no crew-skill override (4769-4787)
+        const bonus = shipGroupRepairBonus(fleet);
+        const perComponent = 10 / bonus / 1.0; // no captain
+        const dt = 2.5 * perComponent;
+        const sh = shadowRnd(g);
+        doRepairs(g, jav, dt);
+        // num5 = (int)(dt / num4) = 2; start = Next(0, Count); repair Damaged from start to the end, then from 0.
+        const start = sh.next(0, items.length);
+        expect(g.rnd.getState()).toEqual(sh.getState());
+        const order = [...damagedIdx.filter((i) => i >= start), ...damagedIdx.filter((i) => i < start)];
+        const repaired = order.slice(0, 2);
+        for (const i of damagedIdx) expect(items[i].status).toBe(repaired.includes(i) ? ComponentStatus.Normal : ComponentStatus.Damaged);
+        expect((jav.battleStats as SpaceBattleStats).damageRepaired).toBe(2);
+        expect((fleet.battleStats as SpaceBattleStats).damageRepaired).toBe(2);
+    });
+
+    it('at a shipyard the construction queue repairs damaged components first, in component order, one per build tick (ConstructionQueue.cs 765-790, 1142 IdentifyComponentToBuild)', () => {
+        const g = cachedTickGame(gameData).galaxy;
+        const jav = ship(g, 'Javelin 002');
+        const port = ship(g, 'Sol 2 Space Port');
+        const queue = builtObjectConstructionQueue(port)!;
+        expect(queue).not.toBeNull();
+        builtObjectMission(jav.mission)?.clear();
+        const items = jav.components.items;
+        const damagedIdx = [9, 2, 5, 12].filter((i) => i < items.length);
+        for (const i of damagedIdx) items[i].status = ComponentStatus.Damaged;
+        jav.reDefine();
+        place(g, jav, port.xpos, port.ypos);
+        expect(queue.addBuiltObjectToRepair(jav)).toBe(true);
+        const repairedOrder: number[] = [];
+        let t = g.nowMs;
+        queue.resetProcessTime(t);
+        for (let k = 0; k < 400 && repairedOrder.length < damagedIdx.length; k++) {
+            t += 250;
+            queue.doConstruction(g, t);
+            for (const i of damagedIdx) if (items[i].status === ComponentStatus.Normal && !repairedOrder.includes(i)) repairedOrder.push(i);
+        }
+        expect(repairedOrder).toEqual([...damagedIdx].sort((x, y) => x - y));
+        expect(jav.damagedComponentCount).toBe(0);
     });
 });

@@ -48,3 +48,7 @@ Appended by `npm run repin -- --reason "<why>"` (scripts/repin.mjs).
 - `tickDeterminism.digest600` (test/tickDeterminism.test.ts): Moved "ca858dbaaec075df" → "ffeb947e780b83ec": combat verification: GenerateBuiltObjectFromDesign now builds components Normal (Empire.cs 4346; was Unbuilt), and Empire.RaidStrengthFactor (BaconEmpire.cs 75) is read in the assault-pod strength / boarding defence maths (was always 1.0)
 - `tickDeterminism.counts600` (test/tickDeterminism.test.ts): Moved #48a3abb754 → #55634f7fc2: combat verification: GenerateBuiltObjectFromDesign now builds components Normal (Empire.cs 4346; was Unbuilt), and Empire.RaidStrengthFactor (BaconEmpire.cs 75) is read in the assault-pod strength / boarding defence maths (was always 1.0)
 - `tickDeterminism.rndDraws600` (test/tickDeterminism.test.ts): Moved 474839 → 476644: combat verification: GenerateBuiltObjectFromDesign now builds components Normal (Empire.cs 4346; was Unbuilt), and Empire.RaidStrengthFactor (BaconEmpire.cs 75) is read in the assault-pod strength / boarding defence maths (was always 1.0)
+
+## 2026-09-26 — combattest2: Empire.LootingFactor is the pirate play-style factor (BaconEmpire.cs 83; Mercenary 1.33, Smuggler 0.75), not 1.0 — pirate kill loot / raid money moves
+
+- `tickDeterminism.digest600` (test/tickDeterminism.test.ts): Moved "ffeb947e780b83ec" → "41864fdc2ff2325b": combattest2: Empire.LootingFactor is the pirate play-style factor (BaconEmpire.cs 83; Mercenary 1.33, Smuggler 0.75), not 1.0 — pirate kill loot / raid money moves
