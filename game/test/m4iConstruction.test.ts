@@ -3,7 +3,7 @@
 // M4i stub).
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { cachedTickGame, cachedTickGameRun } from './helpers/gameCache';
 import { runGameSeconds } from '../src/sim/tick/harness';
 import type { GameData } from '../src/sim/data/gameData';
 import type { Galaxy } from '../src/sim/galaxy';
@@ -48,7 +48,7 @@ function aiEmpire(g: Galaxy): Empire {
 
 describe('M4i unit: construction helpers', () => {
     it('BaconDesign.CalculateMaintenanceCosts: ((int)(price / markup) + 1 + size) less savings, × government factor', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const e = aiEmpire(g);
         const design = findNewestCanBuild(e.designs, BuiltObjectSubRole.Escort, e)!;
         const price = design.calculateCurrentPurchasePrice(g);
@@ -63,7 +63,7 @@ describe('M4i unit: construction helpers', () => {
     });
 
     it('RefactorForceStructureProjectionsToCosts: one Rnd.Next(0, Count) per projection, within money and cashflow', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const e = aiEmpire(g);
         const list = new ForceStructureProjectionList();
         list.add(new ForceStructureProjection(BuiltObjectSubRole.Escort, 3, 0));
@@ -87,7 +87,7 @@ describe('M4i unit: construction helpers', () => {
     });
 
     it('CheckSafeToBuildAtLocation: a blockaded colony is unsafe; a quiet home colony is safe', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const e = aiEmpire(g);
         const cap = e.capital!;
         expect(checkSafeToBuildAtLocation(g, e, cap)).toBe(true);
@@ -97,7 +97,7 @@ describe('M4i unit: construction helpers', () => {
     });
 
     it('CanBuildBuiltObject: colony ships only at a colony with ≥ 500M people; space ports never at a yard for normal empires', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const e = aiEmpire(g);
         const colonyDesign = findNewestCanBuildFullEvaluate(e.designs, BuiltObjectSubRole.ColonyShip, null);
         if (colonyDesign !== null) {
@@ -111,7 +111,7 @@ describe('M4i unit: construction helpers', () => {
     });
 
     it('NewBuiltObjectShouldBeAutomated: state ships follow NewShipsAutomated, others are always automated', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const e = aiEmpire(g);
         e.newShipsAutomated = false;
         expect(newBuiltObjectShouldBeAutomated(e, BuiltObjectSubRole.Frigate)).toBe(false);
@@ -119,7 +119,7 @@ describe('M4i unit: construction helpers', () => {
     });
 
     it('ProcureConstructionComponents(colony): reserves colony cargo, orders the shortfall, queues every component', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const e = aiEmpire(g);
         const cap = e.capital!;
         const design = findNewestCanBuild(e.designs, BuiltObjectSubRole.Escort, e)!;
@@ -137,7 +137,7 @@ describe('M4i unit: construction helpers', () => {
     });
 
     it('QueueMission appends to SubsequentMissions for ships, never for bases', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const e = aiEmpire(g);
         const ship = (e.builtObjects as BuiltObject[]).find((b) => b.subRole === BuiltObjectSubRole.Escort || b.subRole === BuiltObjectSubRole.Frigate || b.subRole === BuiltObjectSubRole.ExplorationShip)!;
         const n = ship.subsequentMissions.length;
@@ -149,7 +149,7 @@ describe('M4i unit: construction helpers', () => {
     });
 
     it('AssignScrapMission: a ship without warp speed is torn down at once (true); retire flag cleared', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const e = aiEmpire(g);
         const ship = (e.builtObjects as BuiltObject[]).find((b) => b.role !== 0 && b.topSpeed > 0)!;
         ship.retireForNextMission = true;
@@ -161,14 +161,14 @@ describe('M4i unit: construction helpers', () => {
     });
 
     it('DetermineHabitatsWithBasesIncludingBuilding lists the parent colony of every base of the listed kinds', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const e = aiEmpire(g);
         const list = determineHabitatsWithBasesIncludingBuilding(g, e, [BuiltObjectSubRole.SmallSpacePort]);
         expect(list).toContain(e.capital);
     });
 
     it('ReviewLatestDesigns fills LatestDesigns per design specification (FullEvaluate, no planet destroyers)', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const e = aiEmpire(g);
         e.latestDesigns.fill(null);
         reviewLatestDesigns(g, e);
@@ -178,7 +178,7 @@ describe('M4i unit: construction helpers', () => {
     });
 
     it('ReviewDesignsAndRetrofit only runs when flagged, and clears both flags', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const e = aiEmpire(g);
         e.reviewDesignsAndRetrofitFlag = false;
         const d0 = g.rnd.drawCount;
@@ -194,7 +194,7 @@ describe('M4i unit: construction helpers', () => {
 
 describe('M4i harness: empire construction entry points', () => {
     it('DirectConstruction with ample funds queues state ships at the space port, pays for them, and they get built', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         runGameSeconds(g, 60);
         // Pick an empire whose long Empire.DoTasks block (ProjectForceStructure) has already re-run: the game-start
         // CreateStateShips (Galaxy.8.cs 955) clears StateForceStructureProjections, and the per-empire timers are staggered,
@@ -228,7 +228,7 @@ describe('M4i harness: empire construction entry points', () => {
     }, 600000);
 
     it('BuildDefensiveBases / RetireOldBuiltObjects / DetermineMonitoringStationLocation run on a live galaxy', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         runGameSeconds(g, 60);
         for (const e of g.empires) {
             buildDefensiveBases(g, e);
@@ -241,8 +241,7 @@ describe('M4i harness: empire construction entry points', () => {
     }, 600000);
 
     it('600 game-seconds of ticks reach no M4i stub', () => {
-        const g = createTickGame(gameData).galaxy;
-        const r = runGameSeconds(g, 600);
+        const { run: r } = cachedTickGameRun(gameData, { seconds: 600 }); // createTickGame + runGameSeconds(g, 600), built once and cached (test/helpers/gameCache.ts)
         const m4i = Object.keys(r.todoHits).filter((k) => k.startsWith('M4i'));
         expect(m4i).toEqual([]);
     }, 600000);

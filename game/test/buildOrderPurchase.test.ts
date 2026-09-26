@@ -2,7 +2,7 @@
 // harness game (seed 1, the human player's start), as btnBuildOrderPurchase_Click (Main.Part2.cs 1135) drives it.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { cachedTickGame } from './helpers/gameCache';
 import type { GameData } from '../src/sim/data/gameData';
 import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
 import { buildNewShips, buildOrderTotalCost, queueOf } from '../src/sim/construction/empireConstruction';
@@ -15,7 +15,7 @@ beforeAll(async () => {
 
 describe('Build Order purchase on the harness game', () => {
     it('queues the ordered escorts at the yard and charges the panel total', () => {
-        const { galaxy: g, playerEmpire: e } = createTickGame(gameData);
+        const { galaxy: g, playerEmpire: e } = cachedTickGame(gameData);
         const rows = buildOrderRows(e, g);
         const amounts = rows.map(() => 0);
         const i = BUILD_ORDER_SUBROLES.indexOf(BuiltObjectSubRole.Escort);
@@ -39,7 +39,7 @@ describe('Build Order purchase on the harness game', () => {
         expect(purchaseResultText(r)).toBe('Build order placed: 2 ships queued for construction');
     });
     it('an order over StateMoney is refused with the cannot-afford message and changes nothing', () => {
-        const { galaxy: g, playerEmpire: e } = createTickGame(gameData);
+        const { galaxy: g, playerEmpire: e } = cachedTickGame(gameData);
         const rows = buildOrderRows(e, g);
         const amounts = rows.map((r) => (r.design ? 1000 : 0));
         const lists = buildOrderPurchaseLists(rows, amounts);

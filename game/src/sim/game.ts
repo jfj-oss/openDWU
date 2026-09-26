@@ -794,16 +794,33 @@ export function applyStartAutomationSettings(empire: Empire, o: Readonly<GameOpt
     empire.newShipsAutomated = o.newShipsAutomated;
 }
 
-// createGame: the sim entry point the wizard calls (non-pirate play).
-export function createGame(opts: CreateGameOptions): Game {
-    const gd = opts.gameData;
-    // BaconInitialize has not run while a fresh launch generates its galaxy: the Bacon statics are the C# defaults.
-    resetBaconSettings();
+/**
+ * The module-level static data createGame installs (the C# static lists loaded at startup: governments, government
+ * and race biases). createGame calls it first; a game rebuilt from a save in a process that never ran createGame
+ * needs it (and registerGameHooks) too.
+ */
+export function installGameStatics(gd: GameData): void {
     govs = gd.governments;
     setGovernmentsStatic(gd.governments);
     setGovernmentBiasesStatic(gd.governmentBiases); // GovernmentBiasList.LoadFromFile (M4r: NaturalAffinity)
     // Galaxy.cs LoadRaceBiases (Race.Biases) / Galaxy.RaceFamiliesStatic biases (raceBias.ts).
     setRaceBiasesStatic(gd.races, gd.raceBiases, gd.raceFamilies.length, gd.raceFamilyBiases);
+}
+
+/** The runtime hooks createGame registers (after the galaxy is generated). */
+export function registerGameHooks(): void {
+    registerTroopGeneralHook((g, e, location) => {
+        // Galaxy.2.cs 5230: GenerateNewCharacter(TroopGeneral, location). TODO(port): 5231-5233 message.
+        generateNewCharacter(g, e, CharacterRole.TroopGeneral, location);
+    });
+}
+
+// createGame: the sim entry point the wizard calls (non-pirate play).
+export function createGame(opts: CreateGameOptions): Game {
+    const gd = opts.gameData;
+    // BaconInitialize has not run while a fresh launch generates its galaxy: the Bacon statics are the C# defaults.
+    resetBaconSettings();
+    installGameStatics(gd);
     const clockRnd = new Random(opts.seed ^ 0x5eed); // stands in for the C# clock-seeded Randoms
     // Galaxy.4.cs 2132 / Start.2.cs 98: the new galaxy's own Race objects (per game, saved with it).
     const galaxyRaces = cloneGalaxyRaces(gd.races);
@@ -845,10 +862,7 @@ export function createGame(opts: CreateGameOptions): Game {
     galaxy.storyDistantWorldsEnabled = opts.storyDistantWorldsEnabled ?? false;
     galaxy.gameRaceSpecificEventsEnabled = opts.raceSpecificEventsEnabled ?? true;
     galaxy.storyShadowsEnabled = opts.storyShadowsEnabled ?? false;
-    registerTroopGeneralHook((g, e, location) => {
-        // Galaxy.2.cs 5230: GenerateNewCharacter(TroopGeneral, location). TODO(port): 5231-5233 message.
-        generateNewCharacter(g, e, CharacterRole.TroopGeneral, location);
-    });
+    registerGameHooks();
     galaxy.empireTerritoryColonyInfluenceRangeFactor = opts.empireTerritoryColonyInfluenceRangeFactor ?? galaxy.empireTerritoryColonyInfluenceRangeFactor;
     galaxy.colonyNames = opts.colonyNames ?? null;
     galaxy.colonyNameIndex = 0;

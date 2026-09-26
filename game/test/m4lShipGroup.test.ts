@@ -4,7 +4,7 @@
 // The createGame empires start without warships, so fleets are built from pirate escorts re-roled as frigates.
 import { beforeEach, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { cachedTickGame } from './helpers/gameCache';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { Empire } from '../src/sim/empire';
 import type { BuiltObject } from '../src/sim/builtObject';
@@ -49,7 +49,7 @@ let ships: BuiltObject[];
 /** A fresh galaxy per test (fleet state and Rnd draws are mutated by every check). */
 beforeEach(async () => {
     gameData ??= await loadGameDataFs();
-    galaxy = createTickGame(gameData).galaxy;
+    galaxy = cachedTickGame(gameData).galaxy;
     const escorts = (e: Empire): BuiltObject[] => e.builtObjects.filter((b) => b.role === BuiltObjectRole.Military && b.subRole === BuiltObjectSubRole.Escort && b.topSpeed > 0);
     // The pirate faction with the most escorts, topped up to four ships from other factions' escorts. (Four since the M4q
     // merge: seed 1's factions now have at most two escorts each, and with three military ships MaintainShipGroups'

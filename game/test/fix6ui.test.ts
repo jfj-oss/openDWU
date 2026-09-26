@@ -2,7 +2,7 @@
 // decoupling (playtest 2026-09-25-b). Seed-1 harness game for the order keys; expectations follow the C#.
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { cachedTickGame } from './helpers/gameCache';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { Empire } from '../src/sim/empire';
 import type { BuiltObject } from '../src/sim/builtObject';
@@ -84,7 +84,7 @@ describe('N2 order keys on the seed-1 game', () => {
         gameData = await loadGameDataFs();
     });
     beforeEach(() => {
-        galaxy = createTickGame(gameData).galaxy;
+        galaxy = cachedTickGame(gameData).galaxy;
         player = galaxy.playerEmpire!;
     });
     const mobileShip = (military: boolean): BuiltObject => {

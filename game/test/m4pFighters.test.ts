@@ -4,7 +4,7 @@
 // - save round trip of a galaxy with fighters.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame, createTickGameAtAge } from './helpers/tickGame';
+import { cachedTickGame } from './helpers/gameCache';
 import { runGameSeconds } from '../src/sim/tick/harness';
 import type { GameData } from '../src/sim/data/gameData';
 import type { Galaxy } from '../src/sim/galaxy';
@@ -60,7 +60,7 @@ function readyFighters(g: Galaxy, carrier: BuiltObject): Fighter[] {
 
 describe('M4p unit: specifications and carriers', () => {
     it('fighters.txt rows map to C# FighterSpecifications (type 0 → Interceptor, weapon 0 → WeaponBeam)', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const spec = identifyLatestFighterSpecification(g.playerEmpire!)!;
         expect(spec).not.toBeNull();
         expect(spec.name).toBe('Standard Fighter');
@@ -79,7 +79,7 @@ describe('M4p unit: specifications and carriers', () => {
     });
 
     it('BuildNewFighters: the player fills its fighter bays with interceptors; an AI carrier splits them half/half', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const port = playerCarrier(g);
         const capacity = port.fighterCapacity;
         const rnd = g.rnd.getState();
@@ -106,7 +106,7 @@ describe('M4p unit: specifications and carriers', () => {
         expect(fightersOf(port)!.length).toBe(fighters.length);
 
         // Not the player's carrier (3204): num5 /= 2, num6 = num5.
-        const g2 = createTickGame(gameData).galaxy;
+        const g2 = cachedTickGame(gameData).galaxy;
         const port2 = playerCarrier(g2);
         g2.playerEmpire = null;
         buildNewFighters(g2, port2);
@@ -118,7 +118,7 @@ describe('M4p unit: specifications and carriers', () => {
     });
 
     it('ManufactureRepairFighters builds fighters one at a time (hand-worked C# float steps)', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         // Hand-worked with the C# class defaults (fighterBuildSpeedDivisor 2f, fighterBuildCost 0), not the installed
         // BaconSettings.txt (40 / 6) that createGame applied.
         resetBaconSettings();
@@ -144,7 +144,7 @@ describe('M4p unit: specifications and carriers', () => {
     });
 
     it('LaunchAllFighters: Next(0, 2) + RandomHeadingOffset per fighter, heading carrier ± (π/2 + offset), speed 0.3 × top', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const port = playerCarrier(g);
         const fighters = readyFighters(g, port);
         port.threats = [];
@@ -170,7 +170,7 @@ describe('M4p unit: specifications and carriers', () => {
     });
 
     it('ReturnToCarrier + DoMovement: a returning fighter out of view boards once a step covers 60% of the distance', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const port = playerCarrier(g);
         const [f] = readyFighters(g, port);
         port.threats = [];
@@ -189,7 +189,7 @@ describe('M4p unit: specifications and carriers', () => {
     });
 
     it('CompleteTeardown detaches the fighter; ReDefine tears down all fighters when the bays are gone', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const port = playerCarrier(g);
         const fighters = readyFighters(g, port);
         const n = fighters.length;
@@ -207,7 +207,7 @@ describe('M4p unit: specifications and carriers', () => {
     });
 
     it('DetermineThreatLevel(Fighter): an unowned fighter in scan range scores 1 (num5 0 → Max(1, 0)); out of range 0', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const port = playerCarrier(g);
         const other = g.builtObjects.find((b) => b !== null && b !== port && b.empire !== null && b.empire !== port.empire && b.fighterCapacity >= 0)!;
         if (other.fighters === null) other.fighters = [];
@@ -224,7 +224,7 @@ describe('M4p unit: specifications and carriers', () => {
 
 describe('M4p combat against a ship', () => {
     it('fighters pursue and damage an enemy pirate ship; the ship fires back at nearby fighters', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const port = playerCarrier(g);
         const fighters = readyFighters(g, port);
         const pirate = g.builtObjects.find((b) => b !== null && !b.hasBeenDestroyed && b.empire !== null && b.empire.pirateEmpireBaseHabitat !== null && b.role === BuiltObjectRole.Military)!;
@@ -269,7 +269,7 @@ describe('M4p harness', () => {
     it('fighters launch and attack a space slug within range of their carrier', () => {
         // Age-0 (PreWarp) galaxy fixture: the seed-1 age-0 layout has space slugs in Sol that the capital port sees as
         // threats within 5 s; the default age-1 galaxy (M4y) places its creatures elsewhere (none within reach of Sol).
-        const g = createTickGameAtAge(gameData, 0).galaxy;
+        const g = cachedTickGame(gameData, { age: 0 }).galaxy;
         const port = playerCarrier(g);
         const fighters = readyFighters(g, port);
         // A creature the port already sees as a threat (Sol's space slugs), moved next to it: fighters engage within
@@ -292,7 +292,7 @@ describe('M4p harness', () => {
     }, 300000);
 
     it('a galaxy with fighters survives a save round trip', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const port = playerCarrier(g);
         const fighters = readyFighters(g, port);
         port.threats = [];

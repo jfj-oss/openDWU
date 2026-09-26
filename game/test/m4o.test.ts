@@ -5,7 +5,7 @@
 // galaxy (seed 1), plus a harness smoke run.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame, createTickGameAtAge } from './helpers/tickGame';
+import { cachedTickGame } from './helpers/gameCache';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { BuiltObject } from '../src/sim/builtObject';
 import type { GameData } from '../src/sim/data/gameData';
@@ -49,7 +49,7 @@ beforeAll(async () => {
     // Age-0 (PreWarp) galaxy fixture: these tests need two pirate factions with two warships each (a victim / teardown
     // ship besides shipA / shipB); since the M4m merge the seed-1 age-1 galaxy has only one such faction (age-1 factions
     // start with halved escorts, see pirateBases.test.ts).
-    galaxy = createTickGameAtAge(gameData, 0).galaxy;
+    galaxy = cachedTickGame(gameData, { age: 0 }).galaxy;
     // The createGame empires start with no military ships; the pirate factions do (see m4n.test.ts).
     // Factions with at least two warships (the age-1 tick galaxy gives some pirate factions a single one).
     const isWarship = (b: BuiltObject) => b.role === BuiltObjectRole.Military && b.warpSpeed > 0 && b.firepowerRaw > 0 && b.isFunctional && b.topSpeed > 0;
@@ -254,7 +254,7 @@ describe('BuiltObject.2.cs 5171 CompleteTeardown / Empire.8.cs 2896 CleanupInval
 
 describe('harness', () => {
     it('60 game-s on a fresh createGame galaxy runs the M4o entry points with no M4o stub left', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const r = runGameSeconds(g, 60);
         expect(Object.keys(r.todoHits).filter((k) => k.startsWith('M4o '))).toEqual([]);
         for (const b of g.builtObjects) {

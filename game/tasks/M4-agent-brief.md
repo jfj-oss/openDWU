@@ -41,7 +41,9 @@ You port one M4 work package of a faithful TypeScript port of the C# game Distan
    still stubbed.
 8. Tests: add focused tests in `game/test/m4<X>*.test.ts` (unit tests of ported functions against hand-worked
    C# expectations, plus a harness smoke test via `runGameSeconds` from `tick/harness.ts` if relevant).
-   Run `npm run typecheck` and `npm test` in `game/` before each commit (full suite ~90 s). All tests must pass.
+   Run `npm run typecheck` and the tests in `game/`: `npm run test:fast` while iterating (skips the `// @slow`
+   soaks), the full suite (`npm test`) before finishing. All tests must pass. A harness smoke on the standard seed-1
+   game takes it from `cachedTickGame` / `cachedTickGameRun(gameData, { seconds })` (`test/helpers/gameCache.ts`).
    Seed pins that move (e.g. `test/tickDeterminism.test.ts` digest, createGame pins): re-pin with
    `npm run repin -- --reason "<why>"` (see "Seed pins" below), never by hand. List the moved pins in your report.
 9. Commit messages: `game: task M4<X> <summary>` ending with the attribution trailer lines the running
@@ -65,6 +67,9 @@ every pin. Do not edit pinned values, seed1.json or the manifest by hand.
   `toMatchPin`. The merge gate runs it; it takes ~80 s (pinned files only; `--workers N`, default 2).
 - New seed-dependent exact values: use `toMatchPin` with a new key (put the value in seed1.json by running
   `npm run repin -- --reason "new pin"`) and keep a comment above it saying what the value is.
+- The pinned files take the standard seed-1 game from the test game cache (`test/helpers/gameCache.ts`, rebuilt
+  whenever `src/sim` changes). The pins are identical with and without it; to rule it out, prefix
+  `DWU_TEST_CACHE=off` (e.g. `DWU_TEST_CACHE=off npm run repin -- --check`).
 
 ## Scope management
 Your package is large. Prioritise the entry points the tick actually reaches at runtime (check hit counts:
@@ -85,8 +90,9 @@ out of room, stop at a clean boundary, commit, and list precisely what remains.
   structure in `src/sim/missions/` first: `mission.ts` (BuiltObjectMission, Command, enums), `assign.ts`
   (assignMission with AssignMissionArgs), `executeCommands.ts` (CommandContext / CommandHandler dispatch
   contract), and the per-package case stub files `missions/cmd*.ts` you fill in.
-- If several agents share a machine, run the suite as `npx vitest run --testTimeout=300000 --maxWorkers=2`;
-  plain `npm test` can hit 5 s timeouts under load (not a real failure). Run single files while iterating.
+- If several agents share a machine, run the suite as
+  `npx vitest run --testTimeout=300000 --hookTimeout=2400000 --maxWorkers=2`; plain `npm test` can hit 5 s timeouts
+  under load (not a real failure). Run single files or `npm run test:fast` while iterating, the full suite before finishing.
 - A new worktree needs `game/node_modules` (npm install or symlink) and the gitignored `game/public/assets/dwu`
   link to the dwu-assets checkout, as in the main checkout.
 - Before finishing, re-run the full suite once; all must pass.

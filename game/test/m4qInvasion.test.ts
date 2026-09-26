@@ -4,7 +4,7 @@
 // TakeOwnershipOfBuiltObject) on a createGame galaxy (seed 1), plus a harness smoke run.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { cachedTickGame, cachedTickGameRun } from './helpers/gameCache';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { Habitat } from '../src/sim/types';
 import type { Empire } from '../src/sim/empire';
@@ -49,7 +49,7 @@ function independentColony(skip: Habitat[] = []): Habitat {
 
 beforeAll(async () => {
     gameData = await loadGameDataFs();
-    galaxy = createTickGame(gameData).galaxy;
+    galaxy = cachedTickGame(gameData).galaxy;
 }, 180000);
 
 describe('Habitat.cs 4978 InflictTroopLosses', () => {
@@ -248,8 +248,8 @@ describe('BuiltObject.1.cs 2954 ProcessBoardingAssault / Empire.1.cs 524 TakeOwn
 
 describe('M4q on the headless harness', () => {
     it('runs 300 game-s with no M4q TODO hits', () => {
-        const g = createTickGame(gameData).galaxy;
-        const r = runGameSeconds(g, 300);
+        const { game, run: r } = cachedTickGameRun(gameData, { seconds: 300 }); // createTickGame + runGameSeconds(g, 300), built once and cached (test/helpers/gameCache.ts)
+        const g = game.galaxy;
         expect(Object.keys(r.todoHits).filter((k) => k.startsWith('M4q '))).toEqual([]);
         for (const h of g.habitats) {
             if (h.troops !== null) for (const t of h.troops.items) expect(Number.isFinite(t.readiness)).toBe(true);

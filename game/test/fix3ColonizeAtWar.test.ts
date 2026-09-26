@@ -3,7 +3,7 @@
 // (Galaxy.cs 3620-3626: ObtainDiplomaticRelation(owner).Type == War -> canColonizeBecauseAtWar = true, return true).
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { cachedTickGame } from './helpers/gameCache';
 import type { GameData } from '../src/sim/data/gameData';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from '../src/sim/diplomacy';
 
@@ -14,7 +14,7 @@ beforeAll(async () => {
 
 describe('CheckEmpireTerritoryCanColonizeHabitat at-war branch', () => {
     it('refuses another empire\'s system unless at war with its owner', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const a = g.empires[0];
         const b = g.empires[1];
         const capital = b.capital!;

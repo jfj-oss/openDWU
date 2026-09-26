@@ -1,5 +1,4 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest';
-import { createGame } from '../src/sim/game';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { Empire } from '../src/sim/empire';
 import type { Design } from '../src/sim/design';
@@ -7,7 +6,7 @@ import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
 import { ComponentCategoryType } from '../src/sim/data/policies';
 import { ComponentType } from '../src/sim/data/components';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { tickGameOptions } from './helpers/tickGame';
+import { cachedTickGame } from './helpers/gameCache';
 import { designStatRows } from '../src/ui/screens/shipDesigns';
 
 // Design.ReDefine (Design.cs 1240-1983) + BaconDesign.Redefine (BaconDesign.cs 138) and
@@ -16,7 +15,7 @@ import { designStatRows } from '../src/ui/screens/shipDesigns';
 let galaxy: Galaxy;
 beforeAll(async () => {
     const gameData = await loadGameDataFs();
-    galaxy = createGame(tickGameOptions(gameData)).galaxy;
+    galaxy = cachedTickGame(gameData).galaxy;
 }, 300000);
 
 function allEmpires(g: Galaxy): Empire[] {

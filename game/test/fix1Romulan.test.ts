@@ -2,7 +2,7 @@
 // and its ships get the bonuses (fuel burn halved, turn rate doubled).
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { cachedTickGame } from './helpers/gameCache';
 import type { GameData } from '../src/sim/data/gameData';
 
 let gameData: GameData;
@@ -12,7 +12,7 @@ beforeAll(async () => {
 
 describe('BaconBuiltObject ModMyShip (Romulan)', () => {
     it('applies the bonuses without throwing', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const e = g.empires[1];
         const ship = e.builtObjects.find((b) => b.cruiseSpeedFuelBurn > 1 && b.turnRate > 0)!;
         ship.reDefine();

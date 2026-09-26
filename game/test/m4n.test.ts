@@ -3,7 +3,7 @@
 // IdentifySystemThreatsToUs) on a createGame galaxy (seed 1), plus a harness smoke run.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { cachedTickGame } from './helpers/gameCache';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { BuiltObject } from '../src/sim/builtObject';
 import type { GameData } from '../src/sim/data/gameData';
@@ -47,7 +47,7 @@ let shipB: BuiltObject;
 let sameEmpireShip: BuiltObject;
 beforeAll(async () => {
     gameData = await loadGameDataFs();
-    galaxy = createTickGame(gameData).galaxy;
+    galaxy = cachedTickGame(gameData).galaxy;
     // The createGame empires start with no military ships (tech level 0.5, civilian + base only); the pirate factions do.
     // Factions with at least two warships (the age-1 tick galaxy gives some pirate factions a single one).
     const isWarship = (b: BuiltObject) => b.role === BuiltObjectRole.Military && b.warpSpeed > 0 && b.firepowerRaw > 0 && b.isFunctional && b.topSpeed > 0;
@@ -291,7 +291,7 @@ describe('BuiltObject.2.cs 1698 case Attack (missions/cmdAttack.ts)', () => {
 
 describe('harness', () => {
     it('60 game-s on a fresh createGame galaxy runs the M4n entry points with no M4n stub left', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const r = runGameSeconds(g, 60);
         expect(Object.keys(r.todoHits).filter((k) => k.startsWith('M4n '))).toEqual([]);
         for (const b of g.builtObjects as BuiltObject[]) {

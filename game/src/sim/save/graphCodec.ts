@@ -205,7 +205,13 @@ export class GraphDecoder {
                 this.options.revive?.get(proto)?.(out);
                 this.memo.push(out);
                 const fields = value.$f as { [key: string]: Encoded };
-                for (const key of Object.keys(fields)) out[key] = this.decode(fields[key], `${path}.${key}`);
+                // Defined rather than assigned: the same data property an assignment creates (no setter on the
+                // prototype chain is involved in either the save's own fields or here), but V8 keeps an instance whose
+                // many fields are added by computed-key assignment in dictionary mode — a loaded game then ticked
+                // ~2-3x slower than a new one — while defined properties stay fast, on shared maps.
+                for (const key of Object.keys(fields)) {
+                    Object.defineProperty(out, key, { value: this.decode(fields[key], `${path}.${key}`), writable: true, enumerable: true, configurable: true });
+                }
                 return out;
             }
             default: {

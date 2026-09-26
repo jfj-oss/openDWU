@@ -1,7 +1,7 @@
 // M4z6 — pirate-control readers & C# leftovers (tasks/M4-deferred-plan.md M4z6): unit tests against the C# sources.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { cachedTickGame } from './helpers/gameCache';
 import type { GameData } from '../src/sim/data/gameData';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { Empire } from '../src/sim/empire';
@@ -37,7 +37,7 @@ function stubRnd(g: Galaxy): void {
 
 describe('M4z6 (2) InflictBombardDamage facility types (BuiltObject.2.cs 5877-5911)', () => {
     it('SelectRandomFacility(PirateCriminalNetwork) excludes the criminal network by PlanetaryFacilityType (PlanetaryFacilityList.cs 214)', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const net = facility(g, PlanetaryFacilityType.PirateCriminalNetwork);
         expect(selectRandomFacility(g, [net], PlanetaryFacilityType.PirateCriminalNetwork)).toBeNull();
         const base = facility(g, PlanetaryFacilityType.PirateBase);
@@ -48,7 +48,7 @@ describe('M4z6 (2) InflictBombardDamage facility types (BuiltObject.2.cs 5877-59
     });
 
     it('a bombarded pirate base clears the facility control (control − 0.2 clamped to [0.01, 0.49])', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const e = aiEmpire(g);
         const cap = e.capital!;
         cap.planetaryShieldPresent = false;
@@ -69,7 +69,7 @@ describe('M4z6 (2) InflictBombardDamage facility types (BuiltObject.2.cs 5877-59
 
 describe('M4z6 (4) StellarObject readers on a Fighter (StellarObject.cs 37-41)', () => {
     it('FirepowerRaw / TopSpeed / CurrentSpeed are the fighter\'s own fields; IsFunctional is never set (false)', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const carrier = g.builtObjects.find((b) => b !== null && b.empire === g.playerEmpire)!;
         if (carrier.fighters === null) carrier.fighters = [];
         const f = new Fighter(g, identifyLatestFighterSpecification(g.playerEmpire!)!, carrier);
@@ -84,7 +84,7 @@ describe('M4z6 (4) StellarObject readers on a Fighter (StellarObject.cs 37-41)',
 
 describe('M4z6 (5) PirateEconomy.PerformIncome through the one pirateAI entry point', () => {
     it('GiveTradeableItem Money books SellInfo when contacts / maps are exchanged, otherwise Undefined (Galaxy.4.cs 3864-3886)', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const giver = aiEmpire(g);
         const pirate = g.pirateEmpires[0];
         const other = g.empires.find((e) => e !== giver)!;
@@ -101,7 +101,7 @@ describe('M4z6 (5) PirateEconomy.PerformIncome through the one pirateAI entry po
 
 describe('M4z6 (1) Habitat.cs 6070 CheckColonyRevenueFromPirateControl', () => {
     it('true only for a pirate faction on a colony it does not own', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const e = aiEmpire(g);
         const pirate = g.pirateEmpires[0];
         const cap = e.capital!;
@@ -114,7 +114,7 @@ describe('M4z6 (1) Habitat.cs 6070 CheckColonyRevenueFromPirateControl', () => {
 
 describe('M4z6 (6) colony resource orders (Empire.4.cs 2357 / 2959 / 3186) and Creature.DamageTarget (Creature.cs 1347)', () => {
     it('MaintainColonyResourceLevels orders every short strategic resource at the colony (no space port: habitat order)', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const e = aiEmpire(g);
         const cap = e.capital!;
         for (const o of g.orders.getOrdersForHabitat(cap).items) g.orders.remove(o);
@@ -136,7 +136,7 @@ describe('M4z6 (6) colony resource orders (Empire.4.cs 2357 / 2959 / 3186) and C
     });
 
     it('luxury orders: the cheapest luxuries not native to the colony, CalculateMinimumLuxuryResourceLevel × 1.5 each', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const e = aiEmpire(g);
         const cap = e.capital!;
         for (const o of g.orders.getOrdersForHabitat(cap).items) g.orders.remove(o);
@@ -161,7 +161,7 @@ describe('M4z6 (6) colony resource orders (Empire.4.cs 2357 / 2959 / 3186) and C
     });
 
     it('a creature destroys a built object whose undamaged size <= damage (one Next(0, 10) explosion draw)', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const bo = g.builtObjects.find((b) => b !== null && b.empire === aiEmpire(g) && b.role !== undefined)!;
         const mist = new Creature(g, CreatureType.SilverMist, aiEmpire(g).capital!);
         let draws = 0;
@@ -173,7 +173,7 @@ describe('M4z6 (6) colony resource orders (Empire.4.cs 2357 / 2959 / 3186) and C
     });
 
     it('a SilverMist drains colony population: (long)(timePassed × 1e6 × AttackStrength) split over the populations', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const cap = aiEmpire(g).capital!;
         const mist = new Creature(g, CreatureType.SilverMist, cap);
         mist.attackStrength = 7;

@@ -1,7 +1,7 @@
 // Task 17f: the player design editor (src/sim/player/designEditor.ts) on a createGame galaxy (seed 1, test/helpers/tickGame.ts).
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { cachedTickGame } from './helpers/gameCache';
 import type { GameData } from '../src/sim/data/gameData';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { Empire } from '../src/sim/empire';
@@ -36,7 +36,7 @@ beforeAll(async () => {
 }, 120000);
 
 function game(): { g: Galaxy; p: Empire } {
-    const g = createTickGame(gameData).galaxy;
+    const g = cachedTickGame(gameData).galaxy;
     return { g, p: g.playerEmpire! };
 }
 

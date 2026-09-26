@@ -6,7 +6,7 @@
 // incoming-fleet bookkeeping (Empire.1.cs 3198) and the Escort case (BuiltObject.2.cs 804); plus a harness smoke run.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { cachedTickGame, cachedTickGameRun } from './helpers/gameCache';
 import type { Galaxy } from '../src/sim/galaxy';
 import { AutomationLevel, type Empire } from '../src/sim/empire';
 import type { GameData } from '../src/sim/data/gameData';
@@ -50,7 +50,7 @@ beforeAll(async () => {
 }, 120000);
 
 function fresh(): Galaxy {
-    return createTickGame(gameData).galaxy;
+    return cachedTickGame(gameData).galaxy;
 }
 function normalEmpires(g: Galaxy): Empire[] {
     return g.empires.filter((e) => e.pirateEmpireBaseHabitat === null && e !== g.independentEmpire && e.colonies.length > 0);
@@ -324,8 +324,8 @@ describe('fleet scenarios (Empire.8.cs 4266 IdentifyMilitaryObjectives / 4845 Fo
 
 describe('harness smoke', () => {
     it('600 game-s on the createGame galaxy reach no M4m stub', () => {
-        const g = fresh();
-        const r = runGameSeconds(g, 600);
+        const { game, run: r } = cachedTickGameRun(gameData, { seconds: 600 }); // createTickGame + runGameSeconds(g, 600), built once and cached (test/helpers/gameCache.ts)
+        const g = game.galaxy;
         const m4m = Object.keys(r.todoHits).filter((k) => k.startsWith('M4m'));
         expect(m4m).toEqual([]);
         for (const e of g.empires) {

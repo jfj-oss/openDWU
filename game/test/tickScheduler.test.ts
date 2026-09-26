@@ -4,7 +4,7 @@
 // round-robin cursors / enqueue cadence follow Main.Part12.cs method_86 (the in-battle scan stays a no-op).
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { cachedTickGame } from './helpers/gameCache';
 import type { BuiltObject } from '../src/sim/builtObject';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { Empire } from '../src/sim/empire';
@@ -36,7 +36,7 @@ function reputationProbe(e: Empire): EventActionExecutionPackage {
 }
 beforeAll(async () => {
     gameData = await loadGameDataFs();
-    galaxy = createTickGame(gameData).galaxy;
+    galaxy = cachedTickGame(gameData).galaxy;
 }, 120000);
 
 /** Names of the blocks whose marker stub was reached by `fn`. */
@@ -427,7 +427,7 @@ describe('Galaxy.DoTasks (Galaxy.cs 3054) and DoTasksTimeSensitive (3046)', () =
 describe('frame driver (Main.Part12.cs method_86)', () => {
     let g: Galaxy;
     beforeAll(() => {
-        g = createTickGame(gameData).galaxy;
+        g = cachedTickGame(gameData).galaxy;
     }, 120000);
 
     it('enqueues the galaxy every 100th frame, one empire / pirate faction every 10th frame, one empire fleet pass every 5th', () => {

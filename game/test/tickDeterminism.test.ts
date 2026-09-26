@@ -1,3 +1,4 @@
+// @slow — soak: the pinned 600 s determinism run (test:slow tier; see vite.config.ts testTier).
 // M4a determinism + headless harness tests (tasks/M4-plan.md §5.1, §5.3 layers 3-5):
 // - createGame(seed 1) run 120 game-s twice → identical digest; 60 + 60 → the same digest;
 // - runGameSeconds for 600 game-s on that galaxy with every package stubbed does not throw; digest pinned;
@@ -7,7 +8,8 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame, createTickGameAtAge } from './helpers/tickGame';
+import { cachedTickGame, cachedTickGameRunIfBuilt } from './helpers/gameCache';
+import { createTickGame } from './helpers/tickGame';
 import { runGameSeconds } from '../src/sim/tick/harness';
 import { stateCounts, stateDigest } from '../src/sim/tick/digest';
 import type { Galaxy } from '../src/sim/galaxy';
@@ -38,8 +40,10 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
     let long: Galaxy;
 
     it('120 game-s twice from createGame(seed 1) give the same digest', () => {
+        // a is built here, b comes from the test game cache (test/helpers/gameCache.ts): this also checks that a cached
+        // game is state-identical to a fresh createGame and ticks identically.
         const a = createTickGame(gameData).galaxy;
-        const b = createTickGame(gameData).galaxy;
+        const b = cachedTickGame(gameData).galaxy;
         expect(stateDigest(a)).toBe(stateDigest(b));
         const ra = runGameSeconds(a, 120);
         const rb = runGameSeconds(b, 120);
@@ -63,7 +67,7 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
     }, 300000);
 
     it('60 + 60 game-s equals 120 game-s in one call', () => {
-        const c = createTickGame(gameData).galaxy;
+        const c = cachedTickGame(gameData).galaxy;
         runGameSeconds(c, 60);
         runGameSeconds(c, 60);
         expect(c.nowMs).toBe(120000);
@@ -231,12 +235,21 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
         // Moved 571596 → 529241: dataload: the loaded BaconSettings.txt (BaconMain.cs 1101 ReadBaconSettings; 605-1062 BaconInitialize) replaces the movement-only stock copy: the remaining keys now apply at game start, e.g. tradeEverything=true (758), TroopGarrisonMinimumPerColony=20 (614), shipMarkupFactor=9 (770), shipMaintenanceCostPerSizeUnit=2 (766), allowInfrastructureImprovements=true (823), marketPriceUpdateChance=0.25 (851), privateBuildCostToStateMoney=0.3 (923), weaponRangeMultiplierForBases=2 (819); movement keys unchanged (digest parity with the stock copy verified) (2026-09-25)
         // Moved 529241 → 474839: fix7: C# Systems[].Habitats excludes the star (Galaxy.6.cs 4611): FastFindNearestUnexploredHabitat[InSector] star-only branch, FindNearestUnexploredHabitatInSystem, Rnd.Next(0, Habitats.Count) at Empire.5.cs 1646/3871 and Empire.1.cs 4854, resort list Empire.5.cs 2815 — explorers get targets (2026-09-26)
         expect(summary.rndDraws).toMatchPin('tickDeterminism.rndDraws600');
+        // The test game cache's 600 s game (one createGame + runGameSeconds(600) call, saved and loaded; the harness
+        // smokes of other files use it) is this state. Checked when another file has built it (not built here: that
+        // would double this soak on a cold cache).
+        const cached = cachedTickGameRunIfBuilt(gameData, { seconds: 600 })?.game.galaxy;
+        if (cached !== undefined) {
+            expect(stateDigest(cached)).toBe(summary.digest);
+            expect(stateCounts(cached)).toEqual(summary.counts);
+            expect(cached.rnd.drawCount).toBe(summary.rndDraws);
+        }
     }, 600000);
 });
 
 describe('pre-warp start (age 0) stays covered', () => {
     it('createGame with every empire at age 0 (the PreWarp start) runs 120 game-s without throwing', () => {
-        const g = createTickGameAtAge(gameData, 0).galaxy;
+        const g = cachedTickGame(gameData, { age: 0 }).galaxy;
         runGameSeconds(g, 120);
         expect(g.nowMs).toBe(120000);
         checkInvariants(g);
