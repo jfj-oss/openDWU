@@ -1,14 +1,21 @@
 /* HUD overlay (task 05c streamlined redesign). Original font: Forgotten
    Futurist, served from the DW:U install folder via /assets/dwu/... (desktop
-   shell maps the prefix; in dev the public symlink does). */
+   shell maps the prefix; in dev the public symlink does).
+   Task fix8ui: the font's U+0020 glyph advances only 0.131 em (bold 0.192 em),
+   about 1 px at 11 px, so every DOM panel and Pixi label using it read as
+   "1Leader,1Ambassador". The unicode-range leaves U+0020 out of both faces so
+   the space falls back to the next family in each stack (sans-serif, ~0.28 em)
+   everywhere at once; no per-panel word-spacing needed. */
 @font-face {
     font-family: 'Forgotten Futurist';
     src: url('/assets/dwu/Customization/DistantWorldsExpanded-main/DistantWorldsExpanded/DistantWorlds/Resources/Forgotte.ttf');
+    unicode-range: U+0000-001F, U+0021-10FFFF;
 }
 @font-face {
     font-family: 'Forgotten Futurist';
     font-weight: bold;
     src: url('/assets/dwu/Customization/DistantWorldsExpanded-main/DistantWorldsExpanded/DistantWorlds/Resources/Forgottb.ttf');
+    unicode-range: U+0000-001F, U+0021-10FFFF;
 }
 
 #hud {

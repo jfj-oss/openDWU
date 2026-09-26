@@ -23,10 +23,11 @@ import { moonDotPx, planetSpritePx } from './mainView';
  * grey the sim forces onto the independent empire (Empire ctor, empire.ts). */
 export const INDEPENDENT_RING_COLOR = 0x606060;
 
-/** Colony-ring radius in world units: the drawn sprite radius plus 6 px
- * (screen pixels), per the task spec mirroring the original's owner ring. */
-export function colonyRingRadius(drawnPx: number): number {
-    return drawnPx / 2 + 6;
+/** Colony-ring radius in screen pixels: the drawn sprite radius plus the
+ * original's owner-ring pad num68 = max(6, (int)(28 / f)) (MainView.1.cs:792-806,
+ * f = zoom factor 1/z), so at 100% zoom the ring sits 28 px outside the body. */
+export function colonyRingRadius(drawnPx: number, f = 100): number {
+    return drawnPx / 2 + Math.max(6, Math.trunc(28 / f));
 }
 
 /** Territory disc radius in world units: ~1.2 sectors × 0.25 (task M2e). */
@@ -279,7 +280,8 @@ export class EmpireLayer {
             }
             // Drawn size matches MainView.drawnSize (planets >= 14 px, moons >= 7 px).
             const drawnPx = h.category === HabitatCategoryType.Moon ? moonDotPx(h.diameter, z) : planetSpritePx(h.diameter, z);
-            const r = colonyRingRadius(drawnPx);
+            // Screen px -> world units (the layer lives in world space).
+            const r = colonyRingRadius(drawnPx, factor) / z;
             cr.ring.clear();
             cr.ring.circle(h.xpos, h.ypos, r).stroke({ width: 2 / z, color: colonyRingColor(h, this.galaxy), alpha: 1 });
             cr.ring.visible = true;
