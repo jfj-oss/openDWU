@@ -16,3 +16,4 @@ Scenario RimTrade Where;Where to find rim goods: outer ring beyond {0}% radius
 Scenario RimTrade Tag;Rim trader
 Scenario RimTrade Rim Good;(rim good)
 Scenario RimTrade Port;Trading port
+Scenario RimTrade News Opened;The {0} have opened their port at {1} to the {2}.

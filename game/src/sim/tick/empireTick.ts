@@ -110,6 +110,8 @@ import {
     updateAchievements,
 } from '../events';
 import { AutomationLevel } from '../empire';
+import { scenarioFlag } from '../scenario/state';
+import { rimTraderColonyCapReached } from '../scenario/rimTrade/common';
 
 /** Empire.cs 176-186 _ShortProcessingInterval .. _HugeProcessingInterval (seconds). */
 export const SHORT_PROCESSING_INTERVAL = 3.0;
@@ -291,7 +293,8 @@ export function empireDoTasks(galaxy: Galaxy, empire: Empire): void {
             createNewDesigns(galaxy, empire, starDate, starDate);
         }
         reviewSystemThreats(galaxy, empire);
-        empire.colonizationTargets = identifyColonizationTargets(galaxy, empire);
+        // Mod layer 19a: the Concord stops colonizing at its cap (tasks/19a-rim-trader.md R2)
+        empire.colonizationTargets = scenarioFlag(galaxy, 'rimTrader') && rimTraderColonyCapReached(galaxy, empire) ? [] : identifyColonizationTargets(galaxy, empire);
         if (flag) {
             invadeUnwillingColonizationTargets(galaxy, empire);
         }

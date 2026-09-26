@@ -95,6 +95,8 @@ import { PirateExpenseType, PirateIncomeType } from './pirates/pirateEconomy';
 import { acceptPirateProtection, calculatePirateProtectionPricePerMonth } from './pirates/pirateRelationsAI';
 import { baconSettings } from './data/baconSettings';
 import { scenarioEmit } from './scenario/hooks';
+import { scenarioFlag } from './scenario/state';
+import { isRimTraderAI, rimTraderRefusesProposal, scenarioWarBlocked } from './scenario/rimTrade/common';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants (Galaxy.3.cs 4990-5140 InitializeStatics; BaconEmpire.cs statics with their default settings).
@@ -2436,6 +2438,8 @@ export function offerFreeTrade(galaxy: Galaxy, self: Empire, otherEmpire: Empire
 
 /** Empire.8.cs 1824 OfferMutualDefense. */
 export function offerMutualDefense(galaxy: Galaxy, self: Empire, otherEmpire: Empire): void {
+    // Mod layer 19a: the Concord never offers a defence treaty (tasks/19a-rim-trader.md R7)
+    if (scenarioFlag(galaxy, 'rimTrader') && isRimTraderAI(galaxy, self)) return;
     if (otherEmpire.reclusive || (!checkEmpireHasHyperDriveTech(self) && !checkEmpireHasHyperDriveTech(otherEmpire))) return;
     const diplomaticRelation = obtainDiplomaticRelation(self, otherEmpire);
     const num = calculateNextAllowableProposalDate(galaxy, diplomaticRelation);
@@ -2711,6 +2715,8 @@ export function changeDiplomaticRelation(
 
 /** Empire.7.cs 4868-4883 DeclareWar(target[, persuader[, lockedWar[, blockFlowonEffects]]]). */
 export function declareWar(galaxy: Galaxy, self: Empire, target: Empire | null, persuader: Empire | null = null, lockedWar = false, blockFlowonEffects = false): void {
+    // Mod layer 19a: the Concord never declares war (tasks/19a-rim-trader.md R1)
+    if (galaxy.scenario !== null && scenarioWarBlocked(galaxy, self, target)) return;
     if (target === null) return;
     const diplomaticRelation = obtainDiplomaticRelation(self, target);
     if (diplomaticRelation.type !== DiplomaticRelationType.War) {
@@ -3494,6 +3500,11 @@ export function considerTreatyProposals(galaxy: Galaxy, empire: Empire): void {
         specialBonusDiplomacy(thisEmpire); // `_ = diplomaticRelation.ThisEmpire.SpecialBonusDiplomacy;`
         let flag = false;
         if (dr2.locked || dr3.locked) continue;
+        // Mod layer 19a: the Concord binds itself to no one (tasks/19a-rim-trader.md R7)
+        if (scenarioFlag(galaxy, 'rimTrader') && rimTraderRefusesProposal(galaxy, self, thisEmpire, dr.type)) {
+            removals.push(dr);
+            continue;
+        }
         const accept = (t: DiplomaticRelationType): void => {
             dr2!.type = t;
             dr2!.lastDiplomacyTradeOfferDate = dr.lastDiplomacyTradeOfferDate;
