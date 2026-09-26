@@ -104,11 +104,17 @@ export interface KnownThreatSite {
 }
 
 type KnownSitesProvider = (galaxy: Galaxy, empire: Empire) => KnownThreatSite[];
-const knownSitesProviders = new Map<string, KnownSitesProvider>();
+// `var` + lazy creation: threat modules register at module load, possibly while this module is still initialising
+// (an import cycle through the UI / player code), when a `const` would still be in its temporal dead zone.
+// eslint-disable-next-line no-var
+var knownSitesProvidersStore: Map<string, KnownSitesProvider> | undefined;
+function knownSitesProviders(): Map<string, KnownSitesProvider> {
+    return (knownSitesProvidersStore ??= new Map());
+}
 
 /** A threat module registers how to list what an empire knows (called by threatKnownSites). */
 export function registerThreatKnownSites(threat: string, provider: KnownSitesProvider): void {
-    knownSitesProviders.set(threat, provider);
+    knownSitesProviders().set(threat, provider);
 }
 
 /**
@@ -118,8 +124,8 @@ export function registerThreatKnownSites(threat: string, provider: KnownSitesPro
 export function threatKnownSites(galaxy: Galaxy, empire: Empire | null, minLevel = KNOWLEDGE_SUSPECTED): KnownThreatSite[] {
     if (galaxy.scenario === null || empire === null) return [];
     const out: KnownThreatSite[] = [];
-    for (const key of [...knownSitesProviders.keys()].sort()) {
-        for (const s of knownSitesProviders.get(key)!(galaxy, empire)) if (s.level >= minLevel) out.push(s);
+    for (const key of [...knownSitesProviders().keys()].sort()) {
+        for (const s of knownSitesProviders().get(key)!(galaxy, empire)) if (s.level >= minLevel) out.push(s);
     }
     return out;
 }
@@ -361,18 +367,22 @@ export interface ThreatActionHandler {
     label: () => string;
 }
 
-const threatActions = new Map<string, ThreatActionHandler>();
+// eslint-disable-next-line no-var
+var threatActionsStore: Map<string, ThreatActionHandler> | undefined;
+function threatActions(): Map<string, ThreatActionHandler> {
+    return (threatActionsStore ??= new Map());
+}
 
 export function registerThreatAction(kind: string, handler: ThreatActionHandler): void {
-    threatActions.set(kind, handler);
+    threatActions().set(kind, handler);
 }
 
 /** The actions offered for `target` (kinds in sorted order). */
 export function availableThreatActions(galaxy: Galaxy, empire: Empire | null, target: unknown): { kind: string; label: string }[] {
     if (galaxy.scenario === null || empire === null) return [];
     const out: { kind: string; label: string }[] = [];
-    for (const kind of [...threatActions.keys()].sort()) {
-        const h = threatActions.get(kind)!;
+    for (const kind of [...threatActions().keys()].sort()) {
+        const h = threatActions().get(kind)!;
         if (h.available(galaxy, empire, target)) out.push({ kind, label: h.label() });
     }
     return out;
@@ -380,7 +390,7 @@ export function availableThreatActions(galaxy: Galaxy, empire: Empire | null, ta
 
 /** The executor behind the 'threatAction' player op. */
 export function runThreatAction(galaxy: Galaxy, empire: Empire, kind: string, target: unknown): boolean {
-    const h = threatActions.get(kind);
+    const h = threatActions().get(kind);
     if (h === undefined || galaxy.scenario === null || !h.available(galaxy, empire, target)) return false;
     return h.run(galaxy, empire, target);
 }

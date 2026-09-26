@@ -38,7 +38,7 @@ describe('map overlay state (task 05c)', () => {
         expect(calls).toBe(2);
     });
 
-    it('lists all nine overlays in display order', () => {
+    it('lists all overlays in display order (the nine of the original + scenario Threats)', () => {
         expect(OVERLAY_ROWS.map((r) => r.key)).toEqual([
             'fleetPostures',
             'travelVectorsState',
@@ -49,6 +49,7 @@ describe('map overlay state (task 05c)', () => {
             'longRangeScanners',
             'empireTerritory',
             'fadeCivilianShips',
+            'threats',
         ]);
     });
 });
