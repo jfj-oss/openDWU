@@ -16,7 +16,7 @@ import { BuiltObjectMissionType } from '../../src/sim/missions/mission';
 import { BuiltObjectRole } from '../../src/sim/data/designSpecifications';
 import { BuiltObjectSubRole } from '../../src/sim/builtObjectTypes';
 import { findNewestCanBuild } from '../../src/sim/designGeneration';
-import { empireShipGroups, type ShipGroup } from '../../src/sim/fleets/shipGroup';
+import { ShipGroup, empireShipGroups } from '../../src/sim/fleets/shipGroup';
 import type { StartGameOptions } from '../../src/sim/startGameOptions';
 
 /** A command script on a time scale: `scale` 1 = the 600 s soak (steps at 5 … 400 s), 0.1 = a 60 s run. */
@@ -51,6 +51,9 @@ function moveOrder(g: Galaxy, target: Habitat) {
     return createMissionShipActionAt(BuiltObjectMissionType.Move, target, Math.trunc(target.xpos), Math.trunc(target.ypos));
 }
 
+/** The fleet the scripted 'create a fleet' order made, per galaxy (the empire may form fleets of its own too). */
+export const createdFleets = new WeakMap<Galaxy, ShipGroup>();
+
 export interface Step {
     atMs: number;
     what: string;
@@ -72,7 +75,9 @@ const STEPS: Step[] = [
         what: 'create a fleet',
         issue: (g, p) => {
             const ships = p.builtObjects.filter((b) => isOrderableShip(p, b) && b.role === BuiltObjectRole.Military && b.shipGroup === null);
-            issuePlayerCommand(g, p, 'shipAction', [ships, createShipAction(ShipActionType.CreateNewFleet, null), false]);
+            issuePlayerCommand(g, p, 'shipAction', [ships, createShipAction(ShipActionType.CreateNewFleet, null), false], (r) => {
+                if (r.select instanceof ShipGroup) createdFleets.set(g, r.select);
+            });
         },
     },
     {
