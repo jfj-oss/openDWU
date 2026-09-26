@@ -8,6 +8,8 @@ import './aiAdvisorLog.css';
 import type { StrategicTurn } from './aiAdvisorDriver';
 
 export const MAX_ENTRIES = 6;
+/** A rejected line (e.g. the long list of legal values) is cut to this many characters. */
+export const MAX_LINE_CHARS = 110;
 
 export interface CouncilLogLine {
     kind: 'ok' | 'blocked' | 'rejected' | 'error' | 'none';
@@ -31,7 +33,10 @@ export function councilLogEntry(turn: StrategicTurn): CouncilLogEntry {
         else if (r.status === 'blocked') lines.push({ kind: 'blocked', text: `✗ ${r.text}` });
         else lines.push({ kind: 'rejected', text: `⊘ ${r.text}` });
     }
-    for (const r of turn.rejected) lines.push({ kind: 'rejected', text: `⊘ ${r.id}${r.targetId !== undefined ? ` → ${r.targetId}` : ''}: ${r.reason}` });
+    for (const r of turn.rejected) {
+        const text = `⊘ ${r.id}${r.targetId !== undefined ? ` → ${r.targetId}` : ''}: ${r.reason}`;
+        lines.push({ kind: 'rejected', text: text.length > MAX_LINE_CHARS ? `${text.slice(0, MAX_LINE_CHARS - 1)}…` : text });
+    }
     if (turn.error !== undefined) lines.push({ kind: 'error', text: `No decision: ${turn.error}` });
     else if (turn.results.length === 0 && turn.rejected.length === 0) lines.push({ kind: 'none', text: 'No change' });
     return { empire: turn.empireName, color: turn.empire.mainColor, starDate: turn.starDate, rationale: turn.rationale, lines };

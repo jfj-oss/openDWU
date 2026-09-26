@@ -13,6 +13,7 @@
     display: flex;
     flex-direction: column;
     font-family: 'Forgotten Futurist', sans-serif;
+    word-spacing: 0.2em;
     color: #e6e6e6;
     background: rgba(14, 16, 20, 0.9);
     backdrop-filter: blur(6px);
@@ -93,7 +94,7 @@
 
 .council-log-rationale {
     margin: 3px 0 2px 16px;
-    font-size: 11px;
+    font-size: 12px;
     font-style: italic;
     color: #cfd8e0;
     line-height: 1.35;
