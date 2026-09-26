@@ -35,7 +35,10 @@ import { executeShipAction } from '../src/sim/player/executeShipAction';
 import { captainBonuses } from '../src/sim/characters';
 import { fireWeaponsAtTarget, handleWeaponsFiringBuiltObject, rechargeShields, weaponDamageDropoff } from '../src/sim/combat/weapons';
 import { evaluateThreats } from '../src/sim/combat/threats';
+import { shouldAttack } from '../src/sim/combat/attackAI';
 import { inflictDamage } from '../src/sim/combat/damage';
+import { Fighter, FighterMissionType, buildNewFighters, calculateMaximumTargetRange, fighterDoTasks, fightersOf, launchAllFighters } from '../src/sim/combat/fighters';
+import { baconSettings } from '../src/sim/data/baconSettings';
 
 let gameData: GameData;
 beforeAll(async () => {
@@ -552,5 +555,124 @@ describe('(2) a 4-ship fleet ordered to attack a pirate base', () => {
         expect(base.attackers!.some((a) => fleetShips.includes(a as BuiltObject))).toBe(true);
         expect(switched).toBe(0);
         expect(rechargeChecks).toBeGreaterThan(10);
+    }, 300000);
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// (3) Carrier fighters: launch, engage, return
+// ---------------------------------------------------------------------------------------------------------------
+
+describe('(3) fighters launched by a carrier engage and return per the C# rules', () => {
+    /** The player's Sol 2 Space Port (FighterCapacity 160 → 16 Standard Fighters) with its fighters built and ready. */
+    function stage(): { g: Galaxy; port: BuiltObject; fighters: Fighter[] } {
+        const g = cachedTickGame(gameData).galaxy;
+        const port = ship(g, 'Sol 2 Space Port');
+        expect(port.fighterCapacity).toBe(160);
+        buildNewFighters(g, port);
+        const fighters = fightersOf(port)!;
+        for (const f of fighters) {
+            f.health = 1;
+            f.underConstruction = false;
+        }
+        return { g, port, fighters };
+    }
+
+    it('CalculateMaximumTargetRange = 225 × fighterRangeMultiple × TopSpeed² (× 2 for a base carrier) (BaconFighter.cs 30)', () => {
+        const { fighters } = stage();
+        const f = fighters[0];
+        expect(f.specification.name).toBe('Standard Fighter');
+        expect(f.topSpeed).toBe(105);
+        // BaconSettings.txt fighterRangeMultiple=30 (BaconFighter.cs 19 default 1.0), maximumTargetDistanceSquared 225,
+        // starbaseFighterRangeMultiplier 2: 225 × 30 × 105² × 2 = 148 837 500 (≈ 12 200²).
+        expect(baconSettings.fighterRangeMultiple).toBe(30);
+        expect(calculateMaximumTargetRange(f)).toBe(148837500);
+    });
+
+    it('return rules on the intermediate pass (BaconFighter.cs 153 DoTasks): damage (Fighter.cs 502), range (BaconFighter.cs 131), out of ammo (BaconFighter.cs 218)', () => {
+        const { g, port, fighters } = stage();
+        port.threats = [];
+        launchAllFighters(g, port);
+        const [hurt, far, dry, fine] = fighters;
+        for (const f of [hurt, far, dry, fine]) {
+            f.missionType = FighterMissionType.Patrol;
+            f.currentTarget = null;
+            f.xpos = port.xpos + 500;
+            f.ypos = port.ypos;
+        }
+        // Damage: Health 0.9 < 1 and Standard Fighter DamageRepairRate 0 → ReturnToCarrier (no self-repair exemption,
+        // which needs DamageRepairRate > 0 and Health > 0.75).
+        expect(hurt.specification.damageRepairRate).toBe(0);
+        hurt.health = f32(0.9);
+        // Range: 13 000 from the base carrier (≥ 12 685 after this pass's 3 s of movement at ≤ TopSpeed 105): > √148 837 500 ≈ 12 200.
+        far.xpos = port.xpos + 13000;
+        // Out of ammo: a '*' name mark (CheckOutOfAmmo) with weapon 0 not in flight.
+        dry.name += '*';
+        const t = g.nowMs + 3000; // ≥ IntermediateProcessingSpan since LastLongTouch (launch time)
+        for (const f of [hurt, far, dry, fine]) {
+            f.lastLongTouch = g.nowMs;
+            f.lastTouch = g.nowMs;
+        }
+        g.nowMs = t;
+        // Out of view a fighter is leashed to its carrier (Fighter.cs 1805-1829: Patrol beyond 600 is put back at 600,
+        // other missions at 1500), so the range rule can only bite in view: `far` is processed in view.
+        for (const f of [hurt, dry, fine]) fighterDoTasks(g, f, t, false);
+        fighterDoTasks(g, far, t, true);
+        expect(g.calculateDistance(fine.xpos, fine.ypos, port.xpos, port.ypos)).toBeLessThanOrEqual(600 + 1e-6);
+        expect(hurt.missionType).toBe(FighterMissionType.ReturnToCarrier);
+        expect(far.missionType).toBe(FighterMissionType.ReturnToCarrier);
+        expect(dry.missionType).toBe(FighterMissionType.ReturnToCarrier);
+        expect(dry.name.includes('*')).toBe(false);
+        expect(fine.missionType).not.toBe(FighterMissionType.ReturnToCarrier);
+        // ReturnToCarrier (Fighter.cs 1919): heading to the carrier at TopSpeed.
+        expect(hurt.targetSpeed).toBe(hurt.topSpeed);
+        // Just inside the range (≤ 12 100: 146 410 000 ≤ 148 837 500) a patrolling, healthy fighter stays out.
+        const { g: g2, port: port2, fighters: f2 } = stage();
+        port2.threats = [];
+        launchAllFighters(g2, port2);
+        const inside = f2[0];
+        inside.missionType = FighterMissionType.Patrol;
+        inside.xpos = port2.xpos + 11800; // ≤ 12 100 after 3 s at ≤ 105
+        inside.ypos = port2.ypos;
+        inside.lastLongTouch = g2.nowMs;
+        inside.lastTouch = g2.nowMs;
+        g2.nowMs += 3000;
+        fighterDoTasks(g2, inside, g2.nowMs, true);
+        expect(inside.missionType).not.toBe(FighterMissionType.ReturnToCarrier);
+        // Standard Fighters carry a beam: CheckOutOfAmmo (BaconFighter.cs 186) only marks missile / torpedo craft.
+        expect(inside.weapons.some((w) => w.type === ComponentType.WeaponMissile || w.type === ComponentType.WeaponTorpedo)).toBe(false);
+    });
+
+    it('on the harness: the base launches its fighters at a pirate within 3000 (ShouldAttack, BuiltObject.1.cs 956), they attack it, fire and wear it down', () => {
+        const { g, port, fighters } = stage();
+        const pir = ship(g, 'Elite Scorpion');
+        builtObjectMission(pir.mission)?.clear();
+        pir.isAutoControlled = false;
+        pir.design.fleeWhen = BuiltObjectFleeWhen.Never;
+        for (const c of pir.components.items) if (c.category === ComponentCategoryType.Engine) c.status = ComponentStatus.Damaged;
+        pir.reDefine(); // engines out: it holds position (see (1))
+        place(g, pir, port.xpos + 1500, port.ypos + 500);
+        // A base (WarpSpeed 0) only engages within 3000 (9 000 000 squared, BuiltObject.1.cs 973).
+        expect(g.calculateDistanceSquared(port.xpos, port.ypos, pir.xpos, pir.ypos)).toBeLessThan(9000000);
+        expect(shouldAttack(g, port, pir, g.nowMs)).toBe(true);
+        const shields0 = pir.currentShields;
+        let launchedFrame = -1;
+        let fired = 0;
+        let frame = 0;
+        let pursued = false;
+        runGameSeconds(g, 40, {
+            onFrame: () => {
+                frame++;
+                if (launchedFrame < 0 && fighters.some((f) => !f.onboardCarrier)) launchedFrame = frame;
+                for (const f of fighters) if (f.weapons[0].distanceTravelled > 0) fired++;
+                if ((pir.pursuers ?? []).some((p) => fighters.includes(p as Fighter))) pursued = true;
+            },
+        });
+        // DefendBase (BuiltObject.cs 4557) → LaunchAllFighters once a threat ShouldAttack says yes.
+        expect(launchedFrame).toBeGreaterThan(0);
+        expect(launchedFrame).toBeLessThanOrEqual(300);
+        expect(fighters.every((f) => !f.onboardCarrier)).toBe(true);
+        expect(pursued).toBe(true);
+        expect(fired).toBeGreaterThan(0);
+        expect(pir.hasBeenDestroyed || pir.currentShields < shields0 || damagedCount(pir) > 0).toBe(true);
     }, 300000);
 });
