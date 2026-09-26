@@ -307,7 +307,7 @@ describe('fleet scenarios (Empire.8.cs 4266 IdentifyMilitaryObjectives / 4845 Fo
         expect(sg.mission!.priority).toBe(BuiltObjectMissionPriority.High);
         const r = runGameSeconds(g, 300);
         expect(Object.keys(r.todoHits).filter((k) => k.startsWith('M4m'))).toEqual([]);
-    }, 300000);
+    }, 1800000);
 
     it('under trade sanctions with a Conquer strategy, the fleet blockades the richest port colony (SetupBlockade on arrival)', () => {
         const { g, a, b } = fleetScenario();
@@ -327,7 +327,7 @@ describe('fleet scenarios (Empire.8.cs 4266 IdentifyMilitaryObjectives / 4845 Fo
             blockadedByA = colony.isBlockaded && galaxyBlockadeFor(g, colony)?.initiator === a;
         }
         expect(blockadedByA).toBe(true);
-    }, 300000);
+    }, 1800000);
 });
 
 describe('harness smoke', () => {

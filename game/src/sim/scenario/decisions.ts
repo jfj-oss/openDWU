@@ -55,16 +55,24 @@ export interface ScenarioDecisionHandler extends ScenarioHandlerGate {
     aiChoose?: (galaxy: Galaxy, decision: ScenarioDecision) => string;
 }
 
-const handlers: ScenarioDecisionHandler[] = [];
+// Registry. `var` + accessor on purpose: a scenario package (e.g. charteredCompanies/charters.ts, imported through
+// packages.ts) can call registerScenarioDecision while this module is still evaluating, via the import cycle
+// decisions → messages → … → game → packages → charters. A `const` would throw the temporal-dead-zone error there;
+// `var` is hoisted as undefined and the accessor creates the list on first use.
+// eslint-disable-next-line no-var
+var handlersStore: ScenarioDecisionHandler[] | undefined;
+function handlers(): ScenarioDecisionHandler[] {
+    return (handlersStore ??= []);
+}
 
 /** Registers (or replaces, by kind) the handler of a decision kind. Returns an unregister function. */
 export function registerScenarioDecision(handler: ScenarioDecisionHandler): () => void {
-    const i = handlers.findIndex((h) => h.kind === handler.kind);
-    if (i >= 0) handlers.splice(i, 1);
-    handlers.push(handler);
+    const i = handlers().findIndex((h) => h.kind === handler.kind);
+    if (i >= 0) handlers().splice(i, 1);
+    handlers().push(handler);
     return () => {
-        const j = handlers.indexOf(handler);
-        if (j >= 0) handlers.splice(j, 1);
+        const j = handlers().indexOf(handler);
+        if (j >= 0) handlers().splice(j, 1);
     };
 }
 
@@ -117,7 +125,7 @@ export function raiseScenarioDecision(galaxy: Galaxy, empire: Empire, spec: Rais
     if (empire === galaxy.playerEmpire) {
         scenarioMessage(galaxy, empire, spec.title, spec.text, { type: EmpireMessageType.GeneralDecision, subject: d });
     } else {
-        const h = handlers.find((x) => x.kind === d.kind);
+        const h = handlers().find((x) => x.kind === d.kind);
         const choice = h?.aiChoose?.(galaxy, d) ?? d.defaultOption;
         answerScenarioDecision(galaxy, d.id, choice, 'ai');
     }
@@ -148,7 +156,7 @@ export function answerScenarioDecision(galaxy: Galaxy, decisionId: number, optio
     d.answeredBy = by;
     st.history.push(d);
     if (st.history.length > 200) st.history.splice(0, st.history.length - 200);
-    const h = handlers.find((x) => x.kind === d.kind);
+    const h = handlers().find((x) => x.kind === d.kind);
     if (h !== undefined && scenarioGateOpen(galaxy, h)) h.resolve(galaxy, d, optionId);
     return true;
 }
