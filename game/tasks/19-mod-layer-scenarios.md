@@ -29,3 +29,9 @@ creation + ownership transfer, attack AI, threats, virus/bombardment, intel miss
 New code: facility + production loop, sleeper flag (saved), awakening script, one bombardment effect, texts,
 tests. ~1 week of agent work after the core is complete. Open design points: discoverability before the turn,
 inspecting private ships, awakening size vs host fleet.
+Addendum (user, 2026-09-26): the factory also builds its own **robot army** (robotic troop types already exist)
+on its planet, hidden and free of money/resources; the turn is an **invasion from inside** (existing invasion
+resolution: hidden troops vs garrison → colony flips to the new faction); then the sleeper freighters get
+troop capacity and carry the factory's continuous troop output to invade more planets (existing troop-transport
+invasion missions + attack-AI invasion planning targeting weakly garrisoned colonies). Balance knobs: troops/day,
+whether retaking the planet destroys the factory, sleeper count before the turn.
