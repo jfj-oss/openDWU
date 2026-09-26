@@ -70,7 +70,7 @@ import { getMessageOptions } from './ui/messageRouting';
 // [audio] end
 import { createNewGameWizard } from './ui/screens/newGameWizard';
 import { openGalactopedia } from './ui/screens/galactopedia';
-import { defaultStartGameOptions, piratesFor, STARTING_TECH_LEVEL, toCreateGameOptions, type StartGameOptions, maximumEmpireAmountFor, starCountFor } from './sim/startGameOptions';
+import { colonizationRangeFor, defaultStartGameOptions, piratesFor, STARTING_TECH_LEVEL, toCreateGameOptions, type StartGameOptions, maximumEmpireAmountFor, starCountFor } from './sim/startGameOptions';
 import { serializeGame, deserializeGame, savedScenarioId } from './sim/save/gameSave';
 import { loadScenarioIndex, loadScenarioOverlay } from './sim/scenario/fetchScenario';
 import { applyScenarioOverlay, resolveScenarioIncludes, type ScenarioOverlay } from './sim/scenario/overlay';
@@ -1146,6 +1146,12 @@ function defaultDevGameOptions(
         // Galaxy.MaximumEmpireAmount comes from the star-count slider (BaconStart.cs 84 method_61), not from the
         // number of empires in the game: it drives the pirate faction count (Galaxy.9.cs 22).
         maximumEmpireAmount: maximumEmpireAmountFor(starCountIndexFor(starCount), gameData.races.filter((r) => r.playable).length),
+        // wizdefaults: the dev/tutorial autostart path skips the wizard entirely, so it must set these
+        // explicitly or fall back to createGame's own default (game.ts, Galaxy.cs 729/732's raw 3000000 —
+        // the pre-wizard class default, not what "New Game" actually starts with). Match the wizard's
+        // default instead (Main.Part9.cs 2674-2675 method_259): enforcement on, 2 sectors.
+        colonizationRangeEnforceLimit: defaultStartGameOptions().colonization.enforceRangeLimits,
+        colonizationRange: colonizationRangeFor(defaultStartGameOptions().colonization.colonizationRangeKly),
         player: { race: 'Human', homeSystemFavourability: 'Normal', startLocation: '(Random)', age: 1, techLevel: STARTING_TECH_LEVEL },
         aiEmpires: [ai, { ...ai }, { ...ai }],
     };
