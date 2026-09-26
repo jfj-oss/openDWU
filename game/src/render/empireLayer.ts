@@ -18,6 +18,7 @@ import type { Empire } from '../sim/empire';
 import { HabitatCategoryType } from '../sim/types';
 import type { Habitat } from '../sim/types';
 import { moonDotPx, planetSpritePx } from './mainView';
+import { DrawKey } from './drawCache';
 
 /** Neutral grey for independent (non-empire) populated worlds. Matches the
  * grey the sim forces onto the independent empire (Empire ctor, empire.ts). */
@@ -100,6 +101,10 @@ export function empireColour(empire: Empire, index: number): number {
 class EmpireTerritory {
     graphics: Graphics;
     empire: Empire;
+    /** Render: perf pass — the discs are drawn once (all owned systems) and then only shown / hidden: their
+     * geometry is zoom-independent world space and the owned-system list is collected once. */
+    drawn = false;
+    hasDiscs = false;
     constructor(empire: Empire, layer: Container) {
         this.empire = empire;
         this.graphics = new Graphics();
@@ -160,10 +165,10 @@ export class EmpireLayer {
     private empireSystems: EmpireSystems[] = [];
     private territories: Map<Empire, EmpireTerritory> = new Map();
     /** Colony rings, one per owned planet/moon (world space). */
-    private colonyRings: Array<{ habitat: Habitat; ring: Graphics }> = [];
+    private colonyRings: Array<{ habitat: Habitat; ring: Graphics; key: DrawKey }> = [];
     /** Owned-system marker rings, one per star whose system has an owned
      * colony (drawn around the star icon at galaxy/sector zoom). */
-    private markerRings: Array<{ star: Habitat; owner: Empire; ring: Graphics }> = [];
+    private markerRings: Array<{ star: Habitat; owner: Empire; ring: Graphics; key: DrawKey }> = [];
     /** Task M3: gates the territory discs only (not colony/marker rings),
      * driven by the "Empire Territory" overlay toggle in overlayLayer.ts. */
     private territoryEnabled = true;
@@ -203,7 +208,7 @@ export class EmpireLayer {
             ring.blendMode = 'normal';
             ring.visible = false;
             this.root.addChild(ring);
-            this.colonyRings.push({ habitat: h, ring });
+            this.colonyRings.push({ habitat: h, ring, key: new DrawKey() });
         }
         for (const sys of galaxy.systems) {
             const star = sys.systemStar;
@@ -222,7 +227,7 @@ export class EmpireLayer {
             ring.blendMode = 'normal';
             ring.visible = false;
             this.root.addChild(ring);
-            this.markerRings.push({ star, owner, ring });
+            this.markerRings.push({ star, owner, ring, key: new DrawKey() });
         }
     }
 
@@ -242,25 +247,23 @@ export class EmpireLayer {
                 t.graphics.visible = false;
                 continue;
             }
-            t.graphics.clear();
-            let any = false;
-            const es = this.empireSystems.find((e) => e.empire === t.empire);
-            if (es !== undefined) {
-                for (const sysIdx of es.systems) {
-                    const star = this.galaxy.systems[sysIdx].systemStar;
-                    const halfW = cam.width / (2 * z) + tRadius; // screen px -> world units
-                    const halfH = cam.height / (2 * z) + tRadius;
-                    if (star.xpos < cam.x - halfW || star.xpos > cam.x + halfW || star.ypos < cam.y - halfH || star.ypos > cam.y + halfH) {
-                        continue;
+            if (!t.drawn) {
+                // Every owned system's disc, in the same order as before. Discs off screen draw no pixels, so
+                // drawing them all once (instead of re-culling and re-triangulating every frame) looks the same.
+                t.drawn = true;
+                const es = this.empireSystems.find((e) => e.empire === t.empire);
+                if (es !== undefined) {
+                    for (const sysIdx of es.systems) {
+                        const star = this.galaxy.systems[sysIdx].systemStar;
+                        t.graphics.circle(star.xpos, star.ypos, tRadius).fill({
+                            color: this.colors[i],
+                            alpha: 0.18,
+                        });
+                        t.hasDiscs = true;
                     }
-                    t.graphics.circle(star.xpos, star.ypos, tRadius).fill({
-                        color: this.colors[i],
-                        alpha: 0.18,
-                    });
-                    any = true;
                 }
             }
-            t.graphics.visible = any;
+            t.graphics.visible = t.hasDiscs;
         }
 
         // Colony rings: system/planet zoom only (hidden at galaxy/sector zoom
@@ -282,8 +285,12 @@ export class EmpireLayer {
             const drawnPx = h.category === HabitatCategoryType.Moon ? moonDotPx(h.diameter, z) : planetSpritePx(h.diameter, z);
             // Screen px -> world units (the layer lives in world space).
             const r = colonyRingRadius(drawnPx, factor) / z;
-            cr.ring.clear();
-            cr.ring.circle(h.xpos, h.ypos, r).stroke({ width: 2 / z, color: colonyRingColor(h, this.galaxy), alpha: 1 });
+            const color = colonyRingColor(h, this.galaxy);
+            // Rebuild the geometry only when position, radius, width or colour changed.
+            if (cr.key.changed(h.xpos, h.ypos, r, 2 / z, color)) {
+                cr.ring.clear();
+                cr.ring.circle(h.xpos, h.ypos, r).stroke({ width: 2 / z, color, alpha: 1 });
+            }
             cr.ring.visible = true;
         }
 
@@ -307,8 +314,10 @@ export class EmpireLayer {
             const r = iconPx * 0.5 + 4;
             const ownerIdx = this.empires.indexOf(mr.owner);
             const color = ownerIdx >= 0 ? this.colors[ownerIdx] : toPixiColor(mr.owner.mainColor);
-            mr.ring.clear();
-            mr.ring.circle(star.xpos, star.ypos, r).stroke({ width: 2 / z, color, alpha: 1 });
+            if (mr.key.changed(star.xpos, star.ypos, r, 2 / z, color)) {
+                mr.ring.clear();
+                mr.ring.circle(star.xpos, star.ypos, r).stroke({ width: 2 / z, color, alpha: 1 });
+            }
             mr.ring.visible = true;
         }
     }

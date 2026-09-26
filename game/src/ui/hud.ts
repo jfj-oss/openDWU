@@ -47,6 +47,7 @@ import { toggleEmpirePolicy } from './screens/empirePolicy';
 import { toggleIntelligenceScreen } from './screens/intelligence';
 // [intel] end
 import { createSelectionActionBar, refreshSelectionActionBar } from './orderMenu'; // [ordermenu]
+import { setTextIfChanged } from '../render/drawCache';
 
 // Port of Main.Part12.cs LoadUiChromeButtons (381–520): the control → chrome
 // button image mapping. The original loads each control's image from
@@ -872,13 +873,14 @@ function buildMoneyPanel(game?: { playerEmpire: { name: string; mainColor: numbe
         // fields (Main.Part12.cs pnlStateMoney); here only state money exists
         // on Empire — see the TODO(sim) notes below.
         const refreshMoney = (): void => {
-            valueEls['Money'].textContent = formatMoney(Math.round(game.playerEmpire.stateMoney));
+            // 4 Hz; written only on change (render: perf pass).
+            setTextIfChanged(valueEls['Money'], formatMoney(Math.round(game.playerEmpire.stateMoney)));
             // Main.Part11.cs 838-857: Cashflow / Bonus Income, `+##,###,##0;-##,###,##0` (the C# keeps the previous
             // strings when there is nothing to show).
             const income = galaxy === undefined ? null : moneyPanelIncome(galaxy, galaxy.playerEmpire);
             if (income !== null) {
-                valueEls['Cashflow'].textContent = formatSignedMoney(income.cashflow);
-                valueEls['Bonus Income'].textContent = formatSignedMoney(income.bonusIncome);
+                setTextIfChanged(valueEls['Cashflow'], formatSignedMoney(income.cashflow));
+                setTextIfChanged(valueEls['Bonus Income'], formatSignedMoney(income.bonusIncome));
             }
         };
         refreshMoney();
