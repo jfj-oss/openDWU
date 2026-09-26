@@ -30,10 +30,11 @@ import { ComponentCategoryType } from '../src/sim/data/policies';
 import { ComponentStatus } from '../src/sim/builtObjectComponent';
 import { BattleTactics, BuiltObjectFleeWhen } from '../src/sim/data/designSpecifications';
 import { BuiltObjectMissionType, builtObjectMission } from '../src/sim/missions/mission';
-import { createMissionShipActionAt } from '../src/sim/player/shipAction';
+import { ShipActionType, createMissionShipActionAt, createShipAction } from '../src/sim/player/shipAction';
 import { executeShipAction } from '../src/sim/player/executeShipAction';
 import { captainBonuses } from '../src/sim/characters';
-import { fireWeaponsAtTarget, handleWeaponsFiringBuiltObject, weaponDamageDropoff } from '../src/sim/combat/weapons';
+import { fireWeaponsAtTarget, handleWeaponsFiringBuiltObject, rechargeShields, weaponDamageDropoff } from '../src/sim/combat/weapons';
+import { evaluateThreats } from '../src/sim/combat/threats';
 import { inflictDamage } from '../src/sim/combat/damage';
 
 let gameData: GameData;
@@ -398,5 +399,158 @@ describe('(1) a player escort ordered to Attack a pirate ship', () => {
         // The attacker's mission to a destroyed target is cleared (ClearAllMissionsForTarget, BuiltObject.2.cs 5640).
         expect(builtObjectMission(esc.mission)?.targetBuiltObject ?? null).not.toBe(pir);
         expect(esc.hasBeenDestroyed).toBe(false);
+    }, 300000);
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// (2) A 4-ship fleet against a pirate base
+// ---------------------------------------------------------------------------------------------------------------
+
+describe('(2) a 4-ship fleet ordered to attack a pirate base', () => {
+    /**
+     * S83 Prowlers' S66 Outpost (SmallSpacePort: 8 Missile [6 / 520], 24 Rail Gun [6 / 120], 4 Assault Pod, 1 Tractor Beam;
+     * shields 1800) and the player's Enforcer 001/002 (Frigate, size 207) and Colossia 001/002 (Destroyer, size 227), put in
+     * a new fleet and staged at 450 / 500 / 400 / 480 from the base (inside Missile range 520).
+     */
+    function stage(): { g: Galaxy; base: BuiltObject; fleetShips: BuiltObject[] } {
+        const g = cachedTickGame(gameData).galaxy;
+        const base = ship(g, 'S66 Outpost');
+        const names = ['Enforcer 001', 'Enforcer 002', 'Colossia 001', 'Colossia 002'];
+        const offsets = [450, 500, 400, 480];
+        const fleetShips = names.map((n) => ship(g, n));
+        fleetShips.forEach((s, i) => {
+            builtObjectMission(s.mission)?.clear();
+            place(g, s, base.xpos - offsets[i], base.ypos);
+            s.currentEnergy = s.reactorStorageCapacity;
+        });
+        return { g, base, fleetShips };
+    }
+
+    /** Galaxy.7.cs 3681 DetermineThreatLevel for a player ship seen by the pirate base (pirate viewer: num5 = 50, NotMet). */
+    function handThreatLevel(g: Galaxy, base: BuiltObject, s: BuiltObject): number {
+        const tx = Math.trunc(base.xpos);
+        const ty = Math.trunc(base.ypos);
+        const dist = Math.sqrt(g.calculateDistanceSquared(s.xpos, s.ypos, tx, ty));
+        let num4 = Math.max(1.0, 40000 / 2.0 - dist); // ThreatRange 40000 (Galaxy.3.cs 4974)
+        num4 = (num4 * num4) / 1000000.0;
+        const num5 = 50; // viewer is a pirate empire (3717-3721), relation not Protection
+        const num6 = Math.max(10, Math.trunc(s.size / 10)); // armed (3800)
+        return Math.max(1, Math.trunc(num4 * num5 * num6));
+    }
+
+    it('the base ranks the fleet by DetermineThreatLevel (closeness² × 50 × Size/10) and DefendBase fires at the top threat first', () => {
+        const { g, base, fleetShips } = stage();
+        const [e1, e2, c1, c2] = fleetShips;
+        expect(fleetShips.map((s) => s.size)).toEqual([207, 207, 227, 227]);
+        // Hand-worked: Colossia 001 at 400: (20000 − 400)² / 1e6 × 50 × 22 = 384.16 × 1100 = 422 576;
+        // Colossia 002 at 480: 381.0304 × 1100 = 419 133; Enforcer 001 at 450: 382.2025 × 50 × 20 = 382 202;
+        // Enforcer 002 at 500: 380.25 × 1000 = 380 250 (the base's coordinates are truncated to int, 3446-3447, which moves these by < 50).
+        expect(handThreatLevel(g, base, c1)).toBeCloseTo(422576, -2);
+        expect(handThreatLevel(g, base, c2)).toBeCloseTo(419133, -2);
+        expect(handThreatLevel(g, base, e1)).toBeCloseTo(382202, -2);
+        expect(handThreatLevel(g, base, e2)).toBeCloseTo(380250, -2);
+        const { threats, threatLevels } = evaluateThreats(g, base);
+        const ours = threats.map((t, i) => ({ t, l: threatLevels[i] })).filter((x) => fleetShips.includes(x.t as BuiltObject));
+        // EvaluateThreats (Galaxy.7.cs 3403-3406): sorted by level, descending.
+        expect(ours.map((x) => (x.t as BuiltObject).name)).toEqual(['Colossia 001', 'Colossia 002', 'Enforcer 001', 'Enforcer 002']);
+        for (const x of ours) expect(x.l).toBe(handThreatLevel(g, base, x.t as BuiltObject));
+        for (let i = 1; i < threatLevels.length; i++) expect(threatLevels[i - 1]).toBeGreaterThanOrEqual(threatLevels[i]);
+    });
+
+    it('RechargeShields adds Min(ShieldRechargeRate × dt, room, energy) and spends the same energy (BuiltObject.1.cs 2225)', () => {
+        const { g, base } = stage();
+        // ShieldRechargeRate = Σ (float)Value2 / 10f over the Shields components (BuiltObject.cs 2296 / 3069).
+        let rate = 0;
+        for (const c of base.components.items) if (c.category === ComponentCategoryType.Shields && c.status === ComponentStatus.Normal) rate = f32(rate + f32(f32(c.value2) / 10));
+        expect(base.shieldRechargeRate).toBe(rate);
+        expect(rate).toBeCloseTo(5.4, 5); // float sum of the shield components' Value2 / 10
+        expect(base.shieldsCapacity).toBe(1800);
+        base.currentShields = 1000;
+        base.currentEnergy = 600;
+        rechargeShields(g, base, 0.5);
+        expect(base.currentShields).toBe(f32(1000 + f32(rate * 0.5)));
+        expect(base.currentEnergy).toBe(600 - rate * 0.5);
+        // Energy-limited: 1 energy → +1 shield.
+        base.currentShields = 1000;
+        base.currentEnergy = 1;
+        rechargeShields(g, base, 0.5);
+        expect(base.currentShields).toBe(1001);
+        expect(base.currentEnergy).toBe(0);
+        // Room-limited: 1799 → 1800 for 1 energy.
+        base.currentShields = 1799;
+        base.currentEnergy = 600;
+        rechargeShields(g, base, 10);
+        expect(base.currentShields).toBe(1800);
+        expect(base.currentEnergy).toBe(599);
+    });
+
+    it('on the harness: the fleet engages the base, the base fires back at its top threat, the fleet keeps the base as its target, and shields recharge per DoTasks at the C# rate', () => {
+        const { g, base, fleetShips } = stage();
+        const player = g.playerEmpire!;
+        executeShipAction(g, player, fleetShips, createShipAction(ShipActionType.CreateNewFleet, null), true);
+        const fleet = fleetShips[0].shipGroup!;
+        expect(fleet.ships).toEqual(fleetShips);
+        const r = executeShipAction(g, player, fleet, createMissionShipActionAt(BuiltObjectMissionType.Attack, base, Math.trunc(base.xpos), Math.trunc(base.ypos)), true);
+        expect(r.ok).toBe(true);
+        // ShipGroup.AssignMission: every ship gets the fleet's Attack on the base.
+        for (const s of fleetShips) {
+            expect(builtObjectMission(s.mission)!.type).toBe(BuiltObjectMissionType.Attack);
+            expect(builtObjectMission(s.mission)!.targetBuiltObject).toBe(base);
+        }
+        const expectedFirst = [...fleetShips].sort((a, b) => handThreatLevel(g, base, b) - handThreatLevel(g, base, a))[0];
+        expect(expectedFirst.name).toBe('Colossia 001');
+        const baseLast = base.weapons.map((w) => w.lastFired);
+        const fleetLast = fleetShips.map((s) => s.weapons.map((w) => w.lastFired));
+        let firstBaseShot: { frame: number; target: unknown; type: ComponentType } | null = null;
+        let fleetShotsAtBase = 0;
+        let switched = 0;
+        let rechargeChecks = 0;
+        let frame = 0;
+        let prev = { touch: base.lastTouch, strike: base.lastShieldStrike, shields: base.currentShields, energy: base.currentEnergy };
+        runGameSeconds(g, 45, {
+            onFrame: () => {
+                frame++;
+                base.weapons.forEach((w, i) => {
+                    if (w.lastFired !== baseLast[i]) {
+                        baseLast[i] = w.lastFired;
+                        if (firstBaseShot === null && w.target !== null) firstBaseShot = { frame, target: w.target, type: w.component.type };
+                    }
+                });
+                fleetShips.forEach((s, k) =>
+                    s.weapons.forEach((w, i) => {
+                        if (w.lastFired !== fleetLast[k][i]) {
+                            fleetLast[k][i] = w.lastFired;
+                            if (w.target === base) fleetShotsAtBase++;
+                        }
+                    }),
+                );
+                // The fleet's target choice: while a ship holds the fleet's Attack mission its target stays the base —
+                // CheckAssignAttackOnThreat (BuiltObject.1.cs 422) refuses any other threat for a fleet mission unless the
+                // fleet allows immediate threat evaluation (false for a player-ordered fleet).
+                for (const s of fleetShips) {
+                    const m = builtObjectMission(s.mission);
+                    if (!s.hasBeenDestroyed && m !== null && m.type === BuiltObjectMissionType.Attack && m.targetBuiltObject !== base) switched++;
+                }
+                // Per-DoTasks recharge on frames the base was touched and not struck: +Min(rate × dt, room, energy).
+                if (base.lastTouch !== prev.touch && base.lastShieldStrike === prev.strike && prev.shields < 1800) {
+                    const dt = (base.lastTouch - prev.touch) / 1000;
+                    const expected = f32(prev.shields + f32(Math.min(base.shieldRechargeRate * dt, 1800 - prev.shields, prev.energy)));
+                    expect(base.currentShields).toBeCloseTo(expected, 3);
+                    rechargeChecks++;
+                }
+                prev = { touch: base.lastTouch, strike: base.lastShieldStrike, shields: base.currentShields, energy: base.currentEnergy };
+            },
+        });
+        expect(fleet.allowImmediateThreatEvaluation).toBe(false);
+        // DefendBase (BuiltObject.cs 4557) walks Threats in order: the first base shot is a Missile (the only weapon that
+        // reaches 400-500) at the top threat, Colossia 001.
+        expect(firstBaseShot).not.toBeNull();
+        expect(firstBaseShot!.frame).toBeLessThanOrEqual(60);
+        expect(firstBaseShot!.type).toBe(ComponentType.WeaponMissile);
+        expect(firstBaseShot!.target).toBe(expectedFirst);
+        expect(fleetShotsAtBase).toBeGreaterThan(0);
+        expect(base.attackers!.some((a) => fleetShips.includes(a as BuiltObject))).toBe(true);
+        expect(switched).toBe(0);
+        expect(rechargeChecks).toBeGreaterThan(10);
     }, 300000);
 });
