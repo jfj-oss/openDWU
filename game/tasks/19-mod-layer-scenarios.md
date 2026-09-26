@@ -69,6 +69,7 @@ Effort: 1–4 days each after the mod layer; 5–9 one to two weeks each.
 3. Then 19d items 5–10 and the cheap 19e items (1 replay theatre, 4 chronicle, 9 freight overlay, 11 situational music).
 4. Then 19e medium (5 living characters, 7 wreckage/salvage, 8 space weather, 10 race designer).
 5. Then 19e ambitious (3 legacy galaxies, 6 spectator broadcast, 2 async multiplayer).
+6. 19g (accepted; 10/11/12/14 removed): stargates, megaprojects, war goals & peace terms, succession, frontier autonomy, anomalies, creature ecology, first-contact protocol, doctrines, personality packs — slot the cheap ones (8, 13) with step 3, the rest with step 4.
 
 ## 19e — Second idea batch (ACCEPTED by the user 2026-09-26 — "i like all those ideas"; builds on replay, the persona layer, the seamless 4K map, the data overlay)
 1. Replay theatre: scrub a whole game as a time-lapse from seed + command log; jump to any moment; fork a "what if"; shareable replays (KB, not MB). [cheap]
@@ -96,7 +97,7 @@ Effort: 1–4 days each after the mod layer; 5–9 one to two weeks each.
 10. Corporate coup: a chartered company (19c) buys governors and declares independence with its fleet/colonies.
 Build after 19b lands; each is mostly data + a spread rule on the 19b hooks.
 
-## 19g — Third idea batch (2026-09-26; strategy depth, exploration, port-only capabilities)
+## 19g — Third idea batch (ACCEPTED by the user 2026-09-26 with items 10, 11, 12, 14 REMOVED; strategy depth, exploration, port-only capabilities)
 1. Stargate networks (player-built gate pairs → chokepoints, gate wars). [medium]
 2. Megaprojects: multi-stage wonders needing multi-empire resources. [medium]
 3. War goals & peace terms (cede colonies, reparations, demilitarised systems). [medium]
@@ -106,8 +107,4 @@ Build after 19b lands; each is mostly data + a spread rule on the 19b hooks.
 7. Creature ecology: breeding, migration, hunting. [medium]
 8. First-contact protocol: short negotiation setting the starting attitude, voiced by personas. [cheap]
 9. Doctrines: exclusive empire-wide choices with lasting effects. [medium]
-10. Weekly seeded challenge with replay-verified leaderboards. [cheap once replay theatre exists]
-11. Scenario scripting language on the data overlay (users write stories/threats). [medium-large]
-12. Photo mode + ship viewer. [cheap]
 13. AI personality packs via overlay presets. [cheap]
-14. Local text-to-speech for messages/advisor. [cheap, opt-in]
