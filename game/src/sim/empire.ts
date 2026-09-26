@@ -3,10 +3,8 @@
 // no DOM/Pixi imports; all randomness goes through galaxy.rnd in the same
 // order as the C# Galaxy.Rnd calls.
 //
-// Fields are declared only for what the constructors assign or read
-// (camelCase of the C# names; _Field backing fields → property name).
-// Anything the constructors call but that isn't ported yet is a stub method
-// marked TODO(port) so the constructor's order of operations stays visible.
+// Fields: camelCase of the C# names (_Field backing fields → property name); the per-package
+// runtime fields are grouped in the `---- M4x fields ----` blocks below.
 
 import type { Achievement } from './achievements';
 import { takeOwnershipOfColonyConstructionQueue } from './construction/constructionYard';
@@ -100,7 +98,6 @@ import { EmpireActivityList } from './pirates/empireActivity';
 
 
 
-// TODO(port): EmpireCounters — EmpireCounters.cs.
 // Race.cs DefaultMainColorPirates (line 726): Color.FromArgb(R/2, G/2, B/2)
 // using C# integer division.
 function halveRgb(color: number): number {
@@ -417,15 +414,19 @@ export function getGovernmentsStatic(): readonly (Government | null)[] {
 // (Galaxy.cs). The TS Galaxy class has no such member and cannot be edited
 // for this task, so the counter lives here keyed by galaxy instance.
 
-// TODO(port): exact value of Empire._LongProcessingInterval — Empire.cs
-// (field initializer not in the excerpt); used to back-date the five
-// "last touch" timestamps at construction.
-const LONG_PROCESSING_INTERVAL_MS = 120_000; // C#: double _LongProcessingInterval = 120.0 (seconds), Empire.cs:184
+/**
+ * Empire.7.cs 1429 SendMessageToEmpire(…, EmpireMessageType.ShipBasePurchased, builtObject, description): messages.ts
+ * registers the sender at load (a value import of messages.ts from here would close an import cycle through
+ * combat/ownership.ts before this module has initialised).
+ */
+type ShipBasePurchasedMessageSender = (empire: Empire, builtObject: BuiltObject, description: string) => void;
+let shipBasePurchasedMessageSender: ShipBasePurchasedMessageSender | null = null;
+export function registerShipBasePurchasedMessageSender(fn: ShipBasePurchasedMessageSender): void {
+    shipBasePurchasedMessageSender = fn;
+}
 
-// TODO(port): Galaxy.ColonyAnnualResourceConsumptionRate /
-// ColonyAnnualLuxuryResourceConsumptionRate / MinimumLuxuryResourceReorderAmount
-// statics — Galaxy.cs (values not in the excerpt).
-// Values from Galaxy.3.cs InitializeStatics 5004-5005, 5026, 5039.
+// Galaxy.ColonyAnnualResourceConsumptionRate / ColonyAnnualLuxuryResourceConsumptionRate /
+// MinimumLuxuryResourceReorderAmount statics: Galaxy.3.cs InitializeStatics 5004-5005, 5026, 5039.
 export const COLONY_ANNUAL_RESOURCE_CONSUMPTION_RATE = 1e-8;
 export const COLONY_ANNUAL_LUXURY_RESOURCE_CONSUMPTION_RATE = 2e-8;
 export const MINIMUM_LUXURY_RESOURCE_REORDER_AMOUNT = 100;
@@ -593,10 +594,7 @@ export class Empire {
         isPlayerEmpire?: boolean,
     );
     // Port of Empire.cs ctor Empire(Galaxy, string, bool, Habitat, Race, EmpirePolicy)
-    // (independent-empire constructor).
-    // TODO(port): independent-empire ctor body — Empire.cs:4146+ (body not in
-    // the M2a excerpt); neutral delegation to the primary ctor keeps the
-    // signature wired up.
+    // (independent-empire / pirate-faction constructor, Empire.cs 4146): initializeIndependentCtor.
     constructor(
         galaxy: Galaxy,
         name: string,
@@ -625,9 +623,8 @@ export class Empire {
     // Port of Empire.cs ctor Empire(galaxy, name, isIndependentEmpire,
     // homeHabitat, dominantRace, policy) (4146), in C# order. Rnd: one draw in
     // SelectEmpireColors (colours then overridden with grey for the
-    // independent empire); FastFindNearestUnexploredSystem (homeHabitat path)
-    // and the Age > 0 contact loop are TODO(port) — game setup passes a null
-    // homeHabitat and no empires exist yet when it runs.
+    // independent empire), the FastFindNearestUnexploredSystem exploration of the
+    // homeHabitat path and the Age > 0 contact loop (Empire.cs 4236-4318).
     private initializeIndependentCtor(galaxy: Galaxy, name: string, isIndependentEmpire: boolean, homeHabitat: Habitat | null, dominantRace: Race | null, policy: EmpirePolicy): void {
         this.galaxy = galaxy;
         this.active = true;
@@ -751,9 +748,7 @@ export class Empire {
         this.homeWorld = this.capital;
         this.dominantRace = dominantRace;
         this.corruptionMultiplier = corruptionMultiplier;
-        // TODO(port): Galaxy.ColonyNames/ColonyNameIndex — Galaxy.cs (not
-        // ported); player-empire capital rename branch is a guarded no-op.
-        // Empire.cs: player capital takes the next colony name.
+        // Empire.cs 3766-3771: the player capital takes the next Galaxy.ColonyNames name (game.ts opts.colonyNames).
         if (isPlayerEmpire && capital !== null && galaxy.colonyNames !== null && galaxy.colonyNames.length > galaxy.colonyNameIndex) {
             capital.name = galaxy.colonyNames[galaxy.colonyNameIndex];
             galaxy.colonyNameIndex++;
@@ -875,30 +870,30 @@ export class Empire {
             this.troopPictureRef = this.dominantRace?.pictureIndex ?? 0;
             this.capital.setDevelopmentLevel(10);
         }
-        // C#: five Last*Touch dates = CurrentDateTime minus
-        // (_LongProcessingInterval + 1) seconds. No time on the TS Galaxy;
-        // keep the ordering visible with the stand-in start date.
-        // TODO(port): Galaxy.CurrentDateTime — Galaxy.cs.
-        const lastLongTouch = START_STAR_DATE - (LONG_PROCESSING_INTERVAL_MS + 1000);
-        void lastLongTouch;
+        // Empire.cs 3921-3925: the five Last*Touch dates = CurrentDateTime − (_LongProcessingInterval + 1) s are the
+        // M4a field defaults (game time 0); empires created later get them from tick/empireTick.ts initEmpireTouchTimes.
         if (capital !== null) {
-            // Re-title cargo owned by the independent empire to this empire
-            // (Cargo.Cargo(commodity, amount, empire, reserved)).
-            // TODO(port): full Cargo semantics (component vs resource
-            // commodities, Reserved) — Cargo.cs.
+            // Empire.cs 3926-3951: re-title the independent empire's cargo at the capital to this empire
+            // (a component cargo as a component, a resource cargo as a resource; Reserved kept).
             if (capital.cargo !== null) {
                 const cargoList: import('./cargo').Cargo[] = [];
                 for (const item2 of capital.cargo.items) {
-                    // C#: item2.EmpireId == _Galaxy.IndependentEmpire.EmpireId.
-                    // The TS Galaxy has no IndependentEmpire yet; treat all
-                    // existing cargo as independent-owned (it was created
-                    // during generation before any empire existed).
-                    cargoList.push(item2);
+                    // C#: item2.EmpireId == _Galaxy.IndependentEmpire.EmpireId (a null-empire cargo has EmpireId -1).
+                    if (galaxy.independentEmpire !== null && item2.empire === galaxy.independentEmpire) {
+                        cargoList.push(item2);
+                    }
                 }
                 for (const item3 of cargoList) {
                     capital.cargo.remove(item3);
-                    const cargo = new Cargo(item3.commodity, item3.amount, this, item3.reserved);
-                    capital.cargo.add(cargo);
+                    let cargo: Cargo | null = null;
+                    if (item3.commodityIsComponent) {
+                        cargo = Cargo.ofComponent(item3.commodityComponent!, item3.amount, this, item3.reserved);
+                    } else if (item3.commodityIsResource) {
+                        cargo = new Cargo(item3.commodity, item3.amount, this, item3.reserved);
+                    }
+                    if (cargo !== null) {
+                        capital.cargo.add(cargo);
+                    }
                 }
             }
             this.setStartupColonyResourceCargo(capital);
@@ -1187,8 +1182,8 @@ export class Empire {
         this.designSpecifications.push(loadDesignSpecification(galaxy, 'WeaponsResearchStation', BuiltObjectSubRole.WeaponsResearchStation, false, dominantRace, isPirate, raceNameOverride));
     }
 
-    // TODO(port): ChangeGovernment — Empire.cs (sets government + effects);
-    // store the id so callers/tests can observe it.
+    // The _GovernmentId / _GovernmentAttributes store of Empire.10.cs 4377 ChangeGovernment; the rest of its body
+    // (evaluation resets, ReviewTaxes) is treasury.ts changeGovernment, which calls this.
     changeGovernment(governmentId: number): void {
         this.governmentId = governmentId;
     }
@@ -1276,7 +1271,6 @@ export class Empire {
     }
 
     // Port of Empire.3.cs ReviewResearchAbilities (2059).
-    // TODO(port): ReviewPopulationGrowthRates / MaximumConstructionSize / CanBuildShipTypes / TroopTypes bodies.
     reviewResearchAbilities(): void {
         this.reviewColonizationTypes();
         this.reviewPopulationGrowthRates();
@@ -1301,7 +1295,6 @@ export class Empire {
         }
     }
 
-    // TODO(port): ReviewColonizationTypes — Empire.cs.
     // Port of Empire.3.cs ReviewColonizationTypes (2184).
     reviewColonizationTypes(): void {
         const flags = [false, false, false, false, false, false, false];
@@ -1355,16 +1348,21 @@ export class Empire {
         }
     }
 
-    // Port of Empire.4.cs DetermineColonizeLowQualityHabitat(habitat) (4254).
-    // TODO(port): habitat.Ruin (Ruin.cs) is not modeled — at game start no
-    // ruins have been placed/discovered for the search to see, so the Ruin
-    // bonus branch is always false here, matching the value C# would read.
+    // Port of Empire.4.cs DetermineColonizeLowQualityHabitat(habitat) (4254): a low-quality habitat is still worth
+    // colonizing for a super-luxury resource or a ruin with a bonus (Habitat.Ruin, ruins.ts).
     determineColonizeLowQualityHabitat(habitat: Habitat): boolean {
-        if (habitat.quality >= 0.5) return true;
-        if (habitat.resources.length > 0 && habitat.resources.some((r) => (this.galaxy.resourceSystem.byId.get(r.resourceId)?.superLuxuryBonusAmount ?? 0) > 0)) {
-            return true;
+        let result = true;
+        if (habitat.quality < 0.5) {
+            result = false;
+            if (habitat.resources.length > 0 && habitat.resources.some((r) => (this.galaxy.resourceSystem.byId.get(r.resourceId)?.superLuxuryBonusAmount ?? 0) > 0)) {
+                result = true;
+            }
+            const ruin = habitat.ruin;
+            if (ruin !== null && (ruin.bonusDefensive > 0.0 || ruin.bonusDiplomacy > 0.0 || ruin.bonusHappiness > 0.0 || ruin.bonusResearchEnergy > 0.0 || ruin.bonusResearchHighTech > 0.0 || ruin.bonusResearchWeapons > 0.0 || ruin.bonusWealth > 0.0)) {
+                result = true;
+            }
         }
-        return false;
+        return result;
     }
 
     // Port of Empire.3.cs ReviewPopulationGrowthRates (2233; filled by M4j — read by CalculateColonyGrowthRateMultiplier).
@@ -1738,10 +1736,8 @@ export class Empire {
             builtObject.setTroopLoadoutsFromPolicy(this.policy);
         }
         if (sendMessage) {
-            // TODO(port): builtObject.Empire.SendMessageToEmpire(builtObject.Empire,
-            // EmpireMessageType.ShipBasePurchased, builtObject, empty) — EmpireMessage model not
-            // ported (adds to Empire.Messages / MessageRecipient; no Rnd).
-            void empty;
+            // Empire.7.cs 1427-1430: builtObject.Empire.SendMessageToEmpire(builtObject.Empire, ShipBasePurchased, builtObject, empty).
+            shipBasePurchasedMessageSender!(boEmpire, builtObject, empty);
         }
     }
 
@@ -1762,8 +1758,8 @@ export class Empire {
     // (null until IdentifyUnavailableLuxuryResources / EvaluateColonyVariablesPirate).
     unavailableLuxuryResources: ResourceRef[] = [];
     selfSuppliedLuxuryResources: ResourceRef[] | null = null;
-    // Empire.cs _KnownPirateBases = new BuiltObjectList() (481). TODO(port): filled by
-    // visibility scans (BuiltObject.1.cs 1902/1928, Galaxy.4.cs 3798) — empty at game start.
+    // Empire.cs _KnownPirateBases = new BuiltObjectList() (481); filled by PirateBaseDiscovery (BuiltObject.1.cs 1889,
+    // pirates/pirateAI.ts), MergeKnownPirateBasesForSharedVisibilityEmpires (exploration.ts) and boarding.ts.
     knownPirateBases: BuiltObject[] = [];
 
     // --- independentTraders.ts (Galaxy DoTasks long block) ---
@@ -1931,8 +1927,8 @@ export class Empire {
     /** Empire.cs 576 _FleetIdentity (GetNextFleetNumberDescription counter). */
     fleetIdentity = 0;
     /**
-     * Empire.cs 375/378 FleetAttackRefuelPortion / FleetAttackGatherPortion (float, 0.3f; SetAutomationSettingsFullyAutomated
-     * keeps 0.3f, the player's SetAutomationSettings copies GameOptions 0.05f — TODO(port) M9 game options).
+     * Empire.cs 375/378 FleetAttackRefuelPortion / FleetAttackGatherPortion (float, 0.3f; the player's values are copied
+     * from GameOptions by Start.2.cs 2140-2141, game.ts applyStartAutomationSettings).
      */
     fleetAttackRefuelPortion = Math.fround(0.3);
     fleetAttackGatherPortion = Math.fround(0.3);
@@ -1945,14 +1941,14 @@ export class Empire {
     // ---- M4n fields (threats) ----
     /** Empire.cs 137 _EmpiresToAttack (EmpireList; CheckForRandomAttackTargets consumes, M4m DetermineRandomAttacks fills). */
     empiresToAttack: Empire[] = [];
-    /** Empire.cs 372 AttackOvermatchFactor = 2f (float; Empire.cs 3638 gameOptions.AttackOverMatchFactor — TODO(port) game option). */
+    /** Empire.cs 372 AttackOvermatchFactor = 2f (float; the player's is copied from GameOptions, game.ts applyStartAutomationSettings). */
     attackOvermatchFactor = 2;
     /** Empire.cs 108 _EncounteredSilverMistCreature. */
     encounteredSilverMistCreature = false;
     /** Empire.cs 844 PirateExtortionOfferMade. */
     pirateExtortionOfferMade = false;
     // ---- M4o fields (weapons, damage) ----
-    /** Empire.cs 417/419 TargettingFactor / CountermeasuresFactor = Galaxy.*FactorDefault (1.0; Galaxy.3.cs 5133-5134). TODO(port) M4j: ReviewEmpireAbilityBonuses sets them. */
+    /** Empire.cs 417/419 TargettingFactor / CountermeasuresFactor = Galaxy.*FactorDefault (1.0; Galaxy.3.cs 5133-5134); set by BaconGalaxy.cs 137-138 SetEmpireDifficultyFactors (pirates.ts). */
     targettingFactor = 1.0;
     countermeasuresFactor = 1.0;
     /** Empire.DefeatedLegendaryPiratesCount (ProvideBonusFromPirateBase, BuiltObject.2.cs 4975). */
@@ -1960,6 +1956,8 @@ export class Empire {
     // Empire.cs 101 RaceEventType (read by DetermineHitTarget, PredictiveHistory +20 targeting): declared in the M4u block.
     // ---- M4p fields (fighters) ----
     // ---- M4q fields (invasion, troops) ----
+    /** Empire.cs 202 DiscoveryActionRuin (GameOptions, Start.2.cs 2144; > 0 = investigate ruins without asking, Habitat.cs 2545). */
+    discoveryActionRuin = 0;
     /** Empire.cs 204 DiscoveryActionAbandonedShipBase (GameOptions; 0 = prompt the player). */
     discoveryActionAbandonedShipBase = 0;
     /** Empire.cs 301 ColoniesNeedingTroops (HabitatList; the C# only ever removes from it). */

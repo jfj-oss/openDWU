@@ -29,8 +29,8 @@
 //   2011      abandonedShipsAtStart (method_87)  Rnd
 //   2012      asteroidAbandonedShipsAtStart (method_85) Rnd
 //   2013-2016 method_86                          story only → story/storyStart.ts (M4z3)
-//   2017-2038 gameObjectAtStart                  DeferEventsForGameStart, Game flags; TODO(port)
-//             Habitat.DoTasks for the player capital (Habitat.cs 1399, unported; unknown Rnd).
+//   2017-2038 gameObjectAtStart                  DeferEventsForGameStart, Game flags; the player capital's
+//             Habitat.DoTasks (2035-2038) runs in game.ts once the caller has applied the returned flags.
 //
 // Story blocks: Galaxy.StoryReturnOfTheShakturiEnabled / StoryDistantWorldsEnabled default to
 // false on the TS Galaxy (C#: VictoryConditions.EnableStoryEvents / the wizard's DW story box;
@@ -1521,10 +1521,9 @@ export function shakturiAbandonedShipsAtStart(galaxy: Galaxy): void {
  * on the TS Empire); PreWarpProgressEventOccurredSendPirateRaid = false when !pirate &&
  * ageOfShadows && EnableStoryEventsShadows (returned for the caller: the TS Empire keeps one
  * combined pre-warp flag).
- * TODO(port): 2035-2038 PlayerEmpire.Capital.DoTasks(galaxy.CurrentDateTime) — Habitat.DoTasks
- * (Habitat.cs 1399: Move, ruins discovery, population growth, troops, extraction, construction,
- * plague, pirate control…) is not ported; its Rnd use is unknown. Game.Version / view / victory
- * conditions / GameOptions copies (2019-2146) are UI state.
+ * 2035-2038 PlayerEmpire.Capital.DoTasks(galaxy.CurrentDateTime) follows in game.ts createGame (after the caller
+ * applies the pre-warp flag and GlobalVictoryConditions, as in the C#: tick/gameStart.ts runGameStartHabitatTick).
+ * Game.Version / view / GameOptions copies (2019-2146) are UI state.
  */
 export function gameObjectAtStart(galaxy: Galaxy, playerAge: number, playAsPirate: boolean, enableStoryEventsShadows: boolean): GameStartTailResult {
     galaxy.deferEventsForGameStart = true;

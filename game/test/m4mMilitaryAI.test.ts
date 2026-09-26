@@ -35,6 +35,7 @@ import {
 } from '../src/sim/fleets/militaryAI';
 import { blockadeFor, cancelBlockades, getBlockadesAgainstEmpire, getBlockadesForEmpire, setupBlockadeBuiltObject, setupBlockadeColony } from '../src/sim/fleets/blockades';
 import { runGameSeconds } from '../src/sim/tick/harness';
+import { updateEmpireRefuellingLocations } from '../src/sim/independentTraders';
 import { strategicValue } from '../src/sim/territory';
 import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
 import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
@@ -278,6 +279,13 @@ function fleetScenario(): { g: Galaxy; a: Empire; b: Empire } {
         }
     }
     for (const h of b.colonies) a.visibility.systemVisibility[h.systemIndex].status = 3; // SystemVisibilityStatus.Visible
+    // Since the todosweep galaxy-layout fix (nebula-anchored gas clouds, star spacing) seed 1's empire capitals are all
+    // > 4.6M apart, beyond a fleet's refuelling reach (CheckFleetTargetWithinFuelRangeAndRefuel needs a refuelling point
+    // for the round trip): `a`'s space port is moved next to the fleet, which gives it one.
+    const depot = a.builtObjects.find((x) => x.isRefuellingDepot && x.role === BuiltObjectRole.Base)!;
+    depot.xpos = b.capital!.xpos + 60000;
+    depot.ypos = b.capital!.ypos;
+    updateEmpireRefuellingLocations(g, a);
     const r = obtainDiplomaticRelation(a, b);
     if (r.type === DiplomaticRelationType.NotMet) changeDiplomaticRelation(g, a, r, DiplomaticRelationType.None);
     const r2 = obtainDiplomaticRelation(b, a);

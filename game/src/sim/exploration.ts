@@ -367,7 +367,7 @@ export function checkKnownPirateBases(galaxy: Galaxy, empire: Empire): void {
 }
 
 /** Empire._EmpiresSharedVisibility as Empires (visibility.ts keeps the EmpireVisibility objects). */
-function empiresSharedVisibility(galaxy: Galaxy, empire: Empire): Empire[] {
+export function empiresSharedVisibility(galaxy: Galaxy, empire: Empire): Empire[] {
     const result: Empire[] = [];
     for (const v of empire.visibility.empiresSharedVisibility) {
         const owner = findEmpireByVisibility(galaxy, v);
@@ -537,9 +537,8 @@ export function exertCulturalInfluence(galaxy: Galaxy, empire: Empire): void {
                 num6 = Math.pow(otherRace.loyalty / 100.0, 2.0);
                 num6 += empireApprovalRating(galaxy, habitat4) / 100.0;
             }
-            // TODO(port) M4r: Empire._CivilityRating (reputation model) — 0.0 until ported (taxes.ts reads it the same way).
-            const civilityRating = 0.0;
-            const num7 = 1.0 - civilityRating / 100.0;
+            // Empire.cs 4826: 1.0 − CivilityRating / 100.0 (this empire's reputation, Empire.cs 1430).
+            const num7 = 1.0 - empire.civilityRating / 100.0;
             let num8 = 0;
             if (habitat4.troops != null && habitat4.troops.items.length > 0 && habitat4.troops.totalDefendStrength > 0 && habitat4.population != null && habitat4.population.totalAmount > 0) {
                 const num9 = Math.trunc(Math.sqrt(habitat4.population.totalAmount) / 10.0);
@@ -1338,10 +1337,8 @@ export function checkForShipsDiscoveringRuins(galaxy: Galaxy, habitat: Habitat):
         if (flag) continue;
         const flag3 = checkRuinsHaveBenefit(galaxy, ruin, boEmpire);
         if (flag2) {
-            // Empire.DiscoveryActionRuin (player preference; > 0 investigates automatically).
-            // TODO(port): the TS Empire has no DiscoveryActionRuin preference yet — 0, the C# default (ask the player).
-            const discoveryActionRuin = 0;
-            if (discoveryActionRuin > 0) {
+            // Habitat.cs 2545: _Galaxy.PlayerEmpire.DiscoveryActionRuin (GameOptions; > 0 investigates without asking).
+            if (galaxy.playerEmpire!.discoveryActionRuin > 0) {
                 if (flag3) investigateRuins(galaxy, boEmpire, habitat);
                 continue;
             }

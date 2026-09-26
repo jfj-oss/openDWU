@@ -168,6 +168,9 @@ export function setEmpireDifficultyFactors(galaxy: Galaxy, empire: Empire, galax
         warWearinessFactor: 1.0 * d,
         colonyIncomeFactor: romulan ? (1.0 / d) * 2.0 : 1.0 / d,
     };
+    // BaconGalaxy.cs 137-138 / 150-151: Empire.TargettingFactor / CountermeasuresFactor (read by weapons.ts / fighters.ts).
+    empire.targettingFactor = empire.difficultyFactors.targettingFactor;
+    empire.countermeasuresFactor = empire.difficultyFactors.countermeasuresFactor;
 }
 
 const NAME_ADJ_DEFAULT = ["Bloody", "Dread", "Black", "Dirty", "Evil", "Iron", "Red", "Fierce", "Cruel", "Sinister", "Vicious", "Lone", "Savage", "Fearsome", "Deadly", "Venomous", "Murderous", "Dark", "Grim", "Haunted", "Menacing"];
