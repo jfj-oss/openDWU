@@ -32,3 +32,4 @@ Then, before M5+ (UI completeness etc.):
 - fix4sim 60-day run: the Quameno Empire's explorers sat idle with no mission (8×8 sectors, seed 1) — investigate the exploration-assignment path for that empire (AI bug?).
 - main.ts: the ticker's `view.update()` runs outside the sim try/catch (a render exception still freezes the loop).
 - fix7 (2026-09-26): the C# system habitat list excludes the star (Galaxy.6.cs 4611) while the TS list includes it; the exploration searches were fixed but ~50 other direct reads of that list are not audited yet (TODO in galaxy.ts) — audit each reader against the C# (pins may move).
+- HUD direction (user, 2026-09-26): popups (messages, advisor suggestions, conversations) must first appear under the top-right empire panel as a compact list of stubs that scrolls through, only a couple visible at a time; the full card/dialog opens on click (package popupstubs).
