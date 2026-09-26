@@ -84,6 +84,7 @@ import { issuePlayerCommand } from './sim/player/playerCommands';
 import { commandLog } from './sim/player/commandLog';
 import { setSaveLoadProvider, createSaveLoadPanel, type LoadedGame } from './ui/screens/saveLoad';
 import { type Game } from './sim/game';
+import { registerLocationPingedHook } from './sim/story/eventActions';
 import { createGalaxyMap, type GalaxyMapScreen } from './ui/screens/galaxyMap';
 import { hideMapTooltip } from './ui/mapTooltip';
 import { closeEmpireComparison, closeGameEndBanner, installGameEndHandler, removeGameEndHandler } from './ui/screens/empireComparison'; // [15d]
@@ -386,6 +387,9 @@ export async function startGameView(
     } else {
         camera.zoomAt(SECTOR_LEVEL_ZOOM, camera.width / 2, camera.height / 2);
     }
+    // Main.Part7.cs:4075 method_365, the LocationPinged handler: centre the main view on the pinged object (the
+    // handler's only other effect, AddLocationHint, is a direct sim call in story/eventActions.ts RevealObject).
+    registerLocationPingedHook((target) => camera.centerOn(target.xpos, target.ypos));
 
     const store = new AssetStore(dwuPresent);
     // Task M3: the overlay toggle state is created here (instead of after

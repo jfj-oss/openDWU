@@ -6,8 +6,9 @@
 //             Kaltors, the Scoundrels Refuge) and one of each special zone per 200 stars (Galaxy.3.cs 1071-1352);
 //   1921-1961 Distant Worlds: the Origins ruins; 1968-2010 Distant Worlds: debris fields and incomplete planet destroyers
 //             (Galaxy.5.cs 3403-3620); 2013-2016 method_86 (Start.2.cs 2390): abandoned Shakturi warships.
-// TextResolver: English GameText.txt strings are used directly for object / location names (gameStartTail.ts convention);
-// ShipImageHelper picture picks (ShipImageHelper._Rnd, not Galaxy.Rnd) are TODO(port) M9 — the generated picture is kept.
+// TextResolver: English GameText.txt strings are used directly for object / location names (gameStartTail.ts convention).
+// ShipImageHelper picture picks (shipImageHelper.ts) use their own galaxy-seeded stream, not Galaxy.Rnd; the "family"
+// choices below are still Galaxy.Rnd draws made by the C# CALLER (kept as-is), passed into resolveMajorShipImageIndex.
 
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
@@ -24,6 +25,7 @@ import { ComponentCategoryType } from '../data/policies';
 import { BattleTactics, BuiltObjectFleeWhen, InvasionTactics, BuiltObjectRole, DesignSpecificationComponentRuleType, newComponentRuleByCategory, newComponentRuleByType, newDesignSpecification, type DesignSpecification } from '../data/designSpecifications';
 import { Design as DesignClass, BuiltObjectStance } from '../design';
 import { generateDesignFromSpec, generatePlanetDestroyerDesign, componentDefinitionsStatic, placementView, resolveLegacySubRole } from '../designGeneration';
+import { AncientHelpersFamily, FreedomAllianceFamily, ShakturiAlliesFamily, ShakturiFamily, resolveMajorShipImageIndex } from '../shipImageHelper';
 import { placeComponentsOnDesignDefault } from '../designPlacement';
 import { evaluateLatestByCategory, evaluateLatestByType, type ComponentDefinition } from '../componentStatic';
 import { Cargo, CargoList, ResourceRef } from '../cargo';
@@ -122,12 +124,13 @@ export function distantWorldsStoryCluesAtStart(galaxy: Galaxy, xpos: number, ypo
         let p = findLonelyDeepSpaceLocation(galaxy);
         const monitoringStationDesignSpec = getMonitoringStationDesignSpec();
         const design3 = requireDesign(generateDesignFromSpec(galaxy, player, monitoringStationDesignSpec, 4.0, galaxyStarDate(galaxy)), 'Start.2.cs 1796');
-        // TODO(port) M9: design3.PictureRef = ShipImageHelper.ResolveMajorShipImageIndex(FreedomAllianceFamily, subRole, aged: false).
+        design3.pictureRef = resolveMajorShipImageIndex(FreedomAllianceFamily, design3.subRole, false);
         const item3 = generateStoryAbandonedBuiltObject(galaxy, p.x, p.y, design3, 'Signal Intercept Station' + ' XL5');
         galaxy.storyClueLocations.push(item3);
         p = findLonelyNebulaLocation(galaxy, GalaxyLocationEffectType.None);
         const bySubRole = galaxyDesignSpecificationBySubRole(BuiltObjectSubRole.CapitalShip);
         const design4 = requireDesign(generateDesignFromSpec(galaxy, player, bySubRole, 4.0, galaxyStarDate(galaxy)), 'Start.2.cs 1802');
+        design4.pictureRef = resolveMajorShipImageIndex(FreedomAllianceFamily, design4.subRole, false);
         const builtObject3 = generateStoryAbandonedBuiltObject(galaxy, p.x, p.y, design4, 'Devastator');
         const message = 'You have entered a restricted security zone. You must turn back and leave this area immediately.';
         const galaxyLocation = generateRestrictedZone(galaxy, fmt('{0} Weapons Testing Range', 'Pozdac'), message, 3000.0, p.x, p.y, 3);
@@ -136,6 +139,7 @@ export function distantWorldsStoryCluesAtStart(galaxy: Galaxy, xpos: number, ypo
         galaxyLocation.relatedBuiltObject = builtObject3;
         p = findLonelyNebulaLocation(galaxy, GalaxyLocationEffectType.None);
         const design5 = generateResearchStationDesign(galaxy, player, galaxyStarDate(galaxy), ComponentType.LabsWeaponsLab);
+        design5.pictureRef = resolveMajorShipImageIndex(FreedomAllianceFamily, design5.subRole, false);
         const builtObject4 = generateStoryAbandonedBuiltObject(galaxy, p.x, p.y, design5, fmt('{0} Special Projects Outpost', 'Ecatur'));
         const message2 = 'You have entered a high-security area used for secret research experiments. Leave now, while you still can!';
         const galaxyLocation2 = generateRestrictedZone(galaxy, 'Dead Zone', message2, 3000.0, p.x, p.y, 1);
@@ -147,6 +151,7 @@ export function distantWorldsStoryCluesAtStart(galaxy: Galaxy, xpos: number, ypo
         const bySubRole2 = galaxyDesignSpecificationBySubRole(BuiltObjectSubRole.GasMiningStation);
         let design6 = requireDesign(generateDesignFromSpec(galaxy, player, bySubRole2, 5.0, galaxyStarDate(galaxy)), 'Start.2.cs 1822');
         design6 = designPirateBase(galaxy, design6, 5.0);
+        design6.pictureRef = resolveMajorShipImageIndex(FreedomAllianceFamily, design6.subRole, false);
         const item4 = generateStoryAbandonedBuiltObject(galaxy, p.x, p.y, design6, 'Scoundrels Refuge');
         galaxy.storyClueLocations.push(item4);
         for (let i = 0; i < 5; i++) galaxy.storyClueUsed.push(false);
@@ -283,7 +288,7 @@ export function shakturiAbandonedShipsAtStart(galaxy: Galaxy): void {
                 if (num6 < 500.0) flag = false;
             }
             if (flag) {
-                // TODO(port) M9: design.PictureRef = ShipImageHelper.ResolveMajorShipImageIndex(ShakturiFamily, subRole, aged: false).
+                design.pictureRef = resolveMajorShipImageIndex(ShakturiFamily, design.subRole, false);
                 const builtObject2 = generateAbandonedBuiltObject(galaxy, habitat2, design, false, false, BuiltObjectEncounterAction.Prompt);
                 builtObject2.encounterDescription = "The sight of this ship gives you an eerie feeling. Though you've never seen this advanced alien design before, there is something strangely familiar about it...";
                 num2++;
@@ -374,7 +379,8 @@ export function generateSpecialZoneResearchFacility(galaxy: Galaxy): void {
             break;
     }
     const design = generateResearchStationDesign(galaxy, galaxy.playerEmpire!, galaxyStarDate(galaxy), labComponentType);
-    galaxy.rnd.next(0, 2); // family: AncientHelpers / ShakturiAllies — TODO(port) M9: ShipImageHelper.ResolveMajorShipImageIndex(family, …)
+    const zoneFamily = galaxy.rnd.next(0, 2) === 0 ? AncientHelpersFamily : ShakturiAlliesFamily; // Galaxy.3.cs 1091-1099
+    design.pictureRef = resolveMajorShipImageIndex(zoneFamily, design.subRole, false);
     const name = generateResearchStationName(galaxy, x, y, namePart);
     const builtObject = generateStoryAbandonedBuiltObject(galaxy, x, y, design, name);
     builtObject.encounterTechAdvanceCount = 1;
@@ -396,7 +402,7 @@ export function generateSpecialZoneSupplyDepot(galaxy: Galaxy): void {
     const p = findLonelyNebulaLocation(galaxy, GalaxyLocationEffectType.None);
     const x = p.x;
     const y = p.y;
-    galaxy.rnd.next(0, 2); // family: AncientHelpers / FreedomAlliance (picture only; TODO(port) M9)
+    const zoneFamily = galaxy.rnd.next(0, 2) === 0 ? AncientHelpersFamily : FreedomAllianceFamily; // Galaxy.3.cs 1153-1161
     const player = galaxy.playerEmpire!;
     const designSpecification = cloneDesignSpecification(galaxyDesignSpecificationBySubRole(BuiltObjectSubRole.MediumSpacePort)!);
     let flag = false;
@@ -414,6 +420,10 @@ export function generateSpecialZoneSupplyDepot(galaxy: Galaxy): void {
     const design2 = requireDesign(generateDesignFromSpec(galaxy, player, galaxyDesignSpecificationBySubRole(BuiltObjectSubRole.Frigate), 4.0, starDate), 'Galaxy.3.cs 1178');
     const design3 = requireDesign(generateDesignFromSpec(galaxy, player, galaxyDesignSpecificationBySubRole(BuiltObjectSubRole.Destroyer), 4.0, starDate), 'Galaxy.3.cs 1180');
     const design4 = requireDesign(generateDesignFromSpec(galaxy, player, galaxyDesignSpecificationBySubRole(BuiltObjectSubRole.Cruiser), 4.0, starDate), 'Galaxy.3.cs 1182');
+    design.pictureRef = resolveMajorShipImageIndex(zoneFamily, design.subRole, false);
+    design2.pictureRef = resolveMajorShipImageIndex(zoneFamily, design2.subRole, false);
+    design3.pictureRef = resolveMajorShipImageIndex(zoneFamily, design3.subRole, false);
+    design4.pictureRef = resolveMajorShipImageIndex(zoneFamily, design4.subRole, false);
     let num = 0.0;
     let num2 = 0.0;
     let name = generateRestrictedZoneName(galaxy, x, y, ['Supply Depot', 'Supply Outpost']);
@@ -466,13 +476,17 @@ export function generateSpecialZoneWeaponsTestingRange(galaxy: Galaxy): void {
     const p = findLonelyNebulaLocation(galaxy, GalaxyLocationEffectType.None);
     const x = p.x;
     const y = p.y;
-    galaxy.rnd.next(0, 2); // family: ShakturiAllies / FreedomAlliance (picture only; TODO(port) M9)
+    const zoneFamily = galaxy.rnd.next(0, 2) === 0 ? ShakturiAlliesFamily : FreedomAllianceFamily; // Galaxy.3.cs 1248-1256
     const player = galaxy.playerEmpire!;
     const starDate = galaxyStarDate(galaxy);
     const design = requireDesign(generateDesignFromSpec(galaxy, player, galaxyDesignSpecificationBySubRole(BuiltObjectSubRole.CapitalShip), 4.0, starDate), 'Galaxy.3.cs 1257');
     const design2 = requireDesign(generateDesignFromSpec(galaxy, player, galaxyDesignSpecificationBySubRole(BuiltObjectSubRole.Cruiser), 4.0, starDate), 'Galaxy.3.cs 1259');
     const design3 = requireDesign(generateDesignFromSpec(galaxy, player, galaxyDesignSpecificationBySubRole(BuiltObjectSubRole.Destroyer), 4.0, starDate), 'Galaxy.3.cs 1261');
     const design4 = requireDesign(generateDesignFromSpec(galaxy, player, galaxyDesignSpecificationBySubRole(BuiltObjectSubRole.Frigate), 4.0, starDate), 'Galaxy.3.cs 1263');
+    design.pictureRef = resolveMajorShipImageIndex(zoneFamily, design.subRole, false);
+    design2.pictureRef = resolveMajorShipImageIndex(zoneFamily, design2.subRole, false);
+    design3.pictureRef = resolveMajorShipImageIndex(zoneFamily, design3.subRole, false);
+    design4.pictureRef = resolveMajorShipImageIndex(zoneFamily, design4.subRole, false);
     let builtObject: BuiltObject | null = null;
     const num = galaxy.rnd.next(5, 9);
     for (let i = 0; i < num; i++) {
@@ -747,7 +761,7 @@ export function generateDebrisField(galaxy: Galaxy, x: number, y: number, name: 
     galaxyLocation.showName = true;
     galaxy.galaxyLocations.push(galaxyLocation);
     galaxy.addGalaxyLocationIndex(galaxyLocation);
-    galaxy.rnd.next(0, 4); // family (picture only; TODO(port) M9: ShipImageHelper.ResolveMajorShipImageIndex(family, …))
+    const family = galaxy.rnd.next(0, 4); // Galaxy.5.cs 3533: the four ShipImageHelper major families, 0-3 in enum order
     let design: Design | null = null;
     let design2: Design | null = null;
     let design3: Design | null = null;
@@ -799,6 +813,7 @@ export function generateDebrisField(galaxy: Galaxy, x: number, y: number, name: 
                 break;
         }
         if (design7 !== null) {
+            design7.pictureRef = resolveMajorShipImageIndex(family, design7.subRole, false);
             const name2 = galaxy.selectUniqueBuiltObjectName(design7, null);
             const rp = galaxy.selectRelativePoint(Math.min(galaxyLocation.width, galaxyLocation.height) / 2.0);
             const builtObject = generateUnownedBuiltObjectFromDesign(
@@ -867,7 +882,9 @@ export function generatePlanetDestroyer(galaxy: Galaxy): void {
         design3 = generateDesignFromSpec(galaxy, empire, galaxyDesignSpecificationBySubRole(BuiltObjectSubRole.Cruiser), techAdvanceAmount, starDate);
     }
     if (design !== null && design2 !== null && design3 !== null) {
-        // TODO(port) M9: design{,2,3}.PictureRef = ShipImageHelper.ResolveMajorShipImageIndex(ShakturiFamily, subRole, aged: false).
+        design.pictureRef = resolveMajorShipImageIndex(ShakturiFamily, design.subRole, false);
+        design2.pictureRef = resolveMajorShipImageIndex(ShakturiFamily, design2.subRole, false);
+        design3.pictureRef = resolveMajorShipImageIndex(ShakturiFamily, design3.subRole, false);
         builtObject2 = generateUnownedShipAtLocation(galaxy, design, habitat.xpos, habitat.ypos);
         damageBuiltObjectComponents(builtObject2, 0.5);
         builtObject2 = generateUnownedShipAtLocation(galaxy, design, habitat.xpos, habitat.ypos);

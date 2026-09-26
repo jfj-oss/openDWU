@@ -44,13 +44,14 @@ import { Population, PopulationList } from './population';
 import { takeOwnershipOfColonyFull } from './combat/ownership';
 import { REAL_SECONDS_IN_GALACTIC_YEAR } from './tick/simTime';
 import { resolveSubRoleDescription } from './designGeneration';
+import { FreedomAllianceFamily, resolveMajorShipImageIndex, resolveMinorShipImageIndex, resolveNewShipImageIndex } from './shipImageHelper';
 import { checkTriggerEvent, getMatchingGameEventIdEmpireEncounter } from './story/eventActions';
 import { EventTriggerType } from './story/gameEventModel';
 import type { Galaxy } from './galaxy';
 import type { Empire } from './empire';
 import { BuiltObject } from './builtObject';
 import type { Design } from './design';
-import { HabitatCategoryType, planetsOf, type Habitat, type HabitatType } from './types';
+import { HabitatCategoryType, HabitatType, planetsOf, type Habitat } from './types';
 import { registerTodo, todo } from './tick/todo';
 import { galaxyStarDate } from './tick/simTime';
 import { MAX_SOLAR_SYSTEM_SIZE, SystemVisibilityStatus } from './visibility';
@@ -743,11 +744,25 @@ function generateDesertedShip(galaxy: Galaxy, empire: Empire, habitat: Habitat):
             text3 = galaxy.selectRandomUniqueStandardShipName(habitat);
             break;
     }
-    // TODO(port) M9: design.PictureRef = ShipImageHelper.ResolveMajorShipImageIndex(FreedomAllianceFamily, subRole,
-    // aged) / ResolveMinorShipImageIndex(subRole, largeShips) — ShipImageHelper draws on its own clock-seeded Random
-    // (not Galaxy.Rnd); visual only. The design keeps the picture GenerateDesignFromSpec gave it.
     // C# dereferences designSpecification / design unguarded (NullReferenceException).
+    const subRole = designSpecification!.subRole;
+    let pictureRef = resolveMajorShipImageIndex(FreedomAllianceFamily, subRole, true);
+    switch (habitat.type) {
+        case HabitatType.GasGiant:
+        case HabitatType.FrozenGasGiant:
+        case HabitatType.BarrenRock:
+        case HabitatType.Continental:
+        case HabitatType.Ice:
+        case HabitatType.MarshySwamp:
+        case HabitatType.Ocean:
+        case HabitatType.Desert:
+        case HabitatType.Volcanic:
+            pictureRef = resolveMinorShipImageIndex(galaxy, subRole, true);
+            break;
+    }
+    if (subRole === BuiltObjectSubRole.ColonyShip) pictureRef = resolveMinorShipImageIndex(galaxy, BuiltObjectSubRole.ColonyShip, true);
     const design = generateDesignFromSpec(galaxy, empire, designSpecification!, 3.0, galaxyStarDate(galaxy))!;
+    design.pictureRef = pictureRef;
     design.buildCount++;
     const builtObject = generateBuiltObjectFromDesign(galaxy, empire, design, text3, true, habitat.xpos, habitat.ypos);
     design.isObsolete = true;
@@ -908,8 +923,7 @@ export function selectRandomEmpire(galaxy: Galaxy): Empire | null {
  * Kaltor Next(3,6); ambush Next(3,5) + NextDouble ×2 per relocation try; lost ship Next(0,2) + FindLonelyColonyLocation +
  * SelectRandomEmpire; lost colony FindLonelyColonyLocation + NextDouble (quality) + SelectRandomRace; refugees
  * SelectRandomRace; StoryEvent NextDouble ×2; race event Next(0,2); plus the callees' own draws.
- * ShipImageHelper picture choices use ShipImageHelper's own clock-seeded Random (not Galaxy.Rnd) —
- * TODO(port) M9: design.PictureRef (visual only).
+ * ShipImageHelper picture choices (shipImageHelper.ts) use their own galaxy-seeded stream, not Galaxy.Rnd.
  */
 export function investigateRuins(galaxy: Galaxy, investigatingEmpire: Empire | null, ruinsHabitat: Habitat | null): void {
     if (ruinsHabitat === null || investigatingEmpire === null) return;
@@ -1142,8 +1156,7 @@ export function investigateRuins(galaxy: Galaxy, investigatingEmpire: Empire | n
                 const empire = selectRandomEmpire(galaxy)!;
                 const design4 = generateDesignFromSpec(galaxy, empire, designSpecification4, 4.0, galaxyStarDate(galaxy));
                 if (design4 === null) break;
-                // TODO(port) M9: design4.PictureRef = ShipImageHelper.ResolveMinorShipImageIndex(design4.SubRole, largeShips: true)
-                // (ShipImageHelper's own Random; visual only).
+                design4.pictureRef = resolveMinorShipImageIndex(galaxy, design4.subRole, true);
                 const builtObject4 = generateAbandonedBuiltObject(galaxy, habitat6, design4);
                 if (builtObject4 !== null) {
                     empty = formatGameTextNow('Lost Ship Location Revealed');
@@ -1258,8 +1271,9 @@ export function investigateRuins(galaxy: Galaxy, investigatingEmpire: Empire | n
                     const design3 = generateDesignFromSpec(galaxy, investigatingEmpire, designSpecification3, 3.0, galaxyStarDate(galaxy));
                     const race = selectRandomRace(galaxy, 75);
                     if (design !== null && design2 !== null && design3 !== null) {
-                        // TODO(port) M9: PictureRef = ShipImageHelper.ResolveNewShipImageIndex(subRole, race, isPirates: false) ×3
-                        // (ShipImageHelper's own Random; visual only).
+                        design.pictureRef = resolveNewShipImageIndex(BuiltObjectSubRole.ColonyShip, race, false);
+                        design2.pictureRef = resolveNewShipImageIndex(BuiltObjectSubRole.Frigate, race, false);
+                        design3.pictureRef = resolveNewShipImageIndex(BuiltObjectSubRole.Cruiser, race, false);
                         const builtObject = generateAbandonedBuiltObject(galaxy, habitat4!, design, false, false, BuiltObjectEncounterAction.Notify);
                         if (builtObject !== null) {
                             builtObject.name = formatGameTextNow('Refugee SHIPTYPE', [resolveSubRoleDescription(BuiltObjectSubRole.ColonyShip)]);

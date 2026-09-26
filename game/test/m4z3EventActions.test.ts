@@ -30,6 +30,7 @@ import {
     getMatchingGameEventIdEmpireEncounter,
     getMatchingGameEventIdResearchBreakthrough,
     processDelayedEventActions,
+    registerLocationPingedHook,
 } from '../src/sim/story/eventActions';
 import { DiplomaticRelationType, obtainDiplomaticRelation, obtainEmpireEvaluation } from '../src/sim/diplomacy';
 import { EventMessageType } from '../src/sim/eventTypes';
@@ -349,6 +350,50 @@ describe('ExecuteEventAction per action type (Galaxy.9.cs 1503-2860)', () => {
         expect(e.visibility.knownGalaxyLocations).toContain(loc);
         expect(e.locationHints.length).toBe(hints + 1);
         expect(e.locationHints[e.locationHints.length - 1]).toEqual({ x: 1200, y: 2300 });
+    });
+
+    it('RevealObject LocationPinged: addLocationHint (+ the UI hook) only for the player empire (Galaxy.9.cs 1718-1720/1750-1752)', () => {
+        const player = g.playerEmpire!;
+        const other = g.empires.find((emp) => emp !== player)!;
+        // AddLocationHint (Empire.cs 2807) skips a hint within MaxSolarSystemSize of an existing one; clear both
+        // empires' lists first so this test's own additions are not swallowed by hints earlier tests left behind.
+        player.locationHints.length = 0;
+        other.locationHints.length = 0;
+        const pinged: (Habitat | BuiltObject)[] = [];
+        registerLocationPingedHook((target) => pinged.push(target));
+        try {
+            // Habitat branch (1750-1752).
+            const sys2 = g.systems.find((s) => s !== g.systems[0])!;
+            const planet2 = sys2.habitats.find((h) => h !== sys2.systemStar) ?? sys2.systemStar;
+            executeEventAction(g, action(EventActionType.RevealObject, planet2), player, null);
+            expect(player.locationHints).toEqual([{ x: Math.trunc(planet2.xpos), y: Math.trunc(planet2.ypos) }]);
+            expect(pinged).toEqual([planet2]);
+
+            // BuiltObject branch (1718-1720): no player hint / hook call for a non-player trigger empire.
+            const bo = other.builtObjects[0];
+            executeEventAction(g, action(EventActionType.RevealObject, bo), other, null);
+            expect(other.locationHints).toEqual([]);
+            expect(player.locationHints).toEqual([{ x: Math.trunc(planet2.xpos), y: Math.trunc(planet2.ypos) }]);
+            expect(pinged).toEqual([planet2]); // unchanged: the hook did not fire again
+
+            // BuiltObject branch, player trigger: both addLocationHint and the hook fire (far enough from planet2
+            // that AddLocationHint's dedup does not swallow it).
+            const bo2 = player.builtObjects.find((b) => g.calculateDistance(b.xpos, b.ypos, planet2.xpos, planet2.ypos) > 2_000_000) ?? player.builtObjects[0];
+            executeEventAction(g, action(EventActionType.RevealObject, bo2), player, null);
+            expect(player.locationHints).toContainEqual({ x: Math.trunc(bo2.xpos), y: Math.trunc(bo2.ypos) });
+            expect(pinged).toEqual([planet2, bo2]);
+        } finally {
+            registerLocationPingedHook(null);
+        }
+    });
+
+    it('RevealObject LocationPinged: addLocationHint still runs when no UI hook is registered (headless default)', () => {
+        const player = g.playerEmpire!;
+        player.locationHints.length = 0;
+        const sys3 = g.systems.find((s) => s !== g.systems[0])!;
+        const planet3 = sys3.habitats.find((h) => h !== sys3.systemStar) ?? sys3.systemStar;
+        executeEventAction(g, action(EventActionType.RevealObject, planet3), player, null);
+        expect(player.locationHints).toEqual([{ x: Math.trunc(planet3.xpos), y: Math.trunc(planet3.ypos) }]);
     });
 
     it('General / Empire messages go to the action empire (or the other empire)', () => {

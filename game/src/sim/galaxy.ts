@@ -4653,6 +4653,12 @@ export class Galaxy {
     shakturiRaceBase: Race | null = null;
     /** Galaxy.cs 536 StoryShakturiEnrageTimer = long.MaxValue (star date). */
     storyShakturiEnrageTimer = Number.MAX_SAFE_INTEGER;
+    /**
+     * Stand-in for ShipImageHelper.cs:15 `private static Random _Rnd = new Random((int)DateTime.Now.Ticks)`: its own
+     * RNG, separate from Galaxy.Rnd and clock-seeded (non-deterministic) in C#. Deterministic here — one galaxy-seeded
+     * stream (plan §0), lazily created by shipImageHelper.ts. Never advanced by anything other than that module.
+     */
+    shipImageClockRnd: Random | null = null;
     // ---- modlayer fields (scenario mod layer, not a port; src/sim/scenario/*, tasks/MODLAYER-DESIGN.md) ----
     /** The scenario this game runs (saved), or null for the faithful game. Read through scenarioFlag / scenarioParam. */
     scenario: GalaxyScenario | null = null;

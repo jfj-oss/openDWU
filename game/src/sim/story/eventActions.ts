@@ -20,8 +20,11 @@
 //   BaconGalaxy.ExecuteEventAction: "ProcessEmpireScienceShips" ProcessScienceShips' GetRandomResearchNode Next(0, n) per
 //     lab without a current project, then Next(26, 35).
 //
-// UI-only statements are TODO(port) M9 notes: Galaxy.LocationPinged (RevealObject), OnCharacterImageChanged,
-// ShipImageHelper picture picks (ShipImageHelper._Rnd, not Galaxy.Rnd).
+// RevealObject's LocationPinged (Galaxy.9.cs 1718-1720 / 1750-1752) is `triggerEmpire == PlayerEmpire &&
+// LocationPinged != null` -> `LocationPinged(target, EventArgs.Empty)`; the only registered handler
+// (Main.Part7.cs:4075 method_365) just calls `PlayerEmpire.AddLocationHint(new Point(x, y))` — ported below as a
+// direct addLocationHint call, plus a registerLocationPingedHook for the UI (main.ts) to additionally react to (a
+// no-op by default, so headless tests are unaffected). OnCharacterImageChanged remains UI-only, TODO(port) M9.
 
 import { executeProcessEmpireScienceShips } from '../baconScienceShips';
 import type { Galaxy } from '../galaxy';
@@ -92,6 +95,7 @@ import { findNearestPirateFaction, generatePirateEmpire, selectRandomPiratePlays
 import { raceDesignPictureFamilyIndexPirates } from '../empire';
 import { makeHabitatIntoColonyRuntime } from '../missions/cmdTroops';
 import { addLocationHint } from '../tradeItems';
+import { resolveMinorShipImageIndex, resolveNewShipImageIndex } from '../shipImageHelper';
 import { fastFindNearestUnexploredHabitat } from '../civilianAI';
 import { doResearchBreakthrough, reviewDesignsBuiltObjectsImprovedComponents } from '../researchTick';
 import { Population, PopulationList } from '../population';
@@ -103,6 +107,18 @@ import type { Design } from '../design';
 import { formatGameTextNow } from '../textResolver';
 
 registerStellarObjectKinds({ isHabitat, isBuiltObject, isCreature });
+
+/**
+ * Galaxy.cs 1237 `event EventHandler LocationPinged`, fired by RevealObject (Galaxy.9.cs 1718-1720 / 1750-1752) — see
+ * the module comment. The addLocationHint call below already ports the only thing the one registered C# handler
+ * does; this hook lets the UI (main.ts) additionally react (e.g. centre the main view). Null (a no-op) by default,
+ * so headless tests / sim-only callers are unaffected.
+ */
+export type LocationPingedHook = (target: BuiltObject | Habitat) => void;
+let locationPingedHook: LocationPingedHook | null = null;
+export function registerLocationPingedHook(hook: LocationPingedHook | null): void {
+    locationPingedHook = hook;
+}
 
 // ---------------------------------------------------------------------------
 // Galaxy.9.cs 1179-1268 GetMatchingGameEventId*
@@ -691,7 +707,10 @@ export function executeEventAction(galaxy: Galaxy, eventAction: EventAction, tri
             if (target === null || triggerEmpire === null) break;
             if (isBuiltObject(target)) {
                 builtObject = target;
-                // TODO(port) M9: `triggerEmpire == PlayerEmpire && LocationPinged != null` → LocationPinged(builtObject) (UI event).
+                if (triggerEmpire === galaxy.playerEmpire) {
+                    addLocationHint(triggerEmpire, { x: Math.trunc(builtObject.xpos), y: Math.trunc(builtObject.ypos) });
+                    if (locationPingedHook !== null) locationPingedHook(builtObject);
+                }
                 let text2 = '';
                 if (builtObject.nearestSystemStar !== null) text2 = builtObject.nearestSystemStar.name;
                 if (builtObject.role === BuiltObjectRole.Base) {
@@ -711,7 +730,10 @@ export function executeEventAction(galaxy: Galaxy, eventAction: EventAction, tri
                 if (systemVisibilityStatus === SystemVisibilityStatus.Unexplored || systemVisibilityStatus === SystemVisibilityStatus.Undefined) {
                     triggerEmpire.visibility.setSystemVisibility(habitat6, SystemVisibilityStatus.Explored);
                 }
-                // TODO(port) M9: LocationPinged(habitat) for the player (UI event).
+                if (triggerEmpire === galaxy.playerEmpire) {
+                    addLocationHint(triggerEmpire, { x: Math.trunc(habitat.xpos), y: Math.trunc(habitat.ypos) });
+                    if (locationPingedHook !== null) locationPingedHook(habitat);
+                }
                 const cat = resolveDescription(HabitatCategoryType as unknown as Record<number, string>, habitat.category);
                 text = gameText('GameEventAction Description RevealObject Planet', cat, habitat.name, habitat6.name);
                 title = gameText('GameEventAction Title RevealObject Planet', cat);
@@ -877,8 +899,7 @@ export function executeEventAction(galaxy: Galaxy, eventAction: EventAction, tri
             if (empire3 !== null) {
                 const design = generateDesignFromSpec(galaxy, empire3, designSpecificationsGetBySubRole(empire3, eventAction.builtObjectSubRole), eventAction.techLevel, galaxyStarDate(galaxy));
                 if (design !== null) {
-                    // TODO(port) M9: design.PictureRef = ShipImageHelper.ResolveMinorShipImageIndex(SubRole, largeShips: true)
-                    // (ShipImageHelper._Rnd, not Galaxy.Rnd) — the picture stays the generated one.
+                    design.pictureRef = resolveMinorShipImageIndex(galaxy, design.subRole, true);
                     const habitat7 = galaxy.determineHabitatSystemStar(habitat);
                     builtObject = generateAbandonedBuiltObject(galaxy, habitat, design, false, false, BuiltObjectEncounterAction.Notify);
                     text = gameText('GameEventAction Description GenerateBuiltObject', subRoleText(builtObject.subRole).toLowerCase(), builtObject.name, habitat.name, habitat7.name);
@@ -995,8 +1016,9 @@ export function executeEventAction(galaxy: Galaxy, eventAction: EventAction, tri
                     const design3 = generateDesignFromSpec(galaxy, empire5, obtainDesignSpec(empire5, BuiltObjectSubRole.Frigate), 3.0, starDate);
                     const design4 = generateDesignFromSpec(galaxy, empire5, obtainDesignSpec(empire5, BuiltObjectSubRole.Cruiser), 3.0, starDate);
                     if (design2 === null || design3 === null || design4 === null) throw new Error('NullReferenceException: Galaxy.9.cs 2094 GenerateDesignFromSpec returned null (GenerateRefugeeFleet)');
-                    // TODO(port) M9: design{2,3,4}.PictureRef = ShipImageHelper.ResolveNewShipImageIndex(subRole, race, isPirates: false)
-                    // (ShipImageHelper._Rnd, not Galaxy.Rnd).
+                    design2.pictureRef = resolveNewShipImageIndex(BuiltObjectSubRole.ColonyShip, race, false);
+                    design3.pictureRef = resolveNewShipImageIndex(BuiltObjectSubRole.Frigate, race, false);
+                    design4.pictureRef = resolveNewShipImageIndex(BuiltObjectSubRole.Cruiser, race, false);
                     const builtObject5 = generateAbandonedBuiltObject(galaxy, habitat, design2, false, false, BuiltObjectEncounterAction.Notify);
                     builtObject5.name = formatGameTextNow('Refugee SHIPTYPE', [subRoleText(BuiltObjectSubRole.ColonyShip)]);
                     builtObject5.nativeRace = race;
