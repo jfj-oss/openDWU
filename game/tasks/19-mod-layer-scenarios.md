@@ -81,3 +81,16 @@ Effort: 1–4 days each after the mod layer; 5–9 one to two weeks each.
 9. Freight-flow overlay: make the simulated private economy visible (flows, where money accumulates) — needed by 19a/19c anyway. [cheap]
 10. Race designer on the data overlay, with model-written bios. [medium]
 11. Situational music (battle/exploration/crisis mood selector). [cheap]
+
+## 19f — Dark-Farms-like hidden threats (brainstorm, 2026-09-26; same hooks as 19b: hidden facility/flag, spread rule, trigger, new faction, dirty methods)
+1. Grey Tide: self-replicating mining swarm from an unexplored gas giant eats asteroid fields/mining stations; exponential; found by scanners, killed at spawn worlds.
+2. The Cult: belief spreading character→character (ambassadors/governors convert via traits/loyalty); converted colonies secede into a theocracy; assassins/martyrs; fought with agents and happiness.
+3. The Silence: ruin signal disables hyperdrives in a widening radius; pirates immune; expedition must shut the source.
+4. Doppelgangers: captured ships returned as sleepers with your own designs; recaptured ships are suspect.
+5. The Hive: independents are one hidden mind; each absorbed/protected world joins; declares itself at a threshold — the land-grab is the fuse.
+6. Time-bomb tech: precursor tech with huge bonuses and a small yearly planet-killing side-effect chance; tech leaders most exposed.
+7. Ghost Armada: battle wreckage reactivates under a dead empire's persona (LLM) and raids its destroyers.
+8. The Exchange: neutral trading megastation secretly funding both sides + sabotage; win = discover and blockade it.
+9. Robot mutiny: robotic troops galaxy-wide answer one hidden broadcast; robot-heavy empires lose planets first.
+10. Corporate coup: a chartered company (19c) buys governors and declares independence with its fleet/colonies.
+Build after 19b lands; each is mostly data + a spread rule on the 19b hooks.
