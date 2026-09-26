@@ -16,3 +16,22 @@ Approach: keep src/sim a faithful port; add a mod/scenario layer like DW:U theme
 - Different *behaviour* (tribute, single trading port, conditional treaties): a strategy hook in diplomacy/trade
   evaluation behind a flag, or an LLM persona for that empire via 18c (advisor-level decisions).
 Effort after completion: map ~1 day; rim trader (data + hooks) ~2 days; behavioural variant ~1 week (less via 18c).
+
+## 19b — "Dark Farms" end-game storyline (user idea, 2026-09-26)
+An overdeveloped colony gets a small yearly chance to spawn a hidden self-replicating factory; it produces
+private-sector ships that are secretly armed (sleeper flag, freighter template with hidden weapons); after a delay
+or a count they turn: a new hostile faction is created mid-game (like the Shakturi), ownership flips, missions →
+attack, aggressive posture; they fight dirty — virus-class ("chemical") bombardment reusing the Xaraktor virus
+path, boarding/capture, sabotage via intelligence missions. Framed as a story arc: hints, news broadcasts,
+victory/defeat condition. Wizard toggle, off by default (faithful game untouched). Maps onto: story-event system
+(triggers/delayed actions), facilities data, private economy ship spawning, design templates, mid-game empire
+creation + ownership transfer, attack AI, threats, virus/bombardment, intel missions, victory conditions.
+New code: facility + production loop, sleeper flag (saved), awakening script, one bombardment effect, texts,
+tests. ~1 week of agent work after the core is complete. Open design points: discoverability before the turn,
+inspecting private ships, awakening size vs host fleet.
+Addendum (user, 2026-09-26): the factory also builds its own **robot army** (robotic troop types already exist)
+on its planet, hidden and free of money/resources; the turn is an **invasion from inside** (existing invasion
+resolution: hidden troops vs garrison → colony flips to the new faction); then the sleeper freighters get
+troop capacity and carry the factory's continuous troop output to invade more planets (existing troop-transport
+invasion missions + attack-AI invasion planning targeting weakly garrisoned colonies). Balance knobs: troops/day,
+whether retaking the planet destroys the factory, sleeper count before the turn.
