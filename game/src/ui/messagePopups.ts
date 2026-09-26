@@ -5,6 +5,7 @@
 // TODO(port): the original DialogPart conversation texts and reply options (Main.Part10.cs); here the dialog shows the message text with Accept/Decline for treaty offers and OK otherwise
 // TODO(port): popup "go to subject" click (Main.Part9.cs:784 method_244)
 
+import { closeEventSting, playDiplomacyMood, playMessageSounds } from '../audio/gameAudio'; // [audio]
 import './messagePopups.css';
 import { getMessageOptions, routeEmpireMessage, shouldQueueConversation, type DialogPartType } from './messageRouting';
 import { EmpireMessageType, empireMessages, type EmpireMessage } from '../sim/messages';
@@ -193,6 +194,9 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
 
     const queue: ConversationEntry[] = [];
     const seen = new WeakSet<EmpireMessage>();
+    // [audio] begin — messages already in Empire.Messages (a loaded save) were received before: no arrival sound.
+    const heardBefore = new WeakSet<EmpireMessage>(empireMessages(player).filter((m) => m != null));
+    // [audio] end
     let dialogEntry: ConversationEntry | null = null;
     // [popupstubs] begin
     let popupMessage: EmpireMessage | null = null;
@@ -244,9 +248,10 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
         }
     }
 
-    function closeDialog(): void {
+    function closeDialog(switching = false): void {
         if (dialogEntry === null) return;
         dialogEntry = null;
+        if (!switching) closeEventSting(); // [audio] Main.Part8.cs:435 talk closed → method_522
         document.removeEventListener('keydown', onDialogKeyDown);
         dialogRoot.replaceChildren();
         dialogRoot.hidden = true;
@@ -257,7 +262,10 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
     }
 
     function openDialog(entry: ConversationEntry): void {
-        if (dialogEntry !== null) closeDialog();
+        // [audio] begin — Main.Part8.cs:469-473 method_296: `if (!pnlDiplomacyTalk.Visible) method_521(empire)`.
+        if (dialogEntry === null) playDiplomacyMood(galaxy, entry.sender, player);
+        // [audio] end
+        if (dialogEntry !== null) closeDialog(true);
         dialogEntry = entry;
         // [popupstubs] begin
         markMessageStubRead(entry.message);
@@ -372,6 +380,9 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
             }
             // [popupstubs] end
             const action = shouldQueueConversation(route, options);
+            // [audio] begin — Main.Part9.cs:2352-2360 ResolveMessage / ResolveImportantMessage on arrival.
+            if (!heardBefore.has(m)) playMessageSounds(m.messageType, route, options.suppressAllPopups);
+            // [audio] end
             if (action === 'none' || route.conversation === null) continue;
             // [popupstubs] begin
             m.starDate = galaxyStarDate(galaxy); // Main.Part9.cs 2361
