@@ -220,6 +220,13 @@ export function installGameAudio(deps: GameAudioDeps): GameAudio {
     const { galaxy, camera, time } = deps;
     const session = startEffects();
     const sounds = new MainViewSounds(session.player);
+    // EffectsPlayer.DX.cs:107 Initialize: preload ResolveWeaponSoundEffectFilenames(ComponentDefinitionsStatic) + explosions.
+    const weaponFiles = new Set<string>();
+    for (const c of galaxy.researchStatic?.componentsById.values() ?? []) {
+        const f = (c as { soundEffectFilename?: string }).soundEffectFilename;
+        if (f) weaponFiles.add(f);
+    }
+    void session.player.preload([...weaponFiles]);
     // EffectsPlayer.DX.cs:107 Initialize: preload ComponentDefinitionList.ResolveWeaponSoundEffectFilenames + explosions.
     const weaponSounds = new Set<string>();
     for (const c of galaxy.researchStatic?.componentsById.values() ?? []) {
