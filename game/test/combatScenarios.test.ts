@@ -21,6 +21,7 @@ import { cachedTickGame } from './helpers/gameCache';
 import type { GameData } from '../src/sim/data/gameData';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { BuiltObject } from '../src/sim/builtObject';
+import type { ShipGroup } from '../src/sim/fleets/shipGroup';
 import { Random } from '../src/sim/random';
 import { runGameSeconds } from '../src/sim/tick/harness';
 import { MIN_TIME } from '../src/sim/tick/simTime';
@@ -29,13 +30,15 @@ import { ComponentType } from '../src/sim/data/components';
 import { ComponentCategoryType } from '../src/sim/data/policies';
 import { ComponentStatus } from '../src/sim/builtObjectComponent';
 import { BattleTactics, BuiltObjectFleeWhen } from '../src/sim/data/designSpecifications';
-import { BuiltObjectMissionType, builtObjectMission } from '../src/sim/missions/mission';
+import { BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission } from '../src/sim/missions/mission';
 import { ShipActionType, createMissionShipActionAt, createShipAction } from '../src/sim/player/shipAction';
 import { executeShipAction } from '../src/sim/player/executeShipAction';
 import { captainBonuses } from '../src/sim/characters';
-import { fireWeaponsAtTarget, handleWeaponsFiringBuiltObject, rechargeShields, weaponDamageDropoff } from '../src/sim/combat/weapons';
+import { fireWeaponsAtTarget, handleWeaponsFiringBuiltObject, rechargeShields, weaponDamageDropoff, weaponFire } from '../src/sim/combat/weapons';
 import { evaluateThreats } from '../src/sim/combat/threats';
-import { shouldAttack } from '../src/sim/combat/attackAI';
+import { calculateAvailableAssaultPodAttackStrength, calculateBoardingDefenseValue, shouldAttack } from '../src/sim/combat/attackAI';
+import { empireRaidStrengthFactor, handleAssaultPodMovement, processBoardingAssault } from '../src/sim/combat/boarding';
+import { assignMission } from '../src/sim/missions/assign';
 import { inflictDamage } from '../src/sim/combat/damage';
 import { Fighter, FighterMissionType, buildNewFighters, calculateMaximumTargetRange, fighterDoTasks, fightersOf, launchAllFighters } from '../src/sim/combat/fighters';
 import { baconSettings } from '../src/sim/data/baconSettings';
@@ -491,7 +494,7 @@ describe('(2) a 4-ship fleet ordered to attack a pirate base', () => {
         const { g, base, fleetShips } = stage();
         const player = g.playerEmpire!;
         executeShipAction(g, player, fleetShips, createShipAction(ShipActionType.CreateNewFleet, null), true);
-        const fleet = fleetShips[0].shipGroup!;
+        const fleet = fleetShips[0].shipGroup as ShipGroup;
         expect(fleet.ships).toEqual(fleetShips);
         const r = executeShipAction(g, player, fleet, createMissionShipActionAt(BuiltObjectMissionType.Attack, base, Math.trunc(base.xpos), Math.trunc(base.ypos)), true);
         expect(r.ok).toBe(true);
@@ -674,5 +677,113 @@ describe('(3) fighters launched by a carrier engage and return per the C# rules'
         expect(pursued).toBe(true);
         expect(fired).toBeGreaterThan(0);
         expect(pir.hasBeenDestroyed || pir.currentShields < shields0 || damagedCount(pir) > 0).toBe(true);
+    }, 300000);
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// (4) Boarding a disabled ship
+// ---------------------------------------------------------------------------------------------------------------
+
+describe('(4) boarding: an assault-pod ship boards and captures a disabled ship', () => {
+    /**
+     * Black Pillagers' Worthy Firelance (1 Assault Pod: RawDamage 50, Range 140; empire BoardingAttackFactor 1, dominant
+     * race TroopStrength 138, pirate RaidStrengthFactor 1.25) against the player's Sol Starseeker (3 Hab Modules, no troops;
+     * BoardingDefenseFactor 1, TroopStrength 121) with its shields down and engines knocked out, 100 apart.
+     */
+    function stage(): { g: Galaxy; att: BuiltObject; tgt: BuiltObject } {
+        const g = cachedTickGame(gameData).galaxy;
+        const att = ship(g, 'Worthy Firelance');
+        const tgt = ship(g, 'Sol Starseeker');
+        builtObjectMission(tgt.mission)?.clear();
+        tgt.isAutoControlled = false;
+        for (const c of tgt.components.items) if (c.category === ComponentCategoryType.Engine) c.status = ComponentStatus.Damaged;
+        tgt.reDefine();
+        tgt.currentShields = 0;
+        const s = emptySpot(g);
+        place(g, tgt, s.x, s.y);
+        place(g, att, s.x + 100, s.y);
+        return { g, att, tgt };
+    }
+
+    it('assault strength vs defence, hand-worked (BuiltObject.1.cs 2626 HandleAssaultPodMovement, 3314 / 3399)', () => {
+        const { g, att, tgt } = stage();
+        const pe = att.empire!;
+        expect([pe.boardingAttackFactor, pe.dominantRace!.troopStrength, empireRaidStrengthFactor(pe)]).toEqual([1, 138, 1.25]);
+        const pod = att.weapons.find((w) => w.component.type === ComponentType.AssaultPod)!;
+        expect([pod.rawDamage, pod.range]).toEqual([50, 140]);
+        // Attack per pod: (short)(RawDamage 50 × TroopStrength/100 1.38 × BoardingAttackFactor 1 × AssaultPodStrengthMultiplier 1
+        // × RaidStrengthFactor 1.25) = (short)86.25 = 86.
+        expect(calculateAvailableAssaultPodAttackStrength(g, att, g.nowMs)).toBe(86);
+        // Defence: per Normal Hab Module (int)(20 × 1.21 × BoardingDefenseFactor 1 × RaidStrengthFactor 1) = 24; 3 modules, no
+        // troops, no pods: 72.
+        expect(tgt.components.items.filter((c) => c.type === ComponentType.HabitationHabModule).length).toBe(3);
+        expect(tgt.empire!.dominantRace!.troopStrength).toBe(121);
+        expect(calculateBoardingDefenseValue(g, tgt, g.nowMs)).toEqual({ value: 72, fixedDefenseValue: 72 });
+        // A pod that reaches its target adds its strength to AssaultAttackValue and marks the boarding empire.
+        weaponFire(g, pod, att, tgt, 100, g.nowMs, true, 1.0);
+        pod.x = tgt.xpos + 5;
+        pod.y = tgt.ypos;
+        pod.distanceFromTarget = f32(5);
+        handleAssaultPodMovement(g, att, 0.01);
+        expect(tgt.assaultAttackValue).toBe(86);
+        expect(tgt.assaultAttackEmpireId).toBe(pe.empireId);
+        expect(pod.distanceTravelled).toBe(-1); // Reset on arrival
+    });
+
+    it('one ProcessBoardingAssault step, draw for draw (BuiltObject.1.cs 2954)', () => {
+        const { g, tgt, att } = stage();
+        tgt.assaultAttackValue = 86;
+        tgt.assaultAttackEmpireId = att.empire!.empireId;
+        tgt.assaultDefenseValue = 0; // → CalculateBoardingDefenseValue = 72 first
+        const sh = shadowRnd(g);
+        const tp = 3;
+        processBoardingAssault(g, tgt, g.nowMs, tp);
+        const num = Math.max(0.5, Math.min(2.0, 86 / 72));
+        const num2 = (tp * (2.0 + sh.nextDouble() * 2.0)) / num;
+        const num3 = tp * (2.0 + sh.nextDouble() * 2.0) * num;
+        expect(tgt.assaultAttackValue).toBe(Math.max(0, Math.trunc(86 - num2)));
+        expect(tgt.assaultDefenseValue).toBe(Math.max(0, Math.trunc(72 - num3)));
+        if (num2 + num3 > sh.nextDouble() * 10.0 * tp) {
+            sh.next(20000, 30000);
+            expect(tgt.disabledComponentIndexes!.length).toBe(1); // DisableRandomComponent (3462)
+        }
+        expect(g.rnd.getState()).toEqual(sh.getState());
+        expect(tgt.empire).toBe(g.playerEmpire);
+        // Defence exhausted while attackers remain → captured by AssaultAttackEmpireId (3004 onwards).
+        tgt.assaultAttackValue = 40;
+        tgt.assaultDefenseValue = 1;
+        processBoardingAssault(g, tgt, g.nowMs, tp); // num3 ≥ 3 × 2 × 0.5 > 1 → defence 0
+        expect(tgt.assaultDefenseValue === 0 || tgt.empire === att.empire).toBe(true);
+        expect(tgt.empire === att.empire || tgt.hasBeenDestroyed).toBe(true);
+    });
+
+    it('on the harness: a Capture mission launches the pod, the boarding fight runs down both sides and the ship changes owner', () => {
+        const { g, att, tgt } = stage();
+        const player = g.playerEmpire!;
+        assignMission(g, att, BuiltObjectMissionType.Capture, tgt, null, BuiltObjectMissionPriority.High);
+        let firstAttack = -1;
+        let captured = -1;
+        let frame = 0;
+        const defence: number[] = [];
+        runGameSeconds(g, 40, {
+            onFrame: () => {
+                frame++;
+                if (firstAttack < 0 && tgt.assaultAttackValue > 0) {
+                    firstAttack = frame;
+                    expect(tgt.assaultAttackValue).toBe(86); // one pod
+                }
+                if (tgt.assaultAttackValue > 0) defence.push(tgt.assaultDefenseValue);
+                if (captured < 0 && tgt.empire === att.empire) captured = frame;
+            },
+        });
+        expect(firstAttack).toBeGreaterThan(0);
+        expect(firstAttack).toBeLessThanOrEqual(120);
+        expect(defence[0]).toBe(72);
+        for (let i = 1; i < defence.length; i++) expect(defence[i]).toBeLessThanOrEqual(defence[i - 1]);
+        expect(captured).toBeGreaterThan(firstAttack);
+        expect(tgt.empire).toBe(att.empire);
+        expect(att.empire!.builtObjects).toContain(tgt);
+        expect(player.builtObjects).not.toContain(tgt);
+        expect(tgt.assaultAttackValue).toBe(0);
     }, 300000);
 });
