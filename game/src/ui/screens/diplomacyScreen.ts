@@ -113,6 +113,8 @@ export function formatSigned(v: number): string {
 // Moved to sim/player/relationFactors.ts (shared with the 18b diplomat brief).
 export { feelingDescription, civilityDescription, relationshipFactors, type RelationshipFactor } from '../../sim/player/relationFactors';
 import { relationshipFactors, feelingDescription, type RelationshipFactor } from '../../sim/player/relationFactors';
+import { acceptProposal, declineProposal } from '../../sim/player/playerOrders';
+export { acceptProposal, declineProposal };
 
 /** EmpireDetailView.cs:639-706 flag3: is the other empire's offer still open?
  * The C# also removes invalid proposals while drawing; the panel does not (no
@@ -244,59 +246,6 @@ export function diplomacyRows(player: Empire, starDate: number, playerGovernment
             factors: relationshipFactors(player, other, playerGovernmentName),
         };
     });
-}
-
-/** Accept the other empire's treaty on offer. */
-export function acceptProposal(player: Empire, other: Empire): boolean {
-    // Port of EmpireDetailView.cs:803 btnEmpireDetailAcceptTreaty_Click (the player's accept path; the sim has no separate entry point)
-    const galaxy: Galaxy = player.galaxy;
-    const diplomaticRelation1 = player.proposedDiplomaticRelations.byEmpire(other);
-    if (diplomaticRelation1 === null) return false;
-    // The fallback is not added to the list, as in the C#.
-    const diplomaticRelation2 =
-        player.diplomaticRelations.byEmpire(other) ?? new DiplomaticRelation(DiplomaticRelationType.NotMet, player, player, other, false);
-    switch (diplomaticRelation1.type) {
-        case DiplomaticRelationType.None:
-        case DiplomaticRelationType.SubjugatedDominion:
-        case DiplomaticRelationType.Truce:
-            switch (diplomaticRelation2.type) {
-                case DiplomaticRelationType.TradeSanctions:
-                    changeDiplomaticRelation(galaxy, player, diplomaticRelation2, diplomaticRelation1.type);
-                    cancelBlockades(galaxy, player, other);
-                    cancelBlockades(galaxy, other, player);
-                    break;
-                case DiplomaticRelationType.War: {
-                    resetAttitudeLevelsAtEndOfWar(galaxy, diplomaticRelation2);
-                    diplomaticRelation2.type = diplomaticRelation1.type;
-                    diplomaticRelation2.lastDiplomacyTradeOfferDate = galaxyStarDate(galaxy);
-                    let diplomaticRelation3 = other.diplomaticRelations.byEmpire(player);
-                    if (diplomaticRelation3 === null) {
-                        diplomaticRelation3 = new DiplomaticRelation(DiplomaticRelationType.NotMet, other, other, player, false);
-                        other.diplomaticRelations.add(diplomaticRelation3);
-                    }
-                    diplomaticRelation3.type = diplomaticRelation1.type;
-                    diplomaticRelation3.lastDiplomacyTradeOfferDate = galaxyStarDate(galaxy);
-                    processEndOfWarWithEmpire(galaxy, player, other);
-                    processEndOfWarWithEmpire(galaxy, other, player);
-                    break;
-                }
-            }
-            break;
-        default:
-            changeDiplomaticRelation(galaxy, player, diplomaticRelation2, diplomaticRelation1.type);
-            break;
-    }
-    player.proposedDiplomaticRelations.remove(diplomaticRelation1);
-    return true;
-}
-
-/** Main.Part10.cs:3930 method_235 on the player's proposals: decline the other empire's offer. */
-export function declineProposal(player: Empire, other: Empire): boolean {
-    // TODO(port): the conversation's refusal reply message (Main.Part10.cs conversation options) is not sent
-    const diplomaticRelation = player.proposedDiplomaticRelations.byEmpire(other);
-    if (diplomaticRelation === null) return false;
-    player.proposedDiplomaticRelations.remove(diplomaticRelation);
-    return true;
 }
 
 /** The player's GovernmentAttributes.Name. */

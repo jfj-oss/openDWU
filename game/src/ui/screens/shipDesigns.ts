@@ -41,6 +41,8 @@ import {
     type DesignDraftSource,
 } from '../../sim/player/designEditor';
 import { openDesignEditor, type DesignEditorHandle } from './designEditor';
+import { isPrivateDesignSubRole, toggleDesignObsolete, toggleDesignAutoRetrofit } from '../../sim/player/playerOrders';
+export { isPrivateDesignSubRole, toggleDesignObsolete, toggleDesignAutoRetrofit };
 // [designeditor] end
 
 /** cmbDesignsFilter items (Main.Part8.cs:1006-1028). */
@@ -189,22 +191,6 @@ export function designDateCreatedText(dateCreated: number): string {
     return `${pad(num3, 4)}.${pad(num5 + 1, 2)}.${pad(num7 + 1, 2)}`;
 }
 
-// DesignListView.cs BindData / Main.Part8.cs:1082 ctlDesignsList_CellClick: the six private sub-roles
-// whose designs cannot be manually retrofitted.
-export function isPrivateDesignSubRole(subRole: BuiltObjectSubRole): boolean {
-    switch (subRole) {
-        case S.SmallFreighter:
-        case S.MediumFreighter:
-        case S.LargeFreighter:
-        case S.PassengerShip:
-        case S.GasMiningShip:
-        case S.MiningShip:
-            return true;
-        default:
-            return false;
-    }
-}
-
 // DesignListView.cs BindData "Amount": Empire.BuiltObjects + PrivateBuiltObjects of this design.
 export function designAmount(design: Design, empire: Empire): number {
     let n = 0;
@@ -303,25 +289,6 @@ export function componentSummary(design: Design): { name: string; count: number 
         }
     }
     return out;
-}
-
-// Main.Part8.cs:1091 ctlDesignsList_CellClick, "Obsolete" column.
-export function toggleDesignObsolete(design: Design): void {
-    design.isObsolete = !design.isObsolete;
-}
-
-// Main.Part8.cs:1082 ctlDesignsList_CellClick, "AutoRetrofit" column.
-export function toggleDesignAutoRetrofit(design: Design, empire: Empire): boolean {
-    if (isPrivateDesignSubRole(design.subRole)) return false;
-    design.allowAutoRetrofit = !design.allowAutoRetrofit;
-    const apply = (list: BuiltObject[]): void => {
-        for (const bo of list) {
-            if (bo !== null && bo.design === design) bo.suppressAutoRetrofit = !design.allowAutoRetrofit;
-        }
-    };
-    apply(empire.builtObjects);
-    apply(empire.privateBuiltObjects);
-    return true;
 }
 
 // ---- DOM ----

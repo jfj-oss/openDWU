@@ -22,6 +22,8 @@ import type { Empire } from '../../sim/empire';
 import type { Race } from '../../sim/data/races';
 import { formatMoney } from '../hud';
 import { showToast } from '../toast';
+import { checkNodeValidForRace, queueResearchProject, dequeueResearchProject } from '../../sim/player/playerOrders';
+export { checkNodeValidForRace, queueResearchProject, dequeueResearchProject };
 
 export const RESEARCH_INDUSTRIES = [IndustryType.Weapon, IndustryType.Energy, IndustryType.HighTech] as const;
 
@@ -54,13 +56,6 @@ export function currentProjectText(rs: ResearchSystem, industry: IndustryType): 
     const node = q && q.length > 0 ? q[0] : null;
     if (node === null) return '(No project)';
     return `(${node.def.name}  ${formatPercent0(node.progress / node.cost)})`;
-}
-
-/** Port of ResearchSystem.cs:1635 CheckNodeValidForRace (allowed-races half). */
-export function checkNodeValidForRace(rs: ResearchSystem, node: TechNode, race: Race | null): boolean {
-    // TODO(port): DisallowedRaces — ResearchSystem.cs:1640 (not exposed by researchSystem.ts)
-    if (rs.allowedRacesCount(node) > 0) return race !== null && rs.allowedRacesContains(node, race);
-    return true;
 }
 
 export type ResearchNodeStatus = 'completed' | 'researching' | 'queued' | 'restricted' | 'available' | 'disabled' | 'locked';
@@ -149,37 +144,6 @@ export function researchTreeColumns(rs: ResearchSystem, industry: IndustryType, 
                 .sort((a, b) => a.def.row - b.def.row || a.def.projectId - b.def.projectId)
                 .map((node) => ({ node, status: researchNodeStatus(rs, node, race) })),
         }));
-}
-
-// Port of ResearchTree.cs:1185-1189 OnMouseClick (left click, not queued)
-export function queueResearchProject(rs: ResearchSystem, node: TechNode, race: Race | null): boolean {
-    if (node.isResearched) return false;
-    const items = rs.researchQueueFor(nodeIndustry(node));
-    if (items === null) return false;
-    if (items.includes(node)) return false;
-    if (!checkNodeValidForRace(rs, node, race) || !rs.canResearchNode(node)) return false;
-    items.push(node);
-    return true;
-}
-
-// Port of ResearchTree.cs:1209-1225 OnMouseClick (right click, queued): remove the node, then drop
-// every later entry that can no longer be researched (evaluated as it goes, as in the C#).
-export function dequeueResearchProject(rs: ResearchSystem, node: TechNode): boolean {
-    const items = rs.researchQueueFor(nodeIndustry(node));
-    if (items === null || !items.includes(node)) return false;
-    if (node.isRushing) return false; // "Cannot cancel crash programs"
-    const index1 = items.indexOf(node);
-    items.splice(index1, 1);
-    const researchNodeList = [...items];
-    if (index1 < researchNodeList.length) {
-        for (let index2 = index1; index2 < researchNodeList.length; ++index2) {
-            if (!rs.canResearchNode(researchNodeList[index2])) {
-                const i = items.indexOf(researchNodeList[index2]);
-                if (i >= 0) items.splice(i, 1);
-            }
-        }
-    }
-    return true;
 }
 
 export interface CrashOffer {

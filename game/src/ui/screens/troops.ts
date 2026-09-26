@@ -33,6 +33,8 @@ import { ShipActionType, createShipAction, type ShipAction } from '../../sim/pla
 import { executeShipAction } from '../../sim/player/executeShipAction';
 import { resolveRecruitableTroopsForColony, applyAutomationOff } from '../../sim/player/orderMenu';
 import { formatThousandsK } from './coloniesList';
+import { disbandTroops, setTroopsGarrisoned, renameTroop } from '../../sim/player/playerOrders';
+export { disbandTroops, setTroopsGarrisoned, renameTroop };
 
 /** GameText lookup with the English text as fallback (tests run without GameText loaded). */
 function T(key: string, english: string): string {
@@ -359,61 +361,6 @@ export function recruitOptions(galaxy: Galaxy, player: Empire, habitat: Habitat)
 // ---------------------------------------------------------------------------------------------------------------
 // Disband / garrison / rename (Main.Part9.cs:4070, Main.Part11.cs:3684 / 3707, Main.Part9.cs:4140)
 // ---------------------------------------------------------------------------------------------------------------
-
-/**
- * Port of Main.Part9.cs:4070 btnTroopDisband_Click after the automation prompt: removes each selected player troop
- * from its colony's Troops / TroopsToRecruit, its ship's Troops and the empire's Troops, and clears its
- * BuiltObject / Colony / AwaitingPickup / Empire. Returns the empire-list index the C# reselects (lowest selected
- * index − 1; −1 for none).
- */
-export function disbandTroops(player: Empire, selected: readonly Troop[]): number {
-    if (selected.length <= 0) return -1;
-    let num = Number.MAX_SAFE_INTEGER;
-    if (player.troops !== null) {
-        for (const t of selected) {
-            const num2 = player.troops.items.indexOf(t);
-            if (num2 < num) num = num2;
-        }
-        num--;
-    }
-    for (const troop of selected) {
-        if (troop == null || troop.empire !== player) continue;
-        const colony = troop.colony as Habitat | null;
-        if (colony !== null && colony.troops !== null && colony.troopsToRecruit !== null) {
-            if (colony.troops.contains(troop)) colony.troops.remove(troop);
-            else if (colony.troopsToRecruit.contains(troop)) colony.troopsToRecruit.remove(troop);
-        }
-        const bo = troop.builtObject as BuiltObject | null;
-        if (bo !== null && bo.troops != null && bo.troops.contains(troop)) bo.troops.remove(troop);
-        const empireTroops = (troop.empire as Empire).troops;
-        if (empireTroops.contains(troop)) empireTroops.remove(troop);
-        troop.builtObject = null;
-        troop.colony = null;
-        troop.awaitingPickup = false;
-        troop.empire = null;
-    }
-    return num;
-}
-
-/** Port of Main.Part11.cs:3707 btnTroopGarrison_Click / 3684 btnTroopUngarrison_Click: only troops at a player colony. */
-export function setTroopsGarrisoned(player: Empire, selected: readonly Troop[], garrisoned: boolean): number {
-    let changed = 0;
-    for (const troop of selected) {
-        const colony = troop?.colony as Habitat | null;
-        if (troop != null && troop.atColony && colony !== null && colony.empire === player) {
-            troop.garrisoned = garrisoned;
-            changed++;
-        }
-    }
-    return changed;
-}
-
-/** Port of Main.Part9.cs:4140 (txtTroopInfoName change): a non-blank name renames the selected troop. */
-export function renameTroop(troop: Troop | null, text: string): boolean {
-    if (troop === null || text.trim() === '') return false;
-    troop.name = text;
-    return true;
-}
 
 /** The label of a filter entry (FleetHabitatDropDown.cs:163 OnDrawItem: "(None)" for the null entry = all troops). */
 export function troopFilterLabel(f: TroopFilter): string {

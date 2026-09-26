@@ -351,6 +351,17 @@ function externalsByObject(tables: StaticTables): Map<object, ExternalRef> {
     return out;
 }
 
+/** The save format's class registry (name → prototype), for the command-log codec (player/commandCodec.ts). */
+export function saveClassPrototypes(): Readonly<Record<string, object>> {
+    return CLASSES;
+}
+
+/** The galaxy's static-data externals both ways (object → {kind, key} and `kind:key` → object), as the save uses them. */
+export function galaxyExternals(galaxy: Galaxy): { byObject: Map<object, ExternalRef>; byRef: Map<string, object> } {
+    const tables = staticTablesOfGalaxy(galaxy);
+    return { byObject: externalsByObject(tables), byRef: externalsByRef(tables) };
+}
+
 function externalsByRef(tables: StaticTables): Map<string, object> {
     const out = new Map<string, object>();
     forEachExternal(tables, (obj, ref) => {
