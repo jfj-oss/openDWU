@@ -17,6 +17,18 @@ Approach: keep src/sim a faithful port; add a mod/scenario layer like DW:U theme
   evaluation behind a flag, or an LLM persona for that empire via 18c (advisor-level decisions).
 Effort after completion: map ~1 day; rim trader (data + hooks) ~2 days; behavioural variant ~1 week (less via 18c).
 
+**19a addendum — treasure fleet + stagnation (user, 2026-09-26):** mimic Zheng He's treasure fleet. Tech: the Concord is
+created at wizard **tech level 4** (createEmpireMidGame techLevel 4.0; normal AIs start at 0.5) with the Ship Construction
+line pushed to **level 7** (research.txt: max ship size 230/300/400/500/650/800/1100/1500 for construction levels 1–8, so
+its hulls are ~3–4× a starting empire's 230–300) — strong at start and through the mid game; a scenario param
+`rimTraderResearchCap` = **5** freezes research once every category reaches level 5 (construction stays at 7): normal AIs
+reach 4–5 around years 10–15 and 7 late, so the Concord is overtaken in the late game and never gets the level 7–8
+weapons. Zero research focus after the cap (replaces the spec's "high research"); no expansion (colony cap unchanged).
+Treasure fleet: a Concord-only design template "Treasure Ship" (size 1100 freighter hull: cargo bays, fuel, shields, a few
+weapons) + escorts, sailing as ONE large state convoy on a fixed circuit of foreign space ports (Empire.1.cs 3899 convoy
+code reused; 19e-9 shows the route) that sells rare goods / buys rim goods at each stop — the visible, escortable, raidable
+face of the trade; losing it hurts standing. Params: convoy size, circuit interval, treasure ship size.
+
 ## 19b — "Dark Farms" end-game storyline (user idea, 2026-09-26)
 An overdeveloped colony gets a small yearly chance to spawn a hidden self-replicating factory; it produces
 private-sector ships that are secretly armed (sleeper flag, freighter template with hidden weapons); after a delay
