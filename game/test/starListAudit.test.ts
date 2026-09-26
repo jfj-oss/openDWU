@@ -107,3 +107,21 @@ describe('AI asset / target readers (Empire.9.cs 312, 4528; Empire.2.cs 4186 …
         expect(mission.targetHabitat).toBe(star);
     });
 });
+
+describe('planetsOf (Galaxy.6.cs 4611 DetermineHabitatsInSystem)', () => {
+    it('is the habitats after the star in Galaxy.Habitats whose Parent != null, star excluded', () => {
+        const g = createTickGame(gameData).galaxy;
+        let checked = 0;
+        for (const s of g.systems) {
+            const planets = planetsOf(s);
+            expect(planets.includes(s.systemStar)).toBe(false);
+            expect(planets.length).toBe(s.habitats.length - 1);
+            const k = g.habitats.indexOf(s.systemStar);
+            const determined: Habitat[] = [];
+            for (let i = k + 1; i < g.habitats.length && g.habitats[i].parent !== null; i++) determined.push(g.habitats[i]);
+            expect(planets.length === determined.length && planets.every((p, i) => p === determined[i])).toBe(true); // same objects, same order
+            checked++;
+        }
+        expect(checked).toBe(g.systems.length);
+    });
+});
