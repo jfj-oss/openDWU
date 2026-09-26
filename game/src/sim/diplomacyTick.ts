@@ -95,7 +95,7 @@ import { PirateExpenseType, PirateIncomeType } from './pirates/pirateEconomy';
 import { acceptPirateProtection, calculatePirateProtectionPricePerMonth } from './pirates/pirateRelationsAI';
 import { baconSettings } from './data/baconSettings';
 import { formatNet, tryGetText } from './textResolver';
-import { scenarioEmit } from './scenario/hooks';
+import { scenarioEmit, scenarioQuery } from './scenario/hooks';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants (Galaxy.3.cs 4990-5140 InitializeStatics; BaconEmpire.cs statics with their default settings).
@@ -2718,6 +2718,7 @@ export function changeDiplomaticRelation(
 /** Empire.7.cs 4868-4883 DeclareWar(target[, persuader[, lockedWar[, blockFlowonEffects]]]). */
 export function declareWar(galaxy: Galaxy, self: Empire, target: Empire | null, persuader: Empire | null = null, lockedWar = false, blockFlowonEffects = false): void {
     if (target === null) return;
+    if (galaxy.scenario !== null && scenarioQuery(galaxy, 'declareWarBlocked', false, { empire: self, target })) return; // Mod layer 19c: charter war rules (tasks/19c-chartered-companies.md §4.8)
     const diplomaticRelation = obtainDiplomaticRelation(self, target);
     if (diplomaticRelation.type !== DiplomaticRelationType.War) {
         const flag = checkAtWarExcluding(target, null);

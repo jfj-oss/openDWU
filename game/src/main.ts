@@ -24,6 +24,7 @@ import { Habitat, HabitatCategoryType } from './sim/types';
 import { createMapOverlayState, type MapOverlayState, type OverlayKey } from './ui/mapOverlays';
 import { buildDefaultHandlers, createShortcutsOverlay, dispatchKey, setCycleHandler, setGameMenuHandler } from './ui/keyboard';
 import { closeEmpiresList } from './ui/screens/empiresList';
+import { closeCharterPanels } from './ui/screens/charters'; // [charters]
 import { closeDiplomacyScreen } from './ui/screens/diplomacyScreen'; // [15a]
 import { closeExpansionPlanner } from './ui/screens/expansionPlanner'; // [16a]
 import { closeColoniesList } from './ui/screens/coloniesList';
@@ -70,7 +71,7 @@ import { getMessageOptions } from './ui/messageRouting';
 // [audio] end
 import { createNewGameWizard } from './ui/screens/newGameWizard';
 import { openGalactopedia } from './ui/screens/galactopedia';
-import { defaultStartGameOptions, piratesFor, STARTING_TECH_LEVEL, toCreateGameOptions, type StartGameOptions, maximumEmpireAmountFor, starCountFor } from './sim/startGameOptions';
+import { defaultScenarioChoice, defaultStartGameOptions, piratesFor, STARTING_TECH_LEVEL, toCreateGameOptions, type StartGameOptions, maximumEmpireAmountFor, starCountFor } from './sim/startGameOptions';
 import { serializeGame, deserializeGame, savedScenarioId } from './sim/save/gameSave';
 import { loadScenarioIndex, loadScenarioOverlay } from './sim/scenario/fetchScenario';
 import { applyScenarioOverlay, resolveScenarioIncludes, type ScenarioOverlay } from './sim/scenario/overlay';
@@ -734,6 +735,7 @@ export async function startGameView(
         // Module-level panels hold the old game's Empire/camera and a
         // document keydown listener: close them and drop their source.
         closeEmpiresList();
+        closeCharterPanels(); // [charters]
         closeDiplomacyScreen(); // [15a]
         closeExpansionPlanner(); // [16a]
         closeColoniesList();
@@ -1178,11 +1180,26 @@ async function buildAutostartGame(
         console.warn('?autostart=1 needs DW:U game data (races/governments); falling back to generateGalaxy');
         return null;
     }
-    const opts = defaultDevGameOptions(seed, shape, starCount, sectorWidth, sectorHeight, systemNames, gameData);
+    // [modlayer-autostart] begin
+    // Dev: `?autostart=1&scenario=<id>` starts the autostart game with a scenario at its manifest defaults.
+    const scenarioId = new URLSearchParams(window.location.search).get('scenario');
+    let playData = gameData;
+    if (scenarioId !== null && scenarioId !== '') {
+        await preloadScenarioOverlays();
+        try {
+            playData = gameDataWithScenario(gameData, scenarioId);
+        } catch (err) {
+            console.warn('?scenario= could not be applied; starting without it', err);
+        }
+    }
+    const scenarioChoice = playData.scenario !== undefined ? defaultScenarioChoice(playData.scenario.manifest) : null;
+    // [modlayer-autostart] end
+    const opts = { ...defaultDevGameOptions(seed, shape, starCount, sectorWidth, sectorHeight, systemNames, playData), ...(scenarioChoice !== null ? { scenarioFlags: scenarioChoice.flags, scenarioParams: scenarioChoice.params } : {}) };
     try {
         const game = createGame(opts);
+        lastPlayedGameData = playData;
         // Saves need start options (metadata only; the galaxy itself is saved).
-        lastStartOptions = { ...defaultStartGameOptions(), seed };
+        lastStartOptions = { ...defaultStartGameOptions(), seed, scenario: scenarioChoice };
         return game;
     } catch (err) {
         console.warn('?autostart=1 createGame failed; falling back to generateGalaxy', err);

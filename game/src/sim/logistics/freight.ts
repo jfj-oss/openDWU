@@ -25,6 +25,7 @@ import { resolvePirateMissionsByType, type EmpireActivityRef } from '../pirates/
 import { PirateRelationType } from '../pirateRelations';
 import { fastFindNearestSpacePort } from '../stationPlacement';
 import { galaxyStarDate } from '../tick/simTime';
+import { scenarioQuery } from '../scenario/hooks';
 import { getNearestBuiltObjectWithinRange, withinFuelRangeWithFactor as withinFuelRange } from '../movement';
 import {
     calculateMinimumLuxuryResourceLevel,
@@ -213,6 +214,14 @@ function generateValidTradingPosts(galaxy: Galaxy, self: Empire, empire: Empire)
 
 /** Empire.4.cs 540-576 / 590-625: another empire's explored, unblockaded space ports and mining-station ports. */
 function addForeignTradingPosts(empire: Empire, other: Empire, list: SortableStellarObjectList, queueOk: (bo: BuiltObject) => boolean): void {
+    // Mod layer 19c: a company's single export point (tasks/19c-chartered-companies.md §4.7).
+    if (other.galaxy.scenario !== null) {
+        const single = scenarioQuery(other.galaxy, 'foreignTradingPosts', undefined, { empire, other });
+        if (single !== undefined) {
+            if (single !== null && single.isSpacePort && single.nearestSystemStar !== null && empire.visibility.checkSystemExplored(single.nearestSystemStar.systemIndex) && !single.isBlockaded && queueOk(single) && !list.contains(single)) list.add(single);
+            return;
+        }
+    }
     for (let n = 0; n < other.spacePorts.length; n++) {
         const builtObject3 = other.spacePorts[n];
         if (builtObject3 != null && builtObject3.isSpacePort) {

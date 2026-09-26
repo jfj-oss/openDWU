@@ -10,6 +10,10 @@ import type { Empire } from '../../sim/empire';
 import type { Habitat } from '../../sim/types';
 import { DiplomaticRelationType } from '../../sim/diplomacy';
 import { PirateRelationType } from '../../sim/pirateRelations';
+// [charters] begin
+import { companyTag, toggleChartersScreen } from './charters';
+import { scenarioFlag } from '../../sim/scenario/state';
+// [charters] end
 
 export interface EmpiresListOptions {
     /** galaxy.empires — every empire in the galaxy. */
@@ -102,6 +106,18 @@ function createEmpiresList(opts: EmpiresListOptions): OpenState {
     heading.className = 'empires-list-heading';
     heading.textContent = 'Empires';
     titlebar.appendChild(heading);
+    // [charters] begin
+    // Scenario 19c: the Charters screen button (tasks/19c-chartered-companies.md §8.3).
+    const charterGalaxy = opts.playerEmpire.galaxy ?? null;
+    if (charterGalaxy !== null && scenarioFlag(charterGalaxy, 'charteredCompanies')) {
+        const chartersBtn = document.createElement('button');
+        chartersBtn.type = 'button';
+        chartersBtn.className = 'charters-btn charters-header-btn';
+        chartersBtn.textContent = 'Charters';
+        chartersBtn.addEventListener('click', () => toggleChartersScreen(charterGalaxy, opts.playerEmpire));
+        titlebar.appendChild(chartersBtn);
+    }
+    // [charters] end
 
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
@@ -145,6 +161,10 @@ function createEmpiresList(opts: EmpiresListOptions): OpenState {
         const name = document.createElement('span');
         name.className = 'empires-list-name';
         name.textContent = row.label;
+        // [charters] begin
+        const tag = charterGalaxy !== null ? companyTag(charterGalaxy, row.empire) : '';
+        if (tag !== '') name.textContent = `${row.label} — ${tag}`;
+        // [charters] end
 
         const count = document.createElement('span');
         count.className = 'empires-list-colonies';

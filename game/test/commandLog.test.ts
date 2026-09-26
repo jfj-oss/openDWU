@@ -21,6 +21,8 @@ import { ShipAction, ShipActionType, createMissionShipActionAt, createShipAction
 import { BuiltObjectMissionType } from '../src/sim/missions/mission';
 import { empireShipGroups } from '../src/sim/fleets/shipGroup';
 import type { StartGameOptions } from '../src/sim/startGameOptions';
+import { createScenarioGame } from './helpers/scenarioGame';
+import { pendingScenarioDecisions, raiseScenarioDecision, registerScenarioDecision } from '../src/sim/scenario/decisions';
 
 let gameData: GameData;
 beforeAll(async () => {
@@ -209,5 +211,32 @@ describe('seed + command log → the same game (60 s script)', () => {
         runGameSeconds(b.galaxy, 3);
         expect(a.galaxy.nowMs).toBe(b.galaxy.nowMs);
         expect(stateDigest(a.galaxy)).not.toBe(stateDigest(b.galaxy));
+    }, 300000);
+});
+
+describe('scenario decisions are player commands (mod layer)', () => {
+    it('answering a decision from its popup is queued, applied at the next boundary and journaled', () => {
+        const { game } = createScenarioGame(gameData, { scenario: 'example', flags: { exampleFlag: true } });
+        const g = game.galaxy;
+        const p = game.playerEmpire;
+        const resolved: string[] = [];
+        const off = registerScenarioDecision({ id: 'test.cmd', flag: 'exampleFlag', kind: 'test.cmd', resolve: (_g, d, o) => resolved.push(`${d.id}:${o}`) });
+        try {
+            const d = raiseScenarioDecision(g, p, { kind: 'test.cmd', title: 'Q', text: 'Yes?', options: [{ id: 'yes', label: 'Yes' }, { id: 'no', label: 'No' }] });
+            issuePlayerCommand(g, p, 'answerScenarioDecision', [d.id, 'yes']);
+            expect(resolved).toEqual([]);
+            expect(pendingPlayerCommands(g)).toBe(1);
+            runSimFrame(g, 17);
+            expect(resolved).toEqual([`${d.id}:yes`]);
+            expect(pendingScenarioDecisions(g, p)).toHaveLength(0);
+            const e = commandLog(g).at(-1) as PlayerLogEntry;
+            expect(e).toMatchObject({ source: 'player', op: 'answerScenarioDecision', args: [d.id, 'yes'] });
+            expect(e.error).toBeUndefined();
+            // A stale / foreign answer is a journaled no-op.
+            expect(runPlayerCommand(g, p, 'answerScenarioDecision', [d.id, 'no'])).toBe(false);
+            expect(resolved).toHaveLength(1);
+        } finally {
+            off();
+        }
     }, 300000);
 });

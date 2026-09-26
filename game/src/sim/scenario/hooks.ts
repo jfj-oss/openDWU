@@ -238,6 +238,13 @@ export function scenarioEmit<E extends ScenarioEventName>(galaxy: Galaxy, event:
 export interface ScenarioQueries {
     /** taxes.ts empireApprovalRating(h) (Habitat.cs approval of its empire): the rating; an additive term goes here. */
     empireApprovalRating: { value: number; args: { habitat: Habitat; empire: Empire | null } };
+    /** diplomacyTick.ts declareWar (Empire.7.cs 4883), first line: true blocks the declaration (19c charter war rules). */
+    declareWarBlocked: { value: boolean; args: { empire: Empire; target: Empire } };
+    /**
+     * logistics/freight.ts addForeignTradingPosts (Empire.4.cs 540-576): `undefined` = stock posts; otherwise the only
+     * trading post `empire` may use at `other` (null: none) — 19c companyHqExportOnly.
+     */
+    foreignTradingPosts: { value: BuiltObject | null | undefined; args: { empire: Empire; other: Empire } };
 }
 export type ScenarioQueryName = keyof ScenarioQueries;
 

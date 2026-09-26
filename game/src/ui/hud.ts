@@ -50,6 +50,7 @@ import { toggleEmpirePolicy } from './screens/empirePolicy';
 import { toggleIntelligenceScreen } from './screens/intelligence';
 // [intel] end
 import { createSelectionActionBar, refreshSelectionActionBar } from './orderMenu'; // [ordermenu]
+import { createCharterButton } from './screens/charters'; // [charters]
 import { setTextIfChanged } from '../render/drawCache';
 
 // Port of Main.Part12.cs LoadUiChromeButtons (381–520): the control → chrome
@@ -935,6 +936,19 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
     panel.appendChild(createSelectionActionBar());
     // [ordermenu] end
 
+    // [charters] begin
+    // Scenario 19c: "Charter a company…" for a selected unowned planet (tasks/19c-chartered-companies.md §8.1).
+    const charterButton = createCharterButton(
+        () => ({
+            galaxy: wiring.galaxy ?? null,
+            player: wiring.galaxy?.playerEmpire ?? null,
+            habitat: currentSelection !== null && currentSelection.builtObject === undefined && currentSelection.shipGroup === undefined ? currentSelection.habitat : null,
+        }),
+        (id) => wiring.gameData?.resources.find((d) => d.resourceId === id)?.name ?? `#${id}`,
+    );
+    panel.appendChild(charterButton.element);
+    // [charters] end
+
     // Footer: ‹ › cycler pair + seven cycle chips.
     const footer = document.createElement('div');
     footer.className = 'hud-selection-footer';
@@ -1154,6 +1168,7 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         currentSelection = sel;
         refresh();
         refreshSelectionActionBar(); // [ordermenu]
+        charterButton.update(); // [charters]
         wiring.afterSelectionChange?.(sel);
     };
     // Task 14b: ship/base status (speed, fuel, mission) changes every tick — re-render

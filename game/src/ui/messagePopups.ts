@@ -32,7 +32,7 @@ import { empireMessageHistory } from '../sim/messages';
 import { isConversationExpired } from './messageStubs';
 import { pushMessageStub, markMessageStubRead } from './messageStubList';
 import { getSettings } from './settings';
-import { answerScenarioDecision, isScenarioDecision } from '../sim/scenario/decisions';
+import { isScenarioDecision } from '../sim/scenario/decisions';
 // [popupstubs] end
 
 export interface ConversationEntry {
@@ -239,7 +239,8 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
                 const b = el('button', 'message-conversation-button', o.label) as HTMLButtonElement;
                 b.type = 'button';
                 b.addEventListener('click', () => {
-                    answerScenarioDecision(galaxy, decision.id, o.id, 'player');
+                    // A player command (journaled, applied at the next frame boundary) so seed + command log replays it.
+                    issuePlayerCommand(galaxy, decision.empire, 'answerScenarioDecision', [decision.id, o.id]);
                     closePopup();
                 });
                 row.appendChild(b);

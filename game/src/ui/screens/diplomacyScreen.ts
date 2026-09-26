@@ -43,6 +43,8 @@ import { showToast } from '../toast';
 // [proposals] begin
 import { listProposals, type ProposalOption, type ProposalResult } from '../../sim/player/diplomacyProposals';
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
+import { companyHeaderLine, toggleChartersScreen } from './charters'; // [charters]
+import { charterOfCompany } from '../../sim/scenario/charteredCompanies/charters'; // [charters]
 import { DialogSet, raceDialogFileName } from '../../sim/data/dialogSet';
 import { fetchText } from '../../sim/data/fetchData';
 import { resolveDataUrl } from '../../sim/data/paths';
@@ -432,6 +434,20 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
         const relText = el('div', 'diplomacy-line', row.relationText);
         relText.style.color = rgb(row.relationColor);
         detail.appendChild(relText);
+        // [charters] begin
+        // Scenario 19c: a company's charter line; its founder gets a "Manage charter" link (§8.4).
+        const charterLine = companyHeaderLine(player.galaxy, row.empire);
+        if (charterLine !== '') {
+            detail.appendChild(el('div', 'diplomacy-line', charterLine));
+            const charter = charterOfCompany(player.galaxy, row.empire);
+            if (charter !== null && charter.founderId === player.empireId) {
+                const manage = el('button', 'diplomacy-button', 'Manage charter') as HTMLButtonElement;
+                manage.type = 'button';
+                manage.addEventListener('click', () => toggleChartersScreen(player.galaxy, player));
+                detail.appendChild(manage);
+            }
+        }
+        // [charters] end
 
         detail.appendChild(el('div', 'diplomacy-section-heading', 'Treaty on Offer'));
         if (row.incoming) {

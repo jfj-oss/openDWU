@@ -1,0 +1,10 @@
+'Scenario 19c chartered companies: GameText lines added to the base GameText.txt.
+Scenario Charter Company Name;{0} Company
+Scenario Charter News;The {0} has been chartered by the {1} to settle {2}.
+Scenario Charter Granted;Our charter for the {0} is granted. Its expedition sets out for {1}.
+Scenario Charter Autonomy;The {0} has thrown off its charter and declared autonomy from the {1}.
+Scenario Charter Expiring;The charter of the {0} expires this year. Renew, release or nationalise it.
+Scenario Charter Renewed;The charter of the {0} has been renewed for {1} years.
+Scenario Charter Released;The {0} has been released from its charter by the {1}.
+Scenario Charter Nationalised;The {1} has nationalised the {0}; its colonies and ships are now state property.
+Scenario Charter Tariff;Tariffs from the {0} this year: {1} credits.
