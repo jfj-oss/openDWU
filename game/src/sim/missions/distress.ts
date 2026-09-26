@@ -13,7 +13,10 @@ import { galaxyStarDate } from '../tick/simTime';
 import { type ShipGroup, empireShipGroups, shipGroupAssignMission, shipGroupTotalOverallStrengthFactor } from '../fleets/shipGroup';
 import { identifyNearestResponseFleet } from '../fleets/militaryAI';
 import { determineDefendingStrength } from '../combat/threats';
-import { BuiltObjectMissionPriority, BuiltObjectMissionType, isBuiltObject, isCreature, isHabitat, type StellarObject } from './mission';
+import { BuiltObjectMissionPriority, BuiltObjectMissionType, isBuiltObject, isCreature, isHabitat, isShipGroup, type StellarObject } from './mission';
+import { Empire as EmpireClass } from '../empire';
+import { IntelligenceMission } from '../characters';
+import { intelligenceMissionTarget } from '../espionage';
 
 // DistressSignalType.cs (declaration order = values).
 export enum DistressSignalType {
@@ -138,6 +141,103 @@ export function clearExpiredDeclinedTasks(galaxy: Galaxy, empire: Empire): void 
     for (const item of declinedTaskList) {
         const index = declinedTasks.indexOf(item);
         if (index >= 0) declinedTasks.splice(index, 1);
+    }
+}
+
+// DeclinedTaskList.cs (SyncList<DeclinedTask>; Empire.DeclinedTasks is a plain DeclinedTask[] here).
+
+/** DeclinedTaskList.cs IndexOf(object taskTarget): the first entry whose TaskTarget is the same BuiltObject / ShipGroup /
+ *  Habitat / Empire, or — for an IntelligenceMission — an entry with the same TargetEmpire and Type whose Target is the
+ *  same object or null. No Rnd. */
+export function declinedTaskIndexOf(list: readonly DeclinedTask[], taskTarget: unknown): number {
+    if (isBuiltObject(taskTarget)) {
+        for (let index = 0; index < list.length; ++index) {
+            if (isBuiltObject(list[index].taskTarget) && list[index].taskTarget === taskTarget) return index;
+        }
+    }
+    if (isShipGroup(taskTarget)) {
+        for (let index = 0; index < list.length; ++index) {
+            if (isShipGroup(list[index].taskTarget) && list[index].taskTarget === taskTarget) return index;
+        }
+    }
+    if (isHabitat(taskTarget)) {
+        for (let index = 0; index < list.length; ++index) {
+            if (isHabitat(list[index].taskTarget) && list[index].taskTarget === taskTarget) return index;
+        }
+    }
+    if (taskTarget instanceof IntelligenceMission) {
+        const intelligenceMission = taskTarget;
+        for (let index = 0; index < list.length; ++index) {
+            const t = list[index].taskTarget;
+            if (t instanceof IntelligenceMission) {
+                const taskTarget1 = t;
+                const target1 = intelligenceMissionTarget(taskTarget1);
+                if (
+                    taskTarget1.targetEmpire === intelligenceMission.targetEmpire &&
+                    taskTarget1.type === intelligenceMission.type &&
+                    ((target1 !== null && target1 === intelligenceMissionTarget(intelligenceMission)) || target1 === null)
+                ) {
+                    return index;
+                }
+            }
+        }
+    }
+    if (taskTarget instanceof EmpireClass) {
+        for (let index = 0; index < list.length; ++index) {
+            if (list[index].taskTarget instanceof EmpireClass && list[index].taskTarget === taskTarget) return index;
+        }
+    }
+    return -1;
+}
+
+/** DeclinedTaskList.cs FindIndexForAttackEmpireTarget(attackEmpireTarget). No Rnd. */
+export function declinedTaskFindIndexForAttackEmpireTarget(list: readonly DeclinedTask[], attackEmpireTarget: Empire): number {
+    for (let index = 0; index < list.length; ++index) {
+        if (list[index].attackEmpireTarget === attackEmpireTarget) return index;
+    }
+    return -1;
+}
+
+/** DeclinedTaskList.cs CheckTaskTargetValid(taskTarget, starDate): false while a matching entry has not expired. */
+export function declinedTasksCheckTaskTargetValid(list: readonly DeclinedTask[], taskTarget: unknown, starDate: number): boolean {
+    let flag = true;
+    if (taskTarget != null) {
+        const index = declinedTaskIndexOf(list, taskTarget);
+        if (index >= 0 && list[index].expiryDate >= starDate) flag = false;
+    }
+    return flag;
+}
+
+/** DeclinedTaskList.cs CheckAttackEmpireTargetValid(attackEmpireTarget, starDate). */
+export function declinedTasksCheckAttackEmpireTargetValid(list: readonly DeclinedTask[], attackEmpireTarget: Empire | null, starDate: number): boolean {
+    let flag = true;
+    if (attackEmpireTarget != null) {
+        const index = declinedTaskFindIndexForAttackEmpireTarget(list, attackEmpireTarget);
+        if (index >= 0 && list[index].expiryDate >= starDate) flag = false;
+    }
+    return flag;
+}
+
+/** Galaxy-level constants of the declined-task windows (Empire.8.cs 4428 / 4433, Main.Part2.cs 2744 / 2751). */
+export const DECLINED_ATTACK_EMPIRE_WINDOW = 240000;
+export const DECLINED_TASK_TARGET_WINDOW = 600000;
+
+/**
+ * The `_DeclinedTasks.Add(...)` block shared by Empire.8.cs 4425-4449 (CheckTaskAuthorized) and Main.Part2.cs 2742-2767
+ * (btnAdvisorSuggestionDecline_Click): an attack-empire entry for 240 000, and a task-target entry for 600 000 when the
+ * target is a BuiltObject / Habitat / IntelligenceMission / Empire (other targets — ShipGroup, BuiltObjectList — record
+ * nothing).
+ */
+export function addDeclinedTasks(declinedTasks: DeclinedTask[], currentStarDate: number, taskTarget: unknown, attackEmpireTarget: Empire | null): void {
+    if (attackEmpireTarget != null) {
+        const expiryDate = currentStarDate + DECLINED_ATTACK_EMPIRE_WINDOW;
+        declinedTasks.push(new DeclinedTask(expiryDate, null, attackEmpireTarget));
+    }
+    if (taskTarget != null) {
+        const expiryDate2 = currentStarDate + DECLINED_TASK_TARGET_WINDOW;
+        if (isBuiltObject(taskTarget) || isHabitat(taskTarget) || taskTarget instanceof IntelligenceMission || taskTarget instanceof EmpireClass) {
+            declinedTasks.push(new DeclinedTask(expiryDate2, taskTarget));
+        }
     }
 }
 

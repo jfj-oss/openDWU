@@ -49,6 +49,8 @@ import {
     processRelationChange,
     resolveEmpiresToDefendAgainst,
 } from './diplomacy';
+import { addAdvisorSuggestion, AdvisorMessageType } from './advisorQueue';
+import { addDeclinedTasks, declinedTasksCheckAttackEmpireTargetValid, declinedTasksCheckTaskTargetValid } from './missions/distress';
 import { EmpireMessage, EmpireMessageType, resolveDescription, sendEmpireMessage, sendMessageToEmpire, sendMessageToEmpireWithTitle } from './messages';
 import { empireWarWeariness } from './taxes';
 import { checkEmpireHasHyperDriveTech, determineEmpireSystems, identifyEmpireCapitals, totalColonyStrategicValue, totalMobileMilitaryFirepower } from './forceStructure';
@@ -131,16 +133,8 @@ export enum BuiltObjectMissionPriority {
     Unavailable,
 }
 
-// AdvisorMessageType.cs (byte enum; member order exact).
-export enum AdvisorMessageType {
-    Undefined, BuildOrder, BuildOneOff, Colonization, IntelligenceMission, EnemyAttack, EnemyBombard, EnemyBlockade,
-    EnemyAttackPlanetDestroyer, InvadeIndependent, PrepareRaid, DiplomaticGift, TreatyOffer, WarTradeSanctions,
-    ColonyFacility, OfferMilitaryRefueling, CancelMilitaryRefueling, OfferMiningRights, CancelMiningRights,
-    AllowTradeRestrictedResources, DisallowTradeRestrictedResources, ComplyTradeSanctionsOther, ComplyWarOther,
-    DefendTerritory, Retrofit, RequestLiftTradeSanctionsOther, RequestEndWarOther, OfferPirateAttackMission,
-    OfferPirateDefendMission, OfferPirateSmuggleMission, PirateRaid, PirateFacilityEradicate, AcceptPirateSmugglingMission,
-    DefendTarget,
-}
+// AdvisorMessageType.cs: advisorQueue.ts (the suggestion queue owns it; re-exported for the task call sites).
+export { AdvisorMessageType } from './advisorQueue';
 
 /** AutomationLevel.cs is {Manual, SemiAutomated, FullyAutomated}; empire.ts names 0/1 Undefined/PartiallyAutomated. */
 export const MANUAL = AutomationLevel.Undefined;
@@ -365,12 +359,18 @@ export interface RefCount {
     value: number;
 }
 
-const T_declinedTasks = registerTodo('M4r', 'checkTaskAuthorized SemiAutomated declined tasks (M4b DeclinedTaskList)');
-
 /**
  * Empire.8.cs 4395 CheckTaskAuthorized(automationLevel, ref refusalCount, taskDescription, taskTarget, advisorMessageType,
  * attackEmpireTarget, advisorMessageData, advisorMessageData2) — and the shorter overloads (4374-4390), which pass a
  * fresh refusal counter / nulls.
+ *
+ * FullyAutomated (and any other level): true, nothing recorded. Manual: false. SemiAutomated: false; for the player
+ * empire — unless the refusal cap is reached or the target (or the attack-empire target) was declined within its window —
+ * one advisor suggestion (EmpireMessage AdvisorSuggestion) joins the player's queue (PromptPlayerForAuthorization →
+ * advisorQueue.ts) and the target is recorded on DeclinedTasks at once (240 000 for the attack empire, 600 000 for the
+ * task target), so the AI does not re-suggest it while the player decides. The player's Approve / Decline are
+ * player/advisorSuggestions.ts. A non-player empire at SemiAutomated gets _AutomationResponse = Yes (4455 / 4460):
+ * true. No Rnd.
  */
 export function checkTaskAuthorized(
     galaxy: Galaxy,
@@ -389,14 +389,17 @@ export function checkTaskAuthorized(
         case SEMI_AUTOMATED: {
             result = false;
             const currentStarDate = galaxyStarDate(galaxy);
-            // TODO(port) M4b: _DeclinedTasks.CheckTaskTargetValid(taskTarget, date) / CheckAttackEmpireTargetValid(attackEmpireTarget)
-            // and the _DeclinedTasks.Add(new DeclinedTask(...)) records (Empire.8.cs 4403, 4425-4447, 4460-4480) — the
-            // DeclinedTaskList is not ported; every target reads as valid and declines are not recorded. Only the player can be
-            // semi-automated (AI empires are always fully automated).
-            todo(T_declinedTasks);
-            void attackEmpireTarget;
-            if (refusalCount.value >= MAXIMUM_MISSION_REFUSALS) break;
+            // 4404
+            if (
+                refusalCount.value >= MAXIMUM_MISSION_REFUSALS ||
+                !declinedTasksCheckTaskTargetValid(self.declinedTasks, taskTarget, currentStarDate) ||
+                (attackEmpireTarget != null && !declinedTasksCheckAttackEmpireTargetValid(self.declinedTasks, attackEmpireTarget, currentStarDate))
+            ) {
+                break;
+            }
+            // 4408: _AutomationResponse = Undefined (UI handshake field; not modelled).
             if (self === galaxy.playerEmpire) {
+                // 4411-4450
                 refusalCount.value++;
                 const empireMessage = new EmpireMessage(self, EmpireMessageType.AdvisorSuggestion, taskTarget);
                 empireMessage.starDate = currentStarDate;
@@ -405,10 +408,14 @@ export function checkTaskAuthorized(
                 if (advisorMessageType === AdvisorMessageType.DiplomaticGift) empireMessage.money = Math.trunc(advisorMessageData as number);
                 else empireMessage.advisorMessageData = advisorMessageData;
                 empireMessage.advisorMessageData2 = advisorMessageData2;
-                // Empire.7.cs 3836 PromptPlayerForAuthorization → _AutomationAuthorizer (UI) — no sim effect.
+                // Empire.7.cs 3836 PromptPlayerForAuthorization → Main.Part9.cs 1053 PromptForAuthorizationInternal.
+                addAdvisorSuggestion(self, empireMessage);
+                // 4425-4449
+                addDeclinedTasks(self.declinedTasks, currentStarDate, taskTarget, attackEmpireTarget);
                 return false;
             }
-            // Non-player: _AutomationResponse = Yes; the wait loop is skipped.
+            // 4453-4461: a non-player empire's response is Yes (the wait loop sets it); the No branch (4466-4490) is
+            // unreachable without the player.
             result = true;
             break;
         }
