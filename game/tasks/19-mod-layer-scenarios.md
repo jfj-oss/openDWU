@@ -48,3 +48,21 @@ panel); rival AI-chartered companies competing for the rim trade; a company HQ p
 point; requisition of the company fleet in war for a fee (loyalty cost); company shipyard so the fleet grows with
 profits; corruption/scandal story events (embezzlement, bought governor, pirate smuggling).
 Effort: ~1 week on top of 19a (charter action, tariff rule, company AI persona).
+
+## 19d — Emergent-gameplay additions (ACCEPTED by the user 2026-09-26 — "i love these ideas and i want them added"; ranked by emergence per effort)
+1. Internal politics: ambitious characters (traits/loyalty/events exist; empire split ported) → defections, secessions, coups when approval low.
+2. Resource crises: scarcity shocks propagate through the private economy (luxury loss → unrest, fuel-out → grounded fleets, price spikes → smuggling).
+3. Espionage consequences: exposed agents → diplomatic crises; stolen tech proliferates; false-flag missions start wars between rivals.
+4. Refugees & demographics: refugee fleets (events) settle and shift colony race mix (multi-race populations + race attitudes exist).
+5. Pirate evolution: rich factions go legitimate, ally, or serve as deniable proxies for empires.
+6. Independents as actors: leagues, hired pirate protection, protectorate petitions.
+7. Plague & ecology: disease along freighter routes (quarantine decisions), overdevelopment degrading planets (links to 19b).
+8. Galactic institutions: a council voting sanctions/embargoes → blocs.
+9. Finance: loans (on the port list), bonds, default, creditors seizing assets (links to 19c).
+10. Persona layer (18c) as the multiplier that makes empires weigh all of the above by their traits.
+Effort: 1–4 days each after the mod layer; 5–9 one to two weeks each.
+
+## Order of work (decided 2026-09-26)
+1. **modlayer** foundation (starts now): scenario/data overlay folder loaded over /assets/dwu (races, resources, policies, templates, GameText additions), wizard "Scenario" toggles, feature flags read by the sim (off = byte-identical faithful game, pins unchanged), story-event hook points and a scenario test harness.
+2. Then in parallel: 19a rim trader, 19b Dark Farms + robot army, 19c chartered companies, 19d items 1–4 (internal politics, resource crises, espionage consequences, refugees/demographics).
+3. Then 19d items 5–10.
