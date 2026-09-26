@@ -3,6 +3,7 @@
 
 import type { Empire } from '../empire';
 import { empireEvaluationByEmpire, empireEvaluationsOf } from '../diplomacy';
+import { civilityDescription } from '../empireRelationshipFactors';
 
 /** Empire.4.cs:55 ResolveFeelingDescription (sequential ifs; later ones overwrite). */
 export function feelingDescription(overallAttitude: number): string {
@@ -17,20 +18,8 @@ export function feelingDescription(overallAttitude: number): string {
     return result;
 }
 
-/** Empire.10.cs:681 CivilityDescription (if / else if chain verbatim). */
-export function civilityDescription(rating: number): string {
-    if (rating < -50.0) return 'Diabolical';
-    else if (rating >= -50.0 && rating <= -30.0) return 'Evil';
-    else if (rating >= -30.0 && rating <= -20.0) return 'Notorious';
-    else if (rating >= -20.0 && rating <= -10.0) return 'Nasty';
-    else if (rating >= -10.0 && rating <= -1.0) return 'Dubious';
-    else if (rating >= -1.0 && rating <= 4.0) return 'Satisfactory';
-    else if (rating >= 4.0 && rating <= 10.0) return 'Respectable';
-    else if (rating >= 10.0 && rating <= 16.0) return 'Admired';
-    else if (rating >= 16.0 && rating <= 22.0) return 'Noble';
-    else if (rating > 22.0) return 'Heroic';
-    return '';
-}
+/** Empire.10.cs:681 CivilityDescription (one port, sim/empireRelationshipFactors.ts). */
+export { civilityDescription };
 
 export interface RelationshipFactor {
     value: number;

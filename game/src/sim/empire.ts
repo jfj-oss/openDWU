@@ -2034,6 +2034,12 @@ export class Empire {
     haveDefeatedShakturi = false;
     /** Empire.cs 341 VictoryBonus (float; Galaxy.9.cs 2623 event action adds Value / 100f). */
     victoryBonus = 0;
+    // ---- fix5 fields (player layer) ----
+    /**
+     * Empire.cs 881 LastXaraktorVirusDeploy = DateTime.MinValue (game ms; MIN_TIME stands in for MinValue). Written by the
+     * player's DeployVirus (Main.Part7.cs 1042), read by CanDeployXaraktorVirus (Empire.10.cs 4532, 150 s cooldown).
+     */
+    lastXaraktorVirusDeploy = MIN_TIME;
 }
 
 // Task M3b: Empire.GovernmentAttributes (Empire.cs 2805: _Galaxy.Governments[_GovernmentId],

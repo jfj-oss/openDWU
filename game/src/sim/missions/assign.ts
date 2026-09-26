@@ -160,8 +160,8 @@ export function assignMission(galaxy: Galaxy, bo: BuiltObject, missionType: Buil
         }
     }
     // 7690-7693
-    if (missionType === BuiltObjectMissionType.Refuel && target !== null && (isBuiltObject(target) || isHabitat(target) || isCreature(target))) {
-        // `target is StellarObject` (BuiltObject | Habitat | Creature).
+    if (missionType === BuiltObjectMissionType.Refuel && target !== null && (isBuiltObject(target) || isHabitat(target) || isCreature(target) || isFighter(target))) {
+        // `target is StellarObject` (BuiltObject | Habitat | Creature | Fighter).
         initiateRefuelData(galaxy, bo, target);
     }
     // 7694-7698
@@ -631,5 +631,35 @@ export function clearAllMissionsForTargetHabitat(galaxy: Galaxy, bo: BuiltObject
             const idx = subsequentMissions.indexOf(builtObjectMissionList[j]);
             if (idx >= 0) subsequentMissions.splice(idx, 1);
         }
+    }
+}
+
+/**
+ * BuiltObject.2.cs 7506-7548 QueueMission overloads, all through the 11-argument one (7541): non-bases get a
+ * BuiltObjectMission (allowReprocessing true, allowBuiltObjectChanges false) appended to _SubsequentMissions. The
+ * overloads map onto `args` defaults (null lists / design, x/y -2000000001.0, starDate -1). No Rnd.
+ */
+export function queueMission(
+    galaxy: Galaxy,
+    bo: BuiltObject,
+    missionType: BuiltObjectMissionType,
+    target: MissionTarget | null,
+    target2: MissionTarget | null,
+    priority: BuiltObjectMissionPriority,
+    args: Omit<AssignMissionArgs, 'allowReprocessing' | 'manuallyAssigned'> = {},
+): void {
+    if (bo.role !== BuiltObjectRole.Base) {
+        const item = new BuiltObjectMission(galaxy, bo, missionType, target, target2, priority, {
+            cargo: args.cargo ?? null,
+            troops: args.troops ?? null,
+            population: args.population ?? null,
+            design: args.design ?? null,
+            x: args.x ?? COORD_UNSET_DOUBLE,
+            y: args.y ?? COORD_UNSET_DOUBLE,
+            starDate: args.starDate ?? -1,
+            allowReprocessing: true,
+            allowBuiltObjectChanges: false,
+        });
+        (bo.subsequentMissions as BuiltObjectMission[]).push(item);
     }
 }

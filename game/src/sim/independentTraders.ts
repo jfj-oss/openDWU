@@ -41,7 +41,7 @@ import { BuiltObjectSubRole } from './builtObjectTypes';
 import { ResourceRef, type CargoList } from './cargo';
 import { BuiltObjectRole, type DesignSpecification } from './data/designSpecifications';
 import type { Race } from './data/races';
-import { BuiltObjectStance, Design } from './design';
+import { BuiltObjectStance, Design, getDesignsBySubRoles } from './design';
 import { generateDesignFromSpec, resolveLegacySubRole } from './designGeneration';
 import type { Empire } from './empire';
 import type { Galaxy } from './galaxy';
@@ -92,15 +92,6 @@ export function cloneDesign(source: Design): Design {
     design.allowAutoRetrofit = source.allowAutoRetrofit;
     design.reDefine();
     return design;
-}
-
-// DesignList.GetDesignsBySubRoles (DesignList.cs 413): non-obsolete designs of the sub-roles.
-function getDesignsBySubRoles(designs: Design[], subRoles: BuiltObjectSubRole[]): Design[] {
-    const result: Design[] = [];
-    for (const design of designs) {
-        if (subRoles.includes(design.subRole) && !design.isObsolete) result.push(design);
-    }
-    return result;
 }
 
 // DesignSpecificationList.GetBySubRole (DesignSpecificationList.cs 98).

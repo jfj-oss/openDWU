@@ -13,7 +13,7 @@ import type { Empire } from '../../sim/empire';
 import type { Galaxy } from '../../sim/galaxy';
 import type { Design } from '../../sim/design';
 import { BuiltObjectSubRole } from '../../sim/builtObjectTypes';
-import { canBuildDesign, findNewestCanBuild, resolveSubRoleDescription } from '../../sim/designGeneration';
+import { findNewestCanBuild, getBuildableDesignsBySubRoles, resolveSubRoleDescription } from '../../sim/designGeneration';
 import type { BuildNewShipsResult } from '../../sim/construction/empireConstruction';
 import { buildNewShips, buildOrderTotalCost, designCalculateMaintenanceCosts } from '../../sim/construction/empireConstruction';
 import { checkPirateEmpireHasCriminalNetwork } from '../../sim/missions/cmdTroops';
@@ -65,9 +65,9 @@ export function shipsOfSubRoleCount(empire: Empire, subRole: BuiltObjectSubRole)
     return num;
 }
 
-// DesignList.GetBuildableDesignsBySubRoles({ subRole }, empire): !IsObsolete && empire.CanBuildDesign(design).
+// DesignList.GetBuildableDesignsBySubRoles({ subRole }, empire) (sim/designGeneration.ts).
 export function buildableDesignsBySubRole(empire: Empire, subRole: BuiltObjectSubRole): Design[] {
-    return empire.designs.filter((d) => d.subRole === subRole && !d.isObsolete && canBuildDesign(empire, d));
+    return getBuildableDesignsBySubRoles(empire.designs, [subRole], empire);
 }
 
 export interface BuildOrderRow {
