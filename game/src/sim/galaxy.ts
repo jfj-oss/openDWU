@@ -5,7 +5,7 @@
 // Galaxy.5.cs / Galaxy.6.cs / Galaxy.9.cs). Nebula/galaxy-location
 // generation is ported (01e: GalaxyNebulaeGenerator + GalaxyLocation);
 // population and creatures are ported (01f2: SelectPopulation, 01f3:
-// SelectCreatures) — see the `TODO(port)` markers below for what remains.
+// SelectCreatures); empires are placed by game.ts / empireGeneration.ts.
 
 import { CargoList, TroopList } from './cargo';
 import { ensureHabitatInvadingCharacters, ensureStellarObjectCharacters } from './characters';
@@ -1553,27 +1553,29 @@ export class Galaxy {
         return -1;
     }
 
-    // Simplified port of Galaxy.6.cs FindNearestSystemGasCloudAsteroid.
-    // The original walks a spatial GalaxyIndex grid of sectors; that index
-    // structure isn't ported yet, so this does a linear scan over the
-    // already-placed gas-cloud/asteroid habitats. Semantically equivalent
-    // (same nearest-neighbor result), just O(n) instead of index-accelerated.
-    // TODO(port): rebuild via GalaxyIndex sectors if this becomes a perf issue.
+    // Port of Galaxy.6.cs FindNearestSystemGasCloudAsteroid(x, y) (3714): ring search over the HabitatIndex cells
+    // with Galaxy.6.cs 2814 FindNearestSystemGasCloudAsteroidInIndex — the nearest habitat whose Parent is null
+    // (system stars and gas clouds), compared by squared distance from the (int) coordinates. While generateGalaxy
+    // builds the galaxy the index grid is not populated yet (it is rebuilt after the sort, Galaxy.4.cs 2314-2334);
+    // the C# index then holds exactly the habitats added so far, which generateGalaxy mirrors in
+    // generationTopLevelHabitats (the Parent == null ones) — a linear pass over that list gives the same nearest one.
     findNearestSystemGasCloudAsteroid(x: number, y: number): Habitat | null {
-        let best: Habitat | null = null;
-        let bestDistance = Number.MAX_VALUE;
-        for (const habitat of this.habitats) {
-            if (habitat.category !== HabitatCategoryType.GasCloud && habitat.category !== HabitatCategoryType.Asteroid) {
-                continue;
-            }
-            const distance = this.calculateDistance(x, y, habitat.xpos, habitat.ypos);
-            if (distance < bestDistance) {
-                bestDistance = distance;
-                best = habitat;
-            }
+        const ix = Math.trunc(x);
+        const iy = Math.trunc(y);
+        const generation = this.generationTopLevelHabitats;
+        if (generation !== null) {
+            return Galaxy.nearestIn(generation, ix, iy, (h) => h.parent === null, (a, b, c, d) => this.calculateDistance(a, b, c, d)).item;
         }
-        return best;
+        return this.ringSearch(x, y, (cx, cy) =>
+            Galaxy.nearestIn(this.habitatIndexGrid[cx][cy], ix, iy, (h) => h.parent === null, (a, b, c, d) => this.calculateDistance(a, b, c, d)),
+        );
     }
+
+    /**
+     * The Parent == null habitats generateGalaxy has added so far (the C# HabitatIndex content that
+     * FindNearestSystemGasCloudAsteroid can see during the star and gas-cloud loops); null once the index grid is built.
+     */
+    generationTopLevelHabitats: Habitat[] | null = null;
 
     // Port of Galaxy.6.cs SelectStar
     private selectStar(): { type: HabitatType; diameter: number; pictureRef: number; solarRadiation: number; microwaveRadiation: number; xrayRadiation: number } {
@@ -2360,14 +2362,9 @@ export class Galaxy {
         }
     }
 
-    // Port of Galaxy.4.cs GenerateGasCloud().
-    // The original anchors gas clouds inside existing NebulaCloud
-    // GalaxyLocations; nebulae aren't modeled yet, so this places the
-    // cloud at a uniform-random galaxy coordinate instead (documented
-    // deviation) while keeping the type roll, diameter roll, min-distance
-    // retry loop (against other gas clouds/asteroids), SelectResources,
-    // radiation rolls, and orbitDirection roll faithful to source.
-    // TODO(port): nebula-anchored placement — needs GalaxyLocation.
+    // Port of Galaxy.4.cs GenerateGasCloud() (2794). Rnd order as the C#: type roll, then per attempt the
+    // NebulaCloud location pick (re-rolled up to 200 times by ConditionCheckLimit), the two offsets, the
+    // diameter; radiation rolls, SelectResources, orbit direction.
     generateGasCloud(): Habitat {
         let habitatType = HabitatType.Ammonia;
         switch (this.rnd.next(0, 15)) {
@@ -2407,7 +2404,17 @@ export class Galaxy {
         let attempts = 0;
         let habitat: Habitat;
         do {
-            const { x, y } = this.obtainRandomGalaxyCoordinates();
+            // Galaxy.4.cs 2834-2844: a random NebulaCloud GalaxyLocation; the cloud sits in its central 70%.
+            let index = this.rnd.next(0, this.galaxyLocations.length);
+            const iterationCount = { value: 0 };
+            while (this.conditionCheckLimit(this.galaxyLocations[index].type !== GalaxyLocationType.NebulaCloud, 200, iterationCount)) {
+                index = this.rnd.next(0, this.galaxyLocations.length);
+            }
+            const location = this.galaxyLocations[index];
+            const num3 = location.width * 0.15 + this.rnd.nextDouble() * location.width * 0.7;
+            const num4 = location.height * 0.15 + this.rnd.nextDouble() * location.height * 0.7;
+            const x = location.xpos + num3;
+            const y = location.ypos + num4;
             habitat = new Habitat(HabitatCategoryType.GasCloud, habitatType, this.generateCodeName(), x, y);
             habitat.diameter = this.rnd.next(8000, 32000);
             const nearest = this.findNearestSystemGasCloudAsteroid(habitat.xpos, habitat.ypos);
@@ -3481,13 +3488,17 @@ export class Galaxy {
         if (this.rnd.next(0, 5) === 2) {
             habitat.orbitDirection = false;
         }
+        // Galaxy.8.cs 479-482: Cargo / Troops / TroopsToRecruit / InvadingTroops lists.
+        habitat.cargo = new CargoList();
+        habitat.troops = new TroopList();
+        habitat.troopsToRecruit = new TroopList();
+        habitat.invadingTroops = new TroopList();
         // Galaxy.8.cs 483 (M4h): habitat.ConstructionQueue = new ConstructionQueue(habitat, galaxy). No Rnd.
         newHabitatConstructionQueue(this, habitat);
         // Galaxy.8.cs 484 (M4g): habitat.ManufacturingQueue = new ManufacturingQueue(habitat, galaxy).
         ensureHabitatManufacturingQueue(this, habitat);
         // Galaxy.8.cs 485-493 (M4e): 20 DockingBays (component 74, capacity 100) + DockingBayWaitQueue. No Rnd.
         createHabitatDockingBays(habitat, 20);
-        // TODO(port): Cargo/Troops/TroopsToRecruit/InvadingTroops — Galaxy.8.cs GenerateContinentalPlanet.
         return habitat;
     }
 
@@ -3662,9 +3673,8 @@ export class Galaxy {
         }
     }
 
-    // Port of the tail of Galaxy.7.cs GenerateEmpire (lines 5348-5375).
-    // TODO(port): the rest of GenerateEmpire (Empire, policy, tech, troops,
-    // population, expansion) — task 08e2, blocked on an Empire model.
+    // Port of the tail of Galaxy.7.cs GenerateEmpire (lines 5348-5375); the rest of GenerateEmpire is
+    // empireGeneration.ts generateEmpire.
     setupHomeSystem(capital: Habitat, race: Race, homeSystemDescription: string, minimumResourceCount: number, minimumCriticalResourceCount: number): void {
         const systemStar = this.determineHabitatSystemStar(capital);
         if (homeSystemDescription === 'Harsh') {
@@ -4549,8 +4559,8 @@ export class Galaxy {
     /** Galaxy.cs 721 GameRaceSpecificEventsEnabled = true (Start.2.cs 504: VictoryConditions.EnableRaceSpecificEvents). */
     gameRaceSpecificEventsEnabled = true;
     /**
-     * Galaxy.StoryShadowsEnabled (VictoryConditions.EnableStoryEventsShadows — the pre-warp "Shadows" story). Story events
-     * are deferred (tasks/M4-plan.md §0.3): the M4u branches that read it throw TODO(port) when it is true.
+     * Galaxy.StoryShadowsEnabled (VictoryConditions.EnableStoryEventsShadows — the pre-warp "Shadows" story; read by
+     * empireEvents.ts, story/storyEvents.ts and the game-start tail).
      */
     storyShadowsEnabled = false;
     // ---- M4z1 fields (empire lifecycle) ----
@@ -4625,10 +4635,8 @@ export function galaxyRace(galaxy: Galaxy, race: Race): Race {
 
 // Port of Galaxy.4.cs Galaxy constructor (star-cluster setup, star loop,
 // gas-cloud loop, sort/re-index, Systems build — Galaxy.4.cs 2221-2347).
-// colonyPrevalence is accepted for API compatibility with the eventual
-// full generator but unused here (no colonies are generated in 01b/01c
-// scope yet). TODO(port): colony placement — home-system helpers landed
-// in 08e1 (setupHomeSystem etc.); GenerateEmpire wiring is task 08e2.
+// colonyPrevalence feeds SelectHabitatQuality; empire placement (GenerateEmpire)
+// runs afterwards in game.ts / empireGeneration.ts.
 export function generateGalaxy(options: GenerateGalaxyOptions): Galaxy {
     const { seed, shape, starCount, sectorWidth, sectorHeight, systemNames, colonyPrevalence, gameData, cloudImageCount } = options;
     const galaxy = new Galaxy(seed, shape, starCount, sectorWidth, sectorHeight, systemNames, colonyPrevalence);
@@ -4680,12 +4688,17 @@ export function generateGalaxy(options: GenerateGalaxyOptions): Galaxy {
     // group; asteroidField is the subset used for the main asteroid belt
     // (not separately tracked at this level — it's a sub-list of habitats).
     const perStarHabitats: Habitat[][] = [];
+    // Galaxy.4.cs 2288-2295 / 2305-2311: each generated habitat also goes into HabitatIndex, which
+    // FindNearestSystemGasCloudAsteroid searches (SetupSun star spacing, GenerateGasCloud).
+    const generationTopLevelHabitats: Habitat[] = [];
+    galaxy.generationTopLevelHabitats = generationTopLevelHabitats;
     for (let i = 0; i < starCount; i++) {
         const { habitats, asteroidField } = galaxy.setupSolarSystem(shape);
         perStarHabitats.push(habitats);
         // Galaxy.4.cs 2284-2287: if (asteroidField != null) _AsteroidFields.Add(asteroidField).
         if (asteroidField !== null) galaxy.asteroidFields.push(asteroidField);
         galaxy.habitats.push(...habitats);
+        for (const h of habitats) if (h.parent === null) generationTopLevelHabitats.push(h);
     }
 
     // Gas-cloud loop (Galaxy.4.cs 2297-2313). SelectCreatures(habitat) is
@@ -4697,7 +4710,9 @@ export function generateGalaxy(options: GenerateGalaxyOptions): Galaxy {
         galaxy.selectCreatures(cloud);
         gasCloudGroups.push([cloud]);
         galaxy.habitats.push(cloud);
+        generationTopLevelHabitats.push(cloud);
     }
+    galaxy.generationTopLevelHabitats = null;
 
     // Sort + re-index (Galaxy.4.cs 2314-2334), task C2c-1: list.Sort() orders
     // the per-system HabitatLists by HabitatList.CompareTo = first habitat's
@@ -4737,8 +4752,7 @@ export function generateGalaxy(options: GenerateGalaxyOptions): Galaxy {
             },
         });
     }
-    // UpdateSystemInfo(null): SystemsIndex in Systems order.
-    // TODO(port): DetermineSystemInfo fields (PlanetCount etc.) — see updateSystemInfo().
+    // UpdateSystemInfo(null): DetermineSystemInfo per system + SystemsIndex in Systems order.
     galaxy.updateSystemInfo();
     // Galaxy.4.cs 2349-2355: creatures join their parent habitat's system.
     for (const c of galaxy.creatures) {
