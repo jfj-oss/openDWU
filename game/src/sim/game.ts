@@ -60,7 +60,7 @@ import { GalaxyLocationType } from './galaxyLocation';
 import { GalaxyShape, HabitatCategoryType, HabitatType, type Habitat } from './types';
 import { Cargo, CargoList, ResourceRef } from './cargo';
 import { createGalaxyScenario } from './scenario/state';
-import { scenarioFindHomeHabitat, scenarioGameStart } from './scenario/hooks';
+import { scenarioFindHomeHabitat, scenarioGameStart, scenarioGenerationSetup } from './scenario/hooks';
 import './scenario/packages'; // mod layer: registers the scenario packages' hooks
 
 export type HomeSystem = 'Harsh' | 'Trying' | 'Normal' | 'Agreeable' | 'Excellent';
@@ -882,18 +882,21 @@ export function createGame(opts: CreateGameOptions): Game {
     const all = [playerStart, ...aiStarts];
     updateEmpireStarts(all, normalRaces, clockRnd);
 
+    // Mod layer: galaxy.scenario before generation (its placement rules apply there); null without an overlay. A
+    // scenario's generation set-up hook may change the star count / galaxy extent (19h); without one these are opts'.
+    const scenario = gd.scenario !== undefined ? createGalaxyScenario(gd.scenario.manifest, { flags: opts.scenarioFlags, params: opts.scenarioParams }, gd.resources) : null;
+    const gen = scenarioGenerationSetup(scenario, gd.resources, { starCount: opts.starCount, sectorWidth: opts.sectorWidth, sectorHeight: opts.sectorHeight });
     const galaxy = generateGalaxy({
         seed: opts.seed,
         shape: opts.shape,
-        starCount: opts.starCount,
-        sectorWidth: opts.sectorWidth,
-        sectorHeight: opts.sectorHeight,
+        starCount: gen.starCount,
+        sectorWidth: gen.sectorWidth,
+        sectorHeight: gen.sectorHeight,
         systemNames: opts.systemNames,
         colonyPrevalence: opts.colonyPrevalence,
         gameData: gd,
         races: galaxyRaces,
-        // Mod layer: galaxy.scenario before generation (its placement rules apply there); null without an overlay.
-        scenario: gd.scenario !== undefined ? createGalaxyScenario(gd.scenario.manifest, { flags: opts.scenarioFlags, params: opts.scenarioParams }, gd.resources) : null,
+        scenario,
         empireStarts: all.filter((e) => e.resolvedRace !== null).map((e) => ({ resolvedRace: e.resolvedRace!, projectedColonyAmount: e.projectedColonyAmount })),
         // Start.2.cs 485 new Galaxy(..., double_4, ...) (Galaxy.4.cs 2088 baseTechCost).
         baseTechCost: opts.baseTechCost,
