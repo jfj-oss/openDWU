@@ -1,4 +1,5 @@
-// 19i captures (rim atmosphere): galaxy zoom at the core vs the rim, a rim system, the unexplored-rim murk.
+// 19i captures (rim atmosphere): galaxy zoom at the core vs the rim, a rim system, the unexplored-rim murk, eyes in
+// the dark at system zoom.
 // Usage: node scripts/rim-shots.mjs <baseUrl> <outDir>   (4K: 1920x1080 at device scale 2)
 import { chromium } from 'playwright-core';
 const [base = 'http://localhost:5173/', outDir = 'shots'] = process.argv.slice(2);
@@ -18,7 +19,14 @@ const info = await page.evaluate(() => {
     const { galaxy, view } = window.__dwu;
     const rim = view.rimLayer;
     window.__rim = rim;
-    return { active: rim?.active ?? false, geo: rim?.geo ?? null, scenario: galaxy.scenario?.id ?? null, murk: rim?.murk?.length ?? 0, derelicts: rim?.derelicts?.length ?? 0 };
+    return {
+        active: rim?.active ?? false,
+        geo: rim?.geo ?? null,
+        scenario: galaxy.scenario?.id ?? null,
+        murk: rim?.murk?.length ?? 0,
+        derelicts: rim?.derelicts?.length ?? 0,
+        eyes: rim?.eyes?.length ?? 0,
+    };
 });
 console.log('rim', JSON.stringify(info));
 
@@ -30,7 +38,7 @@ async function shot(name, setup) {
     console.log(`saved ${path} ${JSON.stringify(where)}`);
 }
 
-// Whole galaxy, centred (wash, dust lanes, silhouettes at the edge).
+// Whole galaxy, centred (wash, dust lanes; eyes in the dark are system-zoom only, so none here).
 await shot('rim-galaxy-whole', () => {
     const { camera } = window.__dwu;
     const g = window.__rim.geo;
@@ -73,6 +81,27 @@ await shot('rim-system', () => {
     camera.centerOn((st.xpos + d.x) / 2, (st.ypos + d.y) / 2);
     camera.zoom = Math.min(0.2, camera.height / (Math.sqrt(bd) * 2.6));
     return { system: best.name, dist: Math.sqrt(bd), zoom: camera.zoom, weight: rim.weightAt(st.xpos, st.ypos) };
+});
+// Eyes in the dark: a rim system at system zoom, framing an eye pair and its star.
+await shot('rim-eyes-system', () => {
+    const { camera, galaxy } = window.__dwu;
+    const rim = window.__rim;
+    const e = rim.eyes[0];
+    let best = null;
+    let bd = Infinity;
+    for (const s of galaxy.systems) {
+        const dx = s.systemStar.xpos - e.x;
+        const dy = s.systemStar.ypos - e.y;
+        const dd = dx * dx + dy * dy;
+        if (dd < bd) {
+            bd = dd;
+            best = s;
+        }
+    }
+    const st = best.systemStar;
+    camera.centerOn((st.xpos + e.x) / 2, (st.ypos + e.y) / 2);
+    camera.zoom = Math.max(0.02, camera.height / (Math.sqrt(bd) * 2.2));
+    return { system: best.name, dist: Math.sqrt(bd), zoom: camera.zoom, eyes: rim.eyes.length, weight: rim.weightAt(st.xpos, st.ypos) };
 });
 // Murk over an unexplored rim system (mid zoom so neighbouring patches show).
 await shot('rim-murk', () => {

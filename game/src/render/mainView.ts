@@ -1263,8 +1263,9 @@ export class MainView {
         }
 
         // [rimatmo] begin
-        // 19i: rim wash / derelicts / silhouettes just above the backdrop + nebulae, murk above the systems (before
-        // the empire and ship layers are added), vignette + grain above the starfield. Adds nothing with the flag off.
+        // 19i: rim wash / derelicts / eyes in the dark just above the backdrop + nebulae, murk above the systems
+        // (before the empire and ship layers are added), vignette + grain above the starfield. Adds nothing with the
+        // flag off.
         this.rimLayer = new RimAtmosphereLayer(this.galaxy, this.store);
         this.rimLayer.mount({
             world: this.world,

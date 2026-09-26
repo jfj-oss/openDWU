@@ -158,15 +158,16 @@ over a band; (2) rim star types biased to dim red/brown dwarfs and white dwarfs 
 scenario); (3) dark dust lanes instead of bright nebula art, and 19h-5 sensor fog rendered as grainy grey murk for
 unexplored rim space; (4) thinner deep-field star layer / sparser background art; (5) derelicts, dead stations, gutted
 independent colonies on the rim curve from the original ruins/debris art (some become 19g-7 herd feeding sites);
-(6) distant creature silhouettes drifting in the background at galaxy zoom; (7) fewer nav lights / dimmer city glow on
+(6) eyes in the dark — small pairs of dim, irregularly-blinking red dots sprinkled in the outer, empty parts of rim
+systems at system zoom; (7) fewer nav lights / dimmer city glow on
 rim outposts. Audio: (8) 19e-11 music selector gets a "rim" mood weighted by radius (sparse drones, silences, original
 tracks that fit); (9) low wind/static ambient bed growing with distance, distant creature calls and hull creaks at system
 zoom; (10) faint static layer on advisor/diplomacy voice in the fog; garbled rim distress calls in the ticker. Text/UI:
 (11) bleaker rim name table, more numbered survey designations; (12) rim-specific exploration/colony message wording
 (lost contact, missing survey ship, unusual readings); (13) faint grain/vignette on the main view deep in the rim, minimap
 dims the outer band. Effort: ~1 agent-day; build with 19h; must not change any sim digest (render/audio/text only except 2).
-Model split (user, 2026-09-26): anything that CREATES visuals — colour-grading filters, dust-lane/murk rendering, creature
-silhouettes, grain/vignette, any procedural art (no art files are ever committed; new visuals are Pixi filters/graphics
+Model split (user, 2026-09-26): anything that CREATES visuals — colour-grading filters, dust-lane/murk rendering, eyes in
+the dark, grain/vignette, any procedural art (no art files are ever committed; new visuals are Pixi filters/graphics
 over the original art) — is an Opus package; the data/wiring pieces (name tables, message wording, music/ambient selector
 weights, nav-light/glow params, minimap dimming) are a Sonnet package that consumes the Opus-built render hooks.
 Sub-agents cannot spawn sub-agents in this harness, so the orchestrator runs the two packages in sequence: Opus render first.
@@ -183,8 +184,12 @@ band of `(1 − rimInner)/2` (clamped 0.04–0.3). Params:
 - `murkStrength` (0.7): item 3 — grainy grey murk blobs over every rim system the player has not explored
   (`EmpireVisibility.checkSystemExplored`, refreshed every 90 frames; the hook 19h-5 sensor fog can feed), plus the
   item-13 film grain deep in the rim.
-- `silhouetteDensity` (1): item 6 — count (6 × density, max 24) and opacity of dark creature silhouettes (original
-  kaltor / space slug / silver mist / ardilus frames) drifting on slow rim orbits at galaxy zoom.
+- `eyeDensity` (1): item 6 — eyes in the dark: pair count (3–8 per rim system at density 1, scaled by density and by
+  the system's rim weight; 0 disables) of small red dot pairs at system zoom, in the outer, empty parts of rim systems
+  (past the outermost planet/moon orbit), placed with the layer's own PRNG seeded per system. Each pair blinks on its
+  own 2–6 s period with a short, soft-glow on-time (`eyeBlinkAlpha`) and occasionally drifts a little between blinks
+  (`eyeMoveOffset`); alpha crossfades in over the same system-zoom threshold `AmbientLayer.ambientVisibleAt` uses for
+  nav lights (`BUILT_OBJECT_MAX_FACTOR`), so nothing pops at zoom changes (`eyeZoomFade`).
 - `derelictDensity` (1): item 5 — 80 × density decorative hulks (original station / ship art, dark-tinted, tumbling),
   half near rim systems, half in deep rim space; not selectable (the selectable/sim derelicts belong to 19h / 19j).
 - `lightDimming` (0.6): item 7 — nav lights and planetary-shield glow alpha × (1 − dimming × weight) via

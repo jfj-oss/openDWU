@@ -1,7 +1,7 @@
 {
   "id": "rim-atmosphere",
   "name": "Rim Atmosphere",
-  "description": "Presentation only (19i): the outer rim of the galaxy looks colder, darker and lonelier — cold colour grading, dark dust lanes, grainy murk over unexplored rim systems, derelict hulks, distant creature silhouettes, dimmer lights and a vignette deep in the rim. No gameplay change.",
+  "description": "Presentation only (19i): the outer rim of the galaxy looks colder, darker and lonelier — cold colour grading, dark dust lanes, grainy murk over unexplored rim systems, derelict hulks, eyes in the dark (small blinking red pairs) in rim systems, dimmer lights and a vignette deep in the rim. No gameplay change.",
   "include": [],
   "flags": [
     { "name": "rimAtmosphere", "label": "Rim atmosphere", "description": "Draw the rim atmosphere visuals (off = the map draws as the base game).", "default": true }
@@ -10,7 +10,7 @@
     { "name": "rimInner", "label": "Rim starts at (fraction of galaxy radius)", "default": 0.72, "min": 0.3, "max": 0.95 },
     { "name": "tintStrength", "label": "Rim colour grading strength", "default": 0.6, "min": 0, "max": 1 },
     { "name": "murkStrength", "label": "Unexplored rim murk strength", "default": 0.7, "min": 0, "max": 1 },
-    { "name": "silhouetteDensity", "label": "Creature silhouette density", "default": 1, "min": 0, "max": 4 },
+    { "name": "eyeDensity", "label": "Eyes in the dark density", "default": 1, "min": 0, "max": 4 },
     { "name": "derelictDensity", "label": "Derelict density", "default": 1, "min": 0, "max": 4 },
     { "name": "lightDimming", "label": "Rim light dimming", "default": 0.6, "min": 0, "max": 1 }
   ]

@@ -19,7 +19,9 @@
 //   (4) thinner deep field — the parallax starfield's alpha drops with rim depth;
 //   (5) decorative derelicts — a deterministic scatter of dead stations / hulks (original ship art, dark-tinted, slowly
 //       tumbling) in deep rim space and near rim systems; not selectable (the sim version belongs to 19h / 19j);
-//   (6) creature silhouettes — dim, dark, slow-drifting original creature sprites orbiting in the rim at galaxy zoom;
+//   (6) eyes in the dark — small pairs of dim red dots, procedural (no art), sprinkled in the outer, empty parts of
+//       rim systems (away from the star / planets / stations), system zoom only; each pair blinks on its own
+//       irregular period with a soft glow and occasionally drifts a little between blinks;
 //   (7) nav lights / planetary-shield glow dimmed on the rim (AmbientLayer.lightScale hook);
 //   (13) vignette + film grain on the main view while the camera is deep in the rim.
 // Exported for the data/wiring package (minimap outer-band dimming, music/ambient weights): rimGeometry, rimFraction,
@@ -29,9 +31,10 @@ import { Container, Sprite, Texture, TilingSprite } from 'pixi.js';
 import type { Camera } from './camera';
 import type { AssetStore } from './assets';
 import { boundsOnScreen, DrawKey } from './drawCache';
-import { FrameSet, SpritePool } from './fxCommon';
+import { SpritePool } from './fxCommon';
+import { BUILT_OBJECT_MAX_FACTOR } from './builtObjectLayer';
 import type { Galaxy } from '../sim/galaxy';
-import type { SystemInfo } from '../sim/types';
+import { HabitatCategoryType, type SystemInfo } from '../sim/types';
 import { scenarioFlag, scenarioParam } from '../sim/scenario';
 
 export const RIM_FLAG = 'rimAtmosphere';
@@ -44,8 +47,8 @@ export interface RimParams {
     tintStrength: number;
     /** Unexplored-rim murk strength 0..1 (and the film grain). */
     murkStrength: number;
-    /** Creature silhouettes: multiplier on the base count (6) and their opacity (0 = none). */
-    silhouetteDensity: number;
+    /** Eyes in the dark: multiplier on the base pair count (3–8 per rim system, scaled by rim weight; 0 = none). */
+    eyeDensity: number;
     /** Derelicts: multiplier on the base count (80; 0 = none). */
     derelictDensity: number;
     /** How much nav lights / shield glow dim at full rim depth, 0..1. */
@@ -56,7 +59,7 @@ export const RIM_DEFAULTS: RimParams = {
     rimInner: 0.72,
     tintStrength: 0.6,
     murkStrength: 0.7,
-    silhouetteDensity: 1,
+    eyeDensity: 1,
     derelictDensity: 1,
     lightDimming: 0.6,
 };
@@ -72,7 +75,7 @@ export function rimParams(galaxy: Galaxy): RimParams | null {
         rimInner: Math.min(0.98, Math.max(0, scenarioParam(galaxy, 'rimInner', RIM_DEFAULTS.rimInner))),
         tintStrength: clamp01(scenarioParam(galaxy, 'tintStrength', RIM_DEFAULTS.tintStrength)),
         murkStrength: clamp01(scenarioParam(galaxy, 'murkStrength', RIM_DEFAULTS.murkStrength)),
-        silhouetteDensity: Math.max(0, scenarioParam(galaxy, 'silhouetteDensity', RIM_DEFAULTS.silhouetteDensity)),
+        eyeDensity: Math.max(0, scenarioParam(galaxy, 'eyeDensity', RIM_DEFAULTS.eyeDensity)),
         derelictDensity: Math.max(0, scenarioParam(galaxy, 'derelictDensity', RIM_DEFAULTS.derelictDensity)),
         lightDimming: clamp01(scenarioParam(galaxy, 'lightDimming', RIM_DEFAULTS.lightDimming)),
     };
@@ -140,8 +143,7 @@ export function lerpColour(a: number, b: number, t: number): number {
 export const RIM_COLD = 0x7a80d6;
 /** Dust-lane tint for rim nebulae (near-black, faintly warm-grey). */
 export const RIM_DUST = 0x26232c;
-/** Silhouette / derelict tints. */
-export const RIM_SILHOUETTE = 0x0c0e16;
+/** Derelict tint. */
 export const RIM_DERELICT = 0x6a625c;
 
 /** Multiply tint for a sprite at rim weight `w`: white inside, towards RIM_COLD at full depth × strength. */
@@ -214,14 +216,6 @@ export function rimRandom(seed: number): () => number {
 const IMG = '/assets/dwu/images';
 const DERELICT_KINDS = ['genericbase', 'smallspaceport', 'mediumspaceport', 'miningstation', 'resortbase', 'gasminingstation', 'colonyship', 'cruiser', 'largefreighter'];
 const SHIP_FAMILIES = 27;
-const CREATURES: { dir: string; prefix: string }[] = [
-    { dir: 'kaltor', prefix: 'Kaltor' },
-    { dir: 'spaceslug', prefix: 'Slug' },
-    { dir: 'silvermist', prefix: 'SilverMist' },
-    { dir: 'ardilus', prefix: 'ArdillusMoving' },
-];
-const CREATURE_FRAMES = 12;
-const BASE_SILHOUETTES = 6;
 const BASE_DERELICTS = 80;
 
 export interface Derelict {
@@ -231,15 +225,6 @@ export interface Derelict {
     rot0: number;
     spin: number;
     url: string;
-}
-
-export interface Silhouette {
-    creature: number;
-    orbit: number;
-    angle0: number;
-    omega: number;
-    size: number;
-    phase: number;
 }
 
 /**
@@ -280,22 +265,173 @@ export function scatterDerelicts(geo: RimGeometry, rimInner: number, count: numb
     return out;
 }
 
-/** Silhouette orbits (item 6): radius fractions in [rimInner + band/3, 1.15], one lap per 15–40 minutes. */
-export function silhouetteOrbits(rimInner: number, count: number, seed: number): Silhouette[] {
-    const rnd = rimRandom(seed ^ 0x5bd1e995);
-    const out: Silhouette[] = [];
-    const lo = rimInner + rimBand(rimInner) / 3;
+// --- eyes in the dark (item 6) -------------------------------------------------------------------------------
+
+// Blink shape: irregular per-pair period and a short on-time, like nav lights (LIGHT_ON_SECONDS / LIGHT_OFF_SECONDS
+// in ambientLayer.ts) but softer — the on-window ramps up and back down instead of the nav light's hard on/off.
+export const EYE_MIN_PERIOD_S = 2;
+export const EYE_MAX_PERIOD_S = 6;
+const EYE_ON_FRACTION_MIN = 0.12;
+const EYE_ON_FRACTION_MAX = 0.28;
+// "occasionally a pair moves a little between blinks": recomputed fresh each cycle (never drifts further away).
+const EYE_MOVE_CHANCE = 0.3;
+const EYE_MOVE_MIN = 250;
+const EYE_MOVE_MAX = 1400;
+// Placement: past the outermost planet/moon orbit (never on top of the star, a planet or a station orbiting one),
+// the same clearance-then-band shape scatterDerelicts uses for its near-rim-star half.
+const EYE_CLEARANCE = 3000;
+const EYE_BAND = 12000;
+const EYE_SIZE = 1100; // world units; ~2-3 px on screen at the zoom eyeZoomFade first opens (see below)
+const EYE_BASE_COUNT_MIN = 3;
+const EYE_BASE_COUNT_SPAN = 6; // base count is EYE_BASE_COUNT_MIN..EYE_BASE_COUNT_MIN+EYE_BASE_COUNT_SPAN-1 (3..8)
+/** Dim glow cap: eyes never reach full nav-light brightness even mid-blink. */
+export const EYE_MAX_ALPHA = 0.55;
+
+export interface EyePair {
+    x: number;
+    y: number;
+    /** Orientation of the two-dot pair (world radians). */
+    angle: number;
+    /** World units between the two dots. */
+    gap: number;
+    /** Each dot's world diameter. */
+    size: number;
+    /** Blink period, seconds (EYE_MIN_PERIOD_S..EYE_MAX_PERIOD_S). */
+    period: number;
+    /** Fraction of `period` the pair is lit (short — EYE_ON_FRACTION_MIN..MAX). */
+    onFraction: number;
+    /** Seconds offset into the cycle, so pairs do not all blink in lockstep. */
+    phase: number;
+    /** Max world-unit distance the pair can drift between blink cycles. */
+    moveRadius: number;
+    /** Seed for the per-cycle move jitter (eyeMoveOffset). */
+    seed: number;
+}
+
+/** One rim system's placement inputs (plain data: no Galaxy/SystemInfo dependency, so this is unit-testable
+ * without building a galaxy). `seed` must already be per-system (e.g. mixed with the system index). */
+export interface RimSystemInput {
+    seed: number;
+    starX: number;
+    starY: number;
+    /** Farthest planet/moon orbit distance from the star (0 for a starless / planetless system). */
+    maxOrbit: number;
+    /** Rim weight at the star (0 = core system: no eyes). */
+    weight: number;
+}
+
+/** Item 6 pair count: 3–8 (density 1) scaled by density and by the system's rim weight; 0 below either. */
+export function eyeCountForSystem(seed: number, density: number, weight: number): number {
+    if (density <= 0 || weight <= 0) return 0;
+    const rnd = rimRandom(seed ^ 0x1eee5eed);
+    const base = EYE_BASE_COUNT_MIN + Math.floor(rnd() * EYE_BASE_COUNT_SPAN);
+    return Math.max(0, Math.round(base * density * weight));
+}
+
+/**
+ * `count` eye pairs for one system: positions past the outermost habitat orbit (EYE_CLEARANCE..+EYE_BAND beyond
+ * it), so they never land on the star, a planet/moon or a station orbiting one. Deterministic in `seed`.
+ */
+export function eyePairsForSystem(starX: number, starY: number, maxOrbit: number, count: number, seed: number): EyePair[] {
+    const rnd = rimRandom(seed ^ 0xe7e5e7e5);
+    const lo = Math.max(0, maxOrbit) + EYE_CLEARANCE;
+    const out: EyePair[] = [];
     for (let i = 0; i < count; i++) {
+        const a = rnd() * Math.PI * 2;
+        const d = lo + rnd() * EYE_BAND;
+        const size = EYE_SIZE * (0.75 + rnd() * 0.5);
         out.push({
-            creature: Math.floor(rnd() * CREATURES.length),
-            orbit: lo + rnd() * Math.max(0.02, 1.15 - lo),
-            angle0: rnd() * Math.PI * 2,
-            omega: ((rnd() < 0.5 ? -1 : 1) * (Math.PI * 2)) / (900 + rnd() * 1500),
-            size: 0.05 + rnd() * 0.05,
-            phase: rnd() * CREATURE_FRAMES,
+            x: starX + Math.cos(a) * d,
+            y: starY + Math.sin(a) * d,
+            angle: rnd() * Math.PI * 2,
+            gap: size * (0.8 + rnd() * 0.6),
+            size,
+            period: EYE_MIN_PERIOD_S + rnd() * (EYE_MAX_PERIOD_S - EYE_MIN_PERIOD_S),
+            onFraction: EYE_ON_FRACTION_MIN + rnd() * (EYE_ON_FRACTION_MAX - EYE_ON_FRACTION_MIN),
+            phase: rnd() * (EYE_MAX_PERIOD_S * 2),
+            moveRadius: EYE_MOVE_MIN + rnd() * (EYE_MOVE_MAX - EYE_MOVE_MIN),
+            seed: (rnd() * 0xffffffff) >>> 0,
         });
     }
     return out;
+}
+
+/** Every rim system's eye pairs (density 0 or a core system's weight 0 contribute none). Reuses `out` like
+ * murkPatches. */
+export function scatterEyes(systems: readonly RimSystemInput[], density: number, out: EyePair[] = []): EyePair[] {
+    out.length = 0;
+    if (density <= 0) return out;
+    for (const s of systems) {
+        const n = eyeCountForSystem(s.seed, density, s.weight);
+        if (n <= 0) continue;
+        for (const pair of eyePairsForSystem(s.starX, s.starY, s.maxOrbit, n, s.seed)) out.push(pair);
+    }
+    return out;
+}
+
+/**
+ * Blink alpha at time `tSec` (pure; seconds, any origin): 0 outside the short on-window, a smoothstep ramp up then
+ * back down within it (softer than the nav lights' hard on/off — item 6 asks for a "soft glow").
+ */
+export function eyeBlinkAlpha(tSec: number, period: number, onFraction: number, phase: number): number {
+    if (period <= 0) return 0;
+    const cyclePos = (((tSec + phase) % period) + period) % period;
+    const onLen = Math.max(0.05, period * clamp01(onFraction));
+    if (cyclePos >= onLen) return 0;
+    const t = cyclePos / onLen;
+    const ramp = t < 0.5 ? t * 2 : (1 - t) * 2;
+    return ramp * ramp * (3 - 2 * ramp);
+}
+
+/** Which blink cycle `tSec` falls in (for the per-cycle move jitter). */
+export function eyeCycleIndex(tSec: number, period: number, phase: number): number {
+    if (period <= 0) return 0;
+    return Math.floor((tSec + phase) / period);
+}
+
+/** "Occasionally a pair moves a little between blinks": a small, deterministic offset recomputed fresh each cycle
+ * (most cycles: none), so the pair never drifts away — it just occasionally resettles nearby. */
+export function eyeMoveOffset(seed: number, cycleIndex: number, moveRadius: number): { dx: number; dy: number } {
+    const rnd = rimRandom((seed ^ Math.imul(cycleIndex + 1, 0x27d4eb2f)) >>> 0);
+    if (rnd() > EYE_MOVE_CHANCE) return { dx: 0, dy: 0 };
+    const a = rnd() * Math.PI * 2;
+    const d = rnd() * moveRadius;
+    return { dx: Math.cos(a) * d, dy: Math.sin(a) * d };
+}
+
+/**
+ * Item 6 zoom gate: crossfades in over the same system-zoom threshold ambientLayer.ambientVisibleAt uses to turn
+ * nav lights on (f = 1/z < BUILT_OBJECT_MAX_FACTOR, i.e. z > 1/BUILT_OBJECT_MAX_FACTOR) — nav lights themselves pop
+ * at that threshold (a hard visible toggle), but item 6 asks for no pop, so this eases in over a band past it
+ * instead of switching at it, the same smoothstep shape rimWeight uses for the rim-band crossfade.
+ */
+export function eyeZoomFade(z: number): number {
+    const a = 1 / BUILT_OBJECT_MAX_FACTOR;
+    const b = a * 2.5;
+    if (z <= a) return 0;
+    if (z >= b) return 1;
+    const t = (z - a) / (b - a);
+    return t * t * (3 - 2 * t);
+}
+
+/** Farthest planet/moon orbit distance from the star (0 for none): the eyes' inner clearance boundary. Moons orbit
+ * their planet, so their distance from the star is the planet's orbit plus the moon's. */
+export function systemMaxExtent(system: SystemInfo): number {
+    let maxExtent = 0;
+    for (const h of system.habitats) {
+        if (h === system.systemStar) continue;
+        if (h.category === HabitatCategoryType.Moon && h.parent) {
+            maxExtent = Math.max(maxExtent, h.parent.orbitDistance + h.orbitDistance);
+        } else {
+            maxExtent = Math.max(maxExtent, h.orbitDistance);
+        }
+    }
+    return maxExtent;
+}
+
+/** Per-system seed, mixed from the shared rim-layer seed and the system index (never galaxy.rnd). */
+export function eyeSystemSeed(seed: number, systemIndex: number): number {
+    return (seed ^ Math.imul(systemIndex + 1, 0x2545f491)) >>> 0;
 }
 
 // --- procedural textures (canvas; generated once, only when the flag is on) ------------------------------------
@@ -323,6 +459,21 @@ function makeWashTexture(geo: RimGeometry, p: RimParams, halfSize: number): Text
         g.addColorStop(Math.min(1, mid), `rgba(22,24,46,${(0.5 * k).toFixed(3)})`);
         g.addColorStop(Math.min(1, edge), `rgba(12,13,28,${(0.8 * k).toFixed(3)})`);
         if (edge < 1) g.addColorStop(1, `rgba(8,9,20,${(0.85 * k).toFixed(3)})`);
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, s, s);
+    });
+}
+
+/** Item 6 eye dot: a small soft red glow (white-hot centre, dim red halo, transparent edge) — no art, just a radial
+ * gradient, tinted per-draw by alpha (blink) rather than colour. */
+function makeEyeTexture(): Texture {
+    return canvasTexture(64, (ctx, s) => {
+        const c = s / 2;
+        const g = ctx.createRadialGradient(c, c, 0, c, c, c);
+        g.addColorStop(0, 'rgba(255,235,225,1)');
+        g.addColorStop(0.3, 'rgba(255,60,40,0.9)');
+        g.addColorStop(0.65, 'rgba(160,10,10,0.35)');
+        g.addColorStop(1, 'rgba(120,0,0,0)');
         ctx.fillStyle = g;
         ctx.fillRect(0, 0, s, s);
     });
@@ -405,7 +556,7 @@ function makeGrainTexture(): Texture {
 export interface RimMountTargets {
     world: Container;
     fx: Container;
-    /** World child index just above the backdrop + nebula images (wash, derelicts, silhouettes go there). */
+    /** World child index just above the backdrop + nebula images (wash, derelicts, eyes go there). */
     backgroundIndex: number;
     starfieldFar: TilingSprite;
     starfieldNear: TilingSprite;
@@ -424,10 +575,10 @@ export class RimAtmosphereLayer {
     private wash: Sprite | null = null;
     private background = new Container();
     private derelictRoot = new Container();
-    private silhouetteRoot = new Container();
+    private eyeRoot = new Container();
     private murkRoot = new Container();
     private derelictPool = new SpritePool(this.derelictRoot);
-    private silhouettePool = new SpritePool(this.silhouetteRoot);
+    private eyePool = new SpritePool(this.eyeRoot);
     private murkPool = new SpritePool(this.murkRoot);
     private vignette: Sprite | null = null;
     private grain: TilingSprite | null = null;
@@ -436,8 +587,8 @@ export class RimAtmosphereLayer {
     private murkTexture: Texture | null = null;
     private derelicts: Derelict[] = [];
     private derelictTex = new Map<string, Texture | null>();
-    private silhouettes: Silhouette[] = [];
-    private creatureFrames: FrameSet[] = [];
+    private eyes: EyePair[] = [];
+    private eyeTexture: Texture | null = null;
     private murk: MurkPatch[] = [];
     private murkFrame = MURK_REFRESH_FRAMES;
     private murkSize = 0;
@@ -493,7 +644,7 @@ export class RimAtmosphereLayer {
             this.wash.scale.set((half * 2) / this.wash.texture.width);
             this.background.addChild(this.wash);
         }
-        this.background.addChild(this.silhouetteRoot, this.derelictRoot);
+        this.background.addChild(this.eyeRoot, this.derelictRoot);
         t.world.addChildAt(this.background, Math.min(t.backgroundIndex, t.world.children.length));
         // Murk above the systems (added before the empire / ship layers, so those stay on top).
         t.world.addChild(this.murkRoot);
@@ -519,7 +670,7 @@ export class RimAtmosphereLayer {
         t.fx.addChildAt(this.grain, fxIdx);
         t.fx.addChildAt(this.vignette, fxIdx);
 
-        // (3) murk texture; (5) derelicts; (6) silhouettes.
+        // (3) murk texture; (5) derelicts; (6) eyes in the dark.
         if (p.murkStrength > 0) this.murkTexture = makeMurkTexture();
         this.murkSize = geo.radius * 0.11;
         const seed = (this.galaxy.randomSeed | 0) ^ 0x19a7;
@@ -528,11 +679,23 @@ export class RimAtmosphereLayer {
             if (s.systemStar && this.weightAt(s.systemStar.xpos, s.systemStar.ypos) > 0.5) rimStars.push(s.systemStar);
         }
         this.derelicts = scatterDerelicts(geo, p.rimInner, Math.round(BASE_DERELICTS * Math.min(4, p.derelictDensity)), rimStars, seed);
-        this.silhouettes = silhouetteOrbits(p.rimInner, Math.min(24, Math.round(BASE_SILHOUETTES * p.silhouetteDensity)), seed);
-        if (this.store.dwuPresent) {
-            this.creatureFrames = CREATURES.map(
-                (c) => new FrameSet(this.store, Array.from({ length: CREATURE_FRAMES }, (_, i) => `${IMG}/units/creatures/${c.dir}/${c.prefix}_${String(i).padStart(5, '0')}.png`)),
-            );
+        if (p.eyeDensity > 0) {
+            this.eyeTexture = makeEyeTexture();
+            const eyeInputs: RimSystemInput[] = [];
+            for (const s of this.galaxy.systems) {
+                const star = s.systemStar;
+                if (!star) continue;
+                const w = this.weightAt(star.xpos, star.ypos);
+                if (w <= 0) continue;
+                eyeInputs.push({
+                    seed: eyeSystemSeed(seed, star.systemIndex),
+                    starX: star.xpos,
+                    starY: star.ypos,
+                    maxOrbit: systemMaxExtent(s),
+                    weight: w,
+                });
+            }
+            this.eyes = scatterEyes(eyeInputs, p.eyeDensity);
         }
     }
 
@@ -635,29 +798,33 @@ export class RimAtmosphereLayer {
         }
         this.derelictPool.end();
 
-        // (6) silhouettes at galaxy zoom.
-        this.silhouettePool.begin();
-        const silA = galaxyA * Math.min(1, 0.35 + 0.3 * p.silhouetteDensity);
-        if (silA > 0.01 && this.creatureFrames.length > 0) {
-            for (const sh of this.silhouettes) {
-                const a = sh.angle0 + tSec * sh.omega;
-                const r = sh.orbit * geo.radius;
-                const x = geo.cx + Math.cos(a) * r;
-                const y = geo.cy + Math.sin(a) * r;
-                const size = sh.size * geo.radius;
-                if (!boundsOnScreen(x, y, size, 0, cam.x, cam.y, cam.width, cam.height, z)) continue;
-                const frames = this.creatureFrames[sh.creature];
-                const tex = frames.frame(Math.floor(sh.phase + tSec * 3) % CREATURE_FRAMES);
-                if (tex === null) continue;
-                const s = this.silhouettePool.acquire(tex);
-                s.position.set(x, y);
-                s.scale.set(size / Math.max(tex.width, tex.height));
-                // Heading along the orbit tangent (a ± π/2); art facing up needs rotation = heading + π/2.
-                s.rotation = a + (sh.omega > 0 ? Math.PI : 0);
-                s.tint = RIM_SILHOUETTE;
-                s.alpha = silA;
+        // (6) eyes in the dark: system zoom only, rim systems only, crossfaded in (never a pop) and blinking.
+        this.eyePool.begin();
+        const eyeZ = eyeZoomFade(z);
+        const tex = this.eyeTexture;
+        if (eyeZ > 0.003 && tex !== null) {
+            for (const e of this.eyes) {
+                if (e.size * z < 1) continue;
+                if (!boundsOnScreen(e.x, e.y, e.gap + e.size, e.gap, cam.x, cam.y, cam.width, cam.height, z)) continue;
+                const blink = eyeBlinkAlpha(tSec, e.period, e.onFraction, e.phase);
+                if (blink <= 0.01) continue;
+                const cyc = eyeCycleIndex(tSec, e.period, e.phase);
+                const mv = eyeMoveOffset(e.seed, cyc, e.moveRadius);
+                const cx = e.x + mv.dx;
+                const cy = e.y + mv.dy;
+                const dx = Math.cos(e.angle) * e.gap * 0.5;
+                const dy = Math.sin(e.angle) * e.gap * 0.5;
+                const alpha = blink * eyeZ * EYE_MAX_ALPHA;
+                const s1 = this.eyePool.acquire(tex);
+                s1.position.set(cx - dx, cy - dy);
+                s1.scale.set(e.size / tex.width);
+                s1.alpha = alpha;
+                const s2 = this.eyePool.acquire(tex);
+                s2.position.set(cx + dx, cy + dy);
+                s2.scale.set(e.size / tex.width);
+                s2.alpha = alpha;
             }
         }
-        this.silhouettePool.end();
+        this.eyePool.end();
     }
 }
