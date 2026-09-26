@@ -49,7 +49,7 @@ import {
     processRelationChange,
     resolveEmpiresToDefendAgainst,
 } from './diplomacy';
-import { addAdvisorSuggestion, AdvisorMessageType } from './advisorQueue';
+import { addAdvisorSuggestion, AdvisorMessageType, advisorText } from './advisorQueue';
 import { addDeclinedTasks, declinedTasksCheckAttackEmpireTargetValid, declinedTasksCheckTaskTargetValid } from './missions/distress';
 import { EmpireMessage, EmpireMessageType, resolveDescription, sendEmpireMessage, sendMessageToEmpire, sendMessageToEmpireWithTitle } from './messages';
 import { empireWarWeariness } from './taxes';
@@ -150,13 +150,8 @@ export function getText(key: string): string {
     return key;
 }
 
-/**
- * string.Format(format, args): {n} placeholders. When `format` is a GameText key (getText returns keys; M9 localises),
- * it has no placeholders: the arguments are kept in the colonyTick gameText encoding "key|arg0|arg1|…", which
- * textResolver.resolveGameText turns into the C# text for display (the advisor suggestions, the message ticker).
- */
+/** string.Format(format, args): {n} placeholders. */
 export function formatText(format: string, ...args: unknown[]): string {
-    if (args.length > 0 && !/\{\d+\}/.test(format)) return `${format}|${args.map((a) => String(a)).join('|')}`;
     return format.replace(/\{(\d+)\}/g, (m, i) => (Number(i) < args.length ? String(args[Number(i)]) : m));
 }
 
@@ -435,27 +430,77 @@ function checkTaskAuthorizedSimple(galaxy: Galaxy, self: Empire, automationLevel
     return checkTaskAuthorized(galaxy, self, automationLevel, { value: 0 }, taskDescription, taskTarget, advisorMessageType);
 }
 
-// Empire.10.cs 3900-4010 GenerateAutomationMessage* (advisor text only; keys stand in for the formatted GameText).
+// Empire.10.cs 4003-4318 GenerateAutomationMessage* (the advisor suggestion's Description: advisorQueue.ts advisorText
+// keeps the GameText key and its arguments for the Advisor Suggestion window). No Rnd.
+/** Empire.10.cs 4003. */
 export function generateAutomationMessageRequestLiftTradeSanctions(targetEmpire: Empire, friendEmpire: Empire): string {
-    return formatText(getText('Automation Request Lift Trade Sanctions'), friendEmpire.name, targetEmpire.name);
+    return advisorText('Automation Request Lift Trade Sanctions', friendEmpire.name, targetEmpire.name);
 }
-export function generateAutomationMessageTreaty(otherEmpire: Empire, type: DiplomaticRelationType): string {
-    return formatText(getText('Automation Treaty'), resolveDescription(DiplomaticRelationType, type), otherEmpire.name);
+/** Empire.10.cs 4281 GenerateAutomationMessageTreaty(empire, relationType). */
+export function generateAutomationMessageTreaty(self: Empire, otherEmpire: Empire, type: DiplomaticRelationType): string {
+    const diplomaticRelation = obtainDiplomaticRelation(self, otherEmpire);
+    if (type === DiplomaticRelationType.None) {
+        if (diplomaticRelation.type === DiplomaticRelationType.SubjugatedDominion) {
+            if (diplomaticRelation.initiator === self) return advisorText('Automation Free From Subjugation', otherEmpire.name);
+            return advisorText('Automation Request Release From Subjugation', otherEmpire.name);
+        }
+        return advisorText('Automation Cancel Treaty', otherEmpire.name);
+    }
+    return advisorText('Automation Offer Treaty', otherEmpire.name, resolveDescription(DiplomaticRelationType, type));
 }
-export function generateAutomationMessageWarTradeSanctions(otherEmpire: Empire, type: DiplomaticRelationType): string {
-    return formatText(getText('Automation War Trade Sanctions'), resolveDescription(DiplomaticRelationType, type), otherEmpire.name);
+/** Empire.10.cs 4300 GenerateAutomationMessageWarTradeSanctions(empire, relationType). */
+export function generateAutomationMessageWarTradeSanctions(self: Empire, otherEmpire: Empire, type: DiplomaticRelationType): string {
+    let result = '';
+    const diplomaticRelation = obtainDiplomaticRelation(self, otherEmpire);
+    switch (type) {
+        case DiplomaticRelationType.None:
+            if (diplomaticRelation.type === DiplomaticRelationType.War) result = advisorText('Automation End War', otherEmpire.name);
+            else if (diplomaticRelation.type === DiplomaticRelationType.TradeSanctions) result = advisorText('Automation Lift Trade Sanctions', otherEmpire.name);
+            else result = advisorText('Automation Cancel Treaty', otherEmpire.name);
+            break;
+        case DiplomaticRelationType.War:
+            result = advisorText('Automation Declare War', otherEmpire.name);
+            break;
+        case DiplomaticRelationType.TradeSanctions:
+            result = advisorText('Automation Initiate Trade Sanctions', otherEmpire.name);
+            break;
+        case DiplomaticRelationType.SubjugatedDominion:
+            result = advisorText('Automation Subjugated Dominion', otherEmpire.name);
+            break;
+    }
+    return result;
 }
+/** Empire.10.cs 4018. */
 function generateAutomationMessageMilitaryRefueling(otherEmpire: Empire, refuel: boolean): string {
-    return formatText(getText(refuel ? 'Automation Military Refueling Allow' : 'Automation Military Refueling Block'), otherEmpire.name);
+    return advisorText(refuel ? 'Military Refueling Check Offer' : 'Military Refueling Check Cancel', otherEmpire.name);
 }
+/** Empire.10.cs 4028. */
 function generateAutomationMessageMiningRights(otherEmpire: Empire, allowMining: boolean): string {
-    return formatText(getText(allowMining ? 'Automation Mining Rights Allow' : 'Automation Mining Rights Block'), otherEmpire.name);
+    return advisorText(allowMining ? 'Mining Rights Check Offer' : 'Mining Rights Check Cancel', otherEmpire.name);
 }
-function generateAutomationMessageTradeRestrictedResources(otherEmpire: Empire, trade: boolean): string {
-    return formatText(getText(trade ? 'Automation Trade Restricted Resources Allow' : 'Automation Trade Restricted Resources Block'), otherEmpire.name);
+/** Empire.7.cs 4665 GenerateEmpireRestrictedResourcesDescription(out plural): "A, B" of the restricted resources supplied. */
+export function generateEmpireRestrictedResourcesDescription(galaxy: Galaxy, self: Empire): { text: string; plural: boolean } {
+    let text = '';
+    let num = 0;
+    const resourceList = determineResourcesEmpireSupplies(self);
+    for (let i = 0; i < resourceList.length; i++) {
+        const resource = galaxy.resourceSystem.byId.get(resourceList[i]);
+        if (resource != null && resource.superLuxuryBonusAmount > 0) {
+            text = text + resource.name + ', ';
+            num++;
+        }
+    }
+    if (text.length > 0) text = text.substring(0, text.length - 2);
+    return { text, plural: num > 1 };
 }
+/** Empire.10.cs 4038. */
+function generateAutomationMessageTradeRestrictedResources(galaxy: Galaxy, self: Empire, otherEmpire: Empire, trade: boolean): string {
+    const arg = generateEmpireRestrictedResourcesDescription(galaxy, self).text;
+    return advisorText(trade ? 'Automation Trade Restricted Resources' : 'Automation Terminate Restricted Resources', arg, otherEmpire.name);
+}
+/** Empire.10.cs 4246 (moneyAmount.ToString("###,###,###,##0")). */
 function generateAutomationMessageDiplomaticGift(otherEmpire: Empire, amount: number): string {
-    return formatText(getText('Automation Diplomatic Gift'), amount.toFixed(0), otherEmpire.name);
+    return advisorText('Automation Give Gift', formatThousands(amount), otherEmpire.name);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -1957,7 +2002,7 @@ function applyDiplomaticStrategyToRelation(galaxy: Galaxy, self: Empire, relatio
                     relation.lastDiplomacyTradeOfferDate = galaxyStarDate(galaxy);
                     sendMessageToEmpire(self, otherEmpire, EmpireMessageType.ProposeDiplomaticRelation, DiplomaticRelationType.None, description);
                 };
-                const authorized = (): boolean => checkTaskAuthorized(galaxy, self, self.controlDiplomacyTreaties, refusalCount, generateAutomationMessageTreaty(otherEmpire, DiplomaticRelationType.None), otherEmpire, AdvisorMessageType.TreatyOffer, null, DiplomaticRelationType.None, null);
+                const authorized = (): boolean => checkTaskAuthorized(galaxy, self, self.controlDiplomacyTreaties, refusalCount, generateAutomationMessageTreaty(self, otherEmpire, DiplomaticRelationType.None), otherEmpire, AdvisorMessageType.TreatyOffer, null, DiplomaticRelationType.None, null);
                 switch (num) {
                     case -1:
                         if (galaxy.rnd.next(0, 8) === 2 && authorized()) propose();
@@ -2164,7 +2209,7 @@ export function checkReadyForWar(galaxy: Galaxy, self: Empire, otherEmpire: Empi
 /** Empire.8.cs 1515 StartWar(otherEmpire). */
 export function startWar(galaxy: Galaxy, self: Empire, otherEmpire: Empire): void {
     if (self.controlDiplomacyOffense !== MANUAL) {
-        if (checkTaskAuthorized(galaxy, self, self.controlDiplomacyOffense, { value: 0 }, generateAutomationMessageWarTradeSanctions(otherEmpire, DiplomaticRelationType.War), otherEmpire, AdvisorMessageType.WarTradeSanctions, null, DiplomaticRelationType.War, null)) {
+        if (checkTaskAuthorized(galaxy, self, self.controlDiplomacyOffense, { value: 0 }, generateAutomationMessageWarTradeSanctions(self, otherEmpire, DiplomaticRelationType.War), otherEmpire, AdvisorMessageType.WarTradeSanctions, null, DiplomaticRelationType.War, null)) {
             declareWar(galaxy, self, otherEmpire, null, false, false);
         }
     }
@@ -2177,7 +2222,7 @@ function subjugateRequest(galaxy: Galaxy, self: Empire, otherEmpire: Empire): vo
     const num = calculateNextAllowableProposalDate(galaxy, diplomaticRelation);
     if (galaxyStarDate(galaxy) >= num) {
         const diplomaticRelation2 = new DiplomaticRelation(DiplomaticRelationType.SubjugatedDominion, self, self, otherEmpire, galaxyStarDate(galaxy), diplomaticRelation.supplyRestrictedResources);
-        if (checkTaskAuthorized(galaxy, self, self.controlDiplomacyOffense, { value: 0 }, generateAutomationMessageWarTradeSanctions(otherEmpire, DiplomaticRelationType.SubjugatedDominion), otherEmpire, AdvisorMessageType.WarTradeSanctions, null, DiplomaticRelationType.SubjugatedDominion, null)) {
+        if (checkTaskAuthorized(galaxy, self, self.controlDiplomacyOffense, { value: 0 }, generateAutomationMessageWarTradeSanctions(self, otherEmpire, DiplomaticRelationType.SubjugatedDominion), otherEmpire, AdvisorMessageType.WarTradeSanctions, null, DiplomaticRelationType.SubjugatedDominion, null)) {
             otherEmpire.proposedDiplomaticRelations.add(diplomaticRelation2);
             const ourPotencyVersusThem = determineRelativeStrength(galaxy, militaryPotency(self), otherEmpire);
             const description = generateMessageDescriptionRelation(diplomaticRelation, DiplomaticRelationType.SubjugatedDominion, ourPotencyVersusThem);
@@ -2194,7 +2239,7 @@ export function endWarRequest(galaxy: Galaxy, self: Empire, otherEmpire: Empire)
     const num = calculateNextAllowableProposalDate(galaxy, diplomaticRelation);
     if (galaxyStarDate(galaxy) >= num) {
         const diplomaticRelation2 = new DiplomaticRelation(DiplomaticRelationType.None, self, self, otherEmpire, galaxyStarDate(galaxy), diplomaticRelation.supplyRestrictedResources);
-        if (checkTaskAuthorized(galaxy, self, self.controlDiplomacyOffense, { value: 0 }, generateAutomationMessageWarTradeSanctions(otherEmpire, DiplomaticRelationType.None), otherEmpire, AdvisorMessageType.WarTradeSanctions, null, DiplomaticRelationType.None, null)) {
+        if (checkTaskAuthorized(galaxy, self, self.controlDiplomacyOffense, { value: 0 }, generateAutomationMessageWarTradeSanctions(self, otherEmpire, DiplomaticRelationType.None), otherEmpire, AdvisorMessageType.WarTradeSanctions, null, DiplomaticRelationType.None, null)) {
             otherEmpire.proposedDiplomaticRelations.add(diplomaticRelation2);
             const description = getText('We urge you to consider our proposal for an end to this pointless war'); // Empire.7.cs 3844 GenerateMessageDescriptionEndWarRequest
             diplomaticRelation.lastDiplomacyTradeOfferDate = galaxyStarDate(galaxy);
@@ -2222,7 +2267,7 @@ export function startTradeSanctions(galaxy: Galaxy, self: Empire, otherEmpire: E
     const ev = obtainEmpireEvaluation(galaxy, otherEmpire, self);
     const diplomaticRelation = obtainDiplomaticRelation(self, otherEmpire);
     if (diplomaticRelation.type !== DiplomaticRelationType.War && diplomaticRelation.type !== DiplomaticRelationType.SubjugatedDominion) {
-        if (checkTaskAuthorized(galaxy, self, self.controlDiplomacyOffense, { value: 0 }, generateAutomationMessageWarTradeSanctions(otherEmpire, DiplomaticRelationType.TradeSanctions), otherEmpire, AdvisorMessageType.WarTradeSanctions, null, DiplomaticRelationType.TradeSanctions, null)) {
+        if (checkTaskAuthorized(galaxy, self, self.controlDiplomacyOffense, { value: 0 }, generateAutomationMessageWarTradeSanctions(self, otherEmpire, DiplomaticRelationType.TradeSanctions), otherEmpire, AdvisorMessageType.WarTradeSanctions, null, DiplomaticRelationType.TradeSanctions, null)) {
             changeDiplomaticRelation(galaxy, self, diplomaticRelation, DiplomaticRelationType.TradeSanctions);
             ev.incidentEvaluation = ev.incidentEvaluationRaw - 20.0;
             diplomaticRelation.lastDiplomacyTradeOfferDate = galaxyStarDate(galaxy);
@@ -2247,7 +2292,7 @@ export function endTradeSanctionsIfTimePassed(galaxy: Galaxy, self: Empire, othe
 export function endTradeSanctions(galaxy: Galaxy, self: Empire, otherEmpire: Empire): void {
     const diplomaticRelation = obtainDiplomaticRelation(self, otherEmpire);
     if (diplomaticRelation != null && diplomaticRelation.type === DiplomaticRelationType.TradeSanctions && diplomaticRelation.initiator === self) {
-        if (checkTaskAuthorized(galaxy, self, self.controlDiplomacyOffense, { value: 0 }, generateAutomationMessageWarTradeSanctions(otherEmpire, DiplomaticRelationType.None), otherEmpire, AdvisorMessageType.WarTradeSanctions, null, DiplomaticRelationType.None, null)) {
+        if (checkTaskAuthorized(galaxy, self, self.controlDiplomacyOffense, { value: 0 }, generateAutomationMessageWarTradeSanctions(self, otherEmpire, DiplomaticRelationType.None), otherEmpire, AdvisorMessageType.WarTradeSanctions, null, DiplomaticRelationType.None, null)) {
             changeDiplomaticRelation(galaxy, self, diplomaticRelation, DiplomaticRelationType.None);
             cancelBlockades(galaxy, self, otherEmpire);
             cancelBlockades(galaxy, otherEmpire, self);
@@ -2262,7 +2307,7 @@ export function endTradeSanctions(galaxy: Galaxy, self: Empire, otherEmpire: Emp
 function endSubjugation(galaxy: Galaxy, self: Empire, otherEmpire: Empire): void {
     const diplomaticRelation = obtainDiplomaticRelation(self, otherEmpire);
     if (diplomaticRelation != null && diplomaticRelation.type === DiplomaticRelationType.SubjugatedDominion && diplomaticRelation.initiator === self) {
-        if (checkTaskAuthorized(galaxy, self, self.controlDiplomacyTreaties, { value: 0 }, generateAutomationMessageTreaty(otherEmpire, DiplomaticRelationType.None), otherEmpire, AdvisorMessageType.TreatyOffer, null, DiplomaticRelationType.None, null)) {
+        if (checkTaskAuthorized(galaxy, self, self.controlDiplomacyTreaties, { value: 0 }, generateAutomationMessageTreaty(self, otherEmpire, DiplomaticRelationType.None), otherEmpire, AdvisorMessageType.TreatyOffer, null, DiplomaticRelationType.None, null)) {
             changeDiplomaticRelation(galaxy, self, diplomaticRelation, DiplomaticRelationType.None);
             diplomaticRelation.lastDiplomacyTradeOfferDate = galaxyStarDate(galaxy);
             const description = getText('We are releasing you from subjugation to us. We no longer consider you to be our conquered dominion.'); // Empire.7.cs 3849
@@ -2285,7 +2330,7 @@ export function cancelTreatiesIfTimePassed(galaxy: Galaxy, self: Empire, otherEm
 export function cancelTreaties(galaxy: Galaxy, self: Empire, otherEmpire: Empire): void {
     const diplomaticRelation = obtainDiplomaticRelation(self, otherEmpire);
     if (diplomaticRelation.type !== DiplomaticRelationType.FreeTradeAgreement && diplomaticRelation.type !== DiplomaticRelationType.MutualDefensePact && diplomaticRelation.type !== DiplomaticRelationType.Protectorate) return;
-    if (checkTaskAuthorized(galaxy, self, self.controlDiplomacyTreaties, { value: 0 }, generateAutomationMessageTreaty(otherEmpire, DiplomaticRelationType.None), otherEmpire, AdvisorMessageType.TreatyOffer, null, DiplomaticRelationType.None, null)) {
+    if (checkTaskAuthorized(galaxy, self, self.controlDiplomacyTreaties, { value: 0 }, generateAutomationMessageTreaty(self, otherEmpire, DiplomaticRelationType.None), otherEmpire, AdvisorMessageType.TreatyOffer, null, DiplomaticRelationType.None, null)) {
         if ((diplomaticRelation.type as DiplomaticRelationType) !== DiplomaticRelationType.NotMet) {
             sendMessageToEmpire(self, otherEmpire, EmpireMessageType.DiplomaticRelationChange, DiplomaticRelationType.None, getText('We cancel our treaty with you.'), NO_POINT, resolveDescription(DiplomaticRelationType, diplomaticRelation.type));
         }
@@ -2320,7 +2365,7 @@ function checkCancelMiningRights(galaxy: Galaxy, self: Empire, otherEmpire: Empi
 /** Empire.8.cs 1712 CheckCancelRestrictedResourceTrading. */
 function checkCancelRestrictedResourceTrading(galaxy: Galaxy, self: Empire, otherEmpire: Empire): void {
     const diplomaticRelation = obtainDiplomaticRelation(self, otherEmpire);
-    if (diplomaticRelation.supplyRestrictedResources && checkTaskAuthorizedSimple(galaxy, self, self.controlDiplomacyTreaties, generateAutomationMessageTradeRestrictedResources(diplomaticRelation.otherEmpire!, false), diplomaticRelation.otherEmpire, AdvisorMessageType.DisallowTradeRestrictedResources)) {
+    if (diplomaticRelation.supplyRestrictedResources && checkTaskAuthorizedSimple(galaxy, self, self.controlDiplomacyTreaties, generateAutomationMessageTradeRestrictedResources(galaxy, self, diplomaticRelation.otherEmpire!, false), diplomaticRelation.otherEmpire, AdvisorMessageType.DisallowTradeRestrictedResources)) {
         diplomaticRelation.supplyRestrictedResources = false;
         const description = formatText(getText('Trade Restricted Resource Refuse EMPIRE'), self.name);
         sendMessageToEmpire(self, otherEmpire, EmpireMessageType.RestrictedResourceTradingBlocked, self, description);
@@ -2368,7 +2413,7 @@ export function offerFreeTrade(galaxy: Galaxy, self: Empire, otherEmpire: Empire
     const num = calculateNextAllowableProposalDate(galaxy, diplomaticRelation);
     if (galaxyStarDate(galaxy) >= num) {
         const diplomaticRelation2 = new DiplomaticRelation(DiplomaticRelationType.FreeTradeAgreement, self, self, otherEmpire, galaxyStarDate(galaxy), diplomaticRelation.supplyRestrictedResources);
-        if (checkTaskAuthorized(galaxy, self, self.controlDiplomacyTreaties, { value: 0 }, generateAutomationMessageTreaty(otherEmpire, DiplomaticRelationType.FreeTradeAgreement), otherEmpire, AdvisorMessageType.TreatyOffer, null, DiplomaticRelationType.FreeTradeAgreement, null)) {
+        if (checkTaskAuthorized(galaxy, self, self.controlDiplomacyTreaties, { value: 0 }, generateAutomationMessageTreaty(self, otherEmpire, DiplomaticRelationType.FreeTradeAgreement), otherEmpire, AdvisorMessageType.TreatyOffer, null, DiplomaticRelationType.FreeTradeAgreement, null)) {
             otherEmpire.proposedDiplomaticRelations.add(diplomaticRelation2);
             const ourPotencyVersusThem = determineRelativeStrength(galaxy, militaryPotency(self), otherEmpire);
             const description = generateMessageDescriptionRelation(diplomaticRelation, DiplomaticRelationType.FreeTradeAgreement, ourPotencyVersusThem);
@@ -2388,7 +2433,7 @@ export function offerMutualDefense(galaxy: Galaxy, self: Empire, otherEmpire: Em
         const num2 = totalColonyStrategicValue(self) / totalColonyStrategicValue(otherEmpire);
         if (num2 > 4.0) diplomaticRelationType = DiplomaticRelationType.Protectorate;
         const diplomaticRelation2 = new DiplomaticRelation(diplomaticRelationType, self, self, otherEmpire, galaxyStarDate(galaxy), diplomaticRelation.supplyRestrictedResources);
-        if (checkTaskAuthorized(galaxy, self, self.controlDiplomacyTreaties, { value: 0 }, generateAutomationMessageTreaty(otherEmpire, diplomaticRelationType), otherEmpire, AdvisorMessageType.TreatyOffer, null, diplomaticRelationType, null)) {
+        if (checkTaskAuthorized(galaxy, self, self.controlDiplomacyTreaties, { value: 0 }, generateAutomationMessageTreaty(self, otherEmpire, diplomaticRelationType), otherEmpire, AdvisorMessageType.TreatyOffer, null, diplomaticRelationType, null)) {
             otherEmpire.proposedDiplomaticRelations.add(diplomaticRelation2);
             const ourPotencyVersusThem = determineRelativeStrength(galaxy, militaryPotency(self), otherEmpire);
             const description = generateMessageDescriptionRelation(diplomaticRelation, diplomaticRelationType, ourPotencyVersusThem);

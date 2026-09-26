@@ -79,6 +79,7 @@ import { determineOrbitalBaseLocation } from '../pirates';
 import { AdvisorMessageType, checkTaskAuthorized, formatText, formatThousands, getText, type RefCount } from '../diplomacyTick';
 import { gameText } from '../colonyTick';
 import { EmpireMessage, EmpireMessageType, resolveDescription, sendEmpireMessage } from '../messages';
+import { advisorText } from '../advisorQueue';
 import { ConstructionQueue, canBuiltObjectColonizeHabitat, resolveBuildSpeed } from './constructionQueue';
 import { componentListDiff, resolveComponentList } from './constructionYard';
 import { ManufacturingQueue, builtObjectManufacturingQueue, habitatManufacturingQueue } from '../manufacturingQueue';
@@ -859,7 +860,7 @@ export function generateAutomationMessageConstruction(galaxy: Galaxy, builtObjec
         text4 = habitat2.name;
     }
     // 3676: Galaxy.ResolveDescription(SubRole), cost.ToString("###,###,###,##0").
-    return formatText(getText('Automation Construction Colony'), resolveDescription(BuiltObjectSubRole, builtObject.subRole), builtObject.design!.name, formatThousands(cost), text, text2, text3, text4);
+    return advisorText('Automation Construction Colony', resolveDescription(BuiltObjectSubRole, builtObject.subRole), builtObject.design!.name, formatThousands(cost), text, text2, text3, text4);
 }
 
 // ---------------------------------------------------------------------------------------------------------------

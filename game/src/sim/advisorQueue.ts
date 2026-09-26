@@ -86,6 +86,16 @@ export function resolveAdvisorTargetEmpire(m: EmpireMessage): Empire | null {
     return empire;
 }
 
+/**
+ * An advisor suggestion's Description: `string.Format(TextResolver.GetText(key), args)` kept in the colonyTick gameText
+ * encoding "key|arg0|arg1|…" (the sim does not localise; textResolver.resolveGameText renders it for the window).
+ * TODO(port) M9: the automation texts of the other packages (militaryAI.ts, espionage.ts, civilianAI.ts, facilities.ts,
+ * invasion.ts, pirate*.ts GenerateAutomationMessage*) still pass formatText(getText(key), …), which keeps the key only.
+ */
+export function advisorText(key: string, ...args: unknown[]): string {
+    return args.length > 0 ? `${key}|${args.map((a) => String(a)).join('|')}` : key;
+}
+
 /** DiplomaticMessageQueue.cs 673: an entry older than 250 × Galaxy.RealSecondsInGalacticYear star-date units expires. */
 export const ADVISOR_SUGGESTION_LIFETIME = 250 * REAL_SECONDS_IN_GALACTIC_YEAR;
 

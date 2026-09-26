@@ -21,8 +21,7 @@ import type { Galaxy } from '../galaxy';
 import { Empire } from '../empire';
 import { BuiltObject } from '../builtObject';
 import { Habitat, HabitatCategoryType, type HabitatType } from '../types';
-import type { Design } from '../design';
-import { findNewest } from '../design';
+import { Design, findNewest } from '../design';
 import { Character, IntelligenceMission } from '../characters';
 import { Creature } from '../creature';
 import { ShipGroup } from '../fleets/shipGroup';
@@ -43,6 +42,7 @@ import {
     determineRelativeStrength,
     evaluateMilitaryPotency,
     formatText,
+    formatThousands,
     generateMessageDescriptionRelation,
     generateMessageDescriptionType,
     getText,
@@ -284,7 +284,7 @@ export function declineSuggestion(galaxy: Galaxy, player: Empire, message: Empir
 // ---------------------------------------------------------------------------------------------------------------
 
 function isDesign(o: unknown): o is Design {
-    return o !== null && typeof o === 'object' && typeof (o as Design).calculateCurrentPurchasePrice === 'function' && 'subRole' in (o as object) && !(o instanceof BuiltObject);
+    return o instanceof Design;
 }
 
 function isFacility(o: unknown): o is Facility {
@@ -588,7 +588,7 @@ export function approveSuggestion(galaxy: Galaxy, player: Empire, message: Empir
                 empireMessage2.money = Math.trunc(num6);
                 player.stateMoney -= num6;
                 pirateEconomyPerformExpense(galaxy, player, num6, PirateExpenseType.Undefined, now());
-                empireMessage2.description = formatText(getText('Please accept our gift of X credits'), num6.toLocaleString('en-US', { maximumFractionDigits: 0 }));
+                empireMessage2.description = formatText(getText('Please accept our gift of X credits'), formatThousands(num6)); // "###,###,###,##0"
                 sendEmpireMessage(empireMessage2, subject);
                 obtainDiplomaticRelation(player, subject);
             }
