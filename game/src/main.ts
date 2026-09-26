@@ -19,6 +19,7 @@ import { GalaxyTime } from './sim/clock';
 import { resolveStarDateDescription } from './sim/galaxyTime';
 import { createSimLoop, simViewEnabledFromUrl } from './simLoop';
 import { formatClockLabel, SECTOR_LEVEL_ZOOM, SYSTEM_LEVEL_ZOOM, type Selection } from './ui/hud';
+import { setTextIfChanged } from './render/drawCache';
 import { Habitat, HabitatCategoryType } from './sim/types';
 import { createMapOverlayState, type MapOverlayState, type OverlayKey } from './ui/mapOverlays';
 import { buildDefaultHandlers, createShortcutsOverlay, dispatchKey, setCycleHandler, setGameMenuHandler } from './ui/keyboard';
@@ -74,6 +75,17 @@ import { hideMapTooltip } from './ui/mapTooltip';
 import { closeEmpireComparison, closeGameEndBanner, installGameEndHandler, removeGameEndHandler } from './ui/screens/empireComparison'; // [15d]
 import { installMessagePopups, removeMessagePopups } from './ui/messagePopups'; import { closeGameOptionsPanel } from './ui/screens/gameOptionsPanel'; // [16d]
 import { installOrderUi, selectionTarget } from './ui/orderMenu'; import { getSelection as getHudSelection, selectShipGroup, selectStellarObject } from './ui/hud'; import { ShipGroup } from './sim/fleets/shipGroup'; import { Fighter } from './sim/combat/fighters'; // [ordermenu]
+// [suggest] begin
+import { installAdvisorSuggestions, removeAdvisorSuggestions } from './ui/advisorSuggestions';
+import { expireConversationsForEmpire } from './ui/messagePopups';
+import { toggleBuildOrder } from './ui/screens/buildOrder';
+import { Creature } from './sim/creature';
+// [suggest] end
+
+// [popupstubs] begin
+import { installMessageStubList, removeMessageStubList } from './ui/messageStubList';
+// [popupstubs] end
+
 // [fix6ui] begin
 import { setShipCommandHandler } from './ui/keyboard';
 import { refreshSelectionActionBar } from './ui/orderMenu';
@@ -426,10 +438,7 @@ export async function startGameView(
     const messageFeed = createEmpireMessageFeed();
     const refreshHud = (): void => {
         if (systemNameEl) {
-            systemNameEl.textContent = nearestSystemName(
-                { galaxy },
-                camera,
-            );
+            setTextIfChanged(systemNameEl, nearestSystemName({ galaxy }, camera));
         }
         for (const { message, text } of messageFeed.pollMessages(game.playerEmpire)) {
             recordTickerMessage(game.playerEmpire, message, time.currentStarDate);
@@ -443,12 +452,14 @@ export async function startGameView(
     window.addEventListener('resize', resizeHandler);
     const refreshHudTimer = setInterval(refreshHud, 250);
     const refreshClockLabel = (): void => {
+        // 4 Hz; the DOM is only written when a value changes (an unchanged write still re-lays out the HUD).
         if (dateEl) {
-            dateEl.textContent = formatClockLabel(time.currentStarDate, time.speed);
+            setTextIfChanged(dateEl, formatClockLabel(time.currentStarDate, time.speed));
         }
         if (pauseBtn) {
-            pauseBtn.textContent = time.paused ? '▶' : '⏸';
-            pauseBtn.title = playPauseHint(time.paused);
+            setTextIfChanged(pauseBtn, time.paused ? '▶' : '⏸');
+            const hint = playPauseHint(time.paused);
+            if (pauseBtn.title !== hint) pauseBtn.title = hint;
         }
     };
     const refreshClockTimer = setInterval(refreshClockLabel, 250);
@@ -456,8 +467,48 @@ export async function startGameView(
     installGameEndHandler(galaxy, time);
     // [/15d]
     // [16d] Player messages → popups + the diplomatic conversation queue (Main.Part9.cs ReceiveMessageInternal).
-    installMessagePopups({ player: game.playerEmpire, galaxy });
+    // [popupstubs] begin
+    // The clock lets an immediate conversation pause the game (Main.Part9.cs 1544 method_253).
+    installMessagePopups({ player: game.playerEmpire, galaxy, clock: time });
+    // [popupstubs] end
     // [/16d]
+
+    // [suggest] begin
+    // Advisor suggestions (SemiAutomated tasks): Main.Part2.cs 2781 pnlAdvisorSuggestion. "Show me first" centres and
+    // selects the subject (method_646 / 647; method_645 → the empire's capital here) and Approve / Decline restore the
+    // view (method_644).
+    installAdvisorSuggestions({
+        player: game.playerEmpire,
+        galaxy,
+        clock: time,
+        openBuildOrder: () => toggleBuildOrder({ empire: game.playerEmpire }),
+        expireConversations: (e) => expireConversationsForEmpire(e),
+        show: (target) => {
+            const before = { x: camera.x, y: camera.y, zoom: camera.zoom, sel: getHudSelection() };
+            let o: unknown = null;
+            if (target.kind === 'empire') o = target.empire?.capital ?? null;
+            else o = target.object;
+            if (o === null) return;
+            const pos = o instanceof ShipGroup ? o.leadShip : (o as { xpos: number; ypos: number });
+            if (pos == null) return;
+            camera.centerOn(pos.xpos, pos.ypos);
+            camera.zoomAt(SYSTEM_LEVEL_ZOOM, camera.width / 2, camera.height / 2);
+            if (o instanceof ShipGroup) selectShipGroup(o, false);
+            else if (o instanceof Habitat) selectHabitat(o, false);
+            else if (!(o instanceof Creature)) selectStellarObject(o as Parameters<typeof selectStellarObject>[0], false);
+            return () => {
+                camera.zoom = before.zoom;
+                camera.centerOn(before.x, before.y);
+                hud.onSelectionChange?.(before.sel);
+            };
+        },
+    });
+    // [suggest] end
+
+    // [popupstubs] begin
+    // Messages, conversations and advisor suggestions first appear as one-line stubs under the top-right panel.
+    installMessageStubList({ player: game.playerEmpire, galaxy, clock: time });
+    // [popupstubs] end
 
     // [ordermenu] begin
     // 17c: right-click orders / the action menu in the main view and the selection panel's action buttons.
@@ -650,6 +701,13 @@ export async function startGameView(
         // [intel] end
 
         setEmpireSummarySource(null);
+        // [suggest] begin
+        removeAdvisorSuggestions();
+        // [suggest] end
+
+        // [popupstubs] begin
+        removeMessageStubList();
+        // [popupstubs] end
         // The ticker buffer is module-level; the next game starts fresh.
         clearHudMessages();
         // [15d]
@@ -1189,10 +1247,7 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     };
     const refreshHud = (): void => {
         if (systemNameEl) {
-            systemNameEl.textContent = nearestSystemName(
-                { galaxy },
-                camera,
-            );
+            setTextIfChanged(systemNameEl, nearestSystemName({ galaxy }, camera));
         }
     };
     refreshHud();
@@ -1201,12 +1256,14 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     setInterval(refreshHud, 250);
     // Task 07b: keep the star-date label (and the play/pause glyph) fresh.
     const refreshClockLabel = (): void => {
+        // 4 Hz; the DOM is only written when a value changes (an unchanged write still re-lays out the HUD).
         if (dateEl) {
-            dateEl.textContent = formatClockLabel(time.currentStarDate, time.speed);
+            setTextIfChanged(dateEl, formatClockLabel(time.currentStarDate, time.speed));
         }
         if (pauseBtn) {
-            pauseBtn.textContent = time.paused ? '▶' : '⏸';
-            pauseBtn.title = playPauseHint(time.paused);
+            setTextIfChanged(pauseBtn, time.paused ? '▶' : '⏸');
+            const hint = playPauseHint(time.paused);
+            if (pauseBtn.title !== hint) pauseBtn.title = hint;
         }
     };
     setInterval(refreshClockLabel, 250);

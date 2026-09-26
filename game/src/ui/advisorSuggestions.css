@@ -1,0 +1,51 @@
+/* suggest: advisor suggestion entries (DiplomaticMessageQueue.cs advisor colour 144,144,144 / 170,170,170) and the
+   Advisor Suggestion window (pnlAdvisorSuggestion 355x448, centred; "Show me first" moves it to (20, 20)). */
+
+.advisor-suggestion-window {
+    width: 380px;
+}
+
+.advisor-suggestion-wrap.advisor-suggestion-shown {
+    align-items: flex-start;
+    justify-content: flex-start;
+    padding: 20px;
+}
+
+.advisor-suggestion-title {
+    font-size: 15px;
+    color: #e8d24a;
+    text-align: center;
+}
+
+.advisor-suggestion-cost {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 13px;
+}
+
+.advisor-suggestion-cost-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #aaa;
+}
+
+.advisor-suggestion-cost-value {
+    color: #e6e6e6;
+}
+
+.advisor-suggestion-cost-money {
+    font-size: 11px;
+    color: #888;
+}
+
+.advisor-suggestion-automation {
+    font-size: 11px;
+    color: #8a8a8a;
+}
+
+.advisor-suggestion-window .message-conversation-button:disabled {
+    opacity: 0.4;
+    cursor: default;
+}

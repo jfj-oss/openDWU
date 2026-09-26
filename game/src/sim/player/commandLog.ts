@@ -67,7 +67,16 @@ export interface ClockLogEntry {
     speed: number;
 }
 
-export type CommandLogEntry = AdvisorLogEntry | PlayerLogEntry | ClockLogEntry;
+/** The camera level-of-detail pass (?simView=1) was switched on / off here: while on, the camera is a sim input the log
+ *  does not carry, so a replay of that stretch is not exact (replayCommandLog warns). */
+export interface ViewLogEntry {
+    starDate: number;
+    nowMs: number;
+    source: 'view';
+    on: boolean;
+}
+
+export type CommandLogEntry = AdvisorLogEntry | PlayerLogEntry | ClockLogEntry | ViewLogEntry;
 
 const logs = new WeakMap<Galaxy, CommandLogEntry[]>();
 
@@ -79,7 +88,7 @@ export function commandLog(galaxy: Galaxy): readonly CommandLogEntry[] {
 /** A deep copy of one entry (the log is data; saves and loads never share objects with the live log). */
 export function copyCommandLogEntry(e: CommandLogEntry): CommandLogEntry {
     if (e.source === 'player') return JSON.parse(JSON.stringify(e)) as PlayerLogEntry;
-    if (e.source === 'clock') return { ...e };
+    if (e.source === 'clock' || e.source === 'view') return { ...e };
     return { ...e, command: { ...e.command } };
 }
 

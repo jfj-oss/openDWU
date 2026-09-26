@@ -429,7 +429,7 @@ function checkPirateFacilityToAttack(galaxy: Galaxy, habitat: Habitat): { facili
 }
 
 /** Habitat.cs 3299 CheckCanInitiateAttackAgainstPirateFacilities(attackingEmpire, pirateFacility). No Rnd. */
-function checkCanInitiateAttackAgainstPirateFacilities(galaxy: Galaxy, habitat: Habitat, attackingEmpire: Empire, pirateFacility: PlanetaryFacility): boolean {
+export function checkCanInitiateAttackAgainstPirateFacilities(galaxy: Galaxy, habitat: Habitat, attackingEmpire: Empire, pirateFacility: PlanetaryFacility): boolean {
     if (habitat.empire === attackingEmpire && habitat.troops !== null && habitat.troops.count > 0 && habitat.invadingTroops !== null && habitat.invadingTroops.count <= 0) {
         const empire = checkFacilityOwner(galaxy, habitat, pirateFacility);
         if (empire !== null && empire.dominantRace !== null && empire !== attackingEmpire) return true;
@@ -438,7 +438,7 @@ function checkCanInitiateAttackAgainstPirateFacilities(galaxy: Galaxy, habitat: 
 }
 
 /** Habitat.cs 3312 InitiateAttackAgainstPirateFacilities(attackingEmpire, pirateFacility). Rnd: GenerateDefensivePirateRaiders' Next(0, 3) (combat/invasion.ts). */
-function initiateAttackAgainstPirateFacilities(galaxy: Galaxy, habitat: Habitat, attackingEmpire: Empire, pirateFacility: PlanetaryFacility): void {
+export function initiateAttackAgainstPirateFacilities(galaxy: Galaxy, habitat: Habitat, attackingEmpire: Empire, pirateFacility: PlanetaryFacility): void {
     if (checkCanInitiateAttackAgainstPirateFacilities(galaxy, habitat, attackingEmpire, pirateFacility)) {
         const empire = checkFacilityOwner(galaxy, habitat, pirateFacility);
         generateDefensivePirateRaiders(galaxy, habitat, empire, true);

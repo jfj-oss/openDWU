@@ -16,7 +16,7 @@ import { galaxyStarDate } from '../src/sim/tick/simTime';
 import { deserializeGame, serializeGame } from '../src/sim/save/gameSave';
 import { commandLog, type PlayerLogEntry } from '../src/sim/player/commandLog';
 import { decodeCommandArg, encodeCommandArg } from '../src/sim/player/commandCodec';
-import { flushPlayerCommands, issuePlayerCommand, pendingPlayerCommands, replayCommandLog, runPlayerCommand } from '../src/sim/player/playerCommands';
+import { commandLogReplayWarnings, flushPlayerCommands, issuePlayerCommand, noteSimView, pendingPlayerCommands, replayCommandLog, runPlayerCommand } from '../src/sim/player/playerCommands';
 import { ShipAction, ShipActionType, createMissionShipActionAt, createShipAction } from '../src/sim/player/shipAction';
 import { BuiltObjectMissionType } from '../src/sim/missions/mission';
 import { empireShipGroups } from '../src/sim/fleets/shipGroup';
@@ -96,6 +96,24 @@ describe('command queue: applied at the next frame boundary, stamped with the si
         expect(game.playerEmpire.controlResearch).toBe(false);
         expect(runPlayerCommand(game.galaxy, game.playerEmpire, 'setEmpireControl', ['stateMoney', 1e9])).toBe(false); // only control* fields
         expect(commandLog(game.galaxy)).toHaveLength(2);
+    }, 300000);
+});
+
+describe('camera LOD pass (?simView=1) in the log', () => {
+    it('switching it on is journaled once and makes a replay warn', () => {
+        const game = cachedTickGame(gameData);
+        const g = game.galaxy;
+        noteSimView(g, false); // the default: nothing logged
+        expect(commandLog(g)).toHaveLength(0);
+        noteSimView(g, true);
+        noteSimView(g, true);
+        expect(commandLog(g).map((e) => e.source)).toEqual(['view']);
+        const warnings = commandLogReplayWarnings(commandLog(g));
+        expect(warnings).toHaveLength(1);
+        const { seed, ...options } = tickGameOptions(gameData);
+        const seen: string[] = [];
+        replayCommandLog(seed, options, commandLog(g), g.nowMs, (m) => seen.push(m));
+        expect(seen).toEqual(warnings);
     }, 300000);
 });
 

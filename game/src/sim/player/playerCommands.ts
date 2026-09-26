@@ -166,6 +166,7 @@ function replayEntry(galaxy: Galaxy, e: CommandLogEntry): void {
             return;
         }
         case 'clock':
+        case 'view':
             appendCommandLog(galaxy, copyCommandLogEntry(e));
             return;
     }
@@ -190,6 +191,32 @@ export function noteSimSpeed(galaxy: Galaxy, speed: number): void {
     if (inSimFrame()) throw new Error('noteSimSpeed inside a sim frame');
     if (loggedSimSpeed(galaxy) === speed) return;
     appendCommandLog(galaxy, { starDate: galaxyStarDate(galaxy), nowMs: galaxy.nowMs, source: 'clock', speed });
+}
+
+/** Whether the log says the camera LOD pass is on now (the last 'view' entry; off without one). */
+export function loggedSimView(galaxy: Galaxy): boolean {
+    const log = commandLog(galaxy);
+    for (let i = log.length - 1; i >= 0; i--) {
+        const e = log[i];
+        if (e.source === 'view') return e.on;
+    }
+    return false;
+}
+
+/** Journal the camera LOD pass (?simView=1) being switched on / off (the app loop calls this before stepping). */
+export function noteSimView(galaxy: Galaxy, on: boolean): void {
+    if (inSimFrame()) throw new Error('noteSimView inside a sim frame');
+    if (loggedSimView(galaxy) === on) return;
+    appendCommandLog(galaxy, { starDate: galaxyStarDate(galaxy), nowMs: galaxy.nowMs, source: 'view', on });
+}
+
+/** Why a replay of `log` cannot be exact (empty when it can): stretches run with the camera LOD pass on. */
+export function commandLogReplayWarnings(log: readonly CommandLogEntry[]): string[] {
+    const out: string[] = [];
+    for (const e of log) {
+        if (e.source === 'view' && e.on) out.push(`camera level-of-detail pass (?simView=1) on from ${e.nowMs} ms: the camera is not journaled, the replay runs without it and may differ`);
+    }
+    return out;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -226,7 +253,14 @@ export function runScheduledUntil(galaxy: Galaxy, untilMs: number): void {
  * running headless (no camera view) until `untilMs` (default: the last entry's time). The result's own log equals
  * `log` (each applied entry is journaled again, after checking it resolves to the same objects).
  */
-export function replayCommandLog(seed: number, options: Omit<CreateGameOptions, 'seed'>, log: readonly CommandLogEntry[], untilMs?: number): Game {
+export function replayCommandLog(
+    seed: number,
+    options: Omit<CreateGameOptions, 'seed'>,
+    log: readonly CommandLogEntry[],
+    untilMs?: number,
+    onWarning: (message: string) => void = (m) => console.warn(`command log replay: ${m}`),
+): Game {
+    for (const w of commandLogReplayWarnings(log)) onWarning(w);
     const game = createGame({ ...options, seed } as CreateGameOptions);
     scheduleCommandLog(game.galaxy, log);
     runScheduledUntil(game.galaxy, untilMs ?? (log.length > 0 ? log[log.length - 1].nowMs : 0));

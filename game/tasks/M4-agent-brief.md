@@ -83,8 +83,9 @@ is a sim input). Async callers that need the result at once (advisor chat, diplo
 (also a boundary: they run between frames). Seed + log replays the game: `replayCommandLog(seed, options, log, untilMs)`
 (test/commandLog.test.ts, soak test/commandReplay.test.ts: replay, save mid-way and real-time driving give the identical
 digest and save). Nothing issued ⇒ nothing changes (pins unaffected). Adding a player action: add an op, issue it from
-the UI; the tick path must not import the player layer. Not covered: the in-view LOD pass (`?simView`) makes the camera
-a sim input that is not journaled, so exact replay holds for headless / no-view runs.
+the UI; the tick path must not import the player layer. The camera level-of-detail pass (`?simView=1`, off by
+default) makes the camera a sim input that is not journaled: when on, the log records it (`view` entries) and
+`replayCommandLog` warns that the replay is not exact.
 
 ## Scope management
 Your package is large. Prioritise the entry points the tick actually reaches at runtime (check hit counts:

@@ -21,6 +21,7 @@ import { Creature } from '../creature';
 import { Character } from '../characters';
 import { Troop } from '../cargo';
 import { TradeableItem } from '../tradeItems';
+import { EmpireMessage } from '../messages';
 import { ShipAction } from './shipAction';
 import { flatEmpireList, galaxyExternals, saveClassPrototypes } from '../save/galaxySave';
 import type { TechNode } from '../researchSystem';
@@ -107,6 +108,14 @@ function entityKey(galaxy: Galaxy, v: object): [string, number | number[]] | nul
         }
         throw new CommandEncodeError('command argument: a Troop in no empire list');
     }
+    if (v instanceof EmpireMessage) {
+        // A queued advisor suggestion (Empire.advisorSuggestions) by position; any other message by value.
+        for (let i = 0; i < empires.length; i++) {
+            const j = (empires[i].advisorSuggestions as unknown[]).indexOf(v);
+            if (j >= 0) return ['adv', [i, j]];
+        }
+        return null;
+    }
     if (v instanceof Creature) return ['cr', galaxy.creatures.indexOf(v)];
     if (isSystemInfo(galaxy, v)) return ['sys', v.systemStar.systemIndex];
     if (isTechNode(v)) {
@@ -147,6 +156,10 @@ function resolveEntity(galaxy: Galaxy, kind: string, key: number | number[]): un
         case 'tr': {
             const [e, j] = pair(key);
             return e?.troops.items[j] ?? null;
+        }
+        case 'adv': {
+            const [e, j] = pair(key);
+            return (e?.advisorSuggestions as unknown[] | undefined)?.[j] ?? null;
         }
         case 'cr':
             return galaxy.creatures[key as number] ?? null;

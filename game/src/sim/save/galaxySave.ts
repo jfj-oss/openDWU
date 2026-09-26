@@ -50,6 +50,7 @@ import { GalaxyLocation } from '../galaxyLocation';
 import { Contract } from '../logistics/contracts';
 import { ComponentRef, Order, OrderList } from '../logistics/orders';
 import { Manufacturer, ManufacturingQueue, ResourceDatePair, ResourceDatePairList } from '../manufacturingQueue';
+import { BoxedPirateRelationType } from '../advisorQueue';
 import { EmpireMessage } from '../messages';
 import { DeclinedTask, DistressSignal } from '../missions/distress';
 import { BuiltObjectMission, Command, Sector } from '../missions/mission';
@@ -96,6 +97,8 @@ import { Achievement } from '../achievements';
 import { EventAction, EventActionExecutionPackage, EventActionList, GameEvent, GameEventList } from '../story/gameEventModel';
 
 const CLASSES: Record<string, object> = {
+    // advisorQueue.ts: a pirate-protection suggestion's AdvisorMessageData (Empire.advisorSuggestions; suggest).
+    BoxedPirateRelationType: BoxedPirateRelationType.prototype,
     // builtObject.ts
     BuiltObject: BuiltObject.prototype,
     DockingBay: DockingBay.prototype,

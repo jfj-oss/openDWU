@@ -369,6 +369,23 @@ export function pickNearestBuiltObject(
     return null;
 }
 
+/**
+ * Release the sprites of built objects that were not visited as live this frame: destroyed ships/bases
+ * (hasBeenDestroyed — their explosion is drawn by effectsLayer.ts) and objects gone from galaxy.builtObjects (the sim
+ * leaves a null slot). `seen` holds every live object the frame visited. Each released entry is removed from `sprites`
+ * and handed to `release` (which detaches / destroys it). Returns how many were released.
+ */
+export function releaseStaleSprites<K, S>(sprites: Map<K, S>, seen: ReadonlySet<K>, release: (key: K, sprite: S) => void): number {
+    let n = 0;
+    for (const [key, sprite] of sprites) {
+        if (seen.has(key)) continue;
+        sprites.delete(key);
+        release(key, sprite);
+        n++;
+    }
+    return n;
+}
+
 interface LoadedShipImage {
     texture: Texture;
     metrics: ShipImageMetrics;
@@ -388,6 +405,10 @@ export class BuiltObjectLayer {
     private resolved = new Map<string, LoadedShipImage | null>();
     /** Task 13d: drawn size (px) of each built object at the last update. */
     private drawnPx = new Map<BuiltObject, number>();
+    /** Art URL per pictureRef (render: perf pass — built once instead of a string per ship per frame). */
+    private urlByPictureRef = new Map<number, string | null>();
+    /** Live (not destroyed) built objects visited by the current update; the rest release their sprites. */
+    private seen = new Set<BuiltObject>();
 
     constructor(
         private galaxy: Galaxy,
@@ -434,20 +455,35 @@ export class BuiltObjectLayer {
         // Ships are drawn only while the original's zoom factor < 500.
         this.root.visible = f < BUILT_OBJECT_MAX_FACTOR;
         if (!this.root.visible) return;
+        // Camera.worldToScreen, inlined (no allocation per ship per frame).
+        const camX = cam.x;
+        const camY = cam.y;
+        const halfW = cam.width / 2;
+        const halfH = cam.height / 2;
+        const maxX = cam.width + 100;
+        const maxY = cam.height + 100;
         // TODO(port): Empire.IsObjectVisibleToThisEmpire(BuiltObject) (MainView.1.cs:883) — not in sim; all objects drawn
+        this.seen.clear();
         for (const bo of this.galaxy.builtObjects) {
             // MainView.1.cs:867 `if (builtObject5 == null) continue;` — Galaxy.BuiltObjects keeps null holes after
             // CompleteTeardown (BuiltObject.2.cs:5522) until RemoveNullBuiltObjects (Galaxy.9.cs:2862) compacts it.
             if (bo === null || bo.hasBeenDestroyed) continue;
-            const s = cam.worldToScreen(bo.xpos, bo.ypos);
+            this.seen.add(bo);
+            const sx = (bo.xpos - camX) * z + halfW;
+            const sy = (bo.ypos - camY) * z + halfH;
             let sprite = this.sprites.get(bo);
             // Cull more than 100 px outside the viewport.
-            if (s.x < -100 || s.x > cam.width + 100 || s.y < -100 || s.y > cam.height + 100) {
+            if (sx < -100 || sx > maxX || sy < -100 || sy > maxY) {
                 if (sprite !== undefined) sprite.visible = false;
                 this.drawnPx.delete(bo);
                 continue;
             }
-            const url = builtObjectImageUrl(resolveDrawPictureRef(bo));
+            const pictureRef = resolveDrawPictureRef(bo);
+            let url = this.urlByPictureRef.get(pictureRef);
+            if (url === undefined) {
+                url = builtObjectImageUrl(pictureRef);
+                this.urlByPictureRef.set(pictureRef, url);
+            }
             if (url === null) {
                 if (sprite !== undefined) sprite.visible = false;
                 this.drawnPx.delete(bo);
@@ -494,6 +530,11 @@ export class BuiltObjectLayer {
             sprite.alpha = this.overlays.fadeCivilianShips && bo.owner === null ? 144 / 255 : 1;
             sprite.visible = true;
         }
+        // Destroyed or removed objects: drop their sprite and drawn size (which also clears their selection ring / pick).
+        releaseStaleSprites(this.sprites, this.seen, (bo, sprite) => {
+            this.drawnPx.delete(bo);
+            sprite.destroy();
+        });
         // TODO(port): DrawShipSymbolXna (MainView.1.cs:1085-1110) — small symbol for ships too far away to show their art.
         // TODO(port): engine exhaust flames (MainView.1.cs ~1112-1133) — animated thrust frames behind moving ships.
     }

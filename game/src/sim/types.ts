@@ -561,3 +561,13 @@ export interface SystemInfo {
     isDisputed?: boolean;
     playerPotentialColonies?: boolean;
 }
+
+/**
+ * C# `SystemInfo.Habitats` — the system's planets, moons and asteroid fields, WITHOUT the star (Galaxy.4.cs 2340
+ * `systemInfo.Habitats = DetermineHabitatsInSystem(star)`; Galaxy.6.cs 4611 collects the habitats after the star in
+ * Galaxy.Habitats whose Parent != null). The TS `SystemInfo.habitats` array also holds the star at [0]: read it directly
+ * only where the C# covers the star too (generation, Galaxy.Habitats-wide index rebuilds, UI lookups).
+ */
+export function planetsOf(system: SystemInfo): Habitat[] {
+    return system.habitats.filter((h) => h !== system.systemStar);
+}

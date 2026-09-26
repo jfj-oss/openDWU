@@ -4,7 +4,10 @@
 // per tick entry point / subsystem (V8 sampling profiler over the run only — no code in src/sim is touched).
 //
 //   node --expose-gc scripts/sim-run.mjs --seed 1 --stars 700 --empires 10 --seconds 600
-//        [--age 1] [--tech 0.5] [--pirates 1] [--sectors N] [--chunk 60] [--profile] [--top 15] [--json out.json]
+//        [--age 1] [--tech 0.5] [--pirates 1] [--sectors N] [--chunk 60] [--profile] [--top 15] [--json out.json] [--combat]
+// --combat: a battle report (tasks/COMBAT-VERIFICATION-2026-09-26.md) — every ship / base destroyed (by empire and sub
+// role) and every closed SpaceBattleStats record (a ship's BattleStats replaced at AssignMission, BuiltObject.2.cs 7643,
+// or nulled at mission completion, 4517-4532) with any weapon activity, plus the records still open at the end.
 // (--sectors defaults to round(sqrt(stars / 4.7)) clamped to 4..15; the New Game wizard default is 700 stars in 8x8)
 //
 // Defaults match test/helpers/tickGame.ts (age 1, tech 0.5, pirates 1) so `--stars 300 --empires 4 --seconds 600`
@@ -48,9 +51,19 @@ const profile = arg('profile', false) === true;
 const top = Number(arg('top', 15));
 const jsonOut = arg('json', null);
 const loader = String(arg('loader', 'bundle'));
+const combat = arg('combat', false) === true;
 // --probe-days 1,30,60: extra chunk boundaries at these game days; at each one print every empire's capital
 // construction speed and its explorers' missions. Colony ships are tracked every chunk (day completed / day removed).
 const probeDays = String(arg('probe-days', '1,30,60')).split(',').map(Number).filter((d) => Number.isFinite(d) && d > 0);
+// --stats-days 30: every N game days print a one-line-per-empire health snapshot (colonies, population, money, cashflow,
+// ships by role, idle / low-fuel ships, research completed, characters, relations) plus galaxy totals (wars, treaties,
+// messages by type, ships destroyed, pirate missions, NaN scan, console errors, ms/frame and ms per frame-driver pass).
+// --stats-json out.json writes the timeline. Snapshots read state only (the cashflow read runs in averaged-income mode so it does not age per-base income).
+const statsDays = Number(arg('stats-days', 0));
+const statsJson = arg('stats-json', null);
+// --watch-money "Empire Name:5000": log every single change of that empire's stateMoney whose size is >= the threshold,
+// with the game day and the top sim stack frames; each snapshot also prints its cashflow terms.
+const watchMoney = arg('watch-money', null);
 const sectors = Number(arg('sectors', Math.max(4, Math.min(15, Math.round(Math.sqrt(stars / 4.7))))));
 
 const heap = { peak: 0, sample() { const h = process.memoryUsage().heapUsed; if (h > this.peak) this.peak = h; return h; } };
@@ -88,7 +101,8 @@ function analyseProfile(p) {
 }
 
 const MODULES = { game: '/src/sim/game.ts', types: '/src/sim/types.ts', load: '/test/helpers/loadGameDataFs.ts', harness: '/src/sim/tick/harness.ts',
-    scheduler: '/src/sim/tick/scheduler.ts', digest: '/src/sim/tick/digest.ts' };
+    scheduler: '/src/sim/tick/scheduler.ts', digest: '/src/sim/tick/digest.ts', treasury: '/src/sim/treasury.ts',
+    forceStructure: '/src/sim/forceStructure.ts' };
 // test/helpers/loadGameDataFs.ts (the Node game-data loader the tests use) reads __dirname, which neither loader provides.
 const dirnameDefine = { __dirname: JSON.stringify(resolve(root, 'test/helpers')) };
 let server = null, bundleDir = null;
@@ -141,6 +155,7 @@ try {
         const ends = new Set();
         for (let e = chunk; e < seconds; e += chunk) ends.add(Math.round(e * 1000));
         for (const d of probeDays) { const e = Math.round(d * 600 / 365 * 1000); if (e > 0 && e < seconds * 1000) ends.add(e); }
+        if (statsDays > 0) for (let d = statsDays; ; d += statsDays) { const e = Math.round(d * 600 / 365 * 1000); if (e >= seconds * 1000) break; ends.add(e); }
         ends.add(Math.round(seconds * 1000));
         let prev = 0;
         for (const e of [...ends].sort((a, b) => a - b)) { plan.push((e - prev) / 1000); prev = e; }
@@ -189,7 +204,276 @@ try {
         }
         for (const [b, r] of colonyShips) if (r.removed === null && !alive.has(b)) r.removed = day();
     };
+    // --combat: per-frame watch of every BuiltObject's BattleStats and HasBeenDestroyed (read-only).
+    const SUB = ['Undefined', 'Escort', 'Frigate', 'Destroyer', 'Cruiser', 'CapitalShip', 'TroopTransport', 'Carrier', 'ResupplyShip', 'ExplorationShip',
+        'SmallFreighter', 'MediumFreighter', 'LargeFreighter', 'ColonyShip', 'PassengerShip', 'ConstructionShip', 'GasMiningShip', 'MiningShip',
+        'GasMiningStation', 'MiningStation', 'SmallSpacePort', 'MediumSpacePort', 'LargeSpacePort', 'ResortBase', 'GenericBase', 'EnergyResearchStation',
+        'WeaponsResearchStation', 'HighTechResearchStation', 'MonitoringStation', 'DefensiveBase'];
+    const battle = { seenStats: new Map(), battles: [], destroyed: [], destroyedSeen: new Set() };
+    const active = (st) => st !== null && typeof st === 'object' && (st.weaponsHits > 0 || st.weaponsMisses > 0 || st.damageToUs > 0 || st.shieldsDamageAbsorbed > 0);
+    const summary = (bo, st, open) => ({ day: day(), open, ship: bo.name, empire: bo.empire?.name ?? '-', subRole: SUB[bo.subRole] ?? bo.subRole,
+        location: st.location?.name ?? null, hits: st.weaponsHits, misses: st.weaponsMisses, damageToEnemy: +st.weaponsDamageToEnemy.toFixed(1),
+        shieldsAbsorbed: +st.shieldsDamageAbsorbed.toFixed(1), hullDamageToUs: st.damageToUs,
+        enemyShipsDestroyed: st.destroyedEnemyShipsEscort + st.destroyedEnemyShipsFrigate + st.destroyedEnemyShipsDestroyer + st.destroyedEnemyShipsCruiser +
+            st.destroyedEnemyShipsCapitalShip + st.destroyedEnemyShipsCarrier + st.destroyedEnemyShipsTroopTransport + st.destroyedEnemyShipsResupplyShip +
+            st.destroyedEnemyShipsOtherShips, enemyBasesDestroyed: st.destroyedEnemyShipsSpaceport + st.destroyedEnemyShipsDefensiveBase + st.destroyedEnemyShipsOtherBase,
+        enemyFightersDestroyed: st.destroyedEnemyFighters, lost: bo.hasBeenDestroyed });
+    const watchCombat = () => {
+        for (const bo of g.builtObjects) {
+            if (bo === null) continue;
+            const prev = battle.seenStats.get(bo);
+            if (prev !== undefined && prev !== bo.battleStats && active(prev)) battle.battles.push(summary(bo, prev, false));
+            if (bo.battleStats !== prev) battle.seenStats.set(bo, bo.battleStats);
+            if (bo.hasBeenDestroyed && !battle.destroyedSeen.has(bo)) {
+                battle.destroyedSeen.add(bo);
+                battle.destroyed.push({ day: day(), ship: bo.name, empire: bo.empire?.name ?? '-', subRole: SUB[bo.subRole] ?? bo.subRole });
+                const st = bo.battleStats;
+                if (active(st)) { battle.battles.push(summary(bo, st, false)); battle.seenStats.set(bo, null); }
+            }
+        }
+    };
     const timings = {}, todo = {}, chunks = [];
+    // ---- --stats-days health snapshots ----
+    const { calculateAnnualCashflow } = await load('treasury');
+    const stats = [];
+    const msgCounts = {};                 // message type → count since the last snapshot (all empires + pirates)
+    const MSG = ['Undefined', 'DiplomaticRelationChange', 'ProposeDiplomaticRelation', 'AcceptDiplomaticRelation', 'RefuseDiplomaticRelation',
+        'RemoveColoniesFromSystem', 'StopMissionsAgainstUs', 'StopAttacks', 'LeaveSystem', 'RequestJointWar', 'RequestJointTradeSanctions',
+        'RequestStopWar', 'RequestLiftTradeSanctions', 'GiveGift', 'Informational', 'ShipBaseCompleted', 'ShipBasePurchased', 'NewColony',
+        'NewColonyFailed', 'ResearchBreakthrough', 'BattleUnderAttack', 'BattleAttacking', 'IncomingEnemyFleet', 'CharacterAppearance',
+        'CharacterDeath', 'CharacterMissionAccomplished', 'CharacterMissionFailure', 'EmpireDiscovered', 'ColonyGained', 'ColonyLost',
+        'ColonyDefended', 'ColonyRebelling', 'EmpireDefeated', 'RequestHonorMutualDefense', 'BlockadeInitiated', 'BlockadeCancelled',
+        'ExplorationRuins', 'ExplorationBuiltObject', 'ExplorationHabitat', 'ExplorationLocation', 'GalacticHistory', 'SellInfoUnmetEmpire',
+        'SellInfoIndependentColony', 'SellInfoSystemMap', 'SellInfoRuins', 'SellInfoDebrisField', 'SellInfoRestrictedArea',
+        'SellInfoPlanetDestroyer', 'PirateOfferProtection', 'CancelPirateProtection', 'Revolution', 'RestrictedResourceDiscovered',
+        'RestrictedResourceTradingAllowed', 'RestrictedResourceTradingBlocked', 'OfferTrade', 'ShipMissionComplete', 'ShipNeedsRefuelling',
+        'ShipNeedsRepair', 'RemoveForcesFromSystem', 'GeneralWarning', 'GeneralBadEvent', 'GeneralNeutralEvent', 'GeneralGoodEvent',
+        'GeneralDecision', 'HistoryOfferLocationHint', 'HistoryOfferStoryClue', 'ColonyFacilityCompleted', 'ColonyFacilityCancelled',
+        'ColonyWonderBegun', 'ColonyShipMissionCancelled', 'StoryMessage', 'AdvisorSuggestion', 'ColonyDestroyed', 'MilitaryRefuelingAllowed',
+        'MilitaryRefuelingBlocked', 'MiningRightsAllowed', 'MiningRightsBlocked', 'CharacterSkillTraitChange', 'ResearchCriticalBreakthrough',
+        'ResearchCriticalFailure', 'GalacticNewsNet', 'ShipBaseBoardedCaptured', 'ShipBaseBoardedLost', 'PirateAttackMissionAvailable',
+        'PirateAttackMissionCompleted', 'PirateAttackMissionFailed', 'PirateDefendMissionFailed', 'PirateDefendMissionAvailable',
+        'PirateDefendMissionCompleted', 'PirateSmugglingMissionAvailable', 'PirateSmugglingMissionCompleted', 'PirateSmugglerDetected',
+        'PlanetaryFacilityDestroyed', 'ShipBaseScrapped', 'ConstructionResourceShortage', 'RaidBonuses', 'RaidVictim', 'PlanetaryFacilityDamaged'];
+    const msgSamples = {};                // first few descriptions per type (whole run)
+    const hookMessages = (e) => {
+        if (e === null || e.messages === null || e.messages.__statsHooked) return;
+        const list = e.messages, prev = list.push;
+        list.push = function (...items) {
+            for (const m of items) {
+                const k = MSG[m.messageType] ?? String(m.messageType);
+                msgCounts[k] = (msgCounts[k] ?? 0) + 1;
+                const arr = (msgSamples[k] ??= []);
+                if (arr.length < 4) arr.push(`d${day().toFixed(0)} ${e.name}: ${String(m.description).slice(0, 160)}`);
+            }
+            return prev.apply(this, items);
+        };
+        Object.defineProperty(list, '__statsHooked', { value: true });
+    };
+    const consoleErrors = [];
+    if (statsDays > 0) {
+        for (const e of [...g.empires, ...g.pirateEmpires]) hookMessages(e);
+        for (const level of ['error', 'warn']) {
+            const orig = console[level];
+            console[level] = (...a) => { consoleErrors.push({ day: day(), level, text: a.map(String).join(' ').slice(0, 300) }); if (consoleErrors.length <= 20) orig(...a); };
+        }
+    }
+    const { annualTaxRevenue } = await load('forceStructure');
+    let watched = null;
+    if (watchMoney !== null) {
+        const [wName, wThr] = String(watchMoney).split(':');
+        watched = g.empires.find((e) => e !== null && e.name === wName) ?? null;
+        if (watched === null) console.log(`watch-money: no empire named ${wName}`);
+        else {
+            const thr = Number(wThr ?? 5000);
+            let v = watched.stateMoney;
+            Object.defineProperty(watched, 'stateMoney', { configurable: true, enumerable: true, get: () => v, set: (nv) => {
+                if (Math.abs(nv - v) >= thr) {
+                    const st = new Error().stack.split('\n').slice(2, 9).map((l) => l.trim().replace(/^at /, '').replace(/\(.*?\/(src\/sim\/[^)]*)\)/, '($1)')).join(' < ');
+                    console.log(`  MONEY d${day().toFixed(2)} ${watched.name}: ${v.toFixed(0)} → ${nv.toFixed(0)} (${(nv - v).toFixed(0)}) ${st}`);
+                }
+                v = nv;
+            } });
+        }
+    }
+    const missionSince = new Map();
+    const idleSince = new Map(), lowFuelSince = new Map(), aliveIds = new Map();
+    let periodTimings = {}, periodFrames = 0, periodMs = 0, periodTodo = {}, lastStatMs = 0;
+    const REL = ['NotMet', 'None', 'FTA', 'MDP', 'Subjugated', 'Protectorate', 'Sanctions', 'War', 'Truce'];
+    const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
+    const snapshot = () => {
+        const d = day();
+        const realEmpires = g.empires.filter((e) => e !== null);
+        const rows = [];
+        let nanHits = [];
+        const relPairs = {};
+        for (const e of realEmpires) {
+            let pop = 0;
+            for (const h of e.colonies) { const t = h?.population?.totalAmount ?? 0; if (!isNum(t)) nanHits.push(`pop ${h.name}`); pop += t; }
+            if (!isNum(e.stateMoney)) nanHits.push(`money ${e.name}`);
+            const byRole = {};
+            let idle = 0, idle90 = 0, lowFuel = 0, lowFuel90 = 0, building = 0, mil = 0;
+            for (const b of e.builtObjects) {
+                if (b === null || b.hasBeenDestroyed) continue;
+                if (!isNum(b.xpos) || !isNum(b.ypos) || !isNum(b.currentFuel)) nanHits.push(`bo ${b.name}`);
+                if (b.builtAt !== null) { building++; continue; }
+                const k = b.subRole;
+                byRole[k] = (byRole[k] ?? 0) + 1;
+                const mobile = k >= 1 && k <= 17;
+                if (!mobile) continue;
+                if (k <= 8) mil++;
+                const mt = b.mission?.type ?? 0;
+                if (mt === 0) { if (!idleSince.has(b)) idleSince.set(b, d); idle++; if (d - idleSince.get(b) >= 90) idle90++; }
+                else idleSince.delete(b);
+                if (b.fuelCapacity > 0 && b.currentFuel < 0.1 * b.fuelCapacity) { if (!lowFuelSince.has(b)) lowFuelSince.set(b, d); lowFuel++; if (d - lowFuelSince.get(b) >= 90) lowFuel90++; }
+                else lowFuelSince.delete(b);
+            }
+            // Private sector (freighters, mining ships, passenger ships, mining stations, …: Empire.PrivateBuiltObjects).
+            const priv = {};
+            let pIdle = 0, pIdle90 = 0, pLowFuel = 0, pLowFuel90 = 0;
+            for (const b of e.privateBuiltObjects) {
+                if (b === null || b.hasBeenDestroyed) continue;
+                if (!isNum(b.xpos) || !isNum(b.ypos) || !isNum(b.currentFuel)) nanHits.push(`pbo ${b.name}`);
+                if (b.builtAt !== null) { building++; continue; }
+                priv[b.subRole] = (priv[b.subRole] ?? 0) + 1;
+                if (!(b.subRole >= 1 && b.subRole <= 17)) continue;
+                const mt = b.mission?.type ?? 0;
+                if (mt === 0) { if (!idleSince.has(b)) idleSince.set(b, d); pIdle++; if (d - idleSince.get(b) >= 90) pIdle90++; }
+                else idleSince.delete(b);
+                if (b.fuelCapacity > 0 && b.currentFuel < 0.1 * b.fuelCapacity) { if (!lowFuelSince.has(b)) lowFuelSince.set(b, d); pLowFuel++; if (d - lowFuelSince.get(b) >= 90) pLowFuel90++; }
+                else lowFuelSince.delete(b);
+            }
+            const rel = {};
+            for (const r of e.diplomaticRelations) {
+                if (r.otherEmpire === null || !g.empires.includes(r.otherEmpire)) continue;
+                const n = REL[r.type] ?? r.type;
+                rel[n] = (rel[n] ?? 0) + 1;
+                if (r.type >= 2) { const key = [e.empireId, r.otherEmpire.empireId].sort((a, b) => a - b).join('-') + ':' + n; relPairs[key] = (relPairs[key] ?? 0) + 1; }
+            }
+            let cash = null;
+            // ThisYearsSpacePortIncome (Empire.cs 2282) resets/ages per-base income on read unless the empire is in averaged
+            // mode, so read it in averaged mode to keep the observer side-effect free.
+            const avg = e.useAveragedVariableIncome;
+            e.useAveragedVariableIncome = true;
+            try { cash = calculateAnnualCashflow(g, e); } catch (err) { cash = 'ERR ' + String(err).slice(0, 80); }
+            e.useAveragedVariableIncome = avg;
+            if (typeof cash === 'number' && !isNum(cash)) nanHits.push(`cashflow ${e.name}`);
+            const researched = e.research?.techTree?.filter((n) => n.isResearched).length ?? 0;
+            rows.push({ name: e.name, colonies: e.colonies.length, pop, money: e.stateMoney, cashflow: cash, ships: byRole, mil, building, idle, idle90, lowFuel, lowFuel90,
+                researched, characters: e.characters.length, rel, priv, pIdle, pIdle90, pLowFuel, pLowFuel90 });
+        }
+        // pirates: count, money, ships, missions
+        const pir = { factions: 0, alive: 0, money: 0, ships: 0, bases: 0, missions: {} };
+        for (const p of g.pirateEmpires) {
+            if (p === null) continue;
+            pir.factions++;
+            if (!isNum(p.stateMoney)) nanHits.push(`money ${p.name}`);
+            pir.money += p.stateMoney;
+            let any = false;
+            for (const b of p.builtObjects) {
+                if (b === null || b.hasBeenDestroyed || b.builtAt !== null) continue;
+                any = true;
+                if (b.subRole >= 18) { pir.bases++; continue; }
+                pir.ships++;
+                const mt = MISSION[b.mission?.type ?? 0];
+                pir.missions[mt] = (pir.missions[mt] ?? 0) + 1;
+            }
+            if (any) pir.alive++;
+        }
+        // destroyed since the last snapshot, by owner kind
+        const destroyed = { empire: 0, pirate: 0, other: 0 };
+        const nowAlive = new Map();
+        for (const b of g.builtObjects) if (b !== null && !b.hasBeenDestroyed) nowAlive.set(b, b.empire === null ? 'other' : g.pirateEmpires.includes(b.empire) ? 'pirate' : g.empires.includes(b.empire) ? 'empire' : 'other');
+        for (const [b, kind] of aliveIds) if (!nowAlive.has(b)) destroyed[kind]++;
+        aliveIds.clear(); for (const [b, k] of nowAlive) aliveIds.set(b, k);
+        for (const h of g.habitats) if (h !== null && h.population != null && !isNum(h.population.totalAmount)) nanHits.push(`habpop ${h.name}`);
+        const wars = Object.keys(relPairs).filter((k) => k.endsWith(':War')).length;
+        const treaties = {}; for (const k of Object.keys(relPairs)) { const n = k.split(':')[1]; treaties[n] = (treaties[n] ?? 0) + 1; }
+        const snap = { day: d, wars, treaties, rows, pirates: pir, destroyed, messages: { ...msgCounts }, nan: nanHits.slice(0, 20), nanCount: nanHits.length,
+            consoleErrors: consoleErrors.length, exceptions: out.exceptions.length, msPerFrame: periodMs / Math.max(1, periodFrames), frames: periodFrames,
+            timings: periodTimings, todo: periodTodo, builtObjects: g.builtObjects.filter((b) => b !== null).length, heap: process.memoryUsage().heapUsed };
+        stats.push(snap);
+        for (const k of Object.keys(msgCounts)) delete msgCounts[k];
+        periodTimings = {}; periodFrames = 0; periodMs = 0; periodTodo = {};
+        const f0 = (v) => (typeof v === 'number' ? v.toFixed(0) : String(v));
+        console.log(`STATS day ${d.toFixed(0)}: ms/frame ${snap.msPerFrame.toFixed(3)} bo ${snap.builtObjects} heap ${mb(snap.heap)} wars ${wars} treaties ${JSON.stringify(treaties)} destroyed ${JSON.stringify(destroyed)} nan ${snap.nanCount} exc ${snap.exceptions} consoleErr ${snap.consoleErrors}`);
+        console.log(`  pirates: ${pir.alive}/${pir.factions} with ships, money ${f0(pir.money)}, ships ${pir.ships} bases ${pir.bases}, missions ${JSON.stringify(pir.missions)}`);
+        console.log(`  msgs ${JSON.stringify(snap.messages)}`);
+        const tt = Object.entries(snap.timings).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, v]) => `${k} ${(v / Math.max(1, snap.frames)).toFixed(3)}`).join(', ');
+        if (tt) console.log(`  ms/frame by pass: ${tt}`);
+        if (Object.keys(snap.todo).length) console.log(`  todo ${JSON.stringify(snap.todo)}`);
+        // Built colony ships: mission, target, distance to it, speed, fuel, first commands (to spot ones that never arrive).
+        const CMD = ['Hold', 'ImpulseTo', 'MoveTo', 'SprintTo', 'HyperTo', 'ConditionalHyperTo', 'Escort', 'Dock', 'Undock', 'Load', 'Unload', 'Attack', 'Refuel',
+            'Build', 'Scrap', 'Retrofit', 'Repair', 'SelfDestruct', 'RepeatSubsequentCommands', 'EvaluateThreats', 'SelectTargetToAttack', 'ReassignMission',
+            'SetParent', 'ClearParent', 'ClearAttackers', 'Blockade', 'Colonize', 'ExtractResources', 'ScanArea', 'Deploy'];
+        snap.colonyShips = [];
+        for (const e of realEmpires) for (const b of e.builtObjects) {
+            if (b === null || b.hasBeenDestroyed || b.subRole !== 13 || b.builtAt !== null) continue;
+            const m = b.mission, t = m?.target ?? null;
+            const dist = t === null ? -1 : Math.hypot(b.xpos - t.xpos, b.ypos - t.ypos);
+            const cmds = (m?._commands ?? []).slice(0, 4).map((c) => CMD[c.action] ?? c.action).join('>');
+            snap.colonyShips.push({ empire: e.name, name: b.name, mission: MISSION[m?.type ?? 0], target: t?.name ?? null, dist: Math.round(dist), speed: b.currentSpeed, fuel: Math.round(b.currentFuel), fuelCap: b.fuelCapacity, cmds, x: Math.round(b.xpos), y: Math.round(b.ypos) });
+        }
+        // Ships idle (no mission) or below 10% fuel for >= 90 days: name, sub role, mission, fuel, speed, position, nearest system.
+        snap.stuck = [];
+        for (const e of realEmpires) for (const list of [e.builtObjects, e.privateBuiltObjects]) for (const b of list) {
+            if (b === null || b.hasBeenDestroyed || b.builtAt !== null) continue;
+            const idleD = idleSince.has(b) ? d - idleSince.get(b) : 0, fuelD = lowFuelSince.has(b) ? d - lowFuelSince.get(b) : 0;
+            if (idleD < 90 && fuelD < 90) continue;
+            const m = b.mission;
+            snap.stuck.push({ empire: e.name, name: b.name, subRole: b.subRole, private: list === e.privateBuiltObjects, idleDays: Math.round(idleD), lowFuelDays: Math.round(fuelD), mission: MISSION[m?.type ?? 0],
+                target: m?.target?.name ?? null, cmds: (m?._commands ?? []).slice(0, 4).map((c) => c.action).join('>'), fuel: Math.round(b.currentFuel), fuelCap: b.fuelCapacity, speed: b.currentSpeed,
+                x: Math.round(b.xpos), y: Math.round(b.ypos), parent: b.parentHabitat?.name ?? null, fleet: b.shipGroup?.name ?? null });
+        }
+        if (watched !== null) {
+            const e = watched, avg = e.useAveragedVariableIncome;
+            e.useAveragedVariableIncome = true;
+            const t = { tax: annualTaxRevenue(g, e), tradeBonus: 0, spacePort: 0, resort: e.thisYearsResortIncomeValue, maint: 0, fuel: e.thisYearsStateFuelCosts };
+            for (let i = 0; i < e.diplomaticRelations.count; i++) t.tradeBonus += e.diplomaticRelations.at(i).annualTradeBonus;
+            const ports = [];
+            for (const list of [e.spacePorts, e.miningStations]) for (const b of list ?? []) if (b !== null) { t.spacePort += b.currentYearsIncome; if (b.currentYearsIncome > 5000) ports.push(`${b.name} ${b.currentYearsIncome.toFixed(0)}`); }
+            for (const b of e.builtObjects) if (b !== null && b.unbuiltComponentCount <= 0) t.maint += b.annualSupportCost;
+            e.useAveragedVariableIncome = avg;
+            console.log(`  WATCH ${e.name}: money ${e.stateMoney.toFixed(0)} ${Object.entries(t).map(([k, v]) => `${k} ${Number(v).toFixed(0)}`).join(' ')} ports>5k [${ports.join(', ')}] colonies ${e.colonies.map((h) => `${h.name}(${(h.population?.totalAmount / 1e6).toFixed(0)}M tax ${Number(h.annualTaxRevenue).toFixed(0)})`).join(' ')}`);
+        }
+        // Ships (state, private, pirate) whose mission (type + target) has not changed for >= 90 days while staying within
+        // 20000 units of where that mission was first seen: a mission that makes no progress.
+        snap.frozen = [];
+        for (const e of [...realEmpires, ...g.pirateEmpires]) {
+            if (e === null) continue;
+            for (const list of [e.builtObjects, e.privateBuiltObjects ?? []]) for (const b of list) {
+                if (b === null || b.hasBeenDestroyed || b.builtAt !== null || !(b.subRole >= 1 && b.subRole <= 17)) continue;
+                const m = b.mission;
+                if (m === null || (m.type ?? 0) === 0) { missionSince.delete(b); continue; }
+                const sig = `${m.type}|${m.target?.name ?? ''}`;
+                let r = missionSince.get(b);
+                if (r === undefined || r.sig !== sig || Math.hypot(b.xpos - r.x, b.ypos - r.y) > 20000) { r = { sig, since: d, x: b.xpos, y: b.ypos }; missionSince.set(b, r); }
+                if (d - r.since >= 90) snap.frozen.push({ empire: e.name, pirate: g.pirateEmpires.includes(e), name: b.name, subRole: b.subRole, days: Math.round(d - r.since), mission: MISSION[m.type],
+                    target: m.target?.name ?? null, cmds: (m._commands ?? []).slice(0, 4).map((c) => c.action).join('>'), fuel: Math.round(b.currentFuel), fuelCap: b.fuelCapacity, speed: b.currentSpeed,
+                    dist: m.target ? Math.round(Math.hypot(b.xpos - m.target.xpos, b.ypos - m.target.ypos)) : -1 });
+            }
+        }
+        const frozenBy = {};
+        for (const c of snap.frozen) { const k = `${c.pirate ? 'pirate' : 'empire'}:${c.mission}`; frozenBy[k] = (frozenBy[k] ?? 0) + 1; }
+        if (snap.frozen.length) console.log(`  frozen missions (>=90d, <20k moved): ${JSON.stringify(frozenBy)}`);
+        // Ships whose current command is HyperTo with the jump countdown already past (waiting on the gravity well /
+        // fighter recall in CheckFightersOnboardAndRetrieve): count, and the ones waiting longest.
+        snap.hyperWait = [];
+        const sd = g.nowMs;
+        for (const b of g.builtObjects) {
+            if (b === null || b.hasBeenDestroyed) continue;
+            const c0 = b.mission?._commands?.[0];
+            if (c0 === undefined || c0.action !== 4 || b.hyperjumpCountdown <= 0 || sd < b.hyperjumpCountdown) continue;
+            const fOut = (b.fighters ?? []).filter((fi) => !fi.onboardCarrier && !fi.hasBeenDestroyed).length;
+            snap.hyperWait.push({ name: b.name, owner: b.empire?.name ?? '-', waitDays: Math.round((sd - b.hyperjumpCountdown) / 1000 / 600 * 365), fightersOut: fOut, fighters: (b.fighters ?? []).length,
+                star: b.nearestSystemStar?.name ?? null, mission: MISSION[b.mission?.type ?? 0], speed: Math.round(b.currentSpeed), warp: b.warpSpeed });
+        }
+        snap.hyperWait.sort((a, b) => b.waitDays - a.waitDays);
+        if (snap.hyperWait.length) console.log(`  hyperWait ${snap.hyperWait.length}: ${snap.hyperWait.slice(0, 6).map((h) => `${h.owner.slice(0, 14)}/${h.name} ${h.waitDays}d fighters ${h.fightersOut}/${h.fighters} star ${h.star} ${h.mission} v${h.speed}`).join('; ')}`);
+        for (const c of snap.stuck) console.log(`  stuck ${c.empire.slice(0, 16)} ${c.private ? 'priv ' : ''}${c.name} sub ${c.subRole} idle ${c.idleDays}d lowfuel ${c.lowFuelDays}d ${c.mission}→${c.target} cmds ${c.cmds} fuel ${c.fuel}/${c.fuelCap} speed ${Number(c.speed).toFixed(0)} parent ${c.parent} fleet ${c.fleet} at ${c.x},${c.y}`);
+        for (const c of snap.colonyShips) console.log(`  colship ${c.empire.slice(0, 16)} ${c.name}: ${c.mission}→${c.target} dist ${c.dist} speed ${c.speed.toFixed(0)} fuel ${c.fuel}/${c.fuelCap} cmds ${c.cmds} at ${c.x},${c.y}`);
+        for (const r of rows) console.log(`  ${r.name.slice(0, 24).padEnd(24)} col ${r.colonies} pop ${(r.pop / 1e6).toFixed(0)}M $${f0(r.money)} cf ${f0(r.cashflow)} mil ${r.mil} bld ${r.building} idle ${r.idle}/${r.idle90} lowfuel ${r.lowFuel}/${r.lowFuel90} res ${r.researched} chr ${r.characters} rel ${JSON.stringify(r.rel)} ships ${JSON.stringify(r.ships)} priv ${JSON.stringify(r.priv)} pidle ${r.pIdle}/${r.pIdle90} plowfuel ${r.pLowFuel}/${r.pLowFuel90}`);
+    };
     let frames = 0, draws = 0, cpuTotal = 0;
     // Expansion summary: game-day each empire first holds more than one colony.
     const firstSecond = new Map();
@@ -198,9 +482,9 @@ try {
     for (const secs of plan) {
         const cpu0 = process.cpuUsage(), c0 = performance.now(), f0 = schedulerState(g).frames, d0 = g.rnd.drawCount;
         try {
-            const r = runGameSeconds(g, secs, profile ? { profileClock: () => performance.now() } : {});
-            for (const [k, v] of Object.entries(r.timings)) timings[k] = (timings[k] ?? 0) + v;
-            for (const [k, v] of Object.entries(r.todoHits)) todo[k] = (todo[k] ?? 0) + v;
+            const r = runGameSeconds(g, secs, { ...((profile || statsDays > 0) ? { profileClock: () => performance.now() } : {}), ...(combat ? { onFrame: watchCombat } : {}) });
+            for (const [k, v] of Object.entries(r.timings)) { timings[k] = (timings[k] ?? 0) + v; periodTimings[k] = (periodTimings[k] ?? 0) + v; }
+            for (const [k, v] of Object.entries(r.todoHits)) { todo[k] = (todo[k] ?? 0) + v; periodTodo[k] = (periodTodo[k] ?? 0) + v; }
         } catch (e) {
             // Soak driver only: record, drop the half-drained worker queue, continue with the next chunk.
             out.exceptions.push({ atMs: g.nowMs, stack: String(e?.stack ?? e) });
@@ -212,6 +496,8 @@ try {
         const ms = performance.now() - c0;
         const cu = process.cpuUsage(cpu0), cpuMs = (cu.user + cu.system) / 1000;
         cpuTotal += cpuMs;
+        periodFrames += f; periodMs += ms;
+        if (statsDays > 0 && g.nowMs >= lastStatMs + Math.round(statsDays * 600 / 365 * 1000) - 50) { lastStatMs = g.nowMs; snapshot(); }
         noteExpansion();
         trackColonyShips();
         // runGameSeconds ends on a frame boundary, so a probe fires at the first chunk end at or past its day.
@@ -271,6 +557,16 @@ try {
     console.log(`colony ships: ${out.colonyShips.length}`);
     for (const r of out.colonyShips) console.log(`  ${r.empire.padEnd(28)} ${r.name.padEnd(20)} at ${r.at}: built day ${r.built === null ? '-' : r.built.toFixed(0)}, removed day ${r.removed === null ? '-' : r.removed.toFixed(0)}, last ${r.last}`);
     for (const m of colonyMessages) console.log(`  day ${m.day.toFixed(0)} ${m.empire}: ${m.type} ${m.description}`);
+    if (combat) {
+        for (const bo of g.builtObjects) if (bo !== null && active(bo.battleStats)) battle.battles.push(summary(bo, bo.battleStats, true));
+        out.combat = { battles: battle.battles, destroyed: battle.destroyed };
+        const closed = battle.battles.filter((b) => !b.open);
+        console.log(`combat: ${battle.battles.length} SpaceBattleStats records with weapon activity (${closed.length} closed, ${battle.battles.length - closed.length} still open); ${battle.destroyed.length} ships/bases destroyed`);
+        const by = new Map();
+        for (const d of battle.destroyed) by.set(`${d.empire} ${d.subRole}`, (by.get(`${d.empire} ${d.subRole}`) ?? 0) + 1);
+        for (const [k, v] of [...by].sort((a, b) => b[1] - a[1])) console.log(`  destroyed ${String(v).padStart(4)}  ${k}`);
+        for (const b of battle.battles) console.log(`  battle day ${b.day.toFixed(1)}${b.open ? ' (open)' : ''} ${b.empire} ${b.subRole} ${b.ship}${b.location ? ' near ' + b.location : ''}: hits ${b.hits}, misses ${b.misses}, dmg ${b.damageToEnemy}, shields absorbed ${b.shieldsAbsorbed}, hull dmg taken ${b.hullDamageToUs}, kills ${b.enemyShipsDestroyed}+${b.enemyBasesDestroyed} bases+${b.enemyFightersDestroyed} fighters${b.lost ? ', LOST' : ''}`);
+    }
     const hits = Object.entries(todo).sort((a, b) => b[1] - a[1]);
     console.log(`TODO(port) stubs reached: ${hits.length}`);
     for (const [k, v] of hits.slice(0, 25)) console.log(`  ${String(v).padStart(10)}  ${k}`);
@@ -287,6 +583,12 @@ try {
     Object.assign(out, { createMs, digest, counts, frames, rndDraws: draws, runMs, cpuMs: cpuTotal, heapStart, heapPeak: heap.peak, heapEnd, todo, timings, chunks,
         profile: prof && { entry: prof.entry.slice(0, 60), incl: prof.incl.slice(0, 60), self: prof.self.slice(0, 60) } });
     if (jsonOut !== null) writeFileSync(String(jsonOut), JSON.stringify(out, null, 1));
+    if (statsDays > 0) {
+        if (g.nowMs > lastStatMs + 1000) snapshot();
+        console.log('message samples:');
+        for (const [k, v] of Object.entries(msgSamples)) console.log(`  ${k}: ${v.join(' | ')}`);
+        if (statsJson !== null) writeFileSync(String(statsJson), JSON.stringify({ seed, stars, empires, seconds, stats, msgSamples, consoleErrors, exceptions: out.exceptions, colonyShips: out.colonyShips, todo }, null, 1));
+    }
 } finally {
     await server?.close();
     if (bundleDir !== null && !process.env.KEEP) rmSync(bundleDir, { recursive: true, force: true });

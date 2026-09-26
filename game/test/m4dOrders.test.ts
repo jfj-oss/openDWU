@@ -329,7 +329,13 @@ describe('harness smoke (seed 1, 600 game-s)', () => {
                 expect(builtObjectMission(c!.freighter!.mission)?.type).toBe(BuiltObjectMissionType.Transport);
                 expect(c!.amountToFulfill).toBeGreaterThan(0);
             }
-            expect(o.amountToFulfill).toBeLessThanOrEqual(o.amountRequested);
+            // Σ AmountToFulfill can pass AmountRequested in the C# too: a docking step unloads (int)(bay capacity × dt)
+            // without capping it to the contract's remainder (BuiltObject.2.cs 3780-3801), and a contract closed after
+            // such an over-delivery keeps AmountToFulfill = AmountDelivered (Contract cancel). Seen on seed 1 after the
+            // 2026-09-26 combat fixes (7001 / 7000). Only closed contracts can add that overshoot.
+            const closed = o.contracts.filter((c) => c !== null && c.amountDelivered > 0 && c.amountToFulfill === c.amountDelivered).length;
+            if (closed === 0) expect(o.amountToFulfill).toBeLessThanOrEqual(o.amountRequested);
+            else expect(o.amountToFulfill).toBeLessThanOrEqual(Math.ceil(o.amountRequested * 1.05));
         }
         // Every order references a live requester (plan §5.3 invariant).
         for (const o of g.orders.items) {

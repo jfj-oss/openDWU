@@ -29,6 +29,10 @@ import type { DiplomatBrief } from './diplomatBrief';
 import { deleteDesign, saveDesign, setDesignSubRoleShouldBeUpgraded, type DesignDraft } from './designEditor';
 import { executeShipOrderKey, type ShipOrderKeyAction } from './shipHotkeys';
 import { initiateCrashResearchProgram } from '../researchTick';
+import type { EmpireMessage } from '../messages';
+import { approveSuggestion, declineSuggestion } from './advisorSuggestions';
+import { expireOldAdvisorSuggestions } from '../advisorQueue';
+import { galaxyStarDate } from '../tick/simTime';
 import { cancelIntelligenceMission, characterMission } from '../espionage';
 import {
     acceptProposal,
@@ -138,6 +142,12 @@ export const PLAYER_OPS = {
     submitTradeOffer: (galaxy: Galaxy, _empire: Empire, negotiation: TradeNegotiation) => submitTradeOffer(galaxy, negotiation),
     acceptProposal: (_galaxy: Galaxy, empire: Empire, other: Empire) => acceptProposal(empire, other),
     declineProposal: (_galaxy: Galaxy, empire: Empire, other: Empire) => declineProposal(empire, other),
+
+    // --- Advisor suggestions (semi-automated tasks awaiting Approve / Decline; Main.Part2.cs 1369 / 2732) ---
+    approveSuggestion: (galaxy: Galaxy, empire: Empire, message: EmpireMessage) => approveSuggestion(galaxy, empire, message),
+    declineSuggestion: (galaxy: Galaxy, empire: Empire, message: EmpireMessage) => declineSuggestion(galaxy, empire, message),
+    /** DiplomaticMessageQueue.cs 864 method_3: drop suggestions older than their lifetime (at this boundary's date). */
+    expireAdvisorSuggestions: (galaxy: Galaxy, empire: Empire) => expireOldAdvisorSuggestions(empire, galaxyStarDate(galaxy)),
 
     // --- The local model (18a advisor chat, 18b diplomat counter-proposal) ---
     advisorCommands: (galaxy: Galaxy, empire: Empire, brief: AdvisorBrief, commands: (AdvisorCommand | ValidatedCommand)[]) => executeAdvisorCommands(galaxy, empire, brief, commands),

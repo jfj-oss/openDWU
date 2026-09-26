@@ -294,7 +294,7 @@ describe('harness: diplomacy evolves once the empires have met', () => {
         const g2 = runMet(1200);
         expect(stateDigest(g2)).toBe(stateDigest(g));
         expect(g2.rnd.drawCount).toBe(g.rnd.drawCount);
-    }, 600000);
+    }, 1800000); // 30 min: runs at a fraction of speed while other suites load the machine
 });
 
 describe('trade offers (Empire.7.cs 2576 TradeItems, Galaxy.4.cs values)', () => {

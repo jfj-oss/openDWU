@@ -11,7 +11,7 @@ import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import { BuiltObject } from '../builtObject';
 import { BuiltObjectSubRole } from '../builtObjectTypes';
-import { Habitat } from '../types';
+import { Habitat, planetsOf } from '../types';
 import { Cargo, CargoList, ResourceRef } from '../cargo';
 import { BuiltObjectRole } from '../data/designSpecifications';
 import { findNewest, galaxyComponentCurrentPrices, galaxyResourceCurrentPrices } from '../design';
@@ -196,9 +196,11 @@ function generateValidTradingPosts(galaxy: Galaxy, self: Empire, empire: Empire)
         }
     } else {
         for (let num7 = 0; num7 < galaxy.systems.length; num7++) {
-            if (!empire.visibility.checkSystemExplored(galaxy.systems[num7].systemStar.systemIndex) || galaxy.systems[num7].habitats.length <= 0) continue;
-            for (let num8 = 0; num8 < galaxy.systems[num7].habitats.length; num8++) {
-                const habitat3 = galaxy.systems[num7].habitats[num8];
+            // Empire.4.cs 619-625 Systems[num7].Habitats: no star.
+            const sysHabitats = planetsOf(galaxy.systems[num7]);
+            if (!empire.visibility.checkSystemExplored(galaxy.systems[num7].systemStar.systemIndex) || sysHabitats.length <= 0) continue;
+            for (let num8 = 0; num8 < sysHabitats.length; num8++) {
+                const habitat3 = sysHabitats[num8];
                 if (habitat3 == null || habitat3.population.items.length <= 0 || habitat3.empire !== galaxy.independentEmpire) continue;
                 const q = habitatDockingBayWaitQueueCount(habitat3);
                 if (q !== null && q < num && !list.contains(habitat3)) list.add(habitat3);

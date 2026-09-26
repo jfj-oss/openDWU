@@ -8,7 +8,8 @@
 // game clock, which follows real time × TimeSpeed as the C# stopwatch clock does (Galaxy.cs 1098 CurrentStarDate from
 // _StopWatch, 1102 TimeSpeed; Galaxy.3.cs 5138 RealSecondsInGalacticYear = 600, so 1 game day = 600,000 / 360 ms
 // ≈ 1,667 real ms at 1× — 36 game days per real minute). The camera is the scheduler's optional in-view input (Main.Part11.cs 507 method_123 / 533
-// ProcessMain level-of-detail pass, plan §0 "View LOD"): on by default in the app, `?simView=0` turns it off (tests
+// ProcessMain level-of-detail pass, plan §0 "View LOD"): opt-in with `?simView=1` (off by default: the camera would be
+// an unjournaled sim input and break command-log replay; when on, the log records it — 'view' entries) (tests
 // and the headless harness always run without a view).
 //
 // The only clock is `galaxy.nowMs` (advanced by runSimFrame); the HUD's GalaxyTime is bound to it
@@ -19,7 +20,7 @@ import type { Galaxy } from './sim/galaxy';
 import type { GalaxyTime } from './sim/galaxyTime';
 import { FRAME_REAL_MS, SimDriver, schedulerState, type FrameOptions, type SimView } from './sim/tick/scheduler';
 import { drainCommandBoundary } from './sim/tick/commandBoundary';
-import { noteSimSpeed } from './sim/player/playerCommands';
+import { noteSimSpeed, noteSimView } from './sim/player/playerCommands';
 import { showToast } from './ui/toast';
 
 /** Main.Part11.cs 507 method_123 inputs from the Pixi camera: int_13/int_14 = view centre (galaxy units),
@@ -128,9 +129,9 @@ export interface SimLoop {
     tick(realDtMs: number): number;
 }
 
-/** `?simView=0` disables the in-view LOD pass (default on in the app). */
+/** `?simView=1` enables the in-view LOD pass (default off: see the file header, command log). */
 export function simViewEnabledFromUrl(search: string): boolean {
-    return new URLSearchParams(search).get('simView') !== '0';
+    return new URLSearchParams(search).get('simView') === '1';
 }
 
 export function createSimLoop(galaxy: Galaxy, time: GalaxyTime, camera: Camera, useView: boolean): SimLoop {
@@ -167,7 +168,10 @@ export function createSimLoop(galaxy: Galaxy, time: GalaxyTime, camera: Camera, 
                 // (also while paused, and even when the budget runs no step), so they land within one frame.
                 drainCommandBoundary(galaxy);
                 // The frame length is a sim input: journal speed changes at this boundary (replay runs the same frames).
-                if (!time.paused) noteSimSpeed(galaxy, time.speed);
+                if (!time.paused) {
+                    noteSimSpeed(galaxy, time.speed);
+                    noteSimView(galaxy, useView);
+                }
                 // [fix6ui] steps by real time under a wall-clock budget (was driver.advance, at most 4 per frame).
                 frames = budget.run(driver, realDtMs, time.speed, time.paused, useView ? { view: simViewFromCamera(camera) } : {});
             } catch (err) {

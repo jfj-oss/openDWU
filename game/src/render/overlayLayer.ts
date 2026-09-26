@@ -57,6 +57,7 @@ import type { Empire } from '../sim/empire';
 import type { ShipGroup } from '../sim/fleets/shipGroup';
 import { builtObjectMission } from '../sim/missions/mission';
 import { BuiltObjectRole } from '../sim/data/designSpecifications';
+import { DrawKey } from './drawCache';
 
 /** The original's selection-ring yellow (MainView.cs `color_2` default,
  * `System.Drawing.Color.FromArgb(255, 255, 255, 0)`), reused by
@@ -101,6 +102,8 @@ export function isResearchLocation(h: Habitat): boolean {
 
 class MarkerRing {
     graphics = new Graphics();
+    /** Last drawn position / radius / width (the geometry is rebuilt only on change). */
+    key = new DrawKey();
     constructor(public habitat: Habitat, layer: Container) {
         this.graphics.visible = false;
         layer.addChild(this.graphics);
@@ -264,8 +267,10 @@ export class OverlayLayer {
                 continue;
             }
             const r = drawnPx(h, z) / 2 + 8 / z;
-            m.graphics.clear();
-            m.graphics.circle(h.xpos, h.ypos, r).stroke({ width: 4 / z, color: OVERLAY_MARKER_COLOR, alpha: 1 });
+            if (m.key.changed(h.xpos, h.ypos, r, 4 / z)) {
+                m.graphics.clear();
+                m.graphics.circle(h.xpos, h.ypos, r).stroke({ width: 4 / z, color: OVERLAY_MARKER_COLOR, alpha: 1 });
+            }
             m.graphics.visible = true;
         }
     }
@@ -286,15 +291,19 @@ export class OverlayLayer {
      * frame. MainView.2.cs method_250 draws above zoom factor 0.9 (always). */
     private updateTravelVectors(z: number, cam: Camera): void {
         const g = this.travelVectors;
+        const player = this.galaxy.playerEmpire;
+        if ((!this.state.travelVectorsState && !this.state.travelVectorsPrivate) || player === null) {
+            // Off (the default): clear once, not every frame (clearing marks the geometry for a rebuild).
+            if (g.visible) {
+                g.clear();
+                g.visible = false;
+            }
+            return;
+        }
         g.clear();
         const kinds: TravelVectorKind[] = [];
         if (this.state.travelVectorsState) kinds.push('state');
         if (this.state.travelVectorsPrivate) kinds.push('private');
-        const player = this.galaxy.playerEmpire;
-        if (kinds.length === 0 || player === null) {
-            g.visible = false;
-            return;
-        }
         const f = 1 / z;
         const halfW = cam.width / (2 * z);
         const halfH = cam.height / (2 * z);
