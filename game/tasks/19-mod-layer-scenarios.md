@@ -65,9 +65,11 @@ Effort: 1–4 days each after the mod layer; 5–9 one to two weeks each.
 ## Order of work (decided 2026-09-26)
 1. **modlayer** foundation (starts now): scenario/data overlay folder loaded over /assets/dwu (races, resources, policies, templates, GameText additions), wizard "Scenario" toggles, feature flags read by the sim (off = byte-identical faithful game, pins unchanged), story-event hook points and a scenario test harness.
 2. Then in parallel: 19a rim trader, 19b Dark Farms + robot army, 19c chartered companies, 19d items 1–4 (internal politics, resource crises, espionage consequences, refugees/demographics).
-3. Then 19d items 5–10.
+3. Then 19d items 5–10 and the cheap 19e items (1 replay theatre, 4 chronicle, 9 freight overlay, 11 situational music).
+4. Then 19e medium (5 living characters, 7 wreckage/salvage, 8 space weather, 10 race designer).
+5. Then 19e ambitious (3 legacy galaxies, 6 spectator broadcast, 2 async multiplayer).
 
-## 19e — Second idea batch (2026-09-26; builds on replay, the persona layer, the seamless 4K map, the data overlay)
+## 19e — Second idea batch (ACCEPTED by the user 2026-09-26 — "i like all those ideas"; builds on replay, the persona layer, the seamless 4K map, the data overlay)
 1. Replay theatre: scrub a whole game as a time-lapse from seed + command log; jump to any moment; fork a "what if"; shareable replays (KB, not MB). [cheap]
 2. Async multiplayer via exchanged command logs (lockstep, no netcode). [ambitious, later]
 3. Legacy galaxies: a finished game seeds the next (wrecks → ruins, heroes → precursor lore, a rival survives as the rim power). [ambitious]
