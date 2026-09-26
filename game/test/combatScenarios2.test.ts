@@ -34,7 +34,8 @@ import { Weapon } from '../src/sim/weapon';
 import { BuiltObjectFleeWhen } from '../src/sim/data/designSpecifications';
 import { BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission } from '../src/sim/missions/mission';
 import { assignMission } from '../src/sim/missions/assign';
-import { checkAssignAttackOnThreat, determineThreatLevel, evaluateThreats, performThreatEvaluation, shouldFleeFrom, threatEvaluation } from '../src/sim/combat/threats';
+import { CommandAction } from '../src/sim/missions/mission';
+import { checkBattleOverwhelming, evaluateAttackStrongBase, checkAssignAttackOnThreat, determineThreatLevel, evaluateThreats, performThreatEvaluation, shouldFleeFrom, threatEvaluation } from '../src/sim/combat/threats';
 import { autoRefuelRepairShip } from '../src/sim/logistics/refuel';
 import { calculateCrewLevel, doRepairs } from '../src/sim/construction/repair';
 import { findNearestShipYard } from '../src/sim/construction/empireConstruction';
@@ -806,7 +807,7 @@ describe('(4) pirate raids', () => {
         if (pe.messages !== null) expect(nMsg(pe)).toBe(m0[0] + 1);
         if (player.messages !== null) {
             expect(nMsg(player)).toBe(m0[1] + 1);
-            expect(player.messages[player.messages.length - 1].messageType).toBe(EmpireMessageType.RaidVictim);
+            expect((player.messages[player.messages.length - 1] as { messageType: EmpireMessageType }).messageType).toBe(EmpireMessageType.RaidVictim);
         }
         // Countdown 0 → num = 1. Burn draws until the habitat's Next(0, 3) comes up 0 (the credits branch).
         capital.raidCountdown = 0;
@@ -880,6 +881,9 @@ describe('(5) AI retargeting', () => {
         place(g, jav, s.x, s.y);
         place(g, a, s.x + 150, s.y);
         place(g, b, s.x + 300, s.y);
+        // Deep space: UpdatePosition (BaconBuiltObject.cs 4329) only ever sets NearestSystemStar near a star, so clear the
+        // one left from the ship's home system (the C# clears it when a ship leaves a system under its own power).
+        for (const x of [jav, a, b]) x.nearestSystemStar = null;
         jav.isAutoControlled = true;
         jav.design.fleeWhen = BuiltObjectFleeWhen.Never;
         jav.currentEnergy = jav.reactorStorageCapacity;
@@ -891,7 +895,6 @@ describe('(5) AI retargeting', () => {
         assignMission(g, jav, BuiltObjectMissionType.Attack, a, null, BuiltObjectMissionPriority.Normal);
         const mission = builtObjectMission(jav.mission)!;
         expect(mission.targetBuiltObject).toBe(a);
-        expect(jav.nearestSystemStar).toBeNull();
         // Levels (Galaxy.7.cs 3681 DetermineThreatLevel, viewer Javelin): num = level of the current target A,
         // num2 = level of the threat B; Worthy Firelance is not a base (no ÷ 6).
         const num = determineThreatLevel(g, a, jav);
@@ -904,7 +907,7 @@ describe('(5) AI retargeting', () => {
         expect(builtObjectMission(jav.mission)!.targetBuiltObject).toBe(a);
         // A higher emphasis on the current target (num × 2.5 × emphasis ≥ num2) also keeps it.
         a.currentShields = a.shieldsCapacity;
-        const emphasis = num2 / (num * 2.5);
+        const emphasis = (num2 / (num * 2.5)) * 1.001;
         expect(checkAssignAttackOnThreat(g, jav, b, mission, emphasis, num2)).toBe(false);
         // Otherwise (and not overwhelmed, within fuel range) the mission is re-assigned to the threat (553-559): Attack or
         // Capture per DetermineDestroyOrCaptureTarget, the old mission kept as the revert mission.
@@ -933,6 +936,14 @@ describe('(5) AI retargeting', () => {
         expect(checkAssignAttackOnThreat(g, jav, b, mission, 1.0, num2)).toBe(false);
         expect(builtObjectMission(jav.mission)!.targetBuiltObject).toBe(a);
         fleet.allowImmediateThreatEvaluation = true;
+        // Still refused while the ship's mission carries a (conditional) hyperjump: the fleet Attack order queues a
+        // ConditionalHyperTo command (426 CheckCommandsForHyperjumpOrConditionalJump).
+        expect(mission.checkCommandsForHyperjumpOrConditionalJump()).toBe(true);
+        expect(checkAssignAttackOnThreat(g, jav, b, mission, 1.0, num2)).toBe(false);
+        // Once the jump commands are done (in the same system), the fleet ship may take the stronger threat.
+        const cmds = (mission as unknown as { _commands: { action: CommandAction }[] })._commands;
+        for (let i = cmds.length - 1; i >= 0; i--) if (cmds[i].action === CommandAction.HyperTo || cmds[i].action === CommandAction.ConditionalHyperTo) cmds.splice(i, 1);
+        expect(mission.checkCommandsForHyperjumpOrConditionalJump()).toBe(false);
         expect(checkAssignAttackOnThreat(g, jav, b, mission, 1.0, num2)).toBe(true);
         expect(builtObjectMission(jav.mission)!.targetBuiltObject).toBe(b);
     });
@@ -942,6 +953,7 @@ describe('(5) AI retargeting', () => {
         const c = ship(g, 'Terrible Raider'); // S269's armed escort, farther out
         hold(c);
         place(g, c, jav.xpos + 600, jav.ypos);
+        c.nearestSystemStar = null;
         assignMission(g, jav, BuiltObjectMissionType.Attack, a, null, BuiltObjectMissionPriority.Normal);
         // Destroy A outright (shields down, overwhelming hit).
         a.currentShields = 0;
@@ -1096,7 +1108,7 @@ describe('(6) repair and retreat', () => {
         const damagedIdx = [1, 4, 7, items.length - 1];
         for (const i of damagedIdx) items[i].status = ComponentStatus.Damaged;
         jav.reDefine();
-        jav.damageRepair = 10; // seconds per component (ReDefine sets it from DamageControl components; the Javelin has none)
+        (jav as unknown as { _damageRepair: number })._damageRepair = 10; // seconds per component (ReDefine sets it from DamageControl components; the Javelin has none)
         expect(calculateCrewLevel(jav)).toBe('green'); // no crew-skill override (4769-4787)
         const bonus = shipGroupRepairBonus(fleet);
         const perComponent = 10 / bonus / 1.0; // no captain
