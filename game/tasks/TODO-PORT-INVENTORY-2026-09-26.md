@@ -245,3 +245,12 @@ outstanding loans (GetOutstandingLoans). MakeLoanPayment (BaconGalaxy.cs 343, Me
 StateMoney, messages the player (hint "loanPayment"), and while payments remain stores [payment, n − 1] and re-queues itself 30 days
 later; any exception is swallowed. No Galaxy.Rnd. TS: a UI entry for the commands and dialogs, the functions in a Bacon module, and
 the eventActions.ts "loan" branch.
+
+### Sweep 2 pins moved (one re-pin)
+
+7 of 50: stationPlacement.bases and superPirates.faction (createGame-derived: BaconInitialize's Next(26, 35) for the
+ProcessEmpireScienceShips action and the generation Habitat.DoTasks orbit advance — every generated planet / moon is 30 s further
+along its orbit, which moves game-start positions and hence the later draws), tickDeterminism digest/rndDraws 120 and
+digest/counts/rndDraws 600 (the same, plus ProcessScienceShips on the tick path). No generation layout pin (game.capitals,
+createGameFull) moved: the DoTasks calls draw no Galaxy.Rnd. BaseTechCost / ColonizationRange keep their defaults (120000 /
+enforced, 3000000) outside the wizard.
