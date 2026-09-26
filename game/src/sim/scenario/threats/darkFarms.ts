@@ -81,6 +81,8 @@ export const DARK_FARMS_PERIOD_DAYS = 30;
 const SLEEPER_JAMMING = 20;
 /** Trace-scanner search radius around a sleeper. */
 const TRACE_SEARCH_RANGE = 2000;
+/** A striking transport this close to its target lands its robots. */
+const LANDING_RANGE = 3000;
 /** A transport this close to the farm colony takes the farm's surplus troops directly. */
 const FARM_DOCK_RANGE = 3000;
 /** Agents roll once per this many periods (≈ yearly). */
@@ -130,6 +132,8 @@ export interface DarkFarmsState {
     armedDesigns: Record<number, Design>;
     /** Faction transports spawned by the farms (after the turn). */
     transports: BuiltObject[];
+    /** Transports on their way to land robots on an enemy colony (§5.E step 22c). */
+    strikes: { bo: BuiltObject; target: Habitat }[];
     /** Ships the faction captured that get the armed fit next period. */
     pendingRefits: BuiltObject[];
     sentStages: SentStages;
@@ -150,6 +154,7 @@ function newState(): DarkFarmsState {
         sleepers: [],
         armedDesigns: {},
         transports: [],
+        strikes: [],
         pendingRefits: [],
         sentStages: {},
         killsByEmpire: {},
@@ -649,11 +654,12 @@ function armedDesign(galaxy: Galaxy, st: DarkFarmsState, subRole: BuiltObjectSub
     const d = generateDesignFromSpec(galaxy, faction, spec as never, 0, galaxyStarDate(galaxy));
     if (d === null) return null;
     // The stock troop-transport logic (load / unload missions, invasion fleets) keys on the sub-role.
-    // Stance / flee rule of a TroopTransport design (GenerateDesignFromSpec's TroopTransport case: AttackEnemies,
-    // Shields50) instead of a freighter's (flee when enemy military is sighted).
+    // Flee rule of a TroopTransport design (GenerateDesignFromSpec's TroopTransport case: Shields50) instead of a
+    // freighter's (flee when enemy military is sighted).
     d.subRole = BuiltObjectSubRole.TroopTransport;
     d.role = BuiltObjectRole.Military;
-    d.stance = BuiltObjectStance.AttackEnemies;
+    // Carriers first: they defend themselves (AttackIfAttacked) instead of joining every fight on the way.
+    d.stance = BuiltObjectStance.AttackIfAttacked;
     d.fleeWhen = BuiltObjectFleeWhen.Shields50;
     d.name = `${scenarioText(`${TAG} Faction Name`)} ${key === BuiltObjectSubRole.MediumFreighter ? 'Reaper' : 'Gleaner'}`;
     st.armedDesigns[key] = d;
@@ -758,17 +764,45 @@ export function directFaction(galaxy: Galaxy, st: DarkFarmsState): void {
     const faction = st.faction!;
     st.transports = st.transports.filter((b) => !b.hasBeenDestroyed && b.actualEmpire === faction);
     const farms = liveFarms(st).filter((f) => f.state === 'turned' && f.habitat.empire === faction);
+    // Strikes under way: at the target the robots land as invaders (the stock landing of a troop ship attacking a
+    // colony: cmdAttack.ts ~590, BuiltObject.2.cs 2340-2351 — troop.Colony = colony, colony.InvadingTroops.Add), and
+    // the stock ground war (resolveInvasionBattles) decides it; on the way the ship keeps its Attack order.
+    const striking = new Set<BuiltObject>();
+    const strikes: { bo: BuiltObject; target: Habitat }[] = [];
+    for (const k of st.strikes ?? []) {
+        const bo = k.bo;
+        if (bo.hasBeenDestroyed || bo.actualEmpire !== faction || bo.troops === null || bo.troops.count === 0) continue;
+        if (k.target.hasBeenDestroyed || k.target.empire === faction || k.target.empire === null || !atWar(faction, k.target.empire)) continue;
+        if (galaxy.calculateDistance(bo.xpos, bo.ypos, k.target.xpos, k.target.ypos) <= LANDING_RANGE) {
+            const troops = [...bo.troops.items];
+            bo.troops.clear();
+            for (const t of troops) t.builtObject = null;
+            invadeFromInside(galaxy, k.target, faction, troops);
+            continue;
+        }
+        const m = builtObjectMission(bo.mission);
+        if (m === null || m.type !== BuiltObjectMissionType.Attack || m.targetHabitat !== k.target) {
+            assignMission(galaxy, bo, BuiltObjectMissionType.Attack, k.target, null, BuiltObjectMissionPriority.High, { manuallyAssigned: true });
+        }
+        strikes.push(k);
+        striking.add(bo);
+    }
+    st.strikes = strikes;
     const home = farms[0]?.habitat ?? faction.capital;
     if (home === null) return;
     // Robots still waiting at the farms: a half-empty transport goes back for them, otherwise it sails with what it has.
     const waiting = farms.some((f) => f.habitat.troops !== null && f.habitat.troops.items.some((t) => !t.garrisoned && !t.awaitingPickup && t.empire === faction));
     const loaded: BuiltObject[] = [];
     for (const bo of st.transports) {
+        // The farm's transports answer to this layer, not to the stock mission AI (which would re-task them as
+        // warships every few seconds); a transport low on fuel is handed back to the stock AI to refuel.
+        bo.isAutoControlled = bo.currentFuel < 0.3 * bo.fuelCapacity;
+        if (bo.isAutoControlled || striking.has(bo)) continue;
         const loading = isLoading(bo);
         if (!loading && !isIdle(bo) && !isRedirectable(bo)) continue;
         const carried = bo.troops?.totalSize ?? 0;
         if (bo.troopCapacity > 0 && carried > 0 && (carried >= 0.5 * bo.troopCapacity || !waiting)) loaded.push(bo);
-        else if (!loading && waiting && carried < bo.troopCapacity) assignLoadTroopsMission(galaxy, faction, bo, farms[0].habitat, false, false);
+        else if (!loading && waiting && carried < bo.troopCapacity) assignLoadTroopsMission(galaxy, faction, bo, farms[0].habitat, false, false, true);
     }
     if (loaded.length === 0) return;
     const attack = loaded.reduce((a, b) => a + (b.troops?.totalAttackStrength ?? 0), 0);
@@ -802,10 +836,11 @@ export function directFaction(galaxy: Galaxy, st: DarkFarmsState): void {
         }
     }
     if (best !== null) {
+        // An Attack order on the colony (an UnloadTroops at a hostile colony would add the robots to its garrison);
+        // the strike lands them on arrival (above).
         for (const bo of loaded) {
-            const troops = new TroopList();
-            for (const t of bo.troops!.items) troops.add(t);
-            assignMission(galaxy, bo, BuiltObjectMissionType.UnloadTroops, best, null, BuiltObjectMissionPriority.Normal, { troops });
+            assignMission(galaxy, bo, BuiltObjectMissionType.Attack, best, null, BuiltObjectMissionPriority.High, { manuallyAssigned: true });
+            st.strikes.push({ bo, target: best });
         }
         return;
     }
