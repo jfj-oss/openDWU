@@ -196,3 +196,14 @@ spacing and gas clouds sit in nebulae (the generated galaxy differs: 31833 habit
 | MaximumEmpireAmount option (game.ts 1134) | Start.2.cs 115 | option plumbing |
 | ColonizationRange / EnforceLimit options (exploration.ts 98) | Galaxy.cs 729/732 | option plumbing |
 | 4 registerTodo stubs in diplomacyTick.ts (excluded, other agents) | Empire.8.cs 4403-4480, Empire.3.cs 3945/4032/4586 | — |
+
+## Seed pins moved (one re-pin, reason lists the C# methods)
+
+37 of 50 pins moved. The dominant cause is galaxy generation: Galaxy.4.cs 2794 GenerateGasCloud now draws a NebulaCloud
+location and offsets per attempt, and Galaxy.6.cs 3714 FindNearestSystemGasCloudAsteroid now sees stars (Parent == null),
+so SetupSun's spacing retries (Galaxy.5.cs 1264) draw differently — every seed-1 layout pin (game.capitals, pirates,
+stations, troops, characters, taxes, traders, createGameFull, tickDeterminism) follows from that. On top of it the tick path
+moves through the reachable items listed above (orders-driven freighter projections: +10 freighters for the seed-1 player;
+trader refuel missions / retirement; war and blockade docking; mining rights; threat-based danger checks; the start
+Galaxy.DoTasks and capital Habitat.DoTasks). No item classed dead moved a pin (the dead rows are UI / picture / file-IO
+statements or code paths the probes never entered).
