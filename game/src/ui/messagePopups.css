@@ -3,9 +3,9 @@
 
 .message-popup {
     position: fixed;
-    /* popupstubs: opened from a stub, the card sits beside the stub list (left of the 230 px top-right column). */
+    /* popupstubs: opened from a stub, the card sits beside the stub list (left of the top-right column). */
     top: 114px;
-    right: 250px;
+    right: 276px;
     width: 335px;
     max-height: calc(100vh - 140px);
     z-index: 1499;

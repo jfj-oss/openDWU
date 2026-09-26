@@ -50,7 +50,7 @@ export interface MessageStubListOptions {
 // The state outlives install/remove within a game (pushes may arrive first); a new game clears it.
 let state: StubListState = createStubListState();
 let player: Empire | null = null;
-let installed: { root: HTMLElement; frame: number; cleanup: () => void } | null = null;
+let installed: { root: HTMLElement; timer: ReturnType<typeof setInterval>; cleanup: () => void } | null = null;
 
 const ids = new WeakMap<EmpireMessage, number>();
 let nextId = 1;
@@ -120,18 +120,29 @@ export function installMessageStubList(opts: MessageStubListOptions): void {
         { passive: false },
     );
 
+    // Directly under the money panel as drawn (its height follows its content and the UI scale); the layout rect
+    // stands in before the HUD exists.
+    let placed = '';
     function place(): void {
-        const r = messageStubsRect(window.innerWidth, window.innerHeight);
-        root.style.right = `${r.right}px`;
-        root.style.top = `${r.top}px`;
-        root.style.width = `${r.w}px`;
         const s = uiScaleFactor();
-        root.style.transformOrigin = r.origin;
+        const money = document.querySelector<HTMLElement>('[data-hud="pnlMoney"]')?.getBoundingClientRect();
+        const r = messageStubsRect(window.innerWidth, window.innerHeight);
+        const right = money ? Math.max(0, window.innerWidth - money.right) : r.right;
+        const top = money ? money.bottom + 4 * s : r.top;
+        const w = money ? money.width / s : r.w;
+        const key = `${right},${top},${w},${s}`;
+        if (key === placed) return;
+        placed = key;
+        root.style.right = `${right}px`;
+        root.style.top = `${top}px`;
+        root.style.width = `${w}px`;
+        root.style.transformOrigin = '100% 0';
         root.style.transform = s === 1 ? '' : `scale(${s})`;
     }
     place();
     window.addEventListener('resize', place);
     const offSettings = onSettingsChange(() => {
+        placed = '';
         place();
         renderedKey = '';
         render();
@@ -179,11 +190,13 @@ export function installMessageStubList(opts: MessageStubListOptions): void {
                 const entry = queue.find((e) => e.message === m)!;
                 const heading = oneLine(conversationHeading(entry, p, starDate));
                 const sender = entry.sender?.name ?? '';
+                // "<sender>: <heading>"; without a heading, the description (which names the sender itself).
+                const title = heading !== '' ? (sender !== '' ? `${sender}: ${heading}` : heading) : oneLine(resolveGameText(m.description)) || sender || 'Message';
                 return {
                     key: m,
                     kind: 'conversation',
                     icon: messageIconUrl(m, p),
-                    title: sender !== '' && heading !== '' ? `${sender}: ${heading}` : sender || heading || 'Message',
+                    title,
                     tooltip: oneLine(resolveGameText(m.description)),
                     starDate: m.starDate,
                     color: entry.sender ? rgbCss(entry.sender.mainColor) : null,
@@ -224,22 +237,24 @@ export function installMessageStubList(opts: MessageStubListOptions): void {
         track.style.transform = state.progress > 0 ? `translateY(${-state.progress * TICKER_ROW_PX}px)` : '';
     }
 
+    // A 50 ms timer (the C# popup / ticker run on 100 ms timers), independent of the renderer's frame rate.
     let last = performance.now();
     let syncAt = 0;
-    function frame(now: number): void {
+    function frame(): void {
+        const now = performance.now();
         const dt = Math.min(1000, now - last);
         last = now;
         if (now >= syncAt) {
             sync();
+            place();
             syncAt = now + 250;
         }
         advanceStubList(state, dt, { visible: getSettings().messageStubsVisible, hovered, paused: opts.clock?.paused ?? false });
         render();
-        if (installed !== null) installed.frame = requestAnimationFrame(frame);
     }
     installed = {
         root,
-        frame: requestAnimationFrame(frame),
+        timer: setInterval(frame, 50),
         cleanup: () => {
             window.removeEventListener('resize', place);
             offSettings();
@@ -254,7 +269,7 @@ export function removeMessageStubList(clear = true): void {
     if (installed !== null) {
         const s = installed;
         installed = null;
-        cancelAnimationFrame(s.frame);
+        clearInterval(s.timer);
         s.cleanup();
         s.root.remove();
     }
