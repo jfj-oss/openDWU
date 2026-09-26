@@ -36,6 +36,7 @@ import {
     rimTraderEmpire,
     rimTraderPort,
     rimTraderStanding,
+    rimTraderImportFromSelf,
 } from '../src/sim/scenario/rimTrade/common';
 import { rimTraderPortStock, rimTraderYear } from '../src/sim/scenario/rimTrade/rimTrader';
 import { rimTraderTermsRows } from '../src/ui/scenario/rimTraderRows';
@@ -171,20 +172,20 @@ describe('19a rim trader — ledger, access and AI rules', () => {
         const count = (type: EmpireMessageType) => empireMessages(human).filter((m) => m.title === title && m.messageType === type).length;
         const emit = (seller: Empire, buyer: Empire, resourceId: number, value: number) =>
             scenarioEmit(g, 'contractInitiated', { seller, buyer, sellingPoint: null, destination: null, resourceId, componentId: -1, amount: 100, value, isState: true, freighter: null });
-        emit(human, r, rim, 3000);
-        expect(rimTraderStanding(g, human.empireId)).toBe(3000);
+        emit(human, r, rim, 1000);
+        expect(rimTraderStanding(g, human.empireId)).toBe(1000);
         reviewRestrictedResourceTrading(g, r);
         expect(obtainDiplomaticRelation(r, human).supplyRestrictedResources).toBe(false);
-        emit(human, r, rim, 2500);
+        emit(human, r, rim, 5000);
         reviewRestrictedResourceTrading(g, r);
         expect(obtainDiplomaticRelation(r, human).supplyRestrictedResources).toBe(true);
         expect(count(EmpireMessageType.GeneralGoodEvent)).toBe(1);
         reviewRestrictedResourceTrading(g, r); // no flip, no second message
         expect(count(EmpireMessageType.GeneralGoodEvent)).toBe(1);
-        emit(r, human, rare, 5000); // S = 500: stays open (≥ 0)
+        emit(r, human, rare, 5000); // S = 1000: stays open (≥ 0)
         reviewRestrictedResourceTrading(g, r);
         expect(obtainDiplomaticRelation(r, human).supplyRestrictedResources).toBe(true);
-        emit(r, human, rare, 1000); // S = −500: closed
+        emit(r, human, rare, 1500); // S = −500: closed
         expect(rimTraderStanding(g, human.empireId)).toBe(-500);
         reviewRestrictedResourceTrading(g, r);
         expect(obtainDiplomaticRelation(r, human).supplyRestrictedResources).toBe(false);
@@ -214,7 +215,7 @@ describe('19a rim trader — ledger, access and AI rules', () => {
         expect(r.stateMoney).toBeCloseTo(before.r - value, 3);
         expect(human.stateMoney).toBeGreaterThan(before.human); // the seller's trade income (state share)
         expect(rimTradeState(g).ledger[human.empireId].credit).toBe(value);
-        expect(rimTraderStanding(g, human.empireId)).toBeGreaterThanOrEqual(5000);
+        expect(rimTraderStanding(g, human.empireId)).toBeGreaterThanOrEqual(1500);
         reviewRestrictedResourceTrading(g, r);
         expect(obtainDiplomaticRelation(r, human).supplyRestrictedResources).toBe(true);
         // The player's colonies now see the Concord's rare goods as available restricted luxuries.
@@ -270,6 +271,10 @@ describe('19a rim trader — ledger, access and AI rules', () => {
             const outstanding = orders.filter((o) => o.commodityResource?.resourceId === id && o.isStateOrder).reduce((s, o) => s + o.amountOutstandingToContract, 0);
             expect(outstanding + 50).toBeGreaterThanOrEqual(400);
         }
+        // Imports are bought from foreign sellers only.
+        const imp = orders.find((o) => o.commodityResource?.resourceId === rim[0])!;
+        expect(rimTraderImportFromSelf(g, imp, r)).toBe(true);
+        expect(rimTraderImportFromSelf(g, imp, human)).toBe(false);
         const n = orders.length;
         rimTraderYear(g); // 50 more consumed per good: one top-up order each for the 50 units
         const after = g.orders.getOrdersForBuiltObject(port).items;
@@ -301,7 +306,7 @@ describe('19a rim trader — ledger, access and AI rules', () => {
         expect(rows.wanted.map((x) => x.name)).toEqual([...RIM_GOODS]);
         expect(rows.offered.map((x) => x.name)).toEqual([...RARE_GOODS]);
         expect(rows.standing).toBe(1500);
-        expect(rows.threshold).toBe(5000);
+        expect(rows.threshold).toBe(1500);
         expect(rimTraderTermsRows(g, g.empires.find((e) => e !== null && e !== r && e !== human)!)).not.toBeNull();
     });
 });

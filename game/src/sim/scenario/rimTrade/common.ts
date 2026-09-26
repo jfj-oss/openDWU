@@ -22,7 +22,7 @@ export const RIM_MIN_RADIUS = 0.72;
 export const RIM_PARAM_DEFAULTS = {
     rimTraderMaxColonies: 4,
     rimTraderExchangeRate: 1.0,
-    rimTraderGrantThreshold: 5000,
+    rimTraderGrantThreshold: 1500,
     rimTraderImportQuota: 400,
     rimTraderConsumption: 200,
     rimTraderLedgerDecay: 0.5,
@@ -179,4 +179,16 @@ export function rimTraderRefusesProposal(galaxy: Galaxy, self: Empire, proposer:
 export function rimTraderOnlyTradingPost(galaxy: Galaxy, other: Empire): BuiltObject | Habitat | null | undefined {
     if (!scenarioFlag(galaxy, 'rimTraderSinglePort') || !scenarioFlag(galaxy, 'rimTrader') || other !== rimTraderEmpire(galaxy)) return undefined;
     return rimTraderPort(galaxy);
+}
+
+/**
+ * R4 (step 12c): the Concord's rim-good import orders at its port are filled by foreign sellers only (its own rim
+ * mining stations are nearer than any foreign post, so otherwise it would buy from itself and never trade).
+ */
+export function rimTraderImportFromSelf(galaxy: Galaxy, order: { requestingBuiltObject: BuiltObject | null; requestingColony: Habitat | null; commodityResource: { resourceId: number } | null }, seller: Empire | null): boolean {
+    if (!scenarioFlag(galaxy, 'rimTrader') || order.commodityResource === null) return false;
+    const r = rimTraderEmpire(galaxy);
+    if (r === null || seller !== r || !rimGoodIds(galaxy).includes(order.commodityResource.resourceId)) return false;
+    const port = rimTraderPort(galaxy);
+    return port !== null && (order.requestingBuiltObject === port || order.requestingColony === port);
 }

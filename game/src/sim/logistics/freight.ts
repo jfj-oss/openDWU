@@ -34,7 +34,7 @@ import {
     calculateResourceLevelCargoHabitat,
 } from './colonySupply';
 import { Contract, builtObjectContracts, calculateCurrentContractValueResource, initiateContract, initiateContractForOrder, type StellarObject } from './contracts';
-import { rimTraderOnlyTradingPost } from '../scenario/rimTrade/common';
+import { rimTraderImportFromSelf, rimTraderOnlyTradingPost } from '../scenario/rimTrade/common';
 import {
     INDEPENDENT_TRADER_FREIGHT_RANGE,
     MAXIMUM_EMPIRE_COUNT,
@@ -540,6 +540,8 @@ function attemptToFulfillOrderAtTradingPost(ctx: FulfillContext, tradingPost: St
         if (tradingPost === requestingBuiltObject) return 0;
     }
     const tradingPostEmpire = tradingPost.empire as Empire | null;
+    // Mod layer 19a: the Concord's rim imports come from foreign sellers (tasks/19a-rim-trader.md R4)
+    if (galaxy.scenario !== null && rimTraderImportFromSelf(galaxy, order, tradingPostEmpire)) return 0;
     if (orderResource !== null && resourceIsRestricted) {
         if (tradingPostEmpire !== null && tradingPostEmpire !== empire) {
             if (tradingPostEmpire.pirateEmpireBaseHabitat !== null || empire!.pirateEmpireBaseHabitat !== null) return 0;

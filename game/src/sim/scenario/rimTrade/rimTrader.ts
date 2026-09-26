@@ -148,16 +148,17 @@ export function rimTraderYear(galaxy: Galaxy): void {
             if (c.amount - used <= 0) cargoRemove(cargo, c);
             else c.amount -= used;
         }
-        // c. Import orders (R4): state orders at the port for quota − stock − outstanding.
+        // c. Import orders (R4): state orders at the port so that `quota` units are always on order. The Concord's own
+        //    production does not count (as specified the rule was quota − stock, but the Concord's rim mining stations keep
+        //    its port far above any quota, so it never bought: the soak showed 0 purchases in 10 years). Tribute, not need.
         const quota = Math.trunc(rimParam(galaxy, 'rimTraderImportQuota'));
         const orders = port instanceof BuiltObject ? galaxy.orders.getOrdersForBuiltObject(port) : galaxy.orders.getOrdersForHabitat(port);
         for (const id of rimGoodIds(galaxy)) {
-            const stock = cargoGetCargo(cargo, id, r)?.amount ?? 0;
             let outstanding = 0;
             for (const o of orders.items) if (o.commodityResource !== null && o.commodityResource.resourceId === id) outstanding += o.amountOutstandingToContract;
             // In lots of IMPORT_LOT units: the stock market check (CheckOrderIsAffordable) prices a whole order against
             // the state treasury, so one large order would stall whenever the treasury is low.
-            for (let want = quota - stock - outstanding; want > 0; want -= IMPORT_LOT) {
+            for (let want = quota - outstanding; want > 0; want -= IMPORT_LOT) {
                 empireCreateOrder(galaxy, r, port, new ResourceRef(id), Math.min(want, IMPORT_LOT), true, OrderType.Standard);
             }
         }
