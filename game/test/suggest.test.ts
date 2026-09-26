@@ -43,6 +43,7 @@ import {
 import { galaxyFromJSON, galaxyToJSON } from '../src/sim/save/galaxySave';
 import type { Design } from '../src/sim/design';
 import type { Habitat } from '../src/sim/types';
+import { advisorSuggestionView, automationSettingFor } from '../src/ui/advisorSuggestions';
 
 let gameData: GameData;
 beforeAll(async () => {
@@ -295,5 +296,30 @@ describe('save round trip', () => {
         const s0 = g2.builtObjects.length;
         approveSuggestion(g2, e2, q2[0]);
         expect(g2.builtObjects.length).toBe(s0 + 1);
+    }, 300000);
+});
+
+describe('the Advisor Suggestion window content (Main.Part2.cs 2781 method_649)', () => {
+    it('title, resolved text with its arguments, cost, Show target and automation row', () => {
+        const semi = forcedGame(SEMI);
+        const { galaxy: g, playerEmpire: e } = semi;
+        directConstruction(g, e);
+        const m = advisorSuggestions(e)[0];
+        const v = advisorSuggestionView(g, e, m);
+        // GameText.txt 3651 "Advisor Message BuildOneOff" / 1606 "Automation Construction Colony" (string.Format).
+        expect(v.title).toBe('Build New Base');
+        const design = m.advisorMessageData as Design;
+        expect(v.text).toContain(`(${design.name}) for a cost of `);
+        expect(v.text).toContain(`at the `);
+        expect(v.text).toContain(e.capital!.name);
+        expect(v.text).not.toContain('{');
+        expect(v.cost).toBe(Math.round(design.calculateCurrentPurchasePrice(g)).toLocaleString('en-US'));
+        expect(v.opensBuildOrder).toBe(false);
+        expect(v.canShow).toBe(true);
+        expect(v.automation).toBe('Ship Building');
+        expect(automationSettingFor(AdvisorMessageType.EnemyAttack)).toBe('Attacks Against Enemies');
+        const bo = new EmpireMessage(e, EmpireMessageType.AdvisorSuggestion, null);
+        bo.advisorMessageType = AdvisorMessageType.BuildOrder;
+        expect(advisorSuggestionView(g, e, bo).opensBuildOrder).toBe(true);
     }, 300000);
 });
