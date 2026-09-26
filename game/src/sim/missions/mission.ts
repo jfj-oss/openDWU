@@ -148,12 +148,14 @@ export function isSector(o: unknown): o is Sector {
     return o instanceof Sector;
 }
 
-/** CargoList.Clone (CargoList.cs 767): resource entries cloned with amount, empire and reserved. TODO(port) M4d: component cargo. */
+// Port of CargoList.cs Clone (767): each entry cloned with amount, empire and reserved — a resource entry as
+// `new Cargo(CommodityResource, …)`, a component entry as `new Cargo(CommodityComponent, …)`.
 export function cloneCargoList(list: CargoList): CargoList {
     const cargoList = new CargoList();
     for (let index = 0; index < list.items.length; ++index) {
         const cargo2 = list.items[index];
-        cargoList.add(new Cargo(cargo2.commodity, cargo2.amount, cargo2.empire, cargo2.reserved));
+        if (cargo2.commodityComponent === null) cargoList.add(new Cargo(cargo2.commodity, cargo2.amount, cargo2.empire, cargo2.reserved));
+        else cargoList.add(Cargo.ofComponent(cargo2.commodityComponent, cargo2.amount, cargo2.empire, cargo2.reserved));
     }
     return cargoList;
 }
