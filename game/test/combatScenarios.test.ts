@@ -22,6 +22,12 @@ import type { GameData } from '../src/sim/data/gameData';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { BuiltObject } from '../src/sim/builtObject';
 import type { ShipGroup } from '../src/sim/fleets/shipGroup';
+import type { Habitat } from '../src/sim/types';
+import type { Empire } from '../src/sim/empire';
+import { Troop, TroopList, TroopType } from '../src/sim/cargo';
+import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
+import { generateBuiltObjectFromDesign } from '../src/sim/exploration';
+import { calculateForceStrengths, calculatePopulationStrength, resolveInvasionBattles } from '../src/sim/combat/invasion';
 import { Random } from '../src/sim/random';
 import { runGameSeconds } from '../src/sim/tick/harness';
 import { MIN_TIME } from '../src/sim/tick/simTime';
@@ -785,5 +791,144 @@ describe('(4) boarding: an assault-pod ship boards and captures a disabled ship'
         expect(att.empire!.builtObjects).toContain(tgt);
         expect(player.builtObjects).not.toContain(tgt);
         expect(tgt.assaultAttackValue).toBe(0);
+    }, 300000);
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// (5) Invasion of an independent colony
+// ---------------------------------------------------------------------------------------------------------------
+
+describe('(5) troop transports invade an independent colony', () => {
+    /** Seed-1: Dhayu 3 (independent, 567 345 080 Dhayut, no troops yet); the player's Sabre troop-transport design. */
+    function stage(): { g: Galaxy; colony: Habitat; transport: BuiltObject } {
+        const g = cachedTickGame(gameData).galaxy;
+        const p = g.playerEmpire!;
+        const colony = g.independentColonies.find((h) => h.name === 'Dhayu 3')!;
+        expect(colony.empire).toBe(g.independentEmpire);
+        const design = p.designs.find((d) => d.name === 'Sabre')!;
+        // Empire.cs 4341 GenerateBuiltObjectFromDesign: every component Normal (4346) — a working transport.
+        const transport = generateBuiltObjectFromDesign(g, p, design, 'Trooper 1', true, colony.xpos + 800, colony.ypos);
+        expect(transport.subRole).toBe(BuiltObjectSubRole.TroopTransport);
+        expect(transport.troopCapacity).toBe(300);
+        expect(transport.topSpeed).toBeGreaterThan(0);
+        // Six of the capital's infantry (Attack 121, readiness 100, size 100) board it.
+        transport.troops = new TroopList();
+        const cap = p.capital!;
+        for (const tr of cap.troops!.items.slice(0, 6)) {
+            cap.troops!.remove(tr);
+            tr.builtObject = transport;
+            transport.troops.add(tr);
+        }
+        return { g, colony, transport };
+    }
+
+    function troop(g: Galaxy, empire: Empire, attack: number, defend: number, readiness = 100): Troop {
+        return new Troop('t', TroopType.Infantry, attack, defend, 100, readiness, empire, empire.dominantRace);
+    }
+
+    it('one ResolveInvasionBattles round, hand-worked (Habitat.cs 3365-3470; InflictTroopLosses 4978)', () => {
+        const { g, colony } = stage();
+        const p = g.playerEmpire!;
+        const ind = g.independentEmpire!;
+        colony.troops = new TroopList();
+        colony.invadingTroops = new TroopList();
+        colony.invasionStats = null;
+        const defenders = [troop(g, ind, 50, 300), troop(g, ind, 50, 300)];
+        const invaders = [troop(g, p, 121, 100), troop(g, p, 121, 100), troop(g, p, 121, 100)];
+        for (const d of defenders) {
+            d.colony = colony;
+            colony.troops.add(d);
+        }
+        for (const a of invaders) {
+            a.colony = colony;
+            colony.invadingTroops.add(a);
+            p.troops.add(a);
+        }
+        // Strengths: CalculateForceStrengths (BaconHabitat.cs 1188) = (int)((1 + Σ modifiers) × TotalStrength);
+        // TotalDefendStrength 2 × 300 × 100 = 60 000, TotalAttackStrength 3 × 121 × 100 = 36 300.
+        expect(colony.troops.totalDefendStrength).toBe(60000);
+        expect(colony.invadingTroops.totalAttackStrength).toBe(36300);
+        const fs = calculateForceStrengths(g, colony, ind, p, colony.troops, null, colony.invadingTroops, null);
+        let { attackingStrength, defendingStrength } = fs;
+        // CalculatePopulationStrength (Habitat.cs 4336): an independent colony defends (isDefending) with
+        // Population / 5 000 000 × aggression; added to the defence because it has troops (3431-3434).
+        const ps = calculatePopulationStrength(g, colony, p, ind);
+        expect(ps.isDefending).toBe(true);
+        expect(ps.result % Math.trunc(colony.population.totalAmount / 5000000)).toBe(0); // 113 × the race's aggression level
+        defendingStrength += ps.result;
+        const sh = shadowRnd(g);
+        const tp = 10;
+        resolveInvasionBattles(g, colony, tp);
+        // 3441-3467:
+        const num2 = Math.min(2.0, Math.max(0.5, defendingStrength / (attackingStrength + 1.0)));
+        const num3 = Math.min(2.0, Math.max(0.5, attackingStrength / (defendingStrength + 1.0)));
+        const num4 = Math.max(0.5, Math.sqrt((attackingStrength + defendingStrength) / 10000.0) / 2.0);
+        let num6 = (0.8 + sh.nextDouble() * 0.4) * num2 * num4 * tp; // invader losses
+        let num8 = (0.8 + sh.nextDouble() * 0.4) * num3 * num4 * tp; // defender losses
+        const num9 = attackingStrength - num6;
+        const num10 = defendingStrength - num8;
+        if (num9 > num10) {
+            if (num10 <= 0) num6 = Math.min(attackingStrength * 0.9, Math.max(0, num6 + num10));
+            else if (num9 / num10 >= 10) num6 = Math.min(attackingStrength * 0.9, Math.max(0, num6 - num10));
+        } else if (num9 <= 0) num8 = Math.max(0, num8 + num9);
+        // InflictTroopLosses: the whole loss lands on one random troop (Next(0, Count)) while its readiness covers it.
+        const hitInv = sh.next(0, 3);
+        const hitDef = sh.next(0, 2);
+        expect(num6).toBeLessThan(100);
+        expect(num8).toBeLessThan(100);
+        invaders.forEach((t, i) => expect(t.readiness).toBe(i === hitInv ? f32(100 - f32(num6)) : 100));
+        defenders.forEach((t, i) => expect(t.readiness).toBe(i === hitDef ? f32(100 - f32(num8)) : 100));
+        // Population casualties (3470-3498): one NextDouble.
+        sh.nextDouble();
+        expect(g.rnd.getState()).toEqual(sh.getState());
+        // Not yet won: attack / defence < 20 (3771).
+        expect(attackingStrength / defendingStrength).toBeLessThan(20);
+        expect(colony.empire).toBe(ind);
+    });
+
+    it('success needs attack / defence ≥ 20 (Habitat.cs 3771); an undefended colony falls on the first round', () => {
+        const { g, colony } = stage();
+        const p = g.playerEmpire!;
+        colony.troops = new TroopList();
+        colony.invadingTroops = new TroopList();
+        colony.invasionStats = null;
+        const a = troop(g, p, 121, 100);
+        a.colony = colony;
+        colony.invadingTroops.add(a);
+        p.troops.add(a);
+        // No defending troops: population strength is not added to the defence (3431 needs Troops.Count > 0), so
+        // defendingStrength 0 and num21 = attack / 0 = +∞ ≥ 20.
+        const before = g.invasionSuccesses;
+        resolveInvasionBattles(g, colony, 10);
+        expect(g.invasionSuccesses).toBe(before + 1);
+        expect(colony.empire).toBe(p);
+        expect(p.colonies).toContain(colony);
+    });
+
+    it('on the harness: an Attack order sends the transport in, the troops land and take the colony', () => {
+        const { g, colony, transport } = stage();
+        const p = g.playerEmpire!;
+        const troops = transport.troops!.items.slice();
+        const r = executeShipAction(g, p, transport, createMissionShipActionAt(BuiltObjectMissionType.Attack, colony, Math.trunc(colony.xpos), Math.trunc(colony.ypos)), true);
+        expect(r.ok).toBe(true);
+        expect(builtObjectMission(transport.mission)!.type).toBe(BuiltObjectMissionType.Attack);
+        let landed = -1;
+        let taken = -1;
+        let frame = 0;
+        const successes0 = g.invasionSuccesses;
+        runGameSeconds(g, 70, {
+            onFrame: () => {
+                frame++;
+                if (landed < 0 && colony.invadingTroops !== null && troops.some((t) => colony.invadingTroops!.contains(t))) landed = frame;
+                if (taken < 0 && colony.empire === p) taken = frame;
+            },
+        });
+        expect(landed).toBeGreaterThan(0);
+        expect(taken).toBeGreaterThanOrEqual(landed);
+        expect(g.invasionSuccesses).toBeGreaterThan(successes0);
+        expect(p.colonies).toContain(colony);
+        expect(g.independentEmpire!.colonies).not.toContain(colony);
+        // The invaders became the garrison (3771 onwards: InvadingTroops → Troops).
+        expect(troops.some((t) => colony.troops!.contains(t))).toBe(true);
     }, 300000);
 });
