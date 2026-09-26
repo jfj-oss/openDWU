@@ -11,7 +11,7 @@ import { captainBonuses } from '../characters';
 import { clearPreviousMissionRequirements } from '../missions/assign';
 import { BuiltObjectMissionType, builtObjectMission } from '../missions/mission';
 import { shipGroupRepairBonus, type ShipGroup } from '../fleets/shipGroup';
-import { battleStatsDamageRepairedUs } from '../combat/damage';
+import { battleStatsDamageRepairedUs, type SpaceBattleStats } from '../combat/damage';
 import type { ConstructionQueue } from './constructionQueue';
 import type { Empire } from '../empire';
 import { BuiltObject as BuiltObjectClass } from '../builtObject';
@@ -109,8 +109,10 @@ export function doRepairs(galaxy: Galaxy, builtObject: BuiltObject, timePassed: 
             ship.reDefine();
             const repairAmount = Math.max(0, num5 - componentToRepairCount);
             if (ship.battleStats !== null) battleStatsDamageRepairedUs(ship.battleStats, repairAmount);
-            // ShipGroup.BattleStats (M4l/M4o) — TODO(port) M4l: the TS ShipGroup has no BattleStats yet (C# null until a
-            // fleet battle starts).
+            // BaconBuiltObject.cs 4855: ShipGroup.BattleStats.DamageRepairedUs (null until a fleet battle starts). Combat
+            // verification part 2: this was left out when ShipGroup.battleStats landed.
+            const groupStats = ship.shipGroup !== null ? ((ship.shipGroup as ShipGroup).battleStats as SpaceBattleStats | null) : null;
+            if (groupStats !== null) battleStatsDamageRepairedUs(groupStats, repairAmount);
         }
     }
     const mission = builtObjectMission(ship.mission);

@@ -94,8 +94,8 @@ import { determineDesirePirateProtection, pirateEconomyPerformExpense, pirateEco
 import { PirateExpenseType, PirateIncomeType } from './pirates/pirateEconomy';
 import { acceptPirateProtection, calculatePirateProtectionPricePerMonth } from './pirates/pirateRelationsAI';
 import { baconSettings } from './data/baconSettings';
-import { scenarioEmit } from './scenario/hooks';
 import { formatNet, tryGetText } from './textResolver';
+import { scenarioEmit } from './scenario/hooks';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants (Galaxy.3.cs 4990-5140 InitializeStatics; BaconEmpire.cs statics with their default settings).

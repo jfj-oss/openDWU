@@ -79,8 +79,8 @@ import { identifyMechanoidEmpire } from './fleets/militaryAI';
 import { totalColonyStrategicValue } from './forceStructure';
 import type { IntelligenceMission } from './characters';
 import type { GalaxyResourceMap } from './visibility';
-import { scenarioEmit } from './scenario/hooks';
 import { formatGameTextNow } from './textResolver';
+import { scenarioEmit } from './scenario/hooks';
 
 /** Empire.7.cs 3400 SendEventMessageToEmpire(eventMessageType, title, message, additionalData, location): only the attached UI recipient sees it. */
 export function sendEventMessageToEmpire(empire: Empire, eventMessageType: EventMessageType, title: string, message: string, additionalData: unknown, location: unknown): void {

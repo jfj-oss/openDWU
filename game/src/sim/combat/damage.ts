@@ -434,10 +434,17 @@ export function calculateBuiltObjectLootingValue(builtObject: BuiltObject): numb
     return objectLootingValue;
 }
 
-/** Empire.cs 455 LootingFactor (1.0; pirates.ts sets the difficulty record) and ColonyIncomeFactor (Galaxy.3.cs 5137 default 1.0). */
+/**
+ * Empire.cs 455 LootingFactor (default 1.0): set only by BaconEmpire.cs 83 SetPirateFactionModifiers (the Galaxy.8.cs 4396
+ * play-style table, kept in Empire.pirateFactionModifiers: Mercenary 1.33, Smuggler 0.75, Pirate / Balanced 1.0); a 0
+ * reads as 1.0 (Empire.cs 3734). Combat verification part 2: this used to read `difficultyFactors.lootingFactor`, which
+ * SetEmpireDifficultyFactors never sets, so every pirate faction looted at 1.0.
+ */
 export function empireLootingFactor(empire: Empire): number {
-    return (empire.difficultyFactors as { lootingFactor?: number } | null)?.lootingFactor ?? 1.0;
+    const f = empire.pirateFactionModifiers !== null ? empire.pirateFactionModifiers.lootingFactor : 1.0;
+    return f === 0.0 ? 1.0 : f;
 }
+/** Empire.ColonyIncomeFactor (Galaxy.3.cs 5137 default 1.0; BaconGalaxy.cs 141/153 SetEmpireDifficultyFactors). */
 export function empireColonyIncomeFactor(empire: Empire): number {
     return empire.difficultyFactors?.colonyIncomeFactor ?? 1.0;
 }
@@ -1536,7 +1543,7 @@ export function inflictBombardDamage(galaxy: Galaxy, self: BuiltObject, habitat:
         }
         if (habitat.population !== null && habitat.population.items.length > 0 && habitat.population.totalAmount > 0) {
             const totalAmount = habitat.population.totalAmount;
-            const num4 = bombardPower * 250000;
+            const num4 = Math.imul(bombardPower, 250000); // BuiltObject.2.cs 5923 `long num4 = bombardPower * 250000` (int multiply)
             const populationList: Population[] = [];
             for (let j = 0; j < habitat.population.items.length; j++) {
                 const population = habitat.population.items[j];

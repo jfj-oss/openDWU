@@ -857,13 +857,13 @@ export function toCreateGameOptions(
         piratePrevalence: piratesFor(o.piratesIndex),
         pirateProximity: pirateProximityFor(o.pirateProximityIndex ?? 1),
         pirateShipMaintenanceFactor: pirateShipMaintenanceFactorFor(o.pirateStrengthIndex ?? 2),
-        // Mod layer: the scenario's switches (the overlay itself comes in with gameData.scenario).
-        ...(o.scenario != null ? { scenarioFlags: { ...o.scenario.flags }, scenarioParams: { ...o.scenario.params } } : {}),
         // [todosweep2] Start.1.cs 3693 num8 (research-cost box × 1000) → CreateGameFromSettings double_4 → Galaxy ctor
         // baseTechCost; Start.1.cs 3746-3747 → EmpireStart.ColonizationRangeEnforceLimit / ColonizationRange → Start.2.cs 508-509.
         baseTechCost: baseTechCostFor(o.galaxyResearchSpeed),
         colonizationRangeEnforceLimit: o.colonization.enforceRangeLimits,
         colonizationRange: colonizationRangeFor(clampColonization(o.colonization).colonizationRangeKly),
+        // Mod layer: the scenario's switches (the overlay itself comes in with gameData.scenario).
+        ...(o.scenario != null ? { scenarioFlags: { ...o.scenario.flags }, scenarioParams: { ...o.scenario.params } } : {}),
         // TODO(createGame): fields createGame does not accept yet stay on
         // StartGameOptions and are ignored here:
         //   - alien life (alienLifeIndex → alienLifeFor): independent-life count

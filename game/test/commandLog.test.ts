@@ -5,7 +5,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 import { cachedTickGame } from './helpers/gameCache';
 import { tickGameOptions } from './helpers/tickGame';
-import { commandScript, fullDigest, runScripted, setRunId } from './helpers/commandScript';
+import { commandScript, createdFleets, fullDigest, runScripted, setRunId } from './helpers/commandScript';
 import type { GameData } from '../src/sim/data/gameData';
 import { GalaxyTime } from '../src/sim/galaxyTime';
 import { stateDigest } from '../src/sim/tick/digest';
@@ -169,9 +169,8 @@ describe('seed + command log → the same game (60 s script)', () => {
     it('scripted run, replay from createGame, and save/load half-way all give the identical game', () => {
         const game = cachedTickGame(gameData);
         setRunId(game.galaxy, 'fast-live');
-        const fleets = empireShipGroups(game.playerEmpire).filter((x) => x !== null).length;
         runScripted(SCRIPT, game, END);
-        expect(empireShipGroups(game.playerEmpire).filter((x) => x !== null).length).toBe(fleets + 1);
+        expect(empireShipGroups(game.playerEmpire)).toContain(createdFleets.get(game.galaxy));
         const log = commandLog(game.galaxy);
         expect(log.filter((e) => e.source === 'player').every((e) => (e as PlayerLogEntry).error === undefined)).toBe(true);
         live = fullDigest(game);

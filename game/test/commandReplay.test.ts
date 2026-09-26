@@ -11,7 +11,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 import { cachedTickGame } from './helpers/gameCache';
 import { tickGameOptions } from './helpers/tickGame';
-import { commandScript, dueSteps, fullDigest, issueStep, runScripted, setRunId } from './helpers/commandScript';
+import { commandScript, createdFleets, dueSteps, fullDigest, issueStep, runScripted, setRunId } from './helpers/commandScript';
 import type { GameData } from '../src/sim/data/gameData';
 import { GalaxyTime } from '../src/sim/galaxyTime';
 import { SimDriver } from '../src/sim/tick/scheduler';
@@ -41,15 +41,18 @@ describe('command log: seed + commands replay the game', () => {
         const game = cachedTickGame(gameData);
         setRunId(game.galaxy, 'live');
         const p = game.playerEmpire;
-        const fleetsBefore = empireShipGroups(p).filter((x) => x !== null).length;
         runScripted(SCRIPT, game, 60_000);
-        // The orders took effect.
-        expect(empireShipGroups(p).filter((x) => x !== null).length).toBe(fleetsBefore + 1);
+        // The orders took effect (the created fleet is the player's; the empire's own fleet formation may add others).
+        const fleet = createdFleets.get(game.galaxy)!;
+        expect(fleet).toBeDefined();
+        expect(empireShipGroups(p)).toContain(fleet);
         expect(p.policy!.researchPriority).toBe(1.5);
         expect(p.controlColonyTaxRates).toBe(false);
         runScripted(SCRIPT, game, END_MS);
         expect(pendingPlayerCommands(game.galaxy)).toBe(0);
         log = commandLog(game.galaxy).map((e) => JSON.parse(JSON.stringify(e)) as CommandLogEntry);
+        // Only external commands are journaled (player orders and the frame-speed changes); sim-scheduled work is state.
+        expect(new Set(log.map((e) => e.source))).toEqual(new Set(['player', 'clock']));
         const player = log.filter((e): e is PlayerLogEntry => e.source === 'player');
         // (queueResearch only when a project was available to queue.)
         expect(player.map((e) => e.op).filter((op) => op !== 'queueResearch')).toEqual(['rightClickOrder', 'shipAction', 'buildNewShips', 'submitProposal', 'automationOff', 'shipAction', 'setPolicy', 'rightClickOrder', 'setEmpireControl']);

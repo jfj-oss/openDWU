@@ -132,3 +132,106 @@ AmountDelivered. The strict bound now applies only to orders without closed, del
   retargeting branch, Escape/flee thresholds other than the FleeWhen switch) are only exercised by the soak.
 - Why many soak records show only misses (e.g. Worthy Firelance 0 hits / 47 misses near Dhayu 3): misses count shots
   that fly past range (BuiltObject.1.cs 3931), plausible for long-range shots at moving targets, but not traced.
+
+---
+
+# Part 2 — combattest2
+
+`test/combatScenarios2.test.ts` (test:fast tier, 25 tests): staged on the seed-1 harness game in empty space, each value
+hand-worked from the C# (cites next to the assertions), Rnd-dependent values replayed on a copy of `galaxy.rnd` or matched
+against the traced draws. Both scenario files now pick their cast by role (owner, sub-role, weapons, pirate play style:
+`test/helpers/combatCast.ts`) instead of by name — the todosweep merge (gas clouds in nebulae, star spacing) renamed the whole
+seed-1 cast; part 1's names above are the pre-todosweep cast, `combatScenarios.test.ts` "seed-1 cast" lists the current picks.
+
+## What was verified
+
+### (1) Area weapons
+The player's first escort with an Intimidator Surgewave (id 19: 35 dmg, range 220, speed 120).
+- **Firing gate** (BuiltObject.1.cs 3706 CheckFireAreaWeaponAtTarget): no friendly ship within √(0.7) × Range of the target
+  (184 blocks, 185 clears); the firer never blocks; Area Gravity measures with Value5 (Graviton Pulse: 200 blocks, 201 clears).
+- **Blast** (4340-4415): DistanceTravelled starts at 0; epicentre snaps to the target; ring grows 1, then (float)(120 × 0.1) = 12
+  per step (1, 13, …, 217, 229). Each ship in the epicentre's index cell is struck once, on the step whose ring [prev, new)
+  holds its distance, for 35 − ring/220 × 35. **Friendly fire**: the player's own ship in the blast is struck; only the firer
+  is exempt. The Range check runs before the step, so the last ring overshoots to 229 with Max(0, …) = 0 power. Only the
+  epicentre's 400 000 index cell is scanned (faithful).
+- **Absorbed / not absorbed**: shields ≥ hit take it whole; a 34.8 hit on 10 shields spills into the armour.
+
+### (2) Missiles and point defence
+- **Missile flight** (4091-4198): launch +10, then Max(3, Speed × DT/120) × dt below 120 (exponential ramp), Speed × dt above;
+  homes every step (HeadingMissFactor 0 on a hit); strikes out of view when num8 > remaining distance; full power 6 (no
+  fall-off, BaconBuiltObject.cs 3059). **Reload** = FireRate 2700 ms; ships carry no missile ammunition in the C# (only
+  fighters: BaconFighter.cs 186).
+- **Bacon intercept** (BaconBuiltObject.cs 5032): beams / PD / phasers / rail guns shoot a missile down with a sure hit once it has
+  flown ≥ 100 and is within the defender weapon's range; the missile is Reset at once; two draws (Fire's NextDouble,
+  Next(0, 2)); `_AssaultPodFiringCounter` is shared with FireAtAssaultPods. A PD cannon (id 13) with the missile inside 140
+  from launch waits until DT ≥ 100.
+- **PD vs assault pods** (2905 FireAtAssaultPods, 5202 DetermineHitTarget(weaponBlast)): hit roll replayed draw for draw
+  (val ×2, Next(0, 15) == 7 flips). The struck pod gets Power = float.MaxValue + ResetNext (3876) — the "shot-down record" —
+  **but the C# never acts on it**: HandleWeaponsFiring skips pods before its ResetNext check and HandleAssaultPodMovement reads
+  neither, so the pod lands anyway (faithful; PD against pods is cosmetic).
+
+### (3) Planetary bombardment
+- **InflictBombardDamage** (BuiltObject.2.cs 5816) for power 3 and 40 on the first AI empire's capital: artillery cut
+  (√(Σ artillery × intercept / 7500) + 0.5, ≥ 1), Damage += power/8000 (float), each race −(long)(power × 250 000 × share),
+  bomber civility −num4/5e7 × (1 + civ/30) (or × Max(0.01, 1 + civ/50)), victim IncidentEvaluation = raw − power. Pirate
+  bombers lose no reputation; a planetary shield leaves only the 5-draw explosion.
+- **BombardTarget** (4899) + flight: ±250 ms jitter, heading ±0.2, energy, range gate; a Habitat target is never re-aimed;
+  the shell (no missile ramp) lands and applies the weapon's BombardDamage.
+- **Xaraktor virus**: CanDeployXaraktorVirus (Empire.10.cs 4518: researched plague, Race Achievement wonder, 150 s cooldown)
+  and DeployVirus (Main.Part7.cs 1020-1043: InfectWithPlague draw, Next(15, 20) Kaltors, LastXaraktorVirusDeploy). The stock
+  plagues.txt has **no** SpecialFunctionCode 1 plague, so the path is only reachable with modded data (the test stands one in).
+
+### (4) Pirate raids
+- Play-style factors (Galaxy.8.cs 4396): Mercenary raid strength 1.25 / raid bonus 0.75 / looting 1.33, Smuggler 0.75 × 3,
+  Pirate 1.25 / 1.4 / 1.0, Balanced and normal empires 1.0.
+- A pod landing on a colony → Pirate Raider troop of (int)(50 × 1.38 × 1.25) = 86 (2696-2733); a pod does not raid a colony its
+  empire is invading with regular troops.
+- PerformRaidColonyInvasion (2779): defenders' chance val2 = Min(95, √(bases + shield + intercept artillery/50) × √count), wound
+  Min(Readiness × 0.9, val × r) matched to the traced draws, InvasionStats += (float)val3, −10 RaidsAgainstOurColonies on the
+  first raid.
+- DoRaidBonuses (Galaxy.5.cs 4953): countdown > 55 → no loot, no draws, both failure messages; credits branch hand-worked.
+- Looting on a kill (3915-3925): lootingValue × ColonyIncomeFactor × LootingFactor after corruption.
+
+### (5) AI retargeting
+- CheckAssignAttackOnThreat (BuiltObject.1.cs 390-560): switch only when level(threat) > level(current) × 2.5 × emphasis, never
+  while the current target's shields ≤ half; Attack/Capture per DetermineDestroyOrCaptureTarget, Normal priority.
+- Fleet ships: refused while `AllowImmediateThreatEvaluation` is false **or while the mission still carries a (Conditional)HyperTo
+  command** (a fresh fleet Attack order queues one); allowed once both clear.
+- Target destroyed → mission cleared → next ThreatEvaluation takes the top of the EvaluateThreats ranking (the nearer armed escort).
+- System threat list rebuilt at most every 5 s per empire/system (LatestThreatEvaluation, 224-231).
+
+### (6) Repair and retreat
+- ShouldFleeFrom (1520): attackers within 48 000 only; any damaged component flees for every setting but Never / Armor50;
+  Shields50 ≤ (float)(cap/2), Shields20 ≤ (int)(cap × 0.2), Armor50 (shields ≤ 20 %, a damaged non-armour component, or
+  Armor/Design.Armor ≤ 0.5). A fleeing auto ship takes Escape (High) from the attacker.
+- The retreat-for-repair threshold is **one damaged component** (AutoRefuelRepairShip, BuiltObject.2.cs 4705): Repair mission
+  (VeryHigh) to FindNearestShipYard, the old mission kept as the revert mission.
+- DoRepairs (BaconBuiltObject.cs 4763): (int)(dt / (DamageRepair / fleet bonus / captain)) components from a random start,
+  wrapping; draw replayed.
+- Yard repair: the construction queue restores Damaged components first, in component index order (ConstructionQueue.cs 1142).
+
+## Deviations found and fixed (part 2)
+
+1. **Empire.LootingFactor read 1.0 for every faction** — `combat/damage.ts empireLootingFactor` read
+   `difficultyFactors.lootingFactor`, which nothing sets; the C# value comes from SetPirateFactionModifiers (BaconEmpire.cs 83:
+   Mercenary 1.33, Smuggler 0.75). Affects pirate kill loot (weapons, fighters), pirate-base treasure, player looting. Pin moved:
+   `tickDeterminism.digest600` ffeb947e780b83ec → 41864fdc2ff2325b.
+2. **DoRepairs did not record on the fleet's BattleStats** (`construction/repair.ts`, BaconBuiltObject.cs 4855: a stale TODO from
+   before ShipGroup.battleStats existed). No pin moved.
+3. `InflictBombardDamage`'s `bombardPower * 250000` is an int multiply in the C# (Math.imul now; no effect at stock values).
+
+## Observed, faithful (not changed)
+- PD hits on assault pods never stop the pod (see (2)). Area blasts scan one index cell only. The last area ring overshoots Range
+  with zero power. UpdatePosition never clears NearestSystemStar (BaconBuiltObject.cs 4329).
+- Stock data has no Xaraktor plague.
+
+## Not verified (remaining)
+- Area Gravity pull / ion pulse component disabling on a live run (formulas read, not replayed); tractor / gravity beams; phaser
+  and rail-gun shield handling end to end.
+- Planet destroyers (DestroyHabitat, habitat destruction area damage), ion cannons (Habitat giant ion cannon).
+- Raids end to end on the harness (ResolveInvasionBattles raid success → DoRaidBonuses cargo / research branches), special
+  forces, planetary defence units, reinforcements.
+- The AI's fleet dispatch deciding to attack (Empire fleet targeting), FleeFromHopelessBattle / CheckBattleOverwhelming values,
+  ShipGroup.CheckRefuelRepairAttack (fleet ships leaving for repair).
+- Crew-level free repair (CalculateCrewLevel from CareerBattleStats) beyond the "green" case; the C# creates CareerBattleStats
+  in CalculateCrewLevel, the TS reads null as zeros.

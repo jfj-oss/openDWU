@@ -79,8 +79,8 @@ import { RaceEventType } from './eventTypes';
 import { REAL_SECONDS_IN_GALACTIC_YEAR, galaxyNow } from './tick/simTime';
 import { characterKillFromPerformIntelligenceMissions } from './espionagePrisoners';
 import type { ConstructionQueue } from './construction/constructionQueue';
-import { scenarioEmit } from './scenario/hooks';
 import { formatGameTextNow } from './textResolver';
+import { scenarioEmit } from './scenario/hooks';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Enums (IntelligenceMissionType.cs / IntelligenceMissionOutcome.cs, member order exact)

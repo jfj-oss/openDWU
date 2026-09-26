@@ -63,8 +63,8 @@ import {
     yardsIndexOfComponent,
     yardsIndexOfShip,
 } from './constructionYard';
-import { scenarioEmit } from '../scenario/hooks';
 import { formatGameTextNow } from '../textResolver';
+import { scenarioEmit } from '../scenario/hooks';
 
 /** Galaxy.3.cs 5086 ColonyShipBuildFactor = 10.0. */
 export const COLONY_SHIP_BUILD_FACTOR = 10.0;
