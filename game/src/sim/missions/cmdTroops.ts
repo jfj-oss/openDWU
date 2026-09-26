@@ -43,7 +43,8 @@ import { facilitiesCountCompletedByType } from '../construction/facilities';
 import { PlanetaryFacilityType } from '../researchSystem';
 import { pirateColonyControl } from '../combat/invasion';
 import { takeOwnershipOfColonyFull } from '../combat/ownership';
-import { registerTodo, todo } from '../tick/todo';
+import { purchaseNewBuiltObject } from '../construction/empireConstruction';
+import { determineBuiltObjectIsState } from '../builtObject';
 
 
 /** Empire.3.cs 3557 CheckPirateEmpireHasCriminalNetwork(empire). No Rnd. */
@@ -109,7 +110,6 @@ export function chanceNewColonyGovernor(galaxy: Galaxy, empire: Empire | null, c
     return false;
 }
 
-const T_purchaseNewBuiltObject = registerTodo('M4h', 'purchaseNewBuiltObject (Colonize ColonyActionForNewBuildDesign)');
 
 /** BuiltObject.2.cs 936 case Colonize. */
 export const cmdColonize: CommandHandler = (ctx) => {
@@ -219,9 +219,10 @@ export const cmdColonize: CommandHandler = (ctx) => {
                         }
                         const buildDesign = empire.policy.colonyActionForNewBuildDesign as Design | null;
                         if (buildDesign !== null && canBuildDesign(empire, buildDesign, false) && buildDesign.role === BuiltObjectRole.Base) {
-                            // Empire.6.cs 1991 PurchaseNewBuiltObject(design, colony, isStateOwned, isAutoControlled: true) — M4h.
-                            todo(T_purchaseNewBuiltObject);
-                            throw new Error('TODO(port) M4h: Empire.PurchaseNewBuiltObject (Colonize ColonyActionForNewBuildDesign, player policy)');
+                            // BuiltObject.2.cs 1108-1109: isStateOwned = DetermineBuiltObjectIsState(SubRole);
+                            // Empire.PurchaseNewBuiltObject(design, targetHabitat10, isStateOwned, isAutoControlled: true) (Empire.6.cs 1991).
+                            const isStateOwned = determineBuiltObjectIsState(buildDesign.subRole);
+                            purchaseNewBuiltObject(galaxy, empire, buildDesign, targetHabitat10, isStateOwned, true);
                         }
                     } else {
                         empty2 += formatText(getText('Colonization attempt failed'), targetHabitat10.name);

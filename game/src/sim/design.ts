@@ -901,6 +901,15 @@ export function determineHabModulesRequired(habModule: ComponentImprovementEntry
     return modulesRequired(habModule, design.quickCalculateSize(), design.role === BuiltObjectRole.Base);
 }
 
+/** DesignList.cs 413 GetDesignsBySubRoles(subRoles): non-obsolete designs of the sub-roles, in list order. No Rnd. */
+export function getDesignsBySubRoles(designs: readonly Design[], subRoles: readonly BuiltObjectSubRole[]): Design[] {
+    const result: Design[] = [];
+    for (const design of designs) {
+        if (subRoles.includes(design.subRole) && !design.isObsolete) result.push(design);
+    }
+    return result;
+}
+
 // DesignList.cs FindNewest (83): newest non-obsolete design of the sub-role (DateCreated > 0).
 export function findNewest(designs: Design[], subRole: BuiltObjectSubRole): Design | null {
     let num = 0;

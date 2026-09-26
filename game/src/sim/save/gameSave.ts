@@ -14,6 +14,7 @@ import type { GameData } from '../data/gameData';
 import type { StartGameOptions } from '../startGameOptions';
 import { GalaxyTime } from '../galaxyTime';
 import { flatEmpireList, galaxyFromJSON, galaxyToJSON, type GalaxySaveJSON } from './galaxySave';
+import { commandLog, restoreCommandLog, type CommandLogEntry } from '../player/commandLog';
 
 /** Bumped to 2 when the galaxy graph (M3 state) replaced the index-based
  *  format; version-1 saves predate ships/bases/characters and are rejected. */
@@ -25,6 +26,8 @@ export interface GameSaveJSON {
     time: { elapsedMs: number; speed: number; paused: boolean; startStarDate: number };
     startOptions: StartGameOptions;
     playerEmpireIndex: number; // -1 = none (index into the flat empire list)
+    /** 18c: external commands applied between ticks (player/commandLog.ts); present only when non-empty. */
+    commandLog?: CommandLogEntry[];
 }
 
 /** Serialize a whole game to a JSON string (see GameSaveJSON). */
@@ -41,6 +44,8 @@ export function serializeGame(game: Game, time: GalaxyTime, startOptions: StartG
         startOptions,
         playerEmpireIndex: game.galaxy.playerEmpire === null ? -1 : flatEmpireList(game.galaxy).indexOf(game.galaxy.playerEmpire),
     };
+    const log = commandLog(game.galaxy);
+    if (log.length > 0) save.commandLog = log.map((e) => ({ ...e, command: { ...e.command } }));
     return JSON.stringify(save);
 }
 
@@ -51,6 +56,7 @@ export function deserializeGame(text: string, gameData: GameData): { game: Game;
     if (obj.version !== GAME_SAVE_VERSION) throw new Error(`Unsupported save version ${String(obj.version)} (expected ${GAME_SAVE_VERSION}).`);
 
     const galaxy: Galaxy = galaxyFromJSON(obj.galaxy, gameData);
+    restoreCommandLog(galaxy, obj.commandLog);
     // BaconStart.LoadGame clears settingsInitialized; BaconMain.BaconInitialize re-reads BaconSettings.txt when the
     // loaded game starts (Main.Part12.cs 3151).
     baconInitializeSettings(galaxy, gameData.baconSettings);

@@ -27,15 +27,25 @@ import type { Design } from '../design';
 import { galaxyComponentCurrentPrices } from '../design';
 import { Habitat, HabitatCategoryType, HabitatType, type SystemInfo } from '../types';
 import { Creature, CreatureType } from '../creature';
-import { Troop, TroopList, TroopType } from '../cargo';
+import { Troop, TroopList, TroopType, type CargoList } from '../cargo';
+import { BuiltObjectComponent, ComponentStatus } from '../builtObjectComponent';
+import { ComponentCategoryType } from '../data/policies';
+import { galaxyResourceCurrentPrices } from '../design';
+import { canBuildDesignTech } from '../designGeneration';
+import { checkAtWar } from '../forceStructure';
+import { calculateCrewLevel } from '../achievements';
+import { smugglingIncomeFactor } from '../missions/cmdDocking';
+import { determineEmpireRelationshipFactors } from '../empireRelationshipFactors';
+import { preWarpProgressEventOccurred } from '../empireEvents';
+import { PreWarpProgressEventType } from '../exploration';
 import type { Race } from '../data/races';
 import type { Facility } from '../data/facilities';
 import type { Plague } from '../data/plagues';
-import { Character, CharacterRole } from '../characters';
+import { Character, CharacterRole, getNonTransferringCharacters } from '../characters';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from '../diplomacy';
 import { formatText, FleetPosture } from '../diplomacyTick';
 import { netSort } from '../netSort';
-import { galaxyStarDate, REAL_SECONDS_IN_GALACTIC_YEAR } from '../tick/simTime';
+import { galaxyNow, galaxyStarDate, REAL_SECONDS_IN_GALACTIC_YEAR } from '../tick/simTime';
 import { ColonyResourceEffect, resourceBonusTotalByEffectType } from '../developmentLevel';
 import { ResourceGroup, resourceGroupOf } from '../resourceSystem';
 import { PlanetaryFacilityType, facilityType } from '../researchSystem';
@@ -60,7 +70,7 @@ import {
     type MissionTarget,
     type StellarObject,
 } from '../missions/mission';
-import { assignMission, clearPreviousMissionRequirements, constructionQueueOf } from '../missions/assign';
+import { assignMission, clearPreviousMissionRequirements, constructionQueueOf, queueMission } from '../missions/assign';
 import { ShipGroup, empireShipGroups, disbandShipGroup, forceCompleteMission, leaveShipGroup } from '../fleets/shipGroup';
 import {
     compareShipGroups,
@@ -207,8 +217,9 @@ function isShipGroup(o: unknown): o is ShipGroup {
 function isEmpire(o: unknown): o is Empire {
     return o !== null && typeof o === 'object' && (o as Empire).empireId !== undefined && (o as Empire).pirateMissions !== undefined && !(o instanceof BuiltObjectClass);
 }
-function isStellarObject(o: unknown): o is StellarObject {
-    return o instanceof BuiltObjectClass || o instanceof Habitat || o instanceof Creature;
+/** C# `is StellarObject`: BuiltObject | Habitat | Creature | Fighter (Fighter.cs 19 Fighter : StellarObject). */
+function isStellarObject(o: unknown): o is StellarObject | Fighter {
+    return o instanceof BuiltObjectClass || o instanceof Habitat || o instanceof Creature || o instanceof Fighter;
 }
 /** PlanetaryFacilityDefinition (data/facilities.ts Facility record). */
 function isFacilityDefinition(o: unknown): o is Facility {
@@ -313,9 +324,32 @@ function handleToolstripClick(ctx: Ctx, selected: ShipActionSelection, action: S
         const empire = builtObject.empire;
         if (empire === null) return null; // 175 reads empire.Name before its own null check (a NullReferenceException).
         if (!empire.name.includes('Romulan') && !empire.name.includes('Mining Company')) return null;
-        // TODO(port): BaconBuiltObject.FindResalePriceOfShip — BaconBuiltObject.cs 3860 (sale price paid by Target2 to the
-        // giver, + a hyperdrive component when the buyer passed PreWarpProgressEventOccurredFirstHyperjump; BaconMain.cs 184-213).
-        return todoPort(ctx, 'BaconBuiltObject.FindResalePriceOfShip — BaconBuiltObject.cs:3860');
+        // 178-213: the buyer (Target2) pays the giver the resale price, before method_347 hands the ship over.
+        const flag = empire.pirateEmpireBaseHabitat !== null;
+        const buyer = isEmpire(action.target2) ? action.target2 : null;
+        // 184: FindResalePriceOfShip(builtObject, Target2 as Empire) dereferences the buyer (NullReferenceException when
+        // Target2 is not an Empire); GiveBuiltObject orders always carry the receiving empire.
+        const num = findResalePriceOfShip(ctx.galaxy, builtObject, buyer!);
+        if (flag) {
+            empire.stateMoney += num * Math.max(1.0, smugglingIncomeFactor(empire));
+        } else {
+            empire.stateMoney += num;
+        }
+        if (buyer === null) return null;
+        const empire2 = buyer;
+        empire2.stateMoney -= num;
+        if (!preWarpProgressEventOccurred(empire2, PreWarpProgressEventType.FirstHyperjump)) return null;
+        const builtObjectComponent = builtObject.components.items.find((x) => x.category === ComponentCategoryType.HyperDrive);
+        if (builtObjectComponent === undefined) {
+            // 204-210: the most powerful hyperdrive (Galaxy.ComponentsHyperdriveOrderedByPower, last entry).
+            const componentsHyperdriveOrderedByPower = ctx.galaxy.researchStatic?.componentStatic?.componentsHyperdriveOrderedByPower ?? [];
+            if (componentsHyperdriveOrderedByPower.length >= 1) {
+                builtObject.components.add(new BuiltObjectComponent(componentsHyperdriveOrderedByPower[componentsHyperdriveOrderedByPower.length - 1], ComponentStatus.Normal));
+            }
+            // else: componentID stays -1 and the C# BuiltObjectComponent(-1, …) indexes ComponentDefinitionsStatic[-1]
+            // (an exception); the stock data always has hyperdrives.
+        }
+        return null;
     }
     switch (action.hint) {
         case 'popup':
@@ -688,7 +722,7 @@ function executeForShip(ctx: Ctx, builtObject: BuiltObject, action: ShipAction):
         if (action.design !== null && action.target !== null && isBuiltObject(action.target)) {
             const builtObject6 = action.target;
             if (action.isSubsequentAction) {
-                queueMissionFull(galaxy, builtObject, BuiltObjectMissionType.Build, builtObject6, builtObject6, BuiltObjectMissionPriority.Normal, {});
+                queueMission(galaxy, builtObject, BuiltObjectMissionType.Build, builtObject6, builtObject6, BuiltObjectMissionPriority.Normal, {});
                 return ctx.result;
             }
             clearPreviousMissionRequirements(galaxy, builtObject, true);
@@ -702,7 +736,7 @@ function executeForShip(ctx: Ctx, builtObject: BuiltObject, action: ShipAction):
                 if (builtObject8 !== null) {
                     const m8 = builtObjectMission(builtObject8.mission);
                     if (m8 !== null && m8.type !== BuiltObjectMissionType.Undefined) {
-                        queueMissionFull(galaxy, builtObject8, BuiltObjectMissionType.BuildRepair, null, builtObject7, BuiltObjectMissionPriority.Normal, { x: builtObject7.xpos, y: builtObject7.ypos });
+                        queueMission(galaxy, builtObject8, BuiltObjectMissionType.BuildRepair, null, builtObject7, BuiltObjectMissionPriority.Normal, { x: builtObject7.xpos, y: builtObject7.ypos });
                         return ctx.result;
                     }
                     clearPreviousMissionRequirements(galaxy, builtObject8, true);
@@ -714,7 +748,7 @@ function executeForShip(ctx: Ctx, builtObject: BuiltObject, action: ShipAction):
                 clearPreviousMissionRequirements(galaxy, builtObject, true);
                 assignMission(galaxy, builtObject, BuiltObjectMissionType.BuildRepair, null, builtObject7, BuiltObjectMissionPriority.Normal, { manuallyAssigned: true });
             } else if (action.isSubsequentAction) {
-                queueMissionFull(galaxy, builtObject, BuiltObjectMissionType.BuildRepair, null, builtObject7, BuiltObjectMissionPriority.Normal, { x: builtObject7.xpos, y: builtObject7.ypos });
+                queueMission(galaxy, builtObject, BuiltObjectMissionType.BuildRepair, null, builtObject7, BuiltObjectMissionPriority.Normal, { x: builtObject7.xpos, y: builtObject7.ypos });
             } else {
                 clearPreviousMissionRequirements(galaxy, builtObject, true);
                 assignMission(galaxy, builtObject, BuiltObjectMissionType.BuildRepair, null, builtObject7, BuiltObjectMissionPriority.Normal, { x: builtObject7.xpos, y: builtObject7.ypos, manuallyAssigned: true });
@@ -803,12 +837,12 @@ function executeForShip(ctx: Ctx, builtObject: BuiltObject, action: ShipAction):
         }
         if (positionIsZero(action)) {
             if (action.isSubsequentAction) {
-                queueMissionFull(galaxy, builtObject, action.missionType, missionTarget(action.target), null, BuiltObjectMissionPriority.Normal, { troops: troopList });
+                queueMission(galaxy, builtObject, action.missionType, missionTarget(action.target), null, BuiltObjectMissionPriority.Normal, { troops: troopList });
             } else {
                 assignMission(galaxy, builtObject, action.missionType, missionTarget(action.target), null, BuiltObjectMissionPriority.Normal, { troops: troopList, manuallyAssigned: true });
             }
         } else if (action.isSubsequentAction) {
-            queueMissionFull(galaxy, builtObject, action.missionType, missionTarget(action.target), null, BuiltObjectMissionPriority.Normal, { troops: troopList, x: action.position.x, y: action.position.y });
+            queueMission(galaxy, builtObject, action.missionType, missionTarget(action.target), null, BuiltObjectMissionPriority.Normal, { troops: troopList, x: action.position.x, y: action.position.y });
         } else {
             assignMission(galaxy, builtObject, action.missionType, missionTarget(action.target), null, BuiltObjectMissionPriority.Normal, {
                 troops: troopList,
@@ -825,12 +859,12 @@ function executeForShip(ctx: Ctx, builtObject: BuiltObject, action: ShipAction):
     if (action.design !== null) {
         if (positionIsZero(action)) {
             if (action.isSubsequentAction) {
-                queueMissionFull(galaxy, builtObject, action.missionType, target, null, BuiltObjectMissionPriority.Normal, { design: action.design });
+                queueMission(galaxy, builtObject, action.missionType, target, null, BuiltObjectMissionPriority.Normal, { design: action.design });
             } else {
                 assignMission(galaxy, builtObject, action.missionType, target, null, BuiltObjectMissionPriority.Normal, { design: action.design, manuallyAssigned: true });
             }
         } else if (action.isSubsequentAction) {
-            queueMissionFull(galaxy, builtObject, action.missionType, target, null, BuiltObjectMissionPriority.Normal, { design: action.design, x: action.position.x, y: action.position.y });
+            queueMission(galaxy, builtObject, action.missionType, target, null, BuiltObjectMissionPriority.Normal, { design: action.design, x: action.position.x, y: action.position.y });
         } else {
             assignMission(galaxy, builtObject, action.missionType, target, null, BuiltObjectMissionPriority.Normal, { design: action.design, x: action.position.x, y: action.position.y, manuallyAssigned: true });
         }
@@ -840,12 +874,12 @@ function executeForShip(ctx: Ctx, builtObject: BuiltObject, action: ShipAction):
         }
         if (positionIsZero(action)) {
             if (action.isSubsequentAction) {
-                queueMissionFull(galaxy, builtObject, action.missionType, target, null, BuiltObjectMissionPriority.Normal, {});
+                queueMission(galaxy, builtObject, action.missionType, target, null, BuiltObjectMissionPriority.Normal, {});
             } else {
                 assignMission(galaxy, builtObject, action.missionType, target, null, BuiltObjectMissionPriority.Normal, { manuallyAssigned: true });
             }
         } else if (action.isSubsequentAction) {
-            queueMissionFull(galaxy, builtObject, action.missionType, target, null, BuiltObjectMissionPriority.Normal, { x: action.position.x, y: action.position.y });
+            queueMission(galaxy, builtObject, action.missionType, target, null, BuiltObjectMissionPriority.Normal, { x: action.position.x, y: action.position.y });
         } else {
             assignMission(galaxy, builtObject, action.missionType, target, null, BuiltObjectMissionPriority.Normal, { x: action.position.x, y: action.position.y, manuallyAssigned: true });
         }
@@ -980,8 +1014,9 @@ function executeForHabitat(ctx: Ctx, habitat4: Habitat, action: ShipAction, from
                         const p = galaxy.selectRelativeHabitatSurfacePoint(habitat5);
                         galaxy.generateCreatureAtHabitat(CreatureType.Kaltor, habitat5, false, Math.trunc(p.x), Math.trunc(p.y));
                     }
-                    // TODO(port): Empire.LastXaraktorVirusDeploy = CurrentDateTime — Empire.cs:881 (field not modelled; read only by
-                    // the AI's Xaraktor virus use, Empire.10.cs:4532, which is not ported either).
+                    // Main.Part7.cs 1042: _Game.PlayerEmpire.LastXaraktorVirusDeploy = CurrentDateTime (read by
+                    // CanDeployXaraktorVirus, Empire.10.cs 4532).
+                    ctx.empire.lastXaraktorVirusDeploy = galaxyNow(galaxy);
                 }
                 break;
             }
@@ -1041,7 +1076,7 @@ function executeForHabitat(ctx: Ctx, habitat4: Habitat, action: ShipAction, from
                 if (builtObject11 !== null) {
                     const m11 = builtObjectMission(builtObject11.mission);
                     if (m11 !== null && m11.type !== BuiltObjectMissionType.Undefined) {
-                        queueMissionFull(galaxy, builtObject11, BuiltObjectMissionType.Build, habitat4, null, BuiltObjectMissionPriority.Normal, { design: action.design, x: num12, y: num13 });
+                        queueMission(galaxy, builtObject11, BuiltObjectMissionType.Build, habitat4, null, BuiltObjectMissionPriority.Normal, { design: action.design, x: num12, y: num13 });
                     } else {
                         assignMission(galaxy, builtObject11, BuiltObjectMissionType.Build, habitat4, null, BuiltObjectMissionPriority.Normal, { design: action.design, x: num12, y: num13, manuallyAssigned: true });
                     }
@@ -1828,7 +1863,7 @@ function buildMiningStationAt(ctx: Ctx, builtObject8: BuiltObject | null, habita
         if (builtObject8 !== null) {
             const m = builtObjectMission(builtObject8.mission);
             if (m !== null && m.type !== BuiltObjectMissionType.Undefined) {
-                queueMissionFull(galaxy, builtObject8, BuiltObjectMissionType.Build, habitat9, null, BuiltObjectMissionPriority.Normal, { design, x: num, y: num2 });
+                queueMission(galaxy, builtObject8, BuiltObjectMissionType.Build, habitat9, null, BuiltObjectMissionPriority.Normal, { design, x: num, y: num2 });
             } else {
                 assignMission(galaxy, builtObject8, BuiltObjectMissionType.Build, habitat9, null, BuiltObjectMissionPriority.Normal, { design, x: num, y: num2, manuallyAssigned: true });
             }
@@ -1841,33 +1876,6 @@ function buildMiningStationAt(ctx: Ctx, builtObject8: BuiltObject | null, habita
 // ---------------------------------------------------------------------------------------------------------------
 // Sim helpers method_347 reaches that were not ported yet (small, cited)
 // ---------------------------------------------------------------------------------------------------------------
-
-/**
- * BuiltObject.2.cs 7506-7548 QueueMission overloads through the 11-argument one (7541): bases never queue. The
- * construction module's queueMission covers only the (target, target2, [design,] priority) overloads.
- */
-export function queueMissionFull(
-    galaxy: Galaxy,
-    bo: BuiltObject,
-    missionType: BuiltObjectMissionType,
-    target: MissionTarget | null,
-    target2: MissionTarget | null,
-    priority: BuiltObjectMissionPriority,
-    args: { troops?: TroopList | null; design?: Design | null; x?: number; y?: number },
-): void {
-    if (bo.role !== BuiltObjectRole.Base) {
-        const item = new BuiltObjectMission(galaxy, bo, missionType, target, target2, priority, {
-            troops: args.troops ?? null,
-            design: args.design ?? null,
-            x: args.x ?? COORD_UNSET_DOUBLE,
-            y: args.y ?? COORD_UNSET_DOUBLE,
-            starDate: -1,
-            allowReprocessing: true,
-            allowBuiltObjectChanges: false,
-        });
-        bo.subsequentMissions.push(item);
-    }
-}
 
 /** Galaxy.7.cs 705 FastFindBestConstructionShip(x, y, empire). No Rnd. */
 export function fastFindBestConstructionShip(galaxy: Galaxy, x: number, y: number, empire: Empire | null): BuiltObject | null {
@@ -1941,18 +1949,6 @@ export function sendCharactersHome(galaxy: Galaxy, builtObject: BuiltObject): vo
     }
 }
 
-/** CharacterList.cs 314 GetNonTransferringCharacters(role). */
-function getNonTransferringCharacters(characters: readonly (Character | null)[], role: CharacterRole): Character[] {
-    const list: Character[] = [];
-    for (let index = 0; index < characters.length; ++index) {
-        const character = characters[index];
-        if (character !== null && character.transferDestination === null && character.transferTimeRemaining <= 0.0 && (role === CharacterRole.Undefined || character.role === role)) {
-            list.push(character);
-        }
-    }
-    return list;
-}
-
 function isCreatureLocation(o: unknown): o is Creature {
     return o instanceof Creature;
 }
@@ -1966,10 +1962,10 @@ export function resolveCharactersValidForLocation(galaxy: Galaxy, location: Stel
         const locationEmpire = isCreatureLocation(location) ? null : location.empire;
         if (locationEmpire === empire) {
             if (isHabitat(location)) {
-                characterList = getNonTransferringCharacters(characters, CharacterRole.Undefined);
+                characterList = getNonTransferringCharacters(characters as Character[], CharacterRole.Undefined);
             } else if (isBuiltObject(location)) {
                 if (location.owner === empire) {
-                    characterList = getNonTransferringCharacters(characters, CharacterRole.Undefined);
+                    characterList = getNonTransferringCharacters(characters as Character[], CharacterRole.Undefined);
                 }
             }
         } else if (isHabitat(location)) {
@@ -1977,7 +1973,7 @@ export function resolveCharactersValidForLocation(galaxy: Galaxy, location: Stel
             if (habitat.empire !== null && habitat.empire !== galaxy.independentEmpire && habitat.population !== null && habitat.population.totalAmount > 0 && habitat === habitat.empire.capital) {
                 const diplomaticRelation = obtainDiplomaticRelation(empire, habitat.empire);
                 if (diplomaticRelation.type !== DiplomaticRelationType.NotMet && diplomaticRelation.type !== DiplomaticRelationType.War) {
-                    characterList = getNonTransferringCharacters(characters, CharacterRole.Ambassador);
+                    characterList = getNonTransferringCharacters(characters as Character[], CharacterRole.Ambassador);
                 }
             }
         }
@@ -1996,7 +1992,7 @@ export function resolveCharactersValidForLocation(galaxy: Galaxy, location: Stel
 }
 
 /** SystemInfoList.cs 16 `Systems[systemStar]`: the system whose SystemStar is this habitat, else null. */
-function systemForStar(galaxy: Galaxy, systemStar: Habitat): SystemInfo | null {
+export function systemForStar(galaxy: Galaxy, systemStar: Habitat): SystemInfo | null {
     for (let index = 0; index < galaxy.systems.length; ++index) {
         if (galaxy.systems[index].systemStar === systemStar) return galaxy.systems[index];
     }
@@ -2358,4 +2354,63 @@ function removeAll(list: Facility[], toRemove: readonly (Facility | null)[]): vo
         const i = list.indexOf(x);
         if (i >= 0) list.splice(i, 1);
     }
+}
+
+/**
+ * BaconBuiltObject.cs 3860 FindResalePriceOfShip(ship, buyer): -1 while any component is unbuilt; else the design's
+ * current purchase price × (1 + seller's − buyer's TradeBonus), ×2 when the buyer cannot build the design's tech, × the
+ * crew level (CalculateCrewLevel(null, ship)), ×1.2 for a military ship sold to a buyer at war, + the seller's own cargo
+ * value × max(0.02, 1 − TotalPopulation / 1e9 (long division)), ×0.5 / ×1.1 by fuel, × max(0, 1 + Σ relationship
+ * factors / 100) (the giver's DetermineEmpireRelationshipFactors(buyer)); (int) truncated. myMain is set in a running game.
+ */
+export function findResalePriceOfShip(galaxy: Galaxy, ship: BuiltObject, buyer: Empire): number {
+    const resalePriceOfShip = -1.0;
+    if (ship.components.items.some((x) => x.status === ComponentStatus.Unbuilt)) return Math.trunc(resalePriceOfShip);
+    const actualEmpire = ship.actualEmpire!;
+    let num1 = ship.design!.calculateCurrentPurchasePrice(galaxy) * (1.0 + actualEmpire.tradeBonus - buyer.tradeBonus);
+    if (!canBuildDesignTech(buyer, ship.design!)) num1 *= 2.0;
+    switch (calculateCrewLevel(ship)) {
+        case 'green':
+            num1 *= 0.9;
+            break;
+        case 'experienced':
+            num1 *= 1.1;
+            break;
+        case 'veteran':
+            num1 *= 1.2;
+            break;
+        case 'elite':
+            num1 *= 1.3;
+            break;
+        case 'legendary':
+            num1 *= 1.4;
+            break;
+    }
+    if (ship.role === BuiltObjectRole.Military && checkAtWar(buyer)) num1 *= 1.2;
+    if (ship.cargo !== null) {
+        // (double)(1L - TotalPopulation / 1000000000L): long division.
+        const num2 = Math.max(0.02, 1 - Math.trunc(actualEmpire.totalPopulation / 1000000000));
+        num1 += calculateValueOfCargoForEmpire(galaxy, ship.cargo, actualEmpire) * num2;
+    }
+    const num3 = ship.currentFuel / Math.max(1, ship.fuelCapacity);
+    if (num3 < 0.25) num1 *= 0.5;
+    else if (num3 > 0.9) num1 *= 1.1;
+    let num4 = 0.0;
+    for (const relationshipFactor of determineEmpireRelationshipFactors(ship.empire!, buyer)) num4 += relationshipFactor.value;
+    return Math.trunc(num1 * Math.max(0.0, 1.0 + num4 / 100.0));
+}
+
+/** BaconBuiltObject.cs 3902 CalculateValueOfCargoForEmpire(cargo, owningEmpire): Σ ResourceCurrentPrices × (Amount − Reserved) of owningEmpire's cargo. */
+export function calculateValueOfCargoForEmpire(galaxy: Galaxy, cargo: CargoList, owningEmpire: Empire): number {
+    let ofCargoForEmpire = 0.0;
+    const prices = galaxyResourceCurrentPrices(galaxy);
+    for (const cargo1 of cargo.items) {
+        if (((cargo1.empire as Empire | null)?.empireId ?? -1) === owningEmpire.empireId) {
+            // A component cargo has no Resource (the C# reads cargo1.Resource.ResourceID: a NullReferenceException).
+            if (cargo1.commodityIsComponent) continue;
+            const num = prices[cargo1.commodity.resourceId] * (cargo1.amount - cargo1.reserved);
+            ofCargoForEmpire += num;
+        }
+    }
+    return ofCargoForEmpire;
 }

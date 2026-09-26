@@ -179,7 +179,7 @@ function pirateEmpireById(galaxy: Galaxy, empireId: number): Empire | null {
 function colonyIncomeFactor(empire: Empire): number {
     return empire.difficultyFactors?.colonyIncomeFactor ?? 1.0;
 }
-function smugglingIncomeFactor(empire: Empire): number {
+export function smugglingIncomeFactor(empire: Empire): number {
     return empire.pirateFactionModifiers !== null ? empire.pirateFactionModifiers.smugglingIncomeFactor : 1.0;
 }
 

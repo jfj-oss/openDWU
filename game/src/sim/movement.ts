@@ -758,8 +758,11 @@ export function detectHyperDeny(galaxy: Galaxy, builtObject: BuiltObject): boole
     return false;
 }
 
-/** Galaxy.7.cs 747 CheckWithinDistancePotential(distance, x1, y1, x2, y2). */
-function checkWithinDistancePotential(distance: number, x1: number, y1: number, x2: number, y2: number): boolean {
+/**
+ * Galaxy.7.cs 747 CheckWithinDistancePotential(distance, x1, y1, x2, y2): the cheap pre-test before CalculateDistance —
+ * the distance is doubled and the axes are ORed (`|dx| < 2d || |dy| < 2d`). The one port; combat/damage.ts re-exports it.
+ */
+export function checkWithinDistancePotential(distance: number, x1: number, y1: number, x2: number, y2: number): boolean {
     distance += distance;
     return Math.abs(x1 - x2) < distance || Math.abs(y1 - y2) < distance;
 }
