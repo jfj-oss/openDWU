@@ -48,6 +48,7 @@ import { BuiltObjectMissionType } from '../src/sim/missions/mission';
 import { planetaryFacilityDefinitionsStatic, PlanetaryFacility } from '../src/sim/construction/facilities';
 import { galaxyToJSON, galaxyFromJSON } from '../src/sim/save/galaxySave';
 import { GalaxyLocation, GalaxyLocationType } from '../src/sim/galaxyLocation';
+import { formatGameTextNow } from '../src/sim/textResolver';
 
 let gameData: GameData;
 let g: Galaxy;
@@ -444,7 +445,7 @@ describe('ExecuteEventAction per action type (Galaxy.9.cs 1503-2860)', () => {
         expect(added.map((b) => b.subRole)).toEqual([BuiltObjectSubRole.ColonyShip, BuiltObjectSubRole.Frigate, BuiltObjectSubRole.Cruiser]);
         expect(added[0].nativeRace).toBe(e.dominantRace);
         // Galaxy.9.cs 2105 ResolveDescription(BuiltObjectSubRole.ColonyShip) = GameText "Ship SubRole ColonyShip" (enumText.ts).
-        expect(added[0].name).toBe('Refugee SHIPTYPE|Colony Ship');
+        expect(added[0].name).toBe('Refugee Colony Ship'); // string.Format(GetText("Refugee SHIPTYPE"), …), a name formatted now
     });
 
     it('IntergalacticConvoyMilitary / Civilian: Value ships of the empire arrive at the galaxy edge and move to its capital', () => {

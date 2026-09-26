@@ -64,6 +64,7 @@ import { empireGovernmentAttributes } from './empire';
 import { charactersCanGenerateAmountNonIntelligenceAgent } from './troops';
 import { EventMessageType, sendEventMessageToEmpire, sendNewsBroadcast } from './events';
 import { REAL_SECONDS_IN_GALACTIC_YEAR } from './tick/simTime';
+import { formatGameTextNow } from './textResolver';
 
 /** long.MinValue as a JS number (CharacterEventList.GetDateOfMostRecentEventByType's "none" result, Empire.LastDisasterDate default). */
 const LONG_MIN_VALUE = -9223372036854775808;
@@ -222,13 +223,13 @@ export function characterSendDeathMessage(galaxy: Galaxy | null, character: Char
             text3 = gameText('Character Death Bombardment Description', role, character.name, text);
             break;
         case CharacterDeathType.ColonyInvasion:
-            text3 = gameText('Character Death Invasion Description', role, character.name, text);
+            text3 = formatGameTextNow('Character Death Invasion Description', [role, character.name, text]);
             break;
         case CharacterDeathType.Disaster:
-            text3 = gameText('Character Death Disaster Description', role, character.name, text);
+            text3 = formatGameTextNow('Character Death Disaster Description', [role, character.name, text]);
             break;
         case CharacterDeathType.GenericDeath:
-            text3 = gameText('Character Death Description', role, character.name, text);
+            text3 = formatGameTextNow('Character Death Description', [role, character.name, text]);
             break;
         case CharacterDeathType.ShipDestroyed:
         case CharacterDeathType.ShipCaptured:
@@ -242,20 +243,20 @@ export function characterSendDeathMessage(galaxy: Galaxy | null, character: Char
                 }
             }
             text3 = deathType !== CharacterDeathType.ShipCaptured
-                ? gameText('Character Death Ship Destroyed Description', role, character.name, text, text2)
-                : gameText('Character Death Ship Captured Description', role, character.name, text, text2);
+                ? formatGameTextNow('Character Death Ship Destroyed Description', [role, character.name, text, text2])
+                : formatGameTextNow('Character Death Ship Captured Description', [role, character.name, text, text2]);
             break;
         case CharacterDeathType.BaseDestroyed:
-            text3 = gameText('Character Death Base Destroyed Description', role, character.name, text);
+            text3 = formatGameTextNow('Character Death Base Destroyed Description', [role, character.name, text]);
             break;
         case CharacterDeathType.BaseCaptured:
-            text3 = gameText('Character Death Base Captured Description', role, character.name, text);
+            text3 = formatGameTextNow('Character Death Base Captured Description', [role, character.name, text]);
             break;
         case CharacterDeathType.Dismissed:
-            text3 = gameText('Character Death Dismiss Description', role, character.name, text);
+            text3 = formatGameTextNow('Character Death Dismiss Description', [role, character.name, text]);
             break;
     }
-    if (deathType !== CharacterDeathType.Dismissed) text3 = text3 + '\n\n' + gameText('Character Death Great Loss', role);
+    if (deathType !== CharacterDeathType.Dismissed) text3 = text3 + '\n\n' + formatGameTextNow('Character Death Great Loss', [role]);
     sendEventMessageToEmpire(empire, EventMessageType.CharacterEvent, title, text3, character, location);
     sendNewsBroadcast(empire, EventMessageType.CharacterEvent, character);
 }

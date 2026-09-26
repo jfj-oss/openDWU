@@ -1,0 +1,162 @@
+// The player commands the command log carries (tasks/M4-agent-brief.md "Command log"): one entry per UI entry point
+// that changes the sim. Each op is `(galaxy, empire, ...args) => result` and only calls the existing executor, so the
+// order behaves exactly as before; what changes is WHEN it runs (player/playerCommands.ts applies it at the next frame
+// boundary, stamped with the sim time) and that it is journaled (args through player/commandCodec.ts) for replay.
+// Adding an op: a new key here, plain arguments the codec can write (sim objects, data), and the UI call site issues
+// it through issuePlayerCommand. Headless: no DOM / Pixi.
+
+import type { Galaxy } from '../galaxy';
+import type { Empire } from '../empire';
+import type { BuiltObject } from '../builtObject';
+import type { Habitat } from '../types';
+import type { Design } from '../design';
+import type { ShipGroup } from '../fleets/shipGroup';
+import type { Character, IntelligenceMission } from '../characters';
+import type { Troop } from '../cargo';
+import type { TechNode } from '../researchSystem';
+import type { EmpirePolicy } from '../data/policies';
+import type { ConstructionQueue } from '../construction/constructionQueue';
+import type { ShipAction } from './shipAction';
+import { executeShipAction, type ShipActionSelection } from './executeShipAction';
+import { applyAutomationOff, fleetPointClick, rightClickOrder } from './orderMenu';
+import { buildNewShips } from '../construction/empireConstruction';
+import { submitProposal } from './diplomacyProposals';
+import { submitTradeOffer, type TradeNegotiation } from './tradeNegotiation';
+import { executeAdvisorCommands, type AdvisorCommand, type ValidatedCommand } from './advisorCommands';
+import type { AdvisorBrief } from './advisorBrief';
+import { proposeDiplomatCounter } from './diplomatCounter';
+import type { DiplomatBrief } from './diplomatBrief';
+import { deleteDesign, saveDesign, setDesignSubRoleShouldBeUpgraded, type DesignDraft } from './designEditor';
+import { executeShipOrderKey, type ShipOrderKeyAction } from './shipHotkeys';
+import { initiateCrashResearchProgram } from '../researchTick';
+import type { EmpireMessage } from '../messages';
+import { approveSuggestion, declineSuggestion } from './advisorSuggestions';
+import { expireOldAdvisorSuggestions } from '../advisorQueue';
+import { galaxyStarDate } from '../tick/simTime';
+import { cancelIntelligenceMission, characterMission } from '../espionage';
+import {
+    acceptProposal,
+    declineProposal,
+    dequeueResearchProject,
+    disbandTroops,
+    moveWaitQueueItem,
+    queueResearchProject,
+    renameTroop,
+    setTroopsGarrisoned,
+    toggleDesignAutoRetrofit,
+    toggleDesignObsolete,
+    type WaitQueueMove,
+} from './playerOrders';
+
+/** Automation / control fields of Empire the UI sets directly (Game Options panel and the automation prompts). */
+function isEmpireControlField(empire: Empire, field: string): boolean {
+    return /^control[A-Z]/.test(field) && field in empire;
+}
+
+export const PLAYER_OPS = {
+    // --- Orders (selection panel, action menu, right click, hotkeys, fleet point pick) ---
+    /** Main.Part7.cs 45 method_347 (selection buttons, action menu, troops screen recruit). */
+    shipAction: (galaxy: Galaxy, empire: Empire, selected: ShipActionSelection, action: ShipAction, fromActionMenu: boolean, actionMenuPoint?: { x: number; y: number }) =>
+        executeShipAction(galaxy, empire, selected, action, fromActionMenu, { actionMenuPoint }),
+    /** Main.Part10.cs 3310-3559: the default right-click order for the selected ship / fleet. */
+    rightClickOrder: (galaxy: Galaxy, empire: Empire, selected: ShipActionSelection, order: ShipAction, keys: { ctrl: boolean; alt: boolean }, zoomFactor: number) =>
+        rightClickOrder(galaxy, empire, selected, order, keys, zoomFactor),
+    /** Main.Part10.cs 3063-3125: the fleet's attack point / home base pick. */
+    fleetPoint: (galaxy: Galaxy, empire: Empire, fleet: ShipGroup, mode: 'SetFleetAttackPoint' | 'SetFleetHomeBase', target: unknown) =>
+        fleetPointClick(galaxy, empire, fleet, mode, target),
+    /** Main_KeyUp ship-order keys (E / R / A / S / ,). */
+    shipOrderKey: (galaxy: Galaxy, empire: Empire, selected: ShipActionSelection, action: ShipOrderKeyAction) => executeShipOrderKey(galaxy, empire, selected, action),
+
+    // --- Automation ---
+    /** GenerateAutomationMessageBox "Turn off automation". */
+    automationOff: (_galaxy: Galaxy, empire: Empire, task: string) => applyAutomationOff(empire, task),
+    /** An Empire.control* field (Game Options automation rows, the per-screen automation prompts). */
+    setEmpireControl: (_galaxy: Galaxy, empire: Empire, field: string, value: number | boolean) => {
+        if (!isEmpireControlField(empire, field)) return false;
+        (empire as unknown as Record<string, unknown>)[field] = value;
+        return true;
+    },
+
+    // --- Empire policy / construction / research ---
+    /** Main.Part2.cs WqesexberY_Click: `PlayerEmpire.Policy = method_597(panel)`. */
+    setPolicy: (_galaxy: Galaxy, empire: Empire, policy: EmpirePolicy) => {
+        empire.policy = policy;
+        return true;
+    },
+    /** Main.Part2.cs 1135 btnBuildOrderPurchase_Click. */
+    buildNewShips: (galaxy: Galaxy, empire: Empire, designs: (Design | null)[], amounts: number[]) => buildNewShips(galaxy, empire, designs, amounts),
+    /** Main.Part5.cs 2147-2213: the site's construction wait queue order. */
+    moveWaitQueueItem: (_galaxy: Galaxy, _empire: Empire, site: BuiltObject | Habitat, item: BuiltObject, move: WaitQueueMove) => {
+        const queue = (site.constructionQueue as ConstructionQueue | null)?.constructionWaitQueue ?? null;
+        return queue !== null && moveWaitQueueItem(queue, item, move);
+    },
+    queueResearch: (_galaxy: Galaxy, empire: Empire, node: TechNode) => queueResearchProject(empire.research, node, empire.dominantRace),
+    dequeueResearch: (_galaxy: Galaxy, empire: Empire, node: TechNode) => dequeueResearchProject(empire.research, node),
+    crashResearch: (galaxy: Galaxy, empire: Empire, node: TechNode, cost: number) => {
+        initiateCrashResearchProgram(galaxy, empire, node, cost);
+        return node.isRushing;
+    },
+
+    // --- Designs ---
+    saveDesign: (galaxy: Galaxy, empire: Empire, draft: DesignDraft) => saveDesign(galaxy, empire, draft),
+    deleteDesign: (_galaxy: Galaxy, empire: Empire, designs: Design[]) => deleteDesign(empire, designs),
+    toggleDesignObsolete: (_galaxy: Galaxy, _empire: Empire, design: Design) => {
+        toggleDesignObsolete(design);
+        return true;
+    },
+    toggleDesignAutoRetrofit: (_galaxy: Galaxy, empire: Empire, design: Design) => toggleDesignAutoRetrofit(design, empire),
+    setDesignSubRoleUpgrade: (_galaxy: Galaxy, empire: Empire, subRole: number, upgrade: boolean) => {
+        setDesignSubRoleShouldBeUpgraded(empire, subRole, upgrade);
+        return true;
+    },
+
+    // --- Troops ---
+    disbandTroops: (_galaxy: Galaxy, empire: Empire, troops: Troop[]) => disbandTroops(empire, troops),
+    garrisonTroops: (_galaxy: Galaxy, empire: Empire, troops: Troop[], garrisoned: boolean) => setTroopsGarrisoned(empire, troops, garrisoned),
+    renameTroop: (_galaxy: Galaxy, _empire: Empire, troop: Troop, name: string) => renameTroop(troop, name),
+
+    // --- Intelligence agents ---
+    /** CharacterMission.cs btnAssignMission_Click: `_Character.Mission = GetState()`. */
+    setAgentMission: (_galaxy: Galaxy, _empire: Empire, agent: Character, mission: IntelligenceMission) => {
+        agent.mission = mission;
+        return true;
+    },
+    /** CharacterMission.cs btnCancelMission_Click: CancelIntelligenceMission, then Mission = null. */
+    cancelAgentMission: (_galaxy: Galaxy, empire: Empire, agent: Character) => {
+        const m = characterMission(agent);
+        if (m !== null) cancelIntelligenceMission(empire, m);
+        agent.mission = null;
+        return true;
+    },
+    /** Main.Part6.cs 3351 btnIntelligenceAgentsDisband_Click: `Mission = null; Kill(galaxy)`. */
+    dismissCharacter: (galaxy: Galaxy, _empire: Empire, character: Character) => {
+        character.mission = null;
+        character.kill(galaxy);
+        return true;
+    },
+
+    // --- Diplomacy ---
+    /** Main.Part10.cs 3957 method_237: a conversation option (by id; re-resolved on the live state). */
+    submitProposal: (galaxy: Galaxy, empire: Empire, other: Empire, optionId: string) => submitProposal(galaxy, empire, other, optionId),
+    /** Main.Part10.cs 4334 DEAL_OFFER. */
+    submitTradeOffer: (galaxy: Galaxy, _empire: Empire, negotiation: TradeNegotiation) => submitTradeOffer(galaxy, negotiation),
+    acceptProposal: (_galaxy: Galaxy, empire: Empire, other: Empire) => acceptProposal(empire, other),
+    declineProposal: (_galaxy: Galaxy, empire: Empire, other: Empire) => declineProposal(empire, other),
+
+    // --- Advisor suggestions (semi-automated tasks awaiting Approve / Decline; Main.Part2.cs 1369 / 2732) ---
+    approveSuggestion: (galaxy: Galaxy, empire: Empire, message: EmpireMessage) => approveSuggestion(galaxy, empire, message),
+    declineSuggestion: (galaxy: Galaxy, empire: Empire, message: EmpireMessage) => declineSuggestion(galaxy, empire, message),
+    /** DiplomaticMessageQueue.cs 864 method_3: drop suggestions older than their lifetime (at this boundary's date). */
+    expireAdvisorSuggestions: (galaxy: Galaxy, empire: Empire) => expireOldAdvisorSuggestions(empire, galaxyStarDate(galaxy)),
+
+    // --- The local model (18a advisor chat, 18b diplomat counter-proposal) ---
+    advisorCommands: (galaxy: Galaxy, empire: Empire, brief: AdvisorBrief, commands: (AdvisorCommand | ValidatedCommand)[]) => executeAdvisorCommands(galaxy, empire, brief, commands),
+    diplomatCounter: (galaxy: Galaxy, player: Empire, ai: Empire, brief: DiplomatBrief, counterId: string) => proposeDiplomatCounter(galaxy, ai, player, brief, counterId),
+} as const;
+
+export type PlayerOps = typeof PLAYER_OPS;
+export type PlayerOpName = keyof PlayerOps;
+type Tail<T extends unknown[]> = T extends [unknown, unknown, ...infer R] ? R : never;
+/** The op's arguments after (galaxy, empire). */
+export type PlayerOpArgs<K extends PlayerOpName> = Tail<Parameters<PlayerOps[K]>>;
+export type PlayerOpResult<K extends PlayerOpName> = ReturnType<PlayerOps[K]>;

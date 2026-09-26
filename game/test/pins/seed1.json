@@ -389,8 +389,8 @@
                 "MediumSpacePort",
                 "Skaif Space Port",
                 "Skaif",
-                4575659,
-                3461067,
+                4576169,
+                3460297,
                 -0.21728499233722687
             ],
             [
@@ -399,8 +399,8 @@
                 "WeaponsResearchStation",
                 "S185 Station",
                 "S185 3",
-                4709188,
-                2981026,
+                4709118,
+                2981082,
                 -0.9863868951797485
             ],
             [
@@ -409,8 +409,8 @@
                 "GasMiningStation",
                 "Sol 7 Gas Mining Station",
                 "Sol 7",
-                4551565,
-                3478381,
+                4551502,
+                3478279,
                 0.9462711811065674
             ],
             [
@@ -439,8 +439,8 @@
                 "GasMiningStation",
                 "Sol 6 Gas Mining Station",
                 "Sol 6",
-                4572348,
-                3482909,
+                4572295,
+                3482936,
                 1.7999814748764038
             ],
             [
@@ -449,8 +449,8 @@
                 "GasMiningStation",
                 "Sol 5 Gas Mining Station",
                 "Sol 5",
-                4575017,
-                3460369,
+                4575079,
+                3460434,
                 2.472167491912842
             ],
             [
@@ -459,8 +459,8 @@
                 "MiningStation",
                 "Immeinis Mining Station",
                 "Immeinis",
-                4575187,
-                3460240,
+                4575852,
+                3460892,
                 -0.2366860806941986
             ],
             [
@@ -469,8 +469,8 @@
                 "MediumSpacePort",
                 "S78 4 Space Port",
                 "S78 4",
-                4852940,
-                11693724,
+                4853028,
+                11693710,
                 1.4394745826721191
             ],
             [
@@ -479,8 +479,8 @@
                 "WeaponsResearchStation",
                 "S254 Research Facility",
                 "S254 3",
-                4459319,
-                12699006,
+                4459269,
+                12698973,
                 0.6959260702133179
             ],
             [
@@ -489,8 +489,8 @@
                 "GasMiningStation",
                 "S78 6 Gas Mining Station",
                 "S78 6",
-                4859436,
-                11686468,
+                4859548,
+                11686512,
                 1.5163477659225464
             ],
             [
@@ -499,8 +499,8 @@
                 "GasMiningStation",
                 "S78 5 Gas Mining Station",
                 "S78 5",
-                4867751,
-                11698591,
+                4867767,
+                11698710,
                 1.4004279375076294
             ],
             [
@@ -519,8 +519,8 @@
                 "MiningStation",
                 "Enaire Mining Station",
                 "Enaire",
-                4854606,
-                11698552,
+                4854782,
+                11698319,
                 -0.06955896317958832
             ],
             [
@@ -539,8 +539,8 @@
                 "MiningStation",
                 "Senoi Mining Station",
                 "Senoi",
-                4867428,
-                11698383,
+                4867406,
+                11697510,
                 2.479494571685791
             ],
             [
@@ -549,8 +549,8 @@
                 "MediumSpacePort",
                 "S105 3 Space Port",
                 "S105 3",
-                8822353,
-                14199592,
+                8822405,
+                14199622,
                 -0.03803101181983948
             ],
             [
@@ -559,8 +559,8 @@
                 "EnergyResearchStation",
                 "S229 Research Facility",
                 "S229 1",
-                9143539,
-                14461779,
+                9143599,
+                14461774,
                 -0.5818873643875122
             ],
             [
@@ -569,8 +569,8 @@
                 "GasMiningStation",
                 "S105 5 Gas Mining Station",
                 "S105 5",
-                8818065,
-                14216596,
+                8817946,
+                14216576,
                 -3.102545976638794
             ],
             [
@@ -579,8 +579,8 @@
                 "MiningStation",
                 "Onau Mining Station",
                 "Onau",
-                8816075,
-                14207891,
+                8816638,
+                14207854,
                 -0.11989685893058777
             ],
             [
@@ -589,8 +589,8 @@
                 "MiningStation",
                 "Edulta Mining Station",
                 "Edulta",
-                8818223,
-                14216418,
+                8818847,
+                14216668,
                 -1.7370576858520508
             ],
             [
@@ -609,8 +609,8 @@
                 "MiningStation",
                 "S105 2 Mining Station",
                 "S105 2",
-                8817897,
-                14205153,
+                8817859,
+                14205106,
                 -2.212144613265991
             ],
             [
@@ -629,8 +629,8 @@
                 "MediumSpacePort",
                 "S65 11 Space Port",
                 "S65 11",
-                9419622,
-                3153516,
+                9419682,
+                3153512,
                 2.847064733505249
             ],
             [
@@ -639,8 +639,8 @@
                 "GasMiningStation",
                 "S65 5 Gas Mining Station",
                 "S65 5",
-                9429096,
-                3164152,
+                9429143,
+                3164189,
                 1.2194792032241821
             ],
             [
@@ -649,8 +649,8 @@
                 "GasMiningStation",
                 "S65 4 Gas Mining Station",
                 "S65 4",
-                9415422,
-                3164227,
+                9415476,
+                3164201,
                 -3.0117266178131104
             ],
             [
@@ -659,8 +659,8 @@
                 "GasMiningStation",
                 "S65 6 Gas Mining Station",
                 "S65 6",
-                9424200,
-                3191732,
+                9424083,
+                3191757,
                 -1.0462145805358887
             ],
             [
@@ -669,8 +669,8 @@
                 "MiningStation",
                 "Croi Mining Station",
                 "Croi",
-                9430156,
-                3179173,
+                9430130,
+                3180125,
                 2.93000864982605
             ],
             [
@@ -679,8 +679,8 @@
                 "MiningStation",
                 "S65 3 Mining Station",
                 "S65 3",
-                9409879,
-                3173118,
+                9409890,
+                3173059,
                 2.7807328701019287
             ],
             [
@@ -689,8 +689,8 @@
                 "MiningStation",
                 "Selm Mining Station",
                 "Selm",
-                9409857,
-                3173115,
+                9409692,
+                3172434,
                 -0.7642702460289001
             ]
         ],
@@ -701,11 +701,11 @@
         "faction": [
             [
                 "Escort:Decimator II:32",
-                "Frigate:Sabre II:44",
+                "Frigate:Apulon II:44",
                 "Destroyer:Praefectus II:54",
-                "Cruiser:Enforcer:89",
-                "CapitalShip:Sovereign:136",
-                "Carrier:CX-2 Carrier:105",
+                "Cruiser:Venator II:89",
+                "CapitalShip:Sovereign:137",
+                "Carrier:CX-2 Carrier:109",
                 "DefensiveBase:Phantom Pirate Defensive Base:123",
                 "GenericBase:Phantom Pirate Base:217"
             ],
@@ -724,11 +724,11 @@
     },
     "taxes": {"taxRates": [0.28999999165534973, 0.2800000011920929, 0.18000000715255737, 0.3100000023841858]},
     "tickDeterminism": {
-        "digest600": "3d1470d82df29893",
-        "counts600": {"empires": 4, "pirateEmpires": 8, "habitats": 13326, "builtObjects": 603, "creatures": 320, "colonies": 4},
-        "rndDraws600": 669918,
-        "digest120": "6d114c3cf42fe29c",
-        "rndDraws120": 11409
+        "digest600": "627c08defbc547e7",
+        "counts600": {"empires": 4, "pirateEmpires": 8, "habitats": 13326, "builtObjects": 591, "creatures": 326, "colonies": 4},
+        "rndDraws600": 502453,
+        "digest120": "3913ad38cb08e12e",
+        "rndDraws120": 11134
     },
     "troops": {
         "capitals": [[1177, 882, 7], [1564, 1173, 8], [1758, 1318, 2], [617, 462, 11]],

@@ -10,6 +10,7 @@ import './empirePolicy.css';
 import type { Empire } from '../../sim/empire';
 import { planetaryFacilityDefinitionsStatic } from '../../sim/construction/facilities';
 import { defaultEmpirePolicy } from '../../sim/data/policies';
+import { issuePlayerCommand } from '../../sim/player/playerCommands';
 import {
     applyPolicyPanel,
     buildPolicyPanel,
@@ -67,7 +68,8 @@ function createEmpirePolicy(opts: EmpirePolicyOptions): OpenState {
 
     // Main.Part2.cs WqesexberY_Click: _Game.PlayerEmpire.Policy = method_597(panel, PlayerEmpire) — run on every change.
     const apply = (): void => {
-        empire.policy = applyPolicyPanel(empire, playerIsPirate, controls, ctx);
+        // Command log: queued, applied at the next frame boundary.
+        issuePlayerCommand(galaxy, empire, 'setPolicy', [applyPolicyPanel(empire, playerIsPirate, controls, ctx)]);
     };
 
     const root = el('div', 'policy-wrap');
