@@ -129,5 +129,10 @@ Makes the rim itself hard to reach and hold, independent of the fauna. Scenario 
 4. Fuel scarcity: caslon / hydrogen placement biased inward so rim outposts need supply lines, gas mining or 19c company depots.
 5. Sensor fog: a rim-wide sensor-range penalty until listening posts / long-range sensors are built, so herds and pirate bases
    stay hidden longer.
-Params: belt inner radius, storm density, thinning radius/factor, shoal count, fuel bias, fog factor. Effort: medium (~1 agent-day);
+6. Map scale (user, 2026-09-26): a galaxy-extent multiplier (same star count spread wider, so the rim is far in travel time)
+   and a raised star cap above the wizard's 1400 for those with the CPU, both scenario/wizard options; sector grid stays
+   the C# constant (Galaxy.3.cs SectorSize 2,000,000) unless the multiplier demands otherwise (territory/index grids derive
+   from it). Re-pins only inside the scenario. Must ship with a speed check at the top setting (single-threaded sim; the
+   36 game-days/min budget must hold or the option is capped).
+Params: belt inner radius, storm density, thinning radius/factor, shoal count, fuel bias, fog factor, extent multiplier, star cap. Effort: medium (~1 agent-day);
 build after 19d2 (unrest plumbing) alongside 19g-7 rim fauna; 19a/19c tests must still pass with 19h on.
