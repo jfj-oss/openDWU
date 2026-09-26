@@ -134,5 +134,19 @@ Makes the rim itself hard to reach and hold, independent of the fauna. Scenario 
    the C# constant (Galaxy.3.cs SectorSize 2,000,000) unless the multiplier demands otherwise (territory/index grids derive
    from it). Re-pins only inside the scenario. Must ship with a speed check at the top setting (single-threaded sim; the
    36 game-days/min budget must hold or the option is capped).
-Params: belt inner radius, storm density, thinning radius/factor, shoal count, fuel bias, fog factor, extent multiplier, star cap. Effort: medium (~1 agent-day);
+Params: belt inner radius, storm density, thinning radius/factor, shoal count, fuel bias, fog factor, extent multiplier, star cap.
+
+## 19i — Rim atmosphere (ACCEPTED by the user 2026-09-26 — "yes"; presentation only, reads a distance-from-centre curve; flag off = untouched)
+Visual: (1) colour grading by radius — desaturate + cold blue-violet tint on star field/nebulae past the rim band, fading in
+over a band; (2) rim star types biased to dim red/brown dwarfs and white dwarfs (generation curve, re-pins only in the
+scenario); (3) dark dust lanes instead of bright nebula art, and 19h-5 sensor fog rendered as grainy grey murk for
+unexplored rim space; (4) thinner deep-field star layer / sparser background art; (5) derelicts, dead stations, gutted
+independent colonies on the rim curve from the original ruins/debris art (some become 19g-7 herd feeding sites);
+(6) distant creature silhouettes drifting in the background at galaxy zoom; (7) fewer nav lights / dimmer city glow on
+rim outposts. Audio: (8) 19e-11 music selector gets a "rim" mood weighted by radius (sparse drones, silences, original
+tracks that fit); (9) low wind/static ambient bed growing with distance, distant creature calls and hull creaks at system
+zoom; (10) faint static layer on advisor/diplomacy voice in the fog; garbled rim distress calls in the ticker. Text/UI:
+(11) bleaker rim name table, more numbered survey designations; (12) rim-specific exploration/colony message wording
+(lost contact, missing survey ship, unusual readings); (13) faint grain/vignette on the main view deep in the rim, minimap
+dims the outer band. Effort: ~1 agent-day; build with 19h; must not change any sim digest (render/audio/text only except 2). Effort: medium (~1 agent-day);
 build after 19d2 (unrest plumbing) alongside 19g-7 rim fauna; 19a/19c tests must still pass with 19h on.
