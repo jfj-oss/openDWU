@@ -1,6 +1,6 @@
-// suggest: the Advisor Suggestion window (Main.Part2.cs 2781 method_649 pnlAdvisorSuggestion) and its entries in the
-// message queue column (DiplomaticMessageQueue.cs, advisor entries drawn grey with the advisor icon, :906-935). Built on
-// the 16d popup system (messagePopups.ts: chips + conversation window classes).
+// suggest: the Advisor Suggestion window (Main.Part2.cs 2781 method_649 pnlAdvisorSuggestion). Its queue entries
+// (DiplomaticMessageQueue.cs, advisor entries drawn grey with the advisor icon, :906-935) are stubs in the list under the
+// top-right panel (popupstubs, messageStubList.ts). Built on the 16d popup system (conversation window classes).
 //
 // The queue lives on the player empire (src/sim/advisorQueue.ts, saved with the game); this module polls it, lets the
 // player Approve / Decline / "Show me first" (Main.Part2.cs 1369 / 2732 / 2635 → src/sim/player/advisorSuggestions.ts),
@@ -116,13 +116,27 @@ export interface AdvisorSuggestionsOptions {
 
 interface Installed {
     timer: ReturnType<typeof setInterval>;
-    column: HTMLElement;
     wrap: HTMLElement;
     close: () => void;
+    // [popupstubs] begin
+    open: (m: EmpireMessage) => void;
+    current: () => EmpireMessage | null;
+    // [popupstubs] end
 }
 let installed: Installed | null = null;
 
-const MAX_CHIPS = 6;
+// [popupstubs] begin
+// The queue's entries are stubs in the list under the top-right panel (messageStubList.ts); a clicked stub opens here.
+/** Open the Advisor Suggestion window for a queued suggestion (a clicked stub). No-op when not installed. */
+export function openAdvisorSuggestion(m: EmpireMessage): void {
+    installed?.open(m);
+}
+
+/** The suggestion whose window is open (null: none). */
+export function openAdvisorSuggestionKey(): EmpireMessage | null {
+    return installed?.current() ?? null;
+}
+// [popupstubs] end
 
 function el(tag: string, className: string, text?: string): HTMLElement {
     const e = document.createElement(tag);
@@ -135,15 +149,14 @@ function el(tag: string, className: string, text?: string): HTMLElement {
 export function installAdvisorSuggestions(opts: AdvisorSuggestionsOptions): void {
     removeAdvisorSuggestions();
     const { player, galaxy } = opts;
-    const column = el('div', 'advisor-queue');
     const wrap = el('div', 'message-conversation-wrap advisor-suggestion-wrap');
     wrap.hidden = true;
-    document.body.append(column, wrap);
+    document.body.append(wrap);
 
     let current: EmpireMessage | null = null;
+    let keyListening = false;
     let pausedByUs = false;
     let restoreView: (() => void) | null = null;
-    let rendered: unknown[] = [];
 
     function onKey(e: KeyboardEvent): void {
         if (e.key === 'Escape') {
@@ -158,6 +171,7 @@ export function installAdvisorSuggestions(opts: AdvisorSuggestionsOptions): void
         if (current === null) return;
         current = null;
         document.removeEventListener('keydown', onKey);
+        keyListening = false;
         wrap.replaceChildren();
         wrap.hidden = true;
         wrap.classList.remove('advisor-suggestion-shown');
@@ -165,7 +179,6 @@ export function installAdvisorSuggestions(opts: AdvisorSuggestionsOptions): void
         restoreView = null;
         if (pausedByUs && opts.clock) opts.clock.paused = false;
         pausedByUs = false;
-        render();
     }
 
     function open(m: EmpireMessage): void {
@@ -232,39 +245,18 @@ export function installAdvisorSuggestions(opts: AdvisorSuggestionsOptions): void
         win.append(bar, body, buttons);
         wrap.replaceChildren(win);
         wrap.hidden = false;
-        document.addEventListener('keydown', onKey);
-        render();
-    }
-
-    function render(): void {
-        const q = advisorSuggestions(player);
-        const key: unknown[] = [current, ...q];
-        if (key.length === rendered.length && key.every((k, i) => k === rendered[i])) return;
-        rendered = key;
-        column.replaceChildren();
-        for (const m of q.slice(-MAX_CHIPS).reverse()) {
-            const chip = el('button', 'message-chip advisor-chip') as HTMLButtonElement;
-            chip.type = 'button';
-            if (m === current) chip.classList.add('message-chip-active');
-            const view = advisorSuggestionView(galaxy, player, m);
-            chip.title = view.text;
-            chip.append(el('span', 'advisor-chip-icon', '?'), el('span', 'message-chip-name', view.title));
-            chip.addEventListener('click', () => open(m));
-            column.append(chip);
-        }
-        if (q.length > MAX_CHIPS) column.append(el('div', 'message-queue-more', `+${q.length - MAX_CHIPS} more`));
+        if (!keyListening) document.addEventListener('keydown', onKey);
+        keyListening = true;
     }
 
     function tick(): void {
         // DiplomaticMessageQueue.cs 864 method_3: expire old entries.
         expireOldAdvisorSuggestions(player, galaxyStarDate(galaxy));
         if (current !== null && !advisorSuggestions(player).includes(current)) close();
-        render();
     }
 
     const timer = setInterval(tick, 250);
-    installed = { timer, column, wrap, close };
-    render();
+    installed = { timer, wrap, close, open, current: () => current };
 }
 
 /** Stop polling and remove the queue column and the window. No-op when not installed. */
@@ -274,6 +266,5 @@ export function removeAdvisorSuggestions(): void {
     installed = null;
     clearInterval(s.timer);
     s.close();
-    s.column.remove();
     s.wrap.remove();
 }

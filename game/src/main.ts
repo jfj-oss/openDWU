@@ -79,6 +79,10 @@ import { toggleBuildOrder } from './ui/screens/buildOrder';
 import { Creature } from './sim/creature';
 // [suggest] end
 
+// [popupstubs] begin
+import { installMessageStubList, removeMessageStubList } from './ui/messageStubList';
+// [popupstubs] end
+
 // [fix6ui] begin
 import { setShipCommandHandler } from './ui/keyboard';
 import { refreshSelectionActionBar } from './ui/orderMenu';
@@ -459,7 +463,10 @@ export async function startGameView(
     installGameEndHandler(galaxy, time);
     // [/15d]
     // [16d] Player messages → popups + the diplomatic conversation queue (Main.Part9.cs ReceiveMessageInternal).
-    installMessagePopups({ player: game.playerEmpire, galaxy });
+    // [popupstubs] begin
+    // The clock lets an immediate conversation pause the game (Main.Part9.cs 1544 method_253).
+    installMessagePopups({ player: game.playerEmpire, galaxy, clock: time });
+    // [popupstubs] end
     // [/16d]
 
     // [suggest] begin
@@ -493,6 +500,11 @@ export async function startGameView(
         },
     });
     // [suggest] end
+
+    // [popupstubs] begin
+    // Messages, conversations and advisor suggestions first appear as one-line stubs under the top-right panel.
+    installMessageStubList({ player: game.playerEmpire, galaxy, clock: time });
+    // [popupstubs] end
 
     // [ordermenu] begin
     // 17c: right-click orders / the action menu in the main view and the selection panel's action buttons.
@@ -688,6 +700,10 @@ export async function startGameView(
         // [suggest] begin
         removeAdvisorSuggestions();
         // [suggest] end
+
+        // [popupstubs] begin
+        removeMessageStubList();
+        // [popupstubs] end
         // The ticker buffer is module-level; the next game starts fresh.
         clearHudMessages();
         // [15d]
