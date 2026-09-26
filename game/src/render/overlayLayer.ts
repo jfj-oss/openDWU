@@ -58,6 +58,7 @@ import type { ShipGroup } from '../sim/fleets/shipGroup';
 import { builtObjectMission } from '../sim/missions/mission';
 import { BuiltObjectRole } from '../sim/data/designSpecifications';
 import { DrawKey } from './drawCache';
+import { FreightOverlay } from './freightOverlay'; // [freightOverlay]
 
 /** The original's selection-ring yellow (MainView.cs `color_2` default,
  * `System.Drawing.Color.FromArgb(255, 255, 255, 0)`), reused by
@@ -216,6 +217,9 @@ export class OverlayLayer {
     private researchLocations: MarkerRing[] = [];
     private unsubscribe: () => void;
     private travelVectors = new Graphics();
+    // [freightOverlay] begin — task 19e-9: Freight Flows / Trade Hubs (src/render/freightOverlay.ts).
+    readonly freight: FreightOverlay;
+    // [freightOverlay] end
 
     constructor(
         private galaxy: Galaxy,
@@ -225,6 +229,9 @@ export class OverlayLayer {
     ) {
         world.addChild(this.root);
         this.root.addChild(this.travelVectors);
+        // [freightOverlay] begin
+        this.freight = new FreightOverlay(galaxy, this.root, state);
+        // [freightOverlay] end
         // Eligibility is computed once from the galaxy as built: nothing in
         // the current sim (no ship/colonization missions yet) changes
         // ownership, quality or exploration after createGame runs.
@@ -245,7 +252,10 @@ export class OverlayLayer {
         // frame's update() (which reads `state` fresh anyway, but the
         // Empire Territory gate lives on EmpireLayer and only this layer
         // knows to push it there).
-        this.unsubscribe = onOverlayChange(() => this.applyTerritoryToggle());
+        this.unsubscribe = onOverlayChange(() => {
+            this.applyTerritoryToggle();
+            this.freight.syncRecording(); // [freightOverlay] toggling either on starts recording contracts
+        });
         this.applyTerritoryToggle();
     }
 
@@ -284,6 +294,7 @@ export class OverlayLayer {
         this.updateGroup(this.scenicLocations, atSystemZoom && this.state.scenicLocations, z, cam);
         this.updateGroup(this.researchLocations, atSystemZoom && this.state.researchLocations, z, cam);
         this.updateTravelVectors(z, cam);
+        this.freight.update(z, cam); // [freightOverlay]
     }
 
     /** Travel Vectors (State / Private): dashed grey line from each of the
@@ -324,5 +335,6 @@ export class OverlayLayer {
     /** Drop the overlay-change subscription (tests / view teardown). */
     destroy(): void {
         this.unsubscribe();
+        this.freight.destroy(); // [freightOverlay]
     }
 }

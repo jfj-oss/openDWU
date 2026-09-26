@@ -262,6 +262,9 @@ export interface HudWiring {
     clock?: GalaxyTime;
     /** Overlay toggle state, mutated by the options list. */
     overlays?: MapOverlayState;
+    // [freightOverlay] begin — task 19e-9: the Freight Flows / Trade Hubs rows' "…" opens the Trade Flows panel.
+    openTradeFlows?: () => void;
+    // [freightOverlay] end
     /** Main-view camera, driven by the View rows. */
     camera?: Camera;
     /** Generated galaxy model, for selection lookups. */
@@ -1227,6 +1230,27 @@ function buildOptionsList(wiring: HudWiring): HTMLElement {
         lbl.className = 'hud-option-label';
         lbl.textContent = row.label;
         item.append(check, lbl);
+        // [freightOverlay] begin — additions to the original nine carry a "+" badge; `panel` rows get a "…" opener.
+        if (row.mod === true) {
+            const badge = document.createElement('span');
+            badge.className = 'hud-option-mod';
+            badge.textContent = '+';
+            badge.title = 'Not in the original game';
+            item.appendChild(badge);
+        }
+        if (row.panel === 'tradeFlows' && wiring.openTradeFlows !== undefined) {
+            const more = document.createElement('span');
+            more.className = 'hud-option-more';
+            more.textContent = '…';
+            more.title = 'Trade Flows panel';
+            more.setAttribute('role', 'button');
+            more.addEventListener('click', (e) => {
+                e.stopPropagation();
+                wiring.openTradeFlows?.();
+            });
+            item.appendChild(more);
+        }
+        // [freightOverlay] end
         item.addEventListener('click', () => {
             toggleOverlay(overlays, row.key);
             check.textContent = overlays[row.key] ? '✓' : '';

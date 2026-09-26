@@ -91,3 +91,19 @@
     overflow: hidden;
     text-overflow: ellipsis;
 }
+/* [freightOverlay] begin — task 19e-9 */
+.empire-summary-link {
+    margin-top: 6px;
+    background: transparent;
+    border: none;
+    color: #7fb2ff;
+    font: inherit;
+    font-size: 12px;
+    text-align: left;
+    cursor: pointer;
+    padding: 2px 8px;
+}
+.empire-summary-link:hover {
+    color: #fff;
+}
+/* [freightOverlay] end */

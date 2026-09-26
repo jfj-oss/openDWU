@@ -60,6 +60,8 @@ import type { BuiltObject } from '../sim/builtObject';
 import { createMapOverlayState, type MapOverlayState } from '../ui/mapOverlays';
 import { showRegionLabels, showSystemNames } from '../ui/settings';
 import { hideMapTooltip, showMapTooltip, tooltipText } from '../ui/mapTooltip';
+import { freightTooltipText } from '../ui/freightText'; // [freightOverlay]
+import type { FreightOverlay } from './freightOverlay'; // [freightOverlay]
 import { boundsOnScreen, DrawKey } from './drawCache';
 
 export function fadeIn(v: number, a: number, b: number): number {
@@ -1535,6 +1537,14 @@ export class MainView {
                 this.onPointerRest?.(x, y, e.clientX, e.clientY); // [ordermenu]
                 const hit = this.pick(x, y);
                 if (hit === null) {
+                    // [freightOverlay] begin — hover a flow arc / trade hub (task 19e-9).
+                    const w = this.camera.screenToWorld(x, y);
+                    const fh = this.overlayLayer?.freight.hitTest(w.x, w.y, this.camera.zoom) ?? null;
+                    if (fh !== null) {
+                        showMapTooltip(freightTooltipText(this.galaxy, fh), e.clientX, e.clientY);
+                        return;
+                    }
+                    // [freightOverlay] end
                     hideMapTooltip();
                     return;
                 }
@@ -1616,7 +1626,14 @@ export class MainView {
             this.tooltipTimer = undefined;
         }
         hideMapTooltip();
+        this.overlayLayer?.destroy(); // [freightOverlay] stop recording contracts for this galaxy
     }
+
+    // [freightOverlay] begin — task 19e-9: the panel / legend reach the Freight Flows overlay through the view.
+    get freightOverlay(): FreightOverlay | null {
+        return this.overlayLayer?.freight ?? null;
+    }
+    // [freightOverlay] end
 }
 
 /** Parallax wrap: screen-space travel into a tile offset in [0, 512). */
