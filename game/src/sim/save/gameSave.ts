@@ -6,7 +6,7 @@
 // the headless sim. Key order is fixed so round-tripped strings compare
 // byte-for-byte equal.
 
-import { STOCK_BACON_SETTINGS, baconInitializeSettings, resetBaconSettings } from '../baconSettings';
+import { baconInitializeSettings } from '../baconSettings';
 import type { Game } from '../game';
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
@@ -57,9 +57,9 @@ export function deserializeGame(text: string, gameData: GameData): { game: Game;
 
     const galaxy: Galaxy = galaxyFromJSON(obj.galaxy, gameData);
     restoreCommandLog(galaxy, obj.commandLog);
-    // Main.Part12.cs 3151 (launchFromLoad) BaconMain.BaconInitialize: BaconSettings.txt overrides (baconSettings.ts).
-    resetBaconSettings();
-    baconInitializeSettings(STOCK_BACON_SETTINGS); // TODO(port): the loaded BaconSettings.txt (dataload)
+    // BaconStart.LoadGame clears settingsInitialized; BaconMain.BaconInitialize re-reads BaconSettings.txt when the
+    // loaded game starts (Main.Part12.cs 3151).
+    baconInitializeSettings(galaxy, gameData.baconSettings);
 
     // GalaxyTime is rebuilt without the constructor (it only sets
     // startStarDate; the other fields have class defaults we overwrite).

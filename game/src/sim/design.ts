@@ -16,6 +16,7 @@ import { ComponentCategoryType } from './data/policies';
 import { BattleTactics, BuiltObjectFleeWhen, BuiltObjectRole, DesignImageScalingMode, InvasionTactics } from './data/designSpecifications';
 import type { Resource } from './data/resources';
 import { Weapon } from './weapon';
+import { baconSettings } from './data/baconSettings';
 
 // Port of BuiltObjectStance.cs (member order exact).
 export enum BuiltObjectStance {
@@ -38,14 +39,9 @@ export interface DesignOwner {
     readonly privateBuiltObjects?: unknown[];
 }
 
-// Galaxy.cs static ShipMarkupFactor / ShipMarkupFactorPirates, as set by
-// Galaxy.3.cs:5070-5071. BaconMain.BaconInitialize can override both from
-// BaconSettings.txt, but it runs only once a game exists (it reads
-// main._Game.Galaxy), i.e. after game-start generation.
-// TODO(port): BaconSettings.txt overrides (BaconMain.cs:770-777) after game start.
-// Intentionally the class default, not BaconSettings.txt line 93 `shipMarkupFactor=9`.
-export const SHIP_MARKUP_FACTOR = 5.0;
-export const SHIP_MARKUP_FACTOR_PIRATES = 2.5;
+// Galaxy.cs static ShipMarkupFactor / ShipMarkupFactorPirates (Galaxy.3.cs 5070-5071): BaconSettings.txt statics
+// (BaconMain.cs 770 / 774), read from `baconSettings` — the class defaults while a galaxy is generated, the file's
+// values once the game starts (sim/baconInitialize.ts).
 
 /** Galaxy surface for Galaxy.ComponentCurrentPrices. */
 export interface ComponentPriceGalaxy {
@@ -246,8 +242,8 @@ export class Design {
         const prices = galaxyComponentCurrentPrices(galaxy);
         let num = 0.0;
         for (let i = 0; i < this.components.length; i++) num += prices[this.components[i].componentId];
-        if (this.empire !== null && this.empire.pirateEmpireBaseHabitat != null) return num * SHIP_MARKUP_FACTOR_PIRATES;
-        return num * SHIP_MARKUP_FACTOR;
+        if (this.empire !== null && this.empire.pirateEmpireBaseHabitat != null) return num * baconSettings.shipMarkupFactorPirates;
+        return num * baconSettings.shipMarkupFactor;
     }
 
     // Design.cs FuelUnitPerEnergyUnit (1164).

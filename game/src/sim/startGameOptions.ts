@@ -303,6 +303,8 @@ export function clampOtherEmpires(o: OtherEmpiresOptions): OtherEmpiresOptions {
 export function starCountFor(index: number): number {
     switch (index) {
         case 0:
+            // BaconStart.lowStarCount (BaconStart.cs 20 = 100): BaconSettings.txt lowStarCount (clamped to 10..100,
+            // BaconMain.cs 726) is applied at game start, after a fresh launch's wizard (sim/baconInitialize.ts).
             return 100;
         case 1:
             return 250;
@@ -395,8 +397,9 @@ export function colonyPrevalenceFor(index: number): number {
 export function alienLifeFor(index: number): number {
     switch (index) {
         case 0:
-            // BaconStart overrides this with BaconStart.lowIndependentLifeValue;
-            // the vanilla value 150 is used here.
+            // BaconStart.lowIndependentLifeValue (BaconStart.cs 21 = 150). BaconSettings.txt
+            // (lowIndependentLifeValue, BaconMain.cs 786) only sets it at game start, after the
+            // wizard of a fresh launch has run (see sim/baconInitialize.ts), so the default applies.
             return 150;
         case 1:
             return 250;

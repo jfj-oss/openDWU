@@ -33,6 +33,7 @@ import {
 } from '../src/sim/movement';
 import { currentRange as freightCurrentRange, withinFuelRange as freightWithinFuelRange, warpSpeedWithBonuses as freightWarp } from '../src/sim/logistics/freight';
 import { MAX_SOLAR_SYSTEM_SIZE, baconMovementSettings, warpSpeedWithBonuses } from '../src/sim/movement';
+import { baconSettings } from '../src/sim/data/baconSettings';
 
 let gameData: GameData;
 beforeAll(async () => {
@@ -217,6 +218,8 @@ describe('fuel ranges (one implementation, re-exported by logistics/freight.ts)'
         const top = b.topSpeed;
         const cruise = b.cruiseSpeed;
         const warp = b.warpSpeed;
+        // The loaded BaconSettings.txt reaches movement.ts's statics.
+        expect(baconMovementSettings.noFuelTopSpeedMultiplier).toBe(baconSettings.noFuelTopSpeedMultiplier);
         b.currentFuel = 0;
         b.currentEnergy = 0;
         checkFuelHandicap(g, b);

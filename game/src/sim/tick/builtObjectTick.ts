@@ -12,7 +12,6 @@ import {
     spanSeconds,
 } from './simTime';
 import { csInt } from '../builtObjectComponent';
-import { SHIP_MARKUP_FACTOR } from '../design';
 import { BuiltObjectMissionType, builtObjectMission } from '../missions/mission';
 import type { ShipGroup } from '../fleets/shipGroup';
 import { performFleetTasks, reviewFleetBonuses } from '../fleets/shipGroup';
@@ -55,6 +54,7 @@ import { healTroops } from '../combat/troopsRuntime';
 import { pirateBaseDiscovery, updateRaidCountdownBuiltObject } from '../pirates/pirateAI';
 import { reviewSystemVisibilityForPreWarpShip, scanArea, scanForLocations } from '../exploration';
 import { applyLocationEffects, doLocationEffects } from '../events';
+import { baconSettings } from '../data/baconSettings';
 
 /** Galaxy.ConditionCheckLimit (Galaxy.7.cs 569). */
 export function conditionCheckLimit(condition: boolean, maximumIterations: number, counter: { count: number }): boolean {
@@ -256,7 +256,7 @@ export function builtObjectDoTasks(galaxy: Galaxy, builtObject: BuiltObject, tim
         reviewCaptainBonuses(bo);
         checkForRefuelling(galaxy, bo, false);
         // 3804 AnnualSupportCost = (int)(Design.CalculateCurrentPurchasePrice(_Galaxy) / Galaxy.ShipMarkupFactor) + 1.
-        bo.annualSupportCost = csInt(bo.design.calculateCurrentPurchasePrice(galaxy) / SHIP_MARKUP_FACTOR) + 1;
+        bo.annualSupportCost = csInt(bo.design.calculateCurrentPurchasePrice(galaxy) / baconSettings.shipMarkupFactor) + 1;
         reviewSystemVisibilityForPreWarpShip(galaxy, bo);
         const timePassed3 = spanSeconds(tempNow, bo.lastLongTouch);
         updateRaidCountdownBuiltObject(galaxy, bo, timePassed3);

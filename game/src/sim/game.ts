@@ -20,7 +20,7 @@
 // Normal (0.5, SetTechTreeStartingDefaults) and Level 1-6. AI pirate factions
 // are generated when piratePrevalence > 0 (pirates.ts).
 
-import { STOCK_BACON_SETTINGS, baconInitializeSettings, resetBaconSettings } from './baconSettings';
+import { baconInitializeSettings, resetBaconSettings } from './baconSettings';
 import { applyVictoryConditionsToGalaxy, type VictoryConditions } from './victory';
 import { reviewComponentPrices, reviewResourcePrices } from './market';
 import { selectPopularDesignCandidates } from './independentTraders';
@@ -797,8 +797,7 @@ export function applyStartAutomationSettings(empire: Empire, o: Readonly<GameOpt
 // createGame: the sim entry point the wizard calls (non-pirate play).
 export function createGame(opts: CreateGameOptions): Game {
     const gd = opts.gameData;
-    // Game generation runs with the class defaults of the BaconSettings statics (BaconMain.BaconInitialize runs only
-    // once Main has the game, below at the end).
+    // BaconInitialize has not run while a fresh launch generates its galaxy: the Bacon statics are the C# defaults.
     resetBaconSettings();
     govs = gd.governments;
     setGovernmentsStatic(gd.governments);
@@ -1269,9 +1268,9 @@ export function createGame(opts: CreateGameOptions): Game {
     // Main.Part9.cs method_260 when no options file exists); AI empires keep the ctor's FullyAutomated.
     applyStartAutomationSettings(empire2, DEFAULT_GAME_OPTIONS_AUTOMATION);
     // TODO(port): the rest of CreateGameFromSettings (see header).
-    // Main.Part12.cs 3151 BaconMain.BaconInitialize(this) once Main starts the new game: BaconSettings.txt overrides
-    // (baconSettings.ts; the settings part only).
-    baconInitializeSettings(STOCK_BACON_SETTINGS); // TODO(port): the loaded BaconSettings.txt (dataload)
+    // Main.Part12.cs 3151 BaconMain.BaconInitialize(this) once Main starts the new game: the loaded BaconSettings.txt
+    // takes effect (baconSettings.ts; the settings part only).
+    baconInitializeSettings(galaxy, gd.baconSettings);
     stopAt('tail');
     return result();
 }

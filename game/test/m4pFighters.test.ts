@@ -33,6 +33,7 @@ import {
     manufactureRepairFighters,
     returnToCarrier,
 } from '../src/sim/combat/fighters';
+import { resetBaconSettings } from '../src/sim/baconSettings';
 
 let gameData: GameData;
 beforeAll(async () => {
@@ -118,6 +119,9 @@ describe('M4p unit: specifications and carriers', () => {
 
     it('ManufactureRepairFighters builds fighters one at a time (hand-worked C# float steps)', () => {
         const g = createTickGame(gameData).galaxy;
+        // Hand-worked with the C# class defaults (fighterBuildSpeedDivisor 2f, fighterBuildCost 0), not the installed
+        // BaconSettings.txt (40 / 6) that createGame applied.
+        resetBaconSettings();
         const port = playerCarrier(g);
         buildNewFighters(g, port);
         const fighters = fightersOf(port)!;
