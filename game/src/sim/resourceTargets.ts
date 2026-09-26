@@ -21,12 +21,14 @@ import type { Galaxy } from './galaxy';
 import { HabitatCategoryType, type Habitat } from './types';
 import type { Empire } from './empire';
 import { BuiltObjectSubRole } from './builtObjectTypes';
+import { BuiltObjectRole } from './data/designSpecifications';
 import { ComponentCategoryType } from './data/policies';
 import { findNewest } from './design';
 import { GalaxyLocationEffectType, GalaxyLocationType } from './galaxyLocation';
 import { netSort } from './netSort';
 import { csToInt32, resourceCurrentPrice, type BuiltObjectView } from './forceStructure';
 import { findNearestPirateFaction } from './pirates';
+import { PirateRelationType, obtainPirateRelation } from './pirateRelations';
 import type { BuiltObject } from './builtObject';
 
 // Galaxy.MaxSolarSystemSize (Galaxy.3.cs InitializeStatics).
@@ -273,12 +275,45 @@ export function determineHabitatsBuildingMiningStations(empire: Empire): Habitat
     return habitatPrioritizationList;
 }
 
-// Empire.9.cs CheckWhetherHabitatIsDangerous (4035).
-export function checkWhetherHabitatIsDangerous(galaxy: Galaxy, _empire: Empire, habitat: Habitat): boolean {
-    const habitat2 = galaxy.determineHabitatSystemStar(habitat);
-    // TODO(port): SystemVisibility[].Threats (pirate military ships/bases seen in the
-    // system, ReviewSystemThreats) — empty at game start.
-    void habitat2;
+/**
+ * Empire.9.cs 4035 CheckWhetherHabitatIsDangerous(habitat): a pirate military ship in the system's threat list (not a
+ * Protection pirate) or a visible attacking space creature near the habitat. The threat list is the empire's per-system
+ * cache written by the threat evaluations (combat/threats.ts). No Rnd.
+ */
+export function checkWhetherHabitatIsDangerous(galaxy: Galaxy, empire: Empire, habitat: Habitat): boolean {
+    if (habitat != null) {
+        const habitat2 = galaxy.determineHabitatSystemStar(habitat);
+        const sv = habitat2 != null ? empire.systemVisibility[habitat2.systemIndex] : undefined;
+        if (habitat2 != null && sv != null && sv.threats != null && sv.threats.length > 0) {
+            for (let i = 0; i < sv.threats.length; i++) {
+                const builtObject = sv.threats[i];
+                if (builtObject == null || builtObject.empire === null || builtObject.empire.pirateEmpireBaseHabitat === null || builtObject.role !== BuiltObjectRole.Military) continue;
+                const pirateRelation = obtainPirateRelation(empire, builtObject.empire);
+                if (pirateRelation.type === PirateRelationType.Protection) continue;
+                // 4054: unreachable after the Military filter above; kept as in the C#.
+                if ((builtObject.role as BuiltObjectRole) === BuiltObjectRole.Base) {
+                    const num = galaxy.calculateDistanceSquared(habitat.xpos, habitat.ypos, builtObject.xpos, builtObject.ypos);
+                    if (num < 1000000.0) return true;
+                    continue;
+                }
+                if (builtObject.warpSpeed > 0) return true;
+                if (builtObject.topSpeed > 0) {
+                    const num2 = galaxy.calculateDistanceSquared(habitat.xpos, habitat.ypos, builtObject.xpos, builtObject.ypos);
+                    if (num2 < 4000000.0) return true;
+                }
+            }
+        }
+        if (habitat2 != null && empire.visibility.checkSystemVisible(habitat2.systemIndex)) {
+            const creatures = galaxy.systems[habitat2.systemIndex].creatures ?? [];
+            for (let j = 0; j < creatures.length; j++) {
+                const creature = creatures[j];
+                if (creature.isVisible && creature.attackStrength > 0) {
+                    const num3 = galaxy.calculateDistance(habitat.xpos, habitat.ypos, creature.xpos, creature.ypos);
+                    if (num3 < creature.attackRange * 2) return true;
+                }
+            }
+        }
+    }
     return false;
 }
 
