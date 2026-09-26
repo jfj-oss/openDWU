@@ -17,6 +17,9 @@ import { OrderType, cargoGetCargo, cargoRemove, empireCreateOrder } from '../../
 import { EmpireMessageType } from '../../messages';
 import { RIM_RACE, rareGoodIds, resourceName, rimGoodIds, rimParam, rimTradeState, rimTraderEmpire, rimTraderPort } from './common';
 
+/** Import order lot size (units). */
+export const IMPORT_LOT = 100;
+
 /** The cargo list of the Concord's port (a space port's hold or the capital's). */
 export function rimTraderPortCargo(galaxy: Galaxy): CargoList | null {
     const port = rimTraderPort(galaxy);
@@ -152,8 +155,11 @@ export function rimTraderYear(galaxy: Galaxy): void {
             const stock = cargoGetCargo(cargo, id, r)?.amount ?? 0;
             let outstanding = 0;
             for (const o of orders.items) if (o.commodityResource !== null && o.commodityResource.resourceId === id) outstanding += o.amountOutstandingToContract;
-            const want = quota - stock - outstanding;
-            if (want > 0) empireCreateOrder(galaxy, r, port, new ResourceRef(id), want, true, OrderType.Standard);
+            // In lots of IMPORT_LOT units: the stock market check (CheckOrderIsAffordable) prices a whole order against
+            // the state treasury, so one large order would stall whenever the treasury is low.
+            for (let want = quota - stock - outstanding; want > 0; want -= IMPORT_LOT) {
+                empireCreateOrder(galaxy, r, port, new ResourceRef(id), Math.min(want, IMPORT_LOT), true, OrderType.Standard);
+            }
         }
         // d. Rare-goods stock move: colony extraction lands in the capital's hold; foreign buyers reach only the port.
         const capital = r.capital;
