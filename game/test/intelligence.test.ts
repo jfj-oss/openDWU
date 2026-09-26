@@ -62,7 +62,7 @@ function newAgent(g: Galaxy, empire: Empire, name: string): Character {
 function setup() {
     const { galaxy } = createTickGame(gameData);
     const [a, b] = aiEmpires(galaxy);
-    obtainDiplomaticRelation(a, b).type = DiplomaticRelationType.NoDiplomacy;
+    obtainDiplomaticRelation(a, b).type = DiplomaticRelationType.None;
     a.leader = null;
     a.espionageBonus = 0;
     b.reclusive = false;
