@@ -17,6 +17,7 @@ import { BuiltObjectRole } from '../data/designSpecifications';
 import { Cargo, CargoList, TroopList } from '../cargo';
 import { Population, PopulationList } from '../population';
 import type { Design } from '../design';
+import type { Fighter } from '../combat/fighters';
 import type { Empire } from '../empire';
 import type { Galaxy } from '../galaxy';
 import { clearPreviousMissionRequirements } from './assign';
@@ -118,8 +119,11 @@ export class Sector {
 
 /** C# StellarObject as the mission/command target base (BuiltObject | Habitat | Creature). */
 export type StellarObject = BuiltObject | Habitat | Creature;
-/** `object target` of the mission constructors / AssignMission overloads. */
-export type MissionTarget = StellarObject | ShipGroup | Sector;
+/** `object target` of the mission constructors / AssignMission overloads. Fighter : StellarObject (Fighter.cs 19) is
+ * only ever a player-order target (Main.Part7.cs 722-725 Escape from Attackers[0], Attack on a selected fighter); the
+ * mission constructor stores none of its fields for one (BuiltObjectMission.cs 446-473), AssignMission adds a pursuer
+ * (BuiltObject.2.cs 7681-7688). */
+export type MissionTarget = StellarObject | Fighter | ShipGroup | Sector;
 
 /** BuiltObjectMission.cs 52-53 `-2.00001E+09f` as the float32 it is. */
 export const MISSION_COORD_UNSET = Math.fround(-2.00001e9);

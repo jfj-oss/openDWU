@@ -160,8 +160,8 @@ export function assignMission(galaxy: Galaxy, bo: BuiltObject, missionType: Buil
         }
     }
     // 7690-7693
-    if (missionType === BuiltObjectMissionType.Refuel && target !== null && (isBuiltObject(target) || isHabitat(target) || isCreature(target))) {
-        // `target is StellarObject` (BuiltObject | Habitat | Creature).
+    if (missionType === BuiltObjectMissionType.Refuel && target !== null && (isBuiltObject(target) || isHabitat(target) || isCreature(target) || isFighter(target))) {
+        // `target is StellarObject` (BuiltObject | Habitat | Creature | Fighter).
         initiateRefuelData(galaxy, bo, target);
     }
     // 7694-7698

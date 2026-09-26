@@ -9,7 +9,8 @@ import { deserializeGame, serializeGame } from '../src/sim/save/gameSave';
 import { PlanetaryFacility } from '../src/sim/construction/facilities';
 import { WonderType } from '../src/sim/researchSystem';
 import { MIN_TIME, galaxyStarDate } from '../src/sim/tick/simTime';
-import { ShipActionType, createShipAction } from '../src/sim/player/shipAction';
+import { ShipAction, ShipActionType, createShipAction } from '../src/sim/player/shipAction';
+import { Fighter, identifyLatestFighterSpecification } from '../src/sim/combat/fighters';
 import { calculateValueOfCargoForEmpire, executeShipAction, findResalePriceOfShip } from '../src/sim/player/executeShipAction';
 import { ComponentStatus } from '../src/sim/builtObjectComponent';
 import { calculateCrewLevel } from '../src/sim/achievements';
@@ -247,5 +248,44 @@ describe('item 5: BaconMain.cs 160-213 GiveBuiltObject by a "Romulan" / "Mining 
         executeShipAction(g, player, ship, action, false);
         expect(player.stateMoney).toBe(giverMoney);
         expect(ship.empire).toBe(other);
+    });
+});
+
+describe('item 6: a Fighter is a StellarObject mission target (Fighter.cs 19; BuiltObject.2.cs 7681-7692; Main.Part7.cs 722, 1800)', { timeout: 600000 }, () => {
+    function setup() {
+        const g = createTickGame(gameData).galaxy;
+        const player = g.playerEmpire!;
+        const ship = player.builtObjects.find((b) => b.role === BuiltObjectRole.Military && b.builtAt === null && b.topSpeed > 0)!;
+        expect(ship).toBeDefined();
+        const carrier = g.builtObjects.find((b) => b !== null && b.empire !== null && b.empire !== player)!;
+        if (carrier.fighters === null) carrier.fighters = [];
+        const fighter = new Fighter(g, identifyLatestFighterSpecification(player)!, carrier);
+        fighter.xpos = ship.xpos + 500;
+        fighter.ypos = ship.ypos;
+        return { g, player, ship, fighter };
+    }
+    it('an Attack order on a fighter makes the ship a pursuer of the fighter (was a null target)', () => {
+        const { g, player, ship, fighter } = setup();
+        const r = executeShipAction(g, player, ship, ShipAction.forMission(BuiltObjectMissionType.Attack, fighter), false);
+        expect(r.ok).toBe(true);
+        expect(fighter.pursuers).toContain(ship);
+        const m = ship.mission as BuiltObjectMission;
+        expect(m.type).toBe(BuiltObjectMissionType.Attack);
+        // BuiltObjectMission.cs 446-473 stores nothing for a Fighter target.
+        expect(m.missionTargetStellarObject).toBeNull();
+    });
+    it('Escape with a fighter as Attackers[0] assigns Escape; a Repair order on a fighter does nothing (no ConstructionQueue)', () => {
+        const { g, player, ship, fighter } = setup();
+        ship.attackers = [fighter];
+        const r = executeShipAction(g, player, ship, ShipAction.forMission(BuiltObjectMissionType.Escape, null), false);
+        expect(r.ok).toBe(true);
+        expect((ship.mission as BuiltObjectMission).type).toBe(BuiltObjectMissionType.Escape);
+
+        const { g: g2, player: p2, ship: s2, fighter: f2 } = setup();
+        const before = s2.mission;
+        // Multi-selection (Main.Part7.cs 1800-1812): C# `Target is StellarObject` holds and Fighter.ConstructionQueue is
+        // null, so no mission (the TS used to fall into the nearest-repair-point branch).
+        executeShipAction(g2, p2, [s2], ShipAction.forMission(BuiltObjectMissionType.Repair, f2), false);
+        expect(s2.mission).toBe(before);
     });
 });

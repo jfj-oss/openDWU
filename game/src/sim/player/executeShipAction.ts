@@ -217,8 +217,9 @@ function isShipGroup(o: unknown): o is ShipGroup {
 function isEmpire(o: unknown): o is Empire {
     return o !== null && typeof o === 'object' && (o as Empire).empireId !== undefined && (o as Empire).pirateMissions !== undefined && !(o instanceof BuiltObjectClass);
 }
-function isStellarObject(o: unknown): o is StellarObject {
-    return o instanceof BuiltObjectClass || o instanceof Habitat || o instanceof Creature;
+/** C# `is StellarObject`: BuiltObject | Habitat | Creature | Fighter (Fighter.cs 19 Fighter : StellarObject). */
+function isStellarObject(o: unknown): o is StellarObject | Fighter {
+    return o instanceof BuiltObjectClass || o instanceof Habitat || o instanceof Creature || o instanceof Fighter;
 }
 /** PlanetaryFacilityDefinition (data/facilities.ts Facility record). */
 function isFacilityDefinition(o: unknown): o is Facility {
