@@ -1,0 +1,34 @@
+'Dark Farms: message texts (scenarioText tags). {n} items are filled by the scenario code.
+DarkFarms Faction Name;Harvester Collective
+DarkFarms Troop Name;Harvester Drone Group
+DarkFarms Sleeper Role;Sleeper (Harvester)
+DarkFarms Farm Suspected Row;Dark Farm (suspected)
+DarkFarms Farm Confirmed Row;Dark Farm (confirmed)
+DarkFarms Purge Action;Purge Dark Farm
+DarkFarms Hint Energy Title;Unexplained power draw
+DarkFarms Hint Energy;Unexplained power draw on {0}: the grid reports a deep load that no registered facility accounts for.
+DarkFarms Hint Freight Title;Freighter registrations
+DarkFarms Hint Freight;Private freighter registrations at {0} are up {1}% with no new construction yards.
+DarkFarms Rumour;Dock workers on {0} report freighters that never unload.
+DarkFarms Hint Missing Title;Sealed districts
+DarkFarms Hint Missing;Missing-persons reports and sealed districts on {0}. Local officials refuse to comment.
+DarkFarms Sleeper Found Title;Sleeper freighter found
+DarkFarms Sleeper Found;Our trace scanners have found weapons and troop bays hidden in the freighter {0}. Its manifests trace back to {1}.
+DarkFarms Farm Suspected Title;Dark Farm suspected
+DarkFarms Farm Suspected;Evidence points to a hidden machine factory - a Dark Farm - on {0}.
+DarkFarms Farm Confirmed Title;Dark Farm confirmed
+DarkFarms Farm Confirmed;Our agents have confirmed a Dark Farm on {0}, building robot troops and armed freighters in secret.
+DarkFarms Farm Confirmed Purge;Our agents have confirmed a Dark Farm on our colony {0}. Build up the garrison there and order a purge (colony orders: Purge Dark Farm) before it is ready.
+DarkFarms Turn Title;The machines rise
+DarkFarms Turn;The machines on {0} rise: the Harvester Collective has seized control from inside the colony and its freighters have turned their guns on us.
+DarkFarms Turn News;The machines on {0} rise: a hidden factory has unleashed the Harvester Collective.
+DarkFarms Fall Title;Colony lost to the Harvesters
+DarkFarms Fall;{0} has fallen to the Harvester Collective.
+DarkFarms Fall News;{0} of the {1} has fallen to the Harvester Collective.
+DarkFarms Blight Title;Harvester Blight
+DarkFarms Blight;Harvester ships have seeded a blight on {0}.
+DarkFarms Contained;The Harvester Collective has been destroyed. The Dark Farms are silent.
+DarkFarms Collapse;The Harvester Collective has lost its last world, but its factories may still be out there.
+DarkFarms Defeat;The Harvester Collective now holds {0}% of the galaxy's population. The age of the machines has begun.
+DarkFarms Victory Title;The Dark Farms are contained
+DarkFarms Defeat Title;The Harvesters prevail

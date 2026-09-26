@@ -23,6 +23,7 @@
 // designs (Galaxy.SelectRelativePoint) and method_593's build buttons (SelectRelativeHabitatSurfacePoint,
 // SelectRelativeParkingPoint). Only ever called from player input, never on the tick path.
 
+import { availableThreatActions } from '../scenario/threats/framework';
 import type { Galaxy } from '../galaxy';
 import { galaxyNow, spanSeconds } from '../tick/simTime';
 import type { Empire } from '../empire';
@@ -1641,6 +1642,14 @@ function habitatActionMenu(ctx: OrderMenuContext, habitat2: Habitat, items: Orde
         pushIf(items, pirateDefendMissionItem(ctx, habitat2));
         pushIf(items, pirateSmugglingMissionItem(ctx, habitat2));
         pushIf(items, colonyTaxMenu(ctx));
+        // Mod layer (19b/19f): scenario threat actions on the player's own colony (e.g. "Purge Dark Farm").
+        if (ctx.galaxy.scenario !== null) {
+            for (const t of availableThreatActions(ctx.galaxy, player, habitat2)) {
+                const a = createShipAction(ShipActionType.ScenarioThreatAction, habitat2);
+                a.extraData = t.kind;
+                items.push(leaf(t.kind, t.label, a));
+            }
+        }
     }
     if (player.pirateEmpireBaseHabitat !== null && habitat2.empire !== player) {
         const facilities = item310(ctx, 'Build planetary facilities', T('Build planetary facilities'), createShipAction(ShipActionType.ColonyBuildOptions, habitat2), true);

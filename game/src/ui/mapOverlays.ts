@@ -16,6 +16,8 @@ export interface MapOverlayState {
     freightFlows: boolean;
     tradeHubs: boolean;
     // [freightOverlay] end
+    /** Scenario threats (19b/19f): farms, nests, carriers the player knows of (framework threatKnownSites). */
+    threats: boolean;
 }
 
 /** A fresh overlay state. Task M3: `empireTerritory` starts on, matching the
@@ -41,6 +43,8 @@ export function createMapOverlayState(): MapOverlayState {
         freightFlows: false,
         tradeHubs: false,
         // [freightOverlay] end
+        // On: it only ever draws what the player has discovered in a scenario game (nothing without one).
+        threats: true,
     };
 }
 
@@ -62,6 +66,7 @@ export const OVERLAY_ROWS: Array<{ key: OverlayKey; label: string; mod?: boolean
     { key: 'freightFlows', label: 'Freight Flows', mod: true, panel: 'tradeFlows' },
     { key: 'tradeHubs', label: 'Trade Hubs', mod: true, panel: 'tradeFlows' },
     // [freightOverlay] end
+    { key: 'threats', label: 'Threats' },
 ];
 
 /** Toggle one overlay flag in place, then notify subscribers (task M3: lets

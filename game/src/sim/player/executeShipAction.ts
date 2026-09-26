@@ -16,6 +16,7 @@
 // Rnd: only through the called sim methods (mission constructors, SelectRelativeParkingPoint, AssignShipSystemPatrol's
 // Next, DeployVirus's Next(15, 20) + creature placement). Never on the tick path.
 
+import { runThreatAction } from '../scenario/threats/framework';
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import { AutomationLevel, BUILD_COLONY_SHIP_POPULATION_REQUIREMENT } from '../empire';
@@ -1000,6 +1001,10 @@ function executeForHabitat(ctx: Ctx, habitat4: Habitat, action: ShipAction, from
                 } else if (action.target2 === null || action.target2 === undefined) {
                     ctx.result.showSmugglingResourceSelection = true; // method_345()
                 }
+                break;
+            case ShipActionType.ScenarioThreatAction:
+                // Mod layer (19b/19f): a scenario threat's player action, applied at the command boundary (logged).
+                if (galaxy.scenario !== null && action.extraData !== null) runThreatAction(galaxy, empire, action.extraData, habitat4);
                 break;
             case ShipActionType.DeployVirus: {
                 // 1020-1043

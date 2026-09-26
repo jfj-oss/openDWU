@@ -213,6 +213,13 @@
       "anchor": "expect(a).toMatchPin('pirates.factions');"
     },
     {
+      "key": "darkFarms.seed1FarmColony",
+      "kind": "inline",
+      "file": "test/scenarioDarkFarms.test.ts",
+      "test": "spawn: one farm on an eligible non-capital colony after the year boundary",
+      "anchor": "expect(farm.habitat.name).toMatchPin('darkFarms.seed1FarmColony', 'S265 1');"
+    },
+    {
       "key": "startingColonies.alreadyInhabitedExceptions",
       "kind": "inline",
       "file": "test/startingColonies.test.ts",

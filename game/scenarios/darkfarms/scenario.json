@@ -1,0 +1,31 @@
+{
+  "id": "darkfarms",
+  "name": "Dark Farms",
+  "description": "End-game hidden threat. An overdeveloped colony may grow a hidden self-replicating factory that builds robot troops and armed sleeper freighters for free. When it turns, the Harvester Collective rises from inside the colony and spreads by invading weakly garrisoned worlds. Trace scanners and spies can find the farms first.",
+  "flags": [
+    { "name": "darkFarms", "label": "Dark Farms", "description": "Overdeveloped colonies can grow hidden Dark Farms.", "default": false },
+    { "name": "darkFarmsRobotArmy", "label": "Farms build a hidden robot army", "description": "Farms grow robot troops hidden on the planet.", "default": true },
+    { "name": "darkFarmsDirtyMethods", "label": "Blight bombardment, boarding, sabotage", "description": "The Harvesters use blight bombardment, assault pods and saboteur agents.", "default": true },
+    { "name": "darkFarmsGameEnd", "label": "Harvester victory ends the game", "description": "Containment or a Harvester majority ends the game.", "default": true }
+  ],
+  "params": [
+    { "name": "graceYears", "label": "Years before farms can appear", "default": 25, "min": 0, "max": 200 },
+    { "name": "spawnChancePerMille", "label": "Yearly spawn chance per eligible colony (per mille)", "default": 4, "min": 0, "max": 1000 },
+    { "name": "minDevelopment", "label": "Minimum colony development", "default": 70, "min": 0, "max": 200 },
+    { "name": "minPopulationMillions", "label": "Minimum colony population (millions)", "default": 3000, "min": 0, "max": 50000 },
+    { "name": "maxFarms", "label": "Maximum live farms", "default": 2, "min": 1, "max": 10 },
+    { "name": "troopsPerYear", "label": "Robot troops per farm per year", "default": 6, "min": 0, "max": 100 },
+    { "name": "sleepersPerYear", "label": "Sleeper freighters per farm per year", "default": 2, "min": 0, "max": 20 },
+    { "name": "sleeperTurnCount", "label": "Sleepers needed to turn", "default": 10, "min": 1, "max": 100 },
+    { "name": "turnFleetRatioPct", "label": "Sleepers needed as % of the host fleet", "default": 20, "min": 0, "max": 200 },
+    { "name": "maxTurnYears", "label": "Farm turns after this many years at the latest", "default": 12, "min": 1, "max": 100 },
+    { "name": "exposedTurnDays", "label": "Days from host exposure to the turn", "default": 60, "min": 0, "max": 720 },
+    { "name": "retakeDestroysFarm", "label": "Retaking the farm colony destroys the farm (1) or not (0)", "default": 1, "min": 0, "max": 1 },
+    { "name": "garrisonYears", "label": "Years of troop output kept as the farm colony's garrison after the turn", "default": 2, "min": 0, "max": 10 },
+    { "name": "troopStrength", "label": "Robot troop strength", "default": 60, "min": 10, "max": 500 },
+    { "name": "traceDetectPct", "label": "Trace scanner detection chance (%)", "default": 10, "min": 0, "max": 100 },
+    { "name": "agentDetectPct", "label": "Agent detection chance (%)", "default": 15, "min": 0, "max": 100 },
+    { "name": "blightChancePct", "label": "Blight chance per bombardment (%)", "default": 25, "min": 0, "max": 100 },
+    { "name": "defeatPopulationPct", "label": "Harvester share of population that ends the game (%)", "default": 40, "min": 5, "max": 100 }
+  ]
+}

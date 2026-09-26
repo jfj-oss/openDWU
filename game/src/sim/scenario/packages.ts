@@ -4,4 +4,5 @@
 import './charteredCompanies/charters';
 import './rimTrade/rimTrader';
 import './emergent/espionage';
+import './threats/darkFarms';
 export {};
