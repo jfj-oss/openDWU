@@ -47,7 +47,7 @@ import {
     type MissionTarget,
     type StellarObject,
 } from '../missions/mission';
-import { assignMission, clearPreviousMissionRequirements } from '../missions/assign';
+import { assignMission, clearPreviousMissionRequirements, queueMission } from '../missions/assign';
 import { BuiltObjectRole } from '../data/designSpecifications';
 import { BuiltObjectSubRole } from '../builtObjectTypes';
 import { netSort } from '../netSort';
@@ -1782,18 +1782,6 @@ export function shipGroupQueueMission(
     return true;
 }
 
-/**
- * BuiltObject.2.cs 7536/7541 QueueMission(missionType, target, target2, x, y, starDate, priority) → the 11-argument
- * overload: non-bases get a BuiltObjectMission (allowReprocessing true, allowBuiltObjectChanges false) appended to
- * _SubsequentMissions. Shared helper ported here (M4b owns BuiltObject missions; no TS port existed).
- */
-export function builtObjectQueueMission(galaxy: Galaxy, bo: BuiltObject, missionType: BuiltObjectMissionType, target: MissionTarget | null, target2: MissionTarget | null, x: number, y: number, starDate: number, priority: BuiltObjectMissionPriority): void {
-    if (bo.role !== BuiltObjectRole.Base) {
-        const item = new BuiltObjectMission(galaxy, bo, missionType, target, target2, priority, { x, y, starDate, allowReprocessing: true, allowBuiltObjectChanges: false });
-        (bo.subsequentMissions as BuiltObjectMission[]).push(item);
-    }
-}
-
 // ---------------------------------------------------------------------------------------------------------------
 // Location / lead ship (ShipGroup.cs 2487-2726)
 // ---------------------------------------------------------------------------------------------------------------
@@ -2484,7 +2472,7 @@ function assignMissionToShips(galaxy: Galaxy, shipGroup: ShipGroup, mission: Bui
                 });
                 missionOf(ship)!.isShipGroupMission = true;
             } else {
-                builtObjectQueueMission(galaxy, ship, mission.type, target, target2, x1, y1, mission.starDate, mission.priority);
+                queueMission(galaxy, ship, mission.type, target, target2, mission.priority, { x: x1, y: y1, starDate: mission.starDate });
             }
             ships = true;
         }

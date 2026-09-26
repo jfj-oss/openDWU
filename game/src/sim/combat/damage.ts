@@ -70,7 +70,7 @@ import { resolveTechBonusFactor } from './attackAI';
 import { shipGroupOf } from './threats';
 import { findNearestShipYard } from '../construction/empireConstruction';
 import { findNearestAvailableConstructionShip } from '../construction/empireConstruction';
-import { MAX_SOLAR_SYSTEM_SIZE } from '../movement';
+import { MAX_SOLAR_SYSTEM_SIZE, checkWithinDistancePotential } from '../movement';
 import { builtObjectCompleteTeardown } from './teardown';
 import { baconSettings } from '../data/baconSettings';
 
@@ -91,10 +91,8 @@ const INDEX_SIZE = 400_000;
 const MY_DAMAGE_MULTIPLIER = 3.0;
 const MY_ARMOR_REACTIVITY_MULTIPLIER = 2;
 
-/** Galaxy.cs CheckWithinDistancePotential(distance, x1, y1, x2, y2): a bounding-box pre-check (movement.ts keeps a private copy). */
-export function checkWithinDistancePotential(distance: number, x1: number, y1: number, x2: number, y2: number): boolean {
-    return Math.abs(x1 - x2) <= distance && Math.abs(y1 - y2) <= distance;
-}
+/** Galaxy.7.cs 747 CheckWithinDistancePotential (movement.ts; doubled distance, axes ORed). */
+export { checkWithinDistancePotential };
 
 // ---------------------------------------------------------------------------------------------------------------
 // Explosion.cs

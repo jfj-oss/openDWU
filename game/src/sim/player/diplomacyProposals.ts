@@ -22,8 +22,11 @@
 // Trade negotiation (task 17e2, player/tradeNegotiation.ts): OFFER_DEAL answers OFFER_DEAL_RESPONSE with the quick
 // map / tech offers as follow-ups (OFFER_DEAL_TERRITORYMAP / _GALAXYMAP / _COMPONENT:<id>); DEAL_BEGIN returns the
 // negotiation (ProposalResult.trade) the screen's trade panel works on.
-// TODO(port): the pirate conversation (Main.Part9.cs:175-206 PIRATE_* options, Main.Part10.cs:5088-5160) — pirate
-//   empires get no options here.
+// Pirate player (Main.Part9.cs:175-190): propose / cancel pirate protection (PIRATE_PROTECTIONPROPOSE_OFFER,
+// CANCELPIRATEPROTECTION; Main.Part10.cs:5088-5131) and the trade negotiation.
+// TODO(port): a non-pirate player speaking with a pirate faction (Main.Part9.cs:191-206: PIRATE_TRUCEPROPOSE /
+//   PIRATE_PROTECTIONPROPOSE, CANCELPIRATEPROTECTION, PIRATE_BUYINFO and their Main.Part9.cs:584-667 follow-ups) —
+//   no options are offered there yet.
 // TODO(port): the automation message box "Treaty Negotiation" (Main.Part10.cs:4150 GenerateAutomationMessageBox) is not
 //   shown; the caller answers it with `SubmitProposalOptions.disableTreatyAutomation`.
 
@@ -69,9 +72,14 @@ import { BuiltObjectRole } from '../data/designSpecifications';
 import { BuiltObjectSubRole } from '../builtObjectTypes';
 import { BuiltObjectMissionType, builtObjectMission } from '../missions/mission';
 import { beginTradeNegotiation, offerDealOptions, submitOfferDeal, type TradeNegotiation, type TradeNegotiationKind } from './tradeNegotiation';
+import { PirateRelationEvaluationType, PirateRelationType, changePirateEvaluation, changePirateRelation, obtainPirateRelation } from '../pirateRelations';
+import { acceptPirateProtection, calculatePirateProtectionPricePerMonth } from '../pirates/pirateRelationsAI';
+import { determineDesirePirateProtection } from '../pirates/pirateAI';
+import { price0 } from '../pirates/missionsMarket';
 
-/** The greeting-menu entry (Main.Part9.cs:208-249) an option sits under. FOLLOW_UP: a reply's own options. */
-export type ProposalMenu = 'TREATY_PROPOSAL' | 'GIFT_PROPOSE' | 'WARNING' | 'DEAL_BEGIN' | 'OFFER_DEAL' | 'FOLLOW_UP';
+/** The greeting-menu entry (Main.Part9.cs:208-249) an option sits under. FOLLOW_UP: a reply's own options. GREETING: a
+ *  greeting-menu entry that acts itself (the pirate player's protection entries, Main.Part9.cs:175-189). */
+export type ProposalMenu = 'TREATY_PROPOSAL' | 'GIFT_PROPOSE' | 'WARNING' | 'DEAL_BEGIN' | 'OFFER_DEAL' | 'GREETING' | 'FOLLOW_UP';
 
 export interface ProposalOption {
     /** Stable id: the DialogPartType, plus `:small` / `:medium` / `:large` for gifts and `:end-war` / `:lift-sanctions`
@@ -120,7 +128,7 @@ export interface ProposalResult {
     trade: TradeNegotiation | null;
 }
 
-const MENU_LABEL: Record<Exclude<ProposalMenu, 'FOLLOW_UP'>, string> = {
+const MENU_LABEL: Record<Exclude<ProposalMenu, 'FOLLOW_UP' | 'GREETING'>, string> = {
     TREATY_PROPOSAL: 'Change relationship',
     GIFT_PROPOSE: 'Send a gift',
     WARNING: 'Send a warning',
@@ -144,29 +152,61 @@ function option(
     enabled = true,
     hint = '',
 ): ProposalOption {
-    const menuLabel = menu === 'FOLLOW_UP' ? '' : MENU_LABEL[menu];
+    const menuLabel = menu === 'FOLLOW_UP' ? '' : menu === 'GREETING' ? label : MENU_LABEL[menu];
     return { id, part, menu, menuLabel, label, cost, related, enabled, hint };
 }
 
-/** Conversation available at all: a met, active, non-pirate empire other than the player (DiplomaticRelationListView.cs:167
- *  lists only met empires, and Speak needs a selected empire, Main.Part6.cs:2766). */
+/** Conversation available at all: a met, active empire other than the player (DiplomaticRelationListView.cs:164-176
+ *  lists the empires met by diplomatic or pirate relation, and Speak needs a selected empire, Main.Part6.cs:2766). */
 function canSpeak(galaxy: Galaxy, player: Empire, other: Empire): boolean {
     if (other === player || !other.active) return false;
     if (other === galaxy.independentEmpire) return false;
-    // TODO(port): pirate conversation (Main.Part9.cs:175-206).
-    if (other.pirateEmpireBaseHabitat !== null || player.pirateEmpireBaseHabitat !== null) return false;
     const rel = player.diplomaticRelations.byEmpire(other);
-    return rel !== null && rel.type !== DiplomaticRelationType.NotMet;
+    const met = rel !== null && rel.type !== DiplomaticRelationType.NotMet;
+    if (player.pirateEmpireBaseHabitat !== null) {
+        // Main.Part9.cs:175 pirate player branch (any other empire).
+        const pirateRelation = player.pirateRelations.getRelationByOtherEmpire(other);
+        return met || (pirateRelation !== null && pirateRelation.type !== PirateRelationType.NotMet);
+    }
+    // TODO(port): a non-pirate player speaking with a pirate faction (Main.Part9.cs:191-206).
+    if (other.pirateEmpireBaseHabitat !== null) return false;
+    return met;
+}
+
+/**
+ * Main.Part9.cs:175-190 (GREETING_* case, `_Game.PlayerEmpire.PirateEmpireBaseHabitat != null`): a pirate player
+ * proposes protection (a pirate other: the truce "Propose Pirate Protection Pirates", cost 0; else priced
+ * CalculatePirateProtectionPricePerMonth, "0"-formatted) or cancels it, and may negotiate a trade.
+ */
+function piratePlayerOptions(galaxy: Galaxy, player: Empire, other: Empire): ProposalOption[] {
+    const list: ProposalOption[] = [];
+    // Main.Part9.cs:64-67: method_238 obtains the diplomatic relation when the other empire is not a pirate.
+    if (other.pirateEmpireBaseHabitat === null) obtainDiplomaticRelation(player, other);
+    const pirateRelation = obtainPirateRelation(player, other);
+    if (pirateRelation.type === PirateRelationType.None) {
+        if (other.pirateEmpireBaseHabitat !== null) {
+            list.push(option('PIRATE_PROTECTIONPROPOSE_OFFER', 'PIRATE_PROTECTIONPROPOSE_OFFER', 'GREETING', 'Propose Pirate Protection Pirates', null, 0.0));
+        } else {
+            const cost2 = calculatePirateProtectionPricePerMonth(galaxy, player, other).price;
+            list.push(option('PIRATE_PROTECTIONPROPOSE_OFFER', 'PIRATE_PROTECTIONPROPOSE_OFFER', 'GREETING', gameText('Propose Pirate Protection', price0(cost2)), null, cost2));
+        }
+    } else {
+        list.push(option('CANCELPIRATEPROTECTION', 'CANCELPIRATEPROTECTION', 'GREETING', 'Cancel Pirate Protection Option'));
+    }
+    list.push(option('DEAL_BEGIN:trade', 'DEAL_BEGIN', 'DEAL_BEGIN', 'Negotiate a trade proposal...'));
+    return list;
 }
 
 /**
  * Port of Main.Part9.cs:46 method_238 for the greeting menu (GREETING_* case, non-pirate branch, :208-249) and its
- * TREATY_PROPOSAL (:339-455), GIFT_PROPOSE (:522-540) and WARNING (:541-558) sub-menus. Empty when the player cannot
- * speak with `other` (not met, pirate, inactive).
+ * TREATY_PROPOSAL (:339-455), GIFT_PROPOSE (:522-540) and WARNING (:541-558) sub-menus; a pirate player gets the
+ * :175-190 branch (piratePlayerOptions). Empty when the player cannot speak with `other` (not met, inactive, or a pirate
+ * faction spoken to by a non-pirate player — TODO(port) above).
  */
 export function listProposals(galaxy: Galaxy, player: Empire, other: Empire): ProposalOption[] {
     const list: ProposalOption[] = [];
     if (!canSpeak(galaxy, player, other)) return list;
+    if (player.pirateEmpireBaseHabitat !== null) return piratePlayerOptions(galaxy, player, other);
     const diplomaticRelation = obtainDiplomaticRelation(player, other);
 
     // TREATY_PROPOSAL (Main.Part9.cs:339).
@@ -397,6 +437,7 @@ function refused(hint: string): ProposalResult {
 const AUTOMATION_PROMPT_PARTS: ReadonlySet<DialogPartType> = new Set<DialogPartType>([
     'OFFER_FREETRADE', 'OFFER_PROTECTORATE', 'OFFER_MUTUALDEFENSE', 'CANCELTREATY', 'SUBJUGATION_RELEASE',
     'MININGRIGHTS_OFFER', 'MININGRIGHTS_CANCEL', 'MILITARYREFUELING_OFFER', 'MILITARYREFUELING_CANCEL',
+    'PIRATE_PROTECTIONPROPOSE_OFFER', 'CANCELPIRATEPROTECTION',
 ]);
 
 /**
@@ -733,6 +774,25 @@ function evaluateProposal(galaxy: Galaxy, initiator: Empire, empire: Empire, opt
             reply('GREETING_ANGRY');
             result.accepted = true;
             break;
+        case 'PIRATE_PROTECTIONPROPOSE_OFFER': // Main.Part10.cs:5088
+            if (determineDesirePirateProtection(galaxy, empire, initiator)) {
+                acceptPirateProtection(galaxy, empire, initiator, option0.cost);
+                reply('PIRATE_PROTECTIONPROPOSE_OFFER_ACCEPT');
+                result.accepted = true;
+            } else {
+                reply('PIRATE_PROTECTIONPROPOSE_OFFER_REJECT');
+            }
+            break;
+        case 'CANCELPIRATEPROTECTION': { // Main.Part10.cs:5103
+            reply(num === -1 ? 'CANCELTREATY_RESPONSE_ANGRY' : num === 0 ? 'CANCELTREATY_RESPONSE_NEUTRAL' : 'CANCELTREATY_RESPONSE_FRIENDLY');
+            result.accepted = true;
+            changePirateRelation(initiator, empire, PirateRelationType.None, now);
+            // 5123-5128: `if (initiator != null)` (always true here).
+            const pirateRelation = obtainPirateRelation(empire, initiator);
+            const evaluationChangeAmount = pirateRelation.calculateOffenseOverCancellingProtection(now);
+            changePirateEvaluation(empire, initiator, evaluationChangeAmount, PirateRelationEvaluationType.ProtectionCancelled);
+            break;
+        }
         case 'OFFER_DEAL': // Main.Part10.cs:4227
             reply('OFFER_DEAL_RESPONSE');
             result.followUps = followUpOptions('OFFER_DEAL_RESPONSE', empire, galaxy, initiator);

@@ -293,6 +293,18 @@ export function canBuildDesign(empire: Empire, design: Design, includeSizeCheck 
     return true;
 }
 
+/**
+ * DesignList.cs 375 / 388 GetBuildableDesignsBySubRoles(subRoles, empire[, colony]): non-obsolete designs of the
+ * sub-roles that empire.CanBuildDesign(design, true, colony) (colony null for the two-argument overload). No Rnd.
+ */
+export function getBuildableDesignsBySubRoles(designs: readonly Design[], subRoles: readonly BuiltObjectSubRole[], empire: Empire, colony: Habitat | null = null): Design[] {
+    const result: Design[] = [];
+    for (const design of designs) {
+        if (subRoles.includes(design.subRole) && !design.isObsolete && canBuildDesign(empire, design, true, colony)) result.push(design);
+    }
+    return result;
+}
+
 // --- ResearchSystem static tech points -------------------------------------------------
 // ResearchSystem.cs static int[] ComponentMaxTechPoints / ComponentMinTechPoints (53-54),
 // filled once by CalculateComponentMinMaxTechPoints(baseTechCost, ResearchNodeDefinitionsStatic)
