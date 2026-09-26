@@ -9,6 +9,7 @@ import type { Race } from '../data/races';
 import type { Habitat } from '../types';
 import type { Empire } from '../empire';
 import type { BuiltObject } from '../builtObject';
+import type { GalaxyLocation } from '../galaxyLocation';
 import { YEAR_LENGTH } from '../galaxyTime';
 import { galaxyStarDate } from '../tick/simTime';
 
@@ -238,6 +239,12 @@ export function scenarioEmit<E extends ScenarioEventName>(galaxy: Galaxy, event:
 export interface ScenarioQueries {
     /** taxes.ts empireApprovalRating(h) (Habitat.cs approval of its empire): the rating; an additive term goes here. */
     empireApprovalRating: { value: number; args: { habitat: Habitat; empire: Empire | null } };
+    /**
+     * movement.ts detectHyperDeny's RestrictedArea/HyperjumpDisabled location loop (BuiltObject.1.cs 1737): true when
+     * `builtObject` should ignore `location`'s hyperjump-disable effect (19f: the Silence — pirate ships are immune
+     * inside its zone). Default false (not exempt); never draws.
+     */
+    hyperDenyExempt: { value: boolean; args: { builtObject: BuiltObject; location: GalaxyLocation } };
 }
 export type ScenarioQueryName = keyof ScenarioQueries;
 
