@@ -356,3 +356,33 @@ describe('2-year seed-1 run with the flag on', () => {
         expect(game.galaxy.rnd.drawCount).not.toBe(ref.game.galaxy.rnd.drawCount);
     }, 1200000);
 });
+
+describe('UI view model (pure)', () => {
+    it('columns, politics block and stability row show only with the flag on', async () => {
+        const { politicsVisible, politicsRowCells, politicsDetail, stabilityRow, governorLoyaltyText } = await import('../src/ui/emergentPolitics');
+        const on = politicsGame();
+        const g = on.galaxy;
+        const e = g.playerEmpire!;
+        expect(politicsVisible(g)).toBe(true);
+        const c = getEmpireCharacters(e).find((x) => x.role !== CharacterRole.Leader)!;
+        const en = politicsEntry(g, c);
+        en.loyalty = 20;
+        en.ambition = 80;
+        en.lastCauses = [{ cause: 'Approval', amount: -3 }, { cause: 'Drift', amount: 1 }];
+        expect(politicsRowCells(g, c)).toEqual({ loyalty: '20', ambition: '80', risk: true });
+        expect(politicsRowCells(g, e.leader!).loyalty).toBe('—');
+        const d = politicsDetail(g, e, c)!;
+        expect(d.causes[0]).toMatch(/^Approval −3\.0$/);
+        expect(d.buttons.map((b) => [b.action, b.enabled])).toEqual([
+            ['honour', e.stateMoney >= Math.trunc(0) && d.buttons[0].reason === ''],
+            ['arrest', false],
+            ['purge', true],
+        ]);
+        expect(stabilityRow(g, e)!.label).toBe('Stability');
+        expect(governorLoyaltyText(g, e.capital!)).toBeNull();
+        const off = createScenarioGame(base, { scenario: 'emergent', flags: { internalPolitics: false } }).game.galaxy;
+        expect(politicsVisible(off)).toBe(false);
+        expect(stabilityRow(off, off.playerEmpire!)).toBeNull();
+        expect(politicsDetail(off, off.playerEmpire!, getEmpireCharacters(off.playerEmpire!)[0])).toBeNull();
+    });
+});

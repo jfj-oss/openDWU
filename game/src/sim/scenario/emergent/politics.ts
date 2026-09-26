@@ -126,21 +126,23 @@ export function isPoliticalEmpire(galaxy: Galaxy, e: Empire | null): e is Empire
     return e !== null && e.active && e !== galaxy.independentEmpire && e.pirateEmpireBaseHabitat === null;
 }
 
-/** Roles that can plot. */
-const PLOT_ROLES: readonly CharacterRole[] = [
+/** Roles that can plot (built lazily: this module loads inside an import cycle with characters.ts). */
+let plotRoles: readonly CharacterRole[] | null = null;
+const PLOT_ROLES = (): readonly CharacterRole[] => (plotRoles ??= [
     CharacterRole.Ambassador,
     CharacterRole.ColonyGovernor,
     CharacterRole.FleetAdmiral,
     CharacterRole.TroopGeneral,
     CharacterRole.IntelligenceAgent,
     CharacterRole.Scientist,
-];
+]);
 
 export function canPlot(c: Character): boolean {
-    return PLOT_ROLES.includes(c.role);
+    return PLOT_ROLES().includes(c.role);
 }
 
-const AMBITION_TRAITS: ReadonlyMap<CharacterTraitType, number> = new Map([
+let ambitionTraits: ReadonlyMap<CharacterTraitType, number> | null = null;
+const AMBITION_TRAITS = (): ReadonlyMap<CharacterTraitType, number> => (ambitionTraits ??= new Map([
     [CharacterTraitType.Expansionist, 10],
     [CharacterTraitType.Famous, 10],
     [CharacterTraitType.EloquentSpeaker, 10],
@@ -157,7 +159,7 @@ const AMBITION_TRAITS: ReadonlyMap<CharacterTraitType, number> = new Map([
     [CharacterTraitType.Lazy, -10],
     [CharacterTraitType.Measured, -5],
     [CharacterTraitType.Weak, -10],
-]);
+]));
 
 const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
 
@@ -165,7 +167,7 @@ const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.m
 export function characterAmbition(c: Character): number {
     if (c.role === CharacterRole.Leader || c.role === CharacterRole.PirateLeader) return 0;
     let a = 30 + Math.min(20, c.getSkillLevelTotal() / 10);
-    for (const t of c.traits) a += AMBITION_TRAITS.get(t) ?? 0;
+    for (const t of c.traits) a += AMBITION_TRAITS().get(t) ?? 0;
     return clamp(a, 0, 100);
 }
 
@@ -585,7 +587,7 @@ export function honourCost(c: Character): number {
     return c.empire !== null ? Math.trunc(getCharacterValue(c) / 2) : 0;
 }
 
-function raisePlotDecision(galaxy: Galaxy, empire: Empire, c: Character): ScenarioDecision {
+export function raisePlotDecision(galaxy: Galaxy, empire: Empire, c: Character): ScenarioDecision {
     const cost = honourCost(c);
     return raiseScenarioDecision(galaxy, empire, {
         kind: PLOT_DECISION,

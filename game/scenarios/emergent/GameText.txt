@@ -14,7 +14,7 @@ Emergent Coup Success News;{0} {1} has seized power in the {2} in a coup and con
 Emergent Coup Success Title;Coup!
 Emergent Coup Success;{0} {1} has overthrown our government and consolidates power as our new ruler. Government: {2}.
 Emergent Secession Title;Secession
-Emergent Secession;Governor {0} of {1} has declared independence: {2} colonies now form the {3}, led by the former governor.
+Emergent Secession;Governor {0} of {1} has declared independence and founded the {3}, led by the former governor ({2} colonies lost).
 Emergent Secession News;Governor {0} has led {1} out of the {2}, founding the {3}.
 Emergent Secession Leave;Governor {0} has taken {1} out of our empire: it is now independent.
 Emergent Defection Title;Defection
