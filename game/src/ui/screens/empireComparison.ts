@@ -38,6 +38,7 @@ import {
 } from '../../sim/achievements';
 import type { Achievement, EmpireScore } from '../../sim/achievements';
 import { privateAnnualRevenue, totalColonyStrategicValue } from '../../sim/forceStructure';
+import { musicGameEnded } from '../../audio/musicPlayer'; // [audio]
 import { militaryPotency } from '../../sim/diplomacyTick';
 import { DiplomaticRelationType } from '../../sim/diplomacy';
 import { resolveStarDateDescription } from '../../sim/galaxyTime';
@@ -335,6 +336,9 @@ export function installGameEndHandler(galaxy: Galaxy, time: { paused: boolean })
         time.paused = true; // method_154
         doGameEnd(galaxy, e);
         reviewAchievements(galaxy); // method_436's first line
+        // [audio] begin — Main.Part12.cs:3428 DoGameEnd → musicPlayer_0.StartTheme().
+        if (typeof document !== 'undefined') musicGameEnded();
+        // [audio] end
         if (typeof document !== 'undefined') showGameEndBanner(galaxy, time, e);
     });
 }

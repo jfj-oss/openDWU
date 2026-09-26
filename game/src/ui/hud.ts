@@ -26,6 +26,9 @@ import { helpTopicKeyForHabitat, toggleGalactopedia } from './screens/galactoped
 import { toggleEmpiresList } from './screens/empiresList';
 import { toggleExpansionPlanner } from './screens/expansionPlanner'; // [16a]
 import { setEmpireSummarySource, getEmpireSummarySource, toggleEmpireSummary } from './screens/empireSummary';
+// [leftovers] begin
+import { toggleGalacticHistory } from './screens/galacticHistory';
+// [leftovers] end
 import { toggleColoniesList } from './screens/coloniesList';
 import { toggleShipDesigns } from './screens/shipDesigns'; // [16b]
 import { toggleShipsAndBasesList } from './screens/shipsAndBasesList';
@@ -700,6 +703,26 @@ function buildTopBarButton(name: string, wiring: HudWiring): HTMLElement {
             return;
         }
         // [intel] end
+
+        // [leftovers] begin
+        // btnGalacticHistory → Galactic History (Main.Part3.cs:46 btnGalacticHistory_Click → method_528("galactichistory")).
+        if (name === 'btnGalacticHistory') {
+            const src = getEmpireSummarySource();
+            if (src) {
+                toggleGalacticHistory({
+                    empire: src.empire,
+                    // btnMessageHistoryGoto_Click: method_156(x, y) + method_4(1.0).
+                    onGoTo: (x, y) => {
+                        const cam = wiring.camera;
+                        if (!cam) return;
+                        cam.centerOn(x, y);
+                        cam.zoomAt(PLANET_LEVEL_ZOOM, cam.width / 2, cam.height / 2);
+                    },
+                });
+            }
+            return;
+        }
+        // [leftovers] end
 
         const screen = topBarScreen(name);
         if (screen === 'colonies') {

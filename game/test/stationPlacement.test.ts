@@ -167,7 +167,7 @@ describe('M3d station placement at game start (tech 0.5, age 1)', () => {
         // (re-pinned M4u: game-start character reviews (ReviewCharacterTraits Rnd) and ReviewEmpireEvents (DoRaceEvent Rnd) move the empires and the station points.)
         // (re-pinned M4m: the game-start Empire.DoTasks runs the military AI — IdentifyMilitaryObjectives Next(0, EmpireEvaluations.Count), CheckTemptingTargets Next(0, Empires.Count), DetermineRandomAttacks Next(0, n) — which shifts the Rnd stream.)
         // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
-        // Moved #6bc38fff6b → #faf29a9b13: fix9 A4: CheckWhetherHabitatIsDangerous (Empire.9.cs 4035) ported (was a stub returning false): pirate warships in the system threat list / attacking creatures now filter colonization and mining-station targets (2026-09-26)
+        // Moved #6bc38fff6b → #faf29a9b13: fix9 A4 (after merging main): CheckWhetherHabitatIsDangerous (Empire.9.cs 4035) ported (was a stub returning false): pirate warships in the system threat list / attacking creatures now filter colonization and mining-station targets (2026-09-26)
         expect(summary(g)).toMatchPin('stationPlacement.bases');
         // Rnd per empire and phase (C# order, Start.2.cs 1136-1318).
         const port = ['NextDouble', 'NextDouble', 'NextDouble']; // SelectRelativePoint (range + heading), SelectRandomHeading

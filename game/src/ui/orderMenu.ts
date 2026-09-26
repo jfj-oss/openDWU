@@ -13,6 +13,7 @@ import { ShipGroup } from '../sim/fleets/shipGroup';
 import { BuiltObjectMissionType } from '../sim/missions/mission';
 import { resolveGameText, tryGetText } from '../sim/textResolver';
 import { ShipAction, ShipActionType, isSystemInfo } from '../sim/player/shipAction';
+import { playAttackClick, playOrderSting } from '../audio/gameAudio'; // [audio]
 import { executeShipAction, type ShipActionMouseHoverMode, type ShipActionSelection } from '../sim/player/executeShipAction';
 import {
     applyAutomationOff,
@@ -338,6 +339,9 @@ export function installOrderUi(d: OrderUiDeps, view: OrderMainView, camera: Orde
         const hover = resolveHoverOrder({ galaxy, empire, selected, x, y, target: hoverOrderTarget(target) /* [fix6ui] N5 */, shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey });
         const r = rightClickOrder(galaxy, empire, selected, hover.action, { ctrl: e.ctrlKey, alt: e.altKey }, view.zoomFactor);
         if (r.kind === 'order') {
+            // [audio] begin — Main.Part10.cs:3401 / 3539 method_0(ResolveAttackClick()) for an attack / bombard order.
+            if (r.attackClick) playAttackClick();
+            // [audio] end
             bar?.render(true);
         } else if (r.kind === 'idleShips') {
             openOrderMenu(r.items, e.clientX, e.clientY, { onPick: (item) => item.select !== undefined && deps?.select(item.select) });
@@ -415,6 +419,7 @@ export async function performAction(action: ShipAction, fromActionMenu: boolean,
     if (deps === null) return;
     const { galaxy, empire } = deps;
     const selected = deps.getSelected();
+    playOrderSting(galaxy, empire, selected, action); // [audio] Main.Part7.cs:504 / 515 investigate → discovery.mp3
     const r = executeShipAction(galaxy, empire, selected, action, fromActionMenu, { actionMenuPoint });
     if (r.message !== undefined && r.message !== '') showToast(resolveGameText(r.message));
     if (r.mouseHoverMode !== undefined && selected instanceof ShipGroup) {

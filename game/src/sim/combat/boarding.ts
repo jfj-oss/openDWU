@@ -44,7 +44,7 @@ import { strategicValue } from '../territory';
 import { PreWarpProgressEventType } from '../exploration';
 import { checkSendPreWarpProgressEventMessage } from '../events';
 import { MAX_SOLAR_SYSTEM_SIZE } from '../movement';
-import { calculateBoardingDefenseValue, determineAngle, notifyOfAttackHabitat, resolveTechBonusFactor, shouldAttack } from './attackAI';
+import { calculateBoardingDefenseValue, determineAngle, empireRaidStrengthFactor, notifyOfAttackHabitat, resolveTechBonusFactor, shouldAttack } from './attackAI';
 import { builtObjectThreats } from './threats';
 import { builtObjectCalculateAssaultPodAttackValues } from '../fleets/shipGroupTasks';
 import {
@@ -76,11 +76,8 @@ export function assaultPodStrengthMultiplier(firingShip: BuiltObject): number {
     return num;
 }
 
-/** Empire.RaidStrengthFactor (Empire.cs 431; SetPirateFactionModifiers, 1.0 for non-pirates; 0 reads as 1). */
-export function empireRaidStrengthFactor(empire: Empire): number {
-    const f = empire.pirateFactionModifiers !== null ? empire.pirateFactionModifiers.raidStrengthFactor : 1.0;
-    return f === 0.0 ? 1.0 : f;
-}
+/** Empire.RaidStrengthFactor: attackAI.ts (re-exported for invasion.ts). */
+export { empireRaidStrengthFactor };
 
 function attackersOf(o: BuiltObject | Habitat): StellarObject[] | null {
     return o.attackers as StellarObject[] | null;
