@@ -32,6 +32,10 @@ export interface UiSettings {
     /** Let a thinking model reason first (Ollama `think`): better at "the most distant …" style orders, ~10x slower. */
     advisorThink: boolean;
     // [advisor] end
+
+    // [diplovoice] begin — 18b: AI empires' diplomatic replies voiced by the same local model (off unless it answers).
+    diplomatVoice: boolean;
+    // [diplovoice] end
 }
 
 const STORAGE_KEY = 'dwu-ui-settings';
@@ -52,6 +56,10 @@ export const DEFAULT_SETTINGS: UiSettings = {
     advisorApi: 'auto',
     advisorThink: false,
     // [advisor] end
+
+    // [diplovoice] begin
+    diplomatVoice: true,
+    // [diplovoice] end
 };
 
 /** Minimal storage shape (localStorage-compatible). */
@@ -101,6 +109,10 @@ export function loadSettings(): UiSettings {
         if (parsed.advisorApi === 'auto' || parsed.advisorApi === 'ollama' || parsed.advisorApi === 'openai') out.advisorApi = parsed.advisorApi;
         if (typeof parsed.advisorThink === 'boolean') out.advisorThink = parsed.advisorThink;
         // [advisor] end
+
+        // [diplovoice] begin
+        if (typeof parsed.diplomatVoice === 'boolean') out.diplomatVoice = parsed.diplomatVoice;
+        // [diplovoice] end
     } catch {
         // Corrupt blob: keep the defaults.
     }

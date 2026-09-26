@@ -122,20 +122,31 @@ export function extractReplyText(api: AdvisorApi, body: unknown): string {
 export async function requestAdvisor(
     cfg: { endpoint: string; model: string; api: AdvisorApi; think?: boolean },
     messages: ChatMessage[],
-    opts: { fetchImpl?: FetchLike; timeoutMs?: number; signal?: AbortSignal; now?: () => number } = {},
+    opts: {
+        fetchImpl?: FetchLike;
+        timeoutMs?: number;
+        signal?: AbortSignal;
+        now?: () => number;
+        /** Response JSON schema (default: the advisor's); 18b diplomat voice passes its own. */
+        schema?: object;
+        schemaName?: string;
+        temperature?: number;
+    } = {},
 ): Promise<AdvisorReply> {
     const fetchImpl = opts.fetchImpl ?? fetch;
     const now = opts.now ?? (() => performance.now());
     const url = cfg.api === 'ollama' ? `${base(cfg.endpoint)}/api/chat` : `${base(cfg.endpoint)}/v1/chat/completions`;
+    const schema = opts.schema ?? ADVISOR_RESPONSE_SCHEMA;
+    const temperature = opts.temperature ?? 0.2;
     const body =
         cfg.api === 'ollama'
-            ? { model: cfg.model, messages, format: ADVISOR_RESPONSE_SCHEMA, stream: false, think: cfg.think === true, options: { temperature: 0.2 } }
+            ? { model: cfg.model, messages, format: schema, stream: false, think: cfg.think === true, options: { temperature } }
             : {
                   model: cfg.model,
                   messages,
-                  temperature: 0.2,
+                  temperature,
                   stream: false,
-                  response_format: { type: 'json_schema', json_schema: { name: 'advisor_response', schema: ADVISOR_RESPONSE_SCHEMA } },
+                  response_format: { type: 'json_schema', json_schema: { name: opts.schemaName ?? 'advisor_response', schema } },
               };
     const t = withTimeout(opts.timeoutMs ?? 120000, opts.signal);
     const t0 = now();

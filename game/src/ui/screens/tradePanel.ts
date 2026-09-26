@@ -23,6 +23,9 @@ import {
     type TradeOfferResult,
     type TradeTree,
 } from '../../sim/player/tradeNegotiation';
+// [diplovoice] begin
+import { counterNote, voicedLineToggle, voicingIndicator, type VoicedReply } from '../diplomatVoice';
+// [diplovoice] end
 
 export interface TradePanelOptions {
     galaxy: Galaxy;
@@ -33,7 +36,23 @@ export interface TradePanelOptions {
     expireMessagesFor?: (empire: Empire) => void;
     /** Called after the deal changed hands or on close, so the opener can refresh. */
     onChange?: () => void;
+    // [diplovoice] begin
+    /** 18b: voice the other empire's reply to a proposed deal (null = not voiced; the original line stays). */
+    voice?: (ctx: TradeVoiceContext, isCurrent: () => boolean, onStart: () => void) => Promise<VoicedReply | null>;
+    // [diplovoice] end
 }
+
+// [diplovoice] begin
+export interface TradeVoiceContext {
+    /** Offered-items labels of the other empire's tree (what the player asks for) and the player's tree. */
+    theyGive: string[];
+    weGive: string[];
+    accepted: boolean;
+    reply: DialogPartType | null;
+    /** The original dialog line. */
+    original: string;
+}
+// [diplovoice] end
 
 interface OpenPanel {
     close: () => void;
@@ -106,6 +125,10 @@ function createTradePanel(opts: TradePanelOptions): OpenPanel {
     let optionLabel = 'Would you accept this trade?';
     let done = false;
     let builtKey = '';
+    // [diplovoice] begin
+    let voice: { result: TradeOfferResult; pending: boolean; reply: VoicedReply | null; view: { showOriginal: boolean } } | null = null;
+    let closed = false;
+    // [diplovoice] end
 
     function sideKey(tree: TradeTree): string {
         const rows = tradeTreeRows(galaxy, tree);
@@ -187,7 +210,18 @@ function createTradePanel(opts: TradePanelOptions): OpenPanel {
         const text = el('span', 'trade-reply-text', last !== null && !last.ok ? last.message : '…');
         reply.appendChild(text);
         body.appendChild(reply);
-        if (replyPart !== null && (last === null || last.ok)) {
+        // [diplovoice] begin
+        const v = voice !== null && voice.result === last ? voice : null;
+        const isVoiced = v !== null && !v.pending && v.reply !== null && v.reply.voiced;
+        if (isVoiced) {
+            reply.appendChild(voicedLineToggle(text, v.reply!.text, v.reply!.original, v.view));
+            const note = counterNote(v.reply!.counter);
+            if (note !== null) body.appendChild(note);
+        } else if (v?.pending === true) {
+            reply.appendChild(voicingIndicator());
+        }
+        // [diplovoice] end
+        if (!isVoiced && replyPart !== null && (last === null || last.ok)) {
             const part = replyPart;
             void opts.resolveReply(part, other).then((s) => {
                 if (replyPart === part) text.textContent = s;
@@ -210,6 +244,11 @@ function createTradePanel(opts: TradePanelOptions): OpenPanel {
 
     // Main.Part10.cs:4334 DEAL_OFFER.
     function propose(): void {
+        // [diplovoice] begin
+        const label = (t: (typeof negotiation.us.selected)[number]): string => tradeLabelText(tradeItemLabel(galaxy, t, true, true));
+        const theyGive = negotiation.them.selected.map(label);
+        const weGive = negotiation.us.selected.map(label);
+        // [diplovoice] end
         const r = submitTradeOffer(galaxy, negotiation);
         last = r;
         replyPart = r.reply;
@@ -218,6 +257,26 @@ function createTradePanel(opts: TradePanelOptions): OpenPanel {
         if (r.expireMessagesFor !== null) opts.expireMessagesFor?.(r.expireMessagesFor);
         opts.onChange?.();
         render(true);
+        // [diplovoice] begin
+        if (opts.voice !== undefined && r.ok && r.reply !== null) {
+            const voiceFn = opts.voice;
+            const part = r.reply;
+            void opts.resolveReply(part, other).then(async (original) => {
+                if (closed || last !== r) return;
+                const state = { result: r, pending: false, reply: null as VoicedReply | null, view: { showOriginal: false } };
+                voice = state;
+                const current = (): boolean => !closed && last === r;
+                const answer = await voiceFn({ theyGive, weGive, accepted: r.accepted, reply: part, original }, current, () => {
+                    state.pending = true;
+                    if (!closed) render(true);
+                });
+                state.pending = false;
+                state.reply = answer;
+                if (answer !== null && answer.counter?.status === 'proposed') opts.onChange?.();
+                if (!closed) render(true);
+            });
+        }
+        // [diplovoice] end
     }
 
     render(true);
@@ -234,6 +293,9 @@ function createTradePanel(opts: TradePanelOptions): OpenPanel {
     document.addEventListener('keydown', onKeyDown, true);
 
     function close(): void {
+        // [diplovoice] begin
+        closed = true;
+        // [diplovoice] end
         clearInterval(timer);
         document.removeEventListener('keydown', onKeyDown, true);
         root.remove();
