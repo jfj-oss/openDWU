@@ -96,7 +96,13 @@ export function formatGameTextNow(tag: string, args: readonly unknown[] = [], lo
 export function resolveGameText(s: string): string {
     if (!isTextLoaded()) return s;
     const parts = s.split('|');
-    if (parts.length === 1) return tryGetText(s) ?? s;
+    if (parts.length === 1) {
+        // A whole-text key. A template that takes arguments cannot be a deferred send without them: the text is an
+        // already resolved one that happens to equal another key (e.g. "Pirate Offer Contact Empire" → "We can put you
+        // in contact with another empire", itself the key of "… for {0} credits"), so it is not resolved twice.
+        const t = tryGetText(s);
+        return t !== null && argumentCount(t) === 0 ? t : s;
+    }
     let out = '';
     let head = parts[0];
     let i = 1;

@@ -594,7 +594,7 @@ export function doResearchAbilityBreakthrough(empire: Empire, researchProject: T
                                 a.value > 0
                                     ? text + ' ' + formatGameTextNow('Increases the Attack Strength of newly recruited TROOPTYPE', [d], true)
                                     : a.value >= 0
-                                      ? text + ' ' + gameText('the ability to recruit TROOPTYPE', d)
+                                      ? text + ' ' + formatGameTextNow('the ability to recruit TROOPTYPE', [d])
                                       : text + ' ' + formatGameTextNow('Increases the Defend Strength of newly recruited TROOPTYPE', [d], true);
                             relatedObject = troopType;
                         } else {

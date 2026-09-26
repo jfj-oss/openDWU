@@ -45,6 +45,7 @@ import { BuiltObjectMissionType } from '../src/sim/missions/mission';
 import { PlanetaryFacility, planetaryFacilityDefinitionsStatic } from '../src/sim/construction/facilities';
 import { PlanetaryFacilityType, WonderType, facilityType } from '../src/sim/researchSystem';
 import { identifyMechanoidEmpire } from '../src/sim/fleets/militaryAI';
+import { formatGameTextNow } from '../src/sim/textResolver';
 
 let gameData: GameData;
 
@@ -153,7 +154,7 @@ describe('Distant Worlds story clues (Galaxy.5.cs 3622-3942)', () => {
         expect(selectUnusedStoryClue(g)).toBe(1);
         expect(checkForStoryLocationHint(g)).toBe(''); // StoryCluesEnabled still off
         const station = g.storyClueLocations[1]!;
-        expect(generateStoryClue(g, station)).toBe('StoryClue2');
+        expect(generateStoryClue(g, station)).toBe(formatGameTextNow('StoryClue2')); // GetText("StoryClue2"), spliced into the acquire text
         expect(g.storyCluesEnabled).toBe(true);
         expect(g.storyClueUsed[1]).toBe(true);
         expect(selectUnusedStoryClue(g)).toBe(2);

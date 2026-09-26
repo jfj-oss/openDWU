@@ -13,6 +13,7 @@
 // hooks). The C# Galaxy ISerializable members are not ported — this is our own
 // save format for the headless sim.
 
+import { rebuildIndexes } from '../indexRebuild';
 import { Galaxy } from '../galaxy';
 import type { GameData } from '../data/gameData';
 import { cloneGalaxyRaces, raceScalarFields } from '../data/races';
@@ -358,6 +359,17 @@ function externalsByObject(tables: StaticTables): Map<object, ExternalRef> {
     return out;
 }
 
+/** The save format's class registry (name → prototype), for the command-log codec (player/commandCodec.ts). */
+export function saveClassPrototypes(): Readonly<Record<string, object>> {
+    return CLASSES;
+}
+
+/** The galaxy's static-data externals both ways (object → {kind, key} and `kind:key` → object), as the save uses them. */
+export function galaxyExternals(galaxy: Galaxy): { byObject: Map<object, ExternalRef>; byRef: Map<string, object> } {
+    const tables = staticTablesOfGalaxy(galaxy);
+    return { byObject: externalsByObject(tables), byRef: externalsByRef(tables) };
+}
+
 function externalsByRef(tables: StaticTables): Map<string, object> {
     const out = new Map<string, object>();
     forEachExternal(tables, (obj, ref) => {
@@ -415,34 +427,6 @@ export function findStaticDataLeaks(galaxy: Galaxy, gameData?: GameData): string
         out.push(`${name} {${Object.keys(obj).slice(0, 4).join(', ')}}`);
     }
     return out;
-}
-
-/** Index grids for saves that predate GALAXY_INDEX_FIELDS (generateGalaxy / updateSystemInfo / generateNebulae /
- *  Empire.addBuiltObject fill them like this). */
-function rebuildIndexGrids(galaxy: Galaxy): void {
-    const g = galaxy as unknown as Record<string, unknown>;
-    galaxy.initIndexGrids();
-    for (const sys of galaxy.systems) {
-        const cell = galaxy.resolveIndex(sys.systemStar.xpos, sys.systemStar.ypos);
-        galaxy.systemsIndexGrid[cell.x][cell.y].push(sys);
-        for (const habitat of sys.habitats) {
-            const hc = galaxy.resolveIndex(habitat.xpos, habitat.ypos);
-            galaxy.habitatIndexGrid[hc.x][hc.y].push(habitat);
-        }
-    }
-    // galaxy.builtObjects keeps null holes after teardown until RemoveNullBuiltObjects compacts it (Galaxy.cs); the
-    // holes are saved as JSON nulls so the list (and its indices) survive the round trip unchanged.
-    for (const builtObject of galaxy.builtObjects as (BuiltObject | null)[]) {
-        if (builtObject == null) continue;
-        const cell = galaxy.resolveIndex(builtObject.xpos, builtObject.ypos);
-        galaxy.builtObjectIndexGrid[cell.x][cell.y].push(builtObject);
-    }
-    const locationGrid: GalaxyLocation[][][] = [];
-    for (let i = 0; i < galaxy.indexMaxX; i++) {
-        locationGrid.push(Array.from({ length: galaxy.indexMaxY }, () => []));
-    }
-    g.galaxyLocationIndex = locationGrid;
-    for (const location of galaxy.galaxyLocations) galaxy.addGalaxyLocationIndex(location);
 }
 
 // ---------------------------------------------------------------------------
@@ -596,7 +580,7 @@ export function galaxyFromJSON(obj: GalaxySaveJSON, gameData: GameData): Galaxy 
     // --- Derived step order (lazy: step() rebuilds before first use).
     g.stepOrder = [];
     g.stepOrderDirty = true;
-    if (GALAXY_INDEX_FIELDS.some((field) => g[field] === undefined)) rebuildIndexGrids(galaxy);
+    if (GALAXY_INDEX_FIELDS.some((field) => g[field] === undefined)) rebuildIndexes(galaxy); // saves without the grids: the C# load rule (Start.cs 1846 RebuildIndexes)
 
     // --- Visibility owner hooks (closures over the empire; see Empire ctor).
     for (const empire of flatEmpireList(galaxy)) {

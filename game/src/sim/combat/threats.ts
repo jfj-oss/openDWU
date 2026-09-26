@@ -46,6 +46,7 @@ import { shipGroupAssignMission, shipGroupCompleteMission, shipGroupTotalOverall
 import { withinFuelRange, withinFuelRangeAndRefuel } from '../movement';
 import { checkColonyShipMissionCancelled, determineDestroyOrCaptureTarget, shouldAttack } from './attackAI';
 import { determineThreatLevelFighter, isFighter, type Fighter } from './fighters';
+import { formatGameTextNow } from '../textResolver';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Galaxy constants (Galaxy.3.cs static ctor 4971-5055)
@@ -297,7 +298,7 @@ export function doSuperPirateEmpireEncounter(galaxy: Galaxy, discoverer: Empire 
     }
     // 3948-3954
     const message = habitat === null ? gameText('Encounter Message Phantom Pirates', pirateEmpire.name, '') : gameText('Encounter Message Phantom Pirates', pirateEmpire.name, habitat.name);
-    sendEventMessageToEmpire(discoverer, EventMessageType.PhantomPirates, gameText('Phantom Pirates Encountered') + '!', message, pirateEmpire, habitat);
+    sendEventMessageToEmpire(discoverer, EventMessageType.PhantomPirates, formatGameTextNow('Phantom Pirates Encountered') + '!', message, pirateEmpire, habitat);
     sendNewsBroadcast(discoverer, EventMessageType.PhantomPirates, pirateEmpire);
 }
 

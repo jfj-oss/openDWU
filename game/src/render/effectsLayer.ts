@@ -21,8 +21,10 @@
 // original, so they are not part of the reproducible sim sequence, and drawing them from the sim's Random would make
 // the game depend on the frame rate.
 //
-// Fighters are not drawn by the renderer yet, so their weapons (method_165) and explosions (method_184) are not either.
-// TODO(port): fighter weapons / explosions — MainView.2.cs method_165 / method_184
+//   MainView.2.cs 1010 method_165 + 651 method_156 — a fighter's weapons in flight (beam bolts, torpedoes / missiles)
+//   MainView.2.cs 2783 method_184 → method_185 — a fighter's explosions; MainView.1.cs 1522-1541 — its shield strike
+// Fighters themselves are drawn by fighterLayer.ts; their shots, explosions and shield strikes are drawn here, from the
+// same Fighter records (Fighter.Weapons / Explosions / LastShieldStrike) the sim keeps.
 // TODO(port): ion-strike lightning overlay (LastIonStrike, LightningGenerator) — MainView.1.cs 1162-1201
 
 import { Container, Graphics, Texture } from 'pixi.js';
@@ -37,6 +39,9 @@ import type { Weapon } from '../sim/weapon';
 import { ComponentType } from '../sim/data/components';
 import { EXPLOSION_HABITAT_IMAGE_COUNT, EXPLOSION_IMAGE_COUNT, type Explosion } from '../sim/combat/damage';
 import { MIN_TIME, galaxyStarDate } from '../sim/tick/simTime';
+import { fightersOf, type Fighter } from '../sim/combat/fighters';
+import { ComponentCategoryType } from '../sim/data/policies';
+import { fighterDrawnSizePx } from './fighterLayer';
 
 const IMG = '/assets/dwu/images';
 /** The original rotates weapon / hyper art 90° clockwise at load (RotateFlip(Rotate90FlipNone)); drawing the raw
@@ -463,6 +468,89 @@ export function weaponDrawCommand(weapon: WeaponLike, firer: Positioned, f: numb
     }
 }
 
+/** The parts of a FighterWeapon the drawer reads (a structural subset of sim/combat/fighters.ts FighterWeapon). */
+export interface FighterWeaponLike {
+    distanceTravelled: number;
+    power: number;
+    heading: number;
+    x: number;
+    y: number;
+    lastFired: number;
+    readonly range: number;
+    readonly rawDamage: number;
+    readonly category: ComponentCategoryType;
+    readonly type: ComponentType;
+}
+
+/**
+ * MainView.2.cs 1010 method_165: the fade of a fighter's shot — full until num3 of its range (0.75 for beams, 0.6
+ * otherwise), then linear to 0 at full range; the C# colour alpha is (int)(num2 * 255).
+ */
+export function fighterWeaponAlpha(category: ComponentCategoryType, distanceTravelled: number, range: number): number {
+    const num = Math.min(1.0, distanceTravelled / range);
+    const num3 = category === ComponentCategoryType.WeaponBeam ? 0.75 : 0.6;
+    let num2 = 1.0;
+    if (num > num3) num2 = (1.0 - num) / (1.0 - num3);
+    return num2 < 1.0 ? Math.trunc(num2 * 255.0) / 255 : 1;
+}
+
+/**
+ * Port of MainView.2.cs 1010 method_165 (XNA) for one fighter weapon: beam-category shots are bolts sized by
+ * method_156 (min(300, 10·sqrt(RawDamage)) px, squeezed across while closer to the fighter than their length);
+ * torpedo-category shots are the torpedo art, (Power / 0.6 + 5) px for missiles or (Power / 4 + 7) px otherwise,
+ * capped at 18 and at least 1 px after the zoom, spinning at π rad/s (torpedoes) or turned to the heading (missiles).
+ * The art index is the fighter specification's WeaponImageIndex (out of range → 0). Other categories draw nothing.
+ */
+export function fighterWeaponDrawCommand(
+    weapon: FighterWeaponLike, firer: Positioned, weaponImageIndex: number, f: number, nowMs: number, out: WeaponDraw,
+): WeaponDrawKind {
+    out.kind = WeaponDrawKind.None;
+    out.lineWidth = 0;
+    if (!(weapon.distanceTravelled >= 0)) return WeaponDrawKind.None;
+    out.alpha = fighterWeaponAlpha(weapon.category, weapon.distanceTravelled, weapon.range);
+    out.tint = 0xffffff;
+    out.x = weapon.x;
+    out.y = weapon.y;
+    switch (weapon.category) {
+        case ComponentCategoryType.WeaponBeam: {
+            // method_156.
+            const num = Math.min(300.0, 10.0 * Math.sqrt(weapon.rawDamage));
+            const along = num / f;
+            let across = along;
+            const d = Math.hypot(firer.xpos - weapon.x, firer.ypos - weapon.y) / f;
+            if (d < num) across /= num / d;
+            out.kind = WeaponDrawKind.Bolt;
+            out.art = WeaponArt.Beam;
+            out.artIndex = artIndex(weaponImageIndex, BEAM_IMAGE_COUNT);
+            out.rotation = weapon.heading;
+            out.alongPx = along;
+            out.across = across;
+            return out.kind;
+        }
+        case ComponentCategoryType.WeaponTorpedo: {
+            let num10 = weapon.type !== ComponentType.WeaponMissile ? Math.fround(weapon.power / 4.0) + 7 : Math.fround(weapon.power / 0.6) + 5;
+            num10 = Math.min(num10, 18);
+            let num11 = num10 / f;
+            if (num11 < 1) num11 = 1;
+            let spin = 0.0;
+            let fixed = -1000.0;
+            if (weapon.type === ComponentType.WeaponTorpedo) spin = Math.PI;
+            else if (weapon.type === ComponentType.WeaponMissile) fixed = weapon.heading;
+            out.kind = WeaponDrawKind.Projectile;
+            out.art = WeaponArt.Torpedo;
+            // texture2D_1[num6]: num6 stays -1 for any other torpedo-category type (the C# would throw); use 0.
+            out.artIndex = artIndex(weaponImageIndex, TORPEDO_IMAGE_COUNT);
+            out.rotation = fixed > -1000.0 ? fixed : ((nowMs - weapon.lastFired) / 1000) * spin;
+            // num12 = num11 / texture.Width: the square art is drawn num11 px wide.
+            out.alongPx = num11;
+            out.across = num11;
+            return out.kind;
+        }
+        default:
+            return WeaponDrawKind.None;
+    }
+}
+
 function argb(a: number, r: number, g: number, b: number): number {
     return (((a & 0xff) << 24) | ((r & 0xff) << 16) | ((g & 0xff) << 8) | (b & 0xff)) >>> 0;
 }
@@ -730,6 +818,19 @@ export class EffectsLayer {
             }
         }
 
+        // Fighters (MainView.1.cs 1422-1556, after every ship): shield strike, explosions (method_184), weapons
+        // (method_165) of each launched fighter near the view.
+        for (const bo of this.galaxy.builtObjects) {
+            if (bo === null) continue;
+            const fighters = fightersOf(bo);
+            if (fighters === null) continue;
+            for (let i = 0; i < fighters.length; i++) {
+                const fighter = fighters[i];
+                if (fighter == null || fighter.onboardCarrier) continue;
+                this.drawFighterEffects(fighter, f, sz, nowMs);
+            }
+        }
+
         this.animations.draw(nowMs, this.sprites, this.inViewFn);
         this.sprites.end();
     }
@@ -749,25 +850,10 @@ export class EffectsLayer {
                 this.animations.add(this.explosionSets[set], nowMs, 20, c.x, c.y, s, s, 0);
                 return;
             }
-            case WeaponDrawKind.Projectile: {
-                const tex = this.torpedo[c.artIndex];
-                const sizeW = c.alongPx * f;
-                if (tex == null || !circleInView(this.bounds, c.x, c.y, sizeW)) return;
-                const s = this.sprites.acquire(tex);
-                placeSprite(s, c.x, c.y, sizeW, sizeW, c.rotation + ROT90);
-                s.alpha = c.alpha;
+            case WeaponDrawKind.Projectile:
+            case WeaponDrawKind.Bolt:
+                this.drawSpriteCommand(c);
                 return;
-            }
-            case WeaponDrawKind.Bolt: {
-                const tex = c.art === WeaponArt.AssaultPod ? this.assaultPod : this.beam[c.artIndex];
-                const along = c.alongPx * f;
-                if (tex == null || c.across <= 0 || !circleInView(this.bounds, c.x, c.y, along)) return;
-                const s = this.sprites.acquire(tex);
-                // Raw art is vertical: its height runs along the heading once turned by heading + 90°.
-                placeSprite(s, c.x, c.y, c.across * f, along, c.rotation + ROT90);
-                s.alpha = c.alpha;
-                return;
-            }
             case WeaponDrawKind.Stretched: {
                 const tex = this.beam[c.artIndex];
                 if (tex == null) return;
@@ -825,6 +911,55 @@ export class EffectsLayer {
                 }
                 return;
             }
+        }
+    }
+
+    private drawFighterEffects(fighter: Fighter, f: number, sz: number, nowMs: number): void {
+        const explosions = fighter.explosions;
+        const weapons = fighter.weapons;
+        const hasShots = weapons.length > 0 && weapons.some((w) => w.distanceTravelled >= 0);
+        if (explosions.length === 0 && !hasShots && !shieldStrikeVisible(fighter.lastShieldStrike, nowMs)) return;
+        // The weapons' range reaches past the fighter; cull on the fighter plus its longest shot.
+        let reach = 400;
+        for (let i = 0; i < weapons.length; i++) reach = Math.max(reach, weapons[i].range * 1.2);
+        if (!circleInView(this.bounds, fighter.xpos, fighter.ypos, reach)) return;
+        if (!fighter.hasBeenDestroyed && shieldStrikeVisible(fighter.lastShieldStrike, nowMs) && this.shieldStrike !== null) {
+            // MainView.1.cs 1522-1536: the shield-strike art at the fighter's drawn size, turned to direction - 90°.
+            const px = fighterDrawnSizePx(fighter);
+            if (px > 0) {
+                const w = px * f;
+                const s = this.sprites.acquire(this.shieldStrike);
+                placeSprite(s, fighter.xpos, fighter.ypos, w, w, fighter.lastShieldStrikeDirection - Math.PI / 2);
+            }
+        }
+        for (let i = 0; i < explosions.length; i++) this.drawExplosion(fighter.xpos, fighter.ypos, explosions[i], f, sz, nowMs);
+        if (!hasShots) return;
+        const imageIndex = fighter.specification.weaponImageIndex;
+        for (let i = 0; i < weapons.length; i++) {
+            const w = weapons[i];
+            if (!(w.distanceTravelled >= 0)) continue;
+            if (fighterWeaponDrawCommand(w, fighter, imageIndex, f, nowMs, this.cmd) !== WeaponDrawKind.None) this.drawSpriteCommand(this.cmd);
+        }
+    }
+
+    /** Draw a Projectile or Bolt command (shared by ship, habitat and fighter weapons). */
+    private drawSpriteCommand(c: WeaponDraw): void {
+        const f = this.f;
+        if (c.kind === WeaponDrawKind.Projectile) {
+            const tex = this.torpedo[c.artIndex];
+            const sizeW = c.alongPx * f;
+            if (tex == null || !circleInView(this.bounds, c.x, c.y, sizeW)) return;
+            const s = this.sprites.acquire(tex);
+            placeSprite(s, c.x, c.y, sizeW, sizeW, c.rotation + ROT90);
+            s.alpha = c.alpha;
+        } else if (c.kind === WeaponDrawKind.Bolt) {
+            const tex = c.art === WeaponArt.AssaultPod ? this.assaultPod : this.beam[c.artIndex];
+            const along = c.alongPx * f;
+            if (tex == null || c.across <= 0 || !circleInView(this.bounds, c.x, c.y, along)) return;
+            const s = this.sprites.acquire(tex);
+            // Raw art is vertical: its height runs along the heading once turned by heading + 90°.
+            placeSprite(s, c.x, c.y, c.across * f, along, c.rotation + ROT90);
+            s.alpha = c.alpha;
         }
     }
 

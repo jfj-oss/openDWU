@@ -1,4 +1,5 @@
-// 18c — the external command log: decisions that reach the sim from outside the tick (here: the local model's
+// The external command log (tasks/M4-agent-brief.md "Command log"): player commands (player/playerCommands.ts) and,
+// since 18c, decisions that reach the sim from outside the tick (here: the local model's
 // strategic decisions for AI empires, player/strategicDecisions.ts) are journaled with the star date they were applied
 // at, so seed + command log replays the game (tasks/18-local-llm-diplomacy.md hard rule; REVIEW-player-layer
 // 2026-09-25 "advisor-issued commands must be journaled for replay"). The entries are saved with the game
@@ -24,7 +25,8 @@ export interface StrategicCommand {
     small?: boolean;
 }
 
-export interface CommandLogEntry {
+/** A strategic decision the local model made for an AI empire (18c; player/strategicDecisions.ts). */
+export interface AdvisorLogEntry {
     /** Galaxy star date (ms) and galaxy.nowMs when the command was applied. */
     starDate: number;
     nowMs: number;
@@ -41,11 +43,53 @@ export interface CommandLogEntry {
     rationale?: string;
 }
 
+/** A player command (player/playerOps.ts), applied at a frame boundary by player/playerCommands.ts. */
+export interface PlayerLogEntry {
+    /** Galaxy star date (ms) and galaxy.nowMs of the frame boundary it was applied at. */
+    starDate: number;
+    nowMs: number;
+    source: 'player';
+    /** Index of the issuing empire in the flat empire list (save/galaxySave.ts flatEmpireList). */
+    empire: number;
+    /** PLAYER_OPS key. */
+    op: string;
+    /** The op's arguments after (galaxy, empire), player/commandCodec.ts encoding. */
+    args: unknown[];
+    /** Set when an argument could not be encoded (the order was applied; a replay stops here). */
+    error?: string;
+}
+
+/** The game speed frames run at from this boundary on (the frame length is a sim input: scheduler nextFrameMs). */
+export interface ClockLogEntry {
+    starDate: number;
+    nowMs: number;
+    source: 'clock';
+    speed: number;
+}
+
+/** The camera level-of-detail pass (?simView=1) was switched on / off here: while on, the camera is a sim input the log
+ *  does not carry, so a replay of that stretch is not exact (replayCommandLog warns). */
+export interface ViewLogEntry {
+    starDate: number;
+    nowMs: number;
+    source: 'view';
+    on: boolean;
+}
+
+export type CommandLogEntry = AdvisorLogEntry | PlayerLogEntry | ClockLogEntry | ViewLogEntry;
+
 const logs = new WeakMap<Galaxy, CommandLogEntry[]>();
 
 /** The galaxy's command log (empty when nothing was issued). */
 export function commandLog(galaxy: Galaxy): readonly CommandLogEntry[] {
     return logs.get(galaxy) ?? [];
+}
+
+/** A deep copy of one entry (the log is data; saves and loads never share objects with the live log). */
+export function copyCommandLogEntry(e: CommandLogEntry): CommandLogEntry {
+    if (e.source === 'player') return JSON.parse(JSON.stringify(e)) as PlayerLogEntry;
+    if (e.source === 'clock' || e.source === 'view') return { ...e };
+    return { ...e, command: { ...e.command } };
 }
 
 export function appendCommandLog(galaxy: Galaxy, entry: CommandLogEntry): void {
@@ -60,5 +104,5 @@ export function appendCommandLog(galaxy: Galaxy, entry: CommandLogEntry): void {
 /** Replace the galaxy's log (loading a save). */
 export function restoreCommandLog(galaxy: Galaxy, entries: readonly CommandLogEntry[] | undefined): void {
     if (entries === undefined || entries.length === 0) logs.delete(galaxy);
-    else logs.set(galaxy, entries.map((e) => ({ ...e, command: { ...e.command } })));
+    else logs.set(galaxy, entries.map(copyCommandLogEntry));
 }

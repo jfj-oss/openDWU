@@ -47,7 +47,9 @@ describe('resolveGameText (gameText encoding → C# text)', () => {
         const s = gameText('SHIPTYPE NAME requires refuelling', 'Escort', 'Swift') + '\n\n' + gameText('SHIPTYPE NAME has completed its mission', 'Frigate', 'Talon');
         expect(resolveGameText(s)).toBe('Escort Swift requires refuelling\n\nFrigate Talon has completed its mission');
         expect(resolveGameText('Our ships: ' + gameText('SHIPTYPE NAME requires refuelling', 'Escort', 'Swift'))).toBe('Our ships: Escort Swift requires refuelling');
-        expect(resolveGameText('X says')).toBe('{0} says');
+        // A tag whose template takes arguments is never an argument-less send: left as is (textkeys: no double resolution).
+        expect(resolveGameText('X says')).toBe('X says');
+        expect(resolveGameText('Pirate Offer Discovery')).toBe('We can share the location of an intriguing discovery');
         expect(resolveGameText('Frigate built')).toBe('Frigate built');
         expect(resolveGameText('Unknown tag|a|b')).toBe('Unknown tag|a|b');
     });
@@ -66,5 +68,22 @@ describe('formatEmpireMessage resolves the description', () => {
         const d = gameText('The SHIPTYPE NAME has been completed at LOCATION', 'Frigate', 'Defender I', 'Sol III');
         expect(formatEmpireMessage(msg(player, d), player)).toBe("The Frigate 'Defender I' has been completed at Sol III");
         expect(formatEmpireMessage(msg(zorg, gameText('SHIPTYPE NAME requires refuelling', 'Escort', 'Swift')), player)).toBe('Zorg says: Escort Swift requires refuelling');
+    });
+});
+
+describe('textkeys: eager GetText and no double resolution', () => {
+    it('an already resolved text that equals another key whose template takes arguments is not resolved again', () => {
+        // Galaxy.cs 2901 GetText("Pirate Offer Contact Empire") = "We can put you in contact with another empire", itself the
+        // key of "... for {0} credits" (Main.Part9.cs 109, the conversation option).
+        const once = resolveGameText(gameText('Pirate Offer Contact Empire'));
+        expect(once).toBe('We can put you in contact with another empire');
+        expect(resolveGameText(once)).toBe(once);
+    });
+
+    it('diplomacyTick formatText(getText(tag), args) = string.Format(TextResolver.GetText(tag), args)', async () => {
+        const { formatText, getText: simGetText } = await import('../src/sim/diplomacyTick');
+        // GameText.txt: Build new ships for X credits ;Build new ships for {0} credits (EmpireConstruction advisor text).
+        expect(formatText(simGetText('Build new ships for X credits'), '1,000')).toBe('Build new ships for 1,000 credits');
+        expect(simGetText('No such tag')).toBe('No such tag');
     });
 });
