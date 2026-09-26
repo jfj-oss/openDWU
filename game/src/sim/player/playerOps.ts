@@ -34,6 +34,7 @@ import { approveSuggestion, declineSuggestion } from './advisorSuggestions';
 import { expireOldAdvisorSuggestions } from '../advisorQueue';
 import { galaxyStarDate } from '../tick/simTime';
 import { cancelIntelligenceMission, characterMission } from '../espionage';
+import { grantAutonomy, runPoliticsAction, type PoliticsActionName } from '../scenario/emergent/politicsActions';
 import {
     acceptProposal,
     declineProposal,
@@ -152,6 +153,11 @@ export const PLAYER_OPS = {
     // --- The local model (18a advisor chat, 18b diplomat counter-proposal) ---
     advisorCommands: (galaxy: Galaxy, empire: Empire, brief: AdvisorBrief, commands: (AdvisorCommand | ValidatedCommand)[]) => executeAdvisorCommands(galaxy, empire, brief, commands),
     diplomatCounter: (galaxy: Galaxy, player: Empire, ai: Empire, brief: DiplomatBrief, counterId: string) => proposeDiplomatCounter(galaxy, ai, player, brief, counterId),
+
+    // [emergent] begin — scenario 19d1 internal politics (scenario/emergent/politicsActions.ts; flag-gated inside)
+    politicsAction: (galaxy: Galaxy, empire: Empire, action: PoliticsActionName, character: Character) => runPoliticsAction(galaxy, empire, action, character),
+    grantAutonomy: (galaxy: Galaxy, empire: Empire, colony: Habitat) => grantAutonomy(galaxy, empire, colony),
+    // [emergent] end
 } as const;
 
 export type PlayerOps = typeof PLAYER_OPS;

@@ -1,0 +1,14 @@
+{
+  "id": "emergent",
+  "name": "Emergent Galaxy",
+  "description": "Internal politics, resource crises, espionage consequences and refugees on top of the faithful game.",
+  "flags": [
+    { "name": "internalPolitics", "label": "Internal politics", "description": "Characters have ambition and loyalty; disloyal ones plot defections, secessions and coups when approval is low.", "default": true },
+    { "name": "livingCharacters", "label": "Living characters", "description": "Characters form friendships and rivalries (extension of internal politics; not built yet).", "default": false }
+  ],
+  "params": [
+    { "name": "politicsIntensity", "label": "Politics intensity", "default": 1, "min": 0, "max": 3 },
+    { "name": "coupApprovalThreshold", "label": "Coup approval threshold", "default": -5, "min": -50, "max": 50 },
+    { "name": "secessionMinColonies", "label": "Secession minimum colonies", "default": 6, "min": 2, "max": 20 }
+  ]
+}

@@ -1,0 +1,50 @@
+'Emergent Galaxy scenario (tasks/19d1-internal-politics.md and the other 19d packages): GameText additions. Every tag starts with "Emergent ".
+' [19d1] begin
+Emergent Loyalty Warning Title;Disloyalty Suspected
+Emergent Loyalty Warning;Our {0} {1} is growing restless: loyalty is low and their ambition is high. Honour them, reassign them, or keep them under watch.
+Emergent Plot Rumour Title;Plot Uncovered
+Emergent Plot Rumour;Our counter-intelligence has uncovered a plot: {0} {1} is conspiring against the government.\n\nWe can arrest the plotter, try to buy back their loyalty with honours ({2} credits), or ignore the rumours.
+Emergent Option Arrest;Arrest
+Emergent Option Honour;Honour ({0} credits)
+Emergent Option Ignore;Ignore
+Emergent Coup Crushed Title;Coup Attempt Crushed
+Emergent Coup Crushed;{0} {1} attempted to seize power but the coup failed. The plotter has been removed; our leader {2} now trusts no one.
+Emergent Coup Crushed Foreign;A coup attempt by {0} against the {1} government has failed.
+Emergent Coup Success News;{0} {1} has seized power in the {2} in a coup and consolidates power.
+Emergent Coup Success Title;Coup!
+Emergent Coup Success;{0} {1} has overthrown our government and consolidates power as our new ruler. Government: {2}.
+Emergent Secession Title;Secession
+Emergent Secession;Governor {0} of {1} has declared independence: {2} colonies now form the {3}, led by the former governor.
+Emergent Secession News;Governor {0} has led {1} out of the {2}, founding the {3}.
+Emergent Secession Leave;Governor {0} has taken {1} out of our empire: it is now independent.
+Emergent Defection Title;Defection
+Emergent Defection From;Our {0} {1} has defected to the {2}.
+Emergent Defection To;{0}, a {1} of the {2}, has defected to us.
+Emergent Defection News;{0}, a famous {1} of the {2}, has defected to the {3}.
+Emergent Defection Fleet;The fleet {0} followed its admiral.
+Emergent Defection Tech;They brought the secrets of {0} with them.
+Emergent Defection Map;They brought maps of their former empire's territory.
+Emergent Defection Agents;Our intelligence operations against the {0} are compromised and have been abandoned.
+Emergent Honour Title;Honours Bestowed
+Emergent Honour;{0} {1} has been honoured for their service ({2} credits).
+Emergent Arrest Title;Plotter Arrested
+Emergent Arrest;{0} {1} has been arrested for conspiracy.
+Emergent Purge Title;Official Purged
+Emergent Purge;{0} {1} has been purged. The other officials are uneasy.
+Emergent Autonomy Title;Autonomy Granted
+Emergent Autonomy;{0} has been granted autonomy: low taxes for five years.
+Emergent Reason Approval;Approval
+Emergent Reason War Weariness;War weariness
+Emergent Reason Development Losses;Colony setbacks
+Emergent Reason Bankruptcy;Treasury in debt
+Emergent Reason Leader Inspiring;Inspiring leader
+Emergent Reason Leader Demoralizing;Demoralizing leader
+Emergent Reason Leader Paranoid;Paranoid leader
+Emergent Reason Honours;Honours
+Emergent Reason Purges;Recent purges
+Emergent Reason Drift;Settling back
+Emergent Stability Stable;Stable
+Emergent Stability Tense;Tense
+Emergent Stability Unstable;Unstable
+Emergent Stability Crisis;Crisis
+' [19d1] end
