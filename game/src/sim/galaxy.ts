@@ -55,7 +55,8 @@ import type { BuiltObject } from './builtObject';
 import type { RaceFamily } from './data/raceFamilies';
 import { BuiltObjectRole } from './data/designSpecifications';
 import { BuiltObjectSubRole } from './builtObjectTypes';
-import { MIN_TIME } from './tick/simTime';
+import { MIN_TIME, galaxyNow } from './tick/simTime';
+import { habitatDoTasks } from './tick/habitatTick';
 import { canEmpireColonizeHabitat, habitatResourcesHaveSuperLuxury } from './exploration';
 import type { SchedulerState } from './tick/scheduler';
 import type { Blockade } from './fleets/blockades';
@@ -3488,7 +3489,8 @@ export class Galaxy {
         habitat.pictureRef = pictureRef;
         habitat.landscapePictureRef = landscapePictureRef;
         habitat.baseQuality = this.selectHabitatQuality(habitat, this.colonyPrevalence);
-        // TODO(port): DoTasks(CurrentDateTime) — Habitat.DoTasks (galaxy-time driven).
+        // Galaxy.8.cs 473 habitat.DoTasks(galaxy.CurrentDateTime) (Habitat.cs 1399): see generationHabitatDoTasks.
+        generationHabitatDoTasks(this, habitat);
         this.selectResources(habitat);
         if (this.rnd.next(0, 5) === 2) {
             habitat.orbitDirection = false;
@@ -4032,7 +4034,8 @@ export class Galaxy {
                 planet.pictureRef = pictureRef;
                 planet.landscapePictureRef = landscapePictureRef;
                 planet.baseQuality = this.selectHabitatQuality(planet, this.colonyPrevalence);
-                // TODO(port): DoTasks(CurrentDateTime) — Habitat.DoTasks (galaxy-time driven; out of scope).
+                // Galaxy.5.cs 1587 habitat2.DoTasks(CurrentDateTime) (Habitat.cs 1399): see generationHabitatDoTasks.
+                generationHabitatDoTasks(this, planet);
                 this.selectResources(planet);
                 this.setScenicFactor(planet);
                 this.setResearchBonus(planet);
@@ -4140,7 +4143,8 @@ export class Galaxy {
                     }
                     moonsForThisPlanet.push(moon);
                     moon.orbitDistance = moonOrbitDistance;
-                    // TODO(port): DoTasks(CurrentDateTime) — out of scope (galaxy time).
+                    // Galaxy.5.cs 1731 habitat2.DoTasks(CurrentDateTime) (Habitat.cs 1399): see generationHabitatDoTasks.
+                    generationHabitatDoTasks(this, moon);
                     this.selectResources(moon);
                     this.setScenicFactor(moon);
                     this.setResearchBonus(moon);
@@ -4649,6 +4653,19 @@ export class Galaxy {
  */
 export function galaxyRace(galaxy: Galaxy, race: Race): Race {
     return galaxy.shakturiRaceBase !== null && race === galaxy.shakturiRaceBase && galaxy.shakturiActualRace !== null ? galaxy.shakturiActualRace : race;
+}
+
+/**
+ * `habitat.DoTasks(galaxy.CurrentDateTime)` on a planet / moon just built by generation (Galaxy.8.cs 215-551, Galaxy.5.cs
+ * 1587 / 1731; Habitat.cs 1399). The Habitat ctor (Habitat.cs 6184-6187, 6297-6303) left LastHuge/Long/Periodic touch =
+ * now, LastTouch = now − 30 s, LastIntermediateTouch = MinValue, and the galaxy clock does not run during generation. So
+ * DoTasks: Move with 30 s (the ctor's initial Move already applied 30 s: the orbit angle advances 60 s in all), then only
+ * the intermediate block — HandleWeaponsFiring (no giant ion cannon: returns) and CheckForShipsDiscoveringRuins (no ruin
+ * yet: returns) — and LastIntermediateTouch = LastTouch = now. Periodic / long / huge spans are 0 (strict `>`): nothing
+ * else runs, and no Galaxy.Rnd is drawn.
+ */
+export function generationHabitatDoTasks(galaxy: Galaxy, habitat: Habitat): void {
+    habitatDoTasks(galaxy, habitat, galaxyNow(galaxy));
 }
 
 // Port of Galaxy.4.cs Galaxy constructor (star-cluster setup, star loop,
