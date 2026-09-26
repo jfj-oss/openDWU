@@ -42,3 +42,10 @@ Then, before M5+ (UI completeness etc.):
 - todosweep2 leftovers: (closed by empirelifecycle: BaconInitialize SaveStats / ClearShipsAboutToBeDestroyed scheduling incl. Rnd.Next(10,12), baconSettings.ts) the wizard's colonization defaults (enforcement off, 4000) differ from the C# defaults (on, 2 sectors) — match the C# defaults (pins will move).
 - (closed 2026-09-26) Soak A6 "slow research": faithful — hand-worked C# research points/costs match the sim to the day (tasks/RESEARCH-PACE-2026-09-26.md, scripts/research-pace.mjs).
 - modlayer follow-up: `answerScenarioDecision` applies answers directly; route it through `issuePlayerCommand` (replay/command log) once wip/replay is on main — the determinism contract requires every player-side mutation to be logged.
+
+## 19a follow-up (2026-09-26)
+- Rim trader tuning: in a 10-year seed-1 soak no empire gained access to the Concord's rare goods (first contact only in
+  years 2–8; the one seller was a pirate faction, which cannot earn access). Import lots, threshold 1500 and tax 3/3/2 are
+  in. Needs a balance pass with the freight overlay (19e-9) to see where rim goods actually flow, then: earlier contact
+  (Concord explorers / a broadcast), access for empires whose private freighters sell, and a soak that asserts ≥1 access.
+  Do it after 19h/19j land (rim herders are the intended steady suppliers). Cheap (Sonnet) once the overlay is in.
