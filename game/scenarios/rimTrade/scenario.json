@@ -1,0 +1,24 @@
+{
+  "id": "rimTrade",
+  "name": "The Rim Trade",
+  "description": "An isolationist rim empire holds the galaxy's rarest luxuries and trades them only for goods from the outer reaches.",
+  "flags": [
+    { "name": "rimTrader", "label": "Rim trader behaviour", "description": "The Oranthi Concord trades its rare goods only for rim goods, never declares war and barely expands.", "default": true },
+    { "name": "rimTraderSinglePort", "label": "Single trading port", "description": "Foreign freighters may buy from the Concord only at its capital port.", "default": true }
+  ],
+  "params": [
+    { "name": "rimTraderMaxColonies", "label": "Concord colony cap", "default": 4, "min": 1, "max": 12 },
+    { "name": "rimTraderExchangeRate", "label": "Rare goods per rim good (value)", "default": 1.0, "min": 0.25, "max": 4 },
+    { "name": "rimTraderGrantThreshold", "label": "Standing needed to open trade", "default": 5000, "min": 0, "max": 100000 },
+    { "name": "rimTraderImportQuota", "label": "Import quota per rim good (units)", "default": 400, "min": 50, "max": 5000 },
+    { "name": "rimTraderConsumption", "label": "Yearly consumption per rim good (units)", "default": 200, "min": 0, "max": 5000 },
+    { "name": "rimTraderLedgerDecay", "label": "Yearly standing decay factor", "default": 0.5, "min": 0, "max": 1 },
+    { "name": "rimTraderStartStock", "label": "Starting rare-goods stock (units)", "default": 300, "min": 0, "max": 5000 }
+  ],
+  "homePlacement": [ { "race": "Oranthi", "minRadius": 0.8, "maxRadius": 1.0 } ],
+  "resourcePlacement": [
+    { "resource": "Voidstone", "minRadius": 0.72, "maxRadius": 1.5 },
+    { "resource": "Rimfrost Lichen", "minRadius": 0.72, "maxRadius": 1.5 },
+    { "resource": "Umbral Gas", "minRadius": 0.72, "maxRadius": 1.5 }
+  ]
+}

@@ -1,0 +1,9 @@
+'Scenario rimTrade: rim goods (placed only in the outer ring by scenario.json resourcePlacement) and the Concord's rare goods.
+41, Voidstone, 15, 30.0, 0, 0, N, N, 0, 0,			1, 6, 0.30, 0.3, 0.9,	1, 9, 0.35, 0.3, 0.9,
+42, Rimfrost Lichen, 31, 40.0, 2, 0, N, N, 0, 0,		0, 4, 0.45, 0.3, 0.9,
+43, Umbral Gas, 6, 30.0, 1, 0, N, N, 0, 0,			0, 7, 0.20, 0.3, 0.9,	0, 8, 0.40, 0.3, 0.9,
+'Rare goods: super luxuries (SuperLuxuryBonusAmount > 0 = restricted) with NO distributions, so SetRestrictedResources
+'(Galaxy.4.cs:3074) places none; the scenario seeds them on the Concord home system at game start.
+44, Oranthi Porcelain, 36, 250.0, 2, 30, N, N, 0, 0,
+45, Moonsilk, 29, 250.0, 2, 30, N, N, 0, 0,
+46, Starleaf Tea, 21, 250.0, 2, 30, N, N, 0, 0,
