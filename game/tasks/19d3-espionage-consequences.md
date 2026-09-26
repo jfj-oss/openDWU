@@ -197,3 +197,29 @@ the refactored outcome block (`blamed`) is statement-identical with the flag off
 
 ## 10. Size
 ~3 days (crises 1, proliferation 0.5, false flags 0.75, UI 0.5, tests 0.5).
+
+## 11. Implementation notes (wip/s19d3)
+- **Layout.** Scenario folder `scenarios/espionage-consequences/` (scenario.json with the §1 flag/params, GameText.txt in a
+  `' [19d3] begin/end` block, tags `Emergent …`), not the shared `scenarios/emergent/` of §S1 — that folder did not exist on
+  the base (d6afd06); moving the flag/params/GameText block into it is a copy when 19d1 lands §S1. Code:
+  `src/sim/scenario/emergent/espionage.ts` (state, hooks, yearly review, decisions), `espionageActions.ts` (§A3 actions,
+  player sanctions / war through `submitProposal`), `espionageView.ts` (pure UI builders), `espionageHooks.ts` (hook slots
+  the ported espionage.ts / tradeItems.ts call behind `scenarioFlag(galaxy, 'espionageConsequences')`; the slot module has
+  no runtime imports, which avoids an espionage.ts ↔ package import cycle). Registered from `scenario/packages.ts`.
+- **§S overlap (19d1).** Uses the mod layer's existing `scenario/decisions.ts` (registerScenarioDecision / raise / answer /
+  expire) instead of the §S4 API sketch (`postScenarioDecision`, `options(…).enabled`): no disabled options exist there, so
+  "Pay N credits" is left out when unaffordable at raise time (resolve re-checks). No §S3 approval term is needed. No
+  `decisionLog` (§S4 replay note) is kept here — whoever lands §S4 adds it in `answerScenarioDecision` for every package.
+- **Command queue.** Player decision answers go `messagePopups → answerScenarioDecision` directly (not through
+  `player/playerCommands.ts`); another package owns that fix. The false-flag "Blame" choice does go through the queue
+  (new op `setAgentMissionFrame`, issued right after `setAgentMission`).
+- **Deviations.** `frames` is an array of `{ mission, framed, originator, since }` (not a Map). Crisis timing uses game
+  years (`deadlineYear`) so the yearly tick's jitter cannot skip a deadline. Exposure incident fed to §A2 is the applied
+  one (num17 × 1.5 for a holding frame, × 2 when seen through). An AI offender complies with the demanded action when it
+  can afford it (reparations need the money) and the §4.1 rule passes; it re-checks at each sanctions deadline.
+  Strength for §4.1 / §A4 is `militaryPotency(victim) / militaryPotency(offender)` (DetermineRelativeStrength's ratio).
+- **TODO(19d3).** Pirate buyers for resold tech (skipped: the ported trade AI never offers research projects to pirate
+  factions); exposures from counter-intelligence interceptions (the CounterIntelligence branch of
+  PerformIntelligenceMissions, `num15`) are not recorded — only the §A1 outcome cases; a player offender is not re-asked at
+  sanctions deadlines; the §S4 stub-list card UI (decisions use the existing GeneralDecision popup); the 3-seed
+  statistical soak (§8) runs one seed for 5 years by default and asserts only the invariants (no exceptions, no crisis opened at war); `DWU_ESPIONAGE_SOAK_YEARS=30 DWU_ESPIONAGE_SOAK_SEEDS=1,2,3 DWU_ESPIONAGE_SOAK_STRICT=1` runs the acceptance counts — unverified here (budget): on seed 1 no AI ran an offensive mission against a normal empire in the first 5 years.

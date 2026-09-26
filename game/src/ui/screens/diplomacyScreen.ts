@@ -118,6 +118,7 @@ export function formatSigned(v: number): string {
 // Moved to sim/player/relationFactors.ts (shared with the 18b diplomat brief).
 export { feelingDescription, civilityDescription, relationshipFactors, type RelationshipFactor } from '../../sim/player/relationFactors';
 import { relationshipFactors, feelingDescription, type RelationshipFactor } from '../../sim/player/relationFactors';
+import { incidentRows } from '../../sim/scenario/emergent/espionageView';
 import { acceptProposal, declineProposal } from '../../sim/player/playerOrders';
 export { acceptProposal, declineProposal };
 
@@ -549,6 +550,17 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
             const line = el('div', 'diplomacy-factor', `${f.description} (${formatSigned(f.value)})`);
             line.style.color = f.value < 0 ? RED : LIGHT_GREEN;
             detail.appendChild(line);
+        }
+
+        // 19d3 (scenario `espionageConsequences`): open espionage crises, recent exposures, stolen techs of the pair.
+        const incidents = incidentRows(player.galaxy, player, row.empire);
+        if (incidents.length > 0) {
+            detail.appendChild(el('div', 'diplomacy-section-heading', 'Incidents'));
+            for (const r of incidents) {
+                const line = el('div', 'diplomacy-factor', r.text);
+                if (r.kind === 'crisis') line.style.color = RED;
+                detail.appendChild(line);
+            }
         }
 
         body.append(list, detail);

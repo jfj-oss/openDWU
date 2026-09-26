@@ -12,6 +12,8 @@
 // Pure logic (rows, texts, the mission form state machine, GetState, the difficulty texts) is exported and tested
 // (test/intelligence.test.ts); the DOM half only wires it.
 
+import { blameOptions, missionFrameLabel, type BlameOption } from '../../sim/scenario/emergent/espionageView';
+import { missionFrame } from '../../sim/scenario/emergent/espionage';
 import './intelligence.css';
 import type { Empire } from '../../sim/empire';
 import type { Galaxy } from '../../sim/galaxy';
@@ -716,6 +718,10 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
     const fType = field(T('Mission Type'));
     const fTarget = field(T('Target'));
     const fTime = field(T('Time to Complete'));
+    // 19d3 (scenario `espionageConsequences`): the false-flag "Blame" select; hidden when blameOptions is empty.
+    const fBlame = field('Blame');
+    let blameList: BlameOption[] = [];
+    let blameId = -1;
     const chanceBox = el('div', 'intel-m-chance');
     const chanceLabel = el('div', 'intel-m-chance-label');
     const chanceValue = el('div', 'intel-m-chance-value');
@@ -727,7 +733,7 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
     cancelBtn.type = 'button';
     const mButtons = el('div', 'intel-m-buttons');
     mButtons.append(assignBtn, cancelBtn);
-    mission.append(mTitle, fEmpire.row, fType.row, fTarget.row, fTime.row, chanceBox, mButtons);
+    mission.append(mTitle, fEmpire.row, fType.row, fTarget.row, fTime.row, fBlame.row, chanceBox, mButtons);
     side.appendChild(mission);
     body.appendChild(side);
 
@@ -759,7 +765,8 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
                 entry = { row, cells };
                 rowEls.set(c, entry);
             }
-            const vals = [r.name, r.role, r.location, r.mission];
+            const ffLabel = missionFrameLabel(galaxy, characterMission(r.character));
+            const vals = [r.name, r.role, r.location, ffLabel === '' ? r.mission : `${r.mission} ${ffLabel}`];
             entry.cells.forEach((cell, k) => {
                 if (cell.textContent !== vals[k]) cell.textContent = vals[k];
             });
@@ -822,7 +829,18 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
         fillSelect(fTarget.sel, form.targetOptions, form.target !== null ? form.targetOptions.indexOf(form.target) : -1);
         fillSelect(fTime.sel, form.timeOptions.map((o) => o.label), form.timeIndex);
         fTarget.row.style.display = missionNeedsTarget(form.type) ? '' : 'none';
-        for (const f of [fEmpire, fType, fTarget, fTime]) f.sel.disabled = !editable;
+        blameList = blameOptions(galaxy, player, form.type, form.targetEmpire);
+        if (!editable) {
+            const m = selected !== null ? characterMission(selected) : null;
+            const f = m !== null ? missionFrame(galaxy, m) : null;
+            blameId = f === null ? -1 : f.empireId;
+            if (blameList.length === 0 && f !== null) blameList = [{ empireId: f.empireId, label: f.name }];
+        } else if (!blameList.some((o) => o.empireId === blameId)) {
+            blameId = -1;
+        }
+        fillSelect(fBlame.sel, blameList.map((o) => o.label), blameList.findIndex((o) => o.empireId === blameId));
+        fBlame.row.style.display = blameList.length > 0 ? '' : 'none';
+        for (const f of [fEmpire, fType, fTarget, fTime, fBlame]) f.sel.disabled = !editable;
     }
 
     function renderMission(force = false): void {
@@ -897,6 +915,9 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
         form = { ...form, target: form.targetOptions[Number(fTarget.sel.value)] ?? null };
         renderMission();
     });
+    fBlame.sel.addEventListener('change', () => {
+        blameId = blameList[Number(fBlame.sel.value)]?.empireId ?? -1;
+    });
     fTime.sel.addEventListener('change', () => {
         form = { ...form, timeIndex: Number(fTime.sel.value) };
         renderMission();
@@ -915,7 +936,14 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
         await automationPrompt();
         if (open === null || selected !== c) return;
         const state = buildMissionState(galaxy, player, c, form);
-        if (state !== null) issuePlayerCommand(galaxy, player, 'setAgentMission', [c, state], () => render());
+        if (state === null) return;
+        const framed = blameId >= 0 ? galaxy.empires.find((e) => e.empireId === blameId) ?? null : null;
+        if (framed === null) {
+            issuePlayerCommand(galaxy, player, 'setAgentMission', [c, state], () => render());
+            return;
+        }
+        issuePlayerCommand(galaxy, player, 'setAgentMission', [c, state]);
+        issuePlayerCommand(galaxy, player, 'setAgentMissionFrame', [state, framed], () => render());
     });
     cancelBtn.addEventListener('click', async () => {
         const c = selected;
