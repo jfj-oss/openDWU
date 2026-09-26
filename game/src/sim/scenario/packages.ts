@@ -5,4 +5,5 @@ import './threats/cult';
 import './threats/darkFarms';
 import './threats/doppelgangers';
 import './threats/greyTide';
+import './threats/hive';
 import './threats/silence';
