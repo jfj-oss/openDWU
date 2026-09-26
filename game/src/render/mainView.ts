@@ -495,13 +495,10 @@ class SystemView {
         const star = this.system.systemStar;
         // Culling (render: perf pass): skip the system only when everything it can draw — star, orbit rings,
         // planets, moons, rocks (drawRadius, world units) plus labels and minimum sprite sizes (px margin) — is off
-        // screen. The previous margin mixed screen px with world units and culled almost nothing.
-        const margin = (300 + this.maxExtent * 0.3) / zoom;
-        const halfW = cam.width / 2 + margin;
-        const halfH = cam.height / 2 + margin;
-        const legacy =
-            star.xpos > cam.x - halfW && star.xpos < cam.x + halfW && star.ypos > cam.y - halfH && star.ypos < cam.y + halfH;
-        const visible = legacy && boundsOnScreen(star.xpos, star.ypos, this.drawRadius, SYSTEM_CULL_PX_MARGIN, cam.x, cam.y, cam.width, cam.height, zoom);
+        // screen. The previous test, (300 + 0.3 * maxExtent) / zoom around the star, hid on-screen systems: planetless
+        // stars away from the view centre at galaxy / sector zoom, and at planet zoom the whole system of a planet
+        // orbiting > ~0.3 * maxExtent from its star (the planet itself vanished).
+        const visible = boundsOnScreen(star.xpos, star.ypos, this.drawRadius, SYSTEM_CULL_PX_MARGIN, cam.x, cam.y, cam.width, cam.height, zoom);
         this.root.visible = visible;
         if (!visible) {
             return;
