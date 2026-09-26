@@ -71,6 +71,7 @@ import { PirateIncomeType } from '../pirates/pirateEconomy';
 import { loadEmpirePolicy, PlanetaryFacilityType, WonderType } from '../researchSystem';
 import { generatePlanetDestroyerDesign } from '../designGeneration';
 import { generateDesignFromSpec } from '../designGeneration';
+import { FreedomAllianceFamily, resolveMajorShipImageIndex } from '../shipImageHelper';
 import { EmpireMessageType, sendMessageToEmpire, sendMessageToEmpireWithTitle } from '../messages';
 import { calculateEmpireWarValue } from '../diplomacyTick';
 import { galaxyStarDate, REAL_SECONDS_IN_GALACTIC_YEAR } from '../tick/simTime';
@@ -1266,7 +1267,7 @@ export function generateSecondaryStoryClue(galaxy: Galaxy, selectionValue: numbe
             const habitat = fastFindNearestSystemWithPlanets(galaxy, x, y);
             if (habitat !== null) name = formatGameTextNow('X Archival Refuge', [habitat.name]);
             design = cloneDesign(design);
-            // TODO(port) M9: design.PictureRef = ShipImageHelper.ResolveMajorShipImageIndex(FreedomAllianceFamily, subRole, aged: false).
+            design.pictureRef = resolveMajorShipImageIndex(FreedomAllianceFamily, design.subRole, false);
             const builtObject = generateStoryAbandonedBuiltObject(galaxy, x, y, design, name);
             builtObject.encounterTechAdvanceCount = 8;
             builtObject.encounterMoneyBonus = galaxy.rnd.next(110000, 200000);
