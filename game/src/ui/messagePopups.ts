@@ -22,6 +22,9 @@ import { showToast } from './toast';
 import { diplomatVoiceConfig, rememberVoicedMessage, voiceDiplomatReply, voicedLineToggle, voicedMessageText, voicingIndicator } from './diplomatVoice';
 // [diplovoice] end
 import { rgbCss } from './hud';
+// [suggest] begin
+import { expireAdvisorSuggestionsForEmpire, receiveAdvisorSuggestionMessage } from '../sim/advisorQueue';
+// [suggest] end
 
 export interface ConversationEntry {
     message: EmpireMessage;
@@ -283,6 +286,11 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
         for (const m of empireMessages(player)) {
             if (m == null || seen.has(m)) continue;
             seen.add(m);
+            // [suggest] begin
+            // Main.Part9.cs 2226 ReceiveMessageInternal, case AdvisorSuggestion: the BuildOrder advice joins the advisor
+            // queue (advisorSuggestions.ts shows it).
+            if (receiveAdvisorSuggestionMessage(player, m)) continue;
+            // [suggest] end
             const route = routeEmpireMessage(m, player, options);
             if (route.popup) showPopup(m);
             const action = shouldQueueConversation(route, options);
@@ -302,6 +310,9 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
     // [proposals] begin
     // The player's own conversation (17e) expires the other empire's pending messages, as the C# does.
     setDiplomacyMessageExpiry((empire) => {
+        // [suggest] begin
+        expireAdvisorSuggestionsForEmpire(player, empire); // DiplomaticMessageQueue.cs 357-380 (the advisor cases)
+        // [suggest] end
         if (expireDiplomacyMessagesForEmpire(queue, empire) === 0) return;
         if (dialogEntry !== null && !queue.includes(dialogEntry)) closeDialog();
         renderChips();
@@ -329,7 +340,7 @@ export function removeMessagePopups(): void {
 /**
  * DiplomaticMessageQueue.cs:344 ExpireDiplomacyMessagesForEmpire(empire): drops the queued diplomacy messages from
  * `empire` (DiplomaticRelationChange / ProposeDiplomaticRelation / RefuseDiplomaticRelation / OfferTrade). Returns how
- * many were dropped. TODO(port): the AdvisorSuggestion cases (:357-380) — advisor entries are not queued yet (16d).
+ * many were dropped. The AdvisorSuggestion cases (:357-380) are advisorQueue.ts expireAdvisorSuggestionsForEmpire (suggest).
  */
 export function expireDiplomacyMessagesForEmpire(queue: ConversationEntry[], empire: Empire | null): number {
     if (empire === null) return 0;
@@ -351,3 +362,12 @@ export function expireDiplomacyMessagesForEmpire(queue: ConversationEntry[], emp
     return removed;
 }
 // [proposals] end
+
+// [suggest] begin
+/** DiplomaticMessageQueue.cs 344 ExpireDiplomacyMessagesForEmpire for the installed conversation queue (an approved
+ *  advisor suggestion's diplomacy change, Main.Part2.cs 1900-1934 / 2214 / 2235). No-op when not installed. */
+export function expireConversationsForEmpire(empire: Empire): void {
+    if (installed === null) return;
+    expireDiplomacyMessagesForEmpire(installed.queue, empire);
+}
+// [suggest] end
