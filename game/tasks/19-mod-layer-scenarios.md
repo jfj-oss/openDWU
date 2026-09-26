@@ -104,7 +104,16 @@ Build after 19b lands; each is mostly data + a spread rule on the 19b hooks.
 4. Succession: leaders age/die, heirs, regencies, crises → persona shifts. [cheap-medium]
 5. Frontier autonomy: distance-based drift toward local rule, sector governors with power. [medium]
 6. Anomalies with branching investigations (derelicts, hazards, precursor caches) via the story system. [medium]
-7. Creature ecology: breeding, migration, hunting. [medium]
+7. Creature ecology: breeding, migration, hunting. [medium] — **Rim fauna design (user, 2026-09-26):** creature density
+   scales with distance from the galactic centre (far more herds at the rim than the core; the five ported CreatureTypes
+   keep their C# generation, the scenario adds rim herds on top); herds move as a group with a leader and a home range;
+   seasonal (yearly, Rnd-driven) migrations push herds into rim-adjacent territory; herds must feed: they graze gas
+   clouds, asteroid fields and mining stations' habitats, draining a resource-stock fraction and damaging/blocking
+   mining stations while feeding, so rim colonies face a recurring choice between defending the stations (killing
+   herds, which also shrinks the population and the migration pressure) and tolerating the losses (herd hunting yields
+   creature-specific resources/tech as in the base game). Tension hook: repeated losses raise colony unrest (19d2 crisis
+   plumbing) and the empire AI weighs escort/defence vs. relocation. Data-driven: herd size, feed rate, migration
+   radius/season, density curve as scenario params; flag off = byte-identical.
 8. First-contact protocol: short negotiation setting the starting attitude, voiced by personas. [cheap]
 9. Doctrines: exclusive empire-wide choices with lasting effects. [medium]
 13. AI personality packs via overlay presets. [cheap]
