@@ -95,3 +95,19 @@ Effort: 1–4 days each after the mod layer; 5–9 one to two weeks each.
 9. Robot mutiny: robotic troops galaxy-wide answer one hidden broadcast; robot-heavy empires lose planets first.
 10. Corporate coup: a chartered company (19c) buys governors and declares independence with its fleet/colonies.
 Build after 19b lands; each is mostly data + a spread rule on the 19b hooks.
+
+## 19g — Third idea batch (2026-09-26; strategy depth, exploration, port-only capabilities)
+1. Stargate networks (player-built gate pairs → chokepoints, gate wars). [medium]
+2. Megaprojects: multi-stage wonders needing multi-empire resources. [medium]
+3. War goals & peace terms (cede colonies, reparations, demilitarised systems). [medium]
+4. Succession: leaders age/die, heirs, regencies, crises → persona shifts. [cheap-medium]
+5. Frontier autonomy: distance-based drift toward local rule, sector governors with power. [medium]
+6. Anomalies with branching investigations (derelicts, hazards, precursor caches) via the story system. [medium]
+7. Creature ecology: breeding, migration, hunting. [medium]
+8. First-contact protocol: short negotiation setting the starting attitude, voiced by personas. [cheap]
+9. Doctrines: exclusive empire-wide choices with lasting effects. [medium]
+10. Weekly seeded challenge with replay-verified leaderboards. [cheap once replay theatre exists]
+11. Scenario scripting language on the data overlay (users write stories/threats). [medium-large]
+12. Photo mode + ship viewer. [cheap]
+13. AI personality packs via overlay presets. [cheap]
+14. Local text-to-speech for messages/advisor. [cheap, opt-in]
