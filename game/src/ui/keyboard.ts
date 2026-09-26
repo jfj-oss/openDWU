@@ -213,6 +213,14 @@ export function dispatchKey(
         cycleHandler?.(cyc.kind, cyc.dir, cyc.moveView);
         return binding.action;
     }
+    // [fix6ui] begin — N2: E/R/A/S/, (ship orders) and Z/N/B/L (selection keys) route to the game view's handler
+    // (main.ts → shipHotkeys.ts, ports of the Main.Part7.cs Main_KeyUp branches).
+    if (isShipCommandAction(binding.action)) {
+        if (shipCommandHandler) shipCommandHandler(binding.action);
+        else console.info(`TODO(key): ${binding.action}`);
+        return binding.action;
+    }
+    // [fix6ui] end
     switch (binding.action) {
         case 'togglePause':
             handlers.togglePause?.();
@@ -508,6 +516,35 @@ export function cycleActionArgs(action: string): { kind: CycleKind; dir: 1 | -1;
     return { kind, dir, moveView };
 }
 
+// [fix6ui] begin — ship-order and selection keys (N2 / #12, playtest 2026-09-25-b).
+/** Binding actions handled by the game view's ship-command handler (Main.Part7.cs Main_KeyUp: E ShipEscapeCommand,
+ * R RefuelShip, A EnableAuto, S StopShip, `,` CycleShipEngagmentRange, Z FindNearestMilitaryShip,
+ * N CycleSelectionForward, B CycleSelectionBackward, L ToggleViewLock). */
+export const SHIP_COMMAND_ACTIONS = [
+    'commandEscape',
+    'commandRefuel',
+    'automateShip',
+    'stopShip',
+    'cycleEngagementStance',
+    'selectNearestMilitaryShip',
+    'selectionForward',
+    'selectionBackward',
+    'lockView',
+] as const;
+export type ShipCommandAction = (typeof SHIP_COMMAND_ACTIONS)[number];
+
+export function isShipCommandAction(action: string): action is ShipCommandAction {
+    return (SHIP_COMMAND_ACTIONS as readonly string[]).includes(action);
+}
+
+let shipCommandHandler: ((action: ShipCommandAction) => void) | null = null;
+
+/** Register the game view's handler for SHIP_COMMAND_ACTIONS (null on teardown). */
+export function setShipCommandHandler(h: ((action: ShipCommandAction) => void) | null): void {
+    shipCommandHandler = h;
+}
+// [fix6ui] end
+
 // ---------------------------------------------------------------------------
 // "Keyboard shortcuts" overlay (toggled by ? / F1-equivalent).
 // ---------------------------------------------------------------------------
@@ -532,6 +569,10 @@ export const IMPLEMENTED_KEY_ACTIONS: ReadonlySet<string> = new Set([
         .flatMap((k) => [`cycle${k}`, `cycle${k}Backward`, `cycle${k}MoveView`]),
     'empireComparisonScreen', // [15d]
     'gameOptionsScreen', // [16d]
+    // [fix6ui] begin
+    'advisorChat', 'ctrlWithZoomKeys',
+    ...SHIP_COMMAND_ACTIONS,
+    // [fix6ui] end
 ]);
 
 /** True when pressing the binding's key does something today. Pure. */
