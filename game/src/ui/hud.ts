@@ -34,6 +34,10 @@ import { toggleBuildOrder } from './screens/buildOrder'; import { toggleConstruc
 import { toggleResearchScreen } from './screens/researchScreen'; // [15b]
 import { toggleEmpireComparison } from './screens/empireComparison';
 import { showToast } from './toast';
+// [troops] begin
+import { toggleTroopsScreen } from './screens/troops';
+import { confirmAutomationOff } from './orderMenu';
+// [troops] end
 import { countLabel } from './plural';
 // [policy] begin
 import { toggleEmpirePolicy } from './screens/empirePolicy';
@@ -666,6 +670,23 @@ function buildTopBarButton(name: string, wiring: HudWiring): HTMLElement {
             return;
         }
         // [policy] end
+
+        // [troops] begin
+        // tbtnTroops → Troops screen (Main.Part9.cs:3129 tbtnTroops_Click; no hotkey in Main_KeyUp).
+        if (name === 'tbtnTroops') {
+            const src = getEmpireSummarySource();
+            const galaxy = src?.empire.galaxy;
+            if (src && galaxy) {
+                toggleTroopsScreen({
+                    galaxy,
+                    empire: src.empire,
+                    onGoTo: (t) => selectStellarObject(t, true),
+                    confirmAutomationOff: (task) => confirmAutomationOff(task),
+                });
+            }
+            return;
+        }
+        // [troops] end
 
         const screen = topBarScreen(name);
         if (screen === 'colonies') {
