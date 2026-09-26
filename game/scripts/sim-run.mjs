@@ -136,6 +136,9 @@ try {
     if (plan.length === 0) for (let left = seconds; left > 0; left -= chunk) plan.push(Math.min(chunk, left));
     const timings = {}, todo = {}, chunks = [];
     let frames = 0, draws = 0, cpuTotal = 0;
+    // Expansion summary: game-day each empire first holds more than one colony.
+    const firstSecond = new Map();
+    const noteExpansion = () => { for (const e of g.empires) if (e !== null && e.colonies.length > 1 && !firstSecond.has(e)) firstSecond.set(e, g.nowMs / 1000 / 600 * 365); };
     t = performance.now();
     for (const secs of plan) {
         const cpu0 = process.cpuUsage(), c0 = performance.now(), f0 = schedulerState(g).frames, d0 = g.rnd.drawCount;
@@ -154,6 +157,7 @@ try {
         const ms = performance.now() - c0;
         const cu = process.cpuUsage(cpu0), cpuMs = (cu.user + cu.system) / 1000;
         cpuTotal += cpuMs;
+        noteExpansion();
         chunks.push({ endS: g.nowMs / 1000, frames: f, ms, msPerFrame: ms / Math.max(1, f), cpuMsPerFrame: cpuMs / Math.max(1, f), heap: heap.sample(), bo: g.builtObjects.length });
     }
     const runMs = performance.now() - t;
@@ -190,6 +194,22 @@ try {
     out.contact = contact;
     console.log(`contact after ${(g.nowMs / 1000 / 600 * 365).toFixed(0)} game-days: ${contact.filter((c) => c.met > 0).length}/${contact.length} empires met someone`);
     for (const c of contact) console.log(`  ${c.player ? '*' : ' '} ${c.name.padEnd(28)} met ${c.met}, explorers away ${c.away}/${c.explorers}, systems explored/visible ${c.explored}`);
+    // Expansion: colonies per empire, the day of the first second colony, and every colony ship (sub role 13):
+    // where it was built (Habitat colony yard or a base), components built / total, and its mission.
+    const days = (ms) => (ms / 1000 / 600 * 365).toFixed(0);
+    out.expansion = g.empires.filter((e) => e !== null).map((e) => {
+        const ships = e.builtObjects.filter((b) => b !== null && b.subRole === 13 && !b.hasBeenDestroyed).map((b) => {
+            const at = b.builtAt;
+            const built = b.components.items.filter((c) => c.status !== 0).length;
+            return { name: b.name, at: at === null ? '-' : `${at.constructor.name} ${at.name}`, built, total: b.components.count, ageDays: days(g.nowMs - b.dateBuilt), mission: b.mission?.type ?? null };
+        });
+        return { name: e.name, player: e === g.playerEmpire, colonies: e.colonies.length, firstSecondDay: firstSecond.get(e) ?? null, ships };
+    });
+    console.log(`expansion: ${out.expansion.filter((x) => x.colonies > 1).length}/${out.expansion.length} empires have > 1 colony; total colonies ${out.expansion.reduce((a, x) => a + x.colonies, 0)}`);
+    for (const x of out.expansion) {
+        console.log(`  ${x.player ? '*' : ' '} ${x.name.padEnd(28)} colonies ${x.colonies}, first 2nd colony day ${x.firstSecondDay === null ? '-' : x.firstSecondDay.toFixed(0)}`);
+        for (const sh of x.ships) console.log(`      colony ship ${sh.name} at ${sh.at}: ${sh.built}/${sh.total} built, age ${sh.ageDays} d, mission ${sh.mission}`);
+    }
     const hits = Object.entries(todo).sort((a, b) => b[1] - a[1]);
     console.log(`TODO(port) stubs reached: ${hits.length}`);
     for (const [k, v] of hits.slice(0, 25)) console.log(`  ${String(v).padStart(10)}  ${k}`);

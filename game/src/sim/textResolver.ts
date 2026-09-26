@@ -71,6 +71,22 @@ function splitTrailingTag(s: string): { prefix: string; tag: string } | null {
 }
 
 /**
+ * `string.Format(TextResolver.GetText(tag), args)` evaluated now, for C# senders that splice formatted parts into a
+ * larger text before sending it (e.g. Empire.3.cs DoResearchBreakthrough 2600-2640, which also cuts characters off the
+ * joined result): the deferred gameText() encoding cannot nest (a part's `|` args would be read as the outer tag's
+ * args). `lower` = `TextResolver.GetText(tag).ToLower(CultureInfo.InvariantCulture)` before the Format. Without a
+ * loaded table (headless tests) or for an unknown tag it returns the gameText() encoding (lower-cased with `lower`).
+ */
+export function formatGameTextNow(tag: string, args: readonly unknown[] = [], lower = false): string {
+    const t = tryGetText(tag);
+    if (t === null) {
+        const enc = args.length > 0 ? `${tag}|${args.map((a) => String(a)).join('|')}` : tag;
+        return lower ? enc.toLowerCase() : enc;
+    }
+    return formatNet(lower ? t.toLowerCase() : t, args);
+}
+
+/**
  * Decode a sim text built by gameText() (`tag|arg0|arg1…`, possibly concatenated with literal text or with
  * further encoded texts, e.g. `A|x\n\nB|y`) into `string.Format(TextResolver.GetText(tag), args)`.
  * Each tag's template says how many `|` parts are its arguments; text after them (which is glued to the
