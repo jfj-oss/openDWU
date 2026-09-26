@@ -102,7 +102,7 @@ function systemStarOf(galaxy: Galaxy, habitat: Habitat | null): Habitat | null {
 }
 
 // DesignList.cs FindNewestCanBuild(subRole) (140): the list owner is Designs[0].Empire.
-function designsFindNewestCanBuild(designs: Design[], subRole: BuiltObjectSubRole): Design | null {
+export function designsFindNewestCanBuild(designs: Design[], subRole: BuiltObjectSubRole): Design | null {
     let empire: Empire | null = null;
     if (designs.length > 0 && designs[0] != null) empire = designs[0].empire as Empire | null;
     return findNewestCanBuild(designs, subRole, empire);
@@ -248,7 +248,7 @@ function habitatHasResource(habitat: Habitat, resourceId: number): boolean {
 }
 
 // HabitatResourceList.ContainsGroup (241).
-function habitatResourcesContainsGroup(galaxy: Galaxy, habitat: Habitat, group: ResourceGroup): boolean {
+export function habitatResourcesContainsGroup(galaxy: Galaxy, habitat: Habitat, group: ResourceGroup): boolean {
     for (const r of habitat.resources) {
         if (r != null && resourceGroupOf(galaxy.resourceSystem.resources[r.resourceId]) === group) return true;
     }
@@ -852,7 +852,7 @@ export function checkResourceSupplyMeetsExpectedBool(galaxy: Galaxy, empire: Emp
 }
 
 // Empire.6.cs IdentifyStrategicResourceSupplySource(resource) (1755).
-function identifyStrategicResourceSupplySource(empire: Empire, resourceId: number): Habitat | null {
+export function identifyStrategicResourceSupplySource(empire: Empire, resourceId: number): Habitat | null {
     let num = 0;
     let result: Habitat | null = null;
     for (let i = 0; i < empire.resourceTargets.length; i++) {

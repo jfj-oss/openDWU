@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { cachedTickGame } from './helpers/gameCache';
 import { BuiltObjectMissionType, builtObjectMission } from '../src/sim/missions/mission';
 import type { AdvisorBrief } from '../src/sim/player/advisorBrief';
 import { ADVISOR_RESPONSE_SCHEMA } from '../src/sim/player/advisorCommands';
@@ -97,7 +97,7 @@ describe('requestAdvisor', () => {
 describe('runAdvisorTurn (harness game, scripted model)', () => {
     it('sends the brief in the system prompt and executes the chosen command', async () => {
         const gameData = await loadGameDataFs();
-        const galaxy = createTickGame(gameData).galaxy;
+        const galaxy = cachedTickGame(gameData).galaxy;
         const player = galaxy.playerEmpire!;
         const ship = player.builtObjects.find((b) => b.name === 'Glowing Way')!;
         // The fake model reads the brief and picks the explorer's "nearest unexplored system" order.
@@ -134,7 +134,7 @@ describe('runAdvisorTurn (harness game, scripted model)', () => {
 
     it('the model cannot confirm a war or queue an order on its own', async () => {
         const gameData = await loadGameDataFs();
-        const galaxy = createTickGame(gameData).galaxy;
+        const galaxy = cachedTickGame(gameData).galaxy;
         const player = galaxy.playerEmpire!;
         const other = galaxy.empires.find((e) => e !== player && e.active && e !== galaxy.independentEmpire)!;
         player.diplomaticRelations.byEmpire(other)!.type = DiplomaticRelationType.None;
@@ -160,7 +160,7 @@ describe('runAdvisorTurn (harness game, scripted model)', () => {
 
     it('an unreachable server is an error turn (nothing executed)', async () => {
         const gameData = await loadGameDataFs();
-        const galaxy = createTickGame(gameData).galaxy;
+        const galaxy = cachedTickGame(gameData).galaxy;
         const turn = await runAdvisorTurn({ galaxy, player: galaxy.playerEmpire!, selection: null, history: [], text: 'hi', cfg: { endpoint: 'http://127.0.0.1:9', model: 'x', api: 'ollama' } });
         expect(turn.error).toBeDefined();
         expect(turn.results).toEqual([]);

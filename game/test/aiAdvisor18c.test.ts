@@ -9,7 +9,7 @@ import type { AddressInfo } from 'node:net';
 import { readFileSync, existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { cachedTickGame } from './helpers/gameCache';
 import { pin } from './pins/pin';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { Empire } from '../src/sim/empire';
@@ -92,7 +92,7 @@ interface World {
 }
 
 function world(): World {
-    const galaxy = createTickGame(gameData).galaxy;
+    const galaxy = cachedTickGame(gameData).galaxy;
     runGameSeconds(galaxy, 60);
     const player = galaxy.playerEmpire!;
     const ais = galaxy.empires.filter((e) => e !== player && e.pirateEmpireBaseHabitat === null && e !== galaxy.independentEmpire && e.active);
@@ -323,7 +323,7 @@ describe('feature off / no model: the scheduler path is untouched', () => {
 
     it('off, and on without a model server: 120 game-s polled every 5 s give the pinned tick digest; nothing is asked or logged', async () => {
         for (const on of [false, true]) {
-            const galaxy = createTickGame(gameData).galaxy;
+            const galaxy = cachedTickGame(gameData).galaxy;
             let fetches = 0;
             const deadFetch = (async () => {
                 fetches++;

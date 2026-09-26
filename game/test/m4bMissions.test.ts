@@ -5,6 +5,7 @@
 // Expectations are hand-worked from the C# listed above each block.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
+import { cachedTickGame } from './helpers/gameCache';
 import { createTickGame } from './helpers/tickGame';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { Empire } from '../src/sim/empire';
@@ -42,7 +43,7 @@ let ship: BuiltObject;
 let planet: Habitat;
 beforeAll(async () => {
     gameData = await loadGameDataFs();
-    galaxy = createTickGame(gameData).galaxy;
+    galaxy = cachedTickGame(gameData).galaxy;
     empire = galaxy.empires[1];
     ship = empire.builtObjects.find((b) => b.role !== BuiltObjectRole.Base && b.empire === empire && b.warpSpeed > 0)!;
     // M4f: Start.2.cs 1373 AssignMissionsToBuiltObjectList gives the ship a game-start mission (parent cleared); these
@@ -562,8 +563,8 @@ describe('distress signals / declined tasks', () => {
 
 describe('harness smoke (M4b ported, other packages stubbed)', () => {
     it('60 game-s run twice gives the same digest, reaches no M4b stub and no M4b Rnd site', () => {
-        const a = createTickGame(gameData).galaxy;
-        const b = createTickGame(gameData).galaxy;
+        const a = createTickGame(gameData).galaxy; // built here; b from the test game cache
+        const b = cachedTickGame(gameData).galaxy;
         const ra = runGameSeconds(a, 60);
         const rb = runGameSeconds(b, 60);
         expect(stateDigest(a)).toBe(stateDigest(b));

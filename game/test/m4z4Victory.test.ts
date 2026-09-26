@@ -3,7 +3,8 @@
 // harness smoke test on seed 1 with the wizard's victory conditions switched on.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame, tickGameOptions } from './helpers/tickGame';
+import { tickGameOptions } from './helpers/tickGame';
+import { cachedTickGame } from './helpers/gameCache';
 import { createGame } from '../src/sim/game';
 import { runGameSeconds } from '../src/sim/tick/harness';
 import type { GameData } from '../src/sim/data/gameData';
@@ -72,7 +73,7 @@ let galaxy: Galaxy;
 let empires: Empire[];
 beforeAll(async () => {
     gameData = await loadGameDataFs();
-    galaxy = createTickGame(gameData).galaxy;
+    galaxy = cachedTickGame(gameData).galaxy;
     empires = galaxy.empires.filter((e) => e !== galaxy.independentEmpire && e.dominantRace !== null && e.dominantRace.playable);
 }, 300000);
 

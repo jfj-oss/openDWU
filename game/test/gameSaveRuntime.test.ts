@@ -1,3 +1,4 @@
+// @slow — soak: 600 s / 1800 s runs with save/load round trips (test:slow tier; see vite.config.ts testTier).
 // Save/load after the simulation has run: runtime-only model objects (ShipGroup fleets, DistressSignal /
 // DeclinedTask, blockades, fighters, invasion stats, pirate colony control, orders / contracts, missions) must
 // round-trip through the graph codec byte-identically and keep their shared identity.

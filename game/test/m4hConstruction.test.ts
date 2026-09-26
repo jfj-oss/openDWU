@@ -1,3 +1,4 @@
+// @slow — soak: two 1200 s construction runs (test:slow tier; see vite.config.ts testTier).
 // M4h construction queues & shipyards (tasks/M4-plan.md §3.3 M4h):
 // - unit tests of the ported ConstructionQueue / yard helpers against hand-worked C# values;
 // - harness milestone: a ship queued at a colony (and one at a space port) is built from component cargo and joins the
@@ -5,7 +6,7 @@
 //   Empire.6.cs DirectConstruction does: AddBuiltObjectToConstruct + AddBuiltObjectToGalaxy + BuiltAt).
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { cachedTickGame } from './helpers/gameCache';
 import { runGameSeconds } from '../src/sim/tick/harness';
 import type { GameData } from '../src/sim/data/gameData';
 import type { Galaxy } from '../src/sim/galaxy';
@@ -52,7 +53,7 @@ describe('M4h unit: yards and queues', () => {
     });
 
     it('colonies and shipyards get construction queues at game start', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         for (const e of g.empires) {
             const q = habitatConstructionQueue(capitalOf(e));
             expect(q, e.name).not.toBeNull();
@@ -65,7 +66,7 @@ describe('M4h unit: yards and queues', () => {
     }, 120000);
 
     it('BaconConstructionQueue.ReviewConstructionSpeed for a colony: 600 × min(1, √(pop / 1e10)) × race factor', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const e = g.empires[0];
         const colony = capitalOf(e);
         const q = habitatConstructionQueue(colony)!;
@@ -86,7 +87,7 @@ describe('M4h unit: yards and queues', () => {
     }, 120000);
 
     it('CheckWhetherStillBeingBuilt frees the yard of a destroyed builder', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const e = g.empires[0];
         const port = e.spacePorts[0];
         const q = builtObjectConstructionQueue(port)!;
@@ -103,7 +104,7 @@ describe('M4h unit: yards and queues', () => {
     }, 120000);
 
     it('DoRepairs repairs damaged components at 1 per DamageRepair seconds (non-military: no crew bonus)', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const e = g.empires[0];
         const ship = e.constructionShips[0] as BuiltObject;
         expect(calculateCrewLevel(ship)).toBe('');
@@ -128,7 +129,7 @@ describe('M4h unit: yards and queues', () => {
     }, 120000);
 
     it('CheckForRepairs queues a damaged base at its colony and flags a damaged ship for repair', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const e = g.empires[0];
         const port = e.spacePorts[0];
         port.components.items[0].status = ComponentStatus.Damaged;
@@ -158,7 +159,7 @@ function queueAtColony(g: Galaxy, e: Empire, colony: Habitat, design: Design, na
 
 describe('M4h milestone on the headless harness', () => {
     it('a construction ship queued at a colony is built from component cargo and joins the galaxy', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const e = g.empires[0];
         // M4f DirectPrivateConstruction queues private ships at the capital's space port (shared colony cargo) in the
         // Empire long block and would consume the stocked components first; this test exercises the yard alone.
@@ -190,10 +191,10 @@ describe('M4h milestone on the headless harness', () => {
         // reading the cargo the frame the builder completes, does not hold at age 1 either: components for the capital's
         // own builds are already there by then.)
         expect(Number.isFinite(bo.xpos) && Number.isFinite(bo.ypos)).toBe(true);
-    }, 300000);
+    }, 1800000); // 30 min: runs at a fraction of speed while other suites load the machine
 
     it('a warship queued at a space port is built (yard ticked as IndustrialProcessing would) and parks', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const e = g.empires[0];
         e.initiateConstruction = false; // see above
         const port = e.spacePorts[0];
@@ -227,10 +228,10 @@ describe('M4h milestone on the headless harness', () => {
         // may already have queued the new escort for a Retrofit to a newer design.)
         expect(m === null || m.type === BuiltObjectMissionType.Move || m.type === BuiltObjectMissionType.Undefined || m.type === BuiltObjectMissionType.Attack || m.type === BuiltObjectMissionType.Escape || m.type === BuiltObjectMissionType.Refuel || m.type === BuiltObjectMissionType.Patrol || m.type === BuiltObjectMissionType.Escort || m.type === BuiltObjectMissionType.Retrofit).toBe(true);
         expect(g.builtObjects).toContain(bo);
-    }, 300000);
+    }, 1800000); // 30 min: runs at a fraction of speed while other suites load the machine
 
     it('retrofit: a queued ship swaps to the new design components', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const e = g.empires[0];
         const port = e.spacePorts[0];
         const q = builtObjectConstructionQueue(port)! as ConstructionQueue;

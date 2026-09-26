@@ -4,7 +4,8 @@
 // over a seed-1 harness run now that DirectPrivateConstruction pays the state (M4f).
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGameAtAge, tickGameOptions } from './helpers/tickGame';
+import { tickGameOptions } from './helpers/tickGame';
+import { cachedTickGame, cachedTickGameRun } from './helpers/gameCache';
 import { createGame, type CreateGameOptions } from '../src/sim/game';
 import type { GameData } from '../src/sim/data/gameData';
 import { runGameSeconds } from '../src/sim/tick/harness';
@@ -105,11 +106,10 @@ describe('state ledger, galaxy age 0 / tech 0.5, seed 1, 600 game-s', () => {
     it('state money rises (Empire.6.cs 741 DirectPrivateConstruction pays the state the private purchase price)', () => {
         // Galaxy age 0 with age-0 empires (the PreWarp start this ledger was pinned on): tickGameOptions' empires are age 1
         // since the harness models the true default start (M4y), and galaxy 0 + age-1 empires is an unpinned mix.
-        const g = createTickGameAtAge(gameData, 0).galaxy;
-        const player = g.playerEmpire!;
-        const before = player.stateMoney;
-        runGameSeconds(g, 600);
+        const before = cachedTickGame(gameData, { age: 0 }).galaxy.playerEmpire!.stateMoney;
+        // createTickGameAtAge(0) + runGameSeconds(g, 600), built once and cached (test/helpers/gameCache.ts)
+        const g = cachedTickGameRun(gameData, { age: 0, seconds: 600 }).game.galaxy;
         // Seed 1 at the M4x commit: 20904.7 -> 33519.6.
-        expect(player.stateMoney).toBeGreaterThan(before);
+        expect(g.playerEmpire!.stateMoney).toBeGreaterThan(before);
     }, 300000);
 });

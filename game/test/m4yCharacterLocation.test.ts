@@ -4,6 +4,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 import { createTickGame } from './helpers/tickGame';
+import { cachedTickGame } from './helpers/gameCache';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { Empire } from '../src/sim/empire';
 import type { BuiltObject } from '../src/sim/builtObject';
@@ -24,7 +25,7 @@ let ships: BuiltObject[];
 
 beforeEach(async () => {
     gameData ??= await loadGameDataFs();
-    galaxy = createTickGame(gameData).galaxy;
+    galaxy = cachedTickGame(gameData).galaxy;
     const escorts = (e: Empire): BuiltObject[] => e.builtObjects.filter((b) => b.role === BuiltObjectRole.Military && b.subRole === BuiltObjectSubRole.Escort);
     pirate = [...galaxy.pirateEmpires].sort((a, b) => escorts(b).length - escorts(a).length)[0];
     ships = escorts(pirate);

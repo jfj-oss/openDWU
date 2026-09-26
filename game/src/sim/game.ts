@@ -820,16 +820,36 @@ export function applyStartAutomationSettings(empire: Empire, o: Readonly<GameOpt
     empire.newShipsAutomated = o.newShipsAutomated;
 }
 
-// createGame: the sim entry point the wizard calls (non-pirate play).
-export function createGame(opts: CreateGameOptions): Game {
-    const gd = opts.gameData;
-    // BaconInitialize has not run while a fresh launch generates its galaxy: the Bacon statics are the C# defaults.
-    resetBaconSettings();
+/**
+ * The module-level static data createGame installs (the C# static lists loaded at startup: governments, government
+ * and race biases). createGame calls it first; a game rebuilt from a save in a process that never ran createGame
+ * needs it (and registerGameHooks) too.
+ */
+export function installGameStatics(gd: GameData): void {
     govs = gd.governments;
     setGovernmentsStatic(gd.governments);
     setGovernmentBiasesStatic(gd.governmentBiases); // GovernmentBiasList.LoadFromFile (M4r: NaturalAffinity)
     // Galaxy.cs LoadRaceBiases (Race.Biases) / Galaxy.RaceFamiliesStatic biases (raceBias.ts).
     setRaceBiasesStatic(gd.races, gd.raceBiases, gd.raceFamilies.length, gd.raceFamilyBiases);
+}
+
+/** The runtime hooks createGame registers (after the galaxy is generated). */
+export function registerGameHooks(): void {
+    registerTroopGeneralHook((g, e, location, troopRecruited) => {
+        // Galaxy.2.cs 5230-5233: GenerateNewCharacter(TroopGeneral, location) + the CharacterAppearance message.
+        const character = generateNewCharacter(g, e, CharacterRole.TroopGeneral, location).character;
+        const title = gameText('New Character Event Title', resolveDescription(CharacterRole as unknown as Record<number, string>, character.role));
+        const description = gameText('New Character Event Troop Recruit Troop General', troopRecruited.name, character.name);
+        sendMessageToEmpireWithTitle(e, e, EmpireMessageType.CharacterAppearance, character, description, title);
+    });
+}
+
+// createGame: the sim entry point the wizard calls (non-pirate play).
+export function createGame(opts: CreateGameOptions): Game {
+    const gd = opts.gameData;
+    // BaconInitialize has not run while a fresh launch generates its galaxy: the Bacon statics are the C# defaults.
+    resetBaconSettings();
+    installGameStatics(gd);
     const clockRnd = new Random(opts.seed ^ 0x5eed); // stands in for the C# clock-seeded Randoms
     // Galaxy.4.cs 2132 / Start.2.cs 98: the new galaxy's own Race objects (per game, saved with it).
     const galaxyRaces = cloneGalaxyRaces(gd.races);
@@ -871,13 +891,7 @@ export function createGame(opts: CreateGameOptions): Game {
     galaxy.storyDistantWorldsEnabled = opts.storyDistantWorldsEnabled ?? false;
     galaxy.gameRaceSpecificEventsEnabled = opts.raceSpecificEventsEnabled ?? true;
     galaxy.storyShadowsEnabled = opts.storyShadowsEnabled ?? false;
-    registerTroopGeneralHook((g, e, location, troopRecruited) => {
-        // Galaxy.2.cs 5230-5233: GenerateNewCharacter(TroopGeneral, location) + the CharacterAppearance message.
-        const character = generateNewCharacter(g, e, CharacterRole.TroopGeneral, location).character;
-        const title = gameText('New Character Event Title', resolveDescription(CharacterRole as unknown as Record<number, string>, character.role));
-        const description = gameText('New Character Event Troop Recruit Troop General', troopRecruited.name, character.name);
-        sendMessageToEmpireWithTitle(e, e, EmpireMessageType.CharacterAppearance, character, description, title);
-    });
+    registerGameHooks();
     galaxy.empireTerritoryColonyInfluenceRangeFactor = opts.empireTerritoryColonyInfluenceRangeFactor ?? galaxy.empireTerritoryColonyInfluenceRangeFactor;
     galaxy.colonyNames = opts.colonyNames ?? null;
     galaxy.colonyNameIndex = 0;

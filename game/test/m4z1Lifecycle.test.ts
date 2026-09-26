@@ -7,7 +7,7 @@ import { baconSettings } from '../src/sim/data/baconSettings';
 // createGame galaxy (seed 1) and finishes with a harness run so the tick meets the torn-down state.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { cachedTickGame } from './helpers/gameCache';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { GameData } from '../src/sim/data/gameData';
 import type { Empire } from '../src/sim/empire';
@@ -35,7 +35,7 @@ beforeAll(async () => {
 }, 120000);
 
 function newGalaxy(): Galaxy {
-    return createTickGame(gameData).galaxy;
+    return cachedTickGame(gameData).galaxy;
 }
 
 /** Every reference a live empire keeps to `dead` after its teardown (should be none). */

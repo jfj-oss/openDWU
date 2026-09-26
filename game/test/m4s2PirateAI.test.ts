@@ -4,7 +4,7 @@
 // Empire.2.cs 2653, Galaxy.8.cs 3053).
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { cachedTickGame, cachedTickGameRun } from './helpers/gameCache';
 import type { GameData } from '../src/sim/data/gameData';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { Habitat } from '../src/sim/types';
@@ -34,7 +34,7 @@ beforeAll(async () => {
 }, 120000);
 
 function freshGalaxy(): Galaxy {
-    return createTickGame(gameData).galaxy;
+    return cachedTickGame(gameData).galaxy;
 }
 
 /** A populated independent colony with no pirate ship (non-base) within 1500 (ReviewPirateControl's scan). */
@@ -176,9 +176,9 @@ describe('pirate empire steps', () => {
 
 describe('harness smoke (pirate faction AI running)', () => {
     it('600 game-s: pirate ships get missions, pirates build ships, no stub throws', () => {
-        const galaxy = freshGalaxy();
-        const shipsBefore = galaxy.pirateEmpires.reduce((n, p) => n + p.builtObjects.length + p.privateBuiltObjects.length, 0);
-        const r = runGameSeconds(galaxy, 600);
+        const shipsBefore = freshGalaxy().pirateEmpires.reduce((n, p) => n + p.builtObjects.length + p.privateBuiltObjects.length, 0);
+        const { game, run: r } = cachedTickGameRun(gameData, { seconds: 600 }); // createTickGame + runGameSeconds(g, 600), built once and cached (test/helpers/gameCache.ts)
+        const galaxy = game.galaxy;
         const shipsAfter = galaxy.pirateEmpires.reduce((n, p) => n + p.builtObjects.length + p.privateBuiltObjects.length, 0);
         expect(shipsAfter).toBeGreaterThan(shipsBefore);
         let withMission = 0;

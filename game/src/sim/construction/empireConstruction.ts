@@ -32,12 +32,11 @@
 //     (ObtainCoordinatesFromPoint) per fall-back point attempt.
 //   Retirement / retrofit / scrapping: none directly (CompleteTeardown / InflictDamage are M4o's).
 
-import { registerTodo, todo } from '../tick/todo';
 import { calculateAngleFromCoords, type Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import { AutomationLevel, empireGovernmentAttributes } from '../empire';
 import { BuiltObject } from '../builtObject';
-import { Habitat, HabitatType, IndustryType } from '../types';
+import { Habitat, HabitatCategoryType, HabitatType, IndustryType } from '../types';
 import type { Design } from '../design';
 import { galaxyComponentCurrentPrices } from '../design';
 import { BuiltObjectSubRole } from '../builtObjectTypes';
@@ -51,6 +50,7 @@ import { REAL_SECONDS_IN_GALACTIC_YEAR } from '../galaxyTime';
 import { netSort } from '../netSort';
 import { ComponentType } from '../data/components';
 import { ShipDesignFocus } from '../researchSystem';
+import { ResourceGroup } from '../resourceSystem';
 import { findNewestCanBuild, findNewestCanBuildFullEvaluate, canBuildDesign, createNewDesigns } from '../designGeneration';
 import {
     ALLOWABLE_YEARS_MAINTENANCE_FROM_CASH_ON_HAND,
@@ -74,11 +74,12 @@ import {
 import { annualStateMaintenanceExcludingUnderConstruction } from '../treasury';
 import { annualTroopMaintenance, estimatedDefensiveForceRequired } from '../troops';
 import { ForceStructureProjection, ForceStructureProjectionList } from '../forceStructureProjection';
-import { determineNewSpacePortLocations, analyzeNewResearchFacilities } from '../stationPlacement';
+import { determineNewSpacePortLocations, analyzeNewResearchFacilities, countResourceSourcesForEmpire, designsFindNewestCanBuild, habitatResourcesContainsGroup, identifyStrategicResourceSupplySource } from '../stationPlacement';
 import { determineOrbitalBaseLocation } from '../pirates';
-import { AdvisorMessageType, checkTaskAuthorized, formatText, formatThousands, getText, type RefCount } from '../diplomacyTick';
+import { AdvisorMessageType, checkTaskAuthorized, determineResourcesEmpireSupplies, formatText, formatThousands, getText, type RefCount } from '../diplomacyTick';
 import { gameText } from '../colonyTick';
-import { EmpireMessage, EmpireMessageType, sendEmpireMessage } from '../messages';
+import { EmpireMessage, EmpireMessageType, resolveDescription, sendEmpireMessage } from '../messages';
+import { advisorText } from '../advisorQueue';
 import { ConstructionQueue, canBuiltObjectColonizeHabitat, resolveBuildSpeed } from './constructionQueue';
 import { componentListDiff, resolveComponentList } from './constructionYard';
 import { ManufacturingQueue, builtObjectManufacturingQueue, habitatManufacturingQueue } from '../manufacturingQueue';
@@ -123,7 +124,7 @@ export const MAXIMUM_CONSTRUCTION_QUEUE_WAIT_TIME_YEARS = 2.5;
 const MAX_SOLAR_SYSTEM_SIZE = 23000;
 
 /** DesignList.FindNewestCanBuild(subRole[, colony]) (DesignList.cs 140/148): the empire is the first design's owner. */
-function dlFindNewestCanBuild(designs: Design[], subRole: BuiltObjectSubRole, colony: Habitat | null = null): Design | null {
+export function dlFindNewestCanBuild(designs: Design[], subRole: BuiltObjectSubRole, colony: Habitat | null = null): Design | null {
     let empire: Empire | null = null;
     if (designs.length > 0 && designs[0] != null) empire = designs[0].empire as Empire | null;
     return findNewestCanBuild(designs, subRole, empire, colony);
@@ -634,7 +635,7 @@ export function procureConstructionComponentsAtColony(galaxy: Galaxy, empire: Em
 }
 
 /** `foreach (Cargo c in list) CreateOrder(requester, c.CommodityResource, c.Amount, isState: false, type)`. */
-function createOrdersFor(galaxy: Galaxy, empire: Empire, requester: Habitat | BuiltObject, cargo: CargoList, type: OrderType): void {
+export function createOrdersFor(galaxy: Galaxy, empire: Empire, requester: Habitat | BuiltObject, cargo: CargoList, type: OrderType): void {
     for (const item of cargo.items) empireCreateOrder(galaxy, empire, requester, new ResourceRef(item.commodity.resourceId), item.amount, false, type);
 }
 
@@ -854,11 +855,12 @@ export function generateAutomationMessageConstruction(galaxy: Galaxy, builtObjec
     if (habitat !== null) {
         const habitat2 = galaxy.determineHabitatSystemStar(habitat);
         text3 = habitat.name;
-        text = String(habitat.type);
-        text2 = String(habitat.category);
+        text = resolveDescription(HabitatType, habitat.type);
+        text2 = resolveDescription(HabitatCategoryType, habitat.category);
         text4 = habitat2.name;
     }
-    return formatText(getText('Automation Construction Colony'), builtObject.subRole, builtObject.design!.name, formatMoney(cost), text, text2, text3, text4);
+    // 3676: Galaxy.ResolveDescription(SubRole), cost.ToString("###,###,###,##0").
+    return advisorText('Automation Construction Colony', resolveDescription(BuiltObjectSubRole, builtObject.subRole), builtObject.design!.name, formatThousands(cost), text, text2, text3, text4);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -2129,26 +2131,124 @@ export function determineMonitoringStationLocation(galaxy: Galaxy, empire: Empir
     empire.monitoringPoints = list2;
 }
 
-// ---- stub added by M4u (Habitat.cs 5424 CheckHabitatIsEmpire: a new empire secures its fuel / strategic supply) ----
+// ---- EnsureStrategicResourceSupply (Habitat.cs 5424 / BaconHabitat.cs 228 CheckHabitatIsEmpire: a new empire secures
+// its fuel / strategic supply) ----
 
-const T_ensureStrategicResourceSupply = registerTodo('M4i', 'ensureStrategicResourceSupply');
-/**
- * Empire.6.cs 1656 EnsureStrategicResourceSupply: ForceResourceSupply / CheckResourceSupply per fuel resource, then
- * construction ships are sent to build mining stations at the chosen habitats — stub.
- */
-export function ensureStrategicResourceSupply(galaxy: Galaxy, empire: Empire): void {
-    // RND: draws in callees (ForceResourceSupply / mission assignment) — not drawn until M4i.
-    /* TODO(port) M4i */ todo(T_ensureStrategicResourceSupply);
+/** Empire.6.cs 1733 ForceResourceSupply(resource, resourceHabitats). */
+function forceResourceSupply(empire: Empire, resourceId: number, resourceHabitats: Habitat[]): void {
+    const habitat = identifyStrategicResourceSupplySource(empire, resourceId);
+    if (habitat !== null && !resourceHabitats.includes(habitat)) {
+        resourceHabitats.push(habitat);
+    }
 }
 
-// ---- stub added by M4o (called from combat/damage.ts DetermineScrapDamagedShip, Galaxy.7.cs 2876) ----
+/** Empire.6.cs 1742 CheckResourceSupply(resource, resourcesAlreadySupplied, resourceHabitats). */
+function checkResourceSupply(empire: Empire, resourceId: number, resourcesAlreadySupplied: number[], resourceHabitats: Habitat[]): void {
+    if (!resourcesAlreadySupplied.includes(resourceId)) {
+        const habitat = identifyStrategicResourceSupplySource(empire, resourceId);
+        if (habitat !== null && !resourceHabitats.includes(habitat)) {
+            resourceHabitats.push(habitat);
+        }
+    }
+}
 
-const T_findNearestAvailableConstructionShip = registerTodo('M4i', 'findNearestAvailableConstructionShip');
-/** Empire.9.cs 4631 FindNearestAvailableConstructionShip(x, y) — stub: null. */
+/** HabitatList.Remove(habitat): the first occurrence. */
+function removeFirstHabitat(list: Habitat[], habitat: Habitat): void {
+    const index = list.indexOf(habitat);
+    if (index >= 0) list.splice(index, 1);
+}
+
+/**
+ * Port of Empire.6.cs 1656 EnsureStrategicResourceSupply: for each fuel resource with fewer than 2 + Colonies / 3
+ * sources, ForceResourceSupply picks the top resource target holding it (the second loop's CheckResourceSupply only
+ * sees non-fuel entries of FuelResources, i.e. none); habitats already targeted by a Build mission or already mined are
+ * dropped, then each idle auto-controlled construction ship is sent to build a gas / mining station at the next habitat
+ * (AssignMission(Build, habitat, null, design, x, y, Normal)). Rnd: SelectRelativeHabitatSurfacePoint and AssignMission
+ * per assigned ship.
+ */
+export function ensureStrategicResourceSupply(galaxy: Galaxy, empire: Empire): void {
+    const resourcesAlreadySupplied = determineResourcesEmpireSupplies(empire);
+    const habitatList: Habitat[] = [];
+    const fuelResources = galaxy.resourceSystem.fuelResources;
+    for (let i = 0; i < fuelResources.length; i++) {
+        const resourceDefinition = fuelResources[i];
+        if (resourceDefinition != null) {
+            const num = 2 + Math.trunc(empire.colonies.length / 3);
+            const num2 = countResourceSourcesForEmpire(empire, resourceDefinition.resourceId);
+            if (num2 < num) {
+                forceResourceSupply(empire, resourceDefinition.resourceId, habitatList);
+            }
+        }
+    }
+    for (let j = 0; j < fuelResources.length; j++) {
+        const resourceDefinition2 = fuelResources[j];
+        if (resourceDefinition2 != null && !resourceDefinition2.isFuel) {
+            checkResourceSupply(empire, resourceDefinition2.resourceId, resourcesAlreadySupplied, habitatList);
+        }
+    }
+    const constructionShips = empire.constructionShips as BuiltObject[];
+    for (let k = 0; k < constructionShips.length; k++) {
+        const builtObject = constructionShips[k];
+        const mission = builtObjectMission(builtObject.mission);
+        if (builtObject.subRole === BuiltObjectSubRole.ConstructionShip && builtObject.isShipYard && mission !== null && mission.type === BuiltObjectMissionType.Build && mission.targetHabitat !== null) {
+            const targetHabitat = mission.targetHabitat;
+            while (habitatList.includes(targetHabitat)) {
+                removeFirstHabitat(habitatList, targetHabitat);
+            }
+        }
+    }
+    for (let l = 0; l < empire.miningStations.length; l++) {
+        const builtObject2 = empire.miningStations[l] as BuiltObject;
+        if ((builtObject2.subRole === BuiltObjectSubRole.GasMiningStation || builtObject2.subRole === BuiltObjectSubRole.MiningStation) && builtObject2.parentHabitat !== null) {
+            while (habitatList.includes(builtObject2.parentHabitat)) {
+                removeFirstHabitat(habitatList, builtObject2.parentHabitat);
+            }
+        }
+    }
+    let num3 = 0;
+    for (let m = 0; m < constructionShips.length; m++) {
+        const builtObject3 = constructionShips[m];
+        const mission3 = builtObjectMission(builtObject3.mission);
+        if (builtObject3.subRole === BuiltObjectSubRole.ConstructionShip && builtObject3.isAutoControlled && builtObject3.isShipYard && (mission3 === null || mission3.type === BuiltObjectMissionType.Undefined) && num3 < habitatList.length) {
+            let design: Design | null = null;
+            // HabitatResourceList.Clone().ContainsGroup (a null Resources list is an empty clone).
+            const habitat = habitatList[num3];
+            if (habitat.resources != null && habitatResourcesContainsGroup(galaxy, habitat, ResourceGroup.Gas)) {
+                design = designsFindNewestCanBuild(empire.designs, BuiltObjectSubRole.GasMiningStation);
+            }
+            if (habitat.resources != null && habitatResourcesContainsGroup(galaxy, habitat, ResourceGroup.Mineral)) {
+                design = designsFindNewestCanBuild(empire.designs, BuiltObjectSubRole.MiningStation);
+            }
+            if (design !== null) {
+                const p = galaxy.selectRelativeHabitatSurfacePoint(habitat);
+                assignMission(galaxy, builtObject3, BuiltObjectMissionType.Build, habitat, null, BuiltObjectMissionPriority.Normal, { design, x: p.x, y: p.y });
+            }
+            num3++;
+        }
+    }
+}
+
+// ---- FindNearestAvailableConstructionShip (called from combat/damage.ts DetermineScrapDamagedShip, Galaxy.7.cs 2876) ----
+
+/**
+ * Port of Empire.9.cs 4631 FindNearestAvailableConstructionShip(x, y): the nearest (squared distance, first strict
+ * minimum) construction ship not built-at-a-yard (BuiltAt == null) and without a mission. No Rnd.
+ */
 export function findNearestAvailableConstructionShip(galaxy: Galaxy, empire: Empire, x: number, y: number): BuiltObject | null {
-    void galaxy; void empire; void x; void y;
-    /* TODO(port) M4i */ todo(T_findNearestAvailableConstructionShip);
-    return null;
+    let result: BuiltObject | null = null;
+    let num = Number.MAX_VALUE;
+    for (let i = 0; i < empire.builtObjects.length; i++) {
+        const builtObject = empire.builtObjects[i];
+        const mission = builtObject != null ? builtObjectMission(builtObject.mission) : null;
+        if (builtObject != null && builtObject.subRole === BuiltObjectSubRole.ConstructionShip && builtObject.builtAt == null && (mission === null || mission.type === BuiltObjectMissionType.Undefined)) {
+            const num2 = galaxy.calculateDistanceSquared(x, y, builtObject.xpos, builtObject.ypos);
+            if (num2 < num) {
+                result = builtObject;
+                num = num2;
+            }
+        }
+    }
+    return result;
 }
 
 // ---------------------------------------------------------------------------------------------------------------

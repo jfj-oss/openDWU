@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { cachedTickGame } from './helpers/gameCache';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { Empire } from '../src/sim/empire';
 import type { GameData } from '../src/sim/data/gameData';
@@ -33,7 +33,7 @@ const enabledIds = (e: Empire): string[] => listProposals(galaxy, player, e).fil
 
 beforeEach(async () => {
     gameData ??= await loadGameDataFs();
-    galaxy = createTickGame(gameData).galaxy;
+    galaxy = cachedTickGame(gameData).galaxy;
     player = galaxy.playerEmpire!;
     ai = galaxy.empires.find((e) => e !== player && e.pirateEmpireBaseHabitat === null && e !== galaxy.independentEmpire && e.active)!;
     ai.reclusive = false;

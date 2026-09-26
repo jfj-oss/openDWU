@@ -49,6 +49,7 @@ import { GalaxyLocation } from '../galaxyLocation';
 import { Contract } from '../logistics/contracts';
 import { ComponentRef, Order, OrderList } from '../logistics/orders';
 import { Manufacturer, ManufacturingQueue, ResourceDatePair, ResourceDatePairList } from '../manufacturingQueue';
+import { BoxedPirateRelationType } from '../advisorQueue';
 import { EmpireMessage } from '../messages';
 import { DeclinedTask, DistressSignal } from '../missions/distress';
 import { BuiltObjectMission, Command, Sector } from '../missions/mission';
@@ -95,6 +96,8 @@ import { Achievement } from '../achievements';
 import { EventAction, EventActionExecutionPackage, EventActionList, GameEvent, GameEventList } from '../story/gameEventModel';
 
 const CLASSES: Record<string, object> = {
+    // advisorQueue.ts: a pirate-protection suggestion's AdvisorMessageData (Empire.advisorSuggestions; suggest).
+    BoxedPirateRelationType: BoxedPirateRelationType.prototype,
     // builtObject.ts
     BuiltObject: BuiltObject.prototype,
     DockingBay: DockingBay.prototype,
@@ -577,7 +580,11 @@ export function galaxyFromJSON(obj: GalaxySaveJSON, gameData: GameData): Galaxy 
 
     // --- Static tables (generateGalaxy / createGame wiring).
     const g = galaxy as unknown as Record<string, unknown>;
-    for (const field of GALAXY_STATIC_FIELDS) g[field] = tables[field];
+    // (Defined, not assigned by computed key, when new: see GraphDecoder '$t' — the Galaxy would turn dictionary-mode.)
+    for (const field of GALAXY_STATIC_FIELDS) {
+        if (Object.prototype.hasOwnProperty.call(g, field)) g[field] = tables[field];
+        else Object.defineProperty(g, field, { value: tables[field], writable: true, enumerable: true, configurable: true });
+    }
 
     // --- State kept outside the graph (after the static tables: the price getters read them).
     if (obj.sideTables !== undefined) restoreSideTables(galaxy, decoder.decode(obj.sideTables, 'sideTables') as SideTables);

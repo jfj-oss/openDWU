@@ -28,7 +28,8 @@ import { canBuildDesign, canBuildDesignTech } from '../src/sim/designGeneration'
 import { BuiltObjectMission, BuiltObjectMissionPriority, BuiltObjectMissionType, Command, CommandAction } from '../src/sim/missions/mission';
 import { cmdColonize } from '../src/sim/missions/cmdTroops';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame, tickGameOptions } from './helpers/tickGame';
+import { tickGameOptions } from './helpers/tickGame';
+import { cachedTickGame } from './helpers/gameCache';
 import { createGame } from '../src/sim/game';
 import { PiratePlayStyle } from '../src/sim/pirates';
 import { PirateRelationType, changePirateRelation, obtainPirateRelation } from '../src/sim/pirateRelations';
@@ -54,7 +55,7 @@ function timeOf(game: Game): GalaxyTime {
 
 describe('item 1: Empire.LastXaraktorVirusDeploy (Empire.cs 881; Main.Part7.cs 1042; Empire.10.cs 4532)', { timeout: 600000 }, () => {
     it('DeployVirus stamps the player empire, CanDeployXaraktorVirus refuses for 150 s, and the field is saved', () => {
-        const game = createTickGame(gameData);
+        const game = cachedTickGame(gameData);
         const g = game.galaxy;
         const player = g.playerEmpire!;
         // Give the player the Xaraktor virus (SpecialFunctionCode 1) and a completed RaceAchievement wonder with Value2 == 2.
@@ -119,7 +120,7 @@ describe('item 3: Galaxy.6.cs 2737 CalculateAngleFromCoords; BuiltObject.2.cs 11
     });
 
     it('a Colonize completion with Policy.ColonyActionForNewBuildDesign buys the base at the new colony (no throw)', () => {
-        const game = createTickGame(gameData);
+        const game = cachedTickGame(gameData);
         const g = game.galaxy;
         // No colony ship exists at the start: build one for the player (as the placement tests do).
         const empire = g.playerEmpire!;
@@ -201,7 +202,7 @@ describe('item 4: pirate player conversation (Main.Part9.cs:175-190; Main.Part10
 
 describe('item 5: BaconMain.cs 160-213 GiveBuiltObject by a "Romulan" / "Mining Company" empire (BaconBuiltObject.cs 3860)', { timeout: 600000 }, () => {
     it('the receiver pays FindResalePriceOfShip to the giver, then method_347 hands the ship over', () => {
-        const game = createTickGame(gameData);
+        const game = cachedTickGame(gameData);
         const g = game.galaxy;
         const player = g.playerEmpire!;
         player.name = 'Romulan Star Empire';
@@ -237,7 +238,7 @@ describe('item 5: BaconMain.cs 160-213 GiveBuiltObject by a "Romulan" / "Mining 
     });
 
     it('any other empire gives ships for free', () => {
-        const game = createTickGame(gameData);
+        const game = cachedTickGame(gameData);
         const g = game.galaxy;
         const player = g.playerEmpire!;
         const other = g.empires.find((e) => e !== player && e.pirateEmpireBaseHabitat === null)!;
@@ -253,7 +254,7 @@ describe('item 5: BaconMain.cs 160-213 GiveBuiltObject by a "Romulan" / "Mining 
 
 describe('item 6: a Fighter is a StellarObject mission target (Fighter.cs 19; BuiltObject.2.cs 7681-7692; Main.Part7.cs 722, 1800)', { timeout: 600000 }, () => {
     function setup() {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const player = g.playerEmpire!;
         const ship = player.builtObjects.find((b) => b.role === BuiltObjectRole.Military && b.builtAt === null && b.topSpeed > 0)!;
         expect(ship).toBeDefined();

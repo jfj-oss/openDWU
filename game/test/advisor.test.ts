@@ -2,7 +2,7 @@
 // validation / execution (src/sim/player/advisorCommands.ts) with scripted model replies (no network).
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { cachedTickGame } from './helpers/gameCache';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { Empire } from '../src/sim/empire';
 import type { GameData } from '../src/sim/data/gameData';
@@ -34,7 +34,7 @@ beforeAll(async () => {
 }, 120000);
 
 beforeEach(() => {
-    galaxy = createTickGame(gameData).galaxy;
+    galaxy = cachedTickGame(gameData).galaxy;
     player = galaxy.playerEmpire!;
 });
 

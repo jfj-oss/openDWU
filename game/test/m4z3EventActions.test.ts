@@ -3,7 +3,7 @@
 // ExecuteOrDelayEventAction / ProcessDelayedEventActions and the save round trip of the event classes.
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { cachedTickGame } from './helpers/gameCache';
 import type { GameData } from '../src/sim/data/gameData';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { Empire } from '../src/sim/empire';
@@ -86,7 +86,7 @@ function draws(fn: () => void): number {
 
 beforeAll(async () => {
     gameData = await loadGameDataFs();
-    g = createTickGame(gameData).galaxy;
+    g = cachedTickGame(gameData).galaxy;
 }, 180000);
 
 beforeEach(() => {

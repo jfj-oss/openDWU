@@ -4,7 +4,7 @@
 // at war sends an agent on a mission that completes.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { cachedTickGame } from './helpers/gameCache';
 import { runGameSeconds } from '../src/sim/tick/harness';
 import type { GameData } from '../src/sim/data/gameData';
 import type { Galaxy } from '../src/sim/galaxy';
@@ -86,7 +86,7 @@ function withNextDouble<R>(g: Galaxy, x: number, fn: () => R): R {
 
 describe('IntelligenceMission.Difficulty (IntelligenceMission.cs 167)', () => {
     it('empire-target missions: 20 × factor, ×2 against pirates, ×3 against reclusive empires', () => {
-        const { galaxy } = createTickGame(gameData);
+        const { galaxy } = cachedTickGame(gameData);
         const [a, b] = aiEmpires(galaxy);
         const d = (type: T) => intelligenceMissionDifficulty(newIntelligenceMissionAgainstEmpire(a, null, type, 0, b));
         b.reclusive = false;
@@ -107,7 +107,7 @@ describe('IntelligenceMission.Difficulty (IntelligenceMission.cs 167)', () => {
     });
 
     it('assassination by role (leader ×2, governor ×1.5) and base destruction by size (sqrt(size / 300))', () => {
-        const { galaxy } = createTickGame(gameData);
+        const { galaxy } = cachedTickGame(gameData);
         const [a, b] = aiEmpires(galaxy);
         const leader = b.leader!;
         expect(intelligenceMissionDifficulty(newIntelligenceMissionAgainstCharacter(a, null, T.AssassinateCharacter, 0, leader))).toBe(320);
@@ -133,7 +133,7 @@ describe('IntelligenceMission.Difficulty (IntelligenceMission.cs 167)', () => {
 
 describe('mission skill and success chance (Empire.5.cs 4183, Empire.6.cs 21)', () => {
     it('an unskilled agent (factored 25) with no leader bonus: 0.7 × 25/70 for a month, 1 − 0.3/(100/70) for a year', () => {
-        const { galaxy } = createTickGame(gameData);
+        const { galaxy } = cachedTickGame(gameData);
         const [a, b] = aiEmpires(galaxy);
         a.leader = null;
         a.espionageBonus = 0;
@@ -155,7 +155,7 @@ describe('mission skill and success chance (Empire.5.cs 4183, Empire.6.cs 21)', 
 
 describe('DetermineIntelligenceMissionOutcome (BaconEmpire.cs 88)', () => {
     it('bands above the success chance c: +25 % fail-undetected, +60 % succeed-detected, +90 % fail-detected, then capture', () => {
-        const { galaxy } = createTickGame(gameData);
+        const { galaxy } = cachedTickGame(gameData);
         const [a, b] = aiEmpires(galaxy);
         a.leader = null;
         a.espionageBonus = 0;
@@ -178,7 +178,7 @@ describe('DetermineIntelligenceMissionOutcome (BaconEmpire.cs 88)', () => {
 
 describe('EmpireCounters.ProcessIntelligenceMissionOutcome (EmpireCounters.cs 234)', () => {
     it('counts successes / failures by mission family and captures', () => {
-        const { galaxy } = createTickGame(gameData);
+        const { galaxy } = cachedTickGame(gameData);
         const [a, b] = aiEmpires(galaxy);
         const c = a.counters;
         c.processIntelligenceMissionOutcome(newIntelligenceMissionAgainstEmpire(a, null, T.DeepCover, 0, b), O.SucceedDetect);
@@ -193,7 +193,7 @@ describe('EmpireCounters.ProcessIntelligenceMissionOutcome (EmpireCounters.cs 23
 
 describe('Complete / Cancel / CheckCancel (Empire.6.cs 117 / 90, Galaxy.8.cs 3563)', () => {
     it('deep cover adds a permanent view that cancelling removes; operations maps expire after 30000 ms', () => {
-        const { galaxy } = createTickGame(gameData);
+        const { galaxy } = cachedTickGame(gameData);
         const [a, b] = aiEmpires(galaxy);
         a.empiresViewable.length = 0;
         a.empiresViewableExpiry.length = 0;
@@ -209,7 +209,7 @@ describe('Complete / Cancel / CheckCancel (Empire.6.cs 117 / 90, Galaxy.8.cs 356
     });
 
     it('a mission against a lost base is cancelled (the agent keeps no mission)', () => {
-        const { galaxy } = createTickGame(gameData);
+        const { galaxy } = cachedTickGame(gameData);
         const [a, b] = aiEmpires(galaxy);
         const agent = newAgent(galaxy, a, 'Agent A');
         const bo = b.builtObjects[0];
@@ -221,7 +221,7 @@ describe('Complete / Cancel / CheckCancel (Empire.6.cs 117 / 90, Galaxy.8.cs 356
     });
 
     it('MarkEmpireAsRecentSpy (Empire.10.cs 16) adds the spy once, never the independents', () => {
-        const { galaxy } = createTickGame(gameData);
+        const { galaxy } = cachedTickGame(gameData);
         const [a, b] = aiEmpires(galaxy);
         b.recentSpyingEmpires.length = 0;
         markEmpireAsRecentSpy(galaxy, a, b);
@@ -233,7 +233,7 @@ describe('Complete / Cancel / CheckCancel (Empire.6.cs 117 / 90, Galaxy.8.cs 356
 
 describe('AssignSpecialMissions (Empire.5.cs 5401)', () => {
     it('a single agent stays on counter-intelligence (Max(1, n × 30 %) defenders) for three months', () => {
-        const { galaxy } = createTickGame(gameData);
+        const { galaxy } = cachedTickGame(gameData);
         const [a] = aiEmpires(galaxy);
         for (const c of getEmpireCharacters(a)) if (c.role === CharacterRole.IntelligenceAgent) c.mission = null;
         const agents = getEmpireCharacters(a).filter((c) => c.role === CharacterRole.IntelligenceAgent);
@@ -246,7 +246,7 @@ describe('AssignSpecialMissions (Empire.5.cs 5401)', () => {
     });
 
     it('at war, a spare agent is sent against the enemy', () => {
-        const { galaxy } = createTickGame(gameData);
+        const { galaxy } = cachedTickGame(gameData);
         const [a, b] = aiEmpires(galaxy);
         declareWar(galaxy, a, b);
         for (let i = 0; i < 4; i++) newSkilledAgent(galaxy, a, `Agent ${i}`);
@@ -268,7 +268,7 @@ describe('AssignSpecialMissions (Empire.5.cs 5401)', () => {
 
 describe('captured spies (BaconCharacter.cs 31 Kill from PerformIntelligenceMissions, BaconHabitat.cs 608)', () => {
     it('between two AI empires the spy\'s empire pays GetCharacterValue to the target and the spy lives', () => {
-        const { galaxy } = createTickGame(gameData);
+        const { galaxy } = cachedTickGame(gameData);
         // Hand-worked with the C# default spyBaseValue 25000 (the installed BaconSettings.txt sets 250000).
         resetBaconSettings();
         const [a, b] = aiEmpires(galaxy);
@@ -291,7 +291,7 @@ describe('captured spies (BaconCharacter.cs 31 Kill from PerformIntelligenceMiss
     });
 
     it('a player spy goes to the target capital\'s prison; HandleAIPrisoners ransoms it to the player capital when at peace', () => {
-        const { galaxy } = createTickGame(gameData);
+        const { galaxy } = cachedTickGame(gameData);
         const player = galaxy.playerEmpire!;
         const [b] = aiEmpires(galaxy);
         const spy = newAgent(galaxy, player, 'Player spy');
@@ -315,7 +315,7 @@ describe('captured spies (BaconCharacter.cs 31 Kill from PerformIntelligenceMiss
 
 describe('harness: an AI empire at war runs an intelligence mission (Empire.5.cs 5401 / 5597)', () => {
     it('a spare agent is assigned, the mission resolves, and the outcome is counted', () => {
-        const { galaxy } = createTickGame(gameData);
+        const { galaxy } = cachedTickGame(gameData);
         const [a, b] = aiEmpires(galaxy);
         declareWar(galaxy, a, b);
         for (let i = 0; i < 3; i++) newSkilledAgent(galaxy, a, `Harness agent ${i}`);

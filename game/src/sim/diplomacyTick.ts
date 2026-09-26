@@ -25,6 +25,7 @@ import type { BuiltObject } from './builtObject';
 import { Habitat } from './types';
 import type { SystemInfo } from './types';
 import { registerTodo, todo } from './tick/todo';
+import { Cargo } from './cargo';
 import { galaxyStarDate, REAL_SECONDS_IN_GALACTIC_YEAR } from './tick/simTime';
 import {
     DiplomaticRelation,
@@ -49,6 +50,8 @@ import {
     processRelationChange,
     resolveEmpiresToDefendAgainst,
 } from './diplomacy';
+import { addAdvisorSuggestion, AdvisorMessageType, advisorText } from './advisorQueue';
+import { addDeclinedTasks, declinedTasksCheckAttackEmpireTargetValid, declinedTasksCheckTaskTargetValid } from './missions/distress';
 import { EmpireMessage, EmpireMessageType, resolveDescription, sendEmpireMessage, sendMessageToEmpire, sendMessageToEmpireWithTitle } from './messages';
 import { empireWarWeariness } from './taxes';
 import { checkEmpireHasHyperDriveTech, determineEmpireSystems, identifyEmpireCapitals, totalColonyStrategicValue, totalMobileMilitaryFirepower } from './forceStructure';
@@ -64,8 +67,9 @@ import { CharacterEventType, CharacterRole, getCharactersByRole, getEmpireCharac
 import { PirateRelationEvaluationType, PirateRelationType, changePirateEvaluation, changePirateRelation, obtainPirateRelation, type PirateRelation } from './pirateRelations';
 import { GalaxyLocation } from './galaxyLocation';
 import { habitatDevelopmentLevel } from './developmentLevel';
-import { BuiltObjectMissionType, builtObjectMission } from './missions/mission';
-import { empireShipGroups, type ShipGroup } from './fleets/shipGroup';
+import { BuiltObjectMissionPriority as MissionPriority, BuiltObjectMissionType, builtObjectMission } from './missions/mission';
+import { empireShipGroups, shipGroupAssignMission, type ShipGroup } from './fleets/shipGroup';
+import { assignMission, clearPreviousMissionRequirements } from './missions/assign';
 import {
     cancelAttackMissionsAgainstEmpire,
     checkAttackFleetTargets,
@@ -132,16 +136,8 @@ export enum BuiltObjectMissionPriority {
     Unavailable,
 }
 
-// AdvisorMessageType.cs (byte enum; member order exact).
-export enum AdvisorMessageType {
-    Undefined, BuildOrder, BuildOneOff, Colonization, IntelligenceMission, EnemyAttack, EnemyBombard, EnemyBlockade,
-    EnemyAttackPlanetDestroyer, InvadeIndependent, PrepareRaid, DiplomaticGift, TreatyOffer, WarTradeSanctions,
-    ColonyFacility, OfferMilitaryRefueling, CancelMilitaryRefueling, OfferMiningRights, CancelMiningRights,
-    AllowTradeRestrictedResources, DisallowTradeRestrictedResources, ComplyTradeSanctionsOther, ComplyWarOther,
-    DefendTerritory, Retrofit, RequestLiftTradeSanctionsOther, RequestEndWarOther, OfferPirateAttackMission,
-    OfferPirateDefendMission, OfferPirateSmuggleMission, PirateRaid, PirateFacilityEradicate, AcceptPirateSmugglingMission,
-    DefendTarget,
-}
+// AdvisorMessageType.cs: advisorQueue.ts (the suggestion queue owns it; re-exported for the task call sites).
+export { AdvisorMessageType } from './advisorQueue';
 
 /** AutomationLevel.cs is {Manual, SemiAutomated, FullyAutomated}; empire.ts names 0/1 Undefined/PartiallyAutomated. */
 export const MANUAL = AutomationLevel.Undefined;
@@ -363,12 +359,18 @@ export interface RefCount {
     value: number;
 }
 
-const T_declinedTasks = registerTodo('M4r', 'checkTaskAuthorized SemiAutomated declined tasks (M4b DeclinedTaskList)');
-
 /**
  * Empire.8.cs 4395 CheckTaskAuthorized(automationLevel, ref refusalCount, taskDescription, taskTarget, advisorMessageType,
  * attackEmpireTarget, advisorMessageData, advisorMessageData2) — and the shorter overloads (4374-4390), which pass a
  * fresh refusal counter / nulls.
+ *
+ * FullyAutomated (and any other level): true, nothing recorded. Manual: false. SemiAutomated: false; for the player
+ * empire — unless the refusal cap is reached or the target (or the attack-empire target) was declined within its window —
+ * one advisor suggestion (EmpireMessage AdvisorSuggestion) joins the player's queue (PromptPlayerForAuthorization →
+ * advisorQueue.ts) and the target is recorded on DeclinedTasks at once (240 000 for the attack empire, 600 000 for the
+ * task target), so the AI does not re-suggest it while the player decides. The player's Approve / Decline are
+ * player/advisorSuggestions.ts. A non-player empire at SemiAutomated gets _AutomationResponse = Yes (4455 / 4460):
+ * true. No Rnd.
  */
 export function checkTaskAuthorized(
     galaxy: Galaxy,
@@ -387,14 +389,17 @@ export function checkTaskAuthorized(
         case SEMI_AUTOMATED: {
             result = false;
             const currentStarDate = galaxyStarDate(galaxy);
-            // TODO(port) M4b: _DeclinedTasks.CheckTaskTargetValid(taskTarget, date) / CheckAttackEmpireTargetValid(attackEmpireTarget)
-            // and the _DeclinedTasks.Add(new DeclinedTask(...)) records (Empire.8.cs 4403, 4425-4447, 4460-4480) — the
-            // DeclinedTaskList is not ported; every target reads as valid and declines are not recorded. Only the player can be
-            // semi-automated (AI empires are always fully automated).
-            todo(T_declinedTasks);
-            void attackEmpireTarget;
-            if (refusalCount.value >= MAXIMUM_MISSION_REFUSALS) break;
+            // 4404
+            if (
+                refusalCount.value >= MAXIMUM_MISSION_REFUSALS ||
+                !declinedTasksCheckTaskTargetValid(self.declinedTasks, taskTarget, currentStarDate) ||
+                (attackEmpireTarget != null && !declinedTasksCheckAttackEmpireTargetValid(self.declinedTasks, attackEmpireTarget, currentStarDate))
+            ) {
+                break;
+            }
+            // 4408: _AutomationResponse = Undefined (UI handshake field; not modelled).
             if (self === galaxy.playerEmpire) {
+                // 4411-4450
                 refusalCount.value++;
                 const empireMessage = new EmpireMessage(self, EmpireMessageType.AdvisorSuggestion, taskTarget);
                 empireMessage.starDate = currentStarDate;
@@ -403,10 +408,14 @@ export function checkTaskAuthorized(
                 if (advisorMessageType === AdvisorMessageType.DiplomaticGift) empireMessage.money = Math.trunc(advisorMessageData as number);
                 else empireMessage.advisorMessageData = advisorMessageData;
                 empireMessage.advisorMessageData2 = advisorMessageData2;
-                // Empire.7.cs 3836 PromptPlayerForAuthorization → _AutomationAuthorizer (UI) — no sim effect.
+                // Empire.7.cs 3836 PromptPlayerForAuthorization → Main.Part9.cs 1053 PromptForAuthorizationInternal.
+                addAdvisorSuggestion(self, empireMessage);
+                // 4425-4449
+                addDeclinedTasks(self.declinedTasks, currentStarDate, taskTarget, attackEmpireTarget);
                 return false;
             }
-            // Non-player: _AutomationResponse = Yes; the wait loop is skipped.
+            // 4453-4461: a non-player empire's response is Yes (the wait loop sets it); the No branch (4466-4490) is
+            // unreachable without the player.
             result = true;
             break;
         }
@@ -421,27 +430,77 @@ function checkTaskAuthorizedSimple(galaxy: Galaxy, self: Empire, automationLevel
     return checkTaskAuthorized(galaxy, self, automationLevel, { value: 0 }, taskDescription, taskTarget, advisorMessageType);
 }
 
-// Empire.10.cs 3900-4010 GenerateAutomationMessage* (advisor text only; keys stand in for the formatted GameText).
+// Empire.10.cs 4003-4318 GenerateAutomationMessage* (the advisor suggestion's Description: advisorQueue.ts advisorText
+// keeps the GameText key and its arguments for the Advisor Suggestion window). No Rnd.
+/** Empire.10.cs 4003. */
 export function generateAutomationMessageRequestLiftTradeSanctions(targetEmpire: Empire, friendEmpire: Empire): string {
-    return formatText(getText('Automation Request Lift Trade Sanctions'), friendEmpire.name, targetEmpire.name);
+    return advisorText('Automation Request Lift Trade Sanctions', friendEmpire.name, targetEmpire.name);
 }
-export function generateAutomationMessageTreaty(otherEmpire: Empire, type: DiplomaticRelationType): string {
-    return formatText(getText('Automation Treaty'), resolveDescription(DiplomaticRelationType, type), otherEmpire.name);
+/** Empire.10.cs 4281 GenerateAutomationMessageTreaty(empire, relationType). */
+export function generateAutomationMessageTreaty(self: Empire, otherEmpire: Empire, type: DiplomaticRelationType): string {
+    const diplomaticRelation = obtainDiplomaticRelation(self, otherEmpire);
+    if (type === DiplomaticRelationType.None) {
+        if (diplomaticRelation.type === DiplomaticRelationType.SubjugatedDominion) {
+            if (diplomaticRelation.initiator === self) return advisorText('Automation Free From Subjugation', otherEmpire.name);
+            return advisorText('Automation Request Release From Subjugation', otherEmpire.name);
+        }
+        return advisorText('Automation Cancel Treaty', otherEmpire.name);
+    }
+    return advisorText('Automation Offer Treaty', otherEmpire.name, resolveDescription(DiplomaticRelationType, type));
 }
-export function generateAutomationMessageWarTradeSanctions(otherEmpire: Empire, type: DiplomaticRelationType): string {
-    return formatText(getText('Automation War Trade Sanctions'), resolveDescription(DiplomaticRelationType, type), otherEmpire.name);
+/** Empire.10.cs 4300 GenerateAutomationMessageWarTradeSanctions(empire, relationType). */
+export function generateAutomationMessageWarTradeSanctions(self: Empire, otherEmpire: Empire, type: DiplomaticRelationType): string {
+    let result = '';
+    const diplomaticRelation = obtainDiplomaticRelation(self, otherEmpire);
+    switch (type) {
+        case DiplomaticRelationType.None:
+            if (diplomaticRelation.type === DiplomaticRelationType.War) result = advisorText('Automation End War', otherEmpire.name);
+            else if (diplomaticRelation.type === DiplomaticRelationType.TradeSanctions) result = advisorText('Automation Lift Trade Sanctions', otherEmpire.name);
+            else result = advisorText('Automation Cancel Treaty', otherEmpire.name);
+            break;
+        case DiplomaticRelationType.War:
+            result = advisorText('Automation Declare War', otherEmpire.name);
+            break;
+        case DiplomaticRelationType.TradeSanctions:
+            result = advisorText('Automation Initiate Trade Sanctions', otherEmpire.name);
+            break;
+        case DiplomaticRelationType.SubjugatedDominion:
+            result = advisorText('Automation Subjugated Dominion', otherEmpire.name);
+            break;
+    }
+    return result;
 }
+/** Empire.10.cs 4018. */
 function generateAutomationMessageMilitaryRefueling(otherEmpire: Empire, refuel: boolean): string {
-    return formatText(getText(refuel ? 'Automation Military Refueling Allow' : 'Automation Military Refueling Block'), otherEmpire.name);
+    return advisorText(refuel ? 'Military Refueling Check Offer' : 'Military Refueling Check Cancel', otherEmpire.name);
 }
+/** Empire.10.cs 4028. */
 function generateAutomationMessageMiningRights(otherEmpire: Empire, allowMining: boolean): string {
-    return formatText(getText(allowMining ? 'Automation Mining Rights Allow' : 'Automation Mining Rights Block'), otherEmpire.name);
+    return advisorText(allowMining ? 'Mining Rights Check Offer' : 'Mining Rights Check Cancel', otherEmpire.name);
 }
-function generateAutomationMessageTradeRestrictedResources(otherEmpire: Empire, trade: boolean): string {
-    return formatText(getText(trade ? 'Automation Trade Restricted Resources Allow' : 'Automation Trade Restricted Resources Block'), otherEmpire.name);
+/** Empire.7.cs 4665 GenerateEmpireRestrictedResourcesDescription(out plural): "A, B" of the restricted resources supplied. */
+export function generateEmpireRestrictedResourcesDescription(galaxy: Galaxy, self: Empire): { text: string; plural: boolean } {
+    let text = '';
+    let num = 0;
+    const resourceList = determineResourcesEmpireSupplies(self);
+    for (let i = 0; i < resourceList.length; i++) {
+        const resource = galaxy.resourceSystem.byId.get(resourceList[i]);
+        if (resource != null && resource.superLuxuryBonusAmount > 0) {
+            text = text + resource.name + ', ';
+            num++;
+        }
+    }
+    if (text.length > 0) text = text.substring(0, text.length - 2);
+    return { text, plural: num > 1 };
 }
+/** Empire.10.cs 4038. */
+function generateAutomationMessageTradeRestrictedResources(galaxy: Galaxy, self: Empire, otherEmpire: Empire, trade: boolean): string {
+    const arg = generateEmpireRestrictedResourcesDescription(galaxy, self).text;
+    return advisorText(trade ? 'Automation Trade Restricted Resources' : 'Automation Terminate Restricted Resources', arg, otherEmpire.name);
+}
+/** Empire.10.cs 4246 (moneyAmount.ToString("###,###,###,##0")). */
 function generateAutomationMessageDiplomaticGift(otherEmpire: Empire, amount: number): string {
-    return formatText(getText('Automation Diplomatic Gift'), amount.toFixed(0), otherEmpire.name);
+    return advisorText('Automation Give Gift', formatThousands(amount), otherEmpire.name);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -1952,7 +2011,7 @@ function applyDiplomaticStrategyToRelation(galaxy: Galaxy, self: Empire, relatio
                     relation.lastDiplomacyTradeOfferDate = galaxyStarDate(galaxy);
                     sendMessageToEmpire(self, otherEmpire, EmpireMessageType.ProposeDiplomaticRelation, DiplomaticRelationType.None, description);
                 };
-                const authorized = (): boolean => checkTaskAuthorized(galaxy, self, self.controlDiplomacyTreaties, refusalCount, generateAutomationMessageTreaty(otherEmpire, DiplomaticRelationType.None), otherEmpire, AdvisorMessageType.TreatyOffer, null, DiplomaticRelationType.None, null);
+                const authorized = (): boolean => checkTaskAuthorized(galaxy, self, self.controlDiplomacyTreaties, refusalCount, generateAutomationMessageTreaty(self, otherEmpire, DiplomaticRelationType.None), otherEmpire, AdvisorMessageType.TreatyOffer, null, DiplomaticRelationType.None, null);
                 switch (num) {
                     case -1:
                         if (galaxy.rnd.next(0, 8) === 2 && authorized()) propose();
@@ -2159,7 +2218,7 @@ export function checkReadyForWar(galaxy: Galaxy, self: Empire, otherEmpire: Empi
 /** Empire.8.cs 1515 StartWar(otherEmpire). */
 export function startWar(galaxy: Galaxy, self: Empire, otherEmpire: Empire): void {
     if (self.controlDiplomacyOffense !== MANUAL) {
-        if (checkTaskAuthorized(galaxy, self, self.controlDiplomacyOffense, { value: 0 }, generateAutomationMessageWarTradeSanctions(otherEmpire, DiplomaticRelationType.War), otherEmpire, AdvisorMessageType.WarTradeSanctions, null, DiplomaticRelationType.War, null)) {
+        if (checkTaskAuthorized(galaxy, self, self.controlDiplomacyOffense, { value: 0 }, generateAutomationMessageWarTradeSanctions(self, otherEmpire, DiplomaticRelationType.War), otherEmpire, AdvisorMessageType.WarTradeSanctions, null, DiplomaticRelationType.War, null)) {
             declareWar(galaxy, self, otherEmpire, null, false, false);
         }
     }
@@ -2172,7 +2231,7 @@ function subjugateRequest(galaxy: Galaxy, self: Empire, otherEmpire: Empire): vo
     const num = calculateNextAllowableProposalDate(galaxy, diplomaticRelation);
     if (galaxyStarDate(galaxy) >= num) {
         const diplomaticRelation2 = new DiplomaticRelation(DiplomaticRelationType.SubjugatedDominion, self, self, otherEmpire, galaxyStarDate(galaxy), diplomaticRelation.supplyRestrictedResources);
-        if (checkTaskAuthorized(galaxy, self, self.controlDiplomacyOffense, { value: 0 }, generateAutomationMessageWarTradeSanctions(otherEmpire, DiplomaticRelationType.SubjugatedDominion), otherEmpire, AdvisorMessageType.WarTradeSanctions, null, DiplomaticRelationType.SubjugatedDominion, null)) {
+        if (checkTaskAuthorized(galaxy, self, self.controlDiplomacyOffense, { value: 0 }, generateAutomationMessageWarTradeSanctions(self, otherEmpire, DiplomaticRelationType.SubjugatedDominion), otherEmpire, AdvisorMessageType.WarTradeSanctions, null, DiplomaticRelationType.SubjugatedDominion, null)) {
             otherEmpire.proposedDiplomaticRelations.add(diplomaticRelation2);
             const ourPotencyVersusThem = determineRelativeStrength(galaxy, militaryPotency(self), otherEmpire);
             const description = generateMessageDescriptionRelation(diplomaticRelation, DiplomaticRelationType.SubjugatedDominion, ourPotencyVersusThem);
@@ -2189,7 +2248,7 @@ export function endWarRequest(galaxy: Galaxy, self: Empire, otherEmpire: Empire)
     const num = calculateNextAllowableProposalDate(galaxy, diplomaticRelation);
     if (galaxyStarDate(galaxy) >= num) {
         const diplomaticRelation2 = new DiplomaticRelation(DiplomaticRelationType.None, self, self, otherEmpire, galaxyStarDate(galaxy), diplomaticRelation.supplyRestrictedResources);
-        if (checkTaskAuthorized(galaxy, self, self.controlDiplomacyOffense, { value: 0 }, generateAutomationMessageWarTradeSanctions(otherEmpire, DiplomaticRelationType.None), otherEmpire, AdvisorMessageType.WarTradeSanctions, null, DiplomaticRelationType.None, null)) {
+        if (checkTaskAuthorized(galaxy, self, self.controlDiplomacyOffense, { value: 0 }, generateAutomationMessageWarTradeSanctions(self, otherEmpire, DiplomaticRelationType.None), otherEmpire, AdvisorMessageType.WarTradeSanctions, null, DiplomaticRelationType.None, null)) {
             otherEmpire.proposedDiplomaticRelations.add(diplomaticRelation2);
             const description = getText('We urge you to consider our proposal for an end to this pointless war'); // Empire.7.cs 3844 GenerateMessageDescriptionEndWarRequest
             diplomaticRelation.lastDiplomacyTradeOfferDate = galaxyStarDate(galaxy);
@@ -2217,7 +2276,7 @@ export function startTradeSanctions(galaxy: Galaxy, self: Empire, otherEmpire: E
     const ev = obtainEmpireEvaluation(galaxy, otherEmpire, self);
     const diplomaticRelation = obtainDiplomaticRelation(self, otherEmpire);
     if (diplomaticRelation.type !== DiplomaticRelationType.War && diplomaticRelation.type !== DiplomaticRelationType.SubjugatedDominion) {
-        if (checkTaskAuthorized(galaxy, self, self.controlDiplomacyOffense, { value: 0 }, generateAutomationMessageWarTradeSanctions(otherEmpire, DiplomaticRelationType.TradeSanctions), otherEmpire, AdvisorMessageType.WarTradeSanctions, null, DiplomaticRelationType.TradeSanctions, null)) {
+        if (checkTaskAuthorized(galaxy, self, self.controlDiplomacyOffense, { value: 0 }, generateAutomationMessageWarTradeSanctions(self, otherEmpire, DiplomaticRelationType.TradeSanctions), otherEmpire, AdvisorMessageType.WarTradeSanctions, null, DiplomaticRelationType.TradeSanctions, null)) {
             changeDiplomaticRelation(galaxy, self, diplomaticRelation, DiplomaticRelationType.TradeSanctions);
             ev.incidentEvaluation = ev.incidentEvaluationRaw - 20.0;
             diplomaticRelation.lastDiplomacyTradeOfferDate = galaxyStarDate(galaxy);
@@ -2242,7 +2301,7 @@ export function endTradeSanctionsIfTimePassed(galaxy: Galaxy, self: Empire, othe
 export function endTradeSanctions(galaxy: Galaxy, self: Empire, otherEmpire: Empire): void {
     const diplomaticRelation = obtainDiplomaticRelation(self, otherEmpire);
     if (diplomaticRelation != null && diplomaticRelation.type === DiplomaticRelationType.TradeSanctions && diplomaticRelation.initiator === self) {
-        if (checkTaskAuthorized(galaxy, self, self.controlDiplomacyOffense, { value: 0 }, generateAutomationMessageWarTradeSanctions(otherEmpire, DiplomaticRelationType.None), otherEmpire, AdvisorMessageType.WarTradeSanctions, null, DiplomaticRelationType.None, null)) {
+        if (checkTaskAuthorized(galaxy, self, self.controlDiplomacyOffense, { value: 0 }, generateAutomationMessageWarTradeSanctions(self, otherEmpire, DiplomaticRelationType.None), otherEmpire, AdvisorMessageType.WarTradeSanctions, null, DiplomaticRelationType.None, null)) {
             changeDiplomaticRelation(galaxy, self, diplomaticRelation, DiplomaticRelationType.None);
             cancelBlockades(galaxy, self, otherEmpire);
             cancelBlockades(galaxy, otherEmpire, self);
@@ -2257,7 +2316,7 @@ export function endTradeSanctions(galaxy: Galaxy, self: Empire, otherEmpire: Emp
 function endSubjugation(galaxy: Galaxy, self: Empire, otherEmpire: Empire): void {
     const diplomaticRelation = obtainDiplomaticRelation(self, otherEmpire);
     if (diplomaticRelation != null && diplomaticRelation.type === DiplomaticRelationType.SubjugatedDominion && diplomaticRelation.initiator === self) {
-        if (checkTaskAuthorized(galaxy, self, self.controlDiplomacyTreaties, { value: 0 }, generateAutomationMessageTreaty(otherEmpire, DiplomaticRelationType.None), otherEmpire, AdvisorMessageType.TreatyOffer, null, DiplomaticRelationType.None, null)) {
+        if (checkTaskAuthorized(galaxy, self, self.controlDiplomacyTreaties, { value: 0 }, generateAutomationMessageTreaty(self, otherEmpire, DiplomaticRelationType.None), otherEmpire, AdvisorMessageType.TreatyOffer, null, DiplomaticRelationType.None, null)) {
             changeDiplomaticRelation(galaxy, self, diplomaticRelation, DiplomaticRelationType.None);
             diplomaticRelation.lastDiplomacyTradeOfferDate = galaxyStarDate(galaxy);
             const description = getText('We are releasing you from subjugation to us. We no longer consider you to be our conquered dominion.'); // Empire.7.cs 3849
@@ -2280,7 +2339,7 @@ export function cancelTreatiesIfTimePassed(galaxy: Galaxy, self: Empire, otherEm
 export function cancelTreaties(galaxy: Galaxy, self: Empire, otherEmpire: Empire): void {
     const diplomaticRelation = obtainDiplomaticRelation(self, otherEmpire);
     if (diplomaticRelation.type !== DiplomaticRelationType.FreeTradeAgreement && diplomaticRelation.type !== DiplomaticRelationType.MutualDefensePact && diplomaticRelation.type !== DiplomaticRelationType.Protectorate) return;
-    if (checkTaskAuthorized(galaxy, self, self.controlDiplomacyTreaties, { value: 0 }, generateAutomationMessageTreaty(otherEmpire, DiplomaticRelationType.None), otherEmpire, AdvisorMessageType.TreatyOffer, null, DiplomaticRelationType.None, null)) {
+    if (checkTaskAuthorized(galaxy, self, self.controlDiplomacyTreaties, { value: 0 }, generateAutomationMessageTreaty(self, otherEmpire, DiplomaticRelationType.None), otherEmpire, AdvisorMessageType.TreatyOffer, null, DiplomaticRelationType.None, null)) {
         if ((diplomaticRelation.type as DiplomaticRelationType) !== DiplomaticRelationType.NotMet) {
             sendMessageToEmpire(self, otherEmpire, EmpireMessageType.DiplomaticRelationChange, DiplomaticRelationType.None, getText('We cancel our treaty with you.'), NO_POINT, resolveDescription(DiplomaticRelationType, diplomaticRelation.type));
         }
@@ -2315,7 +2374,7 @@ function checkCancelMiningRights(galaxy: Galaxy, self: Empire, otherEmpire: Empi
 /** Empire.8.cs 1712 CheckCancelRestrictedResourceTrading. */
 function checkCancelRestrictedResourceTrading(galaxy: Galaxy, self: Empire, otherEmpire: Empire): void {
     const diplomaticRelation = obtainDiplomaticRelation(self, otherEmpire);
-    if (diplomaticRelation.supplyRestrictedResources && checkTaskAuthorizedSimple(galaxy, self, self.controlDiplomacyTreaties, generateAutomationMessageTradeRestrictedResources(diplomaticRelation.otherEmpire!, false), diplomaticRelation.otherEmpire, AdvisorMessageType.DisallowTradeRestrictedResources)) {
+    if (diplomaticRelation.supplyRestrictedResources && checkTaskAuthorizedSimple(galaxy, self, self.controlDiplomacyTreaties, generateAutomationMessageTradeRestrictedResources(galaxy, self, diplomaticRelation.otherEmpire!, false), diplomaticRelation.otherEmpire, AdvisorMessageType.DisallowTradeRestrictedResources)) {
         diplomaticRelation.supplyRestrictedResources = false;
         const description = formatText(getText('Trade Restricted Resource Refuse EMPIRE'), self.name);
         sendMessageToEmpire(self, otherEmpire, EmpireMessageType.RestrictedResourceTradingBlocked, self, description);
@@ -2363,7 +2422,7 @@ export function offerFreeTrade(galaxy: Galaxy, self: Empire, otherEmpire: Empire
     const num = calculateNextAllowableProposalDate(galaxy, diplomaticRelation);
     if (galaxyStarDate(galaxy) >= num) {
         const diplomaticRelation2 = new DiplomaticRelation(DiplomaticRelationType.FreeTradeAgreement, self, self, otherEmpire, galaxyStarDate(galaxy), diplomaticRelation.supplyRestrictedResources);
-        if (checkTaskAuthorized(galaxy, self, self.controlDiplomacyTreaties, { value: 0 }, generateAutomationMessageTreaty(otherEmpire, DiplomaticRelationType.FreeTradeAgreement), otherEmpire, AdvisorMessageType.TreatyOffer, null, DiplomaticRelationType.FreeTradeAgreement, null)) {
+        if (checkTaskAuthorized(galaxy, self, self.controlDiplomacyTreaties, { value: 0 }, generateAutomationMessageTreaty(self, otherEmpire, DiplomaticRelationType.FreeTradeAgreement), otherEmpire, AdvisorMessageType.TreatyOffer, null, DiplomaticRelationType.FreeTradeAgreement, null)) {
             otherEmpire.proposedDiplomaticRelations.add(diplomaticRelation2);
             const ourPotencyVersusThem = determineRelativeStrength(galaxy, militaryPotency(self), otherEmpire);
             const description = generateMessageDescriptionRelation(diplomaticRelation, DiplomaticRelationType.FreeTradeAgreement, ourPotencyVersusThem);
@@ -2383,7 +2442,7 @@ export function offerMutualDefense(galaxy: Galaxy, self: Empire, otherEmpire: Em
         const num2 = totalColonyStrategicValue(self) / totalColonyStrategicValue(otherEmpire);
         if (num2 > 4.0) diplomaticRelationType = DiplomaticRelationType.Protectorate;
         const diplomaticRelation2 = new DiplomaticRelation(diplomaticRelationType, self, self, otherEmpire, galaxyStarDate(galaxy), diplomaticRelation.supplyRestrictedResources);
-        if (checkTaskAuthorized(galaxy, self, self.controlDiplomacyTreaties, { value: 0 }, generateAutomationMessageTreaty(otherEmpire, diplomaticRelationType), otherEmpire, AdvisorMessageType.TreatyOffer, null, diplomaticRelationType, null)) {
+        if (checkTaskAuthorized(galaxy, self, self.controlDiplomacyTreaties, { value: 0 }, generateAutomationMessageTreaty(self, otherEmpire, diplomaticRelationType), otherEmpire, AdvisorMessageType.TreatyOffer, null, diplomaticRelationType, null)) {
             otherEmpire.proposedDiplomaticRelations.add(diplomaticRelation2);
             const ourPotencyVersusThem = determineRelativeStrength(galaxy, militaryPotency(self), otherEmpire);
             const description = generateMessageDescriptionRelation(diplomaticRelation, diplomaticRelationType, ourPotencyVersusThem);
@@ -2754,8 +2813,6 @@ function relationTypeName(t: DiplomaticRelationType): string {
     return resolveDescription(DiplomaticRelationType, t);
 }
 
-const T_missionsForMessages = registerTodo('M4r', 'LeaveSystem/RemoveMilitaryForcesFromSystem mission assignment (M4b AssignMission)');
-
 /** Nearest refuelling depot outside `systemStar` (Empire.3.cs 3949-3961 / 4058-4070). */
 function nearestRefuellingDepotOutsideSystem(galaxy: Galaxy, self: Empire, systemStar: Habitat): BuiltObject | null {
     let num2 = 536870911;
@@ -2775,12 +2832,12 @@ function nearestRefuellingDepotOutsideSystem(galaxy: Galaxy, self: Empire, syste
 }
 
 /**
- * Empire.3.cs 3945 LeaveSystem(systemStar): the offence value of moving our ships out. With no refuelling depot outside
- * the system (or no ship to move) it is 0 and nothing is ordered. TODO(port) M4b: the Move missions
- * (ShipGroup.AssignMission / BuiltObject.ClearPreviousMissionRequirements + AssignMission) — each ship that would be
- * ordered counts a todo hit and adds its C# value (10 per fleet ship, FirepowerRaw / 20 per lone ship).
+ * Port of Empire.3.cs 3945 LeaveSystem(systemStar): orders our non-base ships in / near the system to move to the
+ * nearest refuelling depot outside it (fleets idle / MoveAndWait / Hold: ShipGroup.AssignMission(Move, depot, Normal),
+ * +10 each ship; lone mobile ships: ClearPreviousMissionRequirements + AssignMission(Move, depot, Normal),
+ * +FirepowerRaw / 20) and returns the summed value. Rnd: inside the AssignMission calls only.
  */
-function leaveSystem(galaxy: Galaxy, self: Empire, systemStar: Habitat): number {
+export function leaveSystem(galaxy: Galaxy, self: Empire, systemStar: Habitat): number {
     let num = 0.0;
     const builtObject = nearestRefuellingDepotOutsideSystem(galaxy, self, systemStar);
     if (builtObject !== null) {
@@ -2792,10 +2849,11 @@ function leaveSystem(galaxy: Galaxy, self: Empire, systemStar: Habitat): number 
                 const shipGroup = (builtObject3 as unknown as { shipGroup?: ShipGroup | null }).shipGroup ?? null;
                 const sgMission = shipGroup !== null ? builtObjectMission(shipGroup.mission) : null;
                 if (shipGroup !== null && (sgMission === null || sgMission.type === BuiltObjectMissionType.Undefined || sgMission.type === BuiltObjectMissionType.MoveAndWait || sgMission.type === BuiltObjectMissionType.Hold)) {
-                    todo(T_missionsForMessages);
+                    shipGroupAssignMission(galaxy, shipGroup, BuiltObjectMissionType.Move, builtObject, null, MissionPriority.Normal, false); // 3975
                     num += 10.0;
                 } else if (shipGroup === null && builtObject3.topSpeed > 0 && builtObject !== null) {
-                    todo(T_missionsForMessages);
+                    clearPreviousMissionRequirements(galaxy, builtObject3); // 3980
+                    assignMission(galaxy, builtObject3, BuiltObjectMissionType.Move, builtObject, null, MissionPriority.Normal);
                     num += builtObject3.firepowerRaw / 20.0;
                 }
             }
@@ -2806,9 +2864,9 @@ function leaveSystem(galaxy: Galaxy, self: Empire, systemStar: Habitat): number 
 const MAX_SOLAR_SYSTEM_SIZE = 23000; // Galaxy.MaxSolarSystemSize
 
 /**
- * Empire.3.cs 4032 RemoveMilitaryForcesFromSystem(systemStar, requester): 1 ships ordered out, 0 none, -1 refused.
- * TODO(port) M4b: the Refuel missions (ClearPreviousMissionRequirements + AssignMission(Refuel, depot, Unavailable)) —
- * counted as todo hits.
+ * Port of Empire.3.cs 4032 RemoveMilitaryForcesFromSystem(systemStar, requester): 1 ships ordered out, 0 none, -1
+ * refused. Each armed military ship at the system gets ClearPreviousMissionRequirements + AssignMission(Refuel, nearest
+ * outside depot, Unavailable) (4080-4081).
  */
 export function removeMilitaryForcesFromSystem(galaxy: Galaxy, self: Empire, systemStar: Habitat, requester: Empire): number {
     const num = determineRelativeStrength(galaxy, militaryPotency(self), requester);
@@ -2828,7 +2886,8 @@ export function removeMilitaryForcesFromSystem(galaxy: Galaxy, self: Empire, sys
             for (let j = 0; j < self.builtObjects.length; j++) {
                 const bo = self.builtObjects[j];
                 if (bo.role === BuiltObjectRole.Military && bo.firepowerRaw > 0 && bo.nearestSystemStar === systemStar) {
-                    todo(T_missionsForMessages);
+                    clearPreviousMissionRequirements(galaxy, bo);
+                    assignMission(galaxy, bo, BuiltObjectMissionType.Refuel, builtObject, null, MissionPriority.Unavailable);
                     num2++;
                 }
             }
@@ -2838,7 +2897,55 @@ export function removeMilitaryForcesFromSystem(galaxy: Galaxy, self: Empire, sys
     return -1;
 }
 
-const T_ordersForRelinquishedColony = registerTodo('M4r', 'RemoveColoniesFromSystem order/contract cleanup (M4d Galaxy.Orders.GetOrders)');
+/**
+ * Port of Empire.3.cs 4587-4630 (ProcessMessages RemoveColoniesFromSystem, per relinquished colony): every order the
+ * colony placed (Galaxy.Orders.GetOrders(colony)) is removed; each contracted freighter's cargo of the ordered
+ * resource / component still owned by `self` is re-owned by the freighter's empire, and the freighter's mission
+ * requirements are cleared. No Rnd.
+ */
+export function relinquishColonyOrders(galaxy: Galaxy, self: Empire, item9: Habitat): void {
+    const orders = galaxy.orders.getOrdersForHabitat(item9);
+    if (orders.items.length > 0) {
+        for (const item10 of orders.items) {
+            if (item10.contracts != null) {
+                for (const contract of item10.contracts) {
+                    // C# dereferences each contract (a null entry would throw); the TS list may hold nulls.
+                    if (contract === null || contract.freighter === null) {
+                        continue;
+                    }
+                    const freighter = contract.freighter;
+                    if (item10.commodityResource !== null) {
+                        const commodityResource = item10.commodityResource;
+                        let num9 = -1;
+                        if (freighter.cargo !== null) {
+                            num9 = freighter.cargo.indexOf(commodityResource, self);
+                        }
+                        if (num9 >= 0) {
+                            const amount = freighter.cargo!.items[num9].amount;
+                            freighter.cargo!.items.splice(num9, 1);
+                            const cargo = new Cargo(commodityResource, amount, freighter.empire);
+                            freighter.cargo!.add(cargo);
+                        }
+                    } else if (item10.commodityComponent !== null) {
+                        const commodityComponent = item10.commodityComponent;
+                        let num10 = -1;
+                        if (freighter.cargo !== null) {
+                            num10 = freighter.cargo.indexOfComponent(commodityComponent.componentId, self);
+                        }
+                        if (num10 >= 0) {
+                            const amount2 = freighter.cargo!.items[num10].amount;
+                            freighter.cargo!.items.splice(num10, 1);
+                            const cargo2 = Cargo.ofComponent(commodityComponent, amount2, freighter.empire);
+                            freighter.cargo!.add(cargo2);
+                        }
+                    }
+                    clearPreviousMissionRequirements(galaxy, freighter);
+                }
+            }
+            galaxy.orders.remove(item10);
+        }
+    }
+}
 
 /** Empire.3.cs 4240 ProcessMessages: handles and then clears the empire's message queue. */
 export function processMessages(galaxy: Galaxy, empire: Empire): void {
@@ -3055,9 +3162,7 @@ export function processMessages(galaxy: Galaxy, empire: Empire): void {
                     const num8 = 50.0 * ((galaxy.rnd.nextDouble() * 40.0 + 80.0) * Math.pow(1.0 / num, 2.0));
                     if (num8 > Math.trunc(num6 / 1000000)) {
                         for (const item9 of habitatList) {
-                            // TODO(port) M4d: Galaxy.Orders.GetOrders(item9): freighters' contract cargo re-owned, missions cleared,
-                            // orders removed (Empire.3.cs 4586-4633).
-                            if (galaxy.orders.length > 0) todo(T_ordersForRelinquishedColony);
+                            relinquishColonyOrders(galaxy, self, item9); // Empire.3.cs 4587-4630
                             item9.owner = null;
                             item9.empire = null;
                             const ci = self.colonies.indexOf(item9);

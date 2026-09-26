@@ -3,7 +3,7 @@
 import type { BuiltObject } from '../src/sim/builtObject';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
-import { createTickGame } from './helpers/tickGame';
+import { cachedTickGame, cachedTickGameRun } from './helpers/gameCache';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { Empire } from '../src/sim/empire';
 import type { GameData } from '../src/sim/data/gameData';
@@ -38,7 +38,7 @@ let gameData: GameData;
 let galaxy: Galaxy;
 beforeAll(async () => {
     gameData = await loadGameDataFs();
-    galaxy = createTickGame(gameData).galaxy;
+    galaxy = cachedTickGame(gameData).galaxy;
 }, 120000);
 
 describe('Empire.2.cs ClearExpiredViewableEmpires / UpdateSystemExplorationStatus', () => {
@@ -221,7 +221,7 @@ describe('Galaxy.5.cs CheckRuinsHaveBenefit', () => {
 
 describe('Galaxy.5.cs 4045 InvestigateRuins', () => {
     it('pays the treasure, reveals maps and clears the bonuses so the ruin is investigated once', () => {
-        const g = createTickGame(gameData).galaxy;
+        const g = cachedTickGame(gameData).galaxy;
         const e = g.empires[1];
         const habitat = g.habitats.find((h) => h.ruin === null && h.category === HabitatCategoryType.Planet)!;
         const ruin = new Ruin('R', 0, 0, 0, 0, 0, 2, 1234);
@@ -288,9 +288,10 @@ describe('territory scheduling and UpdateSystemInfo(playerEmpire)', () => {
 
 describe('harness smoke (seed 1, 600 game-s, ships parked)', () => {
     it('exploration state evolves and no M4t stub remains', () => {
-        const g = createTickGame(gameData).galaxy;
-        const known0 = g.empires.map((e) => g.habitats.filter((h) => e.resourceMap.checkResourcesKnown(h)).length);
-        const r = runGameSeconds(g, 600);
+        const g0 = cachedTickGame(gameData).galaxy;
+        const known0 = g0.empires.map((e) => g0.habitats.filter((h) => e.resourceMap.checkResourcesKnown(h)).length);
+        const { game, run: r } = cachedTickGameRun(gameData, { seconds: 600 }); // createTickGame + runGameSeconds(g, 600), built once and cached (test/helpers/gameCache.ts)
+        const g = game.galaxy;
         const known1 = g.empires.map((e) => g.habitats.filter((h) => e.resourceMap.checkResourcesKnown(h)).length);
         for (let i = 0; i < known0.length; i++) expect(known1[i]).toBeGreaterThanOrEqual(known0[i]);
         expect(known1.some((k, i) => k > known0[i])).toBe(true);
