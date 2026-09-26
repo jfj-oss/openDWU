@@ -148,5 +148,24 @@ tracks that fit); (9) low wind/static ambient bed growing with distance, distant
 zoom; (10) faint static layer on advisor/diplomacy voice in the fog; garbled rim distress calls in the ticker. Text/UI:
 (11) bleaker rim name table, more numbered survey designations; (12) rim-specific exploration/colony message wording
 (lost contact, missing survey ship, unusual readings); (13) faint grain/vignette on the main view deep in the rim, minimap
-dims the outer band. Effort: ~1 agent-day; build with 19h; must not change any sim digest (render/audio/text only except 2). Effort: medium (~1 agent-day);
+dims the outer band. Effort: ~1 agent-day; build with 19h; must not change any sim digest (render/audio/text only except 2).
+
+## 19j — Rim herders (ACCEPTED by the user 2026-09-26 — "yes"; rim independents coexist with and use the fauna; builds right after 19g-7)
+1. Herder peoples: a rim independent race trait "symbiotic" — herds are docile to that race's colonies/ships; herder worlds
+   sit inside herd home ranges, so herds are their defence (attack a herder colony → the herd turns on you; leave them
+   alone → herds ignore your freighters crossing the range).
+2. Living infrastructure: herder private-sector freighters/miners are tamed creatures — slow, self-fuelling, storm-immune —
+   the cheap way across 19h storm belts.
+3. Sustainable harvest: herds shed the creature resources the base game drops on a kill; herders gather without killing, so
+   their ports are the only steady source → plugs into 19a (the Concord wants herd products; rivals compete for herders).
+4. Drovers and guides: herder characters gained by diplomacy — a drover on a fleet lets it pass a herd; a guide on an
+   explorer reveals safe lanes through shoals/fog; they leave when goodwill is lost.
+5. Two paths per colony: protect the herd range → protectorate that keeps its herds and pays in herd goods; conquer →
+   herds go feral for years and migrate harder into your space; third route: steal herding tech via espionage (19d3
+   proliferation) and domesticate herds yourself.
+6. Migration-season events: herders warn friendly empires before a migration and ask warships out of the corridor;
+   ignoring it drops relations and makes herds aggressive.
+7. AI: cautious rim AIs take the protectorate path, aggressive ones conquest — different outcomes per neighbour.
+Reuses: race traits, protectorate relations, character joining, resource system, 19d-6 independents as actors, 19g-7 herd
+rules. Effort: medium (~1–2 agent-days). Flag off = byte-identical. Effort: medium (~1 agent-day);
 build after 19d2 (unrest plumbing) alongside 19g-7 rim fauna; 19a/19c tests must still pass with 19h on.
