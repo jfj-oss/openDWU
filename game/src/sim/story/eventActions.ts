@@ -98,6 +98,7 @@ import { shipGroupAssignMission } from '../fleets/shipGroup';
 import { withinFuelRangeAndRefuel } from '../movement';
 import { generateCivilianConvoy, generateMilitaryConvoy } from './storyEvents';
 import type { Design } from '../design';
+import { formatGameTextNow } from '../textResolver';
 
 registerStellarObjectKinds({ isHabitat, isBuiltObject, isCreature });
 
@@ -995,12 +996,12 @@ export function executeEventAction(galaxy: Galaxy, eventAction: EventAction, tri
                     // TODO(port) M9: design{2,3,4}.PictureRef = ShipImageHelper.ResolveNewShipImageIndex(subRole, race, isPirates: false)
                     // (ShipImageHelper._Rnd, not Galaxy.Rnd).
                     const builtObject5 = generateAbandonedBuiltObject(galaxy, habitat, design2, false, false, BuiltObjectEncounterAction.Notify);
-                    builtObject5.name = gameText('Refugee SHIPTYPE', subRoleText(BuiltObjectSubRole.ColonyShip));
+                    builtObject5.name = formatGameTextNow('Refugee SHIPTYPE', [subRoleText(BuiltObjectSubRole.ColonyShip)]);
                     builtObject5.nativeRace = race;
                     const builtObject6 = generateAbandonedBuiltObject(galaxy, habitat, design3, false, false, BuiltObjectEncounterAction.Notify);
-                    builtObject6.name = gameText('Refugee SHIPTYPE', subRoleText(BuiltObjectSubRole.Frigate));
+                    builtObject6.name = formatGameTextNow('Refugee SHIPTYPE', [subRoleText(BuiltObjectSubRole.Frigate)]);
                     const builtObject7 = generateAbandonedBuiltObject(galaxy, habitat, design4, false, false, BuiltObjectEncounterAction.Notify);
-                    builtObject7.name = gameText('Refugee SHIPTYPE', subRoleText(BuiltObjectSubRole.Cruiser));
+                    builtObject7.name = formatGameTextNow('Refugee SHIPTYPE', [subRoleText(BuiltObjectSubRole.Cruiser)]);
                     const habitat22 = galaxy.determineHabitatSystemStar(habitat);
                     if (race === null) throw new Error('NullReferenceException: Galaxy.9.cs 2107 race.Name (no race of intelligence >= 75)');
                     text = gameText('GameEventAction Description GenerateRefugeeFleet', race.name, habitat22.name);

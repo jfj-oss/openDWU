@@ -64,6 +64,7 @@ import {
     yardsIndexOfComponent,
     yardsIndexOfShip,
 } from './constructionYard';
+import { formatGameTextNow } from '../textResolver';
 
 /** Galaxy.3.cs 5086 ColonyShipBuildFactor = 10.0. */
 export const COLONY_SHIP_BUILD_FACTOR = 10.0;
@@ -459,19 +460,19 @@ export class ConstructionQueue {
                         }
                         if (researchNode2 === null || galaxy.rnd.next(0, 5) === 6) {
                             if (this._parentBuiltObject !== null) {
-                                text = gameText('We have disassembled the ship X at Y', ship.name, this._parentBuiltObject.name);
+                                text = formatGameTextNow('We have disassembled the ship X at Y', [ship.name, this._parentBuiltObject.name]);
                             } else if (this._parentHabitat !== null) {
-                                text = gameText('We have disassembled the ship X at Y', ship.name, this._parentHabitat.name);
+                                text = formatGameTextNow('We have disassembled the ship X at Y', [ship.name, this._parentHabitat.name]);
                             }
-                            text = text + '. ' + gameText('Unfortunately our engineers were unable to learn anything new from inspecting its technology') + '.';
+                            text = text + '. ' + formatGameTextNow('Unfortunately our engineers were unable to learn anything new from inspecting its technology') + '.';
                         } else {
                             let num7 = ship.size * ADVANCED_TECH_BONUS_FACTOR * num6;
                             if (Number.isNaN(num7)) num7 = 10000.0;
                             researchNode2.progress = Math.fround(researchNode2.progress + Math.fround(num7));
                             if (this._parentBuiltObject !== null) {
-                                text = gameText('We have received a research bonus in X from disassembling Y', researchNode2.def.name, ship.name, this._parentBuiltObject.name);
+                                text = formatGameTextNow('We have received a research bonus in X from disassembling Y', [researchNode2.def.name, ship.name, this._parentBuiltObject.name]);
                             } else if (this._parentHabitat !== null) {
-                                text = gameText('We have received a research bonus in X from disassembling Y', researchNode2.def.name, ship.name, this._parentHabitat.name);
+                                text = formatGameTextNow('We have received a research bonus in X from disassembling Y', [researchNode2.def.name, ship.name, this._parentHabitat.name]);
                             }
                             text += '.';
                             if (researchNode2.progress >= researchNode2.cost) {
@@ -640,8 +641,8 @@ export class ConstructionQueue {
                 let empty = '';
                 empty =
                     ship.role !== BuiltObjectRole.Base
-                        ? empty + gameText('Retrofitting for the SHIPTYPE NAME has been completed at LOCATION', resolveDescription(BuiltObjectSubRole as unknown as Record<number, string>, ship.subRole), ship.name, arg)
-                        : empty + gameText('Retrofitting for the SHIPTYPE NAME has been completed at LOCATION', 'base', ship.name, arg);
+                        ? empty + formatGameTextNow('Retrofitting for the SHIPTYPE NAME has been completed at LOCATION', [resolveDescription(BuiltObjectSubRole as unknown as Record<number, string>, ship.subRole), ship.name, arg])
+                        : empty + formatGameTextNow('Retrofitting for the SHIPTYPE NAME has been completed at LOCATION', ['base', ship.name, arg]);
                 constructionYard.incrementalProgress = 0;
                 constructionYard.shipUnderConstruction = null;
                 num3 = 0;
@@ -746,8 +747,8 @@ export class ConstructionQueue {
         let empty2 = '';
         empty2 =
             ship.role !== BuiltObjectRole.Base
-                ? empty2 + gameText('The SHIPTYPE NAME has been completed at LOCATION', resolveDescription(BuiltObjectSubRole as unknown as Record<number, string>, ship.subRole), ship.name, arg2)
-                : empty2 + gameText('The SHIPTYPE NAME has been completed at LOCATION', 'base', ship.name, arg2);
+                ? empty2 + formatGameTextNow('The SHIPTYPE NAME has been completed at LOCATION', [resolveDescription(BuiltObjectSubRole as unknown as Record<number, string>, ship.subRole), ship.name, arg2])
+                : empty2 + formatGameTextNow('The SHIPTYPE NAME has been completed at LOCATION', ['base', ship.name, arg2]);
         if (empire4 !== null && empire4.counters != null) {
             processBuiltObjectConstruction(empire4, ship);
         }

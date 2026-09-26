@@ -72,6 +72,7 @@ import { generateDesignFromSpec } from './designGeneration';
 import { selectRandomRace } from './pirates';
 import { gameText } from './colonyTick';
 import { baconSettings } from './data/baconSettings';
+import { formatGameTextNow } from './textResolver';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants
@@ -551,9 +552,9 @@ export function exertCulturalInfluence(galaxy: Galaxy, empire: Empire): void {
             const previousOwner = empireList[num5];
             empire.takeOwnershipOfColony(habitat4, empire);
             habitat4.culturalDistressFactor = 0;
-            const text = gameText('There has been a revolution on X', habitat4.name);
-            sendMessageToEmpire(empire, empire, EmpireMessageType.ColonyGained, habitat4, text + ' - ' + gameText('the inhabitants have switched allegiance and joined us!'));
-            sendMessageToEmpire(previousOwner, previousOwner, EmpireMessageType.ColonyLost, habitat4, text + ' - ' + gameText('the inhabitants have treacherously betrayed us and joined the X', empire.name));
+            const text = formatGameTextNow('There has been a revolution on X', [habitat4.name]);
+            sendMessageToEmpire(empire, empire, EmpireMessageType.ColonyGained, habitat4, text + ' - ' + formatGameTextNow('the inhabitants have switched allegiance and joined us!'));
+            sendMessageToEmpire(previousOwner, previousOwner, EmpireMessageType.ColonyLost, habitat4, text + ' - ' + formatGameTextNow('the inhabitants have treacherously betrayed us and joined the X', [empire.name]));
             if (habitat4.population == null || habitat4.population.dominantRace === null) continue;
             // Empire.cs 2891 ReviewEmpireAbilityBonuses(out newAbilityRaces, out raceChanged) (M4j). Its returned list
             // only feeds a UI event message (SendEventMessageToEmpire NewEmpireRaceAbility).
@@ -625,11 +626,11 @@ function doSingleEmpireEncounter(galaxy: Galaxy, discoverer: Empire | null, othe
             const empireEvaluation6 = obtainEmpireEvaluation(galaxy, discoverer, otherEmpire);
             setFirstContactPenalty(empireEvaluation6, 0.0);
         }
-        let text = gameText('We have encountered a new empire', systemName, otherEmpire.name);
+        let text = formatGameTextNow('We have encountered a new empire', [systemName, otherEmpire.name]);
         if (otherEmpire.dominantRace !== null && discoverer.dominantRace !== null && otherEmpire.dominantRace === discoverer.dominantRace) {
-            text += '. ' + gameText('This empire is predominantly composed of SAME RACE', otherEmpire.dominantRace.name);
+            text += '. ' + formatGameTextNow('This empire is predominantly composed of SAME RACE', [otherEmpire.dominantRace.name]);
         } else if (otherEmpire.dominantRace !== null && discoverer.dominantRace !== null && otherEmpire.dominantRace.raceFamily === discoverer.dominantRace.raceFamily) {
-            text += '. ' + gameText('This empire is predominantly composed of SAME RACE FAMILY', otherEmpire.dominantRace.name);
+            text += '. ' + formatGameTextNow('This empire is predominantly composed of SAME RACE FAMILY', [otherEmpire.dominantRace.name]);
         }
         if (location !== null) {
             sendMessageToEmpire(discoverer, discoverer, EmpireMessageType.EmpireDiscovered, otherEmpire, text, location, '');
@@ -920,10 +921,10 @@ export function investigateRuins(galaxy: Galaxy, investigatingEmpire: Empire | n
         const text3 = checkForStoryLocationHint(galaxy);
         if (text3 !== '' && galaxy.rnd.next(0, 2) === 1) {
             text2 = '\n\n';
-            text2 = text2 + '*** ' + gameText('A datacore recovered from the ruins NAVIGATIONAL DIRECTIONS') + ':';
+            text2 = text2 + '*** ' + formatGameTextNow('A datacore recovered from the ruins NAVIGATIONAL DIRECTIONS') + ':';
             text2 += text3;
             text2 += '. ***\n\n';
-            text2 += gameText('We should send a ship to investigate this location.');
+            text2 += formatGameTextNow('We should send a ship to investigate this location.');
         }
     }
     if (checkRuinsHaveBenefit(galaxy, ruin, investigatingEmpire) || checkRuinBonuses(ruin)) {
@@ -935,25 +936,25 @@ export function investigateRuins(galaxy: Galaxy, investigatingEmpire: Empire | n
         if (ruin.moneyBonus > 0.0) {
             investigatingEmpire.stateMoney += ruin.moneyBonus;
             pirateEconomyPerformIncome(galaxy, investigatingEmpire, ruin.moneyBonus, PirateIncomeType.Undefined, galaxyStarDate(galaxy));
-            text += gameText('Ruins Discovery Money', ruin.name, String(ruin.moneyBonus));
+            text += formatGameTextNow('Ruins Discovery Money', [ruin.name, String(ruin.moneyBonus)]);
             text += text2;
-            sendEventMessageToEmpire(investigatingEmpire, EventMessageType.GeneralRuinsDiscovery, gameText('Treasure Recovered'), text, ruin, ruinsHabitat);
+            sendEventMessageToEmpire(investigatingEmpire, EventMessageType.GeneralRuinsDiscovery, formatGameTextNow('Treasure Recovered'), text, ruin, ruinsHabitat);
         }
         if (ruin.researchBonus > 0 && investigatingEmpire.research != null) {
             const researchNode = selectRandomNextResearchProjectExcludeSuperWeapons(galaxy, investigatingEmpire);
             if (researchNode !== null) {
                 researchNode.progress = Math.fround(researchNode.progress + ruin.researchBonus);
                 if (researchNode.progress >= researchNode.cost) {
-                    text += gameText('Ruins Discovery Research', ruin.name, researchNode.def.name);
+                    text += formatGameTextNow('Ruins Discovery Research', [ruin.name, researchNode.def.name]);
                     doResearchBreakthrough(galaxy, investigatingEmpire, researchNode, true, true, true);
                     investigatingEmpire.research.update(investigatingEmpire.dominantRace);
                     reviewDesignsBuiltObjectsImprovedComponents(investigatingEmpire);
                     investigatingEmpire.reviewResearchAbilities();
                 } else {
-                    text += gameText('Ruins Discovery Research', ruin.name, researchNode.def.name);
+                    text += formatGameTextNow('Ruins Discovery Research', [ruin.name, researchNode.def.name]);
                 }
                 text += text2;
-                sendEventMessageToEmpire(investigatingEmpire, EventMessageType.GeneralRuinsDiscovery, gameText('Technology Recovered'), text, ruin, ruinsHabitat);
+                sendEventMessageToEmpire(investigatingEmpire, EventMessageType.GeneralRuinsDiscovery, formatGameTextNow('Technology Recovered'), text, ruin, ruinsHabitat);
             }
         }
         if (ruin.mapSystemReveal > 0) {
@@ -978,56 +979,56 @@ export function investigateRuins(galaxy: Galaxy, investigatingEmpire: Empire | n
                         investigatingEmpire.systemVisibility[habitat.systemIndex].status = SystemVisibilityStatus.Explored;
                     }
                 }
-                text += gameText('Ruins Discovery Maps', ruin.name, String(mapSystemReveal));
+                text += formatGameTextNow('Ruins Discovery Maps', [ruin.name, String(mapSystemReveal)]);
                 text += text2;
-                sendEventMessageToEmpire(investigatingEmpire, EventMessageType.GeneralRuinsDiscovery, gameText('System Maps Recovered'), text, ruin, ruinsHabitat);
+                sendEventMessageToEmpire(investigatingEmpire, EventMessageType.GeneralRuinsDiscovery, formatGameTextNow('System Maps Recovered'), text, ruin, ruinsHabitat);
             }
         }
         let empty = '';
         let empty2 = '';
         switch (ruin.type) {
             case RuinType.EmpireBonus: {
-                empty = gameText('Empire Bonus when Colonized');
-                text = gameText('Ruins Empire Bonus', ruin.name, categoryText(ruinsHabitat));
+                empty = formatGameTextNow('Empire Bonus when Colonized');
+                text = formatGameTextNow('Ruins Empire Bonus', [ruin.name, categoryText(ruinsHabitat)]);
                 text += ':\n\n';
                 let text4 = '';
                 if (ruin.bonusDefensive > 0.0) {
-                    text += gameText('Ruins Bonus Defensive', categoryText(ruinsHabitat), percentText(ruin.bonusDefensive));
+                    text += formatGameTextNow('Ruins Bonus Defensive', [categoryText(ruinsHabitat), percentText(ruin.bonusDefensive)]);
                 } else {
-                    if (ruin.bonusDiplomacy > 0.0) text4 = gameText('Ruins Bonus Diplomacy', percentText(ruin.bonusDiplomacy));
-                    else if (ruin.bonusHappiness > 0.0) text4 = gameText('Ruins Bonus Happiness', percentText(ruin.bonusHappiness));
-                    else if (ruin.bonusResearchEnergy > 0.0) text4 = gameText('Ruins Bonus Energy Research', percentText(ruin.bonusResearchEnergy));
-                    else if (ruin.bonusResearchHighTech > 0.0) text4 = gameText('Ruins Bonus HighTech Research', percentText(ruin.bonusResearchHighTech));
-                    else if (ruin.bonusResearchWeapons > 0.0) text4 = gameText('Ruins Bonus Weapons Research', percentText(ruin.bonusResearchWeapons));
-                    else if (ruin.bonusWealth > 0.0) text4 = gameText('Ruins Bonus Colony Income', percentText(ruin.bonusWealth));
+                    if (ruin.bonusDiplomacy > 0.0) text4 = formatGameTextNow('Ruins Bonus Diplomacy', [percentText(ruin.bonusDiplomacy)]);
+                    else if (ruin.bonusHappiness > 0.0) text4 = formatGameTextNow('Ruins Bonus Happiness', [percentText(ruin.bonusHappiness)]);
+                    else if (ruin.bonusResearchEnergy > 0.0) text4 = formatGameTextNow('Ruins Bonus Energy Research', [percentText(ruin.bonusResearchEnergy)]);
+                    else if (ruin.bonusResearchHighTech > 0.0) text4 = formatGameTextNow('Ruins Bonus HighTech Research', [percentText(ruin.bonusResearchHighTech)]);
+                    else if (ruin.bonusResearchWeapons > 0.0) text4 = formatGameTextNow('Ruins Bonus Weapons Research', [percentText(ruin.bonusResearchWeapons)]);
+                    else if (ruin.bonusWealth > 0.0) text4 = formatGameTextNow('Ruins Bonus Colony Income', [percentText(ruin.bonusWealth)]);
                     text += text4;
                     text += '\n\n';
                 }
-                text += gameText('We should immediately send a colony ship to colonize this extremely valuable world');
+                text += formatGameTextNow('We should immediately send a colony ship to colonize this extremely valuable world');
                 sendEventMessageToEmpire(investigatingEmpire, EventMessageType.RuinsEmpireBonus, empty, text, ruin, ruinsHabitat);
                 break;
             }
             case RuinType.CreatureSwarmSilverMist: {
-                empty = gameText('SilverMist Released');
-                text = gameText('Ruins SilverMist', ruin.name);
+                empty = formatGameTextNow('SilverMist Released');
+                text = formatGameTextNow('Ruins SilverMist', [ruin.name]);
                 const creature = galaxy.generateCreatureAtHabitat(CreatureType.SilverMist, ruinsHabitat, false);
                 sendEventMessageToEmpire(investigatingEmpire, EventMessageType.CreatureOutbreak, empty, text, creature, ruinsHabitat);
                 sendNewsBroadcast(investigatingEmpire, EventMessageType.CreatureOutbreak, creature, DisasterEventType.Undefined, false, false, 0, ruinsHabitat);
                 break;
             }
             case RuinType.CreatureSwarm: {
-                empty = gameText('Kaltor Swarm Released');
-                text = gameText('Ruins Kaltor Swarm', ruin.name);
+                empty = formatGameTextNow('Kaltor Swarm Released');
+                text = formatGameTextNow('Ruins Kaltor Swarm', [ruin.name]);
                 const num4 = galaxy.rnd.next(3, 6);
                 for (let l = 0; l < num4; l++) galaxy.generateCreatureAtHabitat(CreatureType.Kaltor, ruinsHabitat, false);
                 sendEventMessageToEmpire(investigatingEmpire, EventMessageType.CreatureOutbreak, empty, text, ruin, ruinsHabitat);
                 break;
             }
             case RuinType.PirateAmbush: {
-                empty = gameText('Pirate Ambush') + '!';
+                empty = formatGameTextNow('Pirate Ambush') + '!';
                 const empire2 = findNearestPirateFaction(galaxy, ruinsHabitat.xpos, ruinsHabitat.ypos, galaxy.playerEmpire, false);
                 if (empire2 !== null) {
-                    text = gameText('Ruins Pirate Ambush', ruin.name, empire2.name);
+                    text = formatGameTextNow('Ruins Pirate Ambush', [ruin.name, empire2.name]);
                     const num5 = galaxy.rnd.next(3, 5);
                     let habitat10: Habitat | null = ruinsHabitat;
                     let num6 = ruinsHabitat.xpos;
@@ -1053,22 +1054,22 @@ export function investigateRuins(galaxy: Galaxy, investigatingEmpire: Empire | n
                 if (investigatingEmpire.research != null && investigatingEmpire.research.techTree != null) {
                     const researchNode3 = findNodeById(investigatingEmpire.research.techTree, ruin.researchProjectId);
                     if (researchNode3 !== null && !researchNode3.isEnabled) {
-                        empty = gameText('Ancient Knowledge Cache Discovered');
+                        empty = formatGameTextNow('Ancient Knowledge Cache Discovered');
                         const name = researchNode3.def.name;
-                        text += gameText('Ruins Ancient Knowledge Cache Discovered', ruin.name, name);
+                        text += formatGameTextNow('Ruins Ancient Knowledge Cache Discovered', [ruin.name, name]);
                         text += '.\n\n';
                         researchNode3.isEnabled = true;
                         sendEventMessageToEmpire(investigatingEmpire, EventMessageType.ExoticTechDiscovered, empty, text, ruin, ruinsHabitat);
                     } else {
-                        text = gameText('Our survey team found nothing of interest in the RUINNAME', ruin.name);
-                        sendEventMessageToEmpire(investigatingEmpire, EventMessageType.GeneralRuinsDiscovery, gameText('Ruins are Silent'), text, ruin, ruinsHabitat);
+                        text = formatGameTextNow('Our survey team found nothing of interest in the RUINNAME', [ruin.name]);
+                        sendEventMessageToEmpire(investigatingEmpire, EventMessageType.GeneralRuinsDiscovery, formatGameTextNow('Ruins are Silent'), text, ruin, ruinsHabitat);
                     }
                 }
                 break;
             case RuinType.Component: {
                 if (investigatingEmpire.research == null || investigatingEmpire.research.techTree == null) break;
                 const researchNode2 = findNodeById(investigatingEmpire.research.techTree, ruin.researchProjectId);
-                empty = gameText('Secret Super Weapon Discovered');
+                empty = formatGameTextNow('Secret Super Weapon Discovered');
                 let arg = '';
                 if (researchNode2 !== null) {
                     const def = researchNode2.def;
@@ -1081,7 +1082,7 @@ export function investigateRuins(galaxy: Galaxy, investigatingEmpire: Empire | n
                         arg = def.name;
                     }
                 }
-                text += gameText('Ruins Secret Super Weapon Discovered', ruin.name, arg);
+                text += formatGameTextNow('Ruins Secret Super Weapon Discovered', [ruin.name, arg]);
                 text += '.\n\n';
                 // C# calls DoResearchBreakthrough(researchNode2, …) unguarded (a missing node would throw); guarded here.
                 if (researchNode2 !== null) doResearchBreakthrough(galaxy, investigatingEmpire, researchNode2, true, true, true);
@@ -1093,23 +1094,23 @@ export function investigateRuins(galaxy: Galaxy, investigatingEmpire: Empire | n
             }
             case RuinType.Government: {
                 if (investigatingEmpire.allowableGovernmentTypes == null) break;
-                empty = gameText('Secret Form of Government Revealed');
+                empty = formatGameTextNow('Secret Form of Government Revealed');
                 if (!investigatingEmpire.allowableGovernmentTypes.includes(ruin.specialGovernmentId)) investigatingEmpire.allowableGovernmentTypes.push(ruin.specialGovernmentId);
                 const governmentAttributes = getGovernmentsStatic()[ruin.specialGovernmentId]!;
-                text += gameText('Ruins Secret Form of Government Revealed', ruin.name, governmentAttributes.name);
+                text += formatGameTextNow('Ruins Secret Form of Government Revealed', [ruin.name, governmentAttributes.name]);
                 let text6 = '';
                 switch (governmentAttributes.availability) {
                     case 3:
-                        text6 = gameText('Government Description Way of Darkness');
+                        text6 = formatGameTextNow('Government Description Way of Darkness');
                         text6 += '\n\n';
                         break;
                     case 2:
-                        text6 = gameText('Government Description Way of the Ancients');
+                        text6 = formatGameTextNow('Government Description Way of the Ancients');
                         text6 += '\n\n';
                         break;
                 }
                 text += text6;
-                text += gameText('Ruins Secret Form of Government Revealed Adoption');
+                text += formatGameTextNow('Ruins Secret Form of Government Revealed Adoption');
                 sendEventMessageToEmpire(investigatingEmpire, EventMessageType.SpecialGovernmentType, empty, text, ruin, ruinsHabitat);
                 if (investigatingEmpire === galaxy.playerEmpire) break;
                 const governmentAttributesList = determineMostSuitableGovernmentTypes(investigatingEmpire.dominantRace!, investigatingEmpire.allowableGovernmentTypes);
@@ -1143,17 +1144,17 @@ export function investigateRuins(galaxy: Galaxy, investigatingEmpire: Empire | n
                 // (ShipImageHelper's own Random; visual only).
                 const builtObject4 = generateAbandonedBuiltObject(galaxy, habitat6, design4);
                 if (builtObject4 !== null) {
-                    empty = gameText('Lost Ship Location Revealed');
+                    empty = formatGameTextNow('Lost Ship Location Revealed');
                     const habitat7 = galaxy.determineHabitatSystemStar(habitat6);
                     empty2 = resolveSectorDescription(galaxy, habitat6.xpos, habitat6.ypos);
-                    text += gameText('Ruins Lost Ship Location', ruin.name, builtObject4.name, categoryText(habitat6), habitat6.name, habitat7.name, empty2);
+                    text += formatGameTextNow('Ruins Lost Ship Location', [ruin.name, builtObject4.name, categoryText(habitat6), habitat6.name, habitat7.name, empty2]);
                     sendEventMessageToEmpire(investigatingEmpire, EventMessageType.LostBuiltObjectCoordinates, empty, text, ruin, ruinsHabitat);
                     if (investigatingEmpire === galaxy.playerEmpire) addLocationHint(galaxy.playerEmpire, { x: Math.trunc(habitat6.xpos), y: Math.trunc(habitat6.ypos) });
                 }
                 break;
             }
             case RuinType.LostColony: {
-                empty = gameText('Lost Colony Location Revealed');
+                empty = formatGameTextNow('Lost Colony Location Revealed');
                 const habitat8 = findLonelyColonyLocation(galaxy, investigatingEmpire);
                 if (habitat8 !== null) {
                     if (habitat8.quality < Math.fround(0.65)) {
@@ -1164,7 +1165,7 @@ export function investigateRuins(galaxy: Galaxy, investigatingEmpire: Empire | n
                     makeHabitatIntoColonyRuntime(galaxy, investigatingEmpire, habitat8, null as unknown as Empire, race2!, 2000000000);
                     const habitat9 = galaxy.determineHabitatSystemStar(habitat8);
                     empty2 = resolveSectorDescription(galaxy, habitat8.xpos, habitat8.ypos);
-                    text += gameText('Ruins Lost Colony Location Revealed', ruin.name, categoryText(habitat8), habitat8.name, habitat9.name, empty2);
+                    text += formatGameTextNow('Ruins Lost Colony Location Revealed', [ruin.name, categoryText(habitat8), habitat8.name, habitat9.name, empty2]);
                     sendEventMessageToEmpire(investigatingEmpire, EventMessageType.LostColonyCoordinates, empty, text, habitat8, ruinsHabitat);
                     if (investigatingEmpire === galaxy.playerEmpire) addLocationHint(galaxy.playerEmpire, { x: Math.trunc(habitat8.xpos), y: Math.trunc(habitat8.ypos) });
                 }
@@ -1172,12 +1173,12 @@ export function investigateRuins(galaxy: Galaxy, investigatingEmpire: Empire | n
             }
             case RuinType.NewPopulation:
                 if (ruin.habitatNewRace !== null) {
-                    empty = gameText('Sleeping Alien Race Awoken');
+                    empty = formatGameTextNow('Sleeping Alien Race Awoken');
                     const population = new Population(ruin.habitatNewRace, 200000000);
                     if (ruinsHabitat.population == null) ruinsHabitat.population = new PopulationList();
                     ruinsHabitat.population.add(population);
                     takeOwnershipOfColonyFull(galaxy, galaxy.independentEmpire!, ruinsHabitat, galaxy.independentEmpire, false, false);
-                    text += gameText('Ruins Sleeping Alien Race Awoken', ruin.name, ruin.habitatNewRace.name, resolveDescription(HabitatCategoryType as unknown as Record<number, string>, ruinsHabitat.category));
+                    text += formatGameTextNow('Ruins Sleeping Alien Race Awoken', [ruin.name, ruin.habitatNewRace.name, resolveDescription(HabitatCategoryType as unknown as Record<number, string>, ruinsHabitat.category)]);
                     sendEventMessageToEmpire(investigatingEmpire, EventMessageType.SleepersAwake, empty, text, ruin.habitatNewRace, ruinsHabitat);
                 }
                 break;
@@ -1185,43 +1186,43 @@ export function investigateRuins(galaxy: Galaxy, investigatingEmpire: Empire | n
                 let empty3 = '';
                 if (ruin.originsRace === null) break;
                 const originsRace = ruin.originsRace;
-                empty3 = ruin.originsApprovalRatingBonus < 0 ? empty3 + gameText('Ruins Origins Negative', originsRace.name) : empty3 + gameText('Ruins Origins Positive', originsRace.name);
+                empty3 = ruin.originsApprovalRatingBonus < 0 ? empty3 + formatGameTextNow('Ruins Origins Negative', [originsRace.name]) : empty3 + formatGameTextNow('Ruins Origins Positive', [originsRace.name]);
                 switch (originsRace.name) {
                     case 'Human':
-                        empty3 = gameText('Ruins Origins Human');
+                        empty3 = formatGameTextNow('Ruins Origins Human');
                         break;
                     case 'Boskara':
-                        empty3 = gameText('Ruins Origins Negative', originsRace.name);
+                        empty3 = formatGameTextNow('Ruins Origins Negative', [originsRace.name]);
                         break;
                     case 'Kiadian':
-                        empty3 = gameText('Ruins Origins Kiadian');
+                        empty3 = formatGameTextNow('Ruins Origins Kiadian');
                         break;
                     case 'Sluken':
-                        empty3 = gameText('Ruins Origins Negative', originsRace.name);
+                        empty3 = formatGameTextNow('Ruins Origins Negative', [originsRace.name]);
                         break;
                     case 'Ackdarian':
-                        empty3 = gameText('Ruins Origins Ackdarian');
+                        empty3 = formatGameTextNow('Ruins Origins Ackdarian');
                         break;
                     case 'Gizurean':
-                        empty3 = gameText('Ruins Origins Negative', originsRace.name);
+                        empty3 = formatGameTextNow('Ruins Origins Negative', [originsRace.name]);
                         break;
                 }
                 // Galaxy.5.cs 4472 `ruin.OriginsRace.SatisfactionModifier += ruin.OriginsApprovalRatingBonus` (int): the
                 // galaxy's own Race object (cloneGalaxyRaces; saved in the raceFields side table), not the GameData race.
                 originsRace.satisfactionModifier = (originsRace.satisfactionModifier + ruin.originsApprovalRatingBonus) | 0;
-                text += gameText('Ruins Origins', ruin.name, originsRace.name);
+                text += formatGameTextNow('Ruins Origins', [ruin.name, originsRace.name]);
                 text += '\n\n';
                 text += empty3;
-                text = ruin.originsApprovalRatingBonus < 0 ? text + '\n\n' + gameText('Ruins Origins Negative Effect', originsRace.name) : text + '\n\n' + gameText('Ruins Origins Positive Effect', originsRace.name);
-                empty = gameText('History of the RACE', originsRace.name);
+                text = ruin.originsApprovalRatingBonus < 0 ? text + '\n\n' + formatGameTextNow('Ruins Origins Negative Effect', [originsRace.name]) : text + '\n\n' + formatGameTextNow('Ruins Origins Positive Effect', [originsRace.name]);
+                empty = formatGameTextNow('History of the RACE', [originsRace.name]);
                 sendEventMessageToEmpire(investigatingEmpire, EventMessageType.OriginsDiscovery, empty, text, originsRace, ruinsHabitat);
                 for (let n = 0; n < galaxy.empires.length; n++) {
                     const empire3 = galaxy.empires[n];
                     if (empire3 != null && empire3 !== investigatingEmpire && empire3.dominantRace != null && empire3.dominantRace === originsRace) {
-                        let text5 = gameText('Ruins Origins Discovery Other', originsRace.name);
+                        let text5 = formatGameTextNow('Ruins Origins Discovery Other', [originsRace.name]);
                         text5 += '\n\n';
                         text5 += empty3;
-                        text5 = ruin.originsApprovalRatingBonus < 0 ? text5 + '\n\n' + gameText('Ruins Origins Negative Effect', originsRace.name) : text5 + '\n\n' + gameText('Ruins Origins Positive Effect', originsRace.name);
+                        text5 = ruin.originsApprovalRatingBonus < 0 ? text5 + '\n\n' + formatGameTextNow('Ruins Origins Negative Effect', [originsRace.name]) : text5 + '\n\n' + formatGameTextNow('Ruins Origins Positive Effect', [originsRace.name]);
                         sendEventMessageToEmpire(empire3, EventMessageType.OriginsDiscovery, empty, text5, originsRace, ruinsHabitat);
                     }
                 }
@@ -1258,20 +1259,20 @@ export function investigateRuins(galaxy: Galaxy, investigatingEmpire: Empire | n
                         // (ShipImageHelper's own Random; visual only).
                         const builtObject = generateAbandonedBuiltObject(galaxy, habitat4!, design, false, false, BuiltObjectEncounterAction.Notify);
                         if (builtObject !== null) {
-                            builtObject.name = gameText('Refugee SHIPTYPE', resolveSubRoleDescription(BuiltObjectSubRole.ColonyShip));
+                            builtObject.name = formatGameTextNow('Refugee SHIPTYPE', [resolveSubRoleDescription(BuiltObjectSubRole.ColonyShip)]);
                             builtObject.nativeRace = race;
                         }
                         const builtObject2 = generateAbandonedBuiltObject(galaxy, habitat4!, design2, false, false, BuiltObjectEncounterAction.Notify);
-                        if (builtObject2 !== null) builtObject2.name = gameText('Refugee SHIPTYPE', resolveSubRoleDescription(BuiltObjectSubRole.Frigate));
+                        if (builtObject2 !== null) builtObject2.name = formatGameTextNow('Refugee SHIPTYPE', [resolveSubRoleDescription(BuiltObjectSubRole.Frigate)]);
                         const builtObject3 = generateAbandonedBuiltObject(galaxy, habitat4!, design3, false, false, BuiltObjectEncounterAction.Notify);
-                        if (builtObject3 !== null) builtObject3.name = gameText('Refugee SHIPTYPE', resolveSubRoleDescription(BuiltObjectSubRole.Cruiser));
+                        if (builtObject3 !== null) builtObject3.name = formatGameTextNow('Refugee SHIPTYPE', [resolveSubRoleDescription(BuiltObjectSubRole.Cruiser)]);
                         // C# reads race.Name unguarded.
-                        text += gameText('Ruins Refugees', ruin.name, race!.name, categoryText(habitat4!), habitat4!.name);
-                        empty = gameText('Galactic Refugees Encountered');
+                        text += formatGameTextNow('Ruins Refugees', [ruin.name, race!.name, categoryText(habitat4!), habitat4!.name]);
+                        empty = formatGameTextNow('Galactic Refugees Encountered');
                         sendEventMessageToEmpire(investigatingEmpire, EventMessageType.GalacticRefugees, empty, text, ruin, ruinsHabitat);
                     }
                 } else {
-                    text = text + ' ' + gameText('Our survey team found nothing of interest in the ruins.');
+                    text = text + ' ' + formatGameTextNow('Our survey team found nothing of interest in the ruins.');
                     sendMessageToEmpire(investigatingEmpire, investigatingEmpire, EmpireMessageType.ExplorationRuins, galaxy, text);
                 }
                 break;
@@ -1292,16 +1293,16 @@ export function investigateRuins(galaxy: Galaxy, investigatingEmpire: Empire | n
     ) {
         investigatingEmpire.raceEventType = RaceEventType.HistoricalDiscoveryExploreRuinsForResearchBoost;
         investigatingEmpire.raceEventEndDate = galaxyStarDate(galaxy) + Math.trunc((REAL_SECONDS_IN_GALACTIC_YEAR * 1000) / 2);
-        text = gameText('Our survey team made a discovery of galactic significance in the RUINNAME', ruin.name);
+        text = formatGameTextNow('Our survey team made a discovery of galactic significance in the RUINNAME', [ruin.name]);
         // C# appends text2 only when it is empty (kept).
         if (text2 === '') text += text2;
-        sendEventMessageToEmpire(investigatingEmpire, EventMessageType.GeneralRuinsDiscovery, gameText('Unusual Technology Discovered'), text, ruin, ruinsHabitat);
+        sendEventMessageToEmpire(investigatingEmpire, EventMessageType.GeneralRuinsDiscovery, formatGameTextNow('Unusual Technology Discovered'), text, ruin, ruinsHabitat);
     } else if (text2 === '') {
-        text = gameText('Our survey team found nothing of interest in the RUINNAME', ruin.name);
-        sendEventMessageToEmpire(investigatingEmpire, EventMessageType.GeneralRuinsDiscovery, gameText('Ruins are Silent'), text, ruin, ruinsHabitat);
+        text = formatGameTextNow('Our survey team found nothing of interest in the RUINNAME', [ruin.name]);
+        sendEventMessageToEmpire(investigatingEmpire, EventMessageType.GeneralRuinsDiscovery, formatGameTextNow('Ruins are Silent'), text, ruin, ruinsHabitat);
     } else {
         text = text2;
-        sendEventMessageToEmpire(investigatingEmpire, EventMessageType.GeneralRuinsDiscovery, gameText('Navigational Coordinates'), text, ruin, ruinsHabitat);
+        sendEventMessageToEmpire(investigatingEmpire, EventMessageType.GeneralRuinsDiscovery, formatGameTextNow('Navigational Coordinates'), text, ruin, ruinsHabitat);
     }
 }
 

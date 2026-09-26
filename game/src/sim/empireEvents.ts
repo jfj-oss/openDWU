@@ -85,6 +85,7 @@ import { nodeCategory, nodeIndustry, type TechNode } from './researchSystem';
 import { removeNonRaceSpecificProjectTypes, resolveRaceSpecificComponents } from './researchTick';
 import { IndustryType } from './types';
 import { ColonyPopulationPolicy, ComponentCategoryType } from './data/policies';
+import { formatGameTextNow } from './textResolver';
 
 // ---------------------------------------------------------------------------
 // Race / list / galaxy helpers
@@ -547,7 +548,7 @@ export function randomEventRareResourceInterceptedAt(galaxy: Galaxy, empire: Emp
     // spaceport.Cargo.Add(new Cargo(resource, 200, this)).
     spaceport.cargo!.add(new Cargo(new ResourceRef(resourceId), 200, empire));
     const resourceName = galaxy.resourceSystem.byId.get(resourceId)?.name ?? '';
-    let text = gameText('Intercept Resource RESOURCE SYSTEM SPACEPORT', resourceName, spaceport.nearestSystemStar === null ? empire.capital!.name : spaceport.nearestSystemStar.name, spaceport.name);
+    let text = formatGameTextNow('Intercept Resource RESOURCE SYSTEM SPACEPORT', [resourceName, spaceport.nearestSystemStar === null ? empire.capital!.name : spaceport.nearestSystemStar.name, spaceport.name]);
     let flag = false;
     if (supplyingEmpire !== null) {
         if (empire.pirateEmpireBaseHabitat === null) {
@@ -558,7 +559,7 @@ export function randomEventRareResourceInterceptedAt(galaxy: Galaxy, empire: Emp
             if (pirateRelation.type !== PirateRelationType.None) flag = true;
         }
     }
-    if (!flag) text = text + '\n\n' + gameText('Intercept Resource unclear origin', resourceName);
+    if (!flag) text = text + '\n\n' + formatGameTextNow('Intercept Resource unclear origin', [resourceName]);
     sendEventMessageToEmpire(empire, EventMessageType.RareResourceIntercepted, gameText('Rare Resource Intercepted'), text, resourceId, spaceport);
 }
 
@@ -568,9 +569,9 @@ function interceptSource(galaxy: Galaxy, empire: Empire, other: Empire, item: Ga
     let builtObject2 = fastFindNearestLongRangeScanner(galaxy, Math.trunc(item.xpos), Math.trunc(item.ypos), empire);
     if (builtObject2 === null) {
         builtObject2 = findNearestBuiltObjectOfEmpire(galaxy, Math.trunc(item.xpos), Math.trunc(item.ypos), empire, BuiltObjectSubRole.ExplorationShip, true);
-        if (builtObject2 !== null) text = gameText('Communications Intercept SHIPNAME EMPIRE', builtObject2.name, other.name) + '.\n\n';
+        if (builtObject2 !== null) text = formatGameTextNow('Communications Intercept SHIPNAME EMPIRE', [builtObject2.name, other.name]) + '.\n\n';
     } else {
-        text = gameText('Communications Intercept MONITORINGSTATION EMPIRE', builtObject2.name, other.name) + '.\n\n';
+        text = formatGameTextNow('Communications Intercept MONITORINGSTATION EMPIRE', [builtObject2.name, other.name]) + '.\n\n';
     }
     return { scanner: builtObject2, text };
 }
@@ -603,7 +604,7 @@ function randomEventUncoverKnownLocations(galaxy: Galaxy, empire: Empire): void 
                     const { scanner: builtObject2, text } = interceptSource(galaxy, empire, empire2, item);
                     if (builtObject2 === null) continue;
                     const nearestStar = relatedBuiltObject.nearestSystemStar!;
-                    const message = text + gameText('Communications Intercept Planet Destroyer', nearestStar.name, resolveSectorDescription(galaxy, relatedBuiltObject.xpos, relatedBuiltObject.ypos), empire2.name);
+                    const message = text + formatGameTextNow('Communications Intercept Planet Destroyer', [nearestStar.name, resolveSectorDescription(galaxy, relatedBuiltObject.xpos, relatedBuiltObject.ypos), empire2.name]);
                     known.push(item);
                     addLocationHint(empire, { x: Math.trunc(item.xpos) + Math.trunc(item.width) / 2 | 0, y: Math.trunc(item.ypos) + Math.trunc(item.height) / 2 | 0 });
                     const additionalData = [empire2, item];
@@ -634,7 +635,7 @@ function randomEventUncoverKnownLocations(galaxy: Galaxy, empire: Empire): void 
                 const { scanner: builtObject3, text: text2 } = interceptSource(galaxy, empire, empire2, item2);
                 if (builtObject3 !== null) {
                     const habitat = galaxy.fastFindNearestSystem(item2.xpos, item2.ypos)!;
-                    const message2 = text2 + gameText('Communications Intercept Debris Field', empire2.name, habitat.name, resolveSectorDescription(galaxy, item2.xpos, item2.ypos));
+                    const message2 = text2 + formatGameTextNow('Communications Intercept Debris Field', [empire2.name, habitat.name, resolveSectorDescription(galaxy, item2.xpos, item2.ypos)]);
                     known.push(item2);
                     const point = { x: Math.trunc(item2.xpos) + (Math.trunc(Math.trunc(item2.width) / 2)), y: Math.trunc(item2.ypos) + (Math.trunc(Math.trunc(item2.height) / 2)) };
                     addLocationHint(empire, point);
@@ -650,7 +651,7 @@ function randomEventUncoverKnownLocations(galaxy: Galaxy, empire: Empire): void 
             const { scanner: builtObject4, text: text3 } = interceptSource(galaxy, empire, empire2, item3);
             if (builtObject4 !== null) {
                 const habitat2 = galaxy.fastFindNearestSystem(item3.xpos, item3.ypos)!;
-                const message3 = text3 + gameText('Communications Intercept Restricted Area', empire2.name, habitat2.name, resolveSectorDescription(galaxy, item3.xpos, item3.ypos));
+                const message3 = text3 + formatGameTextNow('Communications Intercept Restricted Area', [empire2.name, habitat2.name, resolveSectorDescription(galaxy, item3.xpos, item3.ypos)]);
                 known.push(item3);
                 const point2 = { x: Math.trunc(item3.xpos) + Math.trunc(Math.trunc(item3.width) / 2), y: Math.trunc(item3.ypos) + Math.trunc(Math.trunc(item3.height) / 2) };
                 addLocationHint(empire, point2);
@@ -852,7 +853,7 @@ export function empireEventPlague(galaxy: Galaxy, empire: Empire, colony: Habita
     if (colony === null || colony.population == null || colony.population.items.length <= 0 || colony.hasBeenDestroyed) return;
     if (empire.raceEventType === RaceEventType.PredictiveHistory || (raceEventsContainsEventType(empire.dominantRace!, RaceEventType.LuckyAvertColonyDisaster) && galaxy.rnd.next(0, 2) === 1)) {
         const habitat = galaxy.determineHabitatSystemStar(colony);
-        const title = gameText('Avert Disaster') + '!';
+        const title = formatGameTextNow('Avert Disaster') + '!';
         const message = gameText('Avert Plague Description', colony.name, habitat.name);
         sendEventMessageToEmpire(empire, EventMessageType.RaceEvent, title, message, RaceEventType.LuckyAvertColonyDisaster, colony);
     } else {
@@ -887,9 +888,9 @@ export function empireEventPlague(galaxy: Galaxy, empire: Empire, colony: Habita
             }
             const habitat2 = galaxy.determineHabitatSystemStar(colony);
             const description = plague.description;
-            const title2 = gameText('Colony Disaster Plague') + '!';
-            let text = gameText('Colony Disaster Plague Description', plague.name, colony.name, habitat2.name, description);
-            text = text + '\n\n' + gameText('Plague Warn Spread') + '...';
+            const title2 = formatGameTextNow('Colony Disaster Plague') + '!';
+            let text = formatGameTextNow('Colony Disaster Plague Description', [plague.name, colony.name, habitat2.name, description]);
+            text = text + '\n\n' + formatGameTextNow('Plague Warn Spread') + '...';
             sendEventMessageToEmpire(empire, EventMessageType.DisasterEvent, title2, text, DisasterEventType.Plague, colony);
             sendNewsBroadcast(empire, EventMessageType.DisasterEvent, colony, DisasterEventType.Plague, false, false);
         }
@@ -922,7 +923,7 @@ export function empireEventColonyResourceDepletion(galaxy: Galaxy, habitat: Habi
             habitat.resources.splice(num, 1);
             const habitat2 = galaxy.determineHabitatSystemStar(habitat);
             const resourceName = galaxy.resourceSystem.byId.get(resourceId)?.name ?? '';
-            const title = gameText('Resource Depletion', resourceName) + '!';
+            const title = formatGameTextNow('Resource Depletion', [resourceName]) + '!';
             const message = gameText('Resource Depletion Description', resourceName, habitat.name, habitat2.name);
             if (empire !== null) sendEventMessageToEmpire(empire, EventMessageType.ResourceDepletion, title, message, resourceId, habitat);
         }
@@ -963,7 +964,7 @@ export function empireEventColonyResourceAppearance(galaxy: Galaxy, habitat: Hab
             habitat.resources.push({ resourceId, abundance: shortCast(galaxy.rnd.next(300, 700)) });
             const habitat2 = galaxy.determineHabitatSystemStar(habitat);
             const resourceName = galaxy.resourceSystem.byId.get(resourceId)?.name ?? '';
-            const title = gameText('Resource Appearance', resourceName) + '!';
+            const title = formatGameTextNow('Resource Appearance', [resourceName]) + '!';
             const message = gameText('Resource Appearance Description', resourceName, habitat.name, habitat2.name);
             if (empire !== null) sendEventMessageToEmpire(empire, EventMessageType.ResourceAppearance, title, message, resourceId, habitat);
         }
@@ -974,7 +975,7 @@ export function empireEventColonyResourceAppearance(galaxy: Galaxy, habitat: Hab
 function empireEventEconomicCrisis(galaxy: Galaxy, empire: Empire): void {
     const num = empire.stateMoney * (0.4 + galaxy.rnd.nextDouble() * 0.2);
     empire.stateMoney -= num;
-    const title = gameText('Empire Disaster Economic Crisis') + '!';
+    const title = formatGameTextNow('Empire Disaster Economic Crisis') + '!';
     const message = gameText('Empire Disaster Economic Crisis Description', formatThousands(num));
     sendEventMessageToEmpire(empire, EventMessageType.DisasterEvent, title, message, DisasterEventType.EconomicCrisis, null);
     sendNewsBroadcast(empire, EventMessageType.DisasterEvent, null, DisasterEventType.EconomicCrisis, false, false);
@@ -1020,7 +1021,7 @@ function empireEventColonyNaturalDisasterRandom(galaxy: Galaxy, empire: Empire):
         if (empire.raceEventType === RaceEventType.PredictiveHistory || (raceEventsContainsEventType(empire.dominantRace!, RaceEventType.LuckyAvertColonyDisaster) && galaxy.rnd.next(0, 2) === 1)) {
             const habitat2 = galaxy.determineHabitatSystemStar(habitat);
             const arg = resolveDescription(DisasterEventType as unknown as Record<number, string>, disasterEventTypeForHabitat(habitat.type));
-            const title = gameText('Avert Disaster') + '!';
+            const title = formatGameTextNow('Avert Disaster') + '!';
             const message = gameText('Avert Disaster Description', arg, habitat.name, habitat2.name);
             sendEventMessageToEmpire(empire, EventMessageType.RaceEvent, title, message, RaceEventType.LuckyAvertColonyDisaster, habitat);
         } else {
@@ -1058,7 +1059,7 @@ export function empireEventColonyNaturalDisaster(galaxy: Galaxy, empire: Empire,
     const disasterEventType = disasterEventTypeForHabitat(colony.type);
     const habitat = galaxy.determineHabitatSystemStar(colony);
     const key = DISASTER_TEXT_KEYS[disasterEventType];
-    const empty = gameText(`Colony Disaster ${key}`) + '!';
+    const empty = formatGameTextNow(`Colony Disaster ${key}`) + '!';
     const empty2 = gameText(`Colony Disaster ${key} Description`, colony.name, habitat.name);
     sendEventMessageToEmpire(empire, EventMessageType.DisasterEvent, empty, empty2, disasterEventType, colony);
     sendNewsBroadcast(empire, EventMessageType.DisasterEvent, colony, disasterEventType, false, false);
@@ -1727,18 +1728,18 @@ export function initiateEmpireSplit(galaxy: Galaxy, self: Empire, splinterPortio
     let text = '';
     let text2 = '';
     if (declareWar) {
-        text2 = gameText('Civil War in the EMPIRE', self.name);
-        text = text + gameText('A civil war is underway in the OTHEREMPIRE', self.name) + '\n\n';
+        text2 = formatGameTextNow('Civil War in the EMPIRE', [self.name]);
+        text = text + formatGameTextNow('A civil war is underway in the OTHEREMPIRE', [self.name]) + '\n\n';
     } else {
-        text2 = gameText('Revolution in the EMPIRE', self.name);
-        text = text + gameText('A split has occurred in the OTHEREMPIRE', self.name) + '\n\n';
+        text2 = formatGameTextNow('Revolution in the EMPIRE', [self.name]);
+        text = text + formatGameTextNow('A split has occurred in the OTHEREMPIRE', [self.name]) + '\n\n';
     }
-    text += gameText('Empire Split Detail COLONYCOUNT EMPIRE NEWEMPIRE', coloniesLost.length.toString(), self.name, empire.name);
-    let text3 = gameText('Revolution!');
-    let text4 = gameText('Your Empire Split Detail COLONYCOUNT NEWEMPIRE', coloniesLost.length.toString(), empire.name);
+    text += formatGameTextNow('Empire Split Detail COLONYCOUNT EMPIRE NEWEMPIRE', [coloniesLost.length.toString(), self.name, empire.name]);
+    let text3 = formatGameTextNow('Revolution!');
+    let text4 = formatGameTextNow('Your Empire Split Detail COLONYCOUNT NEWEMPIRE', [coloniesLost.length.toString(), empire.name]);
     if (declareWar) {
-        text3 = gameText('Civil War!');
-        text4 = text4 + '\n\n' + gameText('We are now at war with these traitors');
+        text3 = formatGameTextNow('Civil War!');
+        text4 = text4 + '\n\n' + formatGameTextNow('We are now at war with these traitors');
     }
     for (let i = 0; i < galaxy.empires.length; i++) {
         const empire2 = galaxy.empires[i];

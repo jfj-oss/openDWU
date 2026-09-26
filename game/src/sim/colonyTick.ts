@@ -69,6 +69,7 @@ import { netSort } from './netSort';
 import { PlanetaryFacilityType } from './researchSystem';
 import { facilitiesFindBestPirateFacility } from './construction/facilities';
 import { baconSettings } from './data/baconSettings';
+import { formatGameTextNow } from './textResolver';
 
 const f32 = Math.fround;
 
@@ -1138,7 +1139,7 @@ export function reviewColonyPopulationPolicy(galaxy: Galaxy, empire: Empire, tim
         const habitat5 = habitatList4[num22];
         if (!empire.penalColonies.includes(habitat5)) {
             const habitat6 = galaxy.determineHabitatSystemStar(habitat5);
-            habitat5.name = gameText('SYSTEM Penal Colony', habitat6 !== null ? habitat6.name : '');
+            habitat5.name = formatGameTextNow('SYSTEM Penal Colony', [habitat6 !== null ? habitat6.name : '']); // Empire.2.cs 3434: a name, formatted now
             empire.penalColonies.push(habitat5);
         }
     }

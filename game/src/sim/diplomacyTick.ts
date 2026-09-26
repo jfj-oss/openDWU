@@ -93,6 +93,7 @@ import { determineDesirePirateProtection, pirateEconomyPerformExpense, pirateEco
 import { PirateExpenseType, PirateIncomeType } from './pirates/pirateEconomy';
 import { acceptPirateProtection, calculatePirateProtectionPricePerMonth } from './pirates/pirateRelationsAI';
 import { baconSettings } from './data/baconSettings';
+import { formatNet, tryGetText } from './textResolver';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants (Galaxy.3.cs 4990-5140 InitializeStatics; BaconEmpire.cs statics with their default settings).
@@ -147,14 +148,19 @@ export const FULLY_AUTOMATED = AutomationLevel.FullyAutomated;
 // Small shared helpers.
 // ---------------------------------------------------------------------------------------------------------------
 
-/** TextResolver.GetText(key): the key (GameText stand-in; M9 localises). */
+/**
+ * TextResolver.cs GetText(key), resolved now like the C# (textResolver.ts): the callers splice the text into a larger
+ * one or pass it to string.Format (formatText), which the deferred gameText() encoding cannot carry — the key alone
+ * dropped the Format arguments and the ticker showed "{0}". Without a loaded table (headless tests) or for an unknown
+ * key, the key itself.
+ */
 export function getText(key: string): string {
-    return key;
+    return tryGetText(key) ?? key;
 }
 
-/** string.Format(format, args): {n} placeholders. */
+/** string.Format(format, args) (textResolver.ts formatNet: {n} items, {{ / }} escapes). */
 export function formatText(format: string, ...args: unknown[]): string {
-    return format.replace(/\{(\d+)\}/g, (m, i) => (Number(i) < args.length ? String(args[Number(i)]) : m));
+    return formatNet(format, args);
 }
 
 /** C# double.CompareTo (NaN sorts first). */

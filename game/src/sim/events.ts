@@ -79,6 +79,7 @@ import { identifyMechanoidEmpire } from './fleets/militaryAI';
 import { totalColonyStrategicValue } from './forceStructure';
 import type { IntelligenceMission } from './characters';
 import type { GalaxyResourceMap } from './visibility';
+import { formatGameTextNow } from './textResolver';
 
 /** Empire.7.cs 3400 SendEventMessageToEmpire(eventMessageType, title, message, additionalData, location): only the attached UI recipient sees it. */
 export function sendEventMessageToEmpire(empire: Empire, eventMessageType: EventMessageType, title: string, message: string, additionalData: unknown, location: unknown): void {
@@ -648,8 +649,8 @@ export function infectWithPlague(galaxy: Galaxy, habitat: Habitat, plague: Plagu
     const habitat2 = galaxy.determineHabitatSystemStar(habitat);
     galaxy.systems[habitat2.systemIndex].plagueId = plague.plagueId;
     const description = plague.description;
-    let title = gameText('Colony Disaster Plague Spreads') + '!';
-    if (infectingColony === null) title = gameText('Colony Disaster Plague') + '!';
+    let title = formatGameTextNow('Colony Disaster Plague Spreads') + '!';
+    if (infectingColony === null) title = formatGameTextNow('Colony Disaster Plague') + '!';
     const empty = infectingColony !== null
         ? gameText('Colony Disaster Plague Spreads Description', plague.name, infectingColony.name, habitat.name, habitat2.name, description)
         : gameText('Colony Disaster Plague Description', plague.name, habitat.name, habitat2.name, description);
@@ -889,7 +890,7 @@ export function checkHabitatIsEmpire(galaxy: Galaxy, habitat: Habitat): void {
         const design = findNewest(empire.designs, BuiltObjectSubRole.MediumSpacePort);
         if (design !== null) {
             design.buildCount++;
-            const builtObject = generateBuiltObjectFromDesign(galaxy, empire, design, empire.capital!.name + ' ' + gameText('Space Port'), true, habitat.xpos, habitat.ypos);
+            const builtObject = generateBuiltObjectFromDesign(galaxy, empire, design, empire.capital!.name + ' ' + formatGameTextNow('Space Port'), true, habitat.xpos, habitat.ypos);
             builtObject.parentHabitat = habitat;
             builtObject.dateBuilt = galaxyStarDate(galaxy);
             builtObject.dateRetrofit = galaxyStarDate(galaxy);
