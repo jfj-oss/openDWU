@@ -47,6 +47,13 @@ export interface UiSettings {
     diplomatVoice: boolean;
     // [diplovoice] end
 
+    // [popupstubs] begin — messages first appear as stubs under the top-right panel.
+    /** Open the popup card by itself when a message arrives (the 16d behaviour); off: only the stub. */
+    openMessagesAutomatically: boolean;
+    /** Stubs shown at once (1..6); the rest scroll. */
+    messageStubsVisible: number;
+    // [popupstubs] end
+
     // [leftovers] begin — GameOptions.AutoSaveInterval (GameOptions.cs:240): 0 = off, else minutes (10-60, Main.InitializeComponent.cs:10739-10744).
     /** chkOptionsAutoSave. */
     autoSave: boolean;
@@ -83,6 +90,11 @@ export const DEFAULT_SETTINGS: UiSettings = {
     // [diplovoice] begin
     diplomatVoice: true,
     // [diplovoice] end
+
+    // [popupstubs] begin
+    openMessagesAutomatically: false,
+    messageStubsVisible: 6,
+    // [popupstubs] end
 
     // [leftovers] begin — Main.Part9.cs:2781 default AutoSaveInterval = 30.
     autoSave: true,
@@ -147,6 +159,13 @@ export function loadSettings(): UiSettings {
         // [diplovoice] begin
         if (typeof parsed.diplomatVoice === 'boolean') out.diplomatVoice = parsed.diplomatVoice;
         // [diplovoice] end
+
+        // [popupstubs] begin
+        if (typeof parsed.openMessagesAutomatically === 'boolean') out.openMessagesAutomatically = parsed.openMessagesAutomatically;
+        if (typeof parsed.messageStubsVisible === 'number' && Number.isFinite(parsed.messageStubsVisible)) {
+            out.messageStubsVisible = Math.min(6, Math.max(1, Math.round(parsed.messageStubsVisible)));
+        }
+        // [popupstubs] end
 
         // [leftovers] begin
         if (typeof parsed.autoSave === 'boolean') out.autoSave = parsed.autoSave;

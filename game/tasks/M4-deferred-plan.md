@@ -22,7 +22,7 @@ Then, before M5+ (UI completeness etc.):
 
 ## Follow-ups noted 2026-09-25 (afternoon)
 - Loader requests 50 files the install lacks (designTemplates/<race>/pirate/planetdestroyer.txt ×45, characters/Mechanoid.txt + Shakturi.txt in two cases): skip them like the C# does (check the C# load path) so the packaged app logs no 404s.
-- "Black band across the top 270 px" seen at 1920×1080 in both dev and package (linuxpkg captures shots/pkg-*.png) — verify whether it is the HUD top bar or a layout bug (UI scale?).
+- (resolved 2026-09-26, fix8ui) the "black band across the top" is empty space past the galaxy's top edge; the C# draws no backdrop there either (MainView.1.cs:4237) — faithful, not a bug.
 - Mac arm64: no .icns icon, no signing/notarization, CFBundleName "dwu", no CrossOver/Whisky/Flatpak install guesses; untested on a Mac.
 - 17f design editor: "Only Show Latest Components" filter, picture combo, weapons grid, repair-priority template, multi-select delete.
 - purchase: per-row design drop-down (Main.Part2.cs method_630), Advisor Suggest column.
@@ -33,3 +33,6 @@ Then, before M5+ (UI completeness etc.):
 - main.ts: the ticker's `view.update()` runs outside the sim try/catch (a render exception still freezes the loop).
 - fix7 (2026-09-26): the C# system habitat list excludes the star (Galaxy.6.cs 4611) while the TS list includes it; the exploration searches were fixed but ~50 other direct reads of that list are not audited yet (TODO in galaxy.ts) — audit each reader against the C# (pins may move).
 - HUD direction (user, 2026-09-26): popups (messages, advisor suggestions, conversations) must first appear under the top-right empire panel as a compact list of stubs that scrolls through, only a couple visible at a time; the full card/dialog opens on click (package popupstubs).
+- Intermittent (2026-09-26 05:50): test/pirates.test.ts "createGame with piratePrevalence > is deterministic across runs" failed once inside a `npm run repin` capture under load (two createGame fingerprints differed); passes alone, cold/warm/off cache, and in a later capture. If it recurs, hunt a load/order-dependent source of nondeterminism (shared gameData mutation across tests in one worker, wall-clock reads, iteration over object keys) — the replay/determinism owner should keep this in mind.
+- Ship art marker pixels: the original replaces the pure-blue (engine) and pure-yellow (light) marker pixels with neighbouring colours when caching ship images (BuiltObjectImageCache.cs); builtObjectLayer.ts draws the raw art so the markers show on ships — port the replacement at texture load (ambientfx finding).
+- Tractor-beam strike effect: no sim state for it yet (TODO in ambientLayer.ts).

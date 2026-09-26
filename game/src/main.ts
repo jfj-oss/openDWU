@@ -78,6 +78,17 @@ import { hideMapTooltip } from './ui/mapTooltip';
 import { closeEmpireComparison, closeGameEndBanner, installGameEndHandler, removeGameEndHandler } from './ui/screens/empireComparison'; // [15d]
 import { installMessagePopups, removeMessagePopups } from './ui/messagePopups'; import { closeGameOptionsPanel } from './ui/screens/gameOptionsPanel'; // [16d]
 import { installOrderUi, selectionTarget } from './ui/orderMenu'; import { getSelection as getHudSelection, selectShipGroup, selectStellarObject } from './ui/hud'; import { ShipGroup } from './sim/fleets/shipGroup'; import { Fighter } from './sim/combat/fighters'; // [ordermenu]
+// [suggest] begin
+import { installAdvisorSuggestions, removeAdvisorSuggestions } from './ui/advisorSuggestions';
+import { expireConversationsForEmpire } from './ui/messagePopups';
+import { toggleBuildOrder } from './ui/screens/buildOrder';
+import { Creature } from './sim/creature';
+// [suggest] end
+
+// [popupstubs] begin
+import { installMessageStubList, removeMessageStubList } from './ui/messageStubList';
+// [popupstubs] end
+
 // [fix6ui] begin
 import { setShipCommandHandler } from './ui/keyboard';
 import { refreshSelectionActionBar } from './ui/orderMenu';
@@ -458,8 +469,48 @@ export async function startGameView(
     installGameEndHandler(galaxy, time);
     // [/15d]
     // [16d] Player messages → popups + the diplomatic conversation queue (Main.Part9.cs ReceiveMessageInternal).
-    installMessagePopups({ player: game.playerEmpire, galaxy });
+    // [popupstubs] begin
+    // The clock lets an immediate conversation pause the game (Main.Part9.cs 1544 method_253).
+    installMessagePopups({ player: game.playerEmpire, galaxy, clock: time });
+    // [popupstubs] end
     // [/16d]
+
+    // [suggest] begin
+    // Advisor suggestions (SemiAutomated tasks): Main.Part2.cs 2781 pnlAdvisorSuggestion. "Show me first" centres and
+    // selects the subject (method_646 / 647; method_645 → the empire's capital here) and Approve / Decline restore the
+    // view (method_644).
+    installAdvisorSuggestions({
+        player: game.playerEmpire,
+        galaxy,
+        clock: time,
+        openBuildOrder: () => toggleBuildOrder({ empire: game.playerEmpire }),
+        expireConversations: (e) => expireConversationsForEmpire(e),
+        show: (target) => {
+            const before = { x: camera.x, y: camera.y, zoom: camera.zoom, sel: getHudSelection() };
+            let o: unknown = null;
+            if (target.kind === 'empire') o = target.empire?.capital ?? null;
+            else o = target.object;
+            if (o === null) return;
+            const pos = o instanceof ShipGroup ? o.leadShip : (o as { xpos: number; ypos: number });
+            if (pos == null) return;
+            camera.centerOn(pos.xpos, pos.ypos);
+            camera.zoomAt(SYSTEM_LEVEL_ZOOM, camera.width / 2, camera.height / 2);
+            if (o instanceof ShipGroup) selectShipGroup(o, false);
+            else if (o instanceof Habitat) selectHabitat(o, false);
+            else if (!(o instanceof Creature)) selectStellarObject(o as Parameters<typeof selectStellarObject>[0], false);
+            return () => {
+                camera.zoom = before.zoom;
+                camera.centerOn(before.x, before.y);
+                hud.onSelectionChange?.(before.sel);
+            };
+        },
+    });
+    // [suggest] end
+
+    // [popupstubs] begin
+    // Messages, conversations and advisor suggestions first appear as one-line stubs under the top-right panel.
+    installMessageStubList({ player: game.playerEmpire, galaxy, clock: time });
+    // [popupstubs] end
 
     // [leftovers] begin
     // The player's EventMessageRecipient (Main.Part12.cs:2881) → history messages + the wonder-built popup.
@@ -662,6 +713,14 @@ export async function startGameView(
         // [intel] end
 
         setEmpireSummarySource(null);
+        // [suggest] begin
+        removeAdvisorSuggestions();
+        // [suggest] end
+
+        // [popupstubs] begin
+        removeMessageStubList();
+        // [popupstubs] end
+
         // [leftovers] begin
         removeEventMessages();
         removeAutosave();

@@ -15,6 +15,11 @@ describe('colonyRingRadius', () => {
         expect(colonyRingRadius(100)).toBe(56);
         expect(colonyRingRadius(0)).toBe(6);
     });
+    it('pads by max(6, 28/f) px like the original owner ring (MainView.1.cs:794)', () => {
+        expect(colonyRingRadius(294, 1)).toBe(147 + 28);
+        expect(colonyRingRadius(100, 2)).toBe(50 + 14);
+        expect(colonyRingRadius(100, 10)).toBe(50 + 6);
+    });
 });
 
 describe('territoryRadius', () => {

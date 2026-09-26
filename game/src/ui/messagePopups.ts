@@ -22,6 +22,15 @@ import { showToast } from './toast';
 import { diplomatVoiceConfig, rememberVoicedMessage, voiceDiplomatReply, voicedLineToggle, voicedMessageText, voicingIndicator } from './diplomatVoice';
 // [diplovoice] end
 import { rgbCss } from './hud';
+// [suggest] begin
+import { expireAdvisorSuggestionsForEmpire, receiveAdvisorSuggestionMessage } from '../sim/advisorQueue';
+// [suggest] end
+// [popupstubs] begin
+import { empireMessageHistory } from '../sim/messages';
+import { isConversationExpired } from './messageStubs';
+import { pushMessageStub, markMessageStubRead } from './messageStubList';
+import { getSettings } from './settings';
+// [popupstubs] end
 
 export interface ConversationEntry {
     message: EmpireMessage;
@@ -39,11 +48,15 @@ export function isAnswerableProposal(entry: ConversationEntry, player: Empire, s
 }
 
 // Stand-in for DiplomaticMessageQueue.cs:404 ExpireInvalidMessages — TODO(port): the full per-type expiry rules
+// [popupstubs] + DiplomaticMessageQueue.cs:671 method_3: entries older than 250 x RealSecondsInGalacticYear expire.
 export function pruneConversationQueue(queue: ConversationEntry[], player: Empire, starDate: number): number {
     let removed = 0;
     for (let i = queue.length - 1; i >= 0; i--) {
         const e = queue[i];
-        if (e.message.messageType === EmpireMessageType.ProposeDiplomaticRelation && !isAnswerableProposal(e, player, starDate)) {
+        if (
+            (e.message.messageType === EmpireMessageType.ProposeDiplomaticRelation && !isAnswerableProposal(e, player, starDate)) ||
+            (e.message.starDate > 0 && isConversationExpired(e.message.starDate, starDate))
+        ) {
             queue.splice(i, 1);
             removed++;
         }
@@ -75,21 +88,72 @@ export function popupTitle(message: EmpireMessage): string {
 export interface MessagePopupsOptions {
     player: Empire;
     galaxy: Galaxy;
+    // [popupstubs] begin
+    /** The game clock: an immediate conversation pauses it (Main.Part9.cs 1544 method_253 → method_154 + bool_11). */
+    clock?: { paused: boolean };
+    // [popupstubs] end
 }
 
 interface Installed {
     timer: ReturnType<typeof setInterval>;
     popup: HTMLElement;
-    queueRoot: HTMLElement;
     dialogRoot: HTMLElement;
     queue: ConversationEntry[];
     seen: WeakSet<EmpireMessage>;
     closeDialog: () => void;
+    // [popupstubs] begin
+    showPopup: (m: EmpireMessage) => void;
+    closePopup: () => void;
+    openDialog: (entry: ConversationEntry) => void;
+    openKey: () => EmpireMessage | null;
+    // [popupstubs] end
 }
 
 let installed: Installed | null = null;
 
-const MAX_CHIPS = 8;
+// [popupstubs] begin
+/**
+ * The conversation queue rebuilt from a loaded game's message history (the C# queue is not saved): each history message
+ * that ReceiveMessageInternal would queue (not the immediate ones, which opened at once), newer than the queue's
+ * 250-year expiry, oldest first; stale treaty offers are then pruned. A non-offer conversation the player had already
+ * dismissed before saving comes back until it expires — TODO(port): the C# drops the whole queue on load
+ * (Main.Part12.cs 1204 ClearData); here the history stands in so pending offers survive a load.
+ */
+export function rebuildConversationQueue(history: readonly EmpireMessage[], player: Empire, starDate: number): ConversationEntry[] {
+    const out: ConversationEntry[] = [];
+    const options = getMessageOptions();
+    const sorted = history.filter((m) => m != null).map((m, i) => ({ m, i })).sort((a, b) => a.m.starDate - b.m.starDate || a.i - b.i);
+    for (const { m } of sorted) {
+        if (m.messageType === EmpireMessageType.AdvisorSuggestion) continue;
+        if (isConversationExpired(m.starDate, starDate)) continue;
+        const route = routeEmpireMessage(m, player, options);
+        if (route.conversation === null || shouldQueueConversation(route, options) !== 'queue') continue;
+        out.push({ message: m, conversation: route.conversation, sender: m.sender });
+    }
+    pruneConversationQueue(out, player, starDate);
+    return out;
+}
+
+/** The installed conversation queue (read-only view for the stub list; empty when not installed). */
+export function conversationQueue(): readonly ConversationEntry[] {
+    return installed?.queue ?? [];
+}
+
+/** Open the popup card for a plain message (a clicked stub). */
+export function openMessageCard(m: EmpireMessage): void {
+    installed?.showPopup(m);
+}
+
+/** Open the conversation dialog for a queued entry (a clicked stub). */
+export function openConversation(entry: ConversationEntry): void {
+    installed?.openDialog(entry);
+}
+
+/** The message whose card or conversation is open (null: none). */
+export function openMessageKey(): EmpireMessage | null {
+    return installed?.openKey() ?? null;
+}
+// [popupstubs] end
 
 function el(tag: string, className: string, text?: string): HTMLElement {
     const e = document.createElement(tag);
@@ -121,12 +185,7 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
     const popupBody = el('div', 'message-popup-body');
     const popupFooter = el('div', 'message-popup-footer');
     popup.append(popupHeader, popupBody, popupFooter);
-    popupClose.addEventListener('click', () => {
-        popup.hidden = true;
-    });
-
-    // Conversation queue column (DiplomaticMessageQueue).
-    const queueRoot = el('div', 'message-queue');
+    popupClose.addEventListener('click', () => closePopup());
 
     // Conversation dialog (method_254).
     const dialogRoot = el('div', 'message-conversation-wrap');
@@ -135,14 +194,40 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
     const queue: ConversationEntry[] = [];
     const seen = new WeakSet<EmpireMessage>();
     let dialogEntry: ConversationEntry | null = null;
-    let renderedKey: unknown[] = [];
+    // [popupstubs] begin
+    let popupMessage: EmpireMessage | null = null;
+    let pausedByUs = false;
+    // [popupstubs] end
 
-    document.body.append(popup, queueRoot, dialogRoot);
+    document.body.append(popup, dialogRoot);
+
+    // [popupstubs] begin
+    // Escape closes the open card (not the stub list); a conversation dialog on top takes Escape first.
+    function onPopupKeyDown(e: KeyboardEvent): void {
+        if (e.key === 'Escape' && !popup.hidden && dialogEntry === null) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            closePopup();
+        }
+    }
+
+    function closePopup(): void {
+        if (popup.hidden) return;
+        popup.hidden = true;
+        popupMessage = null;
+        document.removeEventListener('keydown', onPopupKeyDown);
+    }
+    // [popupstubs] end
 
     function showPopup(m: EmpireMessage): void {
         popupTitleEl.textContent = popupTitle(m);
         popupBody.textContent = resolveGameText(m.description);
-        popupFooter.textContent = resolveStarDateDescription(galaxyStarDate(galaxy));
+        // [popupstubs] begin
+        popupFooter.textContent = resolveStarDateDescription(m.starDate > 0 ? m.starDate : galaxyStarDate(galaxy));
+        popupMessage = m;
+        markMessageStubRead(m);
+        if (popup.hidden) document.addEventListener('keydown', onPopupKeyDown);
+        // [popupstubs] end
         popup.hidden = false;
     }
 
@@ -165,12 +250,18 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
         document.removeEventListener('keydown', onDialogKeyDown);
         dialogRoot.replaceChildren();
         dialogRoot.hidden = true;
-        renderChips();
+        // [popupstubs] begin
+        if (pausedByUs && opts.clock) opts.clock.paused = false; // method_155 on the dialog's close
+        pausedByUs = false;
+        // [popupstubs] end
     }
 
     function openDialog(entry: ConversationEntry): void {
         if (dialogEntry !== null) closeDialog();
         dialogEntry = entry;
+        // [popupstubs] begin
+        markMessageStubRead(entry.message);
+        // [popupstubs] end
         const starDate = galaxyStarDate(galaxy);
         const win = el('div', 'message-conversation-window');
         const titlebar = el('div', 'message-conversation-titlebar');
@@ -220,7 +311,6 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
         dialogRoot.replaceChildren(win);
         dialogRoot.hidden = false;
         document.addEventListener('keydown', onDialogKeyDown);
-        renderChips();
     }
 
     // [diplovoice] begin
@@ -259,52 +349,75 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
     }
     // [diplovoice] end
 
-    // Rebuilds the chips only when the queue (or the open entry) changed.
-    function renderChips(): void {
-        const key: unknown[] = [dialogEntry, ...queue];
-        if (key.length === renderedKey.length && key.every((k, i) => k === renderedKey[i])) return;
-        renderedKey = key;
-        queueRoot.replaceChildren();
-        for (const entry of queue.slice(0, MAX_CHIPS)) {
-            const chip = el('button', 'message-chip') as HTMLButtonElement;
-            chip.type = 'button';
-            if (entry === dialogEntry) chip.classList.add('message-chip-active');
-            chip.title = resolveGameText(entry.message.description);
-            chip.append(swatch(entry.sender), el('span', 'message-chip-name', entry.sender?.name ?? 'Message'));
-            chip.addEventListener('click', () => openDialog(entry));
-            queueRoot.appendChild(chip);
-        }
-        if (queue.length > MAX_CHIPS) queueRoot.appendChild(el('div', 'message-queue-more', `+${queue.length - MAX_CHIPS} more`));
-    }
-
     function tick(): void {
         const options = getMessageOptions();
         let toOpen: ConversationEntry | null = null;
         for (const m of empireMessages(player)) {
             if (m == null || seen.has(m)) continue;
             seen.add(m);
+            // [suggest] begin
+            // Main.Part9.cs 2226 ReceiveMessageInternal, case AdvisorSuggestion: the BuildOrder advice joins the advisor
+            // queue (advisorSuggestions.ts shows it).
+            if (receiveAdvisorSuggestionMessage(player, m)) continue;
+            // [suggest] end
             const route = routeEmpireMessage(m, player, options);
-            if (route.popup) showPopup(m);
+            // [popupstubs] begin
+            // A popup message becomes a stub under the top-right panel; the card opens by itself only with the
+            // "Open messages automatically" option (the 16d behaviour).
+            if (route.popup) {
+                if (m.starDate <= 0) m.starDate = galaxyStarDate(galaxy);
+                const auto = getSettings().openMessagesAutomatically;
+                pushMessageStub(m, auto);
+                if (auto) showPopup(m);
+            }
+            // [popupstubs] end
             const action = shouldQueueConversation(route, options);
             if (action === 'none' || route.conversation === null) continue;
+            // [popupstubs] begin
+            m.starDate = galaxyStarDate(galaxy); // Main.Part9.cs 2361
+            // [popupstubs] end
             const entry: ConversationEntry = { message: m, conversation: route.conversation, sender: m.sender };
             queue.push(entry);
             if (action === 'open') toOpen = entry;
         }
         pruneConversationQueue(queue, player, galaxyStarDate(galaxy));
         if (dialogEntry !== null && !queue.includes(dialogEntry)) closeDialog();
-        if (toOpen !== null && queue.includes(toOpen)) openDialog(toOpen);
-        renderChips();
+        if (toOpen !== null && queue.includes(toOpen)) {
+            // [popupstubs] begin
+            // Main.Part9.cs 1544 method_253: the immediate conversation pauses the game (method_154) until answered.
+            if (opts.clock && !opts.clock.paused) {
+                opts.clock.paused = true;
+                pausedByUs = true;
+            }
+            // [popupstubs] end
+            openDialog(toOpen);
+        }
     }
 
+    // [popupstubs] begin
+    // A loaded game: the pending conversations come back from the saved message history.
+    for (const entry of rebuildConversationQueue(empireMessageHistory(player) ?? [], player, galaxyStarDate(galaxy))) {
+        seen.add(entry.message);
+        queue.push(entry);
+    }
+    // [popupstubs] end
+
     const timer = setInterval(tick, 250);
-    installed = { timer, popup, queueRoot, dialogRoot, queue, seen, closeDialog };
+    installed = {
+        timer, popup, dialogRoot, queue, seen, closeDialog,
+        // [popupstubs] begin
+        showPopup, closePopup, openDialog,
+        openKey: () => dialogEntry?.message ?? popupMessage,
+        // [popupstubs] end
+    };
     // [proposals] begin
     // The player's own conversation (17e) expires the other empire's pending messages, as the C# does.
     setDiplomacyMessageExpiry((empire) => {
+        // [suggest] begin
+        expireAdvisorSuggestionsForEmpire(player, empire); // DiplomaticMessageQueue.cs 357-380 (the advisor cases)
+        // [suggest] end
         if (expireDiplomacyMessagesForEmpire(queue, empire) === 0) return;
         if (dialogEntry !== null && !queue.includes(dialogEntry)) closeDialog();
-        renderChips();
     });
     // [proposals] end
 }
@@ -319,8 +432,8 @@ export function removeMessagePopups(): void {
     setDiplomacyMessageExpiry(null);
     // [proposals] end
     s.closeDialog();
+    s.closePopup(); // [popupstubs]
     s.popup.remove();
-    s.queueRoot.remove();
     s.dialogRoot.remove();
     s.queue.length = 0;
 }
@@ -329,7 +442,7 @@ export function removeMessagePopups(): void {
 /**
  * DiplomaticMessageQueue.cs:344 ExpireDiplomacyMessagesForEmpire(empire): drops the queued diplomacy messages from
  * `empire` (DiplomaticRelationChange / ProposeDiplomaticRelation / RefuseDiplomaticRelation / OfferTrade). Returns how
- * many were dropped. TODO(port): the AdvisorSuggestion cases (:357-380) — advisor entries are not queued yet (16d).
+ * many were dropped. The AdvisorSuggestion cases (:357-380) are advisorQueue.ts expireAdvisorSuggestionsForEmpire (suggest).
  */
 export function expireDiplomacyMessagesForEmpire(queue: ConversationEntry[], empire: Empire | null): number {
     if (empire === null) return 0;
@@ -351,6 +464,15 @@ export function expireDiplomacyMessagesForEmpire(queue: ConversationEntry[], emp
     return removed;
 }
 // [proposals] end
+
+// [suggest] begin
+/** DiplomaticMessageQueue.cs 344 ExpireDiplomacyMessagesForEmpire for the installed conversation queue (an approved
+ *  advisor suggestion's diplomacy change, Main.Part2.cs 1900-1934 / 2214 / 2235). No-op when not installed. */
+export function expireConversationsForEmpire(empire: Empire): void {
+    if (installed === null) return;
+    expireDiplomacyMessagesForEmpire(installed.queue, empire);
+}
+// [suggest] end
 
 // [leftovers] begin
 /** An event message (Empire.EventMessageRecipient, Main.Part4.cs:487 method_523) shown on the popup card. */

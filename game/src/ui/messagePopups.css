@@ -3,8 +3,9 @@
 
 .message-popup {
     position: fixed;
-    top: 120px;
-    right: 10px;
+    /* popupstubs: opened from a stub, the card sits beside the stub list (left of the top-right column). */
+    top: 114px;
+    right: 276px;
     width: 335px;
     max-height: calc(100vh - 140px);
     z-index: 1499;
@@ -71,47 +72,6 @@
     text-align: right;
 }
 
-/* Conversation queue: a column of sender chips under the top-left bar. */
-.message-queue {
-    position: fixed;
-    top: 60px;
-    left: 10px;
-    z-index: 1499;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 4px;
-    pointer-events: none;
-    font-family: 'Forgotten Futurist', sans-serif;
-}
-
-.message-chip {
-    pointer-events: auto;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    max-width: 200px;
-    padding: 3px 8px;
-    font-family: inherit;
-    font-size: 12px;
-    color: #e6e6e6;
-    background: rgba(14, 16, 20, 0.9);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 4px;
-    cursor: pointer;
-}
-.message-chip:hover,
-.message-chip-active {
-    background: rgba(40, 44, 54, 0.95);
-    border-color: rgba(232, 210, 74, 0.6);
-}
-
-.message-chip-name {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
 .message-swatch {
     flex: none;
     display: inline-block;
@@ -119,12 +79,6 @@
     height: 10px;
     border-radius: 2px;
     border: 1px solid rgba(255, 255, 255, 0.3);
-}
-
-.message-queue-more {
-    font-size: 11px;
-    color: #aaa;
-    padding-left: 4px;
 }
 
 /* Conversation dialog: a centred window like the other screens. */
