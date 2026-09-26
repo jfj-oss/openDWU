@@ -424,6 +424,20 @@ try {
         const frozenBy = {};
         for (const c of snap.frozen) { const k = `${c.pirate ? 'pirate' : 'empire'}:${c.mission}`; frozenBy[k] = (frozenBy[k] ?? 0) + 1; }
         if (snap.frozen.length) console.log(`  frozen missions (>=90d, <20k moved): ${JSON.stringify(frozenBy)}`);
+        // Ships whose current command is HyperTo with the jump countdown already past (waiting on the gravity well /
+        // fighter recall in CheckFightersOnboardAndRetrieve): count, and the ones waiting longest.
+        snap.hyperWait = [];
+        const sd = g.nowMs;
+        for (const b of g.builtObjects) {
+            if (b === null || b.hasBeenDestroyed) continue;
+            const c0 = b.mission?._commands?.[0];
+            if (c0 === undefined || c0.action !== 4 || b.hyperjumpCountdown <= 0 || sd < b.hyperjumpCountdown) continue;
+            const fOut = (b.fighters ?? []).filter((fi) => !fi.onboardCarrier && !fi.hasBeenDestroyed).length;
+            snap.hyperWait.push({ name: b.name, owner: b.empire?.name ?? '-', waitDays: Math.round((sd - b.hyperjumpCountdown) / 1000 / 600 * 365), fightersOut: fOut, fighters: (b.fighters ?? []).length,
+                star: b.nearestSystemStar?.name ?? null, mission: MISSION[b.mission?.type ?? 0], speed: Math.round(b.currentSpeed), warp: b.warpSpeed });
+        }
+        snap.hyperWait.sort((a, b) => b.waitDays - a.waitDays);
+        if (snap.hyperWait.length) console.log(`  hyperWait ${snap.hyperWait.length}: ${snap.hyperWait.slice(0, 6).map((h) => `${h.owner.slice(0, 14)}/${h.name} ${h.waitDays}d fighters ${h.fightersOut}/${h.fighters} star ${h.star} ${h.mission} v${h.speed}`).join('; ')}`);
         for (const c of snap.stuck) console.log(`  stuck ${c.empire.slice(0, 16)} ${c.private ? 'priv ' : ''}${c.name} sub ${c.subRole} idle ${c.idleDays}d lowfuel ${c.lowFuelDays}d ${c.mission}→${c.target} cmds ${c.cmds} fuel ${c.fuel}/${c.fuelCap} speed ${Number(c.speed).toFixed(0)} parent ${c.parent} fleet ${c.fleet} at ${c.x},${c.y}`);
         for (const c of snap.colonyShips) console.log(`  colship ${c.empire.slice(0, 16)} ${c.name}: ${c.mission}→${c.target} dist ${c.dist} speed ${c.speed.toFixed(0)} fuel ${c.fuel}/${c.fuelCap} cmds ${c.cmds} at ${c.x},${c.y}`);
         for (const r of rows) console.log(`  ${r.name.slice(0, 24).padEnd(24)} col ${r.colonies} pop ${(r.pop / 1e6).toFixed(0)}M $${f0(r.money)} cf ${f0(r.cashflow)} mil ${r.mil} bld ${r.building} idle ${r.idle}/${r.idle90} lowfuel ${r.lowFuel}/${r.lowFuel90} res ${r.researched} chr ${r.characters} rel ${JSON.stringify(r.rel)} ships ${JSON.stringify(r.ships)} priv ${JSON.stringify(r.priv)} pidle ${r.pIdle}/${r.pIdle90} plowfuel ${r.pLowFuel}/${r.pLowFuel90}`);
