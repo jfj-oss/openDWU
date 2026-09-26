@@ -323,10 +323,9 @@ export function modifyApprovalValueByEmpireAttributes(galaxy: Galaxy, h: Habitat
     return num;
 }
 
-// Habitat.cs RaidEconomyDamageFactor (891).
-export function raidEconomyDamageFactor(_h: Habitat): number {
-    // TODO(port): Habitat.RaidCountdown (byte, pirate raids) — 0 at game start.
-    const raidCountdown = 0;
+// Habitat.cs RaidEconomyDamageFactor (891); Habitat.RaidCountdown (byte) is set by pirate raids (pirates/pirateAI.ts).
+export function raidEconomyDamageFactor(h: Habitat): number {
+    const raidCountdown = h.raidCountdown;
     if (raidCountdown > 0) {
         let num = 1.0 - raidCountdown / 60.0;
         num *= 0.5;

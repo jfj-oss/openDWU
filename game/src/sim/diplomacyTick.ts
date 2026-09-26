@@ -85,7 +85,8 @@ import {
 } from './fleets/militaryAI';
 import { cancelBlockades as cancelBlockadesImpl, getBlockadesAgainstEmpire, type Blockade } from './fleets/blockades';
 import { chanceNewAmbassador, doCharacterEventRuntime, sendNewsBroadcastWarStartEnd } from './events';
-import { galaxyColonyFillFactor } from './colonyTick';
+import { galaxyColonyFillFactor, raceAggressionLevel, raceCautionLevel, raceFriendlinessLevel } from './colonyTick';
+import { PlanetaryFacilityType, WonderType } from './researchSystem';
 import { isObjectVisibleToThisEmpire } from './independentTraders';
 import { TradeableItem, TradeableItemType, processTradeDealMessage, determineAcceptGalaxyMapTrade, determineAcceptTerritoryMapTrade, isTechNode } from './tradeItems';
 import { doResearchBreakthrough, reviewDesignsBuiltObjectsImprovedComponents } from './researchTick';
@@ -178,15 +179,19 @@ function warWearinessFactor(self: Empire): number {
     return self.difficultyFactors?.warWearinessFactor ?? WAR_WEARINESS_FACTOR_DEFAULT;
 }
 
-/** Race.AggressionLevel etc. (Race.cs 350-400). TODO(port) M4j: _ChangePeriodActive periodic levels (ReviewRacePeriodicChanges). */
+/**
+ * Race.AggressionLevel / CautionLevel / FriendlinessLevel (Race.cs 350-400): the Periodic* levels while the race's
+ * change period is active (Galaxy.cs 3425 ReviewRacePeriodicChanges, colonyTick.ts); LoyaltyLevel and
+ * IntelligenceLevel have no periodic variant.
+ */
 export function aggressionLevel(e: Empire): number {
-    return e.dominantRace!.aggression;
+    return raceAggressionLevel(e.galaxy, e.dominantRace!);
 }
 export function cautionLevel(e: Empire): number {
-    return e.dominantRace!.caution;
+    return raceCautionLevel(e.galaxy, e.dominantRace!);
 }
 export function friendlinessLevel(e: Empire): number {
-    return e.dominantRace!.friendliness;
+    return raceFriendlinessLevel(e.galaxy, e.dominantRace!);
 }
 export function loyaltyLevel(e: Empire): number {
     return e.dominantRace!.loyalty;
@@ -336,20 +341,13 @@ export function evaluateMilitaryPotency(galaxy: Galaxy, ourWeightedMilitaryPoten
 // Fleet reads (ShipGroup fields M4l has not ported onto the M4a ShipGroup model yet).
 // ---------------------------------------------------------------------------------------------------------------
 
-/**
- * TODO(port) M4l: ShipGroup.Posture (auto-property, default FleetPosture.Attack) and TotalTroopAttackStrength
- * (ShipGroup.cs 2967) are not on the ShipGroup class yet. Diplomacy reads them through this view; a missing field
- * reads as its C# default (Posture Attack, 0 troops).
- */
-interface ShipGroupFleetView {
-    posture?: FleetPosture;
-    totalTroopAttackStrength?: number;
-}
+/** ShipGroup.Posture (auto-property, default FleetPosture.Attack; fleets/shipGroup.ts). */
 function fleetPosture(sg: ShipGroup): FleetPosture {
-    return (sg as unknown as ShipGroupFleetView).posture ?? FleetPosture.Attack;
+    return sg.posture as number as FleetPosture;
 }
+/** ShipGroup.TotalTroopAttackStrength (ShipGroup.cs 2967; fleets/shipGroup.ts). */
 function fleetTotalTroopAttackStrength(sg: ShipGroup): number {
-    return (sg as unknown as ShipGroupFleetView).totalTroopAttackStrength ?? 0;
+    return sg.totalTroopAttackStrength;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -1260,12 +1258,21 @@ export function evaluatePoliticalSituation(galaxy: Galaxy, empire: Empire, timeP
 // ---------------------------------------------------------------------------------------------------------------
 
 /**
- * Empire.8.cs 16 CheckEmpireBuildingVictoryWonder(empire). TODO(port) deferred: Galaxy.GameRaceSpecificVictoryConditionsEnabled
- * (victory conditions are not part of M4) — false, so this returns null.
+ * Empire.8.cs 16 CheckEmpireBuildingVictoryWonder(empire): a colony of `empire` whose last facility is an unfinished
+ * race-achievement wonder (Galaxy.GameRaceSpecificVictoryConditionsEnabled, default true).
  */
 function checkEmpireBuildingVictoryWonder(galaxy: Galaxy, empire: Empire | null): Habitat | null {
-    void galaxy;
-    void empire;
+    if (galaxy.gameRaceSpecificVictoryConditionsEnabled && empire != null && empire.colonies != null) {
+        for (let i = 0; i < empire.colonies.length; i++) {
+            const habitat = empire.colonies[i];
+            if (habitat.facilities != null && habitat.facilities.length > 0) {
+                const planetaryFacility = habitat.facilities[habitat.facilities.length - 1];
+                if (planetaryFacility.constructionProgress < 1 && planetaryFacility.type === PlanetaryFacilityType.Wonder && planetaryFacility.wonderType === WonderType.RaceAchievement) {
+                    return habitat;
+                }
+            }
+        }
+    }
     return null;
 }
 
@@ -1798,8 +1805,8 @@ function countAvailableScoutShips(self: Empire): { available: number; total: num
             totalExplorationShips++;
             const builtObject = self.builtObjects[i];
             const mission = builtObjectMission(builtObject.mission);
-            // TODO(port) M4b: BuiltObjectMission.Priority (not on the M4a mission skeleton) — read as Undefined.
-            const priority = (mission as unknown as { priority?: BuiltObjectMissionPriority } | null)?.priority ?? BuiltObjectMissionPriority.Undefined;
+            // Empire.9.cs 4604: Mission.Priority (read only when Mission is not null).
+            const priority = mission !== null ? (mission.priority as number as BuiltObjectMissionPriority) : BuiltObjectMissionPriority.Undefined;
             if (
                 builtObject.builtAt == null &&
                 builtObject.isAutoControlled &&
@@ -2745,10 +2752,9 @@ export function declareWar(galaxy: Galaxy, self: Empire, target: Empire | null, 
 // r2 — ProcessMessages (Empire.3.cs 4240) and ConsiderTreatyProposals (Empire.3.cs 3606).
 // ---------------------------------------------------------------------------------------------------------------
 
-/** Empire.cs 983 SpecialBonusDiplomacy. TODO(port) M4j: _SpecialBonusDiplomacy (ReviewSpecialBonusesRuinsWonders) — 0 until then. */
+/** Empire.cs 983 SpecialBonusDiplomacy: _SpecialBonusDiplomacy (ReviewSpecialBonusesRuinsWonders, treasury.ts). */
 function specialBonusDiplomacy(self: Empire): number {
-    void self;
-    return 0.0;
+    return self.specialBonusDiplomacy;
 }
 
 /** PirateRelation.cs 271 Evaluation: float sum of the parts, then × or ÷ DiplomacyFactor. */

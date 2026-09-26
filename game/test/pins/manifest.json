@@ -42,14 +42,14 @@
       "kind": "inline",
       "file": "test/characters.test.ts",
       "test": "creates the C# starting characters, deterministic Rnd use",
-      "anchor": "expect(activationsAt).toMatchPin('characters.activationsAt', 35);"
+      "anchor": "expect(activationsAt).toMatchPin('characters.activationsAt', 19);"
     },
     {
       "key": "characters.dhayutLeaderColonyHappiness",
       "kind": "inline",
       "file": "test/characters.test.ts",
       "test": "bonus getters read the leader and the colony characters (bonuses known only)",
-      "anchor": "expect(leader.colonyHappiness).toMatchPin('characters.dhayutLeaderColonyHappiness', 0);"
+      "anchor": "expect(leader.colonyHappiness).toMatchPin('characters.dhayutLeaderColonyHappiness', 15);"
     },
     {
       "key": "characters.pirateRoles",
@@ -77,7 +77,7 @@
       "kind": "inline",
       "file": "test/forceStructure.test.ts",
       "test": "tech 0.5, age 1: explorers + construction ships; freighters and mining ships; deterministic",
-      "anchor": "expect(a[0].targets.length).toMatchPin('forceStructure.playerTargets', 30);"
+      "anchor": "expect(a[0].targets.length).toMatchPin('forceStructure.playerTargets', 25);"
     },
     {
       "key": "forceStructure.age0Private",
@@ -91,14 +91,14 @@
       "kind": "inline",
       "file": "test/forceStructure.test.ts",
       "test": "colony economy at the DoTasks point: tax snapshot −ColonyStateSupportCost, income 0",
-      "anchor": "expect(cap.taxRate).toMatchPin('forceStructure.capitalTaxRate', Math.fround(0.16));"
+      "anchor": "expect(cap.taxRate).toMatchPin('forceStructure.capitalTaxRate', 0.09000000357627869);"
     },
     {
       "key": "forceStructure.capitalTaxRevenue",
       "kind": "inline",
       "file": "test/forceStructure.test.ts",
       "test": "colony economy at the DoTasks point: tax snapshot −ColonyStateSupportCost, income 0",
-      "anchor": "expect(cap.annualTaxRevenue).toMatchPin('forceStructure.capitalTaxRevenue', 23487.80578889396);"
+      "anchor": "expect(cap.annualTaxRevenue).toMatchPin('forceStructure.capitalTaxRevenue', 4593.410891068567);"
     },
     {
       "key": "game.capitals",
@@ -161,7 +161,7 @@
       "kind": "inline",
       "file": "test/independentTraders.test.ts",
       "test": "seed 1: exact Rnd draws, deterministic",
-      "anchor": "expect(a.log.length).toMatchPin('independentTraders.draws', 1565);"
+      "anchor": "expect(a.log.length).toMatchPin('independentTraders.draws', 1573);"
     },
     {
       "key": "independentTraders.lastDraws",
