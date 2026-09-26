@@ -67,6 +67,7 @@ import {
 } from '../src/sim/achievements';
 import { SpaceBattleStats } from '../src/sim/combat/damage';
 import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
+import { formatGameTextNow } from '../src/sim/textResolver';
 
 let gameData: GameData;
 let galaxy: Galaxy;
@@ -133,7 +134,7 @@ describe('race victory conditions: compare-empires families (Galaxy.cs 3844)', (
         const r2 = calculateRaceVictoryConditionProgress(galaxy, empires[1], cond(T.DestroyMostShips));
         expect(r2.progress).toBe(1.0);
         expect(r2.bestEmpire).toBe(empires[1]);
-        expect(r2.detail).toBe('Race Victory Condition Detail DestroyMostShips'); // key stand-in; no {0} to fill
+        expect(r2.detail).toBe(formatGameTextNow('Race Victory Condition Detail DestroyMostShips', ['20'])); // string.Format(GetText(…), num)
         // num 0 → flag false; best 20 → 0 / 20 = 0.
         expect(calculateRaceVictoryConditionProgress(galaxy, empires[3], cond(T.DestroyMostShips)).progress).toBe(0);
         setAll([], (e) => { e.counters.destroyedEnemyMilitaryShipCount = 0; });
@@ -303,7 +304,7 @@ describe('global victory (Galaxy.1.cs 88-584)', () => {
         const list = generateVictoryConditionProgresses(galaxy, vc, false);
         const top = Math.max(...list.map((p) => p.totalProgress));
         expect(list.find((p) => p.empire === events[0].victorEmpire)!.totalProgress).toBe(top);
-        expect(events[0].description).toBe(events[0].victorEmpire === galaxy.playerEmpire ? 'Victory Conditions Threshold Win' : 'Victory Conditions Threshold Lose');
+        expect(events[0].description).toBe(formatGameTextNow(events[0].victorEmpire === galaxy.playerEmpire ? 'Victory Conditions Threshold Win' : 'Victory Conditions Threshold Lose'));
         doGameEnd(galaxy, events[0]);
         expect(galaxy.gameIsFinished).toBe(true);
         galaxy.gameIsFinished = false;
@@ -331,8 +332,8 @@ describe('achievements (Galaxy.1.cs 2935-3754, Empire.1.cs 3969)', () => {
         expect(resolveAchievementMedalImageIndex(AchievementType.DestroyEnemyTroops, 3)).toBe(9);
         expect(resolveAchievementMedalImageIndex(AchievementType.SuccessfulIntelligenceMissions, 1)).toBe(52);
         const a = new Achievement(AchievementType.DestroyEnemyMilitaryShipsAndBases, 120, null);
-        expect(resolveAchievementDescription(a)).toBe('AchievementType DestroyEnemyMilitaryShipsAndBases');
-        expect(resolveAchievementTitleComplete(a)).toBe('AchievementTitle DestroyEnemyMilitaryShipsAndBases Achievement Level C');
+        expect(resolveAchievementDescription(a)).toBe(formatGameTextNow('AchievementType DestroyEnemyMilitaryShipsAndBases', ['100']));
+        expect(resolveAchievementTitleComplete(a)).toBe(formatGameTextNow('AchievementTitle DestroyEnemyMilitaryShipsAndBases') + ' ' + formatGameTextNow('Achievement Level C'));
         expect(resolveAchievementName(new Achievement(AchievementType.AchieveAllRaceVictoryConditions, 0, null))).toBe('');
         const list = [new Achievement(AchievementType.BuildWonders, 3, null)];
         achievementListAddIfNotExistsOrBetter(list, new Achievement(AchievementType.BuildWonders, 2, null));
@@ -363,7 +364,7 @@ describe('achievements (Galaxy.1.cs 2935-3754, Empire.1.cs 3969)', () => {
         updateAchievements(galaxy, p);
         expect(p.achievements.find((a) => a.type === AchievementType.CaptureEnemyShips)!.value).toBe(20);
         expect(p.achievements.find((a) => a.type === AchievementType.DestroyEnemyTroops)!.value).toBe(50);
-        expect(galaxy.unlockedAchievementNames).toContain('AchievementType DestroyEnemyTroops');
+        expect(galaxy.unlockedAchievementNames).toContain(formatGameTextNow('AchievementType DestroyEnemyTroops', ['50']));
         const n = galaxy.unlockedAchievementNames.length;
         updateAchievements(galaxy, p);
         expect(galaxy.unlockedAchievementNames.length).toBe(n);

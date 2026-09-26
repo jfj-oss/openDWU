@@ -31,9 +31,9 @@ import {
     builtObjectImageUrl,
     builtObjectSizePx,
     resolveDrawPictureRef,
-    shipImageMetrics,
     type ShipImageMetrics,
 } from './builtObjectLayer';
+import { loadShipArt } from './shipArt';
 import type { Galaxy } from '../sim/galaxy';
 import type { BuiltObject } from '../sim/builtObject';
 import { EngineType } from '../sim/builtObject';
@@ -143,7 +143,9 @@ export interface ShipMarkers {
  * Port of BuiltObjectImageCache ScanForThrusterLocations + ScanForColorPoints over the image that
  * LoadSingleBuiltObjectImage builds: CropImageContent (square crop from shipImageMetrics), then
  * RotateFlip(Rotate90FlipNone). Rotated pixel (x', y') is crop pixel (y', side - 1 - x'). The crop is a
- * premultiplied bitmap, so only fully opaque pure blue (0,0,255) / pure yellow (255,255,0) match.
+ * Format32bppPArgb bitmap read through FastBitmap's LockBits(Format32bppArgb), which un-premultiplies: a pure blue
+ * (0,0,255) / pure yellow (255,255,0) pixel of any alpha > 0 round-trips exactly, and the C# compares RGB only, so
+ * every non-transparent pure-colour pixel matches (alpha 0 reads back as 0,0,0).
  * Thrusters: columns outer, vertical runs; lights: rows outer. Each list stops at 20.
  */
 export function scanShipMarkers(rgba: ArrayLike<number>, w: number, h: number, m: ShipImageMetrics): ShipMarkers {
@@ -156,7 +158,7 @@ export function scanShipMarkers(rgba: ArrayLike<number>, w: number, h: number, m
         const y = top + (side - 1 - xr);
         if (x < 0 || y < 0 || x >= w || y >= h) return 0;
         const i = (y * w + x) * 4;
-        if (rgba[i + 3] !== 255) return 0;
+        if (rgba[i + 3] === 0) return 0;
         const r = rgba[i];
         const g = rgba[i + 1];
         const b = rgba[i + 2];
@@ -487,11 +489,10 @@ export class AmbientLayer {
         if (art !== undefined) return art;
         if (!this.shipArtLoading.has(url) && this.store.dwuPresent) {
             this.shipArtLoading.add(url);
-            loadRgba(url).then(
-                ({ data, w, h }) => {
-                    const metrics = shipImageMetrics(data, w, h);
-                    this.shipArt.set(url, metrics === null ? null : { metrics, markers: scanShipMarkers(data, w, h, metrics) });
-                },
+            // The shared ship-art cache (shipArt.ts): the markers are scanned from the raw pixels, before the ship
+            // layer's texture has them painted out.
+            loadShipArt(url).then(
+                (art) => this.shipArt.set(url, art === null ? null : { metrics: art.metrics, markers: art.markers }),
                 () => this.shipArt.set(url, null),
             );
         }

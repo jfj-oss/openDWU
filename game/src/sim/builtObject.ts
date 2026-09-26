@@ -15,7 +15,7 @@ import { BuiltObjectSubRole } from './builtObjectTypes';
 import { DockingBay } from './dockingBay';
 import { BuiltObjectComponent, BuiltObjectComponentList, ComponentStatus, csInt, toByte, toShort } from './builtObjectComponent';
 import { CargoList, ResourceRef, TroopList, type Troop } from './cargo';
-import { DEFAULT_BASE_TECH_COST, componentImprovementFromComponent, type ComponentImprovementEntry } from './componentStatic';
+import { componentImprovementFromComponent, type ComponentImprovementEntry } from './componentStatic';
 import { ComponentType } from './data/components';
 import { BattleTactics, BuiltObjectFleeWhen, BuiltObjectRole, InvasionTactics } from './data/designSpecifications';
 import { ComponentCategoryType, type EmpirePolicy } from './data/policies';
@@ -425,9 +425,8 @@ export class BuiltObject {
             num8 = gov.maintenanceCosts;
         }
         if (actualEmpire !== null && actualEmpire.pirateEmpireBaseHabitat !== null) {
-            // TODO(port): Galaxy.BaseTechCost (game option) is not kept on the TS Galaxy — the
-            // componentStatic default stands in (as in forceStructure.ts calculateSupportCost).
-            let d = DEFAULT_BASE_TECH_COST / 120000.0;
+            // BuiltObject.cs 814 (double)_Galaxy.BaseTechCost / 120000.0.
+            let d = this._galaxy.baseTechCost / 120000.0;
             d = Math.sqrt(d);
             num8 *= this._galaxy.pirateShipMaintenanceFactor * d;
         }

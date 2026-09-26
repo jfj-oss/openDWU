@@ -2,8 +2,8 @@
 //
 // createGame (game.ts) and GenerateEmpire (empireGeneration.ts) call these at the C# sites (Galaxy.7.cs 5346,
 // Start.2.cs 1108-1110, 1114-1121, 1341, 1344-1350).
-// TODO(port): the per-habitat Habitat.DoTasks calls of generation (galaxy.ts 3356/3892/3985, startHabitats.ts,
-// gameStartTail.ts 2035-2038) are not wired yet — runGameStartHabitatTick is the entry point.
+// The per-habitat Habitat.DoTasks calls of generation run through galaxy.ts generationHabitatDoTasks (Galaxy.8.cs
+// 215-551, Galaxy.5.cs 1587 / 1731; startHabitats.ts); runGameStartHabitatTick serves the game-start sites.
 
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';

@@ -14,7 +14,8 @@ import type { GameData } from '../data/gameData';
 import type { StartGameOptions } from '../startGameOptions';
 import { GalaxyTime } from '../galaxyTime';
 import { flatEmpireList, galaxyFromJSON, galaxyToJSON, type GalaxySaveJSON } from './galaxySave';
-import { commandLog, restoreCommandLog, type CommandLogEntry } from '../player/commandLog';
+import { commandLog, copyCommandLogEntry, restoreCommandLog, type CommandLogEntry } from '../player/commandLog';
+import { flushPlayerCommands } from '../player/playerCommands';
 
 /** Bumped to 2 when the galaxy graph (M3 state) replaced the index-based
  *  format; version-1 saves predate ships/bases/characters and are rejected. */
@@ -26,12 +27,15 @@ export interface GameSaveJSON {
     time: { elapsedMs: number; speed: number; paused: boolean; startStarDate: number };
     startOptions: StartGameOptions;
     playerEmpireIndex: number; // -1 = none (index into the flat empire list)
-    /** 18c: external commands applied between ticks (player/commandLog.ts); present only when non-empty. */
+    /** External commands applied at frame boundaries (player/commandLog.ts); present only when non-empty. */
     commandLog?: CommandLogEntry[];
 }
 
 /** Serialize a whole game to a JSON string (see GameSaveJSON). */
 export function serializeGame(game: Game, time: GalaxyTime, startOptions: StartGameOptions): string {
+    // Player commands still queued apply now: saving happens between frames, at the same boundary (galaxy.nowMs) the
+    // next frame would apply them at, so the saved game and its log match the game that keeps running.
+    flushPlayerCommands(game.galaxy);
     const save: GameSaveJSON = {
         version: GAME_SAVE_VERSION,
         galaxy: galaxyToJSON(game.galaxy),
@@ -45,7 +49,7 @@ export function serializeGame(game: Game, time: GalaxyTime, startOptions: StartG
         playerEmpireIndex: game.galaxy.playerEmpire === null ? -1 : flatEmpireList(game.galaxy).indexOf(game.galaxy.playerEmpire),
     };
     const log = commandLog(game.galaxy);
-    if (log.length > 0) save.commandLog = log.map((e) => ({ ...e, command: { ...e.command } }));
+    if (log.length > 0) save.commandLog = log.map(copyCommandLogEntry);
     return JSON.stringify(save);
 }
 

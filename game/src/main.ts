@@ -80,6 +80,8 @@ import { installEventMessages, removeEventMessages } from './ui/eventMessages';
 import { installAutosave, removeAutosave } from './ui/autosave';
 import { isGameOptionsPanelOpen } from './ui/screens/gameOptionsPanel';
 // [leftovers] end
+import { issuePlayerCommand } from './sim/player/playerCommands';
+import { commandLog } from './sim/player/commandLog';
 import { setSaveLoadProvider, createSaveLoadPanel, type LoadedGame } from './ui/screens/saveLoad';
 import { type Game } from './sim/game';
 import { createGalaxyMap, type GalaxyMapScreen } from './ui/screens/galaxyMap';
@@ -443,6 +445,8 @@ export async function startGameView(
     // [fix6ui] begin — ship-order / selection keys (created after the order UI below).
     let shipKeys: ShipCommandKeys | null = null;
     Object.assign((window as unknown as { __dwu: Record<string, unknown> }).__dwu, { simBudget: simLoop.budget });
+    // Command log (smoke / debugging): issue a player command through the queue and read the journal.
+    Object.assign((window as unknown as { __dwu: Record<string, unknown> }).__dwu, { commands: { issue: issuePlayerCommand, log: () => commandLog(galaxy) } });
     // [fix6ui] end
     // [freightOverlay] begin — task 19e-9: Trade Flows panel (overlay row "…", legend button) + map legend.
     const tradeFlowsOpts = {

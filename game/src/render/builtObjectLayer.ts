@@ -16,7 +16,8 @@
 import { Container, Sprite } from 'pixi.js';
 import type { Texture } from 'pixi.js';
 import { Camera } from './camera';
-import { AssetStore, makeDotTexture } from './assets';
+import { AssetStore, makeDotTexture, useMinifyingFilter } from './assets';
+import { loadShipArt } from './shipArt';
 import { Galaxy } from '../sim/galaxy';
 import type { BuiltObject } from '../sim/builtObject';
 import { BuiltObjectSubRole } from '../sim/builtObjectTypes';
@@ -419,30 +420,30 @@ export class BuiltObjectLayer {
         world.addChild(this.root);
     }
 
-    /** Load (once per URL) the ship art + its crop/content metrics. */
+    /**
+     * Load (once per URL) the ship art + its crop/content metrics. With an install the art comes from the shared
+     * shipArt.ts cache: one read of the raw PNG gives the metrics and the thruster / light marker scan (from the raw
+     * pixels) and a texture with those marker pixels painted out, as BuiltObjectImageCache.LoadSingleBuiltObjectImage
+     * does at load.
+     */
     private loadImage(url: string): Promise<LoadedShipImage> {
         let p = this.images.get(url);
         if (!p) {
             p = (async () => {
-                const texture = await this.store.loadFirst([url], () => makeDotTexture('#cccccc', 32));
-                let metrics: ShipImageMetrics | null = null;
                 if (this.store.dwuPresent) {
-                    try {
-                        metrics = await measureShipImage(url);
-                    } catch {
-                        metrics = null;
-                    }
+                    const art = await loadShipArt(url);
+                    if (art !== null) return { texture: art.texture, metrics: art.metrics };
                 }
-                if (metrics === null) {
-                    // Measuring failed (or no install): assume the content fills
-                    // about half the texture area, centred.
-                    metrics = {
-                        areaRatio: 2,
-                        cropSide: texture.width,
-                        cropCenterX: texture.width / 2,
-                        cropCenterY: texture.height / 2,
-                    };
-                }
+                // No install, or the image is missing / empty: the grey dot, assuming the content fills about
+                // half the texture area, centred.
+                const texture = makeDotTexture('#cccccc', 32);
+                useMinifyingFilter(texture);
+                const metrics: ShipImageMetrics = {
+                    areaRatio: 2,
+                    cropSide: texture.width,
+                    cropCenterX: texture.width / 2,
+                    cropCenterY: texture.height / 2,
+                };
                 return { texture, metrics };
             })();
             this.images.set(url, p);
@@ -561,30 +562,3 @@ export class BuiltObjectLayer {
         );
     }
 }
-
-/**
- * Measure a ship image's crop/content metrics: fetch the raw PNG, read its
- * pixels via a canvas (same pattern as sampleCentreColour in assets.ts) and
- * run shipImageMetrics over the full bitmap.
- */
-async function measureShipImage(url: string): Promise<ShipImageMetrics> {
-    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-        const el = new Image();
-        el.onload = () => resolve(el);
-        el.onerror = () => reject(new Error(`image load failed: ${url}`));
-        el.src = url;
-    });
-    const w = img.naturalWidth || img.width;
-    const h = img.naturalHeight || img.height;
-    if (!w || !h) throw new Error(`zero-size image: ${url}`);
-    const canvas = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(w, h) : document.createElement('canvas');
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext('2d')!;
-    ctx.drawImage(img, 0, 0);
-    const px = ctx.getImageData(0, 0, w, h).data;
-    const m = shipImageMetrics(px, w, h);
-    if (m === null) throw new Error(`no content pixels: ${url}`);
-    return m;
-}
-

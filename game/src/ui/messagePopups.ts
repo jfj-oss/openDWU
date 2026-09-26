@@ -14,7 +14,8 @@ import type { Galaxy } from '../sim/galaxy';
 import { galaxyStarDate } from '../sim/tick/simTime';
 import { resolveStarDateDescription } from '../sim/galaxyTime';
 import { resolveGameText } from '../sim/textResolver';
-import { isProposalValid, proposalLabel, relationTypeLabel, acceptProposal, declineProposal } from './screens/diplomacyScreen';
+import { isProposalValid, proposalLabel, relationTypeLabel } from './screens/diplomacyScreen';
+import { issuePlayerCommand } from '../sim/player/playerCommands';
 // [proposals] begin
 import { setDiplomacyMessageExpiry } from './screens/diplomacyScreen';
 // [proposals] end
@@ -315,13 +316,14 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
         };
         if (isAnswerableProposal(entry, player, starDate) && entry.sender !== null) {
             const sender = entry.sender;
+            // Command log: the answer is queued and applied at the next frame boundary.
             button('Accept Offer', () => {
-                if (acceptProposal(player, sender)) showToast('Treaty accepted');
+                issuePlayerCommand(galaxy, player, 'acceptProposal', [sender], (ok) => ok && showToast('Treaty accepted'));
                 removeEntry(entry);
                 closeDialog();
             });
             button('Decline', () => {
-                declineProposal(player, sender);
+                issuePlayerCommand(galaxy, player, 'declineProposal', [sender]);
                 removeEntry(entry);
                 closeDialog();
             });

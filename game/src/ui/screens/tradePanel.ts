@@ -15,7 +15,6 @@ import {
     formatTradeLabel,
     offeredItemsValue,
     removeTradeItem,
-    submitTradeOffer,
     tradeItemLabel,
     tradeTreeRows,
     type TradeLabel,
@@ -23,6 +22,7 @@ import {
     type TradeOfferResult,
     type TradeTree,
 } from '../../sim/player/tradeNegotiation';
+import { issuePlayerCommand } from '../../sim/player/playerCommands';
 // [diplovoice] begin
 import { counterNote, voicedLineToggle, voicingIndicator, type VoicedReply } from '../diplomatVoice';
 // [diplovoice] end
@@ -249,7 +249,11 @@ function createTradePanel(opts: TradePanelOptions): OpenPanel {
         const theyGive = negotiation.them.selected.map(label);
         const weGive = negotiation.us.selected.map(label);
         // [diplovoice] end
-        const r = submitTradeOffer(galaxy, negotiation);
+        // Command log: queued, applied at the next frame boundary; the reply shows then.
+        issuePlayerCommand(galaxy, negotiation.player, 'submitTradeOffer', [negotiation], (r) => proposed(r, theyGive, weGive));
+    }
+
+    function proposed(r: TradeOfferResult, theyGive: string[], weGive: string[]): void {
         last = r;
         replyPart = r.reply;
         if (r.ok && r.nextOptionLabel !== '') optionLabel = r.nextOptionLabel;
