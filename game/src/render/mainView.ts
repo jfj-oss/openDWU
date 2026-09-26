@@ -49,6 +49,9 @@ import { BuiltObjectLayer, BUILT_OBJECT_MAX_FACTOR } from './builtObjectLayer';
 // [ambientfx] begin
 import { AmbientLayer } from './ambientLayer';
 // [ambientfx] end
+// [combatfx] begin
+import { updateCombatEffects } from './effectsLayer';
+// [combatfx] end
 import type { BuiltObject } from '../sim/builtObject';
 import { createMapOverlayState, type MapOverlayState } from '../ui/mapOverlays';
 import { showRegionLabels, showSystemNames } from '../ui/settings';
@@ -1374,6 +1377,10 @@ export class MainView {
         // [ambientfx] begin
         this.ambientLayer.update(z, cam);
         // [ambientfx] end
+        // [combatfx] begin
+        // Combat effects (weapon fire, explosions, shield strikes, hyperjump flashes) above the ships.
+        updateCombatEffects(this.galaxy, this.world, this.store, this.builtObjectLayer, z, cam);
+        // [combatfx] end
 
         // Region/nebula location name labels (task 08f1): visible while the
         // original's zoom factor double_15 satisfies 70 < double_15 <=
