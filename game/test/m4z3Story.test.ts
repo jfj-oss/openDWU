@@ -80,8 +80,9 @@ describe('createGame story switches (Start.2.cs 501-506)', () => {
         expect([g.storyReturnOfTheShakturiEnabled, g.storyDistantWorldsEnabled, g.storyShadowsEnabled, g.gameRaceSpecificEventsEnabled]).toEqual([false, false, false, true]);
         expect(g.storyClueLocations).toEqual([]);
         expect(g.gameEvents.count).toBe(0);
-        // Only BaconMain.cs 700-715's "ProcessEmpireScienceShips" (researchPerLab 1000) is queued; no story actions.
-        expect(g.delayedActions.map((p) => p.action?.messageTitle)).toEqual(['ProcessEmpireScienceShips']);
+        // Only BaconInitialize's own actions are queued (BaconMain.cs 686-697 SaveStats, 700-715 ProcessEmpireScienceShips with
+        // researchPerLab 1000, 1075 ClearShipsAboutToBeDestroyed); no story actions.
+        expect(g.delayedActions.map((p) => p.action?.messageTitle)).toEqual(['SaveStats', 'ProcessEmpireScienceShips', 'ClearShipsAboutToBeDestroyed']);
     }, 180000);
 
     it('explicit false story options give the same game as the defaults (no Rnd difference)', () => {
