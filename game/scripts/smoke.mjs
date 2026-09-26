@@ -404,6 +404,29 @@ async function main() {
             await shot(page, 'panel hotkeys (failed)').catch(() => {});
         }
 
+        // --- Step 8b: a player order goes through the command queue and lands --
+        try {
+            const res = await page.evaluate(async () => {
+                const d = window.__dwu;
+                const p = d.game.playerEmpire;
+                const before = p.controlResearch;
+                const n = d.commands.log().length;
+                d.commands.issue(d.galaxy, p, 'setEmpireControl', ['controlResearch', !before]);
+                const t0 = performance.now();
+                while (d.commands.log().length === n && performance.now() - t0 < 10000) await new Promise((r) => setTimeout(r, 50));
+                const e = d.commands.log()[n];
+                const after = p.controlResearch;
+                d.commands.issue(d.galaxy, p, 'setEmpireControl', ['controlResearch', before]);
+                return { landed: after === !before, op: e?.op, nowMs: e?.nowMs };
+            });
+            if (!res.landed || res.op !== 'setEmpireControl' || typeof res.nowMs !== 'number') {
+                throw new Error(`order did not land through the command queue: ${JSON.stringify(res)}`);
+            }
+            pass(`8b. player order applied at a frame boundary and journaled (sim time ${res.nowMs} ms)`);
+        } catch (err) {
+            fail('8b. player order through the command queue', err);
+        }
+
         // --- Step 9: save -> main menu -> load round trip --------------------
         try {
             const capitalName = await page.evaluate(() => window.__dwu?.game?.playerEmpire?.capital?.name);

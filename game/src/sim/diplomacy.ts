@@ -758,8 +758,10 @@ export function governmentNaturalAffinity(ownGovernmentId: number, governmentId:
 
 // ---------------------------------------------------------------------------
 // M4r: the diplomatic counters of EmpireCounters.cs (BrokenTreatyCount, SubjugationsMade, WarsWeStartedCount,
-// WarsDeclaredOnUsCount, _AtWarStartDate, _TimeSpentAtWarExcludingCurrent). empire.ts's EmpireCounters is an
-// empty placeholder; these live in Empire.diplomacyCounters until EmpireCounters is ported (then merge them).
+// WarsDeclaredOnUsCount, _AtWarStartDate, _TimeSpentAtWarExcludingCurrent), kept in Empire.diplomacyCounters beside
+// empire.ts's EmpireCounters. Callers: Empire.8.cs 2631-2632 ChangeDiplomaticRelation (diplomacyTick.ts), Empire.3.cs 3480
+// (diplomacyTick.ts), Empire.cs 4948 (events.ts); FixupAtWarCounter: Empire.1.cs 3963 (diplomacyTick.ts); readers: victory.ts,
+// achievements.ts.
 // ---------------------------------------------------------------------------
 
 /** long.MaxValue stand-in for EmpireCounters._AtWarStartDate "not at war". */

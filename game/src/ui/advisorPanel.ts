@@ -9,7 +9,8 @@ import type { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
 import type { AdvisorBrief, AdvisorSelection } from '../sim/player/advisorBrief';
 import { advisorCharacter } from '../sim/player/advisorBrief';
-import { executeAdvisorCommands, type AdvisorCommandResult } from '../sim/player/advisorCommands';
+import { type AdvisorCommandResult } from '../sim/player/advisorCommands';
+import { issuePlayerCommand } from '../sim/player/playerCommands';
 import { probeAdvisorEndpoint, runAdvisorTurn, type AdvisorApi, type ChatMessage } from './advisorClient';
 import { getSettings } from './settings';
 import { getSelection } from './hud';
@@ -132,10 +133,12 @@ function createAdvisorPanel(opts: AdvisorPanelOptions): OpenState {
             chip.addEventListener('click', () => {
                 chip.disabled = true;
                 if (lastBrief === null) return;
-                const results = executeAdvisorCommands(opts.galaxy, opts.player, lastBrief, [{ id, confirm: true }]);
-                history.push({ role: 'user', content: 'Confirmed.' });
-                history.push({ role: 'assistant', content: results.map((r) => `[${r.ok ? 'done' : 'failed'}: ${r.text}]`).join(' ') });
-                add(...resultLines(results));
+                // Command log: queued, applied at the next frame boundary.
+                issuePlayerCommand(opts.galaxy, opts.player, 'advisorCommands', [lastBrief, [{ id, confirm: true }]], (results) => {
+                    history.push({ role: 'user', content: 'Confirmed.' });
+                    history.push({ role: 'assistant', content: results.map((r) => `[${r.ok ? 'done' : 'failed'}: ${r.text}]`).join(' ') });
+                    add(...resultLines(results));
+                });
             });
             el.appendChild(chip);
         }

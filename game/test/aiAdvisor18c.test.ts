@@ -24,7 +24,7 @@ import { GalaxyTime } from '../src/sim/galaxyTime';
 import { deserializeGame, serializeGame } from '../src/sim/save/gameSave';
 import { buildStrategicBrief, listStrategicOptions, openTechFocusSlot, priorityLevelIndex, strategicEmpireRef, techFocusIndex } from '../src/sim/player/strategicBrief';
 import { applyStrategicDecisions, strategicResponseSchema, validateStrategicResponse } from '../src/sim/player/strategicDecisions';
-import { commandLog } from '../src/sim/player/commandLog';
+import { commandLog, type AdvisorLogEntry } from '../src/sim/player/commandLog';
 import { AiAdvisorDriver, STAR_DATE_DAY_MS, aiAdvisorSettingsWithUrl, buildStrategicSystemPrompt, runStrategicTurn, selectAdvisedEmpires, type AiAdvisorSettings } from '../src/ui/aiAdvisorDriver';
 import { councilLogEntry } from '../src/ui/aiAdvisorLog';
 import { galaxyStarDate } from '../src/sim/tick/simTime';
@@ -202,7 +202,7 @@ describe('strategic decisions through the fake model server', () => {
         const blocked = await runStrategicTurn({ galaxy: w.galaxy, ai: w.ai, cfg: cfg() });
         expect(blocked.results.map((r) => r.status)).toEqual(['blocked']);
         expect(w.ai.diplomaticRelations.byEmpire(w.ai2)!.type).toBe(DiplomaticRelationType.None);
-        expect(commandLog(w.galaxy).map((e) => e.status)).toEqual(['blocked']);
+        expect((commandLog(w.galaxy) as AdvisorLogEntry[]).map((e) => e.status)).toEqual(['blocked']);
 
         rel.warObjective = WarObjective.TotalConquest;
         const playerMsgs = empireMessages(w.player).length;
@@ -229,7 +229,7 @@ describe('strategic decisions through the fake model server', () => {
         expect(empireMessages(w.player).slice(msgs).some((m) => m.sender === w.ai && m.messageType === EmpireMessageType.ProposeDiplomaticRelation)).toBe(true);
         // Offer pending: the same move is no longer legal (no double offers).
         expect(listStrategicOptions(w.galaxy, w.ai).map((o) => o.id)).not.toContain(id);
-        expect(commandLog(w.galaxy).map((e) => [e.decisionId, e.status])).toEqual([[id, 'applied']]);
+        expect((commandLog(w.galaxy) as AdvisorLogEntry[]).map((e) => [e.decisionId, e.status])).toEqual([[id, 'applied']]);
     }, 300000);
 
     it('tech emphasis change lands in the empire policy fields (a new policy object)', async () => {
@@ -253,7 +253,7 @@ describe('strategic decisions through the fake model server', () => {
         expect(priorityLevelIndex(old.researchPriority)).toBeLessThanOrEqual(2);
         // The other slots are the race's own.
         expect(p.researchDesignTechFocus.map(techFocusIndex).filter((_, i) => i !== slot - 1)).toEqual(inUse.filter((_, i) => i !== slot - 1));
-        expect(commandLog(w.galaxy).map((e) => e.command.kind)).toEqual(['SetTechFocus', 'SetPolicy']);
+        expect((commandLog(w.galaxy) as AdvisorLogEntry[]).map((e) => e.command.kind)).toEqual(['SetTechFocus', 'SetPolicy']);
         // Answering a choice with its current value means "keep": dropped, neither applied nor rejected.
         const b2 = buildStrategicBrief(w.galaxy, w.ai);
         expect(b2.decisions.find((d) => d.id === 'tech-focus')?.now).toBe(pick);

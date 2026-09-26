@@ -348,11 +348,12 @@ export class Habitat {
         if (this.parent !== null) {
             this._anglePerSecond = (Math.PI * 2.0) / (orbitPathLength / this.orbitSpeed);
         }
-        if (doInitialMove && this.parent !== null) {
-            // C# sets _LastTouch = now.AddSeconds(-30) then calls Move(galaxy),
-            // so (_tempNow - _LastTouch).TotalSeconds is exactly 30.
-            // TODO(port): per-tick Move(galaxy) driven by Galaxy time — Habitat.cs:Move
-            this.move(30);
+        if (doInitialMove) {
+            // Habitat.cs 6297-6303: _LastTouch = now.AddSeconds(-30) (kept: the first DoTasks moves another 30 s), then
+            // Move(galaxy) with (_tempNow - _LastTouch).TotalSeconds = 30 when there is a parent. `now` is generation
+            // time 0 (see the M4a touch fields below).
+            this.lastTouch = -30000;
+            if (this.parent !== null) this.move(30);
         }
     }
 
@@ -401,7 +402,8 @@ export class Habitat {
     // ---- M4a fields (tick core; tick/habitatTick.ts) ----
     // Habitat.cs 147-155 _LastTouch / _LastIntermediateTouch / _LastPeriodicTouch / _LastLongTouch / _LastHugeTouch
     // (game ms). The ctor (Habitat.cs 6184-6187) sets huge/long/periodic/touch = CurrentDateTime and leaves
-    // _LastIntermediateTouch = MinValue; every TS habitat is built during generation at game time 0.
+    // _LastIntermediateTouch = MinValue (6297-6299: touch = now − 30 s with doInitialMove); every TS habitat is built
+    // during generation at game time 0.
     lastTouch = 0;
     lastIntermediateTouch = MIN_TIME;
     lastPeriodicTouch = 0;

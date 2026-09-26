@@ -75,7 +75,6 @@ import { EmpireMessageType, sendMessageToEmpire, sendMessageToEmpireWithTitle } 
 import { calculateEmpireWarValue } from '../diplomacyTick';
 import { galaxyStarDate, REAL_SECONDS_IN_GALACTIC_YEAR } from '../tick/simTime';
 import { startStarDateForAge } from '../galaxyTime';
-import { DEFAULT_BASE_TECH_COST } from '../componentStatic';
 import { cloneDesign, galaxyDesignSpecificationBySubRole, findLonelyHabitat, findLonelyHabitatAt, findLonelyHabitatGalacticEdge, generateUnownedBuiltObjectFromDesign, BuiltObjectEncounterAction, BuiltObjectEncounterEventType } from '../gameStartTail';
 import { findNearestHabitatUnoccupiedSystem } from '../startHabitats';
 import { determineAngle } from '../creature';
@@ -86,6 +85,7 @@ import { EventMessageType } from '../eventTypes';
 import { addLocationHint } from '../tradeItems';
 import { resolveSectorDescription } from '../empireEvents';
 import { GalaxyLocationEffectType, GalaxyLocationType, type GalaxyLocation } from '../galaxyLocation';
+import { formatGameTextNow } from '../textResolver';
 
 // ---------------------------------------------------------------------------
 // Galaxy helpers the story needs (Galaxy.5.cs / Galaxy.7.cs / Galaxy.cs)
@@ -954,9 +954,8 @@ export function checkOfferStoryHint(galaxy: Galaxy, self: Empire): void {
                 if (galaxy.empires[j] != null && galaxy.empires[j].active && galaxy.empires[j].colonies != null) num4 += galaxy.empires[j].colonies.length;
             }
             const num5 = Math.trunc(0.5 * expectedMaximumColoniesInGalaxy(galaxy));
-            // TODO(port): Galaxy.BaseTechCost (game option, Galaxy ctor) is not kept on the TS Galaxy — the default is used
-            // (designGeneration.ts / attackAI.ts convention).
-            let d = DEFAULT_BASE_TECH_COST / 120000.0;
+            // Empire.9.cs 5407 (double)_Galaxy.BaseTechCost / 120000.0.
+            let d = galaxy.baseTechCost / 120000.0;
             d = Math.max(1.0, Math.sqrt(d));
             let num6 = 25;
             if (galaxy.age === 0) num6 += 15;
@@ -1134,7 +1133,7 @@ export function checkForStoryLocationHint(galaxy: Galaxy): string {
         if (num >= 0) {
             const stellarObject = galaxy.storyClueLocations[num]!;
             if (!stellarObject.hasBeenDestroyed) {
-                result = gameText('coordinates X,Y', Math.trunc(stellarObject.xpos / 1000), Math.trunc(stellarObject.ypos / 1000));
+                result = formatGameTextNow('coordinates X,Y', [Math.trunc(stellarObject.xpos / 1000), Math.trunc(stellarObject.ypos / 1000)]);
                 result = result + ', ' + generateLocationDescription(galaxy, stellarObject.xpos, stellarObject.ypos, true);
                 addLocationHint(galaxy.playerEmpire!, { x: Math.trunc(stellarObject.xpos), y: Math.trunc(stellarObject.ypos) });
             }
@@ -1148,7 +1147,7 @@ export function checkForStoryLocationHint(galaxy: Galaxy): string {
  * TODO(port) M9: the nearest-habitat / nebula wording). No Rnd.
  */
 export function generateLocationDescription(galaxy: Galaxy, x: number, y: number, prefixWithA: boolean): string {
-    return gameText(prefixWithA ? 'A Location Description' : 'Location Description', resolveSectorDescription(galaxy, x, y));
+    return formatGameTextNow(prefixWithA ? 'A Location Description' : 'Location Description', [resolveSectorDescription(galaxy, x, y)]);
 }
 
 /**
@@ -1210,19 +1209,19 @@ export function generateMajorStoryItem(storyLevel: number): string {
     let text = '';
     switch (storyLevel) {
         case 0:
-            text += gameText('MajorStoryEvent1');
+            text += formatGameTextNow('MajorStoryEvent1');
             break;
         case 1:
-            text += gameText('MajorStoryEvent2');
+            text += formatGameTextNow('MajorStoryEvent2');
             break;
         case 2:
-            text += gameText('MajorStoryEvent3');
+            text += formatGameTextNow('MajorStoryEvent3');
             break;
         case 3:
-            text += gameText('MajorStoryEvent4');
+            text += formatGameTextNow('MajorStoryEvent4');
             break;
         case 4:
-            text += gameText('MajorStoryEvent5');
+            text += formatGameTextNow('MajorStoryEvent5');
             break;
     }
     return text;
@@ -1233,10 +1232,10 @@ export function generateMajorStoryVictoryMessage(outcome: number): string {
     let text = '';
     switch (outcome) {
         case 0:
-            text += gameText('ShakturiPlayerVictory');
+            text += formatGameTextNow('ShakturiPlayerVictory');
             break;
         case 1:
-            text += gameText('ShakturiPlayerDefeat');
+            text += formatGameTextNow('ShakturiPlayerDefeat');
             break;
     }
     return text;
@@ -1251,8 +1250,8 @@ export function generateMajorStoryVictoryMessage(outcome: number): string {
 export function generateSecondaryStoryClue(galaxy: Galaxy, selectionValue: number, clueLocation: unknown): string {
     void clueLocation;
     let result = '';
-    const texts = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => gameText('SecondaryStoryClue' + n));
-    let text9 = gameText('SecondaryStoryClue9');
+    const texts = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => formatGameTextNow('SecondaryStoryClue' + n));
+    let text9 = formatGameTextNow('SecondaryStoryClue9');
     if (selectionValue >= 0 && selectionValue <= 7) {
         result = texts[selectionValue];
     } else if (selectionValue === 8) {
@@ -1263,9 +1262,9 @@ export function generateSecondaryStoryClue(galaxy: Galaxy, selectionValue: numbe
             const player = galaxy.playerEmpire!;
             let design = generateDesignFromSpec(galaxy, player, galaxyDesignSpecificationBySubRole(BuiltObjectSubRole.SmallSpacePort), 0.0, galaxyStarDate(galaxy));
             if (design === null) throw new Error('NullReferenceException: Galaxy.5.cs 3858 GenerateDesignFromSpec returned null (SmallSpacePort)');
-            let name = gameText('Archival Refuge Station');
+            let name = formatGameTextNow('Archival Refuge Station'); // Galaxy.5.cs 3857-3861: a station name, formatted now
             const habitat = fastFindNearestSystemWithPlanets(galaxy, x, y);
-            if (habitat !== null) name = gameText('X Archival Refuge', habitat.name);
+            if (habitat !== null) name = formatGameTextNow('X Archival Refuge', [habitat.name]);
             design = cloneDesign(design);
             // TODO(port) M9: design.PictureRef = ShipImageHelper.ResolveMajorShipImageIndex(FreedomAllianceFamily, subRole, aged: false).
             const builtObject = generateStoryAbandonedBuiltObject(galaxy, x, y, design, name);
@@ -1278,7 +1277,7 @@ export function generateSecondaryStoryClue(galaxy: Galaxy, selectionValue: numbe
             if (firstByAvailability !== null) builtObject.encounterGovernmentTypeId = firstByAvailability.governmentId & 0xff;
             addLocationHint(player, { x: Math.trunc(builtObject.xpos), y: Math.trunc(builtObject.ypos) });
             const text10 = generateLocationDescription(galaxy, x, y, true);
-            text9 += gameText('SecondaryStoryClue9 Location', builtObject.name, Math.trunc(x / 1000), Math.trunc(y / 1000), text10);
+            text9 += formatGameTextNow('SecondaryStoryClue9 Location', [builtObject.name, Math.trunc(x / 1000), Math.trunc(y / 1000), text10]);
         }
         text9 += '========================================';
         result = text9;
@@ -1302,7 +1301,7 @@ export function generateStoryClue(galaxy: Galaxy, location: Habitat | BuiltObjec
     if (text !== '') result = text;
     const num = galaxy.storyClueLocations.indexOf(location);
     if (num < 0) return result;
-    const texts = [gameText('StoryClue1'), gameText('StoryClue2'), gameText('StoryClue3'), gameText('StoryClue4'), gameText('StoryClue5'), ''];
+    const texts = [formatGameTextNow('StoryClue1'), formatGameTextNow('StoryClue2'), formatGameTextNow('StoryClue3'), formatGameTextNow('StoryClue4'), formatGameTextNow('StoryClue5'), ''];
     if (num >= 0 && num <= 5) result = texts[num];
     if (!galaxy.storyCluesEnabled) galaxy.storyCluesEnabled = true;
     galaxy.storyClueUsed[num] = true;
@@ -1454,7 +1453,7 @@ function checkNearEmpireColony(galaxy: Galaxy, x: number, y: number, minimumRang
 export function investigateRuinsStoryClue(galaxy: Galaxy, investigatingEmpire: Empire, ruinsHabitat: Habitat, text: string): string {
     const ruin = ruinsHabitat.ruin!;
     if (galaxy.storyDistantWorldsEnabled && ruin.storyClueLevel >= 0 && investigatingEmpire === galaxy.playerEmpire) {
-        text = text + gameText('Ruins Discovery Historical Details', ruin.name) + ' ';
+        text = text + formatGameTextNow('Ruins Discovery Historical Details', [ruin.name]) + ' ';
         text += generateStoryClue(galaxy, ruinsHabitat);
         sendEventMessageToEmpire(investigatingEmpire, EventMessageType.StoryClue, gameText('Galactic History revealed'), text, ruin, ruinsHabitat);
         if (investigatingEmpire === galaxy.playerEmpire) ruin.storyClueLevel = -1;
@@ -1473,7 +1472,7 @@ export function investigateRuinsStoryEvent(galaxy: Galaxy, investigatingEmpire: 
     if (ruin.storyEventData > 0) {
         ruin.storyEventData = 0;
         const empty = gameText('Strange transmission from beyond our galaxy');
-        text += gameText('Shakturi Beacon Trigger', ruin.name);
+        text += formatGameTextNow('Shakturi Beacon Trigger', [ruin.name]);
         sendEventMessageToEmpire(investigatingEmpire, EventMessageType.GeneralRuinsDiscovery, empty, text, ruin, ruinsHabitat);
         let habitat3: Habitat | null = null;
         if (galaxy.shakturiTriggerHabitat !== null) {
@@ -1486,7 +1485,7 @@ export function investigateRuinsStoryEvent(galaxy: Galaxy, investigatingEmpire: 
         if (habitat3 === null) habitat3 = findLonelyHabitatGalacticEdge(galaxy, RuinType.Undefined, HabitatType.Ice);
         generateShakturi(galaxy, habitat3);
     } else {
-        text = text + ' ' + gameText('Our survey team found nothing of interest in the ruins.');
+        text = text + ' ' + formatGameTextNow('Our survey team found nothing of interest in the ruins.');
         sendMessageToEmpire(investigatingEmpire, investigatingEmpire, EmpireMessageType.ExplorationRuins, galaxy, text);
     }
 }
@@ -1624,13 +1623,13 @@ export function doSingleEmpireEncounterShakturiStory(galaxy: Galaxy, discoverer:
     if (discoverer.dominantRace !== null && discoverer.dominantRace.name.toLowerCase() === 'mechanoid') flag = false;
     if (discoverer === galaxy.playerEmpire && otherEmpire.dominantRace !== null && otherEmpire.dominantRace.name.toLowerCase() === 'mechanoid') {
         let empty = '';
-        empty += gameText('MechanoidEncounter', systemName);
+        empty += formatGameTextNow('MechanoidEncounter', [systemName]);
         empty += '\n\n';
         let habitat2: Habitat | null = null;
         if (otherEmpire.capital !== null) habitat2 = galaxy.determineHabitatSystemStar(otherEmpire.capital);
         let arg2 = '';
         if (habitat2 !== null) arg2 = habitat2.name;
-        empty += gameText('MechanoidEncounterDetail', arg2);
+        empty += formatGameTextNow('MechanoidEncounterDetail', [arg2]);
         const title = gameText('Ancient Guardians Encountered');
         if (otherEmpire.capital !== null && discoverer.visibility.checkSystemExplored(otherEmpire.capital.systemIndex)) {
             sendEventMessageToEmpire(discoverer, EventMessageType.GeneralDiscovery, title, empty, otherEmpire.dominantRace, otherEmpire.capital);
@@ -1641,7 +1640,7 @@ export function doSingleEmpireEncounterShakturiStory(galaxy: Galaxy, discoverer:
         }
     } else if (discoverer === galaxy.playerEmpire && otherEmpire.dominantRace !== null && otherEmpire.dominantRace === galaxy.shakturiActualRace) {
         let empty2 = '';
-        empty2 += gameText('ErutkahEncounter', systemName);
+        empty2 += formatGameTextNow('ErutkahEncounter', [systemName]);
         const title = gameText('Erutkah Refugees Encountered');
         if (discoveryLocation !== null) {
             sendEventMessageToEmpire(discoverer, EventMessageType.GeneralDiscovery, title, empty2, otherEmpire.dominantRace, { x: Math.trunc(discoveryLocation.xpos), y: Math.trunc(discoveryLocation.ypos) });

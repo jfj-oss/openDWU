@@ -76,7 +76,6 @@ import { pirateEconomyPerformIncome } from '../pirates/pirateAI';
 import { doResearchBreakthrough } from '../researchTick';
 import { findNodeById, getProjectsByIndustry, type TechNode } from '../researchSystem';
 import { IndustryType } from '../types';
-import { DEFAULT_BASE_TECH_COST } from '../componentStatic';
 import { galaxyStarDate } from '../tick/simTime';
 import { findNearestAvailableFleet } from '../fleets/militaryAI';
 import { FleetPosture, checkTaskAuthorized, AdvisorMessageType } from '../diplomacyTick';
@@ -1057,7 +1056,7 @@ export function doRaidBonuses(galaxy: Galaxy, attackingEmpire: Empire | null, ta
                 }
                 const researchNode3 = randomQueueHead(galaxy, attackingEmpire);
                 if (researchNode3 !== null) {
-                    const num7 = DEFAULT_BASE_TECH_COST / 120000.0;
+                    const num7 = galaxy.baseTechCost / 120000.0; // Galaxy.5.cs 5096
                     let num8 = (40000.0 + 30000.0 * galaxy.rnd.nextDouble()) * num7;
                     num8 *= num;
                     num8 *= lootFactor;
@@ -1069,7 +1068,7 @@ export function doRaidBonuses(galaxy: Galaxy, attackingEmpire: Empire | null, ta
             }
             const researchNode4 = randomQueueHead(galaxy, attackingEmpire);
             if (researchNode4 !== null) {
-                const num9 = DEFAULT_BASE_TECH_COST / 120000.0;
+                const num9 = galaxy.baseTechCost / 120000.0; // Galaxy.5.cs 5130
                 let num10 = (40000.0 + 30000.0 * galaxy.rnd.nextDouble()) * num9;
                 num10 *= num;
                 num10 *= lootFactor;
