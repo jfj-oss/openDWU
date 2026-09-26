@@ -34,7 +34,27 @@ import {
     scenarioState,
     scenarioText,
     scenarioYearlyTick,
+    registerScenarioPeriodic,
+    scenarioPeriodicTick,
+    GAME_DAY_LENGTH,
+    registerScenarioGameStart,
+    registerScenarioEvent,
+    registerScenarioQuery,
+    scenarioQuery,
+    scenarioEmit,
+    resolveScenarioIncludes,
+    registerScenarioDecision,
+    raiseScenarioDecision,
+    answerScenarioDecision,
+    pendingScenarioDecisions,
+    expireScenarioDecisions,
+    isScenarioDecision,
 } from '../src/sim/scenario';
+import { empireApprovalRating } from '../src/sim/taxes';
+import { builtObjectCompleteTeardown } from '../src/sim/combat/teardown';
+import { takeOwnershipOfColonyFull } from '../src/sim/combat/ownership';
+import { declareWar } from '../src/sim/diplomacyTick';
+import { DiplomaticRelationType } from '../src/sim/diplomacy';
 
 let base: GameData;
 beforeAll(async () => {
@@ -184,7 +204,7 @@ describe('save round trip', () => {
         const { game, gameData } = createScenarioGame(base, { scenario: 'example', flags: { exampleFlag: true } });
         expect(game.galaxy.scenario!.id).toBe('example');
         expect(scenarioFlag(game.galaxy, 'exampleFlag')).toBe(true);
-        scenarioState(game.galaxy, 'test', () => ({ counter: 3, empire: game.playerEmpire }));
+        scenarioState(game.galaxy, 'test', () => ({ counter: 3, empire: game.playerEmpire, byId: new Map<number, { loyalty: number; empire: unknown }>([[game.playerEmpire.empireId, { loyalty: 7, empire: game.playerEmpire }]]) }));
         expect(game.galaxy.races.some((r) => r.name === 'Teekan Guild')).toBe(true);
         const text = saveText(game, { id: 'example', flags: { exampleFlag: true }, params: {} });
         expect(savedScenarioId(text)).toBe('example');
@@ -194,6 +214,9 @@ describe('save round trip', () => {
         expect(s.flags).toEqual({ exampleFlag: true });
         expect((s.state.test as { counter: number; empire: unknown }).counter).toBe(3);
         expect((s.state.test as { empire: unknown }).empire).toBe(loaded.game.galaxy.playerEmpire);
+        const byId = (s.state.test as { byId: Map<number, { loyalty: number; empire: unknown }> }).byId;
+        expect(byId.get(loaded.game.galaxy.playerEmpire!.empireId)).toEqual({ loyalty: 7, empire: loaded.game.galaxy.playerEmpire });
+        expect(byId.get(loaded.game.galaxy.playerEmpire!.empireId)!.empire).toBe(loaded.game.galaxy.playerEmpire);
         expect(saveText(loaded.game, loaded.startOptions.scenario ?? null)).toBe(text);
         expect(loaded.startOptions.scenario).toEqual({ id: 'example', flags: { exampleFlag: true }, params: {} });
     }, 600000);
@@ -335,5 +358,168 @@ describe('wizard scenario choice', () => {
         expect(c).toEqual({ id: 's', flags: { a: true, b: false }, params: { n: 3 } });
         expect(scenarioChoiceSummary(null, [m])).toBe('None');
         expect(scenarioChoiceSummary(c, [m])).toBe('Rim (A on, Count 3)');
+    });
+});
+
+describe('spec-driven additions (periodic, game start, events, queries, BasedOn, adopt, include, decisions)', () => {
+    function on(g: Galaxy, flags: Record<string, boolean> = { f: true }): void {
+        g.scenario = createGalaxyScenario(parseScenarioManifest({ id: 'x2', flags: Object.keys(flags).map((name) => ({ name, default: false })) }), { flags }, base.resources);
+    }
+
+    it('periodic tick: anchors per handler, then runs every periodDays', () => {
+        const g = cachedTickGame(base).galaxy;
+        on(g);
+        const runs: number[] = [];
+        unregister.push(registerScenarioPeriodic({ id: 'p', flag: 'f', periodDays: 30, run: (_g, d) => runs.push(d) }));
+        unregister.push(registerScenarioPeriodic({ id: 'q', flag: 'off', periodDays: 1, run: () => runs.push(-1) }));
+        scenarioPeriodicTick(g);
+        g.nowMs += 29 * GAME_DAY_LENGTH;
+        scenarioPeriodicTick(g);
+        expect(runs).toEqual([]);
+        g.nowMs += GAME_DAY_LENGTH;
+        scenarioPeriodicTick(g);
+        expect(runs).toEqual([galaxyStarDate(g)]);
+        expect(g.scenario!.periodicLast.p).toBe(galaxyStarDate(g));
+    });
+
+    it('game-start hook runs once at the end of createGame, only with its flag', () => {
+        let ran = 0;
+        let sawPlayer = false;
+        unregister.push(registerScenarioGameStart({ id: 'gs', flag: 'start', run: (g, ctx) => {
+            ran++;
+            sawPlayer = g.playerEmpire !== null && typeof ctx.randomPointInRing === 'function';
+        } }));
+        const { game } = createScenarioGame(base, { scenario: inlineOverlay({ id: 'gs', flags: [{ name: 'start', default: true }] }) });
+        expect(ran).toBe(1);
+        expect(sawPlayer).toBe(true);
+        expect(game.galaxy.scenario!.flags.start).toBe(true);
+    }, 600000);
+
+    it('events reach gated subscribers from the base-sim sites; queries fold over the stock value', () => {
+        const game = cachedTickGame(base);
+        const g = game.galaxy;
+        const seen: string[] = [];
+        unregister.push(registerScenarioEvent({ id: 'rm', flag: 'f', event: 'builtObjectRemoved', run: (_g, p) => seen.push(`removed:${p.builtObject.name}`) }));
+        unregister.push(registerScenarioEvent({ id: 'dip', flag: 'f', event: 'diplomaticRelationChanged', run: (_g, p) => seen.push(`rel:${p.to}`) }));
+        unregister.push(registerScenarioEvent({ id: 'col', flag: 'f', event: 'colonyOwnerChanged', run: (_g, p) => seen.push(`col:${p.to?.name}`) }));
+        const ship = g.builtObjects.find((b) => b !== null && b.empire === game.playerEmpire)!;
+        const colony = g.habitats.find((h) => h.empire === g.independentEmpire && h.population.items.length > 0)!;
+        const h = game.playerEmpire.capital!;
+        // No scenario: nothing is delivered.
+        builtObjectCompleteTeardown(g, g.builtObjects.find((b) => b !== null && b !== ship && b.empire === game.playerEmpire)!);
+        expect(seen).toEqual([]);
+        on(g);
+        builtObjectCompleteTeardown(g, ship);
+        declareWar(g, game.playerEmpire, g.empires[1]);
+        takeOwnershipOfColonyFull(g, game.playerEmpire, colony, game.playerEmpire, false, false);
+        expect(seen[0]).toBe(`removed:${ship.name}`);
+        expect(seen).toContain(`rel:${DiplomaticRelationType.War}`);
+        expect(seen).toContain(`col:${game.playerEmpire.name}`);
+        unregister.push(registerScenarioQuery({ id: 'ap', flag: 'f', query: 'empireApprovalRating', run: (_g, v) => v + 10 }));
+        g.scenario!.flags.f = false;
+        const approval = empireApprovalRating(g, h);
+        g.scenario!.flags.f = true;
+        expect(empireApprovalRating(g, h)).toBeCloseTo(approval + 10, 9);
+        g.scenario!.flags.f = false;
+        expect(empireApprovalRating(g, h)).toBe(approval);
+        expect(scenarioQuery(g, 'empireApprovalRating', 1, { habitat: h, empire: h.empire })).toBe(1);
+        scenarioEmit(g, 'builtObjectRemoved', { builtObject: ship });
+        expect(seen.filter((x) => x.startsWith('removed')).length).toBe(1);
+    });
+
+    it('BasedOn race files extend a stock race (new race with the parent policy and bias row)', () => {
+        const gd = applyScenarioOverlay(base, inlineOverlay({ id: 'b' }, { 'races/harvester.txt': "'x\nBasedOn ;mechanoid.txt\nName ;Harvester\nPlayable ;N\nAggression ;90\n" }));
+        expect(gd.scenario!.warnings).toEqual([]);
+        const mech = base.races.find((r) => r.name === 'Mechanoid')!;
+        const harv = gd.races.at(-1)!;
+        expect(gd.races.length).toBe(base.races.length + 1);
+        expect(harv.name).toBe('Harvester');
+        expect(harv.playable).toBe(false);
+        expect(harv.aggression).toBe(90);
+        expect({ ...harv, name: mech.name, playable: mech.playable, aggression: mech.aggression }).toEqual(mech);
+        expect(gd.raceBiases.names.length).toBe(gd.races.length);
+        expect(gd.raceBiases.matrix.every((r) => r.length === gd.races.length)).toBe(true);
+        if (base.policies!.has('Mechanoid')) expect(gd.policies!.get('Harvester')).toBe(base.policies!.get('Mechanoid'));
+        expect(gd.races.find((r) => r.name === 'Mechanoid')).toBe(mech);
+        const bad = applyScenarioOverlay(base, inlineOverlay({ id: 'b' }, { 'races/x.txt': 'BasedOn ;nope.txt\nName ;X' }));
+        expect(bad.races.length).toBe(base.races.length);
+        expect(bad.scenario!.warnings[0]).toMatch(/BasedOn nope.txt/);
+    });
+
+    it('include: included overlays apply first, manifests merge, cycles are rejected', () => {
+        const inner = inlineOverlay({ id: 'inner', flags: [{ name: 'a', default: true }] }, { 'GameText.txt': 'Inc Tag;inner\nShared Tag;inner' });
+        const outer = inlineOverlay({ id: 'outer', include: ['inner'], flags: [{ name: 'b', default: false }] }, { 'GameText.txt': 'Shared Tag;outer' });
+        const byId = new Map([['inner', inner], ['outer', outer]]);
+        const gd = applyScenarioOverlay(base, resolveScenarioIncludes(outer, byId));
+        expect(gd.scenario!.manifest.id).toBe('outer');
+        expect(gd.scenario!.manifest.flags.map((f) => f.name)).toEqual(['b', 'a']);
+        expect(gd.scenario!.files).toEqual(['inner:GameText.txt', 'GameText.txt']);
+        expect(getText('Inc Tag')).toBe('inner');
+        expect(getText('Shared Tag')).toBe('outer');
+        expect(() => applyScenarioOverlay(base, outer)).toThrow(/not resolved/);
+        const loopA = inlineOverlay({ id: 'la', include: ['lb'] });
+        const loopB = inlineOverlay({ id: 'lb', include: ['la'] });
+        expect(() => resolveScenarioIncludes(loopA, new Map([['la', loopA], ['lb', loopB]]))).toThrow(/cycle/);
+    });
+
+    it('createEmpireMidGame adoptOnly takes a colony without reshaping it; preserveHome keeps the planet; both save', () => {
+        const game = cachedTickGame(base);
+        const g = game.galaxy;
+        const colony = g.habitats.find((h) => h.empire === g.independentEmpire && h.population.items.length > 0)!;
+        const before = { diameter: colony.diameter, baseQuality: colony.baseQuality, resources: colony.resources.map((r) => ({ ...r })), pop: colony.population.totalAmount };
+        const n = g.empires.length;
+        const e = createEmpireMidGame(g, { race: 'Ugnari', name: 'Adopted', adoptOnly: true, adopt: { colonies: [colony] } })!;
+        expect(g.empires.length).toBe(n + 1);
+        expect(colony.empire).toBe(e);
+        expect(e.colonies).toContain(colony);
+        expect({ diameter: colony.diameter, baseQuality: colony.baseQuality, resources: colony.resources, pop: colony.population.totalAmount }).toEqual(before);
+
+        const race = g.races.find((r) => r.name === 'Ugnari')!;
+        const home = g.habitats.find((h) => h.empire === null && h.type === race.nativeHabitatType && h.population.items.length === 0 && h.resources.length > 0)!;
+        const kept = { diameter: home.diameter, baseQuality: home.baseQuality, resources: home.resources.map((r) => ({ ...r })) };
+        const c = createEmpireMidGame(g, { race: 'Ugnari', name: 'Company', home, age: 0, preserveHome: true, homeSystemFactor: 0.1, setup: false })!;
+        expect(c.capital).toBe(home);
+        expect({ diameter: home.diameter, baseQuality: home.baseQuality, resources: home.resources }).toEqual(kept);
+        expect(home.population.totalAmount).toBeLessThan(0.1 * 2.2e9 + 0.1 * 5e8 + 1);
+
+        runGameSeconds(game, 20);
+        const text = saveText(game);
+        const loaded = deserializeGame(text, base);
+        expect(loaded.game.galaxy.empires.map((x) => x.name)).toEqual(g.empires.map((x) => x.name));
+        expect(saveText(loaded.game)).toBe(text);
+    }, 600000);
+
+    it('decisions: the player answers from a message, AI empires answer at once, unanswered ones expire; pending ones save', () => {
+        const game = cachedTickGame(base);
+        const g = game.galaxy;
+        on(g);
+        const resolved: string[] = [];
+        unregister.push(registerScenarioDecision({ id: 'd', flag: 'f', kind: 'test.bribe', resolve: (_g, d, o) => resolved.push(`${d.empire.name}:${o}`), aiChoose: () => 'refuse' }));
+        const opts = [{ id: 'pay', label: 'Pay' }, { id: 'refuse', label: 'Refuse' }];
+        const d = raiseScenarioDecision(g, game.playerEmpire, { kind: 'test.bribe', title: 'Bribe', text: 'Pay?', options: opts, defaultOption: 'refuse', expiresDays: 10 });
+        const msg = empireMessages(game.playerEmpire).at(-1)!;
+        expect(msg.messageType).toBe(EmpireMessageType.GeneralDecision);
+        expect(msg.subject).toBe(d);
+        expect(isScenarioDecision(msg.subject)).toBe(true);
+        expect(pendingScenarioDecisions(g, game.playerEmpire)).toEqual([d]);
+        raiseScenarioDecision(g, g.empires[1], { kind: 'test.bribe', title: 'Bribe', text: 'Pay?', options: opts });
+        expect(resolved).toEqual([`${g.empires[1].name}:refuse`]);
+
+        const text = saveText(game);
+        const loaded = deserializeGame(text, applyScenarioOverlay(base, inlineOverlay({ id: 'x2' })));
+        const lp = pendingScenarioDecisions(loaded.game.galaxy);
+        expect(lp.length).toBe(1);
+        expect(empireMessages(loaded.game.galaxy.playerEmpire!).at(-1)!.subject).toBe(lp[0]);
+
+        expect(answerScenarioDecision(g, d.id, 'nope')).toBe(false);
+        expect(answerScenarioDecision(g, d.id, 'pay')).toBe(true);
+        expect(answerScenarioDecision(g, d.id, 'pay')).toBe(false);
+        expect(resolved.at(-1)).toBe(`${game.playerEmpire.name}:pay`);
+
+        const d2 = raiseScenarioDecision(g, game.playerEmpire, { kind: 'test.bribe', title: 'B', text: 'T', options: opts, defaultOption: 'refuse', expiresDays: 10 });
+        g.nowMs += 10 * GAME_DAY_LENGTH;
+        expireScenarioDecisions(g);
+        expect(d2.answeredBy).toBe('expired');
+        expect(resolved.at(-1)).toBe(`${game.playerEmpire.name}:refuse`);
     });
 });

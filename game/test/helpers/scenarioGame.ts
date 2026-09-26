@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { GameData } from '../../src/sim/data/gameData';
 import { createGame, type CreateGameOptions, type Game } from '../../src/sim/game';
-import { applyScenarioOverlay, type ScenarioOverlay } from '../../src/sim/scenario/overlay';
+import { applyScenarioOverlay, resolveScenarioIncludes, type ScenarioOverlay } from '../../src/sim/scenario/overlay';
 import { parseScenarioManifest, type ScenarioManifest } from '../../src/sim/scenario/manifest';
 import { buildScenarioIndex } from '../../scripts/scenarioIndex.mjs';
 import { tickGameOptions } from './tickGame';
@@ -17,13 +17,18 @@ export function scenarioIndexFs(): ScenarioManifest[] {
     return buildScenarioIndex(SCENARIOS_ROOT).scenarios.map((m) => parseScenarioManifest(m));
 }
 
-/** scenarios/<id>/ as a ScenarioOverlay (manifest + every file). */
-export function loadScenarioOverlayFs(id: string): ScenarioOverlay {
-    const manifest = scenarioIndexFs().find((m) => m.id === id);
-    if (manifest === undefined) throw new Error(`no scenario ${id} under ${SCENARIOS_ROOT}`);
+function readOverlayFs(manifest: ScenarioManifest): ScenarioOverlay {
     const files = new Map<string, string>();
-    for (const f of manifest.files) files.set(f, readFileSync(resolve(SCENARIOS_ROOT, id, f), 'utf8'));
+    for (const f of manifest.files) files.set(f, readFileSync(resolve(SCENARIOS_ROOT, manifest.id, f), 'utf8'));
     return { manifest, files };
+}
+
+/** scenarios/<id>/ as a ScenarioOverlay (manifest + every file), its `include`s resolved from the same folder. */
+export function loadScenarioOverlayFs(id: string): ScenarioOverlay {
+    const byId = new Map(scenarioIndexFs().map((m) => [m.id, readOverlayFs(m)] as const));
+    const overlay = byId.get(id);
+    if (overlay === undefined) throw new Error(`no scenario ${id} under ${SCENARIOS_ROOT}`);
+    return resolveScenarioIncludes(overlay, byId);
 }
 
 /** An inline overlay for tests: a manifest (plain object, validated) plus files. */

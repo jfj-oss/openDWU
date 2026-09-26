@@ -23,6 +23,7 @@ import { inflictDamageFull, type FighterLike } from './damage';
 import { clearFightersTargeting, fighterTargetEmpire } from './fighters';
 import { checkForPlanetDestroyerWeaponFiringDelayOnHyperExit } from './weapons';
 import { updatePosition } from '../movement';
+import { scenarioEmit } from '../scenario/hooks';
 
 /** Galaxy.3.cs 4959 IndexSize (galaxy.ts / movement.ts keep private copies). */
 const INDEX_SIZE = 400_000;
@@ -178,6 +179,7 @@ export function clearAllMissionsForTargetBuiltObject(galaxy: Galaxy, self: Built
  * galaxy index, galaxy / empire lists, pirate attack missions, system visibility).
  */
 export function builtObjectCompleteTeardown(galaxy: Galaxy, builtObject: BuiltObject, removeFromEmpire = true): void {
+    if (galaxy.scenario !== null) scenarioEmit(galaxy, 'builtObjectRemoved', { builtObject }); // mod layer
     const self = builtObject;
     self.hasBeenDestroyed = true;
     if (self.contractsToFulfill.length > 0) checkCancelContracts(galaxy, self);

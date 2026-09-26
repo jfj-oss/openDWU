@@ -12,6 +12,10 @@ import type { Race } from '../data/races';
 import type { EmpirePolicy } from '../data/policies';
 import type { Habitat } from '../types';
 import { generateEmpire } from '../empireGeneration';
+import { Empire as EmpireClass } from '../empire';
+import type { BuiltObject } from '../builtObject';
+import { loadEmpirePolicy } from '../researchSystem';
+import { takeOwnershipOfBuiltObject, takeOwnershipOfColonyFull } from '../combat/ownership';
 import { empireStorySetup, galaxyRaceByName } from '../story/storyEvents';
 import { resetEmpireTouchTimesForAge } from '../tick/gameStart';
 import { initEmpireTouchTimes } from '../tick/empireTick';
@@ -26,8 +30,23 @@ export interface MidGameEmpireSpec {
     race: Race | string;
     /** Empire name ('' / omitted: generated as the game does). */
     name?: string;
-    /** Capital habitat (empire) or base habitat (pirate). */
-    home: Habitat;
+    /** Capital habitat (empire) or base habitat (pirate). Optional with adoptOnly. */
+    home?: Habitat | null;
+    /**
+     * Adopt instead of generate (19b/19f): construct the Empire (policy, tech, design specifications, AI on, touch
+     * times) without GenerateEmpire — no capital is taken or reshaped (capital null until the empire owns a colony:
+     * takeOwnershipOfColonyFull → selectBestCandidateForCapital). `adopt` lists what it takes over right away.
+     */
+    adoptOnly?: boolean;
+    /** adoptOnly: colonies / ships / bases handed to the new empire (stock ownership transfer, in list order). */
+    adopt?: { colonies?: Habitat[]; builtObjects?: BuiltObject[] };
+    /**
+     * Keep the home planet as it is (19c): GenerateEmpire runs with no favourability (no diameter / quality / system
+     * rewrite) and the capital's resources, diameter and quality are restored afterwards.
+     */
+    preserveHome?: boolean;
+    /** Override the home-system factor (scales GenerateEmpire's starting population: ≈ factor × 2.2e9 at age 0). */
+    homeSystemFactor?: number;
     /** Empire age (GenerateEmpire's; default 1) — sets colony count / development around the capital. */
     age?: number;
     /** Tech level (default 0.5, the "Normal" start). */
@@ -55,6 +74,31 @@ function resolveRace(galaxy: Galaxy, race: Race | string): Race {
     return r;
 }
 
+/** adoptOnly: the Empire ctor (capital null) plus GenerateEmpire's non-capital steps (Galaxy.7.cs 5092 / 5282-5287). */
+function adoptEmpire(galaxy: Galaxy, spec: MidGameEmpireSpec, race: Race): Empire {
+    const policy = loadEmpirePolicy(galaxy.researchStatic, race, false);
+    const empire = new EmpireClass(galaxy, spec.name ?? race.name, null, race, spec.governmentId ?? defaultGovernmentId(race), 1.0, policy, false);
+    empire.playerEmpire = false;
+    if (race.designsPictureFamilyIndex >= 0) empire.designPictureFamilyIndex = race.designsPictureFamilyIndex;
+    empire.preWarpProgressEventsOccurred = true;
+    galaxy.empires.push(empire);
+    empire.generateDesignSpecifications(galaxy, race, false, race.name);
+    if (galaxy.researchStatic !== null) empire.research.setTechTreeLevel(galaxy.rnd, race, spec.techLevel ?? 0.5, false);
+    empire.research.update(race);
+    empire.reviewResearchAbilities();
+    empire.reviewDesignsBuiltObjectsImprovedComponents();
+    empire.reviewTroopTypes();
+    if (empire.policy !== null) spec.configurePolicy?.(empire.policy);
+    initEmpireTouchTimes(galaxy, empire);
+    for (const colony of spec.adopt?.colonies ?? []) {
+        takeOwnershipOfColonyFull(galaxy, empire, colony, empire, false, false); // as GenerateEmpire's capital hand-over
+    }
+    for (const bo of spec.adopt?.builtObjects ?? []) {
+        takeOwnershipOfBuiltObject(galaxy, empire, bo, empire);
+    }
+    return empire;
+}
+
 function defaultGovernmentId(race: Race): number {
     if (race.preferredStartingGovernment >= 0) return race.preferredStartingGovernment;
     const g = getGovernmentsStatic().find((x) => x !== null && x.availability === 0 && x.specialFunctionCode === 0);
@@ -69,13 +113,18 @@ export function createEmpireMidGame(galaxy: Galaxy, spec: MidGameEmpireSpec): Em
     if (galaxy.nextEmpireId >= galaxy.maximumEmpireCount) return null;
     const race = resolveRace(galaxy, spec.race);
     let empire: Empire;
-    if ((spec.kind ?? 'empire') === 'pirate') {
+    if (spec.adoptOnly === true) {
+        empire = adoptEmpire(galaxy, spec, race);
+    } else if (spec.home == null) {
+        throw new Error('createEmpireMidGame: `home` is required unless adoptOnly');
+    } else if ((spec.kind ?? 'empire') === 'pirate') {
         // As createGame's pirate player / generateNewPirateEmpires: a surface point for the base, then GeneratePirateEmpire.
-        const pt = galaxy.selectRelativeHabitatSurfacePoint(spec.home);
+        const home = spec.home;
+        const pt = galaxy.selectRelativeHabitatSurfacePoint(home);
         empire = generatePirateEmpire(
             galaxy,
             { independentColonies: galaxy.independentColonies, startingAge: galaxy.startingAge, difficultyLevel: galaxy.difficultyLevel },
-            spec.home,
+            home,
             Math.trunc(pt.x),
             Math.trunc(pt.y),
             race,
@@ -90,23 +139,30 @@ export function createEmpireMidGame(galaxy: Galaxy, spec: MidGameEmpireSpec): Em
         // Empire.cs 4320: the ctor stamps the touch times at CurrentDateTime (galaxyTick.ts does the same for new factions).
         initEmpireTouchTimes(galaxy, empire);
     } else {
+        const home = spec.home;
         const fav = spec.homeSystemFavourability ?? 'Normal';
-        const { homeSystemFactor } = Galaxy.resolveHomeSystem(fav);
+        const homeSystemFactor = spec.homeSystemFactor ?? Galaxy.resolveHomeSystem(fav).homeSystemFactor;
+        const kept = spec.preserveHome === true ? { resources: home.resources.map((r) => ({ ...r })), diameter: home.diameter, baseQuality: home.baseQuality } : null;
         empire = generateEmpire(
             galaxy,
             false,
             spec.name ?? '',
-            spec.home,
+            home,
             race,
             race.designsPictureFamilyIndex,
             spec.governmentId ?? defaultGovernmentId(race),
             homeSystemFactor,
-            fav,
+            kept !== null ? '' : fav,
             spec.age ?? 1,
             spec.techLevel ?? 0.5,
             1.0,
             false,
         ).empire;
+        if (kept !== null) {
+            home.resources = kept.resources;
+            home.diameter = kept.diameter;
+            home.baseQuality = kept.baseQuality;
+        }
         if (empire.policy !== null) spec.configurePolicy?.(empire.policy);
         if (spec.setup ?? true) empireStorySetup(galaxy, empire, 3.5, true, false);
         else resetEmpireTouchTimesForAge(galaxy, empire);

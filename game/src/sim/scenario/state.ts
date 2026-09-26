@@ -28,6 +28,8 @@ export class GalaxyScenario {
     resourceRules: ScenarioResourceRule[] = [];
     /** Game year (floor(starDate / YEAR_LENGTH)) the yearly tick last ran for; -1 = not yet anchored. */
     lastYear = -1;
+    /** Star date each periodic handler (by id) last ran / was anchored at. */
+    periodicLast: Record<string, number> = {};
     /** Per-package state (scenarioState). Values must be saveable: plain data, galaxy graph objects, registered classes. */
     state: Record<string, unknown> = {};
 }

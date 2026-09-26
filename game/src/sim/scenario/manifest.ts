@@ -43,6 +43,8 @@ export interface ScenarioManifest {
     resourcePlacement: ScenarioResourcePlacementRule[];
     /** Overlay files relative to the scenario folder (filled by the index generator / fs loader). */
     files: string[];
+    /** Scenario ids whose overlays are applied first (their flags / params / rules merged in; this one wins on a name). */
+    include: string[];
 }
 
 /** /assets/scenarios/index.json. */
@@ -115,6 +117,8 @@ export function parseScenarioManifest(input: unknown): ScenarioManifest {
         return { resource: str(r.resource, `resourcePlacement[${i}].resource`), ...ring(r, `resourcePlacement[${i}]`) };
     });
     const files = arr(o.files, 'files').map((f, i) => str(f, `files[${i}]`));
+    const include = arr(o.include, 'include').map((f, i) => str(f, `include[${i}]`));
+    if (include.includes(id)) throw new Error(`scenario manifest: ${id} includes itself`);
     return {
         id,
         name: typeof o.name === 'string' && o.name.trim() !== '' ? o.name : id,
@@ -124,10 +128,25 @@ export function parseScenarioManifest(input: unknown): ScenarioManifest {
         homePlacement,
         resourcePlacement,
         files,
+        include,
     };
 }
 
 /** An empty manifest (tests, the empty overlay). */
 export function emptyScenarioManifest(id = 'empty'): ScenarioManifest {
     return parseScenarioManifest({ id });
+}
+
+/** The manifest a scenario with includes runs with: included flags / params / rules merged in (the outer one wins). */
+export function mergeScenarioManifests(main: ScenarioManifest, included: readonly ScenarioManifest[]): ScenarioManifest {
+    const out: ScenarioManifest = { ...main, flags: [...main.flags], params: [...main.params], homePlacement: [], resourcePlacement: [] };
+    for (const m of included) {
+        for (const f of m.flags) if (!out.flags.some((x) => x.name === f.name)) out.flags.push(f);
+        for (const p of m.params) if (!out.params.some((x) => x.name === p.name)) out.params.push(p);
+        out.homePlacement.push(...m.homePlacement);
+        out.resourcePlacement.push(...m.resourcePlacement);
+    }
+    out.homePlacement.push(...main.homePlacement);
+    out.resourcePlacement.push(...main.resourcePlacement);
+    return out;
 }

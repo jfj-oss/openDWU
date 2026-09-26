@@ -45,6 +45,12 @@ which — like `loadGameData` — goes into the global text table):
   raceBiases row/column unless the overlay supplies them. Any other race file is a complete new race, appended.
 - **raceBiases.txt**: rows merged by name; every row padded with 0 to the new race count (the C# only populates
   Race.Biases when rows == races).
+- **BasedOn**: a race file (new file name) whose first key line is `BasedOn ;<stock race file>` is a new race: its key
+  lines apply over that race's text, and it starts with copies of the parent's policies, design templates and
+  raceBiases row/column (so biases stay populated). It needs its own Name.
+- **include**: `"include": ["<id>", …]` in scenario.json applies those scenarios' overlays first (recursively; cycles
+  rejected); flags / params / placement rules merge (the outer manifest wins on a name). Loaders resolve includes
+  (`resolveScenarioIncludes`) from the same scenario folder.
 - **Policy/[pirate/]<Race>.txt**: key-line patch over the race's base policy text (or a new policy).
 - **designTemplates / characters**: whole-file replace or add, keyed like the base maps.
 - **GameText.txt**: tags added or overridden (no clear).
@@ -88,6 +94,20 @@ A "Scenario" page between Victory Conditions and Start: "None" (default) plus ev
 
 Packages register their hooks at module load; each package module is imported from `src/sim/scenario/packages.ts`
 (which game.ts imports), so app and tests see the same registrations.
+
+Further hooks (requested by the 19a–19f specs):
+
+| Hook | Where | Notes |
+|---|---|---|
+| `registerScenarioPeriodic({ id, flag/scenarioId, periodDays, run })` | same long-block call as the yearly tick | game day = YEAR_LENGTH / 360; per-handler bookkeeping `GalaxyScenario.periodicLast` (saved); first open call anchors |
+| `registerScenarioGameStart({ …, run(galaxy, { randomPointInRing, inNebula }) })` | last step of createGame | may draw |
+| `registerScenarioEvent({ …, event, run })` / `scenarioEmit` | one guarded line per site: `colonyOwnerChanged` (takeOwnershipOfColonyFull end), `colonyFounded` (colonize command), `builtObjectOwnerChanged`, `builtObjectBuilt` (yard completion), `builtObjectRemoved` (teardown top), `habitatBombarded`, `intelMissionCompleted`, `empireEliminated`, `researchCompleted`, `characterCreated`, `abandonedShipClaimed`, `diplomaticRelationChanged` (war / treaties), `disaster` (every disaster NewsNet broadcast), `contractInitiated` (initiateContract end; handlers never draw) | typed payloads in hooks.ts `ScenarioEvents`; 19e-9's always-on freight listener would sit beside the contract site |
+| `registerScenarioQuery({ …, query, run })` / `scenarioQuery` | `empireApprovalRating` (taxes.ts) | pure value transforms, never draw; add further queries (e.g. 19f hyperDenyExempt) the same way |
+| decisions: `registerScenarioDecision({ kind, resolve, aiChoose })`, `raiseScenarioDecision`, `answerScenarioDecision`, expiry in the long block | `scenario/decisions.ts`; the player's question arrives as a GeneralDecision message whose popup (ui/messagePopups.ts) shows option buttons | state in `scenarioState('decisions')`, saved |
+| `createEmpireMidGame` options `adoptOnly` + `adopt: { colonies, builtObjects }` (no GenerateEmpire, capital null until a colony is owned), `preserveHome`, `homeSystemFactor` | empireMidGame.ts | |
+
+`scenarioState` values may be Maps keyed by stable ids (empireId, habitat index, character objects…) holding graph
+objects; they round-trip through the save codec (test).
 
 **Rnd policy.** Scenario code draws from `galaxy.rnd` only inside its own hooks: its yearly tick handler, the
 generation hooks when its manifest defines a rule, and functions it calls from there (e.g. createEmpireMidGame). It

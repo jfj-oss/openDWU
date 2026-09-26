@@ -59,7 +59,7 @@ import { GalaxyLocationType } from './galaxyLocation';
 import { GalaxyShape, HabitatCategoryType, HabitatType, type Habitat } from './types';
 import { Cargo, CargoList, ResourceRef } from './cargo';
 import { createGalaxyScenario } from './scenario/state';
-import { scenarioFindHomeHabitat } from './scenario/hooks';
+import { scenarioFindHomeHabitat, scenarioGameStart } from './scenario/hooks';
 import './scenario/packages'; // mod layer: registers the scenario packages' hooks
 
 export type HomeSystem = 'Harsh' | 'Trying' | 'Normal' | 'Agreeable' | 'Excellent';
@@ -1332,6 +1332,8 @@ export function createGame(opts: CreateGameOptions): Game {
     // Main.Part12.cs 3151 BaconMain.BaconInitialize(this) once Main starts the new game: the loaded BaconSettings.txt
     // takes effect (baconSettings.ts; the settings part only).
     baconInitializeSettings(galaxy, gd.baconSettings);
+    // Mod layer: the scenario game-start hook (after every stock start step, before the first frame; no-op without one).
+    if (galaxy.scenario !== null) scenarioGameStart(galaxy, { randomPointInRing, inNebula });
     stopAt('tail');
     return result();
 }

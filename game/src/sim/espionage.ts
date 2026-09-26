@@ -80,6 +80,7 @@ import { RaceEventType } from './eventTypes';
 import { REAL_SECONDS_IN_GALACTIC_YEAR, galaxyNow } from './tick/simTime';
 import { characterKillFromPerformIntelligenceMissions } from './espionagePrisoners';
 import type { ConstructionQueue } from './construction/constructionQueue';
+import { scenarioEmit } from './scenario/hooks';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Enums (IntelligenceMissionType.cs / IntelligenceMissionOutcome.cs, member order exact)
@@ -1744,6 +1745,7 @@ export function completeIntelligenceMission(galaxy: Galaxy, self: Empire, missio
         case T.CounterIntelligence:
             break;
     }
+    if (galaxy.scenario !== null) scenarioEmit(galaxy, 'intelMissionCompleted', { empire: self, mission, outcome: null }); // mod layer
 }
 
 // ---------------------------------------------------------------------------------------------------------------

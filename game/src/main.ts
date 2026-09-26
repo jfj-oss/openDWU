@@ -73,7 +73,7 @@ import { openGalactopedia } from './ui/screens/galactopedia';
 import { defaultStartGameOptions, piratesFor, STARTING_TECH_LEVEL, toCreateGameOptions, type StartGameOptions, maximumEmpireAmountFor, starCountFor } from './sim/startGameOptions';
 import { serializeGame, deserializeGame, savedScenarioId } from './sim/save/gameSave';
 import { loadScenarioIndex, loadScenarioOverlay } from './sim/scenario/fetchScenario';
-import { applyScenarioOverlay, type ScenarioOverlay } from './sim/scenario/overlay';
+import { applyScenarioOverlay, resolveScenarioIncludes, type ScenarioOverlay } from './sim/scenario/overlay';
 // [leftovers] begin
 import { closeGalacticHistory } from './ui/screens/galacticHistory';
 import { installEventMessages, removeEventMessages } from './ui/eventMessages';
@@ -233,7 +233,7 @@ function gameDataWithScenario(base: GameData, scenarioId: string | null): GameDa
     if (scenarioId === null) return base;
     const overlay = scenarioOverlays.get(scenarioId);
     if (overlay === undefined) throw new Error(`Scenario "${scenarioId}" is not available; cannot load this game.`);
-    return applyScenarioOverlay(base, overlay);
+    return applyScenarioOverlay(base, resolveScenarioIncludes(overlay, scenarioOverlays));
 }
 
 /** Mod layer: the GameData a save needs (its scenario's overlay over the base data). */

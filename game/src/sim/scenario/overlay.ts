@@ -17,12 +17,28 @@ import { parseResearch } from '../data/research';
 import type { BiasMatrix } from '../data/biases';
 import { BuiltObjectSubRole } from '../data/names';
 import { addText } from '../textResolver';
-import type { ScenarioManifest } from './manifest';
+import { mergeScenarioManifests, type ScenarioManifest } from './manifest';
 
 /** A scenario folder's content: its manifest and every overlay file (path relative to the folder → text). */
 export interface ScenarioOverlay {
     manifest: ScenarioManifest;
     files: Map<string, string>;
+    /** Resolved `include` overlays (resolveScenarioIncludes), applied before this one. */
+    includes?: ScenarioOverlay[];
+}
+
+/**
+ * Attaches the overlays named by manifest.include (recursively, from `byId`); throws on a missing id or a cycle.
+ */
+export function resolveScenarioIncludes(overlay: ScenarioOverlay, byId: ReadonlyMap<string, ScenarioOverlay>, seen: readonly string[] = []): ScenarioOverlay {
+    const chain = [...seen, overlay.manifest.id];
+    const includes = overlay.manifest.include.map((id) => {
+        if (chain.includes(id)) throw new Error(`scenario include cycle: ${[...chain, id].join(' → ')}`);
+        const inc = byId.get(id);
+        if (inc === undefined) throw new Error(`scenario ${overlay.manifest.id} includes unknown scenario ${id}`);
+        return resolveScenarioIncludes(inc, byId, chain);
+    });
+    return { ...overlay, includes };
 }
 
 /** GameData.scenario: what applyScenarioOverlay applied. */
@@ -92,6 +108,21 @@ function moveKey<V>(map: Map<string, V> | undefined, from: string, to: string): 
     map.set(to, v);
 }
 
+/** The `BasedOn ;<file>` line of a race overlay (first key line), or null; `rest` = the text without it. */
+function basedOnFile(text: string): { file: string; rest: string } | null {
+    const lines = text.split(/\r\n|\r|\n/);
+    for (let i = 0; i < lines.length; i++) {
+        const t = lines[i].trim();
+        if (t === '' || t.startsWith("'")) continue;
+        const sep = lines[i].indexOf(';');
+        if (sep < 0 || lines[i].substring(0, sep).trim() !== 'BasedOn') return null;
+        let file = lines[i].substring(sep + 1).trim().replace(/^races\//i, '');
+        if (!/\.txt$/i.test(file)) file += '.txt';
+        return { file, rest: lines.filter((_, j) => j !== i).join('\n') };
+    }
+    return null;
+}
+
 const RECORD_FILES = ['resources.txt', 'components.txt', 'facilities.txt', 'fighters.txt', 'plagues.txt', 'research.txt'] as const;
 
 /**
@@ -100,6 +131,26 @@ const RECORD_FILES = ['resources.txt', 'components.txt', 'facilities.txt', 'figh
  * (plus `scenario`).
  */
 export function applyScenarioOverlay(base: GameData, overlay: ScenarioOverlay): GameData {
+    if (overlay.includes === undefined || overlay.includes.length === 0) {
+        if (overlay.manifest.include.length > 0) throw new Error(`scenario ${overlay.manifest.id}: includes not resolved (resolveScenarioIncludes)`);
+        return applyOneOverlay(base, overlay);
+    }
+    // Included overlays first (in order), then this one; the result carries the merged manifest.
+    let gd = base;
+    const files: string[] = [];
+    const warnings: string[] = [];
+    const manifests: ScenarioManifest[] = [];
+    for (const inc of overlay.includes) {
+        gd = applyScenarioOverlay(gd, inc);
+        files.push(...gd.scenario!.files.map((f) => (f.includes(':') ? f : `${inc.manifest.id}:${f}`)));
+        warnings.push(...gd.scenario!.warnings);
+        manifests.push(gd.scenario!.manifest);
+    }
+    gd = applyOneOverlay(gd, overlay);
+    return { ...gd, scenario: { manifest: mergeScenarioManifests(overlay.manifest, manifests), files: [...files, ...gd.scenario!.files], warnings: [...warnings, ...gd.scenario!.warnings] } };
+}
+
+function applyOneOverlay(base: GameData, overlay: ScenarioOverlay): GameData {
     const warnings: string[] = [];
     const files = new Map<string, string>();
     for (const [p, text] of overlay.files) files.set(normaliseOverlayPath(p), text);
@@ -120,10 +171,31 @@ export function applyScenarioOverlay(base: GameData, overlay: ScenarioOverlay): 
 
     // --- races/: patch (same file as a base race: key lines applied over the base text), rename, or add.
     const renames: [string, string][] = [];
+    const derived: [string, string][] = []; // [parent, new] for BasedOn races
     let addedRaces = 0;
     for (const p of paths) {
         if (!lower(p).startsWith('races/')) continue;
         handled.add(p);
+        // "BasedOn ;<stock race file>": a new race extending a stock race (key lines over that race's text).
+        const basedOn = basedOnFile(files.get(p)!);
+        if (basedOn !== null) {
+            const parentText = sourceTexts?.get(`races/${basedOn.file}`.toLowerCase());
+            if (parentText === undefined) {
+                warnings.push(`${p}: BasedOn ${basedOn.file} is not a loaded race file`);
+                continue;
+            }
+            const text = `${parentText}\n${basedOn.rest}`;
+            const race = parseRace(text);
+            const parentName = parseRace(parentText).name;
+            if (race.name === '' || race.name === parentName || races.some((r) => r.name === race.name)) {
+                warnings.push(`${p}: a BasedOn race needs its own new Name`);
+                continue;
+            }
+            sourceTexts?.set(lower(p), text);
+            races.push(race);
+            derived.push([parentName, race.name]);
+            continue;
+        }
         const baseText = sourceTexts?.get(lower(p));
         const text = baseText !== undefined ? `${baseText}\n${files.get(p)!}` : files.get(p)!;
         const race = parseRace(text);
@@ -161,6 +233,32 @@ export function applyScenarioOverlay(base: GameData, overlay: ScenarioOverlay): 
         if (bi >= 0) {
             if (raceBiases === base.raceBiases) raceBiases = cloneBias(raceBiases);
             raceBiases.names[bi] = to;
+        }
+    }
+
+    // A BasedOn race starts with copies of its parent's policies, design templates and bias row / column.
+    for (const [from, to] of derived) {
+        const copyKey = <V>(map: Map<string, V> | undefined, a: string, b: string) => {
+            if (map !== undefined && map.has(a) && !map.has(b)) map.set(b, map.get(a)!);
+        };
+        copyKey(policies, from, to);
+        copyKey(piratePolicies, from, to);
+        for (const sub of ['', 'pirate/']) copyKey(sourceTexts, `policy/${sub}${from}.txt`.toLowerCase(), `policy/${sub}${to}.txt`.toLowerCase());
+        if (designSpecificationTexts !== undefined) {
+            const prefix = `designTemplates/${from.toLowerCase()}/`;
+            for (const key of [...designSpecificationTexts.keys()]) {
+                if (key.startsWith(prefix)) copyKey(designSpecificationTexts, key, `designTemplates/${to.toLowerCase()}/${key.slice(prefix.length)}`);
+            }
+        }
+        const bi = raceBiases.names.indexOf(from);
+        if (bi >= 0 && !raceBiases.names.includes(to)) {
+            if (raceBiases === base.raceBiases) raceBiases = cloneBias(raceBiases);
+            const m = raceBiases.matrix;
+            for (let r = 0; r < m.length; r++) if (m[r] !== undefined) m[r].push(m[r][bi] ?? 0);
+            const row = [...(m[bi] ?? [])];
+            row[row.length - 1] = m[bi]?.[bi] ?? 0; // its bias toward itself = the parent's toward itself
+            raceBiases.names.push(to);
+            m.push(row);
         }
     }
 
