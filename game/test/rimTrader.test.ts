@@ -36,7 +36,7 @@ import {
     rimTraderEmpire,
     rimTraderPort,
     rimTraderStanding,
-    rimTraderImportFromSelf,
+    rimTraderImportBlocked,
 } from '../src/sim/scenario/rimTrade/common';
 import { rimTraderPortStock, rimTraderYear } from '../src/sim/scenario/rimTrade/rimTrader';
 import { rimTraderTermsRows } from '../src/ui/scenario/rimTraderRows';
@@ -273,8 +273,8 @@ describe('19a rim trader — ledger, access and AI rules', () => {
         }
         // Imports are bought from foreign sellers only.
         const imp = orders.find((o) => o.commodityResource?.resourceId === rim[0])!;
-        expect(rimTraderImportFromSelf(g, imp, r)).toBe(true);
-        expect(rimTraderImportFromSelf(g, imp, human)).toBe(false);
+        expect(rimTraderImportBlocked(g, imp, r)).toBe(true);
+        expect(rimTraderImportBlocked(g, imp, human)).toBe(false);
         const n = orders.length;
         rimTraderYear(g); // 50 more consumed per good: one top-up order each for the 50 units
         const after = g.orders.getOrdersForBuiltObject(port).items;

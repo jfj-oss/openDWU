@@ -11,7 +11,6 @@ import { YEAR_LENGTH } from '../src/sim/galaxyTime';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from '../src/sim/diplomacy';
 import { rimTradeState, rimTraderEmpire, rimParam } from '../src/sim/scenario/rimTrade/common';
 import { declareWar } from '../src/sim/diplomacyTick';
-import { appendFileSync } from 'node:fs';
 
 let base: GameData;
 beforeAll(async () => {
@@ -24,7 +23,6 @@ describe('19a rim trader soak', () => {
         const g = game.galaxy;
         const r = rimTraderEmpire(g)!;
         const startColonies = r.colonies.length;
-        // Wars the Concord is in must have been declared on it: count its own declarations through a spy on the rule.
         let everAccess = false;
         const summary: string[] = [];
         for (let year = 1; year <= 10; year++) {
@@ -34,11 +32,10 @@ describe('19a rim trader soak', () => {
             const met = others.filter((e) => obtainDiplomaticRelation(r, e).type !== DiplomaticRelationType.NotMet).length;
             const open = others.filter((e) => obtainDiplomaticRelation(r, e).supplyRestrictedResources).map((e) => e.name);
             if (open.length > 0) everAccess = true;
-            summary.push(`year ${year}: met ${met}/${others.length}, colonies ${r.colonies.length}, money ${Math.round(r.stateMoney)}, rim buys ${st.stats.rimBuys} (${st.stats.rimUnits} u, ${Math.round(st.stats.rimValue)} cr), rare sales ${st.stats.rareSales} (${st.stats.rareUnits} u, ${Math.round(st.stats.rareValue)} cr), open: ${open.join(', ') || '-'}`);
-            appendFileSync('/tmp/claude-1000/-home-justinf/1eafa9b6-aa74-5148-afe4-ed417f2fbdf0/scratchpad/soak.log', summary[summary.length - 1] + '\n');
+            summary.push(`year ${year}: met ${met}/${others.length}, colonies ${r.colonies.length}, money ${Math.round(r.stateMoney)}, rim buys ${st.stats.rimBuys} (${st.stats.rimUnits} u, ${Math.round(st.stats.rimValue)} cr), rare sales ${st.stats.rareSales} (${st.stats.rareUnits} u, ${Math.round(st.stats.rareValue)} cr), open: ${open.join(', ') || '-'}, ledger ${JSON.stringify(st.ledger)}`);
             expect(r.colonies.length).toBeLessThanOrEqual(Math.max(startColonies, rimParam(g, 'rimTraderMaxColonies')) + 1);
         }
-        void 0;
+        console.log(summary.join('\n'));
         // R1: a direct declaration by the Concord is a no-op.
         const target = g.empires.find((e) => e !== null && e !== r && e.active && obtainDiplomaticRelation(r, e).type !== DiplomaticRelationType.War) ?? null;
         if (target !== null) {
@@ -46,8 +43,13 @@ describe('19a rim trader soak', () => {
             declareWar(g, r, target);
             expect(obtainDiplomaticRelation(r, target).type).toBe(before);
         }
+        // Trade volume depends on contact (seed 1: first contact in years 2-8) and on who holds rim goods in freighter
+        // range; the summary above reports it. Access, when granted, must match the ledger rule (R3).
         const st = rimTradeState(g);
-        expect(st.stats.rimBuys + Object.keys(st.ledger).length).toBeGreaterThanOrEqual(0);
+        for (const e of g.empires) {
+            if (e === null || e === r || !obtainDiplomaticRelation(r, e).supplyRestrictedResources) continue;
+            expect((st.ledger[e.empireId]?.credit ?? 0) * rimParam(g, 'rimTraderExchangeRate') - (st.ledger[e.empireId]?.debit ?? 0)).toBeGreaterThanOrEqual(0);
+        }
         void everAccess;
     }, 3600000);
 });

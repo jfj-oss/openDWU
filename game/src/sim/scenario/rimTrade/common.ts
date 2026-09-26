@@ -182,13 +182,15 @@ export function rimTraderOnlyTradingPost(galaxy: Galaxy, other: Empire): BuiltOb
 }
 
 /**
- * R4 (step 12c): the Concord's rim-good import orders at its port are filled by foreign sellers only (its own rim
- * mining stations are nearer than any foreign post, so otherwise it would buy from itself and never trade).
+ * R4 (step 12c): the Concord's rim-good import orders at its port are filled only by empires that can earn standing —
+ * not by the Concord itself (its own rim mining stations are nearer than any foreign post, so it would buy from itself
+ * and never trade), not by independents or pirates.
  */
-export function rimTraderImportFromSelf(galaxy: Galaxy, order: { requestingBuiltObject: BuiltObject | null; requestingColony: Habitat | null; commodityResource: { resourceId: number } | null }, seller: Empire | null): boolean {
+export function rimTraderImportBlocked(galaxy: Galaxy, order: { requestingBuiltObject: BuiltObject | null; requestingColony: Habitat | null; commodityResource: { resourceId: number } | null }, seller: Empire | null): boolean {
     if (!scenarioFlag(galaxy, 'rimTrader') || order.commodityResource === null) return false;
     const r = rimTraderEmpire(galaxy);
-    if (r === null || seller !== r || !rimGoodIds(galaxy).includes(order.commodityResource.resourceId)) return false;
+    if (r === null || !rimGoodIds(galaxy).includes(order.commodityResource.resourceId)) return false;
     const port = rimTraderPort(galaxy);
-    return port !== null && (order.requestingBuiltObject === port || order.requestingColony === port);
+    if (port === null || (order.requestingBuiltObject !== port && order.requestingColony !== port)) return false;
+    return seller === null || seller === r || seller === galaxy.independentEmpire || seller.pirateEmpireBaseHabitat !== null;
 }
