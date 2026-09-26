@@ -28,7 +28,6 @@ import { BuiltObjectStance } from '../design';
 import { ComponentType } from '../data/components';
 import { ComponentCategoryType } from '../data/policies';
 import { ComponentStatus } from '../builtObjectComponent';
-import { DEFAULT_BASE_TECH_COST } from '../componentStatic';
 import { researchComponentTechPoints, resolveSubRoleDescription } from '../designGeneration';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from '../diplomacy';
 import { PirateRelationType, obtainPirateRelation } from '../pirateRelations';
@@ -244,8 +243,7 @@ export function checkOurEmpireBoarding(empire: Empire, target: BuiltObject, buil
 }
 
 /**
- * Galaxy.4.cs 1797 static ResolveTechBonusFactor(empire, galaxy, builtObject). Galaxy.BaseTechCost is not kept on the TS
- * Galaxy (designGeneration.ts uses DEFAULT_BASE_TECH_COST the same way — TODO(port): the game option).
+ * Galaxy.4.cs 1797 static ResolveTechBonusFactor(empire, galaxy, builtObject); 1805 num3 = galaxy.BaseTechCost.
  */
 export function resolveTechBonusFactor(empire: Empire | null, galaxy: Galaxy, builtObject: BuiltObject): number {
     let result = 1.0;
@@ -256,7 +254,7 @@ export function resolveTechBonusFactor(empire: Empire | null, galaxy: Galaxy, bu
         const component = builtObject.components.items[i];
         // ResearchSystem.GetMinTechPoints(component): ComponentMinTechPoints[ComponentID] or 0.
         const minTechPoints = minTable.length > component.def.componentId ? minTable[component.def.componentId] : 0;
-        let num3 = DEFAULT_BASE_TECH_COST;
+        let num3 = galaxy.baseTechCost;
         if (empire !== null && empire.research !== null && empire.research.checkComponentResearched(component.def)) {
             num3 = minTechPoints;
         }

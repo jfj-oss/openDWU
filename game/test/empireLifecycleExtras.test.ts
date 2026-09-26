@@ -47,6 +47,7 @@ describe('initiateEmpireSplitAt (Empire.1.cs 1102 / 2883, split for targeted sec
         // stateDigest + Galaxy.Rnd draw count right after the faithful split on seed 1 (recorded before the split into
         // splinterEmpireAt / initiateEmpireSplitAt; must never move with that refactor).
         // Moved (new) → "a8b312e8d6f7df18:288951": new pin: empireLifecycle.aiSplitDigest (faithful InitiateEmpireSplit on seed 1, recorded on the pre-refactor code) (2026-09-26)
+        // Moved "a8b312e8d6f7df18:288951" → "82600a40b8a35771:289000": merge: todosweep2 (planet DoTasks, ProcessEmpireScienceShips scheduling) on top of the integration branch's todosweep/combattest pins (2026-09-26)
         expect(`${stateDigest(galaxy)}:${galaxy.rnd.drawCount}`).toMatchPin('empireLifecycle.aiSplitDigest');
     }, 300000);
 

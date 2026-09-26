@@ -94,10 +94,6 @@ export enum PreWarpProgressEventType {
     FirstPirateRaid,
 }
 
-// Galaxy.cs 729 ColonizationRangeEnforceLimit = true / 732 ColonizationRange = 3000000f (game options).
-// TODO(port): these are Galaxy game options; createGame does not expose them yet — the C# defaults are used.
-const COLONIZATION_RANGE_ENFORCE_LIMIT = true;
-const COLONIZATION_RANGE = 3000000;
 
 /** Galaxy.3.cs 5008 HabitatToEmpireMinimumIntelligence. */
 const HABITAT_TO_EMPIRE_MINIMUM_INTELLIGENCE = 69;
@@ -161,11 +157,12 @@ function isRestrictedResource(galaxy: Galaxy, resourceId: number): boolean {
 /** Empire.4.cs 4408 CanEmpireColonizeHabitatRange(empire, habitat). */
 export function canEmpireColonizeHabitatRange(galaxy: Galaxy, empire: Empire, habitat: Habitat): boolean {
     let result = false;
-    if (COLONIZATION_RANGE_ENFORCE_LIMIT) {
+    // Galaxy.cs 729 / 732 game options (Start.2.cs 508-509: the wizard's colonization-range page).
+    if (galaxy.colonizationRangeEnforceLimit) {
         const habitat2 = fastFindNearestColony(galaxy, habitat.xpos, habitat.ypos, empire, 0);
         if (habitat2 !== null) {
             const num = galaxy.calculateDistance(habitat.xpos, habitat.ypos, habitat2.xpos, habitat2.ypos);
-            if (num <= COLONIZATION_RANGE) result = true;
+            if (num <= galaxy.colonizationRange) result = true;
         } else {
             result = true;
         }

@@ -21,7 +21,7 @@
 
 import { BuiltObjectSubRole } from './builtObjectTypes';
 import { csInt } from './builtObjectComponent';
-import { DEFAULT_BASE_TECH_COST, componentImprovementFromComponent, evaluateLatestByCategory, evaluateLatestByType, type ComponentDefinition, type ComponentImprovementEntry } from './componentStatic';
+import { componentImprovementFromComponent, evaluateLatestByCategory, evaluateLatestByType, type ComponentDefinition, type ComponentImprovementEntry } from './componentStatic';
 import { ComponentType } from './data/components';
 import type { ResearchNode as ResearchNodeDefinition } from './data/research';
 import { BattleTactics, BuiltObjectFleeWhen, BuiltObjectRole, InvasionTactics, type DesignSpecification } from './data/designSpecifications';
@@ -311,9 +311,8 @@ export function getBuildableDesignsBySubRoles(designs: readonly Design[], subRol
 // from Galaxy.SetResearchComponentMaxTechPoints (Galaxy.3.cs 1927), which the Galaxy ctor
 // calls (Galaxy.4.cs 2136) right after SetResearchRaceSpecialProjects (so AllowedRaces is the
 // ResearchStatic.allowedRaces map). The TS port computes it lazily per ResearchStatic (pure,
-// no Rnd). TODO(port): Galaxy ctor baseTechCost (Start.2.cs game option) is not kept on the TS
-// Galaxy; C# would see (int)baseTechCost — the TS uses DEFAULT_BASE_TECH_COST (120000), the
-// same value componentStatic.ts bakes into research costs.
+// no Rnd) from galaxy.baseTechCost — the Galaxy ctor's (int)baseTechCost (Start.2.cs 489 / Galaxy.4.cs
+// 2136), the same value componentStatic.ts bakes into this ResearchStatic's research costs.
 
 export interface ComponentTechPoints {
     max: number[];
@@ -416,7 +415,7 @@ export function researchComponentTechPoints(galaxy: Galaxy): ComponentTechPoints
     let tp = techPointsCache.get(stat);
     if (tp === undefined) {
         const componentCount = stat.componentStatic?.definitions.length ?? stat.componentsById.size;
-        tp = calculateComponentMinMaxTechPoints(DEFAULT_BASE_TECH_COST, stat.definitions, stat.allowedRaces, componentCount);
+        tp = calculateComponentMinMaxTechPoints(galaxy.baseTechCost, stat.definitions, stat.allowedRaces, componentCount);
         techPointsCache.set(stat, tp);
     }
     return tp;

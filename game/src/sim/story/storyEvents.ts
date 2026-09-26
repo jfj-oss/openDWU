@@ -75,7 +75,6 @@ import { EmpireMessageType, sendMessageToEmpire, sendMessageToEmpireWithTitle } 
 import { calculateEmpireWarValue } from '../diplomacyTick';
 import { galaxyStarDate, REAL_SECONDS_IN_GALACTIC_YEAR } from '../tick/simTime';
 import { startStarDateForAge } from '../galaxyTime';
-import { DEFAULT_BASE_TECH_COST } from '../componentStatic';
 import { cloneDesign, galaxyDesignSpecificationBySubRole, findLonelyHabitat, findLonelyHabitatAt, findLonelyHabitatGalacticEdge, generateUnownedBuiltObjectFromDesign, BuiltObjectEncounterAction, BuiltObjectEncounterEventType } from '../gameStartTail';
 import { findNearestHabitatUnoccupiedSystem } from '../startHabitats';
 import { determineAngle } from '../creature';
@@ -950,9 +949,8 @@ export function checkOfferStoryHint(galaxy: Galaxy, self: Empire): void {
                 if (galaxy.empires[j] != null && galaxy.empires[j].active && galaxy.empires[j].colonies != null) num4 += galaxy.empires[j].colonies.length;
             }
             const num5 = Math.trunc(0.5 * expectedMaximumColoniesInGalaxy(galaxy));
-            // TODO(port): Galaxy.BaseTechCost (game option, Galaxy ctor) is not kept on the TS Galaxy — the default is used
-            // (designGeneration.ts / attackAI.ts convention).
-            let d = DEFAULT_BASE_TECH_COST / 120000.0;
+            // Empire.9.cs 5407 (double)_Galaxy.BaseTechCost / 120000.0.
+            let d = galaxy.baseTechCost / 120000.0;
             d = Math.max(1.0, Math.sqrt(d));
             let num6 = 25;
             if (galaxy.age === 0) num6 += 15;
