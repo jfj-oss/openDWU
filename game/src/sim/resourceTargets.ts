@@ -17,6 +17,7 @@
 // Habitat.BasesAtHabitat is the real list (filled by Empire.addBuiltObjectToGalaxy).
 
 import { BuiltObjectMissionType, builtObjectMission, builtObjectSubsequentMissions } from './missions/mission';
+import { crisesMiningPriority } from './scenario/emergent/crisesCore';
 import type { Galaxy } from './galaxy';
 import { HabitatCategoryType, type Habitat } from './types';
 import type { Empire } from './empire';
@@ -439,5 +440,13 @@ export function identifyResourceCentres(galaxy: Galaxy, empire: Empire, filterOu
     }
     netSort(habitatPrioritizationList, (a, b) => a.compareTo(b));
     habitatPrioritizationList.reverse();
+    // 19d2 AI rule 2 (scenario flag): sources of a luxury the empire lost widely go first (stable reorder, no Rnd).
+    if (galaxy.scenario !== null) {
+        const priority = crisesMiningPriority(galaxy, empire);
+        if (priority.length > 0) {
+            const first = habitatPrioritizationList.filter((p) => p.habitat !== null && p.habitat.resources.some((r) => priority.includes(r.resourceId)));
+            if (first.length > 0) return [...first, ...habitatPrioritizationList.filter((p) => !first.includes(p))];
+        }
+    }
     return habitatPrioritizationList;
 }

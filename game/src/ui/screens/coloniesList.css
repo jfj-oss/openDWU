@@ -153,3 +153,15 @@
     width: 16px;
     height: 16px;
 }
+/* Mod layer (19d2 resource crises): shortage marker next to the colony name. */
+.colonies-list-shortage-tag {
+    margin-left: 6px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #e8704a;
+    border: 1px solid rgba(232, 112, 74, 0.5);
+    border-radius: 3px;
+    padding: 0 4px;
+    cursor: help;
+}

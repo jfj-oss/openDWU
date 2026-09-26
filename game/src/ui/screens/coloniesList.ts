@@ -13,6 +13,7 @@ import { habitatDevelopmentLevel } from '../../sim/developmentLevel';
 import { empireApprovalRating } from '../../sim/taxes';
 import { habitatAnnualRevenue } from '../../sim/forceStructure';
 import { formatPopulation } from '../hud';
+import { colonyShortageMarker, crisesApprovalBreakdown } from '../../sim/scenario/emergent/crisesCore';
 
 export interface ColoniesListOptions {
     /** The empire whose colonies are listed (the player's). */
@@ -37,6 +38,22 @@ export interface ColonyRow {
     gdp: string;
     tax: string;
     troops: string;
+    /** Mod layer (19d2): the shortage marker's tooltip (lost luxuries / open crisis), or null (no marker). */
+    shortage: string | null;
+    /** Mod layer: scenario approval terms as tooltip lines ('Shortages -6.0'), or null. */
+    approvalBreakdown: string | null;
+}
+
+/** Scenario extras for one colony row (19d2 shortage marker + approval breakdown). */
+export interface ColonyScenarioInfo {
+    shortage: string | null;
+    approvalBreakdown: { label: string; value: number }[];
+}
+
+/** The scenario extras of a colony, or null with no scenario. Pure. */
+export function colonyScenarioInfo(galaxy: Galaxy, h: Habitat): ColonyScenarioInfo | null {
+    if (galaxy.scenario === null) return null;
+    return { shortage: colonyShortageMarker(galaxy, h), approvalBreakdown: crisesApprovalBreakdown(galaxy, h) };
 }
 
 /** The four approval icons drawn by ItemListPanel.cs 895-898
@@ -90,6 +107,7 @@ export function colonyMetrics(galaxy: Galaxy, h: Habitat): ColonyMetrics | null 
 export function colonyRows(
     empire: Empire,
     metrics?: (h: Habitat) => ColonyMetrics | null,
+    scenario?: (h: Habitat) => ColonyScenarioInfo | null,
 ): ColonyRow[] {
     return [...empire.colonies]
         .sort((a, b) => {
@@ -100,6 +118,7 @@ export function colonyRows(
         })
         .map((h) => {
             const m = metrics ? metrics(h) : null;
+            const s = scenario ? scenario(h) : null;
             return {
                 habitat: h,
                 name: h.name,
@@ -110,6 +129,8 @@ export function colonyRows(
                 gdp: m ? formatThousandsK(m.revenue) : '—',
                 tax: `${Math.round((h.taxRate ?? 0) * 100)}%`,
                 troops: String(h.troops?.count ?? 0),
+                shortage: s?.shortage ?? null,
+                approvalBreakdown: s !== null && s.approvalBreakdown.length > 0 ? s.approvalBreakdown.map((l) => `${l.label} ${l.value.toFixed(1)}`).join('\n') : null,
             };
         });
 }
@@ -182,7 +203,7 @@ function createColoniesList(opts: ColoniesListOptions): OpenState {
     header.prepend(hName);
     body.appendChild(header);
 
-    for (const row of colonyRows(opts.empire, (h) => colonyMetrics(opts.empire.galaxy, h))) {
+    for (const row of colonyRows(opts.empire, (h) => colonyMetrics(opts.empire.galaxy, h), (h) => colonyScenarioInfo(opts.empire.galaxy, h))) {
         const line = document.createElement('div');
         line.className = 'colonies-list-row';
 
@@ -193,6 +214,14 @@ function createColoniesList(opts: ColoniesListOptions): OpenState {
             const tag = document.createElement('span');
             tag.className = 'colonies-list-capital-tag';
             tag.textContent = 'capital';
+            name.appendChild(tag);
+        }
+        if (row.shortage !== null) {
+            // Mod layer (19d2): shortage marker, lost luxuries in the tooltip.
+            const tag = document.createElement('span');
+            tag.className = 'colonies-list-shortage-tag';
+            tag.textContent = 'shortage';
+            tag.title = row.shortage;
             name.appendChild(tag);
         }
 
@@ -211,7 +240,7 @@ function createColoniesList(opts: ColoniesListOptions): OpenState {
             img.className = 'colonies-list-approval-icon';
             img.src = `/assets/dwu/images/ui/chrome/${row.approval}.png`;
             img.alt = row.approval;
-            img.title = row.approval;
+            img.title = row.approvalBreakdown !== null ? `${row.approval}\n${row.approvalBreakdown}` : row.approval;
             img.draggable = false;
             approval.appendChild(img);
         }

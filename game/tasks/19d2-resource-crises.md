@@ -177,3 +177,43 @@ empire. Plus §S6 (1)–(3).
 
 ## 10. Size
 ~2–3 days (triggers + propagation 1.5, UI 0.5, calibration/tests 0.5–1).
+
+## 11. Implementation status (wip/s19d2)
+Built as the stand-alone scenario `scenarios/resource-crises/` (flag `resourceCrises`, the four params; GameText block
+`[19d2]`) because the shared `scenarios/emergent/` folder (19d1 §S1) is not on this branch yet — when it lands,
+`emergent` can `include: ["resource-crises"]` or copy the flag/params entries. Code: `src/sim/scenario/emergent/`
+`crisesCore.ts` (state, pure formulas, record hooks, UI rows; imported by the ported call sites), `crises.ts` (yearly
+handler, triggers, AI rules, registrations), `crisesActions.ts` (the fuel decision); `packages.ts` imports `crises.ts`.
+Ported call sites (each one guarded `galaxy.scenario !== null`, flag checked inside): market.ts reviewResourcePrices,
+industry.ts (9 extraction sites), pirates/missionsMarket.ts (smuggle price, war-only offers, AI rule 3),
+combat/invasion.ts doRaidBonuses, missions/cmdDocking.ts (smuggle delivery), resourceTargets.ts identifyResourceCentres.
+UI: Empire Summary "Crises" rows, Colonies list shortage tag + approval tooltip breakdown.
+
+Deviations / notes:
+- Calibration (§7): seed 1, years 1→5, 217 sources: units per abundance point per year p10 0, median 3.52, p90 14.8,
+  max 24 ⇒ default `reserveUnitsPerAbundance` is **250** (not 2000, which gives a ~570-year median life).
+- §S3 approval-term hook is not on this branch: the shortage term uses the mod layer's `empireApprovalRating` query
+  (added after the stock multipliers, not before them; `calculateUnmodifiedApproval` does not subtract it).
+  `crisesApprovalBreakdown` stands in for `scenarioApprovalBreakdown`.
+- §S4 decisions: the branch's `registerScenarioDecision` / `raiseScenarioDecision` API is used; options have no
+  `enabled` flag, so "Emergency purchase" is omitted when unaffordable. The popup answers via `answerScenarioDecision`
+  directly (ui/messagePopups.ts), not through `issuePlayerCommand` — not fixed here (owned elsewhere); no local
+  decisionLog either.
+- Trigger 5 runs from the yearly handler for every empire: `checkForStrandedShips` only runs for the player's empire
+  (empireTick.ts / pirateTick.ts), so a hook there would miss every AI. "Grounded" = fuel-handicapped, out of fuel, or
+  < 10 % fuel with no stock of its fuel at the empire's colonies / ports (stands in for "no reachable refuelling point").
+- AI rule 3 export bookkeeping uses the `contractInitiated` scenario event (seller → resource → buyer, this/last year).
+
+- Soak (`test/emergentCrisesSoak.test.ts`, opt-in `DWU_CRISES_SOAK=1`): the one 30-year run so far threw the base
+  sim's `TODO(port) M4d: component cargo` (manufacturingQueue.ts ManufacturingQueue.clear ← missions/assign.ts
+  clearPreviousMissionRequirements ← combat/threats.ts threatEvaluation) mid-run, so the §8 soak acceptance
+  (depletion + crisis price seen, bounded unrest, no flip-flop, calibration 40–80 years) is unverified. Unknown whether the
+  flag-on economy makes that path reachable or it is a long-run base gap.
+
+TODO (optional / not done):
+- TODO(19d2): make the 30-year soak pass (see the M4d note above) and turn it back on by default.
+- TODO(19d2): AI rule 4 test (pirate acceptance order of a crisis-priced vs a normal smuggle offer on the harness).
+- TODO(19d2): resource icons in the Empire Summary crises rows; a crisis badge on a market / price panel (the UI has
+  no panel showing `galaxyResourceCurrentPrices` yet).
+- TODO(19d2): replace the local approval query / breakdown with 19d1 §S3 `registerScenarioApprovalTerm` once merged;
+  move the flag/params into `scenarios/emergent/` per §S1.

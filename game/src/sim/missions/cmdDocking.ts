@@ -15,6 +15,7 @@
 // docks at a colony whose bases out-scan its jamming; Dock → CheckMissionStillValid (logistics/docking.ts, its draw is
 // unreachable). Character events (SmugglingDetection 2819, SmugglingSuccess 3960) draw inside M4u.
 
+import { recordSmuggleDelivery } from '../scenario/emergent/crisesCore';
 import type { Galaxy } from '../galaxy';
 import type { BuiltObject } from '../builtObject';
 import type { Habitat } from '../types';
@@ -695,6 +696,7 @@ export const cmdUnload: CommandHandler = (ctx) => {
                             firstByTargetAndType.playerIncomeEarned += num14;
                         }
                         performPrivateTransaction(soEmpire, 0.0 - num14);
+                        if (galaxy.scenario !== null) recordSmuggleDelivery(galaxy, stellarObject, num13); // 19d2 black-market line (no Rnd)
                     }
                 }
                 let flag9 = false;

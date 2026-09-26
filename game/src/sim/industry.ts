@@ -49,6 +49,7 @@ import { gameText } from './colonyTick';
 import { conditionCheckLimit } from './tick/builtObjectTick';
 import { doConstructionBuiltObject, resetConstructionProcessTime } from './construction/constructionQueue';
 import { REAL_SECONDS_IN_GALACTIC_YEAR, galaxyStarDate } from './tick/simTime';
+import { recordExtraction } from './scenario/emergent/crisesCore';
 
 // ---------------------------------------------------------------------------------------------------------------
 // HabitatResource / HabitatResourceList helpers (the TS Habitat.Resources is `{ resourceId, abundance }[]`).
@@ -472,6 +473,7 @@ export function industrialProcessing(galaxy: Galaxy, builtObject: BuiltObject, t
                                     if (num21 >= 0) num22 = bo.cargo.items[num21].amount / (bo.cargoCapacity - 200);
                                     if (num22 < 0.3) {
                                         const num23 = habitatResourceExtract(habitatResourceList[num20], val);
+                                        if (galaxy.scenario !== null) recordExtraction(galaxy, parentHabitat, def3.resourceId, num23, actualEmpire); // 19d2 reserves (no Rnd)
                                         counters.miningExtractionGas = (counters.miningExtractionGas + num23) | 0;
                                         bo.cargo.add(new Cargo(new ResourceRef(def3.resourceId), num23, actualEmpire));
                                         flag2 = true;
@@ -493,6 +495,7 @@ export function industrialProcessing(galaxy: Galaxy, builtObject: BuiltObject, t
                                 if (num25 >= 0) num26 = bo.cargo.items[num25].amount / (bo.cargoCapacity - 200);
                                 if (num26 < 0.3) {
                                     const num27 = habitatResourceExtract(habitatResourceList[num24], val2);
+                                    if (galaxy.scenario !== null) recordExtraction(galaxy, parentHabitat, def4.resourceId, num27, actualEmpire); // 19d2 reserves (no Rnd)
                                     counters.miningExtractionStrategic = (counters.miningExtractionStrategic + num27) | 0;
                                     if (resourceDefinition(galaxy, habitatResourceList[num24].resourceId).colonyManufacturingLevel > 0) {
                                         counters.miningExtractionColonyManufactured = (counters.miningExtractionColonyManufactured + num27) | 0;
@@ -514,6 +517,7 @@ export function industrialProcessing(galaxy: Galaxy, builtObject: BuiltObject, t
                                 if (habitatResource !== null && groupOf(galaxy, habitatResource.resourceId) === ResourceGroup.Luxury) {
                                     if (totalResourceAmount(bo, habitatResource.resourceId, actualEmpire) < num11) {
                                         const num28 = habitatResourceExtract(habitatResource, val3);
+                                        if (galaxy.scenario !== null) recordExtraction(galaxy, parentHabitat, habitatResource.resourceId, num28, actualEmpire); // 19d2 reserves (no Rnd)
                                         counters.miningExtractionLuxury = (counters.miningExtractionLuxury + num28) | 0;
                                         bo.cargo.add(new Cargo(new ResourceRef(habitatResource.resourceId), num28, actualEmpire));
                                     }
@@ -531,6 +535,7 @@ export function industrialProcessing(galaxy: Galaxy, builtObject: BuiltObject, t
                                     if (habitatResource2 !== null && resourceDefinition(galaxy, habitatResource2.resourceId).isFuel) {
                                         if (totalResourceAmount(bo, habitatResource2.resourceId, actualEmpire) < num11) {
                                             const num30 = habitatResourceExtract(habitatResource2, val4);
+                                            if (galaxy.scenario !== null) recordExtraction(galaxy, parentHabitat, habitatResource2.resourceId, num30, actualEmpire); // 19d2 reserves (no Rnd)
                                             counters.miningExtractionGas = (counters.miningExtractionGas + num30) | 0;
                                             bo.cargo.add(new Cargo(new ResourceRef(habitatResource2.resourceId), num30, actualEmpire));
                                         }
@@ -542,6 +547,7 @@ export function industrialProcessing(galaxy: Galaxy, builtObject: BuiltObject, t
                                     if (habitatResource3 !== null && groupOf(galaxy, habitatResource3.resourceId) === ResourceGroup.Gas) {
                                         if (totalResourceAmount(bo, habitatResource3.resourceId, actualEmpire) < num11) {
                                             const num32 = habitatResourceExtract(habitatResource3, val4);
+                                            if (galaxy.scenario !== null) recordExtraction(galaxy, parentHabitat, habitatResource3.resourceId, num32, actualEmpire); // 19d2 reserves (no Rnd)
                                             counters.miningExtractionGas = (counters.miningExtractionGas + num32) | 0;
                                             bo.cargo.add(new Cargo(new ResourceRef(habitatResource3.resourceId), num32, actualEmpire));
                                         }
@@ -559,6 +565,7 @@ export function industrialProcessing(galaxy: Galaxy, builtObject: BuiltObject, t
                                 if (habitatResource4 === null || groupOf(galaxy, habitatResource4.resourceId) !== ResourceGroup.Mineral) continue;
                                 if (totalResourceAmount(bo, habitatResource4.resourceId, actualEmpire) < num11) {
                                     const num34 = habitatResourceExtract(habitatResource4, val5);
+                                    if (galaxy.scenario !== null) recordExtraction(galaxy, parentHabitat, habitatResource4.resourceId, num34, actualEmpire); // 19d2 reserves (no Rnd)
                                     counters.miningExtractionStrategic = (counters.miningExtractionStrategic + num34) | 0;
                                     if (resourceDefinition(galaxy, habitatResource4.resourceId).colonyManufacturingLevel > 0) {
                                         counters.miningExtractionColonyManufactured = (counters.miningExtractionColonyManufactured + num34) | 0;
@@ -623,6 +630,7 @@ export function extractResources(galaxy: Galaxy, habitat: Habitat, timePassed: n
         const habitatResource = habitatResourceList[i];
         if (habitatResource !== null && groupOf(galaxy, habitatResource.resourceId) === ResourceGroup.Luxury) {
             const num4 = habitatResourceExtract(habitatResource, num3);
+            if (galaxy.scenario !== null) recordExtraction(galaxy, habitat, habitatResource.resourceId, num4, empire); // 19d2 reserves (no Rnd)
             counters.miningExtractionLuxury = (counters.miningExtractionLuxury + num4) | 0;
             habitat.cargo.add(new Cargo(new ResourceRef(habitatResource.resourceId), num4, empire));
         }
@@ -631,6 +639,7 @@ export function extractResources(galaxy: Galaxy, habitat: Habitat, timePassed: n
         const habitatResource2 = habitatResourceList[j];
         if (habitatResource2 !== null && groupOf(galaxy, habitatResource2.resourceId) === ResourceGroup.Gas) {
             const num5 = habitatResourceExtract(habitatResource2, num3);
+            if (galaxy.scenario !== null) recordExtraction(galaxy, habitat, habitatResource2.resourceId, num5, empire); // 19d2 reserves (no Rnd)
             counters.miningExtractionGas = (counters.miningExtractionGas + num5) | 0;
             habitat.cargo.add(new Cargo(new ResourceRef(habitatResource2.resourceId), num5, empire));
         }
@@ -639,6 +648,7 @@ export function extractResources(galaxy: Galaxy, habitat: Habitat, timePassed: n
         const habitatResource3 = habitatResourceList[k];
         if (habitatResource3 !== null && groupOf(galaxy, habitatResource3.resourceId) === ResourceGroup.Mineral) {
             const num6 = habitatResourceExtract(habitatResource3, num3);
+            if (galaxy.scenario !== null) recordExtraction(galaxy, habitat, habitatResource3.resourceId, num6, empire); // 19d2 reserves (no Rnd)
             counters.miningExtractionStrategic = (counters.miningExtractionStrategic + num6) | 0;
             if (resourceDefinition(galaxy, habitatResource3.resourceId).colonyManufacturingLevel > 0) {
                 counters.miningExtractionColonyManufactured = (counters.miningExtractionColonyManufactured + num6) | 0;

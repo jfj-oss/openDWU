@@ -14,6 +14,7 @@ import type { Empire } from '../../sim/empire';
 import { annualStateMaintenance, annualTaxRevenue } from '../../sim/forceStructure';
 import { formatThousandsK } from './coloniesList';
 import { formatMoney, formatPopulation } from '../hud';
+import { crisesSummaryRows } from '../../sim/scenario/emergent/crisesCore';
 
 /** The data the panel displays: the player's empire plus its government's
  * display name (null when unknown). */
@@ -80,6 +81,7 @@ export function empireSummaryExtra(e: Empire): EmpireSummaryExtra {
 export function empireSummaryRows(
     src: EmpireSummarySource,
     extra?: EmpireSummaryExtra,
+    scenarioRows?: readonly EmpireSummaryRow[],
 ): EmpireSummaryRow[] {
     const e = src.empire;
     let population = 0;
@@ -107,6 +109,8 @@ export function empireSummaryRows(
             { label: 'Characters', value: String(extra.characters) },
         );
     }
+    // Mod layer: scenario blocks (19d2 "Crises") after the stock rows.
+    if (scenarioRows) rows.push(...scenarioRows);
     return rows;
 }
 
@@ -179,7 +183,8 @@ function createEmpireSummary(src: EmpireSummarySource): OpenState {
     const body = document.createElement('div');
     body.className = 'empire-summary-body';
 
-    for (const row of empireSummaryRows(src, empireSummaryExtra(src.empire))) {
+    const scenarioRows = src.empire.galaxy?.scenario ? crisesSummaryRows(src.empire.galaxy, src.empire) : [];
+    for (const row of empireSummaryRows(src, empireSummaryExtra(src.empire), scenarioRows)) {
         const line = document.createElement('div');
         line.className = 'empire-summary-row';
         const label = document.createElement('span');
