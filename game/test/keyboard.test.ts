@@ -339,13 +339,14 @@ describe('isKeyActionAvailable (task 12q)', () => {
         }
     });
 
-    it('unavailable actions fall through to dispatchKey default branch', () => {
+    it('bound keys resolve to actions that are available now (L = lockView since fix6ui)', () => {
         const action = dispatchKey(
             { key: 'L', ctrlKey: false, altKey: false, shiftKey: false, target: null },
             {},
         );
         expect(action).toBe('lockView');
-        expect(isKeyActionAvailable(action!)).toBe(false);
+        expect(isKeyActionAvailable(action!)).toBe(true);
+        expect(isKeyActionAvailable('nonsense')).toBe(false);
     });
 });
 describe('findBinding letter case', () => {
