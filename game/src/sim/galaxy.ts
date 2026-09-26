@@ -1476,6 +1476,9 @@ export class Galaxy {
     }
 
     // C# Systems[i].Habitats (excludes the star; TS SystemInfo.habitats has it at [0]).
+    // TODO(port): audit the remaining direct `systems[i].habitats` reads against their C# `Systems[].Habitats` (fix7 fixed
+    // the exploration searches and the Rnd.Next(0, Habitats.Count) sites; e.g. movement.ts's gas-cloud fuel scan,
+    // tradeItems.ts, events.ts, player/orderMenu.ts still iterate the star too) — Galaxy.6.cs 4611 DetermineHabitatsInSystem.
     systemHabitatsOf(systemIndex: number): Habitat[] {
         const system = this.systems[systemIndex];
         return system === undefined ? [] : system.habitats.filter((h) => h !== system.systemStar);

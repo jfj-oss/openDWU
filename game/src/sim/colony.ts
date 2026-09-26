@@ -18,6 +18,8 @@ import { recalculateDevelopmentLevelBaseline } from './developmentLevel';
 import { recalculateAnnualTaxRevenue } from './forceStructure';
 import { RuinType } from './ruins';
 import type { ConstructionQueueHandle } from './construction/constructionYard';
+import { habitatDoTasks } from './tick/habitatTick';
+import { galaxyNow } from './tick/simTime';
 
 // Port of Galaxy.8.cs MakeHabitatIntoColony(galaxy, habitat, empire, age, race,
 // homeSystemFactor, hasSpacePort).
@@ -63,7 +65,9 @@ export function makeHabitatIntoColony(
     recalculateCriticalResourceSupplyBonuses(galaxy, habitat);
     recalculateDevelopmentLevelBaseline(habitat);
     recalculateAnnualTaxRevenue(galaxy, habitat);
-    // TODO(port): Habitat.DoTasks (680; a no-op at game start: all touch spans are ~0) — no Rnd.
+    // Galaxy.8.cs 680 habitat.DoTasks(galaxy.CurrentDateTime) (Habitat.cs 1399): at game start only the intermediate
+    // block runs (see empireGeneration.ts at Galaxy.7.cs 5290) — no Rnd.
+    habitatDoTasks(galaxy, habitat, galaxyNow(galaxy));
     // Galaxy.8.cs 681-684: if (habitat.ConstructionQueue != null) habitat.ConstructionQueue.ReviewConstructionSpeed();
     // TakeOwnershipOfColony (above) created the queue before the population existed, so without this review the colony
     // yard keeps the empty-colony speed (600 * sqrt(1e7 / ColonyBuildSpeedIdealPopulation) = 18) until the first

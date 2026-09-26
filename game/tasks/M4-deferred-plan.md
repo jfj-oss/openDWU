@@ -31,3 +31,4 @@ Then, before M5+ (UI completeness etc.):
 - BaconSettings.txt: the installed file sets `tradeEverything=true` (and other Bacon options); the port keeps the default `false`. The C# reads BaconSettings.txt at start-up (BaconSettings.cs) — load it from /assets/dwu/BaconSettings.txt like the other data files and route every option the sim reads through it (grep the Bacon* readers). Pins may move.
 - fix4sim 60-day run: the Quameno Empire's explorers sat idle with no mission (8×8 sectors, seed 1) — investigate the exploration-assignment path for that empire (AI bug?).
 - main.ts: the ticker's `view.update()` runs outside the sim try/catch (a render exception still freezes the loop).
+- fix7 (2026-09-26): the C# system habitat list excludes the star (Galaxy.6.cs 4611) while the TS list includes it; the exploration searches were fixed but ~50 other direct reads of that list are not audited yet (TODO in galaxy.ts) — audit each reader against the C# (pins may move).
