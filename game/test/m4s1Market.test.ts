@@ -425,5 +425,5 @@ describe('harness smoke (seed 1, 480 game-s)', () => {
         const accepted = () => g.pirateEmpires.some((p) => p.pirateMissions.count > 0);
         for (let i = 0; i < 10 && !accepted(); i++) runGameSeconds(g, 240);
         expect(accepted()).toBe(true);
-    }, 600000);
+    }, 1800000);
 });

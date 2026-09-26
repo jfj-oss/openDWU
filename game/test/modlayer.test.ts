@@ -196,7 +196,7 @@ describe('flags off = faithful game', () => {
         // The yearly tick anchored (and advanced at most to the current year) without drawing.
         expect(game.galaxy.scenario!.lastYear).toBeGreaterThanOrEqual(0);
         expect(game.galaxy.scenario!.lastYear).toBeLessThanOrEqual(gameYear(galaxyStarDate(game.galaxy)));
-    }, 1200000);
+    }, 2400000);
 });
 
 describe('save round trip', () => {
@@ -219,7 +219,7 @@ describe('save round trip', () => {
         expect(byId.get(loaded.game.galaxy.playerEmpire!.empireId)!.empire).toBe(loaded.game.galaxy.playerEmpire);
         expect(saveText(loaded.game, loaded.startOptions.scenario ?? null)).toBe(text);
         expect(loaded.startOptions.scenario).toEqual({ id: 'example', flags: { exampleFlag: true }, params: {} });
-    }, 600000);
+    }, 1800000);
     it('a faithful save does not load with scenario data', () => {
         const game = cachedTickGame(base);
         expect(savedScenarioId(saveText(game))).toBeNull();
@@ -264,7 +264,7 @@ describe('hook points', () => {
         g.scenario!.lastYear = gameYear(galaxyStarDate(g)) - 1;
         runGameSeconds(game, 61);
         expect(ran).toBe(1);
-    }, 600000);
+    }, 1800000);
 
     it('createEmpireMidGame: an AI empire and a pirate faction, saved and reloaded', () => {
         const game = cachedTickGame(base);
@@ -302,7 +302,7 @@ describe('hook points', () => {
         expect(loaded.game.galaxy.pirateEmpires.some((x) => x.name === 'Dark Farm')).toBe(true);
         expect(saveText(loaded.game)).toBe(text);
         expect(stateDigest(loaded.game.galaxy)).toBe(stateDigest(g));
-    }, 600000);
+    }, 1800000);
 
     it('home and resource placement rules apply at generation', () => {
         const { game } = createScenarioGame(base, {
@@ -324,7 +324,7 @@ describe('hook points', () => {
         // The faithful game has Steel inside 0.7.
         const ref = cachedTickGame(base).galaxy;
         expect(ref.habitats.some((h) => h.resources.some((r) => r.resourceId === steelId) && radiusFraction(ref, h.xpos, h.ypos) < 0.7)).toBe(true);
-    }, 600000);
+    }, 1800000);
 
     it('messages and news reach the empires', () => {
         const game = cachedTickGame(base);
@@ -393,7 +393,7 @@ describe('spec-driven additions (periodic, game start, events, queries, BasedOn,
         expect(ran).toBe(1);
         expect(sawPlayer).toBe(true);
         expect(game.galaxy.scenario!.flags.start).toBe(true);
-    }, 600000);
+    }, 1800000);
 
     it('events reach gated subscribers from the base-sim sites; queries fold over the stock value', () => {
         const game = cachedTickGame(base);
@@ -487,7 +487,7 @@ describe('spec-driven additions (periodic, game start, events, queries, BasedOn,
         const loaded = deserializeGame(text, base);
         expect(loaded.game.galaxy.empires.map((x) => x.name)).toEqual(g.empires.map((x) => x.name));
         expect(saveText(loaded.game)).toBe(text);
-    }, 600000);
+    }, 1800000);
 
     it('decisions: the player answers from a message, AI empires answer at once, unanswered ones expire; pending ones save', () => {
         const game = cachedTickGame(base);

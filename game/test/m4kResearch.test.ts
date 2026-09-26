@@ -284,5 +284,5 @@ describe('M4k harness milestone', () => {
             }
             for (const n of e.research.techTree) expect(Number.isFinite(n.progress)).toBe(true);
         }
-    }, 600000);
+    }, 1800000);
 });

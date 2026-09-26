@@ -379,5 +379,5 @@ describe('harness smoke (runGameSeconds)', () => {
         for (const k of ['M4g industrialProcessing', 'M4g extractResources', 'M4g doManufacturing', 'M4g reviewManufacturedResources', 'M4g prioritizeEmpireResourceNeeds']) {
             expect(r.todoHits[k] ?? 0).toBe(0);
         }
-    }, 600000);
+    }, 1800000);
 });

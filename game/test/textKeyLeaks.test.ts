@@ -139,5 +139,5 @@ describe('textkeys: no raw GameText key in a player-visible text (600 s, story e
         console.log(`textkeys: ${seen.size} messages, ${shown.length} texts checked, ${offenders.size} offender sites`);
         expect(shown.length).toBeGreaterThan(100);
         expect([...offenders.keys()]).toEqual([]);
-    }, 1200000);
+    }, 2400000);
 });

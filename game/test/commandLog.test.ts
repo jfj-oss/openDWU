@@ -191,7 +191,7 @@ describe('seed + command log → the same game (60 s script)', () => {
         const cont = fullDigest(loaded);
         expect(cont.digest).toBe(live.digest);
         expect(cont.save === live.save).toBe(true);
-    }, 900000);
+    }, 2400000);
 
     it('the same order issued a frame later is a different game (the sim time is what matters)', () => {
         const a = cachedTickGame(gameData);

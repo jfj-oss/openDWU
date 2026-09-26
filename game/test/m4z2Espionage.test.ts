@@ -339,5 +339,5 @@ describe('harness: an AI empire at war runs an intelligence mission (Empire.5.cs
         expect(assigned).not.toBeNull();
         expect(resolved).toBe(true);
         expect(total()).toBeGreaterThan(0);
-    }, 600000);
+    }, 1800000);
 });

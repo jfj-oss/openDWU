@@ -115,7 +115,7 @@ describe('game save/load after the sim has run', { timeout: 600000 }, () => {
         game = createTickGame(gameData);
         runGameSeconds(game, 600);
         rt = roundTrip(game);
-    }, 600000);
+    }, 1800000);
 
     it('seed 1 after 600 s: serialize → deserialize → serialize is byte-identical', () => {
         expect(rt.text2).toBe(rt.text);

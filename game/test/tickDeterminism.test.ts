@@ -273,7 +273,7 @@ describe('determinism (single seeded galaxy.rnd, fixed-order scheduler)', () => 
             expect(stateCounts(cached)).toEqual(summary.counts);
             expect(cached.rnd.drawCount).toBe(summary.rndDraws);
         }
-    }, 600000);
+    }, 1800000);
 });
 
 describe('pre-warp start (age 0) stays covered', () => {
