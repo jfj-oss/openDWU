@@ -48,6 +48,9 @@ const profile = arg('profile', false) === true;
 const top = Number(arg('top', 15));
 const jsonOut = arg('json', null);
 const loader = String(arg('loader', 'bundle'));
+// --probe-days 1,30,60: extra chunk boundaries at these game days; at each one print every empire's capital
+// construction speed and its explorers' missions. Colony ships are tracked every chunk (day completed / day removed).
+const probeDays = String(arg('probe-days', '1,30,60')).split(',').map(Number).filter((d) => Number.isFinite(d) && d > 0);
 const sectors = Number(arg('sectors', Math.max(4, Math.min(15, Math.round(Math.sqrt(stars / 4.7))))));
 
 const heap = { peak: 0, sample() { const h = process.memoryUsage().heapUsed; if (h > this.peak) this.peak = h; return h; } };
@@ -133,7 +136,59 @@ try {
         await session.post('Profiler.start');
     }
     const plan = split !== null && split !== true ? String(split).split(',').map(Number) : [];
-    if (plan.length === 0) for (let left = seconds; left > 0; left -= chunk) plan.push(Math.min(chunk, left));
+    if (plan.length === 0) {
+        // Chunk ends at every multiple of --chunk plus every probe day (ms-integral; chunking is digest-neutral).
+        const ends = new Set();
+        for (let e = chunk; e < seconds; e += chunk) ends.add(Math.round(e * 1000));
+        for (const d of probeDays) { const e = Math.round(d * 600 / 365 * 1000); if (e > 0 && e < seconds * 1000) ends.add(e); }
+        ends.add(Math.round(seconds * 1000));
+        let prev = 0;
+        for (const e of [...ends].sort((a, b) => a - b)) { plan.push((e - prev) / 1000); prev = e; }
+    }
+    const MISSION = ['Undefined', 'Explore', 'Build', 'BuildRepair', 'Transport', 'Patrol', 'Escort', 'Rescue', 'Blockade', 'Attack', 'Escape', 'Retire',
+        'Retrofit', 'Colonize', 'Waypoint', 'Hold', 'WaitAndAttack', 'WaitAndBombard', 'MoveAndWait', 'Refuel', 'ExtractResources', 'LoadTroops',
+        'UnloadTroops', 'Deploy', 'Undeploy', 'Repair', 'Move', 'Bombard', 'Capture', 'Reinforce', 'Raid'];
+    const day = () => g.nowMs / 1000 / 600 * 365;
+    const probe = (label) => {
+        console.log(`probe ${label} (day ${day().toFixed(1)}):`);
+        for (const e of g.empires) {
+            if (e === null) continue;
+            const speed = e.capital?.constructionQueue?.constructionSpeed ?? '-';
+            const ex = e.builtObjects.filter((b) => b !== null && b.subRole === 9 && !b.hasBeenDestroyed)
+                .map((b) => `${b.name}:${MISSION[b.mission?.type ?? 0]}${b.mission?.target ? '→' + (b.mission.target.name ?? '?') : ''}`);
+            console.log(`  ${e.name.padEnd(28)} capital speed ${speed}; explorers ${ex.length}: ${ex.join(', ')}`);
+        }
+    };
+    probe('start');
+    // NewColony (17) / NewColonyFailed (18) messages as they are sent (Empire.ProcessMessages clears the list each tick).
+    const colonyMessages = [];
+    for (const e of g.empires) {
+        if (e === null || e.messages === null) continue;
+        const list = e.messages;
+        list.push = function (...items) {
+            for (const m of items) if (m.messageType === 17 || m.messageType === 18) colonyMessages.push({ day: day(), empire: e.name, type: m.messageType === 17 ? 'NewColony' : 'NewColonyFailed', description: m.description });
+            return Array.prototype.push.apply(this, items);
+        };
+    }
+    const probed = new Set();
+    // Colony ships (sub role 13): day first fully built, day removed (with its last mission / target / target owner).
+    const colonyShips = new Map();
+    const trackColonyShips = () => {
+        const alive = new Set();
+        for (const e of g.empires) {
+            if (e === null) continue;
+            for (const b of e.builtObjects) {
+                if (b === null || b.subRole !== 13 || b.hasBeenDestroyed) continue;
+                alive.add(b);
+                let r = colonyShips.get(b);
+                if (r === undefined) { r = { empire: e.name, name: b.name, at: b.builtAt?.name ?? '-', built: null, removed: null, last: null }; colonyShips.set(b, r); }
+                if (r.built === null && b.components.items.every((c) => c.status !== 0)) r.built = day();
+                const t = b.mission?.target ?? null;
+                r.last = `${b.components.items.filter((c) => c.status !== 0).length}/${b.components.count} ${MISSION[b.mission?.type ?? 0]}${t ? '→' + t.name + ' (' + (t.empire?.name ?? t.owner?.name ?? 'unowned') + ')' : ''}`;
+            }
+        }
+        for (const [b, r] of colonyShips) if (r.removed === null && !alive.has(b)) r.removed = day();
+    };
     const timings = {}, todo = {}, chunks = [];
     let frames = 0, draws = 0, cpuTotal = 0;
     // Expansion summary: game-day each empire first holds more than one colony.
@@ -158,6 +213,9 @@ try {
         const cu = process.cpuUsage(cpu0), cpuMs = (cu.user + cu.system) / 1000;
         cpuTotal += cpuMs;
         noteExpansion();
+        trackColonyShips();
+        // runGameSeconds ends on a frame boundary, so a probe fires at the first chunk end at or past its day.
+        for (const d of probeDays) if (!probed.has(d) && g.nowMs >= Math.round(d * 600 / 365 * 1000)) { probed.add(d); probe(`day ${d}`); }
         chunks.push({ endS: g.nowMs / 1000, frames: f, ms, msPerFrame: ms / Math.max(1, f), cpuMsPerFrame: cpuMs / Math.max(1, f), heap: heap.sample(), bo: g.builtObjects.length });
     }
     const runMs = performance.now() - t;
@@ -209,6 +267,10 @@ try {
         console.log(`  ${x.player ? '*' : ' '} ${x.name.padEnd(28)} colonies ${x.colonies}, first 2nd colony day ${x.firstSecondDay === null ? '-' : x.firstSecondDay.toFixed(0)}`);
         for (const sh of x.ships) console.log(`      colony ship ${sh.name} at ${sh.at}: ${sh.built}/${sh.total} built, mission ${sh.mission}`);
     }
+    out.colonyShips = [...colonyShips.values()];
+    console.log(`colony ships: ${out.colonyShips.length}`);
+    for (const r of out.colonyShips) console.log(`  ${r.empire.padEnd(28)} ${r.name.padEnd(20)} at ${r.at}: built day ${r.built === null ? '-' : r.built.toFixed(0)}, removed day ${r.removed === null ? '-' : r.removed.toFixed(0)}, last ${r.last}`);
+    for (const m of colonyMessages) console.log(`  day ${m.day.toFixed(0)} ${m.empire}: ${m.type} ${m.description}`);
     const hits = Object.entries(todo).sort((a, b) => b[1] - a[1]);
     console.log(`TODO(port) stubs reached: ${hits.length}`);
     for (const [k, v] of hits.slice(0, 25)) console.log(`  ${String(v).padStart(10)}  ${k}`);
