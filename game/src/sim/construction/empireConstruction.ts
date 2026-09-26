@@ -2072,7 +2072,7 @@ export function determineMonitoringStationLocation(galaxy: Galaxy, empire: Empir
         const habitat4 = findNearestUncolonizedExploredSystem(galaxy, habitat3.xpos, habitat3.ypos, empire);
         if (habitat4 !== null) {
             const num = galaxy.calculateDistance(habitat4.xpos, habitat4.ypos, habitat3.xpos, habitat3.ypos);
-            if (num < design.sensorLongRange - MAX_SOLAR_SYSTEM_SIZE * 2.1 && galaxy.systems[habitat4.systemIndex].habitats.length > 0 && !checkNearPirateBase(galaxy, empire, habitat4, scanRange, habitat4.xpos, habitat4.ypos, null) && (flag || !checkInStorm(galaxy, habitat4.xpos, habitat4.ypos))) {
+            if (num < design.sensorLongRange - MAX_SOLAR_SYSTEM_SIZE * 2.1 && galaxy.systemHabitatsOf(habitat4.systemIndex).length > 0 && !checkNearPirateBase(galaxy, empire, habitat4, scanRange, habitat4.xpos, habitat4.ypos, null) && (flag || !checkInStorm(galaxy, habitat4.xpos, habitat4.ypos))) {
                 let flag4 = false;
                 const builtObject = fastFindNearestLongRangeScannerBase(galaxy, Math.trunc(habitat4.xpos), Math.trunc(habitat4.ypos), empire);
                 if (builtObject !== null) {
@@ -2090,7 +2090,8 @@ export function determineMonitoringStationLocation(galaxy: Galaxy, empire: Empir
                     }
                     if (!flag5) {
                         flag3 = true;
-                        const habitats = galaxy.systems[habitat4.systemIndex].habitats;
+                        // Empire.5.cs 3836 / 3871-3872: Systems[].Habitats excludes the star (Galaxy.6.cs 4611).
+                        const habitats = galaxy.systemHabitatsOf(habitat4.systemIndex);
                         const index = galaxy.rnd.next(0, habitats.length);
                         habitatList2.push(habitats[index]);
                     }

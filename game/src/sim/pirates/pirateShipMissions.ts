@@ -673,10 +673,11 @@ function pirateAssignMilitaryShip(galaxy: Galaxy, empire: Empire, ship: BuiltObj
     if (habitat7 !== null) {
         const systemVisibilityStatus = empire.visibility.checkSystemVisibilityStatus(habitat7.systemIndex);
         if (systemVisibilityStatus === SystemVisibilityStatus.Explored) {
-            const systemInfo = galaxy.systems[habitat7.systemIndex];
-            if (systemInfo != null && systemInfo.habitats != null && systemInfo.habitats.length > 0) {
-                const index = galaxy.rnd.next(0, systemInfo.habitats.length);
-                const habitat8 = systemInfo.habitats[index];
+            // Empire.1.cs 4852-4855 systemInfo.Habitats: the C# list excludes the star (Galaxy.6.cs 4611); TS habitats has it at [0].
+            const systemHabitats = galaxy.systemHabitatsOf(habitat7.systemIndex);
+            if (systemHabitats.length > 0) {
+                const index = galaxy.rnd.next(0, systemHabitats.length);
+                const habitat8 = systemHabitats[index];
                 if (habitat8 != null && withinFuelRange(galaxy, ship, habitat8.xpos, habitat8.ypos, 0.1)) {
                     assignMission(galaxy, ship, BuiltObjectMissionType.Move, habitat8, null, BuiltObjectMissionPriority.Normal);
                     return;

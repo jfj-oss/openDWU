@@ -4,7 +4,9 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import type { GameData } from '../src/sim/data/gameData';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { Empire } from '../src/sim/empire';
-import type { Habitat } from '../src/sim/types';
+import { HabitatCategoryType, type Habitat } from '../src/sim/types';
+import { SystemVisibilityStatus } from '../src/sim/visibility';
+import { fastFindNearestUnexploredHabitat } from '../src/sim/civilianAI';
 import { BuiltObject as BuiltObjectClass } from '../src/sim/builtObject';
 import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
 import { canBuiltObjectColonizeHabitat } from '../src/sim/construction/constructionQueue';
@@ -101,5 +103,25 @@ describe('item 2: BuiltObject.2.cs 936 Colonize at an independent populated plan
             if (h.owner !== g.independentEmpire || h.population.totalAmount <= 0) continue;
             if (checkColonizationLikeliness(g, h, empire.dominantRace!) < -3) expect(checkShouldAttemptColonization(g, empire, h)).toBe(false);
         }
+    });
+});
+
+describe('item 3: Galaxy.6.cs 4360 FastFindNearestUnexploredHabitat on a star-only system', { timeout: 600000 }, () => {
+    it('takes the Systems[].Habitats.Count == 0 branch (the C# list has no star) and returns the unexplored star', () => {
+        const game = createTickGame(gameData);
+        const g = game.galaxy;
+        const empire = g.empires.find((e) => e !== g.playerEmpire && e.pirateEmpireBaseHabitat === null)!;
+        const sys = g.systems.find((s) => s.systemStar.category === HabitatCategoryType.Star && g.systemHabitatsOf(s.systemStar.systemIndex).length === 0)!;
+        expect(sys).toBeDefined();
+        // Galaxy.6.cs 4611 DetermineHabitatsInSystem: the habitats after the star while Parent != null — never the star.
+        expect(g.systemHabitatsOf(sys.systemStar.systemIndex).includes(sys.systemStar)).toBe(false);
+        const sv = empire.systemVisibility[sys.systemStar.systemIndex];
+        sv.status = SystemVisibilityStatus.Unexplored;
+        // Even with the star's resources known (SetEmpireExplorationAmount marks explored stars known), the star-only
+        // branch only looks at the visibility status.
+        empire.resourceMap.setResourcesKnown(sys.systemStar, true);
+        const found = fastFindNearestUnexploredHabitat(g, sys.systemStar.xpos, sys.systemStar.ypos, empire);
+        expect(found).toBe(sys.systemStar);
+        expect(sv.totallyExplored).toBe(false);
     });
 });
