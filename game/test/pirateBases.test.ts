@@ -97,7 +97,8 @@ describe('pirate base + fleet (createGame, piratePrevalence 1.0)', () => {
         const g = createGame(opts(1)).galaxy;
         // Seed-dependent: the Rnd stream reaching Start.cs 1493-1533 (the extra faction near the player) moved at the
         // M4m merge (military AI draws in the game-start DoTasks on top of M4s2/M4y), so seed 1 now spawns it: 7 → 8.
-        expect(g.pirateEmpires.length).toBe(7);
+        // (todosweep: the galaxy layout moved again with the nebula-anchored gas clouds / star spacing: 8 on seed 1.)
+        expect(g.pirateEmpires.length).toBe(8);
         for (const p of g.pirateEmpires) checkFaction(g, p, false);
     }, 60000);
 

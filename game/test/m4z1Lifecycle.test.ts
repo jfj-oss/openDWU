@@ -1,3 +1,4 @@
+import { baconSettings } from '../src/sim/data/baconSettings';
 // M4z1 — teardown & empire lifecycle: Empire.cs 4879 CompleteTeardown (events.ts empireCompleteTeardown), EmpireCounters.cs
 // 119 ProcessEmpireElimination, Empire.1.cs 1102/2883 InitiateEmpireSplit / SplinterEmpire (empireEvents.ts), Empire.7.cs
 // 650-697 ReviewCharacterLocation ColonyGovernor population-growth branch (characters.ts), Habitat.cs 7909 system-star
@@ -292,15 +293,19 @@ describe('BaconHabitat.cs 1269 GenerateDefensivePirateRaiders', () => {
         const galaxy = newGalaxy();
         const faction = galaxy.pirateEmpires[0];
         const planet = raiderColony(galaxy);
-        planet.facilities!.push({ type: PlanetaryFacilityType.PirateBase, constructionProgress: 1.0, value2: 1 } as never);
+        // Only the test's pirate base counts (the seed-1 colony may already have other facilities).
+        planet.facilities = [];
+        planet.facilities.push({ type: PlanetaryFacilityType.PirateBase, constructionProgress: 1.0, value2: 1 } as never);
         const before = planet.troops!.count;
         const factionBefore = faction.troops.count;
         const draws = galaxy.rnd.drawCount;
         generateDefensivePirateRaiders(galaxy, planet, faction, false);
         expect(galaxy.rnd.drawCount - draws).toBe(1); // Next(0, 3)
         const expectedCount = planet.troops!.count - before;
-        expect(expectedCount).toBeGreaterThanOrEqual(7);
-        expect(expectedCount).toBeLessThanOrEqual(9);
+        // num2 = BaconHabitat.pirateBaseTroops (BaconSettings.txt: 5) (+ piratebase bonus when the colony carries one).
+        const pb = planet.baconValues !== null && planet.baconValues.has('piratebase') ? 1 : 0;
+        expect(expectedCount).toBeGreaterThanOrEqual(baconSettings.pirateBaseTroops);
+        expect(expectedCount).toBeLessThanOrEqual(baconSettings.pirateBaseTroops + 2 + pb * 100);
         expect(planet.troops!.count - before).toBe(expectedCount);
         expect(faction.troops.count - factionBefore).toBe(expectedCount);
         const strength = Math.trunc(50 * (faction.dominantRace!.troopStrength / 100.0) * empireRaidStrengthFactor(faction));

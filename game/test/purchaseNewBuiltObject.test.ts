@@ -105,12 +105,18 @@ describe('BuildColonize (Main.Part7.cs 880-895 → Main.Part4.cs 2826 method_539
         const { galaxy: g, playerEmpire: e } = newGame();
         const design = findNewestCanBuild(e.designs, BuiltObjectSubRole.ColonyShip, e)!;
         expect(design).not.toBeNull();
-        // Setup: at the start no unowned Continental planet is within Empire.4.cs 4408's 3,000,000 colonization range, so
-        // give the player the Ice colonization ability (as its research would, Empire.3.cs 2184 ReviewColonizationTypes)
-        // and target the home system's Ice planet.
-        e.canColonizeIce = true;
+        // Setup: give the player the colonization ability for an unowned planet of the home system (as its research would,
+        // Empire.3.cs 2184 ReviewColonizationTypes) and target it (Ice / Desert / Volcanic / MarshySwamp / Ocean).
         const cap = e.capital!;
-        const target = g.habitats.find((h: Habitat) => h.systemIndex === cap.systemIndex && h.type === HabitatType.Ice && h.category === HabitatCategoryType.Planet && h.owner === null);
+        const abilities: [HabitatType, () => void][] = [
+            [HabitatType.Ice, () => (e.canColonizeIce = true)],
+            [HabitatType.Desert, () => (e.canColonizeDesert = true)],
+            [HabitatType.Volcanic, () => (e.canColonizeVolcanic = true)],
+            [HabitatType.MarshySwamp, () => (e.canColonizeMarshySwamp = true)],
+            [HabitatType.Ocean, () => (e.canColonizeOcean = true)],
+        ];
+        const target = g.habitats.find((h: Habitat) => h.systemIndex === cap.systemIndex && abilities.some(([t]) => t === h.type) && h.category === HabitatCategoryType.Planet && h.owner === null);
+        if (target !== undefined) abilities.find(([t]) => t === target.type)![1]();
         expect(target).toBeDefined();
         expect(canEmpireColonizeHabitat(g, e, e, target!, e.colonizableHabitatTypesForEmpire(), design)).toBe(true);
         const price = design.calculateCurrentPurchasePrice(g);
@@ -139,8 +145,8 @@ describe('BuildColonize (Main.Part7.cs 880-895 → Main.Part4.cs 2826 method_539
         expect(m.priority).toBe(BuiltObjectMissionPriority.Normal);
         expect(m.manuallyAssigned).toBe(true);
         // Rnd: 3. Empire.6.cs 2016 GenerateBuiltObjectName(design, colony): colony ships take the unique-name branch,
-        // Galaxy.5.cs 2356 SelectRandomUniqueStandardShipName = Next(0, 127), Next(0, 125), Next(0, 7) (≥ 2 on this seed,
-        // so no Next(0, 3)). Not a base sub-role (no surface point / heading, 2023); AddBuiltObjectToGalaxy with
+        // Galaxy.5.cs 2356 SelectRandomUniqueStandardShipName = Next(0, 127), Next(0, 125), Next(0, 7) (≥ 2 on this seed, so no
+        // Next(0, 3)). Not a base sub-role (no surface point / heading, 2023); AddBuiltObjectToGalaxy with
         // offsetLocationFromParent: false draws nothing; method_539's yard choice, ProcureConstructionComponents and
         // AssignMission(Colonize) draw nothing.
         expect(g.rnd.drawCount - draws0).toBe(3);
