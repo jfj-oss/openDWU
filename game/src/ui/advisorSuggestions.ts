@@ -1,6 +1,6 @@
-// suggest: the Advisor Suggestion window (Main.Part2.cs 2781 method_649 pnlAdvisorSuggestion) and its entries in the
-// message queue column (DiplomaticMessageQueue.cs, advisor entries drawn grey with the advisor icon, :906-935). Built on
-// the 16d popup system (messagePopups.ts: chips + conversation window classes).
+// suggest: the Advisor Suggestion window (Main.Part2.cs 2781 method_649 pnlAdvisorSuggestion). Its queue entries
+// (DiplomaticMessageQueue.cs, advisor entries drawn grey with the advisor icon, :906-935) are stubs in the list under the
+// top-right panel (popupstubs, messageStubList.ts). Built on the 16d popup system (conversation window classes).
 //
 // The queue lives on the player empire (src/sim/advisorQueue.ts, saved with the game); this module polls it, lets the
 // player Approve / Decline / "Show me first" (Main.Part2.cs 1369 / 2732 / 2635 → src/sim/player/advisorSuggestions.ts),
