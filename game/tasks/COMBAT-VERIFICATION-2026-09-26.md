@@ -102,6 +102,11 @@ vitest and asserts floors (> 50 records, > 5 destroyed, military losses, > 100 h
 **Pins moved** (`npm run repin -- --reason …`): `tickDeterminism.digest600`, `.counts600` (builtObjects 464 → 460),
 `.rndDraws600` — the Rnd stream and the ship census change once generated ships work and pirate boarding strength is right.
 
+**Test relaxed**: `test/m4dOrders.test.ts` asserted Σ Order.AmountToFulfill ≤ AmountRequested; on the new seed-1
+trajectory one order reads 7001 / 7000. The C# allows it: a docking step unloads `(int)(bay capacity × dt)` without capping
+to the contract's remainder (BuiltObject.2.cs 3780-3801) and a contract closed afterwards keeps AmountToFulfill =
+AmountDelivered. The strict bound now applies only to orders without closed, delivered contracts (else ≤ 105%).
+
 ## Observed, faithful (not changed)
 
 - A lone Javelin on its stock AllWeapons tactics sits at 123-171 (BuiltObject.2.cs 131 SetOptimalAttackRanges), where the
