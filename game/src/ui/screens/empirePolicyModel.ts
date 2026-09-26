@@ -8,6 +8,7 @@
 // controls back the way method_597 does, including the readers' fallbacks for a control the panel does not show
 // (pirate empires), and builds a *new* EmpirePolicy from the class defaults exactly like `new EmpirePolicy()`.
 
+import { checkEmpireHasOwnedColonies } from './buildOrder';
 import { AutomationLevel, type Empire } from '../../sim/empire';
 import {
     ColonyPopulationPolicy,
@@ -391,11 +392,8 @@ const FACILITY_ROWS: readonly [string, string][] = [
 
 const lcFirst = (s: string): string => s.charAt(0).toLowerCase() + s.slice(1);
 
-/** Port of Empire.3.cs:3577 CheckEmpireHasOwnedColonies (a colony whose Owner is the empire). */
-export function checkEmpireHasOwnedColonies(empire: Empire): boolean {
-    for (const h of empire.colonies ?? []) if (h !== null && h.owner === empire) return true;
-    return false;
-}
+/** Empire.3.cs:3577 CheckEmpireHasOwnedColonies: one port, buildOrder.ts. */
+export { checkEmpireHasOwnedColonies };
 
 /**
  * Port of Main.Part3.cs:4488-5341 method_609: the panel's sections, rows and each control's initial state, for

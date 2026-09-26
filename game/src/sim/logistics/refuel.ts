@@ -11,6 +11,7 @@
 // are M4c's (movement.ts).
 // Rnd: none in these bodies (the refuelling-point searches and AssignMission draw inside their owners).
 
+import type { Fighter } from '../combat/fighters';
 import type { Galaxy } from '../galaxy';
 import type { BuiltObject } from '../builtObject';
 import type { Habitat } from '../types';
@@ -117,9 +118,9 @@ export function checkCancelRefuelData(galaxy: Galaxy, builtObject: BuiltObject):
 }
 
 /** BuiltObject.2.cs 7097 InitiateRefuelData(refuelLocation) → the reserved fuel amount. */
-export function initiateRefuelData(galaxy: Galaxy, builtObject: BuiltObject, refuelLocation: BuiltObject | Habitat | Creature): number {
+export function initiateRefuelData(galaxy: Galaxy, builtObject: BuiltObject, refuelLocation: BuiltObject | Habitat | Creature | Fighter): number {
     checkCancelRefuelData(galaxy, builtObject);
-    // StellarObject.Cargo / Empire (a Creature has neither).
+    // StellarObject.Cargo / Empire (a Creature or Fighter has neither).
     const location = isBuiltObject(refuelLocation) || isHabitat(refuelLocation) ? refuelLocation : null;
     if (location !== null && location.cargo !== null && location.empire !== null && builtObject.empire !== null && builtObject.fuelType !== null) {
         const num = cargoIndexOfById(location.cargo, builtObject.fuelType.resourceId, location.empire.empireId);

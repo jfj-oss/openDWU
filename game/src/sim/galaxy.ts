@@ -2459,22 +2459,6 @@ export class Galaxy {
         return false;
     }
 
-    // Port of Galaxy.6.cs CalculateAngleFromCoords
-    private calculateAngleFromCoords(x: number, y: number, centerX: number, centerY: number, distance: number): number {
-        const halfPi = Math.PI / 2.0;
-        const negHalfPi = -halfPi;
-        if (x < centerX) {
-            if (y < centerY) {
-                return negHalfPi - (halfPi + Math.asin((y - centerY) / distance));
-            }
-            return halfPi + (halfPi - Math.asin((y - centerY) / distance));
-        }
-        if (y < centerY) {
-            return Math.asin((y - centerY) / distance) * -1.0;
-        }
-        return Math.asin((y - centerY) / distance);
-    }
-
     // Port of Galaxy.6.cs SelectBarrenRockPlanet(diameter, out pictureRef, out landscapePictureRef)
     private selectBarrenRockPictures(): { pictureRef: number; landscapePictureRef: number } {
         return { pictureRef: 100 + this.rnd.next(0, 10), landscapePictureRef: 200 + this.rnd.next(0, 10) };
@@ -3250,7 +3234,7 @@ export class Galaxy {
         randomOrderedResources?: Resource[] | null,
     ): Habitat[] {
         const result: Habitat[] = [];
-        const baseAngle = this.calculateAngleFromCoords(x, y, nearestSystemStar.xpos, nearestSystemStar.ypos, orbitDistance);
+        const baseAngle = calculateAngleFromCoords(x, y, nearestSystemStar.xpos, nearestSystemStar.ypos, orbitDistance);
         let arcSpread = arcSpreadFactor * arcSpreadFactor;
         let val = (MAX_SOLAR_SYSTEM_SIZE - orbitDistance) / (MAX_SOLAR_SYSTEM_SIZE / 3);
         val = Math.min(3.0, Math.max(0.3, val));
@@ -4766,4 +4750,24 @@ export function generateGalaxy(options: GenerateGalaxyOptions): Galaxy {
     }
 
     return galaxy;
+}
+
+/**
+ * Galaxy.6.cs 2737 CalculateAngleFromCoords(x, y, centerX, centerY, distance). The one port (Galaxy.9.cs 3485
+ * GenerateAsteroidFieldAt, Empire.6.cs PurchaseNewBuiltObject). The (x >= centerX) branches both return
+ * Asin((y - centerY) / distance) — the C# has no negation there.
+ */
+export function calculateAngleFromCoords(x: number, y: number, centerX: number, centerY: number, distance: number): number {
+    const num2 = Math.PI / 2.0;
+    const num3 = num2 * -1.0;
+    if (x < centerX) {
+        if (y < centerY) {
+            return num3 - (num2 + Math.asin((y - centerY) / distance));
+        }
+        return num2 + (num2 - Math.asin((y - centerY) / distance));
+    }
+    if (y < centerY) {
+        return Math.asin((y - centerY) / distance);
+    }
+    return Math.asin((y - centerY) / distance);
 }

@@ -37,6 +37,7 @@ import { gameText } from '../colonyTick';
 import { cloneDesign } from '../gameStartTail';
 import { galaxyCurrentStarDate } from '../pirateRelations';
 import { checkDesignSubRoleShouldBeUpgraded, resolveLegacySubRole, resolveSubRoleDescription } from '../designGeneration';
+import { determineResourcesEmpireSupplies } from '../diplomacyTick';
 
 const S = BuiltObjectSubRole;
 const T = ComponentType;
@@ -755,21 +756,6 @@ function resolveResourcesFromComponents(components: readonly ComponentDefinition
         }
     }
     return list;
-}
-
-// Port of Empire.6.cs:1387 DetermineResourcesEmpireSupplies (resource ids, first-seen order; diplomacyTick.ts has
-// the same port, kept private there to that module's callers).
-function determineResourcesEmpireSupplies(empire: Empire): number[] {
-    const resourceList: number[] = [];
-    for (const habitat of empire.colonies) {
-        if (habitat == null || habitat.resources == null) continue;
-        for (const r of habitat.resources) if (!resourceList.includes(r.resourceId)) resourceList.push(r.resourceId);
-    }
-    for (const bo of empire.privateBuiltObjects) {
-        if (bo == null || (bo.subRole !== S.GasMiningStation && bo.subRole !== S.MiningStation) || bo.parentHabitat === null || bo.parentHabitat.resources == null) continue;
-        for (const r of bo.parentHabitat.resources) if (!resourceList.includes(r.resourceId)) resourceList.push(r.resourceId);
-    }
-    return resourceList;
 }
 
 const SUPER_WEAPON_TYPES = new Set<ComponentType>([T.WeaponSuperBeam, T.WeaponSuperArea, T.WeaponSuperTorpedo, T.WeaponSuperMissile, T.WeaponSuperPhaser, T.WeaponSuperRailGun]);
