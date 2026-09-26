@@ -71,6 +71,22 @@ every pin. Do not edit pinned values, seed1.json or the manifest by hand.
   whenever `src/sim` changes). The pins are identical with and without it; to rule it out, prefix
   `DWU_TEST_CACHE=off` (e.g. `DWU_TEST_CACHE=off npm run repin -- --check`).
 
+## Command log
+Every change that reaches the sim from outside the tick is a command, never a direct call from a DOM handler. The UI
+issues it with `issuePlayerCommand(galaxy, empire, op, args, onApplied?)` (`src/sim/player/playerCommands.ts`; ops in
+`player/playerOps.ts`, each only calls the existing executor). The queue is drained at a frame boundary: at the start of
+`runSimFrame` before the clock advances (`tick/commandBoundary.ts`), and by the app loop once per render frame (also
+while paused), so an order lands within one frame. Applying journals it in the command log (`player/commandLog.ts`,
+saved with the game) stamped with that boundary's `galaxy.nowMs` / star date (never a wall clock), its arguments encoded
+as stable references (`player/commandCodec.ts`). Game-speed changes are journaled as `clock` entries (the frame length
+is a sim input). Async callers that need the result at once (advisor chat, diplomat counter) use `runPlayerCommand`
+(also a boundary: they run between frames). Seed + log replays the game: `replayCommandLog(seed, options, log, untilMs)`
+(test/commandLog.test.ts, soak test/commandReplay.test.ts: replay, save mid-way and real-time driving give the identical
+digest and save). Nothing issued ⇒ nothing changes (pins unaffected). Adding a player action: add an op, issue it from
+the UI; the tick path must not import the player layer. The camera level-of-detail pass (`?simView=1`, off by
+default) makes the camera a sim input that is not journaled: when on, the log records it (`view` entries) and
+`replayCommandLog` warns that the replay is not exact.
+
 ## Scope management
 Your package is large. Prioritise the entry points the tick actually reaches at runtime (check hit counts:
 `runGameSeconds(galaxy, 600).todoHits` on a createGame galaxy). Port completely what you port. If you run
