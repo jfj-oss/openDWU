@@ -25,7 +25,7 @@ Branch `wip/todosweep`. Lines are those of the base commit `00bdcb7` (before the
 |---|---|---|---|---|---|---|
 | 1 | `empire.ts:9` | header: unported callees are stub methods | — | n/a (comment) | — | port-now (stale) |
 | 2 | `empire.ts:103` | EmpireCounters header | EmpireCounters.cs | n/a — class is ported below | — | port-now (stale) |
-| 3 | `empire.ts:115` | diplomacy counters (WarsWeStarted, BrokenTreaty, SubjugationsMade, AtWar time) | EmpireCounters.cs 148-218 ProcessRelationChange; callers Empire.8.cs 2631, Empire.cs 4948, Empire.3.cs 3480 | yes (every relation change); readers: race victory conditions Galaxy.cs 3939-4369, achievements | ~70 + 4 call sites in diplomacy files | package-later |
+| 3 | `empire.ts:115` | diplomacy counters (WarsWeStarted, BrokenTreaty, SubjugationsMade, AtWar time) | EmpireCounters.cs 148-218 ProcessRelationChange; callers Empire.8.cs 2631, Empire.cs 4948, Empire.3.cs 3480 | yes (every relation change); readers: race victory conditions Galaxy.cs 3939-4369, achievements | ~70 + 4 call sites in diplomacy files | ported (sweep 2: already ported by M4r in diplomacy.ts DiplomacyCounters; stale note fixed, remaining branches tested) |
 | 4 | `empire.ts:420` | _LongProcessingInterval value | Empire.cs 184 | n/a — value 120 s already ported | — | port-now (stale) |
 | 5 | `empire.ts:425` | colony consumption statics | Galaxy.3.cs 5004-5039 | n/a — values already ported | — | port-now (stale) |
 | 6 | `empire.ts:597` | independent-empire ctor body | Empire.cs 4146 | n/a — initializeIndependentCtor is the full port | — | port-now (stale) |
@@ -58,21 +58,21 @@ Branch `wip/todosweep`. Lines are those of the base commit `00bdcb7` (before the
 | 33 | `story/eventActions.ts:1609` | OnCharacterImageChanged | Galaxy.9.cs | UI event | — | dead |
 | 34 | `story/eventActions.ts:1674` | BaconMain.ProcessGameStats | BaconGalaxy.cs 315 | stats files (IO) | — | dead |
 | 35 | `story/eventActions.ts:1676` | statSaveIntervalInGameDays | BaconMain.cs 678-685 | the SaveStats action is never queued in TS (baconSettings.ts: BaconInitialize tail unported); IO only | — | dead |
-| 36 | `story/eventActions.ts:1680` | ProcessEmpireScienceShips (lab research on exploration ships) | BaconEmpire.cs 170-240 ProcessScienceShips + BaconMain.cs 703-716 scheduling | yes in C# (BaconSettings researchPerLab=1000); TS never queues the action (0 hits) | ~150 (+ GetRandomResearchNode, StoreScientificData, scheduling) | package-later |
-| 37 | `story/eventActions.ts:1681` | (throw for the same action) | idem | idem | idem | package-later |
-| 38 | `story/eventActions.ts:1683` | ResolveScientificMissionExploreRuins | BaconHabitat.cs 810-875 | player UI mission (BaconMain menu) only | ~70 | package-later |
-| 39 | `story/eventActions.ts:1685` | ResolveScientificMissionProspectForResources | BaconHabitat.cs 745-805 | player UI mission only | ~60 | package-later |
-| 40 | `story/eventActions.ts:1687` | MakeLoanPayment | BaconEmpire loans | player UI (loans) only | ~80 | package-later |
+| 36 | `story/eventActions.ts:1680` | ProcessEmpireScienceShips (lab research on exploration ships) | BaconEmpire.cs 170-240 ProcessScienceShips + BaconMain.cs 703-716 scheduling | yes in C# (BaconSettings researchPerLab=1000); TS never queues the action (0 hits) | ~150 (+ GetRandomResearchNode, StoreScientificData, scheduling) | ported (sweep 2: baconScienceShips.ts) |
+| 37 | `story/eventActions.ts:1681` | (throw for the same action) | idem | idem | idem | ported (sweep 2) |
+| 38 | `story/eventActions.ts:1683` | ResolveScientificMissionExploreRuins | BaconHabitat.cs 810-875 | player UI mission (BaconMain menu) only | ~70 | package-later (spec below) |
+| 39 | `story/eventActions.ts:1685` | ResolveScientificMissionProspectForResources | BaconHabitat.cs 745-805 | player UI mission only | ~60 | package-later (spec below) |
+| 40 | `story/eventActions.ts:1687` | MakeLoanPayment | BaconEmpire loans | player UI (loans) only | ~80 | package-later (spec below) |
 | 41 | `galaxy.ts:8` | header: remaining TODO markers | — | comment | — | port-now (stale) |
 | 42 | `galaxy.ts:731` | FindNearestColony StrategicValue threshold | Galaxy.3.cs 1739 | every ported caller passes threshold 0 (StrategicValue >= 0 always); the only non-zero caller (Empire.5.cs 3735) is replaced by BaconEmpire | — | dead |
 | 43 | `galaxy.ts:932` | LoadShipNames | Start.2.cs 510 | stock shipNames.txt has no names: GetCustomName is always "" | — | dead |
 | 44 | `galaxy.ts:1561` | FindNearestSystemGasCloudAsteroid | Galaxy.6.cs 3714 + 2814 FindNearestSystemGasCloudAsteroidInIndex | yes — every galaxy (SetupSun star spacing Galaxy.5.cs 1264, gas clouds, pirate ambush). TS scanned only GasCloud/Asteroid categories; C# takes any Parent==null habitat (stars, clouds) | ~20 | port-now |
 | 45 | `galaxy.ts:2370` | GenerateGasCloud nebula-anchored placement | Galaxy.4.cs 2794-2852 | yes — every gas cloud of every galaxy | ~12 | port-now |
-| 46 | `galaxy.ts:3479` | habitat.DoTasks(CurrentDateTime) at generation | Galaxy.8.cs 473 (and 215-680) | yes (every generated planet in C#) | Habitat.DoTasks (Habitat.cs 1399, ~150 + callees) on a half-built galaxy — needs an audit of spawnCreatures/Bacon clock draws | package-later |
+| 46 | `galaxy.ts:3479` | habitat.DoTasks(CurrentDateTime) at generation | Galaxy.8.cs 473 (and 215-680) | yes (every generated planet in C#) | Habitat.DoTasks (Habitat.cs 1399, ~150 + callees) on a half-built galaxy — needs an audit of spawnCreatures/Bacon clock draws | ported (sweep 2: galaxy.ts generationHabitatDoTasks) |
 | 47 | `galaxy.ts:3490` | Cargo / Troops / TroopsToRecruit / InvadingTroops lists | Galaxy.8.cs 479-482 | yes (GenerateContinentalPlanet: home systems, startHabitats.ts) | 4 lines | port-now |
 | 48 | `galaxy.ts:3666` | rest of GenerateEmpire | Galaxy.7.cs | n/a — empireGeneration.ts | — | port-now (stale) |
-| 49 | `galaxy.ts:4020` | habitat.DoTasks at generation (planets) | Galaxy.8.cs | as galaxy.ts:3479 | as 3479 | package-later |
-| 50 | `galaxy.ts:4128` | habitat.DoTasks at generation (moons) | Galaxy.8.cs | as galaxy.ts:3479 | as 3479 | package-later |
+| 49 | `galaxy.ts:4020` | habitat.DoTasks at generation (planets) | Galaxy.8.cs | as galaxy.ts:3479 | as 3479 | ported (sweep 2) |
+| 50 | `galaxy.ts:4128` | habitat.DoTasks at generation (moons) | Galaxy.8.cs | as galaxy.ts:3479 | as 3479 | ported (sweep 2) |
 | 51 | `galaxy.ts:4553` | Shadows story branches throw | — | n/a — no throwing branch remains | — | port-now (stale) |
 | 52 | `galaxy.ts:4630` | colony placement / GenerateEmpire wiring | — | n/a — game.ts / empireGeneration.ts | — | port-now (stale) |
 | 53 | `galaxy.ts:4741` | DetermineSystemInfo fields | Galaxy.1.cs 873 | n/a — determineSystemInfo is the full port | — | port-now (stale) |
@@ -87,7 +87,7 @@ Branch `wip/todosweep`. Lines are those of the base commit `00bdcb7` (before the
 | 62 | `forceStructure.ts:623` | ThisYearsForeignTradeBonuses / SpacePortIncome in subjugation income | Empire.1.cs 1013 | yes when a subjugation exists; 0 hits in 30 min | 1 line | port-now |
 | 63 | `forceStructure.ts:634` | idem in AnnualSubjugationTribute | Empire.cs 1756 | idem | 1 line | port-now |
 | 64 | `forceStructure.ts:692` | _ThisYearsStateFuelCosts | Empire.9.cs 5345 | yes (field is written by refuel.ts); 0 non-zero hits | 1 line | port-now |
-| 65 | `forceStructure.ts:779` | Galaxy.BaseTechCost (pirate support cost) | Galaxy.cs 908 / Start.2.cs 111 | value equals the fixed research-cost option until createGame exposes it (383 calls) | option plumbing | package-later |
+| 65 | `forceStructure.ts:779` | Galaxy.BaseTechCost (pirate support cost) | Galaxy.cs 908 / Start.2.cs 111 | value equals the fixed research-cost option until createGame exposes it (383 calls) | option plumbing | ported (sweep 2: Galaxy.baseTechCost) |
 | 66 | `forceStructure.ts:853` | Galaxy.Orders.GetOrders(this).Count | Empire.9.cs 4767 / OrderList.cs 217 | yes — empire has orders on 20 projections at createGame, 170 in 30 min | 1 line | port-now |
 | 67 | `independentTraders.ts:59` | Galaxy.CurrentStarDate stand-in (start date) | Galaxy.cs CurrentStarDate | yes — trader DateBuilt and the 20-year retirement cutoff use it every long galaxy tick | 1 line | port-now |
 | 68 | `independentTraders.ts:73` | RepaitPriorityTemplateName in Design.Clone | Design.cs 2006 | set only by the ExpansionMod player UI; always null | — | dead |
@@ -107,7 +107,7 @@ Branch `wip/todosweep`. Lines are those of the base commit `00bdcb7` (before the
 | 82 | `game.ts:792` | Empire.DiscoveryActionRuin | Start.2.cs 2144 | yes (player ruin discovery, Habitat.cs 2545; 1 hit age 0) | field + 1 line | port-now |
 | 83 | `game.ts:849` | TroopGeneral appearance message | Galaxy.2.cs 5231-5233 | yes — 3 hits | 3 lines | port-now |
 | 84 | `game.ts:968` | empire flag | Galaxy.GenerateEmpireFlag | UI only (clock Random) | — | dead |
-| 85 | `game.ts:1134` | maximumEmpireAmount default not C# | Start.2.cs 115 MaximumEmpireAmount = wizard option | game-option plumbing (wizard) | option plumbing | package-later |
+| 85 | `game.ts:1134` | maximumEmpireAmount default not C# | Start.2.cs 115 MaximumEmpireAmount = wizard option | game-option plumbing (wizard) | option plumbing | ported (stale: the wizard already passed maximumEmpireAmountFor; the createGame fallback is for direct callers only) |
 | 86 | `game.ts:1218` | player AttackRange* from GameOptions | Start.2.cs 1352-1363 | yes (always); values equal the field defaults | 9 lines | port-now |
 | 87 | `game.ts:1247` | Galaxy.DoTasks at 1484 (per-call work) | Start.2.cs 1484 | yes (always): ProcessPirateFleets runs; the timed blocks do not | 1 line | port-now |
 | 88 | `game.ts:1270` | rest of CreateGameFromSettings | Start.2.cs 2019-2146 | UI/Game-object state only (Display* flags, view) | — | dead |
@@ -136,7 +136,7 @@ Branch `wip/todosweep`. Lines are those of the base commit `00bdcb7` (before the
 | 111 | `builtObject.ts:296` | BuiltObjectMission typing | — | typing only | — | port-now (stale) |
 | 112 | `builtObject.ts:339` | CharacterList typing | — | typing only | — | port-now (stale) |
 | 113 | `builtObject.ts:414` | StrengthInNumbersMaintenanceLowerForSmallShips | BuiltObject.cs 799-802 | yes while a race period is active (Gizurean/Dhayut events); 0 hits in 30 min | 3 lines | port-now |
-| 114 | `builtObject.ts:427` | Galaxy.BaseTechCost (pirate maintenance) | Galaxy.cs 908 | as forceStructure.ts:779 (66585 calls, value fixed) | option plumbing | package-later |
+| 114 | `builtObject.ts:427` | Galaxy.BaseTechCost (pirate maintenance) | Galaxy.cs 908 | as forceStructure.ts:779 (66585 calls, value fixed) | option plumbing | ported (sweep 2) |
 | 115 | `builtObject.ts:1105` | Troop model typing | — | typing only | — | port-now (stale) |
 | 116 | `resourceTargets.ts:39` | AssignedShip typing | — | typing only | — | port-now (stale) |
 | 117 | `resourceTargets.ts:156` | KnownPirateBases filled by scans | BuiltObject.1.cs 1902 | n/a — filled now | — | port-now (stale) |
@@ -152,7 +152,7 @@ Branch `wip/todosweep`. Lines are those of the base commit `00bdcb7` (before the
 | 127 | `gameStartTail.ts:1364` | design.PictureRef ShipImageHelper | ShipImageHelper.ResolveMinorShipImageIndex | visual; own clock Random | — | dead |
 | 128 | `gameStartTail.ts:1480` | design.PictureRef ShipImageHelper | ShipImageHelper.ResolveMinorShipImageIndex | visual; own clock Random | — | dead |
 | 129 | `gameStartTail.ts:1524` | PlayerEmpire.Capital.DoTasks(CurrentDateTime) | Start.2.cs 2035-2038 | yes (every new game); Habitat.DoTasks is ported (tick/habitatTick.ts) | 1 line | port-now |
-| 130 | `exploration.ts:98` | ColonizationRange / EnforceLimit game options | Galaxy.cs 729/732 | wizard option (startGameOptions.colonizationRangeKly) not plumbed into createGame | option plumbing | package-later |
+| 130 | `exploration.ts:98` | ColonizationRange / EnforceLimit game options | Galaxy.cs 729/732 | wizard option (startGameOptions.colonizationRangeKly) not plumbed into createGame | option plumbing | ported (sweep 2: Galaxy.colonizationRange / colonizationRangeEnforceLimit) |
 | 131 | `exploration.ts:536` | Empire._CivilityRating | Galaxy.9.cs | yes (rebel-colony evaluation); 0 hits in 30 min | 1 line | port-now |
 | 132 | `exploration.ts:745` | design.PictureRef ShipImageHelper | ShipImageHelper | visual; own clock Random | — | dead |
 | 133 | `exploration.ts:911` | design.PictureRef ShipImageHelper | ShipImageHelper | visual; own clock Random | — | dead |
@@ -187,14 +187,14 @@ spacing and gas clouds sit in nebulae (the generated galaxy differs: 31833 habit
 
 | item | C# | size |
 |---|---|---|
-| Habitat.DoTasks at planet/moon generation (galaxy.ts 3479/4020/4128) | Galaxy.8.cs 215-680 → Habitat.cs 1399 | ~150 lines + callees; Rnd audit on a half-built galaxy |
-| Diplomacy counters (EmpireCounters ProcessRelationChange etc.) | EmpireCounters.cs 148-218 + 4 call sites | ~70 |
-| BaconEmpire.ProcessScienceShips + scheduling | BaconEmpire.cs 170-240, BaconMain.cs 703-716 | ~150 |
-| Bacon scientific missions (explore ruins / prospect) | BaconHabitat.cs 745-875 | ~130 (player UI) |
-| Bacon loans (MakeLoanPayment) | BaconEmpire | ~80 (player UI) |
-| Galaxy.BaseTechCost option (forceStructure 779, builtObject 427) | Start.2.cs 111 | option plumbing |
-| MaximumEmpireAmount option (game.ts 1134) | Start.2.cs 115 | option plumbing |
-| ColonizationRange / EnforceLimit options (exploration.ts 98) | Galaxy.cs 729/732 | option plumbing |
+| Habitat.DoTasks at planet/moon generation (galaxy.ts 3479/4020/4128) — **done (sweep 2)** | Galaxy.8.cs 215-680 → Habitat.cs 1399 | ~150 lines + callees; Rnd audit on a half-built galaxy |
+| Diplomacy counters (EmpireCounters ProcessRelationChange etc.) — **done (sweep 2)** | EmpireCounters.cs 148-218 + 4 call sites | ~70 |
+| BaconEmpire.ProcessScienceShips + scheduling — **done (sweep 2)** | BaconEmpire.cs 170-240, BaconMain.cs 703-716 | ~150 |
+| Bacon scientific missions (explore ruins / prospect) — spec in Sweep 2 below | BaconHabitat.cs 745-875 | ~130 (player UI) |
+| Bacon loans (MakeLoanPayment) — spec in Sweep 2 below | BaconEmpire | ~80 (player UI) |
+| Galaxy.BaseTechCost option (forceStructure 779, builtObject 427) — **done (sweep 2)** | Start.2.cs 111 | option plumbing |
+| MaximumEmpireAmount option (game.ts 1134) — **done (sweep 2)** | Start.2.cs 115 | option plumbing |
+| ColonizationRange / EnforceLimit options (exploration.ts 98) — **done (sweep 2)** | Galaxy.cs 729/732 | option plumbing |
 | 4 registerTodo stubs in diplomacyTick.ts (excluded, other agents) | Empire.8.cs 4403-4480, Empire.3.cs 3945/4032/4586 | — |
 
 ## Seed pins moved (one re-pin, reason lists the C# methods)
@@ -207,3 +207,41 @@ moves through the reachable items listed above (orders-driven freighter projecti
 trader refuel missions / retirement; war and blockade docking; mining rights; threat-based danger checks; the start
 Galaxy.DoTasks and capital Habitat.DoTasks). No item classed dead moved a pin (the dead rows are UI / picture / file-IO
 statements or code paths the probes never entered).
+
+
+## Sweep 2 (wip/todosweep2)
+
+Ported: the wizard's research-cost box (Start.1.cs 3693 → Start.2.cs 485 Galaxy ctor baseTechCost → SetResearchCosts /
+SetResearchComponentMaxTechPoints / Galaxy.BaseTechCost, and every reader: BuiltObject.cs 814, Empire.2.cs 3612, Empire.6.cs 320,
+Empire.9.cs 5407, Galaxy.4.cs 1805/1858, Galaxy.5.cs 5096/5130, Galaxy.1.cs 2880, BaconDesign.cs 176, saves); the colonization
+range page (Start.1.cs 3746-3747 → Start.2.cs 508-509 → Empire.4.cs 4411); Habitat.DoTasks on every generated planet / moon
+(Galaxy.8.cs 215-551, Galaxy.5.cs 1587/1731) with the Habitat ctor's LastTouch = now − 30 s; BaconEmpire.ProcessScienceShips
+and its scheduling (BaconMain.cs 700-715, BaconGalaxy.cs 322-329). MaximumEmpireAmount and the diplomacy counters were already
+ported (stale notes). Still open from BaconInitialize: the SaveStats action and AddOtherDelayedEvents (Rnd.Next(10, 12)).
+
+### Spec: Bacon scientific missions (BaconHabitat.cs 736-875) — player UI only
+
+The player (BaconMain menu, a ship with an explorer character selected over a planet) starts BeginScientificMissionProspectForResources /
+BeginScientificMissionExploreRuins(ship, explorer, planet): the explorer leaves the ship's and the empire's character lists, the
+planet's BaconValues gets "missionProspectForResources" / "missionExploreRuins" = [ship, explorer, planet], and a delayed
+EventAction(null, StartPlague) with that MessageTitle, Target = planet, ExecutionDate = now + day × Galaxy.Rnd.Next(85, 95) is queued
+for the player empire (the only Galaxy.Rnd draw). On execution (BaconGalaxy.cs 334/339) Resolve…: a clock `new Random().NextDouble() <
+0.05` kills the explorer (never for a "Romulan" empire); otherwise the explorer returns to the ship when it is within 10000 units
+(squared distance < 1e8) or the planet orbits the ship's NearestSystemStar, else to the capital, else to the empire's first ship,
+and rejoins the empire's characters. Prospecting then calls Galaxy.SelectResources(planet, Resources.Count + 1) (its Rnd draws) and
+reports whether new resources appeared; exploring ruins adds max(50, explorer.GetSkillLevelTotal()) to the ship's "scientificData"
+when BaconMain.IsScienceShip(ship) — killed or not. Both send the player an Undefined message (hint "prospectForResources" /
+"exploreRuins") and drop the planet's key (BaconValues = null when empty). TS: a UI command to start them, the two Begin/Resolve
+functions in a Bacon module, the clock Random as a galaxy-seed-derived stream, and the two eventActions.ts branches.
+
+### Spec: Bacon loans (BaconEmpire.cs 386-606) — player UI only
+
+Chat commands (BaconEmpire.Loan): "!loan N" checks N against GetMaxCreditLineRemaining (5,000,000 − GetTotalLoanDebt), computes
+CalculateLoanRate (6 % base, + CivilityRating / −10, spare-annual-revenue and debt/revenue brackets for non-pirates, floor 2 %,
+/100) and the 120-month annuity payment (int)Math.Round(N × r/12 (1+r/12)^120 / ((1+r/12)^120 − 1) + 0.5); after the player's Yes
+it stores [payment, 120] under the first free "loanK" key of the capital's BaconValues (a pirate player: BuiltObjects[0]), adds N to
+StateMoney and queues EventAction(null, StartPlague) MessageTitle "loanK", ExecutionDate = now + 30 days. "!loan" alone lists the
+outstanding loans (GetOutstandingLoans). MakeLoanPayment (BaconGalaxy.cs 343, MessageTitle contains "loan") takes the payment off
+StateMoney, messages the player (hint "loanPayment"), and while payments remain stores [payment, n − 1] and re-queues itself 30 days
+later; any exception is swallowed. No Galaxy.Rnd. TS: a UI entry for the commands and dialogs, the functions in a Bacon module, and
+the eventActions.ts "loan" branch.
