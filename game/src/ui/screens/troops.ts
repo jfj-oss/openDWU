@@ -49,7 +49,7 @@ const NAME_COLLATOR = new Intl.Collator('en-US');
 export function troopTypeDescription(type: TroopType): string {
     switch (type) {
         case TroopType.Infantry: return T('TroopType Infantry', 'Infantry');
-        case TroopType.Armored: return T('TroopType Armored', 'Armored');
+        case TroopType.Armored: return T('TroopType Armored', 'Armored Forces');
         case TroopType.Artillery: return T('TroopType Artillery', 'Planetary Defense Unit');
         case TroopType.SpecialForces: return T('TroopType SpecialForces', 'Special Forces');
         case TroopType.PirateRaider: return T('TroopType PirateRaider', 'Pirate Raider');
