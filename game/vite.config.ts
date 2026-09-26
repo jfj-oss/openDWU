@@ -10,12 +10,13 @@
 //   dist/ by the copyAssetManifest plugin below, so the packaged app keeps
 //   real-art rendering (without it loadManifest() no-ops and the game falls
 //   back to generated textures).
-import { existsSync, statSync, copyFileSync, readdirSync, readFileSync, createReadStream } from 'node:fs';
+import { existsSync, statSync, copyFileSync, readdirSync, readFileSync, createReadStream, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { defineConfig, type Plugin } from 'vite';
 import type {} from 'vitest/config'; // types the `test` block below
+import { buildScenarioIndex, listScenarioFiles } from './scripts/scenarioIndex.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -164,6 +165,55 @@ function copyAssetManifest(): Plugin {
 }
 
 /**
+ * Mod layer (tasks/MODLAYER-DESIGN.md §1): the repo's scenarios/ folder served at /assets/scenarios/ (dev middleware;
+ * index.json generated per request) and copied with a generated index.json into dist/assets/scenarios/ at build (the
+ * Electron shell serves dist/ as-is).
+ */
+function scenarioAssets(): Plugin {
+    const root = path.join(here, 'scenarios');
+    let isBuild = false;
+    return {
+        name: 'scenario-assets',
+        configResolved(config) {
+            isBuild = config.command === 'build';
+        },
+        configureServer(server) {
+            server.middlewares.use((req: IncomingMessage, res: ServerResponse, next) => {
+                const url = (req.url ?? '').split('?')[0];
+                if (!url.startsWith('/assets/scenarios/')) {
+                    next();
+                    return;
+                }
+                const rel = decodeURIComponent(url.slice('/assets/scenarios/'.length));
+                if (rel === 'index.json') {
+                    res.setHeader('Content-Type', 'application/json');
+                    res.end(JSON.stringify(buildScenarioIndex(root)));
+                    return;
+                }
+                const abs = rel.includes('..') ? null : path.join(root, rel);
+                if (abs === null || !existsSync(abs) || !statSync(abs).isFile()) {
+                    res.statusCode = 404;
+                    res.end('Not found');
+                    return;
+                }
+                const ext = path.extname(abs).toLowerCase();
+                res.setHeader('Content-Type', ext === '.json' ? 'application/json' : CONTENT_TYPES[ext] ?? 'text/plain; charset=utf-8');
+                createReadStream(abs).pipe(res);
+            });
+        },
+        closeBundle() {
+            if (!isBuild || !existsSync(root) || !existsSync(path.join(here, 'dist'))) return;
+            const out = path.join(here, 'dist', 'assets', 'scenarios');
+            for (const rel of listScenarioFiles(root)) {
+                mkdirSync(path.dirname(path.join(out, rel)), { recursive: true });
+                copyFileSync(path.join(root, rel), path.join(out, rel));
+            }
+            writeFileSync(path.join(out, 'index.json'), JSON.stringify(buildScenarioIndex(root)));
+        },
+    };
+}
+
+/**
  * Test tiers. A test file with a `// @slow` line in its header (first 15 lines) is a soak: `npm run test:fast`
  * (DWU_TEST_TIER=fast) runs every other file, `npm run test:slow` (DWU_TEST_TIER=slow) only those; `npm test` (tier
  * unset) runs all. Explicit file filters on the command line still apply within the tier.
@@ -196,7 +246,7 @@ export default defineConfig({
         setupFiles: ['test/pins/pin.ts'],
         ...testTier(),
     },
-    plugins: [dwuProbe(), dwuCaseInsensitive(), copyAssetManifest()],
+    plugins: [dwuProbe(), dwuCaseInsensitive(), copyAssetManifest(), scenarioAssets()],
     build: {
         // Do not copy public/ (the assets/dwu symlink is ~4 GB); only the
         // small asset-manifest.json matters in dist/, handled above.

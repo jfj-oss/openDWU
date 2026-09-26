@@ -71,6 +71,18 @@ export interface StartGameOptions {
     /** Task M4x: "Your Empire" tech-level slider (tbarStartNewGameYourEmpireTechLevel, 0..8 = PreWarp, Normal,
      * Level 1..7; Start.cs 3460 / method_75). Unset = 1 (Normal, tech 0.5). */
     empireTechLevelIndex?: number;
+    /**
+     * Mod layer (tasks/MODLAYER-DESIGN.md §3): the wizard's "Scenario" page. Absent / null = None (the faithful game).
+     * The caller loads the scenario's overlay into the GameData it passes to toCreateGameOptions.
+     */
+    scenario?: StartScenarioChoice | null;
+}
+
+/** The chosen scenario and its flag / param values (manifest defaults when absent). */
+export interface StartScenarioChoice {
+    id: string;
+    flags: Record<string, boolean>;
+    params: Record<string, number>;
 }
 
 /**
@@ -778,6 +790,8 @@ export function toCreateGameOptions(
         piratePrevalence: piratesFor(o.piratesIndex),
         pirateProximity: pirateProximityFor(o.pirateProximityIndex ?? 1),
         pirateShipMaintenanceFactor: pirateShipMaintenanceFactorFor(o.pirateStrengthIndex ?? 2),
+        // Mod layer: the scenario's switches (the overlay itself comes in with gameData.scenario).
+        ...(o.scenario != null ? { scenarioFlags: { ...o.scenario.flags }, scenarioParams: { ...o.scenario.params } } : {}),
         // TODO(createGame): fields createGame does not accept yet stay on
         // StartGameOptions and are ignored here:
         //   - alien life (alienLifeIndex → alienLifeFor): independent-life count

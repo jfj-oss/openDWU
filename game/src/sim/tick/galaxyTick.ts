@@ -42,6 +42,7 @@ import { checkForTerminatedPirateEmpires, checkMergePirateFactions, doSuperPirat
 import { reviewEmpireTerritorySystemsOnly } from '../exploration';
 import type { GalaxyVictoryArgs } from '../victory';
 import { checkVictoryConditions, clearCompletedPlanetDestroyerProjects, clearEmptyDebrisFields, processDelayedEventActions, reviewAchievements } from '../events';
+import { scenarioYearlyTick } from '../scenario/hooks';
 
 /** Galaxy.cs 3039 DoTasksTimeSensitive() → 3046 DoTasksTimeSensitive(starDate, time). */
 export function galaxyDoTasksTimeSensitive(galaxy: Galaxy, starDate: number = galaxyStarDate(galaxy), time: number = galaxyNow(galaxy)): void {
@@ -196,6 +197,9 @@ export function galaxyDoTasks(
         if (!gameFinished) {
             checkVictoryConditions(galaxy, playerEmpire, victoryArgs);
         }
+        // Mod layer (not a port; tasks/MODLAYER-DESIGN.md §4): the yearly scenario tick — returns at once when the game
+        // runs no scenario, so the faithful game is untouched. Scenario handlers may draw galaxy.rnd only here.
+        if (galaxy.scenario !== null) scenarioYearlyTick(galaxy);
     }
 }
 

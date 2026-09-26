@@ -1,0 +1,2 @@
+'Scenario overlay: GameText lines added to (or overriding) the base GameText.txt.
+Scenario Example Greeting;Welcome to the example scenario, {0}.

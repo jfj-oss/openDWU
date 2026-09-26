@@ -24,6 +24,14 @@ export function loadText(content: string): void {
     text = parseGameText(content).text;
 }
 
+/**
+ * Mod layer (tasks/MODLAYER-DESIGN.md): add GameText lines (same format) to the loaded table without clearing it; a
+ * tag already present is overridden. Not a port (TextResolver has no merge).
+ */
+export function addText(content: string): void {
+    for (const [k, v] of parseGameText(content).text) text.set(k, v);
+}
+
 /** True once a GameText table has been loaded (loadGameData does it). */
 export function isTextLoaded(): boolean {
     return text.size > 0;

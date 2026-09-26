@@ -58,6 +58,8 @@ import { setRaceBiasesStatic } from './raceBias';
 import { GalaxyLocationType } from './galaxyLocation';
 import { GalaxyShape, HabitatCategoryType, HabitatType, type Habitat } from './types';
 import { Cargo, CargoList, ResourceRef } from './cargo';
+import { createGalaxyScenario } from './scenario/state';
+import { scenarioFindHomeHabitat } from './scenario/hooks';
 
 export type HomeSystem = 'Harsh' | 'Trying' | 'Normal' | 'Agreeable' | 'Excellent';
 
@@ -139,6 +141,12 @@ export interface CreateGameOptions {
     raceSpecificEventsEnabled?: boolean;
     /** Galaxy.EmpireTerritoryColonyInfluenceRangeFactor from the wizard (<= 0 = auto). */
     empireTerritoryColonyInfluenceRangeFactor?: number;
+    /**
+     * Mod layer (tasks/MODLAYER-DESIGN.md): flag / param choices for the scenario whose overlay `gameData.scenario`
+     * carries. Ignored when gameData has no scenario; with none the game is the faithful one.
+     */
+    scenarioFlags?: Record<string, boolean>;
+    scenarioParams?: Record<string, number>;
     /**
      * TEST-ONLY seam (not part of the game API; the wizard never sets it). Called at each
      * game-start phase boundary *after* the named step has run (see GameStartPhase); returning
@@ -870,6 +878,8 @@ export function createGame(opts: CreateGameOptions): Game {
         colonyPrevalence: opts.colonyPrevalence,
         gameData: gd,
         races: galaxyRaces,
+        // Mod layer: galaxy.scenario before generation (its placement rules apply there); null without an overlay.
+        scenario: gd.scenario !== undefined ? createGalaxyScenario(gd.scenario.manifest, { flags: opts.scenarioFlags, params: opts.scenarioParams }, gd.resources) : null,
         empireStarts: all.filter((e) => e.resolvedRace !== null).map((e) => ({ resolvedRace: e.resolvedRace!, projectedColonyAmount: e.projectedColonyAmount })),
     });
     // Unset galaxyAge = 1: the game's standard preset (Start.cs 3298-3327: Expansion 1 / empire tech Normal 0.5).
@@ -986,7 +996,8 @@ export function createGame(opts: CreateGameOptions): Game {
         // Player capital (non-pirate branch).
         const { homeSystemFactor } = Galaxy.resolveHomeSystem(opts.player.homeSystemFavourability);
         const capitalHabitatType = race.nativeHabitatType;
-        let found: Habitat | null = null;
+        // Mod layer: a scenario homePlacement rule for the race picks the capital first (no draws without one).
+        let found: Habitat | null = galaxy.scenario !== null ? scenarioFindHomeHabitat(galaxy, race, capitalHabitatType, { randomPointInRing, inNebula }, 0) : null;
         let num10 = 0;
         let num11 = 0.0;
         let num12 = 0.0;
@@ -1053,7 +1064,9 @@ export function createGame(opts: CreateGameOptions): Game {
         const { sector } = proximityDistance(galaxy, prox);
         galaxy.rnd.nextDouble();
         const home = Galaxy.resolveHomeSystem(es.opts.homeSystemFavourability);
-        const cap = findAiCapital(galaxy, aiRace, prox, habitat, aiRace.nativeHabitatType, playAsPirate, num14 + 1, sector);
+        // Mod layer: a scenario homePlacement rule for the race picks the capital first (no draws without one).
+        const scenarioCap = galaxy.scenario !== null ? scenarioFindHomeHabitat(galaxy, aiRace, aiRace.nativeHabitatType, { randomPointInRing, inNebula }, galaxy.sectorSize * 0.7) : null;
+        const cap = scenarioCap ?? findAiCapital(galaxy, aiRace, prox, habitat, aiRace.nativeHabitatType, playAsPirate, num14 + 1, sector);
         if (cap === null) throw new Error('Could not locate capital!');
         let dpfi = es.opts.designPictureFamilyIndex ?? -1;
         if (dpfi < 0) dpfi = aiRace.designsPictureFamilyIndex;

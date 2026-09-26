@@ -49,11 +49,28 @@ export function serializeGame(game: Game, time: GalaxyTime, startOptions: StartG
     return JSON.stringify(save);
 }
 
+/**
+ * Mod layer: the scenario id a save was made with (galaxy.scenario.id in the encoded graph), or null for the faithful
+ * game. Reads the JSON without decoding the graph, so a loader can pick the scenario overlay before deserializeGame.
+ */
+export function savedScenarioId(save: string | GameSaveJSON): string | null {
+    const obj = typeof save === 'string' ? (JSON.parse(save) as GameSaveJSON) : save;
+    const g = obj.galaxy?.galaxy as { $f?: { scenario?: { $f?: { id?: unknown } } | null } } | undefined;
+    const id = g?.$f?.scenario?.$f?.id;
+    return typeof id === 'string' ? id : null;
+}
+
 /** Rebuild a game from a serializeGame string. Static data (races, resources,
  *  research, governments) comes from gameData. */
 export function deserializeGame(text: string, gameData: GameData): { game: Game; time: GalaxyTime; startOptions: StartGameOptions } {
     const obj = JSON.parse(text) as GameSaveJSON;
     if (obj.version !== GAME_SAVE_VERSION) throw new Error(`Unsupported save version ${String(obj.version)} (expected ${GAME_SAVE_VERSION}).`);
+    // Mod layer: the static tables are rebuilt from gameData, so it must carry the save's scenario overlay (or none).
+    const savedScenario = savedScenarioId(obj);
+    const dataScenario = gameData.scenario?.manifest.id ?? null;
+    if (savedScenario !== dataScenario) {
+        throw new Error(`Save was made with scenario ${savedScenario ?? '(none)'} but the game data has ${dataScenario ?? 'no scenario'}; load it with that scenario's data.`);
+    }
 
     const galaxy: Galaxy = galaxyFromJSON(obj.galaxy, gameData);
     restoreCommandLog(galaxy, obj.commandLog);
