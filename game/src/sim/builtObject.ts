@@ -7,10 +7,8 @@
 // ActualEmpire, and BaconBuiltObject.ModMyShip / ModWeaponRangeForBases /
 // CargoBayCapacityMultiplier / IsMyShip.
 // Rnd: none — neither the constructors nor ReDefine draw from Galaxy.Rnd.
-// Subsystems not ported yet are TODO(port) at the exact spot, with the value C#
-// sees at game start: ConstructionQueue / ManufacturingQueue (created by
-// ReDefine for shipyards / manufacturers), fighters (FighterList), characters,
-// contracts, missions, UpdatePosition.
+// The runtime subsystems (construction / manufacturing queues, fighters, characters, contracts, missions,
+// movement) live in their own modules; some members here are typed loosely (unknown) to avoid import cycles.
 
 import { updatePosition } from './movement';
 import { BuiltObjectSubRole } from './builtObjectTypes';
@@ -40,6 +38,8 @@ import { builtObjectReDefineConstructionQueue } from './construction/constructio
 import { fighterCompleteTeardown, type Fighter } from './combat/fighters';
 import { clearPreviousMissionRequirements } from './missions/assign';
 import { baconSettings } from './data/baconSettings';
+import { raceChangePeriodActive, racePeriodicRaceEvent } from './colonyTick';
+import { RaceEventType } from './eventTypes';
 
 // Port of EngineType.cs (byte enum, member order exact).
 export enum EngineType {
@@ -90,9 +90,8 @@ function convertToInt32(f: number): number {
 
 // Empire.cs:367 AttackRangeOther (default 48000; Empire.SetAutomationSettings copies
 // GameOptions.AttackRangeOther, also 48000 by default — GameOptions.cs:56).
-// TODO(port): Empire.AttackRangeOther field (read here when present).
 function empireAttackRangeOther(empire: Empire): number {
-    return (empire as Empire & { attackRangeOther?: number }).attackRangeOther ?? 48000;
+    return empire.attackRangeOther;
 }
 
 // Port of BuiltObject.cs (StellarObject.cs base fields included).
@@ -287,13 +286,13 @@ export class BuiltObject {
     fighterCapacity = 0;
     fighterRepairRate = 0;
     design: Design;
-    shipGroup: unknown = null; // TODO(port): ShipGroup (fleets).
+    shipGroup: unknown = null; // ShipGroup (fleets/shipGroup.ts; typed loosely).
     nativeRace: Race | null = null;
-    // TODO(port): ContractList (Contract.cs) — empty list at construction.
+    // ContractList (logistics/contracts.ts; typed loosely) — empty list at construction.
     private _contractsToFulfill: unknown[] = [];
     retrofitDesign: Design | null = null;
     nearestSystemStar: Habitat | null = null;
-    // TODO(port): BuiltObjectMission (BuiltObjectMission.cs) — null at game start.
+    // BuiltObjectMission (missions/mission.ts; read through builtObjectMission()) — null at construction.
     mission: unknown = null;
     subsequentMissions: unknown[] = [];
     components: BuiltObjectComponentList;
@@ -336,7 +335,7 @@ export class BuiltObject {
         this.attackers = [];
         this.pursuers = [];
         this.troops = null;
-        this.characters = []; // TODO(port): CharacterList (characters).
+        this.characters = []; // CharacterList (characters.ts).
         this._contractsToFulfill = [];
         this.purchasePrice = design.calculateCurrentPurchasePrice(this._galaxy);
         this.name = name;
@@ -411,9 +410,11 @@ export class BuiltObject {
             // ParentHabitat.ResourceBonuses (never null on a TS habitat).
             num3 = resourceBonusTotalByEffectType(parent, ColonyResourceEffect.BaseMaintenanceReduction) / 100.0;
         }
-        // TODO(port): Race.ChangePeriodActive / PeriodicRaceEvent StrengthInNumbersMaintenanceLowerForSmallShips
-        // (num4 = 0.25 for Size <= 200) — periodic race events are not modeled (none at game start).
-        const num4 = 0.0;
+        // BuiltObject.cs 798-802: StrengthInNumbers races maintain small ships 25% cheaper during their change period.
+        let num4 = 0.0;
+        if (actualEmpire !== null && actualEmpire.dominantRace !== null && raceChangePeriodActive(this._galaxy, actualEmpire.dominantRace) && racePeriodicRaceEvent(actualEmpire.dominantRace) === RaceEventType.StrengthInNumbersMaintenanceLowerForSmallShips && this.size <= 200) {
+            num4 = 0.25;
+        }
         const characterMaintenanceBonuses = getCharacterMaintenanceBonuses(this);
         const num5 = characterMaintenanceBonuses / 100.0;
         const num6 = Math.min(1.0, this.maintenanceSavings + num3 + num4 + num5);
@@ -1102,7 +1103,7 @@ export class BuiltObject {
             if (this.troops === null) this.troops = new TroopList();
         } else {
             if (this.troops !== null && this.troops.items.length > 0) {
-                // TODO(port): Troop model (Troop.cs) — fields accessed loosely.
+                // Troop (Troop.cs; cargo.ts) back-references, accessed loosely.
                 for (let l = 0; l < this.troops.items.length; l++) {
                     const troop = this.troops.items[l] as Troop & { empire?: { troops?: TroopList | null } | null; builtObject?: unknown; colony?: unknown };
                     if (troop.empire != null && troop.empire.troops != null) troop.empire.troops.remove(troop);
