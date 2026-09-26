@@ -51,7 +51,6 @@ import { builtObjectCompleteTeardown } from '../combat/teardown';
 import { assignFleetWaypointMission } from '../fleets/shipGroup';
 import { canBuildBuiltObject } from '../forceStructure';
 import { galaxyStarDate } from '../tick/simTime';
-import { DEFAULT_BASE_TECH_COST } from '../componentStatic';
 import { researchComponentTechPoints } from '../designGeneration';
 import {
     ConstructionYard,
@@ -1547,8 +1546,7 @@ export function yardsAddBuiltObjectToConstruct(galaxy: Galaxy, yards: readonly C
 /**
  * Galaxy.4.cs 1843 ResolveBuildSpeed(buildingEmpire, galaxy, builtObject, considerAllComponents, out researchCategory)
  * (1826/1832/1838 are the overloads: considerAllComponents defaults to true).
- * TODO(port): Galaxy.BaseTechCost (game option) is not kept on the TS Galaxy — DEFAULT_BASE_TECH_COST stands in, as in
- * designGeneration.ts researchComponentTechPoints.
+ * 1858 num4 = (int)((double)galaxy.BaseTechCost * 0.5).
  */
 export function resolveBuildSpeed(buildingEmpire: Empire | null, galaxy: Galaxy, builtObject: BuiltObject, considerAllComponents = true): { result: number; researchCategory: ComponentCategoryType } {
     let result = 1.0;
@@ -1562,7 +1560,7 @@ export function resolveBuildSpeed(buildingEmpire: Empire | null, galaxy: Galaxy,
         if (!considerAllComponents && builtObjectComponent.status === ComponentStatus.Normal) continue;
         // ResearchSystem.GetMinTechPoints(component) (ResearchSystem.cs 1244).
         const minTechPoints = minTech.length > builtObjectComponent.componentId ? minTech[builtObjectComponent.componentId] : 0;
-        let num4 = Math.trunc(DEFAULT_BASE_TECH_COST * 0.5);
+        let num4 = Math.trunc(galaxy.baseTechCost * 0.5);
         if (buildingEmpire !== null && buildingEmpire.research != null && buildingEmpire.research.checkComponentResearched(builtObjectComponent.def)) {
             num4 = minTechPoints;
         }

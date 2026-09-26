@@ -55,7 +55,8 @@ import type { BuiltObject } from './builtObject';
 import type { RaceFamily } from './data/raceFamilies';
 import { BuiltObjectRole } from './data/designSpecifications';
 import { BuiltObjectSubRole } from './builtObjectTypes';
-import { MIN_TIME } from './tick/simTime';
+import { MIN_TIME, galaxyNow } from './tick/simTime';
+import { habitatDoTasks } from './tick/habitatTick';
 import { canEmpireColonizeHabitat, habitatResourcesHaveSuperLuxury } from './exploration';
 import type { SchedulerState } from './tick/scheduler';
 import type { Blockade } from './fleets/blockades';
@@ -119,6 +120,9 @@ export interface GenerateGalaxyOptions {
     // omitted/empty no race regions are created and SetupAlienRacePopulations
     // consumes zero Rnd calls (pre-01f1 behavior).
     empireStarts?: EmpireStart[];
+    // [todosweep2] Galaxy.4.cs 2088 ctor `double baseTechCost` (Start.2.cs 480/485 double_4): research costs
+    // (SetResearchCosts), component tech points (SetResearchComponentMaxTechPoints) and Galaxy.BaseTechCost. Default 120000.
+    baseTechCost?: number;
     /**
      * This galaxy's own race list (cloneGalaxyRaces of gameData.races, made by createGame before it resolves the empire
      * starts). Omitted: generateGalaxy clones gameData.races itself and maps each empireStarts resolvedRace (a GameData
@@ -3485,7 +3489,8 @@ export class Galaxy {
         habitat.pictureRef = pictureRef;
         habitat.landscapePictureRef = landscapePictureRef;
         habitat.baseQuality = this.selectHabitatQuality(habitat, this.colonyPrevalence);
-        // TODO(port): DoTasks(CurrentDateTime) — Habitat.DoTasks (galaxy-time driven).
+        // Galaxy.8.cs 473 habitat.DoTasks(galaxy.CurrentDateTime) (Habitat.cs 1399): see generationHabitatDoTasks.
+        generationHabitatDoTasks(this, habitat);
         this.selectResources(habitat);
         if (this.rnd.next(0, 5) === 2) {
             habitat.orbitDirection = false;
@@ -4029,7 +4034,8 @@ export class Galaxy {
                 planet.pictureRef = pictureRef;
                 planet.landscapePictureRef = landscapePictureRef;
                 planet.baseQuality = this.selectHabitatQuality(planet, this.colonyPrevalence);
-                // TODO(port): DoTasks(CurrentDateTime) — Habitat.DoTasks (galaxy-time driven; out of scope).
+                // Galaxy.5.cs 1587 habitat2.DoTasks(CurrentDateTime) (Habitat.cs 1399): see generationHabitatDoTasks.
+                generationHabitatDoTasks(this, planet);
                 this.selectResources(planet);
                 this.setScenicFactor(planet);
                 this.setResearchBonus(planet);
@@ -4137,7 +4143,8 @@ export class Galaxy {
                     }
                     moonsForThisPlanet.push(moon);
                     moon.orbitDistance = moonOrbitDistance;
-                    // TODO(port): DoTasks(CurrentDateTime) — out of scope (galaxy time).
+                    // Galaxy.5.cs 1731 habitat2.DoTasks(CurrentDateTime) (Habitat.cs 1399): see generationHabitatDoTasks.
+                    generationHabitatDoTasks(this, moon);
                     this.selectResources(moon);
                     this.setScenicFactor(moon);
                     this.setResearchBonus(moon);
@@ -4476,6 +4483,19 @@ export class Galaxy {
     maximumEmpireAmount = 0;
     /** Galaxy.SpawnNewEmpires (Start.2.cs 116, wizard option) — gates Habitat CheckHabitatIsEmpire. */
     spawnNewEmpires = true;
+    // [todosweep2] begin
+    /**
+     * Galaxy.cs 619/908 _BaseTechCost: the Galaxy ctor sets `(int)baseTechCost` (Galaxy.4.cs 2148; Start.2.cs 111 on a
+     * reset galaxy) from the wizard's research-cost box (Start.1.cs 3693 numStartNewGameTheGalaxyResearchBaseTech × 1000).
+     * generateGalaxy writes it; the TS default is the value componentStatic.ts / InitializeResearchNodeDefinitions use
+     * (Galaxy.3.cs 4662 SetResearchCosts(120000, …)), not the unreachable field initializer 60000.
+     */
+    baseTechCost = 120000;
+    /** Galaxy.cs 729 ColonizationRangeEnforceLimit (Start.2.cs 508 = EmpireStart.ColonizationRangeEnforceLimit). */
+    colonizationRangeEnforceLimit = true;
+    /** Galaxy.cs 732 ColonizationRange (float; Start.2.cs 509 = EmpireStart.ColonizationRange). */
+    colonizationRange = 3000000;
+    // [todosweep2] end
     /** Frame-driver state (cursors int_48..int_58, frame carry; tick/scheduler.ts). Created lazily. */
     scheduler: SchedulerState | null = null;
     // ---- M4b fields (missions & command dispatcher) ----
@@ -4635,6 +4655,19 @@ export function galaxyRace(galaxy: Galaxy, race: Race): Race {
     return galaxy.shakturiRaceBase !== null && race === galaxy.shakturiRaceBase && galaxy.shakturiActualRace !== null ? galaxy.shakturiActualRace : race;
 }
 
+/**
+ * `habitat.DoTasks(galaxy.CurrentDateTime)` on a planet / moon just built by generation (Galaxy.8.cs 215-551, Galaxy.5.cs
+ * 1587 / 1731; Habitat.cs 1399). The Habitat ctor (Habitat.cs 6184-6187, 6297-6303) left LastHuge/Long/Periodic touch =
+ * now, LastTouch = now − 30 s, LastIntermediateTouch = MinValue, and the galaxy clock does not run during generation. So
+ * DoTasks: Move with 30 s (the ctor's initial Move already applied 30 s: the orbit angle advances 60 s in all), then only
+ * the intermediate block — HandleWeaponsFiring (no giant ion cannon: returns) and CheckForShipsDiscoveringRuins (no ruin
+ * yet: returns) — and LastIntermediateTouch = LastTouch = now. Periodic / long / huge spans are 0 (strict `>`): nothing
+ * else runs, and no Galaxy.Rnd is drawn.
+ */
+export function generationHabitatDoTasks(galaxy: Galaxy, habitat: Habitat): void {
+    habitatDoTasks(galaxy, habitat, galaxyNow(galaxy));
+}
+
 // Port of Galaxy.4.cs Galaxy constructor (star-cluster setup, star loop,
 // gas-cloud loop, sort/re-index, Systems build — Galaxy.4.cs 2221-2347).
 // colonyPrevalence feeds SelectHabitatQuality; empire placement (GenerateEmpire)
@@ -4657,7 +4690,11 @@ export function generateGalaxy(options: GenerateGalaxyOptions): Galaxy {
     // ResourceSystem.Resources (Galaxy.4.cs ctor loads it before generation).
     galaxy.resources = gameData?.resources ?? [];
     galaxy.resourceSystem = buildResourceSystem(galaxy.resources, gameData?.components ?? []);
-    galaxy.researchStatic = gameData ? buildResearchStatic(gameData.research, gameData.components, races, gameData.policies, gameData.piratePolicies, buildComponentStatic(gameData), gameData.facilities, gameData.fighters, gameData.plagues) : null;
+    // Galaxy.4.cs 2148 _BaseTechCost = (int)baseTechCost; Start.2.cs 485-489 SetResearchCosts / SetHyperDriveSpeeds /
+    // SetResearchComponentMaxTechPoints((int)double_4) before the ctor (componentStatic.ts; designGeneration.ts reads
+    // galaxy.baseTechCost for the tech points).
+    galaxy.baseTechCost = Math.trunc(options.baseTechCost ?? galaxy.baseTechCost);
+    galaxy.researchStatic = gameData ? buildResearchStatic(gameData.research, gameData.components, races, gameData.policies, gameData.piratePolicies, buildComponentStatic(gameData, { baseTechCost: galaxy.baseTechCost }), gameData.facilities, gameData.fighters, gameData.plagues) : null;
     galaxy.designSpecificationTexts = gameData?.designSpecificationTexts ?? new Map();
     galaxy.designNames = gameData?.designNames ?? [];
     // Port of Galaxy.cs Races (Galaxy.4.cs 2132, loaded per galaxy in the ctor).

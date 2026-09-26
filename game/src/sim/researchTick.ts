@@ -22,8 +22,8 @@
 //
 // Bacon overrides: BaconResearchSystem.DetermineComponentImprovements (called at the end of PerformResearch) has an
 // empty body. BaconEmpire.ProcessScienceShips (lab progress on exploration ships) runs from the scripted game event
-// "ProcessEmpireScienceShips" (BaconGalaxy.ExecuteEventAction 324), not from the empire tick — deferred with game
-// events (ProcessDelayedEventActions).
+// delayed action "ProcessEmpireScienceShips" (BaconGalaxy.ExecuteEventAction 324), not from the empire tick
+// (baconScienceShips.ts).
 //
 // Galaxy.Rnd draws, in C# order:
 //   PerformResearchProjects: SelectNextResearchProject → SelectRandomLowestProject Next(0, n) (when a queue is

@@ -80,7 +80,8 @@ describe('createGame story switches (Start.2.cs 501-506)', () => {
         expect([g.storyReturnOfTheShakturiEnabled, g.storyDistantWorldsEnabled, g.storyShadowsEnabled, g.gameRaceSpecificEventsEnabled]).toEqual([false, false, false, true]);
         expect(g.storyClueLocations).toEqual([]);
         expect(g.gameEvents.count).toBe(0);
-        expect(g.delayedActions).toEqual([]);
+        // Only BaconMain.cs 700-715's "ProcessEmpireScienceShips" (researchPerLab 1000) is queued; no story actions.
+        expect(g.delayedActions.map((p) => p.action?.messageTitle)).toEqual(['ProcessEmpireScienceShips']);
     }, 180000);
 
     it('explicit false story options give the same game as the defaults (no Rnd difference)', () => {

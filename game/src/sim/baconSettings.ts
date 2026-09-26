@@ -7,14 +7,16 @@
 // createGame calls resetBaconSettings before generating and baconInitializeSettings at the end; deserializeGame calls
 // baconInitializeSettings after loading.
 //
+// BaconMain.cs 700-715: the "ProcessEmpireScienceShips" delayed action when researchPerLab > 0 (Galaxy.Rnd.Next(26, 35);
+// baconScienceShips.ts).
 // TODO(port): the rest of BaconInitialize — Galaxy.MinimumHabitatPopulationAmount = 100 (558), the SaveStats files and
-// delayed "SaveStats" action (559-697), the "ProcessEmpireScienceShips" delayed action when researchPerLab > 0
-// (700-715, Galaxy.Rnd.Next(26, 35)), AddOtherDelayedEvents ("ClearShipsAboutToBeDestroyed", Rnd.Next(10, 12)),
-// ModAllShips (ApplyCrewExperience) and BaconDesign.RedefineAllBases (1063-1070). RND: those two draws are not made.
+// delayed "SaveStats" action (559-697), AddOtherDelayedEvents ("ClearShipsAboutToBeDestroyed", Rnd.Next(10, 12)),
+// ModAllShips (ApplyCrewExperience) and BaconDesign.RedefineAllBases (1063-1070). RND: the Next(10, 12) draw is not made.
 
 import type { Galaxy } from './galaxy';
 import { type BaconSettings, baconSettings, defaultBaconSettings, setBaconSettings } from './data/baconSettings';
 import { baconMovementSettings } from './movement';
+import { scheduleProcessEmpireScienceShips } from './baconScienceShips';
 
 /** Copy the live settings into movement.ts's `baconMovementSettings` (the statics the movement / hyperjump code reads). */
 function syncMovementSettings(): void {
@@ -48,4 +50,6 @@ export function baconInitializeSettings(galaxy: Galaxy | null, settings: BaconSe
     if (baconSettings.troopGarrisonMinimumPerColony !== null && independent !== null && independent.policy !== null) {
         independent.policy.troopGarrisonMinimumPerColony = baconSettings.troopGarrisonMinimumPerColony;
     }
+    // BaconMain.cs 700-715 (after the settings, before AddOtherDelayedEvents 1077).
+    if (galaxy !== null) scheduleProcessEmpireScienceShips(galaxy);
 }
