@@ -985,3 +985,29 @@ function planetZoomFactor(f: number): number {
 function moonZoomFactor(f: number): number {
     return f > 10.0 ? Math.max(10.0, f / 1.1) : f;
 }
+
+/** One effects layer per Main View world container, created on first use (so the Main View needs a single hook). */
+const layers = new WeakMap<Container, EffectsLayer>();
+
+/** Draw this frame's combat effects for the Main View whose world container is `world`. */
+export function updateCombatEffects(
+    galaxy: Galaxy,
+    world: Container,
+    store: AssetStore,
+    ships: { drawnSizePx(bo: BuiltObject): number },
+    z: number,
+    cam: Camera,
+): EffectsLayer {
+    let layer = layers.get(world);
+    if (layer === undefined) {
+        layer = new EffectsLayer(galaxy, world, store, (bo) => ships.drawnSizePx(bo));
+        layers.set(world, layer);
+    }
+    layer.update(z, cam);
+    return layer;
+}
+
+/** The Main View's effects layer, if it has drawn a frame (debug / capture hook). */
+export function combatEffectsLayerFor(world: Container): EffectsLayer | undefined {
+    return layers.get(world);
+}

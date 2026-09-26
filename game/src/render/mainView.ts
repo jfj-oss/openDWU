@@ -47,7 +47,7 @@ import { EmpireLayer } from './empireLayer';
 import { OverlayLayer } from './overlayLayer';
 import { BuiltObjectLayer, BUILT_OBJECT_MAX_FACTOR } from './builtObjectLayer';
 // [combatfx] begin
-import { EffectsLayer } from './effectsLayer';
+import { updateCombatEffects } from './effectsLayer';
 // [combatfx] end
 import type { BuiltObject } from '../sim/builtObject';
 import { createMapOverlayState, type MapOverlayState } from '../ui/mapOverlays';
@@ -878,10 +878,6 @@ export class MainView {
     private overlayLayer!: OverlayLayer;
     /** Task 13a: ships, bases, pirates and traders (BuiltObjects). */
     private builtObjectLayer!: BuiltObjectLayer;
-    // [combatfx] begin
-    /** Combat effects: weapon fire, explosions, shield strikes, hyperjump flashes (effectsLayer.ts). */
-    combatEffects: EffectsLayer | null = null;
-    // [combatfx] end
     private textures!: MainViewTextures;
     private minZoom = 1e-6;
     private lastGridZoom = -1;
@@ -1187,9 +1183,6 @@ export class MainView {
         this.overlayLayer = new OverlayLayer(this.galaxy, this.world, this.empireLayer, this.overlays);
         // Task 13a: ships/bases/pirates/traders on top of all map layers.
         this.builtObjectLayer = new BuiltObjectLayer(this.galaxy, this.world, this.store, this.overlays);
-        // [combatfx] begin
-        this.combatEffects = new EffectsLayer(this.galaxy, this.world, this.store, (bo) => this.builtObjectLayer.drawnSizePx(bo));
-        // [combatfx] end
 
         this.attachInput();
     }
@@ -1299,7 +1292,8 @@ export class MainView {
         // Task 13a: built objects (ships, bases, pirates, traders).
         this.builtObjectLayer.update(z, cam);
         // [combatfx] begin
-        this.combatEffects?.update(z, cam);
+        // Combat effects (weapon fire, explosions, shield strikes, hyperjump flashes) above the ships.
+        updateCombatEffects(this.galaxy, this.world, this.store, this.builtObjectLayer, z, cam);
         // [combatfx] end
 
         // Region/nebula location name labels (task 08f1): visible while the
