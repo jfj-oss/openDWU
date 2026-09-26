@@ -150,8 +150,13 @@ export function getText(key: string): string {
     return key;
 }
 
-/** string.Format(format, args): {n} placeholders. */
+/**
+ * string.Format(format, args): {n} placeholders. When `format` is a GameText key (getText returns keys; M9 localises),
+ * it has no placeholders: the arguments are kept in the colonyTick gameText encoding "key|arg0|arg1|…", which
+ * textResolver.resolveGameText turns into the C# text for display (the advisor suggestions, the message ticker).
+ */
 export function formatText(format: string, ...args: unknown[]): string {
+    if (args.length > 0 && !/\{\d+\}/.test(format)) return `${format}|${args.map((a) => String(a)).join('|')}`;
     return format.replace(/\{(\d+)\}/g, (m, i) => (Number(i) < args.length ? String(args[Number(i)]) : m));
 }
 

@@ -37,7 +37,7 @@ import { calculateAngleFromCoords, type Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import { AutomationLevel, empireGovernmentAttributes } from '../empire';
 import { BuiltObject } from '../builtObject';
-import { Habitat, HabitatType, IndustryType } from '../types';
+import { Habitat, HabitatCategoryType, HabitatType, IndustryType } from '../types';
 import type { Design } from '../design';
 import { galaxyComponentCurrentPrices } from '../design';
 import { BuiltObjectSubRole } from '../builtObjectTypes';
@@ -78,7 +78,7 @@ import { determineNewSpacePortLocations, analyzeNewResearchFacilities } from '..
 import { determineOrbitalBaseLocation } from '../pirates';
 import { AdvisorMessageType, checkTaskAuthorized, formatText, formatThousands, getText, type RefCount } from '../diplomacyTick';
 import { gameText } from '../colonyTick';
-import { EmpireMessage, EmpireMessageType, sendEmpireMessage } from '../messages';
+import { EmpireMessage, EmpireMessageType, resolveDescription, sendEmpireMessage } from '../messages';
 import { ConstructionQueue, canBuiltObjectColonizeHabitat, resolveBuildSpeed } from './constructionQueue';
 import { componentListDiff, resolveComponentList } from './constructionYard';
 import { ManufacturingQueue, builtObjectManufacturingQueue, habitatManufacturingQueue } from '../manufacturingQueue';
@@ -854,11 +854,12 @@ export function generateAutomationMessageConstruction(galaxy: Galaxy, builtObjec
     if (habitat !== null) {
         const habitat2 = galaxy.determineHabitatSystemStar(habitat);
         text3 = habitat.name;
-        text = String(habitat.type);
-        text2 = String(habitat.category);
+        text = resolveDescription(HabitatType, habitat.type);
+        text2 = resolveDescription(HabitatCategoryType, habitat.category);
         text4 = habitat2.name;
     }
-    return formatText(getText('Automation Construction Colony'), builtObject.subRole, builtObject.design!.name, formatMoney(cost), text, text2, text3, text4);
+    // 3676: Galaxy.ResolveDescription(SubRole), cost.ToString("###,###,###,##0").
+    return formatText(getText('Automation Construction Colony'), resolveDescription(BuiltObjectSubRole, builtObject.subRole), builtObject.design!.name, formatThousands(cost), text, text2, text3, text4);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
