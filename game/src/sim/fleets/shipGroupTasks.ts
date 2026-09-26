@@ -67,7 +67,7 @@ import {
     withinReducedFuelRange,
 } from '../movement';
 import { calculateOverallStrengthFactor, fastFindNearestColony, stellarEmpire } from '../combat/threats';
-import { determineDestroyOrCaptureTargetCore, weaponIsAvailableWithoutEnergyConsideration } from '../combat/attackAI';
+import { determineDestroyOrCaptureTargetCore, empireRaidStrengthFactor, weaponIsAvailableWithoutEnergyConsideration } from '../combat/attackAI';
 import { finalizeShipGroupBattleStats, startNewShipGroupBattleStats } from '../combat/damage';
 import { determineEmpiresAtWarWith } from '../treasury';
 import { checkEmpireHasHyperDriveTech } from '../forceStructure';
@@ -2313,10 +2313,6 @@ export function shipGroupTotalAssaultStrength(shipGroup: ShipGroup): number {
     return total;
 }
 
-/** Empire.RaidStrengthFactor (Empire.cs 431, default 1.0), read as attackAI.ts does. */
-function empireRaidStrengthFactor(empire: Empire): number {
-    return (empire as Empire & { raidStrengthFactor?: number }).raidStrengthFactor ?? 1.0;
-}
 
 /**
  * BuiltObject.1.cs 3342 CalculateAssaultPodAttackValues(time, out assaultPodCount, out assaultPodsAvailable). Shared
