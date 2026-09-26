@@ -33,7 +33,7 @@ import { closeTradePanel } from './ui/screens/tradePanel';
 import { closeShipsAndBasesList } from './ui/screens/shipsAndBasesList';
 import { closeResearchScreen } from './ui/screens/researchScreen'; // [15b]
 import { closeShipDesigns } from './ui/screens/shipDesigns'; // [16b]
-import { closeEmpireSummary, setEmpireSummarySource } from './ui/screens/empireSummary';
+import { closeEmpireSummary, setEmpireSummarySource, setEmpireSummaryTradeFlowsLink } from './ui/screens/empireSummary';
 // [advisor] begin
 import { closeAdvisorPanel } from './ui/advisorPanel';
 // [advisor] end
@@ -84,6 +84,7 @@ import { setSaveLoadProvider, createSaveLoadPanel, type LoadedGame } from './ui/
 import { type Game } from './sim/game';
 import { createGalaxyMap, type GalaxyMapScreen } from './ui/screens/galaxyMap';
 import { hideMapTooltip } from './ui/mapTooltip';
+import { closeTradeFlows, mountFreightLegend, openTradeFlows, toggleTradeFlows } from './ui/screens/tradeFlows'; // [freightOverlay]
 import { closeEmpireComparison, closeGameEndBanner, installGameEndHandler, removeGameEndHandler } from './ui/screens/empireComparison'; // [15d]
 import { installMessagePopups, removeMessagePopups } from './ui/messagePopups'; import { closeGameOptionsPanel } from './ui/screens/gameOptionsPanel'; // [16d]
 import { installOrderUi, selectionTarget } from './ui/orderMenu'; import { getSelection as getHudSelection, selectShipGroup, selectStellarObject } from './ui/hud'; import { ShipGroup } from './sim/fleets/shipGroup'; import { Fighter } from './sim/combat/fighters'; // [ordermenu]
@@ -296,6 +297,12 @@ const OVERLAY_PARAM_ALIASES: Record<string, OverlayKey> = {
     travelVectorsPrivate: 'travelVectorsPrivate',
     longRangeScanners: 'longRangeScanners',
     fadeCivilianShips: 'fadeCivilianShips',
+    // [freightOverlay] begin
+    freight: 'freightFlows',
+    freightFlows: 'freightFlows',
+    hubs: 'tradeHubs',
+    tradeHubs: 'tradeHubs',
+    // [freightOverlay] end
 };
 
 /** Screenshot / dev hook: `?overlays=potentialColonies,scenic,research`
@@ -390,6 +397,7 @@ export async function startGameView(
     // MainView, as before) so the Main View's overlay layer and the HUD's
     // options list share the same MapOverlayState instance.
     const overlays = createMapOverlayState();
+    overlays.freightFlows = getSettings().freightFlowsDefault; // [freightOverlay] settings default (19e-9)
     applyOverlaysUrlParam(overlays);
     const view = new MainView(app, camera, galaxy, store, overlays);
     await view.init();
@@ -436,9 +444,20 @@ export async function startGameView(
     let shipKeys: ShipCommandKeys | null = null;
     Object.assign((window as unknown as { __dwu: Record<string, unknown> }).__dwu, { simBudget: simLoop.budget });
     // [fix6ui] end
+    // [freightOverlay] begin — task 19e-9: Trade Flows panel (overlay row "…", legend button) + map legend.
+    const tradeFlowsOpts = {
+        galaxy,
+        playerEmpire: game.playerEmpire,
+        overlay: () => view.freightOverlay,
+        jumpTo: (x: number, y: number) => camera.centerOn(x, y),
+    };
+    const removeFreightLegend = mountFreightLegend(overlays, () => openTradeFlows(tradeFlowsOpts));
+    setEmpireSummaryTradeFlowsLink(() => openTradeFlows(tradeFlowsOpts));
+    // [freightOverlay] end
     const hud: HudRefs = createHud({
         clock: time,
         overlays,
+        openTradeFlows: () => toggleTradeFlows(tradeFlowsOpts), // [freightOverlay]
         camera,
         galaxy,
         game,
@@ -740,6 +759,11 @@ export async function startGameView(
         closeResearchScreen(); // [15b]
         closeShipDesigns(); // [16b]
         closeEmpireSummary();
+        // [freightOverlay] begin
+        closeTradeFlows();
+        removeFreightLegend();
+        setEmpireSummaryTradeFlowsLink(null);
+        // [freightOverlay] end
         closeMessageHistory();
         closeFleetsList(); // [15c]
         closeBuildOrder(); closeConstructionYards(); // [16c]

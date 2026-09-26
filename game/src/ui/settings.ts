@@ -61,6 +61,10 @@ export interface UiSettings {
     /** numOptionsAutoSaveMinutes. */
     autoSaveMinutes: number;
     // [leftovers] end
+
+    // [freightOverlay] begin — task 19e-9: Overlays → Freight Flows starts on in new / loaded games.
+    freightFlowsDefault: boolean;
+    // [freightOverlay] end
 }
 
 const STORAGE_KEY = 'dwu-ui-settings';
@@ -101,6 +105,10 @@ export const DEFAULT_SETTINGS: UiSettings = {
     autoSave: true,
     autoSaveMinutes: 30,
     // [leftovers] end
+
+    // [freightOverlay] begin
+    freightFlowsDefault: false,
+    // [freightOverlay] end
 };
 
 /** Minimal storage shape (localStorage-compatible). */
@@ -172,6 +180,10 @@ export function loadSettings(): UiSettings {
         if (typeof parsed.autoSave === 'boolean') out.autoSave = parsed.autoSave;
         if (typeof parsed.autoSaveMinutes === 'number' && Number.isFinite(parsed.autoSaveMinutes)) out.autoSaveMinutes = clampAutoSaveMinutes(parsed.autoSaveMinutes);
         // [leftovers] end
+
+        // [freightOverlay] begin
+        if (typeof parsed.freightFlowsDefault === 'boolean') out.freightFlowsDefault = parsed.freightFlowsDefault;
+        // [freightOverlay] end
     } catch {
         // Corrupt blob: keep the defaults.
     }

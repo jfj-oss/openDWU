@@ -142,6 +142,13 @@ export function toggleEmpireSummary(): void {
     }
 }
 
+// [freightOverlay] begin — task 19e-9: "Where does the money go?" link to the Trade Flows panel (main.ts wires it).
+let openTradeFlowsLink: (() => void) | null = null;
+export function setEmpireSummaryTradeFlowsLink(fn: (() => void) | null): void {
+    openTradeFlowsLink = fn;
+}
+// [freightOverlay] end
+
 /** Close the Empire Summary panel (no-op when closed). */
 export function closeEmpireSummary(): void {
     open?.close();
@@ -184,6 +191,20 @@ function createEmpireSummary(src: EmpireSummarySource): OpenState {
         line.append(label, value);
         body.appendChild(line);
     }
+    // [freightOverlay] begin
+    if (openTradeFlowsLink !== null) {
+        const link = document.createElement('button');
+        link.type = 'button';
+        link.className = 'empire-summary-link';
+        link.textContent = 'Where does the money go? →';
+        const go = openTradeFlowsLink;
+        link.addEventListener('click', () => {
+            close();
+            go();
+        });
+        body.appendChild(link);
+    }
+    // [freightOverlay] end
     win.appendChild(body);
     root.appendChild(win);
     document.body.appendChild(root);

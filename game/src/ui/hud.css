@@ -338,6 +338,22 @@
     overflow: hidden;
     text-overflow: ellipsis;
 }
+/* [freightOverlay] begin — task 19e-9: "+" badge on overlay rows added to the original, "…" panel opener. */
+.hud-option-mod {
+    color: #e8d24a;
+    font-size: 10px;
+    opacity: 0.8;
+}
+.hud-option-more {
+    color: #aaa;
+    padding: 0 4px;
+    border-radius: 3px;
+}
+.hud-option-more:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.12);
+}
+/* [freightOverlay] end */
 
 /* "Keyboard shortcuts" overlay (task 10a): centered, content-sized panel. */
 #keyboard-shortcuts-overlay {

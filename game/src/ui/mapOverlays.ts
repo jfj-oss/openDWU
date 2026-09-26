@@ -12,6 +12,10 @@ export interface MapOverlayState {
     longRangeScanners: boolean;
     empireTerritory: boolean;
     fadeCivilianShips: boolean;
+    // [freightOverlay] begin — task 19e-9 additions (not in the original's nine).
+    freightFlows: boolean;
+    tradeHubs: boolean;
+    // [freightOverlay] end
 }
 
 /** A fresh overlay state. Task M3: `empireTerritory` starts on, matching the
@@ -33,13 +37,18 @@ export function createMapOverlayState(): MapOverlayState {
         longRangeScanners: false,
         empireTerritory: true,
         fadeCivilianShips: false,
+        // [freightOverlay] begin
+        freightFlows: false,
+        tradeHubs: false,
+        // [freightOverlay] end
     };
 }
 
 export type OverlayKey = keyof MapOverlayState;
 
-/** Human label per overlay key, in display order for the options list. */
-export const OVERLAY_ROWS: Array<{ key: OverlayKey; label: string }> = [
+/** Human label per overlay key, in display order for the options list. `mod: true` marks rows that are additions to
+ * the original (rendered with a small "+" badge); `panel` names a screen the row's "…" button opens. */
+export const OVERLAY_ROWS: Array<{ key: OverlayKey; label: string; mod?: boolean; panel?: 'tradeFlows' }> = [
     { key: 'fleetPostures', label: 'Fleet Postures' },
     { key: 'travelVectorsState', label: 'Travel Vectors (State)' },
     { key: 'travelVectorsPrivate', label: 'Travel Vectors (Private)' },
@@ -49,6 +58,10 @@ export const OVERLAY_ROWS: Array<{ key: OverlayKey; label: string }> = [
     { key: 'longRangeScanners', label: 'Long Range Scanners' },
     { key: 'empireTerritory', label: 'Empire Territory' },
     { key: 'fadeCivilianShips', label: 'Fade civilian ships and bases' },
+    // [freightOverlay] begin
+    { key: 'freightFlows', label: 'Freight Flows', mod: true, panel: 'tradeFlows' },
+    { key: 'tradeHubs', label: 'Trade Hubs', mod: true, panel: 'tradeFlows' },
+    // [freightOverlay] end
 ];
 
 /** Toggle one overlay flag in place, then notify subscribers (task M3: lets

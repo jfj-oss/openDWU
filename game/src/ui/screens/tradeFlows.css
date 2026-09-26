@@ -1,0 +1,224 @@
+/* Trade Flows panel + Freight Flows legend (task 19e-9). Tokens follow empiresList.css. */
+
+.trade-flows-wrap {
+    position: fixed;
+    inset: 0;
+    z-index: 1500;
+    pointer-events: none;
+    font-family: 'Forgotten Futurist', sans-serif;
+    color: #e6e6e6;
+}
+
+.trade-flows-window {
+    position: absolute;
+    top: 64px;
+    left: 16px;
+    width: 520px;
+    max-width: calc(100vw - 16px);
+    max-height: calc(100vh - 96px);
+    pointer-events: auto;
+    background: rgba(14, 16, 20, 0.94);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.trade-flows-titlebar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: rgba(10, 11, 15, 0.9);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.trade-flows-heading {
+    font-size: 13px;
+    color: #e8d24a;
+}
+
+.trade-flows-close {
+    background: transparent;
+    border: none;
+    color: #ccc;
+    font-size: 15px;
+    cursor: pointer;
+    padding: 2px 6px;
+}
+.trade-flows-close:hover {
+    color: #fff;
+}
+
+.trade-flows-body {
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    overflow-y: auto;
+}
+
+.trade-flows-filters {
+    display: flex;
+    gap: 6px;
+}
+
+.trade-flows-select {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.06);
+    color: #e6e6e6;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 3px;
+    font: inherit;
+    font-size: 12px;
+    padding: 2px 4px;
+}
+
+.trade-flows-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    font-size: 11px;
+    color: #aaa;
+    padding: 2px 2px 0;
+}
+
+.trade-flows-legend-item,
+.freight-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.trade-flows-note {
+    font-size: 11px;
+    color: #9a9a70;
+    min-height: 0;
+}
+.trade-flows-note:empty {
+    display: none;
+}
+
+.trade-flows-section-head {
+    margin-top: 6px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #e8d24a;
+}
+
+.trade-flows-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.trade-flows-rows:not([data-empty=''])::after {
+    content: attr(data-empty);
+    font-size: 11px;
+    color: #777;
+    padding: 2px 8px;
+}
+
+.trade-flows-row {
+    display: grid;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 8px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    border-radius: 4px;
+    font-size: 12px;
+}
+.trade-flows-row.cols-3 {
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 6em;
+}
+.trade-flows-row.cols-4.has-swatch {
+    grid-template-columns: 10px minmax(0, 1.6fr) minmax(0, 1fr) 6em 4.5em;
+}
+.trade-flows-row.clickable {
+    cursor: pointer;
+}
+.trade-flows-row.clickable:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+.trade-flows-row.mine {
+    border-color: rgba(232, 210, 74, 0.35);
+}
+.trade-flows-header {
+    background: transparent;
+    border-color: transparent;
+    padding-top: 0;
+    padding-bottom: 0;
+}
+.trade-flows-header .trade-flows-cell {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #777;
+}
+
+.trade-flows-cell {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.trade-flows-cell:nth-last-child(-n + 2):not(:first-child) {
+    text-align: right;
+}
+.trade-flows-row.cols-3 .trade-flows-cell:nth-last-child(2) {
+    text-align: left;
+}
+
+.trade-flows-swatch {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+}
+.trade-flows-swatch.blank {
+    border-color: transparent;
+}
+
+/* Map legend while Freight Flows is on: left edge, below the top bar. */
+.freight-legend {
+    position: fixed;
+    left: 12px;
+    top: 120px;
+    z-index: 900;
+    padding: 6px 10px 8px;
+    background: rgba(14, 16, 20, 0.82);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 5px;
+    font-family: 'Forgotten Futurist', sans-serif;
+    font-size: 11px;
+    color: #ccc;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.freight-legend-head {
+    color: #e8d24a;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 2px;
+}
+.freight-legend-more {
+    margin-top: 4px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 3px;
+    color: #e6e6e6;
+    font: inherit;
+    font-size: 11px;
+    cursor: pointer;
+    padding: 2px 6px;
+}
+.freight-legend-more:hover {
+    background: rgba(255, 255, 255, 0.12);
+}

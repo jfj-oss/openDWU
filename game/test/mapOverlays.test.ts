@@ -38,7 +38,7 @@ describe('map overlay state (task 05c)', () => {
         expect(calls).toBe(2);
     });
 
-    it('lists all nine overlays in display order', () => {
+    it('lists the original nine overlays in display order, then the 19e-9 additions', () => {
         expect(OVERLAY_ROWS.map((r) => r.key)).toEqual([
             'fleetPostures',
             'travelVectorsState',
@@ -49,6 +49,9 @@ describe('map overlay state (task 05c)', () => {
             'longRangeScanners',
             'empireTerritory',
             'fadeCivilianShips',
+            'freightFlows',
+            'tradeHubs',
         ]);
+        expect(OVERLAY_ROWS.filter((r) => r.mod === true).map((r) => r.key)).toEqual(['freightFlows', 'tradeHubs']);
     });
 });
