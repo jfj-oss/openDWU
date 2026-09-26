@@ -1,0 +1,10 @@
+'Corporate Coup: message texts (scenarioText tags). {n} items are filled by the scenario code.
+Coup Bought Title;Governor compromised
+Coup Bought;Counter-intelligence confirms {0} has been bought by a chartered company.
+Coup Trigger Title;Corporate coup
+Coup Trigger;{0} has broken its charter: bought governors have handed their colonies to the company, and its fleet has turned on us.
+Coup Trigger News;A chartered company, {0}, has broken away from its holder in a corporate coup.
+Coup Contained;The breakaway company has been destroyed. Its charter is void.
+Coup Defeat;The breakaway company now holds {0}% of its former holder's population.
+Coup Victory Title;The coup is put down
+Coup Defeat Title;The company prevails

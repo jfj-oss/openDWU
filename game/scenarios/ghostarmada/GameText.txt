@@ -1,0 +1,8 @@
+'Ghost Armada: message texts (scenarioText tags). {n} items are filled by the scenario code.
+GhostArmada Faction Name;Ghosts of {0}
+GhostArmada Rise Title;A debris field stirs
+GhostArmada Rise;Wreckage of the fallen {0} has reactivated near {1}. Ghost crews walk their old decks again.
+GhostArmada Rise News;The wrecks of the fallen {0} have risen as a ghost fleet near {1}, flying their old colours against {2}.
+GhostArmada Contained;The ghost fleet of the {0} has been destroyed. Its wrecks are silent again.
+GhostArmada Victory Title;The ghosts are laid to rest
+GhostArmada Field Row;Ghost fleet (raiding)

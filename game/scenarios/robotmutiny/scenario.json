@@ -1,0 +1,16 @@
+{
+  "id": "robotmutiny",
+  "name": "Robot Mutiny",
+  "description": "Every BattleBot troop galaxy-wide is wired to one hidden transmitter on a ruin world. When it wakes, they mutiny at once. Robot-heavy empires lose planets first.",
+  "include": ["darkfarms"],
+  "flags": [
+    { "name": "threatRobotMutiny", "label": "Robot Mutiny", "description": "Robotic troops galaxy-wide answer one hidden broadcast.", "default": false }
+  ],
+  "params": [
+    { "name": "mutinyYear", "label": "Earliest year the broadcast can wake", "default": 70, "min": 0, "max": 300 },
+    { "name": "mutinyMinRobots", "label": "Robot troops galaxy-wide needed to trigger", "default": 30, "min": 1, "max": 1000 },
+    { "name": "mutinyShipFlipPct", "label": "Chance a majority-robot transport flips (%)", "default": 100, "min": 0, "max": 100 },
+    { "name": "mutinySourceDetectPct", "label": "Agent chance to find the source per period (%)", "default": 8, "min": 0, "max": 100 },
+    { "name": "mutinyDefeatPopulationPct", "label": "Broadcast share of population that ends the game (%)", "default": 40, "min": 5, "max": 100 }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "id": "corporatecoup",
+  "name": "Corporate Coup",
+  "description": "A chartered company buys the charter-holder's colony governors, then declares independence with its fleet and the bought colonies. Depends on 19c chartered companies for the charter relation itself; on this branch a company is stubbed through a clearly-named hook (registerSubjectCompany).",
+  "flags": [
+    { "name": "threatCorporateCoup", "label": "Corporate Coup", "description": "A subject company buys governors and breaks away.", "default": false }
+  ],
+  "params": [
+    { "name": "coupBribePct", "label": "Yearly bribe chance per governor (per mille)", "default": 10, "min": 0, "max": 1000 },
+    { "name": "coupGovernors", "label": "Bought governors needed to trigger", "default": 3, "min": 1, "max": 50 },
+    { "name": "coupMinYears", "label": "Minimum charter age before the coup (years)", "default": 10, "min": 0, "max": 200 },
+    { "name": "coupDefeatPopulationPct", "label": "Company share of the holder's population that ends the game (%)", "default": 40, "min": 5, "max": 100 }
+  ]
+}

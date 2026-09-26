@@ -1,0 +1,16 @@
+'Time-Bomb Tech: three precursor research nodes (tasks/19f-hidden-threats.md #6). Not reachable by normal research
+'(no in-tree parent grants them for free; the scenario code unlocks each one directly on a ruin via selectRuinsUnlockTech,
+'the same path stock precursor ruin research uses). Ability type 2 = Increased Construction Size, a self-contained
+'bonus that needs no external component/facility ids. Parented to the highest stock node (371) purely so the tech-tree
+'renderer has a sane position for them; isRequired=N (parent completion is not needed since these are ruin-granted).
+PROJECT			;372, Precursor Lattice Drive, 7, 50, 		2, 5, 0, 0.0,
+ABILITIES		;Lattice Drive Boost, 2, 10, 900, 0,
+PARENTS			;371, N
+
+PROJECT			;373, Singularity Reactor, 7, 51, 		1, 13, 0, 0.0,
+ABILITIES		;Singularity Reactor Output, 2, 10, 900, 0,
+PARENTS			;371, N
+
+PROJECT			;374, Deep Resonance Manufacturing, 7, 52, 		2, 12, 0, 0.0,
+ABILITIES		;Resonance Manufacturing Boost, 2, 10, 900, 0,
+PARENTS			;371, N

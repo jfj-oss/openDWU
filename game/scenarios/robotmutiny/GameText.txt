@@ -1,0 +1,14 @@
+'Robot Mutiny: message texts (scenarioText tags). {n} items are filled by the scenario code.
+Mutiny Faction Name;The Broadcast
+Mutiny Hint Title;Anomalous carrier signal
+Mutiny Hint;Our engineers report an anomalous carrier signal buried in our BattleBot troops' firmware. Its origin is unknown.
+Mutiny Source Found Title;Transmitter located
+Mutiny Source Found;Our agents have traced the anomalous signal to a source on {0}.
+Mutiny Trigger Title;The machines mutiny
+Mutiny Trigger;Every BattleBot troop in the galaxy has turned at once, answering a hidden broadcast. The Broadcast rises.
+Mutiny Trigger News;A hidden broadcast has turned BattleBot troops across the galaxy against their owners. The Broadcast has risen.
+Mutiny Defused;{0} has been neutralised, silencing the broadcast before it could wake the mutiny.
+Mutiny Contained;The Broadcast has been destroyed. The mutiny is over.
+Mutiny Defeat;The Broadcast now holds {0}% of the galaxy's population.
+Mutiny Victory Title;The broadcast is silenced
+Mutiny Defeat Title;The machines prevail

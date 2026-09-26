@@ -292,6 +292,25 @@ export function militaryShipCount(empire: Empire): number {
     return n;
 }
 
+/**
+ * 19f generalisation of 19b's DarkFarms.factionPopulationPct: `faction`'s share (percent) of the population held by
+ * every active empire-owned colony (independents excluded). Used by any threat whose defeat condition is "the faction
+ * / theocracy / mutiny now holds N% of the galaxy" (19f: Robot Mutiny, Corporate Coup; 19b: Dark Farms keeps its own
+ * copy — this is the shared form new threats should call instead of duplicating it).
+ */
+export function factionPopulationSharePct(galaxy: Galaxy, faction: Empire): number {
+    let total = 0;
+    let mine = 0;
+    for (const e of galaxy.empires) {
+        if (e === null || !e.active || e === galaxy.independentEmpire) continue;
+        for (const c of e.colonies) {
+            total += c.population.totalAmount;
+            if (e === faction) mine += c.population.totalAmount;
+        }
+    }
+    return total > 0 ? (100 * mine) / total : 0;
+}
+
 // ---------------------------------------------------------------------------------------------------------------
 // Arc: messages, news, game end
 // ---------------------------------------------------------------------------------------------------------------
