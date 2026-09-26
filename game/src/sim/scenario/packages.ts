@@ -4,3 +4,4 @@
 import './threats/cult';
 import './threats/darkFarms';
 import './threats/greyTide';
+import './threats/silence';
