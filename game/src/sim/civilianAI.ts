@@ -76,7 +76,7 @@ import {
     habitatPrioritizationIndexOf,
 } from './resourceTargets';
 import { canBuiltObjectColonizeHabitat, type ConstructionQueue } from './construction/constructionQueue';
-import { AdvisorMessageType, checkTaskAuthorized, type RefCount } from './diplomacyTick';
+import { AdvisorMessageType, checkTaskAuthorized, getAmbassadorsForEmpire, type RefCount } from './diplomacyTick';
 import {
     annualStateMaintenance,
     annualTaxRevenue,
@@ -99,8 +99,11 @@ import { canEmpireColonizeHabitat, canEmpireColonizeHabitatRange, checkRuinsHave
 import { RuinType } from './ruins';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from './diplomacy';
 import { PirateRelationType, obtainPirateRelation } from './pirateRelations';
-import { determineEmpiresAtWarWith, performPrivateTransaction } from './treasury';
-import { OrderType, SECTOR_SIZE, empireCreateOrder } from './logistics/orders';
+import { addResortIncome, determineEmpiresAtWarWith, performPrivateTransaction } from './treasury';
+import { CharacterEventType, CharacterSkillType, doCharacterEventForList, empireLeader, getHighestSkillLevel, getHighestSkillLevelExcludeLeaders, stellarObjectCharacters, type Character } from './characters';
+import { colonyIncomeFactor, pirateEmpireById, smugglingIncomeFactor } from './missions/cmdDocking';
+import { PirateIncomeType } from './pirates/pirateEconomy';
+import { OrderType, SECTOR_SIZE, applyCorruptionToIncome, empireCreateOrder } from './logistics/orders';
 import { Contract, performFinancialTransaction } from './logistics/contracts';
 import { calculateMinimumLuxuryResourceLevel, calculateMinimumLuxuryResourceLevelRestricted, calculateResourceLevelHabitat } from './logistics/colonySupply';
 import { Cargo, CargoList, ResourceRef } from './cargo';
@@ -113,7 +116,6 @@ import { GalaxyLocationType, type GalaxyLocation } from './galaxyLocation';
 import { ForceStructureProjectionList } from './forceStructureProjection';
 import type { ManufacturingQueue } from './manufacturingQueue';
 import { determineColonizationValue } from './tradeItems';
-import { registerTodo, todo } from './tick/todo';
 import { baconSettings } from './data/baconSettings';
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -3128,19 +3130,84 @@ export function fastFindNearestUnexploredHabitatInSector(galaxy: Galaxy, x: numb
     return null;
 }
 
-// ---- stub added by M4e (missions/cmdDocking.ts case Unload, BuiltObject.2.cs 3981) ----
+// ---- ProcessTourists (called from missions/cmdDocking.ts case Unload, BuiltObject.2.cs 3973) ----
 
-const T_processTourists = registerTodo('M4f', 'processTourists');
+/** The C# tourism-income body shared by both DockedAt branches (BuiltObject.2.cs 4837-4879 / 4889-4936). */
+function processTourismIncomeAt(galaxy: Galaxy, builtObject: BuiltObject, amount: number, dockEmpire: Empire | null, dockOwner: Empire, dockCharacters: Character[] | null, colony: boolean): void {
+    let num = amount;
+    if (dockEmpire !== null) {
+        const leader = empireLeader(dockEmpire);
+        if (leader !== null) {
+            num *= 1.0 + leader.tourismIncome / 100.0;
+        }
+        if (dockCharacters !== null && dockCharacters.length > 0) {
+            // 4847 base: GetHighestSkillLevel; 4899 colony: GetHighestSkillLevelExcludeLeaders.
+            const highestSkillLevel = colony
+                ? getHighestSkillLevelExcludeLeaders(dockCharacters, CharacterSkillType.TourismIncome)
+                : getHighestSkillLevel(dockCharacters, CharacterSkillType.TourismIncome);
+            num *= 1.0 + highestSkillLevel / 100.0;
+        }
+        if (dockEmpire.dominantRace !== null) {
+            num *= dockEmpire.dominantRace.tourismIncomeFactor;
+        }
+        dockEmpire.counters.processTourismIncome(num);
+        addResortIncome(galaxy, dockEmpire, num);
+        const ambassadorsForEmpire = getAmbassadorsForEmpire(dockEmpire.characters as Character[], builtObject.empire);
+        // CharacterList.AddRange(Characters): the C# would throw on a null list; a null list adds nothing here.
+        if (dockCharacters !== null) ambassadorsForEmpire.push(...dockCharacters);
+        doCharacterEventForList(galaxy, CharacterEventType.TourismIncome, null, ambassadorsForEmpire, true, dockEmpire);
+    }
+    if (builtObject.pirateEmpireId > 0) {
+        const byEmpireId = pirateEmpireById(galaxy, builtObject.pirateEmpireId);
+        if (byEmpireId !== null) {
+            let num2 = 1.0;
+            const characters = builtObject.characters as Character[] | null;
+            if (characters !== null && characters.length > 0) {
+                num2 += 0.01 * getHighestSkillLevel(characters, CharacterSkillType.SmugglingIncome);
+            }
+            let num3 = num * 0.25 * colonyIncomeFactor(byEmpireId) * smugglingIncomeFactor(byEmpireId);
+            num3 *= num2;
+            num3 = applyCorruptionToIncome(byEmpireId, num3);
+            byEmpireId.stateMoney += num3;
+            byEmpireId.pirateEconomy.performIncome(num3, PirateIncomeType.Smuggling, galaxyStarDate(galaxy));
+            byEmpireId.counters.pirateSmugglingIncome += num3;
+        }
+    }
+    num = applyCorruptionToIncome(dockOwner, num);
+    dockOwner.stateMoney += num;
+    dockOwner.pirateEconomy.performIncome(num, PirateIncomeType.Resort, galaxyStarDate(galaxy));
+}
+
 /**
- * BuiltObject.2.cs 4825 ProcessTourists(tourists): tourism income when passengers unload at a resort base (owner state
- * money, pirate smuggling share, EmpireCounters.ProcessTourismIncome, AddResortIncome) or at a scenic colony. Stub: no
- * income. RND: DoCharacterEvent(TourismIncome, …) at 4857 / the colony branch not drawn until M4f (and M4u).
+ * Port of BuiltObject.2.cs 4825 ProcessTourists(tourists): tourism income when passengers unload at a resort base
+ * (4831-4881) or at a scenic colony (4882-4937) — the dock's empire gains Counters.TourismIncome and resort income
+ * (leader / characters / race factors), a pirate carrier skims 25% as smuggling income, and the dock owner banks the
+ * (corruption-reduced) amount as state money. RND: DoCharacterEvent(TourismIncome, …) (4857 / 4909).
  */
 export function processTourists(galaxy: Galaxy, builtObject: BuiltObject, tourists: Population): void {
-    void galaxy;
-    void builtObject;
-    void tourists;
-    /* TODO(port) M4f */ todo(T_processTourists);
+    const dockedAt = builtObject.dockedAt;
+    if (dockedAt === null || dockedAt.owner === null) {
+        return;
+    }
+    if (isBuiltObject(dockedAt)) {
+        const builtObject2 = dockedAt;
+        if (builtObject2.subRole !== BuiltObjectSubRole.ResortBase) {
+            return;
+        }
+        const num = tourists.amount / 8.0;
+        processTourismIncomeAt(galaxy, builtObject, num, builtObject2.empire, dockedAt.owner, builtObject2.characters as Character[] | null, false);
+    } else {
+        if (!isHabitat(dockedAt)) {
+            return;
+        }
+        const habitat = dockedAt;
+        const num4 = calculateScenicFactorIncludingRuinsWonders(habitat);
+        if (!(num4 > 0.0) || tourists.amount >= 1000000) {
+            return;
+        }
+        const num5 = tourists.amount / 8.0;
+        processTourismIncomeAt(galaxy, builtObject, num5, habitat.empire, dockedAt.owner, stellarObjectCharacters(habitat), true);
+    }
 }
 
 // ---- stub added by M4o (called from combat/damage.ts ProvideBonusFromPirateBase, BuiltObject.2.cs 4991) ----

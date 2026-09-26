@@ -417,7 +417,7 @@ function findNearestUnexploredSystem(galaxy: Galaxy, x: number, y: number, empir
     return result;
 }
 
-interface SaleableInfo {
+export interface SaleableInfo {
     unmetEmpires: Empire[];
     unexploredSystems: Habitat[];
     independentColonies: Habitat[];
@@ -431,7 +431,7 @@ interface SaleableInfo {
 const STORY_CLUES_ENABLED = false;
 
 /** Empire.5.cs 1163 GenerateSaleableInfoForEmpire(pirateFaction, buyingEmpire, out ...). No Rnd. */
-function generateSaleableInfoForEmpire(galaxy: Galaxy, pirateFaction: Empire | null, buyingEmpire: Empire | null): SaleableInfo {
+export function generateSaleableInfoForEmpire(galaxy: Galaxy, pirateFaction: Empire | null, buyingEmpire: Empire | null): SaleableInfo {
     const info: SaleableInfo = { unmetEmpires: [], unexploredSystems: [], independentColonies: [], ruinHabitats: [], debrisFieldLocations: [], planetDestroyerLocations: [], restrictedAreaLocations: [] };
     if (buyingEmpire === null || pirateFaction === null || pirateFaction.pirateEmpireBaseHabitat === null) return info;
     const base = pirateFaction.pirateEmpireBaseHabitat;
