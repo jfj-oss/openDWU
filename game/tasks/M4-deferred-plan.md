@@ -72,3 +72,5 @@ year 10 (1–8 per empire). Follow-ups:
 - 10-year run oddity: GalacticNewsNet "S218 Kingdom - Empire Leader killed|Obidar Dokari" is dated day 0 (the S218
   leader died on the first game day; two pirate leaders died the same day 697). Check character death rolls at game start
   (Galaxy.2.cs character events; a day-0 death is unlikely in the C#).
+- Audio follow-ups (2026-09-26, from the rim sound package): the ambient bed ignores the effects-volume setting; the
+  diplomacy voice-static burst creates a new AudioContext per call and never closes it (leak). Cheap (Sonnet).
