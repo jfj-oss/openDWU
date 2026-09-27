@@ -139,6 +139,13 @@ Build after 19b lands; each is mostly data + a spread rule on the 19b hooks.
    salvage); 8 Brood carriers (seed hunter packs on planets they pass). Sim: a creature-variant table (base type,
    behaviour params, look) over the herd model; each variant's rendering = a body definition on the shared rig
    (whalePilotLayer B technique → creatureLayer). Requires the base creature layer (in progress) and 19g-7.
+   **Tamed look (user, 2026-09-26):** creatures tamed by herders (19j `rimHerdDocileTo` / tamed-ship tagging) render
+   with a harness overlay: strapped cargo containers along the back (procedural boxes in the original freighter
+   container palette, 2–6 by creature size, following the rope rig's undulation), a rigging line, and small flickering
+   nav/work lights on the containers (reuse the ambient layer's nav-light blink pattern, dimmer, warm colour; they blink
+   out of phase). The harness fades in over a few seconds when a creature becomes tamed and drops off (containers
+   detach as debris sprites for a few seconds) when it goes feral. Herder empires' tamed "freighters" and "miners"
+   (19j item 2) use this look, so a herder convoy reads as a caravan of laden beasts. Part of the creatureLayer rig.
 8. First-contact protocol: short negotiation setting the starting attitude, voiced by personas. [cheap]
 9. Doctrines: exclusive empire-wide choices with lasting effects. [medium]
 13. AI personality packs via overlay presets. [cheap]
