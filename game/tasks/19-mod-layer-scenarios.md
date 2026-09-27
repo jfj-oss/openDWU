@@ -130,6 +130,15 @@ Build after 19b lands; each is mostly data + a spread rule on the 19b hooks.
    creature-specific resources/tech as in the base game). Tension hook: repeated losses raise colony unrest (19d2 crisis
    plumbing) and the empire AI weighs escort/defence vs. relocation. Data-driven: herd size, feed rate, migration
    radius/season, density curve as scenario params; flag off = byte-identical.
+   **19g-7b New fauna (user, 2026-09-26; art route decided "creature b" = fully PROCEDURAL on a shared body rig, matched
+   to the originals' measured palette/contrast/edge softness; composites only for recolours/giants of existing types):**
+   1 Void whales (huge slow grazers, rim migrants, big kill haul); 2 Hunter packs (small fast aggressive, stalk freighters,
+   flee warships); 3 Hull grazers (latch onto stations, eat hull through shields); 4 Storm drifters (ride storm belts,
+   blind sensors, misfire jumps); 5 Lantern shoals (procedural light swarms, harmless, lead ships toward shoals);
+   6 Nest mothers (giant stationary boss guarding a rich site, spawns young); 7 Scavengers (eat wreck debris, carry the
+   salvage); 8 Brood carriers (seed hunter packs on planets they pass). Sim: a creature-variant table (base type,
+   behaviour params, look) over the herd model; each variant's rendering = a body definition on the shared rig
+   (whalePilotLayer B technique → creatureLayer). Requires the base creature layer (in progress) and 19g-7.
 8. First-contact protocol: short negotiation setting the starting attitude, voiced by personas. [cheap]
 9. Doctrines: exclusive empire-wide choices with lasting effects. [medium]
 13. AI personality packs via overlay presets. [cheap]
