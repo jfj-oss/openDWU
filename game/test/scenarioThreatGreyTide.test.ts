@@ -10,6 +10,7 @@ import { runGameSeconds } from '../src/sim/tick/harness';
 import { stateDigest } from '../src/sim/tick/digest';
 import { galaxyStarDate } from '../src/sim/tick/simTime';
 import { gameYear, registerScenarioEvent, registerScenarioPeriodic, registerScenarioYearly } from '../src/sim/scenario/hooks';
+import { startStarDateForAge } from '../src/sim/galaxyTime';
 import {
     GREY_TIDE_CODE_CONTAINED,
     GREY_TIDE_HANDLER_IDS,
@@ -20,6 +21,7 @@ import {
     greyTideKnownSites,
     greyTidePeriodic,
     greyTideState,
+    greyTideYearly,
     peekGreyTideState,
     registerGreyTide,
     type Nest,
@@ -33,7 +35,7 @@ beforeAll(async () => {
     base = await loadGameDataFs();
 }, 120000);
 
-const FORCE = { greyTideSeedYear: 0, greyTideDronesPerNestYear: 24, greyTideNestYears: 1, greyTideMaxNests: 3, greyTideEatRange: 1000000 };
+const FORCE = { greyTideSeedYear: 0, greyTideDronesPerNestYear: 24, greyTideNestYears: 1, greyTideMaxNests: 3, greyTideEatRange: 1000000, greyTideExistChancePct: 100, greyTideMinYear: 0 };
 const age3 = (o: CreateGameOptions): CreateGameOptions => ({ ...o, player: { ...o.player, age: 3 }, aiEmpires: o.aiEmpires.map((e) => ({ ...e, age: 3 })) });
 
 function gtGame(params: Record<string, number> = {}, flags: Record<string, boolean> = {}, older = true): { game: Game; gameData: GameData } {
@@ -68,6 +70,22 @@ describe('Grey Tide: flag off', () => {
         } finally {
             registerGreyTide();
         }
+    }, 1200000);
+});
+
+describe('Grey Tide: year floor (§0 rarity and timing)', () => {
+    it('blocks seeding before the floor even once the threat\'s own seed year has passed', () => {
+        // A lowered floor (5, not the shared default 30) keeps this test fast: greyTideYearly is called directly
+        // with manufactured year values instead of ticking real game time (the "existing threat tests' fast-forward
+        // helper" the task calls for — greyTideYearly(galaxy, year) needs no clock advance to exercise a given year).
+        const { game } = gtGame({ greyTideMinYear: 5 });
+        const g = game.galaxy;
+        const startYear = gameYear(startStarDateForAge(g.age));
+        const st = greyTideState(g);
+        greyTideYearly(g, startYear + 4); // greyTideSeedYear (0) has long passed; the shared/overridden floor has not
+        expect(st.nests).toHaveLength(0);
+        greyTideYearly(g, startYear + 5); // at the floor
+        expect(st.nests).toHaveLength(1);
     }, 1200000);
 });
 

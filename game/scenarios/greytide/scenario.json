@@ -2,6 +2,7 @@
   "id": "greytide",
   "name": "Grey Tide",
   "description": "End-game hidden threat. A dormant self-replicating mining swarm seeds in an unexplored gas giant and multiplies, eating resource extractors and founding new nests. It never attacks colonies; an explored system exposes its nests, and destroying every nest ends it.",
+  "include": ["threat-framework"],
   "flags": [
     { "name": "greyTide", "label": "Grey Tide", "description": "A hidden mining swarm can seed and spread through unexplored space.", "default": false }
   ],
@@ -10,6 +11,8 @@
     { "name": "greyTideDronesPerNestYear", "label": "Drones built per nest per year", "default": 3, "min": 0, "max": 50 },
     { "name": "greyTideNestYears", "label": "Years before a nest can found another", "default": 4, "min": 1, "max": 50 },
     { "name": "greyTideMaxNests", "label": "Maximum live nests", "default": 40, "min": 1, "max": 200 },
-    { "name": "greyTideEatRange", "label": "Range a nest's drones can reach a resource extractor", "default": 3000, "min": 0, "max": 50000 }
+    { "name": "greyTideEatRange", "label": "Range a nest's drones can reach a resource extractor", "default": 3000, "min": 0, "max": 50000 },
+    { "name": "greyTideExistChancePct", "label": "Chance Grey Tide exists in this game (%; -1 = use the shared value)", "default": -1, "min": -1, "max": 100 },
+    { "name": "greyTideMinYear", "label": "Earliest year Grey Tide may seed (-1 = use the shared value)", "default": -1, "min": -1, "max": 200 }
   ]
 }

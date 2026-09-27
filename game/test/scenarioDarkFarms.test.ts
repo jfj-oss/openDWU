@@ -54,7 +54,7 @@ beforeAll(async () => {
 }, 120000);
 
 /** Forced trigger (§11): no grace, certain spawn, any colony eligible by size. */
-const FORCE = { graceYears: 0, spawnChancePerMille: 1000, minDevelopment: 0, minPopulationMillions: 0, turnFleetRatioPct: 0 };
+const FORCE = { graceYears: 0, spawnChancePerMille: 1000, minDevelopment: 0, minPopulationMillions: 0, turnFleetRatioPct: 0, darkFarmsExistChancePct: 100, darkFarmsMinYear: 0 };
 /** Empires at age 3 (several colonies each: the seed-1 age-1 empires own only their capitals). */
 const age3 = (o: CreateGameOptions): CreateGameOptions => ({ ...o, player: { ...o.player, age: 3 }, aiEmpires: o.aiEmpires.map((e) => ({ ...e, age: 3 })) });
 

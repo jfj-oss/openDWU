@@ -22,7 +22,21 @@ it('spread: faction transports land robots on an enemy colony and take it', () =
     const { game } = createScenarioGame(base, {
         scenario: 'darkfarms',
         flags: { darkFarms: true },
-        params: { graceYears: 0, spawnChancePerMille: 0, minDevelopment: 0, minPopulationMillions: 0, turnFleetRatioPct: 0, troopsPerYear: 36, sleepersPerYear: 12, sleeperTurnCount: 100, troopStrength: 400, garrisonYears: 0, maxFarms: 1 },
+        params: {
+            graceYears: 0,
+            spawnChancePerMille: 0,
+            minDevelopment: 0,
+            minPopulationMillions: 0,
+            turnFleetRatioPct: 0,
+            troopsPerYear: 36,
+            sleepersPerYear: 12,
+            sleeperTurnCount: 100,
+            troopStrength: 400,
+            garrisonYears: 0,
+            maxFarms: 1,
+            darkFarmsExistChancePct: 100,
+            darkFarmsMinYear: 0,
+        },
         options: (o) => ({ ...o, player: { ...o.player, age: 3 }, aiEmpires: o.aiEmpires.map((e) => ({ ...e, age: 3 })) }),
     });
     const g = game.galaxy;

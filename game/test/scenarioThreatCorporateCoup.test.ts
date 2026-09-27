@@ -36,7 +36,12 @@ beforeAll(async () => {
 const age3 = (o: CreateGameOptions): CreateGameOptions => ({ ...o, player: { ...o.player, age: 3 }, aiEmpires: o.aiEmpires.map((e) => ({ ...e, age: 3 })) });
 
 function ccGame(flags: Record<string, boolean> = {}): { game: Game; g: Galaxy } {
-    const { game } = createScenarioGame(base, { scenario: 'corporatecoup', flags: { threatCorporateCoup: true, ...flags }, params: { coupBribePct: 1000, coupGovernors: 1, coupMinYears: 0 }, options: age3 });
+    const { game } = createScenarioGame(base, {
+        scenario: 'corporatecoup',
+        flags: { threatCorporateCoup: true, ...flags },
+        params: { coupBribePct: 1000, coupGovernors: 1, coupMinYears: 0, corporateCoupExistChancePct: 100, corporateCoupMinYear: 0 },
+        options: age3,
+    });
     return { game, g: game.galaxy };
 }
 

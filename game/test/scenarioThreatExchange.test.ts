@@ -30,7 +30,7 @@ beforeAll(async () => {
 const age3 = (o: CreateGameOptions): CreateGameOptions => ({ ...o, player: { ...o.player, age: 3 }, aiEmpires: o.aiEmpires.map((e) => ({ ...e, age: 3 })) });
 
 function exGame(flags: Record<string, boolean> = {}): { game: Game; g: Galaxy } {
-    const { game } = createScenarioGame(base, { scenario: 'exchange', flags: { threatExchange: true, ...flags }, params: { exchangeYear: 0 }, options: age3 });
+    const { game } = createScenarioGame(base, { scenario: 'exchange', flags: { threatExchange: true, ...flags }, params: { exchangeYear: 0, exchangeExistChancePct: 100, exchangeMinYear: 0 }, options: age3 });
     return { game, g: game.galaxy };
 }
 

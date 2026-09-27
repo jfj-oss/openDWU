@@ -2,6 +2,7 @@
   "id": "timebomb",
   "name": "Time-Bomb Tech",
   "description": "Precursor ruins hold research with huge bonuses; every colony of an empire that holds it has a small yearly chance to be destroyed outright. Tech leaders are the most exposed.",
+  "include": ["threat-framework"],
   "flags": [
     { "name": "threatTimeBomb", "label": "Time-Bomb Tech", "description": "Ruins may hold precursor research that carries a planet-killing side effect.", "default": false }
   ],
@@ -9,6 +10,8 @@
     { "name": "timeBombRuins", "label": "Ruins seeded with precursor tech", "default": 3, "min": 1, "max": 10 },
     { "name": "timeBombChancePerMillePerColony", "label": "Detonation chance per colony per year (per mille, x nodes held)", "default": 2, "min": 0, "max": 100 },
     { "name": "timeBombStartYear", "label": "Year precursor ruins are seeded", "default": 30, "min": 0, "max": 200 },
-    { "name": "timeBombDefeatDestroyed", "label": "Planets destroyed that end the game", "default": 5, "min": 1, "max": 50 }
+    { "name": "timeBombDefeatDestroyed", "label": "Planets destroyed that end the game", "default": 5, "min": 1, "max": 50 },
+    { "name": "timeBombExistChancePct", "label": "Chance Time-Bomb Tech exists in this game (%; -1 = use the shared value)", "default": -1, "min": -1, "max": 100 },
+    { "name": "timeBombMinYear", "label": "Earliest year the ruins may be seeded (-1 = use the shared value)", "default": -1, "min": -1, "max": 200 }
   ]
 }

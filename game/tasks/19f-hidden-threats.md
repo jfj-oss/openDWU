@@ -73,6 +73,56 @@ years past it without exceptions, ≤ 5% slower than flag off. Every arc stage i
 
 Game-end codes: 1911 Grey Tide … 1920 Corporate Coup (defeat = code, victory/containment = code + 100).
 
+### 0.9 Rarity and timing
+
+Hidden threats must be rare and late, not every-game. A small scenario `scenarios/threat-framework/` (no flags of its
+own) carries two shared params: `threatExistChancePct` (default 25, 0–100) and `threatMinYear` (default 30, 0–200,
+an offset from the game's own start year, the same convention every threat's own seed-year param uses). **Every**
+threat scenario (all eleven: Grey Tide, the Cult, Dark Farms, Doppelgangers, the Exchange, Ghost Armada, the Hive,
+Robot Mutiny, the Silence, Time-bomb Tech, Corporate Coup) declares `"include": ["threat-framework"]`, and every
+composite scenario that pulls one in transitively (`internal-security`, `event-log`, `llm-layer`, `court-dynasties`,
+`frontier-autonomy`, `ai-parity`) needs the same line added to its own manifest — `scenarioRuns`/`scenarioId` gating
+reads only the *active* scenario's own `include` array, never a nested one's, so the line has to be repeated at every
+level that could be chosen directly. Each threat may override either shared param with its own `<key>ExistChancePct`
+/ `<key>MinYear` param (state key, e.g. `hiveExistChancePct`/`hiveMinYear`, `exchangeExistChancePct`/`exchangeMinYear`
+— not always the same string as the flag name), default -1 = use the shared value.
+
+**Existence lottery.** Once per game, at the very start (a `registerScenarioGameStart` handler gated on
+`scenarioId: 'threat-framework'`, order -1000 so it runs before every threat module's own game-start handler), for
+every *enabled* threat (its flag is on) — in fixed key order (the registry's keys, sorted; never import order) — one
+roll with the threat framework's own seeded `Random` (`galaxy.randomSeed` XORed with a fixed constant; never
+`galaxy.rnd`, so the faithful draw stream is untouched) decides whether it exists this game. The result is stored
+hidden in `galaxy.scenario.state.threats.exists[<key>]` — a plain boolean, never read by any UI panel, map overlay or
+message text. No threat enabled ⇒ the lottery does nothing at all (no `Random` built, no state bag created): a
+scenario with every threat flag off stays byte-identical to the game before this lottery existed. `threatExists(g,
+key)` is the reader every threat handler calls first; a threat whose lottery said no runs no handler at all — no
+state, no draws — for the rest of the game.
+
+**Year floor.** `pastThreatMinYear(g, key, year?)` is `true` once the game year has passed `startYear +
+threatMinYear` (or the threat's own override); a module combines this with its own seed-year condition (the max of
+the two) at every point that seeds, triggers or makes the threat rise — including the event-driven threats (Ghost
+Armada's rise, Doppelgangers' sleeper roll and trigger, Corporate Coup's trigger, the Hive's trigger) that have no
+yearly tick of their own to hang a year check on. Bookkeeping that only tracks progress toward a trigger — the Hive's
+node-absorption count, Doppelgangers' capture record, Corporate Coup's bribery count, Ghost Armada's wreck record —
+may run before the floor, same as it always could; only the declaration itself waits. A threat whose own start-year
+param already exceeds the floor (Grey Tide 60, the Cult 40, the Silence 50, Time-bomb 30) is unaffected by the
+default; the floor only bites threats with an early or no start-year param of their own (the Exchange 20, Robot
+Mutiny effectively 0, Doppelgangers and the Hive with no seed-year param at all) or a lowered override.
+
+**Hive node cap.** New param `hiveMaxNodesSeized` (default 30, min 1): at the trigger, the Chorus seizes at most that
+many still-independent nodes outright, nearest the largest cluster of already-absorbed nodes first (ties: habitat
+index order; no absorbed cluster to measure from — habitat index order throughout). Under the cap every
+still-independent node is seized, in the same set the trigger always used before this param existed. The rest stay
+independent nodes, still tracked in the Hive's own `nodes` list for later absorption if a normal empire takes them.
+
+**Force helpers stay ungated.** The low-level state-mutating functions each module already exports for tests to force
+behaviour directly (`foundNest`, `convert`, `startSilence`, `spawnFarm`, `hiveTrigger`, `cultTrigger`,
+`doppelgangersTrigger`, `mutinyTrigger`, `coupTrigger`, `coupBribeYearly`, …) do **not** check existence or the year
+floor themselves — only the registered yearly/periodic/event entry points do. A test that calls one of these directly
+to force a scenario (as most of §0.7's test template already does) is unaffected by rarity/timing; a test that goes
+through real ticks (`runGameSeconds`) needs `<key>ExistChancePct: 100` (and, if it relies on year-0 seeding,
+`<key>MinYear: 0`) in its forced params, same as any other forced param.
+
 ---
 
 ## 1. Grey Tide — self-replicating mining swarm

@@ -2,6 +2,7 @@
   "id": "ghostarmada",
   "name": "Ghost Armada",
   "description": "When an empire dies, the wrecks of its lost warships rise as a ghost fleet flying its old colours, raiding the empire that destroyed it.",
+  "include": ["threat-framework"],
   "flags": [
     { "name": "threatGhostArmada", "label": "Ghost Armada", "description": "A dead empire's wrecks can rise as a raiding ghost fleet.", "default": false }
   ],
@@ -9,6 +10,8 @@
     { "name": "ghostDelayYears", "label": "Years after elimination before the fleet rises", "default": 3, "min": 0, "max": 50 },
     { "name": "ghostMaxShips", "label": "Maximum ships in the risen fleet", "default": 30, "min": 1, "max": 100 },
     { "name": "ghostRaidRange", "label": "Raid range from the debris field", "default": 60000, "min": 5000, "max": 50000000 },
-    { "name": "ghostWreckCapPerEmpire", "label": "Recorded wrecks kept per empire", "default": 40, "min": 1, "max": 200 }
+    { "name": "ghostWreckCapPerEmpire", "label": "Recorded wrecks kept per empire", "default": 40, "min": 1, "max": 200 },
+    { "name": "ghostArmadaExistChancePct", "label": "Chance the Ghost Armada exists in this game (%; -1 = use the shared value)", "default": -1, "min": -1, "max": 100 },
+    { "name": "ghostArmadaMinYear", "label": "Earliest year a ghost fleet may rise (-1 = use the shared value)", "default": -1, "min": -1, "max": 200 }
   ]
 }

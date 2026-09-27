@@ -2,7 +2,7 @@
   "id": "court-dynasties",
   "name": "Court & Dynasties",
   "description": "Every character belongs to a noble house; the ruling house gains prestige from wars, wonders and long reigns and loses it with colonies, while rival houses feud. A council of five seats (spymaster, chancellor, marshal, steward, magistrate) lends its skills to counter-intelligence, diplomacy, fleet repair, taxes and stability; powerful nobles left without a seat grow ambitious. Discontented nobles form factions with demands and ultimatums. Successions follow the government's law (primogeniture, election, military acclamation) with heirs, regencies and succession crises; the ruler's legitimacy scales every plot. Court intrigue: agents scheme against characters (sway, blackmail, sabotage, assassination) and are traced through leads; secrets become hooks; houses exchange envoys, wards and spouses and hold claims on colonies; characters become friends, rivals and lovers. Includes Internal Security (its own flags).",
-  "include": ["internal-security"],
+  "include": ["internal-security", "threat-framework"],
   "flags": [
     { "name": "courtDynasties", "label": "Court & dynasties", "description": "Houses, council seats, character factions with demands, succession laws and legitimacy.", "default": true },
     { "name": "courtIntrigue", "label": "Court intrigue", "description": "Schemes (sway, blackmail, sabotage loyalty, assassination) as agent missions discovered through leads, secrets and hooks, dynastic ties (envoys, wards, marriages), friendships / rivalries / lovers, and house claims on colonies. Needs Court & dynasties.", "default": true }

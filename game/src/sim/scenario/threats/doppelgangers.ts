@@ -35,10 +35,13 @@ import {
     flipToFaction,
     knowledgeLevel,
     normalEmpires,
+    pastThreatMinYear,
     peekThreatState,
     revealTo,
+    registerThreatExistence,
     registerThreatKnownSites,
     teardownIfDead,
+    threatExists,
     threatGameEnd,
     threatState,
     type KnownThreatSite,
@@ -113,6 +116,7 @@ function isNormal(galaxy: Galaxy, e: Empire | null): e is Empire {
 
 /** §4a: an empire recapturing a ship an enemy/pirate held may get a sleeper back instead of its own ship. */
 export function onBuiltObjectOwnerChanged(galaxy: Galaxy, bo: BuiltObject, from: Empire | null, to: Empire | null): void {
+    if (!threatExists(galaxy, DOPPELGANGERS_KEY)) return; // §0 rarity: not this game — no state, no draws.
     const st = peekDoppelgangersState(galaxy);
     if (st === null || st.faction !== null) return; // spread stops once the threat has risen (its sleepers are the faction's own ships now)
     if (isNormal(galaxy, to)) {
@@ -120,7 +124,8 @@ export function onBuiltObjectOwnerChanged(galaxy: Galaxy, bo: BuiltObject, from:
         if (i >= 0) {
             const rec = st.captured[i];
             st.captured.splice(i, 1);
-            if (rec.owner === to && galaxy.rnd.nextDouble() < P.sleeperPct(galaxy) / 100) makeSleeper(galaxy, st, bo, to);
+            // Capture/recapture bookkeeping (above) may run before the floor (§0.3); the sleeper roll — seeding — waits.
+            if (rec.owner === to && pastThreatMinYear(galaxy, DOPPELGANGERS_KEY) && galaxy.rnd.nextDouble() < P.sleeperPct(galaxy) / 100) makeSleeper(galaxy, st, bo, to);
             return;
         }
     }
@@ -142,7 +147,9 @@ function makeSleeper(galaxy: Galaxy, st: DoppelgangersState, bo: BuiltObject, ow
 
 /** §4b: an empire that has lost ships gets up to plantPerYear derelicts of its own designs near its territory. */
 export function doppelgangersYearly(galaxy: Galaxy, year: number): void {
-    void year;
+    // §0 rarity/timing: not this game, or before the floor (planting is entirely seeding — Doppelgangers has no
+    // own seed-year param, so the shared/overridden floor is its only gate) — no state, no draws.
+    if (!threatExists(galaxy, DOPPELGANGERS_KEY) || !pastThreatMinYear(galaxy, DOPPELGANGERS_KEY, year)) return;
     const st = doppelgangersState(galaxy);
     if (st.ended || st.faction !== null) return;
     const perYear = P.plantPerYear(galaxy);
@@ -177,6 +184,7 @@ function onAbandonedShipClaimed(galaxy: Galaxy, bo: BuiltObject, empire: Empire)
 // ---------------------------------------------------------------------------------------------------------------
 
 export function doppelgangersPeriodic(galaxy: Galaxy, now: number): void {
+    if (!threatExists(galaxy, DOPPELGANGERS_KEY)) return; // §0 rarity: not this game — no state, no draws.
     void now;
     const st = doppelgangersState(galaxy);
     if (st.ended) return;
@@ -189,7 +197,8 @@ export function doppelgangersPeriodic(galaxy: Galaxy, now: number): void {
                 if (galaxy.rnd.nextDouble() < pct) suspectFound(galaxy, st, s);
             }
         }
-        if (st.sleepers.filter((s) => !s.bo.hasBeenDestroyed).length >= P.turnCount(galaxy)) doppelgangersTrigger(galaxy, st);
+        // §0 timing: the trigger waits for the floor (sleepers can't exist pre-floor anyway — belt and suspenders).
+        if (pastThreatMinYear(galaxy, DOPPELGANGERS_KEY) && st.sleepers.filter((s) => !s.bo.hasBeenDestroyed).length >= P.turnCount(galaxy)) doppelgangersTrigger(galaxy, st);
     }
     doppelgangersEndCheck(galaxy, st);
 }
@@ -293,6 +302,7 @@ export function doppelgangersKnownSites(galaxy: Galaxy, empire: Empire): KnownTh
 export const DOPPELGANGERS_HANDLER_IDS = ['doppel.yearly', 'doppel.periodic', 'doppel.owner', 'doppel.claimed'] as const;
 
 export function registerDoppelgangers(): void {
+    registerThreatExistence(DOPPELGANGERS_KEY, DOPPELGANGERS_FLAG);
     registerScenarioYearly({ id: 'doppel.yearly', flag: DOPPELGANGERS_FLAG, order: 10, run: doppelgangersYearly });
     registerScenarioPeriodic({ id: 'doppel.periodic', flag: DOPPELGANGERS_FLAG, order: 10, periodDays: PERIOD_DAYS, run: doppelgangersPeriodic });
     registerScenarioEvent({ id: 'doppel.owner', flag: DOPPELGANGERS_FLAG, event: 'builtObjectOwnerChanged', run: (g, e) => onBuiltObjectOwnerChanged(g, e.builtObject, e.from, e.to) });

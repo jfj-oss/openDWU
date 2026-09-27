@@ -29,7 +29,12 @@ beforeAll(async () => {
 const age3 = (o: CreateGameOptions): CreateGameOptions => ({ ...o, player: { ...o.player, age: 3 }, aiEmpires: o.aiEmpires.map((e) => ({ ...e, age: 3 })) });
 
 function gaGame(flags: Record<string, boolean> = {}): { game: Game; g: Galaxy } {
-    const { game } = createScenarioGame(base, { scenario: 'ghostarmada', flags: { threatGhostArmada: true, ...flags }, params: { ghostDelayYears: 1, ghostRaidRange: 1e8 }, options: age3 });
+    const { game } = createScenarioGame(base, {
+        scenario: 'ghostarmada',
+        flags: { threatGhostArmada: true, ...flags },
+        params: { ghostDelayYears: 1, ghostRaidRange: 1e8, ghostArmadaExistChancePct: 100, ghostArmadaMinYear: 0 },
+        options: age3,
+    });
     return { game, g: game.galaxy };
 }
 

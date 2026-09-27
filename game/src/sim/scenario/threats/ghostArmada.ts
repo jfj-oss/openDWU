@@ -45,10 +45,13 @@ import {
     atWar,
     createThreatFaction,
     normalEmpires,
+    pastThreatMinYear,
     peekThreatState,
+    registerThreatExistence,
     registerThreatKnownSites,
     revealTo,
     teardownIfDead,
+    threatExists,
     threatGameEnd,
     threatState,
     type KnownThreatSite,
@@ -129,6 +132,7 @@ function threatsGameEndOn(galaxy: Galaxy): boolean {
 // ---------------------------------------------------------------------------------------------------------------
 
 function onBuiltObjectRemoved(galaxy: Galaxy, bo: BuiltObject): void {
+    if (!threatExists(galaxy, GHOST_ARMADA_KEY)) return; // §0 rarity: not this game — no state, no draws.
     const st = ghostArmadaState(galaxy);
     if (!bo.hasBeenDestroyed || bo.role !== BuiltObjectRole.Military || bo.design === null) return;
     const empire = bo.actualEmpire;
@@ -143,6 +147,7 @@ function onBuiltObjectRemoved(galaxy: Galaxy, bo: BuiltObject): void {
 }
 
 function onEmpireEliminated(galaxy: Galaxy, empire: Empire, conqueror: Empire | null): void {
+    if (!threatExists(galaxy, GHOST_ARMADA_KEY)) return; // §0 rarity: not this game — no state, no draws.
     const st = ghostArmadaState(galaxy);
     if (!st.wrecks.some((w) => w.empireId === empire.empireId)) return; // nothing recorded to rise from
     st.pending.push({ deadEmpireId: empire.empireId, deadEmpireName: empire.name, race: empire.dominantRace, conqueror, date: galaxyStarDate(galaxy) });
@@ -183,12 +188,16 @@ function placeFactionShip(galaxy: Galaxy, faction: Empire, design: Design, x: nu
 }
 
 export function ghostArmadaYearly(galaxy: Galaxy): void {
+    if (!threatExists(galaxy, GHOST_ARMADA_KEY)) return; // §0 rarity: not this game — no state, no draws.
     const st = ghostArmadaState(galaxy);
     const now = galaxyStarDate(galaxy);
     const delay = P.delayYears(galaxy) * YEAR_LENGTH;
+    // §0 timing: the rise (the declaration) waits for the floor too, even once its own delay-since-elimination has
+    // passed — an entry that is not yet risable stays pending (never dropped) either way.
+    const pastFloor = pastThreatMinYear(galaxy, GHOST_ARMADA_KEY);
     const stillPending: GhostPending[] = [];
     for (const entry of st.pending) {
-        if (now - entry.date < delay) {
+        if (now - entry.date < delay || !pastFloor) {
             stillPending.push(entry);
             continue;
         }
@@ -305,6 +314,7 @@ export function ghostArmadaKnownSites(galaxy: Galaxy, empire: Empire): KnownThre
 export const GHOST_ARMADA_HANDLER_IDS = ['ghostArmada.removed', 'ghostArmada.eliminated', 'ghostArmada.yearly', 'ghostArmada.periodic'] as const;
 
 export function registerGhostArmada(): void {
+    registerThreatExistence(GHOST_ARMADA_KEY, GHOST_ARMADA_FLAG);
     registerScenarioEvent({ id: 'ghostArmada.removed', flag: GHOST_ARMADA_FLAG, event: 'builtObjectRemoved', run: (g, e) => onBuiltObjectRemoved(g, e.builtObject) });
     registerScenarioEvent({ id: 'ghostArmada.eliminated', flag: GHOST_ARMADA_FLAG, event: 'empireEliminated', run: (g, e) => onEmpireEliminated(g, e.empire, e.conqueror) });
     registerScenarioYearly({ id: 'ghostArmada.yearly', flag: GHOST_ARMADA_FLAG, order: 10, run: (g) => ghostArmadaYearly(g) });

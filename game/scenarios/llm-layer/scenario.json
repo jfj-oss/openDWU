@@ -2,7 +2,7 @@
   "id": "llm-layer",
   "name": "Local LLM Layer",
   "description": "Foundations of the local-model layer (19s-1): an async request queue with a per-year budget and a situation cache over the advisor endpoint, fixed-schema grounding digests, and a yearly in-character Chronicle of your empire on the Galactic History screen (a plain digest when no model answers); optionally (19s-3) a yearly model-chosen strategic move among the legal moves of the AI empires nearest you, applied as recorded commands. The model never runs inside the tick; its only effect on the game is the optional strategic moves, each a recorded command. Includes the Event Log scenario (and with it Internal Security and the Emergent Galaxy packages; their own flags).",
-  "include": ["event-log"],
+  "include": ["event-log", "threat-framework"],
   "flags": [
     { "name": "llmFoundations", "label": "Local model layer", "description": "Queue, digests and the yearly Chronicle (needs the advisor endpoint in Settings; without a model the Chronicle is the plain digest).", "default": false },
     { "name": "llmStrategic", "label": "Model-driven strategy for nearby empires", "description": "Once a year each of the AI empires nearest you makes one deliberate move chosen by the local model among its legal moves (council motions and votes, peace terms, war goals, investigations, concessions, league offers, the herder path). Needs the local model layer; every choice is checked and applied as a recorded command, and the game's own rules keep running.", "default": false },

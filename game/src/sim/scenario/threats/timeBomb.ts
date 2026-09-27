@@ -27,7 +27,7 @@ import { CharacterRole, getEmpireCharacters } from '../../characters';
 import { gameYear, registerScenarioEvent, registerScenarioYearly } from '../hooks';
 import { scenarioParam } from '../state';
 import { scenarioText } from '../messages';
-import { arcMessage, arcNews, normalEmpires, peekThreatState, threatGameEnd, threatState, type SentStages } from './framework';
+import { arcMessage, arcNews, normalEmpires, pastThreatMinYear, peekThreatState, registerThreatExistence, threatExists, threatGameEnd, threatState, type SentStages } from './framework';
 import { startStarDateForAge } from '../../galaxyTime';
 import { GameEndOutcome } from '../../victory';
 
@@ -150,11 +150,12 @@ function systemName(galaxy: Galaxy, h: Habitat): string {
 }
 
 export function timeBombYearly(galaxy: Galaxy, year: number): void {
+    if (!threatExists(galaxy, TIME_BOMB_KEY)) return; // §0 rarity: not this game — no state, no draws (minimal guard: shared with the reworked branch).
     const st = timeBombState(galaxy);
     if (st.ended) return;
     if (!st.placed) {
         const startYear = gameYear(startStarDateForAge(galaxy.age));
-        if (year >= startYear + P.startYear(galaxy)) timeBombPlace(galaxy, st);
+        if (year >= startYear + P.startYear(galaxy) && pastThreatMinYear(galaxy, TIME_BOMB_KEY, year)) timeBombPlace(galaxy, st); // §0 timing floor
     }
     const chance = P.chancePerMille(galaxy);
     for (const empire of normalEmpires(galaxy)) {
@@ -274,6 +275,7 @@ function threatsGameEndOn(galaxy: Galaxy): boolean {
 export const TIME_BOMB_HANDLER_IDS = ['timeBomb.yearly', 'timeBomb.research'] as const;
 
 export function registerTimeBomb(): void {
+    registerThreatExistence(TIME_BOMB_KEY, TIME_BOMB_FLAG);
     registerScenarioYearly({ id: 'timeBomb.yearly', flag: TIME_BOMB_FLAG, order: 10, run: timeBombYearly });
     registerScenarioEvent({ id: 'timeBomb.research', flag: TIME_BOMB_FLAG, event: 'researchCompleted', run: (g, e) => onResearchCompleted(g, e.empire, e.project) });
 }

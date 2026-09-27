@@ -2,6 +2,7 @@
   "id": "doppelgangers",
   "name": "Doppelgangers",
   "description": "End-game hidden threat. Ships lost to capture sometimes come back as sleepers: recaptured hulls may be turned, and derelicts of an empire's own designs are planted near its territory for its own explorers to claim. At enough live sleepers, The Mirror rises and every sleeper turns on its old fleet at once.",
+  "include": ["threat-framework"],
   "flags": [
     { "name": "doppelgangers", "label": "Doppelgangers", "description": "Captured ships can come back as sleepers loyal to nobody.", "default": false }
   ],
@@ -9,6 +10,8 @@
     { "name": "doppelSleeperPct", "label": "Sleeper chance on recapture (%)", "default": 35, "min": 0, "max": 100 },
     { "name": "doppelTurnCount", "label": "Live sleepers galaxy-wide needed to turn", "default": 8, "min": 1, "max": 100 },
     { "name": "doppelPlantPerYear", "label": "Derelicts planted per empire per year", "default": 2, "min": 0, "max": 20 },
-    { "name": "doppelDetectPct", "label": "Trace-scanner detection chance per period (%)", "default": 10, "min": 0, "max": 100 }
+    { "name": "doppelDetectPct", "label": "Trace-scanner detection chance per period (%)", "default": 10, "min": 0, "max": 100 },
+    { "name": "doppelgangersExistChancePct", "label": "Chance Doppelgangers exists in this game (%; -1 = use the shared value)", "default": -1, "min": -1, "max": 100 },
+    { "name": "doppelgangersMinYear", "label": "Earliest year Doppelgangers may seed or trigger (-1 = use the shared value)", "default": -1, "min": -1, "max": 200 }
   ]
 }

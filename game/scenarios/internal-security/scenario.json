@@ -2,7 +2,7 @@
   "id": "internal-security",
   "name": "Internal Security",
   "description": "One stability ledger per colony and empire (approval, ethnic tension, shortages, herd losses, cult influence, governor loyalty, purges, martial law — each with its cause) that the colony revolt reads; every hidden plot, convert, sleeper ship, foreign agent, bought governor, Hive node, farm and nest produces leads through one counter-intelligence roll; agents investigate leads, and confirmed leads unlock arrests, exile, purges, amnesty, quarantine, martial law, fleet recalls and scrapping suspect ships. Includes the Emergent Galaxy packages and the hidden threats (their own flags).",
-  "include": ["emergent", "resource-crises", "espionage-consequences", "refugees-demographics", "rim-fauna", "cult", "doppelgangers", "hive", "greytide", "corporatecoup"],
+  "include": ["emergent", "resource-crises", "espionage-consequences", "refugees-demographics", "rim-fauna", "cult", "doppelgangers", "hive", "greytide", "corporatecoup", "threat-framework"],
   "flags": [
     { "name": "internalSecurity", "label": "Internal security", "description": "Stability ledger with causes, leads from one counter-intelligence roll, investigations and security actions.", "default": true }
   ],

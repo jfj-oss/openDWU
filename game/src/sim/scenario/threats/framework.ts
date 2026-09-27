@@ -26,10 +26,13 @@ import { empireCompleteTeardown } from '../../events';
 import { EmpireMessageType } from '../../messages';
 import { GameEndEventArgs, GameEndOutcome, onGameEnd } from '../../victory';
 import { BuiltObjectRole } from '../../data/designSpecifications';
+import { Random } from '../../random';
+import { startStarDateForAge } from '../../galaxyTime';
 import { galaxyStarDate } from '../../tick/simTime';
 import { createEmpireMidGame } from '../empireMidGame';
 import { scenarioMessage, scenarioNews, scenarioText } from '../messages';
-import { scenarioState } from '../state';
+import { scenarioParam, scenarioState } from '../state';
+import { gameYear, registerScenarioGameStart } from '../hooks';
 import type { Character, StellarObject } from '../../characters';
 import { getEmpireCharacters } from '../../characters';
 import { GalaxyLocation } from '../../galaxyLocation';
@@ -134,6 +137,104 @@ export function threatKnownSites(galaxy: Galaxy, empire: Empire | null, minLevel
         for (const s of knownSitesProviders().get(key)!(galaxy, empire)) if (s.level >= minLevel) out.push(s);
     }
     return out;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Rarity and timing (tasks/19f-hidden-threats.md §0 "Rarity and timing"): hidden threats must be rare and late, not
+// every-game. Every threat scenario includes scenarios/threat-framework/ (params threatExistChancePct default 25,
+// threatMinYear default 30); a threat scenario may override either with its own `<key>ExistChancePct` /
+// `<key>MinYear` param (default -1 = use the shared value).
+// ---------------------------------------------------------------------------------------------------------------
+
+const THREATS_KEY = 'threats';
+
+interface ThreatsFrameworkState {
+    /**
+     * Per enabled threat key, whether it exists in this game: the hidden existence lottery, rolled once at game
+     * start with this module's own seeded Random (never galaxy.rnd, so the faithful draw stream is untouched), in
+     * fixed key order (registry keys sorted, independent of module import order). Never shown in any UI or message.
+     */
+    exists: Record<string, boolean>;
+}
+
+interface ThreatRegistration {
+    key: string;
+    flag: string;
+}
+// `var` + lazy creation: as knownSitesProvidersStore above — threat modules register at module load, possibly while
+// this module is still initialising (an import cycle through the UI / player code).
+// eslint-disable-next-line no-var
+var threatRegistryStore: Map<string, ThreatRegistration> | undefined;
+function threatRegistry(): Map<string, ThreatRegistration> {
+    return (threatRegistryStore ??= new Map());
+}
+
+/**
+ * A threat module registers its (state key, scenario flag) pair once at load, alongside registerThreatKnownSites,
+ * so the shared existence lottery (rollThreatExistence) can find every enabled threat.
+ */
+export function registerThreatExistence(key: string, flag: string): void {
+    threatRegistry().set(key, { key, flag });
+}
+
+function threatExistChancePctFor(galaxy: Galaxy, key: string): number {
+    const shared = scenarioParam(galaxy, 'threatExistChancePct', 25);
+    const override = scenarioParam(galaxy, `${key}ExistChancePct`, -1);
+    return override >= 0 ? override : shared;
+}
+
+/**
+ * The existence lottery: once per game, for every registered threat whose scenario flag is on, in fixed key order
+ * (registry keys sorted), one roll with this module's own seeded Random decides whether it exists this game. No
+ * threat enabled ⇒ no state is created and nothing is drawn (a scenario with every threat flag off stays byte-
+ * identical to the game before this lottery existed). Registered as a game-start handler gated on
+ * `scenarioId: 'threat-framework'` at a very low order, so it runs once, before every threat module's own game-start
+ * handler (e.g. hive.init), in any scenario that includes scenarios/threat-framework/.
+ */
+function rollThreatExistence(galaxy: Galaxy): void {
+    const s = galaxy.scenario;
+    if (s === null) return;
+    const keys = [...threatRegistry().keys()].sort().filter((k) => s.flags[threatRegistry().get(k)!.flag] === true);
+    if (keys.length === 0) return;
+    const st = threatState(galaxy, THREATS_KEY, (): ThreatsFrameworkState => ({ exists: {} }));
+    const rnd = new Random(((galaxy.randomSeed ^ 0x74484c31) >>> 1) & 0x7fffffff);
+    for (const key of keys) st.exists[key] = rnd.nextDouble() * 100 < threatExistChancePctFor(galaxy, key);
+}
+
+registerScenarioGameStart({ id: 'threatFramework.existenceLottery', scenarioId: 'threat-framework', order: -1000, run: (g) => rollThreatExistence(g) });
+
+/**
+ * True when `key`'s existence lottery says it exists this game; false if it was never rolled (the threat's flag is
+ * off, or the scenario does not include scenarios/threat-framework/). Every threat handler (yearly, periodic, every
+ * event) checks this first: not existing runs no handlers — no state, no draws — and the result is never surfaced
+ * to the UI or any message.
+ */
+export function threatExists(galaxy: Galaxy, key: string): boolean {
+    const st = peekThreatState<ThreatsFrameworkState>(galaxy, THREATS_KEY);
+    return st !== null && st.exists[key] === true;
+}
+
+/** The game's own start year: every threat's "N years in" param (greyTideSeedYear, cultSeedYear, ...) is an offset from this. */
+function threatStartYear(galaxy: Galaxy): number {
+    return gameYear(startStarDateForAge(galaxy.age));
+}
+
+function threatMinYearOffset(galaxy: Galaxy, key: string): number {
+    const shared = scenarioParam(galaxy, 'threatMinYear', 30);
+    const override = scenarioParam(galaxy, `${key}MinYear`, -1);
+    return override >= 0 ? override : shared;
+}
+
+/**
+ * True once the game year has passed `key`'s year floor (startYear + threatMinYear, or its `<key>MinYear`
+ * override). A module combines this with its own seed-year condition (the max of the two, per §0): no threat's
+ * seeding, triggering or rising happens before the floor, though bookkeeping that merely tracks progress toward a
+ * trigger (Hive's node-absorption count, Doppelgangers' capture record, Corporate Coup's bribery count, Ghost
+ * Armada's wreck record) may run before it. `year` defaults to the current game year.
+ */
+export function pastThreatMinYear(galaxy: Galaxy, key: string, year?: number): boolean {
+    const y = year ?? gameYear(galaxyStarDate(galaxy));
+    return y >= threatStartYear(galaxy) + threatMinYearOffset(galaxy, key);
 }
 
 // ---------------------------------------------------------------------------------------------------------------

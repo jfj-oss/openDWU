@@ -2,6 +2,7 @@
   "id": "darkfarms",
   "name": "Dark Farms",
   "description": "End-game hidden threat. An overdeveloped colony may grow a hidden self-replicating factory that builds robot troops and armed sleeper freighters for free. When it turns, the Harvester Collective rises from inside the colony and spreads by invading weakly garrisoned worlds. Trace scanners and spies can find the farms first.",
+  "include": ["threat-framework"],
   "flags": [
     { "name": "darkFarms", "label": "Dark Farms", "description": "Overdeveloped colonies can grow hidden Dark Farms.", "default": false },
     { "name": "darkFarmsRobotArmy", "label": "Farms build a hidden robot army", "description": "Farms grow robot troops hidden on the planet.", "default": true },
@@ -26,6 +27,8 @@
     { "name": "traceDetectPct", "label": "Trace scanner detection chance (%)", "default": 10, "min": 0, "max": 100 },
     { "name": "agentDetectPct", "label": "Agent detection chance (%)", "default": 15, "min": 0, "max": 100 },
     { "name": "blightChancePct", "label": "Blight chance per bombardment (%)", "default": 25, "min": 0, "max": 100 },
-    { "name": "defeatPopulationPct", "label": "Harvester share of population that ends the game (%)", "default": 40, "min": 5, "max": 100 }
+    { "name": "defeatPopulationPct", "label": "Harvester share of population that ends the game (%)", "default": 40, "min": 5, "max": 100 },
+    { "name": "darkFarmsExistChancePct", "label": "Chance Dark Farms exists in this game (%; -1 = use the shared value)", "default": -1, "min": -1, "max": 100 },
+    { "name": "darkFarmsMinYear", "label": "Earliest year Dark Farms may seed (-1 = use the shared value)", "default": -1, "min": -1, "max": 200 }
   ]
 }
