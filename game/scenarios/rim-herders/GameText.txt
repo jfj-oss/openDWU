@@ -1,0 +1,25 @@
+'Scenario rim-herders: texts of the rim herders (tasks/19-mod-layer-scenarios.md §19j).
+Scenario RimHerders Title;Rim Herders
+Scenario RimHerders Herder Empire Name;{0} Herders
+Scenario RimHerders Defend;The herds of {0} have turned on the ships attacking the herders' colony.
+Scenario RimHerders Kill Drop;Our ship {0} recovered {1} from a slain herd creature.
+Scenario RimHerders Protectorate Offer;The Ossuvan herders of {0} have watched us leave their herds in peace for {1} years. They offer to become our protectorate: they keep their herds and pay us in herd goods.
+Scenario RimHerders Protectorate Accept;Accept the protectorate
+Scenario RimHerders Protectorate Decline;Decline
+Scenario RimHerders Protectorate Formed;The herders of {0} are now our protectorate ({1}). Their herds leave our ships alone.
+Scenario RimHerders News Protectorate;The Ossuvan herders of {0} have placed themselves under the protection of the {1}.
+Scenario RimHerders Tribute;Our protectorate {0} has paid its yearly tribute: {1}.
+Scenario RimHerders Conquered;We have taken {0} by force. Its herds have gone feral and are turning on our space.
+Scenario RimHerders News Conquered;The {1} have conquered the herders of {0}. Their herds have gone feral.
+Scenario RimHerders Feral Calm;The feral herds of {0} have calmed down.
+Scenario RimHerders Characters Offer;The Ossuvan herders trust us. A drover (herds let the fleet it rides with pass) and a guide (reads safe lanes for an explorer) offer to join us.
+Scenario RimHerders Characters Accept;Welcome them
+Scenario RimHerders Characters Decline;Decline
+Scenario RimHerders Character Joined;{0} ({1}) has joined us from the Ossuvan herders.
+Scenario RimHerders Character Left;{0} has returned to the herders: we have lost their goodwill.
+Scenario RimHerders Drover;Drover
+Scenario RimHerders Guide;Guide
+Scenario RimHerders Herding Stolen;Our agents have stolen the herders' craft from {0}. We can now domesticate one herd each year.
+Scenario RimHerders Domesticated;Our herders have domesticated the herd near {0}: it now leaves our ships and stations alone.
+Scenario RimHerders Migration Warning;The herders of {0} warn us: their herds will migrate soon. Withdraw our warships from the corridor around {1}, or the herds will turn on them.
+Scenario RimHerders Warning Ignored;We ignored the herders' migration warning: our warships are still in the corridor around {0}. The herds of {1} are now aggressive toward us.

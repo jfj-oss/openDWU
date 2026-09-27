@@ -1,0 +1,18 @@
+'Scenario rim-herders: the Ossuvan herders — a new race built on the Teekan record (art, designs, policy). Rim
+'independent colonies get this population at game start (tasks/19-mod-layer-scenarios.md §19j). Scenario trait:
+'symbiotic (herds are docile to their colonies and ships) — declared in src/sim/scenario/rimHerders/common.ts
+'RACE_TRAITS; not an empire race (CanBeNormalEmpire N), so the faithful empire generation never picks it.
+BasedOn		;teekan.txt
+Name		;Ossuvan
+Aggression		;55
+Caution		;130
+Friendliness		;115
+Expanding		;N
+CanBePirate		;N
+CanBeNormalEmpire		;N
+Playable		;N
+HomeSystemName		;Ossu
+TroopName		;Ossuvan Drover Guard
+TroopNameArmored		;Ossuvan Herd Riders
+TroopNamePlanetaryDefense		;Ossuvan Range Wardens
+TroopNameSpecialForces		;Ossuvan Pathfinders

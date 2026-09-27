@@ -985,6 +985,7 @@ export function inflictDamageFull(
             if (creature.type === CreatureType.SilverMist && self.empire !== null) self.empire.civilityRating += DESTROY_SILVER_MIST_REPUTATION_BONUS;
             // BuiltObject.2.cs 6233 _Galaxy.CheckTriggerEvent(creature.GameEventId, ActualEmpire, Destroy, null) (story/eventActions.ts, M4z3).
             checkTriggerEvent(galaxy, creature.gameEventId, self.actualEmpire, EventTriggerType.Destroy, null);
+            if (galaxy.scenario !== null) scenarioEmit(galaxy, 'creatureKilled', { creature, killer: self, empire: self.actualEmpire }); // mod layer (19j)
             creature.completeTeardown();
             return true;
         }
@@ -1356,6 +1357,7 @@ export function inflictIonDamage(galaxy: Galaxy, self: BuiltObject, target: Stel
             // BuiltObject.2.cs 6135 CheckTriggerEvent(creature.GameEventId, Empire, Destroy) (story/eventActions.ts, M4z3).
             checkTriggerEvent(galaxy, creature.gameEventId, self.empire, EventTriggerType.Destroy, null);
             if (creature.type === CreatureType.SilverMist && self.empire !== null) self.empire.civilityRating += DESTROY_SILVER_MIST_REPUTATION_BONUS;
+            if (galaxy.scenario !== null) scenarioEmit(galaxy, 'creatureKilled', { creature, killer: self, empire: self.empire }); // mod layer (19j)
             creature.completeTeardown();
         }
     } else if (isBuiltObject(target)) {
@@ -1407,6 +1409,7 @@ export function habitatInflictIonDamage(galaxy: Galaxy, self: Habitat, target: S
             // Habitat.cs 2357 CheckTriggerEvent(creature.GameEventId, Empire, Destroy) (story/eventActions.ts, M4z3).
             checkTriggerEvent(galaxy, creature.gameEventId, self.empire, EventTriggerType.Destroy, null);
             if (creature.type === CreatureType.SilverMist && self.empire !== null) self.empire.civilityRating += DESTROY_SILVER_MIST_REPUTATION_BONUS;
+            if (galaxy.scenario !== null) scenarioEmit(galaxy, 'creatureKilled', { creature, killer: self, empire: self.empire }); // mod layer (19j)
             creature.completeTeardown();
         }
     } else if (isBuiltObject(target)) {

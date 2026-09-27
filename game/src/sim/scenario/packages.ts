@@ -4,6 +4,7 @@
 import './charteredCompanies/charters';
 import './rimFrontier/rimFrontier';
 import './rimFauna/rimFauna';
+import './rimHerders/rimHerders';
 import './rimTrade/rimTrader';
 import './emergent/espionage';
 import './threats/darkFarms';
