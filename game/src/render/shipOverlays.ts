@@ -145,15 +145,15 @@ export class DamageOverlays<K extends object> {
                 if (fx && e !== undefined && e.side === side && budget > e.budget && layer.clusters.length > e.clusters.length) {
                     const rgba = new Uint8ClampedArray(side * side * 4);
                     if (paintEmbers(rgba, side, side, hull, layer.clusters, e.clusters.length) > 0) {
-                        ember?.destroy(true);
+                        if (ember !== null) this.retire(ember);
                         ember = textureFromPixels(rgba, side, side, true);
                         emberAt = now;
                     }
                 } else if (e !== undefined && e.side !== side) {
-                    ember?.destroy(true);
+                    if (ember !== null) this.retire(ember);
                     ember = null;
                 }
-                e?.tex?.destroy(true);
+                if (e?.tex != null) this.retire(e.tex);
                 e = { sig, tex, clusters: layer.clusters, side, budget, ember, emberAt, seenFrame: this.frame };
                 this.entries.set(key, e);
             }
@@ -180,14 +180,20 @@ export class DamageOverlays<K extends object> {
         }
     }
 
+    /** Unbind `t` from the pooled sprites, then destroy it. */
+    private retire(t: Texture): void {
+        for (const s of this.sprites) if (s.texture === t) s.texture = Texture.EMPTY;
+        t.destroy(true);
+    }
+
     end(): void {
         for (let i = this.used; i < this.sprites.length; i++) this.sprites[i].visible = false;
         // Objects not drawn for ~2 s give their textures back.
         if (this.frame % 60 === 0) {
             for (const [k, e] of this.entries) {
                 if (this.frame - e.seenFrame < 120) continue;
-                e.tex?.destroy(true);
-                e.ember?.destroy(true);
+                if (e.tex !== null) this.retire(e.tex);
+                if (e.ember !== null) this.retire(e.ember);
                 this.entries.delete(k);
             }
         }

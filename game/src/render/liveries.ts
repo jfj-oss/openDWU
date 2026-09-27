@@ -153,6 +153,8 @@ export interface HullAnalysis {
     decal: { x: number; y: number; r: number };
     /** Content pixel count. */
     area: number;
+    /** Mean luminance of the gated plating (the paint keeps the shading relative to it). */
+    meanLum: number;
 }
 
 /** Analyses a crop image once (per texture): see the module comment. Null when there is no hull. */
@@ -265,7 +267,14 @@ export function analyseHull(img: CropImage): HullAnalysis | null {
             }
         }
     }
-    return { side, mask, xMin, xMax, length, centre, halfWidth, dist, lum, gate, band, number, decal, area };
+    let ls = 0;
+    let lw = 0;
+    for (let i = 0; i < n; i++) {
+        ls += lum[i] * gate[i];
+        lw += gate[i];
+    }
+    const meanLum = lw > 0 ? ls / lw : 0.4;
+    return { side, mask, xMin, xMax, length, centre, halfWidth, dist, lum, gate, band, number, decal, area, meanLum };
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -400,12 +409,12 @@ export function paintLivery(an: HullAnalysis, img: CropImage, style: LiveryStyle
     const side = an.side;
     const out = new Uint8ClampedArray(side * side * 4);
     const L = look.level;
-    const fade = 1 - 0.55 * L;
+    const fade = 1 - 0.4 * L;
     if (style !== null && style.paint) {
         const [mr, mg, mb] = rgbOf(style.main);
         const [sr, sg, sb] = rgbOf(style.secondary);
         // Bleach toward a pale version of the colour as it withers.
-        const bleach = (c: number): number => c + (225 - c) * 0.45 * L;
+        const bleach = (c: number): number => c + (225 - c) * 0.35 * L;
         // Band + pinstripes.
         for (let y = 0; y < side; y++) {
             for (let x = an.band.x0 - 1; x <= an.band.x1; x++) {
@@ -414,8 +423,9 @@ export function paintLivery(an: HullAnalysis, img: CropImage, style: LiveryStyle
                 if (an.mask[i] === 0) continue;
                 const edge = x === an.band.x0 - 1 || x === an.band.x1;
                 const [cr, cg, cb] = edge ? [sr, sg, sb] : [mr, mg, mb];
-                const k = Math.min(1.25, an.lum[i] / 0.45);
-                const a = an.gate[i] * (edge ? 0.5 : 0.55) * fade;
+                // Shading relative to the plating's mean: the band keeps the empire colour's own brightness.
+                const k = Math.max(0.55, Math.min(1.3, an.lum[i] / Math.max(0.05, an.meanLum)));
+                const a = an.gate[i] * (edge ? 0.6 : 0.62) * fade;
                 blend(out, i * 4, bleach(cr) * k, bleach(cg) * k, bleach(cb) * k, a);
             }
         }
@@ -432,11 +442,11 @@ export function paintLivery(an: HullAnalysis, img: CropImage, style: LiveryStyle
                 const rr = Math.hypot(u, v);
                 if (rr > 1) continue;
                 const aa = Math.min(1, (1 - rr) * d.r) * an.gate[i];
-                const k = Math.min(1.2, 0.55 + an.lum[i]);
+                const k = Math.max(0.6, Math.min(1.25, 0.35 + 0.65 * (an.lum[i] / Math.max(0.05, an.meanLum))));
                 const glyph = emblemGlyphHit(style.emblem, u * 1.15, v * 1.15);
                 const rim = rr > 0.84;
                 const [cr, cg, cb] = glyph || rim ? [sr, sg, sb] : [mr, mg, mb];
-                blend(out, i * 4, bleach(cr) * k, bleach(cg) * k, bleach(cb) * k, aa * 0.7 * (1 - 0.6 * L));
+                blend(out, i * 4, bleach(cr) * k, bleach(cg) * k, bleach(cb) * k, Math.min(1, aa * 1.5) * 0.8 * (1 - 0.6 * L));
             }
         }
     }

@@ -59,7 +59,7 @@ export function threatMarkerStyle(threat: string, level: number, kind: 'colony' 
     const solid = level >= KNOWLEDGE_CONFIRMED;
     let colour = THREAT_MARKER_COLOURS[k];
     if ((k === 'ring' || k === 'diamond') && solid) colour = 0xff3030;
-    return { kind: k, colour, solid, alpha: solid ? 1 : 0.62, dashes: solid ? 0 : 14 };
+    return { kind: k, colour, solid, alpha: solid ? 1 : 0.8, dashes: solid ? 0 : 14 };
 }
 
 /** Suspected markers flicker (0.55-1 × alpha); confirmed ones are steady (1). `t` in seconds. */
@@ -137,7 +137,7 @@ export function drawThreatMarker(g: Graphics, st: ThreatMarkerStyle, x: number, 
     const px = 1 / z;
     const a = st.alpha * uncertaintyFlicker(st.solid, t, seed);
     const c = st.colour;
-    const w = (st.solid ? 2.5 : 1.8) * px;
+    const w = (st.solid ? 2.5 : 2) * px;
     const dashes = st.dashes;
     switch (st.kind) {
         case 'ash': {

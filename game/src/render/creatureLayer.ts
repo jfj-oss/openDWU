@@ -462,9 +462,12 @@ export class CreatureLayer {
     }
 
     private dropDamage(c: Creature, d: CreatureDamage): void {
-        for (const t of d.frames.values()) t.destroy(true);
-        d.rig?.destroy(true);
         this.views.get(c)?.rig?.setDamage(null);
+        for (const t of d.frames.values()) {
+            this.damagePool.release(t);
+            t.destroy(true);
+        }
+        d.rig?.destroy(true);
         this.damage.delete(c);
     }
 

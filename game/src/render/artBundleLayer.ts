@@ -385,7 +385,12 @@ export class ArtBundleLayer {
             if (this.frame % 120 === 0) {
                 for (const [id, v] of this.wrecks) {
                     if (v !== null && this.frame - v.seen < 600) continue;
-                    if (v !== null) for (const fr of v.frags) fr.tex.destroy(true);
+                    if (v !== null) {
+                        for (const fr of v.frags) {
+                            this.wreckPool.release(fr.tex);
+                            fr.tex.destroy(true);
+                        }
+                    }
                     this.wrecks.delete(id);
                 }
             }

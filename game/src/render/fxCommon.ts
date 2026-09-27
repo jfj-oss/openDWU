@@ -129,6 +129,11 @@ export class SpritePool {
         }
     }
 
+    /** Detach `texture` from every pooled sprite (call before destroying it: a destroyed texture must not stay bound). */
+    release(texture: Texture): void {
+        for (const s of this.sprites) if (s.texture === texture) s.texture = Texture.EMPTY;
+    }
+
     /** Sprites drawn since the last begin(). */
     get count(): number {
         return this.used;

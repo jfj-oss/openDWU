@@ -275,6 +275,7 @@ export class LiveryOverlays {
         if (this.frame % 120 === 0) {
             for (const [k, t] of this.textures) {
                 if (this.frame - t.used < 600) continue;
+                for (const s of this.sprites) if (s.texture === t.tex) s.texture = Texture.EMPTY;
                 t.tex.destroy(true);
                 this.textures.delete(k);
             }

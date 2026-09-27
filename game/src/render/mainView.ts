@@ -47,6 +47,7 @@ import { NebulaCloudGenerator } from './nebulaClouds';
 import { EmpireLayer } from './empireLayer';
 import { OverlayLayer } from './overlayLayer';
 import { ArtBundleLayer } from './artBundleLayer'; // [19r]
+import { ArtBundleGallery, artGalleryView } from './artBundleGallery'; // [19r]
 import { BuiltObjectLayer, BUILT_OBJECT_MAX_FACTOR } from './builtObjectLayer';
 // [ambientfx] begin
 import { AmbientLayer } from './ambientLayer';
@@ -953,6 +954,8 @@ export class MainView {
     private overlayLayer!: OverlayLayer;
     /** [19r] threat markers, league presence, wreck debris, herder camps (render-only map extras). */
     artBundleLayer!: ArtBundleLayer;
+    /** [19r] capture gallery (dev flag ?artGallery=<view>). */
+    private artGallery: ArtBundleGallery | null = null;
     /** Task 13a: ships, bases, pirates and traders (BuiltObjects). */
     private builtObjectLayer!: BuiltObjectLayer;
     // [ambientfx] begin
@@ -1301,6 +1304,11 @@ export class MainView {
         // [fightersfx] end
         // [19r] map-level art-bundle extras above the ships / fighters / creatures.
         this.artBundleLayer = new ArtBundleLayer(this.galaxy, this.world, (bo) => this.builtObjectLayer.drawnSizePx(bo));
+        const artView = typeof window !== 'undefined' ? artGalleryView(window.location.search) : null;
+        if (artView !== null) {
+            this.artGallery = new ArtBundleGallery(this.galaxy, this.app.stage, this.app.screen.width, this.app.screen.height, artView);
+            (window as unknown as { __artGallery?: unknown }).__artGallery = this.artGallery;
+        }
         // [newfauna] begin — render-only capture gallery, no-op unless the URL carries ?faunaGallery=1
         if (typeof window !== 'undefined' && faunaGalleryEnabled(window.location.search)) {
             const gallery = new FaunaGallery(this.galaxy, this.world, this.camera, window.location.search);
@@ -1435,6 +1443,7 @@ export class MainView {
         // [fightersfx] end
         this.creatureLayer.update(z, cam);
         this.artBundleLayer.update(z, cam); // [19r]
+        this.artGallery?.update(); // [19r]
         this.whalePilot?.update(z, cam); // [whalepilot]
         // [combatfx] begin
         // Combat effects (weapon fire, explosions, shield strikes, hyperjump flashes) above the ships.
