@@ -60,7 +60,12 @@ const PERIOD_DAYS = 30;
 /** Game-end code (19f table). No defeat code: the Exchange never fights or holds territory — only containment. */
 export const EXCHANGE_CODE_CONTAINED = 2018;
 /** The sabotage-outcome branches of completeIntelligenceMission this threat reuses (espionage.ts 1596). */
-const SABOTAGE_TYPES = [IntelligenceMissionType.SabotageColony, IntelligenceMissionType.SabotageConstruction, IntelligenceMissionType.InciteRevolution] as const;
+// Resolved lazily: this module is imported through packages.ts while espionage.ts (the enum's module) may still be
+// evaluating (import cycle game → packages → threats → espionage → … → game); a top-level read of the enum threw
+// "Cannot read properties of undefined" in any test that imports game.ts first.
+function sabotageTypes(): readonly IntelligenceMissionType[] {
+    return [IntelligenceMissionType.SabotageColony, IntelligenceMissionType.SabotageConstruction, IntelligenceMissionType.InciteRevolution];
+}
 
 export interface ExchangeStation extends ThreatSite {
     bo: BuiltObject;
@@ -181,7 +186,8 @@ export function exchangeYearly(galaxy: Galaxy, year: number): void {
         const victim = pair.stronger; // the Exchange's client is `weaker`; it sabotages `stronger`, its enemy.
         if (victim.colonies.length === 0) continue;
         const colony = victim.colonies[galaxy.rnd.next(0, victim.colonies.length)];
-        const type = SABOTAGE_TYPES[galaxy.rnd.next(0, SABOTAGE_TYPES.length)];
+        const types = sabotageTypes();
+        const type = types[galaxy.rnd.next(0, types.length)];
         const mission = type === IntelligenceMissionType.InciteRevolution ? newIntelligenceMissionAgainstEmpire(null, null, type, galaxyStarDate(galaxy), victim) : newIntelligenceMissionAgainstHabitat(null, null, type, galaxyStarDate(galaxy), colony);
         completeIntelligenceMission(galaxy, exchangeEmpire, mission);
         st.sabotageLog.push({ date: galaxyStarDate(galaxy) });
