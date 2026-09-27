@@ -56,6 +56,11 @@ export const INDEPENDENTS_PARAM_DEFAULTS = {
     independentLeaguesFleetMultiplier: 1.5,
     independentLeaguesOneColony: 1,
     independentLeaguesPullChance: 0.6,
+    /** §19k tech-follow addendum: the fraction (0-100) of the galaxy's median regular-empire tech level the
+     *  independent empire tracks — see refreshIndependentTech (independents.ts). */
+    independentTechFollowPct: 60,
+    /** §19k tech-follow addendum: how often (game years) the tech-follow check runs. */
+    independentTechRefreshYears: 2,
 } as const;
 export type IndependentsParam = keyof typeof INDEPENDENTS_PARAM_DEFAULTS;
 
@@ -145,6 +150,8 @@ export interface IndependentsStats {
     protectorates: number;
     splits: number;
     tradeDeals: number;
+    /** §19k tech-follow addendum: refreshIndependentTech calls that actually raised the tech level. */
+    techRefreshes: number;
 }
 
 export interface IndependentsState {
@@ -153,6 +160,8 @@ export interface IndependentsState {
     friction: FrictionRecord[];
     nextLeagueId: number;
     lastMilitia: number;
+    /** §19k tech-follow addendum: star date of the last refreshIndependentTech check (independentTechRefreshYears). */
+    lastTechRefresh: number;
     started: boolean;
     stats: IndependentsStats;
 }
@@ -164,10 +173,11 @@ export function independentsState(galaxy: Galaxy): IndependentsState {
         friction: [],
         nextLeagueId: 1,
         lastMilitia: -1,
+        lastTechRefresh: -1,
         started: false,
         stats: {
             militiaBuilt: 0, militiaRefreshed: 0, constructorsBuilt: 0, stationsBuilt: 0, raidsAnswered: 0, frictions: 0, buyouts: 0, tolerated: 0,
-            cleared: 0, leaguesFormed: 0, leaguesDissolved: 0, extraColonies: 0, protectorates: 0, splits: 0, tradeDeals: 0,
+            cleared: 0, leaguesFormed: 0, leaguesDissolved: 0, extraColonies: 0, protectorates: 0, splits: 0, tradeDeals: 0, techRefreshes: 0,
         },
     }));
 }

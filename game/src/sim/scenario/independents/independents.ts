@@ -48,6 +48,7 @@ import { scenarioFlag } from '../state';
 import { registerScenarioDecision, raiseScenarioDecision, type ScenarioDecision } from '../decisions';
 import { scenarioMessage, scenarioNews, scenarioText } from '../messages';
 import { createEmpireMidGame } from '../empireMidGame';
+import { YEAR_LENGTH } from '../../galaxyTime';
 import { herderColonyHerds, herderColonyOf, peekRimHerdersState, rimHerdersState, RIM_HERDERS_FLAG } from '../rimHerders/common';
 import { setRimHerdDocile } from '../rimFauna/common';
 import {
@@ -128,6 +129,80 @@ export function independentDesign(galaxy: Galaxy, subRole: BuiltObjectSubRole): 
     if (d === null) return null;
     ind.designs.push(d);
     return d;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// §19k tech-follow addendum: the independent empire's tech tree drifts with the galaxy instead of staying frozen
+// at its Empire.cs 4146 initializeIndependentCtor start (SetTechTreeStartingDefaults, race null): unlike a normal
+// empire it has no researchTick advancing it turn to turn, so without this every militia / station design keeps
+// using start-tech components forever. Rnd: galaxy.rnd only inside independentsTick (this package's gated periodic
+// tick — this package's Rnd policy, top of file), and only setTechTreeLevel's own draw for a fractional target
+// (its `techLevel - lvl > rnd.nextDouble()` roll per node, short-circuited away entirely for an integer target).
+// ---------------------------------------------------------------------------------------------------------------
+
+/** An empire's tech level for the follow rule: the highest tech level among its researched nodes (darkFarms.ts
+ *  hostTechLevel's "highest researched level" pattern), 0 if none — the same units as setTechTreeLevel's techLevel. */
+function empireTechLevel(empire: Empire): number {
+    let max = 0;
+    for (const n of empire.research.techTree) if (n.isResearched && n.def.techLevel > max) max = n.def.techLevel;
+    return max;
+}
+
+function median(values: number[]): number {
+    if (values.length === 0) return 0;
+    const sorted = [...values].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+}
+
+/**
+ * Regenerates the independent empire's specification designs (militia warship, constructor, stations, and the
+ * league colony ship when 19k-3 is on) from its current research so new builds use the new components — the same
+ * generateDesignFromSpec(galaxy, ind, spec, 0.0, now) call independentDesign's fallback makes. Existing ships keep
+ * their own Design objects; independentDesign picks the newest match by push order, so these new ones (pushed last)
+ * are what the next build uses.
+ */
+function regenerateIndependentDesigns(galaxy: Galaxy): void {
+    const ind = galaxy.independentEmpire;
+    if (ind === null) return;
+    for (const spec of ind.designSpecifications) {
+        if (spec === null) continue;
+        const d = generateDesignFromSpec(galaxy, ind, spec, 0.0, now(galaxy));
+        if (d !== null) ind.designs.push(d);
+    }
+}
+
+/**
+ * Independent tech follow: target = median tech level of normal (non-pirate, non-independent, active) empires ×
+ * independentTechFollowPct / 100; if the independent empire is below it, raises it with the same
+ * research.setTechTreeLevel(rnd, race, level, isPirate) → research.update → reviewResearchAbilities →
+ * reviewDesignsBuiltObjectsImprovedComponents → reviewTroopTypes path empireMidGame.ts's adoptEmpire uses for a
+ * mid-game empire's tech level, then regenerates the specification designs. Never lowers (only called when the
+ * current level is below target); no-op (false, no draw, no news) with no normal empires or no advance. Returns
+ * whether the level actually changed (the caller's news-once-per-refresh gate).
+ */
+export function refreshIndependentTech(galaxy: Galaxy): boolean {
+    const ind = galaxy.independentEmpire;
+    if (ind === null || galaxy.researchStatic === null) return false;
+    const levels: number[] = [];
+    for (const e of galaxy.empires) if (normalEmpire(galaxy, e)) levels.push(empireTechLevel(e));
+    if (levels.length === 0) return false;
+    const pct = indParam(galaxy, 'independentTechFollowPct');
+    const target = median(levels) * (pct / 100);
+    if (empireTechLevel(ind) >= target) return false;
+    // setTechTreeLevel(techLevel === 0.5) is the special LoadEmpirePolicy branch (throws without a race); the
+    // independent empire's dominantRace is null (Empire.cs 4146), so nudge off that exact value — negligible next
+    // to the level units above (1 = "Level 1").
+    const level = target === 0.5 ? 0.5 + 1e-9 : target;
+    ind.research.setTechTreeLevel(galaxy.rnd, ind.dominantRace, level, false);
+    ind.research.update(ind.dominantRace);
+    ind.reviewResearchAbilities();
+    ind.reviewDesignsBuiltObjectsImprovedComponents();
+    ind.reviewTroopTypes();
+    regenerateIndependentDesigns(galaxy);
+    independentsState(galaxy).stats.techRefreshes++;
+    scenarioNews(galaxy, null, scenarioText('Scenario Independents Tech Caught Up'));
+    return true;
 }
 
 /**
@@ -953,10 +1028,11 @@ export function independentsGameStart(galaxy: Galaxy): void {
     syncActors(galaxy);
     for (const a of st.actors) refreshMilitia(galaxy, a, false);
     st.lastMilitia = now(galaxy);
+    st.lastTechRefresh = now(galaxy);
     st.started = true;
 }
 
-/** Periodic tick (daily): actors, raids, militia refresh when due, construction jobs, the league colony ship, friction. */
+/** Periodic tick (daily): actors, raids, militia refresh when due, tech follow when due, construction jobs, the league colony ship, friction. */
 export function independentsTick(galaxy: Galaxy): void {
     if (galaxy.independentEmpire === null) return;
     const st = independentsState(galaxy);
@@ -967,6 +1043,10 @@ export function independentsTick(galaxy: Galaxy): void {
     } else if (t - st.lastMilitia >= Math.max(1, indParam(galaxy, 'independentActorsMilitiaDays')) * GAME_DAY_LENGTH) {
         st.lastMilitia = t;
         for (const a of st.actors) refreshMilitia(galaxy, a, true);
+    }
+    if (st.started && t - st.lastTechRefresh >= Math.max(1, indParam(galaxy, 'independentTechRefreshYears')) * YEAR_LENGTH) {
+        st.lastTechRefresh = t;
+        refreshIndependentTech(galaxy);
     }
     answerRaids(galaxy);
     for (const a of st.actors) runConstruction(galaxy, a);
