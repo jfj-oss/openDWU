@@ -50,6 +50,7 @@ import { conditionCheckLimit } from './tick/builtObjectTick';
 import { doConstructionBuiltObject, resetConstructionProcessTime } from './construction/constructionQueue';
 import { REAL_SECONDS_IN_GALACTIC_YEAR, galaxyStarDate } from './tick/simTime';
 import { recordExtraction } from './scenario/emergent/crisesCore';
+import { scenarioQuery } from './scenario/hooks';
 
 // ---------------------------------------------------------------------------------------------------------------
 // HabitatResource / HabitatResourceList helpers (the TS Habitat.Resources is `{ resourceId, abundance }[]`).
@@ -396,7 +397,8 @@ export function industrialProcessing(galaxy: Galaxy, builtObject: BuiltObject, t
         }
         // 7859-8115: extraction from an unowned parent habitat.
         const parentHabitat = bo.parentHabitat;
-        if ((bo.extractionGas > 0 || bo.extractionLuxury > 0 || bo.extractionMine > 0) && parentHabitat !== null && (parentHabitat.empire === null || parentHabitat.empire === galaxy.independentEmpire)) {
+        // mod layer: extractionBlocked (19g-7 herds grazing the station); no-op without a scenario.
+        if ((bo.extractionGas > 0 || bo.extractionLuxury > 0 || bo.extractionMine > 0) && parentHabitat !== null && (parentHabitat.empire === null || parentHabitat.empire === galaxy.independentEmpire) && !(galaxy.scenario !== null && scenarioQuery(galaxy, 'extractionBlocked', false, { builtObject: bo }))) {
             let habitatResourceList: HabitatResource[] = [];
             if (parentHabitat.resources != null) habitatResourceList = cloneHabitatResources(parentHabitat.resources);
             if (bo.isResourceExtractor && (bo.subRole !== BuiltObjectSubRole.ResupplyShip || bo.isDeployed)) {

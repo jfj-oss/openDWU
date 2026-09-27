@@ -1,0 +1,8 @@
+'Scenario rim-fauna: texts of the rim fauna herds (tasks/19-mod-layer-scenarios.md §19g item 7).
+Scenario RimFauna Title;Rim Fauna
+Scenario RimFauna Herd Name;{0} Herd of {1}
+Scenario RimFauna Station Grazed;A creature herd is grazing at {0} in {1}: it is eating the station's stock and blocking extraction.
+Scenario RimFauna Station Destroyed;The herd has destroyed {0}.
+Scenario RimFauna Herd Killed;The herd that grazed our stations in {0} has been wiped out.
+Scenario RimFauna Migration Warning;Migration season: creature herds are moving toward {0}. Guard the mining stations there.
+Scenario RimFauna News Migration;Migration season has begun at the rim: {0} creature herds are on the move.

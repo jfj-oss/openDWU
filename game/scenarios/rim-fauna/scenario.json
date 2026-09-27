@@ -1,0 +1,31 @@
+{
+  "id": "rim-fauna",
+  "name": "Rim Fauna",
+  "description": "Far more creature herds roam the outer rim than the core. Herds graze gas clouds, asteroid fields and mining stations, and migrate each year into the settled space just inside the rim.",
+  "flags": [
+    { "name": "rimFauna", "label": "Rim fauna herds", "description": "Rim-weighted Kaltor herds with a leader and home range, yearly migrations, station grazing, local unrest and AI escorts for grazed stations.", "default": true }
+  ],
+  "params": [
+    { "name": "rimFaunaDensityCore", "label": "Herds per system at the core", "default": 0, "min": 0, "max": 3 },
+    { "name": "rimFaunaDensityRim", "label": "Herds per system at the rim", "default": 0.4, "min": 0, "max": 3 },
+    { "name": "rimFaunaDensityInner", "label": "Radius where herd density starts rising", "default": 0.55, "min": 0, "max": 1 },
+    { "name": "rimFaunaMaxHerds", "label": "Herd cap at game start", "default": 40, "min": 0, "max": 400 },
+    { "name": "rimFaunaHerdSizeMin", "label": "Herd size (min)", "default": 4, "min": 1, "max": 30 },
+    { "name": "rimFaunaHerdSizeMax", "label": "Herd size (max)", "default": 7, "min": 1, "max": 30 },
+    { "name": "rimFaunaBreedChance", "label": "Yearly breeding chance per herd", "default": 0.5, "min": 0, "max": 1 },
+    { "name": "rimFaunaFeedRate", "label": "Station stock eaten per feeding tick (fraction)", "default": 0.1, "min": 0, "max": 1 },
+    { "name": "rimFaunaStationDamage", "label": "Station damage per feeding tick", "default": 8, "min": 0, "max": 1000 },
+    { "name": "rimFaunaStationAttraction", "label": "Pasture weight of a mining station", "default": 3, "min": 0, "max": 20 },
+    { "name": "rimFaunaHomeRange", "label": "Herd home range", "default": 20000, "min": 2000, "max": 100000 },
+    { "name": "rimFaunaMigrationRadius", "label": "Migration radius", "default": 600000, "min": 0, "max": 5000000 },
+    { "name": "rimFaunaMigrationDay", "label": "Migration season (day of year)", "default": 90, "min": 0, "max": 359 },
+    { "name": "rimFaunaMigrationChance", "label": "Migration chance per herd per season", "default": 0.5, "min": 0, "max": 1 },
+    { "name": "rimFaunaMigrationInner", "label": "Innermost migration radius", "default": 0.35, "min": 0, "max": 1 },
+    { "name": "rimFaunaLeaderSpeed", "label": "Leader speed", "default": 24, "min": 1, "max": 200 },
+    { "name": "rimFaunaFollowerSpeed", "label": "Follower speed", "default": 34, "min": 1, "max": 200 },
+    { "name": "rimFaunaUnrestPerLoss", "label": "Approval lost per station loss", "default": 3, "min": 0, "max": 50 },
+    { "name": "rimFaunaUnrestMax", "label": "Approval loss cap", "default": 20, "min": 0, "max": 100 },
+    { "name": "rimFaunaEscortWeight", "label": "AI escort weight for grazed stations", "default": 2, "min": 1, "max": 10 },
+    { "name": "rimFaunaEscortFloor", "label": "AI escort floor for grazed stations", "default": 30, "min": 0, "max": 500 }
+  ]
+}

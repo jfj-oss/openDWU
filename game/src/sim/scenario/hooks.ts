@@ -9,6 +9,7 @@ import type { Race } from '../data/races';
 import type { Habitat } from '../types';
 import type { Empire } from '../empire';
 import type { BuiltObject } from '../builtObject';
+import type { Creature } from '../creature';
 import { YEAR_LENGTH } from '../galaxyTime';
 import { galaxyStarDate } from '../tick/simTime';
 import type { GalaxyScenario } from './state';
@@ -261,6 +262,12 @@ export interface ScenarioQueries {
      * (fromX, fromY) to (toX, toY) this step must end early (null = no stop). 19h gravity shoals.
      */
     hyperjumpStop: { value: { x: number; y: number } | null; args: { ship: BuiltObject; fromX: number; fromY: number; toX: number; toY: number; exitX: number; exitY: number } };
+    /** industry.ts industrialProcessing (BuiltObject.2.cs 7859 extraction block): true = the extractor mines nothing this pass. */
+    extractionBlocked: { value: boolean; args: { builtObject: BuiltObject } };
+    /** civilianAI.ts resolvePrioritizedPatrolMiningStations (Empire.5.cs 1331): a station's wanted escort (SortTag, firepower). */
+    miningStationPatrolPriority: { value: number; args: { builtObject: BuiltObject; empire: Empire } };
+    /** events.ts creatureScanForTarget (Creature.cs 1245): true = the creature leaves this target alone. */
+    creatureIgnoresTarget: { value: boolean; args: { creature: Creature; target: unknown } };
 }
 export type ScenarioQueryName = keyof ScenarioQueries;
 

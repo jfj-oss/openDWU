@@ -80,7 +80,7 @@ import { totalColonyStrategicValue } from './forceStructure';
 import type { IntelligenceMission } from './characters';
 import type { GalaxyResourceMap } from './visibility';
 import { formatGameTextNow } from './textResolver';
-import { scenarioEmit } from './scenario/hooks';
+import { scenarioEmit, scenarioQuery } from './scenario/hooks';
 
 /** Empire.7.cs 3400 SendEventMessageToEmpire(eventMessageType, title, message, additionalData, location): only the attached UI recipient sees it. */
 export function sendEventMessageToEmpire(empire: Empire, eventMessageType: EventMessageType, title: string, message: string, additionalData: unknown, location: unknown): void {
@@ -1752,6 +1752,8 @@ function creatureScanForTarget(galaxy: Galaxy, creature: Creature): StellarObjec
     } else {
         target = fastFindNearestShipInSystem(galaxy, creature.xpos, creature.ypos, creature.nearestSystemStar);
     }
+    // mod layer: creatureIgnoresTarget (19g-7 / 19j docile herds); no-op without a scenario.
+    if (target !== null && galaxy.scenario !== null && scenarioQuery(galaxy, 'creatureIgnoresTarget', false, { creature, target })) return null;
     return target !== null && (target as { empire: Empire | null }).empire !== null && creatureCheckTargetInRange(galaxy, creature, target) ? target : null;
 }
 
