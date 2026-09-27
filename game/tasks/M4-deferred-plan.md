@@ -126,13 +126,16 @@ year 10 (1–8 per empire). Follow-ups:
 - Colonies passed through `initiateEmpireSplitAt`'s new `colonies` option join after the new empire's race/government are chosen; verify the split's random-call order against Empire.1.cs 2921 in a 10-year all-flags run.
 - AI parity audit (19s-1): "autonomy grants 0" over 5 years; re-check after frontier autonomy is on since it now grants at the seat on concession.
 
-## Empire elimination / teardown not ported (found 2026-09-27 by the checkRefuelRepairAttack null-guard fix, wip/fixxpos d72e169)
-- `takeOwnershipOfColony` (src/sim/empire.ts ~1058–1085) sets `capital = null` when an empire loses its last colony but does not run
-  Empire.1.cs 64–370 elimination: CompleteTeardown (Empire.cs 4874), war/relation removal from every other empire, mining-station and
-  base teardown, troops, events, the "defeated" message. `empireAbsorb.ts` ports the conquest-ending/absorb path only.
-- Effect: a colony-less empire stays active and at war forever; C# invariants like "every war enemy has a capital" break. The guard at
-  ShipGroup.cs 1743 is a patch; other `capital!` reads may hit the same case (grep `capital!` in src/sim).
-- Follow-up (Opus, sim): port the elimination path faithfully; pins WILL move. Run a 5-year all-flags soak after.
+## Empire elimination on last colony loss (found 2026-09-27 by d72e169; resolved on wip/teardown)
+- Audit: the elimination path was already ported — `Empire.takeOwnershipOfColony` delegates to combat/ownership.ts
+  `takeOwnershipOfColonyFull` (Empire.1.cs 64-370, incl. 184-218 "You have been defeated!" → Empire.cs 4879 CompleteTeardown /
+  EliminatePirateFaction), and Habitat.cs 7579 ClearColony's branch is ported too; the empire.ts body flagged here is only the
+  pre-registration fallback (it now throws instead of skipping an elimination).
+- Fixed: Habitat.cs 5988 LeaveEmpire's independent branch now passes destroyAllBuiltObjectsAndTroopsAtColony: true; the
+  player's own EmpireDefeated → GameEnd(Defeat) (Main.Part9.cs 1994-2020) is wired in ui/messagePopups.ts.
+- `capital!` reads of other empires (war targets, relations, galaxy.empires) are unreachable for eliminated empires; the
+  ShipGroup.cs 1743 guard stays. Tests: test/empireElimination.test.ts.
+- Still open: Galaxy.1.cs 784 WipeoutEmpireMakeColoniesIndependent / 794 DecimateEmpire (story, M4z3). Run a 5-year all-flags soak.
 
 ## 19s-3 strategic upgrade follow-ups (wip/s19s3 46dafc5)
 - Scheme-target family is a stand-in (19m investigation into an open lead) because 19n-2 schemes were not on its base; re-point it at 19n-2 scheme targets now that batch G is on main.

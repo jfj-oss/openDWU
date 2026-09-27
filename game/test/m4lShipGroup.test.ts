@@ -261,10 +261,9 @@ describe('fleet missions (ShipGroup.cs AssignMission 2097, CheckForMissionComple
         const [a] = ships;
         shipGroupAddShipToFleet(galaxy, sg, a);
         a.isAutoControlled = true;
-        // An empire that lost its last colony this tick: our takeOwnershipOfColony doesn't yet port
-        // Empire.1.cs's teardown/elimination step (TODO in empire.ts), so it can still turn up as a
-        // war enemy with Capital == null (the invariant CheckRefuelRepairAttack's C# source relies on
-        // to safely skip the null check it omits at ShipGroup.cs 1743).
+        // A war enemy with Capital == null. Unreachable through the stock ownership paths (losing the
+        // last colony tears the empire down and strips every war relation — Empire.1.cs 184-218,
+        // test/empireElimination.test.ts); forced here to keep the harmless guard at ShipGroup.cs 1743.
         const enemy = galaxy.empires.find((e) => e !== galaxy.playerEmpire && e !== pirate)!;
         enemy.capital = null;
         pirate.diplomaticRelations.add(new DiplomaticRelation(DiplomaticRelationType.War, pirate, pirate, enemy, false));

@@ -1022,20 +1022,23 @@ export class Empire {
         this.visibility.resolveSystemVisibilityAt(x, y);
     }
 
-    // Port of Empire.1.cs TakeOwnershipOfColony(colony, newEmpire) (line 54 →
-    // 64 with destroyBases/destroyTroops false). Ported: the container
-    // initialisation, owner change, colony-list moves, capital fallback,
-    // refuelling flag and system visibility. No Rnd calls in the C#.
-    // TODO(port): events, ConstructionQueue/ManufacturingQueue/docking bays,
-    // fleet home bases, troop/character re-assignment details, orders,
-    // blockades/attacks cancellation, tax rate, population policy, bases and
-    // mining stations, empire defeat/teardown — Empire.1.cs 64-370.
-    takeOwnershipOfColony(colony: Habitat, newEmpire: Empire | null): void {
+    // Port of Empire.1.cs 54/59 TakeOwnershipOfColony(colony, newEmpire[, destroyAllBuiltObjectsAndTroopsAtColony])
+    // → 64 TakeOwnershipOfColony(colony, newEmpire, destroyBases, destroyTroops) with both flags equal (false by
+    // default). The full 64-370 port — including the elimination branch at 184-218 (last colony lost: "You have been
+    // defeated!" + Empire.cs 4879 CompleteTeardown, or Galaxy.8.cs EliminatePirateFaction) — is
+    // combat/ownership.ts takeOwnershipOfColonyFull, registered at that module's load; every game path reaches it.
+    // The body below is only the pre-registration fallback used while a bare galaxy is being generated (no colony
+    // can leave an empire there); it refuses to run when a real empire would lose its last colony, so an
+    // elimination can never be skipped silently.
+    takeOwnershipOfColony(colony: Habitat, newEmpire: Empire | null, destroyAllBuiltObjectsAndTroopsAtColony = false): void {
         if (takeOwnershipOfColonyFullHook !== null) {
-            takeOwnershipOfColonyFullHook(this.galaxy, this, colony, newEmpire, false, false);
+            takeOwnershipOfColonyFullHook(this.galaxy, this, colony, newEmpire, destroyAllBuiltObjectsAndTroopsAtColony, destroyAllBuiltObjectsAndTroopsAtColony);
             return;
         }
         const empire = colony.empire;
+        if (empire !== null && empire !== newEmpire && empire !== this.galaxy.independentEmpire && empire.colonies.every((c) => c === colony)) {
+            throw new Error('takeOwnershipOfColony: import ./combat/ownership first (Empire.1.cs 184-218 elimination on last colony loss)');
+        }
         let flag = false;
         if (empire !== null) {
             if (empire.capital === colony) flag = true;
@@ -1082,7 +1085,8 @@ export class Empire {
         requireTakeOwnershipOfColonyHooks().recalculateAnnualTaxRevenue(this.galaxy, colony);
         // Empire.1.cs 270-271: RecalculateColonyInfluenceRadius(CheckEmpireHasHyperDriveTech(this)).
         recalculateColonyInfluenceRadius(this.galaxy, colony, this.hasHyperDriveTech);
-        // TODO(port): Empire.1.cs 272+ mining-station teardown, bases, troops, events.
+        // Empire.1.cs 272-370 (mining station / bases / construction-yard ships / pirate missions / system info): the
+        // full port only (combat/ownership.ts); nothing to hand over while a galaxy is being generated.
         this.resolveSystemVisibility(colony.xpos, colony.ypos);
     }
 

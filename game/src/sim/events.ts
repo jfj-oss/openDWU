@@ -1616,9 +1616,10 @@ export function leaveEmpire(galaxy: Galaxy, habitat: Habitat): void {
     } else {
         const description2 = gameText('Colony Leaves Empire Independent', habitat.name);
         sendMessageToEmpire(habitat.owner, habitat.owner, EmpireMessageType.ColonyLost, habitat, description2);
-        // TODO(port) M4q: TakeOwnershipOfColony(this, IndependentEmpire, destroyAllBuiltObjectsAndTroopsAtColony: true) — the TS
-        // takeOwnershipOfColony has no destroy-bases/troops branch yet (Empire.1.cs 64-370 TODO in empire.ts).
-        galaxy.independentEmpire!.takeOwnershipOfColony(habitat, galaxy.independentEmpire);
+        // Habitat.cs 5988: TakeOwnershipOfColony(this, IndependentEmpire, destroyAllBuiltObjectsAndTroopsAtColony: true) →
+        // Empire.1.cs 64 with destroyBases/destroyTroops true (the colony's bases and yard ships are torn down, its troops
+        // dropped; losing the last colony eliminates the empire, Empire.1.cs 184-218).
+        galaxy.independentEmpire!.takeOwnershipOfColony(habitat, galaxy.independentEmpire, true);
     }
 }
 
