@@ -1,6 +1,9 @@
-// Scenario 19a Concord art (render/concordArt.ts): deterministic procedural junk / base / portrait / flag images, sizes,
-// luma statistics matched to the Ackdarian reference frames, the display gate (Concord's empire only; off with the
+// Scenario 19a Concord art (render/concordArt.ts): the painted-sprite ships / port (public/art/concord cut-outs placed,
+// weathered and lit), deterministic procedural freighter / treasure ship / base / portrait / flag images, sizes, luma
+// statistics matched to the Ackdarian reference frames, the display gate (Concord's empire only; off with the
 // `concordArt` flag or without the rim trader) and the manifest switches.
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { decodePng, dwuAssetPath } from './helpers/pngDecode';
 import { loadScenarioOverlayFs } from './helpers/scenarioGame';
@@ -11,6 +14,18 @@ import {
     CONCORD_KINDS,
     CONCORD_LOOKS,
     CONCORD_PORTRAIT_SIZE,
+    CONCORD_SPRITE_AREA_RATIO,
+    CONCORD_SPRITE_FILES,
+    CONCORD_SPRITE_FILL,
+    CONCORD_SPRITE_KINDS,
+    composeConcordSpriteImages,
+    concordShipArt,
+    concordSpriteFailed,
+    concordSpriteFileSide,
+    concordSpriteSource,
+    concordSpriteUrl,
+    isConcordSpriteKind,
+    type ConcordSpriteKind,
     buildConcordShipArt,
     concordArtEmpire,
     concordArtEnabled,
@@ -38,12 +53,32 @@ import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
 import type { Galaxy } from '../src/sim/galaxy';
 import type { Empire } from '../src/sim/empire';
 
+const PUBLIC = resolve(__dirname, '../public');
+const spriteFiles = new Map<string, RgbaImage>();
+/** A cut-out file as the game loads it (public/art/concord via its URL). */
+function spriteFile(kind: ConcordSpriteKind, side: number): RgbaImage {
+    const url = concordSpriteUrl(kind, side);
+    let img = spriteFiles.get(url);
+    if (img === undefined) {
+        const png = decodePng(resolve(PUBLIC, `.${url}`));
+        img = { w: png.width, h: png.height, data: png.data };
+        spriteFiles.set(url, img);
+    }
+    return img;
+}
+
+function build(kind: (typeof CONCORD_KINDS)[number], bucket: number, look: (typeof CONCORD_LOOKS)[number]): ConcordImages {
+    return isConcordSpriteKind(kind)
+        ? composeConcordSpriteImages(kind, bucket, look, spriteFile(kind, concordSpriteFileSide(kind, bucket)))
+        : generateConcordImages(kind, bucket, look);
+}
+
 const cache = new Map<string, ConcordImages>();
 function images(kind: (typeof CONCORD_KINDS)[number], bucket: number, look: (typeof CONCORD_LOOKS)[number]): ConcordImages {
     const key = `${look}:${kind}:${bucket}`;
     let im = cache.get(key);
     if (im === undefined) {
-        im = generateConcordImages(kind, bucket, look);
+        im = build(kind, bucket, look);
         cache.set(key, im);
     }
     return im;
@@ -66,14 +101,16 @@ function opaqueBox(img: RgbaImage, minAlpha = 1): { x0: number; y0: number; x1: 
     return { x0, y0, x1, y1 };
 }
 
-describe('Concord procedural images', { timeout: 300000 }, () => {
+describe('Concord ship images', { timeout: 300000 }, () => {
     it('are deterministic and differ by finish', () => {
-        const a = generateConcordImages('destroyer', 2, 'weathered');
-        const b = generateConcordImages('destroyer', 2, 'weathered');
-        expect(imageHash(a.ship)).toBe(imageHash(b.ship));
-        for (const g of CONCORD_LIGHT_GROUPS) expect(imageHash(a.halos[g])).toBe(imageHash(b.halos[g]));
-        for (let k = 0; k < a.parts.length; k++) expect(imageHash(a.parts[k].img)).toBe(imageHash(b.parts[k].img));
-        expect(imageHash(images('destroyer', 2, 'clean').ship)).not.toBe(imageHash(a.ship));
+        for (const kind of ['destroyer', 'freighter'] as const) {
+            const a = build(kind, 2, 'weathered');
+            const b = build(kind, 2, 'weathered');
+            expect(imageHash(a.ship)).toBe(imageHash(b.ship));
+            for (const g of CONCORD_LIGHT_GROUPS) expect(imageHash(a.halos[g])).toBe(imageHash(b.halos[g]));
+            for (let k = 0; k < a.parts.length; k++) expect(imageHash(a.parts[k].img)).toBe(imageHash(b.parts[k].img));
+            expect(imageHash(images(kind, 2, 'clean').ship), kind).not.toBe(imageHash(a.ship));
+        }
         expect(imageHash(generateConcordPortrait())).toBe(imageHash(generateConcordPortrait()));
         expect(imageHash(generateConcordFlag())).toBe(imageHash(generateConcordFlag()));
     });
@@ -123,8 +160,9 @@ describe('Concord procedural images', { timeout: 300000 }, () => {
         expect(images('treasure', 5, 'weathered').lights.filter((l) => l.kind === 'strobe').length).toBe(4);
         for (const k of ['frigate', 'destroyer', 'battleship'] as const) {
             expect(images(k, 5, 'weathered').lights.filter((l) => l.kind === 'strobe').length).toBe(2);
-            expect(images(k, 5, 'weathered').parts.map((p) => p.kind)).toEqual(['dish']);
         }
+        // The painted sprites carry no animated parts.
+        for (const k of CONCORD_SPRITE_KINDS) expect(images(k, 5, 'weathered').parts).toEqual([]);
         // One red and one green sidelight per ship, at the outermost points; a blue-white glow at every nozzle.
         for (const k of ['frigate', 'destroyer', 'battleship', 'freighter', 'explorer', 'construction', 'treasure'] as const) {
             const im = images(k, 5, 'weathered');
@@ -137,17 +175,14 @@ describe('Concord procedural images', { timeout: 300000 }, () => {
     });
 
     it('scale fittings with size', () => {
-        expect(concordSpec('frigate', 3).mounts).toBe(1);
-        expect(concordSpec('destroyer', 3).mounts).toBe(2);
-        expect(concordSpec('battleship', 3).mounts).toBe(4);
-        expect(concordSpec('frigate', 3).missileBlocks).toBeLessThan(concordSpec('battleship', 3).missileBlocks);
+        expect(concordSpec('frigate', 3).engines).toBe(2);
         expect(concordSpec('battleship', 3).engines).toBe(4);
         expect(concordSpec('freighter', 0).containerColumns).toBeLessThan(concordSpec('freighter', 5).containerColumns);
         expect(concordSpec('freighter', 5).containerColumns).toBeLessThan(concordSpec('treasure', 5).containerColumns);
         expect(concordSpec('treasure', 5).gantries).toBeGreaterThanOrEqual(4);
         expect(concordSpec('treasure', 5).pods).toBe(4);
         expect(concordSpec('treasure', 0).containerColumns).toBeLessThan(concordSpec('treasure', 5).containerColumns);
-        expect(concordSpec('port', 0).docks).toBeLessThan(concordSpec('port', 5).docks);
+        expect(concordSpec('base', 0).docks).toBeLessThan(concordSpec('base', 5).docks);
         expect(concordSpec('battleship', 3, 'clean').weathering).toBeLessThan(concordSpec('battleship', 3).weathering);
         expect(concordSpec('freighter', 3).weathering).toBeLessThan(concordSpec('battleship', 3).weathering);
         expect(concordSpec('battleship', 3).weathering).toBeLessThan(concordSpec('port', 3).weathering);
@@ -161,7 +196,7 @@ describe('Concord procedural images', { timeout: 300000 }, () => {
     it('match the Ackdarian reference luma, 5–95 % band and saturation range', () => {
         let n = 0;
         for (const look of CONCORD_LOOKS) {
-            for (const kind of CONCORD_KINDS) {
+            for (const kind of Object.keys(ACKDARIAN_REFERENCE) as (keyof typeof ACKDARIAN_REFERENCE)[]) {
                 for (const bucket of [0, 5]) {
                     const im = images(kind, bucket, look);
                     const mk = new Set(im.markerPixels);
@@ -177,11 +212,11 @@ describe('Concord procedural images', { timeout: 300000 }, () => {
                 }
             }
         }
-        expect(n).toBe(36);
+        expect(n).toBe(12);
     });
 
     it.skipIf(dwuAssetPath('images/units/ships/family7/cruiser.png') === null)('reference constants re-measure on the install frames', () => {
-        for (const kind of CONCORD_KINDS) {
+        for (const kind of Object.keys(ACKDARIAN_REFERENCE) as (keyof typeof ACKDARIAN_REFERENCE)[]) {
             const ref = ACKDARIAN_REFERENCE[kind];
             const png = decodePng(dwuAssetPath(`images/units/ships/${ref.file}`)!);
             const s = concordArtStats(png.data, png.width, png.height);
@@ -190,6 +225,50 @@ describe('Concord procedural images', { timeout: 300000 }, () => {
             expect(Math.abs(s.meanSat - ref.meanSat), kind).toBeLessThan(0.001);
             expect(Math.abs(s.p5L - ref.q[3]), kind).toBeLessThan(0.001);
             expect(Math.abs(s.p95L - ref.q[21]), kind).toBeLessThan(0.001);
+        }
+    });
+
+    it('painted sprites fill the texture like the procedural hulls did, weathering only in the weathered look', () => {
+        for (const kind of CONCORD_SPRITE_KINDS) {
+            for (const bucket of [0, 3, 5]) {
+                const im = images(kind, bucket, 'clean');
+                const S = im.ship.w;
+                const box = opaqueBox(im.ship, 1);
+                const extent = Math.max(box.x1 - box.x0 + 1, box.y1 - box.y0 + 1);
+                expect(Math.abs(extent / S - CONCORD_SPRITE_FILL[kind]), `${kind} ${bucket}`).toBeLessThan(0.03);
+                // Centred.
+                expect(Math.abs((box.x0 + box.x1) / 2 - S / 2)).toBeLessThan(S * 0.03);
+                expect(Math.abs((box.y0 + box.y1) / 2 - S / 2)).toBeLessThan(S * 0.03);
+            }
+            // The drawn extent of the procedural hull is kept (the area ratio sets the drawn size).
+            expect(buildConcordShipArt(images(kind, 3, 'clean'))!.metrics.areaRatio).toBe(CONCORD_SPRITE_AREA_RATIO[kind]);
+            // Weathering darkens / rusts some hull pixels but never moves the silhouette.
+            const w = images(kind, 3, 'weathered').ship;
+            const c = images(kind, 3, 'clean').ship;
+            let changed = 0;
+            for (let p = 0; p < w.w * w.h; p++) {
+                expect(w.data[p * 4 + 3]).toBe(c.data[p * 4 + 3]);
+                if (w.data[p * 4] !== c.data[p * 4] || w.data[p * 4 + 1] !== c.data[p * 4 + 1]) changed++;
+            }
+            expect(changed, kind).toBeGreaterThan(20);
+        }
+    });
+
+    it('sprite loading without a DOM fails soft: no throw, no art, the object keeps its stock art', () => {
+        expect(concordSpriteSource(concordSpriteUrl('frigate', 128))).toBe('failed');
+        expect(concordSpriteFailed('frigate', 0)).toBe(true);
+        expect(concordSpriteFailed('freighter', 0)).toBe(false);
+        expect(concordShipArt({ kind: 'frigate', bucket: 0, look: 'weathered' }, 1)).toBeNull();
+        const concord = { empireId: 5 } as unknown as Empire;
+        expect(concordVariantFor({ empire: concord, subRole: BuiltObjectSubRole.Escort, size: 100 }, concord, new Set())).toBeNull();
+        expect(concordVariantFor({ empire: concord, subRole: BuiltObjectSubRole.SmallFreighter, size: 100 }, concord, new Set())?.kind).toBe('freighter');
+        // The file picked per bucket always covers the drawn hull.
+        for (const kind of CONCORD_SPRITE_KINDS) {
+            for (let b = 0; b < 6; b++) {
+                const side = concordSpriteFileSide(kind, b);
+                expect(CONCORD_SPRITE_FILES as readonly number[]).toContain(side);
+                expect(side * 0.97 >= CONCORD_SPRITE_FILL[kind] * concordTextureSide(kind, b) || side === 512).toBe(true);
+            }
         }
     });
 
@@ -318,5 +397,26 @@ describe('Concord art display gate', () => {
         // Phase offset per ship (the ambient pattern: id % 20 / 10 s).
         expect(concordLightAlpha('strobe', 0.03, 0)).toBeGreaterThan(0);
         expect(concordLightAlpha('strobe', 0.03, 5)).toBe(0);
+    });
+});
+
+describe('Concord cut-out files (public/art/concord, scripts/concord-cutout.py)', () => {
+    it('exist for every sprite kind and size: square, transparent corners, opaque centre', () => {
+        for (const kind of CONCORD_SPRITE_KINDS) {
+            for (const side of CONCORD_SPRITE_FILES) {
+                const url = concordSpriteUrl(kind, side);
+                const file = resolve(PUBLIC, `.${url}`);
+                expect(existsSync(file), url).toBe(true);
+                const png = decodePng(file);
+                expect(png.width, url).toBe(side);
+                expect(png.height, url).toBe(side);
+                const a = (x: number, y: number): number => png.data[(y * side + x) * 4 + 3];
+                for (const [x, y] of [[0, 0], [side - 1, 0], [0, side - 1], [side - 1, side - 1]]) expect(a(x, y), `${url} corner`).toBe(0);
+                expect(a(side >> 1, side >> 1), `${url} centre`).toBe(255);
+                // The silhouette reaches the square's edge on its long axis (cropped to the alpha bbox + 4 px margin).
+                const box = opaqueBox({ w: side, h: side, data: png.data }, 8);
+                expect(Math.max(box.x1 - box.x0, box.y1 - box.y0) + 1, url).toBeGreaterThan(side * 0.95);
+            }
+        }
     });
 });

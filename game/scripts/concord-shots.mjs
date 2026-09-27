@@ -1,7 +1,7 @@
 // 19a Concord art captures (4K: 1920×1080 CSS px at device scale 2). Usage: node scripts/concord-shots.mjs <baseUrl> <outDir>
 // Boots `?autostart=1&scenario=rimTrade&aiRace=Oranthi`, pauses the clock, and uses dev placement (as the 19a treasure
 // test does: meet every empire, run the treasure-fleet handler, then a few hundred sim frames) instead of playing
-// years. Close-ups: the layer's own textures (concordArt.ts) at the ship layer's size formula next to the original
+// years. Close-ups: the layer's own textures (concordArt.ts: painted sprites + procedural) at the ship layer's size formula next to the original
 // Ackdarian frame the race borrows; the fleet, port and diplomacy shots are the live game.
 import { chromium } from 'playwright-core';
 const [base = 'http://localhost:5173/', outDir = 'shots'] = process.argv.slice(2);
@@ -125,7 +125,13 @@ const showcase = async (rows, zoom, file) => {
                         tex = a.texture;
                         metrics = a.metrics;
                     } else {
-                        art = ca.concordShipArt({ kind: it.kind, bucket: ca.concordSizeBucket(it.size), look: it.look }, frame++);
+                        // Painted-sprite kinds return null until their cut-out file (public/art/concord) is decoded.
+                        const v = { kind: it.kind, bucket: ca.concordSizeBucket(it.size), look: it.look };
+                        for (let t = 0; t < 400 && art === null; t++) {
+                            art = ca.concordShipArt(v, frame++);
+                            if (art === null) await new Promise((res) => setTimeout(res, 50));
+                        }
+                        if (art === null) throw new Error(`no Concord art for ${it.kind}`);
                         tex = art.texture;
                         metrics = art.metrics;
                     }
@@ -163,7 +169,7 @@ const showcase = async (rows, zoom, file) => {
     await page.screenshot({ path: `${outDir}/${file}` });
     console.log(`saved ${outDir}/${file}`, JSON.stringify(info));
 };
-// Ship sheet: the layer's textures and overlays (halos by blink group, fan / dish parts) at the layer's size formula,
+// Ship sheet: the layer's textures and overlays (halos by blink group, fan parts) at the layer's size formula,
 // next to the Ackdarian cruiser frame; the overlay clock is set inside a strobe flash so every light group shows.
 const sheet = [
     {
@@ -181,6 +187,7 @@ const sheet = [
             { kind: 'freighter', size: 700, look: 'weathered', label: 'freighter (700)' },
             { kind: 'treasure', size: 1100, look: 'weathered', label: 'treasure ship (1100)' },
             { kind: 'explorer', size: 300, look: 'weathered', label: 'explorer (300)' },
+            { kind: 'construction', size: 400, look: 'weathered', label: 'construction (400)' },
         ],
     },
 ];
