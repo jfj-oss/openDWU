@@ -1,0 +1,28 @@
+{
+  "id": "lively-galaxy",
+  "name": "Lively Galaxy",
+  "description": "A livelier mid game: strong peaceful empires grow restless and pick fights, overlapping borders breed incidents, and small troop fleets may invade weakly held colonies.",
+  "flags": [
+    { "name": "ambitionPressure", "label": "Ambition pressure", "description": "Empires with idle warships and long peace grow restless; restless AIs relax their war-review attitude threshold.", "default": true },
+    { "name": "borderFriction", "label": "Border friction", "description": "Empires whose territories overlap suffer yearly border incidents (mining disputes, blockades, station seizures) that sour relations and count toward war.", "default": true },
+    { "name": "smallerInvasions", "label": "Smaller invasions", "description": "Troop fleets smaller than the stock 10 ships may be sent against weakly held colonies (set the minimum-ships param above 0).", "default": false }
+  ],
+  "params": [
+    { "name": "ambitionRise", "label": "Ambition gained per peaceful year (at the reference fleet size)", "default": 1, "min": 0, "max": 10 },
+    { "name": "ambitionShipsRef", "label": "Idle warships for the full ambition rate", "default": 15, "min": 1, "max": 200 },
+    { "name": "ambitionMax", "label": "Ambition cap", "default": 20, "min": 1, "max": 100 },
+    { "name": "ambitionThreshold", "label": "Ambition at which an empire grows restless", "default": 5, "min": 0, "max": 100 },
+    { "name": "ambitionWarFactor", "label": "War-review attitude relaxation per ambition point", "default": 0.6, "min": 0, "max": 5 },
+    { "name": "ambitionWarDrop", "label": "Ambition lost per war", "default": 6, "min": 0, "max": 100 },
+    { "name": "ambitionLossDrop", "label": "Ambition lost per colony lost", "default": 2, "min": 0, "max": 100 },
+    { "name": "frictionChance", "label": "Yearly incident chance at the reference overlap", "default": 0.35, "min": 0, "max": 1 },
+    { "name": "frictionOverlapRef", "label": "Overlapping territory cells for the reference chance", "default": 40, "min": 1, "max": 10000 },
+    { "name": "frictionMaxChance", "label": "Cap on the yearly incident chance per pair", "default": 0.8, "min": 0, "max": 1 },
+    { "name": "incidentRelationDrop", "label": "Relation drop per incident (victim's view; the aggressor's drops by half)", "default": 4, "min": 0, "max": 50 },
+    { "name": "incidentWarFactor", "label": "War-review attitude relaxation per remembered incident", "default": 1.5, "min": 0, "max": 20 },
+    { "name": "incidentMemoryDecay", "label": "Share of remembered incidents kept each year", "default": 0.6, "min": 0, "max": 1 },
+    { "name": "invasionMinShips", "label": "Minimum troop-fleet ships against weak colonies (0 = stock 10)", "default": 0, "min": 0, "max": 10 },
+    { "name": "invasionTroopRatio", "label": "Share of the required troop strength a small troop fleet must carry (stock 0.5)", "default": 0.35, "min": 0, "max": 1 },
+    { "name": "invasionWeakTroops", "label": "Colony troop strength below which the smaller rule applies", "default": 30000, "min": 0, "max": 1000000 }
+  ]
+}

@@ -275,6 +275,20 @@ export interface ScenarioQueries {
      * inside its zone). Default false (not exempt); never draws.
      */
     hyperDenyExempt: { value: boolean; args: { builtObject: BuiltObject; location: GalaxyLocation } };
+    /**
+     * diplomacyTick.ts reviewDiplomaticStrategies, at Empire.8.cs 100/139 (num9 = -10 / aggression: the attitude score
+     * num6 must fall below it for the Conquer / Punish branches, the gate SOAK-2026-09-26 §A2 names). The value is a
+     * relaxation in attitude points (stock 0): num9 is raised by it and the Conquer predicates' attitude tests
+     * (overallAttitude2 < -5 / -10 / 0) read the attitude lowered by it. `empire` reviews its relation with `other`.
+     */
+    warReviewAttitudeRelax: { value: number; args: { empire: Empire; other: Empire } };
+    /**
+     * Minimum ships of a troop fleet sent against colony `target` (stock 10): Empire.8.cs 504 CheckCanConductNewWar,
+     * 1041/1049 PrepareFleetsForWar (the audit's "1047" ≥10-ship troop fleet rule) and 1163 SelectFleetWarAttackTarget.
+     */
+    invasionMinFleetShips: { value: number; args: { empire: Empire; target: Habitat } };
+    /** Share of the required troop strength a troop fleet must carry (stock 0.5: Empire.8.cs 1049 `>= num3 / 2`). */
+    invasionTroopRatio: { value: number; args: { empire: Empire; target: Habitat } };
 }
 export type ScenarioQueryName = keyof ScenarioQueries;
 

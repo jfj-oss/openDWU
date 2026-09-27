@@ -21,4 +21,5 @@ import './threats/doppelgangers';
 import './threats/greyTide';
 import './threats/hive';
 import './threats/silence';
+import './lively/livelyGalaxy';
 export {};

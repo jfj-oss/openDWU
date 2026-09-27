@@ -1,0 +1,9 @@
+'Lively Galaxy scenario (task 19l): GameText additions. Every tag starts with "Lively ".
+Lively Restless Title;Restless Empire
+Lively Restless Own;Our fleets have been idle too long. The admiralty and the people grow restless and look for a fight.
+Lively Restless News;The {0} grows restless: its idle fleets and long peace have its neighbours worried.
+Lively Incident Title;Border Incident
+Lively Incident Dispute;A mining-rights dispute with the {0} has flared up along our shared border.
+Lively Incident Blockade;Warships of the {0} are blockading our traffic in the disputed border zone.
+Lively Incident Seizure;The {0} has seized our unescorted mining station {1} in the disputed border zone!
+Lively Incident Aggressor;Our border forces clashed with the {0} in the disputed zone.
