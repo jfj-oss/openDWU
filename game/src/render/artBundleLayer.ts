@@ -12,6 +12,12 @@ import type { BuiltObject } from '../sim/builtObject';
 import { HabitatCategoryType, type Habitat } from '../sim/types';
 import { moonDotPx, planetSpritePx, starSpritePx } from './mainView';
 import { drawThreatMarker, threatMarkerStyle, type ThreatMarkerStyle } from './threatMarkers';
+import { Texture } from 'pixi.js';
+import { SpritePool } from './fxCommon';
+import { textureFromPixels } from './shipOverlays';
+import { herderCampRgba } from './emblemArt';
+import { BuiltObjectRole } from '../sim/data/designSpecifications';
+import { herderColonies, isHerderEmpire } from '../sim/scenario/rimHerders/common';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Threat sites (19f framework.ts threatKnownSites / KnownThreatSite)
@@ -52,9 +58,30 @@ export function threatMarkerRadius(site: KnownThreatSiteShape, z: number): numbe
     return Math.max(habitatPx(site.target, z) / 2 + 12, 18) / z;
 }
 
+/** Side of the herder camp prop texture. */
+export const HERDER_CAMP_SIZE = 256;
+/** Camps show from this drawn station size (px). */
+export const HERDER_CAMP_MIN_PX = 18;
+
+/** Item 3: the bases that get herder camp props — stations of herder colonies and of herder (Ossuvan) empires. */
+export function herderStations(galaxy: Galaxy): BuiltObject[] {
+    if (galaxy.scenario === null) return [];
+    const colonies = new Set<Habitat>(herderColonies(galaxy).filter((c) => c.status !== 'lost').map((c) => c.colony));
+    const out: BuiltObject[] = [];
+    for (const bo of galaxy.builtObjects) {
+        if (bo === null || bo.hasBeenDestroyed || bo.role !== BuiltObjectRole.Base) continue;
+        if ((bo.parentHabitat !== null && colonies.has(bo.parentHabitat)) || isHerderEmpire(galaxy, bo.empire)) out.push(bo);
+    }
+    return out;
+}
+
 export class ArtBundleLayer {
     readonly root = new Container();
     private threats = new Graphics();
+    private campRoot = new Container();
+    private campPool: SpritePool;
+    private campTex: Texture | null = null;
+    private camps: BuiltObject[] = [];
     private sites: { site: KnownThreatSiteShape; style: ThreatMarkerStyle; seed: number }[] = [];
     private frame = 0;
 
@@ -66,13 +93,40 @@ export class ArtBundleLayer {
     ) {
         this.root.eventMode = 'none';
         this.root.interactiveChildren = false;
-        this.root.addChild(this.threats);
+        this.root.addChild(this.campRoot, this.threats);
+        this.campPool = new SpritePool(this.campRoot);
         world.addChild(this.root);
     }
 
     update(z: number, cam: Camera): void {
         this.frame++;
+        this.updateCamps(z, cam);
         this.updateThreats(z, cam);
+    }
+
+    /** Item 3: tents and pens over herder stations (sized and turned with the station sprite). */
+    private updateCamps(z: number, cam: Camera): void {
+        this.campPool.begin();
+        if (this.frame % 60 === 1) this.camps = herderStations(this.galaxy);
+        if (this.camps.length > 0) {
+            if (this.campTex === null) {
+                const img = herderCampRgba(HERDER_CAMP_SIZE, 19);
+                this.campTex = textureFromPixels(img.data, img.w, img.h, false);
+            }
+            const halfW = cam.width / 2 / z;
+            const halfH = cam.height / 2 / z;
+            for (const bo of this.camps) {
+                const px = this.shipPx(bo);
+                if (px < HERDER_CAMP_MIN_PX) continue;
+                if (Math.abs(bo.xpos - cam.x) > halfW + px / z || Math.abs(bo.ypos - cam.y) > halfH + px / z) continue;
+                const s = this.campPool.acquire(this.campTex);
+                s.position.set(bo.xpos, bo.ypos);
+                s.rotation = bo.heading;
+                s.scale.set((px * 0.95) / HERDER_CAMP_SIZE / z);
+                s.alpha = 0.95;
+            }
+        }
+        this.campPool.end();
     }
 
     private updateThreats(z: number, cam: Camera): void {
@@ -109,4 +163,3 @@ export class ArtBundleLayer {
     }
 }
 
-export type { Habitat };

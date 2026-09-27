@@ -472,3 +472,47 @@ export function herderFlag(w = FLAG_W, h = FLAG_H): RgbaImage {
     for (let k = 0; k < 6; k++) fillDisc(out, w * 0.08, h * (0.12 + k * 0.155), h * 0.05, HERDER_BEADS[k % HERDER_BEADS.length]);
     return out;
 }
+
+/**
+ * Herder camp props laid over a herder station's art (item 3): a ring of hide tents (cones with a pole tip and a
+ * darker door) round the hub and two fenced herd pens (post-and-rail rings) on the rim, in earth tones, on a
+ * transparent `size`² canvas centred on the station. Deterministic in `seed`.
+ */
+export function herderCampRgba(size: number, seed: number): RgbaImage {
+    const out = blankImage(size, size);
+    const c = size / 2;
+    // Pens: two fenced rings on opposite sides of the rim.
+    for (let p = 0; p < 2; p++) {
+        const a = hash2(p, 1, seed) * 0.6 + p * Math.PI;
+        const px = c + Math.cos(a) * size * 0.34;
+        const py = c + Math.sin(a) * size * 0.34;
+        const r = size * 0.1;
+        strokeRing(out, px, py, r, Math.max(1, size * 0.012), 0x7a5230, 0.9);
+        strokeRing(out, px, py, r * 0.86, Math.max(0.8, size * 0.008), 0x5a3a20, 0.8);
+        for (let k = 0; k < 10; k++) {
+            const b = (k / 10) * Math.PI * 2;
+            fillDisc(out, px + Math.cos(b) * r, py + Math.sin(b) * r, Math.max(0.8, size * 0.012), 0x3e2a18);
+        }
+        // A few herd beasts (pale dots) inside.
+        for (let k = 0; k < 3; k++) fillDisc(out, px + (hash2(k, p, seed) - 0.5) * r, py + (hash2(p, k, seed + 3) - 0.5) * r, Math.max(1, size * 0.018), 0xd8c8a0);
+    }
+    // Tents: cones seen from above — a disc with a radial seam pattern, a darker door wedge and a pole tip.
+    const n = 5;
+    for (let k = 0; k < n; k++) {
+        const a = (k / n) * Math.PI * 2 + hash2(k, 2, seed) * 0.4 + Math.PI / 2;
+        const tx = c + Math.cos(a) * size * 0.2;
+        const ty = c + Math.sin(a) * size * 0.2;
+        const r = size * (0.055 + 0.02 * hash2(k, 3, seed));
+        const col = HERDER_EARTH[k % 3];
+        fillDisc(out, tx + r * 0.25, ty + r * 0.25, r, 0x000000, 0.35);
+        fillDisc(out, tx, ty, r, col);
+        for (let s = 0; s < 6; s++) {
+            const b = (s / 6) * Math.PI * 2;
+            for (let t = 0.2; t < 1; t += 0.1) fillDisc(out, tx + Math.cos(b) * r * t, ty + Math.sin(b) * r * t, Math.max(0.4, size * 0.004), 0x2a1a0c, 0.5);
+        }
+        const d = a + Math.PI;
+        fillDisc(out, tx + Math.cos(d) * r * 0.6, ty + Math.sin(d) * r * 0.6, r * 0.28, 0x2a1a0c, 0.85);
+        fillDisc(out, tx, ty, Math.max(0.8, r * 0.14), 0xeadcb8);
+    }
+    return out;
+}
