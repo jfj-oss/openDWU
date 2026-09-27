@@ -125,3 +125,11 @@ year 10 (1–8 per empire). Follow-ups:
 - Trade-compact standing is kept on the sector; migrate to the 19o reputation ledger once both are on main (add to the 19o migration list).
 - Colonies passed through `initiateEmpireSplitAt`'s new `colonies` option join after the new empire's race/government are chosen; verify the split's random-call order against Empire.1.cs 2921 in a 10-year all-flags run.
 - AI parity audit (19s-1): "autonomy grants 0" over 5 years; re-check after frontier autonomy is on since it now grants at the seat on concession.
+
+## Empire elimination / teardown not ported (found 2026-09-27 by the checkRefuelRepairAttack null-guard fix, wip/fixxpos d72e169)
+- `takeOwnershipOfColony` (src/sim/empire.ts ~1058–1085) sets `capital = null` when an empire loses its last colony but does not run
+  Empire.1.cs 64–370 elimination: CompleteTeardown (Empire.cs 4874), war/relation removal from every other empire, mining-station and
+  base teardown, troops, events, the "defeated" message. `empireAbsorb.ts` ports the conquest-ending/absorb path only.
+- Effect: a colony-less empire stays active and at war forever; C# invariants like "every war enemy has a capital" break. The guard at
+  ShipGroup.cs 1743 is a patch; other `capital!` reads may hit the same case (grep `capital!` in src/sim).
+- Follow-up (Opus, sim): port the elimination path faithfully; pins WILL move. Run a 5-year all-flags soak after.
