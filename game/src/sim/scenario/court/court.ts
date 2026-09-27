@@ -1189,8 +1189,16 @@ export function plotScoreFactor(galaxy: Galaxy, empire: Empire, c: Character): n
     }
     const fac = st.factions.find((x) => x.empire === empire && x.state === 'backing' && x.members.includes(c));
     if (fac !== undefined) f *= 1 + fac.members.length / 4;
+    if (courtExtensions.plotScoreFactor !== null) f *= courtExtensions.plotScoreFactor(galaxy, empire, c);
     return f;
 }
+
+/** Package 2 (intrigue.ts) fills these at import; each gated by its own flag inside. Pure. */
+export interface CourtExtensions {
+    /** Extra plot weight of `c` (rivals on the council, a claimed colony's governor). 1 = none. */
+    plotScoreFactor: ((galaxy: Galaxy, empire: Empire, c: Character) => number) | null;
+}
+export const courtExtensions: CourtExtensions = { plotScoreFactor: null };
 
 /** The plot roll's factor: the legitimacy factor × courtFactionPlotPct% while a refused faction backs a plot. */
 export function plotChanceFactor(galaxy: Galaxy, empire: Empire): number {

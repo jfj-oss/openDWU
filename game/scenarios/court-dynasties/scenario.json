@@ -1,10 +1,11 @@
 {
   "id": "court-dynasties",
   "name": "Court & Dynasties",
-  "description": "Every character belongs to a noble house; the ruling house gains prestige from wars, wonders and long reigns and loses it with colonies, while rival houses feud. A council of five seats (spymaster, chancellor, marshal, steward, magistrate) lends its skills to counter-intelligence, diplomacy, fleet repair, taxes and stability; powerful nobles left without a seat grow ambitious. Discontented nobles form factions with demands and ultimatums. Successions follow the government's law (primogeniture, election, military acclamation) with heirs, regencies and succession crises; the ruler's legitimacy scales every plot. Includes Internal Security (its own flags).",
+  "description": "Every character belongs to a noble house; the ruling house gains prestige from wars, wonders and long reigns and loses it with colonies, while rival houses feud. A council of five seats (spymaster, chancellor, marshal, steward, magistrate) lends its skills to counter-intelligence, diplomacy, fleet repair, taxes and stability; powerful nobles left without a seat grow ambitious. Discontented nobles form factions with demands and ultimatums. Successions follow the government's law (primogeniture, election, military acclamation) with heirs, regencies and succession crises; the ruler's legitimacy scales every plot. Court intrigue: agents scheme against characters (sway, blackmail, sabotage, assassination) and are traced through leads; secrets become hooks; houses exchange envoys, wards and spouses and hold claims on colonies; characters become friends, rivals and lovers. Includes Internal Security (its own flags).",
   "include": ["internal-security"],
   "flags": [
-    { "name": "courtDynasties", "label": "Court & dynasties", "description": "Houses, council seats, character factions with demands, succession laws and legitimacy.", "default": true }
+    { "name": "courtDynasties", "label": "Court & dynasties", "description": "Houses, council seats, character factions with demands, succession laws and legitimacy.", "default": true },
+    { "name": "courtIntrigue", "label": "Court intrigue", "description": "Schemes (sway, blackmail, sabotage loyalty, assassination) as agent missions discovered through leads, secrets and hooks, dynastic ties (envoys, wards, marriages), friendships / rivalries / lovers, and house claims on colonies. Needs Court & dynasties.", "default": true }
   ],
   "params": [
     { "name": "courtHousesPerEmpire", "label": "Houses per empire", "default": 4, "min": 2, "max": 8 },
@@ -40,6 +41,42 @@
     { "name": "courtLawfulLegitimacy", "label": "Legitimacy bonus of a lawful succession", "default": 10, "min": 0, "max": 50 },
     { "name": "courtCoupLegitimacy", "label": "Legitimacy of a usurper", "default": 25, "min": 0, "max": 100 },
     { "name": "courtPurgeLegitimacy", "label": "Legitimacy lost per purge", "default": 10, "min": 0, "max": 50 },
-    { "name": "courtStartLegitimacy", "label": "Legitimacy of the leaders at the game start", "default": 60, "min": 0, "max": 100 }
+    { "name": "courtStartLegitimacy", "label": "Legitimacy of the leaders at the game start", "default": 60, "min": 0, "max": 100 },
+    { "name": "courtSchemePct", "label": "AI scheme chance per year (% at a neutral ruler)", "default": 30, "min": 0, "max": 100 },
+    { "name": "courtSwayLoyalty", "label": "Loyalty moved by a sway scheme", "default": 15, "min": 0, "max": 100 },
+    { "name": "courtSabotageLoyalty", "label": "Loyalty lost to a sabotage-loyalty scheme", "default": 20, "min": 0, "max": 100 },
+    { "name": "courtBlackmailConcessionPct", "label": "Treasury share a blackmailed ruler pays (%)", "default": 10, "min": 0, "max": 100 },
+    { "name": "courtSchemeIncident", "label": "Attitude hit when a scheme is discovered", "default": 10, "min": 0, "max": 100 },
+    { "name": "courtAssassinationIncident", "label": "Attitude hit when an assassination is discovered", "default": 25, "min": 0, "max": 100 },
+    { "name": "courtSchemeTraceYears", "label": "Years a finished scheme can still be discovered", "default": 2, "min": 0, "max": 20 },
+    { "name": "courtSchemeConcealment", "label": "Scheme concealment added to the agent's", "default": 20, "min": 0, "max": 100 },
+    { "name": "courtSecretConcealment", "label": "Base concealment of a secret", "default": 50, "min": 0, "max": 200 },
+    { "name": "courtExposeLoyalty", "label": "Loyalty lost by an exposed character", "default": 20, "min": 0, "max": 100 },
+    { "name": "courtExposeLegitimacy", "label": "Legitimacy lost when the ruler's secret is exposed", "default": 10, "min": 0, "max": 100 },
+    { "name": "courtExposePrestige", "label": "House prestige lost by an exposure", "default": 10, "min": 0, "max": 100 },
+    { "name": "courtTieEnvoyAttitude", "label": "Yearly attitude from exchanged envoys (and lovers)", "default": 2, "min": 0, "max": 20 },
+    { "name": "courtTieWardAttitude", "label": "Yearly attitude from a ward", "default": 4, "min": 0, "max": 20 },
+    { "name": "courtTieSpouseAttitude", "label": "Yearly attitude from a marriage", "default": 6, "min": 0, "max": 20 },
+    { "name": "courtTieEnvoyAccept", "label": "Attitude needed to accept envoys", "default": 0, "min": -100, "max": 100 },
+    { "name": "courtTieWardAccept", "label": "Attitude needed to accept a ward", "default": 10, "min": -100, "max": 100 },
+    { "name": "courtTieSpouseAccept", "label": "Attitude needed to accept a marriage", "default": 20, "min": -100, "max": 100 },
+    { "name": "courtTieProposalPct", "label": "AI tie proposal chance per year (%)", "default": 20, "min": 0, "max": 100 },
+    { "name": "courtTieProposalYears", "label": "Years between an AI's tie proposals to one empire", "default": 5, "min": 1, "max": 50 },
+    { "name": "courtRelationshipYears", "label": "Years together before a relationship can form", "default": 2, "min": 0, "max": 20 },
+    { "name": "courtRelationshipPct", "label": "Relationship chance scale (% per year at compatibility 50)", "default": 30, "min": 0, "max": 100 },
+    { "name": "courtLoverPct", "label": "Chance friends become lovers (% per year)", "default": 10, "min": 0, "max": 100 },
+    { "name": "courtLoverFeudPct", "label": "Chance lovers of two houses start a feud (%)", "default": 50, "min": 0, "max": 100 },
+    { "name": "courtRivalLoyalty", "label": "Yearly loyalty lost per rival", "default": 3, "min": 0, "max": 50 },
+    { "name": "courtRivalInPowerPlotPct", "label": "Plot weight of a character whose rival rules or sits on the council (%)", "default": 150, "min": 100, "max": 400 },
+    { "name": "courtFriendFleetBonus", "label": "Fleet repair / damage control per friend of the admiral (points, max 2 friends)", "default": 5, "min": 0, "max": 50 },
+    { "name": "courtFriendApproval", "label": "Approval per friend of the governor at the colony", "default": 1, "min": 0, "max": 20 },
+    { "name": "courtRivalApproval", "label": "Approval lost per rival of the governor at the colony", "default": 1, "min": 0, "max": 20 },
+    { "name": "courtClaimStart", "label": "Strength of a claim on a lost colony", "default": 50, "min": 0, "max": 100 },
+    { "name": "courtClaimDecay", "label": "Yearly decay of a lost-colony claim", "default": 5, "min": 0, "max": 50 },
+    { "name": "courtMarriageClaim", "label": "Base strength of a marriage claim (+ half the house prestige)", "default": 30, "min": 0, "max": 100 },
+    { "name": "courtClaimRecognition", "label": "Claim strength added by the council's recognition (a chancellor)", "default": 10, "min": 0, "max": 50 },
+    { "name": "courtClaimPlotPct", "label": "Plot weight of a claimed colony's governor at claim strength 100 (%)", "default": 100, "min": 0, "max": 400 },
+    { "name": "courtCasusBelliStrength", "label": "Strength of an assassination casus belli", "default": 60, "min": 0, "max": 100 },
+    { "name": "courtCasusBelliYears", "label": "Years a casus belli lasts", "default": 10, "min": 1, "max": 50 }
   ]
 }

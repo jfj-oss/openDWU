@@ -46,6 +46,7 @@ import { POLITICS_FLAG, defectionTarget, governedColony, isPoliticalEmpire, peek
 import { runPoliticsAction } from '../emergent/politicsActions';
 import {
     SECURITY_FLAG,
+    isCourtThing,
     colonyQuarantined,
     colonyUnderMartialLaw,
     openLead,
@@ -293,6 +294,8 @@ export function detectingEmpire(galaxy: Galaxy, t: HiddenThing): Empire | null {
 
 /** Is `t` still hidden and alive (kind rules)? Colony / ship kinds follow their owner. */
 function thingAlive(galaxy: Galaxy, t: HiddenThing): boolean {
+    // 19n court schemes / secrets: the court package decides (only such things exist with its flag on).
+    if (isCourtThing(t)) return securitySlots.courtThingAlive !== null && securitySlots.courtThingAlive(galaxy, t);
     const site = t.site;
     if (site !== null && (site.state === 'dead' || site.state === 'turned')) return false;
     const target = t.target;
@@ -363,11 +366,12 @@ function kindText(kind: string): string {
 }
 
 /** A lead changed level: messages, and a confirmed lead is handed back to the package (its knowledge, 19d1 exposure). */
-function onLeadChanged(galaxy: Galaxy, lead: Lead, thing: HiddenThing): void {
+export function onLeadChanged(galaxy: Galaxy, lead: Lead, thing: HiddenThing): void {
     if (lead.level === 'confirmed') {
         if (thing.site !== null) revealTo(galaxy, thing.site as unknown as ThreatSite, lead.empire, KNOWLEDGE_CONFIRMED);
         if (thing.kind === 'plot' && thing.target instanceof Character && scenarioFlag(galaxy, POLITICS_FLAG)) politicsState(galaxy).exposed.add(thing.target);
     }
+    if (isCourtThing(thing) && securitySlots.courtLeadChanged !== null) securitySlots.courtLeadChanged(galaxy, lead, thing);
     if (lead.empire !== galaxy.playerEmpire) return;
     const tag = lead.level === 'confirmed' ? 'Security Lead Confirmed' : lead.level === 'suspected' ? 'Security Lead Suspected' : 'Security Lead Cleared';
     scenarioMessage(galaxy, lead.empire, scenarioText(`${tag} Title`), scenarioText(tag, kindText(lead.kind), leadTargetName(lead)), {
@@ -674,6 +678,7 @@ export function aiSecurityChoice(galaxy: Galaxy, empire: Empire, lead: Lead): Se
         case 'boughtGovernor':
             return aggression >= 115 ? pick(['purge', 'arrest']) : pick(['arrest']);
         case 'foreignAgent':
+        case 'scheme':
             return aggression >= 100 ? pick(['arrest', 'exile']) : pick(['exile', 'arrest']);
         case 'sleeper':
             return caution >= 100 ? pick(['scrapShip', 'recallFleet']) : pick(['recallFleet', 'scrapShip']);

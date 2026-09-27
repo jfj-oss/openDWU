@@ -45,3 +45,43 @@ export function successionLawFor(manner: number, pool: number): SuccessionLaw {
     if (manner === 1) return pool === 2 ? 'acclamation' : 'primogeniture';
     return pool !== 0 ? 'election' : 'primogeniture';
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// Package 2 (intrigue.ts): trait compatibility for relationships (CharacterTraitType member names; resolved lazily —
+// characters.ts loads inside an import cycle with the scenario modules).
+// ---------------------------------------------------------------------------------------------------------------
+
+/** Trait pairs that clash (either order): −15 compatibility per pair across the two characters. */
+export const OPPOSED_TRAITS: readonly (readonly [string, string])[] = [
+    ['Paranoid', 'Trusting'],
+    ['Pacifist', 'PeaceThroughStrength'],
+    ['Expansionist', 'Isolationist'],
+    ['GoodAdministrator', 'PoorAdministrator'],
+    ['Engineer', 'Luddite'],
+    ['FreeTrader', 'Protectionist'],
+    ['Environmentalist', 'Industrialist'],
+    ['Spiritual', 'Logical'],
+    ['Uninhibited', 'Measured'],
+    ['Addict', 'Sober'],
+    ['Drunk', 'Sober'],
+    ['Courageous', 'Weak'],
+    ['Tolerant', 'Xenophobic'],
+    ['Corrupt', 'Lawful'],
+    ['Lazy', 'Energetic'],
+    ['Technical', 'NonTechnical'],
+    ['CarefulAttacker', 'RecklessAttacker'],
+    ['Patriot', 'DoubleAgent'],
+];
+
+/** Traits that make friends easily: +5 compatibility each (either character). */
+export const SOCIABLE_TRAITS: readonly string[] = ['Diplomat', 'EloquentSpeaker', 'Famous', 'Trusting', 'Generous', 'InspiringPresence', 'Tolerant'];
+
+/** Traits that make enemies easily: −5 compatibility each (either character). */
+export const ABRASIVE_TRAITS: readonly string[] = ['Obnoxious', 'Disliked', 'Paranoid', 'Xenophobic', 'Demoralizing', 'PoorSpeaker'];
+
+/** A ruler's inclination to scheme: +0.5 each (AI scheme chance factor, 1 at none). */
+export const SCHEMING_TRAITS: readonly string[] = ['Paranoid', 'Uninhibited', 'RecklessAttacker', 'Corrupt', 'Obnoxious', 'Xenophobic'];
+/** −0.4 each. */
+export const HONEST_TRAITS: readonly string[] = ['Lawful', 'Pacifist', 'Trusting', 'Measured', 'Patriot'];
+/** Rulers who order assassinations. */
+export const RUTHLESS_TRAITS: readonly string[] = ['Uninhibited', 'Paranoid', 'RecklessAttacker'];

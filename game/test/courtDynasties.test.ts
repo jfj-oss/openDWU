@@ -65,6 +65,7 @@ const SC = 'court-dynasties';
 /** Every flag the scenario (with its includes) carries, off. */
 const ALL_OFF: Record<string, boolean> = {
     courtDynasties: false,
+    courtIntrigue: false,
     internalSecurity: false,
     internalPolitics: false,
     livingCharacters: false,

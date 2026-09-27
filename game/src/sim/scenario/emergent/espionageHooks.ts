@@ -37,6 +37,12 @@ export interface EspionageHookSlots {
     sabotageAssigned: ((galaxy: Galaxy, self: Empire, target: Empire, mission: IntelligenceMission) => void) | null;
     /** §C9 — cancelIntelligenceMission: the mission's frame is dropped. No Rnd. */
     missionEnded: ((galaxy: Galaxy, mission: IntelligenceMission) => void) | null;
+    /**
+     * 19n court intrigue — a due court scheme mission (espionage.ts performIntelligenceMissions) after its outcome roll:
+     * applies the scheme's effect and its discovery. May draw (the stock character death path). Only ever called for a
+     * court scheme type, which exists only with the courtIntrigue flag on.
+     */
+    courtScheme: ((galaxy: Galaxy, self: Empire, mission: IntelligenceMission, agent: Character, outcome: number) => void) | null;
 }
 
 export const espionageHooks: EspionageHookSlots = {
@@ -46,4 +52,5 @@ export const espionageHooks: EspionageHookSlots = {
     techTransfer: null,
     sabotageAssigned: null,
     missionEnded: null,
+    courtScheme: null,
 };
