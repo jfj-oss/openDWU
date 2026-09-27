@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 import { cachedTickGame } from './helpers/gameCache';
-import { netSort } from '../src/sim/netSort';
+import { LazyNetSortOrder, netSort } from '../src/sim/netSort';
 import { Random } from '../src/sim/random';
 import { SystemVisibilityStatus } from '../src/sim/visibility';
 import type { Galaxy } from '../src/sim/galaxy';
@@ -172,5 +172,31 @@ describe('perf shortcuts on a synthetic 120-colony empire', () => {
         raceBiasesSetBias(races[0], races[1].name, 17);
         check();
         expect(raceBiasesGetBias(races[0], races[1])).toBe(raceBiasesGetBiasUncached(races[0], races[1]));
+    });
+});
+
+describe('LazyNetSortOrder', () => {
+    const fullOrder = (keys: number[]) => (): number[] => {
+        const pairs = keys.map((k, i) => ({ i, k }));
+        netSort(pairs, (a, b) => (a.k < b.k ? -1 : a.k > b.k ? 1 : 0));
+        return pairs.map((p) => p.i);
+    };
+    it('hands out exactly the netSort permutation (unique keys, ties, NaN, -0, sizes 0..300)', () => {
+        const rnd = new Random(31337);
+        for (let t = 0; t < 400; t++) {
+            const n = t < 20 ? t : rnd.next(0, 300);
+            const mode = t % 4;
+            const keys = Array.from({ length: n }, () => {
+                if (mode === 0) return rnd.nextDouble() * 1e12;
+                if (mode === 1) return rnd.next(0, 20); // many ties
+                if (mode === 2) return rnd.next(0, 3) === 0 ? -0 : rnd.next(0, 50) * 1.5;
+                return rnd.next(0, 40) === 0 ? Number.NaN : rnd.nextDouble();
+            });
+            const expected = fullOrder(keys)();
+            const lazy = new LazyNetSortOrder(keys, fullOrder(keys));
+            const got: number[] = [];
+            for (let j = lazy.next(); j >= 0; j = lazy.next()) got.push(j);
+            expect(got).toEqual(expected);
+        }
     });
 });

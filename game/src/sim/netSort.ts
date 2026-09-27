@@ -115,3 +115,68 @@ function insertionSort<T>(keys: T[], lo: number, hi: number, compare: (a: T, b: 
         keys[j + 1] = t;
     }
 }
+
+/**
+ * Perf: the positions of `keys` in ascending netSort order (comparer `a < b ? -1 : a > b ? 1 : 0` on the keys), produced
+ * lazily for loops that usually stop after the first few elements. A binary heap yields the next smallest key; while
+ * every key handed out so far is unique, it sits at exactly the position the full sort gives it (a unique key's sorted
+ * position is the number of smaller keys), so the prefix is identical. At the first tie (the next key equals the one
+ * just popped) or when any key is NaN (inconsistent comparer), `fullOrder` — the real netSort — decides the rest from
+ * that position on. `next()` returns -1 when exhausted.
+ */
+export class LazyNetSortOrder {
+    private readonly heap: Int32Array;
+    private size = 0;
+    private pos = 0;
+    private full: number[] | null = null;
+
+    constructor(
+        private readonly keys: readonly number[],
+        private readonly fullOrder: () => number[],
+    ) {
+        const n = keys.length;
+        this.heap = new Int32Array(n);
+        let nan = false;
+        for (let i = 0; i < n; i++) {
+            if (Number.isNaN(keys[i])) nan = true;
+            this.heap[i] = i;
+        }
+        this.size = n;
+        if (nan) this.full = fullOrder();
+        else for (let i = (n >> 1) - 1; i >= 0; i--) this.down(i);
+    }
+
+    next(): number {
+        if (this.full !== null) return this.pos < this.full.length ? this.full[this.pos++] : -1;
+        if (this.size === 0) return -1;
+        const top = this.heap[0];
+        this.size--;
+        if (this.size > 0) {
+            this.heap[0] = this.heap[this.size];
+            this.down(0);
+            if (this.keys[this.heap[0]] === this.keys[top]) {
+                this.full = this.fullOrder();
+                return this.full[this.pos++];
+            }
+        }
+        this.pos++;
+        return top;
+    }
+
+    private down(i: number): void {
+        const heap = this.heap;
+        const keys = this.keys;
+        const n = this.size;
+        const item = heap[i];
+        const k = keys[item];
+        for (;;) {
+            let c = 2 * i + 1;
+            if (c >= n) break;
+            if (c + 1 < n && keys[heap[c + 1]] < keys[heap[c]]) c++;
+            if (!(keys[heap[c]] < k)) break;
+            heap[i] = heap[c];
+            i = c;
+        }
+        heap[i] = item;
+    }
+}
