@@ -253,5 +253,25 @@ Effort: 1, 3 cheap (data + one gate each); 2, 4 medium; 5 cheap. Build after the
    suspect ship; AIs run the same loop by policy (caution/aggression).
 4. Chain reactions: converted governor lowers loyalty; purge lowers approval; a cultist coup founds the theocracy; refugees
    can carry the creed; exposed foreign agent → 19d3 crisis; failed investigation emboldens the plotter (+ambition).
-Effort ~2 agent-days (Opus); requires 19d1/19d3/19d4/19f on main (batch D). Player answers via the command queue. Effort: medium (~1 agent-day);
+Effort ~2 agent-days (Opus); requires 19d1/19d3/19d4/19f on main (batch D). Player answers via the command queue.
+
+## 19n — Court & dynasties (ACCEPTED by the user 2026-09-26 — "19n yes"; Crusader Kings-style character layer on top of 19m)
+Package 1 (after 19m core): 1 Houses — every character belongs to a house; the leader's house gains prestige (wars,
+wonders, long reigns); house members favour each other for seats/plots; rival houses feud (plots get a shape).
+2 Council — seats (spymaster = counter-intelligence, chancellor = diplomacy, marshal = fleets, steward = tax efficiency,
+magistrate = stability) with real powers wired to the existing stats; powerful nobles without a seat are the likely
+plotters. 3 Character factions with demands — discontented characters form a faction (lower taxes, a war, autonomy for
+a colony, a seat) and issue an ultimatum: concede or face the plot it backs. 4 Succession — laws per government
+(primogeniture, election, military acclamation), heirs, regencies, succession crises where houses back rival claimants
+(absorbs 19g-4). 9 Legitimacy — rises with prestige and lawful succession, falls with purges/coups; multiplies every
+plot chance.
+Package 2: 5 Schemes — agents run sway, blackmail, sabotage-loyalty and assassination schemes against characters (own or
+foreign); every scheme is a hidden thing discovered through 19m leads. 6 Secrets & hooks — characters carry secrets
+(corruption, cult membership, defection talks); a discovered secret is a hook to force compliance or expose publicly.
+7 Dynastic ties — characters exchanged as envoys/wards/spouses between empires → relation bonus, defensive pacts, and
+claims. 8 Relationships — friends/rivals/lovers modify loyalty, fleet/colony cooperation and plot membership (absorbs
+19e-5 living characters). 10 Claims & war goals — houses hold claims on colonies (marriages, former ownership) → the war
+goals 19g-3 needs.
+All data + existing character/diplomacy hooks; off by default; player actions via the command queue; AI runs the same
+loops by traits. Effort: package 1 ~2 agent-days, package 2 ~2 agent-days (Opus). Requires 19m. Effort: medium (~1 agent-day);
 build after 19d2 (unrest plumbing) alongside 19g-7 rim fauna; 19a/19c tests must still pass with 19h on.
