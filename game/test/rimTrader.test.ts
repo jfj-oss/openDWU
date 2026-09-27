@@ -158,7 +158,8 @@ describe('19a rim trader — ledger, access and AI rules', () => {
     let r: Empire;
     let human: Empire;
     beforeAll(() => {
-        game = rimGame();
+        // Price factor 1: these checks follow the stock contract values (the factor is tested in rimTraderConcord.test.ts).
+        game = rimGame({}, { rimTraderRarePriceMult: 1 });
         g = game.galaxy;
         r = rimTraderEmpire(g)!;
         human = g.playerEmpire!;

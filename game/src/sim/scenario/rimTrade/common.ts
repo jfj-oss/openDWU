@@ -28,6 +28,12 @@ export const RIM_PARAM_DEFAULTS = {
     rimTraderRetaliationRatio: 2.0,
     rimTraderStrikeFleets: 2,
     rimTraderHomeGuardPct: 50,
+    rimTraderStartMoney: 5000000,
+    rimTraderTradeHouseIncome: 500000,
+    rimTraderRarePriceMult: 2.0,
+    rimTraderStartWarships: 40,
+    rimTraderNavyTarget: 80,
+    rimTraderNavyReserve: 1000000,
     rimTraderExchangeRate: 1.0,
     rimTraderGrantThreshold: 1500,
     rimTraderImportQuota: 400,
@@ -262,6 +268,11 @@ export function rimAngeredAt(galaxy: Galaxy, other: Empire | null): boolean {
     if (other === null || galaxy.scenario === null || !('rimAnger' in galaxy.scenario.state)) return false;
     const e = rimAngerState(galaxy).byEmpire[other.empireId];
     return e !== undefined && e.anger > 0;
+}
+
+/** The navy params are in use (start warships or a navy target): the treasure escorts then come from the navy. Pure. */
+export function concordNavyActive(galaxy: Galaxy): boolean {
+    return rimParam(galaxy, 'rimTraderNavyTarget') > 0 || rimParam(galaxy, 'rimTraderStartWarships') > 0;
 }
 
 /** The tit-for-tat ledger against `other` is open (the Concord owes it strikes). Pure. */

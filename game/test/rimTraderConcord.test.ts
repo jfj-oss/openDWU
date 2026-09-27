@@ -2,6 +2,7 @@
 // (rimTraderMaxColonies) and the passive posture with anger (flag rimTraderPassive). The 3-year posture soak and the
 // flag-off digest check are in test/rimTraderPassiveSoak.test.ts (@slow).
 import { beforeAll, describe, expect, it } from 'vitest';
+import { appendFileSync } from 'node:fs';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 import { createScenarioGame } from './helpers/scenarioGame';
 import type { GameData } from '../src/sim/data/gameData';
@@ -20,6 +21,7 @@ import { galaxyStarDate } from '../src/sim/tick/simTime';
 import { scenarioEmit, scenarioText } from '../src/sim/scenario';
 import {
     isRimTraderAI,
+    rareGoodIds,
     rimAngerState,
     rimAngeredAt,
     rimLedgerOpen,
@@ -32,6 +34,7 @@ import {
 import { RIM_START_HIGH_QUALITY, RIM_START_MIN_QUALITY, concordStartColonyCandidates } from '../src/sim/scenario/rimTrade/rimTrader';
 import { concordAttacksWithoutWar, concordMissionAllowed, distanceToConcordSpace, inConcordSpace, isStrikeShip, recordRimAggression, rimAngerReview, rimAngerYear, rimCapReview, rimPassiveLeash, rimStrikeReview } from '../src/sim/scenario/rimTrade/passive';
 import { treasureFleetTargetSize, treasureState } from '../src/sim/scenario/rimTrade/treasureFleet';
+import { concordNavyYear, concordTradeHouseYear, concordWarships, navyGroupOf, rimNavyState } from '../src/sim/scenario/rimTrade/wealth';
 import { builtObjectMission } from '../src/sim/missions/mission';
 
 let base: GameData;
@@ -386,3 +389,64 @@ function meetBoth(a: Empire, b: Empire): void {
     obtainDiplomaticRelation(a, b).type = DiplomaticRelationType.None;
     obtainDiplomaticRelation(b, a).type = DiplomaticRelationType.None;
 }
+
+describe('19a Concord — wealth and navy', () => {
+    it('seed 1 (Concord created at start): 40 warships in the spread, paid from the 5M start treasury, one home fleet per system', () => {
+        const g = rimGame().galaxy;
+        const r = rimTraderEmpire(g)!;
+        const st = rimNavyState(g);
+        expect(st.startWarships).toBe(40);
+        expect(st.startCost).toBeGreaterThan(0);
+        expect(r.stateMoney).toBeCloseTo(5000000 - st.startCost, 0);
+        const ships = concordWarships(r);
+        expect(ships.length).toBeGreaterThanOrEqual(40);
+        const byGroup = [0, 0, 0];
+        for (const b of ships) {
+            const i = navyGroupOf(b.subRole);
+            if (i >= 0) byGroup[i]++;
+        }
+        expect(byGroup[0]).toBeGreaterThan(0);
+        expect(byGroup[1] + byGroup[2]).toBeGreaterThan(0);
+        const systems = new Set(r.colonies.map((c) => c.systemIndex));
+        const fleets = (r.shipGroups as { ships: unknown[]; name: string | null }[]).filter((f) => f.ships.length > 0);
+        expect(fleets.length).toBeGreaterThanOrEqual(systems.size);
+        if (process.env.DWU_SOAK_OUT) appendFileSync(process.env.DWU_SOAK_OUT, `start warships ${st.startWarships}, cost ${Math.round(st.startCost)}, treasury ${Math.round(r.stateMoney)}, spread ${byGroup.join('/')}\n`);
+    }, 600000);
+
+    it('a wizard-generated Oranthi AI gets the treasury and the warships too', () => {
+        const g = rimGame({}, {}, true).galaxy;
+        const r = rimTraderEmpire(g)!;
+        expect(rimNavyState(g).startWarships).toBe(40);
+        expect(r.stateMoney).toBeCloseTo(5000000 - rimNavyState(g).startCost, 0);
+    }, 600000);
+
+    it('trade house profits, the rare price factor, and the yearly navy order at the yards', () => {
+        const g = rimGame().galaxy;
+        const r = rimTraderEmpire(g)!;
+        const before = r.stateMoney;
+        expect(concordTradeHouseYear(g)).toBe(500000);
+        expect(r.stateMoney).toBe(before + 500000);
+        expect(empireMessages(r).some((m) => m.title === scenarioText('Scenario RimTrade Trade House Title'))).toBe(true);
+        // A stock contract for a rare good: the buyer pays 2× (the factor on top), the standing is spent at 2×.
+        const buyer = others(g, r)[0];
+        const rare = rareGoodIds(g)[0];
+        const bm = buyer.stateMoney;
+        const rm = r.stateMoney;
+        scenarioEmit(g, 'contractInitiated', { seller: r, buyer, sellingPoint: null, destination: null, resourceId: rare, componentId: -1, amount: 10, value: 1000, isState: true, freighter: null });
+        expect(buyer.stateMoney).toBe(bm - 1000);
+        expect(r.stateMoney).toBe(rm + 1000);
+        expect(rimTradeState(g).ledger[buyer.empireId].debit).toBe(2000);
+        // The navy: with money above the reserve, warships are ordered at the shipyards (queued, not spawned).
+        r.stateMoney = 20000000;
+        const n0 = concordWarships(r).length;
+        const ordered = concordNavyYear(g);
+        expect(ordered).toBeGreaterThan(0);
+        const now = concordWarships(r);
+        expect(now.length).toBe(n0 + ordered);
+        expect(now.filter((b) => b.builtAt !== null).length).toBeGreaterThanOrEqual(ordered);
+        expect(concordWarships(r).length).toBeLessThanOrEqual(rimParam(g, 'rimTraderNavyTarget'));
+        // Below the reserve nothing is bought.
+        r.stateMoney = 900000;
+        expect(concordNavyYear(g)).toBe(0);
+    }, 600000);
+});

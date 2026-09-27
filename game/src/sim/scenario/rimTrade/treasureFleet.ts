@@ -23,6 +23,8 @@ import type { Design } from '../../design';
 import type { Habitat } from '../../types';
 import { BuiltObject } from '../../builtObject';
 import { BuiltObjectSubRole } from '../../builtObjectTypes';
+import { BuiltObjectRole } from '../../data/designSpecifications';
+import { leaveShipGroup } from '../../fleets/shipGroup';
 import { Cargo, ResourceRef } from '../../cargo';
 import { GAME_DAY_LENGTH, registerScenarioEvent, registerScenarioPeriodic, registerScenarioQuery, registerScenarioYearly, scenarioEmit } from '../hooks';
 import { scenarioFlag, scenarioParam, scenarioState } from '../state';
@@ -45,7 +47,7 @@ import { galaxyResourceCurrentPrices } from '../../design';
 import { cargoGetCargo, cargoRemove } from '../../logistics/orders';
 import { contractListenersActive, emitContractInitiated } from '../../logistics/contractEvents';
 import { doEmpireEncounter } from '../../exploration';
-import { isRimTraderAI, rareGoodIds, rimGoodIds, rimTradeState, rimTraderAllowsRestrictedTrade, rimTraderEmpire, rimTraderPort, rimTraderStanding } from './common';
+import { concordNavyActive, isRimTraderAI, rareGoodIds, rimAngerState, rimParam, rimGoodIds, rimTradeState, rimTraderAllowsRestrictedTrade, rimTraderEmpire, rimTraderPort, rimTraderStanding } from './common';
 
 /** Manifest defaults (scenario.json) of the addendum's params. */
 export const TREASURE_PARAM_DEFAULTS = {
@@ -312,6 +314,24 @@ function musterFleet(galaxy: Galaxy, r: Empire, port: BuiltObject | Habitat, st:
         st.treasure.push(bo);
         st.ships.splice(st.treasure.length - 1, 0, bo);
     }
+    // With the navy params on (wealth.ts), escorts come from the Concord's navy first — warships the home guard can
+    // spare (rimTraderHomeGuardPct), nearest the port first, out of their fleets and out of AI control — then are bought.
+    if (concordNavyActive(galaxy)) {
+        const strikeShips = new Set((galaxy.scenario !== null && 'rimAnger' in galaxy.scenario.state ? (rimAngerState(galaxy).strikes ?? []) : []).flatMap((f) => f.ships));
+        const navy = r.builtObjects.filter((b) => b !== null && !b.hasBeenDestroyed && b.role === BuiltObjectRole.Military && !st.ships.includes(b));
+        const guard = Math.min(100, Math.max(0, rimParam(galaxy, 'rimTraderHomeGuardPct')));
+        let spare = Math.floor((navy.length * (100 - guard)) / 100) - strikeShips.size;
+        const pool = navy
+            .filter((b) => b.isAutoControlled && b.builtAt === null && b.firepowerRaw > 0 && b.warpSpeed > 0 && b.subRole !== BuiltObjectSubRole.TroopTransport && b.subRole !== BuiltObjectSubRole.ResupplyShip && !strikeShips.has(b))
+            .sort((a, b) => galaxy.calculateDistance(a.xpos, a.ypos, port.xpos, port.ypos) - galaxy.calculateDistance(b.xpos, b.ypos, port.xpos, port.ypos) || a.builtObjectID - b.builtObjectID);
+        for (const b of pool) {
+            if (st.ships.length >= size || spare <= 0) break;
+            if (b.shipGroup !== null) leaveShipGroup(galaxy, b);
+            b.isAutoControlled = false;
+            st.ships.push(b);
+            spare--;
+        }
+    }
     const esc = escortDesign(r);
     while (esc !== null && st.ships.length < size && buy(esc)) st.ships.push(spawnShip(galaxy, r, esc, port));
 }
@@ -367,8 +387,10 @@ export function treasureTradeAt(galaxy: Galaxy, r: Empire, st: TreasureFleetStat
     // Sell rare goods (debit), only to a host the Concord trades with, never below zero standing.
     const rel = obtainDiplomaticRelation(r, host);
     if (!rel.supplyRestrictedResources && !rimTraderAllowsRestrictedTrade(galaxy, r, host)) return;
+    // rimTraderRarePriceMult: the Concord's rare goods sell at the factor over the galaxy price.
+    const rareMult = rimParam(galaxy, 'rimTraderRarePriceMult');
     for (const id of rareGoodIds(galaxy)) {
-        const price = prices[id] ?? 0;
+        const price = (prices[id] ?? 0) * rareMult;
         const budget = Math.min(rimTraderStanding(galaxy, host.empireId), Math.max(0, host.stateMoney) * 0.5);
         if (price <= 0 || budget <= 0) continue;
         let qty = Math.min(lot, Math.floor(budget / price));

@@ -1,6 +1,7 @@
 // @slow
 // Scenario 19a — the Concord's passive posture over 3 game years (flag rimTraderPassive, default on), and the flag-off
-// path: with the passive posture off, one starting colony, the old cap of 4 and no per-colony treasure escorts, a rimTrade
+// path: with the passive posture off, one starting colony, the old cap of 4, no per-colony treasure escorts and the
+// wealth / navy params at their neutral values (stock treasury, no income, price factor 1, no warships), a rimTrade
 // game is byte-identical to the rimTrade game before these features (digests pinned from 4c1ffbc, the merged head they were added on).
 import { beforeAll, describe, expect, it } from 'vitest';
 import { appendFileSync } from 'node:fs';
@@ -19,6 +20,7 @@ import { registerScenarioEvent, scenarioEmit } from '../src/sim/scenario';
 import { rimAngerState, rimAngeredAt, rimAngeredAtAnyone, rimLedgerOpen, rimParam, rimTraderEmpire } from '../src/sim/scenario/rimTrade/common';
 import { distanceToConcordSpace, inConcordSpace, inRetaliationRange, isStrikeShip, missionPoint, rimStrikeReview } from '../src/sim/scenario/rimTrade/passive';
 import { treasureState } from '../src/sim/scenario/rimTrade/treasureFleet';
+import { concordWarships, rimNavyState } from '../src/sim/scenario/rimTrade/wealth';
 
 let base: GameData;
 beforeAll(async () => {
@@ -38,7 +40,7 @@ describe('19a Concord — flag off is byte-identical', () => {
             const { game } = createScenarioGame(base, {
                 scenario: 'rimTrade',
                 flags: { rimTraderPassive: false },
-                params: { rimTraderStartColonies: 1, rimTraderMaxColonies: 4, treasureFleetPerColony: 0 },
+                params: { rimTraderStartColonies: 1, rimTraderMaxColonies: 4, treasureFleetPerColony: 0, rimTraderStartMoney: 0, rimTraderTradeHouseIncome: 0, rimTraderRarePriceMult: 1, rimTraderStartWarships: 0, rimTraderNavyTarget: 0 },
                 options: forced ? forceOranthi : undefined,
             });
             expect(stateDigest(game.galaxy)).toBe(d0);
@@ -55,6 +57,7 @@ describe('19a Concord — passive posture soak', () => {
             const g = game.galaxy;
             const r = rimTraderEmpire(g)!;
             const startColonies = r.colonies.length;
+            const startNavy = concordWarships(r).length;
             expect(startColonies).toBeGreaterThanOrEqual(3);
             const declared: { target: Empire; angered: boolean }[] = [];
             const off = registerScenarioEvent({
@@ -106,6 +109,13 @@ describe('19a Concord — passive posture soak', () => {
             console.log(summary.join('\n'));
             if (process.env.DWU_SOAK_OUT) appendFileSync(process.env.DWU_SOAK_OUT, `${forced ? 'wizard' : 'created'}: declared ${declared.length}\n` + summary.join('\n') + '\n');
             expect(maxWarships).toBeGreaterThan(0);
+            // The navy target: with the 5M treasury and trade-house income, the Concord orders warships toward 80.
+            const endNavy = concordWarships(r).length;
+            if (process.env.DWU_SOAK_OUT) appendFileSync(process.env.DWU_SOAK_OUT, `navy ${startNavy} → ${endNavy}, bought ${rimNavyState(g).bought}, spent ${Math.round(rimNavyState(g).spent)}, treasury ${Math.round(r.stateMoney)}\n`);
+            // (Seed 1: the rich Concord's own stock construction AI outbuilds the target, so the yearly top-up may buy
+            // nothing; either way the navy reaches it.)
+            expect(endNavy).toBeGreaterThanOrEqual(rimParam(g, 'rimTraderNavyTarget'));
+            expect(startNavy).toBeGreaterThanOrEqual(rimParam(g, 'rimTraderStartWarships'));
             void outsideSamples;
             // No war declared by the Concord unless it had been provoked by the target.
             for (const d of declared) expect(d.angered).toBe(true);
