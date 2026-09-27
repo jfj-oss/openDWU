@@ -138,3 +138,11 @@ year 10 (1–8 per empire). Follow-ups:
 - Scheme-target family is a stand-in (19m investigation into an open lead) because 19n-2 schemes were not on its base; re-point it at 19n-2 scheme targets now that batch G is on main.
 - Council votes are rarely offered to the model (motions only stay open when the player sits on the council); peace offers to the player are never offered.
 - Herder conquest is tested by enumeration/validation only.
+
+## Save crash at scale (found 2026-09-27 by the 15-year soak smoke: 4000 stars / 60 empires / 44 flags, 1 year)
+- `serializeGame` → native `JSON.stringify(save)` throws `RangeError: Maximum call stack size exceeded`; `galaxyToJSON` itself completes.
+  So the encoded save tree has a genuinely deep (thousands of levels) nesting chain somewhere (not a big flat array).
+  Sim ran the year cleanly (144 s wall, RSS 2.2 GB, 1933 battles, 413 destroyed, 116 herds, 4 wars).
+- Workaround under test: `ulimit -s 65500` + `node --stack-size=65000`. Real fix: find the package/state that nests (candidates: court lineage/claim
+  chains, ship-group nesting, relation cross-refs) and flatten it in the encoder; wip/savedepth agent assigned.
+- Also: 117 pirate factions were generated for 60 empires at 4000 stars, and many rim/core pirate base placements fell back to the stock rule.
