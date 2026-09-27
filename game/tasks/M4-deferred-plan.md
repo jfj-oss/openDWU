@@ -146,3 +146,9 @@ year 10 (1–8 per empire). Follow-ups:
 - Workaround under test: `ulimit -s 65500` + `node --stack-size=65000`. Real fix: find the package/state that nests (candidates: court lineage/claim
   chains, ship-group nesting, relation cross-refs) and flatten it in the encoder; wip/savedepth agent assigned.
 - Also: 117 pirate factions were generated for 60 empires at 4000 stars, and many rim/core pirate base placements fell back to the stock rule.
+
+## 19s-2 voices follow-ups (wip/s19s2 2379cd3, built on a base without 19o/19n/19n-2)
+- Wire the three inert hooks at their real emit sites once merged: `voiceGrievanceAdded` in the 19o ledger (event `reputation.grievanceAdded`),
+  `voiceFactionUltimatum` in 19n court factions (`court.factionUltimatum`), `voiceSchemeLetter` in 19n-2 intrigue (`intrigue.schemeLetter`). Sonnet, mechanical.
+- Treasure-fleet greeting and herder migration hooks are untested end to end; an open message popup does not refresh when a voice arrives.
+- Add the §19s DONE notes for packages 2 and 3 in tasks/19-mod-layer-scenarios.md (package 4 already noted by its agent).
