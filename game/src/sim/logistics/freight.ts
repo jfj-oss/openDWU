@@ -11,7 +11,7 @@ import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import { BuiltObject } from '../builtObject';
 import { BuiltObjectSubRole } from '../builtObjectTypes';
-import { Habitat, planetsOf } from '../types';
+import { Habitat } from '../types';
 import { Cargo, CargoList, ResourceRef } from '../cargo';
 import { BuiltObjectRole } from '../data/designSpecifications';
 import { findNewest, galaxyComponentCurrentPrices, galaxyResourceCurrentPrices } from '../design';
@@ -197,13 +197,20 @@ export function generateValidTradingPosts(galaxy: Galaxy, self: Empire, empire: 
             if (q !== null && q < num && !list.contains(habitat2)) list.add(habitat2);
         }
     } else {
+        const independent = galaxy.independentEmpire;
+        const visibility = empire.visibility;
         for (let num7 = 0; num7 < galaxy.systems.length; num7++) {
-            // Empire.4.cs 619-625 Systems[num7].Habitats: no star.
-            const sysHabitats = planetsOf(galaxy.systems[num7]);
-            if (!empire.visibility.checkSystemExplored(galaxy.systems[num7].systemStar.systemIndex) || sysHabitats.length <= 0) continue;
+            // Empire.4.cs 619-625 Systems[num7].Habitats: no star. Perf: the planets are walked in place (planetsOf's
+            // filtered copy skipped: same habitats, same order) and only for explored systems (the C# `Count <= 0` test
+            // only skips an empty loop).
+            const system = galaxy.systems[num7];
+            const star = system.systemStar;
+            if (!visibility.checkSystemExplored(star.systemIndex)) continue;
+            const sysHabitats = system.habitats;
             for (let num8 = 0; num8 < sysHabitats.length; num8++) {
                 const habitat3 = sysHabitats[num8];
-                if (habitat3 == null || habitat3.population.items.length <= 0 || habitat3.empire !== galaxy.independentEmpire) continue;
+                if (habitat3 === star) continue;
+                if (habitat3 == null || habitat3.population.items.length <= 0 || habitat3.empire !== independent) continue;
                 const q = habitatDockingBayWaitQueueCount(habitat3);
                 if (q !== null && q < num && !list.contains(habitat3)) list.add(habitat3);
             }
