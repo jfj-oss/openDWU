@@ -47,6 +47,7 @@ import { YEAR_LENGTH } from '../../galaxyTime';
 import { galaxyStarDate } from '../../tick/simTime';
 import { registerScenarioYearly, gameYear } from '../hooks';
 import { scenarioFlag, scenarioParam, scenarioState } from '../state';
+import { mirrorPackageDiscovery, registerHiddenThing } from '../security/registry';
 import { scenarioMessage, scenarioNews, scenarioText } from '../messages';
 import { expireScenarioDecisions, raiseScenarioDecision, registerScenarioDecision, type ScenarioDecision } from '../decisions';
 import { ESPIONAGE_FLAG, espionageHooks, type FalseFlagResult } from './espionageHooks';
@@ -322,6 +323,9 @@ export function recordExposure(galaxy: Galaxy, offender: Empire, victim: Empire,
         year: gameYear(now),
         counted: false,
     });
+    // 19m (flag-gated): the exposed agent is also a confirmed lead of the victim's internal security.
+    const thing = registerHiddenThing(galaxy, { kind: 'foreignAgent', concealment: agent.espionageFactored, empire: victim, target: agent, package: '19d3.espionage' });
+    if (thing !== null) mirrorPackageDiscovery(galaxy, { target: agent, kind: 'foreignAgent' }, victim, 3, 'exposure');
 }
 
 /** An exposure without an agent (§B8 discovered leak): counted like a detected mission of `weight`. */

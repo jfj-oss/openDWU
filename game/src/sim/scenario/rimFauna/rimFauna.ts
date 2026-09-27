@@ -31,6 +31,7 @@ import {
     registerScenarioQuery,
     registerScenarioYearly,
 } from '../hooks';
+import { registerStabilityTerm } from '../stability';
 import { scenarioMessage, scenarioNews, scenarioText } from '../messages';
 import {
     HERD_ATTACK_RANGE,
@@ -481,11 +482,13 @@ export function rimFaunaYear(galaxy: Galaxy): void {
 registerScenarioGameStart({ id: 'rimFauna.spawn', flag: RIM_FAUNA_FLAG, run: (g) => rimFaunaGameStart(g) });
 registerScenarioPeriodic({ id: 'rimFauna.herds', flag: RIM_FAUNA_FLAG, periodDays: 1, run: (g) => rimFaunaHerdTick(g) });
 registerScenarioYearly({ id: 'rimFauna.year', flag: RIM_FAUNA_FLAG, run: (g) => rimFaunaYear(g) });
-registerScenarioQuery({
+// Herd-loss unrest as a stability term (scenario/stability.ts; v + (-x) is v - x exactly, so the fold is unchanged).
+registerStabilityTerm({
     id: 'rimFauna.unrest',
     flag: RIM_FAUNA_FLAG,
-    query: 'empireApprovalRating',
-    run: (g, v, a) => (a.empire === null ? v : v - rimFaunaUnrest(g, a.habitat)),
+    cause: 'herdLosses',
+    label: 'Herd losses',
+    run: (g, h, empire) => (empire === null ? null : -rimFaunaUnrest(g, h)),
 });
 registerScenarioQuery({ id: 'rimFauna.blocked', flag: RIM_FAUNA_FLAG, query: 'extractionBlocked', run: (g, v, a) => v || rimFaunaStationBlocked(g, a.builtObject) });
 registerScenarioQuery({

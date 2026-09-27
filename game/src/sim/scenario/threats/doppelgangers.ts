@@ -22,6 +22,7 @@ import { generateUnownedShipAtLocation } from '../../story/storyStart';
 import { EmpireMessageType } from '../../messages';
 import { GameEndOutcome } from '../../victory';
 import { galaxyStarDate } from '../../tick/simTime';
+import { registerHiddenThing } from '../security/registry';
 import { registerScenarioEvent, registerScenarioPeriodic, registerScenarioYearly } from '../hooks';
 import { scenarioParam } from '../state';
 import { scenarioText } from '../messages';
@@ -130,7 +131,9 @@ export function onBuiltObjectOwnerChanged(galaxy: Galaxy, bo: BuiltObject, from:
 
 function makeSleeper(galaxy: Galaxy, st: DoppelgangersState, bo: BuiltObject, owner: Empire): void {
     if (st.sleepers.some((s) => s.bo === bo)) return;
-    st.sleepers.push({ id: st.nextId++, bo, trueOwner: owner, since: galaxyStarDate(galaxy), knowledge: [] });
+    const s: Sleeper = { id: st.nextId++, bo, trueOwner: owner, since: galaxyStarDate(galaxy), knowledge: [] };
+    st.sleepers.push(s);
+    registerHiddenThing(galaxy, { kind: 'sleeper', concealment: 60, empire: owner, target: bo, package: '19f.doppelgangers', site: s }); // 19m (flag-gated)
 }
 
 // ---------------------------------------------------------------------------------------------------------------

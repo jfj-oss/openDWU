@@ -30,6 +30,7 @@ import { galaxyStarDate } from '../../tick/simTime';
 import { registerScenarioPeriodic, registerScenarioYearly } from '../hooks';
 import { scenarioParam } from '../state';
 import { scenarioText } from '../messages';
+import { registerHiddenThing, retireHiddenTarget } from '../security/registry';
 import { GameEndOutcome } from '../../victory';
 import {
     KNOWLEDGE_CONFIRMED,
@@ -137,7 +138,11 @@ export function coupBribeYearly(galaxy: Galaxy): void {
             if (company.bought.includes(gov)) continue;
             const mult = bribeMultiplier(gov);
             if (mult <= 0) continue;
-            if (galaxy.rnd.next(0, 1000) < pct * mult) company.bought.push(gov);
+            if (galaxy.rnd.next(0, 1000) < pct * mult) {
+                company.bought.push(gov);
+                // 19m (flag-gated): the bought governor hides in the holder; the company record carries the knowledge.
+                registerHiddenThing(galaxy, { kind: 'boughtGovernor', concealment: 55, empire: company.holder, target: gov, package: '19f.corporateCoup', site: company });
+            }
         }
     }
 }
@@ -210,6 +215,7 @@ function coupAiReplace(galaxy: Galaxy, company: CorporateCoupCompany): void {
         gov.active = false;
         if (colony !== null) generateNewCharacter(galaxy, company.holder, CharacterRole.ColonyGovernor, colony);
         company.bought.splice(company.bought.indexOf(gov), 1);
+        retireHiddenTarget(galaxy, 'boughtGovernor', gov, 'replaced'); // 19m (flag-gated)
     }
 }
 

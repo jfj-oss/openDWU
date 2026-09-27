@@ -61,6 +61,7 @@ import { CHARACTER_ROLE, CHARACTER_SKILL, CHARACTER_TRAIT, INTELLIGENCE_MISSION,
 import { formatNet, getText, isTextLoaded, resolveGameText } from '../../sim/textResolver';
 import { confirmAutomationOff } from '../orderMenu';
 import { politicsDetail, politicsRowCells, politicsVisible } from '../emergentPolitics'; // [emergent]
+import { investigatorOptions, leadRows, securityVisible } from '../internalSecurityView'; // [security]
 
 const MT = IntelligenceMissionType;
 
@@ -757,6 +758,85 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
     let shownMission: unknown = undefined; // mission object the panel was last built for
     const rowEls = new Map<Character, { row: HTMLDivElement; cells: HTMLSpanElement[] }>();
 
+    // [security] begin — 19m internal security: a "Characters | Internal Security" tab strip and the leads tab (flag on only)
+    const showSecurity = securityVisible(galaxy);
+    const secPanel = el('div', 'intel-security');
+    let securityTab = false;
+    let securitySig = '';
+    if (showSecurity) {
+        const tabs = el('div', 'intel-tabs');
+        const tChars = el('button', 'intel-btn intel-tab', T('Characters'));
+        const tSec = el('button', 'intel-btn intel-tab', 'Internal Security');
+        tChars.type = 'button';
+        tSec.type = 'button';
+        tabs.append(tChars, tSec);
+        win.insertBefore(tabs, top);
+        secPanel.style.display = 'none';
+        win.appendChild(secPanel);
+        const setTab = (sec: boolean): void => {
+            securityTab = sec;
+            top.style.display = sec ? 'none' : '';
+            body.style.display = sec ? 'none' : '';
+            secPanel.style.display = sec ? '' : 'none';
+            tChars.classList.toggle('intel-tab-active', !sec);
+            tSec.classList.toggle('intel-tab-active', sec);
+            if (sec) {
+                securitySig = '';
+                renderSecurity();
+            }
+        };
+        tChars.addEventListener('click', () => setTab(false));
+        tSec.addEventListener('click', () => setTab(true));
+        setTab(false);
+    }
+    function renderSecurity(): void {
+        if (!showSecurity || !securityTab) return;
+        const agents = investigatorOptions(galaxy, player);
+        const rows = leadRows(galaxy, player);
+        // Rebuild only when something changed (the 1 s timer would otherwise reset the agent selects).
+        const sig = rows.map((r) => `${r.lead.id}:${r.level}:${r.status}:${r.actions.length}:${r.canInvestigate}`).join('|') + '#' + agents.map((a) => a.name).join(',');
+        if (sig === securitySig) return;
+        securitySig = sig;
+        secPanel.replaceChildren();
+        const head = el('div', 'intel-row intel-header');
+        for (const h of ['Lead', 'Target', 'Level', 'Since', 'Status', '']) head.appendChild(el('span', 'intel-cell', h));
+        secPanel.appendChild(head);
+        if (rows.length === 0) secPanel.appendChild(el('div', 'intel-row', 'No leads. Agents on counter-intelligence look for plots, converts, sleepers and foreign agents once a year.'));
+        for (const r of rows) {
+            const row = el('div', `intel-row intel-lead-${r.level}${r.lead.closed ? ' intel-lead-closed' : ''}`);
+            row.append(el('span', 'intel-cell', r.kind), el('span', 'intel-cell', r.target), el('span', 'intel-cell', r.level), el('span', 'intel-cell', r.since), el('span', 'intel-cell', r.status));
+            const cell = el('span', 'intel-cell');
+            if (r.canInvestigate && agents.length > 0) {
+                const sel = el('select', 'intel-select');
+                agents.forEach((a, i) => {
+                    const o = document.createElement('option');
+                    o.value = String(i);
+                    o.textContent = a.name;
+                    sel.appendChild(o);
+                });
+                const b = el('button', 'intel-btn', 'Investigate');
+                b.type = 'button';
+                b.addEventListener('click', () => {
+                    const agent = agents[Number(sel.value)];
+                    if (agent !== undefined) issuePlayerCommand(galaxy, player, 'securityInvestigate', [r.lead.id, agent], () => {
+                        securitySig = '';
+                        renderSecurity();
+                    });
+                });
+                cell.append(sel, b);
+            }
+            for (const a of r.actions) {
+                const b = el('button', 'intel-btn', a.label);
+                b.type = 'button';
+                b.addEventListener('click', () => issuePlayerCommand(galaxy, player, 'securityAction', [a.action, r.lead.id], () => renderSecurity()));
+                cell.appendChild(b);
+            }
+            row.appendChild(cell);
+            secPanel.appendChild(row);
+        }
+    }
+    // [security] end
+
     function renderList(): void {
         const rows = characterRows(player, galaxy);
         const seen = new Set<Character>();
@@ -938,6 +1018,7 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
     }
 
     function render(): void {
+        renderSecurity(); // [security]
         renderSummary();
         renderList();
         renderDetail();

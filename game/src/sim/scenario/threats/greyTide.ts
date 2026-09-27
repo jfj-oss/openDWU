@@ -28,6 +28,7 @@ import { GameEndOutcome } from '../../victory';
 import { gameYear, registerScenarioPeriodic, registerScenarioYearly } from '../hooks';
 import { scenarioParam } from '../state';
 import { scenarioText } from '../messages';
+import { registerHiddenThing } from '../security/registry';
 import { startStarDateForAge, YEAR_LENGTH } from '../../galaxyTime';
 import { galaxyStarDate } from '../../tick/simTime';
 import {
@@ -142,6 +143,8 @@ export function foundNest(galaxy: Galaxy, st: GreyTideState, habitat: Habitat): 
     const bornDate = galaxyStarDate(galaxy);
     const nest: Nest = { id: st.nextId++, habitat, bornDate, nextSpawnDate: bornDate + P.nestYears(galaxy) * YEAR_LENGTH, drones: 0, droneProgress: 0, eaten: 0, state: 'alive', knowledge: [] };
     st.nests.push(nest);
+    // 19m (flag-gated): a nest is in nobody's territory — the owner of the nearest colony looks for it.
+    registerHiddenThing(galaxy, { kind: 'nest', concealment: 35, empire: null, target: habitat, package: '19f.greyTide', site: nest });
     ensureFaction(galaxy, st, habitat);
     return nest;
 }

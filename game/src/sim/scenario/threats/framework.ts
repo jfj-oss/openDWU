@@ -33,6 +33,7 @@ import { scenarioState } from '../state';
 import type { Character, StellarObject } from '../../characters';
 import { getEmpireCharacters } from '../../characters';
 import { GalaxyLocation } from '../../galaxyLocation';
+import { mirrorPackageDiscovery } from '../security/registry';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Hidden state
@@ -89,9 +90,11 @@ export function revealTo(galaxy: Galaxy, site: ThreatSite, empire: Empire, level
         if (k.level >= level) return false;
         k.level = level;
         k.date = now;
+        mirrorPackageDiscovery(galaxy, { knowledge: site.knowledge }, empire, level); // 19m: the lead follows (flag-gated)
         return true;
     }
     site.knowledge.push({ empireId: empire.empireId, level, date: now });
+    mirrorPackageDiscovery(galaxy, { knowledge: site.knowledge }, empire, level); // 19m: the lead follows (flag-gated)
     return true;
 }
 

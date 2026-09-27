@@ -15,6 +15,7 @@ import { habitatAnnualRevenue } from '../../sim/forceStructure';
 import { formatPopulation } from '../hud';
 import { colonyShortageMarker, crisesApprovalBreakdown } from '../../sim/scenario/emergent/crisesCore';
 import { governorLoyaltyText } from '../emergentPolitics'; // [emergent]
+import { colonyLedgerLines } from '../internalSecurityView'; // [security]
 
 export interface ColoniesListOptions {
     /** The empire whose colonies are listed (the player's). */
@@ -54,7 +55,8 @@ export interface ColonyScenarioInfo {
 /** The scenario extras of a colony, or null with no scenario. Pure. */
 export function colonyScenarioInfo(galaxy: Galaxy, h: Habitat): ColonyScenarioInfo | null {
     if (galaxy.scenario === null) return null;
-    return { shortage: colonyShortageMarker(galaxy, h), approvalBreakdown: crisesApprovalBreakdown(galaxy, h) };
+    // 19m: with internal security on, the tooltip lists every stability-ledger cause.
+    return { shortage: colonyShortageMarker(galaxy, h), approvalBreakdown: colonyLedgerLines(galaxy, h) ?? crisesApprovalBreakdown(galaxy, h) };
 }
 
 /** The four approval icons drawn by ItemListPanel.cs 895-898

@@ -64,6 +64,7 @@ import { findAbandonedShipsInDebrisField } from './events';
 import { assignLoadTroopsMission, checkAssignGarrisonTroopsAtPenalColonyMission, checkAssignUnloadTroopsAtColonyNeedingThemMissionShip } from './combat/troopsRuntime';
 import { identifyDeficientEmpireResources } from './industry';
 import { addChainMigrationDestinations, addChainMigrationSources, spawnRefugeeFlows } from './scenario/emergent/demographics';
+import { removeQuarantinedDestinations } from './scenario/security/registry';
 import {
     HabitatPrioritization,
     calculateCurrentCompleteResourceValue,
@@ -1905,6 +1906,7 @@ export function reviewMigrationTourism(galaxy: Galaxy, empire: Empire): void {
     if (galaxy.scenario !== null) {
         addChainMigrationDestinations(galaxy, empire, empire.migrationDestinations);
         addChainMigrationSources(galaxy, empire, empire.migrationSources);
+        removeQuarantinedDestinations(galaxy, empire.migrationDestinations); // 19m quarantine (flag-gated)
     }
     empire.tourismDestinations = determineTourismDestinations(galaxy, empire);
     empire.tourismSources = determineTourismSources(galaxy, empire);
