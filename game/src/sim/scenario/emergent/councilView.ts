@@ -5,7 +5,7 @@ import type { Galaxy } from '../../galaxy';
 import type { Empire } from '../../empire';
 import { resolveStarDateDescription } from '../../galaxyTime';
 import { pendingScenarioDecisions } from '../decisions';
-import { COUNCIL_VOTE_DECISION, blocOf, councilOn, peekCouncilState, prestige, voteDeadline, type Council } from './council';
+import { COUNCIL_VOTE_DECISION, blocOf, councilOn, peekCouncilState, prestige, voteDeadline, type Council, type Motion } from './council';
 
 export interface CouncilMemberRow {
     empire: Empire;
@@ -34,6 +34,9 @@ export interface CouncilViewModel {
     rivals: string[];
     /** True when the player is not a member (the block shows the council it knows of). */
     observer: boolean;
+    /** The council and the motion on the floor by reference (19s-2 speeches key on them; null = none). */
+    councilRef: Council | null;
+    motionRef: Motion | null;
 }
 
 /** The player's council (or the first council when the player holds no seat); null when off / none founded. */
@@ -73,5 +76,7 @@ export function councilView(galaxy: Galaxy, player: Empire): CouncilViewModel | 
         yourBloc: yb !== null ? `${yb.name} (${yb.members.map((e) => e.name).join(', ')}; ${yb.hardness} years)` : '',
         rivals: st.councils.filter((x) => x !== c).map((x) => x.name),
         observer: !c.members.includes(player),
+        councilRef: c,
+        motionRef: m,
     };
 }

@@ -40,6 +40,8 @@ import { GAME_DAY_LENGTH, registerScenarioEvent, registerScenarioPeriodic, regis
 import { raiseScenarioDecision, registerScenarioDecision, type ScenarioDecision } from '../decisions';
 import { scenarioFlag, scenarioParam, scenarioRuns, scenarioState } from '../state';
 import { scenarioMessage, scenarioNews, scenarioText } from '../messages';
+import { tryGetText } from '../../textResolver';
+import { messageAbout, noteVoiceCue, seatLabel, seatSpeaker, voicesOn } from '../llm/voiceCues';
 import { LIVELY_GALAXY_ID, OVERLAP_GRID, borderOverlaps, incidentCount } from './livelyGalaxy';
 
 export const WAR_GOALS_FLAG = 'warGoals';
@@ -274,6 +276,14 @@ export function describeGoal(g: WarGoal): string {
     }
 }
 
+/** describeGoal without the event-log text note (the voices read it outside the message path). */
+function describeGoalPlain(g: WarGoal): string {
+    const names = g.colonies.map((c) => c.name).join(', ');
+    const tag = { casusBelli: 'CasusBelli', conquest: 'Conquest', border: 'Border', freeSubject: 'FreeSubject', punish: 'Punish', humiliate: 'Humiliate' }[g.kind];
+    const t = tryGetText(`Lively Goal ${tag}`) ?? g.kind;
+    return t.replace('{0}', g.kind === 'freeSubject' ? (g.subject?.name ?? '') : names);
+}
+
 function newSide(empire: Empire, g: WarGoal, chosenBy: WarSide['chosenBy']): WarSide {
     return { empire, goal: g, chosenBy, shipsDestroyed: 0, shipValue: 0, coloniesTaken: 0, colonyValue: 0, invasions: 0, invasionValue: 0, blockadeDays: 0, bonus: 0 };
 }
@@ -305,7 +315,7 @@ export function startWarLedger(galaxy: Galaxy, attacker: Empire, target: Empire)
     delete st.offers[pairKey(attacker, target)];
     delete st.offers[pairKey(target, attacker)];
     for (const d of decisions) {
-        raiseScenarioDecision(galaxy, d.side.empire, {
+        const dec = raiseScenarioDecision(galaxy, d.side.empire, {
             kind: WAR_GOAL_DECISION,
             title: scenarioText('Lively Goal Title'),
             text: scenarioText('Lively Goal Question', d.enemy.name),
@@ -314,6 +324,27 @@ export function startWarLedger(galaxy: Galaxy, attacker: Empire, target: Empire)
             expiresDays: scenarioParam(galaxy, 'warGoalDecisionDays', 30),
             context: { enemy: d.enemy, candidates: d.candidates },
         });
+        // 19s-2 voices (flag llmVoices; inert otherwise, no state): the marshal argues for the goal on the table.
+        if (voicesOn(galaxy)) {
+            const marshal = seatSpeaker(galaxy, d.side.empire, 'marshal');
+            noteVoiceCue(galaxy, {
+                kind: 'marshal',
+                empire: d.side.empire,
+                message: messageAbout(d.side.empire, dec),
+                voice: d.side.empire,
+                other: d.enemy,
+                speaker: marshal,
+                role: seatLabel('marshal', marshal),
+                facts: {
+                    enemy: d.enemy.name,
+                    weDeclared: attacker === d.side.empire,
+                    recommendedGoal: describeGoalPlain(d.candidates[0]),
+                    otherGoals: d.candidates.slice(1).map(describeGoalPlain).join('; '),
+                    casusBelliBonus: d.side.bonus,
+                },
+                ref: dec,
+            });
+        }
     }
     return ledger;
 }

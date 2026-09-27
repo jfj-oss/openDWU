@@ -20,6 +20,7 @@ import { issuePlayerCommand } from '../sim/player/playerCommands';
 // [proposals] end
 import { showToast } from './toast';
 // [diplovoice] begin
+import { layerVoiceOf } from '../llm/voiceJob'; // [llm] 19s-2
 import { diplomatVoiceConfig, rememberVoicedMessage, voiceDiplomatReply, voicedLineToggle, voicedMessageText, voicingIndicator } from './diplomatVoice';
 // [diplovoice] end
 import { rgbCss } from './hud';
@@ -346,6 +347,8 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
         if (sender === null || sender === player || sender === galaxy.independentEmpire || sender.pirateEmpireBaseHabitat !== null) return;
         const original = resolveGameText(entry.message.description);
         if (original.trim() === '') return;
+        // [llm] 19s-2: a message the voices layer already upgraded keeps that text (its scripted part stays visible).
+        if (layerVoiceOf(entry.message) !== undefined) return;
         const view = { showOriginal: false };
         const show = (text: string): void => {
             textEl.after(voicedLineToggle(textEl, text, original, view));

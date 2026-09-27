@@ -127,6 +127,7 @@ import { relationshipFactors, feelingDescription, type RelationshipFactor } from
 import { incidentRows } from '../../sim/scenario/emergent/espionageView';
 import { councilView } from '../../sim/scenario/emergent/councilView';
 import { reputationRows } from '../../sim/scenario/reputation/view';
+import { activeVoiceJob } from '../../llm/voiceJob'; // [llm] 19s-2
 import { acceptProposal, declineProposal } from '../../sim/player/playerOrders';
 export { acceptProposal, declineProposal };
 
@@ -647,6 +648,17 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
             }
             detail.appendChild(el('div', 'diplomacy-line', council.motion !== '' ? `Motion: ${council.motion}` : 'Motion: (none on the floor)'));
             if (council.motionStatus !== '') detail.appendChild(el('div', 'diplomacy-factor', council.motionStatus));
+            // [llm] 19s-2 voices: two members speak for / against the motion (scripted at once, voiced in place).
+            const speeches = council.motionRef !== null ? activeVoiceJob()?.councilSpeeches(council.councilRef!, council.motionRef, () => render()) ?? null : null;
+            if (speeches !== null) {
+                for (const sp of [speeches.for, speeches.against]) {
+                    if (sp === null) continue;
+                    const line = el('div', 'diplomacy-factor', `${sp.side === 'for' ? 'For' : 'Against'} — ${sp.speaker.name}: ${sp.text}`);
+                    line.style.color = sp.side === 'for' ? LIGHT_GREEN : RED;
+                    if (sp.voiced) line.title = 'Voiced by the local model';
+                    detail.appendChild(line);
+                }
+            }
             if (council.voteDecisionId > 0) {
                 const buttons = el('div', 'diplomacy-line');
                 for (const [id, label] of [['yes', 'Vote yes'], ['no', 'Vote no'], ['abstain', 'Abstain']] as const) {

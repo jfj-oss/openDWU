@@ -37,6 +37,7 @@ import { registerScenarioEvent, registerScenarioGameStart, registerScenarioYearl
 import { registerScenarioDecision, raiseScenarioDecision, type ScenarioDecision } from '../decisions';
 import { scenarioFlag, scenarioParam, scenarioState } from '../state';
 import { scenarioMessage, scenarioNews, scenarioText } from '../messages';
+import { noteVoiceCue, voicesOn } from '../llm/voiceCues';
 
 export const POLITICS_FLAG = 'internalPolitics';
 export const PLOT_DECISION = 'politics.plot';
@@ -743,16 +744,32 @@ export function updateLoyalties(galaxy: Galaxy, empire: Empire, year: number): v
     }
 }
 
-function sendLoyaltyWarnings(galaxy: Galaxy, empire: Empire, year: number): void {
+/** Exported for tests. */
+export function sendLoyaltyWarnings(galaxy: Galaxy, empire: Empire, year: number): void {
     const st = politicsState(galaxy);
     for (const c of getEmpireCharacters(empire)) {
         const e = st.chars.get(c);
         if (e === undefined || !canPlot(c) || e.loyalty >= 35 || e.ambition <= 60 || year - e.warnedYear < 3) continue;
         e.warnedYear = year;
-        scenarioMessage(galaxy, empire, scenarioText('Emergent Loyalty Warning Title'), scenarioText('Emergent Loyalty Warning', roleName(c), c.name), {
+        const m = scenarioMessage(galaxy, empire, scenarioText('Emergent Loyalty Warning Title'), scenarioText('Emergent Loyalty Warning', roleName(c), c.name), {
             type: EmpireMessageType.GeneralWarning,
             subject: c,
         });
+        // 19s-2 voices (flag llmVoices; inert otherwise, no state): the restless character's ultimatum, in their voice,
+        // for the discontented behind them (the 19n court factions use voiceFactionUltimatum once merged).
+        if (empire === galaxy.playerEmpire && voicesOn(galaxy)) {
+            const causes = [...new Set(e.grievances.slice().sort((a, b) => a.amount - b.amount).map((g) => g.cause))].slice(0, 3);
+            noteVoiceCue(galaxy, {
+                kind: 'ultimatum',
+                empire,
+                message: m,
+                voice: empire,
+                other: null,
+                speaker: c,
+                role: `${roleName(c)} ${c.name}`,
+                facts: { leader: c.name, leaderRole: roleName(c), loyalty: Math.round(e.loyalty), ambition: Math.round(e.ambition), grievances: causes.join(', ') || 'none recorded', demand: 'honours and a greater share of power', threat: 'the loyalty of their followers' },
+            });
+        }
     }
 }
 
