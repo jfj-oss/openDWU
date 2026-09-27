@@ -12,6 +12,7 @@ import { registerScenarioEvent, registerScenarioGameStart, registerScenarioYearl
 import { createEmpireMidGame } from '../empireMidGame';
 import { galaxyRaceByName } from '../../story/storyEvents';
 import { scenarioMessage, scenarioText } from '../messages';
+import { noteVoiceCue, voicesOn } from '../llm/voiceCues';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from '../../diplomacy';
 import { OrderType, cargoGetCargo, cargoRemove, empireCreateOrder } from '../../logistics/orders';
 import { EmpireMessageType } from '../../messages';
@@ -195,7 +196,20 @@ export function rimTraderYear(galaxy: Galaxy): void {
         if (st.informed.includes(e.empireId)) continue;
         if (obtainDiplomaticRelation(r, e).type === DiplomaticRelationType.NotMet) continue;
         st.informed.push(e.empireId);
-        scenarioMessage(galaxy, e, scenarioText('Scenario RimTrade Terms Title'), scenarioText('Scenario RimTrade Terms', r.name, rare, rim), { type: EmpireMessageType.GeneralNeutralEvent, sender: r, subject: r.capital });
+        const m = scenarioMessage(galaxy, e, scenarioText('Scenario RimTrade Terms Title'), scenarioText('Scenario RimTrade Terms', r.name, rare, rim), { type: EmpireMessageType.GeneralNeutralEvent, sender: r, subject: r.capital });
+        // 19s-2 voices (flag llmVoices; inert otherwise, no state): the Concord's mask-ritual greeting at first contact.
+        if (e === galaxy.playerEmpire && voicesOn(galaxy)) {
+            noteVoiceCue(galaxy, {
+                kind: 'concord',
+                empire: e,
+                message: m,
+                voice: r,
+                other: e,
+                speaker: r.leader,
+                role: r.leader !== null ? `${r.leader.name} of the ${r.name}` : `the mask-bearer of the ${r.name}`,
+                facts: { occasion: 'first contact', concord: r.name, theySell: rare, theyWant: rim, port: r.capital?.name ?? '' },
+            });
+        }
     }
 }
 

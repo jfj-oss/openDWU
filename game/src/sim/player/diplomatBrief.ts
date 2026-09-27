@@ -35,6 +35,7 @@ import { Character, CharacterRole, CharacterTraitType } from '../characters';
 import type { Race } from '../data/races';
 import type { DialogPartType } from '../data/dialogSet';
 import { feelingDescription, relationshipFactors } from './relationFactors';
+import type { DiplomatGrounding } from './diplomatGrounding';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Brief shape (JSON-able; C# names for enums)
@@ -123,6 +124,8 @@ export interface DiplomatBrief {
         | { kind: 'incoming'; youSend: string; subject: string; originalLine: string };
     /** Counter-proposals the empire may attach (by id). Empty when none apply. */
     counters: DiplomatCounter[];
+    /** 19s-2 (flag llmVoices): the ledger, claims and casus belli from the grounding digest (player/diplomatGrounding.ts). */
+    grounding?: DiplomatGrounding;
 }
 
 // ---------------------------------------------------------------------------------------------------------------

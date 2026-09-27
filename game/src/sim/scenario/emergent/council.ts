@@ -40,6 +40,7 @@ import { galaxyStarDate } from '../../tick/simTime';
 import { GAME_DAY_LENGTH, gameYear, registerScenarioYearly } from '../hooks';
 import { scenarioFlag, scenarioParam, scenarioState } from '../state';
 import { scenarioMessage, scenarioNews } from '../messages';
+import { noteVoiceCue, voicesOn } from '../llm/voiceCues';
 import { raiseScenarioDecision, registerScenarioDecision, type ScenarioDecision } from '../decisions';
 import { empireSpyCrises } from './espionage';
 import { peekPoliticsState } from './politics';
@@ -612,6 +613,21 @@ export function proposeMotion(galaxy: Galaxy, c: Council, cand: Omit<MotionCandi
             context: { councilId: c.id, motionId: m.id },
         });
         m.decisionId = d.id;
+        // 19s-2 voices (flag llmVoices; inert otherwise, no state): two members speak for / against in the council screen.
+        if (voicesOn(galaxy)) {
+            noteVoiceCue(galaxy, {
+                kind: 'speech',
+                empire: player,
+                message: null,
+                voice: m.proposer,
+                other: m.target,
+                speaker: null,
+                role: c.name,
+                facts: { council: c.name, motion: m.text, kind: m.kind, proposer: m.proposer.name, target: m.target.name },
+                ref: { council: c, motion: m },
+                scripted: '',
+            });
+        }
     } else {
         tallyMotion(galaxy, c, m);
     }

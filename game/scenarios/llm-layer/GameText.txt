@@ -1,7 +1,15 @@
-'19s-1 Local LLM layer (tasks/19-mod-layer-scenarios.md §19s): GameText additions. Every tag starts with "Chronicle ".
+'19s-1 Local LLM layer (tasks/19-mod-layer-scenarios.md §19s): GameText additions. Every tag starts with "Chronicle " (19s-1) or "Voice " (19s-2).
 Chronicle Tab History;History
 Chronicle Tab Chronicle;Chronicle
 Chronicle Export;Export Markdown
 Chronicle Empty;No year has ended yet
 Chronicle Pending;The chronicler is still writing…
 Chronicle Fallback Note;(A plain record: no chronicler model answered.)
+'19s-2 Voices: seat titles and the scripted council speeches ({0} speaker, {1} motion, {2} target, {3} proposer).
+Voice Seat spymaster;Spymaster
+Voice Seat chancellor;Chancellor
+Voice Seat marshal;Marshal
+Voice Speech For;The {0} rise for the motion: {1}. They call on the council to act.
+Voice Speech Against;The {0} rise against the motion: {1}. They warn the council against overreach.
+Voice Speeches;Speeches
+Voice Original;original

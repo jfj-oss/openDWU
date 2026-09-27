@@ -27,6 +27,7 @@ import { Cargo, ResourceRef } from '../../cargo';
 import { GAME_DAY_LENGTH, registerScenarioEvent, registerScenarioPeriodic, registerScenarioQuery, registerScenarioYearly, scenarioEmit } from '../hooks';
 import { scenarioFlag, scenarioParam, scenarioState } from '../state';
 import { scenarioMessage, scenarioNews, scenarioText } from '../messages';
+import { noteVoiceCue, voicesOn } from '../llm/voiceCues';
 import { registerScenarioMapFeatures, type ScenarioMapFeatures } from '../mapFeatures';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from '../../diplomacy';
 import { EmpireMessageType } from '../../messages';
@@ -440,7 +441,20 @@ function arrive(galaxy: Galaxy, r: Empire, st: TreasureFleetState, port: BuiltOb
     st.stats.stops++;
     const host = port.actualEmpire;
     if (host !== null) {
-        scenarioMessage(galaxy, host, scenarioText('Scenario RimTrade Treasure Title'), scenarioText('Scenario RimTrade Treasure Docks Host', r.name, portLabel(galaxy, port)), { type: EmpireMessageType.GeneralGoodEvent, sender: r, subject: lead(st) });
+        const m = scenarioMessage(galaxy, host, scenarioText('Scenario RimTrade Treasure Title'), scenarioText('Scenario RimTrade Treasure Docks Host', r.name, portLabel(galaxy, port)), { type: EmpireMessageType.GeneralGoodEvent, sender: r, subject: lead(st) });
+        // 19s-2 voices (flag llmVoices; inert otherwise, no state): the mask-ritual greeting as the treasure fleet docks.
+        if (host === galaxy.playerEmpire && voicesOn(galaxy)) {
+            noteVoiceCue(galaxy, {
+                kind: 'concord',
+                empire: host,
+                message: m,
+                voice: r,
+                other: host,
+                speaker: r.leader,
+                role: `the treasure-fleet mask-bearer of the ${r.name}`,
+                facts: { occasion: 'treasure fleet arrival', concord: r.name, port: portLabel(galaxy, port), ships: st.treasure.length, voyage: st.stats.voyages },
+            });
+        }
         scenarioNews(galaxy, r, scenarioText('Scenario RimTrade Treasure Docks', r.name, portLabel(galaxy, port), host.name), (e) => e !== host, lead(st));
     }
 }

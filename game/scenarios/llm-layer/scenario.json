@@ -1,10 +1,11 @@
 {
   "id": "llm-layer",
   "name": "Local LLM Layer",
-  "description": "Foundations of the local-model layer (19s-1): an async request queue with a per-year budget and a situation cache over the advisor endpoint, fixed-schema grounding digests, and a yearly in-character Chronicle of your empire on the Galactic History screen (a plain digest when no model answers). The model never runs inside the tick and never changes the game. Includes the Event Log scenario (and with it Internal Security and the Emergent Galaxy packages; their own flags).",
+  "description": "Foundations of the local-model layer (19s-1): an async request queue with a per-year budget and a situation cache over the advisor endpoint, fixed-schema grounding digests, and a yearly in-character Chronicle of your empire on the Galactic History screen (a plain digest when no model answers); optional Voices (19s-2) give messages, decisions and council speeches in-character text. The model never runs inside the tick and never changes the game. Includes the Event Log scenario (and with it Internal Security and the Emergent Galaxy packages; their own flags).",
   "include": ["event-log"],
   "flags": [
-    { "name": "llmFoundations", "label": "Local model layer", "description": "Queue, digests and the yearly Chronicle (needs the advisor endpoint in Settings; without a model the Chronicle is the plain digest).", "default": false }
+    { "name": "llmFoundations", "label": "Local model layer", "description": "Queue, digests and the yearly Chronicle (needs the advisor endpoint in Settings; without a model the Chronicle is the plain digest).", "default": false },
+    { "name": "llmVoices", "label": "Voices", "description": "In-character text for existing messages and decisions (spymaster, chancellor and marshal briefings, faction ultimatums, council speeches, the Concord greeting, herder lore, scheme letters) and a diplomat grounded on the reputation ledger and claims. Needs the local model layer; without a model the scripted text stays.", "default": false }
   ],
   "params": [
     { "name": "llmRequestsPerYear", "label": "Model requests per game year (background budget)", "default": 60, "min": 0, "max": 5000 },

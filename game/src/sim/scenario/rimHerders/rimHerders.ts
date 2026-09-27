@@ -13,7 +13,7 @@ import type { Galaxy } from '../../galaxy';
 import type { Empire } from '../../empire';
 import type { BuiltObject } from '../../builtObject';
 import type { Habitat } from '../../types';
-import type { Creature } from '../../creature';
+import { CreatureType, type Creature } from '../../creature';
 import { Cargo, ResourceRef } from '../../cargo';
 import { BuiltObjectRole } from '../../data/designSpecifications';
 import { BuiltObjectSubRole } from '../../builtObjectTypes';
@@ -42,6 +42,7 @@ import {
 } from '../hooks';
 import { registerScenarioDecision, raiseScenarioDecision, type ScenarioDecision } from '../decisions';
 import { scenarioMessage, scenarioNews, scenarioText } from '../messages';
+import { noteVoiceCue, voicesOn } from '../llm/voiceCues';
 import { createEmpireMidGame } from '../empireMidGame';
 import { HERD_ATTACK_RANGE, type RimHerd, faunaParam, herdMembers, peekRimFaunaState, rimHerdOfCreature, setRimHerdDocile } from '../rimFauna/common';
 import { spawnRimHerd, startRimHerdMigration } from '../rimFauna/rimFauna';
@@ -572,7 +573,22 @@ export function rimHerdersWarn(galaxy: Galaxy, year: number): number {
         for (const e of friendlyEmpires(galaxy, hc)) {
             hc.warned.push(e.empireId);
             n++;
-            scenarioMessage(galaxy, e, title(), scenarioText('Scenario RimHerders Migration Warning', hc.colony.name, where), { type: EmpireMessageType.RemoveForcesFromSystem, subject: hc.colony });
+            const m = scenarioMessage(galaxy, e, title(), scenarioText('Scenario RimHerders Migration Warning', hc.colony.name, where), { type: EmpireMessageType.RemoveForcesFromSystem, subject: hc.colony });
+            // 19s-2 voices (flag llmVoices; inert otherwise, no state): the elders tell the migration's lore.
+            const herder = herderOwner(hc);
+            if (e === galaxy.playerEmpire && herder !== null && voicesOn(galaxy)) {
+                const herds = herderColonyHerds(galaxy, hc);
+                noteVoiceCue(galaxy, {
+                    kind: 'herders',
+                    empire: e,
+                    message: m,
+                    voice: herder,
+                    other: e,
+                    speaker: null,
+                    role: `the elders of ${hc.colony.name}`,
+                    facts: { colony: hc.colony.name, corridor: where, herds: herds.length, creatures: [...new Set(herds.map((h) => CreatureType[h.type] ?? String(h.type)))].join(', '), standing: Math.round(st.standing[e.empireId] ?? 0), protector: hc.protectorId === e.empireId },
+                });
+            }
         }
     }
     st.stats.warnings += n;

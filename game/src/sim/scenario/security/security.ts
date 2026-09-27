@@ -39,6 +39,8 @@ import type { ShipGroup } from '../../fleets/shipGroup';
 import { GAME_DAY_LENGTH, registerScenarioPeriodic, registerScenarioQuery, registerScenarioYearly, scenarioQuery } from '../hooks';
 import { scenarioFlag, scenarioParam } from '../state';
 import { scenarioMessage, scenarioText } from '../messages';
+import { tryGetText } from '../../textResolver';
+import { noteVoiceCue, seatLabel, seatSpeaker, voicesOn } from '../llm/voiceCues';
 import { registerStabilityTerm, stabilityTermValues } from '../stability';
 import { KNOWLEDGE_CONFIRMED, revealTo, type ThreatSite } from '../threats/framework';
 import { convert, cultHeldColonies, cultTrigger, peekCultState } from '../threats/cult';
@@ -356,18 +358,34 @@ function kindText(kind: string): string {
     return scenarioText(`Security Kind ${kind}`);
 }
 
-/** A lead changed level: messages, and a confirmed lead is handed back to the package (its knowledge, 19d1 exposure). */
-function onLeadChanged(galaxy: Galaxy, lead: Lead, thing: HiddenThing): void {
+/** A lead changed level: messages, and a confirmed lead is handed back to the package (its knowledge, 19d1 exposure). Exported for tests. */
+export function onLeadChanged(galaxy: Galaxy, lead: Lead, thing: HiddenThing): void {
     if (lead.level === 'confirmed') {
         if (thing.site !== null) revealTo(galaxy, thing.site as unknown as ThreatSite, lead.empire, KNOWLEDGE_CONFIRMED);
         if (thing.kind === 'plot' && thing.target instanceof Character && scenarioFlag(galaxy, POLITICS_FLAG)) politicsState(galaxy).exposed.add(thing.target);
     }
     if (lead.empire !== galaxy.playerEmpire) return;
     const tag = lead.level === 'confirmed' ? 'Security Lead Confirmed' : lead.level === 'suspected' ? 'Security Lead Suspected' : 'Security Lead Cleared';
-    scenarioMessage(galaxy, lead.empire, scenarioText(`${tag} Title`), scenarioText(tag, kindText(lead.kind), leadTargetName(lead)), {
+    const m = scenarioMessage(galaxy, lead.empire, scenarioText(`${tag} Title`), scenarioText(tag, kindText(lead.kind), leadTargetName(lead)), {
         type: lead.level === 'cleared' ? EmpireMessageType.GeneralNeutralEvent : EmpireMessageType.GeneralWarning,
         subject: lead.target,
     });
+    // 19s-2 voices (flag llmVoices; inert otherwise, no state): the spymaster briefs the confirmed lead.
+    if (lead.level === 'confirmed' && voicesOn(galaxy)) {
+        const spy = seatSpeaker(galaxy, lead.empire, 'spymaster');
+        const t = lead.target as { empire?: Empire | null; actualEmpire?: Empire | null };
+        const owner = t.actualEmpire ?? t.empire ?? null;
+        noteVoiceCue(galaxy, {
+            kind: 'spymaster',
+            empire: lead.empire,
+            message: m,
+            voice: lead.empire,
+            other: owner !== null && owner !== lead.empire ? owner : null,
+            speaker: spy,
+            role: seatLabel('spymaster', spy),
+            facts: { lead: tryGetText(`Security Kind ${lead.kind}`) ?? lead.kind, target: leadTargetName(lead), foundBy: lead.source },
+        });
+    }
 }
 
 /** ONE detection roll per live hidden thing whose empire has counter-intelligence (array order). */

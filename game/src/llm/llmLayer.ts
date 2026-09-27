@@ -2,12 +2,16 @@
 // With the scenario flag llmFoundations off this creates nothing (no queue, no timer, no probe). On: one LlmQueue over
 // the advisor endpoint (Settings: advisorEndpoint / advisorModel / advisorApi), the yearly ChronicleJob polled every
 // `pollMs` of real time between frames, and the metrics overlay with `?llmMetrics=1`. Disposed with the game view.
+// 19s-2: with llmVoices also on, the VoiceJob (llm/voiceJob.ts) is polled by the same timer and registered as the
+// active job (the council screen reads its speeches); off → no job.
 
 import type { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
 import { llmOn, type ChronicleYear } from '../sim/scenario/llm/chronicle';
 import { advisorTransport, galaxyLlmClock, llmPolicyFromGalaxy, LlmQueue, type EndpointSettings, type LlmTransport } from './queue';
 import { ChronicleJob } from './chronicleJob';
+import { VoiceJob, setActiveVoiceJob, activeVoiceJob, type VoiceJobOptions } from './voiceJob';
+import { voicesOn } from '../sim/scenario/llm/voiceCues';
 
 export interface LlmLayerOptions {
     galaxy: Galaxy;
@@ -18,6 +22,8 @@ export interface LlmLayerOptions {
     /** Test / dev override of the wire. */
     transport?: LlmTransport;
     onChronicle?: (entry: ChronicleYear) => void;
+    /** 19s-2: a surface was upgraded by a voice. */
+    onVoiced?: VoiceJobOptions['onVoiced'];
     pollMs?: number;
 }
 
@@ -25,15 +31,22 @@ export interface LlmLayer {
     readonly on: boolean;
     queue: LlmQueue | null;
     chronicle: ChronicleJob | null;
+    /** 19s-2 voices (null with llmVoices off). */
+    voices: VoiceJob | null;
     dispose: () => void;
 }
 
 export function startLlmLayer(opts: LlmLayerOptions): LlmLayer {
-    if (!llmOn(opts.galaxy)) return { on: false, queue: null, chronicle: null, dispose: () => {} };
+    if (!llmOn(opts.galaxy)) return { on: false, queue: null, chronicle: null, voices: null, dispose: () => {} };
     const transport = opts.transport ?? advisorTransport(opts.settings);
     const queue = new LlmQueue({ transport, clock: galaxyLlmClock(opts.galaxy), policy: () => llmPolicyFromGalaxy(opts.galaxy) });
     const chronicle = new ChronicleJob({ galaxy: opts.galaxy, empire: opts.player, queue, model: () => transport.model(), onStored: opts.onChronicle });
-    const timer = setInterval(() => chronicle.poll(), opts.pollMs ?? 2000);
+    const voices = voicesOn(opts.galaxy) ? new VoiceJob({ galaxy: opts.galaxy, player: opts.player, queue, onVoiced: opts.onVoiced }) : null;
+    if (voices !== null) setActiveVoiceJob(voices);
+    const timer = setInterval(() => {
+        chronicle.poll();
+        voices?.poll();
+    }, opts.pollMs ?? 2000);
     let overlay: { dispose: () => void } | null = null;
     if (new URLSearchParams(opts.search ?? '').get('llmMetrics') === '1' && typeof document !== 'undefined') {
         void import('../ui/llmOverlay').then((m) => {
@@ -44,9 +57,14 @@ export function startLlmLayer(opts: LlmLayerOptions): LlmLayer {
         on: true,
         queue,
         chronicle,
+        voices,
         dispose: () => {
             clearInterval(timer);
             chronicle.dispose();
+            if (voices !== null) {
+                voices.dispose();
+                if (activeVoiceJob() === voices) setActiveVoiceJob(null);
+            }
             queue.dispose();
             overlay?.dispose();
         },

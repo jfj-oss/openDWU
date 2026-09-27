@@ -16,6 +16,7 @@ import type { Empire } from '../sim/empire';
 import type { EmpireMessage } from '../sim/messages';
 import { buildDiplomatBrief, personaLines, type DiplomatBrief, type DiplomatContext } from '../sim/player/diplomatBrief';
 import { type DiplomatCounterOutcome } from '../sim/player/diplomatCounter';
+import { groundDiplomatBrief } from '../sim/player/diplomatGrounding';
 import { runPlayerCommand } from '../sim/player/playerCommands';
 import { probeAdvisorEndpoint, requestAdvisor, type AdvisorApi, type ChatMessage } from './advisorClient';
 import { getSettings, updateSettings } from './settings';
@@ -87,6 +88,12 @@ export function buildDiplomatSystemPrompt(brief: DiplomatBrief): string {
         'Let your race\'s temperament, your attitude and the facts in BRIEF (attitude factors, incidents, strength) shape the tone. Do not invent treaties, events, names or numbers that are not in BRIEF.',
         'Do not add conditions, demands, terms, taxes or offers of your own, and do not announce or threaten any action (war, sanctions, embargo, attack, gift).',
     );
+    // 19s-2 (flag llmVoices): the ledger and the claims are facts the reply may lean on.
+    if (brief.grounding !== undefined) {
+        lines.push(
+            'BRIEF.grounding holds the real record between you: the reputation ledger (your causes about them, the grievances they hold against you), claims on colonies, casus belli and the war score. Let the reply refer to the grievance, claim or casus belli that bears on this exchange; never invent others.',
+        );
+    }
     if (brief.counters.length > 0) {
         const fitting = brief.counters.find((c) => c.proposes === brief.relation.wants);
         lines.push(
@@ -177,7 +184,8 @@ export async function voiceDiplomatReply(args: {
     applyCounter?: () => boolean;
 }): Promise<VoicedReply> {
     const original = args.context.original;
-    const brief = buildDiplomatBrief(args.galaxy, args.ai, args.player, args.context);
+    // 19s-2: grounded on the ledger + claims with llmVoices on (unchanged otherwise).
+    const brief = groundDiplomatBrief(args.galaxy, buildDiplomatBrief(args.galaxy, args.ai, args.player, args.context), args.ai, args.player);
     const out: VoicedReply = { text: original, original, voiced: false, latencyMs: 0, counter: null, brief, raw: '' };
     let raw: string;
     try {
