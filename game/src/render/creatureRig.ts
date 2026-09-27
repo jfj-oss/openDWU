@@ -994,6 +994,11 @@ export function containerRgba(ramp: Rgb[], w: number, h: number, k: number): Rgb
             l -= 0.1 * smoothstep(2.6, 3.2, edge) * (1 - smoothstep(3.2, 4.5, edge)); // shadow line inside the rim
             if (Math.abs(x - w * 0.5) < 0.8 || Math.abs(y - h * 0.22) < 0.7) l -= 0.1; // door seam, strap line
             if (y > h * 0.62 && y < h * 0.74) l += 0.2 * (k % 2); // painted band
+            // Three-face read under the shared light (RIG_LIGHT: overhead, tilted to texture −y, a little toward +x):
+            // the top face lighter, the front (+x, head-ward) face mid, the side face away from the light darker.
+            if (y >= h * 0.8) l *= 0.56;
+            else if (x >= w * 0.86) l *= 0.8;
+            else l += 0.05;
             l *= 0.85 + 0.3 * noise(x / 4, y / 4);
             const [r, g, b] = ramp[Math.max(0, Math.min(31, Math.floor(l * 32)))];
             const i = (y * w + x) * 4;
@@ -1289,7 +1294,36 @@ const ROPE = 0xd8c49a;
 const PAD = 0x3a2a20;
 const PENNANTS = [0xc0392b, 0xe0a030] as const;
 
+/**
+ * The light shared with the body skin, rig-local (x along the body to the head, y across = the rope's +normal, z out of
+ * the screen). bodyField shades the skin top-lit — the spine brightest, the flanks falling off over the rounded back —
+ * and containerRgba lights its boxes from texture −y; the harness uses that same overhead key with the small −y tilt.
+ */
+export const RIG_LIGHT = (() => {
+    const v = [0.2, -0.35, 0.91];
+    const n = Math.hypot(v[0], v[1], v[2]);
+    return { x: v[0] / n, y: v[1] / n, z: v[2] / n };
+})();
+
+/** Where shadows fall (rig-local, per unit of height above the surface): away from the light. */
+export const SHADOW_DIR = { x: -RIG_LIGHT.x / RIG_LIGHT.z, y: -RIG_LIGHT.y / RIG_LIGHT.z };
+
+/** Lambert term of a surface on the body cross-section at across s ∈ [-1, 1] (normal (0, s, √(1−s²))). Pure. */
+export function lambertAcross(s: number): number {
+    const c = Math.max(-1, Math.min(1, s));
+    return Math.max(0, RIG_LIGHT.y * c + RIG_LIGHT.z * Math.sqrt(1 - c * c));
+}
+
+/** A base colour lit by a Lambert term: ambient 0.42, key up to 1.25 × (precomputed per element, no filters). Pure. */
+export function litColor(base: number, lambert: number): number {
+    const k = 0.42 + 0.83 * Math.max(0, Math.min(1, lambert));
+    const ch = (sh: number): number => Math.max(0, Math.min(255, Math.round(((base >> sh) & 255) * k)));
+    return (ch(16) << 16) | (ch(8) << 8) | ch(0);
+}
+
 type P = { x: number; y: number };
+/** A sample of a ribbon centre line: position, half-width, direction, and where it lies across the body (−1…1). */
+type RibbonPt = { p: P; w: number; ang: number; s?: number };
 
 /**
  * The harness overlay on a carrier, redrawn every frame from the rig's current outline (backPoint / halfWidthAt), so
@@ -1409,8 +1443,8 @@ export class HarnessView {
      * radius along the segment normal, bowed toward the head over the rounded back (more when the body bends / the
      * strap slackens). Returns the sampled centre line with the half-width of the ribbon at each point.
      */
-    private strapLine(u: number, reach: number, t: number): { p: P; w: number; ang: number }[] {
-        const out: { p: P; w: number; ang: number }[] = [];
+    private strapLine(u: number, reach: number, t: number): RibbonPt[] {
+        const out: RibbonPt[] = [];
         const L = this.carrier.length;
         const bow = 0.012 + 0.03 * Math.abs(this.bend(u)) + 0.006 * ropeSlack(t, u, this.periodS);
         const N = 14;
@@ -1421,64 +1455,114 @@ export class HarnessView {
             const hw = this.carrier.halfWidthAt(uu) * reach;
             const q = this.at(uu, s * hw);
             // Seen from above the strap narrows where it turns under the flank.
-            out.push({ p: q, w: L * 0.014 * (0.45 + 0.55 * round), ang: q.ang });
+            out.push({ p: q, w: L * 0.014 * (0.45 + 0.55 * round), ang: q.ang, s });
         }
         return out;
     }
 
-    /** Ribbon along a centre line: leather fill, lit leading edge, shadowed trailing edge, braid ticks, a half twist. */
-    private ribbon(g: Graphics, line: { p: P; w: number; ang: number }[], twistAt: number | null): void {
-        const left: P[] = [];
-        const right: P[] = [];
-        for (let i = 0; i < line.length; i++) {
-            const { p, ang } = line[i];
+    /**
+     * Ribbon along a centre line, shaded by the shared light: each segment's tone from the Lambert term of the body
+     * surface it lies on (s across the cross-section), split into a lit leading half and a shaded trailing half (a
+     * rounded leather strap); the halves swap at a twist. `onSkin` first lays its ambient occlusion on the skin: two soft
+     * dark ribbons, wider and offset along SHADOW_DIR.
+     */
+    private ribbon(g: Graphics, line: RibbonPt[], twistAt: number | null, onSkin: boolean, base = LEATHER): void {
+        const L = this.carrier.length;
+        const n = line.length;
+        const halfW = (i: number): number => {
             let w = line[i].w;
             if (twistAt !== null) w *= 0.35 + 0.65 * Math.min(1, Math.abs(i - twistAt) / 1.6);
-            const tx = Math.cos(ang);
-            const ty = Math.sin(ang);
-            left.push({ x: p.x + tx * w, y: p.y + ty * w });
-            right.push({ x: p.x - tx * w, y: p.y - ty * w });
-        }
-        g.poly([...left, ...right.slice().reverse()].flatMap((q) => [q.x, q.y])).fill({ color: LEATHER });
-        const L = this.carrier.length;
-        const edge = (pts: P[], color: number, width: number): void => {
-            g.moveTo(pts[0].x, pts[0].y);
-            for (let i = 1; i < pts.length; i++) g.lineTo(pts[i].x, pts[i].y);
-            g.stroke({ width, color, alpha: 0.95 });
+            return w;
         };
-        edge(left, LEATHER_LIT, Math.max(0.8, L * 0.0035));
-        edge(right, LEATHER_SHADE, Math.max(0.8, L * 0.004));
+        const side = (i: number, k: number, grow = 1, off = 0): P => {
+            const { p, ang } = line[i];
+            const w = halfW(i) * grow;
+            return { x: p.x + Math.cos(ang) * w * k + SHADOW_DIR.x * off, y: p.y + Math.sin(ang) * w * k + SHADOW_DIR.y * off };
+        };
+        if (onSkin) {
+            for (const [grow, alpha, off] of [[2.2, 0.1, L * 0.012], [1.5, 0.2, L * 0.007]] as const) {
+                const pts: P[] = [];
+                for (let i = 0; i < n; i++) pts.push(side(i, 1, grow, off));
+                for (let i = n - 1; i >= 0; i--) pts.push(side(i, -1, grow, off));
+                g.poly(pts.flatMap((q) => [q.x, q.y])).fill({ color: 0x000000, alpha });
+            }
+        }
+        for (let i = 0; i < n - 1; i++) {
+            const sAcross = line[i].s ?? 0;
+            const lam = lambertAcross(sAcross);
+            const twisted = twistAt !== null && i >= twistAt;
+            const lit = litColor(base, Math.min(1, lam * 1.08 + 0.12));
+            const shade = litColor(base, lam * 0.62);
+            const c0 = side(i, 0);
+            const c1 = side(i + 1, 0);
+            const l0 = side(i, 1);
+            const l1 = side(i + 1, 1);
+            const r0 = side(i, -1);
+            const r1 = side(i + 1, -1);
+            g.poly([l0.x, l0.y, l1.x, l1.y, c1.x, c1.y, c0.x, c0.y]).fill({ color: twisted ? shade : lit });
+            g.poly([c0.x, c0.y, c1.x, c1.y, r1.x, r1.y, r0.x, r0.y]).fill({ color: twisted ? lit : shade });
+        }
+        const edge = (k: number, color: number, width: number, alpha: number): void => {
+            const q0 = side(0, k);
+            g.moveTo(q0.x, q0.y);
+            for (let i = 1; i < n; i++) {
+                const q = side(i, k);
+                g.lineTo(q.x, q.y);
+            }
+            g.stroke({ width, color, alpha });
+        };
+        edge(0.92, LEATHER_LIT, Math.max(0.6, L * 0.0022), 0.7);
+        edge(-1, LEATHER_SHADE, Math.max(0.7, L * 0.003), 0.9);
         // Braid: short diagonal stitches along the ribbon.
-        for (let i = 1; i < line.length - 1; i++) {
-            const { p, ang, w } = line[i];
+        for (let i = 1; i < n - 1; i++) {
+            const { p, ang } = line[i];
+            const w = halfW(i);
             const tx = Math.cos(ang);
             const ty = Math.sin(ang);
-            const nx = -ty;
-            const ny = tx;
             const d = w * 0.7;
-            g.moveTo(p.x + tx * d - nx * d * 0.6, p.y + ty * d - ny * d * 0.6).lineTo(p.x - tx * d + nx * d * 0.6, p.y - ty * d + ny * d * 0.6);
+            g.moveTo(p.x + tx * d + ty * d * 0.6, p.y + ty * d - tx * d * 0.6).lineTo(p.x - tx * d - ty * d * 0.6, p.y - ty * d + tx * d * 0.6);
         }
-        g.stroke({ width: Math.max(0.6, L * 0.002), color: LEATHER_SHADE, alpha: 0.7 });
+        g.stroke({ width: Math.max(0.5, L * 0.0016), color: LEATHER_SHADE, alpha: 0.55 });
     }
 
-    /** An organic anchor pad where a strap meets the skin: a soft lobed patch with a pale rim and a rivet. */
+    /** An organic anchor pad where a strap meets the skin: occlusion halo, a shaded lobe lit on the light side, a rivet. */
     private pad(g: Graphics, p: P, ang: number, r: number): void {
-        const pts: number[] = [];
-        for (let k = 0; k < 12; k++) {
-            const a = (k / 12) * Math.PI * 2;
-            const rr = r * (0.8 + 0.2 * Math.sin(a * 3 + ang));
-            pts.push(p.x + Math.cos(a + ang) * rr * 1.3, p.y + Math.sin(a + ang) * rr);
-        }
-        g.poly(pts).fill({ color: PAD, alpha: 0.95 }).stroke({ width: Math.max(0.6, r * 0.18), color: LEATHER_LIT, alpha: 0.55 });
-        g.circle(p.x, p.y, r * 0.3).fill({ color: BRASS });
+        const lobe = (scale: number, dx: number, dy: number): number[] => {
+            const pts: number[] = [];
+            for (let k = 0; k < 12; k++) {
+                const a = (k / 12) * Math.PI * 2;
+                const rr = r * scale * (0.8 + 0.2 * Math.sin(a * 3 + ang));
+                pts.push(p.x + dx + Math.cos(a + ang) * rr * 1.3, p.y + dy + Math.sin(a + ang) * rr);
+            }
+            return pts;
+        };
+        g.poly(lobe(1.5, SHADOW_DIR.x * r * 0.4, SHADOW_DIR.y * r * 0.4)).fill({ color: 0x000000, alpha: 0.16 });
+        g.poly(lobe(1, 0, 0)).fill({ color: litColor(PAD, 0.45) });
+        g.poly(lobe(0.7, -SHADOW_DIR.x * r * 0.25, -SHADOW_DIR.y * r * 0.25)).fill({ color: litColor(PAD, 0.95), alpha: 0.8 });
+        this.stud(g, p, r * 0.3);
     }
 
+    /** A small brass stud / rivet: dark rim, lit face, tiny specular. */
+    private stud(g: Graphics, p: P, r: number): void {
+        g.circle(p.x, p.y, r).fill({ color: litColor(BRASS, 0.35) });
+        g.circle(p.x - SHADOW_DIR.x * r * 0.25, p.y - SHADOW_DIR.y * r * 0.25, r * 0.7).fill({ color: litColor(BRASS, 0.9) });
+        g.circle(p.x - SHADOW_DIR.x * r * 0.45, p.y - SHADOW_DIR.y * r * 0.45, r * 0.22).fill({ color: 0xfff6d8, alpha: 0.95 });
+    }
+
+    /** A brass ring: its cast shadow, the ring shaded dark → lit toward the light, a thin specular arc. */
     private ring(g: Graphics, p: P, r: number): void {
-        g.circle(p.x, p.y, r).stroke({ width: Math.max(0.8, r * 0.45), color: BRASS, alpha: 1 });
-        g.circle(p.x - r * 0.3, p.y - r * 0.3, r * 0.25).fill({ color: 0xfff0c0, alpha: 0.8 });
+        const w = Math.max(0.8, r * 0.45);
+        g.circle(p.x + SHADOW_DIR.x * r * 0.5, p.y + SHADOW_DIR.y * r * 0.5, r).stroke({ width: w, color: 0x000000, alpha: 0.25 });
+        g.circle(p.x, p.y, r).stroke({ width: w, color: litColor(BRASS, 0.4), alpha: 1 });
+        const la = Math.atan2(-SHADOW_DIR.y, -SHADOW_DIR.x);
+        g.arc(p.x, p.y, r, la - 1.3, la + 1.3).stroke({ width: w * 0.7, color: litColor(BRASS, 1), alpha: 1 });
+        g.arc(p.x, p.y, r, la - 0.35, la + 0.35).stroke({ width: Math.max(0.5, w * 0.3), color: 0xfff6d8, alpha: 0.95 });
     }
 
-    /** A rope between two anchors as a catenary bellying outward (away from the body), with knots; returns the midpoint. */
+    /**
+     * A rope between two anchors as a catenary bellying outward, with knots: its faint cast shadow on the skin, a dark
+     * underside and a thinner lit top strand offset toward the light. Returns the midpoint.
+     */
     private rope(g: Graphics, a: P, b: P, outward: P, sag: number): P {
         const pts: P[] = [];
         for (let k = 0; k <= 12; k++) {
@@ -1486,11 +1570,22 @@ export class HarnessView {
             const s = catenarySag(f, sag);
             pts.push({ x: a.x + (b.x - a.x) * f + outward.x * s, y: a.y + (b.y - a.y) * f + outward.y * s });
         }
-        g.moveTo(pts[0].x, pts[0].y);
-        for (let i = 1; i < pts.length; i++) g.lineTo(pts[i].x, pts[i].y);
         const L = this.carrier.length;
-        g.stroke({ width: Math.max(0.9, L * 0.0045), color: ROPE, alpha: 0.95 });
-        for (const k of [3, 9]) g.circle(pts[k].x, pts[k].y, Math.max(1, L * 0.005)).fill({ color: ROPE });
+        const w = Math.max(0.9, L * 0.0045);
+        const line = (dx: number, dy: number, width: number, color: number, alpha: number): void => {
+            g.moveTo(pts[0].x + dx, pts[0].y + dy);
+            for (let i = 1; i < pts.length; i++) g.lineTo(pts[i].x + dx, pts[i].y + dy);
+            g.stroke({ width, color, alpha });
+        };
+        // The rope hangs a little off the skin: its shadow falls further out as it sags.
+        line(SHADOW_DIR.x * L * 0.01, SHADOW_DIR.y * L * 0.01, w * 1.2, 0x000000, 0.2);
+        line(0, 0, w, litColor(ROPE, 0.35), 1);
+        line(-SHADOW_DIR.x * w * 0.22, -SHADOW_DIR.y * w * 0.22, w * 0.45, litColor(ROPE, 1), 0.95);
+        for (const k of [3, 9]) {
+            const r = Math.max(1, L * 0.005);
+            g.circle(pts[k].x, pts[k].y, r).fill({ color: litColor(ROPE, 0.4) });
+            g.circle(pts[k].x - SHADOW_DIR.x * r * 0.3, pts[k].y - SHADOW_DIR.y * r * 0.3, r * 0.6).fill({ color: litColor(ROPE, 1) });
+        }
         return pts[6];
     }
 
@@ -1521,14 +1616,14 @@ export class HarnessView {
         const g = this.gTop;
         const sway = Math.sin((2 * Math.PI * t) / this.periodS - 0.9);
         // Bridle: a ribbon loop round the head (noseband + cheek straps).
-        const loop: { p: P; w: number; ang: number }[] = [];
+        const loop: RibbonPt[] = [];
         for (let k = 0; k <= 20; k++) {
             const a = (k / 20) * Math.PI * 2;
             const u = 0.885 + 0.04 * Math.cos(a);
             const q = this.at(u, Math.sin(a) * c.halfWidthAt(u) * 1.02);
-            loop.push({ p: q, w: L * 0.009, ang: q.ang + Math.PI / 2 + a });
+            loop.push({ p: q, w: L * 0.009, ang: q.ang + Math.PI / 2 + a, s: Math.sin(a) });
         }
-        this.ribbon(g, loop, null);
+        this.ribbon(g, loop, null, true);
         const cheek = this.at(0.885, c.halfWidthAt(0.885) * 1.02);
         this.ring(g, cheek, L * 0.012);
         // One tether from the cheek ring curving back to a flank ring, swaying with the body wave.
@@ -1542,8 +1637,14 @@ export class HarnessView {
         const base = this.at(0.7, 0);
         const tip = this.at(0.7 - 0.05, -c.halfWidthAt(0.7) * 0.55 - L * 0.01 * sway);
         this.pad(g, base, base.ang, L * 0.02);
-        g.moveTo(base.x, base.y).lineTo(tip.x, tip.y).stroke({ width: Math.max(1, L * 0.008), color: WOOD, alpha: 1 });
-        g.circle(tip.x, tip.y, L * 0.009).fill({ color: WOOD_DARK });
+        const mw = Math.max(1, L * 0.008);
+        // Mast: its shadow on the skin, a shaded pole with a lit edge; the beacon housing with a specular glint.
+        g.moveTo(base.x, base.y).lineTo(tip.x + SHADOW_DIR.x * L * 0.03, tip.y + SHADOW_DIR.y * L * 0.03).stroke({ width: mw, color: 0x000000, alpha: 0.22 });
+        g.moveTo(base.x, base.y).lineTo(tip.x, tip.y).stroke({ width: mw, color: litColor(WOOD, 0.45), alpha: 1 });
+        g.moveTo(base.x - SHADOW_DIR.x * mw * 0.25, base.y - SHADOW_DIR.y * mw * 0.25).lineTo(tip.x - SHADOW_DIR.x * mw * 0.25, tip.y - SHADOW_DIR.y * mw * 0.25).stroke({ width: mw * 0.35, color: litColor(WOOD, 1), alpha: 0.9 });
+        g.circle(tip.x, tip.y, L * 0.011).fill({ color: litColor(WOOD_DARK, 0.5) });
+        g.circle(tip.x - SHADOW_DIR.x * L * 0.003, tip.y - SHADOW_DIR.y * L * 0.003, L * 0.007).fill({ color: litColor(0x5a1a14, 1) });
+        g.circle(tip.x - SHADOW_DIR.x * L * 0.006, tip.y - SHADOW_DIR.y * L * 0.006, L * 0.0022).fill({ color: 0xffe0d8, alpha: 0.95 });
         const b = this.beacon!;
         b.visible = !dropping && beaconOn(t, (id % 10) * 0.1);
         b.position.set(tip.x + this.gTop.position.x, tip.y);
@@ -1551,9 +1652,9 @@ export class HarnessView {
         const hang = this.at(0.9, -c.halfWidthAt(0.9) * 1.02);
         const th = hang.ang - Math.PI / 2 + 0.5 * Math.sin(t * 2.3 + id);
         const bell = { x: hang.x + Math.cos(th) * L * 0.035, y: hang.y + Math.sin(th) * L * 0.035 };
-        g.moveTo(hang.x, hang.y).lineTo(bell.x, bell.y).stroke({ width: Math.max(0.6, L * 0.003), color: BRASS, alpha: 0.9 });
-        g.circle(bell.x, bell.y, L * 0.012).fill({ color: BRASS }).stroke({ width: Math.max(0.5, L * 0.003), color: 0x7a5a20 });
-        g.circle(bell.x - L * 0.004, bell.y - L * 0.004, L * 0.004).fill({ color: 0xfff4c8, alpha: 0.9 });
+        g.circle(bell.x + SHADOW_DIR.x * L * 0.012, bell.y + SHADOW_DIR.y * L * 0.012, L * 0.012).fill({ color: 0x000000, alpha: 0.22 });
+        g.moveTo(hang.x, hang.y).lineTo(bell.x, bell.y).stroke({ width: Math.max(0.6, L * 0.003), color: litColor(BRASS, 0.6), alpha: 0.9 });
+        this.stud(g, bell, L * 0.012);
     }
 
     private poseCargo(t: number, secondsOfDay: number, id: number, dropping: boolean, age: number): void {
@@ -1565,14 +1666,14 @@ export class HarnessView {
         // Belly girth (below the body: only its ends show past the flanks).
         const gu = (CARGO_U_FROM + CARGO_U_TO) / 2;
         const girth = this.strapLine(gu, 1.16, t);
-        this.ribbon(this.gUnder, girth, null);
+        this.ribbon(this.gUnder, girth, null, false, litColor(LEATHER, 0.3));
         // Straps wrapping the body, with anchor pads where they meet the skin and rings where they cross the rail.
         const anchors: { l: P; r: P; lOut: P; rOut: P }[] = [];
         this.bandUs.forEach((u) => {
             const line = this.strapLine(u, 1.03, t);
             const mid = Math.floor(line.length / 2);
             // The twist where the strap passes under the howdah rail (both sides).
-            this.ribbon(gb, line, u > CARGO_U_FROM && u < CARGO_U_TO ? mid : null);
+            this.ribbon(gb, line, u > CARGO_U_FROM && u < CARGO_U_TO ? mid : null, true);
             const railL = this.at(u, -deck);
             const railR = this.at(u, deck);
             const l = line[1].p;
@@ -1594,10 +1695,60 @@ export class HarnessView {
             edgeR.push(this.at(u, deck * taper));
         }
         const outline = [...edgeL, ...edgeR.slice().reverse()];
-        gb.poly(outline.map((q) => ({ x: q.x + L * 0.006, y: q.y + L * 0.008 })).flatMap((q) => [q.x, q.y])).fill({ color: 0x000000, alpha: 0.35 });
-        gb.poly(outline.flatMap((q) => [q.x, q.y])).fill({ color: WOOD });
+        // Ambient occlusion under the platform: three soft dark halos, growing and falling away from the light.
+        for (const [grow, alpha, off] of [[1.22, 0.1, 0.03], [1.12, 0.14, 0.02], [1.04, 0.22, 0.01]] as const) {
+            const halo: P[] = [];
+            for (let k = 0; k <= 16; k++) {
+                const u = deckFrom + ((deckTo - deckFrom) * k) / 16;
+                halo.push(this.at(u, -deck * grow * (0.82 + 0.18 * Math.sin((Math.PI * k) / 16))));
+            }
+            for (let k = 16; k >= 0; k--) {
+                const u = deckFrom + ((deckTo - deckFrom) * k) / 16;
+                halo.push(this.at(u, deck * grow * (0.82 + 0.18 * Math.sin((Math.PI * k) / 16))));
+            }
+            gb.poly(halo.flatMap((q) => [q.x + SHADOW_DIR.x * L * off, q.y + SHADOW_DIR.y * L * off])).fill({ color: 0x000000, alpha });
+        }
+        // Planked deck: each cell toned by the saddle's curve over the back (lit toward the light, shaded away).
+        const CELLS = 6;
+        for (let k = 0; k < 16; k++) {
+            for (let j = 0; j < CELLS; j++) {
+                const f0 = j / CELLS;
+                const f1 = (j + 1) / CELLS;
+                const lerp = (a: P, b: P, f: number): P => ({ x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f });
+                const a0 = lerp(edgeL[k], edgeR[k], f0);
+                const a1 = lerp(edgeL[k], edgeR[k], f1);
+                const b1 = lerp(edgeL[k + 1], edgeR[k + 1], f1);
+                const b0 = lerp(edgeL[k + 1], edgeR[k + 1], f0);
+                const lam = lambertAcross(((f0 + f1) / 2 - 0.5) * 1.1) * (0.94 + 0.06 * (k % 2));
+                gb.poly([a0.x, a0.y, a1.x, a1.y, b1.x, b1.y, b0.x, b0.y]).fill({ color: litColor(WOOD, lam) });
+            }
+        }
+        // Plank grooves: a dark seam with a lit bevel beside it (toward the light).
         for (let k = 1; k < 16; k++) gb.moveTo(edgeL[k].x, edgeL[k].y).lineTo(edgeR[k].x, edgeR[k].y);
         gb.stroke({ width: Math.max(0.6, L * 0.0025), color: WOOD_DARK, alpha: 0.9 });
+        const bev = L * 0.003;
+        for (let k = 1; k < 16; k++) {
+            const dx = Math.cos(edgeL[k].ang) * bev;
+            const dy = Math.sin(edgeL[k].ang) * bev;
+            gb.moveTo(edgeL[k].x + dx, edgeL[k].y + dy).lineTo(edgeR[k].x + dx, edgeR[k].y + dy);
+        }
+        gb.stroke({ width: Math.max(0.4, L * 0.0012), color: litColor(WOOD, 1), alpha: 0.45 });
+        // Contact shadows of the containers on the deck (and of the stacked tier on the lower one).
+        if (!dropping) {
+            for (const bx of this.boxes) {
+                const p = this.at(bx.u, this.laneOffsets[bx.lane]);
+                const hl = bx.s.width / 2;
+                const hw2 = bx.s.height / 2;
+                const cs = Math.cos(p.ang);
+                const sn = Math.sin(p.ang);
+                for (const [grow, alpha, off] of [[1.18, 0.12, bx.stacked ? 0.018 : 0.012], [1.04, 0.26, bx.stacked ? 0.012 : 0.006]] as const) {
+                    const ox = p.x + SHADOW_DIR.x * L * off;
+                    const oy = p.y + SHADOW_DIR.y * L * off;
+                    const corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([i, j]) => [ox + (i * hl * cs - j * hw2 * sn) * grow, oy + (i * hl * sn + j * hw2 * cs) * grow]);
+                    gb.poly(corners.flat()).fill({ color: 0x000000, alpha });
+                }
+            }
+        }
         // Containers (and their stacked second tier) on the deck, or tumbling off as debris.
         for (let i = 0; i < this.boxes.length; i++) {
             const bx = this.boxes[i];
@@ -1625,33 +1776,52 @@ export class HarnessView {
         const netFrom = deckFrom + 0.02;
         const netTo = deckTo - 0.1;
         const cells = 9;
+        const strands: P[][] = [];
         for (const dir of [-1, 1]) {
             for (let j = -cells; j <= cells; j++) {
-                let first = true;
+                let cur: P[] = [];
                 for (let k = 0; k <= 10; k++) {
                     const s = -1 + (2 * k) / 10;
                     const u = netFrom + (netTo - netFrom) * ((j / cells) * 0.5 + 0.5 + dir * s * 0.18);
                     if (u < netFrom || u > netTo) {
-                        first = true;
+                        if (cur.length > 1) strands.push(cur);
+                        cur = [];
                         continue;
                     }
                     const sagU = 0.004 * Math.sin(k * Math.PI) * ropeSlack(t, u, this.periodS);
-                    const q = this.at(u + sagU, s * deck * 0.92);
-                    if (first) gt.moveTo(q.x, q.y);
-                    else gt.lineTo(q.x, q.y);
-                    first = false;
+                    cur.push(this.at(u + sagU, s * deck * 0.92));
                 }
+                if (cur.length > 1) strands.push(cur);
             }
         }
-        gt.stroke({ width: Math.max(0.5, L * 0.0022), color: NET, alpha: 0.75 });
+        const strokeStrands = (dx: number, dy: number, width: number, color: number, alpha: number): void => {
+            for (const st of strands) {
+                gt.moveTo(st[0].x + dx, st[0].y + dy);
+                for (let i = 1; i < st.length; i++) gt.lineTo(st[i].x + dx, st[i].y + dy);
+            }
+            gt.stroke({ width, color, alpha });
+        };
+        const nw = Math.max(0.5, L * 0.0022);
+        // The net's faint shadow on the containers, then the cord (shaded body, lit top edge).
+        strokeStrands(SHADOW_DIR.x * L * 0.006, SHADOW_DIR.y * L * 0.006, nw * 1.1, 0x000000, 0.28);
+        strokeStrands(0, 0, nw, litColor(NET, 0.45), 0.9);
+        strokeStrands(-SHADOW_DIR.x * nw * 0.3, -SHADOW_DIR.y * nw * 0.3, nw * 0.5, litColor(NET, 1), 0.8);
         // Low railing: posts and a rail round the deck.
         const railPts = outline.concat([outline[0]]);
-        gt.moveTo(railPts[0].x, railPts[0].y);
-        for (let i = 1; i < railPts.length; i++) gt.lineTo(railPts[i].x, railPts[i].y);
-        gt.stroke({ width: Math.max(1, L * 0.006), color: RAIL, alpha: 1 });
+        const rw = Math.max(1, L * 0.006);
+        const rail = (dx: number, dy: number, width: number, color: number, alpha: number): void => {
+            gt.moveTo(railPts[0].x + dx, railPts[0].y + dy);
+            for (let i = 1; i < railPts.length; i++) gt.lineTo(railPts[i].x + dx, railPts[i].y + dy);
+            gt.stroke({ width, color, alpha });
+        };
+        rail(SHADOW_DIR.x * L * 0.008, SHADOW_DIR.y * L * 0.008, rw, 0x000000, 0.25);
+        rail(0, 0, rw, litColor(RAIL, 0.45), 1);
+        rail(-SHADOW_DIR.x * rw * 0.25, -SHADOW_DIR.y * rw * 0.25, rw * 0.45, litColor(RAIL, 1), 0.9);
         for (let k = 0; k <= 16; k += 2) {
-            gt.circle(edgeL[k].x, edgeL[k].y, L * 0.0045).fill({ color: WOOD_DARK });
-            gt.circle(edgeR[k].x, edgeR[k].y, L * 0.0045).fill({ color: WOOD_DARK });
+            for (const q of [edgeL[k], edgeR[k]]) {
+                gt.circle(q.x, q.y, L * 0.0045).fill({ color: litColor(WOOD_DARK, 0.5) });
+                gt.circle(q.x - SHADOW_DIR.x * L * 0.0015, q.y - SHADOW_DIR.y * L * 0.0015, L * 0.0022).fill({ color: litColor(WOOD, 1) });
+            }
         }
         // Curved roof over the front of the howdah: a canopy with ribs, lit on its leading edge.
         const roofFrom = deckTo - 0.1;
@@ -1663,12 +1833,23 @@ export class HarnessView {
             roof.push(this.at(deckTo + arch * 0.4, s * deck * 0.96));
             roofBack.push(this.at(roofFrom - arch, s * deck * 0.96));
         }
-        gt.poly([...roof, ...roofBack.slice().reverse()].flatMap((q) => [q.x, q.y])).fill({ color: ROOF });
+        // The roof's shadow on the containers behind / beside it, then the canopy in strips toned by its curve.
+        gt.poly([...roof, ...roofBack.slice().reverse()].flatMap((q) => [q.x + SHADOW_DIR.x * L * 0.02, q.y + SHADOW_DIR.y * L * 0.02])).fill({ color: 0x000000, alpha: 0.3 });
+        for (let k = 0; k < 12; k++) {
+            const sMid = -1 + (2 * (k + 0.5)) / 12;
+            gt.poly([roof[k].x, roof[k].y, roof[k + 1].x, roof[k + 1].y, roofBack[k + 1].x, roofBack[k + 1].y, roofBack[k].x, roofBack[k].y]).fill({ color: litColor(ROOF, lambertAcross(sMid * 0.95)) });
+        }
+        for (let k = 2; k < 12; k += 3) gt.moveTo(roof[k].x, roof[k].y).lineTo(roofBack[k].x, roofBack[k].y);
+        gt.stroke({ width: Math.max(0.5, L * 0.002), color: litColor(WOOD_DARK, 0.4), alpha: 0.8 });
         gt.moveTo(roof[0].x, roof[0].y);
         for (const q of roof) gt.lineTo(q.x, q.y);
-        gt.stroke({ width: Math.max(0.8, L * 0.004), color: ROOF_LIT, alpha: 1 });
-        for (let k = 2; k < 12; k += 3) gt.moveTo(roof[k].x, roof[k].y).lineTo(roofBack[k].x, roofBack[k].y);
-        gt.stroke({ width: Math.max(0.5, L * 0.002), color: WOOD_DARK, alpha: 0.8 });
+        gt.stroke({ width: Math.max(0.6, L * 0.0028), color: litColor(ROOF_LIT, 0.8), alpha: 1 });
+        // Ridge: a thin specular line along the canopy's crest (brightest where the curve faces the light).
+        const ridge = roof.map((q, k) => ({ x: (q.x + roofBack[k].x) / 2, y: (q.y + roofBack[k].y) / 2 }));
+        const kLit = Math.round(((RIG_LIGHT.y / Math.hypot(RIG_LIGHT.y, RIG_LIGHT.z)) * 0.5 + 0.5) * 12);
+        gt.moveTo(ridge[Math.max(0, kLit - 4)].x, ridge[Math.max(0, kLit - 4)].y);
+        for (let k = Math.max(0, kLit - 4) + 1; k <= Math.min(12, kLit + 4); k++) gt.lineTo(ridge[k].x, ridge[k].y);
+        gt.stroke({ width: Math.max(0.4, L * 0.0014), color: 0xffe8d0, alpha: 0.9 });
         // Pennants trailing off the rear rail corners, rippling with the wave phase.
         PENNANTS.forEach((color, pi) => {
             const root = pi === 0 ? edgeL[0] : edgeR[0];
@@ -1676,6 +1857,7 @@ export class HarnessView {
             const len = L * 0.1;
             const top: P[] = [];
             const bot: P[] = [];
+            const slope: number[] = [];
             for (let k = 0; k <= 8; k++) {
                 const f = k / 8;
                 const back = { x: -Math.cos(root.ang), y: -Math.sin(root.ang) };
@@ -1686,9 +1868,15 @@ export class HarnessView {
                 const cy = root.y + back.y * len * f + nrm.y * ripple;
                 top.push({ x: cx + nrm.x * w, y: cy + nrm.y * w });
                 bot.push({ x: cx - nrm.x * w, y: cy - nrm.y * w });
+                slope.push(Math.cos(f * 5 - (2 * Math.PI * t) / (this.periodS * 0.3) + pi));
             }
-            gt.poly([...top, ...bot.slice().reverse()].flatMap((q) => [q.x, q.y])).fill({ color, alpha: 0.95 });
-            gt.circle(root.x, root.y, L * 0.006).fill({ color: BRASS });
+            // Cast shadow on the skin, then the cloth in segments lit / shaded by the ripple's slope toward the light.
+            gt.poly([...top, ...bot.slice().reverse()].flatMap((q) => [q.x + SHADOW_DIR.x * L * 0.015, q.y + SHADOW_DIR.y * L * 0.015])).fill({ color: 0x000000, alpha: 0.2 });
+            for (let k = 0; k < 8; k++) {
+                const lam = 0.62 + 0.38 * slope[k] * Math.sign(-SHADOW_DIR.y * side || 1);
+                gt.poly([top[k].x, top[k].y, top[k + 1].x, top[k + 1].y, bot[k + 1].x, bot[k + 1].y, bot[k].x, bot[k].y]).fill({ color: litColor(color, lam), alpha: 0.97 });
+            }
+            this.stud(gt, root, L * 0.006);
         });
         // Rings where the straps cross the rail.
         for (const q of this.ringsAt) this.ring(gt, q, L * 0.008);
@@ -1706,8 +1894,11 @@ export class HarnessView {
                 const th = Math.atan2(out.y, out.x) + 0.45 * Math.sin((2 * Math.PI * t) / this.periodS - 1.4 - i);
                 const chain = L * 0.03;
                 const lp = { x: mid.x + Math.cos(th) * chain, y: mid.y + Math.sin(th) * chain };
+                const hb = L * 0.007;
+                gt.rect(lp.x - hb + SHADOW_DIR.x * L * 0.012, lp.y - hb + SHADOW_DIR.y * L * 0.012, hb * 2, hb * 2).fill({ color: 0x000000, alpha: 0.22 });
                 gt.moveTo(mid.x, mid.y).lineTo(lp.x, lp.y).stroke({ width: Math.max(0.5, L * 0.002), color: 0x8a7a60, alpha: 0.9 });
-                gt.rect(lp.x - L * 0.007, lp.y - L * 0.007, L * 0.014, L * 0.014).fill({ color: WOOD_DARK }).stroke({ width: Math.max(0.5, L * 0.002), color: BRASS });
+                gt.rect(lp.x - hb, lp.y - hb, hb * 2, hb * 2).fill({ color: litColor(WOOD_DARK, 0.4) }).stroke({ width: Math.max(0.5, L * 0.002), color: litColor(BRASS, 0.8) });
+                gt.rect(lp.x - hb, lp.y - hb, hb * 2, hb).fill({ color: litColor(WOOD_DARK, 1), alpha: 0.7 });
                 const lt = this.lights[li];
                 lt.position.set(lp.x, lp.y);
                 lt.visible = lightsOn(secondsOfDay, containerLightId(id, li));

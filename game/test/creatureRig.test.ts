@@ -9,6 +9,10 @@ import {
     CARGO_U_FROM,
     CARGO_U_TO,
     HARNESS_DEBRIS_S,
+    RIG_LIGHT,
+    SHADOW_DIR,
+    lambertAcross,
+    litColor,
     beaconOn,
     catenarySag,
     ropeSlack,
@@ -161,6 +165,21 @@ describe('19g-7b tamed look — harness state machine (pure)', () => {
         expect(BEACON_PERIOD_S).toBe(1);
         const pattern = [0, 0.25, 0.5, 0.75, 1, 1.25].map((t) => beaconOn(t));
         expect(pattern).toEqual([true, true, false, false, true, true]);
+    });
+
+    it('one light for skin and tack: top-lit like the body (spine brightest), tilted to −y like the container art', () => {
+        expect(Math.hypot(RIG_LIGHT.x, RIG_LIGHT.y, RIG_LIGHT.z)).toBeCloseTo(1, 9);
+        expect(RIG_LIGHT.z).toBeGreaterThan(0.85);
+        // Across the back: the lit flank is the −y one; both flanks darker than the crest.
+        expect(lambertAcross(-0.3)).toBeGreaterThan(lambertAcross(0.3));
+        expect(lambertAcross(0)).toBeGreaterThan(lambertAcross(0.95));
+        expect(lambertAcross(0)).toBeGreaterThan(lambertAcross(-0.95));
+        // Shadows fall away from the light (to +y).
+        expect(SHADOW_DIR.y).toBeGreaterThan(0);
+        // Tones: ambient floor, lit brighter than the base, channels clamped.
+        expect(litColor(0x808080, 0)).toBe(0x363636);
+        expect((litColor(0x808080, 1) >> 16) & 255).toBeGreaterThan(0x80);
+        expect(litColor(0xffffff, 1)).toBe(0xffffff);
     });
 
     it('ropes hang as catenaries and slacken / tighten with the body wave (lagging)', () => {
