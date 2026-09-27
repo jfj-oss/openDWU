@@ -11,4 +11,9 @@ import './emergent/crises'; // 19d2 resource crises (flag resourceCrises)
 import './emergent/politics';
 import './emergent/politicsActions';
 import './emergent/demographics';
+import './threats/corporateCoup';
+import './threats/exchange';
+import './threats/ghostArmada';
+import './threats/robotMutiny';
+import './threats/timeBomb';
 export {};

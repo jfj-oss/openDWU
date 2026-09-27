@@ -1,0 +1,10 @@
+'The Exchange: message texts (scenarioText tags). {n} items are filled by the scenario code.
+Exchange Station Name;The Exchange
+Exchange Funds Traced Title;Funds traced
+Exchange Funds Traced;Our agents have traced enemy war funding to an independent trading station: the Exchange.
+Exchange Funds Confirmed Title;The Exchange exposed
+Exchange Funds Confirmed;Confirmed: the Exchange has been quietly financing both sides of this war from behind its neutral flag.
+Exchange Sabotage Title;Sabotage traced to the Exchange
+Exchange Sabotage;Investigators blame {0} for the sabotage at {1} - but our own reports now point at the Exchange's hidden hand.
+Exchange Collapsed;The Exchange has been exposed and blockaded into silence. Every empire it funded now stands on its own.
+Exchange Victory Title;The Exchange is closed

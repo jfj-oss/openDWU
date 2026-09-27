@@ -1,0 +1,14 @@
+{
+  "id": "exchange",
+  "name": "The Exchange",
+  "description": "A huge independent trading station, friendly to all, secretly finances both sides of every war and runs sabotage against the strong side. Discover it and blockade it to end the funding.",
+  "flags": [
+    { "name": "threatExchange", "label": "The Exchange", "description": "A neutral trading megastation secretly funds both sides of every war.", "default": false }
+  ],
+  "params": [
+    { "name": "exchangeYear", "label": "Year the station is built", "default": 20, "min": 0, "max": 200 },
+    { "name": "exchangeFundPct", "label": "Yearly funding (% of the funded empire's treasury)", "default": 5, "min": 0, "max": 100 },
+    { "name": "exchangeSabotagePerYear", "label": "Sabotage missions run per year", "default": 2, "min": 0, "max": 20 },
+    { "name": "exchangeBlockadeDays", "label": "Cumulative blockade days that collapse the Exchange", "default": 120, "min": 1, "max": 1000 }
+  ]
+}

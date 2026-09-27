@@ -1,0 +1,15 @@
+'Time-Bomb Tech: message texts (scenarioText tags). {n} items are filled by the scenario code.
+TimeBomb Faction Name;the precursor lattice
+TimeBomb Detonation Title;Catastrophic resonance failure
+TimeBomb Detonation;{0} has vanished. Precursor lattice tech, unstable at the scale our engineers pushed it to, tore the planet apart.
+TimeBomb Detonation News;{0} of the {1} has vanished in a catastrophic resonance failure.
+TimeBomb Hint Title;Anomalous readings
+TimeBomb Hint;Our scientists report the precursor tech salvaged from the ruins carries anomalous resonance readings. They cannot yet explain them.
+TimeBomb Confirmed Title;The lattice is unstable
+TimeBomb Confirmed;Analysis of the detonations is conclusive: the precursor lattice tech has a catastrophic, self-destructive failure mode. Any colony that uses it is at risk.
+TimeBomb Abandoned Title;Precursor tech abandoned
+TimeBomb Abandoned;{0} has abandoned the precursor lattice technology, stripping its bonuses but ending the risk of detonation.
+TimeBomb Contained;No empire still holds the precursor lattice technology. The detonations have stopped.
+TimeBomb Defeat;{0} planets have vanished to the precursor lattice's failure mode. The scale of the loss cannot be undone.
+TimeBomb Victory Title;The lattice is abandoned
+TimeBomb Defeat Title;The lattice claims its price
