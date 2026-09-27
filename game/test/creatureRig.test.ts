@@ -5,7 +5,13 @@ import { describe, expect, it } from 'vitest';
 import { decodePng, dwuAssetPath } from './helpers/pngDecode';
 import {
     FAUNA_BODIES,
+    BEACON_PERIOD_S,
+    CARGO_U_FROM,
+    CARGO_U_TO,
     HARNESS_DEBRIS_S,
+    beaconOn,
+    cargoLanes,
+    containersPerLane,
     HARNESS_FADE_S,
     PALETTE_FRAMES,
     artStats,
@@ -142,6 +148,17 @@ describe('19g-7b tamed look — harness state machine (pure)', () => {
             if (on.some((x) => x !== on[0])) differ++;
         }
         expect(differ).toBeGreaterThan(5);
+    });
+
+    it('whale cargo: 2–3 lanes over the middle 60 % of the back; hunter beacon blinks at a slow regular 1 s', () => {
+        expect(CARGO_U_TO - CARGO_U_FROM).toBeCloseTo(0.6, 9);
+        expect(cargoLanes(1200)).toBe(3);
+        expect(cargoLanes(135)).toBe(2);
+        expect(containersPerLane(1200)).toBe(4);
+        expect(containersPerLane(55)).toBe(2);
+        expect(BEACON_PERIOD_S).toBe(1);
+        const pattern = [0, 0.25, 0.5, 0.75, 1, 1.25].map((t) => beaconOn(t));
+        expect(pattern).toEqual([true, true, false, false, true, true]);
     });
 
     it.skipIf(!haveInstall)('containers take the original freighter palette', () => {

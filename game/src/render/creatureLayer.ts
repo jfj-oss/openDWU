@@ -54,7 +54,6 @@ import {
     HarnessView,
     LanternSwarm,
     StraightCarrier,
-    containerCount,
     harnessInit,
     harnessStep,
     lookCapMul,
@@ -471,7 +470,7 @@ export class CreatureLayer {
         const carrier = v.rig ?? v.straight;
         if (carrier !== null && v.hstate.phase !== 'none' && v.harness === null) {
             const art = this.faunaArt();
-            v.harness = new HarnessView(carrier, art.containers, art.light!, containerCount(c.size));
+            v.harness = new HarnessView(carrier, look?.look === 'hunter' ? 'band' : 'cargo', art.containers, art.light!, c.size);
             carrier.top.addChild(v.harness.root);
         }
         v.harness?.pose(v.hstate, t, secondsOfDay, c.creatureId);

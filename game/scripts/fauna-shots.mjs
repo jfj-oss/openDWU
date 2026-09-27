@@ -1,5 +1,6 @@
 // 19g-7b new fauna captures (render-only ?faunaGallery=1 stand-ins drawn by the creature layer): 4K frames of the eight
-// variants at 100 % zoom, a tamed whale + hunters with harness and work lights (close), and the lantern shoal.
+// variants at 100 % zoom, a tamed whale + hunters with harness and work lights (close, and at zoom factor 3), and the
+// lantern shoal.
 // Usage: node scripts/fauna-shots.mjs [base=http://localhost:5173/] [outDir=shots]
 // Prints the page's [faunaGallery] / [newFauna] console lines, errors, and each drawn view (look, harness, px).
 import { chromium } from 'playwright-core';
@@ -7,6 +8,7 @@ const [base = 'http://localhost:5173/', outDir = 'shots'] = process.argv.slice(2
 const views = [
     ['gallery', 'fauna-gallery.png'],
     ['tamed', 'fauna-tamed.png'],
+    ['tamedMid', 'fauna-tamed-mid.png'],
     ['shoal', 'fauna-shoal.png'],
 ];
 const browser = await chromium.launch({

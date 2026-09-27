@@ -11,7 +11,7 @@ import { CreatureType } from '../sim/creature';
 import { FaunaVariant, faunaVariantDef } from '../sim/scenario/newFauna/common';
 import type { CreatureGallerySource, FaunaLook } from './creatureLayer';
 
-export type FaunaGalleryView = 'gallery' | 'tamed' | 'shoal';
+export type FaunaGalleryView = 'gallery' | 'tamed' | 'tamedMid' | 'shoal';
 
 export function faunaGalleryEnabled(search: string): boolean {
     return new URLSearchParams(search).get('faunaGallery') === '1';
@@ -67,7 +67,7 @@ export class FaunaGallery implements CreatureGallerySource {
 
     constructor(private galaxy: Galaxy, world: Container, private camera: Camera, search: string) {
         const v = new URLSearchParams(search).get('faunaView');
-        this.view = v === 'tamed' || v === 'shoal' ? v : 'gallery';
+        this.view = v === 'tamed' || v === 'tamedMid' || v === 'shoal' ? v : 'gallery';
         this.labels.eventMode = 'none';
         world.addChild(this.labels);
     }
@@ -107,7 +107,7 @@ export class FaunaGallery implements CreatureGallerySource {
             for (let k = 0; k < 3; k++) add(FaunaVariant.NestMother, col(1) + Math.cos(k * 2.1) * 140, sy / 2 + Math.sin(k * 2.1) * 110, { label: false, size: 40, look: 'hunter', radius: 30 });
             add(FaunaVariant.Scavenger, col(2), sy / 2);
             add(FaunaVariant.BroodCarrier, col(3), sy / 2);
-        } else if (this.view === 'tamed') {
+        } else if (this.view === 'tamed' || this.view === 'tamedMid') {
             add(FaunaVariant.VoidWhale, -40, -60, { tamed: true, size: 1300, radius: 12 });
             add(FaunaVariant.HunterPack, 170, 90, { tamed: true, size: 70, radius: 10 });
             add(FaunaVariant.HunterPack, 110, 130, { tamed: true, size: 60, label: false, radius: 10 });
@@ -127,6 +127,10 @@ export class FaunaGallery implements CreatureGallerySource {
         if (this.view === 'gallery') {
             cam.centerOn(cx, cy);
             cam.zoom = cam.clampZoom(1);
+        } else if (this.view === 'tamedMid') {
+            // Play distance: zoom factor 3.
+            cam.centerOn(cx, cy);
+            cam.zoom = cam.clampZoom(1 / 3);
         } else {
             // Past the game's 100 % limit for the close-ups only (as the whale pilot's close views).
             cam.maxZoom = 3;
