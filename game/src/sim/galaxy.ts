@@ -1441,6 +1441,28 @@ export class Galaxy {
                 list.push({ s, d: this.calculateDistanceSquared(x, y, s.systemStar.xpos, s.systemStar.ypos) });
             }
         }
+        // Perf: only list[0] is used. When the smallest distance is held by exactly one entry (and no distance is NaN,
+        // which would make the comparer inconsistent), every correct sort — the .NET introsort included — puts that
+        // entry first, so it is returned without sorting. Ties at the minimum keep the full netSort (its unstable order
+        // decides which one comes first).
+        if (list.length === 0) return null;
+        let min = list[0].d;
+        let minAt = 0;
+        let minCount = 1;
+        let nan = Number.isNaN(min);
+        for (let i = 1; i < list.length && !nan; i++) {
+            const d = list[i].d;
+            if (d < min) {
+                min = d;
+                minAt = i;
+                minCount = 1;
+            } else if (d === min) {
+                minCount++;
+            } else if (Number.isNaN(d)) {
+                nan = true;
+            }
+        }
+        if (!nan && minCount === 1) return list[minAt].s.systemStar;
         netSort(list, (a, b) => (a.d < b.d ? -1 : a.d > b.d ? 1 : 0));
         return list.length > 0 ? list[0].s.systemStar : null;
     }
