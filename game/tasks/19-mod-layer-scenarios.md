@@ -115,7 +115,18 @@ Build after 19b lands; each is mostly data + a spread rule on the 19b hooks.
 
 ## 19g — Third idea batch (ACCEPTED by the user 2026-09-26 with items 10, 11, 12, 14 REMOVED; strategy depth, exploration, port-only capabilities)
 1. Stargate networks (player-built gate pairs → chokepoints, gate wars). [medium]
-2. Megaprojects: multi-stage wonders needing multi-empire resources. [medium]
+2. Megaprojects: multi-stage wonders needing multi-empire resources. [medium] — **Concrete design (2026-09-27):** a
+   megaproject = a planetary facility with N stage facilities in the overlay's facilities data (wonder placement rule +
+   a scenario site check); each stage built by the host colony's yard from resources in colony cargo; partner
+   contributions = the diplomacy tradeable-item transfer (money/resources) into the host cargo, delivered by partners'
+   freighters under ordinary contracts; shares = a scenario ledger. Effects via existing hooks: Beacon = huge-range
+   long-range scanner component on the facility (+ lifts 19h fog in range via scanRangeModifier); Rim wall = removes
+   19h storm clouds (nebula locations) in a radius; Gate hub = anchor for 19g-1 stargates (Bacon stargate stub in
+   movement.ts); Ark = moves a colony's population off a doomed world via the passenger/migration path (planet
+   destroyer / 19f time-bomb); Observatory = detection bonus in 19m's leads roll. Between-stage events: 19d3 sabotage-
+   construction against the site, a 19d2 shortage strike, a partner treaty break (attitude penalty); council condemn /
+   protect motions. A finished project is a colony facility → a 19g-3 war goal like any colony. Stellar engine DROPPED
+   (no star lifecycle in the original).
 3. War goals & peace terms (cede colonies, reparations, demilitarised systems). [medium]
 4. Succession: leaders age/die, heirs, regencies, crises → persona shifts. [cheap-medium]
 5. Frontier autonomy: distance-based drift toward local rule, sector governors with power. [medium]
