@@ -43,6 +43,7 @@ import { proposePeaceTerms } from '../scenario/lively/peaceTerms';
 import type { PeaceTerms } from '../scenario/lively/warGoals';
 import { runSecurityAction, startInvestigation, type SecurityActionName } from '../scenario/security/security';
 import { appointToSeat, type SeatName } from '../scenario/court/court';
+import { proposeTie, startScheme, useHook, type ComplianceAct, type HookAction, type SchemeKind, type TieKind } from '../scenario/court/intrigue';
 import {
     acceptProposal,
     declineProposal,
@@ -200,6 +201,13 @@ export const PLAYER_OPS = {
     // [court] begin — scenario 19n court & dynasties (scenario/court/court.ts; flag-gated inside)
     /** Appoint a character to a council seat (null vacates it). */
     courtAppoint: (galaxy: Galaxy, empire: Empire, seat: SeatName, character: Character | null) => appointToSeat(galaxy, empire, seat, character),
+    /** 19n package 2: an agent runs a scheme (sway / blackmail / sabotageLoyalty / assassinate) against a character. */
+    courtScheme: (galaxy: Galaxy, empire: Empire, agent: Character, kind: SchemeKind, target: Character, act: ComplianceAct | null = null, seat: SeatName | null = null) =>
+        startScheme(galaxy, empire, agent, kind, target, act, seat),
+    /** Spend a hook: force compliance on one of our characters (seat / withdraw / abandonPlot) or expose the secret. */
+    courtHook: (galaxy: Galaxy, empire: Empire, hookId: number, action: HookAction, act: ComplianceAct = 'abandonPlot', seat: SeatName | null = null) => useHook(galaxy, empire, hookId, action, act, seat),
+    /** Propose a dynastic tie (envoy / ward / spouse) to another empire (also offered on the Diplomacy conversation). */
+    courtProposeTie: (galaxy: Galaxy, empire: Empire, other: Empire, kind: TieKind) => proposeTie(galaxy, empire, other, kind),
     // [court] end
 } as const;
 

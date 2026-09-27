@@ -81,9 +81,9 @@ Effort: ~1 week on top of 19a (charter action, tariff rule, company AI persona).
 2. Resource crises: scarcity shocks propagate through the private economy (luxury loss → unrest, fuel-out → grounded fleets, price spikes → smuggling).
 3. Espionage consequences: exposed agents → diplomatic crises; stolen tech proliferates; false-flag missions start wars between rivals.
 4. Refugees & demographics: refugee fleets (events) settle and shift colony race mix (multi-race populations + race attitudes exist).
-5. Pirate evolution: rich factions go legitimate, ally, or serve as deniable proxies for empires.
+5. ~~Pirate evolution~~ — DROPPED by the user 2026-09-27 ("pointless"; 19l-4 pirate ambition covers the useful part).
 6. Independents as actors: leagues, hired pirate protection, protectorate petitions.
-7. Plague & ecology: disease along freighter routes (quarantine decisions), overdevelopment degrading planets (links to 19b).
+7. ~~Plague & ecology~~ — DROPPED by the user 2026-09-27 (too hard for its value; Dark Farms keeps its own overdevelopment trigger).
 8. Galactic institutions: a council voting sanctions/embargoes → blocs.
 9. Finance: loans (on the port list), bonds, default, creditors seizing assets (links to 19c).
 10. Persona layer (18c) as the multiplier that makes empires weigh all of the above by their traits.

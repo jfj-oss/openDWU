@@ -37,3 +37,67 @@ Court Refused Title;Ultimatum Refused
 Court Refused;We refused {0}'s faction; its members now back a plot against us.
 Emergent Reason Feud;House feud
 Emergent Reason Faction;Faction refused
+'19n package 2 — court intrigue (schemes, secrets & hooks, dynastic ties, relationships, claims)
+Emergent Reason Swayed;Swayed by an agent
+Emergent Reason Sabotage;Loyalty sabotaged
+Emergent Reason Exposed;Secret exposed
+Emergent Reason Scheme;Schemed against
+Emergent Reason Rival;Rivalry
+Security Kind scheme;Court scheme
+Security Kind secret;Secret
+Court Scheme sway;Sway
+Court Scheme blackmail;Blackmail
+Court Scheme sabotageLoyalty;Sabotage loyalty
+Court Scheme assassinate;Assassination
+Court Scheme Mission CourtSway Succeed;{0} was swayed
+Court Scheme Mission CourtSway Fail;Failed to sway {0}
+Court Scheme Mission CourtBlackmail Succeed;{0} was blackmailed
+Court Scheme Mission CourtBlackmail Fail;Failed to blackmail {0}
+Court Scheme Mission CourtSabotageLoyalty Succeed;{0}'s loyalty was undermined
+Court Scheme Mission CourtSabotageLoyalty Fail;Failed to undermine {0}'s loyalty
+Court Scheme Mission CourtAssassinate Succeed;{0} was assassinated
+Court Scheme Mission CourtAssassinate Fail;Failed to assassinate {0}
+Court Scheme Started;{0} begins a scheme ({1}) against {2}.
+Court Scheme Succeeded Title;Scheme Succeeded
+Court Scheme Succeeded;{0}'s scheme ({1}) against {2} succeeded.
+Court Scheme Failed Title;Scheme Failed
+Court Scheme Failed;{0}'s scheme ({1}) against {2} failed.
+Court Scheme Discovered Title;A Scheme Uncovered
+Court Scheme Discovered;{0} schemed against us: {1} against {2}, carried out by {3}.
+Court Scheme Exposed Title;Our Scheme Exposed
+Court Scheme Exposed;{0}'s scheme ({1}) was traced back to us by {2}.
+Court Secret corruption;Corruption
+Court Secret cult;Cult membership
+Court Secret defection;Defection talks
+Court Secret scheme;A scheme they ran
+Court Hook Gained Title;A Hook
+Court Hook Gained;We hold a hook on {0}: {1}.
+Court Exposed Title;Secret Exposed
+Court Exposed;The secret of {0} ({1}) was exposed by {2}.
+Court Act seat;Take a council seat as told
+Court Act withdraw;Withdraw from the faction
+Court Act abandonPlot;Abandon the plot
+Court Complied;{0} complied: {1}.
+Court Tie envoy;Envoy
+Court Tie ward;Ward
+Court Tie spouse;Marriage
+Court Tie lover;Lovers
+Court Tie Propose envoy;Propose an exchange of envoys
+Court Tie Propose ward;Propose to send a ward
+Court Tie Propose spouse;Propose a dynastic marriage
+Court Tie Made Title;A Dynastic Tie
+Court Tie Made;{0}: {1} of {2} goes to {3}.
+Court Tie Offer Title;A Dynastic Tie Proposed
+Court Tie Offer;{0} proposes a tie ({1}): {2} would come to our court.
+Court Tie Accepted;{0} accepts the tie ({1}).
+Court Tie Refused;{0} refuses the tie ({1}).
+Court Option Accept;Accept
+Court Option Decline;Decline
+Court Relationship friend;{0} and {1} became friends.
+Court Relationship rival;{0} and {1} became rivals.
+Court Relationship lover;{0} and {1} became lovers.
+Court Reconciled;Houses {0} and {1} are reconciled.
+Court Claim;House {0} claims {1} ({2}).
+Court Claim Cause former;former ownership
+Court Claim Cause marriage;marriage
+Court Claim Cause casusBelli;casus belli

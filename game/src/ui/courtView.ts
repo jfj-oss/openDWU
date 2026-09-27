@@ -21,6 +21,7 @@ import {
     successionLaw,
     type SeatName,
 } from '../sim/scenario/court/court';
+import { claimsFor, empireTies, hooksOf, intrigueOn, peekIntrigueState, schemeLabel, secretLabel, tieLabel } from '../sim/scenario/court/intrigue';
 
 export function courtVisible(galaxy: Galaxy): boolean {
     return courtOn(galaxy) && peekCourtState(galaxy) !== null;
@@ -93,5 +94,22 @@ export function courtSummaryRows(galaxy: Galaxy, empire: Empire): CourtSummaryRo
     rows.push({ label: 'Council', value: `${filled} / ${SEATS.length} seats`, title: lines.join('\n') });
     const f = empireFaction(galaxy, empire);
     if (f !== null) rows.push({ label: 'Faction', value: `${f.leader.name} (${f.members.length}) — ${f.state === 'backing' ? 'backing a plot' : 'ultimatum'}` });
+    rows.push(...intrigueSummaryRows(galaxy, empire));
+    return rows;
+}
+
+/** 19n package 2 rows: schemes running, hooks held, dynastic ties, claims (empty with courtIntrigue off). Read-only. */
+export function intrigueSummaryRows(galaxy: Galaxy, empire: Empire): CourtSummaryRow[] {
+    const st = peekIntrigueState(galaxy);
+    if (!intrigueOn(galaxy) || st === null) return [];
+    const rows: CourtSummaryRow[] = [];
+    const running = st.schemes.filter((s) => s.empire === empire && s.state === 'running');
+    if (running.length > 0) rows.push({ label: 'Schemes', value: `${running.length} running`, title: running.map((s) => `${s.agent.name}: ${schemeLabel(s.kind)} against ${s.target.name}`).join('\n') });
+    const hooks = hooksOf(galaxy, empire);
+    if (hooks.length > 0) rows.push({ label: 'Hooks', value: `${hooks.length}`, title: hooks.map((h) => `${h.character.name}: ${secretLabel(h.secret)}`).join('\n') });
+    const ties = empireTies(galaxy, empire);
+    if (ties.length > 0) rows.push({ label: 'Dynastic ties', value: `${ties.length}`, title: ties.map((t) => `${tieLabel(t.kind)}: ${t.character.name} (${t.from.name} → ${t.to.name})`).join('\n') });
+    const claims = claimsFor(galaxy, empire);
+    if (claims.length > 0) rows.push({ label: 'Claims', value: `${claims.length}`, title: claims.map((c) => `${c.colony.name}: ${Math.round(c.strength)} (${scenarioText(`Court Claim Cause ${c.cause}`)})`).join('\n') });
     return rows;
 }

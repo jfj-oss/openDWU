@@ -16,7 +16,7 @@ import { scenarioFlag, scenarioState } from '../state';
 
 export const SECURITY_FLAG = 'internalSecurity';
 
-export type HiddenKind = 'plot' | 'convert' | 'sleeper' | 'hiveNode' | 'farm' | 'nest' | 'boughtGovernor' | 'foreignAgent';
+export type HiddenKind = 'plot' | 'convert' | 'sleeper' | 'hiveNode' | 'farm' | 'nest' | 'boughtGovernor' | 'foreignAgent' | 'scheme' | 'secret';
 export type HiddenTarget = Character | BuiltObject | Habitat;
 
 /** What a package passes when something hidden appears. */
@@ -267,5 +267,14 @@ export interface SecuritySlots {
     refugeesArrived: ((galaxy: Galaxy, origin: Habitat, destination: Habitat) => void) | null;
     /** 19n court: extra counter-intelligence strength of an empire in the detection roll (the spymaster); 0 when off. Pure. */
     strengthBonus: ((galaxy: Galaxy, empire: Empire) => number) | null;
+    /** 19n court intrigue: is a court hidden thing (kind 'scheme' / 'secret', package '19n.*') still alive? Pure. */
+    courtThingAlive: ((galaxy: Galaxy, thing: HiddenThing) => boolean) | null;
+    /** 19n court intrigue: a lead on a court hidden thing changed level (the victim learns the schemer; a secret → a hook). No Rnd. */
+    courtLeadChanged: ((galaxy: Galaxy, lead: Lead, thing: HiddenThing) => void) | null;
 }
-export const securitySlots: SecuritySlots = { refugeesArrived: null, strengthBonus: null };
+export const securitySlots: SecuritySlots = { refugeesArrived: null, strengthBonus: null, courtThingAlive: null, courtLeadChanged: null };
+
+/** True for a hidden thing the 19n court package registered (its liveness and lead reactions are the court's). */
+export function isCourtThing(thing: HiddenThing): boolean {
+    return thing.package.startsWith('19n.');
+}

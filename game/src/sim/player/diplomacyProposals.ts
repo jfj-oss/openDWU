@@ -80,6 +80,7 @@ import { scenarioFlag } from '../scenario/state';
 import { scenarioText } from '../scenario/messages';
 import { isRimTraderAI } from '../scenario/rimTrade/common';
 import { scenarioEmit, scenarioQuery } from '../scenario/hooks';
+import { scenarioProposalSlots } from '../scenario/proposalSlots';
 
 /** The greeting-menu entry (Main.Part9.cs:208-249) an option sits under. FOLLOW_UP: a reply's own options. GREETING: a
  *  greeting-menu entry that acts itself (the pirate player's protection entries, Main.Part9.cs:175-189). */
@@ -215,6 +216,10 @@ export function listProposals(galaxy: Galaxy, player: Empire, other: Empire): Pr
 
     // TREATY_PROPOSAL (Main.Part9.cs:339).
     list.push(...treatyProposalOptions(galaxy, player, other, diplomaticRelation));
+    // Mod layer (19n court intrigue: dynastic ties): scenario proposal kinds under the same menu; none without a scenario.
+    if (galaxy.scenario !== null && scenarioProposalSlots.options !== null) {
+        for (const o of scenarioProposalSlots.options(galaxy, player, other)) list.push(option(o.id, o.id as DialogPartType, 'TREATY_PROPOSAL', o.label, other, 0.0, o.enabled, o.hint));
+    }
 
     // Main.Part9.cs:211 "Send a gift" only when StateMoney >= 1000; GIFT_PROPOSE (:522).
     if (player.stateMoney >= 1000.0) {
@@ -476,6 +481,11 @@ export function submitProposal(
     }
     if (chosen === undefined) return refused('No longer on offer');
     if (!chosen.enabled) return refused(chosen.hint);
+    // Mod layer: a scenario proposal kind is answered by its package (the other empire accepts or refuses at once).
+    if (id.startsWith('SCENARIO_') && scenarioProposalSlots.submit !== null) {
+        const r = scenarioProposalSlots.submit(galaxy, player, other, id);
+        return { ok: true, accepted: r.accepted, message: r.message, reply: null, replyArgs: [], followUps: [], expireMessagesFor: null, automationPrompt: false, trade: null };
+    }
     return evaluateProposal(galaxy, player, other, chosen, opts);
 }
 

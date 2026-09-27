@@ -83,6 +83,7 @@ import { formatGameTextNow } from './textResolver';
 import { scenarioEmit } from './scenario/hooks';
 import { scenarioFlag } from './scenario/state';
 import { ESPIONAGE_FLAG, espionageHooks } from './scenario/emergent/espionageHooks';
+import { scenarioText } from './scenario/messages';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Enums (IntelligenceMissionType.cs / IntelligenceMissionOutcome.cs, member order exact)
@@ -101,6 +102,18 @@ export enum IntelligenceMissionType {
     StealTerritoryMap,
     AssassinateCharacter,
     DestroyBase,
+    // 19n court intrigue (scenario only, flag courtIntrigue; not in the C# enum — appended so the ported values keep
+    // their numbers). Schemes against a character, run through the ported mission lifecycle (performIntelligenceMissions →
+    // determineIntelligenceMissionOutcome) and resolved by the court package (espionageHooks.courtScheme).
+    CourtSway,
+    CourtBlackmail,
+    CourtSabotageLoyalty,
+    CourtAssassinate,
+}
+
+/** 19n: a court scheme mission type (never true for the ported types). */
+export function isCourtSchemeType(type: number): boolean {
+    return type >= IntelligenceMissionType.CourtSway && type <= IntelligenceMissionType.CourtAssassinate;
 }
 
 export enum IntelligenceMissionOutcome {
@@ -227,6 +240,25 @@ export function newIntelligenceMissionAgainstCharacter(originatingEmpire: Empire
     m.targetCharacter = targetCharacter;
     m.targetIsCharacter = true;
     return m;
+}
+
+/**
+ * 19n court scheme mission (not a port): IntelligenceMission.cs 133 IntelligenceMission(originatingEmpire, agent, type,
+ * startDate, targetCharacter) with a court scheme type, its length set by the cascade every Determine*Mission uses
+ * (Empire.5.cs 4183 CalculateIntelligenceMissionSkill → 1 year / 3 months / 1 month by Difficulty). A scheme harder than
+ * the one-year difficulty still runs one year (the player may attempt it; the success chance is low). No Rnd.
+ */
+export function newCourtSchemeMission(self: Empire, agent: Character, type: IntelligenceMissionType, startDate: number, targetCharacter: Character): IntelligenceMission {
+    if (!isCourtSchemeType(type)) throw new Error('Invalid mission type');
+    const m = new IntelligenceMission(self, agent, startDate);
+    m.type = type;
+    m.startDate = startDate;
+    m.targetEmpire = targetCharacter.empire;
+    m.targetIsEmpire = false;
+    m.targetCharacter = targetCharacter;
+    m.targetIsCharacter = true;
+    const d = calculateIntelligenceMissionSkill(self, agent, type, m.targetEmpire);
+    return cascadeTimeLength(m, d);
 }
 
 /** IntelligenceMission.cs 290 Target (Empire / BuiltObject / Habitat / ResearchNode / Character, or null). */
@@ -370,8 +402,31 @@ export function intelligenceMissionDifficulty(m: IntelligenceMission): number {
             difficulty = csInt(num10 * num11);
             break;
         }
+        case T.CourtSway:
+        case T.CourtBlackmail:
+        case T.CourtSabotageLoyalty:
+        case T.CourtAssassinate:
+            difficulty = courtSchemeDifficulty(m, num1, num2);
+            break;
     }
     return difficulty;
+}
+
+/**
+ * 19n court schemes (not a port): the AssassinateCharacter formula (num1 × factor × role factor × num2) with a factor per
+ * scheme — sway 2.5, blackmail 3, sabotage-loyalty 3.5, assassinate 8 (the stock value) — halved against a character of
+ * the schemer's own empire (no foreign security to slip past).
+ */
+function courtSchemeDifficulty(m: IntelligenceMission, num1: number, num2: number): number {
+    const factor = m.type === T.CourtSway ? 2.5 : m.type === T.CourtBlackmail ? 3.0 : m.type === T.CourtSabotageLoyalty ? 3.5 : 8.0;
+    let role = 1.0;
+    const c = m.targetCharacter;
+    if (c !== null) {
+        if (c.role === CharacterRole.Leader || c.role === CharacterRole.PirateLeader) role = 2.0;
+        else if (c.role === CharacterRole.Ambassador || c.role === CharacterRole.ColonyGovernor) role = 1.5;
+    }
+    const own = m.originatingEmpire !== null && m.targetEmpire === m.originatingEmpire;
+    return csInt(num1 * factor * role * (own ? 0.5 : num2));
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -416,7 +471,16 @@ function agentSkillForMission(agent: Character, missionType: IntelligenceMission
             num = agent.counterEspionageFactored;
             break;
         case T.AssassinateCharacter:
+        case T.CourtAssassinate:
             num = agent.assassinationFactored;
+            break;
+        // 19n court schemes: sway / sabotage-loyalty use PsyOps, blackmail Espionage.
+        case T.CourtSway:
+        case T.CourtSabotageLoyalty:
+            num = agent.psyOpsFactored;
+            break;
+        case T.CourtBlackmail:
+            num = agent.espionageFactored;
             break;
         case T.DeepCover:
             num = agent.concealmentFactored;
@@ -1306,6 +1370,25 @@ export function performIntelligenceMissions(galaxy: Galaxy, self: Empire): void 
         if (character3 == null || character3.role !== CharacterRole.IntelligenceAgent) continue;
         const mission3 = characterMission(character3);
         if (mission3 === null || mission3.type === T.Undefined) continue;
+        // 19n court schemes (scenario only: no mission has these types unless the courtIntrigue flag created it). The ported
+        // lifecycle: due at StartDate + TimeLength (5731), the outcome roll (Empire.6.cs 16 DetermineIntelligenceMissionOutcome),
+        // the agent back on counter-intelligence afterwards (BaconEmpire.cs 655 ResetSpyMission) or killed when captured
+        // (the 6103 loop below); the effects, discovery and messages belong to the court package.
+        if (isCourtSchemeType(mission3.type)) {
+            if (currentStarDate < mission3.startDate + mission3.timeLength) continue;
+            const target = mission3.targetCharacter;
+            if (target === null || !target.active || mission3.targetEmpire === null || target.empire === null || espionageHooks.courtScheme === null) {
+                baconResetSpyMission(galaxy, characterList2, character3);
+                continue;
+            }
+            const outcome = determineIntelligenceMissionOutcome(galaxy, self, mission3, character3);
+            self.counters.processIntelligenceMissionOutcome(mission3, outcome);
+            mission3.outcome = outcome;
+            espionageHooks.courtScheme(galaxy, self, mission3, character3, outcome);
+            if (outcome === O.Capture && character3.active) characterList2.push(character3);
+            baconResetSpyMission(galaxy, characterList2, character3);
+            continue;
+        }
         let num4 = agentSkillForMission(character3, mission3.type, mission3.targetEmpire);
         const num5 = calculateIntelligenceMissionBonusFromLeaderAndAmbassador(self, mission3.type, mission3.targetEmpire);
         num4 = csInt(num4 * num5);
@@ -1884,6 +1967,15 @@ export function resolveIntelligenceMissionDescription(mission: IntelligenceMissi
             case T.StealOperationsMap:
                 result = empireText('StealOperationsMap');
                 break;
+            case T.CourtSway:
+            case T.CourtBlackmail:
+            case T.CourtSabotageLoyalty:
+            case T.CourtAssassinate: {
+                // 19n court schemes (scenario text): "<scheme> <target> (succeeded / failed)".
+                const who = target instanceof Character ? target.name : '';
+                result = scenarioText(`Court Scheme Mission ${T[mission.type]}${flag ? ' Succeed' : ' Fail'}`, who);
+                break;
+            }
             case T.StealTechData: {
                 if (mission.targetEmpire === callingEmpire) {
                     result = !flag ? formatGameTextNow('IntelligenceMissionOutcome StealTechData OurEmpire Fail') : formatGameTextNow('IntelligenceMissionOutcome StealTechData OurEmpire Succeed');
