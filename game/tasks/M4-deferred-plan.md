@@ -103,3 +103,6 @@ year 10 (1–8 per empire). Follow-ups:
   worlds; consider a pirate exemption or a small fuel band at the rim.
 - Save size at scale (2026-09-27): a 4000-star / ×1.7 galaxy serialises to ~420 MB of text (139 MB at 700 stars). Needs a
   compact save format (binary or compressed, id-indexed) before big galaxies are playable across sessions. Medium (Opus).
+- 19n-1 follow-ups: a regent is killed at the hand-over (side effect of the stock ChangeLeader — port a "steps down"
+  path); when both livingCalendar and courtDynasties are on, the calendar must skip its election/coronation rolls
+  (`courtHandlesSuccession(galaxy)` is exported for it — wire on merge); house prestige never decays on its own.
