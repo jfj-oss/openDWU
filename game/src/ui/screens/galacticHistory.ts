@@ -21,6 +21,7 @@ import { rgbCss } from '../hud';
 import type { Galaxy } from '../../sim/galaxy';
 import { EVENT_CATEGORIES, eventLogEntries, eventLogOn, eventsKnownTo, findEmpireById, type EventCategory, type EventLogEntry } from '../../sim/scenario/eventLog/log';
 import { categoryLabel, resolveEntryText, resolveEntryTitle } from '../../sim/scenario/eventLog/chronicle';
+import { chronicleMarkdown, chronicleOn, chronicleYears, dueChronicleYear } from '../../sim/scenario/llm/chronicle';
 
 // ---------------------------------------------------------------------------
 // Pure logic
@@ -478,6 +479,37 @@ export function eventLogHistoryRows(galaxy: Galaxy, player: Empire, category: Hi
     });
 }
 
+// 19s-1 Chronicle tab (flag llmFoundations + eventLog): the yearly in-character history (llm/chronicleJob.ts writes it).
+// Not a port; with the flag off the tab does not exist.
+
+export interface ChronicleRow {
+    year: number;
+    title: string;
+    text: string;
+    /** 'model' | 'fallback' | 'pending' (the year is over and the chronicler is still writing). */
+    source: 'model' | 'fallback' | 'pending';
+}
+
+/** True when the screen shows the Chronicle tab. */
+export function galacticHistoryHasChronicle(galaxy: Galaxy | null | undefined): boolean {
+    return chronicleOn(galaxy);
+}
+
+/** The Chronicle tab's rows, newest year first; a 'pending' row leads while a finished year is not written yet. */
+export function chronicleRows(galaxy: Galaxy, empire: Empire): ChronicleRow[] {
+    const rows: ChronicleRow[] = chronicleYears(galaxy, empire)
+        .map((c) => ({ year: c.year, title: c.title, text: c.text, source: c.source }))
+        .reverse();
+    const due = dueChronicleYear(galaxy, empire);
+    if (due !== null) rows.unshift({ year: due, title: tryGetText('Chronicle Pending') ?? 'The chronicler is still writing…', text: '', source: 'pending' });
+    return rows;
+}
+
+/** File name of the markdown export. */
+export function chronicleFileName(empire: Empire): string {
+    return `chronicle-${empire.name.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || 'empire'}.md`;
+}
+
 // ---------------------------------------------------------------------------
 // DOM
 // ---------------------------------------------------------------------------
@@ -549,7 +581,16 @@ function createGalacticHistory(opts: GalacticHistoryOptions): OpenState {
     const closeBtn = el('button', 'galactic-history-close', '✕') as HTMLButtonElement;
     closeBtn.type = 'button';
     closeBtn.title = 'Close';
-    titlebar.append(heading, closeBtn);
+    // 19s-1: History | Chronicle tabs (only with the chronicle on).
+    const hasChronicle = galacticHistoryHasChronicle(empire.galaxy);
+    const tabs = el('div', 'galactic-history-tabs');
+    const tabHistory = el('button', 'galactic-history-tab galactic-history-tab-active', tryGetText('Chronicle Tab History') ?? 'History') as HTMLButtonElement;
+    const tabChronicle = el('button', 'galactic-history-tab', tryGetText('Chronicle Tab Chronicle') ?? 'Chronicle') as HTMLButtonElement;
+    tabHistory.type = 'button';
+    tabChronicle.type = 'button';
+    tabs.append(tabHistory, tabChronicle);
+    if (hasChronicle) titlebar.append(heading, tabs, closeBtn);
+    else titlebar.append(heading, closeBtn);
 
     const body = el('div', 'galactic-history-body');
     const left = el('div', 'galactic-history-left');
@@ -596,7 +637,20 @@ function createGalacticHistory(opts: GalacticHistoryOptions): OpenState {
     gotoBtn.type = 'button';
     right.append(msgHeading, msgText, gotoBtn);
     body.append(left, right);
-    win.append(titlebar, body);
+    // 19s-1 Chronicle view: years | the year's text + Export Markdown.
+    const chronBody = el('div', 'galactic-history-body');
+    const chronLeft = el('div', 'galactic-history-left');
+    const chronList = el('div', 'galactic-history-list');
+    const exportBtn = el('button', 'galactic-history-goto', tryGetText('Chronicle Export') ?? 'Export Markdown') as HTMLButtonElement;
+    exportBtn.type = 'button';
+    chronLeft.append(chronList, exportBtn);
+    const chronRight = el('div', 'galactic-history-right');
+    const chronHeading = el('div', 'galactic-history-msg-heading');
+    const chronText = el('div', 'galactic-history-msg-text galactic-history-chronicle-text');
+    chronRight.append(chronHeading, chronText);
+    chronBody.append(chronLeft, chronRight);
+    chronBody.style.display = 'none';
+    win.append(titlebar, body, chronBody);
     root.appendChild(win);
     document.body.appendChild(root);
 
@@ -740,10 +794,68 @@ function createGalacticHistory(opts: GalacticHistoryOptions): OpenState {
         close();
     });
 
+    // 19s-1 Chronicle tab.
+    let tab: 'history' | 'chronicle' = 'history';
+    let chronYear: number | null = null;
+    let chronKey = '';
+    function chronicleKey(): string {
+        const ys = chronicleYears(empire.galaxy, empire);
+        return ys.map((c) => `${c.year}:${c.source}:${c.written}`).join(',') + `|${dueChronicleYear(empire.galaxy, empire) ?? ''}`;
+    }
+    function renderChronicle(): void {
+        chronKey = chronicleKey();
+        const crow = chronicleRows(empire.galaxy, empire);
+        if (chronYear === null || !crow.some((r) => r.year === chronYear)) chronYear = crow.find((r) => r.source !== 'pending')?.year ?? crow[0]?.year ?? null;
+        chronList.replaceChildren();
+        if (crow.length === 0) chronList.appendChild(el('div', 'galactic-history-empty', tryGetText('Chronicle Empty') ?? 'No year has ended yet'));
+        for (const r of crow) {
+            const line = el('div', 'galactic-history-row');
+            if (r.year === chronYear && r.source !== 'pending') line.classList.add('galactic-history-row-selected');
+            line.append(el('span', 'galactic-history-icon'), el('span', 'galactic-history-title', r.title), el('span', 'galactic-history-date', String(r.year)));
+            if (r.source !== 'pending') {
+                line.addEventListener('click', () => {
+                    chronYear = r.year;
+                    renderChronicle();
+                });
+            }
+            chronList.appendChild(line);
+        }
+        const cur = crow.find((r) => r.year === chronYear && r.source !== 'pending') ?? null;
+        chronHeading.textContent = cur !== null ? `${cur.year} — ${cur.title}` : '';
+        chronText.textContent = cur !== null ? cur.text : '';
+        if (cur !== null && cur.source === 'fallback') chronText.textContent += `\n\n${tryGetText('Chronicle Fallback Note') ?? '(A plain record: no chronicler model answered.)'}`;
+        exportBtn.disabled = !crow.some((r) => r.source !== 'pending');
+    }
+    function setTab(t: 'history' | 'chronicle'): void {
+        tab = t;
+        tabHistory.classList.toggle('galactic-history-tab-active', t === 'history');
+        tabChronicle.classList.toggle('galactic-history-tab-active', t === 'chronicle');
+        body.style.display = t === 'history' ? '' : 'none';
+        chronBody.style.display = t === 'chronicle' ? '' : 'none';
+        if (t === 'chronicle') renderChronicle();
+    }
+    tabHistory.addEventListener('click', () => setTab('history'));
+    tabChronicle.addEventListener('click', () => setTab('chronicle'));
+    exportBtn.addEventListener('click', () => {
+        const blob = new Blob([chronicleMarkdown(empire.galaxy, empire)], { type: 'text/markdown' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = chronicleFileName(empire);
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    });
+
     historyKey = currentHistoryKey();
     rebind();
     // New history entries while open: rebind only when the history changed (no per-tick DOM rebuild).
     const timer = setInterval(() => {
+        if (tab === 'chronicle') {
+            if (chronicleKey() !== chronKey) renderChronicle();
+            return;
+        }
         const k = currentHistoryKey();
         if (k === historyKey) return;
         historyKey = k;

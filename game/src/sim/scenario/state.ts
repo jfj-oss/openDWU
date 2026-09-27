@@ -66,6 +66,15 @@ export function scenarioActive(galaxy: Galaxy): boolean {
     return galaxy.scenario !== null;
 }
 
+/**
+ * True when the running scenario is `id` or includes it at its top level (manifest `include`): a package gated on its
+ * own scenario id (the Lively Galaxy handlers) also runs inside a scenario that bundles it (19s ai-parity). Scenarios
+ * that do not include it are unaffected.
+ */
+export function scenarioRuns(s: GalaxyScenario | null, id: string): boolean {
+    return s !== null && (s.id === id || (s.manifest?.include ?? []).includes(id));
+}
+
 /** The value of a scenario flag; false with no scenario or an unknown flag. */
 export function scenarioFlag(galaxy: Galaxy, name: string): boolean {
     const s = galaxy.scenario;

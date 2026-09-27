@@ -78,6 +78,25 @@ export interface EventLogState {
     nextId: number;
     entries: EventLogEntry[];
     characters: Character[];
+    /** 19s-1: the yearly chronicle (llm/chronicleJob.ts writes it between frames; absent until the first year). */
+    chronicle?: ChronicleYear[];
+}
+
+/** One year of the 19s-1 chronicle: the model's in-character history, or the scripted fallback (the plain digest). */
+export interface ChronicleYear {
+    /** Calendar year (starDateYear). */
+    year: number;
+    /** The empire whose historian wrote it. */
+    empireId: number;
+    title: string;
+    text: string;
+    source: 'model' | 'fallback';
+    /** Model id ('' for the fallback). */
+    model: string;
+    /** Events of the year the text was written from. */
+    events: number;
+    /** Star date it was written. */
+    written: number;
 }
 
 export function eventLogOn(galaxy: Galaxy | null | undefined): boolean {

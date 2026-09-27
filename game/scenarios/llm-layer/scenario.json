@@ -1,0 +1,18 @@
+{
+  "id": "llm-layer",
+  "name": "Local LLM Layer",
+  "description": "Foundations of the local-model layer (19s-1): an async request queue with a per-year budget and a situation cache over the advisor endpoint, fixed-schema grounding digests, and a yearly in-character Chronicle of your empire on the Galactic History screen (a plain digest when no model answers). The model never runs inside the tick and never changes the game. Includes the Event Log scenario (and with it Internal Security and the Emergent Galaxy packages; their own flags).",
+  "include": ["event-log"],
+  "flags": [
+    { "name": "llmFoundations", "label": "Local model layer", "description": "Queue, digests and the yearly Chronicle (needs the advisor endpoint in Settings; without a model the Chronicle is the plain digest).", "default": false }
+  ],
+  "params": [
+    { "name": "llmRequestsPerYear", "label": "Model requests per game year (background budget)", "default": 60, "min": 0, "max": 5000 },
+    { "name": "llmTokensPerYear", "label": "Model tokens per game year (background budget)", "default": 60000, "min": 0, "max": 5000000 },
+    { "name": "llmCacheTtlDays", "label": "Situation cache lifetime (game days)", "default": 90, "min": 0, "max": 3600 },
+    { "name": "llmTimeoutSeconds", "label": "Hard timeout per request (real seconds)", "default": 90, "min": 5, "max": 600 },
+    { "name": "llmConcurrency", "label": "Requests in flight at once", "default": 1, "min": 1, "max": 2 },
+    { "name": "llmDigestEvents", "label": "Event-log lines in a digest", "default": 6, "min": 0, "max": 12 },
+    { "name": "llmChronicleEvents", "label": "Events of the year given to the chronicler", "default": 40, "min": 5, "max": 200 }
+  ]
+}
