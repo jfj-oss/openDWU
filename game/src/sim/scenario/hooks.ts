@@ -372,6 +372,26 @@ export interface ScenarioQueries {
      * martial law). Never draws.
      */
     colonyRevoltApproval: { value: number; args: { habitat: Habitat; leaveThreshold: number } };
+    /**
+     * game.ts player capital loop / Start.cs method_51 findAiCapital (the C#'s own home-system search), consulted right
+     * after the stock candidate is accepted (no Rnd between the check and the stock accept, so a rejection re-enters
+     * the C#'s own loop and re-rolls exactly as an ordinary stock rejection would): false rejects a stock-accepted
+     * candidate habitat (the search tries its next candidate; no extra Rnd draws). Default true. 19h rim-frontier keeps
+     * ordinary player/AI starts inside the rim belt.
+     */
+    acceptHomeHabitat: { value: boolean; args: { race: Race; habitat: Habitat; empireKind: 'player' | 'ai' } };
+    /**
+     * pirates.ts generateNewPirateEmpires (Galaxy.9.cs GenerateNewPirateEmpires) candidate test, consulted right after
+     * the stock candidate is accepted: false rejects a stock-accepted pirate-base candidate (the loop's own re-roll, no
+     * extra Rnd draws). Default true. 19h rim-frontier splits pirate factions between the rim and the core.
+     */
+    acceptPirateBase: { value: boolean; args: { habitat: Habitat } };
+    /**
+     * Base-placement candidate test (pirates.ts generateNewPirateEmpires; independent-colony / mining-station placement
+     * may call it too): true when (x, y) sits inside a rim herd's home range (plus a scenario's avoidance buffer) and
+     * the candidate should be rejected. Default false (no fauna, or no scenario).
+     */
+    placementAvoidsHerds: { value: boolean; args: { x: number; y: number } };
 }
 export type ScenarioQueryName = keyof ScenarioQueries;
 
@@ -419,6 +439,13 @@ export interface ScenarioGenerationHandler extends ScenarioHandlerGate {
     afterNebulae?: (galaxy: Galaxy) => void;
     /** SetupSun (Galaxy.5.cs) candidate position: false rejects it (the stock loop re-rolls, up to its 100 tries). */
     acceptStarPosition?: (galaxy: Galaxy, x: number, y: number) => boolean;
+    /**
+     * createGame, right after generateGalaxy returns: every habitat's faithful resource selection (Galaxy.4.cs
+     * SelectResources, run throughout setupSolarSystem / generateGasCloud) has already happened. May draw (its own
+     * Random, never galaxy.rnd — generateGalaxy itself is done drawing galaxy.rnd for resources by this point, but the
+     * stock loop's later steps, e.g. empire placement, have not started). 19h fuel oases.
+     */
+    afterGeneration?: (galaxy: Galaxy) => void;
 }
 
 const generationHandlers: ScenarioGenerationHandler[] = [];
@@ -437,6 +464,11 @@ export function scenarioGenerationSetup(scenario: GalaxyScenario | null, resourc
 /** generateGalaxy after GenerateNebulae (callers check galaxy.scenario !== null). */
 export function scenarioAfterNebulae(galaxy: Galaxy): void {
     for (const h of generationHandlers) if (h.afterNebulae !== undefined && scenarioGateOpen(galaxy, h)) h.afterNebulae(galaxy);
+}
+
+/** createGame, right after generateGalaxy returns (callers check galaxy.scenario !== null). */
+export function scenarioAfterGeneration(galaxy: Galaxy): void {
+    for (const h of generationHandlers) if (h.afterGeneration !== undefined && scenarioGateOpen(galaxy, h)) h.afterGeneration(galaxy);
 }
 
 /** SetupSun position test (callers check galaxy.scenario !== null). */

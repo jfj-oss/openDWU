@@ -2835,6 +2835,27 @@ export class Galaxy {
         return list;
     }
 
+    /**
+     * Mod layer (19h fuel oases): the abundance range SelectResources would roll for `resourceId` at `habitat`
+     * (Galaxy.4.cs SelectResources, line ~3270 abundance roll — same trunc/clamp on whichever distribution's
+     * CheckPrevalenceValidForHabitat matches), so a scenario-added resource keeps the faithful range. Null when no
+     * distribution of `resourceId` is valid for this habitat's type/category. Draws nothing.
+     */
+    resolveResourceAbundanceRangeForHabitat(habitat: Habitat, resourceId: number): { min: number; max: number } | null {
+        const def = this.resources.find((r) => r.resourceId === resourceId);
+        if (def === undefined) return null;
+        for (const dist of def.distributions) {
+            if (dist === null || !this.checkPrevalenceValidForHabitat(habitat, dist)) continue;
+            let val = Math.trunc(Math.fround(dist.abundanceMin) * 1000);
+            let val2 = Math.trunc(Math.fround(dist.abundanceMax) * 1000);
+            val = Math.max(0, Math.min(1000, val));
+            val2 = Math.max(0, Math.min(1000, val2));
+            if (val > val2) val = val2;
+            return { min: val, max: val2 };
+        }
+        return null;
+    }
+
     // Port of ResourceSystem.cs GenerateRandomOrderedResources (line 225):
     // Fisher-Yates-style partial shuffle using the (substituted) CryptoRnd.
     private generateRandomOrderedResources(): Resource[] {

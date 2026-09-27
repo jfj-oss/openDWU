@@ -64,6 +64,7 @@ import { SystemVisibilityStatus } from './visibility';
 import { BuiltObjectSubRole } from './builtObjectTypes';
 import { BattleTactics, BuiltObjectFleeWhen, BuiltObjectRole, InvasionTactics, buildDefaultDesignSpecifications, getDefaultDesignSpecificationBySubRole } from './data/designSpecifications';
 import { countResourceSourcesForEmpire } from './stationPlacement';
+import { scenarioQuery } from './scenario/hooks';
 
 // Port of PiratePlayStyle.cs (member order exact).
 export enum PiratePlayStyle {
@@ -931,6 +932,10 @@ export function generateNewPirateEmpires(galaxy: Galaxy, ctx: PirateGenerationCo
         let flag = false;
         let habitat: Habitat | null = null;
         let num7 = 0;
+        // 19h rim-frontier: a stock-accepted candidate the mod layer rejects (inside a rim herd's home range, or off
+        // its rim/core creation-order share) is skipped and the C#'s own loop re-rolls; the first stock-accepted
+        // candidate the share rule alone rejected is kept as a fallback for a tiny galaxy with nothing on the wanted side.
+        let fallback: Habitat | null = null;
         while (!flag && num7 < 100) {
             const p = galaxy.obtainRandomGalaxyCoordinates();
             habitat = galaxy.findNearestHabitatWithResource(p.x, p.y, fuel.resourceId);
@@ -960,11 +965,21 @@ export function generateNewPirateEmpires(galaxy: Galaxy, ctx: PirateGenerationCo
                         if (e !== null && e.pirateEmpireBaseHabitat !== null) {
                             if (galaxy.calculateDistance(habitat.xpos, habitat.ypos, e.pirateEmpireBaseHabitat.xpos, e.pirateEmpireBaseHabitat.ypos) < 1000000.0) flag2 = true;
                         }
-                        if (!flag2) flag = true;
+                        if (!flag2 && galaxy.scenario !== null && scenarioQuery(galaxy, 'placementAvoidsHerds', false, { x: habitat.xpos, y: habitat.ypos })) flag2 = true;
+                        if (!flag2) {
+                            const accept = galaxy.scenario === null || scenarioQuery(galaxy, 'acceptPirateBase', true, { habitat });
+                            if (accept) flag = true;
+                            else fallback ??= habitat;
+                        }
                     }
                 }
             }
             num7++;
+        }
+        if (!flag && fallback !== null) {
+            console.warn('rimFrontier: pirate base placement found no candidate on its assigned rim/core side; falling back to the stock placement.');
+            habitat = fallback;
+            flag = true;
         }
         if (flag && galaxy.nextEmpireId < galaxy.maximumEmpireCount) {
             const pt = galaxy.selectRelativeHabitatSurfacePoint(habitat);
