@@ -27,11 +27,18 @@ weapons. Zero research focus after the cap (replaces the spec's "high research")
 Treasure fleet: a Concord-only design template "Treasure Ship" (size 1100 freighter hull: cargo bays, fuel, shields, a few
 weapons) + escorts, sailing as ONE large state convoy on a fixed circuit of foreign space ports (Empire.1.cs 3899 convoy
 code reused; 19e-9 shows the route) that sells rare goods / buys rim goods at each stop — the visible, escortable, raidable
-face of the trade; losing it hurts standing. **Concord art (user, 2026-09-27):** procedural "space junk" ships —
-long hull, 2–3 fan-shaped batten sails spread sideways as radiator fins, raised stern castle, lanterns along the yards,
-lacquer red + gold; warships/freighters/treasure ships/port share the language, treasure ships carry the biggest lanterns
-and banners; portrait = a ceremonial gold-on-red mask/emblem (the Concord shows no faces to outsiders); flag = red
-field, gold emblem. **Always visible (user, 2026-09-26):** the treasure fleet is revealed to every
+face of the trade; losing it hurts standing. **Concord art (user, 2026-09-27, REVISED after the junk sheets — the junk silhouettes were too cartoony):** realistic
+industrial ships with complex shapes and fine detail (plating seams, weld lines, rivet rows, vents, exposed piping, hazard
+stripes, hull numbers and Concord glyphs, grain/scratches/blemishes via noise + scratch maps); palette dark turquoise hull
+with dark yellow/copper trim, several tones per ship (hull / deck / superstructure / engines read as distinct sections);
+TREASURE SHIP = a giant, wide, long container carrier: a flat deck stacked with multicoloured containers in blocks,
+gantry cranes, a lit bridge tower aft, deck floodlights, two 747-style jet-fan thrusters on the rear quarters with
+heat-stained nozzles and turning fan faces; freighters = bulk carriers with hold hatches; WARSHIPS = modern naval grey
+with heavy rust/salt staining, angular hulls, bridge superstructure with sensor masts and a rotating dish, turrets and
+missile cell blocks, hull numbers, copper trim only on the bridge; bases/port = ring docks with gantries, cranes, fuel
+tanks, striped docking arms, lit windows; lights = small tight deck/window lights, no glow outline; portrait = the
+gold-on-lacquer mask recoloured to turquoise/copper; flag = turquoise field, copper emblem. The junk-sail looks are retired.
+**Always visible (user, 2026-09-26):** the treasure fleet is revealed to every
 empire regardless of sensors/fog — its ships carry a scenario "beacon" so the visibility pass treats them as known to all
 (like the original's planet destroyer / story announcements: a galaxy-wide position broadcast), with a fleet marker at
 galaxy zoom, a message + news item when it leaves port and when it arrives at a foreign port, and a route line on the
