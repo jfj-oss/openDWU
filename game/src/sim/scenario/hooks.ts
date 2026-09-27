@@ -342,6 +342,13 @@ export interface ScenarioGenerationHandler extends ScenarioHandlerGate {
     afterNebulae?: (galaxy: Galaxy) => void;
     /** SetupSun (Galaxy.5.cs) candidate position: false rejects it (the stock loop re-rolls, up to its 100 tries). */
     acceptStarPosition?: (galaxy: Galaxy, x: number, y: number) => boolean;
+    /**
+     * createGame, right after generateGalaxy returns: every habitat's faithful resource selection (Galaxy.4.cs
+     * SelectResources, run throughout setupSolarSystem / generateGasCloud) has already happened. May draw (its own
+     * Random, never galaxy.rnd — generateGalaxy itself is done drawing galaxy.rnd for resources by this point, but the
+     * stock loop's later steps, e.g. empire placement, have not started). 19h fuel oases.
+     */
+    afterGeneration?: (galaxy: Galaxy) => void;
 }
 
 const generationHandlers: ScenarioGenerationHandler[] = [];
@@ -360,6 +367,11 @@ export function scenarioGenerationSetup(scenario: GalaxyScenario | null, resourc
 /** generateGalaxy after GenerateNebulae (callers check galaxy.scenario !== null). */
 export function scenarioAfterNebulae(galaxy: Galaxy): void {
     for (const h of generationHandlers) if (h.afterNebulae !== undefined && scenarioGateOpen(galaxy, h)) h.afterNebulae(galaxy);
+}
+
+/** createGame, right after generateGalaxy returns (callers check galaxy.scenario !== null). */
+export function scenarioAfterGeneration(galaxy: Galaxy): void {
+    for (const h of generationHandlers) if (h.afterGeneration !== undefined && scenarioGateOpen(galaxy, h)) h.afterGeneration(galaxy);
 }
 
 /** SetupSun position test (callers check galaxy.scenario !== null). */

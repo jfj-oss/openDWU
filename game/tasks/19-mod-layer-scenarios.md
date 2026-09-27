@@ -167,6 +167,21 @@ Makes the rim itself hard to reach and hold, independent of the fauna. Scenario 
    from it). Re-pins only inside the scenario. Must ship with a speed check at the top setting (single-threaded sim; the
    36 game-days/min budget must hold or the option is capped).
 Params: belt inner radius, storm density, thinning radius/factor, shoal count, fuel bias, fog factor, extent multiplier, star cap.
+7. Starts out of the rim (user, 2026-09-26: "keep normal empires and player empire out of the rim"): with the frontier flag
+   on, ordinary empires' and the player's home systems are never placed past the rim inner radius (a home-habitat accept
+   hook on the C# capital search; the Concord, independents, herders and fauna keep the rim). Param
+   `rimFrontierKeepStartsOut` default on. Star cap raised to 4000 (user, 2026-09-26) with two-letter sector labels.
+8. Pirates in the rim (user, 2026-09-26): an exact share of pirate factions (`rimFrontierPirateRimShare` 0.6) get rim home
+   bases, the rest core bases, assigned in the C#'s creation order (no extra draws); base placement (pirates AND the
+   19k-2 independents' stations) avoids herd home ranges (19g-7 RimHerd.homeRange) so nobody spawns inside a nest; pirate
+   factions get a HERD-HUNTING mission when a herd wanders within a param range of their base (kill drop = creature
+   resources they sell; thins herds near bases; herders lose standing with herd killers → pirate-vs-herder friction feeds
+   19k-3 leagues). Params: share, avoid radius, hunt range, hunt chance/year.
+9. Fuel oases (user, 2026-09-27, "pirate/rim independent fuel issue"): with fuel scarcity on, the rim ring had no
+   caslon/hydrogen at all; the scenario now guarantees `rimFrontierOasesPerSector` (default 1) fuel sources per rim
+   sector (a caslon gas giant or hydrogen source chosen among the sector's rim habitats after faithful placement,
+   scenario-owned Random), pirate bases prefer candidates within `rimFrontierOasisRange` of an oasis, and independents'
+   stations weight oases; an oasis is a contestable chokepoint.
 
 ## 19i — Rim atmosphere (ACCEPTED by the user 2026-09-26 — "yes"; presentation only, reads a distance-from-centre curve; flag off = untouched)
 Visual: (1) colour grading by radius — desaturate + cold blue-violet tint on star field/nebulae past the rim band, fading in

@@ -15,7 +15,7 @@ import { stateCounts, stateDigest } from '../src/sim/tick/digest';
 import { GalaxyTime } from '../src/sim/galaxyTime';
 import { deserializeGame, serializeGame } from '../src/sim/save/gameSave';
 import { defaultStartGameOptions } from '../src/sim/startGameOptions';
-import { RIM_FRONTIER_DEFAULTS, rimFrontierState } from '../src/sim/scenario/rimFrontier/common';
+import { RIM_FRONTIER_DEFAULTS, rimFrontierState, rimFuelOases } from '../src/sim/scenario/rimFrontier/common';
 import { frontierPirateHunt } from '../src/sim/scenario/rimFrontier/rimFrontier';
 import { rimGoodIds, rimTraderEmpire } from '../src/sim/scenario/rimTrade/common';
 import { rimFaunaState, type RimHerd } from '../src/sim/scenario/rimFauna/common';
@@ -56,13 +56,22 @@ function starsBeyond(g: Galaxy, f: number): { beyond: number; total: number } {
     return { beyond, total };
 }
 
+function fuelResourceIds(g: Galaxy): number[] {
+    return ['Caslon', 'Hydrogen'].map((n) => g.resourceSystem.resources.find((r) => r.name === n)!.resourceId);
+}
+
 function fuelBeyond(g: Galaxy, f: number): number {
-    const ids = ['Caslon', 'Hydrogen'].map((n) => g.resourceSystem.resources.find((r) => r.name === n)!.resourceId);
+    const ids = fuelResourceIds(g);
     let n = 0;
     for (const h of g.habitats) {
         if (h.resources.some((r) => ids.includes(r.resourceId)) && radiusFraction(g, h.xpos, h.ypos) > f) n++;
     }
     return n;
+}
+
+/** Sector centre radiusFraction, from a system's stored sector (Galaxy.4.cs Systems build). */
+function sectorCentreFraction(g: Galaxy, sector: { x: number; y: number }): number {
+    return radiusFraction(g, (sector.x + 0.5) * g.sectorSize, (sector.y + 0.5) * g.sectorSize);
 }
 
 describe('19h rim frontier — generation', () => {
@@ -95,9 +104,10 @@ describe('19h rim frontier — generation', () => {
         expect(b.beyond).toBeLessThan(a.beyond * 0.75);
     });
 
-    it('4: Caslon and Hydrogen only roll inside the fuel radius', () => {
+    it('4: Caslon and Hydrogen only roll inside the fuel radius (fuel oases isolated off — see the 9: describe block)', () => {
+        const noOases = createScenarioGame(base, { scenario: 'rim-frontier', params: { rimFrontierOasesPerSector: 0 } }).game.galaxy;
         expect(fuelBeyond(off.galaxy, D.rimFrontierFuelMaxRadius)).toBeGreaterThan(5);
-        expect(fuelBeyond(on.galaxy, D.rimFrontierFuelMaxRadius)).toBe(0);
+        expect(fuelBeyond(noOases, D.rimFrontierFuelMaxRadius)).toBe(0);
     });
 
     it('3: gravity shoals are map locations that end a hyperjump crossing them', () => {
@@ -161,7 +171,9 @@ describe('19h rim frontier — faithful path, save, stacking', () => {
         const byId = new Map(scenarioIndexFs().map((m) => [m.id, loadScenarioOverlayFs(m.id)] as const));
         const both = resolveScenarioIncludes(inlineOverlay({ id: 'rimTradeFrontier', include: ['rimTrade', 'rim-frontier'] }), byId);
         const forceOranthi = (o: CreateGameOptions): CreateGameOptions => ({ ...o, aiEmpires: [{ ...o.aiEmpires[0], race: 'Oranthi' }, ...o.aiEmpires.slice(1)] });
-        const { game } = createScenarioGame(base, { scenario: both, options: forceOranthi });
+        // rimFrontierOasesPerSector: 0 isolates fuel-scarcity's own check below from the 9: fuel-oases feature (its own
+        // describe block covers it) the same way the pirate-share test isolates the split from fuel scarcity.
+        const { game } = createScenarioGame(base, { scenario: both, options: forceOranthi, params: { rimFrontierOasesPerSector: 0 } });
         const g = game.galaxy;
         expect(g.scenario!.flags).toMatchObject({ rimFrontier: true, rimTrader: true });
         const r = rimTraderEmpire(g)!;
@@ -260,7 +272,12 @@ describe('19h rim frontier — pirate base rim/core share', () => {
         // stacking both at their defaults would make a "rim" (>= 0.7) pirate base structurally unreachable — not a
         // bug in the split, just two features of the same package fighting over the same knob. Isolate the split here
         // (fuel scarcity off) the way its own end-to-end coverage isolates fuel scarcity from the belt (test '4').
-        const { game } = createScenarioGame(base, { scenario: 'rim-frontier', params: { rimFrontierFuelMaxRadius: 1.5 } });
+        // rimFrontierOasesPerSector: 0 isolates the split from 9: fuel oases too — with scarcity off almost every rim
+        // sector already has natural fuel, so the "already has one" skip leaves only a sparse few oases; the shared
+        // pirates.ts fallback slot (one candidate remembered per faction, whatever it was rejected for) would then as
+        // often catch a wrong-side candidate as a right-side-but-far-from-an-oasis one. The oasis feature's own effect
+        // on placement is covered by the 9: fuel oases describe block instead.
+        const { game } = createScenarioGame(base, { scenario: 'rim-frontier', params: { rimFrontierFuelMaxRadius: 1.5, rimFrontierOasesPerSector: 0 } });
         const g = game.galaxy;
         growPirateFactions(g, 20);
         const first20 = g.pirateEmpires.slice(0, 20);
@@ -355,4 +372,78 @@ describe('19h rim frontier — pirate herd hunting (not a port: new scenario rul
         const { game } = createScenarioGame(base, { scenario: both, flags: { rimFrontier: false } });
         expect('rimFrontier' in game.galaxy.scenario!.state).toBe(false);
     });
+});
+
+describe('19h rim frontier — 9: fuel oases (guaranteed rim Caslon/Hydrogen; pirate bases prefer them)', () => {
+    function ctxOf(g: Galaxy): PirateGenerationContext {
+        return { independentColonies: g.independentColonies, startingAge: g.startingAge, difficultyLevel: g.difficultyLevel };
+    }
+
+    /** Grows galaxy.pirateEmpires to at least `count` (same helper as the rim/core-share describe block above). */
+    function growPirateFactions(g: Galaxy, count: number): void {
+        let guard = 0;
+        while (g.pirateEmpires.length < count && guard < 50) {
+            guard++;
+            generateNewPirateEmpires(g, ctxOf(g), { piratePrevalence: 2, maximumEmpireAmount: count * 2 + 10, pirateProximity: 0 });
+        }
+    }
+
+    it('every rim sector with an eligible habitat has at least one fuel source with the flag on (default rimFrontierOasesPerSector 1)', () => {
+        // "Eligible": has at least one habitat resolveValidResourcesForHabitatExcludeManufactured says can carry Caslon
+        // or Hydrogen (a plain GasGiant planet/moon, or a matching GasCloud "star" — resources.txt's own type/category
+        // rules, same test frontierOasisResourceFor uses). A sector can genuinely have none — e.g. a lone star with no
+        // planets, or gas giants that all rolled FrozenGasGiant (Helium's type, not Caslon/Hydrogen's) — the guarantee
+        // never invents a placement the faithful game's own rules would not allow there.
+        const { game } = createScenarioGame(base, { scenario: 'rim-frontier' });
+        const g = game.galaxy;
+        expect(rimFuelOases(g).length).toBeGreaterThan(0);
+        const ids = fuelResourceIds(g);
+        const bySector = new Map<string, { eligible: boolean; hasFuel: boolean }>();
+        for (const h of g.habitats) {
+            const sector = g.systems[h.systemIndex].sector;
+            if (sectorCentreFraction(g, sector) < D.rimFrontierBeltInner) continue;
+            const key = sector.x + ',' + sector.y;
+            const rec = bySector.get(key) ?? { eligible: false, hasFuel: false };
+            if (g.resolveValidResourcesForHabitatExcludeManufactured(h).some((id) => ids.includes(id))) rec.eligible = true;
+            if (h.resources.some((r) => ids.includes(r.resourceId))) rec.hasFuel = true;
+            bySector.set(key, rec);
+        }
+        expect(bySector.size).toBeGreaterThan(0);
+        expect([...bySector.values()].some((r) => r.eligible)).toBe(true);
+        for (const [key, rec] of bySector) {
+            if (!rec.eligible) continue;
+            expect(rec.hasFuel, `sector ${key}`).toBe(true);
+        }
+    }, 120000);
+
+    it('rimFrontierOasesPerSector 0: no guaranteed oases, and (with fuel scarcity on) the rim stays fuel-free', () => {
+        const { game } = createScenarioGame(base, { scenario: 'rim-frontier', params: { rimFrontierOasesPerSector: 0 } });
+        const g = game.galaxy;
+        expect(rimFuelOases(g).length).toBe(0);
+        expect(fuelBeyond(g, D.rimFrontierFuelMaxRadius)).toBe(0);
+    });
+
+    it('pirate rim bases mostly land within rimFrontierOasisRange of an oasis (seed 1, >= 70%)', () => {
+        const { game } = createScenarioGame(base, { scenario: 'rim-frontier' });
+        const g = game.galaxy;
+        growPirateFactions(g, 20);
+        const oases = rimFuelOases(g);
+        expect(oases.length).toBeGreaterThan(0);
+        const inner = D.rimFrontierBeltInner;
+        const rimBases = g.pirateEmpires.filter((e) => e.pirateEmpireBaseHabitat !== null && radiusFraction(g, e.pirateEmpireBaseHabitat.xpos, e.pirateEmpireBaseHabitat.ypos) >= inner);
+        expect(rimBases.length).toBeGreaterThan(0);
+        const range2 = D.rimFrontierOasisRange * D.rimFrontierOasisRange;
+        const within = rimBases.filter((e) => oases.some((o) => g.calculateDistanceSquared(o.xpos, o.ypos, e.pirateEmpireBaseHabitat!.xpos, e.pirateEmpireBaseHabitat!.ypos) <= range2));
+        expect(within.length / rimBases.length).toBeGreaterThanOrEqual(0.7);
+    }, 120000);
+
+    it('flag off: byte-identical to the faithful game (short)', () => {
+        const ref = cachedTickGameRun(base, { seconds: 60 });
+        const { game } = createScenarioGame(base, { scenario: 'rim-frontier', flags: { rimFrontier: false } });
+        const run = runGameSeconds(game, 60);
+        expect(rimFuelOases(game.galaxy).length).toBe(0);
+        expect(stateDigest(game.galaxy)).toBe(stateDigest(ref.game.galaxy));
+        expect(stateCounts(game.galaxy)).toEqual(stateCounts(ref.game.galaxy));
+        expect(run.rndDraws).toBe(ref.run.rndDraws);
+    }, 300000);
 });

@@ -21,6 +21,10 @@
 //                     (the Galaxy.9.cs 284 DoSuperPirateTasks ship-gathering filter) to Attack a nearby herd's leader;
 //                     a hunt that killed its herd by the next check pays the faction a credits bounty
 //                     (treasury.ts performPrivateTransaction — DW:U has no creature-resource commodity to drop).
+//  11 fuel oases     (tasks §19h item 9) after the faithful resource placement, guarantee `rimFrontierOasesPerSector`
+//                     Caslon/Hydrogen sources per rim sector among its habitats (Galaxy.selectResources' own fields,
+//                     resolveValidResourcesForHabitatExcludeManufactured's type/category test) — fuel scarcity (item 4)
+//                     can otherwise leave the rim with none; pirate rim bases then prefer a candidate near one (below).
 // Rnd: generation draws only from a package-owned Random seeded from the galaxy seed (never galaxy.rnd); a rejected star
 // position makes the stock SetupSun loop draw its re-roll from galaxy.rnd, so flag-on games re-pin (flag off: no hook
 // runs). The runtime hooks (placement queries) never draw; the yearly pirate-hunting handler does (galaxy.rnd, gated).
@@ -28,6 +32,7 @@
 import type { Galaxy } from '../../galaxy';
 import type { Empire } from '../../empire';
 import { GalaxyLocation, GalaxyLocationEffectType, GalaxyLocationShape, GalaxyLocationType } from '../../galaxyLocation';
+import { HabitatType, type Habitat } from '../../types';
 import { Random } from '../../random';
 import { radiusFraction, registerScenarioGeneration, registerScenarioQuery, registerScenarioYearly } from '../hooks';
 import type { GalaxyScenario } from '../state';
@@ -52,6 +57,7 @@ import {
     frontierParam,
     rimFogMultiplier,
     rimFrontierState,
+    rimFuelOases,
     shoalStopOnPath,
     type RimFrontierParam,
 } from './common';
@@ -186,7 +192,84 @@ function frontierAcceptStar(galaxy: Galaxy, x: number, y: number): boolean {
     return frontierRnd(galaxy).nextDouble() >= factor;
 }
 
-registerScenarioGeneration({ id: 'rimFrontier.generation', flag: RIM_FRONTIER_FLAG, setup: frontierSetup, afterNebulae: frontierAfterNebulae, acceptStarPosition: frontierAcceptStar });
+// 19h-11 fuel oases: the resource the mod layer adds at a candidate habitat — gas giants (Habitat.type GasGiant) get
+// Caslon (resources.txt id 18: distribution 0/7 GasGiant, matching Galaxy.4.cs CheckPrevalenceValidForHabitat); other
+// habitats able to carry either fuel (resources.txt distributions: Hydrogen id 8 also has 2/10 Ammonia and 2/15
+// Hydrogen GasCloud entries; Caslon also has 2/16 NitrogenOxygen and 2/17 Oxygen) get Hydrogen, falling back to Caslon.
+// resolveValidResourcesForHabitatExcludeManufactured (galaxy.ts, port of ResourceDefinitionList.cs) is the same
+// type/category test SelectResources itself uses, so this never picks a habitat the faithful roll could not have.
+function frontierOasisResourceFor(galaxy: Galaxy, habitat: Habitat, caslonId: number, hydrogenId: number): number | null {
+    const valid = galaxy.resolveValidResourcesForHabitatExcludeManufactured(habitat);
+    if (habitat.type === HabitatType.GasGiant && valid.includes(caslonId)) return caslonId;
+    if (valid.includes(hydrogenId)) return hydrogenId;
+    if (valid.includes(caslonId)) return caslonId;
+    return null;
+}
+
+/** Picks up to `n` distinct items from `list` with `rnd` (Fisher-Yates-style draw, ResourceSystem.cs GenerateRandomOrderedResources's pattern reused for a scenario draw). */
+function pickDistinct<T>(rnd: Random, list: readonly T[], n: number): T[] {
+    const pool = list.slice();
+    const out: T[] = [];
+    while (out.length < n && pool.length > 0) {
+        const i = rnd.next(0, pool.length);
+        out.push(pool[i]);
+        pool.splice(i, 1);
+    }
+    return out;
+}
+
+/**
+ * 19h-11 fuel oases: after the faithful resource placement (createGame, right after generateGalaxy — see hooks.ts
+ * afterGeneration), guarantee `rimFrontierOasesPerSector` Caslon/Hydrogen sources per rim sector (sector centre
+ * radiusFraction ≥ belt inner) among that sector's habitats — skipping a sector that already has one (from the
+ * faithful roll, e.g. `rimFrontierFuelMaxRadius` off or wide). Draws only from the package's own Random.
+ */
+function frontierFuelOases(galaxy: Galaxy): void {
+    const perSector = Math.trunc(frontierParam(galaxy, 'rimFrontierOasesPerSector'));
+    if (perSector <= 0) return;
+    const caslon = galaxy.resources.find((r) => r.name === 'Caslon');
+    const hydrogen = galaxy.resources.find((r) => r.name === 'Hydrogen');
+    if (caslon === undefined || hydrogen === undefined) return;
+    const inner = frontierParam(galaxy, 'rimFrontierBeltInner');
+    const rnd = frontierRnd(galaxy);
+    const st = rimFrontierState(galaxy);
+    // Group habitats by their system's sector (Galaxy.4.cs 2335-2347 Systems build already stored it).
+    const sectors = new Map<string, Habitat[]>();
+    for (const sys of galaxy.systems) {
+        const { x: sx, y: sy } = sys.sector;
+        const cx = (sx + 0.5) * galaxy.sectorSize;
+        const cy = (sy + 0.5) * galaxy.sectorSize;
+        if (radiusFraction(galaxy, cx, cy) < inner) continue;
+        const key = sx + ',' + sy;
+        let list = sectors.get(key);
+        if (list === undefined) {
+            list = [];
+            sectors.set(key, list);
+        }
+        list.push(...sys.habitats);
+    }
+    for (const habitats of sectors.values()) {
+        if (habitats.some((h) => h.resources.some((r) => r.resourceId === caslon.resourceId || r.resourceId === hydrogen.resourceId))) continue;
+        const candidates = habitats
+            .map((h) => ({ h, resourceId: frontierOasisResourceFor(galaxy, h, caslon.resourceId, hydrogen.resourceId) }))
+            .filter((c): c is { h: Habitat; resourceId: number } => c.resourceId !== null);
+        for (const { h, resourceId } of pickDistinct(rnd, candidates, perSector)) {
+            const range = galaxy.resolveResourceAbundanceRangeForHabitat(h, resourceId);
+            if (range === null) continue;
+            h.resources.push({ resourceId, abundance: rnd.next(range.min, range.max) });
+            st.fuelOases.push(h);
+        }
+    }
+}
+
+registerScenarioGeneration({
+    id: 'rimFrontier.generation',
+    flag: RIM_FRONTIER_FLAG,
+    setup: frontierSetup,
+    afterNebulae: frontierAfterNebulae,
+    acceptStarPosition: frontierAcceptStar,
+    afterGeneration: frontierFuelOases,
+});
 
 registerScenarioQuery({ id: 'rimFrontier.fog', flag: RIM_FRONTIER_FLAG, query: 'scanRangeModifier', run: (galaxy, value, a) => value * rimFogMultiplier(galaxy, a.x, a.y) });
 
@@ -235,7 +318,17 @@ registerScenarioQuery({
         if (!value || frontierParam(galaxy, 'rimFrontierPirateRimShare') <= 0) return value;
         const inner = frontierParam(galaxy, 'rimFrontierBeltInner');
         const f = radiusFraction(galaxy, a.habitat.xpos, a.habitat.ypos);
-        return frontierPirateBaseTargetsRim(galaxy) ? f >= inner : f < inner;
+        const wantsRim = frontierPirateBaseTargetsRim(galaxy);
+        if (wantsRim !== (f >= inner)) return false;
+        if (!wantsRim) return true;
+        // 19h-11: among rim-side candidates, prefer one within rimFrontierOasisRange of a guaranteed fuel oasis (a
+        // contestable chokepoint) — a rejection here is the same "stock-accepted, share-rejected" fallback path
+        // pirates.ts's own loop already keeps (no draw-order change), so a galaxy with no oasis nearby (or oases off)
+        // still places a rim base at the first share-satisfying candidate.
+        const oases = rimFuelOases(galaxy);
+        if (oases.length === 0) return true;
+        const r2 = frontierParam(galaxy, 'rimFrontierOasisRange') ** 2;
+        return oases.some((o) => galaxy.calculateDistanceSquared(o.xpos, o.ypos, a.habitat.xpos, a.habitat.ypos) <= r2);
     },
 });
 

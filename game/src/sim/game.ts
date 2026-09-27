@@ -60,7 +60,7 @@ import { GalaxyLocationType } from './galaxyLocation';
 import { GalaxyShape, HabitatCategoryType, HabitatType, type Habitat } from './types';
 import { Cargo, CargoList, ResourceRef } from './cargo';
 import { createGalaxyScenario } from './scenario/state';
-import { scenarioFindHomeHabitat, scenarioGameStart, scenarioGenerationSetup, scenarioQuery } from './scenario/hooks';
+import { scenarioAfterGeneration, scenarioFindHomeHabitat, scenarioGameStart, scenarioGenerationSetup, scenarioQuery } from './scenario/hooks';
 import './scenario/packages'; // mod layer: registers the scenario packages' hooks
 
 export type HomeSystem = 'Harsh' | 'Trying' | 'Normal' | 'Agreeable' | 'Excellent';
@@ -906,6 +906,9 @@ export function createGame(opts: CreateGameOptions): Game {
         // Start.2.cs 485 new Galaxy(..., double_4, ...) (Galaxy.4.cs 2088 baseTechCost).
         baseTechCost: opts.baseTechCost,
     });
+    // Mod layer: every habitat's faithful resource selection is done (setupSolarSystem / generateGasCloud, run inside
+    // generateGalaxy above); 19h fuel oases adds its guaranteed rim fuel sources here, before anything reads resources.
+    if (galaxy.scenario !== null) scenarioAfterGeneration(galaxy);
     // Unset galaxyAge = 1: the game's standard preset (Start.cs 3298-3327: Expansion 1 / empire tech Normal 0.5).
     // The C# option-screen defaults (Main.Part9.cs 2664 / 2689: GalaxyExpansion 0, YourEmpireTechLevel 0) are a
     // pre-warp start instead; callers wanting age 0 pass galaxyAge: 0.
