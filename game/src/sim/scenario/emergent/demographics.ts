@@ -479,6 +479,7 @@ export function acceptFlow(galaxy: Galaxy, flow: RefugeeFlow): void {
  * without touching bo.population (which would otherwise be wiped and re-filled from the origin's *current*
  * population, double-charging it and failing outright below the ported 30M floor at refugee-flow scale). */
 export function refugeeConvoySkipLoad(galaxy: Galaxy, bo: BuiltObject): boolean {
+    if (!scenarioFlag(galaxy, 'refugees')) return false;
     const st = demographicsState(galaxy);
     return st.convoys.has(bo);
 }
@@ -487,6 +488,7 @@ export function refugeeConvoySkipLoad(galaxy: Galaxy, bo: BuiltObject): boolean 
  * (before the ported code clears them). Settles the population at `dockedAt` (or founds an independent colony there
  * when it is uncolonised — the ported Unload code silently drops population at an empty destination). */
 export function settleRefugeeConvoyArrival(galaxy: Galaxy, bo: BuiltObject, dockedAt: unknown): void {
+    if (!scenarioFlag(galaxy, 'refugees')) return;
     const st = demographicsState(galaxy);
     const convoy = st.convoys.get(bo);
     if (convoy === undefined) return;
