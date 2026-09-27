@@ -152,3 +152,8 @@ year 10 (1–8 per empire). Follow-ups:
   `voiceFactionUltimatum` in 19n court factions (`court.factionUltimatum`), `voiceSchemeLetter` in 19n-2 intrigue (`intrigue.schemeLetter`). Sonnet, mechanical.
 - Treasure-fleet greeting and herder migration hooks are untested end to end; an open message popup does not refresh when a voice arrives.
 - Add the §19s DONE notes for packages 2 and 3 in tasks/19-mod-layer-scenarios.md (package 4 already noted by its agent).
+
+## Threat rarity follow-ups (wip/threatlottery e21407b)
+- scripts/ai-parity.mjs and scripts/soak-15y.mjs measure AI usage of every threat: pass `<key>ExistChancePct: 100` and `<key>MinYear: 0` (or the shared threatExistChancePct/threatMinYear) as run params so the audits still exercise the threats; a normal game keeps the 25% / year-30 defaults.
+- `scenarioRuns`/`scenarioId` gating reads only the active scenario's own `include` list (not transitive includes): any new composite scenario that pulls in a threat must list `threat-framework` directly (documented in tasks/19f-hidden-threats.md §0.9).
+- Leagues audit (2026-09-27): the league's one extra colony is never a Hive node (founded after hiveInit) — decide/document; add a test that frontier-autonomy orphaned colonies become league-eligible; finish the 19o ledger migration for league standing.
