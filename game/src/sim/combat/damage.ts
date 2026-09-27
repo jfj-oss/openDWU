@@ -1189,6 +1189,7 @@ export function inflictDamageFull(
                     if (!chanceNewShipCaptain(galaxy, builtObject, self.empire, self)) chanceNewFleetAdmiral(galaxy, builtObject, self.empire, self);
                 }
                 if (self.empire !== null && self.empire.counters !== null) self.empire.counters.processBuiltObjectDestruction(builtObject);
+                if (galaxy.scenario !== null) scenarioEmit(galaxy, 'builtObjectDestroyed', { builtObject, destroyer: self.empire }); // mod layer
                 const explosion3 = new Explosion();
                 explosion3.explosionStart = galaxyNow(galaxy);
                 explosion3.explosionSize = toShort(Math.trunc(Math.sqrt(builtObject.components.count) * (Math.PI / 4.0) * 30.0));

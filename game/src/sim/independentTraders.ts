@@ -36,6 +36,7 @@
 //
 // Rnd: GenerateIndependentTraders is the only Rnd consumer here (see its comment).
 
+import { scenarioQuery } from './scenario/hooks';
 import { BuiltObject } from './builtObject';
 import { BuiltObjectSubRole } from './builtObjectTypes';
 import { ResourceRef, type CargoList } from './cargo';
@@ -309,6 +310,7 @@ function isObjectVisibleToThisEmpireImprecise(galaxy: Galaxy, empire: Empire, ob
 // Empire.9.cs IsObjectVisibleToThisEmpire(objectToTest, includeLongRangeScanners,
 // includeShipsOutsideSystems) (3198; the 1-arg overload 3193 passes true, true).
 export function isObjectVisibleToThisEmpire(galaxy: Galaxy, empire: Empire, objectToTest: Habitat | BuiltObject, includeLongRangeScanners = true, includeShipsOutsideSystems = true): boolean {
+    if (galaxy.scenario !== null && scenarioQuery(galaxy, 'objectVisibleToAll', false, { empire, object: objectToTest })) return true; // mod layer (19a beacon)
     const flag = isObjectVisibleToThisEmpireImprecise(galaxy, empire, objectToTest);
     if (flag) return flag;
     // StellarObject.Stealth (StellarObject.cs 32, float, default 1f; Habitats keep the default).

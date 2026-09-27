@@ -15,6 +15,7 @@ import { scenarioMessage, scenarioText } from '../messages';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from '../../diplomacy';
 import { OrderType, cargoGetCargo, cargoRemove, empireCreateOrder } from '../../logistics/orders';
 import { EmpireMessageType } from '../../messages';
+import { applyConcordTech, treasureParam, treasureState } from './treasureFleet';
 import { RIM_RACE, rareGoodIds, resourceName, rimGoodIds, rimParam, rimTradeState, rimTraderEmpire, rimTraderPort } from './common';
 
 /** Import order lot size (units). */
@@ -83,12 +84,18 @@ export function rimTraderGameStart(galaxy: Galaxy, ctx: HomePlacementHelpers): v
             st.empireId = -1;
             return;
         }
-        r = createEmpireMidGame(galaxy, { race: RIM_RACE, home, age: galaxy.startingAge, techLevel: 0.5, homeSystemFavourability: 'Excellent', setup: true });
+        // 19a addendum: created at tech level rimTraderTechLevel (GenerateEmpire techLevel → SetTechTreeLevel).
+        r = createEmpireMidGame(galaxy, { race: RIM_RACE, home, age: galaxy.startingAge, techLevel: treasureParam(galaxy, 'rimTraderTechLevel'), homeSystemFavourability: 'Excellent', setup: true });
         if (r === null) {
             st.empireId = -1;
             return;
         }
+        applyConcordTech(galaxy, r, false);
+    } else if (r !== galaxy.playerEmpire) {
+        // An Oranthi AI the wizard already generated (at the game's tech level): lift it to the Concord's.
+        applyConcordTech(galaxy, r, true);
     }
+    treasureState(galaxy);
     st.empireId = r.empireId;
     st.capital = r.capital;
     // The AI Concord carries the scenario's name (a player who picks the Oranthi keeps the name they chose).
@@ -102,12 +109,17 @@ export function rimTraderGameStart(galaxy: Galaxy, ctx: HomePlacementHelpers): v
 // Contract listener (step 6): the standing ledger. No Rnd.
 // ---------------------------------------------------------------------------------------------------------------
 
-export function rimTraderOnContract(galaxy: Galaxy, ev: { seller: Empire; buyer: Empire; resourceId: number; amount: number; value: number }): void {
+export function rimTraderOnContract(galaxy: Galaxy, ev: { seller: Empire; buyer: Empire; resourceId: number; amount: number; value: number; freighter?: BuiltObject | null }): void {
     const r = rimTraderEmpire(galaxy);
     if (r === null || ev.resourceId < 0) return;
     const st = rimTradeState(galaxy);
     if (ev.buyer === r && ev.seller !== r && rimGoodIds(galaxy).includes(ev.resourceId)) {
-        const row = (st.ledger[ev.seller.empireId] ??= { credit: 0, debit: 0 });
+        // 19a follow-up: a sale through a pirate / independent post is credited to the empire whose private freighter
+        // carried it (the freighter's owner earned it), so pirate markets do not swallow the standing.
+        let creditor = ev.seller;
+        const carrier = ev.freighter?.actualEmpire ?? null;
+        if ((creditor === galaxy.independentEmpire || creditor.pirateEmpireBaseHabitat !== null) && carrier !== null && carrier !== r && carrier !== galaxy.independentEmpire && carrier.pirateEmpireBaseHabitat === null) creditor = carrier;
+        const row = (st.ledger[creditor.empireId] ??= { credit: 0, debit: 0 });
         row.credit += ev.value;
         st.stats.rimBuys++;
         st.stats.rimUnits += ev.amount;

@@ -49,6 +49,11 @@ Then, before M5+ (UI completeness etc.):
   in. Needs a balance pass with the freight overlay (19e-9) to see where rim goods actually flow, then: earlier contact
   (Concord explorers / a broadcast), access for empires whose private freighters sell, and a soak that asserts ≥1 access.
   Do it after 19h/19j land (rim herders are the intended steady suppliers). Cheap (Sonnet) once the overlay is in.
+  **Done on wip/s19a2 (19a addendum):** contact broadcast at year `rimTraderContactYear` (1), rim-good sales through a
+  pirate / independent post credited to the freighter's empire, treasure fleet buying rim goods at foreign ports.
+  5-year seed-1 soak (test/rimTraderTreasureSoak.test.ts, @slow): all 3 empires met in year 1, Sol Nation gains access in
+  year 4; rim buys 23 (2396 u, 11982 cr) by year 5, fleet 2 voyages / 4 stops, 0 ships lost. Remaining imbalance: most
+  rim goods still stay inside each empire (self-flows dominate the freight data); the first voyage takes ~2 years.
 - 19d3 follow-up: a 5-year seed-1 soak showed no AI offensive espionage missions at all, so the crisis/stolen-tech
   acceptance counts (DWU_ESPIONAGE_SOAK_STRICT=1, 30 years) are unconfirmed. Check the base AI's mission assignment
   (Empire.*.cs intelligence AI: does it run offensive missions before a threshold of agents/relations?) before tuning 19d3.

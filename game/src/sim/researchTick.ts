@@ -130,7 +130,7 @@ import { formatGameTextNow } from './textResolver';
 import { registerTodo, todo } from './tick/todo';
 import { galaxyStarDate } from './tick/simTime';
 import { PirateExpenseType } from './pirates/pirateEconomy';
-import { scenarioEmit } from './scenario/hooks';
+import { scenarioEmit, scenarioQuery } from './scenario/hooks';
 
 // ---------------------------------------------------------------------------
 // Small C# semantics helpers
@@ -1429,6 +1429,7 @@ export function selectNextResearchProject(galaxy: Galaxy, empire: Empire, indust
 // Empire.3.cs PerformResearchProjects(timePassed, projects, researchPower, industry, allowResearchEvents) (1890).
 function performResearchProjects(galaxy: Galaxy, empire: Empire, timePassed: number, projects: TechNode[] | null, researchPower: number, industry: IndustryType, allowResearchEvents: boolean): void {
     if (projects === null) return;
+    if (galaxy.scenario !== null && scenarioQuery(galaxy, 'researchFrozen', false, { empire, industry })) return; // mod layer (19a research cap)
     if (empire.controlResearch && projects.length <= 0) selectNextResearchProject(galaxy, empire, industry, projects);
     let num = ((researchPower * timePassed) / REAL_SECONDS_IN_GALACTIC_YEAR) * galaxy.researchSpeedModifier;
     const num2 = calculateResearchOutputBonuses(empire, industry);
