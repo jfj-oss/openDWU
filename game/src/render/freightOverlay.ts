@@ -29,6 +29,7 @@ import {
     type HubRow,
 } from '../sim/logistics/tradeFlows';
 import type { MapOverlayState } from '../ui/mapOverlays';
+import { scenarioMapFeatures } from '../sim/scenario/mapFeatures';
 import { INDEPENDENT_RING_COLOR, toPixiColor } from './empireLayer';
 import { dashSegments, TRAVEL_VECTOR_COLOR } from './overlayLayer';
 
@@ -189,6 +190,9 @@ export class FreightOverlay {
     private flows = new Graphics();
     private hubs = new Graphics();
     private leaders = new Graphics();
+    /** Scenario routes (mod layer: the 19a treasure fleet's circuit), dashed, the leg sailed drawn solid. */
+    private routes = new Graphics();
+    private routesAt = 0;
     private rows: FlowRow[] = [];
     private hubRows: HubRow[] = [];
     private arcs: FlowArc[] = [];
@@ -215,8 +219,8 @@ export class FreightOverlay {
         private state: MapOverlayState,
     ) {
         this.filter = { categoryOf: (r, c) => flowCategory(galaxy, r, c) };
-        root.addChild(this.flows, this.hubs, this.leaders);
-        this.flows.visible = this.hubs.visible = this.leaders.visible = false;
+        root.addChild(this.flows, this.hubs, this.leaders, this.routes);
+        this.flows.visible = this.hubs.visible = this.leaders.visible = this.routes.visible = false;
         this.syncRecording();
     }
 
@@ -249,7 +253,8 @@ export class FreightOverlay {
                 this.flows.clear();
                 this.hubs.clear();
                 this.leaders.clear();
-                this.flows.visible = this.hubs.visible = this.leaders.visible = false;
+                this.routes.clear();
+                this.flows.visible = this.hubs.visible = this.leaders.visible = this.routes.visible = false;
                 this.arcs = [];
                 this.discs = [];
                 this.dirty = true;
@@ -279,6 +284,7 @@ export class FreightOverlay {
         }
         this.flows.visible = flowsOn;
         this.hubs.visible = hubsOn;
+        this.updateRoutes(z, flowsOn);
         // In-flight leaders (system zoom only).
         if (flowsOn && level === 'post' && ledger !== null) {
             const t = performance.now();
@@ -332,6 +338,36 @@ export class FreightOverlay {
             const r = d.r / z;
             h.circle(d.x, d.y, r).fill({ color: d.color, alpha: 0.25 }).stroke({ width: 1 / z, color: d.color, alpha: 0.9 });
         }
+    }
+
+    private updateRoutes(z: number, flowsOn: boolean): void {
+        const g = this.routes;
+        if (!flowsOn || this.galaxy.scenario === null) {
+            if (g.visible) {
+                g.clear();
+                g.visible = false;
+            }
+            return;
+        }
+        const t = performance.now();
+        if (g.visible && t - this.routesAt < 250) return;
+        this.routesAt = t;
+        g.clear();
+        const routes = scenarioMapFeatures(this.galaxy, this.galaxy.playerEmpire).routes;
+        const f = 1 / z;
+        for (const r of routes) {
+            for (let i = 0; i + 1 < r.points.length; i++) {
+                const a = r.points[i];
+                const b = r.points[i + 1];
+                if (i === r.activeLeg) {
+                    g.moveTo(a.x, a.y).lineTo(b.x, b.y).stroke({ width: 2.5 * f, color: r.color, alpha: 0.95 });
+                } else {
+                    for (const [ax, ay, bx, by] of dashSegments(a.x, a.y, b.x, b.y, 10 * f, 6 * f, 400)) g.moveTo(ax, ay).lineTo(bx, by);
+                    g.stroke({ width: 1.5 * f, color: r.color, alpha: 0.7 });
+                }
+            }
+        }
+        g.visible = routes.length > 0;
     }
 
     private buildLeaders(z: number, cam: Camera, dest: WeakMap<BuiltObject, unknown>): void {

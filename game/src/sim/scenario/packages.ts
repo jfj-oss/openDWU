@@ -7,6 +7,7 @@ import './independents/independents';
 import './rimFauna/rimFauna';
 import './rimHerders/rimHerders';
 import './rimTrade/rimTrader';
+import './rimTrade/treasureFleet';
 import './emergent/espionage';
 import './threats/darkFarms';
 import './emergent/crises'; // 19d2 resource crises (flag resourceCrises)

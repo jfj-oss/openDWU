@@ -18,3 +18,11 @@ Scenario RimTrade Rim Good;(rim good)
 Scenario RimTrade Port;Trading port
 Scenario RimTrade News Opened;The {0} have opened their port at {1} to the {2}.
 Scenario RimTrade Empire Name;Oranthi Concord
+Scenario RimTrade Treasure Ship;Treasure Ship
+Scenario RimTrade Treasure Fleet;Treasure Fleet
+Scenario RimTrade Treasure Title;The Treasure Fleet
+Scenario RimTrade Treasure Departs;The treasure fleet of the {0} has left {1}, bound for {2}.
+Scenario RimTrade Treasure Docks;The treasure fleet of the {0} has docked at {1}, trading with the {2}.
+Scenario RimTrade Treasure Docks Host;The treasure fleet of the {0} has docked at {1}. It buys rim goods and, for those in good standing, sells its rare goods.
+Scenario RimTrade Treasure Returns;The treasure fleet of the {0} has returned to {1}.
+Scenario RimTrade Treasure Raided;A treasure ship of the {0} has been destroyed by the {1}.

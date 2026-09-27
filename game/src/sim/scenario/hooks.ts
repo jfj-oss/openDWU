@@ -193,6 +193,11 @@ export interface ScenarioEvents {
     intelMissionCompleted: { empire: Empire; mission: unknown; outcome: unknown };
     /** events.ts empireCompleteTeardown (top). */
     empireEliminated: { empire: Empire; conqueror: Empire | null };
+    /**
+     * combat/damage.ts inflictDamageFull, the ship-destroyed branch (BuiltObject.2.cs ~6560-6600, after the stock
+     * bookkeeping): `destroyer` = the attacking object's empire (null for monsters / unowned).
+     */
+    builtObjectDestroyed: { builtObject: BuiltObject; destroyer: Empire | null };
     /** researchTick.ts doResearchBreakthrough (end). */
     researchCompleted: { empire: Empire; project: unknown };
     /** characters.ts generateNewCharacter (end). */
@@ -300,6 +305,16 @@ export interface ScenarioQueries {
     builtObjectStormImmune: { value: boolean; args: { builtObject: BuiltObject } };
     /** 19j: movement.ts rechargeReactors (BuiltObject.1.cs 2509 RechargeReactors): true = recharging burns no fuel. */
     builtObjectSelfFuelling: { value: boolean; args: { builtObject: BuiltObject } };
+    /**
+     * researchTick.ts performResearchProjects (Empire.3.cs 1890 PerformResearch, per industry), first line: true skips
+     * the industry's research this pass (19a rimTraderResearchCap: the Concord's stagnation).
+     */
+    researchFrozen: { value: boolean; args: { empire: Empire; industry: number } };
+    /**
+     * independentTraders.ts isObjectVisibleToThisEmpire (Empire.9.cs 3198), first line: true makes the object visible to
+     * `empire` regardless of sensors (19a treasure-fleet beacon: a galaxy-wide position broadcast).
+     */
+    objectVisibleToAll: { value: boolean; args: { empire: Empire; object: BuiltObject | Habitat } };
 }
 export type ScenarioQueryName = keyof ScenarioQueries;
 
