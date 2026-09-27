@@ -23,7 +23,7 @@ import { gameYear, registerScenarioEvent, registerScenarioPeriodic, registerScen
 import { scenarioParam } from '../state';
 import { scenarioText } from '../messages';
 import { startStarDateForAge } from '../../galaxyTime';
-import { registerHiddenThing } from '../security/registry';
+import { registerHiddenThing, retireHiddenTarget } from '../security/registry';
 import {
     KNOWLEDGE_CONFIRMED,
     allCharactersAtLocation,
@@ -142,6 +142,31 @@ export function convert(galaxy: Galaxy, st: CultState, c: Character): void {
     registerHiddenThing(galaxy, { kind: 'convert', concealment: CONVERT_CONCEALMENT, empire: c.empire, target: c, package: '19f.cult', site: record });
 }
 
+/**
+ * The reverse of convert: `c` loses its cult status (a 19m purge / counter-intelligence roll-up of a cell, 19f §6
+ * Time Bomb counterplay). Its 19m 'convert' hidden thing retires with `outcome`. Returns false when `c` was not
+ * converted. No Rnd. The cult's own containment (cultEndCheck) sees the shorter list on its next period.
+ */
+export function deconvert(galaxy: Galaxy, st: CultState, c: Character, outcome = 'deconverted'): boolean {
+    const i = st.converted.findIndex((r) => r.character === c);
+    if (i < 0) return false;
+    st.converted.splice(i, 1);
+    retireHiddenTarget(galaxy, 'convert', c, outcome); // 19m (flag-gated)
+    return true;
+}
+
+/** Converted, active characters present at `colony` (any empire), in conversion order. Pure. */
+export function convertsAt(st: CultState, colony: Habitat): Character[] {
+    return st.converted.filter((r) => r.character.active && r.character.location === colony).map((r) => r.character);
+}
+
+/** Slots other packages fill (no-op when null): 19f §6 Time Bomb records the empires the cult seceded from. */
+export interface CultHooks {
+    /** cultTrigger raised the theocracy's militia inside `host`'s cult-held colonies (the faction exists). No Rnd. */
+    triggered: ((galaxy: Galaxy, host: Empire, faction: Empire) => void) | null;
+}
+export const cultHooks: CultHooks = { triggered: null };
+
 // ---------------------------------------------------------------------------------------------------------------
 // Spread (periodic): character → character, at their shared location, across empire borders.
 // ---------------------------------------------------------------------------------------------------------------
@@ -233,6 +258,7 @@ export function cultTrigger(galaxy: Galaxy, st: CultState, host: Empire, held: H
         const troop = makeFactionTroop(galaxy, faction, strength, scenarioText(`${TAG} Militia Name`), race);
         invadeFromInside(galaxy, h, faction, [troop]);
     }
+    if (cultHooks.triggered !== null) cultHooks.triggered(galaxy, host, faction);
     arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Turn', onceKey: `Turn:${host.empireId}`, textTag: `${TAG} Turn News`, args: [host.name] });
     arcMessage(galaxy, st.sentStages, [host], { prefix: TAG, stage: 'Turn', onceKey: `Turn:${host.empireId}`, type: EmpireMessageType.GeneralBadEvent });
     return true;

@@ -1,15 +1,27 @@
 'Time-Bomb Tech: message texts (scenarioText tags). {n} items are filled by the scenario code.
 TimeBomb Faction Name;the precursor lattice
 TimeBomb Detonation Title;Catastrophic resonance failure
-TimeBomb Detonation;{0} has vanished. Precursor lattice tech, unstable at the scale our engineers pushed it to, tore the planet apart.
-TimeBomb Detonation News;{0} of the {1} has vanished in a catastrophic resonance failure.
+TimeBomb Detonation;{0} has vanished. A cult cell on the colony drove our precursor lattice tech past its failure point and tore the planet apart.
+TimeBomb Detonation News;{0} of the {1} has vanished in a catastrophic resonance failure. Cultists are suspected.
+TimeBomb War Detonation News;The theocracy has claimed the destruction of {0} of the {1}: its cell on the planet set off the precursor lattice as an act of war.
 TimeBomb Hint Title;Anomalous readings
 TimeBomb Hint;Our scientists report the precursor tech salvaged from the ruins carries anomalous resonance readings. They cannot yet explain them.
 TimeBomb Confirmed Title;The lattice is unstable
 TimeBomb Confirmed;Analysis of the detonations is conclusive: the precursor lattice tech has a catastrophic, self-destructive failure mode. Any colony that uses it is at risk.
 TimeBomb Abandoned Title;Precursor tech abandoned
 TimeBomb Abandoned;{0} has abandoned the precursor lattice technology, stripping its bonuses but ending the risk of detonation.
-TimeBomb Contained;No empire still holds the precursor lattice technology. The detonations have stopped.
-TimeBomb Defeat;{0} planets have vanished to the precursor lattice's failure mode. The scale of the loss cannot be undone.
+TimeBomb Contained;No empire, and no cult, still holds the precursor lattice technology. The detonations have stopped.
+TimeBomb Contained Cult;With the cult broken, nobody is left who knows how to set off the precursor lattice. The detonations have stopped.
+TimeBomb Cell Formed;A cult cell has formed on {0}.
+TimeBomb Cell Suspected Title;Cult cell suspected
+TimeBomb Cell Suspected;Our security service suspects a cult cell on {0}, a colony that uses the precursor lattice tech. If the cult knows its failure mode, the planet is at risk.
+TimeBomb Cell Confirmed Title;Cult bomb plot confirmed
+TimeBomb Cell Confirmed;A failed attempt to trigger the precursor lattice on {0} confirms it: a cult cell there is trying to blow up the planet. Purge it.
+TimeBomb Defused Title;Cult cell defused
+TimeBomb Defused;The cult cell on {0} has been broken up ({1} converts turned). The precursor lattice there is safe for now.
+TimeBomb Cult Inherits;{0} has taken the precursor lattice technology with it. The cult now holds the means to destroy planets at will.
+Security Kind cultBomb;Cult bomb cell
+Reputation Cause timeBomb.cultDetonation;Your cultists destroyed one of our worlds
+TimeBomb Defeat;{0} planets have vanished to the cult's precursor-lattice bombs. The scale of the loss cannot be undone.
 TimeBomb Victory Title;The lattice is abandoned
 TimeBomb Defeat Title;The lattice claims its price
