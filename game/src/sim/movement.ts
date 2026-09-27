@@ -28,6 +28,7 @@
 // the port (BaconSettings.txt overrides are a TODO(port) of their own, see builtObject.ts). They live in
 // `baconMovementSettings` so a settings loader can change them.
 
+import { scenarioQuery } from './scenario/hooks';
 import type { Galaxy } from './galaxy';
 import type { Empire } from './empire';
 import type { BuiltObject } from './builtObject';
@@ -299,7 +300,8 @@ export function rechargeReactors(galaxy: Galaxy, builtObject: BuiltObject, timeP
             num3 = bo.currentFuel;
             num2 = num3 / num;
         }
-        bo.currentFuel -= num3;
+        // mod layer (19j tamed creatures): a self-fuelling ship burns no fuel; no-op without a scenario.
+        if (!(galaxy.scenario !== null && scenarioQuery(galaxy, 'builtObjectSelfFuelling', false, { builtObject: bo }))) bo.currentFuel -= num3;
         bo.currentEnergy += num2;
     }
 }

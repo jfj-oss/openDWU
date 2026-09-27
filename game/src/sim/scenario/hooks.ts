@@ -197,6 +197,13 @@ export interface ScenarioEvents {
     /** A disaster event hit a colony (events.ts). */
     disaster: { empire: Empire | null; habitat: Habitat | null; disasterType: number };
     /** logistics/contracts.ts initiateContract (end): a private/state sale (no Rnd in handlers — 19e-9 contract rule). */
+    /**
+     * 19j: a ship (or the giant ion cannon) killed a creature — combat/damage.ts inflictDamageFull (BuiltObject.2.cs 6227),
+     * inflictIonDamage (6133), habitatInflictIonDamage (Habitat.cs 2357), right before its CompleteTeardown. No Rnd in handlers.
+     */
+    creatureKilled: { creature: Creature; killer: BuiltObject | Habitat | null; empire: Empire | null };
+    /** 19j: combat/attackAI.ts notifyOfAttackHabitat (Galaxy.7.cs 3058 NotifyOfAttack, top): a colony is under attack. No Rnd in handlers. */
+    habitatAttacked: { habitat: Habitat; attacker: unknown; attackingEmpire: Empire | null; bombarded: boolean };
     contractInitiated: {
         seller: Empire;
         buyer: Empire;
@@ -245,6 +252,10 @@ export interface ScenarioQueries {
     miningStationPatrolPriority: { value: number; args: { builtObject: BuiltObject; empire: Empire } };
     /** events.ts creatureScanForTarget (Creature.cs 1245): true = the creature leaves this target alone. */
     creatureIgnoresTarget: { value: boolean; args: { creature: Creature; target: unknown } };
+    /** 19j: events.ts applyLocationEffects (BuiltObject.cs 3934 ApplyLocationEffects): true = no lightning / ship-damage effects. */
+    builtObjectStormImmune: { value: boolean; args: { builtObject: BuiltObject } };
+    /** 19j: movement.ts rechargeReactors (BuiltObject.1.cs 2509 RechargeReactors): true = recharging burns no fuel. */
+    builtObjectSelfFuelling: { value: boolean; args: { builtObject: BuiltObject } };
 }
 export type ScenarioQueryName = keyof ScenarioQueries;
 

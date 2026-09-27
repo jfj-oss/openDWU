@@ -2,5 +2,6 @@
 // when imported; import it here so every game — app and tests — has it registered. game.ts imports this module.
 // Keep the list sorted; a package's code only runs behind its scenario id / flags.
 import './rimFauna/rimFauna';
+import './rimHerders/rimHerders';
 import './rimTrade/rimTrader';
 export {};

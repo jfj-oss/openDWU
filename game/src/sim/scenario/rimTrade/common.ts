@@ -77,9 +77,30 @@ function resolveIds(galaxy: Galaxy): { rim: number[]; rare: number[] } {
     return c;
 }
 
-/** Resource ids of the rim goods present in this galaxy's data. */
+/**
+ * Extra rim goods other packages add (19j: herd goods count as rim goods for the Concord). Each source returns [] unless
+ * its own flag is on; pure lookups, no Rnd.
+ */
+const extraRimGoodSources: ((galaxy: Galaxy) => number[])[] = [];
+
+/** Registers an extra rim-good source (module load, like the hook registries). */
+export function registerExtraRimGoods(source: (galaxy: Galaxy) => number[]): void {
+    if (!extraRimGoodSources.includes(source)) extraRimGoodSources.push(source);
+}
+
+/** Resource ids of the rim goods present in this galaxy's data (plus registered extras, e.g. 19j herd goods). */
 export function rimGoodIds(galaxy: Galaxy): number[] {
-    return resolveIds(galaxy).rim;
+    const base = resolveIds(galaxy).rim;
+    if (extraRimGoodSources.length === 0) return base;
+    let out = base;
+    for (const src of extraRimGoodSources) {
+        for (const id of src(galaxy)) {
+            if (out.includes(id)) continue;
+            if (out === base) out = [...base];
+            out.push(id);
+        }
+    }
+    return out;
 }
 
 /** Resource ids of the Concord's rare goods present in this galaxy's data. */

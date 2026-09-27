@@ -559,6 +559,11 @@ export function applyLocationEffects(galaxy: Galaxy, builtObject: BuiltObject, t
             }
         }
     }
+    // mod layer (19j tamed creatures): storm-immune ships take no lightning / ship-damage effects; no-op without a scenario.
+    if ((flag2 || flag5) && galaxy.scenario !== null && scenarioQuery(galaxy, 'builtObjectStormImmune', false, { builtObject })) {
+        flag2 = false;
+        flag5 = false;
+    }
     if (flag2 && builtObject.currentSpeed <= builtObject.topSpeed) {
         const totalSeconds = (time - builtObject.lastLocationEffectTouch) / 1000;
         const num7 = galaxy.rnd.nextDouble() * totalSeconds;
