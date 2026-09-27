@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { empireRows } from '../src/ui/screens/empiresList';
+import { empireRows, filterEmpireRows } from '../src/ui/screens/empiresList';
 import type { Empire } from '../src/sim/empire';
 import { Habitat, HabitatCategoryType, HabitatType } from '../src/sim/types';
 import { DiplomaticRelationType } from '../src/sim/diplomacy';
@@ -83,5 +83,51 @@ describe('empireRows (task 12b)', () => {
         const player = empire('Player', 'Home');
         const other = empire('Other', 'Elsewhere');
         expect(empireRows([player, other], player).map((r) => r.label)).toEqual(['Player (you)']);
+    });
+
+    // Task 19k-1d (Big Galaxies: 60-empire games): the panel's DOM needs a browser to render (jsdom is not
+    // configured, see the file header), so a 60-row render is exercised here as row-building at scale: every met
+    // empire still produces exactly one row, in the same order as a smaller game.
+    it('builds one row per empire in a 60-empire game (60-empire UI check)', () => {
+        const player = empire('Player', 'Home');
+        const others = Array.from({ length: 59 }, (_, i) => empire(`Empire ${String(i).padStart(2, '0')}`, `Capital ${i}`));
+        meet(player, others);
+        const rows = empireRows([player, ...others], player);
+        expect(rows).toHaveLength(60);
+        expect(rows[0].label).toBe('Player (you)');
+        expect(new Set(rows.map((r) => r.empire)).size).toBe(60);
+    });
+});
+
+describe('filterEmpireRows (task 19k-1d: filter box for 60-empire games)', () => {
+    function row(label: string, capitalName: string): ReturnType<typeof empireRows>[number] {
+        const e = empire(label, capitalName);
+        return { empire: e, label, colonies: 0, capitalName };
+    }
+
+    it('keeps every row for a blank or whitespace-only query', () => {
+        const rows = [row('Alpha', 'A Prime'), row('Beta', 'B Prime')];
+        expect(filterEmpireRows(rows, '')).toEqual(rows);
+        expect(filterEmpireRows(rows, '   ')).toEqual(rows);
+    });
+
+    it('matches by name, case-insensitively', () => {
+        const rows = [row('Alpha Empire', 'A Prime'), row('Beta Empire', 'B Prime')];
+        expect(filterEmpireRows(rows, 'alpha').map((r) => r.label)).toEqual(['Alpha Empire']);
+    });
+
+    it('matches by capital name too', () => {
+        const rows = [row('Alpha Empire', 'Zenox'), row('Beta Empire', 'Boskara')];
+        expect(filterEmpireRows(rows, 'zen').map((r) => r.label)).toEqual(['Alpha Empire']);
+    });
+
+    it('returns no rows when nothing matches', () => {
+        const rows = [row('Alpha', 'A Prime')];
+        expect(filterEmpireRows(rows, 'nomatch')).toEqual([]);
+    });
+
+    it('narrows a 60-row list down to the matches', () => {
+        const rows = Array.from({ length: 60 }, (_, i) => row(`Empire ${i}`, `Capital ${i}`));
+        expect(filterEmpireRows(rows, 'Empire 5').map((r) => r.label)).toEqual(['Empire 5', 'Empire 50', 'Empire 51', 'Empire 52', 'Empire 53', 'Empire 54', 'Empire 55', 'Empire 56', 'Empire 57', 'Empire 58', 'Empire 59']);
     });
 });

@@ -19,6 +19,7 @@ import { HabitatCategoryType } from '../sim/types';
 import type { Habitat } from '../sim/types';
 import { moonDotPx, planetSpritePx } from './mainView';
 import { DrawKey } from './drawCache';
+import { displayColorForEmpire } from '../sim/empireColors';
 
 /** Neutral grey for independent (non-empire) populated worlds. Matches the
  * grey the sim forces onto the independent empire (Empire ctor, empire.ts). */
@@ -71,7 +72,7 @@ export function colonyRingColor(habitat: Habitat, galaxy: Galaxy): number {
     if (index >= 0) {
         return empireColour(owner, index);
     }
-    return toPixiColor(owner.mainColor);
+    return toPixiColor(displayColorForEmpire(owner));
 }
 
 /** 12-colour fallback palette (task M2e2): assigned by empire index in the
@@ -87,7 +88,9 @@ export const EMPIRE_FALLBACK_COLORS = [
  * state is read or mutated (task M2e2). */
 export function empireColour(empire: Empire, index: number): number {
     if (empire.mainColor !== 0) {
-        return toPixiColor(empire.mainColor);
+        // Task 19k-1b: the big-galaxies scenario's extendedPalette flag substitutes a distinct colour for empires
+        // beyond the 20 key colours; off (or no scenario) this is exactly empire.mainColor.
+        return toPixiColor(displayColorForEmpire(empire));
     }
     // Task M2e2: the palette is indexed by position in galaxy.empires, which
     // includes the independent empire — match that here so the renderer's
@@ -313,7 +316,7 @@ export class EmpireLayer {
             const iconPx = Math.min(Math.max(star.diameter * z * 30, 2.5), 26);
             const r = iconPx * 0.5 + 4;
             const ownerIdx = this.empires.indexOf(mr.owner);
-            const color = ownerIdx >= 0 ? this.colors[ownerIdx] : toPixiColor(mr.owner.mainColor);
+            const color = ownerIdx >= 0 ? this.colors[ownerIdx] : toPixiColor(displayColorForEmpire(mr.owner));
             if (mr.key.changed(star.xpos, star.ypos, r, 2 / z, color)) {
                 mr.ring.clear();
                 mr.ring.circle(star.xpos, star.ypos, r).stroke({ width: 2 / z, color, alpha: 1 });

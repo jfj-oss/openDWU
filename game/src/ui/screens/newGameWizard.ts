@@ -785,6 +785,23 @@ function buildColonizationPage(options: StartGameOptions): HTMLDivElement {
     return wrap;
 }
 
+/**
+ * Task 19k-1a (Big Galaxies): a headless soak at 60 total empires / 1400 stars measured ~335 game-days/min of
+ * throughput (300 game-s wall-clock, single run, seed 1) — well clear of the ~36 game-days/min real-time budget
+ * (RealSecondsInGalacticYear 600 = 365 game-days, so 1x speed needs ~36.5 days/min). That comfortably covers the
+ * "Big galaxies" 60-empire cap, so this is informational, not a hard limit — OTHER_EMPIRES_COUNT_MAX stays 100 and
+ * higher counts are simply unmeasured (the wizard cap was already 100 before this task; this task did not raise or
+ * lower it). `totalEmpireCount` is the game's total empire count (this many other empires + the player).
+ */
+export function empireCountPerformanceNote(totalEmpireCount: number): string | null {
+    if (totalEmpireCount <= 60) return null;
+    return (
+        `${totalEmpireCount} empires (including you) is above the measured 60-empire / 1400-star range, which comfortably ` +
+        'holds real-time speed on this machine. Higher counts have not been speed-tested and may run slower than ' +
+        'real time, especially on slower machines.'
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Other Empires page (task 06h). Port of the visual layout of
 // Start.InitializeComponent.cs pnlStartNewGameOtherEmpires controls.
@@ -841,6 +858,12 @@ function buildOtherEmpiresPage(options: StartGameOptions): HTMLDivElement {
     countRow.appendChild(post);
     autoGroup.appendChild(countRow);
 
+    // Task 19k-1a: informational note once the total empire count (this many + the player) goes above the
+    // measured 60-empire / 1400-star range. Refreshed by paintPreview (count changes, manual-list changes).
+    const perfNote = document.createElement('div');
+    perfNote.className = 'wizard-todo wizard-empires-perf-note';
+    autoGroup.appendChild(perfNote);
+
     // --- OR specify the starting empires below (lbl…OR). Task 06j: the
     // original lists each AI empire here for manual editing — an editable row
     // per empire with race / government pickers and a name field. ---
@@ -880,6 +903,12 @@ function buildOtherEmpiresPage(options: StartGameOptions): HTMLDivElement {
                 ? `${o.empireCount} ${o.empireCount === 1 ? 'empire' : 'empires'} will be generated`
                 : `No manual empires — ${o.empireCount} random empires (auto-generation off)`;
         }
+        // Task 19k-1a: the effective other-empires count is the manual list when non-empty, else empireCount
+        // (matches the preview text above); +1 for the player.
+        const otherEmpiresCount = o.manual.length > 0 ? o.manual.length : o.empireCount;
+        const note = empireCountPerformanceNote(otherEmpiresCount + 1);
+        perfNote.textContent = note ?? '';
+        perfNote.style.display = note === null ? 'none' : '';
     }
 
     // One editable row per manual empire (task 06j): race dropdown,
