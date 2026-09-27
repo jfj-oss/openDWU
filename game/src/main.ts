@@ -77,6 +77,7 @@ import { loadScenarioIndex, loadScenarioOverlay } from './sim/scenario/fetchScen
 import { applyScenarioOverlay, resolveScenarioIncludes, type ScenarioOverlay } from './sim/scenario/overlay';
 // [leftovers] begin
 import { closeGalacticHistory } from './ui/screens/galacticHistory';
+import { installEventLogDevHook } from './ui/eventLogDev';
 import { installEventMessages, removeEventMessages } from './ui/eventMessages';
 import { installAutosave, removeAutosave } from './ui/autosave';
 import { isGameOptionsPanelOpen } from './ui/screens/gameOptionsPanel';
@@ -432,6 +433,8 @@ export async function startGameView(
     // window's "Play This Game" button can unpause it.
     (window as unknown as { __dwu?: unknown }).__dwu = buildDwuDebugObject({ camera, galaxy, view, app, game, time });
     Object.assign((window as unknown as { __dwu: Record<string, unknown> }).__dwu, { sim: simLoop.driver, simStats: simLoop.stats });
+    // 19p event log: `?eventLog=dump` logs the chronicle digest; __dwu.eventLog.dump() / .export(since).
+    (window as unknown as { __dwu: Record<string, unknown> }).__dwu.eventLog = installEventLogDevHook(galaxy, window.location.search);
 
     // [aiadvisor] begin — 18c: the local model's strategic decisions for AI empires (off unless enabled + a server).
     const aiAdvisorParams = new URLSearchParams(window.location.search);

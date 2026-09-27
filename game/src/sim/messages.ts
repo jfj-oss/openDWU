@@ -170,8 +170,23 @@ export function sendMessageToEmpireWithTitle(sender: Empire | null, recipientEmp
     sendMessageToEmpire(sender, recipientEmpire, messageType, subject, description, { x: 0, y: 0 }, '', title);
 }
 
+/**
+ * Mod layer (19p event log, scenario/eventLog/log.ts): an observer of every delivered empire message. Not a port — the
+ * C# has no such slot. The event log registers it on import and returns at once unless its scenario flag is on; it
+ * only reads the message and never touches sim state or galaxy.rnd.
+ */
+export type EmpireMessageTap = (message: EmpireMessage, recipientEmpire: Empire) => void;
+// `var` without an initializer: the event log may register while this module is still evaluating (an import cycle
+// through scenario/messages.ts), so the slot must exist (hoisted, undefined) and must not be reset afterwards.
+// eslint-disable-next-line no-var
+var empireMessageTap: EmpireMessageTap | null | undefined;
+export function setEmpireMessageTap(tap: EmpireMessageTap | null): void {
+    empireMessageTap = tap;
+}
+
 // Empire.7.cs 2946-2959 SendMessageToEmpire(EmpireMessage message, Empire recipientEmpire).
 export function sendEmpireMessage(message: EmpireMessage, recipientEmpire: Empire | null): void {
+    if (recipientEmpire !== null && empireMessageTap != null) empireMessageTap(message, recipientEmpire); // 19p (mod layer)
     if (recipientEmpire !== null) {
         if (recipientEmpire.messages !== null) {
             recipientEmpire.messages.push(message);

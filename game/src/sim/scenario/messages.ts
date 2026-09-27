@@ -7,6 +7,7 @@ import { EmpireMessage, EmpireMessageType, sendEmpireMessage } from '../messages
 import { galaxyStarDate } from '../tick/simTime';
 import { tryGetText } from '../textResolver';
 import { gameText } from '../colonyTick';
+import { logScenarioMessage, logScenarioNews, noteScenarioText, withoutEmpireMessageTap, type ScenarioLogOptions } from './eventLog/log';
 
 export interface ScenarioMessageOptions {
     /** Message type (default GeneralNeutralEvent; GeneralGoodEvent / GeneralBadEvent / GeneralWarning colour the ticker). */
@@ -15,6 +16,8 @@ export interface ScenarioMessageOptions {
     subject?: unknown;
     /** Sender (default null: the galaxy). */
     sender?: Empire | null;
+    /** 19p event log: explicit category / importance / extra actors (default: the package's, by text-tag prefix). */
+    log?: ScenarioLogOptions;
 }
 
 /**
@@ -23,7 +26,9 @@ export interface ScenarioMessageOptions {
  */
 export function scenarioText(tag: string, ...args: unknown[]): string {
     const template = tryGetText(tag) ?? tag;
-    return template.replace(/\{(\d+)\}/g, (m, i: string) => (Number(i) < args.length ? String(args[Number(i)]) : m));
+    const out = template.replace(/\{(\d+)\}/g, (m, i: string) => (Number(i) < args.length ? String(args[Number(i)]) : m));
+    noteScenarioText(out, tag, args); // 19p: the event log keeps the tag + args, not the resolved text
+    return out;
 }
 
 /** Sends one message to `recipient`. */
@@ -32,16 +37,17 @@ export function scenarioMessage(galaxy: Galaxy, recipient: Empire, title: string
     m.title = title;
     m.description = description;
     m.starDate = galaxyStarDate(galaxy);
-    sendEmpireMessage(m, recipient);
+    withoutEmpireMessageTap(() => sendEmpireMessage(m, recipient));
+    logScenarioMessage(galaxy, recipient, m, opts.log); // 19p (flag eventLog)
     return m;
 }
 
 /**
  * A Galactic NewsNet broadcast: one GalacticNewsNet message to every active empire and pirate faction that passes
  * `filter` (default: all). `source` names the reporting empire in the title, like SendNewsBroadcastCore ("NewsNet: X").
- * Returns the recipients.
+ * Returns the recipients. `log`: the 19p event log's explicit category / importance (default: the package's).
  */
-export function scenarioNews(galaxy: Galaxy, source: Empire | null, description: string, filter: (e: Empire) => boolean = () => true, subject: unknown = null): Empire[] {
+export function scenarioNews(galaxy: Galaxy, source: Empire | null, description: string, filter: (e: Empire) => boolean = () => true, subject: unknown = null, log?: ScenarioLogOptions): Empire[] {
     // As SendNewsBroadcastCore (events.ts): gameText('Galactic NewsNet').ToUpper().
     const newsNet = gameText('Galactic NewsNet').toUpperCase();
     const title = source !== null ? `${newsNet}: ${source.name}` : newsNet;
@@ -52,8 +58,9 @@ export function scenarioNews(galaxy: Galaxy, source: Empire | null, description:
         m.title = title;
         m.description = source !== null ? `${title} - ${description}` : `${newsNet}: ${description}`;
         m.starDate = galaxyStarDate(galaxy);
-        sendEmpireMessage(m, e);
+        withoutEmpireMessageTap(() => sendEmpireMessage(m, e));
         sent.push(e);
     }
+    logScenarioNews(galaxy, source, description, sent, subject, log); // 19p (flag eventLog): one entry per broadcast
     return sent;
 }

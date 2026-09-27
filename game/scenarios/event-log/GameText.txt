@@ -1,0 +1,16 @@
+'19p Event log (tasks/19-mod-layer-scenarios.md §19p): GameText additions. Every tag starts with "EventLog ".
+EventLog Category war;War
+EventLog Category diplomacy;Diplomacy
+EventLog Category politics;Politics
+EventLog Category economy;Economy
+EventLog Category exploration;Exploration
+EventLog Category threat;Threats
+EventLog Category character;Characters
+EventLog Category rim;The Rim
+EventLog Category council;Council
+EventLog Category pirate;Pirates
+EventLog Category story;Story
+EventLog Category other;Other
+EventLog All Categories;All Categories
+EventLog Sort Date;Sort by Date
+EventLog Sort Importance;Sort by Importance

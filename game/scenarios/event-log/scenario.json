@@ -1,0 +1,12 @@
+{
+  "id": "event-log",
+  "name": "Event Log",
+  "description": "One typed log of what happened in the galaxy — every scenario message and news story and the game's own empire messages and NewsNet broadcasts, with category, importance, actors and place — behind the Galactic History screen's category filter and importance sort and the chronicle digest. Includes the Internal Security scenario (and with it the Emergent Galaxy packages and hidden threats; their own flags).",
+  "include": ["internal-security"],
+  "flags": [
+    { "name": "eventLog", "label": "Event log", "description": "Keep the typed event log (Galactic History category filter and importance sort, chronicle digest).", "default": true }
+  ],
+  "params": [
+    { "name": "eventLogSize", "label": "Event log size (entries kept; the least important oldest go first)", "default": 5000, "min": 50, "max": 100000 }
+  ]
+}
