@@ -272,6 +272,9 @@ outer-band dimming and the music / ambient weights. Dev capture: `?autostart=1&s
 6. Migration-season events: herders warn friendly empires before a migration and ask warships out of the corridor;
    ignoring it drops relations and makes herds aggressive.
 7. AI: cautious rim AIs take the protectorate path, aggressive ones conquest — different outcomes per neighbour.
+8. Herder count (user, 2026-09-27): a game-start parameter `rimHerdersCount` 0–20 (default 6) replaces the share — that
+   many rim independent colonies become herders (chosen with the scenario's draws; if fewer rim colonies exist, all of
+   them, with a warning); shown on the wizard's scenario page like every param.
 Reuses: race traits, protectorate relations, character joining, resource system, 19d-6 independents as actors, 19g-7 herd
 rules. Effort: medium (~1–2 agent-days). Flag off = byte-identical.
 
