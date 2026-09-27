@@ -1,7 +1,7 @@
 {
   "id": "rim-atmosphere",
   "name": "Rim Atmosphere",
-  "description": "Presentation only (19i): the outer rim of the galaxy looks, sounds and reads colder, darker and lonelier — cold colour grading, dark dust lanes, grainy murk over unexplored rim systems, derelict hulks, eyes in the dark (small blinking red pairs) in rim systems, dimmer lights and a vignette deep in the rim; a sparse music mood and a wind/static ambient bed that grow with distance; bleaker rim system names and rim-flavoured message wording; rare garbled distress calls from rim outposts. No gameplay change.",
+  "description": "Presentation only (19i): the outer rim of the galaxy looks, sounds and reads colder, darker and lonelier — cold colour grading, dark dust lanes, grainy murk over unexplored rim systems, derelict hulks, eyes in the dark (small blinking red pairs) in rim systems, dimmer lights and a vignette deep in the rim; a sparse music mood and a wind/static ambient bed that grow with distance; distant synthesised creature calls and hull creaks at system zoom; bleaker rim system names and rim-flavoured message wording; rare garbled distress calls from rim outposts. No gameplay change.",
   "include": [],
   "flags": [
     { "name": "rimAtmosphere", "label": "Rim atmosphere", "description": "Draw the rim atmosphere visuals (off = the map draws as the base game).", "default": true }
@@ -16,6 +16,10 @@
     { "name": "musicMoodWeight", "label": "Rim music mood strength", "description": "How strongly the music selector prefers sparse/subdued tracks once the camera is past the rim.", "default": 0.8, "min": 0, "max": 1 },
     { "name": "ambientGain", "label": "Rim ambient bed gain", "description": "Gain of the low wind/static ambient bed once the camera is fully past the rim.", "default": 0.35, "min": 0, "max": 1 },
     { "name": "staticGain", "label": "Rim voice static gain", "description": "Gain of the faint static layer under advisor/diplomacy voice playback in the fog band.", "default": 0.25, "min": 0, "max": 1 },
-    { "name": "distressCallRate", "label": "Rim distress-call rate", "description": "Chance per check (every 6 game days) of a garbled distress-call ticker line from a rim outpost at the rim's outer edge.", "default": 0.05, "min": 0, "max": 1 }
+    { "name": "distressCallRate", "label": "Rim distress-call rate", "description": "Chance per check (every 6 game days) of a garbled distress-call ticker line from a rim outpost at the rim's outer edge.", "default": 0.05, "min": 0, "max": 1 },
+    { "name": "creatureCallRate", "label": "Distant creature-call rate", "description": "How often a creature near the camera calls at system zoom (synthesised; 1 = one call attempt every ~12 s deep in the rim, 15% of that in the core).", "default": 0.3, "min": 0, "max": 2 },
+    { "name": "creakRate", "label": "Hull creak rate", "description": "How often the hull of the selected / nearest own ship creaks at system zoom while it is in a storm, hyperjumping or deep in the rim (synthesised).", "default": 0.4, "min": 0, "max": 2 },
+    { "name": "creatureCallGain", "label": "Creature-call gain", "description": "Gain of the synthesised creature calls (also scaled by the effects volume, distance and rim weight).", "default": 0.5, "min": 0, "max": 1 },
+    { "name": "creakGain", "label": "Hull creak gain", "description": "Gain of the synthesised hull creaks (also scaled by the effects volume and distance).", "default": 0.4, "min": 0, "max": 1 }
   ]
 }

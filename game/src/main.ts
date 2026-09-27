@@ -657,7 +657,7 @@ export async function startGameView(
     // budget; a render exception is contained like a sim one (Pixi would stop scheduling frames).
     const renderGuard = createRenderGuard();
     // [audio] begin — Main View sound requests (drawn weapons, explosions, hyperjumps, ...) + ambient music fade.
-    const gameAudio = installGameAudio({ galaxy, camera, time, suppressAllPopups: () => getMessageOptions().suppressAllPopups });
+    const gameAudio = installGameAudio({ galaxy, camera, time, suppressAllPopups: () => getMessageOptions().suppressAllPopups, selectedShip: () => view.selectedBuiltObject });
     Object.assign((window as unknown as { __dwu: Record<string, unknown> }).__dwu, { audio: soundRequestStats() });
     // [audio] end
     app.ticker.add(() => {
