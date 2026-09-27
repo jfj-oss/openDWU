@@ -163,13 +163,19 @@ rim outposts. Audio: (8) 19e-11 music selector gets a "rim" mood weighted by rad
 tracks that fit); (9) low wind/static ambient bed growing with distance, distant creature calls and hull creaks at system
 zoom; (10) faint static layer on advisor/diplomacy voice in the fog; garbled rim distress calls in the ticker. Text/UI:
 (11) bleaker rim name table, more numbered survey designations; (12) rim-specific exploration/colony message wording
-(lost contact, missing survey ship, unusual readings); (13) faint grain/vignette on the main view deep in the rim, minimap
-dims the outer band. Effort: ~1 agent-day; build with 19h; must not change any sim digest (render/audio/text only except 2).
+(lost contact, missing survey ship, unusual readings); (13) faint grain/vignette on the main view deep in the rim, (no minimap: the user does not want one built — dimming dropped, 2026-09-26). Effort: ~1 agent-day; build with 19h; must not change any sim digest (render/audio/text only except 2).
 Model split (user, 2026-09-26): anything that CREATES visuals — colour-grading filters, dust-lane/murk rendering, creature
 silhouettes, grain/vignette, any procedural art (no art files are ever committed; new visuals are Pixi filters/graphics
 over the original art) — is an Opus package; the data/wiring pieces (name tables, message wording, music/ambient selector
 weights, nav-light/glow params, minimap dimming) are a Sonnet package that consumes the Opus-built render hooks.
 Sub-agents cannot spawn sub-agents in this harness, so the orchestrator runs the two packages in sequence: Opus render first.
+Audio addendum (user, 2026-09-26, "i like the creature call and hull creak sound ideas"): the original ships no such
+sounds and no audio files are ever committed, so both are SYNTHESISED at runtime with Web Audio (like the ambient bed):
+creature calls = formant-filtered noise/oscillator sweeps with per-creature-type timbre (kaltor low bellow, slug wet
+click-chirp, ardilus keening, silver mist shimmer), triggered rarely at system zoom when herds/creatures are within a
+range, panned by direction, gain by rim weight; hull creaks = low resonant filtered-noise bursts with slow pitch drop,
+triggered at system zoom in storms/deep rim with the camera near a ship; params creatureCallRate, creakRate, gains.
+Opus package (sound design), consumes 19i wiring's rimWeightAt + the fauna's herd positions.
 
 ## 19j — Rim herders (ACCEPTED by the user 2026-09-26 — "yes"; rim independents coexist with and use the fauna; builds right after 19g-7)
 1. Herder peoples: a rim independent race trait "symbiotic" — herds are docile to that race's colonies/ships; herder worlds
