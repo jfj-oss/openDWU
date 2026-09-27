@@ -60,6 +60,7 @@ import {
 } from './playerOrders';
 import { grantCharter, nationaliseCompany, releaseCompany, renewCharter, type CharterTerms } from '../scenario/charteredCompanies/charters';
 import { orderSalvage } from '../scenario/wreckage/wreckage';
+import { applyLlmStrategicCommand, type LlmStrategicCommand } from '../scenario/llm/strategic';
 
 /** Automation / control fields of Empire the UI sets directly (Game Options panel and the automation prompts). */
 function isEmpireControlField(empire: Empire, field: string): boolean {
@@ -216,6 +217,11 @@ export const PLAYER_OPS = {
     /** A concession to a restless sector (loose rule, local tax, autonomy grant, governor loyalty). */
     frontierConcede: (galaxy: Galaxy, empire: Empire, sectorId: number) => concedeSector(galaxy, empire, sectorId),
     // [frontier] end
+    // [llm] begin — 19s-3 strategic upgrade (scenario/llm/strategic.ts; flag llmStrategic, no-op when off): the local
+    // model's validated choice for an AI empire (`empire` = that AI), or its refusal; the only way a model choice
+    // reaches the sim, so seed + command log replays it without the model.
+    llmStrategic: (galaxy: Galaxy, empire: Empire, command: LlmStrategicCommand) => applyLlmStrategicCommand(galaxy, empire, command),
+    // [llm] end
 } as const;
 
 export type PlayerOps = typeof PLAYER_OPS;

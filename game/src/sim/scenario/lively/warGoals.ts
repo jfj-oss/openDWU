@@ -227,13 +227,26 @@ function borderColony(galaxy: Galaxy, self: Empire, enemy: Empire): Habitat | nu
  * (`self` was attacked), and "humiliate" (reparations only; always offered). No Rnd.
  */
 export function warGoalCandidates(galaxy: Galaxy, self: Empire, enemy: Empire, attacker: Empire): WarGoal[] {
+    return goalCandidatesWith(galaxy, self, enemy, attacker, (v, a) => incidentCount(galaxy, v, a));
+}
+
+/**
+ * warGoalCandidates without creating any state (the 19s-3 legal-move enumerator reads it from outside the tick):
+ * the 19l incident memory is peeked instead of created. Same list whenever the memory exists.
+ */
+export function peekWarGoalCandidates(galaxy: Galaxy, self: Empire, enemy: Empire, attacker: Empire): WarGoal[] {
+    const mem = galaxy.scenario?.state['lively.incidents'] as Record<string, number> | undefined;
+    return goalCandidatesWith(galaxy, self, enemy, attacker, (v, a) => mem?.[`${v.empireId}:${a.empireId}`] ?? 0);
+}
+
+function goalCandidatesWith(galaxy: Galaxy, self: Empire, enemy: Empire, attacker: Empire, incidents: (victim: Empire, aggressor: Empire) => number): WarGoal[] {
     const out: WarGoal[] = [];
     const st = peekState(galaxy);
     if (st !== null && st.casusBelli[pairKey(self, enemy)] !== undefined) out.push(goal('casusBelli'));
     const rel = obtainDiplomaticRelation(self, enemy);
     const objectives = rel.warObjectiveColonies.filter((c) => c != null && !c.hasBeenDestroyed && c.empire === enemy).slice(0, 3);
     if (objectives.length > 0) out.push(goal('conquest', objectives));
-    if (incidentCount(galaxy, self, enemy) > 0 || incidentCount(galaxy, enemy, self) > 0) {
+    if (incidents(self, enemy) > 0 || incidents(enemy, self) > 0) {
         const c = borderColony(galaxy, self, enemy);
         if (c !== null) out.push(goal('border', [c]));
     }
