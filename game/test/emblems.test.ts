@@ -14,8 +14,6 @@ import {
     ghostFlag,
     ghostPortrait,
     herderFlag,
-    herderPortrait,
-    hoodDepth,
     secededFlag,
     secededPortrait,
     type RgbaImage,
@@ -92,16 +90,30 @@ describe('19r derived / herder portraits', () => {
         expect(px(exilePortrait(p), 0, 30)).toEqual([6, 6, 8, 255]);
         expect(secededPortrait(p, 0x3344aa, 2).data[(59 * 60 + 59) * 4 + 3]).toBe(0);
     });
-    it('herder hood covers the frame outside the face opening and keeps the face', () => {
-        const h = herderPortrait(p);
-        expect(h.data).toEqual(herderPortrait(p).data);
-        expect(hoodDepth(1, 1, 60, 60)).toBeGreaterThan(0);
-        expect(hoodDepth(30, 36, 60, 60)).toBeLessThan(0);
-        // A corner pixel is hood (earth tones: red ≥ green ≥ blue); the face centre differs from the hood.
-        const [r, g, b, a] = px(h, 2, 2);
-        expect(a).toBe(255);
-        expect(r).toBeGreaterThanOrEqual(g);
-        expect(g).toBeGreaterThanOrEqual(b);
+    // The herder portrait is no longer generated (it's our own FLUX image, public/art/herder/portrait.png, served
+    // by URL — see empireEmblem.ts HERDER_PORTRAIT_URL and herderEmblemOverride, tested in herderIdentity.test.ts).
+    it('herder flag reads at 32 px (bone emblem vs the dark field)', () => {
+        const f = herderFlag();
+        const W = 32;
+        const H = 19;
+        const small: number[] = [];
+        for (let y = 0; y < H; y++) {
+            for (let x = 0; x < W; x++) {
+                let s = 0;
+                let n = 0;
+                for (let yy = Math.floor((y * f.h) / H); yy < Math.floor(((y + 1) * f.h) / H); yy++) {
+                    for (let xx = Math.floor((x * f.w) / W); xx < Math.floor(((x + 1) * f.w) / W); xx++) {
+                        const i = (yy * f.w + xx) * 4;
+                        s += 0.299 * f.data[i] + 0.587 * f.data[i + 1] + 0.114 * f.data[i + 2];
+                        n++;
+                    }
+                }
+                small.push(s / n);
+            }
+        }
+        const centre = small[9 * W + 18];
+        const field = (small[1 * W + 29] + small[17 * W + 29] + small[1 * W + 8]) / 3;
+        expect(centre - field).toBeGreaterThan(80);
     });
 });
 

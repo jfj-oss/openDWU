@@ -5,7 +5,7 @@
 //   liveries  six ships of different empires (new → heavily withered + storm scars, and a pirate)
 //   threats   the seven threat markers, suspected and confirmed
 //   flags     a parent flag / portrait and the company, seceded, exile and Ghost Armada derivations
-//   herders   Teekan vs the hooded Ossuvan portrait, the herd flag, a station with camp props
+//   herders   Teekan vs our generated Ossuvan portrait, the herd flag, a station with camp props
 // Nothing here touches the sim: stand-in objects are plain records, the galaxy is only read for real empires.
 
 import { Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
@@ -36,12 +36,11 @@ import {
     ghostPortrait,
     herderCampRgba,
     herderFlag,
-    herderPortrait,
     secededFlag,
     secededPortrait,
     type RgbaImage,
 } from './emblemArt';
-import { loadRgba, racePortraitUrl } from '../ui/empireEmblem';
+import { HERDER_PORTRAIT_URL, loadRgba, racePortraitUrl } from '../ui/empireEmblem';
 import { FaunaArt } from './faunaArt';
 import { CreatureRig } from './creatureRig';
 
@@ -418,22 +417,22 @@ export class ArtBundleGallery {
     // -----------------------------------------------------------------------------------------------------------
     private async buildHerders(): Promise<void> {
         const W = this.w;
-        this.label('19r herder identity — Ossuvan (BasedOn teekan): portrait, flag, camp props over a herder station', W / 2, 16, 24);
+        this.label('19r herder identity — Ossuvan: our own generated portrait, flag, camp props over a herder station', W / 2, 16, 24);
         const teekanPic = this.galaxy.races?.find?.((r: { name: string }) => r.name === 'Teekan')?.pictureIndex ?? 11;
-        const portrait = await loadRgba(racePortraitUrl(teekanPic));
-        if (portrait !== null) {
-            for (const [x, img, name] of [
-                [W * 0.12, portrait, 'Teekan (stock)'],
-                [W * 0.32, herderPortrait(portrait), 'Ossuvan (hooded frame)'],
-            ] as const) {
-                const s = new Sprite(tex(img));
-                s.anchor.set(0.5);
-                s.position.set(x, 330);
-                s.scale.set(340 / img.w);
-                this.board.addChild(s);
-                this.label(name, x, 520, 18);
-            }
-        } else this.notes.push('Teekan portrait missing');
+        const [portrait, herderImg] = await Promise.all([loadRgba(racePortraitUrl(teekanPic)), loadRgba(HERDER_PORTRAIT_URL)]);
+        const entries: [number, RgbaImage, string][] = [];
+        if (portrait !== null) entries.push([W * 0.12, portrait, 'Teekan (stock)']);
+        else this.notes.push('Teekan portrait missing');
+        if (herderImg !== null) entries.push([W * 0.32, herderImg, 'Ossuvan (our generated portrait)']);
+        else this.notes.push('Ossuvan portrait missing');
+        for (const [x, img, name] of entries) {
+            const s = new Sprite(tex(img));
+            s.anchor.set(0.5);
+            s.position.set(x, 330);
+            s.scale.set(340 / img.w);
+            this.board.addChild(s);
+            this.label(name, x, 520, 18);
+        }
         const flag = new Sprite(tex(herderFlag()));
         flag.anchor.set(0.5);
         flag.position.set(W * 0.22, 760);

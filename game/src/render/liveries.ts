@@ -8,9 +8,10 @@
 //     decal (distance × low local variance × paintable);
 //   * a mid-tone luminance gate (and a saturation / edge gate) so windows, engines, lights and seams stay clean.
 // Per ship: the empire style (main / secondary colour, emblem glyph from the flag shape, per-empire hooks such as the
-// Concord's salt bloom) and the withering level — faded paint and bleached decals, seam grime, rust streaks from
-// rivets along the travel axis, micrometeorite pitting on the leading edges, engine scorch around the thrusters, and
-// charred storm scars — quantised so ships share textures. Everything is capped subtle.
+// Concord's salt bloom) and the withering level, which scales the COUNT and size of hard-edged wear marks added over
+// the crisp original (never a global fade or blur): chipped decal / band paint, primer flecks at plate edges, seam
+// grime lines, rust streaks running aft from rivets, leading-edge pitting, scorch round nozzles and old hits,
+// replacement plates, charred storm scars — quantised so ships share textures.
 
 /** A square RGBA image in the load-rotated crop space. */
 export interface CropImage {
@@ -401,35 +402,95 @@ function blend(out: Uint8ClampedArray, i: number, r: number, g: number, b: numbe
     out[i + 3] = an * 255;
 }
 
+/** Hard (unblended-looking) mark: set the overlay pixel if in the hull. */
+function mark(an: HullAnalysis, out: Uint8ClampedArray, x: number, y: number, r: number, g: number, b: number, a: number): void {
+    const side = an.side;
+    if (x < 0 || y < 0 || x >= side || y >= side) return;
+    const i = y * side + x;
+    if (an.mask[i] === 0) return;
+    blend(out, i * 4, r, g, b, a);
+}
+
+/** Wear-mark counts for a level over `area` in mark units² (the level scales how many marks and how big, never a global fade). */
+export function wearCounts(level: number, area: number): { streaks: number; chips: number; pits: number; plates: number; hits: number } {
+    const L = Math.max(0, Math.min(1, level));
+    return {
+        streaks: Math.round((area / 140) * Math.pow(L, 1.5)) + (L > 0 ? 1 : 0),
+        chips: Math.round((area / 30) * L),
+        pits: Math.round((area / 70) * L),
+        plates: L >= 0.2 ? Math.floor(L * 2.6) : 0,
+        hits: Math.round(L * 3.4),
+    };
+}
+
 /**
- * Paints the livery + withering overlay (side² RGBA, normal alpha blending over the sprite). The colour of painted
- * pixels keeps the original's shading (tint × pixel luminance). `seed` varies rivets / pits / scars per texture.
+ * Paints the livery + withering overlay (side² RGBA, normal blending over the crisp original sprite). The paint keeps
+ * the original's shading (tint × pixel luminance relative to the plating). Wear is ADDED as legible hard-edged marks
+ * whose count and size grow with the level — rust streaks (dark core, bright edge) running aft from rivets / seams,
+ * chipped paint (light primer flecks) at plate edges, seam grime as dark lines, pitting (dark dot, lit rim) on the
+ * leading edges, scorch (sharp inner edge, dark falloff) round the nozzles and old hit points, discoloured replacement
+ * plates — and the decal / band go chipped (missing chunks), never faded. `seed` varies the marks per texture.
  */
 export function paintLivery(an: HullAnalysis, img: CropImage, style: LiveryStyle | null, look: WitherLook, seed: number, thrusters: readonly ScorchSource[] = []): Uint8ClampedArray {
     const side = an.side;
     const out = new Uint8ClampedArray(side * side * 4);
     const L = look.level;
-    const fade = 1 - 0.4 * L;
+    // Mark unit: wear must read at play size, so marks scale with the hull (≈ 1/90 of its length, ≥ 2 px).
+    const u = Math.max(2, Math.round(an.length / 90));
+    const n = wearCounts(L, an.area / (u * u));
+    const block = (x: number, y: number, sz: number, r: number, g: number, b: number, a: number): void => {
+        for (let dy = 0; dy < sz; dy++) for (let dx = 0; dx < sz; dx++) mark(an, out, x + dx, y + dy, r, g, b, a);
+    };
+    /** Chipped paint: (1.5 u)² cells knocked out, more with the level. */
+    const cell = Math.max(3, Math.round(u * 1.5));
+    const chipped = (x: number, y: number): boolean => hash(Math.floor(x / cell), Math.floor(y / cell), seed + 71) < 0.42 * L * L;
+    const chipEdge = (x: number, y: number): boolean => !chipped(x, y) && (chipped(x - 1, y) || chipped(x + 1, y) || chipped(x, y - 1) || chipped(x, y + 1));
+    // Replacement plates first (under the paint): a rectangle of plating in another tone with a dark outline.
+    for (let p = 0; p < n.plates; p++) {
+        const u = 0.15 + 0.7 * hash(p, 91, seed);
+        const cx = Math.round(an.xMin + an.length * u);
+        const cy = Number.isNaN(an.centre[cx]) ? side / 2 : an.centre[cx] + (hash(p, 92, seed) - 0.5) * an.halfWidth[cx];
+        const w = Math.max(6, Math.round(an.length * (0.07 + 0.05 * hash(p, 93, seed))));
+        const h = Math.max(5, Math.round((an.halfWidth[cx] || 8) * (0.5 + 0.3 * hash(p, 94, seed))));
+        const warm = hash(p, 95, seed) < 0.5;
+        for (let y = Math.round(cy - h / 2); y <= Math.round(cy + h / 2); y++) {
+            for (let x = cx - Math.round(w / 2); x <= cx + Math.round(w / 2); x++) {
+                if (x < 0 || y < 0 || x >= side || y >= side) continue;
+                const i = y * side + x;
+                if (an.mask[i] === 0 || an.dist[i] < 1.5) continue;
+                const edge = y === Math.round(cy - h / 2) || y === Math.round(cy + h / 2) || x === cx - Math.round(w / 2) || x === cx + Math.round(w / 2);
+                const l = an.lum[i] * 255;
+                if (edge) mark(an, out, x, y, 18, 16, 14, 0.9);
+                else if (warm) mark(an, out, x, y, l * 1.15 + 18, l * 0.95 + 6, l * 0.7, 0.85);
+                else mark(an, out, x, y, l * 0.7, l * 0.9 + 6, l * 1.1 + 22, 0.85);
+            }
+        }
+    }
     if (style !== null && style.paint) {
         const [mr, mg, mb] = rgbOf(style.main);
         const [sr, sg, sb] = rgbOf(style.secondary);
-        // Bleach toward a pale version of the colour as it withers.
-        const bleach = (c: number): number => c + (225 - c) * 0.35 * L;
+        const paintPx = (i: number, x: number, y: number, cr: number, cg: number, cb: number, k: number, a: number): void => {
+            if (chipped(x, y)) return;
+            if (chipEdge(x, y) && L > 0) {
+                // Primer / bare metal at the chip's rim.
+                blend(out, i * 4, 205, 198, 182, 0.9);
+                return;
+            }
+            blend(out, i * 4, cr * k, cg * k, cb * k, a);
+        };
         // Band + pinstripes.
         for (let y = 0; y < side; y++) {
             for (let x = an.band.x0 - 1; x <= an.band.x1; x++) {
                 if (x < 0 || x >= side) continue;
                 const i = y * side + x;
-                if (an.mask[i] === 0) continue;
+                if (an.mask[i] === 0 || an.gate[i] <= 0) continue;
                 const edge = x === an.band.x0 - 1 || x === an.band.x1;
-                const [cr, cg, cb] = edge ? [sr, sg, sb] : [mr, mg, mb];
-                // Shading relative to the plating's mean: the band keeps the empire colour's own brightness.
                 const k = Math.max(0.55, Math.min(1.3, an.lum[i] / Math.max(0.05, an.meanLum)));
-                const a = an.gate[i] * (edge ? 0.6 : 0.62) * fade;
-                blend(out, i * 4, bleach(cr) * k, bleach(cg) * k, bleach(cb) * k, a);
+                const [cr, cg, cb] = edge ? [sr, sg, sb] : [mr, mg, mb];
+                paintPx(i, x, y, cr, cg, cb, k, an.gate[i] * (edge ? 0.6 : 0.62));
             }
         }
-        // Emblem decal: disc in the main colour, glyph in the secondary, rim in the secondary.
+        // Emblem decal: disc in the main colour, glyph + rim in the secondary; chipped with age.
         const d = an.decal;
         const R = Math.ceil(d.r);
         for (let y = Math.floor(d.y) - R; y <= Math.floor(d.y) + R; y++) {
@@ -446,57 +507,102 @@ export function paintLivery(an: HullAnalysis, img: CropImage, style: LiveryStyle
                 const glyph = emblemGlyphHit(style.emblem, u * 1.15, v * 1.15);
                 const rim = rr > 0.84;
                 const [cr, cg, cb] = glyph || rim ? [sr, sg, sb] : [mr, mg, mb];
-                blend(out, i * 4, bleach(cr) * k, bleach(cg) * k, bleach(cb) * k, Math.min(1, aa * 1.5) * 0.8 * (1 - 0.6 * L));
+                paintPx(i, x, y, cr, cg, cb, k, Math.min(1, aa * 1.5) * 0.8);
             }
         }
     }
-    const wear = (i: number, r: number, g: number, b: number, a: number): void => blend(out, i * 4, r, g, b, Math.min(a, LIVERY_ALPHA_CAP));
     if (L > 0) {
+        // Seam grime: dark lines along the seams (pixels darker than their neighbours), denser with age.
         for (let y = 1; y < side - 1; y++) {
             for (let x = 1; x < side - 1; x++) {
                 const i = y * side + x;
                 if (an.mask[i] === 0) continue;
                 const l = an.lum[i];
-                // Faded paint: a dusty veil over the plating.
-                if (an.gate[i] > 0) wear(i, 150, 140, 120, 0.12 * L * an.gate[i]);
-                // Seam grime: pixels darker than their 3 × 3 neighbourhood.
                 const mean = (an.lum[i - 1] + an.lum[i + 1] + an.lum[i - side] + an.lum[i + side]) / 4;
-                if (l < mean - 0.06) wear(i, 38, 30, 22, 0.45 * L);
-                // Micrometeorite pitting: leading edge (a non-hull pixel within 3 px ahead along +x).
-                let lead = false;
-                for (let k = 1; k <= 3; k++) if (x + k >= side || an.mask[i + k] === 0) lead = true;
-                if (lead && hash(x, y, seed + 17) < 0.35 * L) wear(i, 30, 28, 26, 0.55);
+                if (l < mean - 0.05 && hash(Math.floor(x / (2 * u)), Math.floor(y / (2 * u)), seed + 3) < 0.25 + 0.75 * L) block(x, y, Math.max(1, Math.round(u / 2)), 20, 16, 12, 0.85);
             }
         }
-        // Rust streaks from rivets (bright specks), trailing aft along the travel axis.
-        const streaks = Math.round(an.area / 350 * L);
+        // Chipped paint at plate edges: light flecks on the seams' lit side.
         let made = 0;
-        for (let k = 0; k < an.area * 3 && made < streaks; k++) {
+        for (let k = 0; made < n.chips && k < an.area * 4; k++) {
+            const x = 1 + Math.floor(hash(k, 11, seed) * (side - 2));
+            const y = 1 + Math.floor(hash(k, 12, seed) * (side - 2));
+            const i = y * side + x;
+            if (an.mask[i] === 0 || an.gate[i] < 0.2) continue;
+            const edgeOfPlate = Math.abs(an.lum[i] - an.lum[i - 1]) > 0.06 || Math.abs(an.lum[i] - an.lum[i - side]) > 0.06;
+            if (!edgeOfPlate && hash(k, 13, seed) > 0.25) continue;
+            made++;
+            const cs = Math.max(1, Math.round(u * (0.6 + 0.8 * L * hash(k, 16, seed))));
+            block(x, y, cs, 222, 216, 200, 0.95);
+            if (hash(k, 14, seed) < 0.5 + 0.4 * L) block(x + cs, y, Math.max(1, cs - 1), 176, 168, 150, 0.9);
+            if (L > 0.6 && hash(k, 15, seed) < 0.4) block(x, y + cs, Math.max(1, cs - 1), 176, 168, 150, 0.9);
+        }
+        // Rust streaks: from rivets / hatch corners (seam specks), running aft (−x), dark core with a bright edge.
+        made = 0;
+        for (let k = 0; made < n.streaks && k < an.area * 4; k++) {
             const x = Math.floor(hash(k, 1, seed) * side);
             const y = Math.floor(hash(k, 2, seed) * side);
-            if (x < 1 || y < 1 || x >= side - 1 || y >= side - 1) continue;
+            if (x < 2 || y < 2 || x >= side - 2 || y >= side - 2) continue;
             const i = y * side + x;
-            if (an.mask[i] === 0 || an.gate[i] < 0.4) continue;
+            if (an.mask[i] === 0 || an.gate[i] < 0.3 || an.dist[i] < 3) continue;
             made++;
-            const len = 3 + Math.floor(hash(k, 3, seed) * (an.length * 0.08));
-            for (let s = 0; s < len; s++) {
+            const len = Math.round(u * 3 + (an.length * 0.1 * hash(k, 3, seed)) * (0.4 + L));
+            const wide = Math.max(1, Math.round(u * (0.6 + 0.6 * L)));
+            const edge = Math.max(1, Math.round(u / 2));
+            block(x, y - 1, wide + 1, 50, 26, 12, 1);
+            block(x + wide + 1, y - 1, edge, 226, 140, 64, 0.95);
+            for (let s = 1; s < len; s++) {
                 const xs = x - s;
                 if (xs < 0 || an.mask[y * side + xs] === 0) break;
-                wear(y * side + xs, 125, 62, 24, 0.42 * L * (1 - s / len));
+                const fade = 1 - s / len;
+                const w2 = Math.max(1, Math.round(wide * (0.5 + 0.5 * fade)));
+                const drift = Math.round(Math.sin((s + k) * 0.25) * 0.7);
+                for (let wv = 0; wv < w2; wv++) mark(an, out, xs, y + drift + wv, 96, 42, 14, 0.6 + 0.4 * fade);
+                for (let e = 1; e <= edge; e++) mark(an, out, xs, y + drift - e, 222, 128, 54, 0.8 * fade);
+                mark(an, out, xs, y + drift + w2, 140, 64, 26, 0.45 * fade);
             }
         }
-        // Engine scorch: soot ahead of each thruster mark.
-        for (const t of thrusters) {
-            const reach = Math.max(3, an.length * 0.12);
-            for (let y = Math.floor(t.top - 2); y <= Math.ceil(t.top + t.height + 2); y++) {
-                for (let x = Math.floor(t.left); x <= Math.floor(t.left + reach); x++) {
-                    if (x < 0 || y < 0 || x >= side || y >= side) continue;
-                    const i = y * side + x;
-                    if (an.mask[i] === 0) continue;
-                    const f = 1 - (x - t.left) / reach;
-                    wear(i, 18, 14, 12, 0.5 * L * f * (0.7 + 0.3 * hash(x, y, seed + 5)));
+        // Pitting on the leading edges: dark dot with a lit rim.
+        made = 0;
+        for (let k = 0; made < n.pits && k < an.area * 4; k++) {
+            const x = 1 + Math.floor(hash(k, 21, seed) * (side - 2));
+            const y = 1 + Math.floor(hash(k, 22, seed) * (side - 2));
+            const i = y * side + x;
+            if (an.mask[i] === 0) continue;
+            let lead = false;
+            for (let q = 1; q <= 4; q++) if (x + q >= side || an.mask[i + q] === 0) lead = true;
+            if (!lead) continue;
+            made++;
+            const ps = Math.max(1, Math.round(u * (0.5 + 0.6 * L * hash(k, 24, seed))));
+            block(x, y, ps, 12, 10, 10, 0.95);
+            block(x - 1, y - 1, 1, 230, 226, 214, 0.9);
+            for (let q = 0; q < ps; q++) {
+                mark(an, out, x + q, y - 1, 230, 226, 214, 0.85);
+                mark(an, out, x - 1, y + q, 200, 196, 186, 0.8);
+            }
+        }
+        // Scorch: nozzles and old hit points — sharp near-black core, dark falloff.
+        const scorch = (cx: number, cy: number, r0: number, r1: number): void => {
+            for (let y = Math.floor(cy - r1); y <= Math.ceil(cy + r1); y++) {
+                for (let x = Math.floor(cx - r1); x <= Math.ceil(cx + r1); x++) {
+                    const d = Math.hypot(x - cx, (y - cy) * 1.2) + (hash(Math.floor(x / u), Math.floor(y / u), seed + 7) - 0.5) * u;
+                    if (d > r1) continue;
+                    if (d <= r0) mark(an, out, x, y, 16, 12, 10, 0.92);
+                    else mark(an, out, x, y, 26, 20, 16, 0.75 * (1 - (d - r0) / (r1 - r0)));
                 }
             }
+        };
+        for (const t of thrusters) {
+            const r1 = Math.max(4, an.length * (0.05 + 0.07 * L));
+            scorch(t.left + 1, t.top + t.height / 2, r1 * 0.35, r1);
+        }
+        for (let hI = 0; hI < n.hits; hI++) {
+            const u = 0.2 + 0.65 * hash(hI, 31, seed);
+            const cx = an.xMin + an.length * u;
+            const col = Math.floor(cx);
+            const cy = (Number.isNaN(an.centre[col]) ? side / 2 : an.centre[col]) + (hash(hI, 32, seed) - 0.5) * (an.halfWidth[col] || 4);
+            const r1 = Math.max(3, an.length * 0.035 * (0.6 + L));
+            scorch(cx, cy, r1 * 0.4, r1);
         }
     }
     // Storm scars: charred zig-zag streaks (kept after repair; reset by a retrofit).
@@ -505,15 +611,13 @@ export function paintLivery(an: HullAnalysis, img: CropImage, style: LiveryStyle
         let y = (an.centre[Math.floor(x)] || side / 2) - an.halfWidth[Math.floor(x)] * 0.9;
         const dir = hash(s, 8, seed) < 0.5 ? 1 : -1;
         for (let k = 0; k < an.length * 0.5; k++) {
-            x += dir * (0.6 + 0.8 * hash(s, k + 11, seed)) * 0.5;
+            x += dir * (0.6 + 0.8 * hash(s, k + 11, seed)) * 0.9 * (hash(s, k + 40, seed) < 0.5 ? 1 : -0.4);
             y += 0.9;
             const xi = Math.round(x);
             const yi = Math.round(y);
             if (xi < 0 || yi < 0 || xi >= side || yi >= side) break;
-            const i = yi * side + xi;
-            if (an.mask[i] === 0) continue;
-            wear(i, 14, 10, 8, 0.6);
-            if (xi + 1 < side && an.mask[i + 1] !== 0) wear(i + 1, 50, 36, 24, 0.35);
+            block(xi, yi, u, 10, 8, 8, 0.95);
+            mark(an, out, xi - 1, yi, 150, 140, 180, 0.7);
         }
     }
     // Salt bloom / barnacles on the hull edges (per-empire style hook).
@@ -524,7 +628,7 @@ export function paintLivery(an: HullAnalysis, img: CropImage, style: LiveryStyle
             const x = i % side;
             const y = (i / side) | 0;
             const hN = hash(x >> 1, y >> 1, seed + 99);
-            if (hN < 0.55 * salt) wear(i, 228, 226, 212, 0.55 * (0.6 + 0.4 * hash(x, y, seed)));
+            if (hN < 0.55 * salt) blend(out, i * 4, 228, 226, 212, 0.55 * (0.6 + 0.4 * hash(x, y, seed)));
         }
     }
     return out;

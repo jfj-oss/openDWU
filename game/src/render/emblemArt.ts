@@ -106,7 +106,7 @@ function valueNoise(x: number, y: number, seed: number): number {
     return (a * (1 - s(tx)) + b * s(tx)) * (1 - s(ty)) + (c * (1 - s(tx)) + d * s(tx)) * s(ty);
 }
 
-function fbm(x: number, y: number, seed: number): number {
+export function fbm(x: number, y: number, seed: number): number {
     return 0.55 * valueNoise(x, y, seed) + 0.3 * valueNoise(x * 2.1, y * 2.1, seed + 1) + 0.15 * valueNoise(x * 4.3, y * 4.3, seed + 2);
 }
 
@@ -358,80 +358,69 @@ export function ghostPortrait(portrait: RgbaImage): RgbaImage {
 export const HERDER_EARTH = [0x6b4424, 0x8a5a2b, 0xb07a3c, 0x3e2a18, 0xc9a26a] as const;
 export const HERDER_BEADS = [0x2f9a8a, 0xe8dcc0, 0xa8442a, 0xd8a030] as const;
 
-/** Is (x, y) outside the hood's face opening (an arched ellipse)? Returns the signed depth into the hood (px). */
-export function hoodDepth(x: number, y: number, w: number, h: number): number {
-    const cx = w / 2;
-    const cy = h * 0.6;
-    const rx = w * 0.34;
-    const ry = h * 0.46;
-    const e = Math.hypot((x - cx) / rx, (y - cy) / ry);
-    return (e - 1) * Math.min(rx, ry);
+/** A layer mask (1 byte per pixel) for silhouettes. */
+function newMask(img: RgbaImage): Uint8Array {
+    return new Uint8Array(img.w * img.h);
 }
 
-/**
- * Ossuvan portrait: the Teekan portrait inside a hooded, weathered face frame — a fur hood (fbm-shaded earth tones)
- * leaving an arched face opening, a bead string along the hood's rim, and a herd-shell pendant hanging at the bottom.
- */
-export function herderPortrait(portrait: RgbaImage, seed = 7): RgbaImage {
-    const out = cloneImage(portrait);
-    const { w, h } = out;
-    const [dr, dg, db] = rgb(HERDER_EARTH[3]);
-    // Weathering over the face: a warm dusty wash.
-    for (let i = 0; i < out.data.length; i += 4) {
-        out.data[i] = out.data[i] * 0.88 + 22;
-        out.data[i + 1] = out.data[i + 1] * 0.86 + 14;
-        out.data[i + 2] = out.data[i + 2] * 0.8 + 6;
+function maskDisc(m: Uint8Array, w: number, h: number, cx: number, cy: number, r: number): void {
+    for (let y = Math.max(0, Math.floor(cy - r)); y <= Math.min(h - 1, Math.ceil(cy + r)); y++) {
+        for (let x = Math.max(0, Math.floor(cx - r)); x <= Math.min(w - 1, Math.ceil(cx + r)); x++) if (Math.hypot(x + 0.5 - cx, y + 0.5 - cy) <= r) m[y * w + x] = 1;
     }
+}
+
+/** Filled polygon into a mask (even-odd). */
+function maskPoly(m: Uint8Array, w: number, h: number, pts: readonly [number, number][]): void {
+    let y0 = Infinity;
+    let y1 = -Infinity;
+    for (const [, y] of pts) {
+        y0 = Math.min(y0, y);
+        y1 = Math.max(y1, y);
+    }
+    for (let y = Math.max(0, Math.floor(y0)); y <= Math.min(h - 1, Math.ceil(y1)); y++) {
+        const yc = y + 0.5;
+        const xs: number[] = [];
+        for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+            const [xa, ya] = pts[i];
+            const [xb, yb] = pts[j];
+            if (ya > yc !== yb > yc) xs.push(xa + ((yc - ya) * (xb - xa)) / (yb - ya));
+        }
+        xs.sort((p, q) => p - q);
+        for (let k = 0; k + 1 < xs.length; k += 2) for (let x = Math.max(0, Math.ceil(xs[k] - 0.5)); x <= Math.min(w - 1, Math.floor(xs[k + 1] - 0.5)); x++) m[y * w + x] = 1;
+    }
+}
+
+/** A thick line into a mask. */
+function maskLine(m: Uint8Array, w: number, h: number, x0: number, y0: number, x1: number, y1: number, width: number): void {
+    const len = Math.hypot(x1 - x0, y1 - y0);
+    const steps = Math.max(1, Math.ceil(len * 2));
+    for (let k = 0; k <= steps; k++) {
+        const t = k / steps;
+        maskDisc(m, w, h, x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, width / 2);
+    }
+}
+
+/** Composite a mask in `col`; with `rim` the silhouette's edge facing the light (from behind, up-left) glows. */
+function paintMask(img: RgbaImage, m: Uint8Array, col: number, a: number, rim: number | null = null, rimA = 0.8): void {
+    const [r, g, b] = rgb(col);
+    const [rr, rg, rb] = rim === null ? [0, 0, 0] : rgb(rim);
+    const { w, h } = img;
     for (let y = 0; y < h; y++) {
         for (let x = 0; x < w; x++) {
-            const d = hoodDepth(x + 0.5, y + 0.5, w, h);
-            if (d < -2) continue;
-            const i = (y * w + x) * 4;
-            if (d < 0) {
-                // Soft shadow the hood casts into the opening.
-                over(out.data, i, dr * 0.4, dg * 0.4, db * 0.4, 0.5 * (1 + d / 2));
-                continue;
-            }
-            // Fur: streaky fbm along the hood's radial direction, darker at the rim.
-            const n = fbm(x / 6 + y / 40, y / 6, seed);
-            const streak = 0.5 + 0.5 * Math.sin((x * 0.9 + y * 0.35) * 0.9 + n * 6);
-            const t = Math.min(1, d / (w * 0.08));
-            const base = HERDER_EARTH[Math.floor(n * 3) % 3];
-            const [br, bg, bb] = rgb(base);
-            const k = (0.55 + 0.45 * t) * (0.75 + 0.35 * streak);
-            out.data[i] = br * k;
-            out.data[i + 1] = bg * k;
-            out.data[i + 2] = bb * k;
-            out.data[i + 3] = 255;
+            const i = y * w + x;
+            if (m[i] === 0) continue;
+            over(img.data, i * 4, r, g, b, a);
+            if (rim === null) continue;
+            // Rim: a neighbour outside the silhouette (the fog-lit gap behind it).
+            const out = (xx: number, yy: number): boolean => xx < 0 || yy < 0 || xx >= w || yy >= h || m[yy * w + xx] === 0;
+            if (out(x - 1, y) || out(x, y - 1) || out(x + 1, y) || out(x - 1, y - 1)) over(img.data, i * 4, rr, rg, rb, rimA);
         }
     }
-    // Bead string along the rim.
-    const cx = w / 2;
-    const cy = h * 0.6;
-    const rx = w * 0.34 + 5;
-    const ry = h * 0.46 + 5;
-    const beads = 22;
-    for (let k = 0; k < beads; k++) {
-        const a = Math.PI * (1.02 + (0.96 * k) / (beads - 1));
-        const bx = cx + Math.cos(a) * rx;
-        const by = cy + Math.sin(a) * ry;
-        if (by > h * 0.95) continue;
-        fillDisc(out, bx, by, w * 0.014 + 0.5, 0x1a120a, 0.8);
-        fillDisc(out, bx, by, w * 0.012, HERDER_BEADS[k % HERDER_BEADS.length]);
-        fillDisc(out, bx - 0.8, by - 0.8, w * 0.004, 0xffffff, 0.7);
-    }
-    // Herd-shell pendant on a cord at the bottom centre.
-    const px = cx;
-    const py = h * 0.9;
-    for (let t = 0; t < 1; t += 0.02) {
-        fillDisc(out, cx - w * 0.12 + t * w * 0.12, h * 0.8 + Math.sin(t * Math.PI) * h * 0.06, 0.9, 0x2a1a0c);
-        fillDisc(out, cx + w * 0.12 - t * w * 0.12, h * 0.8 + Math.sin(t * Math.PI) * h * 0.06, 0.9, 0x2a1a0c);
-    }
-    const sr = w * 0.055;
-    fillDisc(out, px, py, sr + 1.5, 0x2a1a0c);
-    fillDisc(out, px, py, sr, 0xe8dcc0);
-    for (let k = 1; k <= 3; k++) strokeRing(out, px + k * 0.8, py - k * 0.4, sr * (1 - k * 0.24), 1, 0x9a7a50);
-    return out;
+}
+
+/** Cold blue-grey of the herder scenes (desaturated), by value 0-255. */
+export function cold(v: number): [number, number, number] {
+    return [v * 0.86, v * 0.95, v * 1.08];
 }
 
 /** A horned herd head (front view): skull disc, muzzle, two sweeping horns, ears. Drawn at (cx, cy), size s. */
@@ -452,67 +441,145 @@ export function drawHornedHead(img: RgbaImage, cx: number, cy: number, s: number
     fillDisc(img, cx, cy + s * 0.24, s * 0.15, col);
 }
 
-/** Ossuvan flag: an earth field with a darker hoist band, a horned herd head and a bead row. */
+/** Ossuvan flag (matching the portrait): a near-black cold field, a pale fog band across the middle, a faint ring of
+ * spears round a bone-coloured horned herd head (bold enough to read at 32 px), a bead row on the hoist. */
 export function herderFlag(w = FLAG_W, h = FLAG_H): RgbaImage {
     const out = blankImage(w, h);
-    const [er, eg, eb] = rgb(HERDER_EARTH[1]);
     for (let y = 0; y < h; y++) {
         for (let x = 0; x < w; x++) {
             const i = (y * w + x) * 4;
-            const n = fbm(x / 8, y / 8, 11);
-            const k = 0.85 + 0.25 * n;
-            const hoist = x < w * 0.16 ? 0.62 : 1;
-            out.data[i] = er * k * hoist;
-            out.data[i + 1] = eg * k * hoist;
-            out.data[i + 2] = eb * k * hoist;
+            const hoist = x < w * 0.14 ? 0.6 : 1;
+            const [r, g, b] = cold(22 * hoist);
+            out.data[i] = r;
+            out.data[i + 1] = g;
+            out.data[i + 2] = b;
             out.data[i + 3] = 255;
+            // Fog band.
+            const d = Math.abs(y - h * 0.62) / (h * 0.16);
+            if (d < 1.4) over(out.data, i, ...cold(92), Math.max(0, 1 - d / 1.4) * (0.45 + 0.35 * fbm(x / 14, y / 5, 3)));
         }
     }
-    drawHornedHead(out, w * 0.57, h * 0.54, h * 0.62, 0xeadcb8);
-    for (let k = 0; k < 6; k++) fillDisc(out, w * 0.08, h * (0.12 + k * 0.155), h * 0.05, HERDER_BEADS[k % HERDER_BEADS.length]);
+    // Ring of spears round the emblem.
+    const cx = w * 0.56;
+    const cy = h * 0.5;
+    const ring = newMask(out);
+    for (let k = 0; k < 14; k++) {
+        const a = (k / 14) * Math.PI * 2;
+        maskLine(ring, w, h, cx + Math.cos(a) * h * 0.34, cy + Math.sin(a) * h * 0.34, cx + Math.cos(a) * h * 0.46, cy + Math.sin(a) * h * 0.46, 1.1);
+    }
+    paintMask(out, ring, 0x8c98a4, 0.75);
+    drawHornedHead(out, cx, cy + 1, h * 0.6, 0x050608);
+    drawHornedHead(out, cx, cy - 1, h * 0.56, 0xd6d2c4);
+    for (let k = 0; k < 6; k++) fillDisc(out, w * 0.07, h * (0.12 + k * 0.155), h * 0.045, k === 2 ? 0xc86828 : 0x7c8890);
     return out;
 }
 
 /**
- * Herder camp props laid over a herder station's art (item 3): a ring of hide tents (cones with a pole tip and a
- * darker door) round the hub and two fenced herd pens (post-and-rail rings) on the rim, in earth tones, on a
- * transparent `size`² canvas centred on the station. Deterministic in `seed`.
+ * Herder camp props laid over a herder station's art (item 3), top-down with light from the upper left: hide tents as
+ * cones (a lit face, a shaded face, radial seams, a pole tip) casting a shadow down-right, and two post-and-rail
+ * corrals (posts with shadows, double rails, a gate gap) holding a few small horned herd beasts. Transparent
+ * `size`² canvas centred on the station; deterministic in `seed`.
  */
 export function herderCampRgba(size: number, seed: number): RgbaImage {
     const out = blankImage(size, size);
     const c = size / 2;
-    // Pens: two fenced rings on opposite sides of the rim.
+    const light = Math.atan2(-1, -1); // from the upper left
+    const shadowDx = size * 0.012;
+    // Corrals on opposite sides of the rim.
     for (let p = 0; p < 2; p++) {
         const a = hash2(p, 1, seed) * 0.6 + p * Math.PI;
-        const px = c + Math.cos(a) * size * 0.34;
-        const py = c + Math.sin(a) * size * 0.34;
+        const px = c + Math.cos(a) * size * 0.33;
+        const py = c + Math.sin(a) * size * 0.33;
         const r = size * 0.1;
-        strokeRing(out, px, py, r, Math.max(1, size * 0.012), 0x7a5230, 0.9);
-        strokeRing(out, px, py, r * 0.86, Math.max(0.8, size * 0.008), 0x5a3a20, 0.8);
-        for (let k = 0; k < 10; k++) {
-            const b = (k / 10) * Math.PI * 2;
-            fillDisc(out, px + Math.cos(b) * r, py + Math.sin(b) * r, Math.max(0.8, size * 0.012), 0x3e2a18);
+        const gate = hash2(p, 5, seed) * Math.PI * 2;
+        // Ground inside (trampled earth).
+        fillDisc(out, px, py, r * 0.98, 0x5a4630, 0.55);
+        // Rails: two concentric arcs, skipping the gate.
+        for (let t = 0; t < 1; t += 0.004) {
+            const b = t * Math.PI * 2;
+            let dg = Math.abs(b - gate);
+            dg = Math.min(dg, Math.PI * 2 - dg);
+            if (dg < 0.28) continue;
+            for (const rr of [r, r * 0.93]) {
+                fillDisc(out, px + Math.cos(b) * rr + shadowDx, py + Math.sin(b) * rr + shadowDx, Math.max(0.6, size * 0.004), 0x000000, 0.35);
+                fillDisc(out, px + Math.cos(b) * rr, py + Math.sin(b) * rr, Math.max(0.6, size * 0.0045), 0xb08a5a);
+            }
         }
-        // A few herd beasts (pale dots) inside.
-        for (let k = 0; k < 3; k++) fillDisc(out, px + (hash2(k, p, seed) - 0.5) * r, py + (hash2(p, k, seed + 3) - 0.5) * r, Math.max(1, size * 0.018), 0xd8c8a0);
+        // Posts.
+        for (let k = 0; k < 14; k++) {
+            const b = (k / 14) * Math.PI * 2;
+            let dg = Math.abs(b - gate);
+            dg = Math.min(dg, Math.PI * 2 - dg);
+            if (dg < 0.2) continue;
+            const x = px + Math.cos(b) * r * 0.965;
+            const y = py + Math.sin(b) * r * 0.965;
+            const s2 = Math.max(1.2, size * 0.011);
+            fillRect(out, x - s2 + shadowDx * 1.5, y - s2 + shadowDx * 1.5, x + s2 + shadowDx * 1.5, y + s2 + shadowDx * 1.5, 0x000000, 0.45);
+            fillRect(out, x - s2, y - s2, x + s2, y + s2, 0x6a4a28);
+            fillRect(out, x - s2, y - s2, x, y, 0xd0aa70);
+        }
+        // Herd beasts: body, head, horns, with a shadow.
+        const nb = 3 + Math.floor(hash2(p, 6, seed) * 3);
+        for (let k = 0; k < nb; k++) {
+            const ang = hash2(k, p + 10, seed) * Math.PI * 2;
+            const dd = r * 0.55 * Math.sqrt(hash2(k, p + 20, seed));
+            const bx = px + Math.cos(ang) * dd;
+            const by = py + Math.sin(ang) * dd;
+            const face = hash2(k, p + 30, seed) * Math.PI * 2;
+            const bl = size * 0.022;
+            for (const [ox, col, al] of [
+                [shadowDx, 0x000000, 0.45],
+                [0, 0xd8c8a0, 1],
+            ] as const) {
+                for (let t = -1; t <= 1; t += 0.25) fillDisc(out, bx + ox + Math.cos(face) * bl * t, by + ox + Math.sin(face) * bl * t, bl * 0.55, col, al);
+                const hx = bx + ox + Math.cos(face) * bl * 1.5;
+                const hy = by + ox + Math.sin(face) * bl * 1.5;
+                fillDisc(out, hx, hy, bl * 0.4, col, al);
+                if (ox === 0) {
+                    for (const sd of [-1, 1]) {
+                        const nx = -Math.sin(face) * sd;
+                        const ny = Math.cos(face) * sd;
+                        fillDisc(out, hx + nx * bl * 0.5 + Math.cos(face) * bl * 0.2, hy + ny * bl * 0.5 + Math.sin(face) * bl * 0.2, bl * 0.16, 0x3a2a18);
+                    }
+                    fillDisc(out, bx - Math.cos(light) * -bl * 0.3, by - Math.sin(light) * -bl * 0.3, bl * 0.3, 0xf4ead0, 0.8);
+                }
+            }
+        }
     }
-    // Tents: cones seen from above — a disc with a radial seam pattern, a darker door wedge and a pole tip.
+    // Tents: cones seen from above, shaded by facing, with a cast shadow.
     const n = 5;
     for (let k = 0; k < n; k++) {
         const a = (k / n) * Math.PI * 2 + hash2(k, 2, seed) * 0.4 + Math.PI / 2;
-        const tx = c + Math.cos(a) * size * 0.2;
-        const ty = c + Math.sin(a) * size * 0.2;
-        const r = size * (0.055 + 0.02 * hash2(k, 3, seed));
-        const col = HERDER_EARTH[k % 3];
-        fillDisc(out, tx + r * 0.25, ty + r * 0.25, r, 0x000000, 0.35);
-        fillDisc(out, tx, ty, r, col);
-        for (let s = 0; s < 6; s++) {
-            const b = (s / 6) * Math.PI * 2;
-            for (let t = 0.2; t < 1; t += 0.1) fillDisc(out, tx + Math.cos(b) * r * t, ty + Math.sin(b) * r * t, Math.max(0.4, size * 0.004), 0x2a1a0c, 0.5);
+        const tx = c + Math.cos(a) * size * 0.19;
+        const ty = c + Math.sin(a) * size * 0.19;
+        const r = size * (0.05 + 0.018 * hash2(k, 3, seed));
+        const [br, bg, bb] = rgb(HERDER_EARTH[k % 3]);
+        // Shadow (offset down-right, elongated).
+        for (let t = 0; t <= 1; t += 0.1) fillDisc(out, tx + r * 0.5 * t + shadowDx, ty + r * 0.5 * t + shadowDx, r * (1 - 0.4 * t), 0x000000, 0.18);
+        for (let y = Math.floor(ty - r - 1); y <= Math.ceil(ty + r + 1); y++) {
+            for (let x = Math.floor(tx - r - 1); x <= Math.ceil(tx + r + 1); x++) {
+                if (x < 0 || y < 0 || x >= size || y >= size) continue;
+                const dx = x + 0.5 - tx;
+                const dy = y + 0.5 - ty;
+                const d = Math.hypot(dx, dy);
+                if (d > r) continue;
+                const th = Math.atan2(dy, dx);
+                // Cone facet facing: lit toward the light, dark away; seams every 60°.
+                const facing = Math.cos(th - light);
+                const seam = Math.abs(((th / (Math.PI / 3)) % 1 + 1) % 1 - 0.5) > 0.46;
+                let k2 = 0.62 + 0.5 * facing;
+                if (seam) k2 *= 0.55;
+                // Hem darker.
+                if (d > r * 0.88) k2 *= 0.7;
+                const cov = Math.max(0, Math.min(1, r - d + 0.5));
+                over(out.data, (y * size + x) * 4, Math.min(255, br * k2 + 10), Math.min(255, bg * k2 + 6), Math.min(255, bb * k2), cov);
+            }
         }
-        const d = a + Math.PI;
-        fillDisc(out, tx + Math.cos(d) * r * 0.6, ty + Math.sin(d) * r * 0.6, r * 0.28, 0x2a1a0c, 0.85);
-        fillDisc(out, tx, ty, Math.max(0.8, r * 0.14), 0xeadcb8);
+        // Door flap (dark wedge on the side facing out) and the pole tip.
+        const dA = a;
+        fillDisc(out, tx + Math.cos(dA) * r * 0.62, ty + Math.sin(dA) * r * 0.62, r * 0.22, 0x1a120a, 0.95);
+        fillDisc(out, tx, ty, Math.max(1, r * 0.13), 0x2a1a0c);
+        fillDisc(out, tx - 0.5, ty - 0.5, Math.max(0.6, r * 0.07), 0xf0e0c0);
     }
     return out;
 }

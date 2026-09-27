@@ -138,9 +138,49 @@ describe('19r livery painting', () => {
         expect(count(salty)).toBeGreaterThan(count(fresh));
         // Salt only on the edges (within ~2.6 px of the outline).
         for (let i = 0; i < img.side * img.side; i++) if (salty[i * 4 + 3] > 0 && fresh[i * 4 + 3] === 0) expect(an.dist[i]).toBeLessThanOrEqual(2.6);
-        // Wear alone never covers more than the cap (fresh livery pixels aside).
+        // Wear is marks, not a wash: at the top level it touches well under half the hull, and more marks than at 0.5.
         const bare = paintLivery(an, img, null, { level: 1, scars: 0 }, 1);
-        for (let i = 3; i < bare.length; i += 4) expect(bare[i]).toBeLessThanOrEqual(Math.ceil(255 * 0.62 * 1.6));
+        const half = paintLivery(an, img, null, { level: 0.5, scars: 0 }, 1);
+        expect(count(bare)).toBeLessThan(an.area * 0.5);
+        expect(count(bare)).toBeGreaterThan(count(half));
+        expect(count(half)).toBeGreaterThan(0);
+    });
+    it('wear stays legible at play size (box-downsampled ×4, marks survive; more with the level)', () => {
+        const legible = (o: Uint8ClampedArray): number => {
+            const f = 4;
+            let n = 0;
+            for (let by = 0; by + f <= img.side; by += f) {
+                for (let bx = 0; bx + f <= img.side; bx += f) {
+                    let a = 0;
+                    for (let y = by; y < by + f; y++) for (let x = bx; x < bx + f; x++) a += o[(y * img.side + x) * 4 + 3];
+                    if (a / (f * f) > 110) n++;
+                }
+            }
+            return n;
+        };
+        const lo = legible(paintLivery(an, img, null, { level: 0.25, scars: 0 }, 1));
+        const hi = legible(paintLivery(an, img, null, { level: 1, scars: 0 }, 1));
+        expect(hi).toBeGreaterThan(lo);
+        expect(hi).toBeGreaterThan(10);
+    });
+    it('the decal chips (missing chunks) with age instead of fading', () => {
+        const fresh = paintLivery(an, img, STYLE, { level: 0, scars: 0 }, 1);
+        const old = paintLivery(an, img, STYLE, { level: 1, scars: 0 }, 1);
+        const d = an.decal;
+        let freshA = 0;
+        let gone = 0;
+        let sameAlpha = 0;
+        for (let y = Math.floor(d.y - d.r * 0.6); y <= d.y + d.r * 0.6; y++) {
+            for (let x = Math.floor(d.x - d.r * 0.6); x <= d.x + d.r * 0.6; x++) {
+                const i = (y * img.side + x) * 4 + 3;
+                if (fresh[i] === 0) continue;
+                freshA++;
+                if (old[i] === 0) gone++;
+                else if (old[i] >= fresh[i] - 2) sameAlpha++;
+            }
+        }
+        expect(gone).toBeGreaterThan(0);
+        expect(sameAlpha).toBeGreaterThan(freshA * 0.3);
     });
     it('hull number glyphs', () => {
         const n = hullNumberRgba('42', 0xffffff, 2);
