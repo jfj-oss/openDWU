@@ -1,5 +1,6 @@
 // 19i captures (rim atmosphere): galaxy zoom at the core vs the rim, a rim system, the unexplored-rim murk, eyes in
-// the dark at system zoom.
+// the dark at system zoom; the procedural dust (rim-dust-*: sector, system zoom across a lane, whole galaxy, core) and
+// the close-zoom murk (rim-murk-system). Prints the dust generation time and the per-frame update cost.
 // Usage: node scripts/rim-shots.mjs <baseUrl> <outDir>   (4K: 1920x1080 at device scale 2)
 import { chromium } from 'playwright-core';
 const [base = 'http://localhost:5173/', outDir = 'shots'] = process.argv.slice(2);
@@ -26,6 +27,10 @@ const info = await page.evaluate(() => {
         murk: rim?.murk?.length ?? 0,
         derelicts: rim?.derelicts?.length ?? 0,
         eyes: rim?.eyes?.length ?? 0,
+        lanes: rim?.lanes?.length ?? 0,
+        dustGenMs: rim?.dustGenMs ?? 0,
+        dustGenBreakdown: rim?.dustGenBreakdown ?? null,
+        minZoom: window.__dwu.camera.minZoom,
     };
 });
 console.log('rim', JSON.stringify(info));
@@ -112,13 +117,99 @@ await shot('rim-murk', () => {
     camera.zoom = camera.height / (rim.murkSize * 3);
     return { murkPatches: rim.murk.length, zoom: camera.zoom };
 });
-// Perf: the layer's per-frame update cost at the rim (murk + derelicts + grain), 300 calls.
-const perf = await page.evaluate(() => {
+// --- procedural dust (item 3 art pass) + close-zoom murk ---
+// Same framing as rim-galaxy-rim (sector-ish zoom on the rim).
+await shot('rim-dust-sector', () => {
     const { camera } = window.__dwu;
+    const g = window.__rim.geo;
+    camera.centerOn(g.cx + g.radius * 0.88, g.cy + g.radius * 0.12);
+    camera.zoom = camera.minZoom * 3.5;
+    return { zoom: camera.zoom };
+});
+// System zoom on a rim system at the edge of a lane (coverage near 0.5 at the star, so the frame shows the lane's
+// edge crossing it: dimmed deep field on one side, clear on the other), in the dust's parallax space.
+await shot('rim-dust-system', () => {
+    const { camera, galaxy } = window.__dwu;
     const rim = window.__rim;
-    const t0 = performance.now();
-    for (let i = 0; i < 300; i++) rim.update(camera.zoom, camera, 1);
-    return { msPerUpdate: (performance.now() - t0) / 300 };
+    const g = rim.geo;
+    let best = null;
+    let bs = Infinity;
+    let bc = 0;
+    for (const s of galaxy.systems) {
+        const st = s.systemStar;
+        if (!st) continue;
+        const w = rim.weightAt(st.xpos, st.ypos);
+        if (w <= 0.5) continue;
+        const k = 0.03;
+        const c = rim.dustAt(st.xpos - (st.xpos - g.cx) * k, st.ypos - (st.ypos - g.cy) * k);
+        const score = Math.abs(c - 0.5) - 0.2 * w;
+        if (score < bs) {
+            bs = score;
+            bc = c;
+            best = s;
+        }
+    }
+    const st = best.systemStar;
+    camera.centerOn(st.xpos, st.ypos);
+    camera.zoom = 0.006;
+    return { systemIndex: st.systemIndex, coverage: bc, zoom: camera.zoom };
+});
+await shot('rim-dust-whole', () => {
+    const { camera } = window.__dwu;
+    const g = window.__rim.geo;
+    camera.centerOn(g.cx, g.cy);
+    camera.zoom = camera.minZoom;
+    return { zoom: camera.zoom };
+});
+await shot('rim-dust-core', () => {
+    const { camera } = window.__dwu;
+    const g = window.__rim.geo;
+    camera.centerOn(g.cx, g.cy);
+    camera.zoom = camera.minZoom * 3.5;
+    return { zoom: camera.zoom };
+});
+// An unexplored rim system at system zoom (the murk must leave the star and planets readable).
+await shot('rim-murk-system', () => {
+    const { camera, galaxy } = window.__dwu;
+    const rim = window.__rim;
+    const m = rim.murk.reduce((a, b) => (b.w > a.w ? b : a), rim.murk[0]);
+    const sys = galaxy.systems.find((s) => s.systemStar && s.systemStar.xpos === m.x && s.systemStar.ypos === m.y);
+    camera.centerOn(m.x, m.y);
+    camera.zoom = 0.012;
+    return { systemIndex: sys?.systemStar.systemIndex ?? null, murkPatches: rim.murk.length, zoom: camera.zoom };
+});
+
+// Perf: the layer's per-frame update cost, 300 calls each: camera still (cached sprites) and panning 5 px every
+// frame, at galaxy, sector and system zoom.
+const perf = await page.evaluate(() => {
+    const { camera, galaxy } = window.__dwu;
+    const rim = window.__rim;
+    const g = rim.geo;
+    const out = {};
+    const run = (name, moving) => {
+        const x0 = camera.x;
+        const t0 = performance.now();
+        for (let i = 0; i < 300; i++) {
+            // A steady pan at 5 screen px per frame (300 px/s at 60 fps).
+            if (moving) camera.x = x0 + (i * 5) / camera.zoom;
+            rim.update(camera.zoom, camera, 0.5);
+        }
+        out[name] = +((performance.now() - t0) / 300).toFixed(4);
+        camera.x = x0;
+    };
+    camera.centerOn(g.cx + g.radius * 0.88, g.cy + g.radius * 0.12);
+    camera.zoom = camera.minZoom * 3.5;
+    run('sectorStill', false);
+    run('sectorMoving', true);
+    const st = galaxy.systems.find((s) => s.systemStar && rim.weightAt(s.systemStar.xpos, s.systemStar.ypos) > 0.9).systemStar;
+    camera.centerOn(st.xpos, st.ypos);
+    camera.zoom = 0.012;
+    run('systemStill', false);
+    run('systemMoving', true);
+    camera.zoom = camera.minZoom;
+    camera.centerOn(g.cx, g.cy);
+    run('galaxyMoving', true);
+    return { msPerUpdate: out };
 });
 console.log('perf', JSON.stringify(perf));
 await browser.close();
