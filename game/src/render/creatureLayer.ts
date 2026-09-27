@@ -470,8 +470,9 @@ export class CreatureLayer {
         const carrier = v.rig ?? v.straight;
         if (carrier !== null && v.hstate.phase !== 'none' && v.harness === null) {
             const art = this.faunaArt();
-            v.harness = new HarnessView(carrier, look?.look === 'hunter' ? 'band' : 'cargo', art.containers, art.light!, c.size);
+            v.harness = new HarnessView(carrier, look?.look === 'hunter' ? 'band' : 'cargo', art.containers, art.light!, c.size, v.rig?.periodS ?? 7.5);
             carrier.top.addChild(v.harness.root);
+            carrier.bottom.addChild(v.harness.under);
         }
         v.harness?.pose(v.hstate, t, secondsOfDay, c.creatureId);
         return true;

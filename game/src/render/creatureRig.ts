@@ -1058,6 +1058,9 @@ export interface HarnessCarrier {
     backPoint(u: number): BackPoint;
     /** Half-width of the body at u (local units): where the straps wrap round the flank. */
     halfWidthAt(u: number): number;
+    /** Layer below the body (a belly girth shows only past the flanks); harness layer above it. */
+    readonly bottom: Container;
+    readonly top: Container;
 }
 
 /** The rope rig: MeshRope body (head along +x), fin pairs with flutter, optional fluke, glow rope and pulsing spots. */
@@ -1065,6 +1068,8 @@ export class CreatureRig implements HarnessCarrier {
     root = new Container();
     /** Harness layer (children above the body). */
     readonly top = new Container();
+    /** Harness layer below the body (the belly girth). */
+    readonly bottom = new Container();
     private points: Point[] = [];
     private body: MeshRope;
     private glowRope: MeshRope | null = null;
@@ -1100,7 +1105,7 @@ export class CreatureRig implements HarnessCarrier {
             this.fins.push({ fin: f.fin, l, r });
         }
         this.body = new MeshRope({ texture: tex.body, points: this.points });
-        this.root.addChild(this.body);
+        this.root.addChild(this.bottom, this.body);
         if (tex.spot !== null) {
             for (const s of tex.spots) {
                 const sp = new Sprite(tex.spot);
@@ -1116,6 +1121,11 @@ export class CreatureRig implements HarnessCarrier {
 
     halfWidthAt(u: number): number {
         return maxHalfOf(this.tex.def) * silhouetteAt(this.tex.def, u);
+    }
+
+    /** The body wave period (s): the harness keys its slack and sway to it. */
+    get periodS(): number {
+        return this.tex.def.motion.wavePeriodS;
     }
 
     /** Centreline point at u (0 tail … 1 head) of the current pose. */
@@ -1177,6 +1187,8 @@ export class CreatureRig implements HarnessCarrier {
 export class StraightCarrier implements HarnessCarrier {
     root = new Container();
     readonly top = this.root;
+    /** Not drawn: an original frame has no outline to tuck a girth under. */
+    readonly bottom = new Container();
     constructor(readonly length: number, readonly width: number) {
         this.root.eventMode = 'none';
     }
@@ -1227,20 +1239,20 @@ export class LanternSwarm {
     }
 }
 
-/** Harness style: laden cargo beast (containers in lanes over the middle 60 % of the back, straps round the flanks), or
- * a tamed hunter's single band with one red beacon. */
+/** Harness style: a laden cargo beast (howdah, wrapping straps, ropes and lanterns) or a tamed hunter (bridle, tether,
+ * shoulder-mast beacon, bell). */
 export type HarnessMode = 'cargo' | 'band';
 
-/** Cargo harness geometry: the back from u 0.2 to 0.8 (60 % of the body), 2 or 3 lanes of containers. */
+/** The howdah covers the back from u 0.2 to 0.8 (the middle 60 % of the body). */
 export const CARGO_U_FROM = 0.2;
 export const CARGO_U_TO = 0.8;
 
-/** Lanes of containers across the back by creature size: 3 on the big beasts, else 2. */
+/** Lanes of containers in the howdah by creature size: 3 on the big beasts, else 2. */
 export function cargoLanes(size: number): number {
     return size >= 900 ? 3 : 2;
 }
 
-/** Containers per lane along the back (containerCount by size, 2..6, less two: the boxes are long). */
+/** Containers per lane (containerCount by size, 2..6, less two: the boxes are long). */
 export function containersPerLane(size: number): number {
     return Math.max(2, containerCount(size) - 2);
 }
@@ -1252,37 +1264,74 @@ export function beaconOn(t: number, phase = 0): boolean {
     return k < BEACON_PERIOD_S / 2;
 }
 
+/** Catenary sag profile at k ∈ [0, 1] between two anchors (0 at the ends, `sag` at the middle; cosh shape). Pure. */
+export function catenarySag(k: number, sag: number, c = 1.6): number {
+    const x = 2 * k - 1;
+    return sag * (1 - (Math.cosh(c * x) - 1) / (Math.cosh(c) - 1));
+}
+
+/** Rope sway: the slack of a span follows the body wave with a lag (tighten / slacken). Pure; 0.6..1.4. */
+export function ropeSlack(t: number, u: number, periodS: number, lag = 0.9): number {
+    return 1 + 0.4 * Math.sin((2 * Math.PI * t) / periodS - lag - u * 5);
+}
+
+const LEATHER = 0x4a3524;
+const LEATHER_LIT = 0xd9b98a;
+const LEATHER_SHADE = 0x1e140c;
+const BRASS = 0xd8b060;
+const WOOD = 0x6b4a2e;
+const WOOD_DARK = 0x3a2616;
+const RAIL = 0xc8a878;
+const ROOF = 0x8a3a26;
+const ROOF_LIT = 0xc86a40;
+const NET = 0xe8dcb4;
+const ROPE = 0xd8c49a;
+const PAD = 0x3a2a20;
+const PENNANTS = [0xc0392b, 0xe0a030] as const;
+
+type P = { x: number; y: number };
+
 /**
- * The harness overlay on a carrier.
- *   cargo: containers in 2–3 lanes over the middle 60 % of the back, following the rope; leather bands wrapping round
- *          the body between them (crossing both flanks), a thick rigging line along each lane; warm work lights on the
- *          containers blinking with the ambient nav-light pattern (lightsOn, MainView.1.cs 1085-1103), out of phase.
- *   band:  one wide band round the body with a single red beacon on its edge (BEACON_PERIOD_S blink); no containers.
- * Fades in over HARNESS_FADE_S; on 'dropping' the containers / band drift off as debris and fade.
+ * The harness overlay on a carrier, redrawn every frame from the rig's current outline (backPoint / halfWidthAt), so
+ * every strap, rope and pennant bends with the undulation and tightens / slackens with the wave phase.
+ *   cargo: a howdah on the middle 60 % of the back (saddle platform with planks, low railing, curved roof over its front,
+ *          containers in lanes under a draped cargo net, pennants rippling off the rear rail); ribbon straps wrapping
+ *          the body cross-section with lit / shadowed edges, a twist and a brass ring where they cross the howdah rail,
+ *          organic anchor pads on the skin; catenary ropes with knots between the strap ends along both flanks, and
+ *          lanterns swinging on short chains from them (warm work lights, ambient nav-light blink, out of phase); a
+ *          girth strap under the belly (drawn below the body: only its ends show at the flanks).
+ *   band:  a bridle round the head, one tether curving back to a flank ring, the red beacon on a short shoulder mast
+ *          (BEACON_PERIOD_S blink) and a small swinging bell.
+ * Fades in over HARNESS_FADE_S; on 'dropping' the containers tumble off as debris and the tack slides off and fades.
  */
 export class HarnessView {
     root = new Container();
-    private under = new Graphics();
-    private over = new Graphics();
-    private boxes: { s: Sprite; u: number; lane: number }[] = [];
+    /** Below the body (the belly girth). */
+    readonly under = new Container();
+    private gUnder = new Graphics();
+    private gBase = new Graphics();
+    private gTop = new Graphics();
+    private boxes: { s: Sprite; u: number; lane: number; stacked: boolean }[] = [];
     private lights: Sprite[] = [];
     private beacon: Sprite | null = null;
     private boxLen = 0;
     private boxWid = 0;
     private laneOffsets: number[] = [];
     private bandUs: number[] = [];
+    private halfDeck = 0;
 
-    constructor(private carrier: HarnessCarrier, private mode: HarnessMode, boxTex: Texture[], lightTex: Texture, size: number) {
+    constructor(private carrier: HarnessCarrier, private mode: HarnessMode, boxTex: Texture[], lightTex: Texture, size: number, private periodS = 7.5) {
         this.root.eventMode = 'none';
-        this.root.addChild(this.under);
+        this.under.eventMode = 'none';
+        this.under.addChild(this.gUnder);
+        this.root.addChild(this.gBase);
         if (mode === 'band') {
-            this.bandUs = [0.56];
-            this.root.addChild(this.over);
+            this.root.addChild(this.gTop);
             const b = new Sprite(lightTex);
             b.anchor.set(0.5);
             b.blendMode = 'add';
             b.tint = 0xff2414;
-            const d = Math.max(6, carrier.halfWidthAt(0.56) * 0.9);
+            const d = Math.max(8, carrier.halfWidthAt(0.7) * 1.1);
             b.width = d;
             b.height = d;
             this.beacon = b;
@@ -1292,127 +1341,381 @@ export class HarnessView {
         const lanes = cargoLanes(size);
         const per = containersPerLane(size);
         const span = CARGO_U_TO - CARGO_U_FROM;
-        this.boxLen = ((span / per) * 0.86) * carrier.length;
-        // Lanes share the narrowest half-width over the cargo span (so the outer lanes stay on the back).
         let hw = Number.MAX_VALUE;
         for (let k = 0; k <= 8; k++) hw = Math.min(hw, carrier.halfWidthAt(CARGO_U_FROM + 0.05 + ((span - 0.1) * k) / 8));
-        const laneW = (hw * 1.5) / lanes;
-        this.boxWid = laneW * 0.9;
+        this.halfDeck = hw * 0.8;
+        // Containers inside the howdah deck (inset from the rail), stacked two high on every other one.
+        const deckFrom = CARGO_U_FROM + 0.05;
+        const deckTo = CARGO_U_TO - 0.12;
+        this.boxLen = ((deckTo - deckFrom) / per) * 0.84 * carrier.length;
+        const laneW = (this.halfDeck * 1.6) / lanes;
+        this.boxWid = laneW * 0.86;
         for (let l = 0; l < lanes; l++) this.laneOffsets.push((l - (lanes - 1) / 2) * laneW);
         let n = 0;
         for (let l = 0; l < lanes; l++) {
             for (let i = 0; i < per; i++) {
+                const u = deckFrom + ((i + 0.5) / per) * (deckTo - deckFrom);
                 const s = new Sprite(boxTex[(n + l) % boxTex.length]);
                 s.anchor.set(0.5);
                 s.width = this.boxLen;
                 s.height = this.boxWid;
-                this.boxes.push({ s, u: CARGO_U_FROM + ((i + 0.5) / per) * span, lane: l });
+                this.boxes.push({ s, u, lane: l, stacked: false });
                 this.root.addChild(s);
+                if ((i + l) % 2 === 0) {
+                    const top = new Sprite(boxTex[(n + l + 1) % boxTex.length]);
+                    top.anchor.set(0.5);
+                    top.width = this.boxLen * 0.78;
+                    top.height = this.boxWid * 0.8;
+                    this.boxes.push({ s: top, u, lane: l, stacked: true });
+                    this.root.addChild(top);
+                }
                 n++;
             }
         }
-        // Bands between the containers (and at both ends) wrap round the flanks.
-        for (let i = 0; i <= per; i++) this.bandUs.push(CARGO_U_FROM + (i / per) * span);
-        this.root.addChild(this.over);
-        for (let i = 0; i < this.boxes.length; i++) {
-            const l = new Sprite(lightTex);
-            l.anchor.set(0.5);
-            l.blendMode = 'add';
-            l.tint = 0xffb45a;
-            const d = Math.max(5, this.boxWid * 0.7);
-            l.width = d;
-            l.height = d;
-            this.lights.push(l);
-            this.root.addChild(l);
+        // Straps: in front of, between and behind the howdah.
+        this.bandUs = [CARGO_U_FROM, CARGO_U_FROM + span * 0.36, CARGO_U_FROM + span * 0.68, CARGO_U_TO];
+        this.root.addChild(this.gTop);
+        // Lanterns: one per rope span per flank.
+        for (let i = 0; i < (this.bandUs.length - 1) * 2; i++) {
+            const lt = new Sprite(lightTex);
+            lt.anchor.set(0.5);
+            lt.blendMode = 'add';
+            lt.tint = 0xffb45a;
+            const d = Math.max(6, hw * 0.34);
+            lt.width = d;
+            lt.height = d;
+            this.lights.push(lt);
+            this.root.addChild(lt);
         }
     }
 
-    private at(u: number, across: number): { x: number; y: number; ang: number } {
+    /** A point `across` from the centreline at u (positive = the carrier's +normal side), plus the local frame. */
+    private at(u: number, across: number): P & { ang: number; nx: number; ny: number } {
         const bp = this.carrier.backPoint(u);
-        return { x: bp.x - Math.sin(bp.ang) * across, y: bp.y + Math.cos(bp.ang) * across, ang: bp.ang };
+        const nx = -Math.sin(bp.ang);
+        const ny = Math.cos(bp.ang);
+        return { x: bp.x + nx * across, y: bp.y + ny * across, ang: bp.ang, nx, ny };
     }
 
-    /** Pose on the carrier's current back line. `state` from harnessStep; `t` render seconds; `secondsOfDay` for the blink. */
+    /** Local bend of the rope at u (angle change over ±0.03): > 0 bends to +normal. Drives the strap bow / tension. */
+    private bend(u: number): number {
+        const a = this.carrier.backPoint(Math.max(0, u - 0.03)).ang;
+        const b = this.carrier.backPoint(Math.min(1, u + 0.03)).ang;
+        return b - a;
+    }
+
+    /**
+     * A strap wrapping the body at u: its centre line runs flank to flank across the segment, offset by the local body
+     * radius along the segment normal, bowed toward the head over the rounded back (more when the body bends / the
+     * strap slackens). Returns the sampled centre line with the half-width of the ribbon at each point.
+     */
+    private strapLine(u: number, reach: number, t: number): { p: P; w: number; ang: number }[] {
+        const out: { p: P; w: number; ang: number }[] = [];
+        const L = this.carrier.length;
+        const bow = 0.012 + 0.03 * Math.abs(this.bend(u)) + 0.006 * ropeSlack(t, u, this.periodS);
+        const N = 14;
+        for (let k = 0; k <= N; k++) {
+            const s = -1 + (2 * k) / N;
+            const round = Math.sqrt(Math.max(0, 1 - s * s));
+            const uu = u + bow * round;
+            const hw = this.carrier.halfWidthAt(uu) * reach;
+            const q = this.at(uu, s * hw);
+            // Seen from above the strap narrows where it turns under the flank.
+            out.push({ p: q, w: L * 0.014 * (0.45 + 0.55 * round), ang: q.ang });
+        }
+        return out;
+    }
+
+    /** Ribbon along a centre line: leather fill, lit leading edge, shadowed trailing edge, braid ticks, a half twist. */
+    private ribbon(g: Graphics, line: { p: P; w: number; ang: number }[], twistAt: number | null): void {
+        const left: P[] = [];
+        const right: P[] = [];
+        for (let i = 0; i < line.length; i++) {
+            const { p, ang } = line[i];
+            let w = line[i].w;
+            if (twistAt !== null) w *= 0.35 + 0.65 * Math.min(1, Math.abs(i - twistAt) / 1.6);
+            const tx = Math.cos(ang);
+            const ty = Math.sin(ang);
+            left.push({ x: p.x + tx * w, y: p.y + ty * w });
+            right.push({ x: p.x - tx * w, y: p.y - ty * w });
+        }
+        g.poly([...left, ...right.slice().reverse()].flatMap((q) => [q.x, q.y])).fill({ color: LEATHER });
+        const L = this.carrier.length;
+        const edge = (pts: P[], color: number, width: number): void => {
+            g.moveTo(pts[0].x, pts[0].y);
+            for (let i = 1; i < pts.length; i++) g.lineTo(pts[i].x, pts[i].y);
+            g.stroke({ width, color, alpha: 0.95 });
+        };
+        edge(left, LEATHER_LIT, Math.max(0.8, L * 0.0035));
+        edge(right, LEATHER_SHADE, Math.max(0.8, L * 0.004));
+        // Braid: short diagonal stitches along the ribbon.
+        for (let i = 1; i < line.length - 1; i++) {
+            const { p, ang, w } = line[i];
+            const tx = Math.cos(ang);
+            const ty = Math.sin(ang);
+            const nx = -ty;
+            const ny = tx;
+            const d = w * 0.7;
+            g.moveTo(p.x + tx * d - nx * d * 0.6, p.y + ty * d - ny * d * 0.6).lineTo(p.x - tx * d + nx * d * 0.6, p.y - ty * d + ny * d * 0.6);
+        }
+        g.stroke({ width: Math.max(0.6, L * 0.002), color: LEATHER_SHADE, alpha: 0.7 });
+    }
+
+    /** An organic anchor pad where a strap meets the skin: a soft lobed patch with a pale rim and a rivet. */
+    private pad(g: Graphics, p: P, ang: number, r: number): void {
+        const pts: number[] = [];
+        for (let k = 0; k < 12; k++) {
+            const a = (k / 12) * Math.PI * 2;
+            const rr = r * (0.8 + 0.2 * Math.sin(a * 3 + ang));
+            pts.push(p.x + Math.cos(a + ang) * rr * 1.3, p.y + Math.sin(a + ang) * rr);
+        }
+        g.poly(pts).fill({ color: PAD, alpha: 0.95 }).stroke({ width: Math.max(0.6, r * 0.18), color: LEATHER_LIT, alpha: 0.55 });
+        g.circle(p.x, p.y, r * 0.3).fill({ color: BRASS });
+    }
+
+    private ring(g: Graphics, p: P, r: number): void {
+        g.circle(p.x, p.y, r).stroke({ width: Math.max(0.8, r * 0.45), color: BRASS, alpha: 1 });
+        g.circle(p.x - r * 0.3, p.y - r * 0.3, r * 0.25).fill({ color: 0xfff0c0, alpha: 0.8 });
+    }
+
+    /** A rope between two anchors as a catenary bellying outward (away from the body), with knots; returns the midpoint. */
+    private rope(g: Graphics, a: P, b: P, outward: P, sag: number): P {
+        const pts: P[] = [];
+        for (let k = 0; k <= 12; k++) {
+            const f = k / 12;
+            const s = catenarySag(f, sag);
+            pts.push({ x: a.x + (b.x - a.x) * f + outward.x * s, y: a.y + (b.y - a.y) * f + outward.y * s });
+        }
+        g.moveTo(pts[0].x, pts[0].y);
+        for (let i = 1; i < pts.length; i++) g.lineTo(pts[i].x, pts[i].y);
+        const L = this.carrier.length;
+        g.stroke({ width: Math.max(0.9, L * 0.0045), color: ROPE, alpha: 0.95 });
+        for (const k of [3, 9]) g.circle(pts[k].x, pts[k].y, Math.max(1, L * 0.005)).fill({ color: ROPE });
+        return pts[6];
+    }
+
+    /** Pose on the carrier's current outline. `state` from harnessStep; `t` render seconds; `secondsOfDay` for the blink. */
     pose(state: HarnessState, t: number, secondsOfDay: number, id: number): void {
         const alpha = harnessAlpha(state, t);
-        this.root.visible = state.phase !== 'none' && alpha > 0;
-        if (!this.root.visible) return;
+        const on = state.phase !== 'none' && alpha > 0;
+        this.root.visible = on;
+        this.under.visible = on;
+        if (!on) return;
+        this.root.alpha = alpha;
+        this.under.alpha = alpha;
         const dropping = state.phase === 'dropping';
         const age = dropping ? t - state.since : 0;
-        const L = this.carrier.length;
-        const g = this.under;
-        const o = this.over;
-        g.clear();
-        o.clear();
-        const bandWidth = this.mode === 'band' ? L * 0.05 : L * 0.022;
-        // Bands: a dark leather strap across the whole body (flank to flank), a pale edge line on each side.
-        const drawBand = (u: number, dx: number, dy: number, rot: number, a: number): void => {
-            const hw = this.carrier.halfWidthAt(u) * 1.04;
-            const bp = this.carrier.backPoint(u);
-            const ang = bp.ang + rot;
-            const nx = -Math.sin(ang);
-            const ny = Math.cos(ang);
-            const x = bp.x + dx;
-            const y = bp.y + dy;
-            g.moveTo(x - nx * hw, y - ny * hw).lineTo(x + nx * hw, y + ny * hw).stroke({ width: bandWidth, color: 0x4a3524, alpha: a });
-            const ex = Math.cos(ang) * bandWidth * 0.42;
-            const ey = Math.sin(ang) * bandWidth * 0.42;
-            for (const sgn of [-1, 1]) g.moveTo(x - nx * hw + sgn * ex, y - ny * hw + sgn * ey).lineTo(x + nx * hw + sgn * ex, y + ny * hw + sgn * ey);
-            g.stroke({ width: Math.max(1, bandWidth * 0.14), color: 0xcdb58a, alpha: 0.9 * a });
-        };
-        this.bandUs.forEach((u, i) => {
-            if (dropping) {
-                const d = debrisOffset(i, age, L * 0.08);
-                drawBand(u, d.dx * 0.3, d.dy * 0.6, d.rot * 0.3, d.alpha);
-            } else drawBand(u, 0, 0, 0, alpha);
+        // Feral: the tack slides off backwards and fades (harnessAlpha); the containers tumble separately.
+        const slide = dropping ? -this.carrier.length * 0.05 * age : 0;
+        for (const g of [this.gUnder, this.gBase, this.gTop]) {
+            g.clear();
+            g.position.set(slide, 0);
+        }
+        if (this.mode === 'band') this.poseHunter(t, id, dropping);
+        else this.poseCargo(t, secondsOfDay, id, dropping, age);
+    }
+
+    private poseHunter(t: number, id: number, dropping: boolean): void {
+        const c = this.carrier;
+        const L = c.length;
+        const g = this.gTop;
+        const sway = Math.sin((2 * Math.PI * t) / this.periodS - 0.9);
+        // Bridle: a ribbon loop round the head (noseband + cheek straps).
+        const loop: { p: P; w: number; ang: number }[] = [];
+        for (let k = 0; k <= 20; k++) {
+            const a = (k / 20) * Math.PI * 2;
+            const u = 0.885 + 0.04 * Math.cos(a);
+            const q = this.at(u, Math.sin(a) * c.halfWidthAt(u) * 1.02);
+            loop.push({ p: q, w: L * 0.009, ang: q.ang + Math.PI / 2 + a });
+        }
+        this.ribbon(g, loop, null);
+        const cheek = this.at(0.885, c.halfWidthAt(0.885) * 1.02);
+        this.ring(g, cheek, L * 0.012);
+        // One tether from the cheek ring curving back to a flank ring, swaying with the body wave.
+        const flankU = 0.5;
+        const flank = this.at(flankU, c.halfWidthAt(flankU) * 1.08);
+        const out = { x: flank.nx, y: flank.ny };
+        this.rope(g, cheek, flank, out, L * (0.035 + 0.02 * sway));
+        this.pad(g, this.at(flankU, c.halfWidthAt(flankU) * 0.9), flank.ang, L * 0.018);
+        this.ring(g, flank, L * 0.011);
+        // Shoulder mast with the red beacon on its tip.
+        const base = this.at(0.7, 0);
+        const tip = this.at(0.7 - 0.05, -c.halfWidthAt(0.7) * 0.55 - L * 0.01 * sway);
+        this.pad(g, base, base.ang, L * 0.02);
+        g.moveTo(base.x, base.y).lineTo(tip.x, tip.y).stroke({ width: Math.max(1, L * 0.008), color: WOOD, alpha: 1 });
+        g.circle(tip.x, tip.y, L * 0.009).fill({ color: WOOD_DARK });
+        const b = this.beacon!;
+        b.visible = !dropping && beaconOn(t, (id % 10) * 0.1);
+        b.position.set(tip.x + this.gTop.position.x, tip.y);
+        // A small bell under the jaw, swinging on a short chain.
+        const hang = this.at(0.9, -c.halfWidthAt(0.9) * 1.02);
+        const th = hang.ang - Math.PI / 2 + 0.5 * Math.sin(t * 2.3 + id);
+        const bell = { x: hang.x + Math.cos(th) * L * 0.035, y: hang.y + Math.sin(th) * L * 0.035 };
+        g.moveTo(hang.x, hang.y).lineTo(bell.x, bell.y).stroke({ width: Math.max(0.6, L * 0.003), color: BRASS, alpha: 0.9 });
+        g.circle(bell.x, bell.y, L * 0.012).fill({ color: BRASS }).stroke({ width: Math.max(0.5, L * 0.003), color: 0x7a5a20 });
+        g.circle(bell.x - L * 0.004, bell.y - L * 0.004, L * 0.004).fill({ color: 0xfff4c8, alpha: 0.9 });
+    }
+
+    private poseCargo(t: number, secondsOfDay: number, id: number, dropping: boolean, age: number): void {
+        const c = this.carrier;
+        const L = c.length;
+        const gb = this.gBase;
+        const gt = this.gTop;
+        const deck = this.halfDeck;
+        // Belly girth (below the body: only its ends show past the flanks).
+        const gu = (CARGO_U_FROM + CARGO_U_TO) / 2;
+        const girth = this.strapLine(gu, 1.16, t);
+        this.ribbon(this.gUnder, girth, null);
+        // Straps wrapping the body, with anchor pads where they meet the skin and rings where they cross the rail.
+        const anchors: { l: P; r: P; lOut: P; rOut: P }[] = [];
+        this.bandUs.forEach((u) => {
+            const line = this.strapLine(u, 1.03, t);
+            const mid = Math.floor(line.length / 2);
+            // The twist where the strap passes under the howdah rail (both sides).
+            this.ribbon(gb, line, u > CARGO_U_FROM && u < CARGO_U_TO ? mid : null);
+            const railL = this.at(u, -deck);
+            const railR = this.at(u, deck);
+            const l = line[1].p;
+            const r = line[line.length - 2].p;
+            this.pad(gb, l, line[1].ang, L * 0.016);
+            this.pad(gb, r, line[line.length - 2].ang, L * 0.016);
+            anchors.push({ l, r, lOut: { x: -railL.nx, y: -railL.ny }, rOut: { x: railR.nx, y: railR.ny } });
+            this.ringsAt.push(railL, railR);
         });
-        if (this.mode === 'band') {
-            const b = this.beacon!;
-            const u = this.bandUs[0];
-            const hw = this.carrier.halfWidthAt(u) * 1.04;
-            const p = this.at(u, hw);
-            if (dropping) {
-                b.visible = false;
-                return;
-            }
-            b.position.set(p.x, p.y);
-            b.visible = beaconOn(t, (id % 10) * 0.1);
-            b.alpha = alpha;
-            return;
+        // Howdah deck: a saddle platform following the back, planks, and its shadow.
+        const deckFrom = CARGO_U_FROM + 0.02;
+        const deckTo = CARGO_U_TO - 0.06;
+        const edgeL: (P & { ang: number })[] = [];
+        const edgeR: (P & { ang: number })[] = [];
+        for (let k = 0; k <= 16; k++) {
+            const u = deckFrom + ((deckTo - deckFrom) * k) / 16;
+            const taper = 0.82 + 0.18 * Math.sin((Math.PI * k) / 16);
+            edgeL.push(this.at(u, -deck * taper));
+            edgeR.push(this.at(u, deck * taper));
         }
-        // Rigging: a thick line along each lane over the containers, tied off at both ends of the cargo span.
-        if (!dropping) {
-            for (const off of this.laneOffsets) {
-                const pts: { x: number; y: number }[] = [];
-                for (let k = 0; k <= 12; k++) pts.push(this.at(CARGO_U_FROM - 0.03 + ((CARGO_U_TO - CARGO_U_FROM + 0.06) * k) / 12, off));
-                o.moveTo(pts[0].x, pts[0].y);
-                for (let k = 1; k < pts.length; k++) o.lineTo(pts[k].x, pts[k].y);
-            }
-            o.stroke({ width: Math.max(1.2, L * 0.007), color: 0xd8c49a, alpha: 0.95 * alpha });
-        }
+        const outline = [...edgeL, ...edgeR.slice().reverse()];
+        gb.poly(outline.map((q) => ({ x: q.x + L * 0.006, y: q.y + L * 0.008 })).flatMap((q) => [q.x, q.y])).fill({ color: 0x000000, alpha: 0.35 });
+        gb.poly(outline.flatMap((q) => [q.x, q.y])).fill({ color: WOOD });
+        for (let k = 1; k < 16; k++) gb.moveTo(edgeL[k].x, edgeL[k].y).lineTo(edgeR[k].x, edgeR[k].y);
+        gb.stroke({ width: Math.max(0.6, L * 0.0025), color: WOOD_DARK, alpha: 0.9 });
+        // Containers (and their stacked second tier) on the deck, or tumbling off as debris.
         for (let i = 0; i < this.boxes.length; i++) {
             const bx = this.boxes[i];
-            const p = this.at(bx.u, this.laneOffsets[bx.lane]);
-            const l = this.lights[i];
+            const lift = bx.stacked ? -L * 0.006 : 0;
+            const p = this.at(bx.u, this.laneOffsets[bx.lane] + lift);
             if (dropping) {
                 const d = debrisOffset(i, age, this.boxLen);
-                const c = Math.cos(p.ang);
-                const s = Math.sin(p.ang);
-                bx.s.position.set(p.x + d.dx * c - d.dy * s, p.y + d.dx * s + d.dy * c);
+                const cs = Math.cos(p.ang);
+                const sn = Math.sin(p.ang);
+                bx.s.position.set(p.x + d.dx * cs - d.dy * sn, p.y + d.dx * sn + d.dy * cs);
                 bx.s.rotation = p.ang + d.rot;
                 bx.s.alpha = d.alpha;
-                l.visible = false;
                 continue;
             }
-            bx.s.position.set(p.x, p.y);
-            bx.s.rotation = p.ang;
-            bx.s.alpha = alpha;
-            // Warm work light on the container's front outer corner.
-            const side = this.laneOffsets[bx.lane] >= 0 ? 1 : -1;
-            const off = this.boxLen * 0.4;
-            l.position.set(p.x + Math.cos(p.ang) * off - Math.sin(p.ang) * this.boxWid * 0.38 * side, p.y + Math.sin(p.ang) * off + Math.cos(p.ang) * this.boxWid * 0.38 * side);
-            l.visible = lightsOn(secondsOfDay, containerLightId(id, i));
-            l.alpha = 0.95 * alpha;
+            bx.s.position.set(p.x + lift, p.y + lift);
+            bx.s.rotation = p.ang + (bx.stacked ? 0.04 * Math.sin(i) : 0);
+            bx.s.alpha = 1;
+        }
+        if (dropping) {
+            for (const lt of this.lights) lt.visible = false;
+            this.ringsAt.length = 0;
+            return;
+        }
+        // Cargo net draped over the containers: two families of diagonals sagging between the box rows.
+        const netFrom = deckFrom + 0.02;
+        const netTo = deckTo - 0.1;
+        const cells = 9;
+        for (const dir of [-1, 1]) {
+            for (let j = -cells; j <= cells; j++) {
+                let first = true;
+                for (let k = 0; k <= 10; k++) {
+                    const s = -1 + (2 * k) / 10;
+                    const u = netFrom + (netTo - netFrom) * ((j / cells) * 0.5 + 0.5 + dir * s * 0.18);
+                    if (u < netFrom || u > netTo) {
+                        first = true;
+                        continue;
+                    }
+                    const sagU = 0.004 * Math.sin(k * Math.PI) * ropeSlack(t, u, this.periodS);
+                    const q = this.at(u + sagU, s * deck * 0.92);
+                    if (first) gt.moveTo(q.x, q.y);
+                    else gt.lineTo(q.x, q.y);
+                    first = false;
+                }
+            }
+        }
+        gt.stroke({ width: Math.max(0.5, L * 0.0022), color: NET, alpha: 0.75 });
+        // Low railing: posts and a rail round the deck.
+        const railPts = outline.concat([outline[0]]);
+        gt.moveTo(railPts[0].x, railPts[0].y);
+        for (let i = 1; i < railPts.length; i++) gt.lineTo(railPts[i].x, railPts[i].y);
+        gt.stroke({ width: Math.max(1, L * 0.006), color: RAIL, alpha: 1 });
+        for (let k = 0; k <= 16; k += 2) {
+            gt.circle(edgeL[k].x, edgeL[k].y, L * 0.0045).fill({ color: WOOD_DARK });
+            gt.circle(edgeR[k].x, edgeR[k].y, L * 0.0045).fill({ color: WOOD_DARK });
+        }
+        // Curved roof over the front of the howdah: a canopy with ribs, lit on its leading edge.
+        const roofFrom = deckTo - 0.1;
+        const roof: P[] = [];
+        const roofBack: P[] = [];
+        for (let k = 0; k <= 12; k++) {
+            const s = -1 + (2 * k) / 12;
+            const arch = 0.03 * Math.sqrt(Math.max(0, 1 - s * s));
+            roof.push(this.at(deckTo + arch * 0.4, s * deck * 0.96));
+            roofBack.push(this.at(roofFrom - arch, s * deck * 0.96));
+        }
+        gt.poly([...roof, ...roofBack.slice().reverse()].flatMap((q) => [q.x, q.y])).fill({ color: ROOF });
+        gt.moveTo(roof[0].x, roof[0].y);
+        for (const q of roof) gt.lineTo(q.x, q.y);
+        gt.stroke({ width: Math.max(0.8, L * 0.004), color: ROOF_LIT, alpha: 1 });
+        for (let k = 2; k < 12; k += 3) gt.moveTo(roof[k].x, roof[k].y).lineTo(roofBack[k].x, roofBack[k].y);
+        gt.stroke({ width: Math.max(0.5, L * 0.002), color: WOOD_DARK, alpha: 0.8 });
+        // Pennants trailing off the rear rail corners, rippling with the wave phase.
+        PENNANTS.forEach((color, pi) => {
+            const root = pi === 0 ? edgeL[0] : edgeR[0];
+            const side = pi === 0 ? -1 : 1;
+            const len = L * 0.1;
+            const top: P[] = [];
+            const bot: P[] = [];
+            for (let k = 0; k <= 8; k++) {
+                const f = k / 8;
+                const back = { x: -Math.cos(root.ang), y: -Math.sin(root.ang) };
+                const nrm = { x: -back.y, y: back.x };
+                const ripple = Math.sin(f * 5 - (2 * Math.PI * t) / (this.periodS * 0.3) + pi) * L * 0.012 * f + side * f * L * 0.015;
+                const w = L * 0.012 * (1 - f * 0.85);
+                const cx = root.x + back.x * len * f + nrm.x * ripple;
+                const cy = root.y + back.y * len * f + nrm.y * ripple;
+                top.push({ x: cx + nrm.x * w, y: cy + nrm.y * w });
+                bot.push({ x: cx - nrm.x * w, y: cy - nrm.y * w });
+            }
+            gt.poly([...top, ...bot.slice().reverse()].flatMap((q) => [q.x, q.y])).fill({ color, alpha: 0.95 });
+            gt.circle(root.x, root.y, L * 0.006).fill({ color: BRASS });
+        });
+        // Rings where the straps cross the rail.
+        for (const q of this.ringsAt) this.ring(gt, q, L * 0.008);
+        this.ringsAt.length = 0;
+        // Catenary ropes along both flanks between the strap anchors; lanterns swing on short chains from their middles.
+        let li = 0;
+        for (let i = 0; i < anchors.length - 1; i++) {
+            for (const side of ['l', 'r'] as const) {
+                const a = anchors[i][side];
+                const b = anchors[i + 1][side];
+                const out = side === 'l' ? anchors[i].lOut : anchors[i].rOut;
+                const span = Math.hypot(b.x - a.x, b.y - a.y);
+                const slack = ropeSlack(t, this.bandUs[i], this.periodS, 0.9 + i * 0.3);
+                const mid = this.rope(gt, a, b, out, span * 0.12 * slack);
+                const th = Math.atan2(out.y, out.x) + 0.45 * Math.sin((2 * Math.PI * t) / this.periodS - 1.4 - i);
+                const chain = L * 0.03;
+                const lp = { x: mid.x + Math.cos(th) * chain, y: mid.y + Math.sin(th) * chain };
+                gt.moveTo(mid.x, mid.y).lineTo(lp.x, lp.y).stroke({ width: Math.max(0.5, L * 0.002), color: 0x8a7a60, alpha: 0.9 });
+                gt.rect(lp.x - L * 0.007, lp.y - L * 0.007, L * 0.014, L * 0.014).fill({ color: WOOD_DARK }).stroke({ width: Math.max(0.5, L * 0.002), color: BRASS });
+                const lt = this.lights[li];
+                lt.position.set(lp.x, lp.y);
+                lt.visible = lightsOn(secondsOfDay, containerLightId(id, li));
+                lt.alpha = 0.95;
+                li++;
+            }
         }
     }
+
+    private ringsAt: P[] = [];
 }

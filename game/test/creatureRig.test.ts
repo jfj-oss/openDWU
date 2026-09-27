@@ -10,6 +10,8 @@ import {
     CARGO_U_TO,
     HARNESS_DEBRIS_S,
     beaconOn,
+    catenarySag,
+    ropeSlack,
     cargoLanes,
     containersPerLane,
     HARNESS_FADE_S,
@@ -159,6 +161,19 @@ describe('19g-7b tamed look — harness state machine (pure)', () => {
         expect(BEACON_PERIOD_S).toBe(1);
         const pattern = [0, 0.25, 0.5, 0.75, 1, 1.25].map((t) => beaconOn(t));
         expect(pattern).toEqual([true, true, false, false, true, true]);
+    });
+
+    it('ropes hang as catenaries and slacken / tighten with the body wave (lagging)', () => {
+        expect(catenarySag(0, 10)).toBeCloseTo(0, 9);
+        expect(catenarySag(1, 10)).toBeCloseTo(0, 9);
+        expect(catenarySag(0.5, 10)).toBeCloseTo(10, 9);
+        expect(catenarySag(0.25, 10)).toBeGreaterThan(5);
+        const vals = [0, 1, 2, 3, 4, 5, 6, 7].map((t) => ropeSlack(t, 0.5, 7.5));
+        expect(Math.min(...vals)).toBeGreaterThanOrEqual(0.6);
+        expect(Math.max(...vals)).toBeLessThanOrEqual(1.4);
+        expect(Math.max(...vals) - Math.min(...vals)).toBeGreaterThan(0.4);
+        // The lag: the slack peaks after the unlagged wave.
+        expect(ropeSlack(0, 0, 7.5, 0)).not.toBeCloseTo(ropeSlack(0, 0, 7.5, 0.9), 3);
     });
 
     it.skipIf(!haveInstall)('containers take the original freighter palette', () => {
