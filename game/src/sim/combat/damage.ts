@@ -503,10 +503,10 @@ export function inflictWarDamageFighter(galaxy: Galaxy, inflictingEmpire: Empire
 
 /** Galaxy.3.cs 529 InflictWarDamage(inflictingEmpire, builtObject). */
 export function inflictWarDamageBuiltObject(galaxy: Galaxy, inflictingEmpire: Empire | null, target: BuiltObject): void {
-    void galaxy;
     if (target.empire !== null) {
         const diplomaticRelation = target.empire.diplomaticRelations.byEmpire(inflictingEmpire);
         if (diplomaticRelation !== null) diplomaticRelation.warDamageBuiltObject = (diplomaticRelation.warDamageBuiltObject + calculateWarValueBuiltObject(target)) | 0;
+        if (galaxy.scenario !== null && diplomaticRelation !== null && inflictingEmpire !== null) scenarioEmit(galaxy, 'warDamageInflicted', { inflictor: inflictingEmpire, victim: target.empire, builtObject: target, habitat: null, value: calculateWarValueBuiltObject(target) }); // mod layer
     }
 }
 
@@ -515,6 +515,7 @@ export function inflictWarDamageHabitat(galaxy: Galaxy, inflictingEmpire: Empire
     if (target.empire !== null && target.empire !== galaxy.independentEmpire) {
         const diplomaticRelation = target.empire.diplomaticRelations.byEmpire(inflictingEmpire);
         if (diplomaticRelation !== null) diplomaticRelation.warDamageColony = (diplomaticRelation.warDamageColony + calculateWarValueHabitat(galaxy, target)) | 0;
+        if (galaxy.scenario !== null && diplomaticRelation !== null && inflictingEmpire !== null) scenarioEmit(galaxy, 'warDamageInflicted', { inflictor: inflictingEmpire, victim: target.empire, builtObject: null, habitat: target, value: calculateWarValueHabitat(galaxy, target) }); // mod layer
     }
 }
 

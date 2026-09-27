@@ -2279,6 +2279,7 @@ export function endWarRequest(galaxy: Galaxy, self: Empire, otherEmpire: Empire)
             const description = getText('We urge you to consider our proposal for an end to this pointless war'); // Empire.7.cs 3844 GenerateMessageDescriptionEndWarRequest
             diplomaticRelation.lastDiplomacyTradeOfferDate = galaxyStarDate(galaxy);
             sendMessageToEmpire(self, otherEmpire, EmpireMessageType.ProposeDiplomaticRelation, DiplomaticRelationType.None, description, NO_POINT, '');
+            if (galaxy.scenario !== null) scenarioEmit(galaxy, 'peaceProposed', { empire: self, other: otherEmpire }); // mod layer
         }
     }
 }
@@ -2773,6 +2774,7 @@ export function declareWar(galaxy: Galaxy, self: Empire, target: Empire | null, 
         if ((self !== galaxy.playerEmpire || self.controlMilitaryAttacks === FULLY_AUTOMATED) && diplomaticRelation.warObjective !== WarObjective.CaptureObjectives) identifyMilitaryObjectives(galaxy, self);
         if (target !== galaxy.playerEmpire && diplomaticRelation2.warObjective !== WarObjective.CaptureObjectives) identifyMilitaryObjectives(galaxy, target);
         reviewDefensiveFleetLocations(galaxy, self);
+        if (galaxy.scenario !== null) scenarioEmit(galaxy, 'warDeclared', { empire: self, target }); // mod layer
     } else if (lockedWar) {
         diplomaticRelation.locked = true;
         const diplomaticRelation3 = obtainDiplomaticRelation(target, self);
@@ -3536,7 +3538,9 @@ export function considerTreatyProposals(galaxy: Galaxy, empire: Empire): void {
         };
         if (dr.type === DiplomaticRelationType.None && dr2.type === DiplomaticRelationType.War && self.controlDiplomacyOffense === FULLY_AUTOMATED) {
             removals.push(dr);
-            if (considerEndWar(galaxy, self, thisEmpire, false).end) {
+            let endsWar = considerEndWar(galaxy, self, thisEmpire, false).end;
+            if (galaxy.scenario !== null) endsWar = scenarioQuery(galaxy, 'endWarAcceptance', endsWar, { empire: self, other: thisEmpire }); // mod layer
+            if (endsWar) {
                 const v = determineVictorInWar(dr2);
                 if (v.victor !== null && v.victor === self && determineWhetherWantToOfferSubjugation(galaxy, self, self) && determineSubjugationOfLoserInWar(v.victor, v.loser, v.winningRatio, militaryPotency(v.victor), militaryPotency(v.loser))) {
                     const dr4 = new DiplomaticRelation(DiplomaticRelationType.SubjugatedDominion, self, self, thisEmpire, now(), dr.supplyRestrictedResources);
@@ -3550,6 +3554,7 @@ export function considerTreatyProposals(galaxy: Galaxy, empire: Empire): void {
                 processEndOfWarWithEmpire(galaxy, self, thisEmpire);
                 processEndOfWarWithEmpire(galaxy, thisEmpire, self);
                 sendNewsBroadcastWarStartEnd(self, dr2); // Empire.3.cs 3675 / 3719 SendNewsBroadcastWarStartEnd(diplomaticRelation2)
+                if (galaxy.scenario !== null) scenarioEmit(galaxy, 'peaceSigned', { empire: self, other: thisEmpire }); // mod layer
                 continue;
             }
         }

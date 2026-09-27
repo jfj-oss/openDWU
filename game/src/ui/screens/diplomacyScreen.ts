@@ -21,7 +21,7 @@ import './diplomacyScreen.css';
 import type { Empire } from '../../sim/empire';
 import type { Galaxy } from '../../sim/galaxy';
 import type { EmpireMessage } from '../../sim/messages';
-import { getGovernmentsStatic } from '../../sim/empire';
+import { getGovernmentsStatic, AutomationLevel } from '../../sim/empire';
 import { displayColorForEmpire } from '../../sim/empireColors';
 import {
     DiplomaticRelation,
@@ -36,6 +36,7 @@ import {
     determineDesiredDiplomaticRelationTypical,
     processEndOfWarWithEmpire,
     resetAttitudeLevelsAtEndOfWar,
+    MANUAL,
 } from '../../sim/diplomacyTick';
 import { galaxyStarDate } from '../../sim/tick/simTime';
 import { rimTraderTermsRows, type RimTraderTermsRows } from '../scenario/rimTraderRows';
@@ -52,14 +53,16 @@ import { DialogSet, raceDialogFileName } from '../../sim/data/dialogSet';
 import { fetchText } from '../../sim/data/fetchData';
 import { resolveDataUrl } from '../../sim/data/paths';
 import { formatNet, resolveGameText } from '../../sim/textResolver';
-import { AutomationLevel } from '../../sim/empire';
-import { MANUAL } from '../../sim/diplomacyTick';
 // [proposals] end
 
 // [tradenego] begin
 import { closeTradePanel, openTradePanel } from './tradePanel';
 import type { DialogPartType } from '../../sim/data/dialogSet';
 // [tradenego] end
+
+// [wargoals] begin
+import { warRowSuffix, warTermsBlock } from './warTermsPanel';
+// [wargoals] end
 
 // [diplovoice] begin
 import { counterNote, diplomatVoiceConfig, voiceDiplomatReply, voiceSwitch, voicedLineToggle, voicingIndicator, type VoicedReply } from '../diplomatVoice';
@@ -484,7 +487,7 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
             swatch.style.background = rgb(r.color);
             const name = el('span', 'diplomacy-name', r.name);
             name.title = r.name;
-            const relation = el('span', 'diplomacy-relation', r.relationText);
+            const relation = el('span', 'diplomacy-relation', r.relationText + warRowSuffix(player, r.empire)); // [wargoals]
             relation.style.color = rgb(r.relationColor);
             relation.title = r.relationText;
             const attitude = el('span', 'diplomacy-attitude', r.attitude !== null ? formatSigned(r.attitude) : '');
@@ -528,6 +531,11 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
         const rimTerms = row.empire === rimTraderEmpireOf(player) ? rimTraderTermsRows(player.galaxy, player) : null;
         if (rimTerms !== null) detail.appendChild(rimTraderTermsBlock(rimTerms));
         // [rimTrader] end
+
+        // [wargoals] begin
+        const war = warTermsBlock(player, row.empire, () => render());
+        if (war !== null) detail.appendChild(war);
+        // [wargoals] end
 
         detail.appendChild(el('div', 'diplomacy-section-heading', 'Treaty on Offer'));
         if (row.incoming) {

@@ -8,16 +8,15 @@
 import { closeEventSting, playDiplomacyMood, playMessageSounds } from '../audio/gameAudio'; // [audio]
 import './messagePopups.css';
 import { getMessageOptions, routeEmpireMessage, shouldQueueConversation, type DialogPartType } from './messageRouting';
-import { EmpireMessageType, empireMessages, type EmpireMessage } from '../sim/messages';
+import { EmpireMessageType, empireMessages, type EmpireMessage, empireMessageHistory } from '../sim/messages';
 import type { Empire } from '../sim/empire';
 import type { Galaxy } from '../sim/galaxy';
 import { galaxyStarDate } from '../sim/tick/simTime';
 import { resolveStarDateDescription } from '../sim/galaxyTime';
 import { resolveGameText } from '../sim/textResolver';
-import { isProposalValid, proposalLabel, relationTypeLabel } from './screens/diplomacyScreen';
+import { isProposalValid, proposalLabel, relationTypeLabel, setDiplomacyMessageExpiry } from './screens/diplomacyScreen';
 import { issuePlayerCommand } from '../sim/player/playerCommands';
 // [proposals] begin
-import { setDiplomacyMessageExpiry } from './screens/diplomacyScreen';
 // [proposals] end
 import { showToast } from './toast';
 // [diplovoice] begin
@@ -28,7 +27,6 @@ import { rgbCss } from './hud';
 import { expireAdvisorSuggestionsForEmpire, receiveAdvisorSuggestionMessage } from '../sim/advisorQueue';
 // [suggest] end
 // [popupstubs] begin
-import { empireMessageHistory } from '../sim/messages';
 import { isConversationExpired } from './messageStubs';
 import { pushMessageStub, markMessageStubRead } from './messageStubList';
 import { getSettings } from './settings';

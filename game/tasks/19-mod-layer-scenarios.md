@@ -138,7 +138,7 @@ Build after 19b lands; each is mostly data + a spread rule on the 19b hooks.
    construction against the site, a 19d2 shortage strike, a partner treaty break (attitude penalty); council condemn /
    protect motions. A finished project is a colony facility → a 19g-3 war goal like any colony. Stellar engine DROPPED
    (no star lifecycle in the original).
-3. War goals & peace terms (cede colonies, reparations, demilitarised systems). [medium]
+3. War goals & peace terms (cede colonies, reparations, demilitarised systems). [medium] — **built (wip/s19g3):** lively-galaxy flag `warGoals` (src/sim/scenario/lively/warGoals.ts, peaceTerms.ts; test/warGoals19g3.test.ts).
 4. Succession: leaders age/die, heirs, regencies, crises → persona shifts. [cheap-medium]
 5. Frontier autonomy: distance-based drift toward local rule, sector governors with power. [medium]
 6. Anomalies with branching investigations (derelicts, hazards, precursor caches) via the story system. [medium]

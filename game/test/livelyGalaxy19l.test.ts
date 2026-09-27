@@ -271,7 +271,7 @@ describe('19l smallerInvasions', () => {
 describe('19l flags off', () => {
     it('lively-galaxy with every flag off gives the same seed-1 game and 600 s run as no scenario', () => {
         const ref = cachedTickGameRun(base, { seconds: 600 });
-        const { game } = createScenarioGame(base, { scenario: 'lively-galaxy', flags: { ambitionPressure: false, borderFriction: false, smallerInvasions: false } });
+        const { game } = createScenarioGame(base, { scenario: 'lively-galaxy', flags: { ambitionPressure: false, borderFriction: false, smallerInvasions: false, warGoals: false } });
         expect(game.galaxy.scenario?.id).toBe('lively-galaxy');
         const run = runGameSeconds(game, 600);
         expect(stateDigest(game.galaxy)).toBe(stateDigest(ref.game.galaxy));
@@ -282,7 +282,7 @@ describe('19l flags off', () => {
 
     it('the manifest defaults: ambition and friction on, smaller invasions off (param 0 = stock)', () => {
         const g = lively({});
-        expect(g.scenario!.flags).toEqual({ ambitionPressure: true, borderFriction: true, smallerInvasions: false });
+        expect(g.scenario!.flags).toEqual({ ambitionPressure: true, borderFriction: true, smallerInvasions: false, warGoals: false });
         expect(g.scenario!.params.invasionMinShips).toBe(0);
     }, 120000);
 });

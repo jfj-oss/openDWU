@@ -1,11 +1,12 @@
 {
   "id": "lively-galaxy",
   "name": "Lively Galaxy",
-  "description": "A livelier mid game: strong peaceful empires grow restless and pick fights, overlapping borders breed incidents, and small troop fleets may invade weakly held colonies.",
+  "description": "A livelier mid game: strong peaceful empires grow restless and pick fights, overlapping borders breed incidents, and small troop fleets may invade weakly held colonies; wars can be fought for goals and ended on terms.",
   "flags": [
     { "name": "ambitionPressure", "label": "Ambition pressure", "description": "Empires with idle warships and long peace grow restless; restless AIs relax their war-review attitude threshold.", "default": true },
     { "name": "borderFriction", "label": "Border friction", "description": "Empires whose territories overlap suffer yearly border incidents (mining disputes, blockades, station seizures) that sour relations and count toward war.", "default": true },
-    { "name": "smallerInvasions", "label": "Smaller invasions", "description": "Troop fleets smaller than the stock 10 ships may be sent against weakly held colonies (set the minimum-ships param above 0).", "default": false }
+    { "name": "smallerInvasions", "label": "Smaller invasions", "description": "Troop fleets smaller than the stock 10 ships may be sent against weakly held colonies (set the minimum-ships param above 0).", "default": false },
+    { "name": "warGoals", "label": "War goals & peace terms", "description": "Wars record goals and a war score; peace carries terms (ceded colonies, reparations, demilitarised systems, released subjects) priced by the score; broken demilitarisation is a casus belli and conceded terms are remembered.", "default": false }
   ],
   "params": [
     { "name": "ambitionRise", "label": "Ambition gained per peaceful year (at the reference fleet size)", "default": 1, "min": 0, "max": 10 },
@@ -23,6 +24,32 @@
     { "name": "incidentMemoryDecay", "label": "Share of remembered incidents kept each year", "default": 0.6, "min": 0, "max": 1 },
     { "name": "invasionMinShips", "label": "Minimum troop-fleet ships against weak colonies (0 = stock 10)", "default": 0, "min": 0, "max": 10 },
     { "name": "invasionTroopRatio", "label": "Share of the required troop strength a small troop fleet must carry (stock 0.5)", "default": 0.35, "min": 0, "max": 1 },
-    { "name": "invasionWeakTroops", "label": "Colony troop strength below which the smaller rule applies", "default": 30000, "min": 0, "max": 1000000 }
+    { "name": "invasionWeakTroops", "label": "Colony troop strength below which the smaller rule applies", "default": 30000, "min": 0, "max": 1000000 },
+    { "name": "warScoreColonyFactor", "label": "War score: colony war-value multiplier for captured colonies", "default": 2, "min": 0, "max": 20 },
+    { "name": "warScoreInvasion", "label": "War score points per successful invasion / colony strike", "default": 50, "min": 0, "max": 1000 },
+    { "name": "warScoreBlockadePerDay", "label": "War score points per blockade-day", "default": 1, "min": 0, "max": 100 },
+    { "name": "warScoreGoalBonus", "label": "War score bonus while the war goal is held", "default": 200, "min": 0, "max": 5000 },
+    { "name": "casusBelliScore", "label": "War score head start of a casus-belli war", "default": 150, "min": 0, "max": 5000 },
+    { "name": "termColonyFactor", "label": "Price of a ceded colony (× its war value)", "default": 1.5, "min": 0.1, "max": 20 },
+    { "name": "termMoneyPerPoint", "label": "Credits of reparations per war-score point", "default": 25, "min": 1, "max": 10000 },
+    { "name": "termDemilPoints", "label": "Points per demilitarised system (at the reference length)", "default": 100, "min": 0, "max": 5000 },
+    { "name": "termReleasePoints", "label": "Points for releasing a subject", "default": 300, "min": 0, "max": 5000 },
+    { "name": "termConcedeShare", "label": "Share of the enemy's lead a losing AI concedes", "default": 1, "min": 0, "max": 5 },
+    { "name": "termDemandShare", "label": "Share of its lead a winning AI demands", "default": 0.5, "min": 0, "max": 5 },
+    { "name": "termWearinessPoints", "label": "Terms points conceded per point of war weariness", "default": 20, "min": 0, "max": 1000 },
+    { "name": "termDemandThreshold", "label": "Lead above which an AI demands terms", "default": 100, "min": 0, "max": 10000 },
+    { "name": "reparationYears", "label": "Years of reparation instalments", "default": 5, "min": 0, "max": 20 },
+    { "name": "reparationLumpShare", "label": "Share of reparations paid at signing", "default": 0.4, "min": 0, "max": 1 },
+    { "name": "demilYears", "label": "Years a demilitarisation lasts (reference length)", "default": 10, "min": 1, "max": 30 },
+    { "name": "demilGraceDays", "label": "Days to withdraw warships before a breach counts", "default": 60, "min": 0, "max": 360 },
+    { "name": "breachRelationDrop", "label": "Relation drop for a broken demilitarisation", "default": 25, "min": 0, "max": 100 },
+    { "name": "casusBelliYears", "label": "Years a casus belli is held", "default": 10, "min": 1, "max": 50 },
+    { "name": "casusBelliWarFactor", "label": "War-review attitude relaxation while holding a casus belli", "default": 5, "min": 0, "max": 50 },
+    { "name": "humiliationRelationDrop", "label": "Relation drop per conceded point (capped)", "default": 0.02, "min": 0, "max": 1 },
+    { "name": "humiliationRelationCap", "label": "Cap on the relation drop at signing", "default": 30, "min": 0, "max": 100 },
+    { "name": "humiliationWarFactor", "label": "War-review attitude relaxation per remembered humiliation point", "default": 0.01, "min": 0, "max": 1 },
+    { "name": "humiliationDecay", "label": "Share of humiliation kept each year", "default": 0.8, "min": 0, "max": 1 },
+    { "name": "warGoalDecisionDays", "label": "Days the player has to choose a war goal", "default": 30, "min": 1, "max": 360 },
+    { "name": "peaceDecisionDays", "label": "Days the player has to answer a peace offer", "default": 60, "min": 1, "max": 360 }
   ]
 }

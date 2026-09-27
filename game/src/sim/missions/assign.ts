@@ -36,6 +36,7 @@ import {
     type MissionTarget,
     type StellarObject,
 } from './mission';
+import { scenarioQuery } from '../scenario/hooks';
 
 /** Optional arguments of the 13-argument AssignMission (BuiltObject.2.cs 7620); every overload is a subset. */
 export interface AssignMissionArgs {
@@ -105,6 +106,8 @@ export function assignMission(galaxy: Galaxy, bo: BuiltObject, missionType: Buil
     if (bo.role === BuiltObjectRole.Base || !assignMissionCheckPreconditions(bo)) {
         return;
     }
+    // Mod layer: a scenario may refuse the mission (e.g. 19g-3 demilitarised systems); no scenario = no call.
+    if (galaxy.scenario !== null && !scenarioQuery(galaxy, 'assignMissionAllowed', true, { builtObject: bo, missionType, target, x, y })) return;
     // 7626-7634
     if (manuallyAssigned) {
         bo.revertMission = null;
