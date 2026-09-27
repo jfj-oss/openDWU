@@ -1,7 +1,7 @@
 {
   "id": "rim-atmosphere",
   "name": "Rim Atmosphere",
-  "description": "Presentation only (19i): the outer rim of the galaxy looks colder, darker and lonelier — cold colour grading, dark dust lanes, grainy murk over unexplored rim systems, derelict hulks, eyes in the dark (small blinking red pairs) in rim systems, dimmer lights and a vignette deep in the rim. No gameplay change.",
+  "description": "Presentation only (19i): the outer rim of the galaxy looks, sounds and reads colder, darker and lonelier — cold colour grading, dark dust lanes, grainy murk over unexplored rim systems, derelict hulks, eyes in the dark (small blinking red pairs) in rim systems, dimmer lights and a vignette deep in the rim; a sparse music mood and a wind/static ambient bed that grow with distance; bleaker rim system names and rim-flavoured message wording; rare garbled distress calls from rim outposts. No gameplay change.",
   "include": [],
   "flags": [
     { "name": "rimAtmosphere", "label": "Rim atmosphere", "description": "Draw the rim atmosphere visuals (off = the map draws as the base game).", "default": true }
@@ -12,6 +12,10 @@
     { "name": "murkStrength", "label": "Unexplored rim murk strength", "default": 0.7, "min": 0, "max": 1 },
     { "name": "eyeDensity", "label": "Eyes in the dark density", "default": 1, "min": 0, "max": 4 },
     { "name": "derelictDensity", "label": "Derelict density", "default": 1, "min": 0, "max": 4 },
-    { "name": "lightDimming", "label": "Rim light dimming", "default": 0.6, "min": 0, "max": 1 }
+    { "name": "lightDimming", "label": "Rim light dimming", "default": 0.6, "min": 0, "max": 1 },
+    { "name": "musicMoodWeight", "label": "Rim music mood strength", "description": "How strongly the music selector prefers sparse/subdued tracks once the camera is past the rim.", "default": 0.8, "min": 0, "max": 1 },
+    { "name": "ambientGain", "label": "Rim ambient bed gain", "description": "Gain of the low wind/static ambient bed once the camera is fully past the rim.", "default": 0.35, "min": 0, "max": 1 },
+    { "name": "staticGain", "label": "Rim voice static gain", "description": "Gain of the faint static layer under advisor/diplomacy voice playback in the fog band.", "default": 0.25, "min": 0, "max": 1 },
+    { "name": "distressCallRate", "label": "Rim distress-call rate", "description": "Chance per check (every 6 game days) of a garbled distress-call ticker line from a rim outpost at the rim's outer edge.", "default": 0.05, "min": 0, "max": 1 }
   ]
 }

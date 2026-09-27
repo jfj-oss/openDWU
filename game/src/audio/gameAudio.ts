@@ -19,6 +19,11 @@ import { BuiltObjectRole } from '../sim/data/designSpecifications';
 import { startEffects, type EffectsPlayer, type SoundEffectRequest } from './effectsPlayer';
 import { ambientMusicAction, MainViewSounds, type SoundView } from './mainViewSounds';
 import { eventStingClosed, musicGameStarted, musicPlayer, playEventSting, stingPlayer } from './musicPlayer';
+// [rimatmo-wiring] begin — 19i items 8/9/10 (data/wiring; render half in src/render/rimAtmosphereLayer.ts, not edited here)
+import { scenarioParam } from '../sim/scenario/state';
+import { rimWeightAt, rimWeightAtCapital } from './rimAtmosphereGeometry';
+import { RIM_MOOD_TRACKS, RimAmbientBed, playRimVoiceStaticBurst, rimMoodProbability, rimVoiceStaticGain } from './rimAtmosphereMix';
+// [rimatmo-wiring] end
 
 // ---------------------------------------------------------------------------
 // Pure trigger mapping
@@ -172,12 +177,21 @@ export function playDiplomacyMood(galaxy: Galaxy, other: Empire | null, player: 
     // EmpireEvaluation lookup without ObtainEmpireEvaluation's insert (the UI must not add sim records).
     const evaluation = empireEvaluationByEmpire(empireEvaluationsOf(other), player);
     const attitude = evaluation !== null ? evaluation.overallAttitude : 0.0;
-    void galaxy;
     try {
         playEventSting(diplomacyMoodFile(other.pirateEmpireBaseHabitat !== null, other.reclusive, attitude));
     } catch {
         // no audio
     }
+    // [rimatmo-wiring] begin — 19i item 10: a faint static burst under the mood sting when `other`'s capital sits
+    // in the fog band (no camera at this call site — messagePopups.ts opens the dialog outside the Main View — so
+    // only the capital side of "camera or capital" applies here).
+    try {
+        const gain = rimVoiceStaticGain(0, rimWeightAtCapital(galaxy, other), scenarioParam(galaxy, 'staticGain', 0.25));
+        playRimVoiceStaticBurst(gain);
+    } catch {
+        // no audio
+    }
+    // [rimatmo-wiring] end
 }
 
 /** A player order (orderMenu performAction): the investigate stings of Main.Part7.cs:504 / 515. */
@@ -259,11 +273,25 @@ export function installGameAudio(deps: GameAudioDeps): GameAudio {
             },
         }, false);
     }
+    // [rimatmo-wiring] begin — 19i item 9: one ambient bed per game view, gain updated every frame.
+    const rimAmbient = new RimAmbientBed();
+    // [rimatmo-wiring] end
     return {
         frame(): void {
             const r = sounds.collect(galaxy, camera, player, galaxy.nowMs, time.currentStarDate);
             for (const q of r.requests) session.request(q);
             session.flush();
+            // [rimatmo-wiring] begin — 19i items 8/9: read the rim weight at the camera centre once per frame and
+            // drive the music selector's mood pool + the wind/static ambient bed from it. No-op (weightAtCamera stays
+            // 0, RimAmbientBed never creates an AudioContext, setRimMood's pool is ignored) with the flag off.
+            try {
+                const weightAtCamera = rimWeightAt(galaxy, camera.x, camera.y);
+                musicPlayer().setRimMood(RIM_MOOD_TRACKS, rimMoodProbability(weightAtCamera, scenarioParam(galaxy, 'musicMoodWeight', 0.8)));
+                rimAmbient.update(weightAtCamera, scenarioParam(galaxy, 'ambientGain', 0.35));
+            } catch {
+                // no audio
+            }
+            // [rimatmo-wiring] end
             if (r.ambientPlaying === null) return;
             try {
                 const m = musicPlayer();
@@ -282,6 +310,7 @@ export function installGameAudio(deps: GameAudioDeps): GameAudio {
         },
         dispose(): void {
             setRecipient(previousRecipient, true);
+            rimAmbient.dispose(); // [rimatmo-wiring] 19i item 9
         },
     };
 }

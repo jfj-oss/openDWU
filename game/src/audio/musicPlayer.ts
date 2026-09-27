@@ -22,6 +22,7 @@
 // pointerdown/keydown is retried on that gesture.
 
 import { getSettings } from '../ui/settings';
+import { pickRimWeightedTrack } from './rimAtmosphereMix'; // [rimatmo-wiring] 19i item 8 (pure; no render/Pixi import)
 
 /** Track files in Sounds/Music/ (MusicPlayer.cs:107 Directory.GetFiles(folder, "*.mp3")). */
 export const MUSIC_FILES: readonly string[] = [
@@ -222,6 +223,19 @@ export class MusicPlayer {
     private readonly themeFile: string;
 
     private string0: string | null = null; // current file (string_0)
+    // [rimatmo-wiring] begin — 19i item 8: a "rim" mood, off by default (rimMoodProbability <= 0 with the flag off
+    // or the camera outside the rim band). setRimMood is the only thing gameAudio.ts's frame loop touches here;
+    // pick() falls back to the untouched pickNextTrack whenever the mood pool is empty or its probability is 0, so a
+    // game without this scenario picks tracks exactly as before.
+    private rimMoodFiles: readonly string[] = [];
+    private rimMoodProbability = 0;
+
+    /** gameAudio.ts, once per frame: the rim mood's track pool and how strongly to prefer it (0 = never). */
+    setRimMood(files: readonly string[], probability: number): void {
+        this.rimMoodFiles = files;
+        this.rimMoodProbability = Math.max(0, Math.min(1, probability));
+    }
+    // [rimatmo-wiring] end
     private double0 = -1.0; // fade direction
     private readonly double1 = 0.02;
     private int0 = 0; // ticks at the fade target
@@ -435,6 +449,11 @@ export class MusicPlayer {
     }
 
     private pick(): string | null {
+        // [rimatmo-wiring] 19i item 8: prefer the rim mood pool when one is set and its probability draws true;
+        // pickRimWeightedTrack falls back to the full pool exactly like pickNextTrack when it does not.
+        if (this.rimMoodFiles.length > 0 && this.rimMoodProbability > 0) {
+            return pickRimWeightedTrack(this.files, this.rimMoodFiles, this.string0, this.rand, this.rimMoodProbability);
+        }
         return pickNextTrack(this.files, this.string0, this.rand);
     }
 
