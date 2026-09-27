@@ -119,3 +119,9 @@ year 10 (1–8 per empire). Follow-ups:
   `wreck-field.png`, `league.png` still owed); re-key salt bloom onto the treasure fleet; treasure-fleet marker label;
   drop overlayLayer's plain ring/diamond threat drawing in favour of threatMarkers; pass the Concord's generated
   textures through the damage/livery overlays; the heavily-withered fade may be too strong (judge in play). Sonnet.
+
+## 19g-5 frontier autonomy follow-ups (landed 2026-09-27, wip/s19g5 19d3a60)
+- No UI yet: sector panel (members, governor, autonomy with drift causes), rule slider loose/tight, herd-tolerance switch, concede/honours buttons. Player ops `frontierOrder` / `frontierConcede` exist.
+- Trade-compact standing is kept on the sector; migrate to the 19o reputation ledger once both are on main (add to the 19o migration list).
+- Colonies passed through `initiateEmpireSplitAt`'s new `colonies` option join after the new empire's race/government are chosen; verify the split's random-call order against Empire.1.cs 2921 in a 10-year all-flags run.
+- AI parity audit (19s-1): "autonomy grants 0" over 5 years; re-check after frontier autonomy is on since it now grants at the seat on concession.
