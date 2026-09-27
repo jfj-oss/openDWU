@@ -54,6 +54,7 @@ export const TREASURE_PARAM_DEFAULTS = {
     rimTraderResearchCap: 5,
     rimTraderContactYear: 1,
     treasureFleetSize: 6,
+    treasureFleetPerColony: 1,
     treasureCircuitInterval: 360,
     treasureCircuitPorts: 4,
     treasureShipSize: 1100,
@@ -279,9 +280,23 @@ function escortDesign(r: Empire): Design | null {
     return null;
 }
 
-/** Fills the convoy up to treasureFleetSize (⌈size / 3⌉ treasure ships, the rest escorts), paying the purchase price. */
+/** Most ships a treasure fleet may have. */
+export const TREASURE_FLEET_MAX = 20;
+
+/**
+ * The convoy's target size: treasureFleetSize (the base; ≤ 0 = no fleet) + treasureFleetPerColony × (Concord colonies
+ * − 1), at most TREASURE_FLEET_MAX. Pure.
+ */
+export function treasureFleetTargetSize(galaxy: Galaxy, r: Empire): number {
+    const base = Math.trunc(treasureParam(galaxy, 'treasureFleetSize'));
+    if (base <= 0) return 0;
+    const per = treasureParam(galaxy, 'treasureFleetPerColony');
+    return Math.min(TREASURE_FLEET_MAX, Math.trunc(base + per * Math.max(0, r.colonies.length - 1)));
+}
+
+/** Fills the convoy up to its target size (⌈size / 3⌉ treasure ships, the rest escorts), paying the purchase price. */
 function musterFleet(galaxy: Galaxy, r: Empire, port: BuiltObject | Habitat, st: TreasureFleetState): void {
-    const size = Math.trunc(treasureParam(galaxy, 'treasureFleetSize'));
+    const size = treasureFleetTargetSize(galaxy, r);
     const wantTreasure = Math.ceil(size / 3);
     st.design ??= generateTreasureShipDesign(galaxy, r);
     const free = st.stats.voyages === 0; // the first fleet is the Concord's inheritance

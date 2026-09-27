@@ -25,6 +25,9 @@ export const RIM_PARAM_DEFAULTS = {
     rimTraderAngerStanding: -3000,
     rimTraderRetaliationRange: 2,
     rimTraderAngerDecay: 0.5,
+    rimTraderRetaliationRatio: 2.0,
+    rimTraderStrikeFleets: 2,
+    rimTraderHomeGuardPct: 50,
     rimTraderExchangeRate: 1.0,
     rimTraderGrantThreshold: 1500,
     rimTraderImportQuota: 400,
@@ -226,13 +229,28 @@ export interface RimAngerEntry {
     lastAction: RimAggression;
     /** Aggressive actions recorded, by kind. */
     counts: Partial<Record<RimAggression, number>>;
+    /**
+     * Tit-for-tat ledger (normal empires only): stock war value (Galaxy.3.cs 474 / 507 CalculateWarValue) of the
+     * Concord ships, bases and colony damage this empire caused (`taken`) and of what the Concord destroyed of its in
+     * return (`inflicted`). Open while inflicted < rimTraderRetaliationRatio × taken.
+     */
+    ledger?: { taken: number; inflicted: number; open: boolean };
+}
+
+/** A strike fleet (tit-for-tat): Concord warships sent after one offender's ships and bases. */
+export interface RimStrikeFleet {
+    targetEmpireId: number;
+    ships: BuiltObject[];
+    target: BuiltObject | null;
 }
 
 /** Saved state (`scenarioState(galaxy, 'rimAnger')`, created only with the passive flag on): plain data. */
 export interface RimAngerState {
     /** By empireId. */
     byEmpire: Record<number, RimAngerEntry>;
-    stats: { provoked: number; calmed: number };
+    stats: { provoked: number; calmed: number; exacted?: number; strikes?: number };
+    /** Strike fleets at sea (absent until the first strike). */
+    strikes?: RimStrikeFleet[];
 }
 
 export function rimAngerState(galaxy: Galaxy): RimAngerState {
@@ -244,6 +262,12 @@ export function rimAngeredAt(galaxy: Galaxy, other: Empire | null): boolean {
     if (other === null || galaxy.scenario === null || !('rimAnger' in galaxy.scenario.state)) return false;
     const e = rimAngerState(galaxy).byEmpire[other.empireId];
     return e !== undefined && e.anger > 0;
+}
+
+/** The tit-for-tat ledger against `other` is open (the Concord owes it strikes). Pure. */
+export function rimLedgerOpen(galaxy: Galaxy, other: Empire | null): boolean {
+    if (other === null || galaxy.scenario === null || !('rimAnger' in galaxy.scenario.state)) return false;
+    return rimAngerState(galaxy).byEmpire[other.empireId]?.ledger?.open === true;
 }
 
 /** Whether the Concord is angered at anyone. Pure. */

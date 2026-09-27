@@ -345,6 +345,12 @@ export interface ScenarioQueries {
     invasionMinFleetShips: { value: number; args: { empire: Empire; target: Habitat } };
     /** Share of the required troop strength a troop fleet must carry (stock 0.5: Empire.8.cs 1049 `>= num3 / 2`). */
     invasionTroopRatio: { value: number; args: { empire: Empire; target: Habitat } };
+    /**
+     * combat/attackAI.ts shouldAttack (BuiltObject.1.cs ShouldAttack), stance AttackEnemies, right before the diplomatic
+     * relation test (War → attack; otherwise only a ship's own Attack-mission target): true lets `empire`'s ship engage
+     * `target`'s ships and bases without a war, as pirates do. Stock false. 19a tit-for-tat strikes. Never draws.
+     */
+    attackWithoutWar: { value: boolean; args: { empire: Empire; target: Empire } };
     /** 19j: events.ts applyLocationEffects (BuiltObject.cs 3934 ApplyLocationEffects): true = no lightning / ship-damage effects. */
     builtObjectStormImmune: { value: boolean; args: { builtObject: BuiltObject } };
     /** 19j: movement.ts rechargeReactors (BuiltObject.1.cs 2509 RechargeReactors): true = recharging burns no fuel. */

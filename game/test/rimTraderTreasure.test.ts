@@ -120,8 +120,10 @@ describe('19a addendum — treasure fleet', () => {
         st.contactDone = true;
         treasureFleetTick(g);
         expect(st.sailing).toBe(true);
-        expect(st.treasure.length).toBe(2);
-        expect(st.ships.length).toBe(6);
+        // treasureFleetSize 6 + treasureFleetPerColony 1 × (3 colonies − 1) = 8 ships, ⌈8 / 3⌉ = 3 of them treasure ships.
+        expect(r.colonies.length).toBe(3);
+        expect(st.treasure.length).toBe(3);
+        expect(st.ships.length).toBe(8);
         expect(st.circuit.length).toBeGreaterThan(0);
         expect(st.circuit.every((p) => p.actualEmpire !== r && p.isSpacePort)).toBe(true);
         const lead = st.treasure[0];
