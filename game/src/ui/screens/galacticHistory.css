@@ -239,3 +239,45 @@
 .galactic-history-chronicle-text {
     white-space: pre-wrap;
 }
+
+/* 19s-4 Ask / Orders tabs: an input row, the answer, cited records. */
+.galactic-history-body.galactic-history-ask {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow-y: auto;
+}
+.galactic-history-ask-form {
+    display: flex;
+    gap: 6px;
+}
+.galactic-history-ask-input {
+    flex: 1;
+    min-width: 0;
+    font: inherit;
+    font-size: 13px;
+    color: #e6e6e6;
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 3px;
+    padding: 4px 8px;
+}
+.galactic-history-ask-answer {
+    flex: none;
+    white-space: pre-wrap;
+}
+.galactic-history-ask-cited {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.galactic-history-ask-line {
+    font-size: 12px;
+    color: #cfcfcf;
+    border-left: 2px solid rgba(232, 210, 74, 0.5);
+    padding-left: 6px;
+}
+.galactic-history-ask-actions {
+    display: flex;
+    gap: 6px;
+}

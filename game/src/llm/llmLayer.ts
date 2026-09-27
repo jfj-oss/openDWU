@@ -2,6 +2,7 @@
 // With the scenario flag llmFoundations off this creates nothing (no queue, no timer, no probe). On: one LlmQueue over
 // the advisor endpoint (Settings: advisorEndpoint / advisorModel / advisorApi), the yearly ChronicleJob polled every
 // `pollMs` of real time between frames, and the metrics overlay with `?llmMetrics=1`. Disposed with the game view.
+// 19s-4: the running layer is registered (currentLlmLayer) so the Galactic History Ask / Orders tabs reach its queue.
 
 import type { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
@@ -28,6 +29,13 @@ export interface LlmLayer {
     dispose: () => void;
 }
 
+/** The layer of the game on screen (null with the flag off / no game): the 19s-4 archivist and order box read its queue. */
+let current: LlmLayer | null = null;
+
+export function currentLlmLayer(): LlmLayer | null {
+    return current;
+}
+
 export function startLlmLayer(opts: LlmLayerOptions): LlmLayer {
     if (!llmOn(opts.galaxy)) return { on: false, queue: null, chronicle: null, dispose: () => {} };
     const transport = opts.transport ?? advisorTransport(opts.settings);
@@ -40,15 +48,18 @@ export function startLlmLayer(opts: LlmLayerOptions): LlmLayer {
             overlay = m.showLlmOverlay(() => queue.metrics());
         });
     }
-    return {
+    const layer: LlmLayer = {
         on: true,
         queue,
         chronicle,
         dispose: () => {
+            if (current === layer) current = null;
             clearInterval(timer);
             chronicle.dispose();
             queue.dispose();
             overlay?.dispose();
         },
     };
+    current = layer;
+    return layer;
 }
