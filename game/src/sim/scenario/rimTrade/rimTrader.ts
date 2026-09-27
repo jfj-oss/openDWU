@@ -16,7 +16,7 @@ import { DiplomaticRelationType, obtainDiplomaticRelation } from '../../diplomac
 import { OrderType, cargoGetCargo, cargoRemove, empireCreateOrder } from '../../logistics/orders';
 import { EmpireMessageType } from '../../messages';
 import { applyConcordTech, treasureParam, treasureState } from './treasureFleet';
-import { RIM_RACE, rareGoodIds, resourceName, rimGoodIds, rimParam, rimTradeState, rimTraderEmpire, rimTraderPort } from './common';
+import { RIM_RACE, rareGoodIds, resourceName, isRimGood, rimGoodIds, rimParam, rimTradeState, rimTraderEmpire, rimTraderPort } from './common';
 
 /** Import order lot size (units). */
 export const IMPORT_LOT = 100;
@@ -113,7 +113,7 @@ export function rimTraderOnContract(galaxy: Galaxy, ev: { seller: Empire; buyer:
     const r = rimTraderEmpire(galaxy);
     if (r === null || ev.resourceId < 0) return;
     const st = rimTradeState(galaxy);
-    if (ev.buyer === r && ev.seller !== r && rimGoodIds(galaxy).includes(ev.resourceId)) {
+    if (ev.buyer === r && ev.seller !== r && isRimGood(galaxy, ev.resourceId)) {
         // 19a follow-up: a sale through a pirate / independent post is credited to the empire whose private freighter
         // carried it (the freighter's owner earned it), so pirate markets do not swallow the standing.
         let creditor = ev.seller;

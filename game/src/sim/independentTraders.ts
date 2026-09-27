@@ -707,7 +707,7 @@ export function updateEmpireRefuellingLocations(galaxy: Galaxy, empire: Empire):
                     }
                 }
             }
-            if (habitat.population.items.length > 0 && habitat.isRefuellingDepot && habitat.empire !== null && isStellarObjectDockable(galaxy, habitat, empire)) {
+            if (habitat.isRefuellingDepot && habitat.population.items.length > 0 && habitat.empire !== null && isStellarObjectDockable(galaxy, habitat, empire)) {
                 stellarObjectList2.push(habitat);
             }
         }

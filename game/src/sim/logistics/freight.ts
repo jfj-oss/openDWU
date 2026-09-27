@@ -278,6 +278,21 @@ export function determineAvailableFreighters(empire: Empire): { available: Built
     return { available: builtObjectList, totalFreighters };
 }
 
+/** determineAvailableFreighters(empire) counts only (available.length, totalFreighters) — no list built. Perf. */
+function countAvailableFreighters(empire: Empire): { available: number; totalFreighters: number } {
+    let available = 0;
+    let totalFreighters = 0;
+    const freighters = empire.freighters as BuiltObject[];
+    for (let i = 0; i < freighters.length; i++) {
+        const f = freighters[i];
+        if (f.builtAt == null && !f.hasBeenDestroyed) {
+            totalFreighters++;
+            if (missionIsIdle(f) && !f.retireForNextMission && !f.repairForNextMission && !f.refuelForNextMission && !f.retrofitForNextMission) available++;
+        }
+    }
+    return { available, totalFreighters };
+}
+
 /** BaconEmpire.cs 317 RemoveStateShips(empire, ships): drops ships with an Owner that are not auto-controlled. */
 function removeStateShips(ships: BuiltObject[]): BuiltObject[] {
     const toRemove = ships.filter((x) => x.owner !== null && !x.isAutoControlled);
@@ -414,8 +429,8 @@ export function checkMarketOrders(galaxy: Galaxy, empire: Empire): void {
     for (let j = 0; j < galaxy.empires.length; j++) {
         const empire2 = galaxy.empires[j];
         if (empire2 != null) {
-            const r = determineAvailableFreighters(empire2);
-            empireAvailableFreighterCount[empire2.empireId] = r.available.length;
+            const r = countAvailableFreighters(empire2);
+            empireAvailableFreighterCount[empire2.empireId] = r.available;
             array[empire2.empireId] = r.totalFreighters;
         }
     }

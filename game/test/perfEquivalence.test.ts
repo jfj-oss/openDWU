@@ -12,6 +12,13 @@ import type { Galaxy } from '../src/sim/galaxy';
 import type { Empire } from '../src/sim/empire';
 import type { Habitat } from '../src/sim/types';
 import { GalaxyScenario } from '../src/sim/scenario/state';
+import { identifyUnavailableLuxuryResources } from '../src/sim/stationPlacement';
+import { valueGalaxyMapForEmpire } from '../src/sim/tradeItems';
+import { raceBiasesGetBias, raceBiasesGetBiasUncached, raceBiasesSetBias } from '../src/sim/raceBias';
+import { HabitatPrioritization } from '../src/sim/resourceTargets';
+import { planetsOf, HabitatCategoryType } from '../src/sim/types';
+import { ComponentType } from '../src/sim/data/components';
+import { ShipDesignFocus } from '../src/sim/researchSystem';
 import { registerScenarioEvent, registerScenarioQuery, scenarioEmit, scenarioQuery } from '../src/sim/scenario/hooks';
 
 /** The pre-patch body: every unexplored system sorted by squared distance with netSort, first element. */
@@ -90,5 +97,80 @@ describe('perf shortcuts are equivalent', () => {
             g.scenario = hadScenario;
         }
         expect(scenarioQuery(g, 'scanRangeModifier', 1, { x: 0, y: 0 })).toBe(1);
+    });
+});
+
+/** The pre-patch Empire.4.cs IdentifyUnavailableLuxuryResources scans (per resource: colonies, stations, targets). */
+function referenceUnavailableLuxury(g: Galaxy, empire: Empire): { self: number[]; unavailable: number[] } {
+    const has = (h: Habitat, id: number): boolean => h.resources.some((r) => r.resourceId === id);
+    let canExtract = false;
+    if (empire.research != null && empire.research.evaluateDesiredComponent(ComponentType.ExtractorLuxury, ShipDesignFocus.Balanced) !== null) canExtract = true;
+    const self: number[] = [];
+    const unavailable: number[] = [];
+    for (const def of g.resourceSystem.luxuryResources) {
+        if (def == null) continue;
+        const id = def.resourceId;
+        let ok = empire.colonies.some((c) => has(c, id)) || (canExtract && empire.miningStations.some((b) => b.parentHabitat !== null && has(b.parentHabitat, id)));
+        if (ok) self.push(id);
+        else {
+            for (const t of empire.resourceTargets) {
+                const h = t.habitat as Habitat;
+                if (!canExtract ? h.population != null && h.population.totalAmount > 0 && has(h, id) : has(h, id)) {
+                    ok = true;
+                    break;
+                }
+            }
+        }
+        if (!ok) unavailable.push(id);
+    }
+    return { self, unavailable };
+}
+
+describe('perf shortcuts on a synthetic 120-colony empire', () => {
+    const gameData = loadGameDataFs();
+
+    it('luxury availability, galaxy-map value and race biases match the pre-patch scans', async () => {
+        const game = cachedTickGame(await gameData);
+        const g = game.galaxy;
+        const empire = g.empires.find((e) => e !== null && e.active && e.pirateEmpireBaseHabitat === null)!;
+        const other = g.empires.find((e) => e !== null && e.active && e !== empire && e.pirateEmpireBaseHabitat === null)!;
+        // 120 extra "colonies" (planets with resources, list membership only) and 60 resource targets.
+        const planets = g.habitats.filter((h) => h.parent !== null && h.resources.length > 0 && !empire.colonies.includes(h));
+        const rnd = new Random(120);
+        for (let i = 0; i < 120; i++) empire.colonies.push(planets[rnd.next(0, planets.length)]);
+        for (let i = 0; i < 60; i++) empire.resourceTargets.push(new HabitatPrioritization(planets[rnd.next(0, planets.length)], i));
+        const ref = referenceUnavailableLuxury(g, empire);
+        identifyUnavailableLuxuryResources(g, empire);
+        expect((empire.selfSuppliedLuxuryResources ?? []).map((r) => r.resourceId)).toEqual(ref.self);
+        expect(empire.unavailableLuxuryResources.map((r) => r.resourceId)).toEqual(ref.unavailable);
+        // Fewer colonies: some luxuries now come only from targets / nowhere.
+        empire.colonies.length = 2;
+        const ref2 = referenceUnavailableLuxury(g, empire);
+        identifyUnavailableLuxuryResources(g, empire);
+        expect((empire.selfSuppliedLuxuryResources ?? []).map((r) => r.resourceId)).toEqual(ref2.self);
+        expect(empire.unavailableLuxuryResources.map((r) => r.resourceId)).toEqual(ref2.unavailable);
+
+        // Galaxy map value with most of the galaxy explored and known (pre-patch: planetsOf per explored system).
+        for (let i = 0; i < empire.systemVisibility.length; i++) if (i % 4 !== 0) empire.systemVisibility[i].status = SystemVisibilityStatus.Explored;
+        for (const h of g.habitats) if (h.habitatIndex % 3 !== 0) empire.resourceMap.setResourcesKnown(h, true);
+        let n = 0;
+        for (let i = 0; i < empire.systemVisibility.length; i++) {
+            if (!empire.visibility.checkSystemExplored(i)) continue;
+            for (const h of planetsOf(g.systems[i])) if (h.category !== HabitatCategoryType.Asteroid && empire.resourceMap.checkResourcesKnown(h) && !other.resourceMap.checkResourcesKnown(h)) n++;
+        }
+        let value = n * 200;
+        if (other === g.playerEmpire) value = Math.trunc(value * (g.playerEmpire.difficultyLevel * g.playerEmpire.difficultyLevel));
+        expect(valueGalaxyMapForEmpire(g, empire, other)).toBe(value);
+
+        // Race biases: every pair of stock races, memoised lookup = the rebuilt-list lookup (0 for unknown races).
+        const races = (await gameData).races;
+        const check = (): void => {
+            for (const a of races) for (const b of races) expect(raceBiasesGetBias(a, b)).toBe(raceBiasesGetBiasUncached(a, b));
+        };
+        check();
+        // An override written after the first (memoised) read is still seen.
+        raceBiasesSetBias(races[0], races[1].name, 17);
+        check();
+        expect(raceBiasesGetBias(races[0], races[1])).toBe(raceBiasesGetBiasUncached(races[0], races[1]));
     });
 });

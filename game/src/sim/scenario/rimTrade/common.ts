@@ -110,6 +110,15 @@ export function rimGoodIds(galaxy: Galaxy): number[] {
     return out;
 }
 
+/** rimGoodIds(galaxy).includes(id) without building the merged list (the list is base ∪ every extra source). Perf. */
+export function isRimGood(galaxy: Galaxy, id: number): boolean {
+    if (resolveIds(galaxy).rim.includes(id)) return true;
+    const sources = extraRimGoodSources;
+    if (sources === undefined) return false;
+    for (const src of sources) if (src(galaxy).includes(id)) return true;
+    return false;
+}
+
 /** Resource ids of the Concord's rare goods present in this galaxy's data. */
 export function rareGoodIds(galaxy: Galaxy): number[] {
     return resolveIds(galaxy).rare;
@@ -217,7 +226,7 @@ export function rimTraderOnlyTradingPost(galaxy: Galaxy, other: Empire): BuiltOb
 export function rimTraderImportBlocked(galaxy: Galaxy, order: { requestingBuiltObject: BuiltObject | null; requestingColony: Habitat | null; commodityResource: { resourceId: number } | null }, seller: Empire | null): boolean {
     if (!scenarioFlag(galaxy, 'rimTrader') || order.commodityResource === null) return false;
     const r = rimTraderEmpire(galaxy);
-    if (r === null || !rimGoodIds(galaxy).includes(order.commodityResource.resourceId)) return false;
+    if (r === null || !isRimGood(galaxy, order.commodityResource.resourceId)) return false;
     const port = rimTraderPort(galaxy);
     if (port === null || (order.requestingBuiltObject !== port && order.requestingColony !== port)) return false;
     return seller === null || seller === r || seller === galaxy.independentEmpire || seller.pirateEmpireBaseHabitat !== null;
