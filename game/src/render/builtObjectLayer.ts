@@ -427,7 +427,7 @@ export class BuiltObjectLayer {
     private urlByPictureRef = new Map<number, string | null>();
     /** Live (not destroyed) built objects visited by the current update; the rest release their sprites. */
     private seen = new Set<BuiltObject>();
-    // [concordArt] begin — scenario 19a: the Concord's procedural junks (concordArt.ts) and their overlays.
+    // [concordArt] begin — scenario 19a: the Concord's ships (concordArt.ts: sprites + procedural) and overlays.
     private concordFx = new ConcordFxLayer();
     private frame = 0;
     // [concordArt] end
@@ -519,7 +519,7 @@ export class BuiltObjectLayer {
                 this.drawnPx.delete(bo);
                 continue;
             }
-            // [concordArt] begin — the Concord's objects draw their procedural junk (built lazily; hidden until then).
+            // [concordArt] begin — the Concord's objects draw their own art (built lazily; hidden until then).
             const cv = concordVariantFor(bo, concord, treasure, look);
             const cArt = cv !== null ? concordShipArt(cv, this.frame) : null;
             if (cv !== null && cArt === null) {

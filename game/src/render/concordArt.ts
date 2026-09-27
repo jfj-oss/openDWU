@@ -1,35 +1,35 @@
-// Scenario 19a art — the Oranthi Concord's own procedural ships (tasks/19-mod-layer-scenarios.md "Concord art"). Not a
-// port: the original has no such art. Realistic industrial hulls in one family: dark turquoise hulls, dark copper /
-// yellow trim, several tones per ship so hull, deck, superstructure and engine zones read as separate sections.
-//   Treasure ship — a giant, wide container carrier: a flat deck stacked with multicoloured containers in tidy blocks,
-//     gantry cranes over the deck, a lit bridge tower aft, deck floodlights, two jet-fan thruster pods on the rear
-//     quarters (fan faces turning slowly, heat-stained nozzles).
-//   Freighters — bulk carriers: long hold hatch covers, deck cranes, a smaller bridge, a few containers.
-//   Explorers / construction ships — the same language, smaller: sensor dome, lab modules and a pad; a big crane,
-//     truss frames and a workshop.
-//   Warships — modern naval: angular grey hulls with heavy rust and salt staining, a bridge with a sensor mast and a
-//     slowly turning dish, turrets and missile cell blocks, hull numbers; thin copper trim only on the bridge.
-//   Bases / the space port — a hub and ring docks with gantries, cranes, fuel tanks, hazard-striped docking arms and
-//     lit windows.
-// Construction detail everywhere: plating with seams, weld beads and rivet rows (height grooves / bumps, so the joins
-// catch the light), vents, pipe runs, hazard stripes at docking points, hull numbers and Concord glyphs; grain,
-// scratches and blemishes from noise and a scratch map; rust streaks bleeding aft from rivets and hatches. Lights are
-// small and tight: warm deck / window lights, flickering floodlights, and positional navigation lights at the real
-// extremities — red to port, green to starboard, white at the stern and masthead, white strobes on the treasure ship's
-// pod tips and the warships' masts (a short double flash on the ambient nav-light cycle, phase per ship).
+// Scenario 19a art — the Oranthi Concord's own ships (tasks/19-mod-layer-scenarios.md "Concord art"). Not a port: the
+// original has no such art. Two sources, one family (dark turquoise hulls, dark copper / yellow trim):
+//   Painted sprites — frigate, destroyer, battleship, construction ship, explorer and the Exchange space port are our
+//     own FLUX renders, cut out by scripts/concord-cutout.py into public/art/concord/<kind>.png (512 px; -256 / -128
+//     alongside). Loaded lazily through the page's URL space; each variant places the silhouette at the fill the
+//     procedural hulls had (CONCORD_SPRITE_FILL) in its bucket's texture side, then the procedural passes that still
+//     apply are layered on: the weathered look's grime and rust streaks (the clean look skips them), positional
+//     lights found on the silhouette (red to port at the leftmost point, green to starboard at the rightmost, white at
+//     the stern and masthead — the port fore and aft — and the warships' two mast strobes), thruster marks spread across
+//     the stern, and the light-halo overlays. Until a file is decoded the object stays hidden (no throw); a missing
+//     file hands it back to its stock art.
+//   Procedural — the treasure ship (a giant, wide container carrier: containers in tidy blocks, gantry cranes, a lit
+//     bridge tower aft, deck floodlights, jet-fan thruster pods with slowly turning fan faces), the freighters (bulk
+//     carriers: hold hatch covers, deck cranes, a smaller bridge, a few containers) and generic bases (a hub and ring
+//     docks with gantries, cranes, fuel tanks, hazard-striped docking arms and lit windows). Construction detail
+//     everywhere: plating with seams, weld beads and rivet rows, vents, pipe runs, hazard stripes, hull numbers and
+//     Concord glyphs; grain, scratches, rust streaks bleeding aft. Lights are small and tight: warm deck / window
+//     lights, flickering floodlights, red / green / white positional lights at the extremities, white strobes on the
+//     treasure ship's pod tips (a short double flash on the ambient nav-light cycle, phase per ship).
 //
-// Technique: a supersampled G-buffer (albedo, height, material, surface pattern) painted with shapes, then detail
-// passes (plating, rivets, welds, grain, scratches, rust, salt) and a lighting pass — normals from the height field,
+// Procedural technique: a supersampled G-buffer (albedo, height, material, surface pattern) painted with shapes, then
+// detail passes (plating, rivets, welds, grain, scratches, rust) and a lighting pass — normals from the height field,
 // one key light from ahead of the bow as measured on the original Ackdarian frames (CONCORD_LIGHT), soft ambient
 // occlusion at superstructure bases, cast shadows by marching the height field toward the light, a specular glint on
 // bare metal / copper / glass — downsampled to the texture. Then the chroma is scaled to the originals' saturation
-// (lights keep their colour) and the luma quantile-matched to the matching Ackdarian frame (ACKDARIAN_REFERENCE), so
-// mean, contrast and the 5–95 % band equal the stock art's. Pure and deterministic (own hash / RNG, never galaxy.rnd);
-// testable without a DOM. Top-down like the originals, bow up in the raw image (the ship layer rotates raw art by
-// heading + π/2). Thruster marks are painted as the originals do (pure-blue runs at the nozzles) and go through the
-// same scan + paint-out as stock art (shipArt.ts), so the ambient layer's engine exhaust works unchanged; there are no
-// yellow marks (the Concord's own navigation lights replace the stock ones). Overlays sharing the ship's transform:
-// light halos by blink group (additive, tight) and animated parts (fan faces, the radar dish).
+// (lights keep their colour) and the luma quantile-matched to the matching Ackdarian frame (ACKDARIAN_REFERENCE). The
+// sprites keep their painted colours. Both are pure and deterministic given their input (own hash / RNG, never
+// galaxy.rnd) and testable without a DOM. Top-down like the originals, bow up in the raw image (the ship layer rotates
+// raw art by heading + π/2). Thruster marks are painted as the originals do (pure-blue runs at the nozzles) and go
+// through the same scan + paint-out as stock art (shipArt.ts), so the ambient layer's engine exhaust works unchanged;
+// there are no yellow marks (the Concord's own navigation lights replace the stock ones). Overlays sharing the ship's
+// transform: light halos by blink group (additive, tight) and animated parts (the procedural fan faces).
 //
 // Display gate: the rim trader flag and the scenario flag `concordArt` (default on; off = the stock Ackdarian art the
 // race file names); `concordArtLook` 0 = weathered (default), 1 = clean (light weathering). Render-only — nothing here
@@ -54,6 +54,16 @@ import { registerEmblemOverride } from '../ui/empireEmblem';
 
 export type ConcordKind = 'frigate' | 'destroyer' | 'battleship' | 'freighter' | 'explorer' | 'construction' | 'treasure' | 'port' | 'base';
 export const CONCORD_KINDS: readonly ConcordKind[] = ['frigate', 'destroyer', 'battleship', 'freighter', 'explorer', 'construction', 'treasure', 'port', 'base'];
+
+/** Kinds drawn from our painted FLUX sprites (public/art/concord, cut out by scripts/concord-cutout.py). */
+export const CONCORD_SPRITE_KINDS = ['frigate', 'destroyer', 'battleship', 'construction', 'explorer', 'port'] as const;
+export type ConcordSpriteKind = (typeof CONCORD_SPRITE_KINDS)[number];
+/** Kinds still drawn procedurally: the freighter, the treasure ship and the generic base. */
+export type ConcordProceduralKind = Exclude<ConcordKind, ConcordSpriteKind>;
+
+export function isConcordSpriteKind(kind: ConcordKind): kind is ConcordSpriteKind {
+    return (CONCORD_SPRITE_KINDS as readonly ConcordKind[]).includes(kind);
+}
 
 /** The three military classes. */
 export function isConcordMilitary(kind: ConcordKind): boolean {
@@ -147,12 +157,9 @@ export interface ConcordSpec {
     containerColumns: number;
     gantries: number;
     pods: number;
-    /** Military: recessed beam mounts and missile cell blocks. */
-    mounts: number;
-    missileBlocks: number;
-    /** Nozzles in the stern engine cluster (the outer pair as small jet-fan pods on bigger hulls; treasure: 2 pods). */
+    /** Nozzles at the stern (procedural: the engine cluster; sprites: thruster marks spread across the stern). */
     engines: number;
-    /** Base / port: docking arms and fuel tanks. */
+    /** Generic base: docking arms and fuel tanks. */
     docks: number;
     tanks: number;
 }
@@ -193,11 +200,9 @@ export function concordSpec(kind: ConcordKind, bucket: number, look: ConcordLook
         containerColumns: kind === 'treasure' ? (b >= 4 ? 16 : 14) : kind === 'freighter' ? [4, 4, 6, 6, 8, 8][b] : 0,
         gantries: kind === 'treasure' ? (b >= 5 ? 6 : b >= 3 ? 5 : 4) : kind === 'freighter' ? [1, 1, 2, 2, 3, 3][b] : 0,
         pods: kind === 'treasure' ? 4 : kind === 'freighter' ? 2 : 0,
-        mounts: kind === 'frigate' ? 1 : kind === 'destroyer' ? 2 : kind === 'battleship' ? 4 : 0,
-        missileBlocks: kind === 'frigate' ? 1 : kind === 'destroyer' ? 2 : kind === 'battleship' ? 3 : 0,
         engines: engineCount(kind, b),
-        docks: kind === 'port' ? 6 + 2 * Math.floor(b / 2) : base ? 3 + Math.floor(b / 2) : 0,
-        tanks: kind === 'port' ? 4 + Math.floor(b / 2) : base ? 3 + Math.floor(b / 2) : 0,
+        docks: kind === 'base' ? 3 + Math.floor(b / 2) : 0,
+        tanks: kind === 'base' ? 3 + Math.floor(b / 2) : 0,
     };
 }
 
@@ -287,24 +292,12 @@ export interface AckdarianReference {
 /** Probabilities of the stored quantiles: denser in the tails, where the originals' highlights and black outlines sit. */
 export const CONCORD_QUANTILE_P: readonly number[] = [0, 0.01, 0.025, 0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 0.975, 0.99, 1];
 
-const Q_ESCORT = [0, 0, 0, 0.002, 0.078, 0.103, 0.12, 0.137, 0.152, 0.168, 0.189, 0.208, 0.23, 0.248, 0.267, 0.286, 0.302, 0.323, 0.345, 0.388, 0.472, 0.637, 0.807, 0.993, 1];
-const Q_DESTROYER = [0, 0, 0, 0.004, 0.061, 0.08, 0.095, 0.112, 0.126, 0.144, 0.165, 0.185, 0.206, 0.227, 0.246, 0.263, 0.283, 0.305, 0.332, 0.374, 0.437, 0.562, 0.678, 0.865, 1];
-const Q_CAPITALSHIP = [0, 0, 0, 0.001, 0.043, 0.072, 0.088, 0.104, 0.12, 0.137, 0.155, 0.175, 0.195, 0.213, 0.235, 0.258, 0.282, 0.306, 0.344, 0.393, 0.458, 0.598, 0.749, 0.959, 1];
 const Q_LARGEFREIGHTER = [0, 0, 0, 0.001, 0.059, 0.092, 0.116, 0.135, 0.152, 0.167, 0.183, 0.2, 0.219, 0.235, 0.257, 0.281, 0.311, 0.345, 0.382, 0.427, 0.484, 0.599, 0.744, 0.925, 0.997];
-const Q_EXPLORATIONSHIP = [0, 0, 0, 0.001, 0.064, 0.095, 0.115, 0.134, 0.147, 0.16, 0.177, 0.194, 0.217, 0.238, 0.269, 0.292, 0.317, 0.349, 0.386, 0.434, 0.501, 0.629, 0.709, 0.856, 0.993];
-const Q_CONSTRUCTIONSHIP = [0, 0, 0, 0.013, 0.082, 0.111, 0.139, 0.16, 0.177, 0.194, 0.21, 0.227, 0.248, 0.272, 0.301, 0.33, 0.362, 0.398, 0.445, 0.496, 0.556, 0.699, 0.844, 0.986, 1];
-const Q_LARGESPACEPORT = [0, 0, 0.003, 0.047, 0.09, 0.114, 0.135, 0.155, 0.173, 0.19, 0.208, 0.225, 0.243, 0.264, 0.286, 0.309, 0.336, 0.366, 0.403, 0.449, 0.506, 0.6, 0.699, 0.847, 1];
 const Q_GENERICBASE = [0, 0, 0.013, 0.06, 0.095, 0.118, 0.135, 0.149, 0.164, 0.177, 0.191, 0.204, 0.217, 0.231, 0.246, 0.263, 0.283, 0.305, 0.333, 0.37, 0.423, 0.51, 0.596, 0.724, 0.997];
 
-export const ACKDARIAN_REFERENCE: Readonly<Record<ConcordKind, AckdarianReference>> = {
-    frigate: { file: 'family7/escort.png', meanL: 0.258, stdL: 0.186, meanSat: 0.229, q: Q_ESCORT },
-    destroyer: { file: 'family7/destroyer.png', meanL: 0.232, stdL: 0.169, meanSat: 0.19, q: Q_DESTROYER },
-    battleship: { file: 'family7/capitalship.png', meanL: 0.232, stdL: 0.186, meanSat: 0.182, q: Q_CAPITALSHIP },
+export const ACKDARIAN_REFERENCE: Readonly<Record<ConcordProceduralKind, AckdarianReference>> = {
     freighter: { file: 'family7/largefreighter.png', meanL: 0.255, stdL: 0.183, meanSat: 0.174, q: Q_LARGEFREIGHTER },
-    explorer: { file: 'family7/explorationship.png', meanL: 0.257, stdL: 0.182, meanSat: 0.219, q: Q_EXPLORATIONSHIP },
-    construction: { file: 'family7/constructionship.png', meanL: 0.295, stdL: 0.202, meanSat: 0.189, q: Q_CONSTRUCTIONSHIP },
     treasure: { file: 'family7/largefreighter.png', meanL: 0.255, stdL: 0.183, meanSat: 0.174, q: Q_LARGEFREIGHTER },
-    port: { file: 'family7/largespaceport.png', meanL: 0.276, stdL: 0.173, meanSat: 0.205, q: Q_LARGESPACEPORT },
     base: { file: 'family7/genericbase.png', meanL: 0.242, stdL: 0.141, meanSat: 0.225, q: Q_GENERICBASE },
 };
 
@@ -416,13 +409,9 @@ const ENGINE: Rgb = [0.3, 0.3, 0.31];
 const COPPER: Rgb = [0.6, 0.37, 0.18];
 /** Dark yellow: gantries, cranes, hatch covers. */
 const OCHRE: Rgb = [0.56, 0.45, 0.15];
-const HATCH: Rgb = [0.46, 0.31, 0.16];
-const WAR_GREY: Rgb = [0.4, 0.42, 0.44];
 const WAR_GREY_DARK: Rgb = [0.3, 0.32, 0.34];
-const WAR_DECK: Rgb = [0.25, 0.26, 0.27];
 const METAL: Rgb = [0.34, 0.34, 0.35];
 const RUST: Rgb = [0.42, 0.2, 0.07];
-const SALT: Rgb = [0.74, 0.75, 0.72];
 const BARE: Rgb = [0.58, 0.58, 0.57];
 const HAZARD: Rgb = [0.8, 0.63, 0.1];
 const BLACK: Rgb = [0.04, 0.04, 0.045];
@@ -596,31 +585,6 @@ function seg(gb: GBuf, x0: number, y0: number, x1: number, y1: number, w: number
         const d = segDist(x, y, x0, y0, x1, y1);
         if (d > w) return;
         gb.set(i, c, h + cyl * Math.sqrt(Math.max(0, 1 - (d / w) ** 2)), mat, pat);
-    });
-}
-
-function poly(gb: GBuf, pts: readonly (readonly [number, number])[], c: Rgb, h: number, mat: number, pat = P_NONE, bevel = 0): void {
-    let x0 = Infinity;
-    let y0 = Infinity;
-    let x1 = -Infinity;
-    let y1 = -Infinity;
-    for (const [x, y] of pts) {
-        x0 = Math.min(x0, x);
-        y0 = Math.min(y0, y);
-        x1 = Math.max(x1, x);
-        y1 = Math.max(y1, y);
-    }
-    gb.each(x0, y0, x1, y1, (i, x, y) => {
-        let inside = false;
-        let e = Infinity;
-        for (let k = 0, m = pts.length - 1; k < pts.length; m = k++) {
-            const [xi, yi] = pts[k];
-            const [xj, yj] = pts[m];
-            if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
-            if (bevel > 0) e = Math.min(e, segDist(x, y, xi, yi, xj, yj));
-        }
-        if (!inside) return;
-        gb.set(i, c, bevel > 0 ? h - 0.6 * Math.max(0, 1 - e / bevel) : h, mat, pat);
     });
 }
 
@@ -851,21 +815,6 @@ function engineDeck(b: Build, hull: Hull, u0: number): void {
     light(b, cx, hull.yAt(0.992), 'white');
 }
 
-/** Stern thruster marks (pure-blue runs just inside the transom): one on small hulls, two on bigger ones. */
-function sternThrusters(b: Build, hull: Hull): void {
-    const sy = Math.floor(hull.bowY + hull.L) - 2;
-    const hw = hull.hw(0.985);
-    const S = b.S;
-    b.thrusters.push(
-        ...(b.spec.bucket <= 1
-            ? ([[Math.round(S / 2 - hw * 0.35), Math.round(S / 2 + hw * 0.35), sy]] as [number, number, number][])
-            : ([
-                  [Math.round(S / 2 - hw * 0.7), Math.round(S / 2 - hw * 0.25), sy],
-                  [Math.round(S / 2 + hw * 0.25), Math.round(S / 2 + hw * 0.7), sy],
-              ] as [number, number, number][])),
-    );
-}
-
 /** A stack of containers in one slot: corrugated roof, darker door ends, a per-box colour variation. */
 function container(b: Build, x0: number, y0: number, x1: number, y1: number, c: Rgb, stack: number): void {
     const { gb, rng } = b;
@@ -1052,24 +1001,6 @@ function fanFace(gb: GBuf, cx: number, cy: number, r: number, h: number, dir: nu
 /** Pale radiator panels. */
 const RADIATOR: Rgb = [0.36, 0.42, 0.42];
 
-/** Clears a band of the hull (the gaps an exposed spine truss spans). */
-function clearBand(gb: GBuf, x0: number, y0: number, x1: number, y1: number): void {
-    gb.each(x0, y0, x1, y1, (i) => {
-        gb.mat[i] = 0;
-        gb.hgt[i] = 0;
-        gb.pat[i] = P_NONE;
-    });
-}
-
-/** An exposed spine truss between hull sections: two rails, a lattice web and a copper feed pipe. */
-function spineTruss(b: Build, cx: number, y0: number, y1: number, half: number): void {
-    const { gb } = b;
-    rect(gb, cx - half, y0, cx + half, y1, METAL, 2.2, M_METAL, P_LATTICE);
-    for (const s of [-1, 1]) seg(gb, cx + s * half, y0, cx + s * half, y1, Math.max(0.35, half * 0.16), METAL, 3, M_METAL, 0.6);
-    seg(gb, cx + half * 0.35, y0, cx + half * 0.35, y1, Math.max(0.3, half * 0.12), COPPER, 2.8, M_COPPER, 0.5);
-    b.rust.push([cx - half, y1], [cx + half, y1]);
-}
-
 /** A module bolted onto the hull: bevelled plated block, corner bolts; taller modules cast shadows on the hull. */
 function module(b: Build, x0: number, y0: number, x1: number, y1: number, h: number, c: Rgb): void {
     const { gb } = b;
@@ -1084,28 +1015,6 @@ function module(b: Build, x0: number, y0: number, x1: number, y1: number, h: num
         circle(gb, bx, by, br, METAL, h + 0.2, M_METAL, P_NONE, 0.2);
     }
     b.rust.push([x0 + br, y1], [x1 - br, y1]);
-}
-
-/** Radiator fins along one flank (side −1 port, +1 starboard): ribbed panels standing off the hull. Returns the tips. */
-function radiators(b: Build, hull: Hull, side: number, u0: number, u1: number, count: number, len: number, h: number): [number, number][] {
-    const { gb } = b;
-    const t = Math.max(0.45, hull.W * 0.07);
-    const tips: [number, number][] = [];
-    for (let k = 0; k < count; k++) {
-        const u = u0 + ((u1 - u0) * (k + 0.5)) / count;
-        const y = hull.yAt(u);
-        const xa = hull.cx + side * hull.hw(u) * 0.9;
-        const xb = xa + side * len;
-        gb.each(Math.min(xa, xb), y - t, Math.max(xa, xb), y + t, (i, x, yy) => {
-            const along = Math.abs(x - xa);
-            const rib = ((along / 0.7) % 1) < 0.25;
-            gb.set(i, along > len - 0.4 ? COPPER : RADIATOR, h - (rib ? 0.2 : 0) + 0.2 * (1 - Math.abs(yy - y) / t), along > len - 0.4 ? M_COPPER : M_METAL);
-            if (rib) gb.mul(i, 0.78);
-        });
-        seg(gb, xa, y, xa + side * len * 0.3, y, t * 0.6, METAL, h + 0.4, M_METAL, 0.3);
-        tips.push([xb - side * 0.4, y]);
-    }
-    return tips;
 }
 
 /** A reaction-control block: a small quad with nozzle ports facing out. */
@@ -1162,179 +1071,6 @@ function commsArray(b: Build, x: number, y: number, r: number, h: number, strobe
     }
 }
 
-/** Recessed beam emitter: cooling vanes round a raised ring, a dark well, a glass lens in a copper rim. */
-function beamEmitter(b: Build, x: number, y: number, r: number): void {
-    const { gb } = b;
-    for (let k = 0; k < 10; k++) {
-        const a = (k / 10) * 2 * Math.PI;
-        seg(gb, x + Math.cos(a) * r * 0.95, y + Math.sin(a) * r * 0.95, x + Math.cos(a) * r * 1.38, y + Math.sin(a) * r * 1.38, Math.max(0.22, r * 0.07), METAL, 3.4, M_METAL, 0.2);
-    }
-    ring(gb, x, y, r * 0.68, r, WAR_GREY_DARK, 4.2, M_PAINT, P_PLATE);
-    circle(gb, x, y, r * 0.68, BLACK, 2.2, M_METAL);
-    ring(gb, x, y, r * 0.32, r * 0.42, COPPER, 2.8, M_COPPER);
-    circle(gb, x, y, r * 0.32, GLASS, 2.6, M_GLASS, P_NONE, 0.8);
-    b.rust.push([x - r, y + r * 0.5], [x + r, y + r * 0.5]);
-}
-
-/** A missile cell block with visible tube ends (dark bores in metal rims). */
-function missileCells(b: Build, x0: number, y0: number, x1: number, y1: number): void {
-    const { gb } = b;
-    rect(gb, x0, y0, x1, y1, WAR_GREY_DARK, 2.9, M_PAINT, P_NONE, 0.3);
-    const cols = Math.max(2, Math.round((x1 - x0) / 1.5));
-    const rows = Math.max(2, Math.round((y1 - y0) / 1.5));
-    const cw = (x1 - x0) / cols;
-    const ch = (y1 - y0) / rows;
-    const tr = Math.min(cw, ch) * 0.38;
-    for (let i = 0; i < cols; i++) {
-        for (let j = 0; j < rows; j++) {
-            const cx = x0 + cw * (i + 0.5);
-            const cy = y0 + ch * (j + 0.5);
-            circle(gb, cx, cy, tr, METAL, 3.1, M_METAL, P_NONE, 0.15);
-            circle(gb, cx, cy, tr * 0.62, BLACK, 2.3, M_METAL);
-        }
-    }
-    b.rust.push([x0, y1], [x1, y1]);
-}
-
-/** Hangar bay doors: a recessed segmented door pair in a hazard frame, bay lights at the corners. */
-function hangarDoors(b: Build, x0: number, y0: number, x1: number, y1: number, h: number): void {
-    const { gb } = b;
-    const f = Math.max(0.45, (x1 - x0) * 0.07);
-    hazard(gb, x0, y0, x1, y1, h, Math.max(0.4, f * 0.8));
-    gb.each(x0 + f, y0 + f, x1 - f, y1 - f, (i, x, y) => {
-        const seamY = (((y - y0) / ((y1 - y0) / 5)) % 1) < 0.12;
-        const split = Math.abs(x - (x0 + x1) / 2) < 0.18;
-        gb.set(i, DECK_DARK, h - 0.7 - (seamY || split ? 0.25 : 0), M_METAL);
-        if (seamY || split) gb.mul(i, 0.55);
-    });
-    light(b, x0 + f * 0.5, y0 + f * 0.5, 'deck');
-    light(b, x1 - f * 0.5, y0 + f * 0.5, 'deck');
-    light(b, x0 + f * 0.5, y1 - f * 0.5, 'deck');
-    light(b, x1 - f * 0.5, y1 - f * 0.5, 'deck');
-    b.rust.push([x0, y1], [x1, y1]);
-}
-
-/** Hull-hugging fuel tanks / cargo pods along one flank: banded cylinders with copper straps. */
-function flankPods(b: Build, hull: Hull, side: number, u0: number, u1: number, count: number, r: number, c: Rgb): void {
-    const { gb } = b;
-    const span = (u1 - u0) / count;
-    for (let k = 0; k < count; k++) {
-        const ua = u0 + span * k + span * 0.08;
-        const ub = u0 + span * (k + 1) - span * 0.08;
-        const x = hull.cx + side * (hull.hw((ua + ub) / 2) + r * 0.55);
-        const ya = hull.yAt(ua) + r;
-        const yb = hull.yAt(ub) - r;
-        seg(gb, x, ya, x, yb, r, c, 3.2, M_PAINT, 2.2, P_NONE);
-        gb.each(x - r, ya - r, x + r, yb + r, (i, _x, y) => {
-            if (gb.mat[i] !== M_PAINT) return;
-            const t = (y - ya) / Math.max(1e-6, yb - ya);
-            if (Math.abs(t - 0.25) < 0.035 || Math.abs(t - 0.75) < 0.035) gb.set(i, COPPER, gb.hgt[i] + 0.05, M_COPPER);
-        });
-        b.rust.push([x, yb + r]);
-    }
-}
-
-/**
- * The engine cluster: an engine block across the stern and `n` nozzles — heat-stained bells, the outer pair on bigger
- * hulls as small jet-fan pods (the treasure ship's language) — with the thruster marks at the exits and a small
- * blue-white engine glow.
- */
-function engineCluster(b: Build, hull: Hull, n: number, podPair: boolean): void {
-    const { gb } = b;
-    const { cx, W } = hull;
-    const yT = hull.yAt(0.995);
-    const bw = hull.hw(0.95) * 0.92;
-    rect(gb, cx - bw, hull.yAt(0.9), cx + bw, yT, ENGINE, 3.4, M_METAL, P_GRATE, 0.5);
-    const bells = podPair ? n - 2 : n;
-    const r = Math.max(0.8, Math.min(W * 0.26, (bw * 1.8) / Math.max(1, bells) / 2.2));
-    const bell = (x: number, y0: number, rr: number): void => {
-        seg(gb, x, y0 - rr * 0.4, x, y0 + rr * 0.8, rr, METAL, 3.6, M_METAL, 1.4);
-        gb.each(x - rr, y0, x + rr, y0 + rr * 1.8, (i, _x, y) => {
-            if (gb.mat[i] !== M_METAL) return;
-            gb.tint(i, HEAT, Math.min(0.85, 0.25 + 0.6 * ((y - y0) / (rr * 1.8))));
-        });
-        circle(gb, x, y0 + rr * 0.95, rr * 0.5, BLACK, 3, M_METAL);
-        b.thrusters.push([Math.round(x - rr * 0.45), Math.round(x + rr * 0.45), Math.floor(y0 + rr * 1.1)]);
-        light(b, x, y0 + rr * 0.95, 'engine');
-    };
-    for (let k = 0; k < bells; k++) {
-        const x = bells === 1 ? cx : cx - bw * 0.62 + (bw * 1.24 * k) / (bells - 1);
-        bell(x, yT, r);
-    }
-    if (podPair) {
-        const pr = r * 0.9;
-        for (const s of [-1, 1]) {
-            const px = cx + s * (hull.hw(0.9) + pr * 1.3);
-            const yA = hull.yAt(0.82);
-            const yB = yT;
-            rect(gb, Math.min(cx + s * hull.hw(0.88) * 0.9, px), (yA + yB) / 2 - pr * 0.4, Math.max(cx + s * hull.hw(0.88) * 0.9, px), (yA + yB) / 2 + pr * 0.4, TURQ_DARK, 4.4, M_PAINT, P_PLATE, 0.3);
-            seg(gb, px, yA + pr, px, yB - pr * 0.2, pr, ENGINE, 4.6, M_METAL, 2.4, P_PLATE);
-            circle(gb, px, yA + pr, pr * 0.96, METAL, 7, M_METAL, P_NONE, 0.5);
-            fanFace(gb, px, yA + pr, pr * 0.82, 7.2, s);
-            b.parts.push({ kind: 'fan', x: px, y: yA + pr, r: pr * 0.82, spin: 1.1 * s });
-            bell(px, yB - pr * 0.4, pr * 0.8);
-            b.rust.push([px - s * pr, (yA + yB) / 2 + pr * 0.4]);
-        }
-    }
-    light(b, cx, hull.yAt(0.93), 'white');
-}
-
-/** A command module (no bridge wings): plated block, roof inset with copper trim, a row of lit windows forward. */
-function commandModule(b: Build, cx: number, y0: number, y1: number, half: number, h: number, c: Rgb, trim: boolean): void {
-    const { gb } = b;
-    module(b, cx - half, y0, cx + half, y1, h, c);
-    const rx = half * 0.72;
-    const ry0 = y0 + (y1 - y0) * 0.25;
-    const ry1 = y1 - (y1 - y0) * 0.16;
-    rect(gb, cx - rx, ry0, cx + rx, ry1, DECK_DARK, h + 0.9, M_DECK, P_NONSKID, 0.3);
-    if (trim) {
-        gb.each(cx - rx, ry0, cx + rx, ry1, (i, x, y) => {
-            if (Math.min(x - (cx - rx), cx + rx - x, y - ry0, ry1 - y) < 0.35) gb.set(i, COPPER, h + 1, M_COPPER);
-        });
-    }
-    const step = Math.max(1, b.S * 0.0055);
-    for (let x = cx - half + step * 0.6; x <= cx + half - step * 0.4; x += step) light(b, x, y0 + 0.35, 'window');
-    glyph(gb, cx, (ry0 + ry1) / 2, Math.max(0.8, rx * 0.3), COPPER);
-}
-
-// ---------------------------------------------------------------------------------------------------------------
-// Explorer, construction ship, military classes
-// ---------------------------------------------------------------------------------------------------------------
-
-function buildExplorer(b: Build): void {
-    const { gb, S, spec } = b;
-    const L = S * 0.8;
-    const W = L * 0.112;
-    const hull = roundedHull(S / 2, S * 0.08, L, W, 0.16, 0.08);
-    const { cx } = hull;
-    paintHull(b, hull, TURQ, DECK, true, P_PLATE, 0.9);
-    circle(gb, cx, hull.yAt(0.075), W * 0.56, GLASS, 3, M_GLASS, P_NONE, 3);
-    text(gb, `OC-${40 + spec.bucket}`, cx, hull.yAt(0.135), Math.max(0.3, W * 0.06), WHITE_PAINT, 2.4);
-    for (const s of [-1, 1]) rcs(b, cx + s * hull.hw(0.13) * 0.72, hull.yAt(0.13), Math.max(0.55, W * 0.13), s, -0.3);
-    commandModule(b, cx, hull.yAt(0.16), hull.yAt(0.27), W * 0.8, 8, TURQ_LIGHT, true);
-    commsArray(b, cx + W * 0.1, hull.yAt(0.315), W * 0.9, 12, false);
-    dockingCollar(b, cx - W * 0.35, hull.yAt(0.37), W * 0.4, 3.2);
-    // Lab modules bolted on at different heights and offsets.
-    const mods: [number, number, number, number, number][] = [
-        [0.41, 0.48, 0.2, 0.62, 6],
-        [0.49, 0.58, -0.15, 0.72, 8.6],
-        [0.59, 0.66, 0.05, 0.55, 5.4],
-    ];
-    for (const [u0, u1, off, hwm, h] of mods) {
-        module(b, cx + W * (off - hwm), hull.yAt(u0), cx + W * (off + hwm), hull.yAt(u1), h, TURQ_LIGHT);
-        rect(gb, cx + W * (off - hwm * 0.5), hull.yAt(u0 + 0.015), cx + W * (off + hwm * 0.5), hull.yAt(u1 - 0.015), METAL, h + 0.5, M_METAL, P_GRATE, 0.2);
-        light(b, cx + W * (off - hwm) + 0.3, hull.yAt((u0 + u1) / 2), 'window');
-        light(b, cx + W * (off + hwm) - 0.3, hull.yAt((u0 + u1) / 2), 'window');
-    }
-    const port = radiators(b, hull, -1, 0.44, 0.64, 3, W * 1.05, 2.8);
-    const star = radiators(b, hull, 1, 0.47, 0.62, 2, W * 0.8, 2.8);
-    light(b, port[0][0], port[0][1], 'port');
-    light(b, star[0][0], star[0][1], 'starboard');
-    hangarDoors(b, cx - W * 0.55, hull.yAt(0.7), cx + W * 0.55, hull.yAt(0.82), 2.6);
-    for (const s of [-1, 1]) rcs(b, cx + s * hull.hw(0.86) * 0.78, hull.yAt(0.86), Math.max(0.55, W * 0.13), s, 0.3);
-    engineCluster(b, hull, spec.engines, false);
-}
-
 /** A baked radar dish (the animated part covers it when drawn): a slatted bar across the mast. */
 function dishBaked(gb: GBuf, cx: number, cy: number, r: number, h: number): void {
     gb.each(cx - r, cy - r * 0.2, cx + r, cy + r * 0.2, (i, x, y) => {
@@ -1343,243 +1079,6 @@ function dishBaked(gb: GBuf, cx: number, cy: number, r: number, h: number): void
         const slat = Math.abs(Math.sin(((x - cx) / Math.max(0.4, r * 0.12)) * Math.PI)) < 0.25;
         gb.set(i, slat ? GLASS : METAL, h + 0.6 * (1 - dy * dy), M_METAL);
     });
-}
-
-function buildConstruction(b: Build): void {
-    const { gb, S, spec, rng } = b;
-    const L = S * 0.78;
-    const W = L * 0.169;
-    const hull = roundedHull(S / 2, S * 0.08, L, W, 0.14, 0.2);
-    const { cx } = hull;
-    paintHull(b, hull, TURQ, DECK, true, P_GRATE, 0.9);
-    text(gb, `OC-${70 + spec.bucket}`, cx, hull.yAt(0.06), Math.max(0.3, W * 0.05), WHITE_PAINT, 2.4);
-    for (const s of [-1, 1]) rcs(b, cx + s * hull.hw(0.08) * 0.72, hull.yAt(0.08), Math.max(0.6, W * 0.1), s, -0.4);
-    // Materials in a few containers on the bow section, a docking collar beside them.
-    const cw = (W * 0.9) / 3;
-    for (let c = 0; c < 3; c++) {
-        for (let bay = 0; bay < 2; bay++) {
-            const x0 = cx - W * 0.75 + c * cw + 0.1;
-            const y0 = hull.yAt(0.11) + bay * cw * 1.3;
-            container(b, x0, y0, x0 + cw - 0.2, y0 + cw * 1.25, CONTAINERS[Math.floor(rng() * CONTAINERS.length)], 1 + Math.floor(rng() * 2));
-        }
-    }
-    dockingCollar(b, cx + W * 0.5, hull.yAt(0.16), W * 0.3, 3.2);
-    // Exposed spine truss to the work section.
-    clearBand(gb, cx - W * 1.2, hull.yAt(0.25), cx + W * 1.2, hull.yAt(0.3));
-    spineTruss(b, cx, hull.yAt(0.25) - 0.3, hull.yAt(0.3) + 0.3, W * 0.3);
-    // Work section: truss frames with stacked beams, hazard-striped edges, the big crane.
-    const t0 = hull.yAt(0.34);
-    const t1 = hull.yAt(0.66);
-    const bw = Math.max(0.5, W * 0.07);
-    for (const s of [-1, 1]) {
-        rect(gb, cx + s * W * 0.72 - bw, t0, cx + s * W * 0.72 + bw, t1, OCHRE, 5, M_METAL, P_LATTICE);
-        hazard(gb, cx + s * hull.hw(0.5) - s * Math.max(0.6, W * 0.06) - 0.4, t0, cx + s * hull.hw(0.5) - s * Math.max(0.6, W * 0.06) + 0.4, t1, 2.6, Math.max(0.5, W * 0.05));
-    }
-    for (let k = 0; k <= 3; k++) rect(gb, cx - W * 0.72, t0 + ((t1 - t0) * k) / 3 - bw, cx + W * 0.72, t0 + ((t1 - t0) * k) / 3 + bw, OCHRE, 5.2, M_METAL, P_LATTICE);
-    for (let k = 0; k < 4; k++) seg(gb, cx - W * 0.5, t0 + (t1 - t0) * (0.12 + k * 0.08), cx + W * 0.5, t0 + (t1 - t0) * (0.12 + k * 0.08), Math.max(0.3, W * 0.04), METAL, 3.2, M_METAL, 0.4);
-    const px = cx + W * 0.35;
-    const py = hull.yAt(0.36);
-    const tx = cx - W * 1.9;
-    const ty = hull.yAt(0.2);
-    circle(gb, px, py, W * 0.26, OCHRE, 6, M_METAL, P_NONE, 0.8);
-    seg(gb, px, py, tx, ty, Math.max(0.55, W * 0.085), OCHRE, 9, M_METAL, 0.5, P_LATTICE);
-    rect(gb, tx - W * 0.12, ty - W * 0.12, tx + W * 0.12, ty + W * 0.12, METAL, 9.5, M_METAL, P_NONE, 0.2);
-    hazard(gb, tx - W * 0.12, ty + W * 0.12, tx + W * 0.12, ty + W * 0.22, 9.4, Math.max(0.4, W * 0.04));
-    light(b, tx, ty, 'flood');
-    // Workshop (starboard-offset), radiators to starboard, command module and comms mast aft.
-    module(b, cx - W * 0.45, hull.yAt(0.69), cx + W * 0.85, hull.yAt(0.79), 7, TURQ_LIGHT);
-    for (let k = 0; k < 3; k++) rect(gb, cx - W * 0.25 + k * W * 0.35, hull.yAt(0.715), cx - W * 0.08 + k * W * 0.35, hull.yAt(0.76), METAL, 7.6, M_METAL, P_GRATE, 0.2);
-    for (let x = cx - W * 0.4; x < cx + W * 0.8; x += Math.max(1, S * 0.0055)) light(b, x, hull.yAt(0.69) + 0.35, 'window');
-    const star = radiators(b, hull, 1, 0.68, 0.84, 3, W * 0.7, 2.8);
-    commandModule(b, cx - W * 0.2, hull.yAt(0.81), hull.yAt(0.88), W * 0.5, 8.4, TURQ_LIGHT, true);
-    commsArray(b, cx - W * 0.55, hull.yAt(0.745), W * 0.4, 10.5, false);
-    light(b, cx - hull.hw(0.5) + 0.4, hull.yAt(0.5), 'port');
-    light(b, star[1][0], star[1][1], 'starboard');
-    engineCluster(b, hull, spec.engines, false);
-}
-
-/** Per-class layout of the military hulls (all wider than a naval hull: the modules need room). */
-interface MilitaryCfg {
-    lengthFrac: number;
-    beam: number;
-    /** Beam mounts: [u, x offset in beams, radius in beams]. */
-    mounts: [number, number, number][];
-    /** Missile cell blocks: [u0, u1, x0, x1] (x in beams). */
-    cells: [number, number, number, number][];
-    /** Superstructure tiers (outer first): [u0, u1, half-width in beams, height]. */
-    tiers: [number, number, number, number][];
-    /** Bolted modules: [u0, u1, x0, x1, height]. */
-    modules: [number, number, number, number, number][];
-    mast: { u: number; x: number; r: number; h: number };
-    fins: { port: [number, number, number, number]; star: [number, number, number, number] };
-    hangar: [number, number] | null;
-    armour: boolean;
-    collar: [number, number] | null;
-}
-
-const MILITARY: Readonly<Record<'frigate' | 'destroyer' | 'battleship', MilitaryCfg>> = {
-    frigate: {
-        lengthFrac: 0.84,
-        beam: 0.14,
-        mounts: [[0.18, 0, 0.3]],
-        cells: [[0.25, 0.3, -0.45, 0.35]],
-        tiers: [
-            [0.34, 0.53, 0.62, 7.5],
-            [0.37, 0.48, 0.4, 9.8],
-        ],
-        modules: [[0.6, 0.68, 0.35, 0.85, 5]],
-        mast: { u: 0.55, x: -0.1, r: 0.42, h: 12.5 },
-        fins: { port: [0.62, 0.76, 2, 0.45], star: [0.7, 0.8, 2, 0.35] },
-        hangar: null,
-        armour: false,
-        collar: [0.42, -0.6],
-    },
-    destroyer: {
-        lengthFrac: 0.86,
-        beam: 0.15,
-        mounts: [
-            [0.17, 0, 0.3],
-            [0.7, 0.2, 0.26],
-        ],
-        cells: [
-            [0.235, 0.29, -0.52, 0.42],
-            [0.6, 0.645, -0.62, -0.05],
-        ],
-        tiers: [
-            [0.33, 0.55, 0.66, 8],
-            [0.36, 0.49, 0.46, 10.5],
-        ],
-        modules: [
-            [0.43, 0.5, -1.0, -0.5, 6.2],
-            [0.74, 0.8, 0.4, 0.92, 4.6],
-        ],
-        mast: { u: 0.52, x: 0.12, r: 0.56, h: 15 },
-        fins: { port: [0.6, 0.76, 3, 0.5], star: [0.58, 0.7, 2, 0.42] },
-        hangar: null,
-        armour: false,
-        collar: [0.38, 0.62],
-    },
-    battleship: {
-        lengthFrac: 0.88,
-        beam: 0.17,
-        mounts: [
-            [0.14, -0.3, 0.26],
-            [0.21, 0.32, 0.26],
-            [0.66, -0.38, 0.24],
-            [0.73, 0.34, 0.24],
-        ],
-        cells: [
-            [0.265, 0.31, -0.6, 0.6],
-            [0.585, 0.625, -0.7, -0.08],
-            [0.6, 0.64, 0.12, 0.66],
-        ],
-        tiers: [
-            [0.32, 0.57, 0.72, 8],
-            [0.35, 0.52, 0.52, 10.5],
-            [0.38, 0.47, 0.32, 13],
-        ],
-        modules: [
-            [0.34, 0.42, 0.62, 1.04, 5.6],
-            [0.46, 0.55, -1.06, -0.6, 7],
-            [0.77, 0.82, -0.95, -0.5, 4.4],
-        ],
-        mast: { u: 0.545, x: 0.05, r: 0.5, h: 16 },
-        fins: { port: [0.6, 0.76, 4, 0.5], star: [0.66, 0.78, 3, 0.4] },
-        hangar: [0.78, 0.87],
-        armour: true,
-        collar: [0.44, 0.7],
-    },
-};
-
-/**
- * Frigate / destroyer / battleship: an angular grey hull (heavy rust and salt), recessed beam emitters with cooling
- * vanes, missile cells with tube ends, a faceted layered superstructure with copper trim on the bridge roof only,
- * bolted modules at different heights, a dorsal comms mast with strobes, radiator fins, RCS blocks, a docking collar,
- * hangar doors and an armour belt on the battleship, and the stern engine cluster.
- */
-function buildMilitary(b: Build, cls: 'frigate' | 'destroyer' | 'battleship'): void {
-    const { gb, S, spec } = b;
-    const cfg = MILITARY[cls];
-    const L = S * cfg.lengthFrac;
-    const W = L * cfg.beam;
-    const cx = S / 2;
-    const bowY = (S - L) / 2 - S * 0.025;
-    const knots: [number, number][] = [
-        [0, 0.06],
-        [0.1, 0.55],
-        [0.28, 0.92],
-        [0.5, 1],
-        [0.86, 0.97],
-        [1, 0.86],
-    ];
-    const hw = (u: number): number => {
-        if (u < 0 || u > 1) return 0;
-        for (let k = 1; k < knots.length; k++) {
-            if (u <= knots[k][0]) {
-                const [u0, w0] = knots[k - 1];
-                const [u1, w1] = knots[k];
-                return W * (w0 + ((w1 - w0) * (u - u0)) / (u1 - u0));
-            }
-        }
-        return W * knots[knots.length - 1][1];
-    };
-    const hull: Hull = { cx, bowY, L, W, hw, yAt: (u) => bowY + u * L };
-    const X = (k: number): number => cx + k * W;
-    paintHull(b, hull, WAR_GREY, WAR_DECK, false, P_NONSKID, 2);
-    // Chine crease; the battleship's armour belt (raised band of heavy plates along both flanks).
-    gb.each(cx - W, bowY, cx + W, bowY + L, (i, x, y) => {
-        if (gb.mat[i] === 0) return;
-        const u = (y - bowY) / L;
-        const a = Math.abs(x - cx) / hw(u);
-        if (Math.abs(a - 0.62) * hw(u) < 0.3) gb.hgt[i] += 0.35;
-        if (cfg.armour && a > 0.68 && a < 0.9 && u > 0.12 && u < 0.9) {
-            const seam = ((y - bowY) / (W * 0.55)) % 1 < 0.06 || Math.abs(a - 0.68) * hw(u) < 0.25;
-            gb.set(i, seam ? WAR_GREY_DARK : WAR_GREY, gb.hgt[i] + (seam ? 0.3 : 0.8), M_PAINT);
-            if (seam) gb.mul(i, 0.7);
-        }
-    });
-    const num = `${(cls === 'frigate' ? 5 : cls === 'destroyer' ? 17 : 41) + spec.bucket * 3}`;
-    text(gb, num, cx, hull.yAt(0.075), Math.max(0.3, W * 0.06), WHITE_PAINT, 2.4);
-    for (const s of [-1, 1]) rcs(b, cx + s * hw(0.12) * 0.72, hull.yAt(0.12), Math.max(0.6, W * 0.08), s, -0.4);
-    for (const [u, xo, r] of cfg.mounts) beamEmitter(b, X(xo), hull.yAt(u), W * r);
-    for (const [u0, u1, x0, x1] of cfg.cells) missileCells(b, X(x0), hull.yAt(u0), X(x1), hull.yAt(u1));
-    // Layered, faceted superstructure; copper trim on the top (bridge) tier only.
-    cfg.tiers.forEach(([u0, u1, half, h], k) => {
-        const du = (u1 - u0) * 0.12;
-        const pts: [number, number][] = [
-            [X(-half * 0.7), hull.yAt(u0)],
-            [X(half * 0.7), hull.yAt(u0)],
-            [X(half), hull.yAt(u0 + du)],
-            [X(half), hull.yAt(u1 - du * 0.5)],
-            [X(half * 0.8), hull.yAt(u1)],
-            [X(-half * 0.8), hull.yAt(u1)],
-            [X(-half), hull.yAt(u1 - du * 0.5)],
-            [X(-half), hull.yAt(u0 + du)],
-        ];
-        const top = k === cfg.tiers.length - 1;
-        poly(gb, pts, k % 2 === 0 ? WAR_GREY : WAR_GREY_DARK, h, M_PAINT, P_PLATE, 0.8);
-        if (top) {
-            gb.each(X(-half), hull.yAt(u0), X(half), hull.yAt(u1), (i, x, y) => {
-                if (gb.hgt[i] < h - 0.5) return;
-                let e = Infinity;
-                for (let q = 0, m = pts.length - 1; q < pts.length; m = q++) e = Math.min(e, segDist(x, y, pts[q][0], pts[q][1], pts[m][0], pts[m][1]));
-                if (e < 0.4) gb.set(i, COPPER, h + 0.1, M_COPPER);
-            });
-            for (let x = X(-half * 0.6); x <= X(half * 0.6); x += Math.max(0.9, S * 0.005)) light(b, x, hull.yAt(u0) + 0.4, 'window');
-        }
-        b.rust.push([X(-half), hull.yAt(u1)], [X(half), hull.yAt(u1)]);
-    });
-    for (const [u0, u1, x0, x1, h] of cfg.modules) module(b, X(x0), hull.yAt(u0), X(x1), hull.yAt(u1), h, WAR_GREY_DARK);
-    if (cfg.collar !== null) dockingCollar(b, X(cfg.collar[1]), hull.yAt(cfg.collar[0]), W * 0.2, 3.2);
-    commsArray(b, X(cfg.mast.x), hull.yAt(cfg.mast.u), W * cfg.mast.r, cfg.mast.h, true);
-    const pf = radiators(b, hull, -1, cfg.fins.port[0], cfg.fins.port[1], cfg.fins.port[2], W * cfg.fins.port[3], 3);
-    const sf = radiators(b, hull, 1, cfg.fins.star[0], cfg.fins.star[1], cfg.fins.star[2], W * cfg.fins.star[3], 3);
-    light(b, pf[0][0], pf[0][1], 'port');
-    light(b, sf[0][0], sf[0][1], 'starboard');
-    if (cfg.hangar !== null) hangarDoors(b, X(-0.5), hull.yAt(cfg.hangar[0]), X(0.5), hull.yAt(cfg.hangar[1]), 2.6);
-    for (const s of [-1, 1]) rcs(b, cx + s * hw(0.9) * 0.8, hull.yAt(0.9), Math.max(0.6, W * 0.08), s, 0.4);
-    for (let u = 0.08; u < 0.97; u += 0.035) for (const s of [-1, 1]) b.rust.push([cx + s * (hw(u) - 0.5), hull.yAt(u)]);
-    engineCluster(b, hull, spec.engines, false);
 }
 
 /** A small ship silhouette cradled at a dock (pointing along `ax, ay`). */
@@ -1601,22 +1100,22 @@ function cradledShip(b: Build, x: number, y: number, ax: number, ay: number, len
 }
 
 /**
- * Bases and the space port: a heavy hub and ring (thick structure), an inner habitat ring and stacked module blocks at
- * different heights, irregular window rows, radiator arrays, fuel tank clusters, an antenna forest and turning dishes,
- * docking arms with cradled ships and worn hazard stripes, RCS blocks with scorch; heavier weathering than the ships
- * (rust bloom at welds, patched plates, micrometeorite pitting on the outer ring). The port is bigger and busier.
+ * Generic bases (the Exchange space port is our painted sprite): a heavy hub and ring (thick structure), an inner
+ * habitat ring and stacked module blocks at different heights, irregular window rows, radiator arrays, fuel tank
+ * clusters, an antenna forest and turning dishes, docking arms with cradled ships and worn hazard stripes, RCS blocks
+ * with scorch; heavier weathering than the ships (rust bloom at welds, patched plates, micrometeorite pitting on the
+ * outer ring).
  */
 function buildBase(b: Build): void {
     const { gb, S, spec, rng } = b;
-    const port = spec.kind === 'port';
     const c = S / 2;
-    const ringR = S * (port ? 0.32 : 0.3);
+    const ringR = S * 0.3;
     const ringW = S * 0.056;
-    const hubR = S * (port ? 0.16 : 0.14);
+    const hubR = S * 0.14;
     const wearN = valueNoise(211);
     const wear = (x: number, y: number): number => fbm2(wearN, x * 0.6, y * 0.6) + 0.5;
     // Spokes: heavy girders with pipe runs.
-    const spokes = port ? 6 : 4;
+    const spokes = 4;
     for (let k = 0; k < spokes; k++) {
         const a = (k / spokes) * 2 * Math.PI + Math.PI / spokes;
         const ax = Math.cos(a);
@@ -1647,7 +1146,7 @@ function buildBase(b: Build): void {
     for (let k = 0; k < clusters; k++) {
         const a = ((k + 0.5) / clusters) * 2 * Math.PI + 0.9;
         const r = hubR + (habR - hubR) * 0.55;
-        const tr = S * (port ? 0.022 : 0.028);
+        const tr = S * 0.028;
         for (let q = 0; q < 3; q++) {
             const aa = a + (q - 1) * (tr * 2.1) / r;
             const tx = c + r * Math.cos(aa);
@@ -1692,7 +1191,7 @@ function buildBase(b: Build): void {
         }
     }
     // Radiator arrays (three parallel panels each) off the outer ring, at uneven angles.
-    const arrays = port ? [0.55, 1.7, 2.75, 4.45, 5.4] : [0.8, 2.9, 4.9];
+    const arrays = [0.8, 2.9, 4.9];
     for (const a of arrays) {
         const ax = Math.cos(a);
         const ay = Math.sin(a);
@@ -1716,7 +1215,7 @@ function buildBase(b: Build): void {
         void ay;
     }
     // Stacked module blocks on the ring (two levels), with windows and a turning dish on some.
-    const mods = port ? [1.25, 2.2, 3.55, 4.9, 5.85] : [1.6, 4.1];
+    const mods = [1.6, 4.1];
     mods.forEach((a, k) => {
         const mx = c + ringR * Math.cos(a);
         const my = c + ringR * Math.sin(a);
@@ -1759,7 +1258,7 @@ function buildBase(b: Build): void {
             else gb.set(i, Math.floor((along + across) / Math.max(0.5, w * 0.6)) & 1 ? HAZARD : BLACK, 5, M_PAINT);
         });
         for (const s of [-1, 1]) seg(gb, c + ax * r1 - ay * s * w * 2.6, c + ay * r1 + ax * s * w * 2.6, c + ax * (r1 + w * 4) - ay * s * w * 2.6, c + ay * (r1 + w * 4) + ax * s * w * 2.6, w * 0.4, METAL, 5, M_METAL, 0.3);
-        if (port || k % 2 === 0) cradledShip(b, c + ax * (r1 + w * 2.4), c + ay * (r1 + w * 2.4), ax, ay, w * 3.6);
+        if (k % 2 === 0) cradledShip(b, c + ax * (r1 + w * 2.4), c + ay * (r1 + w * 2.4), ax, ay, w * 3.6);
         else dockingCollar(b, c + ax * (r1 + w * 1.6), c + ay * (r1 + w * 1.6), w * 1.6, 5.2);
         light(b, c + ax * (r1 - w * 2.5) - ay * w * 0.6, c + ay * (r1 - w * 2.5) + ax * w * 0.6, 'flood');
         if (k % 2 === 1) light(b, c + ax * (r1 + w * 4) - ay * w * 2.6, c + ay * (r1 + w * 4) + ax * w * 2.6, 'strobe');
@@ -1767,14 +1266,6 @@ function buildBase(b: Build): void {
         const gy = c + ay * ringR;
         seg(gb, gx - ay * S * 0.07, gy + ax * S * 0.07, gx + ay * S * 0.07, gy - ax * S * 0.07, S * 0.008, OCHRE, 11.5, M_METAL, 0.3, P_LATTICE);
         b.rust.push([c + ax * r1, c + ay * r1]);
-    }
-    if (port) {
-        for (const a of [0.9, 3.9, 5.1]) {
-            const ax = Math.cos(a);
-            const ay = Math.sin(a);
-            circle(gb, c + ax * ringR, c + ay * ringR, S * 0.02, OCHRE, 8, M_METAL, P_NONE, 0.8);
-            seg(gb, c + ax * ringR, c + ay * ringR, c + ax * (ringR + S * 0.1) - ay * S * 0.045, c + ay * (ringR + S * 0.1) + ax * S * 0.045, S * 0.006, OCHRE, 10, M_METAL, 0.3, P_LATTICE);
-        }
     }
     // Hub: heavy plated drum, copper trim, stacked roof decks, radiator panels, antenna forest, comms array.
     circle(gb, c, c, hubR, TURQ_LIGHT, 9, M_PAINT, P_PLATE, 3);
@@ -1787,7 +1278,7 @@ function buildBase(b: Build): void {
         const py = c + hubR * 0.52 * Math.sin(a);
         rect(gb, px - hubR * 0.1, py - hubR * 0.1, px + hubR * 0.1, py + hubR * 0.1, METAL, 13.2, M_METAL, P_GRATE, 0.2);
     }
-    for (let k = 0; k < (port ? 16 : 10); k++) {
+    for (let k = 0; k < 10; k++) {
         const a = rng() * 2 * Math.PI;
         const r0 = hubR * (0.2 + rng() * 0.35);
         const len = hubR * (0.12 + rng() * 0.22);
@@ -1830,7 +1321,7 @@ function surfaceDetail(b: Build): void {
     const seamW = 0.28;
     const rivetR = 0.22;
     const rivetSp = 0.95;
-    const station = spec.kind === 'port' || spec.kind === 'base';
+    const station = spec.kind === 'base';
     for (let j = 0; j < n; j++) {
         for (let i = 0; i < n; i++) {
             const c = j * n + i;
@@ -1886,7 +1377,7 @@ function surfaceDetail(b: Build): void {
     }
 }
 
-/** Scratches (short bright strokes of bare metal), rust streaks bleeding aft from sources, salt staining (warships). */
+/** Scratches (short bright strokes of bare metal) and rust streaks bleeding aft from sources. */
 function weathering(b: Build): void {
     const { gb, S, spec, rng } = b;
     const w = spec.weathering;
@@ -1930,14 +1421,6 @@ function weathering(b: Build): void {
             const d = Math.abs(x - xc) / (wd * (1 - 0.5 * t));
             if (d > 1) return;
             gb.tint(i, RUST, Math.min(0.85, 0.7 * Math.pow(1 - t, 1.4) * (1 - d * d) * Math.min(1.3, w)));
-        });
-    }
-    if (isConcordMilitary(spec.kind)) {
-        const salt = valueNoise(71);
-        gb.each(0, 0, S, S, (i, x, y) => {
-            if (!paintable(i)) return;
-            const v = smooth01(0.55, 0.75, fbm2(salt, x * 0.18, y * 0.05) + 0.5);
-            if (v > 0) gb.tint(i, SALT, 0.28 * v * Math.min(1, w));
         });
     }
 }
@@ -2173,8 +1656,8 @@ function variantSeed(kind: ConcordKind, bucket: number, look: ConcordLook): numb
     return (CONCORD_KINDS.indexOf(kind) + 1) * 7919 + bucket * 104729 + CONCORD_LOOKS.indexOf(look) * 15485863;
 }
 
-/** Deterministic procedural images of one variant (pure; no DOM). */
-export function generateConcordImages(kind: ConcordKind, bucket: number, look: ConcordLook = 'weathered'): ConcordImages {
+/** Deterministic procedural images of a freighter / treasure ship / generic base variant (pure; no DOM). */
+export function generateConcordImages(kind: ConcordProceduralKind, bucket: number, look: ConcordLook = 'weathered'): ConcordImages {
     const spec = concordSpec(kind, bucket, look);
     const S = spec.side;
     const b: Build = { gb: new GBuf(S, S <= 192 ? 3 : 2), spec, S, rng: makeRng(variantSeed(kind, bucket, look)), lights: [], parts: [], thrusters: [], rust: [] };
@@ -2184,17 +1667,6 @@ export function generateConcordImages(kind: ConcordKind, bucket: number, look: C
             break;
         case 'freighter':
             buildFreighter(b);
-            break;
-        case 'explorer':
-            buildExplorer(b);
-            break;
-        case 'construction':
-            buildConstruction(b);
-            break;
-        case 'frigate':
-        case 'destroyer':
-        case 'battleship':
-            buildMilitary(b, kind);
             break;
         default:
             buildBase(b);
@@ -2228,6 +1700,372 @@ export function generateConcordImages(kind: ConcordKind, bucket: number, look: C
     const halos = {} as Record<ConcordLightGroup, RgbaImage>;
     for (const g of CONCORD_LIGHT_GROUPS) halos[g] = haloImage(S, b.lights.filter((l) => concordLightGroup(l.kind) === g));
     return { spec, ship, halos, lights: b.lights, parts: b.parts.map((p) => ({ ...p, img: partImage(p) })), markerPixels, lightPixels: lightPx };
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Painted sprites: frigate, destroyer, battleship, construction ship, explorer, the Exchange space port
+// ---------------------------------------------------------------------------------------------------------------
+
+/** Longest extent of the sprite as a fraction of the texture side: the bbox the procedural hulls filled (measured). */
+export const CONCORD_SPRITE_FILL: Readonly<Record<ConcordSpriteKind, number>> = {
+    frigate: 0.89,
+    destroyer: 0.92,
+    battleship: 0.925,
+    construction: 0.84,
+    explorer: 0.84,
+    port: 0.965,
+};
+
+/**
+ * Drawn-area ratio of the painted sprites (crop square / opaque px, which with the hull size sets the drawn size): the
+ * procedural hulls' measured values (mean over the size buckets), so a sprite ship spans what its procedural hull did.
+ */
+export const CONCORD_SPRITE_AREA_RATIO: Readonly<Record<ConcordSpriteKind, number>> = {
+    frigate: 5.0,
+    destroyer: 4.6,
+    battleship: 3.9,
+    construction: 3.7,
+    explorer: 5.4,
+    port: 2.2,
+};
+
+/** Sides of the cut-out files in public/art/concord (<kind>.png is the 512; <kind>-256.png, <kind>-128.png). */
+export const CONCORD_SPRITE_FILES = [128, 256, 512] as const;
+
+/** The smallest cut-out file that still downsamples to the variant's hull (≥ its drawn extent). */
+export function concordSpriteFileSide(kind: ConcordSpriteKind, bucket: number): number {
+    const need = CONCORD_SPRITE_FILL[kind] * concordTextureSide(kind, bucket);
+    for (const s of CONCORD_SPRITE_FILES) if (s * 0.97 >= need) return s;
+    return CONCORD_SPRITE_FILES[CONCORD_SPRITE_FILES.length - 1];
+}
+
+/** URL of a cut-out file (public/art/concord, written by scripts/concord-cutout.py). */
+export function concordSpriteUrl(kind: ConcordSpriteKind, fileSide: number): string {
+    return `/art/concord/${kind}${fileSide === 512 ? '' : `-${fileSide}`}.png`;
+}
+
+/** Inclusive bbox of the pixels with alpha ≥ `min`, or null. */
+function alphaBox(img: RgbaImage, min: number): { x0: number; y0: number; x1: number; y1: number } | null {
+    let x0 = Infinity;
+    let y0 = Infinity;
+    let x1 = -1;
+    let y1 = -1;
+    for (let y = 0; y < img.h; y++) {
+        for (let x = 0; x < img.w; x++) {
+            if (img.data[(y * img.w + x) * 4 + 3] < min) continue;
+            if (x < x0) x0 = x;
+            if (x > x1) x1 = x;
+            if (y < y0) y0 = y;
+            y1 = y;
+        }
+    }
+    return x1 < 0 ? null : { x0, y0, x1, y1 };
+}
+
+/** Area weights of a box resample along one axis: dest pixel d covers source [(d − origin)/k, (d + 1 − origin)/k). */
+function axisWeights(destLen: number, origin: number, k: number, srcLen: number): { from: number; w: number[] }[] {
+    const out: { from: number; w: number[] }[] = [];
+    for (let d = 0; d < destLen; d++) {
+        const a = Math.max(0, (d - origin) / k);
+        const b = Math.min(srcLen, (d + 1 - origin) / k);
+        const from = Math.floor(a);
+        const w: number[] = [];
+        // Normalised by the full footprint (1/k): a partly covered edge pixel gets partial alpha.
+        for (let s = from; s < b; s++) w.push((Math.min(b, s + 1) - Math.max(a, s)) * k);
+        out.push({ from, w });
+    }
+    return out;
+}
+
+/**
+ * The sprite's silhouette (alpha bbox) scaled so its longest side is `fill` × S and centred on an S × S canvas: an
+ * area-average (box) resample in premultiplied alpha, separable. Pure.
+ */
+export function placeConcordSprite(src: RgbaImage, S: number, fill: number): RgbaImage {
+    const data = new Uint8ClampedArray(S * S * 4);
+    const box = alphaBox(src, 8);
+    if (box === null) return { w: S, h: S, data };
+    const bw = box.x1 - box.x0 + 1;
+    const bh = box.y1 - box.y0 + 1;
+    const k = (fill * S) / Math.max(bw, bh);
+    const wx = axisWeights(S, (S - bw * k) / 2, k, bw);
+    const wy = axisWeights(S, (S - bh * k) / 2, k, bh);
+    // Horizontal pass: S columns × bh source rows, premultiplied.
+    const tmp = new Float32Array(S * bh * 4);
+    for (let y = 0; y < bh; y++) {
+        const row = (box.y0 + y) * src.w;
+        for (let x = 0; x < S; x++) {
+            const { from, w } = wx[x];
+            let r = 0;
+            let g = 0;
+            let b = 0;
+            let a = 0;
+            for (let q = 0; q < w.length; q++) {
+                const i = (row + box.x0 + from + q) * 4;
+                const al = (src.data[i + 3] / 255) * w[q];
+                r += src.data[i] * al;
+                g += src.data[i + 1] * al;
+                b += src.data[i + 2] * al;
+                a += al;
+            }
+            const t = (y * S + x) * 4;
+            tmp[t] = r;
+            tmp[t + 1] = g;
+            tmp[t + 2] = b;
+            tmp[t + 3] = a;
+        }
+    }
+    for (let y = 0; y < S; y++) {
+        const { from, w } = wy[y];
+        if (w.length === 0) continue;
+        for (let x = 0; x < S; x++) {
+            let r = 0;
+            let g = 0;
+            let b = 0;
+            let a = 0;
+            for (let q = 0; q < w.length; q++) {
+                const t = ((from + q) * S + x) * 4;
+                r += tmp[t] * w[q];
+                g += tmp[t + 1] * w[q];
+                b += tmp[t + 2] * w[q];
+                a += tmp[t + 3] * w[q];
+            }
+            if (a < 1 / 255) continue;
+            const o = (y * S + x) * 4;
+            data[o] = Math.round(r / a);
+            data[o + 1] = Math.round(g / a);
+            data[o + 2] = Math.round(b / a);
+            data[o + 3] = Math.round(Math.min(1, a) * 255);
+        }
+    }
+    return { w: S, h: S, data };
+}
+
+/**
+ * The weathered look on a painted sprite (the clean look skips it): grime blotches and rust streaks bleeding aft from
+ * random points of the hull, scaled by the spec's weathering strength. The sprites are painted already worn, so this
+ * is lighter than the procedural pass.
+ */
+function spriteWeathering(img: RgbaImage, spec: ConcordSpec, rng: () => number): void {
+    const { w: S, data: d } = img;
+    const wk = spec.weathering;
+    const grime = valueNoise(53);
+    const k240 = 240 / S;
+    for (let p = 0; p < S * S; p++) {
+        if (d[p * 4 + 3] === 0) continue;
+        const x = (p % S) * k240;
+        const y = Math.floor(p / S) * k240;
+        const m = 1 - 0.16 * Math.min(1.3, wk) * smooth01(0.58, 0.82, grime(x * 0.11, y * 0.11));
+        d[p * 4] *= m;
+        d[p * 4 + 1] *= m;
+        d[p * 4 + 2] *= m;
+    }
+    const tint = (i: number, c: Rgb, t: number): void => {
+        d[i] += (c[0] * 255 - d[i]) * t;
+        d[i + 1] += (c[1] * 255 - d[i + 1]) * t;
+        d[i + 2] += (c[2] * 255 - d[i + 2]) * t;
+    };
+    const streaks = Math.round(S * 0.12 * wk);
+    for (let n = 0, tries = 0; n < streaks && tries < streaks * 8; tries++) {
+        const sx = rng() * S;
+        const sy = rng() * S;
+        if (d[(Math.floor(sy) * S + Math.floor(sx)) * 4 + 3] < 255) continue;
+        n++;
+        const len = (2 + rng() * 6) * Math.min(1.6, wk) * (S / 240);
+        const wd = 0.3 + rng() * 0.5;
+        const ph = rng() * 6;
+        for (let y = Math.floor(sy); y < Math.min(S, sy + len); y++) {
+            const t = (y + 0.5 - sy) / len;
+            if (t < 0) continue;
+            const xc = sx + 0.3 * Math.sin(t * 5 + ph);
+            for (let x = Math.max(0, Math.floor(xc - wd - 1)); x <= Math.min(S - 1, Math.ceil(xc + wd + 1)); x++) {
+                const i = (y * S + x) * 4;
+                if (d[i + 3] < 200) continue;
+                const dd = Math.abs(x + 0.5 - xc) / (wd * (1 - 0.5 * t));
+                if (dd > 1) continue;
+                tint(i, RUST, Math.min(0.5, 0.45 * Math.pow(1 - t, 1.4) * (1 - dd * dd) * Math.min(1.3, wk)));
+            }
+        }
+    }
+}
+
+/** Opaque runs [x0, x1] (inclusive, alpha ≥ `min`) of one row. */
+function rowRuns(img: RgbaImage, y: number, min: number): [number, number][] {
+    const runs: [number, number][] = [];
+    let start = -1;
+    for (let x = 0; x <= img.w; x++) {
+        const on = x < img.w && img.data[(y * img.w + x) * 4 + 3] >= min;
+        if (on && start < 0) start = x;
+        else if (!on && start >= 0) {
+            runs.push([start, x - 1]);
+            start = -1;
+        }
+    }
+    return runs;
+}
+
+/** The run of a row nearest the centre column (the hull, not a fin), or null. */
+function centreRun(img: RgbaImage, y: number, min: number): [number, number] | null {
+    const c = img.w / 2;
+    let best: [number, number] | null = null;
+    let bestD = Infinity;
+    for (const r of rowRuns(img, y, min)) {
+        const d = c < r[0] ? r[0] - c : c > r[1] ? c - r[1] : 0;
+        if (d < bestD || (d === bestD && best !== null && r[1] - r[0] > best[1] - best[0])) {
+            best = r;
+            bestD = d;
+        }
+    }
+    return best;
+}
+
+/**
+ * Lights and thruster marks from the sprite's silhouette: red to port at its leftmost point, green to starboard at its
+ * rightmost, white at the stern and the masthead (the port: fore and aft), the warships' two mast strobes, and
+ * `spec.engines` thruster marks spread across the stern with a blue-white glow at each. Every point sits just inside
+ * the opaque silhouette.
+ */
+function spriteFittings(img: RgbaImage, spec: ConcordSpec): { lights: ConcordLight[]; thrusters: [number, number, number][] } {
+    const S = img.w;
+    const A = 200;
+    const lights: ConcordLight[] = [];
+    const thrusters: [number, number, number][] = [];
+    const box = alphaBox(img, A);
+    if (box === null) return { lights, thrusters };
+    const r = (kind: ConcordLightKind): number => Math.max(0.45, S * (kind === 'window' || kind === 'deck' ? 0.0022 : 0.0034));
+    const inset = (kind: ConcordLightKind): number => Math.max(1, Math.ceil(r(kind) * 1.5));
+    const opaque = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < S && y < S && img.data[(y * S + x) * 4 + 3] >= A;
+    // Walk from (x, y) toward the centre until the light fits inside the silhouette.
+    const add = (x: number, y: number, kind: ConcordLightKind): void => {
+        let px = Math.round(x);
+        let py = Math.round(y);
+        for (let n = 0; n < S && !opaque(px, py); n++) {
+            px += Math.sign(Math.round(S / 2) - px);
+            py += Math.sign(Math.round(S / 2) - py);
+        }
+        lights.push({ x: px + 0.5, y: py + 0.5, r: r(kind), kind });
+    };
+    // Sidelights: the rows reaching furthest out on each side (their middle row if several tie).
+    const sideLight = (dir: -1 | 1, kind: ConcordLightKind): void => {
+        let best = dir < 0 ? Infinity : -Infinity;
+        const rows: number[] = [];
+        for (let y = box.y0; y <= box.y1; y++) {
+            const runs = rowRuns(img, y, A);
+            if (runs.length === 0) continue;
+            const e = dir < 0 ? runs[0][0] : runs[runs.length - 1][1];
+            if (dir < 0 ? e < best - 1 : e > best + 1) {
+                best = e;
+                rows.length = 0;
+            }
+            if (Math.abs(e - best) <= 1) rows.push(y);
+        }
+        add(best - dir * inset(kind), rows[Math.floor(rows.length / 2)], kind);
+    };
+    sideLight(-1, 'port');
+    sideLight(1, 'starboard');
+    const station = spec.kind === 'port';
+    // Stern (and the station's bow) white light on the centre run of the extreme row.
+    const endLight = (y: number): void => {
+        const run = centreRun(img, y, A);
+        if (run !== null) add((run[0] + run[1] + 1) / 2, y, 'white');
+    };
+    endLight(box.y1 - inset('white'));
+    if (station) endLight(box.y0 + inset('white'));
+    else {
+        const ym = Math.round(box.y0 + (box.y1 - box.y0) * 0.4);
+        const run = centreRun(img, ym, A);
+        if (run !== null) {
+            const mx = (run[0] + run[1] + 1) / 2;
+            add(mx, ym, 'white');
+            if (isConcordMilitary(spec.kind)) {
+                const off = Math.max(1.5, S * 0.012);
+                add(mx - off, ym + off * 0.5, 'strobe');
+                add(mx + off, ym + off * 0.5, 'strobe');
+            }
+        }
+    }
+    // Thruster marks: across the widest opaque run of the lowest row that is at least a fifth of the beam wide.
+    const n = spec.engines;
+    if (n > 0) {
+        let beam = 0;
+        for (let y = box.y0; y <= box.y1; y++) for (const [a, b] of rowRuns(img, y, A)) beam = Math.max(beam, b - a + 1);
+        let yE = box.y1;
+        let run: [number, number] | null = null;
+        for (let y = box.y1; y >= box.y0; y--) {
+            let widest: [number, number] | null = null;
+            for (const rr of rowRuns(img, y, A)) if (widest === null || rr[1] - rr[0] > widest[1] - widest[0]) widest = rr;
+            if (widest !== null && widest[1] - widest[0] + 1 >= Math.max(2 * n, beam * 0.2)) {
+                yE = y;
+                run = widest;
+                break;
+            }
+        }
+        if (run !== null) {
+            yE = Math.max(box.y0, yE - 1);
+            const cx = (run[0] + run[1] + 1) / 2;
+            const hs = (run[1] - run[0] + 1) / 2;
+            const spacing = n > 1 ? (hs * 1.24) / (n - 1) : hs;
+            const w = Math.max(1, Math.min(Math.floor(spacing) - 1, Math.round(hs * 0.45)));
+            for (let k = 0; k < n; k++) {
+                const x = n === 1 ? cx : cx - hs * 0.62 + spacing * k;
+                const x0 = Math.round(x - w / 2);
+                thrusters.push([x0, x0 + w - 1, yE]);
+                lights.push({ x, y: yE + 0.5, r: r('engine'), kind: 'engine' });
+            }
+        }
+    }
+    return { lights, thrusters };
+}
+
+/**
+ * Images of a painted-sprite variant (pure; no DOM): the cut-out `src` (public/art/concord) placed at the procedural
+ * hull's fill, the weathered look's grime and rust (clean: none), the positional lights and thruster marks found on
+ * its silhouette, baked light dots and the halo overlays. No animated parts; the sprite's colours are its own (no luma /
+ * saturation matching).
+ */
+export function composeConcordSpriteImages(kind: ConcordSpriteKind, bucket: number, look: ConcordLook, src: RgbaImage): ConcordImages {
+    const spec = concordSpec(kind, bucket, look);
+    const S = spec.side;
+    const ship = placeConcordSprite(src, S, CONCORD_SPRITE_FILL[kind]);
+    if (look === 'weathered') spriteWeathering(ship, spec, makeRng(variantSeed(kind, bucket, look)));
+    const { lights, thrusters } = spriteFittings(ship, spec);
+    const d = ship.data;
+    for (let p = 0; p < S * S; p++) {
+        const i = p * 4;
+        if (d[i + 3] === 0) continue;
+        // Never leave an accidental pure-blue / pure-yellow marker colour in the art.
+        if ((d[i] === 0 && d[i + 1] === 0 && d[i + 2] === 255) || (d[i] === 255 && d[i + 1] === 255 && d[i + 2] === 0)) d[i + 2] = d[i + 2] === 255 ? 254 : 1;
+    }
+    // Baked light dots (the overlay adds their halo / blink), then the thruster marks.
+    const lightPixels: number[] = [];
+    for (const l of lights) {
+        const c = LIGHT_COLOUR[l.kind];
+        const dim = l.kind === 'strobe' ? 0.55 : 1;
+        for (let y = Math.max(0, Math.floor(l.y - l.r)); y <= Math.min(S - 1, Math.floor(l.y + l.r)); y++) {
+            for (let x = Math.max(0, Math.floor(l.x - l.r)); x <= Math.min(S - 1, Math.floor(l.x + l.r)); x++) {
+                const p = y * S + x;
+                if (d[p * 4 + 3] === 0 || Math.hypot(x + 0.5 - l.x, y + 0.5 - l.y) > Math.max(0.71, l.r)) continue;
+                d[p * 4] = Math.round(c[0] * dim * 255);
+                d[p * 4 + 1] = Math.round(c[1] * dim * 255);
+                d[p * 4 + 2] = Math.round(c[2] * dim * 255);
+                lightPixels.push(p);
+            }
+        }
+    }
+    const markerPixels: number[] = [];
+    for (const [x0, x1, y] of thrusters) {
+        for (let x = x0; x <= x1; x++) {
+            const p = y * S + x;
+            markerPixels.push(p);
+            d[p * 4] = 0;
+            d[p * 4 + 1] = 0;
+            d[p * 4 + 2] = 255;
+            d[p * 4 + 3] = 255;
+        }
+    }
+    const halos = {} as Record<ConcordLightGroup, RgbaImage>;
+    for (const g of CONCORD_LIGHT_GROUPS) halos[g] = haloImage(S, lights.filter((l) => concordLightGroup(l.kind) === g));
+    return { spec, ship, halos, lights, parts: [], markerPixels, lightPixels };
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -2852,7 +2690,10 @@ export function concordVariantFor(
     look: ConcordLook = 'weathered',
 ): ConcordVariant | null {
     if (concord === null || bo.empire !== concord) return null;
-    return { kind: concordKindOf(bo.subRole, treasure.has(bo)), bucket: concordSizeBucket(bo.size), look };
+    const kind = concordKindOf(bo.subRole, treasure.has(bo));
+    const bucket = concordSizeBucket(bo.size);
+    if (concordSpriteFailed(kind, bucket)) return null;
+    return { kind, bucket, look };
 }
 
 /** The ambient nav-light cycle (MainView.cs:1457-1458: 1.5 s on + 1.0 s off) and its per-ship phase (id % 20 / 10). */
@@ -2906,6 +2747,50 @@ export interface ConcordShipArt {
 }
 
 export const CONCORD_BUILDS_PER_FRAME = 1;
+
+/** The painted sprites' cut-out files by URL: decoded RGBA once loaded, else still loading or failed. */
+const spriteSources = new Map<string, RgbaImage | 'loading' | 'failed'>();
+
+/**
+ * A cut-out file's pixels: starts the load on first request (an <img> through the page's own URL space, like the other
+ * /art and /assets files) and returns 'loading' until it is decoded; never throws ('failed' without a DOM or when the
+ * file is missing).
+ */
+export function concordSpriteSource(url: string): RgbaImage | 'loading' | 'failed' {
+    const hit = spriteSources.get(url);
+    if (hit !== undefined) return hit;
+    if (typeof Image === 'undefined' || typeof document === 'undefined') {
+        spriteSources.set(url, 'failed');
+        return 'failed';
+    }
+    spriteSources.set(url, 'loading');
+    const img = new Image();
+    img.onload = () => {
+        try {
+            const c = document.createElement('canvas');
+            c.width = img.naturalWidth;
+            c.height = img.naturalHeight;
+            const ctx = c.getContext('2d', { willReadFrequently: true });
+            if (ctx === null) throw new Error('no 2d context');
+            ctx.drawImage(img, 0, 0);
+            spriteSources.set(url, { w: c.width, h: c.height, data: ctx.getImageData(0, 0, c.width, c.height).data });
+        } catch (e) {
+            console.warn(`[concordArt] cannot decode ${url}`, e);
+            spriteSources.set(url, 'failed');
+        }
+    };
+    img.onerror = () => {
+        console.warn(`[concordArt] cannot load ${url}; the stock art stands in`);
+        spriteSources.set(url, 'failed');
+    };
+    img.src = url;
+    return 'loading';
+}
+
+/** True when a painted-sprite variant's file failed to load (the object then keeps its stock art). */
+export function concordSpriteFailed(kind: ConcordKind, bucket: number): boolean {
+    return isConcordSpriteKind(kind) && spriteSources.get(concordSpriteUrl(kind, concordSpriteFileSide(kind, bucket))) === 'failed';
+}
 const shipArtCache = new Map<string, ConcordShipArt>();
 let buildFrame = -1;
 let buildsThisFrame = 0;
@@ -2930,7 +2815,15 @@ export function buildConcordShipArt(images: ConcordImages): { rgba: Uint8Clamped
     if (raw === null) return null;
     // The treasure ship draws bigger than its hull size alone gives (both layers read areaRatio: sprite, picking and
     // the ambient exhaust stay consistent).
-    const metrics = images.spec.kind === 'treasure' ? { ...raw, areaRatio: raw.areaRatio * CONCORD_TREASURE_AREA_BOOST } : raw;
+    // The painted sprites keep the drawn extent the procedural hulls had (their own, fuller silhouettes would give a
+    // smaller area ratio and so a shorter ship on the map).
+    const kind = images.spec.kind;
+    const metrics =
+        kind === 'treasure'
+            ? { ...raw, areaRatio: raw.areaRatio * CONCORD_TREASURE_AREA_BOOST }
+            : isConcordSpriteKind(kind)
+              ? { ...raw, areaRatio: CONCORD_SPRITE_AREA_RATIO[kind] }
+              : raw;
     const markers = scanShipMarkers(data, w, h, metrics);
     return { rgba: paintOutShipMarkers(data, w, h, metrics, markers, true), metrics, markers };
 }
@@ -2959,7 +2852,14 @@ export function concordShipArt(v: ConcordVariant, frame: number, build = true): 
     }
     if (buildsThisFrame >= CONCORD_BUILDS_PER_FRAME) return null;
     buildsThisFrame++;
-    const images = generateConcordImages(v.kind, v.bucket, v.look);
+    let images: ConcordImages;
+    if (isConcordSpriteKind(v.kind)) {
+        const src = concordSpriteSource(concordSpriteUrl(v.kind, concordSpriteFileSide(v.kind, v.bucket)));
+        // Still loading: hidden this frame, retried next (a failed file makes concordVariantFor hand the object back to
+        // its stock art).
+        if (typeof src === 'string') return null;
+        images = composeConcordSpriteImages(v.kind, v.bucket, v.look, src);
+    } else images = generateConcordImages(v.kind, v.bucket, v.look);
     const built = buildConcordShipArt(images);
     if (built === null) return null;
     const halos = {} as Record<ConcordLightGroup, Texture>;

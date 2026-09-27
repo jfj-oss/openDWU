@@ -1,0 +1,8 @@
+{
+    "frigate": { "file": "concord3_00005_.png", "rotate": 0 },
+    "destroyer": { "file": "concord2_00004_.png", "rotate": 0 },
+    "battleship": { "file": "concord2_00007_.png", "rotate": 0 },
+    "construction": { "file": "concord3_00009_.png", "rotate": 0 },
+    "explorer": { "file": "concord2_00014_.png", "rotate": 0 },
+    "port": { "file": "concord2exchange_00001_.png", "rotate": 0 }
+}
