@@ -20,6 +20,42 @@ await page.waitForFunction(() => window.__dwu?.galaxy?.creatures !== undefined &
 });
 await page.waitForTimeout(3000);
 
+// No Kaltor visible yet (at game start only the home system is Visible — Empire.9.cs 3037): run the sim at 4x,
+// camera at galaxy zoom, until the player's ships make a system with creatures visible (8 min wall-clock cap).
+// Ready when a Kaltor is visible (the close-up) and a visible creature sits within 3000 of a planet (the system shot).
+const countVisible = () =>
+    page.evaluate(() => {
+        const { galaxy, view } = window.__dwu;
+        const vis = galaxy.creatures.filter((c) => c && !c.hasBeenDestroyed && view.creatureLayer.visibleToPlayer(c));
+        const nearPlanet = vis.some((c) => {
+            const si = c.nearestSystemStar ? galaxy.systems[c.nearestSystemStar.systemIndex] : null;
+            return (si?.habitats ?? []).some((h) => h.category === 1 && Math.hypot(h.xpos - c.xpos, h.ypos - c.ypos) < 3000);
+        });
+        return nearPlanet ? vis.filter((c) => c.type === 1).length : 0;
+    });
+if ((await countVisible()) === 0) {
+    await page.evaluate(() => {
+        const { time, camera } = window.__dwu;
+        if (time.paused) time.togglePause();
+        time.speed = 4;
+        camera.zoom = camera.minZoom;
+    });
+    const t0 = Date.now();
+    let n = 0;
+    while (n === 0 && Date.now() - t0 < 480000) {
+        // Drive the SimDriver directly (the same fixed steps the render loop runs), 40 steps per round trip.
+        await page.evaluate(() => {
+            for (let i = 0; i < 40; i++) window.__dwu.sim.advance(1000);
+        });
+        n = await countVisible();
+    }
+    await page.evaluate(() => {
+        const { time } = window.__dwu;
+        if (!time.paused) time.togglePause();
+    });
+    console.log(`ran the sim ${Math.round((Date.now() - t0) / 1000)} s wall, game date ${await page.evaluate(() => window.__dwu.time.currentStarDate)}: ${n} Kaltor(s) visible`);
+}
+
 // Candidates: live creatures the layer would show (GodMode or visible to the player), Kaltors first, then those parked
 // at a planet.
 const info = await page.evaluate(() => {
@@ -31,11 +67,19 @@ const info = await page.evaluate(() => {
     for (const c of all) byType[c.type] = (byType[c.type] ?? 0) + 1;
     const pick = (list) => list.find((c) => c.parentHabitat && c.parentHabitat.category === 1) ?? list[0] ?? null;
     const kaltors = vis.filter((c) => c.type === 1);
-    const sys = pick(vis);
+    // System shot: the visible creature closest to a planet of its system.
+    const planetDist = (c) => {
+        const sysInfo = c.nearestSystemStar ? galaxy.systems[c.nearestSystemStar.systemIndex] : null;
+        let best = Infinity;
+        for (const h of sysInfo?.habitats ?? []) if (h.category === 1) best = Math.min(best, Math.hypot(h.xpos - c.xpos, h.ypos - c.ypos) - h.diameter / 2);
+        return best;
+    };
+    const sys = [...vis].sort((a, b) => planetDist(a) - planetDist(b))[0] ?? null;
+    window.__planetDist = sys ? Math.round(planetDist(sys)) : null;
     const close = pick(kaltors) ?? sys;
     window.__creatureShots = { sys, close };
     const d = (c) => (c ? { name: c.name, type: c.type, size: c.size, x: Math.round(c.xpos), y: Math.round(c.ypos), at: c.parentHabitat?.name ?? null } : null);
-    return { total: all.length, visible: vis.length, byType, sys: d(sys), close: d(close) };
+    return { total: all.length, visible: vis.length, byType, sys: d(sys), sysPlanetGap: window.__planetDist, close: d(close) };
 });
 console.log(`creatures: ${JSON.stringify(info)}`);
 if (info.sys === null) {

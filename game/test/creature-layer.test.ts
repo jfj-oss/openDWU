@@ -16,12 +16,14 @@ import {
     creatureSelectionRows,
     creatureTooltipText,
     creatureUsesAttackFrames,
+    creatureVisibleToEmpire,
     creatureZoomFactor,
     creaturesNear,
     pickCreature,
 } from '../src/render/creatureLayer';
 import { CreatureType, type Creature } from '../src/sim/creature';
 import type { Galaxy } from '../src/sim/galaxy';
+import type { Empire } from '../src/sim/empire';
 
 function fakeCreature(over: Partial<Creature>): Creature {
     return {
@@ -189,5 +191,26 @@ describe('creature selection / hover data (InfoPanel.cs DrawCreature, HoverPanel
         expect(creatureTooltipText(fakeCreature({ name: 'Old One', size: 99, attackStrength: 9, damage: 60, damageKillThreshold: 600 }))).toBe(
             'Old One — Size: 99, Strength: 9, Health: 90%',
         );
+    });
+});
+
+describe('creatureVisibleToEmpire (Empire.9.cs 3037 IsObjectVisibleToThisEmpire(Creature))', () => {
+    const galaxy = {
+        calculateDistanceSquared: (x1: number, y1: number, x2: number, y2: number) => (x1 - x2) ** 2 + (y1 - y2) ** 2,
+        resolveIndex: () => ({ x: 0, y: 0 }),
+        builtObjectIndexGrid: [[[]]],
+    } as unknown as Galaxy;
+    const empire = (visible: number[], scanners: { xpos: number; ypos: number; sensorLongRange: number }[] = []): Empire =>
+        ({ visibility: { checkSystemVisible: (i: number) => visible.includes(i) }, longRangeScanners: scanners }) as unknown as Empire;
+    const star = { systemIndex: 4 } as never;
+    it('a creature in a system the empire sees is visible; a hidden one never is', () => {
+        expect(creatureVisibleToEmpire(galaxy, empire([4]), fakeCreature({ nearestSystemStar: star, isVisible: true }))).toBe(true);
+        expect(creatureVisibleToEmpire(galaxy, empire([4]), fakeCreature({ nearestSystemStar: star, isVisible: false }))).toBe(false);
+        expect(creatureVisibleToEmpire(galaxy, empire([3]), fakeCreature({ nearestSystemStar: star, isVisible: true }))).toBe(false);
+    });
+    it('else a long-range scanner in range (no speed check in this overload)', () => {
+        const c = fakeCreature({ nearestSystemStar: null, isVisible: true, xpos: 300, ypos: 400 });
+        expect(creatureVisibleToEmpire(galaxy, empire([], [{ xpos: 0, ypos: 0, sensorLongRange: 500 }]), c)).toBe(true);
+        expect(creatureVisibleToEmpire(galaxy, empire([], [{ xpos: 0, ypos: 0, sensorLongRange: 499 }]), c)).toBe(false);
     });
 });

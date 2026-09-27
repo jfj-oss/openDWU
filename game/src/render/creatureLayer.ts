@@ -28,9 +28,8 @@
 //   DistantWorlds.Controls/Controls/InfoPanel.cs 3453 DrawCreature — selection panel: Name, "Size: N, Attack
 //     Strength: N", Health bar (DamageKillThreshhold − Damage of DamageKillThreshhold), Speed bar (CurrentSpeed of
 //     MovementSpeed); drawn only when GodMode or visible (InfoPanel.cs 1188); a destroyed creature clears the selection.
-//   Empire.9.cs 3065 IsObjectVisibleToThisEmpireImprecise / 3198 IsObjectVisibleToThisEmpire — a creature has no
-//     Empire and is neither Habitat, Fighter nor BuiltObject, so it is visible only through
-//     FindShipOutsideSystemWithScanRange (Stealth 1) of the empire or of the empires it shares visibility with.
+//   Empire.9.cs 3037 IsObjectVisibleToThisEmpire(Creature) — IsVisible, then the nearest system visible to the
+//     empire, a long-range scanner in range, or an empire ship outside systems in scan range.
 //
 // No name label and no health bar are drawn on the map for creatures (only the damage overlay and the attack frames).
 //
@@ -48,7 +47,6 @@ import type { Empire } from '../sim/empire';
 import { CreatureType, resolveCreatureDescription, type Creature } from '../sim/creature';
 import { GalaxyLocationType } from '../sim/galaxyLocation';
 import { findShipOutsideSystemWithScanRange } from '../sim/independentTraders';
-import { empiresSharedVisibility } from '../sim/exploration';
 
 export const CREATURE_DIR = '/assets/dwu/images/units/creatures';
 /** Raw creature frame side (every creature PNG in the install is 360 × 360). */
@@ -192,15 +190,20 @@ export function creaturesNear(galaxy: Galaxy, star: { xpos: number; ypos: number
     return out;
 }
 
-/** Empire.9.cs 3198 IsObjectVisibleToThisEmpire for a Creature (Stealth 1, no Empire — see the header). */
+/**
+ * Port of Empire.9.cs 3037 IsObjectVisibleToThisEmpire(Creature) (the overload MainView.1.cs 1608 and Main.Part11.cs
+ * 1542 resolve to): hidden (IsVisible false) → no; else the creature's nearest system is visible to the empire
+ * (CheckSystemVisible, Empire.9.cs 2917 — incl. shared visibility); else within SensorLongRange of one of its
+ * LongRangeScanners; else FindShipOutsideSystemWithScanRange((int)x, (int)y, 1.0) (Empire.9.cs 3449).
+ */
 export function creatureVisibleToEmpire(galaxy: Galaxy, empire: Empire, c: Creature): boolean {
-    const x = Math.trunc(c.xpos);
-    const y = Math.trunc(c.ypos);
-    if (findShipOutsideSystemWithScanRange(galaxy, empire, x, y, 1, true, true) !== null) return true;
-    for (const other of empiresSharedVisibility(galaxy, empire)) {
-        if (findShipOutsideSystemWithScanRange(galaxy, other, x, y, 1, true, true) !== null) return true;
+    if (!c.isVisible) return false;
+    if (c.nearestSystemStar !== null && empire.visibility.checkSystemVisible(c.nearestSystemStar.systemIndex)) return true;
+    for (const s of empire.longRangeScanners as { xpos: number; ypos: number; sensorLongRange: number }[]) {
+        const r = s.sensorLongRange * s.sensorLongRange;
+        if (galaxy.calculateDistanceSquared(s.xpos, s.ypos, c.xpos, c.ypos) <= r) return true;
     }
-    return false;
+    return findShipOutsideSystemWithScanRange(galaxy, empire, Math.trunc(c.xpos), Math.trunc(c.ypos), 1.0) !== null;
 }
 
 /** Main.Part11.cs 1535-1539: the creature's pick rect width in world units at zoom factor f (not capped). */
