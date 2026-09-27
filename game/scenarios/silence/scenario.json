@@ -1,0 +1,15 @@
+{
+  "id": "silence",
+  "name": "The Silence",
+  "description": "End-game hidden threat. A precursor ruin starts transmitting; hyperdrives fail in a widening radius around it (pirates are immune). Loud from the start, the danger is stranded fleets and pirate raids inside the zone. A ship holding position at the source long enough shuts it down.",
+  "flags": [
+    { "name": "silence", "label": "The Silence", "description": "A precursor ruin can start disabling hyperdrives in a growing radius.", "default": false }
+  ],
+  "params": [
+    { "name": "silenceStartYear", "label": "Years before the signal starts", "default": 50, "min": 0, "max": 200 },
+    { "name": "silenceStartRadius", "label": "Starting zone radius", "default": 5000, "min": 100, "max": 50000 },
+    { "name": "silenceGrowthPerYear", "label": "Zone radius growth per year", "default": 4000, "min": 0, "max": 50000 },
+    { "name": "silenceMaxRadius", "label": "Maximum zone radius", "default": 120000, "min": 1000, "max": 500000 },
+    { "name": "silenceShutdownDays", "label": "Cumulative days holding the source to shut it down", "default": 60, "min": 1, "max": 720 }
+  ]
+}

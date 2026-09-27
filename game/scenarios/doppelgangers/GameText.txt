@@ -1,0 +1,11 @@
+'Doppelgangers: message texts (scenarioText tags). {n} items are filled by the scenario code.
+Doppel Faction Name;The Mirror
+Doppel Suspect Row;Suspect (recaptured)
+Doppel Rumour Row;Suspect (rumour)
+Doppel Suspect Title;Suspect ship
+Doppel Suspect;Trace scanners flag {0} as a possible sleeper: its hidden fit does not match its manifest.
+Doppel Turn Title;The Mirror turns
+Doppel Turn;Ships we thought were our own have turned on us. The Mirror has risen.
+Doppel Turn News;Recaptured ships across the galaxy have turned on their fleets: The Mirror has risen.
+Doppel Contained;The Mirror has been destroyed. No sleeper remains.
+Doppel Victory Title;Doppelgangers contained

@@ -1,0 +1,14 @@
+'The Hive: message texts (scenarioText tags). {n} items are filled by the scenario code.
+Hive Faction Name;The Chorus
+Hive Militia Name;Node Militia
+Hive Node Confirmed Row;Hive node (confirmed)
+Hive Node Suspected Row;Hive node (suspected)
+Hive Rumour;Reports of strange synchrony among the independent colonies are spreading.
+Hive Dreams;Diplomats report the same phrase, unprompted, from unrelated independent worlds: synchronised dreams.
+Hive Confirmed Title;Hive node confirmed
+Hive Confirmed;Counter-intelligence has confirmed {0} is a Hive node.
+Hive Turn Title;The Chorus rises
+Hive Turn;The independent colonies were never truly independent. The Chorus has risen and claimed them all at once.
+Hive Turn News;The Chorus has risen: every node of the Hive has declared itself as one.
+Hive Contained;The Chorus has been destroyed. The Hive is silent.
+Hive Victory Title;The Hive is contained

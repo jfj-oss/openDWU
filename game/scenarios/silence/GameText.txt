@@ -1,0 +1,9 @@
+'The Silence: message texts (scenarioText tags). {n} items are filled by the scenario code.
+Silence Zone Name;The Silence
+Silence Zone Message;Hyperdrives fail without warning here. Something on the world below is transmitting.
+Silence Source Row;Silence source (confirmed)
+Silence Start Title;The Silence begins
+Silence Start;A precursor signal from {0} has begun disabling hyperdrives nearby. The zone is growing.
+Silence Shutdown Title;The Silence is shut down
+Silence Shutdown;The signal from {0} has gone quiet. Hyperdrives in the zone work again.
+Silence Victory Title;The Silence is shut down

@@ -30,6 +30,9 @@ import { galaxyStarDate } from '../../tick/simTime';
 import { createEmpireMidGame } from '../empireMidGame';
 import { scenarioMessage, scenarioNews, scenarioText } from '../messages';
 import { scenarioState } from '../state';
+import type { Character, StellarObject } from '../../characters';
+import { getEmpireCharacters } from '../../characters';
+import { GalaxyLocation } from '../../galaxyLocation';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Hidden state
@@ -148,6 +151,8 @@ export interface ThreatFactionSpec {
     configurePolicy?: (policy: EmpirePolicy) => void;
     /** Evaluation bias both ways with every other empire (default −100). */
     relationBias?: number;
+    /** Government id (default: the race's preferred starting government); a threat's fixed theocracy/hive/corporate government (governments.txt is not overlaid, so ids are cited directly, e.g. the Cult's "Way of Darkness" = 7). */
+    governmentId?: number;
 }
 
 /**
@@ -165,6 +170,7 @@ export function createThreatFaction(galaxy: Galaxy, spec: ThreatFactionSpec): Em
         home: spec.home ?? null,
         adoptOnly: !pirate,
         techLevel: spec.techLevel,
+        governmentId: spec.governmentId,
         configurePolicy: spec.configurePolicy,
         relationBias: spec.relationBias ?? -100,
     });
@@ -195,15 +201,23 @@ export function atWar(a: Empire, b: Empire): boolean {
 // ---------------------------------------------------------------------------------------------------------------
 
 /**
- * A troop of the faction that costs nothing to keep: the RoboticTroopFoundry branch of Habitat.GenerateNewTroop
- * (troops.ts 387; Habitat.cs 7047-7084) with maintenance 0 and full readiness (100, the Troop ctor's value).
+ * A troop of the faction that costs nothing to keep (§0.3/19f general form of 19b's robot troop): full readiness, no
+ * maintenance, as the RoboticTroopFoundry branch of Habitat.GenerateNewTroop (troops.ts 387; Habitat.cs 7047-7084)
+ * does for a free garrison. `race = null` marks it a BattleBot (pictureRef = galaxy.races.length, the stock robot-troop
+ * marker, troops.ts 387 / orderMenu.ts 2300); a real race (Cult militia, Hive node militia) keeps its own bonuses
+ * (applyBonusFactors true) and picture.
  */
-export function makeRobotTroop(galaxy: Galaxy, faction: Empire, strength: number, name: string): Troop {
-    const troop = generateNewTroop(name, TroopType.Infantry, Math.trunc(strength), faction, null, false);
+export function makeFactionTroop(galaxy: Galaxy, faction: Empire, strength: number, name: string, race: Race | null = null): Troop {
+    const troop = generateNewTroop(name, TroopType.Infantry, Math.trunc(strength), faction, race, race !== null);
     troop.maintenanceMultiplier = 0;
     troop.readiness = 100;
-    troop.pictureRef = galaxy.races.length;
+    if (race === null) troop.pictureRef = galaxy.races.length;
     return troop;
+}
+
+/** 19b Dark Farms' robot troop: makeFactionTroop with no race (kept as its own name — every 19b/19f call site cites it). */
+export function makeRobotTroop(galaxy: Galaxy, faction: Empire, strength: number, name: string): Troop {
+    return makeFactionTroop(galaxy, faction, strength, name, null);
 }
 
 /**
@@ -309,6 +323,41 @@ export function factionPopulationSharePct(galaxy: Galaxy, faction: Empire): numb
         }
     }
     return total > 0 ? (100 * mine) / total : 0;
+}
+
+/**
+ * Every active character at `location`, across every empire (galaxy.empires order, then each empire's character-list
+ * order) plus `extra` (a threat faction not yet in galaxy.empires' normal iteration, e.g. mid-creation). General form
+ * of the Cult's character→character spread (findCharactersAtLocationOrTransferring per empire, characters.ts 4896):
+ * any social-spread threat needs "who else is here" across empire boundaries, which no single empire's list gives.
+ */
+export function allCharactersAtLocation(galaxy: Galaxy, location: StellarObject | null, extra: Empire | null = null): Character[] {
+    if (location === null) return [];
+    const out: Character[] = [];
+    for (const e of galaxy.empires) {
+        if (e === null) continue;
+        for (const c of getEmpireCharacters(e)) if (c.active && c.location === location) out.push(c);
+    }
+    if (extra !== null && !galaxy.empires.includes(extra)) {
+        for (const c of getEmpireCharacters(extra)) if (c.active && c.location === location) out.push(c);
+    }
+    return out;
+}
+
+/**
+ * Grows or shrinks a restricted zone in place, re-centred on (x, y) (Galaxy.4.cs AddGalaxyLocationIndex /
+ * RemoveGalaxyLocationIndex via galaxy.ts 1680/1694; the zone itself is generateRestrictedZone's, storyStart.ts 304).
+ * General form of the Silence's growing hyperdrive-denial radius: any threat with an area that widens over time
+ * re-indexes the same way. `radius` is half the zone's side/diameter (generateRestrictedZone's own convention).
+ */
+export function resizeRestrictedZone(galaxy: Galaxy, zone: GalaxyLocation, x: number, y: number, radius: number): void {
+    galaxy.removeGalaxyLocationIndex(zone);
+    const size = radius * 2;
+    zone.xpos = Math.fround(x - radius);
+    zone.ypos = Math.fround(y - radius);
+    zone.width = Math.fround(size);
+    zone.height = Math.fround(size);
+    galaxy.addGalaxyLocationIndex(zone);
 }
 
 // ---------------------------------------------------------------------------------------------------------------

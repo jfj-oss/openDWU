@@ -1,0 +1,15 @@
+{
+  "id": "cult",
+  "name": "The Cult",
+  "description": "End-game hidden threat. A creed spreads character to character, across empire borders through ambassadors and diplomats. A colony is cult-held when its governor is converted; once one empire has enough cult-held colonies, the cult declares and rises from inside them into a theocracy.",
+  "flags": [
+    { "name": "cult", "label": "The Cult", "description": "A creed can spread between characters and seize colonies from inside.", "default": false }
+  ],
+  "params": [
+    { "name": "cultSeedYear", "label": "Years before the creed appears", "default": 40, "min": 0, "max": 200 },
+    { "name": "cultSpreadPct", "label": "Base conversion chance per period (%)", "default": 8, "min": 0, "max": 100 },
+    { "name": "cultAmbassadorPct", "label": "Ambassador conversion chance per period (%)", "default": 15, "min": 0, "max": 100 },
+    { "name": "cultSecedeColonies", "label": "Cult-held colonies needed to secede", "default": 4, "min": 1, "max": 50 },
+    { "name": "cultAgentDetectPct", "label": "Counter-intelligence detection factor (per mille per espionage point)", "default": 15, "min": 0, "max": 1000 }
+  ]
+}

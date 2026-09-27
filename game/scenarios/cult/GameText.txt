@@ -1,0 +1,11 @@
+'The Cult: message texts (scenarioText tags). {n} items are filled by the scenario code.
+Cult Faction Name;Way of Darkness
+Cult Militia Name;Cult Militia
+Cult Colony Row;Cult-held colony (confirmed)
+Cult Turn Title;Colonies secede to the Cult
+Cult Turn;Our own colonies have seceded to the Way of Darkness. Their governors were converted long before we knew it.
+Cult Turn News;Colonies of {0} have seceded to the Way of Darkness.
+Cult Cultist Found Title;Cultist unmasked
+Cult Cultist Found;Counter-intelligence has confirmed {0} as a convert to the Way of Darkness.
+Cult Contained;The Way of Darkness has been destroyed. No convert remains.
+Cult Victory Title;The Cult is contained

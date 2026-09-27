@@ -48,6 +48,7 @@ import { PirateRelationType, obtainPirateRelation } from './pirateRelations';
 import { isObjectVisibleToThisEmpire, isStellarObjectDockable } from './independentTraders';
 import { determineEmpireSystems } from './forceStructure';
 import { fastFindNearestSpacePort, getBuiltObjectsAtLocation } from './stationPlacement';
+import { scenarioQuery } from './scenario/hooks';
 import { findNewestCanBuild, resolveSubRoleDescription } from './designGeneration';
 import { gameText } from './colonyTick';
 import { checkRuinsHaveBenefit } from './exploration';
@@ -737,6 +738,8 @@ export function detectHyperDeny(galaxy: Galaxy, builtObject: BuiltObject): boole
     for (let i = 0; i < galaxyLocationList.length; i++) {
         const galaxyLocation = galaxyLocationList[i];
         if (galaxyLocation.effect === GalaxyLocationEffectType.HyperjumpDisabled) {
+            // mod layer (19f the Silence): a scenario may exempt this ship from this zone's effect (e.g. pirates).
+            if (galaxy.scenario !== null && scenarioQuery(galaxy, 'hyperDenyExempt', false, { builtObject: bo, location: galaxyLocation })) continue;
             bo.hyperjumpDisabledLocation = true;
             return true;
         }

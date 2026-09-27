@@ -1,0 +1,7 @@
+'Grey Tide: message texts (scenarioText tags). {n} items are filled by the scenario code.
+GreyTide Faction Name;Grey Tide
+GreyTide Nest Row;Grey Tide nest (confirmed)
+GreyTide Destroy Action;Destroy Nest
+GreyTide Declared;Mining output is collapsing across the frontier: something is eating the resource extractors.
+GreyTide Contained;The Grey Tide has been destroyed. No nest remains.
+GreyTide Victory Title;The Grey Tide is contained

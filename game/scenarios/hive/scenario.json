@@ -1,0 +1,14 @@
+{
+  "id": "hive",
+  "name": "The Hive",
+  "description": "End-game hidden threat. Every independent colony at game start is a node of one hidden mind. A node absorbed by an empire stays a node; at a threshold of absorption The Chorus declares, taking every still-independent node outright and rising from inside every absorbed one.",
+  "flags": [
+    { "name": "hive", "label": "The Hive", "description": "Independent colonies are secretly one mind that rises when enough are absorbed.", "default": false }
+  ],
+  "params": [
+    { "name": "hiveThresholdPct", "label": "Percent of nodes absorbed that triggers the Hive", "default": 40, "min": 1, "max": 100 },
+    { "name": "hiveMilitiaFactor", "label": "Militia strength factor on rising", "default": 1.5, "min": 0.1, "max": 10 },
+    { "name": "hiveMinNodes", "label": "Minimum independent colonies for the Hive to seed", "default": 5, "min": 1, "max": 50 },
+    { "name": "hiveDetectPct", "label": "Node confirmation chance per period (%)", "default": 15, "min": 0, "max": 100 }
+  ]
+}

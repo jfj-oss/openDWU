@@ -10,6 +10,7 @@ import type { Habitat } from '../types';
 import type { Empire } from '../empire';
 import type { BuiltObject } from '../builtObject';
 import type { Creature } from '../creature';
+import type { GalaxyLocation } from '../galaxyLocation';
 import { YEAR_LENGTH } from '../galaxyTime';
 import { galaxyStarDate } from '../tick/simTime';
 import type { GalaxyScenario } from './state';
@@ -268,6 +269,12 @@ export interface ScenarioQueries {
     miningStationPatrolPriority: { value: number; args: { builtObject: BuiltObject; empire: Empire } };
     /** events.ts creatureScanForTarget (Creature.cs 1245): true = the creature leaves this target alone. */
     creatureIgnoresTarget: { value: boolean; args: { creature: Creature; target: unknown } };
+    /**
+     * movement.ts detectHyperDeny's RestrictedArea/HyperjumpDisabled location loop (BuiltObject.1.cs 1737): true when
+     * `builtObject` should ignore `location`'s hyperjump-disable effect (19f: the Silence — pirate ships are immune
+     * inside its zone). Default false (not exempt); never draws.
+     */
+    hyperDenyExempt: { value: boolean; args: { builtObject: BuiltObject; location: GalaxyLocation } };
 }
 export type ScenarioQueryName = keyof ScenarioQueries;
 
