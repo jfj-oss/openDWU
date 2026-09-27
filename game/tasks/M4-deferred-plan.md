@@ -110,3 +110,7 @@ year 10 (1–8 per empire). Follow-ups:
   src/sim/scenario/reputation/MIGRATION.md (19l incidents, 19g-3 humiliation/breach, 19d8 council, 19j herders, 19k
   leagues, 19a display mirror, 19l-2 pirate ambition/calendar) and point the council motion search, the war review
   and peace-terms pricing at `grievances()`. Sonnet, mechanical, ~half a day.
+- 19n-2 follow-ups: UI buttons for schemes/hooks/ties (currently player ops + decisions + the diplomacy menu only); a
+  foreign sway should be able to redirect a 19d1 defection toward the schemer; a claimed colony's secession should hand
+  it to the claimant (19d1 hook); a scheme's agent appears twice in the victim's leads (scheme + foreignAgent) — dedupe;
+  19g-3 wiring of claimsFor/holdsCasusBelli into warGoalCandidates (documented in intrigue.ts header). Sonnet, ~half a day.
