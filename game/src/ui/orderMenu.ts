@@ -575,8 +575,10 @@ interface SelectionBar {
 }
 
 /** The selected object the buttons act on, as the C# SelectedObject (fleet, else ship / base, else habitat). */
-export function selectionTarget(sel: { habitat: Habitat; builtObject?: BuiltObject; shipGroup?: ShipGroup } | null): ShipActionSelection {
+export function selectionTarget(sel: { habitat: Habitat; builtObject?: BuiltObject; shipGroup?: ShipGroup; creature?: unknown } | null): ShipActionSelection {
     if (sel === null) return null;
+    // Main.Part3.cs 3616: a selected Creature gets eight empty buttons (method_585 with nulls), as with no selection.
+    if (sel.creature !== undefined) return null;
     return sel.shipGroup ?? sel.builtObject ?? sel.habitat;
 }
 
