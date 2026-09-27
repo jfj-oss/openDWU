@@ -157,3 +157,10 @@ year 10 (1–8 per empire). Follow-ups:
 - scripts/ai-parity.mjs and scripts/soak-15y.mjs measure AI usage of every threat: pass `<key>ExistChancePct: 100` and `<key>MinYear: 0` (or the shared threatExistChancePct/threatMinYear) as run params so the audits still exercise the threats; a normal game keeps the 25% / year-30 defaults.
 - `scenarioRuns`/`scenarioId` gating reads only the active scenario's own `include` list (not transitive includes): any new composite scenario that pulls in a threat must list `threat-framework` directly (documented in tasks/19f-hidden-threats.md §0.9).
 - Leagues audit (2026-09-27): the league's one extra colony is never a Hive node (founded after hiveInit) — decide/document; add a test that frontier-autonomy orphaned colonies become league-eligible; finish the 19o ledger migration for league standing.
+
+## Performance follow-ups (wip/perf da29dd7, 2026-09-27)
+- Landed: −7.6% at 700/10, −10.9% at 4000/60, −41% game creation at 4000/60; late-game economy passes 2–5× per call; profiling harness scripts/profile-sim.mjs + cpuprofile-summary.mjs.
+- Not done (behaviour risk): incremental per-system caches for identifyResourceCentres (~27 ms/call) and prioritizeEmpireResourceNeeds (~13 ms/call) — invalidation not provable (ownership set in 42 files, resourcesKnown in 39, visibility in 13+, saves bypass hooks). Would need a single ownership/knowledge mutation API first.
+- Would change results: character-trait review recomputes every empire's cashflow per empire tick (~4% late game; cashflow has side effects on consecutiveUnprofitableYears).
+- Soak harness: scripts/soak-15y.mjs watchCombat scans all builtObjects every frame (18.7% of the year-9 profile) — switch to destroyed/removed events or sample every N frames.
+- Minor: event-log retention findIndex+splice per entry (~1 s/year late), captain-bonus lookups (~1 s/year).
