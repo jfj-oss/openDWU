@@ -306,6 +306,12 @@ export interface ScenarioQueries {
      * to pay (stock: the requester). 19f #8 The Exchange posts Defend contracts on another empire's colonies. Pure.
      */
     pirateDefendClient: { value: Empire | null; args: { activity: EmpireActivity } };
+    /**
+     * pirates/missionsMarket.ts pirateCheckAcceptDefendMission (Empire.2.cs 2045 PirateCheckAcceptDefendMission), the
+     * rule that the pirate faction must protect the contract's target empire: true lets `pirate` bid without that
+     * pact (the stock distance / strength tests still apply). 19f #8: contracts financed by the Exchange. Pure.
+     */
+    pirateDefendBidAllowed: { value: boolean; args: { pirate: Empire; activity: EmpireActivity } };
     /** diplomacyTick.ts declareWar (Empire.7.cs 4883), first line: true blocks the declaration (19c charter war rules). */
     declareWarBlocked: { value: boolean; args: { empire: Empire; target: Empire } };
     /**

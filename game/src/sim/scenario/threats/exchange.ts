@@ -84,9 +84,9 @@ import { BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission 
 import { assignMission } from '../../missions/assign';
 import { blockadeFor } from '../../fleets/blockades';
 import { empireCompleteTeardown } from '../../events';
-import { applyReputation } from '../reputation/ledger';
+import { applyReputation, reputationSum } from '../reputation/ledger';
 import { mirrorPackageDiscovery, registerHiddenThing } from '../security/registry';
-import { registerCouncilExtension, type Council, type MotionCandidate } from '../emergent/council';
+import { peekCouncilState, registerCouncilExtension, type Council, type MotionCandidate } from '../emergent/council';
 import { raiseScenarioDecision, registerScenarioDecision, pendingScenarioDecisions, type ScenarioDecision } from '../decisions';
 import { createEmpireMidGame } from '../empireMidGame';
 import {
@@ -140,6 +140,10 @@ const COORD_UNSET = -2000000001;
 function missionTypes(): readonly IntelligenceMissionType[] {
     const T = IntelligenceMissionType;
     return [T.SabotageColony, T.StealTechData, T.SabotageConstruction, T.StealGalaxyMap, T.AssassinateCharacter, T.StealOperationsMap];
+}
+function grudgeMissionTypes(): readonly IntelligenceMissionType[] {
+    const T = IntelligenceMissionType;
+    return [T.SabotageColony, T.AssassinateCharacter, T.StealTechData, T.SabotageConstruction];
 }
 function isSabotage(type: number): boolean {
     const T = IntelligenceMissionType;
@@ -231,7 +235,17 @@ export interface ExchangeState {
     targetCursor: number;
     typeCursor: number;
     saleCursor: Record<number, number>;
+    /** Grudge ledger: empire id → grudge (decays yearly by exchangeGrudgeDecay %). Absent in saves before it existed. */
+    grudges?: Record<number, number>;
+    grudgeLog?: { date: number; empireId: number; source: ExchangeGrudgeSource; amount: number }[];
+    /** Council sanctions already counted (`<council id>:<year>`). */
+    sanctionsSeen?: string[];
+    /** The player's declined intel offers, by empire id. */
+    refusals?: Record<number, number>;
+    grudgeCursor?: number;
 }
+
+export type ExchangeGrudgeSource = 'blockade' | 'attack' | 'catch' | 'sanction' | 'refusal' | 'reputation';
 
 function newState(): ExchangeState {
     return {
@@ -274,6 +288,11 @@ function newState(): ExchangeState {
         targetCursor: 0,
         typeCursor: 0,
         saleCursor: {},
+        grudges: {},
+        grudgeLog: [],
+        sanctionsSeen: [],
+        refusals: {},
+        grudgeCursor: 0,
     };
 }
 
@@ -313,7 +332,12 @@ export const EXCHANGE_PARAMS = {
     intelPrice: (g: Galaxy) => p(g, 'exchangeIntelPrice', 20000),
     fleetCap: (g: Galaxy) => Math.trunc(p(g, 'exchangeFleetCap', 20)),
     blockadeDaysNeeded: (g: Galaxy) => p(g, 'exchangeBlockadeDays', 120),
+    grudgeDecay: (g: Galaxy) => p(g, 'exchangeGrudgeDecay', 20),
+    grudgeThreshold: (g: Galaxy) => p(g, 'exchangeGrudgeThreshold', 100),
 };
+
+/** Grudge added per source (a blockade: per 30-day period it stands; the reputation source: the worst standing, capped). */
+export const EXCHANGE_GRUDGE = { blockade: 25, attack: 30, catch: 40, sanction: 60, refusal: 25, reputationMax: 100 } as const;
 const P = EXCHANGE_PARAMS;
 
 function threatsGameEndOn(galaxy: Galaxy): boolean {
@@ -546,11 +570,24 @@ export function exchangePlace(galaxy: Galaxy, st: ExchangeState, year: number = 
     st.appearedYear = year;
     generateStartingCharacters(galaxy, faction, habitat); // leader (portrait) and the race's starting characters
     for (const e of normalEmpires(galaxy, faction)) introduce(faction, e);
+    refreshCharts(galaxy, st);
     maintainPacts(galaxy, st);
     st.agentTarget = P.agents(galaxy);
     while (agents(st).length < st.agentTarget) if (hireAgent(galaxy, st) === null) break;
     for (let i = 0; i < 2; i++) fleetGroup(galaxy, st, i);
     arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Opened', args: [faction.name, habitat.name], subject: bo });
+}
+
+/**
+ * A trading hub hears everything: at appearance and every year the Exchange merges every normal empire's galaxy map
+ * (the StealGalaxyMap effect, espionage.ts mergeGalaxyMap) — its agents need known colonies to pick sabotage targets
+ * (Empire.5.cs 4601 ResolveKnownColonies).
+ */
+function refreshCharts(galaxy: Galaxy, st: ExchangeState): void {
+    const f = st.faction;
+    if (f === null) return;
+    const now = galaxyStarDate(galaxy);
+    for (const e of normalEmpires(galaxy, f)) applyIntelligenceMissionEffect(galaxy, f, newIntelligenceMissionAgainstEmpire(f, null, IntelligenceMissionType.StealGalaxyMap, now, e));
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -585,14 +622,16 @@ function fundedEmpireIds(galaxy: Galaxy, faction: Empire | null): Set<number> {
     return new Set(exchangeWarPairs(galaxy, faction).map((w) => w.weaker.empireId));
 }
 
-/** Mission targets: war-weary empires at war (most weary first), then the strongest third by potency. Pure. */
+/** Mission targets: grudged empires (worst first, at war or not), war-weary empires at war (most weary first), then the strongest third by potency. Pure. */
 export function exchangeMissionTargets(galaxy: Galaxy, faction: Empire): Empire[] {
+    const gst = peekExchangeState(galaxy);
+    const grudged = gst !== null ? exchangeGrudged(galaxy, gst) : [];
     const clients = normalEmpires(galaxy, faction).filter((e) => e.colonies.length > 0);
     const atWarAny = (e: Empire): boolean => clients.some((o) => o !== e && atWar(e, o));
     const weary = clients.filter((e) => e.warWearinessRaw > 0 && atWarAny(e)).sort((a, b) => b.warWearinessRaw - a.warWearinessRaw || a.empireId - b.empireId);
     const strongest = [...clients].sort((a, b) => militaryPotency(b) - militaryPotency(a) || a.empireId - b.empireId).slice(0, Math.max(1, Math.ceil(clients.length / 3)));
     const out: Empire[] = [];
-    for (const e of [...weary, ...strongest]) if (!out.includes(e)) out.push(e);
+    for (const e of [...grudged, ...weary, ...strongest]) if (!out.includes(e)) out.push(e);
     return out;
 }
 
@@ -629,6 +668,8 @@ export function exchangeYearly(galaxy: Galaxy, year: number): void {
         return;
     }
     sweepTreasury(st);
+    refreshCharts(galaxy, st);
+    exchangeGrudgeYearly(galaxy, st);
     payYearlyIncome(galaxy, st, year);
     fundUnderdogs(galaxy, st);
     giftMaps(galaxy, st, year);
@@ -643,6 +684,7 @@ export function fundUnderdogs(galaxy: Galaxy, st: ExchangeState): number {
     const pct = P.fundPct(galaxy) / 100;
     let total = 0;
     for (const w of exchangeWarPairs(galaxy, st.faction)) {
+        if (exchangeIsGrudged(galaxy, st, w.weaker)) continue; // never funded
         const amount = Math.min(pct * Math.max(0, w.weaker.stateMoney), exchangeSpendable(st));
         if (!(amount > 0)) continue;
         w.weaker.stateMoney += amount;
@@ -665,6 +707,7 @@ export function giftMaps(galaxy: Galaxy, st: ExchangeState, year: number): void 
     if (f === null) return;
     const T = IntelligenceMissionType;
     for (const w of exchangeWarPairs(galaxy, f)) {
+        if (exchangeIsGrudged(galaxy, st, w.weaker)) continue;
         const now = galaxyStarDate(galaxy);
         applyIntelligenceMissionEffect(galaxy, w.weaker, newIntelligenceMissionAgainstEmpire(f, null, T.StealGalaxyMap, now, w.stronger));
         applyIntelligenceMissionEffect(galaxy, w.weaker, newIntelligenceMissionAgainstEmpire(f, null, T.StealOperationsMap, now, w.stronger));
@@ -696,7 +739,7 @@ function warRival(galaxy: Galaxy, faction: Empire, buyer: Empire): Empire | null
  */
 export function sellIntel(galaxy: Galaxy, st: ExchangeState, buyer: Empire, rival: Empire, item: ExchangeIntelItem, price: number, by: 'ai' | 'player'): boolean {
     const f = st.faction;
-    if (f === null || st.ended || buyer.stateMoney < price) return false;
+    if (f === null || st.ended || buyer.stateMoney < price || exchangeIsGrudged(galaxy, st, buyer)) return false;
     const T = IntelligenceMissionType;
     const now = galaxyStarDate(galaxy);
     let mission: IntelligenceMission;
@@ -726,7 +769,7 @@ export function aiIntelSales(galaxy: Galaxy, st: ExchangeState): void {
     const f = st.faction;
     if (f === null) return;
     for (const buyer of normalEmpires(galaxy, f)) {
-        if (buyer === galaxy.playerEmpire || !hasMet(buyer, f)) continue;
+        if (buyer === galaxy.playerEmpire || !hasMet(buyer, f) || exchangeIsGrudged(galaxy, st, buyer)) continue;
         const rival = warRival(galaxy, f, buyer);
         if (rival === null) continue;
         const price = exchangeIntelPrice(galaxy, rival);
@@ -742,7 +785,7 @@ export function aiIntelSales(galaxy: Galaxy, st: ExchangeState): void {
 export function offerPlayerIntel(galaxy: Galaxy, st: ExchangeState): ScenarioDecision | null {
     const f = st.faction;
     const player = galaxy.playerEmpire;
-    if (f === null || player === null || !player.active || player === f || !hasMet(player, f)) return null;
+    if (f === null || player === null || !player.active || player === f || !hasMet(player, f) || exchangeIsGrudged(galaxy, st, player)) return null;
     if (pendingScenarioDecisions(galaxy, player).some((d) => d.kind === EXCHANGE_BUY_INTEL_DECISION)) return null;
     const rival = warRival(galaxy, f, player);
     if (rival === null) return null;
@@ -764,15 +807,106 @@ export function offerPlayerIntel(galaxy: Galaxy, st: ExchangeState): ScenarioDec
 }
 
 function resolveBuyIntel(galaxy: Galaxy, d: ScenarioDecision, optionId: string): void {
-    if (optionId === 'decline') return;
     const st = peekExchangeState(galaxy);
     if (st === null || st.faction === null || st.ended) return;
+    if (optionId === 'decline') {
+        // Refusing repeatedly (the second refusal on) breeds a grudge.
+        const r = (st.refusals ??= {});
+        r[d.empire.empireId] = (r[d.empire.empireId] ?? 0) + 1;
+        if (r[d.empire.empireId] >= 2) addGrudge(galaxy, st, d.empire, EXCHANGE_GRUDGE.refusal, 'refusal');
+        return;
+    }
     const rival = findEmpire(galaxy, Number(d.context.rivalId));
     const price = Number(d.context.price);
     if (rival === null || !rival.active) return;
     if (!sellIntel(galaxy, st, d.empire, rival, optionId as ExchangeIntelItem, price, 'player')) {
         scenarioMessage(galaxy, d.empire, scenarioText(`${TAG} Sale Title`), scenarioText(`${TAG} Sale Failed`, rival.name));
     }
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Grudges: what empires did to the Exchange drives its covert targeting (no message to the target)
+// ---------------------------------------------------------------------------------------------------------------
+
+/** Adds `amount` to `empire`'s grudge (normal empires only). */
+export function addGrudge(galaxy: Galaxy, st: ExchangeState, empire: Empire | null, amount: number, source: ExchangeGrudgeSource): void {
+    if (empire === null || empire === st.faction || !empire.active || empire.pirateEmpireBaseHabitat !== null || empire === galaxy.independentEmpire || !(amount > 0)) return;
+    const gr = (st.grudges ??= {});
+    gr[empire.empireId] = (gr[empire.empireId] ?? 0) + amount;
+    const log = (st.grudgeLog ??= []);
+    log.push({ date: galaxyStarDate(galaxy), empireId: empire.empireId, source, amount });
+    trimLog(log);
+}
+
+export function exchangeGrudge(st: ExchangeState, empire: Empire): number {
+    return st.grudges?.[empire.empireId] ?? 0;
+}
+
+/** Grudge above exchangeGrudgeThreshold. Pure. */
+export function exchangeIsGrudged(galaxy: Galaxy, st: ExchangeState, empire: Empire): boolean {
+    return exchangeGrudge(st, empire) > P.grudgeThreshold(galaxy);
+}
+
+/** Grudged active normal empires, worst grudge first (ties: empire id). Pure. */
+export function exchangeGrudged(galaxy: Galaxy, st: ExchangeState): Empire[] {
+    if (st.grudges === undefined) return [];
+    return normalEmpires(galaxy, st.faction)
+        .filter((e) => exchangeIsGrudged(galaxy, st, e))
+        .sort((a, b) => exchangeGrudge(st, b) - exchangeGrudge(st, a) || a.empireId - b.empireId);
+}
+
+/** Per period: a blockade of the station, and council sanctions against the Exchange (counted once per sanction). */
+export function accrueGrudgesPeriodic(galaxy: Galaxy, st: ExchangeState): void {
+    const f = st.faction;
+    if (f === null || st.station === null) return;
+    const blockade = blockadeFor(galaxy, st.station.bo);
+    if (blockade !== null) addGrudge(galaxy, st, blockade.initiator, EXCHANGE_GRUDGE.blockade, 'blockade');
+    const cs = peekCouncilState(galaxy);
+    if (cs === null) return;
+    const seen = (st.sanctionsSeen ??= []);
+    for (const c of cs.councils) {
+        for (const sn of c.sanctions) {
+            if (sn.target !== f || sn.kind !== 'sanction') continue;
+            const key = `${c.id}:${sn.year}`;
+            if (seen.includes(key)) continue;
+            seen.push(key);
+            for (const m of c.members) addGrudge(galaxy, st, m, EXCHANGE_GRUDGE.sanction, 'sanction');
+        }
+    }
+}
+
+/**
+ * Yearly: every grudge decays by exchangeGrudgeDecay %, then the empire with the worst 19o ledger standing toward the
+ * Exchange (its causes about the Exchange: caught agents, traced sales and contracts — what passed between them) adds
+ * that standing (capped at reputationMax).
+ */
+export function exchangeGrudgeYearly(galaxy: Galaxy, st: ExchangeState): void {
+    const f = st.faction;
+    if (f === null) return;
+    const gr = (st.grudges ??= {});
+    const keep = 1 - P.grudgeDecay(galaxy) / 100;
+    for (const id of Object.keys(gr)) {
+        gr[Number(id)] *= keep;
+        if (gr[Number(id)] < 1e-6) delete gr[Number(id)];
+    }
+    let worst: Empire | null = null;
+    let worstSum = 0;
+    for (const e of normalEmpires(galaxy, f)) {
+        const sum = reputationSum(galaxy, e, f);
+        if (sum < worstSum) {
+            worst = e;
+            worstSum = sum;
+        }
+    }
+    if (worst !== null) addGrudge(galaxy, st, worst, Math.min(EXCHANGE_GRUDGE.reputationMax, -worstSum), 'reputation');
+}
+
+/** builtObjectKilledBy: an empire destroyed the station, a warship or a research station of the Exchange. */
+function onKilled(galaxy: Galaxy, bo: BuiltObject, destroyer: Empire | null): void {
+    const st = peekExchangeState(galaxy);
+    if (st === null || st.ended || st.faction === null || destroyer === null) return;
+    const mine = bo.actualEmpire === st.faction || st.warships.includes(bo) || st.researchStations.includes(bo) || st.station?.bo === bo;
+    if (mine) addGrudge(galaxy, st, destroyer, EXCHANGE_GRUDGE.attack, 'attack');
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -823,6 +957,7 @@ export function exchangePeriodic(galaxy: Galaxy): void {
     }
     sweepTreasury(st);
     maintainPacts(galaxy, st);
+    accrueGrudgesPeriodic(galaxy, st);
     reviewMissions(galaxy, st);
     assignAgents(galaxy, st);
     reviewContracts(galaxy, st);
@@ -891,11 +1026,20 @@ export function assignAgents(galaxy: Galaxy, st: ExchangeState): number {
     const targets = exchangeMissionTargets(galaxy, f);
     if (targets.length === 0) return 0;
     const types = missionTypes();
+    const grudged = exchangeGrudged(galaxy, st);
+    const gTypes = grudgeMissionTypes();
     let assigned = 0;
     for (const agent of agents(st)) {
         if (!idle(agent) || exchangeSpendable(st) < cost) continue;
         let m: IntelligenceMission | null = null;
         let victim: Empire | null = null;
+        // Grudged empires first: sabotage, assassination and technology theft.
+        for (let tries = 0; tries < grudged.length * gTypes.length && m === null; tries++) {
+            const gc = st.grudgeCursor ?? 0;
+            victim = grudged[Math.trunc(gc / gTypes.length) % grudged.length];
+            m = buildMission(galaxy, f, agent, gTypes[gc % gTypes.length], victim);
+            st.grudgeCursor = gc + 1;
+        }
         for (let tries = 0; tries < targets.length * types.length && m === null; tries++) {
             victim = targets[st.targetCursor % targets.length];
             const type = types[st.typeCursor % types.length];
@@ -949,6 +1093,7 @@ export function exchangeAgentCaught(galaxy: Galaxy, st: ExchangeState, victim: E
     if (f === null || st.station === null || !victim.active) return;
     const n = (st.catches[victim.empireId] ?? 0) + 1;
     st.catches[victim.empireId] = n;
+    addGrudge(galaxy, st, victim, EXCHANGE_GRUDGE.catch, 'catch');
     st.caughtLog.push({ date: galaxyStarDate(galaxy), victimId: victim.empireId, outcome });
     trimLog(st.caughtLog);
     const level = n >= 2 ? KNOWLEDGE_CONFIRMED : KNOWLEDGE_SUSPECTED;
@@ -965,17 +1110,13 @@ function pirates(galaxy: Galaxy): Empire[] {
     return galaxy.pirateEmpires.filter((e): e is Empire => e !== null && e.active && e.pirateEmpireBaseHabitat !== null);
 }
 
-/** A pirate faction would accept a Defend contract for `client` (it protects the client: PirateCheckAcceptDefendMission). */
-function defendable(galaxy: Galaxy, client: Empire): boolean {
-    return pirates(galaxy).some((pf) => obtainPirateRelation(pf, client).type === PirateRelationType.Protection);
-}
 /** A pirate faction would accept an Attack contract on `victim` (it does not protect it: PirateCheckAcceptAttackMission). */
 function attackable(galaxy: Galaxy, victim: Empire): boolean {
     return pirates(galaxy).some((pf) => obtainPirateRelation(pf, victim).type !== PirateRelationType.Protection);
 }
 
 /** Posts one contract (EmpireActivity in the Exchange's name, as postAttackOffers / MakeDefendOffersToPirates). */
-function postContract(galaxy: Galaxy, st: ExchangeState, kind: 'attack' | 'defend', victim: Empire, target: Habitat | BuiltObject, price: number): boolean {
+export function exchangePostContract(galaxy: Galaxy, st: ExchangeState, kind: 'attack' | 'defend', victim: Empire, target: Habitat | BuiltObject, price: number): boolean {
     const f = st.faction!;
     const type = kind === 'attack' ? EmpireActivityType.Attack : EmpireActivityType.Defend;
     if (f.pirateMissions.containsEquivalentTarget(target, type)) return false;
@@ -993,33 +1134,38 @@ function postContract(galaxy: Galaxy, st: ExchangeState, kind: 'attack' | 'defen
 }
 
 /**
- * Posts this period's contracts: Defend on the weaker side's colonies and ports (when a pirate faction protects it),
- * Attack on the stronger side's bases (when a pirate faction would take it). Bounded by live wars and their targets;
- * each contract only while money above the reserve and the open commitments covers its price.
+ * Posts this period's contracts: first Attack contracts on the bases of grudged empires (at war or not), then for each
+ * war Defend on the weaker side's colonies and ports (any client: pirates bid on Exchange-financed Defend contracts
+ * without protecting the client, the pirateDefendBidAllowed query; never for a grudged client) and Attack on the
+ * stronger side's bases (when a pirate faction would take it). Bounded by live wars / grudges and their targets; each
+ * contract only while money above the reserve and the open commitments covers its price.
  */
 export function postContracts(galaxy: Galaxy, st: ExchangeState): number {
     const f = st.faction;
     if (f === null || pirates(galaxy).length === 0) return 0;
     let posted = 0;
+    const attackBases = (victim: Empire): void => {
+        if (!attackable(galaxy, victim)) return;
+        for (const b of victim.builtObjects) {
+            if (b.hasBeenDestroyed || b.role !== BuiltObjectRole.Base || b.actualEmpire !== victim) continue;
+            const price = calculatePirateAttackPrice(galaxy, f, b);
+            if (!(price > 0) || !Number.isFinite(price) || exchangeSpendable(st) < price) continue;
+            if (exchangePostContract(galaxy, st, 'attack', victim, b, price)) posted++;
+        }
+    };
+    for (const e of exchangeGrudged(galaxy, st)) attackBases(e);
     const pairs = exchangeWarPairs(galaxy, f);
     for (const w of pairs) {
-        if (defendable(galaxy, w.weaker)) {
+        if (!exchangeIsGrudged(galaxy, st, w.weaker)) {
             const targets: (Habitat | BuiltObject)[] = [...w.weaker.colonies, ...w.weaker.spacePorts];
             for (const t of targets) {
                 if (t.hasBeenDestroyed) continue;
                 const price = calculatePirateDefendPrice(galaxy, f, t);
                 if (!(price > 0) || exchangeSpendable(st) < price) continue;
-                if (postContract(galaxy, st, 'defend', w.weaker, t, price)) posted++;
+                if (exchangePostContract(galaxy, st, 'defend', w.weaker, t, price)) posted++;
             }
         }
-        if (attackable(galaxy, w.stronger)) {
-            for (const b of w.stronger.builtObjects) {
-                if (b.hasBeenDestroyed || b.role !== BuiltObjectRole.Base || b.actualEmpire !== w.stronger) continue;
-                const price = calculatePirateAttackPrice(galaxy, f, b);
-                if (!(price > 0) || !Number.isFinite(price) || exchangeSpendable(st) < price) continue;
-                if (postContract(galaxy, st, 'attack', w.stronger, b, price)) posted++;
-            }
-        }
+        attackBases(w.stronger);
     }
     return posted;
 }
@@ -1333,8 +1479,8 @@ export function exchangeKnownSites(galaxy: Galaxy, empire: Empire): KnownThreatS
 // Registration
 // ---------------------------------------------------------------------------------------------------------------
 
-export const EXCHANGE_HANDLER_IDS = ['exchange.start', 'exchange.yearly', 'exchange.periodic', 'exchange.intel', 'exchange.removed', 'exchange.tariff'] as const;
-export const EXCHANGE_QUERY_IDS = ['exchange.research', 'exchange.noWar', 'exchange.missions', 'exchange.defendClient'] as const;
+export const EXCHANGE_HANDLER_IDS = ['exchange.start', 'exchange.yearly', 'exchange.periodic', 'exchange.intel', 'exchange.removed', 'exchange.tariff', 'exchange.killed'] as const;
+export const EXCHANGE_QUERY_IDS = ['exchange.research', 'exchange.noWar', 'exchange.missions', 'exchange.defendClient', 'exchange.defendBid'] as const;
 
 export function registerExchange(): void {
     registerScenarioGameStart({
@@ -1348,6 +1494,17 @@ export function registerExchange(): void {
     registerScenarioPeriodic({ id: 'exchange.periodic', flag: EXCHANGE_FLAG, periodDays: PERIOD_DAYS, order: 10, run: (g) => exchangePeriodic(g) });
     registerScenarioEvent({ id: 'exchange.intel', flag: EXCHANGE_FLAG, event: 'intelMissionCompleted', run: (g, e) => onIntelMissionCompleted(g, e.empire, e.mission) });
     registerScenarioEvent({ id: 'exchange.removed', flag: EXCHANGE_FLAG, event: 'builtObjectRemoved', run: (g, e) => onBuiltObjectRemoved(g, e.builtObject) });
+    registerScenarioEvent({ id: 'exchange.killed', flag: EXCHANGE_FLAG, event: 'builtObjectKilledBy', run: (g, e) => onKilled(g, e.builtObject, e.destroyer) });
+    registerScenarioQuery({
+        id: 'exchange.defendBid',
+        flag: EXCHANGE_FLAG,
+        query: 'pirateDefendBidAllowed',
+        run: (g, v, a) => {
+            if (v) return v;
+            const f = exchangeFaction(g);
+            return f !== null && a.activity.requestingEmpire === f && a.activity.type === EmpireActivityType.Defend;
+        },
+    });
     registerScenarioEvent({ id: 'exchange.tariff', flag: EXCHANGE_FLAG, event: 'contractInitiated', run: (g, e) => onContract(g, e.sellingPoint, e.destination, e.value) });
     registerScenarioQuery({ id: 'exchange.research', flag: EXCHANGE_FLAG, query: 'researchAsPirateFaction', run: (g, v, a) => v || (a.empire === exchangeFaction(g) && a.empire !== null) });
     registerScenarioQuery({

@@ -14,21 +14,37 @@ import type { Empire } from '../src/sim/empire';
 import { AutomationLevel } from '../src/sim/empire';
 import { runGameSeconds } from '../src/sim/tick/harness';
 import { stateDigest } from '../src/sim/tick/digest';
-import { gameYear, registerScenarioEvent, registerScenarioGameStart, registerScenarioPeriodic, registerScenarioQuery, registerScenarioYearly } from '../src/sim/scenario/hooks';
+import { gameYear, scenarioEmit, registerScenarioEvent, registerScenarioGameStart, registerScenarioPeriodic, registerScenarioQuery, registerScenarioYearly } from '../src/sim/scenario/hooks';
 import { galaxyStarDate } from '../src/sim/tick/simTime';
 import { setGameEndHandler, type GameEndEventArgs } from '../src/sim/victory';
 import { declareWar } from '../src/sim/diplomacyTick';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from '../src/sim/diplomacy';
 import { PirateRelationType, changePirateRelation, obtainPirateRelation } from '../src/sim/pirateRelations';
 import { EmpireActivityType } from '../src/sim/pirates/empireActivity';
-import { completePirateMission, reviewPirateDefendMissions } from '../src/sim/pirates/missionsMarket';
-import { setupBlockadeBuiltObject } from '../src/sim/fleets/blockades';
+import { totalMobileMilitaryFirepowerNotAttackingDefending, completePirateMission, pirateCheckAcceptDefendMission, pirateCheckMissionsOnOffer, reviewPirateDefendMissions, reviewPirateMissionsAndAssign, calculatePirateDefendPrice } from '../src/sim/pirates/missionsMarket';
+import { EmpireActivity } from '../src/sim/pirates/empireActivity';
+import { ShipGroup, empireShipGroups } from '../src/sim/fleets/shipGroup';
+import { BuiltObject } from '../src/sim/builtObject';
+import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
+import { latestDesignsFindNewestCanBuild } from '../src/sim/pirates';
+import { applyReputation } from '../src/sim/scenario/reputation/ledger';
+import { councilState, type Council } from '../src/sim/scenario/emergent/council';
+import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
+import { estimatedDefensiveForceRequired } from '../src/sim/troops';
+import { cancelBlockadeBuiltObject, setupBlockadeBuiltObject } from '../src/sim/fleets/blockades';
 import { characterMission } from '../src/sim/espionage';
 import { answerScenarioDecision, pendingScenarioDecisions } from '../src/sim/scenario/decisions';
 import { peekSecurityState } from '../src/sim/scenario/security/registry';
 import { annualResearchPotential } from '../src/sim/researchTick';
 import {
     EXCHANGE_BUY_INTEL_DECISION,
+    EXCHANGE_GRUDGE,
+    accrueGrudgesPeriodic,
+    exchangeGrudge,
+    exchangeGrudgeYearly,
+    exchangeMissionTargets,
+    exchangePostContract,
+    exchangeIsGrudged,
     EXCHANGE_CODE_CONTAINED,
     EXCHANGE_HANDLER_IDS,
     EXCHANGE_QUERY_IDS,
@@ -340,5 +356,163 @@ describe('The Exchange: forced appearance on seed 1 (shared game, in order)', ()
         setGameEndHandler(g, null);
         runGameSeconds(game, 65); // the galaxy runs on without it
         expect(peekExchangeState(g)!.ended).toBe(true);
+    }, 600000);
+});
+
+describe('The Exchange: Defend contracts for any client, grudges (shared game, in order)', () => {
+    let game: Game;
+    let g: Galaxy;
+    let st: ExchangeState;
+    let f: Empire;
+    const now = (): number => galaxyStarDate(g);
+
+    it('setup: forced appearance', () => {
+        ({ game, g } = exGame());
+        forceYear(g);
+        runGameSeconds(game, 65);
+        st = exchangeState(g);
+        f = st.faction!;
+        expect(f).not.toBeNull();
+    }, 600000);
+
+    it('Defend: a pirate bids on an Exchange-financed contract for a colony it does not protect, and is paid; a normal empire\'s is refused', () => {
+        // A pirate faction with fleets and a client colony within its stock defend range (Empire.2.cs 2045) it does not protect.
+        // The nearest in-range unprotected client colony of a pirate faction (Empire.2.cs 2045's range), the one needing
+        // the least defence; the faction gets warships (its own newest design, bought at its base) until it is strong enough.
+        let pick: { pf: Empire; client: Empire; colony: (typeof f.colonies)[number]; need: number } | null = null;
+        const range = Math.max(g.sectorSize * 2.0, g.sizeX * 0.2);
+        for (const pf of g.pirateEmpires.filter((x) => x.active && x.pirateEmpireBaseHabitat !== null)) {
+            for (const client of normalEmpires(g, f)) {
+                if (obtainPirateRelation(pf, client).type === PirateRelationType.Protection) continue;
+                for (const h of client.colonies) {
+                    const d = g.calculateDistance(pf.pirateEmpireBaseHabitat!.xpos, pf.pirateEmpireBaseHabitat!.ypos, h.xpos, h.ypos);
+                    const need = estimatedDefensiveForceRequired(g, h, false, g.difficultyLevel);
+                    if (d < range && (pick === null || need < pick.need)) pick = { pf, client, colony: h, need };
+                }
+            }
+        }
+        expect(pick).not.toBeNull();
+        const { pf, client, colony, need } = pick!;
+        const design = latestDesignsFindNewestCanBuild(pf, BuiltObjectSubRole.Frigate) ?? latestDesignsFindNewestCanBuild(pf, BuiltObjectSubRole.Escort)!;
+        const fleet = new ShipGroup(g);
+        fleet.empire = pf;
+        for (let i = 0; i < 60 && totalMobileMilitaryFirepowerNotAttackingDefending(pf.builtObjects).firepower <= need; i++) {
+            const bo = new BuiltObject(design, `Test raider ${i}`, g, true);
+            bo.empire = pf;
+            pf.addBuiltObjectToGalaxy(bo, pf.pirateEmpireBaseHabitat, false, true, -2000000001, -2000000001, false);
+            fleet.ships.push(bo);
+            bo.shipGroup = fleet;
+        }
+        fleet.leadShip = fleet.ships[0] ?? null;
+        empireShipGroups(pf).push(fleet);
+        expect(totalMobileMilitaryFirepowerNotAttackingDefending(pf.builtObjects).firepower).toBeGreaterThan(need);
+        const price = calculatePirateDefendPrice(g, f, colony);
+        // A normal empire's own Defend contract on the same colony: refused (no protection pact).
+        const own = new EmpireActivity(client, client, now() + 600000, EmpireActivityType.Defend, colony, price);
+        expect(pirateCheckAcceptDefendMission(g, pf, own, 1e12)).toBe(false);
+        // The Exchange's: accepted by the same stock check (the distance / strength tests still apply).
+        st.purse = st.reserve + 10000000;
+        expect(exchangePostContract(g, st, 'defend', client, colony, price)).toBe(true);
+        const act = f.pirateMissions.items.find((a) => a !== null && a.target === colony && a.type === EmpireActivityType.Defend)!;
+        expect(pirateCheckAcceptDefendMission(g, pf, act, 1e12)).toBe(true);
+        // Too far: the same contract on a colony outside the faction's range is refused.
+        const far = normalEmpires(g, f).flatMap((e) => e.colonies).find((h) => g.calculateDistance(pf.pirateEmpireBaseHabitat!.xpos, pf.pirateEmpireBaseHabitat!.ypos, h.xpos, h.ypos) >= Math.max(g.sectorSize * 2.0, g.sizeX * 0.2));
+        if (far !== undefined) expect(pirateCheckAcceptDefendMission(g, pf, new EmpireActivity(far.empire, f, now() + 600000, EmpireActivityType.Defend, far, price), 1e12)).toBe(false);
+        // The stock bid (pirate regular block), the stock assignment after the bid time, the stock completion.
+        pf.policy!.bidOnPirateDefendMissions = true;
+        for (const a of [...pf.pirateMissions.items]) if (a !== null && a.type !== EmpireActivityType.Smuggle) pf.pirateMissions.remove(a); // free a fleet slot
+        pirateCheckMissionsOnOffer(g, pf, now());
+        expect(act.assignedEmpire).toBe(pf);
+        reviewPirateMissionsAndAssign(g, now(), 61);
+        expect(act.bidTimeRemaining).toBe(0);
+        expect(pf.pirateMissions.items).toContain(act);
+        act.expiryDate = now() - 1;
+        const before = pf.stateMoney;
+        reviewPirateDefendMissions(g, f, now());
+        expect(pf.stateMoney - before).toBeCloseTo(act.price, 6);
+    }, 600000);
+
+    it('grudges accrue from every source and decay yearly', () => {
+        const others = normalEmpires(g, f).filter((e) => e !== g.playerEmpire);
+        const [e1, e2, e3, e4] = [others[0], others[1], others[2 % others.length], others[others.length - 1]];
+        st.grudges = {};
+        const gr = (e: Empire): number => exchangeGrudge(st, e);
+        // A caught agent.
+        exchangeAgentCaught(g, st, e1, 5);
+        expect(gr(e1)).toBe(EXCHANGE_GRUDGE.catch);
+        // A blockade of the station (per period it stands).
+        expect(setupBlockadeBuiltObject(g, e2, st.station!.bo)).toBe(true);
+        accrueGrudgesPeriodic(g, st);
+        expect(gr(e2)).toBe(EXCHANGE_GRUDGE.blockade);
+        cancelBlockadeBuiltObject(g, e2, st.station!.bo);
+        // An attack: the stock kill signal on one of its objects.
+        const before3 = gr(e3);
+        scenarioEmit(g, 'builtObjectKilledBy', { builtObject: st.station!.bo, destroyer: e3 });
+        expect(gr(e3) - before3).toBe(EXCHANGE_GRUDGE.attack);
+        // A council sanction (counted once per sanction, for every member).
+        const c = { id: 991, members: [e1, e4], sanctions: [{ target: f, kind: 'sanction', resourceId: -1, year: gameYear(now()) }] } as unknown as Council;
+        councilState(g).councils.push(c);
+        const b1 = gr(e1);
+        const b4 = gr(e4);
+        accrueGrudgesPeriodic(g, st);
+        accrueGrudgesPeriodic(g, st);
+        expect(gr(e1) - b1).toBe(EXCHANGE_GRUDGE.sanction);
+        expect(gr(e4) - b4).toBe(EXCHANGE_GRUDGE.sanction);
+        councilState(g).councils.splice(councilState(g).councils.indexOf(c), 1);
+        // The player refusing the intel offer repeatedly (the second refusal on).
+        const player = g.playerEmpire!;
+        const rival = others.find((e) => e.colonies.length > 0)!;
+        if (obtainDiplomaticRelation(player, rival).type !== DiplomaticRelationType.War) declareWar(g, player, rival);
+        const d1 = offerPlayerIntel(g, st)!;
+        answerScenarioDecision(g, d1.id, 'decline', 'player');
+        expect(gr(player)).toBe(0);
+        const d2 = offerPlayerIntel(g, st)!;
+        answerScenarioDecision(g, d2.id, 'decline', 'player');
+        expect(gr(player)).toBe(EXCHANGE_GRUDGE.refusal);
+        // The worst 19o ledger standing toward the Exchange, and the yearly decay.
+        g.scenario!.flags['reputationLedger'] = true;
+        applyReputation(g, e4, f, -70, { cause: 'exchange.agentCaught', source: '19f' });
+        const snap = { ...st.grudges };
+        exchangeGrudgeYearly(g, st);
+        for (const [id, v] of Object.entries(snap)) {
+            const want = v * 0.8 + (Number(id) === e4.empireId ? 70 : 0);
+            expect(st.grudges![Number(id)]).toBeCloseTo(want, 6);
+        }
+        expect(st.grudgeLog!.map((x) => x.source)).toEqual(expect.arrayContaining(['catch', 'blockade', 'attack', 'sanction', 'refusal', 'reputation']));
+        g.scenario!.flags['reputationLedger'] = false;
+    }, 600000);
+
+    it('targeting: a grudged empire at peace gets missions and Attack contracts first; a non-grudged peaceful one none; never funded or sold to', () => {
+        const peaceful = normalEmpires(g, f).filter((e) => e !== g.playerEmpire && e.colonies.length > 0 && !normalEmpires(g, f).some((o) => o !== e && obtainDiplomaticRelation(e, o).type === DiplomaticRelationType.War));
+        st.grudges = {};
+        const baseTargets = exchangeMissionTargets(g, f);
+        const p2 = peaceful.find((e) => !baseTargets.includes(e));
+        const p1 = peaceful.find((e) => e !== p2);
+        expect(p1).toBeDefined();
+        expect(p2).toBeDefined();
+        st.grudges[p1!.empireId] = 500;
+        expect(exchangeIsGrudged(g, st, p1!)).toBe(true);
+        expect(exchangeMissionTargets(g, f)[0]).toBe(p1);
+        expect(exchangeMissionTargets(g, f)).not.toContain(p2);
+        // Agents: all free, a rich purse.
+        for (const m of st.missions) m.agent.mission = null;
+        st.missions = [];
+        st.purse = st.reserve + 10000000;
+        const n = assignAgents(g, st);
+        expect(n).toBeGreaterThan(0);
+        expect(st.missions.every((m) => m.victim === p1)).toBe(true);
+        expect(st.missions.some((m) => m.victim === p2)).toBe(false);
+        const T = [5, 10, 4, 1]; // SabotageColony, AssassinateCharacter, StealTechData, SabotageConstruction
+        expect(st.missions.every((m) => T.includes(m.mission.type))).toBe(true);
+        // Contracts: Attack on the grudged empire's bases (at peace), nothing on the non-grudged one.
+        postContracts(g, st);
+        const mine = f.pirateMissions.items.filter((a) => a !== null && a.requestingEmpire === f);
+        if (g.pirateEmpires.some((pf) => pf.active && obtainPirateRelation(pf, p1!).type !== PirateRelationType.Protection) && p1!.builtObjects.some((b) => b.role === BuiltObjectRole.Base && !b.hasBeenDestroyed)) {
+            expect(mine.some((a) => a!.type === EmpireActivityType.Attack && a!.targetEmpire === p1)).toBe(true);
+        }
+        expect(mine.some((a) => a!.targetEmpire === p2)).toBe(false);
+        // Never sold intel.
+        p1!.stateMoney = 1e9;
+        expect(sellIntel(g, st, p1!, p2!, 'galaxyMap', 1000, 'ai')).toBe(false);
     }, 600000);
 });

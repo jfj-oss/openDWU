@@ -1182,7 +1182,10 @@ export function pirateCheckAcceptDefendMission(galaxy: Galaxy, empire: Empire, d
     if (!(defendMission.requestingEmpire === galaxy.independentEmpire || (pirateRelation !== null && pirateRelation.type !== PirateRelationType.NotMet && pirateRelation.evaluation >= -30))) return false;
     let pirateRelation2: PirateRelation | null = null;
     if (defendMission.targetEmpire !== galaxy.independentEmpire && defendMission.targetEmpire !== null) pirateRelation2 = obtainPirateRelation(empire, defendMission.targetEmpire);
-    if (!(defendMission.targetEmpire === galaxy.independentEmpire || (pirateRelation2 !== null && pirateRelation2.type === PirateRelationType.Protection))) return false;
+    if (!(defendMission.targetEmpire === galaxy.independentEmpire || (pirateRelation2 !== null && pirateRelation2.type === PirateRelationType.Protection))) {
+        // Mod layer 19f #8: a scenario may let the faction bid without protecting the client (stock: refused).
+        if (galaxy.scenario === null || !scenarioQuery(galaxy, 'pirateDefendBidAllowed', false, { pirate: empire, activity: defendMission })) return false;
+    }
     const coords = defendMission.resolveTargetCoordinates();
     if (!coords.ok) return false;
     const num2 = galaxy.calculateDistance(baseHabitat.xpos, baseHabitat.ypos, coords.x, coords.y);

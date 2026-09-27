@@ -254,7 +254,7 @@ ships are gone (`teardownIfDead`).
 **Concept.** A vast neutral trading station, open to all, run by its own faction: it funds the weaker side of every war,
 spies on the strong, sells stolen intelligence, hires pirates in its own name and guards its system. Win: trace it,
 have the council sanction it, blockade or destroy the station.
-**Params** (scenarios/exchange/scenario.json): `exchangeYear` 7, `exchangeTechLevelBonus` 1, `exchangeIncomeStep`
+**Params** (scenarios/exchange/scenario.json): `exchangeGrudgeDecay` 20, `exchangeGrudgeThreshold` 100, `exchangeYear` 7, `exchangeTechLevelBonus` 1, `exchangeIncomeStep`
 100000, `exchangeIncomeCap` 1000000, `exchangeTariffPct` 5, `exchangeReservePct` 20, `exchangeFundPct` 5,
 `exchangeAgents` 6, `exchangeAgentsMax` 20, `exchangeMissionCost` 10000 (an agent hire = 5 missions),
 `exchangeIntelPrice` 20000, `exchangeFleetCap` 20, `exchangeBlockadeDays` 120.
@@ -296,8 +296,10 @@ have the council sanction it, blockade or destroy the station.
    `exchange.buyIntel` "Buy intelligence on <rival> for N credits" (options: decline / galaxy map / operations map /
    tech; 60 days). Each sale is a trace (ledger cause `exchange.boughtIntel` −10, rival → buyer) that lands with an
    event-log line once the rival knows the Exchange (≥ suspected).
-6. **Contracts** (periodic, stock pirate market): Defend contracts on the weaker side's colonies and space ports
-   (when some pirate faction protects it — the stock `PirateCheckAcceptDefendMission` rule), Attack contracts on the
+6. **Contracts** (periodic, stock pirate market): Defend contracts on the weaker side's colonies and space ports (any
+   client: the new `pirateDefendBidAllowed` query in `pirateCheckAcceptDefendMission` lets a pirate faction bid on an
+   Exchange-financed Defend contract without protecting the client — the stock range and strength tests still apply,
+   and a normal empire's contract keeps the stock protection rule), Attack contracts on the
    stronger side's bases (when some pirate faction does not protect it), `EmpireActivity(target owner, Exchange, 1
    year)` added to the Exchange's and the galaxy's lists with the stock prices and offer messages. Stock bidding,
    expiry and completion apply; a Defend contract pays although the target is the client's through the new
@@ -318,7 +320,18 @@ have the council sanction it, blockade or destroy the station.
    caught agents. A stock blockade of the station by an empire with it confirmed for `exchangeBlockadeDays` (30-day
    periods), or the station destroyed → collapse: purse lost, fleets disbanded, `empireCompleteTeardown` (as a defeated
    faction), NewsNet, +20 bias toward the exposer, game end 2018 (with `threatsGameEnd`).
-**Measured (seed 1, age 3, soak)**: research potential 10000 at the moment it appears (the station alone: √1 × 10000), 204495 after its
+11. **Grudges** (`st.grudges`, empire id → points): +25 per period an empire blockades the station, +30 per station /
+   warship / research station it destroys (`builtObjectKilledBy`), +40 per caught agent, +60 to every member of a
+   council that sanctions it (once per sanction), +25 per refused intel offer from the player's second refusal on, and
+   yearly the empire with the worst 19o ledger standing toward the Exchange adds that standing (max 100). Yearly decay
+   `exchangeGrudgeDecay` % (20). Above `exchangeGrudgeThreshold` (100) an empire is a covert target at war or not: first
+   in the mission target list (its agents run SabotageColony / AssassinateCharacter / StealTechData /
+   SabotageConstruction against it first), Attack contracts on its bases are posted first, and it is never funded,
+   gifted maps, defended, sold intel or offered intel. No message goes to the target; the stock mission messages and
+   the traces (event log on discovery) are all it sees.
+   The Exchange also merges every empire's galaxy map at appearance and yearly (a trading hub hears everything): its
+   agents need known colonies to choose sabotage targets.
+**Measured (seed 1, age 3, soak, before the yearly map merge of 11)**: research potential 10000 at the moment it appears (the station alone: √1 × 10000), 204495 after its
 first period (station + 2 research stations + 3 warships: √6 × 10000 + 180000 of station labs), 227958 five years
 later (23 built objects: 20 warships, 2 research stations, the station; 73 techs known). No wars broke out on seed 1
 in those 5 years, so no funding / contracts / sales there (the direct tests declare wars).

@@ -18,6 +18,8 @@
     { "name": "exchangeMissionCost", "label": "Cost of one agent mission (credits; a hire costs five)", "default": 10000, "min": 0, "max": 1000000 },
     { "name": "exchangeIntelPrice", "label": "Base price of intelligence on a rival (credits, scaled by its size)", "default": 20000, "min": 0, "max": 1000000 },
     { "name": "exchangeFleetCap", "label": "Warships in its two patrol fleets at most", "default": 20, "min": 0, "max": 100 },
+    { "name": "exchangeGrudgeDecay", "label": "Grudge decay per year (%)", "default": 20, "min": 0, "max": 100 },
+    { "name": "exchangeGrudgeThreshold", "label": "Grudge above which an empire becomes a covert target", "default": 100, "min": 0, "max": 100000 },
     { "name": "exchangeBlockadeDays", "label": "Cumulative blockade days that close the Exchange", "default": 120, "min": 1, "max": 1000 }
   ]
 }
