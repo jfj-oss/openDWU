@@ -403,3 +403,29 @@ Flag off = byte-identical (the log is a scenario-side mirror). ~1.5 agent-days (
 ## 19q — Knowledge model (accepted, later): unified suspected/confirmed/cleared reveal levels across fog, leads, wreck
 fields, the treasure beacon, herd sightings, threat overlays and story clues; one overlay manager; a sightings feed. Effort: medium (~1 agent-day);
 build after 19d2 (unrest plumbing) alongside 19g-7 rim fauna; 19a/19c tests must still pass with 19h on.
+
+## 19l — Livelier mid game (ACCEPTED by the user 2026-09-26 — "do only new ideas"; from the 10-year seed-1 run: 1 war, 0 invasions in 10 years)
+1. Ambition pressure: a per-empire drive that rises with idle military strength (warships not in a war, years since the
+   last war) and falls with each war/loss; above a threshold the war-review gates get a scenario-side bias (attitude
+   threshold relaxed by ambition × param) so a strong, peaceful AI eventually goes looking for a fight. Fixes the
+   "14 warships, 1 colony, forever" pattern. Data-driven; flag off = byte-identical. DONE (livelyGalaxy.ts).
+2. Border friction: overlapping territory (territory grid) generates yearly incidents — mining-station disputes, blockades,
+   seizures — fed into the 19d3 crisis machinery so tension builds toward war instead of appearing from nowhere. DONE.
+3. Smaller invasions: scenario option lowering the C# ≥10-ship troop-fleet minimum (Empire.8.cs 1047 PrepareFleetsForWar)
+   for weak targets (target troop strength ≤ param), so invasions happen in the mid game; off by default. DONE.
+4. Pirate ambition: rich factions (money/ships above params) graduate from raids to seizing an independent colony as a
+   permanent base and start acting like a small empire (colony defence, freighters), producing a real underworld enemy.
+   DONE (pirateAmbition.ts): ownership via the existing Empire.1.cs TakeOwnershipOfColony (combat/ownership.ts
+   takeOwnershipOfColonyFull, as scenario/empireMidGame.ts's capital hand-over already does); defence and freighters are
+   stock behaviour unlocked by ownership + a PirateColonyControl record (Empire.9.cs 1763-1770 resolveLocationsToDefend,
+   already read every pirate tick); the "threat" empires read is the existing pirate-relation evaluation ledger
+   (Empire.8.cs 2512 ChangePirateEvaluation, RaidsAgainstOurColonies) for empires that have met the faction; one new
+   ambitious faction per N years (param), a colony cap (param).
+5. Living calendar: festivals, elections, coronations as yearly events per empire with small diplomacy/approval effects
+   and messages, so the feed has texture between crises; ties to 19g-4 succession and the 19i rim calendar idea.
+   DONE (livingCalendar.ts): festival approval via the empireApprovalRating query; election (election-manner
+   governments) / coronation (Monarchy) via the existing leader-change path (Empire.6.cs 4873/4878 PerformChangeLeader,
+   characterRuntime.ts, honouring its own NextAllowableLeaderChangeDate cooldown); war/wonder anniversaries bump a
+   mutual-defense ally's EmpireEvaluation.bias, or deepen a free-trade partner one step via the ported
+   Empire.8.cs ChangeDiplomaticRelation (diplomacyTick.ts).
+Effort: 1, 3 cheap (data + one gate each); 2, 4 medium; 5 cheap. Build after the 19d wave is merged.

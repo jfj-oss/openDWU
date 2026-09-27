@@ -35,3 +35,16 @@ Lively Demil Title;Demilitarisation Broken
 Lively Demil Broken Victim;The {0} have sent warships into {1} in breach of our peace treaty! We have a just cause for war.
 Lively Demil Broken Own;Our warships have entered {1}, which we agreed to keep demilitarised. The {0} consider the treaty broken.
 Lively Demil Broken News;The {0} have broken their demilitarisation treaty with the {1}.
+Lively Pirate Ambition Title;Underworld Ambition
+Lively Pirate Ambition Own;Our coffers are full and our fleets are strong: we seize {0} outright and make it our own.
+Lively Pirate Ambition News;The {0} has seized the colony of {1}, turning protection money into permanent territory.
+Lively Festival Title;Festival
+Lively Festival Own;Celebrations sweep our colonies this year, lifting spirits across the empire.
+Lively Election News;Voters go to the polls across the {0}.
+Lively Coronation News;A new sovereign is crowned in the {0}.
+Lively Anniversary War Title;War Anniversary
+Lively Anniversary War Own;We mark the anniversary of a war that shaped our history, honouring the allies who stood with us.
+Lively Anniversary War News;The {0} marks the anniversary of a war that shaped its history.
+Lively Anniversary Wonder Title;Wonder Anniversary
+Lively Anniversary Wonder Own;We celebrate the anniversary of a great wonder's dedication.
+Lively Anniversary Wonder News;The {0} celebrates the anniversary of a great wonder's dedication.

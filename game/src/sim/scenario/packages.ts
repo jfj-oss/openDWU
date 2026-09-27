@@ -31,4 +31,6 @@ import './emergent/council'; // 19d8 galactic council (flag galacticCouncil)
 import './wreckage/wreckage'; // 19e-7 battle wreckage & salvage (flag wreckage)
 import './lively/peaceTerms';
 import './lively/warGoals';
+import './lively/pirateAmbition';
+import './lively/livingCalendar';
 export {};
