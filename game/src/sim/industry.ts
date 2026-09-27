@@ -228,7 +228,10 @@ export function prioritizeEmpireResourceNeeds(
         if (!empire.visibility.checkSystemExplored(i)) continue;
         // SystemVisibility[i].SystemStar; _Galaxy.FastFindNearestSpacePort(star.Xpos, star.Ypos, this).
         const systemStar = galaxy.systems[i].systemStar;
-        const builtObject = fastFindNearestSpacePort(galaxy, systemStar.xpos, systemStar.ypos, empire);
+        // Perf: the nearest space port (a scan of empire.spacePorts) is only read for a habitat that passes the filters
+        // below, so it is found on first use. Nothing in this loop changes spacePorts or positions: same result.
+        let builtObject: BuiltObject | null = null;
+        let builtObjectDone = false;
         const habitats = galaxy.systemHabitatsOf(systemStar.systemIndex);
         for (let j = 0; j < habitats.length; j++) {
             const habitat = habitats[j];
@@ -267,6 +270,10 @@ export function prioritizeEmpireResourceNeeds(
                 } else {
                     num += resourceList[k].sortTag * 1000.0;
                 }
+            }
+            if (!builtObjectDone) {
+                builtObject = fastFindNearestSpacePort(galaxy, systemStar.xpos, systemStar.ypos, empire);
+                builtObjectDone = true;
             }
             if (!flag2) {
                 if (builtObject !== null) {

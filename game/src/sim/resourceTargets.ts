@@ -184,7 +184,13 @@ export function checkEmpireTerritoryCanBuildAtHabitat(galaxy: Galaxy, empire: Em
     if (disputed) return true;
     if (num >= 0 && num !== empire.empireId) {
         // Galaxy.Empires.GetByEmpireId (pirate factions live only in PirateEmpires).
-        const byEmpireId = galaxy.empires.find((e) => e.empireId === num) ?? null;
+        let byEmpireId: Empire | null = null; // first match, as Array.find (plain loop: no closure per call)
+        for (let i = 0; i < galaxy.empires.length; i++) {
+            if (galaxy.empires[i].empireId === num) {
+                byEmpireId = galaxy.empires[i];
+                break;
+            }
+        }
         if (byEmpireId !== null) {
             if (empire.pirateEmpireBaseHabitat !== null || byEmpireId.pirateEmpireBaseHabitat !== null) return true;
             // Galaxy.cs 3659-3663: ObtainDiplomaticRelation (Empire.4.cs 140; creates a NotMet relation on first contact).
@@ -367,7 +373,11 @@ export function identifyResourceCentres(galaxy: Galaxy, empire: Empire, filterOu
         }
         if (flag4 || flag5) continue;
         let habitatList = galaxy.systemHabitatsOf(k);
-        const stellarObject = findNearest(stellarObjectList, star.xpos, star.ypos);
+        // Perf: FindNearest over the empire's ports / large colonies (O(colonies)) is only needed for a habitat that
+        // passes every filter below, so it is computed on first use. It reads only stellarObjectList (local, not changed
+        // after it is built) and positions, which nothing in this loop moves — same value as computing it here.
+        let stellarObject: Positioned | null = null;
+        let stellarObjectDone = false;
         let flag6 = false;
         if (star.category === HabitatCategoryType.GasCloud) {
             habitatList = [star];
@@ -405,6 +415,10 @@ export function identifyResourceCentres(galaxy: Galaxy, empire: Empire, filterOu
             num5 = num <= 0 ? calculateCurrentStrategicResourceValue(galaxy, habitat3) : calculateCurrentCompleteResourceValue(galaxy, habitat3);
             let x = 0.0;
             let y = 0.0;
+            if (!stellarObjectDone) {
+                stellarObject = findNearest(stellarObjectList, star.xpos, star.ypos);
+                stellarObjectDone = true;
+            }
             if (stellarObject !== null) {
                 x = stellarObject.xpos;
                 y = stellarObject.ypos;

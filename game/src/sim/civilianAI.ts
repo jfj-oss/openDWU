@@ -113,7 +113,7 @@ import { Population, PopulationList } from './population';
 import { ColonyPopulationPolicy } from './data/policy';
 import { ComponentCategoryType } from './data/policies';
 import { ShipDesignFocus } from './researchSystem';
-import { netSort } from './netSort';
+import { LazyNetSortOrder, netSort } from './netSort';
 import { GalaxyLocationType, type GalaxyLocation } from './galaxyLocation';
 import { ForceStructureProjectionList } from './forceStructureProjection';
 import type { ManufacturingQueue } from './manufacturingQueue';
@@ -2982,11 +2982,17 @@ function getFirstHabitatWithinRange(list: readonly Habitat[], x: number, y: numb
     return null;
 }
 
-/** Array.Sort(keys, items) on the candidate stars: .NET introsort over the keys, items moved along. */
-function sortHabitatsByKey(habitatList: Habitat[], keys: number[]): Habitat[] {
-    const pairs = habitatList.map((h, i) => ({ h, k: keys[i] }));
-    netSort(pairs, (a, b) => (a.k < b.k ? -1 : a.k > b.k ? 1 : 0));
-    return pairs.map((p) => p.h);
+/**
+ * Array.Sort(keys, items) on the candidate stars (.NET introsort over the keys, items moved along) as positions into
+ * the item list, lazily (LazyNetSortOrder: same order as the full netSort, which it falls back to at the first tie).
+ * Perf: the callers stop at the first system with a result.
+ */
+function lazyHabitatOrder(keys: number[]): LazyNetSortOrder {
+    return new LazyNetSortOrder(keys, () => {
+        const pairs = keys.map((k, i) => ({ i, k }));
+        netSort(pairs, (a, b) => (a.k < b.k ? -1 : a.k > b.k ? 1 : 0));
+        return pairs.map((p) => p.i);
+    });
 }
 
 /**
@@ -3017,11 +3023,11 @@ export function fastFindNearestUnexploredHabitat(galaxy: Galaxy, x: number, y: n
                 habitatList.push(systemInfo.systemStar);
             }
         }
-        const array = sortHabitatsByKey(habitatList, list);
-        for (let j = 0; j < array.length; j++) {
+        const order = lazyHabitatOrder(list);
+        for (let j = order.next(); j >= 0; j = order.next()) {
             let habitat: Habitat | null = null;
             let num3 = Number.MAX_VALUE;
-            const habitat2 = array[j];
+            const habitat2 = habitatList[j];
             if (habitat2 == null) continue;
             const systemInfo2 = galaxy.systems[habitat2.systemIndex];
             if (systemInfo2 == null || systemInfo2.systemStar == null || systemInfo2.habitats == null) continue;
@@ -3103,14 +3109,15 @@ export function fastFindNearestUnexploredHabitatInSector(galaxy: Galaxy, x: numb
             habitatList.push(systemInfo.systemStar);
         }
     }
-    const array = sortHabitatsByKey(habitatList, list);
-    for (let j = 0; j < array.length; j++) {
+    const order = lazyHabitatOrder(list);
+    for (let j0 = order.next(); j0 >= 0; j0 = order.next()) {
+        const star = habitatList[j0];
         let habitat: Habitat | null = null;
         let num3 = Number.MAX_VALUE;
-        const sys = galaxy.systems[array[j].systemIndex];
-        const sysHabitats = galaxy.systemHabitatsOf(array[j].systemIndex); // C# Systems[].Habitats (no star), as in fastFindNearestUnexploredHabitat
+        const sys = galaxy.systems[star.systemIndex];
+        const sysHabitats = galaxy.systemHabitatsOf(star.systemIndex); // C# Systems[].Habitats (no star), as in fastFindNearestUnexploredHabitat
         if (sys.systemStar.category === HabitatCategoryType.Star && sysHabitats.length === 0) {
-            const status = systemVisibility[array[j].systemIndex].status;
+            const status = systemVisibility[star.systemIndex].status;
             if (status === SystemVisibilityStatus.Unexplored || status === SystemVisibilityStatus.Undefined) {
                 const systemStar = sys.systemStar;
                 const num4 = galaxy.calculateDistanceSquared(x, y, systemStar.xpos, systemStar.ypos);
@@ -3119,10 +3126,10 @@ export function fastFindNearestUnexploredHabitatInSector(galaxy: Galaxy, x: numb
                     num3 = num4;
                 }
             } else {
-                systemVisibility[array[j].systemIndex].totallyExplored = true;
+                systemVisibility[star.systemIndex].totallyExplored = true;
             }
         } else if (sys.systemStar.category === HabitatCategoryType.GasCloud) {
-            const status2 = systemVisibility[array[j].systemIndex].status;
+            const status2 = systemVisibility[star.systemIndex].status;
             if (status2 === SystemVisibilityStatus.Unexplored || status2 === SystemVisibilityStatus.Undefined) {
                 const systemStar2 = sys.systemStar;
                 const num5 = galaxy.calculateDistanceSquared(x, y, systemStar2.xpos, systemStar2.ypos);
@@ -3131,7 +3138,7 @@ export function fastFindNearestUnexploredHabitatInSector(galaxy: Galaxy, x: numb
                     num3 = num5;
                 }
             } else {
-                systemVisibility[array[j].systemIndex].totallyExplored = true;
+                systemVisibility[star.systemIndex].totallyExplored = true;
             }
         } else {
             let flag = false;
@@ -3147,7 +3154,7 @@ export function fastFindNearestUnexploredHabitatInSector(galaxy: Galaxy, x: numb
                     }
                 }
             }
-            if (!flag) systemVisibility[array[j].systemIndex].totallyExplored = true;
+            if (!flag) systemVisibility[star.systemIndex].totallyExplored = true;
         }
         if (habitat !== null) return habitat;
     }

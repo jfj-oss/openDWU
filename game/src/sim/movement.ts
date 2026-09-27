@@ -701,8 +701,7 @@ export function updatePosition(galaxy: Galaxy, builtObject: BuiltObject): void {
     if (nearestSystem !== null && galaxy.calculateDistanceSquared(ship.xpos, ship.ypos, nearestSystem.xpos, nearestSystem.ypos) < (MAX_SOLAR_SYSTEM_SIZE + 500.0) * (MAX_SOLAR_SYSTEM_SIZE + 500.0)) {
         ship.nearestSystemStar = nearestSystem;
     }
-    const galaxyIndex = galaxy.resolveIndex(ship.xpos, ship.ypos);
-    updateIndexesForMovement(galaxy, ship, galaxyIndex.x, galaxyIndex.y, false);
+    updateIndexesForMovement(galaxy, ship, galaxy.resolveIndexX(ship.xpos), galaxy.resolveIndexY(ship.ypos), false);
 }
 
 /** BaconBuiltObject.cs 4651 CheckFuelHandicap (BuiltObject.2.cs 6978). */

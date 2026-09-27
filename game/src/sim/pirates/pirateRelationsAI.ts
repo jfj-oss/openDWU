@@ -464,12 +464,12 @@ export function generateSaleableInfoForEmpire(galaxy: Galaxy, pirateFaction: Emp
         const habitat2 = findNearestUnexploredSystem(galaxy, buyingEmpire.pirateEmpireBaseHabitat.xpos, buyingEmpire.pirateEmpireBaseHabitat.ypos, buyingEmpire);
         if (habitat2 !== null && pirateFaction.visibility.checkSystemExplored(habitat2.systemIndex)) info.unexploredSystems.push(habitat2);
     }
+    // Perf: the C#'s two passes over Habitats (independent colonies, then ruins) fused into one — both only read and
+    // each appends to its own list, so both lists get the same habitats in the same order.
     for (let j = 0; j < galaxy.habitats.length; j++) {
         const habitat3 = galaxy.habitats[j];
         if (habitat3.empire === galaxy.independentEmpire && pirateFaction.visibility.checkSystemExplored(habitat3.systemIndex) && !buyingEmpire.visibility.checkSystemExplored(habitat3.systemIndex)) info.independentColonies.push(habitat3);
-    }
-    for (let k = 0; k < galaxy.habitats.length; k++) {
-        const habitat4 = galaxy.habitats[k];
+        const habitat4 = habitat3;
         if (habitat4.ruin != null && (habitat4.empire === null || habitat4.empire === galaxy.independentEmpire) && pirateFaction.visibility.checkSystemExplored(habitat4.systemIndex)) {
             const num = galaxy.calculateDistance(habitat4.xpos, habitat4.ypos, base.xpos, base.ypos);
             if (num < SECTOR_SIZE * 2.0 && !buyingEmpire.visibility.checkSystemExplored(habitat4.systemIndex)) info.ruinHabitats.push(habitat4);

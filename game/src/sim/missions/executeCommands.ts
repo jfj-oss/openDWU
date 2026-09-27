@@ -417,9 +417,8 @@ export function executeCommands(galaxy: Galaxy, builtObject: BuiltObject, timePa
     // 445-453
     const xpos = bo.xpos;
     const ypos = bo.ypos;
-    const galaxyIndex = galaxy.resolveIndex(xpos, ypos);
-    const x = galaxyIndex.x;
-    const y = galaxyIndex.y;
+    const x = galaxy.resolveIndexX(xpos);
+    const y = galaxy.resolveIndexY(ypos);
     if (bo.empire === null) {
         return 0.0;
     }
@@ -564,16 +563,17 @@ export function executeCommands(galaxy: Galaxy, builtObject: BuiltObject, timePa
             if (bo.role !== BuiltObjectRole.Base) {
                 calculateCurrentHeading(galaxy, bo, num111);
             }
-            let galaxyIndex3 = galaxy.resolveIndex(bo.xpos, bo.ypos);
+            // (C# resolves the index before and again inside the speed test; both are pure reads of the same position.)
             if (bo.currentSpeed > 0) {
-                galaxyIndex3 = galaxy.resolveIndex(bo.xpos, bo.ypos);
+                const indexX3 = galaxy.resolveIndexX(bo.xpos);
+                const indexY3 = galaxy.resolveIndexY(bo.ypos);
                 const num112 = bo.currentSpeed * num111;
                 bo.xpos += Math.cos(bo.heading) * num112;
                 bo.ypos += Math.sin(bo.heading) * num112;
                 if (num112 > 1000.0) {
-                    updateIndexesForMovement(galaxy, bo, galaxyIndex3.x, galaxyIndex3.y, true);
+                    updateIndexesForMovement(galaxy, bo, indexX3, indexY3, true);
                 } else {
-                    updateIndexesForMovement(galaxy, bo, galaxyIndex3.x, galaxyIndex3.y, false);
+                    updateIndexesForMovement(galaxy, bo, indexX3, indexY3, false);
                 }
             }
         }

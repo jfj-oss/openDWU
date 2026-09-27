@@ -28,6 +28,7 @@ let raceBiasOverrides = new Map<Race, Map<string, number>>();
 export function setRaceBiasesStatic(races: Race[], raceBiases: BiasMatrix, raceFamilyCount: number, raceFamilyBiases: BiasMatrix): void {
     raceBiasesStatic = { races, raceBiases, raceFamilyCount, raceFamilyBiases };
     raceBiasOverrides = new Map();
+    raceBiasBaseCache = new WeakMap();
 }
 
 // Race.Biases after Galaxy.cs LoadRaceBiases (2049-2069): null when not Populated.
@@ -56,10 +57,61 @@ export function raceBiasesGetBias(race: Race, otherRace: Race | null): number {
     if (otherRace === null) return 0;
     const s = raceBiasesStatic;
     if (s === null) throw new Error('raceBiasesGetBias: setRaceBiasesStatic was not called');
+    // Perf: raceBiasList(s, race) rebuilt the whole list (O(races²) name lookups) per call. The matrix part depends only
+    // on the static tables and the race, so it is derived once per (tables, race); the overrides are read live. Same
+    // answer: the first key equal to otherRace.name, its override or else its matrix value.
+    const base = raceBiasBase(s, race);
+    if (base === null) return 0;
+    const k = base.firstIndexByName.get(otherRace.name);
+    if (k === undefined) return 0;
+    return raceBiasOverrides.get(race)?.get(otherRace.name) ?? base.values[k];
+}
+
+/** The pre-memo raceBiasesGetBias (rebuilds the list per call); the reference for test/perfEquivalence.test.ts. */
+export function raceBiasesGetBiasUncached(race: Race, otherRace: Race | null): number {
+    if (otherRace === null) return 0;
+    const s = raceBiasesStatic;
+    if (s === null) throw new Error('raceBiasesGetBias: setRaceBiasesStatic was not called');
     const biases = raceBiasList(s, race);
     if (biases === null) return 0;
     for (const b of biases) if (b.key === otherRace.name) return b.value;
     return 0;
+}
+
+interface RaceBiasBase {
+    values: number[];
+    firstIndexByName: Map<string, number>;
+}
+let raceBiasBaseCache = new WeakMap<RaceBiasesStatic, Map<Race, RaceBiasBase | null>>();
+
+/** raceBiasList(s, race) without the overrides, as values by index + first index of each key (null: not Populated). */
+function raceBiasBase(s: RaceBiasesStatic, race: Race): RaceBiasBase | null {
+    let byRace = raceBiasBaseCache.get(s);
+    if (byRace === undefined) {
+        byRace = new Map();
+        raceBiasBaseCache.set(s, byRace);
+    }
+    let base = byRace.get(race);
+    if (base === undefined) {
+        const list = raceBiasList(s, race);
+        if (list === null) {
+            base = null;
+        } else {
+            // No overrides are applied in this copy: rebuild the matrix values the way raceBiasList does.
+            const list2 = s.raceBiases.names;
+            const row = s.raceBiases.matrix[list2.indexOf(race.name)];
+            const values: number[] = [];
+            for (let k = 0; k < row.length; k++) {
+                const num6 = list2.indexOf(s.races[k].name);
+                values.push(num6 >= 0 && num6 < row.length ? row[num6] : 0);
+            }
+            const firstIndexByName = new Map<string, number>();
+            for (let k = 0; k < list.length; k++) if (!firstIndexByName.has(list[k].key)) firstIndexByName.set(list[k].key, k);
+            base = { values, firstIndexByName };
+        }
+        byRace.set(race, base);
+    }
+    return base;
 }
 
 /** RaceBiasList.cs 50 Race.Biases.SetBias(raceName, value): only replaces an existing key (unpopulated list: no-op). No Rnd. */

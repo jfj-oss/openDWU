@@ -114,8 +114,7 @@ export function builtObjectDoTasks(galaxy: Galaxy, builtObject: BuiltObject, tim
     // 3659-3662
     doDeployment(galaxy, bo, num);
     rechargeShields(galaxy, bo, num);
-    const galaxyIndex = galaxy.resolveIndex(bo.xpos, bo.ypos);
-    updateIndexesForMovement(galaxy, bo, galaxyIndex.x, galaxyIndex.y, false);
+    updateIndexesForMovement(galaxy, bo, galaxy.resolveIndexX(bo.xpos), galaxy.resolveIndexY(bo.ypos), false);
     // 3663-3667
     if (bo.threats === null) {
         bo.threats = new Array<BuiltObject | null>(20).fill(null);

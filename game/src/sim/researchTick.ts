@@ -124,7 +124,7 @@ import { DisasterEventType, EventMessageType, checkSendPreWarpProgressEventMessa
 import { PreWarpProgressEventType } from './exploration';
 import { disbandShipGroup, empireShipGroups, shipGroupWarpSpeed, type ShipGroup } from './fleets/shipGroup';
 import { REAL_SECONDS_IN_GALACTIC_YEAR } from './tick/simTime';
-import { netSort } from './netSort';
+import { netSort, netSortLastByKey } from './netSort';
 import { gameText } from './colonyTick';
 import { formatGameTextNow } from './textResolver';
 import { registerTodo, todo } from './tick/todo';
@@ -921,9 +921,8 @@ function selectBestProjectByType(rs: ResearchSystem, type: ComponentType, availa
         }
     }
     if (list.length <= 0) return null;
-    netSort(list, (a, b) => (a.sortTag < b.sortTag ? -1 : a.sortTag > b.sortTag ? 1 : 0));
-    list.reverse();
-    return list[0];
+    // Sort + Reverse + first = the element the ascending netSort leaves last (list is local). Perf: netSortLastByKey.
+    return netSortLastByKey(list, (p) => p.sortTag);
 }
 
 // ResearchSystem.cs IdentifyLaggingProject(ComponentType, …) (1943) + IdentifyBestNextProject (1961).

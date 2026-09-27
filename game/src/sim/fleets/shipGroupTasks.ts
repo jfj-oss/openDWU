@@ -50,7 +50,7 @@ import {
 import { assignMission, clearPreviousMissionRequirements, queueMission } from '../missions/assign';
 import { BuiltObjectRole } from '../data/designSpecifications';
 import { BuiltObjectSubRole } from '../builtObjectTypes';
-import { netSort } from '../netSort';
+import { netSort, netSortLastByKey } from '../netSort';
 import { FleetPosture, aggressionLevel, cautionLevel, compareDouble, formatText } from '../diplomacyTick';
 import { DiplomaticRelationType, DiplomaticStrategy, obtainDiplomaticRelation } from '../diplomacy';
 import { PirateRelationType } from '../pirateRelations';
@@ -1941,10 +1941,10 @@ function determineIndexOfMostFleetShips(galaxy: Galaxy, shipGroup: ShipGroup): {
         return { index: null, proportionInIndex };
     }
     // GalaxyIndex.CompareTo: SortTag.CompareTo; List.Sort (introsort) then Reverse.
-    netSort(galaxyIndexList, (a, b) => (a.sortTag < b.sortTag ? -1 : a.sortTag > b.sortTag ? 1 : 0));
-    galaxyIndexList.reverse();
-    proportionInIndex = galaxyIndexList[0].sortTag / shipGroup.ships.length;
-    return { index: galaxyIndexList[0], proportionInIndex };
+    // (galaxyIndexList is local and only its first element after Sort + Reverse is read. Perf: netSortLastByKey.)
+    const top = netSortLastByKey(galaxyIndexList, (g) => g.sortTag);
+    proportionInIndex = top.sortTag / shipGroup.ships.length;
+    return { index: top, proportionInIndex };
 }
 
 /** ShipGroup.cs 2626 Update() → DetermineLeadShip(). */

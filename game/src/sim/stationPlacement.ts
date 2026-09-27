@@ -1017,12 +1017,64 @@ export function identifyUnavailableLuxuryResources(galaxy: Galaxy, empire: Empir
     empire.selfSuppliedLuxuryResources.length = 0;
     empire.unavailableLuxuryResources.length = 0;
     const lux = galaxy.resourceSystem.luxuryResources;
+    // Perf: checkResourceAvailable scans every colony, mining station and resource target per luxury resource. The
+    // loop only appends to the two lists above, so the resource ids those scans can find are gathered once (as sets)
+    // and each resource is answered by lookup: the same true/false and the same pushes in the same order. A null
+    // entry (where the scan would throw) sends the whole call through the original per-resource scans.
+    const available = luxuryAvailabilitySets(empire, canExtract);
     for (let i = 0; i < lux.length; i++) {
         const resourceDefinition = lux[i];
-        if (resourceDefinition != null && !checkResourceAvailable(empire, resourceDefinition.resourceId, canExtract)) {
-            empire.unavailableLuxuryResources.push(new ResourceRef(resourceDefinition.resourceId));
+        if (resourceDefinition == null) continue;
+        const resourceId = resourceDefinition.resourceId;
+        let ok: boolean;
+        if (available === null) {
+            ok = checkResourceAvailable(empire, resourceId, canExtract);
+        } else if (available.selfSupplied.has(resourceId)) {
+            (empire.selfSuppliedLuxuryResources as ResourceRef[]).push(new ResourceRef(resourceId));
+            ok = true;
+        } else {
+            ok = available.targets.has(resourceId);
+        }
+        if (!ok) empire.unavailableLuxuryResources.push(new ResourceRef(resourceId));
+    }
+}
+
+/**
+ * Resource ids checkResourceSelfSupplied / the resource-target loop of checkResourceAvailable would find for this
+ * empire, or null when a colony / station parent / target habitat entry is null or has a null resource (the scans
+ * would throw on it; the caller then runs them as they are).
+ */
+function luxuryAvailabilitySets(empire: Empire, canExtract: boolean): { selfSupplied: Set<number>; targets: Set<number> } | null {
+    const selfSupplied = new Set<number>();
+    const targets = new Set<number>();
+    const addAll = (h: Habitat | null | undefined, into: Set<number>): boolean => {
+        if (h == null || h.resources == null) return false;
+        for (const r of h.resources) {
+            if (r == null) return false;
+            into.add(r.resourceId);
+        }
+        return true;
+    };
+    for (let i = 0; i < empire.colonies.length; i++) if (!addAll(empire.colonies[i], selfSupplied)) return null;
+    if (canExtract) {
+        for (let j = 0; j < empire.miningStations.length; j++) {
+            const builtObject = empire.miningStations[j];
+            if (builtObject == null) return null;
+            if (builtObject.parentHabitat !== null && !addAll(builtObject.parentHabitat, selfSupplied)) return null;
         }
     }
+    for (let i = 0; i < empire.resourceTargets.length; i++) {
+        const habitatPrioritization = empire.resourceTargets[i];
+        if (habitatPrioritization == null) return null;
+        const h = habitatPrioritization.habitat as Habitat | null;
+        if (h == null) return null;
+        if (!canExtract) {
+            if (h.population != null && h.population.totalAmount > 0 && !addAll(h, targets)) return null;
+        } else if (!addAll(h, targets)) {
+            return null;
+        }
+    }
+    return { selfSupplied, targets };
 }
 
 // Habitat.cs RecalculateDevelopmentLevelBaseline (5575): developmentLevel.ts.

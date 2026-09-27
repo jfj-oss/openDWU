@@ -56,7 +56,7 @@ import { fastFindNearestRefuellingPoint } from './movement';
 import { builtObjectCompleteTeardown } from './combat/teardown';
 import { empiresSharedVisibility } from './exploration';
 import { obtainPirateRelation, PirateRelationType } from './pirateRelations';
-import { Habitat, HabitatCategoryType, planetsOf } from './types';
+import { Habitat, HabitatCategoryType } from './types';
 import { SystemVisibilityStatus, THREAT_RANGE } from './visibility';
 
 // ShipImageHelper.cs 43 / 25.
@@ -679,11 +679,13 @@ export function updateEmpireRefuellingLocations(galaxy: Galaxy, empire: Empire):
             }
             continue;
         }
-        // Empire.6.cs 3905 systemInfo.Habitats: no star.
-        const sysHabitats = planetsOf(systemInfo);
+        // Empire.6.cs 3905 systemInfo.Habitats: no star. Perf: walked in place, skipping the star (planetsOf's filtered
+        // copy: same habitats, same order).
+        const sysHabitats = systemInfo.habitats;
+        const sysStar = systemInfo.systemStar;
         for (let m = 0; m < sysHabitats.length; m++) {
             const habitat = sysHabitats[m];
-            if (habitat == null) {
+            if (habitat === sysStar || habitat == null) {
                 continue;
             }
             if (habitat.basesAtHabitat.length > 0) {
@@ -705,7 +707,7 @@ export function updateEmpireRefuellingLocations(galaxy: Galaxy, empire: Empire):
                     }
                 }
             }
-            if (habitat.population.items.length > 0 && habitat.isRefuellingDepot && habitat.empire !== null && isStellarObjectDockable(galaxy, habitat, empire)) {
+            if (habitat.isRefuellingDepot && habitat.population.items.length > 0 && habitat.empire !== null && isStellarObjectDockable(galaxy, habitat, empire)) {
                 stellarObjectList2.push(habitat);
             }
         }

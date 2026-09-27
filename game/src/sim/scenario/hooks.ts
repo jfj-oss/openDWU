@@ -285,15 +285,42 @@ export interface ScenarioEventHandler<E extends ScenarioEventName = ScenarioEven
 
 const eventHandlers: ScenarioEventHandler[] = [];
 
+/**
+ * Perf: handlers indexed by key (event / query name), in registry order. Each per-key array is rebuilt (never mutated)
+ * when its registry changes, so iterating one is iterating a snapshot — the same as the former `[...list]` copy filtered
+ * by key. Dispatch then touches only the handlers of that key instead of every registered handler.
+ */
+function indexByKey<T>(list: readonly T[], key: (h: T) => string): Map<string, readonly T[]> {
+    const m = new Map<string, T[]>();
+    for (const h of list) {
+        const k = key(h);
+        const a = m.get(k);
+        if (a === undefined) m.set(k, [h]);
+        else a.push(h);
+    }
+    return m;
+}
+const NO_HANDLERS: readonly never[] = [];
+
+let eventIndex: Map<string, readonly ScenarioEventHandler[]> | null = null;
+
 export function registerScenarioEvent<E extends ScenarioEventName>(handler: ScenarioEventHandler<E>): () => void {
-    return register(eventHandlers, handler as unknown as ScenarioEventHandler);
+    eventIndex = null;
+    const unregister = register(eventHandlers, handler as unknown as ScenarioEventHandler);
+    return () => {
+        eventIndex = null;
+        unregister();
+    };
 }
 
 /** Delivers an event to the gated handlers subscribed to it (no-op without a scenario). */
 export function scenarioEmit<E extends ScenarioEventName>(galaxy: Galaxy, event: E, payload: ScenarioEvents[E]): void {
     if (galaxy.scenario === null) return;
-    for (const h of [...eventHandlers]) {
-        if (h.event === event && scenarioGateOpen(galaxy, h)) (h.run as (g: Galaxy, p: ScenarioEvents[E]) => void)(galaxy, payload);
+    if (eventIndex === null) eventIndex = indexByKey(eventHandlers, (h) => h.event);
+    const list = eventIndex.get(event) ?? NO_HANDLERS;
+    for (let i = 0; i < list.length; i++) {
+        const h = list[i];
+        if (scenarioGateOpen(galaxy, h)) (h.run as (g: Galaxy, p: ScenarioEvents[E]) => void)(galaxy, payload);
     }
 }
 
@@ -460,16 +487,26 @@ export interface ScenarioQueryHandler<Q extends ScenarioQueryName = ScenarioQuer
 
 const queryHandlers: ScenarioQueryHandler[] = [];
 
+let queryIndex: Map<string, readonly ScenarioQueryHandler[]> | null = null;
+
 export function registerScenarioQuery<Q extends ScenarioQueryName>(handler: ScenarioQueryHandler<Q>): () => void {
-    return register(queryHandlers, handler as unknown as ScenarioQueryHandler);
+    queryIndex = null;
+    const unregister = register(queryHandlers, handler as unknown as ScenarioQueryHandler);
+    return () => {
+        queryIndex = null;
+        unregister();
+    };
 }
 
 /** Folds the gated handlers of `query` over the stock value (returns it unchanged without a scenario / handler). */
 export function scenarioQuery<Q extends ScenarioQueryName>(galaxy: Galaxy, query: Q, value: ScenarioQueries[Q]['value'], args: ScenarioQueries[Q]['args']): ScenarioQueries[Q]['value'] {
     if (galaxy.scenario === null) return value;
+    if (queryIndex === null) queryIndex = indexByKey(queryHandlers, (h) => h.query);
+    const list = queryIndex.get(query) ?? NO_HANDLERS;
     let v = value;
-    for (const h of queryHandlers) {
-        if (h.query === query && scenarioGateOpen(galaxy, h)) v = (h.run as ScenarioQueryHandler<Q>['run'])(galaxy, v, args);
+    for (let i = 0; i < list.length; i++) {
+        const h = list[i];
+        if (scenarioGateOpen(galaxy, h)) v = (h.run as ScenarioQueryHandler<Q>['run'])(galaxy, v, args);
     }
     return v;
 }

@@ -223,8 +223,12 @@ export function valueGalaxyMapForEmpire(galaxy: Galaxy, mapEmpire: Empire, reque
     if (mapEmpire.resourceMap != null) {
         for (let i = 0; i < mapEmpire.systemVisibility.length; i++) {
             if (!mapEmpire.visibility.checkSystemExplored(i)) continue;
-            const habitats = planetsOf(galaxy.systems[i]); // Galaxy.4.cs 4635 Systems[i].Habitats: no star
+            // Galaxy.4.cs 4635 Systems[i].Habitats: no star. Perf: walked in place (planetsOf's copy: same habitats, order).
+            const system = galaxy.systems[i];
+            const star = system.systemStar;
+            const habitats = system.habitats;
             for (let j = 0; j < habitats.length; j++) {
+                if (habitats[j] === star) continue;
                 if (habitats[j].category !== HabitatCategoryType.Asteroid && mapEmpire.resourceMap.checkResourcesKnown(habitats[j]) && !requestingEmpire.resourceMap.checkResourcesKnown(habitats[j])) num2++;
             }
         }
