@@ -331,7 +331,9 @@ function backgroundPass(galaxy: Galaxy, state: SchedulerState, time: number, sta
     t0 = profile !== null ? now() : 0;
     // 3623-3694 "GxBO".
     if (galaxy.builtObjects.length > 0) {
-        const inViewSet = new Set(inView); // builtObjectList_1.Contains (order-neutral, plan §4.4)
+        // builtObjectList_1.Contains (order-neutral, plan §4.4). Perf: no set (and no per-object hash lookup) when nothing
+        // is in view — headless runs and a camera over empty space.
+        const inViewSet = inView.length > 0 ? new Set(inView) : null;
         const builtObjectList: BuiltObject[] = [];
         // (a) 3627-3664 in-battle scan. The decompiled loop never assigns `builtObject` inside the `while`, so it spins
         // until num2 wraps back to num3 and breaks out of the `for`: no object is added and int_49 keeps its value
@@ -352,7 +354,7 @@ function backgroundPass(galaxy: Galaxy, state: SchedulerState, time: number, sta
                 num4 = 0;
             }
             const builtObject2 = galaxy.builtObjects[num4];
-            if (builtObject2 != null && !inViewSet.has(builtObject2)) {
+            if (builtObject2 != null && (inViewSet === null || !inViewSet.has(builtObject2))) {
                 builtObjectList.push(builtObject2);
             }
             num4++;

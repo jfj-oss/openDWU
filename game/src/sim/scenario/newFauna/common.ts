@@ -317,6 +317,17 @@ export function drifterScanMultiplier(galaxy: Galaxy, x: number, y: number): num
     return 1;
 }
 
+/**
+ * Perf pre-filter for segmentEntry: false when the circle (cx, cy, r) is certainly not entered by the segment. An entry
+ * point lies on the segment (t in [0, len]) at distance r from the centre (up to float rounding: a few units at galaxy
+ * coordinates < 1e9, far below the 1000 + r/1000 slack), so a centre farther than that from the segment's bounding box
+ * on either axis has no entry.
+ */
+function segmentMayEnter(x0: number, y0: number, x1: number, y1: number, cx: number, cy: number, r: number): boolean {
+    const m = r + 1000 + r / 1000;
+    return !(cx < Math.min(x0, x1) - m || cx > Math.max(x0, x1) + m || cy < Math.min(y0, y1) - m || cy > Math.max(y0, y1) + m);
+}
+
 /** Where the segment (x0, y0)→(x1, y1) first enters the circle (cx, cy, r): parameter t in [0, len], or -1. */
 function segmentEntry(x0: number, y0: number, x1: number, y1: number, cx: number, cy: number, r: number): { t: number; len: number; dx: number; dy: number } | null {
     let dx = x1 - x0;
@@ -355,11 +366,13 @@ export function drifterMisfireStop(galaxy: Galaxy, ship: BuiltObject, fromX: num
     const r = newFaunaParam(galaxy, 'newFaunaDrifterCloudRadius');
     let best: { x: number; y: number } | null = null;
     let bestT = Number.MAX_VALUE;
+    let toExit = -1; // Perf: Math.hypot(exitX - fromX, exitY - fromY), computed once on first use (pure)
     for (const c of list) {
         if (!alive(c)) continue;
+        if (!segmentMayEnter(fromX, fromY, toX, toY, c.xpos, c.ypos, r)) continue;
         const e = segmentEntry(fromX, fromY, toX, toY, c.xpos, c.ypos, r);
         if (e === null || e.t >= bestT) continue;
-        const toExit = Math.hypot(exitX - fromX, exitY - fromY);
+        if (toExit < 0) toExit = Math.hypot(exitX - fromX, exitY - fromY);
         if (e.t > toExit) continue;
         bestT = e.t;
         const ex = fromX + e.dx * (e.t + 1);
@@ -386,6 +399,7 @@ export function lanternLureStop(galaxy: Galaxy, ship: BuiltObject, fromX: number
     const toExit = Math.hypot(exitX - fromX, exitY - fromY);
     for (const c of list) {
         if (!alive(c)) continue;
+        if (!segmentMayEnter(fromX, fromY, toX, toY, c.xpos, c.ypos, r)) continue;
         const e = segmentEntry(fromX, fromY, toX, toY, c.xpos, c.ypos, r);
         if (e === null) continue;
         // Stop at the closest approach to the lantern (inside the lure radius).
