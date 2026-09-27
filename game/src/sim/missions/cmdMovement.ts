@@ -22,6 +22,7 @@ import { checkForPlanetDestroyerWeaponFiringDelayOnHyperExit } from '../combat/w
 import { checkClearDocking, checkMissionStillValid } from '../logistics/docking';
 import { checkSendPreWarpProgressEventMessage } from '../events';
 import { PreWarpProgressEventType } from '../exploration';
+import { scenarioQuery } from '../scenario/hooks';
 import {
     MAX_SOLAR_SYSTEM_SIZE,
     MOVEMENT_IMPULSE_SPEED,
@@ -302,10 +303,23 @@ export const cmdHyperTo: CommandHandler = (ctx) => {
         bo.lastHyperjumpDistance = f(bo.lastHyperjumpDistance + f(num8));
         bo.lastHyperDistance = galaxy.calculateDistance(bo.xpos, bo.ypos, hyperExit.x, hyperExit.y);
         consumeFuel(galaxy, bo, timePassed);
+        const fromX = bo.xpos;
+        const fromY = bo.ypos;
         bo.xpos += Math.cos(bo.heading) * num8;
         bo.ypos += Math.sin(bo.heading) * num8;
         checkFuelHandicap(galaxy, bo);
-        if (checkWhetherArrived(galaxy, bo, bo.xpos, bo.ypos, hyperExit.x, hyperExit.y, 0.0)) {
+        // Mod layer (19h gravity shoals, not a port): a scenario feature on this step's path ends the jump early at its
+        // edge; the HyperTo command then restarts from there (new countdown and exit roll) instead of completing.
+        let scenarioStop = false;
+        if (galaxy.scenario !== null) {
+            const stop = scenarioQuery(galaxy, 'hyperjumpStop', null, { ship: bo, fromX, fromY, toX: bo.xpos, toY: bo.ypos, exitX: hyperExit.x, exitY: hyperExit.y });
+            if (stop !== null) {
+                hyperExit.x = stop.x;
+                hyperExit.y = stop.y;
+                scenarioStop = true;
+            }
+        }
+        if (scenarioStop || checkWhetherArrived(galaxy, bo, bo.xpos, bo.ypos, hyperExit.x, hyperExit.y, 0.0)) {
             bo.hyperjumpJustExited = true;
             bo.hyperExitStartAnimation = true;
             bo.hyperjumpPrepare = false;
@@ -332,7 +346,7 @@ export const cmdHyperTo: CommandHandler = (ctx) => {
                     bo.nearestSystemStar = habitat;
                 }
             }
-            mission.completeCommand();
+            if (!scenarioStop) mission.completeCommand();
             bo.firstExecutionOfCommand = true;
             const shipGroup2 = shipGroupOf(bo);
             if (mission.isShipGroupMission && shipGroup2 !== null) {

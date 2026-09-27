@@ -57,6 +57,7 @@ import { empiresSharedVisibility } from './exploration';
 import { obtainPirateRelation, PirateRelationType } from './pirateRelations';
 import { Habitat, HabitatCategoryType, planetsOf } from './types';
 import { SystemVisibilityStatus, THREAT_RANGE } from './visibility';
+import { scenarioQuery } from './scenario/hooks';
 
 // ShipImageHelper.cs 43 / 25.
 const STANDARD_SHIP_IMAGE_START_INDEX = 72;
@@ -221,6 +222,9 @@ export function findShipOutsideSystemWithScanRange(galaxy: Galaxy, empire: Empir
         }
     }
     if (includeShipsOutsideSystems) {
+        // Mod layer (19h sensor fog, not a port): a scenario may shorten ordinary ship sensors toward (x, y); the
+        // stationary long-range scanners above (listening posts) are not affected.
+        if (galaxy.scenario !== null) rangeModifier = scenarioQuery(galaxy, 'scanRangeModifier', rangeModifier, { x, y });
         const galaxyIndex = galaxy.resolveIndex(x, y);
         const array = galaxy.builtObjectIndexGrid[galaxyIndex.x][galaxyIndex.y].slice();
         for (const builtObject2 of array) {

@@ -1,0 +1,19 @@
+{
+  "id": "rim-frontier",
+  "name": "Rim Frontier",
+  "description": "The outer reaches are hard to reach and hold: an ion-storm belt, thinning stars, gravity shoals that pull ships out of hyperspace, little fuel and poor sensor coverage. Stacks with The Rim Trade.",
+  "flags": [
+    { "name": "rimFrontier", "label": "Rim frontier geography", "description": "Storm belt, sparser rim, gravity shoals, inward fuel, rim sensor fog and the map-scale options below.", "default": true }
+  ],
+  "params": [
+    { "name": "rimFrontierBeltInner", "label": "Storm belt / fog inner radius (fraction of the galaxy radius)", "default": 0.7, "min": 0.3, "max": 1.2 },
+    { "name": "rimFrontierStormDensity", "label": "Storm density in the belt (0-1)", "default": 0.5, "min": 0, "max": 1 },
+    { "name": "rimFrontierThinRadius", "label": "Star thinning radius (fraction)", "default": 0.6, "min": 0.2, "max": 1.5 },
+    { "name": "rimFrontierThinFactor", "label": "Share of star positions rejected past the thinning radius", "default": 0.5, "min": 0, "max": 0.9 },
+    { "name": "rimFrontierShoalCount", "label": "Gravity shoals", "default": 4, "min": 0, "max": 16 },
+    { "name": "rimFrontierFuelMaxRadius", "label": "Fuel bias: Caslon / Hydrogen only inside this radius (fraction; 1.5 = off)", "default": 0.65, "min": 0.3, "max": 1.5 },
+    { "name": "rimFrontierFogFactor", "label": "Rim sensor range multiplier (ship sensors; listening posts exempt)", "default": 0.5, "min": 0.1, "max": 1 },
+    { "name": "rimFrontierExtent", "label": "Galaxy extent multiplier (same stars spread wider)", "default": 1.0, "min": 1.0, "max": 1.7 },
+    { "name": "rimFrontierStarCount", "label": "Star count override (0 = the wizard's; up to the raised cap)", "default": 0, "min": 0, "max": 2000 }
+  ]
+}
