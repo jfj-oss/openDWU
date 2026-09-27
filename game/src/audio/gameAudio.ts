@@ -24,6 +24,8 @@ import { scenarioParam } from '../sim/scenario/state';
 import { rimWeightAt, rimWeightAtCapital } from './rimAtmosphereGeometry';
 import { RIM_MOOD_TRACKS, RimAmbientBed, playRimVoiceStaticBurst, rimMoodProbability, rimVoiceStaticGain } from './rimAtmosphereMix';
 // [rimatmo-wiring] end
+import type { BuiltObject } from '../sim/builtObject';
+import { RimCreatureAudio } from './rimCreatureAudio'; // [rimatmo-audio] 19i audio addendum
 
 // ---------------------------------------------------------------------------
 // Pure trigger mapping
@@ -221,6 +223,8 @@ export interface GameAudioDeps {
     time: { paused: boolean; currentStarDate: number };
     /** SuppressAllPopups (messageRouting options). */
     suppressAllPopups: () => boolean;
+    /** The Main View's selected ship (19i hull creaks prefer it over the nearest own ship). */
+    selectedShip?: () => BuiltObject | null;
 }
 
 export interface GameAudio {
@@ -274,7 +278,18 @@ export function installGameAudio(deps: GameAudioDeps): GameAudio {
         }, false);
     }
     // [rimatmo-wiring] begin — 19i item 9: one ambient bed per game view, gain updated every frame.
-    const rimAmbient = new RimAmbientBed();
+    // [rimatmo-audio] The bed, the creature calls and the hull creaks share one lazily-created AudioContext (none is
+    // created with the flag off), closed with the game view.
+    let rimCtx: AudioContext | null = null;
+    const rimContext = (): AudioContext => (rimCtx ??= new AudioContext());
+    const rimAmbient = new RimAmbientBed(rimContext);
+    const rimCreatures = new RimCreatureAudio({
+        galaxy,
+        view: camera,
+        selectedShip: deps.selectedShip ?? (() => null),
+        effectsVolume: () => session.player.volume,
+        context: rimContext,
+    });
     // [rimatmo-wiring] end
     return {
         frame(): void {
@@ -288,6 +303,7 @@ export function installGameAudio(deps: GameAudioDeps): GameAudio {
                 const weightAtCamera = rimWeightAt(galaxy, camera.x, camera.y);
                 musicPlayer().setRimMood(RIM_MOOD_TRACKS, rimMoodProbability(weightAtCamera, scenarioParam(galaxy, 'musicMoodWeight', 0.8)));
                 rimAmbient.update(weightAtCamera, scenarioParam(galaxy, 'ambientGain', 0.35));
+                rimCreatures.step(performance.now() / 1000, weightAtCamera); // [rimatmo-audio] calls + creaks
             } catch {
                 // no audio
             }
@@ -311,6 +327,10 @@ export function installGameAudio(deps: GameAudioDeps): GameAudio {
         dispose(): void {
             setRecipient(previousRecipient, true);
             rimAmbient.dispose(); // [rimatmo-wiring] 19i item 9
+            // [rimatmo-audio] tear the synth bus and the shared rim context down with the audio graph.
+            rimCreatures.dispose();
+            if (rimCtx !== null) void rimCtx.close().catch(() => undefined);
+            rimCtx = null;
         },
     };
 }

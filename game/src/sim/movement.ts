@@ -49,7 +49,6 @@ import { PirateRelationType, obtainPirateRelation } from './pirateRelations';
 import { isObjectVisibleToThisEmpire, isStellarObjectDockable } from './independentTraders';
 import { determineEmpireSystems } from './forceStructure';
 import { fastFindNearestSpacePort, getBuiltObjectsAtLocation } from './stationPlacement';
-import { scenarioQuery } from './scenario/hooks';
 import { findNewestCanBuild, resolveSubRoleDescription } from './designGeneration';
 import { gameText } from './colonyTick';
 import { checkRuinsHaveBenefit } from './exploration';

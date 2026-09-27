@@ -9,9 +9,8 @@
 // galaxy exists, e.g. the main-menu theme) can call pickRimWeightedTrack without pulling in pixi.js.
 //
 // Creature calls / hull creaks (item 9's other two clauses): $DWU/Sounds/Effects has no creature-call or
-// hull/creak file of any kind (checked the full listing — only weapon/explosion/star/message/UI sounds and the
-// four diplomacy-mood + six named event stings). CLAUDE.md: use only original assets, never invent or commit new
-// ones. Both are skipped; see the package report for the file listing.
+// hull/creak file of any kind, so (audio addendum) both are synthesised at runtime — see rimCreatureCalls.ts (pure
+// tables + trigger rules), rimCreatureSynth.ts (Web Audio voices) and rimCreatureAudio.ts (game glue).
 
 // ---------------------------------------------------------------------------
 // Item 8 — a "rim" music mood
@@ -129,7 +128,7 @@ export function createNoiseBed(ctx: AudioContext, filterType: BiquadFilterType, 
 }
 
 /** The wind/static ambient bed (item 9): one lazily-created noise bed per app session, gain updated every frame
- *  from rimAmbientBedGain. Distant creature calls and hull creaks are skipped — see the file header. */
+ *  from rimAmbientBedGain. Distant creature calls and hull creaks: rimCreatureAudio.ts. */
 export class RimAmbientBed {
     private bed: NoiseBed | null = null;
 
