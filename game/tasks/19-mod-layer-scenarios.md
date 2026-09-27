@@ -239,5 +239,19 @@ Effort: 1 ≈ half a day (soak + palette + UI check); 2 ≈ 1 agent-day; 3 ≈ 1
    permanent base and start acting like a small empire (colony defence, freighters), producing a real underworld enemy.
 5. Living calendar: festivals, elections, coronations as yearly events per empire with small diplomacy/approval effects
    and messages, so the feed has texture between crises; ties to 19g-4 succession and the 19i rim calendar idea.
-Effort: 1, 3 cheap (data + one gate each); 2, 4 medium; 5 cheap. Build after the 19d wave is merged. Effort: medium (~1 agent-day);
+Effort: 1, 3 cheap (data + one gate each); 2, 4 medium; 5 cheap. Build after the 19d wave is merged.
+
+## 19m — Internal security (ACCEPTED by the user 2026-09-26 — "yes 19m seems like a good idea"; ties 19d1 politics, 19d3 espionage, 19d4 tension, 19d2 crises, 19g-7 herd losses, the 19f Cult/Doppelgangers/Hive/corporate coup and the base rebellion into one system)
+1. One stability ledger per colony and per empire: approval, tension, shortages, herd losses, cult influence, character
+   loyalty all write into it WITH A CAUSE; the base rebellion/revolt (ColonyRebellion) reads the ledger, so every package
+   feeds the same revolt; the Empire Summary Stability row and colony tooltip show the causes.
+2. Leads: every hidden thing (plot, convert, sleeper ship, foreign agent, bought governor, Hive node, farm, nest) produces
+   leads through ONE detection roll — counter-intelligence skill vs the thing's concealment — replacing the per-package
+   rolls; leads live in an "Internal Security" tab on the Intelligence screen (suspected / confirmed / cleared).
+3. Investigate: assign an agent to a lead (new intel mission kind); confirm/clear; confirmed leads unlock actions: arrest,
+   exile, purge, quarantine colony, martial law (blocks secession N years, approval cost), amnesty, recall fleet, scrap a
+   suspect ship; AIs run the same loop by policy (caution/aggression).
+4. Chain reactions: converted governor lowers loyalty; purge lowers approval; a cultist coup founds the theocracy; refugees
+   can carry the creed; exposed foreign agent → 19d3 crisis; failed investigation emboldens the plotter (+ambition).
+Effort ~2 agent-days (Opus); requires 19d1/19d3/19d4/19f on main (batch D). Player answers via the command queue. Effort: medium (~1 agent-day);
 build after 19d2 (unrest plumbing) alongside 19g-7 rim fauna; 19a/19c tests must still pass with 19h on.
