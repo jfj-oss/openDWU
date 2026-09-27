@@ -31,8 +31,8 @@ import {
     empireEvaluationByEmpire,
     empireEvaluationsOf,
     obtainDiplomaticRelation,
-    obtainEmpireEvaluation,
 } from '../../diplomacy';
+import { applyReputation } from '../reputation/ledger';
 import {
     aggressionLevel,
     cautionLevel,
@@ -178,11 +178,13 @@ export function attitudeOf(a: Empire, b: Empire): number {
     return ev === null ? 0 : ev.overallAttitude;
 }
 
-/** incident change on a's evaluation of b (as the ported `incidentEvaluation = incidentEvaluationRaw - x`). */
-function addIncident(galaxy: Galaxy, a: Empire, b: Empire, delta: number): void {
+/**
+ * incident change on a's evaluation of b (as the ported `incidentEvaluation = incidentEvaluationRaw - x`), through the 19o
+ * reputation ledger with its cause (flag off: exactly that direct write).
+ */
+function addIncident(galaxy: Galaxy, a: Empire, b: Empire, delta: number, cause: string): void {
     if (a.pirateEmpireBaseHabitat !== null || b.pirateEmpireBaseHabitat !== null) return;
-    const ev = obtainEmpireEvaluation(galaxy, a, b);
-    ev.incidentEvaluation = ev.incidentEvaluationRaw + delta;
+    applyReputation(galaxy, a, b, delta, { cause, source: '19d3' });
 }
 
 /** The best counter-espionage skill (counterEspionageFactored) among the empire's agents on CounterIntelligence; 0 = none. */
@@ -455,7 +457,7 @@ export function falseFlagAttribution(
     const p = falseFlagSeenThroughChance(bestCounterIntelligence(target), agent.concealmentFactored, outcome);
     const desc = resolveIntelligenceMissionDescription(mission, target);
     if (rnd.nextDouble() < p) { // RND(19d3): frame detection
-        addIncident(galaxy, framed, self, -20);
+        addIncident(galaxy, framed, self, -20, 'espionage.falseFlag');
         scenarioNews(galaxy, target, scenarioText('Emergent False Flag Exposed', target.name, self.name, framed.name));
         return { blamed: self, factor: 1, repeats: 2, civility: true };
     }
@@ -625,7 +627,7 @@ function escalateToSanctions(galaxy: Galaxy, c: SpyCrisis, year: number): void {
     c.deadlineYear = year + 1;
     c.deadline = galaxyStarDate(galaxy) + YEAR_LENGTH;
     c.quietYears = 0;
-    addIncident(galaxy, c.victim, c.offender, -c.severity / 2);
+    addIncident(galaxy, c.victim, c.offender, -c.severity / 2, 'espionage.sanctions');
     const rt = relationType(c.victim, c.offender);
     if (c.victim !== galaxy.playerEmpire && rt !== DiplomaticRelationType.TradeSanctions && rt !== DiplomaticRelationType.War) startTradeSanctions(galaxy, c.victim, c.offender);
     const text = scenarioText('Emergent Spy Crisis Sanctions', c.victim.name, c.offender.name);
@@ -753,8 +755,8 @@ function discoverLeaks(galaxy: Galaxy, st: EspionageState): void {
         if (!(galaxy.rnd.nextDouble() < p)) continue; // RND(19d3): leak discovery
         const node = victim.research.techTree[l.tech.projectId];
         const techName = node?.def.name ?? String(l.tech.projectId);
-        if (l.holder !== thief) addIncident(galaxy, victim, l.holder, -10);
-        addIncident(galaxy, victim, thief, -15);
+        if (l.holder !== thief) addIncident(galaxy, victim, l.holder, -10, 'espionage.stolenTechHeld');
+        addIncident(galaxy, victim, thief, -15, 'espionage.stolenTech');
         const text = scenarioText('Emergent Stolen Tech Spread', techName, thief.name, l.holder.name);
         const title = scenarioText('Emergent Stolen Tech Spread Title');
         scenarioMessage(galaxy, victim, title, text, { type: EmpireMessageType.GeneralBadEvent, subject: thief });
@@ -847,7 +849,7 @@ function resolveEscalateDecision(galaxy: Galaxy, d: ScenarioDecision, optionId: 
         c.deadlineYear = year + 1;
         c.deadline = galaxyStarDate(galaxy) + YEAR_LENGTH;
         c.quietYears = 0;
-        addIncident(galaxy, c.victim, c.offender, -c.severity / 2);
+        addIncident(galaxy, c.victim, c.offender, -c.severity / 2, 'espionage.sanctions');
         playerImposeSanctions(galaxy, c.victim, c.offender);
     }
 }

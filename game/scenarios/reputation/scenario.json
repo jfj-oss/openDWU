@@ -1,0 +1,10 @@
+{
+  "id": "reputation",
+  "name": "Reputation & Grievances",
+  "description": "Every attitude change a scenario package makes between two empires (espionage crises, defecting agents, diaspora diplomacy, nationalised charters, the Exchange's exposure) is kept as a ledger entry with its cause, size and yearly fade; the empires' attitude is the same sum, and the diplomacy screen shows why each empire feels the way it does. Includes the Emergent Galaxy packages (their own flags).",
+  "include": ["emergent", "resource-crises", "espionage-consequences", "refugees-demographics"],
+  "flags": [
+    { "name": "reputationLedger", "label": "Reputation ledger", "description": "Scenario attitude changes become ledger entries with causes and fades; the diplomacy screen lists them.", "default": true }
+  ],
+  "params": []
+}
