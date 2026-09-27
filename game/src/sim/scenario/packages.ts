@@ -11,4 +11,5 @@ import './emergent/crises'; // 19d2 resource crises (flag resourceCrises)
 import './emergent/politics';
 import './emergent/politicsActions';
 import './emergent/demographics';
+import './wreckage/wreckage'; // 19e-7 battle wreckage & salvage (flag wreckage)
 export {};

@@ -8,6 +8,7 @@ import { Camera } from '../render/camera';
 import { Galaxy } from '../sim/galaxy';
 import type { GameData } from '../sim/data/gameData';
 import { rimGoodMarker } from './scenario/rimTraderRows';
+import { wreckSalvageRows } from './scenario/wreckageUi'; // [wreckage]
 import { moneyPanelIncome } from '../sim/treasury';
 import { Habitat, HabitatCategoryType, HabitatType, IndustryType, SystemInfo } from '../sim/types';
 import type { Empire } from '../sim/empire';
@@ -1954,6 +1955,7 @@ export function buildSelectionRows(sel: Selection, gameData?: GameData, player: 
         for (const r of builtObjectRows(sel.builtObject)) addColorRow(r);
         for (const r of threatRows(sel.builtObject, player)) addColorRow(r);
         for (const r of builtObjectStatusRows(sel.builtObject, player)) addColorRow(r);
+        if (player !== null) for (const r of wreckSalvageRows(player.galaxy, sel.builtObject, player)) addColorRow(r); // [wreckage] 19e-7
         return rows;
     }
     for (const orow of ownerRows(h)) addColorRow(orow);

@@ -14,6 +14,7 @@ import { YEAR_LENGTH } from '../galaxyTime';
 import { galaxyStarDate } from '../tick/simTime';
 import type { GalaxyScenario } from './state';
 import type { Resource } from '../data/resources';
+import type { GalaxyLocation } from '../galaxyLocation';
 
 // ---------------------------------------------------------------------------
 // Handler registries (shared gate)
@@ -186,6 +187,18 @@ export interface ScenarioEvents {
     builtObjectBuilt: { builtObject: BuiltObject; empire: Empire | null };
     /** combat/teardown.ts builtObjectCompleteTeardown (top). */
     builtObjectRemoved: { builtObject: BuiltObject };
+    /**
+     * combat/teardown.ts builtObjectCompleteTeardown (top, before builtObjectRemoved) when HasBeenDestroyed was already
+     * set — a ship / base destroyed by weapons, creatures, self-destruct or area damage (set only by the combat destroy
+     * branches), torn down by DoExplosions (BuiltObject.1.cs 14) or CleanupInvalidShips (Empire.8.cs 2896). 19e-7.
+     */
+    builtObjectDestroyed: { builtObject: BuiltObject };
+    /**
+     * civilianAI.ts assignMissionConstructionShip end (Empire.5.cs 2669, end of case ConstructionShip) and
+     * pirateShipMissions.ts pirateAssignConstructionShip end (Empire.1.cs 5116): the stock AI found no task and the
+     * ship is still idle. Handlers may assign a mission (19e-7 salvage).
+     */
+    constructionShipIdle: { empire: Empire; ship: BuiltObject };
     /** combat/damage.ts inflictBombardDamage (end). */
     habitatBombarded: { builtObject: BuiltObject; habitat: Habitat; bombardPower: number };
     /** espionage.ts completeIntelligenceMission (end). */
@@ -268,6 +281,13 @@ export interface ScenarioQueries {
     miningStationPatrolPriority: { value: number; args: { builtObject: BuiltObject; empire: Empire } };
     /** events.ts creatureScanForTarget (Creature.cs 1245): true = the creature leaves this target alone. */
     creatureIgnoresTarget: { value: boolean; args: { creature: Creature; target: unknown } };
+    /** events.ts clearEmptyDebrisFields (Galaxy.5.cs 2893): true keeps a debris field with no abandoned ships (19e-7 wreck fields). */
+    debrisFieldPersists: { value: boolean; args: { location: GalaxyLocation } };
+    /**
+     * pirateAI.ts updateRaidCountdownBuiltObject / updateRaidCountdownHabitat (BuiltObject.1.cs 2894, Habitat.cs 1608): a
+     * multiplier on the raid-countdown recovery of a target at (x, y) (1 = stock). 19e-7: raids come faster near big wreck fields.
+     */
+    raidCountdownRate: { value: number; args: { x: number; y: number } };
 }
 export type ScenarioQueryName = keyof ScenarioQueries;
 

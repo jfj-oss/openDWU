@@ -21,4 +21,7 @@ export type { ScenarioDecision, ScenarioDecisionOption, ScenarioDecisionHandler,
 export { createEmpireMidGame } from './empireMidGame';
 export type { MidGameEmpireSpec } from './empireMidGame';
 export { scenarioMessage, scenarioNews, scenarioText } from './messages';
+// 19e-7 wreck records (consumed by 19g-7b Scavenger, 19f-7 Ghost Armada): wrecksAt is the query.
+export { wrecksAt, wreckFields, wreckFieldAtPoint, wreckFieldValue, wreckRemaining, takeWrecks } from './wreckage/common';
+export type { WreckRecord, WreckField, WreckHit } from './wreckage/common';
 export type { ScenarioMessageOptions } from './messages';

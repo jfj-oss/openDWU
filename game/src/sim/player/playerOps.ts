@@ -53,6 +53,7 @@ import {
 } from './playerOrders';
 import { answerScenarioDecision, pendingScenarioDecisions } from '../scenario/decisions';
 import { grantCharter, nationaliseCompany, releaseCompany, renewCharter, type CharterTerms } from '../scenario/charteredCompanies/charters';
+import { orderSalvage } from '../scenario/wreckage/wreckage';
 
 /** Automation / control fields of Empire the UI sets directly (Game Options panel and the automation prompts). */
 function isEmpireControlField(empire: Empire, field: string): boolean {
@@ -174,6 +175,8 @@ export const PLAYER_OPS = {
     charterRenew: (galaxy: Galaxy, empire: Empire, company: Empire) => renewCharter(galaxy, empire, company),
     charterRelease: (galaxy: Galaxy, empire: Empire, company: Empire) => releaseCompany(galaxy, empire, company),
     charterNationalise: (galaxy: Galaxy, empire: Empire, company: Empire) => nationaliseCompany(galaxy, empire, company),
+    /** 19e-7 (scenario flag `wreckage`): send a construction / mining ship to salvage a debris field (right-click menu). */
+    salvageWreckField: (galaxy: Galaxy, empire: Empire, ship: BuiltObject, fieldId: number) => orderSalvage(galaxy, empire, ship, fieldId, true),
     // [emergent] begin — scenario 19d1 internal politics (scenario/emergent/politicsActions.ts; flag-gated inside)
     politicsAction: (galaxy: Galaxy, empire: Empire, action: PoliticsActionName, character: Character) => runPoliticsAction(galaxy, empire, action, character),
     grantAutonomy: (galaxy: Galaxy, empire: Empire, colony: Habitat) => grantAutonomy(galaxy, empire, colony),

@@ -1,0 +1,22 @@
+{
+  "id": "wreckage-salvage",
+  "name": "Wreckage & Salvage",
+  "description": "Battles leave wrecks. Every destroyed ship or base drifts into a persistent debris field that decays over the years unless salvaged; construction and mining ships recover build resources and, sometimes, foreign technology from the wrecks. Pirates salvage too and raid harder around the big fields.",
+  "flags": [
+    { "name": "wreckage", "label": "Battle wreckage & salvage", "description": "Destroyed ships and bases leave wrecks in debris fields; salvage missions (right-click a field with a construction or mining ship selected) recover resources and foreign tech; AI and pirate construction ships salvage nearby fields; pirate raids recover faster near big fields.", "default": true }
+  ],
+  "params": [
+    { "name": "wreckDecayYears", "label": "Years until a wreck has decayed away", "default": 10, "min": 0.1, "max": 100 },
+    { "name": "wreckFieldJoinRadius", "label": "Radius within which a wreck joins an existing field", "default": 4000, "min": 100, "max": 100000 },
+    { "name": "wreckFieldSize", "label": "Debris field extent (the original's fields are 1100-1500)", "default": 1300, "min": 200, "max": 20000 },
+    { "name": "wreckSalvageFraction", "label": "Fraction of a wreck's build resources recovered", "default": 0.3, "min": 0, "max": 1 },
+    { "name": "wreckSalvageWrecksPerTrip", "label": "Wrecks recovered per salvage trip", "default": 3, "min": 1, "max": 100 },
+    { "name": "wreckSalvageDays", "label": "Days on site to salvage", "default": 30, "min": 0, "max": 360 },
+    { "name": "wreckTechChance", "label": "Chance per salvage trip of recovering a foreign tech", "default": 0.2, "min": 0, "max": 1 },
+    { "name": "wreckAiSalvageRange", "label": "AI salvage range (from the construction ship)", "default": 400000, "min": 0, "max": 5000000 },
+    { "name": "wreckAiMinValue", "label": "Smallest field value the AI salvages", "default": 200, "min": 0, "max": 1000000 },
+    { "name": "wreckBigFieldShips", "label": "Wrecks that make a field big (pirate base of operations)", "default": 5, "min": 1, "max": 1000 },
+    { "name": "wreckPirateRaidRange", "label": "Range around a big field where raids recover faster", "default": 150000, "min": 0, "max": 2000000 },
+    { "name": "wreckPirateRaidBoost", "label": "Raid-countdown recovery multiplier near a big field", "default": 2, "min": 1, "max": 10 }
+  ]
+}

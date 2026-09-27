@@ -45,6 +45,7 @@ import { determineDesirePirateProtectionCore, pirateGenerateSellInfoOffersCore, 
 import { pirateDoConstructionCore, pirateProjectForcesCore } from './pirateConstruction';
 import { pirateTaskFleetsCore } from './pirateFleets';
 import { baconSettings } from '../data/baconSettings';
+import { scenarioQuery } from '../scenario/hooks';
 
 const f = Math.fround;
 
@@ -281,9 +282,8 @@ export function pirateBaseDiscovery(galaxy: Galaxy, builtObject: BuiltObject): v
 
 /** BuiltObject.1.cs 2894 UpdateRaidCountdown(timePassed). No Rnd. */
 export function updateRaidCountdownBuiltObject(galaxy: Galaxy, builtObject: BuiltObject, timePassed: number): void {
-    void galaxy;
     if (builtObject.raidCountdown > 0) {
-        const num = Math.trunc(timePassed / 10.0);
+        const num = galaxy.scenario === null ? Math.trunc(timePassed / 10.0) : Math.trunc((timePassed * scenarioQuery(galaxy, 'raidCountdownRate', 1, { x: builtObject.xpos, y: builtObject.ypos })) / 10.0); // mod layer (19e-7)
         let val = builtObject.raidCountdown - num;
         val = Math.min(255, Math.max(0, val));
         builtObject.raidCountdown = val;
@@ -292,9 +292,8 @@ export function updateRaidCountdownBuiltObject(galaxy: Galaxy, builtObject: Buil
 
 /** Habitat.cs 1608 UpdateRaidCountdown(timePassed). No Rnd. */
 export function updateRaidCountdownHabitat(galaxy: Galaxy, habitat: Habitat, timePassed: number): void {
-    void galaxy;
     if (habitat.raidCountdown > 0) {
-        const num = Math.trunc(timePassed / 10.0);
+        const num = galaxy.scenario === null ? Math.trunc(timePassed / 10.0) : Math.trunc((timePassed * scenarioQuery(galaxy, 'raidCountdownRate', 1, { x: habitat.xpos, y: habitat.ypos })) / 10.0); // mod layer (19e-7)
         let val = habitat.raidCountdown - num;
         val = Math.min(255, Math.max(0, val));
         habitat.raidCountdown = val;

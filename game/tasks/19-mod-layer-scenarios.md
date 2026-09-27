@@ -94,7 +94,7 @@ Effort: 1–4 days each after the mod layer; 5–9 one to two weeks each.
 4. Chronicle: the local model writes an in-character history from Galactic History/news (named wars/eras), in-game + export. [cheap]
 5. Living characters: governors/admirals with opinions, messages, grudges and rivalries affecting cooperation (ties to 19d-1). [medium]
 6. Spectator broadcast: AI-vs-AI galaxy with personas on and a commentator voice. [ambitious]
-7. Battle wreckage & salvage: persistent debris fields; salvage ships recover resources/foreign tech. [medium]
+7. Battle wreckage & salvage: persistent debris fields; salvage ships recover resources/foreign tech. [medium] — BUILT (scenario `wreckage-salvage`, flag `wreckage`; src/sim/scenario/wreckage/, query `wrecksAt` for 19g-7b / 19f-7).
 8. Space weather: nebula storms / solar flares moving across the map, degrading sensors and blocking jumps. [medium]
 9. Freight-flow overlay: make the simulated private economy visible (flows, where money accumulates) — needed by 19a/19c anyway. [cheap]
 10. Race designer on the data overlay, with model-written bios. [medium]
