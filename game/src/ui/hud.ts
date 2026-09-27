@@ -52,6 +52,8 @@ import { toggleIntelligenceScreen } from './screens/intelligence';
 // [intel] end
 import { createSelectionActionBar, refreshSelectionActionBar } from './orderMenu'; // [ordermenu]
 import { setTextIfChanged } from '../render/drawCache';
+import { creatureSelectionRows } from '../render/creatureLayer';
+import { resolveCreatureDescription, type Creature } from '../sim/creature';
 
 // Port of Main.Part12.cs LoadUiChromeButtons (381–520): the control → chrome
 // button image mapping. The original loads each control's image from
@@ -292,6 +294,8 @@ export interface Selection {
     builtObject?: BuiltObject;
     /** [15c] The selected fleet; `builtObject` is then its lead ship and `habitat` the nearest star. */
     shipGroup?: ShipGroup;
+    /** A selected space creature (InfoPanel.cs DrawCreature). `habitat` is then its nearest system's star. */
+    creature?: Creature;
 }
 
 let currentSelection: Selection | null = null;
@@ -313,6 +317,12 @@ export function selectStellarObject(target: BuiltObject | Habitat, moveView = tr
  * setter, which also refreshes its DOM). */
 export function setSelection(sel: Selection | null): void {
     currentSelection = sel;
+}
+
+// Creature selection hook: buildSelectionPanel registers it; the Main View's creature click calls selectCreature.
+let creatureSelectHandler: ((c: Creature, moveView: boolean) => void) | null = null;
+export function selectCreature(c: Creature, moveView = false): void {
+    creatureSelectHandler?.(c, moveView);
 }
 
 // [15c] Fleet selection hook: buildSelectionPanel registers it; the Fleets list,
@@ -1116,6 +1126,19 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         }
     };
     // [/16a]
+    // Select a creature: its nearest system's star as `habitat`, `creature` set (the map ring and live refresh follow it).
+    creatureSelectHandler = (c, moveView) => {
+        const galaxy = wiring.galaxy;
+        if (!galaxy) return;
+        const system = nearestSystem(galaxy.systems, c.xpos, c.ypos);
+        if (!system) return;
+        wiring.onSelectionChange?.({ habitat: system.systemStar, system, creature: c });
+        const cam = wiring.camera;
+        if (moveView && cam) {
+            cam.centerOn(c.xpos, c.ypos);
+            cam.zoomAt(SYSTEM_LEVEL_ZOOM, cam.width / 2, cam.height / 2);
+        }
+    };
 
     // Refresh the header/body from the current selection.
     const gameData = wiring.gameData;
@@ -1129,7 +1152,12 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
             return;
         }
         const h = sel.habitat;
-        // [15c] fleet header: name + ship count and system.
+        if (sel.creature) {
+            // InfoPanel.cs 3453 DrawCreature: the name as title; the type (ResolveDescription) and system under it.
+            nameEl.textContent = sel.creature.name;
+            nameEl.classList.remove('hud-muted');
+            subEl.textContent = `${resolveCreatureDescription(sel.creature.type)} · ${sel.system.systemStar.name} system`;
+        } else // [15c] fleet header: name + ship count and system.
         if (sel.shipGroup) {
             nameEl.textContent = fleetName(sel.shipGroup);
             nameEl.classList.remove('hud-muted');
@@ -1162,6 +1190,12 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
     const liveTimer = setInterval(() => {
         if (!panel.isConnected) {
             clearInterval(liveTimer);
+            return;
+        }
+        if (currentSelection?.creature) {
+            // InfoPanel.cs 3455: a destroyed creature clears the selection.
+            if (currentSelection.creature.hasBeenDestroyed) wiring.onSelectionChange?.(null);
+            else refresh();
             return;
         }
         if (currentSelection?.builtObject) refresh();
@@ -1893,6 +1927,11 @@ export function buildSelectionRows(sel: Selection, gameData?: GameData, player: 
         line.append(k, v);
         rows.push({ element: line });
     };
+    // A selected creature shows its own rows (InfoPanel.cs 3453 DrawCreature + type and location).
+    if (sel.creature) {
+        for (const r of creatureSelectionRows(sel.creature)) addColorRow(r);
+        return rows;
+    }
     // [15c] A selected fleet shows its own rows instead of the lead ship's.
     if (sel.shipGroup) {
         for (const r of shipGroupSelectionRows(sel.shipGroup, player)) addColorRow(r);

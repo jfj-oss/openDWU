@@ -10,7 +10,7 @@
 // Next to them an original Kaltor is drawn with the original's creature conventions. Nothing here touches the sim
 // (no Creature objects, no galaxy.rnd), nothing is pickable, and the layer does not exist without the flag.
 //
-// Creature draw conventions reused from the original (creatures are not drawn anywhere else on this branch yet):
+// Creature draw conventions reused from the original (shared with the real creature layer, creatureLayer.ts):
 //   MainView.1.cs:1559-1730 — creatures are drawn only while the zoom factor f < 500 and the camera is within
 //     Galaxy.MaxSolarSystemSize + 5000 of the system; culled 50 px outside the viewport; moving creatures animate
 //     at 10 fps (method_113 frame schedule), stationary ones show frame 0.
@@ -24,18 +24,21 @@ import type { Camera } from './camera';
 import { useMinifyingFilter } from './assets';
 import type { Galaxy } from '../sim/galaxy';
 import type { Habitat } from '../sim/types';
+import {
+    CREATURE_DIR,
+    CREATURE_FPS,
+    CREATURE_FRAME_SIDE,
+    CREATURE_IMAGE_SCALE,
+    CREATURE_MAX_FACTOR,
+    creatureContentPixels,
+    creatureDrawPx,
+    creatureFrameIndex,
+    creatureZoomFactor,
+} from './creatureLayer';
 
-const CREATURE_DIR = '/assets/dwu/images/units/creatures';
-/** Raw creature frame side (every creature PNG in the install is 360 × 360). */
-export const CREATURE_FRAME_SIDE = 360;
-/** Main.Part12.cs:1002 imageScale 0.5 × LoadCreatures double_8 = 0.6. */
-export const CREATURE_IMAGE_SCALE = 0.3;
-/** Galaxy.3.cs 5075 CreatureDrawResizeFactor. */
-export const CREATURE_DRAW_RESIZE_FACTOR = 8;
-/** MainView.1.cs:1712 method_113(..., 10, ...): creature animation fps. */
-export const CREATURE_FPS = 10;
-/** MainView.1.cs:1559 `double_0 < 500`. */
-export const CREATURE_MAX_FACTOR = 500;
+// The shared creature rules live in creatureLayer.ts; re-exported for the pilot's tests / capture script.
+export { creatureDrawPx, creatureFrameIndex, creatureZoomFactor };
+
 /** Galaxy.MaxSolarSystemSize (sim/galaxy.ts). */
 const MAX_SOLAR_SYSTEM_SIZE = 23000;
 /** Pilot Kaltor size: middle of Creature ctor's rnd.Next(80, 190). */
@@ -46,40 +49,6 @@ export const WHALE_LENGTH_MUL = 3;
 export function whalePilotEnabled(search: string): boolean {
     return new URLSearchParams(search).get('whalePilot') === '1';
 }
-
-/** Port of Main.Part11.cs:475 CalculateCreatureZoomFactor. */
-export function creatureZoomFactor(f: number): { factor: number; maxWidth: number } {
-    let factor = f;
-    let maxWidth = 240;
-    if (f > 3) {
-        factor = Math.max(3, f / 2);
-        maxWidth /= f;
-    }
-    return { factor, maxWidth };
-}
-
-/**
- * Drawn width (px) of a creature frame: LoadCreatures scale → PrepareCreatureImage sqrt size scaling → the zoom
- * divisor and cap (MainView.1.cs:1590-1596). `capMul` widens the cap for the (bigger) pilot whale; below f = 1
- * (only reachable with the pilot's lifted close-up zoom) the cap is not applied.
- */
-export function creatureDrawPx(contentPixels: number, size: number, f: number, capMul = 1): number {
-    const loaded = Math.trunc(CREATURE_FRAME_SIDE * CREATURE_IMAGE_SCALE);
-    const prepared = Math.trunc(loaded * Math.sqrt(size / Math.max(1, contentPixels / CREATURE_DRAW_RESIZE_FACTOR)));
-    const { factor, maxWidth } = creatureZoomFactor(f);
-    const px = Math.trunc(prepared / factor);
-    return f < 1 ? px : Math.min(px, Math.trunc(maxWidth * capMul));
-}
-
-/** MainView.1.cs:3729 method_113 frame pick: cycle = n / fps s, step = cycle / max(1, n - 1). */
-export function creatureFrameIndex(ms: number, frameCount: number, fps: number): number {
-    const cycle = Math.trunc((frameCount / fps) * 1000);
-    const step = Math.max(1, Math.trunc(cycle / Math.max(1, frameCount - 1)));
-    return Math.min(frameCount - 1, Math.trunc((Math.trunc(ms) % cycle) / step));
-}
-
-// ---------------------------------------------------------------------------
-// Palette / contrast statistics (pure; unit-tested).
 
 export interface ArtStats {
     /** Opaque (alpha ≥ 128) pixels measured. */
@@ -255,14 +224,7 @@ function imagePixels(img: CanvasImageSource, w: number, h: number): Uint8Clamped
 /** Main.Part13.cs:624 method_8: pixels with alpha > 0 that are not black / transparent black / transparent white. */
 function contentPixels(img: CanvasImageSource): number {
     const side = Math.trunc(CREATURE_FRAME_SIDE * CREATURE_IMAGE_SCALE);
-    const d = imagePixels(img, side, side);
-    let n = 0;
-    for (let i = 0; i < d.length; i += 4) {
-        if (d[i + 3] === 0) continue;
-        if (d[i + 3] === 255 && d[i] === 0 && d[i + 1] === 0 && d[i + 2] === 0) continue;
-        n++;
-    }
-    return n;
+    return creatureContentPixels(imagePixels(img, side, side));
 }
 
 /** Crop a piece of a frame and feather the cut edges (alpha ramps `feather` px wide on the given sides). */

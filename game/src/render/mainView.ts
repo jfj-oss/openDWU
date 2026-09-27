@@ -53,11 +53,13 @@ import { AmbientLayer } from './ambientLayer';
 // [fightersfx] begin
 import { FighterLayer } from './fighterLayer';
 import { WhalePilotLayer, whalePilotEnabled } from './whalePilotLayer'; // [whalepilot]
+import { CreatureLayer, creatureTooltipText } from './creatureLayer';
 // [fightersfx] end
 // [combatfx] begin
 import { updateCombatEffects } from './effectsLayer';
 // [combatfx] end
 import type { BuiltObject } from '../sim/builtObject';
+import type { Creature } from '../sim/creature';
 import { createMapOverlayState, type MapOverlayState } from '../ui/mapOverlays';
 import { showRegionLabels, showSystemNames } from '../ui/settings';
 import { hideMapTooltip, showMapTooltip, tooltipText } from '../ui/mapTooltip';
@@ -956,6 +958,8 @@ export class MainView {
     // [fightersfx] begin
     private fighterLayer!: FighterLayer;
     // [fightersfx] end
+    /** Space creatures (Kaltor, slugs, Ardilus, SilverMist) of the viewed system. */
+    private creatureLayer!: CreatureLayer;
     /** Art pilot (dev flag ?whalePilot=1): render-only void-whale prototypes next to an original Kaltor. */
     whalePilot: WhalePilotLayer | null = null; // [whalepilot]
     private textures!: MainViewTextures;
@@ -979,6 +983,8 @@ export class MainView {
     onSelectionChange?: (h: Habitat | null) => void;
     /** Task 13d: set by main.ts — receives the ship/base picked on left click. */
     onBuiltObjectSelect?: (bo: BuiltObject) => void;
+    /** Set by main.ts — receives the creature picked on left click. */
+    onCreatureSelect?: (c: Creature) => void;
     /** Task 08g: set by main.ts — star double-clicked at galaxy/sector zoom. */
     onDoubleClickStar?: (h: Habitat) => void;
     // [ordermenu] begin
@@ -1013,6 +1019,8 @@ export class MainView {
     selectedHabitat: Habitat | null = null;
     /** Task 13d: the ship/base currently selected in the Main View (null = none). */
     selectedBuiltObject: BuiltObject | null = null;
+    /** The creature currently selected in the Main View (null = none). */
+    selectedCreature: Creature | null = null;
 
     /** Drawn on-screen size of a habitat at the current zoom — the same size
      * functions the renderer uses (planets >= 14 px, moons >= 7 px, star
@@ -1079,6 +1087,12 @@ export class MainView {
         return this.builtObjectLayer.pick(w.x, w.y, 1 / this.camera.zoom, this.galaxy.playerEmpire);
     }
 
+    /** Main.Part11.cs method_145 (f <= 100): the creature under the screen point. Creatures win over ships. */
+    pickCreature(screenX: number, screenY: number): Creature | null {
+        const w = this.camera.screenToWorld(screenX, screenY);
+        return this.creatureLayer.pick(w.x, w.y, 1 / this.camera.zoom);
+    }
+
     // [ordermenu] begin
     /** 17c: double_0, the zoom as galaxy units per screen pixel (> 100: sector / galaxy level). */
     get zoomFactor(): number {
@@ -1094,6 +1108,10 @@ export class MainView {
      */
     pickOrderTarget(sx: number, sy: number): unknown {
         const f = this.zoomFactor;
+        // Main.Part11.cs 1501-1554: at f <= 100 a creature under the point is returned before any ship (Main.Part8.cs
+        // 2751 / 3082 / 3289 then offer "Attack X" on it).
+        const creature = this.pickCreature(sx, sy);
+        if (creature !== null) return creature;
         const bo = this.pickBuiltObject(sx, sy);
         if (bo !== null) {
             const g = bo.shipGroup as { leadShip?: BuiltObject | null } | null;
@@ -1273,6 +1291,9 @@ export class MainView {
         // [fightersfx] begin
         // Launched fighters / bombers above the ships and their ambient effects, below the combat effects.
         this.fighterLayer = new FighterLayer(this.galaxy, this.world, this.store);
+        // MainView.1.cs 1559: creatures are drawn after the ships and fighters.
+        this.creatureLayer = new CreatureLayer(this.galaxy, this.world, this.store.dwuPresent);
+        if (typeof window !== 'undefined') this.creatureLayer.godMode = new URLSearchParams(window.location.search).get('godMode') === '1';
         // [fightersfx] end
         // [whalepilot] begin — no-op unless the URL carries ?whalePilot=1
         if (typeof window !== 'undefined' && whalePilotEnabled(window.location.search)) {
@@ -1399,6 +1420,7 @@ export class MainView {
         // [fightersfx] begin
         this.fighterLayer.update(z, cam);
         // [fightersfx] end
+        this.creatureLayer.update(z, cam);
         this.whalePilot?.update(z, cam); // [whalepilot]
         // [combatfx] begin
         // Combat effects (weapon fire, explosions, shield strikes, hyperjump flashes) above the ships.
@@ -1422,7 +1444,17 @@ export class MainView {
         // Task 08g / 13d: keep the selection ring around the selected habitat or ship.
         const selBo = this.selectedBuiltObject;
         const sel = this.selectedHabitat;
-        if (selBo !== null && !selBo.hasBeenDestroyed && 1 / z < BUILT_OBJECT_MAX_FACTOR) {
+        const selC = this.selectedCreature;
+        if (selC !== null) {
+            // MainView.1.cs 1717-1720 method_212: a circle over the box 1.5 x the drawn size, only while it is drawn.
+            const px = selC.hasBeenDestroyed ? 0 : this.creatureLayer.drawnSizePx(selC);
+            if (px > 0) {
+                const s = cam.worldToScreen(selC.xpos, selC.ypos);
+                this.drawSelectionRing(s.x, s.y, Math.max(px * 1.5, 8) * 0.5);
+            } else {
+                this.selectionRing.visible = false;
+            }
+        } else if (selBo !== null && !selBo.hasBeenDestroyed && 1 / z < BUILT_OBJECT_MAX_FACTOR) {
             const s = cam.worldToScreen(selBo.xpos, selBo.ypos);
             const r = Math.max(this.builtObjectLayer.drawnSizePx(selBo), 8) * 0.5 + 4;
             this.drawSelectionRing(s.x, s.y, r);
@@ -1542,6 +1574,12 @@ export class MainView {
                     return;
                 }
                 this.onPointerRest?.(x, y, e.clientX, e.clientY); // [ordermenu]
+                // HoverPanel.cs 220 method_2: a creature under the cursor shows its name, size, strength and health.
+                const creature = this.pickCreature(x, y);
+                if (creature !== null) {
+                    showMapTooltip(creatureTooltipText(creature), e.clientX, e.clientY);
+                    return;
+                }
                 const hit = this.pick(x, y);
                 if (hit === null) {
                     hideMapTooltip();
@@ -1585,6 +1623,17 @@ export class MainView {
                     return;
                 }
                 if (this.onLeftClickIntercept?.(x, y)) return; // [ordermenu]
+                // Main.Part11.cs method_145: a creature under the cursor is picked before any ship.
+                const creature = this.pickCreature(x, y);
+                if (creature !== null) {
+                    playGridClick(); // [audio]
+                    this.selectedHabitat = null;
+                    this.selectedBuiltObject = null;
+                    this.selectedCreature = creature;
+                    this.onCreatureSelect?.(creature);
+                    return;
+                }
+                this.selectedCreature = null;
                 const bo = this.pickBuiltObject(x, y);
                 // [audio] begin — Main.Part10.cs:3304-3306 `if (obj3 != null) method_225()` (grid.wav) on a left-click pick.
                 if (bo !== null || this.pick(x, y) !== null) playGridClick();
