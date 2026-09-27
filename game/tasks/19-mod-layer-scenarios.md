@@ -192,6 +192,11 @@ Params: belt inner radius, storm density, thinning radius/factor, shoal count, f
    factions get a HERD-HUNTING mission when a herd wanders within a param range of their base (kill drop = creature
    resources they sell; thins herds near bases; herders lose standing with herd killers → pirate-vs-herder friction feeds
    19k-3 leagues). Params: share, avoid radius, hunt range, hunt chance/year.
+9. Fuel oases (user, 2026-09-27, "pirate/rim independent fuel issue"): with fuel scarcity on, the rim ring had no
+   caslon/hydrogen at all; the scenario now guarantees `rimFrontierOasesPerSector` (default 1) fuel sources per rim
+   sector (a caslon gas giant or hydrogen source chosen among the sector's rim habitats after faithful placement,
+   scenario-owned Random), pirate bases prefer candidates within `rimFrontierOasisRange` of an oasis, and independents'
+   stations weight oases; an oasis is a contestable chokepoint.
 
 ## 19i — Rim atmosphere (ACCEPTED by the user 2026-09-26 — "yes"; presentation only, reads a distance-from-centre curve; flag off = untouched)
 Visual: (1) colour grading by radius — desaturate + cold blue-violet tint on star field/nebulae past the rim band, fading in
