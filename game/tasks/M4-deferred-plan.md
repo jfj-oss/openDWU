@@ -106,3 +106,7 @@ year 10 (1–8 per empire). Follow-ups:
 - 19n-1 follow-ups: a regent is killed at the hand-over (side effect of the stock ChangeLeader — port a "steps down"
   path); when both livingCalendar and courtDynasties are on, the calendar must skip its election/coronation rolls
   (`courtHandlesSuccession(galaxy)` is exported for it — wire on merge); house prestige never decays on its own.
+- 19o migration (after batch F + G merge): switch the remaining attitude writes to the ledger per
+  src/sim/scenario/reputation/MIGRATION.md (19l incidents, 19g-3 humiliation/breach, 19d8 council, 19j herders, 19k
+  leagues, 19a display mirror, 19l-2 pirate ambition/calendar) and point the council motion search, the war review
+  and peace-terms pricing at `grievances()`. Sonnet, mechanical, ~half a day.
