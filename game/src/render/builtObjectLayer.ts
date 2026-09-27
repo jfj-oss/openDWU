@@ -17,10 +17,13 @@ import { Container, Sprite } from 'pixi.js';
 import type { Texture } from 'pixi.js';
 import { Camera } from './camera';
 import { AssetStore, makeDotTexture, useMinifyingFilter } from './assets';
-import { loadShipArt } from './shipArt';
+import { loadShipArt, type ShipArt } from './shipArt';
 // [concordArt] begin
-import { ConcordFxLayer, concordArtEmpire, concordArtLook, concordShipArt, concordTreasureShips, concordVariantFor } from './concordArt';
+import { ConcordFxLayer, concordArtEmpire, concordArtLook, concordShipArt, concordTreasureShips, concordVariantFor, type ConcordShipArt } from './concordArt';
 // [concordArt] end
+import { DamageOverlays, shipDamageSubject } from './shipOverlays';
+import { artBundleFlag } from './artBundleFlags';
+import { LiveryOverlays } from './liveryLayer';
 import { Galaxy } from '../sim/galaxy';
 import type { BuiltObject } from '../sim/builtObject';
 import { BuiltObjectSubRole } from '../sim/builtObjectTypes';
@@ -396,6 +399,8 @@ const NO_TREASURE: ReadonlySet<unknown> = new Set();
 interface LoadedShipImage {
     texture: Texture;
     metrics: ShipImageMetrics;
+    /** The shipArt.ts record (pixels for the 19r overlays); null for the no-install dot. */
+    art: ShipArt | null;
 }
 
 /**
@@ -406,6 +411,12 @@ interface LoadedShipImage {
  */
 export class BuiltObjectLayer {
     root = new Container();
+    /** The ship / base sprites (first child of root). */
+    private ships = new Container();
+    /** 19r: the base-game damage overlay over the sprites (always on; embers / scorch behind damageFx). */
+    private damage: DamageOverlays<BuiltObject>;
+    /** 19r: liveries / withered look under the damage (flag `liveries`). */
+    readonly liveries: LiveryOverlays;
     private sprites = new Map<BuiltObject, Sprite>();
     private images = new Map<string, Promise<LoadedShipImage>>();
     /** Loaded images by URL, read synchronously each frame (null = failed). */
@@ -429,6 +440,9 @@ export class BuiltObjectLayer {
     ) {
         world.addChild(this.root);
         world.addChild(this.concordFx.root); // [concordArt]
+        this.root.addChild(this.ships);
+        this.liveries = new LiveryOverlays(this.root, galaxy);
+        this.damage = new DamageOverlays<BuiltObject>(this.root);
     }
 
     /**
@@ -443,7 +457,7 @@ export class BuiltObjectLayer {
             p = (async () => {
                 if (this.store.dwuPresent) {
                     const art = await loadShipArt(url);
-                    if (art !== null) return { texture: art.texture, metrics: art.metrics };
+                    if (art !== null) return { texture: art.texture, metrics: art.metrics, art };
                 }
                 // No install, or the image is missing / empty: the grey dot, assuming the content fills about
                 // half the texture area, centred.
@@ -455,7 +469,7 @@ export class BuiltObjectLayer {
                     cropCenterX: texture.width / 2,
                     cropCenterY: texture.height / 2,
                 };
-                return { texture, metrics };
+                return { texture, metrics, art: null };
             })();
             this.images.set(url, p);
         }
@@ -476,6 +490,11 @@ export class BuiltObjectLayer {
         this.frame++;
         this.concordFx.begin();
         // [concordArt] end
+        this.damage.begin();
+        const damageFx = artBundleFlag(this.galaxy, 'damageFx');
+        const liveries = artBundleFlag(this.galaxy, 'liveries');
+        this.liveries.root.visible = liveries;
+        if (liveries) this.liveries.begin();
         // Camera.worldToScreen, inlined (no allocation per ship per frame).
         const camX = cam.x;
         const camY = cam.y;
@@ -490,6 +509,7 @@ export class BuiltObjectLayer {
             // CompleteTeardown (BuiltObject.2.cs:5522) until RemoveNullBuiltObjects (Galaxy.9.cs:2862) compacts it.
             if (bo === null || bo.hasBeenDestroyed) continue;
             this.seen.add(bo);
+            if (liveries) this.liveries.observe(bo);
             const sx = (bo.xpos - camX) * z + halfW;
             const sy = (bo.ypos - camY) * z + halfH;
             let sprite = this.sprites.get(bo);
@@ -508,7 +528,7 @@ export class BuiltObjectLayer {
                 continue;
             }
             // [concordArt] end
-            let img: LoadedShipImage | null | undefined = cArt;
+            let img: LoadedShipImage | ConcordShipArt | null | undefined = cArt;
             if (img === null) {
                 const pictureRef = resolveDrawPictureRef(bo);
                 let url = this.urlByPictureRef.get(pictureRef);
@@ -541,7 +561,7 @@ export class BuiltObjectLayer {
             const { texture, metrics } = img;
             if (sprite === undefined) {
                 sprite = new Sprite(texture);
-                this.root.addChild(sprite);
+                this.ships.addChild(sprite);
                 this.sprites.set(bo, sprite);
             }
             sprite.texture = texture;
@@ -568,8 +588,20 @@ export class BuiltObjectLayer {
                 this.concordFx.draw(cArt, bo.xpos, bo.ypos, sprite.rotation, sprite.scale.x, sprite.anchor.x, sprite.anchor.y, bo.builtObjectID, px, nowMs);
             }
             // [concordArt] end
+            // A Concord ship (cArt !== null) has no shipArt.ts record of its own — it's drawn by the concordFx pass
+            // above instead, with its own weathered/pristine look (concordArtLook), so 19r's damage/liveries overlays
+            // (keyed off the stock art record) skip it rather than fall over on a shape without `.art`.
+            const shipArtRecord = 'art' in img ? img.art : null;
+            if (liveries && shipArtRecord !== null) this.liveries.draw(bo, shipArtRecord, px, z, sprite.alpha);
+            // 19r: MainView.cs 3253 method_73 → Main.Part12.cs 4988 method_106 while DamagedComponentCount > 0.
+            if (bo.damagedComponentCount > 0 && shipArtRecord !== null) {
+                const subject = shipDamageSubject(bo);
+                if (subject !== null) this.damage.draw(bo, subject, shipArtRecord, bo.xpos, bo.ypos, bo.heading, px, z, damageFx, sprite.alpha);
+            }
         }
         this.concordFx.end(); // [concordArt]
+        this.damage.end();
+        if (liveries) this.liveries.end();
         // Destroyed or removed objects: drop their sprite and drawn size (which also clears their selection ring / pick).
         releaseStaleSprites(this.sprites, this.seen, (bo, sprite) => {
             this.drawnPx.delete(bo);

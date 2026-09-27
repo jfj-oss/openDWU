@@ -400,6 +400,34 @@ Flag off = byte-identical (the log is a scenario-side mirror). ~1.5 agent-days (
    Concord treasure ships get salt bloom / barnacle growth on hull edges; capped subtle; all off by flag.
 ~1.5 agent-days (Opus).
 
+## 19s — Local LLM layer 2 (ACCEPTED by the user 2026-09-27 — "start up work on llm integration"; builds on 18a–c:
+endpoint client with API probe, grammar/JSON-schema outputs, legal moves from the sim, commands through the queue,
+"the model never runs inside the tick", scripted fallback when no model is present)
+Hardware: RTX 4090 → 8B ≈ 100–140 tok/s, 14B ≈ 60–80, 32B ≈ 30–40 (4-bit). A strategic decision ≈ 600 in / 150 out
+≈ 2 s on 8B, 6 s on 32B; a game-year ≈ 10 real min → ~300 decisions/year on 8B (all 60 empires × 3), ~60–80 on 32B
+(the majors + neighbours). Recommended default: 14B, strategic layer aimed at the N empires nearest the player.
+Design rules: async request queue with a per-game-year budget and priority (player-facing voices first), situation-hash
+cache, hard timeouts, graceful silence; every model-driven AI choice is validated against the sim's legal-move list and
+written as a command (replay never needs the model); digests ≤ 400 tokens with a fixed schema; no sim mutation from
+model code; all opt-in, off by default.
+1 Foundations: `llm/` request queue + budget + cache; GROUNDING DIGESTS `digestFor(empire[, other])` from the event log
+  (19p), reputation causes + grievances (19o), claims/houses/seats (19n), leads (19m), council state (19d8), war score
+  (19g-3), rim standing (19a/19j) — one schema, one place; CHRONICLE (19e-4): a yearly background job writes an
+  in-character history from `chronicleExport` (court historian voice by government/race), stored in event-log state,
+  a Chronicle tab on Galactic History, export to markdown; AI PARITY AUDIT: a soak script with every flag on that counts
+  per-system AI usage (motions tabled, votes, schemes, investigations, terms offered/accepted, faction concessions,
+  protectorate/conquest choices, salvage, herd hunts) → a table in tasks/, driving the rule tuning list.
+2 Voices: council seats speak (spymaster briefs leads, chancellor grievances, marshal war goals), faction ultimatums in
+  the faction leader's voice, diplomat grounded on the ledger + claims (18b upgrade), council speeches for/against a
+  motion, Concord mask ritual, herder elders' migration lore, letters for blackmail/secret exposure; all through the
+  existing message/decision surfaces.
+3 Strategic upgrade (18c): for the N empires nearest the player (param, default 5) a yearly digest → schema-constrained
+  choice among legal moves: council motion/vote, peace terms offer/accept, scheme target, faction concession,
+  protectorate/league offers, herder path, war goal; validated, budgeted, logged as commands; rules for the rest.
+4 Archivist + natural-language orders: a question box over the log/chronicle with retrieval; chat orders restricted to
+  the command queue with confirmation (the 18a idea, now grounded).
+Order: 1 → 2 → 3 → 4; ~1 agent-day each (Opus for prompts/schemas; Sonnet for the audit script).
+
 ## 19q — Knowledge model (accepted, later): unified suspected/confirmed/cleared reveal levels across fog, leads, wreck
 fields, the treasure beacon, herd sightings, threat overlays and story clues; one overlay manager; a sightings feed. Effort: medium (~1 agent-day);
 build after 19d2 (unrest plumbing) alongside 19g-7 rim fauna; 19a/19c tests must still pass with 19h on.

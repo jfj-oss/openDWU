@@ -39,9 +39,10 @@ import {
     MANUAL,
 } from '../../sim/diplomacyTick';
 import { galaxyStarDate } from '../../sim/tick/simTime';
+import { applyEmpireEmblem } from '../empireEmblem';
+import { leagueSection } from '../leagueRows';
 import { rimTraderTermsRows, type RimTraderTermsRows } from '../scenario/rimTraderRows';
 import { rimTraderEmpire } from '../../sim/scenario/rimTrade/common';
-import { empireEmblem } from '../raceDisplayArt';
 import { REAL_SECONDS_IN_GALACTIC_YEAR } from '../../sim/galaxyTime';
 import { EmpireMessageType, empireMessages } from '../../sim/messages';
 import { showToast } from '../toast';
@@ -417,14 +418,16 @@ function rimTraderTermsBlock(t: RimTraderTermsRows): HTMLElement {
 }
 // [rimTrader] end
 
-function emblemImg(className: string, src: string, filter: string): HTMLImageElement {
+/** 19r: an emblem image (stock art at once, the override when ready); removed if it fails to load. The Concord's
+ * junk-mask portrait/flag (19a) reaches this through the registerEmblemOverride hook in render/concordArt.ts. */
+function emblemImg(className: string, empire: Empire, which: 'portrait' | 'flag', style: string): HTMLImageElement {
     const img = document.createElement('img');
     img.className = className;
     img.alt = '';
     img.draggable = false;
-    if (filter !== '') img.style.filter = filter;
+    img.style.cssText = style;
     img.addEventListener('error', () => img.remove());
-    img.src = src;
+    applyEmpireEmblem(img, empire.galaxy, empire, which);
     return img;
 }
 
@@ -519,10 +522,10 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
         const tSwatch = el('span', 'diplomacy-swatch');
         tSwatch.style.background = rgb(row.color);
         title.append(tSwatch, el('span', 'diplomacy-detail-name', row.name));
-        // The empire's portrait and flag (scenario overrides keyed by race name, e.g. the 19a Concord's mask).
-        const emblem = empireEmblem(player.galaxy, row.empire);
-        if (emblem.portraitUrl !== null) title.prepend(emblemImg('diplomacy-portrait', emblem.portraitUrl, ''));
-        if (emblem.flagUrl !== null) title.append(emblemImg('diplomacy-flag', emblem.flagUrl, emblem.flagFilter));
+        // 19r: the empire's portrait and flag (derived / scenario art through the emblem overrides — the 19a
+        // Concord's mask reaches this through render/concordArt.ts's registerEmblemOverride hook).
+        title.prepend(emblemImg('diplomacy-portrait', row.empire, 'portrait', 'width:48px;height:48px;margin-right:8px;border-radius:3px;vertical-align:middle'));
+        title.append(emblemImg('diplomacy-flag', row.empire, 'flag', 'width:40px;height:24px;margin-left:8px;vertical-align:middle'));
         detail.appendChild(title);
 
         detail.appendChild(el('div', 'diplomacy-section-heading', 'Current Relationship With Us'));
@@ -663,6 +666,9 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
             if (council.rivals.length > 0) detail.appendChild(el('div', 'diplomacy-line diplomacy-muted', `Rival council: ${council.rivals.join(', ')}`));
         }
 
+        // 19r: the independent leagues (19k-3) with their flags, under the empire rows.
+        const leagues = leagueSection(player.galaxy, 'diplomacy');
+        if (leagues !== null) list.appendChild(leagues);
         body.append(list, detail);
         list.scrollTop = listScroll;
         detail.scrollTop = detailScroll;

@@ -33,8 +33,10 @@
 //
 // No name label and no health bar are drawn on the map for creatures (only the damage overlay and the attack frames).
 //
-// TODO(port): damage blotches on hurt non-SilverMist creatures (method_108 → Main.Part11.cs 107 method_113 random
-//   rect speckles in the per-type colour, masked by bitmap_11) — MainView.1.cs 1654.
+// 19r: damage blotches on hurt non-SilverMist creatures (MainView.1.cs 1654 method_108 → Main.Part11.cs 107
+//   method_113: clusters in the per-type flesh colour, masked by the current frame bitmap_11[pictureRef][frame]) —
+//   damageOverlay.ts; the same clusters (new Random(CreatureID)) clipped by each frame's own alpha, and on the 19g-7b
+//   rig bodies a rope over the body so the clusters bend with it.
 // TODO(port): Creature.PromptSystemCheck = true for slow creatures outside the viewed system (MainView.1.cs 1605) and
 //   DoTasks for restricted-area creatures (MainView.1.cs 1581) — sim writes from the C# renderer.
 
@@ -49,6 +51,8 @@ import { GalaxyLocationType } from '../sim/galaxyLocation';
 import { findShipOutsideSystemWithScanRange } from '../sim/independentTraders';
 import { FaunaVariant, creatureTamedByHerders, faunaVariantDef, faunaVariantName, faunaVariantOfCreature } from '../sim/scenario/newFauna/common';
 import { FaunaArt } from './faunaArt';
+import { buildDamageLayer, creatureDamageBudget, creatureDamageColour, damageOverlaySide, rotatedFrameMask, scaledMask } from './damageOverlay';
+import { textureFromPixels } from './shipOverlays';
 import {
     CreatureRig,
     HarnessView,
@@ -304,6 +308,8 @@ export function creatureSelectionRows(c: Creature): { label: string; value: stri
 
 interface LoadedSet {
     frames: Texture[];
+    /** 19r: each frame's RGBA at the loaded size (CREATURE_LOADED_SIDE², the C#'s bitmap_11 masks); empty without art. */
+    pixels: Uint8ClampedArray[];
     /** method_8 content pixels of frame 0 at the loaded 108 px size. */
     content: number;
 }
@@ -315,6 +321,28 @@ function loadImage(url: string): Promise<HTMLImageElement> {
         img.onerror = () => reject(new Error(`creatureLayer: cannot load ${url}`));
         img.src = url;
     });
+}
+
+/** A frame drawn at the loaded size (LoadCreaturesImpl loads at imageScale 0.3): its RGBA (19r damage mask). */
+function loadedPixels(img: CanvasImageSource): Uint8ClampedArray {
+    const side = CREATURE_LOADED_SIDE;
+    const c = document.createElement('canvas');
+    c.width = side;
+    c.height = side;
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    if (ctx === null) return new Uint8ClampedArray(side * side * 4);
+    ctx.drawImage(img, 0, 0, side, side);
+    return ctx.getImageData(0, 0, side, side).data;
+}
+
+/** 19r: one creature's damage layers (per frame of the original sets, or the rig rope texture). */
+interface CreatureDamage {
+    sig: string;
+    side: number;
+    /** Per frame texture (key: frame set index × 100 + frame) of the original frames. */
+    frames: Map<number, Texture>;
+    rig: Texture | null;
+    seenFrame: number;
 }
 
 /** method_8 on frame 0 drawn at the loaded size (LoadCreaturesImpl loads at imageScale 0.3). */
@@ -389,6 +417,11 @@ export class CreatureLayer {
     private frameNo = 0;
     /** Render-only gallery (dev flag ?faunaGallery=1). */
     gallery: CreatureGallerySource | null = null;
+    /** 19r: damage overlays over the original frames, and their textures per creature. */
+    private damageRoot = new Container();
+    private damagePool: SpritePool;
+    private damage = new Map<Creature, CreatureDamage>();
+    private damageBuilds = 0;
 
     constructor(
         private galaxy: Galaxy,
@@ -401,6 +434,78 @@ export class CreatureLayer {
         this.pool = new SpritePool(this.root);
         this.faunaRoot.eventMode = 'none';
         this.root.addChild(this.faunaRoot);
+        this.damageRoot.eventMode = 'none';
+        this.root.addChild(this.damageRoot);
+        this.damagePool = new SpritePool(this.damageRoot);
+    }
+
+    /** 19r: the damage record of `c` for overlay side `side` (null = undamaged / SilverMist / no colour). */
+    private damageOf(c: Creature, side: number): CreatureDamage | null {
+        const colour = creatureDamageColour(c.type);
+        if (colour === null || !(c.damage > 0) || c.damageKillThreshold <= 0) {
+            const old = this.damage.get(c);
+            if (old !== undefined) this.dropDamage(c, old);
+            return null;
+        }
+        const sig = `${side}|${c.damage}|${c.damageKillThreshold}`;
+        let d = this.damage.get(c);
+        if (d !== undefined && d.sig !== sig && this.damageBuilds < 4) {
+            this.dropDamage(c, d);
+            d = undefined;
+        }
+        if (d === undefined) {
+            d = { sig, side, frames: new Map(), rig: null, seenFrame: this.frameNo };
+            this.damage.set(c, d);
+        }
+        d.seenFrame = this.frameNo;
+        return d;
+    }
+
+    private dropDamage(c: Creature, d: CreatureDamage): void {
+        this.views.get(c)?.rig?.setDamage(null);
+        for (const t of d.frames.values()) {
+            this.damagePool.release(t);
+            t.destroy(true);
+        }
+        d.rig?.destroy(true);
+        this.damage.delete(c);
+    }
+
+    /** 19r: the overlay of original frame `frameIdx` of set `setIdx` (built on first use; null past the build cap). */
+    private frameDamage(c: Creature, d: CreatureDamage, set: LoadedSet, setIdx: number, frameIdx: number): Texture | null {
+        const key = setIdx * 100 + frameIdx;
+        const got = d.frames.get(key);
+        if (got !== undefined) return got;
+        const px = set.pixels[frameIdx];
+        if (px === undefined || this.damageBuilds >= 4) return null;
+        this.damageBuilds++;
+        const side = d.side;
+        const hull = rotatedFrameMask(px, CREATURE_LOADED_SIDE, side);
+        const budget = creatureDamageBudget(side, side, c.damage, c.damageKillThreshold);
+        const layer = buildDamageLayer(c.creatureId, side, side, budget, hull, { kind: 'solid', rgb: creatureDamageColour(c.type)! });
+        const t = textureFromPixels(layer.rgba, side, side, true);
+        d.frames.set(key, t);
+        return t;
+    }
+
+    /** 19r: the rig body's damage rope (W × H in body-texture orientation at the drawn size). */
+    private rigDamage(c: Creature, rig: CreatureRig, px: number): void {
+        const img = rig.bodyImage;
+        const w = damageOverlaySide(px * RIG_CONTENT_FRAC);
+        const d = this.damageOf(c, w);
+        if (d === null) {
+            rig.setDamage(null);
+            return;
+        }
+        if (d.rig === null && this.damageBuilds < 4) {
+            this.damageBuilds++;
+            const h = Math.max(4, Math.round((w * img.h) / img.w));
+            const hull = scaledMask(img.data, img.w, img.h, w, h);
+            const budget = creatureDamageBudget(w, h, c.damage, c.damageKillThreshold);
+            const layer = buildDamageLayer(c.creatureId, w, h, budget, hull, { kind: 'solid', rgb: creatureDamageColour(c.type)! });
+            d.rig = textureFromPixels(layer.rgba, w, h, true);
+        }
+        rig.setDamage(d.rig);
     }
 
     private faunaArt(): FaunaArt {
@@ -465,6 +570,7 @@ export class CreatureLayer {
             v.node.scale.set((px * RIG_CONTENT_FRAC) / v.straight.length / z);
         }
         v.node.alpha = creatureDamageAlpha(c);
+        if (v.rig !== null) this.rigDamage(c, v.rig, px);
         // Tamed look (harness), on any carrier but the swarm.
         v.hstate = harnessStep(v.hstate, tamed, t);
         const carrier = v.rig ?? v.straight;
@@ -484,7 +590,7 @@ export class CreatureLayer {
             if (this.fallback === null) {
                 const t = makeDotTexture('#b0b0b0', 32);
                 useMinifyingFilter(t);
-                this.fallback = { frames: [t], content: (CREATURE_LOADED_SIDE * CREATURE_LOADED_SIDE) / 2 };
+                this.fallback = { frames: [t], pixels: [], content: (CREATURE_LOADED_SIDE * CREATURE_LOADED_SIDE) / 2 };
             }
             return this.fallback;
         }
@@ -504,7 +610,7 @@ export class CreatureLayer {
                         useMinifyingFilter(t);
                         return t;
                     });
-                    this.sets.set(index, { frames, content: loadedContentPixels(imgs[0]) });
+                    this.sets.set(index, { frames, pixels: imgs.map(loadedPixels), content: loadedContentPixels(imgs[0]) });
                 },
                 (e) => {
                     console.warn('[creatures]', e);
@@ -529,12 +635,15 @@ export class CreatureLayer {
         const f = 1 / z;
         this.drawnPx.clear();
         this.frameNo++;
+        this.damageBuilds = 0;
+        this.damagePool.begin();
         // The gallery frames its own camera view (it applies from the next frame).
         this.gallery?.step();
         this.pool.begin();
         this.root.visible = f < CREATURE_MAX_FACTOR;
         if (!this.root.visible) {
             this.pool.end();
+            this.damagePool.end();
             this.hideStaleViews();
             return;
         }
@@ -576,11 +685,18 @@ export class CreatureLayer {
             }
             if (tamed || this.views.has(c)) this.drawFauna(c, null, tamed, px, z, t, secondsOfDay);
             let frames = moving.frames;
+            let shown = moving;
+            let shownIdx = idx.moving;
             if (c.currentSpeed > 0) {
                 const attack = this.frameSet(idx.attack);
-                if (attack !== null && creatureUsesAttackFrames(c, attack.frames.length)) frames = attack.frames;
+                if (attack !== null && creatureUsesAttackFrames(c, attack.frames.length)) {
+                    frames = attack.frames;
+                    shown = attack;
+                    shownIdx = idx.attack;
+                }
             }
-            const frame = c.currentSpeed > 0 ? frames[creatureFrameIndex(nowMs, frames.length, CREATURE_FPS)] : frames[0];
+            const frameIdx = c.currentSpeed > 0 ? creatureFrameIndex(nowMs, frames.length, CREATURE_FPS) : 0;
+            const frame = frames[frameIdx];
             const s = this.pool.acquire(frame);
             s.position.set(c.xpos, c.ypos);
             // Raw frames face up; the C# turns them 90° clockwise at load and draws at CurrentHeading.
@@ -588,9 +704,25 @@ export class CreatureLayer {
             s.scale.set(px / frame.width / z);
             s.alpha = creatureDamageAlpha(c);
             this.drawnPx.set(c, px);
+            // 19r: MainView.1.cs 1654 method_108 (Main.Part12.cs 5016) while Damage > 0.
+            if (c.damage > 0) {
+                const d = this.damageOf(c, damageOverlaySide(px));
+                const t = d === null ? null : this.frameDamage(c, d, shown, shownIdx, frameIdx);
+                if (t !== null && d !== null) {
+                    const o = this.damagePool.acquire(t);
+                    o.position.set(c.xpos, c.ypos);
+                    // The overlay is in the load-rotated frame space: drawn at CurrentHeading.
+                    o.rotation = c.currentHeading;
+                    o.scale.set(px / d.side / z);
+                }
+            }
         }
         this.pool.end();
-        // The harness overlays sit above the original frames.
+        this.damagePool.end();
+        // Drop the damage layers of creatures not drawn for a while.
+        if (this.frameNo % 60 === 0) for (const [c, d] of this.damage) if (this.frameNo - d.seenFrame > 120) this.dropDamage(c, d);
+        // The damage overlays, then the harness overlays, sit above the original frames.
+        this.root.addChild(this.damageRoot);
         this.root.addChild(this.faunaRoot);
         this.hideStaleViews();
     }

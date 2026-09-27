@@ -1,0 +1,9 @@
+{
+  "id": "art-bundle",
+  "name": "Art Bundle",
+  "description": "Render-only art extras: empire liveries with a withered look (tint band, emblem decal and hull number on the original ships; paint fades, grime, rust and pitting grow with age since the last retrofit or long repair) and livelier battle damage (embers in fresh hits, scorch around them). The base-game damage overlay is always on. Nothing here changes the simulation.",
+  "flags": [
+    { "name": "liveries", "label": "Empire liveries", "description": "Tint band, emblem decal and hull number over the original ship art, withering with age; pirates start withered.", "default": true },
+    { "name": "damageFx", "label": "Damage embers and scorch", "description": "Ember glow in the newest damage clusters for a few seconds and a scorch halo around each cluster (off = the original's damage look).", "default": true }
+  ]
+}

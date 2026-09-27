@@ -80,20 +80,27 @@ function resolveIds(galaxy: Galaxy): { rim: number[]; rare: number[] } {
 /**
  * Extra rim goods other packages add (19j: herd goods count as rim goods for the Concord). Each source returns [] unless
  * its own flag is on; pure lookups, no Rnd.
+ *
+ * `var`, not `const`: this module is reachable through several packages.ts import paths (rimFrontier, builtObjectLayer
+ * via concordArt.ts / liveryLayer.ts, ...); a genuine cycle among them can call registerExtraRimGoods while this file's
+ * own top level is still mid-evaluation. `var` has no TDZ (hoisted as `undefined` for the whole module from the start),
+ * so an early, reentrant call still finds a real (if freshly-created) array instead of throwing.
  */
-const extraRimGoodSources: ((galaxy: Galaxy) => number[])[] = [];
+var extraRimGoodSources: ((galaxy: Galaxy) => number[])[] | undefined;
 
 /** Registers an extra rim-good source (module load, like the hook registries). */
 export function registerExtraRimGoods(source: (galaxy: Galaxy) => number[]): void {
-    if (!extraRimGoodSources.includes(source)) extraRimGoodSources.push(source);
+    const arr = (extraRimGoodSources ??= []);
+    if (!arr.includes(source)) arr.push(source);
 }
 
 /** Resource ids of the rim goods present in this galaxy's data (plus registered extras, e.g. 19j herd goods). */
 export function rimGoodIds(galaxy: Galaxy): number[] {
     const base = resolveIds(galaxy).rim;
-    if (extraRimGoodSources.length === 0) return base;
+    const sources = extraRimGoodSources;
+    if (sources === undefined || sources.length === 0) return base;
     let out = base;
-    for (const src of extraRimGoodSources) {
+    for (const src of sources) {
         for (const id of src(galaxy)) {
             if (out.includes(id)) continue;
             if (out === base) out = [...base];

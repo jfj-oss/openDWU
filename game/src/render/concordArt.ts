@@ -46,6 +46,7 @@ import { LIGHT_OFF_SECONDS, LIGHT_ON_SECONDS, scanShipMarkers, type ShipMarkers 
 import { paintOutShipMarkers } from './shipArt';
 import { useMinifyingFilter } from './assets';
 import { SpritePool } from './fxCommon';
+import { registerEmblemOverride } from '../ui/empireEmblem';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Variants
@@ -3056,3 +3057,12 @@ export function raceDisplayOverride(galaxy: Galaxy | null | undefined, raceName:
     raceArt ??= { portraitUrl: toDataUrl(generateConcordPortrait()), flagUrl: toDataUrl(generateConcordFlag()) };
     return raceArt;
 }
+
+// 19r's ui/empireEmblem.ts registry (companies, exile, ghost, herders) and this module's own race-file override were
+// each written without the other in view; registering here — rather than duplicating raceDisplayOverride's logic a
+// third time — is what keeps the Concord's junk-mask portrait/flag showing through 19r's unified emblem rendering
+// (diplomacyScreen.ts, hud.ts) instead of being silently dropped by the merge.
+registerEmblemOverride((galaxy, empire: Empire) => {
+    const o = raceDisplayOverride(galaxy, empire.dominantRace?.name);
+    return o !== null ? Promise.resolve({ portraitUrl: o.portraitUrl, flagUrl: o.flagUrl }) : null;
+});

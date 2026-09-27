@@ -17,7 +17,8 @@
 //                                            rotated 90° clockwise, thruster marks scanned and painted out.
 //
 // TODO(port): Empire.IsObjectVisibleToThisEmpire(fighter) / GodMode (MainView.1.cs 1337) — not in sim; all drawn.
-// TODO(port): damage overlay on a hurt fighter (method_70 → Main.method_107 with the bitmap_7 mask) — MainView.cs 3204.
+// 19r: the damage overlay on a hurt fighter (MainView.cs 3204 method_70 → Main.Part12.cs 5002 method_107 with the
+// bitmap_7 mask) — shipOverlays.ts DamageOverlays, drawn above the bodies.
 // TODO(port): fighter shield bar (method_194) at zoom factor <= 3 in battle — MainView.1.cs 1542-1547.
 // TODO(port): selection brackets on a selected fighter (method_212) and fighter picking — MainView.1.cs 1520.
 
@@ -28,6 +29,8 @@ import { SpritePool } from './fxCommon';
 import { BUILT_OBJECT_DRAW_RESIZE_FACTOR, BUILT_OBJECT_MAX_FACTOR, STANDARD_FAMILY_COUNT } from './builtObjectLayer';
 import { exhaustRect, type ExhaustRect } from './ambientLayer';
 import { loadShipArt, shipArtIfLoaded } from './shipArt';
+import { DamageOverlays, fighterDamageSubject } from './shipOverlays';
+import { artBundleFlag } from './artBundleFlags';
 import type { Galaxy } from '../sim/galaxy';
 import { fightersOf, type Fighter } from '../sim/combat/fighters';
 
@@ -122,6 +125,8 @@ export class FighterLayer {
     readonly root = new Container();
     private exhaust: SpritePool;
     private bodies: SpritePool;
+    private damage: DamageOverlays<Fighter>;
+    private damageFx = false;
     private engineTextures: (Texture | null)[] = new Array<Texture | null>(ENGINE_THRUSTER_IMAGE_COUNT).fill(null);
     private engineRequested = false;
     /** Fighters given a drawn size last frame (their entry is cleared when they stop being drawn). */
@@ -139,6 +144,7 @@ export class FighterLayer {
         this.root.addChild(under, over);
         this.exhaust = new SpritePool(under);
         this.bodies = new SpritePool(over);
+        this.damage = new DamageOverlays<Fighter>(this.root);
     }
 
     private engineTexture(i: number): Texture | null {
@@ -159,6 +165,8 @@ export class FighterLayer {
         this.root.visible = visible;
         this.exhaust.begin();
         this.bodies.begin();
+        this.damage.begin();
+        this.damageFx = artBundleFlag(this.galaxy, 'damageFx');
         const now = this.drawnNow;
         now.clear();
         if (visible) {
@@ -185,6 +193,7 @@ export class FighterLayer {
         this.drawnLast = now;
         this.exhaust.end();
         this.bodies.end();
+        this.damage.end();
     }
 
     private drawFighter(fighter: Fighter, f: number, z: number, sx: number, sy: number, cam: Camera): void {
@@ -230,5 +239,8 @@ export class FighterLayer {
         s.position.set(fighter.xpos, fighter.ypos);
         s.rotation = fighter.heading + Math.PI / 2;
         s.scale.set(px / art.metrics.cropSide / z);
+        // 19r: Main.Part12.cs 5002 method_107 while Health < 1.
+        const subject = fighterDamageSubject(fighter);
+        if (subject !== null) this.damage.draw(fighter, subject, art, fighter.xpos, fighter.ypos, fighter.heading, px, z, this.damageFx);
     }
 }

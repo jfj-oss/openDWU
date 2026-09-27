@@ -14,6 +14,8 @@ import { PirateRelationType } from '../../sim/pirateRelations';
 import { companyTag, toggleChartersScreen } from './charters';
 import { scenarioFlag } from '../../sim/scenario/state';
 // [charters] end
+import { applyEmpireEmblem } from '../empireEmblem';
+import { leagueSection } from '../leagueRows';
 import { rimTraderTag } from '../scenario/rimTraderRows';
 import { displayColorForEmpire } from '../../sim/empireColors';
 
@@ -192,6 +194,18 @@ function createEmpiresList(opts: EmpiresListOptions): OpenState {
             const tag = charterGalaxy !== null ? companyTag(charterGalaxy, row.empire) : '';
             if (tag !== '') name.textContent = `${row.label} — ${tag}`;
             // [charters] end
+            // 19r: the empire's flag (derived / scenario flags through the emblem overrides — after the charters tag's
+            // textContent assignment above, since that would wipe out a prepended child node).
+            if (row.empire.galaxy?.scenario != null) {
+                const flag = document.createElement('img');
+                flag.className = 'empires-list-flag';
+                flag.alt = '';
+                flag.draggable = false;
+                flag.style.cssText = 'width:24px;height:14px;margin-right:6px;vertical-align:middle';
+                flag.addEventListener('error', () => flag.remove());
+                applyEmpireEmblem(flag, row.empire.galaxy, row.empire, 'flag');
+                name.prepend(flag);
+            }
             // [rimTrader] begin
             const rimTag = row.empire.galaxy != null ? rimTraderTag(row.empire.galaxy, row.empire) : '';
             if (rimTag !== '') name.appendChild(Object.assign(document.createElement('span'), { className: 'empires-list-tag', textContent: rimTag }));
@@ -224,6 +238,9 @@ function createEmpiresList(opts: EmpiresListOptions): OpenState {
     filterInput.addEventListener('input', renderRows);
     renderRows();
 
+    // 19r: the independent leagues (19k-3) with their flags, when any exist.
+    const leagues = leagueSection(opts.playerEmpire.galaxy, 'empires-list');
+    if (leagues !== null) body.appendChild(leagues);
     win.appendChild(body);
     root.appendChild(win);
     document.body.appendChild(root);
