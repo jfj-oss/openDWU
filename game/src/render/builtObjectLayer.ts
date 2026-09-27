@@ -471,7 +471,7 @@ export class BuiltObjectLayer {
         // [concordArt] begin — null with the scenario / flag off: every object keeps its stock art.
         const concord = concordArtEmpire(this.galaxy);
         const treasure = concord !== null ? concordTreasureShips(this.galaxy) : NO_TREASURE;
-        const look = concord !== null ? concordArtLook(this.galaxy) : 'hybrid';
+        const look = concord !== null ? concordArtLook(this.galaxy) : 'weathered';
         const nowMs = Date.now();
         this.frame++;
         this.concordFx.begin();

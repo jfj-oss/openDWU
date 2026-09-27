@@ -135,7 +135,10 @@ const showcase = async (rows, zoom, file) => {
                     s.position.set(x, y);
                     s.rotation = 0;
                     s.scale.set(px / metrics.cropSide / zoom);
-                    if (art !== null) fx.draw(art, x, y, 0, px / metrics.cropSide / zoom, s.anchor.x, s.anchor.y, 7 + c, px, 1000 * 0.3);
+                    const id = 7 + c;
+                    // Inside the strobe's first flash: seconds ≡ 0.03 − (id % 20) / 10 (mod 2.5).
+                    const sec = 2.5 * 400 + 0.03 - (id % 20) / 10;
+                    if (art !== null) fx.draw(art, x, y, 0, px / metrics.cropSide / zoom, s.anchor.x, s.anchor.y, id, px, sec * 1000);
                     labels.push({ x, y: y + dy * 0.42, text: it.label });
                 }
                 labels.push({ x: cx - ((row.items.length + 0.2) / 2) * dx, y: cy + (r - (rows.length - 1) / 2) * dy, text: row.label, left: true });
@@ -160,77 +163,39 @@ const showcase = async (rows, zoom, file) => {
     await page.screenshot({ path: `${outDir}/${file}` });
     console.log(`saved ${outDir}/${file}`, JSON.stringify(info));
 };
-const row = (look, label) => ({
-    label,
-    items: [
-        { kind: 'warship', size: 700, look, label: `warship (size 700)` },
-        { kind: 'freighter', size: 900, look, label: `freighter (size 900)` },
-        { kind: 'treasure', size: 1100, look, label: `treasure ship (size 1100)` },
-        { ackdarian: look === 'hybrid' ? 'cruiser' : look === 'pagoda' ? 'largefreighter' : 'capitalship', size: look === 'hybrid' ? 700 : look === 'pagoda' ? 900 : 1100, label: `Ackdarian ${look === 'hybrid' ? 'cruiser 700' : look === 'pagoda' ? 'freighter 900' : 'capital 1100'}` },
-    ],
-});
-const variantRows = [row('hybrid', 'A hybrid'), row('pagoda', 'B pagoda'), row('furled', 'C furled')];
-await showcase(variantRows, 1, 'concord-variants-close.png');
-await showcase(variantRows, 1 / 3, 'concord-variants-play.png');
+// Ship sheet: the layer's textures and overlays (halos by blink group, fan / dish parts) at the layer's size formula,
+// next to the Ackdarian cruiser frame; the overlay clock is set inside a strobe flash so every light group shows.
+const sheet = [
+    {
+        label: 'Concord',
+        items: [
+            { kind: 'warship', size: 600, look: 'weathered', label: 'warship (600)' },
+            { kind: 'freighter', size: 900, look: 'weathered', label: 'bulk freighter (900)' },
+            { kind: 'explorer', size: 300, look: 'weathered', label: 'explorer (300)' },
+            { kind: 'treasure', size: 1100, look: 'weathered', label: 'treasure ship (1100)' },
+            { ackdarian: 'cruiser', size: 600, label: 'Ackdarian cruiser (600)' },
+        ],
+    },
+];
+await showcase(sheet, 1, 'concord-ships-close.png');
+await showcase(sheet, 1 / 3, 'concord-ships-play.png');
 
-// Live ships at 100 %: a Concord warship, freighter and treasure ship moved side by side (clock paused) with the
-// Ackdarian cruiser frame beside them for comparison.
+// The live layer: how many Concord objects draw with their overlays around the port right now.
 const live = await page.evaluate(async () => {
     const { galaxy, camera, view } = window.__dwu;
     window.__concordShow?.destroy?.();
     document.querySelectorAll('.concord-show-label').forEach((n) => n.remove());
     const common = await import('/src/sim/scenario/rimTrade/common.ts');
-    const tf = await import('/src/sim/scenario/rimTrade/treasureFleet.ts');
-    const ca = await import('/src/render/concordArt.ts');
-    const bol = await import('/src/render/builtObjectLayer.ts');
-    const sa = await import('/src/render/shipArt.ts');
-    const fxc = await import('/src/render/fxCommon.ts');
-    const T = await import('/src/sim/builtObjectTypes.ts');
-    const S = T.BuiltObjectSubRole;
-    const r = common.rimTraderEmpire(galaxy);
-    const st = tf.treasureState(galaxy);
-    const mine = galaxy.builtObjects.filter((b) => b !== null && !b.hasBeenDestroyed && b.empire === r && b.builtAt === null && !st.treasure.includes(b));
-    const war = mine.filter((b) => b.subRole >= S.Escort && b.subRole <= S.CapitalShip).sort((a, b) => b.size - a.size)[0] ?? null;
-    const frt = mine.filter((b) => b.subRole >= S.SmallFreighter && b.subRole <= S.LargeFreighter).sort((a, b) => b.size - a.size)[0] ?? null;
-    const tre = st.treasure[0] ?? null;
-    const cx = galaxy.sizeX * 0.5;
-    const cy = galaxy.sizeY * 0.03 + 2000;
-    const placed = [];
-    [war, frt, tre].forEach((b, i) => {
-        if (b === null) return;
-        b.xpos = cx + (i - 1.5) * 300;
-        b.ypos = cy;
-        b.heading = -Math.PI / 2;
-        placed.push(`${T.BuiltObjectSubRole[b.subRole]} ${b.size}`);
-    });
-    const a = await sa.loadShipArt('/assets/dwu/images/units/ships/family7/cruiser.png');
-    const holder = new ca.ConcordFxLayer();
-    view.world.addChild(holder.root);
-    const pool = new fxc.SpritePool(holder.root);
-    pool.begin();
-    const s = pool.acquire(a.texture);
-    const size = war?.size ?? 700;
-    const px = bol.builtObjectSizePx(size, a.metrics.areaRatio, 1, 0, 1);
-    s.anchor.set(a.metrics.cropCenterX / a.texture.width, a.metrics.cropCenterY / a.texture.height);
-    s.position.set(cx + 1.5 * 300, cy);
-    s.scale.set(px / a.metrics.cropSide);
-    pool.end();
-    camera.zoomAt(1, camera.width / 2, camera.height / 2);
-    camera.centerOn(cx, cy);
-    return { placed, ackdarianSize: size };
-});
-console.log('live', JSON.stringify(live));
-await page.waitForTimeout(4000);
-console.log('layer', JSON.stringify(await page.evaluate(() => {
-    const { view } = window.__dwu;
+    const port = common.rimTraderPort(galaxy);
+    camera.zoomAt(1 / 1.5, camera.width / 2, camera.height / 2);
+    camera.centerOn(port.xpos, port.ypos);
+    await new Promise((r) => setTimeout(r, 3000));
     const layer = view.builtObjectLayer;
     let visible = 0;
-    for (const s of layer.sprites.values()) if (s.visible) visible++;
-    // Three overlays (detail at close zoom, sheen, glow) per visible Concord junk.
+    for (const sp of layer.sprites.values()) if (sp.visible) visible++;
     return { visibleShipSprites: visible, concordFxSprites: layer.concordFx.root.children.filter((c) => c.visible).length };
-})));
-await page.screenshot({ path: `${outDir}/concord-ships-close.png` });
-console.log(`saved ${outDir}/concord-ships-close.png`);
+});
+console.log('live layer at the port', JSON.stringify(live));
 
 // Diplomacy screen with the Concord selected.
 await page.evaluate(async () => {

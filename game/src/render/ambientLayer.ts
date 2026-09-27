@@ -521,7 +521,7 @@ export class AmbientLayer {
             // [concordArt] begin — the Concord's junks: their own thruster marks, no nav lights (lanterns instead).
             const concord = concordArtEmpire(this.galaxy);
             const treasure = concord !== null ? concordTreasureShips(this.galaxy) : null;
-            const look = concord !== null ? concordArtLook(this.galaxy) : 'hybrid';
+            const look = concord !== null ? concordArtLook(this.galaxy) : 'weathered';
             // [concordArt] end
             for (const bo of this.galaxy.builtObjects) {
                 if (bo === null || bo.hasBeenDestroyed) continue;
