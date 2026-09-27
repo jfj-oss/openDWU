@@ -57,3 +57,18 @@ Then, before M5+ (UI completeness etc.):
   wip/compcargo (ManufacturingQueue.cs Clear 386, CargoList.cs Clone 767, BaconBuiltObjectMission.cs 290-311). Remaining
   component-cargo TODO(port) notes in logistics/freight.ts, contracts.ts, orders.ts are still open (freighters carrying
   components) — cheap follow-up. Re-run the 19d2 30-year soak (DWU_CRISES_SOAK=1) after this merges.
+
+## 10-year headless run, seed 1 (2026-09-26; 700 stars, 10 empires, 6000 game-s, sim-run --stats-days 365 --combat)
+Clean: 0 exceptions, 0 NaN, 0 console errors; 19.3 min wall (189 game-days/min, 5× the 36 budget). 4478 battle records,
+533 ships/bases destroyed, battles per year rising 177 → 701, 1 war (years 4–6), 0 colonies captured, 51 colonies at
+year 10 (1–8 per empire). Follow-ups:
+- Perf spike: ms/frame 10.8 / 10.2 at years 8–9 (builtObjects pass), 3.3 at year 10; profile the year-8 chunk.
+- Refuel loop: ~8 ships "lowfuel 365d" stuck in Refuel→gas mining station with fuel 0 (Sol Technocracy, Teekan) — a ship
+  with 0 fuel cannot reach its refuel target; check Empire refuel-target selection vs range (BaconBuiltObject refuel range).
+- Frozen missions ≥90 days: Transport 20, Patrol 17, ExtractResources 5 — audit against C# mission timeouts.
+- Wars stay rare (1 in 10 years) and no invasions at all in 10 years; United Dhayut Union sat at 1 colony for 10 years
+  (col 1, cashflow +62k): check its colonisation target selection (range/enforcement) — likely the wizard 2-sector limit.
+- Attack-message creature name fixed (this branch).
+- 10-year run oddity: GalacticNewsNet "S218 Kingdom - Empire Leader killed|Obidar Dokari" is dated day 0 (the S218
+  leader died on the first game day; two pirate leaders died the same day 697). Check character death rolls at game start
+  (Galaxy.2.cs character events; a day-0 death is unlikely in the C#).
