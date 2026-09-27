@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 import { cachedTickGame } from './helpers/gameCache';
-import { LazyNetSortOrder, netSort } from '../src/sim/netSort';
+import { LazyNetSortOrder, netSort, netSortLastByKey } from '../src/sim/netSort';
 import { Random } from '../src/sim/random';
 import { SystemVisibilityStatus } from '../src/sim/visibility';
 import type { Galaxy } from '../src/sim/galaxy';
@@ -197,6 +197,21 @@ describe('LazyNetSortOrder', () => {
             const got: number[] = [];
             for (let j = lazy.next(); j >= 0; j = lazy.next()) got.push(j);
             expect(got).toEqual(expected);
+        }
+    });
+});
+
+describe('netSortLastByKey', () => {
+    it('returns the element netSort + reverse puts first (unique keys, ties, NaN)', () => {
+        const rnd = new Random(2718);
+        for (let t = 0; t < 500; t++) {
+            const n = 1 + rnd.next(0, 200);
+            const mode = t % 3;
+            const items = Array.from({ length: n }, (_, i) => ({ i, sortTag: mode === 0 ? rnd.nextDouble() : mode === 1 ? rnd.next(0, 6) : rnd.next(0, 30) === 0 ? Number.NaN : rnd.next(0, 100) }));
+            const ref = items.slice();
+            netSort(ref, (a, b) => (a.sortTag < b.sortTag ? -1 : a.sortTag > b.sortTag ? 1 : 0));
+            ref.reverse();
+            expect(netSortLastByKey(items.slice(), (x) => x.sortTag)).toBe(ref[0]);
         }
     });
 });

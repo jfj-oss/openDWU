@@ -180,3 +180,34 @@ export class LazyNetSortOrder {
         heap[i] = item;
     }
 }
+
+/**
+ * Perf: the element `netSort(items, key ascending)` would leave LAST (= first after `reverse()`), for call sites that
+ * only read that one element of a local list. A unique maximum key (no NaN) is where every correct sort puts it, so it
+ * is returned without sorting; otherwise the list is netSorted in place as before and its last element returned.
+ */
+export function netSortLastByKey<T>(items: T[], key: (item: T) => number): T {
+    let bestAt = 0;
+    let best = key(items[0]);
+    let count = 1;
+    let nan = Number.isNaN(best);
+    for (let i = 1; i < items.length && !nan; i++) {
+        const k = key(items[i]);
+        if (k > best) {
+            best = k;
+            bestAt = i;
+            count = 1;
+        } else if (k === best) {
+            count++;
+        } else if (Number.isNaN(k)) {
+            nan = true;
+        }
+    }
+    if (!nan && count === 1) return items[bestAt];
+    netSort(items, (a, b) => {
+        const ka = key(a);
+        const kb = key(b);
+        return ka < kb ? -1 : ka > kb ? 1 : 0;
+    });
+    return items[items.length - 1];
+}
