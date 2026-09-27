@@ -1345,9 +1345,18 @@ export function checkRefuelRepairAttack(galaxy: Galaxy, shipGroup: ShipGroup, co
                     let num = Number.MAX_VALUE;
                     for (let index = 0; index < empiresAtWarWith.length; ++index) {
                         const empire2 = empiresAtWarWith[index];
-                        if (empire2 != null) {
-                            // C# reads Capital without a null check here (unlike CheckForMissionCompletion 1215).
-                            const distance = galaxy.calculateDistance(empire2.capital!.xpos, empire2.capital!.ypos, leadShip1.xpos, leadShip1.ypos);
+                        // ShipGroup.cs 1743 reads empire2.Capital.Xpos with no null check (unlike the
+                        // analogous loop at ShipGroup.cs 1211 / CheckForMissionCompletion, guarded with
+                        // `empire3 != null && empire3.Capital != null`, ported above at ~935). In the
+                        // original engine that's safe: an empire that loses its last colony is torn down
+                        // synchronously (Empire.1.cs TakeOwnershipOfColony → CompleteTeardown), which
+                        // removes the War DiplomaticRelation from every other empire before their fleets'
+                        // ShipGroup.DoTasks runs, so DetermineEmpiresAtWarWith() never returns a
+                        // capital-less empire. Our takeOwnershipOfColony (empire.ts) doesn't yet port that
+                        // teardown/elimination step (see its TODO), so a defeated empire with capital ===
+                        // null can still show up here — guard it the same way the sibling loop does.
+                        if (empire2 != null && empire2.capital !== null) {
+                            const distance = galaxy.calculateDistance(empire2.capital.xpos, empire2.capital.ypos, leadShip1.xpos, leadShip1.ypos);
                             if (distance < num) {
                                 num = distance;
                                 empire1 = empire2;
