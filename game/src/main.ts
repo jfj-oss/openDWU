@@ -42,6 +42,7 @@ import { closeAdvisorPanel } from './ui/advisorPanel';
 // [aiadvisor] begin
 import { aiAdvisorSettingsWithUrl, startAiAdvisorDriver } from './ui/aiAdvisorDriver';
 import { closeCouncilLog, pushCouncilLog } from './ui/aiAdvisorLog';
+import { startLlmLayer } from './llm/llmLayer'; // [llm] 19s-1
 import { getSettings } from './ui/settings';
 // [aiadvisor] end
 import { closeMessageHistory } from './ui/screens/messageHistory';
@@ -446,6 +447,13 @@ export async function startGameView(
     });
     (window as unknown as { __dwu: Record<string, unknown> }).__dwu.aiAdvisor = aiAdvisor.driver;
     // [aiadvisor] end
+    // [llm] begin — 19s-1: the local-model layer (queue + yearly chronicle); nothing is created with llmFoundations off.
+    const llmLayer = startLlmLayer({ galaxy, player: game.playerEmpire, settings: () => {
+            const st = getSettings();
+            return { endpoint: st.advisorEndpoint, model: st.advisorModel, api: st.advisorApi, think: st.advisorThink };
+        }, search: window.location.search });
+    (window as unknown as { __dwu: Record<string, unknown> }).__dwu.llm = llmLayer;
+    // [llm] end
     // Task 10d: the HUD's money panel refreshes from the player empire.
     // Task C3: Galaxy Map screen (G key / HUD "Galaxy map (G)" row).
     const galaxyMap = createGalaxyMapFor(galaxy, camera);
@@ -829,6 +837,7 @@ export async function startGameView(
         aiAdvisor.dispose();
         closeCouncilLog();
         // [aiadvisor] end
+        llmLayer.dispose(); // [llm]
         orderUiCleanup(); // [ordermenu]
 
         gameAudio.dispose(); // [audio]

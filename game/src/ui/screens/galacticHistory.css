@@ -214,3 +214,28 @@
     opacity: 0.4;
     cursor: default;
 }
+
+/* 19s-1 History | Chronicle tabs. */
+.galactic-history-tabs {
+    display: flex;
+    gap: 4px;
+    margin-left: auto;
+    margin-right: 8px;
+}
+.galactic-history-tab {
+    font: inherit;
+    font-size: 12px;
+    color: #bbb;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 3px;
+    padding: 2px 10px;
+    cursor: pointer;
+}
+.galactic-history-tab-active {
+    color: #e8d24a;
+    border-color: rgba(232, 210, 74, 0.5);
+}
+.galactic-history-chronicle-text {
+    white-space: pre-wrap;
+}

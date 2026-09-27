@@ -13,7 +13,7 @@ import type { Creature } from '../creature';
 import type { GalaxyLocation } from '../galaxyLocation';
 import { YEAR_LENGTH } from '../galaxyTime';
 import { galaxyStarDate } from '../tick/simTime';
-import type { GalaxyScenario } from './state';
+import { scenarioRuns, type GalaxyScenario } from './state';
 import type { Resource } from '../data/resources';
 
 // ---------------------------------------------------------------------------
@@ -52,7 +52,7 @@ export function scenarioGateOpen(galaxy: Galaxy, h: ScenarioHandlerGate): boolea
 export function scenarioGateOpenFor(s: GalaxyScenario | null, h: ScenarioHandlerGate): boolean {
     if (s === null) return false;
     if (h.scenarioId === undefined && h.flag === undefined) return false;
-    if (h.scenarioId !== undefined && h.scenarioId !== s.id) return false;
+    if (h.scenarioId !== undefined && !scenarioRuns(s, h.scenarioId)) return false;
     if (h.flag !== undefined && s.flags[h.flag] !== true) return false;
     return true;
 }

@@ -38,7 +38,7 @@ import { YEAR_LENGTH } from '../../galaxyTime';
 import { galaxyStarDate } from '../../tick/simTime';
 import { GAME_DAY_LENGTH, registerScenarioEvent, registerScenarioPeriodic, registerScenarioQuery } from '../hooks';
 import { raiseScenarioDecision, registerScenarioDecision, type ScenarioDecision } from '../decisions';
-import { scenarioFlag, scenarioParam, scenarioState } from '../state';
+import { scenarioFlag, scenarioParam, scenarioRuns, scenarioState } from '../state';
 import { scenarioMessage, scenarioNews, scenarioText } from '../messages';
 import { LIVELY_GALAXY_ID, OVERLAP_GRID, borderOverlaps, incidentCount } from './livelyGalaxy';
 
@@ -173,7 +173,7 @@ export function atWar(a: Empire, b: Empire): boolean {
 }
 
 export function warGoalsOn(galaxy: Galaxy): boolean {
-    return galaxy.scenario !== null && galaxy.scenario.id === LIVELY_GALAXY_ID && scenarioFlag(galaxy, WAR_GOALS_FLAG);
+    return scenarioRuns(galaxy.scenario, LIVELY_GALAXY_ID) && scenarioFlag(galaxy, WAR_GOALS_FLAG);
 }
 
 function isMajor(galaxy: Galaxy, e: Empire | null): e is Empire {
