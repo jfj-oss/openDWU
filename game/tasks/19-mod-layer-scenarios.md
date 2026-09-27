@@ -306,6 +306,17 @@ rules. Effort: medium (~1–2 agent-days). Flag off = byte-identical.
    isolated behaviour, the extra colony stays independent. Params: league radius, min members, chance per year, fleet
    multiplier, one-colony toggle. Ties: 19d-6 independents as actors, 19j herder leagues (herds pooled), 19a (a league on
    the rim becomes a trade partner bloc). Flag off = byte-identical.
+**19k addendum — independent tech follow (implemented 2026-09-27):** the independent empire's tech tree is set once at
+game start (Empire.cs 4146 initializeIndependentCtor) and never advances on its own, so without this its militia and
+station designs stay frozen at start tech forever. Every `independentTechRefreshYears` game years (default 2), the
+median tech level (highest researched tech-tree level, darkFarms.ts hostTechLevel's measure) across normal (non-pirate,
+non-independent, active) empires × `independentTechFollowPct`% (default 60) becomes the target; if the independent
+empire is below it, raise it with the same `research.setTechTreeLevel` → `update` → review* path
+`empireMidGame.ts`'s `createEmpireMidGame` uses for a mid-game empire, then regenerate its specification designs
+(militia, constructor, stations) so new builds pick up the new components — existing ships keep their old designs.
+Never lowers the level. One NewsNet line ("independent worlds have caught up…") per refresh that actually raises the
+level; `stats.techRefreshes` counts them. Flag off (`independentActors`) = byte-identical, as the rest of 19k-2.
+
 Effort: 1 ≈ half a day (soak + palette + UI check); 2 ≈ 1 agent-day; 3 ≈ 1 agent-day after 2.
 
 ## 19l — Livelier mid game (ACCEPTED by the user 2026-09-26 — "do only new ideas"; from the 10-year seed-1 run: 1 war, 0 invasions in 10 years)

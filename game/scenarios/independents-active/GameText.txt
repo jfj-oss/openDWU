@@ -20,3 +20,4 @@ Scenario Independents Offer Accepted;The {0} accepted our protectorate; {1} colo
 Scenario Independents Offer Split;The {0} split over our offer: {1} colonies refused to follow the council.
 Scenario Independents Offer Refused;The {0} refused our offer.
 Scenario Independents Trade Accepted;The {0} agreed to trade with us as a bloc.
+Scenario Independents Tech Caught Up;Independent worlds have caught up with the galaxy's technology.
