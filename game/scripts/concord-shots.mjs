@@ -105,8 +105,8 @@ const showcase = async (rows, zoom, file) => {
             const cx = galaxy.sizeX * 0.5;
             const cy = galaxy.sizeY * 0.03;
             const f = 1 / zoom;
-            const dx = 300;
-            const dy = 330;
+            const dx = zoom >= 1 ? 440 : 300;
+            const dy = zoom >= 1 ? 470 : 330;
             pool.begin();
             fx.begin();
             let frame = 1e7 + Math.floor(Math.random() * 1e6);
@@ -167,13 +167,20 @@ const showcase = async (rows, zoom, file) => {
 // next to the Ackdarian cruiser frame; the overlay clock is set inside a strobe flash so every light group shows.
 const sheet = [
     {
-        label: 'Concord',
+        label: 'military',
         items: [
-            { kind: 'warship', size: 600, look: 'weathered', label: 'warship (600)' },
-            { kind: 'freighter', size: 900, look: 'weathered', label: 'bulk freighter (900)' },
-            { kind: 'explorer', size: 300, look: 'weathered', label: 'explorer (300)' },
-            { kind: 'treasure', size: 1100, look: 'weathered', label: 'treasure ship (1100)' },
+            { kind: 'frigate', size: 250, look: 'weathered', label: 'frigate (escort, 250)' },
+            { kind: 'destroyer', size: 500, look: 'weathered', label: 'destroyer (500)' },
+            { kind: 'battleship', size: 1000, look: 'weathered', label: 'battleship (cruiser/capital, 1000)' },
             { ackdarian: 'cruiser', size: 600, label: 'Ackdarian cruiser (600)' },
+        ],
+    },
+    {
+        label: 'civil',
+        items: [
+            { kind: 'freighter', size: 700, look: 'weathered', label: 'freighter (700)' },
+            { kind: 'treasure', size: 1100, look: 'weathered', label: 'treasure ship (1100)' },
+            { kind: 'explorer', size: 300, look: 'weathered', label: 'explorer (300)' },
         ],
     },
 ];
