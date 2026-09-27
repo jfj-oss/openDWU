@@ -106,7 +106,7 @@ function valueNoise(x: number, y: number, seed: number): number {
     return (a * (1 - s(tx)) + b * s(tx)) * (1 - s(ty)) + (c * (1 - s(tx)) + d * s(tx)) * s(ty);
 }
 
-function fbm(x: number, y: number, seed: number): number {
+export function fbm(x: number, y: number, seed: number): number {
     return 0.55 * valueNoise(x, y, seed) + 0.3 * valueNoise(x * 2.1, y * 2.1, seed + 1) + 0.15 * valueNoise(x * 4.3, y * 4.3, seed + 2);
 }
 
@@ -418,239 +418,9 @@ function paintMask(img: RgbaImage, m: Uint8Array, col: number, a: number, rim: n
     }
 }
 
-/** Fog band: an fbm-thinned horizontal veil centred at `cy`. */
-function fogBand(img: RgbaImage, cy: number, thick: number, col: number, a: number, seed: number): void {
-    const [r, g, b] = rgb(col);
-    for (let y = 0; y < img.h; y++) {
-        const d = Math.abs(y - cy) / thick;
-        if (d > 1.6) continue;
-        for (let x = 0; x < img.w; x++) {
-            const n = fbm(x / 38, y / 11, seed);
-            const k = Math.max(0, 1 - d) * (0.45 + 0.9 * n);
-            if (k > 0) over(img.data, (y * img.w + x) * 4, r, g, b, Math.min(1, a * k));
-        }
-    }
-}
-
-/** A tree line of conifer / snag silhouettes with trunks, base at `base`, heights around `hgt`. */
-function treeLine(img: RgbaImage, seed: number, n: number, base: number, hgt: number, col: number, a: number, rim: number | null = null, ground = true): void {
-    const m = newMask(img);
-    const { w, h } = img;
-    for (let k = 0; k < n; k++) {
-        const x = (k + hash2(k, 1, seed) * 0.9) * (w / n);
-        const th = hgt * (0.7 + 0.6 * hash2(k, 2, seed));
-        const tw = Math.max(1.5, hgt * 0.035 * (0.7 + hash2(k, 3, seed)));
-        maskPoly(m, w, h, [
-            [x - tw, base + 5],
-            [x + tw, base + 5],
-            [x + tw * 0.4, base - th],
-            [x - tw * 0.4, base - th],
-        ]);
-        if (hash2(k, 4, seed) < 0.7) {
-            // Tiered conifer crown.
-            const tiers = 4 + Math.floor(hash2(k, 5, seed) * 3);
-            for (let t = 0; t < tiers; t++) {
-                const ty = base - th * (0.35 + (0.65 * t) / tiers);
-                const half = th * 0.22 * (1 - t / (tiers + 1)) * (0.8 + 0.4 * hash2(k, 10 + t, seed));
-                maskPoly(m, w, h, [
-                    [x - half, ty + th * 0.12],
-                    [x + half, ty + th * 0.12],
-                    [x + half * 0.15, ty - th * 0.1],
-                    [x - half * 0.15, ty - th * 0.1],
-                ]);
-            }
-        } else {
-            // Dead snag with crooked branches.
-            for (let t = 0; t < 4; t++) {
-                const by = base - th * (0.45 + 0.13 * t);
-                const dir = hash2(k, 20 + t, seed) < 0.5 ? -1 : 1;
-                maskLine(m, w, h, x, by, x + dir * th * 0.18, by - th * 0.12, Math.max(1, tw * 0.6));
-            }
-        }
-    }
-    if (ground) for (let x = 0; x < w; x++) for (let y = Math.max(0, Math.floor(base)); y < h; y++) m[y * w + x] = 1;
-    paintMask(img, m, col, a, rim, 0.35);
-}
-
-/** One hooded / feathered figure with a spear (or the leader's horn staff) into mask `m`; returns its eye line. */
-function tribesman(m: Uint8Array, w: number, h: number, fx: number, footY: number, s: number, spearAng: number, leader: boolean, seed: number): { ex: number; ey: number } {
-    const headY = footY - s;
-    // Cloak: a trapezoid, ragged hem.
-    const pts: [number, number][] = [
-        [fx - s * 0.1, headY + s * 0.16],
-        [fx + s * 0.1, headY + s * 0.16],
-        [fx + s * 0.2, footY - s * 0.06],
-    ];
-    for (let k = 0; k <= 5; k++) pts.push([fx + s * 0.2 - (k / 5) * s * 0.4, footY - (k % 2) * s * 0.05]);
-    pts.push([fx - s * 0.2, footY - s * 0.06]);
-    maskPoly(m, w, h, pts);
-    // Hood: a pointed cowl.
-    maskPoly(m, w, h, [
-        [fx - s * 0.1, headY + s * 0.2],
-        [fx + s * 0.1, headY + s * 0.2],
-        [fx + s * 0.08, headY + s * 0.04],
-        [fx + s * 0.02, headY - s * 0.08],
-        [fx - s * 0.07, headY + s * 0.02],
-    ]);
-    // Feathers from the hood and shoulders.
-    const nf = 2 + Math.floor(hash2(1, 1, seed) * 3);
-    for (let k = 0; k < nf; k++) {
-        const a = -Math.PI / 2 + (hash2(k, 2, seed) - 0.5) * 1.6;
-        const bx = fx + (hash2(k, 3, seed) - 0.5) * s * 0.14;
-        const by = headY + s * (0.02 + 0.12 * hash2(k, 4, seed));
-        maskLine(m, w, h, bx, by, bx + Math.cos(a) * s * 0.18, by + Math.sin(a) * s * 0.18, Math.max(1, s * 0.022));
-    }
-    // Spear / staff held at the side.
-    const hx = fx + s * 0.16;
-    const hy = headY + s * 0.45;
-    const len = s * (leader ? 1.25 : 1.35);
-    const tx = hx + Math.sin(spearAng) * len * 0.62;
-    const ty = hy - Math.cos(spearAng) * len * 0.62;
-    const bx2 = hx - Math.sin(spearAng) * len * 0.38;
-    const by2 = hy + Math.cos(spearAng) * len * 0.38;
-    maskLine(m, w, h, bx2, by2, tx, ty, Math.max(1, s * 0.025));
-    if (leader) {
-        // Herd-horn staff head: two curling horns.
-        for (const side of [-1, 1]) {
-            for (let t = 0; t <= 1; t += 0.04) {
-                const ang = Math.PI * (0.5 + 0.9 * t);
-                const r = s * 0.13 * (1 - 0.3 * t);
-                maskDisc(m, w, h, tx + side * (s * 0.02 + Math.cos(ang) * r * -1 * side * side), ty - Math.sin(ang) * r * 0.8 - s * 0.02, Math.max(0.8, s * 0.03 * (1 - 0.6 * t)));
-            }
-        }
-    } else {
-        maskPoly(m, w, h, [
-            [tx - Math.cos(spearAng) * s * 0.03, ty - Math.sin(spearAng) * s * 0.03],
-            [tx + Math.cos(spearAng) * s * 0.03, ty + Math.sin(spearAng) * s * 0.03],
-            [tx + Math.sin(spearAng) * s * 0.12, ty - Math.cos(spearAng) * s * 0.12],
-        ]);
-    }
-    return { ex: fx, ey: headY + s * 0.1 };
-}
-
-/**
- * The Ossuvan portrait (item 3, fully procedural): a dark misty forest at dusk — layered blue-black tree lines with
- * fog bands between them, a veiled moon and drifting bioluminescent spores — and in the middle ground the cut-out
- * silhouettes of an uncontacted herder tribe: 6-7 hooded, feathered figures at different distances with tall spears
- * at varied angles, some half hidden behind trunks, two with faintly glowing eyes, a taller leader with a herd-horn
- * staff; rim light from the fog behind them; bone-hung totems and stakes in the foreground. No faces. Earth / teal.
- */
-export function herderPortrait(seed = 7, size = 300): RgbaImage {
-    const out = blankImage(size, size);
-    const w = size;
-    const h = size;
-    // Dusk sky.
-    for (let y = 0; y < h; y++) {
-        const t = y / h;
-        const r = 8 + 82 * t * t;
-        const g = 12 + 136 * t * t;
-        const b = 28 + 116 * t * t;
-        for (let x = 0; x < w; x++) {
-            const i = (y * w + x) * 4;
-            out.data[i] = r;
-            out.data[i + 1] = g;
-            out.data[i + 2] = b;
-            out.data[i + 3] = 255;
-        }
-    }
-    // Veiled moon with halo.
-    const mx = w * 0.7;
-    const my = h * 0.2;
-    for (let y = 0; y < h * 0.5; y++) {
-        for (let x = 0; x < w; x++) {
-            const d = Math.hypot(x - mx, y - my);
-            const i = (y * w + x) * 4;
-            if (d < w * 0.095) over(out.data, i, 226, 232, 206, 0.95);
-            else over(out.data, i, 176, 220, 206, Math.max(0, 0.62 * (1 - (d - w * 0.095) / (w * 0.4))));
-        }
-    }
-    fogBand(out, my + 6, h * 0.025, 0x42585c, 0.8, seed + 1);
-    // Far → near tree lines with fog between.
-    treeLine(out, seed + 10, 16, h * 0.56, h * 0.3, 0x40606a, 0.9);
-    fogBand(out, h * 0.55, h * 0.08, 0xb4d2ca, 0.95, seed + 2);
-    treeLine(out, seed + 11, 11, h * 0.64, h * 0.4, 0x16222c, 0.97, null, false);
-    fogBand(out, h * 0.7, h * 0.13, 0xd8eee6, 1, seed + 3);
-    // Middle ground: the tribe, rim-lit against the fog.
-    const figs = newMask(out);
-    const eyes: { x: number; y: number; r: number }[] = [];
-    const layout: [number, number, number, number, boolean][] = [
-        // x, foot y, height, spear angle, leader
-        [0.2, 0.84, 0.3, -0.18, false],
-        [0.33, 0.8, 0.24, 0.12, false],
-        [0.47, 0.86, 0.4, 0.05, true],
-        [0.6, 0.79, 0.22, -0.3, false],
-        [0.7, 0.83, 0.28, 0.22, false],
-        [0.83, 0.78, 0.19, -0.05, false],
-        [0.12, 0.77, 0.17, 0.3, false],
-    ];
-    layout.forEach(([x, fy, s, ang, leader], k) => {
-        const e = tribesman(figs, w, h, x * w, fy * h, s * h, ang, leader, seed + k * 13);
-        if (k === 2 || k === 4) eyes.push({ x: e.ex, y: e.ey, r: Math.max(1, s * h * 0.012) });
-    });
-    paintMask(out, figs, 0x06090c, 1, 0x8fd2c2, 0.85);
-    // Trunks in front of some figures (half hidden).
-    const trunks = newMask(out);
-    for (const [x, t] of [
-        [0.3, 0.05],
-        [0.64, 0.045],
-        [0.9, 0.06],
-    ] as const) {
-        maskPoly(trunks, w, h, [
-            [x * w - t * w * 0.5, h],
-            [x * w + t * w * 0.5, h],
-            [x * w + t * w * 0.3, 0],
-            [x * w - t * w * 0.3, 0],
-        ]);
-    }
-    paintMask(out, trunks, 0x05080a, 1, 0x3a5a58, 0.5);
-    // Glowing eyes (two figures), drawn after the trunks only where no trunk covers them.
-    for (const e of eyes) {
-        for (const dx of [-1, 1]) {
-            const ex = e.x + dx * e.r * 1.6;
-            if (trunks[Math.round(e.y) * w + Math.round(ex)] === 1) continue;
-            fillDisc(out, ex, e.y, e.r * 3.2, 0x9ae8c8, 0.18);
-            fillDisc(out, ex, e.y, e.r, 0xd8ffc0, 1);
-        }
-    }
-    fogBand(out, h * 0.87, h * 0.05, 0x8aa8a2, 0.4, seed + 4);
-    // Foreground: ground, stakes and totems hung with bones.
-    const fg = newMask(out);
-    for (let x = 0; x < w; x++) for (let y = Math.floor(h * (0.9 + 0.025 * fbm(x / 20, 0, seed))); y < h; y++) fg[y * w + x] = 1;
-    const bones: [number, number, number][] = [];
-    for (let k = 0; k < 7; k++) {
-        const x = w * (0.04 + 0.92 * ((k + hash2(k, 1, seed + 50)) / 7));
-        const top = h * (0.8 + 0.08 * hash2(k, 2, seed + 50));
-        const lean = (hash2(k, 3, seed + 50) - 0.5) * 0.25;
-        maskLine(fg, w, h, x, h, x + lean * h * 0.2, top, Math.max(1.5, w * 0.012));
-        if (hash2(k, 4, seed + 50) < 0.6) {
-            maskLine(fg, w, h, x + lean * h * 0.15 - w * 0.03, top + h * 0.03, x + lean * h * 0.15 + w * 0.03, top + h * 0.03, Math.max(1, w * 0.007));
-            bones.push([x + lean * h * 0.2, top + h * 0.012, w * 0.018]);
-        }
-    }
-    paintMask(out, fg, 0x040607, 1, 0x3c4e46, 0.4);
-    // Bones and skulls on the totems (pale, earth-toned).
-    for (const [x, y, r] of bones) {
-        fillDisc(out, x, y, r, 0xcfc2a0);
-        fillDisc(out, x - r * 0.35, y - r * 0.05, r * 0.28, 0x1a1410);
-        fillDisc(out, x + r * 0.35, y - r * 0.05, r * 0.28, 0x1a1410);
-        fillRect(out, x - r * 1.6, y + r * 1.6, x + r * 1.6, y + r * 2, 0xb8a882, 0.9);
-    }
-    // Bioluminescent spores drifting in the fog.
-    for (let k = 0; k < 38; k++) {
-        const x = hash2(k, 7, seed + 90) * w;
-        const y = h * (0.3 + 0.6 * hash2(k, 8, seed + 90));
-        const r = 0.6 + 1.3 * hash2(k, 9, seed + 90);
-        fillDisc(out, x, y, r * 3, 0x6fe0b8, 0.12);
-        fillDisc(out, x, y, r, 0xc8ffd8, 0.9);
-    }
-    // Vignette.
-    for (let y = 0; y < h; y++) {
-        for (let x = 0; x < w; x++) {
-            const d = Math.hypot((x - w / 2) / (w / 2), (y - h / 2) / (h / 2));
-            if (d > 0.85) over(out.data, (y * w + x) * 4, 0, 0, 0, Math.min(0.45, (d - 0.85) * 1.2));
-        }
-    }
-    return out;
+/** Cold blue-grey of the herder scenes (desaturated), by value 0-255. */
+export function cold(v: number): [number, number, number] {
+    return [v * 0.86, v * 0.95, v * 1.08];
 }
 
 /** A horned herd head (front view): skull disc, muzzle, two sweeping horns, ears. Drawn at (cx, cy), size s. */
@@ -671,38 +441,36 @@ export function drawHornedHead(img: RgbaImage, cx: number, cy: number, s: number
     fillDisc(img, cx, cy + s * 0.24, s * 0.15, col);
 }
 
-/** Ossuvan flag: a dusk-teal field with a veiled moon and a pine-forest silhouette along the foot, the horned herd
- * head in bone over it, a bead row on the hoist (matches the portrait). */
+/** Ossuvan flag (matching the portrait): a near-black cold field, a pale fog band across the middle, a faint ring of
+ * spears round a bone-coloured horned herd head (bold enough to read at 32 px), a bead row on the hoist. */
 export function herderFlag(w = FLAG_W, h = FLAG_H): RgbaImage {
     const out = blankImage(w, h);
     for (let y = 0; y < h; y++) {
-        const t = y / h;
         for (let x = 0; x < w; x++) {
             const i = (y * w + x) * 4;
-            const hoist = x < w * 0.14 ? 0.55 : 1;
-            out.data[i] = (18 + 38 * t) * hoist;
-            out.data[i + 1] = (34 + 60 * t) * hoist;
-            out.data[i + 2] = (46 + 44 * t) * hoist;
+            const hoist = x < w * 0.14 ? 0.6 : 1;
+            const [r, g, b] = cold(22 * hoist);
+            out.data[i] = r;
+            out.data[i + 1] = g;
+            out.data[i + 2] = b;
             out.data[i + 3] = 255;
+            // Fog band.
+            const d = Math.abs(y - h * 0.62) / (h * 0.16);
+            if (d < 1.4) over(out.data, i, ...cold(92), Math.max(0, 1 - d / 1.4) * (0.45 + 0.35 * fbm(x / 14, y / 5, 3)));
         }
     }
-    fillDisc(out, w * 0.8, h * 0.26, h * 0.13, 0xd8dcc0, 0.9);
-    fillDisc(out, w * 0.8, h * 0.26, h * 0.26, 0x9ad0c0, 0.15);
-    const forest = newMask(out);
-    for (let k = 0; k < 11; k++) {
-        const x = w * (0.14 + 0.86 * ((k + 0.5 * hash2(k, 1, 5)) / 11));
-        const th = h * (0.22 + 0.16 * hash2(k, 2, 5));
-        maskPoly(forest, w, h, [
-            [x - th * 0.3, h],
-            [x + th * 0.3, h],
-            [x, h - th - h * 0.1],
-        ]);
+    // Ring of spears round the emblem.
+    const cx = w * 0.56;
+    const cy = h * 0.5;
+    const ring = newMask(out);
+    for (let k = 0; k < 14; k++) {
+        const a = (k / 14) * Math.PI * 2;
+        maskLine(ring, w, h, cx + Math.cos(a) * h * 0.34, cy + Math.sin(a) * h * 0.34, cx + Math.cos(a) * h * 0.46, cy + Math.sin(a) * h * 0.46, 1.1);
     }
-    for (let x = 0; x < w; x++) for (let y = Math.floor(h * 0.9); y < h; y++) forest[y * w + x] = 1;
-    paintMask(out, forest, 0x0a1418, 1, 0x4a7a70, 0.5);
-    drawHornedHead(out, w * 0.56, h * 0.5, h * 0.6, 0x08100f);
-    drawHornedHead(out, w * 0.56, h * 0.48, h * 0.56, 0xe6dab4);
-    for (let k = 0; k < 6; k++) fillDisc(out, w * 0.07, h * (0.12 + k * 0.155), h * 0.05, HERDER_BEADS[k % HERDER_BEADS.length]);
+    paintMask(out, ring, 0x8c98a4, 0.75);
+    drawHornedHead(out, cx, cy + 1, h * 0.6, 0x050608);
+    drawHornedHead(out, cx, cy - 1, h * 0.56, 0xd6d2c4);
+    for (let k = 0; k < 6; k++) fillDisc(out, w * 0.07, h * (0.12 + k * 0.155), h * 0.045, k === 2 ? 0xc86828 : 0x7c8890);
     return out;
 }
 

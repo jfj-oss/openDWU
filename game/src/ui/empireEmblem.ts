@@ -5,6 +5,7 @@
 // seceded states, governments in exile and the Ghost Armada (render/empireLineage.ts + render/emblemArt.ts), and the
 // Ossuvan herders' hooded portrait and horned-herd flag. Race files stay data; generated art is data: URLs, cached.
 
+import { herderPortrait } from '../render/herderPortrait';
 import type { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
 import { flagShapeUrl } from '../sim/startGameOptions';
@@ -19,7 +20,6 @@ import {
     ghostFlag,
     ghostPortrait,
     herderFlag,
-    herderPortrait,
     secededFlag,
     secededPortrait,
     type RgbaImage,

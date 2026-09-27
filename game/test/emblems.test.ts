@@ -1,6 +1,7 @@
 // 19r items 3 / 6: derived flags / portraits (src/render/emblemArt.ts) — the GenerateEmpireFlag port, deterministic
 // composition of the company / seceded / exile / ghost variants and the herder art — and the lineage reader
 // (src/render/empireLineage.ts) over the other packages' state shapes.
+import { herderPortrait } from '../src/render/herderPortrait';
 import { describe, expect, it } from 'vitest';
 import {
     FLAG_H,
@@ -14,7 +15,6 @@ import {
     ghostFlag,
     ghostPortrait,
     herderFlag,
-    herderPortrait,
     secededFlag,
     secededPortrait,
     type RgbaImage,
@@ -91,34 +91,58 @@ describe('19r derived / herder portraits', () => {
         expect(px(exilePortrait(p), 0, 30)).toEqual([6, 6, 8, 255]);
         expect(secededPortrait(p, 0x3344aa, 2).data[(59 * 60 + 59) * 4 + 3]).toBe(0);
     });
-    it('herder portrait: deterministic 300² dusk scene with dark silhouettes and bright accents (contrast)', () => {
+    it('herder portrait: deterministic 300² near-black foggy night, desaturated, a few highlights, one warm ember', () => {
         const h = herderPortrait();
         expect([h.w, h.h]).toEqual([300, 300]);
         expect(h.data).toEqual(herderPortrait().data);
         expect(h.data).not.toEqual(herderPortrait(8).data);
-        let dark = 0;
-        let bright = 0;
-        let teal = 0;
+        const ls: number[] = [];
+        let warm = 0;
+        let chroma = 0;
         for (let i = 0; i < h.data.length; i += 4) {
-            const l = 0.299 * h.data[i] + 0.587 * h.data[i + 1] + 0.114 * h.data[i + 2];
-            if (l < 20) dark++;
-            if (l > 180) bright++;
-            if (h.data[i + 1] > h.data[i] + 15 && h.data[i + 2] > h.data[i]) teal++;
+            ls.push((0.299 * h.data[i] + 0.587 * h.data[i + 1] + 0.114 * h.data[i + 2]) / 255);
+            if (h.data[i] > h.data[i + 2] + 30) warm++;
+            chroma += Math.max(h.data[i], h.data[i + 1], h.data[i + 2]) - Math.min(h.data[i], h.data[i + 1], h.data[i + 2]);
             expect(h.data[i + 3]).toBe(255);
         }
-        expect(dark).toBeGreaterThan(300 * 300 * 0.1);
-        expect(bright).toBeGreaterThan(200);
-        expect(teal).toBeGreaterThan(300 * 300 * 0.1);
-        // Contrast (luminance std) at least the stock Teekan portrait's (race_11.png measures 54.1).
-        let s1 = 0;
-        let s2 = 0;
-        for (let i = 0; i < h.data.length; i += 4) {
-            const l = 0.299 * h.data[i] + 0.587 * h.data[i + 1] + 0.114 * h.data[i + 2];
-            s1 += l;
-            s2 += l * l;
+        ls.sort((p, q) => p - q);
+        const median = ls[ls.length >> 1];
+        const mean = ls.reduce((p, q) => p + q, 0) / ls.length;
+        // Background value ≈ 3-8 %, exposure near-black overall.
+        expect(median).toBeGreaterThanOrEqual(0.02);
+        expect(median).toBeLessThanOrEqual(0.08);
+        expect(mean).toBeLessThan(0.1);
+        // Some light (the halo, rims, glints) but only a sliver of the frame.
+        const bright = ls.filter((l) => l > 0.2).length;
+        expect(bright).toBeGreaterThan(100);
+        expect(bright).toBeLessThan(ls.length * 0.08);
+        // Desaturated cold palette with a single warm accent.
+        expect(chroma / ls.length).toBeLessThan(6);
+        expect(warm).toBeGreaterThan(0);
+        expect(warm).toBeLessThan(200);
+    });
+    it('herder flag reads at 32 px (bone emblem vs the dark field)', () => {
+        const f = herderFlag();
+        const W = 32;
+        const H = 19;
+        const small: number[] = [];
+        for (let y = 0; y < H; y++) {
+            for (let x = 0; x < W; x++) {
+                let s = 0;
+                let n = 0;
+                for (let yy = Math.floor((y * f.h) / H); yy < Math.floor(((y + 1) * f.h) / H); yy++) {
+                    for (let xx = Math.floor((x * f.w) / W); xx < Math.floor(((x + 1) * f.w) / W); xx++) {
+                        const i = (yy * f.w + xx) * 4;
+                        s += 0.299 * f.data[i] + 0.587 * f.data[i + 1] + 0.114 * f.data[i + 2];
+                        n++;
+                    }
+                }
+                small.push(s / n);
+            }
         }
-        const n = h.data.length / 4;
-        expect(Math.sqrt(s2 / n - (s1 / n) ** 2)).toBeGreaterThanOrEqual(54.1);
+        const centre = small[9 * W + 18];
+        const field = (small[1 * W + 29] + small[17 * W + 29] + small[1 * W + 8]) / 3;
+        expect(centre - field).toBeGreaterThan(80);
     });
 });
 

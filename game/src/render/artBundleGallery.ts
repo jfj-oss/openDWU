@@ -8,6 +8,7 @@
 //   herders   Teekan vs the hooded Ossuvan portrait, the herd flag, a station with camp props
 // Nothing here touches the sim: stand-in objects are plain records, the galaxy is only read for real empires.
 
+import { herderPortrait } from './herderPortrait';
 import { Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
 import type { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
@@ -36,7 +37,6 @@ import {
     ghostPortrait,
     herderCampRgba,
     herderFlag,
-    herderPortrait,
     secededFlag,
     secededPortrait,
     type RgbaImage,
@@ -424,7 +424,7 @@ export class ArtBundleGallery {
         if (portrait !== null) {
             for (const [x, img, name] of [
                 [W * 0.12, portrait, 'Teekan (stock)'],
-                [W * 0.32, herderPortrait(), 'Ossuvan (procedural)'],
+                [W * 0.32, herderPortrait(), 'Ossuvan (procedural night photo)'],
             ] as const) {
                 const s = new Sprite(tex(img));
                 s.anchor.set(0.5);
