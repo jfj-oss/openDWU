@@ -141,3 +141,29 @@ year 10 (1–8 per empire). Follow-ups:
 - Scheme-target family is a stand-in (19m investigation into an open lead) because 19n-2 schemes were not on its base; re-point it at 19n-2 scheme targets now that batch G is on main.
 - Council votes are rarely offered to the model (motions only stay open when the player sits on the council); peace offers to the player are never offered.
 - Herder conquest is tested by enumeration/validation only.
+
+## Save crash at scale (found 2026-09-27 by the 15-year soak smoke: 4000 stars / 60 empires / 44 flags, 1 year)
+- `serializeGame` → native `JSON.stringify(save)` throws `RangeError: Maximum call stack size exceeded`; `galaxyToJSON` itself completes.
+  So the encoded save tree has a genuinely deep (thousands of levels) nesting chain somewhere (not a big flat array).
+  Sim ran the year cleanly (144 s wall, RSS 2.2 GB, 1933 battles, 413 destroyed, 116 herds, 4 wars).
+- Workaround under test: `ulimit -s 65500` + `node --stack-size=65000`. Real fix: find the package/state that nests (candidates: court lineage/claim
+  chains, ship-group nesting, relation cross-refs) and flatten it in the encoder; wip/savedepth agent assigned.
+- Also: 117 pirate factions were generated for 60 empires at 4000 stars, and many rim/core pirate base placements fell back to the stock rule.
+
+## 19s-2 voices follow-ups (wip/s19s2 2379cd3, built on a base without 19o/19n/19n-2)
+- Wire the three inert hooks at their real emit sites once merged: `voiceGrievanceAdded` in the 19o ledger (event `reputation.grievanceAdded`),
+  `voiceFactionUltimatum` in 19n court factions (`court.factionUltimatum`), `voiceSchemeLetter` in 19n-2 intrigue (`intrigue.schemeLetter`). Sonnet, mechanical.
+- Treasure-fleet greeting and herder migration hooks are untested end to end; an open message popup does not refresh when a voice arrives.
+- Add the §19s DONE notes for packages 2 and 3 in tasks/19-mod-layer-scenarios.md (package 4 already noted by its agent).
+
+## Threat rarity follow-ups (wip/threatlottery e21407b)
+- scripts/ai-parity.mjs and scripts/soak-15y.mjs measure AI usage of every threat: pass `<key>ExistChancePct: 100` and `<key>MinYear: 0` (or the shared threatExistChancePct/threatMinYear) as run params so the audits still exercise the threats; a normal game keeps the 25% / year-30 defaults.
+- `scenarioRuns`/`scenarioId` gating reads only the active scenario's own `include` list (not transitive includes): any new composite scenario that pulls in a threat must list `threat-framework` directly (documented in tasks/19f-hidden-threats.md §0.9).
+- Leagues audit (2026-09-27): the league's one extra colony is never a Hive node (founded after hiveInit) — decide/document; add a test that frontier-autonomy orphaned colonies become league-eligible; finish the 19o ledger migration for league standing.
+
+## Performance follow-ups (wip/perf da29dd7, 2026-09-27)
+- Landed: −7.6% at 700/10, −10.9% at 4000/60, −41% game creation at 4000/60; late-game economy passes 2–5× per call; profiling harness scripts/profile-sim.mjs + cpuprofile-summary.mjs.
+- Not done (behaviour risk): incremental per-system caches for identifyResourceCentres (~27 ms/call) and prioritizeEmpireResourceNeeds (~13 ms/call) — invalidation not provable (ownership set in 42 files, resourcesKnown in 39, visibility in 13+, saves bypass hooks). Would need a single ownership/knowledge mutation API first.
+- Would change results: character-trait review recomputes every empire's cashflow per empire tick (~4% late game; cashflow has side effects on consecutiveUnprofitableYears).
+- Soak harness: scripts/soak-15y.mjs watchCombat scans all builtObjects every frame (18.7% of the year-9 profile) — switch to destroyed/removed events or sample every N frames.
+- Minor: event-log retention findIndex+splice per entry (~1 s/year late), captain-bonus lookups (~1 s/year).
