@@ -28,7 +28,7 @@ import { galaxyDesignSpecificationBySubRole } from '../../gameStartTail';
 import { generateDesignFromSpec } from '../../designGeneration';
 import { IntelligenceMissionType, completeIntelligenceMission, newIntelligenceMissionAgainstEmpire, newIntelligenceMissionAgainstHabitat } from '../../espionage';
 import { blockadeFor } from '../../fleets/blockades';
-import { obtainEmpireEvaluation } from '../../diplomacy';
+import { applyReputation } from '../reputation/ledger';
 import { gameYear, radiusFraction, registerScenarioEvent, registerScenarioPeriodic, registerScenarioYearly } from '../hooks';
 import { scenarioParam } from '../state';
 import { scenarioText } from '../messages';
@@ -231,7 +231,7 @@ function collapse(galaxy: Galaxy, st: ExchangeState, exposer: Empire | null): vo
     st.ended = true;
     for (const e of galaxy.empires) {
         if (e === null || !e.active || e === exposer) continue;
-        if (exposer !== null) obtainEmpireEvaluation(galaxy, e, exposer).bias += 20;
+        if (exposer !== null) applyReputation(galaxy, e, exposer, 20, { cause: 'exchange.exposed', source: '19f', term: 'bias', decayPerYear: 0, legacy: 'factored' });
     }
     arcNews(galaxy, st.sentStages, { prefix: TAG, stage: 'Collapsed' });
     if (threatsGameEndOn(galaxy)) threatGameEnd(galaxy, exposer, GameEndOutcome.Victory, scenarioText(`${TAG} Victory Title`), EXCHANGE_CODE_CONTAINED);

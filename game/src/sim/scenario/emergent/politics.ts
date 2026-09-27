@@ -22,7 +22,8 @@ import { haveRevolution, selectSuitableGovernment } from '../../treasury';
 import { empireApprovalRating, empireWarWeariness, setColonyTaxRate } from '../../taxes';
 import { empireGovernmentAttributes, getGovernmentsStatic } from '../../empire';
 import { resolveStandardRaceBias } from '../../raceBias';
-import { DiplomaticRelationType, obtainEmpireEvaluation } from '../../diplomacy';
+import { DiplomaticRelationType } from '../../diplomacy';
+import { applyReputation } from '../reputation/ledger';
 import { cancelIntelligenceMission, characterMission, markEmpireAsRecentSpy, resolveMoreAdvancedProjectsIncludeSpecial } from '../../espionage';
 import { doResearchBreakthrough } from '../../researchTick';
 import { giveTerritoryMap } from '../../tradeItems';
@@ -533,8 +534,7 @@ export function attemptDefection(galaxy: Galaxy, empire: Empire, c: Character, y
                 cancelIntelligenceMission(empire, characterMission(a)!);
                 a.mission = null;
             }
-            const ev = obtainEmpireEvaluation(galaxy, target, empire);
-            ev.incidentEvaluation = ev.incidentEvaluationRaw - 10.0;
+            applyReputation(galaxy, target, empire, -10.0, { cause: 'politics.defectedAgent', source: '19d1' });
             markEmpireAsRecentSpy(galaxy, empire, target);
             if (agentMissions.length > 0) extra.push(scenarioText('Emergent Defection Agents', target.name));
             break;

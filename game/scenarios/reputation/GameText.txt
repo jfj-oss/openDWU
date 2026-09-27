@@ -1,0 +1,11 @@
+'19o Reputation & grievances ledger: cause labels (scenarioText tags "Reputation Cause <cause id>"), in the voice of the
+'empire that holds the entry, as the stock relationship factors ("Our past dealings with you have been terrible").
+Reputation Cause espionage.falseFlag;You tried to frame us for your sabotage
+Reputation Cause espionage.sanctions;Your spies forced us to impose sanctions
+Reputation Cause espionage.stolenTech;You stole our technology
+Reputation Cause espionage.stolenTechHeld;You hold technology stolen from us
+Reputation Cause espionage.apology;You apologised for your spies
+Reputation Cause politics.defectedAgent;A defector exposed your spying on us
+Reputation Cause demographics.diaspora;How you treat our people in your colonies
+Reputation Cause charters.nationalised;You nationalised one of our sister companies
+Reputation Cause exchange.exposed;You exposed the Exchange

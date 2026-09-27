@@ -1106,12 +1106,14 @@ export function evaluatePoliticalSituation(galaxy: Galaxy, empire: Empire, timeP
             if (item.initiator === other) ev.blockades += BLOCKADE_EMPIRE_EVALUATION_VALUE;
         }
         const num10 = INCIDENT_EVALUATION_ANNUAL_NEUTRALIZATION_AMOUNT * (totalSeconds / REAL_SECONDS_IN_GALACTIC_YEAR);
-        if (ev.incidentEvaluation > 0.0) {
+        // Neutralizes the stock accumulator only (incidentEvaluationStock = the C# getter; 19o ledger entries decay on
+        // their own yearly schedule, scenario/reputation/ledger.ts).
+        if (ev.incidentEvaluationStock > 0.0) {
             ev.incidentEvaluation = ev.incidentEvaluationRaw - num10;
-            if (ev.incidentEvaluation < 0.0) ev.incidentEvaluation = 0.0;
+            if (ev.incidentEvaluationStock < 0.0) ev.incidentEvaluation = 0.0;
         } else {
             ev.incidentEvaluation = ev.incidentEvaluationRaw + num10;
-            if (ev.incidentEvaluation > 0.0) ev.incidentEvaluation = 0.0;
+            if (ev.incidentEvaluationStock > 0.0) ev.incidentEvaluation = 0.0;
         }
         ev.governmentStyleAffinity = gov !== null ? Math.trunc(governmentNaturalAffinity(self.governmentId, other.governmentId)) : 0;
         let num11 = (ev.systemCompetition * totalSeconds) / EMPIRE_EVALUATION_TRENDING_FACTOR;
@@ -3338,14 +3340,14 @@ export function considerHonorMutualDefensePactOrProtectorate(galaxy: Galaxy, sel
                 if (num3 >= 0.5) {
                     declareWar(galaxy, self, targetEmpire, null, false, true);
                     const evR = obtainEmpireEvaluation(galaxy, requester, self);
-                    evR.incidentEvaluation = evR.incidentEvaluation + 30.0; // C# `IncidentEvaluation += 30` reads the factored getter
+                    evR.incidentEvaluation = evR.incidentEvaluationStock + 30.0; // C# `IncidentEvaluation += 30` reads the factored getter (19o: the stock one)
                     setCivilityRating(self, self.civilityRating + 8.0);
                     sendMessageToEmpire(self, requester, EmpireMessageType.Informational, targetEmpire, formatText(getText('We stand alongside our friends and allies'), targetEmpire.name));
                     return true;
                 }
                 sendMessageToEmpire(self, requester, EmpireMessageType.Informational, targetEmpire, getText("Sorry, we can't help you right now..."));
                 const evR2 = obtainEmpireEvaluation(galaxy, requester, self);
-                evR2.incidentEvaluation = evR2.incidentEvaluation - 30.0;
+                evR2.incidentEvaluation = evR2.incidentEvaluationStock - 30.0;
                 setCivilityRating(self, self.civilityRating - 6.0);
                 changeDiplomaticRelation(galaxy, self, obtainDiplomaticRelation(self, requester), DiplomaticRelationType.None, true);
                 return false;
@@ -3378,23 +3380,23 @@ export function resetAttitudeLevelsAtEndOfWar(galaxy: Galaxy, diplomaticRelation
         ev.incidentEvaluation = 0.0;
         clearAll(ev);
         const ev2 = obtainEmpireEvaluation(galaxy, loser, empire);
-        ev2.incidentEvaluation = Math.max(-5.0, ev2.incidentEvaluation);
+        ev2.incidentEvaluation = Math.max(-5.0, ev2.incidentEvaluationStock);
         clearAll(ev2);
     } else if (winningRatio > 1.3) {
         const ev3 = obtainEmpireEvaluation(galaxy, empire, loser);
-        ev3.incidentEvaluation = Math.max(-3.0, ev3.incidentEvaluation);
+        ev3.incidentEvaluation = Math.max(-3.0, ev3.incidentEvaluationStock);
         clearAll(ev3);
         const ev4 = obtainEmpireEvaluation(galaxy, loser, empire);
         ev4.systemCompetitionCumulative = 0.0;
         ev4.covetousnessCumulative = 0.0;
-        ev4.incidentEvaluation = Math.max(-8.0, ev4.incidentEvaluation);
+        ev4.incidentEvaluation = Math.max(-8.0, ev4.incidentEvaluationStock);
     } else {
         const ev5 = obtainEmpireEvaluation(galaxy, empire, loser);
-        ev5.incidentEvaluation = Math.max(-5.0, ev5.incidentEvaluation);
+        ev5.incidentEvaluation = Math.max(-5.0, ev5.incidentEvaluationStock);
         ev5.systemCompetitionCumulative = 0.0;
         ev5.covetousnessCumulative = 0.0;
         const ev6 = obtainEmpireEvaluation(galaxy, loser, empire);
-        ev6.incidentEvaluation = Math.max(-10.0, ev6.incidentEvaluation);
+        ev6.incidentEvaluation = Math.max(-10.0, ev6.incidentEvaluationStock);
         ev6.systemCompetitionCumulative = 0.0;
         ev6.covetousnessCumulative = 0.0;
     }

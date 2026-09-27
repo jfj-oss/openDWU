@@ -119,6 +119,7 @@ export function formatSigned(v: number): string {
 export { feelingDescription, civilityDescription, relationshipFactors, type RelationshipFactor } from '../../sim/player/relationFactors';
 import { relationshipFactors, feelingDescription, type RelationshipFactor } from '../../sim/player/relationFactors';
 import { incidentRows } from '../../sim/scenario/emergent/espionageView';
+import { reputationRows } from '../../sim/scenario/reputation/view';
 import { acceptProposal, declineProposal } from '../../sim/player/playerOrders';
 export { acceptProposal, declineProposal };
 
@@ -550,6 +551,17 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
             const line = el('div', 'diplomacy-factor', `${f.description} (${formatSigned(f.value)})`);
             line.style.color = f.value < 0 ? RED : LIGHT_GREEN;
             detail.appendChild(line);
+        }
+
+        // 19o (scenario `reputationLedger`): the ledger entries the other empire holds about us, with their fade.
+        const causes = reputationRows(player.galaxy, player, row.empire);
+        if (causes.length > 0) {
+            detail.appendChild(el('div', 'diplomacy-section-heading', 'Why they feel this way'));
+            for (const r of causes) {
+                const line = el('div', 'diplomacy-factor', r.text);
+                line.style.color = r.value < 0 ? RED : LIGHT_GREEN;
+                detail.appendChild(line);
+            }
         }
 
         // 19d3 (scenario `espionageConsequences`): open espionage crises, recent exposures, stolen techs of the pair.

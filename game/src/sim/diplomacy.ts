@@ -23,6 +23,7 @@ import { REAL_SECONDS_IN_GALACTIC_YEAR } from './galaxyTime';
 import { SystemVisibilityStatus } from './visibility';
 import { PirateRelationType } from './pirateRelations';
 import { resolveStandardRaceBias } from './raceBias';
+import { reputationChannel } from './scenario/reputation/channel';
 
 // DiplomaticRelationType.cs (byte enum; member order exact).
 export enum DiplomaticRelationType {
@@ -593,6 +594,30 @@ export class EmpireEvaluation {
         return this._empire;
     }
 
+    /**
+     * 19o reputation channel (scenario/reputation/ledger.ts): `_IncidentEvaluation` as the attitude reads it — the stock
+     * accumulator plus the reputation ledger's incident entries for this pair, clamped to the setter's caps
+     * [IncidentEvaluationCapNegative, IncidentEvaluationCap] (EmpireEvaluation.cs 202-215). This is the one place the C#
+     * sums incidents into the attitude: OverallAttitude (EmpireEvaluation.cs 96 `double incidentEvaluation =
+     * this._IncidentEvaluation`), OverallAttitudeWithoutSystemCompetition (157) and the IncidentEvaluation getter (199)
+     * all read it through here. Ledger off / no entries: exactly `_incidentEvaluation`.
+     */
+    private incidentTotal(): number {
+        const hook = reputationChannel.incident;
+        if (hook === null) return this._incidentEvaluation;
+        const x = hook(this);
+        if (x === null) return this._incidentEvaluation;
+        return Math.max(INCIDENT_EVALUATION_CAP_NEGATIVE, Math.min(INCIDENT_EVALUATION_CAP, this._incidentEvaluation + x));
+    }
+
+    /** 19o: `_Bias` plus the ledger's bias entries (EmpireEvaluation.cs 147 / 157 / 302 read it). Off: `_bias`. */
+    private biasTotal(): number {
+        const hook = reputationChannel.bias;
+        if (hook === null) return this._bias;
+        const x = hook(this);
+        return x === null ? this._bias : this._bias + x;
+    }
+
     // C# `value <= 0.0 ? value * AggressionLevel / DiplomacyFactor : value / AggressionLevel * DiplomacyFactor`.
     private weigh(value: number, aggressionLevel: number): number {
         return value <= 0.0 ? (value * aggressionLevel) / this.diplomacyFactor : (value / aggressionLevel) * this.diplomacyFactor;
@@ -602,7 +627,7 @@ export class EmpireEvaluation {
     get overallAttitude(): number {
         const a = galaxyAggressionLevel(this._empire!.galaxy);
         const num1 = 0.0;
-        const num3 = num1 + this.weigh(this._incidentEvaluation, a);
+        const num3 = num1 + this.weigh(this.incidentTotal(), a);
         const num5 = num3 + this.weigh(this.systemCompetitionCumulative, a);
         const num7 = num5 + this.weigh(this.tradeVolume, a);
         const num9 = num7 + this.weigh(this.relationshipWithFriendsPositiveCumulative, a);
@@ -619,7 +644,7 @@ export class EmpireEvaluation {
         const num31 = num29 + this.weigh(this._slaveryOffense, a);
         const num33 = num31 + this.weigh(this.firstContactPenalty, a);
         const num35 = num33 + this.weigh(this.reputationWeighted, a);
-        const num36 = this.weigh(this._bias, a);
+        const num36 = this.weigh(this.biasTotal(), a);
         return Math.trunc(num35 + num36);
     }
 
@@ -627,7 +652,7 @@ export class EmpireEvaluation {
     get overallAttitudeWithoutSystemCompetition(): number {
         const a = galaxyAggressionLevel(this._empire!.galaxy);
         const num1 =
-            this._incidentEvaluation +
+            this.incidentTotal() +
             this.tradeVolume +
             this.relationshipWithFriendsPositiveCumulative +
             this.relationshipWithFriendsNegativeCumulative +
@@ -642,7 +667,7 @@ export class EmpireEvaluation {
             this.racialOffense +
             this.firstContactPenalty +
             this.reputationWeighted +
-            this._bias;
+            this.biasTotal();
         const num2 = num1 <= 0.0 ? num1 * a : num1 / a;
         return num2 <= 0.0 ? Math.trunc(num2 / this.diplomacyFactor) : Math.trunc(num2 * this.diplomacyFactor);
     }
@@ -659,9 +684,19 @@ export class EmpireEvaluation {
         return this._incidentEvaluation;
     }
 
-    /** EmpireEvaluation.cs 185 IncidentEvaluation: get ÷/× DiplomacyFactor; set clamps to [-150, 80]. */
-    get incidentEvaluation(): number {
+    /**
+     * The stock IncidentEvaluation getter without the 19o ledger (÷/× DiplomacyFactor of the raw field). Read-modify-write
+     * sites (`x.incidentEvaluation = f(x.incidentEvaluation)`) read this so the ledger never bakes into the stock field.
+     * Equal to `incidentEvaluation` whenever the ledger is off or empty for the pair.
+     */
+    get incidentEvaluationStock(): number {
         const incidentEvaluation = this._incidentEvaluation;
+        return incidentEvaluation <= 0.0 ? incidentEvaluation / this.diplomacyFactor : incidentEvaluation * this.diplomacyFactor;
+    }
+
+    /** EmpireEvaluation.cs 185 IncidentEvaluation: get ÷/× DiplomacyFactor (19o: of incidentTotal); set clamps to [-150, 80]. */
+    get incidentEvaluation(): number {
+        const incidentEvaluation = this.incidentTotal();
         return incidentEvaluation <= 0.0 ? incidentEvaluation / this.diplomacyFactor : incidentEvaluation * this.diplomacyFactor;
     }
     set incidentEvaluation(value: number) {
@@ -678,9 +713,15 @@ export class EmpireEvaluation {
         return this._bias;
     }
 
-    /** EmpireEvaluation.cs 280 Bias: get ÷/× DiplomacyFactor; set raw. */
-    get bias(): number {
+    /** The stock Bias getter without the 19o ledger (read-modify-write sites). Equal to `bias` with the ledger off. */
+    get biasStock(): number {
         const bias = this._bias;
+        return bias <= 0.0 ? bias / this.diplomacyFactor : bias * this.diplomacyFactor;
+    }
+
+    /** EmpireEvaluation.cs 280 Bias: get ÷/× DiplomacyFactor (19o: of biasTotal); set raw. */
+    get bias(): number {
+        const bias = this.biasTotal();
         return bias <= 0.0 ? bias / this.diplomacyFactor : bias * this.diplomacyFactor;
     }
     set bias(value: number) {

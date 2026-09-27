@@ -21,5 +21,6 @@ import './threats/doppelgangers';
 import './threats/greyTide';
 import './threats/hive';
 import './threats/silence';
+import './reputation/ledger'; // 19o reputation & grievances ledger (flag reputationLedger; fills the attitude channel)
 import './security/security'; // 19m internal security (flag internalSecurity; last: it fills the 19d1 / 19d4 hook slots)
 export {};

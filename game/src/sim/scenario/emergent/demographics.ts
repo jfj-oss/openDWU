@@ -28,7 +28,8 @@ import { makeHabitatIntoColonyRuntime } from '../../missions/cmdTroops';
 import { assignMission } from '../../missions/assign';
 import { BuiltObjectMissionPriority, BuiltObjectMissionType, isHabitat } from '../../missions/mission';
 import { builtObjectCompleteTeardown } from '../../combat/teardown';
-import { DiplomaticRelationType, obtainDiplomaticRelation, obtainEmpireEvaluation } from '../../diplomacy';
+import { DiplomaticRelationType, obtainDiplomaticRelation } from '../../diplomacy';
+import { applyReputation } from '../reputation/ledger';
 import { EmpireMessageType } from '../../messages';
 import { galaxyStarDate } from '../../tick/simTime';
 import { raceFriendlinessLevel } from '../../colonyTick';
@@ -841,8 +842,8 @@ function reviewDiasporaDiplomacy(galaxy: Galaxy): void {
             const applied = capped - running;
             st.diasporaEval.set(key, capped);
             if (applied !== 0) {
-                const evaluation = obtainEmpireEvaluation(galaxy, guest, host);
-                evaluation.incidentEvaluation += applied;
+                // The running total above stays the cap; the ledger entry merges by cause (no decay: the cap tracks it).
+                applyReputation(galaxy, guest, host, applied, { cause: 'demographics.diaspora', source: '19d4', decayPerYear: 0, legacy: 'factored' });
             }
         }
     }

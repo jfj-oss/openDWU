@@ -42,6 +42,7 @@ import { empireCompleteTeardown } from '../../events';
 import { canEmpireColonizeHabitat } from '../../exploration';
 import { determineColonizationValue, giveTradeableItem, resolveTradeableItemsMaps, resolveTradeableItemsResearchProjects, TradeableItemType } from '../../tradeItems';
 import { DiplomaticRelationType, obtainDiplomaticRelation, obtainEmpireEvaluation } from '../../diplomacy';
+import { applyReputation } from '../reputation/ledger';
 import { changeDiplomaticRelation, friendlinessLevel, militaryPotency, offerMilitaryRefueling } from '../../diplomacyTick';
 import { determineEmpireRelationshipFactors } from '../../empireRelationshipFactors';
 import { fastFindNearestSpacePort } from '../../stationPlacement';
@@ -358,7 +359,7 @@ export function grantCharter(galaxy: Galaxy, founder: Empire, target: Habitat, t
     void determineEmpireRelationshipFactors(company, founder);
     const ev = obtainEmpireEvaluation(galaxy, company, founder);
     ev.firstContactPenalty = 0.0;
-    ev.incidentEvaluation += 60.0;
+    ev.incidentEvaluation = ev.incidentEvaluationStock + 60.0; // `+= 60` (the stock getter: never bakes in a 19o ledger sum)
     offerMilitaryRefueling(founder, company);
     offerMilitaryRefueling(company, founder);
     spawnExpedition(galaxy, founder, company, target);
@@ -407,7 +408,7 @@ export function nationaliseCompany(galaxy: Galaxy, founder: Empire, company: Emp
     for (const other of allCharters(galaxy)) {
         if (other.founderId !== founder.empireId || other.status !== 'active') continue;
         const e = empireById(galaxy, other.companyId);
-        if (e !== null) obtainEmpireEvaluation(galaxy, e, founder).incidentEvaluation -= 20.0;
+        if (e !== null) applyReputation(galaxy, e, founder, -20.0, { cause: 'charters.nationalised', source: '19c', legacy: 'factored' });
     }
     return true;
 }

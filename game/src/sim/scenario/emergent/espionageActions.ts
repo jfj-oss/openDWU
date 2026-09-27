@@ -8,7 +8,8 @@ import type { Galaxy } from '../../galaxy';
 import type { Empire } from '../../empire';
 import { getEmpireCharacters, CharacterRole } from '../../characters';
 import { IntelligenceMissionType, cancelIntelligenceMission, characterMission } from '../../espionage';
-import { obtainEmpireEvaluation, obtainDiplomaticRelation, DiplomaticRelationType } from '../../diplomacy';
+import { obtainDiplomaticRelation, DiplomaticRelationType } from '../../diplomacy';
+import { applyReputation } from '../reputation/ledger';
 import { setCivilityRating } from '../../diplomacyTick';
 import { TradeableItem, TradeableItemType, giveTradeableItem } from '../../tradeItems';
 import { submitProposal } from '../../player/diplomacyProposals';
@@ -63,8 +64,7 @@ export function complyRecall(galaxy: Galaxy, offender: Empire, c: SpyCrisis): Ac
 export function complyApology(galaxy: Galaxy, offender: Empire, c: SpyCrisis): ActionResult {
     if (c.stage === 'resolved' || offender !== c.offender) return { ok: false, reason: 'no open crisis' };
     setCivilityRating(offender, offender.civilityRating - 2);
-    const ev = obtainEmpireEvaluation(galaxy, c.victim, offender);
-    ev.incidentEvaluation = ev.incidentEvaluationRaw + c.severity / 2;
+    applyReputation(galaxy, c.victim, offender, c.severity / 2, { cause: 'espionage.apology', source: '19d3' });
     c.response = 'complied';
     resolveCrisis(galaxy, c, scenarioText('Emergent Resolution Apology'), true);
     return { ok: true };

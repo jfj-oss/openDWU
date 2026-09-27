@@ -18,6 +18,7 @@ import type { Habitat } from './types';
 import type { BuiltObjectMissionType } from './missions/mission';
 import { empireShipGroups, shipGroupCompleteMission, type ShipGroup } from './fleets/shipGroup';
 import { EmpireActivityType } from './pirates/empireActivity';
+import { reputationChannel } from './scenario/reputation/channel';
 
 // BuiltObjectMissionType values used by CancelPirateDefendMissions. pirateRelations.ts is loaded early by empire.ts, so
 // it must not pull missions/mission.ts (and with it builtObject.ts / types.ts) in at runtime; the values are the
@@ -161,7 +162,7 @@ export class PirateRelation {
         this.evaluationRaidsAgainstOurColonies = step(this.evaluationRaidsAgainstOurColonies);
     }
 
-    // PirateRelation.cs 273 Evaluation (float sum in C# source order).
+    // PirateRelation.cs 271 Evaluation (float sum in C# source order).
     get evaluation(): number {
         let num = this.evaluationGifts;
         num = f(num + this.evaluationOffenseOverRequests);
@@ -173,6 +174,14 @@ export class PirateRelation {
         num = f(num + this.evaluationShipAttacks);
         num = f(num + this.evaluationCovetedColonies);
         num = f(num + this.evaluationRaidsAgainstOurColonies);
+        // 19o reputation channel (scenario/reputation/ledger.ts): the ledger's entries for a pirate pair join the float
+        // sum before DiplomacyFactor, as one more Evaluation* term (PirateRelation.cs 271; the entries Empire.8.cs 2512
+        // ChangePirateEvaluation would otherwise have added). Ledger off / no entries: untouched.
+        const hook = reputationChannel.pirate;
+        if (hook !== null) {
+            const x = hook(this);
+            if (x !== null) num = f(num + x);
+        }
         return this.factored(num);
     }
 
