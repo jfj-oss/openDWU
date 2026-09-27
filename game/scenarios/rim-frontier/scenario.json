@@ -22,6 +22,7 @@
     { "name": "rimFrontierHuntChance", "label": "Pirate hunting: yearly chance a faction in range sends ships after a herd (0-1)", "default": 0.3, "min": 0, "max": 1 },
     { "name": "rimFrontierHuntBounty", "label": "Pirate hunting: credits paid per herd member on a successful hunt", "default": 500, "min": 0, "max": 5000 },
     { "name": "rimFrontierOasesPerSector", "label": "Guaranteed Caslon/Hydrogen sources per rim sector (0 = off)", "default": 1, "min": 0, "max": 5 },
-    { "name": "rimFrontierOasisRange", "label": "Range from a fuel oasis a pirate rim base prefers", "default": 2000000, "min": 100000, "max": 6000000 }
+    { "name": "rimFrontierOasisRange", "label": "Range from a fuel oasis a pirate rim base prefers", "default": 2000000, "min": 100000, "max": 6000000 },
+    { "name": "rimPirateFactionCap", "label": "Pirate faction cap (0 = stock rule)", "default": 0, "min": 0, "max": 200 }
   ]
 }

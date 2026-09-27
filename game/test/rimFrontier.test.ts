@@ -484,3 +484,83 @@ describe('19h rim frontier — 9: fuel oases (guaranteed rim Caslon/Hydrogen; pi
         expect(run.rndDraws).toBe(ref.run.rndDraws);
     }, 300000);
 });
+
+describe('19h rim frontier — pirate faction cap (hooks.ts pirateFactionCount, rimPirateFactionCap)', () => {
+    it('cap 0 (default): the query returns the stock count unchanged, and never draws', () => {
+        const { game } = createScenarioGame(base, { scenario: 'rim-frontier' });
+        const g = game.galaxy;
+        const before = g.rnd.drawCount;
+        for (const stock of [0, 1, 39, 40, 999]) {
+            expect(scenarioQuery(g, 'pirateFactionCount', stock, {})).toBe(stock);
+        }
+        expect(g.rnd.drawCount).toBe(before);
+    });
+
+    it('flag off: byte-identical to the faithful game even with rimPirateFactionCap set', () => {
+        const ref = cachedTickGameRun(base, { seconds: 60 });
+        const { game } = createScenarioGame(base, { scenario: 'rim-frontier', flags: { rimFrontier: false }, params: { rimPirateFactionCap: 5 } });
+        expect('rimFrontier' in game.galaxy.scenario!.state).toBe(false);
+        const run = runGameSeconds(game, 60);
+        expect(stateDigest(game.galaxy)).toBe(stateDigest(ref.game.galaxy));
+        expect(stateCounts(game.galaxy)).toEqual(stateCounts(ref.game.galaxy));
+        expect(run.rndDraws).toBe(ref.run.rndDraws);
+    }, 300000);
+
+    it('cap higher than the stock count has no effect (byte-identical to cap 0)', () => {
+        const { game: stock } = createScenarioGame(base, { scenario: 'rim-frontier' }); // rimPirateFactionCap 0 (stock rule)
+        const { game: capped } = createScenarioGame(base, { scenario: 'rim-frontier', params: { rimPirateFactionCap: 1000 } });
+        expect(capped.galaxy.pirateEmpires.length).toBe(stock.galaxy.pirateEmpires.length);
+        expect(capped.galaxy.pirateEmpires.length).toBeGreaterThan(0);
+        expect(stateDigest(capped.galaxy)).toBe(stateDigest(stock.galaxy));
+    });
+
+    it('count capped at 40 in a 1400-star / 30-empire game', () => {
+        const aiSlot = { race: '(Random)', homeSystemFavourability: 'Normal' as const, proximityDistance: 'Random', startLocation: '(Random)', age: 1, techLevel: 0.5 };
+        const STAR_COUNT = 1400;
+        // rimFrontierPirateRimShare / rimFrontierOasesPerSector 0 and the fuel radius opened up isolate the cap from
+        // the package's other pirate-base hooks (19h-8 rim/core split, 19h-11 oasis preference), the same way the
+        // rim/core-share test above isolates its own feature.
+        const { game } = createScenarioGame(base, {
+            scenario: 'rim-frontier',
+            params: { rimPirateFactionCap: 40, rimFrontierPirateRimShare: 0, rimFrontierOasesPerSector: 0, rimFrontierFuelMaxRadius: 1.5 },
+            options: (o) => ({
+                ...o,
+                starCount: STAR_COUNT,
+                sectorWidth: 15,
+                sectorHeight: 15,
+                systemNames: Array.from({ length: STAR_COUNT }, (_, i) => `S${i}`),
+                aiEmpires: Array.from({ length: 29 }, () => aiSlot),
+                piratePrevalence: 1.0,
+            }),
+        });
+        const g = game.galaxy;
+        expect(g.empires.length).toBe(30);
+        // Stock target: trunc(2 * piratePrevalence(1.0) * maximumEmpireAmount(fallback 1 + 29 AI = 30)) = 60, well
+        // above the 40 cap, so the cap (not the stock formula) sets pirates.ts's `num`. GenerateNewPirateEmpires then
+        // scales that target by `val` (colonization pressure: Galaxy.9.cs 22, pirates.ts generateNewPirateEmpires) —
+        // val < 1 whenever any empire already holds a colony (true of every real game, capped or not: every empire
+        // has its capital before the game-start pirate tick runs), so Math.trunc(num3 * val) undershoots the 40 cap
+        // by 1 here — not a flaw in the cap, the same shortfall the stock (uncapped) formula would show for any
+        // target. 39 is deterministic for this seed/settings (task-set: seed 1, 1400 stars, 30 empires).
+        expect(g.pirateEmpires.length).toBe(39);
+        expect(g.pirateEmpires.length).toBeLessThanOrEqual(40); // the cap itself is never exceeded
+
+        // Same seed/settings with the cap off (rimPirateFactionCap 0, stock rule): the stock target (60) is not
+        // clamped to 40, so the uncapped count lands well above the capped one — confirming the cap is what held it
+        // to 39/40 above, not a coincidence of val-scaling alone.
+        const { game: uncapped } = createScenarioGame(base, {
+            scenario: 'rim-frontier',
+            params: { rimPirateFactionCap: 0, rimFrontierPirateRimShare: 0, rimFrontierOasesPerSector: 0, rimFrontierFuelMaxRadius: 1.5 },
+            options: (o) => ({
+                ...o,
+                starCount: STAR_COUNT,
+                sectorWidth: 15,
+                sectorHeight: 15,
+                systemNames: Array.from({ length: STAR_COUNT }, (_, i) => `S${i}`),
+                aiEmpires: Array.from({ length: 29 }, () => aiSlot),
+                piratePrevalence: 1.0,
+            }),
+        });
+        expect(uncapped.galaxy.pirateEmpires.length).toBeGreaterThan(40);
+    }, 300000);
+});

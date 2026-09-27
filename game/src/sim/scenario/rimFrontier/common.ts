@@ -45,6 +45,9 @@ export const RIM_FRONTIER_DEFAULTS = {
     /** 19h-11 fuel oases: range from a candidate pirate base within which an oasis is preferred (≈ one sector; Galaxy.3.cs
      *  SectorSize 2,000,000). */
     rimFrontierOasisRange: 2000000,
+    /** Explicit ceiling on the game-start pirate-faction count (pirates.ts generateNewPirateEmpires, via hooks.ts's
+     *  pirateFactionCount query): min(stock count, this) when > 0. 0 = stock rule (no cap). */
+    rimPirateFactionCap: 0,
 } as const;
 export type RimFrontierParam = keyof typeof RIM_FRONTIER_DEFAULTS;
 
