@@ -28,7 +28,7 @@ Then read every `$DWU` path in this file and in task files as that clone (e.g. `
 
 ## Art
 Use the original art directly from `/assets/dwu/images/...` (e.g. `/assets/dwu/images/environment/planets/ocean/...`).
-Never commit art; never copy it into the repo.
+Never commit or copy the ORIGINAL game's art into the repo. Art we create ourselves (procedural code, runtime composites of the original frames, or our own generated sprite sheets) is fine to commit under `public/art/` — see tasks/19-mod-layer-scenarios.md §19g-7b.
 
 ## Layout
 - `src/sim/` — headless game model. **No DOM or Pixi imports.** Deterministic given a seed.
