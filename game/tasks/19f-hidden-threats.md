@@ -274,29 +274,64 @@ fleet to blockade it within one year (testable).
 **Risks.** Extra money distorts AI economies — cap at 10% of the receiver's treasury per year. **Size** 2 days.
 
 ## 9. Robot mutiny — robotic troops answer one hidden broadcast
-**Concept.** All BattleBot troops galaxy-wide are wired to one hidden transmitter; when it wakes they mutiny.
-Robot-heavy empires lose planets first.
-**Data.** GameText `Mutiny *`; faction race = Harvester from 19b (via D3 include, else its own `BasedOn` copy). Params:
-`mutinyYear` (70), `mutinyMinRobots` (30 galaxy-wide), `mutinyShipFlipPct` (100).
-**Hidden state / spread.** `{source: Habitat (a ruin world), armed: boolean}`. No growth — the empires spread it by
-recruiting robots (RoboticTroopFoundry; robot troops are identified as `troop.race === null && troop.pictureRef ===
-galaxy.races.length`, the stock BattleBot marker, troops.ts 387 / orderMenu.ts 2300).
+**Concept.** All BattleBot troops galaxy-wide are wired to one hidden transmitter; robot garrisons quietly build more
+robots in hiding. When it wakes, colonies rise where their robots can win, the machines become an empire on their first
+capture, and the transmitter keeps pouring out warships a tech level ahead of the best empire until it is silenced.
+**Data.** GameText `Mutiny *` (incl. `Mutiny Empire Name`, `Mutiny Empire`, `Mutiny Silenced`, `Mutiny Beacon`);
+faction race = Harvester from 19b (via D3 include, else its own `BasedOn` copy). Params: `mutinyYear` (70),
+`mutinyMinRobots` (30 galaxy-wide), `mutinyShipFlipPct` (100), `mutinySourceDetectPct` (8), `mutinyDefeatPopulationPct`
+(40), `mutinySleeperMinRobots` (2), `mutinySleepersPerYear` (15), `mutinyBeaconShipsYear1/2/3` (100/200/300, tuned for
+large galaxies), `mutinyBeaconScalePct` (100, multiplies the three targets), `mutinyTechBonus` (1).
+**Hidden state / spread.** `{source: Habitat (a ruin world), sleepers: {colony, count}[], risingYear, becameEmpire,
+beaconShips, beaconYear, beaconTech, beaconDesigns}`. The empires spread it by recruiting robots (RoboticTroopFoundry;
+robot troops are identified as `troop.race === null && troop.pictureRef === galaxy.races.length`, the stock BattleBot
+marker, troops.ts 387 / orderMenu.ts 2300). **Hidden growth** (yearly, `mutinyAccrueSleepers`, galaxy.habitats order):
+every colony whose garrison holds ≥ `mutinySleeperMinRobots` robots of its owner accrues `mutinySleepersPerYear` sleepers
+— a count in the threat state only (no Troop object: no upkeep, not in the garrison, not counted by the stock UI).
 **Trigger / faction.** Year ≥ `mutinyYear` and robot troops galaxy-wide ≥ `mutinyMinRobots` →
-`createThreatFaction('The Broadcast', race Harvester, adoptOnly)`. In every colony (galaxy.habitats order) each robot
-troop moves from `habitat.troops` to `habitat.invadingTroops` with `troop.empire = faction` (`invadeFromInside`) —
-the stock invasion resolves robots vs the rest of the garrison. Ships whose carried troops are majority robots flip
+`createThreatFaction('The Broadcast', race Harvester, adoptOnly, techLevel = beacon tech)`. **Rise only where it can
+win:** a colony rises when its robots (owner's garrison robots + sleepers as full-readiness foundry BattleBots) beat the
+other garrison troops + colony characters by the stock `calculateForceStrengths` (Habitat.cs 4435; plus the
+population's defence share as resolveInvasionBattles adds it). Rising = the sleepers materialise as stock foundry troops
+(`generateNewTroop('BattleBot Group', 60)`, maintenance ×0.25, robot marker) and rise with the garrison robots through
+`invadeFromInside`; the stock invasion resolves it. Elsewhere the robots stay dormant (still in the owner's garrison,
+sleepers still hidden) and the periodic `mutinyRisings` re-tests every 30 days: the colony rises when the balance flips
+or a faction warship (a beacon fleet) is in its system. Ships whose carried troops are majority robots flip
 (`flipToFaction`) with `mutinyShipFlipPct`.
-**Dirty.** Mutinous robots never retreat; the transmitter keeps re-infecting: any robot troop recruited later joins the
-faction on the next period.
+**Empire on capture.** The first colony the faction holds (any path: the stock conquest's takeOwnershipOfColony already
+sets the capital) turns it into a full empire (`mutinyBecomeEmpire`, the control hand-over of lively/pirateAmbition):
+renamed `Mutiny Empire Name`, locked threat wars released to the stock diplomacy (war review, peace), the Harvester race
+set Expanding (a saved race scalar) so the stock AI's expansion gates open. The Empire ctor's AI automation is already on:
+it colonises, builds, researches, reviews wars and runs the stock invasion AI (PrepareFleetsForWar) with its own
+transports and troops.
+**Beacon fleets.** From the rising the transmitter spawns warships at the ruin world (Galaxy.8.cs 1474
+GenerateMilitaryConvoy: its Next(0, 10) type roll with the transport slot → Cruiser, GenerateNewBuiltObject at a parking
+point, TakeOwnershipOfBuiltObject, auto-controlled, no upkeep), replenished every year to that year's target (year 1
+`mutinyBeaconShipsYear1`, year 2 `…Year2`, year 3 and after `…Year3`, each × `mutinyBeaconScalePct` %). Designs:
+GenerateDesignFromSpec at tech level = the best regular empire's tech level (highest researched project level) +
+`mutinyTechBonus`, clamped to the generator's top regular component level (7; the 100/101 super weapons excluded); the
+faction's tech tree is raised to that level (SetTechTreeLevel's rule, upward only) so its construction size fits them.
+The ships gather at the transmitter in fleets of 20 with FleetPosture.Attack; the stock fleet AI tasks them. Seed 1
+(300 stars, age 3): year-1 beacon = 100 ships at tech 3 (best 2), ≈ 14× the largest empire's warship firepower —
+lower `mutinyBeaconScalePct` for small galaxies.
+**Dirty.** Mutinous robots never retreat; dormant robots keep waiting for their moment.
 **Discovery / counterplay.** Hints: "anomalous carrier signal in BattleBot firmware" to empires with ≥ 10 robots, from
 year `mutinyYear − 10`; agents with CounterIntelligence in a robot-owning empire find the source (level 3). Destroying
-the transmitter before the trigger defuses it: a troop landing on the source habitat (an UnloadTroops mission there;
-completion observed by the periodic check of troops present) or a planet destroyer. After the trigger, taking the source
-stops re-infection.
-**Sim.** 1 `mutinySeed`; 2 `mutinyHints`; 3 `mutinyTrigger`; 4 `mutinyReinfect` periodic; 5 `sourceNeutralised`.
+the transmitter before the trigger defuses it (game end: contained): a troop landing on the source habitat (an
+UnloadTroops mission there; completion observed by the periodic check of troops present) or a planet destroyer. After
+the trigger the same silences it (`Mutiny Silenced`): no more sleeper growth, risings or beacon warships; colonies
+already captured stay the empire's. Containment (game end) = the source silenced and the faction with no colonies and
+no ships (teardownIfDead); while the transmitter lives the faction is never torn down.
+**Sim.** 1 `mutinySeed`; 2 `mutinyHints`; 3 `mutinyAccrueSleepers` yearly; 4 `mutinyTrigger` (risings + ship flips +
+first beacon); 5 `mutinyRisings` periodic; 6 `mutinyBecomeEmpire` periodic; 7 `mutinyBeacon` yearly; 8
+`sourceNeutralised` / `checkDefused`.
 **AI.** AI empires with level 3 stop recruiting robots (policy `colonyAllowFacilityRoboticTroopFoundry = false` on
 the empire's policy copy) — testable.
-**Risks.** Robot counts are low in stock AI play; `mutinyMinRobots` must be tuned with a soak. **Size** 1.5 days.
+**Rnd.** Flag off: none (test: same draws and digest as without the handlers). Flag on: seed pick, faction creation,
+ship-flip roll, beacon (design naming, type roll, parking points / headings / names), discovery roll.
+**Risks.** Robot counts are low in stock AI play; `mutinyMinRobots` must be tuned with a soak. The Harvester race is
+shared with 19b Dark Farms: with both threats on, the Dark Farms faction also becomes Expanding once the mutiny empire
+forms. **Size** 1.5 days (+ rework 1 day).
 
 ## 10. Corporate coup — a chartered company takes its governors with it
 **Concept.** A 19c chartered company buys the charter-holder's governors, then declares independence with its fleet
