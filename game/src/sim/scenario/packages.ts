@@ -26,4 +26,5 @@ import './threats/hive';
 import './threats/silence';
 import './lively/livelyGalaxy';
 import './rimDistressCalls'; // 19i item 10 ticker half (rimAtmosphere flag)
+import './emergent/council'; // 19d8 galactic council (flag galacticCouncil)
 export {};
