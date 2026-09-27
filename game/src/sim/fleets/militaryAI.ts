@@ -42,6 +42,7 @@ import type { FuelTypeRef } from '../movement';
 import type { EmpireEvaluation } from '../diplomacy';
 import type { GalaxyLocation } from '../galaxyLocation';
 import { galaxyStarDate } from '../tick/simTime';
+import { scenarioQuery } from '../scenario/hooks';
 import {
     BuiltObjectMissionPriority,
     BuiltObjectMissionType,
@@ -1383,7 +1384,13 @@ export function selectFleetWarAttackTarget(galaxy: Galaxy, empire: Empire, fleet
     if (fleet.leadShip !== null && fleet.leadShip.isAutoControlled && fleet.posture === FleetPosture.Attack) {
         const diplomaticRelation = obtainDiplomaticRelation(self, otherEmpire);
         if (diplomaticRelation !== null && diplomaticRelation.warObjective === WarObjective.CaptureObjectives) {
-            const bigFleetWithTroops = (): boolean => (fleet.shipTargetAmount >= 10 || fleet.ships.length >= 10) && shipGroupTotalTroopAttackStrength(fleet) > 0;
+            // Mod layer (19l smallerInvasions): Empire.8.cs 1163's 10-ship size, relaxed to the smallest any objective colony
+            // allows (scenario query invasionMinFleetShips; stock 10).
+            let minShips = 10;
+            if (galaxy.scenario !== null) {
+                for (const c of diplomaticRelation.warObjectiveColonies) if (c != null) minShips = Math.min(minShips, scenarioQuery(galaxy, 'invasionMinFleetShips', 10, { empire: self, target: c }));
+            }
+            const bigFleetWithTroops = (): boolean => (fleet.shipTargetAmount >= minShips || fleet.ships.length >= minShips) && shipGroupTotalTroopAttackStrength(fleet) > 0;
             if (fleet.attackPoint === null) {
                 if (bigFleetWithTroops()) {
                     const array = sortByDistanceThreadsafe(galaxy, fleet.leadShip.xpos, fleet.leadShip.ypos, diplomaticRelation.warObjectiveColonies);
@@ -4109,13 +4116,22 @@ export function prepareFleetsForWarCaptureObjectives(galaxy: Galaxy, self: Empir
         let num2 = estimatedDefensiveForceRequired(galaxy, habitat, true, galaxy.difficultyLevel);
         const num3 = determineRequiredTroopStrength(galaxy, self, habitat);
         if (self.visibility.checkSystemVisible(habitat.systemIndex)) num2 = determineDefendingStrength(galaxy, habitat, otherEmpire);
-        const shipGroupList = generateOrderedFleetsForTarget(galaxy, self, habitat.xpos, habitat.ypos, false);
+        // Mod layer (19l smallerInvasions): the ≥10-ship troop fleet rule (Empire.8.cs 1049, the audit's "1047") and its
+        // troop ratio (num3 / 2) as scenario queries; a smaller minimum also lets small fleets into the candidate list
+        // (Empire.8.cs 1041 GenerateOrderedFleetsForTarget includeSmallFleets). Stock: 10 ships, num3 / 2, false.
+        let minShips = 10;
+        let troopNeeded = Math.trunc(num3 / 2);
+        if (galaxy.scenario !== null) {
+            minShips = scenarioQuery(galaxy, 'invasionMinFleetShips', 10, { empire: self, target: habitat });
+            troopNeeded = Math.trunc(num3 * scenarioQuery(galaxy, 'invasionTroopRatio', 0.5, { empire: self, target: habitat }));
+        }
+        const shipGroupList = generateOrderedFleetsForTarget(galaxy, self, habitat.xpos, habitat.ypos, minShips < 10);
         if (shipGroupList.length <= 0) continue;
         let num4 = 0;
         let num5 = 0;
         for (let j = 0; j < shipGroupList.length; j++) {
             const shipGroup = shipGroupList[j];
-            if (shipGroup != null && shipGroup.leadShip !== null && shipGroup.leadShip.isAutoControlled && shipGroup.ships.length >= 10 && shipGroup.posture === FleetPosture.Attack && shipGroup.attackPoint === null && shipGroupTotalTroopAttackStrength(shipGroup) >= Math.trunc(num3 / 2)) {
+            if (shipGroup != null && shipGroup.leadShip !== null && shipGroup.leadShip.isAutoControlled && shipGroup.ships.length >= minShips && shipGroup.posture === FleetPosture.Attack && shipGroup.attackPoint === null && shipGroupTotalTroopAttackStrength(shipGroup) >= troopNeeded) {
                 let flag = false;
                 if (shipGroup.mission === null || shipGroup.mission.type === BuiltObjectMissionType.Undefined || shipGroup.mission.priority === BuiltObjectMissionPriority.Low) flag = true;
                 const requiredFuel = determineFuelRequiredForFleet(shipGroup).requiredFuel;

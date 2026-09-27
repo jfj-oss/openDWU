@@ -95,7 +95,7 @@ import { PirateExpenseType, PirateIncomeType } from './pirates/pirateEconomy';
 import { acceptPirateProtection, calculatePirateProtectionPricePerMonth } from './pirates/pirateRelationsAI';
 import { baconSettings } from './data/baconSettings';
 import { formatNet, tryGetText } from './textResolver';
-import { scenarioEmit } from './scenario/hooks';
+import { scenarioEmit, scenarioQuery } from './scenario/hooks';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants (Galaxy.3.cs 4990-5140 InitializeStatics; BaconEmpire.cs statics with their default settings).
@@ -1481,10 +1481,16 @@ function checkCanConductNewWar(self: Empire, otherEmpire: Empire, clearColonyTar
     if (diplomaticRelation.warObjective === WarObjective.CaptureObjectives && diplomaticRelation.warObjectiveColonies.length > 0) {
         let flag = false;
         let flag2 = false;
+        // Mod layer (19l smallerInvasions): the Empire.8.cs 504 troop-fleet size, relaxed to the smallest any objective
+        // colony allows (scenario query invasionMinFleetShips; stock 10).
+        let minShips = 10;
+        if (self.galaxy.scenario !== null) {
+            for (const c of diplomaticRelation.warObjectiveColonies) if (c != null) minShips = Math.min(minShips, scenarioQuery(self.galaxy, 'invasionMinFleetShips', 10, { empire: self, target: c }));
+        }
         for (let i = 0; i < shipGroups.length; i++) {
             const shipGroup = shipGroups[i]!;
             if (fleetTotalTroopAttackStrength(shipGroup) > 0) flag = true;
-            if (shipGroup.ships.length >= 10) flag2 = true;
+            if (shipGroup.ships.length >= minShips) flag2 = true;
         }
         if (!flag || !flag2) {
             if (clearColonyTargetsIfNecessary) {
@@ -1569,6 +1575,16 @@ export function reviewDiplomaticStrategies(galaxy: Galaxy, empire: Empire): void
                     num10 /= num13;
                 }
             }
+            // Mod layer (19l lively-galaxy): the war-review attitude gate. num9 (Empire.8.cs 100, scaled at 139) is the
+            // threshold num6 must fall below for Conquer (Empire.8.cs 155/183/211/232; SOAK-2026-09-26 §A2: "num6 -15.50
+            // vs threshold -15.87 drops Conquer"). A scenario may relax it by `relax` attitude points; the Conquer
+            // predicates then read the attitude lowered by the same amount (warAttitude). Stock: relax 0.
+            let relax = 0;
+            if (galaxy.scenario !== null) {
+                relax = scenarioQuery(galaxy, 'warReviewAttitudeRelax', 0, { empire: self, other: otherEmpire });
+                num9 += relax;
+            }
+            const warAttitude = overallAttitude2 - relax;
             const befriendOrAlly = (): DiplomaticStrategy => (!(num6 > num10) ? DiplomaticStrategy.Befriend : DiplomaticStrategy.Ally);
             const neutralBefriend = (): DiplomaticStrategy => (friendlinessLevel(self) > 110 || overallAttitude2 > 20 ? DiplomaticStrategy.Befriend : DiplomaticStrategy.Undefined);
             let diplomaticStrategy = DiplomaticStrategy.Undefined;
@@ -1592,7 +1608,7 @@ export function reviewDiplomaticStrategies(galaxy: Galaxy, empire: Empire): void
                         if (num6 > num8) {
                             diplomaticStrategy = befriendOrAlly();
                         } else if (num6 < num9) {
-                            if ((num3 > num2 && num3 > num4) || aggressionLevel(self) > 115 || overallAttitude2 < -5) diplomaticStrategy = DiplomaticStrategy.Conquer;
+                            if ((num3 > num2 && num3 > num4) || aggressionLevel(self) > 115 || warAttitude < -5) diplomaticStrategy = DiplomaticStrategy.Conquer;
                             else if (incidentEvaluation < -5.0 && friendlinessLevel(self) - aggressionLevel(self) + overallAttitude2 < -10) diplomaticStrategy = DiplomaticStrategy.Punish;
                             else if (num2 >= num4) diplomaticStrategy = DiplomaticStrategy.DefendPlacate;
                             else if (num4 > num2) diplomaticStrategy = DiplomaticStrategy.DefendUndermine;
@@ -1602,7 +1618,7 @@ export function reviewDiplomaticStrategies(galaxy: Galaxy, empire: Empire): void
                     } else if (num6 > num8) {
                         diplomaticStrategy = befriendOrAlly();
                     } else if (num6 < num9) {
-                        if ((num3 > num2 && num3 > num4) || aggressionLevel(self) > 115 || overallAttitude2 < -10) diplomaticStrategy = DiplomaticStrategy.Conquer;
+                        if ((num3 > num2 && num3 > num4) || aggressionLevel(self) > 115 || warAttitude < -10) diplomaticStrategy = DiplomaticStrategy.Conquer;
                         else if (num2 >= num4) diplomaticStrategy = DiplomaticStrategy.DefendPlacate;
                         else if (num4 > num2) diplomaticStrategy = DiplomaticStrategy.DefendUndermine;
                     } else {
@@ -1614,7 +1630,7 @@ export function reviewDiplomaticStrategies(galaxy: Galaxy, empire: Empire): void
                         diplomaticStrategy = !(num6 > num8)
                             ? !(num6 < num9)
                                 ? neutralBefriend()
-                                : aggressionLevel(self) > 115 || overallAttitude2 < -5
+                                : aggressionLevel(self) > 115 || warAttitude < -5
                                   ? DiplomaticStrategy.Conquer
                                   : !(incidentEvaluation < 0.0) || friendlinessLevel(self) - aggressionLevel(self) + overallAttitude2 >= -10
                                     ? DiplomaticStrategy.Defend
@@ -1628,7 +1644,7 @@ export function reviewDiplomaticStrategies(galaxy: Galaxy, empire: Empire): void
                                     : otherEmpire === topCompetitor && overallAttitude2 < -5
                                       ? DiplomaticStrategy.Undermine
                                       : DiplomaticStrategy.Undefined
-                                : aggressionLevel(self) > 110 || overallAttitude2 < 0
+                                : aggressionLevel(self) > 110 || warAttitude < 0
                                   ? DiplomaticStrategy.Conquer
                                   : !(incidentEvaluation < -5.0) || friendlinessLevel(self) - aggressionLevel(self) + overallAttitude2 >= -10
                                     ? DiplomaticStrategy.Defend
