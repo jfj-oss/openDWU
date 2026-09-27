@@ -3,9 +3,9 @@
 // Main.Part13.cs ~2195) and the flag shape tinted by the empire colours (the HUD's CSS filter). Overrides — registered
 // functions returning generated art for an empire — replace either: the 19r derived flags / portraits of companies,
 // seceded states, governments in exile and the Ghost Armada (render/empireLineage.ts + render/emblemArt.ts), and the
-// Ossuvan herders' hooded portrait and horned-herd flag. Race files stay data; generated art is data: URLs, cached.
+// Ossuvan herders' portrait (our own generated art, public/art/herder/portrait.png) and horned-herd flag (procedural,
+// data: URL, cached).
 
-import { herderPortrait } from '../render/herderPortrait';
 import type { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
 import { flagShapeUrl } from '../sim/startGameOptions';
@@ -66,6 +66,10 @@ export function hueRotateOf(rgb: number): number {
 export function racePortraitUrl(pictureIndex: number): string {
     return `/assets/dwu/images/units/races/race_${pictureIndex}.png`;
 }
+
+/** The Ossuvan herders' portrait: our own FLUX generation (tasks/19-mod-layer-scenarios.md §19g-7b art rule),
+ *  committed under public/art/ rather than generated at runtime. */
+export const HERDER_PORTRAIT_URL = '/art/herder/portrait.png';
 
 /** The stock emblem (synchronous). */
 export function stockEmblem(empire: Empire): EmpireEmblem {
@@ -173,11 +177,12 @@ function once(key: string, make: () => Promise<{ portraitUrl?: string; flagUrl?:
 // 19r overrides
 // ---------------------------------------------------------------------------------------------------------------
 
-/** Item 3: the Ossuvan herders — a fully procedural portrait (misty dusk forest, the tribe as rim-lit silhouettes). */
+/** Item 3: the Ossuvan herders — our own FLUX-generated portrait (public/art/herder/portrait.png) + the procedural
+ *  herd flag. */
 export const herderEmblemOverride: EmblemOverride = (_galaxy, empire) => {
     const race = empire.dominantRace;
     if (race === null || race.name.toLowerCase() !== HERDER_RACE.toLowerCase()) return null;
-    return once('herder', async () => ({ portraitUrl: rgbaToDataUrl(herderPortrait()), flagUrl: rgbaToDataUrl(herderFlag()) }));
+    return once('herder', async () => ({ portraitUrl: HERDER_PORTRAIT_URL, flagUrl: rgbaToDataUrl(herderFlag()) }));
 };
 
 /** Item 6: derived flags / portraits from the empire's lineage. */

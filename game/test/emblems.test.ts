@@ -1,7 +1,6 @@
 // 19r items 3 / 6: derived flags / portraits (src/render/emblemArt.ts) — the GenerateEmpireFlag port, deterministic
 // composition of the company / seceded / exile / ghost variants and the herder art — and the lineage reader
 // (src/render/empireLineage.ts) over the other packages' state shapes.
-import { herderPortrait } from '../src/render/herderPortrait';
 import { describe, expect, it } from 'vitest';
 import {
     FLAG_H,
@@ -91,36 +90,8 @@ describe('19r derived / herder portraits', () => {
         expect(px(exilePortrait(p), 0, 30)).toEqual([6, 6, 8, 255]);
         expect(secededPortrait(p, 0x3344aa, 2).data[(59 * 60 + 59) * 4 + 3]).toBe(0);
     });
-    it('herder portrait: deterministic 300² near-black foggy night, desaturated, a few highlights, one warm ember', () => {
-        const h = herderPortrait();
-        expect([h.w, h.h]).toEqual([300, 300]);
-        expect(h.data).toEqual(herderPortrait().data);
-        expect(h.data).not.toEqual(herderPortrait(8).data);
-        const ls: number[] = [];
-        let warm = 0;
-        let chroma = 0;
-        for (let i = 0; i < h.data.length; i += 4) {
-            ls.push((0.299 * h.data[i] + 0.587 * h.data[i + 1] + 0.114 * h.data[i + 2]) / 255);
-            if (h.data[i] > h.data[i + 2] + 30) warm++;
-            chroma += Math.max(h.data[i], h.data[i + 1], h.data[i + 2]) - Math.min(h.data[i], h.data[i + 1], h.data[i + 2]);
-            expect(h.data[i + 3]).toBe(255);
-        }
-        ls.sort((p, q) => p - q);
-        const median = ls[ls.length >> 1];
-        const mean = ls.reduce((p, q) => p + q, 0) / ls.length;
-        // Background value ≈ 3-8 %, exposure near-black overall.
-        expect(median).toBeGreaterThanOrEqual(0.02);
-        expect(median).toBeLessThanOrEqual(0.08);
-        expect(mean).toBeLessThan(0.1);
-        // Some light (the halo, rims, glints) but only a sliver of the frame.
-        const bright = ls.filter((l) => l > 0.2).length;
-        expect(bright).toBeGreaterThan(100);
-        expect(bright).toBeLessThan(ls.length * 0.08);
-        // Desaturated cold palette with a single warm accent.
-        expect(chroma / ls.length).toBeLessThan(6);
-        expect(warm).toBeGreaterThan(0);
-        expect(warm).toBeLessThan(200);
-    });
+    // The herder portrait is no longer generated (it's our own FLUX image, public/art/herder/portrait.png, served
+    // by URL — see empireEmblem.ts HERDER_PORTRAIT_URL and herderEmblemOverride, tested in herderIdentity.test.ts).
     it('herder flag reads at 32 px (bone emblem vs the dark field)', () => {
         const f = herderFlag();
         const W = 32;
