@@ -1,0 +1,21 @@
+'Scenario overlay: GameText lines added to (or overriding) the base GameText.txt (tasks/19-mod-layer-scenarios.md
+'§19i). Item 10: the distress-call ticker (src/sim/scenario/rimDistressCalls.ts) resolves the four "Rim Distress
+'Call *" keys plus the title below directly. Item 12: every other pair here is "<key>" / "<key> Rim" — the
+'text-key remap rimText(galaxy, key, systemIndex, ...args) (src/sim/scenario/rimMessages.ts) reads at
+'message-resolve time, for a message whose subject sits past the rim inner radius; a future exploration/colony
+'message call site (19h) calls rimText in place of gameText/formatGameTextNow and picks up the " Rim" wording
+'automatically when its subject is in the rim band, the base wording otherwise. {0}, {1}, ... are .NET
+'string.Format placeholders, exactly as the base GameText.txt's own entries use them.
+
+Rim Distress Call Title;Distress Call
+Rim Distress Call 1;...static... {0}... losing... hull integrity... can anyone... *static*
+Rim Distress Call 2;{0} outpost, repeating: we are not alone out here. Repeat: we are not al—*static*
+Rim Distress Call 3;*garbled* ...{0}... supply run overdue... if anyone reads this... *static*
+Rim Distress Call 4;This is {0}. Sensors show something moving past the markers. Requesting... *static*
+
+Exploration Ship Lost Contact;We have lost contact with our exploration ship near {0}.
+Exploration Ship Lost Contact Rim;Our exploration ship near {0} has gone silent — the last telemetry was only static from beyond the rim.
+Exploration Survey Missing;Our survey ship investigating {0} has not reported in.
+Exploration Survey Missing Rim;Our survey ship near {0}, deep in the rim dark, has missed its check-in; we fear the worst.
+Exploration Unusual Readings;Our sensors near {0} are returning unusual readings.
+Exploration Unusual Readings Rim;Sensors near {0} return unusual readings, faint and broken by rim static — origin unknown.

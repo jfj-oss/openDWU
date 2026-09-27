@@ -56,6 +56,9 @@ import { FighterLayer } from './fighterLayer';
 // [rimatmo] begin
 import { RimAtmosphereLayer } from './rimAtmosphereLayer';
 // [rimatmo] end
+// [rimatmo-wiring] begin
+import { installRimAtmosphereData } from './rimAtmosphereWiring';
+// [rimatmo-wiring] end
 // [combatfx] begin
 import { updateCombatEffects } from './effectsLayer';
 // [combatfx] end
@@ -1280,6 +1283,12 @@ export class MainView {
             mapIcons: this.systems.map((sv) => ({ sprite: sv.mapIcon, x: sv.system.systemStar.xpos, y: sv.system.systemStar.ypos })),
         });
         // [rimatmo] end
+
+        // [rimatmo-wiring] begin
+        // 19i data/wiring: item 11 rim name overrides + the per-system weight state item 12's message remap reads.
+        // No-op with the flag off (installRimAtmosphereData short-circuits when rimParams(galaxy) is null).
+        installRimAtmosphereData(this.galaxy);
+        // [rimatmo-wiring] end
 
         // Task M2e: empire ownership overlays. The layer's root is added to
         // world after all system roots, so rings/discs draw on top of stars.

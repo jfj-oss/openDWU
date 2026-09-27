@@ -21,6 +21,7 @@ import { fleetCycleList, fleetName, fleetSystemName, shipGroupSelectionRows, tog
 // [/15c]
 import { SystemVisibilityStatus } from '../sim/visibility';
 import { flagShapeUrl } from '../sim/startGameOptions';
+import { rimSystemDisplayName, type RimNameHost } from '../sim/scenario/rimNames'; // [rimatmo-wiring] 19i item 11
 import { createGameMenu, type GameMenuRefs } from './screens/gameMenu';
 import { setGameMenuHandler, setCycleHandler, type CycleKind } from './keyboard';
 import { uiClickSounds } from '../audio/effectsPlayer';
@@ -2025,9 +2026,11 @@ export function buildSelectionRows(sel: Selection, gameData?: GameData, player: 
     return rows;
 }
 
-/** Name of the system nearest the camera centre, or '' if unavailable. */
+/** Name of the system nearest the camera centre, or '' if unavailable. 19i item 11: the rim name override
+ *  (rimSystemDisplayName) replaces the base name for a rim system when the scenario flag is on — a display-time
+ *  swap only, so `dwu.galaxy` may be the real Galaxy or any object carrying its `scenario` field. */
 export function nearestSystemName(
-    dwu: { galaxy?: { systems?: Array<{ systemStar: { name: string; xpos: number; ypos: number } }> } } | undefined,
+    dwu: { galaxy?: { systems?: Array<{ systemStar: { name: string; xpos: number; ypos: number; systemIndex: number } }>; scenario?: RimNameHost['scenario'] } } | undefined,
     camera: { x: number; y: number } | undefined,
 ): string {
     const systems = dwu?.galaxy?.systems;
@@ -2044,5 +2047,7 @@ export function nearestSystemName(
             best = i;
         }
     }
-    return best >= 0 ? systems[best].systemStar.name : '';
+    if (best < 0) return '';
+    const star = systems[best].systemStar;
+    return rimSystemDisplayName({ scenario: dwu?.galaxy?.scenario ?? null }, star.systemIndex, star.name);
 }
