@@ -61,6 +61,8 @@ import { CHARACTER_ROLE, CHARACTER_SKILL, CHARACTER_TRAIT, INTELLIGENCE_MISSION,
 import { formatNet, getText, isTextLoaded, resolveGameText } from '../../sim/textResolver';
 import { confirmAutomationOff } from '../orderMenu';
 import { politicsDetail, politicsRowCells, politicsVisible } from '../emergentPolitics'; // [emergent]
+import { courtDetail } from '../courtView'; // [court]
+import type { SeatName } from '../../sim/scenario/court/court'; // [court]
 import { investigatorOptions, leadRows, securityVisible } from '../internalSecurityView'; // [security]
 
 const MT = IntelligenceMissionType;
@@ -717,6 +719,8 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
     const dPolitics = el('div', 'intel-politics-block');
     detail.appendChild(dPolitics);
     // [emergent] end
+    const dCourt = el('div', 'intel-politics-block'); // [court] 19n house / seat / appoint
+    detail.appendChild(dCourt);
     side.appendChild(detail);
 
     const mission = el('div', 'intel-mission');
@@ -888,6 +892,8 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
         if (c === null) {
             for (const d of [dName, dRole, dTask, dLoc, dTraits]) d.textContent = '';
             dPolitics.replaceChildren(); // [emergent]
+            dCourt.replaceChildren(); // [court]
+            dCourt.dataset.key = '';
             dSkills.replaceChildren();
             return;
         }
@@ -897,6 +903,7 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
         dLoc.textContent = `${T('Location')}: ${resolveCharacterLocationDescription(c)}`;
         dTraits.textContent = characterTraitsLine(c);
         renderPolitics(c); // [emergent]
+        renderCourt(c); // [court]
         const lines = characterSkillLines(c);
         const key = lines.map((l) => `${l.name}|${l.value}|${l.progress}`).join(';');
         if (dSkills.dataset.key !== key) {
@@ -945,6 +952,42 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
         dPolitics.appendChild(buttons);
     }
     // [emergent] end
+
+    // [court] begin — 19n court & dynasties: house, seat, heir; appoint / vacate through the command queue
+    function renderCourt(c: Character): void {
+        const p = courtDetail(galaxy, player, c);
+        const key = p === null ? '' : JSON.stringify(p);
+        if (dCourt.dataset.key === key) return;
+        dCourt.dataset.key = key;
+        dCourt.replaceChildren();
+        if (p === null) return;
+        dCourt.appendChild(el('div', 'intel-m-title', 'Court'));
+        dCourt.appendChild(el('div', 'intel-pol-line', `${p.house} — ${p.seat}${p.heir ? ' — heir' : ''}`));
+        const buttons = el('div', 'intel-m-buttons');
+        const issue = (seat: SeatName, who: Character | null): void => {
+            issuePlayerCommand(galaxy, player, 'courtAppoint', [seat, who], () => {
+                dCourt.dataset.key = '';
+                render();
+            });
+        };
+        for (const b of p.buttons) {
+            const btn = el('button', 'intel-btn', b.label);
+            btn.type = 'button';
+            btn.disabled = !b.enabled;
+            btn.title = b.reason;
+            btn.addEventListener('click', () => issue(b.seat, c));
+            buttons.appendChild(btn);
+        }
+        if (p.vacate !== null) {
+            const seat = p.vacate;
+            const btn = el('button', 'intel-btn', 'Leave seat');
+            btn.type = 'button';
+            btn.addEventListener('click', () => issue(seat, null));
+            buttons.appendChild(btn);
+        }
+        dCourt.appendChild(buttons);
+    }
+    // [court] end
 
     function renderSummary(): void {
         summary.textContent = resolveCharacterSummary(player);

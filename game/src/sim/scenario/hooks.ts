@@ -15,6 +15,7 @@ import { YEAR_LENGTH } from '../galaxyTime';
 import { galaxyStarDate } from '../tick/simTime';
 import type { GalaxyScenario } from './state';
 import type { Resource } from '../data/resources';
+import type { Character, CaptainBonuses } from '../characters';
 
 // ---------------------------------------------------------------------------
 // Handler registries (shared gate)
@@ -282,6 +283,18 @@ export interface ScenarioQueries {
      * martial law). Never draws.
      */
     colonyRevoltApproval: { value: number; args: { habitat: Habitat; leaveThreshold: number } };
+    /**
+     * forceStructure.ts recalculateAnnualTaxRevenue (Habitat.cs 6083 RecalculateAnnualTaxRevenue): the colony's gross
+     * tax revenue (AnnualRevenue × TaxRate × TaxComplianceRate) before the Max(0) and the state support cost. 19n
+     * steward (tax efficiency). Never draws.
+     */
+    colonyTaxRevenue: { value: number; args: { habitat: Habitat; empire: Empire } };
+    /**
+     * characters.ts reviewCaptainBonuses (BuiltObject.cs 1448 ReviewCaptainBonuses): the ship's captain bonus bytes
+     * (100 = none). A handler returns a changed copy (never mutates `value`). 19n marshal (fleet repair / damage
+     * control). Never draws.
+     */
+    captainBonuses: { value: CaptainBonuses; args: { builtObject: BuiltObject; empire: Empire } };
 }
 export type ScenarioQueryName = keyof ScenarioQueries;
 
@@ -304,6 +317,36 @@ export function scenarioQuery<Q extends ScenarioQueryName>(galaxy: Galaxy, query
         if (h.query === query && scenarioGateOpen(galaxy, h)) v = (h.run as ScenarioQueryHandler<Q>['run'])(galaxy, v, args);
     }
     return v;
+}
+
+// ---------------------------------------------------------------------------
+// Leader succession (19n court & dynasties)
+// ---------------------------------------------------------------------------
+
+/**
+ * characterRuntime.ts performChangeLeader (Empire.6.cs 4873 PerformChangeLeader), right before its ChangeLeader call:
+ * a gated handler may replace the new-leader pool and the change type (the manner the message reports). Returning null
+ * keeps the stock pool. Unlike a query, a handler MAY draw galaxy.rnd (a succession crisis roll): it only runs behind
+ * its flag, inside the stock leader-change step. The first handler that answers wins.
+ */
+export interface ScenarioSuccessionHandler extends ScenarioHandlerGate {
+    run: (galaxy: Galaxy, empire: Empire, pool: Character[], changeType: number) => { pool: Character[]; changeType: number } | null;
+}
+
+const successionHandlers: ScenarioSuccessionHandler[] = [];
+
+export function registerScenarioSuccession(handler: ScenarioSuccessionHandler): () => void {
+    return register(successionHandlers, handler);
+}
+
+/** performChangeLeader's hook (callers check galaxy.scenario !== null). */
+export function scenarioLeaderSuccession(galaxy: Galaxy, empire: Empire, pool: Character[], changeType: number): { pool: Character[]; changeType: number } | null {
+    for (const h of successionHandlers) {
+        if (!scenarioGateOpen(galaxy, h)) continue;
+        const r = h.run(galaxy, empire, pool, changeType);
+        if (r !== null) return r;
+    }
+    return null;
 }
 
 // ---------------------------------------------------------------------------

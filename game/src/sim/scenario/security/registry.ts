@@ -265,5 +265,7 @@ export function removeQuarantinedDestinations(galaxy: Galaxy, list: { target?: u
 export interface SecuritySlots {
     /** 19d4 settleRefugeeConvoyArrival: refugees from `origin` settled at `destination` (may carry the creed; Rnd only with 19m + the cult on). */
     refugeesArrived: ((galaxy: Galaxy, origin: Habitat, destination: Habitat) => void) | null;
+    /** 19n court: extra counter-intelligence strength of an empire in the detection roll (the spymaster); 0 when off. Pure. */
+    strengthBonus: ((galaxy: Galaxy, empire: Empire) => number) | null;
 }
-export const securitySlots: SecuritySlots = { refugeesArrived: null };
+export const securitySlots: SecuritySlots = { refugeesArrived: null, strengthBonus: null };

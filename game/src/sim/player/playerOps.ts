@@ -39,6 +39,7 @@ import { ESPIONAGE_FLAG } from '../scenario/emergent/espionageHooks';
 import { setMissionFrame } from '../scenario/emergent/espionage';
 import { grantAutonomy, runPoliticsAction, type PoliticsActionName } from '../scenario/emergent/politicsActions';
 import { runSecurityAction, startInvestigation, type SecurityActionName } from '../scenario/security/security';
+import { appointToSeat, type SeatName } from '../scenario/court/court';
 import {
     acceptProposal,
     declineProposal,
@@ -185,6 +186,10 @@ export const PLAYER_OPS = {
     /** An action a confirmed lead unlocks (arrest / exile / purge / amnesty / quarantine / martialLaw / recallFleet / scrapShip). */
     securityAction: (galaxy: Galaxy, empire: Empire, action: SecurityActionName, leadId: number) => runSecurityAction(galaxy, empire, action, leadId),
     // [security] end
+    // [court] begin — scenario 19n court & dynasties (scenario/court/court.ts; flag-gated inside)
+    /** Appoint a character to a council seat (null vacates it). */
+    courtAppoint: (galaxy: Galaxy, empire: Empire, seat: SeatName, character: Character | null) => appointToSeat(galaxy, empire, seat, character),
+    // [court] end
 } as const;
 
 export type PlayerOps = typeof PLAYER_OPS;

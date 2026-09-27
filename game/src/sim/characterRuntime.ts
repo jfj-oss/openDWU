@@ -18,6 +18,7 @@
 //   Character.cs 4472 SendDeathMessage; CharacterEventList.cs 63 CountEventsByType, 75 GetDateOfMostRecentEventByType
 //   Habitat.cs 1194 StartRebelling
 
+import { scenarioLeaderSuccession } from './scenario/hooks';
 import type { Galaxy } from './galaxy';
 import type { Empire } from './empire';
 import { Habitat as HabitatClass, type Habitat } from './types';
@@ -1103,6 +1104,14 @@ export function performChangeLeader(galaxy: Galaxy, empire: Empire, changeTypeOv
         num = -1;
     }
     if (changeTypeOverride !== INT_MIN_VALUE) num = changeTypeOverride;
+    if (galaxy.scenario !== null) {
+        // mod layer: a succession law (19n court & dynasties) may pick the successor (scenario/hooks.ts).
+        const s = scenarioLeaderSuccession(galaxy, empire, characterList, num);
+        if (s !== null) {
+            characterList = s.pool;
+            num = s.changeType;
+        }
+    }
     const character = changeLeader(galaxy, empire, characterList, num);
     if (character !== null && characterTraitType !== CharacterTraitType.Undefined) character.addTrait(characterTraitType, true, null);
     empire.lastLeaderChangeDate = galaxyCurrentStarDate(galaxy);
