@@ -625,6 +625,18 @@ export function empirePrefersProtectorate(galaxy: Galaxy, e: Empire): boolean {
 }
 
 /**
+ * The conquest order itself: `e`'s nearest available attack fleet gets an Attack mission on the herder colony
+ * (FindNearestAvailableFleet + ShipGroup.AssignMission, as Empire.4.cs 4449 InvadeUnwillingColonizationTargets). False
+ * when no fleet is free. Also the 19s-3 model-chosen conquest path (sim/scenario/llm/strategic.ts).
+ */
+export function orderHerderConquest(galaxy: Galaxy, hc: HerderColony, e: Empire): boolean {
+    const fleet = findNearestAvailableFleet(galaxy, e, hc.colony.xpos, hc.colony.ypos, BuiltObjectMissionPriority.Low, 0, FleetPosture.Attack, true, 0.1, false, false, false, true, 40000);
+    if (fleet === null || fleet.leadShip === null) return false;
+    shipGroupAssignMission(galaxy, fleet, BuiltObjectMissionType.Attack, hc.colony, null, BuiltObjectMissionPriority.High, false);
+    return true;
+}
+
+/**
  * An aggressive AI neighbour moves on a free herder colony: the nearest available attack fleet gets an Attack mission on
  * it, as Empire.4.cs 4449 InvadeUnwillingColonizationTargets does for an unwilling independent (FindNearestAvailableFleet
  * + ShipGroup.AssignMission). One NextDouble per candidate (rimHerdersConquestChance).
@@ -638,9 +650,7 @@ export function rimHerdersAiConquest(galaxy: Galaxy): number {
         for (const e of normalEmpires(galaxy)) {
             if (e === galaxy.playerEmpire || isHerderEmpire(galaxy, e) || hc.neighbourSince[e.empireId] === undefined || empirePrefersProtectorate(galaxy, e)) continue;
             if (galaxy.rnd.nextDouble() >= chance) continue;
-            const fleet = findNearestAvailableFleet(galaxy, e, hc.colony.xpos, hc.colony.ypos, BuiltObjectMissionPriority.Low, 0, FleetPosture.Attack, true, 0.1, false, false, false, true, 40000);
-            if (fleet === null || fleet.leadShip === null) continue;
-            shipGroupAssignMission(galaxy, fleet, BuiltObjectMissionType.Attack, hc.colony, null, BuiltObjectMissionPriority.High, false);
+            if (!orderHerderConquest(galaxy, hc, e)) continue;
             orders++;
             break;
         }
