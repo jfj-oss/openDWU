@@ -114,3 +114,8 @@ year 10 (1–8 per empire). Follow-ups:
   foreign sway should be able to redirect a 19d1 defection toward the schemer; a claimed colony's secession should hand
   it to the claimant (19d1 hook); a scheme's agent appears twice in the victim's leads (scheme + foreignAgent) — dedupe;
   19g-3 wiring of claimsFor/holdsCasusBelli into warGoalCandidates (documented in intrigue.ts header). Sonnet, ~half a day.
+- 19r post-merge verification (after batch G): threat markers vs the real threatKnownSites output; lineage readers vs the
+  real 19c/19d1/19d4/19f-7 state; wreck-field debris and league pennants vs the real 19e-7/19k-3 state (captures
+  `wreck-field.png`, `league.png` still owed); re-key salt bloom onto the treasure fleet; treasure-fleet marker label;
+  drop overlayLayer's plain ring/diamond threat drawing in favour of threatMarkers; pass the Concord's generated
+  textures through the damage/livery overlays; the heavily-withered fade may be too strong (judge in play). Sonnet.
