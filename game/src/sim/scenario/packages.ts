@@ -6,7 +6,6 @@ import './rimFrontier/rimFrontier';
 import './independents/independents';
 import './newFauna/newFauna';
 import './rimFauna/rimFauna';
-import './rimFrontier/rimFrontier';
 import './rimHerders/rimHerders';
 import './rimTrade/rimTrader';
 import './rimTrade/treasureFleet';
