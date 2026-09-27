@@ -18,6 +18,27 @@ import { textureFromPixels } from './shipOverlays';
 import { herderCampRgba } from './emblemArt';
 import { BuiltObjectRole } from '../sim/data/designSpecifications';
 import { herderColonies, isHerderEmpire } from '../sim/scenario/rimHerders/common';
+import { scenarioParam } from '../sim/scenario/state';
+import { YEAR_LENGTH } from '../sim/galaxyTime';
+import { galaxyStarDate } from '../sim/tick/simTime';
+import { DesignImageScalingMode } from '../sim/data/designSpecifications';
+import { BUILT_OBJECT_MAX_FACTOR, builtObjectImageUrl, builtObjectSizePx } from './builtObjectLayer';
+import { loadShipArt, shipArtIfLoaded } from './shipArt';
+import { cropHullMask } from './damageOverlay';
+import { cropRotatedImage } from './liveries';
+import {
+    WRECK_DECAY_YEARS_DEFAULT,
+    cutFragment,
+    fragmentCount,
+    planFragments,
+    podOn,
+    podsLit,
+    wreckPictureRef,
+    wreckRemainingAt,
+    type FragmentPlan,
+    type WreckageStateShape,
+    type WreckShape,
+} from './wreckDebris';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Threat sites (19f framework.ts threatKnownSites / KnownThreatSite)
@@ -75,6 +96,36 @@ export function herderStations(galaxy: Galaxy): BuiltObject[] {
     return out;
 }
 
+/** The 19e-7 wreckage state when present (scenario.state['wreckage'], wreckage/common.ts WreckageState). */
+export function wreckageStateOf(galaxy: Galaxy): WreckageStateShape | null {
+    const s = galaxy.scenario;
+    if (s === null || !('wreckage' in s.state)) return null;
+    const st = s.state['wreckage'] as Partial<WreckageStateShape> | null;
+    return st !== null && Array.isArray(st.fields) ? (st as WreckageStateShape) : null;
+}
+
+interface WreckView {
+    side: number;
+    heading: number;
+    areaRatio: number;
+    frags: { plan: FragmentPlan; tex: Texture; ox: number; oy: number; w: number; h: number }[];
+    pods: number;
+    seen: number;
+}
+
+function podTexture(): Texture {
+    const n = 32;
+    const d = new Uint8ClampedArray(n * n * 4);
+    for (let y = 0; y < n; y++) {
+        for (let x = 0; x < n; x++) {
+            const r = Math.hypot(x + 0.5 - n / 2, y + 0.5 - n / 2) / (n / 2);
+            const a = Math.max(0, 1 - r) ** 2;
+            d.set([255, 214 + 41 * (1 - r), 150 + 80 * (1 - r), Math.round(255 * a)], (y * n + x) * 4);
+        }
+    }
+    return textureFromPixels(d, n, n, false);
+}
+
 export class ArtBundleLayer {
     readonly root = new Container();
     private threats = new Graphics();
@@ -82,6 +133,13 @@ export class ArtBundleLayer {
     private campPool: SpritePool;
     private campTex: Texture | null = null;
     private camps: BuiltObject[] = [];
+    private wreckRoot = new Container();
+    private wreckPool: SpritePool;
+    private podPool: SpritePool;
+    private podTex: Texture | null = null;
+    private wrecks = new Map<number, WreckView | null>();
+    /** Fields / fragments / lit pods drawn this frame (captures). */
+    wreckStats = { fields: 0, fragments: 0, pods: 0 };
     private sites: { site: KnownThreatSiteShape; style: ThreatMarkerStyle; seed: number }[] = [];
     private frame = 0;
 
@@ -93,15 +151,127 @@ export class ArtBundleLayer {
     ) {
         this.root.eventMode = 'none';
         this.root.interactiveChildren = false;
-        this.root.addChild(this.campRoot, this.threats);
+        this.root.addChild(this.wreckRoot, this.campRoot, this.threats);
         this.campPool = new SpritePool(this.campRoot);
+        const podRoot = new Container();
+        this.wreckPool = new SpritePool(this.wreckRoot);
+        this.wreckRoot.addChild(podRoot);
+        this.podPool = new SpritePool(podRoot);
         world.addChild(this.root);
     }
 
     update(z: number, cam: Camera): void {
         this.frame++;
+        this.updateWrecks(z, cam);
         this.updateCamps(z, cam);
         this.updateThreats(z, cam);
+    }
+
+    /** The fragments of one wreck (null = its art is missing; undefined while loading). */
+    private wreckView(w: WreckShape): WreckView | null | undefined {
+        const got = this.wrecks.get(w.id);
+        if (got !== undefined) return got;
+        const owner = this.galaxy.empires.find((e) => e !== null && e.empireId === w.ownerEmpireId) ?? this.galaxy.pirateEmpires.find((e) => e.empireId === w.ownerEmpireId) ?? null;
+        const url = builtObjectImageUrl(wreckPictureRef(w, owner));
+        if (url === null) {
+            this.wrecks.set(w.id, null);
+            return null;
+        }
+        const art = shipArtIfLoaded(url);
+        if (art === undefined) {
+            void loadShipArt(url);
+            return undefined;
+        }
+        if (art === null) {
+            this.wrecks.set(w.id, null);
+            return null;
+        }
+        const img = cropRotatedImage(art.rgba, art.w, art.h, art.metrics, 1);
+        const hull = cropHullMask(art.rgba, art.w, art.h, art.metrics, img.side);
+        const plans = planFragments(hull, img.side, w.id, fragmentCount(w.size));
+        const frags = plans.map((plan) => {
+            const f = cutFragment(img, plan, w.id);
+            return { plan, tex: textureFromPixels(f.rgba, f.w, f.h, false), ox: f.ox, oy: f.oy, w: f.w, h: f.h };
+        });
+        let pods = 0;
+        for (const f of frags) pods += f.plan.pods.length;
+        const v: WreckView = { side: img.side, heading: ((w.id * 2654435761) >>> 0) / 4294967296 * Math.PI * 2, areaRatio: art.metrics.areaRatio, frags, pods, seen: this.frame };
+        this.wrecks.set(w.id, v);
+        return v;
+    }
+
+    /** Item 5: hull fragments of every wreck in view, pods blinking out with decay. */
+    private updateWrecks(z: number, cam: Camera): void {
+        this.wreckPool.begin();
+        this.podPool.begin();
+        this.wreckStats = { fields: 0, fragments: 0, pods: 0 };
+        const st = wreckageStateOf(this.galaxy);
+        const f = 1 / z;
+        if (st !== null && f < BUILT_OBJECT_MAX_FACTOR) {
+            this.podTex ??= podTexture();
+            const t = performance.now() / 1000;
+            const now = galaxyStarDate(this.galaxy);
+            const decay = scenarioParam(this.galaxy, 'wreckDecayYears', WRECK_DECAY_YEARS_DEFAULT);
+            const halfW = cam.width / 2 / z;
+            const halfH = cam.height / 2 / z;
+            for (const field of st.fields) {
+                if (field.wrecks.length === 0) continue;
+                let drawn = false;
+                for (const w of field.wrecks) {
+                    if (Math.abs(w.x - cam.x) > halfW + 400 || Math.abs(w.y - cam.y) > halfH + 400) continue;
+                    const v = this.wreckView(w);
+                    if (v == null) continue;
+                    v.seen = this.frame;
+                    const px = builtObjectSizePx(w.size, v.areaRatio, f, DesignImageScalingMode.None, 1);
+                    if (px < 2) continue;
+                    drawn = true;
+                    const remaining = wreckRemainingAt(now, w.starDate, decay, YEAR_LENGTH);
+                    const k = px / v.side / z;
+                    const c = Math.cos(v.heading);
+                    const sn = Math.sin(v.heading);
+                    const lit = podsLit(v.pods, remaining);
+                    let podIndex = 0;
+                    for (const fr of v.frags) {
+                        const ang = fr.plan.rot + fr.plan.spin * t;
+                        // Fragment centroid from the crop centre, then its drift (in drawn ship sizes).
+                        const lx = (fr.plan.cx - v.side / 2) * k + fr.plan.dx * px / z;
+                        const ly = (fr.plan.cy - v.side / 2) * k + fr.plan.dy * px / z;
+                        const wx = w.x + lx * c - ly * sn;
+                        const wy = w.y + lx * sn + ly * c;
+                        const s = this.wreckPool.acquire(fr.tex);
+                        s.anchor.set(fr.ox / fr.w, fr.oy / fr.h);
+                        s.position.set(wx, wy);
+                        s.rotation = v.heading + ang;
+                        s.scale.set(k);
+                        s.alpha = 0.55 + 0.45 * remaining;
+                        this.wreckStats.fragments++;
+                        const ca = Math.cos(v.heading + ang);
+                        const sa = Math.sin(v.heading + ang);
+                        for (const pod of fr.plan.pods) {
+                            const on = podIndex < lit && podOn(t, pod.phase, pod.period, remaining);
+                            podIndex++;
+                            if (!on) continue;
+                            const p = this.podPool.acquire(this.podTex);
+                            p.position.set(wx + (pod.x * ca - pod.y * sa) * k, wy + (pod.x * sa + pod.y * ca) * k);
+                            p.scale.set(Math.max(3, px * 0.06) / 32 / z * 2);
+                            p.blendMode = 'add';
+                            this.wreckStats.pods++;
+                        }
+                    }
+                }
+                if (drawn) this.wreckStats.fields++;
+            }
+            // Wrecks salvaged away or unseen for a while give their textures back.
+            if (this.frame % 120 === 0) {
+                for (const [id, v] of this.wrecks) {
+                    if (v !== null && this.frame - v.seen < 600) continue;
+                    if (v !== null) for (const fr of v.frags) fr.tex.destroy(true);
+                    this.wrecks.delete(id);
+                }
+            }
+        }
+        this.wreckPool.end();
+        this.podPool.end();
     }
 
     /** Item 3: tents and pens over herder stations (sized and turned with the station sprite). */
