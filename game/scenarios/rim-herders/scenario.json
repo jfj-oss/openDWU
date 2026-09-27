@@ -7,7 +7,7 @@
     { "name": "rimHerders", "label": "Rim herders", "description": "Herder independents (symbiotic Ossuvan) with docile defending herds, tamed freighters, herd-good harvests, drovers and guides, protectorate / conquest / espionage paths and migration-season warnings.", "default": true }
   ],
   "params": [
-    { "name": "rimHerdersShare", "label": "Share of rim independent colonies that are herders", "default": 0.5, "min": 0, "max": 1 },
+    { "name": "rimHerdersCount", "label": "Number of herder peoples", "default": 6, "min": 0, "max": 20 },
     { "name": "rimHerdersRimInner", "label": "Rim inner radius (fraction)", "default": 0.72, "min": 0, "max": 1.5 },
     { "name": "rimHerdersHerdsPerColony", "label": "Herds spawned per herder colony", "default": 1, "min": 0, "max": 5 },
     { "name": "rimHerdersHarvestDays", "label": "Harvest period (game days)", "default": 90, "min": 1, "max": 360 },

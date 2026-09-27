@@ -47,7 +47,7 @@ export function creatureHarvestNames(type: CreatureType): readonly string[] {
 
 /** Manifest defaults (scenario.json) — the fallbacks of scenarioParam. */
 export const RIM_HERDERS_PARAM_DEFAULTS = {
-    rimHerdersShare: 0.5,
+    rimHerdersCount: 6,
     /** 19a's rim inner radius (rimTrade/common.ts RIM_MIN_RADIUS). */
     rimHerdersRimInner: 0.72,
     rimHerdersHerdsPerColony: 1,

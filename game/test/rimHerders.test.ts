@@ -2,7 +2,7 @@
 // tamed storm-immune self-fuelling freighters (2), harvest + kill drop + 19a rim-good plug (3), drovers and guides (4),
 // protectorate / conquest / espionage paths (5), migration-season warnings (6), AI path choice (7), flag off = no package
 // code (same run as the overlay without the flag), save round trip. Short runs; handlers are driven directly.
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 import { createScenarioGame, loadScenarioOverlayFs, scenarioGameData } from './helpers/scenarioGame';
 import type { GameData } from '../src/sim/data/gameData';
@@ -61,7 +61,9 @@ import {
 let base: GameData;
 /** Shared flag-on game: every rim independent is a herder, migration season on the last day (tests drive it). */
 let shared: Game;
-const PARAMS = { rimHerdersShare: 1, rimFaunaMigrationDay: 359, rimHerdersConquestChance: 1 };
+/** rimHerdersCount 3 = every rim independent colony on seed 1 (radius fraction ≥ rimHerdersRimInner), so `shared` keeps
+ *  the pre-count "all rim independents are herders" behaviour the other (2)-(6) tests rely on. */
+const PARAMS = { rimHerdersCount: 3, rimFaunaMigrationDay: 359, rimHerdersConquestChance: 1 };
 
 beforeAll(async () => {
     base = await loadGameDataFs();
@@ -106,6 +108,23 @@ describe('19j rim herders — (1) herder colonies and their herds', () => {
         for (const c of herdMembers(herd)) expect(c.currentTarget).toBe(ship);
         expect(herderStanding(g, e.empireId)).toBeLessThan(before);
         expect(st.stats.defences).toBe(1);
+    });
+
+    it('rimHerdersCount picks exactly N herder colonies on seed 1 (Fisher-Yates shuffle of the rim independents, galaxy.rnd)', () => {
+        const g3 = createScenarioGame(base, { scenario: 'rim-herders', params: { ...PARAMS, rimHerdersCount: 3 } }).game.galaxy;
+        expect(rimHerdersState(g3).colonies.length).toBe(3);
+
+        const g0 = createScenarioGame(base, { scenario: 'rim-herders', params: { ...PARAMS, rimHerdersCount: 0 } }).game.galaxy;
+        expect(rimHerdersState(g0).colonies.length).toBe(0);
+
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const gAll = createScenarioGame(base, { scenario: 'rim-herders', params: { ...PARAMS, rimHerdersCount: 20 } }).game.galaxy;
+        // Only 3 rim independent colonies exist on seed 1: fewer than the requested 20, so all of them become herders.
+        expect(rimHerdersState(gAll).colonies.length).toBe(3);
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0][0]).toContain('20');
+        expect(warn.mock.calls[0][0]).toContain('3');
+        warn.mockRestore();
     });
 });
 

@@ -164,19 +164,29 @@ export function makeHerderColony(galaxy: Galaxy, colony: Habitat, herdCount: num
 
 /**
  * Game start (`rimHerders.start`, after `rimFauna.spawn`): independent colonies at radius fraction ≥ rimHerdersRimInner
- * (19a's rim) become herder colonies with chance rimHerdersShare (one NextDouble each, list order), then the tamed
- * freighters already parked at them are tagged.
+ * (19a's rim) are the rim independent colonies; rimHerdersCount of them (Fisher-Yates shuffle of the list-order
+ * collection, galaxy.rnd, then the first N) become herder colonies. Fewer rim colonies than rimHerdersCount: all of
+ * them become herders and a warning is logged. Then the tamed freighters already parked at herder colonies are tagged.
  */
 export function rimHerdersGameStart(galaxy: Galaxy): void {
     const inner = herderParam(galaxy, 'rimHerdersRimInner');
-    const share = herderParam(galaxy, 'rimHerdersShare');
+    const count = Math.max(0, Math.trunc(herderParam(galaxy, 'rimHerdersCount')));
     const herds = Math.max(0, Math.trunc(herderParam(galaxy, 'rimHerdersHerdsPerColony')));
-    for (const colony of [...galaxy.independentColonies]) {
+    const rim: Habitat[] = [];
+    for (const colony of galaxy.independentColonies) {
         if (colony.empire !== galaxy.independentEmpire || colony.population.items.length === 0) continue;
         if (radiusFraction(galaxy, colony.xpos, colony.ypos) < inner) continue;
-        if (galaxy.rnd.nextDouble() >= share) continue;
-        makeHerderColony(galaxy, colony, herds);
+        rim.push(colony);
     }
+    if (rim.length < count) {
+        console.warn(`rimHerders: rimHerdersCount ${count} exceeds the ${rim.length} rim independent colonies found; all ${rim.length} became herders`);
+    }
+    // Fisher-Yates shuffle (galaxy.rnd), then take the first N.
+    for (let i = rim.length - 1; i > 0; i--) {
+        const j = galaxy.rnd.next(0, i + 1);
+        [rim[i], rim[j]] = [rim[j], rim[i]];
+    }
+    for (const colony of rim.slice(0, count)) makeHerderColony(galaxy, colony, herds);
     tagTamedShips(galaxy);
 }
 
