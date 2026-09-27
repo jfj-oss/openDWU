@@ -14,7 +14,7 @@
 //   Weapon.cs 181 IsAvailableWithoutEnergyConsideration (a pure predicate; Weapon.Fire itself is M4o).
 // Galaxy.Rnd: none in this file.
 
-import { scenarioEmit } from '../scenario/hooks';
+import { scenarioEmit, scenarioQuery } from '../scenario/hooks';
 import type { Galaxy } from '../galaxy';
 import type { BuiltObject } from '../builtObject';
 import type { Empire } from '../empire';
@@ -920,6 +920,10 @@ export function shouldAttack(galaxy: Galaxy, bo: BuiltObject, potentialTarget: S
                         return true;
                     }
                     if (flag4) {
+                        return true;
+                    }
+                    // mod layer (19a tit-for-tat: the Concord strikes an offender without war): no scenario = no call; never draws.
+                    if (galaxy.scenario !== null && scenarioQuery(galaxy, 'attackWithoutWar', false, { empire: bo.empire, target: builtObject.empire })) {
                         return true;
                     }
                     if (diplomaticRelation !== null) {

@@ -51,6 +51,7 @@ import { assignMission, clearPreviousMissionRequirements, queueMission } from '.
 import { BuiltObjectRole } from '../data/designSpecifications';
 import { BuiltObjectSubRole } from '../builtObjectTypes';
 import { netSort, netSortLastByKey } from '../netSort';
+import { scenarioQuery } from '../scenario/hooks';
 import { FleetPosture, aggressionLevel, cautionLevel, compareDouble, formatText } from '../diplomacyTick';
 import { DiplomaticRelationType, DiplomaticStrategy, obtainDiplomaticRelation } from '../diplomacy';
 import { PirateRelationType } from '../pirateRelations';
@@ -1570,6 +1571,11 @@ export function shipGroupAssignMissionFull(
     if (target === null && target2 === null && x <= -2000000001.0 && y <= -2000000001.0) {
         return false;
     }
+    // Mod layer: a scenario that refuses the lead ship this mission (query assignMissionAllowed, as AssignMission asks it)
+    // refuses the fleet mission too — the stock "no mission" return. No scenario = no call; never draws.
+    if (galaxy.scenario !== null && !scenarioQuery(galaxy, 'assignMissionAllowed', true, { builtObject, missionType, target, x, y })) {
+        return false;
+    }
     // 2141: new BuiltObjectMission(..., priority, allowReprocessing: false, allowBuiltObjectChanges: false, specifiedAsFleetMission: true).
     const mission = new BuiltObjectMission(galaxy, builtObject, missionType, target, target2, priority, {
         cargo,
@@ -2474,7 +2480,9 @@ function assignMissionToShips(galaxy: Galaxy, shipGroup: ShipGroup, mission: Bui
                     allowReprocessing: true,
                     manuallyAssigned,
                 });
-                missionOf(ship)!.isShipGroupMission = true;
+                // Mod layer: a scenario's assignMissionAllowed may have refused the ship's mission (no mission then).
+                const shipMission = missionOf(ship);
+                if (shipMission !== null) shipMission.isShipGroupMission = true;
             } else {
                 queueMission(galaxy, ship, mission.type, target, target2, mission.priority, { x: x1, y: y1, starDate: mission.starDate });
             }

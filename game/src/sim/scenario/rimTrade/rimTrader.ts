@@ -23,6 +23,7 @@ import { recalculateEmpirePopulation } from '../../taxes';
 import { recalculateAnnualTaxRevenue } from '../../forceStructure';
 import { applyConcordTech, treasureParam, treasureState } from './treasureFleet';
 import { RIM_MIN_RADIUS, RIM_RACE, rareGoodIds, resourceName, rimGoodIds, rimParam, rimTradeState, rimTraderEmpire, rimTraderPort, isRimGood } from './common';
+import { concordWealthStart } from './wealth';
 
 /** Import order lot size (units). */
 export const IMPORT_LOT = 100;
@@ -196,13 +197,15 @@ export function rimTraderGameStart(galaxy: Galaxy, ctx: HomePlacementHelpers): v
     if (r.capital === null) return;
     seedRareGoods(galaxy, r, r.capital);
     seedPortStock(galaxy, r);
+    // Wealth and navy (wealth.ts): start money, then the start warships it pays for (AI Concord only).
+    concordWealthStart(galaxy, r);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
 // Contract listener (step 6): the standing ledger. No Rnd.
 // ---------------------------------------------------------------------------------------------------------------
 
-export function rimTraderOnContract(galaxy: Galaxy, ev: { seller: Empire; buyer: Empire; resourceId: number; amount: number; value: number; freighter?: BuiltObject | null }): void {
+export function rimTraderOnContract(galaxy: Galaxy, ev: { seller: Empire; buyer: Empire; resourceId: number; amount: number; value: number; freighter?: BuiltObject | null; isState?: boolean }): void {
     const r = rimTraderEmpire(galaxy);
     if (r === null || ev.resourceId < 0) return;
     const st = rimTradeState(galaxy);
@@ -218,11 +221,23 @@ export function rimTraderOnContract(galaxy: Galaxy, ev: { seller: Empire; buyer:
         st.stats.rimUnits += ev.amount;
         st.stats.rimValue += ev.value;
     } else if (ev.seller === r && ev.buyer !== r && rareGoodIds(galaxy).includes(ev.resourceId)) {
+        // rimTraderRarePriceMult: the buyer pays the factor on top of the stock contract price (state or private
+        // purse, as the contract), the Concord's treasury takes it; standing is spent at the full price.
+        // A treasure-fleet sale (treasureFleet.ts treasureTradeAt) is already priced with the factor.
+        const fleet = ev.freighter != null && galaxy.scenario !== null && 'rimTreasure' in galaxy.scenario.state && treasureState(galaxy).ships.includes(ev.freighter);
+        const mult = fleet ? 1 : rimParam(galaxy, 'rimTraderRarePriceMult');
+        const value = ev.value * mult;
+        if (mult !== 1) {
+            const extra = value - ev.value;
+            if (ev.isState !== false) ev.buyer.stateMoney -= extra;
+            else ev.buyer.privateMoney -= extra;
+            r.stateMoney += extra;
+        }
         const row = (st.ledger[ev.buyer.empireId] ??= { credit: 0, debit: 0 });
-        row.debit += ev.value;
+        row.debit += value;
         st.stats.rareSales++;
         st.stats.rareUnits += ev.amount;
-        st.stats.rareValue += ev.value;
+        st.stats.rareValue += value;
     }
 }
 

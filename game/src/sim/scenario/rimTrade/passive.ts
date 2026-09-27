@@ -21,6 +21,15 @@
 //     decides, its attitude gate relaxed by RIM_ANGER_WAR_RELAX through query `warReviewAttitudeRelax`, Empire.8.cs
 //     100/139) and its warships may take missions against X's assets within rimTraderRetaliationRange sectors of its
 //     colonised systems.
+//   Tit-for-tat without war (normal empires only): the stock war value (Galaxy.3.cs 474 / 507 CalculateWarValue, event
+//     warDamageInflicted) of the Concord ships, bases and colony damage an empire caused goes on its ledger; while the
+//     Concord has destroyed less than rimTraderRetaliationRatio × that of the offender's, it sends up to
+//     rimTraderStrikeFleets strike fleets (warships beyond the rimTraderHomeGuardPct % home guard, taken out of AI control
+//     like the treasure fleet) after the offender's ships and bases anywhere in the galaxy — nearest to Concord space
+//     first (rimTraderRetaliationRange only orders them), never its colonies — and its ships may engage the offender's
+//     without war (query attackWithoutWar at BuiltObject.1.cs ShouldAttack, the way pirates fight). At the price the
+//     ledger closes, the fleets go home and the offender is told; anger holds while the price is owed. Strikes never
+//     declare war; the victim's stock reactions to being attacked are untouched.
 //   Colony cap (R2 on every path): at the cap the Concord AI's ships take no Colonize mission and unload no troops on a
 //     colony not its own (the invasion step, Empire.9.cs 525 AssignFleetUnloadTroops / invasion.ts); cmdTroops.ts
 //     cmdColonize founds nothing (the mission is cancelled); and a colony it gains any other way past the cap (a lost
@@ -34,9 +43,10 @@ import type { Galaxy } from '../../galaxy';
 import type { Empire } from '../../empire';
 import type { Habitat } from '../../types';
 import { BuiltObjectRole } from '../../data/designSpecifications';
+import { BuiltObjectSubRole } from '../../builtObjectTypes';
 import { BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission, isBuiltObject, isHabitat, isShipGroup } from '../../missions/mission';
 import { assignMission } from '../../missions/assign';
-import { shipGroupAssignMission } from '../../fleets/shipGroup';
+import { leaveShipGroup, shipGroupAssignMission } from '../../fleets/shipGroup';
 import type { ShipGroup } from '../../fleets/shipGroup';
 import type { BuiltObject } from '../../builtObject';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from '../../diplomacy';
@@ -51,6 +61,9 @@ import { scenarioMessage, scenarioNews, scenarioText } from '../messages';
 import { treasureState } from './treasureFleet';
 import {
     type RimAggression,
+    type RimAngerEntry,
+    type RimStrikeFleet,
+    rimLedgerOpen,
     isRimTraderAI,
     rimAngerState,
     rimAngeredAt,
@@ -166,7 +179,7 @@ export function concordMissionAllowed(galaxy: Galaxy, value: boolean, args: { bu
         if (type === BuiltObjectMissionType.UnloadTroops && isHabitat(target) && target.empire !== r) return false;
     }
     if (!scenarioFlag(galaxy, PASSIVE_FLAG)) return value;
-    if (bo.role !== BuiltObjectRole.Military || isTreasureShip(galaxy, bo)) return value;
+    if (bo.role !== BuiltObjectRole.Military || isTreasureShip(galaxy, bo) || isStrikeShip(galaxy, bo)) return value;
     // No escorting of civilian ships: freighters, miners and explorers leave Concord space, and the escort would follow.
     if (type === BuiltObjectMissionType.Escort && isBuiltObject(target) && target.role !== BuiltObjectRole.Military && target.role !== BuiltObjectRole.Base) return false;
     const angered = owner !== null && owner !== r && rimAngeredAt(galaxy, owner);
@@ -225,7 +238,7 @@ export function rimPassiveLeash(galaxy: Galaxy): number {
     const fleets: ShipGroup[] = [];
     let n = 0;
     for (const b of [...r.builtObjects]) {
-        if (b === null || b.hasBeenDestroyed || b.role !== BuiltObjectRole.Military || isTreasureShip(galaxy, b)) continue;
+        if (b === null || b.hasBeenDestroyed || b.role !== BuiltObjectRole.Military || isTreasureShip(galaxy, b) || isStrikeShip(galaxy, b)) continue;
         const m = builtObjectMission(b.mission);
         const here = inConcordSpace(galaxy, r, b.xpos, b.ypos);
         if (m === null || m.type === BuiltObjectMissionType.Undefined) {
@@ -317,6 +330,7 @@ export function rimAngerYear(galaxy: Galaxy): void {
         if (!(e.anger > 0)) continue;
         const other = galaxy.empires.find((x) => x !== null && x.empireId === id) ?? galaxy.pirateEmpires.find((x) => x !== null && x.empireId === id) ?? null;
         if (other !== null && other.active && isNormalEmpire(galaxy, other) && obtainDiplomaticRelation(r, other).type === DiplomaticRelationType.War) continue;
+        if (e.ledger?.open === true) continue; // the price is not yet exacted
         e.anger = Math.max(0, e.anger - decay);
         if (e.anger > 0) continue;
         st.stats.calmed++;
@@ -395,8 +409,15 @@ registerScenarioEvent({
     flag: PASSIVE_FLAG,
     event: 'warDamageInflicted',
     run: (g, p) => {
-        if (p.victim !== rimTraderEmpire(g)) return;
+        const r = rimTraderEmpire(g);
+        if (r === null) return;
+        if (p.inflictor === r) {
+            rimDamageInflicted(g, p.victim, p.value);
+            return;
+        }
+        if (p.victim !== r) return;
         recordRimAggression(g, p.inflictor, p.habitat !== null ? 'invasion' : 'destroyedShip');
+        rimDamageTaken(g, p.inflictor, p.value);
     },
 });
 registerScenarioEvent({
@@ -417,6 +438,208 @@ registerScenarioQuery({
 });
 registerScenarioQuery({ id: 'rimTrade.missions', flag: 'rimTrader', query: 'assignMissionAllowed', run: concordMissionAllowed });
 registerScenarioPeriodic({ id: 'rimTrade.passive.leash', flag: PASSIVE_FLAG, periodDays: 5, run: (g) => void rimPassiveLeash(g) });
+
+// ---------------------------------------------------------------------------------------------------------------
+// Tit-for-tat strikes without war
+// ---------------------------------------------------------------------------------------------------------------
+
+function strikes(galaxy: Galaxy): RimStrikeFleet[] {
+    return (rimAngerState(galaxy).strikes ??= []);
+}
+
+/** `bo` sails in a strike fleet (exempt from the posture and the leash). Pure. */
+export function isStrikeShip(galaxy: Galaxy, bo: unknown): boolean {
+    if (galaxy.scenario === null || !('rimAnger' in galaxy.scenario.state)) return false;
+    const list = rimAngerState(galaxy).strikes;
+    return list !== undefined && list.some((f) => f.ships.includes(bo as never));
+}
+
+function empireById(galaxy: Galaxy, id: number): Empire | null {
+    return galaxy.empires.find((x) => x !== null && x.empireId === id) ?? null;
+}
+
+function ledgerOf(galaxy: Galaxy, offender: Empire): NonNullable<RimAngerEntry['ledger']> {
+    const st = rimAngerState(galaxy);
+    const e = (st.byEmpire[offender.empireId] ??= { anger: 0, last: galaxyStarDate(galaxy), lastAction: 'destroyedShip', counts: {} });
+    return (e.ledger ??= { taken: 0, inflicted: 0, open: false });
+}
+
+/**
+ * warDamageInflicted with the Concord the victim: `value` (Galaxy.3.cs 474 / 507 CalculateWarValue: a ship's firepower,
+ * a base's size share, a colony's strategic value share per bombardment hit or invasion) goes on the offender's ledger,
+ * which opens (the Concord owes it rimTraderRetaliationRatio × the damage). Normal empires only. No Rnd.
+ */
+export function rimDamageTaken(galaxy: Galaxy, offender: Empire | null, value: number): void {
+    const r = passiveConcord(galaxy);
+    if (r === null || offender === null || offender === r || !offender.active || !isNormalEmpire(galaxy, offender) || !(value > 0)) return;
+    const l = ledgerOf(galaxy, offender);
+    l.taken += value;
+    if (l.inflicted < rimParam(galaxy, 'rimTraderRetaliationRatio') * l.taken) l.open = true;
+}
+
+/** warDamageInflicted by the Concord on `victim`: counts toward the price; at the price the ledger closes. No Rnd. */
+export function rimDamageInflicted(galaxy: Galaxy, victim: Empire | null, value: number): void {
+    const r = passiveConcord(galaxy);
+    if (r === null || victim === null || !rimLedgerOpen(galaxy, victim) || !(value > 0)) return;
+    const l = ledgerOf(galaxy, victim);
+    l.inflicted += value;
+    if (l.inflicted >= rimParam(galaxy, 'rimTraderRetaliationRatio') * l.taken) closeLedger(galaxy, r, victim);
+}
+
+/** The price is exacted: the ledger closes (reset), the strike fleets against `offender` go home, messages. */
+function closeLedger(galaxy: Galaxy, r: Empire, offender: Empire): void {
+    const l = ledgerOf(galaxy, offender);
+    l.open = false;
+    l.taken = 0;
+    l.inflicted = 0;
+    const st = rimAngerState(galaxy);
+    st.stats.exacted = (st.stats.exacted ?? 0) + 1;
+    for (const f of strikes(galaxy).filter((x) => x.targetEmpireId === offender.empireId)) disbandStrike(galaxy, r, f);
+    if (!offender.active) return;
+    scenarioMessage(galaxy, offender, scenarioText('Scenario RimTrade Angered Title'), scenarioText('Scenario RimTrade Price Exacted You', r.name), { type: EmpireMessageType.GeneralNeutralEvent, sender: r, subject: r.capital });
+    scenarioNews(galaxy, r, scenarioText('Scenario RimTrade Price Exacted', r.name, offender.name), (x) => x !== offender, r.capital);
+}
+
+/** A strike fleet goes home: back under AI control, a Move to the nearest Concord colony (BuiltObject.2.cs 7620). */
+function disbandStrike(galaxy: Galaxy, r: Empire, f: RimStrikeFleet): void {
+    const list = strikes(galaxy);
+    const i = list.indexOf(f);
+    if (i >= 0) list.splice(i, 1);
+    for (const b of f.ships) {
+        if (b.hasBeenDestroyed || b.actualEmpire !== r) continue;
+        b.isAutoControlled = true;
+        const home = nearestConcordColony(galaxy, r, b.xpos, b.ypos);
+        if (home !== null) assignMission(galaxy, b, BuiltObjectMissionType.Move, home, null, BuiltObjectMissionPriority.Normal);
+    }
+}
+
+/** A warship fit to strike: armed, mobile, not a troop / resupply ship, under AI control, not busy elsewhere. Pure. */
+function strikeCapable(galaxy: Galaxy, b: BuiltObject): boolean {
+    return (
+        !b.hasBeenDestroyed &&
+        b.role === BuiltObjectRole.Military &&
+        b.isAutoControlled &&
+        b.firepowerRaw > 0 &&
+        b.topSpeed > 0 &&
+        b.warpSpeed > 0 &&
+        b.subRole !== BuiltObjectSubRole.TroopTransport &&
+        b.subRole !== BuiltObjectSubRole.ResupplyShip &&
+        !isTreasureShip(galaxy, b) &&
+        !isStrikeShip(galaxy, b)
+    );
+}
+
+/**
+ * The offender's ships and bases to strike, best first: those within rimTraderRetaliationRange of Concord space first,
+ * then nearest to Concord space — anywhere in the galaxy. Never colonies. Pure.
+ */
+export function strikeTargets(galaxy: Galaxy, r: Empire, offender: Empire): BuiltObject[] {
+    const out: { b: BuiltObject; near: number; d: number }[] = [];
+    for (const b of offender.builtObjects) {
+        if (b === null || b.hasBeenDestroyed || b.actualEmpire !== offender) continue;
+        const d = distanceToConcordSpace(galaxy, r, b.xpos, b.ypos);
+        out.push({ b, near: inRetaliationRange(galaxy, r, b.xpos, b.ypos) ? 0 : 1, d });
+    }
+    out.sort((a, b) => a.near - b.near || a.d - b.d || a.b.builtObjectID - b.b.builtObjectID);
+    return out.map((x) => x.b);
+}
+
+/**
+ * Each strike ship: far from the target, a Move to the target's system (hyperjump; the way the stock AI sends fleets to
+ * a distant objective); within a system's reach of it, an Attack on it (BuiltObject.2.cs 7620 AssignMission).
+ */
+function sendStrike(galaxy: Galaxy, f: RimStrikeFleet, target: BuiltObject): void {
+    f.target = target;
+    const star = target.nearestSystemStar;
+    for (const b of f.ships) {
+        if (b.hasBeenDestroyed) continue;
+        const m = builtObjectMission(b.mission);
+        // A ship refuelling or under repair finishes that first (the stock mission keeps it alive for the strike).
+        if (m !== null && (m.type === BuiltObjectMissionType.Refuel || m.type === BuiltObjectMissionType.Repair)) continue;
+        const far = galaxy.calculateDistance(b.xpos, b.ypos, target.xpos, target.ypos) > galaxy.maxSolarSystemSize;
+        if (far && star !== null) {
+            if (m !== null && m.type === BuiltObjectMissionType.Move && m.targetHabitat === star) continue;
+            assignMission(galaxy, b, BuiltObjectMissionType.Move, star, null, BuiltObjectMissionPriority.High);
+            continue;
+        }
+        if (m !== null && m.type === BuiltObjectMissionType.Attack && m.targetBuiltObject === target) continue;
+        assignMission(galaxy, b, BuiltObjectMissionType.Attack, target, null, BuiltObjectMissionPriority.High);
+    }
+}
+
+/**
+ * The strike review (every 5 days: once per long block). For each open ledger (oldest offender id first): prune the
+ * fleets, retarget those whose target is gone, and while fewer than rimTraderStrikeFleets fleets sail form a new one from
+ * warships the home guard can spare (at least rimTraderHomeGuardPct % of the Concord's warships stay home; each fleet
+ * takes an equal share of the rest). Fleets whose offender's ledger is closed or who has nothing left to strike go home.
+ * Strikes never declare war. Draws what the mission assignment draws. Returns the number of ships at sea on strikes.
+ */
+export function rimStrikeReview(galaxy: Galaxy): number {
+    const r = passiveConcord(galaxy);
+    if (r === null || galaxy.scenario === null || !('rimAnger' in galaxy.scenario.state)) return 0;
+    const st = rimAngerState(galaxy);
+    for (const f of [...strikes(galaxy)]) {
+        f.ships = f.ships.filter((b) => !b.hasBeenDestroyed && b.actualEmpire === r);
+        const off = empireById(galaxy, f.targetEmpireId);
+        if (f.ships.length === 0) {
+            strikes(galaxy).splice(strikes(galaxy).indexOf(f), 1);
+            continue;
+        }
+        if (off === null || !off.active || !rimLedgerOpen(galaxy, off)) disbandStrike(galaxy, r, f);
+    }
+    const maxFleets = Math.max(0, Math.trunc(rimParam(galaxy, 'rimTraderStrikeFleets')));
+    const guardPct = Math.min(100, Math.max(0, rimParam(galaxy, 'rimTraderHomeGuardPct')));
+    const open = Object.keys(st.byEmpire)
+        .map(Number)
+        .sort((a, b) => a - b)
+        .map((id) => empireById(galaxy, id))
+        .filter((e): e is Empire => e !== null && e.active && rimLedgerOpen(galaxy, e));
+    for (const off of open) {
+        const targets = strikeTargets(galaxy, r, off);
+        const mine = strikes(galaxy).filter((f) => f.targetEmpireId === off.empireId);
+        if (targets.length === 0) {
+            for (const f of mine) disbandStrike(galaxy, r, f);
+            continue;
+        }
+        // Retarget: each fleet on its own target where there are enough (fleet i → the i-th best).
+        mine.forEach((f, i) => {
+            const cur = f.target;
+            if (cur === null || cur.hasBeenDestroyed || cur.actualEmpire !== off) sendStrike(galaxy, f, targets[Math.min(i, targets.length - 1)]);
+            else sendStrike(galaxy, f, cur);
+        });
+        while (strikes(galaxy).length < maxFleets) {
+            const warships = r.builtObjects.filter((b) => b !== null && !b.hasBeenDestroyed && b.role === BuiltObjectRole.Military && !isTreasureShip(galaxy, b));
+            const atSea = strikes(galaxy).reduce((n, f) => n + f.ships.length, 0);
+            const spare = Math.floor((warships.length * (100 - guardPct)) / 100) - atSea;
+            const size = Math.min(spare, Math.max(1, Math.floor(Math.floor((warships.length * (100 - guardPct)) / 100) / Math.max(1, maxFleets))));
+            if (size <= 0) break;
+            const home = r.capital;
+            const pool = warships.filter((b) => strikeCapable(galaxy, b));
+            if (pool.length === 0) break;
+            if (home !== null) pool.sort((a, b) => galaxy.calculateDistance(a.xpos, a.ypos, home.xpos, home.ypos) - galaxy.calculateDistance(b.xpos, b.ypos, home.xpos, home.ypos) || a.builtObjectID - b.builtObjectID);
+            const ships = pool.slice(0, size);
+            for (const b of ships) {
+                if (b.shipGroup !== null) leaveShipGroup(galaxy, b);
+                b.isAutoControlled = false;
+            }
+            const f: RimStrikeFleet = { targetEmpireId: off.empireId, ships, target: null };
+            strikes(galaxy).push(f);
+            st.stats.strikes = (st.stats.strikes ?? 0) + 1;
+            const idx = strikes(galaxy).filter((x) => x.targetEmpireId === off.empireId).length - 1;
+            sendStrike(galaxy, f, targets[Math.min(idx, targets.length - 1)]);
+        }
+    }
+    return strikes(galaxy).reduce((n, f) => n + f.ships.length, 0);
+}
+
+/** attackWithoutWar query: the Concord's ships engage an offender's ships and bases while its ledger is open. Pure. */
+export function concordAttacksWithoutWar(galaxy: Galaxy, value: boolean, args: { empire: Empire; target: Empire }): boolean {
+    if (value) return value;
+    return passiveConcord(galaxy) === args.empire && rimLedgerOpen(galaxy, args.target);
+}
+
+registerScenarioPeriodic({ id: 'rimTrade.strikes', flag: PASSIVE_FLAG, periodDays: 5, run: (g) => void rimStrikeReview(g) });
+registerScenarioQuery({ id: 'rimTrade.strikes.attack', flag: PASSIVE_FLAG, query: 'attackWithoutWar', run: concordAttacksWithoutWar });
 
 // ---------------------------------------------------------------------------------------------------------------
 // Colony cap backstop

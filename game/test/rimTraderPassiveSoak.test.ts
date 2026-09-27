@@ -1,7 +1,8 @@
 // @slow
 // Scenario 19a — the Concord's passive posture over 3 game years (flag rimTraderPassive, default on), and the flag-off
-// path: with the passive posture off, one starting colony and the old cap of 4, a rimTrade game is byte-identical to the
-// rimTrade game before these features (digests pinned from 4c1ffbc, the merged head they were added on).
+// path: with the passive posture off, one starting colony, the old cap of 4, no per-colony treasure escorts and the
+// wealth / navy params at their neutral values (stock treasury, no income, price factor 1, no warships), a rimTrade
+// game is byte-identical to the rimTrade game before these features (digests pinned from 4c1ffbc, the merged head they were added on).
 import { beforeAll, describe, expect, it } from 'vitest';
 import { appendFileSync } from 'node:fs';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
@@ -15,10 +16,11 @@ import { YEAR_LENGTH } from '../src/sim/galaxyTime';
 import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
 import { builtObjectMission } from '../src/sim/missions/mission';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from '../src/sim/diplomacy';
-import { registerScenarioEvent } from '../src/sim/scenario';
-import { rimAngerState, rimAngeredAt, rimAngeredAtAnyone, rimParam, rimTraderEmpire } from '../src/sim/scenario/rimTrade/common';
-import { inConcordSpace, inRetaliationRange, missionPoint } from '../src/sim/scenario/rimTrade/passive';
+import { registerScenarioEvent, scenarioEmit } from '../src/sim/scenario';
+import { rimAngerState, rimAngeredAt, rimAngeredAtAnyone, rimLedgerOpen, rimParam, rimTraderEmpire } from '../src/sim/scenario/rimTrade/common';
+import { distanceToConcordSpace, inConcordSpace, inRetaliationRange, isStrikeShip, missionPoint, rimStrikeReview } from '../src/sim/scenario/rimTrade/passive';
 import { treasureState } from '../src/sim/scenario/rimTrade/treasureFleet';
+import { concordWarships, rimNavyState } from '../src/sim/scenario/rimTrade/wealth';
 
 let base: GameData;
 beforeAll(async () => {
@@ -38,7 +40,7 @@ describe('19a Concord — flag off is byte-identical', () => {
             const { game } = createScenarioGame(base, {
                 scenario: 'rimTrade',
                 flags: { rimTraderPassive: false },
-                params: { rimTraderStartColonies: 1, rimTraderMaxColonies: 4 },
+                params: { rimTraderStartColonies: 1, rimTraderMaxColonies: 4, treasureFleetPerColony: 0, rimTraderStartMoney: 0, rimTraderTradeHouseIncome: 0, rimTraderRarePriceMult: 1, rimTraderStartWarships: 0, rimTraderNavyTarget: 0 },
                 options: forced ? forceOranthi : undefined,
             });
             expect(stateDigest(game.galaxy)).toBe(d0);
@@ -55,6 +57,7 @@ describe('19a Concord — passive posture soak', () => {
             const g = game.galaxy;
             const r = rimTraderEmpire(g)!;
             const startColonies = r.colonies.length;
+            const startNavy = concordWarships(r).length;
             expect(startColonies).toBeGreaterThanOrEqual(3);
             const declared: { target: Empire; angered: boolean }[] = [];
             const off = registerScenarioEvent({
@@ -76,7 +79,7 @@ describe('19a Concord — passive posture soak', () => {
                     const now = new Set<unknown>();
                     let warships = 0;
                     for (const b of r.builtObjects) {
-                        if (b === null || b.hasBeenDestroyed || b.role !== BuiltObjectRole.Military || ts.ships.includes(b)) continue;
+                        if (b === null || b.hasBeenDestroyed || b.role !== BuiltObjectRole.Military || ts.ships.includes(b) || isStrikeShip(g, b)) continue; // strike fleets sail galaxy-wide by design
                         warships++;
                         const m = builtObjectMission(b.mission);
                         const t = m === null ? null : (m.targetBuiltObject ?? m.targetHabitat ?? m.targetCreature ?? m.targetShipGroup);
@@ -106,9 +109,46 @@ describe('19a Concord — passive posture soak', () => {
             console.log(summary.join('\n'));
             if (process.env.DWU_SOAK_OUT) appendFileSync(process.env.DWU_SOAK_OUT, `${forced ? 'wizard' : 'created'}: declared ${declared.length}\n` + summary.join('\n') + '\n');
             expect(maxWarships).toBeGreaterThan(0);
+            // The navy target: with the 5M treasury and trade-house income, the Concord orders warships toward 80.
+            const endNavy = concordWarships(r).length;
+            if (process.env.DWU_SOAK_OUT) appendFileSync(process.env.DWU_SOAK_OUT, `navy ${startNavy} → ${endNavy}, bought ${rimNavyState(g).bought}, spent ${Math.round(rimNavyState(g).spent)}, treasury ${Math.round(r.stateMoney)}\n`);
+            // (Seed 1: the rich Concord's own stock construction AI outbuilds the target, so the yearly top-up may buy
+            // nothing; either way the navy reaches it.)
+            expect(endNavy).toBeGreaterThanOrEqual(rimParam(g, 'rimTraderNavyTarget'));
+            expect(startNavy).toBeGreaterThanOrEqual(rimParam(g, 'rimTraderStartWarships'));
             void outsideSamples;
             // No war declared by the Concord unless it had been provoked by the target.
             for (const d of declared) expect(d.angered).toBe(true);
         }, 3600000);
     }
+});
+
+describe('19a Concord — a tit-for-tat strike reaches a distant offender without war', () => {
+    it('seed 1: an open ledger sends strike fleets 4+ sectors out; they destroy offender assets within 16 months; no war', () => {
+        const { game } = createScenarioGame(base, { scenario: 'rimTrade', options: forceOranthi });
+        const g = game.galaxy;
+        const r = rimTraderEmpire(g)!;
+        const x = g.empires.find((e): e is Empire => e !== null && e !== r && e.active && e !== g.independentEmpire && e.pirateEmpireBaseHabitat === null)!;
+        obtainDiplomaticRelation(r, x).type = DiplomaticRelationType.None;
+        obtainDiplomaticRelation(x, r).type = DiplomaticRelationType.None;
+        const declared: Empire[] = [];
+        const off = registerScenarioEvent({ id: 'test.strikeWar', event: 'warDeclared', run: (_g, p) => void (p.empire === r && declared.push(p.target)) });
+        try {
+            scenarioEmit(g, 'warDamageInflicted', { inflictor: x, victim: r, builtObject: null, habitat: r.capital!, value: 500 });
+            expect(rimStrikeReview(g)).toBeGreaterThan(0);
+            const fleets = rimAngerState(g).strikes!;
+            const range = g.maxSolarSystemSize + rimParam(g, 'rimTraderRetaliationRange') * g.sectorSize;
+            expect(fleets.some((f) => distanceToConcordSpace(g, r, f.target!.xpos, f.target!.ypos) > range)).toBe(true);
+            let inflicted = 0;
+            for (let month = 1; month <= 16 && inflicted === 0; month++) {
+                runGameSeconds(g, YEAR_LENGTH / 1000 / 12);
+                inflicted = rimAngerState(g).byEmpire[x.empireId].ledger?.inflicted ?? 0;
+                if (!rimLedgerOpen(g, x)) inflicted = Math.max(inflicted, 1);
+            }
+            expect(inflicted).toBeGreaterThan(0);
+            expect(declared).toEqual([]);
+        } finally {
+            off();
+        }
+    }, 3600000);
 });

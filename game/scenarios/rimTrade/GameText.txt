@@ -40,3 +40,7 @@ Scenario RimTrade Action Invasion;invaded their colonies
 Scenario RimTrade Action Treasure;sank a treasure ship
 Scenario RimTrade Action Espionage;sent agents to sabotage them
 Scenario RimTrade Action Standing;let their standing fall below {0}
+Scenario RimTrade Price Exacted;The {0} have exacted their price from the {1}. Their strike fleets return home.
+Scenario RimTrade Price Exacted You;The {0} have exacted their price from us. Their strike fleets return home.
+Scenario RimTrade Trade House Title;Trade house profits
+Scenario RimTrade Trade House;The trade houses of the {0} have paid {1} credits into the treasury from the rim monopoly.

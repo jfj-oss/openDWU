@@ -9,7 +9,8 @@ import './rimFauna/rimFauna';
 import './rimHerders/rimHerders';
 import './rimTrade/rimTrader';
 import './rimTrade/treasureFleet';
-import './rimTrade/passive'; // 19a passive posture (flag rimTraderPassive) + colony cap on every path (flag rimTrader)
+import './rimTrade/passive';
+import './rimTrade/wealth'; // 19a Concord wealth and navy (flag rimTrader) // 19a passive posture (flag rimTraderPassive) + colony cap on every path (flag rimTrader)
 import './emergent/espionage';
 import './threats/darkFarms';
 import './emergent/crises'; // 19d2 resource crises (flag resourceCrises)
