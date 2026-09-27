@@ -235,6 +235,14 @@ function processMain(galaxy: Galaxy, state: SchedulerState, time: number, starDa
     }
 }
 
+/**
+ * Perf: the per-frame habitat / built-object batches (up to 1000 each) reuse these arrays instead of allocating two new
+ * ones every frame (~400 MB of garbage per 120 game s at 700 stars). Each is filled, walked (still a snapshot: ticks
+ * that add or remove galaxy objects do not change the batch) and emptied; backgroundPass is not re-entered from a tick.
+ */
+const scratchHabitats: Habitat[] = [];
+const scratchBuiltObjects: BuiltObject[] = [];
+
 /** Main.Part12.cs 3517 method_86(time, starDate, builtObjectsInView, multiCore). */
 function backgroundPass(galaxy: Galaxy, state: SchedulerState, time: number, starDate: number, inView: BuiltObject[], multiCore: boolean): void {
     // 3523-3544 budgets.
@@ -290,7 +298,8 @@ function backgroundPass(galaxy: Galaxy, state: SchedulerState, time: number, sta
     t0 = profile !== null ? now() : 0;
     // 3571-3597 "GxHab": next int_41 habitats round-robin.
     if (galaxy.habitats.length > 0) {
-        const habitatList: Habitat[] = [];
+        const habitatList = scratchHabitats;
+        habitatList.length = 0;
         let num = state.habitatCursor;
         for (let j = 0; j < int41; j++) {
             if (num >= galaxy.habitats.length) {
@@ -302,6 +311,7 @@ function backgroundPass(galaxy: Galaxy, state: SchedulerState, time: number, sta
         for (let k = 0; k < habitatList.length; k++) {
             if (habitatList[k] != null) habitatDoTasks(galaxy, habitatList[k], time);
         }
+        habitatList.length = 0;
         state.habitatCursor = num;
     }
     addProfile('habitats', t0);
@@ -334,7 +344,8 @@ function backgroundPass(galaxy: Galaxy, state: SchedulerState, time: number, sta
         // builtObjectList_1.Contains (order-neutral, plan §4.4). Perf: no set (and no per-object hash lookup) when nothing
         // is in view — headless runs and a camera over empty space.
         const inViewSet = inView.length > 0 ? new Set(inView) : null;
-        const builtObjectList: BuiltObject[] = [];
+        const builtObjectList = scratchBuiltObjects;
+        builtObjectList.length = 0;
         // (a) 3627-3664 in-battle scan. The decompiled loop never assigns `builtObject` inside the `while`, so it spins
         // until num2 wraps back to num3 and breaks out of the `for`: no object is added and int_49 keeps its value
         // (always 0).
@@ -363,6 +374,7 @@ function backgroundPass(galaxy: Galaxy, state: SchedulerState, time: number, sta
         for (let num6 = 0; num6 < builtObjectList.length; num6++) {
             if (builtObjectList[num6] != null) builtObjectDoTasks(galaxy, builtObjectList[num6], time, starDate, false);
         }
+        builtObjectList.length = 0;
         state.inBattleCursor = num2;
         state.builtObjectCursor = num4;
     }

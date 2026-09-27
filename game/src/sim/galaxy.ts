@@ -346,6 +346,22 @@ export class Galaxy {
         }
     }
 
+    /** resolveIndex(x, y).x without allocating the pair (perf; same clamp). */
+    resolveIndexX(x: number): number {
+        let x2 = Math.trunc(Math.trunc(x) / INDEX_SIZE);
+        if (x2 < 0) x2 = 0;
+        else if (x2 >= this.indexMaxX) x2 = this.indexMaxX - 1;
+        return x2;
+    }
+
+    /** resolveIndex(x, y).y without allocating the pair (perf; same clamp). */
+    resolveIndexY(y: number): number {
+        let y2 = Math.trunc(Math.trunc(y) / INDEX_SIZE);
+        if (y2 < 0) y2 = 0;
+        else if (y2 >= this.indexMaxY) y2 = this.indexMaxY - 1;
+        return y2;
+    }
+
     // Port of Galaxy.7.cs ResolveIndex(int x, int y) + CorrectIndexCoords.
     resolveIndex(x: number, y: number): { x: number; y: number } {
         let x2 = Math.trunc(Math.trunc(x) / INDEX_SIZE);
