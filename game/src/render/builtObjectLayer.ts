@@ -18,6 +18,9 @@ import type { Texture } from 'pixi.js';
 import { Camera } from './camera';
 import { AssetStore, makeDotTexture, useMinifyingFilter } from './assets';
 import { loadShipArt } from './shipArt';
+// [concordArt] begin
+import { ConcordFxLayer, concordArtEmpire, concordArtLook, concordShipArt, concordTreasureShips, concordVariantFor } from './concordArt';
+// [concordArt] end
 import { Galaxy } from '../sim/galaxy';
 import type { BuiltObject } from '../sim/builtObject';
 import { BuiltObjectSubRole } from '../sim/builtObjectTypes';
@@ -387,6 +390,9 @@ export function releaseStaleSprites<K, S>(sprites: Map<K, S>, seen: ReadonlySet<
     return n;
 }
 
+// [concordArt]
+const NO_TREASURE: ReadonlySet<unknown> = new Set();
+
 interface LoadedShipImage {
     texture: Texture;
     metrics: ShipImageMetrics;
@@ -410,6 +416,10 @@ export class BuiltObjectLayer {
     private urlByPictureRef = new Map<number, string | null>();
     /** Live (not destroyed) built objects visited by the current update; the rest release their sprites. */
     private seen = new Set<BuiltObject>();
+    // [concordArt] begin — scenario 19a: the Concord's procedural junks (concordArt.ts) and their overlays.
+    private concordFx = new ConcordFxLayer();
+    private frame = 0;
+    // [concordArt] end
 
     constructor(
         private galaxy: Galaxy,
@@ -418,6 +428,7 @@ export class BuiltObjectLayer {
         private overlays: MapOverlayState,
     ) {
         world.addChild(this.root);
+        world.addChild(this.concordFx.root); // [concordArt]
     }
 
     /**
@@ -455,7 +466,16 @@ export class BuiltObjectLayer {
         const f = 1 / z;
         // Ships are drawn only while the original's zoom factor < 500.
         this.root.visible = f < BUILT_OBJECT_MAX_FACTOR;
+        this.concordFx.root.visible = this.root.visible; // [concordArt]
         if (!this.root.visible) return;
+        // [concordArt] begin — null with the scenario / flag off: every object keeps its stock art.
+        const concord = concordArtEmpire(this.galaxy);
+        const treasure = concord !== null ? concordTreasureShips(this.galaxy) : NO_TREASURE;
+        const look = concord !== null ? concordArtLook(this.galaxy) : 'weathered';
+        const nowMs = Date.now();
+        this.frame++;
+        this.concordFx.begin();
+        // [concordArt] end
         // Camera.worldToScreen, inlined (no allocation per ship per frame).
         const camX = cam.x;
         const camY = cam.y;
@@ -479,31 +499,44 @@ export class BuiltObjectLayer {
                 this.drawnPx.delete(bo);
                 continue;
             }
-            const pictureRef = resolveDrawPictureRef(bo);
-            let url = this.urlByPictureRef.get(pictureRef);
-            if (url === undefined) {
-                url = builtObjectImageUrl(pictureRef);
-                this.urlByPictureRef.set(pictureRef, url);
-            }
-            if (url === null) {
+            // [concordArt] begin — the Concord's objects draw their procedural junk (built lazily; hidden until then).
+            const cv = concordVariantFor(bo, concord, treasure, look);
+            const cArt = cv !== null ? concordShipArt(cv, this.frame) : null;
+            if (cv !== null && cArt === null) {
                 if (sprite !== undefined) sprite.visible = false;
                 this.drawnPx.delete(bo);
                 continue;
             }
-            // Textures load once; until then (or if the load failed) the
-            // sprite stays hidden. The frame reads the cache synchronously so
-            // visibility is final before Pixi renders this tick.
-            const img = this.resolved.get(url);
-            if (img === undefined || img === null) {
-                if (img === undefined && !this.images.has(url)) {
-                    this.loadImage(url).then(
-                        (r) => this.resolved.set(url, r),
-                        () => this.resolved.set(url, null),
-                    );
+            // [concordArt] end
+            let img: LoadedShipImage | null | undefined = cArt;
+            if (img === null) {
+                const pictureRef = resolveDrawPictureRef(bo);
+                let url = this.urlByPictureRef.get(pictureRef);
+                if (url === undefined) {
+                    url = builtObjectImageUrl(pictureRef);
+                    this.urlByPictureRef.set(pictureRef, url);
                 }
-                if (sprite !== undefined) sprite.visible = false;
-                this.drawnPx.delete(bo);
-                continue;
+                if (url === null) {
+                    if (sprite !== undefined) sprite.visible = false;
+                    this.drawnPx.delete(bo);
+                    continue;
+                }
+                // Textures load once; until then (or if the load failed) the
+                // sprite stays hidden. The frame reads the cache synchronously so
+                // visibility is final before Pixi renders this tick.
+                img = this.resolved.get(url);
+                if (img === undefined || img === null) {
+                    if (img === undefined && !this.images.has(url)) {
+                        const u = url;
+                        this.loadImage(u).then(
+                            (r) => this.resolved.set(u, r),
+                            () => this.resolved.set(u, null),
+                        );
+                    }
+                    if (sprite !== undefined) sprite.visible = false;
+                    this.drawnPx.delete(bo);
+                    continue;
+                }
             }
             const { texture, metrics } = img;
             if (sprite === undefined) {
@@ -530,7 +563,13 @@ export class BuiltObjectLayer {
             sprite.scale.set(px / metrics.cropSide / z);
             sprite.alpha = this.overlays.fadeCivilianShips && bo.owner === null ? 144 / 255 : 1;
             sprite.visible = true;
+            // [concordArt] begin
+            if (cArt !== null) {
+                this.concordFx.draw(cArt, bo.xpos, bo.ypos, sprite.rotation, sprite.scale.x, sprite.anchor.x, sprite.anchor.y, bo.builtObjectID, px, nowMs);
+            }
+            // [concordArt] end
         }
+        this.concordFx.end(); // [concordArt]
         // Destroyed or removed objects: drop their sprite and drawn size (which also clears their selection ring / pick).
         releaseStaleSprites(this.sprites, this.seen, (bo, sprite) => {
             this.drawnPx.delete(bo);

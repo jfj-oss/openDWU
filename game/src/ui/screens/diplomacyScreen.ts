@@ -41,6 +41,7 @@ import {
 import { galaxyStarDate } from '../../sim/tick/simTime';
 import { rimTraderTermsRows, type RimTraderTermsRows } from '../scenario/rimTraderRows';
 import { rimTraderEmpire } from '../../sim/scenario/rimTrade/common';
+import { empireEmblem } from '../raceDisplayArt';
 import { REAL_SECONDS_IN_GALACTIC_YEAR } from '../../sim/galaxyTime';
 import { EmpireMessageType, empireMessages } from '../../sim/messages';
 import { showToast } from '../toast';
@@ -416,6 +417,17 @@ function rimTraderTermsBlock(t: RimTraderTermsRows): HTMLElement {
 }
 // [rimTrader] end
 
+function emblemImg(className: string, src: string, filter: string): HTMLImageElement {
+    const img = document.createElement('img');
+    img.className = className;
+    img.alt = '';
+    img.draggable = false;
+    if (filter !== '') img.style.filter = filter;
+    img.addEventListener('error', () => img.remove());
+    img.src = src;
+    return img;
+}
+
 function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
     const root = el('div', 'diplomacy-wrap');
     const win = el('div', 'diplomacy-window');
@@ -507,6 +519,10 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
         const tSwatch = el('span', 'diplomacy-swatch');
         tSwatch.style.background = rgb(row.color);
         title.append(tSwatch, el('span', 'diplomacy-detail-name', row.name));
+        // The empire's portrait and flag (scenario overrides keyed by race name, e.g. the 19a Concord's mask).
+        const emblem = empireEmblem(player.galaxy, row.empire);
+        if (emblem.portraitUrl !== null) title.prepend(emblemImg('diplomacy-portrait', emblem.portraitUrl, ''));
+        if (emblem.flagUrl !== null) title.append(emblemImg('diplomacy-flag', emblem.flagUrl, emblem.flagFilter));
         detail.appendChild(title);
 
         detail.appendChild(el('div', 'diplomacy-section-heading', 'Current Relationship With Us'));
