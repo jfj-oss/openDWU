@@ -173,17 +173,11 @@ function once(key: string, make: () => Promise<{ portraitUrl?: string; flagUrl?:
 // 19r overrides
 // ---------------------------------------------------------------------------------------------------------------
 
-/** Item 3: the Ossuvan herders (race BasedOn teekan — the Teekan portrait under the hood). */
+/** Item 3: the Ossuvan herders — a fully procedural portrait (misty dusk forest, the tribe as rim-lit silhouettes). */
 export const herderEmblemOverride: EmblemOverride = (_galaxy, empire) => {
     const race = empire.dominantRace;
     if (race === null || race.name.toLowerCase() !== HERDER_RACE.toLowerCase()) return null;
-    return once(`herder|${race.pictureIndex}`, async () => {
-        const base = await loadRgba(racePortraitUrl(race.pictureIndex));
-        return {
-            portraitUrl: base === null ? undefined : rgbaToDataUrl(herderPortrait(base)),
-            flagUrl: rgbaToDataUrl(herderFlag()),
-        };
-    });
+    return once('herder', async () => ({ portraitUrl: rgbaToDataUrl(herderPortrait()), flagUrl: rgbaToDataUrl(herderFlag()) }));
 };
 
 /** Item 6: derived flags / portraits from the empire's lineage. */

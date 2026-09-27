@@ -266,7 +266,7 @@ export class LiveryOverlays {
             ns.rotation = bo.heading;
             // Glyph cells (5 rows + outline = 7 rows) over slot.h × 7/5 crop px.
             ns.scale.set(((slot.h * 7) / 5 / nt.height) * k);
-            ns.alpha = alpha * (1 - 0.35 * (bucket / WITHER_STEPS));
+            ns.alpha = alpha;
         }
     }
 

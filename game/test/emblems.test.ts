@@ -15,7 +15,6 @@ import {
     ghostPortrait,
     herderFlag,
     herderPortrait,
-    hoodDepth,
     secededFlag,
     secededPortrait,
     type RgbaImage,
@@ -92,16 +91,34 @@ describe('19r derived / herder portraits', () => {
         expect(px(exilePortrait(p), 0, 30)).toEqual([6, 6, 8, 255]);
         expect(secededPortrait(p, 0x3344aa, 2).data[(59 * 60 + 59) * 4 + 3]).toBe(0);
     });
-    it('herder hood covers the frame outside the face opening and keeps the face', () => {
-        const h = herderPortrait(p);
-        expect(h.data).toEqual(herderPortrait(p).data);
-        expect(hoodDepth(1, 1, 60, 60)).toBeGreaterThan(0);
-        expect(hoodDepth(30, 36, 60, 60)).toBeLessThan(0);
-        // A corner pixel is hood (earth tones: red ≥ green ≥ blue); the face centre differs from the hood.
-        const [r, g, b, a] = px(h, 2, 2);
-        expect(a).toBe(255);
-        expect(r).toBeGreaterThanOrEqual(g);
-        expect(g).toBeGreaterThanOrEqual(b);
+    it('herder portrait: deterministic 300² dusk scene with dark silhouettes and bright accents (contrast)', () => {
+        const h = herderPortrait();
+        expect([h.w, h.h]).toEqual([300, 300]);
+        expect(h.data).toEqual(herderPortrait().data);
+        expect(h.data).not.toEqual(herderPortrait(8).data);
+        let dark = 0;
+        let bright = 0;
+        let teal = 0;
+        for (let i = 0; i < h.data.length; i += 4) {
+            const l = 0.299 * h.data[i] + 0.587 * h.data[i + 1] + 0.114 * h.data[i + 2];
+            if (l < 20) dark++;
+            if (l > 180) bright++;
+            if (h.data[i + 1] > h.data[i] + 15 && h.data[i + 2] > h.data[i]) teal++;
+            expect(h.data[i + 3]).toBe(255);
+        }
+        expect(dark).toBeGreaterThan(300 * 300 * 0.1);
+        expect(bright).toBeGreaterThan(200);
+        expect(teal).toBeGreaterThan(300 * 300 * 0.1);
+        // Contrast (luminance std) at least the stock Teekan portrait's (race_11.png measures 54.1).
+        let s1 = 0;
+        let s2 = 0;
+        for (let i = 0; i < h.data.length; i += 4) {
+            const l = 0.299 * h.data[i] + 0.587 * h.data[i + 1] + 0.114 * h.data[i + 2];
+            s1 += l;
+            s2 += l * l;
+        }
+        const n = h.data.length / 4;
+        expect(Math.sqrt(s2 / n - (s1 / n) ** 2)).toBeGreaterThanOrEqual(54.1);
     });
 });
 

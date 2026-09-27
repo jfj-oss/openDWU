@@ -418,13 +418,13 @@ export class ArtBundleGallery {
     // -----------------------------------------------------------------------------------------------------------
     private async buildHerders(): Promise<void> {
         const W = this.w;
-        this.label('19r herder identity — Ossuvan (BasedOn teekan): portrait, flag, camp props over a herder station', W / 2, 16, 24);
+        this.label('19r herder identity — Ossuvan: procedural portrait, flag, camp props over a herder station', W / 2, 16, 24);
         const teekanPic = this.galaxy.races?.find?.((r: { name: string }) => r.name === 'Teekan')?.pictureIndex ?? 11;
         const portrait = await loadRgba(racePortraitUrl(teekanPic));
         if (portrait !== null) {
             for (const [x, img, name] of [
                 [W * 0.12, portrait, 'Teekan (stock)'],
-                [W * 0.32, herderPortrait(portrait), 'Ossuvan (hooded frame)'],
+                [W * 0.32, herderPortrait(), 'Ossuvan (procedural)'],
             ] as const) {
                 const s = new Sprite(tex(img));
                 s.anchor.set(0.5);
