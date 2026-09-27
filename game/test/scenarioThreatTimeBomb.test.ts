@@ -48,7 +48,7 @@ beforeAll(async () => {
     base = await loadGameDataFs();
 }, 120000);
 
-const FORCE = { timeBombStartYear: 0, timeBombChancePerMillePerColony: 1000, timeBombMaxChancePct: 100, timeBombDefeatDestroyed: 2, cultSecedeColonies: 1 };
+const FORCE = { timeBombStartYear: 0, timeBombChancePerMillePerColony: 1000, timeBombMaxChancePct: 100, timeBombDefeatDestroyed: 2, cultSecedeColonies: 1, timeBombExistChancePct: 100, timeBombMinYear: 0 };
 const age3 = (o: CreateGameOptions): CreateGameOptions => ({ ...o, player: { ...o.player, age: 3 }, aiEmpires: o.aiEmpires.map((e) => ({ ...e, age: 3 })) });
 
 function tbGame(flags: Record<string, boolean> = {}): { game: Game; g: Galaxy } {

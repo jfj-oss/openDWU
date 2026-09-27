@@ -2,7 +2,7 @@
   "id": "robotmutiny",
   "name": "Robot Mutiny",
   "description": "Every BattleBot troop galaxy-wide is wired to one hidden transmitter on a ruin world. Robot garrisons quietly build hidden sleeper robots. When the broadcast wakes, colonies rise wherever their robots can win; the first captured colony makes the machines a full empire, and the transmitter spawns warships a tech level ahead of the best empire until it is silenced. Beacon fleet sizes (100/200/300) are tuned for large galaxies: lower the scale for small ones.",
-  "include": ["darkfarms"],
+  "include": ["darkfarms", "threat-framework"],
   "flags": [
     { "name": "threatRobotMutiny", "label": "Robot Mutiny", "description": "Robotic troops galaxy-wide answer one hidden broadcast: hidden sleepers, risings where the robots win, a machine empire and beacon fleets.", "default": false }
   ],
@@ -18,6 +18,8 @@
     { "name": "mutinyBeaconShipsYear2", "label": "Beacon warships, second year (tuned for large galaxies)", "default": 200, "min": 0, "max": 2000 },
     { "name": "mutinyBeaconShipsYear3", "label": "Beacon warships, third year and every year after (tuned for large galaxies)", "default": 300, "min": 0, "max": 2000 },
     { "name": "mutinyBeaconScalePct", "label": "Beacon fleet scale (%): the 100/200/300 targets are tuned for large galaxies, lower it for small ones", "default": 100, "min": 0, "max": 400 },
-    { "name": "mutinyTechBonus", "label": "Beacon warship tech levels above the best empire", "default": 1, "min": 0, "max": 10 }
+    { "name": "mutinyTechBonus", "label": "Beacon warship tech levels above the best empire", "default": 1, "min": 0, "max": 10 },
+    { "name": "robotMutinyExistChancePct", "label": "Chance Robot Mutiny exists in this game (%; -1 = use the shared value)", "default": -1, "min": -1, "max": 100 },
+    { "name": "robotMutinyMinYear", "label": "Earliest year the transmitter may seed or wake (-1 = use the shared value)", "default": -1, "min": -1, "max": 200 }
   ]
 }

@@ -57,12 +57,15 @@ import {
     makeRobotTroop,
     militaryShipCount,
     normalEmpires,
+    pastThreatMinYear,
     peekThreatState,
     refitInPlace,
     registerThreatAction,
+    registerThreatExistence,
     registerThreatKnownSites,
     revealTo,
     teardownIfDead,
+    threatExists,
     threatGameEnd,
     threatState,
     type KnownThreatSite,
@@ -284,10 +287,11 @@ export function eligibleFarmColonies(galaxy: Galaxy, st: DarkFarmsState): Habita
  * ChanceRaceEvent (events.ts 1908; Galaxy.2.cs 4980).
  */
 export function darkFarmsYearly(galaxy: Galaxy, year: number): void {
+    if (!threatExists(galaxy, DARK_FARMS_KEY)) return; // §0 rarity: not this game — no state, no draws.
     const st = darkFarmsState(galaxy);
     if (st.ended) return;
     const startYear = gameYear(startStarDateForAge(galaxy.age));
-    if (year < startYear + P.graceYears(galaxy)) return;
+    if (year < startYear + P.graceYears(galaxy) || !pastThreatMinYear(galaxy, DARK_FARMS_KEY, year)) return; // §0 timing: also waits for the shared/overridden floor.
     if (liveFarms(st).length >= P.maxFarms(galaxy)) return;
     const minDev = P.minDevelopment(galaxy);
     for (const h of eligibleFarmColonies(galaxy, st)) {
@@ -328,6 +332,7 @@ export function spawnFarm(galaxy: Galaxy, st: DarkFarmsState, habitat: Habitat):
 
 /** The 30-day handler (§5.C step 16). */
 export function darkFarmsPeriodic(galaxy: Galaxy, now: number): void {
+    if (!threatExists(galaxy, DARK_FARMS_KEY)) return; // §0 rarity: not this game — no state, no draws.
     const st = darkFarmsState(galaxy);
     if (st.ended) return;
     refitCaptured(galaxy, st);
@@ -1078,6 +1083,7 @@ export const DARK_FARMS_HANDLER_IDS = ['darkFarms.spawn', 'darkFarms.periodic', 
 
 /** Registers every Dark Farms hook (module load; tests call it again after removing them). */
 export function registerDarkFarms(): void {
+    registerThreatExistence(DARK_FARMS_KEY, DARK_FARMS_FLAG);
     registerScenarioYearly({ id: 'darkFarms.spawn', flag: DARK_FARMS_FLAG, order: 10, run: darkFarmsYearly });
     registerScenarioPeriodic({ id: 'darkFarms.periodic', flag: DARK_FARMS_FLAG, order: 10, periodDays: DARK_FARMS_PERIOD_DAYS, run: darkFarmsPeriodic });
     registerScenarioEvent({ id: 'darkFarms.colony', flag: DARK_FARMS_FLAG, event: 'colonyOwnerChanged', run: (g, e) => onColonyOwnerChanged(g, e.colony, e.from, e.to) });

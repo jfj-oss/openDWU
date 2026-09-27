@@ -2,6 +2,7 @@
   "id": "exchange",
   "name": "The Exchange",
   "description": "A neutral merchant-spy faction appears near the galactic core: a vast trading station that funds the underdog of every war, runs high-skill agents against the strong, sells stolen intelligence, hires pirates in its own name and guards its system with two patrol fleets. Trace its money and its spies, have the council sanction it, and blockade or destroy the station to close it down.",
+  "include": ["threat-framework"],
   "flags": [
     { "name": "threatExchange", "label": "The Exchange", "description": "A neutral merchant-spy faction funds the weaker side of every war, runs agents, sells intelligence and posts pirate contracts.", "default": false }
   ],
@@ -20,6 +21,8 @@
     { "name": "exchangeFleetCap", "label": "Warships in its two patrol fleets at most", "default": 20, "min": 0, "max": 100 },
     { "name": "exchangeGrudgeDecay", "label": "Grudge decay per year (%)", "default": 20, "min": 0, "max": 100 },
     { "name": "exchangeGrudgeThreshold", "label": "Grudge above which an empire becomes a covert target", "default": 100, "min": 0, "max": 100000 },
-    { "name": "exchangeBlockadeDays", "label": "Cumulative blockade days that close the Exchange", "default": 120, "min": 1, "max": 1000 }
+    { "name": "exchangeBlockadeDays", "label": "Cumulative blockade days that close the Exchange", "default": 120, "min": 1, "max": 1000 },
+    { "name": "exchangeExistChancePct", "label": "Chance the Exchange exists in this game (%; -1 = use the shared value)", "default": -1, "min": -1, "max": 100 },
+    { "name": "exchangeMinYear", "label": "Earliest year the Exchange may be placed (-1 = use the shared value)", "default": -1, "min": -1, "max": 200 }
   ]
 }

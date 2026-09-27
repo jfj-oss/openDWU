@@ -1,0 +1,10 @@
+{
+  "id": "threat-framework",
+  "name": "Threat Framework (shared)",
+  "description": "Shared rarity/timing base every hidden-threat scenario includes: an existence lottery (a threat may simply not be in this game) and a year floor (no threat seeds, triggers or rises before this many years in), each overridable per threat. No flags of its own — nothing runs unless a threat scenario that includes this one also turns a threat on.",
+  "flags": [],
+  "params": [
+    { "name": "threatExistChancePct", "label": "Chance any given hidden threat exists in this game (%)", "default": 25, "min": 0, "max": 100 },
+    { "name": "threatMinYear", "label": "Earliest year any hidden threat may seed, trigger or rise", "default": 30, "min": 0, "max": 200 }
+  ]
+}

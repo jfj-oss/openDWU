@@ -56,7 +56,7 @@ function rmGame(flags: Record<string, boolean> = {}, params: Record<string, numb
     const { game } = createScenarioGame(base, {
         scenario: 'robotmutiny',
         flags: { threatRobotMutiny: true, ...flags },
-        params: { mutinyYear: 0, mutinyMinRobots: 1, mutinyShipFlipPct: 100, mutinyBeaconScalePct: 10, ...params },
+        params: { mutinyYear: 0, mutinyMinRobots: 1, mutinyShipFlipPct: 100, mutinyBeaconScalePct: 10, robotMutinyExistChancePct: 100, robotMutinyMinYear: 0, ...params },
         options: older ? age3 : undefined,
     });
     return { game, g: game.galaxy };

@@ -111,9 +111,12 @@ import {
     atWar,
     knowledgeLevel,
     normalEmpires,
+    pastThreatMinYear,
     peekThreatState,
+    registerThreatExistence,
     registerThreatKnownSites,
     revealTo,
+    threatExists,
     threatGameEnd,
     threatState,
     type KnownThreatSite,
@@ -650,11 +653,12 @@ function falseFlagEnemy(galaxy: Galaxy, faction: Empire, victim: Empire): Empire
 // ---------------------------------------------------------------------------------------------------------------
 
 export function exchangeYearly(galaxy: Galaxy, year: number): void {
+    if (!threatExists(galaxy, EXCHANGE_KEY)) return; // §0 rarity: not this game — no state, no draws (minimal guard: shared with the reworked branch).
     const st = exchangeState(galaxy);
     if (st.ended) return;
     if (!st.placed) {
         const startYear = gameYear(startStarDateForAge(galaxy.age));
-        if (year < startYear + P.year(galaxy)) return;
+        if (year < startYear + P.year(galaxy) || !pastThreatMinYear(galaxy, EXCHANGE_KEY, year)) return; // §0 timing floor
         exchangePlace(galaxy, st, year);
     }
     const f = st.faction;
@@ -1490,6 +1494,7 @@ export function registerExchange(): void {
             exchangeState(g).startTechLevel = ctx.startTechLevel ?? 0.5;
         },
     });
+    registerThreatExistence(EXCHANGE_KEY, EXCHANGE_FLAG);
     registerScenarioYearly({ id: 'exchange.yearly', flag: EXCHANGE_FLAG, order: 10, run: exchangeYearly });
     registerScenarioPeriodic({ id: 'exchange.periodic', flag: EXCHANGE_FLAG, periodDays: PERIOD_DAYS, order: 10, run: (g) => exchangePeriodic(g) });
     registerScenarioEvent({ id: 'exchange.intel', flag: EXCHANGE_FLAG, event: 'intelMissionCompleted', run: (g, e) => onIntelMissionCompleted(g, e.empire, e.mission) });

@@ -34,10 +34,13 @@ import {
     knowledgeLevel,
     makeFactionTroop,
     normalEmpires,
+    pastThreatMinYear,
     peekThreatState,
     revealTo,
+    registerThreatExistence,
     registerThreatKnownSites,
     teardownIfDead,
+    threatExists,
     threatGameEnd,
     threatState,
     type KnownThreatSite,
@@ -121,10 +124,11 @@ export function cultSeedCandidates(galaxy: Galaxy, st: CultState): Character[] {
 }
 
 export function cultYearly(galaxy: Galaxy, year: number): void {
+    if (!threatExists(galaxy, CULT_KEY)) return; // §0 rarity: not this game — no state, no draws.
     const st = cultState(galaxy);
     if (st.ended) return;
     const startYear = gameYear(startStarDateForAge(galaxy.age));
-    if (year < startYear + P.seedYear(galaxy)) return;
+    if (year < startYear + P.seedYear(galaxy) || !pastThreatMinYear(galaxy, CULT_KEY, year)) return; // §0 timing: also waits for the shared/overridden floor.
     if (st.converted.length > 0) return; // already seeded
     const candidates = cultSeedCandidates(galaxy, st);
     if (candidates.length === 0) return;
@@ -300,12 +304,13 @@ export function cultDiscovery(galaxy: Galaxy, st: CultState): void {
 // ---------------------------------------------------------------------------------------------------------------
 
 export function cultPeriodic(galaxy: Galaxy, now: number): void {
+    if (!threatExists(galaxy, CULT_KEY)) return; // §0 rarity: not this game — no state, no draws.
     void now;
     const st = cultState(galaxy);
     if (st.ended) return;
     st.converted = st.converted.filter((r) => r.character.active);
     cultSpread(galaxy, st);
-    cultCheckTrigger(galaxy);
+    if (pastThreatMinYear(galaxy, CULT_KEY)) cultCheckTrigger(galaxy); // §0 timing: the secession trigger waits for the floor.
     cultDiscovery(galaxy, st);
     cultEndCheck(galaxy, st);
 }
@@ -354,6 +359,7 @@ export function cultKnownSites(galaxy: Galaxy, empire: Empire): KnownThreatSite[
 export const CULT_HANDLER_IDS = ['cult.yearly', 'cult.periodic', 'cult.characterCreated'] as const;
 
 export function registerCult(): void {
+    registerThreatExistence(CULT_KEY, CULT_FLAG);
     registerScenarioYearly({ id: 'cult.yearly', flag: CULT_FLAG, order: 10, run: cultYearly });
     registerScenarioPeriodic({ id: 'cult.periodic', flag: CULT_FLAG, order: 10, periodDays: PERIOD_DAYS, run: cultPeriodic });
     registerScenarioEvent({ id: 'cult.characterCreated', flag: CULT_FLAG, event: 'characterCreated', run: (g, e) => onCharacterCreated(g, e.character, e.empire) });

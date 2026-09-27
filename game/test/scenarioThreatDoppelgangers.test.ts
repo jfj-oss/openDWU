@@ -32,7 +32,7 @@ beforeAll(async () => {
     base = await loadGameDataFs();
 }, 120000);
 
-const FORCE = { doppelSleeperPct: 100, doppelTurnCount: 2, doppelPlantPerYear: 3, doppelDetectPct: 0 };
+const FORCE = { doppelSleeperPct: 100, doppelTurnCount: 2, doppelPlantPerYear: 3, doppelDetectPct: 0, doppelgangersExistChancePct: 100, doppelgangersMinYear: 0 };
 const age3 = (o: CreateGameOptions): CreateGameOptions => ({ ...o, player: { ...o.player, age: 3 }, aiEmpires: o.aiEmpires.map((e) => ({ ...e, age: 3 })) });
 
 function ddGame(params: Record<string, number> = {}, flags: Record<string, boolean> = {}, older = true): { game: Game; gameData: GameData } {

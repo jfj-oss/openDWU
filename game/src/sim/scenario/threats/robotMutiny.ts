@@ -67,9 +67,12 @@ import {
     invadeFromInside,
     knowledgeLevel,
     normalEmpires,
+    pastThreatMinYear,
     peekThreatState,
+    registerThreatExistence,
     revealTo,
     teardownIfDead,
+    threatExists,
     threatGameEnd,
     threatState,
     type SentStages,
@@ -684,18 +687,19 @@ function checkDefused(galaxy: Galaxy, st: RobotMutinyState): void {
 // ---------------------------------------------------------------------------------------------------------------
 
 export function mutinyYearly(galaxy: Galaxy, year: number): void {
+    if (!threatExists(galaxy, ROBOT_MUTINY_KEY)) return; // §0 rarity: not this game — no state, no draws (minimal guard: shared with the reworked branch).
     const st = robotMutinyState(galaxy);
     ensureFields(st);
     if (st.ended) return;
     if (!st.seeded) {
         const startYear = gameYear(startStarDateForAge(galaxy.age));
-        if (year >= startYear) mutinySeed(galaxy, st);
+        if (year >= startYear && pastThreatMinYear(galaxy, ROBOT_MUTINY_KEY, year)) mutinySeed(galaxy, st); // §0 timing floor
     }
     mutinyHints(galaxy, st, year);
     checkDefused(galaxy, st);
     if (st.ended) return;
     mutinyAccrueSleepers(galaxy, st);
-    if (!st.triggered && !sourceNeutralised(st) && year >= P.year(galaxy) && galaxyRobotCount(galaxy) >= P.minRobots(galaxy)) {
+    if (!st.triggered && !sourceNeutralised(st) && year >= P.year(galaxy) && pastThreatMinYear(galaxy, ROBOT_MUTINY_KEY, year) && galaxyRobotCount(galaxy) >= P.minRobots(galaxy)) {
         mutinyTrigger(galaxy, st);
     } else if (st.triggered) {
         mutinyBeacon(galaxy, st, year);
@@ -738,6 +742,7 @@ export function mutinyPeriodic(galaxy: Galaxy): void {
 export const ROBOT_MUTINY_HANDLER_IDS = ['robotMutiny.yearly', 'robotMutiny.periodic'] as const;
 
 export function registerRobotMutiny(): void {
+    registerThreatExistence(ROBOT_MUTINY_KEY, ROBOT_MUTINY_FLAG);
     registerScenarioYearly({ id: 'robotMutiny.yearly', flag: ROBOT_MUTINY_FLAG, order: 10, run: mutinyYearly });
     registerScenarioPeriodic({ id: 'robotMutiny.periodic', flag: ROBOT_MUTINY_FLAG, periodDays: PERIOD_DAYS, order: 10, run: mutinyPeriodic });
 }

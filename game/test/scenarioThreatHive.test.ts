@@ -18,8 +18,10 @@ import {
     hiveKnownSites,
     hivePeriodic,
     hiveState,
+    hiveTrigger,
     peekHiveState,
     registerHive,
+    type HiveState,
 } from '../src/sim/scenario/threats/hive';
 import { takeOwnershipOfColonyFull } from '../src/sim/combat/ownership';
 import { GameEndOutcome, setGameEndHandler, type GameEndEventArgs } from '../src/sim/victory';
@@ -30,7 +32,7 @@ beforeAll(async () => {
     base = await loadGameDataFs();
 }, 120000);
 
-const FORCE = { hiveThresholdPct: 40, hiveMinNodes: 1, hiveMilitiaFactor: 1.5, hiveDetectPct: 0 };
+const FORCE = { hiveThresholdPct: 40, hiveMinNodes: 1, hiveMilitiaFactor: 1.5, hiveDetectPct: 0, hiveExistChancePct: 100, hiveMinYear: 0 };
 const age3 = (o: CreateGameOptions): CreateGameOptions => ({ ...o, player: { ...o.player, age: 3 }, aiEmpires: o.aiEmpires.map((e) => ({ ...e, age: 3 })) });
 
 function hvGame(params: Record<string, number> = {}, flags: Record<string, boolean> = {}, older = true): { game: Game; gameData: GameData } {
@@ -130,5 +132,47 @@ describe('Hive: forced trigger on seed 1', () => {
         expect(ends.map((e) => e.code)).toEqual([HIVE_CODE_CONTAINED]);
         expect(ends[0].outcomeForPlayer).toBe(GameEndOutcome.Victory);
         setGameEndHandler(g, null);
+    }, 600000);
+});
+
+describe('Hive: hiveMaxNodesSeized (§4 rarity and timing)', () => {
+    it('the trigger seizes at most the cap of still-independent nodes on a hand-built state with 100 independents, nearest the absorbed cluster first', () => {
+        const { game } = hvGame({ hiveMaxNodesSeized: 30 }, {}, false);
+        const g = game.galaxy;
+
+        // 100 hand-built "still independent" nodes: arbitrary uncolonized habitats, directly marked independent
+        // (only their ownership and position matter to hiveTrigger's selection logic).
+        const uncolonized = g.habitats.filter((h) => h !== null && !h.hasBeenDestroyed && h.empire === null);
+        expect(uncolonized.length).toBeGreaterThanOrEqual(100);
+        const independentHabitats = uncolonized.slice(0, 100);
+        for (const h of independentHabitats) h.empire = g.independentEmpire;
+
+        // A small absorbed cluster of real, populated colonies (so majorityNodeRace resolves and there is a cluster
+        // centre to measure "nearest" from): three colonies of the same real empire, clustered together in space.
+        const owner = g.empires.find((e) => e !== null && e.active && e !== g.independentEmpire && e.pirateEmpireBaseHabitat === null && e.colonies.length >= 1)!;
+        const absorbedColonies = owner.colonies.slice(0, Math.min(3, owner.colonies.length));
+        expect(absorbedColonies.length).toBeGreaterThan(0);
+
+        const st: HiveState = {
+            nodes: [
+                ...independentHabitats.map((habitat) => ({ habitat, knowledge: [] })),
+                ...absorbedColonies.map((habitat) => ({ habitat, knowledge: [] })),
+            ],
+            absorbed: [...absorbedColonies],
+            faction: null,
+            agentsGiven: false,
+            sentStages: {},
+            factionHadColonies: false,
+            ended: false,
+        };
+
+        expect(hiveTrigger(g, st)).toBe(true);
+        expect(st.faction).not.toBeNull();
+        const seized = independentHabitats.filter((h) => h.empire === st.faction);
+        const stillIndependent = independentHabitats.filter((h) => h.empire === g.independentEmpire);
+        expect(seized.length).toBeLessThanOrEqual(30);
+        expect(seized.length).toBe(30); // 100 independents > the cap: exactly the cap is seized
+        expect(stillIndependent.length).toBe(70); // the rest stay independent nodes (still tracked in st.nodes)
+        expect(seized.length + stillIndependent.length).toBe(independentHabitats.length);
     }, 600000);
 });

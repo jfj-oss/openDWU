@@ -2,7 +2,7 @@
   "id": "ai-parity",
   "name": "AI Parity Audit",
   "description": "A test bed, not a play scenario: every scenario package mergeable on this build at once (the audit script scripts/ai-parity.mjs turns every flag on) so the soak can count how often the AI uses each system. Presentation-only packages (Big Galaxies, Rim Atmosphere) and the Rim Frontier geometry are left out.",
-  "include": ["llm-layer", "lively-galaxy", "galactic-council", "wreckage-salvage", "independents-active", "new-fauna", "rimTrade", "chartered-companies", "exchange", "ghostarmada", "timebomb", "silence", "robotmutiny"],
+  "include": ["llm-layer", "lively-galaxy", "galactic-council", "wreckage-salvage", "independents-active", "new-fauna", "rimTrade", "chartered-companies", "exchange", "ghostarmada", "timebomb", "silence", "robotmutiny", "threat-framework"],
   "flags": [],
   "params": []
 }

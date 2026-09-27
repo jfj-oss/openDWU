@@ -2,7 +2,7 @@
   "id": "frontier-autonomy",
   "name": "Frontier Autonomy",
   "description": "Distant colonies drift toward local rule: autonomy rises with the hyperjump travel time to the capital, the absence of warships, a race unlike the empire's and low approval, and falls with a governor of the ruling house, a nearby fleet and high approval (a 'frontier' term in the stability ledger). Autonomous colonies in one galaxy sector form a frontier sector under a sector governor who sets a local tax rate, raises a militia from a sector budget, signs small trade compacts with neighbours and may refuse unpopular orders. Each sector is ruled loose (smuggling / herd tolerance, lighter tax, loyal governor, slower drift) or tight (clean, faster drift, unrest). A sector past the breakaway threshold under a disloyal governor warns the capital for years (messages and a 'sector unrest' lead) and then secedes as a new empire; fleets, honours, a purge or a concession answer it. Includes Court & Dynasties (its own flags).",
-  "include": ["court-dynasties"],
+  "include": ["court-dynasties", "threat-framework"],
   "flags": [
     { "name": "frontierAutonomy", "label": "Frontier autonomy", "description": "Distance-based autonomy drift, frontier sectors under sector governors (local tax, militia, trade compacts, refused orders), loose / tight rule and sector breakaways.", "default": true }
   ],

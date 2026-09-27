@@ -37,11 +37,14 @@ import {
     createThreatFaction,
     knowledgeLevel,
     normalEmpires,
+    pastThreatMinYear,
     peekThreatState,
     registerThreatAction,
+    registerThreatExistence,
     registerThreatKnownSites,
     revealTo,
     teardownIfDead,
+    threatExists,
     threatGameEnd,
     threatState,
     type KnownThreatSite,
@@ -128,10 +131,11 @@ export function greyTideCandidates(galaxy: Galaxy, st: GreyTideState): Habitat[]
 }
 
 export function greyTideYearly(galaxy: Galaxy, year: number): void {
+    if (!threatExists(galaxy, GREY_TIDE_KEY)) return; // §0 rarity: not this game — no state, no draws.
     const st = greyTideState(galaxy);
     if (st.ended || st.nests.length > 0) return;
     const startYear = gameYear(startStarDateForAge(galaxy.age));
-    if (year < startYear + P.seedYear(galaxy)) return;
+    if (year < startYear + P.seedYear(galaxy) || !pastThreatMinYear(galaxy, GREY_TIDE_KEY, year)) return; // §0 timing: also waits for the shared/overridden floor.
     const candidates = greyTideCandidates(galaxy, st);
     if (candidates.length === 0) return;
     const habitat = candidates[galaxy.rnd.next(0, candidates.length)];
@@ -163,6 +167,7 @@ function ensureFaction(galaxy: Galaxy, st: GreyTideState, home: Habitat): Empire
 // ---------------------------------------------------------------------------------------------------------------
 
 export function greyTidePeriodic(galaxy: Galaxy, now: number): void {
+    if (!threatExists(galaxy, GREY_TIDE_KEY)) return; // §0 rarity: not this game — no state, no draws.
     const st = greyTideState(galaxy);
     if (st.ended) return;
     for (const nest of [...liveNests(st)].sort((a, b) => a.id - b.id)) {
@@ -301,6 +306,7 @@ export function greyTideKnownSites(galaxy: Galaxy, empire: Empire): KnownThreatS
 export const GREY_TIDE_HANDLER_IDS = ['greyTide.yearly', 'greyTide.periodic'] as const;
 
 export function registerGreyTide(): void {
+    registerThreatExistence(GREY_TIDE_KEY, GREY_TIDE_FLAG);
     registerScenarioYearly({ id: 'greyTide.yearly', flag: GREY_TIDE_FLAG, order: 10, run: greyTideYearly });
     registerScenarioPeriodic({ id: 'greyTide.periodic', flag: GREY_TIDE_FLAG, order: 10, periodDays: PERIOD_DAYS, run: greyTidePeriodic });
     registerThreatKnownSites(GREY_TIDE_KEY, greyTideKnownSites);

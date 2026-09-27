@@ -5,6 +5,7 @@ import { cachedTickGame } from './helpers/gameCache';
 import type { GameData } from '../src/sim/data/gameData';
 import type { Galaxy } from '../src/sim/galaxy';
 import { createGalaxyScenario, parseScenarioManifest } from '../src/sim/scenario';
+import { scenarioGameStart, type HomePlacementHelpers } from '../src/sim/scenario/hooks';
 import {
     arcMessage,
     arcNews,
@@ -14,12 +15,15 @@ import {
     invadeFromInside,
     knowledgeLevel,
     makeRobotTroop,
+    pastThreatMinYear,
     refitInPlace,
     registerThreatAction,
+    registerThreatExistence,
     registerThreatKnownSites,
     revealTo,
     runThreatAction,
     teardownIfDead,
+    threatExists,
     threatKnownSites,
     threatState,
     type ThreatSite,
@@ -152,6 +156,63 @@ describe('threat framework', () => {
         expect(runThreatAction(g, g.empires[1], 'zzTest.act', colony)).toBe(false);
         expect(ran).toBe(1);
         registerThreatAction('zzTest.act', { label: () => '', available: () => false, run: () => false });
+    }, 600000);
+});
+
+describe('threat framework: rarity and timing (§0)', () => {
+    it('existence lottery: rare by default, 0%/100% absolute, reproducible for the same seed, hidden, and off with no threat enabled', () => {
+        registerThreatExistence('zzLotteryA', 'zzLotteryA');
+        registerThreatExistence('zzLotteryB', 'zzLotteryB');
+        const ctx: HomePlacementHelpers = { randomPointInRing: () => ({ x: 0, y: 0 }), inNebula: () => false };
+        const manifest = (extra: Record<string, number>) =>
+            parseScenarioManifest({
+                id: 'fwLottery',
+                include: ['threat-framework'],
+                flags: [
+                    { name: 'zzLotteryA', default: true },
+                    { name: 'zzLotteryB', default: true },
+                ],
+                params: Object.entries(extra).map(([name, v]) => ({ name, default: v })),
+            });
+
+        // 0%: nothing exists.
+        const g0 = cachedTickGame(base).galaxy;
+        const msgCountsBefore = g0.empires.map((e) => (e === null ? 0 : empireMessages(e).length));
+        g0.scenario = createGalaxyScenario(manifest({ threatExistChancePct: 0 }), {}, base.resources);
+        scenarioGameStart(g0, ctx);
+        expect(threatExists(g0, 'zzLotteryA')).toBe(false);
+        expect(threatExists(g0, 'zzLotteryB')).toBe(false);
+        // Hidden: the roll never sends a message to anyone.
+        expect(g0.empires.map((e) => (e === null ? 0 : empireMessages(e).length))).toEqual(msgCountsBefore);
+
+        // 100%: everything exists.
+        const g100 = cachedTickGame(base).galaxy;
+        g100.scenario = createGalaxyScenario(manifest({ threatExistChancePct: 100 }), {}, base.resources);
+        scenarioGameStart(g100, ctx);
+        expect(threatExists(g100, 'zzLotteryA')).toBe(true);
+        expect(threatExists(g100, 'zzLotteryB')).toBe(true);
+
+        // Reproducible: the same seed, flags and params give the same result every time (the framework's own Random,
+        // never galaxy.rnd — so this never depends on unrelated draws elsewhere in the game).
+        const gA = cachedTickGame(base).galaxy;
+        gA.scenario = createGalaxyScenario(manifest({}), {}, base.resources);
+        scenarioGameStart(gA, ctx);
+        const gB = cachedTickGame(base).galaxy;
+        gB.scenario = createGalaxyScenario(manifest({}), {}, base.resources);
+        scenarioGameStart(gB, ctx);
+        expect(threatExists(gB, 'zzLotteryA')).toBe(threatExists(gA, 'zzLotteryA'));
+        expect(threatExists(gB, 'zzLotteryB')).toBe(threatExists(gA, 'zzLotteryB'));
+
+        // No threat enabled: no state at all (flags-off stays byte-identical to before this lottery existed).
+        const gOff = cachedTickGame(base).galaxy;
+        gOff.scenario = createGalaxyScenario(
+            parseScenarioManifest({ id: 'fwLotteryOff', include: ['threat-framework'], flags: [{ name: 'zzLotteryA', default: false }] }),
+            {},
+            base.resources,
+        );
+        scenarioGameStart(gOff, ctx);
+        expect(gOff.scenario.state.threats).toBeUndefined();
+        expect(threatExists(gOff, 'zzLotteryA')).toBe(false);
     }, 600000);
 });
 

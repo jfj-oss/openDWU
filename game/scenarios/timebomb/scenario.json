@@ -2,7 +2,7 @@
   "id": "timebomb",
   "name": "Time-Bomb Tech",
   "description": "Precursor ruins hold research with huge bonuses and a planet-killing failure mode, and the Cult knows how to trigger it. Every year a cult cell on a colony whose empire (or, after secession, the cult itself) holds the tech may detonate it as an act of terror; at war, the theocracy does so on purpose. Needs The Cult: the Time Bomb stays inert until the Cult flag is on.",
-  "include": ["cult"],
+  "include": ["cult", "threat-framework"],
   "flags": [
     { "name": "threatTimeBomb", "label": "Time-Bomb Tech (needs The Cult)", "description": "Ruins may hold precursor research that cult cells can detonate as terror attacks. Inert unless The Cult flag is also on.", "default": false }
   ],
@@ -14,6 +14,8 @@
     { "name": "timeBombCounterIntelYears", "label": "Years an AI prioritises counter-intelligence after losing a colony", "default": 1, "min": 0, "max": 10 },
     { "name": "timeBombDetonationGrievance", "label": "Grievance against the cult per detonation (reputation ledger)", "default": 30, "min": 0, "max": 200 },
     { "name": "timeBombStartYear", "label": "Year precursor ruins are seeded", "default": 30, "min": 0, "max": 200 },
-    { "name": "timeBombDefeatDestroyed", "label": "Planets destroyed that end the game (while the cult is undefeated)", "default": 5, "min": 1, "max": 50 }
+    { "name": "timeBombDefeatDestroyed", "label": "Planets destroyed that end the game (while the cult is undefeated)", "default": 5, "min": 1, "max": 50 },
+    { "name": "timeBombExistChancePct", "label": "Chance Time-Bomb Tech exists in this game (%; -1 = use the shared value)", "default": -1, "min": -1, "max": 100 },
+    { "name": "timeBombMinYear", "label": "Earliest year the ruins may be seeded (-1 = use the shared value)", "default": -1, "min": -1, "max": 200 }
   ]
 }

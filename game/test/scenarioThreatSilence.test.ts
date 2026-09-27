@@ -32,7 +32,7 @@ beforeAll(async () => {
     base = await loadGameDataFs();
 }, 120000);
 
-const FORCE = { silenceStartYear: 0, silenceStartRadius: 5000, silenceGrowthPerYear: 40000, silenceMaxRadius: 20000, silenceShutdownDays: 60 };
+const FORCE = { silenceStartYear: 0, silenceStartRadius: 5000, silenceGrowthPerYear: 40000, silenceMaxRadius: 20000, silenceShutdownDays: 60, silenceExistChancePct: 100, silenceMinYear: 0 };
 const age3 = (o: CreateGameOptions): CreateGameOptions => ({ ...o, player: { ...o.player, age: 3 }, aiEmpires: o.aiEmpires.map((e) => ({ ...e, age: 3 })) });
 
 function slGame(params: Record<string, number> = {}, flags: Record<string, boolean> = {}, older = true): { game: Game; gameData: GameData } {

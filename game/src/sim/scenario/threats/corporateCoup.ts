@@ -39,9 +39,12 @@ import {
     invadeFromInside,
     knowledgeLevel,
     lockWar,
+    pastThreatMinYear,
     peekThreatState,
+    registerThreatExistence,
     revealTo,
     teardownIfDead,
+    threatExists,
     threatGameEnd,
     threatState,
     type SentStages,
@@ -251,15 +254,19 @@ function coupEndCheck(galaxy: Galaxy, st: CorporateCoupState, company: Corporate
 // ---------------------------------------------------------------------------------------------------------------
 
 export function corporateCoupYearly(galaxy: Galaxy): void {
+    if (!threatExists(galaxy, CORPORATE_COUP_KEY)) return; // §0 rarity: not this game — no state, no draws.
     coupBribeYearly(galaxy);
 }
 
 export function corporateCoupPeriodic(galaxy: Galaxy): void {
+    if (!threatExists(galaxy, CORPORATE_COUP_KEY)) return; // §0 rarity: not this game — no state, no draws.
     const st = peekCorporateCoupState(galaxy);
     if (st === null) return;
     for (const company of st.companies) {
         company.periods++;
-        if (!company.triggered) coupTrigger(galaxy, company);
+        // §0 timing: the trigger (the declaration) waits for the floor; bribery bookkeeping (coupBribeYearly, above)
+        // may run before it, as Hive's absorption counting does.
+        if (!company.triggered && pastThreatMinYear(galaxy, CORPORATE_COUP_KEY)) coupTrigger(galaxy, company);
         if (!company.triggered && company.periods % AGENT_PERIODS === 0) coupDirty(galaxy, company);
         coupDiscovery(galaxy, company);
         coupAiReplace(galaxy, company);
@@ -274,6 +281,7 @@ export function corporateCoupPeriodic(galaxy: Galaxy): void {
 export const CORPORATE_COUP_HANDLER_IDS = ['corporateCoup.yearly', 'corporateCoup.periodic'] as const;
 
 export function registerCorporateCoup(): void {
+    registerThreatExistence(CORPORATE_COUP_KEY, CORPORATE_COUP_FLAG);
     registerScenarioYearly({ id: 'corporateCoup.yearly', flag: CORPORATE_COUP_FLAG, order: 10, run: corporateCoupYearly });
     registerScenarioPeriodic({ id: 'corporateCoup.periodic', flag: CORPORATE_COUP_FLAG, periodDays: PERIOD_DAYS, order: 10, run: corporateCoupPeriodic });
 }

@@ -25,7 +25,20 @@ import { gameYear, registerScenarioPeriodic, registerScenarioQuery, registerScen
 import { scenarioParam } from '../state';
 import { scenarioText } from '../messages';
 import { startStarDateForAge } from '../../galaxyTime';
-import { arcNews, normalEmpires, peekThreatState, registerThreatKnownSites, resizeRestrictedZone, threatGameEnd, threatState, type KnownThreatSite, type SentStages } from './framework';
+import {
+    arcNews,
+    normalEmpires,
+    pastThreatMinYear,
+    peekThreatState,
+    registerThreatExistence,
+    registerThreatKnownSites,
+    resizeRestrictedZone,
+    threatExists,
+    threatGameEnd,
+    threatState,
+    type KnownThreatSite,
+    type SentStages,
+} from './framework';
 
 export const SILENCE_KEY = 'silence';
 export const SILENCE_FLAG = 'silence';
@@ -80,10 +93,11 @@ export function silenceCandidates(galaxy: Galaxy): Habitat[] {
 }
 
 export function silenceYearly(galaxy: Galaxy, year: number): void {
+    if (!threatExists(galaxy, SILENCE_KEY)) return; // §0 rarity: not this game — no state, no draws.
     const st = silenceState(galaxy);
     if (st.ended || st.source !== null) return;
     const startYear = gameYear(startStarDateForAge(galaxy.age));
-    if (year < startYear + P.startYear(galaxy)) return;
+    if (year < startYear + P.startYear(galaxy) || !pastThreatMinYear(galaxy, SILENCE_KEY, year)) return; // §0 timing: also waits for the shared/overridden floor.
     const candidates = silenceCandidates(galaxy);
     if (candidates.length === 0) return;
     const source = candidates[galaxy.rnd.next(0, candidates.length)];
@@ -166,6 +180,7 @@ export function silenceHyperDenyExempt(galaxy: Galaxy, value: boolean, args: { b
 // ---------------------------------------------------------------------------------------------------------------
 
 export function silencePeriodic(galaxy: Galaxy, now: number): void {
+    if (!threatExists(galaxy, SILENCE_KEY)) return; // §0 rarity: not this game — no state, no draws.
     void now;
     const st = silenceState(galaxy);
     if (st.ended || st.source === null) return;
@@ -208,6 +223,7 @@ export const SILENCE_HANDLER_IDS = ['silence.yearly', 'silence.periodic'] as con
 export const SILENCE_QUERY_IDS = ['silence.exempt'] as const;
 
 export function registerSilence(): void {
+    registerThreatExistence(SILENCE_KEY, SILENCE_FLAG);
     registerScenarioYearly({ id: 'silence.yearly', flag: SILENCE_FLAG, order: 10, run: silenceYearly });
     registerScenarioPeriodic({ id: 'silence.periodic', flag: SILENCE_FLAG, order: 10, periodDays: PERIOD_DAYS, run: silencePeriodic });
     registerScenarioQuery({ id: 'silence.exempt', flag: SILENCE_FLAG, query: 'hyperDenyExempt', run: silenceHyperDenyExempt });

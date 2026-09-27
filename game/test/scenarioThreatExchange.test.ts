@@ -20,9 +20,8 @@ import { setGameEndHandler, type GameEndEventArgs } from '../src/sim/victory';
 import { declareWar } from '../src/sim/diplomacyTick';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from '../src/sim/diplomacy';
 import { PirateRelationType, changePirateRelation, obtainPirateRelation } from '../src/sim/pirateRelations';
-import { EmpireActivityType } from '../src/sim/pirates/empireActivity';
+import { EmpireActivityType, EmpireActivity } from '../src/sim/pirates/empireActivity';
 import { totalMobileMilitaryFirepowerNotAttackingDefending, completePirateMission, pirateCheckAcceptDefendMission, pirateCheckMissionsOnOffer, reviewPirateDefendMissions, reviewPirateMissionsAndAssign, calculatePirateDefendPrice } from '../src/sim/pirates/missionsMarket';
-import { EmpireActivity } from '../src/sim/pirates/empireActivity';
 import { ShipGroup, empireShipGroups } from '../src/sim/fleets/shipGroup';
 import { BuiltObject } from '../src/sim/builtObject';
 import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
@@ -79,7 +78,7 @@ beforeAll(async () => {
 const age3 = (o: CreateGameOptions): CreateGameOptions => ({ ...o, player: { ...o.player, age: 3 }, aiEmpires: o.aiEmpires.map((e) => ({ ...e, age: 3 })) });
 
 function exGame(flags: Record<string, boolean> = {}, params: Record<string, number> = {}, older = true): { game: Game; g: Galaxy } {
-    const { game } = createScenarioGame(base, { scenario: 'exchange', flags: { threatExchange: true, ...flags }, params: { exchangeYear: 0, ...params }, options: older ? age3 : undefined });
+    const { game } = createScenarioGame(base, { scenario: 'exchange', flags: { threatExchange: true, ...flags }, params: { exchangeYear: 0, exchangeExistChancePct: 100, exchangeMinYear: 0, ...params }, options: older ? age3 : undefined });
     return { game, g: game.galaxy };
 }
 
