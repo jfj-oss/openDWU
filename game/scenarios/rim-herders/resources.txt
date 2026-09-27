@@ -1,6 +1,6 @@
 'Scenario rim-herders: herd goods — the creature-specific resources a Kaltor herd yields (kill drop, herder harvest).
 'No distributions: they never occur on planets; herder ports are their only steady source.
-'Ids 41-42 follow the stock 0-40 (resource ids index an array, so they must be contiguous). TODO(19j): a scenario
-'including both rimTrade (41-46) and rim-herders must renumber one set.
-41, Kaltor Shell, 38, 30.0, 2, 0, N, N, 0, 0,
-42, Kaltor Crystal, 0, 35.0, 2, 0, N, N, 0, 0,
+'Ids 47-48 follow rimTrade's 41-46 so both scenarios load together; loaded without rimTrade the overlay merge
+'(overlay.ts compactResourceIds) renumbers them to 41-42 — the package looks them up by name.
+47, Kaltor Shell, 38, 30.0, 2, 0, N, N, 0, 0,
+48, Kaltor Crystal, 0, 35.0, 2, 0, N, N, 0, 0,
