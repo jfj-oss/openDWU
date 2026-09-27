@@ -1,0 +1,22 @@
+'Scenario independents-active: texts of the independents as actors and independent leagues (tasks/19-mod-layer-scenarios.md §19k items 2-3).
+Scenario Independents Title;Independents
+Scenario Independents Militia Name;{0} Militia
+Scenario Independents League Name;League of {0}
+Scenario Independents League Formed;The independent colonies {1} have formed the {0}, with its council seat at {2}.
+Scenario Independents League Dissolved;The {0} has dissolved; its colonies are on their own again.
+Scenario Independents League Colony;The {0} has settled {1}, its one reach out of isolation.
+Scenario Independents League Protectorate Name;{0} Protectorate
+Scenario Independents Friction Title;Independent station in our space
+Scenario Independents Friction;The independent station {0} at {1} lies in a system we now claim. Buy it out, tolerate it, or clear it?
+Scenario Independents Buyout;Buy out ({0} credits)
+Scenario Independents Tolerate;Tolerate
+Scenario Independents Clear;Clear it
+Scenario Independents Offer Title;An independent league
+Scenario Independents Offer;The {0} ({1} colonies) is open to talks. Offer a protectorate, offer trade, or let it be?
+Scenario Independents Offer Protectorate;Offer a protectorate
+Scenario Independents Offer Trade;Offer trade
+Scenario Independents Offer Ignore;Let it be
+Scenario Independents Offer Accepted;The {0} accepted our protectorate; {1} colonies joined as the {2}.
+Scenario Independents Offer Split;The {0} split over our offer: {1} colonies refused to follow the council.
+Scenario Independents Offer Refused;The {0} refused our offer.
+Scenario Independents Trade Accepted;The {0} agreed to trade with us as a bloc.
