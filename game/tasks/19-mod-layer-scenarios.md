@@ -426,6 +426,12 @@ model code; all opt-in, off by default.
   protectorate/league offers, herder path, war goal; validated, budgeted, logged as commands; rules for the rest.
 4 Archivist + natural-language orders: a question box over the log/chronicle with retrieval; chat orders restricted to
   the command queue with confirmation (the 18a idea, now grounded).
+  DONE (flag llmArchivist, off by default, needs llmFoundations): Galactic History "Ask" tab — deterministic BM25
+  retrieval over the lines the player's empire knows (eventsKnownTo + its chronicle + its digest; top K ≤ 20, ≤ 400
+  tokens; sim/scenario/llm/archive.ts) → one 'player' request {answer, citations} (llm/archivist.ts; citations kept only
+  when they match a retrieved line), fallback "no archivist" + the raw lines; "Orders" tab — the 18a legal-move menu for
+  the HUD selection + frontier sector ops (sim/scenario/llm/orderMenu.ts) → one schema-enum op (llm/orders.ts) → a
+  confirmation line; only Confirm issues it via issuePlayerCommand; ambiguous → a question. test/llmArchivist.test.ts.
 Order: 1 → 2 → 3 → 4; ~1 agent-day each (Opus for prompts/schemas; Sonnet for the audit script).
 
 ## 19q — Knowledge model (accepted, later): unified suspected/confirmed/cleared reveal levels across fog, leads, wreck

@@ -5,7 +5,8 @@
   "include": ["event-log"],
   "flags": [
     { "name": "llmFoundations", "label": "Local model layer", "description": "Queue, digests and the yearly Chronicle (needs the advisor endpoint in Settings; without a model the Chronicle is the plain digest).", "default": false },
-    { "name": "llmStrategic", "label": "Model-driven strategy for nearby empires", "description": "Once a year each of the AI empires nearest you makes one deliberate move chosen by the local model among its legal moves (council motions and votes, peace terms, war goals, investigations, concessions, league offers, the herder path). Needs the local model layer; every choice is checked and applied as a recorded command, and the game's own rules keep running.", "default": false }
+    { "name": "llmStrategic", "label": "Model-driven strategy for nearby empires", "description": "Once a year each of the AI empires nearest you makes one deliberate move chosen by the local model among its legal moves (council motions and votes, peace terms, war goals, investigations, concessions, league offers, the herder path). Needs the local model layer; every choice is checked and applied as a recorded command, and the game's own rules keep running.", "default": false },
+    { "name": "llmArchivist", "label": "Archivist + spoken orders", "description": "Needs the local model layer. An Ask tab on Galactic History answers questions from what your empire knows (the event log, the chronicle, the digest; plain matching records when no model answers), and an Orders tab turns a typed order into one legal command, issued only after you confirm it.", "default": false }
   ],
   "params": [
     { "name": "llmRequestsPerYear", "label": "Model requests per game year (background budget)", "default": 60, "min": 0, "max": 5000 },
@@ -15,6 +16,7 @@
     { "name": "llmConcurrency", "label": "Requests in flight at once", "default": 1, "min": 1, "max": 2 },
     { "name": "llmDigestEvents", "label": "Event-log lines in a digest", "default": 6, "min": 0, "max": 12 },
     { "name": "llmChronicleEvents", "label": "Events of the year given to the chronicler", "default": 40, "min": 5, "max": 200 },
-    { "name": "llmStrategicEmpires", "label": "AI empires nearest you that the model advises (one per 30 game days)", "default": 5, "min": 0, "max": 12 }
+    { "name": "llmStrategicEmpires", "label": "AI empires nearest you that the model advises (one per 30 game days)", "default": 5, "min": 0, "max": 12 },
+    { "name": "llmArchivistLines", "label": "Records handed to the archivist", "default": 12, "min": 3, "max": 20 }
   ]
 }

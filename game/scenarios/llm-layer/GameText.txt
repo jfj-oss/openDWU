@@ -5,3 +5,15 @@ Chronicle Export;Export Markdown
 Chronicle Empty;No year has ended yet
 Chronicle Pending;The chronicler is still writing…
 Chronicle Fallback Note;(A plain record: no chronicler model answered.)
+Chronicle Tab Ask;Ask
+Chronicle Tab Orders;Orders
+Chronicle Ask Placeholder;Ask the archive (e.g. "When did we last fight the Dhayut?")
+Chronicle Ask Button;Ask
+Chronicle Ask Waiting;The archivist is searching the records…
+Chronicle Ask Cited;Cited records
+Chronicle Orders Placeholder;Give an order (e.g. "Send the selected fleet to Kygnos")
+Chronicle Orders Button;Interpret
+Chronicle Orders Waiting;The order clerk is reading your order…
+Chronicle Orders Confirm;Confirm
+Chronicle Orders Cancel;Cancel
+Chronicle Orders Issued;Order issued.

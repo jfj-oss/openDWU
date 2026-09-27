@@ -22,6 +22,12 @@ import type { Galaxy } from '../../sim/galaxy';
 import { EVENT_CATEGORIES, eventLogEntries, eventLogOn, eventsKnownTo, findEmpireById, type EventCategory, type EventLogEntry } from '../../sim/scenario/eventLog/log';
 import { categoryLabel, resolveEntryText, resolveEntryTitle } from '../../sim/scenario/eventLog/chronicle';
 import { chronicleMarkdown, chronicleOn, chronicleYears, dueChronicleYear } from '../../sim/scenario/llm/chronicle';
+import { archiveLineText, archiveQuestionsOn, archivistOn } from '../../sim/scenario/llm/archive';
+import type { PendingOrder } from '../../sim/scenario/llm/orderMenu';
+import { askArchivist } from '../../llm/archivist';
+import { confirmOrder, interpretOrder } from '../../llm/orders';
+import { currentLlmLayer } from '../../llm/llmLayer';
+import { advisorSelectionFromHud } from '../advisorPanel';
 
 // ---------------------------------------------------------------------------
 // Pure logic
@@ -495,6 +501,17 @@ export function galacticHistoryHasChronicle(galaxy: Galaxy | null | undefined): 
     return chronicleOn(galaxy);
 }
 
+export type GalacticHistoryTab = 'history' | 'chronicle' | 'ask' | 'orders';
+
+/** The screen's tabs: History always; Chronicle (19s-1), Ask and Orders (19s-4, flag llmArchivist) when on. */
+export function galacticHistoryTabs(galaxy: Galaxy | null | undefined): GalacticHistoryTab[] {
+    const tabs: GalacticHistoryTab[] = ['history'];
+    if (chronicleOn(galaxy)) tabs.push('chronicle');
+    if (archiveQuestionsOn(galaxy)) tabs.push('ask');
+    if (archivistOn(galaxy)) tabs.push('orders');
+    return tabs;
+}
+
 /** The Chronicle tab's rows, newest year first; a 'pending' row leads while a finished year is not written yet. */
 export function chronicleRows(galaxy: Galaxy, empire: Empire): ChronicleRow[] {
     const rows: ChronicleRow[] = chronicleYears(galaxy, empire)
@@ -581,15 +598,22 @@ function createGalacticHistory(opts: GalacticHistoryOptions): OpenState {
     const closeBtn = el('button', 'galactic-history-close', '✕') as HTMLButtonElement;
     closeBtn.type = 'button';
     closeBtn.title = 'Close';
-    // 19s-1: History | Chronicle tabs (only with the chronicle on).
-    const hasChronicle = galacticHistoryHasChronicle(empire.galaxy);
+    // 19s-1: History | Chronicle tabs (only with the chronicle on); 19s-4: Ask | Orders (flag llmArchivist).
+    const tabList = galacticHistoryTabs(empire.galaxy);
     const tabs = el('div', 'galactic-history-tabs');
-    const tabHistory = el('button', 'galactic-history-tab galactic-history-tab-active', tryGetText('Chronicle Tab History') ?? 'History') as HTMLButtonElement;
-    const tabChronicle = el('button', 'galactic-history-tab', tryGetText('Chronicle Tab Chronicle') ?? 'Chronicle') as HTMLButtonElement;
-    tabHistory.type = 'button';
-    tabChronicle.type = 'button';
-    tabs.append(tabHistory, tabChronicle);
-    if (hasChronicle) titlebar.append(heading, tabs, closeBtn);
+    const tabButton = (tag: string, fallback: string): HTMLButtonElement => {
+        const b = el('button', 'galactic-history-tab', tryGetText(tag) ?? fallback) as HTMLButtonElement;
+        b.type = 'button';
+        return b;
+    };
+    const tabHistory = tabButton('Chronicle Tab History', 'History');
+    tabHistory.classList.add('galactic-history-tab-active');
+    const tabChronicle = tabButton('Chronicle Tab Chronicle', 'Chronicle');
+    const tabAsk = tabButton('Chronicle Tab Ask', 'Ask');
+    const tabOrders = tabButton('Chronicle Tab Orders', 'Orders');
+    const tabButtons: Record<GalacticHistoryTab, HTMLButtonElement> = { history: tabHistory, chronicle: tabChronicle, ask: tabAsk, orders: tabOrders };
+    for (const t of tabList) tabs.appendChild(tabButtons[t]);
+    if (tabList.length > 1) titlebar.append(heading, tabs, closeBtn);
     else titlebar.append(heading, closeBtn);
 
     const body = el('div', 'galactic-history-body');
@@ -650,7 +674,43 @@ function createGalacticHistory(opts: GalacticHistoryOptions): OpenState {
     chronRight.append(chronHeading, chronText);
     chronBody.append(chronLeft, chronRight);
     chronBody.style.display = 'none';
-    win.append(titlebar, body, chronBody);
+    // 19s-4 Ask view: question box | answer + cited records.
+    const askBody = el('div', 'galactic-history-body galactic-history-ask');
+    const askForm = el('form', 'galactic-history-ask-form') as HTMLFormElement;
+    const askInput = document.createElement('input');
+    askInput.type = 'text';
+    askInput.className = 'galactic-history-ask-input';
+    askInput.maxLength = 400;
+    askInput.placeholder = tryGetText('Chronicle Ask Placeholder') ?? 'Ask the archive';
+    const askBtn = el('button', 'galactic-history-goto', tryGetText('Chronicle Ask Button') ?? 'Ask') as HTMLButtonElement;
+    askBtn.type = 'submit';
+    askForm.append(askInput, askBtn);
+    const askAnswer = el('div', 'galactic-history-msg-text galactic-history-chronicle-text galactic-history-ask-answer');
+    const askCited = el('div', 'galactic-history-ask-cited');
+    askBody.append(askForm, askAnswer, askCited);
+    askBody.style.display = 'none';
+    // 19s-4 Orders view: order box | the mapped order + Confirm / Cancel, or the clerk's question.
+    const ordBody = el('div', 'galactic-history-body galactic-history-ask');
+    const ordForm = el('form', 'galactic-history-ask-form') as HTMLFormElement;
+    const ordInput = document.createElement('input');
+    ordInput.type = 'text';
+    ordInput.className = 'galactic-history-ask-input';
+    ordInput.maxLength = 400;
+    ordInput.placeholder = tryGetText('Chronicle Orders Placeholder') ?? 'Give an order';
+    const ordBtn = el('button', 'galactic-history-goto', tryGetText('Chronicle Orders Button') ?? 'Interpret') as HTMLButtonElement;
+    ordBtn.type = 'submit';
+    ordForm.append(ordInput, ordBtn);
+    const ordLine = el('div', 'galactic-history-msg-text galactic-history-ask-answer');
+    const ordActions = el('div', 'galactic-history-ask-actions');
+    const ordConfirm = el('button', 'galactic-history-goto', tryGetText('Chronicle Orders Confirm') ?? 'Confirm') as HTMLButtonElement;
+    const ordCancel = el('button', 'galactic-history-goto', tryGetText('Chronicle Orders Cancel') ?? 'Cancel') as HTMLButtonElement;
+    ordConfirm.type = 'button';
+    ordCancel.type = 'button';
+    ordActions.append(ordConfirm, ordCancel);
+    ordActions.style.display = 'none';
+    ordBody.append(ordForm, ordLine, ordActions);
+    ordBody.style.display = 'none';
+    win.append(titlebar, body, chronBody, askBody, ordBody);
     root.appendChild(win);
     document.body.appendChild(root);
 
@@ -795,7 +855,7 @@ function createGalacticHistory(opts: GalacticHistoryOptions): OpenState {
     });
 
     // 19s-1 Chronicle tab.
-    let tab: 'history' | 'chronicle' = 'history';
+    let tab: GalacticHistoryTab = 'history';
     let chronYear: number | null = null;
     let chronKey = '';
     function chronicleKey(): string {
@@ -826,16 +886,76 @@ function createGalacticHistory(opts: GalacticHistoryOptions): OpenState {
         if (cur !== null && cur.source === 'fallback') chronText.textContent += `\n\n${tryGetText('Chronicle Fallback Note') ?? '(A plain record: no chronicler model answered.)'}`;
         exportBtn.disabled = !crow.some((r) => r.source !== 'pending');
     }
-    function setTab(t: 'history' | 'chronicle'): void {
+    function setTab(t: GalacticHistoryTab): void {
         tab = t;
-        tabHistory.classList.toggle('galactic-history-tab-active', t === 'history');
-        tabChronicle.classList.toggle('galactic-history-tab-active', t === 'chronicle');
+        for (const k of Object.keys(tabButtons) as GalacticHistoryTab[]) tabButtons[k].classList.toggle('galactic-history-tab-active', t === k);
         body.style.display = t === 'history' ? '' : 'none';
         chronBody.style.display = t === 'chronicle' ? '' : 'none';
+        askBody.style.display = t === 'ask' ? '' : 'none';
+        ordBody.style.display = t === 'orders' ? '' : 'none';
         if (t === 'chronicle') renderChronicle();
+        if (t === 'ask') askInput.focus();
+        if (t === 'orders') ordInput.focus();
     }
-    tabHistory.addEventListener('click', () => setTab('history'));
-    tabChronicle.addEventListener('click', () => setTab('chronicle'));
+    for (const k of Object.keys(tabButtons) as GalacticHistoryTab[]) tabButtons[k].addEventListener('click', () => setTab(k));
+
+    // 19s-4 Ask: one question at a time; the answer arrives between frames (the queue's promise) and only reads.
+    let closed = false;
+    let asking = false;
+    askForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const q = askInput.value.trim();
+        if (asking || q === '') return;
+        asking = true;
+        askBtn.disabled = true;
+        askAnswer.textContent = tryGetText('Chronicle Ask Waiting') ?? 'The archivist is searching the records…';
+        askCited.replaceChildren();
+        void askArchivist(empire.galaxy, empire, currentLlmLayer()?.queue ?? null, q).then((a) => {
+            asking = false;
+            askBtn.disabled = false;
+            if (closed) return;
+            askAnswer.textContent = a.answer;
+            askCited.replaceChildren();
+            if (a.citations.length > 0) {
+                askCited.appendChild(el('div', 'galactic-history-msg-heading', tryGetText('Chronicle Ask Cited') ?? 'Cited records'));
+                for (const c of a.citations) askCited.appendChild(el('div', 'galactic-history-ask-line', archiveLineText(c)));
+            }
+        });
+    });
+
+    // 19s-4 Orders: interpret → the confirmation line; only Confirm issues the command (through the command queue).
+    let pendingOrder: PendingOrder | null = null;
+    let interpreting = false;
+    function showOrder(text: string, order: PendingOrder | null): void {
+        pendingOrder = order;
+        ordLine.textContent = order !== null ? `${text} — confirm?` : text;
+        ordActions.style.display = order !== null ? '' : 'none';
+    }
+    ordForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const text = ordInput.value.trim();
+        if (interpreting || text === '') return;
+        interpreting = true;
+        ordBtn.disabled = true;
+        showOrder(tryGetText('Chronicle Orders Waiting') ?? 'The order clerk is reading your order…', null);
+        void interpretOrder(empire.galaxy, empire, currentLlmLayer()?.queue ?? null, advisorSelectionFromHud(), text).then((r) => {
+            interpreting = false;
+            ordBtn.disabled = false;
+            if (closed) return;
+            if (r.status === 'confirm') showOrder(r.line, r.order);
+            else showOrder(r.text, null);
+        });
+    });
+    ordConfirm.addEventListener('click', () => {
+        const order = pendingOrder;
+        if (order === null) return;
+        showOrder(tryGetText('Chronicle Orders Issued') ?? 'Order issued.', null);
+        confirmOrder(empire.galaxy, empire, order, (r) => {
+            if (!closed) ordLine.textContent = `${r.ok ? '✓' : '✗'} ${r.message}`;
+        });
+        ordInput.value = '';
+    });
+    ordCancel.addEventListener('click', () => showOrder('', null));
     exportBtn.addEventListener('click', () => {
         const blob = new Blob([chronicleMarkdown(empire.galaxy, empire)], { type: 'text/markdown' });
         const url = URL.createObjectURL(blob);
@@ -863,6 +983,7 @@ function createGalacticHistory(opts: GalacticHistoryOptions): OpenState {
     }, 1000);
 
     function close(): void {
+        closed = true;
         clearInterval(timer);
         document.removeEventListener('keydown', onKeyDown);
         root.remove();
