@@ -1,0 +1,24 @@
+{
+  "id": "independents-active",
+  "name": "Independents as Actors",
+  "description": "Independent colonies defend themselves with small militia fleets, send construction ships to build mining stations in their home system and nearby unclaimed systems (never colonies), and may band together into leagues that pool their defence, share stations, reach out with a single colony and negotiate as a bloc. Includes the rim herders (off by default).",
+  "include": ["rim-herders"],
+  "flags": [
+    { "name": "independentActors", "label": "Independents as actors", "description": "Per independent colony, scaled by population: a militia fleet (defend home), an independent construction ship building mining stations nearby (no colony ships), freighters and a militia refresh when ships die. Stations in systems another empire claims become friction points (buy out / tolerate / clear).", "default": true },
+    { "name": "independentLeagues", "label": "Independent leagues", "description": "Nearby independent colonies under threat or prosperous may form a league: pooled defence, shared stations, exactly one extra colony, bloc diplomacy and dissolution.", "default": true },
+    { "name": "rimHerders", "label": "Rim herders", "description": "Herder independents (19j); their tamed creatures serve as their militia, construction ships and freighters.", "default": false },
+    { "name": "rimFauna", "label": "Rim fauna herds", "description": "Rim-weighted Kaltor herds (19g-7); needed by the rim herders.", "default": false }
+  ],
+  "params": [
+    { "name": "independentActorsStationRadius", "label": "Station radius (sectors)", "default": 0.5, "min": 0, "max": 10 },
+    { "name": "independentActorsStationsPerColony", "label": "Mining stations per independent colony (cap)", "default": 2, "min": 0, "max": 10 },
+    { "name": "independentActorsFleetCap", "label": "Militia fleet size cap per colony", "default": 3, "min": 0, "max": 20 },
+    { "name": "independentActorsMilitiaDays", "label": "Militia refresh period (game days)", "default": 90, "min": 1, "max": 720 },
+    { "name": "independentLeaguesRadius", "label": "League radius (sectors)", "default": 1.0, "min": 0, "max": 20 },
+    { "name": "independentLeaguesMinMembers", "label": "Minimum league members", "default": 2, "min": 2, "max": 10 },
+    { "name": "independentLeaguesChance", "label": "League formation chance per year", "default": 0.25, "min": 0, "max": 1 },
+    { "name": "independentLeaguesFleetMultiplier", "label": "League fleet cap multiplier", "default": 1.5, "min": 1, "max": 5 },
+    { "name": "independentLeaguesOneColony", "label": "League sends its one extra colony (1 = on, 0 = off)", "default": 1, "min": 0, "max": 1 },
+    { "name": "independentLeaguesPullChance", "label": "Chance a member follows the council into a protectorate", "default": 0.6, "min": 0, "max": 1 }
+  ]
+}
