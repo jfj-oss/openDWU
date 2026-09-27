@@ -59,6 +59,12 @@ export interface MidGameEmpireSpec {
     setup?: boolean;
     /** Pirate play style (pirates; default Balanced). */
     piratePlayStyle?: PiratePlayStyle;
+    /**
+     * 'empire' kind (not adoptOnly): runs right after GenerateEmpire (and configurePolicy), before the starting-empire
+     * set-up — e.g. extra starting colonies (19a rimTraderStartColonies), which the set-up then equips like the
+     * wizard's starting colonies (space ports, mining stations, garrisons). May draw galaxy.rnd.
+     */
+    beforeSetup?: (empire: Empire) => void;
     /** Adjust the loaded policy before the set-up (e.g. aggressive posture). */
     configurePolicy?: (policy: EmpirePolicy) => void;
     /** Evaluation bias set both ways between the new empire and every other normal empire (default: left as generated). */
@@ -164,6 +170,7 @@ export function createEmpireMidGame(galaxy: Galaxy, spec: MidGameEmpireSpec): Em
             home.baseQuality = kept.baseQuality;
         }
         if (empire.policy !== null) spec.configurePolicy?.(empire.policy);
+        spec.beforeSetup?.(empire);
         if (spec.setup ?? true) empireStorySetup(galaxy, empire, 3.5, true, false);
         else resetEmpireTouchTimesForAge(galaxy, empire);
     }

@@ -26,3 +26,17 @@ Scenario RimTrade Treasure Docks;The treasure fleet of the {0} has docked at {1}
 Scenario RimTrade Treasure Docks Host;The treasure fleet of the {0} has docked at {1}. It buys rim goods and, for those in good standing, sells its rare goods.
 Scenario RimTrade Treasure Returns;The treasure fleet of the {0} has returned to {1}.
 Scenario RimTrade Treasure Raided;A treasure ship of the {0} has been destroyed by the {1}.
+Scenario RimTrade Angered Title;The Concord is provoked
+Scenario RimTrade Angered;The {0} have been provoked by the {1}, who {2}. Their fleets may now strike back within {3} sectors of their space.
+Scenario RimTrade Angered You;The {0} hold us to account: we {1}. They may now declare war on us, and their fleets may strike our assets within {2} sectors of their space.
+Scenario RimTrade Calmed;The anger of the {0} toward the {1} has cooled. Their fleets keep to their own systems once more.
+Scenario RimTrade Calmed You;The anger of the {0} toward us has cooled. Their fleets keep to their own systems once more.
+Scenario RimTrade Action War;declared war on them
+Scenario RimTrade Action Attack;attacked their ships or bases
+Scenario RimTrade Action Destroy;destroyed their ships or bases
+Scenario RimTrade Action Colony;attacked their colonies
+Scenario RimTrade Action Blockade;blockaded their colonies
+Scenario RimTrade Action Invasion;invaded their colonies
+Scenario RimTrade Action Treasure;sank a treasure ship
+Scenario RimTrade Action Espionage;sent agents to sabotage them
+Scenario RimTrade Action Standing;let their standing fall below {0}

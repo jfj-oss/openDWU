@@ -424,6 +424,8 @@ export function notifyOfAttackBuiltObject(galaxy: Galaxy, attacker: StellarObjec
     if (builtObjectUnderAttack === null || builtObjectUnderAttack.empire === null || attacker === null) {
         return;
     }
+    // mod layer (19a passive posture: the Concord remembers who attacked it): no-op without a scenario; handlers never draw.
+    if (galaxy.scenario !== null) scenarioEmit(galaxy, 'builtObjectAttacked', { builtObject: builtObjectUnderAttack, attacker, attackingEmpire });
     const distressSignal = checkForMatchingSignalSameTargetType(galaxy, builtObjectUnderAttack.empire, attackingEmpire, builtObjectUnderAttack, DistressSignalType.UnderAttack);
     if (distressSignal === null) {
         const distressSignal2 = new DistressSignal(builtObjectUnderAttack, DistressSignalType.UnderAttack, galaxyStarDate(galaxy));

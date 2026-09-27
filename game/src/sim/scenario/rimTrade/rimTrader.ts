@@ -1,11 +1,12 @@
 // Scenario package 19a "rim trader" (tasks/19a-rim-trader.md): hook registrations — game start (place / find the
 // Oranthi Concord, seed its rare goods), the contract listener (standing ledger) and the yearly handler (decay,
 // consumption, import orders, stock move, terms messages). Not a port: every stock call it makes is ported code.
-// Rnd: only the game-start handler draws (createEmpireMidGame / scenarioFindHomeHabitat / the abundance rolls).
+// Rnd: only the game-start handler draws (createEmpireMidGame / scenarioFindHomeHabitat / the abundance rolls, and with
+// rimTraderStartColonies > 1 the extra colonies' Galaxy.8.cs MakeHabitatIntoColony draws — none at 1).
 
 import type { Galaxy } from '../../galaxy';
 import type { Empire } from '../../empire';
-import type { Habitat } from '../../types';
+import { HabitatCategoryType, type Habitat } from '../../types';
 import { BuiltObject } from '../../builtObject';
 import { Cargo, ResourceRef, type CargoList } from '../../cargo';
 import { registerScenarioEvent, registerScenarioGameStart, registerScenarioYearly, scenarioFindHomeHabitat, type HomePlacementHelpers } from '../hooks';
@@ -16,8 +17,13 @@ import { noteVoiceCue, voicesOn } from '../llm/voiceCues';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from '../../diplomacy';
 import { OrderType, cargoGetCargo, cargoRemove, empireCreateOrder } from '../../logistics/orders';
 import { EmpireMessageType } from '../../messages';
+import { makeHabitatIntoColony } from '../../colony';
+import { checkColoniesForBaseFacilities } from '../../stationPlacement';
+import { recalculateEmpirePopulation } from '../../taxes';
+import { recalculateAnnualTaxRevenue } from '../../forceStructure';
+import { radiusFraction } from '../hooks';
 import { applyConcordTech, treasureParam, treasureState } from './treasureFleet';
-import { RIM_RACE, rareGoodIds, resourceName, rimGoodIds, rimParam, rimTradeState, rimTraderEmpire, rimTraderPort } from './common';
+import { RIM_MIN_RADIUS, RIM_RACE, rareGoodIds, resourceName, rimGoodIds, rimParam, rimTradeState, rimTraderEmpire, rimTraderPort } from './common';
 
 /** Import order lot size (units). */
 export const IMPORT_LOT = 100;
@@ -74,6 +80,82 @@ function seedPortStock(galaxy: Galaxy, r: Empire): void {
     for (const id of rareGoodIds(galaxy)) cargo.add(new Cargo(new ResourceRef(id), amount, r));
 }
 
+// ---------------------------------------------------------------------------------------------------------------
+// Starting colonies (rimTraderStartColonies)
+// ---------------------------------------------------------------------------------------------------------------
+
+/** First pick: a high-quality world (Habitat.cs Quality, the game's own measure; continental worlds roll 0.8-1.0). */
+export const RIM_START_HIGH_QUALITY = 0.7;
+/** Fallback: the original's colonization-worthy line (Empire.4.cs 4716 / Galaxy.1.cs 935 `Quality >= 0.5f`). */
+export const RIM_START_MIN_QUALITY = 0.5;
+/** Candidates lie within this many sectors of the capital. */
+export const RIM_START_MAX_SECTORS = 3;
+
+/**
+ * The worlds the Concord's extra starting colonies go to, best first: uncolonized, unpopulated planets / moons of a type
+ * the Concord can live on (ColonizableHabitatTypesForEmpire + its native type), quality ≥ RIM_START_MIN_QUALITY, in a
+ * system no other empire holds and territory the Concord may colonize (Galaxy.cs 3607), within RIM_START_MAX_SECTORS of
+ * the capital. Order: rim worlds (radius ≥ RIM_MIN_RADIUS) before core worlds, high quality (≥ RIM_START_HIGH_QUALITY)
+ * before the rest, then nearest first (ties: habitat order). Pure (no Rnd). Exported for tests.
+ */
+export function concordStartColonyCandidates(galaxy: Galaxy, r: Empire, max: number): Habitat[] {
+    const capital = r.capital;
+    const race = r.dominantRace;
+    if (capital === null || race === null || max <= 0) return [];
+    const types = r.colonizableHabitatTypesForEmpire();
+    if (!types.includes(race.nativeHabitatType)) types.push(race.nativeHabitatType);
+    const limit = galaxy.sectorSize * RIM_START_MAX_SECTORS;
+    const foreignSystem = new Map<number, boolean>();
+    const out: { h: Habitat; tier: number; d: number }[] = [];
+    for (const h of galaxy.habitats) {
+        if (h.category !== HabitatCategoryType.Planet && h.category !== HabitatCategoryType.Moon) continue;
+        if (h.hasBeenDestroyed || h.empire !== null || h.owner !== null || h.population.totalAmount > 0) continue;
+        if (!types.includes(h.type) || !(h.quality >= RIM_START_MIN_QUALITY)) continue;
+        const d = galaxy.calculateDistance(capital.xpos, capital.ypos, h.xpos, h.ypos);
+        if (d > limit) continue;
+        let foreign = foreignSystem.get(h.systemIndex);
+        if (foreign === undefined) {
+            foreign = galaxy.systemHabitatsOf(h.systemIndex).some((x) => x.empire !== null && x.empire !== r && x.empire !== galaxy.independentEmpire);
+            foreignSystem.set(h.systemIndex, foreign);
+        }
+        if (foreign || !galaxy.checkEmpireTerritoryCanColonizeHabitat(r, h)) continue;
+        const tier = (radiusFraction(galaxy, h.xpos, h.ypos) >= RIM_MIN_RADIUS ? 0 : 2) + (h.quality >= RIM_START_HIGH_QUALITY ? 0 : 1);
+        out.push({ h, tier, d });
+    }
+    out.sort((a, b) => a.tier - b.tier || a.d - b.d);
+    return out.slice(0, max).map((x) => x.h);
+}
+
+/**
+ * Founds the Concord's extra starting colonies until it holds `rimTraderStartColonies` (the capital counts), through the
+ * wizard's starting-colony path (game.ts starting colonies: Galaxy.8.cs MakeHabitatIntoColony — population, cargo,
+ * development, garrison — then the territory update). `equip`: the empire's set-up already ran (a wizard-generated
+ * Oranthi), so the new colonies get the per-colony parts of it here (base facilities, population / tax totals); a
+ * createEmpireMidGame Concord passes false (its empireStorySetup follows and equips them, space ports included).
+ * Draws galaxy.rnd (MakeHabitatIntoColony) only when a colony is founded. Returns the colonies founded.
+ */
+export function foundConcordStartColonies(galaxy: Galaxy, r: Empire, equip: boolean): Habitat[] {
+    const want = Math.trunc(rimParam(galaxy, 'rimTraderStartColonies'));
+    const race = r.dominantRace;
+    if (race === null || want - r.colonies.length <= 0) return [];
+    const picks = concordStartColonyCandidates(galaxy, r, want - r.colonies.length);
+    for (const h of picks) {
+        makeHabitatIntoColony(galaxy, h, r, galaxy.startingAge, race, 1.0, false);
+        const i = galaxy.independentColonies.indexOf(h);
+        if (i >= 0) galaxy.independentColonies.splice(i, 1);
+        galaxy.empireTerritory.reviewEmpireTerritoryUpdate(galaxy, { x: Math.trunc(h.xpos) - 1600000, y: Math.trunc(h.ypos) - 1600000, w: 3200000, h: 3200000 });
+    }
+    if (picks.length > 0) {
+        galaxy.updateSystemInfo();
+        if (equip) {
+            checkColoniesForBaseFacilities(r);
+            recalculateEmpirePopulation(r);
+            for (const h of picks) recalculateAnnualTaxRevenue(galaxy, h);
+        }
+    }
+    return picks;
+}
+
 /** The game-start handler `rimTrade.start` (flag rimTrader). Exported for tests. */
 export function rimTraderGameStart(galaxy: Galaxy, ctx: HomePlacementHelpers): void {
     const st = rimTradeState(galaxy);
@@ -86,7 +168,16 @@ export function rimTraderGameStart(galaxy: Galaxy, ctx: HomePlacementHelpers): v
             return;
         }
         // 19a addendum: created at tech level rimTraderTechLevel (GenerateEmpire techLevel → SetTechTreeLevel).
-        r = createEmpireMidGame(galaxy, { race: RIM_RACE, home, age: galaxy.startingAge, techLevel: treasureParam(galaxy, 'rimTraderTechLevel'), homeSystemFavourability: 'Excellent', setup: true });
+        r = createEmpireMidGame(galaxy, {
+            race: RIM_RACE,
+            home,
+            age: galaxy.startingAge,
+            techLevel: treasureParam(galaxy, 'rimTraderTechLevel'),
+            homeSystemFavourability: 'Excellent',
+            setup: true,
+            // rimTraderStartColonies: the extra colonies are founded before the set-up equips the empire.
+            beforeSetup: (e) => void foundConcordStartColonies(galaxy, e, false),
+        });
         if (r === null) {
             st.empireId = -1;
             return;
@@ -95,6 +186,8 @@ export function rimTraderGameStart(galaxy: Galaxy, ctx: HomePlacementHelpers): v
     } else if (r !== galaxy.playerEmpire) {
         // An Oranthi AI the wizard already generated (at the game's tech level): lift it to the Concord's.
         applyConcordTech(galaxy, r, true);
+        // rimTraderStartColonies: top up the wizard's starting colonies.
+        foundConcordStartColonies(galaxy, r, true);
     }
     treasureState(galaxy);
     st.empireId = r.empireId;

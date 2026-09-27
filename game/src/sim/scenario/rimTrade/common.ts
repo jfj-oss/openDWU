@@ -20,7 +20,11 @@ export const RIM_MIN_RADIUS = 0.72;
 
 /** Manifest defaults (scenario.json) — the fallbacks of scenarioParam. */
 export const RIM_PARAM_DEFAULTS = {
-    rimTraderMaxColonies: 4,
+    rimTraderMaxColonies: 10,
+    rimTraderStartColonies: 3,
+    rimTraderAngerStanding: -3000,
+    rimTraderRetaliationRange: 2,
+    rimTraderAngerDecay: 0.5,
     rimTraderExchangeRate: 1.0,
     rimTraderGrantThreshold: 1500,
     rimTraderImportQuota: 400,
@@ -177,15 +181,77 @@ export function rimTraderAccessChanged(galaxy: Galaxy, r: Empire, other: Empire 
     }
 }
 
-/** R1 (step 9): the Concord AI never declares war. 19c extends this. */
+/**
+ * R1 (step 9): the Concord AI never declares war. 19c extends this. With the passive posture (flag rimTraderPassive) the
+ * block lifts toward an empire that provoked the Concord (an aggressive action recorded in `rimAnger`, passive.ts): the
+ * stock war review may then declare war on it.
+ */
 export function scenarioWarBlocked(galaxy: Galaxy, self: Empire, target: Empire | null): boolean {
-    void target;
-    return scenarioFlag(galaxy, 'rimTrader') && isRimTraderAI(galaxy, self);
+    if (!scenarioFlag(galaxy, 'rimTrader') || !isRimTraderAI(galaxy, self)) return false;
+    if (target !== null && scenarioFlag(galaxy, 'rimTraderPassive') && rimAngeredAt(galaxy, target)) return false;
+    return true;
 }
 
 /** R2 (step 8): the Concord AI stops colonizing at the cap. */
 export function rimTraderColonyCapReached(galaxy: Galaxy, empire: Empire): boolean {
     return isRimTraderAI(galaxy, empire) && empire.colonies.length >= rimParam(galaxy, 'rimTraderMaxColonies');
+}
+
+/** R2 for the base-sim guards (colony founding): the flag and the cap. Pure. */
+export function rimTraderColonyCapBlocks(galaxy: Galaxy, empire: Empire | null): boolean {
+    return empire !== null && scenarioFlag(galaxy, 'rimTrader') && rimTraderColonyCapReached(galaxy, empire);
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Passive posture: the anger ledger (flag rimTraderPassive; the handlers live in passive.ts)
+// ---------------------------------------------------------------------------------------------------------------
+
+/** The aggressive actions the Concord remembers (tasks/19a-rim-trader.md, passive posture). */
+export type RimAggression =
+    | 'declaredWar' // declared war on the Concord (event warDeclared)
+    | 'attackedShip' // attacked a Concord ship or base (Galaxy.7.cs 2987 NotifyOfAttack → event builtObjectAttacked)
+    | 'destroyedShip' // destroyed a Concord ship or base (event builtObjectKilledBy / warDamageInflicted)
+    | 'attackedColony' // attacked or bombarded a Concord colony (Galaxy.7.cs 3058 NotifyOfAttack → event habitatAttacked)
+    | 'blockade' // blockaded a Concord colony or base (Galaxy.Blockades, sampled every 10 days)
+    | 'invasion' // invaded or destroyed a Concord colony (event warDamageInflicted with a habitat)
+    | 'treasureRaid' // sank a treasure ship (the treasureRaidPenalty event)
+    | 'espionage' // sabotage / assassination / incited revolution against the Concord, attributed (detected) to it
+    | 'lowStanding'; // rim-trade standing below rimTraderAngerStanding
+
+export interface RimAngerEntry {
+    /** 1 when provoked; falls by rimTraderAngerDecay per year of peace; ≤ 0 = calm. */
+    anger: number;
+    /** Star date of the last aggressive action. */
+    last: number;
+    lastAction: RimAggression;
+    /** Aggressive actions recorded, by kind. */
+    counts: Partial<Record<RimAggression, number>>;
+}
+
+/** Saved state (`scenarioState(galaxy, 'rimAnger')`, created only with the passive flag on): plain data. */
+export interface RimAngerState {
+    /** By empireId. */
+    byEmpire: Record<number, RimAngerEntry>;
+    stats: { provoked: number; calmed: number };
+}
+
+export function rimAngerState(galaxy: Galaxy): RimAngerState {
+    return scenarioState<RimAngerState>(galaxy, 'rimAnger', () => ({ byEmpire: {}, stats: { provoked: 0, calmed: 0 } }));
+}
+
+/** The Concord is angered at `other` (an aggressive action not yet decayed). Pure; false with no anger state. */
+export function rimAngeredAt(galaxy: Galaxy, other: Empire | null): boolean {
+    if (other === null || galaxy.scenario === null || !('rimAnger' in galaxy.scenario.state)) return false;
+    const e = rimAngerState(galaxy).byEmpire[other.empireId];
+    return e !== undefined && e.anger > 0;
+}
+
+/** Whether the Concord is angered at anyone. Pure. */
+export function rimAngeredAtAnyone(galaxy: Galaxy): boolean {
+    if (galaxy.scenario === null || !('rimAnger' in galaxy.scenario.state)) return false;
+    const by = rimAngerState(galaxy).byEmpire;
+    for (const k of Object.keys(by)) if (by[Number(k)].anger > 0) return true;
+    return false;
 }
 
 /** R7 (step 10): treaty types the Concord refuses. */

@@ -1508,6 +1508,8 @@ export function performIntelligenceMissions(galaxy: Galaxy, self: Empire): void 
             const ff = scenarioFlag(galaxy, ESPIONAGE_FLAG) ? (espionageHooks.attribution?.(galaxy, self, targetEmpire, mission3, character3, intelligenceMissionOutcome) ?? null) : null;
             const blamed = ff === null ? self : ff.blamed;
             const spyEmpire = ff === null ? character3.empire : blamed;
+            // mod layer (19a passive posture: an exposed agent's act angers the Concord): no-op without a scenario; no Rnd.
+            if (galaxy.scenario !== null && (intelligenceMissionOutcome === O.SucceedDetect || intelligenceMissionOutcome === O.FailDetect || intelligenceMissionOutcome === O.Capture)) scenarioEmit(galaxy, 'intelMissionExposed', { empire: self, blamed, target: targetEmpire, missionType: mission3.type, outcome: intelligenceMissionOutcome });
             let empireEvaluation2: EmpireEvaluation | null = null;
             let pirateRelation3: PirateRelation | null = null;
             if (targetEmpire.pirateEmpireBaseHabitat === null && self.pirateEmpireBaseHabitat === null) empireEvaluation2 = obtainEmpireEvaluation(galaxy, targetEmpire, blamed);

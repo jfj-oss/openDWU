@@ -9,7 +9,7 @@ import type { Empire } from '../src/sim/empire';
 import { runGameSeconds } from '../src/sim/tick/harness';
 import { YEAR_LENGTH } from '../src/sim/galaxyTime';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from '../src/sim/diplomacy';
-import { rimTradeState, rimTraderEmpire, rimParam } from '../src/sim/scenario/rimTrade/common';
+import { rimAngeredAt, rimTradeState, rimTraderEmpire, rimParam } from '../src/sim/scenario/rimTrade/common';
 import { declareWar } from '../src/sim/diplomacyTick';
 
 let base: GameData;
@@ -37,7 +37,9 @@ describe('19a rim trader soak', () => {
         }
         console.log(summary.join('\n'));
         // R1: a direct declaration by the Concord is a no-op.
-        const target = g.empires.find((e) => e !== null && e !== r && e.active && obtainDiplomaticRelation(r, e).type !== DiplomaticRelationType.War) ?? null;
+        // (rimTraderPassive, default on: the Concord may declare war on an empire that provoked it, so the target is one
+        // it is not angered at.)
+        const target = g.empires.find((e) => e !== null && e !== r && e.active && obtainDiplomaticRelation(r, e).type !== DiplomaticRelationType.War && !rimAngeredAt(g, e)) ?? null;
         if (target !== null) {
             const before = obtainDiplomaticRelation(r, target).type;
             declareWar(g, r, target);
