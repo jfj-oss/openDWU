@@ -20,6 +20,7 @@ import { fleetCycleList, fleetName, fleetSystemName, shipGroupSelectionRows, tog
 // [/15c]
 import { SystemVisibilityStatus } from '../sim/visibility';
 import { flagShapeUrl } from '../sim/startGameOptions';
+import { resolveEmpireEmblem } from './empireEmblem';
 import { createGameMenu, type GameMenuRefs } from './screens/gameMenu';
 import { setGameMenuHandler, setCycleHandler, type CycleKind } from './keyboard';
 import { uiClickSounds } from '../audio/effectsPlayer';
@@ -837,6 +838,15 @@ function buildEmpireFlagButton(wiring: HudWiring): HTMLElement {
             flag.draggable = false;
             flag.style.filter = `sepia(1) saturate(4) hue-rotate(${colorHueRotate(game.playerEmpire.mainColor)}deg)`;
             btn.appendChild(flag);
+            // 19r: a derived / scenario flag (company, seceded state, exile, Ghost Armada, Ossuvan herders) replaces it.
+            if (wiring.galaxy?.scenario != null) {
+                void resolveEmpireEmblem(wiring.galaxy, game.playerEmpire as Empire).then((e) => {
+                    if (e.flagUrl !== null && e.flagFilter === '') {
+                        flag.src = e.flagUrl;
+                        flag.style.filter = '';
+                    }
+                });
+            }
         }
     }
     btn.addEventListener('click', () => {

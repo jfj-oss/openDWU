@@ -10,6 +10,7 @@ import type { Empire } from '../../sim/empire';
 import type { Habitat } from '../../sim/types';
 import { DiplomaticRelationType } from '../../sim/diplomacy';
 import { PirateRelationType } from '../../sim/pirateRelations';
+import { applyEmpireEmblem } from '../empireEmblem';
 import { rimTraderTag } from '../scenario/rimTraderRows';
 
 export interface EmpiresListOptions {
@@ -146,6 +147,17 @@ function createEmpiresList(opts: EmpiresListOptions): OpenState {
         const name = document.createElement('span');
         name.className = 'empires-list-name';
         name.textContent = row.label;
+        // 19r: the empire's flag (derived / scenario flags through the emblem overrides).
+        if (row.empire.galaxy?.scenario != null) {
+            const flag = document.createElement('img');
+            flag.className = 'empires-list-flag';
+            flag.alt = '';
+            flag.draggable = false;
+            flag.style.cssText = 'width:24px;height:14px;margin-right:6px;vertical-align:middle';
+            flag.addEventListener('error', () => flag.remove());
+            applyEmpireEmblem(flag, row.empire.galaxy, row.empire, 'flag');
+            name.prepend(flag);
+        }
         // [rimTrader] begin
         const rimTag = row.empire.galaxy != null ? rimTraderTag(row.empire.galaxy, row.empire) : '';
         if (rimTag !== '') name.appendChild(Object.assign(document.createElement('span'), { className: 'empires-list-tag', textContent: rimTag }));

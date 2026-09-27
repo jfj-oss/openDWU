@@ -37,6 +37,7 @@ import {
     resetAttitudeLevelsAtEndOfWar,
 } from '../../sim/diplomacyTick';
 import { galaxyStarDate } from '../../sim/tick/simTime';
+import { applyEmpireEmblem } from '../empireEmblem';
 import { rimTraderTermsRows, type RimTraderTermsRows } from '../scenario/rimTraderRows';
 import { rimTraderEmpire } from '../../sim/scenario/rimTrade/common';
 import { REAL_SECONDS_IN_GALACTIC_YEAR } from '../../sim/galaxyTime';
@@ -396,6 +397,18 @@ function rimTraderTermsBlock(t: RimTraderTermsRows): HTMLElement {
 }
 // [rimTrader] end
 
+/** 19r: an emblem image (stock art at once, the override when ready); removed if it fails to load. */
+function emblemImg(className: string, empire: Empire, which: 'portrait' | 'flag', style: string): HTMLImageElement {
+    const img = document.createElement('img');
+    img.className = className;
+    img.alt = '';
+    img.draggable = false;
+    img.style.cssText = style;
+    img.addEventListener('error', () => img.remove());
+    applyEmpireEmblem(img, empire.galaxy, empire, which);
+    return img;
+}
+
 function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
     const root = el('div', 'diplomacy-wrap');
     const win = el('div', 'diplomacy-window');
@@ -466,6 +479,9 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
         const tSwatch = el('span', 'diplomacy-swatch');
         tSwatch.style.background = rgb(row.color);
         title.append(tSwatch, el('span', 'diplomacy-detail-name', row.name));
+        // 19r: the empire's portrait and flag (derived / scenario art through the emblem overrides).
+        title.prepend(emblemImg('diplomacy-portrait', row.empire, 'portrait', 'width:48px;height:48px;margin-right:8px;border-radius:3px;vertical-align:middle'));
+        title.append(emblemImg('diplomacy-flag', row.empire, 'flag', 'width:40px;height:24px;margin-left:8px;vertical-align:middle'));
         detail.appendChild(title);
 
         detail.appendChild(el('div', 'diplomacy-section-heading', 'Current Relationship With Us'));
