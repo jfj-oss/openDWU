@@ -369,6 +369,34 @@ the ported empire messages feed; Galactic History, NewsNet, the ticker, the futu
 replay theatre (19e-1) consume it; filters by category/actor; save/load; a query for "what happened between A and B".
 Flag off = byte-identical (the log is a scenario-side mirror). ~1.5 agent-days (Opus).
 
+## 19r — Art bundle 2 (ACCEPTED by the user 2026-09-27 — "i like all of these ideas" + withered look)
+1. Damage overlay (BASE GAME port): Main.Part12.cs method_106 (ships: blotch clusters, count = 0.7 × damaged-component
+   share × sprite area, Random(BuiltObjectID), cross-hatch grey 160 over near-black = inner scaffolding, clipped to the
+   hull alpha), method_107 (fighters by health), method_108 (creatures by damage, per-species flesh colours; SilverMist =
+   alpha fade, already ported), method_113 (the cluster painter). Cached per object, rebuilt when the damaged share
+   changes. Flagged extras (off = faithful): ember glow in fresh blotches for a few seconds, scorch darkening around
+   clusters. Applies to the procedural fauna and Concord ships too.
+2. League presence: generated league flag (founder shape + chain-link emblem, league colour) as a pennant beside member
+   colonies; ringed council-seat marker; dotted member boundary at sector zoom; flag/name in the empires list and
+   diplomacy screen; a label on the treasure-fleet marker.
+3. Herder identity: Ossuvan portrait = hooded weathered face-frame over the Teekan portrait (fur hood, beads, herd-shell
+   pendant, earth tones); flag with a horned-herd emblem; tents/pens drawn over their station/port art.
+4. Threat site markers by reveal level (suspected = uncertain, confirmed = solid): ash cloud (Grey Tide nest), violet
+   ring + glyph (cult world), pulsing dead-signal circle (Silence source), mirrored double outline (sleeper ship),
+   hex lattice tint (Hive world), red pulse (Dark Farm), ledger-and-scales icon (Exchange station).
+5. Wreck fields: debris of hull fragments cut from the destroyed ships' own art via the wreck records, crew-pod lights
+   blinking out as the field decays, the field shrinking as salvage removes wrecks; scavengers visibly in it.
+6. Derived flags/portraits: company = founder flag + corner seal, corporate portrait border; seceded state = torn,
+   recoloured parent flag; government in exile = black border; Ghost Armada = dead empire's flag desaturated + skull.
+7. Empire liveries + WITHERED look (overlays on the ORIGINAL sprites, computed once per texture from the alpha mask:
+   centreline/length for a tint band and hull number near the stern, distance-transform flat region for the emblem
+   decal, mid-tone luminance gate so windows/engines/seams stay clean; cached): tint band, emblem, hull number; withering
+   grows with ship age and time since last retrofit/dock repair — faded paint, seam grime, rust streaks from rivets
+   in the travel direction, micrometeorite pitting on leading edges, engine scorch, bleached decals — reset by
+   retrofit/long repair; storm lightning leaves charred streaks after repair; pirates start withered and rarely reset;
+   Concord treasure ships get salt bloom / barnacle growth on hull edges; capped subtle; all off by flag.
+~1.5 agent-days (Opus).
+
 ## 19q — Knowledge model (accepted, later): unified suspected/confirmed/cleared reveal levels across fog, leads, wreck
 fields, the treasure beacon, herd sightings, threat overlays and story clues; one overlay manager; a sightings feed. Effort: medium (~1 agent-day);
 build after 19d2 (unrest plumbing) alongside 19g-7 rim fauna; 19a/19c tests must still pass with 19h on.
