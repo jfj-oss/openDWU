@@ -23,7 +23,16 @@ import { fleetCycleList, fleetName, fleetSystemName, shipGroupSelectionRows, tog
 import { SystemVisibilityStatus } from '../sim/visibility';
 import { flagShapeUrl } from '../sim/startGameOptions';
 import { rimSystemDisplayName, type RimNameHost } from '../sim/scenario/rimNames'; // [rimatmo-wiring] 19i item 11
-import { raceDisplayOverride } from '../render/concordArt';
+import { raceDisplayOverride, raceHasConcordArt } from '../render/concordArt';
+// [troopart] begin
+import { troopImageUrl, wireTroopImageFallback } from '../render/troopImages';
+import { Troop, TroopList } from '../sim/cargo';
+import type { Race } from '../sim/data/races';
+import { resolveInvasionEmpires } from '../sim/troops';
+import { calculateForceStrengths, calculatePopulationStrength } from '../sim/combat/invasion';
+import { stellarObjectCharacters, habitatInvadingCharacterList } from '../sim/characters';
+import { troopCountsByType, troopCompositionDescription } from './screens/troops';
+// [/troopart]
 import { resolveEmpireEmblem } from './empireEmblem';
 import { createGameMenu, type GameMenuRefs } from './screens/gameMenu';
 import { setGameMenuHandler, setCycleHandler, type CycleKind } from './keyboard';
@@ -35,7 +44,7 @@ import { setEmpireSummarySource, getEmpireSummarySource, toggleEmpireSummary } f
 // [leftovers] begin
 import { toggleGalacticHistory } from './screens/galacticHistory';
 // [leftovers] end
-import { toggleColoniesList } from './screens/coloniesList';
+import { toggleColoniesList, formatThousandsK } from './screens/coloniesList';
 import { toggleShipDesigns } from './screens/shipDesigns'; // [16b]
 import { toggleShipsAndBasesList } from './screens/shipsAndBasesList';
 import { toggleMessageHistory } from './screens/messageHistory';
@@ -1563,6 +1572,169 @@ export function builtObjectRows(bo: BuiltObject): { label: string; value: string
     return rows;
 }
 
+// ---------------------------------------------------------------------------------------------------------------
+// [troopart] Troop images + invasion status (colony panel and the ship panel's troop transports).
+// ---------------------------------------------------------------------------------------------------------------
+
+/**
+ * Port of InfoPanel.cs:2609 DrawTroopsAgents (the icon strip only — Characters/InvadingCharacters get their own
+ * icons there too, but this panel has no character UI yet; TODO(port): Characters / InvadingCharacters icons,
+ * InfoPanel.cs:2609 DrawTroopsAgents). One small race/type image per troop: a garrisoned troop gets the green
+ * tint (`Color.FromArgb(0,128,0)` behind the icon, lines 2841/2870), a troop being recruited is dimmed (the C#'s
+ * separate `_TroopImagesFaded*` arrays; done here with CSS opacity), an invading troop sits on the red chip
+ * (`Color.Red`, lines 2882-2892). `label` is "Troops" for a colony (DrawTroopsAgents' own label) or
+ * "Troops {used}/{capacity}" for a ship (BaconInfoPanel.cs:666 the `prefix` string, GameText "Troop UNITS
+ * CAPACITY" = "{0}/{1}").
+ */
+function troopsAgentsRow(galaxy: Galaxy, label: string, troops: readonly Troop[], recruiting: readonly Troop[], invading: readonly Troop[]): SelectionRow | null {
+    if (troops.length === 0 && recruiting.length === 0 && invading.length === 0) return null;
+    const raceCount = galaxy.races.length;
+    const line = document.createElement('div');
+    line.className = 'hud-money-row hud-troop-row';
+    const k = document.createElement('span');
+    k.className = 'hud-label';
+    k.textContent = label;
+    const icons = document.createElement('span');
+    icons.className = 'hud-troop-icons';
+    const addIcon = (t: Troop, cls: string, title: string): void => {
+        const img = document.createElement('img');
+        img.className = `hud-troop-icon ${cls}`.trim();
+        const concordArt = raceHasConcordArt(galaxy, (t.race as Race | null)?.name);
+        img.src = troopImageUrl(t, raceCount, { concordArt });
+        img.alt = '';
+        img.title = title;
+        wireTroopImageFallback(img, t, raceCount, { concordArt });
+        icons.appendChild(img);
+    };
+    for (const t of recruiting) addIcon(t, 'hud-troop-recruiting', `Recruiting ${t.name}`);
+    for (const t of troops) addIcon(t, t.garrisoned ? 'hud-troop-garrisoned' : '', t.name);
+    for (const t of invading) addIcon(t, 'hud-troop-invading', `Invading ${t.name}`);
+    line.append(k, icons);
+    return { element: line };
+}
+
+function nonNullTroops(list: TroopList | null): Troop[] {
+    return list !== null ? list.items.filter((t): t is Troop => t != null) : [];
+}
+
+/** Colony panel: InfoPanel.cs:4418 `DrawTroopsAgents(labelWidthHabitat, habitat.Troops, habitat.TroopsToRecruit,
+ *  habitat.InvadingTroops, habitat.Characters, habitat.InvadingCharacters, …)`. */
+function colonyTroopIconsRow(h: Habitat, galaxy: Galaxy): SelectionRow | null {
+    return troopsAgentsRow(galaxy, 'Troops', nonNullTroops(h.troops), nonNullTroops(h.troopsToRecruit), nonNullTroops(h.invadingTroops));
+}
+
+/** Ship/base panel: BaconInfoPanel.cs:661-669 (shown when `TroopCapacity > 0`; the prefix is "{used}/{capacity}",
+ *  GameText "Troop UNITS CAPACITY"). Never has recruiting/invading troops of its own. */
+function builtObjectTroopIconsRow(bo: BuiltObject, galaxy: Galaxy): SelectionRow | null {
+    if (bo.troopCapacity <= 0) return null;
+    const used = bo.troopCapacity - bo.troopCapacityRemaining;
+    return troopsAgentsRow(galaxy, `Troops ${used}/${bo.troopCapacity}`, nonNullTroops(bo.troops), [], []);
+}
+
+export interface TroopStrengthText {
+    /** "Show {colony} Ground/Battle Report  (Strength: …)". */
+    text: string;
+    /** InvadingTroops.Count > 0 — the row is drawn on the red pulsing highlight. */
+    invading: boolean;
+}
+
+/**
+ * Port of InfoPanel.cs:4408-4462: the "Show {colony} Ground/Battle Report  (Strength: …)" text. "Battle Report"
+ * (red, pulsing — GraphicsHelper.OscillateColor, simplified to a CSS pulse in {@link troopStrengthRow}) once
+ * InvadingTroops.Count > 0, "Ground Report" otherwise. With an invader the strength is
+ * "{defend} ({composition})  vs  {attack}" (GameText "Battle Strength Description" = "{0}  vs  {1}"); without one
+ * it's just "{defend} ({composition})". Composition is Galaxy.ResolveTroopCompositionDescription(habitat.Troops)
+ * (Habitat.Troops only, not TroopsToRecruit). Pure (no DOM) so it is unit-testable against a hand-built colony
+ * state; {@link troopStrengthRow} wraps it into a row element. Text only — no Ground/Battle Report screen
+ * (TODO(port): InfoPanel.cs 4419/4497 Show Colony Ground/Battle Report screen).
+ */
+export function troopStrengthText(h: Habitat, galaxy: Galaxy): TroopStrengthText | null {
+    const troops = h.troops;
+    const troopsToRecruit = h.troopsToRecruit;
+    const invadingTroops = h.invadingTroops;
+    const characters = stellarObjectCharacters(h);
+    const invadingCharacters = habitatInvadingCharacterList(h);
+    const hasAny = (troops?.count ?? 0) > 0 || (invadingTroops?.count ?? 0) > 0 || (troopsToRecruit?.count ?? 0) > 0
+        || (characters?.length ?? 0) > 0 || (invadingCharacters?.length ?? 0) > 0;
+    if (!hasAny) return null;
+    const resolved = resolveInvasionEmpires(h);
+    const invader = resolved.invader;
+    const defender = resolved.defender ?? h.empire;
+    const defendingTroops = troops ?? new TroopList();
+    const attackingTroops = invadingTroops ?? new TroopList();
+    let { defendingStrength, attackingStrength } = calculateForceStrengths(galaxy, h, defender, invader, defendingTroops, characters, attackingTroops, invadingCharacters);
+    const counts = troopCountsByType(nonNullTroops(troops));
+    const compositionText = ` (${troopCompositionDescription(counts.infantry, counts.artillery, counts.armor, counts.specialForces)})`;
+    const pop = calculatePopulationStrength(galaxy, h, invader, defender);
+    if (pop.isDefending) defendingStrength += pop.result;
+    else attackingStrength += pop.result;
+    const invadingNow = invadingTroops !== null && invadingTroops.count > 0;
+    const base = invadingNow ? `Show ${h.name} Battle Report` : `Show ${h.name} Ground Report`;
+    const text = invader !== null
+        ? `${base}  (Strength: ${formatThousandsK(defendingStrength)}${compositionText}  vs  ${formatThousandsK(attackingStrength)})`
+        : `${base}  (Strength: ${formatThousandsK(defendingStrength)}${compositionText})`;
+    return { text, invading: invadingNow };
+}
+
+function troopStrengthRow(h: Habitat, galaxy: Galaxy): SelectionRow | null {
+    const t = troopStrengthText(h, galaxy);
+    if (t === null) return null;
+    const line = document.createElement('div');
+    line.className = t.invading ? 'hud-troop-strength hud-invasion-alert' : 'hud-troop-strength';
+    line.textContent = t.text;
+    line.title = t.text;
+    return { element: line };
+}
+
+export interface InvasionVsText {
+    /** "  {defend}   vs   {attack}" (InfoPanel.cs:4489 description7). */
+    text: string;
+    /** "Show {colony} Battle Report" (the row's hotspot text, InfoPanel.cs:4497). */
+    title: string;
+}
+
+/**
+ * Port of InfoPanel.cs:4469-4499: the actively-invading "defend  vs  attack" text (red, pulsing), present only
+ * when `habitat.InvadingTroops.Count > 0` and the player can see it (the colony's owner, or the player is the
+ * invader). The strength that is defending (or attacking) also gets the population's strength added, with the
+ * "{n} from population" suffix (GameText "X from population" = "{0} from population"). Pure (no DOM); the wrapper
+ * {@link invasionVsRow} builds the row element.
+ */
+export function invasionVsText(h: Habitat, galaxy: Galaxy, player: Empire | null): InvasionVsText | null {
+    const invadingTroops = h.invadingTroops;
+    if (invadingTroops === null || invadingTroops.count === 0) return null;
+    const firstInvaderEmpire = (invadingTroops.items[0]?.empire ?? null) as Empire | null;
+    if (h.empire !== player && firstInvaderEmpire !== player) return null;
+    const resolved = resolveInvasionEmpires(h);
+    const { invader, defender } = resolved;
+    const characters = stellarObjectCharacters(h);
+    const invadingCharacters = habitatInvadingCharacterList(h);
+    const troops = h.troops ?? new TroopList();
+    let { defendingStrength, attackingStrength } = calculateForceStrengths(galaxy, h, defender, invader, troops, characters, invadingTroops, invadingCharacters);
+    const pop = calculatePopulationStrength(galaxy, h, invader, defender);
+    let defendText: string;
+    let attackText: string;
+    if (pop.isDefending) {
+        defendText = `${formatThousandsK(defendingStrength + pop.result)} (${formatThousandsK(pop.result)} from population)`;
+        attackText = formatThousandsK(attackingStrength);
+    } else {
+        defendText = formatThousandsK(defendingStrength);
+        attackText = `${formatThousandsK(attackingStrength + pop.result)} (${formatThousandsK(pop.result)} from population)`;
+    }
+    return { text: `  ${defendText}   vs   ${attackText}`, title: `Show ${h.name} Battle Report` };
+}
+
+function invasionVsRow(h: Habitat, galaxy: Galaxy, player: Empire | null): SelectionRow | null {
+    const v = invasionVsText(h, galaxy, player);
+    if (v === null) return null;
+    const line = document.createElement('div');
+    line.className = 'hud-invasion-alert hud-invasion-vs';
+    line.textContent = v.text;
+    line.title = v.title;
+    return { element: line };
+}
+// [/troopart]
+
 // Port of Galaxy.2.cs ResolveDescription(BuiltObjectMissionType) (GameText.txt values)
 export function missionTypeLabel(type: BuiltObjectMissionType): string {
     switch (type) {
@@ -2015,6 +2187,11 @@ export function buildSelectionRows(sel: Selection, gameData?: GameData, player: 
         for (const r of threatRows(sel.builtObject, player)) addColorRow(r);
         for (const r of builtObjectStatusRows(sel.builtObject, player)) addColorRow(r);
         if (player !== null) for (const r of wreckSalvageRows(player.galaxy, sel.builtObject, player)) addColorRow(r); // [wreckage] 19e-7
+        // [troopart] Ship/base troop transports (BaconInfoPanel.cs:661-669 DrawTroopsAgents).
+        if (player !== null) {
+            const r = builtObjectTroopIconsRow(sel.builtObject, player.galaxy);
+            if (r !== null) rows.push(r);
+        }
         return rows;
     }
     for (const orow of ownerRows(h)) addColorRow(orow);
@@ -2071,6 +2248,20 @@ export function buildSelectionRows(sel: Selection, gameData?: GameData, player: 
         // Owned habitats list their population's races; unowned ones natives.
         addText(h.empire ? 'Races' : 'Natives', natives);
     }
+
+    // [troopart] begin
+    // Colony troops + ground-invasion status: InfoPanel.cs:4404-4500 (right after Facilities in the original;
+    // Facilities has no row in this panel, so this sits after Races/Natives, the nearest population-related row).
+    if (player !== null) {
+        const galaxy = player.galaxy;
+        const iconsRow = colonyTroopIconsRow(h, galaxy);
+        if (iconsRow !== null) rows.push(iconsRow);
+        const strengthRow = troopStrengthRow(h, galaxy);
+        if (strengthRow !== null) rows.push(strengthRow);
+        const vsRow = invasionVsRow(h, galaxy, player);
+        if (vsRow !== null) rows.push(vsRow);
+    }
+    // [/troopart]
 
     // Scenic feature (Galaxy.5.cs SetScenicFactor).
     if (h.scenicFeature !== '') {

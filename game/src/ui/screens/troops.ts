@@ -35,6 +35,8 @@ import { issuePlayerCommand } from '../../sim/player/playerCommands';
 import { resolveRecruitableTroopsForColony } from '../../sim/player/orderMenu';
 import { formatThousandsK } from './coloniesList';
 import { disbandTroops, setTroopsGarrisoned, renameTroop } from '../../sim/player/playerOrders';
+import { troopImageUrl, wireTroopImageFallback } from '../../render/troopImages';
+import { raceHasConcordArt } from '../../render/concordArt';
 export { disbandTroops, setTroopsGarrisoned, renameTroop };
 
 /** GameText lookup with the English text as fallback (tests run without GameText loaded). */
@@ -456,6 +458,9 @@ function createTroopsScreen(opts: TroopsScreenOptions): OpenState {
     const grid = el('div', 'troops-grid');
     const header = el('div', 'troops-row troops-header');
     header.appendChild(el('span', 'troops-cell troops-flag'));
+    // Image column (InfoPanel.cs DrawTroopsAgents / Main.Part13.cs LoadTroops): TroopListView.cs itself has no
+    // troop-race image column (only the Empire flag), so this header cell — like the flag's — carries no label.
+    header.appendChild(el('span', 'troops-cell troops-image-col'));
     const headerCells = new Map<TroopSortKey, HTMLElement>();
     for (const col of TROOP_COLUMNS) {
         const h = el('span', `troops-cell troops-sortable${col.numeric ? ' troops-num' : ''}`, T(col.label, col.label));
@@ -532,12 +537,24 @@ function createTroopsScreen(opts: TroopsScreenOptions): OpenState {
     // --- grid rows (refreshed in place, keyed by troop) ---
     interface RowEls { line: HTMLElement; cells: HTMLElement[] }
     const rowEls = new Map<Troop, RowEls>();
+    /** Port of InfoPanel.cs:2609 DrawTroopsAgents's per-type bitmap lookup (Main.Part13.cs:2063 LoadTroops):
+     *  the troop's own race/type image, set once (a troop's type and pictureRef never change). */
+    function makeTroopImage(troop: Troop): HTMLImageElement {
+        const img = el('img', 'troops-cell troops-image');
+        img.alt = '';
+        const raceCount = galaxy.races.length;
+        const concordArt = raceHasConcordArt(galaxy, (troop.race as Race | null)?.name);
+        img.src = troopImageUrl(troop, raceCount, { concordArt });
+        wireTroopImageFallback(img, troop, raceCount, { concordArt });
+        return img;
+    }
     function makeRow(troop: Troop): RowEls {
         const line = el('div', 'troops-row troops-line');
         const cells: HTMLElement[] = [];
         const flag = el('span', 'troops-cell troops-flag');
         line.appendChild(flag);
         cells.push(flag);
+        line.appendChild(makeTroopImage(troop));
         for (const col of TROOP_COLUMNS) {
             const c = el('span', `troops-cell${col.numeric ? ' troops-num' : ''}`);
             line.appendChild(c);

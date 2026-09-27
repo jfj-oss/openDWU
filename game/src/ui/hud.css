@@ -249,6 +249,55 @@
     margin-right: 4px;
     vertical-align: middle;
 }
+/* Troops row (InfoPanel.cs DrawTroopsAgents): label + a run of small troop-race images. Garrisoned troops get a
+   green tint (Color.FromArgb(0,128,0) behind the icon), a troop being recruited is dimmed (the C#'s separate
+   "Faded" bitmap set), an invading troop sits on a red chip (Color.Red fill behind the icon group). */
+.hud-troop-row { align-items: flex-start; }
+.hud-troop-icons {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    justify-content: flex-end;
+}
+.hud-troop-icon {
+    width: 14px;
+    height: 14px;
+    object-fit: contain;
+    image-rendering: pixelated;
+    user-select: none;
+    -webkit-user-drag: none;
+    border-radius: 2px;
+}
+.hud-troop-garrisoned { background: rgba(0, 128, 0, 0.55); }
+.hud-troop-recruiting { opacity: 0.45; }
+.hud-troop-invading { background: rgba(255, 0, 0, 0.55); }
+/* "Show <colony> Ground/Battle Report  (Strength: …)" (InfoPanel.cs:4408-4462). */
+.hud-troop-strength {
+    font-size: 11px;
+    color: #ccc;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+/* An active invasion: the oscillating red highlight (GraphicsHelper.OscillateColor), simplified to a steady
+   pulse animation. Shared by the strength row (when InvadingTroops.Count > 0) and the "vs" row. */
+.hud-invasion-alert {
+    background: rgba(255, 0, 0, 0.35);
+    border-radius: 3px;
+    padding: 1px 4px;
+    animation: hud-invasion-pulse 1.6s ease-in-out infinite;
+}
+@keyframes hud-invasion-pulse {
+    0%, 100% { background-color: rgba(255, 0, 0, 0.18); }
+    50% { background-color: rgba(255, 0, 0, 0.55); }
+}
+/* InfoPanel.cs:4469-4499: "  defend   vs   attack" (Habitat.CalculateForceStrengths + CalculatePopulationStrength). */
+.hud-invasion-vs {
+    font-size: 12px;
+    font-weight: bold;
+    color: #fff;
+    text-align: center;
+}
 .hud-selection-footer {
     display: flex;
     align-items: center;
