@@ -52,6 +52,7 @@ import { AmbientLayer } from './ambientLayer';
 // [ambientfx] end
 // [fightersfx] begin
 import { FighterLayer } from './fighterLayer';
+import { WhalePilotLayer, whalePilotEnabled } from './whalePilotLayer'; // [whalepilot]
 // [fightersfx] end
 // [combatfx] begin
 import { updateCombatEffects } from './effectsLayer';
@@ -955,6 +956,8 @@ export class MainView {
     // [fightersfx] begin
     private fighterLayer!: FighterLayer;
     // [fightersfx] end
+    /** Art pilot (dev flag ?whalePilot=1): render-only void-whale prototypes next to an original Kaltor. */
+    whalePilot: WhalePilotLayer | null = null; // [whalepilot]
     private textures!: MainViewTextures;
     private minZoom = 1e-6;
     private lastGridZoom = -1;
@@ -1271,6 +1274,11 @@ export class MainView {
         // Launched fighters / bombers above the ships and their ambient effects, below the combat effects.
         this.fighterLayer = new FighterLayer(this.galaxy, this.world, this.store);
         // [fightersfx] end
+        // [whalepilot] begin — no-op unless the URL carries ?whalePilot=1
+        if (typeof window !== 'undefined' && whalePilotEnabled(window.location.search)) {
+            this.whalePilot = new WhalePilotLayer(this.galaxy, this.world, this.camera, window.location.search, this.store.dwuPresent);
+        }
+        // [whalepilot] end
 
         this.attachInput();
     }
@@ -1391,6 +1399,7 @@ export class MainView {
         // [fightersfx] begin
         this.fighterLayer.update(z, cam);
         // [fightersfx] end
+        this.whalePilot?.update(z, cam); // [whalepilot]
         // [combatfx] begin
         // Combat effects (weapon fire, explosions, shield strikes, hyperjump flashes) above the ships.
         updateCombatEffects(this.galaxy, this.world, this.store, this.builtObjectLayer, z, cam);
