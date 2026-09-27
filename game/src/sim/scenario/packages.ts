@@ -10,4 +10,5 @@ import './threats/darkFarms';
 import './emergent/crises'; // 19d2 resource crises (flag resourceCrises)
 import './emergent/politics';
 import './emergent/politicsActions';
+import './emergent/demographics';
 export {};
