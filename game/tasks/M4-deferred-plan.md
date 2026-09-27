@@ -92,3 +92,7 @@ year 10 (1–8 per empire). Follow-ups:
   rest, 2736-2839). Faithful. Lever = scenario/difficulty/policy, not range.
 - Follow-ups: the "Wild Aspiration" parent-planet check; an audit of in-system speeds (10–30 u/s makes short trips take
   weeks); relax sim-run's frozen-mission metric.
+- 19h-8 follow-up: pirate herd hunts pay a credits bounty because the herders' `creatureKilled` kill drop was not on that
+  branch; once 19j is merged, the drop lands in the hunters' holds automatically — decide whether to keep the bounty too
+  (probably drop it). Also: fuel-scarcity default (0.65) vs belt inner (0.7) means rim pirate bases sit on fuel-less
+  worlds; consider a pirate exemption or a small fuel band at the rim.
