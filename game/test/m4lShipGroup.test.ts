@@ -15,6 +15,7 @@ import { HabitatCategoryType } from '../src/sim/types';
 import { BuiltObjectMission, BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission } from '../src/sim/missions/mission';
 import { galaxyStarDate } from '../src/sim/tick/simTime';
 import { FleetPosture } from '../src/sim/diplomacyTick';
+import { DiplomaticRelation, DiplomaticRelationType } from '../src/sim/diplomacy';
 import { ShipGroup, empireShipGroups, shipGroupRepairBonus } from '../src/sim/fleets/shipGroup';
 import {
     checkForMissionCompletion,
@@ -251,6 +252,23 @@ describe('fleet missions (ShipGroup.cs AssignMission 2097, CheckForMissionComple
         checkRefuelRepairAttack(galaxy, sg, false, null);
         expect(b.shipGroup).toBeNull();
         expect(sg.ships).toEqual([a]);
+    });
+
+    it('CheckRefuelRepairAttack skips a war enemy with no capital instead of crashing (1743, guarded like 1211/935)', () => {
+        const sg = new ShipGroup(galaxy);
+        sg.empire = pirate;
+        empireShipGroups(pirate).push(sg);
+        const [a] = ships;
+        shipGroupAddShipToFleet(galaxy, sg, a);
+        a.isAutoControlled = true;
+        // An empire that lost its last colony this tick: our takeOwnershipOfColony doesn't yet port
+        // Empire.1.cs's teardown/elimination step (TODO in empire.ts), so it can still turn up as a
+        // war enemy with Capital == null (the invariant CheckRefuelRepairAttack's C# source relies on
+        // to safely skip the null check it omits at ShipGroup.cs 1743).
+        const enemy = galaxy.empires.find((e) => e !== galaxy.playerEmpire && e !== pirate)!;
+        enemy.capital = null;
+        pirate.diplomaticRelations.add(new DiplomaticRelation(DiplomaticRelationType.War, pirate, pirate, enemy, false));
+        expect(() => checkRefuelRepairAttack(galaxy, sg, true, null)).not.toThrow();
     });
 });
 
