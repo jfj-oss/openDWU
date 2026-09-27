@@ -9,10 +9,12 @@ export {
     registerScenarioYearly, registerScenarioPeriodic, registerScenarioGameStart, registerScenarioEvent, registerScenarioQuery,
     scenarioYearlyTick, scenarioPeriodicTick, scenarioGameStart, scenarioEmit, scenarioQuery, scenarioGateOpen,
     gameYear, GAME_DAY_LENGTH, radiusFraction, scenarioResourceAllowed, scenarioHomeRing, scenarioFindHomeHabitat,
+    registerScenarioGeneration, scenarioGenerationSetup, scenarioAfterNebulae, scenarioAcceptStarPosition, scenarioGateOpenFor,
 } from './hooks';
 export type {
     ScenarioHandlerGate, ScenarioYearlyHandler, ScenarioPeriodicHandler, ScenarioGameStartHandler, ScenarioEventHandler, ScenarioEvents,
     ScenarioEventName, ScenarioQueryHandler, ScenarioQueries, ScenarioQueryName, HomePlacementHelpers,
+    ScenarioGenerationHandler, ScenarioGenerationSetup,
 } from './hooks';
 export { registerScenarioDecision, raiseScenarioDecision, answerScenarioDecision, pendingScenarioDecisions, expireScenarioDecisions, isScenarioDecision } from './decisions';
 export type { ScenarioDecision, ScenarioDecisionOption, ScenarioDecisionHandler, RaiseDecisionSpec } from './decisions';

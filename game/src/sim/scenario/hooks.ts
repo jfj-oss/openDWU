@@ -12,6 +12,8 @@ import type { BuiltObject } from '../builtObject';
 import type { Creature } from '../creature';
 import { YEAR_LENGTH } from '../galaxyTime';
 import { galaxyStarDate } from '../tick/simTime';
+import type { GalaxyScenario } from './state';
+import type { Resource } from '../data/resources';
 
 // ---------------------------------------------------------------------------
 // Handler registries (shared gate)
@@ -42,7 +44,11 @@ function register<T extends ScenarioHandlerGate>(list: T[], handler: T): () => v
 
 /** True when `h` may run in this galaxy's scenario. */
 export function scenarioGateOpen(galaxy: Galaxy, h: ScenarioHandlerGate): boolean {
-    const s = galaxy.scenario;
+    return scenarioGateOpenFor(galaxy.scenario, h);
+}
+
+/** scenarioGateOpen on a GalaxyScenario (generation set-up runs before the Galaxy exists). */
+export function scenarioGateOpenFor(s: GalaxyScenario | null, h: ScenarioHandlerGate): boolean {
     if (s === null) return false;
     if (h.scenarioId === undefined && h.flag === undefined) return false;
     if (h.scenarioId !== undefined && h.scenarioId !== s.id) return false;
@@ -256,6 +262,16 @@ export interface ScenarioQueries {
     builtObjectStormImmune: { value: boolean; args: { builtObject: BuiltObject } };
     /** 19j: movement.ts rechargeReactors (BuiltObject.1.cs 2509 RechargeReactors): true = recharging burns no fuel. */
     builtObjectSelfFuelling: { value: boolean; args: { builtObject: BuiltObject } };
+    /**
+     * independentTraders.ts findShipOutsideSystemWithScanRange (Empire.9.cs 3449): the range modifier of the ships-outside-
+     * systems scan (not the stationary long-range scanners) for a target at (x, y). 19h sensor fog.
+     */
+    scanRangeModifier: { value: number; args: { x: number; y: number } };
+    /**
+     * cmdMovement.ts HyperTo in-flight step (BuiltObject.2.cs HyperTo): the point where a jump that moved the ship from
+     * (fromX, fromY) to (toX, toY) this step must end early (null = no stop). 19h gravity shoals.
+     */
+    hyperjumpStop: { value: { x: number; y: number } | null; args: { ship: BuiltObject; fromX: number; fromY: number; toX: number; toY: number; exitX: number; exitY: number } };
 }
 export type ScenarioQueryName = keyof ScenarioQueries;
 
@@ -283,6 +299,53 @@ export function scenarioQuery<Q extends ScenarioQueryName>(galaxy: Galaxy, query
 // ---------------------------------------------------------------------------
 // Placement (generation)
 // ---------------------------------------------------------------------------
+
+/** The generation options a scenario may change before the galaxy is built (createGame). */
+export interface ScenarioGenerationSetup {
+    starCount: number;
+    sectorWidth: number;
+    sectorHeight: number;
+}
+
+/**
+ * Galaxy generation hooks (19h). None may draw galaxy.rnd: a package that needs randomness here uses its own Random
+ * seeded from the galaxy seed, so the faithful draws only move where a hook changes the outcome (a rejected star
+ * position is re-rolled from galaxy.rnd by the stock loop).
+ */
+export interface ScenarioGenerationHandler extends ScenarioHandlerGate {
+    /** createGame, before generateGalaxy: may change the options and add resource rules to the scenario. */
+    setup?: (scenario: GalaxyScenario, resources: readonly Resource[], o: ScenarioGenerationSetup) => void;
+    /** generateGalaxy right after GenerateNebulae (before the clusters and the star loop). */
+    afterNebulae?: (galaxy: Galaxy) => void;
+    /** SetupSun (Galaxy.5.cs) candidate position: false rejects it (the stock loop re-rolls, up to its 100 tries). */
+    acceptStarPosition?: (galaxy: Galaxy, x: number, y: number) => boolean;
+}
+
+const generationHandlers: ScenarioGenerationHandler[] = [];
+
+export function registerScenarioGeneration(handler: ScenarioGenerationHandler): () => void {
+    return register(generationHandlers, handler);
+}
+
+/** createGame: every gated setup hook over the generation options (no-op without a scenario). */
+export function scenarioGenerationSetup(scenario: GalaxyScenario | null, resources: readonly Resource[], o: ScenarioGenerationSetup): ScenarioGenerationSetup {
+    if (scenario === null) return o;
+    for (const h of generationHandlers) if (h.setup !== undefined && scenarioGateOpenFor(scenario, h)) h.setup(scenario, resources, o);
+    return o;
+}
+
+/** generateGalaxy after GenerateNebulae (callers check galaxy.scenario !== null). */
+export function scenarioAfterNebulae(galaxy: Galaxy): void {
+    for (const h of generationHandlers) if (h.afterNebulae !== undefined && scenarioGateOpen(galaxy, h)) h.afterNebulae(galaxy);
+}
+
+/** SetupSun position test (callers check galaxy.scenario !== null). */
+export function scenarioAcceptStarPosition(galaxy: Galaxy, x: number, y: number): boolean {
+    for (const h of generationHandlers) {
+        if (h.acceptStarPosition !== undefined && scenarioGateOpen(galaxy, h) && !h.acceptStarPosition(galaxy, x, y)) return false;
+    }
+    return true;
+}
 
 /** Distance of (x, y) from the galaxy centre as a fraction of sizeX / 2 (the scale randomPointInRing uses). */
 export function radiusFraction(galaxy: Galaxy, x: number, y: number): number {

@@ -63,12 +63,14 @@ import type { Blockade } from './fleets/blockades';
 import { createGalaxyOrderList, type OrderList } from './logistics/orders';
 import { GameEventList, type EventActionExecutionPackage } from './story/gameEventModel';
 import type { GalaxyScenario } from './scenario/state';
-import { scenarioResourceAllowed } from './scenario/hooks';
+import { scenarioAcceptStarPosition, scenarioAfterNebulae, scenarioResourceAllowed } from './scenario/hooks';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from './diplomacy';
 
 // Port of Galaxy.cs static fields (Galaxy.3.cs InitializeStatics sets
 // these): SectorSizeX = SectorSizeY = 2_000_000, IndexSize = 400_000.
 const SECTOR_SIZE = 2_000_000;
+/** Mod layer (19h map scale): the largest sector count a scenario extent may reach (the C# clamps to 15). */
+export const SCENARIO_MAX_SECTORS = 26; // sector labels are one letter (empireEvents.ts resolveSectorDescription)
 const INDEX_SIZE = 400_000;
 const MAXIMUM_EMPIRE_COUNT = 255; // Galaxy.3.cs:5034
 // Port of Galaxy.3.cs InitializeStatics: MaxSolarSystemSize = 23000.
@@ -1516,6 +1518,17 @@ export class Galaxy {
     }
 
     // Port of Galaxy.3.cs SetGalaxyPhysicalDimensions
+    /**
+     * Mod layer (19h map scale, not a port): a scenario's extent beyond the C# 15-sector clamp. SectorSize stays the C#
+     * constant; every index grid derives from sizeX / sizeY. Only generateGalaxy calls it, before generation.
+     */
+    setScenarioGalaxyDimensions(sectorWidth: number, sectorHeight: number): void {
+        this.sectorWidth = Math.max(4, Math.min(SCENARIO_MAX_SECTORS, Math.round(sectorWidth)));
+        this.sectorHeight = Math.max(4, Math.min(SCENARIO_MAX_SECTORS, Math.round(sectorHeight)));
+        this.sizeX = this.sectorWidth * SECTOR_SIZE;
+        this.sizeY = this.sectorHeight * SECTOR_SIZE;
+    }
+
     private setGalaxyPhysicalDimensions(sectorWidth: number, sectorHeight: number): void {
         sectorWidth = Math.max(4, Math.min(15, sectorWidth));
         sectorHeight = Math.max(4, Math.min(15, sectorHeight));
@@ -1893,6 +1906,10 @@ export class Galaxy {
             flag2 = true;
             const margin = MAX_SOLAR_SYSTEM_SIZE + 500.0;
             if (x < margin || x > this.sizeX - margin || y < margin || y > this.sizeY - margin) {
+                flag2 = false;
+            }
+            // Mod layer (19h sparser rim): a scenario may reject the candidate (the loop re-rolls it). No galaxy.rnd draw.
+            if (flag2 && this.scenario !== null && !scenarioAcceptStarPosition(this, x, y)) {
                 flag2 = false;
             }
             const nearest = this.findNearestSystemGasCloudAsteroid(x, y);
@@ -4687,6 +4704,8 @@ export function generateGalaxy(options: GenerateGalaxyOptions): Galaxy {
     const { seed, shape, starCount, sectorWidth, sectorHeight, systemNames, colonyPrevalence, gameData, cloudImageCount } = options;
     const galaxy = new Galaxy(seed, shape, starCount, sectorWidth, sectorHeight, systemNames, colonyPrevalence);
     galaxy.scenario = options.scenario ?? null;
+    // Mod layer (19h map scale): a scenario extent beyond the constructor's 15-sector clamp.
+    if (galaxy.scenario !== null && (sectorWidth > 15 || sectorHeight > 15)) galaxy.setScenarioGalaxyDimensions(sectorWidth, sectorHeight);
     // Galaxy.4.cs 2132 `Races = LoadRaces(...)`: the galaxy's own Race objects (mutated in play, saved with the game).
     let empireStarts = options.empireStarts ?? [];
     let races = options.races;
@@ -4720,6 +4739,8 @@ export function generateGalaxy(options: GenerateGalaxyOptions): Galaxy {
     // grid + AddGalaxyLocationIndex), generated before star placement so
     // SetupSun can avoid/enter them.
     galaxy.generateNebulae(cloudImageCount ?? DEFAULT_CLOUD_IMAGE_COUNT);
+    // Mod layer (19h storm belts, gravity shoals): scenario locations after the faithful nebulae, before star placement.
+    if (galaxy.scenario !== null) scenarioAfterNebulae(galaxy);
 
     // Cluster setup (Galaxy.4.cs 2221-2276), only for the Clusters shapes.
     galaxy.setupStarClusters(shape, starCount);

@@ -5,6 +5,9 @@
 //
 //   node --expose-gc scripts/sim-run.mjs --seed 1 --stars 700 --empires 10 --seconds 600
 //        [--age 1] [--tech 0.5] [--pirates 1] [--sectors N] [--chunk 60] [--profile] [--top 15] [--json out.json] [--combat]
+//        [--scenario <id under scenarios/>] [--sparams name=value,...] [--sflags name=0|1,...]
+// --scenario: the mod-layer overlay applied to the game data (test/helpers/scenarioGame.ts), with param / flag overrides
+// (e.g. the 19h speed check: --scenario rim-frontier --sparams rimFrontierExtent=1.7,rimFrontierStarCount=2000).
 // --combat: a battle report (tasks/COMBAT-VERIFICATION-2026-09-26.md) — every ship / base destroyed (by empire and sub
 // role) and every closed SpaceBattleStats record (a ship's BattleStats replaced at AssignMission, BuiltObject.2.cs 7643,
 // or nulled at mission completion, 4517-4532) with any weapon activity, plus the records still open at the end.
@@ -102,7 +105,7 @@ function analyseProfile(p) {
 
 const MODULES = { game: '/src/sim/game.ts', types: '/src/sim/types.ts', load: '/test/helpers/loadGameDataFs.ts', harness: '/src/sim/tick/harness.ts',
     scheduler: '/src/sim/tick/scheduler.ts', digest: '/src/sim/tick/digest.ts', treasury: '/src/sim/treasury.ts',
-    forceStructure: '/src/sim/forceStructure.ts' };
+    forceStructure: '/src/sim/forceStructure.ts', scenario: '/test/helpers/scenarioGame.ts' };
 // test/helpers/loadGameDataFs.ts (the Node game-data loader the tests use) reads __dirname, which neither loader provides.
 const dirnameDefine = { __dirname: JSON.stringify(resolve(root, 'test/helpers')) };
 let server = null, bundleDir = null;
@@ -125,7 +128,12 @@ try {
     const { schedulerState } = await load('scheduler');
     const { stateDigest, stateCounts } = await load('digest');
 
-    const gameData = await loadGameDataFs();
+    const scenarioId = arg('scenario', null);
+    const kv = (v) => Object.fromEntries(String(v).split(',').filter((x) => x.includes('=')).map((x) => x.split('=')).map(([k, n]) => [k, Number(n)]));
+    const scenarioParams = kv(arg('sparams', ''));
+    const scenarioFlags = Object.fromEntries(Object.entries(kv(arg('sflags', ''))).map(([k, n]) => [k, n !== 0]));
+    let gameData = await loadGameDataFs();
+    if (scenarioId !== null) gameData = (await load('scenario')).scenarioGameData(gameData, String(scenarioId));
     const s = (race) => ({ race, homeSystemFavourability: 'Normal', proximityDistance: 'Random', startLocation: '(Random)', age, techLevel: tech });
     let t = performance.now();
     const game = createGame({
@@ -133,10 +141,12 @@ try {
         systemNames: Array.from({ length: stars }, (_, i) => `S${i}`), gameData, galaxyAge: age,
         player: s('Human'), aiEmpires: Array.from({ length: Math.max(0, empires - 1) }, () => s('(Random)')),
         piratePrevalence: pirates,
+        ...(scenarioId !== null ? { scenarioFlags, scenarioParams } : {}),
     });
     const createMs = performance.now() - t;
     const g = game.galaxy;
     console.log(`[${loader}] createGame: seed ${seed}, ${stars} stars (${sectors}x${sectors}), ${empires} empires, age ${age}, pirates ${pirates} — ${createMs.toFixed(0)} ms`);
+    if (scenarioId !== null) console.log(`scenario ${scenarioId}: galaxy ${game.galaxy.starCount} stars, ${game.galaxy.sectorWidth}x${game.galaxy.sectorHeight} sectors, params ${JSON.stringify(scenarioParams)}`);
     console.log('start digest', stateDigest(g), JSON.stringify(stateCounts(g)));
     globalThis.gc?.();
     const heapStart = heap.sample();
