@@ -1,7 +1,7 @@
 // 19a Concord art captures (4K: 1920×1080 CSS px at device scale 2). Usage: node scripts/concord-shots.mjs <baseUrl> <outDir>
 // Boots `?autostart=1&scenario=rimTrade&aiRace=Oranthi`, pauses the clock, and uses dev placement (as the 19a treasure
 // test does: meet every empire, run the treasure-fleet handler, then a few hundred sim frames) instead of playing
-// years. Close-ups: the layer's own textures (concordArt.ts: painted sprites + procedural) at the ship layer's size formula next to the original
+// years. Close-ups: the layer's own textures (concordArt.ts: shaded hulls + G-buffer kinds) at the ship layer's size formula next to the original
 // Ackdarian frame the race borrows; the fleet, port and diplomacy shots are the live game.
 import { chromium } from 'playwright-core';
 const [base = 'http://localhost:5173/', outDir = 'shots'] = process.argv.slice(2);
@@ -125,7 +125,7 @@ const showcase = async (rows, zoom, file) => {
                         tex = a.texture;
                         metrics = a.metrics;
                     } else {
-                        // Painted-sprite kinds return null until their cut-out file (public/art/concord) is decoded.
+                        // At most one new variant per frame: retry on the next frame until built.
                         const v = { kind: it.kind, bucket: ca.concordSizeBucket(it.size), look: it.look };
                         for (let t = 0; t < 400 && art === null; t++) {
                             art = ca.concordShipArt(v, frame++);

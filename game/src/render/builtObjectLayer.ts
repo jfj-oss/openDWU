@@ -427,7 +427,7 @@ export class BuiltObjectLayer {
     private urlByPictureRef = new Map<number, string | null>();
     /** Live (not destroyed) built objects visited by the current update; the rest release their sprites. */
     private seen = new Set<BuiltObject>();
-    // [concordArt] begin — scenario 19a: the Concord's ships (concordArt.ts: sprites + procedural) and overlays.
+    // [concordArt] begin — scenario 19a: the Concord's ships (concordArt.ts: procedural hulls) and overlays.
     private concordFx = new ConcordFxLayer();
     private frame = 0;
     // [concordArt] end
