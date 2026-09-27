@@ -290,6 +290,12 @@ export interface ScenarioQueries {
      */
     colonyTaxRevenue: { value: number; args: { habitat: Habitat; empire: Empire } };
     /**
+     * forceStructure.ts recalculateAnnualTaxRevenue (Habitat.cs 6083 RecalculateAnnualTaxRevenue): the tax rate the
+     * revenue product uses (stock: the colony's TaxRate). 19g-5 frontier sectors: the sector governor's local rate
+     * override and the sector rule's collection factor. Never draws.
+     */
+    colonyTaxRate: { value: number; args: { habitat: Habitat; empire: Empire } };
+    /**
      * characters.ts reviewCaptainBonuses (BuiltObject.cs 1448 ReviewCaptainBonuses): the ship's captain bonus bytes
      * (100 = none). A handler returns a changed copy (never mutates `value`). 19n marshal (fleet repair / damage
      * control). Never draws.

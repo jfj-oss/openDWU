@@ -451,7 +451,9 @@ export function habitatAnnualRevenue(galaxy: Galaxy, h: Habitat): number {
 export function recalculateAnnualTaxRevenue(galaxy: Galaxy, h: Habitat): void {
     if (h.empire !== null) {
         recalculateCriticalResourceSupplyBonuses(galaxy, h);
-        h.annualTaxRevenue = habitatAnnualRevenue(galaxy, h) * f32(h.taxRate) * taxComplianceRate(galaxy, h);
+        // Mod layer (19g-5): a scenario may replace the rate (a frontier sector's local override); stock = TaxRate.
+        const taxRate = galaxy.scenario !== null ? scenarioQuery(galaxy, 'colonyTaxRate', f32(h.taxRate), { habitat: h, empire: h.empire }) : f32(h.taxRate);
+        h.annualTaxRevenue = habitatAnnualRevenue(galaxy, h) * taxRate * taxComplianceRate(galaxy, h);
         if (galaxy.scenario !== null) h.annualTaxRevenue = scenarioQuery(galaxy, 'colonyTaxRevenue', h.annualTaxRevenue, { habitat: h, empire: h.empire }); // mod layer
         h.annualTaxRevenue = Math.max(0.0, h.annualTaxRevenue);
         let num = COLONY_STATE_SUPPORT_COST;
