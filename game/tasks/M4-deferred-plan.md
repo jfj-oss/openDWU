@@ -133,3 +133,8 @@ year 10 (1–8 per empire). Follow-ups:
 - Effect: a colony-less empire stays active and at war forever; C# invariants like "every war enemy has a capital" break. The guard at
   ShipGroup.cs 1743 is a patch; other `capital!` reads may hit the same case (grep `capital!` in src/sim).
 - Follow-up (Opus, sim): port the elimination path faithfully; pins WILL move. Run a 5-year all-flags soak after.
+
+## 19s-3 strategic upgrade follow-ups (wip/s19s3 46dafc5)
+- Scheme-target family is a stand-in (19m investigation into an open lead) because 19n-2 schemes were not on its base; re-point it at 19n-2 scheme targets now that batch G is on main.
+- Council votes are rarely offered to the model (motions only stay open when the player sits on the council); peace offers to the player are never offered.
+- Herder conquest is tested by enumeration/validation only.
