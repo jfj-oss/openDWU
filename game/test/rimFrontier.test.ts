@@ -17,6 +17,8 @@ import { deserializeGame, serializeGame } from '../src/sim/save/gameSave';
 import { defaultStartGameOptions } from '../src/sim/startGameOptions';
 import { RIM_FRONTIER_DEFAULTS, rimFrontierState } from '../src/sim/scenario/rimFrontier/common';
 import { rimGoodIds, rimTraderEmpire } from '../src/sim/scenario/rimTrade/common';
+import { resolveSectorDescription } from '../src/sim/empireEvents';
+import { sectorColumnLabel } from '../src/ui/screens/galaxyMap';
 
 let base: GameData;
 beforeAll(async () => {
@@ -70,6 +72,8 @@ describe('19h rim frontier — generation', () => {
         expect(m.flags.map((f) => f.name)).toEqual(['rimFrontier']);
         expect(m.params.map((p) => p.name).sort()).toEqual(Object.keys(D).sort());
         for (const p of m.params) expect(p.default).toBe(D[p.name as keyof typeof D]);
+        // The raised star-count cap (was 2000).
+        expect(m.params.find((p) => p.name === 'rimFrontierStarCount')?.max).toBe(4000);
     });
 
     it('1: storm density rises in the belt; the core is untouched', () => {
@@ -135,6 +139,39 @@ describe('19h rim frontier — generation', () => {
         const huge = createScenarioGame(base, { scenario: 'rim-frontier', params: { rimFrontierExtent: 1.7, rimFrontierStarCount: 150 }, options: big }).game.galaxy;
         expect(huge.sectorWidth).toBe(26);
         expect(starsBeyond(huge, 0).total).toBe(150);
+    }, 600000);
+
+    it('6b: the raised star-count cap (4000) at max extent (1.7) — still 26 sectors, unique sector labels, index grid covers it', () => {
+        const big = (o: CreateGameOptions): CreateGameOptions => ({
+            ...o,
+            sectorWidth: 15,
+            sectorHeight: 15,
+            starCount: 4000,
+            systemNames: Array.from({ length: 4400 }, (_, i) => `S${i}`),
+        });
+        const g = createScenarioGame(base, { scenario: 'rim-frontier', params: { rimFrontierExtent: 1.7, rimFrontierStarCount: 4000 }, options: big }).game.galaxy;
+        expect(starsBeyond(g, 0).total).toBe(4000);
+        // 15 (the wizard's max) * 1.7 = 25.5 → round → 26 = SCENARIO_MAX_SECTORS: sector labels stay one letter (A..Z),
+        // never the two-letter (AA..) range a >26 count would need (galaxyMap.ts sectorColumnLabel, empireEvents.ts
+        // resolveSectorDescription, hud.ts missionTargetText all assume String.fromCharCode(i + 65)).
+        expect(g.sectorWidth).toBe(26);
+        expect(g.sectorHeight).toBe(26);
+        const labels = new Set<string>();
+        for (let x = 0; x < g.sectorWidth; x++) {
+            for (let y = 0; y < g.sectorHeight; y++) {
+                const label = resolveSectorDescription(g, x * g.sectorSize, y * g.sectorSize);
+                expect(label).toMatch(/^[A-Z]\d+$/);
+                labels.add(label);
+            }
+        }
+        expect(labels.size).toBe(g.sectorWidth * g.sectorHeight);
+        for (let i = 0; i < g.sectorWidth; i++) expect(sectorColumnLabel(i)).toBe(String.fromCharCode(65 + i));
+        // The location index grid (Galaxy.4.cs AddGalaxyLocationIndex, sized off sizeX/sizeY) is rebuilt at the
+        // extended galaxy size, not the stock 15-sector one, and covers every corner.
+        expect(g.sizeX).toBe(26 * g.sectorSize);
+        expect(g.sizeY).toBe(26 * g.sectorSize);
+        expect(() => g.determineGalaxyLocationsAtPoint(0, 0)).not.toThrow();
+        expect(() => g.determineGalaxyLocationsAtPoint(g.sizeX - 1, g.sizeY - 1)).not.toThrow();
     }, 600000);
 });
 
