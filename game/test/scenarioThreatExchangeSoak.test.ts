@@ -33,7 +33,7 @@ function report(line: string): void {
 }
 
 function start(params: Record<string, number>) {
-    const { game } = createScenarioGame(base, { scenario: 'exchange', flags: { threatExchange: true }, params: { exchangeYear: 0, ...params }, options: age3 });
+    const { game } = createScenarioGame(base, { scenario: 'exchange', flags: { threatExchange: true }, params: { exchangeYear: 0, exchangeExistChancePct: 100, exchangeMinYear: 0, ...params }, options: age3 });
     const g = game.galaxy;
     g.scenario!.lastYear = gameYear(galaxyStarDate(g)) - 1;
     runGameSeconds(game, 65);

@@ -353,6 +353,13 @@ export interface ScenarioQueries {
     /** diplomacyTick.ts declareWar (Empire.7.cs 4883), first line: true blocks the declaration (19c charter war rules). */
     declareWarBlocked: { value: boolean; args: { empire: Empire; target: Empire } };
     /**
+     * combat/invasion.ts battle-victory capture (Empire.7.cs 4653-4680): `false` = the winning ship's empire does NOT
+     * permanently take the habitat — ownership is set to null instead, so the stock lost-colony adoption
+     * (`scanForNewOwnerHabitat`) can re-seat it with its original owner. Exchange (19e) raids but never holds ground:
+     * a merchant-spy faction's warships may win the fight without annexing the colony.
+     */
+    combatCaptureAllowed: { value: boolean; args: { capturingEmpire: Empire | null; habitat: Habitat } };
+    /**
      * logistics/freight.ts addForeignTradingPosts (Empire.4.cs 540-576): `undefined` = stock posts; otherwise the only
      * trading post `empire` may use at `other` (null: none) — 19c companyHqExportOnly.
      */

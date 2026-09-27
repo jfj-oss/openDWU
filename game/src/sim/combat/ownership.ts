@@ -21,6 +21,7 @@ import { clearAttackersFromEmpire } from '../fleets/militaryAI';
 import { checkForStoryLocationHint, generateStoryClue } from '../story/storyEvents';
 import { checkTriggerEvent } from '../story/eventActions';
 import { EventTriggerType } from '../story/gameEventModel';
+import { scenarioQuery } from '../scenario/hooks';
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import type { BuiltObject } from '../builtObject';
@@ -440,6 +441,9 @@ function queueOf(o: { constructionQueue: unknown }): QueueLike | null {
  * system visibility). No Rnd directly (the base transfers and fleet re-basing draw none).
  */
 export function takeOwnershipOfColonyFull(galaxy: Galaxy, self: Empire, colony: Habitat, newEmpire: Empire | null, destroyBases: boolean, destroyTroops: boolean): void {
+    // Exchange backstop: a merchant-spy faction may win fights but never annexes — any capture of an owned colony
+    // by it becomes ownerless instead (covers every takeOwnershipOfColonyFull call site).
+    if (newEmpire !== null && colony.empire !== null && !scenarioQuery(galaxy, 'combatCaptureAllowed', true, { capturingEmpire: newEmpire, habitat: colony })) newEmpire = null;
     const empire = colony.empire;
     // Empire.1.cs 67 _Galaxy.CheckTriggerEvent(colony.GameEventId, newEmpire, Capture, null) (story/eventActions.ts, M4z3).
     checkTriggerEvent(galaxy, colony.gameEventId, newEmpire, EventTriggerType.Capture, null);
@@ -972,6 +976,9 @@ export function scanForNewOwnerHabitat(galaxy: Galaxy, habitat: Habitat): void {
     if (builtObject === null || builtObject.empire === null || builtObject.empire.pirateEmpireBaseHabitat !== null || builtObject.empire === galaxy.independentEmpire || builtObject.empire.reclusive) return;
     const num = galaxy.calculateDistanceSquared(self.xpos, self.ypos, builtObject.xpos, builtObject.ypos);
     if (num < 250000.0) {
+        // 19e Exchange: a merchant-spy faction may win the fight but never annexes — skip adoption so the habitat
+        // stays ownerless until a non-Exchange ship gets close.
+        if (!scenarioQuery(galaxy, 'combatCaptureAllowed', true, { capturingEmpire: builtObject.empire, habitat: self })) return;
         checkForShipsDiscoveringRuins(galaxy, self);
         takeOwnershipOfColonyFull(galaxy, builtObject.empire, self, builtObject.empire, false, false);
         let text = '';

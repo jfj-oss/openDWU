@@ -22,6 +22,7 @@
 // Habitat._PirateColonyControl: M4s2's PirateColonyControlList (wired at the M4q merge; see pirateColonyControl below).
 
 import { recordRaidLoss } from '../scenario/emergent/crisesCore';
+import { scenarioQuery } from '../scenario/hooks';
 import { registerTodo, todo } from '../tick/todo';
 import { cancelBlockadeColony } from '../fleets/blockades';
 import { getNearbyBuiltObjects } from '../pirates/pirateAI';
@@ -1818,7 +1819,10 @@ function conquerColony(galaxy: Galaxy, self: Habitat, defender: Empire | null, i
                 }
             }
             if (empire3.counters !== null) processColonyConquest(empire3, self, self.empire);
-            takeOwnershipOfColonyFull(galaxy, empire3, self, empire3, flag2, false);
+            // 19e Exchange: a merchant-spy faction may win the fight but never annexes — ownership goes to null so the
+            // stock lost-colony adoption can re-seat the habitat with its original owner.
+            const captureEmpire = scenarioQuery(galaxy, 'combatCaptureAllowed', true, { capturingEmpire: empire3, habitat: self }) ? empire3 : null;
+            takeOwnershipOfColonyFull(galaxy, empire3, self, captureEmpire, flag2, false);
             self.taxRate = 0;
         }
         reviewEmpireTerritory(galaxy, false);

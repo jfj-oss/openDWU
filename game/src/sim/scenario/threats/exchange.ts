@@ -1328,7 +1328,10 @@ function missionAllowed(galaxy: Galaxy, value: boolean, a: { builtObject: BuiltO
     const st = peekExchangeState(galaxy);
     if (st === null || st.ended || st.faction === null || a.builtObject.actualEmpire !== st.faction) return value;
     const M = BuiltObjectMissionType;
-    if (a.missionType === M.Colonize || a.missionType === M.UnloadTroops || a.missionType === M.Bombard || a.missionType === M.WaitAndBombard) return false;
+    if (a.missionType === M.Colonize || a.missionType === M.UnloadTroops || a.missionType === M.Bombard || a.missionType === M.WaitAndBombard || a.missionType === M.Capture || a.missionType === M.Raid) return false;
+    // Escape moves the ship AWAY from its target, so an in-system ship fleeing an in-system threat would leave the system.
+    // Only allow it once the ship is already outside (fleeing back / keeping distance); otherwise keep its patrol.
+    if (a.missionType === M.Escape) return !exchangeInSystem(galaxy, st, a.builtObject.xpos, a.builtObject.ypos);
     let x = a.x;
     let y = a.y;
     const t = a.target as { xpos?: unknown; ypos?: unknown } | null;
@@ -1523,6 +1526,16 @@ export function registerExchange(): void {
         },
     });
     registerScenarioQuery({ id: 'exchange.missions', flag: EXCHANGE_FLAG, query: 'assignMissionAllowed', run: (g, v, a) => missionAllowed(g, v, a) });
+    registerScenarioQuery({
+        id: 'exchange.noCapture',
+        flag: EXCHANGE_FLAG,
+        query: 'combatCaptureAllowed',
+        run: (g, v, a) => {
+            if (!v) return v;
+            const f = exchangeFaction(g);
+            return f === null || a.capturingEmpire !== f;
+        },
+    });
     registerScenarioQuery({
         id: 'exchange.defendClient',
         flag: EXCHANGE_FLAG,
