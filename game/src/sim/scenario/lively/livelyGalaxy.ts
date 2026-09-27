@@ -72,7 +72,7 @@ function ambitionOf(galaxy: Galaxy, empire: Empire): AmbitionEntry {
 }
 
 /** The empires the package considers: active major empires (not pirates, not the independents). */
-function majorEmpires(galaxy: Galaxy): Empire[] {
+export function majorEmpires(galaxy: Galaxy): Empire[] {
     return galaxy.empires.filter((e) => e !== null && e.active && e !== galaxy.independentEmpire && e.pirateEmpireBaseHabitat === null);
 }
 

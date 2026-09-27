@@ -7,3 +7,16 @@ Lively Incident Dispute;A mining-rights dispute with the {0} has flared up along
 Lively Incident Blockade;Warships of the {0} are blockading our traffic in the disputed border zone.
 Lively Incident Seizure;The {0} has seized our unescorted mining station {1} in the disputed border zone!
 Lively Incident Aggressor;Our border forces clashed with the {0} in the disputed zone.
+Lively Pirate Ambition Title;Underworld Ambition
+Lively Pirate Ambition Own;Our coffers are full and our fleets are strong: we seize {0} outright and make it our own.
+Lively Pirate Ambition News;The {0} has seized the colony of {1}, turning protection money into permanent territory.
+Lively Festival Title;Festival
+Lively Festival Own;Celebrations sweep our colonies this year, lifting spirits across the empire.
+Lively Election News;Voters go to the polls across the {0}.
+Lively Coronation News;A new sovereign is crowned in the {0}.
+Lively Anniversary War Title;War Anniversary
+Lively Anniversary War Own;We mark the anniversary of a war that shaped our history, honouring the allies who stood with us.
+Lively Anniversary War News;The {0} marks the anniversary of a war that shaped its history.
+Lively Anniversary Wonder Title;Wonder Anniversary
+Lively Anniversary Wonder Own;We celebrate the anniversary of a great wonder's dedication.
+Lively Anniversary Wonder News;The {0} celebrates the anniversary of a great wonder's dedication.

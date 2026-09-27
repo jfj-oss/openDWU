@@ -5,7 +5,9 @@
   "flags": [
     { "name": "ambitionPressure", "label": "Ambition pressure", "description": "Empires with idle warships and long peace grow restless; restless AIs relax their war-review attitude threshold.", "default": true },
     { "name": "borderFriction", "label": "Border friction", "description": "Empires whose territories overlap suffer yearly border incidents (mining disputes, blockades, station seizures) that sour relations and count toward war.", "default": true },
-    { "name": "smallerInvasions", "label": "Smaller invasions", "description": "Troop fleets smaller than the stock 10 ships may be sent against weakly held colonies (set the minimum-ships param above 0).", "default": false }
+    { "name": "smallerInvasions", "label": "Smaller invasions", "description": "Troop fleets smaller than the stock 10 ships may be sent against weakly held colonies (set the minimum-ships param above 0).", "default": false },
+    { "name": "pirateAmbition", "label": "Pirate ambition", "description": "A rich, well-armed pirate faction seizes an independent colony as a permanent base and starts defending it, running freighters for it and raiding others from it.", "default": true },
+    { "name": "livingCalendar", "label": "Living calendar", "description": "Yearly festivals, elections, coronations and anniversaries per empire: small approval / relation effects and news between the crises.", "default": true }
   ],
   "params": [
     { "name": "ambitionRise", "label": "Ambition gained per peaceful year (at the reference fleet size)", "default": 1, "min": 0, "max": 10 },
@@ -23,6 +25,20 @@
     { "name": "incidentMemoryDecay", "label": "Share of remembered incidents kept each year", "default": 0.6, "min": 0, "max": 1 },
     { "name": "invasionMinShips", "label": "Minimum troop-fleet ships against weak colonies (0 = stock 10)", "default": 0, "min": 0, "max": 10 },
     { "name": "invasionTroopRatio", "label": "Share of the required troop strength a small troop fleet must carry (stock 0.5)", "default": 0.35, "min": 0, "max": 1 },
-    { "name": "invasionWeakTroops", "label": "Colony troop strength below which the smaller rule applies", "default": 30000, "min": 0, "max": 1000000 }
+    { "name": "invasionWeakTroops", "label": "Colony troop strength below which the smaller rule applies", "default": 30000, "min": 0, "max": 1000000 },
+    { "name": "pirateAmbitionMoney", "label": "Pirate state treasury needed to go ambitious", "default": 300000, "min": 0, "max": 10000000 },
+    { "name": "pirateAmbitionShips", "label": "Pirate warships needed to go ambitious", "default": 10, "min": 1, "max": 200 },
+    { "name": "pirateAmbitionCooldownYears", "label": "Years between a new faction going ambitious", "default": 8, "min": 0, "max": 100 },
+    { "name": "pirateAmbitionColonyCap", "label": "Colonies an ambitious faction may hold", "default": 3, "min": 1, "max": 20 },
+    { "name": "pirateAmbitionSeizeRadiusFraction", "label": "Search radius for a nearby independent colony (fraction of galaxy width)", "default": 0.25, "min": 0.01, "max": 1 },
+    { "name": "pirateAmbitionThreatPenalty", "label": "Pirate-relation evaluation penalty applied to empires that have met the faction", "default": 8, "min": 0, "max": 100 },
+    { "name": "festivalChance", "label": "Yearly festival chance per empire", "default": 0.25, "min": 0, "max": 1 },
+    { "name": "festivalApprovalBonus", "label": "Approval bonus during a festival", "default": 10, "min": 0, "max": 100 },
+    { "name": "electionChance", "label": "Yearly election chance (election-manner governments)", "default": 0.2, "min": 0, "max": 1 },
+    { "name": "coronationChance", "label": "Yearly coronation chance (Monarchy)", "default": 0.15, "min": 0, "max": 1 },
+    { "name": "anniversaryPeriodYears", "label": "Years between war/wonder anniversary celebrations", "default": 5, "min": 1, "max": 100 },
+    { "name": "anniversaryChance", "label": "Chance an eligible anniversary is actually celebrated", "default": 0.3, "min": 0, "max": 1 },
+    { "name": "anniversaryAllyBias", "label": "Relation bias bonus for a mutual-defense ally on an anniversary", "default": 3, "min": 0, "max": 50 },
+    { "name": "anniversaryTreatyChance", "label": "Chance a free-trade partner is deepened to a mutual defense pact on an anniversary", "default": 0.15, "min": 0, "max": 1 }
   ]
 }
