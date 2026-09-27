@@ -21,7 +21,8 @@ import './diplomacyScreen.css';
 import type { Empire } from '../../sim/empire';
 import type { Galaxy } from '../../sim/galaxy';
 import type { EmpireMessage } from '../../sim/messages';
-import { getGovernmentsStatic } from '../../sim/empire';
+import { getGovernmentsStatic, AutomationLevel } from '../../sim/empire';
+import { displayColorForEmpire } from '../../sim/empireColors';
 import {
     DiplomaticRelation,
     DiplomaticRelationType,
@@ -35,6 +36,7 @@ import {
     determineDesiredDiplomaticRelationTypical,
     processEndOfWarWithEmpire,
     resetAttitudeLevelsAtEndOfWar,
+    MANUAL,
 } from '../../sim/diplomacyTick';
 import { galaxyStarDate } from '../../sim/tick/simTime';
 import { rimTraderTermsRows, type RimTraderTermsRows } from '../scenario/rimTraderRows';
@@ -51,14 +53,16 @@ import { DialogSet, raceDialogFileName } from '../../sim/data/dialogSet';
 import { fetchText } from '../../sim/data/fetchData';
 import { resolveDataUrl } from '../../sim/data/paths';
 import { formatNet, resolveGameText } from '../../sim/textResolver';
-import { AutomationLevel } from '../../sim/empire';
-import { MANUAL } from '../../sim/diplomacyTick';
 // [proposals] end
 
 // [tradenego] begin
 import { closeTradePanel, openTradePanel } from './tradePanel';
 import type { DialogPartType } from '../../sim/data/dialogSet';
 // [tradenego] end
+
+// [wargoals] begin
+import { warRowSuffix, warTermsBlock } from './warTermsPanel';
+// [wargoals] end
 
 // [diplovoice] begin
 import { counterNote, diplomatVoiceConfig, voiceDiplomatReply, voiceSwitch, voicedLineToggle, voicingIndicator, type VoicedReply } from '../diplomatVoice';
@@ -119,6 +123,7 @@ export function formatSigned(v: number): string {
 export { feelingDescription, civilityDescription, relationshipFactors, type RelationshipFactor } from '../../sim/player/relationFactors';
 import { relationshipFactors, feelingDescription, type RelationshipFactor } from '../../sim/player/relationFactors';
 import { incidentRows } from '../../sim/scenario/emergent/espionageView';
+import { councilView } from '../../sim/scenario/emergent/councilView';
 import { acceptProposal, declineProposal } from '../../sim/player/playerOrders';
 export { acceptProposal, declineProposal };
 
@@ -236,7 +241,9 @@ export function diplomacyRows(player: Empire, starDate: number, playerGovernment
         return {
             empire: other,
             name: other.name,
-            color: other.mainColor,
+            // Task 19k-1b: the big-galaxies scenario's extendedPalette flag substitutes a distinct colour for
+            // empires beyond the 20 key colours; off (or no scenario) this is exactly other.mainColor.
+            color: displayColorForEmpire(other),
             relationType: rel.type,
             relationText: relationDescription(rel, player),
             relationColor: RELATION_COLORS[rel.type],
@@ -252,6 +259,15 @@ export function diplomacyRows(player: Empire, starDate: number, playerGovernment
             factors: relationshipFactors(player, other, playerGovernmentName),
         };
     });
+}
+
+/** Task 19k-1d (Big Galaxies: 60-empire games): case-insensitive substring filter on empire name, for the list
+ * pane's filter box — at 60 empires the plain list is long, so a filter is the fast way to find one. An
+ * empty/blank query keeps every row. */
+export function filterDiplomacyRows(rows: DiplomacyRow[], query: string): DiplomacyRow[] {
+    const q = query.trim().toLowerCase();
+    if (q === '') return rows;
+    return rows.filter((r) => r.name.toLowerCase().includes(q));
 }
 
 /** The player's GovernmentAttributes.Name. */
@@ -421,12 +437,17 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
     let selected: Empire | null = null;
     let listScroll = 0;
     let detailScroll = 0;
+    // Task 19k-1d (Big Galaxies: 60-empire games): a filter box on the list pane, so a 60-empire list stays usable.
+    let filterQuery = '';
 
     function render(): void {
         const listPane = body.querySelector<HTMLElement>('.diplomacy-list');
         const detailPane = body.querySelector<HTMLElement>('.diplomacy-detail');
         if (listPane) listScroll = listPane.scrollTop;
         if (detailPane) detailScroll = detailPane.scrollTop;
+        const prevFilterEl = body.querySelector<HTMLInputElement>('.diplomacy-filter');
+        const filterWasFocused = document.activeElement === prevFilterEl;
+        const filterCaret = prevFilterEl?.selectionStart ?? null;
         body.replaceChildren();
 
         const player = opts.player;
@@ -444,13 +465,29 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
         }
 
         const list = el('div', 'diplomacy-list');
-        for (const r of rows) {
+        const filterInput = document.createElement('input');
+        filterInput.type = 'text';
+        filterInput.className = 'diplomacy-filter';
+        filterInput.placeholder = 'Filter empires…';
+        filterInput.autocomplete = 'off';
+        filterInput.value = filterQuery;
+        filterInput.addEventListener('input', () => {
+            filterQuery = filterInput.value;
+            render();
+        });
+        list.appendChild(filterInput);
+
+        const filteredRows = filterDiplomacyRows(rows, filterQuery);
+        if (filteredRows.length === 0) {
+            list.appendChild(el('div', 'diplomacy-list-empty', 'No empires match this filter.'));
+        }
+        for (const r of filteredRows) {
             const line = el('div', r === row ? 'diplomacy-row diplomacy-row-selected' : 'diplomacy-row');
             const swatch = el('span', 'diplomacy-swatch');
             swatch.style.background = rgb(r.color);
             const name = el('span', 'diplomacy-name', r.name);
             name.title = r.name;
-            const relation = el('span', 'diplomacy-relation', r.relationText);
+            const relation = el('span', 'diplomacy-relation', r.relationText + warRowSuffix(player, r.empire)); // [wargoals]
             relation.style.color = rgb(r.relationColor);
             relation.title = r.relationText;
             const attitude = el('span', 'diplomacy-attitude', r.attitude !== null ? formatSigned(r.attitude) : '');
@@ -494,6 +531,11 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
         const rimTerms = row.empire === rimTraderEmpireOf(player) ? rimTraderTermsRows(player.galaxy, player) : null;
         if (rimTerms !== null) detail.appendChild(rimTraderTermsBlock(rimTerms));
         // [rimTrader] end
+
+        // [wargoals] begin
+        const war = warTermsBlock(player, row.empire, () => render());
+        if (war !== null) detail.appendChild(war);
+        // [wargoals] end
 
         detail.appendChild(el('div', 'diplomacy-section-heading', 'Treaty on Offer'));
         if (row.incoming) {
@@ -563,9 +605,45 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
             }
         }
 
+        // 19d8 (scenario `galacticCouncil`): the council block — members, chair, motion on the floor, last 5 results, our bloc.
+        const council = councilView(player.galaxy, player);
+        if (council !== null) {
+            detail.appendChild(el('div', 'diplomacy-section-heading', council.observer ? `Council: ${council.name} (not a member)` : `Council: ${council.name}`));
+            detail.appendChild(el('div', 'diplomacy-line', `Chair: ${council.chair || '(none)'} — founded ${council.founded}`));
+            for (const mr of council.members) {
+                const tags = [mr.chair ? 'chair' : '', mr.bloc, `prestige ${mr.prestige}`, mr.losses > 0 ? `outvoted ${mr.losses}` : ''].filter((t) => t !== '').join(', ');
+                detail.appendChild(el('div', 'diplomacy-factor', `${mr.name} (${tags})`));
+            }
+            detail.appendChild(el('div', 'diplomacy-line', council.motion !== '' ? `Motion: ${council.motion}` : 'Motion: (none on the floor)'));
+            if (council.motionStatus !== '') detail.appendChild(el('div', 'diplomacy-factor', council.motionStatus));
+            if (council.voteDecisionId > 0) {
+                const buttons = el('div', 'diplomacy-line');
+                for (const [id, label] of [['yes', 'Vote yes'], ['no', 'Vote no'], ['abstain', 'Abstain']] as const) {
+                    const b = el('button', 'diplomacy-button', label) as HTMLButtonElement;
+                    b.type = 'button';
+                    b.addEventListener('click', () => issuePlayerCommand(player.galaxy, player, 'answerScenarioDecision', [council.voteDecisionId, id], () => render()));
+                    buttons.appendChild(b);
+                }
+                detail.appendChild(buttons);
+            }
+            for (const r of council.results) {
+                const line = el('div', 'diplomacy-factor', r.text);
+                line.style.color = r.passed ? LIGHT_GREEN : RED;
+                detail.appendChild(line);
+            }
+            detail.appendChild(el('div', 'diplomacy-line', `Our bloc: ${council.yourBloc || '(none)'}`));
+            if (council.rivals.length > 0) detail.appendChild(el('div', 'diplomacy-line diplomacy-muted', `Rival council: ${council.rivals.join(', ')}`));
+        }
+
         body.append(list, detail);
         list.scrollTop = listScroll;
         detail.scrollTop = detailScroll;
+        // Rebuilding the list (above) replaces the filter <input> too; restore focus/caret so typing a filter query
+        // does not lose keyboard focus on every keystroke.
+        if (filterWasFocused) {
+            filterInput.focus();
+            if (filterCaret !== null) filterInput.setSelectionRange(filterCaret, filterCaret);
+        }
     }
 
     // [proposals] begin

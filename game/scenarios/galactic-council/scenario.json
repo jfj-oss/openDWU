@@ -1,0 +1,27 @@
+{
+  "id": "galactic-council",
+  "name": "Galactic Council",
+  "description": "Once enough empires have met, they found a galactic council: a yearly motion (sanctions, resource embargoes, war condemnations, lifting sanctions, recognising new states, declaring threats) is put to the vote; outvoted members drift into blocs that can split the council in two. Package 19d8 of the Emergent Galaxy set; everything else is the faithful game.",
+  "flags": [
+    { "name": "galacticCouncil", "label": "Galactic council", "description": "A council of empires votes sanctions and embargoes each year; blocs form among the outvoted.", "default": true }
+  ],
+  "params": [
+    { "name": "councilFoundingMembers", "label": "Empires that must have met to found the council", "default": 3, "min": 2, "max": 20 },
+    { "name": "councilJoinThreshold", "label": "AI join threshold (friendliness + caution - aggression)", "default": 60, "min": -1000, "max": 1000 },
+    { "name": "councilLeaveThreshold", "label": "Sanctioned AI leave threshold (aggression - caution - attitude to members)", "default": 10, "min": -1000, "max": 1000 },
+    { "name": "councilRejoinYears", "label": "Years before a leaver may rejoin", "default": 5, "min": 0, "max": 50 },
+    { "name": "councilLeavePenalty", "label": "Attitude cost of leaving (each member)", "default": 10, "min": 0, "max": 100 },
+    { "name": "councilVoteDays", "label": "Days the player has to vote", "default": 60, "min": 1, "max": 330 },
+    { "name": "councilVoteThreshold", "label": "Vote score needed for yes / no (else abstain)", "default": 5, "min": 0, "max": 100 },
+    { "name": "councilGrievanceAttitude", "label": "Attitude at or below which a member moves sanctions", "default": -40, "min": -150, "max": 0 },
+    { "name": "councilEmbargoAttitude", "label": "Attitude at or below which a member moves an embargo", "default": -20, "min": -150, "max": 0 },
+    { "name": "councilCondemnPenalty", "label": "Attitude penalty of a condemnation (each member)", "default": 15, "min": 0, "max": 100 },
+    { "name": "councilSanctionMinYears", "label": "Years before sanctions may be lifted", "default": 3, "min": 0, "max": 50 },
+    { "name": "councilBlocLosses", "label": "Shared defeats that form a bloc", "default": 3, "min": 1, "max": 20 },
+    { "name": "councilBlocVoteWeight", "label": "Bloc alignment weight in votes", "default": 20, "min": 0, "max": 100 },
+    { "name": "councilBlocAttitudeBonus", "label": "Yearly mutual attitude bonus per bloc year (max 3 years)", "default": 3, "min": 0, "max": 30 },
+    { "name": "councilBlocCoordinationYears", "label": "Bloc age at which members vote as one", "default": 2, "min": 0, "max": 50 },
+    { "name": "councilSplitYears", "label": "Bloc age at which it may split the council", "default": 6, "min": 1, "max": 100 },
+    { "name": "councilThreatBonus", "label": "Yearly joint-defence attitude bonus against a declared threat", "default": 5, "min": 0, "max": 50 }
+  ]
+}

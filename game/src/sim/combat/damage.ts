@@ -503,10 +503,10 @@ export function inflictWarDamageFighter(galaxy: Galaxy, inflictingEmpire: Empire
 
 /** Galaxy.3.cs 529 InflictWarDamage(inflictingEmpire, builtObject). */
 export function inflictWarDamageBuiltObject(galaxy: Galaxy, inflictingEmpire: Empire | null, target: BuiltObject): void {
-    void galaxy;
     if (target.empire !== null) {
         const diplomaticRelation = target.empire.diplomaticRelations.byEmpire(inflictingEmpire);
         if (diplomaticRelation !== null) diplomaticRelation.warDamageBuiltObject = (diplomaticRelation.warDamageBuiltObject + calculateWarValueBuiltObject(target)) | 0;
+        if (galaxy.scenario !== null && diplomaticRelation !== null && inflictingEmpire !== null) scenarioEmit(galaxy, 'warDamageInflicted', { inflictor: inflictingEmpire, victim: target.empire, builtObject: target, habitat: null, value: calculateWarValueBuiltObject(target) }); // mod layer
     }
 }
 
@@ -515,6 +515,7 @@ export function inflictWarDamageHabitat(galaxy: Galaxy, inflictingEmpire: Empire
     if (target.empire !== null && target.empire !== galaxy.independentEmpire) {
         const diplomaticRelation = target.empire.diplomaticRelations.byEmpire(inflictingEmpire);
         if (diplomaticRelation !== null) diplomaticRelation.warDamageColony = (diplomaticRelation.warDamageColony + calculateWarValueHabitat(galaxy, target)) | 0;
+        if (galaxy.scenario !== null && diplomaticRelation !== null && inflictingEmpire !== null) scenarioEmit(galaxy, 'warDamageInflicted', { inflictor: inflictingEmpire, victim: target.empire, builtObject: null, habitat: target, value: calculateWarValueHabitat(galaxy, target) }); // mod layer
     }
 }
 
@@ -985,6 +986,7 @@ export function inflictDamageFull(
             if (creature.type === CreatureType.SilverMist && self.empire !== null) self.empire.civilityRating += DESTROY_SILVER_MIST_REPUTATION_BONUS;
             // BuiltObject.2.cs 6233 _Galaxy.CheckTriggerEvent(creature.GameEventId, ActualEmpire, Destroy, null) (story/eventActions.ts, M4z3).
             checkTriggerEvent(galaxy, creature.gameEventId, self.actualEmpire, EventTriggerType.Destroy, null);
+            if (galaxy.scenario !== null) scenarioEmit(galaxy, 'creatureKilled', { creature, killer: self, empire: self.actualEmpire }); // mod layer (19j)
             creature.completeTeardown();
             return true;
         }
@@ -1189,6 +1191,7 @@ export function inflictDamageFull(
                     if (!chanceNewShipCaptain(galaxy, builtObject, self.empire, self)) chanceNewFleetAdmiral(galaxy, builtObject, self.empire, self);
                 }
                 if (self.empire !== null && self.empire.counters !== null) self.empire.counters.processBuiltObjectDestruction(builtObject);
+                if (galaxy.scenario !== null) scenarioEmit(galaxy, 'builtObjectKilledBy', { builtObject, destroyer: self.empire }); // mod layer
                 const explosion3 = new Explosion();
                 explosion3.explosionStart = galaxyNow(galaxy);
                 explosion3.explosionSize = toShort(Math.trunc(Math.sqrt(builtObject.components.count) * (Math.PI / 4.0) * 30.0));
@@ -1356,6 +1359,7 @@ export function inflictIonDamage(galaxy: Galaxy, self: BuiltObject, target: Stel
             // BuiltObject.2.cs 6135 CheckTriggerEvent(creature.GameEventId, Empire, Destroy) (story/eventActions.ts, M4z3).
             checkTriggerEvent(galaxy, creature.gameEventId, self.empire, EventTriggerType.Destroy, null);
             if (creature.type === CreatureType.SilverMist && self.empire !== null) self.empire.civilityRating += DESTROY_SILVER_MIST_REPUTATION_BONUS;
+            if (galaxy.scenario !== null) scenarioEmit(galaxy, 'creatureKilled', { creature, killer: self, empire: self.empire }); // mod layer (19j)
             creature.completeTeardown();
         }
     } else if (isBuiltObject(target)) {
@@ -1407,6 +1411,7 @@ export function habitatInflictIonDamage(galaxy: Galaxy, self: Habitat, target: S
             // Habitat.cs 2357 CheckTriggerEvent(creature.GameEventId, Empire, Destroy) (story/eventActions.ts, M4z3).
             checkTriggerEvent(galaxy, creature.gameEventId, self.empire, EventTriggerType.Destroy, null);
             if (creature.type === CreatureType.SilverMist && self.empire !== null) self.empire.civilityRating += DESTROY_SILVER_MIST_REPUTATION_BONUS;
+            if (galaxy.scenario !== null) scenarioEmit(galaxy, 'creatureKilled', { creature, killer: self, empire: self.empire }); // mod layer (19j)
             creature.completeTeardown();
         }
     } else if (isBuiltObject(target)) {

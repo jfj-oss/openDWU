@@ -79,6 +79,7 @@ import { price0 } from '../pirates/missionsMarket';
 import { scenarioFlag } from '../scenario/state';
 import { scenarioText } from '../scenario/messages';
 import { isRimTraderAI } from '../scenario/rimTrade/common';
+import { scenarioEmit, scenarioQuery } from '../scenario/hooks';
 
 /** The greeting-menu entry (Main.Part9.cs:208-249) an option sits under. FOLLOW_UP: a reply's own options. GREETING: a
  *  greeting-menu entry that acts itself (the pirate player's protection entries, Main.Part9.cs:175-189). */
@@ -600,6 +601,7 @@ function evaluateProposal(galaxy: Galaxy, initiator: Empire, empire: Empire, opt
             break;
         case 'WAR_END': { // Main.Part10.cs:4679
             const c = considerEndWar(galaxy, empire, initiator, false);
+            if (galaxy.scenario !== null) c.end = scenarioQuery(galaxy, 'endWarAcceptance', c.end, { empire, other: initiator }); // mod layer
             if (c.end) {
                 const diplomaticRelation3 = obtainDiplomaticRelation(empire, initiator);
                 const v = determineVictorInWar(diplomaticRelation3);
@@ -625,6 +627,7 @@ function evaluateProposal(galaxy: Galaxy, initiator: Empire, empire: Empire, opt
                 processEndOfWarWithEmpire(galaxy, initiator, empire);
                 processEndOfWarWithEmpire(galaxy, empire, initiator);
                 expire(empire);
+                if (galaxy.scenario !== null) scenarioEmit(galaxy, 'peaceSigned', { empire, other: initiator }); // mod layer
             } else {
                 reply('WAR_END_REJECT');
             }

@@ -386,7 +386,7 @@ export function findAbandonedShipsInDebrisField(galaxy: Galaxy, location: Galaxy
 }
 
 /** Galaxy.5.cs 2893-2920 / 2867-2890 tail: drop a location from every empire's KnownGalaxyLocations, the index and the list. */
-function removeGalaxyLocation(galaxy: Galaxy, item: GalaxyLocation): void {
+export function removeGalaxyLocation(galaxy: Galaxy, item: GalaxyLocation): void {
     for (let j = 0; j < galaxy.empires.length; j++) {
         const empire = galaxy.empires[j];
         const known = empire.visibility.knownGalaxyLocations;
@@ -406,7 +406,7 @@ export function clearEmptyDebrisFields(galaxy: Galaxy): void {
         const galaxyLocation = galaxy.galaxyLocations[i];
         if (galaxyLocation.type === GalaxyLocationType.DebrisField) {
             const builtObjectList = findAbandonedShipsInDebrisField(galaxy, galaxyLocation);
-            if (builtObjectList.length === 0) {
+            if (builtObjectList.length === 0 && !(galaxy.scenario !== null && scenarioQuery(galaxy, 'debrisFieldPersists', false, { location: galaxyLocation }))) {
                 galaxyLocationList.push(galaxyLocation);
             }
         }
@@ -558,6 +558,11 @@ export function applyLocationEffects(galaxy: Galaxy, builtObject: BuiltObject, t
                 }
             }
         }
+    }
+    // mod layer (19j tamed creatures): storm-immune ships take no lightning / ship-damage effects; no-op without a scenario.
+    if ((flag2 || flag5) && galaxy.scenario !== null && scenarioQuery(galaxy, 'builtObjectStormImmune', false, { builtObject })) {
+        flag2 = false;
+        flag5 = false;
     }
     if (flag2 && builtObject.currentSpeed <= builtObject.topSpeed) {
         const totalSeconds = (time - builtObject.lastLocationEffectTouch) / 1000;

@@ -15,6 +15,7 @@ import { ResearchSystem, nodeIndustry, type TechNode } from '../researchSystem';
 import { DiplomaticRelation, DiplomaticRelationType } from '../diplomacy';
 import { cancelBlockades, changeDiplomaticRelation, processEndOfWarWithEmpire, resetAttitudeLevelsAtEndOfWar } from '../diplomacyTick';
 import { galaxyStarDate } from '../tick/simTime';
+import { scenarioEmit } from '../scenario/hooks';
 
 const S = BuiltObjectSubRole;
 
@@ -213,6 +214,7 @@ export function acceptProposal(player: Empire, other: Empire): boolean {
     // The fallback is not added to the list, as in the C#.
     const diplomaticRelation2 =
         player.diplomaticRelations.byEmpire(other) ?? new DiplomaticRelation(DiplomaticRelationType.NotMet, player, player, other, false);
+    let endedWar = false; // mod layer (peaceSigned)
     switch (diplomaticRelation1.type) {
         case DiplomaticRelationType.None:
         case DiplomaticRelationType.SubjugatedDominion:
@@ -236,6 +238,7 @@ export function acceptProposal(player: Empire, other: Empire): boolean {
                     diplomaticRelation3.lastDiplomacyTradeOfferDate = galaxyStarDate(galaxy);
                     processEndOfWarWithEmpire(galaxy, player, other);
                     processEndOfWarWithEmpire(galaxy, other, player);
+                    endedWar = true;
                     break;
                 }
             }
@@ -245,6 +248,7 @@ export function acceptProposal(player: Empire, other: Empire): boolean {
             break;
     }
     player.proposedDiplomaticRelations.remove(diplomaticRelation1);
+    if (endedWar && galaxy.scenario !== null) scenarioEmit(galaxy, 'peaceSigned', { empire: player, other }); // mod layer
     return true;
 }
 

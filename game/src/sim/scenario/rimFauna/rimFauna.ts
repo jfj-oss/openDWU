@@ -56,6 +56,32 @@ import {
     stationAt,
 } from './common';
 
+/**
+ * 19g-7b hand-off: another package (new fauna) may drive some herds itself. Pure lookups (no Rnd, no writes); each
+ * returns false for a herd it does not own, so without that package every herd behaves as before.
+ *   drives(herd)          — the herd tick only prunes it (no grazing, migration, breeding): the owner steers it.
+ *   sparesStations(herd)  — it grazes and migrates here but never feeds on (damages) a mining station.
+ */
+export interface RimHerdDriver {
+    drives: (galaxy: Galaxy, herd: RimHerd) => boolean;
+    sparesStations: (galaxy: Galaxy, herd: RimHerd) => boolean;
+}
+const herdDrivers: RimHerdDriver[] = [];
+
+export function registerRimHerdDriver(driver: RimHerdDriver): void {
+    if (!herdDrivers.includes(driver)) herdDrivers.push(driver);
+}
+
+function herdDrivenElsewhere(galaxy: Galaxy, herd: RimHerd): boolean {
+    for (const d of herdDrivers) if (d.drives(galaxy, herd)) return true;
+    return false;
+}
+
+function herdSparesStations(galaxy: Galaxy, herd: RimHerd): boolean {
+    for (const d of herdDrivers) if (d.sparesStations(galaxy, herd)) return true;
+    return false;
+}
+
 /** Empires with a colony or mining station this close to a migration target get the warning message. */
 const MIGRATION_WARN_RANGE = 150000;
 
@@ -309,7 +335,7 @@ function grazeHerd(galaxy: Galaxy, herd: RimHerd): void {
     herd.feedTicks++;
     st.stats.feedTicks++;
     const station = stationAt(site);
-    if (station !== null && !rimHerdDocileTo(herd, station.empire)) {
+    if (station !== null && !rimHerdDocileTo(herd, station.empire) && !herdSparesStations(galaxy, herd)) {
         const first = herd.feedingStation !== station;
         herd.feedingStation = station;
         feedOnStation(galaxy, herd, station, first);
@@ -396,7 +422,7 @@ export function rimFaunaMigrationSeason(galaxy: Galaxy): number {
     const chance = faunaParam(galaxy, 'rimFaunaMigrationChance');
     const started: RimHerd[] = [];
     for (const herd of st.herds) {
-        if (herd.leader === null || herd.migration !== null) continue;
+        if (herd.leader === null || herd.migration !== null || herdDrivenElsewhere(galaxy, herd)) continue;
         if (galaxy.rnd.nextDouble() >= chance) continue;
         if (herd.homeSystemIndex !== herd.birthSystemIndex) {
             startRimHerdMigration(galaxy, herd, herd.birthSystemIndex, true);
@@ -446,6 +472,7 @@ export function rimFaunaHerdTick(galaxy: Galaxy): void {
             herdKilled(galaxy, herd);
             continue;
         }
+        if (herdDrivenElsewhere(galaxy, herd)) continue;
         if (herd.migration !== null) steerMigration(galaxy, herd);
         else grazeHerd(galaxy, herd);
     }
@@ -458,7 +485,7 @@ export function rimFaunaYear(galaxy: Galaxy): void {
     const chance = faunaParam(galaxy, 'rimFaunaBreedChance');
     for (const herd of st.herds) {
         const leader = herd.leader;
-        if (leader === null || herd.migration !== null || !creatureAlive(galaxy, leader)) continue;
+        if (leader === null || herd.migration !== null || !creatureAlive(galaxy, leader) || herdDrivenElsewhere(galaxy, herd)) continue;
         if (herdMembers(herd).length >= sizeMax || galaxy.rnd.nextDouble() >= chance) continue;
         const calf = generateCreaturesAtLocation(galaxy, CreatureType.Kaltor, 1, leader.xpos, leader.ypos, HERD_COHESION, 400);
         for (const c of calf) {

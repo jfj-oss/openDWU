@@ -49,6 +49,11 @@ Then, before M5+ (UI completeness etc.):
   in. Needs a balance pass with the freight overlay (19e-9) to see where rim goods actually flow, then: earlier contact
   (Concord explorers / a broadcast), access for empires whose private freighters sell, and a soak that asserts ≥1 access.
   Do it after 19h/19j land (rim herders are the intended steady suppliers). Cheap (Sonnet) once the overlay is in.
+  **Done on wip/s19a2 (19a addendum):** contact broadcast at year `rimTraderContactYear` (1), rim-good sales through a
+  pirate / independent post credited to the freighter's empire, treasure fleet buying rim goods at foreign ports.
+  5-year seed-1 soak (test/rimTraderTreasureSoak.test.ts, @slow): all 3 empires met in year 1, Sol Nation gains access in
+  year 4; rim buys 23 (2396 u, 11982 cr) by year 5, fleet 2 voyages / 4 stops, 0 ships lost. Remaining imbalance: most
+  rim goods still stay inside each empire (self-flows dominate the freight data); the first voyage takes ~2 years.
 - 19d3 follow-up: a 5-year seed-1 soak showed no AI offensive espionage missions at all, so the crisis/stolen-tech
   acceptance counts (DWU_ESPIONAGE_SOAK_STRICT=1, 30 years) are unconfirmed. Check the base AI's mission assignment
   (Empire.*.cs intelligence AI: does it run offensive missions before a threshold of agents/relations?) before tuning 19d3.
@@ -92,3 +97,25 @@ year 10 (1–8 per empire). Follow-ups:
   rest, 2736-2839). Faithful. Lever = scenario/difficulty/policy, not range.
 - Follow-ups: the "Wild Aspiration" parent-planet check; an audit of in-system speeds (10–30 u/s makes short trips take
   weeks); relax sim-run's frozen-mission metric.
+- 19h-8 follow-up: pirate herd hunts pay a credits bounty because the herders' `creatureKilled` kill drop was not on that
+  branch; once 19j is merged, the drop lands in the hunters' holds automatically — decide whether to keep the bounty too
+  (probably drop it). Also: fuel-scarcity default (0.65) vs belt inner (0.7) means rim pirate bases sit on fuel-less
+  worlds; consider a pirate exemption or a small fuel band at the rim.
+- Save size at scale (2026-09-27): a 4000-star / ×1.7 galaxy serialises to ~420 MB of text (139 MB at 700 stars). Needs a
+  compact save format (binary or compressed, id-indexed) before big galaxies are playable across sessions. Medium (Opus).
+- 19n-1 follow-ups: a regent is killed at the hand-over (side effect of the stock ChangeLeader — port a "steps down"
+  path); when both livingCalendar and courtDynasties are on, the calendar must skip its election/coronation rolls
+  (`courtHandlesSuccession(galaxy)` is exported for it — wire on merge); house prestige never decays on its own.
+- 19o migration (after batch F + G merge): switch the remaining attitude writes to the ledger per
+  src/sim/scenario/reputation/MIGRATION.md (19l incidents, 19g-3 humiliation/breach, 19d8 council, 19j herders, 19k
+  leagues, 19a display mirror, 19l-2 pirate ambition/calendar) and point the council motion search, the war review
+  and peace-terms pricing at `grievances()`. Sonnet, mechanical, ~half a day.
+- 19n-2 follow-ups: UI buttons for schemes/hooks/ties (currently player ops + decisions + the diplomacy menu only); a
+  foreign sway should be able to redirect a 19d1 defection toward the schemer; a claimed colony's secession should hand
+  it to the claimant (19d1 hook); a scheme's agent appears twice in the victim's leads (scheme + foreignAgent) — dedupe;
+  19g-3 wiring of claimsFor/holdsCasusBelli into warGoalCandidates (documented in intrigue.ts header). Sonnet, ~half a day.
+- 19r post-merge verification (after batch G): threat markers vs the real threatKnownSites output; lineage readers vs the
+  real 19c/19d1/19d4/19f-7 state; wreck-field debris and league pennants vs the real 19e-7/19k-3 state (captures
+  `wreck-field.png`, `league.png` still owed); re-key salt bloom onto the treasure fleet; treasure-fleet marker label;
+  drop overlayLayer's plain ring/diamond threat drawing in favour of threatMarkers; pass the Concord's generated
+  textures through the damage/livery overlays; the heavily-withered fade may be too strong (judge in play). Sonnet.

@@ -78,6 +78,32 @@ export function mergeRecordsByName<T extends NamedRecord>(base: readonly T[], ov
     return out;
 }
 
+/**
+ * Resource ids index arrays in the sim (resourceSystem.resources[id]), so they must run 0..n-1 with no gap. An appended
+ * overlay resource whose id leaves a gap (e.g. rim-herders' 47-48, numbered to sit after rimTrade's 41-46, loaded
+ * without rimTrade) is renumbered to the next free id, with a warning; packages look resources up by name. Records
+ * already contiguous (every stock game, rimTrade alone, rimTrade + rim-herders) are returned unchanged.
+ */
+function compactResourceIds<T extends { name: string; resourceId: number }>(list: T[], warnings: string[]): T[] {
+    if (list.every((r, i) => r.resourceId === i)) return list;
+    const used = new Set<number>();
+    const out = list.map((r) => r);
+    let next = 0;
+    // Keep every record whose id is already a dense prefix position; renumber the rest in list order.
+    for (let i = 0; i < out.length; i++) {
+        const r = out[i];
+        if (r.resourceId < out.length && !used.has(r.resourceId)) {
+            used.add(r.resourceId);
+            continue;
+        }
+        while (used.has(next)) next++;
+        warnings.push(`resource "${r.name}": id ${r.resourceId} renumbered to ${next} (resource ids must be contiguous)`);
+        out[i] = { ...r, resourceId: next };
+        used.add(next);
+    }
+    return out;
+}
+
 /** raceBiases.txt overlay rows: "index, Name, v0, v1, ..." — the index is ignored, rows are keyed by name. */
 function parseBiasRowsByName(text: string): { name: string; values: number[] }[] {
     const rows: { name: string; values: number[] }[] = [];
@@ -346,7 +372,7 @@ function applyOneOverlay(base: GameData, overlay: ScenarioOverlay): GameData {
         const text = files.get(p)!;
         switch (name) {
             case 'resources.txt':
-                out.resources = mergeRecordsByName(base.resources, parseResources(text), (r) => r.resourceId, 'resource', warnings);
+                out.resources = compactResourceIds(mergeRecordsByName(base.resources, parseResources(text), (r) => r.resourceId, 'resource', warnings), warnings);
                 break;
             case 'components.txt':
                 out.components = mergeRecordsByName(base.components, parseComponents(text), (r) => r.componentId, 'component', warnings);

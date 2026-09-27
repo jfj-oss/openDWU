@@ -29,6 +29,7 @@ import {
     type SelectionButton,
 } from '../sim/player/orderMenu';
 import { showToast } from './toast';
+import { wreckSalvageMenuItem } from './scenario/wreckageUi'; // [wreckage]
 
 export interface OrderMenuHandlers {
     /** An enabled entry with an action (or an idle-ship entry) was clicked; `shift` = Shift held (queue the order). */
@@ -339,6 +340,29 @@ export function installOrderUi(d: OrderUiDeps, view: OrderMainView, camera: Orde
         const target = view.pickOrderTarget(sx, sy);
         const hover = resolveHoverOrder({ galaxy, empire, selected, x, y, target: hoverOrderTarget(target) /* [fix6ui] N5 */, shift: e.shiftKey, alt: e.altKey, ctrl: e.ctrlKey });
         const keys = { ctrl: e.ctrlKey, alt: e.altKey };
+        // [wreckage] begin — scenario 19e-7: a construction / mining ship right-clicking a known debris field gets
+        // "Salvage <field>" on top of the full action menu (the default order is not given on that click).
+        const salvage = wreckSalvageMenuItem(galaxy, empire, selected, w.x, w.y, 1 / view.zoomFactor);
+        if (salvage !== null) {
+            const rest = openActionMenu({ galaxy, empire, selected, cursorX: x, cursorY: y, zoomFactor: view.zoomFactor, pickAt: () => target }, hover.action, true) ?? [];
+            const sep: OrderMenuItem = { key: '', label: '', hint: null, enabled: false, action: null, children: [], separator: true };
+            openOrderMenu(rest.length > 0 ? [salvage.item, sep, ...rest] : [salvage.item], e.clientX, e.clientY, {
+                onPick: (item, shift) => {
+                    if (item === salvage.item) {
+                        issuePlayerCommand(galaxy, empire, 'salvageWreckField', [salvage.ship, salvage.field.id], (ok) => {
+                            if (!ok) showToast('Salvage not possible');
+                            bar?.render(true);
+                        });
+                        return;
+                    }
+                    if (item.action === null) return;
+                    if (shift) item.action.isSubsequentAction = true;
+                    void performAction(item.action, true, { x, y });
+                },
+            });
+            return;
+        }
+        // [wreckage] end
         const subject = orderSubject(empire, selected);
         // Command log: the order branch changes the sim, so it is queued (applied at the next frame boundary); the
         // other outcomes (idle-ships picker, centre the view) only read it and stay immediate.
@@ -575,8 +599,10 @@ interface SelectionBar {
 }
 
 /** The selected object the buttons act on, as the C# SelectedObject (fleet, else ship / base, else habitat). */
-export function selectionTarget(sel: { habitat: Habitat; builtObject?: BuiltObject; shipGroup?: ShipGroup } | null): ShipActionSelection {
+export function selectionTarget(sel: { habitat: Habitat; builtObject?: BuiltObject; shipGroup?: ShipGroup; creature?: unknown } | null): ShipActionSelection {
     if (sel === null) return null;
+    // Main.Part3.cs 3616: a selected Creature gets eight empty buttons (method_585 with nulls), as with no selection.
+    if (sel.creature !== undefined) return null;
     return sel.shipGroup ?? sel.builtObject ?? sel.habitat;
 }
 

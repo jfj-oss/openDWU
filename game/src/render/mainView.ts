@@ -52,15 +52,26 @@ import { AmbientLayer } from './ambientLayer';
 // [ambientfx] end
 // [fightersfx] begin
 import { FighterLayer } from './fighterLayer';
+import { WhalePilotLayer, whalePilotEnabled } from './whalePilotLayer'; // [whalepilot]
+import { CreatureLayer, creatureTooltipText } from './creatureLayer';
+import { FaunaGallery, faunaGalleryEnabled } from './faunaGallery'; // [newfauna]
 // [fightersfx] end
+// [rimatmo] begin
+import { RimAtmosphereLayer } from './rimAtmosphereLayer';
+// [rimatmo] end
+// [rimatmo-wiring] begin
+import { installRimAtmosphereData } from './rimAtmosphereWiring';
+// [rimatmo-wiring] end
 // [combatfx] begin
 import { updateCombatEffects } from './effectsLayer';
 // [combatfx] end
 import type { BuiltObject } from '../sim/builtObject';
+import type { Creature } from '../sim/creature';
 import { createMapOverlayState, type MapOverlayState } from '../ui/mapOverlays';
 import { showRegionLabels, showSystemNames } from '../ui/settings';
 import { hideMapTooltip, showMapTooltip, tooltipText } from '../ui/mapTooltip';
 import { freightTooltipText } from '../ui/freightText'; // [freightOverlay]
+import { wreckTooltipText } from '../ui/scenario/wreckageUi'; // [wreckage]
 import type { FreightOverlay } from './freightOverlay'; // [freightOverlay]
 import { boundsOnScreen, DrawKey } from './drawCache';
 
@@ -957,6 +968,14 @@ export class MainView {
     // [fightersfx] begin
     private fighterLayer!: FighterLayer;
     // [fightersfx] end
+    // [rimatmo] begin
+    /** 19i rim atmosphere (scenario flag `rimAtmosphere`); inert when the flag is off. */
+    private rimLayer: RimAtmosphereLayer | null = null;
+    // [rimatmo] end
+    /** Space creatures (Kaltor, slugs, Ardilus, SilverMist) of the viewed system. */
+    private creatureLayer!: CreatureLayer;
+    /** Art pilot (dev flag ?whalePilot=1): render-only void-whale prototypes next to an original Kaltor. */
+    whalePilot: WhalePilotLayer | null = null; // [whalepilot]
     private textures!: MainViewTextures;
     private minZoom = 1e-6;
     private lastGridZoom = -1;
@@ -978,6 +997,8 @@ export class MainView {
     onSelectionChange?: (h: Habitat | null) => void;
     /** Task 13d: set by main.ts — receives the ship/base picked on left click. */
     onBuiltObjectSelect?: (bo: BuiltObject) => void;
+    /** Set by main.ts — receives the creature picked on left click. */
+    onCreatureSelect?: (c: Creature) => void;
     /** Task 08g: set by main.ts — star double-clicked at galaxy/sector zoom. */
     onDoubleClickStar?: (h: Habitat) => void;
     // [ordermenu] begin
@@ -1012,6 +1033,8 @@ export class MainView {
     selectedHabitat: Habitat | null = null;
     /** Task 13d: the ship/base currently selected in the Main View (null = none). */
     selectedBuiltObject: BuiltObject | null = null;
+    /** The creature currently selected in the Main View (null = none). */
+    selectedCreature: Creature | null = null;
 
     /** Drawn on-screen size of a habitat at the current zoom — the same size
      * functions the renderer uses (planets >= 14 px, moons >= 7 px, star
@@ -1078,6 +1101,12 @@ export class MainView {
         return this.builtObjectLayer.pick(w.x, w.y, 1 / this.camera.zoom, this.galaxy.playerEmpire);
     }
 
+    /** Main.Part11.cs method_145 (f <= 100): the creature under the screen point. Creatures win over ships. */
+    pickCreature(screenX: number, screenY: number): Creature | null {
+        const w = this.camera.screenToWorld(screenX, screenY);
+        return this.creatureLayer.pick(w.x, w.y, 1 / this.camera.zoom);
+    }
+
     // [ordermenu] begin
     /** 17c: double_0, the zoom as galaxy units per screen pixel (> 100: sector / galaxy level). */
     get zoomFactor(): number {
@@ -1093,6 +1122,10 @@ export class MainView {
      */
     pickOrderTarget(sx: number, sy: number): unknown {
         const f = this.zoomFactor;
+        // Main.Part11.cs 1501-1554: at f <= 100 a creature under the point is returned before any ship (Main.Part8.cs
+        // 2751 / 3082 / 3289 then offer "Attack X" on it).
+        const creature = this.pickCreature(sx, sy);
+        if (creature !== null) return creature;
         const bo = this.pickBuiltObject(sx, sy);
         if (bo !== null) {
             const g = bo.shipGroup as { leadShip?: BuiltObject | null } | null;
@@ -1257,6 +1290,29 @@ export class MainView {
             }
         }
 
+        // [rimatmo] begin
+        // 19i: rim wash / derelicts / eyes in the dark just above the backdrop + nebulae, murk above the systems
+        // (before the empire and ship layers are added), vignette + grain above the starfield. Adds nothing with the
+        // flag off.
+        this.rimLayer = new RimAtmosphereLayer(this.galaxy, this.store);
+        this.rimLayer.mount({
+            world: this.world,
+            fx: this.fx,
+            backgroundIndex: 1 + this.nebulae.length,
+            starfieldFar: this.starfieldFar,
+            starfieldNear: this.starfieldNear,
+            fxIndex: this.fx.children.indexOf(this.starfieldNear) + 1,
+            nebulae: this.nebulae.map((nv) => ({ sprite: nv.sprite, x: nv.sprite.x, y: nv.sprite.y })),
+            mapIcons: this.systems.map((sv) => ({ sprite: sv.mapIcon, x: sv.system.systemStar.xpos, y: sv.system.systemStar.ypos })),
+        });
+        // [rimatmo] end
+
+        // [rimatmo-wiring] begin
+        // 19i data/wiring: item 11 rim name overrides + the per-system weight state item 12's message remap reads.
+        // No-op with the flag off (installRimAtmosphereData short-circuits when rimParams(galaxy) is null).
+        installRimAtmosphereData(this.galaxy);
+        // [rimatmo-wiring] end
+
         // Task M2e: empire ownership overlays. The layer's root is added to
         // world after all system roots, so rings/discs draw on top of stars.
         this.empireLayer = new EmpireLayer(this.galaxy, this.world);
@@ -1269,10 +1325,28 @@ export class MainView {
         // [ambientfx] begin
         this.ambientLayer = new AmbientLayer(this.galaxy, this.world, this.builtObjectLayer.root, this.store, (h, zz) => this.drawnSize(h, zz));
         // [ambientfx] end
+        // [rimatmo] begin
+        this.ambientLayer.lightScale = this.rimLayer.lightScale;
+        // [rimatmo] end
         // [fightersfx] begin
         // Launched fighters / bombers above the ships and their ambient effects, below the combat effects.
         this.fighterLayer = new FighterLayer(this.galaxy, this.world, this.store);
+        // MainView.1.cs 1559: creatures are drawn after the ships and fighters.
+        this.creatureLayer = new CreatureLayer(this.galaxy, this.world, this.store.dwuPresent);
+        if (typeof window !== 'undefined') this.creatureLayer.godMode = new URLSearchParams(window.location.search).get('godMode') === '1';
         // [fightersfx] end
+        // [newfauna] begin — render-only capture gallery, no-op unless the URL carries ?faunaGallery=1
+        if (typeof window !== 'undefined' && faunaGalleryEnabled(window.location.search)) {
+            const gallery = new FaunaGallery(this.galaxy, this.world, this.camera, window.location.search);
+            this.creatureLayer.gallery = gallery;
+            (window as unknown as { __faunaGallery?: unknown }).__faunaGallery = { gallery, layer: this.creatureLayer };
+        }
+        // [newfauna] end
+        // [whalepilot] begin — no-op unless the URL carries ?whalePilot=1
+        if (typeof window !== 'undefined' && whalePilotEnabled(window.location.search)) {
+            this.whalePilot = new WhalePilotLayer(this.galaxy, this.world, this.camera, window.location.search, this.store.dwuPresent);
+        }
+        // [whalepilot] end
 
         this.attachInput();
     }
@@ -1377,6 +1451,9 @@ export class MainView {
         for (const nv of this.nebulae) {
             nv.update(z, cam, nebA);
         }
+        // [rimatmo] begin
+        this.rimLayer?.update(z, cam, bdA);
+        // [rimatmo] end
 
         // Task M2e: empire ownership overlays (colony rings at system zoom;
         // owned-system markers + territory discs at galaxy/sector zoom).
@@ -1393,6 +1470,8 @@ export class MainView {
         // [fightersfx] begin
         this.fighterLayer.update(z, cam);
         // [fightersfx] end
+        this.creatureLayer.update(z, cam);
+        this.whalePilot?.update(z, cam); // [whalepilot]
         // [combatfx] begin
         // Combat effects (weapon fire, explosions, shield strikes, hyperjump flashes) above the ships.
         updateCombatEffects(this.galaxy, this.world, this.store, this.builtObjectLayer, z, cam);
@@ -1415,7 +1494,17 @@ export class MainView {
         // Task 08g / 13d: keep the selection ring around the selected habitat or ship.
         const selBo = this.selectedBuiltObject;
         const sel = this.selectedHabitat;
-        if (selBo !== null && !selBo.hasBeenDestroyed && 1 / z < BUILT_OBJECT_MAX_FACTOR) {
+        const selC = this.selectedCreature;
+        if (selC !== null) {
+            // MainView.1.cs 1717-1720 method_212: a circle over the box 1.5 x the drawn size, only while it is drawn.
+            const px = selC.hasBeenDestroyed ? 0 : this.creatureLayer.drawnSizePx(selC);
+            if (px > 0) {
+                const s = cam.worldToScreen(selC.xpos, selC.ypos);
+                this.drawSelectionRing(s.x, s.y, Math.max(px * 1.5, 8) * 0.5);
+            } else {
+                this.selectionRing.visible = false;
+            }
+        } else if (selBo !== null && !selBo.hasBeenDestroyed && 1 / z < BUILT_OBJECT_MAX_FACTOR) {
             const s = cam.worldToScreen(selBo.xpos, selBo.ypos);
             const r = Math.max(this.builtObjectLayer.drawnSizePx(selBo), 8) * 0.5 + 4;
             this.drawSelectionRing(s.x, s.y, r);
@@ -1535,6 +1624,12 @@ export class MainView {
                     return;
                 }
                 this.onPointerRest?.(x, y, e.clientX, e.clientY); // [ordermenu]
+                // HoverPanel.cs 220 method_2: a creature under the cursor shows its name, size, strength and health.
+                const creature = this.pickCreature(x, y);
+                if (creature !== null) {
+                    showMapTooltip(creatureTooltipText(creature), e.clientX, e.clientY);
+                    return;
+                }
                 const hit = this.pick(x, y);
                 if (hit === null) {
                     // [freightOverlay] begin — hover a flow arc / trade hub (task 19e-9).
@@ -1545,6 +1640,13 @@ export class MainView {
                         return;
                     }
                     // [freightOverlay] end
+                    // [wreckage] begin — hover a known debris field (scenario 19e-7).
+                    const wf = this.overlayLayer?.wreckHitTest(w.x, w.y, this.camera.zoom) ?? null;
+                    if (wf !== null) {
+                        showMapTooltip(wreckTooltipText(this.galaxy, wf), e.clientX, e.clientY);
+                        return;
+                    }
+                    // [wreckage] end
                     hideMapTooltip();
                     return;
                 }
@@ -1586,6 +1688,17 @@ export class MainView {
                     return;
                 }
                 if (this.onLeftClickIntercept?.(x, y)) return; // [ordermenu]
+                // Main.Part11.cs method_145: a creature under the cursor is picked before any ship.
+                const creature = this.pickCreature(x, y);
+                if (creature !== null) {
+                    playGridClick(); // [audio]
+                    this.selectedHabitat = null;
+                    this.selectedBuiltObject = null;
+                    this.selectedCreature = creature;
+                    this.onCreatureSelect?.(creature);
+                    return;
+                }
+                this.selectedCreature = null;
                 const bo = this.pickBuiltObject(x, y);
                 // [audio] begin — Main.Part10.cs:3304-3306 `if (obj3 != null) method_225()` (grid.wav) on a left-click pick.
                 if (bo !== null || this.pick(x, y) !== null) playGridClick();

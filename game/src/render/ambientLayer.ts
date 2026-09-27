@@ -426,6 +426,8 @@ export class AmbientLayer {
     private gasMining: FrameSet = { urls: frameUrls('gasmining', GAS_MINING_FRAME_COUNT), textures: null, loading: false };
     private construction: FrameSet = { urls: frameUrls('construction', CONSTRUCTION_FRAME_COUNT), textures: null, loading: false };
     private shieldHabitats: Habitat[] | null = null;
+    /** 19i item 7 hook: alpha multiplier for nav lights / shield glow at a world point (null = 1, the default). */
+    lightScale: ((x: number, y: number) => number) | null = null;
     private pruneCounter = 0;
 
     constructor(
@@ -571,7 +573,7 @@ export class AmbientLayer {
                         s.rotation = 0;
                         s.scale.set(sizeWorld / lightTex.width);
                         s.tint = colour;
-                        s.alpha = 1;
+                        s.alpha = this.lightScale === null ? 1 : this.lightScale(bo.xpos, bo.ypos);
                     }
                 }
 
@@ -727,7 +729,7 @@ export class AmbientLayer {
                 s.rotation = 0;
                 s.scale.set(sizePx / z / shieldTex.width, sizePx / z / shieldTex.height);
                 s.tint = 0xffffff;
-                s.alpha = shieldAlpha;
+                s.alpha = this.lightScale === null ? shieldAlpha : shieldAlpha * this.lightScale(h.xpos, h.ypos);
             }
             this.spawnForHabitat(h, starDate, nowMs);
         }

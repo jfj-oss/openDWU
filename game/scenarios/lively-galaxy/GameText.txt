@@ -1,0 +1,50 @@
+'Lively Galaxy scenario (task 19l): GameText additions. Every tag starts with "Lively ".
+Lively Restless Title;Restless Empire
+Lively Restless Own;Our fleets have been idle too long. The admiralty and the people grow restless and look for a fight.
+Lively Restless News;The {0} grows restless: its idle fleets and long peace have its neighbours worried.
+Lively Incident Title;Border Incident
+Lively Incident Dispute;A mining-rights dispute with the {0} has flared up along our shared border.
+Lively Incident Blockade;Warships of the {0} are blockading our traffic in the disputed border zone.
+Lively Incident Seizure;The {0} has seized our unescorted mining station {1} in the disputed border zone!
+Lively Incident Aggressor;Our border forces clashed with the {0} in the disputed zone.
+Lively Goal Title;War Goal
+Lively Goal Question;We are at war with the {0}. What shall we fight for?
+Lively Goal CasusBelli;Avenge the broken treaty (casus belli)
+Lively Goal Conquest;Conquer {0}
+Lively Goal Border;Take the disputed border colony {0}
+Lively Goal FreeSubject;Free the {0} from subjugation
+Lively Goal Punish;Punish the aggressor
+Lively Goal Humiliate;Humiliate them (reparations)
+Lively Term Cede;The {0} cede {1} to the {2}
+Lively Term Lump;The {0} pay {1} credits to the {2}
+Lively Term Yearly;The {0} pay {1} credits a year to the {2} for {3} years
+Lively Term Demil;The {0} keep their warships out of {1} for {2} years
+Lively Term Release;The {0} release the {1} from subjugation
+Lively Term StatusQuo;Status quo: no terms
+Lively Peace Title;Peace Treaty
+Lively Peace Signed;Peace with the {0}. Terms: {1}
+Lively Peace News;The {0} and the {1} have signed a peace. Terms: {2}
+Lively Peace Offer Title;Peace Offer from the {0}
+Lively Peace Offer Text;The {0} offer to end the war on these terms: {1}
+Lively Peace Accept;Accept
+Lively Peace Decline;Decline
+Lively Peace Counter;Counter-offer
+Lively Peace Accepted;The {0} accept your terms. The war is over.
+Lively Peace Refused;The {0} reject your terms and make a counter-offer.
+Lively Demil Title;Demilitarisation Broken
+Lively Demil Broken Victim;The {0} have sent warships into {1} in breach of our peace treaty! We have a just cause for war.
+Lively Demil Broken Own;Our warships have entered {1}, which we agreed to keep demilitarised. The {0} consider the treaty broken.
+Lively Demil Broken News;The {0} have broken their demilitarisation treaty with the {1}.
+Lively Pirate Ambition Title;Underworld Ambition
+Lively Pirate Ambition Own;Our coffers are full and our fleets are strong: we seize {0} outright and make it our own.
+Lively Pirate Ambition News;The {0} has seized the colony of {1}, turning protection money into permanent territory.
+Lively Festival Title;Festival
+Lively Festival Own;Celebrations sweep our colonies this year, lifting spirits across the empire.
+Lively Election News;Voters go to the polls across the {0}.
+Lively Coronation News;A new sovereign is crowned in the {0}.
+Lively Anniversary War Title;War Anniversary
+Lively Anniversary War Own;We mark the anniversary of a war that shaped our history, honouring the allies who stood with us.
+Lively Anniversary War News;The {0} marks the anniversary of a war that shaped its history.
+Lively Anniversary Wonder Title;Wonder Anniversary
+Lively Anniversary Wonder Own;We celebrate the anniversary of a great wonder's dedication.
+Lively Anniversary Wonder News;The {0} celebrates the anniversary of a great wonder's dedication.

@@ -3,8 +3,12 @@
 // Keep the list sorted; a package's code only runs behind its scenario id / flags.
 import './charteredCompanies/charters';
 import './rimFrontier/rimFrontier';
+import './independents/independents';
+import './newFauna/newFauna';
 import './rimFauna/rimFauna';
+import './rimHerders/rimHerders';
 import './rimTrade/rimTrader';
+import './rimTrade/treasureFleet';
 import './emergent/espionage';
 import './threats/darkFarms';
 import './emergent/crises'; // 19d2 resource crises (flag resourceCrises)
@@ -21,6 +25,14 @@ import './threats/doppelgangers';
 import './threats/greyTide';
 import './threats/hive';
 import './threats/silence';
+import './lively/livelyGalaxy';
+import './rimDistressCalls'; // 19i item 10 ticker half (rimAtmosphere flag)
+import './emergent/council'; // 19d8 galactic council (flag galacticCouncil)
+import './wreckage/wreckage'; // 19e-7 battle wreckage & salvage (flag wreckage)
+import './lively/peaceTerms';
+import './lively/warGoals';
+import './lively/pirateAmbition';
+import './lively/livingCalendar';
 import './eventLog/log'; // 19p event log (flag eventLog; installs the ported-message tap)
 import './security/security'; // 19m internal security (flag internalSecurity; last: it fills the 19d1 / 19d4 hook slots)
 export {};

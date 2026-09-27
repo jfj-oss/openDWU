@@ -8,6 +8,7 @@ import { Camera } from '../render/camera';
 import { Galaxy } from '../sim/galaxy';
 import type { GameData } from '../sim/data/gameData';
 import { rimGoodMarker } from './scenario/rimTraderRows';
+import { wreckSalvageRows } from './scenario/wreckageUi'; // [wreckage]
 import { moneyPanelIncome } from '../sim/treasury';
 import { Habitat, HabitatCategoryType, HabitatType, IndustryType, SystemInfo } from '../sim/types';
 import type { Empire } from '../sim/empire';
@@ -21,6 +22,7 @@ import { fleetCycleList, fleetName, fleetSystemName, shipGroupSelectionRows, tog
 // [/15c]
 import { SystemVisibilityStatus } from '../sim/visibility';
 import { flagShapeUrl } from '../sim/startGameOptions';
+import { rimSystemDisplayName, type RimNameHost } from '../sim/scenario/rimNames'; // [rimatmo-wiring] 19i item 11
 import { createGameMenu, type GameMenuRefs } from './screens/gameMenu';
 import { setGameMenuHandler, setCycleHandler, type CycleKind } from './keyboard';
 import { uiClickSounds } from '../audio/effectsPlayer';
@@ -54,6 +56,8 @@ import { toggleIntelligenceScreen } from './screens/intelligence';
 import { createSelectionActionBar, refreshSelectionActionBar } from './orderMenu'; // [ordermenu]
 import { createCharterButton } from './screens/charters'; // [charters]
 import { setTextIfChanged } from '../render/drawCache';
+import { creatureSelectionRows } from '../render/creatureLayer';
+import { resolveCreatureDescription, type Creature } from '../sim/creature';
 
 // Port of Main.Part12.cs LoadUiChromeButtons (381–520): the control → chrome
 // button image mapping. The original loads each control's image from
@@ -297,6 +301,8 @@ export interface Selection {
     builtObject?: BuiltObject;
     /** [15c] The selected fleet; `builtObject` is then its lead ship and `habitat` the nearest star. */
     shipGroup?: ShipGroup;
+    /** A selected space creature (InfoPanel.cs DrawCreature). `habitat` is then its nearest system's star. */
+    creature?: Creature;
 }
 
 let currentSelection: Selection | null = null;
@@ -318,6 +324,12 @@ export function selectStellarObject(target: BuiltObject | Habitat, moveView = tr
  * setter, which also refreshes its DOM). */
 export function setSelection(sel: Selection | null): void {
     currentSelection = sel;
+}
+
+// Creature selection hook: buildSelectionPanel registers it; the Main View's creature click calls selectCreature.
+let creatureSelectHandler: ((c: Creature, moveView: boolean) => void) | null = null;
+export function selectCreature(c: Creature, moveView = false): void {
+    creatureSelectHandler?.(c, moveView);
 }
 
 // [15c] Fleet selection hook: buildSelectionPanel registers it; the Fleets list,
@@ -1134,6 +1146,19 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         }
     };
     // [/16a]
+    // Select a creature: its nearest system's star as `habitat`, `creature` set (the map ring and live refresh follow it).
+    creatureSelectHandler = (c, moveView) => {
+        const galaxy = wiring.galaxy;
+        if (!galaxy) return;
+        const system = nearestSystem(galaxy.systems, c.xpos, c.ypos);
+        if (!system) return;
+        wiring.onSelectionChange?.({ habitat: system.systemStar, system, creature: c });
+        const cam = wiring.camera;
+        if (moveView && cam) {
+            cam.centerOn(c.xpos, c.ypos);
+            cam.zoomAt(SYSTEM_LEVEL_ZOOM, cam.width / 2, cam.height / 2);
+        }
+    };
 
     // Refresh the header/body from the current selection.
     const gameData = wiring.gameData;
@@ -1147,7 +1172,12 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
             return;
         }
         const h = sel.habitat;
-        // [15c] fleet header: name + ship count and system.
+        if (sel.creature) {
+            // InfoPanel.cs 3453 DrawCreature: the name as title; the type (ResolveDescription) and system under it.
+            nameEl.textContent = sel.creature.name;
+            nameEl.classList.remove('hud-muted');
+            subEl.textContent = `${resolveCreatureDescription(sel.creature.type)} · ${sel.system.systemStar.name} system`;
+        } else // [15c] fleet header: name + ship count and system.
         if (sel.shipGroup) {
             nameEl.textContent = fleetName(sel.shipGroup);
             nameEl.classList.remove('hud-muted');
@@ -1181,6 +1211,12 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
     const liveTimer = setInterval(() => {
         if (!panel.isConnected) {
             clearInterval(liveTimer);
+            return;
+        }
+        if (currentSelection?.creature) {
+            // InfoPanel.cs 3455: a destroyed creature clears the selection.
+            if (currentSelection.creature.hasBeenDestroyed) wiring.onSelectionChange?.(null);
+            else refresh();
             return;
         }
         if (currentSelection?.builtObject) refresh();
@@ -1942,6 +1978,11 @@ export function buildSelectionRows(sel: Selection, gameData?: GameData, player: 
         line.append(k, v);
         rows.push({ element: line });
     };
+    // A selected creature shows its own rows (InfoPanel.cs 3453 DrawCreature + type and location).
+    if (sel.creature) {
+        for (const r of creatureSelectionRows(sel.creature)) addColorRow(r);
+        return rows;
+    }
     // [15c] A selected fleet shows its own rows instead of the lead ship's.
     if (sel.shipGroup) {
         for (const r of shipGroupSelectionRows(sel.shipGroup, player)) addColorRow(r);
@@ -1954,6 +1995,7 @@ export function buildSelectionRows(sel: Selection, gameData?: GameData, player: 
         for (const r of builtObjectRows(sel.builtObject)) addColorRow(r);
         for (const r of threatRows(sel.builtObject, player)) addColorRow(r);
         for (const r of builtObjectStatusRows(sel.builtObject, player)) addColorRow(r);
+        if (player !== null) for (const r of wreckSalvageRows(player.galaxy, sel.builtObject, player)) addColorRow(r); // [wreckage] 19e-7
         return rows;
     }
     for (const orow of ownerRows(h)) addColorRow(orow);
@@ -2025,9 +2067,11 @@ export function buildSelectionRows(sel: Selection, gameData?: GameData, player: 
     return rows;
 }
 
-/** Name of the system nearest the camera centre, or '' if unavailable. */
+/** Name of the system nearest the camera centre, or '' if unavailable. 19i item 11: the rim name override
+ *  (rimSystemDisplayName) replaces the base name for a rim system when the scenario flag is on — a display-time
+ *  swap only, so `dwu.galaxy` may be the real Galaxy or any object carrying its `scenario` field. */
 export function nearestSystemName(
-    dwu: { galaxy?: { systems?: Array<{ systemStar: { name: string; xpos: number; ypos: number } }> } } | undefined,
+    dwu: { galaxy?: { systems?: Array<{ systemStar: { name: string; xpos: number; ypos: number; systemIndex: number } }>; scenario?: RimNameHost['scenario'] } } | undefined,
     camera: { x: number; y: number } | undefined,
 ): string {
     const systems = dwu?.galaxy?.systems;
@@ -2044,5 +2088,7 @@ export function nearestSystemName(
             best = i;
         }
     }
-    return best >= 0 ? systems[best].systemStar.name : '';
+    if (best < 0) return '';
+    const star = systems[best].systemStar;
+    return rimSystemDisplayName({ scenario: dwu?.galaxy?.scenario ?? null }, star.systemIndex, star.name);
 }

@@ -27,7 +27,18 @@ weapons. Zero research focus after the cap (replaces the spec's "high research")
 Treasure fleet: a Concord-only design template "Treasure Ship" (size 1100 freighter hull: cargo bays, fuel, shields, a few
 weapons) + escorts, sailing as ONE large state convoy on a fixed circuit of foreign space ports (Empire.1.cs 3899 convoy
 code reused; 19e-9 shows the route) that sells rare goods / buys rim goods at each stop — the visible, escortable, raidable
-face of the trade; losing it hurts standing. **Always visible (user, 2026-09-26):** the treasure fleet is revealed to every
+face of the trade; losing it hurts standing. **Concord art (user, 2026-09-27, REVISED after the junk sheets — the junk silhouettes were too cartoony):** realistic
+industrial ships with complex shapes and fine detail (plating seams, weld lines, rivet rows, vents, exposed piping, hazard
+stripes, hull numbers and Concord glyphs, grain/scratches/blemishes via noise + scratch maps); palette dark turquoise hull
+with dark yellow/copper trim, several tones per ship (hull / deck / superstructure / engines read as distinct sections);
+TREASURE SHIP = a giant, wide, long container carrier: a flat deck stacked with multicoloured containers in blocks,
+gantry cranes, a lit bridge tower aft, deck floodlights, two 747-style jet-fan thrusters on the rear quarters with
+heat-stained nozzles and turning fan faces; freighters = bulk carriers with hold hatches; WARSHIPS = modern naval grey
+with heavy rust/salt staining, angular hulls, bridge superstructure with sensor masts and a rotating dish, turrets and
+missile cell blocks, hull numbers, copper trim only on the bridge; bases/port = ring docks with gantries, cranes, fuel
+tanks, striped docking arms, lit windows; lights = small tight deck/window lights, no glow outline; portrait = the
+gold-on-lacquer mask recoloured to turquoise/copper; flag = turquoise field, copper emblem. The junk-sail looks are retired.
+**Always visible (user, 2026-09-26):** the treasure fleet is revealed to every
 empire regardless of sensors/fog — its ships carry a scenario "beacon" so the visibility pass treats them as known to all
 (like the original's planet destroyer / story announcements: a galaxy-wide position broadcast), with a fleet marker at
 galaxy zoom, a message + news item when it leaves port and when it arrives at a foreign port, and a route line on the
@@ -94,7 +105,7 @@ Effort: 1–4 days each after the mod layer; 5–9 one to two weeks each.
 4. Chronicle: the local model writes an in-character history from Galactic History/news (named wars/eras), in-game + export. [cheap]
 5. Living characters: governors/admirals with opinions, messages, grudges and rivalries affecting cooperation (ties to 19d-1). [medium]
 6. Spectator broadcast: AI-vs-AI galaxy with personas on and a commentator voice. [ambitious]
-7. Battle wreckage & salvage: persistent debris fields; salvage ships recover resources/foreign tech. [medium]
+7. Battle wreckage & salvage: persistent debris fields; salvage ships recover resources/foreign tech. [medium] — BUILT (scenario `wreckage-salvage`, flag `wreckage`; src/sim/scenario/wreckage/, query `wrecksAt` for 19g-7b / 19f-7).
 8. Space weather: nebula storms / solar flares moving across the map, degrading sensors and blocking jumps. [medium]
 9. Freight-flow overlay: make the simulated private economy visible (flows, where money accumulates) — needed by 19a/19c anyway. [cheap]
 10. Race designer on the data overlay, with model-written bios. [medium]
@@ -115,8 +126,19 @@ Build after 19b lands; each is mostly data + a spread rule on the 19b hooks.
 
 ## 19g — Third idea batch (ACCEPTED by the user 2026-09-26 with items 10, 11, 12, 14 REMOVED; strategy depth, exploration, port-only capabilities)
 1. Stargate networks (player-built gate pairs → chokepoints, gate wars). [medium]
-2. Megaprojects: multi-stage wonders needing multi-empire resources. [medium]
-3. War goals & peace terms (cede colonies, reparations, demilitarised systems). [medium]
+2. Megaprojects: multi-stage wonders needing multi-empire resources. [medium] — **Concrete design (2026-09-27):** a
+   megaproject = a planetary facility with N stage facilities in the overlay's facilities data (wonder placement rule +
+   a scenario site check); each stage built by the host colony's yard from resources in colony cargo; partner
+   contributions = the diplomacy tradeable-item transfer (money/resources) into the host cargo, delivered by partners'
+   freighters under ordinary contracts; shares = a scenario ledger. Effects via existing hooks: Beacon = huge-range
+   long-range scanner component on the facility (+ lifts 19h fog in range via scanRangeModifier); Rim wall = removes
+   19h storm clouds (nebula locations) in a radius; Gate hub = anchor for 19g-1 stargates (Bacon stargate stub in
+   movement.ts); Ark = moves a colony's population off a doomed world via the passenger/migration path (planet
+   destroyer / 19f time-bomb); Observatory = detection bonus in 19m's leads roll. Between-stage events: 19d3 sabotage-
+   construction against the site, a 19d2 shortage strike, a partner treaty break (attitude penalty); council condemn /
+   protect motions. A finished project is a colony facility → a 19g-3 war goal like any colony. Stellar engine DROPPED
+   (no star lifecycle in the original).
+3. War goals & peace terms (cede colonies, reparations, demilitarised systems). [medium] — **built (wip/s19g3):** lively-galaxy flag `warGoals` (src/sim/scenario/lively/warGoals.ts, peaceTerms.ts; test/warGoals19g3.test.ts).
 4. Succession: leaders age/die, heirs, regencies, crises → persona shifts. [cheap-medium]
 5. Frontier autonomy: distance-based drift toward local rule, sector governors with power. [medium]
 6. Anomalies with branching investigations (derelicts, hazards, precursor caches) via the story system. [medium]
@@ -167,6 +189,21 @@ Makes the rim itself hard to reach and hold, independent of the fauna. Scenario 
    from it). Re-pins only inside the scenario. Must ship with a speed check at the top setting (single-threaded sim; the
    36 game-days/min budget must hold or the option is capped).
 Params: belt inner radius, storm density, thinning radius/factor, shoal count, fuel bias, fog factor, extent multiplier, star cap.
+7. Starts out of the rim (user, 2026-09-26: "keep normal empires and player empire out of the rim"): with the frontier flag
+   on, ordinary empires' and the player's home systems are never placed past the rim inner radius (a home-habitat accept
+   hook on the C# capital search; the Concord, independents, herders and fauna keep the rim). Param
+   `rimFrontierKeepStartsOut` default on. Star cap raised to 4000 (user, 2026-09-26) with two-letter sector labels.
+8. Pirates in the rim (user, 2026-09-26): an exact share of pirate factions (`rimFrontierPirateRimShare` 0.6) get rim home
+   bases, the rest core bases, assigned in the C#'s creation order (no extra draws); base placement (pirates AND the
+   19k-2 independents' stations) avoids herd home ranges (19g-7 RimHerd.homeRange) so nobody spawns inside a nest; pirate
+   factions get a HERD-HUNTING mission when a herd wanders within a param range of their base (kill drop = creature
+   resources they sell; thins herds near bases; herders lose standing with herd killers → pirate-vs-herder friction feeds
+   19k-3 leagues). Params: share, avoid radius, hunt range, hunt chance/year.
+9. Fuel oases (user, 2026-09-27, "pirate/rim independent fuel issue"): with fuel scarcity on, the rim ring had no
+   caslon/hydrogen at all; the scenario now guarantees `rimFrontierOasesPerSector` (default 1) fuel sources per rim
+   sector (a caslon gas giant or hydrogen source chosen among the sector's rim habitats after faithful placement,
+   scenario-owned Random), pirate bases prefer candidates within `rimFrontierOasisRange` of an oasis, and independents'
+   stations weight oases; an oasis is a contestable chokepoint.
 
 ## 19i — Rim atmosphere (ACCEPTED by the user 2026-09-26 — "yes"; presentation only, reads a distance-from-centre curve; flag off = untouched)
 Visual: (1) colour grading by radius — desaturate + cold blue-violet tint on star field/nebulae past the rim band, fading in
@@ -174,14 +211,15 @@ over a band; (2) rim star types biased to dim red/brown dwarfs and white dwarfs 
 scenario); (3) dark dust lanes instead of bright nebula art, and 19h-5 sensor fog rendered as grainy grey murk for
 unexplored rim space; (4) thinner deep-field star layer / sparser background art; (5) derelicts, dead stations, gutted
 independent colonies on the rim curve from the original ruins/debris art (some become 19g-7 herd feeding sites);
-(6) distant creature silhouettes drifting in the background at galaxy zoom; (7) fewer nav lights / dimmer city glow on
+(6) eyes in the dark — small pairs of dim, irregularly-blinking red dots sprinkled in the outer, empty parts of rim
+systems at system zoom; (7) fewer nav lights / dimmer city glow on
 rim outposts. Audio: (8) 19e-11 music selector gets a "rim" mood weighted by radius (sparse drones, silences, original
 tracks that fit); (9) low wind/static ambient bed growing with distance, distant creature calls and hull creaks at system
 zoom; (10) faint static layer on advisor/diplomacy voice in the fog; garbled rim distress calls in the ticker. Text/UI:
 (11) bleaker rim name table, more numbered survey designations; (12) rim-specific exploration/colony message wording
 (lost contact, missing survey ship, unusual readings); (13) faint grain/vignette on the main view deep in the rim, (no minimap: the user does not want one built — dimming dropped, 2026-09-26). Effort: ~1 agent-day; build with 19h; must not change any sim digest (render/audio/text only except 2).
-Model split (user, 2026-09-26): anything that CREATES visuals — colour-grading filters, dust-lane/murk rendering, creature
-silhouettes, grain/vignette, any procedural art (no art files are ever committed; new visuals are Pixi filters/graphics
+Model split (user, 2026-09-26): anything that CREATES visuals — colour-grading filters, dust-lane/murk rendering, eyes in
+the dark, grain/vignette, any procedural art (no art files are ever committed; new visuals are Pixi filters/graphics
 over the original art) — is an Opus package; the data/wiring pieces (name tables, message wording, music/ambient selector
 weights, nav-light/glow params, minimap dimming) are a Sonnet package that consumes the Opus-built render hooks.
 Sub-agents cannot spawn sub-agents in this harness, so the orchestrator runs the two packages in sequence: Opus render first.
@@ -192,6 +230,31 @@ click-chirp, ardilus keening, silver mist shimmer), triggered rarely at system z
 range, panned by direction, gain by rim weight; hull creaks = low resonant filtered-noise bursts with slow pitch drop,
 triggered at system zoom in storms/deep rim with the camera near a ship; params creatureCallRate, creakRate, gains.
 Opus package (sound design), consumes 19i wiring's rimWeightAt + the fauna's herd positions.
+
+**19i visual half — design note (Opus render package, wip/s19i).** `src/render/rimAtmosphereLayer.ts`, scenario
+`scenarios/rim-atmosphere/` (standalone, `include: []`), flag `rimAtmosphere` (default on in that scenario; off or no
+scenario = the layer adds nothing and touches no sprite — tested). Curve: centre = galaxy rect centre, radius = the
+98th-percentile star distance (render-side; no sim field); `rimWeight` = 0 inside `rimInner`, smoothstep to 1 across a
+band of `(1 − rimInner)/2` (clamped 0.04–0.3). Params:
+- `rimInner` (0.72): where the rim band starts, as a fraction of that radius. Moves every effect in or out.
+- `tintStrength` (0.6): item 1/4/13 — world-space radial wash over backdrop + nebula images (desaturating, dark cold
+  blue-violet), cold multiply tint on rim map-star icons and on the parallax starfield (by camera position), deep-field
+  thinning (starfield alpha drops), rim nebulae turning into dark dust lanes (item 3), and the screen vignette.
+- `murkStrength` (0.7): item 3 — grainy grey murk blobs over every rim system the player has not explored
+  (`EmpireVisibility.checkSystemExplored`, refreshed every 90 frames; the hook 19h-5 sensor fog can feed), plus the
+  item-13 film grain deep in the rim.
+- `eyeDensity` (1): item 6 — eyes in the dark: pair count (3–8 per rim system at density 1, scaled by density and by
+  the system's rim weight; 0 disables) of small red dot pairs at system zoom, in the outer, empty parts of rim systems
+  (past the outermost planet/moon orbit), placed with the layer's own PRNG seeded per system. Each pair blinks on its
+  own 2–6 s period with a short, soft-glow on-time (`eyeBlinkAlpha`) and occasionally drifts a little between blinks
+  (`eyeMoveOffset`); alpha crossfades in over the same system-zoom threshold `AmbientLayer.ambientVisibleAt` uses for
+  nav lights (`BUILT_OBJECT_MAX_FACTOR`), so nothing pops at zoom changes (`eyeZoomFade`).
+- `derelictDensity` (1): item 5 — 80 × density decorative hulks (original station / ship art, dark-tinted, tumbling),
+  half near rim systems, half in deep rim space; not selectable (the selectable/sim derelicts belong to 19h / 19j).
+- `lightDimming` (0.6): item 7 — nav lights and planetary-shield glow alpha × (1 − dimming × weight) via
+  `AmbientLayer.lightScale`. (No city-glow draw exists yet; the same hook applies when one does.)
+For the Sonnet wiring package: `rimGeometry` / `rimFraction` / `rimWeight` / `rimParams` are exported for minimap
+outer-band dimming and the music / ambient weights. Dev capture: `?autostart=1&scenario=<id>`, `scripts/rim-shots.mjs`.
 
 ## 19j — Rim herders (ACCEPTED by the user 2026-09-26 — "yes"; rim independents coexist with and use the fauna; builds right after 19g-7)
 1. Herder peoples: a rim independent race trait "symbiotic" — herds are docile to that race's colonies/ships; herder worlds
@@ -209,6 +272,9 @@ Opus package (sound design), consumes 19i wiring's rimWeightAt + the fauna's her
 6. Migration-season events: herders warn friendly empires before a migration and ask warships out of the corridor;
    ignoring it drops relations and makes herds aggressive.
 7. AI: cautious rim AIs take the protectorate path, aggressive ones conquest — different outcomes per neighbour.
+8. Herder count (user, 2026-09-27): a game-start parameter `rimHerdersCount` 0–20 (default 6) replaces the share — that
+   many rim independent colonies become herders (chosen with the scenario's draws; if fewer rim colonies exist, all of
+   them, with a warning); shown on the wizard's scenario page like every param.
 Reuses: race traits, protectorate relations, character joining, resource system, 19d-6 independents as actors, 19g-7 herd
 rules. Effort: medium (~1–2 agent-days). Flag off = byte-identical.
 
@@ -289,5 +355,77 @@ claims. 8 Relationships — friends/rivals/lovers modify loyalty, fleet/colony c
 19e-5 living characters). 10 Claims & war goals — houses hold claims on colonies (marriages, former ownership) → the war
 goals 19g-3 needs.
 All data + existing character/diplomacy hooks; off by default; player actions via the command queue; AI runs the same
-loops by traits. Effort: package 1 ~2 agent-days, package 2 ~2 agent-days (Opus). Requires 19m. Effort: medium (~1 agent-day);
+loops by traits. Effort: package 1 ~2 agent-days, package 2 ~2 agent-days (Opus). Requires 19m.
+
+## 19o — Reputation & grievances ledger (ACCEPTED by the user 2026-09-27 — "yes do these asap")
+One ledger per actor pair (empires, independents, leagues, herders, the Concord, pirate factions): every attitude
+modifier is an entry {cause, value, decay, source package}; the C# attitude (EmpireEvaluation / IncidentEvaluation) becomes
+the sum through one channel (like the stability ledger did for approval), so 19d3 crises, 19l incidents/ambition, 19g-3
+humiliation/casus belli, council sanctions/condemnations, Concord standing, herder standing, league standing and the
+pirate relation ledger all write to it WITH A CAUSE; the war review, council grievance search, peace-terms pricing and the
+diplomacy screen read the same list; a "why they feel this way" panel per relation. Flag off = byte-identical.
+~1.5 agent-days (Opus). Requires 19d3/19l/19g-3/19d8/19a/19j/19k on main.
+
+## 19p — Event log (ACCEPTED 2026-09-27)
+One typed event log {date, category, importance, actors, place, text key, data} that every scenario message/news call and
+the ported empire messages feed; Galactic History, NewsNet, the ticker, the future chronicle (19e-4, local model) and the
+replay theatre (19e-1) consume it; filters by category/actor; save/load; a query for "what happened between A and B".
+Flag off = byte-identical (the log is a scenario-side mirror). ~1.5 agent-days (Opus).
+
+## 19r — Art bundle 2 (ACCEPTED by the user 2026-09-27 — "i like all of these ideas" + withered look)
+1. Damage overlay (BASE GAME port): Main.Part12.cs method_106 (ships: blotch clusters, count = 0.7 × damaged-component
+   share × sprite area, Random(BuiltObjectID), cross-hatch grey 160 over near-black = inner scaffolding, clipped to the
+   hull alpha), method_107 (fighters by health), method_108 (creatures by damage, per-species flesh colours; SilverMist =
+   alpha fade, already ported), method_113 (the cluster painter). Cached per object, rebuilt when the damaged share
+   changes. Flagged extras (off = faithful): ember glow in fresh blotches for a few seconds, scorch darkening around
+   clusters. Applies to the procedural fauna and Concord ships too.
+2. League presence: generated league flag (founder shape + chain-link emblem, league colour) as a pennant beside member
+   colonies; ringed council-seat marker; dotted member boundary at sector zoom; flag/name in the empires list and
+   diplomacy screen; a label on the treasure-fleet marker.
+3. Herder identity: Ossuvan portrait = hooded weathered face-frame over the Teekan portrait (fur hood, beads, herd-shell
+   pendant, earth tones); flag with a horned-herd emblem; tents/pens drawn over their station/port art.
+4. Threat site markers by reveal level (suspected = uncertain, confirmed = solid): ash cloud (Grey Tide nest), violet
+   ring + glyph (cult world), pulsing dead-signal circle (Silence source), mirrored double outline (sleeper ship),
+   hex lattice tint (Hive world), red pulse (Dark Farm), ledger-and-scales icon (Exchange station).
+5. Wreck fields: debris of hull fragments cut from the destroyed ships' own art via the wreck records, crew-pod lights
+   blinking out as the field decays, the field shrinking as salvage removes wrecks; scavengers visibly in it.
+6. Derived flags/portraits: company = founder flag + corner seal, corporate portrait border; seceded state = torn,
+   recoloured parent flag; government in exile = black border; Ghost Armada = dead empire's flag desaturated + skull.
+7. Empire liveries + WITHERED look (overlays on the ORIGINAL sprites, computed once per texture from the alpha mask:
+   centreline/length for a tint band and hull number near the stern, distance-transform flat region for the emblem
+   decal, mid-tone luminance gate so windows/engines/seams stay clean; cached): tint band, emblem, hull number; withering
+   grows with ship age and time since last retrofit/dock repair — faded paint, seam grime, rust streaks from rivets
+   in the travel direction, micrometeorite pitting on leading edges, engine scorch, bleached decals — reset by
+   retrofit/long repair; storm lightning leaves charred streaks after repair; pirates start withered and rarely reset;
+   Concord treasure ships get salt bloom / barnacle growth on hull edges; capped subtle; all off by flag.
+~1.5 agent-days (Opus).
+
+## 19q — Knowledge model (accepted, later): unified suspected/confirmed/cleared reveal levels across fog, leads, wreck
+fields, the treasure beacon, herd sightings, threat overlays and story clues; one overlay manager; a sightings feed. Effort: medium (~1 agent-day);
 build after 19d2 (unrest plumbing) alongside 19g-7 rim fauna; 19a/19c tests must still pass with 19h on.
+
+## 19l — Livelier mid game (ACCEPTED by the user 2026-09-26 — "do only new ideas"; from the 10-year seed-1 run: 1 war, 0 invasions in 10 years)
+1. Ambition pressure: a per-empire drive that rises with idle military strength (warships not in a war, years since the
+   last war) and falls with each war/loss; above a threshold the war-review gates get a scenario-side bias (attitude
+   threshold relaxed by ambition × param) so a strong, peaceful AI eventually goes looking for a fight. Fixes the
+   "14 warships, 1 colony, forever" pattern. Data-driven; flag off = byte-identical. DONE (livelyGalaxy.ts).
+2. Border friction: overlapping territory (territory grid) generates yearly incidents — mining-station disputes, blockades,
+   seizures — fed into the 19d3 crisis machinery so tension builds toward war instead of appearing from nowhere. DONE.
+3. Smaller invasions: scenario option lowering the C# ≥10-ship troop-fleet minimum (Empire.8.cs 1047 PrepareFleetsForWar)
+   for weak targets (target troop strength ≤ param), so invasions happen in the mid game; off by default. DONE.
+4. Pirate ambition: rich factions (money/ships above params) graduate from raids to seizing an independent colony as a
+   permanent base and start acting like a small empire (colony defence, freighters), producing a real underworld enemy.
+   DONE (pirateAmbition.ts): ownership via the existing Empire.1.cs TakeOwnershipOfColony (combat/ownership.ts
+   takeOwnershipOfColonyFull, as scenario/empireMidGame.ts's capital hand-over already does); defence and freighters are
+   stock behaviour unlocked by ownership + a PirateColonyControl record (Empire.9.cs 1763-1770 resolveLocationsToDefend,
+   already read every pirate tick); the "threat" empires read is the existing pirate-relation evaluation ledger
+   (Empire.8.cs 2512 ChangePirateEvaluation, RaidsAgainstOurColonies) for empires that have met the faction; one new
+   ambitious faction per N years (param), a colony cap (param).
+5. Living calendar: festivals, elections, coronations as yearly events per empire with small diplomacy/approval effects
+   and messages, so the feed has texture between crises; ties to 19g-4 succession and the 19i rim calendar idea.
+   DONE (livingCalendar.ts): festival approval via the empireApprovalRating query; election (election-manner
+   governments) / coronation (Monarchy) via the existing leader-change path (Empire.6.cs 4873/4878 PerformChangeLeader,
+   characterRuntime.ts, honouring its own NextAllowableLeaderChangeDate cooldown); war/wonder anniversaries bump a
+   mutual-defense ally's EmpireEvaluation.bias, or deepen a free-trade partner one step via the ported
+   Empire.8.cs ChangeDiplomaticRelation (diplomacyTick.ts).
+Effort: 1, 3 cheap (data + one gate each); 2, 4 medium; 5 cheap. Build after the 19d wave is merged.

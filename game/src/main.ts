@@ -107,7 +107,7 @@ import { installMessageStubList, removeMessageStubList } from './ui/messageStubL
 // [fix6ui] begin
 import { setShipCommandHandler } from './ui/keyboard';
 import { refreshSelectionActionBar } from './ui/orderMenu';
-import { selectHabitat } from './ui/hud';
+import { selectCreature, selectHabitat } from './ui/hud';
 import { createShipCommandKeys, type ShipCommandKeys } from './ui/shipCommandKeys';
 import { showToast } from './ui/toast';
 // [fix6ui] end
@@ -482,7 +482,8 @@ export async function startGameView(
         // Keep the Main View selection ring on whatever the panel shows.
         afterSelectionChange: (sel) => {
             view.selectedBuiltObject = sel?.builtObject ?? null;
-            view.selectedHabitat = sel && !sel.builtObject ? sel.habitat : null;
+            view.selectedCreature = sel?.creature ?? null;
+            view.selectedHabitat = sel && !sel.builtObject && !sel.creature ? sel.habitat : null;
             shipKeys?.afterSelectionChange(sel); // [fix6ui] selection history + view lock
         },
     });
@@ -505,6 +506,8 @@ export async function startGameView(
         if (system === null) return;
         hud.onSelectionChange?.({ habitat: system.systemStar, system, builtObject: bo });
     };
+    // A clicked creature selects it (InfoPanel.cs DrawCreature in the selection panel).
+    view.onCreatureSelect = (c) => selectCreature(c, false);
     view.onDoubleClickStar = (star: Habitat) => {
         if (star.category !== HabitatCategoryType.Star) return;
         camera.centerOn(star.xpos, star.ypos);
@@ -572,7 +575,8 @@ export async function startGameView(
             camera.zoomAt(SYSTEM_LEVEL_ZOOM, camera.width / 2, camera.height / 2);
             if (o instanceof ShipGroup) selectShipGroup(o, false);
             else if (o instanceof Habitat) selectHabitat(o, false);
-            else if (!(o instanceof Creature)) selectStellarObject(o as Parameters<typeof selectStellarObject>[0], false);
+            else if (o instanceof Creature) selectCreature(o, false);
+            else selectStellarObject(o as Parameters<typeof selectStellarObject>[0], false);
             return () => {
                 camera.zoom = before.zoom;
                 camera.centerOn(before.x, before.y);
@@ -684,7 +688,7 @@ export async function startGameView(
     // budget; a render exception is contained like a sim one (Pixi would stop scheduling frames).
     const renderGuard = createRenderGuard();
     // [audio] begin — Main View sound requests (drawn weapons, explosions, hyperjumps, ...) + ambient music fade.
-    const gameAudio = installGameAudio({ galaxy, camera, time, suppressAllPopups: () => getMessageOptions().suppressAllPopups });
+    const gameAudio = installGameAudio({ galaxy, camera, time, suppressAllPopups: () => getMessageOptions().suppressAllPopups, selectedShip: () => view.selectedBuiltObject });
     Object.assign((window as unknown as { __dwu: Record<string, unknown> }).__dwu, { audio: soundRequestStats() });
     // [audio] end
     app.ticker.add(() => {

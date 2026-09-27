@@ -21,4 +21,15 @@ export type { ScenarioDecision, ScenarioDecisionOption, ScenarioDecisionHandler,
 export { createEmpireMidGame } from './empireMidGame';
 export type { MidGameEmpireSpec } from './empireMidGame';
 export { scenarioMessage, scenarioNews, scenarioText } from './messages';
+// 19e-7 wreck records (consumed by 19g-7b Scavenger, 19f-7 Ghost Armada): wrecksAt is the query.
+export { wrecksAt, wreckFields, wreckFieldAtPoint, wreckFieldValue, wreckRemaining, takeWrecks } from './wreckage/common';
+export type { WreckRecord, WreckField, WreckHit } from './wreckage/common';
 export type { ScenarioMessageOptions } from './messages';
+// 19i "Rim atmosphere" data/wiring (items 10-12; render-side counterpart: src/render/rimAtmosphereWiring.ts).
+export { RIM_FLAG_NAME } from './rimShared';
+export { RIM_NAME_TABLE, buildRimNameOverrides, formatSurveyDesignation, installRimNameOverrides, rimSystemDisplayName, RIM_NAMES_STATE_KEY } from './rimNames';
+export type { RimNameHost } from './rimNames';
+export { RIM_TEXT_SUFFIX, rimMessageKey, rimText } from './rimMessages';
+export { RIM_WEIGHTS_STATE_KEY, installRimWeights, rimWeightOfSystem } from './rimState';
+export type { RimWeightHost } from './rimState';
+export { RIM_DISTRESS_CALL_KEYS, RIM_DISTRESS_PERIOD_DAYS, rimDistressCallChance } from './rimDistressCalls';

@@ -187,12 +187,32 @@ export interface ScenarioEvents {
     builtObjectBuilt: { builtObject: BuiltObject; empire: Empire | null };
     /** combat/teardown.ts builtObjectCompleteTeardown (top). */
     builtObjectRemoved: { builtObject: BuiltObject };
+    /**
+     * combat/teardown.ts builtObjectCompleteTeardown (top, before builtObjectRemoved) when HasBeenDestroyed was already
+     * set — a ship / base destroyed by weapons, creatures, self-destruct or area damage (set only by the combat destroy
+     * branches), torn down by DoExplosions (BuiltObject.1.cs 14) or CleanupInvalidShips (Empire.8.cs 2896). 19e-7.
+     */
+    builtObjectDestroyed: { builtObject: BuiltObject };
+    /**
+     * civilianAI.ts assignMissionConstructionShip end (Empire.5.cs 2669, end of case ConstructionShip) and
+     * pirateShipMissions.ts pirateAssignConstructionShip end (Empire.1.cs 5116): the stock AI found no task and the
+     * ship is still idle. Handlers may assign a mission (19e-7 salvage).
+     */
+    constructionShipIdle: { empire: Empire; ship: BuiltObject };
     /** combat/damage.ts inflictBombardDamage (end). */
     habitatBombarded: { builtObject: BuiltObject; habitat: Habitat; bombardPower: number };
     /** espionage.ts completeIntelligenceMission (end). */
     intelMissionCompleted: { empire: Empire; mission: unknown; outcome: unknown };
     /** events.ts empireCompleteTeardown (top). */
     empireEliminated: { empire: Empire; conqueror: Empire | null };
+    /**
+     * combat/damage.ts inflictDamageFull, the ship-destroyed branch (BuiltObject.2.cs ~6560-6600, after the stock
+     * bookkeeping): `destroyer` = the attacking object's empire (null for monsters / unowned). Fires at the moment of
+     * the killing blow, ahead of (and distinct from) builtObjectDestroyed's later teardown-time signal — kept as its
+     * own event (not merged into builtObjectDestroyed) so a 19e-7 wreckage handler and this one don't both fire off a
+     * single kill under double-different payload shapes, and so rimTrade's raid-stats counter isn't double-counted.
+     */
+    builtObjectKilledBy: { builtObject: BuiltObject; destroyer: Empire | null };
     /** researchTick.ts doResearchBreakthrough (end). */
     researchCompleted: { empire: Empire; project: unknown };
     /** characters.ts generateNewCharacter (end). */
@@ -201,9 +221,33 @@ export interface ScenarioEvents {
     abandonedShipClaimed: { builtObject: BuiltObject; empire: Empire };
     /** A diplomatic relation changed type (diplomacyTick changeDiplomaticRelation, end): war declared, treaty signed, ... */
     diplomaticRelationChanged: { empire: Empire; other: Empire; from: number; to: number };
+    /** diplomacyTick.ts declareWar (Empire.7.cs 4883 DeclareWar): end of the new-war branch, after both sides' war objectives are set. */
+    warDeclared: { empire: Empire; target: Empire };
+    /**
+     * combat/damage.ts inflictWarDamageBuiltObject / inflictWarDamageHabitat (Galaxy.3.cs 529 / 541 InflictWarDamage), after
+     * the victim's relation ledger is charged: a ship / base destroyed, or a colony invaded or destroyed. `value` is the
+     * war value charged (Galaxy.3.cs 474 / 507 CalculateWarValue). Only emitted when the victim has a relation with the
+     * inflictor.
+     */
+    warDamageInflicted: { inflictor: Empire; victim: Empire; builtObject: BuiltObject | null; habitat: Habitat | null; value: number };
+    /** diplomacyTick.ts endWarRequest (Empire.8.cs 1550 EndWarRequest): `empire` just queued an end-war proposal to `other`. */
+    peaceProposed: { empire: Empire; other: Empire };
+    /**
+     * A war ended by an accepted end-war proposal: `empire` accepted `other`'s proposal. Sites: diplomacyTick.ts
+     * considerTreatyProposals (Empire.3.cs 3651-3675), player/playerOrders.ts acceptProposal (EmpireDetailView.cs 803),
+     * player/diplomacyProposals.ts WAR_END (Main.Part10.cs 4679). After the stock end-of-war processing.
+     */
+    peaceSigned: { empire: Empire; other: Empire };
     /** A disaster event hit a colony (events.ts). */
     disaster: { empire: Empire | null; habitat: Habitat | null; disasterType: number };
     /** logistics/contracts.ts initiateContract (end): a private/state sale (no Rnd in handlers — 19e-9 contract rule). */
+    /**
+     * 19j: a ship (or the giant ion cannon) killed a creature — combat/damage.ts inflictDamageFull (BuiltObject.2.cs 6227),
+     * inflictIonDamage (6133), habitatInflictIonDamage (Habitat.cs 2357), right before its CompleteTeardown. No Rnd in handlers.
+     */
+    creatureKilled: { creature: Creature; killer: BuiltObject | Habitat | null; empire: Empire | null };
+    /** 19j: combat/attackAI.ts notifyOfAttackHabitat (Galaxy.7.cs 3058 NotifyOfAttack, top): a colony is under attack. No Rnd in handlers. */
+    habitatAttacked: { habitat: Habitat; attacker: unknown; attackingEmpire: Empire | null; bombarded: boolean };
     contractInitiated: {
         seller: Empire;
         buyer: Empire;
@@ -276,12 +320,78 @@ export interface ScenarioQueries {
      */
     hyperDenyExempt: { value: boolean; args: { builtObject: BuiltObject; location: GalaxyLocation } };
     /**
+     * diplomacyTick.ts reviewDiplomaticStrategies, at Empire.8.cs 100/139 (num9 = -10 / aggression: the attitude score
+     * num6 must fall below it for the Conquer / Punish branches, the gate SOAK-2026-09-26 §A2 names). The value is a
+     * relaxation in attitude points (stock 0): num9 is raised by it and the Conquer predicates' attitude tests
+     * (overallAttitude2 < -5 / -10 / 0) read the attitude lowered by it. `empire` reviews its relation with `other`.
+     */
+    warReviewAttitudeRelax: { value: number; args: { empire: Empire; other: Empire } };
+    /**
+     * Minimum ships of a troop fleet sent against colony `target` (stock 10): Empire.8.cs 504 CheckCanConductNewWar,
+     * 1041/1049 PrepareFleetsForWar (the audit's "1047" ≥10-ship troop fleet rule) and 1163 SelectFleetWarAttackTarget.
+     */
+    invasionMinFleetShips: { value: number; args: { empire: Empire; target: Habitat } };
+    /** Share of the required troop strength a troop fleet must carry (stock 0.5: Empire.8.cs 1049 `>= num3 / 2`). */
+    invasionTroopRatio: { value: number; args: { empire: Empire; target: Habitat } };
+    /** 19j: events.ts applyLocationEffects (BuiltObject.cs 3934 ApplyLocationEffects): true = no lightning / ship-damage effects. */
+    builtObjectStormImmune: { value: boolean; args: { builtObject: BuiltObject } };
+    /** 19j: movement.ts rechargeReactors (BuiltObject.1.cs 2509 RechargeReactors): true = recharging burns no fuel. */
+    builtObjectSelfFuelling: { value: boolean; args: { builtObject: BuiltObject } };
+    /**
+     * researchTick.ts performResearchProjects (Empire.3.cs 1890 PerformResearch, per industry), first line: true skips
+     * the industry's research this pass (19a rimTraderResearchCap: the Concord's stagnation).
+     */
+    researchFrozen: { value: boolean; args: { empire: Empire; industry: number } };
+    /**
+     * independentTraders.ts isObjectVisibleToThisEmpire (Empire.9.cs 3198), first line: true makes the object visible to
+     * `empire` regardless of sensors (19a treasure-fleet beacon: a galaxy-wide position broadcast).
+     */
+    objectVisibleToAll: { value: boolean; args: { empire: Empire; object: BuiltObject | Habitat } };
+    /** events.ts clearEmptyDebrisFields (Galaxy.5.cs 2893): true keeps a debris field with no abandoned ships (19e-7 wreck fields). */
+    debrisFieldPersists: { value: boolean; args: { location: GalaxyLocation } };
+    /**
+     * pirateAI.ts updateRaidCountdownBuiltObject / updateRaidCountdownHabitat (BuiltObject.1.cs 2894, Habitat.cs 1608): a
+     * multiplier on the raid-countdown recovery of a target at (x, y) (1 = stock). 19e-7: raids come faster near big wreck fields.
+     */
+    raidCountdownRate: { value: number; args: { x: number; y: number } };
+    /**
+     * Whether `empire` accepts `other`'s end-war proposal (stock value: ConsiderEndWar's verdict). Sites:
+     * diplomacyTick.ts considerTreatyProposals (Empire.3.cs 3651 `if (ConsiderEndWar(thisEmpire, out endReason))`) and
+     * player/diplomacyProposals.ts WAR_END (Main.Part10.cs 4679).
+     */
+    endWarAcceptance: { value: boolean; args: { empire: Empire; other: Empire } };
+    /**
+     * missions/assign.ts assignMission (BuiltObject.2.cs 7620 AssignMission), next to the 7622-7625 precondition return:
+     * false refuses the new mission (the ship keeps its current one). `x` / `y` are the mission's point (-2000000001 unset).
+     */
+    assignMissionAllowed: { value: boolean; args: { builtObject: BuiltObject; missionType: number; target: unknown; x: number; y: number } };
+    /**
      * colonyTick.ts checkSatisfaction (Habitat.cs 5992 CheckSatisfaction: the EmpireApprovalRating read that decides the
      * revolt and, below `leaveThreshold` (num5) while rebelling without troops, LeaveEmpire): the value the revolt test
      * uses. 19m internal security answers the colony's stability-ledger total (and holds it at the leave threshold under
      * martial law). Never draws.
      */
     colonyRevoltApproval: { value: number; args: { habitat: Habitat; leaveThreshold: number } };
+    /**
+     * game.ts player capital loop / Start.cs method_51 findAiCapital (the C#'s own home-system search), consulted right
+     * after the stock candidate is accepted (no Rnd between the check and the stock accept, so a rejection re-enters
+     * the C#'s own loop and re-rolls exactly as an ordinary stock rejection would): false rejects a stock-accepted
+     * candidate habitat (the search tries its next candidate; no extra Rnd draws). Default true. 19h rim-frontier keeps
+     * ordinary player/AI starts inside the rim belt.
+     */
+    acceptHomeHabitat: { value: boolean; args: { race: Race; habitat: Habitat; empireKind: 'player' | 'ai' } };
+    /**
+     * pirates.ts generateNewPirateEmpires (Galaxy.9.cs GenerateNewPirateEmpires) candidate test, consulted right after
+     * the stock candidate is accepted: false rejects a stock-accepted pirate-base candidate (the loop's own re-roll, no
+     * extra Rnd draws). Default true. 19h rim-frontier splits pirate factions between the rim and the core.
+     */
+    acceptPirateBase: { value: boolean; args: { habitat: Habitat } };
+    /**
+     * Base-placement candidate test (pirates.ts generateNewPirateEmpires; independent-colony / mining-station placement
+     * may call it too): true when (x, y) sits inside a rim herd's home range (plus a scenario's avoidance buffer) and
+     * the candidate should be rejected. Default false (no fauna, or no scenario).
+     */
+    placementAvoidsHerds: { value: boolean; args: { x: number; y: number } };
 }
 export type ScenarioQueryName = keyof ScenarioQueries;
 
@@ -329,6 +439,13 @@ export interface ScenarioGenerationHandler extends ScenarioHandlerGate {
     afterNebulae?: (galaxy: Galaxy) => void;
     /** SetupSun (Galaxy.5.cs) candidate position: false rejects it (the stock loop re-rolls, up to its 100 tries). */
     acceptStarPosition?: (galaxy: Galaxy, x: number, y: number) => boolean;
+    /**
+     * createGame, right after generateGalaxy returns: every habitat's faithful resource selection (Galaxy.4.cs
+     * SelectResources, run throughout setupSolarSystem / generateGasCloud) has already happened. May draw (its own
+     * Random, never galaxy.rnd — generateGalaxy itself is done drawing galaxy.rnd for resources by this point, but the
+     * stock loop's later steps, e.g. empire placement, have not started). 19h fuel oases.
+     */
+    afterGeneration?: (galaxy: Galaxy) => void;
 }
 
 const generationHandlers: ScenarioGenerationHandler[] = [];
@@ -347,6 +464,11 @@ export function scenarioGenerationSetup(scenario: GalaxyScenario | null, resourc
 /** generateGalaxy after GenerateNebulae (callers check galaxy.scenario !== null). */
 export function scenarioAfterNebulae(galaxy: Galaxy): void {
     for (const h of generationHandlers) if (h.afterNebulae !== undefined && scenarioGateOpen(galaxy, h)) h.afterNebulae(galaxy);
+}
+
+/** createGame, right after generateGalaxy returns (callers check galaxy.scenario !== null). */
+export function scenarioAfterGeneration(galaxy: Galaxy): void {
+    for (const h of generationHandlers) if (h.afterGeneration !== undefined && scenarioGateOpen(galaxy, h)) h.afterGeneration(galaxy);
 }
 
 /** SetupSun position test (callers check galaxy.scenario !== null). */

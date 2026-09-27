@@ -38,6 +38,9 @@ import { scenarioFlag } from '../scenario/state';
 import { ESPIONAGE_FLAG } from '../scenario/emergent/espionageHooks';
 import { setMissionFrame } from '../scenario/emergent/espionage';
 import { grantAutonomy, runPoliticsAction, type PoliticsActionName } from '../scenario/emergent/politicsActions';
+import { answerScenarioDecision, pendingScenarioDecisions } from '../scenario/decisions';
+import { proposePeaceTerms } from '../scenario/lively/peaceTerms';
+import type { PeaceTerms } from '../scenario/lively/warGoals';
 import { runSecurityAction, startInvestigation, type SecurityActionName } from '../scenario/security/security';
 import {
     acceptProposal,
@@ -52,8 +55,8 @@ import {
     toggleDesignObsolete,
     type WaitQueueMove,
 } from './playerOrders';
-import { answerScenarioDecision, pendingScenarioDecisions } from '../scenario/decisions';
 import { grantCharter, nationaliseCompany, releaseCompany, renewCharter, type CharterTerms } from '../scenario/charteredCompanies/charters';
+import { orderSalvage } from '../scenario/wreckage/wreckage';
 
 /** Automation / control fields of Empire the UI sets directly (Game Options panel and the automation prompts). */
 function isEmpireControlField(empire: Empire, field: string): boolean {
@@ -153,6 +156,12 @@ export const PLAYER_OPS = {
     acceptProposal: (_galaxy: Galaxy, empire: Empire, other: Empire) => acceptProposal(empire, other),
     declineProposal: (_galaxy: Galaxy, empire: Empire, other: Empire) => declineProposal(empire, other),
 
+    // --- Mod layer (scenarios) ---
+    /** A scenario decision's option (scenario/decisions.ts; the message popup's buttons, the 19g-3 terms dialog). */
+    answerDecision: (galaxy: Galaxy, _empire: Empire, decisionId: number, optionId: string) => answerScenarioDecision(galaxy, decisionId, optionId, 'player'),
+    /** 19g-3 war goals: offer `other` peace on `terms` (the diplomacy screen's terms dialog). */
+    proposePeaceTerms: (galaxy: Galaxy, empire: Empire, other: Empire, terms: PeaceTerms) => proposePeaceTerms(galaxy, empire, other, terms),
+
     // --- Advisor suggestions (semi-automated tasks awaiting Approve / Decline; Main.Part2.cs 1369 / 2732) ---
     approveSuggestion: (galaxy: Galaxy, empire: Empire, message: EmpireMessage) => approveSuggestion(galaxy, empire, message),
     declineSuggestion: (galaxy: Galaxy, empire: Empire, message: EmpireMessage) => declineSuggestion(galaxy, empire, message),
@@ -175,6 +184,8 @@ export const PLAYER_OPS = {
     charterRenew: (galaxy: Galaxy, empire: Empire, company: Empire) => renewCharter(galaxy, empire, company),
     charterRelease: (galaxy: Galaxy, empire: Empire, company: Empire) => releaseCompany(galaxy, empire, company),
     charterNationalise: (galaxy: Galaxy, empire: Empire, company: Empire) => nationaliseCompany(galaxy, empire, company),
+    /** 19e-7 (scenario flag `wreckage`): send a construction / mining ship to salvage a debris field (right-click menu). */
+    salvageWreckField: (galaxy: Galaxy, empire: Empire, ship: BuiltObject, fieldId: number) => orderSalvage(galaxy, empire, ship, fieldId, true),
     // [emergent] begin — scenario 19d1 internal politics (scenario/emergent/politicsActions.ts; flag-gated inside)
     politicsAction: (galaxy: Galaxy, empire: Empire, action: PoliticsActionName, character: Character) => runPoliticsAction(galaxy, empire, action, character),
     grantAutonomy: (galaxy: Galaxy, empire: Empire, colony: Habitat) => grantAutonomy(galaxy, empire, colony),

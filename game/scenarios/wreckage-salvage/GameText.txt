@@ -1,0 +1,8 @@
+'Scenario wreckage-salvage: texts of the battle wreckage & salvage package (tasks/19-mod-layer-scenarios.md §19e item 7).
+Scenario Wreckage Field Name;{0} Debris Field
+Scenario Wreckage Salvage Menu;Salvage {0}
+Scenario Wreckage Salvage Hint;Send this ship to recover resources (and perhaps foreign technology) from the {0} wrecks of {1}.
+Scenario Wreckage Salvaged Title;Salvage Recovered
+Scenario Wreckage Salvaged;{0} salvaged {1} wrecks at {2}: {3}.
+Scenario Wreckage Salvaged Tech;{0} recovered foreign technology from the wrecks at {1}: {2}.
+Scenario Wreckage Nothing;nothing usable

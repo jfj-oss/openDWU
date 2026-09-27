@@ -3,10 +3,13 @@
 
 import type { Galaxy } from '../../galaxy';
 import type { GalaxyLocation } from '../../galaxyLocation';
+import type { Habitat } from '../../types';
 import { scenarioParam, scenarioState } from '../state';
 import { radiusFraction } from '../hooks';
 
 export const RIM_FRONTIER_FLAG = 'rimFrontier';
+/** scenarioState key. */
+export const RIM_FRONTIER_STATE = 'rimFrontier';
 
 /** Manifest defaults (scenarios/rim-frontier/scenario.json) — the fallbacks of scenarioParam. */
 export const RIM_FRONTIER_DEFAULTS = {
@@ -19,6 +22,29 @@ export const RIM_FRONTIER_DEFAULTS = {
     rimFrontierFogFactor: 0.5,
     rimFrontierExtent: 1.0,
     rimFrontierStarCount: 0,
+    /** 19h keepStartsOut: >0 keeps ordinary player/AI capitals inside the belt inner radius (the Concord's own
+     *  homePlacement rule is untouched). 0 = stock placement. */
+    rimFrontierKeepStartsOut: 1,
+    /** 19h pirate share: fraction of new pirate factions (in their creation order) placed in the rim; the rest go in
+     *  the core. 0 = stock placement. */
+    rimFrontierPirateRimShare: 0.6,
+    /** 19h base placement: extra buffer added past a rim herd's home range (RimHerd.homeRange, rimFauna/common.ts)
+     *  that a new base (pirate or independent) may not land inside. */
+    rimFrontierNestAvoidRadius: 5000,
+    /** 19h pirate hunting: a pirate faction only considers herds within this distance of its base. */
+    rimFrontierHuntRange: 300000,
+    /** 19h pirate hunting: yearly chance a faction with a herd in range sends ships after it. 0 = off. */
+    rimFrontierHuntChance: 0.3,
+    /** 19h pirate hunting: credits paid per herd member when a hunt succeeds (not a port: DW:U has no such bounty). */
+    rimFrontierHuntBounty: 500,
+    /** 19h-11 fuel oases: guaranteed Caslon/Hydrogen sources per rim sector (sector centre radiusFraction ≥ belt inner),
+     *  added after the faithful resource placement so fuel scarcity never leaves a rim sector with none — as long as
+     *  the sector has a habitat resources.txt/habitat-type rules would let carry either fuel at all (a lone star with
+     *  no planets, or gas giants that all rolled FrozenGasGiant rather than GasGiant, stay empty; not invented). 0 = off. */
+    rimFrontierOasesPerSector: 1,
+    /** 19h-11 fuel oases: range from a candidate pirate base within which an oasis is preferred (≈ one sector; Galaxy.3.cs
+     *  SectorSize 2,000,000). */
+    rimFrontierOasisRange: 2000000,
 } as const;
 export type RimFrontierParam = keyof typeof RIM_FRONTIER_DEFAULTS;
 
@@ -34,16 +60,46 @@ export function frontierParam(galaxy: Galaxy, name: RimFrontierParam): number {
     return scenarioParam(galaxy, name, RIM_FRONTIER_DEFAULTS[name]);
 }
 
-/** Saved state (`scenarioState(galaxy, 'rimFrontier')`): graph references only. */
+/** A pirate faction's in-progress herd hunt (19h pirate hunting): plain data, resolved on a later yearly check. */
+export interface RimFrontierPirateHunt {
+    factionId: number;
+    herdId: number;
+    /** Herd member count when the hunt was ordered (the bounty base if it succeeds). */
+    size: number;
+    /** Star date the hunt was ordered (a hunt still open 2 years later is abandoned, no bounty). */
+    startedAt: number;
+}
+
+/** Saved state (`scenarioState(galaxy, 'rimFrontier')`): graph references and plain data only. */
 export interface RimFrontierState {
     /** The gravity shoals (NebulaCloud GalaxyLocations with no stock effect, so the map draws them as clouds). */
     shoals: GalaxyLocation[];
     /** The storm clouds the belt added (the converted stock clouds are not listed). */
     addedStorms: GalaxyLocation[];
+    /** One entry per pirate faction currently hunting a herd (by empireId). */
+    pirateHunts: RimFrontierPirateHunt[];
+    /** 19h-11: the habitats picked as guaranteed rim fuel sources (one game's worth; not the pre-existing faithful ones). */
+    fuelOases: Habitat[];
 }
 
 export function rimFrontierState(galaxy: Galaxy): RimFrontierState {
-    return scenarioState<RimFrontierState>(galaxy, 'rimFrontier', () => ({ shoals: [], addedStorms: [] }));
+    return scenarioState<RimFrontierState>(galaxy, RIM_FRONTIER_STATE, () => ({ shoals: [], addedStorms: [], pirateHunts: [], fuelOases: [] }));
+}
+
+/** The state if the package has run in this game (never creates it: safe from pure query handlers / other packages). */
+export function peekRimFrontierState(galaxy: Galaxy): RimFrontierState | null {
+    const s = galaxy.scenario;
+    if (s === null || !(RIM_FRONTIER_STATE in s.state)) return null;
+    return s.state[RIM_FRONTIER_STATE] as RimFrontierState;
+}
+
+/**
+ * 19h-11: the habitats holding a guaranteed rim fuel oasis (empty with the flag off, `rimFrontierOasesPerSector` 0, or
+ * no rim sector needing one). For the independents package to weight station placement toward (not imported here —
+ * kept a one-way read like rimFauna's peek accessors).
+ */
+export function rimFuelOases(galaxy: Galaxy): readonly Habitat[] {
+    return peekRimFrontierState(galaxy)?.fuelOases ?? [];
 }
 
 /** 19h-5: the ship-sensor range multiplier toward (x, y): the fog factor inside the rim band, else 1. */

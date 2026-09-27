@@ -119,7 +119,7 @@ import { ForceStructureProjectionList } from './forceStructureProjection';
 import type { ManufacturingQueue } from './manufacturingQueue';
 import { determineColonizationValue } from './tradeItems';
 import { baconSettings } from './data/baconSettings';
-import { scenarioQuery } from './scenario/hooks';
+import { scenarioEmit, scenarioQuery } from './scenario/hooks';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Galaxy statics (Galaxy.3.cs 4996-5033) and Bacon settings used here.
@@ -662,6 +662,8 @@ export function assignMissionToBuiltObject(galaxy: Galaxy, empire: Empire, ship:
         }
         case BuiltObjectSubRole.ConstructionShip: {
             assignMissionConstructionShip(galaxy, empire, ship, flag2);
+            // mod layer (19e-7): Empire.5.cs 2669, end of case ConstructionShip — the ship found no stock task.
+            if (galaxy.scenario !== null && (missionOf(ship) === null || missionOf(ship)!.type === BuiltObjectMissionType.Undefined)) scenarioEmit(galaxy, 'constructionShipIdle', { empire, ship });
             break;
         }
         case BuiltObjectSubRole.PassengerShip: {

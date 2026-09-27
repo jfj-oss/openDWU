@@ -4,7 +4,8 @@
   "description": "An isolationist rim empire holds the galaxy's rarest luxuries and trades them only for goods from the outer reaches.",
   "flags": [
     { "name": "rimTrader", "label": "Rim trader behaviour", "description": "The Oranthi Concord trades its rare goods only for rim goods, never declares war and barely expands.", "default": true },
-    { "name": "rimTraderSinglePort", "label": "Single trading port", "description": "Foreign freighters may buy from the Concord only at its capital port.", "default": true }
+    { "name": "rimTraderSinglePort", "label": "Single trading port", "description": "Foreign freighters may buy from the Concord only at its capital port.", "default": true },
+    { "name": "treasureBeacon", "label": "Treasure fleet beacon", "description": "The Concord's treasure fleet is visible to every empire, wherever it sails.", "default": true }
   ],
   "params": [
     { "name": "rimTraderMaxColonies", "label": "Concord colony cap", "default": 4, "min": 1, "max": 12 },
@@ -13,7 +14,17 @@
     { "name": "rimTraderImportQuota", "label": "Import quota per rim good (units)", "default": 400, "min": 50, "max": 5000 },
     { "name": "rimTraderConsumption", "label": "Yearly consumption per rim good (units)", "default": 200, "min": 0, "max": 5000 },
     { "name": "rimTraderLedgerDecay", "label": "Yearly standing decay factor", "default": 0.5, "min": 0, "max": 1 },
-    { "name": "rimTraderStartStock", "label": "Starting rare-goods stock (units)", "default": 300, "min": 0, "max": 5000 }
+    { "name": "rimTraderStartStock", "label": "Starting rare-goods stock (units)", "default": 300, "min": 0, "max": 5000 },
+    { "name": "rimTraderTechLevel", "label": "Concord starting tech level", "default": 4, "min": 0.5, "max": 8 },
+    { "name": "rimTraderConstructionLevel", "label": "Concord ship construction level", "default": 7, "min": 1, "max": 8 },
+    { "name": "rimTraderResearchCap", "label": "Concord research cap (tech level; 0 = none)", "default": 5, "min": 0, "max": 8 },
+    { "name": "rimTraderContactYear", "label": "Concord contact broadcast (year; 0 = off)", "default": 1, "min": 0, "max": 20 },
+    { "name": "treasureFleetSize", "label": "Treasure fleet size (ships; 0 = no fleet)", "default": 6, "min": 0, "max": 20 },
+    { "name": "treasureCircuitInterval", "label": "Days between treasure voyages", "default": 360, "min": 30, "max": 3600 },
+    { "name": "treasureCircuitPorts", "label": "Foreign ports per voyage", "default": 4, "min": 1, "max": 12 },
+    { "name": "treasureShipSize", "label": "Treasure ship size", "default": 1100, "min": 300, "max": 1500 },
+    { "name": "treasureTradeLot", "label": "Units per good per treasure ship per stop", "default": 200, "min": 10, "max": 2000 },
+    { "name": "treasureRaidPenalty", "label": "Standing lost for sinking a treasure ship", "default": 3000, "min": 0, "max": 100000 }
   ],
   "homePlacement": [ { "race": "Oranthi", "minRadius": 0.8, "maxRadius": 1.0 } ],
   "resourcePlacement": [

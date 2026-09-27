@@ -14,6 +14,7 @@
 //   Weapon.cs 181 IsAvailableWithoutEnergyConsideration (a pure predicate; Weapon.Fire itself is M4o).
 // Galaxy.Rnd: none in this file.
 
+import { scenarioEmit } from '../scenario/hooks';
 import type { Galaxy } from '../galaxy';
 import type { BuiltObject } from '../builtObject';
 import type { Empire } from '../empire';
@@ -455,6 +456,8 @@ export function notifyOfAttackBuiltObject(galaxy: Galaxy, attacker: StellarObjec
 /** Galaxy.7.cs 3058 NotifyOfAttack(attacker, attackingEmpire, habitatUnderAttack, bombarded, isNewAttack, notifyIndependent). */
 export function notifyOfAttackHabitat(galaxy: Galaxy, attacker: StellarObject | null, attackingEmpire: Empire | null, habitatUnderAttack: Habitat | null, bombarded: boolean, isNewAttack: boolean, notifyIndependent: boolean): void {
     void notifyIndependent; // unused by the C# body
+    // mod layer (19j herd defence): no-op without a scenario; handlers never draw.
+    if (galaxy.scenario !== null && habitatUnderAttack !== null) scenarioEmit(galaxy, 'habitatAttacked', { habitat: habitatUnderAttack, attacker, attackingEmpire, bombarded });
     if (habitatUnderAttack !== null && habitatUnderAttack.empire !== null && habitatUnderAttack.empire !== galaxy.independentEmpire && attackingEmpire !== null && attackingEmpire.dominantRace !== null && attacker !== null) {
         let distressSignalType = DistressSignalType.UnderAttack;
         if (bombarded) {

@@ -4,6 +4,7 @@ import {
     declineProposal,
     diplomacyRows,
     feelingDescription,
+    filterDiplomacyRows,
     formatSigned,
     isProposalValid,
     proposalLabel,
@@ -27,7 +28,7 @@ import type { Galaxy } from '../src/sim/galaxy';
 // only the pure row / label logic (task 15a). Empire ids start at 1:
 // DiplomaticRelationList.byEmpire indexes by empireId - 1.
 
-const galaxy = { aggressionLevel: 1, independentEmpire: null } as unknown as Galaxy;
+const galaxy = { aggressionLevel: 1, independentEmpire: null, scenario: null } as unknown as Galaxy;
 function fake(id: number, name: string, extra: Record<string, unknown> = {}): Empire {
     const proposed = new DiplomaticRelationList();
     proposed.invertEmpireIndexing = true;
@@ -245,6 +246,47 @@ describe('diplomacyRows (task 15a)', () => {
         expect(declineProposal(player, b)).toBe(true);
         expect(player.proposedDiplomaticRelations.byEmpire(b)).toBeNull();
         expect(declineProposal(player, b)).toBe(false);
+    });
+
+    // Task 19k-1d (Big Galaxies: 60-empire games): the panel's DOM needs a browser to render (jsdom is not
+    // configured, see the file header), so a 60-empire game is exercised here as row-building at scale.
+    it('builds one row per met empire in a 60-empire game (60-empire UI check)', () => {
+        const player = fake(60, 'Player');
+        const others = Array.from({ length: 59 }, (_, i) => fake(i + 1, `Empire ${String(i).padStart(2, '0')}`));
+        for (const other of others) {
+            player.diplomaticRelations.add(new DiplomaticRelation(DiplomaticRelationType.None, player, player, other, false));
+        }
+        const rows = diplomacyRows(player, 0, '');
+        expect(rows).toHaveLength(59);
+        expect(new Set(rows.map((r) => r.empire)).size).toBe(59);
+    });
+});
+
+describe('filterDiplomacyRows (task 19k-1d: filter box for 60-empire games)', () => {
+    function setup60() {
+        const player = fake(60, 'Player');
+        const others = Array.from({ length: 59 }, (_, i) => fake(i + 1, `Empire ${String(i).padStart(2, '0')}`));
+        for (const other of others) {
+            player.diplomaticRelations.add(new DiplomaticRelation(DiplomaticRelationType.None, player, player, other, false));
+        }
+        return diplomacyRows(player, 0, '');
+    }
+
+    it('keeps every row for a blank or whitespace-only query', () => {
+        const rows = setup60();
+        expect(filterDiplomacyRows(rows, '')).toEqual(rows);
+        expect(filterDiplomacyRows(rows, '   ')).toEqual(rows);
+    });
+
+    it('matches by name, case-insensitively', () => {
+        const rows = setup60();
+        const filtered = filterDiplomacyRows(rows, 'empire 07');
+        expect(filtered.map((r) => r.name)).toEqual(['Empire 07']);
+    });
+
+    it('returns no rows when nothing matches', () => {
+        const rows = setup60();
+        expect(filterDiplomacyRows(rows, 'nomatch')).toEqual([]);
     });
 });
 

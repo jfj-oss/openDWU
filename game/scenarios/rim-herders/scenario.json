@@ -1,0 +1,32 @@
+{
+  "id": "rim-herders",
+  "name": "Rim Herders",
+  "description": "Rim independents live with the creature herds: the Ossuvan herders' herds are docile to them and defend them, their tamed freighters shrug off storms, and their ports are the only steady source of herd goods. Protect a herd range and win a protectorate, conquer it and face feral herds, or steal the herding craft.",
+  "include": ["rim-fauna"],
+  "flags": [
+    { "name": "rimHerders", "label": "Rim herders", "description": "Herder independents (symbiotic Ossuvan) with docile defending herds, tamed freighters, herd-good harvests, drovers and guides, protectorate / conquest / espionage paths and migration-season warnings.", "default": true }
+  ],
+  "params": [
+    { "name": "rimHerdersShare", "label": "Share of rim independent colonies that are herders", "default": 0.5, "min": 0, "max": 1 },
+    { "name": "rimHerdersRimInner", "label": "Rim inner radius (fraction)", "default": 0.72, "min": 0, "max": 1.5 },
+    { "name": "rimHerdersHerdsPerColony", "label": "Herds spawned per herder colony", "default": 1, "min": 0, "max": 5 },
+    { "name": "rimHerdersHarvestDays", "label": "Harvest period (game days)", "default": 90, "min": 1, "max": 360 },
+    { "name": "rimHerdersHarvestPerMember", "label": "Herd goods per herd member per harvest", "default": 4, "min": 0, "max": 100 },
+    { "name": "rimHerdersStockCap", "label": "Herd goods stock cap per colony", "default": 1500, "min": 0, "max": 100000 },
+    { "name": "rimHerdersKillDrop", "label": "Herd goods dropped per creature killed", "default": 10, "min": 0, "max": 500 },
+    { "name": "rimHerdersContactRange", "label": "Neighbour range of a herder colony", "default": 600000, "min": 0, "max": 5000000 },
+    { "name": "rimHerdersStandingGain", "label": "Yearly standing gain of a peaceful neighbour", "default": 10, "min": 0, "max": 100 },
+    { "name": "rimHerdersStandingKill", "label": "Standing lost per herd creature killed", "default": 8, "min": 0, "max": 100 },
+    { "name": "rimHerdersCharacterStanding", "label": "Standing at which herders offer a drover and a guide", "default": 20, "min": 0, "max": 200 },
+    { "name": "rimHerdersLeaveStanding", "label": "Standing below which drovers and guides leave", "default": 0, "min": -200, "max": 200 },
+    { "name": "rimHerdersProtectYears", "label": "Years without herd kills before a protectorate offer", "default": 3, "min": 1, "max": 50 },
+    { "name": "rimHerdersTribute", "label": "Share of herd goods paid yearly to the protector", "default": 0.5, "min": 0, "max": 1 },
+    { "name": "rimHerdersFeralYears", "label": "Years herds stay feral after a conquest", "default": 5, "min": 0, "max": 50 },
+    { "name": "rimHerdersFeralRange", "label": "Attack range multiplier of feral / hostile herds", "default": 4, "min": 1, "max": 20 },
+    { "name": "rimHerdersDefendRange", "label": "Range herds cross to defend their colony", "default": 30000, "min": 0, "max": 200000 },
+    { "name": "rimHerdersWarnDays", "label": "Days before the migration season that herders warn", "default": 30, "min": 1, "max": 180 },
+    { "name": "rimHerdersCorridor", "label": "Migration corridor radius around herd ranges", "default": 60000, "min": 0, "max": 1000000 },
+    { "name": "rimHerdersWarnPenalty", "label": "Standing lost for ignoring a migration warning", "default": 15, "min": 0, "max": 200 },
+    { "name": "rimHerdersConquestChance", "label": "Yearly chance an aggressive AI neighbour moves to conquer", "default": 0.35, "min": 0, "max": 1 }
+  ]
+}
