@@ -1,0 +1,39 @@
+'19n Court & dynasties: message texts (scenarioText tags). {n} items are filled by the scenario code.
+Court Founded;House {0} rules {1}.
+Court Seat spymaster;Spymaster
+Court Seat chancellor;Chancellor
+Court Seat marshal;Marshal
+Court Seat steward;Steward
+Court Seat magistrate;Magistrate
+Court Law primogeniture;Primogeniture
+Court Law election;Election
+Court Law acclamation;Military acclamation
+Court Appointed;{0} was appointed {1}.
+Court Succession primogeniture;{0} succeeds to the throne of {1} by right of birth.
+Court Succession election;{0} was elected to lead {1}.
+Court Succession acclamation;The armed forces acclaim {0} as the ruler of {1}.
+Court Crisis Title;Succession Crisis
+Court Crisis;A succession crisis: {0} of House {1} and {2} of House {3} both claimed the throne. {4} prevailed; the losing house will not forget.
+Court Regency Title;Regency
+Court Regency;{0} rules as regent until the heir, {1}, comes of age.
+Court Regency End Title;Regency Ends
+Court Regency End;{0} comes of age and takes the throne from the regent {1}.
+Court Usurpation;{0} of House {1} seized power outside the law of succession.
+Court Feud Title;House Feud
+Court Feud;Houses {0} and {1} are feuding: their members bicker and neglect their duties.
+Court Colony Lost;House {0} lost prestige with the colony {1}.
+Court War Won;House {0} gained prestige in the war against {1}.
+Court Faction;{0} of House {1} leads a faction of {2} nobles demanding {3}.
+Court Ultimatum Title;A Faction's Ultimatum
+Court Ultimatum;{0} of House {1} and {2} discontented nobles demand {3}. If we refuse, they will back a plot against us.
+Court Option Concede;Concede
+Court Option Refuse;Refuse
+Court Demand taxes;lower taxes
+Court Demand war;war on {0}
+Court Demand autonomy;autonomy for {0}
+Court Demand seat;a seat on the council ({0})
+Court Conceded;We conceded to {0}'s faction: {1}.
+Court Refused Title;Ultimatum Refused
+Court Refused;We refused {0}'s faction; its members now back a plot against us.
+Emergent Reason Feud;House feud
+Emergent Reason Faction;Faction refused

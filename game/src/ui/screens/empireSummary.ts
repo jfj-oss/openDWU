@@ -17,6 +17,7 @@ import { formatMoney, formatPopulation } from '../hud';
 import { crisesSummaryRows } from '../../sim/scenario/emergent/crisesCore';
 import { stabilityRow } from '../emergentPolitics'; // [emergent]
 import { ledgerStabilityRow } from '../internalSecurityView'; // [security]
+import { courtSummaryRows } from '../courtView'; // [court]
 
 /** The data the panel displays: the player's empire plus its government's
  * display name (null when unknown). */
@@ -196,6 +197,8 @@ function createEmpireSummary(src: EmpireSummarySource): OpenState {
     if (ledger !== null) summaryRows.push(stability !== null ? { ...ledger, value: `${stability.value} · ${ledger.value}` } : ledger);
     else if (stability !== null) summaryRows.push(stability);
     // [emergent] end
+    if (src.empire.galaxy) summaryRows.push(...courtSummaryRows(src.empire.galaxy, src.empire)); // [court] 19n legitimacy, house, succession, council
+
     for (const row of summaryRows) {
         const line = document.createElement('div');
         line.className = 'empire-summary-row';

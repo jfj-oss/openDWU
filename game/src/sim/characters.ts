@@ -92,7 +92,7 @@ import { shipGroupDetermineStrongestShip, shipGroupDetermineStrongestTroopTransp
 import { checkFleetSafeForDemoralizingCharacter, generateOrderedFleetsByFighterStrength, generateOrderedFleetsByOverallStrength, generateOrderedFleetsByTroopAttackStrength } from './fleets/fleetOrdering';
 import { habitatResourcesHaveSuperLuxury } from './exploration';
 import { determineColonizationValue } from './tradeItems';
-import { scenarioEmit } from './scenario/hooks';
+import { scenarioEmit, scenarioQuery } from './scenario/hooks';
 
 /** C# StellarObject (Habitat or BuiltObject) as a character location. */
 export type StellarObject = Habitat | BuiltObject;
@@ -6616,7 +6616,7 @@ export function reviewCaptainBonuses(builtObject: BuiltObject): void {
         captainRepairBonus = f(CharacterSkillType.RepairBonus);
         captainHyperjumpSpeedBonus = f(CharacterSkillType.HyperjumpSpeed);
     }
-    captainBonusMap.set(builtObject, {
+    let bonuses: CaptainBonuses = {
         targeting: captainTargetingBonus,
         countermeasures: captainCountermeasuresBonus,
         shipManeuvering: captainShipManeuveringBonus,
@@ -6628,7 +6628,11 @@ export function reviewCaptainBonuses(builtObject: BuiltObject): void {
         damageControl: captainDamageControlBonus,
         repair: captainRepairBonus,
         hyperjumpSpeed: captainHyperjumpSpeedBonus,
-    });
+    };
+    const owner = builtObject.actualEmpire;
+    const ownerGalaxy = owner !== null ? (owner.galaxy as Galaxy | undefined) : undefined;
+    if (ownerGalaxy !== undefined && ownerGalaxy.scenario != null) bonuses = scenarioQuery(ownerGalaxy, 'captainBonuses', bonuses, { builtObject, empire: owner! }); // mod layer
+    captainBonusMap.set(builtObject, bonuses);
 }
 
 // BuiltObject.cs GetCharacterMaintenanceBonuses (1488).

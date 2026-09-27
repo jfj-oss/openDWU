@@ -628,8 +628,12 @@ export interface PoliticsHookSlots {
     secessionBlocked: ((galaxy: Galaxy, colony: Habitat) => boolean) | null;
     /** A plot rumour was rolled (exposed = the ported exposure roll found it): the plot joins the 19m registry. */
     plotRumour: ((galaxy: Galaxy, empire: Empire, c: Character, exposed: boolean) => void) | null;
+    /** 19n court: a factor on a candidate's plot score (house rivalry, a backing faction); 1 when the court is off. */
+    plotScoreFactor: ((galaxy: Galaxy, empire: Empire, c: Character) => number) | null;
+    /** 19n court: a factor on the plot roll's chance (the ruler's legitimacy); 1 when the court is off. */
+    plotChanceFactor: ((galaxy: Galaxy, empire: Empire) => number) | null;
 }
-export const politicsHooks: PoliticsHookSlots = { coupSucceeded: null, secessionBlocked: null, plotRumour: null };
+export const politicsHooks: PoliticsHookSlots = { coupSucceeded: null, secessionBlocked: null, plotRumour: null, plotScoreFactor: null, plotChanceFactor: null };
 
 // The actions live in politicsActions.ts (imported lazily through this registry to keep the module graph acyclic).
 export interface PoliticsActionImpl {
@@ -767,15 +771,18 @@ export function reviewEmpirePlots(galaxy: Galaxy, empire: Empire, year: number):
         if (!c.active || !canPlot(c)) continue;
         const e = st.chars.get(c);
         if (e === undefined) continue;
-        const p = plotScore(e, inst, intensity);
+        let p = plotScore(e, inst, intensity);
+        if (politicsHooks.plotScoreFactor !== null) p *= politicsHooks.plotScoreFactor(galaxy, empire, c);
         if (p > pickP) {
             pick = c;
             pickP = p;
         }
     }
     if (pick === null) return null;
+    let chance = pickP * 0.35;
+    if (politicsHooks.plotChanceFactor !== null) chance *= politicsHooks.plotChanceFactor(galaxy, empire);
     // RND(19d1): plot roll
-    if (!(galaxy.rnd.nextDouble() < pickP * 0.35)) return null;
+    if (!(galaxy.rnd.nextDouble() < chance)) return null;
     const kind = plotKindFor(galaxy, empire, pick, st.chars.get(pick)!);
     switch (kind) {
         case 'coup':

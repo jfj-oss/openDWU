@@ -271,6 +271,12 @@ export function securityStrength(empire: Empire): number {
     return s * bonus * (1 + empire.espionageBonus);
 }
 
+/** securityStrength plus the scenario bonus slot (19n spymaster); what the detection roll uses. Pure. */
+export function empireSecurityStrength(galaxy: Galaxy, empire: Empire): number {
+    const s = securityStrength(empire);
+    return securitySlots.strengthBonus !== null ? s + securitySlots.strengthBonus(galaxy, empire) : s;
+}
+
 /** Yearly detection chance: securityDetectPct × S / (S + concealment), capped at 95%. Pure. */
 export function detectionChance(galaxy: Galaxy, strength: number, concealment: number): number {
     if (strength <= 0) return 0;
@@ -379,7 +385,7 @@ export function detectionRolls(galaxy: Galaxy): void {
         if (e === null) continue;
         const lead = openLead(st, t, e);
         if (lead !== undefined && lead.level === 'confirmed') continue;
-        let p = detectionChance(galaxy, securityStrength(e), t.concealment);
+        let p = detectionChance(galaxy, empireSecurityStrength(galaxy, e), t.concealment);
         if (p <= 0) continue;
         if (lead !== undefined && lead.level === 'suspected') p *= 0.5;
         // RND(19m): detection roll

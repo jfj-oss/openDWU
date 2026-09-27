@@ -36,4 +36,6 @@ import './lively/livingCalendar';
 import './reputation/ledger'; // 19o reputation & grievances ledger (flag reputationLedger; fills the attitude channel)
 import './eventLog/log'; // 19p event log (flag eventLog; installs the ported-message tap)
 import './security/security'; // 19m internal security (flag internalSecurity; last: it fills the 19d1 / 19d4 hook slots)
+import './security/security'; // 19m internal security (flag internalSecurity; it fills the 19d1 / 19d4 hook slots)
+import './court/court'; // 19n court & dynasties (flag courtDynasties; after 19m: it fills 19d1 / 19m hook slots)
 export {};
