@@ -101,6 +101,12 @@ export interface ShipArt {
     texture: Texture;
     metrics: ShipImageMetrics;
     markers: ShipMarkers;
+    /** 19r: the cleaned raw pixels the texture was made from (the damage mask and the livery analysis read them). */
+    rgba: Uint8ClampedArray;
+    w: number;
+    h: number;
+    /** 19r: the art URL (cache key of per-texture overlays). */
+    url: string;
 }
 
 const loading = new Map<string, Promise<ShipArt | null>>();
@@ -131,7 +137,7 @@ export function loadShipArt(url: string, includeLights = true): Promise<ShipArt 
                     ctx.putImageData(img, 0, 0);
                     const texture = Texture.from(canvas);
                     useMinifyingFilter(texture);
-                    art = { texture, metrics, markers };
+                    art = { texture, metrics, markers, rgba: cleaned, w, h, url };
                 }
             } catch {
                 art = null;

@@ -1030,6 +1030,8 @@ export function textureFromRgba(img: RgbaImage): Texture {
 export interface BodyTextures {
     def: BodyDef;
     body: Texture;
+    /** 19r: the body raster (its alpha is the damage overlay's mask). */
+    bodyImg: RgbaImage;
     fins: { fin: FinDef; tex: Texture }[];
     fluke: Texture | null;
     glow: Texture | null;
@@ -1041,6 +1043,7 @@ export function bodyTextures(parts: BodyParts): BodyTextures {
     return {
         def: parts.def,
         body: textureFromRgba(parts.body),
+        bodyImg: parts.body,
         fins: parts.fins.map((f) => ({ fin: f.fin, tex: textureFromRgba(f.img) })),
         fluke: parts.fluke === null ? null : textureFromRgba(parts.fluke),
         glow: parts.glow === null ? null : textureFromRgba(parts.glow),
@@ -1078,6 +1081,8 @@ export class CreatureRig implements HarnessCarrier {
     private points: Point[] = [];
     private body: MeshRope;
     private glowRope: MeshRope | null = null;
+    /** 19r: the damage overlay rope (same points as the body, so it bends with it). */
+    private damageRope: MeshRope | null = null;
     private fins: { fin: FinDef; l: Sprite; r: Sprite }[] = [];
     private fluke: Sprite | null = null;
     private spotSprites: Sprite[] = [];
@@ -1126,6 +1131,28 @@ export class CreatureRig implements HarnessCarrier {
 
     halfWidthAt(u: number): number {
         return maxHalfOf(this.tex.def) * silhouetteAt(this.tex.def, u);
+    }
+
+    /** The body raster (19r damage mask). */
+    get bodyImage(): RgbaImage {
+        return this.tex.bodyImg;
+    }
+
+    /** 19r: show `tex` (the damage layer in body-texture space, any resolution) over the body, or remove it (null). */
+    setDamage(tex: Texture | null): void {
+        if (tex === null) {
+            if (this.damageRope !== null) {
+                this.damageRope.destroy();
+                this.damageRope = null;
+            }
+            return;
+        }
+        if (this.damageRope === null) {
+            this.damageRope = new MeshRope({ texture: tex, points: this.points });
+            this.root.addChildAt(this.damageRope, this.root.getChildIndex(this.body) + 1);
+        } else if (this.damageRope.texture !== tex) {
+            this.damageRope.texture = tex;
+        }
     }
 
     /** The body wave period (s): the harness keys its slack and sway to it. */

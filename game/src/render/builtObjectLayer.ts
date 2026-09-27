@@ -17,7 +17,9 @@ import { Container, Sprite } from 'pixi.js';
 import type { Texture } from 'pixi.js';
 import { Camera } from './camera';
 import { AssetStore, makeDotTexture, useMinifyingFilter } from './assets';
-import { loadShipArt } from './shipArt';
+import { loadShipArt, type ShipArt } from './shipArt';
+import { DamageOverlays, shipDamageSubject } from './shipOverlays';
+import { artBundleFlag } from './artBundleFlags';
 import { Galaxy } from '../sim/galaxy';
 import type { BuiltObject } from '../sim/builtObject';
 import { BuiltObjectSubRole } from '../sim/builtObjectTypes';
@@ -390,6 +392,8 @@ export function releaseStaleSprites<K, S>(sprites: Map<K, S>, seen: ReadonlySet<
 interface LoadedShipImage {
     texture: Texture;
     metrics: ShipImageMetrics;
+    /** The shipArt.ts record (pixels for the 19r overlays); null for the no-install dot. */
+    art: ShipArt | null;
 }
 
 /**
@@ -400,6 +404,10 @@ interface LoadedShipImage {
  */
 export class BuiltObjectLayer {
     root = new Container();
+    /** The ship / base sprites (first child of root). */
+    private ships = new Container();
+    /** 19r: the base-game damage overlay over the sprites (always on; embers / scorch behind damageFx). */
+    private damage: DamageOverlays<BuiltObject>;
     private sprites = new Map<BuiltObject, Sprite>();
     private images = new Map<string, Promise<LoadedShipImage>>();
     /** Loaded images by URL, read synchronously each frame (null = failed). */
@@ -418,6 +426,8 @@ export class BuiltObjectLayer {
         private overlays: MapOverlayState,
     ) {
         world.addChild(this.root);
+        this.root.addChild(this.ships);
+        this.damage = new DamageOverlays<BuiltObject>(this.root);
     }
 
     /**
@@ -432,7 +442,7 @@ export class BuiltObjectLayer {
             p = (async () => {
                 if (this.store.dwuPresent) {
                     const art = await loadShipArt(url);
-                    if (art !== null) return { texture: art.texture, metrics: art.metrics };
+                    if (art !== null) return { texture: art.texture, metrics: art.metrics, art };
                 }
                 // No install, or the image is missing / empty: the grey dot, assuming the content fills about
                 // half the texture area, centred.
@@ -444,7 +454,7 @@ export class BuiltObjectLayer {
                     cropCenterX: texture.width / 2,
                     cropCenterY: texture.height / 2,
                 };
-                return { texture, metrics };
+                return { texture, metrics, art: null };
             })();
             this.images.set(url, p);
         }
@@ -456,6 +466,8 @@ export class BuiltObjectLayer {
         // Ships are drawn only while the original's zoom factor < 500.
         this.root.visible = f < BUILT_OBJECT_MAX_FACTOR;
         if (!this.root.visible) return;
+        this.damage.begin();
+        const damageFx = artBundleFlag(this.galaxy, 'damageFx');
         // Camera.worldToScreen, inlined (no allocation per ship per frame).
         const camX = cam.x;
         const camY = cam.y;
@@ -508,7 +520,7 @@ export class BuiltObjectLayer {
             const { texture, metrics } = img;
             if (sprite === undefined) {
                 sprite = new Sprite(texture);
-                this.root.addChild(sprite);
+                this.ships.addChild(sprite);
                 this.sprites.set(bo, sprite);
             }
             sprite.texture = texture;
@@ -530,7 +542,13 @@ export class BuiltObjectLayer {
             sprite.scale.set(px / metrics.cropSide / z);
             sprite.alpha = this.overlays.fadeCivilianShips && bo.owner === null ? 144 / 255 : 1;
             sprite.visible = true;
+            // 19r: MainView.cs 3253 method_73 → Main.Part12.cs 4988 method_106 while DamagedComponentCount > 0.
+            if (bo.damagedComponentCount > 0 && img.art !== null) {
+                const subject = shipDamageSubject(bo);
+                if (subject !== null) this.damage.draw(bo, subject, img.art, bo.xpos, bo.ypos, bo.heading, px, z, damageFx, sprite.alpha);
+            }
         }
+        this.damage.end();
         // Destroyed or removed objects: drop their sprite and drawn size (which also clears their selection ring / pick).
         releaseStaleSprites(this.sprites, this.seen, (bo, sprite) => {
             this.drawnPx.delete(bo);
