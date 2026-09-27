@@ -1,16 +1,23 @@
 {
   "id": "robotmutiny",
   "name": "Robot Mutiny",
-  "description": "Every BattleBot troop galaxy-wide is wired to one hidden transmitter on a ruin world. When it wakes, they mutiny at once. Robot-heavy empires lose planets first.",
+  "description": "Every BattleBot troop galaxy-wide is wired to one hidden transmitter on a ruin world. Robot garrisons quietly build hidden sleeper robots. When the broadcast wakes, colonies rise wherever their robots can win; the first captured colony makes the machines a full empire, and the transmitter spawns warships a tech level ahead of the best empire until it is silenced. Beacon fleet sizes (100/200/300) are tuned for large galaxies: lower the scale for small ones.",
   "include": ["darkfarms"],
   "flags": [
-    { "name": "threatRobotMutiny", "label": "Robot Mutiny", "description": "Robotic troops galaxy-wide answer one hidden broadcast.", "default": false }
+    { "name": "threatRobotMutiny", "label": "Robot Mutiny", "description": "Robotic troops galaxy-wide answer one hidden broadcast: hidden sleepers, risings where the robots win, a machine empire and beacon fleets.", "default": false }
   ],
   "params": [
     { "name": "mutinyYear", "label": "Earliest year the broadcast can wake", "default": 70, "min": 0, "max": 300 },
     { "name": "mutinyMinRobots", "label": "Robot troops galaxy-wide needed to trigger", "default": 30, "min": 1, "max": 1000 },
     { "name": "mutinyShipFlipPct", "label": "Chance a majority-robot transport flips (%)", "default": 100, "min": 0, "max": 100 },
     { "name": "mutinySourceDetectPct", "label": "Agent chance to find the source per period (%)", "default": 8, "min": 0, "max": 100 },
-    { "name": "mutinyDefeatPopulationPct", "label": "Broadcast share of population that ends the game (%)", "default": 40, "min": 5, "max": 100 }
+    { "name": "mutinyDefeatPopulationPct", "label": "Broadcast share of population that ends the game (%)", "default": 40, "min": 5, "max": 100 },
+    { "name": "mutinySleeperMinRobots", "label": "Robot troops a garrison needs to start building hidden sleepers", "default": 2, "min": 1, "max": 100 },
+    { "name": "mutinySleepersPerYear", "label": "Hidden sleeper robots built per such colony per year", "default": 15, "min": 0, "max": 500 },
+    { "name": "mutinyBeaconShipsYear1", "label": "Beacon warships, first year after the rising (tuned for large galaxies)", "default": 100, "min": 0, "max": 2000 },
+    { "name": "mutinyBeaconShipsYear2", "label": "Beacon warships, second year (tuned for large galaxies)", "default": 200, "min": 0, "max": 2000 },
+    { "name": "mutinyBeaconShipsYear3", "label": "Beacon warships, third year and every year after (tuned for large galaxies)", "default": 300, "min": 0, "max": 2000 },
+    { "name": "mutinyBeaconScalePct", "label": "Beacon fleet scale (%): the 100/200/300 targets are tuned for large galaxies, lower it for small ones", "default": 100, "min": 0, "max": 400 },
+    { "name": "mutinyTechBonus", "label": "Beacon warship tech levels above the best empire", "default": 1, "min": 0, "max": 10 }
   ]
 }
