@@ -203,28 +203,47 @@ invading faction troops.
 **Risks.** Few independents on small maps → threshold on count with a minimum of 5 nodes, else the threat never seeds.
 **Size** 1.5 days.
 
-## 6. Time-bomb tech — precursor tech with a planet-killing side effect
-**Concept.** Ruins hold precursor research with huge bonuses; each colony of an empire that holds it has a small yearly
-chance to be destroyed. Tech leaders are most exposed.
-**Data.** `research.txt` overlay: 3 nodes (e.g. "Precursor Lattice Drive", "Singularity Reactor", "Deep Resonance
-Manufacturing") with strong component/ability bonuses and special function 0, unlocked only by ruins; GameText
-`TimeBomb *`. Params: `timeBombRuins` (3), `timeBombChancePerMillePerColony` (2), `timeBombStartYear` (30).
-**Hidden state / spread.** `{nodes: projectId[], holders: Record<empireId, projectId[]>, destroyed: Habitat[]}`. Placement
-at start: `selectRuinsUnlockTech(galaxy, habitat, projectId)` on rnd-chosen ruin-less planets (ruins.ts 492; Start.2.cs
-1274-1304 analogue `placeRuinsUnlockTech`). Spread: the stock tech trade / theft (`StealTechData`) spreads it for free;
-`researchCompleted` records holders.
-**Trigger.** Yearly, per holder colony (empire order, colony order): `rnd.next(0, 1000) < chance × nodesHeld` →
-`detonate(habitat)` — the explosion set-up of `destroyHabitat` without the attacker credit block (combat/damage.ts 1627;
-BuiltObject.1.cs DestroyHabitat): Explosion with `explosionWillDestroy`, `habitat.hasBeenDestroyed = true`; the stock
-explosion tick removes it (`doPlanetDestroyAsteroidField` / `doPlanetRemove`, damage.ts 1745-1754). No faction.
-**Dirty.** None. **Discovery.** Level 1 at the first detonation (NewsNet "{planet} vanished"); level 3 for an empire whose
-scientists (CharacterRole.Scientist present) analyse two detonations of holders; counterplay: "abandon" = a player
-action removing the nodes from the empire's research (`isResearched = false`, bonuses recalculated) — design-review risk.
-**Sim.** 1 `timeBombPlace`; 2 `onResearchCompleted`; 3 `timeBombYearly`; 4 `detonate`; 5 `abandonTech` (+ order-menu
-entry on the research screen, read-only elsewhere).
-**AI.** An AI empire that reaches level 3 abandons the nodes within one year if it has lost ≥ 1 colony to them.
-**Risks.** Removing the capital → stock capital re-selection; recalculation of researched bonuses after "abandon" must use
-the stock research recalculation (verify a function exists; else no abandon, only warnings). **Size** 1.5 days.
+## 6. Time-bomb tech — precursor tech the Cult turns into terror bombs
+**Concept.** Ruins hold precursor research with huge bonuses and a planet-killing failure mode. The Cult (§2) is its
+actor: cult cells on colonies that hold the tech set it off every year as terror attacks; after secession the theocracy
+takes the tech with it and detonates enemy colonies on purpose. Tech leaders infiltrated by the cult are most exposed.
+**Dependency.** `scenarios/timebomb/scenario.json` includes `cult`. The framework cannot force an included flag on, so
+the module is **inert until the `cult` flag is on** (no state, no draws; the flag label says "needs The Cult").
+**Data.** `research.txt` overlay: 3 nodes ("Precursor Lattice Drive", "Singularity Reactor", "Deep Resonance
+Manufacturing"), special function 0, unlocked only by ruins; GameText `TimeBomb *` (+ `Security Kind cultBomb`,
+`Reputation Cause timeBomb.cultDetonation`). Params: `timeBombRuins` (3), `timeBombChancePerMillePerColony` (2),
+`timeBombMaxChancePct` (5), `timeBombCultWarChancePct` (10), `timeBombCounterIntelYears` (1),
+`timeBombDetonationGrievance` (30), `timeBombStartYear` (30), `timeBombDefeatDestroyed` (5).
+**Hidden state.** `{nodes, holders, destroyed, cells: CultCell[], cultHosts, cultNodes, counterIntelUntil, outcome}`.
+Placement: `selectRuinsUnlockTech` on rnd-chosen ruin-less planets (ruins.ts 492; Start.2.cs 1274-1304). Holders: the
+stock tech trade / theft spreads the nodes; `researchCompleted` records them. A **cell** is a colony of a non-cult
+empire with ≥ 1 converted character present (cult.ts `convertsAt`; a converted governor is one); cell strength = the
+converts present, the governor counting twice.
+**Trigger.** Yearly, per cell colony (empire order, colony order; a roll only when the chance is > 0, one detonation per
+empire per year): `perMille = min(chancePerMille × nodes × strength, maxChancePct × 10)` where `nodes` = the owner's held
+nodes, max'd with the cult faction's once it exists; while the cult faction is at war with the owner and holds ≥ 1 node,
+`perMille = max(perMille, cultWarChancePct × 10)` (a deliberate war detonation). `rnd.next(0, 1000) < perMille` →
+`detonate` — the explosion set-up of `destroyHabitat` without the attacker credit block (combat/damage.ts 1627). No
+colony without a cell can explode.
+**Cult faction.** `cultHooks.triggered` (cult.ts `cultTrigger`) records each host; the faction inherits the nodes its
+hosts hold (its tech-tree entries set researched + the stock recalculation). `abandonTech` never touches its nodes.
+**Discovery / counterplay (19m, flag `internalSecurity`).** A cell on a holder colony registers hidden thing kind
+`cultBomb` (target the colony, site = the cell) and opens the owner's lead at *suspected*; the first failed roll there
+(or a 19m detection sweep) *confirms* it. A `purge` on the lead, or an investigation that confirms it, runs
+`securitySlots.cultBombResolved` → `defuseCell`: every convert at the colony is de-converted (cult.ts `deconvert`) and
+the cell dissolves. `abandonTech` still strips a normal empire's nodes (level 1 at the first detonation; level 3 for
+empires whose scientists analysed two). Reputation (19o): a cult detonation records `timeBomb.cultDetonation` for the
+victim against the live cult faction. Event log (19p): cell formation is logged unseen (`seenBy: []`) and reaches the
+owner through the *suspected* message; detonations and defusals are logged through their messages / news.
+**End.** Defeat (1916) when `destroyed ≥ timeBombDefeatDestroyed` **only while the cult is undefeated** (faction alive or
+≥ 1 cell). Contained when the cult's own containment ends (cult.ts `cultEndCheck`: arc ends `contained`, the cult's
+2012 game end stands, no second one), or (2016) when no empire and no cult faction holds a node after ≥ 1 detonation.
+**AI.** A confirmed `cultBomb` lead → `purge` (security.ts `aiSecurityChoice`). After losing a colony to a cult
+detonation an AI empire puts its idle agents (or, if none is on it, its first busy agent) on counter-intelligence for
+`timeBombCounterIntelYears`. At knowledge level 3 with ≥ 1 loss it still abandons the nodes.
+**Sim.** 1 `timeBombPlace`; 2 `onResearchCompleted`; 3 `timeBombYearly` (`syncCultNodes`, `syncCells`, rolls);
+4 `detonate`; 5 `defuseCell`; 6 `abandonTech`. **Tests** `test/scenarioThreatTimeBomb.test.ts`.
+**Risks.** Removing the capital → stock capital re-selection. **Size** 1.5 days (+1 for the cult rework).
 
 ## 7. Ghost Armada — wreckage reactivates under a dead empire
 **Concept.** When an empire dies, the wrecks of its lost warships rise as a ghost fleet under its name and raid its

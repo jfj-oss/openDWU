@@ -16,7 +16,7 @@ import { scenarioFlag, scenarioState } from '../state';
 
 export const SECURITY_FLAG = 'internalSecurity';
 
-export type HiddenKind = 'plot' | 'convert' | 'sleeper' | 'hiveNode' | 'farm' | 'nest' | 'boughtGovernor' | 'foreignAgent' | 'scheme' | 'secret' | 'sectorUnrest';
+export type HiddenKind = 'plot' | 'convert' | 'sleeper' | 'hiveNode' | 'farm' | 'nest' | 'boughtGovernor' | 'foreignAgent' | 'scheme' | 'secret' | 'sectorUnrest' | 'cultBomb';
 export type HiddenTarget = Character | BuiltObject | Habitat;
 
 /** What a package passes when something hidden appears. */
@@ -271,8 +271,10 @@ export interface SecuritySlots {
     courtThingAlive: ((galaxy: Galaxy, thing: HiddenThing) => boolean) | null;
     /** 19n court intrigue: a lead on a court hidden thing changed level (the victim learns the schemer; a secret → a hook). No Rnd. */
     courtLeadChanged: ((galaxy: Galaxy, lead: Lead, thing: HiddenThing) => void) | null;
+    /** 19f §6 Time Bomb: a 'cultBomb' lead at `colony` was resolved by `empire` (a purge, or an investigation that rolled the cell up): the cell's converts lose their cult status and the bomb is defused. No Rnd. */
+    cultBombResolved: ((galaxy: Galaxy, empire: Empire, colony: Habitat, how: 'purge' | 'investigation') => void) | null;
 }
-export const securitySlots: SecuritySlots = { refugeesArrived: null, strengthBonus: null, courtThingAlive: null, courtLeadChanged: null };
+export const securitySlots: SecuritySlots = { refugeesArrived: null, strengthBonus: null, courtThingAlive: null, courtLeadChanged: null, cultBombResolved: null };
 
 /** True for a hidden thing the 19n court package registered (its liveness and lead reactions are the court's). */
 export function isCourtThing(thing: HiddenThing): boolean {

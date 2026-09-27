@@ -499,6 +499,12 @@ export function reviewInvestigations(galaxy: Galaxy): void {
         const changed = setLeadLevel(galaxy, thing, inv.empire, confirmed ? 'confirmed' : 'cleared', 'investigation');
         if (changed !== null) onLeadChanged(galaxy, changed, thing);
         if (!confirmed) emboldened(galaxy, thing);
+        // 19f §6: an investigation that confirms a cult bomb cell rolls it up (the converts there are turned, the bomb defused).
+        else if (thing.kind === 'cultBomb' && securitySlots.cultBombResolved !== null && !thing.retired) {
+            const h = thing.target as Habitat;
+            securitySlots.cultBombResolved(galaxy, inv.empire, h, 'investigation');
+            if (changed !== null) closeLead(galaxy, changed, 'defused');
+        }
     }
 }
 
@@ -548,6 +554,10 @@ export function securityActionBlocked(galaxy: Galaxy, empire: Empire, action: Se
         case 'exile':
             return c === null ? 'Not a character' : leader ? 'Not the leader' : !c.active ? 'Gone' : null;
         case 'purge':
+            if (lead.kind === 'cultBomb') {
+                const h = leadColony(lead);
+                return h === null || h.empire !== empire ? 'No colony of ours' : null;
+            }
             return !own ? 'Not one of our characters' : leader ? 'Not the leader' : null;
         case 'amnesty':
             return lead.kind !== 'plot' || !own ? 'Only a plot' : null;
@@ -631,6 +641,13 @@ export function runSecurityAction(galaxy: Galaxy, empire: Empire, action: Securi
             break;
         }
         case 'purge': {
+            if (lead.kind === 'cultBomb') {
+                // 19f §6: a purge at a cult bomb cell's colony turns its converts (the cult's own de-conversion path).
+                if (securitySlots.cultBombResolved !== null) securitySlots.cultBombResolved(galaxy, empire, leadColony(lead)!, 'purge');
+                st.purges.set(empire, now);
+                closeLead(galaxy, lead, 'defused');
+                break;
+            }
             if (politics) {
                 const r = runPoliticsAction(galaxy, empire, 'purge', c!);
                 if (!r.ok) return r;
@@ -700,6 +717,8 @@ export function aiSecurityChoice(galaxy: Galaxy, empire: Empire, lead: Lead): Se
             return aggression >= 100 ? pick(['arrest', 'exile']) : pick(['exile', 'arrest']);
         case 'sleeper':
             return caution >= 100 ? pick(['scrapShip', 'recallFleet']) : pick(['recallFleet', 'scrapShip']);
+        case 'cultBomb':
+            return pick(['purge']);
         case 'hiveNode':
         case 'farm':
             return caution >= 100 ? pick(['martialLaw', 'quarantine']) : pick(['quarantine', 'martialLaw']);
