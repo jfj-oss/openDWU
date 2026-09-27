@@ -1,14 +1,15 @@
 // Scenario 19a art — the Oranthi Concord's own ships (tasks/19-mod-layer-scenarios.md "Concord art"). Not a port: the
-// original has no such art. Two sources, one family (dark turquoise hulls, dark copper / yellow trim):
-//   Painted sprites — frigate, destroyer, battleship, construction ship, explorer and the Exchange space port are our
-//     own FLUX renders, cut out by scripts/concord-cutout.py into public/art/concord/<kind>.png (512 px; -256 / -128
-//     alongside). Loaded lazily through the page's URL space; each variant places the silhouette at the fill the
-//     procedural hulls had (CONCORD_SPRITE_FILL) in its bucket's texture side, then the procedural passes that still
-//     apply are layered on: the weathered look's grime and rust streaks (the clean look skips them), positional
-//     lights found on the silhouette (red to port at the leftmost point, green to starboard at the rightmost, white at
-//     the stern and masthead — the port fore and aft — and the warships' two mast strobes), thruster marks spread across
-//     the stern, and the light-halo overlays. Until a file is decoded the object stays hidden (no throw); a missing
-//     file hands it back to its stock art.
+// original has no such art. All procedural, one family (naval grey plating, dark turquoise panels, copper trim):
+//   Shaded hulls — frigate, destroyer, battleship, construction ship, explorer and the Exchange space port are drawn
+//     by concordFleet.ts from the shaded hull primitives of concordHull.ts (height-field volumes lit with a top-left
+//     key light, ambient occlusion, cast shadows, specular ridges, plating / rivets / greebles, rust streaks running
+//     aft, chipped paint, grime, emissive lamp gems and engine glow), once per kind at twice the kind's largest texture
+//     side (concordHullSourceSide). Each variant places that image at the fill the earlier hulls had
+//     (CONCORD_HULL_FILL) in its bucket's texture side (box downsample, hard alpha edge), then layers the shared
+//     passes on: the weathered look's grime and rust streaks (the clean look skips them), positional lights found on
+//     the silhouette (red to port at the leftmost point, green to starboard at the rightmost, white at the stern and
+//     masthead — the port fore and aft — and the warships' two mast strobes), thruster marks spread across the stern
+//     (where the engine bells sit), and the light-halo overlays.
 //   Procedural — the treasure ship (a giant, wide container carrier: containers in tidy blocks, gantry cranes, a lit
 //     bridge tower aft, deck floodlights, jet-fan thruster pods with slowly turning fan faces), the freighters (bulk
 //     carriers: hold hatch covers, deck cranes, a smaller bridge, a few containers) and generic bases (a hub and ring
@@ -18,13 +19,13 @@
 //     lights, flickering floodlights, red / green / white positional lights at the extremities, white strobes on the
 //     treasure ship's pod tips (a short double flash on the ambient nav-light cycle, phase per ship).
 //
-// Procedural technique: a supersampled G-buffer (albedo, height, material, surface pattern) painted with shapes, then
-// detail passes (plating, rivets, welds, grain, scratches, rust) and a lighting pass — normals from the height field,
+// Freighter / treasure ship / base technique: a supersampled G-buffer (albedo, height, material, surface pattern)
+// painted with shapes, then detail passes (plating, rivets, welds, grain, scratches, rust) and a lighting pass — normals from the height field,
 // one key light from ahead of the bow as measured on the original Ackdarian frames (CONCORD_LIGHT), soft ambient
 // occlusion at superstructure bases, cast shadows by marching the height field toward the light, a specular glint on
 // bare metal / copper / glass — downsampled to the texture. Then the chroma is scaled to the originals' saturation
 // (lights keep their colour) and the luma quantile-matched to the matching Ackdarian frame (ACKDARIAN_REFERENCE). The
-// sprites keep their painted colours. Both are pure and deterministic given their input (own hash / RNG, never
+// shaded hulls keep their own colours. Both are pure and deterministic given their input (own hash / RNG, never
 // galaxy.rnd) and testable without a DOM. Top-down like the originals, bow up in the raw image (the ship layer rotates
 // raw art by heading + π/2). Thruster marks are painted as the originals do (pure-blue runs at the nozzles) and go
 // through the same scan + paint-out as stock art (shipArt.ts), so the ambient layer's engine exhaust works unchanged;
@@ -47,6 +48,7 @@ import { paintOutShipMarkers } from './shipArt';
 import { useMinifyingFilter } from './assets';
 import { SpritePool } from './fxCommon';
 import { registerEmblemOverride } from '../ui/empireEmblem';
+import { drawConcordHull, type ConcordHullKind } from './concordFleet';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Variants
@@ -55,14 +57,14 @@ import { registerEmblemOverride } from '../ui/empireEmblem';
 export type ConcordKind = 'frigate' | 'destroyer' | 'battleship' | 'freighter' | 'explorer' | 'construction' | 'treasure' | 'port' | 'base';
 export const CONCORD_KINDS: readonly ConcordKind[] = ['frigate', 'destroyer', 'battleship', 'freighter', 'explorer', 'construction', 'treasure', 'port', 'base'];
 
-/** Kinds drawn from our painted FLUX sprites (public/art/concord, cut out by scripts/concord-cutout.py). */
-export const CONCORD_SPRITE_KINDS = ['frigate', 'destroyer', 'battleship', 'construction', 'explorer', 'port'] as const;
-export type ConcordSpriteKind = (typeof CONCORD_SPRITE_KINDS)[number];
-/** Kinds still drawn procedurally: the freighter, the treasure ship and the generic base. */
-export type ConcordProceduralKind = Exclude<ConcordKind, ConcordSpriteKind>;
+/** Kinds drawn as shaded hulls (concordFleet.ts on the concordHull.ts primitives). */
+export const CONCORD_HULL_KINDS: readonly ConcordHullKind[] = ['frigate', 'destroyer', 'battleship', 'construction', 'explorer', 'port'];
+export type { ConcordHullKind };
+/** Kinds drawn on the G-buffer below: the freighter, the treasure ship and the generic base. */
+export type ConcordProceduralKind = Exclude<ConcordKind, ConcordHullKind>;
 
-export function isConcordSpriteKind(kind: ConcordKind): kind is ConcordSpriteKind {
-    return (CONCORD_SPRITE_KINDS as readonly ConcordKind[]).includes(kind);
+export function isConcordHullKind(kind: ConcordKind): kind is ConcordHullKind {
+    return (CONCORD_HULL_KINDS as readonly ConcordKind[]).includes(kind);
 }
 
 /** The three military classes. */
@@ -157,7 +159,7 @@ export interface ConcordSpec {
     containerColumns: number;
     gantries: number;
     pods: number;
-    /** Nozzles at the stern (procedural: the engine cluster; sprites: thruster marks spread across the stern). */
+    /** Nozzles at the stern (thruster marks spread across the stern: the engine cluster / the hull's engine bells). */
     engines: number;
     /** Generic base: docking arms and fuel tanks. */
     docks: number;
@@ -1100,7 +1102,7 @@ function cradledShip(b: Build, x: number, y: number, ax: number, ay: number, len
 }
 
 /**
- * Generic bases (the Exchange space port is our painted sprite): a heavy hub and ring (thick structure), an inner
+ * Generic bases (the Exchange space port is a shaded hull): a heavy hub and ring (thick structure), an inner
  * habitat ring and stacked module blocks at different heights, irregular window rows, radiator arrays, fuel tank
  * clusters, an antenna forest and turning dishes, docking arms with cradled ships and worn hazard stripes, RCS blocks
  * with scorch; heavier weathering than the ships (rust bloom at welds, patched plates, micrometeorite pitting on the
@@ -1656,6 +1658,11 @@ function variantSeed(kind: ConcordKind, bucket: number, look: ConcordLook): numb
     return (CONCORD_KINDS.indexOf(kind) + 1) * 7919 + bucket * 104729 + CONCORD_LOOKS.indexOf(look) * 15485863;
 }
 
+/** Images of any variant: the shaded hulls or the G-buffer kinds (pure; no DOM; deterministic). */
+export function concordImages(kind: ConcordKind, bucket: number, look: ConcordLook = 'weathered'): ConcordImages {
+    return isConcordHullKind(kind) ? composeConcordHullImages(kind, bucket, look) : generateConcordImages(kind, bucket, look);
+}
+
 /** Deterministic procedural images of a freighter / treasure ship / generic base variant (pure; no DOM). */
 export function generateConcordImages(kind: ConcordProceduralKind, bucket: number, look: ConcordLook = 'weathered'): ConcordImages {
     const spec = concordSpec(kind, bucket, look);
@@ -1703,11 +1710,11 @@ export function generateConcordImages(kind: ConcordProceduralKind, bucket: numbe
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// Painted sprites: frigate, destroyer, battleship, construction ship, explorer, the Exchange space port
+// Shaded hulls: frigate, destroyer, battleship, construction ship, explorer, the Exchange space port
 // ---------------------------------------------------------------------------------------------------------------
 
-/** Longest extent of the sprite as a fraction of the texture side: the bbox the procedural hulls filled (measured). */
-export const CONCORD_SPRITE_FILL: Readonly<Record<ConcordSpriteKind, number>> = {
+/** Longest extent of the hull as a fraction of the texture side (the footprint the earlier hulls had; measured). */
+export const CONCORD_HULL_FILL: Readonly<Record<ConcordHullKind, number>> = {
     frigate: 0.89,
     destroyer: 0.92,
     battleship: 0.925,
@@ -1717,10 +1724,11 @@ export const CONCORD_SPRITE_FILL: Readonly<Record<ConcordSpriteKind, number>> = 
 };
 
 /**
- * Drawn-area ratio of the painted sprites (crop square / opaque px, which with the hull size sets the drawn size): the
- * procedural hulls' measured values (mean over the size buckets), so a sprite ship spans what its procedural hull did.
+ * Drawn-area ratio of the shaded hulls (crop square / opaque px, which with the hull size sets the drawn size): the
+ * earlier procedural hulls' measured values (mean over the size buckets), so every kind keeps its on-map footprint
+ * whatever its silhouette.
  */
-export const CONCORD_SPRITE_AREA_RATIO: Readonly<Record<ConcordSpriteKind, number>> = {
+export const CONCORD_HULL_AREA_RATIO: Readonly<Record<ConcordHullKind, number>> = {
     frigate: 5.0,
     destroyer: 4.6,
     battleship: 3.9,
@@ -1729,19 +1737,21 @@ export const CONCORD_SPRITE_AREA_RATIO: Readonly<Record<ConcordSpriteKind, numbe
     port: 2.2,
 };
 
-/** Sides of the cut-out files in public/art/concord (<kind>.png is the 512; <kind>-256.png, <kind>-128.png). */
-export const CONCORD_SPRITE_FILES = [128, 256, 512] as const;
-
-/** The smallest cut-out file that still downsamples to the variant's hull (≥ its drawn extent). */
-export function concordSpriteFileSide(kind: ConcordSpriteKind, bucket: number): number {
-    const need = CONCORD_SPRITE_FILL[kind] * concordTextureSide(kind, bucket);
-    for (const s of CONCORD_SPRITE_FILES) if (s * 0.97 >= need) return s;
-    return CONCORD_SPRITE_FILES[CONCORD_SPRITE_FILES.length - 1];
+/** Side of a kind's full-resolution drawing: twice its largest texture side (every variant downsamples from it). */
+export function concordHullSourceSide(kind: ConcordHullKind): number {
+    return 2 * concordTextureSide(kind, CONCORD_BUCKETS - 1);
 }
 
-/** URL of a cut-out file (public/art/concord, written by scripts/concord-cutout.py). */
-export function concordSpriteUrl(kind: ConcordSpriteKind, fileSide: number): string {
-    return `/art/concord/${kind}${fileSide === 512 ? '' : `-${fileSide}`}.png`;
+const hullSources = new Map<ConcordHullKind, RgbaImage>();
+
+/** A kind's full-resolution drawing (drawn once, then cached; pure and deterministic). */
+export function concordHullSource(kind: ConcordHullKind): RgbaImage {
+    let img = hullSources.get(kind);
+    if (img === undefined) {
+        img = drawConcordHull(kind, concordHullSourceSide(kind));
+        hullSources.set(kind, img);
+    }
+    return img;
 }
 
 /** Inclusive bbox of the pixels with alpha ≥ `min`, or null. */
@@ -1778,10 +1788,11 @@ function axisWeights(destLen: number, origin: number, k: number, srcLen: number)
 }
 
 /**
- * The sprite's silhouette (alpha bbox) scaled so its longest side is `fill` × S and centred on an S × S canvas: an
- * area-average (box) resample in premultiplied alpha, separable. Pure.
+ * The hull's silhouette (alpha bbox) scaled so its longest side is `fill` × S and centred on an S × S canvas: an
+ * area-average (box) resample in premultiplied alpha, separable, then a hard alpha edge (half-covered pixels opaque,
+ * the rest clear, like the stock sprites). Pure.
  */
-export function placeConcordSprite(src: RgbaImage, S: number, fill: number): RgbaImage {
+export function placeConcordHull(src: RgbaImage, S: number, fill: number): RgbaImage {
     const data = new Uint8ClampedArray(S * S * 4);
     const box = alphaBox(src, 8);
     if (box === null) return { w: S, h: S, data };
@@ -1830,23 +1841,23 @@ export function placeConcordSprite(src: RgbaImage, S: number, fill: number): Rgb
                 b += tmp[t + 2] * w[q];
                 a += tmp[t + 3] * w[q];
             }
-            if (a < 1 / 255) continue;
+            if (a < 0.5) continue;
             const o = (y * S + x) * 4;
             data[o] = Math.round(r / a);
             data[o + 1] = Math.round(g / a);
             data[o + 2] = Math.round(b / a);
-            data[o + 3] = Math.round(Math.min(1, a) * 255);
+            data[o + 3] = 255;
         }
     }
     return { w: S, h: S, data };
 }
 
 /**
- * The weathered look on a painted sprite (the clean look skips it): grime blotches and rust streaks bleeding aft from
- * random points of the hull, scaled by the spec's weathering strength. The sprites are painted already worn, so this
- * is lighter than the procedural pass.
+ * The weathered look on a shaded hull (the clean look skips it): grime blotches and rust streaks bleeding aft from
+ * random points of the hull, scaled by the spec's weathering strength. The hulls are drawn already worn, so this is
+ * lighter than the G-buffer pass.
  */
-function spriteWeathering(img: RgbaImage, spec: ConcordSpec, rng: () => number): void {
+function hullWeathering(img: RgbaImage, spec: ConcordSpec, rng: () => number): void {
     const { w: S, data: d } = img;
     const wk = spec.weathering;
     const grime = valueNoise(53);
@@ -1925,7 +1936,7 @@ function centreRun(img: RgbaImage, y: number, min: number): [number, number] | n
  * `spec.engines` thruster marks spread across the stern with a blue-white glow at each. Every point sits just inside
  * the opaque silhouette.
  */
-function spriteFittings(img: RgbaImage, spec: ConcordSpec): { lights: ConcordLight[]; thrusters: [number, number, number][] } {
+function hullFittings(img: RgbaImage, spec: ConcordSpec): { lights: ConcordLight[]; thrusters: [number, number, number][] } {
     const S = img.w;
     const A = 200;
     const lights: ConcordLight[] = [];
@@ -2018,17 +2029,16 @@ function spriteFittings(img: RgbaImage, spec: ConcordSpec): { lights: ConcordLig
 }
 
 /**
- * Images of a painted-sprite variant (pure; no DOM): the cut-out `src` (public/art/concord) placed at the procedural
- * hull's fill, the weathered look's grime and rust (clean: none), the positional lights and thruster marks found on
- * its silhouette, baked light dots and the halo overlays. No animated parts; the sprite's colours are its own (no luma /
- * saturation matching).
+ * Images of a shaded-hull variant (pure; no DOM): the kind's full-resolution drawing (concordHullSource) placed at
+ * the kind's fill, the weathered look's grime and rust (clean: none), the positional lights and thruster marks found
+ * on its silhouette, baked light dots and the halo overlays. No animated parts; no luma / saturation matching.
  */
-export function composeConcordSpriteImages(kind: ConcordSpriteKind, bucket: number, look: ConcordLook, src: RgbaImage): ConcordImages {
+export function composeConcordHullImages(kind: ConcordHullKind, bucket: number, look: ConcordLook, src: RgbaImage = concordHullSource(kind)): ConcordImages {
     const spec = concordSpec(kind, bucket, look);
     const S = spec.side;
-    const ship = placeConcordSprite(src, S, CONCORD_SPRITE_FILL[kind]);
-    if (look === 'weathered') spriteWeathering(ship, spec, makeRng(variantSeed(kind, bucket, look)));
-    const { lights, thrusters } = spriteFittings(ship, spec);
+    const ship = placeConcordHull(src, S, CONCORD_HULL_FILL[kind]);
+    if (look === 'weathered') hullWeathering(ship, spec, makeRng(variantSeed(kind, bucket, look)));
+    const { lights, thrusters } = hullFittings(ship, spec);
     const d = ship.data;
     for (let p = 0; p < S * S; p++) {
         const i = p * 4;
@@ -2691,9 +2701,7 @@ export function concordVariantFor(
 ): ConcordVariant | null {
     if (concord === null || bo.empire !== concord) return null;
     const kind = concordKindOf(bo.subRole, treasure.has(bo));
-    const bucket = concordSizeBucket(bo.size);
-    if (concordSpriteFailed(kind, bucket)) return null;
-    return { kind, bucket, look };
+    return { kind, bucket: concordSizeBucket(bo.size), look };
 }
 
 /** The ambient nav-light cycle (MainView.cs:1457-1458: 1.5 s on + 1.0 s off) and its per-ship phase (id % 20 / 10). */
@@ -2748,49 +2756,6 @@ export interface ConcordShipArt {
 
 export const CONCORD_BUILDS_PER_FRAME = 1;
 
-/** The painted sprites' cut-out files by URL: decoded RGBA once loaded, else still loading or failed. */
-const spriteSources = new Map<string, RgbaImage | 'loading' | 'failed'>();
-
-/**
- * A cut-out file's pixels: starts the load on first request (an <img> through the page's own URL space, like the other
- * /art and /assets files) and returns 'loading' until it is decoded; never throws ('failed' without a DOM or when the
- * file is missing).
- */
-export function concordSpriteSource(url: string): RgbaImage | 'loading' | 'failed' {
-    const hit = spriteSources.get(url);
-    if (hit !== undefined) return hit;
-    if (typeof Image === 'undefined' || typeof document === 'undefined') {
-        spriteSources.set(url, 'failed');
-        return 'failed';
-    }
-    spriteSources.set(url, 'loading');
-    const img = new Image();
-    img.onload = () => {
-        try {
-            const c = document.createElement('canvas');
-            c.width = img.naturalWidth;
-            c.height = img.naturalHeight;
-            const ctx = c.getContext('2d', { willReadFrequently: true });
-            if (ctx === null) throw new Error('no 2d context');
-            ctx.drawImage(img, 0, 0);
-            spriteSources.set(url, { w: c.width, h: c.height, data: ctx.getImageData(0, 0, c.width, c.height).data });
-        } catch (e) {
-            console.warn(`[concordArt] cannot decode ${url}`, e);
-            spriteSources.set(url, 'failed');
-        }
-    };
-    img.onerror = () => {
-        console.warn(`[concordArt] cannot load ${url}; the stock art stands in`);
-        spriteSources.set(url, 'failed');
-    };
-    img.src = url;
-    return 'loading';
-}
-
-/** True when a painted-sprite variant's file failed to load (the object then keeps its stock art). */
-export function concordSpriteFailed(kind: ConcordKind, bucket: number): boolean {
-    return isConcordSpriteKind(kind) && spriteSources.get(concordSpriteUrl(kind, concordSpriteFileSide(kind, bucket))) === 'failed';
-}
 const shipArtCache = new Map<string, ConcordShipArt>();
 let buildFrame = -1;
 let buildsThisFrame = 0;
@@ -2815,14 +2780,14 @@ export function buildConcordShipArt(images: ConcordImages): { rgba: Uint8Clamped
     if (raw === null) return null;
     // The treasure ship draws bigger than its hull size alone gives (both layers read areaRatio: sprite, picking and
     // the ambient exhaust stay consistent).
-    // The painted sprites keep the drawn extent the procedural hulls had (their own, fuller silhouettes would give a
-    // smaller area ratio and so a shorter ship on the map).
+    // The shaded hulls keep the drawn extent the earlier hulls had (their own, fuller silhouettes would give a smaller
+    // area ratio and so a shorter ship on the map).
     const kind = images.spec.kind;
     const metrics =
         kind === 'treasure'
             ? { ...raw, areaRatio: raw.areaRatio * CONCORD_TREASURE_AREA_BOOST }
-            : isConcordSpriteKind(kind)
-              ? { ...raw, areaRatio: CONCORD_SPRITE_AREA_RATIO[kind] }
+            : isConcordHullKind(kind)
+              ? { ...raw, areaRatio: CONCORD_HULL_AREA_RATIO[kind] }
               : raw;
     const markers = scanShipMarkers(data, w, h, metrics);
     return { rgba: paintOutShipMarkers(data, w, h, metrics, markers, true), metrics, markers };
@@ -2852,14 +2817,8 @@ export function concordShipArt(v: ConcordVariant, frame: number, build = true): 
     }
     if (buildsThisFrame >= CONCORD_BUILDS_PER_FRAME) return null;
     buildsThisFrame++;
-    let images: ConcordImages;
-    if (isConcordSpriteKind(v.kind)) {
-        const src = concordSpriteSource(concordSpriteUrl(v.kind, concordSpriteFileSide(v.kind, v.bucket)));
-        // Still loading: hidden this frame, retried next (a failed file makes concordVariantFor hand the object back to
-        // its stock art).
-        if (typeof src === 'string') return null;
-        images = composeConcordSpriteImages(v.kind, v.bucket, v.look, src);
-    } else images = generateConcordImages(v.kind, v.bucket, v.look);
+    // A shaded-hull kind's first variant also draws its full-resolution source (a few hundred ms, once per kind).
+    const images = concordImages(v.kind, v.bucket, v.look);
     const built = buildConcordShipArt(images);
     if (built === null) return null;
     const halos = {} as Record<ConcordLightGroup, Texture>;
