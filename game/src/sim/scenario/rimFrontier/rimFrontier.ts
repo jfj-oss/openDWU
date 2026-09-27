@@ -332,6 +332,19 @@ registerScenarioQuery({
     },
 });
 
+// Pirate faction cap: an explicit ceiling on the game-start pirate-faction count (pirates.ts generateNewPirateEmpires,
+// via hooks.ts's pirateFactionCount), independent of 19h-8's rim/core split. min(stock, cap) when the cap is set (> 0);
+// stock unchanged at 0 (or with the flag off, since the handler then never runs) — no extra Rnd draws either way.
+registerScenarioQuery({
+    id: 'rimFrontier.pirateFactionCap',
+    flag: RIM_FRONTIER_FLAG,
+    query: 'pirateFactionCount',
+    run: (galaxy, value) => {
+        const cap = frontierParam(galaxy, 'rimPirateFactionCap');
+        return cap > 0 ? Math.min(value, cap) : value;
+    },
+});
+
 // 19h-9: base placement (pirate or independent) rejects a candidate inside a rim herd's home range + a buffer. Reads
 // rimFauna's state through the read-only peek accessor (safe with no rimFauna in this game, or rimFauna not yet run).
 registerScenarioQuery({

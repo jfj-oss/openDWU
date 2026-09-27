@@ -420,6 +420,13 @@ export interface ScenarioQueries {
      */
     acceptPirateBase: { value: boolean; args: { habitat: Habitat } };
     /**
+     * pirates.ts generateNewPirateEmpires (Galaxy.9.cs GenerateNewPirateEmpires), first line: the total pirate-faction
+     * count the stock formula computed (Math.trunc(2 × PiratePrevalence × MaximumEmpireAmount)). Default the stock
+     * value; never draws. 19h rimPirateFactionCap: an explicit ceiling on the faction count regardless of galaxy size /
+     * pirate prevalence.
+     */
+    pirateFactionCount: { value: number; args: Record<string, never> };
+    /**
      * Base-placement candidate test (pirates.ts generateNewPirateEmpires; independent-colony / mining-station placement
      * may call it too): true when (x, y) sits inside a rim herd's home range (plus a scenario's avoidance buffer) and
      * the candidate should be rejected. Default false (no fauna, or no scenario).

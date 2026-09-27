@@ -903,7 +903,9 @@ export interface PirateSettings {
 // Galaxy.9.cs GenerateNewPirateEmpires (game-start: DestroyedPiratesDoNotRespawn is
 // irrelevant because CurrentStarDate - StartStarDate <= 300000).
 export function generateNewPirateEmpires(galaxy: Galaxy, ctx: PirateGenerationContext, settings: PirateSettings): void {
-    const num = Math.trunc(2.0 * settings.piratePrevalence * settings.maximumEmpireAmount);
+    const stockCount = Math.trunc(2.0 * settings.piratePrevalence * settings.maximumEmpireAmount);
+    // Scenario hook (hooks.ts pirateFactionCount): pure, no-op without a scenario — 19h rimPirateFactionCap.
+    const num = scenarioQuery(galaxy, 'pirateFactionCount', stockCount, {});
     if (galaxy.pirateEmpires.length >= num) return;
     let num3 = num - galaxy.pirateEmpires.length;
     let num4 = galaxy.maxSolarSystemSize * 2.1;
