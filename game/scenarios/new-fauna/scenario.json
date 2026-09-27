@@ -1,0 +1,34 @@
+{
+  "id": "new-fauna",
+  "name": "New Fauna",
+  "description": "Eight new creatures roam the rim on top of the rim herds: void whales, hunter packs, hull grazers, storm drifters, lantern shoals, nest mothers, scavengers and brood carriers. Rim herders tame whales and hunter packs as living freighters and miners.",
+  "include": ["rim-fauna"],
+  "flags": [
+    { "name": "newFauna", "label": "New fauna", "description": "The eight rim creature variants (spawned rim-weighted on the rim-fauna density curve), their behaviours, and the tamed harness look for creatures docile to herders.", "default": true }
+  ],
+  "params": [
+    { "name": "newFaunaDensity", "label": "Variant groups per system (× the rim-fauna herd density)", "default": 0.6, "min": 0, "max": 5 },
+    { "name": "newFaunaMaxGroups", "label": "Variant group cap at game start", "default": 60, "min": 0, "max": 400 },
+    { "name": "newFaunaWhaleKillHaul", "label": "Void whale kill haul (units per whale)", "default": 40, "min": 0, "max": 1000 },
+    { "name": "newFaunaHunterStalkRange", "label": "Hunter pack stalking range", "default": 40000, "min": 1000, "max": 400000 },
+    { "name": "newFaunaHunterFleeRange", "label": "Hunter pack flees warships within", "default": 25000, "min": 0, "max": 400000 },
+    { "name": "newFaunaHunterFleeDistance", "label": "Hunter pack flight distance", "default": 60000, "min": 1000, "max": 400000 },
+    { "name": "newFaunaGrazerRange", "label": "Hull grazer station search range", "default": 60000, "min": 1000, "max": 400000 },
+    { "name": "newFaunaGrazerDrain", "label": "Hull grazer damage per feeding tick", "default": 3, "min": 0, "max": 100 },
+    { "name": "newFaunaDrifterCloudRadius", "label": "Storm drifter cloud radius", "default": 30000, "min": 1000, "max": 200000 },
+    { "name": "newFaunaDrifterScanFactor", "label": "Sensor range multiplier inside a drifter cloud", "default": 0.1, "min": 0, "max": 1 },
+    { "name": "newFaunaDrifterHopChance", "label": "Storm drifter chance per tick to ride to another storm", "default": 0.05, "min": 0, "max": 1 },
+    { "name": "newFaunaLanternLureRadius", "label": "Lantern shoal lure radius (civilian jumps stop there)", "default": 40000, "min": 0, "max": 400000 },
+    { "name": "newFaunaNestYoungDays", "label": "Nest mother: days between young", "default": 120, "min": 1, "max": 3600 },
+    { "name": "newFaunaNestMaxYoung", "label": "Nest mother: young at most", "default": 6, "min": 0, "max": 30 },
+    { "name": "newFaunaNestGuardRange", "label": "Nest mother guard range", "default": 15000, "min": 500, "max": 200000 },
+    { "name": "newFaunaScavengeRange", "label": "Scavenger search range for wrecks", "default": 120000, "min": 1000, "max": 1000000 },
+    { "name": "newFaunaScavengeRate", "label": "Scavenger salvage eaten per tick", "default": 20, "min": 1, "max": 1000 },
+    { "name": "newFaunaBroodRange", "label": "Brood carrier travel range", "default": 400000, "min": 10000, "max": 3000000 },
+    { "name": "newFaunaBroodSeedRange", "label": "Brood carrier seeding range around a planet", "default": 20000, "min": 500, "max": 200000 },
+    { "name": "newFaunaBroodSeedDays", "label": "Brood carrier: days between seedings", "default": 180, "min": 1, "max": 3600 },
+    { "name": "newFaunaBroodMaxPacks", "label": "Hunter packs at most (brood carriers stop seeding)", "default": 30, "min": 0, "max": 400 },
+    { "name": "newFaunaHerderTames", "label": "Tamed whale + hunter herds per herder colony at start (with rim herders)", "default": 1, "min": 0, "max": 5 },
+    { "name": "newFaunaTameRange", "label": "Wild whales / hunter packs this close to a herder colony get tamed", "default": 60000, "min": 0, "max": 1000000 }
+  ]
+}
