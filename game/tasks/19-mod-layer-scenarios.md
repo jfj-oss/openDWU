@@ -345,5 +345,23 @@ claims. 8 Relationships — friends/rivals/lovers modify loyalty, fleet/colony c
 19e-5 living characters). 10 Claims & war goals — houses hold claims on colonies (marriages, former ownership) → the war
 goals 19g-3 needs.
 All data + existing character/diplomacy hooks; off by default; player actions via the command queue; AI runs the same
-loops by traits. Effort: package 1 ~2 agent-days, package 2 ~2 agent-days (Opus). Requires 19m. Effort: medium (~1 agent-day);
+loops by traits. Effort: package 1 ~2 agent-days, package 2 ~2 agent-days (Opus). Requires 19m.
+
+## 19o — Reputation & grievances ledger (ACCEPTED by the user 2026-09-27 — "yes do these asap")
+One ledger per actor pair (empires, independents, leagues, herders, the Concord, pirate factions): every attitude
+modifier is an entry {cause, value, decay, source package}; the C# attitude (EmpireEvaluation / IncidentEvaluation) becomes
+the sum through one channel (like the stability ledger did for approval), so 19d3 crises, 19l incidents/ambition, 19g-3
+humiliation/casus belli, council sanctions/condemnations, Concord standing, herder standing, league standing and the
+pirate relation ledger all write to it WITH A CAUSE; the war review, council grievance search, peace-terms pricing and the
+diplomacy screen read the same list; a "why they feel this way" panel per relation. Flag off = byte-identical.
+~1.5 agent-days (Opus). Requires 19d3/19l/19g-3/19d8/19a/19j/19k on main.
+
+## 19p — Event log (ACCEPTED 2026-09-27)
+One typed event log {date, category, importance, actors, place, text key, data} that every scenario message/news call and
+the ported empire messages feed; Galactic History, NewsNet, the ticker, the future chronicle (19e-4, local model) and the
+replay theatre (19e-1) consume it; filters by category/actor; save/load; a query for "what happened between A and B".
+Flag off = byte-identical (the log is a scenario-side mirror). ~1.5 agent-days (Opus).
+
+## 19q — Knowledge model (accepted, later): unified suspected/confirmed/cleared reveal levels across fog, leads, wreck
+fields, the treasure beacon, herd sightings, threat overlays and story clues; one overlay manager; a sightings feed. Effort: medium (~1 agent-day);
 build after 19d2 (unrest plumbing) alongside 19g-7 rim fauna; 19a/19c tests must still pass with 19h on.
