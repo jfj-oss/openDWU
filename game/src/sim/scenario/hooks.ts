@@ -16,6 +16,7 @@ import { galaxyStarDate } from '../tick/simTime';
 import { scenarioRuns, type GalaxyScenario } from './state';
 import type { Resource } from '../data/resources';
 import type { Character, CaptainBonuses } from '../characters';
+import type { EmpireActivity } from '../pirates/empireActivity';
 
 // ---------------------------------------------------------------------------
 // Handler registries (shared gate)
@@ -148,6 +149,8 @@ export function scenarioPeriodicTick(galaxy: Galaxy): void {
 export interface HomePlacementHelpers {
     randomPointInRing: (galaxy: Galaxy, min: number, max: number) => { x: number; y: number };
     inNebula: (galaxy: Galaxy, habitat: Habitat) => boolean;
+    /** The game's start tech level option (techLevelForSliderIndex: 0 pre-warp, 0.5 normal, 1..7 wizard levels; not saved). */
+    startTechLevel?: number;
 }
 
 /** Runs once at the end of createGame (after every stock start step, before the first scheduler frame). May draw. */
@@ -302,6 +305,24 @@ export function scenarioEmit<E extends ScenarioEventName>(galaxy: Galaxy, event:
 export interface ScenarioQueries {
     /** taxes.ts empireApprovalRating(h) (Habitat.cs approval of its empire): the rating; an additive term goes here. */
     empireApprovalRating: { value: number; args: { habitat: Habitat; empire: Empire | null } };
+    /**
+     * researchTick.ts annualResearchPotential (Empire.cs 1817): true computes a normal empire's potential through the
+     * stock pirate-faction branch (built objects + research stations, no population) — 19f #8 The Exchange, a faction
+     * without colonies. Pure.
+     */
+    researchAsPirateFaction: { value: boolean; args: { empire: Empire } };
+    /**
+     * pirates/missionsMarket.ts reviewPirateDefendMissions (Empire.2.cs 1313 ReviewPirateDefendMissions), the ownership
+     * test `TargetEmpire(target) != RequestingEmpire`: the empire the target must still belong to for the Defend contract
+     * to pay (stock: the requester). 19f #8 The Exchange posts Defend contracts on another empire's colonies. Pure.
+     */
+    pirateDefendClient: { value: Empire | null; args: { activity: EmpireActivity } };
+    /**
+     * pirates/missionsMarket.ts pirateCheckAcceptDefendMission (Empire.2.cs 2045 PirateCheckAcceptDefendMission), the
+     * rule that the pirate faction must protect the contract's target empire: true lets `pirate` bid without that
+     * pact (the stock distance / strength tests still apply). 19f #8: contracts financed by the Exchange. Pure.
+     */
+    pirateDefendBidAllowed: { value: boolean; args: { pirate: Empire; activity: EmpireActivity } };
     /** diplomacyTick.ts declareWar (Empire.7.cs 4883), first line: true blocks the declaration (19c charter war rules). */
     declareWarBlocked: { value: boolean; args: { empire: Empire; target: Empire } };
     /**

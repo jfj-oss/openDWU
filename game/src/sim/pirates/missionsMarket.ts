@@ -67,6 +67,7 @@ import { thisYearsPrivateFuelCosts } from '../logistics/refuel';
 import { determineDesirePirateProtection } from './pirateAI';
 import { PirateIncomeType } from './pirateEconomy';
 import { EmpireActivity, EmpireActivityList, EmpireActivityType, type ActivityTarget } from './empireActivity';
+import { scenarioQuery } from '../scenario/hooks';
 import { crisesBlocksSmuggleOffer, crisesOn, crisisSmuggleCap, empireHasColonyCrisis } from '../scenario/emergent/crisesCore';
 
 export { EmpireActivity, EmpireActivityList, EmpireActivityType };
@@ -634,7 +635,9 @@ export function reviewPirateDefendMissions(galaxy: Galaxy, empire: Empire, starD
         if (empireActivity === null || empireActivity.assignedEmpire === null || empireActivity.requestingEmpire !== empire || empireActivity.target === null || empireActivity.bidTimeRemaining !== 0 || !(starDate >= empireActivity.expiryDate)) continue;
         let flag = true;
         if (empireActivity.target.hasBeenDestroyed) flag = false;
-        if (targetEmpireOf(empireActivity.target) !== empireActivity.requestingEmpire) flag = false;
+        // Mod layer 19f #8: a scenario may name the client the target must still belong to (stock: the requester).
+        const client = galaxy.scenario !== null ? scenarioQuery(galaxy, 'pirateDefendClient', empireActivity.requestingEmpire, { activity: empireActivity }) : empireActivity.requestingEmpire;
+        if (targetEmpireOf(empireActivity.target) !== client) flag = false;
         if (flag) {
             completePirateMission(galaxy, empireActivity.assignedEmpire, empireActivity);
         } else {
@@ -1179,7 +1182,10 @@ export function pirateCheckAcceptDefendMission(galaxy: Galaxy, empire: Empire, d
     if (!(defendMission.requestingEmpire === galaxy.independentEmpire || (pirateRelation !== null && pirateRelation.type !== PirateRelationType.NotMet && pirateRelation.evaluation >= -30))) return false;
     let pirateRelation2: PirateRelation | null = null;
     if (defendMission.targetEmpire !== galaxy.independentEmpire && defendMission.targetEmpire !== null) pirateRelation2 = obtainPirateRelation(empire, defendMission.targetEmpire);
-    if (!(defendMission.targetEmpire === galaxy.independentEmpire || (pirateRelation2 !== null && pirateRelation2.type === PirateRelationType.Protection))) return false;
+    if (!(defendMission.targetEmpire === galaxy.independentEmpire || (pirateRelation2 !== null && pirateRelation2.type === PirateRelationType.Protection))) {
+        // Mod layer 19f #8: a scenario may let the faction bid without protecting the client (stock: refused).
+        if (galaxy.scenario === null || !scenarioQuery(galaxy, 'pirateDefendBidAllowed', false, { pirate: empire, activity: defendMission })) return false;
+    }
     const coords = defendMission.resolveTargetCoordinates();
     if (!coords.ok) return false;
     const num2 = galaxy.calculateDistance(baseHabitat.xpos, baseHabitat.ypos, coords.x, coords.y);

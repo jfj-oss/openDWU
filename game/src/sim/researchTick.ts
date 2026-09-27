@@ -277,7 +277,9 @@ export function calculatePirateResearchBonusFromFacilities(empire: Empire): numb
 
 // Empire.cs AnnualResearchPotential (1817).
 export function annualResearchPotential(empire: Empire): number {
-    if (empire.pirateEmpireBaseHabitat !== null) {
+    // Mod layer 19f #8: a colony-less scenario faction researches through the pirate-faction branch (query, pure).
+    const g = empire.galaxy as Galaxy | null | undefined;
+    if (empire.pirateEmpireBaseHabitat !== null || (g != null && g.scenario !== null && scenarioQuery(g, 'researchAsPirateFaction', false, { empire }))) {
         let num = 0.0;
         if (empire.builtObjects.length > 0) num = Math.sqrt(empire.builtObjects.length) * 10000.0;
         const researchFacilities = empire.researchFacilities as (BuiltObject | null)[];
@@ -1427,7 +1429,7 @@ export function selectNextResearchProject(galaxy: Galaxy, empire: Empire, indust
 // ---------------------------------------------------------------------------
 
 // Empire.3.cs PerformResearchProjects(timePassed, projects, researchPower, industry, allowResearchEvents) (1890).
-function performResearchProjects(galaxy: Galaxy, empire: Empire, timePassed: number, projects: TechNode[] | null, researchPower: number, industry: IndustryType, allowResearchEvents: boolean): void {
+export function performResearchProjects(galaxy: Galaxy, empire: Empire, timePassed: number, projects: TechNode[] | null, researchPower: number, industry: IndustryType, allowResearchEvents: boolean): void {
     if (projects === null) return;
     if (galaxy.scenario !== null && scenarioQuery(galaxy, 'researchFrozen', false, { empire, industry })) return; // mod layer (19a research cap)
     if (empire.controlResearch && projects.length <= 0) selectNextResearchProject(galaxy, empire, industry, projects);

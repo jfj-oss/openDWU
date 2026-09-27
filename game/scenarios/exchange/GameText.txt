@@ -1,10 +1,39 @@
 'The Exchange: message texts (scenarioText tags). {n} items are filled by the scenario code.
 Exchange Station Name;The Exchange
+Exchange Faction Name;The Exchange
+Exchange Opened;A vast neutral trading station, the Exchange, opens its docks near the galactic core under the {0} flag at {1}. Every empire is welcome to trade.
+Exchange Suspected Row;The Exchange (suspected)
+Exchange Confirmed Row;The Exchange (confirmed)
+Exchange Funding Title;An anonymous benefactor
+Exchange Funding;An anonymous benefactor has deposited {0} credits in our treasury to help us against the {1}.
+Exchange Gift Title;Intelligence from a friend
+Exchange Gift;An unnamed well-wisher has handed us the {0}'s star charts and fleet movements.
+Exchange Sale Title;The Exchange: intelligence delivered
+Exchange Sale galaxyMap;The Exchange has sold us the {0}'s galaxy map for {1} credits.
+Exchange Sale operationsMap;The Exchange has sold us the {0}'s fleet operations map for {1} credits.
+Exchange Sale tech;The Exchange has sold us technology stolen from the {0} for {1} credits.
+Exchange Sale Failed;The Exchange could not deliver the intelligence on the {0}: the deal is off.
+Exchange Offer Title;Buy intelligence on the {0} for {1} credits
+Exchange Offer;A broker of the {2} offers intelligence on the {0} for {1} credits. What shall we buy?
+Exchange Offer decline;Decline
+Exchange Offer galaxyMap;Their galaxy map
+Exchange Offer operationsMap;Their fleet operations map
+Exchange Offer tech;One of their technologies
+Exchange Trace Title;Traced to the Exchange
+Exchange Sale Traced;Our agents have learned that the {0} bought our secrets from the Exchange.
+Exchange Contract Traced;The pirate strike on {0} by {1} was paid for by the Exchange.
+Exchange Agent Caught Title;Exchange agent caught
+Exchange Agent Caught;Our counter-intelligence caught a foreign agent - the trail leads to the {0} trading station.
+Exchange Agent Confirmed Title;The Exchange's spies
+Exchange Agent Confirmed;A second agent confirms it: the {0} runs a spy network against us behind its neutral flag.
+Exchange Fleet Name;Exchange Patrol {0}
 Exchange Funds Traced Title;Funds traced
 Exchange Funds Traced;Our agents have traced enemy war funding to an independent trading station: the Exchange.
 Exchange Funds Confirmed Title;The Exchange exposed
 Exchange Funds Confirmed;Confirmed: the Exchange has been quietly financing both sides of this war from behind its neutral flag.
 Exchange Sabotage Title;Sabotage traced to the Exchange
 Exchange Sabotage;Investigators blame {0} for the sabotage at {1} - but our own reports now point at the Exchange's hidden hand.
+Exchange Sabotage Blame Title;Sabotage
+Exchange Sabotage Blame;Investigators blame {0} for the sabotage at {1}.
 Exchange Collapsed;The Exchange has been exposed and blockaded into silence. Every empire it funded now stands on its own.
 Exchange Victory Title;The Exchange is closed

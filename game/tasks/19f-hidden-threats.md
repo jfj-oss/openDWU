@@ -267,30 +267,95 @@ ships are gone (`teardownIfDead`).
 **Risks.** Designs of a dead empire referenced after teardown — keep the Design objects (graph refs) in state.
 **Size** 1.5 days (+0.5 with persona wiring).
 
-## 8. The Exchange — a neutral trading megastation funding both sides
-**Concept.** A huge independent trading station, friendly to all, secretly finances both sides of every war and runs
-sabotage. Win: discover it and blockade it.
-**Data.** `designTemplates/DEFAULT/largespaceport.txt` is stock; the station design = stock large space port + extra
-docking bays, owned by `galaxy.independentEmpire`; GameText `Exchange *`. Params: `exchangeYear` (20),
-`exchangeFundPct` (5 % of the warring empires' income), `exchangeSabotagePerYear` (2), `exchangeBlockadeDays` (120).
-**Hidden state / spread.** `{station: BuiltObject, fundedTotal, sabotageLog[], blockadeDays}`. Placement at
-`exchangeYear`: `findLonelyNebulaLocation`-style spot near the galaxy centre (storyStart.ts / storyEvents.ts 1353),
-`addBuiltObjectToGalaxy` as an independent base (as independent traders, independentTraders.ts). Yearly: for each pair of
-empires at war, the weaker side's treasury gets `fundPct × income` (money appears; logged); `exchangeSabotagePerYear`
-times apply the effect of a stock sabotage outcome (SabotageColony / SabotageConstruction / InciteRevolution branches of
-`completeIntelligenceMission`, espionage.ts 1596; Empire.6.cs 117) to a rnd-chosen colony of an empire at war, with the
-blame message naming its enemy (false flag → war weariness does not drop).
-**Trigger.** None: it never declares. **Discovery.** Agents with missions against a funded empire reveal the money trail
-(level 2 "funds traced to the Exchange", level 3 after two). **Counterplay / end.** Blockade: the stock blockade
-(fleets/blockades.ts `setupBlockadeColony` pattern; a Blockade mission against the station, BuiltObjectMissionType.Blockade)
-by an empire with level 3 for `exchangeBlockadeDays` cumulative, or destroy it → Exchange collapses, all funding
-stops, NewsNet exposes it (every empire's relations get +bias toward the exposer).
-**Sim.** 1 `exchangePlace`; 2 `exchangeYearly` (funding + sabotage); 3 `exchangeDiscovery`; 4 `blockadeCheck`
-periodic; 5 `onBuiltObjectRemoved` (destroyed). Blockades on bases: verify `blockadeFor` accepts a BuiltObject target
-(blockades.ts 67) — yes by signature.
-**AI.** AI empires never attack the station before level 3; with level 3 an AI at war with ≥ 1 empire assigns one
-fleet to blockade it within one year (testable).
-**Risks.** Extra money distorts AI economies — cap at 10% of the receiver's treasury per year. **Size** 2 days.
+## 8. The Exchange — a neutral merchant-spy faction funding the underdog
+**Status: rewritten (merchant-spy faction).** Module `src/sim/scenario/threats/exchange.ts`, flag `threatExchange`
+(off = byte-identical: tests `scenarioThreatExchange.test.ts`, soak `scenarioThreatExchangeSoak.test.ts` @slow).
+**Concept.** A vast neutral trading station, open to all, run by its own faction: it funds the weaker side of every war,
+spies on the strong, sells stolen intelligence, hires pirates in its own name and guards its system. Win: trace it,
+have the council sanction it, blockade or destroy the station.
+**Params** (scenarios/exchange/scenario.json): `exchangeGrudgeDecay` 20, `exchangeGrudgeThreshold` 100, `exchangeYear` 7, `exchangeTechLevelBonus` 1, `exchangeIncomeStep`
+100000, `exchangeIncomeCap` 1000000, `exchangeTariffPct` 5, `exchangeReservePct` 20, `exchangeFundPct` 5,
+`exchangeAgents` 6, `exchangeAgentsMax` 20, `exchangeMissionCost` 10000 (an agent hire = 5 missions),
+`exchangeIntelPrice` 20000, `exchangeFleetCap` 20, `exchangeBlockadeDays` 120.
+1. **Appearance** (yearly, `exchangeYear` after the start year): `createEmpireMidGame` adoptOnly (race: a playable
+   race no empire uses, rnd), name from the Empire ctor's `GenerateEmpireName`, colours / flag shape from the ctor,
+   leader portrait and starting characters from `generateStartingCharacters`; tech level = the game's start tech level
+   (stored by a game-start handler from the new `HomePlacementHelpers.startTechLevel`) + `exchangeTechLevelBonus`
+   (max 7). Station: a fresh stock large space port design + two labs of each industry, at an uncolonised habitat
+   within 0.3 of the galaxy radius; that habitat is the stand-in capital (`faction.capital`, never owned). The stock AI
+   is off: every `Control*` automation field Manual / false except `controlDesigns` and `controlResearch`,
+   `initiateConstruction = false` (no construction, no crash research), policy offers off (it posts its own
+   contracts). Colonise / unload-troops / bombard missions of its ships are refused (`assignMissionAllowed`); war
+   declarations by or on it are blocked (`declareWarBlocked`). It meets every normal empire (a public station) and
+   holds a free protection pact (fee 0) with every pirate faction, re-asserted each period.
+2. **Purse** (`st.purse`): base income `step × (year − appearance + 1)` capped at `cap` (paid in the yearly tick, the
+   appearance year included); docking tariff `exchangeTariffPct` % of every `contractInitiated` whose selling point
+   or destination is the station; brokerage = the full price of intel sales. The faction's `stateMoney` is swept into
+   the purse each 30-day period (stock ship upkeep and pirate contract payments come out of it). Reserve =
+   `exchangeReservePct` % of the year's income so far; discretionary spending (funding, agents, missions, contracts,
+   research stations, warships) only uses `purse − reserve − open contract prices`.
+3. **Underdog funding** (yearly): for each war among normal empires (weaker = lower `MilitaryPotency`, ties treasury /
+   id) the weaker side gets `exchangeFundPct` % of its treasury, stopping at the reserve; message (event log) per grant.
+4. **Intelligence** (periodic): `exchangeAgents` stock agents (`generateNewCharacter`) with espionage, sabotage,
+   assassination, psy-ops and concealment raised to 60; +1 a year up to `exchangeAgentsMax` while money above the
+   reserve covers a hire. Idle agents (no mission / counter-intelligence) start the next mission (targets: war-weary
+   empires at war, then the strongest third; types round-robin SabotageColony, StealTechData, SabotageConstruction,
+   StealGalaxyMap, AssassinateCharacter, StealOperationsMap), built with the stock constructors and the stock timing
+   (`calculateIntelligenceMissionSkill` + `cascadeTimeLength`), assigned to `character.mission` so the stock
+   `performIntelligenceMissions` resolves them (stolen tech is the faction's). No yearly caps: money, agents,
+   targets and mission length limit them. A successful unseen sabotage sends the victim the false-flag message naming
+   its (weakest) war enemy. A catch = a stock Capture / FailDetect / SucceedDetect outcome or the agent killed on the
+   mission (the target's counter-intelligence): the victim's knowledge rises (suspected; confirmed on the second catch),
+   a 19m hidden thing `exchangeAgent` (target: the station) mirrors it as a lead, and a ledger cause
+   `exchange.agentCaught` (−10) is recorded.
+5. **Intel market** (yearly): the weaker side of each war receives the stronger side's galaxy and operations maps
+   (`applyIntelligenceMissionEffect`, split out of `completeIntelligenceMission`), logged. AI empires that met the
+   Exchange and are at war buy one item a year (galaxy map / operations map / a tech the rival has, rotating) on their
+   rival when treasury > 4 × price (price = `exchangeIntelPrice × max(1, √colonies)`); the player gets the decision
+   `exchange.buyIntel` "Buy intelligence on <rival> for N credits" (options: decline / galaxy map / operations map /
+   tech; 60 days). Each sale is a trace (ledger cause `exchange.boughtIntel` −10, rival → buyer) that lands with an
+   event-log line once the rival knows the Exchange (≥ suspected).
+6. **Contracts** (periodic, stock pirate market): Defend contracts on the weaker side's colonies and space ports (any
+   client: the new `pirateDefendBidAllowed` query in `pirateCheckAcceptDefendMission` lets a pirate faction bid on an
+   Exchange-financed Defend contract without protecting the client — the stock range and strength tests still apply,
+   and a normal empire's contract keeps the stock protection rule), Attack contracts on the
+   stronger side's bases (when some pirate faction does not protect it), `EmpireActivity(target owner, Exchange, 1
+   year)` added to the Exchange's and the galaxy's lists with the stock prices and offer messages. Stock bidding,
+   expiry and completion apply; a Defend contract pays although the target is the client's through the new
+   `pirateDefendClient` query in `reviewPirateDefendMissions`. Bounded only by money above the reserve (open contract
+   prices count), live wars and their targets; no duplicate per target. A completed Attack contract (target destroyed)
+   is a trace (`exchange.contract`) for its victim.
+7. **Fleet** (periodic): two Defend-posture fleets gathered at the station (posture range = the system), up to
+   `exchangeFleetCap` warships bought from the purse (the newest buildable cruiser / destroyer when its designs allow,
+   else escort / frigate), the smaller fleet filled first. `assignMissionAllowed` refuses any mission of its ships whose
+   point / target lies outside the station's system (MaxSolarSystemSize + 500); idle or stray ships are given a Patrol
+   of the station (low priority, so in-system attack responses still take over).
+8. **Research**: `researchAsPirateFaction` query → the stock pirate-faction branch of `annualResearchPotential`
+   (√ built objects × 10000 + ½ the labs of its research stations); labs on the station feed the per-industry
+   potentials; up to two research stations (weapons, energy) bought at habitats of its system. No crash research.
+9. **Council** (19d8, `registerCouncilExtension`): the Exchange is never a member; once a member has it confirmed a
+   sanction motion (weight 70) against it becomes a candidate; members that know it vote +40 (others +10).
+10. **Discovery / end**: money traces (an intel mission against a funded empire: suspected, confirmed after two) and
+   caught agents. A stock blockade of the station by an empire with it confirmed for `exchangeBlockadeDays` (30-day
+   periods), or the station destroyed → collapse: purse lost, fleets disbanded, `empireCompleteTeardown` (as a defeated
+   faction), NewsNet, +20 bias toward the exposer, game end 2018 (with `threatsGameEnd`).
+11. **Grudges** (`st.grudges`, empire id → points): +25 per period an empire blockades the station, +30 per station /
+   warship / research station it destroys (`builtObjectKilledBy`), +40 per caught agent, +60 to every member of a
+   council that sanctions it (once per sanction), +25 per refused intel offer from the player's second refusal on, and
+   yearly the empire with the worst 19o ledger standing toward the Exchange adds that standing (max 100). Yearly decay
+   `exchangeGrudgeDecay` % (20). Above `exchangeGrudgeThreshold` (100) an empire is a covert target at war or not: first
+   in the mission target list (its agents run SabotageColony / AssassinateCharacter / StealTechData /
+   SabotageConstruction against it first), Attack contracts on its bases are posted first, and it is never funded,
+   gifted maps, defended, sold intel or offered intel. No message goes to the target; the stock mission messages and
+   the traces (event log on discovery) are all it sees.
+   The Exchange also merges every empire's galaxy map at appearance and yearly (a trading hub hears everything): its
+   agents need known colonies to choose sabotage targets.
+**Measured (seed 1, age 3, soak, before the yearly map merge of 11)**: research potential 10000 at the moment it appears (the station alone: √1 × 10000), 204495 after its
+first period (station + 2 research stations + 3 warships: √6 × 10000 + 180000 of station labs), 227958 five years
+later (23 built objects: 20 warships, 2 research stations, the station; 73 techs known). No wars broke out on seed 1
+in those 5 years, so no funding / contracts / sales there (the direct tests declare wars).
+**Left out**: extra docking bays on the station; AI empires do not yet send blockade fleets on their own (the
+player / a scripted blockade ends it).
 
 ## 9. Robot mutiny — robotic troops answer one hidden broadcast
 **Concept.** All BattleBot troops galaxy-wide are wired to one hidden transmitter; robot garrisons quietly build more

@@ -320,7 +320,9 @@ function thingAlive(galaxy: Galaxy, t: HiddenThing): boolean {
                 return target.empire === t.empire;
         }
     }
-    if (target instanceof BuiltObject) return !target.hasBeenDestroyed && target.actualEmpire === t.empire;
+    // 19f #8 The Exchange: an 'exchangeAgent' lead points at the Exchange's station (a foreign base) from the victim's
+    // side; it lives while the station stands (the collapse marks the site 'dead' above).
+    if (target instanceof BuiltObject) return !target.hasBeenDestroyed && (t.kind === 'exchangeAgent' || target.actualEmpire === t.empire);
     const h = target as Habitat;
     if (h.hasBeenDestroyed) return false;
     if (t.kind !== 'nest') {
