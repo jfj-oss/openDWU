@@ -1,0 +1,29 @@
+'19g-5 Frontier autonomy: message texts (scenarioText tags). {n} items are filled by the scenario code.
+Security Kind sectorUnrest;Sector unrest
+Frontier Rule loose;loose
+Frontier Rule normal;normal
+Frontier Rule tight;tight
+Frontier Sector Formed Title;Frontier Sector
+Frontier Sector Formed;The distant colonies of sector {0} ({1} colonies) now look to their own governor: {2} rules sector {0} as its Sector Governor.
+Frontier Sector Dissolved;Sector {0} is no longer a frontier sector: its colonies answer to the capital again.
+Frontier Governor Title;Sector Governor
+Frontier Governor;{0} is promoted to Sector Governor of sector {1}.
+Frontier Refused Title;Order Refused
+Frontier Refused;{0}, Sector Governor of sector {1}, refuses the order to {2}.
+Frontier Order rule;rule the sector {0}ly
+Frontier Order herds;end the tolerance of the herds
+Frontier Order tax;give up the local tax rate
+Frontier Deal Title;Frontier Trade Compact
+Frontier Deal;{0}, Sector Governor of sector {1}, signed a trade compact with {2}.
+Frontier Militia Title;Sector Militia
+Frontier Militia;Sector {0} raises a militia ship ({1}) from its own budget.
+Frontier Warning Title;Sector Unrest
+Frontier Warning;Sector {0} is restless: its governor {1} speaks of self-rule. Answer with a fleet, honours, a purge or a concession before the sector breaks away.
+Frontier Warning Final;Sector {0} is on the brink: {1} will lead it out of the empire next year unless the capital acts.
+Frontier Deterred;A fleet holds sector {0}: its governor {1} does not dare to break away.
+Frontier Concede Title;Concession
+Frontier Concede;The capital concedes to sector {0}: loose rule and self-government for its governor {1}.
+Frontier Breakaway Title;Sector Breakaway
+Frontier Breakaway;Sector {0} breaks away under its governor {1}: {2} colonies now form {3}.
+Frontier Breakaway Leave;Sector {0} breaks away under its governor {1}: its colonies leave the empire.
+Frontier Breakaway News;The frontier sector {0} of {2} broke away under {1} and formed {3}.

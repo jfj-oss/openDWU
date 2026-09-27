@@ -43,6 +43,7 @@ import { proposePeaceTerms } from '../scenario/lively/peaceTerms';
 import type { PeaceTerms } from '../scenario/lively/warGoals';
 import { runSecurityAction, startInvestigation, type SecurityActionName } from '../scenario/security/security';
 import { appointToSeat, type SeatName } from '../scenario/court/court';
+import { concedeSector, orderSector, type FrontierOrder } from '../scenario/frontier/frontier';
 import { proposeTie, startScheme, useHook, type ComplianceAct, type HookAction, type SchemeKind, type TieKind } from '../scenario/court/intrigue';
 import {
     acceptProposal,
@@ -209,6 +210,12 @@ export const PLAYER_OPS = {
     /** Propose a dynastic tie (envoy / ward / spouse) to another empire (also offered on the Diplomacy conversation). */
     courtProposeTie: (galaxy: Galaxy, empire: Empire, other: Empire, kind: TieKind) => proposeTie(galaxy, empire, other, kind),
     // [court] end
+    // [frontier] begin — scenario 19g-5 frontier autonomy (scenario/frontier/frontier.ts; flag-gated inside)
+    /** A colony-policy order to a frontier sector (rule loose / normal / tight, herd tolerance, revoke the local tax); the governor may refuse. */
+    frontierOrder: (galaxy: Galaxy, empire: Empire, sectorId: number, order: FrontierOrder) => orderSector(galaxy, empire, sectorId, order),
+    /** A concession to a restless sector (loose rule, local tax, autonomy grant, governor loyalty). */
+    frontierConcede: (galaxy: Galaxy, empire: Empire, sectorId: number) => concedeSector(galaxy, empire, sectorId),
+    // [frontier] end
 } as const;
 
 export type PlayerOps = typeof PLAYER_OPS;

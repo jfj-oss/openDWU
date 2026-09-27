@@ -1721,6 +1721,11 @@ export interface EmpireSplitExtras {
     ships?: readonly BuiltObject[];
     /** Characters of the splitting empire that defect to the new empire, arriving at its capital (Character.DefectToEmpire). */
     characters?: readonly Character[];
+    /**
+     * Further colonies of the splitting empire that join the new empire (19g-5 frontier sector breakaway: the whole
+     * sector goes), taken like the split's own (Empire.1.cs 2921 TakeOwnershipOfColony(habitat2, empire)). Never the capital.
+     */
+    colonies?: readonly Habitat[];
 }
 
 /**
@@ -1803,6 +1808,16 @@ export function initiateEmpireSplitAt(galaxy: Galaxy, self: Empire, splinterPort
 
 /** initiateEmpireSplitAt's caller-chosen extras (not in the C#; see there). No Rnd. */
 function giveSplitExtras(galaxy: Galaxy, self: Empire, empire: Empire, extras: EmpireSplitExtras): void {
+    if (extras.colonies) {
+        let taken = false;
+        for (const colony of extras.colonies) {
+            if (colony.empire !== self || colony === self.capital) continue;
+            // Empire.1.cs 2921 (SplinterEmpire's colony loop): TakeOwnershipOfColony(habitat2, empire, false, false).
+            takeOwnershipOfColonyFull(galaxy, empire, colony, empire, false, false);
+            taken = true;
+        }
+        if (taken) recalculateEmpirePopulation(empire);
+    }
     if (extras.ships) {
         for (const ship of extras.ships) {
             // Empire.1.cs 2969/2978: empire.TakeOwnershipOfBuiltObject(item, empire, setDesignAsObsolete: true) (leaves its fleet).
