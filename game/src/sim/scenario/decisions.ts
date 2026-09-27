@@ -55,16 +55,23 @@ export interface ScenarioDecisionHandler extends ScenarioHandlerGate {
     aiChoose?: (galaxy: Galaxy, decision: ScenarioDecision) => string;
 }
 
-const handlers: ScenarioDecisionHandler[] = [];
+/**
+ * The handler registry. A hoisted function (not a module-level const) so a package can register while this module is
+ * still mid-evaluation in an import cycle (UI → … → game.ts → packages.ts → a package → registerScenarioDecision).
+ */
+function decisionHandlers(): ScenarioDecisionHandler[] {
+    const f = decisionHandlers as unknown as { list?: ScenarioDecisionHandler[] };
+    return (f.list ??= []);
+}
 
 /** Registers (or replaces, by kind) the handler of a decision kind. Returns an unregister function. */
 export function registerScenarioDecision(handler: ScenarioDecisionHandler): () => void {
-    const i = handlers.findIndex((h) => h.kind === handler.kind);
-    if (i >= 0) handlers.splice(i, 1);
-    handlers.push(handler);
+    const i = decisionHandlers().findIndex((h) => h.kind === handler.kind);
+    if (i >= 0) decisionHandlers().splice(i, 1);
+    decisionHandlers().push(handler);
     return () => {
-        const j = handlers.indexOf(handler);
-        if (j >= 0) handlers.splice(j, 1);
+        const j = decisionHandlers().indexOf(handler);
+        if (j >= 0) decisionHandlers().splice(j, 1);
     };
 }
 
@@ -117,7 +124,7 @@ export function raiseScenarioDecision(galaxy: Galaxy, empire: Empire, spec: Rais
     if (empire === galaxy.playerEmpire) {
         scenarioMessage(galaxy, empire, spec.title, spec.text, { type: EmpireMessageType.GeneralDecision, subject: d });
     } else {
-        const h = handlers.find((x) => x.kind === d.kind);
+        const h = decisionHandlers().find((x) => x.kind === d.kind);
         const choice = h?.aiChoose?.(galaxy, d) ?? d.defaultOption;
         answerScenarioDecision(galaxy, d.id, choice, 'ai');
     }
@@ -148,7 +155,7 @@ export function answerScenarioDecision(galaxy: Galaxy, decisionId: number, optio
     d.answeredBy = by;
     st.history.push(d);
     if (st.history.length > 200) st.history.splice(0, st.history.length - 200);
-    const h = handlers.find((x) => x.kind === d.kind);
+    const h = decisionHandlers().find((x) => x.kind === d.kind);
     if (h !== undefined && scenarioGateOpen(galaxy, h)) h.resolve(galaxy, d, optionId);
     return true;
 }
