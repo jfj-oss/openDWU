@@ -54,6 +54,7 @@ import { AmbientLayer } from './ambientLayer';
 import { FighterLayer } from './fighterLayer';
 import { WhalePilotLayer, whalePilotEnabled } from './whalePilotLayer'; // [whalepilot]
 import { CreatureLayer, creatureTooltipText } from './creatureLayer';
+import { FaunaGallery, faunaGalleryEnabled } from './faunaGallery'; // [newfauna]
 // [fightersfx] end
 // [rimatmo] begin
 import { RimAtmosphereLayer } from './rimAtmosphereLayer';
@@ -1334,6 +1335,13 @@ export class MainView {
         this.creatureLayer = new CreatureLayer(this.galaxy, this.world, this.store.dwuPresent);
         if (typeof window !== 'undefined') this.creatureLayer.godMode = new URLSearchParams(window.location.search).get('godMode') === '1';
         // [fightersfx] end
+        // [newfauna] begin — render-only capture gallery, no-op unless the URL carries ?faunaGallery=1
+        if (typeof window !== 'undefined' && faunaGalleryEnabled(window.location.search)) {
+            const gallery = new FaunaGallery(this.galaxy, this.world, this.camera, window.location.search);
+            this.creatureLayer.gallery = gallery;
+            (window as unknown as { __faunaGallery?: unknown }).__faunaGallery = { gallery, layer: this.creatureLayer };
+        }
+        // [newfauna] end
         // [whalepilot] begin — no-op unless the URL carries ?whalePilot=1
         if (typeof window !== 'undefined' && whalePilotEnabled(window.location.search)) {
             this.whalePilot = new WhalePilotLayer(this.galaxy, this.world, this.camera, window.location.search, this.store.dwuPresent);

@@ -365,6 +365,16 @@ export interface ScenarioQueries {
      * false refuses the new mission (the ship keeps its current one). `x` / `y` are the mission's point (-2000000001 unset).
      */
     assignMissionAllowed: { value: boolean; args: { builtObject: BuiltObject; missionType: number; target: unknown; x: number; y: number } };
+    /**
+     * independentTraders.ts findShipOutsideSystemWithScanRange (Empire.9.cs 3449): the range modifier of the ships-outside-
+     * systems scan (not the stationary long-range scanners) for a target at (x, y). 19h sensor fog.
+     */
+    scanRangeModifier: { value: number; args: { x: number; y: number } };
+    /**
+     * cmdMovement.ts HyperTo in-flight step (BuiltObject.2.cs HyperTo): the point where a jump that moved the ship from
+     * (fromX, fromY) to (toX, toY) this step must end early (null = no stop). 19h gravity shoals.
+     */
+    hyperjumpStop: { value: { x: number; y: number } | null; args: { ship: BuiltObject; fromX: number; fromY: number; toX: number; toY: number; exitX: number; exitY: number } };
 }
 export type ScenarioQueryName = keyof ScenarioQueries;
 

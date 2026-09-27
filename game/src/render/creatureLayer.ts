@@ -47,6 +47,18 @@ import type { Empire } from '../sim/empire';
 import { CreatureType, resolveCreatureDescription, type Creature } from '../sim/creature';
 import { GalaxyLocationType } from '../sim/galaxyLocation';
 import { findShipOutsideSystemWithScanRange } from '../sim/independentTraders';
+import { FaunaVariant, creatureTamedByHerders, faunaVariantDef, faunaVariantName, faunaVariantOfCreature } from '../sim/scenario/newFauna/common';
+import { FaunaArt } from './faunaArt';
+import {
+    CreatureRig,
+    HarnessView,
+    LanternSwarm,
+    StraightCarrier,
+    harnessInit,
+    harnessStep,
+    lookCapMul,
+    type HarnessState,
+} from './creatureRig';
 
 export const CREATURE_DIR = '/assets/dwu/images/units/creatures';
 /** Raw creature frame side (every creature PNG in the install is 360 × 360). */
@@ -251,9 +263,16 @@ export function creatureHealthPercent(c: Pick<Creature, 'damage' | 'damageKillTh
     return v < 0 ? -Math.round(-v) : Math.round(v);
 }
 
-/** HoverPanel.cs 220 method_2: the hover text (name, then size / strength / health). */
+/** 19g-7b: the new-fauna variant name of a creature ("Void Whale"), or null for the five original creatures. */
+export function creatureVariantName(c: Creature): string | null {
+    const g = (c as { galaxy?: Galaxy }).galaxy;
+    return g === undefined || g === null || g.scenario === null ? null : faunaVariantName(g, c);
+}
+
+/** HoverPanel.cs 220 method_2: the hover text (name, then size / strength / health); 19g-7b adds the variant. */
 export function creatureTooltipText(c: Creature): string {
-    return `${c.name} — Size: ${c.size}, Strength: ${c.attackStrength}, Health: ${creatureHealthPercent(c)}%`;
+    const v = creatureVariantName(c);
+    return `${c.name}${v !== null ? ` (${v})` : ''} — Size: ${c.size}, Strength: ${c.attackStrength}, Health: ${creatureHealthPercent(c)}%`;
 }
 
 /** Where a creature is: its parent habitat, else its nearest system, else deep space. */
@@ -265,11 +284,13 @@ export function creatureLocationText(c: Creature): string {
 
 /**
  * The selection panel rows of a creature (InfoPanel.cs 3453 DrawCreature: size, attack strength, health, speed), plus
- * its type (Galaxy.2.cs ResolveDescription(CreatureType)) and location. DOM-free.
+ * its type (Galaxy.2.cs ResolveDescription(CreatureType)) and location; a 19g-7b variant adds a "Variant" row. DOM-free.
  */
 export function creatureSelectionRows(c: Creature): { label: string; value: string }[] {
+    const variant = creatureVariantName(c);
     return [
         { label: 'Type', value: resolveCreatureDescription(c.type) },
+        ...(variant !== null ? [{ label: 'Variant', value: variant }] : []),
         { label: 'Size', value: String(c.size) },
         { label: 'Attack Strength', value: String(c.attackStrength) },
         {
@@ -308,6 +329,44 @@ function loadedContentPixels(img: CanvasImageSource): number {
     return creatureContentPixels(ctx.getImageData(0, 0, side, side).data);
 }
 
+/** Content long side / frame side of the original frames (Kaltor 327 / 360): a rig body spans this share of the drawn box. */
+export const RIG_CONTENT_FRAC = 0.9;
+
+/** A creature's 19g-7b look: a creatureRig body id (FAUNA_BODIES) or 'lantern' (the swarm). */
+export interface FaunaLook {
+    look: string;
+}
+
+/** 19g-7b: the look the renderer gives a creature (null = the original frames). Nest-mother young use the hunter body. */
+export function faunaLookOf(galaxy: Galaxy, c: Creature): FaunaLook | null {
+    if (galaxy.scenario === null) return null;
+    const v = faunaVariantOfCreature(galaxy, c);
+    if (v === null) return null;
+    if (v.variant === FaunaVariant.NestMother && !v.leader) return { look: 'hunter' };
+    return { look: faunaVariantDef(v.variant).look };
+}
+
+/** Render-only creatures drawn with the same rules (the ?faunaGallery=1 capture set); never picked. */
+export interface CreatureGallerySource {
+    /** Moves the gallery creatures (called at the start of every update). */
+    step(): void;
+    creatures(): readonly Creature[];
+    lookOf(c: Creature): FaunaLook | null;
+    tamed(c: Creature): boolean;
+}
+
+/** One drawn 19g-7b creature: its rig / swarm / straight carrier, and its harness. */
+interface FaunaView {
+    look: string;
+    node: Container;
+    rig: CreatureRig | null;
+    swarm: LanternSwarm | null;
+    straight: StraightCarrier | null;
+    harness: HarnessView | null;
+    hstate: HarnessState;
+    seenAt: number;
+}
+
 /**
  * Draws the creatures of the viewed system (or of the restricted areas at the camera) as animated sprites centred on
  * (xpos, ypos), turned to CurrentHeading. Frame sets load lazily on first sight; without a DW:U install a grey dot
@@ -323,6 +382,13 @@ export class CreatureLayer {
     private fallback: LoadedSet | null = null;
     /** _Game.GodMode (every creature visible); off in a normal game. */
     godMode = false;
+    /** 19g-7b: the procedural fauna (variant bodies, lantern swarms, tamed harnesses), created on first need. */
+    private faunaRoot = new Container();
+    private art: FaunaArt | null = null;
+    private views = new Map<Creature, FaunaView>();
+    private frameNo = 0;
+    /** Render-only gallery (dev flag ?faunaGallery=1). */
+    gallery: CreatureGallerySource | null = null;
 
     constructor(
         private galaxy: Galaxy,
@@ -333,6 +399,83 @@ export class CreatureLayer {
         this.root.interactiveChildren = false;
         world.addChild(this.root);
         this.pool = new SpritePool(this.root);
+        this.faunaRoot.eventMode = 'none';
+        this.root.addChild(this.faunaRoot);
+    }
+
+    private faunaArt(): FaunaArt {
+        if (this.art === null) this.art = new FaunaArt(this.dwuPresent);
+        return this.art;
+    }
+
+    /** The view of a 19g-7b creature (created / rebuilt when its look changes); null while the art loads. */
+    private faunaView(c: Creature, look: string | null, tamed: boolean): FaunaView | null {
+        let v = this.views.get(c);
+        const key = look ?? 'straight';
+        if (v !== undefined && v.look === key) return v;
+        const art = this.faunaArt();
+        if (!art.ready) return null;
+        let rig: CreatureRig | null = null;
+        let swarm: LanternSwarm | null = null;
+        let straight: StraightCarrier | null = null;
+        let node: Container;
+        if (look === 'lantern') {
+            swarm = new LanternSwarm(art.mote!, c.creatureId);
+            node = swarm.root;
+        } else if (look !== null) {
+            const tex = art.body(look);
+            if (tex === null) return null;
+            rig = new CreatureRig(tex, (c.creatureId % 17) * 0.37);
+            node = rig.root;
+        } else {
+            straight = new StraightCarrier(100, 60);
+            node = straight.root;
+        }
+        if (v !== undefined) this.dropView(c, v);
+        v = { look: key, node, rig, swarm, straight, harness: null, hstate: harnessInit(tamed), seenAt: this.frameNo };
+        this.faunaRoot.addChild(node);
+        this.views.set(c, v);
+        return v;
+    }
+
+    private dropView(c: Creature, v: FaunaView): void {
+        v.node.destroy({ children: true });
+        this.views.delete(c);
+    }
+
+    /**
+     * 19g-7b draw of one creature on the procedural rig (or the harness over an original frame): same centre, heading,
+     * cull and size maths as the frames (creatureDrawPx with the look's cap multiplier), posed on the render clock.
+     */
+    private drawFauna(c: Creature, look: FaunaLook | null, tamed: boolean, px: number, z: number, t: number, secondsOfDay: number): boolean {
+        const v = this.faunaView(c, look?.look ?? null, tamed);
+        if (v === null) return false;
+        v.seenAt = this.frameNo;
+        v.node.visible = true;
+        v.node.position.set(c.xpos, c.ypos);
+        v.node.rotation = c.currentHeading;
+        const speed01 = c.movementSpeed > 0 ? Math.min(1, c.currentSpeed / c.movementSpeed) : 0;
+        if (v.rig !== null) {
+            v.rig.pose(t, speed01);
+            v.node.scale.set((px * RIG_CONTENT_FRAC) / v.rig.length / z);
+        } else if (v.swarm !== null) {
+            v.swarm.pose(t);
+            v.node.scale.set(px / (2 * LanternSwarm.RADIUS) / z);
+        } else if (v.straight !== null) {
+            v.node.scale.set((px * RIG_CONTENT_FRAC) / v.straight.length / z);
+        }
+        v.node.alpha = creatureDamageAlpha(c);
+        // Tamed look (harness), on any carrier but the swarm.
+        v.hstate = harnessStep(v.hstate, tamed, t);
+        const carrier = v.rig ?? v.straight;
+        if (carrier !== null && v.hstate.phase !== 'none' && v.harness === null) {
+            const art = this.faunaArt();
+            v.harness = new HarnessView(carrier, look?.look === 'hunter' ? 'band' : 'cargo', art.containers, art.light!, c.size, v.rig?.periodS ?? 7.5);
+            carrier.top.addChild(v.harness.root);
+            carrier.bottom.addChild(v.harness.under);
+        }
+        v.harness?.pose(v.hstate, t, secondsOfDay, c.creatureId);
+        return true;
     }
 
     /** A frame set if loaded (starts the load on first request); null until then / on failure. */
@@ -385,18 +528,29 @@ export class CreatureLayer {
     update(z: number, cam: Camera): void {
         const f = 1 / z;
         this.drawnPx.clear();
+        this.frameNo++;
+        // The gallery frames its own camera view (it applies from the next frame).
+        this.gallery?.step();
         this.pool.begin();
         this.root.visible = f < CREATURE_MAX_FACTOR;
         if (!this.root.visible) {
             this.pool.end();
+            this.hideStaleViews();
             return;
         }
         const star = this.galaxy.fastFindNearestSystem(cam.x, cam.y);
-        const list = creaturesNear(this.galaxy, star, cam.x, cam.y);
+        const near = creaturesNear(this.galaxy, star, cam.x, cam.y);
+        const extra = this.gallery?.creatures() ?? [];
+        const list = extra.length > 0 ? [...near, ...extra] : near;
         const { factor, maxWidth } = creatureZoomFactor(f);
         const halfW = cam.width / 2;
         const halfH = cam.height / 2;
         const nowMs = this.galaxy.nowMs;
+        // 19g-7b rig clock (render time, like the ambient layer's lights: MainView.cs 1457 TimeOfDay).
+        const wallMs = Date.now();
+        const t = (wallMs % 86400000) / 1000;
+        const secondsOfDay = t;
+        const faunaOn = this.galaxy.scenario !== null || extra.length > 0;
         for (const c of list) {
             if (c === null || c.hasBeenDestroyed) continue;
             const idx = creatureFrameSetIndexes(c.type);
@@ -404,14 +558,23 @@ export class CreatureLayer {
             const sizeSet = this.frameSet(c.pictureRef);
             const moving = this.frameSet(idx.moving);
             if (sizeSet === null || moving === null) continue;
+            const inGallery = extra.length > 0 && extra.includes(c);
+            const look = !faunaOn ? null : inGallery ? this.gallery!.lookOf(c) : faunaLookOf(this.galaxy, c);
+            const tamed = !faunaOn ? false : inGallery ? this.gallery!.tamed(c) : creatureTamedByHerders(this.galaxy, c);
+            const capMul = look !== null ? lookCapMul(look.look) : 1;
             // MainView.1.cs 1590-1600: first cull on the unprepared frame size.
-            const loadedPx = Math.min(Math.trunc(CREATURE_LOADED_SIDE / factor), Math.trunc(maxWidth));
+            const loadedPx = Math.min(Math.trunc(CREATURE_LOADED_SIDE / factor), Math.trunc(maxWidth * capMul));
             const sx = (c.xpos - cam.x) * z + halfW;
             const sy = (c.ypos - cam.y) * z + halfH;
             if (offScreen(sx, sy, loadedPx, cam)) continue;
-            if (!this.visibleToPlayer(c)) continue;
-            const px = creatureDrawPx(sizeSet.content, c.size, f);
+            if (!inGallery && !this.visibleToPlayer(c)) continue;
+            const px = creatureDrawPx(sizeSet.content, c.size, f, capMul);
             if (offScreen(sx, sy, px, cam) || px < 1) continue;
+            if (look !== null) {
+                if (this.drawFauna(c, look, tamed, px, z, t, secondsOfDay)) this.drawnPx.set(c, px);
+                continue;
+            }
+            if (tamed || this.views.has(c)) this.drawFauna(c, null, tamed, px, z, t, secondsOfDay);
             let frames = moving.frames;
             if (c.currentSpeed > 0) {
                 const attack = this.frameSet(idx.attack);
@@ -427,6 +590,25 @@ export class CreatureLayer {
             this.drawnPx.set(c, px);
         }
         this.pool.end();
+        // The harness overlays sit above the original frames.
+        this.root.addChild(this.faunaRoot);
+        this.hideStaleViews();
+    }
+
+    /** Views not drawn this frame are hidden; those of destroyed creatures (or unseen for a while) are dropped. */
+    private hideStaleViews(): void {
+        for (const [c, v] of this.views) {
+            if (v.seenAt === this.frameNo) continue;
+            v.node.visible = false;
+            if (c.hasBeenDestroyed || this.frameNo - v.seenAt > 600) this.dropView(c, v);
+        }
+    }
+
+    /** 19g-7b debug / capture: the drawn 19g-7b views (look, harness phase, drawn px). */
+    faunaDebug(): { name: string; look: string; harness: string; px: number }[] {
+        const out: { name: string; look: string; harness: string; px: number }[] = [];
+        for (const [c, v] of this.views) if (v.seenAt === this.frameNo) out.push({ name: c.name, look: v.look, harness: v.hstate.phase, px: Math.round(this.drawnPx.get(c) ?? 0) });
+        return out;
     }
 
     /** Drawn size in px of a creature at the last update (0 when not drawn). */

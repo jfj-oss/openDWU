@@ -199,6 +199,7 @@ describe('creatureVisibleToEmpire (Empire.9.cs 3037 IsObjectVisibleToThisEmpire(
         calculateDistanceSquared: (x1: number, y1: number, x2: number, y2: number) => (x1 - x2) ** 2 + (y1 - y2) ** 2,
         resolveIndex: () => ({ x: 0, y: 0 }),
         builtObjectIndexGrid: [[[]]],
+        scenario: null, // no scenario (the 19h sensor-fog query in FindShipOutsideSystemWithScanRange is then skipped)
     } as unknown as Galaxy;
     const empire = (visible: number[], scanners: { xpos: number; ypos: number; sensorLongRange: number }[] = []): Empire =>
         ({ visibility: { checkSystemVisible: (i: number) => visible.includes(i) }, longRangeScanners: scanners }) as unknown as Empire;
