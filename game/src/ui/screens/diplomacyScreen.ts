@@ -119,6 +119,7 @@ export function formatSigned(v: number): string {
 export { feelingDescription, civilityDescription, relationshipFactors, type RelationshipFactor } from '../../sim/player/relationFactors';
 import { relationshipFactors, feelingDescription, type RelationshipFactor } from '../../sim/player/relationFactors';
 import { incidentRows } from '../../sim/scenario/emergent/espionageView';
+import { councilView } from '../../sim/scenario/emergent/councilView';
 import { acceptProposal, declineProposal } from '../../sim/player/playerOrders';
 export { acceptProposal, declineProposal };
 
@@ -561,6 +562,36 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
                 if (r.kind === 'crisis') line.style.color = RED;
                 detail.appendChild(line);
             }
+        }
+
+        // 19d8 (scenario `galacticCouncil`): the council block — members, chair, motion on the floor, last 5 results, our bloc.
+        const council = councilView(player.galaxy, player);
+        if (council !== null) {
+            detail.appendChild(el('div', 'diplomacy-section-heading', council.observer ? `Council: ${council.name} (not a member)` : `Council: ${council.name}`));
+            detail.appendChild(el('div', 'diplomacy-line', `Chair: ${council.chair || '(none)'} — founded ${council.founded}`));
+            for (const mr of council.members) {
+                const tags = [mr.chair ? 'chair' : '', mr.bloc, `prestige ${mr.prestige}`, mr.losses > 0 ? `outvoted ${mr.losses}` : ''].filter((t) => t !== '').join(', ');
+                detail.appendChild(el('div', 'diplomacy-factor', `${mr.name} (${tags})`));
+            }
+            detail.appendChild(el('div', 'diplomacy-line', council.motion !== '' ? `Motion: ${council.motion}` : 'Motion: (none on the floor)'));
+            if (council.motionStatus !== '') detail.appendChild(el('div', 'diplomacy-factor', council.motionStatus));
+            if (council.voteDecisionId > 0) {
+                const buttons = el('div', 'diplomacy-line');
+                for (const [id, label] of [['yes', 'Vote yes'], ['no', 'Vote no'], ['abstain', 'Abstain']] as const) {
+                    const b = el('button', 'diplomacy-button', label) as HTMLButtonElement;
+                    b.type = 'button';
+                    b.addEventListener('click', () => issuePlayerCommand(player.galaxy, player, 'answerScenarioDecision', [council.voteDecisionId, id], () => render()));
+                    buttons.appendChild(b);
+                }
+                detail.appendChild(buttons);
+            }
+            for (const r of council.results) {
+                const line = el('div', 'diplomacy-factor', r.text);
+                line.style.color = r.passed ? LIGHT_GREEN : RED;
+                detail.appendChild(line);
+            }
+            detail.appendChild(el('div', 'diplomacy-line', `Our bloc: ${council.yourBloc || '(none)'}`));
+            if (council.rivals.length > 0) detail.appendChild(el('div', 'diplomacy-line diplomacy-muted', `Rival council: ${council.rivals.join(', ')}`));
         }
 
         body.append(list, detail);
