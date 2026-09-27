@@ -35,9 +35,12 @@ import {
     creatureFrameIndex,
     creatureZoomFactor,
 } from './creatureLayer';
+import { artStats, fbm, makeValueNoise, roundStats, smoothstep, type ArtStats } from './creatureRig';
 
-// The shared creature rules live in creatureLayer.ts; re-exported for the pilot's tests / capture script.
-export { creatureDrawPx, creatureFrameIndex, creatureZoomFactor };
+// The shared creature rules live in creatureLayer.ts, the statistics / noise in creatureRig.ts; re-exported for the
+// pilot's tests / capture script.
+export { artStats, creatureDrawPx, creatureFrameIndex, creatureZoomFactor };
+export type { ArtStats };
 
 /** Galaxy.MaxSolarSystemSize (sim/galaxy.ts). */
 const MAX_SOLAR_SYSTEM_SIZE = 23000;
@@ -48,111 +51,6 @@ export const WHALE_LENGTH_MUL = 3;
 
 export function whalePilotEnabled(search: string): boolean {
     return new URLSearchParams(search).get('whalePilot') === '1';
-}
-
-export interface ArtStats {
-    /** Opaque (alpha ≥ 128) pixels measured. */
-    pixels: number;
-    /** Rec.709 luma of the sRGB values, 0..1: mean, standard deviation (contrast), 5th / 95th percentiles. */
-    meanL: number;
-    stdL: number;
-    p5L: number;
-    p95L: number;
-    /** Mean HSV saturation. */
-    meanSat: number;
-    /** Mean colour (0..255) and its hue in degrees. */
-    meanRGB: [number, number, number];
-    hueDeg: number;
-    /** Semi-transparent share of the visible pixels: semi / (semi + opaque). */
-    softEdge: number;
-    /** Mean alpha-ramp width (semi pixels / opaque boundary pixels) as a fraction of the silhouette's long side. */
-    edgeWidthFrac: number;
-    /** Long side of the alpha > 16 bounding box, px. */
-    longSidePx: number;
-}
-
-export function artStats(data: ArrayLike<number>, w: number, h: number): ArtStats {
-    const ls: number[] = [];
-    let sumS = 0;
-    let sr = 0;
-    let sg = 0;
-    let sb = 0;
-    let semi = 0;
-    let opaque = 0;
-    let boundary = 0;
-    let minX = w;
-    let minY = h;
-    let maxX = -1;
-    let maxY = -1;
-    const alphaAt = (x: number, y: number): number => (x < 0 || y < 0 || x >= w || y >= h ? 0 : data[(y * w + x) * 4 + 3]);
-    for (let y = 0; y < h; y++) {
-        for (let x = 0; x < w; x++) {
-            const i = (y * w + x) * 4;
-            const a = data[i + 3];
-            if (a > 16) {
-                if (x < minX) minX = x;
-                if (x > maxX) maxX = x;
-                if (y < minY) minY = y;
-                if (y > maxY) maxY = y;
-            }
-            if (a >= 247) {
-                opaque++;
-                if (alphaAt(x - 1, y) < 247 || alphaAt(x + 1, y) < 247 || alphaAt(x, y - 1) < 247 || alphaAt(x, y + 1) < 247) boundary++;
-            } else if (a > 8) {
-                semi++;
-            }
-            if (a < 128) continue;
-            const r = data[i] / 255;
-            const g = data[i + 1] / 255;
-            const b = data[i + 2] / 255;
-            ls.push(0.2126 * r + 0.7152 * g + 0.0722 * b);
-            const mx = Math.max(r, g, b);
-            const mn = Math.min(r, g, b);
-            sumS += mx > 0 ? (mx - mn) / mx : 0;
-            sr += r;
-            sg += g;
-            sb += b;
-        }
-    }
-    const n = ls.length;
-    const longSidePx = maxX < 0 ? 0 : Math.max(maxX - minX + 1, maxY - minY + 1);
-    if (n === 0) {
-        return { pixels: 0, meanL: 0, stdL: 0, p5L: 0, p95L: 0, meanSat: 0, meanRGB: [0, 0, 0], hueDeg: 0, softEdge: 0, edgeWidthFrac: 0, longSidePx };
-    }
-    let sumL = 0;
-    for (const l of ls) sumL += l;
-    const meanL = sumL / n;
-    let varL = 0;
-    for (const l of ls) varL += (l - meanL) * (l - meanL);
-    const sorted = ls.slice().sort((p, q) => p - q);
-    const pct = (p: number): number => sorted[Math.min(n - 1, Math.floor(p * n))];
-    const mr = sr / n;
-    const mg = sg / n;
-    const mb = sb / n;
-    return {
-        pixels: n,
-        meanL,
-        stdL: Math.sqrt(varL / n),
-        p5L: pct(0.05),
-        p95L: pct(0.95),
-        meanSat: sumS / n,
-        meanRGB: [Math.round(mr * 255), Math.round(mg * 255), Math.round(mb * 255)],
-        hueDeg: hueOf(mr, mg, mb),
-        softEdge: semi / Math.max(1, semi + opaque),
-        edgeWidthFrac: longSidePx > 0 ? semi / Math.max(1, boundary) / longSidePx : 0,
-        longSidePx,
-    };
-}
-
-function hueOf(r: number, g: number, b: number): number {
-    const mx = Math.max(r, g, b);
-    const d = mx - Math.min(r, g, b);
-    if (d <= 0) return 0;
-    let hh: number;
-    if (mx === r) hh = ((g - b) / d) % 6;
-    else if (mx === g) hh = (b - r) / d + 2;
-    else hh = (r - g) / d + 4;
-    return Math.round(((hh * 60) + 360) % 360);
 }
 
 /**
@@ -265,49 +163,6 @@ function drawAlong(ctx: CanvasRenderingContext2D, piece: CanvasImageSource, cx: 
     ctx.drawImage(piece, -wid / 2, -len / 2, wid, len);
     ctx.restore();
 }
-
-// Deterministic value noise (own PRNG; never galaxy.rnd).
-function makeValueNoise(seed: number): (x: number, y: number) => number {
-    const hash = (ix: number, iy: number): number => {
-        let hh = (ix * 374761393 + iy * 668265263 + seed * 144269504) | 0;
-        hh = Math.imul(hh ^ (hh >>> 13), 1274126177);
-        hh ^= hh >>> 16;
-        return (hh >>> 0) / 4294967296;
-    };
-    const smooth = (t: number): number => t * t * (3 - 2 * t);
-    return (x, y) => {
-        const ix = Math.floor(x);
-        const iy = Math.floor(y);
-        const fx = smooth(x - ix);
-        const fy = smooth(y - iy);
-        const a = hash(ix, iy);
-        const b = hash(ix + 1, iy);
-        const c = hash(ix, iy + 1);
-        const d = hash(ix + 1, iy + 1);
-        return a + (b - a) * fx + (c - a) * fy + (a - b - c + d) * fx * fy;
-    };
-}
-
-function fbm(noise: (x: number, y: number) => number, x: number, y: number, octaves: number): number {
-    let sum = 0;
-    let amp = 0.5;
-    let norm = 0;
-    let fx = x;
-    let fy = y;
-    for (let o = 0; o < octaves; o++) {
-        sum += amp * noise(fx, fy);
-        norm += amp;
-        amp *= 0.5;
-        fx *= 2.03;
-        fy *= 2.03;
-    }
-    return sum / norm;
-}
-
-const smoothstep = (e0: number, e1: number, x: number): number => {
-    const t = Math.max(0, Math.min(1, (x - e0) / (e1 - e0)));
-    return t * t * (3 - 2 * t);
-};
 
 /**
  * The Kaltor frame's own colours as a 32-step luminance ramp (mean colour per luma bin of the opaque pixels), each
@@ -1026,21 +881,4 @@ export class WhalePilotLayer {
         for (const a of this.actors) out[a.kind] = Math.round(a.drawnPx);
         return out;
     }
-}
-
-function roundStats(s: ArtStats): Record<string, unknown> {
-    const r3 = (x: number): number => Math.round(x * 1000) / 1000;
-    return {
-        meanL: r3(s.meanL),
-        stdL: r3(s.stdL),
-        p5L: r3(s.p5L),
-        p95L: r3(s.p95L),
-        meanSat: r3(s.meanSat),
-        meanRGB: s.meanRGB,
-        hueDeg: s.hueDeg,
-        softEdge: r3(s.softEdge),
-        edgeWidthFrac: Math.round(s.edgeWidthFrac * 10000) / 10000,
-        longSidePx: s.longSidePx,
-        pixels: s.pixels,
-    };
 }
