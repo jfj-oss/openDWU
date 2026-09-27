@@ -74,3 +74,21 @@ year 10 (1–8 per empire). Follow-ups:
   (Galaxy.2.cs character events; a day-0 death is unlikely in the C#).
 - Audio follow-ups (2026-09-26, from the rim sound package): the ambient bed ignores the effects-volume setting; the
   diplomacy voice-static burst creates a new AudioContext per call and never closes it (leak). Cheap (Sonnet).
+
+## fix10sim audit (2026-09-26): the four 10-year-run anomalies are faithful, no code change
+- Refuel "stuck" ships: a 0-fuel ship still moves (CheckFuelHandicap BaconBuiltObject.cs 4651: impulse ×0.90, jump
+  ×0.50); the probed ships reached refuel points, were attacked on arrival, fled (BuiltObject.1.cs 1551: no fuel → always
+  flee) and retried every ~60 days. CheckForRefuelling 4940 / SetupRefuelling 4774 / range 4856 match.
+- Day-0 "Empire Leader killed": ReviewDemoralizingCharacters (Empire.7.cs 319) dismisses a Demoralizing leader whose
+  skill total is below Next(15,30); starting leaders have tiny totals; the review runs on frame 1 for ~half the empires
+  (Start.2.cs 1344-1350 timers, Empire.1.cs 4219). Faithful (the news wording "killed" is the C#'s).
+- Frozen missions: patrols circle stations (200–600 u), miners sit extracting, transports move at 12–17 u/s (the 20k/90d
+  metric is too strict); no C# mission timeout exists. ONE real loop: UDU "Wild Aspiration" Build at a gas site 9.2k
+  from its planet — MoveTo adds a hyperjump (>4000 both axes, BuiltObject.2.cs 3596), CheckNearTarget cancels it (within
+  4000 of the parent, BaconBuiltObject.cs 2578), parent-relative DoMovement resets the wind-up. All three match the C#;
+  suspect the parent-planet assignment (hyperjump exit / SetParent) — follow-up.
+- United Dhayut Union at 1 colony: targets exist in range; DirectConstruction's money check fails every interval
+  (Empire.6.cs 2630-2735: colony ship 15.1–15.8k vs 7–12k cash after maintenance; research and fleet building spend the
+  rest, 2736-2839). Faithful. Lever = scenario/difficulty/policy, not range.
+- Follow-ups: the "Wild Aspiration" parent-planet check; an audit of in-system speeds (10–30 u/s makes short trips take
+  weeks); relax sim-run's frozen-mission metric.
