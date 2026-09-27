@@ -4,12 +4,17 @@
   "description": "An isolationist rim empire holds the galaxy's rarest luxuries and trades them only for goods from the outer reaches.",
   "flags": [
     { "name": "rimTrader", "label": "Rim trader behaviour", "description": "The Oranthi Concord trades its rare goods only for rim goods, never declares war and barely expands.", "default": true },
+    { "name": "rimTraderPassive", "label": "Passive Concord (anger)", "description": "The Concord's warships stay inside its own colonised systems (defence only: no raids, bombardment or invasions; the treasure fleet's escorts still sail with it) and it declares war only on an empire that provoked it: declared war on it, attacked or destroyed its ships or bases, attacked, blockaded or invaded its colonies, sank a treasure ship, sabotaged or assassinated through a caught agent, or let its rim-trade standing fall below the anger threshold. An angered Concord may declare war and strike that empire's assets near its space; its anger cools each year of peace. Off: it never declares war and its fleets roam as any AI's.", "default": true },
     { "name": "rimTraderSinglePort", "label": "Single trading port", "description": "Foreign freighters may buy from the Concord only at its capital port.", "default": true },
     { "name": "treasureBeacon", "label": "Treasure fleet beacon", "description": "The Concord's treasure fleet is visible to every empire, wherever it sails.", "default": true },
     { "name": "concordArt", "label": "Concord art", "description": "The Concord's own procedural industrial ships, bases, mask portrait and flag (off: the Ackdarian art its race borrows). Display only.", "default": true }
   ],
   "params": [
-    { "name": "rimTraderMaxColonies", "label": "Concord colony cap", "default": 4, "min": 1, "max": 12 },
+    { "name": "rimTraderStartColonies", "label": "Concord starting colonies", "default": 3, "min": 1, "max": 10 },
+    { "name": "rimTraderMaxColonies", "label": "Concord colony cap", "default": 10, "min": 1, "max": 10 },
+    { "name": "rimTraderAngerStanding", "label": "Standing that angers the Concord", "default": -3000, "min": -100000, "max": 0 },
+    { "name": "rimTraderRetaliationRange", "label": "Concord retaliation range (sectors)", "default": 2, "min": 0, "max": 10 },
+    { "name": "rimTraderAngerDecay", "label": "Concord anger decay per year", "default": 0.5, "min": 0.05, "max": 1 },
     { "name": "rimTraderExchangeRate", "label": "Rare goods per rim good (value)", "default": 1.0, "min": 0.25, "max": 4 },
     { "name": "rimTraderGrantThreshold", "label": "Standing needed to open trade", "default": 1500, "min": 0, "max": 100000 },
     { "name": "rimTraderImportQuota", "label": "Import quota per rim good (units)", "default": 400, "min": 50, "max": 5000 },

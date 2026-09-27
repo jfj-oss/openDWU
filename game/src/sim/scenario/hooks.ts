@@ -247,6 +247,17 @@ export interface ScenarioEvents {
      * inflictIonDamage (6133), habitatInflictIonDamage (Habitat.cs 2357), right before its CompleteTeardown. No Rnd in handlers.
      */
     creatureKilled: { creature: Creature; killer: BuiltObject | Habitat | null; empire: Empire | null };
+    /**
+     * combat/attackAI.ts notifyOfAttackBuiltObject (Galaxy.7.cs 2987 NotifyOfAttack, top): a ship or base is under attack.
+     * No Rnd in handlers. 19a passive posture (the Concord remembers who attacked it).
+     */
+    builtObjectAttacked: { builtObject: BuiltObject; attacker: unknown; attackingEmpire: Empire | null };
+    /**
+     * espionage.ts performIntelligenceMissions (Empire.5.cs 5890-5990), right after the outcome and the blamed empire are
+     * known, for the detected outcomes (SucceedDetect / FailDetect / Capture): `blamed` is the empire the target holds
+     * responsible (the performer, or a framed empire under 19d3). `missionType` is IntelligenceMissionType. No Rnd in handlers.
+     */
+    intelMissionExposed: { empire: Empire; blamed: Empire; target: Empire; missionType: number; outcome: number };
     /** 19j: combat/attackAI.ts notifyOfAttackHabitat (Galaxy.7.cs 3058 NotifyOfAttack, top): a colony is under attack. No Rnd in handlers. */
     habitatAttacked: { habitat: Habitat; attacker: unknown; attackingEmpire: Empire | null; bombarded: boolean };
     contractInitiated: {

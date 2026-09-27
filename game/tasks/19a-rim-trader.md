@@ -390,3 +390,21 @@ from `test/helpers/scenarioGame.ts`; `runGameSeconds` from `tick/harness.ts`; ba
 ## 12. Size
 
 ~2.5–3 days: data + manifest 0.5 d; hooks/rules/listener/yearly 1–1.25 d; UI 0.5 d; tests + soak tuning 0.5–0.75 d.
+
+## 13. Addendum — Concord starting colonies, cap on every path, passive posture with anger
+
+Params / flag (scenario.json): `rimTraderStartColonies` (default 3, 1–10), `rimTraderMaxColonies` (default now 10,
+max 10), flag `rimTraderPassive` (default on) with `rimTraderAngerStanding` (−3000), `rimTraderRetaliationRange`
+(2 sectors), `rimTraderAngerDecay` (0.5 / year). With `rimTraderPassive` off, 1 starting colony and cap 4 a rimTrade game
+is byte-identical to the pre-addendum one (test/rimTraderPassiveSoak.test.ts pins the digests).
+
+- Starting colonies (`rimTrader.ts foundConcordStartColonies`): the capital plus N−1 colonies on the best worlds near it
+  (`concordStartColonyCandidates`: Habitat Quality ≥ 0.7 first, ≥ 0.5 fallback — the original's colonization-worthy
+  line; rim worlds first; nearest first; within 3 sectors; types the Concord can live on; systems no other empire holds),
+  founded through Galaxy.8.cs MakeHabitatIntoColony before the mid-game set-up (createEmpireMidGame `beforeSetup`), or
+  topped up after it for a wizard-generated Oranthi AI.
+- Cap on every path (`passive.ts`): colonization targets (R2, empireTick), Colonize missions and troop landings on a
+  foreign colony refused at the cap (query `assignMissionAllowed`), cmdColonize founds nothing at the cap, and any other
+  gain past the cap is released to the independents at the next 10-day review.
+- Passive posture and anger (`passive.ts`, `common.ts` RimAggression / `rimAnger` state): see the header of passive.ts
+  for the exact aggressive-action list, the retaliation rule and the decay.

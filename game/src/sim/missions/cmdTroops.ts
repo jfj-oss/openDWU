@@ -46,6 +46,7 @@ import { takeOwnershipOfColonyFull } from '../combat/ownership';
 import { purchaseNewBuiltObject } from '../construction/empireConstruction';
 import { determineBuiltObjectIsState } from '../builtObject';
 import { scenarioEmit } from '../scenario/hooks';
+import { rimTraderColonyCapBlocks } from '../scenario/rimTrade/common';
 
 
 /** Empire.3.cs 3557 CheckPirateEmpireHasCriminalNetwork(empire). No Rnd. */
@@ -125,7 +126,8 @@ export const cmdColonize: CommandHandler = (ctx) => {
         if (num104 <= num105) {
             const empire = bo.empire!;
             const { result: canColonize, newPopulationAmount } = canBuiltObjectColonizeHabitat(galaxy, empire, bo, targetHabitat10);
-            if (canColonize) {
+            // Mod layer 19a: the Concord AI founds no colony past its cap (tasks/19a-rim-trader.md R2); the mission is cancelled.
+            if (canColonize && !(galaxy.scenario !== null && rimTraderColonyCapBlocks(galaxy, empire))) {
                 if (targetHabitat10.owner === null || targetHabitat10.owner === galaxy.independentEmpire) {
                     let empty2 = '';
                     let text2 = '';
