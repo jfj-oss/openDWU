@@ -4,7 +4,7 @@
 // import.meta.glob (empty when the file does not exist on this branch) or a state key in galaxy.scenario.state read
 // through a local structural shape — so this compiles and runs here and lights up once those packages merge.
 
-import { Container, Graphics } from 'pixi.js';
+import { Container, Graphics, Text } from 'pixi.js';
 import type { Camera } from './camera';
 import type { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
@@ -39,6 +39,9 @@ import {
     type WreckageStateShape,
     type WreckShape,
 } from './wreckDebris';
+import { activeLeaguesOf, leagueBoundaryDots, leagueFlag, pennantFromFlag, type LeagueShape } from './leagueArt';
+import { flagShapeUrl } from '../sim/startGameOptions';
+import { loadRgba } from '../ui/empireEmblem';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Threat sites (19f framework.ts threatKnownSites / KnownThreatSite)
@@ -126,6 +129,25 @@ function podTexture(): Texture {
     return textureFromPixels(d, n, n, false);
 }
 
+/** Pennants and seat rings show while the zoom factor is below this; the dotted boundary and name above LEAGUE_SECTOR_F. */
+export const LEAGUE_NEAR_F = 300;
+export const LEAGUE_SECTOR_F = 30;
+/** Boundary margin round the members (world units) and dot spacing (screen px). */
+export const LEAGUE_MARGIN = 25000;
+export const LEAGUE_DOT_PX = 12;
+
+/** The 19k-3 active leagues when present (scenario.state['independents']). */
+export function leaguesOf(galaxy: Galaxy): LeagueShape[] {
+    const s = galaxy.scenario;
+    if (s === null || !('independents' in s.state)) return [];
+    return activeLeaguesOf(s.state['independents']);
+}
+
+interface LeagueArt {
+    pennants: Texture[] | null;
+    label: Text | null;
+}
+
 export class ArtBundleLayer {
     readonly root = new Container();
     private threats = new Graphics();
@@ -138,6 +160,12 @@ export class ArtBundleLayer {
     private podPool: SpritePool;
     private podTex: Texture | null = null;
     private wrecks = new Map<number, WreckView | null>();
+    private leagueG = new Graphics();
+    private pennantRoot = new Container();
+    private pennantPool: SpritePool;
+    private labelRoot = new Container();
+    private leagues: LeagueShape[] = [];
+    private leagueArt = new Map<number, LeagueArt>();
     /** Fields / fragments / lit pods drawn this frame (captures). */
     wreckStats = { fields: 0, fragments: 0, pods: 0 };
     private sites: { site: KnownThreatSiteShape; style: ThreatMarkerStyle; seed: number }[] = [];
@@ -151,7 +179,8 @@ export class ArtBundleLayer {
     ) {
         this.root.eventMode = 'none';
         this.root.interactiveChildren = false;
-        this.root.addChild(this.wreckRoot, this.campRoot, this.threats);
+        this.root.addChild(this.wreckRoot, this.campRoot, this.leagueG, this.pennantRoot, this.labelRoot, this.threats);
+        this.pennantPool = new SpritePool(this.pennantRoot);
         this.campPool = new SpritePool(this.campRoot);
         const podRoot = new Container();
         this.wreckPool = new SpritePool(this.wreckRoot);
@@ -164,7 +193,98 @@ export class ArtBundleLayer {
         this.frame++;
         this.updateWrecks(z, cam);
         this.updateCamps(z, cam);
+        this.updateLeagues(z, cam);
         this.updateThreats(z, cam);
+    }
+
+    private artOfLeague(l: LeagueShape): LeagueArt {
+        let a = this.leagueArt.get(l.id);
+        if (a === undefined) {
+            a = { pennants: null, label: null };
+            this.leagueArt.set(l.id, a);
+            const art = a;
+            void (l.flagShape >= 0 ? loadRgba(flagShapeUrl(l.flagShape)) : Promise.resolve(null)).then((shape) => {
+                const flag = leagueFlag(shape, l.colour);
+                art.pennants = [0, 1, 2, 3].map((k) => {
+                    const p = pennantFromFlag(flag, 52, 30, (k * Math.PI) / 2);
+                    return textureFromPixels(p.data, p.w, p.h, false);
+                });
+            });
+        }
+        return a;
+    }
+
+    /** Item 2: pennants beside member colonies, the ringed council seat, the dotted member boundary at sector zoom. */
+    private updateLeagues(z: number, cam: Camera): void {
+        const g = this.leagueG;
+        this.pennantPool.begin();
+        if (this.frame % 30 === 1) this.leagues = leaguesOf(this.galaxy);
+        for (const l of this.labelRoot.children) l.visible = false;
+        if (this.leagues.length === 0) {
+            if (g.visible) {
+                g.clear();
+                g.visible = false;
+            }
+            this.pennantPool.end();
+            return;
+        }
+        g.clear();
+        g.visible = true;
+        const f = 1 / z;
+        const t = performance.now() / 1000;
+        const halfW = cam.width / 2 / z;
+        const halfH = cam.height / 2 / z;
+        const onScreen = (x: number, y: number, m: number): boolean => Math.abs(x - cam.x) < halfW + m && Math.abs(y - cam.y) < halfH + m;
+        for (const l of this.leagues) {
+            const art = this.artOfLeague(l);
+            const col = l.colour;
+            if (f < LEAGUE_NEAR_F) {
+                for (const m of l.members) {
+                    if (!onScreen(m.xpos, m.ypos, 200 / z)) continue;
+                    const r = Math.max(planetSpritePx((m as { diameter?: number }).diameter ?? 0, z) / 2, 8) / z;
+                    const bx = m.xpos + r * 0.9;
+                    const by = m.ypos - r * 0.9;
+                    // Pole, then the pennant flying from its top.
+                    g.moveTo(bx, by).lineTo(bx, by - 30 / z).stroke({ width: 1.5 / z, color: 0xd8d0c0, alpha: 0.9 });
+                    if (art.pennants !== null) {
+                        const tex = art.pennants[Math.floor(t * 4 + l.id) % art.pennants.length];
+                        const s = this.pennantPool.acquire(tex);
+                        s.anchor.set(0, 0);
+                        s.position.set(bx, by - 30 / z);
+                        s.scale.set(26 / tex.width / z);
+                    }
+                }
+                const seat = l.founder;
+                if (seat !== null && onScreen(seat.xpos, seat.ypos, 200 / z)) {
+                    const r = Math.max(planetSpritePx((seat as { diameter?: number }).diameter ?? 0, z) / 2 + 14, 22) / z;
+                    g.circle(seat.xpos, seat.ypos, r).stroke({ width: 2.5 / z, color: col, alpha: 0.95 });
+                    g.circle(seat.xpos, seat.ypos, r + 6 / z).stroke({ width: 1.2 / z, color: col, alpha: 0.7 });
+                    for (let k = 0; k < 8; k++) {
+                        const a = (k / 8) * Math.PI * 2 + t * 0.1;
+                        g.moveTo(seat.xpos + Math.cos(a) * r, seat.ypos + Math.sin(a) * r).lineTo(seat.xpos + Math.cos(a) * (r + 6 / z), seat.ypos + Math.sin(a) * (r + 6 / z));
+                    }
+                    g.stroke({ width: 1.5 / z, color: col, alpha: 0.9 });
+                }
+            }
+            if (f >= LEAGUE_SECTOR_F) {
+                const pts = l.members.map((m) => ({ x: m.xpos, y: m.ypos }));
+                const dots = leagueBoundaryDots(pts, Math.max(LEAGUE_MARGIN, 30 / z), LEAGUE_DOT_PX / z);
+                for (const d of dots) if (onScreen(d.x, d.y, 10 / z)) g.circle(d.x, d.y, 1.8 / z);
+                g.fill({ color: col, alpha: 0.85 });
+                const seat = l.founder ?? l.members[0] ?? null;
+                if (seat !== null && onScreen(seat.xpos, seat.ypos, 300 / z)) {
+                    if (art.label === null) {
+                        art.label = new Text({ text: l.name, style: { fontFamily: 'sans-serif', fontSize: 14, fill: col, stroke: { color: 0x000000, width: 3 } } });
+                        art.label.anchor.set(0.5, 0);
+                        this.labelRoot.addChild(art.label);
+                    }
+                    art.label.visible = true;
+                    art.label.position.set(seat.xpos, seat.ypos + 16 / z);
+                    art.label.scale.set(1 / z);
+                }
+            }
+        }
+        this.pennantPool.end();
     }
 
     /** The fragments of one wreck (null = its art is missing; undefined while loading). */

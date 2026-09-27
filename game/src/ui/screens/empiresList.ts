@@ -11,6 +11,7 @@ import type { Habitat } from '../../sim/types';
 import { DiplomaticRelationType } from '../../sim/diplomacy';
 import { PirateRelationType } from '../../sim/pirateRelations';
 import { applyEmpireEmblem } from '../empireEmblem';
+import { leagueSection } from '../leagueRows';
 import { rimTraderTag } from '../scenario/rimTraderRows';
 
 export interface EmpiresListOptions {
@@ -180,6 +181,9 @@ function createEmpiresList(opts: EmpiresListOptions): OpenState {
         });
         body.appendChild(line);
     }
+    // 19r: the independent leagues (19k-3) with their flags, when any exist.
+    const leagues = leagueSection(opts.playerEmpire.galaxy, 'empires-list');
+    if (leagues !== null) body.appendChild(leagues);
     win.appendChild(body);
     root.appendChild(win);
     document.body.appendChild(root);

@@ -38,6 +38,7 @@ import {
 } from '../../sim/diplomacyTick';
 import { galaxyStarDate } from '../../sim/tick/simTime';
 import { applyEmpireEmblem } from '../empireEmblem';
+import { leagueSection } from '../leagueRows';
 import { rimTraderTermsRows, type RimTraderTermsRows } from '../scenario/rimTraderRows';
 import { rimTraderEmpire } from '../../sim/scenario/rimTrade/common';
 import { REAL_SECONDS_IN_GALACTIC_YEAR } from '../../sim/galaxyTime';
@@ -551,6 +552,9 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
             detail.appendChild(line);
         }
 
+        // 19r: the independent leagues (19k-3) with their flags, under the empire rows.
+        const leagues = leagueSection(player.galaxy, 'diplomacy');
+        if (leagues !== null) list.appendChild(leagues);
         body.append(list, detail);
         list.scrollTop = listScroll;
         detail.scrollTop = detailScroll;
