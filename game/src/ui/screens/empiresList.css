@@ -61,6 +61,40 @@
     flex-direction: column;
     gap: 4px;
     overflow-y: auto;
+    /* Task 19k-1d (Big Galaxies): force this pane to shrink within the window's
+       flex column instead of growing past max-height, so it actually scrolls
+       (rather than silently clipping) once there are 60 empire rows. */
+    flex: 1 1 auto;
+    min-height: 0;
+}
+
+.empires-list-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+/* Task 19k-1d: the filter box above the header/rows. */
+.empires-list-filter {
+    margin: 0 8px 6px;
+    padding: 5px 8px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 4px;
+    color: #e6e6e6;
+    font-family: inherit;
+    font-size: 12px;
+}
+.empires-list-filter:focus {
+    outline: none;
+    border-color: rgba(255, 255, 255, 0.3);
+}
+
+.empires-list-empty {
+    padding: 10px 4px;
+    color: #888;
+    font-size: 12px;
+    text-align: center;
 }
 
 /* Task 12g: column headers, same grid as the rows. */

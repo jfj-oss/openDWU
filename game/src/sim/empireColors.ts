@@ -7,6 +7,8 @@
 // numbers (alpha is always 255 in these tables); Color.Empty is 0.
 
 import type { Galaxy } from './galaxy';
+import type { Empire } from './empire';
+import { scenarioFlag } from './scenario/state';
 
 const KEY_COLORS = [
     0x0000b0, 0x0040e8, 0x0080ff, 0x00ffff, 0x185018, 0x008000, 0x00cc00, 0xa0ff00, 0xffff20, 0xff681f, 0xff0030, 0x870000,
@@ -15,6 +17,55 @@ const KEY_COLORS = [
 
 export function selectColorFromKey(key: number): number {
     return key >= 0 && key < KEY_COLORS.length ? KEY_COLORS[key] : 0;
+}
+
+// ---------------------------------------------------------------------------
+// Task 19k-1b (Big Galaxies, presentation only): with >20 empires,
+// SelectUnusedMainColor's 20-key budget is spent and Galaxy.cs falls back to
+// a random muted RGB colour per empire (empire.mainColor keeps that value —
+// this file's sim-facing functions above are untouched, so pins stay at 0).
+// The `big-galaxies` scenario's `extendedPalette` flag swaps that random
+// fallback for a fixed, contrast-picked colour from a 40-entry data table
+// (20 key + 40 extended = 60, the "Big galaxies" cap) — for display only:
+// selectDisplayColor / displayColorForEmpire are called from render/UI code,
+// never from sim generation, so this never changes empire.mainColor itself.
+// ---------------------------------------------------------------------------
+
+/** The 20 key colours empires are actually assigned from (KEY_COLORS[20..23] are extra fixed colours used elsewhere, not part of the 20-colour empire budget). */
+const KEY_COLORS_20 = KEY_COLORS.slice(0, 20);
+
+/** 40 additional colours for empires beyond the 20 key ones (task 19k-1b), picked for hue/lightness spread so they
+ * read as distinct from the 20 key colours and from each other on the dark starfield background. Not a C# table. */
+const EXTENDED_COLORS: readonly number[] = [
+    0xf0574c, 0xd2512d, 0xf4a77b, 0xdda05f, 0xeca413, 0xe6d589, 0xf0eb4c, 0xbfd22d, 0xd4f47b, 0xa9dd5f,
+    0x71ec13, 0xa3e689, 0x62f04c, 0x2dd22f, 0x7bf48f, 0x5fdd87, 0x13ec78, 0x89e6c2, 0x4cf0ca, 0x2dd2c5,
+    0x7becf4, 0x5fc2dd, 0x139cec, 0x89b6e6, 0x4c83f0, 0x2d4bd2, 0x7b7ff4, 0x6e5fdd, 0x4d13ec, 0xb089e6,
+    0xa94cf0, 0xa32dd2, 0xe47bf4, 0xdd5fdb, 0xec13c8, 0xe689c9, 0xf04ca4, 0xd22d6c, 0xf47b97, 0xdd5f6a,
+];
+
+/** True when `color` is one of the 20 key colours empire.mainColor is assigned from (SelectUnusedMainColor's budget). */
+function isKeyColor(color: number): boolean {
+    return KEY_COLORS_20.includes(color);
+}
+
+/**
+ * The display colour for `empire` (task 19k-1b): with the `extendedPalette` scenario flag off, or with no scenario,
+ * this is exactly `empire.mainColor` (byte-identical to the faithful game). With it on, an empire whose mainColor is
+ * NOT one of the 20 key colours (i.e. it hit SelectUnusedMainColor's random-fallback branch, meaning >20 empires in
+ * this galaxy already claimed the key colours) instead gets a colour from EXTENDED_COLORS, picked by that empire's
+ * stable rank (by empireId) among every such "overflow" empire — deterministic and distinct for up to 40 of them
+ * (60 empires total: 20 key + 40 extended). Read-only: never touches empire.mainColor or galaxy.rnd.
+ */
+export function displayColorForEmpire(empire: Empire): number {
+    const galaxy = empire.galaxy;
+    if (galaxy == null || !scenarioFlag(galaxy, 'extendedPalette') || isKeyColor(empire.mainColor)) {
+        return empire.mainColor;
+    }
+    const overflow = galaxy.empires
+        .filter((e): e is Empire => e !== null && !isKeyColor(e.mainColor))
+        .sort((a, b) => a.empireId - b.empireId);
+    const rank = overflow.indexOf(empire);
+    return rank < 0 ? empire.mainColor : EXTENDED_COLORS[rank % EXTENDED_COLORS.length];
 }
 
 const COMPLEMENTARY = [3, 8, 20, 1, 14, 9, 4, 12, 11, 12, 20, 14, 9, 20, 12, 8, 20, 8, 11, 11, 10, 4, 19];

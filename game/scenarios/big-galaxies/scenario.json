@@ -1,0 +1,13 @@
+{
+  "id": "big-galaxies",
+  "name": "Big Galaxies",
+  "description": "For 40-60 empire games: an extended colour palette so empires beyond the original 20 key colours (Galaxy.cs SelectColorFromKey) stay visually distinct on the map and in the UI. Presentation only — no sim/generation change (flag off = byte-identical; a fresh pin check with the flag on stays clean because it only touches rendering).",
+  "flags": [
+    {
+      "name": "extendedPalette",
+      "label": "Extended colour palette (40+ empires)",
+      "description": "Empires beyond the 20 key colours are drawn with 40 additional distinct colours instead of the original's random muted fallback colour, so 40-60 empire games stay readable on the map, diplomacy screen and empires list.",
+      "default": false
+    }
+  ]
+}

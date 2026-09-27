@@ -6,10 +6,15 @@ import { describe, expect, it } from 'vitest';
 import { Random } from '../src/sim/random';
 import {
     determineSecondaryColor,
+    displayColorForEmpire,
+    selectColorFromKey,
     selectColorFromKeyDark,
     selectUnusedMainColor,
 } from '../src/sim/empireColors';
 import type { Galaxy } from '../src/sim/galaxy';
+import type { Empire } from '../src/sim/empire';
+import { createGalaxyScenario } from '../src/sim/scenario/state';
+import { parseScenarioManifest } from '../src/sim/scenario/manifest';
 
 function fakeGalaxy(seed: number, pirateMainColors: number[] = []): Galaxy {
     return {
@@ -17,6 +22,22 @@ function fakeGalaxy(seed: number, pirateMainColors: number[] = []): Galaxy {
         empires: [],
         pirateEmpires: pirateMainColors.map((mainColor) => ({ mainColor })),
     } as unknown as Galaxy;
+}
+
+/** A `big-galaxies` scenario galaxy (task 19k-1b) with `extendedPalette` on/off and `n` fake empires: the first 20
+ * on distinct key colours, the rest overflowing to the random-fallback range (mimicking SelectUnusedMainColor once
+ * the 20-key budget is spent). empireId is assignment order, 1-based, like Galaxy.getNextEmpireID(). */
+function fakePaletteGalaxy(n: number, extendedPalette: boolean): Galaxy {
+    const manifest = parseScenarioManifest({ id: 'big-galaxies', flags: [{ name: 'extendedPalette', default: false }] });
+    const galaxy = { empires: [] } as unknown as Galaxy;
+    galaxy.scenario = createGalaxyScenario(manifest, { flags: { extendedPalette } });
+    const empires: Empire[] = [];
+    for (let i = 0; i < n; i++) {
+        const mainColor = i < 20 ? selectColorFromKey(i) : 0x202020 + i; // fallback range never collides with a key colour
+        empires.push({ empireId: i + 1, mainColor, galaxy } as unknown as Empire);
+    }
+    galaxy.empires = empires;
+    return galaxy;
 }
 
 describe('selectColorFromKeyDark', () => {
@@ -106,5 +127,42 @@ describe('selectUnusedMainColor pirate branch', () => {
         const g1 = fakeGalaxy(999);
         const g2 = fakeGalaxy(999);
         expect(selectUnusedMainColor(g1, true)).toEqual(selectUnusedMainColor(g2, true));
+    });
+});
+
+describe('displayColorForEmpire (task 19k-1b: extended palette, presentation only)', () => {
+    it('is byte-identical to mainColor with the scenario flag off, at any empire count', () => {
+        const galaxy = fakePaletteGalaxy(60, false);
+        for (const e of galaxy.empires) expect(displayColorForEmpire(e)).toBe(e.mainColor);
+    });
+
+    it('is byte-identical to mainColor with no scenario at all', () => {
+        const galaxy = fakeGalaxy(1);
+        galaxy.scenario = null;
+        const empire = { empireId: 1, mainColor: 0x123456, galaxy } as unknown as Empire;
+        expect(displayColorForEmpire(empire)).toBe(0x123456);
+    });
+
+    it('keeps the first 20 empires on their exact key colour with the flag on', () => {
+        const galaxy = fakePaletteGalaxy(60, true);
+        for (let i = 0; i < 20; i++) {
+            const e = galaxy.empires[i];
+            expect(displayColorForEmpire(e)).toBe(selectColorFromKey(i));
+        }
+    });
+
+    it('gives every one of 60 empires a distinct display colour with the flag on', () => {
+        const galaxy = fakePaletteGalaxy(60, true);
+        const colors = galaxy.empires.map((e) => displayColorForEmpire(e));
+        expect(new Set(colors).size).toBe(60);
+    });
+
+    it('is deterministic and does not depend on array iteration order (keyed by empireId)', () => {
+        const galaxy = fakePaletteGalaxy(45, true);
+        const shuffled = [...galaxy.empires].reverse();
+        const e = galaxy.empires[40]; // an overflow empire (>= index 20)
+        const viaGalaxyOrder = displayColorForEmpire(e);
+        (galaxy as unknown as { empires: unknown }).empires = shuffled;
+        expect(displayColorForEmpire(e)).toBe(viaGalaxyOrder);
     });
 });

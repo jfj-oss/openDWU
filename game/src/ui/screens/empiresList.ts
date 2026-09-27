@@ -10,6 +10,7 @@ import type { Empire } from '../../sim/empire';
 import type { Habitat } from '../../sim/types';
 import { DiplomaticRelationType } from '../../sim/diplomacy';
 import { PirateRelationType } from '../../sim/pirateRelations';
+import { displayColorForEmpire } from '../../sim/empireColors';
 
 export interface EmpiresListOptions {
     /** galaxy.empires — every empire in the galaxy. */
@@ -68,6 +69,14 @@ export function empireRows(empires: Empire[], player: Empire): EmpireRow[] {
     }));
 }
 
+/** Task 19k-1d (Big Galaxies): case-insensitive substring filter on name/capital, for the panel's filter box — at 60
+ * empires the plain list is long, so a filter is the fast way to find one. An empty/blank query keeps every row. */
+export function filterEmpireRows(rows: EmpireRow[], query: string): EmpireRow[] {
+    const q = query.trim().toLowerCase();
+    if (q === '') return rows;
+    return rows.filter((r) => r.label.toLowerCase().includes(q) || r.capitalName.toLowerCase().includes(q));
+}
+
 interface OpenState {
     root: HTMLElement;
     close: () => void;
@@ -111,6 +120,15 @@ function createEmpiresList(opts: EmpiresListOptions): OpenState {
     titlebar.appendChild(closeBtn);
     win.appendChild(titlebar);
 
+    // Task 19k-1d (Big Galaxies): a filter box, so a 60-empire list stays
+    // usable — filters by name or capital (filterEmpireRows).
+    const filterInput = document.createElement('input');
+    filterInput.type = 'text';
+    filterInput.className = 'empires-list-filter';
+    filterInput.placeholder = 'Filter by name or capital…';
+    filterInput.autocomplete = 'off';
+    win.appendChild(filterInput);
+
     const body = document.createElement('div');
     body.className = 'empires-list-body';
 
@@ -131,38 +149,56 @@ function createEmpiresList(opts: EmpiresListOptions): OpenState {
     header.append(blank, hName, hColonies, hCapital);
     body.appendChild(header);
 
-    for (const row of empireRows(opts.empires, opts.playerEmpire)) {
-        const line = document.createElement('div');
-        line.className = 'empires-list-row';
+    const allRows = empireRows(opts.empires, opts.playerEmpire);
+    const rowsList = document.createElement('div');
+    rowsList.className = 'empires-list-rows';
+    body.appendChild(rowsList);
 
-        // Colour swatch: Empire.mainColor is a packed RGB value read the same
-        // way hud.ts colorHueRotate decodes it.
-        const c = row.empire.mainColor;
-        const swatch = document.createElement('span');
-        swatch.className = 'empires-list-swatch';
-        swatch.style.background = `rgb(${(c >> 16) & 255}, ${((c >> 8) & 255)}, ${(c & 255)})`;
+    function renderRows(): void {
+        rowsList.replaceChildren();
+        const rows = filterEmpireRows(allRows, filterInput.value);
+        for (const row of rows) {
+            const line = document.createElement('div');
+            line.className = 'empires-list-row';
 
-        const name = document.createElement('span');
-        name.className = 'empires-list-name';
-        name.textContent = row.label;
+            // Colour swatch: the empire's display colour (its own mainColor, or — with the big-galaxies scenario's
+            // extendedPalette flag on — a distinct extra colour once the 20 key colours are spent, task 19k-1b).
+            const c = displayColorForEmpire(row.empire);
+            const swatch = document.createElement('span');
+            swatch.className = 'empires-list-swatch';
+            swatch.style.background = `rgb(${(c >> 16) & 255}, ${((c >> 8) & 255)}, ${(c & 255)})`;
 
-        const count = document.createElement('span');
-        count.className = 'empires-list-colonies';
-        count.textContent = String(row.colonies);
+            const name = document.createElement('span');
+            name.className = 'empires-list-name';
+            name.textContent = row.label;
 
-        const capital = document.createElement('span');
-        capital.className = 'empires-list-capital';
-        capital.textContent = row.capitalName;
+            const count = document.createElement('span');
+            count.className = 'empires-list-colonies';
+            count.textContent = String(row.colonies);
 
-        line.append(swatch, name, count, capital);
-        line.addEventListener('click', () => {
-            const capitalHabitat = row.empire.capital;
-            if (!capitalHabitat) return;
-            close();
-            opts.onZoomTo(capitalHabitat);
-        });
-        body.appendChild(line);
+            const capital = document.createElement('span');
+            capital.className = 'empires-list-capital';
+            capital.textContent = row.capitalName;
+
+            line.append(swatch, name, count, capital);
+            line.addEventListener('click', () => {
+                const capitalHabitat = row.empire.capital;
+                if (!capitalHabitat) return;
+                close();
+                opts.onZoomTo(capitalHabitat);
+            });
+            rowsList.appendChild(line);
+        }
+        if (rows.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'empires-list-empty';
+            empty.textContent = 'No empires match this filter.';
+            rowsList.appendChild(empty);
+        }
     }
+    filterInput.addEventListener('input', renderRows);
+    renderRows();
+
     win.appendChild(body);
     root.appendChild(win);
     document.body.appendChild(root);
