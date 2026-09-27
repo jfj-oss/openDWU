@@ -101,3 +101,5 @@ year 10 (1–8 per empire). Follow-ups:
   branch; once 19j is merged, the drop lands in the hunters' holds automatically — decide whether to keep the bounty too
   (probably drop it). Also: fuel-scarcity default (0.65) vs belt inner (0.7) means rim pirate bases sit on fuel-less
   worlds; consider a pirate exemption or a small fuel band at the rim.
+- Save size at scale (2026-09-27): a 4000-star / ×1.7 galaxy serialises to ~420 MB of text (139 MB at 700 stars). Needs a
+  compact save format (binary or compressed, id-indexed) before big galaxies are playable across sessions. Medium (Opus).
