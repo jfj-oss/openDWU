@@ -7,7 +7,8 @@
 
 import { closeEventSting, playDiplomacyMood, playMessageSounds } from '../audio/gameAudio'; // [audio]
 import './messagePopups.css';
-import { getMessageOptions, routeEmpireMessage, shouldQueueConversation, type DialogPartType } from './messageRouting';
+import { getMessageOptions, playerDefeatGameEnd, routeEmpireMessage, shouldQueueConversation, type DialogPartType } from './messageRouting';
+import { onGameEnd } from '../sim/victory';
 import { EmpireMessageType, empireMessages, type EmpireMessage, empireMessageHistory } from '../sim/messages';
 import type { Empire } from '../sim/empire';
 import type { Galaxy } from '../sim/galaxy';
@@ -386,6 +387,9 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
             if (receiveAdvisorSuggestionMessage(player, m)) continue;
             // [suggest] end
             const route = routeEmpireMessage(m, player, options);
+            // Main.Part9.cs 1994-2020: the player's own EmpireDefeated message → Galaxy_GameEnd(defeat).
+            const defeat = playerDefeatGameEnd(m, player, galaxy.empires);
+            if (defeat !== null) onGameEnd(galaxy, defeat);
             // [popupstubs] begin
             // A popup message becomes a stub under the top-right panel; the card opens by itself only with the
             // "Open messages automatically" option (the 16d behaviour).

@@ -3,7 +3,6 @@
 // (Main.Part9.cs:2711 method_260). Pure: no DOM.
 // TODO(port): message sounds (EffectsPlayer.ResolveMessage / ResolveImportantMessage)
 // TODO(port): advisor-suggestion queue entries (DialogPartType.Undefined, Main.Part9.cs:2226)
-// TODO(port): EmpireDefeated of the player → Galaxy_GameEnd defeat (Main.Part9.cs:1994-2020)
 // TODO(port): RestrictedResourceTrading* / PirateOfferProtection description rewrites (Main.Part9.cs:2075-2137)
 // TODO(port): save the Display* options with the game (Game.cs) — session-only here
 
@@ -14,6 +13,9 @@ import { BuiltObjectSubRole } from '../sim/builtObjectTypes';
 import { DiplomaticRelationType } from '../sim/diplomacy';
 import { AutomationLevel, type Empire } from '../sim/empire';
 import { TradeableItem, TradeableItemType } from '../sim/tradeItems';
+import { GameEndEventArgs, GameEndOutcome } from '../sim/victory';
+import { totalColonyStrategicValue } from '../sim/forceStructure';
+import { getText } from '../sim/textResolver';
 
 /** Game.cs:71-127: the DisplayPopup<Cat> / DisplayMessage<Cat> categories, in declaration order. */
 export enum MessageCategory {
@@ -625,4 +627,27 @@ export function shouldQueueConversation(route: MessageRoute, opts: MessageOption
     if (route.conversation === null) return 'none';
     if (route.immediate) return opts.suppressAllPopups ? 'none' : 'open';
     return 'queue';
+}
+
+/**
+ * Main.Part9.cs 1994-2020 ReceiveMessageInternal, case EmpireDefeated: when the defeated empire (the message subject) is
+ * the player's, the game ends in defeat; the victor is the remaining empire with the highest TotalColonyStrategicValue
+ * (strictly greater than 0, first wins ties), in Galaxy.Empires order. Returns the Galaxy_GameEnd args, or null when the
+ * message is not the player's own defeat. No Rnd.
+ */
+export function playerDefeatGameEnd(message: EmpireMessage, player: Empire | null, empires: readonly Empire[]): GameEndEventArgs | null {
+    if (message.messageType !== EmpireMessageType.EmpireDefeated) return null;
+    const subject = message.subject as Empire | null;
+    if (subject === null || player === null || subject !== player) return null;
+    let victorEmpire: Empire | null = null;
+    let num2 = 0;
+    for (let j = 0; j < empires.length; j++) {
+        const empire3 = empires[j];
+        const value = totalColonyStrategicValue(empire3);
+        if (value > num2) {
+            victorEmpire = empire3;
+            num2 = value;
+        }
+    }
+    return new GameEndEventArgs(victorEmpire, GameEndOutcome.Defeat, getText('Your empire has been completely wiped out!'), 0);
 }
