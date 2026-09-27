@@ -167,6 +167,10 @@ Makes the rim itself hard to reach and hold, independent of the fauna. Scenario 
    from it). Re-pins only inside the scenario. Must ship with a speed check at the top setting (single-threaded sim; the
    36 game-days/min budget must hold or the option is capped).
 Params: belt inner radius, storm density, thinning radius/factor, shoal count, fuel bias, fog factor, extent multiplier, star cap.
+7. Starts out of the rim (user, 2026-09-26: "keep normal empires and player empire out of the rim"): with the frontier flag
+   on, ordinary empires' and the player's home systems are never placed past the rim inner radius (a home-habitat accept
+   hook on the C# capital search; the Concord, independents, herders and fauna keep the rim). Param
+   `rimFrontierKeepStartsOut` default on. Star cap raised to 4000 (user, 2026-09-26) with two-letter sector labels.
 
 ## 19i — Rim atmosphere (ACCEPTED by the user 2026-09-26 — "yes"; presentation only, reads a distance-from-centre curve; flag off = untouched)
 Visual: (1) colour grading by radius — desaturate + cold blue-violet tint on star field/nebulae past the rim band, fading in
