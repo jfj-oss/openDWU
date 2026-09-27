@@ -18,6 +18,9 @@ import { netSort } from '../../sim/netSort';
 import { resolveStarDateDescription } from '../../sim/galaxyTime';
 import { formatNet, resolveGameText, tryGetText } from '../../sim/textResolver';
 import { rgbCss } from '../hud';
+import type { Galaxy } from '../../sim/galaxy';
+import { EVENT_CATEGORIES, eventLogEntries, eventLogOn, eventsKnownTo, findEmpireById, type EventCategory, type EventLogEntry } from '../../sim/scenario/eventLog/log';
+import { categoryLabel, resolveEntryText, resolveEntryTitle } from '../../sim/scenario/eventLog/chronicle';
 
 // ---------------------------------------------------------------------------
 // Pure logic
@@ -418,6 +421,64 @@ export function nextHistorySort(current: HistorySort | null, column: HistorySort
 }
 
 // ---------------------------------------------------------------------------
+// 19p event log (flag eventLog): the log-backed list — a category filter and an importance sort. Not a port; with
+// the flag off the screen is the faithful method_542 list above.
+// ---------------------------------------------------------------------------
+
+export type HistoryCategoryFilter = EventCategory | 'all';
+export type HistoryLogSort = 'date' | 'importance';
+
+export interface EventLogHistoryRow {
+    entry: EventLogEntry;
+    title: string;
+    text: string;
+    starDate: number;
+    date: string;
+    category: EventCategory;
+    categoryLabel: string;
+    importance: number;
+    location: { x: number; y: number } | null;
+    icon: HistoryIcon | null;
+}
+
+/** True when the screen lists the event log instead of Empire.MessageHistory. */
+export function galacticHistoryUsesEventLog(galaxy: Galaxy | null | undefined): boolean {
+    return eventLogOn(galaxy);
+}
+
+/** The category filter's choices: All, then every category in EVENT_CATEGORIES order. */
+export function historyCategoryOptions(): { value: HistoryCategoryFilter; label: string }[] {
+    return [{ value: 'all', label: tryGetText('EventLog All Categories') ?? 'All Categories' }, ...EVENT_CATEGORIES.map((c) => ({ value: c, label: categoryLabel(c) }))];
+}
+
+/**
+ * Rows for the log-backed list (DOM-free): what the player was told or took part in (log.ts eventsKnownTo), filtered
+ * by category; `date` = newest first, `importance` = most important first, newest first within a level.
+ */
+export function eventLogHistoryRows(galaxy: Galaxy, player: Empire, category: HistoryCategoryFilter, sort: HistoryLogSort): EventLogHistoryRow[] {
+    const entries = eventsKnownTo(galaxy, player).filter((e) => category === 'all' || e.category === category);
+    const ordered = entries.slice().reverse(); // newest first (the log is append-ordered)
+    if (sort === 'importance') ordered.sort((a, b) => b.importance - a.importance); // stable: newest first within a level
+    return ordered.map((e) => {
+        const firstEmpire = e.actors.find((a) => a.kind !== 'character');
+        const emp = firstEmpire !== undefined ? findEmpireById(galaxy, firstEmpire.id) : null;
+        const p = e.place;
+        return {
+            entry: e,
+            title: resolveEntryTitle(e),
+            text: resolveEntryText(e),
+            starDate: e.starDate,
+            date: resolveStarDateDescription(e.starDate),
+            category: e.category,
+            categoryLabel: categoryLabel(e.category),
+            importance: e.importance,
+            location: p !== null && (p.x !== 0 || p.y !== 0) ? { x: p.x, y: p.y } : null,
+            icon: flag(emp),
+        };
+    });
+}
+
+// ---------------------------------------------------------------------------
 // DOM
 // ---------------------------------------------------------------------------
 
@@ -459,11 +520,27 @@ function el(tag: string, className: string, content?: string): HTMLElement {
 
 function createGalacticHistory(opts: GalacticHistoryOptions): OpenState {
     const { empire, onGoTo } = opts;
+    // 19p: with the event log on, the list reads the log (category filter + importance sort).
+    const logMode = galacticHistoryUsesEventLog(empire.galaxy);
     let filter = opts.filter ?? HistoryFilter.GalacticHistory;
+    let category: HistoryCategoryFilter = 'all';
+    let logSort: HistoryLogSort = 'date';
     let sort: HistorySort | null = null;
-    let selected: EmpireMessage | null = null;
-    let rows: GalacticHistoryRow[] = [];
+    /** The selected row's key: an EmpireMessage (faithful list) or an EventLogEntry (log list). */
+    let selected: unknown = null;
+    let rows: ViewRow[] = [];
     let historyKey = '';
+
+    interface ViewRow {
+        key: unknown;
+        title: string;
+        date: string;
+        starDate: number;
+        icon: HistoryIcon | null;
+        heading: string;
+        body: string;
+        loc: { x: number; y: number } | null;
+    }
 
     const root = el('div', 'galactic-history-wrap');
     const win = el('div', 'galactic-history-window');
@@ -478,12 +555,29 @@ function createGalacticHistory(opts: GalacticHistoryOptions): OpenState {
     const left = el('div', 'galactic-history-left');
     const select = document.createElement('select');
     select.className = 'galactic-history-filter';
-    HISTORY_FILTER_LABELS.forEach((label, i) => {
+    if (logMode) {
+        for (const c of historyCategoryOptions()) {
+            const o = document.createElement('option');
+            o.value = c.value;
+            o.textContent = c.label;
+            select.appendChild(o);
+        }
+    } else {
+        HISTORY_FILTER_LABELS.forEach((label, i) => {
+            const o = document.createElement('option');
+            o.value = String(i);
+            o.textContent = text(label);
+            select.appendChild(o);
+        });
+    }
+    const sortSelect = document.createElement('select');
+    sortSelect.className = 'galactic-history-filter';
+    for (const [v, tag, fallback] of [['date', 'EventLog Sort Date', 'Sort by Date'], ['importance', 'EventLog Sort Importance', 'Sort by Importance']] as const) {
         const o = document.createElement('option');
-        o.value = String(i);
-        o.textContent = text(label);
-        select.appendChild(o);
-    });
+        o.value = v;
+        o.textContent = tryGetText(tag) ?? fallback;
+        sortSelect.appendChild(o);
+    }
     const header = el('div', 'galactic-history-header');
     const hIcon = el('span', 'galactic-history-header-cell');
     const hTitle = el('button', 'galactic-history-header-cell galactic-history-sortable') as HTMLButtonElement;
@@ -492,7 +586,8 @@ function createGalacticHistory(opts: GalacticHistoryOptions): OpenState {
     hDate.type = 'button';
     header.append(hIcon, hTitle, hDate);
     const list = el('div', 'galactic-history-list');
-    left.append(select, header, list);
+    if (logMode) left.append(select, sortSelect, header, list);
+    else left.append(select, header, list);
 
     const right = el('div', 'galactic-history-right');
     const msgHeading = el('div', 'galactic-history-msg-heading');
@@ -506,33 +601,48 @@ function createGalacticHistory(opts: GalacticHistoryOptions): OpenState {
     document.body.appendChild(root);
 
     function renderHeader(): void {
-        const arrow = (c: HistorySortColumn): string => (sort?.column === c ? (sort.ascending ? ' ▲' : ' ▼') : '');
+        const arrow = (c: HistorySortColumn): string => (!logMode && sort?.column === c ? (sort.ascending ? ' ▲' : ' ▼') : '');
         hTitle.textContent = text('Subject') + arrow('title');
         hDate.textContent = text('Star Date') + arrow('starDate');
     }
 
+    function selectedRow(): ViewRow | null {
+        return rows.find((r) => r.key === selected) ?? null;
+    }
+
     // Port of Main.Part4.cs:1982 method_531: heading, text and Go To for the selected message.
     function showSelected(): void {
-        if (selected === null) {
+        const row = selectedRow();
+        if (row === null) {
             msgHeading.textContent = '';
             msgText.textContent = '';
             gotoBtn.disabled = true;
             return;
         }
-        msgHeading.textContent = messageTitle(selected, empire);
-        msgText.textContent = resolveGameText(selected.description);
-        gotoBtn.disabled = messageLocation(selected) === null;
+        msgHeading.textContent = row.heading;
+        msgText.textContent = row.body;
+        gotoBtn.disabled = row.loc === null;
+    }
+
+    /** The rows in display order (the faithful list applies the column sort; the log list is ordered by its builder). */
+    function shownRows(): ViewRow[] {
+        if (logMode) return rows;
+        const byKey = new Map(rows.map((r) => [r.key, r] as const));
+        return sortHistoryRows(
+            rows.map((r) => ({ message: r.key as EmpireMessage, title: r.title, starDate: r.starDate, date: r.date, icon: r.icon })),
+            sort,
+        ).map((r) => byKey.get(r.message)!);
     }
 
     function renderList(): void {
-        heading.textContent = historyHeaderTitle(filter);
+        heading.textContent = logMode ? text('Galactic History') : historyHeaderTitle(filter);
         renderHeader();
-        const shown = sortHistoryRows(rows, sort);
+        const shown = shownRows();
         list.replaceChildren();
         if (shown.length === 0) list.appendChild(el('div', 'galactic-history-empty', 'No messages'));
         for (const row of shown) {
             const line = el('div', 'galactic-history-row');
-            if (row.message === selected) line.classList.add('galactic-history-row-selected');
+            if (row.key === selected) line.classList.add('galactic-history-row-selected');
             const icon = el('span', 'galactic-history-icon');
             if (row.icon?.kind === 'image') {
                 const img = document.createElement('img');
@@ -548,7 +658,7 @@ function createGalacticHistory(opts: GalacticHistoryOptions): OpenState {
             }
             line.append(icon, el('span', 'galactic-history-title', row.title), el('span', 'galactic-history-date', row.date));
             line.addEventListener('click', () => {
-                selected = row.message;
+                selected = row.key;
                 for (const r of list.children) r.classList.remove('galactic-history-row-selected');
                 line.classList.add('galactic-history-row-selected');
                 showSelected();
@@ -557,40 +667,76 @@ function createGalacticHistory(opts: GalacticHistoryOptions): OpenState {
         }
     }
 
+    function buildRows(): ViewRow[] {
+        if (logMode) {
+            return eventLogHistoryRows(empire.galaxy, empire, category, logSort).map((r) => ({
+                key: r.entry,
+                title: r.importance > 0 ? `${'!'.repeat(r.importance)} ${r.title}` : r.title,
+                date: r.date,
+                starDate: r.starDate,
+                icon: r.icon,
+                heading: `${r.categoryLabel}: ${r.title}`,
+                body: r.text,
+                loc: r.location,
+            }));
+        }
+        return galacticHistoryRows(empire, filter).map((r) => ({
+            key: r.message,
+            title: r.title,
+            date: r.date,
+            starDate: r.starDate,
+            icon: r.icon,
+            heading: r.title,
+            body: resolveGameText(r.message.description),
+            loc: messageLocation(r.message),
+        }));
+    }
+
     // method_542: RemoveOldHistoryMessages (Empire.cs:4708), then rebind. Keeps the selection when still listed,
     // else selects the first row (the grid's default current row).
     function rebind(): void {
-        removeOldHistoryMessages(empire);
-        rows = galacticHistoryRows(empire, filter);
-        if (selected === null || !rows.some((r) => r.message === selected)) selected = sortHistoryRows(rows, sort)[0]?.message ?? null;
+        if (!logMode) removeOldHistoryMessages(empire);
+        rows = buildRows();
+        if (selected === null || !rows.some((r) => r.key === selected)) selected = shownRows()[0]?.key ?? null;
         renderList();
         showSelected();
     }
 
     function currentHistoryKey(): string {
+        if (logMode) {
+            const entries = eventLogEntries(empire.galaxy);
+            return `${entries.length}:${entries.length > 0 ? entries[entries.length - 1].id : 0}`;
+        }
         const h = empireMessageHistory(empire);
         return `${h.length}:${h.length > 0 ? h[h.length - 1]?.starDate : 0}`;
     }
 
-    select.value = String(filter);
+    select.value = logMode ? category : String(filter);
     select.addEventListener('change', () => {
-        filter = Number(select.value) as HistoryFilter;
+        if (logMode) category = select.value as HistoryCategoryFilter;
+        else filter = Number(select.value) as HistoryFilter;
         selected = null;
         rebind();
     });
+    sortSelect.value = logSort;
+    sortSelect.addEventListener('change', () => {
+        logSort = sortSelect.value as HistoryLogSort;
+        rebind();
+    });
     hTitle.addEventListener('click', () => {
+        if (logMode) return;
         sort = nextHistorySort(sort, 'title');
         renderList();
     });
     hDate.addEventListener('click', () => {
+        if (logMode) return;
         sort = nextHistorySort(sort, 'starDate');
         renderList();
     });
     gotoBtn.addEventListener('click', () => {
-        if (selected === null) return;
-        const p = messageLocation(selected);
-        if (p === null) return;
-        onGoTo(p.x, p.y);
+        const row = selectedRow();
+        if (row === null || row.loc === null) return;
+        onGoTo(row.loc.x, row.loc.y);
         close();
     });
 
