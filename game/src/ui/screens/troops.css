@@ -93,7 +93,7 @@
 .troops-grid { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .troops-row {
     display: grid;
-    grid-template-columns: 10px minmax(0, 1.6fr) 6.5em minmax(0, 1.1fr) 5em 5.5em 5.5em 6.5em minmax(0, 1.4fr);
+    grid-template-columns: 10px 14px minmax(0, 1.6fr) 6.5em minmax(0, 1.1fr) 5em 5.5em 5.5em 6.5em minmax(0, 1.4fr);
     align-items: center;
     gap: 8px;
     padding: 3px 8px;
@@ -118,6 +118,9 @@
 .troops-line .troops-cell:nth-child(2) { color: #fff; }
 .troops-line .troops-cell.troops-garrisoned { color: rgb(0, 255, 0); }
 .troops-flag { width: 10px; height: 10px; border-radius: 2px; }
+/* Troop race/type image (InfoPanel.cs DrawTroopsAgents _ImageSize=14 over the troop PNGs' native 80x80). */
+.troops-image { width: 14px; height: 14px; object-fit: contain; image-rendering: pixelated; }
+.troops-image-col { width: 14px; }
 .troops-num { text-align: right; }
 .troops-empty { padding: 8px; font-size: 12px; color: #777; }
 
