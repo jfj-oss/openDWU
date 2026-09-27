@@ -151,6 +151,19 @@
     font-size: 14px;
     color: #fff;
 }
+.diplomacy-portrait {
+    width: 96px;
+    height: 96px;
+    border-radius: 3px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    object-fit: cover;
+}
+.diplomacy-flag {
+    width: 60px;
+    height: 36px;
+    margin-left: auto;
+    object-fit: contain;
+}
 
 .diplomacy-section-heading {
     margin-top: 8px;

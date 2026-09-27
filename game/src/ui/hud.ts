@@ -21,6 +21,7 @@ import { fleetCycleList, fleetName, fleetSystemName, shipGroupSelectionRows, tog
 // [/15c]
 import { SystemVisibilityStatus } from '../sim/visibility';
 import { flagShapeUrl } from '../sim/startGameOptions';
+import { raceDisplayOverride } from '../render/concordArt';
 import { createGameMenu, type GameMenuRefs } from './screens/gameMenu';
 import { setGameMenuHandler, setCycleHandler, type CycleKind } from './keyboard';
 import { uiClickSounds } from '../audio/effectsPlayer';
@@ -825,7 +826,15 @@ function buildEmpireFlagButton(wiring: HudWiring): HTMLElement {
         // autostart/fallback paths have none, so use the empire's own
         // dominant-race default flag design (Empire.flagShape, -1 if none).
         const shapeIndex = game.playerEmpire.flagShape >= 0 ? game.playerEmpire.flagShape : null;
-        if (shapeIndex !== null) {
+        // Scenario display override keyed by race name (19a: the Concord's own flag).
+        const override = wiring.galaxy ? raceDisplayOverride(wiring.galaxy, (game.playerEmpire as Partial<Empire>).dominantRace?.name) : null;
+        if (override !== null) {
+            const flag = document.createElement('img');
+            flag.src = override.flagUrl;
+            flag.alt = '';
+            flag.draggable = false;
+            btn.appendChild(flag);
+        } else if (shapeIndex !== null) {
             const flag = document.createElement('img');
             flag.src = flagShapeUrl(shapeIndex);
             flag.alt = '';

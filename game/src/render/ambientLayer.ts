@@ -34,6 +34,9 @@ import {
     type ShipImageMetrics,
 } from './builtObjectLayer';
 import { loadShipArt } from './shipArt';
+// [concordArt] begin
+import { concordArtEmpire, concordArtLook, concordShipArt, concordTreasureShips, concordVariantFor } from './concordArt';
+// [concordArt] end
 import type { Galaxy } from '../sim/galaxy';
 import type { BuiltObject } from '../sim/builtObject';
 import { EngineType } from '../sim/builtObject';
@@ -515,15 +518,28 @@ export class AmbientLayer {
             const halfH = cam.height / 2;
             const lightTex = this.lightTexture;
             const lightPx = lightTex !== null ? lightSizePx(lightTex.width, f) : 0;
+            // [concordArt] begin — the Concord's junks: their own thruster marks, no nav lights (lanterns instead).
+            const concord = concordArtEmpire(this.galaxy);
+            const treasure = concord !== null ? concordTreasureShips(this.galaxy) : null;
+            const look = concord !== null ? concordArtLook(this.galaxy) : 'hybrid';
+            // [concordArt] end
             for (const bo of this.galaxy.builtObjects) {
                 if (bo === null || bo.hasBeenDestroyed) continue;
                 const sx = (bo.xpos - cam.x) * z + halfW;
                 const sy = (bo.ypos - cam.y) * z + halfH;
                 // Same 100 px cull as BuiltObjectLayer (the C# uses -50 around the drawn rect).
                 if (sx < -100 || sx > cam.width + 100 || sy < -100 || sy > cam.height + 100) continue;
-                const url = builtObjectImageUrl(resolveDrawPictureRef(bo));
-                if (url === null) continue;
-                const art = this.artFor(url);
+                // [concordArt] begin
+                const cv = treasure !== null ? concordVariantFor(bo, concord, treasure, look) : null;
+                let art: ShipArt | null;
+                if (cv !== null) {
+                    art = concordShipArt(cv, 0, false);
+                } else {
+                    const url = builtObjectImageUrl(resolveDrawPictureRef(bo));
+                    if (url === null) continue;
+                    art = this.artFor(url);
+                }
+                // [concordArt] end
                 if (art === null) continue;
                 const scalingType = bo.design?.imageScalingType ?? DesignImageScalingMode.None;
                 const scalingFactor = bo.design?.imageScalingFactor ?? 1;

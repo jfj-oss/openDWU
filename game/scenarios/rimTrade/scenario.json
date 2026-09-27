@@ -5,7 +5,8 @@
   "flags": [
     { "name": "rimTrader", "label": "Rim trader behaviour", "description": "The Oranthi Concord trades its rare goods only for rim goods, never declares war and barely expands.", "default": true },
     { "name": "rimTraderSinglePort", "label": "Single trading port", "description": "Foreign freighters may buy from the Concord only at its capital port.", "default": true },
-    { "name": "treasureBeacon", "label": "Treasure fleet beacon", "description": "The Concord's treasure fleet is visible to every empire, wherever it sails.", "default": true }
+    { "name": "treasureBeacon", "label": "Treasure fleet beacon", "description": "The Concord's treasure fleet is visible to every empire, wherever it sails.", "default": true },
+    { "name": "concordArt", "label": "Concord art", "description": "The Concord's own procedural junk ships, bases, mask portrait and flag (off: the Ackdarian art its race borrows). Display only.", "default": true }
   ],
   "params": [
     { "name": "rimTraderMaxColonies", "label": "Concord colony cap", "default": 4, "min": 1, "max": 12 },
@@ -24,7 +25,8 @@
     { "name": "treasureCircuitPorts", "label": "Foreign ports per voyage", "default": 4, "min": 1, "max": 12 },
     { "name": "treasureShipSize", "label": "Treasure ship size", "default": 1100, "min": 300, "max": 1500 },
     { "name": "treasureTradeLot", "label": "Units per good per treasure ship per stop", "default": 200, "min": 10, "max": 2000 },
-    { "name": "treasureRaidPenalty", "label": "Standing lost for sinking a treasure ship", "default": 3000, "min": 0, "max": 100000 }
+    { "name": "treasureRaidPenalty", "label": "Standing lost for sinking a treasure ship", "default": 3000, "min": 0, "max": 100000 },
+    { "name": "concordArtLook", "label": "Concord ship look (0 hybrid fan sail, 1 pagoda tiers, 2 furled yards)", "default": 0, "min": 0, "max": 2 }
   ],
   "homePlacement": [ { "race": "Oranthi", "minRadius": 0.8, "maxRadius": 1.0 } ],
   "resourcePlacement": [
