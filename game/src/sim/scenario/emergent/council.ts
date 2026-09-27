@@ -191,7 +191,43 @@ const nowYear = (galaxy: Galaxy): number => gameYear(galaxyStarDate(galaxy));
 
 /** A normal, active empire (not a pirate faction, not the independents). */
 export function isCouncilEmpire(galaxy: Galaxy, e: Empire | null): e is Empire {
-    return e !== null && e !== galaxy.independentEmpire && e.pirateEmpireBaseHabitat === null && e.active;
+    return e !== null && e !== galaxy.independentEmpire && e.pirateEmpireBaseHabitat === null && e.active && !councilExcluded(galaxy, e);
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Extension points for other packages (19f #8 The Exchange: a non-member entity the council can sanction). Each is a
+// pure function a package registers at module load; with nothing registered (or its package's flag off: the function
+// returns [] / false / 0) the council runs exactly as before. `var` + accessor: packages register while this module
+// may still be evaluating (import cycles through packages.ts).
+// ---------------------------------------------------------------------------------------------------------------
+
+export interface CouncilExtension {
+    id: string;
+    /** Extra motion candidates for council `c` this year (pure, no Rnd). */
+    candidates?: (galaxy: Galaxy, c: Council, year: number) => MotionCandidate[];
+    /** An empire that is never a council member nor an ordinary motion target (pure). */
+    excluded?: (galaxy: Galaxy, e: Empire) => boolean;
+    /** Added to a voter's score on motion `m` (pure). */
+    voteBias?: (galaxy: Galaxy, voter: Empire, m: Motion) => number;
+}
+
+// eslint-disable-next-line no-var
+var councilExtensionsStore: CouncilExtension[] | undefined;
+function councilExtensions(): CouncilExtension[] {
+    return (councilExtensionsStore ??= []);
+}
+
+/** Registers (or replaces, by id) a council extension. */
+export function registerCouncilExtension(ext: CouncilExtension): void {
+    const list = councilExtensions();
+    const i = list.findIndex((x) => x.id === ext.id);
+    if (i >= 0) list.splice(i, 1);
+    list.push(ext);
+}
+
+function councilExcluded(galaxy: Galaxy, e: Empire): boolean {
+    for (const x of councilExtensions()) if (x.excluded !== undefined && x.excluded(galaxy, e)) return true;
+    return false;
 }
 
 /** `a` has met `b` (a relation other than NotMet), without creating a relation. */
@@ -511,6 +547,7 @@ export function motionCandidates(galaxy: Galaxy, c: Council, year: number): Moti
             }
         }
     }
+    for (const x of councilExtensions()) if (x.candidates !== undefined) out.push(...x.candidates(galaxy, c, year));
     return out;
 }
 
@@ -542,6 +579,7 @@ export function voteScore(galaxy: Galaxy, c: Council, voter: Empire, m: Motion):
     const bv = blocOf(c, voter);
     if (bv !== null && bv.members.includes(m.proposer)) s += w;
     if (bv !== null && bv.members.includes(m.target)) s += sign * w;
+    for (const x of councilExtensions()) if (x.voteBias !== undefined) s += x.voteBias(galaxy, voter, m);
     return s;
 }
 

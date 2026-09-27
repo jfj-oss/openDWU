@@ -7,6 +7,7 @@ Security Kind farm;Dark Farm
 Security Kind nest;Grey Tide nest
 Security Kind boughtGovernor;Bought governor
 Security Kind foreignAgent;Foreign agent
+Security Kind exchangeAgent;Exchange agent
 Security Lead Suspected Title;Internal security: new lead
 Security Lead Suspected;Our counter-intelligence suspects something: {0} ({1}). Assign an agent to investigate it (Intelligence screen, Internal Security tab).
 Security Lead Confirmed Title;Internal security: lead confirmed

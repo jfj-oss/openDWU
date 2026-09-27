@@ -1367,7 +1367,7 @@ export function createGame(opts: CreateGameOptions): Game {
     // takes effect (baconSettings.ts; the settings part only).
     baconInitializeSettings(galaxy, gd.baconSettings);
     // Mod layer: the scenario game-start hook (after every stock start step, before the first frame; no-op without one).
-    if (galaxy.scenario !== null) scenarioGameStart(galaxy, { randomPointInRing, inNebula });
+    if (galaxy.scenario !== null) scenarioGameStart(galaxy, { randomPointInRing, inNebula, startTechLevel: opts.player.techLevel });
     stopAt('tail');
     return result();
 }

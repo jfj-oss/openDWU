@@ -16,7 +16,7 @@ import { scenarioFlag, scenarioState } from '../state';
 
 export const SECURITY_FLAG = 'internalSecurity';
 
-export type HiddenKind = 'plot' | 'convert' | 'sleeper' | 'hiveNode' | 'farm' | 'nest' | 'boughtGovernor' | 'foreignAgent' | 'scheme' | 'secret' | 'sectorUnrest';
+export type HiddenKind = 'plot' | 'convert' | 'sleeper' | 'hiveNode' | 'farm' | 'nest' | 'boughtGovernor' | 'foreignAgent' | 'scheme' | 'secret' | 'sectorUnrest' | 'exchangeAgent';
 export type HiddenTarget = Character | BuiltObject | Habitat;
 
 /** What a package passes when something hidden appears. */

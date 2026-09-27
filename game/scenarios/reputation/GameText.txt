@@ -9,3 +9,6 @@ Reputation Cause politics.defectedAgent;A defector exposed your spying on us
 Reputation Cause demographics.diaspora;How you treat our people in your colonies
 Reputation Cause charters.nationalised;You nationalised one of our sister companies
 Reputation Cause exchange.exposed;You exposed the Exchange
+Reputation Cause exchange.agentCaught;We caught your agents working for the Exchange
+Reputation Cause exchange.boughtIntel;You bought our secrets from the Exchange
+Reputation Cause exchange.contract;The Exchange paid pirates to strike us

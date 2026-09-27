@@ -532,7 +532,7 @@ export function calculateIntelligenceMissionSkill(self: Empire, agent: Character
  * The repeated C# cascade (caller has checked Difficulty <= (int)oneYearDifficulty):
  * result.TimeLength = 1 year; if Difficulty <= (int)3m → 3 months; if Difficulty <= (int)1m → 1 month.
  */
-function cascadeTimeLength(mission: IntelligenceMission, d: MissionSkillDifficulties): IntelligenceMission {
+export function cascadeTimeLength(mission: IntelligenceMission, d: MissionSkillDifficulties): IntelligenceMission {
     mission.timeLength = TIME_ONE_YEAR;
     if (intelligenceMissionDifficulty(mission) <= csInt(d.threeMonthDifficulty)) {
         mission.timeLength = TIME_THREE_MONTHS;
@@ -1699,6 +1699,16 @@ export function cancelIntelligenceMission(self: Empire, mission: IntelligenceMis
  * InflictDamage draws; InciteRevolution HaveRevolution's.
  */
 export function completeIntelligenceMission(galaxy: Galaxy, self: Empire, mission: IntelligenceMission): void {
+    applyIntelligenceMissionEffect(galaxy, self, mission);
+    if (galaxy.scenario !== null) scenarioEmit(galaxy, 'intelMissionCompleted', { empire: self, mission, outcome: null }); // mod layer
+}
+
+/**
+ * The effect switch of Empire.6.cs 117 CompleteIntelligenceMission (every statement and Rnd draw of the port above,
+ * without the mod-layer emit). Split out so a scenario can hand over a stolen map / tech as a gift or a sale (19f #8
+ * The Exchange) through the exact stock effect, without it counting as an intelligence mission of `self`.
+ */
+export function applyIntelligenceMissionEffect(galaxy: Galaxy, self: Empire, mission: IntelligenceMission): void {
     switch (mission.type) {
         case T.DeepCover: {
             const item = LONG_MAX_VALUE;
@@ -1850,7 +1860,6 @@ export function completeIntelligenceMission(galaxy: Galaxy, self: Empire, missio
         case T.CounterIntelligence:
             break;
     }
-    if (galaxy.scenario !== null) scenarioEmit(galaxy, 'intelMissionCompleted', { empire: self, mission, outcome: null }); // mod layer
 }
 
 // ---------------------------------------------------------------------------------------------------------------

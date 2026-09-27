@@ -67,6 +67,7 @@ import { thisYearsPrivateFuelCosts } from '../logistics/refuel';
 import { determineDesirePirateProtection } from './pirateAI';
 import { PirateIncomeType } from './pirateEconomy';
 import { EmpireActivity, EmpireActivityList, EmpireActivityType, type ActivityTarget } from './empireActivity';
+import { scenarioQuery } from '../scenario/hooks';
 import { crisesBlocksSmuggleOffer, crisesOn, crisisSmuggleCap, empireHasColonyCrisis } from '../scenario/emergent/crisesCore';
 
 export { EmpireActivity, EmpireActivityList, EmpireActivityType };
@@ -634,7 +635,9 @@ export function reviewPirateDefendMissions(galaxy: Galaxy, empire: Empire, starD
         if (empireActivity === null || empireActivity.assignedEmpire === null || empireActivity.requestingEmpire !== empire || empireActivity.target === null || empireActivity.bidTimeRemaining !== 0 || !(starDate >= empireActivity.expiryDate)) continue;
         let flag = true;
         if (empireActivity.target.hasBeenDestroyed) flag = false;
-        if (targetEmpireOf(empireActivity.target) !== empireActivity.requestingEmpire) flag = false;
+        // Mod layer 19f #8: a scenario may name the client the target must still belong to (stock: the requester).
+        const client = galaxy.scenario !== null ? scenarioQuery(galaxy, 'pirateDefendClient', empireActivity.requestingEmpire, { activity: empireActivity }) : empireActivity.requestingEmpire;
+        if (targetEmpireOf(empireActivity.target) !== client) flag = false;
         if (flag) {
             completePirateMission(galaxy, empireActivity.assignedEmpire, empireActivity);
         } else {

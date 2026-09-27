@@ -1,14 +1,23 @@
 {
   "id": "exchange",
   "name": "The Exchange",
-  "description": "A huge independent trading station, friendly to all, secretly finances both sides of every war and runs sabotage against the strong side. Discover it and blockade it to end the funding.",
+  "description": "A neutral merchant-spy faction appears near the galactic core: a vast trading station that funds the underdog of every war, runs high-skill agents against the strong, sells stolen intelligence, hires pirates in its own name and guards its system with two patrol fleets. Trace its money and its spies, have the council sanction it, and blockade or destroy the station to close it down.",
   "flags": [
-    { "name": "threatExchange", "label": "The Exchange", "description": "A neutral trading megastation secretly funds both sides of every war.", "default": false }
+    { "name": "threatExchange", "label": "The Exchange", "description": "A neutral merchant-spy faction funds the weaker side of every war, runs agents, sells intelligence and posts pirate contracts.", "default": false }
   ],
   "params": [
-    { "name": "exchangeYear", "label": "Year the station is built", "default": 20, "min": 0, "max": 200 },
-    { "name": "exchangeFundPct", "label": "Yearly funding (% of the funded empire's treasury)", "default": 5, "min": 0, "max": 100 },
-    { "name": "exchangeSabotagePerYear", "label": "Sabotage missions run per year", "default": 2, "min": 0, "max": 20 },
-    { "name": "exchangeBlockadeDays", "label": "Cumulative blockade days that collapse the Exchange", "default": 120, "min": 1, "max": 1000 }
+    { "name": "exchangeYear", "label": "Game year the Exchange appears", "default": 7, "min": 0, "max": 200 },
+    { "name": "exchangeTechLevelBonus", "label": "Tech levels above the empires' start level", "default": 1, "min": 0, "max": 6 },
+    { "name": "exchangeIncomeStep", "label": "Base income per year since it appeared (credits)", "default": 100000, "min": 0, "max": 10000000 },
+    { "name": "exchangeIncomeCap", "label": "Base income cap per year (credits)", "default": 1000000, "min": 0, "max": 100000000 },
+    { "name": "exchangeTariffPct", "label": "Docking tariff on trades at the station (%)", "default": 5, "min": 0, "max": 100 },
+    { "name": "exchangeReservePct", "label": "Reserve never spent (% of the year's income)", "default": 20, "min": 0, "max": 100 },
+    { "name": "exchangeFundPct", "label": "Underdog funding per year (% of the weaker side's treasury)", "default": 5, "min": 0, "max": 100 },
+    { "name": "exchangeAgents", "label": "Agents at appearance", "default": 6, "min": 0, "max": 50 },
+    { "name": "exchangeAgentsMax", "label": "Agents at most (+1 a year while income allows)", "default": 20, "min": 0, "max": 50 },
+    { "name": "exchangeMissionCost", "label": "Cost of one agent mission (credits; a hire costs five)", "default": 10000, "min": 0, "max": 1000000 },
+    { "name": "exchangeIntelPrice", "label": "Base price of intelligence on a rival (credits, scaled by its size)", "default": 20000, "min": 0, "max": 1000000 },
+    { "name": "exchangeFleetCap", "label": "Warships in its two patrol fleets at most", "default": 20, "min": 0, "max": 100 },
+    { "name": "exchangeBlockadeDays", "label": "Cumulative blockade days that close the Exchange", "default": 120, "min": 1, "max": 1000 }
   ]
 }
