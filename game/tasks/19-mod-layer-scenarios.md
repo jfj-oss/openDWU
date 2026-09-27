@@ -27,7 +27,11 @@ weapons. Zero research focus after the cap (replaces the spec's "high research")
 Treasure fleet: a Concord-only design template "Treasure Ship" (size 1100 freighter hull: cargo bays, fuel, shields, a few
 weapons) + escorts, sailing as ONE large state convoy on a fixed circuit of foreign space ports (Empire.1.cs 3899 convoy
 code reused; 19e-9 shows the route) that sells rare goods / buys rim goods at each stop — the visible, escortable, raidable
-face of the trade; losing it hurts standing. **Always visible (user, 2026-09-26):** the treasure fleet is revealed to every
+face of the trade; losing it hurts standing. **Concord art (user, 2026-09-27):** procedural "space junk" ships —
+long hull, 2–3 fan-shaped batten sails spread sideways as radiator fins, raised stern castle, lanterns along the yards,
+lacquer red + gold; warships/freighters/treasure ships/port share the language, treasure ships carry the biggest lanterns
+and banners; portrait = a ceremonial gold-on-red mask/emblem (the Concord shows no faces to outsiders); flag = red
+field, gold emblem. **Always visible (user, 2026-09-26):** the treasure fleet is revealed to every
 empire regardless of sensors/fog — its ships carry a scenario "beacon" so the visibility pass treats them as known to all
 (like the original's planet destroyer / story announcements: a galaxy-wide position broadcast), with a fleet marker at
 galaxy zoom, a message + news item when it leaves port and when it arrives at a foreign port, and a route line on the
@@ -195,14 +199,15 @@ over a band; (2) rim star types biased to dim red/brown dwarfs and white dwarfs 
 scenario); (3) dark dust lanes instead of bright nebula art, and 19h-5 sensor fog rendered as grainy grey murk for
 unexplored rim space; (4) thinner deep-field star layer / sparser background art; (5) derelicts, dead stations, gutted
 independent colonies on the rim curve from the original ruins/debris art (some become 19g-7 herd feeding sites);
-(6) distant creature silhouettes drifting in the background at galaxy zoom; (7) fewer nav lights / dimmer city glow on
+(6) eyes in the dark — small pairs of dim, irregularly-blinking red dots sprinkled in the outer, empty parts of rim
+systems at system zoom; (7) fewer nav lights / dimmer city glow on
 rim outposts. Audio: (8) 19e-11 music selector gets a "rim" mood weighted by radius (sparse drones, silences, original
 tracks that fit); (9) low wind/static ambient bed growing with distance, distant creature calls and hull creaks at system
 zoom; (10) faint static layer on advisor/diplomacy voice in the fog; garbled rim distress calls in the ticker. Text/UI:
 (11) bleaker rim name table, more numbered survey designations; (12) rim-specific exploration/colony message wording
 (lost contact, missing survey ship, unusual readings); (13) faint grain/vignette on the main view deep in the rim, (no minimap: the user does not want one built — dimming dropped, 2026-09-26). Effort: ~1 agent-day; build with 19h; must not change any sim digest (render/audio/text only except 2).
-Model split (user, 2026-09-26): anything that CREATES visuals — colour-grading filters, dust-lane/murk rendering, creature
-silhouettes, grain/vignette, any procedural art (no art files are ever committed; new visuals are Pixi filters/graphics
+Model split (user, 2026-09-26): anything that CREATES visuals — colour-grading filters, dust-lane/murk rendering, eyes in
+the dark, grain/vignette, any procedural art (no art files are ever committed; new visuals are Pixi filters/graphics
 over the original art) — is an Opus package; the data/wiring pieces (name tables, message wording, music/ambient selector
 weights, nav-light/glow params, minimap dimming) are a Sonnet package that consumes the Opus-built render hooks.
 Sub-agents cannot spawn sub-agents in this harness, so the orchestrator runs the two packages in sequence: Opus render first.
@@ -213,6 +218,31 @@ click-chirp, ardilus keening, silver mist shimmer), triggered rarely at system z
 range, panned by direction, gain by rim weight; hull creaks = low resonant filtered-noise bursts with slow pitch drop,
 triggered at system zoom in storms/deep rim with the camera near a ship; params creatureCallRate, creakRate, gains.
 Opus package (sound design), consumes 19i wiring's rimWeightAt + the fauna's herd positions.
+
+**19i visual half — design note (Opus render package, wip/s19i).** `src/render/rimAtmosphereLayer.ts`, scenario
+`scenarios/rim-atmosphere/` (standalone, `include: []`), flag `rimAtmosphere` (default on in that scenario; off or no
+scenario = the layer adds nothing and touches no sprite — tested). Curve: centre = galaxy rect centre, radius = the
+98th-percentile star distance (render-side; no sim field); `rimWeight` = 0 inside `rimInner`, smoothstep to 1 across a
+band of `(1 − rimInner)/2` (clamped 0.04–0.3). Params:
+- `rimInner` (0.72): where the rim band starts, as a fraction of that radius. Moves every effect in or out.
+- `tintStrength` (0.6): item 1/4/13 — world-space radial wash over backdrop + nebula images (desaturating, dark cold
+  blue-violet), cold multiply tint on rim map-star icons and on the parallax starfield (by camera position), deep-field
+  thinning (starfield alpha drops), rim nebulae turning into dark dust lanes (item 3), and the screen vignette.
+- `murkStrength` (0.7): item 3 — grainy grey murk blobs over every rim system the player has not explored
+  (`EmpireVisibility.checkSystemExplored`, refreshed every 90 frames; the hook 19h-5 sensor fog can feed), plus the
+  item-13 film grain deep in the rim.
+- `eyeDensity` (1): item 6 — eyes in the dark: pair count (3–8 per rim system at density 1, scaled by density and by
+  the system's rim weight; 0 disables) of small red dot pairs at system zoom, in the outer, empty parts of rim systems
+  (past the outermost planet/moon orbit), placed with the layer's own PRNG seeded per system. Each pair blinks on its
+  own 2–6 s period with a short, soft-glow on-time (`eyeBlinkAlpha`) and occasionally drifts a little between blinks
+  (`eyeMoveOffset`); alpha crossfades in over the same system-zoom threshold `AmbientLayer.ambientVisibleAt` uses for
+  nav lights (`BUILT_OBJECT_MAX_FACTOR`), so nothing pops at zoom changes (`eyeZoomFade`).
+- `derelictDensity` (1): item 5 — 80 × density decorative hulks (original station / ship art, dark-tinted, tumbling),
+  half near rim systems, half in deep rim space; not selectable (the selectable/sim derelicts belong to 19h / 19j).
+- `lightDimming` (0.6): item 7 — nav lights and planetary-shield glow alpha × (1 − dimming × weight) via
+  `AmbientLayer.lightScale`. (No city-glow draw exists yet; the same hook applies when one does.)
+For the Sonnet wiring package: `rimGeometry` / `rimFraction` / `rimWeight` / `rimParams` are exported for minimap
+outer-band dimming and the music / ambient weights. Dev capture: `?autostart=1&scenario=<id>`, `scripts/rim-shots.mjs`.
 
 ## 19j — Rim herders (ACCEPTED by the user 2026-09-26 — "yes"; rim independents coexist with and use the fauna; builds right after 19g-7)
 1. Herder peoples: a rim independent race trait "symbiotic" — herds are docile to that race's colonies/ships; herder worlds

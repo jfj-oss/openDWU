@@ -53,6 +53,9 @@ import { AmbientLayer } from './ambientLayer';
 // [fightersfx] begin
 import { FighterLayer } from './fighterLayer';
 // [fightersfx] end
+// [rimatmo] begin
+import { RimAtmosphereLayer } from './rimAtmosphereLayer';
+// [rimatmo] end
 // [combatfx] begin
 import { updateCombatEffects } from './effectsLayer';
 // [combatfx] end
@@ -957,6 +960,10 @@ export class MainView {
     // [fightersfx] begin
     private fighterLayer!: FighterLayer;
     // [fightersfx] end
+    // [rimatmo] begin
+    /** 19i rim atmosphere (scenario flag `rimAtmosphere`); inert when the flag is off. */
+    private rimLayer: RimAtmosphereLayer | null = null;
+    // [rimatmo] end
     private textures!: MainViewTextures;
     private minZoom = 1e-6;
     private lastGridZoom = -1;
@@ -1257,6 +1264,23 @@ export class MainView {
             }
         }
 
+        // [rimatmo] begin
+        // 19i: rim wash / derelicts / eyes in the dark just above the backdrop + nebulae, murk above the systems
+        // (before the empire and ship layers are added), vignette + grain above the starfield. Adds nothing with the
+        // flag off.
+        this.rimLayer = new RimAtmosphereLayer(this.galaxy, this.store);
+        this.rimLayer.mount({
+            world: this.world,
+            fx: this.fx,
+            backgroundIndex: 1 + this.nebulae.length,
+            starfieldFar: this.starfieldFar,
+            starfieldNear: this.starfieldNear,
+            fxIndex: this.fx.children.indexOf(this.starfieldNear) + 1,
+            nebulae: this.nebulae.map((nv) => ({ sprite: nv.sprite, x: nv.sprite.x, y: nv.sprite.y })),
+            mapIcons: this.systems.map((sv) => ({ sprite: sv.mapIcon, x: sv.system.systemStar.xpos, y: sv.system.systemStar.ypos })),
+        });
+        // [rimatmo] end
+
         // Task M2e: empire ownership overlays. The layer's root is added to
         // world after all system roots, so rings/discs draw on top of stars.
         this.empireLayer = new EmpireLayer(this.galaxy, this.world);
@@ -1269,6 +1293,9 @@ export class MainView {
         // [ambientfx] begin
         this.ambientLayer = new AmbientLayer(this.galaxy, this.world, this.builtObjectLayer.root, this.store, (h, zz) => this.drawnSize(h, zz));
         // [ambientfx] end
+        // [rimatmo] begin
+        this.ambientLayer.lightScale = this.rimLayer.lightScale;
+        // [rimatmo] end
         // [fightersfx] begin
         // Launched fighters / bombers above the ships and their ambient effects, below the combat effects.
         this.fighterLayer = new FighterLayer(this.galaxy, this.world, this.store);
@@ -1377,6 +1404,9 @@ export class MainView {
         for (const nv of this.nebulae) {
             nv.update(z, cam, nebA);
         }
+        // [rimatmo] begin
+        this.rimLayer?.update(z, cam, bdA);
+        // [rimatmo] end
 
         // Task M2e: empire ownership overlays (colony rings at system zoom;
         // owned-system markers + territory discs at galaxy/sector zoom).
