@@ -1,0 +1,18 @@
+'19m Internal security: message texts (scenarioText tags). {n} items are filled by the scenario code.
+Security Kind plot;Plot
+Security Kind convert;Cult convert
+Security Kind sleeper;Sleeper ship
+Security Kind hiveNode;Hive node
+Security Kind farm;Dark Farm
+Security Kind nest;Grey Tide nest
+Security Kind boughtGovernor;Bought governor
+Security Kind foreignAgent;Foreign agent
+Security Lead Suspected Title;Internal security: new lead
+Security Lead Suspected;Our counter-intelligence suspects something: {0} ({1}). Assign an agent to investigate it (Intelligence screen, Internal Security tab).
+Security Lead Confirmed Title;Internal security: lead confirmed
+Security Lead Confirmed;The lead is confirmed: {0} ({1}). Security actions are now available.
+Security Lead Cleared Title;Internal security: lead cleared
+Security Lead Cleared;The investigation found nothing: {0} ({1}) is cleared.
+Security Cult Coup Title;The Cult seizes power
+Security Cult Coup;{0}, a secret follower of the creed, has seized power — the theocracy rises at {1}!
+Emergent Reason Cult;Cult

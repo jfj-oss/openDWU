@@ -16,6 +16,7 @@ import { formatThousandsK } from './coloniesList';
 import { formatMoney, formatPopulation } from '../hud';
 import { crisesSummaryRows } from '../../sim/scenario/emergent/crisesCore';
 import { stabilityRow } from '../emergentPolitics'; // [emergent]
+import { ledgerStabilityRow } from '../internalSecurityView'; // [security]
 
 /** The data the panel displays: the player's empire plus its government's
  * display name (null when unknown). */
@@ -29,6 +30,8 @@ export interface EmpireSummarySource {
 export interface EmpireSummaryRow {
     label: string;
     value: string;
+    /** Tooltip (19m: the stability ledger's causes). */
+    title?: string;
 }
 
 /** The extra Economy rows (task 13b, EmpireSummaryEconomy.cs 343-381): the
@@ -188,7 +191,10 @@ function createEmpireSummary(src: EmpireSummarySource): OpenState {
     const summaryRows = empireSummaryRows(src, empireSummaryExtra(src.empire), scenarioRows);
     // [emergent] begin — 19d1 internal politics: instability as a Stability row (flag on only)
     const stability = src.empire.galaxy ? stabilityRow(src.empire.galaxy, src.empire) : null;
-    if (stability !== null) summaryRows.push(stability);
+    // [security] 19m: the Stability row comes from the ledger and lists its causes (19d1 instability kept in the value).
+    const ledger = src.empire.galaxy ? ledgerStabilityRow(src.empire.galaxy, src.empire) : null;
+    if (ledger !== null) summaryRows.push(stability !== null ? { ...ledger, value: `${stability.value} · ${ledger.value}` } : ledger);
+    else if (stability !== null) summaryRows.push(stability);
     // [emergent] end
     for (const row of summaryRows) {
         const line = document.createElement('div');
@@ -200,6 +206,7 @@ function createEmpireSummary(src: EmpireSummarySource): OpenState {
         value.className = 'empire-summary-value';
         value.textContent = row.value;
         line.append(label, value);
+        if (row.title !== undefined) line.title = row.title;
         body.appendChild(line);
     }
     // [freightOverlay] begin

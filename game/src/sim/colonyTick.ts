@@ -70,6 +70,7 @@ import { PlanetaryFacilityType } from './researchSystem';
 import { facilitiesFindBestPirateFacility } from './construction/facilities';
 import { baconSettings } from './data/baconSettings';
 import { formatGameTextNow } from './textResolver';
+import { scenarioQuery } from './scenario/hooks';
 
 const f32 = Math.fround;
 
@@ -357,7 +358,9 @@ export function checkSatisfaction(galaxy: Galaxy, habitat: Habitat): void {
     const num5 = num4 - num;
     const num6 = Math.trunc(num3 / 2);
     const num7 = num6 - num;
-    const approval = empireApprovalRating(galaxy, habitat);
+    let approval = empireApprovalRating(galaxy, habitat);
+    // mod layer (19m): the revolt reads the colony's stability ledger (martial law holds it at the leave threshold).
+    if (galaxy.scenario !== null) approval = scenarioQuery(galaxy, 'colonyRevoltApproval', approval, { habitat, leaveThreshold: num5 });
     if (approval < num5 && habitat.rebelling) {
         if (troops === null || troops.count <= 0) {
             leaveEmpire(galaxy, habitat);

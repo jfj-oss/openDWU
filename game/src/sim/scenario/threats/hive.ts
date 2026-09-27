@@ -20,6 +20,7 @@ import { GameEndOutcome } from '../../victory';
 import { registerScenarioEvent, registerScenarioGameStart, registerScenarioPeriodic } from '../hooks';
 import { scenarioParam } from '../state';
 import { scenarioText } from '../messages';
+import { registerHiddenThing, retireHiddenTarget } from '../security/registry';
 import {
     KNOWLEDGE_CONFIRMED,
     KNOWLEDGE_SUSPECTED,
@@ -115,10 +116,12 @@ export function onColonyOwnerChanged(galaxy: Galaxy, colony: Habitat, from: Empi
     if (node === undefined) return;
     if (from === galaxy.independentEmpire && to !== null && to !== galaxy.independentEmpire) {
         if (!st.absorbed.includes(colony)) st.absorbed.push(colony);
+        registerHiddenThing(galaxy, { kind: 'hiveNode', concealment: 70, empire: to, target: colony, package: '19f.hive', site: node }); // 19m (flag-gated)
         // Advisory to the new owner: it is standing on a Hive node (level 2 — "garrison it").
         revealTo(galaxy, node, to, KNOWLEDGE_SUSPECTED);
     } else if (to === galaxy.independentEmpire && st.absorbed.includes(colony)) {
         st.absorbed.splice(st.absorbed.indexOf(colony), 1);
+        retireHiddenTarget(galaxy, 'hiveNode', colony); // 19m (flag-gated)
     }
 }
 

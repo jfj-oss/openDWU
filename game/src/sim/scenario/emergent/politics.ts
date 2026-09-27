@@ -401,6 +401,11 @@ export function attemptCoup(galaxy: Galaxy, empire: Empire, c: Character, year: 
     const success = galaxy.rnd.nextDouble() < s;
     const oldLeaderName = leader !== null ? leader.name : '';
     const role = roleName(c);
+    if (success && politicsHooks.coupSucceeded !== null && politicsHooks.coupSucceeded(galaxy, empire, c, year)) {
+        st.lastPlotYear.set(empire, year);
+        logEvent(galaxy, { year, empire, kind: 'coup', character: c, success, other: null });
+        return true;
+    }
     if (success) {
         const origRole = c.role;
         st.exposed.delete(c);
@@ -446,6 +451,10 @@ export function attemptSecession(galaxy: Galaxy, empire: Empire, governor: Chara
     if (colony === null) return null;
     const entry = politicsEntry(galaxy, governor);
     st.lastPlotYear.set(empire, year);
+    if (politicsHooks.secessionBlocked !== null && politicsHooks.secessionBlocked(galaxy, colony)) {
+        logEvent(galaxy, { year, empire, kind: 'secession', character: governor, success: false, other: null });
+        return null;
+    }
     if (st.exposed.has(governor)) {
         // RND(19d1): exposed secession — the government knows; half the attempts are stopped (the governor is arrested).
         if (galaxy.rnd.nextDouble() < 0.5) {
@@ -573,6 +582,7 @@ function plotRumour(galaxy: Galaxy, empire: Empire, c: Character, year: number):
     // RND(19d1): exposure
     const exposed = galaxy.rnd.nextDouble() < counterIntelligence(empire) / 200;
     logEvent(galaxy, { year, empire, kind: 'rumour', character: c, success: exposed, other: null });
+    politicsHooks.plotRumour?.(galaxy, empire, c, exposed);
     if (!exposed) return;
     st.exposed.add(c);
     raisePlotDecision(galaxy, empire, c);
@@ -608,6 +618,18 @@ export function raisePlotDecision(galaxy: Galaxy, empire: Empire, c: Character):
 export function aiPlotChoice(galaxy: Galaxy, empire: Empire, c: Character): 'arrest' | 'honour' {
     return c.traits.includes(CharacterTraitType.Famous) && empireApprovalAverage(galaxy, empire) < -10 ? 'honour' : 'arrest';
 }
+
+// 19m internal security hook slots (scenario/security/security.ts fills them at import; each implementation returns
+// its "off" value unless the `internalSecurity` flag is on, and none of them draws).
+export interface PoliticsHookSlots {
+    /** A coup roll succeeded: true when 19m handled it instead (a cultist plotter founds the theocracy). */
+    coupSucceeded: ((galaxy: Galaxy, empire: Empire, c: Character, year: number) => boolean) | null;
+    /** True when the colony may not secede now (martial law). */
+    secessionBlocked: ((galaxy: Galaxy, colony: Habitat) => boolean) | null;
+    /** A plot rumour was rolled (exposed = the ported exposure roll found it): the plot joins the 19m registry. */
+    plotRumour: ((galaxy: Galaxy, empire: Empire, c: Character, exposed: boolean) => void) | null;
+}
+export const politicsHooks: PoliticsHookSlots = { coupSucceeded: null, secessionBlocked: null, plotRumour: null };
 
 // The actions live in politicsActions.ts (imported lazily through this registry to keep the module graph acyclic).
 export interface PoliticsActionImpl {

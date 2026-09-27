@@ -41,6 +41,7 @@ import { TroopList } from '../../cargo';
 import { GAME_DAY_LENGTH, gameYear, registerScenarioEvent, registerScenarioPeriodic, registerScenarioYearly } from '../hooks';
 import { scenarioFlag, scenarioParam } from '../state';
 import { scenarioText } from '../messages';
+import { registerHiddenThing, retireHiddenTarget } from '../security/registry';
 import {
     KNOWLEDGE_CONFIRMED,
     KNOWLEDGE_SUSPECTED,
@@ -317,6 +318,7 @@ export function spawnFarm(galaxy: Galaxy, st: DarkFarmsState, habitat: Habitat):
         periods: 0,
     };
     st.farms.push(farm);
+    registerHiddenThing(galaxy, { kind: 'farm', concealment: 75, empire: farm.host, target: habitat, package: '19b.darkFarms', site: farm }); // 19m (flag-gated)
     return farm;
 }
 
@@ -404,6 +406,7 @@ export function spawnSleeper(galaxy: Galaxy, st: DarkFarmsState, farm: DarkFarm)
     const bo = placeShip(galaxy, host, design, colony, false);
     const s: Sleeper = { id: st.nextId++, bo, farmId: farm.id, subRole, knowledge: [] };
     st.sleepers.push(s);
+    registerHiddenThing(galaxy, { kind: 'sleeper', concealment: 60, empire: host, target: bo, package: '19b.darkFarms', site: s }); // 19m (flag-gated)
     return s;
 }
 
@@ -995,6 +998,7 @@ function onBuiltObjectOwnerChanged(galaxy: Galaxy, bo: BuiltObject, from: Empire
     if (s !== undefined && to !== st.faction) {
         // Captured by someone else: its hidden fit is found (§5.C step 18).
         st.sleepers.splice(st.sleepers.indexOf(s), 1);
+        retireHiddenTarget(galaxy, 'sleeper', bo, 'captured'); // 19m (flag-gated)
         const farm = st.farms.find((f) => f.id === s.farmId);
         if (to !== null && farm !== undefined && to !== farm.host && to.pirateEmpireBaseHabitat === null && to !== galaxy.independentEmpire) {
             revealTo(galaxy, s, to, KNOWLEDGE_CONFIRMED);

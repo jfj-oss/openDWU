@@ -219,7 +219,7 @@ export function habitatTaxApproval(h: Habitat): number {
 
 // EmpireEvaluation.cs / Empire.4.cs ObtainEmpireEvaluation (106): the full model lives in diplomacy.ts (M4r).
 import { obtainEmpireEvaluation } from './diplomacy';
-import { scenarioQuery } from './scenario/hooks';
+import { scenarioApprovalRating } from './scenario/stability';
 export { EmpireEvaluation, obtainEmpireEvaluation } from './diplomacy';
 
 // Empire.2.cs DetermineEmpiresWithDominantRace (3460).
@@ -342,8 +342,14 @@ export function getPlagueUnhappinessFactor(galaxy: Galaxy, _h: Habitat): number 
     return getPlagueUnhappinessFactorWithPlague(galaxy, _h).result;
 }
 
-// Habitat.cs EmpireApprovalRating (534).
+// Habitat.cs EmpireApprovalRating (534). Mod layer: the scenario stability terms (scenario/stability.ts) follow the stock value.
 export function empireApprovalRating(galaxy: Galaxy, h: Habitat): number {
+    const v = empireApprovalRatingStock(galaxy, h);
+    return galaxy.scenario !== null ? scenarioApprovalRating(galaxy, v, h) : v;
+}
+
+/** Habitat.cs EmpireApprovalRating (534) without the mod layer's terms (the 19m stability ledger's "base" entry). */
+export function empireApprovalRatingStock(galaxy: Galaxy, h: Habitat): number {
     const empire = h.empire;
     const taxApproval = habitatTaxApproval(h);
     let inputValue = 0.0;
@@ -418,7 +424,6 @@ export function empireApprovalRating(galaxy: Galaxy, h: Habitat): number {
         if (num22 > 0.0) num22 *= 1.0 + num25;
         else if (num22 < 0.0) num22 /= 1.0 + num25;
     }
-    if (galaxy.scenario !== null) return scenarioQuery(galaxy, 'empireApprovalRating', num22, { habitat: h, empire: h.empire }); // mod layer
     return num22;
 }
 

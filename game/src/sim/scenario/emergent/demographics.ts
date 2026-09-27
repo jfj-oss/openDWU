@@ -32,7 +32,9 @@ import { DiplomaticRelationType, obtainDiplomaticRelation, obtainEmpireEvaluatio
 import { EmpireMessageType } from '../../messages';
 import { galaxyStarDate } from '../../tick/simTime';
 import { raceFriendlinessLevel } from '../../colonyTick';
-import { registerScenarioEvent, registerScenarioPeriodic, registerScenarioQuery, registerScenarioYearly, gameYear } from '../hooks';
+import { registerScenarioEvent, registerScenarioPeriodic, registerScenarioYearly, gameYear } from '../hooks';
+import { registerStabilityTerm } from '../stability';
+import { colonyQuarantined, securitySlots } from '../security/registry';
 import { scenarioFlag, scenarioParam, scenarioState } from '../state';
 import { registerScenarioDecision, raiseScenarioDecision } from '../decisions';
 import { scenarioMessage, scenarioNews, scenarioText } from '../messages';
@@ -300,6 +302,7 @@ export function chooseAsylum(galaxy: Galaxy, flow: RefugeeFlow): { habitat: Habi
     const consider = (h: Habitat, host: Empire) => {
         if (h === origin) return;
         if (flow.excludedHosts.includes(h)) return;
+        if (colonyQuarantined(galaxy, h)) return; // 19m quarantine blocks refugee inflow (flag-gated)
         if (!acceptsPopulation(galaxy, h, host, flow.race)) return;
         if (originOwner !== null && obtainDiplomaticRelation(host, originOwner).type === DiplomaticRelationType.War) return;
         const policy = asylumPolicyOf(st, host);
@@ -519,6 +522,7 @@ export function settleRefugeeConvoyArrival(galaxy: Galaxy, bo: BuiltObject, dock
         strengthenLink(galaxy, convoy.flow.origin, habitat, item.race);
     }
     convoy.flow.stage = 'settled';
+    securitySlots.refugeesArrived?.(galaxy, convoy.flow.origin, habitat); // 19m: refugees can carry the creed (flag-gated)
     scenarioMessage(galaxy, convoy.flow.host ?? habitat.empire ?? galaxy.independentEmpire!, scenarioText('Emergent Refugee Convoy Title'), scenarioText('Emergent Refugee Convoy Settled', String(convoy.amount), convoy.race.name, habitat.name));
     if (convoy.amount > 100_000_000) {
         scenarioNews(galaxy, habitat.empire, scenarioText('Emergent Refugee Convoy Settled News', String(convoy.amount), convoy.race.name, habitat.name));
@@ -680,11 +684,13 @@ export function demographicsApprovalTerm(galaxy: Galaxy, h: Habitat): number {
     return -weight * colonyTension(galaxy, h) + cosmopolitanBonus(h);
 }
 
-registerScenarioQuery({
+// Approval term through the mod layer's stability terms (scenario/stability.ts; the 19m ledger lists it as "tension").
+registerStabilityTerm({
     id: 'demographics.tension',
     flag: 'refugees',
-    query: 'empireApprovalRating',
-    run: (galaxy, value, { habitat }) => value + demographicsApprovalTerm(galaxy, habitat),
+    cause: 'tension',
+    label: 'Ethnic tension',
+    run: (galaxy, habitat) => demographicsApprovalTerm(galaxy, habitat),
 });
 
 // ---------------------------------------------------------------------------------------------------------------

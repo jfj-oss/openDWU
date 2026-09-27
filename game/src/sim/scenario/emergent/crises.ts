@@ -24,7 +24,8 @@ import { empireEventColonyResourceDepletion } from '../../empireEvents';
 import { OrderType, countResourceSupplyLocations, empireCreateOrder } from '../../logistics/orders';
 import { ResourceRef } from '../../cargo';
 import { calculateResourceLevelSpaceport, determineCriticalResources, determineSpacePortAtHabitat } from '../../logistics/colonySupply';
-import { registerScenarioEvent, registerScenarioQuery, registerScenarioYearly } from '../hooks';
+import { registerScenarioEvent, registerScenarioYearly } from '../hooks';
+import { registerStabilityTerm } from '../stability';
 import { pendingScenarioDecisions, raiseScenarioDecision, registerScenarioDecision } from '../decisions';
 import { scenarioMessage, scenarioNews, scenarioText } from '../messages';
 import {
@@ -575,11 +576,12 @@ registerScenarioYearly({ id: 'emergent.crises', flag: CRISES_FLAG, order: 20, ru
 
 // §2.7 approval term. The §S3 approval-term hook (tasks/19d1 §S3) is not on this branch: the mod layer's
 // empireApprovalRating query adds the term after the stock multipliers instead.
-registerScenarioQuery({
+registerStabilityTerm({
     id: 'crises.shortage',
     flag: CRISES_FLAG,
-    query: 'empireApprovalRating',
-    run: (galaxy, value, args) => value + shortageTerm(galaxy, args.habitat),
+    cause: 'shortages',
+    label: 'Shortages',
+    run: (galaxy, habitat) => shortageTerm(galaxy, habitat),
 });
 
 // AI rule 3 bookkeeping: who sold what to whom (logistics/contracts.ts initiateContract; no Rnd).

@@ -23,6 +23,7 @@ import { gameYear, registerScenarioEvent, registerScenarioPeriodic, registerScen
 import { scenarioParam } from '../state';
 import { scenarioText } from '../messages';
 import { startStarDateForAge } from '../../galaxyTime';
+import { registerHiddenThing } from '../security/registry';
 import {
     KNOWLEDGE_CONFIRMED,
     allCharactersAtLocation,
@@ -54,6 +55,8 @@ const PERIOD_DAYS = 60;
 const WAY_OF_DARKNESS_GOVERNMENT = 7;
 /** IntelligenceMissionType.CounterIntelligence (espionage.ts, as darkFarms.ts). */
 const COUNTER_INTELLIGENCE = 8;
+/** 19m concealment of a convert (CounterEspionageFactored scale 25–100). */
+const CONVERT_CONCEALMENT = 50;
 
 export interface ConvertRecord {
     character: Character;
@@ -132,9 +135,11 @@ export function cultYearly(galaxy: Galaxy, year: number): void {
 /** Also used by tests to force a conversion. */
 export function convert(galaxy: Galaxy, st: CultState, c: Character): void {
     if (isConverted(st, c)) return;
-    st.converted.push({ character: c, knowledge: [] });
+    const record: ConvertRecord = { character: c, knowledge: [] };
+    st.converted.push(record);
     st.hadConverts = true;
-    void galaxy;
+    // 19m: the convert joins the hidden-thing registry (no-op unless internalSecurity).
+    registerHiddenThing(galaxy, { kind: 'convert', concealment: CONVERT_CONCEALMENT, empire: c.empire, target: c, package: '19f.cult', site: record });
 }
 
 // ---------------------------------------------------------------------------------------------------------------

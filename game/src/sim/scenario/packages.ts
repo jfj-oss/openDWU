@@ -33,4 +33,5 @@ import './lively/peaceTerms';
 import './lively/warGoals';
 import './lively/pirateAmbition';
 import './lively/livingCalendar';
+import './security/security'; // 19m internal security (flag internalSecurity; last: it fills the 19d1 / 19d4 hook slots)
 export {};

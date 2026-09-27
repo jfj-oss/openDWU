@@ -1,0 +1,23 @@
+{
+  "id": "internal-security",
+  "name": "Internal Security",
+  "description": "One stability ledger per colony and empire (approval, ethnic tension, shortages, herd losses, cult influence, governor loyalty, purges, martial law — each with its cause) that the colony revolt reads; every hidden plot, convert, sleeper ship, foreign agent, bought governor, Hive node, farm and nest produces leads through one counter-intelligence roll; agents investigate leads, and confirmed leads unlock arrests, exile, purges, amnesty, quarantine, martial law, fleet recalls and scrapping suspect ships. Includes the Emergent Galaxy packages and the hidden threats (their own flags).",
+  "include": ["emergent", "resource-crises", "espionage-consequences", "refugees-demographics", "rim-fauna", "cult", "doppelgangers", "hive", "greytide", "corporatecoup"],
+  "flags": [
+    { "name": "internalSecurity", "label": "Internal security", "description": "Stability ledger with causes, leads from one counter-intelligence roll, investigations and security actions.", "default": true }
+  ],
+  "params": [
+    { "name": "securityDetectPct", "label": "Detection scale (% per year at equal skill ×2)", "default": 60, "min": 0, "max": 100 },
+    { "name": "securityInvestigateDays", "label": "Investigation length (days)", "default": 90, "min": 10, "max": 720 },
+    { "name": "securityPurgeApproval", "label": "Approval cost of a purge", "default": 5, "min": 0, "max": 50 },
+    { "name": "securityPurgeYears", "label": "Years a purge weighs on approval", "default": 2, "min": 0, "max": 10 },
+    { "name": "securityMartialLawApproval", "label": "Approval cost of martial law", "default": 8, "min": 0, "max": 50 },
+    { "name": "securityMartialLawYears", "label": "Martial law length (years)", "default": 5, "min": 1, "max": 20 },
+    { "name": "securityQuarantineYears", "label": "Quarantine length (years)", "default": 3, "min": 1, "max": 20 },
+    { "name": "securityCultWeight", "label": "Cult influence weight", "default": 10, "min": 0, "max": 50 },
+    { "name": "securityCultLoyalty", "label": "Yearly loyalty lost by a converted governor", "default": 5, "min": 0, "max": 50 },
+    { "name": "securityRefugeeCreedPct", "label": "Chance refugees from a cult-held colony carry the creed (%)", "default": 50, "min": 0, "max": 100 },
+    { "name": "securityAmnestyLoyalty", "label": "Loyalty gained by amnesty", "default": 20, "min": 0, "max": 100 },
+    { "name": "securityEmboldenAmbition", "label": "Ambition gained after a failed investigation", "default": 10, "min": 0, "max": 100 }
+  ]
+}

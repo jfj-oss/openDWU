@@ -365,6 +365,13 @@ export interface ScenarioQueries {
      * false refuses the new mission (the ship keeps its current one). `x` / `y` are the mission's point (-2000000001 unset).
      */
     assignMissionAllowed: { value: boolean; args: { builtObject: BuiltObject; missionType: number; target: unknown; x: number; y: number } };
+    /**
+     * colonyTick.ts checkSatisfaction (Habitat.cs 5992 CheckSatisfaction: the EmpireApprovalRating read that decides the
+     * revolt and, below `leaveThreshold` (num5) while rebelling without troops, LeaveEmpire): the value the revolt test
+     * uses. 19m internal security answers the colony's stability-ledger total (and holds it at the leave threshold under
+     * martial law). Never draws.
+     */
+    colonyRevoltApproval: { value: number; args: { habitat: Habitat; leaveThreshold: number } };
 }
 export type ScenarioQueryName = keyof ScenarioQueries;
 

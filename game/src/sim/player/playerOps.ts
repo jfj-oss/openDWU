@@ -41,6 +41,7 @@ import { grantAutonomy, runPoliticsAction, type PoliticsActionName } from '../sc
 import { answerScenarioDecision, pendingScenarioDecisions } from '../scenario/decisions';
 import { proposePeaceTerms } from '../scenario/lively/peaceTerms';
 import type { PeaceTerms } from '../scenario/lively/warGoals';
+import { runSecurityAction, startInvestigation, type SecurityActionName } from '../scenario/security/security';
 import {
     acceptProposal,
     declineProposal,
@@ -189,6 +190,12 @@ export const PLAYER_OPS = {
     politicsAction: (galaxy: Galaxy, empire: Empire, action: PoliticsActionName, character: Character) => runPoliticsAction(galaxy, empire, action, character),
     grantAutonomy: (galaxy: Galaxy, empire: Empire, colony: Habitat) => grantAutonomy(galaxy, empire, colony),
     // [emergent] end
+    // [security] begin — scenario 19m internal security (scenario/security/security.ts; flag-gated inside)
+    /** "Investigate lead": assign an agent to a lead (the agent stays on counter-intelligence while it runs). */
+    securityInvestigate: (galaxy: Galaxy, empire: Empire, leadId: number, agent: Character) => startInvestigation(galaxy, empire, leadId, agent),
+    /** An action a confirmed lead unlocks (arrest / exile / purge / amnesty / quarantine / martialLaw / recallFleet / scrapShip). */
+    securityAction: (galaxy: Galaxy, empire: Empire, action: SecurityActionName, leadId: number) => runSecurityAction(galaxy, empire, action, leadId),
+    // [security] end
 } as const;
 
 export type PlayerOps = typeof PLAYER_OPS;
