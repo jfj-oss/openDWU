@@ -70,6 +70,7 @@ import { createMapOverlayState, type MapOverlayState } from '../ui/mapOverlays';
 import { showRegionLabels, showSystemNames } from '../ui/settings';
 import { hideMapTooltip, showMapTooltip, tooltipText } from '../ui/mapTooltip';
 import { freightTooltipText } from '../ui/freightText'; // [freightOverlay]
+import { wreckTooltipText } from '../ui/scenario/wreckageUi'; // [wreckage]
 import type { FreightOverlay } from './freightOverlay'; // [freightOverlay]
 import { boundsOnScreen, DrawKey } from './drawCache';
 
@@ -1631,6 +1632,13 @@ export class MainView {
                         return;
                     }
                     // [freightOverlay] end
+                    // [wreckage] begin — hover a known debris field (scenario 19e-7).
+                    const wf = this.overlayLayer?.wreckHitTest(w.x, w.y, this.camera.zoom) ?? null;
+                    if (wf !== null) {
+                        showMapTooltip(wreckTooltipText(this.galaxy, wf), e.clientX, e.clientY);
+                        return;
+                    }
+                    // [wreckage] end
                     hideMapTooltip();
                     return;
                 }

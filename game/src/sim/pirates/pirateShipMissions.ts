@@ -17,6 +17,7 @@ import { BuiltObjectSubRole } from '../builtObjectTypes';
 import { BuiltObjectRole } from '../data/designSpecifications';
 import { ResourceGroup, resourceGroupOf } from '../resourceSystem';
 import { BuiltObjectMissionPriority, BuiltObjectMissionType, builtObjectMission } from '../missions/mission';
+import { scenarioEmit } from '../scenario/hooks';
 import { assignMission } from '../missions/assign';
 import { leaveShipGroup } from '../fleets/shipGroup';
 import { shipGroupOf, fastFindNearestColony, determineDefendingStrength } from '../combat/threats';
@@ -427,6 +428,8 @@ export function pirateAssignShipMissionCore(galaxy: Galaxy, empire: Empire, ship
             break;
         case BuiltObjectSubRole.ConstructionShip:
             pirateAssignConstructionShip(galaxy, empire, ship);
+            // mod layer (19e-7): Empire.1.cs 5116, end of case ConstructionShip — the ship found no stock task.
+            if (galaxy.scenario !== null && (missionOf(ship) === null || missionOf(ship)!.type === BuiltObjectMissionType.Undefined)) scenarioEmit(galaxy, 'constructionShipIdle', { empire, ship });
             break;
         case BuiltObjectSubRole.GasMiningShip:
         case BuiltObjectSubRole.MiningShip:

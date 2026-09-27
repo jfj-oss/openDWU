@@ -153,7 +153,7 @@ describe('19a addendum — treasure fleet', () => {
         expect(f.routes[0].activeLeg).toBe(1);
         // Raid: sinking a treasure ship costs the attacker standing.
         const s0 = rimTraderStanding(g, host.empireId);
-        scenarioEmit(g, 'builtObjectDestroyed', { builtObject: lead, destroyer: host });
+        scenarioEmit(g, 'builtObjectKilledBy', { builtObject: lead, destroyer: host });
         expect(rimTraderStanding(g, host.empireId)).toBe(s0 - 3000);
         expect(rimTraderPort(g)).not.toBeNull();
     });

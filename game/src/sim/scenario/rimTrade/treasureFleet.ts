@@ -547,7 +547,7 @@ export function treasureMapFeatures(galaxy: Galaxy): ScenarioMapFeatures | null 
 
 registerScenarioQuery({ id: 'rimTrade.researchCap', flag: 'rimTrader', query: 'researchFrozen', run: concordResearchFrozen });
 registerScenarioQuery({ id: 'rimTrade.beacon', flag: 'treasureBeacon', query: 'objectVisibleToAll', run: (g, v, a) => treasureBeaconVisible(g, v, a) });
-registerScenarioEvent({ id: 'rimTrade.treasureRaid', flag: 'rimTrader', event: 'builtObjectDestroyed', run: treasureShipDestroyed });
+registerScenarioEvent({ id: 'rimTrade.treasureRaid', flag: 'rimTrader', event: 'builtObjectKilledBy', run: treasureShipDestroyed });
 registerScenarioPeriodic({ id: 'rimTrade.treasure', flag: 'rimTrader', periodDays: 10, run: (g) => treasureFleetTick(g) });
 registerScenarioYearly({ id: 'rimTrade.researchCapYear', flag: 'rimTrader', order: 11, run: (g) => yearlyCapCheck(g) });
 registerScenarioMapFeatures('rimTrade.treasure', (g) => treasureMapFeatures(g));

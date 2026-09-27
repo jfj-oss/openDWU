@@ -187,6 +187,18 @@ export interface ScenarioEvents {
     builtObjectBuilt: { builtObject: BuiltObject; empire: Empire | null };
     /** combat/teardown.ts builtObjectCompleteTeardown (top). */
     builtObjectRemoved: { builtObject: BuiltObject };
+    /**
+     * combat/teardown.ts builtObjectCompleteTeardown (top, before builtObjectRemoved) when HasBeenDestroyed was already
+     * set — a ship / base destroyed by weapons, creatures, self-destruct or area damage (set only by the combat destroy
+     * branches), torn down by DoExplosions (BuiltObject.1.cs 14) or CleanupInvalidShips (Empire.8.cs 2896). 19e-7.
+     */
+    builtObjectDestroyed: { builtObject: BuiltObject };
+    /**
+     * civilianAI.ts assignMissionConstructionShip end (Empire.5.cs 2669, end of case ConstructionShip) and
+     * pirateShipMissions.ts pirateAssignConstructionShip end (Empire.1.cs 5116): the stock AI found no task and the
+     * ship is still idle. Handlers may assign a mission (19e-7 salvage).
+     */
+    constructionShipIdle: { empire: Empire; ship: BuiltObject };
     /** combat/damage.ts inflictBombardDamage (end). */
     habitatBombarded: { builtObject: BuiltObject; habitat: Habitat; bombardPower: number };
     /** espionage.ts completeIntelligenceMission (end). */
@@ -195,9 +207,12 @@ export interface ScenarioEvents {
     empireEliminated: { empire: Empire; conqueror: Empire | null };
     /**
      * combat/damage.ts inflictDamageFull, the ship-destroyed branch (BuiltObject.2.cs ~6560-6600, after the stock
-     * bookkeeping): `destroyer` = the attacking object's empire (null for monsters / unowned).
+     * bookkeeping): `destroyer` = the attacking object's empire (null for monsters / unowned). Fires at the moment of
+     * the killing blow, ahead of (and distinct from) builtObjectDestroyed's later teardown-time signal — kept as its
+     * own event (not merged into builtObjectDestroyed) so a 19e-7 wreckage handler and this one don't both fire off a
+     * single kill under double-different payload shapes, and so rimTrade's raid-stats counter isn't double-counted.
      */
-    builtObjectDestroyed: { builtObject: BuiltObject; destroyer: Empire | null };
+    builtObjectKilledBy: { builtObject: BuiltObject; destroyer: Empire | null };
     /** researchTick.ts doResearchBreakthrough (end). */
     researchCompleted: { empire: Empire; project: unknown };
     /** characters.ts generateNewCharacter (end). */
@@ -315,6 +330,13 @@ export interface ScenarioQueries {
      * `empire` regardless of sensors (19a treasure-fleet beacon: a galaxy-wide position broadcast).
      */
     objectVisibleToAll: { value: boolean; args: { empire: Empire; object: BuiltObject | Habitat } };
+    /** events.ts clearEmptyDebrisFields (Galaxy.5.cs 2893): true keeps a debris field with no abandoned ships (19e-7 wreck fields). */
+    debrisFieldPersists: { value: boolean; args: { location: GalaxyLocation } };
+    /**
+     * pirateAI.ts updateRaidCountdownBuiltObject / updateRaidCountdownHabitat (BuiltObject.1.cs 2894, Habitat.cs 1608): a
+     * multiplier on the raid-countdown recovery of a target at (x, y) (1 = stock). 19e-7: raids come faster near big wreck fields.
+     */
+    raidCountdownRate: { value: number; args: { x: number; y: number } };
 }
 export type ScenarioQueryName = keyof ScenarioQueries;
 

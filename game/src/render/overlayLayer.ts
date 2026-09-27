@@ -61,6 +61,8 @@ import { DrawKey } from './drawCache';
 import { FreightOverlay } from './freightOverlay'; // [freightOverlay]
 import { threatKnownSites, type KnownThreatSite } from '../sim/scenario/threats/framework';
 import { scenarioMapFeatures, type ScenarioMapMarker } from '../sim/scenario/mapFeatures';
+import { WRECK_MARKER_COLOR, visibleWreckFields, wreckFieldHit, wreckMarker } from '../ui/scenario/wreckageUi'; // [wreckage]
+import type { WreckField } from '../sim/scenario/wreckage/common'; // [wreckage]
 
 /** Scenario threat markers (19b "Threats" overlay): suspected = amber, confirmed = red. */
 export const THREAT_SUSPECTED_COLOR = 0xffa020;
@@ -245,6 +247,11 @@ export class OverlayLayer {
     private scenarioMarkers = new Graphics();
     private scenarioMarkerList: ScenarioMapMarker[] = [];
     private scenarioFrame = 0;
+    // [wreckage] begin — scenario 19e-7 wreck-field markers.
+    private wrecks = new Graphics();
+    private wreckList: WreckField[] = [];
+    private wreckFrame = 0;
+    // [wreckage] end
 
     constructor(
         private galaxy: Galaxy,
@@ -259,6 +266,7 @@ export class OverlayLayer {
         // [freightOverlay] end
         this.root.addChild(this.threats);
         this.root.addChild(this.scenarioMarkers);
+        this.root.addChild(this.wrecks); // [wreckage]
         // Eligibility is computed once from the galaxy as built: nothing in
         // the current sim (no ship/colonization missions yet) changes
         // ownership, quality or exploration after createGame runs.
@@ -324,6 +332,7 @@ export class OverlayLayer {
         this.freight.update(z, cam); // [freightOverlay]
         this.updateThreats(z);
         this.updateScenarioMarkers(z);
+        this.updateWrecks(z); // [wreckage]
     }
 
     /** Scenario markers (src/sim/scenario/mapFeatures.ts): a double ring with a pennant, re-queried 4 times a second. */
@@ -350,6 +359,41 @@ export class OverlayLayer {
         }
         g.visible = true;
     }
+
+    // [wreckage] begin
+    /** Wreck Fields overlay (scenario 19e-7): a rust ring around every debris field the player knows, at every zoom; the
+     * list is re-read twice a second. */
+    private updateWrecks(z: number): void {
+        const g = this.wrecks;
+        const player = this.galaxy.playerEmpire;
+        if (!this.state.wrecks || player === null || this.galaxy.scenario === null) {
+            if (g.visible) {
+                g.clear();
+                g.visible = false;
+            }
+            return;
+        }
+        if (this.wreckFrame++ % 30 === 0) this.wreckList = visibleWreckFields(this.galaxy, player);
+        g.clear();
+        if (this.wreckList.length === 0) {
+            g.visible = false;
+            return;
+        }
+        for (const f of this.wreckList) {
+            const m = wreckMarker(f, z);
+            g.circle(m.x, m.y, m.r).stroke({ width: 2 / z, color: WRECK_MARKER_COLOR, alpha: 0.9 });
+            const c = 5 / z;
+            g.moveTo(m.x - c, m.y - c).lineTo(m.x + c, m.y + c).moveTo(m.x + c, m.y - c).lineTo(m.x - c, m.y + c).stroke({ width: 2 / z, color: WRECK_MARKER_COLOR, alpha: 0.9 });
+        }
+        g.visible = true;
+    }
+
+    /** The known wreck field under a world point (hover tooltip), or null. */
+    wreckHitTest(x: number, y: number, z: number): WreckField | null {
+        if (!this.state.wrecks) return null;
+        return wreckFieldHit(this.galaxy, this.galaxy.playerEmpire, x, y, z);
+    }
+    // [wreckage] end
 
     /** Threats overlay: every scenario threat site / carrier the player knows (level ≥ 2), at every zoom. The selector
      * is re-read twice a second; the markers follow moving ships every frame. */

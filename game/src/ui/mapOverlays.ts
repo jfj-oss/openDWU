@@ -18,6 +18,8 @@ export interface MapOverlayState {
     // [freightOverlay] end
     /** Scenario threats (19b/19f): farms, nests, carriers the player knows of (framework threatKnownSites). */
     threats: boolean;
+    /** Scenario 19e-7: debris fields of battle wreckage the player knows (wreck markers + hover tooltip). */
+    wrecks: boolean;
 }
 
 /** A fresh overlay state. Task M3: `empireTerritory` starts on, matching the
@@ -45,6 +47,8 @@ export function createMapOverlayState(): MapOverlayState {
         // [freightOverlay] end
         // On: it only ever draws what the player has discovered in a scenario game (nothing without one).
         threats: true,
+        // On, like Threats: only draws in a wreckage-scenario game.
+        wrecks: true,
     };
 }
 
@@ -67,6 +71,7 @@ export const OVERLAY_ROWS: Array<{ key: OverlayKey; label: string; mod?: boolean
     { key: 'tradeHubs', label: 'Trade Hubs', mod: true, panel: 'tradeFlows' },
     // [freightOverlay] end
     { key: 'threats', label: 'Threats' },
+    { key: 'wrecks', label: 'Wreck Fields', mod: true },
 ];
 
 /** Toggle one overlay flag in place, then notify subscribers (task M3: lets

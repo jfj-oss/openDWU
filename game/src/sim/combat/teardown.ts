@@ -179,7 +179,12 @@ export function clearAllMissionsForTargetBuiltObject(galaxy: Galaxy, self: Built
  * galaxy index, galaxy / empire lists, pirate attack missions, system visibility).
  */
 export function builtObjectCompleteTeardown(galaxy: Galaxy, builtObject: BuiltObject, removeFromEmpire = true): void {
-    if (galaxy.scenario !== null) scenarioEmit(galaxy, 'builtObjectRemoved', { builtObject }); // mod layer
+    if (galaxy.scenario !== null) {
+        // mod layer: HasBeenDestroyed is already set only by the combat destroy branches (InflictDamage BuiltObject.2.cs
+        // 6545-6573, creature / area damage) — the teardown of a destroyed ship or base, from DoExplosions or CleanupInvalidShips.
+        if (builtObject.hasBeenDestroyed) scenarioEmit(galaxy, 'builtObjectDestroyed', { builtObject }); // 19e-7
+        scenarioEmit(galaxy, 'builtObjectRemoved', { builtObject });
+    }
     const self = builtObject;
     self.hasBeenDestroyed = true;
     if (self.contractsToFulfill.length > 0) checkCancelContracts(galaxy, self);
