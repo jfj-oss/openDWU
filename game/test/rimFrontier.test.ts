@@ -16,7 +16,15 @@ import { GalaxyTime } from '../src/sim/galaxyTime';
 import { deserializeGame, serializeGame } from '../src/sim/save/gameSave';
 import { defaultStartGameOptions } from '../src/sim/startGameOptions';
 import { RIM_FRONTIER_DEFAULTS, rimFrontierState } from '../src/sim/scenario/rimFrontier/common';
+import { frontierPirateHunt } from '../src/sim/scenario/rimFrontier/rimFrontier';
 import { rimGoodIds, rimTraderEmpire } from '../src/sim/scenario/rimTrade/common';
+import { rimFaunaState, type RimHerd } from '../src/sim/scenario/rimFauna/common';
+import { generateNewPirateEmpires, type PirateGenerationContext } from '../src/sim/pirates';
+import { Creature, CreatureType } from '../src/sim/creature';
+import { BuiltObjectMissionType } from '../src/sim/missions/mission';
+import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
+import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
+import { empireShipGroups } from '../src/sim/fleets/shipGroup';
 
 let base: GameData;
 beforeAll(async () => {
@@ -181,4 +189,170 @@ describe('19h rim frontier — faithful path, save, stacking', () => {
         runGameSeconds(loaded, 120);
         expect(stateDigest(loaded.galaxy)).toBe(stateDigest(g));
     }, 1200000);
+});
+
+describe('19h rim frontier — keep empire starts out of the rim', () => {
+    it('every non-Concord empire capital sits inside the belt inner radius (seeds 1 and 2)', () => {
+        for (const seed of [1, 2]) {
+            const { game } = createScenarioGame(base, { scenario: 'rim-frontier', options: (o) => ({ ...o, seed }) });
+            const g = game.galaxy;
+            for (const e of g.empires) {
+                if (e.dominantRace?.name === 'Oranthi') continue;
+                expect(radiusFraction(g, e.capital!.xpos, e.capital!.ypos), `seed ${seed} empire ${e.name}`).toBeLessThan(D.rimFrontierBeltInner);
+            }
+        }
+    }, 120000);
+
+    it('the query: a rim candidate is rejected for an ordinary race, the Concord race is exempt', () => {
+        const { game } = createScenarioGame(base, { scenario: 'rim-frontier' });
+        const g = game.galaxy;
+        const rimHabitat = g.habitats.find((h) => radiusFraction(g, h.xpos, h.ypos) >= D.rimFrontierBeltInner)!;
+        const coreHabitat = g.habitats.find((h) => radiusFraction(g, h.xpos, h.ypos) < D.rimFrontierBeltInner)!;
+        const race = g.empires[0].dominantRace!;
+        expect(scenarioQuery(g, 'acceptHomeHabitat', true, { race, habitat: rimHabitat, empireKind: 'ai' })).toBe(false);
+        expect(scenarioQuery(g, 'acceptHomeHabitat', true, { race, habitat: coreHabitat, empireKind: 'ai' })).toBe(true);
+        const concordRace = { ...race, name: 'Oranthi' };
+        expect(scenarioQuery(g, 'acceptHomeHabitat', true, { race: concordRace, habitat: rimHabitat, empireKind: 'ai' })).toBe(true);
+    });
+
+    it('param 0: the stock (unfiltered) placement returns', () => {
+        const { game } = createScenarioGame(base, { scenario: 'rim-frontier', params: { rimFrontierKeepStartsOut: 0 } });
+        const g = game.galaxy;
+        const rimHabitat = g.habitats.find((h) => radiusFraction(g, h.xpos, h.ypos) >= D.rimFrontierBeltInner)!;
+        const race = g.empires[0].dominantRace!;
+        expect(scenarioQuery(g, 'acceptHomeHabitat', true, { race, habitat: rimHabitat, empireKind: 'player' })).toBe(true);
+    });
+
+    it('with the rim trader stacked: the Concord still lands in its own rim ring, everyone else stays inside the belt', () => {
+        const byId = new Map(scenarioIndexFs().map((m) => [m.id, loadScenarioOverlayFs(m.id)] as const));
+        const both = resolveScenarioIncludes(inlineOverlay({ id: 'rimStartsConcord', include: ['rimTrade', 'rim-frontier'] }), byId);
+        const forceOranthi = (o: CreateGameOptions): CreateGameOptions => ({ ...o, aiEmpires: [{ ...o.aiEmpires[0], race: 'Oranthi' }, ...o.aiEmpires.slice(1)] });
+        const { game } = createScenarioGame(base, { scenario: both, options: forceOranthi });
+        const g = game.galaxy;
+        const r = rimTraderEmpire(g)!;
+        expect(r).not.toBeNull();
+        expect(radiusFraction(g, r.capital!.xpos, r.capital!.ypos)).toBeGreaterThanOrEqual(0.72);
+        for (const e of g.empires) {
+            if (e === r) continue;
+            expect(radiusFraction(g, e.capital!.xpos, e.capital!.ypos)).toBeLessThan(D.rimFrontierBeltInner);
+        }
+    }, 120000);
+});
+
+describe('19h rim frontier — pirate base rim/core share', () => {
+    function ctxOf(g: Galaxy): PirateGenerationContext {
+        return { independentColonies: g.independentColonies, startingAge: g.startingAge, difficultyLevel: g.difficultyLevel };
+    }
+
+    /** Grows galaxy.pirateEmpires to at least `count` (each new faction still reads the share off the live, growing
+     *  galaxy.pirateEmpires.length as it is created, so batching them in fewer/larger calls changes nothing). */
+    function growPirateFactions(g: Galaxy, count: number): void {
+        let guard = 0;
+        while (g.pirateEmpires.length < count && guard < 50) {
+            guard++;
+            generateNewPirateEmpires(g, ctxOf(g), { piratePrevalence: 2, maximumEmpireAmount: count * 2 + 10, pirateProximity: 0 });
+        }
+    }
+
+    it('on seed 1 with 20 factions, 12 rim / 8 core (round(20 x 0.6))', () => {
+        // Pirate bases are always placed at a fuel-bearing habitat (Galaxy.9.cs GenerateNewPirateEmpires searches by
+        // fuel resource); the default fuel-scarcity radius (0.65) sits inside the default belt inner radius (0.7), so
+        // stacking both at their defaults would make a "rim" (>= 0.7) pirate base structurally unreachable — not a
+        // bug in the split, just two features of the same package fighting over the same knob. Isolate the split here
+        // (fuel scarcity off) the way its own end-to-end coverage isolates fuel scarcity from the belt (test '4').
+        const { game } = createScenarioGame(base, { scenario: 'rim-frontier', params: { rimFrontierFuelMaxRadius: 1.5 } });
+        const g = game.galaxy;
+        growPirateFactions(g, 20);
+        const first20 = g.pirateEmpires.slice(0, 20);
+        expect(first20.length).toBe(20);
+        const inner = D.rimFrontierBeltInner;
+        const rim = first20.filter((e) => radiusFraction(g, e.pirateEmpireBaseHabitat!.xpos, e.pirateEmpireBaseHabitat!.ypos) >= inner).length;
+        expect(rim).toBe(12);
+        expect(first20.length - rim).toBe(8);
+    }, 120000);
+
+    it('param 0: stock placement (no rim/core split)', () => {
+        const { game } = createScenarioGame(base, { scenario: 'rim-frontier', params: { rimFrontierPirateRimShare: 0 } });
+        const g = game.galaxy;
+        const anyHabitat = g.habitats[0];
+        expect(scenarioQuery(g, 'acceptPirateBase', true, { habitat: anyHabitat })).toBe(true);
+    });
+});
+
+describe('19h rim frontier — base placement avoids rim herds (stacks with 19g rim fauna)', () => {
+    it('a candidate inside a herd home range + buffer is rejected; far away it is not', () => {
+        const byId = new Map(scenarioIndexFs().map((m) => [m.id, loadScenarioOverlayFs(m.id)] as const));
+        const both = resolveScenarioIncludes(inlineOverlay({ id: 'rimFrontierFaunaAvoid', include: ['rim-frontier', 'rim-fauna'] }), byId);
+        const { game } = createScenarioGame(base, { scenario: both, params: { rimFrontierNestAvoidRadius: 1000 } });
+        const g = game.galaxy;
+        const herd: RimHerd = {
+            id: 999001, type: CreatureType.Kaltor, leader: new Creature(g, CreatureType.Kaltor, null), followers: [],
+            homeSystemIndex: 0, homeX: 500000, homeY: 500000, homeRange: 5000,
+            birthSystemIndex: 0, birthX: 500000, birthY: 500000,
+            feedSite: null, feedTicks: 0, feedingStation: null, migration: null, docileEmpireIds: [], victimEmpireIds: [],
+        };
+        rimFaunaState(g).herds.push(herd);
+        expect(scenarioQuery(g, 'placementAvoidsHerds', false, { x: 500000, y: 500000 })).toBe(true);
+        expect(scenarioQuery(g, 'placementAvoidsHerds', false, { x: 505500, y: 500000 })).toBe(true); // inside homeRange + buffer
+        expect(scenarioQuery(g, 'placementAvoidsHerds', false, { x: 520000, y: 500000 })).toBe(false); // past the buffer
+    });
+
+    it('flag off: no rejection even at the herd centre', () => {
+        const byId = new Map(scenarioIndexFs().map((m) => [m.id, loadScenarioOverlayFs(m.id)] as const));
+        const both = resolveScenarioIncludes(inlineOverlay({ id: 'rimFrontierFaunaAvoidOff', include: ['rim-frontier', 'rim-fauna'] }), byId);
+        const { game } = createScenarioGame(base, { scenario: both, flags: { rimFrontier: false } });
+        expect(scenarioQuery(game.galaxy, 'placementAvoidsHerds', false, { x: 500000, y: 500000 })).toBe(false);
+    });
+});
+
+describe('19h rim frontier — pirate herd hunting (not a port: new scenario rule)', () => {
+    it('a faction in range starts a hunt (Attack mission on the herd leader); the herd\'s death later pays a bounty', () => {
+        const byId = new Map(scenarioIndexFs().map((m) => [m.id, loadScenarioOverlayFs(m.id)] as const));
+        const both = resolveScenarioIncludes(inlineOverlay({ id: 'rimFrontierHunt', include: ['rim-frontier', 'rim-fauna'] }), byId);
+        const { game } = createScenarioGame(base, { scenario: both, params: { rimFrontierHuntChance: 1, rimFrontierHuntRange: 2000, rimFrontierHuntBounty: 500 } });
+        const g = game.galaxy;
+        const ctx: PirateGenerationContext = { independentColonies: g.independentColonies, startingAge: g.startingAge, difficultyLevel: g.difficultyLevel };
+        generateNewPirateEmpires(g, ctx, { piratePrevalence: 2, maximumEmpireAmount: 20, pirateProximity: 0 });
+        expect(g.pirateEmpires.length).toBeGreaterThan(0);
+        const faction = g.pirateEmpires[0];
+        const base_ = faction.pirateEmpireBaseHabitat!;
+        // A real pirate faction's starting kit has no free-standing warship (only an Escort); force one mobile ship
+        // into fighting trim so the hunt's ship-gathering filter (Galaxy.9.cs 284) has something to take.
+        const ship = faction.builtObjects.find((bo) => bo.topSpeed > 0)!;
+        ship.role = BuiltObjectRole.Military;
+        ship.subRole = BuiltObjectSubRole.SmallFreighter;
+        ship.shipGroup = null;
+        ship.builtAt = null;
+        const leader = new Creature(g, CreatureType.Kaltor, null);
+        g.creatures.push(leader);
+        const herd: RimHerd = {
+            id: 999002, type: CreatureType.Kaltor, leader, followers: [],
+            homeSystemIndex: base_.systemIndex, homeX: base_.xpos, homeY: base_.ypos, homeRange: 500,
+            birthSystemIndex: base_.systemIndex, birthX: base_.xpos, birthY: base_.ypos,
+            feedSite: null, feedTicks: 0, feedingStation: null, migration: null, docileEmpireIds: [], victimEmpireIds: [],
+        };
+        rimFaunaState(g).herds.push(herd);
+
+        frontierPirateHunt(g);
+        const st = rimFrontierState(g);
+        expect(st.pirateHunts.some((h) => h.factionId === faction.empireId && h.herdId === herd.id)).toBe(true);
+        const huntGroup = empireShipGroups(faction).find((sg) => sg?.name === 'Herd Hunt');
+        expect(huntGroup).toBeDefined();
+        expect(huntGroup!.mission?.type).toBe(BuiltObjectMissionType.Attack);
+        expect(huntGroup!.mission?.targetCreature).toBe(leader);
+
+        // The herd dies (rimFauna's own periodic tick would splice it out the same way).
+        rimFaunaState(g).herds.splice(rimFaunaState(g).herds.indexOf(herd), 1);
+        const before = faction.stateMoney;
+        frontierPirateHunt(g);
+        expect(rimFrontierState(g).pirateHunts.length).toBe(0);
+        expect(faction.stateMoney).toBeGreaterThan(before);
+    }, 120000);
+
+    it('flag off: no hunts are recorded', () => {
+        const byId = new Map(scenarioIndexFs().map((m) => [m.id, loadScenarioOverlayFs(m.id)] as const));
+        const both = resolveScenarioIncludes(inlineOverlay({ id: 'rimFrontierHuntOff', include: ['rim-frontier', 'rim-fauna'] }), byId);
+        const { game } = createScenarioGame(base, { scenario: both, flags: { rimFrontier: false } });
+        expect('rimFrontier' in game.galaxy.scenario!.state).toBe(false);
+    });
 });

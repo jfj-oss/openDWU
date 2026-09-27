@@ -19,6 +19,21 @@ export const RIM_FRONTIER_DEFAULTS = {
     rimFrontierFogFactor: 0.5,
     rimFrontierExtent: 1.0,
     rimFrontierStarCount: 0,
+    /** 19h keepStartsOut: >0 keeps ordinary player/AI capitals inside the belt inner radius (the Concord's own
+     *  homePlacement rule is untouched). 0 = stock placement. */
+    rimFrontierKeepStartsOut: 1,
+    /** 19h pirate share: fraction of new pirate factions (in their creation order) placed in the rim; the rest go in
+     *  the core. 0 = stock placement. */
+    rimFrontierPirateRimShare: 0.6,
+    /** 19h base placement: extra buffer added past a rim herd's home range (RimHerd.homeRange, rimFauna/common.ts)
+     *  that a new base (pirate or independent) may not land inside. */
+    rimFrontierNestAvoidRadius: 5000,
+    /** 19h pirate hunting: a pirate faction only considers herds within this distance of its base. */
+    rimFrontierHuntRange: 300000,
+    /** 19h pirate hunting: yearly chance a faction with a herd in range sends ships after it. 0 = off. */
+    rimFrontierHuntChance: 0.3,
+    /** 19h pirate hunting: credits paid per herd member when a hunt succeeds (not a port: DW:U has no such bounty). */
+    rimFrontierHuntBounty: 500,
 } as const;
 export type RimFrontierParam = keyof typeof RIM_FRONTIER_DEFAULTS;
 
@@ -34,16 +49,28 @@ export function frontierParam(galaxy: Galaxy, name: RimFrontierParam): number {
     return scenarioParam(galaxy, name, RIM_FRONTIER_DEFAULTS[name]);
 }
 
-/** Saved state (`scenarioState(galaxy, 'rimFrontier')`): graph references only. */
+/** A pirate faction's in-progress herd hunt (19h pirate hunting): plain data, resolved on a later yearly check. */
+export interface RimFrontierPirateHunt {
+    factionId: number;
+    herdId: number;
+    /** Herd member count when the hunt was ordered (the bounty base if it succeeds). */
+    size: number;
+    /** Star date the hunt was ordered (a hunt still open 2 years later is abandoned, no bounty). */
+    startedAt: number;
+}
+
+/** Saved state (`scenarioState(galaxy, 'rimFrontier')`): graph references and plain data only. */
 export interface RimFrontierState {
     /** The gravity shoals (NebulaCloud GalaxyLocations with no stock effect, so the map draws them as clouds). */
     shoals: GalaxyLocation[];
     /** The storm clouds the belt added (the converted stock clouds are not listed). */
     addedStorms: GalaxyLocation[];
+    /** One entry per pirate faction currently hunting a herd (by empireId). */
+    pirateHunts: RimFrontierPirateHunt[];
 }
 
 export function rimFrontierState(galaxy: Galaxy): RimFrontierState {
-    return scenarioState<RimFrontierState>(galaxy, 'rimFrontier', () => ({ shoals: [], addedStorms: [] }));
+    return scenarioState<RimFrontierState>(galaxy, 'rimFrontier', () => ({ shoals: [], addedStorms: [], pirateHunts: [] }));
 }
 
 /** 19h-5: the ship-sensor range multiplier toward (x, y): the fog factor inside the rim band, else 1. */

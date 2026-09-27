@@ -60,7 +60,7 @@ import { GalaxyLocationType } from './galaxyLocation';
 import { GalaxyShape, HabitatCategoryType, HabitatType, type Habitat } from './types';
 import { Cargo, CargoList, ResourceRef } from './cargo';
 import { createGalaxyScenario } from './scenario/state';
-import { scenarioFindHomeHabitat, scenarioGameStart, scenarioGenerationSetup } from './scenario/hooks';
+import { scenarioFindHomeHabitat, scenarioGameStart, scenarioGenerationSetup, scenarioQuery } from './scenario/hooks';
 import './scenario/packages'; // mod layer: registers the scenario packages' hooks
 
 export type HomeSystem = 'Harsh' | 'Trying' | 'Normal' | 'Agreeable' | 'Excellent';
@@ -493,6 +493,10 @@ function findAiCapital(
                         }
                     }
                 }
+                if (flag && habitat !== null && galaxy.scenario !== null && !scenarioQuery(galaxy, 'acceptHomeHabitat', true, { race, habitat, empireKind: 'ai' })) {
+                    habitat = null;
+                    flag = false;
+                }
             }
             num2++;
         }
@@ -559,6 +563,7 @@ function findAiCapital(
             const h5 = galaxy.findNearestColony(p.x, p.y, null, false);
             if (h5 !== null && galaxy.calculateDistance(p.x, p.y, h5.xpos, h5.ypos) < sectorSize * num7) flag2 = true;
             if (galaxy.systemPlanetCount(galaxy.systems[star.systemIndex]) >= 3 && !flag2) flag = true;
+            if (flag && galaxy.scenario !== null && !scenarioQuery(galaxy, 'acceptHomeHabitat', true, { race, habitat, empireKind: 'ai' })) flag = false;
         }
         num6++;
     }
@@ -1031,6 +1036,7 @@ export function createGame(opts: CreateGameOptions): Game {
             const p = playerStartPoint(galaxy, opts.shape, opts.player.startLocation ?? RANDOM, race);
             found = galaxy.findNearestUncolonizedHabitat(p.x + num11, p.y + num12, capitalHabitatType);
             if (found !== null && inNebula(galaxy, found)) found = null;
+            if (found !== null && galaxy.scenario !== null && !scenarioQuery(galaxy, 'acceptHomeHabitat', true, { race, habitat: found, empireKind: 'player' })) found = null;
             num10++;
             if (num10 > 50) {
                 const num13 = num10 > 1000 ? 5000000.0 : 3000000.0;

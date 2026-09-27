@@ -1,7 +1,7 @@
 {
   "id": "rim-frontier",
   "name": "Rim Frontier",
-  "description": "The outer reaches are hard to reach and hold: an ion-storm belt, thinning stars, gravity shoals that pull ships out of hyperspace, little fuel and poor sensor coverage. Stacks with The Rim Trade.",
+  "description": "The outer reaches are hard to reach and hold: an ion-storm belt, thinning stars, gravity shoals that pull ships out of hyperspace, little fuel and poor sensor coverage. Ordinary empires start inside the belt, pirate bases split rim/core, and pirate factions hunt rim fauna herds for bounty. Stacks with The Rim Trade and Rim Fauna.",
   "flags": [
     { "name": "rimFrontier", "label": "Rim frontier geography", "description": "Storm belt, sparser rim, gravity shoals, inward fuel, rim sensor fog and the map-scale options below.", "default": true }
   ],
@@ -14,6 +14,12 @@
     { "name": "rimFrontierFuelMaxRadius", "label": "Fuel bias: Caslon / Hydrogen only inside this radius (fraction; 1.5 = off)", "default": 0.65, "min": 0.3, "max": 1.5 },
     { "name": "rimFrontierFogFactor", "label": "Rim sensor range multiplier (ship sensors; listening posts exempt)", "default": 0.5, "min": 0.1, "max": 1 },
     { "name": "rimFrontierExtent", "label": "Galaxy extent multiplier (same stars spread wider)", "default": 1.0, "min": 1.0, "max": 1.7 },
-    { "name": "rimFrontierStarCount", "label": "Star count override (0 = the wizard's; up to the raised cap)", "default": 0, "min": 0, "max": 2000 }
+    { "name": "rimFrontierStarCount", "label": "Star count override (0 = the wizard's; up to the raised cap)", "default": 0, "min": 0, "max": 2000 },
+    { "name": "rimFrontierKeepStartsOut", "label": "Keep ordinary empire starts out of the rim (past the belt inner radius)", "default": 1, "min": 0, "max": 1 },
+    { "name": "rimFrontierPirateRimShare", "label": "Share of new pirate factions placed in the rim (rest go in the core)", "default": 0.6, "min": 0, "max": 1 },
+    { "name": "rimFrontierNestAvoidRadius", "label": "Buffer past a rim herd's home range that a new base may not land inside", "default": 5000, "min": 0, "max": 50000 },
+    { "name": "rimFrontierHuntRange", "label": "Pirate hunting: range from a faction's base to consider a herd", "default": 300000, "min": 0, "max": 2000000 },
+    { "name": "rimFrontierHuntChance", "label": "Pirate hunting: yearly chance a faction in range sends ships after a herd (0-1)", "default": 0.3, "min": 0, "max": 1 },
+    { "name": "rimFrontierHuntBounty", "label": "Pirate hunting: credits paid per herd member on a successful hunt", "default": 500, "min": 0, "max": 5000 }
   ]
 }

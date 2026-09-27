@@ -10,15 +10,38 @@
 //   4 fuel scarcity   resourcePlacement rules for Caslon / Hydrogen (Galaxy.selectResources' scenario filter).
 //   5 sensor fog      Empire.9.cs FindShipOutsideSystemWithScanRange: the ship-sensor range toward rim targets.
 //   6 map scale       createGame's generation options: sector counts × extent (SectorSize stays 2,000,000), star count.
+//   7 keep starts in  the ported home-system search (game.ts player loop / Start.cs method_51 findAiCapital): a stock-
+//                     accepted candidate past the belt inner radius is rejected (the C#'s own loop re-rolls). The
+//                     Concord (rimTrade's Oranthi, its own homePlacement rule) is exempt.
+//   8 pirate share    pirates.ts generateNewPirateEmpires (Galaxy.9.cs): new pirate factions are split rim / core by
+//                     creation order (galaxy.pirateEmpires.length), a fixed share of the total.
+//   9 herd avoidance  a base-placement candidate (pirate or independent) inside a rim herd's home range (+ a buffer)
+//                     is rejected — reads rimFauna's state (peekRimFaunaState), never rimFauna's own draws.
+//  10 pirate hunting  not a port (DW:U pirates never hunt fauna): a yearly check per pirate faction sends idle warships
+//                     (the Galaxy.9.cs 284 DoSuperPirateTasks ship-gathering filter) to Attack a nearby herd's leader;
+//                     a hunt that killed its herd by the next check pays the faction a credits bounty
+//                     (treasury.ts performPrivateTransaction — DW:U has no creature-resource commodity to drop).
 // Rnd: generation draws only from a package-owned Random seeded from the galaxy seed (never galaxy.rnd); a rejected star
 // position makes the stock SetupSun loop draw its re-roll from galaxy.rnd, so flag-on games re-pin (flag off: no hook
-// runs). The runtime hooks never draw.
+// runs). The runtime hooks (placement queries) never draw; the yearly pirate-hunting handler does (galaxy.rnd, gated).
 
 import type { Galaxy } from '../../galaxy';
+import type { Empire } from '../../empire';
 import { GalaxyLocation, GalaxyLocationEffectType, GalaxyLocationShape, GalaxyLocationType } from '../../galaxyLocation';
 import { Random } from '../../random';
-import { radiusFraction, registerScenarioGeneration, registerScenarioQuery } from '../hooks';
+import { radiusFraction, registerScenarioGeneration, registerScenarioQuery, registerScenarioYearly } from '../hooks';
 import type { GalaxyScenario } from '../state';
+import { RIM_RACE } from '../rimTrade/common';
+import { creatureAlive, herdMembers, peekRimFaunaState, type RimHerd } from '../rimFauna/common';
+import { BuiltObjectRole } from '../../data/designSpecifications';
+import { BuiltObjectSubRole } from '../../builtObjectTypes';
+import { ShipGroup, empireShipGroups, shipGroupAssignMission } from '../../fleets/shipGroup';
+import { addShipsToShipGroup } from '../../fleets/shipGroupTasks';
+import { FleetPosture } from '../../diplomacyTick';
+import { BuiltObjectMissionPriority, BuiltObjectMissionType } from '../../missions/mission';
+import { performPrivateTransaction } from '../../treasury';
+import { galaxyStarDate } from '../../tick/simTime';
+import { YEAR_LENGTH } from '../../galaxyTime';
 import {
     RIM_FRONTIER_DEFAULTS,
     RIM_FRONTIER_FLAG,
@@ -177,3 +200,126 @@ registerScenarioQuery({
         return shoals.length === 0 ? null : shoalStopOnPath(shoals, a.fromX, a.fromY, a.toX, a.toY, a.exitX, a.exitY);
     },
 });
+
+// 19h-7: keep ordinary player/AI starts out of the rim (game.ts player-capital loop and Start.cs method_51
+// findAiCapital, via hooks.ts's acceptHomeHabitat). The Concord (rimTrade's Oranthi) keeps its own homePlacement ring
+// regardless — it never reaches this hook when rimTrade is stacked (scenarioFindHomeHabitat picks it first), and this
+// handler exempts it by name so a lone rim-frontier game (Oranthi drawn as an ordinary race) still leaves it alone.
+registerScenarioQuery({
+    id: 'rimFrontier.homeHabitat',
+    flag: RIM_FRONTIER_FLAG,
+    query: 'acceptHomeHabitat',
+    run: (galaxy, value, a) => {
+        if (!value) return value;
+        if (frontierParam(galaxy, 'rimFrontierKeepStartsOut') <= 0) return value;
+        if (a.race.name === RIM_RACE) return value;
+        return radiusFraction(galaxy, a.habitat.xpos, a.habitat.ypos) < frontierParam(galaxy, 'rimFrontierBeltInner');
+    },
+});
+
+// 19h-8: split new pirate factions rim / core by their creation order (pirates.ts generateNewPirateEmpires, via
+// hooks.ts's acceptPirateBase). No extra state: galaxy.pirateEmpires.length (before this one) and how many of the
+// existing ones sit past the belt already fully determine the next slot's target, so the split stays exact
+// (round(n × share)) across any number of calls, including after a save/load.
+function frontierPirateBaseTargetsRim(galaxy: Galaxy): boolean {
+    const inner = frontierParam(galaxy, 'rimFrontierBeltInner');
+    const rimCount = galaxy.pirateEmpires.reduce((n, e) => (e.pirateEmpireBaseHabitat !== null && radiusFraction(galaxy, e.pirateEmpireBaseHabitat.xpos, e.pirateEmpireBaseHabitat.ypos) >= inner ? n + 1 : n), 0);
+    const n = galaxy.pirateEmpires.length + 1;
+    return rimCount < Math.round(n * frontierParam(galaxy, 'rimFrontierPirateRimShare'));
+}
+registerScenarioQuery({
+    id: 'rimFrontier.pirateBase',
+    flag: RIM_FRONTIER_FLAG,
+    query: 'acceptPirateBase',
+    run: (galaxy, value, a) => {
+        if (!value || frontierParam(galaxy, 'rimFrontierPirateRimShare') <= 0) return value;
+        const inner = frontierParam(galaxy, 'rimFrontierBeltInner');
+        const f = radiusFraction(galaxy, a.habitat.xpos, a.habitat.ypos);
+        return frontierPirateBaseTargetsRim(galaxy) ? f >= inner : f < inner;
+    },
+});
+
+// 19h-9: base placement (pirate or independent) rejects a candidate inside a rim herd's home range + a buffer. Reads
+// rimFauna's state through the read-only peek accessor (safe with no rimFauna in this game, or rimFauna not yet run).
+registerScenarioQuery({
+    id: 'rimFrontier.herdAvoid',
+    flag: RIM_FRONTIER_FLAG,
+    query: 'placementAvoidsHerds',
+    run: (galaxy, value, a) => {
+        if (value) return value;
+        const fauna = peekRimFaunaState(galaxy);
+        if (fauna === null) return value;
+        const buffer = frontierParam(galaxy, 'rimFrontierNestAvoidRadius');
+        for (const herd of fauna.herds) {
+            if (herdMembers(herd).length === 0) continue;
+            const r = herd.homeRange + buffer;
+            if (galaxy.calculateDistanceSquared(a.x, a.y, herd.homeX, herd.homeY) <= r * r) return true;
+        }
+        return value;
+    },
+});
+
+// 19h-10: pirate hunting — not a port. A yearly check per pirate faction: resolve last year's hunt (pay a bounty if
+// its herd is gone), then maybe start a new one against the nearest live herd within range.
+function frontierResolveHunt(galaxy: Galaxy, faction: Empire, fauna: ReturnType<typeof peekRimFaunaState>): void {
+    const st = rimFrontierState(galaxy);
+    const i = st.pirateHunts.findIndex((h) => h.factionId === faction.empireId);
+    if (i < 0) return;
+    const hunt = st.pirateHunts[i];
+    const stillAlive = fauna !== null && fauna.herds.some((h) => h.id === hunt.herdId);
+    if (!stillAlive) {
+        st.pirateHunts.splice(i, 1);
+        performPrivateTransaction(faction, hunt.size * frontierParam(galaxy, 'rimFrontierHuntBounty'));
+    } else if (galaxyStarDate(galaxy) - hunt.startedAt > YEAR_LENGTH * 2) {
+        st.pirateHunts.splice(i, 1); // abandoned: no bounty
+    }
+}
+
+/** Galaxy.9.cs 284 DoSuperPirateTasks's ship-gathering filter (idle, undamaged, non-escort warships), reused here to
+ *  form a one-off hunting party rather than the Phantom Fleet. */
+function frontierAssignHunt(galaxy: Galaxy, faction: Empire, herd: RimHerd): void {
+    if (herd.leader === null || !creatureAlive(galaxy, herd.leader)) return;
+    const idle = faction.builtObjects.filter(
+        (bo) => bo.role === BuiltObjectRole.Military && bo.builtAt === null && bo.shipGroup === null && bo.topSpeed > 0 && bo.damagedComponentCount === 0 && bo.subRole !== BuiltObjectSubRole.Escort,
+    );
+    if (idle.length === 0) return;
+    const base = faction.pirateEmpireBaseHabitat;
+    const shipGroup = new ShipGroup(galaxy);
+    shipGroup.empire = faction;
+    shipGroup.shipTargetAmount = idle.length;
+    shipGroup.troopTargetStrength = 0;
+    shipGroup.gatherPoint = base;
+    addShipsToShipGroup(galaxy, faction, shipGroup, idle, idle.length, true, base);
+    if (shipGroup.ships.length === 0) return;
+    shipGroup.name = 'Herd Hunt';
+    empireShipGroups(faction).push(shipGroup);
+    shipGroup.posture = FleetPosture.Attack;
+    shipGroupAssignMission(galaxy, shipGroup, BuiltObjectMissionType.Attack, herd.leader, null, BuiltObjectMissionPriority.High, false);
+    rimFrontierState(galaxy).pirateHunts.push({ factionId: faction.empireId, herdId: herd.id, size: herdMembers(herd).length, startedAt: galaxyStarDate(galaxy) });
+}
+
+/** The yearly pirate-hunting check (`rimFrontier.pirateHunt`). Exported for tests. */
+export function frontierPirateHunt(galaxy: Galaxy): void {
+    const fauna = peekRimFaunaState(galaxy);
+    const huntRange = frontierParam(galaxy, 'rimFrontierHuntRange');
+    const huntChance = frontierParam(galaxy, 'rimFrontierHuntChance');
+    for (const faction of galaxy.pirateEmpires) {
+        frontierResolveHunt(galaxy, faction, fauna);
+        if (huntChance <= 0 || fauna === null || fauna.herds.length === 0) continue;
+        const base = faction.pirateEmpireBaseHabitat;
+        if (base === null || rimFrontierState(galaxy).pirateHunts.some((h) => h.factionId === faction.empireId)) continue;
+        let target: RimHerd | null = null;
+        let bestD = huntRange * huntRange;
+        for (const herd of fauna.herds) {
+            if (herd.leader === null) continue;
+            const d = galaxy.calculateDistanceSquared(base.xpos, base.ypos, herd.homeX, herd.homeY);
+            if (d <= bestD) {
+                bestD = d;
+                target = herd;
+            }
+        }
+        if (target === null || galaxy.rnd.nextDouble() >= huntChance) continue;
+        frontierAssignHunt(galaxy, faction, target);
+    }
+}
+registerScenarioYearly({ id: 'rimFrontier.pirateHunt', flag: RIM_FRONTIER_FLAG, run: (galaxy) => frontierPirateHunt(galaxy) });
