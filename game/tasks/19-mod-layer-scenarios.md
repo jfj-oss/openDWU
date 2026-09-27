@@ -171,6 +171,12 @@ Params: belt inner radius, storm density, thinning radius/factor, shoal count, f
    on, ordinary empires' and the player's home systems are never placed past the rim inner radius (a home-habitat accept
    hook on the C# capital search; the Concord, independents, herders and fauna keep the rim). Param
    `rimFrontierKeepStartsOut` default on. Star cap raised to 4000 (user, 2026-09-26) with two-letter sector labels.
+8. Pirates in the rim (user, 2026-09-26): an exact share of pirate factions (`rimFrontierPirateRimShare` 0.6) get rim home
+   bases, the rest core bases, assigned in the C#'s creation order (no extra draws); base placement (pirates AND the
+   19k-2 independents' stations) avoids herd home ranges (19g-7 RimHerd.homeRange) so nobody spawns inside a nest; pirate
+   factions get a HERD-HUNTING mission when a herd wanders within a param range of their base (kill drop = creature
+   resources they sell; thins herds near bases; herders lose standing with herd killers → pirate-vs-herder friction feeds
+   19k-3 leagues). Params: share, avoid radius, hunt range, hunt chance/year.
 
 ## 19i — Rim atmosphere (ACCEPTED by the user 2026-09-26 — "yes"; presentation only, reads a distance-from-centre curve; flag off = untouched)
 Visual: (1) colour grading by radius — desaturate + cold blue-violet tint on star field/nebulae past the rim band, fading in
