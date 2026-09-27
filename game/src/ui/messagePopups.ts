@@ -239,7 +239,10 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
                 const b = el('button', 'message-conversation-button', o.label) as HTMLButtonElement;
                 b.type = 'button';
                 b.addEventListener('click', () => {
-                    answerScenarioDecision(galaxy, decision.id, o.id, 'player');
+                    // Command log: the answer is a player command (applied at the next frame boundary).
+                    const player = galaxy.playerEmpire;
+                    if (player !== null) issuePlayerCommand(galaxy, player, 'answerDecision', [decision.id, o.id]);
+                    else answerScenarioDecision(galaxy, decision.id, o.id, 'player');
                     closePopup();
                 });
                 row.appendChild(b);

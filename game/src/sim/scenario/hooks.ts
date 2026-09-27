@@ -193,6 +193,23 @@ export interface ScenarioEvents {
     abandonedShipClaimed: { builtObject: BuiltObject; empire: Empire };
     /** A diplomatic relation changed type (diplomacyTick changeDiplomaticRelation, end): war declared, treaty signed, ... */
     diplomaticRelationChanged: { empire: Empire; other: Empire; from: number; to: number };
+    /** diplomacyTick.ts declareWar (Empire.7.cs 4883 DeclareWar): end of the new-war branch, after both sides' war objectives are set. */
+    warDeclared: { empire: Empire; target: Empire };
+    /**
+     * combat/damage.ts inflictWarDamageBuiltObject / inflictWarDamageHabitat (Galaxy.3.cs 529 / 541 InflictWarDamage), after
+     * the victim's relation ledger is charged: a ship / base destroyed, or a colony invaded or destroyed. `value` is the
+     * war value charged (Galaxy.3.cs 474 / 507 CalculateWarValue). Only emitted when the victim has a relation with the
+     * inflictor.
+     */
+    warDamageInflicted: { inflictor: Empire; victim: Empire; builtObject: BuiltObject | null; habitat: Habitat | null; value: number };
+    /** diplomacyTick.ts endWarRequest (Empire.8.cs 1550 EndWarRequest): `empire` just queued an end-war proposal to `other`. */
+    peaceProposed: { empire: Empire; other: Empire };
+    /**
+     * A war ended by an accepted end-war proposal: `empire` accepted `other`'s proposal. Sites: diplomacyTick.ts
+     * considerTreatyProposals (Empire.3.cs 3651-3675), player/playerOrders.ts acceptProposal (EmpireDetailView.cs 803),
+     * player/diplomacyProposals.ts WAR_END (Main.Part10.cs 4679). After the stock end-of-war processing.
+     */
+    peaceSigned: { empire: Empire; other: Empire };
     /** A disaster event hit a colony (events.ts). */
     disaster: { empire: Empire | null; habitat: Habitat | null; disasterType: number };
     /** logistics/contracts.ts initiateContract (end): a private/state sale (no Rnd in handlers — 19e-9 contract rule). */
@@ -252,6 +269,17 @@ export interface ScenarioQueries {
     invasionMinFleetShips: { value: number; args: { empire: Empire; target: Habitat } };
     /** Share of the required troop strength a troop fleet must carry (stock 0.5: Empire.8.cs 1049 `>= num3 / 2`). */
     invasionTroopRatio: { value: number; args: { empire: Empire; target: Habitat } };
+    /**
+     * Whether `empire` accepts `other`'s end-war proposal (stock value: ConsiderEndWar's verdict). Sites:
+     * diplomacyTick.ts considerTreatyProposals (Empire.3.cs 3651 `if (ConsiderEndWar(thisEmpire, out endReason))`) and
+     * player/diplomacyProposals.ts WAR_END (Main.Part10.cs 4679).
+     */
+    endWarAcceptance: { value: boolean; args: { empire: Empire; other: Empire } };
+    /**
+     * missions/assign.ts assignMission (BuiltObject.2.cs 7620 AssignMission), next to the 7622-7625 precondition return:
+     * false refuses the new mission (the ship keeps its current one). `x` / `y` are the mission's point (-2000000001 unset).
+     */
+    assignMissionAllowed: { value: boolean; args: { builtObject: BuiltObject; missionType: number; target: unknown; x: number; y: number } };
 }
 export type ScenarioQueryName = keyof ScenarioQueries;
 

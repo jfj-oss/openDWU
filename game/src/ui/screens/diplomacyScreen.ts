@@ -56,6 +56,10 @@ import { closeTradePanel, openTradePanel } from './tradePanel';
 import type { DialogPartType } from '../../sim/data/dialogSet';
 // [tradenego] end
 
+// [wargoals] begin
+import { warRowSuffix, warTermsBlock } from './warTermsPanel';
+// [wargoals] end
+
 // [diplovoice] begin
 import { counterNote, diplomatVoiceConfig, voiceDiplomatReply, voiceSwitch, voicedLineToggle, voicingIndicator, type VoicedReply } from '../diplomatVoice';
 // [diplovoice] end
@@ -407,7 +411,7 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
             swatch.style.background = rgb(r.color);
             const name = el('span', 'diplomacy-name', r.name);
             name.title = r.name;
-            const relation = el('span', 'diplomacy-relation', r.relationText);
+            const relation = el('span', 'diplomacy-relation', r.relationText + warRowSuffix(player, r.empire)); // [wargoals]
             relation.style.color = rgb(r.relationColor);
             relation.title = r.relationText;
             const attitude = el('span', 'diplomacy-attitude', r.attitude !== null ? formatSigned(r.attitude) : '');
@@ -432,6 +436,10 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
         const relText = el('div', 'diplomacy-line', row.relationText);
         relText.style.color = rgb(row.relationColor);
         detail.appendChild(relText);
+        // [wargoals] begin
+        const war = warTermsBlock(player, row.empire, () => render());
+        if (war !== null) detail.appendChild(war);
+        // [wargoals] end
 
         detail.appendChild(el('div', 'diplomacy-section-heading', 'Treaty on Offer'));
         if (row.incoming) {

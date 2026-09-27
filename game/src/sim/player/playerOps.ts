@@ -34,6 +34,9 @@ import { approveSuggestion, declineSuggestion } from './advisorSuggestions';
 import { expireOldAdvisorSuggestions } from '../advisorQueue';
 import { galaxyStarDate } from '../tick/simTime';
 import { cancelIntelligenceMission, characterMission } from '../espionage';
+import { answerScenarioDecision } from '../scenario/decisions';
+import { proposePeaceTerms } from '../scenario/lively/peaceTerms';
+import type { PeaceTerms } from '../scenario/lively/warGoals';
 import {
     acceptProposal,
     declineProposal,
@@ -142,6 +145,12 @@ export const PLAYER_OPS = {
     submitTradeOffer: (galaxy: Galaxy, _empire: Empire, negotiation: TradeNegotiation) => submitTradeOffer(galaxy, negotiation),
     acceptProposal: (_galaxy: Galaxy, empire: Empire, other: Empire) => acceptProposal(empire, other),
     declineProposal: (_galaxy: Galaxy, empire: Empire, other: Empire) => declineProposal(empire, other),
+
+    // --- Mod layer (scenarios) ---
+    /** A scenario decision's option (scenario/decisions.ts; the message popup's buttons, the 19g-3 terms dialog). */
+    answerDecision: (galaxy: Galaxy, _empire: Empire, decisionId: number, optionId: string) => answerScenarioDecision(galaxy, decisionId, optionId, 'player'),
+    /** 19g-3 war goals: offer `other` peace on `terms` (the diplomacy screen's terms dialog). */
+    proposePeaceTerms: (galaxy: Galaxy, empire: Empire, other: Empire, terms: PeaceTerms) => proposePeaceTerms(galaxy, empire, other, terms),
 
     // --- Advisor suggestions (semi-automated tasks awaiting Approve / Decline; Main.Part2.cs 1369 / 2732) ---
     approveSuggestion: (galaxy: Galaxy, empire: Empire, message: EmpireMessage) => approveSuggestion(galaxy, empire, message),
