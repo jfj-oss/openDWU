@@ -57,6 +57,7 @@ import { HabitatCategoryType, HabitatType, type SystemInfo } from '../sim/types'
 import { SystemVisibilityStatus } from '../sim/visibility';
 import { isObjectVisibleToThisEmpire, isObjectVisibleToThisEmpireImprecise } from '../sim/independentTraders';
 import type { MapOverlayState } from '../ui/mapOverlays';
+import { getSettings, type UiSettings } from '../ui/settings';
 import { displayColorForEmpire } from '../sim/empireColors';
 import { useMinifyingFilter } from './assets';
 import { boundsOnScreen } from './drawCache';
@@ -344,6 +345,117 @@ export function doubleClickFleet(bo: Pick<BuiltObject, 'empire' | 'shipGroup'>, 
     return g ?? null;
 }
 
+/** Galaxy/sector zoom: a ship in a fleet is represented by the fleet icon alone (user rule; the original skips only
+ * the lead ship, MainView.2.cs 5932-5935, and draws the members under the icon). At system zoom every ship draws. */
+export function drawnAsFleet(bo: Pick<BuiltObject, 'shipGroup'>): boolean {
+    const g = bo.shipGroup as ShipGroup | null;
+    return g != null && g.leadShip != null && g.ships.length > 0;
+}
+
+/** XnaDrawingHelper.DrawCircle(..., dashed) (XnaDrawingHelper.cs 777-810, 30 segments via the Rectangle overload
+ * 813-821): the even segments of a `segmentCount`-gon are drawn, the odd ones skipped. Angles in radians. */
+export function dashedCircleArcs(segmentCount = 30): Array<[number, number]> {
+    const step = (Math.PI * 2) / segmentCount;
+    const out: Array<[number, number]> = [];
+    for (let i = 0; i < segmentCount; i += 2) out.push([i * step, (i + 1) * step]);
+    return out;
+}
+
+/** method_268 (MainView.2.cs 6660-6687): the system ring / cross pen. An owned system the viewer knows: the owner's
+ * colour, 3 px, dashed when disputed; otherwise 1.5 px grey (112,112,112) when explored / visible, (60,60,120) when not. */
+export function systemRingPen(status: SystemVisibilityStatus, ownerColor: number | null, disputed: boolean): { color: number; widthPx: number; dashed: boolean } {
+    const known = status === SystemVisibilityStatus.Explored || status === SystemVisibilityStatus.Visible;
+    if (ownerColor !== null && known) return { color: ownerColor, widthPx: 3, dashed: disputed };
+    return { color: known ? 0x707070 : 0x3c3c78, widthPx: 1.5, dashed: false };
+}
+
+/** Gas-cloud cross half-length in px (MainView.2.cs 5337-5347, 5364-5366, 5390-5394): val3 computed like the ring,
+ * x0.7, at least 6, then x0.7 again for the arms. */
+export function gasCloudCrossHalfPx(f: number, totalStrategicValue: number, maxSolarSystemSize: number): number {
+    const tsv = Math.min(Math.max(0, totalStrategicValue), 1500000);
+    let val3 = Math.trunc(Math.max(maxSolarSystemSize, Math.pow(tsv, 0.35) * 600.0) / f);
+    val3 = Math.trunc(val3 * 0.7);
+    val3 = Math.max(6, val3);
+    return val3 * 0.7;
+}
+
+/** method_258 6406-6428: a fleet's name is drawn unless it sits in a system its own empire dominates. */
+export function fleetNameShown(sg: Pick<ShipGroup, 'leadShip' | 'empire' | 'name'>, systems: readonly Pick<SystemInfo, 'dominantEmpire'>[]): boolean {
+    if (sg.name === null || sg.name === '') return false;
+    const star = sg.leadShip?.nearestSystemStar ?? null;
+    if (star !== null) {
+        const dom = systems[star.systemIndex]?.dominantEmpire ?? null;
+        if (dom !== null && dom.empire === sg.empire) return false;
+    }
+    return true;
+}
+
+export type GalaxyViewDisplay = Pick<
+    UiSettings,
+    | 'galaxyViewDisplayFleets'
+    | 'galaxyViewDisplayResupplyShips'
+    | 'galaxyViewDisplayMilitaryShips'
+    | 'galaxyViewDisplaySpacePorts'
+    | 'galaxyViewDisplayOtherBases'
+    | 'galaxyViewDisplayExplorationShips'
+    | 'galaxyViewDisplayColonyShips'
+    | 'galaxyViewDisplayConstructionShips'
+    | 'galaxyViewDisplayCivilianShips'
+    | 'galaxyViewDisplayAlwaysEnemyFleets'
+    | 'galaxyViewDisplayAlwaysEnemyMilitaryShips'
+    | 'galaxyViewDisplayAlwaysPirates'
+>;
+
+/** method_250 5114-5128: the GalaxyViewDisplay* options only apply beyond zoom factor 3500 (and never in god mode). */
+export const GALAXY_VIEW_OPTIONS_MIN_FACTOR = 3500;
+
+/**
+ * Port of the galaxy symbol pass's type switch (MainView.2.cs 5853-5912): whether a sub-role shows at zoom factor f.
+ * `enemy` = flag30 (a pirate empire's object or one at war with the viewer). flag31 (AlwaysPirates) is never set in
+ * that loop in the original, so "Always show Pirates" has no effect here either.
+ */
+export function galaxyViewTypeShown(subRole: BuiltObjectSubRole, opts: GalaxyViewDisplay, enemy: boolean, f: number): boolean {
+    if (f <= GALAXY_VIEW_OPTIONS_MIN_FACTOR) return true;
+    switch (subRole) {
+        case BuiltObjectSubRole.Escort:
+        case BuiltObjectSubRole.Frigate:
+        case BuiltObjectSubRole.Destroyer:
+        case BuiltObjectSubRole.Cruiser:
+        case BuiltObjectSubRole.CapitalShip:
+        case BuiltObjectSubRole.TroopTransport:
+        case BuiltObjectSubRole.Carrier:
+            return opts.galaxyViewDisplayMilitaryShips || (enemy && opts.galaxyViewDisplayAlwaysEnemyMilitaryShips);
+        case BuiltObjectSubRole.ResupplyShip:
+            return opts.galaxyViewDisplayResupplyShips || (enemy && opts.galaxyViewDisplayAlwaysEnemyMilitaryShips);
+        case BuiltObjectSubRole.ExplorationShip:
+            return opts.galaxyViewDisplayExplorationShips;
+        case BuiltObjectSubRole.ColonyShip:
+            return opts.galaxyViewDisplayColonyShips;
+        case BuiltObjectSubRole.ConstructionShip:
+            return opts.galaxyViewDisplayConstructionShips;
+        case BuiltObjectSubRole.SmallFreighter:
+        case BuiltObjectSubRole.MediumFreighter:
+        case BuiltObjectSubRole.LargeFreighter:
+        case BuiltObjectSubRole.PassengerShip:
+        case BuiltObjectSubRole.GasMiningShip:
+        case BuiltObjectSubRole.MiningShip:
+            return opts.galaxyViewDisplayCivilianShips;
+        case BuiltObjectSubRole.SmallSpacePort:
+        case BuiltObjectSubRole.MediumSpacePort:
+        case BuiltObjectSubRole.LargeSpacePort:
+            return opts.galaxyViewDisplaySpacePorts;
+        default:
+            return markerShapeForSubRole(subRole) === 'hexagon' ? opts.galaxyViewDisplayOtherBases : false;
+    }
+}
+
+/** method_250 6128-6160: fleets show with the Fleets option; an enemy (war) empire's also with "Always show enemy
+ * Fleets". Below f = 3500 every fleet shows. */
+export function galaxyViewFleetShown(opts: GalaxyViewDisplay, atWar: boolean, f: number): boolean {
+    if (f <= GALAXY_VIEW_OPTIONS_MIN_FACTOR) return true;
+    return opts.galaxyViewDisplayFleets || (atWar && opts.galaxyViewDisplayAlwaysEnemyFleets);
+}
+
 /** One presence disc: an empire's known bases + colonies in one system. */
 export interface StationPresence {
     systemIndex: number;
@@ -420,7 +532,6 @@ function systemOwner(sys: SystemInfo, indep: Empire | null): { empire: Empire; t
 
 const SYMBOL_DIR = '/assets/dwu/images/ui/shipsymbols';
 const CHROME_DIR = '/assets/dwu/images/ui/chrome';
-const INFLUENCE_URL = '/assets/dwu/images/effects/systeminfluence/systeminfluence.png';
 const CELL = 128;
 const PAD = 8;
 const INNER = CELL - 2 * PAD;
@@ -532,28 +643,13 @@ function buildDiscFallback(): Texture {
     const ctx = c.getContext('2d')!;
     const h = DISC_SIZE / 2;
     const g = ctx.createRadialGradient(h, h, 0, h, h, h);
-    g.addColorStop(0, 'rgba(255,255,255,1)');
-    g.addColorStop(0.45, 'rgba(255,255,255,0.85)');
-    g.addColorStop(0.75, 'rgba(255,255,255,0.4)');
-    g.addColorStop(1, 'rgba(255,255,255,0)');
+    // Gaussian-like falloff to nothing at the rim: reads as a glow, never as a filled circle.
+    for (let i = 0; i <= 16; i++) {
+        const t = i / 16;
+        g.addColorStop(t, `rgba(255,255,255,${(Math.exp(-3.2 * t * t) * (1 - t * t)).toFixed(4)})`);
+    }
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, DISC_SIZE, DISC_SIZE);
-    const tex = Texture.from(c);
-    useMinifyingFilter(tex);
-    return tex;
-}
-
-/** The system-influence art recoloured to white (keeping its alpha) so the tint gives the empire colour itself, as
- * GraphicsHelper.CalculateImageAttributesWithTransparency(MainColor, 1.0) does (EmpireTerritory.cs:343). */
-async function loadWhiteTexture(url: string): Promise<Texture | null> {
-    const img = await loadImage(url);
-    if (img === null) return null;
-    const c = makeCanvas(img.width, img.height);
-    const ctx = c.getContext('2d')!;
-    ctx.drawImage(img, 0, 0);
-    ctx.globalCompositeOperation = 'source-in';
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, img.width, img.height);
     const tex = Texture.from(c);
     useMinifyingFilter(tex);
     return tex;
@@ -614,6 +710,9 @@ export class GalaxyMarkerLayer {
 
     private presence: StationPresence[] = [];
     private owners = new Map<SystemInfo, { empire: Empire; tsv: number; color: number }>();
+    /** Rings and gas-cloud crosses to draw (method_250 5378-5400). */
+    private ringList: Array<{ sys: SystemInfo; tsv: number; cross: boolean; pen: { color: number; widthPx: number; dashed: boolean } }> = [];
+    private readonly fleetNamePool: Text[] = [];
     private visibleObjects = new Set<BuiltObject>();
     private visibleFleets: ShipGroup[] = [];
     private knownBases = new Set<BuiltObject>();
@@ -648,7 +747,9 @@ export class GalaxyMarkerLayer {
     private async loadArt(): Promise<void> {
         const [atlas, disc, capital, secondary, refuel] = await Promise.all([
             buildSymbolAtlas(),
-            loadWhiteTexture(INFLUENCE_URL),
+            // systeminfluence.png is a hard-edged 29 px disc (alpha 255 core); the original's bilinear stretch softens it,
+            // so the procedural soft falloff (buildDiscFallback) is used instead of the art.
+            Promise.resolve(null as Texture | null),
             loadTexture(`${CHROME_DIR}/capital.png`),
             loadTexture(`${CHROME_DIR}/fleetLeader.png`),
             loadTexture(`${CHROME_DIR}/refuel.png`),
@@ -685,13 +786,25 @@ export class GalaxyMarkerLayer {
         this.presence = collectStationPresence(g, explored, (bo) => this.knownBases.has(bo));
         // Owned systems the player has explored / sees (method_268's gate).
         this.owners.clear();
+        this.ringList = [];
         for (const sys of g.systems) {
-            // TODO(port): gas-cloud systems draw a cross instead of a circle (MainView.2.cs:5390-5394).
-            if (sys.systemStar.category === HabitatCategoryType.GasCloud) continue;
-            if (!explored(sys.systemStar.systemIndex)) continue;
-            const o = systemOwner(sys, indep);
-            if (o === null) continue;
-            this.owners.set(sys, { empire: o.empire, tsv: o.tsv, color: empireMarkerColor(o.empire) });
+            const idx = sys.systemStar.systemIndex;
+            const status = vis !== null ? vis.checkSystemVisibilityStatus(idx) : SystemVisibilityStatus.Visible;
+            const o = explored(idx) ? systemOwner(sys, indep) : null;
+            const color = o !== null ? empireMarkerColor(o.empire) : null;
+            const pen = systemRingPen(status, color, sys.isDisputed === true);
+            if (sys.systemStar.category === HabitatCategoryType.GasCloud) {
+                // 5390-5394: every gas cloud gets the cross, in method_268's pen.
+                this.ringList.push({ sys, tsv: o?.tsv ?? 0, cross: true, pen });
+                continue;
+            }
+            if (o !== null) {
+                this.owners.set(sys, { empire: o.empire, tsv: o.tsv, color: color! });
+                this.ringList.push({ sys, tsv: o.tsv, cross: false, pen });
+            } else if (explored(idx) && (sys.independentColonyCount ?? 0) > 0) {
+                // 5395-5398: known independent colonies get the grey ring.
+                this.ringList.push({ sys, tsv: 0, cross: false, pen });
+            }
         }
         // Fleets the player can see (method_258 6340: IsObjectVisibleToThisEmpire(lead, true, false)).
         this.visibleFleets = [];
@@ -789,14 +902,30 @@ export class GalaxyMarkerLayer {
         k.y1 = cam.y + 2 * hh;
         const g = this.rings;
         g.clear();
-        const width = FACTION_RING_WIDTH_PX / z;
         const maxSys = this.galaxy.maxSolarSystemSize;
-        for (const [sys, o] of this.owners) {
-            const star = sys.systemStar;
-            const wr = systemRingRadiusPx(f, o.tsv, star.diameter, maxSys, star.type === HabitatType.BlackHole) / z;
+        const arcs = dashedCircleArcs();
+        for (const r of this.ringList) {
+            const star = r.sys.systemStar;
+            const width = r.pen.widthPx / z;
+            if (r.cross) {
+                const h = gasCloudCrossHalfPx(f, r.tsv, maxSys) / z;
+                if (star.xpos + h < k.x0 || star.xpos - h > k.x1 || star.ypos + h < k.y0 || star.ypos - h > k.y1) continue;
+                g.moveTo(star.xpos, star.ypos - h).lineTo(star.xpos, star.ypos + h);
+                g.moveTo(star.xpos - h, star.ypos).lineTo(star.xpos + h, star.ypos);
+                g.stroke({ width, color: r.pen.color, alpha });
+                continue;
+            }
+            const wr = systemRingRadiusPx(f, r.tsv, star.diameter, maxSys, star.type === HabitatType.BlackHole) / z;
             if (star.xpos + wr < k.x0 || star.xpos - wr > k.x1 || star.ypos + wr < k.y0 || star.ypos - wr > k.y1) continue;
-            // TODO(port): dashed pen when SystemInfo.IsDisputed (MainView.2.cs method_268, 6668-6671).
-            g.circle(star.xpos, star.ypos, wr).stroke({ width, color: o.color, alpha });
+            if (r.pen.dashed) {
+                // method_268: disputed systems get a dashed pen (XnaDrawingHelper.DrawCircle dashed: 15 of 30 segments).
+                for (const [a0, a1] of arcs) {
+                    g.moveTo(star.xpos + wr * Math.cos(a0), star.ypos + wr * Math.sin(a0)).lineTo(star.xpos + wr * Math.cos(a1), star.ypos + wr * Math.sin(a1));
+                }
+                g.stroke({ width, color: r.pen.color, alpha });
+            } else {
+                g.circle(star.xpos, star.ypos, wr).stroke({ width, color: r.pen.color, alpha });
+            }
         }
     }
 
@@ -833,7 +962,8 @@ export class GalaxyMarkerLayer {
                 else if (dom.capitalSystemStars.includes(star)) capTex = this.icons.secondary;
             }
             const refuel = player !== null && (player.visibility.systemVisibility[star.systemIndex]?.isRefuellingPoint ?? false) ? this.icons.refuel : null;
-            let x = ringPx + 1;
+            // Past the ring's outer edge (the 3 px pen is centred on the radius) plus 1 px, then icons, then the name.
+            let x = ringPx + FACTION_RING_WIDTH_PX / 2 + 2;
             for (const tex of [capTex, refuel]) {
                 if (tex === null) continue;
                 const s = this.iconSprite(icons++);
@@ -917,7 +1047,7 @@ export class GalaxyMarkerLayer {
         const galaxyPass = band === 'galaxy';
         const shipPx = shipSymbolPx(f, false);
         const basePx = shipSymbolPx(f, true);
-        // TODO(port): per-type GalaxyViewDisplay* options (method_250 flag5..flag11) — every type is shown.
+        const opts: GalaxyViewDisplay = getSettings();
         for (const bo of g.builtObjects) {
             if (bo === null || bo.hasBeenDestroyed) continue;
             const art = symbolArtFor(bo.role, bo.subRole);
@@ -929,8 +1059,9 @@ export class GalaxyMarkerLayer {
             let heightPx: number;
             if (galaxyPass) {
                 if (!this.visibleObjects.has(bo)) continue;
-                const grp = bo.shipGroup as ShipGroup | null;
-                if (grp !== null && grp.leadShip === bo) continue; // drawn as the fleet icon
+                if (drawnAsFleet(bo)) continue; // the fleet icon stands for the whole fleet
+                const enemy = bo.empire !== null && (g.pirateEmpires.includes(bo.empire) || this.war.includes(bo.empire));
+                if (!galaxyViewTypeShown(bo.subRole, opts, enemy, f)) continue;
                 if (builtObjectHiddenFromPick(bo, g.systems, g.pirateEmpires, this.war)) continue;
                 heightPx = (isBase ? basePx : shipPx) * symbolSizeMultiplier(bo.role, bo.subRole, true);
             } else {
@@ -959,9 +1090,12 @@ export class GalaxyMarkerLayer {
         if (galaxyPass) {
             const iconH = fleetIconPx(f);
             const cell = CELL_KEYS.length - 1;
+            let names = 0;
             for (const sg of this.visibleFleets) {
                 const lead = sg.leadShip;
                 if (lead === null || lead.hasBeenDestroyed) continue;
+                const atWar = sg.empire !== null && this.war.includes(sg.empire);
+                if (!galaxyViewFleetShown(opts, atWar, f)) continue;
                 const pos = this.positionOf(lead);
                 if (!boundsOnScreen(pos.x, pos.y, 0, 40, cam.x, cam.y, cam.width, cam.height, z)) continue;
                 // method_259: MainColor tint, (1,1,1) pirates -> (8,8,8).
@@ -980,13 +1114,40 @@ export class GalaxyMarkerLayer {
                     t.position.set(pos.x, pos.y - (iconH / 2 - iconH * 0.1) / z);
                     t.scale.set(1 / z);
                 }
+                // method_258 6406-6428: the fleet name above-left of the icon, in the empire colour (pirate black -> grey).
+                if (fleetNameShown(sg, g.systems)) {
+                    const t = this.fleetName(names++);
+                    const name = sg.name ?? '';
+                    if (t.text !== name) t.text = name;
+                    const nc = color === 0x080808 ? 0x808080 : color;
+                    if (t.style.fill !== nc) t.style.fill = nc;
+                    const fs = f > 4000 ? 10 : 12;
+                    if (t.style.fontSize !== fs) t.style.fontSize = fs;
+                    t.position.set(pos.x - iconH / 2 / z, pos.y - iconH / 2 / z);
+                    t.scale.set(1 / z);
+                }
             }
+            for (let i = names; i < this.fleetNamePool.length; i++) this.fleetNamePool[i].visible = false;
+        } else {
+            for (const t of this.fleetNamePool) t.visible = false;
         }
         for (let i = counts; i < this.countPool.length; i++) this.countPool[i].visible = false;
         if (prev !== n) {
             out.length = n;
             this.symbols.update();
         }
+    }
+
+    private fleetName(i: number): Text {
+        let t = this.fleetNamePool[i];
+        if (t === undefined) {
+            t = new Text({ text: '', style: { fontSize: 12, fill: 0xffffff, dropShadow: { color: 0x000000, distance: 1, blur: 0, alpha: 1, angle: Math.PI / 4 } } });
+            t.anchor.set(0, 1); // (x - icon/2, y - (LineSpacing + icon/2)) is the text's top-left: its bottom sits on the icon top
+            this.fleetNamePool.push(t);
+            this.countLayer.addChild(t);
+        }
+        t.visible = true;
+        return t;
     }
 
     private countText(i: number): Text {

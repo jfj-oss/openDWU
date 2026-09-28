@@ -152,3 +152,16 @@ describe('travel vector style (method_252 / XnaDrawingHelper.DrawLine)', () => {
         expect(TRAVEL_VECTOR_DASH_PX).toBe(6);
     });
 });
+
+import { arrowheadPlacement } from '../src/render/overlayLayer';
+
+describe('travel vector arrowhead (XnaDrawingHelper.cs 587-596)', () => {
+    it('sits at the end, pulled back half its height, rotated angle + 90 deg, 9 px wide for a 1 px line', () => {
+        const a = arrowheadPlacement(0, 0, 1000, 0, 101, 115, 1, 10);
+        expect(a.scale).toBeCloseTo(9 / 101);
+        const h = 115 * (9 / 101);
+        expect(a.x).toBeCloseTo(1000 - (h / 2) * 10);
+        expect(a.y).toBeCloseTo(0);
+        expect(a.rotation).toBeCloseTo(Math.PI / 2);
+    });
+});

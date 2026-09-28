@@ -45,7 +45,7 @@
 // TODO(overlay): fold in colony-ship design range and ruin/superluxury
 // bonuses once those are ported.
 
-import { Container, Graphics } from 'pixi.js';
+import { Container, Graphics, Sprite, Texture } from 'pixi.js';
 import type { Camera } from './camera';
 import type { Galaxy } from '../sim/galaxy';
 import { HabitatCategoryType, type Habitat } from '../sim/types';
@@ -135,6 +135,31 @@ class MarkerRing {
 export const TRAVEL_VECTOR_COLOR = 0xaaaaaa;
 /** XnaDrawingHelper.DrawLine(dashed) (XnaDrawingHelper.cs 572-605): 6 px dashes with 6 px gaps (every other 6 px step). */
 export const TRAVEL_VECTOR_DASH_PX = 6;
+
+/** The arrowhead art (Main.Part12.cs:709 bitmap_105 -> MainView.1.cs:2184 texture2D_35). */
+export const ARROWHEAD_URL = '/assets/dwu/images/ui/chrome/arrowhead.png';
+
+/**
+ * Port of XnaDrawingHelper.DrawLine's arrowhead (XnaDrawingHelper.cs 587-596): drawn centred at the line end pulled
+ * back towards the start by half its height, rotated to the line angle + 90 degrees, scaled so it is
+ * 9 / (texW / min(2, lineThickness)) of the art (9 px wide for a 1 px line). `pxToWorld` converts the px offset.
+ */
+export function arrowheadPlacement(
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    texW: number,
+    texH: number,
+    lineThickness: number,
+    pxToWorld: number,
+): { x: number; y: number; rotation: number; scale: number } {
+    const angle = Math.atan2(y2 - y1, x2 - x1);
+    const scale = 9 / (texW / Math.min(2, lineThickness));
+    const h = texH * scale;
+    const back = Math.atan2(y1 - y2, x1 - x2);
+    return { x: x2 + Math.cos(back) * (h / 2) * pxToWorld, y: y2 + Math.sin(back) * (h / 2) * pxToWorld, rotation: angle + Math.PI / 2, scale };
+}
 
 /** method_252 draws the vector 1 px thick (lineThickness 1) — one DEVICE pixel, so on a HiDPI screen it stays as thin
  * (and as faint) as the original instead of doubling to 2 device px. Returned in CSS px. */
@@ -245,6 +270,9 @@ export class OverlayLayer {
     private researchLocations: MarkerRing[] = [];
     private unsubscribe: () => void;
     private travelVectors = new Graphics();
+    /** Travel-vector arrowheads (pooled sprites of ARROWHEAD_URL; none until the art has loaded). */
+    private arrowheads = new Container();
+    private arrowTex: Texture | null = null;
     // [freightOverlay] begin — task 19e-9: Freight Flows / Trade Hubs (src/render/freightOverlay.ts).
     readonly freight: FreightOverlay;
     // [freightOverlay] end
@@ -269,6 +297,14 @@ export class OverlayLayer {
     ) {
         world.addChild(this.root);
         this.root.addChild(this.travelVectors);
+        this.root.addChild(this.arrowheads);
+        if (typeof Image !== 'undefined') {
+            const img = new Image();
+            img.onload = () => {
+                this.arrowTex = Texture.from(img);
+            };
+            img.src = ARROWHEAD_URL;
+        }
         // [freightOverlay] begin
         this.freight = new FreightOverlay(galaxy, this.root, state);
         // [freightOverlay] end
@@ -445,9 +481,12 @@ export class OverlayLayer {
                 g.clear();
                 g.visible = false;
             }
+            this.arrowheads.visible = false;
             return;
         }
         g.clear();
+        let arrows = 0;
+        const tex = this.arrowTex;
         const kinds: TravelVectorKind[] = [];
         if (this.state.travelVectorsState) kinds.push('state');
         if (this.state.travelVectorsPrivate) kinds.push('private');
@@ -462,8 +501,25 @@ export class OverlayLayer {
                 for (const [ax, ay, bx, by] of dashSegments(v.x1, v.y1, v.x2, v.y2, TRAVEL_VECTOR_DASH_PX * f, TRAVEL_VECTOR_DASH_PX * f)) {
                     g.moveTo(ax, ay).lineTo(bx, by);
                 }
+                if (tex !== null) {
+                    const a = arrowheadPlacement(v.x1, v.y1, v.x2, v.y2, tex.width, tex.height, 1, f);
+                    let sp = this.arrowheads.children[arrows] as Sprite | undefined;
+                    if (sp === undefined) {
+                        sp = new Sprite(tex);
+                        sp.anchor.set(0.5);
+                        sp.tint = TRAVEL_VECTOR_COLOR;
+                        this.arrowheads.addChild(sp);
+                    }
+                    sp.visible = true;
+                    sp.position.set(a.x, a.y);
+                    sp.rotation = a.rotation;
+                    sp.scale.set(a.scale * f);
+                    arrows++;
+                }
             }
         }
+        for (let i = arrows; i < this.arrowheads.children.length; i++) this.arrowheads.children[i].visible = false;
+        this.arrowheads.visible = true;
         const dpr = typeof window !== 'undefined' ? window.devicePixelRatio : 1;
         g.stroke({ width: f * travelVectorWidthPx(dpr), color: TRAVEL_VECTOR_COLOR, alpha: 1 });
         g.visible = true;

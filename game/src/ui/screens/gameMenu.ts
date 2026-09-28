@@ -7,7 +7,23 @@ import './gameMenu.css';
 import { GalaxyTime } from '../../sim/clock';
 import { musicControls, stopAllMusic } from '../../audio/musicPlayer';
 import { startEffects } from '../../audio/effectsPlayer';
-import { getSettings, updateSettings, uiScaleFactor } from '../settings';
+import { getSettings, updateSettings, uiScaleFactor, type GalaxyViewDisplayKey } from '../settings';
+
+/** [galaxymarkers] The original's "Galaxy View - Ship Display" check boxes (Main.InitializeComponent.cs 9931-10041). */
+const GALAXY_VIEW_DISPLAY_ROWS: ReadonlyArray<[string, GalaxyViewDisplayKey]> = [
+    ['Fleets', 'galaxyViewDisplayFleets'],
+    ['Military ships', 'galaxyViewDisplayMilitaryShips'],
+    ['Resupply ships', 'galaxyViewDisplayResupplyShips'],
+    ['Space ports', 'galaxyViewDisplaySpacePorts'],
+    ['Other bases', 'galaxyViewDisplayOtherBases'],
+    ['Exploration ships', 'galaxyViewDisplayExplorationShips'],
+    ['Colony ships', 'galaxyViewDisplayColonyShips'],
+    ['Construction ships', 'galaxyViewDisplayConstructionShips'],
+    ['Civilian ships', 'galaxyViewDisplayCivilianShips'],
+    ['Always show enemy Fleets', 'galaxyViewDisplayAlwaysEnemyFleets'],
+    ['Always show enemy Military ships', 'galaxyViewDisplayAlwaysEnemyMilitaryShips'],
+    ['Always show Pirates', 'galaxyViewDisplayAlwaysPirates'],
+];
 import { showToast } from '../toast';
 import { getSaveLoadProvider } from './saveLoad';
 
@@ -216,7 +232,7 @@ export function buildOptionsPanel(
     optionsPanel.appendChild(scaleRow);
 
     // Show system names / region labels toggles.
-    const makeToggle = (labelText: string, key: 'showSystemNames' | 'showRegionLabels' | 'freightFlowsDefault'): HTMLElement => {
+    const makeToggle = (labelText: string, key: 'showSystemNames' | 'showRegionLabels' | 'freightFlowsDefault' | GalaxyViewDisplayKey): HTMLElement => {
         const row = document.createElement('div');
         row.className = 'game-menu-option-row';
         const lbl = document.createElement('span');
@@ -237,6 +253,13 @@ export function buildOptionsPanel(
     optionsPanel.appendChild(makeToggle('Show system names', 'showSystemNames'));
     optionsPanel.appendChild(makeToggle('Show region labels', 'showRegionLabels'));
     optionsPanel.appendChild(makeToggle('Freight flows overlay on at start', 'freightFlowsDefault')); // [freightOverlay]
+    // [galaxymarkers] begin — Main.InitializeComponent.cs 9922-10041: grpGameOptionsAdvancedDisplaySettingsGalaxyIcons.
+    const gvHead = document.createElement('div');
+    gvHead.className = 'game-menu-option-label';
+    gvHead.textContent = 'Galaxy View - Ship Display';
+    optionsPanel.appendChild(gvHead);
+    for (const [label, key] of GALAXY_VIEW_DISPLAY_ROWS) optionsPanel.appendChild(makeToggle(label, key));
+    // [galaxymarkers] end
 
     return optionsPanel;
 }

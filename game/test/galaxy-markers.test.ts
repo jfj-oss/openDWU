@@ -306,3 +306,95 @@ describe('collectStationPresence', () => {
         expect(out.map((p) => [p.systemIndex, p.empire.empireId, p.count])).toEqual([[1, 2, 1]]);
     });
 });
+
+// --- follow-ups -----------------------------------------------------------------------------------------------------
+
+import {
+    dashedCircleArcs,
+    drawnAsFleet,
+    fleetNameShown,
+    galaxyViewFleetShown,
+    galaxyViewTypeShown,
+    gasCloudCrossHalfPx,
+    systemRingPen,
+    type GalaxyViewDisplay,
+} from '../src/render/galaxyMarkers';
+import { SystemVisibilityStatus } from '../src/sim/visibility';
+import { DEFAULT_SETTINGS } from '../src/ui/settings';
+
+describe('fleet ships at galaxy zoom', () => {
+    const lead = {} as BuiltObject;
+    const fleet = { leadShip: lead, ships: [lead, {} as BuiltObject] } as unknown as ShipGroup;
+    it('every ship of a live fleet is drawn as the fleet icon, not individually', () => {
+        expect(drawnAsFleet({ shipGroup: fleet })).toBe(true);
+        expect(drawnAsFleet({ shipGroup: null })).toBe(false);
+        expect(drawnAsFleet({ shipGroup: { leadShip: null, ships: [] } as unknown as ShipGroup })).toBe(false);
+    });
+});
+
+describe('disputed / gas-cloud / independent system markers (method_268, method_250 5378-5400)', () => {
+    it('draws 15 dashes of a 30-gon for a dashed ring', () => {
+        const arcs = dashedCircleArcs();
+        expect(arcs).toHaveLength(15);
+        expect(arcs[0][0]).toBe(0);
+        expect(arcs[1][0]).toBeCloseTo((2 * Math.PI * 2) / 30);
+    });
+    it('owned + known: owner colour, 3 px, dashed when disputed; else 1.5 px grey / blue-grey', () => {
+        expect(systemRingPen(SystemVisibilityStatus.Explored, 0xff0000, true)).toEqual({ color: 0xff0000, widthPx: 3, dashed: true });
+        expect(systemRingPen(SystemVisibilityStatus.Visible, 0xff0000, false)).toEqual({ color: 0xff0000, widthPx: 3, dashed: false });
+        expect(systemRingPen(SystemVisibilityStatus.Explored, null, false)).toEqual({ color: 0x707070, widthPx: 1.5, dashed: false });
+        expect(systemRingPen(SystemVisibilityStatus.Unexplored, 0xff0000, false)).toEqual({ color: 0x3c3c78, widthPx: 1.5, dashed: false });
+    });
+    it('gas-cloud cross arms: val3 x0.7, >= 6, x0.7', () => {
+        expect(gasCloudCrossHalfPx(1000, 0, 23000)).toBeCloseTo(Math.max(6, Math.trunc(23 * 0.7)) * 0.7);
+        expect(gasCloudCrossHalfPx(100, 0, 23000)).toBeCloseTo(Math.trunc(230 * 0.7) * 0.7);
+        expect(gasCloudCrossHalfPx(20000, 0, 23000)).toBeCloseTo(6 * 0.7);
+    });
+});
+
+describe('fleet names (method_258 6406-6428)', () => {
+    const me = { empireId: 1 } as Empire;
+    const star = { systemIndex: 0 };
+    const sg = (name: string | null, dom: Empire | null) => ({
+        fleet: { name, empire: me, leadShip: { nearestSystemStar: star } } as unknown as ShipGroup,
+        systems: [{ dominantEmpire: dom === null ? null : { empire: dom, colonyCount: 1, totalStrategicValue: 0 } }],
+    });
+    it('shows the name except inside a system the fleet empire dominates', () => {
+        const a = sg('1st Fleet', null);
+        expect(fleetNameShown(a.fleet, a.systems)).toBe(true);
+        const b = sg('1st Fleet', me);
+        expect(fleetNameShown(b.fleet, b.systems)).toBe(false);
+        const c = sg('1st Fleet', { empireId: 2 } as Empire);
+        expect(fleetNameShown(c.fleet, c.systems)).toBe(true);
+        const d = sg(null, null);
+        expect(fleetNameShown(d.fleet, d.systems)).toBe(false);
+    });
+});
+
+describe('Galaxy View - Ship Display options (GameOptions.GalaxyViewDisplay*, method_250 5853-5912)', () => {
+    const opts: GalaxyViewDisplay = { ...DEFAULT_SETTINGS };
+    it("defaults match the original: all on except civilian ships", () => {
+        expect(opts.galaxyViewDisplayCivilianShips).toBe(false);
+        expect(opts.galaxyViewDisplayFleets && opts.galaxyViewDisplayMilitaryShips && opts.galaxyViewDisplaySpacePorts).toBe(true);
+    });
+    it('only apply beyond f = 3500', () => {
+        expect(galaxyViewTypeShown(BuiltObjectSubRole.SmallFreighter, opts, false, 3500)).toBe(true);
+        expect(galaxyViewTypeShown(BuiltObjectSubRole.SmallFreighter, opts, false, 5000)).toBe(false);
+    });
+    it('map sub-roles to their option; enemy warships also with "Always show enemy Military ships"', () => {
+        const off = { ...opts, galaxyViewDisplayMilitaryShips: false, galaxyViewDisplayResupplyShips: false, galaxyViewDisplayOtherBases: false };
+        expect(galaxyViewTypeShown(BuiltObjectSubRole.Cruiser, off, false, 5000)).toBe(false);
+        expect(galaxyViewTypeShown(BuiltObjectSubRole.Cruiser, off, true, 5000)).toBe(true);
+        expect(galaxyViewTypeShown(BuiltObjectSubRole.ResupplyShip, off, true, 5000)).toBe(true);
+        expect(galaxyViewTypeShown(BuiltObjectSubRole.MiningStation, off, false, 5000)).toBe(false);
+        expect(galaxyViewTypeShown(BuiltObjectSubRole.SmallSpacePort, off, false, 5000)).toBe(true);
+        expect(galaxyViewTypeShown(BuiltObjectSubRole.ExplorationShip, { ...opts, galaxyViewDisplayExplorationShips: false }, false, 5000)).toBe(false);
+        expect(galaxyViewTypeShown(BuiltObjectSubRole.ConstructionShip, { ...opts, galaxyViewDisplayConstructionShips: false }, false, 5000)).toBe(false);
+    });
+    it('fleets: the Fleets option, or war + "Always show enemy Fleets"', () => {
+        const off = { ...opts, galaxyViewDisplayFleets: false };
+        expect(galaxyViewFleetShown(off, false, 5000)).toBe(false);
+        expect(galaxyViewFleetShown(off, true, 5000)).toBe(true);
+        expect(galaxyViewFleetShown(off, false, 1000)).toBe(true);
+    });
+});
