@@ -27,6 +27,7 @@
 // same Fighter records (Fighter.Weapons / Explosions / LastShieldStrike) the sim keeps.
 // TODO(port): ion-strike lightning overlay (LastIonStrike, LightningGenerator) — MainView.1.cs 1162-1201
 
+import type { MotionInterpolator } from './renderInterp';
 import { Container, Graphics, Texture } from 'pixi.js';
 import type { Camera } from './camera';
 import type { AssetStore } from './assets';
@@ -690,6 +691,11 @@ export class EffectsLayer {
     private area: (Texture | null)[] = [];
     private assaultPod: Texture | null = null;
     private shieldStrike: Texture | null = null;
+    /** Render interpolation between sim steps (renderInterp.ts; from BuiltObjectLayer.motion): strikes, damage
+     * explosions and shot origins follow the drawn ship / fighter. Null: the sim positions. */
+    motion: MotionInterpolator | null = null;
+    /** Scratch drawn position (drawnAt). */
+    private drawnScratch = { xpos: 0, ypos: 0 };
     private blackholeDisc: Texture | null = null;
     private blackholeDiscRequested = false;
     /** Zoom factor of the current frame (px → world units). */
@@ -806,8 +812,14 @@ export class EffectsLayer {
                 this.drawStrikes(bo, nowMs);
                 this.checkHyper(bo, starDate, nowMs);
             }
-            if (explosions.length > 0 && circleInView(this.bounds, bo.xpos, bo.ypos, bo.size + 400)) {
-                for (let i = 0; i < explosions.length; i++) this.drawExplosion(bo.xpos, bo.ypos, explosions[i], f, sz, nowMs);
+            if (explosions.length > 0) {
+                // A live ship's explosions follow its drawn position; a destroyed one's stay where it died.
+                const at = bo.hasBeenDestroyed ? bo : this.drawnAt(bo);
+                const ex = at.xpos;
+                const ey = at.ypos;
+                if (circleInView(this.bounds, ex, ey, bo.size + 400)) {
+                    for (let i = 0; i < explosions.length; i++) this.drawExplosion(ex, ey, explosions[i], f, sz, nowMs);
+                }
             }
             const weapons = bo.weapons;
             if (weapons !== null && !bo.hasBeenDestroyed) {
@@ -835,9 +847,18 @@ export class EffectsLayer {
         this.sprites.end();
     }
 
+    /** Where `o` was drawn this frame (render-interpolated; scratch, read before the next call), else `o` itself. */
+    private drawnAt(o: Positioned): Positioned {
+        const d = this.motion !== null ? this.motion.drawn(o) : null;
+        if (d === null) return o;
+        this.drawnScratch.xpos = d.x;
+        this.drawnScratch.ypos = d.y;
+        return this.drawnScratch;
+    }
+
     private drawWeapon(weapon: Weapon, firer: BuiltObject | Habitat, f: number, nowMs: number): void {
         const c = this.cmd;
-        const kind = weaponDrawCommand(weapon, firer, f, nowMs, c);
+        const kind = weaponDrawCommand(weapon, this.drawnAt(firer), f, nowMs, c);
         if (kind === WeaponDrawKind.None) return;
         switch (kind) {
             case WeaponDrawKind.Intercepted: {
@@ -922,23 +943,26 @@ export class EffectsLayer {
         // The weapons' range reaches past the fighter; cull on the fighter plus its longest shot.
         let reach = 400;
         for (let i = 0; i < weapons.length; i++) reach = Math.max(reach, weapons[i].range * 1.2);
-        if (!circleInView(this.bounds, fighter.xpos, fighter.ypos, reach)) return;
+        const at = fighter.hasBeenDestroyed ? fighter : this.drawnAt(fighter);
+        const fx = at.xpos;
+        const fy = at.ypos;
+        if (!circleInView(this.bounds, fx, fy, reach)) return;
         if (!fighter.hasBeenDestroyed && shieldStrikeVisible(fighter.lastShieldStrike, nowMs) && this.shieldStrike !== null) {
             // MainView.1.cs 1522-1536: the shield-strike art at the fighter's drawn size, turned to direction - 90°.
             const px = fighterDrawnSizePx(fighter);
             if (px > 0) {
                 const w = px * f;
                 const s = this.sprites.acquire(this.shieldStrike);
-                placeSprite(s, fighter.xpos, fighter.ypos, w, w, fighter.lastShieldStrikeDirection - Math.PI / 2);
+                placeSprite(s, fx, fy, w, w, fighter.lastShieldStrikeDirection - Math.PI / 2);
             }
         }
-        for (let i = 0; i < explosions.length; i++) this.drawExplosion(fighter.xpos, fighter.ypos, explosions[i], f, sz, nowMs);
+        for (let i = 0; i < explosions.length; i++) this.drawExplosion(fx, fy, explosions[i], f, sz, nowMs);
         if (!hasShots) return;
         const imageIndex = fighter.specification.weaponImageIndex;
         for (let i = 0; i < weapons.length; i++) {
             const w = weapons[i];
             if (!(w.distanceTravelled >= 0)) continue;
-            if (fighterWeaponDrawCommand(w, fighter, imageIndex, f, nowMs, this.cmd) !== WeaponDrawKind.None) this.drawSpriteCommand(this.cmd);
+            if (fighterWeaponDrawCommand(w, at, imageIndex, f, nowMs, this.cmd) !== WeaponDrawKind.None) this.drawSpriteCommand(this.cmd);
         }
     }
 
@@ -1043,17 +1067,20 @@ export class EffectsLayer {
         const px = this.shipSizePx(bo);
         if (px <= 0) return;
         const w = px * this.f;
-        if (!circleInView(this.bounds, bo.xpos, bo.ypos, w)) return;
+        const at = this.drawnAt(bo);
+        const bx = at.xpos;
+        const by = at.ypos;
+        if (!circleInView(this.bounds, bx, by, w)) return;
         if (shield) {
             const s = this.sprites.acquire(this.shieldStrike!);
-            placeSprite(s, bo.xpos, bo.ypos, w, w, dir - Math.PI / 2);
+            placeSprite(s, bx, by, w, w, dir - Math.PI / 2);
         }
         if (pull) {
             const tex = this.tractorStrike.frame(loopFrameIndex(nowMs, TRACTOR_STRIKE_FRAME_COUNT, 10));
             if (tex !== null) {
                 const s = this.sprites.acquire(tex);
                 // Load-rotated frames drawn at (direction - 90°).
-                placeSprite(s, bo.xpos, bo.ypos, w, w, tractor!.direction - Math.PI / 2 + ROT90);
+                placeSprite(s, bx, by, w, w, tractor!.direction - Math.PI / 2 + ROT90);
             }
         }
     }
@@ -1129,7 +1156,7 @@ export function updateCombatEffects(
     galaxy: Galaxy,
     world: Container,
     store: AssetStore,
-    ships: { drawnSizePx(bo: BuiltObject): number },
+    ships: { drawnSizePx(bo: BuiltObject): number; motion?: MotionInterpolator | null },
     z: number,
     cam: Camera,
 ): EffectsLayer {
@@ -1138,6 +1165,7 @@ export function updateCombatEffects(
         layer = new EffectsLayer(galaxy, world, store, (bo) => ships.drawnSizePx(bo));
         layers.set(world, layer);
     }
+    layer.motion = ships.motion ?? null;
     layer.update(z, cam);
     return layer;
 }

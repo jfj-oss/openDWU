@@ -77,8 +77,7 @@ import { freightTooltipText } from '../ui/freightText'; // [freightOverlay]
 import { wreckTooltipText } from '../ui/scenario/wreckageUi'; // [wreckage]
 import type { FreightOverlay } from './freightOverlay'; // [freightOverlay]
 import { boundsOnScreen, DrawKey } from './drawCache';
-import { FRAMES_PER_SECOND, HABITAT_TICK_BATCH_SIZE } from '../sim/tick/scheduler';
-import { spanSeconds } from '../sim/tick/simTime';
+import { MotionInterpolator, createRenderTime, habitatTouchClampSeconds, renderOrbitAngle, type RenderTime } from './renderInterp';
 
 export function fadeIn(v: number, a: number, b: number): number {
     if (v <= a) {
@@ -142,32 +141,9 @@ export function orbitRingAlpha(z: number, maxOrbitDistance: number): number {
     return 0.5 * fadeIn(z, zMin, zMin * 2);
 }
 
-// Render-only orbit interpolation (no sim-state write). The original ticks every on-screen habitat's Move every
-// single rendered frame (Main.Part11.cs 507/533 ProcessMain's camera LOD pass, always on), so what it draws is
-// continuous. Our port makes that pass opt-in (`?simView=1`, simLoop.ts) and off by default even in real play — the
-// camera isn't journaled, so turning it on would make command-log replay diverge — so a habitat's committed
-// orbitAngle/xpos/ypos only change when the background round-robin (scheduler.ts backgroundPass "GxHab") happens to
-// touch it, which is at most HABITAT_TICK_BATCH_SIZE habitats per sim frame: at big galaxy sizes each habitat is
-// touched only once every ceil(habitats.length / HABITAT_TICK_BATCH_SIZE) sim frames, so its angle jumps by a big
-// step (several degrees) instead of advancing smoothly — the reported "moons jump ~1/20 orbit every 0.3s". This
-// recomputes the drawn angle from the last COMMITTED (orbitAngle, lastTouch) pair with the exact formula
-// habitatTick.ts's `move()` will next apply, so the two never disagree and there is no snap when the real touch
-// lands. `nowMs` is the sim clock (galaxy.nowMs); nothing here is written back to the habitat.
-export function renderOrbitAngle(orbitAngle: number, anglePerSecond: number, orbitDirection: boolean, lastTouch: number, nowMs: number, clampSeconds: number): number {
-    const elapsed = Math.min(Math.max(spanSeconds(nowMs, lastTouch), 0), Math.max(clampSeconds, 0));
-    return orbitDirection ? orbitAngle + anglePerSecond * elapsed : orbitAngle - anglePerSecond * elapsed;
-}
-
-// Safety bound (sim seconds) on renderOrbitAngle's extrapolation: one background-pass round-robin cycle
-// (habitatCount / HABITAT_TICK_BATCH_SIZE sim frames — scheduler.ts backgroundPass) at the fastest game speed (4x,
-// the documented top of Galaxy TimeSpeed). This is a generous upper bound on the real gap between touches at any
-// speed, so it only bites for a habitat that has gone stranger-than-expected stale (a long-paused tab, a very large
-// galaxy) — the common case never reaches it, since the real gap is normally much smaller.
-export function habitatTouchClampSeconds(habitatCount: number): number {
-    const MAX_GAME_SPEED = 4;
-    const cycleFrames = Math.max(0, habitatCount) / HABITAT_TICK_BATCH_SIZE;
-    return (cycleFrames / FRAMES_PER_SECOND) * MAX_GAME_SPEED;
-}
+// renderOrbitAngle / habitatTouchClampSeconds (render-only orbit interpolation) live in renderInterp.ts with the
+// rest of the between-steps interpolation; re-exported here for existing callers.
+export { renderOrbitAngle, habitatTouchClampSeconds } from './renderInterp';
 
 // Task 12p (Main.Part11.cs:487-505, MainView.1.cs:437-470/626-642,
 // MainView.cs:2186-2191): on-screen body sizes at system zoom, in the
@@ -460,6 +436,10 @@ class SystemView {
     planets: PlanetView[] = [];
     asteroids: Sprite[] = [];
     rockHabitats: Habitat[] = [];
+    /** One moon-ring Graphics per planet (parallel to `planets`), drawn around (0,0) on zoom change and moved to the
+     * planet's drawn position every frame, so the rings follow the orbiting planet instead of staying where it was. */
+    moonRings: Graphics[] = [];
+    private bodiesWereShown = true;
     maxExtent = 0; // farthest orbit radius (culling margin)
     private lastRingZoom = -1;
 
@@ -527,6 +507,10 @@ class SystemView {
             if (habitat.category === HabitatCategoryType.Planet) {
                 const planet = new PlanetView(this, habitat, textures.dots.get(habitat.type) ?? textures.dot);
                 this.planets.push(planet);
+                const moonRing = new Graphics();
+                moonRing.visible = false;
+                this.root.addChild(moonRing);
+                this.moonRings.push(moonRing);
                 for (const moon of system.habitats) {
                     if (moon.category === HabitatCategoryType.Moon && moon.parent === habitat) {
                         // Task 12p: moons render as planet-textured sprites, not dots.
@@ -636,7 +620,11 @@ class SystemView {
         this.bodies.visible = bodiesShown;
         if (bodiesShown) {
             this.updateBodies(z, f);
+        } else if (this.bodies.visible !== this.bodiesWereShown) {
+            // The moon rings live outside `bodies` (under root): hide them once when the bodies go.
+            for (const mg of this.moonRings) mg.visible = false;
         }
+        this.bodiesWereShown = bodiesShown;
 
         // System name label under the star (small white text). Task 12p: only
         // drawn above f = 150 (MainView.2.cs:5153/5627-5630) — nothing names
@@ -660,11 +648,21 @@ class SystemView {
         // committed orbitAngle/lastTouch imply RIGHT NOW, not the possibly seconds-stale committed angle itself.
         const galaxy = this.view.galaxy;
         const clampSeconds = habitatTouchClampSeconds(galaxy.habitats.length);
-        for (const planet of this.planets) {
+        // renderNowMs: galaxy.nowMs plus the elapsed part of the next sim step (renderInterp.ts), so the angles also
+        // advance between steps.
+        const nowMs = this.view.renderTime.renderNowMs;
+        for (let pi = 0; pi < this.planets.length; pi++) {
+            const planet = this.planets[pi];
             const p = planet.habitat;
-            const pAngle = renderOrbitAngle(p.orbitAngle, p.anglePerSecond, p.orbitDirection, p.lastTouch, galaxy.nowMs, clampSeconds);
+            const pAngle = renderOrbitAngle(p.orbitAngle, p.anglePerSecond, p.orbitDirection, p.lastTouch, nowMs, clampSeconds);
             const px = Math.cos(pAngle) * p.orbitDistance;
             const py = Math.sin(pAngle) * p.orbitDistance;
+            const mg = this.moonRings[pi];
+            mg.visible = this.ring.visible && planet.moons.length > 0;
+            if (mg.visible) {
+                mg.alpha = this.ring.alpha;
+                mg.position.set(px, py);
+            }
             const sprPx = planetSpritePx(p.diameter, z);
             planet.dot.visible = false;
             planet.sprite.visible = f < 500;
@@ -689,7 +687,7 @@ class SystemView {
             }
             for (const moon of planet.moons) {
                 const m = moon.habitat;
-                const mAngle = renderOrbitAngle(m.orbitAngle, m.anglePerSecond, m.orbitDirection, m.lastTouch, galaxy.nowMs, clampSeconds);
+                const mAngle = renderOrbitAngle(m.orbitAngle, m.anglePerSecond, m.orbitDirection, m.lastTouch, nowMs, clampSeconds);
                 const mx = px + Math.cos(mAngle) * m.orbitDistance;
                 const my = py + Math.sin(mAngle) * m.orbitDistance;
                 const mPx = moonDotPx(m.diameter, z);
@@ -722,20 +720,31 @@ class SystemView {
                 rock.visible = rocksVisible;
             }
         }
+        // Asteroids orbit their star like planets (Habitat.cs Move applies to every habitat with a Parent), so they
+        // follow the same render-interpolated angle instead of the position frozen at system build.
+        if (rocksVisible) {
+            for (let i = 0; i < this.asteroids.length; i++) {
+                const h = this.rockHabitats[i];
+                const a = renderOrbitAngle(h.orbitAngle, h.anglePerSecond, h.orbitDirection, h.lastTouch, nowMs, clampSeconds);
+                this.asteroids[i].position.set(Math.cos(a) * h.orbitDistance, Math.sin(a) * h.orbitDistance);
+            }
+        }
     }
 
     private redrawRings(z: number): void {
         const g = this.ring;
         g.clear();
-        for (const planet of this.planets) {
+        for (let i = 0; i < this.planets.length; i++) {
+            const planet = this.planets[i];
             const p = planet.habitat;
             g.circle(0, 0, p.orbitDistance).stroke({ width: 1 / z, color: 0x7f90a8, alpha: 0.55 });
+            // Faint moon-orbit circles (system zoom), drawn around (0,0) in their own Graphics; updateBodies moves it
+            // to the planet's drawn position every frame.
+            const mg = this.moonRings[i];
+            mg.clear();
             if (z > 0.25) {
-                // Faint moon-orbit circles around planets (system zoom).
-                const px = Math.cos(p.orbitAngle) * p.orbitDistance;
-                const py = Math.sin(p.orbitAngle) * p.orbitDistance;
                 for (const moon of planet.moons) {
-                    g.circle(px, py, moon.habitat.orbitDistance).stroke({ width: 1 / z, color: 0x7f90a8, alpha: 0.35 });
+                    mg.circle(0, 0, moon.habitat.orbitDistance).stroke({ width: 1 / z, color: 0x7f90a8, alpha: 0.35 });
                 }
             }
         }
@@ -1032,6 +1041,11 @@ export class MainView {
     /** Elapsed seconds since boot (disc rotation / corona frame clock). */
     private elapsedSeconds = 0;
     private lastUpdateMs = -1;
+    /** Render interpolation between sim steps: this frame's render time (from the sim loop; without one — tests, a
+     * view with no loop — the committed state is drawn: alpha 0, renderNowMs = galaxy.nowMs) and the per-object
+     * previous/current step positions shared by every layer that draws a moving object. Render-only. */
+    renderTime: RenderTime = createRenderTime();
+    readonly motion = new MotionInterpolator();
     /** Task 08g: set by main.ts — receives the habitat picked on left click. */
     onSelectionChange?: (h: Habitat | null) => void;
     /** Task 13d: set by main.ts — receives the ship/base picked on left click. */
@@ -1382,10 +1396,18 @@ export class MainView {
         this.fighterLayer = new FighterLayer(this.galaxy, this.world, this.store);
         // MainView.1.cs 1559: creatures are drawn after the ships and fighters.
         this.creatureLayer = new CreatureLayer(this.galaxy, this.world, this.store.dwuPresent);
+        // Render interpolation between sim steps: the layers drawing moving objects share one interpolator.
+        this.builtObjectLayer.motion = this.motion;
+        this.overlayLayer.motion = this.motion;
+        this.empireLayer.motion = this.motion;
+        this.ambientLayer.motion = this.motion;
+        this.fighterLayer.motion = this.motion;
+        this.creatureLayer.motion = this.motion;
         if (typeof window !== 'undefined') this.creatureLayer.godMode = new URLSearchParams(window.location.search).get('godMode') === '1';
         // [fightersfx] end
         // [19r] map-level art-bundle extras above the ships / fighters / creatures.
         this.artBundleLayer = new ArtBundleLayer(this.galaxy, this.world, (bo) => this.builtObjectLayer.drawnSizePx(bo));
+        this.artBundleLayer.motion = this.motion;
         const artView = typeof window !== 'undefined' ? artGalleryView(window.location.search) : null;
         if (artView !== null) {
             this.artGallery = new ArtBundleGallery(this.galaxy, this.app.stage, this.app.screen.width, this.app.screen.height, artView);
@@ -1408,10 +1430,27 @@ export class MainView {
     }
 
     /** Per-frame update: camera transform + per-layer level of detail. */
-    update(): void {
+    /** Draw one frame. `renderTime` is the sim loop's render-interpolation sample (simLoop.ts SimLoop.renderTime);
+     * without it the committed sim state is drawn (alpha 0). */
+    update(renderTime?: RenderTime): void {
         const cam = this.camera;
         const z = cam.zoom;
         const m = this.minZoom;
+
+        // Render interpolation between sim steps (renderInterp.ts): read-only on the sim.
+        const rt = this.renderTime;
+        if (renderTime !== undefined) {
+            rt.alpha = renderTime.alpha;
+            rt.stepGameMs = renderTime.stepGameMs;
+            rt.renderNowMs = renderTime.renderNowMs;
+            rt.stepSerial = renderTime.stepSerial;
+        } else {
+            rt.alpha = 0;
+            rt.stepGameMs = 0;
+            rt.renderNowMs = this.galaxy.nowMs;
+            rt.stepSerial = this.galaxy.scheduler?.frames ?? 0;
+        }
+        this.motion.begin(rt, habitatTouchClampSeconds(this.galaxy.habitats.length));
 
         // Frame delta for the animated star discs/corona (task 02c2).
         const nowMs = performance.now();
@@ -1498,6 +1537,10 @@ export class MainView {
         this.rimLayer?.update(z, cam, bdA);
         // [rimatmo] end
 
+        // Task 13a: built objects (ships, bases, pirates, traders). Updated first among the object layers (draw order is
+        // the container order, not this one): it samples the render-interpolated ship positions (this.motion) that the
+        // overlays, ambient effects, selection ring, etc. read later this frame.
+        this.builtObjectLayer.update(z, cam);
         // Task M2e: empire ownership overlays (colony rings at system zoom;
         // owned-system markers + territory discs at galaxy/sector zoom).
         this.empireLayer.update(z, cam);
@@ -1505,8 +1548,6 @@ export class MainView {
         // Territory's visibility toggle is applied straight to empireLayer,
         // above).
         this.overlayLayer.update(z, cam);
-        // Task 13a: built objects (ships, bases, pirates, traders).
-        this.builtObjectLayer.update(z, cam);
         // [ambientfx] begin
         this.ambientLayer.update(z, cam);
         // [ambientfx] end
@@ -1544,19 +1585,24 @@ export class MainView {
             // MainView.1.cs 1717-1720 method_212: a circle over the box 1.5 x the drawn size, only while it is drawn.
             const px = selC.hasBeenDestroyed ? 0 : this.creatureLayer.drawnSizePx(selC);
             if (px > 0) {
-                const s = cam.worldToScreen(selC.xpos, selC.ypos);
+                // Around the drawn (render-interpolated) creature.
+                const d = this.motion.drawn(selC);
+                const s = cam.worldToScreen(d !== null ? d.x : selC.xpos, d !== null ? d.y : selC.ypos);
                 this.drawSelectionRing(s.x, s.y, Math.max(px * 1.5, 8) * 0.5);
             } else {
                 this.selectionRing.visible = false;
             }
         } else if (selBo !== null && !selBo.hasBeenDestroyed && 1 / z < BUILT_OBJECT_MAX_FACTOR) {
-            const s = cam.worldToScreen(selBo.xpos, selBo.ypos);
+            const d = this.motion.drawn(selBo);
+            const s = cam.worldToScreen(d !== null ? d.x : selBo.xpos, d !== null ? d.y : selBo.ypos);
             const r = Math.max(this.builtObjectLayer.drawnSizePx(selBo), 8) * 0.5 + 4;
             this.drawSelectionRing(s.x, s.y, r);
         } else if (sel === null) {
             this.selectionRing.visible = false;
         } else {
-            const s = cam.worldToScreen(sel.xpos, sel.ypos);
+            // Around the drawn planet / moon (render-interpolated orbit).
+            const hp = this.motion.habitatPos(sel);
+            const s = cam.worldToScreen(hp.x, hp.y);
             const r = this.drawnSize(sel, z) * 0.5 + 4;
             this.drawSelectionRing(s.x, s.y, r);
         }

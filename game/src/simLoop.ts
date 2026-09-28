@@ -22,6 +22,7 @@ import { FRAME_REAL_MS, SimDriver, schedulerState, type FrameOptions, type SimVi
 import { drainCommandBoundary } from './sim/tick/commandBoundary';
 import { noteSimSpeed, noteSimView } from './sim/player/playerCommands';
 import { showToast } from './ui/toast';
+import { createRenderTime, updateRenderTime, type RenderTime } from './render/renderInterp';
 
 /** Main.Part11.cs 507 method_123 inputs from the Pixi camera: int_13/int_14 = view centre (galaxy units),
  * mainView.Width/Height = base.ClientRectangle size (px, Main.Part12.cs 1712), double_0 = galaxy units per px. */
@@ -125,6 +126,10 @@ export interface SimLoop {
     stats: SimLoopStats;
     /** [fix6ui] The wall-clock step budget (window.__dwu.simBudget). */
     budget: SimFrameBudget;
+    /** Render interpolation input, refreshed by every tick (one object, mutated in place): the fraction into the
+     * next fixed step (budget.backlogMs / FRAME_REAL_MS, 0 while paused), the game ms per step at the current speed,
+     * renderNowMs = galaxy.nowMs + alpha × stepGameMs, and the cumulative step count. Render-only. */
+    renderTime: RenderTime;
     /** Call once per render frame with the real ms since the previous one. Returns the sim frames run. */
     tick(realDtMs: number): number;
 }
@@ -152,10 +157,12 @@ export function createSimLoop(galaxy: Galaxy, time: GalaxyTime, camera: Camera, 
         },
     };
     const budget = new SimFrameBudget();
+    const renderTime = updateRenderTime(createRenderTime(), galaxy.nowMs, 0, time.speed, true, 0);
     return {
         driver,
         stats,
         budget,
+        renderTime,
         tick(realDtMs: number): number {
             // Pause / speed come from the HUD clock (buttons, keyboard, game menu, tutorial "Play This Game").
             driver.speed = time.speed;
@@ -184,6 +191,7 @@ export function createSimLoop(galaxy: Galaxy, time: GalaxyTime, camera: Camera, 
                 time.paused = true;
                 showToast('Simulation error — game paused (see console)');
             }
+            updateRenderTime(renderTime, galaxy.nowMs, budget.backlogMs, time.speed, time.paused, frames);
             const dt = performance.now() - t0;
             stats.renderFrames++;
             stats.simFrames += frames;

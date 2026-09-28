@@ -45,6 +45,7 @@
 // TODO(overlay): fold in colony-ship design range and ruin/superluxury
 // bonuses once those are ported.
 
+import type { MotionInterpolator } from './renderInterp';
 import { Container, Graphics } from 'pixi.js';
 import type { Camera } from './camera';
 import type { Galaxy } from '../sim/galaxy';
@@ -242,6 +243,9 @@ export class OverlayLayer {
     // [freightOverlay] end
     private threats = new Graphics();
     private threatSites: KnownThreatSite[] = [];
+    /** Render interpolation between sim steps (renderInterp.ts; set by MainView): travel vectors start at the drawn
+     * ship. Null: its sim position. */
+    motion: MotionInterpolator | null = null;
     private threatFrame = 0;
     /** Scenario map markers (mod layer, e.g. the 19a treasure fleet beacon): drawn at every zoom. */
     private scenarioMarkers = new Graphics();
@@ -307,15 +311,25 @@ export class OverlayLayer {
             const h = m.habitat;
             const halfW = cam.width / (2 * z) + 200 / z;
             const halfH = cam.height / (2 * z) + 200 / z;
-            if (h.xpos < cam.x - halfW || h.xpos > cam.x + halfW || h.ypos < cam.y - halfH || h.ypos > cam.y + halfH) {
+            // Around the drawn (render-interpolated orbit) body, else its committed position.
+            let hx = h.xpos;
+            let hy = h.ypos;
+            if (this.motion !== null) {
+                const hp = this.motion.habitatPos(h);
+                hx = hp.x;
+                hy = hp.y;
+            }
+            if (hx < cam.x - halfW || hx > cam.x + halfW || hy < cam.y - halfH || hy > cam.y + halfH) {
                 m.graphics.visible = false;
                 continue;
             }
             const r = drawnPx(h, z) / 2 + 8 / z;
-            if (m.key.changed(h.xpos, h.ypos, r, 4 / z)) {
+            // Geometry around (0, 0), rebuilt only on a radius / width change; moved to the body each frame.
+            if (m.key.changed(r, 4 / z)) {
                 m.graphics.clear();
-                m.graphics.circle(h.xpos, h.ypos, r).stroke({ width: 4 / z, color: OVERLAY_MARKER_COLOR, alpha: 1 });
+                m.graphics.circle(0, 0, r).stroke({ width: 4 / z, color: OVERLAY_MARKER_COLOR, alpha: 1 });
             }
+            m.graphics.position.set(hx, hy);
             m.graphics.visible = true;
         }
     }
@@ -448,6 +462,12 @@ export class OverlayLayer {
         const halfH = cam.height / (2 * z);
         for (const kind of kinds) {
             for (const v of travelVectorsFor(this.galaxy, player, kind)) {
+                // Start at the drawn (render-interpolated) ship when BuiltObjectLayer drew it this frame.
+                const d = this.motion !== null ? this.motion.drawn(v.builtObject) : null;
+                if (d !== null) {
+                    v.x1 = d.x;
+                    v.y1 = d.y;
+                }
                 // MainView.2.cs: only ships inside the view get a vector.
                 if (v.x1 < cam.x - halfW || v.x1 > cam.x + halfW || v.y1 < cam.y - halfH || v.y1 > cam.y + halfH) continue;
                 if (!travelVectorLongEnough(v, f)) continue;

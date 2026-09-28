@@ -4,6 +4,7 @@
 // import.meta.glob (empty when the file does not exist on this branch) or a state key in galaxy.scenario.state read
 // through a local structural shape — so this compiles and runs here and lights up once those packages merge.
 
+import type { MotionInterpolator } from './renderInterp';
 import { Container, Graphics, Text } from 'pixi.js';
 import type { Camera } from './camera';
 import type { Galaxy } from '../sim/galaxy';
@@ -170,6 +171,8 @@ export class ArtBundleLayer {
     wreckStats = { fields: 0, fragments: 0, pods: 0 };
     private sites: { site: KnownThreatSiteShape; style: ThreatMarkerStyle; seed: number }[] = [];
     private frame = 0;
+    /** Render interpolation between sim steps (renderInterp.ts; set by MainView): camps sit on the drawn station. */
+    motion: MotionInterpolator | null = null;
 
     constructor(
         private galaxy: Galaxy,
@@ -415,8 +418,9 @@ export class ArtBundleLayer {
                 if (px < HERDER_CAMP_MIN_PX) continue;
                 if (Math.abs(bo.xpos - cam.x) > halfW + px / z || Math.abs(bo.ypos - cam.y) > halfH + px / z) continue;
                 const s = this.campPool.acquire(this.campTex);
-                s.position.set(bo.xpos, bo.ypos);
-                s.rotation = bo.heading;
+                const d = this.motion !== null ? this.motion.drawn(bo) : null;
+                s.position.set(d !== null ? d.x : bo.xpos, d !== null ? d.y : bo.ypos);
+                s.rotation = d !== null ? d.heading : bo.heading;
                 s.scale.set((px * 0.95) / HERDER_CAMP_SIZE / z);
                 s.alpha = 0.95;
             }

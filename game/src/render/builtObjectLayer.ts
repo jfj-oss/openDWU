@@ -13,6 +13,7 @@
 // PNG. There is no empire tint: PrepareBuiltObjectImageNEW ignores its colour
 // arguments (only the civilian fade below applies).
 
+import { sampleBuiltObject, type MotionInterpolator } from './renderInterp';
 import { Container, Sprite } from 'pixi.js';
 import type { Texture } from 'pixi.js';
 import { Camera } from './camera';
@@ -431,6 +432,8 @@ export class BuiltObjectLayer {
     private concordFx = new ConcordFxLayer();
     private frame = 0;
     // [concordArt] end
+    /** Render interpolation between sim steps (renderInterp.ts; set by MainView). Null: draw the sim positions. */
+    motion: MotionInterpolator | null = null;
 
     constructor(
         private galaxy: Galaxy,
@@ -504,6 +507,7 @@ export class BuiltObjectLayer {
         const maxY = cam.height + 100;
         // TODO(port): Empire.IsObjectVisibleToThisEmpire(BuiltObject) (MainView.1.cs:883) — not in sim; all objects drawn
         this.seen.clear();
+        const motion = this.motion;
         for (const bo of this.galaxy.builtObjects) {
             // MainView.1.cs:867 `if (builtObject5 == null) continue;` — Galaxy.BuiltObjects keeps null holes after
             // CompleteTeardown (BuiltObject.2.cs:5522) until RemoveNullBuiltObjects (Galaxy.9.cs:2862) compacts it.
@@ -518,6 +522,16 @@ export class BuiltObjectLayer {
                 if (sprite !== undefined) sprite.visible = false;
                 this.drawnPx.delete(bo);
                 continue;
+            }
+            // Drawn position / heading: lerp between the last two sim steps (snaps on jumps), or the sim state.
+            let x = bo.xpos;
+            let y = bo.ypos;
+            let heading = bo.heading;
+            if (motion !== null) {
+                const st = sampleBuiltObject(motion, bo);
+                x = st.x;
+                y = st.y;
+                heading = st.heading;
             }
             // [concordArt] begin — the Concord's objects draw their own art (built lazily; hidden until then).
             const cv = concordVariantFor(bo, concord, treasure, look);
@@ -577,26 +591,26 @@ export class BuiltObjectLayer {
                 sprite.visible = false;
                 continue;
             }
-            sprite.position.set(bo.xpos, bo.ypos);
+            sprite.position.set(x, y);
             sprite.anchor.set(metrics.cropCenterX / texture.width, metrics.cropCenterY / texture.height);
-            sprite.rotation = bo.heading + Math.PI / 2;
+            sprite.rotation = heading + Math.PI / 2;
             sprite.scale.set(px / metrics.cropSide / z);
             sprite.alpha = this.overlays.fadeCivilianShips && bo.owner === null ? 144 / 255 : 1;
             sprite.visible = true;
             // [concordArt] begin
             if (cArt !== null) {
-                this.concordFx.draw(cArt, bo.xpos, bo.ypos, sprite.rotation, sprite.scale.x, sprite.anchor.x, sprite.anchor.y, bo.builtObjectID, px, nowMs);
+                this.concordFx.draw(cArt, x, y, sprite.rotation, sprite.scale.x, sprite.anchor.x, sprite.anchor.y, bo.builtObjectID, px, nowMs);
             }
             // [concordArt] end
             // A Concord ship (cArt !== null) has no shipArt.ts record of its own — it's drawn by the concordFx pass
             // above instead, with its own weathered/pristine look (concordArtLook), so 19r's damage/liveries overlays
             // (keyed off the stock art record) skip it rather than fall over on a shape without `.art`.
             const shipArtRecord = 'art' in img ? img.art : null;
-            if (liveries && shipArtRecord !== null) this.liveries.draw(bo, shipArtRecord, px, z, sprite.alpha);
+            if (liveries && shipArtRecord !== null) this.liveries.draw(bo, shipArtRecord, px, z, sprite.alpha, x, y, heading);
             // 19r: MainView.cs 3253 method_73 → Main.Part12.cs 4988 method_106 while DamagedComponentCount > 0.
             if (bo.damagedComponentCount > 0 && shipArtRecord !== null) {
                 const subject = shipDamageSubject(bo);
-                if (subject !== null) this.damage.draw(bo, subject, shipArtRecord, bo.xpos, bo.ypos, bo.heading, px, z, damageFx, sprite.alpha);
+                if (subject !== null) this.damage.draw(bo, subject, shipArtRecord, x, y, heading, px, z, damageFx, sprite.alpha);
             }
         }
         this.concordFx.end(); // [concordArt]

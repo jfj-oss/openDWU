@@ -11,6 +11,7 @@
 // pixels. Zoom gating mirrors the original's factor threshold: system/planet
 // zoom is factor < 70 (factor = 1/z), the same test MainView.pick uses.
 
+import type { MotionInterpolator } from './renderInterp';
 import { Container, Graphics } from 'pixi.js';
 import type { Camera } from './camera';
 import type { Galaxy } from '../sim/galaxy';
@@ -159,6 +160,8 @@ export function collectEmpireSystems(galaxy: Galaxy): EmpireSystems[] {
 export class EmpireLayer {
     /** World-space layer: territory discs, then colony/marker rings above. */
     root = new Container();
+    /** Render interpolation (renderInterp.ts; set by MainView): colony rings follow the drawn planet / moon. */
+    motion: MotionInterpolator | null = null;
     /** Non-independent empires in galaxy.empires order (index → palette). */
     private empires: Empire[] = [];
     /** Display colour per empire index (own main colour or palette fallback). */
@@ -280,7 +283,15 @@ export class EmpireLayer {
             // Cull off-screen bodies.
             const halfW = cam.width / (2 * z) + 200 / z;
             const halfH = cam.height / (2 * z) + 200 / z;
-            if (h.xpos < cam.x - halfW || h.xpos > cam.x + halfW || h.ypos < cam.y - halfH || h.ypos > cam.y + halfH) {
+            // Around the drawn (render-interpolated orbit) body, else its committed position.
+            let hx = h.xpos;
+            let hy = h.ypos;
+            if (this.motion !== null) {
+                const hp = this.motion.habitatPos(h);
+                hx = hp.x;
+                hy = hp.y;
+            }
+            if (hx < cam.x - halfW || hx > cam.x + halfW || hy < cam.y - halfH || hy > cam.y + halfH) {
                 cr.ring.visible = false;
                 continue;
             }
@@ -289,11 +300,12 @@ export class EmpireLayer {
             // Screen px -> world units (the layer lives in world space).
             const r = colonyRingRadius(drawnPx, factor) / z;
             const color = colonyRingColor(h, this.galaxy);
-            // Rebuild the geometry only when position, radius, width or colour changed.
-            if (cr.key.changed(h.xpos, h.ypos, r, 2 / z, color)) {
+            // Geometry around (0, 0), rebuilt only when radius, width or colour changed; moved to the body each frame.
+            if (cr.key.changed(r, 2 / z, color)) {
                 cr.ring.clear();
-                cr.ring.circle(h.xpos, h.ypos, r).stroke({ width: 2 / z, color, alpha: 1 });
+                cr.ring.circle(0, 0, r).stroke({ width: 2 / z, color, alpha: 1 });
             }
+            cr.ring.position.set(hx, hy);
             cr.ring.visible = true;
         }
 

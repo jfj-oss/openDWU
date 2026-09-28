@@ -221,8 +221,9 @@ export class LiveryOverlays {
         });
     }
 
-    /** Draw the livery of `bo` (its sprite already placed): centre, heading, drawn px, zoom, sprite alpha. */
-    draw(bo: BuiltObject, art: ShipArt, px: number, z: number, alpha: number): void {
+    /** Draw the livery of `bo` (its sprite already placed): centre, heading, drawn px, zoom, sprite alpha. `x`, `y`,
+     * `heading`: where the sprite was drawn (render-interpolated; default the sim position). */
+    draw(bo: BuiltObject, art: ShipArt, px: number, z: number, alpha: number, x = bo.xpos, y = bo.ypos, heading = bo.heading): void {
         const a = this.analysis(art);
         if (a === undefined || a === null) return;
         const style = liveryStyleOf(this.galaxy, bo);
@@ -241,8 +242,8 @@ export class LiveryOverlays {
         t.used = this.frame;
         const k = px / a.an.side / z;
         const s = this.sprite(t.tex);
-        s.position.set(bo.xpos, bo.ypos);
-        s.rotation = bo.heading;
+        s.position.set(x, y);
+        s.rotation = heading;
         s.scale.set(k);
         s.alpha = alpha;
         // Hull number near the stern (not on pirates' scrap, not while tiny).
@@ -259,11 +260,11 @@ export class LiveryOverlays {
             const slot = a.an.number;
             const dx = (slot.x - a.an.side / 2) * k;
             const dy = (slot.y - a.an.side / 2) * k;
-            const c = Math.cos(bo.heading);
-            const sn = Math.sin(bo.heading);
+            const c = Math.cos(heading);
+            const sn = Math.sin(heading);
             const ns = this.sprite(nt);
-            ns.position.set(bo.xpos + dx * c - dy * sn, bo.ypos + dx * sn + dy * c);
-            ns.rotation = bo.heading;
+            ns.position.set(x + dx * c - dy * sn, y + dx * sn + dy * c);
+            ns.rotation = heading;
             // Glyph cells (5 rows + outline = 7 rows) over slot.h × 7/5 crop px.
             ns.scale.set(((slot.h * 7) / 5 / nt.height) * k);
             ns.alpha = alpha;
