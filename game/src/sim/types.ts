@@ -155,9 +155,36 @@ export class Habitat {
     parent: Habitat | null;
     orbitAngle = 0;
     orbitDirection = false;
-    orbitDistance = 0; // C#: short _OrbitDistance
-    orbitSpeed = 0; // C#: byte _OrbitSpeed
+    // C#: short _OrbitDistance / byte _OrbitSpeed behind public properties (Habitat.cs 924-935 / 986-998) whose
+    // setters both recompute _AnglePerSecond from the CURRENT distance/speed pair. Galaxy.5.cs 1730 sets
+    // moon.OrbitDistance to the final orbit radius well after construction (the ctor's own OrbitDistance argument is
+    // just a placeholder, Rnd.Next(5, 32) — Galaxy.5.cs 1689); without the setter recomputing _AnglePerSecond here,
+    // moons kept the angular speed implied by that tiny placeholder radius applied to their real, much larger orbit
+    // — spinning many times too fast. Keep these as accessors (not plain fields) so any future reassignment stays
+    // faithful too.
+    private _orbitDistance = 0;
+    get orbitDistance(): number {
+        return this._orbitDistance;
+    }
+    set orbitDistance(value: number) {
+        this._orbitDistance = value;
+        const orbitPathLength = this.calculateOrbitPathLength();
+        this._anglePerSecond = (Math.PI * 2.0) / (orbitPathLength / this._orbitSpeed);
+    }
+    private _orbitSpeed = 0;
+    get orbitSpeed(): number {
+        return this._orbitSpeed;
+    }
+    set orbitSpeed(value: number) {
+        this._orbitSpeed = value;
+        const orbitPathLength = this.calculateOrbitPathLength();
+        this._anglePerSecond = (Math.PI * 2.0) / (orbitPathLength / this._orbitSpeed);
+    }
     private _anglePerSecond = 0;
+    /** Read-only: render-only interpolation (mainView.ts) needs this alongside orbitAngle/lastTouch. */
+    get anglePerSecond(): number {
+        return this._anglePerSecond;
+    }
 
     // Plain fields set later by generation (Galaxy.5/6.cs).
     // C#: short Diameter / float BaseQuality — properties whose setters call RecalculateMaximumPopulation
@@ -342,11 +369,14 @@ export class Habitat {
         this.parent = parentOrX;
         this.orbitAngle = orbitAngleOrY;
         this.orbitDirection = orbitDirectionOrDistance as boolean;
-        this.orbitDistance = orbitDistanceOrSpeed ?? 0;
-        this.orbitSpeed = orbitSpeed ?? 0;
+        // Habitat.cs 6289-6290: the ctor writes the private backing fields directly, bypassing the
+        // OrbitDistance/OrbitSpeed property setters (so this initial computation below runs exactly once, not once
+        // per assignment with the other value still 0).
+        this._orbitDistance = orbitDistanceOrSpeed ?? 0;
+        this._orbitSpeed = orbitSpeed ?? 0;
         const orbitPathLength = this.calculateOrbitPathLength();
         if (this.parent !== null) {
-            this._anglePerSecond = (Math.PI * 2.0) / (orbitPathLength / this.orbitSpeed);
+            this._anglePerSecond = (Math.PI * 2.0) / (orbitPathLength / this._orbitSpeed);
         }
         if (doInitialMove) {
             // Habitat.cs 6297-6303: _LastTouch = now.AddSeconds(-30) (kept: the first DoTasks moves another 30 s), then

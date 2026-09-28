@@ -41,11 +41,18 @@ describe('command log: seed + commands replay the game', () => {
         const game = cachedTickGame(gameData);
         setRunId(game.galaxy, 'live');
         const p = game.playerEmpire;
-        runScripted(SCRIPT, game, 60_000);
+        // Checked right after the 'create a fleet' step (atMs 10_000) takes effect, not later in the run: by
+        // 60_000 ms ordinary (position-dependent) AI/movement may have reorganised or merged fleets, which is no
+        // longer a fixed outcome now that habitat orbits are ported faithfully (Habitat.cs 924-935/986-998
+        // OrbitDistance/OrbitSpeed recompute _AnglePerSecond — moons used to run up to ~240x too fast, see
+        // types.ts). The assertion's job is to confirm the order took effect, not that the fleet survives
+        // unrelated gameplay for another 50 sim seconds.
+        runScripted(SCRIPT, game, 15_000);
         // The orders took effect (the created fleet is the player's; the empire's own fleet formation may add others).
         const fleet = createdFleets.get(game.galaxy)!;
         expect(fleet).toBeDefined();
         expect(empireShipGroups(p)).toContain(fleet);
+        runScripted(SCRIPT, game, 60_000);
         expect(p.policy!.researchPriority).toBe(1.5);
         expect(p.controlColonyTaxRates).toBe(false);
         runScripted(SCRIPT, game, END_MS);

@@ -259,7 +259,7 @@
             "ruins": 23
         }
     },
-    "empireLifecycle": {"aiSplitDigest": "42159d821d5440d8:288980"},
+    "empireLifecycle": {"aiSplitDigest": "df5e591362688597:288980"},
     "forceStructure": {
         "playerPrivate": [["SmallFreighter", 3], ["MediumFreighter", 1], ["GasMiningShip", 2], ["MiningShip", 2]],
         "age0Private": [[], [], [], []]
@@ -390,8 +390,8 @@
                 "MediumSpacePort",
                 "Skaif Space Port",
                 "Skaif",
-                4576169,
-                3460297,
+                4575616,
+                3461187,
                 -0.21728499233722687
             ],
             [
@@ -460,8 +460,8 @@
                 "MiningStation",
                 "Immeinis Mining Station",
                 "Immeinis",
-                4575852,
-                3460892,
+                4576004,
+                3460673,
                 -0.2366860806941986
             ],
             [
@@ -520,8 +520,8 @@
                 "MiningStation",
                 "Enaire Mining Station",
                 "Enaire",
-                4854782,
-                11698319,
+                4854801,
+                11698825,
                 -0.06955896317958832
             ],
             [
@@ -540,8 +540,8 @@
                 "MiningStation",
                 "Senoi Mining Station",
                 "Senoi",
-                4867406,
-                11697510,
+                4868053,
+                11697723,
                 2.479494571685791
             ],
             [
@@ -580,8 +580,8 @@
                 "MiningStation",
                 "Onau Mining Station",
                 "Onau",
-                8816638,
-                14207854,
+                8815441,
+                14207659,
                 -0.11989685893058777
             ],
             [
@@ -590,8 +590,8 @@
                 "MiningStation",
                 "Edulta Mining Station",
                 "Edulta",
-                8818847,
-                14216668,
+                8817413,
+                14216714,
                 -1.7370576858520508
             ],
             [
@@ -670,8 +670,8 @@
                 "MiningStation",
                 "Croi Mining Station",
                 "Croi",
-                9430130,
-                3180125,
+                9430038,
+                3180123,
                 2.93000864982605
             ],
             [
@@ -690,8 +690,8 @@
                 "MiningStation",
                 "Selm Mining Station",
                 "Selm",
-                9409692,
-                3172434,
+                9410311,
+                3173515,
                 -0.7642702460289001
             ]
         ],
@@ -725,11 +725,11 @@
     },
     "taxes": {"taxRates": [0.28999999165534973, 0.2800000011920929, 0.18000000715255737, 0.3100000023841858]},
     "tickDeterminism": {
-        "digest600": "09dbdbc868a2ce9a",
-        "counts600": {"empires": 4, "pirateEmpires": 8, "habitats": 13326, "builtObjects": 594, "creatures": 318, "colonies": 4},
-        "rndDraws600": 594013,
-        "digest120": "fc924a497a41e134",
-        "rndDraws120": 11133
+        "digest600": "debd45f48e221a8e",
+        "counts600": {"empires": 4, "pirateEmpires": 8, "habitats": 13326, "builtObjects": 598, "creatures": 322, "colonies": 4},
+        "rndDraws600": 658628,
+        "digest120": "4fb8e86d41e4c0d9",
+        "rndDraws120": 11524
     },
     "troops": {
         "capitals": [[1177, 882, 7], [1564, 1173, 8], [1758, 1318, 2], [617, 462, 11]],

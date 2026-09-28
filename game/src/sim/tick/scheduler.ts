@@ -54,6 +54,10 @@ function addProfile(key: string, start: number): void {
 export const FRAME_REAL_MS = 1000 / 60;
 /** Frames per real second (the integer denominator of the frame-length carry). */
 export const FRAMES_PER_SECOND = 60;
+/** Main.Part13.cs 277-ish int41 (multiCore budget, backgroundPass "GxHab"): habitats processed per sim frame by the
+ * round-robin background pass. Exported so render code (mainView.ts orbit interpolation) can estimate how many sim
+ * frames apart a given habitat's real touches land, without duplicating the constant. */
+export const HABITAT_TICK_BATCH_SIZE = 1000;
 
 /** Camera input for the level-of-detail pass (Main.Part11.cs 507-610). All fields are the C# UI values. */
 export interface SimView {
@@ -253,7 +257,7 @@ function backgroundPass(galaxy: Galaxy, state: SchedulerState, time: number, sta
     let int45: number;
     let int46: number;
     if (multiCore) {
-        int41 = 1000;
+        int41 = HABITAT_TICK_BATCH_SIZE;
         int42 = 150;
         int43 = 1000;
         int44 = 50;

@@ -76,6 +76,8 @@ import { freightTooltipText } from '../ui/freightText'; // [freightOverlay]
 import { wreckTooltipText } from '../ui/scenario/wreckageUi'; // [wreckage]
 import type { FreightOverlay } from './freightOverlay'; // [freightOverlay]
 import { boundsOnScreen, DrawKey } from './drawCache';
+import { FRAMES_PER_SECOND, HABITAT_TICK_BATCH_SIZE } from '../sim/tick/scheduler';
+import { spanSeconds } from '../sim/tick/simTime';
 
 export function fadeIn(v: number, a: number, b: number): number {
     if (v <= a) {
@@ -137,6 +139,33 @@ export function orbitRingAlpha(z: number, maxOrbitDistance: number): number {
     }
     const zMin = 40 / maxOrbitDistance;
     return 0.5 * fadeIn(z, zMin, zMin * 2);
+}
+
+// Render-only orbit interpolation (no sim-state write). The original ticks every on-screen habitat's Move every
+// single rendered frame (Main.Part11.cs 507/533 ProcessMain's camera LOD pass, always on), so what it draws is
+// continuous. Our port makes that pass opt-in (`?simView=1`, simLoop.ts) and off by default even in real play — the
+// camera isn't journaled, so turning it on would make command-log replay diverge — so a habitat's committed
+// orbitAngle/xpos/ypos only change when the background round-robin (scheduler.ts backgroundPass "GxHab") happens to
+// touch it, which is at most HABITAT_TICK_BATCH_SIZE habitats per sim frame: at big galaxy sizes each habitat is
+// touched only once every ceil(habitats.length / HABITAT_TICK_BATCH_SIZE) sim frames, so its angle jumps by a big
+// step (several degrees) instead of advancing smoothly — the reported "moons jump ~1/20 orbit every 0.3s". This
+// recomputes the drawn angle from the last COMMITTED (orbitAngle, lastTouch) pair with the exact formula
+// habitatTick.ts's `move()` will next apply, so the two never disagree and there is no snap when the real touch
+// lands. `nowMs` is the sim clock (galaxy.nowMs); nothing here is written back to the habitat.
+export function renderOrbitAngle(orbitAngle: number, anglePerSecond: number, orbitDirection: boolean, lastTouch: number, nowMs: number, clampSeconds: number): number {
+    const elapsed = Math.min(Math.max(spanSeconds(nowMs, lastTouch), 0), Math.max(clampSeconds, 0));
+    return orbitDirection ? orbitAngle + anglePerSecond * elapsed : orbitAngle - anglePerSecond * elapsed;
+}
+
+// Safety bound (sim seconds) on renderOrbitAngle's extrapolation: one background-pass round-robin cycle
+// (habitatCount / HABITAT_TICK_BATCH_SIZE sim frames — scheduler.ts backgroundPass) at the fastest game speed (4x,
+// the documented top of Galaxy TimeSpeed). This is a generous upper bound on the real gap between touches at any
+// speed, so it only bites for a habitat that has gone stranger-than-expected stale (a long-paused tab, a very large
+// galaxy) — the common case never reaches it, since the real gap is normally much smaller.
+export function habitatTouchClampSeconds(habitatCount: number): number {
+    const MAX_GAME_SPEED = 4;
+    const cycleFrames = Math.max(0, habitatCount) / HABITAT_TICK_BATCH_SIZE;
+    return (cycleFrames / FRAMES_PER_SECOND) * MAX_GAME_SPEED;
 }
 
 // Task 12p (Main.Part11.cs:487-505, MainView.1.cs:437-470/626-642,
@@ -629,10 +658,15 @@ class SystemView {
         // Task 12p (MainView.1.cs:437-470): no dot crossfade — planet sprites are
         // drawn while f < 500 at their compressed-factor size; the name
         // label follows the original's populated/planet rules (method_84).
+        // Render-only orbit interpolation (renderOrbitAngle, defined above): draws each body at the angle its
+        // committed orbitAngle/lastTouch imply RIGHT NOW, not the possibly seconds-stale committed angle itself.
+        const galaxy = this.view.galaxy;
+        const clampSeconds = habitatTouchClampSeconds(galaxy.habitats.length);
         for (const planet of this.planets) {
             const p = planet.habitat;
-            const px = Math.cos(p.orbitAngle) * p.orbitDistance;
-            const py = Math.sin(p.orbitAngle) * p.orbitDistance;
+            const pAngle = renderOrbitAngle(p.orbitAngle, p.anglePerSecond, p.orbitDirection, p.lastTouch, galaxy.nowMs, clampSeconds);
+            const px = Math.cos(pAngle) * p.orbitDistance;
+            const py = Math.sin(pAngle) * p.orbitDistance;
             const sprPx = planetSpritePx(p.diameter, z);
             planet.dot.visible = false;
             planet.sprite.visible = f < 500;
@@ -657,8 +691,9 @@ class SystemView {
             }
             for (const moon of planet.moons) {
                 const m = moon.habitat;
-                const mx = px + Math.cos(m.orbitAngle) * m.orbitDistance;
-                const my = py + Math.sin(m.orbitAngle) * m.orbitDistance;
+                const mAngle = renderOrbitAngle(m.orbitAngle, m.anglePerSecond, m.orbitDirection, m.lastTouch, galaxy.nowMs, clampSeconds);
+                const mx = px + Math.cos(mAngle) * m.orbitDistance;
+                const my = py + Math.sin(mAngle) * m.orbitDistance;
                 const mPx = moonDotPx(m.diameter, z);
                 moon.dot.visible = f < 500;
                 moon.dot.alpha = 1;
