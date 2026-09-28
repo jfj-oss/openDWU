@@ -133,6 +133,14 @@ class MarkerRing {
 
 // MainView.2.cs method_251: Color.FromArgb(170, 170, 170)
 export const TRAVEL_VECTOR_COLOR = 0xaaaaaa;
+/** XnaDrawingHelper.DrawLine(dashed) (XnaDrawingHelper.cs 572-605): 6 px dashes with 6 px gaps (every other 6 px step). */
+export const TRAVEL_VECTOR_DASH_PX = 6;
+
+/** method_252 draws the vector 1 px thick (lineThickness 1) — one DEVICE pixel, so on a HiDPI screen it stays as thin
+ * (and as faint) as the original instead of doubling to 2 device px. Returned in CSS px. */
+export function travelVectorWidthPx(devicePixelRatio: number): number {
+    return 1 / Math.max(1, devicePixelRatio);
+}
 
 export type TravelVectorKind = 'state' | 'private';
 
@@ -451,12 +459,13 @@ export class OverlayLayer {
                 // MainView.2.cs: only ships inside the view get a vector.
                 if (v.x1 < cam.x - halfW || v.x1 > cam.x + halfW || v.y1 < cam.y - halfH || v.y1 > cam.y + halfH) continue;
                 if (!travelVectorLongEnough(v, f)) continue;
-                for (const [ax, ay, bx, by] of dashSegments(v.x1, v.y1, v.x2, v.y2, 6 * f, 4 * f)) {
+                for (const [ax, ay, bx, by] of dashSegments(v.x1, v.y1, v.x2, v.y2, TRAVEL_VECTOR_DASH_PX * f, TRAVEL_VECTOR_DASH_PX * f)) {
                     g.moveTo(ax, ay).lineTo(bx, by);
                 }
             }
         }
-        g.stroke({ width: f, color: TRAVEL_VECTOR_COLOR, alpha: 1 });
+        const dpr = typeof window !== 'undefined' ? window.devicePixelRatio : 1;
+        g.stroke({ width: f * travelVectorWidthPx(dpr), color: TRAVEL_VECTOR_COLOR, alpha: 1 });
         g.visible = true;
     }
 

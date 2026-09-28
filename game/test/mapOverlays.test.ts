@@ -5,7 +5,7 @@ describe('map overlay state (task 05c)', () => {
     it('starts with every overlay off except Empire Territory (task M3: the original always shades territory) and scenario Threats', () => {
         const s = createMapOverlayState();
         for (const row of OVERLAY_ROWS) {
-            if (row.key === 'empireTerritory' || row.key === 'threats' || row.key === 'wrecks') {
+            if (row.key === 'empireTerritory' || row.key === 'factionMarkers' || row.key === 'stationPresence' || row.key === 'threats' || row.key === 'wrecks') {
                 expect(s[row.key], row.label).toBe(true);
                 continue;
             }
@@ -48,12 +48,14 @@ describe('map overlay state (task 05c)', () => {
             'researchLocations',
             'longRangeScanners',
             'empireTerritory',
+            'factionMarkers',
+            'stationPresence',
             'fadeCivilianShips',
             'freightFlows',
             'tradeHubs',
             'threats',
             'wrecks',
         ]);
-        expect(OVERLAY_ROWS.filter((r) => r.mod === true).map((r) => r.key)).toEqual(['freightFlows', 'tradeHubs', 'wrecks']);
+        expect(OVERLAY_ROWS.filter((r) => r.mod === true).map((r) => r.key)).toEqual(['factionMarkers', 'stationPresence', 'freightFlows', 'tradeHubs', 'wrecks']);
     });
 });
