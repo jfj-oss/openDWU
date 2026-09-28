@@ -16,6 +16,7 @@ import { GalaxyTime } from '../galaxyTime';
 import { flatEmpireList, galaxyFromJSON, galaxyToJSON, type GalaxySaveJSON } from './galaxySave';
 import { commandLog, copyCommandLogEntry, restoreCommandLog, type CommandLogEntry } from '../player/commandLog';
 import { flushPlayerCommands } from '../player/playerCommands';
+import { COMPOSITE_SCENARIO_ID } from '../scenario/addons';
 
 /** Bumped to 2 when the galaxy graph (M3 state) replaced the index-based
  *  format; version-1 saves predate ships/bases/characters and are rejected. */
@@ -64,6 +65,18 @@ export function savedScenarioId(save: string | GameSaveJSON): string | null {
     return typeof id === 'string' ? id : null;
 }
 
+/**
+ * Add-on picker: the `include` list of a save's scenario manifest (galaxy.scenario.manifest.include, plain JSON in the
+ * encoded graph) — for a composite ('addons') game, the flattened add-on set its overlay is rebuilt from. Null without
+ * a scenario or a readable list.
+ */
+export function savedScenarioInclude(save: string | GameSaveJSON): string[] | null {
+    const obj = typeof save === 'string' ? (JSON.parse(save) as GameSaveJSON) : save;
+    const g = obj.galaxy?.galaxy as { $f?: { scenario?: { $f?: { manifest?: { include?: unknown } | null } } | null } } | undefined;
+    const inc = g?.$f?.scenario?.$f?.manifest?.include;
+    return Array.isArray(inc) && inc.every((x) => typeof x === 'string') ? (inc as string[]) : null;
+}
+
 /** Rebuild a game from a serializeGame string. Static data (races, resources,
  *  research, governments) comes from gameData. */
 export function deserializeGame(text: string, gameData: GameData): { game: Game; time: GalaxyTime; startOptions: StartGameOptions } {
@@ -74,6 +87,10 @@ export function deserializeGame(text: string, gameData: GameData): { game: Game;
     const dataScenario = gameData.scenario?.manifest.id ?? null;
     if (savedScenario !== dataScenario) {
         throw new Error(`Save was made with scenario ${savedScenario ?? '(none)'} but the game data has ${dataScenario ?? 'no scenario'}; load it with that scenario's data.`);
+    }
+    // A composite (several add-ons) save needs the same add-on set in its data.
+    if (savedScenario === COMPOSITE_SCENARIO_ID && (savedScenarioInclude(obj) ?? []).join(',') !== (gameData.scenario?.manifest.include ?? []).join(',')) {
+        throw new Error(`Save was made with add-ons ${(savedScenarioInclude(obj) ?? []).join(', ')} but the game data has ${(gameData.scenario?.manifest.include ?? []).join(', ')}.`);
     }
 
     const galaxy: Galaxy = galaxyFromJSON(obj.galaxy, gameData);
