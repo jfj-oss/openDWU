@@ -59,6 +59,8 @@ import {
     type WaitQueueMove,
 } from './playerOrders';
 import { grantCharter, nationaliseCompany, releaseCompany, renewCharter, type CharterTerms } from '../scenario/charteredCompanies/charters';
+import { obtainPirateRelation, PirateRelationType } from '../pirateRelations';
+import { acceptPirateProtection, calculatePirateProtectionPricePerMonth } from '../pirates/pirateRelationsAI';
 import { orderSalvage } from '../scenario/wreckage/wreckage';
 import { applyLlmStrategicCommand, type LlmStrategicCommand } from '../scenario/llm/strategic';
 
@@ -159,6 +161,29 @@ export const PLAYER_OPS = {
     submitTradeOffer: (galaxy: Galaxy, _empire: Empire, negotiation: TradeNegotiation) => submitTradeOffer(galaxy, negotiation),
     acceptProposal: (_galaxy: Galaxy, empire: Empire, other: Empire) => acceptProposal(empire, other),
     declineProposal: (_galaxy: Galaxy, empire: Empire, other: Empire) => declineProposal(empire, other),
+
+    // --- Pirates ---
+    /**
+     * The "Accept" button on a PirateOfferProtection popup (message popup / advisorQueue bug fix): the player agrees
+     * to the pirate's protection / truce / extortion offer (dialog/base_dialog.txt PIRATE_PROTECTIONPROPOSEINITIATE,
+     * PIRATE_TRUCEPROPOSEINITIATE, PIRATE_EXTORTPROTECTION; the response text is PIRATE_PROTECTIONACCEPTRESPONSE /
+     * PIRATE_TRUCEACCEPTRESPONSE, Main.Part10.cs:5132-5166). The price is recomputed fresh here (Empire.2.cs:2649
+     * CalculatePirateProtectionPricePerMonth), as the C# does when the popup's ConversationOption is built
+     * (Main.Part9.cs:2077), rather than trusting the message's possibly-stale `Money` — this executor runs at the
+     * frame boundary (player/playerCommands.ts), the only place sim state (obtainPirateRelation's lazy creation of
+     * the PirateRelation record) may be written and stay replay-safe. Applies through the already-ported Empire.3.cs
+     * 4213 AcceptPirateProtection (pirateRelationsAI.ts), the same call the AI's own auto-accept uses
+     * (diplomacyTick.ts ProcessMessages, EmpireMessageType.PirateOfferProtection). No funds gate: neither
+     * AcceptPirateProtection nor that AI auto-accept path checks funds, and the C#'s player-conversation-only check
+     * (Main.Part10.cs:5145 `initiator.StateMoney < conversationOption_0.Cost`) reads the pirate's money, not the
+     * payer's, in the decompile — too ambiguous to reproduce as a real gate.
+     */
+    acceptPirateOfferProtection: (galaxy: Galaxy, empire: Empire, pirateEmpire: Empire): { accepted: boolean; cost: number } => {
+        if (obtainPirateRelation(empire, pirateEmpire).type === PirateRelationType.Protection) return { accepted: false, cost: 0 };
+        const cost = calculatePirateProtectionPricePerMonth(galaxy, pirateEmpire, empire).price;
+        acceptPirateProtection(galaxy, empire, pirateEmpire, cost);
+        return { accepted: true, cost };
+    },
 
     // --- Mod layer (scenarios) ---
     /** A scenario decision's option (scenario/decisions.ts; the message popup's buttons, the 19g-3 terms dialog). */

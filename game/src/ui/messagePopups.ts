@@ -2,7 +2,7 @@
 // and conversation dialog (method_254) for the player's EmpireMessages, routed by messageRouting.ts.
 // Like the ticker feed (empireMessageFeed.ts) it polls Empire.Messages, dedupes by identity and resolves the
 // sim's gameText() encodings (textResolver.ts).
-// TODO(port): the original DialogPart conversation texts and reply options (Main.Part10.cs); here the dialog shows the message text with Accept/Decline for treaty offers and OK otherwise
+// TODO(port): the original DialogPart conversation texts and reply options (Main.Part10.cs); here the dialog shows the message text with Accept/Decline for treaty offers, Accept/Open Diplomacy/Decline for pirate protection offers (below), and OK otherwise
 // TODO(port): popup "go to subject" click (Main.Part9.cs:784 method_244)
 
 import { closeEventSting, playDiplomacyMood, playMessageSounds } from '../audio/gameAudio'; // [audio]
@@ -15,8 +15,9 @@ import type { Galaxy } from '../sim/galaxy';
 import { galaxyStarDate } from '../sim/tick/simTime';
 import { resolveStarDateDescription } from '../sim/galaxyTime';
 import { resolveGameText } from '../sim/textResolver';
-import { isProposalValid, proposalLabel, relationTypeLabel, setDiplomacyMessageExpiry } from './screens/diplomacyScreen';
+import { isProposalValid, proposalLabel, relationTypeLabel, setDiplomacyMessageExpiry, toggleDiplomacyScreen } from './screens/diplomacyScreen';
 import { issuePlayerCommand } from '../sim/player/playerCommands';
+import { formatThousands } from '../sim/diplomacyTick';
 // [proposals] begin
 // [proposals] end
 import { showToast } from './toast';
@@ -39,6 +40,35 @@ export interface ConversationEntry {
     message: EmpireMessage;
     conversation: DialogPartType;
     sender: Empire | null;
+}
+
+/**
+ * The pirate protection / truce / extortion offer conversations (dialog/base_dialog.txt PIRATE_PROTECTIONPROPOSEINITIATE,
+ * PIRATE_TRUCEPROPOSEINITIATE, PIRATE_EXTORTPROTECTION — all EmpireMessageType.PirateOfferProtection,
+ * messageRouting.ts classifyEmpireMessage / Main.Part9.cs:2075). Each has an Accept response
+ * (PIRATE_PROTECTIONACCEPTRESPONSE / PIRATE_TRUCEACCEPTRESPONSE, Main.Part10.cs:5132) and a Reject response
+ * (PIRATE_PROTECTIONREJECTRESPONSE / PIRATE_TRUCEREJECTRESPONSE, text-only) in the dialog data; the original opens
+ * the full Diplomacy talk panel for the conversation (Main.Part8.cs:449 method_296), which this popup offers as a
+ * separate "Open Diplomacy" button alongside a direct Accept / Decline.
+ */
+const PIRATE_PROTECTION_CONVERSATIONS: ReadonlySet<DialogPartType> = new Set<DialogPartType>([
+    'PIRATE_PROTECTIONPROPOSEINITIATE',
+    'PIRATE_TRUCEPROPOSEINITIATE',
+    'PIRATE_EXTORTPROTECTION',
+]);
+
+/** Whether `entry`'s conversation dialog shows Accept / Open Diplomacy / Decline (below) rather than a plain OK. */
+export function isPirateProtectionOfferEntry(entry: ConversationEntry): boolean {
+    return PIRATE_PROTECTION_CONVERSATIONS.has(entry.conversation) && entry.sender !== null;
+}
+
+/**
+ * The "Open Diplomacy" button's action: Main.Part8.cs:449 method_296 (the advisor-queue click handler, method_79)
+ * always opened the full Diplomacy talk panel on the message's sender. `toggleDiplomacyScreen`'s `selectedEmpire`
+ * re-selects that empire even when the screen is already open on someone else, rather than toggling it closed.
+ */
+export function openDiplomacyForPirateOffer(player: Empire, sender: Empire): void {
+    toggleDiplomacyScreen({ player, selectedEmpire: sender });
 }
 
 /** A treaty proposal from the sender that the player can still accept or decline (EmpireDetailView.cs:639-706 flag3). */
@@ -325,6 +355,36 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
             });
             button('Decline', () => {
                 issuePlayerCommand(galaxy, player, 'declineProposal', [sender]);
+                removeEntry(entry);
+                closeDialog();
+            });
+        } else if (isPirateProtectionOfferEntry(entry)) {
+            const sender = entry.sender!;
+            // Main.Part10.cs 5132 PIRATE_PROTECTIONACCEPTRESPONSE / PIRATE_TRUCEACCEPTRESPONSE: accept through the
+            // command queue (playerOps.ts acceptPirateOfferProtection → the ported Empire.3.cs 4213
+            // AcceptPirateProtection), applied at the next frame boundary so replays stay deterministic.
+            button('Accept', () => {
+                issuePlayerCommand(galaxy, player, 'acceptPirateOfferProtection', [sender], (result) => {
+                    showToast(
+                        !result.accepted
+                            ? 'We already have an arrangement with them'
+                            : result.cost > 0
+                              ? `Protection accepted — ${formatThousands(result.cost)} credits/month`
+                              : 'Truce accepted',
+                    );
+                });
+                removeEntry(entry);
+                closeDialog();
+            });
+            // Main.Part8.cs 449 method_296: the advisor-queue click opens the full Diplomacy talk panel on this
+            // pirate faction; here that is a separate button alongside the direct Accept / Decline.
+            button('Open Diplomacy', () => {
+                openDiplomacyForPirateOffer(player, sender);
+                closeDialog();
+            });
+            // PIRATE_PROTECTIONREJECTRESPONSE / PIRATE_TRUCEREJECTRESPONSE: text-only in the C# (no case in
+            // method_237's conversation processing) — declining changes no sim state.
+            button('Decline', () => {
                 removeEntry(entry);
                 closeDialog();
             });

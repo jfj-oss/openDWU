@@ -344,18 +344,28 @@ function loadDialogSet(raceName: string): Promise<DialogSet | null> {
 
 export interface DiplomacyScreenOptions {
     player: Empire;
+    /** Select this empire's row on open; if the screen is already open, re-select it instead of closing (16d "Open
+     *  diplomacy" button on a pirate offer popup / Main.Part8.cs:449 method_296, which always brought that empire's
+     *  talk panel to the front rather than toggling it closed). */
+    selectedEmpire?: Empire;
 }
 
 interface OpenState {
     root: HTMLElement;
     close: () => void;
+    select: (empire: Empire) => void;
 }
 
 let open: OpenState | null = null;
 
-/** Open the Diplomacy screen, or close it if it is already open. */
+/** Open the Diplomacy screen, or close it if it is already open. With `selectedEmpire`, an already-open screen
+ *  selects that empire instead of closing (see DiplomacyScreenOptions). */
 export function toggleDiplomacyScreen(opts: DiplomacyScreenOptions): void {
     if (open) {
+        if (opts.selectedEmpire) {
+            open.select(opts.selectedEmpire);
+            return;
+        }
         open.close();
     } else {
         open = createDiplomacyScreen(opts);
@@ -451,7 +461,7 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
     root.appendChild(win);
     document.body.appendChild(root);
 
-    let selected: Empire | null = null;
+    let selected: Empire | null = opts.selectedEmpire ?? null;
     let listScroll = 0;
     let detailScroll = 0;
     // Task 19k-1d (Big Galaxies: 60-empire games): a filter box on the list pane, so a 60-empire list stays usable.
@@ -882,5 +892,11 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
     document.addEventListener('keydown', onKeyDown);
     closeBtn.addEventListener('click', () => close());
 
-    return { root, close };
+    function select(empire: Empire): void {
+        selected = empire;
+        detailScroll = 0;
+        render();
+    }
+
+    return { root, close, select };
 }
