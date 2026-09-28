@@ -22,7 +22,7 @@ import { loadShipArt, type ShipArt } from './shipArt';
 // [concordArt] begin
 import { ConcordFxLayer, concordArtEmpire, concordArtLook, concordShipArt, concordTreasureShips, concordVariantFor, type ConcordShipArt } from './concordArt';
 // [concordArt] end
-import { DamageOverlays, shipDamageSubject } from './shipOverlays';
+import { ConstructionOverlays, DamageOverlays, shipConstructionSubject, shipDamageSubject } from './shipOverlays';
 import { artBundleFlag } from './artBundleFlags';
 import { LiveryOverlays } from './liveryLayer';
 import { Galaxy } from '../sim/galaxy';
@@ -416,6 +416,10 @@ export class BuiltObjectLayer {
     private ships = new Container();
     /** 19r: the base-game damage overlay over the sprites (always on; embers / scorch behind damageFx). */
     private damage: DamageOverlays<BuiltObject>;
+    /** The under-construction reveal (always on, like damage) — Controls/MainView.cs:3259 `if
+     *  (builtObject_1.UnbuiltComponentCount > 0) bitmap = main_0.method_115(builtObject_1, bitmap);`. Ships and
+     *  bases alike (a construction ship's future base is a BuiltObject from the moment it's queued). */
+    private construction: ConstructionOverlays<BuiltObject>;
     /** 19r: liveries / withered look under the damage (flag `liveries`). */
     readonly liveries: LiveryOverlays;
     private sprites = new Map<BuiltObject, Sprite>();
@@ -446,6 +450,7 @@ export class BuiltObjectLayer {
         this.root.addChild(this.ships);
         this.liveries = new LiveryOverlays(this.root, galaxy);
         this.damage = new DamageOverlays<BuiltObject>(this.root);
+        this.construction = new ConstructionOverlays<BuiltObject>(this.root);
     }
 
     /**
@@ -494,6 +499,7 @@ export class BuiltObjectLayer {
         this.concordFx.begin();
         // [concordArt] end
         this.damage.begin();
+        this.construction.begin();
         const damageFx = artBundleFlag(this.galaxy, 'damageFx');
         const liveries = artBundleFlag(this.galaxy, 'liveries');
         this.liveries.root.visible = liveries;
@@ -612,9 +618,15 @@ export class BuiltObjectLayer {
                 const subject = shipDamageSubject(bo);
                 if (subject !== null) this.damage.draw(bo, subject, shipArtRecord, x, y, heading, px, z, damageFx, sprite.alpha);
             }
+            // MainView.cs:3259 method_73 → Main.Part11.cs method_115 while UnbuiltComponentCount > 0: the ship/base
+            // sprite reveals from the left as it's built.
+            if (shipArtRecord !== null) {
+                this.construction.apply(bo, shipConstructionSubject(bo), sprite, x, y, sprite.rotation, sprite.scale.x, px);
+            }
         }
         this.concordFx.end(); // [concordArt]
         this.damage.end();
+        this.construction.end();
         if (liveries) this.liveries.end();
         // Destroyed or removed objects: drop their sprite and drawn size (which also clears their selection ring / pick).
         releaseStaleSprites(this.sprites, this.seen, (bo, sprite) => {

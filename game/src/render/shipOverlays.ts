@@ -18,6 +18,7 @@ import {
     shipDamageBudget,
     type BlotchCluster,
 } from './damageOverlay';
+import { buildConstructionMaskLayer, constructionPercentBuilt, constructionRevealFloor } from './constructionOverlay';
 
 /** A canvas-backed texture from RGBA; `nearest` keeps the C#'s hard pixel clusters crisp when scaled. */
 export function textureFromPixels(rgba: Uint8ClampedArray, w: number, h: number, nearest: boolean): Texture {
@@ -202,5 +203,140 @@ export class DamageOverlays<K extends object> {
     /** Test / capture hook: the overlays drawn this frame. */
     get drawnCount(): number {
         return this.used;
+    }
+}
+
+/** The construction-reveal subject of a ship / base: percentBuilt (InfoPanel.cs:1382 `val`) and the design's
+ *  `Size` stat (method_117's noise-amplitude / spark-length inputs). `null` once nothing is left to build. */
+export interface ConstructionSubject {
+    percentBuilt: number;
+    size: number;
+}
+
+export function shipConstructionSubject(bo: { unbuiltComponentCount: number; components: { count: number } | null; size: number }): ConstructionSubject | null {
+    const total = bo.components?.count ?? 0;
+    if (!(bo.unbuiltComponentCount > 0) || total <= 0) return null;
+    return { percentBuilt: constructionPercentBuilt(bo.unbuiltComponentCount, total), size: bo.size };
+}
+
+interface ConstructionEntry {
+    sig: string;
+    tex: Texture | null;
+    side: number;
+    seenFrame: number;
+}
+
+/**
+ * The construction-reveal masks of one layer's objects (ships or bases — `Controls/MainView.cs:3259` runs this
+ * for any `BuiltObject`, a station a construction ship is building included). Call begin() each frame, apply()
+ * per object right after its own sprite's transform (position/rotation/scale) is set for this frame — it mirrors
+ * that transform onto the mask sprite so the erosion lines up with the drawn art — end() to drop stale masks.
+ *
+ * Unlike DamageOverlays (an additive overlay drawn over the sprite), this assigns a Pixi sprite mask
+ * (`target.mask = …`, using the mask's alpha channel — Pixi's documented sprite-masking mode) so the "not yet
+ * built" region is genuinely absent rather than painted over, matching the C#'s `MakeTransparent(Color.Black)`.
+ */
+export class ConstructionOverlays<K extends object> {
+    readonly root = new Container();
+    private entries = new Map<K, ConstructionEntry>();
+    private maskSprites = new Map<K, Sprite>();
+    private used = new Set<K>();
+    private frame = 0;
+    private rebuilds = 0;
+
+    constructor(parent: Container) {
+        this.root.eventMode = 'none';
+        // Each mask sprite is `renderable = false` (Pixi's documented sprite-mask pattern — masking still applies
+        // while the sprite itself never draws), not the whole container: `root.visible = false` would also risk
+        // skipping the subtree's world-transform update, which the mask alignment in apply() depends on every
+        // frame.
+        parent.addChild(this.root);
+    }
+
+    begin(): void {
+        this.used.clear();
+        this.frame++;
+        this.rebuilds = 0;
+    }
+
+    private maskSprite(key: K, tex: Texture): Sprite {
+        let s = this.maskSprites.get(key);
+        if (s === undefined) {
+            s = new Sprite(tex);
+            s.anchor.set(0.5);
+            s.renderable = false; // masking only — Pixi's documented pattern for a sprite used as another's mask
+            this.root.addChild(s);
+            this.maskSprites.set(key, s);
+        } else if (s.texture !== tex) s.texture = tex;
+        return s;
+    }
+
+    /**
+     * Apply (building the mask texture when needed) `key`'s construction reveal onto `target`, its own sprite,
+     * already positioned at (x, y) with `rotation` and `scale` for this frame — the mask sprite copies that
+     * transform exactly so the erosion sits in the sprite's own local space (the same space method_117's bitmap
+     * erosion ran in, before the C#'s final on-screen rotation). `floor` is method_116's reveal floor (0 = the
+     * map's method_115; 0.4 on a build-queue / info-panel thumbnail — not used yet, no thumbnail is Pixi-drawn).
+     * Clears `target.mask` once nothing is left to build.
+     */
+    apply(key: K, subject: ConstructionSubject | null, target: Sprite, x: number, y: number, rotation: number, scale: number, px: number, floor = 0): void {
+        if (subject === null) {
+            if (target.mask !== null) target.mask = null;
+            return;
+        }
+        this.used.add(key);
+        const side = damageOverlaySide(px);
+        const percent = constructionRevealFloor(subject.percentBuilt, floor);
+        let e = this.entries.get(key);
+        const sig = `${side}|${percent.toFixed(4)}|${subject.size}`;
+        if (e === undefined || e.sig !== sig) {
+            if (e !== undefined && e.tex !== null && this.rebuilds >= REBUILDS_PER_FRAME) {
+                // Over the cap: keep the old texture this frame.
+            } else {
+                this.rebuilds++;
+                const rgba = buildConstructionMaskLayer(side, side, percent, subject.size);
+                const tex = textureFromPixels(rgba, side, side, true);
+                if (e?.tex != null) this.retire(e.tex);
+                e = { sig, tex, side, seenFrame: this.frame };
+                this.entries.set(key, e);
+            }
+        }
+        if (e === undefined || e.tex === null) {
+            if (target.mask !== null) target.mask = null;
+            return;
+        }
+        e.seenFrame = this.frame;
+        const m = this.maskSprite(key, e.tex);
+        m.position.set(x, y);
+        m.rotation = rotation;
+        m.scale.set(scale);
+        target.mask = m;
+    }
+
+    /** Unbind `t` from the pooled mask sprites, then destroy it. */
+    private retire(t: Texture): void {
+        for (const s of this.maskSprites.values()) if (s.texture === t) s.texture = Texture.EMPTY;
+        t.destroy(true);
+    }
+
+    end(): void {
+        // Objects not drawn for ~2 s give their textures and mask sprites back.
+        if (this.frame % 60 === 0) {
+            for (const [k, e] of this.entries) {
+                if (this.frame - e.seenFrame < 120) continue;
+                if (e.tex !== null) this.retire(e.tex);
+                const m = this.maskSprites.get(k);
+                if (m !== undefined) {
+                    m.destroy();
+                    this.maskSprites.delete(k);
+                }
+                this.entries.delete(k);
+            }
+        }
+    }
+
+    /** Test / capture hook: how many objects have an active mask this frame. */
+    get appliedCount(): number {
+        return this.used.size;
     }
 }

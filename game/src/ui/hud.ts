@@ -10,6 +10,8 @@ import type { GameData } from '../sim/data/gameData';
 import { rimGoodMarker } from './scenario/rimTraderRows';
 import { wreckSalvageRows } from './scenario/wreckageUi'; // [wreckage]
 import { moneyPanelIncome } from '../sim/treasury';
+import type { ConstructionQueue } from '../sim/construction/constructionQueue';
+import { yardProgress } from './screens/constructionYards';
 import { Habitat, HabitatCategoryType, HabitatType, IndustryType, SystemInfo } from '../sim/types';
 import type { Empire } from '../sim/empire';
 import type { BuiltObject } from '../sim/builtObject';
@@ -1676,6 +1678,48 @@ export function troopStrengthText(h: Habitat, galaxy: Galaxy): TroopStrengthText
     return { text, invading: invadingNow };
 }
 
+/**
+ * Colony / shipyard build queue row: the streamlined panel had no indicator at all for what a construction queue
+ * was building or how far along — the user-report gap. Compact port of BaconInfoPanel.cs:4502-4516 /
+ * InfoPanel.cs:3480-3495 `DrawBuiltObjectList("Building", …)`: the ship(s) each construction yard is currently
+ * building, each with its percent complete (yardProgress, ConstructionYardListView.cs:128 BindData's Progress
+ * column formula), plus the original's `waitingCount` suffix ("+N waiting", InfoPanel.cs:3606-3609) for ships
+ * queued behind them. Returns null (the row is then hidden, {@link addText}'s "hide empty rows" convention) when
+ * the queue is absent or nothing is under way. Pure — exported for unit testing; {@link buildingQueueRow} is the
+ * DOM wrapper, untested directly (this project has no jsdom test environment).
+ */
+export function buildingQueueText(queue: ConstructionQueue | null): string | null {
+    if (queue === null) return null;
+    const yards = queue.constructionYards ?? [];
+    const building: string[] = [];
+    for (const yard of yards) {
+        if (yard === null || yard === undefined || yard.shipUnderConstruction === null) continue;
+        const pct = Math.round(yardProgress(yard) * 100);
+        building.push(`${yard.shipUnderConstruction.name} (${pct}%)`);
+    }
+    const waiting = queue.constructionWaitQueue?.length ?? 0;
+    if (building.length === 0 && waiting === 0) return null;
+    let text = building.length > 0 ? building.join(', ') : '(None)';
+    if (waiting > 0) text += ` +${waiting} waiting`;
+    return text;
+}
+
+function buildingQueueRow(queue: ConstructionQueue | null): SelectionRow | null {
+    const text = buildingQueueText(queue);
+    if (text === null) return null;
+    const line = document.createElement('div');
+    line.className = 'hud-money-row';
+    const k = document.createElement('span');
+    k.className = 'hud-label';
+    k.textContent = 'Building';
+    const v = document.createElement('span');
+    v.className = 'hud-value';
+    v.textContent = text;
+    v.title = text;
+    line.append(k, v);
+    return { element: line };
+}
+
 function troopStrengthRow(h: Habitat, galaxy: Galaxy): SelectionRow | null {
     const t = troopStrengthText(h, galaxy);
     if (t === null) return null;
@@ -1838,6 +1882,17 @@ export function builtObjectStatusRows(bo: BuiltObject, player: Empire | null): {
         }
     }
     rows.push({ label: 'Components', value: components });
+
+    // Construction progress: the C# has no text row for this (only the map/portrait reveal,
+    // InfoPanel.cs:1371 OverlayConstructionProgress, and the fighter Health bar's "(Under construction)"
+    // suffix, InfoPanel.cs:3580) — this mirrors that reveal's own percent-built formula (InfoPanel.cs:1382
+    // `1 - UnbuiltComponentCount / Components.Count`) as a row, in the "NN% Complete" phrasing the original
+    // does use for a colony's planetary facilities (InfoPanel.cs:2578-2582 `ConstructionProgress.ToString
+    // ("0%") + " Complete"`) — the user-facing % indicator the streamlined panel was missing entirely.
+    if (known && bo.unbuiltComponentCount > 0 && bo.components.count > 0) {
+        const pct = Math.round((100 * (bo.components.count - bo.unbuiltComponentCount)) / bo.components.count);
+        rows.push({ label: 'Construction', value: `${pct}% Complete` });
+    }
 
     // InfoPanel.cs:1236 damage fraction
     if (known && bo.damagedComponentCount > 0 && bo.components.count > 0) {
@@ -2186,6 +2241,13 @@ export function buildSelectionRows(sel: Selection, gameData?: GameData, player: 
         for (const r of builtObjectRows(sel.builtObject)) addColorRow(r);
         for (const r of threatRows(sel.builtObject, player)) addColorRow(r);
         for (const r of builtObjectStatusRows(sel.builtObject, player)) addColorRow(r);
+        // A directly-selected shipyard base's own build queue (InfoPanel.cs:3480-3495 DrawBuiltObjectList
+        // "Building", the base-panel twin of the colony one above) — same gap, a selected shipyard station had
+        // no indicator for what it was building either.
+        {
+            const buildingRow = buildingQueueRow(sel.builtObject.constructionQueue as ConstructionQueue | null);
+            if (buildingRow !== null) rows.push(buildingRow);
+        }
         if (player !== null) for (const r of wreckSalvageRows(player.galaxy, sel.builtObject, player)) addColorRow(r); // [wreckage] 19e-7
         // [troopart] Ship/base troop transports (BaconInfoPanel.cs:661-669 DrawTroopsAgents).
         if (player !== null) {
@@ -2262,6 +2324,13 @@ export function buildSelectionRows(sel: Selection, gameData?: GameData, player: 
         if (vsRow !== null) rows.push(vsRow);
     }
     // [/troopart]
+
+    // Colony build queue (BaconInfoPanel.cs:4502-4516 DrawBuiltObjectList("Building", …), after Troops/Agents
+    // in the original) — the user-report gap: no indicator anywhere for what a colony is building or its %.
+    {
+        const buildingRow = buildingQueueRow(h.constructionQueue as ConstructionQueue | null);
+        if (buildingRow !== null) rows.push(buildingRow);
+    }
 
     // Scenic feature (Galaxy.5.cs SetScenicFactor).
     if (h.scenicFeature !== '') {
