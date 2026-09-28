@@ -768,3 +768,125 @@
 .wizard-scenario-note {
     padding-left: 23px; /* indent under the checkbox */
 }
+
+/* --- Add-on picker (Scenario page; src/sim/scenario/addons.ts). --- */
+.wizard-page.wizard-scenario-page {
+    justify-content: flex-start;
+}
+
+.wizard-addon-summary {
+    font-size: 13px;
+    color: #e6edf3;
+    padding: 6px 10px;
+    background: rgba(79, 154, 79, 0.12);
+    border: 1px solid rgba(79, 154, 79, 0.35);
+    border-radius: 4px;
+}
+
+.wizard-addon-list {
+    gap: 6px;
+}
+
+.wizard-addon-group {
+    font-size: 12px;
+    font-weight: bold;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #8fb98f;
+    margin-top: 6px;
+    padding-bottom: 2px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.wizard-addon-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 4px 16px;
+}
+
+.wizard-addon-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 4px 6px;
+    border-radius: 4px;
+    cursor: pointer;
+    min-width: 0;
+}
+
+.wizard-addon-row:hover {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.wizard-addon-row input[type='checkbox'] {
+    width: 15px;
+    height: 15px;
+    margin-top: 2px;
+    flex: none;
+    accent-color: #4f9a4f;
+}
+
+.wizard-addon-row.is-locked,
+.wizard-addon-row.is-disabled {
+    cursor: not-allowed;
+}
+
+.wizard-addon-row.is-disabled {
+    opacity: 0.45;
+}
+
+.wizard-addon-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+}
+
+.wizard-addon-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 2px 8px;
+}
+
+.wizard-addon-name {
+    font-size: 13px;
+    color: #e6edf3;
+}
+
+.wizard-addon-needs {
+    font-size: 11px;
+    color: #7d8590;
+}
+
+.wizard-addon-desc {
+    font-size: 11px;
+    color: #9da7b1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.wizard-addon-note {
+    font-size: 11px;
+    color: #c8a24a;
+}
+
+.wizard-addon-panel {
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 4px;
+    padding: 4px 8px;
+}
+
+.wizard-addon-panel > summary {
+    cursor: pointer;
+    font-size: 13px;
+    color: #c9d1d9;
+}
+
+.wizard-addon-panel-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px 0 4px;
+}

@@ -20,7 +20,6 @@ import {
     COLONY_INFLUENCE_RANGE_PCT_MAX,
     COLONY_INFLUENCE_RANGE_PCT_MIN,
     defaultRaceName,
-    defaultScenarioChoice,
     defaultStartGameOptions,
     FLAG_COLOR_PALETTE,
     scenarioChoiceSummary,
@@ -48,6 +47,7 @@ import { resolveDataUrl } from '../../sim/data/paths';
 import { DEFAULT_RACE_FILES } from '../../sim/data/gameData';
 import { loadScenarioIndex } from '../../sim/scenario/fetchScenario';
 import type { ScenarioManifest } from '../../sim/scenario/manifest';
+import { addonCatalog, addonPickerModel, canonicalAddons, planAddonStart, resolveAddonSwitches, toggleAddon, type AddonCatalog, type AddonOverrides, type AddonRow } from '../../sim/scenario/addons';
 
 const CHROME = '/assets/dwu/images/ui/chrome/';
 const RACES_DIR = '/assets/dwu/images/units/races/';
@@ -1680,12 +1680,22 @@ function buildVictoryPage(options: StartGameOptions): HTMLDivElement {
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
-// Scenario page (mod layer, tasks/MODLAYER-DESIGN.md §3): "None" (default) or one of /assets/scenarios/index.json,
-// with the selected scenario's description, a checkbox per flag and a number box per param.
+// Scenario page (mod layer, tasks/MODLAYER-DESIGN.md §3): the add-on picker (src/sim/scenario/addons.ts). A checklist of
+// the add-ons of /assets/scenarios/index.json grouped by theme; ticking one ticks (and locks) what it needs; a summary
+// of what will run; one collapsible settings panel (flags / params) per running add-on. Nothing ticked = the original
+// game (options.scenario stays null).
 // ---------------------------------------------------------------------------
 
 /** Scenarios listed by the Scenario page (filled when the index loads; read by the Start summary). */
 let wizardScenarios: ScenarioManifest[] = [];
+
+/** The wizard's scenario choice for a set of ticks (null = the original game). */
+export function addonChoiceFor(cat: AddonCatalog, picked: readonly string[], overrides: AddonOverrides): StartGameOptions['scenario'] {
+    const plan = planAddonStart(cat, picked);
+    if (plan === null) return null;
+    const sw = resolveAddonSwitches(cat, picked, overrides);
+    return { id: plan.id, flags: sw.flags, params: sw.params, addons: canonicalAddons(cat, picked) };
+}
 
 function buildScenarioPage(options: StartGameOptions): HTMLDivElement {
     const wrap = document.createElement('div');
@@ -1693,76 +1703,172 @@ function buildScenarioPage(options: StartGameOptions): HTMLDivElement {
 
     const intro = document.createElement('div');
     intro.className = 'wizard-victory-sandbox';
-    intro.textContent = 'Scenarios add content and rules on top of the standard game. Choose “None” for the original game.';
+    intro.textContent = 'Add-ons change the standard game. Tick any number of them; an add-on that needs another one ticks it for you. Nothing ticked is the original game.';
     wrap.appendChild(intro);
 
+    const summary = document.createElement('div');
+    summary.className = 'wizard-addon-summary';
+    wrap.appendChild(summary);
+
     const listSection = document.createElement('div');
-    listSection.className = 'wizard-victory-section wizard-scenario-list';
+    listSection.className = 'wizard-victory-section wizard-scenario-list wizard-addon-list';
     wrap.appendChild(listSection);
 
     const detail = document.createElement('div');
     detail.className = 'wizard-victory-section wizard-scenario-detail';
     wrap.appendChild(detail);
 
-    function renderDetail(): void {
+    let cat: AddonCatalog = addonCatalog([]);
+    let picked: string[] = options.scenario?.addons ?? (options.scenario ? [options.scenario.id] : []);
+    const overrides: AddonOverrides = { flags: {}, params: {} };
+    /** Settings panels the player opened (kept open across re-renders). */
+    const openPanels = new Set<string>();
+    try {
+        // Dev / screenshot hook: ?screen=wizard&page=scenario&addons=timebomb,robotmutiny starts with those ticked.
+        const pre = new URLSearchParams(window.location.search).get('addons');
+        if (pre !== null && pre !== '') picked = pre.split(',').map((x) => x.trim());
+    } catch {
+        // non-browser context
+    }
+
+    function update(): void {
+        options.scenario = addonChoiceFor(cat, picked, overrides);
+        render();
+    }
+
+    function rowEl(r: AddonRow): HTMLElement {
+        const row = document.createElement('label');
+        row.className = 'wizard-addon-row' + (r.locked ? ' is-locked' : '') + (r.disabled && !r.locked ? ' is-disabled' : '');
+        if (r.tooltip) row.title = r.tooltip;
+        const check = document.createElement('input');
+        check.type = 'checkbox';
+        check.checked = r.checked;
+        check.disabled = r.disabled;
+        if (r.tooltip) check.title = r.tooltip;
+        check.addEventListener('change', () => {
+            picked = toggleAddon(cat, picked, r.id, check.checked);
+            update();
+        });
+        row.appendChild(check);
+        const text = document.createElement('div');
+        text.className = 'wizard-addon-text';
+        const head = document.createElement('div');
+        head.className = 'wizard-addon-head';
+        const name = document.createElement('span');
+        name.className = 'wizard-addon-name';
+        name.textContent = r.name;
+        head.appendChild(name);
+        const deps = [r.needs.length > 0 ? `needs: ${r.needs.join(', ')}` : '', r.loads.length > 0 ? `loads: ${r.loads.join(', ')}` : ''].filter((x) => x !== '');
+        if (deps.length > 0) {
+            const needs = document.createElement('span');
+            needs.className = 'wizard-addon-needs';
+            needs.textContent = deps.join(' · ');
+            head.appendChild(needs);
+        }
+        text.appendChild(head);
+        const desc = document.createElement('div');
+        desc.className = 'wizard-addon-desc';
+        desc.textContent = firstSentence(r.description);
+        desc.title = r.description;
+        text.appendChild(desc);
+        const note = r.locked ? `required by ${r.requiredBy.join(', ')}` : r.conflictsWith.length > 0 ? `conflicts with ${r.conflictsWith.join(', ')}` : r.loadedFor.length > 0 ? `data loaded for ${r.loadedFor.join(', ')} (off unless ticked)` : '';
+        if (note !== '') {
+            const n = document.createElement('div');
+            n.className = 'wizard-addon-note';
+            n.textContent = note;
+            text.appendChild(n);
+        }
+        row.appendChild(text);
+        return row;
+    }
+
+    function render(): void {
+        const model = addonPickerModel(cat, picked);
+        summary.textContent = `Running: ${model.summary}`;
+        listSection.replaceChildren();
+        if (cat.list.length === 0) {
+            const none = document.createElement('div');
+            none.className = 'wizard-todo';
+            none.textContent = 'No add-ons found (/assets/scenarios/index.json).';
+            listSection.appendChild(none);
+        }
+        for (const g of model.groups) {
+            const h = document.createElement('div');
+            h.className = 'wizard-addon-group';
+            h.textContent = g.group;
+            listSection.appendChild(h);
+            const grid = document.createElement('div');
+            grid.className = 'wizard-addon-grid';
+            for (const r of g.rows) grid.appendChild(rowEl(r));
+            listSection.appendChild(grid);
+        }
+
         detail.replaceChildren();
         const choice = options.scenario ?? null;
-        const m = choice === null ? null : wizardScenarios.find((x) => x.id === choice.id) ?? null;
-        const desc = document.createElement('div');
-        desc.className = 'wizard-scenario-description';
-        desc.textContent = m === null ? 'The original game, unchanged.' : m.description || m.name;
-        detail.appendChild(desc);
-        if (m === null || choice === null) return;
-        for (const f of m.flags) {
-            makeVictoryCheckbox(detail, f.label, () => choice.flags[f.name] ?? f.default, (x) => {
-                choice.flags[f.name] = x;
+        const title = document.createElement('div');
+        title.className = 'wizard-scenario-description';
+        title.textContent = choice === null ? 'The original game, unchanged.' : 'Settings of the running add-ons';
+        detail.appendChild(title);
+        if (choice === null) return;
+        for (const id of model.panels) {
+            const m = cat.manifests.get(id);
+            const a = cat.byId.get(id);
+            if (m === undefined || a === undefined) continue;
+            const panel = document.createElement('details');
+            panel.className = 'wizard-addon-panel';
+            panel.open = openPanels.has(id);
+            panel.addEventListener('toggle', () => {
+                if (panel.open) openPanels.add(id);
+                else openPanels.delete(id);
             });
-            if (f.description) {
-                const note = document.createElement('div');
-                note.className = 'wizard-todo wizard-scenario-note';
-                note.textContent = f.description;
-                detail.appendChild(note);
+            const sum = document.createElement('summary');
+            sum.textContent = m.name;
+            panel.appendChild(sum);
+            const body = document.createElement('div');
+            body.className = 'wizard-addon-panel-body';
+            for (const f of m.flags) {
+                if (f.name === a.masterFlag) continue; // the tick is the master switch
+                makeVictoryCheckbox(body, f.label, () => choice.flags[f.name] ?? f.default, (x) => {
+                    overrides.flags[f.name] = x;
+                    options.scenario = addonChoiceFor(cat, picked, overrides);
+                });
+                if (f.description) {
+                    const note = document.createElement('div');
+                    note.className = 'wizard-todo wizard-scenario-note';
+                    note.textContent = f.description;
+                    body.appendChild(note);
+                }
             }
-        }
-        for (const p of m.params) {
-            makeVictoryNumberRow(detail, p.label, '', p.min ?? -Number.MAX_SAFE_INTEGER, p.max ?? Number.MAX_SAFE_INTEGER, () => choice.params[p.name] ?? p.default, (x) => {
-                choice.params[p.name] = x;
-            });
-        }
-    }
-
-    function renderList(): void {
-        listSection.replaceChildren();
-        const entries: Array<{ id: string | null; label: string }> = [{ id: null, label: 'None' }, ...wizardScenarios.map((m) => ({ id: m.id, label: m.name }))];
-        for (const e of entries) {
-            const row = document.createElement('label');
-            row.className = 'wizard-checkbox';
-            const radio = document.createElement('input');
-            radio.type = 'radio';
-            radio.name = 'wizard-scenario';
-            radio.checked = (options.scenario?.id ?? null) === e.id;
-            radio.addEventListener('change', () => {
-                if (!radio.checked) return;
-                const m = e.id === null ? null : wizardScenarios.find((x) => x.id === e.id) ?? null;
-                options.scenario = m === null ? null : defaultScenarioChoice(m);
-                renderDetail();
-            });
-            row.appendChild(radio);
-            const span = document.createElement('span');
-            span.textContent = e.label;
-            row.appendChild(span);
-            listSection.appendChild(row);
+            for (const p of m.params) {
+                makeVictoryNumberRow(body, p.label, '', p.min ?? -Number.MAX_SAFE_INTEGER, p.max ?? Number.MAX_SAFE_INTEGER, () => choice.params[p.name] ?? p.default, (x) => {
+                    overrides.params[p.name] = x;
+                    options.scenario = addonChoiceFor(cat, picked, overrides);
+                });
+            }
+            panel.appendChild(body);
+            detail.appendChild(panel);
         }
     }
 
-    renderList();
-    renderDetail();
+    render();
     void loadScenarioIndex(fetchText).then((list) => {
         wizardScenarios = list;
-        renderList();
-        renderDetail();
+        cat = addonCatalog(list);
+        update();
     });
     return wrap;
+}
+
+/** A description's opening (the picker's one-liner; the full text is the row's hover title): its first sentence, or
+ * the first two when the first is only a label ("End-game hidden threat."). */
+export function firstSentence(text: string): string {
+    const sentences = text.trim().match(/[^.!?]*(?:[.!?](?=\s|$)|[^.!?]+$)|[^\s].*$/g) ?? [];
+    let out = '';
+    for (const s of sentences) {
+        out = (out + s).trim() === '' ? '' : out + s;
+        if (out.trim().length >= 40) break;
+    }
+    return out.trim() || text.trim();
 }
 
 function buildStartPage(options: StartGameOptions): HTMLDivElement {

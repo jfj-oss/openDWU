@@ -82,6 +82,17 @@ A "Scenario" page between Victory Conditions and Start: "None" (default) plus ev
 (manifest defaults). The Start page summary shows the choice. main.ts loads the overlay and applies it before
 `createGame`.
 
+**Add-on picker** (`src/sim/scenario/addons.ts`): the page is a checklist — any number of add-ons, grouped by theme.
+Each `include` (plus an optional `requires` list in scenario.json) is a dependency: ticking an add-on ticks and locks
+what it needs ("required by X"; unticking it is refused, tooltip "needed by X") and switches their master flag (the
+manifest's first flag) on. Includes listed in `DATA_ONLY_INCLUDES` are loaded but stay off ("loads: X"). Optional
+`conflicts` greys the other side out. Infrastructure (`HIDDEN_ADDONS`: threat-framework, example, ai-parity) is never
+listed but pulled in. At start, when one ticked add-on's own include tree covers the whole set the game starts that
+scenario exactly as before; otherwise a synthetic composite scenario `addons` whose `include` is the whole set
+flattened deps-first (each overlay applied once), so the direct-include gate (`scenarioRuns`) sees every package. A
+composite save is reloaded from `galaxy.scenario.manifest.include` (`savedScenarioInclude`). Dev hook:
+`?screen=wizard&page=scenario&addons=a,b`; `?autostart=1&scenario=a,b` starts a set.
+
 ## 4. Hook points (all no-ops unless a scenario asks)
 
 | Hook | Where | Off-path cost |

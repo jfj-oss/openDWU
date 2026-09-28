@@ -73,9 +73,10 @@ import { getMessageOptions } from './ui/messageRouting';
 import { createNewGameWizard } from './ui/screens/newGameWizard';
 import { openGalactopedia } from './ui/screens/galactopedia';
 import { colonizationRangeFor, defaultStartGameOptions, piratesFor, STARTING_TECH_LEVEL, toCreateGameOptions, type StartGameOptions, maximumEmpireAmountFor, starCountFor, defaultScenarioChoice, type StartScenarioChoice } from './sim/startGameOptions';
-import { serializeGame, deserializeGame, savedScenarioId } from './sim/save/gameSave';
+import { serializeGame, deserializeGame, savedScenarioId, savedScenarioInclude } from './sim/save/gameSave';
 import { loadScenarioIndex, loadScenarioOverlay } from './sim/scenario/fetchScenario';
-import { applyScenarioOverlay, resolveScenarioIncludes, type ScenarioOverlay } from './sim/scenario/overlay';
+import { applyScenarioOverlay, type ScenarioOverlay } from './sim/scenario/overlay';
+import { COMPOSITE_SCENARIO_ID, addonCatalog, compositeScenarioManifest, planAddonStart, resolveAddonSwitches, scenarioOverlayFor } from './sim/scenario/addons';
 // [leftovers] begin
 import { closeGalacticHistory } from './ui/screens/galacticHistory';
 import { installEventLogDevHook } from './ui/eventLogDev';
@@ -235,18 +236,31 @@ async function preloadScenarioOverlays(): Promise<void> {
     }
 }
 
-/** Mod layer: the base data, or the base data with a scenario overlay applied (throws when it is not available). */
-function gameDataWithScenario(base: GameData, scenarioId: string | null): GameData {
+/**
+ * Mod layer: the base data, or the base data with a scenario overlay applied (throws when it is not available). A
+ * composite ('addons') scenario is rebuilt from its flattened add-on list (`include`).
+ */
+function gameDataWithScenario(base: GameData, scenarioId: string | null, include: readonly string[] | null = null): GameData {
     if (scenarioId === null) return base;
-    const overlay = scenarioOverlays.get(scenarioId);
-    if (overlay === undefined) throw new Error(`Scenario "${scenarioId}" is not available; cannot load this game.`);
-    return applyScenarioOverlay(base, resolveScenarioIncludes(overlay, scenarioOverlays));
+    try {
+        return applyScenarioOverlay(base, scenarioOverlayFor(scenarioId, include, scenarioOverlays));
+    } catch (err) {
+        throw new Error(`Scenario "${scenarioId}" is not available; cannot load this game. (${err instanceof Error ? err.message : String(err)})`);
+    }
+}
+
+/** Add-on picker: the flattened add-on list of a composite start choice (null for a single scenario). */
+function choiceInclude(choice: StartScenarioChoice): string[] | null {
+    if (choice.id !== COMPOSITE_SCENARIO_ID) return null;
+    const cat = addonCatalog([...scenarioOverlays.values()].map((o) => o.manifest));
+    return compositeScenarioManifest(cat, choice.addons ?? []).include;
 }
 
 /** Mod layer: the GameData a save needs (its scenario's overlay over the base data). */
 function gameDataForSave(text: string): GameData {
     if (lastGameData === null) throw new Error('DW:U game data is required to load a save');
-    lastPlayedGameData = gameDataWithScenario(lastGameData, savedScenarioId(text));
+    const id = savedScenarioId(text);
+    lastPlayedGameData = gameDataWithScenario(lastGameData, id, id === COMPOSITE_SCENARIO_ID ? savedScenarioInclude(text) : null);
     return lastPlayedGameData;
 }
 let lastStartOptions: StartGameOptions | null = null;
@@ -912,7 +926,7 @@ async function bootGameFromWizard(startOptions: StartGameOptions): Promise<void>
     if (startOptions.scenario != null) {
         await preloadScenarioOverlays();
         try {
-            playData = gameDataWithScenario(gameData, startOptions.scenario.id);
+            playData = gameDataWithScenario(gameData, startOptions.scenario.id, choiceInclude(startOptions.scenario));
         } catch (err) {
             console.error(err);
             return;
@@ -1234,11 +1248,24 @@ async function buildAutostartGame(
     let playData = gameData;
     // [scenarioAutostart] begin
     // Dev / screenshot hook: `?autostart=1&scenario=<id>[&aiRace=<race>]` starts the dev game with a scenario overlay
-    // (manifest-default flags and params); aiRace forces the first AI empire's race.
+    // (manifest-default flags and params); aiRace forces the first AI empire's race. `scenario=<a>,<b>,...` starts
+    // those add-ons together as the wizard's add-on picker would (requirements pulled in, masters on).
     const scenarioParams = new URLSearchParams(window.location.search);
     const scenarioId = scenarioParams.get('scenario');
     let scenarioChoice: StartScenarioChoice | null = null;
-    if (scenarioId !== null && scenarioId !== '') {
+    if (scenarioId !== null && scenarioId.includes(',')) {
+        await preloadScenarioOverlays();
+        const cat = addonCatalog([...scenarioOverlays.values()].map((o) => o.manifest));
+        const picked = scenarioId.split(',').map((x) => x.trim()).filter((x) => x !== '');
+        const plan = planAddonStart(cat, picked);
+        if (plan !== null) {
+            const sw = resolveAddonSwitches(cat, picked);
+            scenarioChoice = { id: plan.id, flags: sw.flags, params: sw.params, addons: picked };
+            playData = gameDataWithScenario(gameData, plan.id, plan.kind === 'composite' ? plan.manifest.include : null);
+            lastPlayedGameData = playData;
+            opts = { ...opts, gameData: playData, scenarioFlags: sw.flags, scenarioParams: sw.params };
+        }
+    } else if (scenarioId !== null && scenarioId !== '') {
         await preloadScenarioOverlays();
         const overlay = scenarioOverlays.get(scenarioId);
         if (overlay === undefined) {

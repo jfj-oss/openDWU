@@ -45,6 +45,14 @@ export interface ScenarioManifest {
     files: string[];
     /** Scenario ids whose overlays are applied first (their flags / params / rules merged in; this one wins on a name). */
     include: string[];
+    /**
+     * Add-on picker (src/sim/scenario/addons.ts): scenario ids this one needs on top of `include` (a logical dependency
+     * the include list does not express). Only present when the scenario.json has it, so older manifests parse (and
+     * save) unchanged.
+     */
+    requires?: string[];
+    /** Add-on picker: scenario ids that cannot run together with this one (either side may list the other). */
+    conflicts?: string[];
 }
 
 /** /assets/scenarios/index.json. */
@@ -119,7 +127,10 @@ export function parseScenarioManifest(input: unknown): ScenarioManifest {
     const files = arr(o.files, 'files').map((f, i) => str(f, `files[${i}]`));
     const include = arr(o.include, 'include').map((f, i) => str(f, `include[${i}]`));
     if (include.includes(id)) throw new Error(`scenario manifest: ${id} includes itself`);
-    return {
+    const requires = o.requires === undefined ? undefined : arr(o.requires, 'requires').map((f, i) => str(f, `requires[${i}]`));
+    if (requires?.includes(id)) throw new Error(`scenario manifest: ${id} requires itself`);
+    const conflicts = o.conflicts === undefined ? undefined : arr(o.conflicts, 'conflicts').map((f, i) => str(f, `conflicts[${i}]`));
+    const manifest: ScenarioManifest = {
         id,
         name: typeof o.name === 'string' && o.name.trim() !== '' ? o.name : id,
         description: typeof o.description === 'string' ? o.description : '',
@@ -130,6 +141,9 @@ export function parseScenarioManifest(input: unknown): ScenarioManifest {
         files,
         include,
     };
+    if (requires !== undefined) manifest.requires = requires;
+    if (conflicts !== undefined) manifest.conflicts = conflicts;
+    return manifest;
 }
 
 /** An empty manifest (tests, the empty overlay). */

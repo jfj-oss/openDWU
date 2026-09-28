@@ -23,9 +23,14 @@ function readOverlayFs(manifest: ScenarioManifest): ScenarioOverlay {
     return { manifest, files };
 }
 
+/** Every scenarios/<id>/ as an unresolved ScenarioOverlay, by id (the add-on picker's composite reads these). */
+export function scenarioOverlaysFs(): Map<string, ScenarioOverlay> {
+    return new Map(scenarioIndexFs().map((m) => [m.id, readOverlayFs(m)] as const));
+}
+
 /** scenarios/<id>/ as a ScenarioOverlay (manifest + every file), its `include`s resolved from the same folder. */
 export function loadScenarioOverlayFs(id: string): ScenarioOverlay {
-    const byId = new Map(scenarioIndexFs().map((m) => [m.id, readOverlayFs(m)] as const));
+    const byId = scenarioOverlaysFs();
     const overlay = byId.get(id);
     if (overlay === undefined) throw new Error(`no scenario ${id} under ${SCENARIOS_ROOT}`);
     return resolveScenarioIncludes(overlay, byId);

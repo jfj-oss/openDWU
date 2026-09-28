@@ -3,6 +3,11 @@ export { parseScenarioManifest, emptyScenarioManifest, mergeScenarioManifests } 
 export type { ScenarioManifest, ScenarioFlagDef, ScenarioParamDef, ScenarioHomePlacementRule, ScenarioResourcePlacementRule, ScenarioIndex } from './manifest';
 export { applyScenarioOverlay, mergeRecordsByName, normaliseOverlayPath, resolveScenarioIncludes } from './overlay';
 export type { ScenarioOverlay, LoadedScenario } from './overlay';
+export {
+    COMPOSITE_SCENARIO_ID, ADDON_GROUPS, HIDDEN_ADDONS, DATA_ONLY_INCLUDES, addonCatalog, addonClosure, addonCycles, addonSets, canonicalAddons,
+    planAddonStart, compositeScenarioManifest, compositeOverlay, addonStartOverlay, scenarioOverlayFor, resolveAddonSwitches, addonPickerModel, toggleAddon,
+} from './addons';
+export type { AddonGroup, AddonInfo, AddonCatalog, AddonDependency, AddonStartPlan, AddonOverrides, AddonRow, AddonPickerModel } from './addons';
 export { GalaxyScenario, createGalaxyScenario, scenarioActive, scenarioFlag, scenarioParam, scenarioState } from './state';
 export type { ScenarioChoice, ScenarioResourceRule } from './state';
 export {
