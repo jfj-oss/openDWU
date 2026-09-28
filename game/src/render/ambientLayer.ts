@@ -23,6 +23,7 @@
 // the shieldstrike hit flash, MainView.1.cs:1215-1233, which belongs to the combat effects layer).
 // Minimal own animation helper (pooled sprites + frame clock) — no shared fx helper exists on main yet.
 
+import type { MotionInterpolator } from './renderInterp';
 import { Container, Sprite, Texture } from 'pixi.js';
 import type { Camera } from './camera';
 import { AssetStore, useMinifyingFilter } from './assets';
@@ -421,6 +422,9 @@ export class AmbientLayer {
     private exhaustPool: Sprite[] = [];
     private lightPool: Sprite[] = [];
     private shieldPool: Sprite[] = [];
+    /** Render interpolation between sim steps (renderInterp.ts; set by MainView): exhaust / lights follow the drawn
+     * ship and shields the drawn planet. Null: the sim positions. */
+    motion: MotionInterpolator | null = null;
     private animPool: ActiveAnimation[] = [];
     private animCount = 0;
     private spawnTimes = new Map<BuiltObject | Habitat, SpawnTimes>();
@@ -550,8 +554,13 @@ export class AmbientLayer {
                 const p1 = builtObjectSizePx(bo.size, art.metrics.areaRatio, 1, scalingType, scalingFactor);
                 if (p1 < 1) continue;
                 const k = pf / p1 / z; // world units per prepared-image px
-                const cos = Math.cos(bo.heading);
-                const sin = Math.sin(bo.heading);
+                // Where BuiltObjectLayer drew the ship this frame (render-interpolated), else its sim position.
+                const drawn = this.motion !== null ? this.motion.drawn(bo) : null;
+                const bx = drawn !== null ? drawn.x : bo.xpos;
+                const by = drawn !== null ? drawn.y : bo.ypos;
+                const heading = drawn !== null ? drawn.heading : bo.heading;
+                const cos = Math.cos(heading);
+                const sin = Math.sin(heading);
                 const mk = art.markers;
 
                 // Engine exhaust (MainView.1.cs:1113-1121: only while TargetSpeed > 0, under the ship).
@@ -564,9 +573,9 @@ export class AmbientLayer {
                             const r = exhaustRect(t, mk.minThrusterLeft, mk.side, p1, num5, scratchRect);
                             const s = this.pooled(this.exhaustPool, this.under, exhaustUsed++);
                             s.texture = tex;
-                            s.position.set(bo.xpos + (r.cx * cos - r.cy * sin) * k, bo.ypos + (r.cx * sin + r.cy * cos) * k);
+                            s.position.set(bx + (r.cx * cos - r.cy * sin) * k, by + (r.cx * sin + r.cy * cos) * k);
                             // Raw art: the C# pre-rotates it 90° clockwise, so raw width spans the rect height.
-                            s.rotation = bo.heading + Math.PI / 2;
+                            s.rotation = heading + Math.PI / 2;
                             s.scale.set((r.height * k) / tex.width, (r.width * k) / tex.height);
                             s.tint = 0xffffff;
                             s.alpha = 1;
@@ -585,11 +594,11 @@ export class AmbientLayer {
                         const v = lp.y * num2 - p1 / 2;
                         const s = this.pooled(this.lightPool, this.over, lightUsed++);
                         s.texture = lightTex;
-                        s.position.set(bo.xpos + (u * cos - v * sin) * k, bo.ypos + (u * sin + v * cos) * k);
+                        s.position.set(bx + (u * cos - v * sin) * k, by + (u * sin + v * cos) * k);
                         s.rotation = 0;
                         s.scale.set(sizeWorld / lightTex.width);
                         s.tint = colour;
-                        s.alpha = this.lightScale === null ? 1 : this.lightScale(bo.xpos, bo.ypos);
+                        s.alpha = this.lightScale === null ? 1 : this.lightScale(bx, by);
                     }
                 }
 
@@ -731,8 +740,16 @@ export class AmbientLayer {
         const halfH = cam.height / 2;
         for (const h of this.shieldHabitats) {
             if (h.hasBeenDestroyed) continue;
-            const sx = (h.xpos - cam.x) * z + halfW;
-            const sy = (h.ypos - cam.y) * z + halfH;
+            // The planet's drawn (render-interpolated orbit) position, else its committed one.
+            let hx = h.xpos;
+            let hy = h.ypos;
+            if (this.motion !== null) {
+                const hp = this.motion.habitatPos(h);
+                hx = hp.x;
+                hy = hp.y;
+            }
+            const sx = (hx - cam.x) * z + halfW;
+            const sy = (hy - cam.y) * z + halfH;
             const px = this.habitatPx(h, z);
             const reach = px / 2 + 100;
             if (sx < -reach || sx > cam.width + reach || sy < -reach || sy > cam.height + reach) continue;
@@ -741,11 +758,11 @@ export class AmbientLayer {
                 const sizePx = px + n4 * 2;
                 const s = this.pooled(this.shieldPool, this.under, used++);
                 s.texture = shieldTex;
-                s.position.set(h.xpos, h.ypos);
+                s.position.set(hx, hy);
                 s.rotation = 0;
                 s.scale.set(sizePx / z / shieldTex.width, sizePx / z / shieldTex.height);
                 s.tint = 0xffffff;
-                s.alpha = this.lightScale === null ? shieldAlpha : shieldAlpha * this.lightScale(h.xpos, h.ypos);
+                s.alpha = this.lightScale === null ? shieldAlpha : shieldAlpha * this.lightScale(hx, hy);
             }
             this.spawnForHabitat(h, starDate, nowMs);
         }

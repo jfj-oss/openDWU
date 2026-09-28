@@ -40,6 +40,7 @@
 // TODO(port): Creature.PromptSystemCheck = true for slow creatures outside the viewed system (MainView.1.cs 1605) and
 //   DoTasks for restricted-area creatures (MainView.1.cs 1581) — sim writes from the C# renderer.
 
+import { sampleCreature, type MotionInterpolator } from './renderInterp';
 import { Container, Texture } from 'pixi.js';
 import type { Camera } from './camera';
 import { makeDotTexture, useMinifyingFilter } from './assets';
@@ -415,6 +416,8 @@ export class CreatureLayer {
     private art: FaunaArt | null = null;
     private views = new Map<Creature, FaunaView>();
     private frameNo = 0;
+    /** Render interpolation between sim steps (renderInterp.ts; set by MainView). Null: draw the sim positions. */
+    motion: MotionInterpolator | null = null;
     /** Render-only gallery (dev flag ?faunaGallery=1). */
     gallery: CreatureGallerySource | null = null;
     /** 19r: damage overlays over the original frames, and their textures per creature. */
@@ -552,13 +555,13 @@ export class CreatureLayer {
      * 19g-7b draw of one creature on the procedural rig (or the harness over an original frame): same centre, heading,
      * cull and size maths as the frames (creatureDrawPx with the look's cap multiplier), posed on the render clock.
      */
-    private drawFauna(c: Creature, look: FaunaLook | null, tamed: boolean, px: number, z: number, t: number, secondsOfDay: number): boolean {
+    private drawFauna(c: Creature, look: FaunaLook | null, tamed: boolean, px: number, z: number, t: number, secondsOfDay: number, x = c.xpos, y = c.ypos, heading = c.currentHeading): boolean {
         const v = this.faunaView(c, look?.look ?? null, tamed);
         if (v === null) return false;
         v.seenAt = this.frameNo;
         v.node.visible = true;
-        v.node.position.set(c.xpos, c.ypos);
-        v.node.rotation = c.currentHeading;
+        v.node.position.set(x, y);
+        v.node.rotation = heading;
         const speed01 = c.movementSpeed > 0 ? Math.min(1, c.currentSpeed / c.movementSpeed) : 0;
         if (v.rig !== null) {
             v.rig.pose(t, speed01);
@@ -679,11 +682,21 @@ export class CreatureLayer {
             if (!inGallery && !this.visibleToPlayer(c)) continue;
             const px = creatureDrawPx(sizeSet.content, c.size, f, capMul);
             if (offScreen(sx, sy, px, cam) || px < 1) continue;
+            // Drawn position / heading: lerp between the last two sim steps (renderInterp.ts), or the sim state.
+            let x = c.xpos;
+            let y = c.ypos;
+            let heading = c.currentHeading;
+            if (this.motion !== null) {
+                const st = sampleCreature(this.motion, c);
+                x = st.x;
+                y = st.y;
+                heading = st.heading;
+            }
             if (look !== null) {
-                if (this.drawFauna(c, look, tamed, px, z, t, secondsOfDay)) this.drawnPx.set(c, px);
+                if (this.drawFauna(c, look, tamed, px, z, t, secondsOfDay, x, y, heading)) this.drawnPx.set(c, px);
                 continue;
             }
-            if (tamed || this.views.has(c)) this.drawFauna(c, null, tamed, px, z, t, secondsOfDay);
+            if (tamed || this.views.has(c)) this.drawFauna(c, null, tamed, px, z, t, secondsOfDay, x, y, heading);
             let frames = moving.frames;
             let shown = moving;
             let shownIdx = idx.moving;
@@ -698,9 +711,9 @@ export class CreatureLayer {
             const frameIdx = c.currentSpeed > 0 ? creatureFrameIndex(nowMs, frames.length, CREATURE_FPS) : 0;
             const frame = frames[frameIdx];
             const s = this.pool.acquire(frame);
-            s.position.set(c.xpos, c.ypos);
+            s.position.set(x, y);
             // Raw frames face up; the C# turns them 90° clockwise at load and draws at CurrentHeading.
-            s.rotation = c.currentHeading + Math.PI / 2;
+            s.rotation = heading + Math.PI / 2;
             s.scale.set(px / frame.width / z);
             s.alpha = creatureDamageAlpha(c);
             this.drawnPx.set(c, px);
@@ -710,9 +723,9 @@ export class CreatureLayer {
                 const t = d === null ? null : this.frameDamage(c, d, shown, shownIdx, frameIdx);
                 if (t !== null && d !== null) {
                     const o = this.damagePool.acquire(t);
-                    o.position.set(c.xpos, c.ypos);
+                    o.position.set(x, y);
                     // The overlay is in the load-rotated frame space: drawn at CurrentHeading.
-                    o.rotation = c.currentHeading;
+                    o.rotation = heading;
                     o.scale.set(px / d.side / z);
                 }
             }

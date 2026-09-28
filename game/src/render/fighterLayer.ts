@@ -33,6 +33,7 @@ import { DamageOverlays, fighterDamageSubject } from './shipOverlays';
 import { artBundleFlag } from './artBundleFlags';
 import type { Galaxy } from '../sim/galaxy';
 import { fightersOf, type Fighter } from '../sim/combat/fighters';
+import type { MotionInterpolator } from './renderInterp';
 
 const IMG = '/assets/dwu/images';
 /** LoadFighters loads a fighter and a bomber per family folder (ShipImageHelper.ShipSetFighterImageCount = 2). */
@@ -132,6 +133,8 @@ export class FighterLayer {
     /** Fighters given a drawn size last frame (their entry is cleared when they stop being drawn). */
     private drawnLast = new Set<Fighter>();
     private drawnNow = new Set<Fighter>();
+    /** Render interpolation between sim steps (renderInterp.ts; set by MainView). Null: draw the sim positions. */
+    motion: MotionInterpolator | null = null;
 
     constructor(
         private galaxy: Galaxy,
@@ -183,7 +186,17 @@ export class FighterLayer {
                     const sy = (fighter.ypos - cam.y) * z + halfH;
                     // Coarse cull before the art lookup (fighters are at most a few dozen px).
                     if (sx < -CULL_MARGIN_PX - 64 || sx > cam.width + CULL_MARGIN_PX + 64 || sy < -CULL_MARGIN_PX - 64 || sy > cam.height + CULL_MARGIN_PX + 64) continue;
-                    this.drawFighter(fighter, f, z, sx, sy, cam);
+                    // Drawn position / heading: lerp between the last two sim steps (renderInterp.ts), or the sim state.
+                    let x = fighter.xpos;
+                    let y = fighter.ypos;
+                    let heading = fighter.heading;
+                    if (this.motion !== null) {
+                        const st = this.motion.sample(fighter, x, y, heading, Math.max(fighter.topSpeed, Math.abs(fighter.currentSpeed)));
+                        x = st.x;
+                        y = st.y;
+                        heading = st.heading;
+                    }
+                    this.drawFighter(fighter, f, z, (x - cam.x) * z + halfW, (y - cam.y) * z + halfH, cam, x, y, heading);
                 }
             }
         }
@@ -196,7 +209,7 @@ export class FighterLayer {
         this.damage.end();
     }
 
-    private drawFighter(fighter: Fighter, f: number, z: number, sx: number, sy: number, cam: Camera): void {
+    private drawFighter(fighter: Fighter, f: number, z: number, sx: number, sy: number, cam: Camera, x: number, y: number, heading: number): void {
         const pictureRef = resolveFighterPictureRef(fighter.pictureRef, fighter.empire?.dominantRace?.designsPictureFamilyIndex ?? null);
         const url = fighterImageUrl(pictureRef);
         if (url === null) return;
@@ -211,8 +224,8 @@ export class FighterLayer {
         if (sx + half < -CULL_MARGIN_PX || sx - half > cam.width + CULL_MARGIN_PX || sy + half < -CULL_MARGIN_PX || sy - half > cam.height + CULL_MARGIN_PX) return;
         drawnPx.set(fighter, px);
         this.drawnNow.add(fighter);
-        const cos = Math.cos(fighter.heading);
-        const sin = Math.sin(fighter.heading);
+        const cos = Math.cos(heading);
+        const sin = Math.sin(heading);
         const k = 1 / z; // world units per drawn px
         const mk = art.markers;
 
@@ -224,9 +237,9 @@ export class FighterLayer {
                 for (const t of mk.thrusters) {
                     const r = exhaustRect(t, mk.minThrusterLeft, mk.side, px, num5, scratchRect);
                     const s = this.exhaust.acquire(tex);
-                    s.position.set(fighter.xpos + (r.cx * cos - r.cy * sin) * k, fighter.ypos + (r.cx * sin + r.cy * cos) * k);
+                    s.position.set(x + (r.cx * cos - r.cy * sin) * k, y + (r.cx * sin + r.cy * cos) * k);
                     // Raw thruster art: the C# pre-rotates it 90° clockwise, so the raw width spans the rect height.
-                    s.rotation = fighter.heading + Math.PI / 2;
+                    s.rotation = heading + Math.PI / 2;
                     s.scale.set((r.height * k) / (tex.width || 1), (r.width * k) / (tex.height || 1));
                 }
             }
@@ -236,11 +249,11 @@ export class FighterLayer {
         const tex = art.texture;
         const s = this.bodies.acquire(tex);
         s.anchor.set(art.metrics.cropCenterX / (tex.width || 1), art.metrics.cropCenterY / (tex.height || 1));
-        s.position.set(fighter.xpos, fighter.ypos);
-        s.rotation = fighter.heading + Math.PI / 2;
+        s.position.set(x, y);
+        s.rotation = heading + Math.PI / 2;
         s.scale.set(px / art.metrics.cropSide / z);
         // 19r: Main.Part12.cs 5002 method_107 while Health < 1.
         const subject = fighterDamageSubject(fighter);
-        if (subject !== null) this.damage.draw(fighter, subject, art, fighter.xpos, fighter.ypos, fighter.heading, px, z, this.damageFx);
+        if (subject !== null) this.damage.draw(fighter, subject, art, x, y, heading, px, z, this.damageFx);
     }
 }

@@ -723,7 +723,7 @@ export async function startGameView(
     app.ticker.add(() => {
         simLoop.tick(app.ticker.elapsedMS);
         shipKeys?.frame();
-        renderGuard(() => view.update());
+        renderGuard(() => view.update(simLoop.renderTime));
         renderGuard(() => gameAudio.frame()); // [audio]
     });
     // [fix6ui] end
@@ -1492,7 +1492,7 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     const renderGuard = createRenderGuard();
     app.ticker.add(() => {
         simLoop.tick(app.ticker.elapsedMS);
-        renderGuard(() => view.update());
+        renderGuard(() => view.update(simLoop.renderTime));
     });
     // [fix6ui] end
     app.renderer.on('resize', () => {
