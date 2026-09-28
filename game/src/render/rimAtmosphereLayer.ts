@@ -617,8 +617,8 @@ export interface RimMountTargets {
     fx: Container;
     /** World child index just above the backdrop + nebula images (wash, dust, derelicts, eyes go there). */
     backgroundIndex: number;
-    starfieldFar: TilingSprite;
-    starfieldNear: TilingSprite;
+    starfieldFar: Container;
+    starfieldNear: Container;
     /** Screen-space index in fx just above the starfield (vignette + grain). */
     fxIndex: number;
     nebulae: readonly { sprite: Sprite; x: number; y: number }[];
@@ -720,8 +720,8 @@ export class RimAtmosphereLayer {
     private eyePool = new SpritePool(this.eyeRoot);
     private vignette: Sprite | null = null;
     private grain: TilingSprite | null = null;
-    private starfieldFar: TilingSprite | null = null;
-    private starfieldNear: TilingSprite | null = null;
+    private starfieldFar: Container | null = null;
+    private starfieldNear: Container | null = null;
     private mapIcons: readonly { sprite: Sprite; x: number; y: number }[] = [];
     /** Per DUST_VARIANTS index: texture, rim-light texture (or null), CPU coverage grid. */
     private dustTex: (Texture | null)[] = [];
