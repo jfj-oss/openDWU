@@ -13,7 +13,7 @@
 // Galaxy.4.cs GenerateGasCloud.
 
 import { playGridClick } from '../audio/gameAudio'; // [audio]
-import { Application, Container, Graphics, Sprite, Text, Texture, TilingSprite } from 'pixi.js';
+import { Application, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
 import { Camera } from './camera';
 import {
     AssetStore,
@@ -31,7 +31,7 @@ import {
     makeGlowTexture,
     makePlanetTexture,
     makeStarSpriteTexture,
-    makeStarfieldTexture,
+    manifestFiles,
     mapStarUrls,
     planetUrls,
     sampleCentreColour,
@@ -39,6 +39,7 @@ import {
     starDiscUrl,
     starSpriteUrls,
 } from './assets';
+import { DeepStarfield, deepStarfieldAlpha, systemPatchZoomAlpha, type PatchSystem } from './deepStarfield';
 import { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
 import { GalaxyLocation, GalaxyLocationType } from '../sim/galaxyLocation';
@@ -342,9 +343,6 @@ const PLANET_DOT_TYPES = [
     HabitatType.FrozenGasGiant,
 ];
 
-// Parallax factors of the near/far starfield layers (screen-space, tiled).
-const FAR_PARALLAX = 0.12;
-const NEAR_PARALLAX = 0.3;
 
 function starColors(type: HabitatType): { glow: string; core: string } {
     return STAR_COLORS[type] ?? STAR_COLORS[HabitatType.MainSequence];
@@ -936,8 +934,6 @@ export interface MainViewTextures {
     dot: Texture;
     rock: Texture;
     backdrop: Texture;
-    starfieldFar: Texture;
-    starfieldNear: Texture;
 }
 
 export class MainView {
@@ -947,8 +943,10 @@ export class MainView {
     selectionRing = new Graphics();
     private backdrop: Sprite;
     private grid = new Graphics();
-    private starfieldFar!: TilingSprite;
-    private starfieldNear!: TilingSprite;
+    /** Screen-space deep starfield behind the world (deepStarfield.ts; port of the original's close-zoom stars). */
+    private deepStarfield!: DeepStarfield;
+    /** Systems for the deep starfield's per-system colour patches (flat, reused every frame). */
+    private patchSystems: PatchSystem[] = [];
     /** Region-name label layer (task 08f1), screen-space. */
     regionLabels = new Container();
     private regionLabelViews: RegionLabel[] = [];
@@ -1180,8 +1178,6 @@ export class MainView {
             dot: makeDotTexture('#cccccc'),
             rock: makeDotTexture('#8a7f6a', 32),
             backdrop: loaded.get('backdrop')!,
-            starfieldFar: makeStarfieldTexture(512, 160),
-            starfieldNear: makeStarfieldTexture(512, 320),
         };
         // Planet-type dot textures.
         for (const t of PLANET_DOT_TYPES) {
@@ -1197,21 +1193,33 @@ export class MainView {
         // Sector grid (world-space lines every sectorSize units).
         this.drawGrid(this.camera.zoom);
 
-        // Parallax starfield (screen-space, tiled).
-        this.starfieldFar = new TilingSprite(textures.starfieldFar);
-        this.starfieldNear = new TilingSprite(textures.starfieldNear);
-        this.starfieldFar.alpha = 0;
-        this.starfieldFar.visible = false;
-        this.starfieldNear.alpha = 0;
-        this.starfieldNear.visible = false;
-        this.fx.addChild(this.starfieldFar);
-        this.fx.addChild(this.starfieldNear);
+        // Deep starfield (screen-space, behind the world): sharp flare sprites at the renderer's device
+        // resolution — the galaxy backdrop is a 2000 px image and cannot stay sharp when magnified (HiDPI fix).
+        this.deepStarfield = new DeepStarfield(this.galaxy.randomSeed);
+        this.app.stage.addChildAt(this.deepStarfield.root, 0);
+        const flareFiles = manifestFiles('mapstars/flares') ?? [];
+        void this.deepStarfield
+            .load(
+                flareFiles.map((f) => `/assets/dwu/images/environment/mapstars/flares/${f}`),
+                async (url) => {
+                    if (!store.dwuPresent) return null;
+                    const tex = await store.loadFirst([url], () => Texture.EMPTY);
+                    const res = tex === Texture.EMPTY ? null : (tex.source.resource as CanvasImageSource | undefined);
+                    return res ?? null;
+                },
+            )
+            .catch(() => undefined);
 
         // Systems and gas clouds.
         for (const system of this.galaxy.systems) {
             // Gas clouds are SystemInfos too (C# / task C2c-1); they are drawn as clouds below.
             if (system.systemStar.category === HabitatCategoryType.GasCloud) continue;
             this.systems.push(new SystemView(this, system, textures));
+        }
+        for (const sv of this.systems) {
+            const star = sv.system.systemStar;
+            // Planetless systems still get a sky patch the size of a small system.
+            this.patchSystems.push({ index: this.galaxy.systems.indexOf(sv.system), x: star.xpos, y: star.ypos, radius: Math.max(sv.maxExtent, 30000) });
         }
         for (const habitat of this.galaxy.habitats) {
             if (habitat.category === HabitatCategoryType.GasCloud) {
@@ -1305,9 +1313,9 @@ export class MainView {
             world: this.world,
             fx: this.fx,
             backgroundIndex: 1 + this.nebulae.length,
-            starfieldFar: this.starfieldFar,
-            starfieldNear: this.starfieldNear,
-            fxIndex: this.fx.children.indexOf(this.starfieldNear) + 1,
+            starfieldFar: this.deepStarfield.far,
+            starfieldNear: this.deepStarfield.near,
+            fxIndex: 0,
             nebulae: this.nebulae.map((nv) => ({ sprite: nv.sprite, x: nv.sprite.x, y: nv.sprite.y })),
             mapIcons: this.systems.map((sv) => ({ sprite: sv.mapIcon, x: sv.system.systemStar.xpos, y: sv.system.systemStar.ypos })),
         });
@@ -1396,25 +1404,12 @@ export class MainView {
             this.lastGridZoom = z;
         }
 
-        // Dense parallax starfield: fades in over the same window the backdrop
+        // Deep parallax starfield: fades in over the same window the backdrop
         // fades out (task 02b2), so something is always visible while
-        // zooming between galaxy and system view.
-        const sfA = starfieldAlpha(z, m);
-        this.starfieldFar.alpha = sfA * 0.5;
-        this.starfieldFar.visible = sfA > 0.01;
-        this.starfieldNear.alpha = sfA;
-        this.starfieldNear.visible = sfA > 0.01;
-        if (this.starfieldFar.width !== cam.width || this.starfieldFar.height !== cam.height) {
-            this.starfieldFar.width = cam.width;
-            this.starfieldFar.height = cam.height;
-            this.starfieldNear.width = cam.width;
-            this.starfieldNear.height = cam.height;
-        }
-        if (sfA > 0.01) {
-            // Parallax: each layer pans a fraction of the world pan.
-            this.starfieldFar.position.set(wrapOffset(-cam.x * z * FAR_PARALLAX), wrapOffset(-cam.y * z * FAR_PARALLAX));
-            this.starfieldNear.position.set(wrapOffset(-cam.x * z * NEAR_PARALLAX), wrapOffset(-cam.y * z * NEAR_PARALLAX));
-        }
+        // zooming between galaxy and system view; the per-system colour
+        // patches follow once the backdrop is gone.
+        this.deepStarfield.update(deepStarfieldAlpha(z, m), cam.x, cam.y, z, cam.width, cam.height);
+        this.deepStarfield.updatePatches(systemPatchZoomAlpha(z, m), this.patchSystems, cam.x, cam.y, cam.width, cam.height);
 
         // Systems: greedy 80 px label-overlap suppression across systems.
         const labelZoom = m * 4; // system names appear at ~sector zoom
@@ -1763,9 +1758,4 @@ export class MainView {
         return this.overlayLayer?.freight ?? null;
     }
     // [freightOverlay] end
-}
-
-/** Parallax wrap: screen-space travel into a tile offset in [0, 512). */
-function wrapOffset(v: number): number {
-    return v - Math.floor(v / 512) * 512;
 }

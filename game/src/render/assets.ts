@@ -414,21 +414,6 @@ export function makeBackdropTexture(): Texture {
     });
 }
 
-/** Dense tiny-white-dot starfield tile (procedural, non-sim randomness). */
-export function makeStarfieldTexture(size = 512, density = 220): Texture {
-    return canvasTexture(size, (ctx, s) => {
-        ctx.clearRect(0, 0, s, s);
-        for (let i = 0; i < density; i++) {
-            const x = pseudo(i * 7 + 1) * s;
-            const y = pseudo(i * 7 + 2) * s;
-            const r = 0.4 + pseudo(i * 7 + 3) * 0.9;
-            const a = 0.35 + pseudo(i * 7 + 4) * 0.65;
-            ctx.fillStyle = `rgba(255,255,255,${a})`;
-            ctx.fillRect(x, y, r, r);
-        }
-    });
-}
-
 /** Deterministic [0,1) pseudo-random from an integer key. */
 function pseudo(i: number): number {
     const x = Math.sin(i * 127.1 + 311.7) * 43758.5453;
