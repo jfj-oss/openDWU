@@ -380,7 +380,7 @@ export async function startGameView(
     document.body.appendChild(app.canvas);
 
     const camera = new Camera();
-    camera.setViewport(app.renderer.width, app.renderer.height);
+    camera.setViewport(app.screen.width, app.screen.height);
     camera.setGalaxyBounds(galaxy.sizeX, galaxy.sizeY);
     // Task M2e3: the Sector-level zoom must be applied AFTER any code that
     // resets the camera to the whole-galaxy view (the order bug left the view
@@ -707,7 +707,7 @@ export async function startGameView(
     });
     // [fix6ui] end
     app.renderer.on('resize', () => {
-        camera.setViewport(app.renderer.width, app.renderer.height);
+        camera.setViewport(app.screen.width, app.screen.height);
         resizeHandler();
     });
 
@@ -1323,7 +1323,7 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     }
 
     const camera = new Camera();
-    camera.setViewport(app.renderer.width, app.renderer.height);
+    camera.setViewport(app.screen.width, app.screen.height);
     camera.setGalaxyBounds(galaxy.sizeX, galaxy.sizeY);
     camera.centerOn(viewX, viewY);
     if (zoomParam !== null) {
@@ -1462,7 +1462,7 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     });
     // [fix6ui] end
     app.renderer.on('resize', () => {
-        camera.setViewport(app.renderer.width, app.renderer.height);
+        camera.setViewport(app.screen.width, app.screen.height);
         layoutHud(hud);
     });
 }

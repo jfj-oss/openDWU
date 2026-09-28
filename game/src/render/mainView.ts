@@ -1548,7 +1548,8 @@ export class MainView {
                 dy = speed;
             }
             if (dx !== 0 || dy !== 0) {
-                cam.panByScreen(dx, dy);
+                // panByScreen has drag semantics (content follows the pointer); edge scroll moves the view toward the edge.
+                cam.panByScreen(-dx, -dy);
             }
         }
     }
