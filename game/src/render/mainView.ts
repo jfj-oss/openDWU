@@ -745,14 +745,14 @@ class SystemView {
         for (let i = 0; i < this.planets.length; i++) {
             const planet = this.planets[i];
             const p = planet.habitat;
-            g.circle(0, 0, p.orbitDistance).stroke({ width: 1 / z, color: 0x7f90a8, alpha: 0.55 });
+            g.circle(0, 0, p.orbitDistance).stroke({ width: 1 / z, color: 0x5a4478, alpha: 0.75 });
             // Faint moon-orbit circles (system zoom), drawn around (0,0) in their own Graphics; updateBodies moves it
             // to the planet's drawn position every frame.
             const mg = this.moonRings[i];
             mg.clear();
             if (z > 0.25) {
                 for (const moon of planet.moons) {
-                    mg.circle(0, 0, moon.habitat.orbitDistance).stroke({ width: 1 / z, color: 0x7f90a8, alpha: 0.35 });
+                    mg.circle(0, 0, moon.habitat.orbitDistance).stroke({ width: 1 / z, color: 0x4a3a66, alpha: 0.55 });
                 }
             }
         }

@@ -222,6 +222,10 @@ export function symbolBand(f: number): SymbolBand {
     return 'galaxy';
 }
 
+/** Render-only softening of the role markers (not in the original). */
+const OUTLINE_MARKER_ALPHA = 0.45;
+const FILLED_MARKER_ALPHA = 0.85;
+
 /** ResolveShipSymbolColor's alpha (MainView.2.cs 2169-2175: max(0.6, f/3) <= 1) plus MainView.1.cs 1110-1113's +48
  * for non-base, non-independent ships; unowned / independent objects stay opaque grey; galaxy-level symbols are
  * opaque (DrawShipSymbolXna 2474-2477). */
@@ -628,7 +632,7 @@ async function buildSymbolAtlas(): Promise<{ frames: Texture[]; aspect: number[]
             ctx.fill();
         } else {
             ctx.strokeStyle = '#ffffff';
-            ctx.lineWidth = 6;
+            ctx.lineWidth = 3;
             ctx.stroke();
         }
         aspect.push(1);
@@ -1073,7 +1077,8 @@ export class GalaxyMarkerLayer {
             }
             const base = owned ? empireMarkerColor(bo.empire!) : UNOWNED_SYMBOL_COLOR;
             const tint = brighten(base, 48);
-            const alpha = symbolAlpha(f, owned, isBase);
+            // Restyle: the outline frame recedes (it must not out-shout the ship / base it frames); filled markers are a touch softer.
+            const alpha = symbolAlpha(f, owned, isBase) * (band === 'outline' ? OUTLINE_MARKER_ALPHA : FILLED_MARKER_ALPHA);
             const artIdx = SYMBOL_ART.indexOf(art);
             if (band === 'outline') {
                 this.pushSymbol(n++, SYMBOL_ART.length + artIdx, pos.x, pos.y, heightPx, z, tint, alpha);

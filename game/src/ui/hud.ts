@@ -1,4 +1,5 @@
 import { computeHudLayout, CYCLE_CHIPS, TOP_BAR_BUTTONS, VIEW_ROWS, type Rect, type ViewRowKey } from './hudLayout';
+import { abundancePercentText } from './resourceAbundance';
 import { threatKnownSites } from '../sim/scenario/threats/framework';
 import { onSettingsChange, uiScaleFactor } from './settings';
 import { GalaxyTime } from '../sim/clock';
@@ -2362,11 +2363,11 @@ export function buildSelectionRows(sel: Selection, gameData?: GameData, player: 
             const img = document.createElement('img');
             img.src = def ? resourceIconUrl(def.pictureRef) : '';
             img.alt = def?.name ?? `Resource ${r.resourceId}`;
-            img.title = `${def?.name ?? `Resource ${r.resourceId}`} (${r.abundance}%)`;
+            img.title = `${def?.name ?? `Resource ${r.resourceId}`} (${abundancePercentText(r.abundance)})`;
             if (!def) img.style.display = 'none';
             const pct = document.createElement('span');
             pct.className = 'hud-resource-pct';
-            pct.textContent = `${r.abundance}%`;
+            pct.textContent = abundancePercentText(r.abundance);
             // [rimTrader] begin
             const rimMark = player !== null ? rimGoodMarker(player.galaxy, r.resourceId) : '';
             if (rimMark !== '') {
