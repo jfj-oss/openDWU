@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { hitTestHabitats, moonDotPx, planetSpritePx, starSpritePx } from '../src/render/mainView';
+import { hitTestHabitats, moonDotPx, planetSpritePx, starDrawnPx, starSpritePx } from '../src/render/mainView';
 import { Habitat, HabitatCategoryType, HabitatType } from '../src/sim/types';
 
 // Task 08g: pure hit-test helper. Each object's drawn rect is the square
@@ -99,5 +99,53 @@ describe('hitTestHabitats on drawn positions (render interpolation)', () => {
         expect(hitTestHabitats([planet], planet.xpos, planet.ypos, size, Z, posOf)).toBeNull();
         // Without a position function: the committed position (old behaviour).
         expect(hitTestHabitats([planet], planet.xpos, planet.ypos, size, Z)).toBe(planet);
+    });
+});
+
+describe('hitTestHabitats hit area equals drawn art (click anywhere on it)', () => {
+    const sizeFn = (h: Habitat, z: number): number => {
+        if (h.category === HabitatCategoryType.Moon) return moonDotPx(h.diameter, z);
+        if (h.category === HabitatCategoryType.Planet) return planetSpritePx(h.diameter, z);
+        return starDrawnPx(h, z);
+    };
+    const z = 1; // f = 1: a planet of diameter 200 is drawn ~ 200 px wide
+
+    it('selects a large planet near its edge, not just outside it', () => {
+        const star = makeStar(0, 0, 1000);
+        const planet = makePlanet(star, 0, 20_000, 400);
+        const px = planetSpritePx(planet.diameter, z);
+        expect(px).toBeGreaterThan(50);
+        const r = px / 2 / z;
+        expect(hitTestHabitats([star, planet], planet.xpos + r - 2, planet.ypos, sizeFn, z)).toBe(planet);
+        expect(hitTestHabitats([star, planet], planet.xpos, planet.ypos - (r - 2), sizeFn, z)).toBe(planet);
+        expect(hitTestHabitats([star, planet], planet.xpos + r + 3, planet.ypos, sizeFn, z)).toBeNull();
+    });
+
+    it('selects a large star near its edge, not just outside it', () => {
+        const star = makeStar(0, 0, 4000);
+        const px = starDrawnPx(star, z);
+        expect(px).toBeGreaterThan(50);
+        const r = px / 2 / z;
+        expect(hitTestHabitats([star], r - 2, 0, sizeFn, z)).toBe(star);
+        expect(hitTestHabitats([star], r + 3, 0, sizeFn, z)).toBeNull();
+    });
+
+    it('the moon in front of a planet wins over the planet', () => {
+        const star = makeStar(0, 0, 1000);
+        const planet = makePlanet(star, 0, 20_000, 400);
+        const moon = new Habitat(HabitatCategoryType.Moon, HabitatType.Ice, 'moon', planet, 0, true, 1000, 20);
+        moon.diameter = 60;
+        moon.xpos = planet.xpos + 20;
+        moon.ypos = planet.ypos;
+        expect(hitTestHabitats([planet, moon], moon.xpos, moon.ypos, sizeFn, z)).toBe(moon);
+        expect(hitTestHabitats([planet, moon], planet.xpos - 60, planet.ypos, sizeFn, z)).toBe(planet);
+    });
+
+    it('tiny objects stay clickable through the minimum radius', () => {
+        const star = makeStar(0, 0, 1000);
+        const planet = makePlanet(star, 0, 20_000, 1);
+        const zz = 0.001; // drawn at the 4 px floor
+        expect(hitTestHabitats([planet], planet.xpos + 5 / zz, planet.ypos, sizeFn, zz)).toBe(planet);
+        expect(hitTestHabitats([planet], planet.xpos + 8 / zz, planet.ypos, sizeFn, zz)).toBeNull();
     });
 });
