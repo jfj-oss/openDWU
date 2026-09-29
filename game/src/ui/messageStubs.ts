@@ -325,6 +325,8 @@ export const DOUBLE_RIGHT_CLICK_MS = 450;
 export interface RightClickTracker {
     key: EmpireMessage | null;
     at: number;
+    /** When the last right-button mousedown was counted (its contextmenu event, fired for the same press, is not counted again). */
+    downAt?: number;
 }
 
 /**
@@ -347,6 +349,31 @@ export function handleStubContextMenu(e: { preventDefault(): void; stopPropagati
     e.preventDefault();
     e.stopPropagation();
     return registerStubRightClick(tracker, key, now);
+}
+
+/**
+ * A mouse event on a stub row for the double right-click: the right-button `mousedown` counts (Chromium on Linux and
+ * Firefox fire `contextmenu` on press, Windows / macOS on release, so the press is the one common signal); a
+ * `contextmenu` that no right press preceded (ctrl-click on macOS, a long press) counts by itself. `contextmenu` is
+ * always suppressed. True when it completes a double right-click.
+ */
+export function handleStubMouseEvent(
+    e: { type: string; button?: number; preventDefault(): void; stopPropagation(): void },
+    tracker: RightClickTracker,
+    key: EmpireMessage,
+    now: number,
+): boolean {
+    if (e.type === 'contextmenu') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (tracker.downAt !== undefined && now - tracker.downAt < 1000) return false; // the press already counted
+        return registerStubRightClick(tracker, key, now);
+    }
+    if (e.type === 'mousedown' && e.button === 2) {
+        tracker.downAt = now;
+        return registerStubRightClick(tracker, key, now);
+    }
+    return false;
 }
 
 /** Removes the stub and keeps it from coming back (a queue-backed stub is re-added by syncStubs otherwise). */

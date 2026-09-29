@@ -11,6 +11,7 @@ import { galaxyStarDate } from '../sim/tick/simTime';
 import { resolveStarDateDescription } from '../sim/galaxyTime';
 import { resolveGameText } from '../sim/textResolver';
 import { advisorSuggestions } from '../sim/advisorQueue';
+import { issuePlayerCommand } from '../sim/player/playerCommands';
 import { computeHudLayout } from './hudLayout';
 import { getSettings, onSettingsChange, uiScaleFactor } from './settings';
 import { rgbCss } from './hud';
@@ -20,7 +21,7 @@ import {
     advisorIconUrl,
     createStubListState,
     dismissStub,
-    handleStubContextMenu,
+    handleStubMouseEvent,
     type RightClickTracker,
     markStubRead,
     messageIconUrl,
@@ -85,8 +86,10 @@ export function pushMessageStub(m: EmpireMessage, read = false): void {
  * Dismiss the stub of `m` (a double right-click on it): the stub goes and does not come back; a conversation also leaves
  * the queue (a treaty offer stays answerable in the Diplomacy screen) and an open card / dialog for it closes.
  */
-export function dismissMessageStub(m: EmpireMessage): boolean {
+export function dismissMessageStub(m: EmpireMessage, galaxy?: Galaxy): boolean {
     const removed = dismissStub(state, m);
+    // An advisor suggestion is declined (btnAdvisorSuggestionDecline_Click: RemoveMessage + the DeclinedTasks records).
+    if (galaxy !== undefined && player !== null && advisorSuggestions(player).includes(m)) issuePlayerCommand(galaxy, player, 'declineSuggestion', [m]);
     dismissConversation(m);
     closeMessageCardFor(m);
     return removed;
@@ -193,13 +196,17 @@ export function installMessageStubList(opts: MessageStubListOptions): void {
         row.append(icon, el('span', 'message-stub-title', s.title), el('span', 'message-stub-date', resolveStarDateDescription(s.starDate)), dot);
         row.addEventListener('click', () => open(s));
         // Double right-click dismisses the stub; the browser's context menu never shows over the list.
-        row.addEventListener('contextmenu', (e) => {
-            if (handleStubContextMenu(e, rightClicks, s.key, performance.now())) {
-                dismissMessageStub(s.key);
+        const onRight = (e: MouseEvent): void => {
+            if (!handleStubMouseEvent(e, rightClicks, s.key, performance.now())) return;
+            // After the press's own contextmenu event has been delivered (it fires right after mousedown).
+            setTimeout(() => {
+                dismissMessageStub(s.key, galaxy);
                 renderedKey = '';
                 render();
-            }
-        });
+            }, 60);
+        };
+        row.addEventListener('mousedown', onRight);
+        row.addEventListener('contextmenu', onRight);
         return row;
     }
 
@@ -247,7 +254,11 @@ export function installMessageStubList(opts: MessageStubListOptions): void {
         const visible = getSettings().messageStubsVisible;
         const win = visibleStubs(state, visible);
         root.hidden = state.stubs.length === 0;
-        if (root.hidden) return;
+        if (root.hidden) {
+            if (track.childElementCount > 0) track.replaceChildren();
+            renderedKey = '';
+            return;
+        }
         const active = openMessageKey() ?? openAdvisorSuggestionKey();
         const rows = win.next !== null ? [...win.rows, win.next] : win.rows;
         const key = rows.map((s) => `${idOf(s.key)}${s.read ? 'r' : ''}${s.key === active ? 'a' : ''}`).join(',') + `|${win.rows.length}`;

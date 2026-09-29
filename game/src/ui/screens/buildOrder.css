@@ -174,7 +174,7 @@
 /* Purchase follow-up: Order Amount spinner (Main.Part2.cs method_637 / method_634 highlight), totals row. */
 .build-order-header,
 .build-order-row {
-    grid-template-columns: 9em 6em 5.5em minmax(0, 1fr) 7em 6em;
+    grid-template-columns: 9em 6em 5.5em minmax(14em, 1.6fr) 6em 5.5em;
 }
 
 .build-order-amount {
@@ -218,5 +218,21 @@
     border-color: rgba(255, 255, 0, 0.4);
 }
 .build-order-window {
-    width: 800px;
+    width: 880px;
+}
+
+/* Design drop-down (DesignDropDown: dark blue-grey combo, grey text). */
+.build-order-design {
+    width: 100%;
+    min-width: 0;
+    font-family: inherit;
+    font-size: 12px;
+    color: #aaa;
+    background: #303040;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 2px;
+    padding: 1px 2px;
+}
+.build-order-design:focus {
+    outline: 1px solid rgba(160, 200, 255, 0.6);
 }

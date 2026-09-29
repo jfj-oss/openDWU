@@ -1,12 +1,11 @@
 // Build Order panel (task 16c, purchase follow-up): a port of the original's Build Order
 // window, opened by F9 or the top-bar btnBuildOrder button. Rows follow
 // Main.Part2.cs:404 method_628 (one per buildable sub-role), each row
-// method_629 / method_630 (current amount, Order Amount spinner, newest buildable design),
+// method_629 / method_630 (current amount, Order Amount spinner, Design drop-down: DesignDropDown, initially FindNewestCanBuild),
 // the row totals Main.Part2.cs:950 method_633 (amount x unit purchase cost :1113 method_641,
 // amount x unit maintenance), the panel totals :929 method_632 / :911 method_631 and the
 // Purchase button :1135 btnBuildOrderPurchase_Click → Empire.6.cs:3017 BuildNewShips.
 // TODO(port): Advisor Suggest column — RefactorForceStructureProjectionsToCosts(randomizedOrder: false) over the state + private force-structure projections (Main.Part2.cs:509-560)
-// TODO(port): Design drop-down per row — Main.Part2.cs:873 method_630 DesignDropDown (the row uses FindNewestCanBuild, the drop-down's initial selection)
 
 import './buildOrder.css';
 import type { Empire } from '../../sim/empire';
@@ -71,11 +70,28 @@ export function buildableDesignsBySubRole(empire: Empire, subRole: BuiltObjectSu
     return getBuildableDesignsBySubRoles(empire.designs, [subRole], empire);
 }
 
+/**
+ * DesignDropDown.BindData: the row's designs sorted by Design.CompareTo (sub-role, then name); a row's list is the
+ * buildable designs of that sub-role (not obsolete, empire.CanBuildDesign).
+ */
+export function buildOrderDesignOptions(empire: Empire, subRole: BuiltObjectSubRole): Design[] {
+    return buildableDesignsBySubRole(empire, subRole)
+        .slice()
+        .sort((a, b) => (a.subRole !== b.subRole ? a.subRole - b.subRole : a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+}
+
+/** DesignDropDown.OnDrawItem text: "<sub-role> (<design name>)". */
+export function buildOrderDesignLabel(design: Design): string {
+    return `${resolveSubRoleDescription(design.subRole)} (${design.name})`;
+}
+
 export interface BuildOrderRow {
     subRole: BuiltObjectSubRole;
     type: string;
     current: number;
     design: Design | null;
+    /** The drop-down's designs (empty: a note is shown instead of the drop-down). */
+    options: Design[];
     designText: string;
     unitCost: number;
     unitMaintenance: number;
@@ -83,11 +99,12 @@ export interface BuildOrderRow {
 
 // Main.Part2.cs:799 method_629 + :873 method_630 (design choice), :1113 method_641
 // (unit cost) and :971 method_633 (unit maintenance, 0 for private sub-roles).
-export function buildOrderRow(empire: Empire, galaxy: Galaxy, subRole: BuiltObjectSubRole): BuildOrderRow {
+export function buildOrderRow(empire: Empire, galaxy: Galaxy, subRole: BuiltObjectSubRole, chosen: Design | null = null): BuildOrderRow {
     const current = shipsOfSubRoleCount(empire, subRole);
     const buildable = buildableDesignsBySubRole(empire, subRole);
     let design: Design | null = null;
     let designText: string;
+    let options: Design[] = [];
     if (buildable.length > 0) {
         const s = buildable[0].subRole;
         if (
@@ -98,7 +115,9 @@ export function buildOrderRow(empire: Empire, galaxy: Galaxy, subRole: BuiltObje
         ) {
             designText = '(No construction yards for this ship type)';
         } else {
-            design = findNewestCanBuild(empire.designs, subRole, empire);
+            options = buildOrderDesignOptions(empire, subRole);
+            // The drop-down's selection: the player's pick while it is still in the list, else the newest.
+            design = chosen !== null && options.includes(chosen) ? chosen : findNewestCanBuild(empire.designs, subRole, empire);
             designText = design?.name ?? '';
         }
     } else {
@@ -109,6 +128,7 @@ export function buildOrderRow(empire: Empire, galaxy: Galaxy, subRole: BuiltObje
         type: resolveSubRoleDescription(subRole),
         current,
         design,
+        options,
         designText,
         unitCost: design ? design.calculateCurrentPurchasePrice(galaxy) : 0,
         unitMaintenance: design && !isPrivateBuildSubRole(subRole) ? designCalculateMaintenanceCosts(galaxy, design, empire) : 0,
@@ -116,8 +136,8 @@ export function buildOrderRow(empire: Empire, galaxy: Galaxy, subRole: BuiltObje
 }
 
 /** One row per BUILD_ORDER_SUBROLES entry (method_628). */
-export function buildOrderRows(empire: Empire, galaxy: Galaxy): BuildOrderRow[] {
-    return BUILD_ORDER_SUBROLES.map((s) => buildOrderRow(empire, galaxy, s));
+export function buildOrderRows(empire: Empire, galaxy: Galaxy, chosen: ReadonlyMap<BuiltObjectSubRole, Design> = new Map()): BuildOrderRow[] {
+    return BUILD_ORDER_SUBROLES.map((s) => buildOrderRow(empire, galaxy, s, chosen.get(s) ?? null));
 }
 
 // Main.Part2.cs:1043 method_637(…, "OrderAmount", 0, 1000, …): NumericUpDown Minimum 0, Maximum 1000.
@@ -321,6 +341,50 @@ function createBuildOrder(opts: BuildOrderOptions): OpenState {
     document.body.appendChild(root);
 
     let rows: BuildOrderRow[] = [];
+    /** The drop-down picks per row (method_634 SelectedValueChanged). */
+    const chosen = new Map<BuiltObjectSubRole, Design>();
+    const selects: (HTMLSelectElement | null)[] = BUILD_ORDER_SUBROLES.map(() => null);
+    const selectKeys: string[] = BUILD_ORDER_SUBROLES.map(() => '');
+
+    /** Cell 3: a DesignDropDown for a row with designs, else the note label; rebuilt only when the list changes. */
+    function renderDesignCell(i: number, r: BuildOrderRow): void {
+        const cell = lines[i].children[3] as HTMLElement;
+        if (r.options.length === 0 || r.design === null) {
+            if (selects[i] !== null) {
+                selects[i] = null;
+                selectKeys[i] = '';
+                cell.replaceChildren();
+            }
+            setText(cell, r.designText);
+            cell.title = r.designText;
+            cell.classList.add('build-order-note');
+            return;
+        }
+        cell.classList.remove('build-order-note');
+        const key = r.options.map((d) => d.name).join('\u0001');
+        let sel = selects[i];
+        if (sel === null || selectKeys[i] !== key) {
+            sel = el('select', 'build-order-design');
+            sel.dataset.subRole = String(r.subRole);
+            r.options.forEach((d, k) => {
+                const o = document.createElement('option');
+                o.value = String(k);
+                o.textContent = buildOrderDesignLabel(d);
+                o.title = `${d.name}: size ${d.size}, cost ${formatThousands(d.calculateCurrentPurchasePrice(galaxy))}`;
+                sel!.appendChild(o);
+            });
+            sel.addEventListener('change', () => {
+                const pick = r.options[Number(sel!.value)];
+                if (pick !== undefined) chosen.set(r.subRole, pick);
+                render();
+            });
+            selects[i] = sel;
+            selectKeys[i] = key;
+            cell.replaceChildren(sel);
+        }
+        sel.value = String(r.options.indexOf(r.design));
+        cell.title = `${r.design.name}: size ${r.design.size} — unit cost ${formatThousands(r.unitCost)}, maintenance ${formatThousands(r.unitMaintenance)}`;
+    }
 
     function amounts(): number[] {
         return inputs.map((i) => clampOrderAmount(i.value));
@@ -345,7 +409,7 @@ function createBuildOrder(opts: BuildOrderOptions): OpenState {
 
     function render(): void {
         setText(money, `Available money: ${formatMoney(opts.empire.stateMoney)}`);
-        rows = buildOrderRows(opts.empire, galaxy);
+        rows = buildOrderRows(opts.empire, galaxy, chosen);
         rows.forEach((r, i) => {
             const c = lines[i].children as HTMLCollectionOf<HTMLElement>;
             setText(c[0], r.type);
@@ -353,10 +417,8 @@ function createBuildOrder(opts: BuildOrderOptions): OpenState {
             const enabled = orderAmountEnabled(opts.empire, r);
             if (!enabled && inputs[i].value !== '0') inputs[i].value = '0';
             inputs[i].disabled = !enabled;
-            const tip = r.design ? `${r.designText} — unit cost ${formatThousands(r.unitCost)}, maintenance ${formatThousands(r.unitMaintenance)}` : r.designText;
-            setText(c[3], r.designText);
-            if (c[3].title !== tip) c[3].title = tip;
-            c[3].classList.toggle('build-order-note', r.design === null);
+            void c;
+            renderDesignCell(i, r);
         });
         renderTotals();
     }
@@ -379,7 +441,7 @@ function createBuildOrder(opts: BuildOrderOptions): OpenState {
 
     // Main.Part2.cs:1135 btnBuildOrderPurchase_Click.
     purchase.addEventListener('click', () => {
-        rows = buildOrderRows(opts.empire, galaxy);
+        rows = buildOrderRows(opts.empire, galaxy, chosen);
         const a = amounts();
         const lists = buildOrderPurchaseLists(rows, a);
         // The affordability check sums every row (method_632), which buildNewShips repeats over method_643's lists
