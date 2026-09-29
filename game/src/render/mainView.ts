@@ -47,6 +47,8 @@ import { Habitat, HabitatCategoryType, HabitatType, SystemInfo } from '../sim/ty
 import { NebulaCloudGenerator } from './nebulaClouds';
 import { EmpireLayer } from './empireLayer';
 import { OverlayLayer } from './overlayLayer';
+import { GalaxyMarkerLayer, clickSelection, doubleClickFleet } from './galaxyMarkers'; // [galaxymarkers]
+import type { ShipGroup } from '../sim/fleets/shipGroup'; // [galaxymarkers]
 import { ArtBundleLayer } from './artBundleLayer'; // [19r]
 import { ArtBundleGallery, artGalleryView } from './artBundleGallery'; // [19r]
 import { BuiltObjectLayer, BUILT_OBJECT_MAX_FACTOR } from './builtObjectLayer';
@@ -1004,6 +1006,10 @@ export class MainView {
     /** Task M3: the Overlays HUD toggles this renderer implements (potential
      * colonies, scenic/research markers, empire territory visibility). */
     private overlayLayer!: OverlayLayer;
+    /** [galaxymarkers] faction rings, ship/base symbols, fleet icons, name decorations, station-presence discs. */
+    galaxyMarkers: GalaxyMarkerLayer | null = null;
+    /** [galaxymarkers] a fleet icon click, or a double click on one of the player's fleet ships, selects the fleet. */
+    onShipGroupSelect?: (g: ShipGroup) => void;
     /** [19r] threat markers, league presence, wreck debris, herder camps (render-only map extras). */
     artBundleLayer!: ArtBundleLayer;
     /** [19r] capture gallery (dev flag ?artGallery=<view>). */
@@ -1156,7 +1162,9 @@ export class MainView {
     /** Task 13d (Main.Part11.cs method_145): the ship/base under the screen point. Ships win over habitats. */
     pickBuiltObject(screenX: number, screenY: number): BuiltObject | null {
         const w = this.camera.screenToWorld(screenX, screenY);
-        return this.builtObjectLayer.pick(w.x, w.y, 1 / this.camera.zoom, this.galaxy.playerEmpire);
+        const bo = this.builtObjectLayer.pick(w.x, w.y, 1 / this.camera.zoom, this.galaxy.playerEmpire);
+        // [galaxymarkers] beyond the ship art (galaxy/sector zoom) the drawn symbols / fleet icons are the pick targets.
+        return bo ?? this.galaxyMarkers?.pickAt(w.x, w.y, this.camera.zoom)?.bo ?? null;
     }
 
     /** Main.Part11.cs method_145 (f <= 100): the creature under the screen point. Creatures win over ships. */
@@ -1388,6 +1396,10 @@ export class MainView {
         // Territory toggle. Added after empireLayer so its yellow marker
         // rings draw above the territory discs and colony rings.
         this.overlayLayer = new OverlayLayer(this.galaxy, this.world, this.empireLayer, this.overlays);
+        this.galaxyMarkers = new GalaxyMarkerLayer(this.galaxy, this.world, this.overlays, this.empireLayer.root); // [galaxymarkers]
+        this.galaxyMarkers.shipPxOf = (bo) => this.builtObjectLayer.drawnSizePx(bo); // [galaxymarkers]
+        // [galaxymarkers] symbols follow the render-interpolated ship when BuiltObjectLayer drew it this frame.
+        this.galaxyMarkers.positionOf = (bo) => this.motion.drawn(bo) ?? { x: bo.xpos, y: bo.ypos };
         // Task 13a: ships/bases/pirates/traders on top of all map layers.
         this.builtObjectLayer = new BuiltObjectLayer(this.galaxy, this.world, this.store, this.overlays);
         // [ambientfx] begin
@@ -1553,6 +1565,7 @@ export class MainView {
         // Territory's visibility toggle is applied straight to empireLayer,
         // above).
         this.overlayLayer.update(z, cam);
+        this.galaxyMarkers?.update(z, cam, this.systems); // [galaxymarkers]
         // [ambientfx] begin
         this.ambientLayer.update(z, cam);
         // [ambientfx] end
@@ -1825,6 +1838,18 @@ export class MainView {
                     return;
                 }
                 this.selectedCreature = null;
+                // [galaxymarkers] begin — a fleet icon (galaxy/sector zoom) selects its fleet (method_258 / 145).
+                const wp = this.camera.screenToWorld(x, y);
+                const sym = this.galaxyMarkers?.pickAt(wp.x, wp.y, this.camera.zoom) ?? null;
+                const symSel = sym !== null ? clickSelection(sym) : null;
+                if (symSel !== null && symSel !== sym?.bo && this.onShipGroupSelect !== undefined) {
+                    playGridClick(); // [audio]
+                    this.selectedHabitat = null;
+                    this.selectedBuiltObject = null;
+                    this.onShipGroupSelect(symSel as ShipGroup);
+                    return;
+                }
+                // [galaxymarkers] end
                 const bo = this.pickBuiltObject(x, y);
                 // [audio] begin — Main.Part10.cs:3304-3306 `if (obj3 != null) method_225()` (grid.wav) on a left-click pick.
                 if (bo !== null || this.pick(x, y) !== null) playGridClick();
@@ -1847,6 +1872,14 @@ export class MainView {
             const rect = canvas.getBoundingClientRect();
             const x = e.clientX - rect.left;
             const y = e.clientY - rect.top;
+            // [galaxymarkers] Main.Part7.cs 3494-3502: double-clicking one of the player's fleet ships selects its fleet.
+            const dbo = this.pickBuiltObject(x, y);
+            const fleet = dbo !== null ? doubleClickFleet(dbo, this.galaxy.playerEmpire) : null;
+            if (fleet !== null && this.onShipGroupSelect !== undefined) {
+                this.selectedBuiltObject = null;
+                this.onShipGroupSelect(fleet);
+                return;
+            }
             const hit = this.pick(x, y);
             if (hit !== null && hit.category === HabitatCategoryType.Star) {
                 this.onDoubleClickStar?.(hit);

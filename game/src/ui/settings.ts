@@ -65,7 +65,40 @@ export interface UiSettings {
     // [freightOverlay] begin — task 19e-9: Overlays → Freight Flows starts on in new / loaded games.
     freightFlowsDefault: boolean;
     // [freightOverlay] end
+
+    // [galaxymarkers] begin — GameOptions.GalaxyViewDisplay* (GameOptions.cs 74-96, "Galaxy View - Ship Display"):
+    // which ship/base types the galaxy view shows beyond zoom factor 3500 (MainView.2.cs method_250).
+    galaxyViewDisplayFleets: boolean;
+    galaxyViewDisplayResupplyShips: boolean;
+    galaxyViewDisplayMilitaryShips: boolean;
+    galaxyViewDisplaySpacePorts: boolean;
+    galaxyViewDisplayOtherBases: boolean;
+    galaxyViewDisplayExplorationShips: boolean;
+    galaxyViewDisplayColonyShips: boolean;
+    galaxyViewDisplayConstructionShips: boolean;
+    galaxyViewDisplayCivilianShips: boolean;
+    galaxyViewDisplayAlwaysEnemyFleets: boolean;
+    galaxyViewDisplayAlwaysEnemyMilitaryShips: boolean;
+    galaxyViewDisplayAlwaysPirates: boolean;
+    // [galaxymarkers] end
 }
+
+/** [galaxymarkers] The GalaxyViewDisplay* keys, in the original's option order. */
+export const GALAXY_VIEW_DISPLAY_KEYS = [
+    'galaxyViewDisplayFleets',
+    'galaxyViewDisplayResupplyShips',
+    'galaxyViewDisplayMilitaryShips',
+    'galaxyViewDisplaySpacePorts',
+    'galaxyViewDisplayOtherBases',
+    'galaxyViewDisplayExplorationShips',
+    'galaxyViewDisplayColonyShips',
+    'galaxyViewDisplayConstructionShips',
+    'galaxyViewDisplayCivilianShips',
+    'galaxyViewDisplayAlwaysEnemyFleets',
+    'galaxyViewDisplayAlwaysEnemyMilitaryShips',
+    'galaxyViewDisplayAlwaysPirates',
+] as const;
+export type GalaxyViewDisplayKey = (typeof GALAXY_VIEW_DISPLAY_KEYS)[number];
 
 const STORAGE_KEY = 'dwu-ui-settings';
 
@@ -109,6 +142,21 @@ export const DEFAULT_SETTINGS: UiSettings = {
     // [freightOverlay] begin
     freightFlowsDefault: false,
     // [freightOverlay] end
+
+    // [galaxymarkers] begin — GameOptions.cs 74-96 / Main.Part9.cs 2793-2804: all on except civilian ships.
+    galaxyViewDisplayFleets: true,
+    galaxyViewDisplayResupplyShips: true,
+    galaxyViewDisplayMilitaryShips: true,
+    galaxyViewDisplaySpacePorts: true,
+    galaxyViewDisplayOtherBases: true,
+    galaxyViewDisplayExplorationShips: true,
+    galaxyViewDisplayColonyShips: true,
+    galaxyViewDisplayConstructionShips: true,
+    galaxyViewDisplayCivilianShips: false,
+    galaxyViewDisplayAlwaysEnemyFleets: true,
+    galaxyViewDisplayAlwaysEnemyMilitaryShips: true,
+    galaxyViewDisplayAlwaysPirates: true,
+    // [galaxymarkers] end
 };
 
 /** Minimal storage shape (localStorage-compatible). */
@@ -184,6 +232,9 @@ export function loadSettings(): UiSettings {
         // [freightOverlay] begin
         if (typeof parsed.freightFlowsDefault === 'boolean') out.freightFlowsDefault = parsed.freightFlowsDefault;
         // [freightOverlay] end
+        // [galaxymarkers] begin
+        for (const k of GALAXY_VIEW_DISPLAY_KEYS) if (typeof parsed[k] === 'boolean') out[k] = parsed[k];
+        // [galaxymarkers] end
     } catch {
         // Corrupt blob: keep the defaults.
     }
