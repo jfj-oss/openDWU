@@ -151,6 +151,13 @@
     white-space: pre-line;
 }
 
+.message-conversation-price {
+    margin-top: 6px;
+    font-size: 13px;
+    font-weight: bold;
+    color: #ffd700;
+}
+
 .message-conversation-buttons {
     display: flex;
     justify-content: flex-end;

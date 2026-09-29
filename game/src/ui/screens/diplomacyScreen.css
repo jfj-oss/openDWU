@@ -347,3 +347,20 @@
 .diplomacy-race-portrait { border-radius: 3px; }
 .diplomacy-power { font-size: 11px; opacity: 0.8; margin: 0 6px; white-space: nowrap; }
 .diplomacy-list-btn { margin-left: auto; margin-right: 8px; }
+
+.diplomacy-filter-row {
+    display: flex;
+    gap: 4px;
+    margin: 0 0 4px;
+}
+
+.diplomacy-filter-select {
+    flex: 1 1 0;
+    min-width: 0;
+    background: #10151c;
+    color: inherit;
+    border: 1px solid #3a4658;
+    border-radius: 3px;
+    padding: 2px 4px;
+    font: inherit;
+}

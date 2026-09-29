@@ -18,6 +18,7 @@ import type { Camera } from './camera';
 import type { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
 import { HabitatCategoryType } from '../sim/types';
+import { SystemVisibilityStatus } from '../sim/visibility';
 import type { Habitat } from '../sim/types';
 import { moonDotPx, planetSpritePx } from './mainView';
 import { DrawKey } from './drawCache';
@@ -110,6 +111,8 @@ class EmpireTerritory {
      * geometry is zoom-independent world space and the owned-system list is collected once. */
     drawn = false;
     hasDiscs = false;
+    /** Signature of the explored owned systems the discs were last built for (see knownTerritorySystems). */
+    sig = '';
     constructor(empire: Empire, layer: Container) {
         this.empire = empire;
         this.graphics = new Graphics();
@@ -158,6 +161,18 @@ export function collectEmpireSystems(galaxy: Galaxy): EmpireSystems[] {
     return out;
 }
 
+/**
+ * Which of an empire's owned systems get a territory disc for the viewing empire. Port of EmpireTerritory.cs
+ * CalculateEmpireTerritoryGrid (417 / 428 / 437: `godMode || viewingEmpire == null ||
+ * viewingEmpire.CheckSystemExplored(colony.SystemIndex)`) and CalculateEmpireSystemTerritory (341): territory is
+ * drawn only for colonies in systems the viewer has explored, so empires whose colonies the player has never seen
+ * (unmet empires) leave no shading. `viewer === null` (god mode / reveal) shows everything.
+ */
+export function knownTerritorySystems(systems: readonly number[], viewer: Empire | null): number[] {
+    if (viewer === null) return [...systems];
+    return systems.filter((i) => viewer.visibility.checkSystemVisibilityStatus(i) >= SystemVisibilityStatus.Explored);
+}
+
 export class EmpireLayer {
     /** World-space layer: territory discs, then colony/marker rings above. */
     root = new Container();
@@ -178,6 +193,7 @@ export class EmpireLayer {
     /** Task M3: gates the territory discs only (not colony/marker rings),
      * driven by the "Empire Territory" overlay toggle in overlayLayer.ts. */
     private territoryEnabled = true;
+    private frame = 0;
 
     /** Show/hide the territory discs (overlayLayer.ts, "Empire Territory"). */
     setTerritoryEnabled(enabled: boolean): void {
@@ -222,6 +238,7 @@ export class EmpireLayer {
      * system-zoom threshold is factor < 70 (factor = 1/z). */
     update(z: number, cam: Camera): void {
         const factor = 1 / z;
+        this.frame++;
         const atSystemZoom = factor < 70;
         const tRadius = territoryRadius(this.galaxy.sectorSize);
 
@@ -234,13 +251,18 @@ export class EmpireLayer {
                 t.graphics.visible = false;
                 continue;
             }
-            if (!t.drawn) {
-                // Every owned system's disc, in the same order as before. Discs off screen draw no pixels, so
-                // drawing them all once (instead of re-culling and re-triangulating every frame) looks the same.
+            // Only explored systems get a disc (EmpireTerritory.cs CheckSystemExplored); re-checked ~twice a second
+            // and rebuilt only when the explored set changed.
+            if (!t.drawn || this.frame % 30 === 0) {
                 t.drawn = true;
                 const es = this.empireSystems.find((e) => e.empire === t.empire);
-                if (es !== undefined) {
-                    for (const sysIdx of es.systems) {
+                const known = knownTerritorySystems(es?.systems ?? [], fogOf(this.galaxy).player);
+                const sig = known.join(',');
+                if (sig !== t.sig) {
+                    t.sig = sig;
+                    t.graphics.clear();
+                    t.hasDiscs = false;
+                    for (const sysIdx of known) {
                         const star = this.galaxy.systems[sysIdx].systemStar;
                         t.graphics.circle(star.xpos, star.ypos, tRadius).fill({
                             color: this.colors[i],

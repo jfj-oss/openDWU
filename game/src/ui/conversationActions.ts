@@ -32,6 +32,7 @@ import { formatNet, tryGetText } from '../sim/textResolver';
 import { formatThousands } from '../sim/diplomacyTick';
 import { galaxyLocationKey, type ConversationRelated, type ConversationReplyPart } from '../sim/player/conversationReplies';
 import { messageGoToTarget } from './messageGoto';
+import { pirateOfferMonthlyPrice, pirateProtectionPriceText, pirateProtectionYearlySuffix } from './pirateProtectionPrice';
 import type { DialogPartType } from './messageRouting';
 
 export type ConversationEffect =
@@ -161,12 +162,24 @@ function proposalActions(message: EmpireMessage, ctx: ActionContext): Conversati
     }
 }
 
-function pirateActions(entry: { message: EmpireMessage; conversation: DialogPartType }): ConversationAction[] {
+/** The monthly price of a pirate protection offer entry (see pirateOfferMonthlyPrice). */
+export function pirateOfferCost(entry: { message: EmpireMessage; sender?: Empire | null }, ctx: Pick<ActionContext, 'player' | 'galaxy'>): number {
+    return pirateOfferMonthlyPrice(ctx.galaxy, entry.sender ?? entry.message.sender, ctx.player, entry.message.money);
+}
+
+/** "Price: 1,234 credits per month (14,808 per year)" for the offer's dialog text; '' for a free truce. */
+export function pirateOfferPriceLine(entry: { message: EmpireMessage; conversation: DialogPartType; sender?: Empire | null }, ctx: Pick<ActionContext, 'player' | 'galaxy'>): string {
+    if (entry.conversation === 'PIRATE_TRUCEPROPOSEINITIATE') return '';
+    const cost = pirateOfferCost(entry, ctx);
+    return cost > 0 ? `Price: ${pirateProtectionPriceText(cost)}` : '';
+}
+
+function pirateActions(entry: { message: EmpireMessage; conversation: DialogPartType; sender?: Empire | null }, ctx: Pick<ActionContext, 'player' | 'galaxy'>): ConversationAction[] {
     // Main.Part9.cs:604-618: a free offer is a truce, a priced one a protection agreement.
-    const cost = entry.message.money;
+    const cost = pirateOfferCost(entry, ctx);
     const truce = entry.conversation === 'PIRATE_TRUCEPROPOSEINITIATE' || cost <= 0;
     return [
-        act(truce ? 'PIRATE_TRUCEACCEPTRESPONSE' : 'PIRATE_PROTECTIONACCEPTRESPONSE', truce ? t('We accept a truce') : t('We accept your protection', formatThousands(cost)), {
+        act(truce ? 'PIRATE_TRUCEACCEPTRESPONSE' : 'PIRATE_PROTECTIONACCEPTRESPONSE', truce ? t('We accept a truce') : t('We accept your protection', formatThousands(cost)) + pirateProtectionYearlySuffix(cost), {
             kind: 'acceptPirate',
         }),
         // Main.Part8.cs:449 method_296: the advisor-queue click opens the full Diplomacy talk panel on the pirate.
@@ -217,7 +230,7 @@ export function conversationActions(entry: { message: EmpireMessage; conversatio
     if (message.messageType === EmpireMessageType.ProposeDiplomaticRelation && ctx.answerable && sender !== null) {
         out.push(...proposalActions(message, ctx));
     } else if (ctx.pirateOffer) {
-        out.push(...pirateActions(entry));
+        out.push(...pirateActions(entry, ctx));
     } else if (INFO_OFFERS[conversation] !== undefined && sender !== null) {
         const [part, key] = INFO_OFFERS[conversation]!;
         out.push(act(part, t(key, formatThousands(message.money)), { kind: 'reply', part, related: relatedOf(subject), cost: message.money }), act('Exit', t('No thanks'), { kind: 'close' }));

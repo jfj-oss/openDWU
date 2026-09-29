@@ -142,3 +142,24 @@ describe('collectEmpireSystems (task M2e3)', () => {
         expect(new Set(names).size).toBe(names.length);
     }, 60000);
 });
+// Empire Territory shows only systems the viewer has explored (EmpireTerritory.cs CalculateEmpireTerritoryGrid 417 / 428 /
+// 437 and CalculateEmpireSystemTerritory 341: `godMode || viewingEmpire.CheckSystemExplored(...)`), so unmet empires whose
+// colonies the player has never seen leave no shading.
+import { knownTerritorySystems } from '../src/render/empireLayer';
+import { SystemVisibilityStatus } from '../src/sim/visibility';
+
+describe('knownTerritorySystems (EmpireTerritory.cs CheckSystemExplored)', () => {
+    const viewer = (status: Record<number, SystemVisibilityStatus>): Empire =>
+        ({ visibility: { checkSystemVisibilityStatus: (i: number) => status[i] ?? SystemVisibilityStatus.Unexplored } }) as unknown as Empire;
+
+    it('keeps only explored / visible systems', () => {
+        const v = viewer({ 1: SystemVisibilityStatus.Explored, 2: SystemVisibilityStatus.Visible, 3: SystemVisibilityStatus.Unexplored });
+        expect(knownTerritorySystems([1, 2, 3, 4], v)).toEqual([1, 2]);
+    });
+    it('an empire whose systems are all unexplored has no territory at all', () => {
+        expect(knownTerritorySystems([5, 6, 7], viewer({}))).toEqual([]);
+    });
+    it('god mode / no viewer shows everything', () => {
+        expect(knownTerritorySystems([5, 6, 7], null)).toEqual([5, 6, 7]);
+    });
+});

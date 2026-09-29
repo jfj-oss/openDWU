@@ -24,9 +24,11 @@
 // negotiation (ProposalResult.trade) the screen's trade panel works on.
 // Pirate player (Main.Part9.cs:175-190): propose / cancel pirate protection (PIRATE_PROTECTIONPROPOSE_OFFER,
 // CANCELPIRATEPROTECTION; Main.Part10.cs:5088-5131) and the trade negotiation.
-// TODO(port): a non-pirate player speaking with a pirate faction (Main.Part9.cs:191-206: PIRATE_TRUCEPROPOSE /
-//   PIRATE_PROTECTIONPROPOSE, CANCELPIRATEPROTECTION, PIRATE_BUYINFO and their Main.Part9.cs:584-667 follow-ups) —
-//   no options are offered there yet.
+// A non-pirate player speaking with a (non-super) pirate faction (Main.Part9.cs:191-206, follow-ups 584-611 / 5132-5166):
+// "Request Pirate Protection" (PIRATE_PROTECTIONPROPOSE: the pirate names the monthly price, CalculatePirateProtectionPricePerMonth;
+// follow-ups accept (PIRATE_PROTECTIONACCEPTRESPONSE, or PIRATE_TRUCEACCEPTRESPONSE when free) / "No thanks") or "Cancel Pirate
+// Protection Option" (CANCELPIRATEPROTECTION). Super pirates (PirateEmpireSuperPirates, `flag2`) offer nothing.
+// TODO(port): PIRATE_BUYINFO ("Buy information", Main.Part9.cs:207 / Part10 GenerateSaleableInfoForEmpire) — not offered yet.
 // TODO(port): the automation message box "Treaty Negotiation" (Main.Part10.cs:4150 GenerateAutomationMessageBox) is not
 //   shown; the caller answers it with `SubmitProposalOptions.disableTreatyAutomation`.
 
@@ -73,7 +75,8 @@ import { BuiltObjectSubRole } from '../builtObjectTypes';
 import { BuiltObjectMissionType, builtObjectMission } from '../missions/mission';
 import { beginTradeNegotiation, offerDealOptions, submitOfferDeal, type TradeNegotiation, type TradeNegotiationKind } from './tradeNegotiation';
 import { PirateRelationEvaluationType, PirateRelationType, changePirateEvaluation, changePirateRelation, obtainPirateRelation } from '../pirateRelations';
-import { acceptPirateProtection, calculatePirateProtectionPricePerMonth } from '../pirates/pirateRelationsAI';
+import { acceptPirateProtection, calculatePirateProtectionPricePerMonth, cancelAttacksAgainstEmpire } from '../pirates/pirateRelationsAI';
+import { EmpireActivityType } from '../pirates/empireActivity';
 import { determineDesirePirateProtection } from '../pirates/pirateAI';
 import { price0 } from '../pirates/missionsMarket';
 import { scenarioFlag } from '../scenario/state';
@@ -173,8 +176,11 @@ function canSpeak(galaxy: Galaxy, player: Empire, other: Empire): boolean {
         const pirateRelation = player.pirateRelations.getRelationByOtherEmpire(other);
         return met || (pirateRelation !== null && pirateRelation.type !== PirateRelationType.NotMet);
     }
-    // TODO(port): a non-pirate player speaking with a pirate faction (Main.Part9.cs:191-206).
-    if (other.pirateEmpireBaseHabitat !== null) return false;
+    if (other.pirateEmpireBaseHabitat !== null) {
+        // DiplomaticRelationListView.cs:164-176: a pirate faction is listed once the player's PirateRelation with it is not NotMet.
+        const pirateRelation = player.pirateRelations.getRelationByOtherEmpire(other);
+        return pirateRelation !== null && pirateRelation.type !== PirateRelationType.NotMet;
+    }
     return met;
 }
 
@@ -203,6 +209,38 @@ function piratePlayerOptions(galaxy: Galaxy, player: Empire, other: Empire): Pro
 }
 
 /**
+ * Main.Part9.cs:191-206 (`flag && !flag2 && empire != null`): a non-pirate player with a pirate faction (not the super
+ * pirates): request protection (or, when it is in force, cancel it). PIRATE_BUYINFO is a TODO(port) (see the header).
+ */
+function pirateFactionOptions(galaxy: Galaxy, player: Empire, other: Empire): ProposalOption[] {
+    void galaxy;
+    if (other.pirateEmpireSuperPirates) return [];
+    const type = player.pirateRelations.getRelationByOtherEmpire(other)?.type ?? PirateRelationType.None;
+    if (type === PirateRelationType.None) return [option('PIRATE_PROTECTIONPROPOSE', 'PIRATE_PROTECTIONPROPOSE', 'GREETING', 'Request Pirate Protection')];
+    return [option('CANCELPIRATEPROTECTION', 'CANCELPIRATEPROTECTION', 'GREETING', 'Cancel Pirate Protection Option')];
+}
+
+/**
+ * Main.Part9.cs:584-611 PIRATE_PROTECTIONPROPOSE / PIRATE_TRUCEPROPOSE: the pirate's reply options — a free arrangement is
+ * a truce, a priced one a protection agreement at CalculatePirateProtectionPricePerMonth (per month).
+ */
+function pirateProposeFollowUps(galaxy: Galaxy, pirate: Empire, player: Empire): ProposalOption[] {
+    const cost = calculatePirateProtectionPricePerMonth(galaxy, pirate, player).price;
+    if (cost <= 0.0) {
+        return [
+            option('PIRATE_TRUCEACCEPTRESPONSE', 'PIRATE_TRUCEACCEPTRESPONSE', 'FOLLOW_UP', 'We accept a truce', null, cost),
+            option('PIRATE_TRUCEREJECTRESPONSE', 'PIRATE_TRUCEREJECTRESPONSE', 'FOLLOW_UP', 'No thanks'),
+        ];
+    }
+    return [
+        option('PIRATE_PROTECTIONACCEPTRESPONSE', 'PIRATE_PROTECTIONACCEPTRESPONSE', 'FOLLOW_UP', gameText('We accept your protection PER MONTH', formatThousands(cost)), null, cost),
+        option('PIRATE_PROTECTIONREJECTRESPONSE', 'PIRATE_PROTECTIONREJECTRESPONSE', 'FOLLOW_UP', 'No thanks'),
+    ];
+}
+
+const PIRATE_REPLY_IDS: ReadonlySet<string> = new Set(['PIRATE_PROTECTIONACCEPTRESPONSE', 'PIRATE_TRUCEACCEPTRESPONSE', 'PIRATE_PROTECTIONREJECTRESPONSE', 'PIRATE_TRUCEREJECTRESPONSE']);
+
+/**
  * Port of Main.Part9.cs:46 method_238 for the greeting menu (GREETING_* case, non-pirate branch, :208-249) and its
  * TREATY_PROPOSAL (:339-455), GIFT_PROPOSE (:522-540) and WARNING (:541-558) sub-menus; a pirate player gets the
  * :175-190 branch (piratePlayerOptions). Empty when the player cannot speak with `other` (not met, inactive, or a pirate
@@ -212,6 +250,7 @@ export function listProposals(galaxy: Galaxy, player: Empire, other: Empire): Pr
     const list: ProposalOption[] = [];
     if (!canSpeak(galaxy, player, other)) return list;
     if (player.pirateEmpireBaseHabitat !== null) return piratePlayerOptions(galaxy, player, other);
+    if (other.pirateEmpireBaseHabitat !== null) return pirateFactionOptions(galaxy, player, other);
     const diplomaticRelation = obtainDiplomaticRelation(player, other);
 
     // TREATY_PROPOSAL (Main.Part9.cs:339).
@@ -469,6 +508,10 @@ export function submitProposal(
         if (!canSpeak(galaxy, player, other)) return refused('');
         if (obtainDiplomaticRelation(player, other).type !== DiplomaticRelationType.War) return refused('Not at war');
         chosen = followUpOptions('WAR_END_SUBJUGATIONDEMAND', other).find((o) => o.id === id);
+    } else if (PIRATE_REPLY_IDS.has(id)) {
+        // Follow-up of PIRATE_PROTECTIONPROPOSE (Main.Part9.cs:584-611), priced afresh from the live state.
+        if (!canSpeak(galaxy, player, other) || other.pirateEmpireBaseHabitat === null || other.pirateEmpireSuperPirates || player.pirateEmpireBaseHabitat !== null) return refused('');
+        chosen = pirateProposeFollowUps(galaxy, other, player).find((o) => o.id === id);
     } else if (id.startsWith('OFFER_DEAL_')) {
         // Follow-up of OFFER_DEAL_RESPONSE (Main.Part9.cs:273), settled at once (Main.Part10.cs:4230-4323).
         if (!canSpeak(galaxy, player, other)) return refused('');
@@ -814,6 +857,40 @@ function evaluateProposal(galaxy: Galaxy, initiator: Empire, empire: Empire, opt
             } else {
                 reply('PIRATE_PROTECTIONPROPOSE_OFFER_REJECT');
             }
+            break;
+        case 'PIRATE_PROTECTIONPROPOSE': // Main.Part9.cs:584 (the pirate names its monthly price; Main.Part10.cs default reply = the part's own text)
+            reply('PIRATE_PROTECTIONPROPOSE');
+            result.followUps = pirateProposeFollowUps(galaxy, empire, initiator);
+            break;
+        case 'PIRATE_PROTECTIONACCEPTRESPONSE': // Main.Part10.cs:5132
+        case 'PIRATE_TRUCEACCEPTRESPONSE': {
+            if (obtainPirateRelation(empire, initiator).type === PirateRelationType.Protection) {
+                reply('PIRATE_PROTECTIONALREADYPAID');
+                break;
+            }
+            const cost = option0.cost;
+            if (cost !== 0.0 && initiator.stateMoney < cost) {
+                reply('INFO_NOFUNDS');
+                break;
+            }
+            changePirateRelation(empire, initiator, PirateRelationType.Protection, now, cost);
+            const attackIdx = empire.pirateMissions.indexOfTarget(initiator, EmpireActivityType.Attack);
+            if (attackIdx >= 0) empire.pirateMissions.items.splice(attackIdx, 1);
+            if (cost > 0.0) {
+                initiator.stateMoney -= cost;
+                empire.stateMoney += cost;
+                empire.pirateEconomy.performIncome(cost, PirateIncomeType.ProtectionAgreement, now);
+                empire.counters.pirateProtectionIncome += cost;
+            }
+            cancelAttacksAgainstEmpire(galaxy, empire, initiator);
+            cancelAttacksAgainstEmpire(galaxy, initiator, empire);
+            reply(option0.part);
+            result.accepted = true;
+            break;
+        }
+        case 'PIRATE_PROTECTIONREJECTRESPONSE': // Main.Part10.cs (the reject replies are the dialog text only)
+        case 'PIRATE_TRUCEREJECTRESPONSE':
+            reply(option0.part);
             break;
         case 'CANCELPIRATEPROTECTION': { // Main.Part10.cs:5103
             reply(num === -1 ? 'CANCELTREATY_RESPONSE_ANGRY' : num === 0 ? 'CANCELTREATY_RESPONSE_NEUTRAL' : 'CANCELTREATY_RESPONSE_FRIENDLY');
