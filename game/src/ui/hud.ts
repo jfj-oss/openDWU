@@ -21,7 +21,7 @@ import { BuiltObjectRole } from '../sim/data/designSpecifications';
 import { BuiltObjectMissionType, builtObjectMission, type BuiltObjectMission } from '../sim/missions/mission';
 // [15c]
 import type { ShipGroup } from '../sim/fleets/shipGroup';
-import { fleetCycleList, fleetName, fleetSystemName, shipGroupSelectionRows, toggleFleetsList } from './screens/fleetsList';
+import { fleetCycleList, fleetName, fleetShipAction, fleetSystemName, shipGroupSelectionRows, toggleFleetsList } from './screens/fleetsList';
 // [/15c]
 import { SystemVisibilityStatus } from '../sim/visibility';
 import { flagShapeUrl } from '../sim/startGameOptions';
@@ -67,7 +67,7 @@ import { toggleEmpirePolicy } from './screens/empirePolicy';
 // [intel] begin
 import { toggleIntelligenceScreen } from './screens/intelligence';
 // [intel] end
-import { createSelectionActionBar, refreshSelectionActionBar } from './orderMenu'; // [ordermenu]
+import { createSelectionActionBar, performAction, refreshSelectionActionBar } from './orderMenu'; // [ordermenu]
 import { createCharterButton } from './screens/charters'; // [charters]
 import { setTextIfChanged } from '../render/drawCache';
 import { creatureSelectionRows } from '../render/creatureLayer';
@@ -365,6 +365,39 @@ export function selectHabitat(h: Habitat, moveView = true): void {
     habitatSelectHandler?.(h, moveView);
 }
 // [/16a]
+
+/** F11 / the top-bar Ships and Bases button (Main.Part9.cs tbtnBuiltObjects_Click): toggle the Ships and Bases window. */
+export function toggleShipsAndBases(): void {
+    const src = getEmpireSummarySource();
+    if (!src) return;
+    const sel = getSelection();
+    toggleShipsAndBasesList({
+        empire: src.empire,
+        selected: sel ? (sel.builtObject ?? sel.habitat) : null,
+        // Select / Go to / double click select the ship/base (or colony) and move the view to it.
+        onSelect: (bo) => selectStellarObject(bo, false),
+        onZoomTo: (bo) => selectStellarObject(bo, true),
+        // View Fleet (Main.Part6.cs btnBuiltObjectViewShipGroup_Click): the Fleets window on that fleet.
+        onViewFleet: (sg) => toggleFleets(sg),
+    });
+}
+
+/** F12 / the top-bar Fleets button (Main.Part9.cs tbtnShipGroups_Click), optionally on one fleet (View Fleet). */
+export function toggleFleets(selected?: ShipGroup): void {
+    const src = getEmpireSummarySource();
+    if (!src) return;
+    toggleFleetsList({
+        empire: src.empire,
+        selected,
+        onSelect: (sg) => selectShipGroup(sg, true),
+        // Home Base / Attack Point (Main.Part7.cs SetFleetHomeBase / SetFleetAttackPoint): the fleet is selected and the
+        // next map click picks the point.
+        onPickPoint: (sg, mode) => {
+            selectShipGroup(sg, false);
+            void performAction(fleetShipAction(mode, sg), false);
+        },
+    });
+}
 
 /** Build the HUD overlay and append it to document.body. */
 export function createHud(wiring: HudWiring = {}): HudRefs {
@@ -779,15 +812,7 @@ function buildTopBarButton(name: string, wiring: HudWiring): HTMLElement {
             toggleMessageHistory();
         } else if (screen === 'shipsAndBases') {
             // Main.Part9.cs tbtnBuiltObjects_Click: toggle the Ships and Bases list.
-            const src = getEmpireSummarySource();
-            if (!src) return;
-            const sel = getSelection();
-            toggleShipsAndBasesList({
-                empire: src.empire,
-                selected: sel ? (sel.builtObject ?? sel.habitat) : null,
-                // A row selects the ship/base and moves the view to it.
-                onZoomTo: (bo) => selectStellarObject(bo, true),
-            });
+            toggleShipsAndBases();
         } else {
             // [16c] btnBuildOrder → Build Order (Main.Part2.cs:1196 btnBuildOrder_Click);
             // tbtnConstructionYards → Construction Yards (Main.Part6.cs:3243 tbtnConstructionYards_Click).
@@ -804,8 +829,7 @@ function buildTopBarButton(name: string, wiring: HudWiring): HTMLElement {
             // [/16c]
             // [15c] tbtnShipGroups → Fleets list (Main.Part9.cs:3153 tbtnShipGroups_Click).
             if (name === 'tbtnShipGroups') {
-                const src = getEmpireSummarySource();
-                if (src) toggleFleetsList({ empire: src.empire, onSelect: (sg) => selectShipGroup(sg, true) });
+                toggleFleets();
                 return;
             }
             // [/15c]
