@@ -19,6 +19,8 @@ import type { Galaxy } from '../galaxy';
 import { TroopType, type Troop, TroopList } from '../cargo';
 import { CharacterRole, countCharactersByRole, stellarObjectCharacters, type Character } from '../characters';
 import { EmpireMessageType, sendMessageToEmpire } from '../messages';
+import { gameText } from '../colonyTick';
+import { calculatePirateProtectionPricePerMonth } from '../pirates/pirateRelationsAI';
 import { PirateRelationType, changePirateRelation, obtainPirateRelation } from '../pirateRelations';
 import { strategicValue } from '../territory';
 import { baconMovementSettings, doMovement, withinFuelRange } from '../movement';
@@ -248,8 +250,9 @@ export const cmdAttackBombardCaptureRaid: CommandHandler = (ctx) => {
         }
         if (empire !== null && !empire.pirateExtortionOfferMade && bo.empire !== null && bo.empire.pirateEmpireBaseHabitat !== null) {
             if (empire === galaxy.playerEmpire && empire.pirateEmpireBaseHabitat === null) {
-                // TODO(port) M9: TextResolver "Pirate Protection Extortion".
-                const text = 'Pirate Protection Extortion';
+                // TextResolver "Pirate Protection Extortion" (GameText.txt 5186). Its {0} is the monthly fee: the C# passes the
+                // unformatted text, so fill it with the protection price the pirates would ask (the offer path's figure).
+                const text = gameText('Pirate Protection Extortion', Math.trunc(calculatePirateProtectionPricePerMonth(galaxy, bo.empire, empire).price));
                 sendMessageToEmpire(bo.empire, empire, EmpireMessageType.PirateOfferProtection, null, text, { x: 0, y: 0 }, 'extort');
             }
             empire.pirateExtortionOfferMade = true;
