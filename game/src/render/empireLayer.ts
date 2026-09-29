@@ -281,9 +281,9 @@ export class EmpireLayer {
             const r = colonyRingRadius(drawnPx, factor) / z;
             const color = colonyRingColor(h, this.galaxy);
             // Geometry around (0, 0), rebuilt only when radius, width or colour changed; moved to the body each frame.
-            if (cr.key.changed(r, 2 / z, color)) {
+            if (cr.key.changed(r, 1 / z, color)) {
                 cr.ring.clear();
-                cr.ring.circle(0, 0, r).stroke({ width: 2 / z, color, alpha: 1 });
+                cr.ring.circle(0, 0, r).stroke({ width: 1 / z, color, alpha: 0.4 });
             }
             cr.ring.position.set(hx, hy);
             cr.ring.visible = true;
