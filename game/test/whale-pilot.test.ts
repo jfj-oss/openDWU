@@ -1,7 +1,7 @@
 // Art pilot (src/render/whalePilotLayer.ts): the creature size / frame conventions it reuses from the original and
 // the palette statistics it prints.
 import { describe, expect, it } from 'vitest';
-import { artStats, creatureDrawPx, creatureFrameIndex, creatureZoomFactor, tintMatrix } from '../src/render/whalePilotLayer';
+import { artStats, creatureDrawPx, creatureFrameIndex, creatureZoomFactor, pilotActorPlacement, tintMatrix } from '../src/render/whalePilotLayer';
 
 describe('whale pilot', () => {
     it('CalculateCreatureZoomFactor: divisor f up to 3, then max(3, f / 2) with the 240 px cap / f', () => {
@@ -42,5 +42,18 @@ describe('whale pilot', () => {
         const out = [0, 1, 2].map((c) => (m[c * 5] + m[c * 5 + 1] + m[c * 5 + 2]) * g);
         expect(0.2126 * out[0] + 0.7152 * out[1] + 0.0722 * out[2]).toBeCloseTo(0.5, 6);
         expect(out[2]).toBeGreaterThan(out[0]);
+    });
+});
+
+describe('whale pilot placement', () => {
+    it('actors circle an anchor offset from the drawn home planet, so they ride along with its orbit', () => {
+        const orbit = { ox: 700, oy: -300, radius: 90, omega: -0.012, angle0: Math.PI / 2 };
+        const a = pilotActorPlacement(1000, 2000, orbit, 0, { x: 0, y: 0, heading: 0 });
+        expect(a.x).toBeCloseTo(1700, 9);
+        expect(a.y).toBeCloseTo(1790, 9);
+        expect(a.heading).toBeCloseTo(0, 12);
+        const moved = pilotActorPlacement(1050, 2020, orbit, 0, { x: 0, y: 0, heading: 0 });
+        expect(moved.x - a.x).toBeCloseTo(50, 9);
+        expect(moved.y - a.y).toBeCloseTo(20, 9);
     });
 });

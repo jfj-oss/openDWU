@@ -79,7 +79,7 @@ import { freightTooltipText } from '../ui/freightText'; // [freightOverlay]
 import { wreckTooltipText } from '../ui/scenario/wreckageUi'; // [wreckage]
 import type { FreightOverlay } from './freightOverlay'; // [freightOverlay]
 import { boundsOnScreen, DrawKey } from './drawCache';
-import { MotionInterpolator, createRenderTime, habitatTouchClampSeconds, renderOrbitAngle, type RenderTime } from './renderInterp';
+import { MotionInterpolator, createRenderTime, drawnBuiltObjectPos, habitatTouchClampSeconds, renderOrbitAngle, type RenderTime } from './renderInterp';
 
 export function fadeIn(v: number, a: number, b: number): number {
     if (v <= a) {
@@ -262,21 +262,25 @@ export function habitatLabelColor(h: Habitat, independent: Empire | null): numbe
 // functions the renderer uses, incl. the min-pixel sizes). The point belongs
 // to an object when |dx| <= size/2 && |dy| <= size/2; among several matches
 // the smaller object wins (a moon in front of its planet, a planet in front
-// of the star). Returns null for empty space.
+// of the star). Returns null for empty space. The square is centred where the
+// object is drawn: `posOf` (the render-interpolated orbit position,
+// renderInterp.ts renderHabitatPos); default its committed xpos / ypos.
 export function hitTestHabitats(
     list: Habitat[],
     x: number,
     y: number,
     sizeFn: (h: Habitat, zoom: number) => number,
     zoom: number,
+    posOf: (h: Habitat) => { x: number; y: number } = (h) => ({ x: h.xpos, y: h.ypos }),
 ): Habitat | null {
     let best: Habitat | null = null;
     let bestSize = Infinity;
     for (const h of list) {
         const s = sizeFn(h, zoom);
         if (s <= 0) continue;
-        const dx = Math.abs(x - h.xpos);
-        const dy = Math.abs(y - h.ypos);
+        const p = posOf(h);
+        const dx = Math.abs(x - p.x);
+        const dy = Math.abs(y - p.y);
         if (dx > s / 2 || dy > s / 2) continue;
         if (s < bestSize) {
             bestSize = s;
@@ -1126,6 +1130,8 @@ export class MainView {
         const m = this.minZoom;
         const factor = 1 / z;
         const atSystemZoom = factor < 70; // original's system-zoom threshold
+        // Hit the planets / moons where they are drawn (render-interpolated orbit at the last frame's render time).
+        const drawnAt = (h: Habitat): { x: number; y: number } => this.motion.habitatPos(h);
         for (const sv of this.systems) {
             const star = sv.system.systemStar;
             const s = cam.worldToScreen(star.xpos, star.ypos);
@@ -1139,9 +1145,9 @@ export class MainView {
                         bodies.push(moon.habitat);
                     }
                 }
-                let hit = hitTestHabitats(bodies, w.x, w.y, (h, zz) => this.drawnSize(h, zz), z);
+                let hit = hitTestHabitats(bodies, w.x, w.y, (h, zz) => this.drawnSize(h, zz), z, drawnAt);
                 if (hit === null) {
-                    hit = hitTestHabitats([star], w.x, w.y, (h, zz) => this.drawnSize(h, zz), z);
+                    hit = hitTestHabitats([star], w.x, w.y, (h, zz) => this.drawnSize(h, zz), z, drawnAt);
                 }
                 if (hit !== null) {
                     return hit;
@@ -1393,8 +1399,9 @@ export class MainView {
         this.overlayLayer = new OverlayLayer(this.galaxy, this.world, this.empireLayer, this.overlays);
         this.galaxyMarkers = new GalaxyMarkerLayer(this.galaxy, this.world, this.overlays, this.empireLayer.root); // [galaxymarkers]
         this.galaxyMarkers.shipPxOf = (bo) => this.builtObjectLayer.drawnSizePx(bo); // [galaxymarkers]
-        // [galaxymarkers] symbols follow the render-interpolated ship when BuiltObjectLayer drew it this frame.
-        this.galaxyMarkers.positionOf = (bo) => this.motion.drawn(bo) ?? { x: bo.xpos, y: bo.ypos };
+        // [galaxymarkers] symbols (and so their pick boxes) follow the render-interpolated ship: BuiltObjectLayer's
+        // sample this frame, else (galaxy / sector zoom, where the ship art is not drawn) a sample taken here.
+        this.galaxyMarkers.positionOf = (bo) => drawnBuiltObjectPos(this.motion, bo);
         // Task 13a: ships/bases/pirates/traders on top of all map layers.
         this.builtObjectLayer = new BuiltObjectLayer(this.galaxy, this.world, this.store, this.overlays);
         // [ambientfx] begin
@@ -1435,6 +1442,7 @@ export class MainView {
         // [whalepilot] begin — no-op unless the URL carries ?whalePilot=1
         if (typeof window !== 'undefined' && whalePilotEnabled(window.location.search)) {
             this.whalePilot = new WhalePilotLayer(this.galaxy, this.world, this.camera, window.location.search, this.store.dwuPresent);
+            this.whalePilot.motion = this.motion;
         }
         // [whalepilot] end
 
@@ -1456,13 +1464,15 @@ export class MainView {
             rt.stepGameMs = renderTime.stepGameMs;
             rt.renderNowMs = renderTime.renderNowMs;
             rt.stepSerial = renderTime.stepSerial;
+            rt.simNowMs = renderTime.simNowMs;
         } else {
             rt.alpha = 0;
             rt.stepGameMs = 0;
             rt.renderNowMs = this.galaxy.nowMs;
             rt.stepSerial = this.galaxy.scheduler?.frames ?? 0;
+            rt.simNowMs = this.galaxy.nowMs;
         }
-        this.motion.begin(rt, habitatTouchClampSeconds(this.galaxy.habitats.length));
+        this.motion.begin(rt, habitatTouchClampSeconds(this.galaxy.habitats.length), this.galaxy.builtObjects.length);
 
         // Frame delta for the animated star discs/corona (task 02c2).
         const nowMs = performance.now();

@@ -398,3 +398,26 @@ describe('Galaxy View - Ship Display options (GameOptions.GalaxyViewDisplay*, me
         expect(galaxyViewFleetShown(off, false, 1000)).toBe(true);
     });
 });
+
+import { MotionInterpolator as GmMotion, createRenderTime as gmRenderTime, drawnBuiltObjectPos as gmDrawnPos } from '../src/render/renderInterp';
+
+describe('galaxy-zoom symbols pick where they are drawn (render interpolation)', () => {
+    it('a symbol recorded at the interpolated ship position is hit there, not at the committed position', () => {
+        const ship = { xpos: 0, ypos: 0, heading: 0, topSpeed: 600, warpSpeed: 0, currentSpeed: 0, parentHabitat: null, parentOffsetX: -2000000001.0, parentOffsetY: -2000000001.0 };
+        const m = new GmMotion();
+        const rt = gmRenderTime();
+        rt.stepGameMs = 1000 / 60;
+        m.begin(rt, 10);
+        gmDrawnPos(m, ship); // first sight at galaxy zoom (the ship layer is off): sampled by the marker layer
+        ship.xpos = 30;
+        rt.stepSerial = 1;
+        rt.alpha = 0.5;
+        m.begin(rt, 10);
+        const p = gmDrawnPos(m, ship);
+        expect(p.x).toBeCloseTo(15, 12);
+        const z = 1; // 1 px = 1 world unit: half 6 + 2 px slop = 8 units
+        const drawn: DrawnSymbol[] = [{ bo: ship as unknown as BuiltObject, group: null, x: p.x, y: p.y, halfPx: 6 }];
+        expect(pickDrawnSymbol(drawn, 15, 0, z)?.bo).toBe(ship);
+        expect(pickDrawnSymbol(drawn, 30, 0, z)).toBeNull();
+    });
+});

@@ -34,6 +34,7 @@ import {
     flowArcsFor,
     flowColor,
     flowWidthPx,
+    freightLeader,
     hitFlowArc,
     hubDiscsFor,
     hubRadiusPx,
@@ -296,5 +297,15 @@ describe('19e-9 overlay layout helpers', () => {
         const discs = hubDiscsFor([{ port: {} as never, owner: empB, income: 1600, x: 5, y: 6 }], 1, cam);
         expect(discs[0].color).toBe(0x00ff00);
         expect(discs[0].r).toBe(10);
+    });
+});
+
+describe('freightLeader (in-flight leader between drawn positions)', () => {
+    it('runs from the drawn freighter towards the drawn destination, at most 300 px, none under 8 px', () => {
+        const z = 0.1; // 300 px = 3000 world units
+        expect(freightLeader(100, 0, 1100, 0, z)).toEqual({ x1: 100, y1: 0, x2: 1100, y2: 0 });
+        const long = freightLeader(0, 0, 0, 10_000, z)!;
+        expect(long.y2).toBeCloseTo(3000, 9);
+        expect(freightLeader(0, 0, 50, 0, z)).toBeNull();
     });
 });

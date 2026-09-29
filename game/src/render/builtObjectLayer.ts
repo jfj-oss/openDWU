@@ -316,10 +316,21 @@ export function builtObjectHiddenFromPick(
     return true;
 }
 
+/** Where a built object is drawn, for picking (the render-interpolated position; renderInterp.ts). Default: its sim
+ * position. The returned point may be scratch: read it before the next call. */
+export type DrawnPosFn = (bo: BuiltObject) => { x: number; y: number };
+const simPos = { x: 0, y: 0 };
+const simPosOf: DrawnPosFn = (bo) => {
+    simPos.x = bo.xpos;
+    simPos.y = bo.ypos;
+    return simPos;
+};
+
 /**
  * Task 13d (Main.Part11.cs method_145, f <= 100 branch): the smallest-size
  * built object whose drawn rect (drawn px times f world units, padded by
- * trunc(f * 1.3) screen px) contains the world point.
+ * trunc(f * 1.3) screen px) contains the world point. The rect is centred where
+ * the object is drawn (`posOf`).
  */
 export function pickBuiltObjectBySize(
     list: readonly BuiltObject[],
@@ -327,6 +338,7 @@ export function pickBuiltObjectBySize(
     wy: number,
     f: number,
     sizePx: (bo: BuiltObject) => number,
+    posOf: DrawnPosFn = simPosOf,
 ): BuiltObject | null {
     const x = Math.trunc(wx);
     const y = Math.trunc(wy);
@@ -338,8 +350,9 @@ export function pickBuiltObjectBySize(
         if (px <= 0) continue;
         const w = Math.trunc(px * f);
         const half = Math.trunc(w / 2);
-        const cx = Math.trunc(bo.xpos);
-        const cy = Math.trunc(bo.ypos);
+        const p = posOf(bo);
+        const cx = Math.trunc(p.x);
+        const cy = Math.trunc(p.y);
         if (x >= cx - half - pad && x <= cx + half + pad && y >= cy - half - pad && y <= cy + half + pad) {
             if (bo.size < bestSize) {
                 best = bo;
@@ -353,7 +366,8 @@ export function pickBuiltObjectBySize(
 /**
  * Task 13d (Main.Part11.cs method_145, f > 100 branch): the nearest
  * non-hidden built object within builtObjectPickRadiusPx(f) / 1.4 world
- * units of the point. Ties go to the first object in the list.
+ * units of the point, measured from where it is drawn (`posOf`). Ties go to
+ * the first object in the list.
  */
 export function pickNearestBuiltObject(
     list: readonly BuiltObject[],
@@ -361,12 +375,14 @@ export function pickNearestBuiltObject(
     wy: number,
     f: number,
     hidden: (bo: BuiltObject) => boolean,
+    posOf: DrawnPosFn = simPosOf,
 ): BuiltObject | null {
     let best: BuiltObject | null = null;
     let bestDist = Infinity;
     for (const bo of list) {
         if (hidden(bo)) continue;
-        const d = Math.hypot(bo.xpos - wx, bo.ypos - wy);
+        const p = posOf(bo);
+        const d = Math.hypot(p.x - wx, p.y - wy);
         if (d < bestDist) {
             bestDist = d;
             best = bo;
@@ -637,13 +653,21 @@ export class BuiltObjectLayer {
         // ships are not drawn at f >= 500 (DrawShipSymbolXna not ported), so they are not pickable there
         if (f >= BUILT_OBJECT_MAX_FACTOR) return null;
         const list = this.galaxy.builtObjects.filter((b): b is BuiltObject => b !== null && !b.hasBeenDestroyed);
+        // Hit where the ship was drawn at the last update (render-interpolated), not at its committed sim position.
+        const motion = this.motion;
+        const posOf: DrawnPosFn = motion !== null ? (b) => motion.positionOf(b) : simPosOf;
         if (f <= BUILT_OBJECT_PICK_SYSTEM_MAX_FACTOR) {
-            return pickBuiltObjectBySize(list, wx, wy, f, (b) => this.drawnSizePx(b));
+            return pickBuiltObjectBySize(list, wx, wy, f, (b) => this.drawnSizePx(b), posOf);
         }
         if (player === null) return null;
         const war = warEmpires(player.diplomaticRelations);
-        return pickNearestBuiltObject(list, wx, wy, f, (b) =>
-            builtObjectHiddenFromPick(b, this.galaxy.systems, this.galaxy.pirateEmpires, war),
+        return pickNearestBuiltObject(
+            list,
+            wx,
+            wy,
+            f,
+            (b) => builtObjectHiddenFromPick(b, this.galaxy.systems, this.galaxy.pirateEmpires, war),
+            posOf,
         );
     }
 }

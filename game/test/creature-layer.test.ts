@@ -143,6 +143,13 @@ describe('creature pick (Main.Part11.cs method_145, f <= 100)', () => {
         expect(pickCreature(list, 1300, 1000, 1, content, () => true)).toBeNull();
     });
 
+    it('hits the creature where it is drawn (render-interpolated), not at its sim position', () => {
+        const c = fakeCreature({ size: 304, xpos: 1000, ypos: 1000 }); // 108 wide at f = 1
+        const posOf = (): { x: number; y: number } => ({ x: 1300, y: 1000 });
+        expect(pickCreature([c], 1300, 1000, 1, content, () => true, posOf)).toBe(c);
+        expect(pickCreature([c], 1000, 1000, 1, content, () => true, posOf)).toBeNull();
+    });
+
     it('skips creatures the player cannot see', () => {
         const c = fakeCreature({ xpos: 0, ypos: 0 });
         expect(pickCreature([c], 0, 0, 1, content, () => false)).toBeNull();

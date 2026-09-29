@@ -387,6 +387,7 @@ export class OverlayLayer {
         this.updateGroup(this.scenicLocations, atSystemZoom && this.state.scenicLocations, z, cam);
         this.updateGroup(this.researchLocations, atSystemZoom && this.state.researchLocations, z, cam);
         this.updateTravelVectors(z, cam);
+        this.freight.motion = this.motion; // [freightOverlay] leaders follow the drawn freighters
         this.freight.update(z, cam); // [freightOverlay]
         this.updateThreats(z);
         this.updateScenarioMarkers(z);

@@ -25,8 +25,10 @@ import {
     shipZoomFactor,
     tractorStrikeVisible,
     viewBounds,
+    fighterWeaponDrawCommand,
     weaponDrawCommand,
     weaponFadeAlpha,
+    type FighterWeaponLike,
     type WeaponLike,
 } from '../src/render/effectsLayer';
 import { AnimationPlayer, FrameSet, SpritePool, animationFrameIndex, loopFrameIndex } from '../src/render/fxCommon';
@@ -34,6 +36,7 @@ import type { AssetStore } from '../src/render/assets';
 import { ComponentType } from '../src/sim/data/components';
 import { Habitat, HabitatCategoryType, HabitatType } from '../src/sim/types';
 import { MIN_TIME } from '../src/sim/tick/simTime';
+import { ComponentCategoryType } from '../src/sim/data/policies';
 
 function weapon(type: ComponentType, over: Partial<WeaponLike> & { special?: number; range?: number; rawDamage?: number; bombardDamage?: number; damageLoss?: number } = {}): WeaponLike {
     return {
@@ -339,5 +342,31 @@ describe('releaseStaleSprites (builtObjectLayer: destroyed / removed ships drop 
         expect(released.sort()).toEqual(['destroyed', 'removed']);
         expect([...sprites.keys()]).toEqual(['alive']);
         expect(releaseStaleSprites(sprites, new Set(['alive']), () => {})).toBe(0);
+    });
+});
+
+describe('shots drawn at their render-interpolated position (renderInterp.ts sampleShot)', () => {
+    const out = newWeaponDraw();
+    it('projectiles and bolts are placed / turned by the shot sample, not the committed weapon record', () => {
+        const w = weapon(ComponentType.WeaponMissile, { x: 100, y: 0, heading: 0.5 });
+        expect(weaponDrawCommand(w, origin, 1, 0, out, { x: 90, y: 5, heading: 0.4 })).toBe(WeaponDrawKind.Projectile);
+        expect([out.x, out.y, out.rotation]).toEqual([90, 5, 0.4]);
+        const b = weapon(ComponentType.WeaponBeam, { x: 100, y: 0, heading: 0.5 });
+        weaponDrawCommand(b, origin, 1, 0, out, { x: 80, y: 0, heading: 0.3 });
+        expect([out.x, out.y, out.rotation]).toEqual([80, 0, 0.3]);
+        // Default: the weapon record itself.
+        weaponDrawCommand(b, origin, 1, 0, out);
+        expect([out.x, out.y]).toEqual([100, 0]);
+    });
+    it('a stretched beam ends on the drawn target', () => {
+        const w = weapon(ComponentType.WeaponPhaser, { target: { xpos: 300, ypos: 400 }, range: 1000 });
+        weaponDrawCommand(w, origin, 1, 0, out, w, { xpos: 400, ypos: 300 });
+        expect(out.alongPx).toBeCloseTo(500, 9);
+        expect(out.rotation).toBeCloseTo(Math.atan2(300, 400), 12);
+    });
+    it('fighter shots likewise', () => {
+        const fw: FighterWeaponLike = { distanceTravelled: 10, power: 10, heading: 1, x: 50, y: 0, lastFired: 0, range: 500, rawDamage: 16, category: ComponentCategoryType.WeaponBeam, type: ComponentType.WeaponBeam };
+        fighterWeaponDrawCommand(fw, origin, 0, 1, 0, out, { x: 45, y: 1, heading: 0.9 });
+        expect([out.x, out.y, out.rotation]).toEqual([45, 1, 0.9]);
     });
 });

@@ -232,7 +232,8 @@ export function creaturePickWorldSize(contentPixels: number, size: number, f: nu
 
 /**
  * Port of Main.Part11.cs 1527-1548 (method_145, f <= 100): the smallest creature whose pick rect (padded by
- * trunc(f × 1.3)) contains the world point and that `visible` allows. Ties keep the first one.
+ * trunc(f × 1.3)) contains the world point and that `visible` allows. Ties keep the first one. The rect is centred
+ * where the creature is drawn (`posOf`: the render-interpolated position; default its sim position).
  */
 export function pickCreature(
     list: readonly (Creature | null)[],
@@ -241,6 +242,7 @@ export function pickCreature(
     f: number,
     contentPixels: (c: Creature) => number,
     visible: (c: Creature) => boolean,
+    posOf: (c: Creature) => { x: number; y: number } = (c) => ({ x: c.xpos, y: c.ypos }),
 ): Creature | null {
     const x = Math.trunc(wx);
     const y = Math.trunc(wy);
@@ -250,8 +252,9 @@ export function pickCreature(
     for (const c of list) {
         if (c === null) continue;
         const w = creaturePickWorldSize(contentPixels(c), c.size, f);
-        const cx = Math.trunc(c.xpos);
-        const cy = Math.trunc(c.ypos);
+        const p = posOf(c);
+        const cx = Math.trunc(p.x);
+        const cy = Math.trunc(p.y);
         const half = Math.trunc(w / 2);
         if (x >= cx - half - pad && x <= cx + half + pad && y >= cy - half - pad && y <= cy + half + pad && visible(c) && c.size < bestSize) {
             best = c;
@@ -774,6 +777,8 @@ export class CreatureLayer {
             f,
             (c) => this.contentPixelsOf(c) ?? Number.NaN,
             (c) => !c.hasBeenDestroyed && this.contentPixelsOf(c) !== null && this.visibleToPlayer(c),
+            // Hit where the creature was drawn at the last update (render-interpolated).
+            (c) => (this.motion !== null ? this.motion.positionOf(c) : { x: c.xpos, y: c.ypos }),
         );
     }
 }
