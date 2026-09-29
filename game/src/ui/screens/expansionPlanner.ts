@@ -10,6 +10,7 @@
 // TODO(port): canColonizeBecauseAtWar — galaxy.checkEmpireTerritoryCanColonizeHabitat does not return the C# out parameter (Galaxy.cs 3613), so the "Colonization target in another empire's system" status never shows
 // TODO(port): galaxy mini-map, deficient-resources grid (Main.Part11.cs:2393 IdentifyDeficientEmpireResources), available ships + Build Colony Ship (Main.Part4.cs method_533), resource/percent filters (Main.Part4.cs FilterOutHabitatPrioritizationList) — not in 16a
 
+import { abundancePercentText } from '../resourceAbundance';
 import './expansionPlanner.css';
 import type { Empire } from '../../sim/empire';
 import type { Galaxy } from '../../sim/galaxy';
@@ -86,7 +87,7 @@ export function resourcesDescription(
 ): string {
     if (!known) return '(Unknown resources)';
     if (resources.length === 0) return '(No resources)';
-    return resources.map((r) => `${resourceName(r.resourceId)} (${(r.abundance / 10).toFixed(0)}%)`).join(', ');
+    return resources.map((r) => `${resourceName(r.resourceId)} (${abundancePercentText(r.abundance)})`).join(', ');
 }
 
 // HabitatPrioritizationListView.cs:605 GetResourceCellRarity.

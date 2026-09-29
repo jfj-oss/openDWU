@@ -4,6 +4,7 @@
 // Every sim change goes through a player command (player/playerOps.ts charter* ops) so the command log replays it.
 // Pure model builders (charterRows, charterDialogModel, charterButtonState) are unit-tested; the DOM only wires them.
 
+import { abundancePercentText } from '../resourceAbundance';
 import './charters.css';
 import type { Galaxy } from '../../sim/galaxy';
 import type { Empire } from '../../sim/empire';
@@ -293,7 +294,7 @@ export function openCharterDialog(galaxy: Galaxy, player: Empire, target: Habita
         info.append(row);
     };
     line('World', `${m.typeLabel}, quality ${Math.round(m.quality * 100)}%${m.rim ? ' — rim world' : ''}`);
-    line('Resources', m.resources.length > 0 ? m.resources.map((r) => `${r.name} (${r.abundance})`).join(', ') : 'none');
+    line('Resources', m.resources.length > 0 ? m.resources.map((r) => `${r.name} (${abundancePercentText(r.abundance)})`).join(', ') : 'none');
     line('Charter fee', `${fmt(m.fee)} (treasury ${fmt(m.treasury)})`);
     p.body.append(info);
 
