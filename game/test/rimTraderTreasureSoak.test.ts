@@ -38,6 +38,11 @@ describe('19a follow-up soak', () => {
             const met = others.filter((e) => obtainDiplomaticRelation(r, e).type !== DiplomaticRelationType.NotMet).length;
             const open = others.filter((e) => obtainDiplomaticRelation(r, e).supplyRestrictedResources).map((e) => e.name);
             for (const n of open) everOpen.add(n);
+            // Access is also gained when an empire actually buys rare goods (a debit in its ledger row): with the rare price
+            // factor (ee02693: buyers pay 2x, so a treasure-ship stop spends the whole standing) the treasure fleet's
+            // sale takes the standing back under the grant threshold before the yearly sample, so the diplomatic flag alone
+            // is not a reliable witness (it was open at a year end only in worlds where the sale left standing >= 0).
+            for (const e of others) if ((st.ledger[e.empireId]?.debit ?? 0) > 0) everOpen.add(e.name);
             summary.push(
                 `year ${year}: met ${met}/${others.length}, money ${Math.round(r.stateMoney)}, rim buys ${st.stats.rimBuys} (${st.stats.rimUnits} u, ${Math.round(st.stats.rimValue)} cr), rare sales ${st.stats.rareSales} (${st.stats.rareUnits} u), ` +
                     `fleet ${ts.ships.length} ships, voyages ${ts.stats.voyages}, stops ${ts.stats.stops}, fleet rim ${ts.stats.rimUnits} u, fleet rare ${ts.stats.rareUnits} u, lost ${ts.stats.lost}, capped ${ts.researchCapped}, open: ${open.join(', ') || '-'}, ` +

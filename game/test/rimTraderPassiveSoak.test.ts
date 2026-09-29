@@ -30,10 +30,14 @@ beforeAll(async () => {
 const forceOranthi = (o: CreateGameOptions): CreateGameOptions => ({ ...o, aiEmpires: [{ ...o.aiEmpires[0], race: 'Oranthi' }, ...o.aiEmpires.slice(1)] });
 
 describe('19a Concord — flag off is byte-identical', () => {
-    // [forced Oranthi, start digest, digest after 1 year] from the rimTrade game at 4c1ffbc (default flags / params then).
+    // [forced Oranthi, start digest, digest after 1 year] from the rimTrade game (default flags / params then).
+    // Repinned at c5cff32 (moon orbit-speed fix, Habitat.cs 924/986): it changes moon positions from generation onward, so
+    // every digest moved (start and 1 year). The pre-feature values from 4c1ffbc were 2726246819d1c846/10b1026d25ff71f1
+    // (wizard Oranthi) and 4fd8498a373af023/bd3751a3fd90f0d5 (Concord created at start); the test passes unchanged at
+    // c5cff32^ and the only sim change since is c5cff32, so the flag-off path is still identical to the feature-free game.
     const PINS: [boolean, string, string][] = [
-        [true, '2726246819d1c846', '10b1026d25ff71f1'],
-        [false, '4fd8498a373af023', 'bd3751a3fd90f0d5'],
+        [true, '2477059f19d2da47', 'fe7c3e8fd4b91dbb'],
+        [false, '4a9c0d151a4302cf', '9029719465f2dcd0'],
     ];
     for (const [forced, d0, d1] of PINS) {
         it(`passive off, 1 starting colony, cap 4 (${forced ? 'wizard Oranthi' : 'Concord created at start'}): 1 year matches the pre-feature digests`, () => {
