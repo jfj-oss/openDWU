@@ -12,7 +12,9 @@
 //   not seen for a while, and on moves made outside a step. Objects parked relative to an orbiting habitat (ships
 //   with a ParentHabitat offset, creatures holding station at a planet) are interpolated in the habitat's frame and
 //   placed around the habitat's render-interpolated position, so they move with the drawn planet instead of with its
-//   round-robin-committed xpos (which only changes when the background pass touches the habitat).
+//   round-robin-committed xpos (which only changes when the background pass touches the habitat). Ships docked at or
+//   parked by a base are likewise drawn around the drawn base (ship → base → planet), and a change of frame carries the
+//   previous / current step positions into the new frame instead of snapping.
 
 import { FRAME_REAL_MS, FRAMES_PER_SECOND, HABITAT_TICK_BATCH_SIZE } from '../sim/tick/scheduler';
 import { MIN_TIME, spanSeconds } from '../sim/tick/simTime';
@@ -156,8 +158,12 @@ export interface MotionState {
     cx: number;
     cy: number;
     ch: number;
-    /** The habitat whose frame px/py/cx/cy are in (null: galaxy coordinates). */
+    /** The habitat / parent built object whose frame px/py/cx/cy are in (null: galaxy coordinates). */
     frame: object | null;
+    /** The frame's drawn origin at the last sample (galaxy coordinates; 0, 0 for the galaxy frame): converts px/py/cx/cy
+     * into a new frame when the object changes frames. */
+    ox: number;
+    oy: number;
     /** RenderTime.stepSerial when `c*` was taken. */
     serial: number;
     /** Caller's identity of the object's current life (a shot's LastFired): a change snaps (a new shot spawns). */
@@ -214,13 +220,43 @@ export class MotionInterpolator {
     sample(obj: object, x: number, y: number, heading: number, maxSpeed: number, frame: object | null = null, originX = 0, originY = 0, epoch = 0): MotionState {
         let st = this.states.get(obj);
         if (st === undefined) {
-            st = { px: x, py: y, ph: heading, cx: x, cy: y, ch: heading, frame, serial: this.serial, epoch, renderFrame: 0, x, y, heading };
+            st = { px: x, py: y, ph: heading, cx: x, cy: y, ch: heading, frame, ox: originX, oy: originY, serial: this.serial, epoch, renderFrame: 0, x, y, heading };
             this.states.set(obj, st);
-        } else if (st.frame !== frame || st.epoch !== epoch) {
+        } else if (st.epoch !== epoch) {
             snapTo(st, x, y, heading);
             st.frame = frame;
             st.epoch = epoch;
-        } else if (st.serial !== this.serial) {
+        } else {
+            if (st.frame !== frame) {
+                // Entering / leaving a parent's frame (parking at or leaving a planet, docking at a base): carry the
+                // previous / current step positions over into the new frame (through galaxy coordinates, at the old
+                // frame's last drawn origin) and go on lerping, so the drawn object neither jumps nor stands still for
+                // a step. The step logic below still snaps a real jump (isJump) or a move made without a step.
+                const dx = st.ox - originX;
+                const dy = st.oy - originY;
+                st.px += dx;
+                st.py += dy;
+                st.cx += dx;
+                st.cy += dy;
+                st.frame = frame;
+            }
+            this.advance(st, x, y, heading, maxSpeed);
+        }
+        st.ox = originX;
+        st.oy = originY;
+        st.serial = this.serial;
+        st.renderFrame = this.renderFrame;
+        const a = this.alpha;
+        st.x = originX + st.px + (st.cx - st.px) * a;
+        st.y = originY + st.py + (st.cy - st.py) * a;
+        st.heading = lerpAngle(st.ph, st.ch, a);
+        return st;
+    }
+
+    /** Take the sim's (x, y, heading) into `st` (same frame): a new step shifts curr → prev and lerps on, snapping on a
+     * jump, a long gap or a move made without a step. */
+    private advance(st: MotionState, x: number, y: number, heading: number, maxSpeed: number): void {
+        if (st.serial !== this.serial) {
             const k = this.serial - st.serial;
             if (k < 0 || k > MAX_INTERP_STEPS || isJump(x - st.cx, y - st.cy, k, maxSpeed, this.stepSeconds)) {
                 snapTo(st, x, y, heading);
@@ -239,13 +275,6 @@ export class MotionInterpolator {
             // Moved without a sim step (an order applied at the frame boundary, a load, an edit): no interpolation.
             snapTo(st, x, y, heading);
         }
-        st.serial = this.serial;
-        st.renderFrame = this.renderFrame;
-        const a = this.alpha;
-        st.x = originX + st.px + (st.cx - st.px) * a;
-        st.y = originY + st.py + (st.cy - st.py) * a;
-        st.heading = lerpAngle(st.ph, st.ch, a);
-        return st;
     }
 
     /** The record sampled for `obj` this render frame, or null (not drawn yet this frame: use its sim position). */
@@ -321,6 +350,11 @@ export interface MovingBuiltObject {
     parentOffsetY: number;
     /** BuiltObject._LastTouch (game ms): the instant xpos / ypos were last advanced by a DoTasks move. */
     lastTouch?: number;
+    /** BuiltObject.DockedAt (a base / ship or a habitat): a docked object sits at DockedAt + ParentOffset. */
+    dockedAt?: object | null;
+    /** BuiltObject.ParentBuiltObject: an object near a base is moved at ParentBuiltObject + ParentOffset. */
+    parentBuiltObject?: MovingBuiltObject | null;
+    hasBeenDestroyed?: boolean;
 }
 
 /** scheduler.ts backgroundPass "GxBO" int_43: built objects the background round-robin ticks per sim frame (multi-core
@@ -367,22 +401,41 @@ const PARENT_FRAME_MAX_OFFSET_SQ = 1000 * 1000;
 const PARENT_FRAME_MAX_DRIFT = 500;
 
 /**
- * Sample a ship / base: relative to an orbiting ParentHabitat when the sim moves it by parent offset
- * (executeCommands.ts evaluateRelativeToParent: ParentHabitat set and ParentOffset set), else in galaxy coordinates —
+ * Sample a ship / base: relative to its parent when the sim places it by parent offset (executeCommands.ts 413-444:
+ * DockedAt, else an orbiting ParentHabitat, else a ParentBuiltObject — each + ParentOffset), drawn around that parent's
+ * drawn position (a base's own sample, which may itself sit around its planet's interpolated orbit), else in galaxy
+ * coordinates —
  * there, a moving object the background pass has not touched this step (large galaxies: more than 1000 built objects)
  * is sampled at its extrapolated position (extrapolateUntouched), so it glides between touches instead of standing
  * still and then jumping; the next touch lands where the extrapolation was heading, and the usual snap rules
  * (isJump, MAX_INTERP_STEPS) still apply to the extrapolated positions.
  */
-export function sampleBuiltObject(m: MotionInterpolator, bo: MovingBuiltObject): MotionState {
+export function sampleBuiltObject(m: MotionInterpolator, bo: MovingBuiltObject, depth = 0): MotionState {
     const maxSpeed = Math.max(bo.topSpeed, bo.warpSpeed, Math.abs(bo.currentSpeed));
-    const h = bo.parentHabitat;
-    if (h !== null && h.parent !== null && !h.hasBeenDestroyed && bo.parentOffsetX > PARENT_OFFSET_UNSET && bo.parentOffsetY > PARENT_OFFSET_UNSET) {
+    if (bo.parentOffsetX > PARENT_OFFSET_UNSET && bo.parentOffsetY > PARENT_OFFSET_UNSET) {
         const ox = bo.parentOffsetX;
         const oy = bo.parentOffsetY;
-        if (ox * ox + oy * oy <= PARENT_FRAME_MAX_OFFSET_SQ && Math.abs(bo.xpos - h.xpos - ox) <= PARENT_FRAME_MAX_DRIFT && Math.abs(bo.ypos - h.ypos - oy) <= PARENT_FRAME_MAX_DRIFT) {
+        // The sim's order (executeCommands.ts 413-444): relative to ParentBuiltObject, then ParentHabitat overrides it,
+        // then DockedAt overrides both. Each is used only while the committed position really is parent + offset.
+        const dock = bo.dockedAt ?? null;
+        if (dock !== null && followsParent(bo, dock, ox, oy)) {
+            if (isOrbitingBody(dock)) {
+                if (dock.parent !== null) {
+                    const o = m.habitatPos(dock);
+                    return m.sample(bo, ox, oy, bo.heading, maxSpeed, dock, o.x, o.y);
+                }
+            } else if (isParentBuiltObject(bo, dock) && depth < MAX_PARENT_DEPTH) {
+                return sampleInBuiltObjectFrame(m, bo, dock, ox, oy, maxSpeed, depth);
+            }
+        }
+        const h = bo.parentHabitat;
+        if (h !== null && h.parent !== null && !h.hasBeenDestroyed && followsParent(bo, h, ox, oy)) {
             const o = m.habitatPos(h);
             return m.sample(bo, ox, oy, bo.heading, maxSpeed, h, o.x, o.y);
+        }
+        const pb = bo.parentBuiltObject ?? null;
+        if (pb !== null && isParentBuiltObject(bo, pb) && depth < MAX_PARENT_DEPTH && followsParent(bo, pb, ox, oy)) {
+            return sampleInBuiltObjectFrame(m, bo, pb, ox, oy, maxSpeed, depth);
         }
     }
     if (bo.lastTouch !== undefined && bo.currentSpeed > 0) {
@@ -390,6 +443,35 @@ export function sampleBuiltObject(m: MotionInterpolator, bo: MovingBuiltObject):
         return m.sample(bo, p.x, p.y, bo.heading, maxSpeed);
     }
     return m.sample(bo, bo.xpos, bo.ypos, bo.heading, maxSpeed);
+}
+
+/** Longest parent chain followed (ship → base → …); the planet at the end is placed by renderHabitatPos. */
+const MAX_PARENT_DEPTH = 3;
+
+/** Whether `bo`'s committed position is its parent's committed position plus the offset (within the drift bound), and
+ * the offset is short enough to be a parked / docked offset. */
+function followsParent(bo: MovingBuiltObject, parent: object, ox: number, oy: number): boolean {
+    const p = parent as { xpos: number; ypos: number };
+    return ox * ox + oy * oy <= PARENT_FRAME_MAX_OFFSET_SQ && Math.abs(bo.xpos - p.xpos - ox) <= PARENT_FRAME_MAX_DRIFT && Math.abs(bo.ypos - p.ypos - oy) <= PARENT_FRAME_MAX_DRIFT;
+}
+
+/** A live parent built object that is not itself parked on `bo` (evaluateRelativeToParent's cycle test). */
+function isParentBuiltObject(bo: MovingBuiltObject, p: object): p is MovingBuiltObject {
+    const pb = p as MovingBuiltObject;
+    if (typeof pb.parentOffsetX !== 'number' || pb.hasBeenDestroyed === true) return false;
+    return pb.dockedAt !== bo && pb.parentBuiltObject !== bo;
+}
+
+/**
+ * `bo` drawn at its offset from the drawn parent built object (itself sampled first: a base parked at an orbiting
+ * planet is drawn around the planet's interpolated orbit), so a ship docked at / parked by a base moves with the drawn
+ * base instead of with its round-robin-committed xpos.
+ */
+function sampleInBuiltObjectFrame(m: MotionInterpolator, bo: MovingBuiltObject, parent: MovingBuiltObject, ox: number, oy: number, maxSpeed: number, depth: number): MotionState {
+    const d = m.drawn(parent) ?? sampleBuiltObject(m, parent, depth + 1);
+    const px = d.x;
+    const py = d.y;
+    return m.sample(bo, ox, oy, bo.heading, maxSpeed, parent, px, py);
 }
 
 /** Creature fields read by sampleCreature. */

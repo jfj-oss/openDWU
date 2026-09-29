@@ -359,3 +359,107 @@ describe('interpolation gaps: shots, untouched ships, drawn positions', () => {
         expect(m.drawn(bo)?.x).toBeCloseTo(5, 12);
     });
 });
+
+describe('parent chains and frame changes', () => {
+    const UNSET = -2000000001.0;
+    function frame(m: MotionInterpolator, rt: RenderTime, alpha: number, stepsRun: number, renderNowMs: number): void {
+        rt.alpha = alpha;
+        rt.stepGameMs = 1000 / 60;
+        rt.stepSerial += stepsRun;
+        rt.renderNowMs = renderNowMs;
+        m.begin(rt, 1000);
+    }
+
+    it('a ship docked at a base parked at an orbiting planet is drawn around the drawn base (ship → base → planet)', () => {
+        const star = { parent: null, xpos: 0, ypos: 0, orbitAngle: 0, anglePerSecond: 0, orbitDirection: true, orbitDistance: 0, lastTouch: 0, hasBeenDestroyed: false };
+        const planet = { parent: star, xpos: 1000, ypos: 0, orbitAngle: 0, anglePerSecond: 0.01, orbitDirection: true, orbitDistance: 1000, lastTouch: 0, hasBeenDestroyed: false };
+        const base: MovingBuiltObject = { xpos: 1100, ypos: 0, heading: 0, topSpeed: 0, warpSpeed: 0, currentSpeed: 0, parentHabitat: planet, parentOffsetX: 100, parentOffsetY: 0, dockedAt: null, parentBuiltObject: null, hasBeenDestroyed: false };
+        const ship: MovingBuiltObject = { xpos: 1120, ypos: 5, heading: 0, topSpeed: 20, warpSpeed: 0, currentSpeed: 0, parentHabitat: null, parentOffsetX: 20, parentOffsetY: 5, dockedAt: base, parentBuiltObject: base, hasBeenDestroyed: false };
+        const m = new MotionInterpolator();
+        const rt = createRenderTime();
+        // 5 s after the planet's committed touch: planet drawn 0.05 rad on, the base with it, the ship with the base,
+        // while both committed xpos still sit where the planet was.
+        frame(m, rt, 0, 0, 5000);
+        const st = sampleBuiltObject(m, ship);
+        expect(st.frame).toBe(base);
+        expect(st.x).toBeCloseTo(Math.cos(0.05) * 1000 + 120, 9);
+        expect(st.y).toBeCloseTo(Math.sin(0.05) * 1000 + 5, 9);
+        // The base was sampled on the way (its own record, in the planet's frame).
+        expect(m.drawn(base)?.x).toBeCloseTo(Math.cos(0.05) * 1000 + 100, 9);
+        // The round-robin now touches the planet and the base: committed positions jump to the orbit; the drawn ship
+        // does not move with that jump (the planet's drawn orbit already had it there).
+        planet.orbitAngle = 0.05;
+        planet.lastTouch = 5000;
+        planet.xpos = Math.cos(0.05) * 1000;
+        planet.ypos = Math.sin(0.05) * 1000;
+        base.xpos = planet.xpos + 100;
+        base.ypos = planet.ypos;
+        ship.xpos = base.xpos + 20;
+        ship.ypos = base.ypos + 5;
+        frame(m, rt, 0, 1, 5000);
+        const st2 = sampleBuiltObject(m, ship);
+        expect(st2.x).toBeCloseTo(st.x, 9);
+        expect(st2.y).toBeCloseTo(st.y, 9);
+        // Nothing written back.
+        expect(ship.parentOffsetX).toBe(20);
+    });
+
+    it('a docked ship whose committed position is not dock + offset is drawn in galaxy coordinates', () => {
+        const base: MovingBuiltObject = { xpos: 0, ypos: 0, heading: 0, topSpeed: 0, warpSpeed: 0, currentSpeed: 0, parentHabitat: null, parentOffsetX: UNSET, parentOffsetY: UNSET, dockedAt: null, parentBuiltObject: null };
+        const ship: MovingBuiltObject = { xpos: 5000, ypos: 0, heading: 0, topSpeed: 20, warpSpeed: 0, currentSpeed: 0, parentHabitat: null, parentOffsetX: 20, parentOffsetY: 0, dockedAt: base, parentBuiltObject: null };
+        const m = new MotionInterpolator();
+        frame(m, createRenderTime(), 0, 0, 0);
+        const st = sampleBuiltObject(m, ship);
+        expect(st.frame).toBeNull();
+        expect(st.x).toBe(5000);
+    });
+
+    it('entering / leaving a parent frame blends over one step instead of snapping', () => {
+        const star = { parent: null, xpos: 0, ypos: 0, orbitAngle: 0, anglePerSecond: 0, orbitDirection: true, orbitDistance: 0, lastTouch: 0, hasBeenDestroyed: false };
+        // A planet whose drawn position runs 2 units ahead of its committed one (orbit extrapolated past its touch).
+        const planet = { parent: star, xpos: 1000, ypos: 0, orbitAngle: 0, anglePerSecond: 0.002, orbitDirection: true, orbitDistance: 1000, lastTouch: 0, hasBeenDestroyed: false };
+        const now = 1000; // 1 s: 0.002 rad ≈ 2 units along the orbit
+        const ship: MovingBuiltObject = { xpos: 1060, ypos: -10, heading: Math.PI / 2, topSpeed: 60, warpSpeed: 0, currentSpeed: 0, parentHabitat: planet, parentOffsetX: UNSET, parentOffsetY: UNSET };
+        const m = new MotionInterpolator();
+        const rt = createRenderTime();
+        const drawn: number[][] = [];
+        const draw = (steps: number, alpha: number): void => {
+            frame(m, rt, alpha, steps, now);
+            const st = sampleBuiltObject(m, ship);
+            drawn.push([st.x, st.y]);
+        };
+        // Two steps flying in galaxy coordinates (+1 unit / step in y).
+        draw(0, 0);
+        for (const a of [0.25, 0.5, 0.75]) draw(0, a);
+        ship.ypos += 1;
+        draw(1, 0);
+        for (const a of [0.25, 0.5, 0.75]) draw(0, a);
+        // Parks: the sim now moves it by offset from the planet's committed position.
+        ship.ypos += 1;
+        ship.parentOffsetX = ship.xpos - planet.xpos;
+        ship.parentOffsetY = ship.ypos - planet.ypos;
+        draw(1, 0);
+        const inFrame = m.drawn(ship)!;
+        expect(inFrame.frame).toBe(planet);
+        for (const a of [0.25, 0.5, 0.75]) draw(0, a);
+        ship.parentOffsetY += 1;
+        ship.ypos += 1;
+        draw(1, 0);
+        for (const a of [0.25, 0.5, 0.75]) draw(0, a);
+        // Leaves again.
+        ship.parentOffsetX = UNSET;
+        ship.parentOffsetY = UNSET;
+        ship.ypos += 1;
+        draw(1, 0);
+        expect(m.drawn(ship)!.frame).toBeNull();
+        for (const a of [0.25, 0.5, 0.75]) draw(0, a);
+        ship.ypos += 1;
+        draw(1, 0);
+        // Every frame moves: no snap (a jump of the planet's ~2-unit drawn / committed gap in one frame) and no still frame.
+        const moves = drawn.slice(1).map((p, i) => Math.hypot(p[0] - drawn[i][0], p[1] - drawn[i][1]));
+        for (const d of moves.slice(4)) {
+            expect(d).toBeGreaterThan(0.05);
+            expect(d).toBeLessThan(1.0);
+        }
+    });
+});
