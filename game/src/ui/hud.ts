@@ -5,6 +5,7 @@ import { GalaxyTime } from '../sim/clock';
 import { resolveStarDateDescription } from '../sim/galaxyTime';
 import { createMapOverlayState, OVERLAY_ROWS, toggleOverlay, type MapOverlayState, type OverlayKey } from './mapOverlays';
 import { Camera } from '../render/camera';
+import { followOnSelectionChanged, isFollowingTarget, toggleFollow, type FollowState, type FollowTarget } from '../render/followCamera';
 import { Galaxy } from '../sim/galaxy';
 import type { GameData } from '../sim/data/gameData';
 import { rimGoodMarker } from './scenario/rimTraderRows';
@@ -304,6 +305,11 @@ export interface HudWiring {
     afterSelectionChange?: (sel: Selection | null) => void;
     /** Task C3: open/close the Galaxy Map screen (the "Galaxy map (G)" row). */
     onGalaxyMap?: () => void;
+    /** Task followcam: shared with the Main View (src/render/mainView.ts), which recentres the camera on it
+     * every frame and clears it on a manual pan/edge-scroll/map-click/target-loss. The selection panel's Follow
+     * toggle (shown only for a selected ship/fleet) flips it here; a selection change also clears it
+     * (followOnSelectionChanged) unless it is the same object already being followed. */
+    followState?: FollowState;
 }
 
 export interface Selection {
@@ -974,6 +980,50 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
     header.append(nameEl, subEl);
     panel.appendChild(header);
 
+    // [followcam] begin — Follow toggle: shown only while the selection is a ship or fleet (bases and colonies
+    // don't move). Toggling flips the shared FollowState the Main View recentres the camera on every frame
+    // (mainView.ts update()); a manual pan/edge-scroll/keyboard-scroll, a map click, a different selection, or
+    // the target's loss all turn it off elsewhere (mainView.ts, keyboard.ts, onSelectionChange below).
+    const followRow = document.createElement('div');
+    followRow.className = 'hud-follow-row';
+    const followButton = document.createElement('button');
+    followButton.type = 'button';
+    followButton.className = 'hud-follow-toggle';
+    followRow.appendChild(followButton);
+    panel.appendChild(followRow);
+    /** The current selection's follow identity: the ShipGroup for a fleet (so a lead-ship change mid-fleet
+     * doesn't look like "a different target"), else the selected ship/base (bases excluded: they never move). */
+    const followTarget = (): FollowTarget | null => {
+        const sel = currentSelection;
+        if (!sel) return null;
+        if (sel.shipGroup) return sel.shipGroup;
+        if (sel.builtObject && sel.builtObject.role !== BuiltObjectRole.Base) return sel.builtObject;
+        return null;
+    };
+    const syncFollowButton = (): void => {
+        const state = wiring.followState;
+        const target = followTarget();
+        if (!state || !target) {
+            followRow.style.display = 'none';
+            return;
+        }
+        followRow.style.display = '';
+        const active = isFollowingTarget(state, target);
+        followButton.classList.toggle('hud-follow-toggle-active', active);
+        followButton.textContent = active ? '⌖ Following' : '⌖ Follow';
+        followButton.title = active
+            ? 'Stop following (pan, click the map, or select something else)'
+            : 'Follow this while it moves or warps';
+    };
+    followButton.addEventListener('click', () => {
+        const state = wiring.followState;
+        const target = followTarget();
+        if (!state || !target) return;
+        toggleFollow(state, target);
+        syncFollowButton();
+    });
+    // [followcam] end
+
     const body = document.createElement('div');
     body.className = 'hud-selection-body';
     panel.appendChild(body);
@@ -1199,6 +1249,7 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
             nameEl.classList.add('hud-muted');
             subEl.textContent = '';
             body.replaceChildren();
+            syncFollowButton(); // [followcam]
             return;
         }
         const h = sel.habitat;
@@ -1228,9 +1279,12 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         for (const row of buildSelectionRows(sel, gameData, wiring.galaxy?.playerEmpire ?? null)) {
             body.appendChild(row.element);
         }
+        syncFollowButton(); // [followcam]
     };
     wiring.onSelectionChange = (sel) => {
         currentSelection = sel;
+        // [followcam] a selection change stops following unless it's the same object already followed.
+        if (wiring.followState) followOnSelectionChanged(wiring.followState, followTarget());
         refresh();
         refreshSelectionActionBar(); // [ordermenu]
         charterButton.update(); // [charters]

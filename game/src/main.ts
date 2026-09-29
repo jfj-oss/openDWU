@@ -312,6 +312,8 @@ const OVERLAY_PARAM_ALIASES: Record<string, OverlayKey> = {
     researchLocations: 'researchLocations',
     territory: 'empireTerritory',
     empireTerritory: 'empireTerritory',
+    factionMarkers: 'factionMarkers',
+    stationPresence: 'stationPresence',
     fleetPostures: 'fleetPostures',
     travelVectorsState: 'travelVectorsState',
     travelVectorsPrivate: 'travelVectorsPrivate',
@@ -332,8 +334,10 @@ function applyOverlaysUrlParam(overlays: MapOverlayState): void {
     const raw = new URLSearchParams(window.location.search).get('overlays');
     if (raw === null) return;
     for (const token of raw.split(',').map((s) => s.trim()).filter(Boolean)) {
-        const key = OVERLAY_PARAM_ALIASES[token];
-        if (key !== undefined) overlays[key] = true;
+        // A leading '-' turns the overlay off instead (e.g. `-territory`, to see the station-presence discs).
+        const off = token.startsWith('-');
+        const key = OVERLAY_PARAM_ALIASES[off ? token.slice(1) : token];
+        if (key !== undefined) overlays[key] = !off;
     }
 }
 
@@ -496,6 +500,7 @@ export async function startGameView(
         galaxy,
         game,
         gameData: lastPlayedGameData ?? lastGameData ?? undefined,
+        followState: view.followState, // [followcam]
         onGalaxyMap: () => galaxyMap.toggle(),
         onMainMenu: () => {
             teardownActiveGameView();
@@ -530,6 +535,9 @@ export async function startGameView(
     };
     // A clicked creature selects it (InfoPanel.cs DrawCreature in the selection panel).
     view.onCreatureSelect = (c) => selectCreature(c, false);
+    // [galaxymarkers] fleet icons / double-clicked fleet ships select the fleet; symbols highlight the HUD selection.
+    view.onShipGroupSelect = (g) => selectShipGroup(g, false);
+    if (view.galaxyMarkers !== null) view.galaxyMarkers.getSelection = () => getHudSelection();
     view.onDoubleClickStar = (star: Habitat) => {
         if (star.category !== HabitatCategoryType.Star) return;
         camera.centerOn(star.xpos, star.ypos);
@@ -673,7 +681,7 @@ export async function startGameView(
     }
 
     const shortcuts = createShortcutsOverlay();
-    const keyHandlers = buildDefaultHandlers(camera, time, { width: galaxy.sizeX, height: galaxy.sizeY });
+    const keyHandlers = buildDefaultHandlers(camera, time, { width: galaxy.sizeX, height: galaxy.sizeY }, view.followState);
     // G opens the Galaxy Map screen (original UI_KeyboardCommands); the HUD's
     // "Galaxy" view row still zooms the Main View out.
     keyHandlers.galaxyMap = () => galaxyMap.toggle();
@@ -1392,6 +1400,7 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
         camera,
         galaxy,
         gameData: gameData ?? undefined,
+        followState: view.followState, // [followcam]
         onGalaxyMap: () => galaxyMap.toggle(),
     });
     const systemNameEl = hud.elements.get('pnlMoney')?.querySelector('.hud-system-name');
@@ -1452,7 +1461,7 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     // dispatches on keydown; it replaces the ad-hoc spacebar handler. '?'
     // toggles the "Keyboard shortcuts" overlay; F1 opens the Galactopedia.
     const shortcuts = createShortcutsOverlay();
-    const keyHandlers = buildDefaultHandlers(camera, time, { width: galaxy.sizeX, height: galaxy.sizeY });
+    const keyHandlers = buildDefaultHandlers(camera, time, { width: galaxy.sizeX, height: galaxy.sizeY }, view.followState);
     keyHandlers.galaxyMap = () => galaxyMap.toggle();
     window.addEventListener('keydown', (e: KeyboardEvent) => {
         if (galaxyMap.isOpen && e.key === 'Escape') {

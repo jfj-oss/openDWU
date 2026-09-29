@@ -11,6 +11,10 @@ export interface MapOverlayState {
     researchLocations: boolean;
     longRangeScanners: boolean;
     empireTerritory: boolean;
+    /** Galaxy/sector-zoom faction rings + ship/base symbols (render/galaxyMarkers.ts). */
+    factionMarkers: boolean;
+    /** Small station/colony presence discs; shown only while Empire Territory is off (render/galaxyMarkers.ts). */
+    stationPresence: boolean;
     fadeCivilianShips: boolean;
     // [freightOverlay] begin — task 19e-9 additions (not in the original's nine).
     freightFlows: boolean;
@@ -40,6 +44,9 @@ export function createMapOverlayState(): MapOverlayState {
         researchLocations: false,
         longRangeScanners: false,
         empireTerritory: true,
+        // On: faint galaxy-level faction markers and the presence discs (the latter only draw with territory off).
+        factionMarkers: true,
+        stationPresence: true,
         fadeCivilianShips: false,
         // [freightOverlay] begin
         freightFlows: false,
@@ -65,6 +72,8 @@ export const OVERLAY_ROWS: Array<{ key: OverlayKey; label: string; mod?: boolean
     { key: 'researchLocations', label: 'Research Locations' },
     { key: 'longRangeScanners', label: 'Long Range Scanners' },
     { key: 'empireTerritory', label: 'Empire Territory' },
+    { key: 'factionMarkers', label: 'Faction markers', mod: true },
+    { key: 'stationPresence', label: 'Station presence', mod: true },
     { key: 'fadeCivilianShips', label: 'Fade civilian ships and bases' },
     // [freightOverlay] begin
     { key: 'freightFlows', label: 'Freight Flows', mod: true, panel: 'tradeFlows' },

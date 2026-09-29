@@ -331,6 +331,36 @@
     color: #fff;
 }
 
+/* Follow-camera toggle (task followcam): shown only for a selected ship/fleet, between the header and the
+   scrolling body so it stays visible like the header/footer (hud-selection's flex column). */
+.hud-follow-row {
+    flex: 0 0 auto;
+    margin: 2px 0 6px;
+}
+.hud-follow-toggle {
+    pointer-events: auto;
+    font-family: inherit;
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 999px;
+    cursor: pointer;
+    padding: 4px 10px;
+    font-size: 11px;
+    line-height: 1;
+    color: #cfd6dd;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+.hud-follow-toggle:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+.hud-follow-toggle-active {
+    background: rgba(79, 195, 247, 0.18);
+    border-color: #4fc3f7;
+    color: #fff;
+}
+
 /* Options list (bottom-right). Content-sized (task 05d): the layout gives it
    no fixed height; if the window is shorter than the list it scrolls. */
 .hud-options {

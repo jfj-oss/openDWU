@@ -5,6 +5,7 @@
 // handlers; every other action is registered but inert via console.info.
 
 import { Camera } from '../render/camera';
+import { isFollowing, stopFollow, type FollowState } from '../render/followCamera';
 import { toggleExpansionPlanner } from './screens/expansionPlanner'; import { selectHabitat } from './hud'; // [16a]
 import { GalaxyTime } from '../sim/clock';
 import { toggleDiplomacyScreen } from './screens/diplomacyScreen'; // [15a]
@@ -381,14 +382,20 @@ export function dispatchKey(
 
 /** Build the standard handler set from the camera + clock (the same camera
  * calls the HUD options list uses, Main.Part11.cs zoom behaviour). When
- * `galaxySize` is given, the G key also centres on the middle of the galaxy. */
+ * `galaxySize` is given, the G key also centres on the middle of the galaxy.
+ * `followState`, when given, is stopped by the arrow-key scroll actions
+ * (task followcam: a keyboard scroll stops the follow camera). */
 export function buildDefaultHandlers(
     camera: Camera,
     time: GalaxyTime,
     galaxySize?: { width: number; height: number },
+    followState?: FollowState,
 ): KeyHandlers {
     const cx = (): number => camera.width / 2;
     const cy = (): number => camera.height / 2;
+    const stopFollowOnScroll = (): void => {
+        if (followState !== undefined && isFollowing(followState)) stopFollow(followState);
+    };
     return {
         togglePause: () => time.togglePause(),
         speedUp: () => time.faster(),
@@ -411,10 +418,22 @@ export function buildDefaultHandlers(
         zoomSectorLevel: () => camera.zoomAt(SECTOR_LEVEL_ZOOM, cx(), cy()),
         zoomGalaxyLevel: () => camera.zoomAt(GALAXY_LEVEL_ZOOM, cx(), cy()),
         zoomPlanetLevel: () => camera.zoomAt(PLANET_LEVEL_ZOOM, cx(), cy()),
-        scrollUp: () => camera.panByScreen(0, SCROLL_PAN_PX),
-        scrollDown: () => camera.panByScreen(0, -SCROLL_PAN_PX),
-        scrollLeft: () => camera.panByScreen(SCROLL_PAN_PX, 0),
-        scrollRight: () => camera.panByScreen(-SCROLL_PAN_PX, 0),
+        scrollUp: () => {
+            stopFollowOnScroll();
+            camera.panByScreen(0, SCROLL_PAN_PX);
+        },
+        scrollDown: () => {
+            stopFollowOnScroll();
+            camera.panByScreen(0, -SCROLL_PAN_PX);
+        },
+        scrollLeft: () => {
+            stopFollowOnScroll();
+            camera.panByScreen(SCROLL_PAN_PX, 0);
+        },
+        scrollRight: () => {
+            stopFollowOnScroll();
+            camera.panByScreen(-SCROLL_PAN_PX, 0);
+        },
         // G: zoom the Main View out to show the whole galaxy (minZoom is the
         // galaxy-fit zoom from Camera.setGalaxyBounds) and centre on its
         // middle when the galaxy size is known.

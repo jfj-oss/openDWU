@@ -291,7 +291,7 @@ function isBuiltObjectVisibleToThisEmpire(galaxy: Galaxy, empire: Empire, builtO
 
 // Empire.9.cs IsObjectVisibleToThisEmpireImprecise(StellarObject) (3065) for Habitat / BuiltObject.
 // TODO(port): the Fighter branch (fighters not ported).
-function isObjectVisibleToThisEmpireImprecise(galaxy: Galaxy, empire: Empire, objectToTest: Habitat | BuiltObject): boolean {
+export function isObjectVisibleToThisEmpireImprecise(galaxy: Galaxy, empire: Empire, objectToTest: Habitat | BuiltObject): boolean {
     if (objectToTest.empire === empire) return true;
     // Empire.9.cs 3071: _EmpiresViewable (intelligence missions) / _EmpiresSharedVisibility (treaties).
     const objectEmpire = objectToTest.empire as Empire | null;
