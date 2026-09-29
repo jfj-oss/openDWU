@@ -2,8 +2,9 @@
 // and conversation dialog (method_254) for the player's EmpireMessages, routed by messageRouting.ts.
 // Like the ticker feed (empireMessageFeed.ts) it polls Empire.Messages, dedupes by identity and resolves the
 // sim's gameText() encodings (textResolver.ts).
-// TODO(port): the original DialogPart conversation texts and reply options (Main.Part10.cs); here the dialog shows the message text with Accept/Decline for treaty offers, Accept/Open Diplomacy/Decline for pirate protection offers (below), and OK otherwise
-// TODO(port): popup "go to subject" click (Main.Part9.cs:784 method_244)
+// The conversation buttons are conversationActions.ts (the option lists of Main.Part9.cs:46 method_238); their sim effects
+// go through issuePlayerCommand. The popup card's text and a Go to button jump to the message's subject (messageGoto.ts).
+// TODO(port): the original's reply text panel after a choice (Main.Part10.cs:3590 method_230): a toast summarises it here
 
 import { closeEventSting, playDiplomacyMood, playMessageSounds } from '../audio/gameAudio'; // [audio]
 import './messagePopups.css';
@@ -12,6 +13,7 @@ import { onGameEnd } from '../sim/victory';
 import { EmpireMessageType, empireMessages, type EmpireMessage, empireMessageHistory } from '../sim/messages';
 import type { Empire } from '../sim/empire';
 import type { Galaxy } from '../sim/galaxy';
+import type { ConversationReplyPart } from '../sim/player/conversationReplies';
 import { galaxyStarDate } from '../sim/tick/simTime';
 import { resolveStarDateDescription } from '../sim/galaxyTime';
 import { resolveGameText } from '../sim/textResolver';
@@ -26,6 +28,8 @@ import { layerVoiceOf } from '../llm/voiceJob'; // [llm] 19s-2
 import { diplomatVoiceConfig, rememberVoicedMessage, voiceDiplomatReply, voicedLineToggle, voicedMessageText, voicingIndicator } from './diplomatVoice';
 // [diplovoice] end
 import { rgbCss } from './hud';
+import { conversationActions, type ConversationAction } from './conversationActions';
+import { goToMessage, messageGoToTarget } from './messageGoto';
 // [suggest] begin
 import { expireAdvisorSuggestionsForEmpire, receiveAdvisorSuggestionMessage } from '../sim/advisorQueue';
 // [suggest] end
@@ -113,6 +117,33 @@ export function conversationHeading(entry: ConversationEntry, player: Empire, st
     return resolveGameText(entry.message.title);
 }
 
+/** The toast after an answered conversation (the reply text of the part in the original's dialog files, abridged). */
+export function replyToast(part: ConversationReplyPart): string {
+    switch (part) {
+        case 'DEAL_ACCEPT':
+            return 'Deal accepted';
+        case 'DEAL_REJECT':
+            return 'Deal rejected';
+        case 'MUTUALDEFENSE_HONORREQUESTHELP':
+            return 'We stand with our ally';
+        case 'MUTUALDEFENSE_DECLINEREQUESTHELP':
+            return 'Mutual defense request declined';
+        case 'TRADESANCTIONS_REQUESTLIFTOTHER_ACCEPT':
+            return 'Trade sanctions lifted';
+        case 'TRADESANCTIONS_REQUESTIMPOSEJOINT_ACCEPT':
+            return 'Trade sanctions imposed';
+        case 'WAR_DECLARE_REQUESTJOINT_ACCEPT':
+            return 'War declared';
+        case 'WAR_END_REQUESTOTHER_ACCEPT':
+            return 'War ended';
+        case 'HISTORY_OFFER_STORYCLUE_ACCEPT':
+        case 'HISTORY_OFFER_STORYMESSAGE_ACCEPT':
+            return 'Secret revealed';
+        default:
+            return 'Information purchased';
+    }
+}
+
 /** The popup card's header text. */
 export function popupTitle(message: EmpireMessage): string {
     return resolveGameText(message.title) || message.sender?.name || 'Message';
@@ -182,6 +213,19 @@ export function openConversation(entry: ConversationEntry): void {
     installed?.openDialog(entry);
 }
 
+/** Drop `m` from the conversation queue (its stub was dismissed); closes its dialog when open. */
+export function dismissConversation(m: EmpireMessage): void {
+    if (installed === null) return;
+    const i = installed.queue.findIndex((e) => e.message === m);
+    if (i >= 0) installed.queue.splice(i, 1);
+    if (installed.openKey() === m) installed.closeDialog();
+}
+
+/** Close the popup card when it shows `m`. */
+export function closeMessageCardFor(m: EmpireMessage): void {
+    if (installed !== null && installed.openKey() === m) installed.closePopup();
+}
+
 /** The message whose card or conversation is open (null: none). */
 export function openMessageKey(): EmpireMessage | null {
     return installed?.openKey() ?? null;
@@ -219,6 +263,12 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
     const popupFooter = el('div', 'message-popup-footer');
     popup.append(popupHeader, popupBody, popupFooter);
     popupClose.addEventListener('click', () => closePopup());
+    popupBody.addEventListener('click', () => {
+        if (popupMessage !== null && popupBody.classList.contains('message-popup-body-goto')) {
+            goToMessage(popupMessage, galaxy);
+            closePopup();
+        }
+    });
 
     // Conversation dialog (method_254).
     const dialogRoot = el('div', 'message-conversation-wrap');
@@ -277,6 +327,23 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
             }
             popupFooter.appendChild(row);
         }
+        // A notification about a place: a Go to button, and the text jumps there too (Main.Part9.cs:912 method_249).
+        if (messageGoToTarget(m) !== null) {
+            const row = el('div', 'message-conversation-buttons');
+            const go = el('button', 'message-conversation-button message-popup-goto', 'Go to') as HTMLButtonElement;
+            go.type = 'button';
+            go.addEventListener('click', () => {
+                goToMessage(m, galaxy);
+                closePopup();
+            });
+            row.appendChild(go);
+            popupFooter.appendChild(row);
+            popupBody.classList.add('message-popup-body-goto');
+            popupBody.title = 'Go to';
+        } else {
+            popupBody.classList.remove('message-popup-body-goto');
+            popupBody.title = '';
+        }
         markMessageStubRead(m);
         if (popup.hidden) document.addEventListener('keydown', onPopupKeyDown);
         // [popupstubs] end
@@ -307,6 +374,73 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
         if (pausedByUs && opts.clock) opts.clock.paused = false; // method_155 on the dialog's close
         pausedByUs = false;
         // [popupstubs] end
+    }
+
+    // The effect of a conversation button. Every sim change goes through the command queue (applied at the next frame
+    // boundary, journaled), so seed + command log replays it.
+    function runConversationAction(a: ConversationAction, entry: ConversationEntry, needsAnswer: boolean, finish: () => void): void {
+        const sender = entry.sender;
+        const e = a.effect;
+        switch (e.kind) {
+            case 'acceptProposal':
+                if (sender === null) return;
+                issuePlayerCommand(galaxy, player, 'acceptProposal', [sender], (ok) => ok && showToast('Treaty accepted'));
+                finish();
+                return;
+            case 'declineProposal':
+                if (sender === null) return;
+                issuePlayerCommand(galaxy, player, 'declineProposal', [sender]);
+                finish();
+                return;
+            case 'demandSubjugation':
+                if (sender === null) return;
+                issuePlayerCommand(galaxy, player, 'submitProposal', [sender, 'WAR_END_SUBJUGATIONDEMAND'], (r) => {
+                    if (r.message !== '') showToast(r.message);
+                });
+                finish();
+                return;
+            case 'acceptPirate':
+                if (sender === null) return;
+                // Main.Part10.cs 5132 PIRATE_PROTECTIONACCEPTRESPONSE / PIRATE_TRUCEACCEPTRESPONSE (playerOps.ts
+                // acceptPirateOfferProtection → the ported Empire.3.cs 4213 AcceptPirateProtection).
+                issuePlayerCommand(galaxy, player, 'acceptPirateOfferProtection', [sender], (result) => {
+                    showToast(
+                        !result.accepted
+                            ? 'We already have an arrangement with them'
+                            : result.cost > 0
+                              ? `Protection accepted — ${formatThousands(result.cost)} credits/month`
+                              : 'Truce accepted',
+                    );
+                });
+                finish();
+                return;
+            case 'reply':
+                if (sender === null) return;
+                issuePlayerCommand(galaxy, player, 'answerConversation', [sender, e.part, e.related, e.cost], (r) => {
+                    if (r.noFunds) showToast("Looks like you don't have enough money to pay for this");
+                    else if (r.ok) showToast(replyToast(e.part));
+                    if (r.history !== null) {
+                        showEventMessagePopup({ title: r.history.title, text: r.history.text, imageUrl: null, footer: resolveStarDateDescription(galaxyStarDate(galaxy)) });
+                    }
+                    // Main.Part10.cs: ExpireDiplomacyMessagesForEmpire after the treaty / war replies.
+                    if (r.expireFor !== null && expireDiplomacyMessagesForEmpire(queue, r.expireFor) > 0 && dialogEntry !== null && !queue.includes(dialogEntry)) closeDialog();
+                });
+                finish();
+                return;
+            case 'openDiplomacy':
+                if (sender !== null) openDiplomacyForPirateOffer(player, sender);
+                if (needsAnswer) closeDialog();
+                else finish();
+                return;
+            case 'goto':
+                goToMessage(entry.message, galaxy);
+                if (needsAnswer) closeDialog();
+                else finish();
+                return;
+            case 'close':
+                finish();
+                return;
+        }
     }
 
     function openDialog(entry: ConversationEntry): void {
@@ -345,54 +479,20 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
             buttons.appendChild(b);
             return b;
         };
-        if (isAnswerableProposal(entry, player, starDate) && entry.sender !== null) {
-            const sender = entry.sender;
-            // Command log: the answer is queued and applied at the next frame boundary.
-            button('Accept Offer', () => {
-                issuePlayerCommand(galaxy, player, 'acceptProposal', [sender], (ok) => ok && showToast('Treaty accepted'));
-                removeEntry(entry);
-                closeDialog();
-            });
-            button('Decline', () => {
-                issuePlayerCommand(galaxy, player, 'declineProposal', [sender]);
-                removeEntry(entry);
-                closeDialog();
-            });
-        } else if (isPirateProtectionOfferEntry(entry)) {
-            const sender = entry.sender!;
-            // Main.Part10.cs 5132 PIRATE_PROTECTIONACCEPTRESPONSE / PIRATE_TRUCEACCEPTRESPONSE: accept through the
-            // command queue (playerOps.ts acceptPirateOfferProtection → the ported Empire.3.cs 4213
-            // AcceptPirateProtection), applied at the next frame boundary so replays stay deterministic.
-            button('Accept', () => {
-                issuePlayerCommand(galaxy, player, 'acceptPirateOfferProtection', [sender], (result) => {
-                    showToast(
-                        !result.accepted
-                            ? 'We already have an arrangement with them'
-                            : result.cost > 0
-                              ? `Protection accepted — ${formatThousands(result.cost)} credits/month`
-                              : 'Truce accepted',
-                    );
-                });
-                removeEntry(entry);
-                closeDialog();
-            });
-            // Main.Part8.cs 449 method_296: the advisor-queue click opens the full Diplomacy talk panel on this
-            // pirate faction; here that is a separate button alongside the direct Accept / Decline.
-            button('Open Diplomacy', () => {
-                openDiplomacyForPirateOffer(player, sender);
-                closeDialog();
-            });
-            // PIRATE_PROTECTIONREJECTRESPONSE / PIRATE_TRUCEREJECTRESPONSE: text-only in the C# (no case in
-            // method_237's conversation processing) — declining changes no sim state.
-            button('Decline', () => {
-                removeEntry(entry);
-                closeDialog();
-            });
-        } else {
-            button('OK', () => {
-                removeEntry(entry);
-                closeDialog();
-            });
+        const actions = conversationActions(entry, {
+            player,
+            galaxy,
+            answerable: isAnswerableProposal(entry, player, starDate),
+            pirateOffer: isPirateProtectionOfferEntry(entry),
+        });
+        // A conversation that asks for an answer stays queued when only looked at (Go to / Open Diplomacy).
+        const needsAnswer = actions.some((a) => ['acceptProposal', 'declineProposal', 'acceptPirate', 'reply', 'demandSubjugation'].includes(a.effect.kind));
+        const finish = (): void => {
+            removeEntry(entry);
+            closeDialog();
+        };
+        for (const a of actions) {
+            button(a.label, () => runConversationAction(a, entry, needsAnswer, finish));
         }
         win.append(titlebar, body, buttons);
         dialogRoot.replaceChildren(win);
@@ -596,6 +696,8 @@ export function showEventMessagePopup(p: EventPopup): boolean {
     if (titleEl === null || body === null || footer === null) return false;
     titleEl.textContent = resolveGameText(p.title);
     body.replaceChildren();
+    body.classList.remove('message-popup-body-goto');
+    body.removeAttribute('title');
     if (p.imageUrl !== null) {
         const img = el('img', 'message-popup-image') as HTMLImageElement;
         img.src = p.imageUrl;

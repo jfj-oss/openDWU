@@ -197,3 +197,11 @@
     background: rgba(255, 255, 255, 0.16);
 }
 /* [leftovers] end */
+
+/* A notification about a place: its text jumps there (Main.Part9.cs:912 method_249). */
+.message-popup-body-goto {
+    cursor: pointer;
+}
+.message-popup-body-goto:hover {
+    background: rgba(255, 255, 255, 0.05);
+}

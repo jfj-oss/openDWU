@@ -19,6 +19,9 @@ import {
     advanceStubList,
     advisorIconUrl,
     createStubListState,
+    dismissStub,
+    handleStubContextMenu,
+    type RightClickTracker,
     markStubRead,
     messageIconUrl,
     messageStubTitle,
@@ -30,7 +33,7 @@ import {
     type MessageStub,
     type StubListState,
 } from './messageStubs';
-import { conversationHeading, conversationQueue, openConversation, openMessageCard, openMessageKey } from './messagePopups';
+import { closeMessageCardFor, conversationHeading, conversationQueue, dismissConversation, openConversation, openMessageCard, openMessageKey } from './messagePopups';
 import { advisorSuggestionView, openAdvisorSuggestion, openAdvisorSuggestionKey } from './advisorSuggestions';
 
 /** Where the list sits: directly under the top-right money panel, same width (hudLayout.ts pnlMoney). The transform
@@ -78,6 +81,17 @@ export function pushMessageStub(m: EmpireMessage, read = false): void {
     });
 }
 
+/**
+ * Dismiss the stub of `m` (a double right-click on it): the stub goes and does not come back; a conversation also leaves
+ * the queue (a treaty offer stays answerable in the Diplomacy screen) and an open card / dialog for it closes.
+ */
+export function dismissMessageStub(m: EmpireMessage): boolean {
+    const removed = dismissStub(state, m);
+    dismissConversation(m);
+    closeMessageCardFor(m);
+    return removed;
+}
+
 /** The card / dialog for `m` opened: its stub loses the unread dot. */
 export function markMessageStubRead(m: EmpireMessage): void {
     markStubRead(state, m);
@@ -107,6 +121,8 @@ export function installMessageStubList(opts: MessageStubListOptions): void {
 
     let hovered = false;
     let renderedKey = '';
+    const rightClicks: RightClickTracker = { key: null, at: 0 };
+    root.addEventListener('contextmenu', (e) => e.preventDefault()); // also over the gaps between rows
     root.addEventListener('mouseenter', () => (hovered = true));
     root.addEventListener('mouseleave', () => (hovered = false));
     root.addEventListener(
@@ -176,6 +192,14 @@ export function installMessageStubList(opts: MessageStubListOptions): void {
         if (s.read) dot.classList.add('message-stub-dot-read');
         row.append(icon, el('span', 'message-stub-title', s.title), el('span', 'message-stub-date', resolveStarDateDescription(s.starDate)), dot);
         row.addEventListener('click', () => open(s));
+        // Double right-click dismisses the stub; the browser's context menu never shows over the list.
+        row.addEventListener('contextmenu', (e) => {
+            if (handleStubContextMenu(e, rightClicks, s.key, performance.now())) {
+                dismissMessageStub(s.key);
+                renderedKey = '';
+                render();
+            }
+        });
         return row;
     }
 

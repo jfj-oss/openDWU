@@ -311,10 +311,48 @@ export interface StubListState {
     /** Scroll progress towards the next row, 0..1 (animated in the DOM). */
     progress: number;
     nextSeq: number;
+    /** Messages whose stub the player dismissed (double right-click): their stub is not added again. */
+    dismissed: WeakSet<EmpireMessage>;
 }
 
 export function createStubListState(): StubListState {
-    return { stubs: [], offset: 0, dwellMs: 0, progress: 0, nextSeq: 0 };
+    return { stubs: [], offset: 0, dwellMs: 0, progress: 0, nextSeq: 0, dismissed: new WeakSet<EmpireMessage>() };
+}
+
+/** Two right-clicks on the same stub within this many ms dismiss it. */
+export const DOUBLE_RIGHT_CLICK_MS = 450;
+
+export interface RightClickTracker {
+    key: EmpireMessage | null;
+    at: number;
+}
+
+/**
+ * Records a right-click on the stub `key` at time `now` (ms). Returns true when it completes a double right-click
+ * (the previous right-click was on the same stub within DOUBLE_RIGHT_CLICK_MS), which resets the tracker.
+ */
+export function registerStubRightClick(tracker: RightClickTracker, key: EmpireMessage, now: number): boolean {
+    if (tracker.key === key && now - tracker.at <= DOUBLE_RIGHT_CLICK_MS) {
+        tracker.key = null;
+        tracker.at = 0;
+        return true;
+    }
+    tracker.key = key;
+    tracker.at = now;
+    return false;
+}
+
+/** A `contextmenu` event on a stub row: the browser menu is suppressed; true when it completes a double right-click. */
+export function handleStubContextMenu(e: { preventDefault(): void; stopPropagation(): void }, tracker: RightClickTracker, key: EmpireMessage, now: number): boolean {
+    e.preventDefault();
+    e.stopPropagation();
+    return registerStubRightClick(tracker, key, now);
+}
+
+/** Removes the stub and keeps it from coming back (a queue-backed stub is re-added by syncStubs otherwise). */
+export function dismissStub(state: StubListState, key: EmpireMessage): boolean {
+    state.dismissed.add(key);
+    return removeStub(state, key);
 }
 
 export type NewStub = Omit<MessageStub, 'seq' | 'read' | 'shownMs'> & { read?: boolean };
@@ -322,7 +360,7 @@ export type NewStub = Omit<MessageStub, 'seq' | 'read' | 'shownMs'> & { read?: b
 /** Adds a stub unless one with the same key exists. Returns whether it was added. A new stub resets the view to the
  *  top so the newest entry shows. */
 export function addStub(state: StubListState, stub: NewStub): boolean {
-    if (state.stubs.some((s) => s.key === stub.key)) return false;
+    if (state.dismissed.has(stub.key) || state.stubs.some((s) => s.key === stub.key)) return false;
     state.stubs.push({ ...stub, read: stub.read ?? false, shownMs: 0, seq: state.nextSeq++ });
     state.offset = 0;
     state.dwellMs = 0;

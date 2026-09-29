@@ -35,6 +35,7 @@ import {
 } from './fleetOps';
 import { buildNewShips } from '../construction/empireConstruction';
 import { submitProposal } from './diplomacyProposals';
+import { answerConversationReply, type ConversationRelated, type ConversationReplyPart } from './conversationReplies';
 import { submitTradeOffer, type TradeNegotiation } from './tradeNegotiation';
 import { executeAdvisorCommands, type AdvisorCommand, type ValidatedCommand } from './advisorCommands';
 import type { AdvisorBrief } from './advisorBrief';
@@ -185,6 +186,9 @@ export const PLAYER_OPS = {
     submitProposal: (galaxy: Galaxy, empire: Empire, other: Empire, optionId: string) => submitProposal(galaxy, empire, other, optionId),
     /** Main.Part10.cs 4334 DEAL_OFFER. */
     submitTradeOffer: (galaxy: Galaxy, _empire: Empire, negotiation: TradeNegotiation) => submitTradeOffer(galaxy, negotiation),
+    /** Main.Part10.cs 3957 method_237 for the replies to an incoming conversation (conversationReplies.ts). */
+    answerConversation: (galaxy: Galaxy, empire: Empire, sender: Empire, part: ConversationReplyPart, related: ConversationRelated, cost: number) =>
+        answerConversationReply(galaxy, empire, sender, part, related, cost),
     acceptProposal: (_galaxy: Galaxy, empire: Empire, other: Empire) => acceptProposal(empire, other),
     declineProposal: (_galaxy: Galaxy, empire: Empire, other: Empire) => declineProposal(empire, other),
 
