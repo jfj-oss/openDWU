@@ -12,6 +12,7 @@
 import './empireSummary.css';
 import type { Empire } from '../../sim/empire';
 import { annualStateMaintenance, annualTaxRevenue } from '../../sim/forceStructure';
+import { computeEconomyBreakdown, type EconomyBreakdown, type EconomyLine } from '../../sim/economyBreakdown';
 import { formatThousandsK } from './coloniesList';
 import { formatMoney, formatPopulation } from '../hud';
 import { crisesSummaryRows } from '../../sim/scenario/emergent/crisesCore';
@@ -119,6 +120,53 @@ export function empireSummaryRows(
     return rows;
 }
 
+/** Text rows of the Economy block (EmpireSummaryEconomy.cs method_6): section headings and label/value lines. */
+export function economyBlockRows(b: EconomyBreakdown): { heading?: string; label?: string; value?: string; negative?: boolean }[] {
+    const line = (l: EconomyLine, expense = false) => ({ label: l.label, value: formatThousandsK(l.value), negative: expense && l.value > 0 });
+    const cf = (v: number) => ({ label: 'Cashflow', value: formatThousandsK(v), negative: v < 0 });
+    return [
+        { heading: 'Economy — State' },
+        { label: 'Cash on hand', value: formatThousandsK(b.state.cashOnHand), negative: b.state.cashOnHand < 0 },
+        { heading: 'Annual Income' },
+        ...b.state.income.map((l) => line(l)),
+        { heading: 'Annual Expenses' },
+        ...b.state.expenses.map((l) => line(l, true)),
+        cf(b.state.cashflow),
+        { heading: "This Year's Bonus Income" },
+        ...b.state.bonusIncome.map((l) => line(l)),
+        { heading: 'Economy — Private' },
+        { label: 'Cash on hand', value: formatThousandsK(b.private.cashOnHand), negative: b.private.cashOnHand < 0 },
+        { heading: 'Annual Income' },
+        ...b.private.income.map((l) => line(l)),
+        { heading: 'Annual Expenses' },
+        ...b.private.expenses.map((l) => line(l, true)),
+        cf(b.private.cashflow),
+    ];
+}
+
+function buildEconomyBlock(b: EconomyBreakdown): HTMLElement {
+    const box = document.createElement('div');
+    box.className = 'empire-summary-economy';
+    for (const r of economyBlockRows(b)) {
+        const el = document.createElement('div');
+        if (r.heading !== undefined) {
+            el.className = 'empire-summary-econ-heading';
+            el.textContent = r.heading;
+        } else {
+            el.className = 'empire-summary-row';
+            const l = document.createElement('span');
+            l.className = 'empire-summary-label';
+            l.textContent = r.label ?? '';
+            const v = document.createElement('span');
+            v.className = 'empire-summary-value' + (r.negative ? ' empire-summary-negative' : '');
+            v.textContent = r.value ?? '';
+            el.append(l, v);
+        }
+        box.appendChild(el);
+    }
+    return box;
+}
+
 interface OpenState {
     root: HTMLElement;
     close: () => void;
@@ -211,6 +259,13 @@ function createEmpireSummary(src: EmpireSummarySource): OpenState {
         line.append(label, value);
         if (row.title !== undefined) line.title = row.title;
         body.appendChild(line);
+    }
+    if (src.empire.galaxy) {
+        try {
+            body.appendChild(buildEconomyBlock(computeEconomyBreakdown(src.empire.galaxy, src.empire)));
+        } catch {
+            // TODO(port): a sim path that still throws leaves the block out.
+        }
     }
     // [freightOverlay] begin
     if (openTradeFlowsLink !== null) {
