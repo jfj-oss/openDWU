@@ -284,6 +284,11 @@ export class ConstructionOverlays<K extends object> {
             if (target.mask !== null) target.mask = null;
             return;
         }
+        // Debug / diagnostics: `window.__dwuNoConstructionMask = true` shows the unmasked sprite.
+        if ((globalThis as { __dwuNoConstructionMask?: boolean }).__dwuNoConstructionMask === true) {
+            if (target.mask !== null) target.mask = null;
+            return;
+        }
         this.used.add(key);
         const side = damageOverlaySide(px);
         const percent = constructionRevealFloor(subject.percentBuilt, floor);
