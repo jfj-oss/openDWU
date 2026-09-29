@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import type { BuiltObject } from '../src/sim/builtObject';
 import type { Empire } from '../src/sim/empire';
 import { BuiltObjectRole } from '../src/sim/data/designSpecifications';
-import { dashSegments, travelVectorFor, travelVectorLongEnough, travelVectorsFor, type TravelVector } from '../src/render/overlayLayer';
+import { dashSegments, travelVectorFor, travelVectorLongEnough, travelVectorsFor, travelVectorWidthPx, TRAVEL_VECTOR_DASH_PX, type TravelVector } from '../src/render/overlayLayer';
 
 const player = {} as unknown as Empire;
 const other = {} as unknown as Empire;
@@ -124,5 +124,44 @@ describe('dashSegments', () => {
         expect(segs.length).toBeLessThanOrEqual(200);
         expect(segs.length).toBeGreaterThan(0);
         expect(segs[0][0]).toBe(0);
+    });
+});
+
+describe('travel vectors within one system (BaconMainView.cs method_253)', () => {
+    // A ship warping between two planets of the same system: 60 000 units apart, well inside MaxSolarSystemSize.
+    const inSystem = (extra: Record<string, unknown> = {}) =>
+        ship({ xpos: 1_000_000, ypos: 1_000_000, mission: { type: 1, resolveTargetCoordinatesCurrentCommand: () => ({ x: 1_060_000, y: 1_000_000 }) }, ...extra });
+    it('draws the vector for an in-system move at warp speed, at system and sector zoom', () => {
+        const v = travelVectorFor(inSystem());
+        expect(v).toMatchObject({ x1: 1_000_000, y1: 1_000_000, x2: 1_060_000, y2: 1_000_000 });
+        expect(travelVectorLongEnough(v!, 1)).toBe(true);
+        expect(travelVectorLongEnough(v!, 100)).toBe(true);
+    });
+    it('draws none for a sublight in-system move (the original gates on CurrentSpeed > TopSpeed)', () => {
+        expect(travelVectorFor(inSystem({ currentSpeed: 20 }))).toBeNull();
+    });
+    it('is cut once the hop is under ~27 screen px of Manhattan length (the 40000 * f / 1500 gate)', () => {
+        expect(travelVectorLongEnough(travelVectorFor(inSystem())!, 2500)).toBe(false);
+    });
+});
+
+describe('travel vector style (method_252 / XnaDrawingHelper.DrawLine)', () => {
+    it('is one device pixel wide with 6 px dashes and gaps', () => {
+        expect(travelVectorWidthPx(1)).toBe(1);
+        expect(travelVectorWidthPx(2)).toBe(0.5);
+        expect(TRAVEL_VECTOR_DASH_PX).toBe(6);
+    });
+});
+
+import { arrowheadPlacement } from '../src/render/overlayLayer';
+
+describe('travel vector arrowhead (XnaDrawingHelper.cs 587-596)', () => {
+    it('sits at the end, pulled back half its height, rotated angle + 90 deg, 9 px wide for a 1 px line', () => {
+        const a = arrowheadPlacement(0, 0, 1000, 0, 101, 115, 1, 10);
+        expect(a.scale).toBeCloseTo(9 / 101);
+        const h = 115 * (9 / 101);
+        expect(a.x).toBeCloseTo(1000 - (h / 2) * 10);
+        expect(a.y).toBeCloseTo(0);
+        expect(a.rotation).toBeCloseTo(Math.PI / 2);
     });
 });

@@ -48,6 +48,8 @@ import { NebulaCloudGenerator } from './nebulaClouds';
 import { SystemNebulaLayer, type NebulaSystem } from './systemNebula';
 import { EmpireLayer } from './empireLayer';
 import { OverlayLayer } from './overlayLayer';
+import { GalaxyMarkerLayer, clickSelection, doubleClickFleet } from './galaxyMarkers'; // [galaxymarkers]
+import type { ShipGroup } from '../sim/fleets/shipGroup'; // [galaxymarkers]
 import { ArtBundleLayer } from './artBundleLayer'; // [19r]
 import { ArtBundleGallery, artGalleryView } from './artBundleGallery'; // [19r]
 import { BuiltObjectLayer, BUILT_OBJECT_MAX_FACTOR } from './builtObjectLayer';
@@ -79,6 +81,7 @@ import { wreckTooltipText } from '../ui/scenario/wreckageUi'; // [wreckage]
 import type { FreightOverlay } from './freightOverlay'; // [freightOverlay]
 import { boundsOnScreen, DrawKey } from './drawCache';
 import { MotionInterpolator, createRenderTime, habitatTouchClampSeconds, renderOrbitAngle, type RenderTime } from './renderInterp';
+import { createFollowState, followTargetAlive, followTargetPosition, isFollowing, stopFollow, type FollowState, type FollowTarget } from './followCamera';
 
 export function fadeIn(v: number, a: number, b: number): number {
     if (v <= a) {
@@ -1007,6 +1010,10 @@ export class MainView {
     /** Task M3: the Overlays HUD toggles this renderer implements (potential
      * colonies, scenic/research markers, empire territory visibility). */
     private overlayLayer!: OverlayLayer;
+    /** [galaxymarkers] faction rings, ship/base symbols, fleet icons, name decorations, station-presence discs. */
+    galaxyMarkers: GalaxyMarkerLayer | null = null;
+    /** [galaxymarkers] a fleet icon click, or a double click on one of the player's fleet ships, selects the fleet. */
+    onShipGroupSelect?: (g: ShipGroup) => void;
     /** [19r] threat markers, league presence, wreck debris, herder camps (render-only map extras). */
     artBundleLayer!: ArtBundleLayer;
     /** [19r] capture gallery (dev flag ?artGallery=<view>). */
@@ -1050,6 +1057,10 @@ export class MainView {
      * previous/current step positions shared by every layer that draws a moving object. Render-only. */
     renderTime: RenderTime = createRenderTime();
     readonly motion = new MotionInterpolator();
+    /** Follow camera (task followcam): shared with the HUD's selection-panel toggle (src/ui/hud.ts) and its
+     * followOnSelectionChanged call. Recentred on the followed ship/fleet every frame in update(); cleared here
+     * on a manual drag/edge-scroll/map-click or target loss, and by keyboard.ts on a keyboard scroll. */
+    readonly followState: FollowState = createFollowState();
     /** Task 08g: set by main.ts — receives the habitat picked on left click. */
     onSelectionChange?: (h: Habitat | null) => void;
     /** Task 13d: set by main.ts — receives the ship/base picked on left click. */
@@ -1155,7 +1166,9 @@ export class MainView {
     /** Task 13d (Main.Part11.cs method_145): the ship/base under the screen point. Ships win over habitats. */
     pickBuiltObject(screenX: number, screenY: number): BuiltObject | null {
         const w = this.camera.screenToWorld(screenX, screenY);
-        return this.builtObjectLayer.pick(w.x, w.y, 1 / this.camera.zoom, this.galaxy.playerEmpire);
+        const bo = this.builtObjectLayer.pick(w.x, w.y, 1 / this.camera.zoom, this.galaxy.playerEmpire);
+        // [galaxymarkers] beyond the ship art (galaxy/sector zoom) the drawn symbols / fleet icons are the pick targets.
+        return bo ?? this.galaxyMarkers?.pickAt(w.x, w.y, this.camera.zoom)?.bo ?? null;
     }
 
     /** Main.Part11.cs method_145 (f <= 100): the creature under the screen point. Creatures win over ships. */
@@ -1398,6 +1411,10 @@ export class MainView {
         // Territory toggle. Added after empireLayer so its yellow marker
         // rings draw above the territory discs and colony rings.
         this.overlayLayer = new OverlayLayer(this.galaxy, this.world, this.empireLayer, this.overlays);
+        this.galaxyMarkers = new GalaxyMarkerLayer(this.galaxy, this.world, this.overlays, this.empireLayer.root); // [galaxymarkers]
+        this.galaxyMarkers.shipPxOf = (bo) => this.builtObjectLayer.drawnSizePx(bo); // [galaxymarkers]
+        // [galaxymarkers] symbols follow the render-interpolated ship when BuiltObjectLayer drew it this frame.
+        this.galaxyMarkers.positionOf = (bo) => this.motion.drawn(bo) ?? { x: bo.xpos, y: bo.ypos };
         // Task 13a: ships/bases/pirates/traders on top of all map layers.
         this.builtObjectLayer = new BuiltObjectLayer(this.galaxy, this.world, this.store, this.overlays);
         // [ambientfx] begin
@@ -1564,6 +1581,7 @@ export class MainView {
         // Territory's visibility toggle is applied straight to empireLayer,
         // above).
         this.overlayLayer.update(z, cam);
+        this.galaxyMarkers?.update(z, cam, this.systems); // [galaxymarkers]
         // [ambientfx] begin
         this.ambientLayer.update(z, cam);
         // [ambientfx] end
@@ -1624,26 +1642,52 @@ export class MainView {
         }
 
         // Screen-edge auto-scroll (original control scheme).
+        let edgeDx = 0;
+        let edgeDy = 0;
         if (!this.dragging && this.pointerInside) {
             const edge = 24;
             const speed = 16;
-            let dx = 0;
-            let dy = 0;
             if (this.lastPointer.x < edge) {
-                dx = -speed;
+                edgeDx = -speed;
             } else if (this.lastPointer.x > cam.width - edge) {
-                dx = speed;
+                edgeDx = speed;
             }
             if (this.lastPointer.y < edge) {
-                dy = -speed;
+                edgeDy = -speed;
             } else if (this.lastPointer.y > cam.height - edge) {
-                dy = speed;
-            }
-            if (dx !== 0 || dy !== 0) {
-                // panByScreen has drag semantics (content follows the pointer); edge scroll moves the view toward the edge.
-                cam.panByScreen(-dx, -dy);
+                edgeDy = speed;
             }
         }
+
+        // Follow camera (task followcam): recentre every frame on the followed ship/fleet's drawn
+        // (render-interpolated) position, keeping zoom. Edge-scroll stops it here; a drag-pan or any map click
+        // stops it immediately at mousedown (attachInput, below); a keyboard scroll stops it in keyboard.ts; a
+        // selection change stops it in hud.ts (followOnSelectionChanged). Wheel-zoom is untouched, so zooming
+        // keeps following.
+        if (isFollowing(this.followState)) {
+            if (edgeDx !== 0 || edgeDy !== 0) {
+                this.stopFollowing();
+            } else {
+                const target = this.followState.target as FollowTarget;
+                if (!followTargetAlive(target)) {
+                    this.stopFollowing();
+                } else {
+                    const p = followTargetPosition(this.motion, target);
+                    cam.centerOn(p.x, p.y);
+                }
+            }
+        }
+
+        if (edgeDx !== 0 || edgeDy !== 0) {
+            // panByScreen has drag semantics (content follows the pointer); edge scroll moves the view toward the edge.
+            cam.panByScreen(-edgeDx, -edgeDy);
+        }
+    }
+
+    /** Stop the follow camera if it is on (edge-scroll, a mousedown on the canvas, or the followed target being
+     * gone — task followcam). A no-op while already off. */
+    private stopFollowing(): void {
+        if (isFollowing(this.followState)) stopFollow(this.followState);
     }
 
     /** The selection ring at screen (x, y) with radius r; the geometry is rebuilt only when one of them changes. */
@@ -1693,6 +1737,9 @@ export class MainView {
             { passive: false },
         );
         canvas.addEventListener('mousedown', (e: MouseEvent) => {
+            // Task followcam: any press on the map — a drag-pan starting or a plain click — stops the follow
+            // camera ("touching anything outside UI elements ... stops the follow cam").
+            this.stopFollowing();
             if (e.button === 2) {
                 this.dragging = true;
                 const rect = canvas.getBoundingClientRect();
@@ -1807,6 +1854,18 @@ export class MainView {
                     return;
                 }
                 this.selectedCreature = null;
+                // [galaxymarkers] begin — a fleet icon (galaxy/sector zoom) selects its fleet (method_258 / 145).
+                const wp = this.camera.screenToWorld(x, y);
+                const sym = this.galaxyMarkers?.pickAt(wp.x, wp.y, this.camera.zoom) ?? null;
+                const symSel = sym !== null ? clickSelection(sym) : null;
+                if (symSel !== null && symSel !== sym?.bo && this.onShipGroupSelect !== undefined) {
+                    playGridClick(); // [audio]
+                    this.selectedHabitat = null;
+                    this.selectedBuiltObject = null;
+                    this.onShipGroupSelect(symSel as ShipGroup);
+                    return;
+                }
+                // [galaxymarkers] end
                 const bo = this.pickBuiltObject(x, y);
                 // [audio] begin — Main.Part10.cs:3304-3306 `if (obj3 != null) method_225()` (grid.wav) on a left-click pick.
                 if (bo !== null || this.pick(x, y) !== null) playGridClick();
@@ -1829,6 +1888,14 @@ export class MainView {
             const rect = canvas.getBoundingClientRect();
             const x = e.clientX - rect.left;
             const y = e.clientY - rect.top;
+            // [galaxymarkers] Main.Part7.cs 3494-3502: double-clicking one of the player's fleet ships selects its fleet.
+            const dbo = this.pickBuiltObject(x, y);
+            const fleet = dbo !== null ? doubleClickFleet(dbo, this.galaxy.playerEmpire) : null;
+            if (fleet !== null && this.onShipGroupSelect !== undefined) {
+                this.selectedBuiltObject = null;
+                this.onShipGroupSelect(fleet);
+                return;
+            }
             const hit = this.pick(x, y);
             if (hit !== null && hit.category === HabitatCategoryType.Star) {
                 this.onDoubleClickStar?.(hit);

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { chromeButtonFile, clearHudMessages, formatCashflow, formatClockLabel, formatMoney, formatPopulation, getHudMessageHistory, getHudMessages, habitatTypeLabel, hudTransformOrigin, nextInCycle, ownerRows, playerColonyList, pushHudMessage, resourceIconUrl, systemRows } from '../src/ui/hud';
+import { buildingQueueText, chromeButtonFile, clearHudMessages, formatCashflow, formatClockLabel, formatMoney, formatPopulation, getHudMessageHistory, getHudMessages, habitatTypeLabel, hudTransformOrigin, nextInCycle, ownerRows, playerColonyList, pushHudMessage, resourceIconUrl, systemRows } from '../src/ui/hud';
+import type { ConstructionQueue } from '../src/sim/construction/constructionQueue';
+import type { ConstructionYard } from '../src/sim/construction/constructionYard';
 import { historyRows } from '../src/ui/screens/messageHistory';
 import { computeHudLayout, TOP_BAR_BUTTONS } from '../src/ui/hudLayout';
 import { START_STAR_DATE } from '../src/sim/galaxyTime';
@@ -487,5 +489,57 @@ describe('systemRows (task 12r)', () => {
         p.empire = empire('A', 3);
         const sys = fakeSystem([p]);
         expect(systemRows(sys).some((r) => r.label === 'Independent')).toBe(false);
+    });
+});
+// The selection panel's colony/shipyard "Building" row (BaconInfoPanel.cs:4502-4516 / InfoPanel.cs:3480-3495
+// DrawBuiltObjectList("Building", …)) — the user-report gap: neither a selected colony nor a selected shipyard
+// base showed anything about what it was building or how far along. Only the pure text is tested here (this
+// project has no jsdom environment; buildingQueueRow's DOM wrapper is exercised only by the app itself).
+describe('buildingQueueText (colony / shipyard "Building" row)', () => {
+    const yard = (shipName: string | null, unbuiltOrDamaged: number, componentCount: number): ConstructionYard =>
+        ({
+            componentId: 5,
+            shipUnderConstruction: shipName === null ? null : { name: shipName, unbuiltOrDamagedComponentCount: unbuiltOrDamaged, components: { count: componentCount }, retrofitDesign: null },
+            constructionSpeed: 40,
+            retrofitComponentsToBeBuilt: null,
+            retrofitComponentsToBeScrapped: null,
+        }) as unknown as ConstructionYard;
+
+    it('null queue: hidden', () => {
+        expect(buildingQueueText(null)).toBeNull();
+    });
+
+    it('an empty queue (no yards, nothing waiting): hidden', () => {
+        const queue = { constructionYards: [], constructionWaitQueue: [] } as unknown as ConstructionQueue;
+        expect(buildingQueueText(queue)).toBeNull();
+    });
+
+    it('one yard building, one idle: only the active one is listed, with its % complete', () => {
+        const queue = { constructionYards: [yard('Escort A', 3, 12), yard(null, 0, 0)], constructionWaitQueue: [] } as unknown as ConstructionQueue;
+        expect(buildingQueueText(queue)).toBe('Escort A (75%)');
+    });
+
+    it('multiple active yards, comma-joined', () => {
+        const queue = {
+            constructionYards: [yard('Escort A', 3, 12), yard('Frigate B', 6, 12)],
+            constructionWaitQueue: [],
+        } as unknown as ConstructionQueue;
+        expect(buildingQueueText(queue)).toBe('Escort A (75%), Frigate B (50%)');
+    });
+
+    it('appends the wait-queue count', () => {
+        const queue = {
+            constructionYards: [yard('Escort A', 3, 12)],
+            constructionWaitQueue: [{}, {}, {}],
+        } as unknown as ConstructionQueue;
+        expect(buildingQueueText(queue)).toBe('Escort A (75%) +3 waiting');
+    });
+
+    it('nothing building but ships waiting: "(None) +N waiting"', () => {
+        const queue = {
+            constructionYards: [yard(null, 0, 0)],
+            constructionWaitQueue: [{}],
+        } as unknown as ConstructionQueue;
+        expect(buildingQueueText(queue)).toBe('(None) +1 waiting');
     });
 });

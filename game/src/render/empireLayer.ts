@@ -172,9 +172,8 @@ export class EmpireLayer {
     private territories: Map<Empire, EmpireTerritory> = new Map();
     /** Colony rings, one per owned planet/moon (world space). */
     private colonyRings: Array<{ habitat: Habitat; ring: Graphics; key: DrawKey }> = [];
-    /** Owned-system marker rings, one per star whose system has an owned
-     * colony (drawn around the star icon at galaxy/sector zoom). */
-    private markerRings: Array<{ star: Habitat; owner: Empire; ring: Graphics; key: DrawKey }> = [];
+    // Owned-system marker rings were removed: they passed a screen-px radius as world units (invisible), and the
+    // faction rings of render/galaxyMarkers.ts (the port of MainView.2.cs method_250 / method_268) supersede them.
     /** Task M3: gates the territory discs only (not colony/marker rings),
      * driven by the "Empire Territory" overlay toggle in overlayLayer.ts. */
     private territoryEnabled = true;
@@ -215,25 +214,6 @@ export class EmpireLayer {
             ring.visible = false;
             this.root.addChild(ring);
             this.colonyRings.push({ habitat: h, ring, key: new DrawKey() });
-        }
-        for (const sys of galaxy.systems) {
-            const star = sys.systemStar;
-            if (star.category === HabitatCategoryType.GasCloud) continue;
-            let owner: Empire | null = null;
-            for (const h of sys.habitats) {
-                if (h.category !== HabitatCategoryType.Planet && h.category !== HabitatCategoryType.Moon) continue;
-                const e = h.owner ?? h.empire;
-                if (e === null || e === undefined) continue;
-                if (e === galaxy.independentEmpire) continue;
-                owner = e;
-                break;
-            }
-            if (owner === null) continue;
-            const ring = new Graphics();
-            ring.blendMode = 'normal';
-            ring.visible = false;
-            this.root.addChild(ring);
-            this.markerRings.push({ star, owner, ring, key: new DrawKey() });
         }
     }
 
@@ -307,33 +287,6 @@ export class EmpireLayer {
             }
             cr.ring.position.set(hx, hy);
             cr.ring.visible = true;
-        }
-
-        // Owned-system markers: small ring around the star icon of every
-        // system containing an owned colony (galaxy/sector zoom only).
-        for (const mr of this.markerRings) {
-            const star = mr.star;
-            if (atSystemZoom) {
-                mr.ring.visible = false;
-                continue;
-            }
-            const halfW = cam.width / (2 * z) + 100 / z;
-            const halfH = cam.height / (2 * z) + 100 / z;
-            if (star.xpos < cam.x - halfW || star.xpos > cam.x + halfW || star.ypos < cam.y - halfH || star.ypos > cam.y + halfH) {
-                mr.ring.visible = false;
-                continue;
-            }
-            // Icon side is clamp(diameter*z*30, 2.5, 26) px (SystemView.update);
-            // the marker sits just outside it.
-            const iconPx = Math.min(Math.max(star.diameter * z * 30, 2.5), 26);
-            const r = iconPx * 0.5 + 4;
-            const ownerIdx = this.empires.indexOf(mr.owner);
-            const color = ownerIdx >= 0 ? this.colors[ownerIdx] : toPixiColor(displayColorForEmpire(mr.owner));
-            if (mr.key.changed(star.xpos, star.ypos, r, 2 / z, color)) {
-                mr.ring.clear();
-                mr.ring.circle(star.xpos, star.ypos, r).stroke({ width: 2 / z, color, alpha: 1 });
-            }
-            mr.ring.visible = true;
         }
     }
 }

@@ -117,10 +117,22 @@ describe('builtObjectStatusRows', () => {
             player,
         );
         expect(row(rows, 'Components')).toBe('2 damaged, 1 disabled, 1 unbuilt');
+        expect(row(rows, 'Construction')).toBe('90% Complete');
         expect(row(rows, 'Damage')).toBe('20%');
         expect(row(builtObjectStatusRows(fakeBo({ retrofitDesign: { name: 'Mk2' } }), player), 'Components')).toBe(
             '(RETROFITTING to Mk2)',
         );
+    });
+
+    it('construction progress: 1 - unbuilt / components, hidden once nothing is left to build', () => {
+        expect(row(builtObjectStatusRows(fakeBo({ unbuiltComponentCount: 4, components: { count: 10 } }), player), 'Construction')).toBe(
+            '60% Complete',
+        );
+        expect(row(builtObjectStatusRows(fakeBo({ unbuiltComponentCount: 0 }), player), 'Construction')).toBeUndefined();
+        // A ship someone else owns: hidden along with the other "known" rows (same `known` guard as Damage).
+        expect(
+            row(builtObjectStatusRows(fakeBo({ actualEmpire: {}, unbuiltComponentCount: 4 }), player), 'Construction'),
+        ).toBeUndefined();
     });
 
     it('fuel', () => {
