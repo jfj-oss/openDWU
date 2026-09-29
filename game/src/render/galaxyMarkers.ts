@@ -699,6 +699,8 @@ export class GalaxyMarkerLayer {
     private readonly symbols: ParticleContainer;
     private readonly rings = new Graphics();
     private readonly overlayG = new Graphics();
+    /** Shield / hull bars, drawn relative to `symbols.position` (see updateSymbols: the same camera-local origin). */
+    private readonly barsG = new Graphics();
     private readonly iconLayer = new Container();
     private readonly countLayer = new Container();
     private discTex: Texture;
@@ -739,7 +741,7 @@ export class GalaxyMarkerLayer {
         this.discs = new ParticleContainer({ texture: this.discTex, dynamicProperties: dyn });
         this.symbols = new ParticleContainer({ texture: Texture.WHITE, dynamicProperties: dyn });
         this.back.addChild(this.discs, this.rings);
-        this.front.addChild(this.symbols, this.countLayer, this.overlayG, this.iconLayer);
+        this.front.addChild(this.symbols, this.barsG, this.countLayer, this.overlayG, this.iconLayer);
         const idx = below !== null ? world.children.indexOf(below) : -1;
         if (idx >= 0) world.addChildAt(this.back, idx);
         else world.addChild(this.back);
@@ -836,6 +838,7 @@ export class GalaxyMarkerLayer {
         this.front.visible = factionOn;
         this.drawn = [];
         this.overlayG.clear();
+        this.barsG.clear();
         this.decorateLabels(systems, f, z, factionOn);
         if (!this.back.visible && !this.front.visible) return;
 
@@ -1050,6 +1053,13 @@ export class GalaxyMarkerLayer {
         const selBo = sel?.shipGroup === undefined ? (sel?.builtObject ?? null) : null;
         const selGroup = sel?.shipGroup ?? null;
         const galaxyPass = band === 'galaxy';
+        // Particle / bar vertices are float32 in the container's local space, and galaxy coordinates run to millions
+        // (spacing 0.06 - 0.5 world units), which shows as stepping when a ship glides a fraction of a px per frame.
+        // So both containers sit at the camera centre and the markers are placed relative to it (small local numbers).
+        const ox = cam.x;
+        const oy = cam.y;
+        this.symbols.position.set(ox, oy);
+        this.barsG.position.set(ox, oy);
         const shipPx = shipSymbolPx(f, false);
         const basePx = shipSymbolPx(f, true);
         const opts: GalaxyViewDisplay = getSettings();
@@ -1081,16 +1091,16 @@ export class GalaxyMarkerLayer {
             const alpha = symbolAlpha(f, owned, isBase) * (band === 'outline' ? OUTLINE_MARKER_ALPHA : FILLED_MARKER_ALPHA);
             const artIdx = SYMBOL_ART.indexOf(art);
             if (band === 'outline') {
-                this.pushSymbol(n++, SYMBOL_ART.length + artIdx, pos.x, pos.y, heightPx, z, tint, alpha);
+                this.pushSymbol(n++, SYMBOL_ART.length + artIdx, pos.x - ox, pos.y - oy, heightPx, z, tint, alpha);
             } else {
                 // Filled art over a darker, slightly larger copy: the contour.
-                this.pushSymbol(n++, artIdx, pos.x, pos.y, heightPx + 2.5, z, brighten(base, -96), alpha * 0.9);
-                this.pushSymbol(n++, artIdx, pos.x, pos.y, heightPx, z, tint, alpha);
+                this.pushSymbol(n++, artIdx, pos.x - ox, pos.y - oy, heightPx + 2.5, z, brighten(base, -96), alpha * 0.9);
+                this.pushSymbol(n++, artIdx, pos.x - ox, pos.y - oy, heightPx, z, tint, alpha);
             }
             if (!galaxyPass && !isBase) {
                 // Shield / hull bars under the marker while the ship fights (render/combatBars.ts).
                 const barAlpha = combatBarAlpha(bo, g.nowMs);
-                if (barAlpha > 0) drawCombatBars(this.overlayG, bo, pos.x, pos.y, heightPx, z, barAlpha);
+                if (barAlpha > 0) drawCombatBars(this.barsG, bo, pos.x - ox, pos.y - oy, heightPx, z, barAlpha);
             }
             if (galaxyPass) {
                 this.drawn.push({ bo, group: null, x: pos.x, y: pos.y, halfPx: heightPx / 2 });
@@ -1113,7 +1123,7 @@ export class GalaxyMarkerLayer {
                 const e = sg.empire;
                 let color = e !== null ? displayColorForEmpire(e) & 0xffffff : UNOWNED_SYMBOL_COLOR;
                 if (color === 0x010101) color = 0x080808;
-                this.pushSymbol(n++, cell, pos.x, pos.y, iconH, z, color, 1);
+                this.pushSymbol(n++, cell, pos.x - ox, pos.y - oy, iconH, z, color, 1);
                 this.drawn.push({ bo: lead, group: sg, x: pos.x, y: pos.y, halfPx: iconH / 2 });
                 if (sg === selGroup) this.selectBox(pos.x, pos.y, iconH, z); // 6384-6387
                 if (f < 6000) {

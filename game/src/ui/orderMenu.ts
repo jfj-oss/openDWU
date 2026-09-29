@@ -21,6 +21,7 @@ import {
     openActionMenu,
     orderSubject,
     resolveHoverOrder,
+    rightClickCentersView,
     rightClickOrder,
     selectionAfterClick,
     selectionButtons,
@@ -379,11 +380,12 @@ export function installOrderUi(d: OrderUiDeps, view: OrderMainView, camera: Orde
         } else if (r.kind === 'idleShips') {
             openOrderMenu(r.items, e.clientX, e.clientY, { onPick: (item) => item.select !== undefined && deps?.select(item.select) });
             return;
-        } else if (r.kind === 'center') {
-            camera.centerOn(w.x, w.y);
         }
         // actionMenu_Opening: the ContextMenuStrip opens on the same click unless the default order was given.
         const items = openActionMenu({ galaxy, empire, selected, cursorX: x, cursorY: y, zoomFactor: view.zoomFactor, pickAt: () => target }, hover.action, e.ctrlKey);
+        // Main.Part10.cs 3310-3559 re-centres on the click when something is selected and there is no default order; here the
+        // view stays put whenever the menu opens on that click (it opens at the cursor over what was clicked).
+        if (rightClickCentersView(r, items)) camera.centerOn(w.x, w.y);
         if (items !== null && items.length > 0) {
             openOrderMenu(items, e.clientX, e.clientY, {
                 onPick: (item, shift) => {

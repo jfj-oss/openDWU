@@ -297,6 +297,14 @@ export function hitTestHabitats(
     return best;
 }
 
+/** Asteroid rocks are drawn only above this zoom (SystemView.updateBodies `rocksVisible`). */
+export const ROCK_MIN_ZOOM = 0.05;
+
+/** On-screen size in px of an asteroid rock: world-linear, diameter * zoom * 0.45 (SystemView's rock sprite scale). */
+export function asteroidDrawnPx(diameter: number, z: number): number {
+    return diameter * 0.45 * z;
+}
+
 /** On-screen size in px of the star art at zoom z: the same bands the system renderer draws (discs / sprite /
  * galaxy map-star icon / small map icon). */
 export function starDrawnPx(star: Habitat, z: number): number {
@@ -806,7 +814,7 @@ class SystemView {
         }
 
         // Asteroid fields: scattered rocks, only once they resolve to >1 px.
-        const rocksVisible = z > 0.05;
+        const rocksVisible = z > ROCK_MIN_ZOOM;
         if (rocksVisible !== this.rocksShown) {
             this.rocksShown = rocksVisible;
             for (let i = 0; i < this.asteroids.length; i++) {
@@ -1212,7 +1220,10 @@ export class MainView {
         if (h.category === HabitatCategoryType.Planet) {
             return planetSpritePx(h.diameter, z);
         }
-        // Asteroids/gas clouds are not pickable.
+        if (h.category === HabitatCategoryType.Asteroid) {
+            return z > ROCK_MIN_ZOOM ? asteroidDrawnPx(h.diameter, z) : 0;
+        }
+        // Gas clouds are not pickable.
         return 0;
     }
 
@@ -1246,6 +1257,14 @@ export class MainView {
                     }
                 }
             }
+            // Asteroid rocks first (smaller art wins over planets / moons / stars): where the rock is drawn, at least 6 px.
+            const rocks: Habitat[] = [];
+            for (const sv of this.systems) {
+                if (!fog.habitatInfo(sv.system.systemStar)) continue;
+                for (const r of sv.rockHabitats) if (fog.habitatDrawn(r)) rocks.push(r);
+            }
+            const rock = hitTestHabitats(rocks, w.x, w.y, size, z, drawnAt);
+            if (rock !== null) return rock;
             const hit = hitTestHabitats(bodies, w.x, w.y, size, z, drawnAt);
             if (hit !== null) {
                 return hit;
@@ -1730,8 +1749,9 @@ export class MainView {
                 this.selectionRing.visible = false;
             }
         } else if (selBo !== null && !selBo.hasBeenDestroyed && 1 / z < BUILT_OBJECT_MAX_FACTOR) {
-            const d = this.motion.drawn(selBo);
-            const s = cam.worldToScreen(d !== null ? d.x : selBo.xpos, d !== null ? d.y : selBo.ypos);
+            // The same drawn position as the ship sprite and its marker (sampled by BuiltObjectLayer above this frame).
+            const d = drawnBuiltObjectPos(this.motion, selBo);
+            const s = cam.worldToScreen(d.x, d.y);
             const r = Math.max(this.builtObjectLayer.drawnSizePx(selBo), 8) * 0.5 + 4;
             this.drawSelectionRing(s.x, s.y, r);
         } else if (sel === null) {
@@ -1843,6 +1863,13 @@ export class MainView {
             // Task followcam: any press on the map — a drag-pan starting or a plain click — stops the follow
             // camera ("touching anything outside UI elements ... stops the follow cam").
             this.stopFollowing();
+            // A press (a selection click, a drag) drops the hover name tooltip and cancels its pending show, so selecting a
+            // body does not pop its name (the selection panel shows it); the next pointer move brings hover tooltips back.
+            if (this.tooltipTimer !== undefined) {
+                clearTimeout(this.tooltipTimer);
+                this.tooltipTimer = undefined;
+            }
+            hideMapTooltip();
             if (e.button === 2) {
                 this.dragging = true;
                 const rect = canvas.getBoundingClientRect();
@@ -1919,6 +1946,11 @@ export class MainView {
             }, 120);
         });
         window.addEventListener('mouseup', (e: MouseEvent) => {
+            if (this.tooltipTimer !== undefined) {
+                clearTimeout(this.tooltipTimer);
+                this.tooltipTimer = undefined;
+            }
+            hideMapTooltip();
             if (e.button === 2 && this.dragging) {
                 this.dragging = false;
                 const rect = canvas.getBoundingClientRect();

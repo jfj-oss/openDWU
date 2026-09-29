@@ -4052,6 +4052,16 @@ export function rightClickOrder(galaxy: Galaxy, empire: Empire, selected: ShipAc
     return { kind: 'center' };
 }
 
+/**
+ * Whether a right-click re-centres the view on the click point. The original (Main.Part10.cs 3310-3559, method_149)
+ * does so for `{ kind: 'center' }` even when the action menu opens on the same click; here the view stays exactly where
+ * it was whenever that menu opens (`menu` = the items openActionMenu returned), so clicking something the selection can
+ * interact with only opens the menu at the cursor.
+ */
+export function rightClickCentersView(result: RightClickResult, menu: readonly unknown[] | null): boolean {
+    return result.kind === 'center' && (menu === null || menu.length === 0);
+}
+
 /** Main.Part7.cs 3537 method_354(ships, null): one entry per ship ("Name (SubRole)"), a fleet lead at galaxy zoom by its fleet. */
 function idleShipItems(list: BuiltObject[], zoomFactor: number): OrderMenuItem[] {
     const items: OrderMenuItem[] = [];
