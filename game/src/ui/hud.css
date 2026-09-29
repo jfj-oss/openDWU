@@ -486,3 +486,13 @@
     color: #9aa3ad;
     white-space: nowrap;
 }
+.hud-automation-toggle {
+  width: 100%;
+  padding: 2px 6px;
+  font: inherit;
+  color: inherit;
+  background: rgba(40, 40, 80, 0.6);
+  border: 1px solid rgba(160, 160, 255, 0.4);
+  cursor: pointer;
+}
+.hud-automation-toggle.hud-automation-on { background: rgba(30, 110, 50, 0.65); }

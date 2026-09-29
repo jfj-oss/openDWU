@@ -46,6 +46,7 @@ import { rimTraderEmpire } from '../../sim/scenario/rimTrade/common';
 import { REAL_SECONDS_IN_GALACTIC_YEAR } from '../../sim/galaxyTime';
 import { EmpireMessageType, empireMessages } from '../../sim/messages';
 import { showToast } from '../toast';
+import { empireIntel, formatMillions, type EmpireIntel } from './empireIntel';
 // [proposals] begin
 import { listProposals, type ProposalOption, type ProposalResult } from '../../sim/player/diplomacyProposals';
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
@@ -348,6 +349,9 @@ export interface DiplomacyScreenOptions {
      *  diplomacy" button on a pirate offer popup / Main.Part8.cs:449 method_296, which always brought that empire's
      *  talk panel to the front rather than toggling it closed). */
     selectedEmpire?: Empire;
+    /** The HUD's Empires button opens this screen; this adds a titlebar button that opens the older Empires list
+     *  (capital zoom / charters). Omitted = no such button. */
+    onOpenEmpiresList?: () => void;
 }
 
 interface OpenState {
@@ -375,6 +379,44 @@ export function toggleDiplomacyScreen(opts: DiplomacyScreenOptions): void {
 /** Close the Diplomacy screen (no-op when closed). */
 export function closeDiplomacyScreen(): void {
     open?.close();
+}
+
+/** EmpireDetailView.DrawEmpireDetail's stat block + Dominant Race block (see empireIntel.ts). */
+function strengthsBlock(player: Empire, i: EmpireIntel): HTMLElement {
+    const box = el('div', 'diplomacy-strengths');
+    box.appendChild(el('div', 'diplomacy-section-heading', 'Known Strengths'));
+    const stat = (label: string, value: string, color?: string): void => {
+        const line = el('div', 'diplomacy-stat');
+        line.appendChild(el('span', 'diplomacy-stat-label', label));
+        const v = el('span', 'diplomacy-stat-value', value);
+        if (color) v.style.color = color;
+        line.appendChild(v);
+        box.appendChild(line);
+    };
+    stat('Capital', i.capital ?? '(Unknown)');
+    stat('Government', i.government, i.governmentAvailability === 3 ? '#c03030' : i.governmentAvailability === 2 ? '#ffd700' : undefined);
+    stat('Reputation', i.reputation);
+    stat('Colonies', String(i.colonies));
+    stat('Population', formatMillions(i.populationMillions));
+    stat('Military Strength', String(i.militaryStrength));
+    stat('Military Ships', `${i.militaryShips}  (${i.firepower} firepower)`);
+    stat('Tax Revenue', `${i.taxRevenueK}K`);
+    stat('Annual GDP', `${i.gdpK}K`);
+    stat('Strategic Value', `${i.strategicValueK}K`);
+    const race = el('div', 'diplomacy-race');
+    if (i.racePictureIndex !== null) {
+        const img = document.createElement('img');
+        img.className = 'diplomacy-race-portrait';
+        img.src = `/assets/dwu/images/units/races/race_${i.racePictureIndex}.png`;
+        img.width = 40;
+        img.height = 40;
+        race.appendChild(img);
+    }
+    race.appendChild(el('span', 'diplomacy-stat-value', i.raceName));
+    if (i.raceFamily !== '') race.appendChild(el('span', 'diplomacy-muted', ` (${i.raceFamily} family)`));
+    box.appendChild(race);
+    void player;
+    return box;
 }
 
 function rgb(c: number): string {
@@ -447,7 +489,16 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
     const win = el('div', 'diplomacy-window');
 
     const titlebar = el('div', 'diplomacy-titlebar');
-    titlebar.appendChild(el('div', 'diplomacy-heading', 'Diplomacy'));
+    titlebar.appendChild(el('div', 'diplomacy-heading', 'Empires — Diplomacy'));
+    if (opts.onOpenEmpiresList) {
+        const listBtn = document.createElement('button');
+        listBtn.type = 'button';
+        listBtn.className = 'diplomacy-button diplomacy-list-btn';
+        listBtn.textContent = 'Empire list';
+        listBtn.title = 'Open the list of empires with capital zoom';
+        listBtn.addEventListener('click', () => opts.onOpenEmpiresList!());
+        titlebar.appendChild(listBtn);
+    }
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
     closeBtn.className = 'diplomacy-close';
@@ -519,7 +570,10 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
             relation.title = r.relationText;
             const attitude = el('span', 'diplomacy-attitude', r.attitude !== null ? formatSigned(r.attitude) : '');
             if (r.attitude !== null) attitude.style.color = r.attitude < 0 ? RED : LIGHT_GREEN;
-            line.append(swatch, name, relation, attitude);
+            const intel = empireIntel(player, r.empire);
+            const power = el('span', 'diplomacy-power', `${intel.colonies}c ${intel.firepower}fp`);
+            power.title = `${intel.colonies} colonies, ${intel.firepower} firepower`;
+            line.append(swatch, name, relation, power, attitude);
             line.addEventListener('click', () => {
                 selected = r.empire;
                 detailScroll = 0;
@@ -538,6 +592,8 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
         title.prepend(emblemImg('diplomacy-portrait', row.empire, 'portrait', 'width:48px;height:48px;margin-right:8px;border-radius:3px;vertical-align:middle'));
         title.append(emblemImg('diplomacy-flag', row.empire, 'flag', 'width:40px;height:24px;margin-left:8px;vertical-align:middle'));
         detail.appendChild(title);
+
+        detail.appendChild(strengthsBlock(player, empireIntel(player, row.empire)));
 
         detail.appendChild(el('div', 'diplomacy-section-heading', 'Current Relationship With Us'));
         const relText = el('div', 'diplomacy-line', row.relationText);

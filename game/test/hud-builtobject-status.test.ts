@@ -35,6 +35,16 @@ function fakeBo(extra: Record<string, unknown>): BuiltObject {
         mission: null,
         subsequentMissions: [],
         actualEmpire: player,
+        currentShields: 0,
+        shieldsCapacity: 0,
+        firepowerRaw: 0,
+        maximumWeaponsRange: 0,
+        reactorStorageCapacity: 0,
+        currentReactorStorage: 0,
+        shieldsReducedLocation: false,
+        canHyperJump: true,
+        hyperjumpPrepare: false,
+        hyperjumpCountdown: 0,
         ...extra,
     } as unknown as BuiltObject;
 }
@@ -87,8 +97,8 @@ describe('missionTargetText', () => {
 describe('builtObjectStatusRows', () => {
     it('idle own explorer', () => {
         const rows = builtObjectStatusRows(fakeBo({}), player);
-        expect(rows.map((r) => r.label)).toEqual(['Mission', 'Components', 'Fuel', 'Speed']);
-        expect(rows.map((r) => r.value)).toEqual(['(No mission)', '(All components normal)', '50 / 100', '0 / 20']);
+        expect(rows.map((r) => r.label)).toEqual(['Mission', 'Components', 'Fuel', 'Shields', 'Speed', 'Hyperjump', 'Weapons']);
+        expect(rows.map((r) => r.value)).toEqual(['(No mission)', '(All components normal)', '50 / 100', '0 / 0', '0 / 20', 'Ready', '(None)']);
     });
 
     it('own frigate with mission, engage posture and queue', () => {
