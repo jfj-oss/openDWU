@@ -11,6 +11,7 @@
 // pixels. Zoom gating mirrors the original's factor threshold: system/planet
 // zoom is factor < 70 (factor = 1/z), the same test MainView.pick uses.
 
+import { fogOf } from './fog';
 import type { MotionInterpolator } from './renderInterp';
 import { Container, Graphics } from 'pixi.js';
 import type { Camera } from './camera';
@@ -272,6 +273,11 @@ export class EmpireLayer {
                 hy = hp.y;
             }
             if (hx < cam.x - halfW || hx > cam.x + halfW || hy < cam.y - halfH || hy > cam.y + halfH) {
+                cr.ring.visible = false;
+                continue;
+            }
+            if (!fogOf(this.galaxy).habitatDrawn(h)) {
+                // fog.ts: a colony of a system the player has not explored is not drawn (nor its ring).
                 cr.ring.visible = false;
                 continue;
             }

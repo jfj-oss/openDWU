@@ -4,6 +4,7 @@
 // install folder by the desktop shell; under `npm run dev` a public symlink
 // plus the probe middleware in vite.config.ts does the same).
 
+import { fogOf } from './render/fog';
 import { Application } from 'pixi.js';
 import { Camera } from './render/camera';
 import { MainView } from './render/mainView';
@@ -547,6 +548,9 @@ export async function startGameView(
     // queue in processMessages, so poll on every HUD refresh (4x a second).
     const messageFeed = createEmpireMessageFeed();
     const refreshHud = (): void => {
+        // Fog of war (Main.Part10.cs method_209): no panel for a ship / fleet / creature the player no longer sees.
+        const shown = getHudSelection();
+        if (shown !== null && fogOf(galaxy).selectionUnseen(shown)) hud.onSelectionChange?.(null);
         if (systemNameEl) {
             setTextIfChanged(systemNameEl, nearestSystemName({ galaxy }, camera));
         }

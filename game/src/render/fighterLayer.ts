@@ -16,7 +16,7 @@
 //                                            bomber.png, index family * 2 (+ 1 for the bomber), cropped (padding 4),
 //                                            rotated 90° clockwise, thruster marks scanned and painted out.
 //
-// TODO(port): Empire.IsObjectVisibleToThisEmpire(fighter) / GodMode (MainView.1.cs 1337) — not in sim; all drawn.
+// Fog of war (MainView.1.cs 1337 `GodMode || IsObjectVisibleToThisEmpire(fighter)`): fog.ts — unseen fighters are skipped.
 // 19r: the damage overlay on a hurt fighter (MainView.cs 3204 method_70 → Main.Part12.cs 5002 method_107 with the
 // bitmap_7 mask) — shipOverlays.ts DamageOverlays, drawn above the bodies.
 // TODO(port): fighter shield bar (method_194) at zoom factor <= 3 in battle — MainView.1.cs 1542-1547.
@@ -31,6 +31,7 @@ import { exhaustRect, type ExhaustRect } from './ambientLayer';
 import { loadShipArt, shipArtIfLoaded } from './shipArt';
 import { DamageOverlays, fighterDamageSubject } from './shipOverlays';
 import { artBundleFlag } from './artBundleFlags';
+import { fogOf } from './fog';
 import type { Galaxy } from '../sim/galaxy';
 import { fightersOf, type Fighter } from '../sim/combat/fighters';
 import type { MotionInterpolator } from './renderInterp';
@@ -175,6 +176,7 @@ export class FighterLayer {
         if (visible) {
             const halfW = cam.width / 2;
             const halfH = cam.height / 2;
+            const fog = fogOf(this.galaxy);
             for (const bo of this.galaxy.builtObjects) {
                 if (bo === null) continue;
                 const fighters = fightersOf(bo);
@@ -186,6 +188,7 @@ export class FighterLayer {
                     const sy = (fighter.ypos - cam.y) * z + halfH;
                     // Coarse cull before the art lookup (fighters are at most a few dozen px).
                     if (sx < -CULL_MARGIN_PX - 64 || sx > cam.width + CULL_MARGIN_PX + 64 || sy < -CULL_MARGIN_PX - 64 || sy > cam.height + CULL_MARGIN_PX + 64) continue;
+                    if (!fog.fighter(fighter)) continue;
                     // Drawn position / heading: lerp between the last two sim steps (renderInterp.ts), or the sim state.
                     let x = fighter.xpos;
                     let y = fighter.ypos;

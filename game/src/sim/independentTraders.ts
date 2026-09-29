@@ -70,8 +70,12 @@ function currentStarDate(galaxy: Galaxy): number {
     return galaxyStarDate(galaxy);
 }
 
-function isBuiltObject(o: Habitat | BuiltObject): o is BuiltObject {
+function isBuiltObject(o: Habitat | BuiltObject | VisibilityFighter): o is BuiltObject {
     return o instanceof BuiltObject;
+}
+
+function isFighter(o: Habitat | BuiltObject | VisibilityFighter): o is VisibilityFighter {
+    return !(o instanceof BuiltObject) && !(o instanceof Habitat) && 'onboardCarrier' in o;
 }
 
 // ------------------------------------------------------------------------------------------
@@ -249,12 +253,25 @@ export function findShipOutsideSystemWithScanRange(galaxy: Galaxy, empire: Empir
 
 // Empire.9.cs IsBuiltObjectVisibleToThisEmpire(builtObject, out visibleKnownPirateBase) (3124).
 function isBuiltObjectVisibleToThisEmpire(galaxy: Galaxy, empire: Empire, builtObject: BuiltObject | null): boolean {
+    return builtObjectVisibility(galaxy, empire, builtObject) !== BuiltObjectVisibility.None;
+}
+
+/** Empire.9.cs IsBuiltObjectVisibleToThisEmpire's result plus its `out bool visibleKnownPirateBase`. */
+export enum BuiltObjectVisibility {
+    None = 0,
+    Visible = 1,
+    /** Visible only because it is one of the empire's KnownPirateBases (visibleKnownPirateBase = true). */
+    KnownPirateBase = 2,
+}
+
+// Empire.9.cs IsBuiltObjectVisibleToThisEmpire(builtObject, out visibleKnownPirateBase) (3124).
+export function builtObjectVisibility(galaxy: Galaxy, empire: Empire, builtObject: BuiltObject | null): BuiltObjectVisibility {
     if (builtObject !== null) {
         if (empire.pirateEmpireBaseHabitat !== null && builtObject.pirateEmpireId > 0 && builtObject.pirateEmpireId === empire.empireId) {
-            return true;
+            return BuiltObjectVisibility.Visible;
         }
         if (builtObject.nearestSystemStar !== null) {
-            if (empire.visibility.checkSystemVisible(builtObject.nearestSystemStar.systemIndex)) return true;
+            if (empire.visibility.checkSystemVisible(builtObject.nearestSystemStar.systemIndex)) return BuiltObjectVisibility.Visible;
         }
         for (let i = 0; i < empire.longRangeScanners.length; i++) {
             const builtObject2 = empire.longRangeScanners[i] as BuiltObject;
@@ -262,7 +279,7 @@ function isBuiltObjectVisibleToThisEmpire(galaxy: Galaxy, empire: Empire, builtO
                 const num = Math.fround(builtObject2.sensorLongRange) * builtObject.stealth;
                 const num2 = num * num;
                 const num3 = galaxy.calculateDistanceSquared(builtObject2.xpos, builtObject2.ypos, builtObject.xpos, builtObject.ypos);
-                if (num3 <= num2) return true;
+                if (num3 <= num2) return BuiltObjectVisibility.Visible;
             }
         }
         // Empire.9.cs 3159-3180: the long-range scanners of the empires we share visibility with.
@@ -277,25 +294,41 @@ function isBuiltObjectVisibleToThisEmpire(galaxy: Galaxy, empire: Empire, builtO
                         const num4 = Math.fround(builtObject3.sensorLongRange) * builtObject.stealth;
                         const num5 = num4 * num4;
                         const num6 = galaxy.calculateDistanceSquared(builtObject3.xpos, builtObject3.ypos, builtObject.xpos, builtObject.ypos);
-                        if (num6 <= num5) return true;
+                        if (num6 <= num5) return BuiltObjectVisibility.Visible;
                     }
                 }
             }
         }
         if (empire.knownPirateBases != null && empire.knownPirateBases.includes(builtObject)) {
-            return true;
+            return BuiltObjectVisibility.KnownPirateBase;
         }
     }
-    return false;
+    return BuiltObjectVisibility.None;
 }
 
 // Empire.9.cs IsObjectVisibleToThisEmpireImprecise(StellarObject) (3065) for Habitat / BuiltObject.
-// TODO(port): the Fighter branch (fighters not ported).
-export function isObjectVisibleToThisEmpireImprecise(galaxy: Galaxy, empire: Empire, objectToTest: Habitat | BuiltObject): boolean {
+// A Fighter (combat/fighters.ts) is duck-typed here (this module cannot import it: circular) — only the members the
+// visibility rules read.
+export interface VisibilityFighter {
+    empire: Empire | null;
+    xpos: number;
+    ypos: number;
+    onboardCarrier: boolean;
+    parentBuiltObject: BuiltObject | null;
+}
+export function isObjectVisibleToThisEmpireImprecise(galaxy: Galaxy, empire: Empire, objectToTest: Habitat | BuiltObject | VisibilityFighter): boolean {
     if (objectToTest.empire === empire) return true;
     // Empire.9.cs 3071: _EmpiresViewable (intelligence missions) / _EmpiresSharedVisibility (treaties).
     const objectEmpire = objectToTest.empire as Empire | null;
     if (empire.empiresViewable.includes(objectEmpire as Empire) || empiresSharedVisibility(galaxy, empire).includes(objectEmpire as Empire)) return true;
+    if (isFighter(objectToTest)) {
+        // Empire.9.cs 3095-3112: aboard its carrier -> no; else its parent ship visible (not merely a known pirate base).
+        if (objectToTest.onboardCarrier) return false;
+        if (objectToTest.parentBuiltObject !== null) {
+            return builtObjectVisibility(galaxy, empire, objectToTest.parentBuiltObject) === BuiltObjectVisibility.Visible;
+        }
+        return false;
+    }
     if (!isBuiltObject(objectToTest)) {
         const habitat = objectToTest;
         if (empire.visibility.checkSystemVisible(habitat.systemIndex)) return true;
@@ -312,8 +345,8 @@ export function isObjectVisibleToThisEmpireImprecise(galaxy: Galaxy, empire: Emp
 
 // Empire.9.cs IsObjectVisibleToThisEmpire(objectToTest, includeLongRangeScanners,
 // includeShipsOutsideSystems) (3198; the 1-arg overload 3193 passes true, true).
-export function isObjectVisibleToThisEmpire(galaxy: Galaxy, empire: Empire, objectToTest: Habitat | BuiltObject, includeLongRangeScanners = true, includeShipsOutsideSystems = true): boolean {
-    if (galaxy.scenario !== null && scenarioQuery(galaxy, 'objectVisibleToAll', false, { empire, object: objectToTest })) return true; // mod layer (19a beacon)
+export function isObjectVisibleToThisEmpire(galaxy: Galaxy, empire: Empire, objectToTest: Habitat | BuiltObject | VisibilityFighter, includeLongRangeScanners = true, includeShipsOutsideSystems = true): boolean {
+    if (galaxy.scenario !== null && scenarioQuery(galaxy, 'objectVisibleToAll', false, { empire, object: objectToTest as Habitat | BuiltObject })) return true; // mod layer (19a beacon)
     const flag = isObjectVisibleToThisEmpireImprecise(galaxy, empire, objectToTest);
     if (flag) return flag;
     // StellarObject.Stealth (StellarObject.cs 32, float, default 1f; Habitats keep the default).

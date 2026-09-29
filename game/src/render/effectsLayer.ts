@@ -43,6 +43,7 @@ import { MIN_TIME, galaxyStarDate } from '../sim/tick/simTime';
 import { fightersOf, type Fighter } from '../sim/combat/fighters';
 import { ComponentCategoryType } from '../sim/data/policies';
 import { fighterDrawnSizePx } from './fighterLayer';
+import { fogOf } from './fog';
 
 const IMG = '/assets/dwu/images';
 /** The original rotates weapon / hyper art 90° clockwise at load (RotateFlip(Rotate90FlipNone)); drawing the raw
@@ -799,9 +800,15 @@ export class EffectsLayer {
         viewBounds(cam, CULL_MARGIN_PX, this.bounds);
         const sz = shipZoomFactor(f);
 
+        // Fog of war (fog.ts): everything drawn inside the ship / fighter / habitat draw blocks of MainView.1.cs is skipped
+        // for objects the player cannot see (the checks are made lazily, only for objects with something to draw).
+        const fog = fogOf(this.galaxy);
+
         // Habitats: giant ion cannons (method_169), bombardment explosions (method_180), planet destruction (method_187).
         for (const h of this.galaxy.habitats) {
             if (h === null) continue;
+            const hasFx = (h.giantIonCannonPresent && h.giantIonCannon !== null && h.giantIonCannon.distanceTravelled >= 0) || (h.explosions !== null && h.explosions.length > 0) || h.explosion !== null;
+            if (!hasFx || !fog.habitatDrawn(h)) continue;
             if (h.giantIonCannonPresent && h.giantIonCannon !== null && h.giantIonCannon.distanceTravelled >= 0) {
                 this.drawWeapon(h.giantIonCannon, h, f, nowMs);
             }
@@ -828,6 +835,18 @@ export class EffectsLayer {
                 this.drawStrikes(bo, nowMs);
                 this.checkHyper(bo, starDate, nowMs);
             }
+            const weapons = bo.weapons;
+            let firing = false;
+            if (weapons !== null && !bo.hasBeenDestroyed) {
+                for (let i = 0; i < weapons.length; i++) {
+                    const w = weapons[i];
+                    if (w != null && w.distanceTravelled >= 0) {
+                        firing = true;
+                        break;
+                    }
+                }
+            }
+            if ((explosions.length > 0 || firing) && !fog.builtObject(bo)) continue;
             if (explosions.length > 0) {
                 // A live ship's explosions follow its drawn position; a destroyed one's stay where it died.
                 const at = bo.hasBeenDestroyed ? bo : this.drawnAt(bo);
@@ -837,8 +856,7 @@ export class EffectsLayer {
                     for (let i = 0; i < explosions.length; i++) this.drawExplosion(ex, ey, explosions[i], f, sz, nowMs);
                 }
             }
-            const weapons = bo.weapons;
-            if (weapons !== null && !bo.hasBeenDestroyed) {
+            if (firing && weapons !== null) {
                 for (let i = 0; i < weapons.length; i++) {
                     const w = weapons[i];
                     if (w != null && w.distanceTravelled >= 0) this.drawWeapon(w, bo, f, nowMs);
@@ -969,6 +987,7 @@ export class EffectsLayer {
         const fx = at.xpos;
         const fy = at.ypos;
         if (!circleInView(this.bounds, fx, fy, reach)) return;
+        if (!fogOf(this.galaxy).fighter(fighter)) return; // MainView.1.cs 1337: an unseen fighter has no effects either
         if (!fighter.hasBeenDestroyed && shieldStrikeVisible(fighter.lastShieldStrike, nowMs) && this.shieldStrike !== null) {
             // MainView.1.cs 1522-1536: the shield-strike art at the fighter's drawn size, turned to direction - 90°.
             const px = fighterDrawnSizePx(fighter);
@@ -1120,7 +1139,8 @@ export class EffectsLayer {
             }
             return;
         }
-        const onScreen = this.shipSizePx(bo) > 0 || circleInView(this.bounds, bo.xpos, bo.ypos, 0);
+        // (An unseen ship has no drawn size; its jump flash is not drawn either — fog.ts.)
+        const onScreen = this.shipSizePx(bo) > 0 || (circleInView(this.bounds, bo.xpos, bo.ypos, 0) && fogOf(this.galaxy).builtObject(bo));
         if (st === undefined) {
             // First sight: a stale exit flag from an earlier jump is not a new exit.
             st = { enteredCountdown: Number.NaN, exitFlag: exitFlag && !bo.hyperjumpJustExited, exitLatched: false };

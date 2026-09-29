@@ -12,6 +12,8 @@
 // TODO(port): nebula-anchored gas-cloud placement / radiation fields —
 // Galaxy.4.cs GenerateGasCloud.
 
+import { fogOf } from './fog';
+import { SystemVisibilityStatus } from '../sim/visibility';
 import { playGridClick } from '../audio/gameAudio'; // [audio]
 import { Application, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
 import { Camera } from './camera';
@@ -448,6 +450,12 @@ class SystemView {
      * planet's drawn position every frame, so the rings follow the orbiting planet instead of staying where it was. */
     moonRings: Graphics[] = [];
     private bodiesWereShown = true;
+    /** Fog of war (fog.ts): which bodies of this system are drawn (all, unless the player has not explored it), and a
+     * signature of that set so the orbit rings / rocks are rebuilt when it changes. */
+    private fogSig = 0;
+    private planetDrawn: boolean[] = [];
+    private moonDrawn: boolean[][] = [];
+    private rockDrawn: boolean[] = [];
     maxExtent = 0; // farthest orbit radius (culling margin)
     private lastRingZoom = -1;
 
@@ -609,6 +617,7 @@ class SystemView {
             this.mapIcon.scale.set(iconPx / (this.mapIcon.texture.width * z));
         }
 
+        this.updateFog();
         // Faint circular orbit rings: visible from the zoom where the
         // outermost orbit spans >= ~40 px on screen (task 02b2), persist
         // through 100%.
@@ -647,6 +656,51 @@ class SystemView {
         }
     }
 
+    /**
+     * Fog of war (MainView.1.cs 440-448, 1750-1770; fog.ts): in a system the player has not explored only the star is
+     * drawn, plus — when its ships / scanners are in range — the gas clouds and the bodies it can see. Fills
+     * planetDrawn / moonDrawn / rockDrawn and, when the set changed, forces the rings and rocks to be rebuilt.
+     */
+    private updateFog(): void {
+        const fog = fogOf(this.view.galaxy);
+        let sig = 0;
+        if (fog.status(this.system.systemStar.systemIndex) === SystemVisibilityStatus.Unexplored) {
+            sig = 1;
+            const bit = (b: boolean): number => (sig = (Math.imul(sig, 31) + (b ? 1 : 2)) | 0);
+            for (let i = 0; i < this.planets.length; i++) {
+                const planet = this.planets[i];
+                this.planetDrawn[i] = fog.habitatDrawn(planet.habitat);
+                bit(this.planetDrawn[i]);
+                const md = (this.moonDrawn[i] ??= []);
+                for (let k = 0; k < planet.moons.length; k++) {
+                    md[k] = fog.habitatDrawn(planet.moons[k].habitat);
+                    bit(md[k]);
+                }
+            }
+            for (let i = 0; i < this.rockHabitats.length; i++) {
+                this.rockDrawn[i] = fog.habitatDrawn(this.rockHabitats[i]);
+                bit(this.rockDrawn[i]);
+            }
+        } else if (this.fogSig !== 0) {
+            this.planetDrawn.length = 0;
+            this.moonDrawn.length = 0;
+            this.rockDrawn.length = 0;
+        }
+        if (sig !== this.fogSig) {
+            this.fogSig = sig;
+            this.lastRingZoom = -1;
+            this.rocksShown = null;
+        }
+    }
+
+    private planetIsDrawn(pi: number): boolean {
+        return this.planetDrawn[pi] !== false;
+    }
+
+    private moonIsDrawn(pi: number, k: number): boolean {
+        return this.moonDrawn[pi]?.[k] !== false;
+    }
+
     /** Planets, moons, their labels and the rocks (only called while f < 500). */
     private updateBodies(z: number, f: number): void {
         // Task 12p (MainView.1.cs:437-470): no dot crossfade — planet sprites are
@@ -666,6 +720,17 @@ class SystemView {
             const px = Math.cos(pAngle) * p.orbitDistance;
             const py = Math.sin(pAngle) * p.orbitDistance;
             const mg = this.moonRings[pi];
+            if (!this.planetIsDrawn(pi)) {
+                // Fog of war: not drawn — nor its label, moons or moon rings.
+                planet.sprite.visible = false;
+                planet.label.visible = false;
+                mg.visible = false;
+                for (const moon of planet.moons) {
+                    moon.dot.visible = false;
+                    moon.label.visible = false;
+                }
+                continue;
+            }
             mg.visible = this.ring.visible && planet.moons.length > 0;
             if (mg.visible) {
                 mg.alpha = this.ring.alpha;
@@ -693,7 +758,13 @@ class SystemView {
                     planet.label.style.fill = fill;
                 }
             }
-            for (const moon of planet.moons) {
+            for (let mk = 0; mk < planet.moons.length; mk++) {
+                const moon = planet.moons[mk];
+                if (!this.moonIsDrawn(pi, mk)) {
+                    moon.dot.visible = false;
+                    moon.label.visible = false;
+                    continue;
+                }
                 const m = moon.habitat;
                 const mAngle = renderOrbitAngle(m.orbitAngle, m.anglePerSecond, m.orbitDirection, m.lastTouch, nowMs, clampSeconds);
                 const mx = px + Math.cos(mAngle) * m.orbitDistance;
@@ -724,8 +795,8 @@ class SystemView {
         const rocksVisible = z > 0.05;
         if (rocksVisible !== this.rocksShown) {
             this.rocksShown = rocksVisible;
-            for (const rock of this.asteroids) {
-                rock.visible = rocksVisible;
+            for (let i = 0; i < this.asteroids.length; i++) {
+                this.asteroids[i].visible = rocksVisible && this.rockDrawn[i] !== false;
             }
         }
         // Asteroids orbit their star like planets (Habitat.cs Move applies to every habitat with a Parent), so they
@@ -745,14 +816,20 @@ class SystemView {
         for (let i = 0; i < this.planets.length; i++) {
             const planet = this.planets[i];
             const p = planet.habitat;
+            const mg0 = this.moonRings[i];
+            if (!this.planetIsDrawn(i)) {
+                mg0.clear(); // fog of war (fog.ts): no orbit ring for a planet the player cannot see
+                continue;
+            }
             g.circle(0, 0, p.orbitDistance).stroke({ width: 1 / z, color: 0x5a4478, alpha: 0.75 });
             // Faint moon-orbit circles (system zoom), drawn around (0,0) in their own Graphics; updateBodies moves it
             // to the planet's drawn position every frame.
             const mg = this.moonRings[i];
             mg.clear();
             if (z > 0.25) {
-                for (const moon of planet.moons) {
-                    mg.circle(0, 0, moon.habitat.orbitDistance).stroke({ width: 1 / z, color: 0x4a3a66, alpha: 0.55 });
+                for (let mk = 0; mk < planet.moons.length; mk++) {
+                    if (!this.moonIsDrawn(i, mk)) continue;
+                    mg.circle(0, 0, planet.moons[mk].habitat.orbitDistance).stroke({ width: 1 / z, color: 0x4a3a66, alpha: 0.55 });
                 }
             }
         }
@@ -1147,15 +1224,20 @@ export class MainView {
             if (atSystemZoom) {
                 // Planets + their moons first (smaller objects win ties),
                 // then the star itself.
+                // Fog of war (Main.Part10.cs 1291 / Main.Part7.cs 3489): nothing of a system the player has not
+                // explored can be hovered or selected (its planets are not even drawn, see SystemView.updateFog).
+                const known = fogOf(this.galaxy).habitatInfo(star);
                 const bodies: Habitat[] = [];
-                for (const p of sv.planets) {
-                    bodies.push(p.habitat);
-                    for (const moon of p.moons) {
-                        bodies.push(moon.habitat);
+                if (known) {
+                    for (const p of sv.planets) {
+                        bodies.push(p.habitat);
+                        for (const moon of p.moons) {
+                            bodies.push(moon.habitat);
+                        }
                     }
                 }
                 let hit = hitTestHabitats(bodies, w.x, w.y, (h, zz) => this.drawnSize(h, zz), z, drawnAt);
-                if (hit === null) {
+                if (hit === null && known) {
                     hit = hitTestHabitats([star], w.x, w.y, (h, zz) => this.drawnSize(h, zz), z, drawnAt);
                 }
                 if (hit !== null) {
@@ -1442,7 +1524,12 @@ export class MainView {
         this.ambientLayer.motion = this.motion;
         this.fighterLayer.motion = this.motion;
         this.creatureLayer.motion = this.motion;
-        if (typeof window !== 'undefined') this.creatureLayer.godMode = new URLSearchParams(window.location.search).get('godMode') === '1';
+        if (typeof window !== 'undefined') {
+            const q = new URLSearchParams(window.location.search);
+            this.creatureLayer.godMode = q.get('godMode') === '1';
+            // Dev toggle: `?reveal=1` (or `?godMode=1`, the original's GodMode) turns the fog of war (fog.ts) off.
+            fogOf(this.galaxy).reveal = q.get('reveal') === '1' || q.get('godMode') === '1';
+        }
         // [fightersfx] end
         // [19r] map-level art-bundle extras above the ships / fighters / creatures.
         this.artBundleLayer = new ArtBundleLayer(this.galaxy, this.world, (bo) => this.builtObjectLayer.drawnSizePx(bo));
@@ -1493,6 +1580,7 @@ export class MainView {
             rt.simNowMs = this.galaxy.nowMs;
         }
         this.motion.begin(rt, habitatTouchClampSeconds(this.galaxy.habitats.length), this.galaxy.builtObjects.length);
+        fogOf(this.galaxy).begin(); // the player's per-frame visibility answers (fog.ts)
 
         // Frame delta for the animated star discs/corona (task 02c2).
         const nowMs = performance.now();

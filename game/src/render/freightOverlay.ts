@@ -10,6 +10,7 @@
 
 import { Container, Graphics } from 'pixi.js';
 import type { Camera } from './camera';
+import { fogOf } from './fog';
 import { drawnPositionOf, type MotionInterpolator, type Point } from './renderInterp';
 import type { Galaxy } from '../sim/galaxy';
 import type { BuiltObject } from '../sim/builtObject';
@@ -397,9 +398,11 @@ export class FreightOverlay {
         const halfW = cam.width / (2 * z);
         const halfH = cam.height / (2 * z);
         let any = false;
+        const fog = fogOf(this.galaxy);
         for (const bo of this.galaxy.builtObjects) {
             if (bo === null || bo === undefined || bo.hasBeenDestroyed || !isFreighter(bo)) continue;
             if (bo.contractsToFulfill.length === 0) continue;
+            if (!fog.builtObject(bo)) continue; // fog.ts: no travel leader for a ship the player cannot see
             const d = dest.get(bo) as { xpos: number; ypos: number } | undefined;
             if (d === undefined) continue;
             // Endpoints where the freighter and its destination are drawn (render-interpolated).

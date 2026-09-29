@@ -23,6 +23,7 @@
 // the shieldstrike hit flash, MainView.1.cs:1215-1233, which belongs to the combat effects layer).
 // Minimal own animation helper (pooled sprites + frame clock) — no shared fx helper exists on main yet.
 
+import { fogOf } from './fog';
 import type { MotionInterpolator } from './renderInterp';
 import { Container, Sprite, Texture } from 'pixi.js';
 import type { Camera } from './camera';
@@ -529,12 +530,14 @@ export class AmbientLayer {
             const treasure = concord !== null ? concordTreasureShips(this.galaxy) : null;
             const look = concord !== null ? concordArtLook(this.galaxy) : 'weathered';
             // [concordArt] end
+            const fog = fogOf(this.galaxy);
             for (const bo of this.galaxy.builtObjects) {
                 if (bo === null || bo.hasBeenDestroyed) continue;
                 const sx = (bo.xpos - cam.x) * z + halfW;
                 const sy = (bo.ypos - cam.y) * z + halfH;
                 // Same 100 px cull as BuiltObjectLayer (the C# uses -50 around the drawn rect).
                 if (sx < -100 || sx > cam.width + 100 || sy < -100 || sy > cam.height + 100) continue;
+                if (!fog.builtObject(bo)) continue; // fog.ts: exhaust, lights and shields belong to the ship's draw block
                 // [concordArt] begin
                 const cv = treasure !== null ? concordVariantFor(bo, concord, treasure, look) : null;
                 let art: ShipArt | null;
@@ -753,6 +756,7 @@ export class AmbientLayer {
             const px = this.habitatPx(h, z);
             const reach = px / 2 + 100;
             if (sx < -reach || sx > cam.width + reach || sy < -reach || sy > cam.height + reach) continue;
+            if (!fogOf(this.galaxy).habitatDrawn(h)) continue; // fog.ts: a body of an unexplored system is not drawn
             if (shieldTex !== null && h.planetaryShieldPresent) {
                 const n4 = Math.trunc(26.0 / f);
                 const sizePx = px + n4 * 2;

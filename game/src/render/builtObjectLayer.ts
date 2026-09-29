@@ -25,6 +25,7 @@ import { ConcordFxLayer, concordArtEmpire, concordArtLook, concordShipArt, conco
 import { ConstructionOverlays, DamageOverlays, shipConstructionSubject, shipDamageSubject } from './shipOverlays';
 import { artBundleFlag } from './artBundleFlags';
 import { LiveryOverlays } from './liveryLayer';
+import { fogOf } from './fog';
 import { Galaxy } from '../sim/galaxy';
 import type { BuiltObject } from '../sim/builtObject';
 import { BuiltObjectSubRole } from '../sim/builtObjectTypes';
@@ -426,6 +427,12 @@ interface LoadedShipImage {
  * Textures load lazily per pictureRef URL; without a DW:U install the grey dot
  * fallback is used and metrics fall back to a 2:1 area ratio.
  */
+/** The live ships / bases the player may pick: not destroyed, and seen (fog.ts; everything under `?reveal=1`). */
+export function pickableBuiltObjects(galaxy: Galaxy): BuiltObject[] {
+    const fog = fogOf(galaxy);
+    return galaxy.builtObjects.filter((b): b is BuiltObject => b !== null && !b.hasBeenDestroyed && fog.builtObject(b));
+}
+
 export class BuiltObjectLayer {
     root = new Container();
     /** The ship / base sprites (first child of root). */
@@ -527,7 +534,9 @@ export class BuiltObjectLayer {
         const halfH = cam.height / 2;
         const maxX = cam.width + 100;
         const maxY = cam.height + 100;
-        // TODO(port): Empire.IsObjectVisibleToThisEmpire(BuiltObject) (MainView.1.cs:883) — not in sim; all objects drawn
+        // MainView.1.cs:884 `GodMode || IsObjectVisibleToThisEmpire(builtObject5)` (after the off-screen cull): an unseen
+        // ship / base is not drawn (fog.ts) and so has no drawn size, which also keeps it out of picking.
+        const fog = fogOf(this.galaxy);
         this.seen.clear();
         const motion = this.motion;
         for (const bo of this.galaxy.builtObjects) {
@@ -541,6 +550,11 @@ export class BuiltObjectLayer {
             let sprite = this.sprites.get(bo);
             // Cull more than 100 px outside the viewport.
             if (sx < -100 || sx > maxX || sy < -100 || sy > maxY) {
+                if (sprite !== undefined) sprite.visible = false;
+                this.drawnPx.delete(bo);
+                continue;
+            }
+            if (!fog.builtObject(bo)) {
                 if (sprite !== undefined) sprite.visible = false;
                 this.drawnPx.delete(bo);
                 continue;
@@ -658,13 +672,13 @@ export class BuiltObjectLayer {
         return this.drawnPx.get(bo) ?? 0;
     }
 
-    // TODO(port): Empire.IsObjectVisibleToThisEmpire / GodMode (Main.Part11.cs method_145) — all objects pickable
     // TODO(port): ShipGroup lead-ship pick at f > 100, and creature/fighter pick at f <= 100 — not ported
     /** Task 13d (Main.Part11.cs method_145): the ship/base under the world point. */
     pick(wx: number, wy: number, f: number, player: Empire | null): BuiltObject | null {
         // ships are not drawn at f >= 500 (DrawShipSymbolXna not ported), so they are not pickable there
         if (f >= BUILT_OBJECT_MAX_FACTOR) return null;
-        const list = this.galaxy.builtObjects.filter((b): b is BuiltObject => b !== null && !b.hasBeenDestroyed);
+        // Main.Part11.cs 1387 / 1636: `GodMode || IsObjectVisibleToThisEmpire(builtObject)` — unseen ships are not pickable.
+        const list = pickableBuiltObjects(this.galaxy);
         // Hit where the ship was drawn at the last update (render-interpolated), not at its committed sim position.
         const motion = this.motion;
         const posOf: DrawnPosFn = motion !== null ? (b) => motion.positionOf(b) : simPosOf;
