@@ -61,6 +61,7 @@ import { getSettings, type UiSettings } from '../ui/settings';
 import { displayColorForEmpire } from '../sim/empireColors';
 import { useMinifyingFilter } from './assets';
 import { boundsOnScreen } from './drawCache';
+import { combatBarAlpha, drawCombatBars } from './combatBars';
 import { builtObjectHiddenFromPick, warEmpires } from './builtObjectLayer';
 
 // --- constants ----------------------------------------------------------------------------------------------------
@@ -1080,6 +1081,11 @@ export class GalaxyMarkerLayer {
                 // Filled art over a darker, slightly larger copy: the contour.
                 this.pushSymbol(n++, artIdx, pos.x, pos.y, heightPx + 2.5, z, brighten(base, -96), alpha * 0.9);
                 this.pushSymbol(n++, artIdx, pos.x, pos.y, heightPx, z, tint, alpha);
+            }
+            if (!galaxyPass && !isBase) {
+                // Shield / hull bars under the marker while the ship fights (render/combatBars.ts).
+                const barAlpha = combatBarAlpha(bo, g.nowMs);
+                if (barAlpha > 0) drawCombatBars(this.overlayG, bo, pos.x, pos.y, heightPx, z, barAlpha);
             }
             if (galaxyPass) {
                 this.drawn.push({ bo, group: null, x: pos.x, y: pos.y, halfPx: heightPx / 2 });

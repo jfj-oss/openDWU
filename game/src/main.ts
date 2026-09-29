@@ -500,6 +500,7 @@ export async function startGameView(
         galaxy,
         game,
         gameData: lastPlayedGameData ?? lastGameData ?? undefined,
+        followState: view.followState, // [followcam]
         onGalaxyMap: () => galaxyMap.toggle(),
         onMainMenu: () => {
             teardownActiveGameView();
@@ -680,7 +681,7 @@ export async function startGameView(
     }
 
     const shortcuts = createShortcutsOverlay();
-    const keyHandlers = buildDefaultHandlers(camera, time, { width: galaxy.sizeX, height: galaxy.sizeY });
+    const keyHandlers = buildDefaultHandlers(camera, time, { width: galaxy.sizeX, height: galaxy.sizeY }, view.followState);
     // G opens the Galaxy Map screen (original UI_KeyboardCommands); the HUD's
     // "Galaxy" view row still zooms the Main View out.
     keyHandlers.galaxyMap = () => galaxyMap.toggle();
@@ -1399,6 +1400,7 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
         camera,
         galaxy,
         gameData: gameData ?? undefined,
+        followState: view.followState, // [followcam]
         onGalaxyMap: () => galaxyMap.toggle(),
     });
     const systemNameEl = hud.elements.get('pnlMoney')?.querySelector('.hud-system-name');
@@ -1459,7 +1461,7 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     // dispatches on keydown; it replaces the ad-hoc spacebar handler. '?'
     // toggles the "Keyboard shortcuts" overlay; F1 opens the Galactopedia.
     const shortcuts = createShortcutsOverlay();
-    const keyHandlers = buildDefaultHandlers(camera, time, { width: galaxy.sizeX, height: galaxy.sizeY });
+    const keyHandlers = buildDefaultHandlers(camera, time, { width: galaxy.sizeX, height: galaxy.sizeY }, view.followState);
     keyHandlers.galaxyMap = () => galaxyMap.toggle();
     window.addEventListener('keydown', (e: KeyboardEvent) => {
         if (galaxyMap.isOpen && e.key === 'Escape') {

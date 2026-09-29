@@ -45,6 +45,7 @@ import type { Empire } from '../sim/empire';
 import { GalaxyLocation, GalaxyLocationType } from '../sim/galaxyLocation';
 import { Habitat, HabitatCategoryType, HabitatType, SystemInfo } from '../sim/types';
 import { NebulaCloudGenerator } from './nebulaClouds';
+import { SystemNebulaLayer, type NebulaSystem } from './systemNebula';
 import { EmpireLayer } from './empireLayer';
 import { OverlayLayer } from './overlayLayer';
 import { GalaxyMarkerLayer, clickSelection, doubleClickFleet } from './galaxyMarkers'; // [galaxymarkers]
@@ -80,6 +81,7 @@ import { wreckTooltipText } from '../ui/scenario/wreckageUi'; // [wreckage]
 import type { FreightOverlay } from './freightOverlay'; // [freightOverlay]
 import { boundsOnScreen, DrawKey } from './drawCache';
 import { MotionInterpolator, createRenderTime, drawnBuiltObjectPos, habitatTouchClampSeconds, renderOrbitAngle, type RenderTime } from './renderInterp';
+import { createFollowState, followTargetAlive, followTargetPosition, isFollowing, stopFollow, type FollowState, type FollowTarget } from './followCamera';
 
 export function fadeIn(v: number, a: number, b: number): number {
     if (v <= a) {
@@ -997,6 +999,9 @@ export class MainView {
     private deepStarfield!: DeepStarfield;
     /** Systems for the deep starfield's per-system colour patches (flat, reused every frame). */
     private patchSystems: PatchSystem[] = [];
+    /** Coloured per-system nebula haze at system zoom (systemNebula.ts), world-space just below the system roots. */
+    private systemNebulae!: SystemNebulaLayer;
+    private nebulaSystems: NebulaSystem[] = [];
     /** Region-name label layer (task 08f1), screen-space. */
     regionLabels = new Container();
     private regionLabelViews: RegionLabel[] = [];
@@ -1056,6 +1061,10 @@ export class MainView {
      * previous/current step positions shared by every layer that draws a moving object. Render-only. */
     renderTime: RenderTime = createRenderTime();
     readonly motion = new MotionInterpolator();
+    /** Follow camera (task followcam): shared with the HUD's selection-panel toggle (src/ui/hud.ts) and its
+     * followOnSelectionChanged call. Recentred on the followed ship/fleet every frame in update(); cleared here
+     * on a manual drag/edge-scroll/map-click or target loss, and by keyboard.ts on a keyboard scroll. */
+    readonly followState: FollowState = createFollowState();
     /** Task 08g: set by main.ts — receives the habitat picked on left click. */
     onSelectionChange?: (h: Habitat | null) => void;
     /** Task 13d: set by main.ts — receives the ship/base picked on left click. */
@@ -1283,7 +1292,18 @@ export class MainView {
             const star = sv.system.systemStar;
             // Planetless systems still get a sky patch the size of a small system.
             this.patchSystems.push({ index: this.galaxy.systems.indexOf(sv.system), x: star.xpos, y: star.ypos, radius: Math.max(sv.maxExtent, 30000) });
+            this.nebulaSystems.push({
+                index: this.galaxy.systems.indexOf(sv.system),
+                x: star.xpos,
+                y: star.ypos,
+                radius: Math.max(sv.maxExtent, 20000),
+                // MainView.cs method_42 call site: no system nebula around black holes / supernovae.
+                enabled: star.type !== HabitatType.BlackHole && star.type !== HabitatType.SuperNova,
+            });
         }
+        // Behind every system root (orbits, planets, stars), above the backdrop / galaxy nebulae / grid.
+        this.systemNebulae = new SystemNebulaLayer(this.galaxy.randomSeed, this.app.renderer.resolution);
+        this.world.addChildAt(this.systemNebulae.root, this.systems.length > 0 ? this.world.getChildIndex(this.systems[0].root) : this.world.children.length);
         for (const habitat of this.galaxy.habitats) {
             if (habitat.category === HabitatCategoryType.GasCloud) {
                 // Generated fallback; the original art loads lazily below.
@@ -1506,6 +1526,7 @@ export class MainView {
         // patches follow once the backdrop is gone.
         this.deepStarfield.update(deepStarfieldAlpha(z, m), cam.x, cam.y, z, cam.width, cam.height);
         this.deepStarfield.updatePatches(systemPatchZoomAlpha(z, m), this.patchSystems, cam.x, cam.y, cam.width, cam.height);
+        this.systemNebulae.update(z, cam.x, cam.y, cam.width, cam.height, this.nebulaSystems, nowMs);
 
         // Systems: greedy 80 px label-overlap suppression across systems.
         const labelZoom = m * 4; // system names appear at ~sector zoom
@@ -1631,26 +1652,52 @@ export class MainView {
         }
 
         // Screen-edge auto-scroll (original control scheme).
+        let edgeDx = 0;
+        let edgeDy = 0;
         if (!this.dragging && this.pointerInside) {
             const edge = 24;
             const speed = 16;
-            let dx = 0;
-            let dy = 0;
             if (this.lastPointer.x < edge) {
-                dx = -speed;
+                edgeDx = -speed;
             } else if (this.lastPointer.x > cam.width - edge) {
-                dx = speed;
+                edgeDx = speed;
             }
             if (this.lastPointer.y < edge) {
-                dy = -speed;
+                edgeDy = -speed;
             } else if (this.lastPointer.y > cam.height - edge) {
-                dy = speed;
-            }
-            if (dx !== 0 || dy !== 0) {
-                // panByScreen has drag semantics (content follows the pointer); edge scroll moves the view toward the edge.
-                cam.panByScreen(-dx, -dy);
+                edgeDy = speed;
             }
         }
+
+        // Follow camera (task followcam): recentre every frame on the followed ship/fleet's drawn
+        // (render-interpolated) position, keeping zoom. Edge-scroll stops it here; a drag-pan or any map click
+        // stops it immediately at mousedown (attachInput, below); a keyboard scroll stops it in keyboard.ts; a
+        // selection change stops it in hud.ts (followOnSelectionChanged). Wheel-zoom is untouched, so zooming
+        // keeps following.
+        if (isFollowing(this.followState)) {
+            if (edgeDx !== 0 || edgeDy !== 0) {
+                this.stopFollowing();
+            } else {
+                const target = this.followState.target as FollowTarget;
+                if (!followTargetAlive(target)) {
+                    this.stopFollowing();
+                } else {
+                    const p = followTargetPosition(this.motion, target);
+                    cam.centerOn(p.x, p.y);
+                }
+            }
+        }
+
+        if (edgeDx !== 0 || edgeDy !== 0) {
+            // panByScreen has drag semantics (content follows the pointer); edge scroll moves the view toward the edge.
+            cam.panByScreen(-edgeDx, -edgeDy);
+        }
+    }
+
+    /** Stop the follow camera if it is on (edge-scroll, a mousedown on the canvas, or the followed target being
+     * gone — task followcam). A no-op while already off. */
+    private stopFollowing(): void {
+        if (isFollowing(this.followState)) stopFollow(this.followState);
     }
 
     /** The selection ring at screen (x, y) with radius r; the geometry is rebuilt only when one of them changes. */
@@ -1700,6 +1747,9 @@ export class MainView {
             { passive: false },
         );
         canvas.addEventListener('mousedown', (e: MouseEvent) => {
+            // Task followcam: any press on the map — a drag-pan starting or a plain click — stops the follow
+            // camera ("touching anything outside UI elements ... stops the follow cam").
+            this.stopFollowing();
             if (e.button === 2) {
                 this.dragging = true;
                 const rect = canvas.getBoundingClientRect();
