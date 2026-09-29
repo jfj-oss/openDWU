@@ -19,7 +19,6 @@ import { resolveStarDateDescription } from '../sim/galaxyTime';
 import { resolveGameText } from '../sim/textResolver';
 import { isProposalValid, proposalLabel, relationTypeLabel, setDiplomacyMessageExpiry, toggleDiplomacyScreen } from './screens/diplomacyScreen';
 import { issuePlayerCommand } from '../sim/player/playerCommands';
-import { formatThousands } from '../sim/diplomacyTick';
 // [proposals] begin
 // [proposals] end
 import { showToast } from './toast';
@@ -28,7 +27,8 @@ import { layerVoiceOf } from '../llm/voiceJob'; // [llm] 19s-2
 import { diplomatVoiceConfig, rememberVoicedMessage, voiceDiplomatReply, voicedLineToggle, voicedMessageText, voicingIndicator } from './diplomatVoice';
 // [diplovoice] end
 import { rgbCss } from './hud';
-import { conversationActions, type ConversationAction } from './conversationActions';
+import { conversationActions, pirateOfferPriceLine, type ConversationAction } from './conversationActions';
+import { pirateProtectionPriceText } from './pirateProtectionPrice';
 import { goToMessage, messageGoToTarget } from './messageGoto';
 // [suggest] begin
 import { expireAdvisorSuggestionsForEmpire, receiveAdvisorSuggestionMessage } from '../sim/advisorQueue';
@@ -408,7 +408,7 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
                         !result.accepted
                             ? 'We already have an arrangement with them'
                             : result.cost > 0
-                              ? `Protection accepted — ${formatThousands(result.cost)} credits/month`
+                              ? `Protection accepted — ${pirateProtectionPriceText(result.cost)}`
                               : 'Truce accepted',
                     );
                 });
@@ -467,6 +467,11 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
         const headingText = conversationHeading(entry, player, starDate);
         const textEl = el('div', 'message-conversation-text', resolveGameText(entry.message.description));
         body.append(el('div', 'message-conversation-heading', headingText), textEl);
+        // A pirate protection offer names its price per month and per year (the original shows the monthly fee only).
+        if (isPirateProtectionOfferEntry(entry)) {
+            const priceLine = pirateOfferPriceLine(entry, { player, galaxy });
+            if (priceLine !== '') body.appendChild(el('div', 'message-conversation-price', priceLine));
+        }
         // [diplovoice] begin
         voiceIncoming(entry, headingText, textEl);
         // [diplovoice] end

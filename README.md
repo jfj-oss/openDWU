@@ -64,19 +64,53 @@ sudo apt-get install -y nodejs git
 brew install node git
 ```
 
-### Everyone: clone, install, get the game running
+### Quick start: exact commands
 
-The default branch (`main`) is an older research/planning snapshot and does
-not contain `game/`; the working tree is on
-`claude/deepseekharnessworkspace-distant-worlds-dekdzh`.
+You need a copy of Distant Worlds: Universe for the original art and data. Everything is on the default
+branch, `main`.
+
+**Linux (x86_64), game installed through Steam:**
 
 ```sh
-git clone https://github.com/jfj-oss/GAMEDW.git
-cd GAMEDW
-git checkout claude/deepseekharnessworkspace-distant-worlds-dekdzh
-cd game
+sudo pacman -S nodejs npm git        # Arch / CachyOS (Debian/Ubuntu: see Node 22 note above)
+git clone https://github.com/jfj-oss/Dwureup.git
+cd Dwureup/game
 npm ci
+npm run import-assets                # links ~/.local/share/Steam/steamapps/common/Distant Worlds Universe
+npm run dev                          # then open http://localhost:5173/
 ```
+
+**macOS (Apple Silicon), no Steam copy of the game** (uses the private assets mirror):
+
+```sh
+brew install node git
+git clone https://github.com/jfj-oss/dwu-assets.git
+git clone https://github.com/jfj-oss/Dwureup.git
+cd Dwureup/game
+npm ci
+DWU_DIR="$HOME/dwu-assets" npm run import-assets
+npm run dev                          # then open http://localhost:5173/
+```
+
+If the game is installed through Steam on the Mac, skip the `dwu-assets` clone and run
+`DWU_DIR="$HOME/Library/Application Support/Steam/steamapps/common/Distant Worlds Universe" npm run import-assets`.
+
+**Native desktop app instead of the browser** (from `Dwureup/game`, after the steps above):
+
+```sh
+npm run package:linux                # Linux x86_64 -> release/dwu-linux-x64/
+npm run package:mac                  # macOS arm64  -> release/dwu-darwin-arm64/
+```
+
+**Update to the latest version later** (from `Dwureup/game`):
+
+```sh
+git pull
+npm ci                               # only needed when dependencies changed; safe to run every time
+npm run dev
+```
+
+On the Mac, also run `git -C ~/dwu-assets pull` if you use the assets mirror.
 
 #### Point at your Distant Worlds: Universe install
 

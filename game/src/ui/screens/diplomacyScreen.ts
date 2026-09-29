@@ -15,7 +15,11 @@
 // ambassador card, no conversation dialogs, no trade screen.
 // Proposals (task 17e): the player's conversation options (Main.Part9.cs:46 method_238 / Main.Part10.cs:3957 method_237,
 // sim/player/diplomacyProposals.ts) as a compact "Propose..." list on the selected empire, with the reply inline.
-// TODO(port): pirate relations (Empire.7.cs:4270 pirate branch), ambassador card (EmpireDetailView.cs:613) — not in 15a
+// Pirate factions: DiplomaticRelationListView.cs:164-176 lists every empire the player has met by diplomatic relation AND
+// every pirate faction with a PirateRelation that is not NotMet; a pirate row shows its pirate relation (None / Protection,
+// the pen colours at :200-260) and offers the pirate conversation (protection request / cancel, sim/player/diplomacyProposals.ts).
+// The list has an All / Empires / Pirates filter and a government-type filter (governments.txt, Empire.GovernmentId).
+// TODO(port): pirate relation feelings (Empire.7.cs:4270 pirate branch), ambassador card (EmpireDetailView.cs:613) — not in 15a
 
 import './diplomacyScreen.css';
 import type { Empire } from '../../sim/empire';
@@ -23,6 +27,9 @@ import type { Galaxy } from '../../sim/galaxy';
 import type { EmpireMessage } from '../../sim/messages';
 import { getGovernmentsStatic, AutomationLevel } from '../../sim/empire';
 import { displayColorForEmpire } from '../../sim/empireColors';
+import { PirateRelationType } from '../../sim/pirateRelations';
+import { calculatePirateProtectionPricePerMonth } from '../../sim/pirates/pirateRelationsAI';
+import { pirateProtectionPriceText, pirateProtectionYearlySuffix } from '../pirateProtectionPrice';
 import {
     DiplomaticRelation,
     DiplomaticRelationType,
@@ -174,6 +181,14 @@ export function proposalLabel(proposalType: DiplomaticRelationType, current: Dip
 
 export interface DiplomacyRow {
     empire: Empire;
+    /** A pirate faction (PirateEmpireBaseHabitat != null), listed through the player's PirateRelation. */
+    isPirate: boolean;
+    /** GovernmentAttributes.Name of the empire's government ('' when it has none, as pirate factions have). */
+    governmentName: string;
+    /** Pirate rows: the pirate relation with the player (NotMet for an empire row). */
+    pirateRelationType: PirateRelationType;
+    /** Pirate rows: the monthly protection fee in force (0 without an agreement / for a free truce). */
+    protectionFeePerMonth: number;
     name: string;
     color: number;
     relationType: DiplomaticRelationType;
@@ -197,21 +212,85 @@ function strategyLabel(strategy: DiplomaticStrategy): string {
     return name.replace(/([a-z])([A-Z])/g, '$1 $2');
 }
 
-/** Rows for the panel: every met, active, non-pirate, non-independent empire, sorted by name. */
+/** Pen colours of DiplomaticRelationListView.DrawRelations for a pirate relation (:200-260): None grey, Protection light blue. */
+export const PIRATE_RELATION_COLORS: Record<PirateRelationType, number> = {
+    [PirateRelationType.NotMet]: 0xd2b48c,
+    [PirateRelationType.None]: 0x808080,
+    [PirateRelationType.Protection]: 0xa0a0ff,
+};
+
+/** The label of a pirate relation, with the protection fee per month and per year when an agreement is in force. */
+export function pirateRelationText(type: PirateRelationType, feePerMonth: number): string {
+    switch (type) {
+        case PirateRelationType.Protection:
+            return feePerMonth > 0 ? `Pirate protection: ${pirateProtectionPriceText(feePerMonth)}` : 'Pirate truce (free protection)';
+        case PirateRelationType.None:
+            return 'No pirate agreement';
+        default:
+            return 'Not Met';
+    }
+}
+
+/** The monthly fee the player pays a pirate faction under the agreement (PirateRelation.MonthlyProtectionFeeToThisEmpire,
+ *  stored on the pirate's side of the pair by ChangePirateRelation). */
+function protectionFeeOf(player: Empire, other: Empire): number {
+    const pirateSide = other.pirateEmpireBaseHabitat !== null ? other : player;
+    const otherSide = pirateSide === other ? player : other;
+    return pirateSide.pirateRelations?.getRelationByOtherEmpire(otherSide)?.monthlyProtectionFeeToThisEmpire ?? 0;
+}
+
+/** Rows for the panel: every met, active, non-independent empire (diplomatic relation not NotMet) and every met pirate faction
+ *  (pirate relation not NotMet; DiplomaticRelationListView.cs:164-176), sorted by name. */
 export function diplomacyRows(player: Empire, starDate: number, playerGovernmentName: string): DiplomacyRow[] {
-    const rels: DiplomaticRelation[] = [];
+    const rels: Array<{ other: Empire; rel: DiplomaticRelation | null; pirateType: PirateRelationType }> = [];
+    const seen = new Set<Empire>();
     for (const rel of player.diplomaticRelations) {
         if (rel.type === DiplomaticRelationType.NotMet) continue;
         const other = rel.otherEmpire;
         if (other === null || !other.active) continue;
         if (other === player.galaxy.independentEmpire) continue;
         if (other.pirateEmpireBaseHabitat !== null) continue;
-        rels.push(rel);
+        rels.push({ other, rel, pirateType: PirateRelationType.NotMet });
+        seen.add(other);
     }
-    rels.sort((a, b) => a.otherEmpire!.name.localeCompare(b.otherEmpire!.name));
+    for (const pr of player.pirateRelations ?? []) {
+        const other = pr.otherEmpire;
+        if (pr.type === PirateRelationType.NotMet || other === null || !other.active) continue;
+        if (other === player.galaxy.independentEmpire || other === player || seen.has(other)) continue;
+        if (other.pirateEmpireBaseHabitat === null) continue;
+        rels.push({ other, rel: null, pirateType: pr.type });
+        seen.add(other);
+    }
+    rels.sort((a, b) => a.other.name.localeCompare(b.other.name));
 
-    return rels.map((rel) => {
-        const other = rel.otherEmpire!;
+    return rels.map(({ other, rel: relOrNull, pirateType }) => {
+        const governmentName = other.governmentId >= 0 ? (getGovernmentsStatic()[other.governmentId]?.name ?? '') : '';
+        if (relOrNull === null) {
+            const fee = protectionFeeOf(player, other);
+            return {
+                empire: other,
+                isPirate: true,
+                governmentName,
+                pirateRelationType: pirateType,
+                protectionFeePerMonth: fee,
+                name: other.name,
+                color: displayColorForEmpire(other),
+                relationType: DiplomaticRelationType.None,
+                relationText: pirateRelationText(pirateType, fee),
+                relationColor: PIRATE_RELATION_COLORS[pirateType],
+                attitude: null,
+                feeling: '',
+                ourStrategy: '',
+                treaties: [],
+                incoming: null,
+                incomingText: '',
+                incomingMessage: '',
+                outgoing: null,
+                outgoingText: '',
+                factors: [],
+            };
+        }
+        const rel = relOrNull;
         const ev = empireEvaluationByEmpire(empireEvaluationsOf(other), player);
         const attitude = ev ? ev.overallAttitude : null;
         const feeling = ev && attitude !== null ? `${feelingDescription(attitude)} with us (${formatSigned(attitude)})` : '';
@@ -245,6 +324,10 @@ export function diplomacyRows(player: Empire, starDate: number, playerGovernment
 
         return {
             empire: other,
+            isPirate: false,
+            governmentName,
+            pirateRelationType: PirateRelationType.NotMet,
+            protectionFeePerMonth: 0,
             name: other.name,
             // Task 19k-1b: the big-galaxies scenario's extendedPalette flag substitutes a distinct colour for
             // empires beyond the 20 key colours; off (or no scenario) this is exactly other.mainColor.
@@ -273,6 +356,29 @@ export function filterDiplomacyRows(rows: DiplomacyRow[], query: string): Diplom
     const q = query.trim().toLowerCase();
     if (q === '') return rows;
     return rows.filter((r) => r.name.toLowerCase().includes(q));
+}
+
+/** The list's kind filter: everything, only the empires, or only the pirate factions. */
+export type DiplomacyKindFilter = 'all' | 'empires' | 'pirates';
+
+/** The government a row is filed under: its GovernmentAttributes.Name; pirate factions have none. */
+export function governmentLabel(row: Pick<DiplomacyRow, 'isPirate' | 'governmentName'>): string {
+    if (row.governmentName !== '') return row.governmentName;
+    return row.isPirate ? 'Pirate faction' : 'Unknown';
+}
+
+/** The governments present among `rows` (for the filter's drop-down), sorted by name. */
+export function governmentFilterOptions(rows: readonly DiplomacyRow[]): string[] {
+    return [...new Set(rows.map(governmentLabel))].sort((a, b) => a.localeCompare(b));
+}
+
+/** The kind and government filters of the list ('' = every government); the name query is filterDiplomacyRows. */
+export function filterDiplomacyRowsByKind(rows: DiplomacyRow[], kind: DiplomacyKindFilter, government: string): DiplomacyRow[] {
+    return rows.filter((r) => {
+        if (kind === 'empires' && r.isPirate) return false;
+        if (kind === 'pirates' && !r.isPirate) return false;
+        return government === '' || governmentLabel(r) === government;
+    });
 }
 
 /** The player's GovernmentAttributes.Name. */
@@ -419,6 +525,30 @@ function strengthsBlock(player: Empire, i: EmpireIntel): HTMLElement {
     return box;
 }
 
+/** The pirate faction's block in the detail pane: kind, base, the arrangement in force and what a new one would cost. */
+function pirateBlock(player: Empire, row: DiplomacyRow): HTMLElement {
+    const box = el('div', 'diplomacy-strengths');
+    box.appendChild(el('div', 'diplomacy-section-heading', 'Pirate Faction'));
+    const stat = (label: string, value: string, color?: string): void => {
+        const line = el('div', 'diplomacy-stat');
+        line.appendChild(el('span', 'diplomacy-stat-label', label));
+        const v = el('span', 'diplomacy-stat-value', value);
+        if (color) v.style.color = color;
+        line.appendChild(v);
+        box.appendChild(line);
+    };
+    const pirate = row.empire;
+    stat('Kind', pirate.pirateEmpireSuperPirates ? 'Super pirates' : 'Pirate faction');
+    stat('Relationship', row.relationText, rgb(row.relationColor));
+    if (row.pirateRelationType === PirateRelationType.Protection) {
+        stat('Protection fee', row.protectionFeePerMonth > 0 ? pirateProtectionPriceText(row.protectionFeePerMonth) : 'None (truce)');
+    } else if (player.pirateEmpireBaseHabitat === null && !pirate.pirateEmpireSuperPirates) {
+        const price = calculatePirateProtectionPricePerMonth(player.galaxy, pirate, player).price;
+        stat('Protection price now', price > 0 ? pirateProtectionPriceText(price) : 'Free (truce)');
+    }
+    return box;
+}
+
 function rgb(c: number): string {
     return `rgb(${(c >> 16) & 255}, ${(c >> 8) & 255}, ${c & 255})`;
 }
@@ -517,6 +647,9 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
     let detailScroll = 0;
     // Task 19k-1d (Big Galaxies: 60-empire games): a filter box on the list pane, so a 60-empire list stays usable.
     let filterQuery = '';
+    // The kind (All / Empires / Pirates) and government-type filters of the list.
+    let kindFilter: DiplomacyKindFilter = 'all';
+    let governmentFilter = '';
 
     function render(): void {
         const listPane = body.querySelector<HTMLElement>('.diplomacy-list');
@@ -555,7 +688,42 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
         });
         list.appendChild(filterInput);
 
-        const filteredRows = filterDiplomacyRows(rows, filterQuery);
+        // Kind filter (All / Empires / Pirates) and government filter (governments.txt names present in the list).
+        const controls = el('div', 'diplomacy-filter-row');
+        const kindSelect = document.createElement('select');
+        kindSelect.className = 'diplomacy-filter-select diplomacy-filter-kind';
+        kindSelect.title = 'Show all AI players, only the empires, or only the pirate factions';
+        for (const [value, label] of [['all', 'All'], ['empires', 'Empires'], ['pirates', 'Pirates']] as const) {
+            const o = document.createElement('option');
+            o.value = value;
+            o.textContent = label;
+            kindSelect.appendChild(o);
+        }
+        kindSelect.value = kindFilter;
+        kindSelect.addEventListener('change', () => {
+            kindFilter = kindSelect.value as DiplomacyKindFilter;
+            render();
+        });
+        const govSelect = document.createElement('select');
+        govSelect.className = 'diplomacy-filter-select diplomacy-filter-government';
+        govSelect.title = 'Show only AI players with this type of government';
+        const govOptions = governmentFilterOptions(rows);
+        if (governmentFilter !== '' && !govOptions.includes(governmentFilter)) governmentFilter = '';
+        for (const value of ['', ...govOptions]) {
+            const o = document.createElement('option');
+            o.value = value;
+            o.textContent = value === '' ? 'Any government' : value;
+            govSelect.appendChild(o);
+        }
+        govSelect.value = governmentFilter;
+        govSelect.addEventListener('change', () => {
+            governmentFilter = govSelect.value;
+            render();
+        });
+        controls.append(kindSelect, govSelect);
+        list.appendChild(controls);
+
+        const filteredRows = filterDiplomacyRows(filterDiplomacyRowsByKind(rows, kindFilter, governmentFilter), filterQuery);
         if (filteredRows.length === 0) {
             list.appendChild(el('div', 'diplomacy-list-empty', 'No empires match this filter.'));
         }
@@ -565,14 +733,20 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
             swatch.style.background = rgb(r.color);
             const name = el('span', 'diplomacy-name', r.name);
             name.title = r.name;
-            const relation = el('span', 'diplomacy-relation', r.relationText + warRowSuffix(player, r.empire)); // [wargoals]
+            const relation = el('span', 'diplomacy-relation', r.relationText + (r.isPirate ? '' : warRowSuffix(player, r.empire))); // [wargoals]
             relation.style.color = rgb(r.relationColor);
             relation.title = r.relationText;
             const attitude = el('span', 'diplomacy-attitude', r.attitude !== null ? formatSigned(r.attitude) : '');
             if (r.attitude !== null) attitude.style.color = r.attitude < 0 ? RED : LIGHT_GREEN;
-            const intel = empireIntel(player, r.empire);
-            const power = el('span', 'diplomacy-power', `${intel.colonies}c ${intel.firepower}fp`);
-            power.title = `${intel.colonies} colonies, ${intel.firepower} firepower`;
+            let power: HTMLElement;
+            if (r.isPirate) {
+                power = el('span', 'diplomacy-power', 'pirates');
+                power.title = r.empire.pirateEmpireSuperPirates ? 'Super pirates' : 'Pirate faction';
+            } else {
+                const intel = empireIntel(player, r.empire);
+                power = el('span', 'diplomacy-power', `${intel.colonies}c ${intel.firepower}fp`);
+                power.title = `${intel.colonies} colonies, ${intel.firepower} firepower`;
+            }
             line.append(swatch, name, relation, power, attitude);
             line.addEventListener('click', () => {
                 selected = r.empire;
@@ -593,155 +767,161 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
         title.append(emblemImg('diplomacy-flag', row.empire, 'flag', 'width:40px;height:24px;margin-left:8px;vertical-align:middle'));
         detail.appendChild(title);
 
-        detail.appendChild(strengthsBlock(player, empireIntel(player, row.empire)));
-
-        detail.appendChild(el('div', 'diplomacy-section-heading', 'Current Relationship With Us'));
-        const relText = el('div', 'diplomacy-line', row.relationText);
-        relText.style.color = rgb(row.relationColor);
-        detail.appendChild(relText);
-        // [charters] begin
-        // Scenario 19c: a company's charter line; its founder gets a "Manage charter" link (§8.4).
-        const charterLine = companyHeaderLine(player.galaxy, row.empire);
-        if (charterLine !== '') {
-            detail.appendChild(el('div', 'diplomacy-line', charterLine));
-            const charter = charterOfCompany(player.galaxy, row.empire);
-            if (charter !== null && charter.founderId === player.empireId) {
-                const manage = el('button', 'diplomacy-button', 'Manage charter') as HTMLButtonElement;
-                manage.type = 'button';
-                manage.addEventListener('click', () => toggleChartersScreen(player.galaxy, player));
-                detail.appendChild(manage);
-            }
-        }
-        // [charters] end
-
-        // [rimTrader] begin
-        const rimTerms = row.empire === rimTraderEmpireOf(player) ? rimTraderTermsRows(player.galaxy, player) : null;
-        if (rimTerms !== null) detail.appendChild(rimTraderTermsBlock(rimTerms));
-        // [rimTrader] end
-
-        // [wargoals] begin
-        const war = warTermsBlock(player, row.empire, () => render());
-        if (war !== null) detail.appendChild(war);
-        // [wargoals] end
-
-        detail.appendChild(el('div', 'diplomacy-section-heading', 'Treaty on Offer'));
-        if (row.incoming) {
-            detail.appendChild(el('div', 'diplomacy-line', row.incomingText));
-            if (row.incomingMessage) detail.appendChild(el('div', 'diplomacy-message', row.incomingMessage));
-            const buttons = el('div', 'diplomacy-buttons');
-            const accept = el('button', 'diplomacy-button', 'Accept Offer') as HTMLButtonElement;
-            accept.type = 'button';
-            const decline = el('button', 'diplomacy-button', 'Decline') as HTMLButtonElement;
-            decline.type = 'button';
-            const other = row.empire;
-            accept.addEventListener('click', () => {
-                issuePlayerCommand(player.galaxy, player, 'acceptProposal', [other], (ok) => {
-                    if (ok) showToast('Treaty accepted');
-                    render();
-                });
-            });
-            decline.addEventListener('click', () => {
-                issuePlayerCommand(player.galaxy, player, 'declineProposal', [other], () => render());
-            });
-            buttons.append(accept, decline);
-            detail.appendChild(buttons);
+        if (row.isPirate) {
+            detail.appendChild(pirateBlock(player, row));
+            detail.appendChild(proposalsBlock(player, row.empire));
         } else {
-            detail.appendChild(el('div', 'diplomacy-line diplomacy-muted', '(none)'));
-        }
+            detail.appendChild(strengthsBlock(player, empireIntel(player, row.empire)));
 
-        detail.appendChild(el('div', 'diplomacy-section-heading', 'Our offer to them'));
-        detail.appendChild(
-            row.outgoing
-                ? el('div', 'diplomacy-line', row.outgoingText)
-                : el('div', 'diplomacy-line diplomacy-muted', '(none)'),
-        );
+            detail.appendChild(el('div', 'diplomacy-section-heading', 'Current Relationship With Us'));
+            const relText = el('div', 'diplomacy-line', row.relationText);
+            relText.style.color = rgb(row.relationColor);
+            detail.appendChild(relText);
+            // [charters] begin
+            // Scenario 19c: a company's charter line; its founder gets a "Manage charter" link (§8.4).
+            const charterLine = companyHeaderLine(player.galaxy, row.empire);
+            if (charterLine !== '') {
+                detail.appendChild(el('div', 'diplomacy-line', charterLine));
+                const charter = charterOfCompany(player.galaxy, row.empire);
+                if (charter !== null && charter.founderId === player.empireId) {
+                    const manage = el('button', 'diplomacy-button', 'Manage charter') as HTMLButtonElement;
+                    manage.type = 'button';
+                    manage.addEventListener('click', () => toggleChartersScreen(player.galaxy, player));
+                    detail.appendChild(manage);
+                }
+            }
+            // [charters] end
 
-        // [proposals] begin
-        detail.appendChild(proposalsBlock(player, row.empire));
-        // [proposals] end
+            // [rimTrader] begin
+            const rimTerms = row.empire === rimTraderEmpireOf(player) ? rimTraderTermsRows(player.galaxy, player) : null;
+            if (rimTerms !== null) detail.appendChild(rimTraderTermsBlock(rimTerms));
+            // [rimTrader] end
 
-        detail.appendChild(el('div', 'diplomacy-line diplomacy-strategy', `Our strategy: ${row.ourStrategy}`));
+            // [wargoals] begin
+            const war = warTermsBlock(player, row.empire, () => render());
+            if (war !== null) detail.appendChild(war);
+            // [wargoals] end
 
-        if (row.treaties.length > 0) {
-            detail.appendChild(el('div', 'diplomacy-section-heading', 'Treaties'));
-            const ul = el('ul', 'diplomacy-treaties');
-            for (const t of row.treaties) ul.appendChild(el('li', 'diplomacy-treaty', t));
-            detail.appendChild(ul);
-        }
+            detail.appendChild(el('div', 'diplomacy-section-heading', 'Treaty on Offer'));
+            if (row.incoming) {
+                detail.appendChild(el('div', 'diplomacy-line', row.incomingText));
+                if (row.incomingMessage) detail.appendChild(el('div', 'diplomacy-message', row.incomingMessage));
+                const buttons = el('div', 'diplomacy-buttons');
+                const accept = el('button', 'diplomacy-button', 'Accept Offer') as HTMLButtonElement;
+                accept.type = 'button';
+                const decline = el('button', 'diplomacy-button', 'Decline') as HTMLButtonElement;
+                decline.type = 'button';
+                const other = row.empire;
+                accept.addEventListener('click', () => {
+                    issuePlayerCommand(player.galaxy, player, 'acceptProposal', [other], (ok) => {
+                        if (ok) showToast('Treaty accepted');
+                        render();
+                    });
+                });
+                decline.addEventListener('click', () => {
+                    issuePlayerCommand(player.galaxy, player, 'declineProposal', [other], () => render());
+                });
+                buttons.append(accept, decline);
+                detail.appendChild(buttons);
+            } else {
+                detail.appendChild(el('div', 'diplomacy-line diplomacy-muted', '(none)'));
+            }
 
-        if (row.feeling) {
-            detail.appendChild(el('div', 'diplomacy-section-heading', 'Attitude'));
-            const feeling = el('div', 'diplomacy-line diplomacy-feeling', row.feeling);
-            if (row.attitude !== null) feeling.style.color = row.attitude < 0 ? RED : LIGHT_GREEN;
-            detail.appendChild(feeling);
-        }
-        for (const f of row.factors) {
-            const line = el('div', 'diplomacy-factor', `${f.description} (${formatSigned(f.value)})`);
-            line.style.color = f.value < 0 ? RED : LIGHT_GREEN;
-            detail.appendChild(line);
-        }
+            detail.appendChild(el('div', 'diplomacy-section-heading', 'Our offer to them'));
+            detail.appendChild(
+                row.outgoing
+                    ? el('div', 'diplomacy-line', row.outgoingText)
+                    : el('div', 'diplomacy-line diplomacy-muted', '(none)'),
+            );
 
-        // 19o (scenario `reputationLedger`): the ledger entries the other empire holds about us, with their fade.
-        const causes = reputationRows(player.galaxy, player, row.empire);
-        if (causes.length > 0) {
-            detail.appendChild(el('div', 'diplomacy-section-heading', 'Why they feel this way'));
-            for (const r of causes) {
-                const line = el('div', 'diplomacy-factor', r.text);
-                line.style.color = r.value < 0 ? RED : LIGHT_GREEN;
+            // [proposals] begin
+            detail.appendChild(proposalsBlock(player, row.empire));
+            // [proposals] end
+
+            detail.appendChild(el('div', 'diplomacy-line diplomacy-strategy', `Our strategy: ${row.ourStrategy}`));
+
+            if (row.treaties.length > 0) {
+                detail.appendChild(el('div', 'diplomacy-section-heading', 'Treaties'));
+                const ul = el('ul', 'diplomacy-treaties');
+                for (const t of row.treaties) ul.appendChild(el('li', 'diplomacy-treaty', t));
+                detail.appendChild(ul);
+            }
+
+            if (row.feeling) {
+                detail.appendChild(el('div', 'diplomacy-section-heading', 'Attitude'));
+                const feeling = el('div', 'diplomacy-line diplomacy-feeling', row.feeling);
+                if (row.attitude !== null) feeling.style.color = row.attitude < 0 ? RED : LIGHT_GREEN;
+                detail.appendChild(feeling);
+            }
+            for (const f of row.factors) {
+                const line = el('div', 'diplomacy-factor', `${f.description} (${formatSigned(f.value)})`);
+                line.style.color = f.value < 0 ? RED : LIGHT_GREEN;
                 detail.appendChild(line);
             }
-        }
 
-        // 19d3 (scenario `espionageConsequences`): open espionage crises, recent exposures, stolen techs of the pair.
-        const incidents = incidentRows(player.galaxy, player, row.empire);
-        if (incidents.length > 0) {
-            detail.appendChild(el('div', 'diplomacy-section-heading', 'Incidents'));
-            for (const r of incidents) {
-                const line = el('div', 'diplomacy-factor', r.text);
-                if (r.kind === 'crisis') line.style.color = RED;
-                detail.appendChild(line);
-            }
-        }
-
-        // 19d8 (scenario `galacticCouncil`): the council block — members, chair, motion on the floor, last 5 results, our bloc.
-        const council = councilView(player.galaxy, player);
-        if (council !== null) {
-            detail.appendChild(el('div', 'diplomacy-section-heading', council.observer ? `Council: ${council.name} (not a member)` : `Council: ${council.name}`));
-            detail.appendChild(el('div', 'diplomacy-line', `Chair: ${council.chair || '(none)'} — founded ${council.founded}`));
-            for (const mr of council.members) {
-                const tags = [mr.chair ? 'chair' : '', mr.bloc, `prestige ${mr.prestige}`, mr.losses > 0 ? `outvoted ${mr.losses}` : ''].filter((t) => t !== '').join(', ');
-                detail.appendChild(el('div', 'diplomacy-factor', `${mr.name} (${tags})`));
-            }
-            detail.appendChild(el('div', 'diplomacy-line', council.motion !== '' ? `Motion: ${council.motion}` : 'Motion: (none on the floor)'));
-            if (council.motionStatus !== '') detail.appendChild(el('div', 'diplomacy-factor', council.motionStatus));
-            // [llm] 19s-2 voices: two members speak for / against the motion (scripted at once, voiced in place).
-            const speeches = council.motionRef !== null ? activeVoiceJob()?.councilSpeeches(council.councilRef!, council.motionRef, () => render()) ?? null : null;
-            if (speeches !== null) {
-                for (const sp of [speeches.for, speeches.against]) {
-                    if (sp === null) continue;
-                    const line = el('div', 'diplomacy-factor', `${sp.side === 'for' ? 'For' : 'Against'} — ${sp.speaker.name}: ${sp.text}`);
-                    line.style.color = sp.side === 'for' ? LIGHT_GREEN : RED;
-                    if (sp.voiced) line.title = 'Voiced by the local model';
+            // 19o (scenario `reputationLedger`): the ledger entries the other empire holds about us, with their fade.
+            const causes = reputationRows(player.galaxy, player, row.empire);
+            if (causes.length > 0) {
+                detail.appendChild(el('div', 'diplomacy-section-heading', 'Why they feel this way'));
+                for (const r of causes) {
+                    const line = el('div', 'diplomacy-factor', r.text);
+                    line.style.color = r.value < 0 ? RED : LIGHT_GREEN;
                     detail.appendChild(line);
                 }
             }
-            if (council.voteDecisionId > 0) {
-                const buttons = el('div', 'diplomacy-line');
-                for (const [id, label] of [['yes', 'Vote yes'], ['no', 'Vote no'], ['abstain', 'Abstain']] as const) {
-                    const b = el('button', 'diplomacy-button', label) as HTMLButtonElement;
-                    b.type = 'button';
-                    b.addEventListener('click', () => issuePlayerCommand(player.galaxy, player, 'answerScenarioDecision', [council.voteDecisionId, id], () => render()));
-                    buttons.appendChild(b);
+
+            // 19d3 (scenario `espionageConsequences`): open espionage crises, recent exposures, stolen techs of the pair.
+            const incidents = incidentRows(player.galaxy, player, row.empire);
+            if (incidents.length > 0) {
+                detail.appendChild(el('div', 'diplomacy-section-heading', 'Incidents'));
+                for (const r of incidents) {
+                    const line = el('div', 'diplomacy-factor', r.text);
+                    if (r.kind === 'crisis') line.style.color = RED;
+                    detail.appendChild(line);
                 }
-                detail.appendChild(buttons);
             }
-            for (const r of council.results) {
-                const line = el('div', 'diplomacy-factor', r.text);
-                line.style.color = r.passed ? LIGHT_GREEN : RED;
-                detail.appendChild(line);
+
+            // 19d8 (scenario `galacticCouncil`): the council block — members, chair, motion on the floor, last 5 results, our bloc.
+            const council = councilView(player.galaxy, player);
+            if (council !== null) {
+                detail.appendChild(el('div', 'diplomacy-section-heading', council.observer ? `Council: ${council.name} (not a member)` : `Council: ${council.name}`));
+                detail.appendChild(el('div', 'diplomacy-line', `Chair: ${council.chair || '(none)'} — founded ${council.founded}`));
+                for (const mr of council.members) {
+                    const tags = [mr.chair ? 'chair' : '', mr.bloc, `prestige ${mr.prestige}`, mr.losses > 0 ? `outvoted ${mr.losses}` : ''].filter((t) => t !== '').join(', ');
+                    detail.appendChild(el('div', 'diplomacy-factor', `${mr.name} (${tags})`));
+                }
+                detail.appendChild(el('div', 'diplomacy-line', council.motion !== '' ? `Motion: ${council.motion}` : 'Motion: (none on the floor)'));
+                if (council.motionStatus !== '') detail.appendChild(el('div', 'diplomacy-factor', council.motionStatus));
+                // [llm] 19s-2 voices: two members speak for / against the motion (scripted at once, voiced in place).
+                const speeches = council.motionRef !== null ? activeVoiceJob()?.councilSpeeches(council.councilRef!, council.motionRef, () => render()) ?? null : null;
+                if (speeches !== null) {
+                    for (const sp of [speeches.for, speeches.against]) {
+                        if (sp === null) continue;
+                        const line = el('div', 'diplomacy-factor', `${sp.side === 'for' ? 'For' : 'Against'} — ${sp.speaker.name}: ${sp.text}`);
+                        line.style.color = sp.side === 'for' ? LIGHT_GREEN : RED;
+                        if (sp.voiced) line.title = 'Voiced by the local model';
+                        detail.appendChild(line);
+                    }
+                }
+                if (council.voteDecisionId > 0) {
+                    const buttons = el('div', 'diplomacy-line');
+                    for (const [id, label] of [['yes', 'Vote yes'], ['no', 'Vote no'], ['abstain', 'Abstain']] as const) {
+                        const b = el('button', 'diplomacy-button', label) as HTMLButtonElement;
+                        b.type = 'button';
+                        b.addEventListener('click', () => issuePlayerCommand(player.galaxy, player, 'answerScenarioDecision', [council.voteDecisionId, id], () => render()));
+                        buttons.appendChild(b);
+                    }
+                    detail.appendChild(buttons);
+                }
+                for (const r of council.results) {
+                    const line = el('div', 'diplomacy-factor', r.text);
+                    line.style.color = r.passed ? LIGHT_GREEN : RED;
+                    detail.appendChild(line);
+                }
+                detail.appendChild(el('div', 'diplomacy-line', `Our bloc: ${council.yourBloc || '(none)'}`));
+                if (council.rivals.length > 0) detail.appendChild(el('div', 'diplomacy-line diplomacy-muted', `Rival council: ${council.rivals.join(', ')}`));
             }
-            detail.appendChild(el('div', 'diplomacy-line', `Our bloc: ${council.yourBloc || '(none)'}`));
-            if (council.rivals.length > 0) detail.appendChild(el('div', 'diplomacy-line diplomacy-muted', `Rival council: ${council.rivals.join(', ')}`));
+
         }
 
         // 19r: the independent leagues (19k-3) with their flags, under the empire rows.
@@ -855,7 +1035,9 @@ function createDiplomacyScreen(opts: DiplomacyScreenOptions): OpenState {
             render();
         };
         const optionButton = (o: ProposalOption): HTMLButtonElement => {
-            const b = el('button', 'diplomacy-propose-option', resolveGameText(o.label)) as HTMLButtonElement;
+            // A priced pirate protection option also names the price per year (the label has it per month).
+            const yearly = o.part === 'PIRATE_PROTECTIONPROPOSE_OFFER' || o.part === 'PIRATE_PROTECTIONACCEPTRESPONSE' ? pirateProtectionYearlySuffix(o.cost) : '';
+            const b = el('button', 'diplomacy-propose-option', resolveGameText(o.label) + yearly) as HTMLButtonElement;
             b.type = 'button';
             b.disabled = !o.enabled;
             if (o.hint) b.title = o.hint;
