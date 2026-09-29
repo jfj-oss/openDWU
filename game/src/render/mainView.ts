@@ -78,6 +78,7 @@ import { wreckTooltipText } from '../ui/scenario/wreckageUi'; // [wreckage]
 import type { FreightOverlay } from './freightOverlay'; // [freightOverlay]
 import { boundsOnScreen, DrawKey } from './drawCache';
 import { MotionInterpolator, createRenderTime, habitatTouchClampSeconds, renderOrbitAngle, type RenderTime } from './renderInterp';
+import { createFollowState, followTargetAlive, followTargetPosition, isFollowing, stopFollow, type FollowState, type FollowTarget } from './followCamera';
 
 export function fadeIn(v: number, a: number, b: number): number {
     if (v <= a) {
@@ -1046,6 +1047,10 @@ export class MainView {
      * previous/current step positions shared by every layer that draws a moving object. Render-only. */
     renderTime: RenderTime = createRenderTime();
     readonly motion = new MotionInterpolator();
+    /** Follow camera (task followcam): shared with the HUD's selection-panel toggle (src/ui/hud.ts) and its
+     * followOnSelectionChanged call. Recentred on the followed ship/fleet every frame in update(); cleared here
+     * on a manual drag/edge-scroll/map-click or target loss, and by keyboard.ts on a keyboard scroll. */
+    readonly followState: FollowState = createFollowState();
     /** Task 08g: set by main.ts — receives the habitat picked on left click. */
     onSelectionChange?: (h: Habitat | null) => void;
     /** Task 13d: set by main.ts — receives the ship/base picked on left click. */
@@ -1608,26 +1613,52 @@ export class MainView {
         }
 
         // Screen-edge auto-scroll (original control scheme).
+        let edgeDx = 0;
+        let edgeDy = 0;
         if (!this.dragging && this.pointerInside) {
             const edge = 24;
             const speed = 16;
-            let dx = 0;
-            let dy = 0;
             if (this.lastPointer.x < edge) {
-                dx = -speed;
+                edgeDx = -speed;
             } else if (this.lastPointer.x > cam.width - edge) {
-                dx = speed;
+                edgeDx = speed;
             }
             if (this.lastPointer.y < edge) {
-                dy = -speed;
+                edgeDy = -speed;
             } else if (this.lastPointer.y > cam.height - edge) {
-                dy = speed;
-            }
-            if (dx !== 0 || dy !== 0) {
-                // panByScreen has drag semantics (content follows the pointer); edge scroll moves the view toward the edge.
-                cam.panByScreen(-dx, -dy);
+                edgeDy = speed;
             }
         }
+
+        // Follow camera (task followcam): recentre every frame on the followed ship/fleet's drawn
+        // (render-interpolated) position, keeping zoom. Edge-scroll stops it here; a drag-pan or any map click
+        // stops it immediately at mousedown (attachInput, below); a keyboard scroll stops it in keyboard.ts; a
+        // selection change stops it in hud.ts (followOnSelectionChanged). Wheel-zoom is untouched, so zooming
+        // keeps following.
+        if (isFollowing(this.followState)) {
+            if (edgeDx !== 0 || edgeDy !== 0) {
+                this.stopFollowing();
+            } else {
+                const target = this.followState.target as FollowTarget;
+                if (!followTargetAlive(target)) {
+                    this.stopFollowing();
+                } else {
+                    const p = followTargetPosition(this.motion, target);
+                    cam.centerOn(p.x, p.y);
+                }
+            }
+        }
+
+        if (edgeDx !== 0 || edgeDy !== 0) {
+            // panByScreen has drag semantics (content follows the pointer); edge scroll moves the view toward the edge.
+            cam.panByScreen(-edgeDx, -edgeDy);
+        }
+    }
+
+    /** Stop the follow camera if it is on (edge-scroll, a mousedown on the canvas, or the followed target being
+     * gone — task followcam). A no-op while already off. */
+    private stopFollowing(): void {
+        if (isFollowing(this.followState)) stopFollow(this.followState);
     }
 
     /** The selection ring at screen (x, y) with radius r; the geometry is rebuilt only when one of them changes. */
@@ -1677,6 +1708,9 @@ export class MainView {
             { passive: false },
         );
         canvas.addEventListener('mousedown', (e: MouseEvent) => {
+            // Task followcam: any press on the map — a drag-pan starting or a plain click — stops the follow
+            // camera ("touching anything outside UI elements ... stops the follow cam").
+            this.stopFollowing();
             if (e.button === 2) {
                 this.dragging = true;
                 const rect = canvas.getBoundingClientRect();
