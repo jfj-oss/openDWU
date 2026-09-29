@@ -2165,6 +2165,8 @@ export function formatCashflow(n: number): string {
  * push via {@link pushHudMessage} without holding a HUD reference. */
 const MESSAGE_LINES = 5;
 let hudMessages: string[] = [];
+/** Per ticker line, the jump for its message (Go to its location), or null when it has none. Parallel to hudMessages. */
+let hudMessageGotos: Array<(() => boolean) | null> = [];
 let messageLineEls: HTMLElement[] | null = null;
 
 // Task 12i: the full message history behind the ticker (the original's
@@ -2181,6 +2183,13 @@ let hudMessageHistory: HudMessageEntry[] = [];
  * buffer and render the current contents. Called from createHud. */
 function setMessageLineElements(panel: HTMLElement | null): void {
     messageLineEls = panel ? Array.from(panel.querySelectorAll('.hud-message-line')) : null;
+    // Clicking a ticker line that is about a place jumps there (Main.Part9.cs method_249); other lines fall through to
+    // the panel's click, which opens the message history.
+    messageLineEls?.forEach((el, i) => {
+        el.addEventListener('click', (ev) => {
+            if (tickerLineGoto(i, messageLineEls!.length)) ev.stopPropagation();
+        });
+    });
     renderMessages();
 }
 
@@ -2191,16 +2200,28 @@ function renderMessages(): void {
     for (let i = 0; i < messageLineEls.length; i++) {
         const idx = i - (messageLineEls.length - MESSAGE_LINES);
         messageLineEls[i].textContent = hudMessages[idx] ?? '';
+        messageLineEls[i].classList.toggle('hud-message-goto', (hudMessageGotos[idx] ?? null) !== null);
     }
+}
+
+/** Run the Go to of the ticker line in slot `slot` of `slotCount`; true when the line had one. Exported for tests. */
+export function tickerLineGoto(slot: number, slotCount: number): boolean {
+    const idx = slot - (slotCount - MESSAGE_LINES);
+    const go = hudMessageGotos[idx] ?? null;
+    return go !== null ? go() : false;
 }
 
 /** Push a message into the top-middle ticker (keeps the last 5, newest at
  * the bottom) and into the full history. `at` is an optional display date
  * (main.ts will pass the game date); it defaults to ''. Exported for later
  * systems (events, diplomacy, ...). */
-export function pushHudMessage(text: string, at?: string): void {
+export function pushHudMessage(text: string, at?: string, goTo: (() => boolean) | null = null): void {
     hudMessages.push(text);
-    while (hudMessages.length > MESSAGE_LINES) hudMessages.shift();
+    hudMessageGotos.push(goTo);
+    while (hudMessages.length > MESSAGE_LINES) {
+        hudMessages.shift();
+        hudMessageGotos.shift();
+    }
     hudMessageHistory.push({ text, at: at ?? '' });
     while (hudMessageHistory.length > HISTORY_LIMIT) hudMessageHistory.shift();
     renderMessages();
@@ -2210,6 +2231,7 @@ export function pushHudMessage(text: string, at?: string): void {
  * the full history). */
 export function clearHudMessages(): void {
     hudMessages = [];
+    hudMessageGotos = [];
     hudMessageHistory = [];
     renderMessages();
 }

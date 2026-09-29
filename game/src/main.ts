@@ -5,6 +5,7 @@
 // plus the probe middleware in vite.config.ts does the same).
 
 import { fogOf } from './render/fog';
+import { goToMessage, messageGoToTarget } from './ui/messageGoto';
 import { Application } from 'pixi.js';
 import { Camera } from './render/camera';
 import { MainView } from './render/mainView';
@@ -556,7 +557,8 @@ export async function startGameView(
         }
         for (const { message, text } of messageFeed.pollMessages(game.playerEmpire)) {
             recordTickerMessage(game.playerEmpire, message, time.currentStarDate);
-            pushHudMessage(text, resolveStarDateDescription(time.currentStarDate));
+            const goTo = messageGoToTarget(message) !== null ? (): boolean => goToMessage(message, galaxy) : null;
+            pushHudMessage(text, resolveStarDateDescription(time.currentStarDate), goTo);
         }
     };
     refreshHud();
