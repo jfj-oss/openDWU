@@ -261,14 +261,14 @@ export function habitatLabelColor(h: Habitat, independent: Empire | null): numbe
 }
 
 // Task 08g (Controls/MainView.cs mouse picking): pure hit-test over a list of
-// candidate habitats. Each object's drawn on-screen rect is the square centred
-// on its screen position with side `sizeFn(habitat, zoom)` px (the same size
-// functions the renderer uses, incl. the min-pixel sizes). The point belongs
-// to an object when |dx| <= size/2 && |dy| <= size/2; among several matches
-// the smaller object wins (a moon in front of its planet, a planet in front
-// of the star). Returns null for empty space. The square is centred where the
-// object is drawn: `posOf` (the render-interpolated orbit position,
-// renderInterp.ts renderHabitatPos); default its committed xpos / ypos.
+// candidate habitats. Each object's drawn art is a disc centred where it is
+// drawn (`posOf`, the render-interpolated orbit position, renderInterp.ts
+// renderHabitatPos; default its committed xpos / ypos) whose on-screen
+// diameter is `sizeFn(habitat, zoom)` px (the same size functions the renderer
+// uses). The hit radius is half that drawn size, at least `minRadiusPx` CSS px
+// so tiny objects stay clickable, converted to world units (px / zoom). Among
+// several matches the smaller drawn object wins (a moon in front of its planet,
+// a planet in front of the star), then the closer centre. Null for empty space.
 export function hitTestHabitats(
     list: Habitat[],
     x: number,
@@ -276,22 +276,36 @@ export function hitTestHabitats(
     sizeFn: (h: Habitat, zoom: number) => number,
     zoom: number,
     posOf: (h: Habitat) => { x: number; y: number } = (h) => ({ x: h.xpos, y: h.ypos }),
+    minRadiusPx = 6,
 ): Habitat | null {
     let best: Habitat | null = null;
     let bestSize = Infinity;
+    let bestDist = Infinity;
     for (const h of list) {
         const s = sizeFn(h, zoom);
         if (s <= 0) continue;
+        const rWorld = Math.max(s / 2, minRadiusPx) / zoom;
         const p = posOf(h);
-        const dx = Math.abs(x - p.x);
-        const dy = Math.abs(y - p.y);
-        if (dx > s / 2 || dy > s / 2) continue;
-        if (s < bestSize) {
+        const d = Math.hypot(x - p.x, y - p.y);
+        if (d > rWorld) continue;
+        if (s < bestSize || (s === bestSize && d < bestDist)) {
             bestSize = s;
+            bestDist = d;
             best = h;
         }
     }
     return best;
+}
+
+/** On-screen size in px of the star art at zoom z: the same bands the system renderer draws (discs / sprite /
+ * galaxy map-star icon / small map icon). */
+export function starDrawnPx(star: Habitat, z: number): number {
+    const f = 1 / z;
+    const bhOrSn = star.type === HabitatType.BlackHole || star.type === HabitatType.SuperNova;
+    if (!bhOrSn && f < starDiscMaxFactor(star.type)) return starSpritePx(star.diameter, z);
+    if (star.type === HabitatType.BlackHole && f < 150) return starSpritePx(star.diameter, z);
+    if (f < 150) return starGalaxySpritePx(star.diameter, z);
+    return clamp(star.diameter * z * 30, 2.5, 26);
 }
 
 // Task 08f1 (MainView.2.cs 4675-4705): region/nebula location labels are
@@ -1190,7 +1204,7 @@ export class MainView {
      * sprite >= 40 px via planetSpritePx/moonDotPx/starSpritePx). */
     private drawnSize(h: Habitat, z: number): number {
         if (h.category === HabitatCategoryType.Star) {
-            return starSpritePx(h.diameter, z);
+            return starDrawnPx(h, z);
         }
         if (h.category === HabitatCategoryType.Moon) {
             return moonDotPx(h.diameter, z);
@@ -1213,42 +1227,33 @@ export class MainView {
         const cam = this.camera;
         const w = cam.screenToWorld(screenX, screenY);
         const z = cam.zoom;
-        const m = this.minZoom;
-        const factor = 1 / z;
-        const atSystemZoom = factor < 70; // original's system-zoom threshold
+        const bodiesDrawn = 1 / z < 500; // planets / moons are drawn while f < 500
         // Hit the planets / moons where they are drawn (render-interpolated orbit at the last frame's render time).
-        const drawnAt = (h: Habitat): { x: number; y: number } => this.motion.habitatPos(h);
-        for (const sv of this.systems) {
-            const star = sv.system.systemStar;
-            const s = cam.worldToScreen(star.xpos, star.ypos);
-            if (atSystemZoom) {
-                // Planets + their moons first (smaller objects win ties),
-                // then the star itself.
-                // Fog of war (Main.Part10.cs 1291 / Main.Part7.cs 3489): nothing of a system the player has not
-                // explored can be hovered or selected (its planets are not even drawn, see SystemView.updateFog).
-                const known = fogOf(this.galaxy).habitatInfo(star);
-                const bodies: Habitat[] = [];
-                if (known) {
-                    for (const p of sv.planets) {
-                        bodies.push(p.habitat);
-                        for (const moon of p.moons) {
-                            bodies.push(moon.habitat);
-                        }
+        const drawnAt = (h: Habitat): { x: number; y: number } => this.motion.positionOf(h);
+        const size = (h: Habitat, zz: number): number => this.drawnSize(h, zz);
+        // Pick order (smaller drawn art wins): moons, planets, then stars.
+        if (bodiesDrawn) {
+            // Fog of war (Main.Part10.cs 1291 / Main.Part7.cs 3489): the bodies of a system the player has not explored
+            // can't be hovered or selected (they are not even drawn, see SystemView.updateFog).
+            const fog = fogOf(this.galaxy);
+            const bodies: Habitat[] = [];
+            for (const sv of this.systems) {
+                if (!fog.habitatInfo(sv.system.systemStar)) continue;
+                for (const p of sv.planets) {
+                    bodies.push(p.habitat);
+                    for (const moon of p.moons) {
+                        bodies.push(moon.habitat);
                     }
                 }
-                let hit = hitTestHabitats(bodies, w.x, w.y, (h, zz) => this.drawnSize(h, zz), z, drawnAt);
-                if (hit === null && known) {
-                    hit = hitTestHabitats([star], w.x, w.y, (h, zz) => this.drawnSize(h, zz), z, drawnAt);
-                }
-                if (hit !== null) {
-                    return hit;
-                }
-            } else if (Math.hypot(s.x - screenX, s.y - screenY) <= 12) {
-                // Galaxy/sector zoom: nearest star within 12 px of the cursor.
-                return star;
+            }
+            const hit = hitTestHabitats(bodies, w.x, w.y, size, z, drawnAt);
+            if (hit !== null) {
+                return hit;
             }
         }
-        return null;
+        // Stars: their drawn art, at least 12 px radius (the old galaxy-zoom pick reach).
+        const stars = this.systems.map((sv) => sv.system.systemStar);
+        return hitTestHabitats(stars, w.x, w.y, size, z, drawnAt, 12);
     }
 
     /** Task 13d (Main.Part11.cs method_145): the ship/base under the screen point. Ships win over habitats. */

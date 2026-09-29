@@ -19,6 +19,20 @@ import type { ConstructionQueue } from '../construction/constructionQueue';
 import type { ShipAction } from './shipAction';
 import { executeShipAction, type ShipActionSelection } from './executeShipAction';
 import { applyAutomationOff, fleetPointClick, rightClickOrder } from './orderMenu';
+import {
+    fleetLoadTroops,
+    fleetRepairAndRefuel,
+    fleetRetrofit,
+    refuelSelectedShips,
+    renameFleet,
+    repairSelectedShips,
+    retireSelectedShips,
+    setFleetHomeColony,
+    setFleetTroopLoadout,
+    setShipsFleet,
+    type SetFleetTarget,
+    type TroopLoadout,
+} from './fleetOps';
 import { buildNewShips } from '../construction/empireConstruction';
 import { submitProposal } from './diplomacyProposals';
 import { submitTradeOffer, type TradeNegotiation } from './tradeNegotiation';
@@ -80,6 +94,18 @@ export const PLAYER_OPS = {
     /** Main.Part10.cs 3063-3125: the fleet's attack point / home base pick. */
     fleetPoint: (galaxy: Galaxy, empire: Empire, fleet: ShipGroup, mode: 'SetFleetAttackPoint' | 'SetFleetHomeBase', target: unknown) =>
         fleetPointClick(galaxy, empire, fleet, mode, target),
+    // --- Ships and Bases window / Fleets window buttons (player/fleetOps.ts) ---
+    /** Main.Part6.cs cmbBuiltObjectSetFleet: form a new fleet / join a fleet / leave the fleet for the selected ships. */
+    setShipsFleet: (galaxy: Galaxy, empire: Empire, ships: BuiltObject[], target: SetFleetTarget) => setShipsFleet(galaxy, empire, ships, target),
+    refuelShips: (galaxy: Galaxy, empire: Empire, ships: BuiltObject[]) => refuelSelectedShips(galaxy, empire, ships),
+    repairShips: (galaxy: Galaxy, empire: Empire, ships: BuiltObject[]) => repairSelectedShips(galaxy, empire, ships),
+    retireShips: (galaxy: Galaxy, empire: Empire, ships: BuiltObject[]) => retireSelectedShips(galaxy, empire, ships),
+    renameFleet: (_galaxy: Galaxy, _empire: Empire, fleet: ShipGroup, name: string) => renameFleet(fleet, name),
+    setFleetHomeColony: (_galaxy: Galaxy, empire: Empire, fleet: ShipGroup, colony: Habitat) => setFleetHomeColony(empire, fleet, colony),
+    setFleetTroopLoadout: (_galaxy: Galaxy, empire: Empire, fleet: ShipGroup, loadout: TroopLoadout | null) => setFleetTroopLoadout(empire, fleet, loadout),
+    fleetLoadTroops: (galaxy: Galaxy, empire: Empire, fleet: ShipGroup) => fleetLoadTroops(galaxy, empire, fleet),
+    fleetRetrofit: (galaxy: Galaxy, empire: Empire, fleet: ShipGroup) => fleetRetrofit(galaxy, empire, fleet),
+    fleetRepairAndRefuel: (galaxy: Galaxy, empire: Empire, fleet: ShipGroup) => fleetRepairAndRefuel(galaxy, empire, fleet),
     /** Main_KeyUp ship-order keys (E / R / A / S / ,). */
     shipOrderKey: (galaxy: Galaxy, empire: Empire, selected: ShipActionSelection, action: ShipOrderKeyAction) => executeShipOrderKey(galaxy, empire, selected, action),
 

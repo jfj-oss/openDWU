@@ -96,3 +96,28 @@ describe('keyboard', () => {
         expect(isKeyActionAvailable('cycleFleets')).toBe(true);
     });
 });
+
+describe('fleet panel helpers', () => {
+    it('range labels follow the posture-range ladder', async () => {
+        const { fleetRangeLabel } = await import('../src/ui/screens/fleetsList');
+        expect([2250000, 2304000000, 250000000000, 1e12, 3.4e38].map(fleetRangeLabel)).toEqual(['Point only', 'Point and system', 'Nearby systems', 'Sector', 'Any target']);
+    });
+    it('troop loadout: null when all 255, maxima leave the remainder', async () => {
+        const { fleetTroopLoadout, troopLoadoutMaxima } = await import('../src/ui/screens/fleetsList');
+        const off = mk({ troopLoadoutInfantry: 255, troopLoadoutArmored: 255, troopLoadoutArtillery: 255, troopLoadoutSpecialForces: 255 });
+        expect(fleetTroopLoadout(off)).toBeNull();
+        const on = mk({ troopLoadoutInfantry: 50, troopLoadoutArmored: 20, troopLoadoutArtillery: 0, troopLoadoutSpecialForces: 0 });
+        const l = fleetTroopLoadout(on)!;
+        expect(troopLoadoutMaxima(l)).toEqual({ infantry: 80, armored: 50, artillery: 30, specialForces: 30 });
+    });
+    it('panel state: nothing enabled without a fleet; Stop needs a mission; Load Troops needs space', async () => {
+        const { fleetPanelState } = await import('../src/ui/screens/fleetsList');
+        expect(Object.values(fleetPanelState(null).enabled).every((v) => !v)).toBe(true);
+        const idle = fleetPanelState(mk({ leadShip: { isAutoControlled: true } }));
+        expect(idle.enabled.stop).toBe(false);
+        expect(idle.enabled.posture).toBe(true);
+        expect(idle.automated).toBe(true);
+        expect(fleetPanelState(mk({ mission: { type: BuiltObjectMissionType.Move } })).enabled.stop).toBe(true);
+        expect(fleetPanelState(mk({}), 50).enabled.loadTroops).toBe(false);
+    });
+});

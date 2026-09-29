@@ -22,8 +22,7 @@ import { toggleResearchScreen } from './screens/researchScreen'; // [15b]
 import { getEmpireSummarySource, toggleEmpireSummary } from './screens/empireSummary';
 import { toggleColoniesList } from './screens/coloniesList';
 import { toggleBuildOrder } from './screens/buildOrder'; import { toggleConstructionYards } from './screens/constructionYards'; import { selectStellarObject } from './hud'; // [16c]
-import { toggleFleetsList } from './screens/fleetsList'; import { selectShipGroup } from './hud'; // [15c]
-import { toggleShipsAndBasesList } from './screens/shipsAndBasesList';
+import { toggleFleets, toggleShipsAndBases } from './hud'; // [15c]
 import { toggleMessageHistory } from './screens/messageHistory';
 import { toggleGameOptionsPanel } from './screens/gameOptionsPanel'; // [16d]
 import { toggleEmpireComparison } from './screens/empireComparison'; // [15d]
@@ -314,8 +313,7 @@ export function dispatchKey(
             break;
         // [15c] F12: Fleets list (task 15c); a row selects + zooms to the fleet.
         case 'fleetsScreen': {
-            const src = getEmpireSummarySource();
-            if (src) toggleFleetsList({ empire: src.empire, onSelect: (sg) => selectShipGroup(sg, true) });
+            toggleFleets();
             break;
         }
         // [/15c]
@@ -460,15 +458,7 @@ export function buildDefaultHandlers(
         // F11: the Ships and Bases list (task 13f) — same source as the
         // Empire Summary; sorts by distance to the selection when there is one.
         shipsAndBasesScreen: () => {
-            const src = getEmpireSummarySource();
-            if (!src) return;
-            const sel = getSelection();
-            toggleShipsAndBasesList({
-                empire: src.empire,
-                selected: sel ? (sel.builtObject ?? sel.habitat) : null,
-                // A row selects the ship/base and moves the view to it.
-                onZoomTo: (bo) => selectStellarObject(bo, true),
-            });
+            toggleShipsAndBases();
         },
         // F1 (KeyMappingFriendlyNames.OpenHelp -> btnHelp_Click, Main.Part7.cs).
         galactopediaHelp: () => toggleGalactopedia(helpTopicKeyForHabitat(getSelection()?.habitat ?? null)),
