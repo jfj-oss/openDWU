@@ -45,6 +45,7 @@ import type { Empire } from '../sim/empire';
 import { GalaxyLocation, GalaxyLocationType } from '../sim/galaxyLocation';
 import { Habitat, HabitatCategoryType, HabitatType, SystemInfo } from '../sim/types';
 import { NebulaCloudGenerator } from './nebulaClouds';
+import { SystemNebulaLayer, type NebulaSystem } from './systemNebula';
 import { EmpireLayer } from './empireLayer';
 import { OverlayLayer } from './overlayLayer';
 import { ArtBundleLayer } from './artBundleLayer'; // [19r]
@@ -991,6 +992,9 @@ export class MainView {
     private deepStarfield!: DeepStarfield;
     /** Systems for the deep starfield's per-system colour patches (flat, reused every frame). */
     private patchSystems: PatchSystem[] = [];
+    /** Coloured per-system nebula haze at system zoom (systemNebula.ts), world-space just below the system roots. */
+    private systemNebulae!: SystemNebulaLayer;
+    private nebulaSystems: NebulaSystem[] = [];
     /** Region-name label layer (task 08f1), screen-space. */
     regionLabels = new Container();
     private regionLabelViews: RegionLabel[] = [];
@@ -1269,7 +1273,18 @@ export class MainView {
             const star = sv.system.systemStar;
             // Planetless systems still get a sky patch the size of a small system.
             this.patchSystems.push({ index: this.galaxy.systems.indexOf(sv.system), x: star.xpos, y: star.ypos, radius: Math.max(sv.maxExtent, 30000) });
+            this.nebulaSystems.push({
+                index: this.galaxy.systems.indexOf(sv.system),
+                x: star.xpos,
+                y: star.ypos,
+                radius: Math.max(sv.maxExtent, 20000),
+                // MainView.cs method_42 call site: no system nebula around black holes / supernovae.
+                enabled: star.type !== HabitatType.BlackHole && star.type !== HabitatType.SuperNova,
+            });
         }
+        // Behind every system root (orbits, planets, stars), above the backdrop / galaxy nebulae / grid.
+        this.systemNebulae = new SystemNebulaLayer(this.galaxy.randomSeed, this.app.renderer.resolution);
+        this.world.addChildAt(this.systemNebulae.root, this.systems.length > 0 ? this.world.getChildIndex(this.systems[0].root) : this.world.children.length);
         for (const habitat of this.galaxy.habitats) {
             if (habitat.category === HabitatCategoryType.GasCloud) {
                 // Generated fallback; the original art loads lazily below.
@@ -1484,6 +1499,7 @@ export class MainView {
         // patches follow once the backdrop is gone.
         this.deepStarfield.update(deepStarfieldAlpha(z, m), cam.x, cam.y, z, cam.width, cam.height);
         this.deepStarfield.updatePatches(systemPatchZoomAlpha(z, m), this.patchSystems, cam.x, cam.y, cam.width, cam.height);
+        this.systemNebulae.update(z, cam.x, cam.y, cam.width, cam.height, this.nebulaSystems, nowMs);
 
         // Systems: greedy 80 px label-overlap suppression across systems.
         const labelZoom = m * 4; // system names appear at ~sector zoom
