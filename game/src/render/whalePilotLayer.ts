@@ -24,6 +24,7 @@ import type { Camera } from './camera';
 import { useMinifyingFilter } from './assets';
 import type { Galaxy } from '../sim/galaxy';
 import type { Habitat } from '../sim/types';
+import { drawnPositionOf, type MotionInterpolator, type Point as DrawnPoint } from './renderInterp';
 import {
     CREATURE_DIR,
     CREATURE_FPS,
@@ -674,14 +675,34 @@ function buildProceduralSkin(kaltorData: Uint8ClampedArray, target: ArtStats): W
 // The layer.
 
 /** Placement of one pilot creature: a slow circle around (ax, ay). */
-interface PilotActor {
-    kind: 'kaltor' | 'whaleA' | 'whaleB';
-    ax: number;
-    ay: number;
+/** Where a pilot actor circles: its anchor as an offset from the home planet, the circle radius, the angular speed
+ * (rad/s) and the start angle. */
+export interface PilotOrbit {
+    ox: number;
+    oy: number;
     radius: number;
-    /** Angular speed (rad/s) and start angle. */
     omega: number;
     angle0: number;
+}
+
+/**
+ * A pilot actor's position / heading at pilot time `t` (s) around the home planet drawn at (homeX, homeY) — the
+ * render-interpolated orbit position (renderInterp.ts), so the actors ride along with the drawn planet instead of
+ * staying where the planet was when the pilot started. Writes `out` and returns it.
+ */
+export function pilotActorPlacement(homeX: number, homeY: number, a: PilotOrbit, t: number, out: { x: number; y: number; heading: number }): { x: number; y: number; heading: number } {
+    const ang = a.angle0 + a.omega * t;
+    out.x = homeX + a.ox + Math.cos(ang) * a.radius;
+    out.y = homeY + a.oy + Math.sin(ang) * a.radius;
+    out.heading = ang + (a.omega >= 0 ? Math.PI / 2 : -Math.PI / 2);
+    return out;
+}
+
+interface PilotActor extends PilotOrbit {
+    kind: 'kaltor' | 'whaleA' | 'whaleB';
+    /** The anchor this frame (home drawn position + offset). */
+    ax: number;
+    ay: number;
     x: number;
     y: number;
     heading: number;
@@ -706,6 +727,9 @@ export class WhalePilotLayer {
     private viewApplied = false;
     private t0 = -1;
     private readonly view: WhalePilotView;
+    /** Render interpolation (renderInterp.ts; set by MainView): the actors circle the drawn home planet. */
+    motion: MotionInterpolator | null = null;
+    private homeScratch: DrawnPoint = { x: 0, y: 0 };
 
     constructor(
         private galaxy: Galaxy,
@@ -762,7 +786,7 @@ export class WhalePilotLayer {
         const px = home.xpos + home.diameter / 2 + 620;
         const py = home.ypos;
         const mk = (kind: PilotActor['kind'], dx: number, dy: number, radius: number, omega: number, angle0: number): PilotActor => ({
-            kind, ax: px + dx, ay: py + dy, radius, omega, angle0, x: 0, y: 0, heading: 0, rig: null, sprite: null, drawnPx: 0,
+            kind, ox: home.diameter / 2 + 620 + dx, oy: dy, ax: px + dx, ay: py + dy, radius, omega, angle0, x: 0, y: 0, heading: 0, rig: null, sprite: null, drawnPx: 0,
         });
         const kaltorA = mk('kaltor', 0, 0, 60, 0.05, 0);
         const wa = mk('whaleA', -60, -300, 90, -0.012, Math.PI * 0.5);
@@ -841,11 +865,12 @@ export class WhalePilotLayer {
         const whalePx = Math.min(kaltorFullPx * WHALE_LENGTH_MUL, whaleCap) * this.kaltorContentFrac;
         const halfW = cam.width / 2;
         const halfH = cam.height / 2;
+        // Around the drawn (render-interpolated orbit) home planet.
+        const hp = drawnPositionOf(this.motion, this.home!, this.homeScratch);
         for (const a of this.actors) {
-            const ang = a.angle0 + a.omega * t;
-            a.x = a.ax + Math.cos(ang) * a.radius;
-            a.y = a.ay + Math.sin(ang) * a.radius;
-            a.heading = ang + (a.omega >= 0 ? Math.PI / 2 : -Math.PI / 2);
+            a.ax = hp.x + a.ox;
+            a.ay = hp.y + a.oy;
+            pilotActorPlacement(hp.x, hp.y, a, t, a);
             const px = a.kind === 'kaltor' ? kaltorPx : whalePx;
             const sx = (a.x - cam.x) * z + halfW;
             const sy = (a.y - cam.y) * z + halfH;

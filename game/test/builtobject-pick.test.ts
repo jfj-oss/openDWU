@@ -113,3 +113,17 @@ describe('builtObjectHiddenFromPick', () => {
         expect(builtObjectHiddenFromPick(noStar, systems, [], [])).toBe(false);
     });
 });
+describe('picking on drawn (render-interpolated) positions', () => {
+    const ship = { xpos: 1000, ypos: 1000, size: 100 } as unknown as BuiltObject;
+    const drawn = { x: 1200, y: 1000 };
+    const posOf = (): { x: number; y: number } => drawn;
+    it('pickBuiltObjectBySize hits the drawn rect', () => {
+        expect(pickBuiltObjectBySize([ship], 1200, 1000, 2, () => 10, posOf)).toBe(ship);
+        expect(pickBuiltObjectBySize([ship], 1000, 1000, 2, () => 10, posOf)).toBeNull();
+    });
+    it('pickNearestBuiltObject measures from the drawn position', () => {
+        expect(pickNearestBuiltObject([ship], 1200, 1000, 200, () => false, () => drawn)).toBe(ship);
+        expect(pickNearestBuiltObject([ship], 1200 + 2100, 1000, 200, () => false, () => drawn)).toBeNull();
+        expect(pickNearestBuiltObject([ship], 1000 - 1900, 1000, 200, () => false, () => drawn)).toBeNull();
+    });
+});

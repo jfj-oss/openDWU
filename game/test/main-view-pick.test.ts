@@ -88,3 +88,16 @@ describe('hitTestHabitats (task 08g)', () => {
         expect(hit).toBeNull();
     });
 });
+describe('hitTestHabitats on drawn positions (render interpolation)', () => {
+    it('hits a planet where its interpolated orbit draws it, not at its committed xpos', () => {
+        const star = makeStar(0, 0, 1000);
+        const planet = makePlanet(star, 0, 20_000, 100);
+        const drawn = { x: planet.xpos, y: planet.ypos + 400 }; // orbit advanced since the last touch
+        const posOf = (h: Habitat): { x: number; y: number } => (h === planet ? drawn : { x: h.xpos, y: h.ypos });
+        const size = (): number => 14; // half 7 px = 140 world units at Z
+        expect(hitTestHabitats([planet], drawn.x, drawn.y, size, Z, posOf)).toBe(planet);
+        expect(hitTestHabitats([planet], planet.xpos, planet.ypos, size, Z, posOf)).toBeNull();
+        // Without a position function: the committed position (old behaviour).
+        expect(hitTestHabitats([planet], planet.xpos, planet.ypos, size, Z)).toBe(planet);
+    });
+});

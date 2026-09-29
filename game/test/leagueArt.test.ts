@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { activeLeaguesOf, convexHull, leagueBoundaryDots, leagueFlag, pennantFromFlag } from '../src/render/leagueArt';
 import { leagueListRows } from '../src/ui/leagueRows';
 import type { Galaxy } from '../src/sim/galaxy';
+import { leagueMemberPoints } from '../src/render/artBundleLayer';
+import { MotionInterpolator, createRenderTime } from '../src/render/renderInterp';
 
 describe('19r league art', () => {
     it('flag: deterministic, league-colour foot band, pale chain links in the fly', () => {
@@ -50,5 +52,20 @@ describe('19r league art', () => {
         expect(activeLeaguesOf(undefined)).toEqual([]);
         expect(leagueListRows({ scenario: null } as unknown as Galaxy)).toEqual([]);
         expect(leagueListRows({ scenario: { state: { independents: { leagues: [l(3, 'active')] } } } } as unknown as Galaxy).map((r) => r.label)).toEqual(['L3']);
+    });
+});
+
+describe('league markers on drawn colonies', () => {
+    it('boundary points are the members\' render-interpolated orbit positions (committed without an interpolator)', () => {
+        const star = { parent: null, xpos: 0, ypos: 0, orbitAngle: 0, anglePerSecond: 0, orbitDirection: true, orbitDistance: 0, lastTouch: 0 };
+        const planet = { parent: star, xpos: 1000, ypos: 0, orbitAngle: 0, anglePerSecond: 0.01, orbitDirection: true, orbitDistance: 1000, lastTouch: 0 };
+        expect(leagueMemberPoints([planet], null)).toEqual([{ x: 1000, y: 0 }]);
+        const m = new MotionInterpolator();
+        const rt = createRenderTime();
+        rt.renderNowMs = 5000;
+        m.begin(rt, 100);
+        const [p] = leagueMemberPoints([planet], m);
+        expect(p.x).toBeCloseTo(Math.cos(0.05) * 1000, 9);
+        expect(p.y).toBeCloseTo(Math.sin(0.05) * 1000, 9);
     });
 });

@@ -27,7 +27,7 @@
 // same Fighter records (Fighter.Weapons / Explosions / LastShieldStrike) the sim keeps.
 // TODO(port): ion-strike lightning overlay (LastIonStrike, LightningGenerator) — MainView.1.cs 1162-1201
 
-import type { MotionInterpolator } from './renderInterp';
+import { sampleShot, type MotionInterpolator } from './renderInterp';
 import { Container, Graphics, Texture } from 'pixi.js';
 import type { Camera } from './camera';
 import type { AssetStore } from './assets';
@@ -248,6 +248,14 @@ interface Positioned {
     ypos: number;
 }
 
+/** Where a shot is drawn: the weapon's own (x, y, heading), or its render-interpolated sample (renderInterp.ts
+ * sampleShot). */
+export interface ShotPosition {
+    readonly x: number;
+    readonly y: number;
+    readonly heading: number;
+}
+
 function hasPosition(o: unknown): o is Positioned {
     return typeof o === 'object' && o !== null && typeof (o as Positioned).xpos === 'number' && typeof (o as Positioned).ypos === 'number';
 }
@@ -283,7 +291,9 @@ export function areaRampAlpha(distanceTravelled: number, range: number): number 
  * firing ship or habitat, `f` the zoom factor (1 / camera zoom), `nowMs` the galaxy clock, `bombardTargetIsHabitat`
  * whether Target is a Habitat. Returns out.kind (None when nothing is drawn).
  */
-export function weaponDrawCommand(weapon: WeaponLike, firer: Positioned, f: number, nowMs: number, out: WeaponDraw): WeaponDrawKind {
+export function weaponDrawCommand(
+    weapon: WeaponLike, firer: Positioned, f: number, nowMs: number, out: WeaponDraw, shot: ShotPosition = weapon, targetAt: Positioned | null = null,
+): WeaponDrawKind {
     out.kind = WeaponDrawKind.None;
     out.lineWidth = 0;
     if (!(weapon.distanceTravelled >= 0)) return WeaponDrawKind.None;
@@ -291,8 +301,8 @@ export function weaponDrawCommand(weapon: WeaponLike, firer: Positioned, f: numb
     const special = weapon.component.specialImageIndex;
     if (weapon.power === INTERCEPTED_POWER) {
         out.kind = WeaponDrawKind.Intercepted;
-        out.x = weapon.x;
-        out.y = weapon.y;
+        out.x = shot.x;
+        out.y = shot.y;
         return out.kind;
     }
     let alpha = weaponFadeAlpha(type, weapon.distanceTravelled, weapon.range);
@@ -316,7 +326,7 @@ export function weaponDrawCommand(weapon: WeaponLike, firer: Positioned, f: numb
                         num44 = 4.0840704496667311;
                         break;
                     default:
-                        num46 = weapon.heading;
+                        num46 = shot.heading;
                         alpha = 1; // color = Color.White
                         break;
                 }
@@ -352,7 +362,7 @@ export function weaponDrawCommand(weapon: WeaponLike, firer: Positioned, f: numb
                     case ComponentType.WeaponMissile:
                     case ComponentType.WeaponSuperMissile:
                         num44 = 0.0;
-                        num46 = weapon.heading;
+                        num46 = shot.heading;
                         num48 = 3.5;
                         break;
                 }
@@ -363,8 +373,8 @@ export function weaponDrawCommand(weapon: WeaponLike, firer: Positioned, f: numb
             out.kind = WeaponDrawKind.Projectile;
             out.art = WeaponArt.Torpedo;
             out.artIndex = num43;
-            out.x = weapon.x;
-            out.y = weapon.y;
+            out.x = shot.x;
+            out.y = shot.y;
             out.rotation = rotation;
             // scale = num48 * (num14 / texture.Width): the square art is drawn num48 * num14 px wide.
             out.alongPx = num48 * num14;
@@ -376,8 +386,8 @@ export function weaponDrawCommand(weapon: WeaponLike, firer: Positioned, f: numb
             const val3 = areaRampAlpha(weapon.distanceTravelled, weapon.range);
             const lineAlpha = Math.trunc(val3 * 0.6);
             out.kind = WeaponDrawKind.AreaGravity;
-            out.x = weapon.x;
-            out.y = weapon.y;
+            out.x = shot.x;
+            out.y = shot.y;
             out.lineFromX = firer.xpos;
             out.lineFromY = firer.ypos;
             out.lineWidth = areaLineWidth(f);
@@ -406,7 +416,7 @@ export function weaponDrawCommand(weapon: WeaponLike, firer: Positioned, f: numb
             out.art = isPod ? WeaponArt.AssaultPod : WeaponArt.Beam;
             out.artIndex = isPod ? 0 : artIndex(special, BEAM_IMAGE_COUNT);
             if (type === ComponentType.WeaponGravityBeam || type === ComponentType.WeaponTractorBeam || type === ComponentType.WeaponPhaser || type === ComponentType.WeaponSuperPhaser) {
-                const target = weapon.target;
+                const target = targetAt ?? weapon.target;
                 if (!hasPosition(target)) return WeaponDrawKind.None;
                 const dist = Math.hypot(target.xpos - firer.xpos, target.ypos - firer.ypos);
                 if (!(dist < weapon.range * 1.2)) return WeaponDrawKind.None;
@@ -414,7 +424,7 @@ export function weaponDrawCommand(weapon: WeaponLike, firer: Positioned, f: numb
                 out.x = firer.xpos;
                 out.y = firer.ypos;
                 // The gravity beam aims at the shot's position, the others at the target (MainView.2.cs 1334 / 1360 / 1861).
-                out.rotation = type === ComponentType.WeaponGravityBeam ? determineAngle(firer.xpos, firer.ypos, weapon.x, weapon.y) : determineAngle(firer.xpos, firer.ypos, target.xpos, target.ypos);
+                out.rotation = type === ComponentType.WeaponGravityBeam ? determineAngle(firer.xpos, firer.ypos, shot.x, shot.y) : determineAngle(firer.xpos, firer.ypos, target.xpos, target.ypos);
                 out.alongPx = dist / f;
                 out.across = 1.0 / f;
                 const c = oscillateColor(argb(144, 255, 255, 255), argb(255, 255, 255, 255), nowMs);
@@ -433,13 +443,13 @@ export function weaponDrawCommand(weapon: WeaponLike, firer: Positioned, f: numb
             let alongPx = num / f;
             let acrossPx = alongPx;
             if (!isPod) {
-                const d = Math.hypot(firer.xpos - weapon.x, firer.ypos - weapon.y) / f;
+                const d = Math.hypot(firer.xpos - shot.x, firer.ypos - shot.y) / f;
                 if (d < num) acrossPx /= num / d;
             }
             out.kind = WeaponDrawKind.Bolt;
-            out.x = weapon.x;
-            out.y = weapon.y;
-            out.rotation = weapon.heading;
+            out.x = shot.x;
+            out.y = shot.y;
+            out.rotation = shot.heading;
             out.alongPx = alongPx;
             out.across = acrossPx;
             out.alpha = alpha;
@@ -452,8 +462,8 @@ export function weaponDrawCommand(weapon: WeaponLike, firer: Positioned, f: numb
             out.kind = WeaponDrawKind.Area;
             out.art = WeaponArt.Area;
             out.artIndex = artIndex(special, AREA_IMAGE_COUNT);
-            out.x = weapon.x;
-            out.y = weapon.y;
+            out.x = shot.x;
+            out.y = shot.y;
             out.rotation = 0;
             out.alongPx = (weapon.distanceTravelled / f) * 2.0;
             out.across = out.alongPx;
@@ -503,27 +513,27 @@ export function fighterWeaponAlpha(category: ComponentCategoryType, distanceTrav
  * The art index is the fighter specification's WeaponImageIndex (out of range → 0). Other categories draw nothing.
  */
 export function fighterWeaponDrawCommand(
-    weapon: FighterWeaponLike, firer: Positioned, weaponImageIndex: number, f: number, nowMs: number, out: WeaponDraw,
+    weapon: FighterWeaponLike, firer: Positioned, weaponImageIndex: number, f: number, nowMs: number, out: WeaponDraw, shot: ShotPosition = weapon,
 ): WeaponDrawKind {
     out.kind = WeaponDrawKind.None;
     out.lineWidth = 0;
     if (!(weapon.distanceTravelled >= 0)) return WeaponDrawKind.None;
     out.alpha = fighterWeaponAlpha(weapon.category, weapon.distanceTravelled, weapon.range);
     out.tint = 0xffffff;
-    out.x = weapon.x;
-    out.y = weapon.y;
+    out.x = shot.x;
+    out.y = shot.y;
     switch (weapon.category) {
         case ComponentCategoryType.WeaponBeam: {
             // method_156.
             const num = Math.min(300.0, 10.0 * Math.sqrt(weapon.rawDamage));
             const along = num / f;
             let across = along;
-            const d = Math.hypot(firer.xpos - weapon.x, firer.ypos - weapon.y) / f;
+            const d = Math.hypot(firer.xpos - shot.x, firer.ypos - shot.y) / f;
             if (d < num) across /= num / d;
             out.kind = WeaponDrawKind.Bolt;
             out.art = WeaponArt.Beam;
             out.artIndex = artIndex(weaponImageIndex, BEAM_IMAGE_COUNT);
-            out.rotation = weapon.heading;
+            out.rotation = shot.heading;
             out.alongPx = along;
             out.across = across;
             return out.kind;
@@ -536,7 +546,7 @@ export function fighterWeaponDrawCommand(
             let spin = 0.0;
             let fixed = -1000.0;
             if (weapon.type === ComponentType.WeaponTorpedo) spin = Math.PI;
-            else if (weapon.type === ComponentType.WeaponMissile) fixed = weapon.heading;
+            else if (weapon.type === ComponentType.WeaponMissile) fixed = shot.heading;
             out.kind = WeaponDrawKind.Projectile;
             out.art = WeaponArt.Torpedo;
             // texture2D_1[num6]: num6 stays -1 for any other torpedo-category type (the C# would throw); use 0.
@@ -692,10 +702,12 @@ export class EffectsLayer {
     private assaultPod: Texture | null = null;
     private shieldStrike: Texture | null = null;
     /** Render interpolation between sim steps (renderInterp.ts; from BuiltObjectLayer.motion): strikes, damage
-     * explosions and shot origins follow the drawn ship / fighter. Null: the sim positions. */
+     * explosions and shot origins follow the drawn ship / fighter / planet, shots in flight are lerped between steps
+     * (sampleShot) and stretched beams end on the drawn target. Null: the sim positions. */
     motion: MotionInterpolator | null = null;
-    /** Scratch drawn position (drawnAt). */
+    /** Scratch drawn positions (drawnAt: firer / explosion site; the beam target). */
     private drawnScratch = { xpos: 0, ypos: 0 };
+    private targetScratch = { xpos: 0, ypos: 0 };
     private blackholeDisc: Texture | null = null;
     private blackholeDiscRequested = false;
     /** Zoom factor of the current frame (px → world units). */
@@ -798,7 +810,11 @@ export class EffectsLayer {
             if (!circleInView(this.bounds, h.xpos, h.ypos, h.diameter * 4 + 800)) continue;
             const hz = h.category === HabitatCategoryType.Planet ? planetZoomFactor(f) : h.category === HabitatCategoryType.Moon ? moonZoomFactor(f) : f;
             if (hasExplosions) {
-                for (const e of h.explosions as Explosion[]) this.drawExplosion(h.xpos, h.ypos, e, f, hz, nowMs);
+                // Bombardment explosions sit on the drawn (render-interpolated orbit) planet.
+                const at = this.drawnAt(h);
+                const hx = at.xpos;
+                const hy = at.ypos;
+                for (const e of h.explosions as Explosion[]) this.drawExplosion(hx, hy, e, f, hz, nowMs);
             }
             if (h.explosion !== null) this.drawPlanetExplosion(h, h.explosion as Explosion, f, hz);
         }
@@ -847,18 +863,24 @@ export class EffectsLayer {
         this.sprites.end();
     }
 
-    /** Where `o` was drawn this frame (render-interpolated; scratch, read before the next call), else `o` itself. */
-    private drawnAt(o: Positioned): Positioned {
-        const d = this.motion !== null ? this.motion.drawn(o) : null;
-        if (d === null) return o;
-        this.drawnScratch.xpos = d.x;
-        this.drawnScratch.ypos = d.y;
-        return this.drawnScratch;
+    /** Where `o` is drawn this frame (MotionInterpolator.positionOf: its sample, a habitat's interpolated orbit, else
+     * its sim position; written to `into`, a scratch read before the next call), or `o` itself without interpolation. */
+    private drawnAt(o: Positioned, into: Positioned = this.drawnScratch): Positioned {
+        if (this.motion === null) return o;
+        const p = this.motion.positionOf(o);
+        into.xpos = p.x;
+        into.ypos = p.y;
+        return into;
     }
 
     private drawWeapon(weapon: Weapon, firer: BuiltObject | Habitat, f: number, nowMs: number): void {
         const c = this.cmd;
-        const kind = weaponDrawCommand(weapon, this.drawnAt(firer), f, nowMs, c);
+        const m = this.motion;
+        // The shot lerped between steps (snaps on spawn / impact); a stretched beam's far end on the drawn target.
+        const shot = m !== null ? sampleShot(m, weapon) : weapon;
+        const t = weapon.target;
+        const targetAt = m !== null && hasPosition(t) ? this.drawnAt(t, this.targetScratch) : null;
+        const kind = weaponDrawCommand(weapon, this.drawnAt(firer), f, nowMs, c, shot, targetAt);
         if (kind === WeaponDrawKind.None) return;
         switch (kind) {
             case WeaponDrawKind.Intercepted: {
@@ -962,7 +984,8 @@ export class EffectsLayer {
         for (let i = 0; i < weapons.length; i++) {
             const w = weapons[i];
             if (!(w.distanceTravelled >= 0)) continue;
-            if (fighterWeaponDrawCommand(w, at, imageIndex, f, nowMs, this.cmd) !== WeaponDrawKind.None) this.drawSpriteCommand(this.cmd);
+            const shot = this.motion !== null ? sampleShot(this.motion, w) : w;
+            if (fighterWeaponDrawCommand(w, at, imageIndex, f, nowMs, this.cmd, shot) !== WeaponDrawKind.None) this.drawSpriteCommand(this.cmd);
         }
     }
 

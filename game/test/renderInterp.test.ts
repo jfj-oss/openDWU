@@ -2,8 +2,16 @@
 // state written.
 import { describe, expect, it } from 'vitest';
 import {
+    BUILT_OBJECT_TICK_BATCH_SIZE,
     MotionInterpolator,
+    builtObjectTouchGapMs,
     createRenderTime,
+    drawnBuiltObjectPos,
+    drawnPositionOf,
+    extrapolateUntouched,
+    isOrbitingBody,
+    sampleShot,
+    type MovingShot,
     isJump,
     lerpAngle,
     renderHabitatPos,
@@ -236,5 +244,118 @@ describe('MotionInterpolator (lerp with snap)', () => {
         expect(bo.xpos).toBe(1050);
         expect(planet.xpos).toBe(1000);
         expect(c.xpos).toBe(1020);
+    });
+});
+
+describe('interpolation gaps: shots, untouched ships, drawn positions', () => {
+    function frame(m: MotionInterpolator, rt: RenderTime, alpha: number, stepsRun: number, count = 0): void {
+        rt.alpha = alpha;
+        rt.stepGameMs = 1000 / 60;
+        rt.stepSerial += stepsRun;
+        rt.simNowMs += stepsRun * rt.stepGameMs;
+        m.begin(rt, 10, count);
+    }
+
+    it('sampleShot: snaps on spawn, lerps in flight, snaps again when the weapon record fires a new shot', () => {
+        const m = new MotionInterpolator();
+        const rt = createRenderTime();
+        const w: MovingShot = { x: 0, y: 0, heading: 0, speed: 1200, lastFired: 1000 };
+        frame(m, rt, 0.5, 0);
+        expect(sampleShot(m, w).x).toBe(0); // spawn: at the launch point
+        w.x = 20;
+        frame(m, rt, 0.5, 1);
+        expect(sampleShot(m, w).x).toBeCloseTo(10, 12); // in flight: halfway between the steps
+        // The same record fires again from a point only 5 units away: a new LastFired snaps (no lerp back).
+        w.x = 15;
+        w.lastFired = 2000;
+        frame(m, rt, 0.5, 1);
+        expect(sampleShot(m, w).x).toBe(15);
+        // Impact: the shot snaps onto a far target (isJump at its speed).
+        w.x = 50_000;
+        frame(m, rt, 0.5, 1);
+        expect(sampleShot(m, w).x).toBe(50_000);
+    });
+
+    it('builtObjectTouchGapMs: one round-robin of the background pass plus a step', () => {
+        expect(BUILT_OBJECT_TICK_BATCH_SIZE).toBe(1000);
+        expect(builtObjectTouchGapMs(500, 1000 / 60)).toBeCloseTo((2 * 1000) / 60, 9);
+        expect(builtObjectTouchGapMs(4500, 1000 / 60)).toBeCloseTo((6 * 1000) / 60, 9);
+        expect(builtObjectTouchGapMs(4500, 0)).toBeCloseTo((6 * 1000) / 60, 9); // no loop: 1x step
+    });
+
+    it('extrapolateUntouched carries a moving object along its heading from LastTouch, clamped, never stopped / fresh ones', () => {
+        const out = { x: 0, y: 0 };
+        extrapolateUntouched(100, 0, 0, 600, 1000, 1100, 1000, out);
+        expect(out.x).toBeCloseTo(160, 9);
+        extrapolateUntouched(0, 0, Math.PI / 2, 600, 1000, 1100, 1000, out);
+        expect(out.y).toBeCloseTo(60, 9);
+        extrapolateUntouched(100, 0, 0, 600, 1000, 5000, 200, out);
+        expect(out.x).toBeCloseTo(220, 9); // clamped to 200 ms
+        extrapolateUntouched(100, 0, 0, 600, 1100, 1100, 1000, out);
+        expect(out.x).toBe(100); // touched this step
+        extrapolateUntouched(100, 0, 0, 0, 1000, 1100, 1000, out);
+        expect(out.x).toBe(100); // stopped
+        extrapolateUntouched(100, 0, 0, 600, -(2 ** 52), 1100, 1000, out);
+        expect(out.x).toBe(100); // never touched
+    });
+
+    it('a ship touched only every 4th step glides at a constant per-frame rate (no stand-still then jump)', () => {
+        const m = new MotionInterpolator();
+        const rt = createRenderTime();
+        const speed = 300; // units / s
+        const step = 1000 / 60;
+        const bo: MovingBuiltObject = { xpos: 0, ypos: 0, heading: 0, topSpeed: speed, warpSpeed: 0, currentSpeed: speed, parentHabitat: null, parentOffsetX: -2000000001.0, parentOffsetY: -2000000001.0, lastTouch: 0 };
+        const xs: number[] = [];
+        for (let s = 0; s < 40; s++) {
+            if (s > 0 && s % 4 === 0) {
+                // The background pass touches it: the whole elapsed span is applied at once.
+                const now = s * step;
+                bo.xpos += (speed * (now - (bo.lastTouch ?? 0))) / 1000;
+                bo.lastTouch = now;
+            }
+            for (const a of [0, 0.25, 0.5, 0.75]) {
+                frame(m, rt, a, a === 0 && s > 0 ? 1 : 0, 4000);
+                xs.push(sampleBuiltObject(m, bo).x);
+            }
+        }
+        const perFrame = (speed * step) / 1000 / 4;
+        for (let i = 9; i < xs.length; i++) {
+            expect(Math.abs(xs[i] - xs[i - 1])).toBeLessThanOrEqual(perFrame * 1.5 + 1e-9);
+            expect(xs[i] - xs[i - 1]).toBeGreaterThan(0);
+        }
+        expect(bo.xpos).toBeCloseTo((speed * 36 * step) / 1000, 6); // nothing written back
+    });
+
+    it('positionOf / drawnPositionOf: this frame\'s sample, else a habitat\'s interpolated orbit, else the sim position', () => {
+        const star = { parent: null, xpos: 0, ypos: 0, orbitAngle: 0, anglePerSecond: 0, orbitDirection: true, orbitDistance: 0, lastTouch: 0 };
+        const planet = { parent: star, xpos: 1000, ypos: 0, orbitAngle: 0, anglePerSecond: 0.01, orbitDirection: true, orbitDistance: 1000, lastTouch: 0 };
+        expect(isOrbitingBody(planet)).toBe(true);
+        expect(isOrbitingBody({ xpos: 1, ypos: 2 })).toBe(false);
+        const m = new MotionInterpolator();
+        const rt = createRenderTime();
+        rt.renderNowMs = 5000;
+        m.begin(rt, 100);
+        const out = { x: 0, y: 0 };
+        drawnPositionOf(m, planet, out);
+        expect(out.x).toBeCloseTo(Math.cos(0.05) * 1000, 9);
+        const ship = { xpos: 7, ypos: 8 };
+        expect(drawnPositionOf(m, ship, out)).toEqual({ x: 7, y: 8 });
+        m.sample(ship, 9, 10, 0, 600);
+        ship.xpos = 9;
+        expect(drawnPositionOf(m, ship, out)).toEqual({ x: 9, y: 10 });
+        expect(drawnPositionOf(null, planet, out)).toEqual({ x: 1000, y: 0 });
+    });
+
+    it('drawnBuiltObjectPos samples a ship the ship layer did not draw (galaxy-zoom markers)', () => {
+        const m = new MotionInterpolator();
+        const rt = createRenderTime();
+        const bo: MovingBuiltObject = { xpos: 0, ypos: 0, heading: 0, topSpeed: 600, warpSpeed: 0, currentSpeed: 0, parentHabitat: null, parentOffsetX: -2000000001.0, parentOffsetY: -2000000001.0 };
+        frame(m, rt, 0, 0);
+        expect(m.drawn(bo)).toBeNull();
+        drawnBuiltObjectPos(m, bo);
+        bo.xpos = 10;
+        frame(m, rt, 0.5, 1);
+        expect(drawnBuiltObjectPos(m, bo).x).toBeCloseTo(5, 12);
+        expect(m.drawn(bo)?.x).toBeCloseTo(5, 12);
     });
 });

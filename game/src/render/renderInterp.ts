@@ -15,7 +15,7 @@
 //   round-robin-committed xpos (which only changes when the background pass touches the habitat).
 
 import { FRAME_REAL_MS, FRAMES_PER_SECOND, HABITAT_TICK_BATCH_SIZE } from '../sim/tick/scheduler';
-import { spanSeconds } from '../sim/tick/simTime';
+import { MIN_TIME, spanSeconds } from '../sim/tick/simTime';
 
 /** The render-time sample the main loop hands MainView each frame (one object, mutated in place). */
 export interface RenderTime {
@@ -27,10 +27,12 @@ export interface RenderTime {
     renderNowMs: number;
     /** Sim steps completed so far (cumulative): a change tells the interpolator a new step landed. */
     stepSerial: number;
+    /** galaxy.nowMs: the game instant of the committed (latest step's) state. */
+    simNowMs: number;
 }
 
 export function createRenderTime(): RenderTime {
-    return { alpha: 0, stepGameMs: 0, renderNowMs: 0, stepSerial: 0 };
+    return { alpha: 0, stepGameMs: 0, renderNowMs: 0, stepSerial: 0, simNowMs: 0 };
 }
 
 /** Fraction into the next fixed step: backlogMs / FRAME_REAL_MS clamped to 0..1, and 0 while paused. */
@@ -50,6 +52,7 @@ export function updateRenderTime(rt: RenderTime, nowMs: number, backlogMs: numbe
     rt.alpha = simStepAlpha(backlogMs, paused);
     rt.stepGameMs = stepGameMsAt(speed);
     rt.renderNowMs = nowMs + rt.alpha * rt.stepGameMs;
+    rt.simNowMs = nowMs;
     rt.stepSerial += stepsRun;
     return rt;
 }
@@ -157,6 +160,8 @@ export interface MotionState {
     frame: object | null;
     /** RenderTime.stepSerial when `c*` was taken. */
     serial: number;
+    /** Caller's identity of the object's current life (a shot's LastFired): a change snaps (a new shot spawns). */
+    epoch: number;
     /** Render frame of the last sample (drawn* is valid for that frame only). */
     renderFrame: number;
     /** The drawn result: galaxy coordinates and heading. */
@@ -178,17 +183,27 @@ export class MotionInterpolator {
     alpha = 0;
     stepSeconds = 0;
     renderNowMs = 0;
+    /** galaxy.nowMs of the committed state (RenderTime.simNowMs). */
+    simNowMs = 0;
     clampSeconds = 0;
+    /** Longest a built object's position is extrapolated past its LastTouch (builtObjectTouchGapMs). */
+    untouchedMaxMs = 0;
     /** Scratch origin for frame-relative samples. */
     private origin: Point = { x: 0, y: 0 };
+    /** Scratch for positionOf. */
+    private posScratch: Point = { x: 0, y: 0 };
 
-    begin(rt: RenderTime, clampSeconds: number): void {
+    /** `builtObjectCount`: galaxy.builtObjects.length, which sets how long a ship may go untouched by the background
+     * pass (sampleBuiltObject's extrapolation bound). */
+    begin(rt: RenderTime, clampSeconds: number, builtObjectCount = 0): void {
         this.renderFrame++;
         this.serial = rt.stepSerial;
         this.alpha = rt.alpha;
         this.stepSeconds = rt.stepGameMs / 1000;
         this.renderNowMs = rt.renderNowMs;
+        this.simNowMs = rt.simNowMs;
         this.clampSeconds = clampSeconds;
+        this.untouchedMaxMs = builtObjectTouchGapMs(builtObjectCount, rt.stepGameMs);
     }
 
     /**
@@ -196,14 +211,15 @@ export class MotionInterpolator {
      * offset from `frame` (whose drawn position is `originX, originY`). Returns the object's record with x / y /
      * heading set to the drawn values.
      */
-    sample(obj: object, x: number, y: number, heading: number, maxSpeed: number, frame: object | null = null, originX = 0, originY = 0): MotionState {
+    sample(obj: object, x: number, y: number, heading: number, maxSpeed: number, frame: object | null = null, originX = 0, originY = 0, epoch = 0): MotionState {
         let st = this.states.get(obj);
         if (st === undefined) {
-            st = { px: x, py: y, ph: heading, cx: x, cy: y, ch: heading, frame, serial: this.serial, renderFrame: 0, x, y, heading };
+            st = { px: x, py: y, ph: heading, cx: x, cy: y, ch: heading, frame, serial: this.serial, epoch, renderFrame: 0, x, y, heading };
             this.states.set(obj, st);
-        } else if (st.frame !== frame) {
+        } else if (st.frame !== frame || st.epoch !== epoch) {
             snapTo(st, x, y, heading);
             st.frame = frame;
+            st.epoch = epoch;
         } else if (st.serial !== this.serial) {
             const k = this.serial - st.serial;
             if (k < 0 || k > MAX_INTERP_STEPS || isJump(x - st.cx, y - st.cy, k, maxSpeed, this.stepSeconds)) {
@@ -242,6 +258,48 @@ export class MotionInterpolator {
     habitatPos(h: OrbitingBody): Point {
         return renderHabitatPos(h, this.renderNowMs, this.clampSeconds, this.origin);
     }
+
+    /**
+     * Where `o` is drawn this frame, for layers that decorate an object they do not draw themselves (leader lines,
+     * league pennants, pick tests): its sample this frame when one was taken (ship, fighter, creature, shot), else the
+     * render-interpolated orbit for a habitat (anything with an orbit: renderHabitatPos), else its committed
+     * xpos / ypos. The returned point is scratch (read it before the next call).
+     */
+    positionOf(o: { xpos: number; ypos: number }): Point {
+        const out = this.posScratch;
+        const d = this.drawn(o);
+        if (d !== null) {
+            out.x = d.x;
+            out.y = d.y;
+        } else if (isOrbitingBody(o)) {
+            const p = this.habitatPos(o);
+            out.x = p.x;
+            out.y = p.y;
+        } else {
+            out.x = o.xpos;
+            out.y = o.ypos;
+        }
+        return out;
+    }
+}
+
+/** Whether `o` carries the orbit fields renderHabitatPos reads (a Habitat). */
+export function isOrbitingBody(o: object): o is OrbitingBody {
+    const h = o as Partial<OrbitingBody>;
+    return typeof h.orbitAngle === 'number' && typeof h.orbitDistance === 'number' && typeof h.lastTouch === 'number' && h.parent !== undefined;
+}
+
+/** Drawn position of `o` when an interpolator is running, else its committed position (writes and returns `out`). */
+export function drawnPositionOf(m: MotionInterpolator | null, o: { xpos: number; ypos: number }, out: Point): Point {
+    if (m === null) {
+        out.x = o.xpos;
+        out.y = o.ypos;
+        return out;
+    }
+    const p = m.positionOf(o);
+    out.x = p.x;
+    out.y = p.y;
+    return out;
 }
 
 function snapTo(st: MotionState, x: number, y: number, heading: number): void {
@@ -261,7 +319,44 @@ export interface MovingBuiltObject {
     parentHabitat: (OrbitingBody & { hasBeenDestroyed: boolean }) | null;
     parentOffsetX: number;
     parentOffsetY: number;
+    /** BuiltObject._LastTouch (game ms): the instant xpos / ypos were last advanced by a DoTasks move. */
+    lastTouch?: number;
 }
+
+/** scheduler.ts backgroundPass "GxBO" int_43: built objects the background round-robin ticks per sim frame (multi-core
+ * budget). With more objects than this, each one is touched only every ceil(count / 1000) steps. */
+export const BUILT_OBJECT_TICK_BATCH_SIZE = 1000;
+
+/**
+ * Longest (game ms) a built object's drawn position is extrapolated past its LastTouch: one full background round-robin
+ * (ceil(count / BUILT_OBJECT_TICK_BATCH_SIZE) steps) plus one step of slack. `stepGameMs` 0 (no sim loop) counts as
+ * one step at 1x speed.
+ */
+export function builtObjectTouchGapMs(builtObjectCount: number, stepGameMs: number): number {
+    const steps = Math.max(1, Math.ceil(Math.max(0, builtObjectCount) / BUILT_OBJECT_TICK_BATCH_SIZE)) + 1;
+    return steps * (stepGameMs > 0 ? stepGameMs : 1000 / FRAMES_PER_SECOND);
+}
+
+/**
+ * Where a built object the background pass has not touched since `lastTouch` would be at `nowMs`: the committed
+ * position carried on along its heading at CurrentSpeed for the elapsed time (at most `maxMs`) — exactly the step
+ * executeCommands.ts (BuiltObject.2.cs 4553-4560) applies when the object is next touched, if heading and speed hold.
+ * Objects touched this step (lastTouch = nowMs), stopped or never touched stay at their committed position. Writes
+ * `out` and returns it. Render-only: nothing is written to the object.
+ */
+export function extrapolateUntouched(xpos: number, ypos: number, heading: number, currentSpeed: number, lastTouch: number, nowMs: number, maxMs: number, out: Point): Point {
+    out.x = xpos;
+    out.y = ypos;
+    if (!(currentSpeed > 0) || !(maxMs > 0) || lastTouch <= MIN_TIME) return out;
+    const dt = nowMs - lastTouch;
+    if (!(dt > 0) || !Number.isFinite(dt)) return out;
+    const d = (currentSpeed * Math.min(dt, maxMs)) / 1000;
+    out.x += Math.cos(heading) * d;
+    out.y += Math.sin(heading) * d;
+    return out;
+}
+
+const extrapScratch: Point = { x: 0, y: 0 };
 
 /** executeCommands.ts evaluateRelativeToParent: an offset at or below this is "unset". */
 const PARENT_OFFSET_UNSET = -2000000001.0;
@@ -273,7 +368,11 @@ const PARENT_FRAME_MAX_DRIFT = 500;
 
 /**
  * Sample a ship / base: relative to an orbiting ParentHabitat when the sim moves it by parent offset
- * (executeCommands.ts evaluateRelativeToParent: ParentHabitat set and ParentOffset set), else in galaxy coordinates.
+ * (executeCommands.ts evaluateRelativeToParent: ParentHabitat set and ParentOffset set), else in galaxy coordinates —
+ * there, a moving object the background pass has not touched this step (large galaxies: more than 1000 built objects)
+ * is sampled at its extrapolated position (extrapolateUntouched), so it glides between touches instead of standing
+ * still and then jumping; the next touch lands where the extrapolation was heading, and the usual snap rules
+ * (isJump, MAX_INTERP_STEPS) still apply to the extrapolated positions.
  */
 export function sampleBuiltObject(m: MotionInterpolator, bo: MovingBuiltObject): MotionState {
     const maxSpeed = Math.max(bo.topSpeed, bo.warpSpeed, Math.abs(bo.currentSpeed));
@@ -285,6 +384,10 @@ export function sampleBuiltObject(m: MotionInterpolator, bo: MovingBuiltObject):
             const o = m.habitatPos(h);
             return m.sample(bo, ox, oy, bo.heading, maxSpeed, h, o.x, o.y);
         }
+    }
+    if (bo.lastTouch !== undefined && bo.currentSpeed > 0) {
+        const p = extrapolateUntouched(bo.xpos, bo.ypos, bo.heading, bo.currentSpeed, bo.lastTouch, m.simNowMs, m.untouchedMaxMs, extrapScratch);
+        return m.sample(bo, p.x, p.y, bo.heading, maxSpeed);
     }
     return m.sample(bo, bo.xpos, bo.ypos, bo.heading, maxSpeed);
 }
@@ -314,4 +417,32 @@ export function sampleCreature(m: MotionInterpolator, c: MovingCreature): Motion
         return m.sample(c, c.parentX, c.parentY, c.currentHeading, maxSpeed, h, o.x, o.y);
     }
     return m.sample(c, c.xpos, c.ypos, c.currentHeading, maxSpeed);
+}
+
+/** Weapon / FighterWeapon fields read by sampleShot. */
+export interface MovingShot {
+    x: number;
+    y: number;
+    heading: number;
+    readonly speed: number;
+    /** LastFired (game ms): a new value is a new shot, which snaps to its launch point. */
+    lastFired: number;
+}
+
+/**
+ * Sample a shot in flight (torpedo, missile, bolt, area ring centre): its (x, y) lerped between the last two steps like
+ * a ship's, snapping on spawn (first sight, or a new LastFired: the weapon's record is reused shot after shot) and on
+ * a jump (isJump at the shot's speed: the impact snap to the target, a reset). Galaxy coordinates.
+ */
+export function sampleShot(m: MotionInterpolator, w: MovingShot): MotionState {
+    return m.sample(w, w.x, w.y, w.heading, w.speed, null, 0, 0, w.lastFired);
+}
+
+/**
+ * A built object's drawn position this frame: its sample when BuiltObjectLayer drew it, else a sample taken now
+ * (sampleBuiltObject: galaxy / sector zoom markers, where the ship art is not drawn), so symbols, fleet icons and their
+ * pick boxes move smoothly too. The returned record is the object's own (read it before the object is sampled again).
+ */
+export function drawnBuiltObjectPos(m: MotionInterpolator, bo: MovingBuiltObject): { x: number; y: number } {
+    return m.drawn(bo) ?? sampleBuiltObject(m, bo);
 }

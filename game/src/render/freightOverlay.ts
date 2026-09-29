@@ -10,6 +10,7 @@
 
 import { Container, Graphics } from 'pixi.js';
 import type { Camera } from './camera';
+import { drawnPositionOf, type MotionInterpolator, type Point } from './renderInterp';
 import type { Galaxy } from '../sim/galaxy';
 import type { BuiltObject } from '../sim/builtObject';
 import { BuiltObjectSubRole } from '../sim/builtObjectTypes';
@@ -185,6 +186,20 @@ function isFreighter(bo: BuiltObject): boolean {
 
 export type FreightHit = { kind: 'flow'; row: FlowRow } | { kind: 'hub'; hub: HubRow };
 
+/**
+ * An in-flight freighter's leader, drawn from where the freighter is drawn (sx, sy) towards where its contract
+ * destination is drawn (tx, ty) — both render-interpolated positions (renderInterp.ts) — at most 300 px long; null
+ * when the destination is under 8 px away.
+ */
+export function freightLeader(sx: number, sy: number, tx: number, ty: number, z: number): { x1: number; y1: number; x2: number; y2: number } | null {
+    const dx = tx - sx;
+    const dy = ty - sy;
+    const len = Math.hypot(dx, dy);
+    if (len * z < 8) return null;
+    const k = Math.min(1, 300 / z / len);
+    return { x1: sx, y1: sy, x2: sx + dx * k, y2: sy + dy * k };
+}
+
 /** Owns the flows / hubs / leaders Graphics inside the overlay root. */
 export class FreightOverlay {
     private flows = new Graphics();
@@ -212,6 +227,11 @@ export class FreightOverlay {
     filter: FlowFilter;
     /** Window the map shows (months); the Trade Flows panel sets it. */
     windowMonths = MAP_FLOW_WINDOW_MONTHS;
+    /** Render interpolation (renderInterp.ts; from OverlayLayer.motion): leaders run between the drawn freighter and
+     * the drawn destination. Null: the sim positions. */
+    motion: MotionInterpolator | null = null;
+    private fromScratch: Point = { x: 0, y: 0 };
+    private toScratch: Point = { x: 0, y: 0 };
 
     constructor(
         private galaxy: Galaxy,
@@ -380,16 +400,16 @@ export class FreightOverlay {
         for (const bo of this.galaxy.builtObjects) {
             if (bo === null || bo === undefined || bo.hasBeenDestroyed || !isFreighter(bo)) continue;
             if (bo.contractsToFulfill.length === 0) continue;
-            if (bo.xpos < cam.x - halfW || bo.xpos > cam.x + halfW || bo.ypos < cam.y - halfH || bo.ypos > cam.y + halfH) continue;
             const d = dest.get(bo) as { xpos: number; ypos: number } | undefined;
             if (d === undefined) continue;
+            // Endpoints where the freighter and its destination are drawn (render-interpolated).
+            const s = drawnPositionOf(this.motion, bo, this.fromScratch);
+            if (s.x < cam.x - halfW || s.x > cam.x + halfW || s.y < cam.y - halfH || s.y > cam.y + halfH) continue;
+            const t = drawnPositionOf(this.motion, d, this.toScratch);
             // A short leader: at most 300 px towards the contract destination.
-            const dx = d.xpos - bo.xpos;
-            const dy = d.ypos - bo.ypos;
-            const len = Math.hypot(dx, dy);
-            if (len * z < 8) continue;
-            const k = Math.min(1, (300 * f) / len);
-            for (const [ax, ay, bx, by] of dashSegments(bo.xpos, bo.ypos, bo.xpos + dx * k, bo.ypos + dy * k, 6 * f, 4 * f, 60)) {
+            const leader = freightLeader(s.x, s.y, t.x, t.y, z);
+            if (leader === null) continue;
+            for (const [ax, ay, bx, by] of dashSegments(leader.x1, leader.y1, leader.x2, leader.y2, 6 * f, 4 * f, 60)) {
                 g.moveTo(ax, ay).lineTo(bx, by);
             }
             any = true;

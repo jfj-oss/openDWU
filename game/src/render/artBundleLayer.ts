@@ -4,7 +4,7 @@
 // import.meta.glob (empty when the file does not exist on this branch) or a state key in galaxy.scenario.state read
 // through a local structural shape — so this compiles and runs here and lights up once those packages merge.
 
-import type { MotionInterpolator } from './renderInterp';
+import { drawnPositionOf, type MotionInterpolator, type Point } from './renderInterp';
 import { Container, Graphics, Text } from 'pixi.js';
 import type { Camera } from './camera';
 import type { Galaxy } from '../sim/galaxy';
@@ -137,6 +137,14 @@ export const LEAGUE_SECTOR_F = 30;
 export const LEAGUE_MARGIN = 25000;
 export const LEAGUE_DOT_PX = 12;
 
+/** A league's member colonies where they are drawn (render-interpolated orbits; committed positions without an
+ * interpolator): the points its sector-zoom boundary is hulled around. */
+export function leagueMemberPoints(members: readonly { xpos: number; ypos: number }[], motion: MotionInterpolator | null): { x: number; y: number }[] {
+    const out: { x: number; y: number }[] = [];
+    for (const m of members) out.push(drawnPositionOf(motion, m, { x: 0, y: 0 }));
+    return out;
+}
+
 /** The 19k-3 active leagues when present (scenario.state['independents']). */
 export function leaguesOf(galaxy: Galaxy): LeagueShape[] {
     const s = galaxy.scenario;
@@ -171,8 +179,10 @@ export class ArtBundleLayer {
     wreckStats = { fields: 0, fragments: 0, pods: 0 };
     private sites: { site: KnownThreatSiteShape; style: ThreatMarkerStyle; seed: number }[] = [];
     private frame = 0;
-    /** Render interpolation between sim steps (renderInterp.ts; set by MainView): camps sit on the drawn station. */
+    /** Render interpolation between sim steps (renderInterp.ts; set by MainView): camps sit on the drawn station,
+     * league pennants / seat rings / boundaries on the drawn (orbit-interpolated) colonies. */
     motion: MotionInterpolator | null = null;
+    private posScratch: Point = { x: 0, y: 0 };
 
     constructor(
         private galaxy: Galaxy,
@@ -243,10 +253,12 @@ export class ArtBundleLayer {
             const col = l.colour;
             if (f < LEAGUE_NEAR_F) {
                 for (const m of l.members) {
-                    if (!onScreen(m.xpos, m.ypos, 200 / z)) continue;
+                    // Pennants fly from the drawn (render-interpolated orbit) colony.
+                    const mp = drawnPositionOf(this.motion, m, this.posScratch);
+                    if (!onScreen(mp.x, mp.y, 200 / z)) continue;
                     const r = Math.max(planetSpritePx((m as { diameter?: number }).diameter ?? 0, z) / 2, 8) / z;
-                    const bx = m.xpos + r * 0.9;
-                    const by = m.ypos - r * 0.9;
+                    const bx = mp.x + r * 0.9;
+                    const by = mp.y - r * 0.9;
                     // Pole, then the pennant flying from its top.
                     g.moveTo(bx, by).lineTo(bx, by - 30 / z).stroke({ width: 1.5 / z, color: 0xd8d0c0, alpha: 0.9 });
                     if (art.pennants !== null) {
@@ -258,31 +270,35 @@ export class ArtBundleLayer {
                     }
                 }
                 const seat = l.founder;
-                if (seat !== null && onScreen(seat.xpos, seat.ypos, 200 / z)) {
+                const sp = seat !== null ? drawnPositionOf(this.motion, seat, this.posScratch) : null;
+                if (seat !== null && sp !== null && onScreen(sp.x, sp.y, 200 / z)) {
+                    const sx = sp.x;
+                    const sy = sp.y;
                     const r = Math.max(planetSpritePx((seat as { diameter?: number }).diameter ?? 0, z) / 2 + 14, 22) / z;
-                    g.circle(seat.xpos, seat.ypos, r).stroke({ width: 2.5 / z, color: col, alpha: 0.95 });
-                    g.circle(seat.xpos, seat.ypos, r + 6 / z).stroke({ width: 1.2 / z, color: col, alpha: 0.7 });
+                    g.circle(sx, sy, r).stroke({ width: 2.5 / z, color: col, alpha: 0.95 });
+                    g.circle(sx, sy, r + 6 / z).stroke({ width: 1.2 / z, color: col, alpha: 0.7 });
                     for (let k = 0; k < 8; k++) {
                         const a = (k / 8) * Math.PI * 2 + t * 0.1;
-                        g.moveTo(seat.xpos + Math.cos(a) * r, seat.ypos + Math.sin(a) * r).lineTo(seat.xpos + Math.cos(a) * (r + 6 / z), seat.ypos + Math.sin(a) * (r + 6 / z));
+                        g.moveTo(sx + Math.cos(a) * r, sy + Math.sin(a) * r).lineTo(sx + Math.cos(a) * (r + 6 / z), sy + Math.sin(a) * (r + 6 / z));
                     }
                     g.stroke({ width: 1.5 / z, color: col, alpha: 0.9 });
                 }
             }
             if (f >= LEAGUE_SECTOR_F) {
-                const pts = l.members.map((m) => ({ x: m.xpos, y: m.ypos }));
+                const pts = leagueMemberPoints(l.members, this.motion);
                 const dots = leagueBoundaryDots(pts, Math.max(LEAGUE_MARGIN, 30 / z), LEAGUE_DOT_PX / z);
                 for (const d of dots) if (onScreen(d.x, d.y, 10 / z)) g.circle(d.x, d.y, 1.8 / z);
                 g.fill({ color: col, alpha: 0.85 });
                 const seat = l.founder ?? l.members[0] ?? null;
-                if (seat !== null && onScreen(seat.xpos, seat.ypos, 300 / z)) {
+                const lp = seat !== null ? drawnPositionOf(this.motion, seat, this.posScratch) : null;
+                if (seat !== null && lp !== null && onScreen(lp.x, lp.y, 300 / z)) {
                     if (art.label === null) {
                         art.label = new Text({ text: l.name, style: { fontFamily: 'sans-serif', fontSize: 14, fill: col, stroke: { color: 0x000000, width: 3 } } });
                         art.label.anchor.set(0.5, 0);
                         this.labelRoot.addChild(art.label);
                     }
                     art.label.visible = true;
-                    art.label.position.set(seat.xpos, seat.ypos + 16 / z);
+                    art.label.position.set(lp.x, lp.y + 16 / z);
                     art.label.scale.set(1 / z);
                 }
             }
