@@ -394,8 +394,6 @@ const extrapScratch: Point = { x: 0, y: 0 };
 
 /** executeCommands.ts evaluateRelativeToParent: an offset at or below this is "unset". */
 const PARENT_OFFSET_UNSET = -2000000001.0;
-/** executeCommands.ts PARENT_RELATIVE_RANGE_SQUARED (700²) with slack: farther offsets are not drawn relative. */
-const PARENT_FRAME_MAX_OFFSET_SQ = 1000 * 1000;
 /** Most the committed xpos may differ from ParentHabitat.xpos + ParentOffset and still be drawn relative (the habitat
  * was touched by the round-robin after the ship's last move); beyond it the ship is not following the habitat. */
 const PARENT_FRAME_MAX_DRIFT = 500;
@@ -448,11 +446,16 @@ export function sampleBuiltObject(m: MotionInterpolator, bo: MovingBuiltObject, 
 /** Longest parent chain followed (ship → base → …); the planet at the end is placed by renderHabitatPos. */
 const MAX_PARENT_DEPTH = 3;
 
-/** Whether `bo`'s committed position is its parent's committed position plus the offset (within the drift bound), and
- * the offset is short enough to be a parked / docked offset. */
+/** Whether `bo`'s committed position is its parent's committed position plus the offset (within the drift bound). The
+ * offset's length does not matter: once a parent and an offset are set, the sim keeps moving the ship by offset from
+ * the parent at any distance (executeCommands.ts evaluateRelativeToParent: no range test on a set offset; movement.ts
+ * moveToward: xpos = parent + ParentOffset) — a ship dropping out of hyperspace ~1300 units from its target planet, or
+ * flying on past the planet it was parked at. Its committed galaxy position then jumps with the planet's round-robin
+ * touches, so drawing it in galaxy coordinates beyond some offset cap (formerly 1000) shook it once per touch cycle
+ * until the offset came back under the cap; drawn around the planet's interpolated orbit it is smooth at any offset. */
 function followsParent(bo: MovingBuiltObject, parent: object, ox: number, oy: number): boolean {
     const p = parent as { xpos: number; ypos: number };
-    return ox * ox + oy * oy <= PARENT_FRAME_MAX_OFFSET_SQ && Math.abs(bo.xpos - p.xpos - ox) <= PARENT_FRAME_MAX_DRIFT && Math.abs(bo.ypos - p.ypos - oy) <= PARENT_FRAME_MAX_DRIFT;
+    return Math.abs(bo.xpos - p.xpos - ox) <= PARENT_FRAME_MAX_DRIFT && Math.abs(bo.ypos - p.ypos - oy) <= PARENT_FRAME_MAX_DRIFT;
 }
 
 /** A live parent built object that is not itself parked on `bo` (evaluateRelativeToParent's cycle test). */
