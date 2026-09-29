@@ -450,6 +450,12 @@ class MoonView {
     }
 }
 
+/** Orbit rings (planet ring and every planet's moon ring) draw BELOW all bodies and their labels: the ring goes
+ * straight before the `bodies` container in the system root's child order. */
+export function addRingBelowBodies(root: Container, ring: Container, bodies: Container): void {
+    root.addChildAt(ring, root.getChildIndex(bodies));
+}
+
 class SystemView {
     system: SystemInfo;
     root: Container;
@@ -547,7 +553,7 @@ class SystemView {
                 this.planets.push(planet);
                 const moonRing = new Graphics();
                 moonRing.visible = false;
-                this.root.addChild(moonRing);
+                addRingBelowBodies(this.root, moonRing, this.bodies);
                 this.moonRings.push(moonRing);
                 for (const moon of system.habitats) {
                     if (moon.category === HabitatCategoryType.Moon && moon.parent === habitat) {
@@ -623,6 +629,13 @@ class SystemView {
             this.starSprite.visible = true;
             this.starSprite.alpha = 1;
             this.starSprite.scale.set(S / (this.starSprite.texture.width * z));
+        } else if (star.type === HabitatType.SuperNova && f < 150) {
+            // MainView.2.cs 5491 draws the nova flare art only while f > method_60(SuperNova) = 150, and the system
+            // pass (MainView.1.cs 728: `Type != SuperNova`) draws nothing for it: no flare sprite at system zoom
+            // (it was the 8-spike "lens flare" over the star).
+            this.updateStarDiscs(0, S, z, dtSeconds);
+            this.starSprite.visible = false;
+            this.mapIcon.visible = false;
         } else if (f < 150) {
             this.updateStarDiscs(0, S, z, dtSeconds);
             this.starSprite.visible = false;
@@ -1113,6 +1126,8 @@ export class MainView {
     /** Task M3: the Overlays HUD toggles this renderer implements (potential
      * colonies, scenic/research markers, empire territory visibility). */
     private overlayLayer!: OverlayLayer;
+    /** The HUD selection (main.ts sets it): the selected ship / fleet gets its travel vector drawn (overlayLayer.ts). */
+    getHudSelection: () => { builtObject?: BuiltObject; shipGroup?: ShipGroup } | null = () => null;
     /** [galaxymarkers] faction rings, ship/base symbols, fleet icons, name decorations, station-presence discs. */
     galaxyMarkers: GalaxyMarkerLayer | null = null;
     /** [galaxymarkers] a fleet icon click, or a double click on one of the player's fleet ships, selects the fleet. */
@@ -1544,6 +1559,7 @@ export class MainView {
         // Render interpolation between sim steps: the layers drawing moving objects share one interpolator.
         this.builtObjectLayer.motion = this.motion;
         this.overlayLayer.motion = this.motion;
+        this.overlayLayer.getSelection = () => this.getHudSelection();
         this.empireLayer.motion = this.motion;
         this.ambientLayer.motion = this.motion;
         this.fighterLayer.motion = this.motion;

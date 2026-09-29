@@ -201,6 +201,21 @@ export function travelVectorFor(bo: BuiltObject): TravelVector | null {
     return { builtObject: bo, x1: bo.xpos, y1: bo.ypos, x2: p.x, y2: p.y };
 }
 
+/** MainView.2.cs method_250 6037-6053 (drawn at zoom factor > BaconMain.minZoomLevelForWeaponsCircles = 0.9): the selected
+ * ship — or the selected fleet's lead ship — gets its travel vector in yellow whatever the Travel Vectors toggles say,
+ * when it is not a base and belongs to the viewing empire; the same moving / mission / length guards as every other
+ * vector (BaconMainView.method_253 with bool_13 true, so a fleet member selected alone is not excluded). */
+export const SELECTED_TRAVEL_VECTOR_COLOR = 0xffff00;
+export const SELECTED_TRAVEL_VECTOR_MIN_FACTOR = 0.9;
+export type SelectedObjectLike = { builtObject?: BuiltObject; shipGroup?: ShipGroup } | null;
+export function selectedTravelVectorFor(sel: SelectedObjectLike, player: Empire | null, f: number): TravelVector | null {
+    if (sel === null || player === null || !(f > SELECTED_TRAVEL_VECTOR_MIN_FACTOR)) return null;
+    const bo = (sel.shipGroup !== undefined ? sel.shipGroup.leadShip : sel.builtObject) ?? null;
+    if (bo === null || bo.actualEmpire !== player) return null;
+    const v = travelVectorFor(bo);
+    return v !== null && travelVectorLongEnough(v, f) ? v : null;
+}
+
 // TODO(port): other empires' fleets (method_258 + IsObjectVisibleToThisEmpire), selected-fleet yellow, SpecialHighlightBuiltObjects red, arrow head (texture2D_35)
 // Port of MainView.2.cs method_250 (5925-5956) travel-vector filter + method_258 (player fleets, State only)
 export function travelVectorsFor(
@@ -274,6 +289,11 @@ export class OverlayLayer {
     /** Travel-vector arrowheads (pooled sprites of ARROWHEAD_URL; none until the art has loaded). */
     private arrowheads = new Container();
     private arrowTex: Texture | null = null;
+    /** The selected ship / fleet's travel vector (yellow, independent of the toggles) and its arrowhead. */
+    private selVector = new Graphics();
+    private selArrow: Sprite | null = null;
+    /** The HUD selection (set by MainView). */
+    getSelection: () => SelectedObjectLike = () => null;
     // [freightOverlay] begin — task 19e-9: Freight Flows / Trade Hubs (src/render/freightOverlay.ts).
     readonly freight: FreightOverlay;
     // [freightOverlay] end
@@ -302,6 +322,7 @@ export class OverlayLayer {
         world.addChild(this.root);
         this.root.addChild(this.travelVectors);
         this.root.addChild(this.arrowheads);
+        this.root.addChild(this.selVector);
         if (typeof Image !== 'undefined') {
             const img = new Image();
             img.onload = () => {
@@ -387,6 +408,7 @@ export class OverlayLayer {
         this.updateGroup(this.scenicLocations, atSystemZoom && this.state.scenicLocations, z, cam);
         this.updateGroup(this.researchLocations, atSystemZoom && this.state.researchLocations, z, cam);
         this.updateTravelVectors(z, cam);
+        this.updateSelectedVector(z);
         this.freight.motion = this.motion; // [freightOverlay] leaders follow the drawn freighters
         this.freight.update(z, cam); // [freightOverlay]
         this.updateThreats(z);
@@ -544,6 +566,49 @@ export class OverlayLayer {
         const dpr = typeof window !== 'undefined' ? window.devicePixelRatio : 1;
         g.stroke({ width: f * travelVectorWidthPx(dpr), color: TRAVEL_VECTOR_COLOR, alpha: 1 });
         g.visible = true;
+    }
+
+    /** The selected ship / fleet's yellow travel vector (MainView.2.cs method_250 selected-object block). */
+    private updateSelectedVector(z: number): void {
+        const g = this.selVector;
+        const f = 1 / z;
+        const v = selectedTravelVectorFor(this.getSelection(), this.galaxy.playerEmpire, f);
+        if (v === null) {
+            if (g.visible) {
+                g.clear();
+                g.visible = false;
+            }
+            if (this.selArrow !== null) this.selArrow.visible = false;
+            return;
+        }
+        const d = this.motion !== null ? this.motion.drawn(v.builtObject) : null;
+        if (d !== null) {
+            v.x1 = d.x;
+            v.y1 = d.y;
+        }
+        g.clear();
+        for (const [ax, ay, bx, by] of dashSegments(v.x1, v.y1, v.x2, v.y2, TRAVEL_VECTOR_DASH_PX * f, TRAVEL_VECTOR_DASH_PX * f)) {
+            g.moveTo(ax, ay).lineTo(bx, by);
+        }
+        const dpr = typeof window !== 'undefined' ? window.devicePixelRatio : 1;
+        g.stroke({ width: f * travelVectorWidthPx(dpr), color: SELECTED_TRAVEL_VECTOR_COLOR, alpha: 1 });
+        g.visible = true;
+        const tex = this.arrowTex;
+        if (tex !== null) {
+            if (this.selArrow === null) {
+                this.selArrow = new Sprite(tex);
+                this.selArrow.anchor.set(0.5);
+                this.selArrow.tint = SELECTED_TRAVEL_VECTOR_COLOR;
+                this.root.addChild(this.selArrow);
+            }
+            const a = arrowheadPlacement(v.x1, v.y1, v.x2, v.y2, tex.width, tex.height, 1, f);
+            this.selArrow.visible = true;
+            this.selArrow.position.set(a.x, a.y);
+            this.selArrow.rotation = a.rotation;
+            this.selArrow.scale.set(a.scale * f);
+        } else if (this.selArrow !== null) {
+            this.selArrow.visible = false;
+        }
     }
 
     /** Drop the overlay-change subscription (tests / view teardown). */

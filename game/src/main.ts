@@ -540,6 +540,7 @@ export async function startGameView(
     // [galaxymarkers] fleet icons / double-clicked fleet ships select the fleet; symbols highlight the HUD selection.
     view.onShipGroupSelect = (g) => selectShipGroup(g, false);
     if (view.galaxyMarkers !== null) view.galaxyMarkers.getSelection = () => getHudSelection();
+    view.getHudSelection = () => getHudSelection();
     view.onDoubleClickStar = (star: Habitat) => {
         if (star.category !== HabitatCategoryType.Star) return;
         camera.centerOn(star.xpos, star.ypos);
