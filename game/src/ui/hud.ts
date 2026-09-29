@@ -21,7 +21,7 @@ import { BuiltObjectSubRole } from '../sim/builtObjectTypes';
 import { BuiltObjectRole } from '../sim/data/designSpecifications';
 import { BuiltObjectMissionType, builtObjectMission, type BuiltObjectMission } from '../sim/missions/mission';
 // [15c]
-import type { ShipGroup } from '../sim/fleets/shipGroup';
+import { ShipGroup } from '../sim/fleets/shipGroup';
 import { fleetCycleList, fleetName, fleetShipAction, fleetSystemName, shipGroupSelectionRows, toggleFleetsList } from './screens/fleetsList';
 // [/15c]
 import { SystemVisibilityStatus } from '../sim/visibility';
@@ -43,6 +43,7 @@ import { setGameMenuHandler, setCycleHandler, type CycleKind } from './keyboard'
 import { uiClickSounds } from '../audio/effectsPlayer';
 import { helpTopicKeyForHabitat, toggleGalactopedia } from './screens/galactopedia';
 import { toggleEmpiresList } from './screens/empiresList';
+import { toggleDiplomacyScreen } from './screens/diplomacyScreen';
 import { toggleExpansionPlanner } from './screens/expansionPlanner'; // [16a]
 import { setEmpireSummarySource, getEmpireSummarySource, toggleEmpireSummary } from './screens/empireSummary';
 // [leftovers] begin
@@ -59,6 +60,9 @@ import { showToast } from './toast';
 // [troops] begin
 import { toggleTroopsScreen } from './screens/troops';
 import { confirmAutomationOff } from './orderMenu';
+import { galaxyStarDate } from '../sim/tick/simTime';
+import { createShipAction, ShipActionType } from '../sim/player/shipAction';
+import { issuePlayerCommand } from '../sim/player/playerCommands';
 // [troops] end
 import { countLabel } from './plural';
 // [policy] begin
@@ -912,7 +916,9 @@ function buildEmpireFlagButton(wiring: HudWiring): HTMLElement {
         // the wiring, guarded when either is missing).
         const galaxy = wiring.galaxy;
         if (!galaxy || !game) return;
-        toggleEmpiresList({
+        // The Empires button is the diplomacy screen (known strengths, relations, treaties, trades); the list is one click away.
+        const playerEmpire = game.playerEmpire as Empire;
+        const openList = (): void => toggleEmpiresList({
             empires: galaxy.empires,
             playerEmpire: game.playerEmpire as Empire,
             onZoomTo: (habitat) => {
@@ -923,6 +929,7 @@ function buildEmpireFlagButton(wiring: HudWiring): HTMLElement {
                 cam.zoomAt(SYSTEM_LEVEL_ZOOM, cam.width / 2, cam.height / 2);
             },
         });
+        toggleDiplomacyScreen({ player: playerEmpire, onOpenEmpiresList: openList });
     });
     return btn;
 }
@@ -1644,6 +1651,11 @@ export function nearestSystem(systems: readonly SystemInfo[], x: number, y: numb
 export function builtObjectRows(bo: BuiltObject): { label: string; value: string; color?: number }[] {
     const rows: { label: string; value: string; color?: number }[] = [];
     if (bo.empire !== null) rows.push({ label: 'Owner', value: bo.empire.name, color: bo.empire.mainColor });
+    // BaconInfoPanel.cs:401-402 Type (STATE / PRIVATE / Smuggler); Fleet (:418-436) the ship's fleet name.
+    if (bo.pirateEmpireId > 0 && bo.role === BuiltObjectRole.Freight) rows.push({ label: 'Type', value: 'SMUGGLER' });
+    else rows.push({ label: 'Type', value: bo.owner != null ? 'STATE' : 'PRIVATE' });
+    const fleet = (bo.shipGroup as { name?: string } | null)?.name;
+    if (fleet) rows.push({ label: 'Fleet', value: fleet });
     const design = bo.design?.name ?? '';
     if (design !== '') rows.push({ label: 'Design', value: design });
     rows.push({ label: 'Size', value: String(bo.size) });
@@ -1916,6 +1928,49 @@ export function missionTargetText(mission: BuiltObjectMission, empire: Empire | 
     return '';
 }
 
+/** The Automate / Unautomate toggle (Main.Part3.cs fleetSlots / the ship menu: `IsAutoControlled` picks the action;
+ * a fleet uses its lead ship). Null unless the player owns a ship or a fleet. Goes through the command log. */
+export function automationToggleLabel(target: BuiltObject | ShipGroup): { automated: boolean; label: string } {
+    const lead = target instanceof ShipGroup ? target.leadShip : target;
+    const automated = lead?.isAutoControlled === true;
+    return { automated, label: automated ? 'Automated: On (click to turn off)' : 'Automated: Off (click to automate)' };
+}
+
+function automationRow(target: BuiltObject | ShipGroup, player: Empire): SelectionRow | null {
+    const bo = target instanceof ShipGroup ? target.leadShip : target;
+    if (bo === null || bo.role === BuiltObjectRole.Base || (target instanceof ShipGroup ? target.empire : bo.owner) !== player) return null;
+    const { automated, label } = automationToggleLabel(target);
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'hud-automation-toggle' + (automated ? ' hud-automation-on' : '');
+    btn.textContent = label;
+    btn.addEventListener('click', () => {
+        const action = createShipAction(automated ? ShipActionType.UnautomateShip : ShipActionType.AutomateShip, target);
+        issuePlayerCommand(player.galaxy, player, 'shipAction', [target, action, false, undefined], () => {
+            const now = automationToggleLabel(target);
+            btn.textContent = now.label;
+            btn.classList.toggle('hud-automation-on', now.automated);
+        });
+    });
+    const line = document.createElement('div');
+    line.className = 'hud-money-row';
+    line.appendChild(btn);
+    return { element: line };
+}
+
+/** Hyperdrive status of a ship/base: "No hyperdrive" (WarpSpeed <= 0, BaconInfoPanel.cs:645), "Blocked" (hyperjump
+ * disabled here / CanHyperJump false), "Charging (N s)" while the jump countdown (BuiltObject._HyperjumpCountdown, set
+ * from Design.HyperjumpInitiate, cmdMovement.ts) runs, else "Ready". */
+export function hyperjumpStatusText(bo: BuiltObject): string {
+    if (bo.warpSpeed <= 0) return 'No hyperdrive';
+    if (bo.hyperjumpDisabledLocation || bo.canHyperJump === false) return 'Blocked';
+    if (bo.hyperjumpPrepare && bo._galaxy != null) {
+        const left = Math.ceil((bo.hyperjumpCountdown - galaxyStarDate(bo._galaxy)) / 1000);
+        if (left > 0) return `Charging (${left} s)`;
+    }
+    return 'Ready';
+}
+
 // Task 14b: port of BaconInfoPanel.cs BuiltObject rows (mission/components/fuel/speed); player null = no player empire (all known)
 export function builtObjectStatusRows(bo: BuiltObject, player: Empire | null): { label: string; value: string }[] {
     const rows: { label: string; value: string }[] = [];
@@ -1986,6 +2041,16 @@ export function builtObjectStatusRows(bo: BuiltObject, player: Empire | null): {
     }
     rows.push({ label: 'Fuel', value: fuel });
 
+    // Energy (BaconInfoPanel.cs:622-630) — only ships with a reactor store show it.
+    if (known && bo.reactorStorageCapacity > 0) {
+        rows.push({ label: 'Energy', value: `${Math.trunc(bo.currentReactorStorage)} / ${Math.trunc(bo.reactorStorageCapacity)}` });
+    }
+
+    // Shields (BaconInfoPanel.cs:631-635 DrawBarGraph "Shields"; current / capacity, " (reducing)" while ShieldsReducedLocation)
+    if (bo.shieldsCapacity > 0 || known) {
+        rows.push({ label: 'Shields', value: `${Math.trunc(bo.currentShields)} / ${Math.trunc(bo.shieldsCapacity)}${bo.shieldsReducedLocation ? ' (reducing)' : ''}` });
+    }
+
     // Speed (BaconInfoPanel.cs:637-651)
     if (bo.role !== BuiltObjectRole.Base) {
         // TODO(port): " (slowed)" — BuiltObject.MovementSlowedLocation not in sim
@@ -1994,6 +2059,13 @@ export function builtObjectStatusRows(bo: BuiltObject, player: Empire | null): {
         if (bo.warpSpeed <= 0) suffix = ' (No Hyperdrive)';
         rows.push({ label: 'Speed', value: `${Math.trunc(bo.currentSpeed)} / ${Math.trunc(bo.topSpeed)}${suffix}` });
     }
+
+    // Hyperjump readiness (streamlined: the original only shows the "(No Hyperdrive)" / "(Hyper block)" speed suffixes
+    // and turns the speed bar red while HyperjumpPrepare; the countdown is the sim's _HyperjumpCountdown).
+    rows.push({ label: 'Hyperjump', value: hyperjumpStatusText(bo) });
+
+    // Weapons (BaconInfoPanel.cs:710-713): "Firepower: N, Range: M", or "(None)".
+    rows.push({ label: 'Weapons', value: bo.firepowerRaw === 0 ? '(None)' : `Firepower: ${bo.firepowerRaw}, Range: ${Math.trunc(bo.maximumWeaponsRange)}` });
 
     // streamlined: not a row in the original panel
     if (known && bo.cargoCapacity > 0) {
@@ -2311,6 +2383,10 @@ export function buildSelectionRows(sel: Selection, gameData?: GameData, player: 
     // [15c] A selected fleet shows its own rows instead of the lead ship's.
     if (sel.shipGroup) {
         for (const r of shipGroupSelectionRows(sel.shipGroup, player)) addColorRow(r);
+        if (player !== null) {
+            const a = automationRow(sel.shipGroup, player);
+            if (a !== null) rows.push(a);
+        }
         return rows;
     }
     // [/15c]
@@ -2320,6 +2396,10 @@ export function buildSelectionRows(sel: Selection, gameData?: GameData, player: 
         for (const r of builtObjectRows(sel.builtObject)) addColorRow(r);
         for (const r of threatRows(sel.builtObject, player)) addColorRow(r);
         for (const r of builtObjectStatusRows(sel.builtObject, player)) addColorRow(r);
+        if (player !== null) {
+            const a = automationRow(sel.builtObject, player);
+            if (a !== null) rows.push(a);
+        }
         // A directly-selected shipyard base's own build queue (InfoPanel.cs:3480-3495 DrawBuiltObjectList
         // "Building", the base-panel twin of the colony one above) — same gap, a selected shipyard station had
         // no indicator for what it was building either.

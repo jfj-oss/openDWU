@@ -86,12 +86,12 @@ describe('builtObjectRows (task 13c)', () => {
             troops: { count: 0 } as never,
         });
         const rows = builtObjectRows(bo);
-        expect(rows.map((r) => r.label)).toEqual(['Owner', 'Design', 'Size', 'Location']);
+        expect(rows.map((r) => r.label)).toEqual(['Owner', 'Type', 'Design', 'Size', 'Location']);
         expect(rows[0].color).toBe(0xff0000);
         expect(rows[0].value).toBe('Humans');
-        expect(rows[1].value).toBe('Pathfinder');
-        expect(rows[2].value).toBe('120');
-        expect(rows[3].value).toBe('Terra');
+        expect(rows[2].value).toBe('Pathfinder');
+        expect(rows[3].value).toBe('120');
+        expect(rows[4].value).toBe('Terra');
     });
 
     it('abandoned object: no Owner/Location, non-zero troops shown', () => {
@@ -103,8 +103,8 @@ describe('builtObjectRows (task 13c)', () => {
             troops: { count: 2 } as never,
         });
         const rows = builtObjectRows(bo);
-        expect(rows.map((r) => r.label)).toEqual(['Design', 'Size', 'Troops']);
-        expect(rows[2].value).toBe('2');
+        expect(rows.map((r) => r.label)).toEqual(['Type', 'Design', 'Size', 'Troops']);
+        expect(rows[3].value).toBe('2');
     });
 });
 

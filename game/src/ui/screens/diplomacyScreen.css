@@ -338,3 +338,12 @@
 .diplomacy-rimterms-good { display: inline-flex; align-items: center; gap: 4px; }
 .diplomacy-rimterms-good img { width: 20px; height: 20px; image-rendering: pixelated; }
 /* [rimTrader] end */
+
+.diplomacy-strengths { margin: 4px 0 8px; }
+.diplomacy-stat { display: flex; gap: 8px; font-size: 12px; line-height: 1.5; }
+.diplomacy-stat-label { flex: 0 0 120px; text-align: right; opacity: 0.75; }
+.diplomacy-stat-value { font-weight: bold; }
+.diplomacy-race { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.diplomacy-race-portrait { border-radius: 3px; }
+.diplomacy-power { font-size: 11px; opacity: 0.8; margin: 0 6px; white-space: nowrap; }
+.diplomacy-list-btn { margin-left: auto; margin-right: 8px; }
