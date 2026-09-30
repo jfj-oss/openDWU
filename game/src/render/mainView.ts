@@ -910,7 +910,7 @@ class SystemView {
         this.coronaFrames = frames;
         this.corona.texture = frames[0];
         this.corona.tint = bright;
-        // Original alpha 240; dialled down 90% (user call: too much bloom at system zoom).
+        // Original alpha 240; at 50% (user call).
         this.corona.alpha = (240 / 255) * STAR_BLOOM_SCALE;
     }
 
@@ -948,7 +948,7 @@ class SystemView {
 }
 
 /** Star corona (bloom) strength vs the original's alpha 240 (1 = original). */
-export const STAR_BLOOM_SCALE = 0.1;
+export const STAR_BLOOM_SCALE = 0.5;
 
 class CloudView {
     cloud: Habitat;

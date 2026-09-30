@@ -46,8 +46,10 @@ function ramp(v: number, a: number, b: number): number {
     return t * t * (3 - 2 * t);
 }
 
-/** Background flare-star strength (1 = original): dialled down 90% (user call: too much lens flare at system zoom). */
-export const STARFIELD_FLARE_SCALE = 0.1;
+/** Background flare-star strength (1 = original): 50% (user call). */
+export const STARFIELD_FLARE_SCALE = 0.5;
+/** System colour-haze patch strength (1 = original): dialled down 90% (user call: the big blobs at system zoom). */
+export const SYSTEM_PATCH_SCALE = 0.1;
 
 /** Port of MainView.cs method_45: star brightness by zoom (z = px per world unit = 1 / zoomFactor). */
 export function starBrightness(z: number): number {
@@ -456,7 +458,7 @@ export class DeepStarfield {
                 spr.width = size;
                 spr.height = size;
                 spr.tint = p.data[o + 3];
-                spr.alpha = p.data[o + 4] * w;
+                spr.alpha = p.data[o + 4] * w * SYSTEM_PATCH_SCALE;
             }
         }
         for (let i = used; i < this.patchSprites.length; i++) this.patchSprites[i].visible = false;
