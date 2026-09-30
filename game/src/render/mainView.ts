@@ -859,7 +859,7 @@ class SystemView {
                 mg0.clear(); // fog of war (fog.ts): no orbit ring for a planet the player cannot see
                 continue;
             }
-            g.circle(0, 0, p.orbitDistance).stroke({ width: 1 / z, color: 0x5a4478, alpha: 0.75 });
+            g.circle(0, 0, p.orbitDistance).stroke({ width: 1.2 / z, color: 0x5c5cc0, alpha: 0.85 });
             // Faint moon-orbit circles (system zoom), drawn around (0,0) in their own Graphics; updateBodies moves it
             // to the planet's drawn position every frame.
             const mg = this.moonRings[i];
@@ -867,7 +867,7 @@ class SystemView {
             if (z > 0.25) {
                 for (let mk = 0; mk < planet.moons.length; mk++) {
                     if (!this.moonIsDrawn(i, mk)) continue;
-                    mg.circle(0, 0, planet.moons[mk].habitat.orbitDistance).stroke({ width: 1 / z, color: 0x4a3a66, alpha: 0.55 });
+                    mg.circle(0, 0, planet.moons[mk].habitat.orbitDistance).stroke({ width: 1.2 / z, color: 0x4c4ca0, alpha: 0.65 });
                 }
             }
         }
@@ -913,7 +913,8 @@ class SystemView {
         this.coronaFrames = frames;
         this.corona.texture = frames[0];
         this.corona.tint = bright;
-        this.corona.alpha = 240 / 255;
+        // Original alpha 240; at 50% (user call).
+        this.corona.alpha = (240 / 255) * STAR_BLOOM_SCALE;
     }
 
     /** Per-frame update of the disc/corona group (no-op until built). */
@@ -948,6 +949,9 @@ class SystemView {
         this.corona.texture = this.coronaFrames[coronaFrameIndex(nowMs, this.coronaFrames.length, this.coronaFps)];
     }
 }
+
+/** Star corona (bloom) strength vs the original's alpha 240 (1 = original). */
+export const STAR_BLOOM_SCALE = 0.5;
 
 class CloudView {
     cloud: Habitat;

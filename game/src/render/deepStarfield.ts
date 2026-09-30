@@ -46,6 +46,11 @@ function ramp(v: number, a: number, b: number): number {
     return t * t * (3 - 2 * t);
 }
 
+/** Background flare-star strength (1 = original): 50% (user call). */
+export const STARFIELD_FLARE_SCALE = 0.5;
+/** System colour-haze patch strength (1 = original): removed (user call: the big blobs at system zoom); 0 = not drawn. */
+export const SYSTEM_PATCH_SCALE = 0;
+
 /** Port of MainView.cs method_45: star brightness by zoom (z = px per world unit = 1 / zoomFactor). */
 export function starBrightness(z: number): number {
     return Math.max(0, Math.min(1, Math.sqrt(Math.sqrt(Math.max(0, z)))));
@@ -387,8 +392,8 @@ export class DeepStarfield {
     update(alpha: number, camX: number, camY: number, z: number, viewW: number, viewH: number): void {
         const on = this.ready && alpha > 0.01;
         this.root.visible = on;
-        this.far.alpha = alpha;
-        this.near.alpha = alpha;
+        this.far.alpha = alpha * STARFIELD_FLARE_SCALE;
+        this.near.alpha = alpha * STARFIELD_FLARE_SCALE;
         if (!on) return;
         if (viewW !== this.builtW || viewH !== this.builtH) this.build(viewW, viewH);
         const sx = camX * z;
@@ -416,7 +421,7 @@ export class DeepStarfield {
      */
     updatePatches(zoomAlpha: number, systems: readonly PatchSystem[], camX: number, camY: number, viewW: number, viewH: number): void {
         const blob = this.blob;
-        const on = blob !== null && zoomAlpha > 0.01;
+        const on = blob !== null && zoomAlpha > 0.01 && SYSTEM_PATCH_SCALE > 0;
         this.patches.visible = on;
         if (!on) return;
         let used = 0;
@@ -453,7 +458,7 @@ export class DeepStarfield {
                 spr.width = size;
                 spr.height = size;
                 spr.tint = p.data[o + 3];
-                spr.alpha = p.data[o + 4] * w;
+                spr.alpha = p.data[o + 4] * w * SYSTEM_PATCH_SCALE;
             }
         }
         for (let i = used; i < this.patchSprites.length; i++) this.patchSprites[i].visible = false;
