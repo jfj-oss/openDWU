@@ -73,7 +73,9 @@ export function liveryStyleOf(galaxy: Galaxy, bo: BuiltObject): LiveryStyle | nu
         secondary: e.secondaryColor,
         emblem: ((e.flagShape >= 0 ? e.flagShape : e.empireId) % EMBLEM_GLYPHS + EMBLEM_GLYPHS) % EMBLEM_GLYPHS,
         saltBloom: 0,
-        paint: true,
+        // The empire paint band, emblem decal and hull number are off (user call): ships keep only the wear /
+        // damage / weathering overlay. Flip to true to bring the livery back.
+        paint: false,
     };
     for (const h of styleHooks) {
         const o = h(galaxy, e, bo);
@@ -229,7 +231,7 @@ export class LiveryOverlays {
         const style = liveryStyleOf(this.galaxy, bo);
         const bucket = witherBucket(this.levelOf(bo));
         const scars = this.forced.get(bo)?.scars ?? this.history.get(bo)?.scars ?? 0;
-        if (style === null && bucket === 0 && scars === 0) return;
+        if ((style === null || (!style.paint && style.saltBloom === 0)) && bucket === 0 && scars === 0) return;
         const key = `${art.url}|${styleKey(style)}|${bucket}|${scars}`;
         let t = this.textures.get(key);
         if (t === undefined) {
