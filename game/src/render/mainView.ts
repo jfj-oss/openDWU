@@ -856,7 +856,7 @@ class SystemView {
                 mg0.clear(); // fog of war (fog.ts): no orbit ring for a planet the player cannot see
                 continue;
             }
-            g.circle(0, 0, p.orbitDistance).stroke({ width: 1.2 / z, color: 0x5a4478, alpha: 0.75 });
+            g.circle(0, 0, p.orbitDistance).stroke({ width: 1.2 / z, color: 0x5c5cc0, alpha: 0.85 });
             // Faint moon-orbit circles (system zoom), drawn around (0,0) in their own Graphics; updateBodies moves it
             // to the planet's drawn position every frame.
             const mg = this.moonRings[i];
@@ -864,7 +864,7 @@ class SystemView {
             if (z > 0.25) {
                 for (let mk = 0; mk < planet.moons.length; mk++) {
                     if (!this.moonIsDrawn(i, mk)) continue;
-                    mg.circle(0, 0, planet.moons[mk].habitat.orbitDistance).stroke({ width: 1.2 / z, color: 0x4a3a66, alpha: 0.55 });
+                    mg.circle(0, 0, planet.moons[mk].habitat.orbitDistance).stroke({ width: 1.2 / z, color: 0x4c4ca0, alpha: 0.65 });
                 }
             }
         }
