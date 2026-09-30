@@ -46,6 +46,9 @@ function ramp(v: number, a: number, b: number): number {
     return t * t * (3 - 2 * t);
 }
 
+/** Background flare-star strength (1 = original): dialled down 90% (user call: too much lens flare at system zoom). */
+export const STARFIELD_FLARE_SCALE = 0.1;
+
 /** Port of MainView.cs method_45: star brightness by zoom (z = px per world unit = 1 / zoomFactor). */
 export function starBrightness(z: number): number {
     return Math.max(0, Math.min(1, Math.sqrt(Math.sqrt(Math.max(0, z)))));
@@ -387,8 +390,8 @@ export class DeepStarfield {
     update(alpha: number, camX: number, camY: number, z: number, viewW: number, viewH: number): void {
         const on = this.ready && alpha > 0.01;
         this.root.visible = on;
-        this.far.alpha = alpha;
-        this.near.alpha = alpha;
+        this.far.alpha = alpha * STARFIELD_FLARE_SCALE;
+        this.near.alpha = alpha * STARFIELD_FLARE_SCALE;
         if (!on) return;
         if (viewW !== this.builtW || viewH !== this.builtH) this.build(viewW, viewH);
         const sx = camX * z;

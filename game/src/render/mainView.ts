@@ -910,7 +910,8 @@ class SystemView {
         this.coronaFrames = frames;
         this.corona.texture = frames[0];
         this.corona.tint = bright;
-        this.corona.alpha = 240 / 255;
+        // Original alpha 240; dialled down 90% (user call: too much bloom at system zoom).
+        this.corona.alpha = (240 / 255) * STAR_BLOOM_SCALE;
     }
 
     /** Per-frame update of the disc/corona group (no-op until built). */
@@ -945,6 +946,9 @@ class SystemView {
         this.corona.texture = this.coronaFrames[coronaFrameIndex(nowMs, this.coronaFrames.length, this.coronaFps)];
     }
 }
+
+/** Star corona (bloom) strength vs the original's alpha 240 (1 = original). */
+export const STAR_BLOOM_SCALE = 0.1;
 
 class CloudView {
     cloud: Habitat;
