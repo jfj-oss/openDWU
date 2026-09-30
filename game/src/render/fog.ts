@@ -64,17 +64,35 @@ export function playerSystemStatus(player: Empire | null, systemIndex: number): 
  * dist(star, scanner) - its long range <= the same.
  */
 export function systemHasPlayerSensors(galaxy: Galaxy, player: Empire, star: Habitat): boolean {
-    const limit = MAX_SOLAR_SYSTEM_SIZE + 500;
+    return sensorsReach(galaxy, playerSensors(galaxy, player), star);
+}
+
+/**
+ * The player's sensor sources for systemHasPlayerSensors as flat (x, y, range) triples: its ships / bases (range =
+ * max(ThreatRange, proximity array, long range)), then its long-range scanners (range = long range). Built once per
+ * frame by FogOfWar so each system scans only the player's sources, not every ship in the galaxy.
+ */
+export function playerSensors(galaxy: Galaxy, player: Empire, out: number[] = []): number[] {
+    out.length = 0;
     for (const bo of galaxy.builtObjects) {
         if (bo === null || bo.empire !== player) continue;
         let range = THREAT_RANGE;
         if (bo.sensorProximityArrayRange > range) range = bo.sensorProximityArrayRange;
         if (bo.sensorLongRange > range) range = bo.sensorLongRange;
-        if (Math.trunc(galaxy.calculateDistance(star.xpos, star.ypos, bo.xpos, bo.ypos)) - range <= limit) return true;
+        out.push(bo.xpos, bo.ypos, range);
     }
     for (const s of player.longRangeScanners as BuiltObject[]) {
         if (s == null) continue;
-        if (Math.trunc(galaxy.calculateDistance(star.xpos, star.ypos, s.xpos, s.ypos)) - s.sensorLongRange <= limit) return true;
+        out.push(s.xpos, s.ypos, s.sensorLongRange);
+    }
+    return out;
+}
+
+/** flag4 against precomputed playerSensors triples. */
+function sensorsReach(galaxy: Galaxy, sensors: readonly number[], star: Habitat): boolean {
+    const limit = MAX_SOLAR_SYSTEM_SIZE + 500;
+    for (let i = 0; i < sensors.length; i += 3) {
+        if (Math.trunc(galaxy.calculateDistance(star.xpos, star.ypos, sensors[i], sensors[i + 1])) - sensors[i + 2] <= limit) return true;
     }
     return false;
 }
@@ -131,6 +149,9 @@ export class FogOfWar {
     reveal = false;
     private memo = new Map<object, boolean>();
     private sensors = new Map<SystemInfo | Habitat, boolean>();
+    /** The player's sensor sources this frame (playerSensors), built on first use. */
+    private sensorSources: number[] = [];
+    private sensorSourcesValid = false;
 
     constructor(private galaxy: Galaxy) {}
 
@@ -138,6 +159,7 @@ export class FogOfWar {
     begin(): void {
         this.memo.clear();
         this.sensors.clear();
+        this.sensorSourcesValid = false;
     }
 
     get player(): Empire | null {
@@ -181,7 +203,11 @@ export class FogOfWar {
         if (p === null) return true;
         let v = this.sensors.get(star);
         if (v === undefined) {
-            v = systemHasPlayerSensors(this.galaxy, p, star);
+            if (!this.sensorSourcesValid) {
+                playerSensors(this.galaxy, p, this.sensorSources);
+                this.sensorSourcesValid = true;
+            }
+            v = sensorsReach(this.galaxy, this.sensorSources, star);
             this.sensors.set(star, v);
         }
         return v;

@@ -1,5 +1,6 @@
 // Usage: node scripts/perf-render.mjs [--url=http://localhost:5173/] [--gpu=swiftshader|egl|vulkan]
 //          [--w=1920 --h=1080 --dpr=2] [--days=60] [--secs=6] [--profile [--callers]] [--top=15] [--paused]
+//          [--stars=700 --sectors=4] [--zooms=galaxy,sector,system,planet]
 //
 // Renderer performance at 4K (1920x1080 CSS px at dpr 2 = a 3840x2160 canvas by default). Starts its own Vite dev
 // server on a free port (unless --url is given), boots `?autostart=1`, unpauses at 4x until --days game days have
@@ -38,6 +39,9 @@ const GPU = args.gpu ?? 'swiftshader';
 const PROFILE = args.profile === 'true';
 const PAUSED = args.paused === 'true';
 const CALLERS = args.callers === 'true';
+// Galaxy size (boot URL ?stars= / ?sectors=), e.g. --stars=2800 --sectors=15 for the wizard's biggest galaxy.
+const BOOT_QS = `${args.stars ? `&stars=${args.stars}` : ''}${args.sectors ? `&sectors=${args.sectors}` : ''}`;
+const ZOOMS = (args.zooms ?? 'galaxy,sector,system,planet').split(',');
 
 const GPU_ARGS = {
     swiftshader: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
@@ -107,7 +111,7 @@ function topSelf(profile, n) {
 
 async function main() {
     const la = loadavg();
-    console.log(`load average: ${la.map((v) => v.toFixed(2)).join(' ')} (${W}x${H} @ dpr ${DPR}, gpu=${GPU}${PAUSED ? ', sim paused' : ''})`);
+    console.log(`load average: ${la.map((v) => v.toFixed(2)).join(' ')} (${W}x${H} @ dpr ${DPR}, gpu=${GPU}${PAUSED ? ', sim paused' : ''}${BOOT_QS ? `, ${BOOT_QS.slice(1)}` : ''})`);
     let vite = null;
     let base = args.url;
     if (!base) {
@@ -128,7 +132,7 @@ async function main() {
         page.on('console', (m) => {
             if (m.type() === 'error') console.log(`[console.error] ${m.text()}`);
         });
-        await page.goto(`${base.replace(/\/$/, '')}/?autostart=1`);
+        await page.goto(`${base.replace(/\/$/, '')}/?autostart=1${BOOT_QS}`);
         await page.waitForFunction(() => !!window.__dwu?.game && !!window.__dwu?.time, null, { timeout: 120000 });
         const gl = await page.evaluate(() => {
             const c = document.createElement('canvas').getContext('webgl2');
@@ -136,6 +140,11 @@ async function main() {
             return ext ? c.getParameter(ext.UNMASKED_RENDERER_WEBGL) : 'unknown';
         });
         console.log(`GL renderer: ${gl}`);
+        const size = await page.evaluate(() => {
+            const g = window.__dwu.game.galaxy;
+            return `${g.systems.length} systems, ${g.habitats?.length ?? '?'} habitats, ${g.builtObjects?.length ?? '?'} built objects, ${g.sectorWidth}x${g.sectorHeight} sectors`;
+        });
+        console.log(`galaxy: ${size}`);
 
         // Instrument MainView.update and the Pixi render call (both looked up per frame).
         await page.evaluate(() => {
@@ -198,7 +207,7 @@ async function main() {
             await cdp.send('Profiler.setSamplingInterval', { interval: 200 });
         }
 
-        const zooms = ['galaxy', 'sector', 'system', 'planet'];
+        const zooms = ZOOMS;
         const rows = [];
         for (const zoom of zooms) {
             await page.evaluate((zoom) => {

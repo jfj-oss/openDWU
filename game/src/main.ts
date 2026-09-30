@@ -1168,14 +1168,15 @@ interface BootOptions {
 }
 
 /** Parse `bootGame`'s URL-param path into a BootOptions (task 06a defaults:
- * seed=1, spiral, 700 stars, 4x4 sectors). */
+ * seed=1, spiral, 700 stars, 4x4 sectors; ?stars=N, ?sectors=N override). */
 function parseBootOptions(params: URLSearchParams): BootOptions {
     return {
         seed: parseInt(params.get('seed') ?? '1', 10) || 1,
         starCount: parseInt(params.get('stars') ?? '700', 10) || 700,
         shape: SHAPE_BY_NAME[params.get('shape') ?? 'spiral'] ?? GalaxyShape.Spiral,
-        sectorWidth: 4,
-        sectorHeight: 4,
+        // ?sectors=N (debug/perf): N×N sectors (the wizard's Physical Size; clamped to 4..15 by the Galaxy ctor).
+        sectorWidth: parseInt(params.get('sectors') ?? '4', 10) || 4,
+        sectorHeight: parseInt(params.get('sectors') ?? '4', 10) || 4,
         zoom: params.get('zoom') !== null ? parseFloat(params.get('zoom')!) : null,
         cx: params.get('cx') !== null ? parseFloat(params.get('cx')!) : null,
         cy: params.get('cy') !== null ? parseFloat(params.get('cy')!) : null,

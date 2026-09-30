@@ -477,7 +477,9 @@ class SystemView {
     /** One moon-ring Graphics per planet (parallel to `planets`), drawn around (0,0) on zoom change and moved to the
      * planet's drawn position every frame, so the rings follow the orbiting planet instead of staying where it was. */
     moonRings: Graphics[] = [];
-    private bodiesWereShown = true;
+    /** Every planet's moon ring, in one container just below `bodies` and shown only with them (render: galaxy-zoom
+     * perf — Pixi's traversal visits one hidden child per system instead of one per planet). */
+    private moonRingLayer = new Container();
     /** Fog of war (fog.ts): which bodies of this system are drawn (all, unless the player has not explored it), and a
      * signature of that set so the orbit rings / rocks are rebuilt when it changes. */
     private fogSig = 0;
@@ -542,6 +544,7 @@ class SystemView {
         this.root.addChild(this.ring);
         this.bodies = new Container();
         this.root.addChild(this.bodies);
+        addRingBelowBodies(this.root, this.moonRingLayer, this.bodies);
         // Star: discs + corona (<= 2.3 x the drawn size S = max(4, diameter*z) px) or the map icon (<= 26 px or
         // diameter*z + 2 px), so 1.2 diameters plus the pixel margin.
         let radius = 1.2 * star.diameter;
@@ -553,7 +556,7 @@ class SystemView {
                 this.planets.push(planet);
                 const moonRing = new Graphics();
                 moonRing.visible = false;
-                addRingBelowBodies(this.root, moonRing, this.bodies);
+                this.moonRingLayer.addChild(moonRing);
                 this.moonRings.push(moonRing);
                 for (const moon of system.habitats) {
                     if (moon.category === HabitatCategoryType.Moon && moon.parent === habitat) {
@@ -652,11 +655,14 @@ class SystemView {
             this.mapIcon.scale.set(iconPx / (this.mapIcon.texture.width * z));
         }
 
-        this.updateFog();
         // Faint circular orbit rings: visible from the zoom where the
         // outermost orbit spans >= ~40 px on screen (task 02b2), persist
         // through 100%.
         const ringA = orbitRingAlpha(z, this.maxExtent);
+        const bodiesShown = f < 500;
+        // Render: galaxy-zoom perf — the fog pass only decides which rings / bodies are drawn, so skip it while
+        // neither is (every visible Unexplored system otherwise scanned all the player's ships per frame).
+        if (bodiesShown || ringA > 0.02) this.updateFog();
         this.ring.visible = ringA > 0.02;
         if (this.ring.visible) {
             this.ring.alpha = ringA;
@@ -668,15 +674,12 @@ class SystemView {
 
         // Render: perf pass — at f >= 500 no planet, moon, label or rock is drawn (sprites and labels need f < 500,
         // rocks z > 0.05), so hide the group and skip the per-body work.
-        const bodiesShown = f < 500;
         this.bodies.visible = bodiesShown;
+        // The moon rings live outside `bodies` (below it, under root) and go with them.
+        this.moonRingLayer.visible = bodiesShown;
         if (bodiesShown) {
             this.updateBodies(z, f);
-        } else if (this.bodies.visible !== this.bodiesWereShown) {
-            // The moon rings live outside `bodies` (under root): hide them once when the bodies go.
-            for (const mg of this.moonRings) mg.visible = false;
         }
-        this.bodiesWereShown = bodiesShown;
 
         // System name label under the star (small white text). Task 12p: only
         // drawn above f = 150 (MainView.2.cs:5153/5627-5630) — nothing names
