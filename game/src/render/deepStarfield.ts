@@ -48,8 +48,8 @@ function ramp(v: number, a: number, b: number): number {
 
 /** Background flare-star strength (1 = original): 50% (user call). */
 export const STARFIELD_FLARE_SCALE = 0.5;
-/** System colour-haze patch strength (1 = original): dialled down 90% (user call: the big blobs at system zoom). */
-export const SYSTEM_PATCH_SCALE = 0.1;
+/** System colour-haze patch strength (1 = original): removed (user call: the big blobs at system zoom); 0 = not drawn. */
+export const SYSTEM_PATCH_SCALE = 0;
 
 /** Port of MainView.cs method_45: star brightness by zoom (z = px per world unit = 1 / zoomFactor). */
 export function starBrightness(z: number): number {
@@ -421,7 +421,7 @@ export class DeepStarfield {
      */
     updatePatches(zoomAlpha: number, systems: readonly PatchSystem[], camX: number, camY: number, viewW: number, viewH: number): void {
         const blob = this.blob;
-        const on = blob !== null && zoomAlpha > 0.01;
+        const on = blob !== null && zoomAlpha > 0.01 && SYSTEM_PATCH_SCALE > 0;
         this.patches.visible = on;
         if (!on) return;
         let used = 0;
