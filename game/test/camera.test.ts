@@ -65,9 +65,27 @@ describe('Camera', () => {
         const before = c.screenToWorld(100, 100);
         c.zoomAt(0, 100, 100);
         expect(c.zoom).toBe(c.minZoom);
-        const after = c.screenToWorld(100, 100);
-        expect(after.x).toBeCloseTo(before.x, 3);
-        expect(after.y).toBeCloseTo(before.y, 3);
+        // Zooming out around a corner point would push the centre past the galaxy edge: the centre is clamped.
+        expect(c.x).toBeGreaterThanOrEqual(0);
+        expect(c.x).toBeLessThanOrEqual(8_000_000);
+        expect(c.y).toBeLessThanOrEqual(8_000_000);
+        void before;
+    });
+
+    it('keeps the screen centre inside the galaxy (pan, edge scroll, centreOn), for any galaxy size', () => {
+        for (const [w, h] of [[8_000_000, 8_000_000], [16_000_000, 16_000_000], [3_000_000, 5_000_000]]) {
+            const c = new Camera();
+            c.setViewport(1600, 900);
+            c.setGalaxyBounds(w, h);
+            c.zoom = c.minZoom;
+            c.centerOn(w / 2, h / 2);
+            c.panByScreen(1e9, 1e9);
+            expect([c.x, c.y]).toEqual([0, 0]);
+            c.panByScreen(-1e9, -1e9);
+            expect([c.x, c.y]).toEqual([w, h]);
+            c.centerOn(-5, h + 5);
+            expect([c.x, c.y]).toEqual([0, h]);
+        }
     });
 
     it('minZoom makes the whole galaxy fit on screen with margin', () => {

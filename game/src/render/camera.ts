@@ -16,6 +16,9 @@ export class Camera {
     height = 900;
     minZoom = 1e-6;
     maxZoom = 1;
+    /** Galaxy extent (world units, origin 0,0); the screen centre is kept inside it. Infinity = unbounded. */
+    boundsW = Infinity;
+    boundsH = Infinity;
 
     setViewport(width: number, height: number): void {
         this.width = width;
@@ -28,6 +31,15 @@ export class Camera {
     setGalaxyBounds(galaxyWidth: number, galaxyHeight: number): void {
         const fit = Math.min(this.width / galaxyWidth, this.height / galaxyHeight);
         this.minZoom = fit * 0.9; // small margin of black around the galaxy
+        this.boundsW = galaxyWidth;
+        this.boundsH = galaxyHeight;
+        this.clampCenter();
+    }
+
+    /** Keep the point at the screen centre inside the galaxy (pan, edge scroll, zoom-at-cursor, centre-on). */
+    clampCenter(): void {
+        if (Number.isFinite(this.boundsW)) this.x = Math.max(0, Math.min(this.boundsW, this.x));
+        if (Number.isFinite(this.boundsH)) this.y = Math.max(0, Math.min(this.boundsH, this.y));
     }
 
     clampZoom(zoom: number): number {
@@ -58,18 +70,21 @@ export class Camera {
         const after = this.screenToWorld(sx, sy);
         this.x += before.x - after.x;
         this.y += before.y - after.y;
+        this.clampCenter();
     }
 
     /** Pan by a screen-pixel delta (right-drag). */
     panByScreen(dx: number, dy: number): void {
         this.x -= dx / this.zoom;
         this.y -= dy / this.zoom;
+        this.clampCenter();
     }
 
     /** Center the view on a world point (right-click / edge scroll target). */
     centerOn(wx: number, wy: number): void {
         this.x = wx;
         this.y = wy;
+        this.clampCenter();
     }
 
     // Port of the original's PageUp/PageDown zoom steps (Main.Part11.cs):
