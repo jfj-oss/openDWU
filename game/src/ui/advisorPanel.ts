@@ -40,7 +40,7 @@ export function resultLines(results: readonly AdvisorCommandResult[]): AdvisorLi
 export function advisorSelectionFromHud(): AdvisorSelection {
     const sel = getSelection();
     if (sel === null) return null;
-    return sel.shipGroup ?? sel.builtObject ?? sel.habitat;
+    return sel.shipGroup ?? sel.builtObject ?? sel.builtObjects?.[0] ?? sel.habitat;
 }
 
 interface OpenState {

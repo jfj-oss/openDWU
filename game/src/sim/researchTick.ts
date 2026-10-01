@@ -34,6 +34,7 @@
 //   Callees not drawn until their packages land: DoCharacterEvent (M4u) for CriticalResearch*/ResearchAdvance*
 //     with a non-empty character list; GenerateNewCharacter draws itself (ported, characters.ts).
 
+import { isAiControlled } from './missions/playerOrder';
 import { checkTriggerEvent, getMatchingGameEventIdResearchBreakthrough } from './story/eventActions';
 import { EventTriggerType } from './story/gameEventModel';
 import type { Galaxy } from './galaxy';
@@ -671,7 +672,7 @@ export function doResearchBreakthrough(galaxy: Galaxy, empire: Empire, researchP
         const shipGroupList: ShipGroup[] = [];
         for (let j = 0; j < shipGroups.length; j++) {
             const shipGroup = shipGroups[j];
-            if (shipGroup !== null && shipGroup.leadShip !== null && shipGroup.leadShip.isAutoControlled && shipGroupWarpSpeed(shipGroup) <= 0) {
+            if (shipGroup !== null && shipGroup.leadShip !== null && isAiControlled(shipGroup.leadShip) && shipGroupWarpSpeed(shipGroup) <= 0) {
                 shipGroupList.push(shipGroup);
             }
         }

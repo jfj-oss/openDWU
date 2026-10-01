@@ -8,6 +8,7 @@ import { createMapOverlayState, OVERLAY_ROWS, toggleOverlay, type MapOverlayStat
 import { Camera } from '../render/camera';
 import { followOnSelectionChanged, isFollowingTarget, toggleFollow, type FollowState, type FollowTarget } from '../render/followCamera';
 import { Galaxy } from '../sim/galaxy';
+import { calculateAvailableAssaultPodAttackStrength } from '../sim/combat/attackAI';
 import type { GameData } from '../sim/data/gameData';
 import { rimGoodMarker } from './scenario/rimTraderRows';
 import { wreckSalvageRows } from './scenario/wreckageUi'; // [wreckage]
@@ -327,6 +328,9 @@ export interface Selection {
     shipGroup?: ShipGroup;
     /** A selected space creature (InfoPanel.cs DrawCreature). `habitat` is then its nearest system's star. */
     creature?: Creature;
+    /** Several selected ships (the C# BuiltObjectList selection: a left-drag box or Shift-clicks), 2+ entries;
+     * `builtObject` / `shipGroup` are then unset and `habitat` is the first ship's nearest system star. */
+    builtObjects?: BuiltObject[];
 }
 
 let currentSelection: Selection | null = null;
@@ -343,6 +347,36 @@ export function selectStellarObject(target: BuiltObject | Habitat, moveView = tr
     stellarObjectSelectHandler?.(target, moveView);
 }
 // [/16c]
+
+// Multi-selection hook (BuiltObjectList, Main.Part10.cs 2989 mainView_MouseUp → method_208(builtObjectList2)):
+// buildSelectionPanel registers it; the Main View's drag box / Shift-click and the order layer call it.
+let builtObjectListSelectHandler: ((list: BuiltObject[]) => void) | null = null;
+/** Select several ships (2+; one ship is a normal ship selection, none clears it). */
+export function selectBuiltObjectList(list: readonly BuiltObject[]): void {
+    builtObjectListSelectHandler?.(list.slice());
+}
+
+/**
+ * InfoPanel.cs 5059 DrawBuiltObjectSelection: the multi-selection's summary line — "N ships, F firepower, B boarding
+ * strength, T troops (S strength)" (the player's / viewable ships; others get just the count).
+ */
+export function multipleShipsSummary(ships: readonly BuiltObject[], galaxy: Galaxy | null, detailed: boolean): string {
+    const n = countLabel(ships.length, 'ship');
+    if (!detailed) return n;
+    let firepower = 0;
+    let boarding = 0;
+    let troops = 0;
+    let troopStrength = 0;
+    for (const bo of ships) {
+        firepower += bo.firepowerRaw;
+        if (galaxy !== null) boarding += calculateAvailableAssaultPodAttackStrength(galaxy, bo, galaxy.nowMs);
+        if (bo.troops !== null) {
+            troops += bo.troops.items.length;
+            troopStrength += bo.troops.totalAttackStrength;
+        }
+    }
+    return `${n}, ${firepower} firepower, ${boarding.toFixed(0)} boarding strength, ${troops} troops (${troopStrength} strength)`;
+}
 
 /** Test hook: set the current selection directly (bypasses the panel's own
  * setter, which also refreshes its DOM). */
@@ -378,7 +412,7 @@ export function toggleShipsAndBases(): void {
     const sel = getSelection();
     toggleShipsAndBasesList({
         empire: src.empire,
-        selected: sel ? (sel.builtObject ?? sel.habitat) : null,
+        selected: sel ? (sel.builtObject ?? sel.builtObjects?.[0] ?? sel.habitat) : null,
         // Select / Go to / double click select the ship/base (or colony) and move the view to it.
         onSelect: (bo) => selectStellarObject(bo, false),
         onZoomTo: (bo) => selectStellarObject(bo, true),
@@ -1071,7 +1105,7 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         () => ({
             galaxy: wiring.galaxy ?? null,
             player: wiring.galaxy?.playerEmpire ?? null,
-            habitat: currentSelection !== null && currentSelection.builtObject === undefined && currentSelection.shipGroup === undefined ? currentSelection.habitat : null,
+            habitat: currentSelection !== null && currentSelection.builtObject === undefined && currentSelection.shipGroup === undefined && currentSelection.builtObjects === undefined ? currentSelection.habitat : null,
         }),
         (id) => wiring.gameData?.resources.find((d) => d.resourceId === id)?.name ?? `#${id}`,
     );
@@ -1285,6 +1319,13 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
             return;
         }
         const h = sel.habitat;
+        if (sel.builtObjects) {
+            // InfoPanel.cs 5059 DrawBuiltObjectSelection: "(Multiple Ships)", the summary, then one entry per ship
+            // ("click to select").
+            renderMultipleShips(sel.builtObjects);
+            syncFollowButton(); // [followcam]
+            return;
+        }
         if (sel.creature) {
             // InfoPanel.cs 3453 DrawCreature: the name as title; the type (ResolveDescription) and system under it.
             nameEl.textContent = sel.creature.name;
@@ -1313,6 +1354,49 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         }
         syncFollowButton(); // [followcam]
     };
+    const renderMultipleShips = (ships: BuiltObject[]): void => {
+        const player = wiring.galaxy?.playerEmpire ?? null;
+        nameEl.textContent = `${ships.length} ships selected`;
+        nameEl.classList.remove('hud-muted');
+        subEl.textContent = multipleShipsSummary(ships, wiring.galaxy ?? null, ships[0]?.empire === player);
+        const list = document.createElement('div');
+        list.className = 'hud-multi-list';
+        for (const bo of ships) {
+            const row = document.createElement('button');
+            row.type = 'button';
+            row.className = 'hud-multi-row';
+            if (bo.hasBeenDestroyed) row.classList.add('hud-muted');
+            const name = document.createElement('span');
+            name.className = 'hud-multi-name';
+            name.textContent = bo.name;
+            const role = document.createElement('span');
+            role.className = 'hud-multi-role';
+            role.textContent = subRoleLabel(bo.subRole);
+            row.append(name, role);
+            row.title = `${bo.name} (click to select)`;
+            row.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (!bo.hasBeenDestroyed) selectStellarObject(bo, false);
+            });
+            list.appendChild(row);
+        }
+        body.replaceChildren(list);
+    };
+    builtObjectListSelectHandler = (list) => {
+        const galaxy = wiring.galaxy;
+        if (!galaxy) return;
+        if (list.length === 0) {
+            wiring.onSelectionChange?.(null);
+            return;
+        }
+        if (list.length === 1) {
+            stellarObjectSelectHandler?.(list[0], false);
+            return;
+        }
+        const system = nearestSystem(galaxy.systems, list[0].xpos, list[0].ypos);
+        if (!system) return;
+        wiring.onSelectionChange?.({ habitat: system.systemStar, system, builtObjects: list });
+    };
     wiring.onSelectionChange = (sel) => {
         currentSelection = sel;
         // [followcam] a selection change stops following unless it's the same object already followed.
@@ -1336,6 +1420,13 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
             return;
         }
         if (currentSelection?.builtObject) refresh();
+        const multi = currentSelection?.builtObjects;
+        if (multi) {
+            // Destroyed / lost ships drop out of the multi-selection (one left: a single selection).
+            const alive = multi.filter((bo) => !bo.hasBeenDestroyed && bo.empire === multi[0].empire);
+            if (alive.length !== multi.length) builtObjectListSelectHandler?.(alive);
+            else subEl.textContent = multipleShipsSummary(multi, wiring.galaxy ?? null, multi[0]?.empire === (wiring.galaxy?.playerEmpire ?? null));
+        }
     }, 500);
     refresh();
     return panel;
@@ -2043,7 +2134,7 @@ export function builtObjectStatusRows(bo: BuiltObject, player: Empire | null): {
 
     // Energy (BaconInfoPanel.cs:622-630) — only ships with a reactor store show it.
     if (known && bo.reactorStorageCapacity > 0) {
-        rows.push({ label: 'Energy', value: `${Math.trunc(bo.currentReactorStorage)} / ${Math.trunc(bo.reactorStorageCapacity)}` });
+        rows.push({ label: 'Energy', value: `${Math.max(0, Math.trunc(bo.currentEnergy))} / ${Math.trunc(bo.reactorStorageCapacity)}` });
     }
 
     // Shields (BaconInfoPanel.cs:631-635 DrawBarGraph "Shields"; current / capacity, " (reducing)" while ShieldsReducedLocation)
@@ -2112,7 +2203,7 @@ function doViewAction(key: ViewRowKey, wiring: HudWiring): void {
             const sel = currentSelection;
             if (!sel) return;
             // Task 13c: centre on the selected ship/base when one is set.
-            const t = sel.builtObject ?? sel.habitat;
+            const t = sel.builtObject ?? sel.builtObjects?.[0] ?? sel.habitat;
             cam.centerOn(t.xpos, t.ypos);
             cam.zoomAt(SYSTEM_LEVEL_ZOOM, cx, cy);
             break;

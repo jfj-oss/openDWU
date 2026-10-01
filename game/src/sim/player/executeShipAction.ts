@@ -16,6 +16,7 @@
 // Rnd: only through the called sim methods (mission constructors, SelectRelativeParkingPoint, AssignShipSystemPatrol's
 // Next, DeployVirus's Next(15, 20) + creature placement). Never on the tick path.
 
+import { clearFleetPlayerOrders, clearPlayerOrders, markNewOrders, snapshotOrders } from '../missions/playerOrder';
 import { runThreatAction } from '../scenario/threats/framework';
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
@@ -292,18 +293,31 @@ export function executeShipAction(
         executeForFighter(ctx, selected, action);
         return ctx.result;
     }
+    // Not in the C#: a mission order (actionType Undefined) no longer clears IsAutoControlled; every mission it creates
+    // for the ordered ship(s) / fleet is marked as a player order instead, which keeps the AI off it until done
+    // (missions/playerOrder.ts). Menu actions (Automate, Join fleet, ...) are not orders and mark nothing.
+    const isOrder = action.actionType === ShipActionType.Undefined;
     if (isBuiltObject(selected)) {
-        return executeForBuiltObject(ctx, selected, action);
+        const snap = isOrder ? snapshotOrders([selected]) : null;
+        const result = executeForBuiltObject(ctx, selected, action);
+        if (snap !== null) markNewOrders(snap);
+        return result;
     }
     if (isHabitat(selected)) {
         return executeForHabitat(ctx, selected, action, fromActionMenu);
     }
     if (isShipGroup(selected)) {
-        return executeForShipGroup(ctx, selected, action);
+        const snap = isOrder ? snapshotOrders([], [selected]) : null;
+        const result = executeForShipGroup(ctx, selected, action);
+        if (snap !== null) markNewOrders(snap);
+        return result;
     }
     // 1557: `if (!(_Game.SelectedObject is BuiltObjectList)) return;`
     if (Array.isArray(selected)) {
-        return executeForBuiltObjectList(ctx, selected, action);
+        const snap = isOrder ? snapshotOrders(selected) : null;
+        const result = executeForBuiltObjectList(ctx, selected, action);
+        if (snap !== null) markNewOrders(snap);
+        return result;
     }
     return ctx.fail('unsupported selection');
 }
@@ -762,14 +776,12 @@ function executeForShip(ctx: Ctx, builtObject: BuiltObject, action: ShipAction):
         const system = systemForStar(galaxy, action.target);
         clearPreviousMissionRequirements(galaxy, builtObject, true);
         assignShipSystemPatrol(galaxy, builtObject.empire!, builtObject, system!, true);
-        builtObject.isAutoControlled = false;
         return ctx.result;
     }
     if (action.missionType === BuiltObjectMissionType.Patrol && isSystemInfo(action.target)) {
         const system2 = action.target;
         clearPreviousMissionRequirements(galaxy, builtObject, true);
         assignShipSystemPatrol(galaxy, builtObject.empire!, builtObject, system2, true);
-        builtObject.isAutoControlled = false;
         return ctx.result;
     }
     // 665-676
@@ -796,15 +808,12 @@ function executeForShip(ctx: Ctx, builtObject: BuiltObject, action: ShipAction):
         if (action.target !== null && isHabitat(action.target)) {
             if (action.isSubsequentAction) {
                 assignLoadTroopsMission(galaxy, builtObject.empire!, builtObject, action.target, true, false, true);
-                builtObject.isAutoControlled = false;
             } else {
                 clearPreviousMissionRequirements(galaxy, builtObject, true);
                 assignLoadTroopsMission(galaxy, builtObject.empire!, builtObject, action.target, false, false, true);
-                builtObject.isAutoControlled = false;
             }
         } else {
             assignLoadTroopsMission(galaxy, builtObject.empire!, builtObject, null, false, false, true);
-            builtObject.isAutoControlled = false;
         }
         return ctx.result;
     }
@@ -895,7 +904,6 @@ function executeForShip(ctx: Ctx, builtObject: BuiltObject, action: ShipAction):
             builtObject.targetSpeed = 0;
         }
     }
-    builtObject.isAutoControlled = false;
     return ctx.result;
 }
 
@@ -1118,6 +1126,7 @@ function executeForShipGroup(ctx: Ctx, shipGroup4: ShipGroup, action: ShipAction
                 return ctx.result;
             case ShipActionType.AutomateShip:
                 setShipGroupAutomated(shipGroup4, true); // method_348(shipGroup4, true)
+                clearFleetPlayerOrders(shipGroup4); // not in the C#: pending player orders go to the AI too
                 return ctx.result;
             case ShipActionType.DisbandShipGroup: {
                 if (action.target === null || !isShipGroup(action.target)) break;
@@ -1199,7 +1208,7 @@ function executeForShipGroup(ctx: Ctx, shipGroup4: ShipGroup, action: ShipAction
                 } else {
                     implementBlockade(galaxy, shipGroup4.empire!, colony, false, false);
                 }
-                setShipGroupAutomated(shipGroup4, false);
+                // The C#'s method_348(fleet, false) is dropped: only the Automate toggle changes IsAutoControlled.
             }
         } else if (isBuiltObject(action.target)) {
             const builtObject12 = action.target;
@@ -1214,12 +1223,12 @@ function executeForShipGroup(ctx: Ctx, shipGroup4: ShipGroup, action: ShipAction
                 } else {
                     implementBlockade(galaxy, shipGroup4.empire!, builtObject12, false, false);
                 }
-                setShipGroupAutomated(shipGroup4, false);
+                // The C#'s method_348(fleet, false) is dropped: only the Automate toggle changes IsAutoControlled.
             }
         }
     }
-    // 1393-1402
-    setShipGroupAutomated(shipGroup4, false);
+    // 1393-1402 (the C#'s method_348(fleet, false) is dropped: the order is marked as a player order instead —
+    // see executeShipAction and missions/playerOrder.ts)
     let missionType2 = action.missionType;
     if (missionType2 === BuiltObjectMissionType.WaitAndAttack || missionType2 === BuiltObjectMissionType.WaitAndBombard) {
         const r = checkAssignFleetWaitAndAttackMission(galaxy, shipGroup4.empire!, shipGroup4, missionType2, missionTarget(action.target), BuiltObjectMissionPriority.High);
@@ -1286,7 +1295,6 @@ function executeForShipGroup(ctx: Ctx, shipGroup4: ShipGroup, action: ShipAction
         for (let l = 0; l < shipGroup4.ships.length; l++) {
             shipGroup4.ships[l].targetSpeed = 0;
             shipGroup4.ships[l].preferredSpeed = 0;
-            shipGroup4.ships[l].isAutoControlled = false;
         }
     } else if (action.design !== null) {
         if (positionIsZero(action)) {
@@ -1426,7 +1434,6 @@ function executeForBuiltObjectList(ctx: Ctx, builtObjectList2: BuiltObject[], ac
         for (const item8 of builtObjectList2) {
             clearPreviousMissionRequirements(galaxy, item8, true);
             assignMission(galaxy, item8, action.missionType, systemInfo.systemStar, null, BuiltObjectMissionPriority.Normal, { manuallyAssigned: true });
-            item8.isAutoControlled = false;
         }
         return ctx.result;
     }
@@ -1435,7 +1442,6 @@ function executeForBuiltObjectList(ctx: Ctx, builtObjectList2: BuiltObject[], ac
         for (const item9 of builtObjectList2) {
             clearPreviousMissionRequirements(galaxy, item9, true);
             assignMission(galaxy, item9, action.missionType, systemInfo2.systemStar, null, BuiltObjectMissionPriority.Normal, { manuallyAssigned: true });
-            item9.isAutoControlled = false;
         }
         return ctx.result;
     }
@@ -1532,7 +1538,6 @@ function executeForBuiltObjectList(ctx: Ctx, builtObjectList2: BuiltObject[], ac
         } else {
             assignMission(galaxy, item15, action.missionType, missionTarget(action.target), null, BuiltObjectMissionPriority.Normal, { x: action.position.x, y: action.position.y, manuallyAssigned: true });
         }
-        item15.isAutoControlled = false;
     }
     return ctx.result;
 }
@@ -1563,6 +1568,7 @@ function buildAutomationPrompts(ctx: Ctx, design: Design): void {
 /** Main.Part7.cs 416-429 AutomateShip (and 1606-1623 per list entry). */
 function automateShip(ctx: Ctx, builtObject: BuiltObject): void {
     builtObject.isAutoControlled = true;
+    clearPlayerOrders(builtObject); // not in the C#: pending player orders go to the AI too (missions/playerOrder.ts)
     if (builtObject.empire !== null) {
         if (builtObject.empire.pirateEmpireBaseHabitat === null) {
             assignMissionToBuiltObject(ctx.galaxy, builtObject.empire, builtObject, false, null);

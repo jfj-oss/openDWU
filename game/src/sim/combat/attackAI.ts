@@ -14,6 +14,7 @@
 //   Weapon.cs 181 IsAvailableWithoutEnergyConsideration (a pure predicate; Weapon.Fire itself is M4o).
 // Galaxy.Rnd: none in this file.
 
+import { isAiControlled } from '../missions/playerOrder';
 import { scenarioEmit, scenarioQuery } from '../scenario/hooks';
 import type { Galaxy } from '../galaxy';
 import type { BuiltObject } from '../builtObject';
@@ -730,12 +731,12 @@ export function setAttackRangeWhenNoMission(galaxy: Galaxy, builtObject: BuiltOb
     const mission = builtObjectMission(bo.mission);
     if ((mission === null || mission.type === BuiltObjectMissionType.Undefined) && bo.empire !== null) {
         let num = bo.empire.attackRangeOther;
-        if (!bo.isAutoControlled) {
+        if (!isAiControlled(bo)) {
             num = bo.empire.attackRangeOtherManual;
         }
         if (num >= 0) {
             bo.attackRangeSquared = Math.fround(Math.fround(num) * Math.fround(num));
-        } else if (bo.attackRangeSquared < 0 && bo.isAutoControlled) {
+        } else if (bo.attackRangeSquared < 0 && isAiControlled(bo)) {
             bo.attackRangeSquared = Math.fround(2.304e9);
         }
     }
@@ -1010,7 +1011,7 @@ export function checkForAttack(galaxy: Galaxy, builtObject: BuiltObject): void {
     }
     const mission = builtObjectMission(bo.mission);
     let flag = true;
-    if (!bo.isAutoControlled && mission !== null && mission.type === BuiltObjectMissionType.Move) {
+    if (!isAiControlled(bo) && mission !== null && mission.type === BuiltObjectMissionType.Move) {
         flag = false;
     }
     if (mission !== null && (mission.type === BuiltObjectMissionType.Escape || mission.type === BuiltObjectMissionType.Attack || mission.type === BuiltObjectMissionType.Bombard || mission.type === BuiltObjectMissionType.Refuel || mission.type === BuiltObjectMissionType.Repair)) {

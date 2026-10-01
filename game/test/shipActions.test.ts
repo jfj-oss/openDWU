@@ -80,8 +80,9 @@ describe('ShipAction.cs / Main.Part8.cs 1496-1536 factories', () => {
 });
 
 describe('Main.Part7.cs 45 method_347 — ship orders', () => {
-    it('Move to a habitat: AssignMission(Move, habitat, null, Normal, manuallyAssigned) and the ship is no longer automated (772-817)', () => {
+    it('Move to a habitat: AssignMission(Move, habitat, null, Normal, manuallyAssigned) as a player order; automation untouched (772-817, user deviation)', () => {
         const ship = playerShip();
+        const wasAuto = ship.isAutoControlled;
         const h = someHabitat();
         const action = createMissionShipActionAt(BuiltObjectMissionType.Move, h, Math.trunc(h.xpos), Math.trunc(h.ypos));
         const r = executeShipAction(galaxy, player, ship, action, true);
@@ -90,7 +91,8 @@ describe('Main.Part7.cs 45 method_347 — ship orders', () => {
         expect(m.type).toBe(BuiltObjectMissionType.Move);
         expect(m.targetHabitat).toBe(h);
         expect(m.priority).toBe(BuiltObjectMissionPriority.Normal);
-        expect(ship.isAutoControlled).toBe(false);
+        expect(m.playerOrdered).toBe(true);
+        expect(ship.isAutoControlled).toBe(wasAuto); // only the Automate / Unautomate toggle changes it
     });
 
     it('a shift-click (IsSubsequentAction) queues the Move instead of replacing the mission', () => {

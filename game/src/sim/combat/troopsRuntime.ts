@@ -7,6 +7,7 @@
 //   HandleAIPrisoners (+ GetSpiesInPrison 566).
 // Galaxy.Rnd: none in the functions above.
 
+import { isAiControlled } from '../missions/playerOrder';
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import { empireGovernmentAttributes } from '../empire';
@@ -217,7 +218,7 @@ export function disbandExcessTroops(galaxy: Galaxy, empire: Empire): void {
     if (num10 < num9) {
         for (let j = 0; j < empire.builtObjects.length; j++) {
             const builtObject = empire.builtObjects[j];
-            if (builtObject == null || builtObject.troops === null || builtObject.troops.count <= 0 || builtObject.subRole === BuiltObjectSubRole.TroopTransport || !builtObject.isAutoControlled) {
+            if (builtObject == null || builtObject.troops === null || builtObject.troops.count <= 0 || builtObject.subRole === BuiltObjectSubRole.TroopTransport || !isAiControlled(builtObject)) {
                 continue;
             }
             let flag = true;
@@ -248,7 +249,7 @@ export function disbandExcessTroops(galaxy: Galaxy, empire: Empire): void {
     }
     for (let k = 0; k < empire.builtObjects.length; k++) {
         const builtObject2 = empire.builtObjects[k];
-        if (builtObject2 == null || builtObject2.troops === null || builtObject2.troops.count <= 0 || !builtObject2.isAutoControlled) {
+        if (builtObject2 == null || builtObject2.troops === null || builtObject2.troops.count <= 0 || !isAiControlled(builtObject2)) {
             continue;
         }
         const troop3 = builtObject2.troops.items[0];
@@ -732,7 +733,7 @@ export function loadTroopsIfNecessaryAndPossible(galaxy: Galaxy, shipGroup: Ship
         const sm = ship != null ? builtObjectMission(ship.mission) : null;
         if (
             ship != null &&
-            ship.isAutoControlled &&
+            isAiControlled(ship) &&
             (sm === null || sm.type === BuiltObjectMissionType.Undefined) &&
             shipGroupIsShipAvailable(ship) &&
             ship.troops !== null &&

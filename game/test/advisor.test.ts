@@ -137,8 +137,9 @@ describe('validateAdvisorResponse', () => {
 });
 
 describe('executeAdvisorCommands (scripted model replies)', () => {
-    it('"send my explorer to the nearest unexplored system": Explore mission on the system star, ship no longer automated', () => {
+    it('"send my explorer to the nearest unexplored system": Explore mission on the system star, a player order (automation untouched)', () => {
         const ship = explorer();
+        const wasAuto = ship.isAutoControlled;
         const brief = buildAdvisorBrief(galaxy, player, ship);
         const star = nearestUnexploredSystemStar(galaxy, ship)!;
         const reply = { reply: 'Glowing Way will chart it.', commands: [{ id: commandFor(brief, shipRef(ship), 'Explore', 'nearest unexplored system') }] };
@@ -148,7 +149,8 @@ describe('executeAdvisorCommands (scripted model replies)', () => {
         const m = builtObjectMission(ship.mission)!;
         expect(m.type).toBe(BuiltObjectMissionType.Explore);
         expect(m.targetHabitat).toBe(star);
-        expect(ship.isAutoControlled).toBe(false);
+        expect(m.playerOrdered).toBe(true);
+        expect(ship.isAutoControlled).toBe(wasAuto); // user deviation: only the Automate toggle changes it
     });
 
     it('"refuel the fleet": the fleet gets a Refuel mission at its nearest refuelling point', () => {

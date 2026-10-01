@@ -45,7 +45,8 @@ import { closeAdvisorPanel } from './ui/advisorPanel';
 import { aiAdvisorSettingsWithUrl, startAiAdvisorDriver } from './ui/aiAdvisorDriver';
 import { closeCouncilLog, pushCouncilLog } from './ui/aiAdvisorLog';
 import { startLlmLayer } from './llm/llmLayer'; // [llm] 19s-1
-import { getSettings } from './ui/settings';
+import { getSettings, onSettingsChange } from './ui/settings';
+import { installOutputDither, setOutputDither } from './render/outputDither';
 // [aiadvisor] end
 import { closeMessageHistory } from './ui/screens/messageHistory';
 import { closeFleetsList } from './ui/screens/fleetsList'; // [15c]
@@ -96,7 +97,7 @@ import { hideMapTooltip } from './ui/mapTooltip';
 import { closeTradeFlows, mountFreightLegend, openTradeFlows, toggleTradeFlows } from './ui/screens/tradeFlows'; // [freightOverlay]
 import { closeEmpireComparison, closeGameEndBanner, installGameEndHandler, removeGameEndHandler } from './ui/screens/empireComparison'; // [15d]
 import { installMessagePopups, removeMessagePopups } from './ui/messagePopups'; import { closeGameOptionsPanel } from './ui/screens/gameOptionsPanel'; // [16d]
-import { installOrderUi, selectionTarget } from './ui/orderMenu'; import { getSelection as getHudSelection, selectShipGroup, selectStellarObject } from './ui/hud'; import { ShipGroup } from './sim/fleets/shipGroup'; import { Fighter } from './sim/combat/fighters'; // [ordermenu]
+import { installOrderUi, selectionTarget } from './ui/orderMenu'; import { getSelection as getHudSelection, selectBuiltObjectList, selectShipGroup, selectStellarObject } from './ui/hud'; import { ShipGroup } from './sim/fleets/shipGroup'; import { Fighter } from './sim/combat/fighters'; // [ordermenu]
 // [suggest] begin
 import { installAdvisorSuggestions, removeAdvisorSuggestions } from './ui/advisorSuggestions';
 import { expireConversationsForEmpire } from './ui/messagePopups';
@@ -397,6 +398,7 @@ export async function startGameView(
         antialias: true,
         preference: 'webgl',
     });
+    initOutputDither(app);
     document.body.appendChild(app.canvas);
 
     const camera = new Camera();
@@ -512,7 +514,8 @@ export async function startGameView(
         afterSelectionChange: (sel) => {
             view.selectedBuiltObject = sel?.builtObject ?? null;
             view.selectedCreature = sel?.creature ?? null;
-            view.selectedHabitat = sel && !sel.builtObject && !sel.creature ? sel.habitat : null;
+            view.selectedHabitat = sel && !sel.builtObject && !sel.creature && !sel.builtObjects ? sel.habitat : null;
+            view.selectedBuiltObjects = sel?.builtObjects ?? null;
             shipKeys?.afterSelectionChange(sel); // [fix6ui] selection history + view lock
         },
     });
@@ -537,6 +540,13 @@ export async function startGameView(
     };
     // A clicked creature selects it (InfoPanel.cs DrawCreature in the selection panel).
     view.onCreatureSelect = (c) => selectCreature(c, false);
+    // Left-drag box / Shift-click multi-selection (Main.Part10.cs 2989 mainView_MouseUp, BuiltObjectList).
+    view.onBuiltObjectListSelect = (list) => selectBuiltObjectList(list);
+    view.getSelectedShips = () => {
+        const s = getHudSelection();
+        if (s === null || s.shipGroup !== undefined || s.creature !== undefined) return null;
+        return s.builtObjects ?? s.builtObject ?? null;
+    };
     // [galaxymarkers] fleet icons / double-clicked fleet ships select the fleet; symbols highlight the HUD selection.
     view.onShipGroupSelect = (g) => selectShipGroup(g, false);
     if (view.galaxyMarkers !== null) view.galaxyMarkers.getSelection = () => getHudSelection();
@@ -649,9 +659,7 @@ export async function startGameView(
             select: (t) => {
                 if (t === null) hud.onSelectionChange?.(null);
                 else if (t instanceof ShipGroup) selectShipGroup(t, false);
-                else if (Array.isArray(t)) {
-                    if (t.length > 0) selectStellarObject(t[0], false); // no multi-selection in the streamlined HUD
-                } else if (!(t instanceof Fighter)) selectStellarObject(t, false); // (a Fighter is not selectable here)
+                else if (Array.isArray(t)) selectBuiltObjectList(t); // BuiltObjectList (one ship: a ship selection) else if (!(t instanceof Fighter)) selectStellarObject(t, false); // (a Fighter is not selectable here)
             },
         },
         view,
@@ -1346,6 +1354,7 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
         antialias: true,
         preference: 'webgl',
     });
+    initOutputDither(app);
     document.body.appendChild(app.canvas);
 
     // Deterministic galaxy (seed/shape/stars/sectors from the URL or wizard).
@@ -1514,3 +1523,13 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
 main().catch((err) => {
     console.error('DW:U boot failed', err);
 });
+/**
+ * Anti-banding output dither (render/outputDither.ts): on unless Settings → "Dither gradients" is off; `?dither=0|1`
+ * overrides it for A/B checks (scripts/perf-render.mjs, screenshots). Follows later settings changes live.
+ */
+function initOutputDither(app: Application): void {
+    const q = new URLSearchParams(window.location.search).get('dither');
+    const urlOverride = q === '0' ? false : q === '1' ? true : null;
+    installOutputDither(app.renderer, urlOverride ?? getSettings().ditherGradients);
+    onSettingsChange((st) => setOutputDither(urlOverride ?? st.ditherGradients));
+}

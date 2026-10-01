@@ -2,6 +2,7 @@
 // DoTasksPirates (4166), Galaxy.ProcessPirateFleets (Galaxy.cs 3278) and the frame driver's "GxFlt" pass
 // (Main.Part12.cs 3598-3622). Intervals are TimeSpan `>=` tests; touches are updated after each block.
 
+import { isAiControlled } from '../missions/playerOrder';
 import type { Galaxy } from '../galaxy';
 import { INTERMEDIATE_PROCESSING_SPAN_MS, MIN_TIME, PERIODIC_PROCESSING_SPAN_MS } from './simTime';
 import {
@@ -39,7 +40,7 @@ export function shipGroupDoTasks(galaxy: Galaxy, shipGroup: ShipGroup, time: num
     checkSendForAttack(galaxy, shipGroup);
     reviewCharacterLocationBonuses(galaxy, shipGroup);
     // 113-120
-    if (shipGroup.leadShip !== null && shipGroup.leadShip.isAutoControlled) {
+    if (shipGroup.leadShip !== null && isAiControlled(shipGroup.leadShip)) {
         let flag = false;
         if (shipGroup.empire !== null) {
             flag = checkAssignUnloadTroopsAtColonyNeedingThemMission(galaxy, shipGroup.empire, shipGroup);
