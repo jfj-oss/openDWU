@@ -97,7 +97,7 @@ import { canBuildDesign, findNewestCanBuild, findNewestPlanetDestroyer } from '.
 import { MINIMUM_DISTANCE_BETWEEN_BASES, analyzeNewResearchFacilities, habitatCompareTo, checkResearchStationAtLocation, checkResourceSupplyMeetsExpected, checkSystemOwnership, fastFindNearestSpacePort } from './stationPlacement';
 import { checkAlreadyHaveMiningStationAtHabitat, checkForeignBaseAtHabitat } from './missions/cmdConstruction';
 import { SystemVisibilityStatus, determineGalaxyLocationsInRangeAtPoint } from './visibility';
-import { canEmpireColonizeHabitat, canEmpireColonizeHabitatRange, checkRuinsHaveBenefit, habitatResourcesHaveSuperLuxury } from './exploration';
+import { canEmpireColonizeHabitat, canEmpireColonizeHabitatRange, checkRuinsHaveBenefit, habitatResourcesHaveSuperLuxury, ruinAwaitsPlayerDecision } from './exploration';
 import { RuinType } from './ruins';
 import { DiplomaticRelationType, obtainDiplomaticRelation } from './diplomacy';
 import { PirateRelationType, obtainPirateRelation } from './pirateRelations';
@@ -2761,7 +2761,8 @@ export function findNextSystemToScout(galaxy: Galaxy, empire: Empire, exploratio
             const sysHabitats = planetsOf(systemInfo); // Galaxy.6.cs 4027 systemInfo.Habitats: no star
             for (let i = 0; i < sysHabitats.length; i++) {
                 const habitat = sysHabitats[i];
-                if (habitat.ruin === null || empire.reclusive) continue;
+                // DEVIATION (exploration.ts ruinAwaitsPlayerDecision): not a ruin the player's ships already found.
+                if (habitat.ruin === null || empire.reclusive || ruinAwaitsPlayerDecision(galaxy, habitat.ruin, empire)) continue;
                 let flag = false;
                 if (habitat.ruin.type === RuinType.UnlockResearchProject) {
                     if (!empire.resourceMap.checkResourcesKnown(habitat)) flag = true;
@@ -2804,7 +2805,8 @@ export function findUnexploredRuinsOrLocations(galaxy: Galaxy, x: number, y: num
     if (!empire.reclusive) {
         for (let i = 0; i < galaxy.ruinsHabitats.length; i++) {
             const habitat2 = galaxy.ruinsHabitats[i];
-            if (habitat2 == null || habitat2.ruin === null) continue;
+            // DEVIATION (exploration.ts ruinAwaitsPlayerDecision): not a ruin the player's ships already found.
+            if (habitat2 == null || habitat2.ruin === null || ruinAwaitsPlayerDecision(galaxy, habitat2.ruin, empire)) continue;
             let flag = false;
             if (habitat2.ruin.type === RuinType.UnlockResearchProject) {
                 const id = habitat2.ruin.researchProjectId;
@@ -2849,7 +2851,8 @@ function findNearestUnexploredHabitatInSystemRanged(galaxy: Galaxy, x: number, y
             let flag = false;
             if (!empire.resourceMap.checkResourcesKnown(habitat)) {
                 flag = true;
-            } else if (!empire.reclusive && habitat.ruin !== null) {
+            } else if (!empire.reclusive && habitat.ruin !== null && !ruinAwaitsPlayerDecision(galaxy, habitat.ruin, empire)) {
+                // DEVIATION (exploration.ts ruinAwaitsPlayerDecision): the `&& !ruinAwaitsPlayerDecision` above.
                 if (habitat.ruin.type === RuinType.UnlockResearchProject) {
                     const id = habitat.ruin.researchProjectId;
                     const techTree = empire.research.techTree;
@@ -3066,7 +3069,8 @@ export function fastFindNearestUnexploredHabitat(galaxy: Galaxy, x: number, y: n
                     if (
                         habitat3 != null &&
                         ((empire.resourceMap != null && !empire.resourceMap.checkResourcesKnown(habitat3) && habitat3.ruin === null) ||
-                            (!empire.reclusive && habitat3.ruin !== null && ((habitat3.ruin.type === RuinType.UnlockResearchProject && !empire.resourceMap.checkResourcesKnown(habitat3)) || (habitat3.ruin.type !== RuinType.UnlockResearchProject && checkRuinsHaveBenefit(galaxy, habitat3.ruin, empire)))))
+                            // DEVIATION (exploration.ts ruinAwaitsPlayerDecision): `&& !ruinAwaitsPlayerDecision`.
+                            (!empire.reclusive && habitat3.ruin !== null && !ruinAwaitsPlayerDecision(galaxy, habitat3.ruin, empire) && ((habitat3.ruin.type === RuinType.UnlockResearchProject && !empire.resourceMap.checkResourcesKnown(habitat3)) || (habitat3.ruin.type !== RuinType.UnlockResearchProject && checkRuinsHaveBenefit(galaxy, habitat3.ruin, empire)))))
                     ) {
                         flag = true;
                         const habitat4 = habitat3;
@@ -3144,7 +3148,8 @@ export function fastFindNearestUnexploredHabitatInSector(galaxy: Galaxy, x: numb
             let flag = false;
             for (let k = 0; k < sysHabitats.length; k++) {
                 const h = sysHabitats[k];
-                if ((empire.resourceMap != null && !empire.resourceMap.checkResourcesKnown(h)) || checkRuinsHaveBenefit(galaxy, h.ruin, empire)) {
+                // DEVIATION (exploration.ts ruinAwaitsPlayerDecision): `&& !ruinAwaitsPlayerDecision`.
+                if ((empire.resourceMap != null && !empire.resourceMap.checkResourcesKnown(h)) || (checkRuinsHaveBenefit(galaxy, h.ruin, empire) && !ruinAwaitsPlayerDecision(galaxy, h.ruin!, empire))) {
                     flag = true;
                     const habitat2 = h;
                     const num6 = galaxy.calculateDistanceSquared(x, y, habitat2.xpos, habitat2.ypos);

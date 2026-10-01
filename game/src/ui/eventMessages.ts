@@ -18,6 +18,8 @@ import { galaxyStarDate } from '../sim/tick/simTime';
 import { resolveStarDateDescription } from '../sim/galaxyTime';
 import { MessageCategory, getMessageOptions } from './messageRouting';
 import { showEventMessagePopup } from './messagePopups';
+import { issuePlayerCommand } from '../sim/player/playerCommands';
+import { resolveGameText } from '../sim/textResolver';
 
 /**
  * The EmpireMessageType method_523 records an event as (Main.Part4.cs:509-1306), or null when it records nothing
@@ -146,6 +148,22 @@ export function installEventMessages(opts: EventMessagesOptions): void {
             m.title = e.title;
             m.supressPopup = true;
             sendEmpireMessage(m, player);
+        }
+        if (e.type === EventMessageType.EncounterRuins && popupsAllowed && e.additionalData instanceof Habitat) {
+            // Main.Part4.cs:531-554 → method_510 (64-84): the ruin's picture, Investigate Ruins / Leave the Ruins alone.
+            // Investigate is btnEventMessageInvestigate_Click 1831-1835 (Galaxy.InvestigateRuins), issued as a player command.
+            const habitat = e.additionalData;
+            const ruin = habitat.ruin;
+            showEventMessagePopup({
+                title: e.title,
+                text: e.message,
+                imageUrl: ruin !== null ? `/assets/dwu/images/environment/ruins/ruin_${ruin.pictureRef}.png` : null,
+                footer: resolveStarDateDescription(galaxyStarDate(galaxy)),
+                actions: [
+                    { label: resolveGameText('Investigate Ruins'), onClick: () => issuePlayerCommand(galaxy, player, 'investigateRuins', [habitat]) },
+                    { label: resolveGameText('Leave the Ruins alone'), onClick: () => {} },
+                ],
+            });
         }
         if (e.type === EventMessageType.WonderBuilt && popupsAllowed) {
             // 1272-1282: picture from the facility; num = 3 → flag6 (DiscoveryActionRuin, default 0 → shown; the TS

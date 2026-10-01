@@ -685,6 +685,8 @@ export interface EventPopup {
     footer: string;
     /** btnEventMessageGoto (Main.Part4.cs:216-229): shown when the event has a location. */
     onGoTo?: (() => void) | null;
+    /** btnEventMessageInvestigate / btnEventMessageAvoid (Main.Part4.cs:73-76 method_510): choice buttons; each closes the card. */
+    actions?: { label: string; onClick: () => void }[];
 }
 
 /**
@@ -720,6 +722,15 @@ export function showEventMessagePopup(p: EventPopup): boolean {
             onGoTo();
         });
         body.appendChild(go);
+    }
+    for (const action of p.actions ?? []) {
+        const btn = el('button', 'message-popup-goto', action.label) as HTMLButtonElement;
+        btn.type = 'button';
+        btn.addEventListener('click', () => {
+            popup.hidden = true;
+            action.onClick();
+        });
+        body.appendChild(btn);
     }
     footer.textContent = p.footer;
     popup.hidden = false;
