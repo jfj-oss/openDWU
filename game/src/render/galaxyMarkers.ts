@@ -55,6 +55,7 @@ import { BuiltObjectSubRole } from '../sim/builtObjectTypes';
 import { BuiltObjectRole } from '../sim/data/designSpecifications';
 import { HabitatCategoryType, HabitatType, type SystemInfo } from '../sim/types';
 import { SystemVisibilityStatus } from '../sim/visibility';
+import { fogOf } from './fog';
 import { isObjectVisibleToThisEmpire, isObjectVisibleToThisEmpireImprecise } from '../sim/independentTraders';
 import type { MapOverlayState } from '../ui/mapOverlays';
 import { getSettings, type UiSettings } from '../ui/settings';
@@ -1063,6 +1064,7 @@ export class GalaxyMarkerLayer {
         const shipPx = shipSymbolPx(f, false);
         const basePx = shipSymbolPx(f, true);
         const opts: GalaxyViewDisplay = getSettings();
+        const fog = fogOf(g);
         for (const bo of g.builtObjects) {
             if (bo === null || bo.hasBeenDestroyed) continue;
             const art = symbolArtFor(bo.role, bo.subRole);
@@ -1080,6 +1082,8 @@ export class GalaxyMarkerLayer {
                 if (builtObjectHiddenFromPick(bo, g.systems, g.pirateEmpires, this.war)) continue;
                 heightPx = (isBase ? basePx : shipPx) * symbolSizeMultiplier(bo.role, bo.subRole, true);
             } else {
+                // The marker belongs to the ship's draw block: an unseen ship (fog.ts, MainView.1.cs:884) gets none.
+                if (!fog.builtObject(bo)) continue;
                 // MainView.1.cs 1083-1088: beyond f = 20 the player's own private ships get no symbol.
                 if (f > 20 && !isBase && bo.owner === null && player !== null && bo.empire === player) continue;
                 const px = this.shipPxOf(bo);

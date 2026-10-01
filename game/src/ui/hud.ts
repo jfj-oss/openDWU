@@ -2043,7 +2043,7 @@ export function builtObjectStatusRows(bo: BuiltObject, player: Empire | null): {
 
     // Energy (BaconInfoPanel.cs:622-630) — only ships with a reactor store show it.
     if (known && bo.reactorStorageCapacity > 0) {
-        rows.push({ label: 'Energy', value: `${Math.trunc(bo.currentReactorStorage)} / ${Math.trunc(bo.reactorStorageCapacity)}` });
+        rows.push({ label: 'Energy', value: `${Math.max(0, Math.trunc(bo.currentEnergy))} / ${Math.trunc(bo.reactorStorageCapacity)}` });
     }
 
     // Shields (BaconInfoPanel.cs:631-635 DrawBarGraph "Shields"; current / capacity, " (reducing)" while ShieldsReducedLocation)
