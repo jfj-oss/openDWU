@@ -82,6 +82,7 @@ import { freightTooltipText } from '../ui/freightText'; // [freightOverlay]
 import { wreckTooltipText } from '../ui/scenario/wreckageUi'; // [wreckage]
 import type { FreightOverlay } from './freightOverlay'; // [freightOverlay]
 import { boundsOnScreen, DrawKey } from './drawCache';
+import { drawRangeRings, fleetRangeRadii } from './rangeRings';
 import { MotionInterpolator, createRenderTime, drawnBuiltObjectPos, habitatTouchClampSeconds, renderOrbitAngle, type RenderTime } from './renderInterp';
 import { isDrag, objectsInBox, resolveBoxSelection, screenBox, shiftClickSelection, type ScreenBox } from './boxSelect';
 import { isObjectVisibleToThisEmpire } from '../sim/independentTraders';
@@ -1118,6 +1119,8 @@ export class MainView {
     private selectionBox = new Graphics();
     /** Rings around each ship of a multi-selection (selectedBuiltObjects), redrawn every frame. */
     private multiSelectionRings = new Graphics();
+    /** Dashed yellow hyperjump range rings (45% / 100% of current fuel) for the selected ship / fleet. */
+    private rangeRingsG = new Graphics();
     private backdrop: Sprite;
     private grid = new Graphics();
     /** Screen-space deep starfield behind the world (deepStarfield.ts; port of the original's close-zoom stars). */
@@ -1232,6 +1235,7 @@ export class MainView {
         this.selectionRing.visible = false;
         this.fx.addChild(this.selectionRing);
         this.multiSelectionRings.visible = false;
+        this.fx.addChild(this.rangeRingsG);
         this.fx.addChild(this.multiSelectionRings);
         this.selectionBox.visible = false;
         this.fx.addChild(this.selectionBox);
@@ -1805,6 +1809,7 @@ export class MainView {
         }
 
         this.drawMultiSelectionRings(z, cam);
+        this.updateRangeRings(z, cam);
 
         // Screen-edge auto-scroll (original control scheme).
         let edgeDx = 0;
@@ -1862,6 +1867,36 @@ export class MainView {
             this.selectionRing.circle(x, y, r).stroke({ width: 1.5, color: 0x4fc3f7 });
         }
         this.selectionRing.visible = true;
+    }
+
+    /** Range rings for the selected ship / fleet / multi-selection (the minimum over its ships), centred on the
+     * lead's drawn position; hidden for bases / ships without a hyperdrive. */
+    private updateRangeRings(z: number, cam: Camera): void {
+        const g = this.rangeRingsG;
+        const hud = this.getHudSelection();
+        let ships: BuiltObject[] | null = null;
+        let lead: BuiltObject | null = null;
+        const grp = hud?.shipGroup;
+        if (grp !== undefined && grp.ships.length > 0) {
+            ships = grp.ships;
+            lead = grp.leadShip ?? grp.ships[0];
+        } else if (this.selectedBuiltObjects !== null && this.selectedBuiltObjects.length > 0) {
+            ships = this.selectedBuiltObjects;
+            lead = ships[0];
+        } else if (this.selectedBuiltObject !== null) {
+            ships = [this.selectedBuiltObject];
+            lead = this.selectedBuiltObject;
+        }
+        const radii = ships !== null ? fleetRangeRadii(ships) : null;
+        if (radii === null || lead === null || lead.hasBeenDestroyed) {
+            if (g.visible) g.clear();
+            g.visible = false;
+            return;
+        }
+        const d = drawnBuiltObjectPos(this.motion, lead);
+        const s = cam.worldToScreen(d.x, d.y);
+        drawRangeRings(g, s.x, s.y, { range45: radii.range45 * z, range100: radii.range100 * z }, cam.width, cam.height);
+        g.visible = true;
     }
 
     /** A ring around every live ship of the multi-selection, at its drawn position (ship size at system zoom, a small
