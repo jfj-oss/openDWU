@@ -45,7 +45,8 @@ import { closeAdvisorPanel } from './ui/advisorPanel';
 import { aiAdvisorSettingsWithUrl, startAiAdvisorDriver } from './ui/aiAdvisorDriver';
 import { closeCouncilLog, pushCouncilLog } from './ui/aiAdvisorLog';
 import { startLlmLayer } from './llm/llmLayer'; // [llm] 19s-1
-import { getSettings } from './ui/settings';
+import { getSettings, onSettingsChange } from './ui/settings';
+import { installOutputDither, setOutputDither } from './render/outputDither';
 // [aiadvisor] end
 import { closeMessageHistory } from './ui/screens/messageHistory';
 import { closeFleetsList } from './ui/screens/fleetsList'; // [15c]
@@ -397,6 +398,7 @@ export async function startGameView(
         antialias: true,
         preference: 'webgl',
     });
+    initOutputDither(app);
     document.body.appendChild(app.canvas);
 
     const camera = new Camera();
@@ -1346,6 +1348,7 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
         antialias: true,
         preference: 'webgl',
     });
+    initOutputDither(app);
     document.body.appendChild(app.canvas);
 
     // Deterministic galaxy (seed/shape/stars/sectors from the URL or wizard).
@@ -1514,3 +1517,13 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
 main().catch((err) => {
     console.error('DW:U boot failed', err);
 });
+/**
+ * Anti-banding output dither (render/outputDither.ts): on unless Settings → "Dither gradients" is off; `?dither=0|1`
+ * overrides it for A/B checks (scripts/perf-render.mjs, screenshots). Follows later settings changes live.
+ */
+function initOutputDither(app: Application): void {
+    const q = new URLSearchParams(window.location.search).get('dither');
+    const urlOverride = q === '0' ? false : q === '1' ? true : null;
+    installOutputDither(app.renderer, urlOverride ?? getSettings().ditherGradients);
+    onSettingsChange((st) => setOutputDither(urlOverride ?? st.ditherGradients));
+}

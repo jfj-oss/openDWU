@@ -5,6 +5,7 @@ import {
     MIN_COVERAGE,
     MIN_PATCH_OFFSET,
     NebulaPatchRaster,
+    tpdfDither,
     nebulaCoverage,
     nebulaTextureSize,
     patchTextureSize,
@@ -78,11 +79,11 @@ describe('system nebula fade and texture size', () => {
     });
 
     it('texture size follows DPR, capped', () => {
-        expect(nebulaTextureSize(1)).toBe(160);
-        expect(nebulaTextureSize(2)).toBe(320);
-        expect(nebulaTextureSize(3)).toBe(480);
+        expect(nebulaTextureSize(1)).toBe(224);
+        expect(nebulaTextureSize(2)).toBe(448);
+        expect(nebulaTextureSize(3)).toBe(512);
         expect(nebulaTextureSize(4)).toBe(512);
-        expect(nebulaTextureSize(Number.NaN)).toBe(160);
+        expect(nebulaTextureSize(Number.NaN)).toBe(224);
     });
 
     it('patch textures scale with the patch size, between base/2 and base', () => {
@@ -140,5 +141,45 @@ describe('system nebula raster', () => {
             expect(thin / n).toBeGreaterThan(0.05);
             expect(dense / n).toBeGreaterThan(0.01);
         }
+    });
+
+    it('stores valid premultiplied colour, dithered so slow gradients have no long flat runs', () => {
+        const big = 320;
+        const p = systemNebulaParams(1, 3).patches[0];
+        const r = new NebulaPatchRaster(p, big);
+        r.step(big);
+        let maxRun = 0;
+        for (let j = big * 0.3; j < big * 0.7; j += 8) {
+            let prev = -1;
+            let run = 0;
+            for (let i = 0; i < big; i++) {
+                const o = (j * big + i) * 4;
+                expect(r.data[o]).toBeLessThanOrEqual(r.data[o + 3]);
+                expect(r.data[o + 2]).toBeLessThanOrEqual(r.data[o + 3]);
+                const v = r.data[o];
+                if (v > 0 && v === prev) run++;
+                else run = 1;
+                prev = v;
+                maxRun = Math.max(maxRun, run);
+            }
+        }
+        // Undithered, this patch's centre row had flat runs of 40+ texels.
+        expect(maxRun).toBeLessThan(24);
+    });
+
+    it('TPDF dither is zero-mean, within ±1 step and triangular', () => {
+        let sum = 0;
+        let inner = 0;
+        const n = 200 * 200;
+        for (let y = 0; y < 200; y++) {
+            for (let x = 0; x < 200; x++) {
+                const v = tpdfDither(x, y, 12345);
+                expect(Math.abs(v)).toBeLessThanOrEqual(1);
+                sum += v;
+                if (Math.abs(v) < 0.5) inner++;
+            }
+        }
+        expect(Math.abs(sum / n)).toBeLessThan(0.01);
+        expect(inner / n).toBeCloseTo(0.75, 1); // triangular: 3/4 of the mass within ±0.5
     });
 });

@@ -155,11 +155,26 @@ export const PATCH_TEXTURE_EXTENT = 1.7;
 /** Warped radius (ellipse units) where the envelope reaches zero; EXTENT - ENV_OUTER > max warp shift (0.5 / √2). */
 const ENV_OUTER = 1.34;
 
-/** Patch texture size (px, square) for a device pixel ratio: 160 per DPR (the haze is soft; bilinear + mips hide the
- *  magnification), multiple of 32, capped at 512. */
+/** Patch texture size (px, square) for a device pixel ratio: 224 per DPR, multiple of 32, capped at 512. The haze is
+ *  soft, but at system zoom the largest patch still spans ~1200+ device px on a 4K screen, so 160 per DPR left it
+ *  magnified ~4x (soft-edged blocks); 224 keeps one patch at ~11 ms of idle-slice raster time at DPR 2. */
 export function nebulaTextureSize(dpr: number): number {
     const d = Math.max(1, Math.min(4, Number.isFinite(dpr) ? dpr : 1));
-    return Math.min(512, Math.max(128, Math.round((160 * d) / 32) * 32));
+    return Math.min(512, Math.max(128, Math.round((224 * d) / 32) * 32));
+}
+
+/**
+ * Deterministic triangular-PDF dither in (-1, 1) (units of one 8-bit step) for texel (x, y) and a seed: the sum of two
+ * uniform hashes minus 1. Render-only — a pure integer hash, never the sim RNG. Added to a value just before it is
+ * stored in an 8-bit channel, it turns the flat quantisation steps of a slow gradient into fine noise whose local mean
+ * is the exact value (no banding), and bilinear magnification averages it away.
+ */
+export function tpdfDither(x: number, y: number, seed: number): number {
+    let h = Math.imul(x, 0x27d4eb2d) ^ Math.imul(y, 0x165667b1) ^ seed;
+    h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d);
+    h = Math.imul(h ^ (h >>> 12), 0x297a2d39);
+    h ^= h >>> 15;
+    return ((h & 0xffff) + ((h >>> 16) & 0xffff)) / 65535 - 1;
 }
 
 /** A patch's texture size: `base` for the largest patches, scaled with the major axis (same texel density), >= base/2. */
@@ -218,7 +233,10 @@ function smooth01(e0: number, e1: number, v: number): number {
 }
 
 /**
- * Rasterises one patch (RGBA, straight alpha) row by row, so the work can be spread over idle slices.
+ * Rasterises one patch (RGBA, premultiplied alpha, TPDF-dithered before the 8-bit store) row by row, so the work can be
+ * spread over idle slices. Premultiplying here (instead of on GL upload) lets the dither act on the values the GPU
+ * actually samples: a premultiplied dark tone at a low alpha has only ~50 levels, which over a ~300-texel patch left
+ * flat runs of 40+ texels (bands, magnified ~4x on screen).
  * Texture space: [-EXTENT, EXTENT]² in ellipse units (the sprite stretches it to the ellipse's a × b and rotates it).
  */
 export class NebulaPatchRaster {
@@ -254,6 +272,8 @@ export class NebulaPatchRaster {
         // Farthest a pixel can be displaced by the warp (each component is within ±W/2).
         const reject = ENV_OUTER + W * Math.SQRT1_2;
         const end = Math.min(size, this.row + rows);
+        const seedC = p.noiseSeed | 0;
+        const seedA = (p.noiseSeed ^ 0x6a09e667) | 0;
         for (let j = this.row; j < end; j++) {
             const y = -E + (j + 0.5) * inv;
             let o = j * size * 4;
@@ -291,10 +311,16 @@ export class NebulaPatchRaster {
                 // Tone: two palette colours mixed by a slow noise, a little brighter in the dense cores.
                 const t = smooth01(0.38, 0.62, fbm(l, x * 0.9 + 47.3, y * 0.9 + 12.8, 2));
                 const lum = 0.75 + 0.35 * d;
-                data[o] = (c1.r + (c2.r - c1.r) * t) * lum;
-                data[o + 1] = (c1.g + (c2.g - c1.g) * t) * lum;
-                data[o + 2] = (c1.b + (c2.b - c1.b) * t) * lum;
-                data[o + 3] = alphaMax * d;
+                const a = alphaMax * d;
+                const k = (lum * a) / 255; // straight colour → premultiplied
+                // One dither value for the three colour channels (keeps the hue), an independent one for alpha; the
+                // clamped store rounds to nearest. Colour is kept <= alpha (valid premultiplied: no additive specks).
+                const nc = tpdfDither(i, j, seedC);
+                const aq = Math.min(255, Math.max(0, Math.round(a + tpdfDither(i, j, seedA))));
+                data[o] = Math.min(aq, (c1.r + (c2.r - c1.r) * t) * k + nc);
+                data[o + 1] = Math.min(aq, (c1.g + (c2.g - c1.g) * t) * k + nc);
+                data[o + 2] = Math.min(aq, (c1.b + (c2.b - c1.b) * t) * k + nc);
+                data[o + 3] = aq;
             }
         }
         this.row = end;
@@ -470,13 +496,13 @@ export class SystemNebulaLayer {
         const R = e.sys.radius;
         const E = PATCH_TEXTURE_EXTENT;
         for (const r of e.rasters) {
-            // Straight-alpha RGBA straight from the raster (no canvas copy); the GL upload premultiplies it.
+            // Premultiplied, dithered RGBA straight from the raster (no canvas copy, no premultiply on upload).
             const source = new BufferImageSource({
                 resource: r.data,
                 width: r.size,
                 height: r.size,
                 format: 'rgba8unorm',
-                alphaMode: 'premultiply-alpha-on-upload',
+                alphaMode: 'premultiplied-alpha',
             });
             const tex = new Texture({ source });
             useMinifyingFilter(tex); // linear + mipmaps: magnified at system zoom, minified while zooming out

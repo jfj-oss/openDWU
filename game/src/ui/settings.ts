@@ -66,6 +66,9 @@ export interface UiSettings {
     freightFlowsDefault: boolean;
     // [freightOverlay] end
 
+    /** Dither the map's output (render/outputDither.ts): removes banding in dark gradients on 8-bit canvases. */
+    ditherGradients: boolean;
+
     // [galaxymarkers] begin — GameOptions.GalaxyViewDisplay* (GameOptions.cs 74-96, "Galaxy View - Ship Display"):
     // which ship/base types the galaxy view shows beyond zoom factor 3500 (MainView.2.cs method_250).
     galaxyViewDisplayFleets: boolean;
@@ -142,6 +145,8 @@ export const DEFAULT_SETTINGS: UiSettings = {
     // [freightOverlay] begin
     freightFlowsDefault: false,
     // [freightOverlay] end
+
+    ditherGradients: true,
 
     // [galaxymarkers] begin — GameOptions.cs 74-96 / Main.Part9.cs 2793-2804: all on except civilian ships.
     galaxyViewDisplayFleets: true,
@@ -232,6 +237,7 @@ export function loadSettings(): UiSettings {
         // [freightOverlay] begin
         if (typeof parsed.freightFlowsDefault === 'boolean') out.freightFlowsDefault = parsed.freightFlowsDefault;
         // [freightOverlay] end
+        if (typeof parsed.ditherGradients === 'boolean') out.ditherGradients = parsed.ditherGradients;
         // [galaxymarkers] begin
         for (const k of GALAXY_VIEW_DISPLAY_KEYS) if (typeof parsed[k] === 'boolean') out[k] = parsed[k];
         // [galaxymarkers] end
