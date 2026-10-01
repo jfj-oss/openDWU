@@ -806,7 +806,7 @@ export function generatePirateEmpire(
                 num13 = galaxy.rnd.next(0, 3);
                 if (design2 !== null) {
                     design2.buildCount++;
-                    const name3 = galaxy.selectRandomUniqueMilitaryShipName();
+                    const name3 = galaxy.selectRandomUniqueMilitaryShipName(null, empire, design2.subRole);
                     addPirateStartingShip(galaxy, empire, design2, name3, habitat, true);
                 }
             }
@@ -815,7 +815,7 @@ export function generatePirateEmpire(
             if (design3 !== null) {
                 for (let l = 0; l < num8; l++) {
                     design3.buildCount++;
-                    const name4 = galaxy.selectRandomUniqueStandardShipName(habitat);
+                    const name4 = galaxy.selectRandomUniqueStandardShipName(habitat, empire, design3.subRole);
                     addPirateStartingShip(galaxy, empire, design3, name4, habitat, true);
                 }
             }
@@ -851,7 +851,7 @@ export function generatePirateEmpire(
             if (design7 !== null) {
                 for (let num15 = 0; num15 < num10; num15++) {
                     design7.buildCount++;
-                    const name8 = galaxy.selectRandomUniqueStandardShipName(habitat);
+                    const name8 = galaxy.selectRandomUniqueStandardShipName(habitat, empire, design7.subRole);
                     addPirateStartingShip(galaxy, empire, design7, name8, habitat, true);
                 }
             }
@@ -1517,7 +1517,7 @@ export function generateSuperPirateFaction(galaxy: Galaxy, ctx: PirateGeneration
         else if (r <= 22) design9 = design5;
         else design9 = design6;
         design9!.buildCount++;
-        const name4 = galaxy.selectRandomUniqueMilitaryShipName();
+        const name4 = galaxy.selectRandomUniqueMilitaryShipName(null, empire, design9!.subRole);
         addPirateStartingShip(galaxy, empire, design9!, name4, habitat, true);
     }
     return empire;

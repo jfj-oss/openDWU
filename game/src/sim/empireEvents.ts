@@ -488,7 +488,7 @@ function randomEventPirateControlledColonyGivesShip(galaxy: Galaxy, empire: Empi
                 character.addTrait(CharacterTraitType.Smuggler, true, galaxy);
                 break;
             case BuiltObjectRole.Military:
-                builtObject.name = galaxy.selectRandomUniqueMilitaryShipName();
+                builtObject.name = galaxy.selectRandomUniqueMilitaryShipName(null, empire, design.subRole);
                 empty = gameText('Bounty Hunter Joins Us');
                 empty2 = gameText('Pirate Event New Military Ship With Captain', character.name, builtObject.name, habitat.name);
                 character.addTrait(CharacterTraitType.BountyHunter, true, galaxy);
@@ -505,7 +505,7 @@ function randomEventPirateControlledColonyGivesShip(galaxy: Galaxy, empire: Empi
                 empty2 = gameText('Pirate Event New Freighter', builtObject.name, habitat.name);
                 break;
             case BuiltObjectRole.Military:
-                builtObject.name = galaxy.selectRandomUniqueMilitaryShipName();
+                builtObject.name = galaxy.selectRandomUniqueMilitaryShipName(null, empire, design.subRole);
                 empty = gameText('Military Ship Acquired');
                 empty2 = gameText('Pirate Event New Military Ship', habitat.name, builtObject.name);
                 break;

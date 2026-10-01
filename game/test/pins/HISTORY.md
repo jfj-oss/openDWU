@@ -153,3 +153,10 @@ Appended by `npm run repin -- --reason "<why>"` (scripts/repin.mjs).
 - `tickDeterminism.digest600` (test/tickDeterminism.test.ts): Moved "debd45f48e221a8e" → "7e33f79b0cd5b5a3": player explorers skip found-but-uninvestigated ruins (explorer stuck on planet)
 - `tickDeterminism.counts600` (test/tickDeterminism.test.ts): Moved #fb42ef63a8 → #30732dcefb: player explorers skip found-but-uninvestigated ruins (explorer stuck on planet)
 - `tickDeterminism.rndDraws600` (test/tickDeterminism.test.ts): Moved 658628 → 635176: player explorers skip found-but-uninvestigated ruins (explorer stuck on planet)
+
+## 2026-10-01 — per-empire/race ship naming styles (shipNameStyle.ts deviation): registry prefixes + race word lists; name strings only, Rnd draws unchanged
+
+- `builtObjectPlacement.playerCivilianNames` (test/builtObjectPlacement.test.ts): Moved #e05c0a51f3 → #682cb4ef8d: per-empire/race ship naming styles (shipNameStyle.ts deviation): registry prefixes + race word lists; name strings only, Rnd draws unchanged
+- `pirateBases.fleets` (test/pirateBases.test.ts): Moved #c1f9ba75c5 → #239bcef10c: per-empire/race ship naming styles (shipNameStyle.ts deviation): registry prefixes + race word lists; name strings only, Rnd draws unchanged
+- `stationPlacement.bases` (test/stationPlacement.test.ts): Moved #ff11de275c → #9027485779: per-empire/race ship naming styles (shipNameStyle.ts deviation): registry prefixes + race word lists; name strings only, Rnd draws unchanged
+- `superPirates.faction` (test/superPirates.test.ts): Moved #3d8cd96269 → #6a2ed05cf6: per-empire/race ship naming styles (shipNameStyle.ts deviation): registry prefixes + race word lists; name strings only, Rnd draws unchanged

@@ -1,12 +1,12 @@
 {
     "builtObjectPlacement": {
         "playerCivilianNames": [
-            ["ExplorationShip", "Honest Profit"],
-            ["ExplorationShip", "Tired Pearl"],
-            ["ExplorationShip", "Whim of Sol"],
-            ["ExplorationShip", "Illusion of Sol"],
-            ["ConstructionShip", "Obscure Nightstar"],
-            ["ConstructionShip", "Decrepit Guardian"]
+            ["ExplorationShip", "RSR Evening Compass"],
+            ["ExplorationShip", "RSR Golden Voyager"],
+            ["ExplorationShip", "RSR Endurance of Sol"],
+            ["ExplorationShip", "RSR Wanderer of Sol"],
+            ["ConstructionShip", "RSC Southern Tide"],
+            ["ConstructionShip", "RSC Gentle Voyager"]
         ]
     },
     "characters": {
@@ -336,36 +336,36 @@
     "pirateBases": {
         "fleets": [
             [
-                "SmallSpacePort:Bandits Sanctuary|Escort:Evasive Vengeance|Escort:Fearless Dragon|ConstructionShip:Shining Adventure",
-                "SmallFreighter:Noble Wager|GasMiningStation:S173 2 Gas Mining Station"
+                "SmallSpacePort:Bandits Sanctuary|Escort:Wicked Buccaneer|Escort:Grinning Plunder|ConstructionShip:Contraband Loot",
+                "SmallFreighter:Hidden Swindle|GasMiningStation:S173 2 Gas Mining Station"
             ],
             [
-                "SmallSpacePort:Gamblers Retreat|Escort:Final Skirmish|ExplorationShip:Graceful Impasse|ConstructionShip:Vanishing Merchant",
-                "SmallFreighter:S229 Relic|MiningShip:Risky Hope|GasMiningShip:S229 Spirit|GasMiningStation:TJ993 Gas Mining Station|GasMiningStation:S3 3 Gas Mining Station"
+                "SmallSpacePort:Gamblers Retreat|Escort:Rusty Skull|ExplorationShip:Smuggled Rascal|ConstructionShip:Stolen Smuggler",
+                "SmallFreighter:S229 Rogue|MiningShip:Wily Swindle|GasMiningShip:S229 Rumrunner|GasMiningStation:TJ993 Gas Mining Station|GasMiningStation:S3 3 Gas Mining Station"
             ],
             [
-                "SmallSpacePort:Gamblers Base|ExplorationShip:S162 Aspiration|ConstructionShip:Humble Empress",
-                "SmallFreighter:Arcane Nova|SmallFreighter:Blind Merchant|SmallFreighter:Cryptic Agent|SmallFreighter:Arcane Interlude|MiningShip:Beggar of S162|GasMiningShip:S162 Dream|GasMiningStation:EL850 Gas Mining Station|GasMiningStation:S162 5 Gas Mining Station|GasMiningStation:PG261 Gas Mining Station"
+                "SmallSpacePort:Gamblers Base|ExplorationShip:S162 Stash|ConstructionShip:Hidden Loot",
+                "SmallFreighter:Grimy Rumrunner|SmallFreighter:Hidden Smuggler|SmallFreighter:Contraband Booty|SmallFreighter:Grimy Stash|MiningShip:Bandit of S162|GasMiningShip:S162 Booty|GasMiningStation:EL850 Gas Mining Station|GasMiningStation:S162 5 Gas Mining Station|GasMiningStation:PG261 Gas Mining Station"
             ],
             [
-                "SmallSpacePort:Villainous Retreat|Escort:Iron Rampage|ExplorationShip:Radiant Starrider|ConstructionShip:Deep Dawn",
-                "SmallFreighter:S296 Rimrunner|SmallFreighter:Forbidden Gamble|MiningShip:Lively Disturbance|GasMiningShip:S296 Lurker|GasMiningStation:ZW152 Gas Mining Station|GasMiningStation:S270 3 Gas Mining Station"
+                "SmallSpacePort:Villainous Retreat|Escort:Crooked Kraken|ExplorationShip:Smuggled Smuggler|ConstructionShip:Shady Loot",
+                "SmallFreighter:S296 Rogue|SmallFreighter:Sneaky Booty|MiningShip:Sneaky Loot|GasMiningShip:S296 Rascal|GasMiningStation:ZW152 Gas Mining Station|GasMiningStation:S270 3 Gas Mining Station"
             ],
             [
-                "SmallSpacePort:Secret Station|ExplorationShip:Tarnished Challenge|ConstructionShip:Foolish Orbit",
-                "SmallFreighter:Placid Errand|SmallFreighter:Frugal Nightstar|SmallFreighter:S82 Venture|SmallFreighter:Wry Partisan|MiningShip:Vanishing Star|GasMiningShip:Enterprise of S82|GasMiningStation:QQ485 Gas Mining Station|GasMiningStation:S226 5 Gas Mining Station|GasMiningStation:S19 9 Gas Mining Station"
+                "SmallSpacePort:Secret Station|ExplorationShip:Wily Fence|ConstructionShip:Grimy Racket",
+                "SmallFreighter:Smuggled Smuggler|SmallFreighter:Slippery Rat|SmallFreighter:S82 Bandit|SmallFreighter:Slippery Scoundrel|MiningShip:Stolen Bandit|GasMiningShip:Scoundrel of S82|GasMiningStation:QQ485 Gas Mining Station|GasMiningStation:S226 5 Gas Mining Station|GasMiningStation:S19 9 Gas Mining Station"
             ],
             [
-                "SmallSpacePort:Smugglers Sanctuary|Escort:Bleak Fury|ExplorationShip:Stellar Hoard|ConstructionShip:S268 Journey",
-                "SmallFreighter:Lost Queen|SmallFreighter:Placid Peril|MiningShip:Cheerful Resolution|GasMiningShip:S268 Rimrunner|GasMiningStation:S268 4 Gas Mining Station|GasMiningStation:GU678 Gas Mining Station"
+                "SmallSpacePort:Smugglers Sanctuary|Escort:Drunken Jackal|ExplorationShip:Sneaky Swindle|ConstructionShip:S268 Rumrunner",
+                "SmallFreighter:Stolen Smuggler|SmallFreighter:Smuggled Swindle|MiningShip:Slippery Stash|GasMiningShip:S268 Rogue|GasMiningStation:S268 4 Gas Mining Station|GasMiningStation:GU678 Gas Mining Station"
             ],
             [
-                "SmallSpacePort:Villainous Retreat|ExplorationShip:Superb Negotiator|ConstructionShip:Arcane Lady",
-                "SmallFreighter:Daunting Navigator|SmallFreighter:Lavish Treasure|SmallFreighter:Celestial Expedition|SmallFreighter:Resolute Discovery|MiningShip:Express Discovery|GasMiningShip:Lawless Maneuver|GasMiningStation:TI535 Gas Mining Station|GasMiningStation:S50 3 Gas Mining Station|GasMiningStation:RQ18 Gas Mining Station"
+                "SmallSpacePort:Villainous Retreat|ExplorationShip:Grimy Rogue|ConstructionShip:Grimy Haul",
+                "SmallFreighter:Slippery Racket|SmallFreighter:Stolen Scoundrel|SmallFreighter:Wily Rascal|SmallFreighter:Crafty Bandit|MiningShip:Crafty Bandit|GasMiningShip:Contraband Haul|GasMiningStation:TI535 Gas Mining Station|GasMiningStation:S50 3 Gas Mining Station|GasMiningStation:RQ18 Gas Mining Station"
             ],
             [
-                "SmallSpacePort:S79 Outpost|ExplorationShip:Intrepid Spirit|ConstructionShip:S79 Enterprise",
-                "SmallFreighter:Surly Trailblazer|SmallFreighter:S79 Aspiration|SmallFreighter:Cautious Dawn|SmallFreighter:Distant Rover|MiningShip:Express Ruse|GasMiningShip:S79 Wanderer|GasMiningStation:S79 4 Gas Mining Station|MiningStation:Otoo Mining Station|MiningStation:Prair Mining Station"
+                "SmallSpacePort:S79 Outpost|ExplorationShip:Dubious Rumrunner|ConstructionShip:S79 Scoundrel",
+                "SmallFreighter:Dubious Booty|SmallFreighter:S79 Stash|SmallFreighter:Crafty Loot|SmallFreighter:Contraband Swindle|MiningShip:Crafty Rascal|GasMiningShip:S79 Rumrunner|GasMiningStation:S79 4 Gas Mining Station|MiningStation:Otoo Mining Station|MiningStation:Prair Mining Station"
             ]
         ]
     },
@@ -398,7 +398,7 @@
                 152,
                 "Royal Sol Commonwealth",
                 "WeaponsResearchStation",
-                "S185 Station",
+                "S185 Naval Laboratory",
                 "S185 3",
                 4709118,
                 2981082,
@@ -478,7 +478,7 @@
                 160,
                 "S78 Consortium",
                 "WeaponsResearchStation",
-                "S254 Research Facility",
+                "S254 Venture Lab",
                 "S254 3",
                 4459269,
                 12698973,
@@ -558,7 +558,7 @@
                 168,
                 "Great S105 Authority",
                 "EnergyResearchStation",
-                "S229 Research Facility",
+                "S229 Incubator",
                 "S229 1",
                 9143599,
                 14461774,
@@ -715,10 +715,10 @@
                 "DefensiveBase:Dhayu 7 Weapons Platform",
                 "DefensiveBase:Dhayu 7 Defense Battery",
                 "DefensiveBase:Dhayu 7 Defense Battery",
-                "CapitalShip:Fearsome Raider",
-                "Destroyer:Overpowering Spectre",
-                "Carrier:Bleak Turmoil",
-                "Cruiser:Lethal Raider"
+                "CapitalShip:Black Corsair",
+                "Destroyer:Mad Jackal",
+                "Carrier:Drunken Revenge",
+                "Cruiser:Black Corsair"
             ],
             26
         ]
