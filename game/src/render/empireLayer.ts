@@ -272,7 +272,11 @@ export class EmpireLayer {
                     }
                 }
             }
-            t.graphics.visible = t.hasDiscs;
+            // Fade the territory wash out while zooming in towards a system (factor 300 → 70): at near-system zoom
+            // a single disc fills the screen as a flat coloured haze.
+            const fade = Math.max(0, Math.min(1, (factor - 70) / (300 - 70)));
+            t.graphics.alpha = fade * fade * (3 - 2 * fade);
+            t.graphics.visible = t.hasDiscs && fade > 0;
         }
 
         // Colony rings: system/planet zoom only (hidden at galaxy/sector zoom
