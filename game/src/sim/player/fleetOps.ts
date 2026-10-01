@@ -20,7 +20,9 @@ import {
     shipGroupTotalDamage,
     shipGroupUpdate,
 } from '../fleets/shipGroupTasks';
-import { assignFleetRetrofit, findNearestShipYard } from '../construction/empireConstruction';
+import { assignFleetRetrofit, assignRetrofitMission, determineRetrofitAffordability, findNearestShipYard } from '../construction/empireConstruction';
+import { findNewestCanBuildFullEvaluate } from '../designGeneration';
+import type { Design } from '../design';
 import { fastFindNearestRefuellingPoint } from '../movement';
 import { determineFuelRequired } from '../logistics/refuel';
 import { formatText } from '../diplomacyTick';
@@ -216,4 +218,63 @@ export function retireSelectedShips(galaxy: Galaxy, empire: Empire, ships: reado
         }
     }
     return n;
+}
+
+export type RetrofitSkipReason = 'private ship' | 'already refitting' | 'under construction' | 'immobile' | 'no buildable design' | 'already latest design' | 'not owned' | 'cannot afford' | 'no ship yard available';
+export interface RetrofitPlanEntry {
+    ship: BuiltObject;
+    /** The newest buildable design of the ship's subrole, or null when the ship is skipped. */
+    design: Design | null;
+    cost: number;
+    skip: RetrofitSkipReason | null;
+}
+export interface RetrofitResult {
+    sent: number;
+    skipped: Partial<Record<RetrofitSkipReason, number>>;
+}
+
+/**
+ * Main.Part3.cs method_574/575 (btnBuiltObjectRetrofitSelected_Click) without a chosen design: per ship the newest
+ * design the empire can build for its subrole (Designs.FindNewestCanBuildFullEvaluate(SubRole, ParentHabitat)), skipping
+ * private ships and ships already retrofitting (method_579), ships under construction / immobile / already on that design
+ * (Empire.5.cs AssignRetrofitMission). Read-only; `cost` is the DetermineRetrofitAffordability estimate.
+ */
+export function planRetrofit(galaxy: Galaxy, empire: Empire, ships: readonly BuiltObject[]): RetrofitPlanEntry[] {
+    const seen = new Set<BuiltObject>();
+    const out: RetrofitPlanEntry[] = [];
+    for (const ship of ships) {
+        if (ship === null || seen.has(ship)) continue;
+        seen.add(ship);
+        const entry = (skip: RetrofitSkipReason | null, design: Design | null = null, cost = 0): void => {
+            out.push({ ship, design, cost, skip });
+        };
+        if (ship.empire !== empire) { entry('not owned'); continue; }
+        if (ship.owner === null && ship.role !== BuiltObjectRole.Base) { entry('private ship'); continue; }
+        if (ship.retrofitDesign !== null) { entry('already refitting'); continue; }
+        if (ship.builtAt !== null) { entry('under construction'); continue; }
+        if (ship.role !== BuiltObjectRole.Base && ship.topSpeed <= 0) { entry('immobile'); continue; }
+        const design = findNewestCanBuildFullEvaluate(empire.designs, ship.subRole, ship.parentHabitat);
+        if (design === null) { entry('no buildable design'); continue; }
+        if (ship.design === design) { entry('already latest design', design); continue; }
+        const aff = determineRetrofitAffordability(galaxy, empire, ship, design);
+        entry(aff.result ? null : 'cannot afford', design, aff.cost);
+    }
+    return out;
+}
+
+/** Retrofit each eligible ship (planRetrofit) to its newest design, forcing use of a yard like the original's Go button. */
+export function retrofitSelectedShips(galaxy: Galaxy, empire: Empire, ships: readonly BuiltObject[]): RetrofitResult {
+    const result: RetrofitResult = { sent: 0, skipped: {} };
+    const skip = (r: RetrofitSkipReason): void => {
+        result.skipped[r] = (result.skipped[r] ?? 0) + 1;
+    };
+    for (const e of planRetrofit(galaxy, empire, ships)) {
+        if (e.skip !== null) { skip(e.skip); continue; }
+        const snap = snapshotOrders([e.ship], []);
+        const ok = assignRetrofitMission(galaxy, empire, e.ship, e.design, null, true);
+        markNewOrders(snap); // a player order (playerOrder.ts)
+        if (ok) result.sent++;
+        else skip('no ship yard available');
+    }
+    return result;
 }

@@ -8,7 +8,8 @@
 // (Main.Part6.cs cmbBuiltObjectSetFleet_SelectedIndexChanged: New Fleet / join a fleet / leave) and Refuel / Repair /
 // Retire (Main.Part3.cs btnBuiltObject{Refuel,Repair,Retire}Selected_Click). Every command goes through the player
 // command queue (playerOps setShipsFleet / refuelShips / repairShips / retireShips).
-// TODO(port): the detail tabs, the galaxy mini map and Retrofit / Scrap selected (Main.Part3.cs
+// Refit selected / all to latest (btnBuiltObjectRetrofitSelected_Click, no design picked) issue retrofitShips.
+// TODO(port): the detail tabs, the galaxy mini map, the retrofit design picker dialog and Scrap selected (Main.Part3.cs
 // btnBuiltObjectRetrofitSelected_Click dialog, btnBuiltObjectScrapSelected_Click) — not in this window yet.
 
 import './shipsAndBasesList.css';
@@ -23,6 +24,8 @@ import { issuePlayerCommand } from '../../sim/player/playerCommands';
 import { subRoleLabel, missionTypeLabel } from '../hud';
 import { ListSelection } from '../listSelection';
 import { confirmAutomationOff } from '../orderMenu';
+import { planRetrofit, type RetrofitPlanEntry, type RetrofitResult } from '../../sim/player/fleetOps';
+import { showToast } from '../toast';
 
 /** Human label for a built-object role: 'None' for Undefined (GameText.txt
  * "Ship Role Base" -> Base, ... , Undefined -> "None"), otherwise the enum
@@ -221,6 +224,22 @@ export function shipsActionState(ships: readonly BuiltObject[]): ShipsActionStat
     };
 }
 
+/** Confirm text for a retrofit plan: how many ships go, the estimated total cost, and how many are skipped. */
+export function retrofitConfirmText(plan: readonly RetrofitPlanEntry[], scope: string): string {
+    const go = plan.filter((e) => e.skip === null);
+    const cost = go.reduce((n, e) => n + e.cost, 0);
+    return `Refit ${go.length} ${scope} to their latest designs for an estimated ${Math.round(cost).toLocaleString('en-US')} credits? ${plan.length - go.length} will be skipped.`;
+}
+
+/** Toast text for the outcome: "N ships sent to refit, M skipped (reasons)". */
+export function retrofitToastText(result: RetrofitResult): string {
+    const reasons = Object.entries(result.skipped);
+    const m = reasons.reduce((n, [, c]) => n + (c ?? 0), 0);
+    let t = `${result.sent} ship${result.sent === 1 ? '' : 's'} sent to refit`;
+    if (m > 0) t += `, ${m} skipped (${reasons.map(([r, c]) => `${c} ${r}`).join(', ')})`;
+    return t;
+}
+
 export interface ShipsAndBasesListOptions {
     /** The player's empire. */
     empire: Empire;
@@ -399,6 +418,22 @@ function createShipsAndBasesList(opts: ShipsAndBasesListOptions): OpenState {
     };
     const btnRefuel = button('Refuel', 'Send the highlighted ships to refuel', shipsCommand('refuelShips'));
     const btnRepair = button('Repair', 'Send the damaged highlighted ships to a ship yard', shipsCommand('repairShips'));
+    // Refit to the newest design (Main.Part3.cs btnBuiltObjectRetrofitSelected_Click without a chosen design). "All" is every
+    // state-owned ship/base in the current list filter (the rows shown), not the whole empire.
+    const refitCommand = (all: boolean) => (): void => {
+        const pool = all ? selectedShips(rows) : selectedShips(selectedRows());
+        const plan = planRetrofit(galaxy, empire, pool);
+        if (plan.length === 0) return;
+        const go = plan.filter((e) => e.skip === null).map((e) => e.ship);
+        const scope = all ? 'listed ships and bases' : 'selected ships and bases';
+        if (go.length > 0 && !window.confirm(retrofitConfirmText(plan, scope))) return;
+        issuePlayerCommand(galaxy, empire, 'retrofitShips', [pool], (res) => {
+            showToast(retrofitToastText(res));
+            refresh();
+        });
+    };
+    const btnRefitSel = button('Refit selected to latest', 'Retrofit the highlighted ships and bases to the newest design of their type', refitCommand(false));
+    const btnRefitAll = button('Refit all to latest', 'Retrofit every ship and base in the current list (filter) to the newest design of its type', refitCommand(true));
     const btnRetire = button('Retire', 'Send the highlighted ships to a ship yard to be retired', shipsCommand('retireShips'));
     win.appendChild(actions);
 
@@ -416,6 +451,8 @@ function createShipsAndBasesList(opts: ShipsAndBasesListOptions): OpenState {
         btnRefuel.disabled = !st.refuel;
         btnRepair.disabled = !st.repair;
         btnRetire.disabled = !st.retire;
+        btnRefitSel.disabled = sel.length === 0;
+        btnRefitAll.disabled = rows.length === 0;
         selCount.textContent = sel.length > 1 ? `${sel.length} selected` : '';
     }
 
