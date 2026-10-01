@@ -13,6 +13,8 @@
 // PNG. There is no empire tint: PrepareBuiltObjectImageNEW ignores its colour
 // arguments (only the civilian fade below applies).
 
+import type { PickCandidate } from './pickStack';
+import { BuiltObjectRole } from '../sim/data/designSpecifications';
 import { sampleBuiltObject, type MotionInterpolator } from './renderInterp';
 import { Container, Sprite } from 'pixi.js';
 import type { Texture } from 'pixi.js';
@@ -670,6 +672,17 @@ export class BuiltObjectLayer {
     /** Task 13d: drawn size in px of a built object from the last update (0 if unknown). */
     drawnSizePx(bo: BuiltObject): number {
         return this.drawnPx.get(bo) ?? 0;
+    }
+
+    /** Stacked-pick menu: every visible ship / base drawn at system zoom (f <= 100) with its drawn centre and size. */
+    pickCandidates(f: number): PickCandidate<BuiltObject>[] {
+        if (f > BUILT_OBJECT_PICK_SYSTEM_MAX_FACTOR) return [];
+        const motion = this.motion;
+        const posOf: DrawnPosFn = motion !== null ? (b) => motion.positionOf(b) : simPosOf;
+        return pickableBuiltObjects(this.galaxy).map((b) => {
+            const p = posOf(b);
+            return { item: b, kind: b.role === BuiltObjectRole.Base ? 'base' : 'ship', x: p.x, y: p.y, sizePx: this.drawnSizePx(b) };
+        });
     }
 
     // TODO(port): ShipGroup lead-ship pick at f > 100, and creature/fighter pick at f <= 100 — not ported

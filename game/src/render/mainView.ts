@@ -13,6 +13,9 @@
 // Galaxy.4.cs GenerateGasCloud.
 
 import { fogOf } from './fog';
+import { collectHitsUnderPoint, needsPickMenu, PICK_MENU_MAX_ROWS, type PickCandidate, type PickHit } from './pickStack';
+import { openPickMenu, closePickMenu, type PickMenuEntry } from '../ui/pickMenu';
+import { BuiltObjectRole } from '../sim/data/designSpecifications';
 import { SystemVisibilityStatus } from '../sim/visibility';
 import { playGridClick } from '../audio/gameAudio'; // [audio]
 import { Application, Container, Graphics, Sprite, Text, Texture } from 'pixi.js';
@@ -73,7 +76,7 @@ import { installRimAtmosphereData } from './rimAtmosphereWiring';
 // [combatfx] begin
 import { updateCombatEffects } from './effectsLayer';
 // [combatfx] end
-import type { BuiltObject } from '../sim/builtObject';
+import { BuiltObject } from '../sim/builtObject';
 import type { Creature } from '../sim/creature';
 import { createMapOverlayState, type MapOverlayState } from '../ui/mapOverlays';
 import { showRegionLabels, showSystemNames } from '../ui/settings';
@@ -82,6 +85,7 @@ import { freightTooltipText } from '../ui/freightText'; // [freightOverlay]
 import { wreckTooltipText } from '../ui/scenario/wreckageUi'; // [wreckage]
 import type { FreightOverlay } from './freightOverlay'; // [freightOverlay]
 import { boundsOnScreen, DrawKey } from './drawCache';
+import { drawRangeRings, fleetRangeRadii } from './rangeRings';
 import { MotionInterpolator, createRenderTime, drawnBuiltObjectPos, habitatTouchClampSeconds, renderOrbitAngle, type RenderTime } from './renderInterp';
 import { isDrag, objectsInBox, resolveBoxSelection, screenBox, shiftClickSelection, type ScreenBox } from './boxSelect';
 import { isObjectVisibleToThisEmpire } from '../sim/independentTraders';
@@ -1118,6 +1122,8 @@ export class MainView {
     private selectionBox = new Graphics();
     /** Rings around each ship of a multi-selection (selectedBuiltObjects), redrawn every frame. */
     private multiSelectionRings = new Graphics();
+    /** Dashed yellow hyperjump range rings (45% / 100% of current fuel) for the selected ship / fleet. */
+    private rangeRingsG = new Graphics();
     private backdrop: Sprite;
     private grid = new Graphics();
     /** Screen-space deep starfield behind the world (deepStarfield.ts; port of the original's close-zoom stars). */
@@ -1232,6 +1238,7 @@ export class MainView {
         this.selectionRing.visible = false;
         this.fx.addChild(this.selectionRing);
         this.multiSelectionRings.visible = false;
+        this.fx.addChild(this.rangeRingsG);
         this.fx.addChild(this.multiSelectionRings);
         this.selectionBox.visible = false;
         this.fx.addChild(this.selectionBox);
@@ -1328,6 +1335,81 @@ export class MainView {
         return this.creatureLayer.pick(w.x, w.y, 1 / this.camera.zoom);
     }
 
+    /** Set while a right click chosen from the stacked-object popup is replayed: pickOrderTarget returns it. */
+    private pickOverride: unknown = undefined;
+
+    /**
+     * Stacked-object popup: every pickable ship / base / creature / planet / moon / star whose drawn art covers the
+     * screen point (system zoom and closer; galaxy-zoom symbols keep the single pick). Fog / visibility are those of
+     * the single pickers. Smallest drawn object first.
+     */
+    pickAllAt(screenX: number, screenY: number): PickHit<Creature | BuiltObject | Habitat>[] {
+        const z = this.camera.zoom;
+        const f = 1 / z;
+        if (f > 100) return [];
+        const w = this.camera.screenToWorld(screenX, screenY);
+        const cands: PickCandidate<Creature | BuiltObject | Habitat>[] = [
+            ...this.creatureLayer.pickCandidates(w.x, w.y, f),
+            ...this.builtObjectLayer.pickCandidates(f),
+        ];
+        const fog = fogOf(this.galaxy);
+        const add = (h: Habitat, kind: PickCandidate<Habitat>['kind']): void => {
+            const p = this.motion.positionOf(h);
+            cands.push({ item: h, kind, x: p.x, y: p.y, sizePx: this.drawnSize(h, z) });
+        };
+        for (const sv of this.systems) {
+            const star = sv.system.systemStar;
+            if (!fog.habitatInfo(star)) continue;
+            add(star, 'star');
+            for (const p of sv.planets) {
+                add(p.habitat, 'planet');
+                for (const moon of p.moons) add(moon.habitat, 'moon');
+            }
+        }
+        return collectHitsUnderPoint(cands, w.x, w.y, z, 6, PICK_MENU_MAX_ROWS * 4);
+    }
+
+    /** Popup rows for a stack of hits: icon, name, owner; `choose` runs with the picked object. */
+    private pickMenuEntries(hits: readonly PickHit<Creature | BuiltObject | Habitat>[], choose: (item: Creature | BuiltObject | Habitat) => void): PickMenuEntry[] {
+        const icons = { creature: '!', ship: '>', base: '#', moon: 'o', planet: 'O', star: '*', other: '?' } as const;
+        return hits.map((h) => {
+            const it = h.item;
+            const owner = it instanceof BuiltObject || it instanceof Habitat ? (it.empire?.name ?? '') : '';
+            const role = it instanceof BuiltObject ? BuiltObjectRole[it.role] : undefined;
+            const name = it.name !== '' ? it.name : (role ?? h.kind);
+            return { icon: icons[h.kind], name, owner, onPick: () => choose(it) };
+        });
+    }
+
+    /** Open the stacked-object popup when 2+ objects lie under the point; false (nothing opened) otherwise. */
+    private tryPickMenu(sx: number, sy: number, clientX: number, clientY: number, choose: (item: Creature | BuiltObject | Habitat) => void): boolean {
+        const hits = this.pickAllAt(sx, sy);
+        if (!needsPickMenu(hits)) return false;
+        openPickMenu(this.pickMenuEntries(hits.slice(0, PICK_MENU_MAX_ROWS * 4), choose), clientX, clientY);
+        return true;
+    }
+
+    /** Select a specific object picked from the popup (same effects as a left click on it). */
+    private selectPicked(item: Creature | BuiltObject | Habitat): void {
+        playGridClick(); // [audio]
+        if (item instanceof BuiltObject) {
+            this.selectedCreature = null;
+            this.selectedHabitat = null;
+            this.selectedBuiltObject = item;
+            this.onBuiltObjectSelect?.(item);
+        } else if (item instanceof Habitat) {
+            this.selectedCreature = null;
+            this.selectedBuiltObject = null;
+            this.selectedHabitat = item;
+            this.onSelectionChange?.(item);
+        } else {
+            this.selectedHabitat = null;
+            this.selectedBuiltObject = null;
+            this.selectedCreature = item;
+            this.onCreatureSelect?.(item);
+        }
+    }
+
     // [ordermenu] begin
     /** 17c: double_0, the zoom as galaxy units per screen pixel (> 100: sector / galaxy level). */
     get zoomFactor(): number {
@@ -1342,6 +1424,7 @@ export class MainView {
      * strategic radius) and creature picking; this reuses the 13d / 08g pickers.
      */
     pickOrderTarget(sx: number, sy: number): unknown {
+        if (this.pickOverride !== undefined) return this.pickOverride; // chosen from the stacked-object popup
         const f = this.zoomFactor;
         // Main.Part11.cs 1501-1554: at f <= 100 a creature under the point is returned before any ship (Main.Part8.cs
         // 2751 / 3082 / 3289 then offer "Attack X" on it).
@@ -1805,6 +1888,7 @@ export class MainView {
         }
 
         this.drawMultiSelectionRings(z, cam);
+        this.updateRangeRings(z, cam);
 
         // Screen-edge auto-scroll (original control scheme).
         let edgeDx = 0;
@@ -1862,6 +1946,36 @@ export class MainView {
             this.selectionRing.circle(x, y, r).stroke({ width: 1.5, color: 0x4fc3f7 });
         }
         this.selectionRing.visible = true;
+    }
+
+    /** Range rings for the selected ship / fleet / multi-selection (the minimum over its ships), centred on the
+     * lead's drawn position; hidden for bases / ships without a hyperdrive. */
+    private updateRangeRings(z: number, cam: Camera): void {
+        const g = this.rangeRingsG;
+        const hud = this.getHudSelection();
+        let ships: BuiltObject[] | null = null;
+        let lead: BuiltObject | null = null;
+        const grp = hud?.shipGroup;
+        if (grp !== undefined && grp.ships.length > 0) {
+            ships = grp.ships;
+            lead = grp.leadShip ?? grp.ships[0];
+        } else if (this.selectedBuiltObjects !== null && this.selectedBuiltObjects.length > 0) {
+            ships = this.selectedBuiltObjects;
+            lead = ships[0];
+        } else if (this.selectedBuiltObject !== null) {
+            ships = [this.selectedBuiltObject];
+            lead = this.selectedBuiltObject;
+        }
+        const radii = ships !== null ? fleetRangeRadii(ships) : null;
+        if (radii === null || lead === null || lead.hasBeenDestroyed) {
+            if (g.visible) g.clear();
+            g.visible = false;
+            return;
+        }
+        const d = drawnBuiltObjectPos(this.motion, lead);
+        const s = cam.worldToScreen(d.x, d.y);
+        drawRangeRings(g, s.x, s.y, { range45: radii.range45 * z, range100: radii.range100 * z }, cam.width, cam.height);
+        g.visible = true;
     }
 
     /** A ring around every live ship of the multi-selection, at its drawn position (ship size at system zoom, a small
@@ -2153,7 +2267,19 @@ export class MainView {
                 const y = e.clientY - rect.top;
                 // [ordermenu] begin: a right click without drag goes to the order layer (17c) when installed.
                 if (this.onRightClick !== undefined) {
-                    if (Math.hypot(x - rightDownX, y - rightDownY) < 4) this.onRightClick(x, y, e);
+                    if (Math.hypot(x - rightDownX, y - rightDownY) < 4) {
+                        const handler = this.onRightClick;
+                        // Stacked objects under the cursor: choose the order target from a popup, then replay the click on it.
+                        const opened = this.tryPickMenu(x, y, e.clientX, e.clientY, (item) => {
+                            this.pickOverride = item;
+                            try {
+                                handler(x, y, e);
+                            } finally {
+                                this.pickOverride = undefined;
+                            }
+                        });
+                        if (!opened) handler(x, y, e);
+                    }
                     return;
                 }
                 // [ordermenu] end
@@ -2190,6 +2316,7 @@ export class MainView {
                     }
                     return;
                 }
+                if (this.tryPickMenu(x, y, e.clientX, e.clientY, (item) => this.selectPicked(item))) return;
                 this.clickSelect(x, y);
             }
         });
@@ -2220,6 +2347,7 @@ export class MainView {
 
     /** Task 12k: drop the hover tooltip when this view is torn down. */
     dispose(): void {
+        closePickMenu();
         if (this.tooltipTimer !== undefined) {
             clearTimeout(this.tooltipTimer);
             this.tooltipTimer = undefined;

@@ -40,6 +40,7 @@
 // TODO(port): Creature.PromptSystemCheck = true for slow creatures outside the viewed system (MainView.1.cs 1605) and
 //   DoTasks for restricted-area creatures (MainView.1.cs 1581) — sim writes from the C# renderer.
 
+import type { PickCandidate } from './pickStack';
 import { sampleCreature, type MotionInterpolator } from './renderInterp';
 import { Container, Texture } from 'pixi.js';
 import type { Camera } from './camera';
@@ -762,6 +763,19 @@ export class CreatureLayer {
     /** Drawn size in px of a creature at the last update (0 when not drawn). */
     drawnSizePx(c: Creature): number {
         return this.drawnPx.get(c) ?? 0;
+    }
+
+    /** Stacked-pick menu: the visible creatures near the world point with drawn centre and size (px). */
+    pickCandidates(wx: number, wy: number, f: number): PickCandidate<Creature>[] {
+        if (f > CREATURE_PICK_MAX_FACTOR) return [];
+        const star = this.galaxy.findNearestSystemGasCloudAsteroid(wx, wy);
+        const out: PickCandidate<Creature>[] = [];
+        for (const c of creaturesNear(this.galaxy, star, wx, wy)) {
+            if (c === null || c.hasBeenDestroyed || this.contentPixelsOf(c) === null || !this.visibleToPlayer(c)) continue;
+            const p = this.motion !== null ? this.motion.positionOf(c) : { x: c.xpos, y: c.ypos };
+            out.push({ item: c, kind: 'creature', x: p.x, y: p.y, sizePx: this.drawnSizePx(c) });
+        }
+        return out;
     }
 
     /** Main.Part11.cs method_145 (f <= 100): the creature under the world point, or null. */
