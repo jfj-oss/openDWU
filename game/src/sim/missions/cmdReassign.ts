@@ -5,6 +5,7 @@
 // `galaxy.rnd` in C# order (two NextDouble per black-hole target). The pirate branch calls the M4s2 stub
 // pirateAssignShipMission (RND: the draws inside PirateAssignShipMission are not made until M4s2).
 
+import { isAiControlled } from './playerOrder';
 import type { CommandHandler } from './executeCommands';
 import { BuiltObjectMissionType, Command, CommandAction, builtObjectMission } from './mission';
 import { assignMission, assignQueuedMission, clearPreviousMissionRequirements, revertToPreviousMission } from './assign';
@@ -104,7 +105,7 @@ export const cmdReassignMission: CommandHandler = (ctx) => {
                     reassignFromEmpire(galaxy, bo, starDate);
                 }
             }
-        } else if (mission !== null && mission.type === BuiltObjectMissionType.Escort && !bo.isAutoControlled) {
+        } else if (mission !== null && mission.type === BuiltObjectMissionType.Escort && !isAiControlled(bo)) {
             if (bo.subsequentMissions != null && bo.subsequentMissions.length > 0) {
                 clearPreviousMissionRequirements(galaxy, bo);
                 bo.firstExecutionOfCommand = true;
@@ -122,7 +123,7 @@ export const cmdReassignMission: CommandHandler = (ctx) => {
                 }
                 assignMission(galaxy, bo, mission.type, mission.target, mission.secondaryTarget, mission.priority);
             }
-        } else if (mission !== null && mission.type === BuiltObjectMissionType.Patrol && !bo.isAutoControlled) {
+        } else if (mission !== null && mission.type === BuiltObjectMissionType.Patrol && !isAiControlled(bo)) {
             if (bo.subsequentMissions != null && bo.subsequentMissions.length > 0) {
                 clearPreviousMissionRequirements(galaxy, bo);
                 bo.firstExecutionOfCommand = true;

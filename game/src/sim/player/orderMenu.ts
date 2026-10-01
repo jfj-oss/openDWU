@@ -23,6 +23,7 @@
 // designs (Galaxy.SelectRelativePoint) and method_593's build buttons (SelectRelativeHabitatSurfacePoint,
 // SelectRelativeParkingPoint). Only ever called from player input, never on the tick path.
 
+import { markNewOrders, snapshotOrders } from '../missions/playerOrder';
 import { availableThreatActions } from '../scenario/threats/framework';
 import type { Galaxy } from '../galaxy';
 import { galaxyNow, spanSeconds } from '../tick/simTime';
@@ -4035,11 +4036,19 @@ export function rightClickOrder(galaxy: Galaxy, empire: Empire, selected: ShipAc
     if (keys.ctrl) return { kind: 'none' };
     const { ship: builtObject5, fleet: shipGroup2 } = orderSubject(empire, selected);
     const shipAction0 = order;
+    // Not in the C#: the order no longer clears IsAutoControlled; the missions it creates are marked as player orders
+    // instead, so an automated ship / fleet carries the order out and then goes back to automation (playerOrder.ts).
     if (builtObject5 !== null && shipAction0 !== null) {
-        return shipRightClick(galaxy, builtObject5, shipAction0);
+        const snap = snapshotOrders([builtObject5]);
+        const result = shipRightClick(galaxy, builtObject5, shipAction0);
+        markNewOrders(snap);
+        return result;
     }
     if (shipGroup2 !== null && shipAction0 !== null) {
-        return fleetRightClick(galaxy, shipGroup2, shipAction0, keys.alt);
+        const snap = snapshotOrders([], [shipGroup2]);
+        const result = fleetRightClick(galaxy, shipGroup2, shipAction0, keys.alt);
+        markNewOrders(snap);
+        return result;
     }
     if (selected === null) {
         const list: BuiltObject[] = [];
@@ -4105,13 +4114,11 @@ function shipRightClick(galaxy: Galaxy, builtObject5: BuiltObject, shipAction0: 
     if (shipAction0.missionType === BuiltObjectMissionType.LoadTroops && isHabitat(shipAction0.target)) {
         clearPreviousMissionRequirements(galaxy, builtObject5, true);
         assignLoadTroopsMission(galaxy, empire, builtObject5, shipAction0.target, false, true, true);
-        builtObject5.isAutoControlled = false;
         return { kind: 'order', executed: true, attackClick: false };
     }
     if (shipAction0.missionType === BuiltObjectMissionType.UnloadTroops && isHabitat(shipAction0.target) && builtObject5.troops !== null) {
         clearPreviousMissionRequirements(galaxy, builtObject5, true);
         assignMission(galaxy, builtObject5, BuiltObjectMissionType.UnloadTroops, shipAction0.target, null, BuiltObjectMissionPriority.Normal, { troops: builtObject5.troops, manuallyAssigned: true });
-        builtObject5.isAutoControlled = false;
         return { kind: 'order', executed: true, attackClick: false };
     }
     clearPreviousMissionRequirements(galaxy, builtObject5, true);
@@ -4123,7 +4130,6 @@ function shipRightClick(galaxy: Galaxy, builtObject5: BuiltObject, shipAction0: 
                 y: builtObject8.ypos,
                 manuallyAssigned: true,
             });
-            builtObject5.isAutoControlled = false;
         }
         return { kind: 'order', executed: true, attackClick: false };
     }
@@ -4144,7 +4150,6 @@ function shipRightClick(galaxy: Galaxy, builtObject5: BuiltObject, shipAction0: 
         }
         if (shipAction0.missionType === BuiltObjectMissionType.Attack || shipAction0.missionType === BuiltObjectMissionType.Bombard) attackClick = true; // method_0(ResolveAttackClick()): a sound
     }
-    builtObject5.isAutoControlled = false;
     return { kind: 'order', executed: true, attackClick };
 }
 
@@ -4152,14 +4157,10 @@ function shipRightClick(galaxy: Galaxy, builtObject5: BuiltObject, shipAction0: 
 function fleetRightClick(galaxy: Galaxy, shipGroup2: ShipGroup, shipAction0: ShipAction, alt: boolean): RightClickResult {
     const empire = shipGroup2.empire!;
     const refused: RightClickResult = { kind: 'order', executed: false, attackClick: false };
-    /** method_348(fleet, false): every ship's IsAutoControlled = false. */
-    const unautomate = (): void => {
-        for (const ship of shipGroup2.ships) ship.isAutoControlled = false;
-    };
+    // The C#'s method_348(fleet, false) (every ship's IsAutoControlled = false) is dropped: see rightClickOrder.
     if (shipAction0.missionType === BuiltObjectMissionType.Blockade && shipAction0.target !== null) {
-        if (!blockadeCheck(galaxy, empire, shipAction0.target, unautomate)) return refused;
+        if (!blockadeCheck(galaxy, empire, shipAction0.target, () => undefined)) return refused;
     }
-    unautomate();
     if (shipAction0.missionType === BuiltObjectMissionType.LoadTroops) {
         if (shipAction0.target !== null && shipAction0.target !== undefined) {
             if (isHabitat(shipAction0.target)) assignFleetLoadTroops(galaxy, empire, shipGroup2, shipAction0.target, true);

@@ -2,6 +2,7 @@
 // order. Intervals are TimeSpan `>=` tests; the touch for a block is written AFTER that block (3768/3796/3812).
 // The first call back-dates the touches so every block fires (3618-3633).
 
+import { isAiControlled } from '../missions/playerOrder';
 import type { Galaxy } from '../galaxy';
 import type { BuiltObject } from '../builtObject';
 import {
@@ -214,7 +215,7 @@ export function builtObjectDoTasks(galaxy: Galaxy, builtObject: BuiltObject, tim
         if (!bo.canHyperJump && bo.warpSpeed > 0 && !detectHyperDeny(galaxy, bo)) {
             bo.canHyperJump = true;
         }
-        if (bo.isAutoControlled) {
+        if (isAiControlled(bo)) {
             checkForRandomAttackTargets(galaxy, bo);
         }
         doRepairs(galaxy, bo, timePassed);
@@ -237,7 +238,7 @@ export function builtObjectDoTasks(galaxy: Galaxy, builtObject: BuiltObject, tim
             industrialProcessing(galaxy, bo, timePassed2, time);
             reviewRetrofitConstructionQueue(galaxy, bo, time, starDate);
             checkForRefuelling(galaxy, bo, true);
-            if (bo.isAutoControlled) {
+            if (isAiControlled(bo)) {
                 checkForRepairs(galaxy, bo);
             }
             checkForFuelOrdering(galaxy, bo);

@@ -15,6 +15,7 @@
 //
 // Text: TextResolver.GetText(key) returns the key (M9 localises); string.Format substitutes {n} placeholders.
 
+import { isAiControlled } from './missions/playerOrder';
 import { checkTriggerEvent, getMatchingGameEventIdDiplomaticRelationChange } from './story/eventActions';
 import { EventTriggerType } from './story/gameEventModel';
 import { RaceEventType } from './eventTypes';
@@ -1836,7 +1837,7 @@ function countAvailableScoutShips(self: Empire): { available: number; total: num
             const priority = mission !== null ? (mission.priority as number as BuiltObjectMissionPriority) : BuiltObjectMissionPriority.Undefined;
             if (
                 builtObject.builtAt == null &&
-                builtObject.isAutoControlled &&
+                isAiControlled(builtObject) &&
                 (mission === null || mission.type === BuiltObjectMissionType.Undefined || priority === BuiltObjectMissionPriority.Undefined || priority === BuiltObjectMissionPriority.Low || priority === BuiltObjectMissionPriority.Normal)
             ) {
                 num++;

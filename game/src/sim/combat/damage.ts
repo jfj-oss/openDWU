@@ -17,6 +17,7 @@
 // Clock-seeded `new Random()` (BaconBuiltObject.cs 5183) → galaxy.baconCombatClockRnd, seeded from the galaxy seed
 // (plan §0). Galaxy.ReseedRandom() inside InflictDamage (BuiltObject.2.cs 6663) is NOT performed (plan §0).
 
+import { isAiControlled } from '../missions/playerOrder';
 import { checkTriggerEvent } from '../story/eventActions';
 import { EventTriggerType } from '../story/gameEventModel';
 import type { Galaxy } from '../galaxy';
@@ -1814,7 +1815,7 @@ export function determineScrapDamagedShip(galaxy: Galaxy, builtObject: BuiltObje
     const playerEmpire = galaxy.playerEmpire;
     if (
         builtObject.role !== BuiltObjectRole.Base &&
-        builtObject.isAutoControlled &&
+        isAiControlled(builtObject) &&
         builtObject.damageRepair <= 0 &&
         builtObject.warpSpeed <= 0 &&
         (builtObject.characters === null || builtObject.characters.length <= 0) &&

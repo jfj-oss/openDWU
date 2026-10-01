@@ -9,6 +9,7 @@
 // Rnd: none on Galaxy.Rnd. With allowAsteroidColonies on (BaconSettings.txt), the Bacon asteroid-colony check draws its
 // clock-seeded `new Random().NextDouble()` on galaxy.baconHabitatClockRnd (colonyTick.ts baconClockRnd, plan §0).
 
+import { isAiControlled } from './playerOrder';
 import type { BuiltObject } from '../builtObject';
 import type { Galaxy } from '../galaxy';
 import { BuiltObjectSubRole } from '../builtObjectTypes';
@@ -92,7 +93,7 @@ function commandActionExtractResources(galaxy: Galaxy, ship: BuiltObject): void 
     checkIfShouldBuildAsteroidColony(galaxy, shipMission);
     let flag = false;
     if (ship.baconValues !== null) {
-        if (ship.baconValues.has('cash') && !ship.isAutoControlled) flag = true;
+        if (ship.baconValues.has('cash') && !isAiControlled(ship)) flag = true;
         if (ship.baconValues.has('ShipNote') && (ship.baconValues.get('ShipNote') as string).startsWith('nodump')) flag = true;
     }
     if (flag) {
