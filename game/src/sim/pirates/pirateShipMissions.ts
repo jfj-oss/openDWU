@@ -7,6 +7,7 @@
 //
 // Free functions, C# `this` first (plan §3.1). Every Galaxy.Rnd draw is on galaxy.rnd in C# order.
 
+import { isAiControlled } from '../missions/playerOrder';
 import { calculateDefendingStrength, fastFindNearestFuelHabitatAlternate } from '../fleets/militaryAI';
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
@@ -351,7 +352,7 @@ function assignMoveAndWait(galaxy: Galaxy, ship: BuiltObject, target: Habitat, s
 /** Empire.1.cs 4424 PirateAssignShipMission(ship, starDate). Rnd: see the per-sub-role blocks. */
 export function pirateAssignShipMissionCore(galaxy: Galaxy, empire: Empire, ship: BuiltObject | null, starDate: number): void {
     void starDate;
-    if (ship === null || ship.hasBeenDestroyed || ship.role === BuiltObjectRole.Base || ship.topSpeed <= 0 || ship.builtAt !== null || !ship.isAutoControlled) return;
+    if (ship === null || ship.hasBeenDestroyed || ship.role === BuiltObjectRole.Base || ship.topSpeed <= 0 || ship.builtAt !== null || !isAiControlled(ship)) return;
     {
         const m = missionOf(ship);
         if (m !== null && m.type !== BuiltObjectMissionType.Undefined) return;

@@ -24,6 +24,7 @@
 // empire.ts is still initialising, so fleets/shipGroup.ts must not pull the heavy modules in. tick/shipGroupTick.ts
 // imports this module, so every sim path has the bodies registered.
 
+import { isAiControlled, markFleetPlayerOrder } from '../missions/playerOrder';
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import type { BuiltObject } from '../builtObject';
@@ -901,13 +902,13 @@ export function checkForMissionCompletion(galaxy: Galaxy, shipGroup: ShipGroup):
     const refuellingPortion = shipGroupCalculateRefuellingPortion(galaxy, shipGroup, false);
     // mission1 is the (possibly just cleared) fleet mission object: its Type is re-read here.
     const mission1Type = currentMissionType(mission1);
-    if ((mission1 === null || mission1Type === BuiltObjectMissionType.Undefined) && leadShip !== null && leadShip.isAutoControlled && shipGroupCheckShipsRequiringRefuelling(shipGroup, refuellingPortion).count > Math.trunc(ships.length * 0.0)) {
+    if ((mission1 === null || mission1Type === BuiltObjectMissionType.Undefined) && leadShip !== null && isAiControlled(leadShip) && shipGroupCheckShipsRequiringRefuelling(shipGroup, refuellingPortion).count > Math.trunc(ships.length * 0.0)) {
         const requiredFuel = shipGroupCalculateRequiredFuel(shipGroup);
         assignFleetRefuelling(galaxy, shipGroup.empire!, shipGroup, requiredFuel);
         return;
     }
     // 1175-1253
-    if (flag2 && (shipGroup.posture === FleetPosture.Attack || (leadShip !== null && leadShip.isAutoControlled))) {
+    if (flag2 && (shipGroup.posture === FleetPosture.Attack || (leadShip !== null && isAiControlled(leadShip)))) {
         if (shipGroup.empire !== null && shipGroup.empire.pirateEmpireBaseHabitat !== null) {
             if (shipGroup.empire.pirateEmpireSuperPirates) {
                 const builtObject = identifyPirateBase(shipGroup.empire);
@@ -966,7 +967,7 @@ export function checkForMissionCompletion(galaxy: Galaxy, shipGroup: ShipGroup):
         }
     }
     // 1254-1278
-    if (leadShip === null || !leadShip.isAutoControlled || (mission1 !== null && mission1Type !== BuiltObjectMissionType.Undefined)) {
+    if (leadShip === null || !isAiControlled(leadShip) || (mission1 !== null && mission1Type !== BuiltObjectMissionType.Undefined)) {
         return;
     }
     const gatherPoint = shipGroup.gatherPoint;
@@ -1119,6 +1120,7 @@ function assignQueuedMission(galaxy: Galaxy, shipGroup: ShipGroup): boolean {
     }
     const subsequentMission = shipGroup.subsequentMissions[0];
     if (subsequentMission != null) {
+        const missionBefore = shipGroup.mission;
         switch (subsequentMission.type) {
             case BuiltObjectMissionType.Blockade:
                 if (subsequentMission.targetBuiltObject !== null) {
@@ -1141,6 +1143,8 @@ function assignQueuedMission(galaxy: Galaxy, shipGroup: ShipGroup): boolean {
                 shipGroupAssignMissionFull(galaxy, shipGroup, subsequentMission.type, subsequentMission.target, subsequentMission.secondaryTarget, subsequentMission.cargo, subsequentMission.design, subsequentMission.x, subsequentMission.y, subsequentMission.starDate, subsequentMission.priority, false);
                 break;
         }
+        // Not in the C#: a queued player order stays a player order once it becomes the fleet mission (playerOrder.ts).
+        if (subsequentMission.playerOrdered === true && shipGroup.mission !== missionBefore) markFleetPlayerOrder(shipGroup);
         const i = shipGroup.subsequentMissions.indexOf(subsequentMission);
         if (i >= 0) shipGroup.subsequentMissions.splice(i, 1);
     }
@@ -1230,7 +1234,7 @@ export function shipGroupDetermineFuelTypes(shipGroup: ShipGroup): FuelTypeRef[]
 
 /** ShipGroup.cs 1595 CheckRefuelManual(). */
 export function checkRefuelManual(galaxy: Galaxy, shipGroup: ShipGroup): boolean {
-    return shipGroup.leadShip !== null && !shipGroup.leadShip.isAutoControlled && checkRefuelManualAt(galaxy, shipGroup, Math.max(0.3, shipGroupCalculateRefuellingPortion(galaxy, shipGroup, false)));
+    return shipGroup.leadShip !== null && !isAiControlled(shipGroup.leadShip) && checkRefuelManualAt(galaxy, shipGroup, Math.max(0.3, shipGroupCalculateRefuellingPortion(galaxy, shipGroup, false)));
 }
 
 /** A refuel mission to the refuelling point when it is in the lead ship's system (ShipGroup.cs 1624-1641 / 1643-1660). */
@@ -1252,7 +1256,7 @@ function refuelIfInLeadSystem(galaxy: Galaxy, shipGroup: ShipGroup, leadShip: Bu
 /** ShipGroup.cs 1597 CheckRefuelManual(requiredFuelLevel). */
 function checkRefuelManualAt(galaxy: Galaxy, shipGroup: ShipGroup, requiredFuelLevel: number): boolean {
     const leadShip = shipGroup.leadShip;
-    if (leadShip !== null && !leadShip.isAutoControlled) {
+    if (leadShip !== null && !isAiControlled(leadShip)) {
         let flag = false;
         if (shipGroup.mission === null) {
             flag = true;
@@ -1288,7 +1292,7 @@ export function checkAtWarWithEmpire(self: Empire, empire: Empire): boolean {
 /** ShipGroup.cs 1670 CheckRefuelRepairAttack(completedAttackMission, attackEmpire). */
 export function checkRefuelRepairAttack(galaxy: Galaxy, shipGroup: ShipGroup, completedAttackMission: boolean, attackEmpire: Empire | null): boolean {
     let leadShip1 = shipGroup.leadShip;
-    if (leadShip1 !== null && leadShip1.isAutoControlled && shipGroup.ships !== null) {
+    if (leadShip1 !== null && isAiControlled(leadShip1) && shipGroup.ships !== null) {
         // 1675-1694: damaged ships go for repair (or are dropped when immobile) and leave the fleet.
         const builtObjectList: BuiltObject[] = [];
         for (let index = 0; index < shipGroup.ships.length; ++index) {
@@ -1298,7 +1302,7 @@ export function checkRefuelRepairAttack(galaxy: Galaxy, shipGroup: ShipGroup, co
                     builtObjectList.push(ship);
                 } else {
                     const m = missionOf(ship);
-                    if ((m === null || m.type !== BuiltObjectMissionType.Repair) && ship.isAutoControlled) {
+                    if ((m === null || m.type !== BuiltObjectMissionType.Repair) && isAiControlled(ship)) {
                         if (shipGroup.leadShip === ship) {
                             shipGroupDetermineLeadShip(galaxy, shipGroup, ship);
                             leadShip1 = shipGroup.leadShip;
@@ -1332,13 +1336,13 @@ export function checkRefuelRepairAttack(galaxy: Galaxy, shipGroup: ShipGroup, co
             }
             if (mission1.priority === BuiltObjectMissionPriority.Low) flag = true;
         }
-        if (flag && leadShip1 !== null && leadShip1.isAutoControlled && shipGroupCheckShipsRequiringRefuelling(shipGroup, refuellingPortion).count > Math.trunc(shipGroup.ships.length * 0.0)) {
+        if (flag && leadShip1 !== null && isAiControlled(leadShip1) && shipGroupCheckShipsRequiringRefuelling(shipGroup, refuellingPortion).count > Math.trunc(shipGroup.ships.length * 0.0)) {
             const requiredFuel = shipGroupCalculateRequiredFuel(shipGroup);
             assignFleetRefuelling(galaxy, shipGroup.empire!, shipGroup, requiredFuel);
             return true;
         }
         // 1727-1774
-        if (completedAttackMission && (shipGroup.posture === FleetPosture.Attack || (leadShip1 !== null && leadShip1.isAutoControlled))) {
+        if (completedAttackMission && (shipGroup.posture === FleetPosture.Attack || (leadShip1 !== null && isAiControlled(leadShip1)))) {
             if (leadShip1 !== null && attackEmpire === null) {
                 const empiresAtWarWith = determineEmpiresAtWarWith(galaxy, shipGroup.empire!).empires;
                 if (empiresAtWarWith !== null && empiresAtWarWith.length > 0) {
@@ -1391,7 +1395,7 @@ export function checkRefuelRepairAttack(galaxy: Galaxy, shipGroup: ShipGroup, co
         //            && CoordinateFleetAttacksWithAllies(this, Empire, null)) || Empire.CoordinateFleetAttacksWithAllies(this))
         if (
             shipGroup.empire !== null &&
-            ((shipGroup.ships !== null && shipGroup.posture === FleetPosture.Attack && shipGroup.leadShip !== null && shipGroup.leadShip.isAutoControlled && coordinateFleetAttacksWithAlliesOf(galaxy, shipGroup.empire, shipGroup, shipGroup.empire, null)) ||
+            ((shipGroup.ships !== null && shipGroup.posture === FleetPosture.Attack && shipGroup.leadShip !== null && isAiControlled(shipGroup.leadShip) && coordinateFleetAttacksWithAlliesOf(galaxy, shipGroup.empire, shipGroup, shipGroup.empire, null)) ||
                 coordinateFleetAttacksWithAllies(galaxy, shipGroup.empire, shipGroup))
         ) {
             return true;
@@ -1708,7 +1712,7 @@ function setAttackRange(shipGroup: ShipGroup, missionType: BuiltObjectMissionTyp
     let num3 = empire.attackRangeAttack;
     let num4 = empire.attackRangeOther;
     const leadShip = shipGroup.leadShip;
-    if ((leadShip !== null && !leadShip.isAutoControlled) || manuallyAssigned) {
+    if ((leadShip !== null && !isAiControlled(leadShip)) || manuallyAssigned) {
         num1 = empire.attackRangePatrolManual;
         num2 = empire.attackRangeEscortManual;
         num3 = empire.attackRangeAttackManual;
@@ -1728,7 +1732,7 @@ function setAttackRange(shipGroup: ShipGroup, missionType: BuiltObjectMissionTyp
         shipGroup.attackRangeSquared = sq(num4);
         setShipAttackRanges(shipGroup, shipGroup.attackRangeSquared);
     } else {
-        if (shipGroup.attackRangeSquared >= 0.0 || leadShip === null || !leadShip.isAutoControlled) {
+        if (shipGroup.attackRangeSquared >= 0.0 || leadShip === null || !isAiControlled(leadShip)) {
             return;
         }
         shipGroup.attackRangeSquared = ATTACK_RANGE_SQUARED_DEFAULT;
@@ -2600,7 +2604,7 @@ export function shipGroupCalculateRefuellingPortion(galaxy: Galaxy, shipGroup: S
         }
     }
     if (shipGroup.leadShip !== null) {
-        refuellingPortion = !shipGroup.leadShip.isAutoControlled ? Math.min(0.5, refuellingPortion) : Math.max(0.05, refuellingPortion);
+        refuellingPortion = !isAiControlled(shipGroup.leadShip) ? Math.min(0.5, refuellingPortion) : Math.max(0.05, refuellingPortion);
     }
     return refuellingPortion;
 }
@@ -2856,7 +2860,7 @@ export function performFleetTasks(galaxy: Galaxy, builtObject: BuiltObject): voi
         (mission === null || mission.type === BuiltObjectMissionType.Undefined) &&
         builtObject.builtAt === null &&
         builtObject.retrofitDesign === null &&
-        (!builtObject.isAutoControlled || builtObject.troops === null || builtObject.troopCapacity <= 0 || builtObject.troopCapacityRemaining < 100 || builtObject === shipGroup.leadShip || !assignLoadTroopsMission(galaxy, builtObject.empire, builtObject)) &&
+        (!isAiControlled(builtObject) || builtObject.troops === null || builtObject.troopCapacity <= 0 || builtObject.troopCapacityRemaining < 100 || builtObject === shipGroup.leadShip || !assignLoadTroopsMission(galaxy, builtObject.empire, builtObject)) &&
         shipGroup.leadShip !== null &&
         shipGroup.leadShip !== builtObject
     ) {
@@ -2952,7 +2956,7 @@ export function updateFleetLeadShips(galaxy: Galaxy, empire: Empire): void {
     const shipGroups = empireShipGroups(empire);
     for (let i = 0; i < shipGroups.length; i++) {
         const shipGroup = shipGroups[i];
-        if (shipGroup != null && shipGroup.leadShip !== null && shipGroup.leadShip.isAutoControlled) {
+        if (shipGroup != null && shipGroup.leadShip !== null && isAiControlled(shipGroup.leadShip)) {
             shipGroupUpdate(galaxy, shipGroup);
         }
     }
@@ -3058,7 +3062,7 @@ function findAvailableMilitaryShip(galaxy: Galaxy, x: number, y: number, militar
             builtObject.subRole === BuiltObjectSubRole.ResupplyShip ||
             builtObject.builtAt !== null ||
             (m !== null && m.type !== BuiltObjectMissionType.Undefined && m.priority !== BuiltObjectMissionPriority.Undefined && m.priority !== BuiltObjectMissionPriority.Low && m.priority !== BuiltObjectMissionPriority.Normal) ||
-            !builtObject.isAutoControlled
+            !isAiControlled(builtObject)
         ) {
             continue;
         }
@@ -3394,7 +3398,7 @@ export function maintainShipGroups(galaxy: Galaxy, empire: Empire): void {
     for (const item of builtObjectList) {
         if (item.isPlanetDestroyer) {
             builtObjectList2.push(item);
-        } else if (!item.isAutoControlled) {
+        } else if (!isAiControlled(item)) {
             builtObjectList2.push(item);
         } else if (item.shipGroup !== null) {
             builtObjectList2.push(item);
@@ -3467,7 +3471,7 @@ export function maintainShipGroups(galaxy: Galaxy, empire: Empire): void {
         const shipGroupList: ShipGroup[] = [];
         for (let k = 0; k < shipGroups.length; k++) {
             const shipGroup = shipGroups[k]!;
-            if (shipGroup.shipTargetAmount >= 10 && shipGroup.leadShip!.isAutoControlled && (shipGroup.mission === null || shipGroup.mission.type === BuiltObjectMissionType.Undefined)) {
+            if (shipGroup.shipTargetAmount >= 10 && isAiControlled(shipGroup.leadShip!) && (shipGroup.mission === null || shipGroup.mission.type === BuiltObjectMissionType.Undefined)) {
                 shipGroupList.push(shipGroup);
                 if (shipGroupList.length >= num19) break;
             }
@@ -3479,7 +3483,7 @@ export function maintainShipGroups(galaxy: Galaxy, empire: Empire): void {
         const shipGroupList2: ShipGroup[] = [];
         for (let l = 0; l < shipGroups.length; l++) {
             const shipGroup2 = shipGroups[l]!;
-            if (shipGroup2.shipTargetAmount < 10 && shipGroup2.leadShip!.isAutoControlled && (shipGroup2.mission === null || shipGroup2.mission.type === BuiltObjectMissionType.Undefined)) {
+            if (shipGroup2.shipTargetAmount < 10 && isAiControlled(shipGroup2.leadShip!) && (shipGroup2.mission === null || shipGroup2.mission.type === BuiltObjectMissionType.Undefined)) {
                 shipGroupList2.push(shipGroup2);
                 if (shipGroupList2.length >= num20) break;
             }
@@ -3490,14 +3494,14 @@ export function maintainShipGroups(galaxy: Galaxy, empire: Empire): void {
     const builtObjectList3: BuiltObject[] = [];
     for (let m = 0; m < shipGroups.length; m++) {
         const shipGroup3 = shipGroups[m]!;
-        if (!shipGroup3.leadShip!.isAutoControlled) {
+        if (!isAiControlled(shipGroup3.leadShip!)) {
             continue;
         }
         if (shipGroup3.mission === null || (shipGroup3.mission.type !== BuiltObjectMissionType.Attack && shipGroup3.mission.type !== BuiltObjectMissionType.WaitAndAttack)) {
             for (let n = 0; n < shipGroup3.ships.length; n++) {
                 const builtObject = shipGroup3.ships[n];
                 const bm = missionOf(builtObject);
-                if (builtObject.subRole === BuiltObjectSubRole.TroopTransport && builtObject.isAutoControlled && builtObject.troopCapacityRemaining >= 100 && (bm === null || bm.type === BuiltObjectMissionType.Undefined || bm.priority === BuiltObjectMissionPriority.Undefined || bm.priority === BuiltObjectMissionPriority.Low)) {
+                if (builtObject.subRole === BuiltObjectSubRole.TroopTransport && isAiControlled(builtObject) && builtObject.troopCapacityRemaining >= 100 && (bm === null || bm.type === BuiltObjectMissionType.Undefined || bm.priority === BuiltObjectMissionPriority.Undefined || bm.priority === BuiltObjectMissionPriority.Low)) {
                     builtObjectList3.push(builtObject);
                 }
             }

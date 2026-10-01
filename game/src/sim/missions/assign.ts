@@ -5,6 +5,7 @@
 // BaconBuiltObject.ClearCargo (4278). Free functions, C# `this` first (plan §3.1 rule 2).
 // Rnd: none directly; the BuiltObjectMission constructor draws through ResolveCommandsForMission (resolveCommands.ts).
 
+import { isAiControlled, markPlayerOrder } from './playerOrder';
 import type { Galaxy } from '../galaxy';
 import { registerTodo, todo } from '../tick/todo';
 import type { BuiltObject, DockingBay } from '../builtObject';
@@ -411,7 +412,7 @@ export function clearPreviousMissionRequirements(galaxy: Galaxy, bo: BuiltObject
 
 /** BuiltObject.2.cs 4581/4586 RecordRevertMission(newMissionType[, evenWhenAutomated]). */
 export function recordRevertMission(galaxy: Galaxy, bo: BuiltObject, newMissionType: BuiltObjectMissionType, evenWhenAutomated = false): void {
-    if (!evenWhenAutomated && bo.isAutoControlled) {
+    if (!evenWhenAutomated && isAiControlled(bo)) {
         return;
     }
     let builtObjectMissionClone: BuiltObjectMission | null = null;
@@ -504,6 +505,8 @@ export function revertToPreviousMission(galaxy: Galaxy, bo: BuiltObject): boolea
                 if (mission !== null && revertMission.targetSector !== null) {
                     mission.setTargetSector(revertMission.targetSector);
                 }
+                // Not in the C#: reverting to an interrupted player order keeps it a player order (playerOrder.ts).
+                if (revertMission.playerOrdered === true) markPlayerOrder(bo);
             }
         }
         bo.revertMission = null;
@@ -528,6 +531,7 @@ export function assignQueuedMission(galaxy: Galaxy, ship: BuiltObject, allowRepr
         return checkAndAssignRepeatingMission(galaxy, ship);
     }
     const subsequentMission = subsequentMissions[0];
+    const missionBefore = ship.mission;
     if (subsequentMission.type === BuiltObjectMissionType.Blockade) {
         if (subsequentMission.targetBuiltObject !== null) {
             const t = subsequentMission.targetBuiltObject;
@@ -577,6 +581,8 @@ export function assignQueuedMission(galaxy: Galaxy, ship: BuiltObject, allowRepr
             });
         }
     }
+    // Not in the C#: a queued player order stays a player order once it becomes the current mission (playerOrder.ts).
+    if (subsequentMission.playerOrdered === true && ship.mission !== missionBefore) markPlayerOrder(ship);
     if (subsequentMissions.length > 0) {
         subsequentMissions.splice(0, 1);
     }

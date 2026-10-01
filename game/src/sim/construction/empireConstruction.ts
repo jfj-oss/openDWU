@@ -32,6 +32,7 @@
 //     (ObtainCoordinatesFromPoint) per fall-back point attempt.
 //   Retirement / retrofit / scrapping: none directly (CompleteTeardown / InflictDamage are M4o's).
 
+import { isAiControlled } from '../missions/playerOrder';
 import { calculateAngleFromCoords, type Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import { AutomationLevel, empireGovernmentAttributes } from '../empire';
@@ -1112,7 +1113,7 @@ export function retireOldBuiltObjects(galaxy: Galaxy, empire: Empire): void {
     let num14 = 0;
     for (let l = 0; l < builtObjectList.length; l++) {
         const builtObject2 = builtObjectList[l];
-        if (!builtObject2.isAutoControlled || builtObject2.retireForNextMission || builtObject2.scrap || (currentStarDate - builtObject2.dateBuilt <= num && num14 >= num2) || !canBuildBuiltObjectBO(empire, builtObject2)) continue;
+        if (!isAiControlled(builtObject2) || builtObject2.retireForNextMission || builtObject2.scrap || (currentStarDate - builtObject2.dateBuilt <= num && num14 >= num2) || !canBuildBuiltObjectBO(empire, builtObject2)) continue;
         if (builtObject2.role === BuiltObjectRole.Freight) {
             if (num10 > 0 && num10 > num5 && shouldRetireFreighter(builtObject2, empireOrderCount, num10)) {
                 builtObjectCompleteTeardown(galaxy, builtObject2, true);
@@ -1370,7 +1371,7 @@ export function doRetrofit(galaxy: Galaxy, empire: Empire, builtObjects: BuiltOb
         const shipGroups = empireShipGroups(empire);
         for (let i = 0; i < shipGroups.length; i++) {
             const shipGroup = shipGroups[i];
-            if (shipGroup === null || shipGroup.leadShip === null || (!breakthroughInitiated && !shipGroup.leadShip.isAutoControlled) || starDate - shipGroup.leadShip.dateRetrofit <= stateRetrofitAge || !checkFleetNeedsRetrofit(galaxy, empire, shipGroup, !manuallyInitiated)) continue;
+            if (shipGroup === null || shipGroup.leadShip === null || (!breakthroughInitiated && !isAiControlled(shipGroup.leadShip)) || starDate - shipGroup.leadShip.dateRetrofit <= stateRetrofitAge || !checkFleetNeedsRetrofit(galaxy, empire, shipGroup, !manuallyInitiated)) continue;
             const mission = shipGroup.mission;
             if (mission === null || mission.type === BuiltObjectMissionType.Undefined || mission.priority === BuiltObjectMissionPriority.Low) {
                 if (mission === null || mission.type !== BuiltObjectMissionType.Retrofit) assignFleetRetrofit(galaxy, empire, shipGroup, null, !manuallyInitiated);
@@ -1381,7 +1382,7 @@ export function doRetrofit(galaxy: Galaxy, empire: Empire, builtObjects: BuiltOb
     }
     for (let j = 0; j < builtObjects.length; j++) {
         const builtObject = builtObjects[j];
-        if ((!builtObject.isAutoControlled && !breakthroughInitiated) || builtObject.retrofitForNextMission || builtObject.retrofitDesign !== null) continue;
+        if ((!isAiControlled(builtObject) && !breakthroughInitiated) || builtObject.retrofitForNextMission || builtObject.retrofitDesign !== null) continue;
         let num4 = stateRetrofitAge;
         if (builtObject.owner === null) num4 = privateRetrofitAge;
         switch (builtObject.subRole) {
@@ -2207,7 +2208,7 @@ export function ensureStrategicResourceSupply(galaxy: Galaxy, empire: Empire): v
     for (let m = 0; m < constructionShips.length; m++) {
         const builtObject3 = constructionShips[m];
         const mission3 = builtObjectMission(builtObject3.mission);
-        if (builtObject3.subRole === BuiltObjectSubRole.ConstructionShip && builtObject3.isAutoControlled && builtObject3.isShipYard && (mission3 === null || mission3.type === BuiltObjectMissionType.Undefined) && num3 < habitatList.length) {
+        if (builtObject3.subRole === BuiltObjectSubRole.ConstructionShip && isAiControlled(builtObject3) && builtObject3.isShipYard && (mission3 === null || mission3.type === BuiltObjectMissionType.Undefined) && num3 < habitatList.length) {
             let design: Design | null = null;
             // HabitatResourceList.Clone().ContainsGroup (a null Resources list is an empty clone).
             const habitat = habitatList[num3];

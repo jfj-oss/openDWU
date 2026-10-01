@@ -266,8 +266,9 @@ describe('Main.Part3.cs 1968 method_593 — the selection panel buttons', () => 
 });
 
 describe('Main.Part10.cs — right-click orders', () => {
-    it('a warship hovering an enemy colony defaults to Attack; the right-click assigns it (manually, not automated)', () => {
+    it('a warship hovering an enemy colony defaults to Attack; the right-click assigns it as a player order (automation untouched)', () => {
         const ship = playerWarship();
+        const wasAuto = ship.isAutoControlled;
         const colony = enemyColony();
         const hover = resolveHoverOrder({ galaxy, empire: player, selected: ship, x: Math.trunc(colony.xpos), y: Math.trunc(colony.ypos), target: colony, shift: false, alt: false, ctrl: false });
         expect(hover.action!.missionType).toBe(BuiltObjectMissionType.Attack);
@@ -277,7 +278,9 @@ describe('Main.Part10.cs — right-click orders', () => {
         const m = builtObjectMission(ship.mission)!;
         expect(m.type).toBe(BuiltObjectMissionType.Attack);
         expect(m.targetHabitat).toBe(colony);
-        expect(ship.isAutoControlled).toBe(false);
+        expect(m.manuallyAssigned).toBe(true);
+        expect(m.playerOrdered).toBe(true);
+        expect(ship.isAutoControlled).toBe(wasAuto); // user deviation: only the Automate toggle changes it
     });
 
     it('Ctrl held: no default order (the menu opens instead); nothing selected: the idle-ships picker', () => {

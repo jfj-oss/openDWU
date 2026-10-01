@@ -23,9 +23,10 @@
 //
 // Render-only: reads system positions / star types, never touches sim state or the sim RNG.
 
-import { BufferImageSource, Container, Sprite, Texture } from 'pixi.js';
+import { BufferImageSource, Container, Sprite, Texture, type Renderer } from 'pixi.js';
 import { useMinifyingFilter } from './assets';
 import { hashSeed, mulberry32 } from './deepStarfield';
+import { createGpuNebula, type GpuNebula } from './gpuNebula';
 
 // --- pure part ------------------------------------------------------------------------------------------------------
 
@@ -371,12 +372,16 @@ export class SystemNebulaLayer {
     private scheduled = false;
     private frame = 0;
     private readonly size: number;
+    /** WebGL fragment-shader rasteriser (one pass per patch); null = CPU idle-slice path (tests / headless / WebGPU). */
+    private gpu: GpuNebula | null;
 
     constructor(
         private readonly galaxySeed: number,
         dpr: number,
+        renderer?: Renderer | null,
     ) {
         this.size = nebulaTextureSize(dpr);
+        this.gpu = createGpuNebula(renderer);
         this.root.label = 'systemNebulae';
     }
 
@@ -426,7 +431,7 @@ export class SystemNebulaLayer {
             sys,
             params,
             container: null,
-            rasters: params.patches.map((p) => new NebulaPatchRaster(p, patchTextureSize(this.size, p))),
+            rasters: this.gpu ? [] : params.patches.map((p) => new NebulaPatchRaster(p, patchTextureSize(this.size, p))),
             textures: [],
             ready: false,
             readySince: -1,
@@ -474,6 +479,32 @@ export class SystemNebulaLayer {
         const t0 = performance.now();
         // Most recently wanted first (the system under the camera beats one panned past).
         this.queue.sort((a, b) => b.lastSeen - a.lastSeen);
+        if (this.gpu) {
+            // One GPU pass per patch (at 2x the CPU resolution, capped at 1024): finish the wanted system now.
+            const e = this.queue.shift()!;
+            const s0 = performance.now();
+            try {
+                const E = PATCH_TEXTURE_EXTENT;
+                for (const p of e.params.patches) {
+                    const c1 = SYSTEM_NEBULA_PALETTE[p.colour];
+                    const c2 = SYSTEM_NEBULA_PALETTE[p.colour2];
+                    e.textures.push(
+                        this.gpu.render(
+                            { lattice: makeLattice(p.noiseSeed), warp: p.warp, freq: p.freq, threshold: p.threshold, opacity: p.opacity, c1: [c1.r, c1.g, c1.b], c2: [c2.r, c2.g, c2.b], extent: E, envOuter: ENV_OUTER },
+                            Math.min(1024, patchTextureSize(this.size, p) * 2),
+                        ),
+                    );
+                }
+                e.genMs += performance.now() - s0;
+                this.finish(e);
+            } catch {
+                for (const t of e.textures) t.destroy(true);
+                e.textures = [];
+                this.gpuFailed(e);
+            }
+            if (this.queue.length > 0) this.schedule();
+            return;
+        }
         let first = true;
         while (this.queue.length > 0 && (first || performance.now() - t0 < budgetMs)) {
             first = false;
@@ -490,24 +521,38 @@ export class SystemNebulaLayer {
         if (this.queue.length > 0) this.schedule();
     }
 
+    /** GPU render threw: drop to the CPU path for this system. */
+    private gpuFailed(e: Entry): void {
+        this.gpu = null;
+        e.rasters = e.params.patches.map((p) => new NebulaPatchRaster(p, patchTextureSize(this.size, p)));
+        this.queue.push(e);
+    }
+
     private finish(e: Entry): void {
         const s0 = performance.now();
         const c = new Container();
         const R = e.sys.radius;
         const E = PATCH_TEXTURE_EXTENT;
-        for (const r of e.rasters) {
-            // Premultiplied, dithered RGBA straight from the raster (no canvas copy, no premultiply on upload).
-            const source = new BufferImageSource({
-                resource: r.data,
-                width: r.size,
-                height: r.size,
-                format: 'rgba8unorm',
-                alphaMode: 'premultiplied-alpha',
-            });
-            const tex = new Texture({ source });
-            useMinifyingFilter(tex); // linear + mipmaps: magnified at system zoom, minified while zooming out
-            e.textures.push(tex);
-            const p = r.params;
+        const gpuTex = e.textures.length > 0 ? e.textures : null;
+        const patches = e.params.patches;
+        for (let pi = 0; pi < patches.length; pi++) {
+            const r = e.rasters[pi];
+            let tex: Texture;
+            if (gpuTex) tex = gpuTex[pi];
+            else {
+                // Premultiplied, dithered RGBA straight from the raster (no canvas copy, no premultiply on upload).
+                const source = new BufferImageSource({
+                    resource: r.data,
+                    width: r.size,
+                    height: r.size,
+                    format: 'rgba8unorm',
+                    alphaMode: 'premultiplied-alpha',
+                });
+                tex = new Texture({ source });
+                useMinifyingFilter(tex); // linear + mipmaps: magnified at system zoom, minified while zooming out
+                e.textures.push(tex);
+            }
+            const p = patches[pi];
             const spr = new Sprite(tex);
             spr.anchor.set(0.5);
             spr.position.set(e.sys.x + p.dx * R, e.sys.y + p.dy * R);

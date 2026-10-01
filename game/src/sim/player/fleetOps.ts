@@ -2,6 +2,7 @@
 // is one button of those windows; player/playerOps.ts registers them so the UI issues them through the command queue
 // (applied at the next frame boundary and journaled). Headless: no DOM / Pixi.
 
+import { markFleetPlayerOrder, markNewOrders, markPlayerOrder, snapshotOrders } from '../missions/playerOrder';
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import { BuiltObject } from '../builtObject';
@@ -119,13 +120,19 @@ export function setFleetTroopLoadout(empire: Empire, fleet: ShipGroup, loadout: 
 /** Main.Part3.cs XxYlcNpSu4_Click (btnShipGroupLoadTroops): AssignFleetLoadTroops(fleet, manuallyAssigned: true). */
 export function fleetLoadTroops(galaxy: Galaxy, empire: Empire, fleet: ShipGroup): boolean {
     if (fleet.empire !== empire) return false;
-    return assignFleetLoadTroops(galaxy, empire, fleet, null, true);
+    const snap = snapshotOrders([], [fleet]);
+    const ok = assignFleetLoadTroops(galaxy, empire, fleet, null, true);
+    markNewOrders(snap); // a player order: the AI leaves the (automated) fleet alone until it is done (playerOrder.ts)
+    return ok;
 }
 
 /** Main.Part3.cs btnShipGroupRetrofit_Click: Empire.AssignFleetRetrofit(fleet, isAutoRetrofit: false). */
 export function fleetRetrofit(galaxy: Galaxy, empire: Empire, fleet: ShipGroup): boolean {
     if (fleet.empire !== empire) return false;
-    return assignFleetRetrofit(galaxy, empire, fleet, null, false);
+    const snap = snapshotOrders([], [fleet]);
+    const ok = assignFleetRetrofit(galaxy, empire, fleet, null, false);
+    markNewOrders(snap); // a player order (playerOrder.ts)
+    return ok;
 }
 
 /**
@@ -143,6 +150,7 @@ export function fleetRepairAndRefuel(galaxy: Galaxy, empire: Empire, fleet: Ship
         if (refuelPoint === null) return false;
         forceCompleteMission(galaxy, fleet);
         shipGroupAssignMission(galaxy, fleet, BuiltObjectMissionType.Refuel, refuelPoint, null, BuiltObjectMissionPriority.Unavailable, true);
+        markFleetPlayerOrder(fleet); // a player order (playerOrder.ts)
         return true;
     }
     if (yard === null) return false;
@@ -160,6 +168,7 @@ export function fleetRepairAndRefuel(galaxy: Galaxy, empire: Empire, fleet: Ship
             assignMission(galaxy, ship, BuiltObjectMissionType.Refuel, yard, null, BuiltObjectMissionPriority.VeryHigh);
         }
     }
+    markFleetPlayerOrder(fleet); // a player order (playerOrder.ts)
     return true;
 }
 
@@ -172,6 +181,7 @@ export function refuelSelectedShips(galaxy: Galaxy, empire: Empire, ships: reado
         const point = stellar(fastFindNearestRefuellingPoint(galaxy, b.xpos, b.ypos, fuelTypes, b.actualEmpire, b));
         if (point !== null) {
             assignMission(galaxy, b, BuiltObjectMissionType.Refuel, point, null, BuiltObjectMissionPriority.Unavailable, { manuallyAssigned: true });
+            markPlayerOrder(b); // a player order (playerOrder.ts)
             n++;
         }
     }
@@ -186,7 +196,7 @@ export function repairSelectedShips(galaxy: Galaxy, empire: Empire, ships: reado
         const yard = stellar(findNearestShipYard(galaxy, empire, b, true, true));
         if (yard !== null) {
             assignMission(galaxy, b, BuiltObjectMissionType.Repair, yard, null, BuiltObjectMissionPriority.High, { manuallyAssigned: true });
-            b.isAutoControlled = false;
+            markPlayerOrder(b); // not IsAutoControlled = false: only the Automate toggle changes it (playerOrder.ts)
             n++;
         }
     }
@@ -201,6 +211,7 @@ export function retireSelectedShips(galaxy: Galaxy, empire: Empire, ships: reado
         const yard = stellar(findNearestShipYard(galaxy, empire, b, true, true));
         if (yard !== null) {
             assignMission(galaxy, b, BuiltObjectMissionType.Retire, yard, null, BuiltObjectMissionPriority.High, { manuallyAssigned: true });
+            markPlayerOrder(b); // a player order (playerOrder.ts)
             n++;
         }
     }

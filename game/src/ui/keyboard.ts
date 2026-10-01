@@ -408,7 +408,7 @@ export function buildDefaultHandlers(
             const sel = getSelection();
             if (!sel) return;
             // Task 13c: a ship/base selection centres on the built object.
-            const t = sel.builtObject ?? sel.habitat;
+            const t = sel.builtObject ?? sel.builtObjects?.[0] ?? sel.habitat;
             camera.centerOn(t.xpos, t.ypos);
             camera.zoomAt(SYSTEM_LEVEL_ZOOM, cx(), cy());
         },

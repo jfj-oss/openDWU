@@ -3,6 +3,7 @@
 // 3938 CancelInactiveBlockades. Free functions, C# `this` first (plan §3.1 rule 2). No Rnd in this module (the fleet
 // search FindNearestAvailableFleet and ShipGroup.AssignMission draw through their own callees).
 
+import { isAiControlled } from '../missions/playerOrder';
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import type { BuiltObject } from '../builtObject';
@@ -199,7 +200,7 @@ export function implementBlockadeColony(galaxy: Galaxy, self: Empire, colony: Ha
             }
             if (fleet === null) return false;
             let flag = true;
-            if (performAuthorizationCheck && (fleet.leadShip!.isAutoControlled || self.controlMilitaryAttacks === AutomationLevel.PartiallyAutomated)) {
+            if (performAuthorizationCheck && (isAiControlled(fleet.leadShip!) || self.controlMilitaryAttacks === AutomationLevel.PartiallyAutomated)) {
                 flag = checkTaskAuthorized(galaxy, self, self.controlMilitaryAttacks, refusalCount, generateAutomationMessageAttackEnemyColony(galaxy, colony, true, fleet), colony, AdvisorMessageType.EnemyBlockade, null, fleet, null);
             }
             if (flag) {
@@ -231,7 +232,7 @@ export function implementBlockadeBuiltObject(galaxy: Galaxy, self: Empire, built
             }
             if (fleet === null) return false;
             let flag = true;
-            if (performAuthorizationCheck && (fleet.leadShip!.isAutoControlled || self.controlMilitaryAttacks === AutomationLevel.PartiallyAutomated)) {
+            if (performAuthorizationCheck && (isAiControlled(fleet.leadShip!) || self.controlMilitaryAttacks === AutomationLevel.PartiallyAutomated)) {
                 flag = checkTaskAuthorized(galaxy, self, self.controlMilitaryAttacks, refusalCount, generateAutomationMessageAttackEnemyBase(galaxy, builtObject, true, fleet), builtObject, AdvisorMessageType.EnemyBlockade, null, fleet, null);
             }
             if (flag) {

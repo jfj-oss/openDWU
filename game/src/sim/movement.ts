@@ -28,6 +28,7 @@
 // the port (BaconSettings.txt overrides are a TODO(port) of their own, see builtObject.ts). They live in
 // `baconMovementSettings` so a settings loader can change them.
 
+import { isAiControlled } from './missions/playerOrder';
 import { scenarioQuery } from './scenario/hooks';
 import type { Galaxy } from './galaxy';
 import type { Empire } from './empire';
@@ -1218,7 +1219,7 @@ export function calculateFuelPortionMarginFromRefuellingPoint(galaxy: Galaxy, bo
 /** BuiltObject.1.cs 2450 CalculateRefuellingPortion(refuellingLocation). */
 export function calculateRefuellingPortionAt(galaxy: Galaxy, bo: BuiltObject, refuellingLocation: StellarObject | null): number {
     let val = calculateFuelPortionMarginFromRefuellingPoint(galaxy, bo, bo.xpos, bo.ypos, refuellingLocation);
-    if (bo.isAutoControlled) {
+    if (isAiControlled(bo)) {
         return Math.max(0.05, val);
     }
     val = Math.max(0.05, val);
@@ -1229,7 +1230,7 @@ export function calculateRefuellingPortionAt(galaxy: Galaxy, bo: BuiltObject, re
 export function calculateRefuellingPortion(galaxy: Galaxy, bo: BuiltObject): { portion: number; refuellingLocation: StellarObject | null } {
     const r = calculateFuelPortionMarginFromNearbyRefuellingPointsInformLocation(galaxy, bo, bo.xpos, bo.ypos);
     let val = r.margin;
-    if (bo.isAutoControlled) {
+    if (isAiControlled(bo)) {
         return { portion: Math.max(0.05, val), refuellingLocation: r.refuellingLocation };
     }
     val = Math.max(0.05, val);

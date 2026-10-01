@@ -397,6 +397,11 @@ export class BuiltObjectMission {
     private _manuallyAssigned = false;
     private _repeatCommands = false;
     private _isShipGroupMission = false;
+    /**
+     * Not in the C#: set when a player command issued this mission (see missions/playerOrder.ts — manual orders no
+     * longer clear IsAutoControlled). `declare`d, so the property only exists (and is only saved) once set.
+     */
+    declare playerOrdered?: boolean;
     type: BuiltObjectMissionType = BuiltObjectMissionType.Undefined;
     previousType: BuiltObjectMissionType = BuiltObjectMissionType.Undefined;
     private _targetSector: Sector | null = null;
@@ -649,6 +654,7 @@ export class BuiltObjectMission {
         builtObjectMission.setTargetSector(this.targetSector);
         builtObjectMission.replaceCommandStack(this._commands);
         builtObjectMission.repeatCommands = this._repeatCommands;
+        if (this.playerOrdered === true) builtObjectMission.playerOrdered = true;
         return builtObjectMission;
     }
 
@@ -671,6 +677,7 @@ export class BuiltObjectMission {
         this._missionYCoord = MISSION_COORD_UNSET;
         this._manuallyAssigned = false;
         this._repeatCommands = false;
+        if (this.playerOrdered !== undefined) delete this.playerOrdered;
     }
 
     /** BuiltObjectMission.cs 617 CompleteCommandIfMatchesAction. */
