@@ -85,6 +85,10 @@ export interface EmpireStartOptions {
     playAsPirate?: boolean;
     /** Player only (pirate): EmpireStart.PiratePlayStyle. */
     piratePlayStyle?: PiratePlayStyle;
+    /** Player only: flag colours (0xRRGGBB) and shape from the wizard (Start.1.cs 3717-3719). */
+    primaryColor?: number;
+    secondaryColor?: number;
+    flagShape?: number;
 }
 
 export interface CreateGameOptions {
@@ -1079,6 +1083,13 @@ export function* createGameSteps(opts: CreateGameOptions): Generator<GameStartPr
         // TODO(port): empire flag (Galaxy.GenerateEmpireFlag uses a clock-seeded Random).
     }
     galaxy.playerEmpire = empire2;
+    // Start.2.cs 870-875: the wizard's flag colours / shape replace the race defaults (no Rnd draws; the flag bitmap
+    // itself is not ported).
+    if (opts.player.flagShape !== undefined && opts.player.flagShape >= 0) {
+        if (opts.player.primaryColor !== undefined) empire2.mainColor = opts.player.primaryColor;
+        if (opts.player.secondaryColor !== undefined) empire2.secondaryColor = opts.player.secondaryColor;
+        empire2.flagShape = opts.player.flagShape;
+    }
     const viewX = habitat.xpos;
     const viewY = habitat.ypos;
     galaxy.updateSystemInfo();

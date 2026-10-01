@@ -792,9 +792,10 @@ export function toCreateGameOptions(
         startLocation: '(Random)',
         age: playerAge,
         techLevel: playerTechLevel,
-        // TODO(createGame): flag colours (primaryColor/secondaryColor) and
-        // flagShapeIndex are not accepted by createGame yet (empire flags are
-        // an unported TODO(port) in game.ts).
+        // Start.1.cs 3717-3719: flag colours and shape.
+        primaryColor: parseHexColor(o.primaryColor),
+        secondaryColor: parseHexColor(o.secondaryColor),
+        flagShape: o.flagShapeIndex,
     };
 
     // AI empires (task 06h "Other Empires" page). Auto-generation produces
@@ -969,4 +970,10 @@ export function techLevelFromBucket(double_1: number): number {
     if (double_1 === 0.5) return 0.5;
     for (let x = 1; x <= 6; x++) if (double_1 > x - 1 && double_1 <= x && (x > 1 || double_1 > 0.5)) return x;
     return 7.0; // includes (0, 0.5), as in the C# fall-through
+}
+
+/** '#rrggbb' → 0xRRGGBB (undefined when empty / malformed: the race default stays). */
+export function parseHexColor(c: string): number | undefined {
+    const m = /^#?([0-9a-f]{6})$/i.exec(c.trim());
+    return m === null ? undefined : parseInt(m[1], 16);
 }

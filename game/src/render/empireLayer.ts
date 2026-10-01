@@ -13,7 +13,7 @@
 
 import { fogOf } from './fog';
 import type { MotionInterpolator } from './renderInterp';
-import { Container, Graphics } from 'pixi.js';
+import { AlphaFilter, Container, Graphics } from 'pixi.js';
 import type { Camera } from './camera';
 import type { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
@@ -104,6 +104,9 @@ export function empireColour(empire: Empire, index: number): number {
 
 /** One Graphics per non-independent empire: all of that empire's territory
  * discs go into it (normal blending, so overlapping discs merge visually). */
+/** Opacity of an empire's territory wash (one layer, however many discs overlap). */
+export const TERRITORY_ALPHA = 0.18;
+
 class EmpireTerritory {
     graphics: Graphics;
     empire: Empire;
@@ -113,11 +116,16 @@ class EmpireTerritory {
     hasDiscs = false;
     /** Signature of the explored owned systems the discs were last built for (see knownTerritorySystems). */
     sig = '';
+    readonly filter: AlphaFilter;
     constructor(empire: Empire, layer: Container) {
         this.empire = empire;
         this.graphics = new Graphics();
         // Normal (non-additive) blending so overlapping discs do not bloom.
         this.graphics.blendMode = 'normal';
+        // The discs are drawn opaque and the whole empire's union is faded once by this filter, so overlapping discs
+        // of one empire blend into one even wash instead of stacking darker where they overlap.
+        this.filter = new AlphaFilter({ alpha: TERRITORY_ALPHA });
+        this.graphics.filters = [this.filter];
         layer.addChild(this.graphics);
     }
 }
@@ -266,7 +274,7 @@ export class EmpireLayer {
                         const star = this.galaxy.systems[sysIdx].systemStar;
                         t.graphics.circle(star.xpos, star.ypos, tRadius).fill({
                             color: this.colors[i],
-                            alpha: 0.18,
+                            alpha: 1,
                         });
                         t.hasDiscs = true;
                     }
@@ -275,7 +283,7 @@ export class EmpireLayer {
             // Fade the territory wash out while zooming in towards a system (factor 300 → 70): at near-system zoom
             // a single disc fills the screen as a flat coloured haze.
             const fade = Math.max(0, Math.min(1, (factor - 70) / (300 - 70)));
-            t.graphics.alpha = fade * fade * (3 - 2 * fade);
+            t.filter.alpha = TERRITORY_ALPHA * fade * fade * (3 - 2 * fade);
             t.graphics.visible = t.hasDiscs && fade > 0;
         }
 

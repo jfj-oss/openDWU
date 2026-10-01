@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, it } from 'vitest';
+import { createGame } from '../src/sim/game';
 import { readdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
@@ -677,6 +678,19 @@ describe('toCreateGameOptions (task 06i)', () => {
         expect(c.gameData).toBe(gameData);
         expect(c.colonyPrevalence).toBe(colonyPrevalenceFor(2));
     });
+
+    it('passes the flag colours / shape through to the player empire (Start.1.cs 3717-3719, Start.2.cs 870-875)', () => {
+        const o = { ...defaultStartGameOptions(), seed: 7, primaryColor: '#ff2010', secondaryColor: '#10ff20', flagShapeIndex: 5 };
+        const c = toCreateGameOptions(o, gameData, NAMES);
+        expect(c.player.primaryColor).toBe(0xff2010);
+        expect(c.player.secondaryColor).toBe(0x10ff20);
+        expect(c.player.flagShape).toBe(5);
+        const game = createGame({ ...c, starCount: 120, sectorWidth: 3, sectorHeight: 3, aiEmpires: [] });
+        const p = game.galaxy.playerEmpire!;
+        expect(p.mainColor).toBe(0xff2010);
+        expect(p.secondaryColor).toBe(0x10ff20);
+        expect(p.flagShape).toBe(5);
+    }, 120000);
 
     it('maps the Pirates page onto piratePrevalence / pirateProximity / pirateShipMaintenanceFactor', () => {
         // Start.1.cs 3691 method_66, 3692 method_190, 3722-3736 strength switch; Start.2.cs 107 / 108 / 498.
