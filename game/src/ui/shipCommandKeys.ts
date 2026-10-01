@@ -44,6 +44,8 @@ export interface ShipCommandKeys {
 /** The selected object as the C# _Game.SelectedObject (a fleet before its lead ship). */
 export function selectionObject(sel: Selection | null): HistoryEntry | null {
     if (sel === null) return null;
+    // A multi-ship selection (BuiltObjectList) is not a HistoryEntry kind here: no history entry, no view lock.
+    if (sel.builtObjects !== undefined) return null;
     return sel.shipGroup ?? sel.builtObject ?? sel.habitat;
 }
 

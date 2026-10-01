@@ -83,6 +83,8 @@ import { wreckTooltipText } from '../ui/scenario/wreckageUi'; // [wreckage]
 import type { FreightOverlay } from './freightOverlay'; // [freightOverlay]
 import { boundsOnScreen, DrawKey } from './drawCache';
 import { MotionInterpolator, createRenderTime, drawnBuiltObjectPos, habitatTouchClampSeconds, renderOrbitAngle, type RenderTime } from './renderInterp';
+import { isDrag, objectsInBox, resolveBoxSelection, screenBox, shiftClickSelection, type ScreenBox } from './boxSelect';
+import { isObjectVisibleToThisEmpire } from '../sim/independentTraders';
 import { createFollowState, followTargetAlive, followTargetPosition, isFollowing, stopFollow, type FollowState, type FollowTarget } from './followCamera';
 
 export function fadeIn(v: number, a: number, b: number): number {
@@ -1112,6 +1114,10 @@ export class MainView {
     fx = new Container();
     /** Task 08g: thin selection ring around the picked object (screen-space). */
     selectionRing = new Graphics();
+    /** Left-drag box selection (boxSelect.ts): the thin screen-space rectangle while the left button drags. */
+    private selectionBox = new Graphics();
+    /** Rings around each ship of a multi-selection (selectedBuiltObjects), redrawn every frame. */
+    private multiSelectionRings = new Graphics();
     private backdrop: Sprite;
     private grid = new Graphics();
     /** Screen-space deep starfield behind the world (deepStarfield.ts; port of the original's close-zoom stars). */
@@ -1192,6 +1198,11 @@ export class MainView {
     onBuiltObjectSelect?: (bo: BuiltObject) => void;
     /** Set by main.ts — receives the creature picked on left click. */
     onCreatureSelect?: (c: Creature) => void;
+    /** Set by main.ts — receives the ships a drag box / Shift-click selects when there are several (BuiltObjectList). */
+    onBuiltObjectListSelect?: (list: BuiltObject[]) => void;
+    /** Set by main.ts — the current selection as ships (the list, the one selected ship, else null): the base a
+     * Shift/Ctrl drag adds to and a Shift-click toggles in (a fleet / habitat / creature selection is null). */
+    getSelectedShips?: () => BuiltObject | BuiltObject[] | null;
     /** Task 08g: set by main.ts — star double-clicked at galaxy/sector zoom. */
     onDoubleClickStar?: (h: Habitat) => void;
     // [ordermenu] begin
@@ -1220,12 +1231,18 @@ export class MainView {
         this.world.addChildAt(this.backdrop, 0);
         this.selectionRing.visible = false;
         this.fx.addChild(this.selectionRing);
+        this.multiSelectionRings.visible = false;
+        this.fx.addChild(this.multiSelectionRings);
+        this.selectionBox.visible = false;
+        this.fx.addChild(this.selectionBox);
     }
 
     /** Task 08g: the habitat currently selected in the Main View (null = none). */
     selectedHabitat: Habitat | null = null;
     /** Task 13d: the ship/base currently selected in the Main View (null = none). */
     selectedBuiltObject: BuiltObject | null = null;
+    /** The ships of a multi-selection (BuiltObjectList, 2+ ships; null = none) — each gets a selection ring. */
+    selectedBuiltObjects: BuiltObject[] | null = null;
     /** The creature currently selected in the Main View (null = none). */
     selectedCreature: Creature | null = null;
 
@@ -1787,6 +1804,8 @@ export class MainView {
             this.drawSelectionRing(s.x, s.y, r);
         }
 
+        this.drawMultiSelectionRings(z, cam);
+
         // Screen-edge auto-scroll (original control scheme).
         let edgeDx = 0;
         let edgeDy = 0;
@@ -1845,6 +1864,71 @@ export class MainView {
         this.selectionRing.visible = true;
     }
 
+    /** A ring around every live ship of the multi-selection, at its drawn position (ship size at system zoom, a small
+     * fixed ring over the galaxy / sector symbols). */
+    private drawMultiSelectionRings(z: number, cam: Camera): void {
+        const g = this.multiSelectionRings;
+        const list = this.selectedBuiltObjects;
+        g.clear();
+        if (list === null || list.length === 0) {
+            g.visible = false;
+            return;
+        }
+        const shipArt = 1 / z < BUILT_OBJECT_MAX_FACTOR;
+        let any = false;
+        for (const bo of list) {
+            if (bo.hasBeenDestroyed) continue;
+            const d = drawnBuiltObjectPos(this.motion, bo);
+            const s = cam.worldToScreen(d.x, d.y);
+            const r = shipArt ? Math.max(this.builtObjectLayer.drawnSizePx(bo), 8) * 0.5 + 4 : 7;
+            if (s.x < -r || s.y < -r || s.x > cam.width + r || s.y > cam.height + r) continue;
+            g.circle(s.x, s.y, r);
+            any = true;
+        }
+        if (any) g.stroke({ width: 1.5, color: 0x4fc3f7 });
+        g.visible = any;
+    }
+
+    /** The drag rectangle from the press point to the pointer (thin, subtle; screen space). */
+    private drawSelectionBox(ax: number, ay: number, bx: number, by: number): void {
+        const b = screenBox(ax, ay, bx, by);
+        const g = this.selectionBox;
+        g.clear();
+        g.rect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0).fill({ color: 0x4fc3f7, alpha: 0.06 }).stroke({ width: 1, color: 0x4fc3f7, alpha: 0.75 });
+        g.visible = true;
+    }
+
+    /** Main.Part10.cs 2989 mainView_MouseUp / method_141: the visible built objects drawn inside a screen box. */
+    builtObjectsInScreenBox(box: ScreenBox): BuiltObject[] {
+        const cam = this.camera;
+        const player = this.galaxy.playerEmpire;
+        return objectsInBox(
+            this.galaxy.builtObjects,
+            box,
+            (bo) => {
+                const d = drawnBuiltObjectPos(this.motion, bo);
+                return cam.worldToScreen(d.x, d.y);
+            },
+            (bo) => player === null || bo.empire === player || isObjectVisibleToThisEmpire(this.galaxy, player, bo),
+        );
+    }
+
+    /** method_208 for a ship selection: several ships, one ship, or nothing. */
+    private selectShips(sel: BuiltObject | BuiltObject[] | null): void {
+        this.selectedHabitat = null;
+        this.selectedCreature = null;
+        if (Array.isArray(sel)) {
+            this.selectedBuiltObject = null;
+            this.onBuiltObjectListSelect?.(sel);
+        } else if (sel !== null) {
+            this.selectedBuiltObject = sel;
+            this.onBuiltObjectSelect?.(sel);
+        } else {
+            this.selectedBuiltObject = null;
+            this.onSelectionChange?.(null);
+        }
+    }
+
     private drawGrid(z: number): void {
         const g = this.grid;
         g.clear();
@@ -1860,6 +1944,75 @@ export class MainView {
         }
     }
 
+    /** A left click (or a drag box with nothing inside, at its press point) selects the object under (x, y); empty
+     * space clears the selection. */
+    private clickSelect(x: number, y: number): void {
+        // Main.Part11.cs method_145: a creature under the cursor is picked before any ship.
+        const creature = this.pickCreature(x, y);
+        if (creature !== null) {
+            playGridClick(); // [audio]
+            this.selectedHabitat = null;
+            this.selectedBuiltObject = null;
+            this.selectedCreature = creature;
+            this.onCreatureSelect?.(creature);
+            return;
+        }
+        this.selectedCreature = null;
+        // [galaxymarkers] begin — a fleet icon (galaxy/sector zoom) selects its fleet (method_258 / 145).
+        const wp = this.camera.screenToWorld(x, y);
+        const sym = this.galaxyMarkers?.pickAt(wp.x, wp.y, this.camera.zoom) ?? null;
+        const symSel = sym !== null ? clickSelection(sym) : null;
+        if (symSel !== null && symSel !== sym?.bo && this.onShipGroupSelect !== undefined) {
+            playGridClick(); // [audio]
+            this.selectedHabitat = null;
+            this.selectedBuiltObject = null;
+            this.onShipGroupSelect(symSel as ShipGroup);
+            return;
+        }
+        // [galaxymarkers] end
+        const bo = this.pickBuiltObject(x, y);
+        // [audio] begin — Main.Part10.cs:3304-3306 `if (obj3 != null) method_225()` (grid.wav) on a left-click pick.
+        if (bo !== null || this.pick(x, y) !== null) playGridClick();
+        // [audio] end
+        if (bo !== null) {
+            this.selectedHabitat = null;
+            this.selectedBuiltObject = bo;
+            this.onBuiltObjectSelect?.(bo);
+            return;
+        }
+        const hit = this.pick(x, y);
+        this.selectedBuiltObject = null;
+        this.selectedHabitat = hit;
+        this.onSelectionChange?.(hit);
+    }
+
+    /** Main.Part10.cs 2989-3044 mainView_MouseUp: select from a finished drag rectangle (boxSelect.ts). */
+    private finishBoxSelection(box: ScreenBox, additive: boolean, pressX: number, pressY: number): void {
+        const inBox = this.builtObjectsInScreenBox(box);
+        const cur = this.getSelectedShips?.() ?? null;
+        const current = cur === null ? [] : Array.isArray(cur) ? cur : [cur];
+        const r = resolveBoxSelection(inBox, this.galaxy.playerEmpire, additive, current);
+        switch (r.kind) {
+            case 'list':
+                playGridClick(); // [audio]
+                if (this.onBuiltObjectListSelect !== undefined) this.selectShips(r.ships);
+                else this.selectShips(r.ships[0]);
+                return;
+            case 'single':
+                playGridClick(); // [audio]
+                this.selectShips(r.builtObject);
+                return;
+            case 'clear':
+                this.selectShips(null);
+                return;
+            case 'pickAtPress':
+                this.clickSelect(pressX, pressY);
+                return;
+            case 'keep':
+                return;
+        }
+    }
+
     // ------------------------------------------------------------------
     // Input: wheel zoom around cursor, right-drag pan, right-click center,
     // PageUp/PageDown zoom steps, screen-edge scroll (manual control set).
@@ -1868,6 +2021,10 @@ export class MainView {
         const canvas = this.app.canvas;
         let downX = 0;
         let downY = 0;
+        /** The left button went down on the map (not on the HUD); a drag box may follow. */
+        let leftPressed = false;
+        /** The left press moved >= 4 px: the selection box is being dragged. */
+        let boxActive = false;
         let rightDownX = 0; // [ordermenu] the right button's press point (click vs drag)
         let rightDownY = 0;
         canvas.addEventListener(
@@ -1904,6 +2061,8 @@ export class MainView {
                 const rect = canvas.getBoundingClientRect();
                 downX = e.clientX - rect.left;
                 downY = e.clientY - rect.top;
+                leftPressed = true;
+                boxActive = false;
             }
         });
         window.addEventListener('mousemove', (e: MouseEvent) => {
@@ -1919,6 +2078,19 @@ export class MainView {
                 // Task 12k: no hover tooltip while panning.
                 hideMapTooltip();
                 return;
+            }
+            // Left-drag box selection (Main.Part10.cs mainView_MouseDown / MouseUp): the rectangle from the press point.
+            if (leftPressed && (e.buttons & 1) !== 0) {
+                if (!boxActive && isDrag(downX, downY, x, y)) boxActive = true;
+                if (boxActive) {
+                    this.drawSelectionBox(downX, downY, x, y);
+                    if (this.tooltipTimer !== undefined) {
+                        clearTimeout(this.tooltipTimer);
+                        this.tooltipTimer = undefined;
+                    }
+                    hideMapTooltip();
+                    return;
+                }
             }
             // Task 12k: hover tooltip — debounce ~120 ms so it only appears
             // when the mouse rests on a pickable object.
@@ -1991,53 +2163,34 @@ export class MainView {
                     this.camera.centerOn(w.x, w.y);
                 }
             } else if (e.button === 0) {
-                // Left click (no drag: < 4 px pointer movement between
-                // down/up) selects the object under the cursor; empty space
-                // clears the selection.
+                if (!leftPressed) return; // pressed on the HUD, released over the map
+                leftPressed = false;
                 const rect = canvas.getBoundingClientRect();
                 const x = e.clientX - rect.left;
                 const y = e.clientY - rect.top;
-                if (Math.hypot(x - downX, y - downY) >= 4) {
+                if (boxActive || isDrag(downX, downY, x, y)) {
+                    // Main.Part10.cs 2989 mainView_MouseUp: the ships inside the dragged rectangle.
+                    boxActive = false;
+                    this.selectionBox.clear();
+                    this.selectionBox.visible = false;
+                    this.finishBoxSelection(screenBox(downX, downY, x, y), e.shiftKey || e.ctrlKey, downX, downY);
                     return;
                 }
+                // Left click (no drag: < 4 px pointer movement between
+                // down/up) selects the object under the cursor; empty space
+                // clears the selection.
                 if (this.onLeftClickIntercept?.(x, y)) return; // [ordermenu]
-                // Main.Part11.cs method_145: a creature under the cursor is picked before any ship.
-                const creature = this.pickCreature(x, y);
-                if (creature !== null) {
-                    playGridClick(); // [audio]
-                    this.selectedHabitat = null;
-                    this.selectedBuiltObject = null;
-                    this.selectedCreature = creature;
-                    this.onCreatureSelect?.(creature);
+                // Main.Part10.cs 3158-3248: Shift + left click toggles the clicked ship in the multi-selection.
+                if (e.shiftKey && this.onBuiltObjectListSelect !== undefined) {
+                    const bo = this.pickBuiltObject(x, y);
+                    const next = shiftClickSelection(this.getSelectedShips?.() ?? null, bo !== null ? [bo] : [], this.galaxy.playerEmpire);
+                    if (next !== undefined) {
+                        playGridClick(); // [audio]
+                        this.selectShips(next);
+                    }
                     return;
                 }
-                this.selectedCreature = null;
-                // [galaxymarkers] begin — a fleet icon (galaxy/sector zoom) selects its fleet (method_258 / 145).
-                const wp = this.camera.screenToWorld(x, y);
-                const sym = this.galaxyMarkers?.pickAt(wp.x, wp.y, this.camera.zoom) ?? null;
-                const symSel = sym !== null ? clickSelection(sym) : null;
-                if (symSel !== null && symSel !== sym?.bo && this.onShipGroupSelect !== undefined) {
-                    playGridClick(); // [audio]
-                    this.selectedHabitat = null;
-                    this.selectedBuiltObject = null;
-                    this.onShipGroupSelect(symSel as ShipGroup);
-                    return;
-                }
-                // [galaxymarkers] end
-                const bo = this.pickBuiltObject(x, y);
-                // [audio] begin — Main.Part10.cs:3304-3306 `if (obj3 != null) method_225()` (grid.wav) on a left-click pick.
-                if (bo !== null || this.pick(x, y) !== null) playGridClick();
-                // [audio] end
-                if (bo !== null) {
-                    this.selectedHabitat = null;
-                    this.selectedBuiltObject = bo;
-                    this.onBuiltObjectSelect?.(bo);
-                    return;
-                }
-                const hit = this.pick(x, y);
-                this.selectedBuiltObject = null;
-                this.selectedHabitat = hit;
-                this.onSelectionChange?.(hit);
+                this.clickSelect(x, y);
             }
         });
         canvas.addEventListener('dblclick', (e: MouseEvent) => {
