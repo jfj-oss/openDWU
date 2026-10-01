@@ -1430,7 +1430,7 @@ export class MainView {
             });
         }
         // Behind every system root (orbits, planets, stars), above the backdrop / galaxy nebulae / grid.
-        this.systemNebulae = new SystemNebulaLayer(this.galaxy.randomSeed, this.app.renderer.resolution);
+        this.systemNebulae = new SystemNebulaLayer(this.galaxy.randomSeed, this.app.renderer.resolution, this.app.renderer);
         this.world.addChildAt(this.systemNebulae.root, this.systems.length > 0 ? this.world.getChildIndex(this.systems[0].root) : this.world.children.length);
         for (const habitat of this.galaxy.habitats) {
             if (habitat.category === HabitatCategoryType.GasCloud) {
