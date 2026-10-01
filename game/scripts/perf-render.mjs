@@ -1,6 +1,6 @@
 // Usage: node scripts/perf-render.mjs [--url=http://localhost:5173/] [--gpu=swiftshader|egl|vulkan]
 //          [--w=1920 --h=1080 --dpr=2] [--days=60] [--secs=6] [--profile [--callers]] [--top=15] [--paused]
-//          [--stars=700 --sectors=4] [--zooms=galaxy,sector,system,planet]
+//          [--stars=700 --sectors=4] [--zooms=galaxy,sector,system,planet] [--qs=dither=0] [--uncapped]
 //
 // Renderer performance at 4K (1920x1080 CSS px at dpr 2 = a 3840x2160 canvas by default). Starts its own Vite dev
 // server on a free port (unless --url is given), boots `?autostart=1`, unpauses at 4x until --days game days have
@@ -40,7 +40,8 @@ const PROFILE = args.profile === 'true';
 const PAUSED = args.paused === 'true';
 const CALLERS = args.callers === 'true';
 // Galaxy size (boot URL ?stars= / ?sectors=), e.g. --stars=2800 --sectors=15 for the wizard's biggest galaxy.
-const BOOT_QS = `${args.stars ? `&stars=${args.stars}` : ''}${args.sectors ? `&sectors=${args.sectors}` : ''}`;
+// --qs=a=1&b=2 appends extra boot query parameters (e.g. --qs=dither=0 for an A/B of the output dither).
+const BOOT_QS = `${args.stars ? `&stars=${args.stars}` : ''}${args.sectors ? `&sectors=${args.sectors}` : ''}${args.qs ? `&${args.qs}` : ''}`;
 const ZOOMS = (args.zooms ?? 'galaxy,sector,system,planet').split(',');
 
 const GPU_ARGS = {
@@ -124,7 +125,8 @@ async function main() {
     }
     const browser = await chromium.launch({
         executablePath: process.env.CHROMIUM || '/usr/bin/chromium',
-        args: GPU_ARGS[GPU] ?? GPU_ARGS.swiftshader,
+        // --uncapped: no vsync / frame-rate limit, so fps shows GPU cost differences (A/B runs).
+        args: [...(GPU_ARGS[GPU] ?? GPU_ARGS.swiftshader), ...(args.uncapped === 'true' ? ['--disable-gpu-vsync', '--disable-frame-rate-limit'] : [])],
     });
     try {
         const page = await browser.newPage({ viewport: { width: W, height: H }, deviceScaleFactor: DPR });

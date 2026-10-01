@@ -504,3 +504,36 @@
 .hud-message-line.hud-message-goto:hover {
     text-decoration: underline;
 }
+/* Multi-selection (drag box / Shift-click): one compact row per ship, click to select it. */
+.hud-multi-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+.hud-multi-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 1px 4px;
+    border: 0;
+    border-radius: 2px;
+    background: transparent;
+    color: #d8dee6;
+    font: inherit;
+    font-size: 12px;
+    text-align: left;
+    cursor: pointer;
+}
+.hud-multi-row:hover {
+    background: rgba(79, 195, 247, 0.15);
+}
+.hud-multi-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.hud-multi-role {
+    flex: 0 0 auto;
+    color: #9aa3ad;
+    font-size: 11px;
+}

@@ -885,6 +885,21 @@ export function checkRuinsHaveBenefit(galaxy: Galaxy, ruin: Ruin | null, empire:
     return result;
 }
 
+/**
+ * DEVIATION (not in the C#; explorer-stuck fix): true when `empire` is the player and its ships have already found this
+ * ruin (Habitat.cs 2527 Ruin.PlayerEmpireEncountered). The automated explorer searches (civilianAI.ts
+ * FindNextSystemToScout, FindUnexploredRuinsOrLocations, FindNearestUnexploredHabitatInSystem, FastFindNearestUnexploredHabitat
+ * [InSector]) skip such a ruin. In the C# the player's ships never investigate ruins on their own unless
+ * DiscoveryActionRuin > 0 (the default 0 = "Ask what to do" asks once, on first contact; checkForShipsDiscoveringRuins), so
+ * a beneficial ruin the player has not (yet) chosen to investigate stays the nearest "unexplored" target: the explorer
+ * parks on the planet's centre and is re-sent to it every frame (Move/Explore → arrive → ReassignMission → same planet),
+ * turning on the spot forever. Skipping it lets the explorer move on; the player can still investigate through the
+ * EncounterRuins message or a ship's Investigate Ruins order (executeShipAction.ts), and AI empires are unaffected.
+ */
+export function ruinAwaitsPlayerDecision(galaxy: Galaxy, ruin: Ruin, empire: Empire | null): boolean {
+    return empire !== null && empire === galaxy.playerEmpire && ruin.playerEmpireEncountered;
+}
+
 /** Research.TechTree[researchProjectId].IsEnabled (ResearchNodeList = SyncList: the list indexer, by position). */
 function techTreeNodeEnabled(empire: Empire, researchProjectId: number): boolean {
     return empire.research.techTree[researchProjectId].isEnabled;
@@ -1354,7 +1369,22 @@ export function checkForShipsDiscoveringRuins(galaxy: Galaxy, habitat: Habitat):
                 if (flag3) investigateRuins(galaxy, boEmpire, habitat);
                 continue;
             }
-            // 2553-2563: "We have discovered ancient ruins" + SendEventMessageToEmpire EncounterRuins — UI only.
+            // 2553-2563: ask the player (the EncounterRuins event: the message history entry and the Investigate pop-up).
+            const habitat3 = galaxy.determineHabitatSystemStar(habitat);
+            let text = formatGameTextNow('We have discovered ancient ruins from a lost civilization', [
+                ruin.name,
+                resolveDescription(HabitatType as unknown as Record<number, string>, habitat.type).toLowerCase(),
+                categoryText(habitat),
+                habitat.name,
+                habitat3?.name ?? '',
+            ]);
+            text += '\n\n';
+            if (ruin.description !== null && ruin.description !== '') {
+                text += ruin.description;
+                text += '\n\n';
+            }
+            text += formatGameTextNow('Should we investigate the ruins?');
+            sendEventMessageToEmpire(boEmpire, EventMessageType.EncounterRuins, ruin.name, text, habitat, habitat);
         } else if (flag3 && !boEmpire.reclusive) {
             investigateRuins(galaxy, boEmpire, habitat);
         }

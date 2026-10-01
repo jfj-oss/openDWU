@@ -323,9 +323,9 @@ describe('The Exchange: forced appearance on seed 1 (shared game, in order)', ()
             expect(m.mission.timeLength).toBeGreaterThan(0);
         }
         // The stock resolution runs them (PerformIntelligenceMissions); run until a target's counter-intelligence
-        // or a detected outcome catches one (seed 1: within the first months).
+        // or a detected outcome catches one (seed 1: within the first year; the trajectory moves with sim changes).
         const caughtBefore = st.caughtLog.length;
-        for (let i = 0; i < 12 && st.caughtLog.length === caughtBefore; i++) runGameSeconds(game, 60);
+        for (let i = 0; i < 30 && st.caughtLog.length === caughtBefore; i++) runGameSeconds(game, 60);
         expect(st.caughtLog.length).toBeGreaterThan(caughtBefore);
         const victim = g.empires.find((e) => e.empireId === st.caughtLog.at(-1)!.victimId)!;
         const sec = peekSecurityState(g)!;

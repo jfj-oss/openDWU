@@ -23,9 +23,10 @@
 //
 // Render-only: reads system positions / star types, never touches sim state or the sim RNG.
 
-import { BufferImageSource, Container, Sprite, Texture } from 'pixi.js';
+import { BufferImageSource, Container, Sprite, Texture, type Renderer } from 'pixi.js';
 import { useMinifyingFilter } from './assets';
 import { hashSeed, mulberry32 } from './deepStarfield';
+import { createGpuNebula, type GpuNebula } from './gpuNebula';
 
 // --- pure part ------------------------------------------------------------------------------------------------------
 
@@ -155,11 +156,26 @@ export const PATCH_TEXTURE_EXTENT = 1.7;
 /** Warped radius (ellipse units) where the envelope reaches zero; EXTENT - ENV_OUTER > max warp shift (0.5 / √2). */
 const ENV_OUTER = 1.34;
 
-/** Patch texture size (px, square) for a device pixel ratio: 160 per DPR (the haze is soft; bilinear + mips hide the
- *  magnification), multiple of 32, capped at 512. */
+/** Patch texture size (px, square) for a device pixel ratio: 224 per DPR, multiple of 32, capped at 512. The haze is
+ *  soft, but at system zoom the largest patch still spans ~1200+ device px on a 4K screen, so 160 per DPR left it
+ *  magnified ~4x (soft-edged blocks); 224 keeps one patch at ~11 ms of idle-slice raster time at DPR 2. */
 export function nebulaTextureSize(dpr: number): number {
     const d = Math.max(1, Math.min(4, Number.isFinite(dpr) ? dpr : 1));
-    return Math.min(512, Math.max(128, Math.round((160 * d) / 32) * 32));
+    return Math.min(512, Math.max(128, Math.round((224 * d) / 32) * 32));
+}
+
+/**
+ * Deterministic triangular-PDF dither in (-1, 1) (units of one 8-bit step) for texel (x, y) and a seed: the sum of two
+ * uniform hashes minus 1. Render-only — a pure integer hash, never the sim RNG. Added to a value just before it is
+ * stored in an 8-bit channel, it turns the flat quantisation steps of a slow gradient into fine noise whose local mean
+ * is the exact value (no banding), and bilinear magnification averages it away.
+ */
+export function tpdfDither(x: number, y: number, seed: number): number {
+    let h = Math.imul(x, 0x27d4eb2d) ^ Math.imul(y, 0x165667b1) ^ seed;
+    h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d);
+    h = Math.imul(h ^ (h >>> 12), 0x297a2d39);
+    h ^= h >>> 15;
+    return ((h & 0xffff) + ((h >>> 16) & 0xffff)) / 65535 - 1;
 }
 
 /** A patch's texture size: `base` for the largest patches, scaled with the major axis (same texel density), >= base/2. */
@@ -218,7 +234,10 @@ function smooth01(e0: number, e1: number, v: number): number {
 }
 
 /**
- * Rasterises one patch (RGBA, straight alpha) row by row, so the work can be spread over idle slices.
+ * Rasterises one patch (RGBA, premultiplied alpha, TPDF-dithered before the 8-bit store) row by row, so the work can be
+ * spread over idle slices. Premultiplying here (instead of on GL upload) lets the dither act on the values the GPU
+ * actually samples: a premultiplied dark tone at a low alpha has only ~50 levels, which over a ~300-texel patch left
+ * flat runs of 40+ texels (bands, magnified ~4x on screen).
  * Texture space: [-EXTENT, EXTENT]² in ellipse units (the sprite stretches it to the ellipse's a × b and rotates it).
  */
 export class NebulaPatchRaster {
@@ -254,6 +273,8 @@ export class NebulaPatchRaster {
         // Farthest a pixel can be displaced by the warp (each component is within ±W/2).
         const reject = ENV_OUTER + W * Math.SQRT1_2;
         const end = Math.min(size, this.row + rows);
+        const seedC = p.noiseSeed | 0;
+        const seedA = (p.noiseSeed ^ 0x6a09e667) | 0;
         for (let j = this.row; j < end; j++) {
             const y = -E + (j + 0.5) * inv;
             let o = j * size * 4;
@@ -291,10 +312,16 @@ export class NebulaPatchRaster {
                 // Tone: two palette colours mixed by a slow noise, a little brighter in the dense cores.
                 const t = smooth01(0.38, 0.62, fbm(l, x * 0.9 + 47.3, y * 0.9 + 12.8, 2));
                 const lum = 0.75 + 0.35 * d;
-                data[o] = (c1.r + (c2.r - c1.r) * t) * lum;
-                data[o + 1] = (c1.g + (c2.g - c1.g) * t) * lum;
-                data[o + 2] = (c1.b + (c2.b - c1.b) * t) * lum;
-                data[o + 3] = alphaMax * d;
+                const a = alphaMax * d;
+                const k = (lum * a) / 255; // straight colour → premultiplied
+                // One dither value for the three colour channels (keeps the hue), an independent one for alpha; the
+                // clamped store rounds to nearest. Colour is kept <= alpha (valid premultiplied: no additive specks).
+                const nc = tpdfDither(i, j, seedC);
+                const aq = Math.min(255, Math.max(0, Math.round(a + tpdfDither(i, j, seedA))));
+                data[o] = Math.min(aq, (c1.r + (c2.r - c1.r) * t) * k + nc);
+                data[o + 1] = Math.min(aq, (c1.g + (c2.g - c1.g) * t) * k + nc);
+                data[o + 2] = Math.min(aq, (c1.b + (c2.b - c1.b) * t) * k + nc);
+                data[o + 3] = aq;
             }
         }
         this.row = end;
@@ -345,12 +372,16 @@ export class SystemNebulaLayer {
     private scheduled = false;
     private frame = 0;
     private readonly size: number;
+    /** WebGL fragment-shader rasteriser (one pass per patch); null = CPU idle-slice path (tests / headless / WebGPU). */
+    private gpu: GpuNebula | null;
 
     constructor(
         private readonly galaxySeed: number,
         dpr: number,
+        renderer?: Renderer | null,
     ) {
         this.size = nebulaTextureSize(dpr);
+        this.gpu = createGpuNebula(renderer);
         this.root.label = 'systemNebulae';
     }
 
@@ -400,7 +431,7 @@ export class SystemNebulaLayer {
             sys,
             params,
             container: null,
-            rasters: params.patches.map((p) => new NebulaPatchRaster(p, patchTextureSize(this.size, p))),
+            rasters: this.gpu ? [] : params.patches.map((p) => new NebulaPatchRaster(p, patchTextureSize(this.size, p))),
             textures: [],
             ready: false,
             readySince: -1,
@@ -448,6 +479,32 @@ export class SystemNebulaLayer {
         const t0 = performance.now();
         // Most recently wanted first (the system under the camera beats one panned past).
         this.queue.sort((a, b) => b.lastSeen - a.lastSeen);
+        if (this.gpu) {
+            // One GPU pass per patch (at 2x the CPU resolution, capped at 1024): finish the wanted system now.
+            const e = this.queue.shift()!;
+            const s0 = performance.now();
+            try {
+                const E = PATCH_TEXTURE_EXTENT;
+                for (const p of e.params.patches) {
+                    const c1 = SYSTEM_NEBULA_PALETTE[p.colour];
+                    const c2 = SYSTEM_NEBULA_PALETTE[p.colour2];
+                    e.textures.push(
+                        this.gpu.render(
+                            { lattice: makeLattice(p.noiseSeed), warp: p.warp, freq: p.freq, threshold: p.threshold, opacity: p.opacity, c1: [c1.r, c1.g, c1.b], c2: [c2.r, c2.g, c2.b], extent: E, envOuter: ENV_OUTER },
+                            Math.min(1024, patchTextureSize(this.size, p) * 2),
+                        ),
+                    );
+                }
+                e.genMs += performance.now() - s0;
+                this.finish(e);
+            } catch {
+                for (const t of e.textures) t.destroy(true);
+                e.textures = [];
+                this.gpuFailed(e);
+            }
+            if (this.queue.length > 0) this.schedule();
+            return;
+        }
         let first = true;
         while (this.queue.length > 0 && (first || performance.now() - t0 < budgetMs)) {
             first = false;
@@ -464,24 +521,38 @@ export class SystemNebulaLayer {
         if (this.queue.length > 0) this.schedule();
     }
 
+    /** GPU render threw: drop to the CPU path for this system. */
+    private gpuFailed(e: Entry): void {
+        this.gpu = null;
+        e.rasters = e.params.patches.map((p) => new NebulaPatchRaster(p, patchTextureSize(this.size, p)));
+        this.queue.push(e);
+    }
+
     private finish(e: Entry): void {
         const s0 = performance.now();
         const c = new Container();
         const R = e.sys.radius;
         const E = PATCH_TEXTURE_EXTENT;
-        for (const r of e.rasters) {
-            // Straight-alpha RGBA straight from the raster (no canvas copy); the GL upload premultiplies it.
-            const source = new BufferImageSource({
-                resource: r.data,
-                width: r.size,
-                height: r.size,
-                format: 'rgba8unorm',
-                alphaMode: 'premultiply-alpha-on-upload',
-            });
-            const tex = new Texture({ source });
-            useMinifyingFilter(tex); // linear + mipmaps: magnified at system zoom, minified while zooming out
-            e.textures.push(tex);
-            const p = r.params;
+        const gpuTex = e.textures.length > 0 ? e.textures : null;
+        const patches = e.params.patches;
+        for (let pi = 0; pi < patches.length; pi++) {
+            const r = e.rasters[pi];
+            let tex: Texture;
+            if (gpuTex) tex = gpuTex[pi];
+            else {
+                // Premultiplied, dithered RGBA straight from the raster (no canvas copy, no premultiply on upload).
+                const source = new BufferImageSource({
+                    resource: r.data,
+                    width: r.size,
+                    height: r.size,
+                    format: 'rgba8unorm',
+                    alphaMode: 'premultiplied-alpha',
+                });
+                tex = new Texture({ source });
+                useMinifyingFilter(tex); // linear + mipmaps: magnified at system zoom, minified while zooming out
+                e.textures.push(tex);
+            }
+            const p = patches[pi];
             const spr = new Sprite(tex);
             spr.anchor.set(0.5);
             spr.position.set(e.sys.x + p.dx * R, e.sys.y + p.dy * R);

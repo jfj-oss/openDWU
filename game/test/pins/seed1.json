@@ -725,9 +725,9 @@
     },
     "taxes": {"taxRates": [0.28999999165534973, 0.2800000011920929, 0.18000000715255737, 0.3100000023841858]},
     "tickDeterminism": {
-        "digest600": "debd45f48e221a8e",
-        "counts600": {"empires": 4, "pirateEmpires": 8, "habitats": 13326, "builtObjects": 598, "creatures": 322, "colonies": 4},
-        "rndDraws600": 658628,
+        "digest600": "7e33f79b0cd5b5a3",
+        "counts600": {"empires": 4, "pirateEmpires": 8, "habitats": 13326, "builtObjects": 599, "creatures": 324, "colonies": 4},
+        "rndDraws600": 635176,
         "digest120": "4fb8e86d41e4c0d9",
         "rndDraws120": 11524
     },

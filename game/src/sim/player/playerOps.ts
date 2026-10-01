@@ -48,6 +48,7 @@ import type { EmpireMessage } from '../messages';
 import { approveSuggestion, declineSuggestion } from './advisorSuggestions';
 import { expireOldAdvisorSuggestions } from '../advisorQueue';
 import { galaxyStarDate } from '../tick/simTime';
+import { investigateRuins } from '../exploration';
 import { cancelIntelligenceMission, characterMission } from '../espionage';
 import { scenarioFlag } from '../scenario/state';
 import { ESPIONAGE_FLAG } from '../scenario/emergent/espionageHooks';
@@ -244,6 +245,8 @@ export const PLAYER_OPS = {
     charterRelease: (galaxy: Galaxy, empire: Empire, company: Empire) => releaseCompany(galaxy, empire, company),
     charterNationalise: (galaxy: Galaxy, empire: Empire, company: Empire) => nationaliseCompany(galaxy, empire, company),
     /** 19e-7 (scenario flag `wreckage`): send a construction / mining ship to salvage a debris field (right-click menu). */
+    /** Main.Part4.cs:1831-1835 btnEventMessageInvestigate (EncounterRuins pop-up): Galaxy.InvestigateRuins(PlayerEmpire, habitat). */
+    investigateRuins: (galaxy: Galaxy, empire: Empire, habitat: Habitat) => investigateRuins(galaxy, empire, habitat),
     salvageWreckField: (galaxy: Galaxy, empire: Empire, ship: BuiltObject, fieldId: number) => orderSalvage(galaxy, empire, ship, fieldId, true),
     // [emergent] begin — scenario 19d1 internal politics (scenario/emergent/politicsActions.ts; flag-gated inside)
     politicsAction: (galaxy: Galaxy, empire: Empire, action: PoliticsActionName, character: Character) => runPoliticsAction(galaxy, empire, action, character),
