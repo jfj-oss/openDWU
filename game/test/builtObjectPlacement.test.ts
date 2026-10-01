@@ -11,6 +11,7 @@ import { TroopType } from '../src/sim/cargo';
 import { createPrivateShips, createStateShips, fillShipsWithTroops, generateNewTroop } from '../src/sim/builtObjectPlacement';
 import { MOVEMENT_DECELERATION_RANGE, type Galaxy } from '../src/sim/galaxy';
 import { findNearestPirateFaction } from '../src/sim/pirates';
+import { resolveEmpireShipNameStyle, shipRegistryPrefix } from '../src/sim/shipNameStyle';
 import { startStarDateForAge } from '../src/sim/galaxyTime';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 import type { GameData } from '../src/sim/data/gameData';
@@ -141,10 +142,15 @@ describe('CreateStateShips / CreatePrivateShips at game start (tech 0.5, age 1)'
         // SelectRandomUniqueStandardShipName: "<adj> <noun>", "<star> <noun>" or "<noun> of <star>".
         // M4x: with Galaxy.Age 1 empires also start with military ships, named "<design> NNN" (Galaxy.4.cs 2371).
         const MILITARY = new Set([S.Escort, S.Frigate, S.Destroyer, S.Cruiser, S.CapitalShip, S.Carrier, S.TroopTransport]);
-        for (const rec of expected.values()) {
+        // Deviation (shipNameStyle.ts): prefixed with the owner's registry ("HFR Bright Horizon").
+        for (const [emp, rec] of expected) {
+            const style = resolveEmpireShipNameStyle(emp);
             for (const b of rec.ships.filter((x) => !MILITARY.has(x.subRole))) {
-                expect(b.name).toMatch(/^\S+ \S+$|^\S+ of \S+$/);
-                expect(b.name).not.toMatch(/ \d{3}$/);
+                const prefix = style !== null ? shipRegistryPrefix(style, emp.name, b.subRole) : '';
+                const bare = prefix !== '' && b.name.startsWith(prefix + ' ') ? b.name.substring(prefix.length + 1) : b.name;
+                if (prefix !== '') expect(b.name.startsWith(prefix + ' ')).toBe(true);
+                expect(bare).toMatch(/^\S+ \S+$|^\S+ of \S+$/);
+                expect(bare).not.toMatch(/ \d{3}$/);
             }
         }
         const ships = expected.get(player)!.ships;
@@ -167,6 +173,7 @@ describe('CreateStateShips / CreatePrivateShips at game start (tech 0.5, age 1)'
         // (re-pinned M4m: the game-start Empire.DoTasks runs the military AI — IdentifyMilitaryObjectives Next(0, EmpireEvaluations.Count), CheckTemptingTargets Next(0, Empires.Count), DetermineRandomAttacks Next(0, n) — which shifts the Rnd stream.)
         // (re-pinned M4q: InvadeUnwillingColonizationTargets draws Rnd.NextDouble in each game-start Empire.DoTasks)
         // Moved #18f9066572 → #e05c0a51f3: todosweep TODO(port) sweep: Galaxy.4.cs 2794 GenerateGasCloud places clouds in NebulaCloud locations (location/offset Rnd); Galaxy.6.cs 3714 FindNearestSystemGasCloudAsteroid sees Parent==null habitats (stars too), so SetupSun's spacing retries change the galaxy; Galaxy.8.cs 479-482 continental-planet lists; Start.2.cs 1484 Galaxy.DoTasks and 2035-2038 Capital.DoTasks at game start; Empire.9.cs 4772 GetOrders count in ProjectPrivateForceStructure; Galaxy.ResourceCurrentPrices in IdentifyResourceCentres; Habitat.cs 878 raid revenue, Empire.cs 1683 rebels, HabitatList.cs 553 MigrationFactor; Empire.1.cs 1021 / Empire.cs 1761 trade + space-port income in tribute; Empire.9.cs 5351 fuel costs; Galaxy.7.cs 4570-4594 trader refuel missions / retirement teardown; Galaxy.3.cs 1832 / 1851 docking under war / blockade; Galaxy.cs 3659/3681 mining rights, BaconGalaxy.cs 162 DetermineDefendingFirepower; Empire.9.cs 4035 CheckWhetherHabitatIsDangerous; Empire.9.cs 3071-3224 shared visibility; Race.cs 350-400 periodic levels; BuiltObject.cs 799 StrengthInNumbers; Empire.8.cs 16 CheckEmpireBuildingVictoryWonder; Empire.9.cs 4604 mission priority; Empire.cs 983 SpecialBonusDiplomacy; Empire.4.cs 4264 ruin colonization; Empire.7.cs 1429 purchase message; BaconGalaxy.cs 137 TargettingFactor; Galaxy.2.cs 5231 troop-general message; Start.cs 3954 AssignSystemName; Galaxy.6.cs 871 ClearColony (2026-09-26)
+        // Moved #e05c0a51f3 → #682cb4ef8d: per-empire/race ship naming styles (shipNameStyle.ts deviation): registry prefixes + race word lists; name strings only, Rnd draws unchanged (2026-10-01)
         expect(own.filter((b) => !MILITARY.has(b.subRole)).slice(0, 9).map((b) => [S[b.subRole], b.name])).toMatchPin('builtObjectPlacement.playerCivilianNames');
         // M4x (Galaxy.Age 1): the projection now includes 2 Escorts / Frigates / Destroyers and explorers, 2 construction ships
         // (4 explorers since the star-spacing fix of FindNearestSystemGasCloudAsteroid put fewer systems around Sol).
@@ -214,24 +221,28 @@ describe('GenerateBuiltObjectName formats (Galaxy.4.cs 2371)', () => {
         const g = createGame(opts()).galaxy;
         const e = g.empires[0];
         let checked = 0;
+        // Deviation (shipNameStyle.ts): warships carry the empire's registry prefix ("HFS Apulon 001").
+        const style = resolveEmpireShipNameStyle(e)!;
+        const reg = (sr: BuiltObjectSubRole) => shipRegistryPrefix(style, e.name, sr) + ' ';
+        expect(reg(S.Escort).trim()).not.toBe('');
         for (const sr of [S.Escort, S.Frigate, S.Destroyer, S.TroopTransport]) {
             const d = e.designs.find((x) => x.subRole === sr);
             if (!d) continue;
             checked++;
             d.buildCount = 1;
-            expect(g.generateBuiltObjectName(d)).toBe(`${d.name} 001`);
+            expect(g.generateBuiltObjectName(d)).toBe(`${reg(sr)}${d.name} 001`);
             d.buildCount = 12;
-            expect(g.generateBuiltObjectName(d)).toBe(`${d.name} 012`);
+            expect(g.generateBuiltObjectName(d)).toBe(`${reg(sr)}${d.name} 012`);
             // uniqueNamesForSmallMilitaryShips → SelectRandomUniqueMilitaryShipName.
-            expect(g.generateBuiltObjectName(d, null, true)).toMatch(/^\S+ \S+$/);
+            expect(g.generateBuiltObjectName(d, null, true)).toMatch(/^\S+ \S+ \S+$/);
         }
         expect(checked).toBeGreaterThan(0);
         const cruiser = e.designs.find((x) => x.subRole === S.Cruiser);
         if (cruiser) {
             cruiser.buildCount = 1;
-            expect(g.generateBuiltObjectName(cruiser)).toBe(cruiser.name);
+            expect(g.generateBuiltObjectName(cruiser)).toBe(reg(S.Cruiser) + cruiser.name);
             cruiser.buildCount = 2;
-            expect(g.generateBuiltObjectName(cruiser)).not.toBe(cruiser.name);
+            expect(g.generateBuiltObjectName(cruiser)).not.toBe(reg(S.Cruiser) + cruiser.name);
         }
     }, 60000);
 });

@@ -63,6 +63,7 @@ import { displayColorForEmpire } from '../sim/empireColors';
 import { useMinifyingFilter } from './assets';
 import { boundsOnScreen } from './drawCache';
 import { combatBarAlpha, drawCombatBars } from './combatBars';
+import { drawCrossedSwords, systemsUnderFire } from './battleIcons';
 import { builtObjectHiddenFromPick, warEmpires } from './builtObjectLayer';
 
 // --- constants ----------------------------------------------------------------------------------------------------
@@ -725,6 +726,8 @@ export class GalaxyMarkerLayer {
     private visibleFleets: ShipGroup[] = [];
     private knownBases = new Set<BuiltObject>();
     private war: Empire[] = [];
+    /** systemIndex -> opacity of the crossed-swords marker (battleIcons.ts), refreshed with the rest. */
+    private underFire = new Map<number, number>();
     private lastRefresh = -Infinity;
     private dataVersion = 0;
     private ringKey = { z: NaN, v: -1, a: NaN, x0: 0, y0: 0, x1: 0, y1: 0 };
@@ -826,6 +829,7 @@ export class GalaxyMarkerLayer {
                 this.visibleFleets.push(sg);
             }
         }
+        this.underFire = systemsUnderFire(player, g.builtObjects, g.habitats, g.nowMs);
         this.war = player !== null ? warEmpires(player.diplomaticRelations) : [];
         this.dataVersion++;
     }
@@ -990,6 +994,14 @@ export class GalaxyMarkerLayer {
             if (label.style.fontSize !== size) label.style.fontSize = size;
             label.anchor.set(0, 1);
             label.position.set(x / z, 1 / z); // root sits at the star; baseline just above the centre line
+            // Crossed swords: lower-right corner of the ring while the player is fighting in this system.
+            const fire = this.underFire.get(star.systemIndex);
+            if (fire !== undefined) {
+                const swordPx = f < 4000 ? 18 : 14;
+                const pulse = 0.8 + 0.2 * Math.sin(performance.now() / 250);
+                const off = (ringPx + swordPx / 2) * Math.SQRT1_2;
+                drawCrossedSwords(this.overlayG, star.xpos + off / z, star.ypos + off / z, swordPx, z, fire * pulse);
+            }
             // Ruins glyph "∴" (5645-5657): three small squares in the name colour right after the name.
             if (sys.hasRuins === true) {
                 const q = f < 4000 ? 3 : 2;

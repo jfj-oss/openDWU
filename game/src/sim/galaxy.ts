@@ -55,6 +55,7 @@ import type { BuiltObject } from './builtObject';
 import type { RaceFamily } from './data/raceFamilies';
 import { BuiltObjectRole } from './data/designSpecifications';
 import { BuiltObjectSubRole } from './builtObjectTypes';
+import { applyShipRegistryPrefix, pickStyled, resolveEmpireShipNameStyle } from './shipNameStyle';
 import { MIN_TIME, galaxyNow } from './tick/simTime';
 import { habitatDoTasks } from './tick/habitatTick';
 import { canEmpireColonizeHabitat, habitatResourcesHaveSuperLuxury } from './exploration';
@@ -1038,6 +1039,21 @@ export class Galaxy {
         }
         if (flag) {
             const n = buildCount000(design.buildCount);
+            // DEVIATION (shipNameStyle.ts): registry prefix per empire/race on the design-name
+            // based names below (bases get none). No Rnd.
+            empty = this.generateDesignBasedBuiltObjectName(design, n);
+            return applyShipRegistryPrefix(design.empire as Empire | null, design.subRole, empty);
+        } else {
+            empty = this.selectUniqueBuiltObjectName(design, habitat);
+        }
+        return empty;
+    }
+
+    // Galaxy.4.cs GenerateBuiltObjectName (2361-2493), the `flag` (design-name) branch.
+    private generateDesignBasedBuiltObjectName(design: Design, n: string): string {
+        const S = BuiltObjectSubRole;
+        let empty = '';
+        {
             switch (design.subRole) {
                 case S.GenericBase:
                     empty = design.name + ' ' + n;
@@ -1102,8 +1118,6 @@ export class Galaxy {
                     empty = design.name + ' ' + n;
                     break;
             }
-        } else {
-            empty = this.selectUniqueBuiltObjectName(design, habitat);
         }
         return empty;
     }
@@ -1150,6 +1164,10 @@ export class Galaxy {
         if (empty !== '') {
             return empty;
         }
+        // DEVIATION (shipNameStyle.ts): per-empire/race word lists, index-mapped so the Rnd
+        // draws (bounded by the original array lengths) are unchanged.
+        const owner = design.empire as Empire | null;
+        const style = resolveEmpireShipNameStyle(owner);
         let text = '';
         let text2 = '';
         if (parentHabitat !== null) {
@@ -1172,32 +1190,36 @@ export class Galaxy {
             case S.TroopTransport:
             case S.Carrier:
             case S.ResupplyShip:
-                empty = this.selectRandomUniqueMilitaryShipName(parentHabitat);
+                empty = this.selectRandomUniqueMilitaryShipName(parentHabitat, owner, design.subRole);
                 break;
             case S.ResortBase:
                 empty = this.generateResortBaseName(parentHabitat);
                 break;
             case S.MonitoringStation: {
                 const array = ['Beacon', 'Sentinel', 'Station', 'Monitoring Facility'];
-                empty = text2 !== '' ? text2 + ' ' + array[this.rnd.next(0, array.length)] : array[this.rnd.next(0, array.length)] + ' ' + buildCount000(design.buildCount);
+                const word = (i: number): string => (style !== null ? pickStyled(style.monitoringWords, i) : array[i]);
+                empty = text2 !== '' ? text2 + ' ' + word(this.rnd.next(0, array.length)) : word(this.rnd.next(0, array.length)) + ' ' + buildCount000(design.buildCount);
                 break;
             }
             case S.EnergyResearchStation:
             case S.WeaponsResearchStation:
             case S.HighTechResearchStation: {
                 const array = ['Research Center', 'Station', 'Research Station', 'Research Facility'];
-                empty = text2 !== '' ? text2 + ' ' + array[this.rnd.next(0, array.length)] : array[this.rnd.next(0, array.length)] + ' ' + buildCount000(design.buildCount);
+                const word = (i: number): string => (style !== null ? pickStyled(style.researchWords, i) : array[i]);
+                empty = text2 !== '' ? text2 + ' ' + word(this.rnd.next(0, array.length)) : word(this.rnd.next(0, array.length)) + ' ' + buildCount000(design.buildCount);
                 break;
             }
             case S.DefensiveBase: {
                 // TextResolver.GetText of each (GameText.txt 1601, 2781-2783).
                 const array = ['Defensive Base', 'Weapons Platform', 'Defense Battery', 'Orbital Battery'];
-                empty = text !== '' ? text + ' ' + array[this.rnd.next(0, array.length)] : array[this.rnd.next(0, array.length)] + ' ' + buildCount000(design.buildCount);
+                const word = (i: number): string => (style !== null ? pickStyled(style.defensiveWords, i) : array[i]);
+                empty = text !== '' ? text + ' ' + word(this.rnd.next(0, array.length)) : word(this.rnd.next(0, array.length)) + ' ' + buildCount000(design.buildCount);
                 break;
             }
             case S.GenericBase: {
                 const array = ['Base', 'Station'];
-                const text3 = array[this.rnd.next(0, array.length)];
+                const i = this.rnd.next(0, array.length);
+                const text3 = style !== null ? pickStyled(style.genericBaseWords, i) : array[i];
                 if (empty === '') {
                     empty = text2 + ' ' + text3;
                 }
@@ -1212,7 +1234,7 @@ export class Galaxy {
             case S.ConstructionShip:
             case S.GasMiningShip:
             case S.MiningShip:
-                empty = this.selectRandomUniqueStandardShipName(parentHabitat);
+                empty = this.selectRandomUniqueStandardShipName(parentHabitat, owner, design.subRole);
                 break;
             case S.SmallSpacePort:
             case S.MediumSpacePort:
@@ -1229,14 +1251,17 @@ export class Galaxy {
     // Port of Galaxy.5.cs SelectRandomUniqueStandardShipName (2356). Rnd: Next(0,127),
     // Next(0,125), Next(0,7); when that is < 2 and habitat != null and the system star name
     // passes the checks, one more Next(0,3).
-    selectRandomUniqueStandardShipName(habitat: Habitat | null): string {
+    // DEVIATION (shipNameStyle.ts): with an owning `empire`, the words come from its race style
+    // (same draws, index-mapped) and the result carries its registry prefix for `subRole`.
+    selectRandomUniqueStandardShipName(habitat: Habitat | null, empire: Empire | null = null, subRole: BuiltObjectSubRole = BuiltObjectSubRole.SmallFreighter): string {
+        const style = resolveEmpireShipNameStyle(empire);
         let empty = '';
         const array = STANDARD_SHIP_NAME_ADJECTIVES;
         const array2 = STANDARD_SHIP_NAME_NOUNS;
         let num = this.rnd.next(0, array.length);
-        const text = array[num];
+        const text = style !== null ? pickStyled(style.standardAdjectives, num) : array[num];
         num = this.rnd.next(0, array2.length);
-        const text2 = array2[num];
+        const text2 = style !== null ? pickStyled(style.standardNouns, num) : array2[num];
         empty = text + ' ' + text2;
         if (this.rnd.next(0, 7) < 2 && habitat !== null) {
             const habitat2 = this.determineHabitatSystemStar(habitat);
@@ -1247,22 +1272,24 @@ export class Galaxy {
                 }
             }
         }
-        return empty;
+        return applyShipRegistryPrefix(empire, subRole, empty);
     }
 
     // Port of Galaxy.5.cs SelectRandomUniqueMilitaryShipName(habitat) (2419). Rnd: Next(0,76),
     // Next(0,162), Next(0,5); when that is < 2 and habitat != null and the system star name
     // passes the checks, one more Next(0,3).
-    selectRandomUniqueMilitaryShipName(habitat: Habitat | null = null): string {
+    // DEVIATION (shipNameStyle.ts): see selectRandomUniqueStandardShipName.
+    selectRandomUniqueMilitaryShipName(habitat: Habitat | null = null, empire: Empire | null = null, subRole: BuiltObjectSubRole = BuiltObjectSubRole.Cruiser): string {
+        const style = resolveEmpireShipNameStyle(empire);
         let empty = '';
         let empty2 = '';
         let empty3 = '';
         const array = MILITARY_SHIP_NAME_ADJECTIVES;
         const array2 = MILITARY_SHIP_NAME_NOUNS;
         let num = this.rnd.next(0, array.length);
-        empty2 = array[num];
+        empty2 = style !== null ? pickStyled(style.militaryAdjectives, num) : array[num];
         num = this.rnd.next(0, array2.length);
-        empty3 = array2[num];
+        empty3 = style !== null ? pickStyled(style.militaryNouns, num) : array2[num];
         empty = empty2 + ' ' + empty3;
         if (this.rnd.next(0, 5) < 2 && habitat !== null) {
             const habitat2 = this.determineHabitatSystemStar(habitat);
@@ -1273,7 +1300,7 @@ export class Galaxy {
                 }
             }
         }
-        return empty;
+        return applyShipRegistryPrefix(empire, subRole, empty);
     }
 
     // Port of Galaxy.3.cs GenerateResortBaseName (553).
