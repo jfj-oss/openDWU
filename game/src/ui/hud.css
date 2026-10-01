@@ -537,3 +537,10 @@
     color: #9aa3ad;
     font-size: 11px;
 }
+
+.hud-dispatch {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 6px;
+}

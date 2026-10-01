@@ -58,6 +58,7 @@ import { toggleBuildOrder } from './screens/buildOrder'; import { toggleConstruc
 import { toggleResearchScreen } from './screens/researchScreen'; // [15b]
 import { toggleEmpireComparison } from './screens/empireComparison';
 import { showToast } from './toast';
+import { habitatDispatchOptions } from '../sim/player/habitatDispatch';
 // [troops] begin
 import { toggleTroopsScreen } from './screens/troops';
 import { confirmAutomationOff } from './orderMenu';
@@ -1352,6 +1353,10 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         for (const row of buildSelectionRows(sel, gameData, wiring.galaxy?.playerEmpire ?? null)) {
             body.appendChild(row.element);
         }
+        if (!sel.creature && !sel.shipGroup && !sel.builtObject && wiring.galaxy?.playerEmpire) {
+            const bar = habitatDispatchBar(wiring.galaxy, wiring.galaxy.playerEmpire, h);
+            if (bar !== null) body.appendChild(bar);
+        }
         syncFollowButton(); // [followcam]
     };
     const renderMultipleShips = (ships: BuiltObject[]): void => {
@@ -2642,4 +2647,34 @@ export function nearestSystemName(
     if (best < 0) return '';
     const star = systems[best].systemStar;
     return rimSystemDisplayName({ scenario: dwu?.galaxy?.scenario ?? null }, star.systemIndex, star.name);
+}
+/** Selection-panel dispatch buttons for a selected habitat: each sends the nearest idle unselected ship that can take the
+ *  order (sim/player/habitatDispatch.ts) through the player command path, then toasts which ship went. */
+function habitatDispatchBar(galaxy: Galaxy, player: Empire, h: Habitat): HTMLElement | null {
+    const options = habitatDispatchOptions(galaxy, player, h);
+    if (options.length === 0) return null;
+    const bar = document.createElement('div');
+    bar.className = 'hud-dispatch';
+    for (const o of options) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'hud-btn';
+        btn.textContent = o.label;
+        btn.title = o.hint;
+        btn.disabled = o.ship === null;
+        btn.addEventListener('click', () => {
+            // Re-resolve at click time: ships' queues and positions have moved since the panel was drawn.
+            const fresh = habitatDispatchOptions(galaxy, player, h).find((x) => x.id === o.id);
+            if (!fresh || fresh.ship === null || fresh.action === null) {
+                showToast(`No available ${o.role}`);
+                return;
+            }
+            const ship = fresh.ship;
+            issuePlayerCommand(galaxy, player, 'shipAction', [ship, fresh.action, true, { x: h.xpos, y: h.ypos }], (r) => {
+                showToast(r.ok === false ? `${ship.name}: ${r.message ?? 'order refused'}` : `${ship.name} sent: ${o.label} ${h.name}`);
+            });
+        });
+        bar.appendChild(btn);
+    }
+    return bar;
 }
