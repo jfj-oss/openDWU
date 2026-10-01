@@ -13,7 +13,7 @@ import type { Empire } from '../empire';
 import type { GameData } from '../data/gameData';
 import type { StartGameOptions } from '../startGameOptions';
 import { GalaxyTime } from '../galaxyTime';
-import { flatEmpireList, galaxyFromJSON, galaxyToJSON, type GalaxySaveJSON } from './galaxySave';
+import { encodedField, flatEmpireList, galaxyFromJSON, galaxyToJSON, type GalaxySaveJSON } from './galaxySave';
 import { commandLog, copyCommandLogEntry, restoreCommandLog, type CommandLogEntry } from '../player/commandLog';
 import { flushPlayerCommands } from '../player/playerCommands';
 import { COMPOSITE_SCENARIO_ID } from '../scenario/addons';
@@ -60,8 +60,7 @@ export function serializeGame(game: Game, time: GalaxyTime, startOptions: StartG
  */
 export function savedScenarioId(save: string | GameSaveJSON): string | null {
     const obj = typeof save === 'string' ? (JSON.parse(save) as GameSaveJSON) : save;
-    const g = obj.galaxy?.galaxy as { $f?: { scenario?: { $f?: { id?: unknown } } | null } } | undefined;
-    const id = g?.$f?.scenario?.$f?.id;
+    const id = obj.galaxy === undefined ? undefined : encodedField(obj.galaxy, encodedField(obj.galaxy, obj.galaxy.galaxy, 'scenario'), 'id');
     return typeof id === 'string' ? id : null;
 }
 
@@ -72,15 +71,15 @@ export function savedScenarioId(save: string | GameSaveJSON): string | null {
  */
 export function savedScenarioInclude(save: string | GameSaveJSON): string[] | null {
     const obj = typeof save === 'string' ? (JSON.parse(save) as GameSaveJSON) : save;
-    const g = obj.galaxy?.galaxy as { $f?: { scenario?: { $f?: { manifest?: { include?: unknown } | null } } | null } } | undefined;
-    const inc = g?.$f?.scenario?.$f?.manifest?.include;
+    const manifest = obj.galaxy === undefined ? undefined : encodedField(obj.galaxy, encodedField(obj.galaxy, obj.galaxy.galaxy, 'scenario'), 'manifest');
+    const inc = manifest !== null && typeof manifest === 'object' && !Array.isArray(manifest) ? manifest.include : undefined;
     return Array.isArray(inc) && inc.every((x) => typeof x === 'string') ? (inc as string[]) : null;
 }
 
-/** Rebuild a game from a serializeGame string. Static data (races, resources,
- *  research, governments) comes from gameData. */
-export function deserializeGame(text: string, gameData: GameData): { game: Game; time: GalaxyTime; startOptions: StartGameOptions } {
-    const obj = JSON.parse(text) as GameSaveJSON;
+/** Rebuild a game from a serializeGame string (or that string already JSON.parse'd — a big save is parsed once by a
+ *  loader that also reads its scenario id). Static data (races, resources, research, governments) comes from gameData. */
+export function deserializeGame(save: string | GameSaveJSON, gameData: GameData): { game: Game; time: GalaxyTime; startOptions: StartGameOptions } {
+    const obj = typeof save === 'string' ? (JSON.parse(save) as GameSaveJSON) : save;
     if (obj.version !== GAME_SAVE_VERSION) throw new Error(`Unsupported save version ${String(obj.version)} (expected ${GAME_SAVE_VERSION}).`);
     // Mod layer: the static tables are rebuilt from gameData, so it must carry the save's scenario overlay (or none).
     const savedScenario = savedScenarioId(obj);
@@ -119,4 +118,18 @@ export function deserializeGame(text: string, gameData: GameData): { game: Game;
         time,
         startOptions: obj.startOptions,
     };
+}
+/**
+ * deserializeGame in steps for a loading screen (src/ui/loadingOverlay.ts): yields a progress report before the JSON
+ * parse and before the graph decode — the two long, indivisible parts of loading a big save — and parses the text
+ * once. `gameDataFor` picks the static data for the parsed save (its scenario overlay, see savedScenarioId).
+ */
+export function* deserializeGameSteps(
+    text: string,
+    gameDataFor: (save: GameSaveJSON) => GameData,
+): Generator<{ step: string; fraction: number }, { game: Game; time: GalaxyTime; startOptions: StartGameOptions }, void> {
+    yield { step: `Reading save (${Math.max(1, Math.round(text.length / 1048576))} MB)`, fraction: 0 };
+    const obj = JSON.parse(text) as GameSaveJSON;
+    yield { step: 'Rebuilding galaxy', fraction: 0.35 };
+    return deserializeGame(obj, gameDataFor(obj));
 }

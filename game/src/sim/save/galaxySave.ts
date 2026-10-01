@@ -20,7 +20,7 @@ import { cloneGalaxyRaces, raceScalarFields } from '../data/races';
 import { buildResourceSystem } from '../resourceSystem';
 import { buildResearchStatic, ResearchSystem } from '../researchSystem';
 import { buildComponentStatic } from '../componentStatic';
-import { GraphDecoder, GraphEncoder, type Encoded, type ExternalRef, type GraphCodecOptions } from './graphCodec';
+import { GraphDecoder, GraphEncoder, type Encoded, type ExternalRef, type GraphCodecOptions, type ShapeTable } from './graphCodec';
 // Model classes (registry below), one import per module, sorted by module path.
 import { BuiltObject, DockingBay } from '../builtObject';
 import { BuiltObjectComponent, BuiltObjectComponentList } from '../builtObjectComponent';
@@ -71,6 +71,9 @@ import { Weapon } from '../weapon';
 
 export interface GalaxySaveJSON {
     version: 2;
+    /** The codec's shape table (graphCodec.ts: class instances are {$s, $v} against it). Absent in older saves, whose
+     *  instances are {$t, $f}. */
+    shapes?: ShapeTable;
     /** The Galaxy instance encoded by GraphEncoder (reference id 0). */
     galaxy: Encoded;
     /** EmpireTerritory's 2000x2000 ownership grid, run-length encoded per row ([value, count, value, count, ...]);
@@ -411,7 +414,23 @@ export function galaxyToJSON(galaxy: Galaxy): GalaxySaveJSON {
     const encoder = new GraphEncoder(CODEC_OPTIONS, externalsByObject(staticTablesOfGalaxy(galaxy)));
     const encoded = encoder.encode(galaxy, 'galaxy');
     const sideTables = encoder.encode(collectSideTables(galaxy, [...encoder.visited()]), 'sideTables');
-    return { version: 2, galaxy: encoded, territory: encodeTerritory(territoryGrid(galaxy.empireTerritory)), sideTables, baseTechCost: galaxy.baseTechCost };
+    return { version: 2, shapes: encoder.shapes, galaxy: encoded, territory: encodeTerritory(territoryGrid(galaxy.empireTerritory)), sideTables, baseTechCost: galaxy.baseTechCost };
+}
+
+/**
+ * One field of an encoded class instance in a save, without decoding the graph: `{$s, $v}` (looked up in the save's
+ * shape table) or the older `{$t, $f}`. Undefined when `encoded` is not an instance or has no such field.
+ */
+export function encodedField(save: GalaxySaveJSON, encoded: Encoded | undefined, field: string): Encoded | undefined {
+    if (encoded === null || typeof encoded !== 'object' || Array.isArray(encoded)) return undefined;
+    if (typeof encoded.$s === 'number') {
+        const shape = save.shapes?.[encoded.$s];
+        const i = shape === undefined ? -1 : shape.indexOf(field, 1);
+        return i < 1 ? undefined : (encoded.$v as Encoded[])[i - 1];
+    }
+    const f = encoded.$f;
+    if (f === null || typeof f !== 'object' || Array.isArray(f)) return undefined;
+    return f[field];
 }
 
 /**
@@ -577,7 +596,7 @@ export function galaxyFromJSON(obj: GalaxySaveJSON, gameData: GameData): Galaxy 
     if (obj.version !== 2) throw new Error(`Unsupported galaxy save version ${String((obj as { version: unknown }).version)}.`);
     const tables = staticTablesOfGameData(gameData, obj.baseTechCost ?? 120000);
     const externals = externalsByRef(tables);
-    const decoder = new GraphDecoder(CODEC_OPTIONS, (ref) => externals.get(`${ref.kind}:${ref.key}`));
+    const decoder = new GraphDecoder(CODEC_OPTIONS, (ref) => externals.get(`${ref.kind}:${ref.key}`), obj.shapes);
     const galaxy = decoder.decode(obj.galaxy, 'galaxy') as Galaxy;
     if (!(galaxy instanceof Galaxy)) throw new Error('Save root is not a Galaxy.');
 

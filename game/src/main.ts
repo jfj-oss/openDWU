@@ -12,7 +12,8 @@ import { MainView } from './render/mainView';
 import { AssetStore, loadManifest } from './render/assets';
 import { generateGalaxy } from './sim/galaxy';
 import { Galaxy } from './sim/galaxy';
-import { createGame, type CreateGameOptions } from './sim/game';
+import { createGame, createGameSteps, type CreateGameOptions } from './sim/game';
+import { runStepsWithProgress, showLoadingOverlay, nextPaint } from './ui/loadingOverlay';
 import { parseSystemNames } from './sim/data';
 import { loadGameData, type FetchText, type GameData } from './sim/data/gameData';
 import { GalaxyShape } from './sim/types';
@@ -75,7 +76,7 @@ import { getMessageOptions } from './ui/messageRouting';
 import { createNewGameWizard } from './ui/screens/newGameWizard';
 import { openGalactopedia } from './ui/screens/galactopedia';
 import { colonizationRangeFor, defaultStartGameOptions, piratesFor, STARTING_TECH_LEVEL, toCreateGameOptions, type StartGameOptions, maximumEmpireAmountFor, starCountFor, defaultScenarioChoice, type StartScenarioChoice } from './sim/startGameOptions';
-import { serializeGame, deserializeGame, savedScenarioId, savedScenarioInclude } from './sim/save/gameSave';
+import { serializeGame, deserializeGameSteps, savedScenarioId, savedScenarioInclude, type GameSaveJSON } from './sim/save/gameSave';
 import { loadScenarioIndex, loadScenarioOverlay } from './sim/scenario/fetchScenario';
 import { applyScenarioOverlay, type ScenarioOverlay } from './sim/scenario/overlay';
 import { COMPOSITE_SCENARIO_ID, addonCatalog, compositeScenarioManifest, planAddonStart, resolveAddonSwitches, scenarioOverlayFor } from './sim/scenario/addons';
@@ -259,11 +260,29 @@ function choiceInclude(choice: StartScenarioChoice): string[] | null {
 }
 
 /** Mod layer: the GameData a save needs (its scenario's overlay over the base data). */
-function gameDataForSave(text: string): GameData {
+function gameDataForSave(save: GameSaveJSON): GameData {
     if (lastGameData === null) throw new Error('DW:U game data is required to load a save');
-    const id = savedScenarioId(text);
-    lastPlayedGameData = gameDataWithScenario(lastGameData, id, id === COMPOSITE_SCENARIO_ID ? savedScenarioInclude(text) : null);
+    const id = savedScenarioId(save);
+    lastPlayedGameData = gameDataWithScenario(lastGameData, id, id === COMPOSITE_SCENARIO_ID ? savedScenarioInclude(save) : null);
     return lastPlayedGameData;
+}
+
+/** Deserialize a save under the loading overlay (the save is parsed once; a late-game save takes seconds). */
+async function loadSaveWithProgress(text: string): Promise<LoadedGame> {
+    if (lastGameData === null) throw new Error('DW:U game data is required to load a save');
+    return (await runStepsWithProgress('Loading game', deserializeGameSteps(text, gameDataForSave))) as unknown as LoadedGame;
+}
+
+/** startGameView under a "Preparing map" overlay: building the map layers of a big galaxy takes a moment. */
+async function startGameViewWithOverlay(...args: Parameters<typeof startGameView>): Promise<GalaxyTime> {
+    const overlay = showLoadingOverlay('Preparing map');
+    overlay.update({ step: '', fraction: 1 });
+    try {
+        await nextPaint();
+        return await startGameView(...args);
+    } finally {
+        overlay.close();
+    }
 }
 let lastStartOptions: StartGameOptions | null = null;
 let activeSavePanel: ReturnType<typeof createSaveLoadPanel> | null = null;
@@ -757,7 +776,7 @@ export async function startGameView(
                 serialize: () =>
                     lastStartOptions !== null ? serializeGame(game, time, lastStartOptions) : null,
                 loadSave: (text) => {
-                    return deserializeGame(text, gameDataForSave(text)) as unknown as LoadedGame;
+                    return loadSaveWithProgress(text);
                 },
             });
         }
@@ -772,7 +791,7 @@ export async function startGameView(
         serialize: () =>
             lastStartOptions !== null ? serializeGame(game, time, lastStartOptions) : null,
         loadSave: (text) => {
-            return deserializeGame(text, gameDataForSave(text)) as unknown as LoadedGame;
+            return loadSaveWithProgress(text);
         },
         memorySaves,
     });
@@ -949,14 +968,23 @@ async function bootGameFromWizard(startOptions: StartGameOptions): Promise<void>
         if (playData.scenario !== undefined && playData.scenario.warnings.length > 0) console.warn('Scenario overlay warnings', playData.scenario.warnings);
     }
     lastPlayedGameData = playData;
-    const game: Game = createGame(toCreateGameOptions(startOptions, playData, systemNames));
+    // Built in steps under a progress overlay: a big Mature/Old galaxy takes several seconds.
+    let game: Game;
+    try {
+        game = await runStepsWithProgress('Creating galaxy', createGameSteps(toCreateGameOptions(startOptions, playData, systemNames)));
+    } catch (err) {
+        console.error('Galaxy creation failed', err);
+        showToast('Could not create the galaxy — see console');
+        showMainMenu();
+        return;
+    }
     // Task 10d: the wizard's chosen flag shape/colour is not forwarded to
     // createGame yet (see TODO(createGame) in startGameOptions.ts), so apply
     // it to the player empire here for the HUD's empires button.
     if (startOptions.flagShapeIndex >= 0) {
         game.playerEmpire.flagShape = startOptions.flagShapeIndex;
     }
-    await startGameView(game);
+    await startGameViewWithOverlay(game);
 }
 
 /** Task 06l: boot a default-options game (player Human + 3 random AI
@@ -1031,7 +1059,7 @@ async function bootLoadedGame(loaded: LoadedGame): Promise<void> {
     await ensureStaticData();
     teardownActiveGameView();
     // The sim time itself is galaxy.nowMs (saved with the galaxy); the save's clock only restores pause/speed.
-    await startGameView(game, undefined, undefined, { speed: time.speed, paused: time.paused });
+    await startGameViewWithOverlay(game, undefined, undefined, { speed: time.speed, paused: time.paused });
 }
 
 async function main(): Promise<void> {
@@ -1040,6 +1068,17 @@ async function main(): Promise<void> {
     installUiClickSounds();
     // [audio] end
     const skipMenu = SKIP_MENU_PARAMS.some((k) => params.has(k));
+
+    const newGame = params.get('newgame');
+    if (newGame !== null) {
+        // Dev / perf hook: start a game through the wizard path (toCreateGameOptions + the progress overlay) with the
+        // wizard defaults overridden by this JSON, e.g. the big late start
+        // ?newgame={"seed":1,"starCountIndex":5,"dimensionIndex":4,"galaxyExpansionIndex":4,"empireExpansionIndex":4,"otherEmpires":{"empireCount":19}}
+        const o = JSON.parse(newGame) as Partial<StartGameOptions> & { otherEmpires?: Partial<StartGameOptions['otherEmpires']> };
+        const base = defaultStartGameOptions();
+        void bootGameFromWizard({ ...base, raceName: 'Human', empireName: 'Human Empire', ...o, otherEmpires: { ...base.otherEmpires, ...o.otherEmpires } });
+        return;
+    }
 
     if (params.get('screen') === 'wizard') {
         // Screenshot / dev hook (task 06b): jump straight to the wizard.
@@ -1123,7 +1162,7 @@ function showMainMenu(): void {
                     getMainMenuSavePanel().show();
                 },
                 loadSave: (text) => {
-                    return deserializeGame(text, gameDataForSave(text)) as unknown as LoadedGame;
+                    return loadSaveWithProgress(text);
                 },
             });
             getMainMenuSavePanel().show();
@@ -1145,7 +1184,7 @@ function getMainMenuSavePanel() {
             loadOnly: true,
             memorySaves: sessionSaves,
             loadSave: (text) => {
-                return deserializeGame(text, gameDataForSave(text)) as unknown as LoadedGame;
+                return loadSaveWithProgress(text);
             },
         });
     }
@@ -1296,7 +1335,7 @@ async function buildAutostartGame(
     }
     // [scenarioAutostart] end
     try {
-        const game = createGame(opts);
+        const game = await runStepsWithProgress('Creating galaxy', createGameSteps(opts));
         lastPlayedGameData = playData;
         // Saves need start options (metadata only; the galaxy itself is saved).
         lastStartOptions = { ...defaultStartGameOptions(), seed, scenario: scenarioChoice };

@@ -25,7 +25,13 @@
 //   plain object                             → { ... } (keys must not start with '$')
 //   Map / Set                                → {$map: [[k, v], ...]} / {$set: [...]}
 //   Int8Array / Uint8Array / ...             → {$i8: [...]}, {$u8: [...]}, {$f32: ...}, ...
-//   registered class instance                → {$t: name, $f: { field: value, ... }}
+//   registered class instance                → {$s: shape, $v: [value, ...]}
+//                                               (older saves: {$t: name, $f: { field: value, ... }}, still read)
+//
+// Shapes: a class instance's field names are written once per distinct (class, field list) — the encoder's `shapes`
+// table, [className, field, field, ...] per shape id, which the caller stores next to the graph and hands back to the
+// decoder. A 1400-star galaxy has ~840k instances but under 100 shapes; spelling the field names out per instance
+// was ~2/3 of the save text (a 300M-char save after one game year, close to V8's ~537M-char string limit).
 
 export type Encoded = null | boolean | number | string | Encoded[] | { [key: string]: Encoded };
 
@@ -56,10 +62,17 @@ const TYPED_ARRAYS: [string, { new (values: ArrayLike<number>): ArrayLike<number
     ['$f64', Float64Array],
 ];
 
+/** Shape table: shapes[id] = [className, ...fieldNames] (see the file header). */
+export type ShapeTable = string[][];
+
 export class GraphEncoder {
     private readonly memo = new Map<object, number>();
     private readonly nameByPrototype = new Map<object, string>();
     private readonly skipFields: Map<object, ReadonlySet<string>>;
+    /** Every shape written so far, in first-use order (the save's shape table). */
+    readonly shapes: ShapeTable = [];
+    /** Prototype → its shapes so far ({field list, id}); an instance's field list is matched element-wise. */
+    private readonly shapesByPrototype = new Map<object, { keys: string[]; id: number }[]>();
 
     constructor(options: GraphCodecOptions, private readonly externals: Map<object, ExternalRef>) {
         for (const name of Object.keys(options.classes)) this.nameByPrototype.set(options.classes[name], name);
@@ -132,12 +145,29 @@ export class GraphEncoder {
             throw new Error(`Cannot serialize an instance of ${ctorName} at ${path}: class not registered with the save codec.`);
         }
         const skip = this.skipFields.get(proto);
-        const fields: { [key: string]: Encoded } = {};
-        for (const key of Object.keys(obj)) {
-            if (skip !== undefined && skip.has(key)) continue;
-            fields[key] = this.encode((obj as Record<string, unknown>)[key], `${path}.${key}`);
+        let keys = Object.keys(obj);
+        if (skip !== undefined) keys = keys.filter((key) => !skip.has(key));
+        const id = this.shapeId(proto, name, keys);
+        const values: Encoded[] = new Array<Encoded>(keys.length);
+        for (let i = 0; i < keys.length; i++) values[i] = this.encode((obj as Record<string, unknown>)[keys[i]], `${path}.${keys[i]}`);
+        return { $s: id, $v: values };
+    }
+
+    private shapeId(proto: object, name: string, keys: string[]): number {
+        let known = this.shapesByPrototype.get(proto);
+        if (known === undefined) {
+            known = [];
+            this.shapesByPrototype.set(proto, known);
         }
-        return { $t: name, $f: fields };
+        outer: for (const shape of known) {
+            if (shape.keys.length !== keys.length) continue;
+            for (let i = 0; i < keys.length; i++) if (shape.keys[i] !== keys[i]) continue outer;
+            return shape.id;
+        }
+        const id = this.shapes.length;
+        this.shapes.push([name, ...keys]);
+        known.push({ keys, id });
+        return id;
     }
 }
 
@@ -147,6 +177,8 @@ export class GraphDecoder {
     constructor(
         private readonly options: GraphCodecOptions,
         private readonly resolveExternal: (ref: ExternalRef) => unknown,
+        /** The encoder's shape table (GraphEncoder.shapes) for {$s, $v} instances; absent in older saves. */
+        private readonly shapes: ShapeTable = [],
     ) {}
 
     decode(value: Encoded, path = '$'): unknown {
@@ -195,6 +227,22 @@ export class GraphDecoder {
                 this.memo.push(out);
                 const items = value.$set as Encoded[];
                 for (let i = 0; i < items.length; i++) out.add(this.decode(items[i], `${path}.<item ${i}>`));
+                return out;
+            }
+            case '$s': {
+                const shape = this.shapes[value.$s as number];
+                if (shape === undefined) throw new Error(`Unknown shape ${String(value.$s)} at ${path}.`);
+                const proto = this.options.classes[shape[0]];
+                if (proto === undefined) throw new Error(`Unknown class ${shape[0]} at ${path}.`);
+                const out = Object.create(proto) as Record<string, unknown>;
+                this.options.revive?.get(proto)?.(out);
+                this.memo.push(out);
+                const values = value.$v as Encoded[];
+                // Defined, not assigned: see '$t' below.
+                for (let i = 0; i < values.length; i++) {
+                    const key = shape[i + 1];
+                    Object.defineProperty(out, key, { value: this.decode(values[i], `${path}.${key}`), writable: true, enumerable: true, configurable: true });
+                }
                 return out;
             }
             case '$t': {

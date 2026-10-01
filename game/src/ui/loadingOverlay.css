@@ -1,0 +1,62 @@
+/* Full-screen "please wait" panel while a new galaxy is built or a save is loaded (loadingOverlay.ts). The spinner
+   turns with a transform animation, which the compositor keeps running while the main thread is busy in one long
+   step (JSON.parse of a big save, the graph decode), so the page never looks frozen. */
+.dwu-loading {
+    position: fixed;
+    inset: 0;
+    z-index: 5000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.82);
+    font-family: 'Forgotten Futurist', sans-serif;
+    color: #e8ecf2;
+}
+.dwu-loading-box {
+    width: min(420px, calc(100vw - 32px));
+    padding: 22px 24px;
+    background: rgba(20, 22, 28, 0.96);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+}
+.dwu-loading-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 16px;
+    margin-bottom: 14px;
+}
+.dwu-loading-spinner {
+    width: 18px;
+    height: 18px;
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    border-top-color: #7fb4ff;
+    border-radius: 50%;
+    animation: dwu-loading-spin 0.9s linear infinite;
+    will-change: transform;
+}
+@keyframes dwu-loading-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+.dwu-loading-bar {
+    height: 6px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+    overflow: hidden;
+}
+.dwu-loading-fill {
+    height: 100%;
+    width: 100%;
+    background: #7fb4ff;
+    transform-origin: left center;
+    transform: scaleX(0);
+    transition: transform 0.2s linear;
+}
+.dwu-loading-step {
+    margin-top: 10px;
+    font-size: 12px;
+    color: #aab3c0;
+    min-height: 1.2em;
+}

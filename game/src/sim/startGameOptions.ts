@@ -859,15 +859,15 @@ export function toCreateGameOptions(
         player,
         aiEmpires,
         allowEmpiresInSameSystem: o.colonization.allowSameSystemAsOtherEmpires,
-        // Only meaningful when the range limits are enforced; <= 0 lets
-        // createGame fall back to its auto value.
         // M4z4: Start.1.cs 3772-3805 VictoryConditions from the victory page (Galaxy.GlobalVictoryConditions,
         // Start.2.cs 501-506 / 2026) and Start.2.cs 496 difficulty scaling.
         victoryConditions: victoryConditionsFromWizard(o.victory, value),
         difficultyLevelScalesAsPlayerApproachesVictory: o.difficultyScaling,
-        empireTerritoryColonyInfluenceRangeFactor: o.colonization.enforceRangeLimits
-            ? o.colonization.colonyInfluenceRangePercent
-            : undefined,
+        // Start.1.cs 3745 `empireStart.EmpireTerritoryColonyInfluenceRangeFactor = (float)sld…ColonyInfluenceRange.Value / 100f`
+        // (unconditional; → Galaxy.EmpireTerritoryColonyInfluenceRangeFactor, Start.2.cs 507). The slider is a percent:
+        // passing it undivided made every colony's influence radius 100x (one or two empires owned the whole galaxy, and
+        // the starting-colony placement of a Mature/Old start then looped forever finding no unclaimed system).
+        empireTerritoryColonyInfluenceRangeFactor: Math.fround(clampColonization(o.colonization).colonyInfluenceRangePercent / 100),
         // Pirates page: Start.1.cs 3691 num6 = method_66(tbarStartNewGameTheGalaxyPirates.Value) → Galaxy.PiratePrevalence
         // (Start.2.cs 107); 3692 num7 = method_190() → Galaxy.PirateProximity (Start.2.cs 108); 3722-3736 pirate
         // strength → Galaxy.PirateShipMaintenanceFactor (Start.2.cs 498).

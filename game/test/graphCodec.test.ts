@@ -9,8 +9,10 @@ class Node {
 }
 
 function roundTrip(value: unknown, options: GraphCodecOptions): { text: string; back: unknown; text2: string } {
-    const text = JSON.stringify(new GraphEncoder(options, new Map()).encode(value));
-    const back = new GraphDecoder(options, () => undefined).decode(JSON.parse(text));
+    const encoder = new GraphEncoder(options, new Map());
+    const text = JSON.stringify(encoder.encode(value));
+    // Class instances are {$s, $v} against the encoder's shape table, which the save stores beside the graph.
+    const back = new GraphDecoder(options, () => undefined, JSON.parse(JSON.stringify(encoder.shapes))).decode(JSON.parse(text));
     const text2 = JSON.stringify(new GraphEncoder(options, new Map()).encode(back));
     return { text, back, text2 };
 }
@@ -58,6 +60,20 @@ describe('graphCodec', () => {
         expect(v.f32).toBeInstanceOf(Float32Array);
         expect([...v.i32]).toEqual([-7]);
         expect(text2).toBe(text);
+    });
+
+    it('writes each class shape once and still reads the older {$t, $f} instances', () => {
+        const a = new Node();
+        const b = new Node();
+        a.next = b;
+        const encoder = new GraphEncoder(options, new Map());
+        const enc = encoder.encode([a, b]);
+        expect(encoder.shapes).toEqual([['Node', 'name', 'next', 'hidden']]);
+        expect(JSON.stringify(enc)).not.toContain('hidden');
+        const old = [{ $t: 'Node', $f: { name: 'x', next: null, hidden: 3 } }];
+        const back = new GraphDecoder(options, () => undefined).decode(old) as Node[];
+        expect(back[0]).toBeInstanceOf(Node);
+        expect(back[0].hidden).toBe(3);
     });
 
     it('rejects functions and unregistered classes, and honours skipFields / revive', () => {

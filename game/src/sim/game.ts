@@ -872,7 +872,28 @@ export function registerGameHooks(): void {
 }
 
 // createGame: the sim entry point the wizard calls (non-pirate play).
+/** createGameSteps progress: the step that runs next and the share of the work done so far (0..1). */
+export interface GameStartProgress {
+    step: string;
+    fraction: number;
+}
+
+/** Build a new game (the Start.2.cs CreateGameFromSettings port below), synchronously. */
 export function createGame(opts: CreateGameOptions): Game {
+    const steps = createGameSteps(opts);
+    for (;;) {
+        const r = steps.next();
+        if (r.done === true) return r.value;
+    }
+}
+
+/**
+ * createGame as a generator: the same work in the same order (same Rnd sequence, same result), but it pauses with a
+ * GameStartProgress before each long step so a caller can repaint between them — a 1400-star galaxy with 20 Mature
+ * empires takes several seconds to build (src/ui/loadingOverlay.ts drives this with a progress bar).
+ */
+export function* createGameSteps(opts: CreateGameOptions): Generator<GameStartProgress, Game, void> {
+    yield { step: 'Generating galaxy', fraction: 0 };
     const gd = opts.gameData;
     // BaconInitialize has not run while a fresh launch generates its galaxy: the Bacon statics are the C# defaults.
     resetBaconSettings();
@@ -909,6 +930,7 @@ export function createGame(opts: CreateGameOptions): Game {
     // Mod layer: every habitat's faithful resource selection is done (setupSolarSystem / generateGasCloud, run inside
     // generateGalaxy above); 19h fuel oases adds its guaranteed rim fuel sources here, before anything reads resources.
     if (galaxy.scenario !== null) scenarioAfterGeneration(galaxy);
+    yield { step: 'Founding empires', fraction: 0.1 };
     // Unset galaxyAge = 1: the game's standard preset (Start.cs 3298-3327: Expansion 1 / empire tech Normal 0.5).
     // The C# option-screen defaults (Main.Part9.cs 2664 / 2689: GalaxyExpansion 0, YourEmpireTechLevel 0) are a
     // pre-warp start instead; callers wanting age 0 pass galaxyAge: 0.
@@ -1071,6 +1093,7 @@ export function createGame(opts: CreateGameOptions): Game {
     const num14 = aiStarts.length;
     updateEmpireStarts(aiStarts, normalRaces, clockRnd, race.name);
     for (let num15 = 0; num15 < num14; num15++) {
+        yield { step: `Founding empires (${num15 + 2}/${num14 + 1})`, fraction: 0.1 + (0.3 * num15) / num14 };
         const es = aiStarts[num15];
         const aiRace = es.resolvedRace === null ? selectRace(galaxy, es.opts.race, empireList, false) : selectRace(galaxy, es.resolvedRace.name, empireList, false);
         let aiGov: Government | null;
@@ -1153,6 +1176,7 @@ export function createGame(opts: CreateGameOptions): Game {
     }
     galaxy.empireTerritory.reviewEmpireTerritory(galaxy);
     for (let n = 0; n < list8.length; n++) {
+        if (n % 8 === 0) yield { step: `Settling colonies (${n}/${list8.length})`, fraction: 0.4 + (0.25 * n) / list8.length };
         const e = empireList.find((x) => x.empireId === list8[n])!;
         let num23 = e.empireId - 1;
         if (playAsPirate) num23--; // Start.2.cs 989
@@ -1164,12 +1188,22 @@ export function createGame(opts: CreateGameOptions): Game {
             : galaxy.findNearestColonizableHabitat(e.capital!.xpos, e.capital!.ypos, e);
         // Start.2.cs 998-1001: num25 = habitat5 != null ? distance : double.MaxValue.
         let num25 = h5 !== null ? galaxy.calculateDistance(e.capital!.xpos, e.capital!.ypos, h5.xpos, h5.ypos) : Number.MAX_VALUE;
+        // Not C#: the search below (a faithful port) never ends when no acceptable planet / moon is left anywhere in
+        // the galaxy (every system with planets dominated or claimed by another empire); the original hangs there. Give
+        // up on this extra colony instead once the search radius is far beyond the galaxy (no effect on any start the
+        // original finishes: by then every heading has been tried ~thousands of times).
+        const giveUpRange = 8 * Math.max(galaxy.sizeX, galaxy.sizeY);
+        let gaveUp = false;
         if (num25 > num24) {
             let num26 = 0;
-            while (num25 > num24) {
+            while (num25 > num24 && !gaveUp) {
                 h5 = null;
                 let num27 = 0;
                 while (h5 === null) {
+                    if (num24 > giveUpRange) {
+                        gaveUp = true;
+                        break;
+                    }
                     const p = offsetWithin(galaxy, galaxy.selectRandomHeading(), e.capital!.xpos, e.capital!.ypos, num24);
                     h5 = galaxy.fastFindNearestPlanetMoonOfTypesUnoccupiedSystem(p.x, p.y, e, list7);
                     if (h5 !== null) {
@@ -1182,13 +1216,15 @@ export function createGame(opts: CreateGameOptions): Game {
                         num27 = 0;
                     }
                 }
-                num25 = galaxy.calculateDistance(e.capital!.xpos, e.capital!.ypos, h5.xpos, h5.ypos);
+                if (gaveUp) break;
+                num25 = galaxy.calculateDistance(e.capital!.xpos, e.capital!.ypos, h5!.xpos, h5!.ypos);
                 num26++;
                 if (num26 > 50) {
                     num24 *= 1.2;
                     num26 = 0;
                 }
             }
+            if (gaveUp) continue;
             const list11 = e.colonizableHabitatTypesForEmpire();
             list11.push(e.dominantRace!.nativeHabitatType);
             const pick = list11[galaxy.rnd.next(0, list11.length)];
@@ -1225,6 +1261,7 @@ export function createGame(opts: CreateGameOptions): Game {
         maximumEmpireAmount: opts.maximumEmpireAmount ?? 1 + opts.aiEmpires.length, // TODO(port): not C# — see CreateGameOptions.maximumEmpireAmount
     };
 
+    yield { step: 'Opening markets', fraction: 0.65 };
     // Start.2.cs 1099-1104.
     galaxy.empireTerritory.reviewEmpireTerritory(galaxy); // ReviewEmpireTerritoryCore(false)
     galaxy.updateSystemInfo();
@@ -1245,6 +1282,7 @@ export function createGame(opts: CreateGameOptions): Game {
     // Start.2.cs 498 galaxy.PirateShipMaintenanceFactor = empireStart_0.PirateShipMaintenanceFactor.
     galaxy.pirateShipMaintenanceFactor = opts.pirateShipMaintenanceFactor ?? 0.4;
     galaxy.maximumEmpireAmount = pirateSettings.maximumEmpireAmount;
+    yield { step: 'Spawning pirates and traders', fraction: 0.68 };
     let stoppedAtHuge = false;
     runGameStartGalaxyTick(galaxy, galaxy.playerEmpire, () => (stoppedAtHuge = stopAt('firstGalaxyTick:huge')));
     if (stoppedAtHuge) return result();
@@ -1255,6 +1293,7 @@ export function createGame(opts: CreateGameOptions): Game {
     const int5 = galaxy.age; // int_5
     let bool6 = opts.allowEmpiresInSameSystem ?? false;
     for (let num29 = 0; num29 < empireList.length; num29++) {
+        yield { step: `Developing empires (${num29 + 1}/${empireList.length})`, fraction: 0.72 + (0.1 * num29) / empireList.length };
         const empire3 = empireList[num29];
         const tech = listTech[num29];
         if (stopAt('empire:start', empire3)) return result();
@@ -1312,6 +1351,7 @@ export function createGame(opts: CreateGameOptions): Game {
     for (let num35 = 0; num35 < empireList.length; num35++) {
         const empire4 = empireList[num35];
         if (listTech[num35] > 0.0) {
+            yield { step: `Commissioning fleets (${num35 + 1}/${empireList.length})`, fraction: 0.82 + (0.06 * num35) / empireList.length };
             if (stopAt('ships:start', empire4)) return result();
             createStateShips(galaxy, empire4);
             if (stopAt('ships:state', empire4)) return result();
@@ -1325,6 +1365,7 @@ export function createGame(opts: CreateGameOptions): Game {
         }
     }
     if (stopAt('startingShips')) return result();
+    yield { step: 'First contact', fraction: 0.88 };
     meetEmpiresAtStart(galaxy, empireList); // 1376-1420
     if (empire2.pirateEmpireBaseHabitat !== null) {
         meetPiratesAtStart(galaxy, empire2); // 1421-1471
@@ -1351,6 +1392,7 @@ export function createGame(opts: CreateGameOptions): Game {
     if (stopAt('startRuins')) return result();
     clearRuinBonusesForAge(galaxy);
     if (stopAt('ruins')) return result();
+    yield { step: 'Placing ruins and wonders', fraction: 0.92 };
     const tailResult = gameStartTail(galaxy, { playerEmpire: empire2, empireList, playerTechLevel: opts.player.techLevel, playerAge: opts.player.age, playAsPirate, raceFamilies: gd.raceFamilies, xpos: viewX, ypos: viewY, enableStoryEventsShadows: galaxy.storyShadowsEnabled });
     // Start.2.cs 2031-2034 (Shadows story): a non-pirate age-of-shadows player gets its first pirate raid.
     if (tailResult.clearPreWarpSendPirateRaid) empire2.preWarpProgressEventOccurredSendPirateRaid = false;

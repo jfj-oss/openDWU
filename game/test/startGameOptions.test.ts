@@ -809,13 +809,14 @@ describe('toCreateGameOptions (task 06i)', () => {
         };
         const c = toCreateGameOptions(o, gameData, NAMES);
         expect(c.allowEmpiresInSameSystem).toBe(true);
-        expect(c.empireTerritoryColonyInfluenceRangeFactor).toBe(150);
+        // Start.1.cs 3745: the slider percent / 100 (a factor, 1.5 here — not 150).
+        expect(c.empireTerritoryColonyInfluenceRangeFactor).toBe(1.5);
 
-        // With enforcement off the influence factor is left to createGame's auto value.
+        // Start.1.cs 3745 sets it regardless of the colonization-range enforcement checkbox.
         const o2 = defaultStartGameOptions();
         o2.colonization = { ...defaultColonizationOptions(), enforceRangeLimits: false };
         const c2 = toCreateGameOptions(o2, gameData, NAMES);
         expect(c2.allowEmpiresInSameSystem).toBe(false);
-        expect(c2.empireTerritoryColonyInfluenceRangeFactor).toBeUndefined();
+        expect(c2.empireTerritoryColonyInfluenceRangeFactor).toBe(1);
     });
 });

@@ -98,11 +98,11 @@ export function deleteSave(storage: SaveStorage, name: string): boolean {
     return removed;
 }
 
-/** Parse a .dwusave file's text into a LoadedGame (throws on bad input). */
-export function parseSaveFileText(text: string, load: (text: string) => LoadedGame): LoadedGame {
-    // Validate the JSON up front so callers get a clean error before touching
-    // the sim; the loader itself re-parses.
-    JSON.parse(text);
+/** Parse a .dwusave file's text into a LoadedGame (throws / rejects on bad input). Only a cheap sanity check runs up
+ *  front (a save is one JSON object): a full JSON.parse here would parse a late-game save — hundreds of MB — a second
+ *  time, and the loader rejects malformed JSON anyway. */
+export function parseSaveFileText<T extends LoadedGame | Promise<LoadedGame>>(text: string, load: (text: string) => T): T {
+    if (!/^\s*\{/.test(text.slice(0, 256))) throw new SyntaxError('Not a save file (expected a JSON object).');
     return load(text);
 }
 
@@ -273,7 +273,7 @@ export interface SaveLoadProvider {
     serialize?: () => string | null;
     /** Resolve stored save text to a LoadedGame (null when loading is
      * unavailable, e.g. on the main menu without a loaded game data set). */
-    loadSave?: (text: string) => LoadedGame;
+    loadSave?: (text: string) => LoadedGame | Promise<LoadedGame>;
     /** In-memory saves written this session (merged over localStorage). */
     memorySaves?: Map<string, string>;
 }
@@ -321,7 +321,7 @@ export interface SavePanelWiring {
     /** Serialize the running game to its save text (null → saving disabled). */
     serialize?: () => string | null;
     /** Resolve a stored save text to a LoadedGame (load button / file open). */
-    loadSave?: (text: string) => LoadedGame;
+    loadSave?: (text: string) => LoadedGame | Promise<LoadedGame>;
     /** Date stamp for newly written saves (default: now). */
     now?: () => Date;
     /** Storage backend (default: window.localStorage). */
@@ -615,7 +615,7 @@ export function createSaveLoadPanel(mode: 'save' | 'load', wiring: SavePanelWiri
         }
         let loaded: LoadedGame;
         try {
-            loaded = loadSave(text);
+            loaded = await loadSave(text);
         } catch (err) {
             console.error('Failed to load save', err);
             showToast('Could not load that save');
@@ -647,9 +647,9 @@ export function createSaveLoadPanel(mode: 'save' | 'load', wiring: SavePanelWiri
             return;
         }
         const reader = new FileReader();
-        reader.onload = () => {
+        reader.onload = async () => {
             try {
-                const loaded = parseSaveFileText(String(reader.result), loadSave);
+                const loaded = await parseSaveFileText(String(reader.result), loadSave);
                 hide();
                 callbacks.onLoadedFile?.(loaded);
             } catch (err) {
