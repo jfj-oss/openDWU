@@ -11,6 +11,7 @@
 // are M4c's (movement.ts).
 // Rnd: none in these bodies (the refuelling-point searches and AssignMission draw inside their owners).
 
+import { isAiControlled } from '../missions/playerOrder';
 import type { Fighter } from '../combat/fighters';
 import type { Galaxy } from '../galaxy';
 import type { BuiltObject } from '../builtObject';
@@ -471,7 +472,7 @@ export function checkForRefuelling(galaxy: Galaxy, builtObject: BuiltObject, use
     const empire = builtObject.empire;
     const canMessage = (): boolean => empire !== null && empire !== galaxy.independentEmpire && empire.pirateEmpireBaseHabitat === null;
     if (builtObject.role === BuiltObjectRole.Base || builtObject.subRole === BuiltObjectSubRole.ResupplyShip) {
-        if (!checkBaseCargoForFuel(builtObject) && builtObject.subRole !== BuiltObjectSubRole.SmallSpacePort && builtObject.subRole !== BuiltObjectSubRole.MediumSpacePort && builtObject.subRole !== BuiltObjectSubRole.LargeSpacePort && builtObject.isAutoControlled) {
+        if (!checkBaseCargoForFuel(builtObject) && builtObject.subRole !== BuiltObjectSubRole.SmallSpacePort && builtObject.subRole !== BuiltObjectSubRole.MediumSpacePort && builtObject.subRole !== BuiltObjectSubRole.LargeSpacePort && isAiControlled(builtObject)) {
             mission = builtObjectMission(builtObject.mission);
             if (mission === null || (mission.type !== BuiltObjectMissionType.Escape && mission.type !== BuiltObjectMissionType.Refuel)) {
                 setupRefuelling(galaxy, builtObject);
@@ -490,7 +491,7 @@ export function checkForRefuelling(galaxy: Galaxy, builtObject: BuiltObject, use
             case BuiltObjectMissionType.Escort:
             case BuiltObjectMissionType.Blockade:
             case BuiltObjectMissionType.Attack:
-                if (builtObject.isAutoControlled) {
+                if (isAiControlled(builtObject)) {
                     setupRefuelling(galaxy, builtObject);
                 } else if (!autoRefuelRepairShip(galaxy, builtObject, useCachedRefuellingLocation)) {
                     if (!builtObject.refuelForNextMission && canMessage()) {
@@ -503,7 +504,7 @@ export function checkForRefuelling(galaxy: Galaxy, builtObject: BuiltObject, use
                 if (!(builtObject.currentSpeed <= 0)) {
                     break;
                 }
-                if (builtObject.isAutoControlled) {
+                if (isAiControlled(builtObject)) {
                     setupRefuelling(galaxy, builtObject);
                 } else if (!autoRefuelRepairShip(galaxy, builtObject, useCachedRefuellingLocation)) {
                     if (!builtObject.refuelForNextMission && canMessage()) {
@@ -513,13 +514,13 @@ export function checkForRefuelling(galaxy: Galaxy, builtObject: BuiltObject, use
                 }
                 break;
             default:
-                if (!builtObject.refuelForNextMission && !builtObject.isAutoControlled && canMessage()) {
+                if (!builtObject.refuelForNextMission && !isAiControlled(builtObject) && canMessage()) {
                     sendNeedsRefuellingMessage(builtObject);
                 }
                 builtObject.refuelForNextMission = true;
                 break;
         }
-    } else if (builtObject.isAutoControlled) {
+    } else if (isAiControlled(builtObject)) {
         setupRefuelling(galaxy, builtObject);
     } else {
         if (!builtObject.refuelForNextMission && canMessage()) {

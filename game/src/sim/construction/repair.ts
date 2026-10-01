@@ -1,6 +1,7 @@
 // M4h — repairs: BaconBuiltObject.cs 4763 DoRepairs (BuiltObject.cs 3498), BaconBuiltObject.cs 2166 CalculateCrewLevel,
 // BuiltObject.1.cs 4474 CheckRepairMissionStillValid, BuiltObject.cs 4077 CheckForRepairs.
 
+import { isAiControlled } from '../missions/playerOrder';
 import type { Galaxy } from '../galaxy';
 import type { BuiltObject } from '../builtObject';
 import { BuiltObjectRole } from '../data/designSpecifications';
@@ -123,7 +124,7 @@ export function doRepairs(galaxy: Galaxy, builtObject: BuiltObject, timePassed: 
 /** BuiltObject.1.cs 4474 CheckRepairMissionStillValid (the bool result is unused by BuiltObject.DoTasks 3773). */
 export function checkRepairMissionStillValid(galaxy: Galaxy, builtObject: BuiltObject): boolean {
     const mission = builtObjectMission(builtObject.mission);
-    if (builtObject.subRole === BuiltObjectSubRole.ConstructionShip && builtObject.isAutoControlled && mission !== null && mission.type === BuiltObjectMissionType.BuildRepair) {
+    if (builtObject.subRole === BuiltObjectSubRole.ConstructionShip && isAiControlled(builtObject) && mission !== null && mission.type === BuiltObjectMissionType.BuildRepair) {
         const secondaryTargetBuiltObject = mission.secondaryTargetBuiltObject;
         if (secondaryTargetBuiltObject !== null) {
             const targetMission = builtObjectMission(secondaryTargetBuiltObject.mission);

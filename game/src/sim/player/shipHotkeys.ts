@@ -14,6 +14,7 @@
 // selection-panel button of the same name differ in small ways, e.g. R picks the nearest refuelling point itself).
 // Headless: no DOM / Pixi imports here, so the mapping is unit-tested (test/fix6ui.test.ts).
 
+import { clearFleetPlayerOrders, clearPlayerOrders, markFleetPlayerOrder, markPlayerOrder } from '../missions/playerOrder';
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import { BuiltObject } from '../builtObject';
@@ -88,7 +89,8 @@ export function executeShipOrderKey(galaxy: Galaxy, player: Empire, selected: Sh
             }
             clearPreviousMissionRequirements(galaxy, selected, true);
             assignMission(galaxy, selected, BuiltObjectMissionType.Escape, target, null, BuiltObjectMissionPriority.High, { manuallyAssigned: true });
-            selected.isAutoControlled = false;
+            // Not in the C# (which also clears IsAutoControlled): only the Automate toggle changes it (playerOrder.ts).
+            markPlayerOrder(selected);
             return true;
         }
         case 'commandRefuel': {
@@ -104,7 +106,7 @@ export function executeShipOrderKey(galaxy: Galaxy, player: Empire, selected: Sh
                 const target = asStellarTarget(so);
                 if (target === null) return false;
                 assignMission(galaxy, selected, BuiltObjectMissionType.Refuel, target, null, BuiltObjectMissionPriority.Normal, { manuallyAssigned: true });
-                selected.isAutoControlled = false;
+                markPlayerOrder(selected); // not IsAutoControlled = false (playerOrder.ts)
                 return true;
             }
             if (selected instanceof ShipGroup) {
@@ -116,7 +118,7 @@ export function executeShipOrderKey(galaxy: Galaxy, player: Empire, selected: Sh
                 const target = asStellarTarget(so);
                 if (target === null) return false;
                 shipGroupAssignMission(galaxy, selected, BuiltObjectMissionType.Refuel, target, null, BuiltObjectMissionPriority.Unavailable, true);
-                setFleetAutomated(selected, false);
+                markFleetPlayerOrder(selected); // not method_348(fleet, false) (playerOrder.ts)
                 return true;
             }
             return false;
@@ -127,6 +129,7 @@ export function executeShipOrderKey(galaxy: Galaxy, player: Empire, selected: Sh
                 const owner = selected.owner;
                 if (owner === null || owner !== player) return false;
                 selected.isAutoControlled = true;
+                clearPlayerOrders(selected); // not in the C#: pending player orders go to the AI too (playerOrder.ts)
                 if (owner.pirateEmpireBaseHabitat === null) {
                     assignMissionToBuiltObject(galaxy, owner, selected, false, null);
                 } else {
@@ -137,6 +140,7 @@ export function executeShipOrderKey(galaxy: Galaxy, player: Empire, selected: Sh
             if (selected instanceof ShipGroup) {
                 if (selected.empire !== player) return false;
                 setFleetAutomated(selected, true);
+                clearFleetPlayerOrders(selected);
                 return true;
             }
             return false;
@@ -149,7 +153,8 @@ export function executeShipOrderKey(galaxy: Galaxy, player: Empire, selected: Sh
                 clearPreviousMissionRequirements(galaxy, selected, true);
                 selected.targetSpeed = 0;
                 selected.preferredSpeed = 0;
-                selected.isAutoControlled = false;
+                // The C#'s IsAutoControlled = false is dropped (only the Automate toggle changes it): an automated
+                // ship stops, then its automation gives it new work.
                 return true;
             }
             if (selected instanceof ShipGroup) {
@@ -160,7 +165,7 @@ export function executeShipOrderKey(galaxy: Galaxy, player: Empire, selected: Sh
                     ship.preferredSpeed = 0;
                 }
                 forceCompleteMission(galaxy, selected);
-                setFleetAutomated(selected, false);
+                // The C#'s method_348(fleet, false) is dropped (only the Automate toggle changes IsAutoControlled).
                 return true;
             }
             return false;

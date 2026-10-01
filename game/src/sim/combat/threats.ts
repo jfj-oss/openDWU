@@ -18,6 +18,7 @@
 // detection roll), in C# order. Fighters (M4p) are not modelled as threats yet: the Fighter branches of the C#
 // (Galaxy.7.cs 3506 DetermineThreatLevel(Fighter …), the `threat is Fighter` redirects) are noted where they occur.
 
+import { isAiControlled } from '../missions/playerOrder';
 import type { Galaxy } from '../galaxy';
 import type { BuiltObject } from '../builtObject';
 import type { Empire } from '../empire';
@@ -1218,7 +1219,7 @@ export function checkFleetsTravellingToLocation(galaxy: Galaxy, bo: BuiltObject,
 /** BuiltObject.1.cs 705 CheckBattleOverwhelming(targetThreat). */
 export function checkBattleOverwhelming(galaxy: Galaxy, bo: BuiltObject, targetThreat: BuiltObject | null): boolean {
     const mission = builtObjectMission(bo.mission);
-    if (bo.inBattle && bo.isAutoControlled && mission !== null && (mission.type === BuiltObjectMissionType.Attack || mission.type === BuiltObjectMissionType.Bombard) && bo.empire !== null && bo.empire !== galaxy.independentEmpire && bo.empire.pirateEmpireBaseHabitat === null) {
+    if (bo.inBattle && isAiControlled(bo) && mission !== null && (mission.type === BuiltObjectMissionType.Attack || mission.type === BuiltObjectMissionType.Bombard) && bo.empire !== null && bo.empire !== galaxy.independentEmpire && bo.empire.pirateEmpireBaseHabitat === null) {
         let builtObject = targetThreat;
         const threats = builtObjectThreats(bo);
         if (builtObject === null) {
@@ -1748,7 +1749,7 @@ export function threatEvaluation(galaxy: Galaxy, builtObject: BuiltObject, time:
     let flag = true;
     let currentTargetEmphasis = 1.0;
     const mission = builtObjectMission(bo.mission);
-    if (!bo.isAutoControlled) {
+    if (!isAiControlled(bo)) {
         if (mission !== null && (mission.type === BuiltObjectMissionType.Patrol || mission.type === BuiltObjectMissionType.Escort || mission.type === BuiltObjectMissionType.Attack || mission.type === BuiltObjectMissionType.Bombard || mission.type === BuiltObjectMissionType.WaitAndAttack || mission.type === BuiltObjectMissionType.WaitAndBombard || mission.type === BuiltObjectMissionType.Capture || mission.type === BuiltObjectMissionType.Raid || mission.type === BuiltObjectMissionType.Blockade || mission.type === BuiltObjectMissionType.Explore || mission.type === BuiltObjectMissionType.Undefined)) {
             if (mission.checkCommandsForHyperjump()) {
                 return;

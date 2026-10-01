@@ -32,6 +32,7 @@
 // construction/empireConstruction.ts the GameText key stands in for the format string and enum values for
 // Galaxy.ResolveDescription (TODO(port) M9 GameText formatting).
 
+import { isAiControlled } from '../missions/playerOrder';
 import { calculatePopulationStrength } from '../combat/invasion';
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
@@ -445,7 +446,7 @@ export function obtainAvailableMilitaryShips(galaxy: Galaxy, empire: Empire, min
             builtObject.subRole === BuiltObjectSubRole.ResupplyShip ||
             !builtObject.isFunctional ||
             (!allowShipsInFleets && builtObject.shipGroup !== null) ||
-            (!builtObject.isAutoControlled && !includeUnAutomatedShips)
+            (!isAiControlled(builtObject) && !includeUnAutomatedShips)
         ) {
             continue;
         }
@@ -671,7 +672,7 @@ function findAvailableShipGroup(galaxy: Galaxy, self: Empire, maximumPriorityToI
     const shipGroups = shipGroupsOf(self);
     for (let i = 0; i < shipGroups.length; i++) {
         const shipGroup = shipGroups[i];
-        if ((!shipGroupMustBeAutomated || shipGroup.leadShip!.isAutoControlled) && shipGroup.posture === posture && isShipGroupAvailable(galaxy, shipGroup, maximumPriorityToInclude, minimumTroopLevel)) return shipGroup;
+        if ((!shipGroupMustBeAutomated || isAiControlled(shipGroup.leadShip!)) && shipGroup.posture === posture && isShipGroupAvailable(galaxy, shipGroup, maximumPriorityToInclude, minimumTroopLevel)) return shipGroup;
     }
     return null;
 }
@@ -737,7 +738,7 @@ export function findNearestAvailableFleet(
                 continue;
             }
             if (mustBeWithinFuelRange) {
-                if (!shipGroupCheckFleetTargetWithinFuelRangeAndRefuel(galaxy, shipGroup, x, y, fuelPortionMargin) || (mustBeAutomated && !shipGroup.leadShip.isAutoControlled) || shipGroup.posture !== posture || shipGroupTotalTroopAttackStrength(shipGroup) < minimumTroopStrength) {
+                if (!shipGroupCheckFleetTargetWithinFuelRangeAndRefuel(galaxy, shipGroup, x, y, fuelPortionMargin) || (mustBeAutomated && !isAiControlled(shipGroup.leadShip)) || shipGroup.posture !== posture || shipGroupTotalTroopAttackStrength(shipGroup) < minimumTroopStrength) {
                     continue;
                 }
                 const num2 = shipGroupTotalAssaultPodCount(shipGroup) * 6000;
@@ -765,7 +766,7 @@ export function findNearestAvailableFleet(
                     }
                 }
             } else {
-                if ((mustBeAutomated && !shipGroup.leadShip.isAutoControlled) || shipGroup.posture !== posture || shipGroupTotalTroopAttackStrength(shipGroup) < minimumTroopStrength) continue;
+                if ((mustBeAutomated && !isAiControlled(shipGroup.leadShip)) || shipGroup.posture !== posture || shipGroupTotalTroopAttackStrength(shipGroup) < minimumTroopStrength) continue;
                 let flag2 = true;
                 if (mustBeWithinPostureRange) {
                     flag2 = false;
@@ -851,7 +852,7 @@ export function identifyNearestAvailableFleet(
         const shipGroup = shipGroupList[i];
         if (shipGroup === null || shipGroup.leadShip === null) continue;
         let flag = true;
-        if (mustBeAutomated && !shipGroup.leadShip.isAutoControlled) flag = false;
+        if (mustBeAutomated && !isAiControlled(shipGroup.leadShip)) flag = false;
         if (!flag || shipGroup.ships.length < minimumShipCount || (!forceFleetUse && !checkFleetDefenseReponse(galaxy, shipGroup, x, y, atWar))) continue;
         let flag2 = true;
         if (shipGroup.mission !== null) {
@@ -902,7 +903,7 @@ export function identifyNearestResponseFleet(galaxy: Galaxy, empire: Empire, x: 
         const shipGroup2 = shipGroupList[i];
         if (shipGroup2 === null || shipGroup2.leadShip === null) continue;
         let flag = true;
-        if (shipGroup2.posture === FleetPosture.Attack && !shipGroup2.leadShip.isAutoControlled) flag = false;
+        if (shipGroup2.posture === FleetPosture.Attack && !isAiControlled(shipGroup2.leadShip)) flag = false;
         const m = shipGroup2.mission;
         if (
             !flag ||
@@ -1381,7 +1382,7 @@ export function selectFleetWarAttackTarget(galaxy: Galaxy, empire: Empire, fleet
     let waypointing = false;
     let attackPointClearedForReassignment = false;
     const ret = (target: StellarObject | null) => ({ target, waypointing, attackPointClearedForReassignment });
-    if (fleet.leadShip !== null && fleet.leadShip.isAutoControlled && fleet.posture === FleetPosture.Attack) {
+    if (fleet.leadShip !== null && isAiControlled(fleet.leadShip) && fleet.posture === FleetPosture.Attack) {
         const diplomaticRelation = obtainDiplomaticRelation(self, otherEmpire);
         if (diplomaticRelation !== null && diplomaticRelation.warObjective === WarObjective.CaptureObjectives) {
             // Mod layer (19l smallerInvasions): Empire.8.cs 1163's 10-ship size, relaxed to the smallest any objective colony
@@ -1705,7 +1706,7 @@ export function assignFleetAttackMission(galaxy: Galaxy, empire: Empire, fleet: 
         const prioritizedTargetList: PrioritizedTarget[] = [];
         let prioritizedTarget: PrioritizedTarget | null = null;
         const iterationCount = { value: 0 };
-        const autoOrSemi = (): boolean => fleet.leadShip!.isAutoControlled || self.controlMilitaryAttacks === AutomationLevel.PartiallyAutomated;
+        const autoOrSemi = (): boolean => isAiControlled(fleet.leadShip!) || self.controlMilitaryAttacks === AutomationLevel.PartiallyAutomated;
         while (conditionCheckLimit(!flag && !flag2, 200, iterationCount)) {
             prioritizedTarget = identifyBestTargetFromLocation(galaxy, targets, self, fleet.leadShip!.xpos, fleet.leadShip!.ypos, shipGroupTotalTroopAttackStrengthNearby(galaxy, fleet, 0.3), shipGroupTotalOverallStrengthFactor(galaxy, fleet), prioritizedTargetList);
             if (prioritizedTarget !== null) {
@@ -1824,7 +1825,7 @@ export function assignFleetAttackMission(galaxy: Galaxy, empire: Empire, fleet: 
                         shipGroupAssignMission(galaxy, fleet, BuiltObjectMissionType.WaitAndAttack, pt, stellarObject, BuiltObjectMissionPriority.High, false, null, starDate);
                         flag = true;
                     }
-                    if (flag && fleet.leadShip!.isAutoControlled && isBuiltObject(stellarObject)) {
+                    if (flag && isAiControlled(fleet.leadShip!) && isBuiltObject(stellarObject)) {
                         const builtObject4 = stellarObject;
                         if (
                             builtObject4.parentHabitat !== null &&
@@ -2256,7 +2257,7 @@ function identifyMilitaryObjectivesForSingleEmpire(
                         if (
                             flag2 &&
                             withinFuelRangeAndRefuel(galaxy, builtObject, habitat.xpos, habitat.ypos, 0.1) &&
-                            (builtObject.isAutoControlled || self.controlMilitaryAttacks === AutomationLevel.PartiallyAutomated) &&
+                            (isAiControlled(builtObject) || self.controlMilitaryAttacks === AutomationLevel.PartiallyAutomated) &&
                             checkTaskAuthorized(galaxy, self, self.controlMilitaryAttacks, refusalCount, generateAutomationMessageDestroyPlanet(habitat, builtObject), habitat, AdvisorMessageType.EnemyAttackPlanetDestroyer, null, builtObject, null)
                         ) {
                             assignMission(galaxy, builtObject, BuiltObjectMissionType.Attack, prioritizedTarget.target, null, BuiltObjectMissionPriority.Normal);
@@ -2277,7 +2278,7 @@ function identifyMilitaryObjectivesForSingleEmpire(
         if (diplomaticRelation.warObjective === WarObjective.CaptureObjectives) {
             for (let k = 0; k < shipGroups.length; k++) {
                 const shipGroup = shipGroups[k];
-                if (shipGroup.leadShip === null || !shipGroup.leadShip.isAutoControlled || shipGroup.posture !== FleetPosture.Attack) continue;
+                if (shipGroup.leadShip === null || !isAiControlled(shipGroup.leadShip) || shipGroup.posture !== FleetPosture.Attack) continue;
                 if (shipGroup.attackPoint === null) {
                     if (shipGroup.mission !== null && shipGroup.mission.type !== BuiltObjectMissionType.Undefined && shipGroup.mission.priority !== BuiltObjectMissionPriority.Low) continue;
                     const r = selectFleetWarAttackTarget(galaxy, self, shipGroup, empire);
@@ -2341,7 +2342,7 @@ function identifyMilitaryObjectivesForSingleEmpire(
                             const shipGroup3 = shipGroupList2[n];
                             if (
                                 shipGroup3.leadShip !== null &&
-                                shipGroup3.leadShip.isAutoControlled &&
+                                isAiControlled(shipGroup3.leadShip) &&
                                 shipGroup3.ships.length >= 10 &&
                                 shipGroup3.posture === FleetPosture.Attack &&
                                 shipGroup3.attackPoint === null &&
@@ -2374,7 +2375,7 @@ function identifyMilitaryObjectivesForSingleEmpire(
                             const shipGroup4 = shipGroupList3[num4];
                             if (
                                 shipGroup4.leadShip !== null &&
-                                shipGroup4.leadShip.isAutoControlled &&
+                                isAiControlled(shipGroup4.leadShip) &&
                                 shipGroup4.posture === FleetPosture.Attack &&
                                 shipGroup4.attackPoint === null &&
                                 (shipGroup4.mission === null || shipGroup4.mission.type === BuiltObjectMissionType.Undefined || shipGroup4.mission.priority === BuiltObjectMissionPriority.Low) &&
@@ -2395,7 +2396,7 @@ function identifyMilitaryObjectivesForSingleEmpire(
             const shipGroupList4 = generateOrderedFleetsForEmpireTargets(galaxy, self, empire, false);
             for (let num5 = 0; num5 < shipGroupList4.length; num5++) {
                 const shipGroup5 = shipGroupList4[num5];
-                if (shipGroup5.posture !== FleetPosture.Attack || !isShipGroupAvailable(galaxy, shipGroup5, BuiltObjectMissionPriority.Normal, 0) || shipGroup5.leadShip === null || !shipGroup5.leadShip.isAutoControlled) continue;
+                if (shipGroup5.posture !== FleetPosture.Attack || !isShipGroupAvailable(galaxy, shipGroup5, BuiltObjectMissionPriority.Normal, 0) || shipGroup5.leadShip === null || !isAiControlled(shipGroup5.leadShip)) continue;
                 if (countShipGroupsAssignedToEmpire(self, empire, true) >= maximumBlockadesForEmpire) return true;
                 if (aggressionLevel(self) <= 105 + galaxy.rnd.next(0, 30)) continue;
                 let num6 = 0.0;
@@ -2573,7 +2574,7 @@ function resupplyTargetObjects(galaxy: Galaxy, self: Empire, targetEmpire: Empir
 /** Empire.9.cs 61 TaskResupplyShip(resupplyShip, targetEmpires). */
 function taskResupplyShip(galaxy: Galaxy, self: Empire, resupplyShip: BuiltObject, targetEmpires: Empire[]): void {
     const rsMission = missionOf(resupplyShip);
-    if (!resupplyShip.isFunctional || !resupplyShip.isAutoControlled || (rsMission !== null && rsMission.type !== BuiltObjectMissionType.Undefined) || resupplyShip.unbuiltOrDamagedComponentCount !== 0 || resupplyShip.builtAt !== null) return;
+    if (!resupplyShip.isFunctional || !isAiControlled(resupplyShip) || (rsMission !== null && rsMission.type !== BuiltObjectMissionType.Undefined) || resupplyShip.unbuiltOrDamagedComponentCount !== 0 || resupplyShip.builtAt !== null) return;
     const num = 2500000.0;
     if (resupplyShip.isDeployed) {
         let flag = true;
@@ -2779,7 +2780,7 @@ function huntPirates(galaxy: Galaxy, self: Empire): void {
         }
         if (
             num4 < csDoubleToInt(num2 * 1.5) &&
-            (shipGroup2.leadShip!.isAutoControlled || self.controlMilitaryAttacks === AutomationLevel.PartiallyAutomated) &&
+            (isAiControlled(shipGroup2.leadShip!) || self.controlMilitaryAttacks === AutomationLevel.PartiallyAutomated) &&
             checkTaskAuthorized(galaxy, self, self.controlMilitaryAttacks, refusalCount, generateAutomationMessageAttackPirateBase(builtObject, shipGroup2), builtObject, AdvisorMessageType.EnemyAttack, null, shipGroup2, null)
         ) {
             const missionType = determineDestroyOrCaptureTargetForFleet(galaxy, self, shipGroup2, builtObject);
@@ -2861,7 +2862,7 @@ export function taskShipGroups(galaxy: Galaxy, empire: Empire): void {
         const shipGroup = shipGroups[i];
         if (
             isShipGroupAvailable(galaxy, shipGroup, BuiltObjectMissionPriority.Low, 0) &&
-            shipGroup.leadShip!.isAutoControlled &&
+            isAiControlled(shipGroup.leadShip!) &&
             (shipGroupWarpSpeed(shipGroup) <= 0 || shipGroup.leadShip!.currentSpeed < Math.fround(shipGroupWarpSpeed(shipGroup)))
         ) {
             let num = shipGroupCalculateRefuellingPortion(galaxy, shipGroup);
@@ -2917,7 +2918,7 @@ export function taskShipGroups(galaxy: Galaxy, empire: Empire): void {
         const habitatPrioritization = habitatPrioritizationList[m];
         if (habitatPrioritization == null || habitatPrioritization.habitat === null) continue;
         const shipGroup3 = identifyNearestResponseFleet(galaxy, self, habitatPrioritization.habitat.xpos, habitatPrioritization.habitat.ypos, true, 0.1, 50000.0);
-        if (shipGroup3 !== null && shipGroup3.leadShip !== null && shipGroup3.leadShip.isAutoControlled) {
+        if (shipGroup3 !== null && shipGroup3.leadShip !== null && isAiControlled(shipGroup3.leadShip)) {
             shipGroupAssignMission(galaxy, shipGroup3, BuiltObjectMissionType.Move, habitatPrioritization.habitat, null, BuiltObjectMissionPriority.Normal, false);
             num5--;
             if (num5 <= 0) break;
@@ -3035,7 +3036,7 @@ export function reviewSystemThreats(galaxy: Galaxy, empire: Empire): void {
                         if (
                             shipGroup3 !== null &&
                             shipGroup3.leadShip !== null &&
-                            (shipGroup3.leadShip.isAutoControlled || self.controlMilitaryAttacks === AutomationLevel.PartiallyAutomated) &&
+                            (isAiControlled(shipGroup3.leadShip) || self.controlMilitaryAttacks === AutomationLevel.PartiallyAutomated) &&
                             checkTaskAuthorized(galaxy, self, self.controlMilitaryAttacks, refusalCount, generateAutomationMessageAttackForcesInOurSystem(item, byEmpireId), bo2Group, AdvisorMessageType.DefendTerritory, builtObject2.empire, shipGroup3, null)
                         ) {
                             shipGroupAssignMission(galaxy, shipGroup3, BuiltObjectMissionType.Attack, bo2Group, null, BuiltObjectMissionPriority.High, false);
@@ -3138,7 +3139,7 @@ function checkAttackTemptingTarget(galaxy: Galaxy, self: Empire, target: Stellar
                     const builtObject2 = self.builtObjects[i];
                     const m = missionOf(builtObject2);
                     if (
-                        builtObject2.isAutoControlled &&
+                        isAiControlled(builtObject2) &&
                         builtObject2.shipGroup === null &&
                         builtObject2.builtAt === null &&
                         builtObject2.unbuiltOrDamagedComponentCount === 0 &&
@@ -3628,7 +3629,7 @@ export function clearAttackFleetAssignments(galaxy: Galaxy, empire: Empire, targ
     if (!empire.controlMilitaryFleets || shipGroups === null) return;
     for (let i = 0; i < shipGroups.length; i++) {
         const shipGroup = shipGroups[i];
-        if (shipGroup != null && shipGroup.leadShip !== null && shipGroup.posture === FleetPosture.Attack && shipGroup.attackPoint !== null && shipGroup.leadShip.isAutoControlled && (targetEmpire === null || stellarObjectEmpire(shipGroup.attackPoint) === targetEmpire)) {
+        if (shipGroup != null && shipGroup.leadShip !== null && shipGroup.posture === FleetPosture.Attack && shipGroup.attackPoint !== null && isAiControlled(shipGroup.leadShip) && (targetEmpire === null || stellarObjectEmpire(shipGroup.attackPoint) === targetEmpire)) {
             shipGroup.attackPoint = null;
             shipGroup.postureRangeSquared = Number.MAX_VALUE;
         }
@@ -3641,7 +3642,7 @@ export function checkAttackFleetTargets(galaxy: Galaxy, empire: Empire, targetEm
     if (!empire.controlMilitaryFleets || shipGroups === null) return;
     for (let i = 0; i < shipGroups.length; i++) {
         const shipGroup = shipGroups[i];
-        if (shipGroup != null && shipGroup.leadShip !== null && shipGroup.posture === FleetPosture.Attack && shipGroup.attackPoint !== null && shipGroup.leadShip.isAutoControlled) {
+        if (shipGroup != null && shipGroup.leadShip !== null && shipGroup.posture === FleetPosture.Attack && shipGroup.attackPoint !== null && isAiControlled(shipGroup.leadShip)) {
             const ap = shipGroup.attackPoint;
             const apEmpire = stellarObjectEmpire(ap);
             if (ap.hasBeenDestroyed || apEmpire === null || !targetEmpires.includes(apEmpire)) {
@@ -3665,7 +3666,7 @@ export function clearDefendFleets(galaxy: Galaxy, empire: Empire): void {
     const shipGroups = shipGroupsOf(empire);
     for (let i = 0; i < shipGroups.length; i++) {
         const shipGroup = shipGroups[i];
-        if (shipGroup == null || shipGroup.leadShip === null || !shipGroup.leadShip.isAutoControlled || shipGroup.posture !== FleetPosture.Defend) continue;
+        if (shipGroup == null || shipGroup.leadShip === null || !isAiControlled(shipGroup.leadShip) || shipGroup.posture !== FleetPosture.Defend) continue;
         shipGroup.posture = FleetPosture.Attack;
         const stellarObject = empireFindNearestRefuellingPoint(galaxy, empire, shipGroup.leadShip.xpos, shipGroup.leadShip.xpos, shipGroup.leadShip.fuelType, 4);
         if (shipGroup.gatherPoint === null || shipGroup.gatherPoint !== stellarObject) {
@@ -3702,7 +3703,7 @@ export function setDefendFleets(galaxy: Galaxy, empire: Empire, defendingFromAtt
     stellarObjects = ensureSingleStellarObjectPerSystem(galaxy, stellarObjects);
     for (let i = 0; i < shipGroups.length; i++) {
         const shipGroup = shipGroups[i];
-        if (shipGroup != null && shipGroup.leadShip !== null && shipGroup.leadShip.isAutoControlled && shipGroup.gatherPoint !== null && shipGroup.posture === FleetPosture.Defend) {
+        if (shipGroup != null && shipGroup.leadShip !== null && isAiControlled(shipGroup.leadShip) && shipGroup.gatherPoint !== null && shipGroup.posture === FleetPosture.Defend) {
             let idx: number;
             while ((idx = stellarObjects.indexOf(shipGroup.gatherPoint)) >= 0) stellarObjects.splice(idx, 1);
             const systemStar = determineHabitatSystemStarForStellarObject(shipGroup.gatherPoint);
@@ -3745,7 +3746,7 @@ export function reviewDefensiveFleetLocations(galaxy: Galaxy, empire: Empire): v
     for (let i = 0; i < shipGroups.length; i++) {
         const shipGroup = shipGroups[i];
         stellarObjectList.push(shipGroup.gatherPoint);
-        if (shipGroup != null && shipGroup.leadShip !== null && shipGroup.posture === FleetPosture.Defend && shipGroup.leadShip.isAutoControlled) shipGroup.gatherPoint = null;
+        if (shipGroup != null && shipGroup.leadShip !== null && shipGroup.posture === FleetPosture.Defend && isAiControlled(shipGroup.leadShip)) shipGroup.gatherPoint = null;
     }
     let stellarObjects: StellarObject[] = resolveLocationsToDefend(galaxy, empire, true);
     stellarObjects = ensureSingleStellarObjectPerSystem(galaxy, stellarObjects);
@@ -3764,7 +3765,7 @@ export function reviewDefensiveFleetLocations(galaxy: Galaxy, empire: Empire): v
     }
     for (let k = 0; k < shipGroups.length; k++) {
         const shipGroup3 = shipGroups[k];
-        if (shipGroup3 == null || shipGroup3.leadShip === null || shipGroup3.posture !== FleetPosture.Defend || shipGroup3.gatherPoint !== null || !shipGroup3.leadShip.isAutoControlled) continue;
+        if (shipGroup3 == null || shipGroup3.leadShip === null || shipGroup3.posture !== FleetPosture.Defend || shipGroup3.gatherPoint !== null || !isAiControlled(shipGroup3.leadShip)) continue;
         shipGroup3.posture = FleetPosture.Attack;
         shipGroup3.postureRangeSquared = Number.MAX_VALUE;
         const stellarObject3 = selectFleetBase(galaxy, empire, shipGroup3);
@@ -3896,7 +3897,7 @@ export function sendAttackFleets(galaxy: Galaxy, empire: Empire, targetEmpire: E
         const shipGroup = shipGroups[i];
         if (
             shipGroup.leadShip === null ||
-            !shipGroup.leadShip.isAutoControlled ||
+            !isAiControlled(shipGroup.leadShip) ||
             shipGroup.attackPoint === null ||
             shipGroup.posture !== FleetPosture.Attack ||
             stellarObjectEmpire(shipGroup.attackPoint) !== targetEmpire ||
@@ -3977,7 +3978,7 @@ function findAvailableExplorationShip(self: Empire): BuiltObject | null {
             const m = missionOf(builtObject);
             if (
                 builtObject.builtAt === null &&
-                builtObject.isAutoControlled &&
+                isAiControlled(builtObject) &&
                 (m === null || m.type === BuiltObjectMissionType.Undefined || m.priority === BuiltObjectMissionPriority.Undefined || m.priority === BuiltObjectMissionPriority.Low || m.priority === BuiltObjectMissionPriority.Normal)
             ) {
                 result = builtObject;
@@ -4050,7 +4051,7 @@ export function sendScoutsToSingleEnemyEmpire(galaxy: Galaxy, empire: Empire, en
 
 /** Empire.1.cs 3730 CoordinateFleetAttacksWithAllies(fleet). */
 export function coordinateFleetAttacksWithAllies(galaxy: Galaxy, empire: Empire, fleet: ShipGroup): boolean {
-    if (empire !== galaxy.playerEmpire && empire.controlMilitaryAttacks === AutomationLevel.FullyAutomated && fleet !== null && fleet.ships !== null && fleet.ships.length >= 10 && fleet.posture === FleetPosture.Attack && fleet.leadShip !== null && fleet.leadShip.isAutoControlled) {
+    if (empire !== galaxy.playerEmpire && empire.controlMilitaryAttacks === AutomationLevel.FullyAutomated && fleet !== null && fleet.ships !== null && fleet.ships.length >= 10 && fleet.posture === FleetPosture.Attack && fleet.leadShip !== null && isAiControlled(fleet.leadShip)) {
         const fe = determineFriendsAndEnemies(empire);
         const closeFriends = fe.closeFriends;
         const severeEnemies = fe.severeEnemies;
@@ -4131,7 +4132,7 @@ export function prepareFleetsForWarCaptureObjectives(galaxy: Galaxy, self: Empir
         let num5 = 0;
         for (let j = 0; j < shipGroupList.length; j++) {
             const shipGroup = shipGroupList[j];
-            if (shipGroup != null && shipGroup.leadShip !== null && shipGroup.leadShip.isAutoControlled && shipGroup.ships.length >= minShips && shipGroup.posture === FleetPosture.Attack && shipGroup.attackPoint === null && shipGroupTotalTroopAttackStrength(shipGroup) >= troopNeeded) {
+            if (shipGroup != null && shipGroup.leadShip !== null && isAiControlled(shipGroup.leadShip) && shipGroup.ships.length >= minShips && shipGroup.posture === FleetPosture.Attack && shipGroup.attackPoint === null && shipGroupTotalTroopAttackStrength(shipGroup) >= troopNeeded) {
                 let flag = false;
                 if (shipGroup.mission === null || shipGroup.mission.type === BuiltObjectMissionType.Undefined || shipGroup.mission.priority === BuiltObjectMissionPriority.Low) flag = true;
                 const requiredFuel = determineFuelRequiredForFleet(shipGroup).requiredFuel;
@@ -4166,7 +4167,7 @@ export function prepareFleetsForWarCaptureObjectives(galaxy: Galaxy, self: Empir
         let num10 = 0;
         for (let l = 0; l < shipGroupList2.length; l++) {
             const shipGroup2 = shipGroupList2[l];
-            if (shipGroup2 != null && shipGroup2.leadShip !== null && shipGroup2.leadShip.isAutoControlled && shipGroup2.posture === FleetPosture.Attack && shipGroup2.attackPoint === null) {
+            if (shipGroup2 != null && shipGroup2.leadShip !== null && isAiControlled(shipGroup2.leadShip) && shipGroup2.posture === FleetPosture.Attack && shipGroup2.attackPoint === null) {
                 let flag2 = false;
                 if (shipGroup2.mission === null || shipGroup2.mission.type === BuiltObjectMissionType.Undefined || shipGroup2.mission.priority === BuiltObjectMissionPriority.Low) flag2 = true;
                 const requiredFuel2 = determineFuelRequiredForFleet(shipGroup2).requiredFuel;
@@ -4197,7 +4198,7 @@ export function checkReadyForWarCaptureObjectives(galaxy: Galaxy, self: Empire):
     const shipGroups = shipGroupsOf(self);
     for (let j = 0; j < shipGroups.length; j++) {
         const shipGroup2 = shipGroups[j];
-        if (shipGroup2.posture !== FleetPosture.Attack || shipGroup2.attackPoint === null || shipGroup2.leadShip === null || !shipGroup2.leadShip.isAutoControlled || shipGroup2.gatherPoint === null) continue;
+        if (shipGroup2.posture !== FleetPosture.Attack || shipGroup2.attackPoint === null || shipGroup2.leadShip === null || !isAiControlled(shipGroup2.leadShip) || shipGroup2.gatherPoint === null) continue;
         if (shipGroup2.mission !== null && shipGroup2.mission.type === BuiltObjectMissionType.Refuel) {
             result = false;
         } else if (shipGroup2.mission === null || shipGroup2.mission.type === BuiltObjectMissionType.Undefined) {

@@ -93,7 +93,7 @@ describe('N2 order keys on the seed-1 game', () => {
         return s!;
     };
 
-    it('S stops the ship: no mission, speeds 0, manual control (Main.Part7.cs 3046-3063)', () => {
+    it('S stops the ship: no mission, speeds 0; automation stays on (user deviation from Main.Part7.cs 3046-3063)', () => {
         const ship = mobileShip(false);
         ship.isAutoControlled = true;
         ship.targetSpeed = 50;
@@ -101,7 +101,7 @@ describe('N2 order keys on the seed-1 game', () => {
         expect(executeShipOrderKey(galaxy, player, ship, 'stopShip')).toBe(true);
         expect(ship.targetSpeed).toBe(0);
         expect(ship.preferredSpeed).toBe(0);
-        expect(ship.isAutoControlled).toBe(false);
+        expect(ship.isAutoControlled).toBe(true); // only the Automate toggle changes it
         const m = builtObjectMission(ship.mission);
         expect(m === null || m.type === BuiltObjectMissionType.Undefined).toBe(true);
     });
@@ -113,14 +113,15 @@ describe('N2 order keys on the seed-1 game', () => {
         expect(ship.isAutoControlled).toBe(true);
     });
 
-    it('R sends the ship to refuel at the nearest refuelling point (Normal priority, manual)', () => {
+    it('R sends the ship to refuel at the nearest refuelling point (Normal priority, a player order; still automated)', () => {
         const ship = mobileShip(true);
         ship.isAutoControlled = true;
         expect(executeShipOrderKey(galaxy, player, ship, 'commandRefuel')).toBe(true);
         const m = builtObjectMission(ship.mission)!;
         expect(m.type).toBe(BuiltObjectMissionType.Refuel);
         expect(m.priority).toBe(BuiltObjectMissionPriority.Normal);
-        expect(ship.isAutoControlled).toBe(false);
+        expect(m.playerOrdered).toBe(true);
+        expect(ship.isAutoControlled).toBe(true);
     });
 
     it('E with no attackers and no threats does nothing; , cycles a military ship stance', () => {
@@ -147,7 +148,7 @@ describe('N2 order keys on the seed-1 game', () => {
         }
     });
 
-    it('fleet: , sets the fleet and every ship; S stops every ship and turns automation off', () => {
+    it('fleet: , sets the fleet and every ship; S stops every ship (automation stays on); A keeps it on', () => {
         const ships = player.builtObjects.filter((b) => b.role === BuiltObjectRole.Military && b.builtAt === null && b.topSpeed > 0).slice(0, 2);
         expect(ships.length).toBeGreaterThan(0);
         const sg = new ShipGroup(galaxy);
@@ -165,7 +166,7 @@ describe('N2 order keys on the seed-1 game', () => {
         expect(executeShipOrderKey(galaxy, player, sg, 'stopShip')).toBe(true);
         for (const s of ships) {
             expect(s.targetSpeed).toBe(0);
-            expect(s.isAutoControlled).toBe(false);
+            expect(s.isAutoControlled).toBe(true);
         }
         expect(executeShipOrderKey(galaxy, player, sg, 'automateShip')).toBe(true);
         for (const s of ships) expect(s.isAutoControlled).toBe(true);

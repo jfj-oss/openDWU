@@ -8,6 +8,7 @@
 // EvaluateRelativeToParent (6784) is ported here (only ExecuteCommands and DoMovement call it).
 // Rnd: none in the frame; cases draw inside their owners.
 
+import { isAiControlled } from './playerOrder';
 import type { Galaxy } from '../galaxy';
 import type { BuiltObject } from '../builtObject';
 import type { Habitat } from '../types';
@@ -547,7 +548,7 @@ export function executeCommands(galaxy: Galaxy, builtObject: BuiltObject, timePa
         } else if (revertToPreviousMission(galaxy, bo)) {
             result = timePassed;
         } else {
-            if (!bo.isAutoControlled && bo.empire !== null && bo.empire !== galaxy.independentEmpire && bo.empire.pirateEmpireBaseHabitat === null && bo.role !== BuiltObjectRole.Base && bo.shipGroup === null && !bo.missionCompleteMessageSent) {
+            if (!isAiControlled(bo) && bo.empire !== null && bo.empire !== galaxy.independentEmpire && bo.empire.pirateEmpireBaseHabitat === null && bo.role !== BuiltObjectRole.Base && bo.shipGroup === null && !bo.missionCompleteMessageSent) {
                 // string.Format(TextResolver.GetText("SHIPTYPE NAME has completed its mission"), ResolveDescription(SubRole), Name).
                 const description3 = gameText('SHIPTYPE NAME has completed its mission', resolveSubRoleDescription(bo.subRole), bo.name);
                 sendMessageToEmpire(bo.empire, bo.empire, EmpireMessageType.ShipMissionComplete, bo, description3);

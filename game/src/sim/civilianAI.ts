@@ -11,6 +11,7 @@
 // determineHabitatsBeingMinedIncludingBuildingMiningStations (M4i), setupRefuelling (M4e), assignLoadTroopsMission and
 // the troop-transport checks (M4q)).
 
+import { isAiControlled } from './missions/playerOrder';
 import type { Galaxy } from './galaxy';
 import type { Empire } from './empire';
 import { AutomationLevel, empireGovernmentAttributes } from './empire';
@@ -559,7 +560,7 @@ function extractorMatchesHabitat(galaxy: Galaxy, ship: BuiltObject, habitat: Hab
 /** Empire.5.cs 1370 AssignMissionToBuiltObject(ship, atWar, patrolMiningStations). 22 Rnd sites, in C# order. */
 export function assignMissionToBuiltObject(galaxy: Galaxy, empire: Empire, ship: BuiltObject | null, atWar: boolean, patrolMiningStations: BuiltObject[] | null): void {
     const refusalCount: RefCount = { value: 0 };
-    if (ship === null || ship.topSpeed <= 0 || ship.builtAt !== null || !ship.isAutoControlled) {
+    if (ship === null || ship.topSpeed <= 0 || ship.builtAt !== null || !isAiControlled(ship)) {
         return;
     }
     {
@@ -1426,7 +1427,7 @@ function assignMissionExplorationShip(galaxy: Galaxy, empire: Empire, ship: Buil
     const builtObjectList: (BuiltObject | null)[] = [];
     for (let i = 0; i < empire.systemScouts.length; i++) {
         const builtObject = empire.systemScouts[i];
-        if (builtObject == null || builtObject.hasBeenDestroyed || !builtObject.isFunctional || builtObject.topSpeed <= 0 || builtObject.warpSpeed <= 0 || !builtObject.isAutoControlled) {
+        if (builtObject == null || builtObject.hasBeenDestroyed || !builtObject.isFunctional || builtObject.topSpeed <= 0 || builtObject.warpSpeed <= 0 || !isAiControlled(builtObject)) {
             builtObjectList.push(builtObject);
         } else if (builtObject != null && empire.systemScouts.length - builtObjectList.length > num2) {
             builtObjectList.push(builtObject);
@@ -1436,7 +1437,7 @@ function assignMissionExplorationShip(galaxy: Galaxy, empire: Empire, ship: Buil
         const builtObject2 = builtObjectList[j];
         if (builtObject2 != null) removeFromList(empire.systemScouts, builtObject2);
     }
-    if (empire.systemScouts.length < num2 && !empire.systemScouts.includes(ship) && ship != null && !ship.hasBeenDestroyed && ship.isFunctional && ship.topSpeed > 0 && ship.warpSpeed > 0 && ship.isAutoControlled) {
+    if (empire.systemScouts.length < num2 && !empire.systemScouts.includes(ship) && ship != null && !ship.hasBeenDestroyed && ship.isFunctional && ship.topSpeed > 0 && ship.warpSpeed > 0 && isAiControlled(ship)) {
         empire.systemScouts.push(ship);
     }
     let location: Point = POINT_EMPTY;
@@ -2236,7 +2237,7 @@ function checkResourceAssignBuild(galaxy: Galaxy, empire: Empire, constructionSh
     const habitat = checkResourceSupplyMeetsExpected(galaxy, empire, resourceId, false, empireHabitatsBeingMined);
     if (habitat !== null && buildResourcePickupPoint !== null && distanceWithinRange(galaxy, constructionShip, buildResourcePickupPoint.xpos, buildResourcePickupPoint.ypos, habitat.xpos, habitat.ypos, 0.1) && !empireHabitatsBeingMined.includes(habitat)) {
         const m = missionOf(constructionShip);
-        if (constructionShip.subRole === BuiltObjectSubRole.ConstructionShip && constructionShip.isAutoControlled && constructionShip.isShipYard && (m === null || m.type === BuiltObjectMissionType.Undefined)) {
+        if (constructionShip.subRole === BuiltObjectSubRole.ConstructionShip && isAiControlled(constructionShip) && constructionShip.isShipYard && (m === null || m.type === BuiltObjectMissionType.Undefined)) {
             let design: Design | null = null;
             if (habitatResourcesContainGroup(galaxy, habitat, ResourceGroup.Gas)) design = findNewestCanBuild(empire.designs, BuiltObjectSubRole.GasMiningStation, empire);
             if (habitatResourcesContainGroup(galaxy, habitat, ResourceGroup.Mineral)) design = findNewestCanBuild(empire.designs, BuiltObjectSubRole.MiningStation, empire);

@@ -21,6 +21,7 @@
 // dead in the headless sim; colonyInvasionUi throws a TODO if a view is ever attached (UI port, M9).
 // Habitat._PirateColonyControl: M4s2's PirateColonyControlList (wired at the M4q merge; see pirateColonyControl below).
 
+import { isAiControlled } from '../missions/playerOrder';
 import { recordRaidLoss } from '../scenario/emergent/crisesCore';
 import { scenarioQuery } from '../scenario/hooks';
 import { registerTodo, todo } from '../tick/todo';
@@ -832,7 +833,7 @@ function checkForReinforcements(galaxy: Galaxy, habitat: Habitat, invasionForceS
             builtObject2.troops.totalDefendStrength <= 0 ||
             builtObject2.topSpeed <= 0 ||
             builtObject2.warpSpeed <= 0 ||
-            !builtObject2.isAutoControlled ||
+            !isAiControlled(builtObject2) ||
             (m2 !== null &&
                 m2.type !== BuiltObjectMissionType.Undefined &&
                 m2.priority !== BuiltObjectMissionPriority.Low &&
@@ -847,7 +848,7 @@ function checkForReinforcements(galaxy: Galaxy, habitat: Habitat, invasionForceS
         const shipGroup = builtObject2.shipGroup as ShipGroup | null;
         if (shipGroup !== null && shipGroup.leadShip !== null) {
             const gm = builtObjectMission(shipGroup.mission);
-            if (shipGroup.leadShip.isAutoControlled && (gm === null || gm.type === BuiltObjectMissionType.Undefined || gm.priority === BuiltObjectMissionPriority.Low)) {
+            if (isAiControlled(shipGroup.leadShip) && (gm === null || gm.type === BuiltObjectMissionType.Undefined || gm.priority === BuiltObjectMissionPriority.Low)) {
                 num2 = galaxy.calculateDistanceSquared(shipGroup.leadShip.xpos, shipGroup.leadShip.ypos, habitat.xpos, habitat.ypos);
                 if (num2 < num && builtObject2.empire !== null) {
                     assignFleetUnloadTroops(galaxy, builtObject2.empire, shipGroup, habitat, false);
@@ -1917,7 +1918,7 @@ export function invadeUnwillingColonizationTargets(galaxy: Galaxy, empire: Empir
             const shipGroup = findNearestAvailableFleet(galaxy, empire, habitat.xpos, habitat.ypos, BuiltObjectMissionPriority.Low, 0, FleetPosture.Attack, true, 0.1, false, false, false, true, 40000);
             if (
                 shipGroup !== null &&
-                (shipGroup.leadShip!.isAutoControlled || empire.controlMilitaryAttacks === AutomationLevel.PartiallyAutomated) &&
+                (isAiControlled(shipGroup.leadShip!) || empire.controlMilitaryAttacks === AutomationLevel.PartiallyAutomated) &&
                 checkTaskAuthorized(galaxy, empire, empire.controlMilitaryAttacks, refusalCount, generateAutomationMessageInvadeIndependent(galaxy, habitat, shipGroup), habitat, AdvisorMessageType.InvadeIndependent, null, shipGroup, null)
             ) {
                 shipGroupAssignMission(galaxy, shipGroup, BuiltObjectMissionType.Attack, habitat, null, BuiltObjectMissionPriority.High, false);

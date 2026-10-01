@@ -7,6 +7,7 @@
 // Rnd: FindFreighterForContract draws Galaxy.Rnd.Next(0, availableFreighters.Count) and
 // Next(0, availableIndependentFreighters.Count) (Empire.4.cs 1320 / 1363) when the lists are non-empty.
 
+import { isAiControlled } from '../missions/playerOrder';
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
 import { BuiltObject } from '../builtObject';
@@ -295,7 +296,7 @@ function countAvailableFreighters(empire: Empire): { available: number; totalFre
 
 /** BaconEmpire.cs 317 RemoveStateShips(empire, ships): drops ships with an Owner that are not auto-controlled. */
 function removeStateShips(ships: BuiltObject[]): BuiltObject[] {
-    const toRemove = ships.filter((x) => x.owner !== null && !x.isAutoControlled);
+    const toRemove = ships.filter((x) => x.owner !== null && !isAiControlled(x));
     for (const builtObject of toRemove) {
         const i = ships.indexOf(builtObject);
         if (i >= 0) ships.splice(i, 1);
