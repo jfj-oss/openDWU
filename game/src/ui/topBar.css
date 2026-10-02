@@ -1,0 +1,229 @@
+/* The top strip (hud.ts top builders, topBar.ts layout): the original's controls in its own pixels, each element
+   scaled by one factor (topBarScale). Colours / fonts are the original controls' (Main.InitializeComponent.cs,
+   ScrollingLinkList.cs, ResearchButton.cs, MainView.cs method_18: Money / date fonts are the 18.67 px bold and
+   15.33 px regular GenerateFont sizes). The buttons reuse the selection frame's GlassButton look (.sel-glass). */
+
+.top-left,
+.top-money,
+.top-more {
+    pointer-events: none;
+    font-family: 'Forgotten Futurist', sans-serif;
+    box-sizing: border-box;
+    -webkit-font-smoothing: antialiased;
+}
+.top-left > *,
+.top-money > * {
+    position: absolute;
+}
+
+/* GlassButtons of the strip: the row buttons are the HUD elements themselves; the top-left ones sit inside
+   .top-left. The image is drawn at its own size, centred (GlassButton ImageAlign MiddleCenter). */
+.sel-glass.top-glass {
+    color: rgb(150, 150, 150);
+    font-family: 'Forgotten Futurist', sans-serif;
+    box-sizing: border-box;
+}
+.sel-glass.top-glass img {
+    flex: none;
+    max-width: none;
+    max-height: none;
+}
+.sel-glass.top-glass:hover {
+    color: #fff;
+}
+.sel-glass.top-glass:disabled {
+    cursor: default;
+    color: rgb(80, 80, 88);
+}
+.sel-glass.top-glass:disabled:hover {
+    background:
+        linear-gradient(to bottom, rgba(var(--shine), 0.6), rgba(var(--shine), 0.2) 50%, transparent 50%),
+        linear-gradient(to bottom, rgb(18, 18, 26), rgb(4, 4, 14));
+}
+/* btnGameSpeedDecrease / Increase: ">" and ">>>" text buttons. */
+.sel-glass.top-speed {
+    font-size: 12px;
+    font-weight: bold;
+    line-height: 1;
+    letter-spacing: -0.5px;
+    padding-bottom: 1px;
+}
+
+/* Drop-shadowed white text (XnaDrawingHelper.DrawStringDropShadow). */
+.top-text-shadow {
+    text-shadow: 1px 1px 0 #000, 1px 1px 2px rgba(0, 0, 0, 0.9);
+}
+
+/* The date + speed line (MainView.cs method_18: BoldFont at (12, 120)). */
+.top-left .hud-date {
+    color: #fff;
+    font-size: 18.67px;
+    line-height: 22px;
+    font-weight: bold;
+    white-space: nowrap;
+}
+
+/* lstMessages (ScrollingLinkList.OnPaintBackground): black outline, (0,0,16) fill, the (96,96,104) shine on the top
+   half, inner border (67,67,77); top-left / bottom-left corners curved (Curvature 15). */
+.top-ticker {
+    pointer-events: auto;
+    box-sizing: border-box;
+    position: absolute;
+    overflow: hidden;
+    border: 1px solid #000;
+    border-radius: 15px 0 0 15px;
+    background:
+        linear-gradient(to bottom, rgba(96, 96, 104, 0.6), rgba(96, 96, 104, 0.2) 50%, transparent 50%),
+        rgb(0, 0, 16);
+    box-shadow: inset 0 0 0 1px rgb(67, 67, 77);
+    font-family: 'Forgotten Futurist', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    cursor: pointer;
+}
+.top-ticker .hud-message-lines {
+    position: absolute;
+    left: 6px;
+    right: 6px;
+    bottom: 2px;
+}
+/* LinkLabel rows: 18 px tall + 1 px gap, centred, (170,170,170), hover underline, pressed yellow. */
+.top-ticker .hud-message-line {
+    height: 18px;
+    margin-top: 1px;
+    line-height: 18px;
+    font-size: 15px;
+    color: rgb(170, 170, 170);
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.top-ticker .hud-message-line.hud-message-goto {
+    cursor: pointer;
+}
+.top-ticker .hud-message-line.hud-message-goto:hover {
+    text-decoration: underline;
+}
+.top-ticker .hud-message-line.hud-message-goto:active {
+    color: yellow;
+}
+.top-ticker .hud-message-scroll {
+    animation: top-ticker-scroll 0.6s ease-out;
+}
+@keyframes top-ticker-scroll {
+    from {
+        transform: translateY(19px);
+    }
+    to {
+        transform: translateY(0);
+    }
+}
+
+/* tbtnResearch (ResearchButton.cs): research.png at (7, 9); rows at (3, 5 / 23 / 41): the project icon at x + 37,
+   the percentage at x + 37 + 13 in the 14 px font with a drop shadow. */
+.sel-glass.top-research {
+    display: block;
+}
+.top-research-img {
+    position: absolute;
+    left: 7px;
+    top: 9px;
+}
+.top-research-row {
+    position: absolute;
+    left: 53px;
+    height: 18px;
+    font-size: 14px;
+    line-height: 18px;
+    white-space: pre;
+    text-shadow: 1px 1px 0 #000;
+    pointer-events: none;
+}
+.top-research-row.top-research-idle {
+    left: 40px;
+}
+
+/* btnEmpireSummary: the player's flag at 50 × 30. */
+.top-flag {
+    width: 50px;
+    height: 30px;
+    object-fit: fill;
+}
+
+/* Money block (MainView.cs method_18). */
+.top-money-icon {
+    pointer-events: none;
+}
+.top-money-label {
+    color: rgb(144, 144, 144);
+    font-size: 15.33px;
+    line-height: 18px;
+    white-space: nowrap;
+}
+.top-money-value {
+    color: #fff;
+    font-size: 18.67px;
+    line-height: 22px;
+    font-weight: bold;
+    white-space: nowrap;
+}
+.top-money-small {
+    color: #fff;
+    font-size: 15.33px;
+    line-height: 18px;
+    white-space: nowrap;
+}
+.top-money .top-negative {
+    color: rgb(255, 0, 0);
+}
+.top-money .hud-system-name {
+    color: #fff;
+    font-size: 18.67px;
+    line-height: 22px;
+    font-weight: bold;
+    white-space: nowrap;
+    text-align: right;
+}
+
+/* Overflow button + its menu (our screens with no original top-strip button). */
+.sel-glass.top-more-btn {
+    position: absolute;
+    left: 0;
+    top: 0;
+    font-size: 10px;
+    letter-spacing: 1px;
+}
+.top-more-menu {
+    position: absolute;
+    right: 0;
+    top: 34px;
+    min-width: 150px;
+    pointer-events: auto;
+    padding: 3px;
+    background: linear-gradient(to bottom, rgb(39, 40, 44), rgb(22, 21, 26) 50%, rgb(51, 54, 61));
+    border: 1px solid rgb(67, 67, 77);
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+    display: flex;
+    flex-direction: column;
+}
+.top-more-menu[hidden] {
+    display: none;
+}
+.top-more-item {
+    font-family: 'Forgotten Futurist', sans-serif;
+    font-size: 10px;
+    line-height: 16px;
+    text-align: left;
+    white-space: nowrap;
+    color: rgb(200, 200, 200);
+    background: transparent;
+    border: 0;
+    border-radius: 2px;
+    padding: 1px 6px;
+    cursor: pointer;
+}
+.top-more-item:hover {
+    background: rgba(48, 48, 128, 0.7);
+    color: #fff;
+}

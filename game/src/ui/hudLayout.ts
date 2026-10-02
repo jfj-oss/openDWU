@@ -1,32 +1,15 @@
-// Streamlined HUD layout (task 05c). The original's full control set from
-// Main.Part12.cs MainInit is reduced to: the top-middle message panel +
-// screen-launch button row (positions unchanged, still ported from the C#),
-// plus four new panels — a compact top-left bar, a top-right money/system
-// block, a bottom-left selection panel and a bottom-right options list.
-// Pure function (no DOM/Pixi): returns a rect per element name.
+// HUD layout (task 05c, top strip + selection frame re-ported). The top of the screen is the original's own layout
+// (topBar.ts: Main.Part12.cs MainInit + MainView.cs method_18, scaled as one strip), the bottom-left is the original's
+// selection frame, the bottom-right our options list (replacing the minimap).
+// Pure function (no DOM/Pixi): returns a rect per element name, in screen pixels.
+
+import { TOP_ROW_BUTTONS, topBarScreenLayout } from './topBar';
 
 export interface Rect { x: number; y: number; w: number; h: number }
 
-/** Top-middle button row order (original LoadUiChromeButtons set). */
-export const TOP_BAR_BUTTONS = [
-    'tbtnColonies',
-    'btnExpansionPlanner',
-    'btnEmpireGraphs',
-    'btnEmpirePolicy',
-    'btnGameEditor',
-    'tbtnIntelligenceAgents',
-    'tbtnEmpires',
-    'btnEmpireSummary',
-    'tbtnResearch',
-    'tbtnDesigns',
-    'btnBuildOrder',
-    'tbtnConstructionYards',
-    'tbtnBuiltObjects',
-    'tbtnShipGroups',
-    'tbtnTroops',
-    'btnHistoryMessages',
-    'btnGalacticHistory',
-] as const;
+/** Top-middle buttons: the screen-button row (original order, Main.Part12.cs 1727-1789) plus the message history
+ *  (envelope) and galactic history (hourglass) buttons beside the message box. */
+export const TOP_BAR_BUTTONS = [...TOP_ROW_BUTTONS.map((b) => b.name), 'btnHistoryMessages', 'btnGalacticHistory'] as const;
 
 /** Cycle chips of the streamlined selection panel footer. The original's
     cycle<X>.png art bakes a "›" arrow into each icon, so the chips render
@@ -57,50 +40,15 @@ export const VIEW_ROWS = [
 
 export type ViewRowKey = (typeof VIEW_ROWS)[number]['key'];
 
-export function computeHudLayout(width: number, height: number): Record<string, Rect> {
+export function computeHudLayout(width: number, height: number, uiScale = 1): Record<string, Rect> {
     const layout: Record<string, Rect> = {};
 
     // ------------------------------------------------------------------
-    // Top-middle: message panel + screen-launch button row. Positions are
-    // the original's (Main.Part12.cs MainInit) and stay exactly as before.
+    // Top strip: message box + history buttons, the screen-button row, the top-left game menu / help / pause /
+    // speed / date area, the top-right money block (+ system name) and our overflow button — the original's pixels
+    // scaled by one factor (topBar.ts topBarScale), here in screen pixels.
     // ------------------------------------------------------------------
-    const num3 = Math.floor((width - 700) / 2);
-    layout['lstMessages'] = { x: num3, y: 10, w: 668, h: 80 };
-    // The original's int division truncates (num3 + 668 is the exact edge).
-    const msgEdge = Math.floor((width - 700) / 2 + 668);
-
-    // int num4 = (rectangle.Width - 624) / 2; then sequential += per width.
-    const num4 = Math.floor((width - 624) / 2);
-    let num5 = num4;
-    for (const name of TOP_BAR_BUTTONS) {
-        const w = name === 'tbtnEmpires' || name === 'btnEmpireSummary' || name === 'tbtnResearch' ? 80 : 32;
-        if (name === 'btnHistoryMessages') {
-            // Envelope button sits to the right of the message panel, not in
-            // the launch row (original Main.Part12.cs positions it at the
-            // panel's right edge).
-            layout[name] = { x: msgEdge, y: 10, w: 32, h: 48 };
-            continue;
-        }
-        if (name === 'btnGalacticHistory') {
-            // Hourglass button below the envelope, same column.
-            layout[name] = { x: msgEdge, y: 58, w: 32, h: 32 };
-            continue;
-        }
-        layout[name] = { x: num5, y: 90, w, h: 32 };
-        num5 += w;
-    }
-
-    // ------------------------------------------------------------------
-    // Top-left: one compact bar at (10,10).
-    // ------------------------------------------------------------------
-    layout['pnlTopLeftBar'] = { x: 10, y: 10, w: 300, h: 40 };
-
-    // ------------------------------------------------------------------
-    // Top-right: money block + system name, one panel anchored to the right
-    // edge (10 px margin) so its values never clip past the screen edge
-    // (task 10e).
-    // ------------------------------------------------------------------
-    layout['pnlMoney'] = { x: width - 230 - 10, y: 10, w: 230, h: 100 };
+    Object.assign(layout, topBarScreenLayout(width, height, uiScale).rects);
 
     // ------------------------------------------------------------------
     // Bottom-left: the selection panel frame.

@@ -37,12 +37,17 @@ import {
 import { closeMessageCardFor, conversationHeading, conversationQueue, dismissConversation, openConversation, openMessageCard, openMessageKey } from './messagePopups';
 import { advisorSuggestionView, openAdvisorSuggestion, openAdvisorSuggestionKey } from './advisorSuggestions';
 
-/** Where the list sits: directly under the top-right money panel, same width (hudLayout.ts pnlMoney). The transform
- *  origin is the panel's top-right corner so the list stays under the panel at any UI scale. */
+/** The list's width (unscaled CSS px) and its margin from the right edge. */
+export const STUB_LIST_W = 230;
+const STUB_LIST_MARGIN = 10;
+
+/** Where the list sits: directly under the top-right money block + system name (hudLayout.ts pnlMoney, the
+ *  original's pixels scaled with the top strip), right-aligned with a 10 px margin. The transform origin is the
+ *  list's top-right corner so it stays under the block at any UI scale. */
 export function messageStubsRect(width: number, height: number): { right: number; top: number; w: number; origin: string } {
     const money = computeHudLayout(width, height)['pnlMoney'];
-    const top = money.y + money.h + 4;
-    return { right: Math.max(0, width - money.x - money.w), top, w: money.w, origin: `100% ${money.y - top}px` };
+    const top = Math.round(money.y + money.h + 4);
+    return { right: Math.max(STUB_LIST_MARGIN, Math.round(width - money.x - money.w)), top, w: STUB_LIST_W, origin: '100% 0' };
 }
 
 export interface MessageStubListOptions {
@@ -146,9 +151,9 @@ export function installMessageStubList(opts: MessageStubListOptions): void {
         const s = uiScaleFactor();
         const money = document.querySelector<HTMLElement>('[data-hud="pnlMoney"]')?.getBoundingClientRect();
         const r = messageStubsRect(window.innerWidth, window.innerHeight);
-        const right = money ? Math.max(0, window.innerWidth - money.right) : r.right;
+        const right = money ? Math.max(STUB_LIST_MARGIN, window.innerWidth - money.right) : r.right;
         const top = money ? money.bottom + 4 * s : r.top;
-        const w = money ? money.width / s : r.w;
+        const w = r.w;
         const key = `${right},${top},${w},${s}`;
         if (key === placed) return;
         placed = key;

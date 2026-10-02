@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildingQueueText, chromeButtonFile, clearHudMessages, formatCashflow, formatClockLabel, formatMoney, formatPopulation, getHudMessageHistory, getHudMessages, habitatTypeLabel, hudTransformOrigin, nextInCycle, ownerRows, playerColonyList, pushHudMessage, resourceIconUrl, systemRows } from '../src/ui/hud';
+import { playPauseImage, speedButtonsEnabled, buildingQueueText, chromeButtonFile, clearHudMessages, formatCashflow, formatClockLabel, formatMoney, formatPopulation, getHudMessageHistory, getHudMessages, habitatTypeLabel, hudTransformOrigin, nextInCycle, ownerRows, playerColonyList, pushHudMessage, resourceIconUrl, systemRows } from '../src/ui/hud';
 import type { ConstructionQueue } from '../src/sim/construction/constructionQueue';
 import type { ConstructionYard } from '../src/sim/construction/constructionYard';
 import { historyRows } from '../src/ui/screens/messageHistory';
@@ -181,7 +181,8 @@ describe('hudTransformOrigin (task 10f)', () => {
     const rectFor = (name: string) => layout[name] ?? { x: 0, y: 0, w: 0, h: 0 };
 
     it('scales right-anchored panels from their right edge', () => {
-        expect(hudTransformOrigin('pnlMoney', rectFor('pnlMoney'))).toBe('100% 0');
+        // The top strip (money block included) is placed at its scaled original position, scaling from 0 0.
+        expect(hudTransformOrigin('pnlMoney', rectFor('pnlMoney'))).toBe('0 0');
         expect(hudTransformOrigin('pnlOptionsList', rectFor('pnlOptionsList'))).toBe('100% 100%');
     });
 
@@ -189,10 +190,10 @@ describe('hudTransformOrigin (task 10f)', () => {
         expect(hudTransformOrigin('pnlSelection', rectFor('pnlSelection'))).toBe('0 100%');
     });
 
-    it('scales top-middle elements from top-centre', () => {
-        expect(hudTransformOrigin('lstMessages', rectFor('lstMessages'))).toBe('50% 0');
+    it('scales top-strip elements from their own top-left (each sits at its scaled original position)', () => {
+        expect(hudTransformOrigin('lstMessages', rectFor('lstMessages'))).toBe('0 0');
         for (const name of TOP_BAR_BUTTONS) {
-            expect(hudTransformOrigin(name, rectFor(name)), `${name} should scale from top-centre`).toBe('50% 0');
+            expect(hudTransformOrigin(name, rectFor(name)), name).toBe('0 0');
         }
     });
 
@@ -296,8 +297,9 @@ describe('streamlined HUD element set (task 05c)', () => {
 
     it('has the four streamlined panels', () => {
         const layout = computeHudLayout(1920, 1080);
-        expect(layout['pnlTopLeftBar']).toEqual({ x: 10, y: 10, w: 300, h: 40 });
-        expect(layout['pnlMoney'].x).toBe(1920 - 230 - 10);
+        expect(layout['pnlTopLeftBar'].x).toBe(0);
+        expect(layout['pnlTopLeftBar'].y).toBe(0);
+        expect(layout['pnlMoney'].x + layout['pnlMoney'].w).toBeCloseTo(1920);
         expect(layout['pnlSelection']).toEqual({ x: 10, y: 1080 - 310 - 10, w: 399, h: 310 });
         expect(layout['pnlOptionsList']).toEqual({ x: 1920 - 220 - 10, y: 1080 - 10, w: 220, h: 0 });
     });
@@ -541,5 +543,15 @@ describe('buildingQueueText (colony / shipyard "Building" row)', () => {
             constructionWaitQueue: [{}],
         } as unknown as ConstructionQueue;
         expect(buildingQueueText(queue)).toBe('(None) +1 waiting');
+    });
+});
+
+describe('top-left controls (Main.Part12.cs LoadUiChromeButtons / 3336-3352)', () => {
+    it('pause image follows the clock and the speed buttons stop at 0.25x / 4x', () => {
+        expect(playPauseImage(true)).toBe('pauseresume_Pause.png');
+        expect(playPauseImage(false)).toBe('pauseresume_Play.png');
+        expect(speedButtonsEnabled(0.25)).toEqual({ slower: false, faster: true });
+        expect(speedButtonsEnabled(1)).toEqual({ slower: true, faster: true });
+        expect(speedButtonsEnabled(4)).toEqual({ slower: true, faster: false });
     });
 });

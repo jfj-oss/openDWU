@@ -1,5 +1,6 @@
 // fix4ui: pure logic behind the UI fixes from the 2026-09-25 playtest.
 import { describe, expect, it } from 'vitest';
+import { topBarLayout, topBarScale } from '../src/ui/topBar';
 import { findBinding } from '../src/ui/keyboard';
 import { empireNamePlaceholder, flagShapeTileUrls, playableRacesSorted, STOCK_FLAG_SHAPE_COUNT, wizardRaceFiles } from '../src/ui/screens/newGameWizard';
 import { DEFAULT_RACE_FILES } from '../src/sim/data/gameData';
@@ -141,17 +142,16 @@ describe('#13 idle ship cycler (Main.Part7.cs btnCycleIdleShips_Click / method_3
     });
 });
 
-describe('#17 UI scale: top-middle group scales about one point', () => {
-    it('every top-middle element uses the screen top-centre as origin', () => {
-        const layout = computeHudLayout(1920, 1080);
+describe('#17 UI scale: the top strip scales as one', () => {
+    it('every top element is its original rect times one factor', () => {
+        const k = topBarScale(1920, 1080, 1.25);
+        const virt = topBarLayout(1920 / k);
+        const layout = computeHudLayout(1920, 1080, 1.25);
         for (const name of ['lstMessages', ...TOP_BAR_BUTTONS]) {
-            const r = layout[name];
-            const [ox, oy] = hudTransformOrigin(name, r, 1920).split(' ').map((v) => parseFloat(v));
-            expect(r.x + ox, name).toBeCloseTo(960);
-            expect(r.y + oy, name).toBeCloseTo(0);
+            expect(layout[name].x, name).toBeCloseTo(virt[name].x * k);
+            expect(layout[name].y, name).toBeCloseTo(virt[name].y * k);
+            expect(hudTransformOrigin(name, layout[name], 1920)).toBe('0 0');
         }
-        // Without a viewport width the old per-element origin stays.
-        expect(hudTransformOrigin('lstMessages', layout['lstMessages'])).toBe('50% 0');
     });
 });
 

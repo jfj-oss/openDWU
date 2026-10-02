@@ -338,7 +338,7 @@ async function main() {
             } else {
                 await page.mouse.click(target.x, target.y);
                 await page.waitForTimeout(200);
-                const selName = (await page.textContent('.hud-selection-name'))?.trim();
+                const selName = (await page.textContent('.sel-frame .sel-title'))?.trim();
                 if (!selName || selName === 'Nothing selected') {
                     throw new Error(`selection panel still shows "${selName}" after clicking a pickable object at (${target.x}, ${target.y})`);
                 }

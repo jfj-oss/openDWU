@@ -12,11 +12,11 @@ describe('message ticker go-to', () => {
             calls.push('colony');
             return true;
         });
-        // 5 slots filled from the top (renderMessages): the two messages sit in slots 0 and 1.
-        expect(tickerLineGoto(1, 5)).toBe(true);
+        // 5 slots filled from the bottom (renderMessages, newest last): the two messages sit in slots 3 and 4.
+        expect(tickerLineGoto(4, 5)).toBe(true);
         expect(calls).toEqual(['colony']);
+        expect(tickerLineGoto(3, 5)).toBe(false);
         expect(tickerLineGoto(0, 5)).toBe(false);
-        expect(tickerLineGoto(4, 5)).toBe(false);
     });
 
     it('keeps each go-to aligned with its line as old lines scroll out', () => {

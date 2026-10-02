@@ -1,4 +1,9 @@
-import { computeHudLayout, TOP_BAR_BUTTONS, VIEW_ROWS, type Rect, type ViewRowKey } from './hudLayout';
+import { computeHudLayout, VIEW_ROWS, type Rect, type ViewRowKey } from './hudLayout';
+import { cornerRadiusCss, MONEY_POS, researchReadout, showViewSystemName, TOP_DATE_POS, TOP_ELEMENT_NAMES, TOP_LEFT_BUTTONS, TOP_ROW_BUTTONS, topBarLayout, topBarScale, viewSystemName, type CornerCurves } from './topBar';
+import './topBar.css';
+import { toggleGameOptionsPanel } from './screens/gameOptionsPanel';
+import { toggleAdvisorPanel } from './advisorPanel';
+import { empireFlagUrl } from './selectionInfoView';
 import { threatKnownSites } from '../sim/scenario/threats/framework';
 import { onSettingsChange, uiScaleFactor } from './settings';
 import { GalaxyTime } from '../sim/clock';
@@ -205,12 +210,6 @@ export function cycleEmptyText(kind: CycleKind): string {
     return `No ${what[kind]} to cycle`;
 }
 
-/** Human labels for chrome-less top-bar buttons (never the control name). */
-const TOP_BAR_TEXT_LABELS: Record<string, string> = {
-    btnEmpireSummary: 'Empire',
-    tbtnResearch: 'Research',
-};
-
 /** View row key → original zoom-button control name (for its icon art). */
 const VIEW_ROW_CONTROL: Partial<Record<ViewRowKey, string>> = {
     zoomSelection: 'btnZoomSelection',
@@ -225,30 +224,41 @@ export const PLANET_LEVEL_ZOOM = 1;
 
 // ---------------------------------------------------------------------------
 // UI scale (task 10f): each HUD element is scaled about its anchored corner so
-// the panel edges stay pinned to the screen edge/corner at any scale. The
-// origin follows the element's anchor in computeHudLayout: top-left panels
-// scale from top-left, right-anchored panels from their right edge, the
-// bottom-right options list from bottom-right, and the top-middle message
-// panel + launch row from top-centre.
+// the panel edges stay pinned to the screen edge/corner at any scale. The top
+// strip (topBar.ts) is the original's pixels scaled by one factor about the
+// screen's top-left corner, each element at its scaled original position, so
+// the strip grows as one; the bottom-left selection frame scales from its
+// bottom-left corner, the bottom-right options list from bottom-right.
 // ---------------------------------------------------------------------------
 
+const TOP_NAMES: ReadonlySet<string> = new Set(TOP_ELEMENT_NAMES);
+
 /** CSS `transform-origin` for a HUD element name given its layout rect. Pure
- * (no window access) so node-based tests can exercise the mapping: the
- * bottom-left selection panel is the only element anchored to the bottom edge,
- * and every other element anchors top-left except the special cases below. */
-export function hudTransformOrigin(name: string, rect: Rect, viewportWidth?: number): string {
+ * (no window access) so node-based tests can exercise the mapping. */
+export function hudTransformOrigin(name: string, _rect: Rect, _viewportWidth?: number): string {
     if (name === 'pnlOptionsList') return '100% 100%'; // bottom-right anchored
-    if (name === 'pnlMoney') return '100% 0'; // top-right anchored
-    if (name === 'lstMessages' || (TOP_BAR_BUTTONS as readonly string[]).includes(name)) {
-        // Top-middle group (message panel, launch row, envelope/hourglass):
-        // every element scales about the same point — the screen's top centre
-        // — so the group grows as one and its members never overlap (each
-        // scaling about its own centre made neighbours overlap at 125%).
-        if (viewportWidth !== undefined) return `${viewportWidth / 2 - rect.x}px ${-rect.y}px`;
-        return '50% 0'; // top-middle: scale from top-centre
-    }
+    if (TOP_NAMES.has(name)) return '0 0'; // top strip: positioned at its scaled original position
     if (name === 'pnlSelection') return '0 100%'; // bottom-left anchored
     return '0 0'; // default: top-left anchored
+}
+
+/** Place the top strip (topBar.ts): every element at (original x, y) × k with its original size and
+ * `scale(k)`, k = topBarScale (window height × UI scale, capped by the width). */
+function placeTopStrip(refs: HudRefs): void {
+    const k = topBarScale(window.innerWidth, window.innerHeight, uiScaleFactor());
+    const rects = topBarLayout(window.innerWidth / k);
+    for (const [name, el] of refs.elements) {
+        const r = rects[name];
+        if (!r) continue;
+        el.style.left = `${r.x * k}px`;
+        el.style.top = `${r.y * k}px`;
+        el.style.right = '';
+        el.style.bottom = '';
+        el.style.width = `${r.w}px`;
+        el.style.height = `${r.h}px`;
+        el.style.transformOrigin = '0 0';
+        el.style.transform = k === 1 ? '' : `scale(${k})`;
+    }
 }
 
 /** Apply the UI scale setting to every HUD element: `transform: scale(s)`
@@ -258,6 +268,7 @@ export function applyHudScale(refs: HudRefs): void {
     const s = uiScaleFactor();
     const layout = computeHudLayout(window.innerWidth, window.innerHeight);
     for (const [name, el] of refs.elements) {
+        if (TOP_NAMES.has(name)) continue;
         const rect = layout[name];
         if (!rect) continue;
         el.style.transformOrigin = hudTransformOrigin(name, rect, window.innerWidth);
@@ -266,6 +277,7 @@ export function applyHudScale(refs: HudRefs): void {
         el.style.transform = k === 1 ? '' : `scale(${k})`;
         if (name === 'pnlSelection') anchorSelectionPanel(el, rect);
     }
+    placeTopStrip(refs);
 }
 
 /** System-level view: zoom factor 50 (Main.Part9.cs btnZoomSystem_Click
@@ -482,6 +494,15 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
             case 'pnlMoney':
                 el = buildMoneyPanel(wiring.game, wiring.galaxy);
                 break;
+            case 'btnTopMore':
+                el = buildTopMoreButton(wiring);
+                break;
+            case 'tbtnResearch':
+                el = buildResearchButton(wiring);
+                break;
+            case 'btnEmpireSummary':
+                el = buildEmpireSummaryButton(wiring);
+                break;
             case 'pnlSelection':
             {
                 // buildSelectionPanel installs its refresh callback on the object it is
@@ -497,18 +518,22 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
             case 'pnlOptionsList':
                 el = buildOptionsList({ ...wiring, overlays });
                 break;
+            case 'tbtnEmpires':
+                el = buildDiplomacyButton(wiring);
+                break;
             default:
-                el = name === 'tbtnEmpires' ? buildEmpireFlagButton(wiring) : buildTopBarButton(name, wiring);
+                el = buildTopBarButton(name, wiring);
                 break;
         }
         el.classList.add('hud-el');
         el.dataset.hud = name;
-        applyRect(el, rect);
+        // The top strip is placed by applyHudScale (placeTopStrip) in the original's pixels.
+        if (!TOP_NAMES.has(name)) applyRect(el, rect);
         // Task 10e: right-anchored panels position via `right` (not a computed
         // left) so they can never clip past the screen edge. The options list
         // is content-sized (rect.h === 0): anchor it to the window's
         // bottom-right corner instead of a fixed top offset.
-        if (name === 'pnlMoney' || name === 'pnlOptionsList') {
+        if (name === 'pnlOptionsList') {
             el.style.left = '';
             el.style.right = `${Math.max(0, window.innerWidth - rect.x - rect.w)}px`;
         }
@@ -583,10 +608,11 @@ function applyRect(el: HTMLElement, rect: Rect): void {
 export function layoutHud(refs: HudRefs): void {
     const layout = computeHudLayout(window.innerWidth, window.innerHeight);
     for (const [name, el] of refs.elements) {
+        if (TOP_NAMES.has(name)) continue; // placed by applyHudScale
         const rect = layout[name];
         if (rect) applyRect(el, rect);
-        // Task 10e: keep the right-anchored panels pinned to the right edge.
-        if (rect && (name === 'pnlMoney' || name === 'pnlOptionsList')) {
+        // Task 10e: keep the right-anchored options list pinned to the right edge.
+        if (rect && name === 'pnlOptionsList') {
             el.style.left = '';
             el.style.right = `${Math.max(0, window.innerWidth - rect.x - rect.w)}px`;
         }
@@ -604,17 +630,36 @@ export function layoutHud(refs: HudRefs): void {
 // Element builders
 // ---------------------------------------------------------------------------
 
-/** Top-middle message panel: five message lines. The envelope (Message
- * History) and hourglass (Galactic History) are the btnHistoryMessages /
- * btnGalacticHistory art buttons beside it, so the panel has no duplicate
- * glyph buttons. */
+/** A GlassButton of the top strip (DistantWorlds.Controls GlassButton, the selection frame's `.sel-glass` look) at
+ * its original-pixel rect inside its element, with its SetCornerCurves corners. */
+function topGlass(cls: string, corners: CornerCurves, title: string): HTMLButtonElement {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = `sel-glass top-glass ${cls}`;
+    b.style.borderRadius = cornerRadiusCss(corners);
+    b.title = title;
+    return b;
+}
+
+function chromeImg(file: string, cls = ''): HTMLImageElement {
+    const img = document.createElement('img');
+    img.src = `/assets/dwu/images/ui/chrome/${file}`;
+    img.alt = '';
+    img.draggable = false;
+    if (cls) img.className = cls;
+    return img;
+}
+
+/** lstMessages (Main.Part12.cs 1724-1726; ScrollingLinkList.cs): the 668 × 80 dark box with the top-left and
+ * bottom-left corners curved, its lines centred in (170,170,170), newest at the bottom; a new line scrolls in from
+ * below. The envelope (Message History) and hourglass (Galactic History) are their own buttons beside it. */
 function buildMessagesPanel(): HTMLElement {
     const panel = document.createElement('div');
-    panel.className = 'hud-panel hud-messages';
+    panel.className = 'top-ticker';
     panel.title = controlHint('lstMessages');
     const lines = document.createElement('div');
     lines.className = 'hud-message-lines';
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < MESSAGE_LINES; i++) {
         const line = document.createElement('div');
         line.className = 'hud-message-line';
         lines.appendChild(line);
@@ -623,55 +668,100 @@ function buildMessagesPanel(): HTMLElement {
     return panel;
 }
 
-/** Top-left compact bar: menu | help || play/pause − + || date (speed). */
+/** Top-left: btnGameMenu + btnHelp (40 × 40 at y 10), btnPlayPause (80 × 34 at y 62), the slower ">" / faster ">>>"
+ * buttons (40 × 20 at y 96) and the date + speed text at (12, 120) — Main.Part12.cs 1790-1804, MainView.cs
+ * method_18. main.ts keeps them current through {@link refreshTopLeftControls}. */
 function buildTopLeftBar(clock: GalaxyTime, onGameMenu: () => void): HTMLElement {
-    const bar = document.createElement('div');
-    bar.className = 'hud-panel hud-topbar';
-
-    // The ≡ button toggles the in-game Escape menu (task 10c) instead of the
-    // generic TODO log other chrome buttons still use.
-    const menu = makeIconButton('btnGameMenu', controlHint('btnGameMenu'));
-    menu.addEventListener('click', () => {
-        onGameMenu();
-    });
-    const help = makeIconButton('btnHelp', controlHint('btnHelp'));
-    // Main.Part5.cs btnHelp_Click: toggle the Galactopedia at the selection's topic.
-    help.addEventListener('click', () => {
-        toggleGalactopedia(helpTopicKeyForHabitat(getSelection()?.habitat ?? null));
-    });
-    bar.append(menu, help);
-    bar.appendChild(makeSeparator());
-
-    const pauseBtn = makeGlyphButton(clock.paused ? '▶' : '⏸', playPauseHint(clock.paused));
-    pauseBtn.dataset.hudCtl = 'playPause'; // stable hook (the title follows the clock state)
-    const refreshPauseGlyph = (): void => {
-        pauseBtn.textContent = clock.paused ? '▶' : '⏸';
-        pauseBtn.title = playPauseHint(clock.paused);
+    const area = document.createElement('div');
+    area.className = 'top-left';
+    const spec = (name: string) => TOP_LEFT_BUTTONS.find((b) => b.name === name)!;
+    const place = (b: HTMLElement, name: string): HTMLElement => {
+        const r = spec(name);
+        b.style.left = `${r.x}px`;
+        b.style.top = `${r.y}px`;
+        b.style.width = `${r.w}px`;
+        b.style.height = `${r.h}px`;
+        b.dataset.ctl = name;
+        area.appendChild(b);
+        return b;
     };
-    pauseBtn.addEventListener('click', () => {
-        clock.togglePause();
-        refreshPauseGlyph();
-    });
-    const dec = makeGlyphButton('−', controlHint('btnGameSpeedDecrease'));
+    // The game menu button toggles the in-game Escape menu (task 10c).
+    const menu = topGlass('top-btn', spec('btnGameMenu').corners, controlHint('btnGameMenu'));
+    menu.appendChild(chromeImg('gameOptionsButton.png'));
+    menu.addEventListener('click', () => onGameMenu());
+    place(menu, 'btnGameMenu');
+    // Main.Part5.cs btnHelp_Click: toggle the Galactopedia at the selection's topic.
+    const help = topGlass('top-btn', spec('btnHelp').corners, controlHint('btnHelp'));
+    help.appendChild(chromeImg('galactopediaButton.png'));
+    help.addEventListener('click', () => toggleGalactopedia(helpTopicKeyForHabitat(getSelection()?.habitat ?? null)));
+    place(help, 'btnHelp');
+
+    const pauseBtn = topGlass('top-btn', spec('btnPlayPause').corners, playPauseHint(clock.paused));
+    pauseBtn.dataset.hudCtl = 'playPause'; // stable hook (the title follows the clock state)
+    pauseBtn.appendChild(chromeImg(playPauseImage(clock.paused)));
+    place(pauseBtn, 'btnPlayPause');
+    const dec = topGlass('top-btn top-speed', spec('btnGameSpeedDecrease').corners, controlHint('btnGameSpeedDecrease'));
     dec.dataset.hudCtl = 'slower';
-    dec.addEventListener('click', () => {
-        clock.slower();
-        refreshDateLabel(dateEl, clock);
-    });
-    const inc = makeGlyphButton('+', controlHint('btnGameSpeedIncrease'));
+    dec.textContent = '>';
+    place(dec, 'btnGameSpeedDecrease');
+    const inc = topGlass('top-btn top-speed', spec('btnGameSpeedIncrease').corners, controlHint('btnGameSpeedIncrease'));
     inc.dataset.hudCtl = 'faster';
-    inc.addEventListener('click', () => {
-        clock.faster();
-        refreshDateLabel(dateEl, clock);
-    });
-    bar.append(pauseBtn, dec, inc);
-    bar.appendChild(makeSeparator());
+    inc.textContent = '>>>';
+    place(inc, 'btnGameSpeedIncrease');
 
     const dateEl = document.createElement('span');
-    dateEl.className = 'hud-date';
-    refreshDateLabel(dateEl, clock);
-    bar.appendChild(dateEl);
-    return bar;
+    dateEl.className = 'hud-date top-text-shadow';
+    dateEl.style.left = `${TOP_DATE_POS.x}px`;
+    dateEl.style.top = `${TOP_DATE_POS.y}px`;
+    area.appendChild(dateEl);
+
+    const refresh = (): void => refreshTopLeftControls(area, clock);
+    pauseBtn.addEventListener('click', () => {
+        clock.togglePause();
+        refresh();
+    });
+    dec.addEventListener('click', () => {
+        clock.slower();
+        refresh();
+    });
+    inc.addEventListener('click', () => {
+        clock.faster();
+        refresh();
+    });
+    refresh();
+    return area;
+}
+
+/** btnPlayPause's image (Main.Part12.cs LoadUiChromeButtons): bitmap_46 pauseresume_Pause.png while paused,
+ * bitmap_45 pauseresume_Play.png while running. */
+export function playPauseImage(paused: boolean): string {
+    return paused ? 'pauseresume_Pause.png' : 'pauseresume_Play.png';
+}
+
+/** Speed button enabled states (Main.Part12.cs 3336-3352): slower off at 0.25x, faster off at 4x. */
+export function speedButtonsEnabled(speed: number): { slower: boolean; faster: boolean } {
+    return { slower: speed > 0.25, faster: speed < 4 };
+}
+
+/** Sync the top-left controls with the clock: date + speed text, the pause image / hint and the speed buttons'
+ * enabled states. Written only on change (main.ts calls it 4× a second). `area` is the pnlTopLeftBar element. */
+export function refreshTopLeftControls(area: HTMLElement | null | undefined, clock: { paused: boolean; speed: number; currentStarDate: number }): void {
+    if (!area) return;
+    const date = area.querySelector<HTMLElement>('.hud-date');
+    if (date) setTextIfChanged(date, formatClockLabel(clock.currentStarDate, clock.speed));
+    const pause = area.querySelector<HTMLButtonElement>('button[data-hud-ctl="playPause"]');
+    if (pause) {
+        const hint = playPauseHint(clock.paused);
+        if (pause.title !== hint) pause.title = hint;
+        const img = pause.querySelector('img');
+        const src = `/assets/dwu/images/ui/chrome/${playPauseImage(clock.paused)}`;
+        if (img && img.getAttribute('src') !== src) img.setAttribute('src', src);
+    }
+    const en = speedButtonsEnabled(clock.speed);
+    const slower = area.querySelector<HTMLButtonElement>('button[data-hud-ctl="slower"]');
+    if (slower && slower.disabled === en.slower) slower.disabled = !en.slower;
+    const faster = area.querySelector<HTMLButtonElement>('button[data-hud-ctl="faster"]');
+    if (faster && faster.disabled === en.faster) faster.disabled = !en.faster;
 }
 
 // Task 07b: the star-date label shows the current star date plus the speed
@@ -684,47 +774,6 @@ function formatSpeed(speed: number): string {
     if (speed === 0.25) return '¼';
     if (speed === 0.5) return '½';
     return Number.isInteger(speed) ? String(speed) : String(speed);
-}
-
-function refreshDateLabel(el: HTMLElement, clock: GalaxyTime): void {
-    el.textContent = formatClockLabel(clock.currentStarDate, clock.speed);
-}
-
-function makeSeparator(): HTMLElement {
-    const sep = document.createElement('span');
-    sep.className = 'hud-separator';
-    return sep;
-}
-
-/** A small text-glyph button (no chrome art). */
-function makeGlyphButton(glyph: string, title: string): HTMLButtonElement {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'hud-btn hud-btn-glyph';
-    btn.title = title;
-    btn.textContent = glyph;
-    return btn;
-}
-
-/** A chrome-art button with a human tooltip (art never shows its name). */
-function makeIconButton(controlName: string, title: string): HTMLButtonElement {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'hud-btn';
-    btn.title = title;
-    const file = chromeButtonFile(controlName);
-    if (file) {
-        const img = document.createElement('img');
-        img.src = `/assets/dwu/images/ui/chrome/${file}`;
-        img.alt = '';
-        img.draggable = false;
-        btn.appendChild(img);
-    } else {
-        btn.classList.add('hud-btn-bare');
-        btn.textContent = title;
-    }
-    // The caller attaches the control's real click handler.
-    return btn;
 }
 
 export type TopBarScreen = 'colonies' | 'empireSummary' | 'messageHistory' | 'shipsAndBases';
@@ -746,60 +795,25 @@ export function topBarScreen(name: string): TopBarScreen | null {
     }
 }
 
-/** Top-middle screen-launch button (chrome art, or small text label). Task
- * 12s: buttons whose screen exists toggle it (like their hotkeys); only the
- * unmapped controls still toast "not yet available". */
-function buildTopBarButton(name: string, wiring: HudWiring): HTMLElement {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'hud-btn';
-    const label = TOP_BAR_TEXT_LABELS[name];
-    const file = chromeButtonFile(name);
-    if (file) {
-        btn.title = controlHint(name) || label || '';
-        const img = document.createElement('img');
-        img.src = `/assets/dwu/images/ui/chrome/${file}`;
-        img.alt = '';
-        img.draggable = false;
-        btn.appendChild(img);
-    } else {
-        // No art file: render a small text label, never the control name.
-        btn.classList.add('hud-btn-bare');
-        btn.textContent = label ?? '';
-        btn.title = controlHint(name) || label || '';
-    }
-    // TODO(screen): open the original's panel/screen for this control — only
-    // the unmapped ones below still toast; tbtnColonies / btnEmpireSummary /
-    // btnHistoryMessages toggle their screens.
-    btn.addEventListener('click', () => {
+/** Run a top-strip control's click (Main.Part*.cs tbtn* / btn*_Click → the matching screen toggle, like its
+ * hotkey). Controls whose screen is not ported toast "not yet available". */
+function openTopBarScreen(name: string, wiring: HudWiring): void {
+    const src = getEmpireSummarySource();
+    switch (name) {
         // [15b] tbtnResearch → Research screen (Main.Part9.cs tbtnResearch_Click; task 15b).
-        if (name === 'tbtnResearch') {
-            const src = getEmpireSummarySource();
+        case 'tbtnResearch':
             if (src) toggleResearchScreen({ empire: src.empire });
             return;
-        }
-        // [/15b]
         // [16a] btnExpansionPlanner → Expansion Planner (Main.Part4.cs:2974 btnExpansionPlanner_Click).
-        if (name === 'btnExpansionPlanner') {
-            const src = getEmpireSummarySource();
+        case 'btnExpansionPlanner':
             if (src) toggleExpansionPlanner({ empire: src.empire, onSelect: (h) => selectHabitat(h, true) });
             return;
-        }
-        // [/16a]
-
-        // [policy] begin
-        // btnEmpirePolicy → Empire Policy panel (Main.Part2.cs:1184 btnEmpirePolicy_Click; task 17d).
-        if (name === 'btnEmpirePolicy') {
-            const src = getEmpireSummarySource();
+        // [policy] btnEmpirePolicy → Empire Policy panel (Main.Part2.cs:1184 btnEmpirePolicy_Click; task 17d).
+        case 'btnEmpirePolicy':
             if (src) toggleEmpirePolicy({ empire: src.empire });
             return;
-        }
-        // [policy] end
-
-        // [troops] begin
-        // tbtnTroops → Troops screen (Main.Part9.cs:3129 tbtnTroops_Click; no hotkey in Main_KeyUp).
-        if (name === 'tbtnTroops') {
-            const src = getEmpireSummarySource();
+        // [troops] tbtnTroops → Troops screen (Main.Part9.cs:3129 tbtnTroops_Click; no hotkey in Main_KeyUp).
+        case 'tbtnTroops': {
             const galaxy = src?.empire.galaxy;
             if (src && galaxy) {
                 toggleTroopsScreen({
@@ -811,20 +825,12 @@ function buildTopBarButton(name: string, wiring: HudWiring): HTMLElement {
             }
             return;
         }
-        // [troops] end
-        // [intel] begin
-        // tbtnIntelligenceAgents → Intelligence Agents / Characters (Main.Part6.cs:3231 tbtnIntelligenceAgents_Click).
-        if (name === 'tbtnIntelligenceAgents') {
-            const src = getEmpireSummarySource();
+        // [intel] tbtnIntelligenceAgents → Intelligence Agents / Characters (Main.Part6.cs:3231).
+        case 'tbtnIntelligenceAgents':
             if (src) toggleIntelligenceScreen({ player: src.empire, onZoomTo: (t) => selectStellarObject(t, true) });
             return;
-        }
-        // [intel] end
-
-        // [leftovers] begin
-        // btnGalacticHistory → Galactic History (Main.Part3.cs:46 btnGalacticHistory_Click → method_528("galactichistory")).
-        if (name === 'btnGalacticHistory') {
-            const src = getEmpireSummarySource();
+        // [leftovers] btnGalacticHistory → Galactic History (Main.Part3.cs:46 btnGalacticHistory_Click).
+        case 'btnGalacticHistory':
             if (src) {
                 toggleGalacticHistory({
                     empire: src.empire,
@@ -838,142 +844,209 @@ function buildTopBarButton(name: string, wiring: HudWiring): HTMLElement {
                 });
             }
             return;
-        }
-        // [leftovers] end
-
-        const screen = topBarScreen(name);
-        if (screen === 'colonies') {
-            // Main.Part9.cs tbtnColonies_Click: toggle the Colonies list.
-            const src = getEmpireSummarySource();
-            if (!src) return;
-            toggleColoniesList({
-                empire: src.empire,
-                // A row selects the colony and moves the view (as F12/F10 rows do).
-                onZoomTo: (h) => selectHabitat(h, true),
-            });
-        } else if (screen === 'empireSummary') {
-            // Main.Part8.cs btnEmpireSummary_Click: toggle the Empire Summary.
+        // Main.Part9.cs tbtnColonies_Click: toggle the Colonies list (a row selects the colony and moves the view).
+        case 'tbtnColonies':
+            if (src) toggleColoniesList({ empire: src.empire, onZoomTo: (h) => selectHabitat(h, true) });
+            return;
+        // Main.Part8.cs btnEmpireSummary_Click.
+        case 'btnEmpireSummary':
             toggleEmpireSummary();
-        } else if (screen === 'messageHistory') {
-            // Main.Part4.cs btnHistoryMessages_Click: toggle Message History.
+            return;
+        // Main.Part4.cs btnHistoryMessages_Click.
+        case 'btnHistoryMessages':
             toggleMessageHistory();
-        } else if (screen === 'shipsAndBases') {
-            // Main.Part9.cs tbtnBuiltObjects_Click: toggle the Ships and Bases list.
+            return;
+        // Main.Part9.cs tbtnBuiltObjects_Click.
+        case 'tbtnBuiltObjects':
             toggleShipsAndBases();
-        } else {
-            // [16c] btnBuildOrder → Build Order (Main.Part2.cs:1196 btnBuildOrder_Click);
-            // tbtnConstructionYards → Construction Yards (Main.Part6.cs:3243 tbtnConstructionYards_Click).
-            if (name === 'btnBuildOrder') {
-                const src = getEmpireSummarySource();
-                if (src) toggleBuildOrder({ empire: src.empire });
-                return;
-            }
-            if (name === 'tbtnConstructionYards') {
-                const src = getEmpireSummarySource();
-                if (src) toggleConstructionYards({ empire: src.empire, onSelect: (t) => selectStellarObject(t, true) });
-                return;
-            }
-            // [/16c]
-            // [15c] tbtnShipGroups → Fleets list (Main.Part9.cs:3153 tbtnShipGroups_Click).
-            if (name === 'tbtnShipGroups') {
-                toggleFleets();
-                return;
-            }
-            // [/15c]
-            // [16b] tbtnDesigns → Designs panel (Main.Part9.cs:4339 tbtnDesigns_Click).
-            if (name === 'tbtnDesigns') {
-                const src = getEmpireSummarySource();
-                if (src) toggleShipDesigns({ empire: src.empire });
-                return;
-            }
-            // [/16b]
-            // Main.Part7.cs 2037 btnEmpireGraphs_Click: its hint (Main.Part10.cs
-            // method_206) is "Open Empire Comparison and Victory Conditions (V)".
-            if (name === 'btnEmpireGraphs') {
-                const src = getEmpireSummarySource();
-                if (src) toggleEmpireComparison({ player: src.empire });
-                return;
-            }
+            return;
+        // [16c] btnBuildOrder → Build Order (Main.Part2.cs:1196); tbtnConstructionYards → Construction Yards (Main.Part6.cs:3243).
+        case 'btnBuildOrder':
+            if (src) toggleBuildOrder({ empire: src.empire });
+            return;
+        case 'tbtnConstructionYards':
+            if (src) toggleConstructionYards({ empire: src.empire, onSelect: (t) => selectStellarObject(t, true) });
+            return;
+        // [15c] tbtnShipGroups → Fleets list (Main.Part9.cs:3153 tbtnShipGroups_Click).
+        case 'tbtnShipGroups':
+            toggleFleets();
+            return;
+        // [16b] tbtnDesigns → Designs panel (Main.Part9.cs:4339 tbtnDesigns_Click; fleet designs are its tab).
+        case 'tbtnDesigns':
+            if (src) toggleShipDesigns({ empire: src.empire });
+            return;
+        // Main.Part7.cs 2037 btnEmpireGraphs_Click: Empire Comparison and Victory Conditions (V).
+        case 'btnEmpireGraphs':
+            if (src) toggleEmpireComparison({ player: src.empire });
+            return;
+        case 'tbtnEmpires':
+            openDiplomacy(wiring);
+            return;
+        default:
             console.log(`TODO(screen): ${name}`);
             showToast(unavailableControlText(name));
-        }
-    });
+    }
+}
+
+/** A row / history button: the GlassButton with its chrome image (LoadUiChromeButtons), its hint and click. */
+function buildTopBarButton(name: string, wiring: HudWiring): HTMLElement {
+    const spec = TOP_ROW_BUTTONS.find((b) => b.name === name);
+    const corners: CornerCurves = spec?.corners
+        ?? (name === 'btnHistoryMessages' ? [false, true, false, false] : name === 'btnGalacticHistory' ? [false, false, true, false] : [false, false, false, false]);
+    const btn = topGlass('top-btn', corners, controlHint(name));
+    const file = chromeButtonFile(name);
+    if (file) btn.appendChild(chromeImg(file));
+    btn.addEventListener('click', () => openTopBarScreen(name, wiring));
     return btn;
 }
 
-/** Top-row empires button (task 10d): the player's flag shape art tinted with
- * the empire colour, falling back to the plain chrome diplomacy button when
- * no game is wired (e.g. the generateGalaxy-only boot path). */
-function buildEmpireFlagButton(wiring: HudWiring): HTMLElement {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'hud-btn';
-    const file = chromeButtonFile('tbtnEmpires');
-    if (file) {
-        btn.title = 'Empires';
-        const img = document.createElement('img');
-        img.src = `/assets/dwu/images/ui/chrome/${file}`;
-        img.alt = '';
-        img.draggable = false;
-        btn.appendChild(img);
-    } else {
-        btn.classList.add('hud-btn-bare');
-        btn.textContent = 'Empires';
-        btn.title = 'Empires';
-    }
+/** tbtnEmpires: the diplomacy button (diplomacyButton.png) → the Diplomacy screen (F5), whose empire list is one
+ * click away (the Empires list window keeps its own zoom-to). */
+function buildDiplomacyButton(wiring: HudWiring): HTMLElement {
+    return buildTopBarButton('tbtnEmpires', wiring);
+}
+
+function openDiplomacy(wiring: HudWiring): void {
+    const galaxy = wiring.galaxy;
     const game = wiring.game;
-    if (game) {
-        // The wizard's StartGameOptions carry the chosen flagShapeIndex; the
-        // autostart/fallback paths have none, so use the empire's own
-        // dominant-race default flag design (Empire.flagShape, -1 if none).
-        const shapeIndex = game.playerEmpire.flagShape >= 0 ? game.playerEmpire.flagShape : null;
-        // Scenario display override keyed by race name (19a: the Concord's own flag).
-        const override = wiring.galaxy ? raceDisplayOverride(wiring.galaxy, (game.playerEmpire as Partial<Empire>).dominantRace?.name) : null;
-        if (override !== null) {
-            const flag = document.createElement('img');
-            flag.src = override.flagUrl;
-            flag.alt = '';
-            flag.draggable = false;
-            btn.appendChild(flag);
-        } else if (shapeIndex !== null) {
-            const flag = document.createElement('img');
-            flag.src = flagShapeUrl(shapeIndex);
-            flag.alt = '';
-            flag.draggable = false;
-            flag.style.filter = `sepia(1) saturate(4) hue-rotate(${colorHueRotate(game.playerEmpire.mainColor)}deg)`;
-            btn.appendChild(flag);
-            // 19r: a derived / scenario flag (company, seceded state, exile, Ghost Armada, Ossuvan herders) replaces it.
-            if (wiring.galaxy?.scenario != null) {
-                void resolveEmpireEmblem(wiring.galaxy, game.playerEmpire as Empire).then((e) => {
-                    if (e.flagUrl !== null && e.flagFilter === '') {
-                        flag.src = e.flagUrl;
-                        flag.style.filter = '';
-                    }
-                });
-            }
-        }
-    }
-    btn.addEventListener('click', () => {
-        // Task 12b: open the Empires list panel (galaxy + player empire from
-        // the wiring, guarded when either is missing).
-        const galaxy = wiring.galaxy;
-        if (!galaxy || !game) return;
-        // The Empires button is the diplomacy screen (known strengths, relations, treaties, trades); the list is one click away.
-        const playerEmpire = game.playerEmpire as Empire;
-        const openList = (): void => toggleEmpiresList({
-            empires: galaxy.empires,
-            playerEmpire: game.playerEmpire as Empire,
-            onZoomTo: (habitat) => {
-                const cam = wiring.camera;
-                if (!cam) return;
-                // Same camera calls as doViewAction('zoomSelection').
-                cam.centerOn(habitat.xpos, habitat.ypos);
-                cam.zoomAt(SYSTEM_LEVEL_ZOOM, cam.width / 2, cam.height / 2);
-            },
-        });
-        toggleDiplomacyScreen({ player: playerEmpire, onOpenEmpiresList: openList });
+    if (!galaxy || !game) return;
+    const playerEmpire = game.playerEmpire as Empire;
+    const openList = (): void => toggleEmpiresList({
+        empires: galaxy.empires,
+        playerEmpire,
+        onZoomTo: (habitat) => {
+            const cam = wiring.camera;
+            if (!cam) return;
+            // Same camera calls as doViewAction('zoomSelection').
+            cam.centerOn(habitat.xpos, habitat.ypos);
+            cam.zoomAt(SYSTEM_LEVEL_ZOOM, cam.width / 2, cam.height / 2);
+        },
     });
+    toggleDiplomacyScreen({ player: playerEmpire, onOpenEmpiresList: openList });
+}
+
+/** btnEmpireSummary: the player's flag (Empire.LargeFlagPicture scaled to 50 × 30, Main.Part12.cs 2904) — or the
+ * scenario emblem that replaces it — opening the Empire Summary (F6). */
+function buildEmpireSummaryButton(wiring: HudWiring): HTMLElement {
+    const btn = buildTopBarButton('btnEmpireSummary', wiring);
+    const galaxy = wiring.galaxy;
+    const empire = wiring.game?.playerEmpire as Empire | undefined;
+    if (galaxy && empire) {
+        const flag = document.createElement('img');
+        flag.className = 'top-flag';
+        flag.alt = '';
+        flag.draggable = false;
+        btn.appendChild(flag);
+        void empireFlagUrl(galaxy, empire).then((url) => {
+            flag.src = url;
+        });
+    }
     return btn;
+}
+
+/** tbtnResearch (ResearchButton.cs): research.png at (7, 9) and, per field (weapons / energy / high tech at y 5 / 23
+ * / 41), the progress of the project at the head of its queue in the field's colour ("58%", "  -----" when idle). */
+// TODO(port): the 14 px project icon left of each percentage (component / facility / fighter / troop image at 70%
+// alpha) — ResearchButton.cs GenerateNodeImages; the component art is images/ui/components/Component_N.bmp.
+function buildResearchButton(wiring: HudWiring): HTMLElement {
+    const btn = buildTopBarButton('tbtnResearch', wiring);
+    btn.classList.add('top-research');
+    btn.appendChild(chromeImg('research.png', 'top-research-img'));
+    const rows = researchReadout(null).map((r) => {
+        const el = document.createElement('span');
+        el.className = 'top-research-row';
+        el.style.top = `${r.y}px`;
+        el.style.color = r.color;
+        btn.appendChild(el);
+        return el;
+    });
+    const refresh = (): void => {
+        const empire = wiring.game?.playerEmpire as Empire | undefined;
+        researchReadout(empire?.research ?? null).forEach((r, i) => {
+            setTextIfChanged(rows[i], r.text);
+            rows[i].classList.toggle('top-research-idle', r.node === null);
+        });
+    };
+    refresh();
+    if (wiring.game) setInterval(refresh, 500);
+    return btn;
+}
+
+/** Our screens with no top-strip button in the original, behind one overflow button (small tweak): each runs the
+ * same action as its key. */
+export const TOP_MORE_ITEMS: readonly { key: string; label: string }[] = [
+    { key: 'galaxyMap', label: 'Galaxy Map (G)' },
+    { key: 'empires', label: 'Empires list' },
+    { key: 'gameOptions', label: 'Game Options (O)' },
+    { key: 'advisor', label: 'Talk to your admiral (T)' },
+    { key: 'shortcuts', label: 'Keyboard shortcuts (?)' },
+];
+
+function runTopMoreItem(key: string, wiring: HudWiring): void {
+    const src = getEmpireSummarySource();
+    switch (key) {
+        case 'galaxyMap':
+            doViewAction('galaxyMap', wiring);
+            return;
+        case 'empires': {
+            const galaxy = wiring.galaxy;
+            if (!galaxy || !src) return;
+            toggleEmpiresList({
+                empires: galaxy.empires,
+                playerEmpire: src.empire,
+                onZoomTo: (habitat) => {
+                    const cam = wiring.camera;
+                    if (!cam) return;
+                    cam.centerOn(habitat.xpos, habitat.ypos);
+                    cam.zoomAt(SYSTEM_LEVEL_ZOOM, cam.width / 2, cam.height / 2);
+                },
+            });
+            return;
+        }
+        case 'gameOptions':
+            if (src) toggleGameOptionsPanel({ empire: src.empire });
+            return;
+        case 'advisor':
+            if (src) toggleAdvisorPanel({ galaxy: src.empire.galaxy, player: src.empire });
+            return;
+        case 'shortcuts':
+            // The "?" overlay belongs to main.ts's key handler.
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: '?' }));
+            return;
+    }
+}
+
+function buildTopMoreButton(wiring: HudWiring): HTMLElement {
+    const wrap = document.createElement('div');
+    wrap.className = 'top-more';
+    const btn = topGlass('top-btn top-more-btn', [false, false, true, true], 'More screens: Galaxy Map, Empires, Game Options, Advisor, Keyboard shortcuts');
+    btn.textContent = '•••';
+    btn.style.width = '100%';
+    btn.style.height = '100%';
+    const menu = document.createElement('div');
+    menu.className = 'top-more-menu';
+    menu.hidden = true;
+    for (const item of TOP_MORE_ITEMS) {
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.className = 'top-more-item';
+        row.textContent = item.label;
+        row.addEventListener('click', (e) => {
+            e.stopPropagation();
+            menu.hidden = true;
+            runTopMoreItem(item.key, wiring);
+        });
+        menu.appendChild(row);
+    }
+    btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        menu.hidden = !menu.hidden;
+    });
+    document.addEventListener('pointerdown', (e) => {
+        if (!menu.hidden && !wrap.contains(e.target as Node)) menu.hidden = true;
+    });
+    wrap.append(btn, menu);
+    return wrap;
 }
 
 /** CSS hue-rotate angle that turns a white source into `rgb` — used to tint
@@ -994,50 +1067,64 @@ export function colorHueRotate(rgb: number): number {
     return Math.round(h * 360);
 }
 
-/** Top-right money block + nearest-system name (existing behaviour kept).
- * Task 10d: Money is refreshed live from the player empire's state money;
- * Cashflow and Bonus Income come from treasury.ts moneyPanelIncome (Main.Part11.cs 832 method_126). */
+/** Top-right money block (MainView.cs method_18): the money icon, the grey "Money" / "Cashflow" / "Bonus Income"
+ * labels, the values drawn from num2 = Width - 95 (state money bold, red when negative; cashflow red when negative;
+ * both incomes in parentheses), and the view's system name under it in large text (main.ts fills
+ * `.hud-system-name`). Money from the player empire's state money, Cashflow / Bonus Income from treasury.ts
+ * moneyPanelIncome (Main.Part11.cs 832 method_126). */
 function buildMoneyPanel(game?: { playerEmpire: { name: string; mainColor: number; stateMoney: number; flagShape: number } }, galaxy?: Galaxy): HTMLElement {
     const panel = document.createElement('div');
-    panel.className = 'hud-panel hud-money';
-    const valueEls: Record<string, HTMLElement> = {};
-    for (const row of ['Money', 'Cashflow', 'Bonus Income']) {
-        const line = document.createElement('div');
-        line.className = 'hud-money-row';
-        const k = document.createElement('span');
-        k.className = 'hud-label';
-        k.textContent = row;
-        const v = document.createElement('span');
-        v.className = 'hud-value';
-        v.textContent = '—';
-        valueEls[row] = v;
-        line.append(k, v);
-        panel.appendChild(line);
-    }
-    const sys = document.createElement('div');
-    sys.className = 'hud-system-name';
-    sys.textContent = '';
+    panel.className = 'top-money';
+    const at = (el: HTMLElement, p: { x: number; y: number }): HTMLElement => {
+        el.style.left = `${p.x}px`;
+        el.style.top = `${p.y}px`;
+        panel.appendChild(el);
+        return el;
+    };
+    const text = (cls: string, s: string): HTMLElement => {
+        const el = document.createElement('span');
+        el.className = cls;
+        el.textContent = s;
+        return el;
+    };
+    at(chromeImg('money.png', 'top-money-icon'), MONEY_POS.icon);
+    at(text('top-money-label', 'Money'), MONEY_POS.moneyLabel);
+    const money = at(text('top-money-value top-text-shadow', '—'), MONEY_POS.money);
+    at(text('top-money-label', 'Cashflow'), MONEY_POS.cashflowLabel);
+    const cashflow = at(text('top-money-small top-text-shadow', ''), MONEY_POS.cashflow);
+    at(text('top-money-label', 'Bonus Income'), MONEY_POS.bonusLabel);
+    const bonus = at(text('top-money-small top-text-shadow', ''), MONEY_POS.bonus);
+    const sys = text('hud-system-name top-text-shadow', '');
+    sys.style.right = `${MONEY_POS.systemName.right}px`;
+    sys.style.top = `${MONEY_POS.systemName.y}px`;
     panel.appendChild(sys);
 
     if (game) {
-        // The original's top-right block mirrors the player empire's money
-        // fields (Main.Part12.cs pnlStateMoney); here only state money exists
-        // on Empire — see the TODO(sim) notes below.
         const refreshMoney = (): void => {
             // 4 Hz; written only on change (render: perf pass).
-            setTextIfChanged(valueEls['Money'], formatMoney(Math.round(game.playerEmpire.stateMoney)));
+            const m = game.playerEmpire.stateMoney;
+            setTextIfChanged(money, formatMoney(Math.round(m)));
+            money.classList.toggle('top-negative', m < 0);
             // Main.Part11.cs 838-857: Cashflow / Bonus Income, `+##,###,##0;-##,###,##0` (the C# keeps the previous
             // strings when there is nothing to show).
             const income = galaxy === undefined ? null : moneyPanelIncome(galaxy, galaxy.playerEmpire);
             if (income !== null) {
-                setTextIfChanged(valueEls['Cashflow'], formatSignedMoney(income.cashflow));
-                setTextIfChanged(valueEls['Bonus Income'], formatSignedMoney(income.bonusIncome));
+                setTextIfChanged(cashflow, `(${formatSignedMoney(income.cashflow)})`);
+                cashflow.classList.toggle('top-negative', income.cashflow < 0);
+                setTextIfChanged(bonus, `(${formatSignedMoney(income.bonusIncome)})`);
             }
         };
         refreshMoney();
         setInterval(refreshMoney, 250);
     }
     return panel;
+}
+
+/** The text under the money block for a view centred at (x, y) at camera `zoom`: the original's string_22
+ * (topBar.ts viewSystemName, with the scenario's rim name for the system) while zoomed in below factor 100, else ''. */
+export function topSystemNameText(galaxy: Galaxy, x: number, y: number, zoom: number): string {
+    if (!showViewSystemName(zoom)) return '';
+    return viewSystemName(galaxy, galaxy.playerEmpire, x, y, (h) => rimSystemDisplayName({ scenario: galaxy.scenario ?? null }, h.systemIndex, h.name));
 }
 
 /** Bottom-left streamlined selection panel. */
@@ -2283,7 +2370,8 @@ export function formatCashflow(n: number): string {
 }
 
 /** The top-middle message panel keeps the last 5 messages, newest at the
- * bottom (the original's message ticker). Module state so later systems can
+ * bottom (the original's message ticker: four lines show in the 80 px box, the
+ * oldest is scrolling out above). Module state so later systems can
  * push via {@link pushHudMessage} without holding a HUD reference. */
 const MESSAGE_LINES = 5;
 let hudMessages: string[] = [];
@@ -2315,12 +2403,18 @@ function setMessageLineElements(panel: HTMLElement | null): void {
     renderMessages();
 }
 
+/** Ring-buffer index shown in ticker slot `slot` of `slotCount`: bottom-aligned, newest in the last slot
+ * (ScrollingLinkList adds each line below the previous ones), empty slots above. */
+function tickerSlotIndex(slot: number, slotCount: number): number {
+    return slot - (slotCount - hudMessages.length);
+}
+
 /** Re-render the bound message lines from the ring buffer (newest at the
- * bottom, older lines blanked out). */
+ * bottom, empty slots above). */
 function renderMessages(): void {
     if (!messageLineEls) return;
     for (let i = 0; i < messageLineEls.length; i++) {
-        const idx = i - (messageLineEls.length - MESSAGE_LINES);
+        const idx = tickerSlotIndex(i, messageLineEls.length);
         messageLineEls[i].textContent = hudMessages[idx] ?? '';
         messageLineEls[i].classList.toggle('hud-message-goto', (hudMessageGotos[idx] ?? null) !== null);
     }
@@ -2328,7 +2422,7 @@ function renderMessages(): void {
 
 /** Run the Go to of the ticker line in slot `slot` of `slotCount`; true when the line had one. Exported for tests. */
 export function tickerLineGoto(slot: number, slotCount: number): boolean {
-    const idx = slot - (slotCount - MESSAGE_LINES);
+    const idx = tickerSlotIndex(slot, slotCount);
     const go = hudMessageGotos[idx] ?? null;
     return go !== null ? go() : false;
 }
@@ -2347,6 +2441,13 @@ export function pushHudMessage(text: string, at?: string, goTo: (() => boolean) 
     hudMessageHistory.push({ text, at: at ?? '' });
     while (hudMessageHistory.length > HISTORY_LIMIT) hudMessageHistory.shift();
     renderMessages();
+    // ScrollingLinkList.cs AddItem / method_3: a new line enters below the box and scrolls up into place.
+    const box = messageLineEls?.[0]?.parentElement;
+    if (box) {
+        box.classList.remove('hud-message-scroll');
+        void box.offsetWidth; // restart the animation
+        box.classList.add('hud-message-scroll');
+    }
 }
 
 /** Test hook: drop all pushed messages (also clears the rendered lines and

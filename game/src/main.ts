@@ -17,11 +17,11 @@ import { runStepsWithProgress, showLoadingOverlay, nextPaint } from './ui/loadin
 import { parseSystemNames } from './sim/data';
 import { loadGameData, type FetchText, type GameData } from './sim/data/gameData';
 import { GalaxyShape } from './sim/types';
-import { clearHudMessages, playPauseHint, createHud, layoutHud, nearestSystem, nearestSystemName, pushHudMessage, setSelection as setHudSelection, type HudRefs } from './ui/hud';
+import { clearHudMessages, createHud, refreshTopLeftControls, topSystemNameText, layoutHud, nearestSystem, pushHudMessage, setSelection as setHudSelection, type HudRefs } from './ui/hud';
 import { GalaxyTime } from './sim/clock';
 import { resolveStarDateDescription } from './sim/galaxyTime';
 import { createSimLoop, simViewEnabledFromUrl } from './simLoop';
-import { formatClockLabel, SECTOR_LEVEL_ZOOM, SYSTEM_LEVEL_ZOOM, type Selection } from './ui/hud';
+import { SECTOR_LEVEL_ZOOM, SYSTEM_LEVEL_ZOOM, type Selection } from './ui/hud';
 import { setTextIfChanged } from './render/drawCache';
 import { Habitat, HabitatCategoryType } from './sim/types';
 import { createMapOverlayState, type MapOverlayState, type OverlayKey } from './ui/mapOverlays';
@@ -539,8 +539,7 @@ export async function startGameView(
         },
     });
     const systemNameEl = hud.elements.get('pnlMoney')?.querySelector('.hud-system-name');
-    const dateEl = hud.elements.get('pnlTopLeftBar')?.querySelector('.hud-date');
-    const pauseBtn = hud.elements.get('pnlTopLeftBar')?.querySelector<HTMLButtonElement>('button[data-hud-ctl="playPause"]');
+    const topLeftEl = hud.elements.get('pnlTopLeftBar');
     const setSelection = (h: Habitat | null): void => {
         if (h === null) {
             hud.onSelectionChange?.(null);
@@ -583,7 +582,7 @@ export async function startGameView(
         const shown = getHudSelection();
         if (shown !== null && fogOf(galaxy).selectionUnseen(shown)) hud.onSelectionChange?.(null);
         if (systemNameEl) {
-            setTextIfChanged(systemNameEl, nearestSystemName({ galaxy }, camera));
+            setTextIfChanged(systemNameEl, topSystemNameText(galaxy, camera.x, camera.y, camera.zoom));
         }
         for (const { message, text } of messageFeed.pollMessages(game.playerEmpire)) {
             recordTickerMessage(game.playerEmpire, message, time.currentStarDate);
@@ -599,14 +598,7 @@ export async function startGameView(
     const refreshHudTimer = setInterval(refreshHud, 250);
     const refreshClockLabel = (): void => {
         // 4 Hz; the DOM is only written when a value changes (an unchanged write still re-lays out the HUD).
-        if (dateEl) {
-            setTextIfChanged(dateEl, formatClockLabel(time.currentStarDate, time.speed));
-        }
-        if (pauseBtn) {
-            setTextIfChanged(pauseBtn, time.paused ? '▶' : '⏸');
-            const hint = playPauseHint(time.paused);
-            if (pauseBtn.title !== hint) pauseBtn.title = hint;
-        }
+        refreshTopLeftControls(topLeftEl, time);
     };
     const refreshClockTimer = setInterval(refreshClockLabel, 250);
     // [15d] Galaxy.GameEnd → Main.Part12.cs Galaxy_GameEnd / DoGameEnd (pause, IsFinished/Victor, banner).
@@ -1462,8 +1454,7 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
         onGalaxyMap: () => galaxyMap.toggle(),
     });
     const systemNameEl = hud.elements.get('pnlMoney')?.querySelector('.hud-system-name');
-    const dateEl = hud.elements.get('pnlTopLeftBar')?.querySelector('.hud-date');
-    const pauseBtn = hud.elements.get('pnlTopLeftBar')?.querySelector<HTMLButtonElement>('button[data-hud-ctl="playPause"]');
+    const topLeftEl = hud.elements.get('pnlTopLeftBar');
     // Task 08g: push a Main View pick (or null) to the HUD selection panel.
     const setSelection = (h: Habitat | null): void => {
         if (h === null) {
@@ -1494,7 +1485,7 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     };
     const refreshHud = (): void => {
         if (systemNameEl) {
-            setTextIfChanged(systemNameEl, nearestSystemName({ galaxy }, camera));
+            setTextIfChanged(systemNameEl, topSystemNameText(galaxy, camera.x, camera.y, camera.zoom));
         }
     };
     refreshHud();
@@ -1504,14 +1495,7 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     // Task 07b: keep the star-date label (and the play/pause glyph) fresh.
     const refreshClockLabel = (): void => {
         // 4 Hz; the DOM is only written when a value changes (an unchanged write still re-lays out the HUD).
-        if (dateEl) {
-            setTextIfChanged(dateEl, formatClockLabel(time.currentStarDate, time.speed));
-        }
-        if (pauseBtn) {
-            setTextIfChanged(pauseBtn, time.paused ? '▶' : '⏸');
-            const hint = playPauseHint(time.paused);
-            if (pauseBtn.title !== hint) pauseBtn.title = hint;
-        }
+        refreshTopLeftControls(topLeftEl, time);
     };
     setInterval(refreshClockLabel, 250);
 

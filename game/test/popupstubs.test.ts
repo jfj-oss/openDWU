@@ -24,6 +24,7 @@ import {
     type StubKind,
 } from '../src/ui/messageStubs';
 import { messageStubsRect } from '../src/ui/messageStubList';
+import { computeHudLayout } from '../src/ui/hudLayout';
 import { rebuildConversationQueue } from '../src/ui/messagePopups';
 import { EmpireMessage, EmpireMessageType } from '../src/sim/messages';
 import { AdvisorMessageType } from '../src/sim/advisorQueue';
@@ -185,9 +186,10 @@ describe('titles and icons', () => {
 });
 
 describe('messageStubsRect', () => {
-    it('sits directly under the top-right money panel, same width', () => {
+    it('sits directly under the top-right money block, right-aligned with a 10 px margin', () => {
         const r = messageStubsRect(1920, 1080);
-        expect(r).toEqual({ right: 10, top: 114, w: 230, origin: '100% -104px' });
+        const money = computeHudLayout(1920, 1080)['pnlMoney'];
+        expect(r).toEqual({ right: 10, top: Math.round(money.y + money.h + 4), w: 230, origin: '100% 0' });
     });
 });
 
