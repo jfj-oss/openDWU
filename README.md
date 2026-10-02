@@ -143,6 +143,11 @@ DWU_DIR="$(realpath ../../dwu-assets)" npm run import-assets
 
 #### Play in the browser
 
+cd Dwureup/game
+git pull
+npm ci
+npm run dev
+
 ```sh
 npm run dev
 ```
