@@ -26,6 +26,7 @@ import { issuePlayerCommand } from '../../sim/player/playerCommands';
 import type { TroopLoadout } from '../../sim/player/fleetOps';
 import type { Habitat } from '../../sim/types';
 import { shipGroupTotalTroopCapacity } from '../../sim/fleets/shipGroupTasks';
+import { createFleetDesignsTab } from './fleetDesignsTab';
 
 // Port of Galaxy.2.cs:2100 ResolveDescriptionFleetPosture (GameText.txt 3454-3465).
 export function fleetPostureDescription(sg: ShipGroup | null): string {
@@ -219,6 +220,8 @@ export interface FleetsListOptions {
     /** Home Base / Attack Point: the fleet becomes the selection and the next map click picks the point
      * (Main.Part7.cs SetFleetHomeBase / SetFleetAttackPoint set mouseHoverMode). The window closes. */
     onPickPoint?: (sg: ShipGroup, mode: 'homeBase' | 'attackPoint') => void;
+    /** The tab to open on (default the fleets list). */
+    tab?: 'fleets' | 'designs';
 }
 
 interface OpenState {
@@ -258,6 +261,21 @@ function createFleetsList(opts: FleetsListOptions): OpenState {
     const heading = document.createElement('div');
     heading.className = 'fleets-list-heading';
     titlebar.appendChild(heading);
+    // Tabs: the fleets list, and Fleet Designs (player fleet templates, fleetDesignsTab.ts — a deviation, no C# panel).
+    const tabs = document.createElement('div');
+    tabs.className = 'fleets-list-tabs';
+    const tabButton = (text: string, onClick: () => void): HTMLButtonElement => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'fleets-list-tab';
+        b.textContent = text;
+        b.addEventListener('click', onClick);
+        tabs.appendChild(b);
+        return b;
+    };
+    const fleetsTab = tabButton('Fleets', () => showTab('fleets'));
+    const designsTabButton = tabButton('Fleet Designs', () => showTab('designs'));
+    titlebar.appendChild(tabs);
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
     closeBtn.className = 'fleets-list-close';
@@ -272,8 +290,29 @@ function createFleetsList(opts: FleetsListOptions): OpenState {
     const detail = document.createElement('div');
     detail.className = 'fleets-detail';
     win.appendChild(detail);
+    const designsBox = document.createElement('div');
+    designsBox.className = 'fleets-list-body fleet-designs-box';
+    win.appendChild(designsBox);
     root.appendChild(win);
     document.body.appendChild(root);
+    const designsTab = createFleetDesignsTab(designsBox, empire);
+    let ordersTimer: ReturnType<typeof setInterval> | null = null;
+    function showTab(tab: 'fleets' | 'designs'): void {
+        const designs = tab === 'designs';
+        body.style.display = designs ? 'none' : '';
+        detail.style.display = designs ? 'none' : '';
+        designsBox.style.display = designs ? '' : 'none';
+        fleetsTab.classList.toggle('fleets-list-tab-active', !designs);
+        designsTabButton.classList.toggle('fleets-list-tab-active', designs);
+        if (ordersTimer !== null) clearInterval(ordersTimer);
+        ordersTimer = null;
+        if (designs) {
+            designsTab.render();
+            ordersTimer = setInterval(() => designsTab.refreshOrders(), 1000); // build progress
+        } else {
+            refresh();
+        }
+    }
 
     /** Issue a shipAction on the fleet (the panel's generic buttons), then redraw. */
     const shipAction = (sg: ShipGroup, action: ShipAction): void => {
@@ -504,9 +543,10 @@ function createFleetsList(opts: FleetsListOptions): OpenState {
         buildDetail();
     }
 
-    refresh();
+    showTab(opts.tab ?? 'fleets');
 
     function close(): void {
+        if (ordersTimer !== null) clearInterval(ordersTimer);
         document.removeEventListener('keydown', onKeyDown);
         root.remove();
         open = null;

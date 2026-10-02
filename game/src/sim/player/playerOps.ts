@@ -35,6 +35,17 @@ import {
     type TroopLoadout,
 } from './fleetOps';
 import { buildNewShips } from '../construction/empireConstruction';
+import {
+    buildFleetFromTemplate,
+    cancelFleetBuildOrder,
+    createFleetTemplate,
+    deleteFleetTemplate,
+    formFleetFromExisting,
+    renameFleetTemplate,
+    setFleetTemplateEntry,
+    type FleetBuildMode,
+    type SectorRef,
+} from './fleetTemplates';
 import { submitProposal } from './diplomacyProposals';
 import { answerConversationReply, type ConversationRelated, type ConversationReplyPart } from './conversationReplies';
 import { submitTradeOffer, type TradeNegotiation } from './tradeNegotiation';
@@ -129,6 +140,15 @@ export const PLAYER_OPS = {
         empire.policy = policy;
         return true;
     },
+    // Fleet Designs tab of the Fleets window (player/fleetTemplates.ts; a documented deviation, no C# counterpart).
+    fleetTemplateCreate: (_galaxy: Galaxy, empire: Empire, name: string) => createFleetTemplate(empire, name),
+    fleetTemplateRename: (_galaxy: Galaxy, empire: Empire, id: number, name: string) => renameFleetTemplate(empire, id, name),
+    fleetTemplateDelete: (_galaxy: Galaxy, empire: Empire, id: number) => deleteFleetTemplate(empire, id),
+    fleetTemplateSetEntry: (_galaxy: Galaxy, empire: Empire, id: number, design: Design, count: number) => setFleetTemplateEntry(empire, id, design, count),
+    fleetTemplateForm: (galaxy: Galaxy, empire: Empire, id: number, rally: Habitat | null, allowSubstitutes: boolean) => formFleetFromExisting(galaxy, empire, id, rally, allowSubstitutes),
+    fleetTemplateBuild: (galaxy: Galaxy, empire: Empire, id: number, mode: FleetBuildMode, sector: SectorRef | null, rally: Habitat | null, allowSubstitutes: boolean) =>
+        buildFleetFromTemplate(galaxy, empire, id, mode, sector, rally, allowSubstitutes),
+    fleetTemplateCancelOrder: (galaxy: Galaxy, empire: Empire, orderId: number) => cancelFleetBuildOrder(galaxy, empire, orderId),
     /** Main.Part2.cs 1135 btnBuildOrderPurchase_Click. */
     buildNewShips: (galaxy: Galaxy, empire: Empire, designs: (Design | null)[], amounts: number[]) => buildNewShips(galaxy, empire, designs, amounts),
     /** Main.Part5.cs 2147-2213: the site's construction wait queue order. */

@@ -962,6 +962,9 @@ export class ConstructionQueue {
         ship.reDefine();
         constructionYard.incrementalProgress = 0;
         constructionYard.shipUnderConstruction = null;
+        // Deviation (player fleet templates, player/fleetTemplates.ts): a ship of a player "Build fleet" order joins its
+        // forming fleet here, so the original's AssignFleetWaypointMission below sends it to the fleet. No-op without one.
+        if (shipConstructedHook !== null) shipConstructedHook(galaxy, ship);
         // 1077-1104: send the new ship to a parking point (or check its colonisation target).
         if (ship.role !== BuiltObjectRole.Base && (this._parentBuiltObject === null || this._parentBuiltObject.subRole !== BuiltObjectSubRole.ConstructionShip) && !assignFleetWaypointMission(galaxy, ship, true, null) && ship.topSpeed > 0) {
             const m = builtObjectMission(ship.mission);
@@ -1366,6 +1369,12 @@ registerConstructionQueueFactory({
     forHabitat: (galaxy, habitat) => new ConstructionQueue(habitat, galaxy, false),
     forBuiltObject: (galaxy, builtObject) => new ConstructionQueue(builtObject, galaxy, true),
 });
+
+let shipConstructedHook: ((galaxy: Galaxy, ship: BuiltObject) => void) | null = null;
+/** Install the new-construction completion hook (player/fleetTemplates.ts; one at most). */
+export function setShipConstructedHook(hook: ((galaxy: Galaxy, ship: BuiltObject) => void) | null): void {
+    shipConstructedHook = hook;
+}
 
 /** ConstructionQueue.cs 1196 DoConstruction(galaxy, time) on a colony (Habitat.cs 1479-1482). Rnd: Next(0, yards). */
 export function doConstruction(galaxy: Galaxy, habitat: Habitat, time: number): void {
