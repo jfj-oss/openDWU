@@ -71,7 +71,7 @@ import { toggleEmpirePolicy } from './screens/empirePolicy';
 // [intel] begin
 import { toggleIntelligenceScreen } from './screens/intelligence';
 // [intel] end
-import { createSelectionActionBar, performAction, refreshSelectionActionBar, setSelectionExtraSlots, setSelectionIconResolvers, type SelectionExtraSlot } from './orderMenu'; // [ordermenu]
+import { createSelectionActionBar, performAction, refreshSelectionActionBar, setSelectionExtraSlots, setSelectionIconResolvers, selectionShipIconUrl, type SelectionExtraSlot } from './orderMenu'; // [ordermenu]
 import { buildInfoModel, type InfoTarget } from './selectionInfo';
 import { renderInfoModel } from './selectionInfoView';
 import './selectionPanel.css';
@@ -2494,10 +2494,34 @@ export function nearestSystemName(
 /** Selection-panel dispatch orders for a selected habitat: each sends the nearest idle unselected ship that can take
  *  the order (sim/player/habitatDispatch.ts) through the player command path, then toasts which ship went. Shown in
  *  the action strip's empty slots (or the overflow row). */
+/** Original chrome art for a dispatch order (build orders show the station design's own picture, like the
+ *  original's build buttons); null = text label. */
+function dispatchIcon(id: string, design: { pictureRef: number; subRole: number } | null): string | undefined {
+    const chrome = (f: string): string => `/assets/dwu/images/ui/chrome/${f}`;
+    if (id.startsWith('build:')) return (design !== null ? selectionShipIconUrl(design) : null) ?? chrome('build.png');
+    const mt = Number(id.slice('mission:'.length));
+    switch (mt) {
+        case BuiltObjectMissionType.Explore: return chrome('longrangescanner.png');
+        case BuiltObjectMissionType.Colonize: return chrome('colonize.png');
+        case BuiltObjectMissionType.ExtractResources: return chrome('mine.png');
+        case BuiltObjectMissionType.Attack: return chrome('attack.png');
+        case BuiltObjectMissionType.Bombard: return chrome('bombard.png');
+        case BuiltObjectMissionType.Capture: return chrome('troops.png');
+        case BuiltObjectMissionType.Raid: return chrome('raid.png');
+        case BuiltObjectMissionType.LoadTroops: return chrome('loadtroops.png');
+        case BuiltObjectMissionType.UnloadTroops: return chrome('troopsButton.png');
+        case BuiltObjectMissionType.Patrol:
+        case BuiltObjectMissionType.Blockade:
+            return chrome('fleetDefendPosture.png');
+    }
+    return undefined;
+}
+
 function habitatDispatchSlots(galaxy: Galaxy, player: Empire, h: Habitat): SelectionExtraSlot[] {
     return habitatDispatchOptions(galaxy, player, h).map((o) => ({
         label: o.label,
-        title: o.hint,
+        title: `${o.label}: ${o.hint}`,
+        icon: dispatchIcon(o.id, o.action?.design ?? null),
         disabled: o.ship === null,
         onClick: () => {
             // Re-resolve at click time: ships' queues and positions have moved since the panel was drawn.

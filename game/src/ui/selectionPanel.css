@@ -189,7 +189,9 @@ span.sel-corner.sel-text {
     flex-direction: column;
     margin-left: -2px;
     padding-left: 2px;
-    background: linear-gradient(to right, rgba(127, 32, 32, 0.247) 0 var(--band-w), transparent var(--band-w));
+    /* Fades out to the right like the original brush (not a hard-edged block). */
+    background:
+        linear-gradient(to right, rgba(127, 32, 32, 0.30), rgba(127, 32, 32, 0.12) calc(var(--band-w) * 0.8), transparent var(--band-w));
 }
 
 /* DrawBarGraph. */

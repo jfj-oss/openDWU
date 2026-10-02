@@ -658,7 +658,8 @@ export function builtObjectInfo(ctx: InfoContext, bo: BuiltObject): InfoModel {
         if (bo.cargoCapacity > 0) {
             let used = 0;
             for (const c of bo.cargo?.items ?? []) used += Math.max(0, c.amount);
-            rows.push(label('Cargo', [txt(`${used} / ${bo.cargoCapacity}`)]));
+            // Bases have an effectively unlimited hold (int.MaxValue-style capacity): show only what is stored.
+            rows.push(label('Cargo', [txt(bo.cargoCapacity >= 1e8 ? fmtK(used) : `${fmtK(used)} / ${fmtK(bo.cargoCapacity)}`)]));
         }
     }
     for (const r of threatRows(bo, player)) rows.push(label(r.label, [txt(r.value)]));

@@ -709,6 +709,10 @@ let iconResolvers: { troop: (t: unknown) => string | null; ship: (design: { pict
     troop: () => null,
     ship: () => null,
 };
+/** The installed ship-art resolver (for HUD extras such as the dispatch build buttons). */
+export function selectionShipIconUrl(design: { pictureRef: number; subRole: number }): string | null {
+    return iconResolvers.ship(design);
+}
 export function setSelectionIconResolvers(r: typeof iconResolvers): void {
     iconResolvers = r;
 }
@@ -846,10 +850,13 @@ export function createSelectionActionBar(): HTMLElement {
                 img.draggable = false;
                 btn.appendChild(img);
             }
-            const cap = document.createElement('span');
-            cap.className = 'order-action-caption';
-            cap.textContent = x.label;
-            btn.appendChild(cap);
+            // Icon buttons are icon-only like the original strip (the label is in the tooltip).
+            if (x.icon === undefined) {
+                const cap = document.createElement('span');
+                cap.className = 'order-action-caption';
+                cap.textContent = x.label;
+                btn.appendChild(cap);
+            }
             btn.title = x.title;
             btn.disabled = x.disabled === true;
         }
