@@ -52,17 +52,17 @@ import { MERCENARY, describeCast, pirateEscort, pirateExplorer, pirateFaction, p
 
 /** The seed-1 cast the hand-worked values below were derived for (update this line after a generation change). */
 const CAST: string[] = [
-    'escort: Praefectus 001 (Escort, Royal Sol Commonwealth)',
-    'pirateExplorer: Graceful Impasse (ExplorationShip, S105 Ravagers)',
+    'escort: RSS Praefectus 001 (Escort, Royal Sol Commonwealth)',
+    'pirateExplorer: Smuggled Rascal (ExplorationShip, S105 Ravagers)',
     'pirateBase: Bandits Sanctuary (SmallSpacePort, S78 Gangsters)',
-    'frigate0: Minotaur 001 (Frigate, Royal Sol Commonwealth)',
-    'frigate1: Minotaur 002 (Frigate, Royal Sol Commonwealth)',
-    'destroyer0: Venator 001 (Destroyer, Royal Sol Commonwealth)',
-    'destroyer1: Venator 002 (Destroyer, Royal Sol Commonwealth)',
+    'frigate0: RSS Minotaur 001 (Frigate, Royal Sol Commonwealth)',
+    'frigate1: RSS Minotaur 002 (Frigate, Royal Sol Commonwealth)',
+    'destroyer0: RSS Venator 001 (Destroyer, Royal Sol Commonwealth)',
+    'destroyer1: RSS Venator 002 (Destroyer, Royal Sol Commonwealth)',
     'carrier: Skaif Space Port (MediumSpacePort, Royal Sol Commonwealth)',
-    'pirateEscort: Evasive Vengeance (Escort, S78 Gangsters)',
-    'boarder: Evasive Vengeance (Escort, S78 Gangsters)',
-    'boarded: Muffled Pride (ExplorationShip, Royal Sol Commonwealth)',
+    'pirateEscort: Wicked Buccaneer (Escort, S78 Gangsters)',
+    'boarder: Wicked Buccaneer (Escort, S78 Gangsters)',
+    'boarded: RSR Southern Albatross (ExplorationShip, Royal Sol Commonwealth)',
     'independentColony: Toinsa (Independent)',
 ];
 
@@ -149,7 +149,7 @@ describe('seed-1 cast', () => {
 describe('(1) a player escort ordered to Attack a pirate ship', () => {
     /**
      * Seed-1 cast: the player's Praefectus 001 (Escort: 2 × Standard Beam — RawDamage 5, Range 190, Energy 12, Speed 360,
-     * FireRate 1240 ms; 3 armour plates) and S105 Ravagers' Graceful Impasse (pirate explorer: unarmed, shields 100,
+     * FireRate 1240 ms; 3 armour plates) and S105 Ravagers' Smuggled Rascal (pirate explorer: unarmed, shields 100,
      * 4 armour plates Value1 10 / Value2 2, 37 components), staged 60 apart in empty space. The target's design flee rule is
      * set to Never and it is not auto-controlled, so it holds still (its stock FleeWhen would make it Escape at 50% shields,
      * BuiltObject.1.cs 1520 ShouldFleeFrom — a behaviour, not what is being measured here).
@@ -738,8 +738,8 @@ describe('(3) fighters launched by a carrier engage and return per the C# rules'
 
 describe('(4) boarding: an assault-pod ship boards and captures a disabled ship', () => {
     /**
-     * S78 Gangsters' Evasive Vengeance (1 Assault Pod: RawDamage 50, Range 140; empire BoardingAttackFactor 1, dominant
-     * race TroopStrength 138, pirate RaidStrengthFactor 1.25) against the player's Muffled Pride (3 Hab Modules, no troops;
+     * S78 Gangsters' Wicked Buccaneer (1 Assault Pod: RawDamage 50, Range 140; empire BoardingAttackFactor 1, dominant
+     * race TroopStrength 138, pirate RaidStrengthFactor 1.25) against the player's RSR Southern Albatross (3 Hab Modules, no troops;
      * BoardingDefenseFactor 1, TroopStrength 121) with its shields down and engines knocked out, 100 apart.
      */
     function stage(): { g: Galaxy; att: BuiltObject; tgt: BuiltObject } {

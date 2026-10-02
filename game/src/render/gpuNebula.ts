@@ -108,8 +108,8 @@ void main() {
     float d = ramp(v, uThr, uThr + 0.55);
     d = d * (0.55 + 0.45 * d);
     d = max(d, 0.1 * env * env);
-    d *= ramp(env, 0.0, 0.35);
-    if (r >= uEnvOuter || d <= 0.002) {
+    d *= ramp(env, 0.0, 0.6);
+    if (r >= uEnvOuter || d <= 0.0) {
         outColor = vec4(0.0);
         return;
     }
@@ -117,13 +117,10 @@ void main() {
     float lum = 0.75 + 0.35 * d;
     vec3 rgb = mix(uC1, uC2, t) * lum / 255.0;
     float a = uOpacity * d;
-    // Premultiplied output, dithered like the CPU path (systemNebula.ts tpdfDither): triangular-PDF noise in
-    // (-1, 1) 8-bit steps before the 8-bit store, one value for the colour channels (keeps the hue) and an independent
-    // one for alpha; colour kept <= the stored alpha (valid premultiplied, no additive specks).
-    float nc = hash12(pxy) + hash12(pxy + vec2(37.0, 113.0)) - 1.0;
-    float na = hash12(pxy + vec2(71.0, 19.0)) + hash12(pxy + vec2(5.0, 211.0)) - 1.0;
-    float aq = clamp(floor(a * 255.0 + na + 0.5), 0.0, 255.0) / 255.0;
-    outColor = vec4(min(clamp(rgb * a + nc / 255.0, 0.0, 1.0), vec3(aq)), aq);
+    // Premultiplied output into a half-float target (no 8-bit steps in the texture: at close zoom one texel spans
+    // dozens of screen px, so 8-bit alpha / colour steps showed as blotchy contours at the faint rim). The 8-bit
+    // quantisation now happens only at the screen, where outputDither.ts dithers it.
+    outColor = vec4(clamp(rgb * a, 0.0, 1.0), clamp(a, 0.0, 1.0));
 }`;
 
 export class GpuNebula {
@@ -133,7 +130,11 @@ export class GpuNebula {
         indexBuffer: [0, 1, 2, 0, 2, 3],
     });
 
+    /** Half-float render target when the GPU can render to it (EXT_color_buffer_float), else 8-bit. */
+    private readonly format: 'rgba16float' | 'rgba8unorm';
     constructor(private readonly renderer: Renderer) {
+        const gl = (renderer as unknown as { gl?: WebGL2RenderingContext }).gl;
+        this.format = gl?.getExtension('EXT_color_buffer_float') ? 'rgba16float' : 'rgba8unorm';
         this.program = GlProgram.from({ vertex: VERT, fragment: FRAG, name: 'system-nebula-patch' });
     }
 
@@ -162,7 +163,7 @@ export class GpuNebula {
         pos.data = new Float32Array([0, 0, size, 0, size, size, 0, size]);
         const mesh = new Mesh({ geometry: this.geom, shader });
         mesh.state.blendMode = 'none';
-        const rt = RenderTexture.create({ width: size, height: size, resolution: 1, scaleMode: 'linear', autoGenerateMipmaps: true });
+        const rt = RenderTexture.create({ width: size, height: size, resolution: 1, scaleMode: 'linear', autoGenerateMipmaps: true, format: this.format });
         rt.source.maxAnisotropy = 16;
         this.renderer.render({ container: mesh, target: rt, clear: true, clearColor: [0, 0, 0, 0] });
         mesh.destroy();

@@ -2320,7 +2320,15 @@ export interface BuildNewShipsResult {
  * colony-built construction / resupply ship), then AddBuiltObjectToGalaxy (offsetLocationFromParent: false → no draws).
  * A ship the yard refuses still drew its first name.
  */
-export function buildNewShips(galaxy: Galaxy, empire: Empire, designs: (Design | null)[], amounts: number[]): BuildNewShipsResult {
+export function buildNewShips(
+    galaxy: Galaxy,
+    empire: Empire,
+    designs: (Design | null)[],
+    amounts: number[],
+    // Deviation (player fleet templates, player/fleetTemplates.ts): restrict the yards to a subset (a sector). Omitted =
+    // the original's empire.SpacePorts / empire.Colonies.
+    sites: { spacePorts: BuiltObject[]; colonies: Habitat[] } | null = null,
+): BuildNewShipsResult {
     // Main.Part2.cs 1137-1145: method_632 total against StateMoney.
     const num0 = buildOrderTotalCost(galaxy, empire, designs, amounts).total;
     if (num0 > empire.stateMoney) {
@@ -2355,7 +2363,7 @@ export function buildNewShips(galaxy: Galaxy, empire: Empire, designs: (Design |
             builtObject.purchasePrice = num3;
             // Empire.6.cs:3052-3078: construction / resupply ships are built at colonies (long wait queues allowed).
             if (builtObject.subRole === BuiltObjectSubRole.ConstructionShip || builtObject.subRole === BuiltObjectSubRole.ResupplyShip) {
-                const habitat = habitatsFindShortestConstructionWaitQueue(galaxy, empire.colonies, builtObject, true).habitat;
+                const habitat = habitatsFindShortestConstructionWaitQueue(galaxy, sites?.colonies ?? empire.colonies, builtObject, true).habitat;
                 if (habitat !== null) {
                     const q = queueOf(habitat);
                     if (q !== null && q.addBuiltObjectToConstruct(builtObject)) {
@@ -2376,7 +2384,7 @@ export function buildNewShips(galaxy: Galaxy, empire: Empire, designs: (Design |
                 continue;
             }
             // Empire.6.cs:3079-3105: everything else at the shortest-wait space port (no very small yards).
-            const builtObject2 = builtObjectsFindShortestConstructionWaitQueue(empire.spacePorts, builtObject, false).builtObject;
+            const builtObject2 = builtObjectsFindShortestConstructionWaitQueue(sites?.spacePorts ?? empire.spacePorts, builtObject, false).builtObject;
             if (builtObject2 !== null) {
                 const q = queueOf(builtObject2);
                 if (q !== null && q.addBuiltObjectToConstruct(builtObject)) {

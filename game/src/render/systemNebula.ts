@@ -15,7 +15,7 @@
 // This port keeps the idea — a per-system procedural cloud, deterministic from the system index, generated off the
 // frame and cached — but follows the art direction for the recreation (documented deviation): the haze is anchored
 // in world space to the system (one seamless map, so neighbouring systems keep their own clouds while panning), it is
-// 1–3 patches off-centre from the star (20–50 % of the system radius) covering ~40–60 % of the system disc, the
+// 1–3 patches off-centre from the star (20–50 % of the system radius) covering ~20–50 % of the system disc (user call; was 40–60 %), the
 // colours come from a dark, low-saturation palette (dark purple, magenta, pink, blue, green) instead of the
 // generator's 17 bright schemes, and the shapes are domain-warped multi-octave value noise with soft edges and uneven
 // density (dense cores, thin wisps, clear holes). It fades in around the original's zoom-factor-210 threshold as a
@@ -85,8 +85,8 @@ export interface SystemNebulaParams {
 
 export const MIN_PATCH_OFFSET = 0.2;
 export const MAX_PATCH_OFFSET = 0.5;
-export const MIN_COVERAGE = 0.4;
-export const MAX_COVERAGE = 0.6;
+export const MIN_COVERAGE = 0.2;
+export const MAX_COVERAGE = 0.5;
 
 /** A system's nebula patches, deterministic from (galaxy seed, system index). */
 export function systemNebulaParams(galaxySeed: number, systemIndex: number): SystemNebulaParams {
@@ -123,7 +123,7 @@ export function systemNebulaParams(galaxySeed: number, systemIndex: number): Sys
             rotation: angle + Math.PI / 2 + (rnd() - 0.5) * 1.4,
             colour,
             colour2,
-            opacity: 0.48 + rnd() * 0.18,
+            opacity: 0.34 + rnd() * 0.13, // darker (user call): was 0.48 + 0.18
             warp: 0.38 + rnd() * 0.12,
             freq: 1.0 + rnd() * 0.7,
             threshold: 0.17 + rnd() * 0.12,
@@ -304,7 +304,7 @@ export class NebulaPatchRaster {
                 d = d * (0.55 + 0.45 * d); // denser cores, thinner wisps
                 // A faint veil under the structure, so the thin parts still tint the sky.
                 d = Math.max(d, 0.1 * env * env);
-                d *= smooth01(0, 0.35, env);
+                d *= smooth01(0, 0.6, env); // longer, flat-tangent tail to zero at the rim (was smooth01(0, 0.35, env))
                 if (d <= 0.002) {
                     data[o + 3] = 0;
                     continue;
@@ -314,13 +314,12 @@ export class NebulaPatchRaster {
                 const lum = 0.75 + 0.35 * d;
                 const a = alphaMax * d;
                 const k = (lum * a) / 255; // straight colour → premultiplied
-                // One dither value for the three colour channels (keeps the hue), an independent one for alpha; the
-                // clamped store rounds to nearest. Colour is kept <= alpha (valid premultiplied: no additive specks).
-                const nc = tpdfDither(i, j, seedC);
-                const aq = Math.min(255, Math.max(0, Math.round(a + tpdfDither(i, j, seedA))));
-                data[o] = Math.min(aq, (c1.r + (c2.r - c1.r) * t) * k + nc);
-                data[o + 1] = Math.min(aq, (c1.g + (c2.g - c1.g) * t) * k + nc);
-                data[o + 2] = Math.min(aq, (c1.b + (c2.b - c1.b) * t) * k + nc);
+                // No texel dither: at close zoom one texel covers dozens of screen px, so per-texel noise showed as
+                // blotches / holes (user report). The screen-space output dither (outputDither.ts) breaks the bands.
+                const aq = Math.min(255, Math.max(0, Math.round(a)));
+                data[o] = Math.min(aq, (c1.r + (c2.r - c1.r) * t) * k);
+                data[o + 1] = Math.min(aq, (c1.g + (c2.g - c1.g) * t) * k);
+                data[o + 2] = Math.min(aq, (c1.b + (c2.b - c1.b) * t) * k);
                 data[o + 3] = aq;
             }
         }

@@ -3,6 +3,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 import { cachedTickGame } from './helpers/gameCache';
 import { BuiltObjectMissionType, builtObjectMission } from '../src/sim/missions/mission';
@@ -99,7 +100,7 @@ describe('runAdvisorTurn (harness game, scripted model)', () => {
         const gameData = await loadGameDataFs();
         const galaxy = cachedTickGame(gameData).galaxy;
         const player = galaxy.playerEmpire!;
-        const ship = player.builtObjects.find((b) => b.name === 'Glowing Way')!;
+        const ship = player.builtObjects.find((b) => b.subRole === BuiltObjectSubRole.ExplorationShip)!;
         // The fake model reads the brief and picks the explorer's "nearest unexplored system" order.
         handler = (_q, body, res) => {
             const sys = (JSON.parse(body) as { messages: ChatMessage[] }).messages[0].content;
@@ -123,7 +124,7 @@ describe('runAdvisorTurn (harness game, scripted model)', () => {
         expect(builtObjectMission(ship.mission)?.type).toBe(BuiltObjectMissionType.Explore);
         expect(turn.history).toEqual([
             { role: 'user', content: 'send my explorer to the nearest unexplored system' },
-            { role: 'assistant', content: expect.stringMatching(/^"Glowing Way is on her way, Sovereign\." \(orders Glowing Way: Explore → .* carried out\)$/) },
+            { role: 'assistant', content: expect.stringMatching(new RegExp(`^"Glowing Way is on her way, Sovereign\\." \\(orders ${ship.name}: Explore → .* carried out\\)$`)) },
         ]);
         // History and the new message follow the system prompt.
         const sent = requests[requests.length - 1].body as { messages: ChatMessage[] };
@@ -139,7 +140,7 @@ describe('runAdvisorTurn (harness game, scripted model)', () => {
         const other = galaxy.empires.find((e) => e !== player && e.active && e !== galaxy.independentEmpire)!;
         player.diplomaticRelations.byEmpire(other)!.type = DiplomaticRelationType.None;
         other.diplomaticRelations.byEmpire(player)!.type = DiplomaticRelationType.None;
-        const ship = player.builtObjects.find((b) => b.name === 'Glowing Way')!;
+        const ship = player.builtObjects.find((b) => b.subRole === BuiltObjectSubRole.ExplorationShip)!;
         handler = (_q, body, res) => {
             const sys = (JSON.parse(body) as { messages: ChatMessage[] }).messages[0].content;
             const brief = JSON.parse(sys.slice(sys.indexOf('BRIEF:\n') + 7).split('\n\nEARLIER')[0]) as AdvisorBrief;

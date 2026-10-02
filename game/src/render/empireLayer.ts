@@ -116,7 +116,14 @@ class EmpireTerritory {
     hasDiscs = false;
     /** Signature of the explored owned systems the discs were last built for (see knownTerritorySystems). */
     sig = '';
-    readonly filter: AlphaFilter;
+    private alphaFilter: AlphaFilter | null = null;
+    get filter(): AlphaFilter {
+        if (this.alphaFilter === null) {
+            this.alphaFilter = new AlphaFilter({ alpha: TERRITORY_ALPHA });
+            this.graphics.filters = [this.alphaFilter];
+        }
+        return this.alphaFilter;
+    }
     constructor(empire: Empire, layer: Container) {
         this.empire = empire;
         this.graphics = new Graphics();
@@ -124,8 +131,7 @@ class EmpireTerritory {
         this.graphics.blendMode = 'normal';
         // The discs are drawn opaque and the whole empire's union is faded once by this filter, so overlapping discs
         // of one empire blend into one even wash instead of stacking darker where they overlap.
-        this.filter = new AlphaFilter({ alpha: TERRITORY_ALPHA });
-        this.graphics.filters = [this.filter];
+        // (Created lazily on first draw: building a filter compiles a GL program, which needs a browser.)
         layer.addChild(this.graphics);
     }
 }
@@ -283,8 +289,8 @@ export class EmpireLayer {
             // Fade the territory wash out while zooming in towards a system (factor 300 → 70): at near-system zoom
             // a single disc fills the screen as a flat coloured haze.
             const fade = Math.max(0, Math.min(1, (factor - 70) / (300 - 70)));
-            t.filter.alpha = TERRITORY_ALPHA * fade * fade * (3 - 2 * fade);
             t.graphics.visible = t.hasDiscs && fade > 0;
+            if (t.graphics.visible) t.filter.alpha = TERRITORY_ALPHA * fade * fade * (3 - 2 * fade);
         }
 
         // Colony rings: system/planet zoom only (hidden at galaxy/sector zoom

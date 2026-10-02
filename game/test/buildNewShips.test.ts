@@ -1,6 +1,9 @@
 // 17a buildorder: the player's Build Order purchase — Main.Part2.cs 1135 btnBuildOrderPurchase_Click (affordability check
 // against method_632's total, ported as buildOrderTotalCost) → Empire.6.cs 3017 BuildNewShips — driven from the shared
 // harness game (seed 1, the human player's start: one ship yard, "Sol 2 Space Port").
+import type { Empire } from '../src/sim/empire';
+import type { Design as ShipDesign } from '../src/sim/design';
+import { applyShipRegistryPrefix } from '../src/sim/shipNameStyle';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 import { cachedTickGame } from './helpers/gameCache';
@@ -29,8 +32,8 @@ function newGame(): Game {
 }
 
 /** Galaxy.4.cs GenerateBuiltObjectName numbered names: BuildCount as "000". */
-function numbered(name: string, n: number): string {
-    return name + ' ' + String(n).padStart(3, '0');
+function numbered(e: Empire, d: ShipDesign, n: number): string {
+    return applyShipRegistryPrefix(e, d.subRole, d.name + ' ' + String(n).padStart(3, '0')); // + per-race registry prefix (shipNameStyle.ts)
 }
 
 describe('buildNewShips (Empire.6.cs 3017 BuildNewShips)', () => {
@@ -56,7 +59,7 @@ describe('buildNewShips (Empire.6.cs 3017 BuildNewShips)', () => {
         expect(r.message).toBeUndefined();
         expect(r.built.length).toBe(2);
         // Escort names are numbered (Galaxy.4.cs GenerateBuiltObjectName flag = true): "<design> <BuildCount:000>".
-        expect(r.built.map((b) => b.name)).toEqual([numbered(d.name, buildCount0 + 1), numbered(d.name, buildCount0 + 2)]);
+        expect(r.built.map((b) => b.name)).toEqual([numbered(e, d, buildCount0 + 1), numbered(e, d, buildCount0 + 2)]);
         expect(d.buildCount).toBe(buildCount0 + 2);
         for (const b of r.built) {
             expect(b.builtAt).toBe(yard);
