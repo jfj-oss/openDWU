@@ -59,10 +59,10 @@ async function drag(b, shot) {
         return {
             multi: s?.builtObjects?.length ?? 0,
             single: s?.builtObject?.name ?? null,
-            name: document.querySelector('.hud-selection-name')?.textContent,
-            sub: document.querySelector('.hud-selection-sub')?.textContent,
-            rows: document.querySelectorAll('.hud-multi-row').length,
-            buttons: Array.from(document.querySelectorAll('.order-action-btn')).map((b) => b.textContent),
+            name: document.querySelector('.sel-title')?.textContent,
+            sub: document.querySelector('.sel-line')?.textContent,
+            rows: document.querySelectorAll('.sel-cell').length,
+            buttons: Array.from(document.querySelectorAll('.order-action-btn')).map((b) => b.title),
         };
     });
 }

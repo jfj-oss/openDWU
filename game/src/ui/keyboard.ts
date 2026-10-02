@@ -565,6 +565,23 @@ let shipCommandHandler: ((action: ShipCommandAction) => void) | null = null;
 export function setShipCommandHandler(h: ((action: ShipCommandAction) => void) | null): void {
     shipCommandHandler = h;
 }
+
+let viewLockedQuery: (() => boolean) | null = null;
+/** The game view reports whether the view lock (L) is on (the selection panel's lock button state). */
+export function setViewLockedQuery(q: (() => boolean) | null): void {
+    viewLockedQuery = q;
+}
+export function isViewLocked(): boolean {
+    return viewLockedQuery?.() ?? false;
+}
+
+/** Run a ship-command action as its key would (the selection panel's lock / history / stance / nearest-military
+ *  buttons share the key handlers). False when no game view handles it. */
+export function runShipCommand(action: ShipCommandAction): boolean {
+    if (shipCommandHandler === null) return false;
+    shipCommandHandler(action);
+    return true;
+}
 // [fix6ui] end
 
 // ---------------------------------------------------------------------------

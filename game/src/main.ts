@@ -111,7 +111,7 @@ import { installMessageStubList, removeMessageStubList } from './ui/messageStubL
 // [popupstubs] end
 
 // [fix6ui] begin
-import { setShipCommandHandler } from './ui/keyboard';
+import { setShipCommandHandler, setViewLockedQuery } from './ui/keyboard';
 import { refreshSelectionActionBar } from './ui/orderMenu';
 import { selectCreature, selectHabitat } from './ui/hud';
 import { createShipCommandKeys, type ShipCommandKeys } from './ui/shipCommandKeys';
@@ -706,6 +706,7 @@ export async function startGameView(
     });
     const activeShipKeys = shipKeys;
     setShipCommandHandler((action) => activeShipKeys.handle(action));
+    setViewLockedQuery(() => activeShipKeys.locked);
     // [fix6ui] end
 
     // Task 06l: extra boots run after the HUD/clock are wired (e.g. opening
@@ -824,6 +825,7 @@ export async function startGameView(
         setCycleHandler(null);
         // [fix6ui] begin
         setShipCommandHandler(null);
+        setViewLockedQuery(null);
         shipKeys = null;
         // [fix6ui] end
         // Module-level panels hold the old game's Empire/camera and a

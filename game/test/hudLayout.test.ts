@@ -31,7 +31,7 @@ describe('computeHudLayout (streamlined, task 05c)', () => {
             expect(l['pnlMoney'].x + l['pnlMoney'].w).toBe(width - 10);
 
             // Selection panel anchored bottom-left with a 10 px margin.
-            expect(l['pnlSelection']).toEqual({ x: 10, y: height - 220 - 10, w: 300, h: 220 });
+            expect(l['pnlSelection']).toEqual({ x: 10, y: height - 310 - 10, w: 399, h: 310 });
 
             // Options list right-anchored (task 10e) with a 10 px margin;
             // height is content-driven (h = 0, task 05d) so it fits at any

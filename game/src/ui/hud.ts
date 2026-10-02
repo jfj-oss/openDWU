@@ -1,5 +1,4 @@
-import { computeHudLayout, CYCLE_CHIPS, TOP_BAR_BUTTONS, VIEW_ROWS, type Rect, type ViewRowKey } from './hudLayout';
-import { abundancePercentText } from './resourceAbundance';
+import { computeHudLayout, TOP_BAR_BUTTONS, VIEW_ROWS, type Rect, type ViewRowKey } from './hudLayout';
 import { threatKnownSites } from '../sim/scenario/threats/framework';
 import { onSettingsChange, uiScaleFactor } from './settings';
 import { GalaxyTime } from '../sim/clock';
@@ -10,12 +9,10 @@ import { followOnSelectionChanged, isFollowingTarget, toggleFollow, type FollowS
 import { Galaxy } from '../sim/galaxy';
 import { calculateAvailableAssaultPodAttackStrength } from '../sim/combat/attackAI';
 import type { GameData } from '../sim/data/gameData';
-import { rimGoodMarker } from './scenario/rimTraderRows';
-import { wreckSalvageRows } from './scenario/wreckageUi'; // [wreckage]
 import { moneyPanelIncome } from '../sim/treasury';
 import type { ConstructionQueue } from '../sim/construction/constructionQueue';
 import { yardProgress } from './screens/constructionYards';
-import { Habitat, HabitatCategoryType, HabitatType, IndustryType, SystemInfo } from '../sim/types';
+import { Habitat, HabitatCategoryType, HabitatType, SystemInfo } from '../sim/types';
 import type { Empire } from '../sim/empire';
 import type { BuiltObject } from '../sim/builtObject';
 import { BuiltObjectSubRole } from '../sim/builtObjectTypes';
@@ -23,14 +20,14 @@ import { BuiltObjectRole } from '../sim/data/designSpecifications';
 import { BuiltObjectMissionType, COORD_UNSET_DOUBLE, builtObjectMission, type BuiltObjectMission } from '../sim/missions/mission';
 // [15c]
 import { ShipGroup } from '../sim/fleets/shipGroup';
-import { fleetCycleList, fleetName, fleetShipAction, fleetSystemName, shipGroupSelectionRows, toggleFleetsList } from './screens/fleetsList';
+import { fleetCycleList, fleetShipAction, toggleFleetsList } from './screens/fleetsList';
 // [/15c]
 import { SystemVisibilityStatus } from '../sim/visibility';
 import { flagShapeUrl } from '../sim/startGameOptions';
 import { rimSystemDisplayName, type RimNameHost } from '../sim/scenario/rimNames'; // [rimatmo-wiring] 19i item 11
 import { raceDisplayOverride, raceHasConcordArt } from '../render/concordArt';
 // [troopart] begin
-import { troopImageUrl, wireTroopImageFallback } from '../render/troopImages';
+import { troopImageUrl } from '../render/troopImages';
 import { Troop, TroopList } from '../sim/cargo';
 import type { Race } from '../sim/data/races';
 import { resolveInvasionEmpires } from '../sim/troops';
@@ -40,7 +37,7 @@ import { troopCountsByType, troopCompositionDescription } from './screens/troops
 // [/troopart]
 import { resolveEmpireEmblem } from './empireEmblem';
 import { createGameMenu, type GameMenuRefs } from './screens/gameMenu';
-import { setGameMenuHandler, setCycleHandler, type CycleKind } from './keyboard';
+import { setGameMenuHandler, setCycleHandler, runShipCommand, isViewLocked, type CycleKind } from './keyboard';
 import { uiClickSounds } from '../audio/effectsPlayer';
 import { helpTopicKeyForHabitat, toggleGalactopedia } from './screens/galactopedia';
 import { toggleEmpiresList } from './screens/empiresList';
@@ -74,11 +71,15 @@ import { toggleEmpirePolicy } from './screens/empirePolicy';
 // [intel] begin
 import { toggleIntelligenceScreen } from './screens/intelligence';
 // [intel] end
-import { createSelectionActionBar, performAction, refreshSelectionActionBar } from './orderMenu'; // [ordermenu]
+import { createSelectionActionBar, performAction, refreshSelectionActionBar, setSelectionExtraSlots, setSelectionIconResolvers, type SelectionExtraSlot } from './orderMenu'; // [ordermenu]
+import { buildInfoModel, type InfoTarget } from './selectionInfo';
+import { renderInfoModel } from './selectionInfoView';
+import './selectionPanel.css';
+import { builtObjectImageUrl, resolveDrawPictureRef } from '../render/builtObjectLayer';
 import { createCharterButton } from './screens/charters'; // [charters]
 import { setTextIfChanged } from '../render/drawCache';
-import { creatureSelectionRows } from '../render/creatureLayer';
-import { resolveCreatureDescription, type Creature } from '../sim/creature';
+import { CREATURE_FRAME_SETS, creatureFrameSetIndexes, creatureFrameUrls } from '../render/creatureLayer';
+import type { Creature } from '../sim/creature';
 
 // Port of Main.Part12.cs LoadUiChromeButtons (381–520): the control → chrome
 // button image mapping. The original loads each control's image from
@@ -260,7 +261,9 @@ export function applyHudScale(refs: HudRefs): void {
         const rect = layout[name];
         if (!rect) continue;
         el.style.transformOrigin = hudTransformOrigin(name, rect, window.innerWidth);
-        el.style.transform = s === 1 ? '' : `scale(${s})`;
+        // The selection frame is drawn in the original's pixels and scales with the window height (4K / HiDPI).
+        const k = name === 'pnlSelection' ? selectionFrameScale(window.innerHeight, s, selectionPanelSmall()) : s;
+        el.style.transform = k === 1 ? '' : `scale(${k})`;
         if (name === 'pnlSelection') anchorSelectionPanel(el, rect);
     }
 }
@@ -332,6 +335,9 @@ export interface Selection {
     /** Several selected ships (the C# BuiltObjectList selection: a left-drag box or Shift-clicks), 2+ entries;
      * `builtObject` / `shipGroup` are then unset and `habitat` is the first ship's nearest system star. */
     builtObjects?: BuiltObject[];
+    /** A system star picked at galaxy / sector zoom: the panel shows the system (InfoPanel.cs DrawSystemInfo, the C#
+     *  SystemInfo selection) instead of the star. Set by the panel from the camera zoom when left undefined. */
+    systemInfo?: boolean;
 }
 
 let currentSelection: Selection | null = null;
@@ -482,6 +488,8 @@ export function createHud(wiring: HudWiring = {}): HudRefs {
                 // given; expose that callback as the HUD's selection hook.
                 const panelWiring: HudWiring = { ...wiring };
                 el = buildSelectionPanel(panelWiring);
+                // btnSelectionPanelSize: re-apply the frame scale for the new content size.
+                el.addEventListener('sel-resize', () => applyHudScale(refs));
                 wiring.onSelectionChange = panelWiring.onSelectionChange;
                 refs.onSelectionChange = panelWiring.onSelectionChange;
                 break;
@@ -560,9 +568,8 @@ function anchorSelectionPanel(el: HTMLElement, rect: Rect): void {
     const bottomGap = Math.max(0, window.innerHeight - rect.y - rect.h);
     el.style.top = '';
     el.style.bottom = `${bottomGap}px`;
-    el.style.height = '';
-    el.style.minHeight = `${rect.h}px`;
-    el.style.maxHeight = `${selectionPanelMaxHeight(window.innerHeight, bottomGap, uiScaleFactor())}px`;
+    el.style.width = `${rect.w}px`;
+    el.style.height = `${rect.h}px`;
 }
 
 function applyRect(el: HTMLElement, rect: Rect): void {
@@ -1034,30 +1041,99 @@ function buildMoneyPanel(game?: { playerEmpire: { name: string; mainColor: numbe
 }
 
 /** Bottom-left streamlined selection panel. */
+// ---------------------------------------------------------------------------------------------------------------
+// Selection panel: the original's bottom-left frame (Main.Part2.cs QxrIvWcaOp / Main.Part12.cs 1962-2097): the
+// pnlInfoPanel frame with pnlDetailInfo (the InfoPanel, selectionInfo.ts + selectionInfoView.ts), the selection
+// history buttons on top, the lock + seven "‹" cycle buttons on the left, the nearest-military + seven "›" cycle
+// buttons on the right, the ship-stance button and the eight btnSelectionAction buttons under it. Geometry is in
+// the original's pixels (small content size); the whole frame scales (selectionFrameScale).
+// ---------------------------------------------------------------------------------------------------------------
+
+/** Frame size in the original's pixels: x 10..409, y (num - 36)..(pnlInfoPanel.Bottom + 30). */
+export const SELECTION_FRAME = { w: 399, h: 310 } as const;
+/** The frame at 1080 px window height is ~683 × 531 px (the original's large-DPI look). */
+export const SELECTION_FRAME_BASE_SCALE = 683 / 399;
+
+/** btnSelectionPanelSize toggles the content size (InfoPanel.Kickstart(isLargeSize)); here the small size is the
+ *  same frame drawn smaller. Persisted per browser. */
+const PANEL_SIZE_KEY = 'dwu.selectionPanelSmall';
+function selectionPanelSmall(): boolean {
+    try {
+        return localStorage.getItem(PANEL_SIZE_KEY) === '1';
+    } catch {
+        return false;
+    }
+}
+
+/** The frame's CSS scale: the base scale at a 1080 px tall window, proportional to the window height, times the UI
+ *  scale setting (and 0.75 in the small size). */
+export function selectionFrameScale(viewportHeight: number, uiScale: number, small: boolean): number {
+    const v = Math.max(0.5, viewportHeight / 1080);
+    return SELECTION_FRAME_BASE_SCALE * v * uiScale * (small ? 0.75 : 1);
+}
+
+/** The original's selection-panel cycle buttons, top to bottom (Main.Part12.cs 2003-2030). */
+export const SELECTION_CYCLE_BUTTONS: readonly { kind: CycleKind; image: string }[] = [
+    { kind: 'colonies', image: 'cycleColonies' },
+    { kind: 'bases', image: 'cycleBases' },
+    { kind: 'military', image: 'cycleMilitary' },
+    { kind: 'construction', image: 'cycleConstruction' },
+    { kind: 'other', image: 'cycleOther' },
+    { kind: 'fleets', image: 'cycleFleets' },
+    { kind: 'idleShips', image: 'cycleIdleShips' },
+];
+
+type Corners = 'left' | 'right' | 'all' | 'none';
+
+/** A GlassButton (DistantWorlds.Controls GlassButton) at an original-pixel rect, with its chrome image. */
+function glassButton(cls: string, x: number, y: number, w: number, h: number, image: string | null, title: string, corners: Corners, onClick: () => void): HTMLButtonElement {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = `sel-glass sel-corners-${corners} ${cls}`;
+    b.style.left = `${x}px`;
+    b.style.top = `${y}px`;
+    b.style.width = `${w}px`;
+    b.style.height = `${h}px`;
+    b.title = title;
+    if (image !== null) {
+        const img = document.createElement('img');
+        img.src = `/assets/dwu/images/ui/chrome/${image}`;
+        img.alt = '';
+        img.draggable = false;
+        b.appendChild(img);
+    }
+    b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        onClick();
+    });
+    return b;
+}
+
 function buildSelectionPanel(wiring: HudWiring): HTMLElement {
     const panel = document.createElement('div');
-    panel.className = 'hud-panel hud-selection';
+    panel.className = 'hud-selection sel-frame';
 
-    const header = document.createElement('div');
-    header.className = 'hud-selection-header';
-    const nameEl = document.createElement('div');
-    nameEl.className = 'hud-selection-name';
-    const subEl = document.createElement('div');
-    subEl.className = 'hud-selection-sub';
-    header.append(nameEl, subEl);
-    panel.appendChild(header);
+    // pnlInfoPanel (26, H-290, 370×250) → frame (16, 30); pnlDetailInfo at (44, 5) inside it.
+    const infoFrame = document.createElement('div');
+    infoFrame.className = 'sel-infopanel';
+    panel.appendChild(infoFrame);
+    const detail = document.createElement('div');
+    detail.className = 'sel-detail';
+    panel.appendChild(detail);
+    const content = document.createElement('div');
+    content.className = 'sel-content-box';
+    detail.appendChild(content);
+    // Our controls with no button in the original (follow, the dispatch orders, charter) go into the action strip's
+    // empty slots (orderMenu.ts setSelectionExtraSlots); any that don't fit overflow into this compact row.
+    const extras = document.createElement('div');
+    extras.className = 'sel-extras';
+    extras.hidden = true;
+    detail.appendChild(extras);
 
-    // [followcam] begin — Follow toggle: shown only while the selection is a ship or fleet (bases and colonies
+    // [followcam] begin — Follow toggle: offered only while the selection is a ship or fleet (bases and colonies
     // don't move). Toggling flips the shared FollowState the Main View recentres the camera on every frame
     // (mainView.ts update()); a manual pan/edge-scroll/keyboard-scroll, a map click, a different selection, or
     // the target's loss all turn it off elsewhere (mainView.ts, keyboard.ts, onSelectionChange below).
-    const followRow = document.createElement('div');
-    followRow.className = 'hud-follow-row';
-    const followButton = document.createElement('button');
-    followButton.type = 'button';
-    followButton.className = 'hud-follow-toggle';
-    followRow.appendChild(followButton);
-    panel.appendChild(followRow);
     /** The current selection's follow identity: the ShipGroup for a fleet (so a lead-ship change mid-fleet
      * doesn't look like "a different target"), else the selected ship/base (bases excluded: they never move). */
     const followTarget = (): FollowTarget | null => {
@@ -1067,38 +1143,7 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         if (sel.builtObject && sel.builtObject.role !== BuiltObjectRole.Base) return sel.builtObject;
         return null;
     };
-    const syncFollowButton = (): void => {
-        const state = wiring.followState;
-        const target = followTarget();
-        if (!state || !target) {
-            followRow.style.display = 'none';
-            return;
-        }
-        followRow.style.display = '';
-        const active = isFollowingTarget(state, target);
-        followButton.classList.toggle('hud-follow-toggle-active', active);
-        followButton.textContent = active ? '⌖ Following' : '⌖ Follow';
-        followButton.title = active
-            ? 'Stop following (pan, click the map, or select something else)'
-            : 'Follow this while it moves or warps';
-    };
-    followButton.addEventListener('click', () => {
-        const state = wiring.followState;
-        const target = followTarget();
-        if (!state || !target) return;
-        toggleFollow(state, target);
-        syncFollowButton();
-    });
     // [followcam] end
-
-    const body = document.createElement('div');
-    body.className = 'hud-selection-body';
-    panel.appendChild(body);
-
-    // [ordermenu] begin
-    // 17c: btnSelectionAction1-8 (Main.Part3.cs 1120-3805, method_593) under the rows; src/ui/orderMenu.ts.
-    panel.appendChild(createSelectionActionBar());
-    // [ordermenu] end
 
     // [charters] begin
     // Scenario 19c: "Charter a company…" for a selected unowned planet (tasks/19c-chartered-companies.md §8.1).
@@ -1106,29 +1151,87 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         () => ({
             galaxy: wiring.galaxy ?? null,
             player: wiring.galaxy?.playerEmpire ?? null,
-            habitat: currentSelection !== null && currentSelection.builtObject === undefined && currentSelection.shipGroup === undefined && currentSelection.builtObjects === undefined ? currentSelection.habitat : null,
+            habitat: currentSelection !== null && currentSelection.builtObject === undefined && currentSelection.shipGroup === undefined && currentSelection.builtObjects === undefined && currentSelection.creature === undefined ? currentSelection.habitat : null,
         }),
         (id) => wiring.gameData?.resources.find((d) => d.resourceId === id)?.name ?? `#${id}`,
     );
-    panel.appendChild(charterButton.element);
     // [charters] end
 
-    // Footer: ‹ › cycler pair + seven cycle chips.
-    const footer = document.createElement('div');
-    footer.className = 'hud-selection-footer';
-    const back = makeGlyphButton('‹', 'Previous');
-    const fwd = makeGlyphButton('›', 'Next');
-    let activeChip: CycleKind = 'colonies';
+    /** The dispatch orders of the selected habitat (sim/player/habitatDispatch.ts), resolved on a selection change. */
+    let dispatchSlots: SelectionExtraSlot[] = [];
+    const extraSlots = (): SelectionExtraSlot[] => {
+        const out: SelectionExtraSlot[] = [...dispatchSlots];
+        if (!charterButton.element.hidden) {
+            const el = charterButton.element as HTMLButtonElement;
+            out.push({ label: 'Charter', title: el.title || 'Charter a company…', disabled: el.disabled, onClick: () => el.click() });
+        }
+        return out;
+    };
+    // The extras beyond the empty slots: a popup over the strip opened by the "More…" slot, or (no empty slot at all)
+    // a compact row at the bottom of the info area.
+    const more = document.createElement('div');
+    more.className = 'sel-more';
+    more.hidden = true;
+    panel.appendChild(more);
+    let moreOpen = false;
+    const extraButton = (x: SelectionExtraSlot, after: () => void): HTMLButtonElement => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'sel-extra-btn';
+        if (x.active) b.classList.add('hud-follow-toggle-active');
+        b.textContent = x.label;
+        b.title = x.title;
+        b.disabled = x.disabled === true;
+        b.addEventListener('click', (e) => {
+            e.stopPropagation();
+            x.onClick();
+            after();
+        });
+        return b;
+    };
+    setSelectionExtraSlots(
+        extraSlots,
+        (rest, behindMore) => {
+            const inline = behindMore ? [] : rest;
+            extras.hidden = inline.length === 0;
+            extras.replaceChildren(...inline.map((x) => extraButton(x, () => refreshSelectionActionBar())));
+            const popup = behindMore ? rest : [];
+            if (popup.length === 0) moreOpen = false;
+            more.hidden = !moreOpen || popup.length === 0;
+            more.replaceChildren(...popup.map((x) => extraButton(x, () => {
+                moreOpen = false;
+                more.hidden = true;
+            })));
+        },
+        () => {
+            moreOpen = !moreOpen;
+            more.hidden = !moreOpen || more.childElementCount === 0;
+        },
+    );
+
+    // [ordermenu] begin
+    // 17c: btnSelectionAction1-8 (Main.Part3.cs 1120-3805, method_593), 35×28 each from (70, pnlInfoPanel.Bottom + 2).
+    const actionBar = createSelectionActionBar();
+    actionBar.classList.add('sel-actions');
+    panel.appendChild(actionBar);
+    if (wiring.galaxy) {
+        const galaxy = wiring.galaxy;
+        setSelectionIconResolvers({
+            troop: (t: unknown) => (t instanceof Troop ? troopImageUrl(t, galaxy.races.length, { concordArt: raceHasConcordArt(galaxy, (t.race as Race | null)?.name) }) : null),
+            ship: (d: { pictureRef: number; subRole: number }) => builtObjectImageUrl(resolveDrawPictureRef({ pictureRef: d.pictureRef, isPlanetDestroyer: false, subRole: d.subRole, builtObjectID: 0 })),
+        });
+    }
+    // [ordermenu] end
+
     // Idle-ship cycler position (Main builtObject_4 / shipGroup_1).
     let idleCycle: IdleCycleState = { builtObject: null, shipGroup: null };
     // Task 13c: each BuiltObject cycle kind (bases/military/construction/other)
     // remembers its own last-cycled object, like the original's builtObject_0..3.
     const lastCycled = new Map<CycleKind, BuiltObject>();
-    /** Step through a cycle list: select the next item (same hook as
-     * click-to-select, so the panel updates). With `moveView` (the Ctrl
-     * variants of C/P/M/Y/X/F/I and the ‹ › buttons) the camera also centres
-     * on it at System zoom. */
-    const stepCycle = (dir: 1 | -1, kind: CycleKind = activeChip, moveView = true): void => {
+    /** Step through a cycle list: select the next item (same hook as click-to-select, so the panel updates). With
+     * `moveView` (the Ctrl variants of C/P/M/Y/X/F/I and the panel's cycle buttons) the camera also centres on it at
+     * System zoom. */
+    const stepCycle = (dir: 1 | -1, kind: CycleKind, moveView = true): void => {
         if (kind !== 'colonies') {
             // [15c] Port of Main.Part8.cs:1243 btnCycleShipGroups_Click (F / Shift+F / Ctrl+F).
             if (kind === 'fleets') {
@@ -1205,31 +1308,57 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
             cam.zoomAt(SYSTEM_LEVEL_ZOOM, cam.width / 2, cam.height / 2);
         }
     };
-    back.addEventListener('click', () => {
-        stepCycle(-1);
+
+    // Top row: btnSelectionBack / btnSelectionForward (138×28 at x 71 / 213, Main.Part10.cs 1505/1535 — the N/B
+    // keys) and btnSelectionPanelSize (56×28 at x 353).
+    const histBack = glassButton('sel-hist', 61, 0, 138, 28, 'back.png', 'Previous selection (B)', 'left', () => runShipCommand('selectionBackward'));
+    const histFwd = glassButton('sel-hist', 203, 0, 138, 28, 'forward.png', 'Next selection (N)', 'right', () => runShipCommand('selectionForward'));
+    const sizeBtn = glassButton('sel-size', 343, 0, 56, 28, 'selectionPanelSize.png', 'Shrink Selection Panel', 'all', () => {
+        const small = !selectionPanelSmall();
+        try {
+            localStorage.setItem(PANEL_SIZE_KEY, small ? '1' : '0');
+        } catch {
+            // private mode: the size just doesn't persist
+        }
+        sizeBtn.title = small ? 'Enlarge Selection Panel' : 'Shrink Selection Panel';
+        panel.dispatchEvent(new CustomEvent('sel-resize', { bubbles: false }));
     });
-    fwd.addEventListener('click', () => {
-        stepCycle(1);
+    sizeBtn.title = selectionPanelSmall() ? 'Enlarge Selection Panel' : 'Shrink Selection Panel';
+    panel.append(histBack, histFwd, sizeBtn);
+    // Left column: btnLockView (Main.Part9.cs 3165, the L key) + the seven "‹" cycle buttons; right column:
+    // btnSelectNearestMilitary (Main.Part4.cs 2330, Z) + the seven "›" cycle buttons; btnCycleShipStance under them.
+    // Small tweak: for a ship / fleet the lock is the follow camera ([followcam]: it keeps following through warps);
+    // for anything else the original's view lock (L).
+    const lockActive = (): boolean => {
+        const t = followTarget();
+        return isViewLocked() || (t !== null && wiring.followState !== undefined && isFollowingTarget(wiring.followState, t));
+    };
+    const lockBtn = glassButton('sel-lock', 0, 36, 56, 28, 'lockView.png', 'Lock the view on the selection (L)', 'left', () => {
+        const t = followTarget();
+        const state = wiring.followState;
+        if (t !== null && state !== undefined) toggleFollow(state, t);
+        else runShipCommand('lockView');
+        syncLock();
     });
-    footer.append(back, fwd);
-    for (const chip of CYCLE_CHIPS) {
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.className = 'hud-chip';
-        b.dataset.kind = chip.key;
-        b.title = CYCLE_CHIP_HINTS[chip.key];
-        // Text pill, not the original's cycle<X>.png art: that art bakes a
-        // "›" arrow into each icon (task 05d).
-        b.textContent = chip.label;
-        b.addEventListener('click', () => {
-            activeChip = chip.key;
-            footer.querySelectorAll('.hud-chip').forEach((c) => c.classList.remove('hud-chip-active'));
-            b.classList.add('hud-chip-active');
-        });
-        if (chip.key === activeChip) b.classList.add('hud-chip-active');
-        footer.appendChild(b);
-    }
-    panel.appendChild(footer);
+    const syncLock = (): void => {
+        lockBtn.classList.toggle('sel-glass-on', lockActive());
+        lockBtn.title = followTarget() !== null
+            ? (lockActive() ? 'Following the selection (click, pan or select something else to stop)' : 'Follow the selection while it moves or warps')
+            : 'Lock the view on the selection (L)';
+    };
+    panel.appendChild(lockBtn);
+    panel.appendChild(glassButton('sel-nearest', 343, 36, 56, 28, 'nearestMilitary.png', 'Select the nearest military ship (Z)', 'right', () => runShipCommand('selectNearestMilitaryShip')));
+    SELECTION_CYCLE_BUTTONS.forEach((c, i) => {
+        const y = 66 + 30 * i;
+        panel.appendChild(glassButton('sel-cycle', 0, y, 56, 28, `${c.image}Back.png`, `${CYCLE_CHIP_HINTS[c.kind]} (previous)`, 'left', () => stepCycle(-1, c.kind, true)));
+        panel.appendChild(glassButton('sel-cycle', 343, y, 56, 28, `${c.image}.png`, `${CYCLE_CHIP_HINTS[c.kind]} (next)`, 'right', () => stepCycle(1, c.kind, true)));
+    });
+    const stanceBtn = glassButton('sel-stance', 343, 276, 56, 28, 'shipStance.png', 'Cycle the engagement range (,)', 'all', () => {
+        runShipCommand('cycleEngagementStance');
+        refresh();
+    });
+    panel.appendChild(stanceBtn);
+
     // [16c] Select a construction site: a colony selects itself; a ship/base selects its
     // nearest system with builtObject set (as the Bases cycler does). Optionally move the view.
     stellarObjectSelectHandler = (target, moveView) => {
@@ -1253,14 +1382,9 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
     };
     // [/16c]
 
-    // Task 12n: the C/P/M/Y/X/F/I hotkeys route here. A plain/Shift cycle
-    // selects without moving the view; Ctrl (MoveView) also moves it. The
-    // chip is switched to the cycled list and highlighted like a chip click,
-    // so the panel shows which list is cycling.
+    // Task 12n: the C/P/M/Y/X/F/I hotkeys route here. A plain/Shift cycle selects without moving the view; Ctrl
+    // (MoveView) also moves it.
     setCycleHandler((kind, dir, moveView) => {
-        activeChip = kind;
-        footer.querySelectorAll('.hud-chip').forEach((c) => c.classList.remove('hud-chip-active'));
-        footer.querySelector(`.hud-chip[data-kind="${kind}"]`)?.classList.add('hud-chip-active');
         stepCycle(dir, kind, moveView);
     });
     // [15c] Select a fleet: the lead ship's nearest system, builtObject = lead ship
@@ -1307,85 +1431,64 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         }
     };
 
-    // Refresh the header/body from the current selection.
+    // A hotspot click (InfoPanel.AddHotspot objects): select the object (method_208), or open the empire.
+    const onTarget = (t: InfoTarget): void => {
+        if (t.kind === 'empire') {
+            const player = wiring.galaxy?.playerEmpire ?? null;
+            if (player === null) return;
+            if (t.empire === player) toggleEmpireSummary();
+            else toggleDiplomacyScreen({ player, selectedEmpire: t.empire });
+            return;
+        }
+        const o = t.obj;
+        if (o instanceof ShipGroup) shipGroupSelectHandler?.(o, false);
+        else if (o instanceof Habitat) habitatSelectHandler?.(o, false);
+        else stellarObjectSelectHandler?.(o, false);
+    };
+    const automationTarget = (): BuiltObject | ShipGroup | null => currentSelection?.shipGroup ?? currentSelection?.builtObject ?? null;
+    const toggleAutomation = (): void => {
+        const target = automationTarget();
+        const player = wiring.galaxy?.playerEmpire;
+        if (!target || !player) return;
+        const { automated } = automationToggleLabel(target);
+        issuePlayerCommand(player.galaxy, player, 'shipAction', [target, createShipAction(automated ? ShipActionType.UnautomateShip : ShipActionType.AutomateShip, target), false, undefined], () => {
+            refresh();
+            refreshSelectionActionBar();
+        });
+    };
+
+    // Refresh the info area from the current selection (InfoPanel.SetData + DrawPanel).
     const gameData = wiring.gameData;
+    const resourceDef = (id: number): { name: string; pictureRef: number } | null => gameData?.resources.find((d) => d.resourceId === id) ?? null;
+    let lastScroll = 0;
     const refresh = (): void => {
         const sel = currentSelection;
-        if (!sel) {
-            nameEl.textContent = 'Nothing selected';
-            nameEl.classList.add('hud-muted');
-            subEl.textContent = '';
-            body.replaceChildren();
-            syncFollowButton(); // [followcam]
-            return;
-        }
-        const h = sel.habitat;
-        if (sel.builtObjects) {
-            // InfoPanel.cs 5059 DrawBuiltObjectSelection: "(Multiple Ships)", the summary, then one entry per ship
-            // ("click to select").
-            renderMultipleShips(sel.builtObjects);
-            syncFollowButton(); // [followcam]
-            return;
-        }
-        if (sel.creature) {
-            // InfoPanel.cs 3453 DrawCreature: the name as title; the type (ResolveDescription) and system under it.
-            nameEl.textContent = sel.creature.name;
-            nameEl.classList.remove('hud-muted');
-            subEl.textContent = `${resolveCreatureDescription(sel.creature.type)} · ${sel.system.systemStar.name} system`;
-        } else // [15c] fleet header: name + ship count and system.
-        if (sel.shipGroup) {
-            nameEl.textContent = fleetName(sel.shipGroup);
-            nameEl.classList.remove('hud-muted');
-            subEl.textContent = `Fleet · ${countLabel(sel.shipGroup.ships.length, 'ship')} · ${fleetSystemName(sel.shipGroup)}`;
-        } else // [/15c]
-        if (sel.builtObject) {
-            // Task 13c: ship/base header — name + sub-role label and system.
-            nameEl.textContent = sel.builtObject.name;
-            nameEl.classList.remove('hud-muted');
-            subEl.textContent = `${subRoleLabel(sel.builtObject.subRole)} · ${sel.system.systemStar.name} system`;
+        const galaxy = wiring.galaxy;
+        const player = galaxy?.playerEmpire ?? null;
+        const scroll = content.querySelector('.sel-scroll');
+        if (scroll !== null) lastScroll = scroll.scrollTop;
+        if (!sel || !galaxy || player === null) {
+            renderInfoModel(content, null, { galaxy: galaxy as Galaxy, onTarget });
         } else {
-            nameEl.textContent = h.name;
-            nameEl.classList.remove('hud-muted');
-            const typeName = habitatTypeLabel(h.type, h.category);
-            subEl.textContent = `${typeName} · ${sel.system.systemStar.name} system`;
+            const model = buildInfoModel({ galaxy, player, resource: resourceDef }, sel, sel.creature ? creaturePictureUrl(sel.creature) : null);
+            renderInfoModel(content, model, { galaxy, onTarget, onAutomate: model.automated ? toggleAutomation : undefined });
+            const next = content.querySelector('.sel-scroll');
+            if (next !== null) next.scrollTop = lastScroll;
         }
-        body.replaceChildren();
-        for (const row of buildSelectionRows(sel, gameData, wiring.galaxy?.playerEmpire ?? null)) {
-            body.appendChild(row.element);
-        }
-        if (!sel.creature && !sel.shipGroup && !sel.builtObject && wiring.galaxy?.playerEmpire) {
-            const bar = habitatDispatchBar(wiring.galaxy, wiring.galaxy.playerEmpire, h);
-            if (bar !== null) body.appendChild(bar);
-        }
-        syncFollowButton(); // [followcam]
+        // The stance button only for the player's military ship / fleet (Main.Part10.cs: btnCycleShipStance.Visible).
+        const target = automationTarget();
+        stanceBtn.style.visibility = target !== null && player !== null
+            && (target instanceof ShipGroup ? target.empire === player : target.empire === player && target.role === BuiltObjectRole.Military) ? '' : 'hidden';
+        syncLock();
     };
-    const renderMultipleShips = (ships: BuiltObject[]): void => {
-        const player = wiring.galaxy?.playerEmpire ?? null;
-        nameEl.textContent = `${ships.length} ships selected`;
-        nameEl.classList.remove('hud-muted');
-        subEl.textContent = multipleShipsSummary(ships, wiring.galaxy ?? null, ships[0]?.empire === player);
-        const list = document.createElement('div');
-        list.className = 'hud-multi-list';
-        for (const bo of ships) {
-            const row = document.createElement('button');
-            row.type = 'button';
-            row.className = 'hud-multi-row';
-            if (bo.hasBeenDestroyed) row.classList.add('hud-muted');
-            const name = document.createElement('span');
-            name.className = 'hud-multi-name';
-            name.textContent = bo.name;
-            const role = document.createElement('span');
-            role.className = 'hud-multi-role';
-            role.textContent = subRoleLabel(bo.subRole);
-            row.append(name, role);
-            row.title = `${bo.name} (click to select)`;
-            row.addEventListener('click', (e) => {
-                e.stopPropagation();
-                if (!bo.hasBeenDestroyed) selectStellarObject(bo, false);
-            });
-            list.appendChild(row);
-        }
-        body.replaceChildren(list);
+    /** The dispatch slots: rebuilt on a selection change (the dispatch options re-resolve at click time). */
+    const rebuildExtras = (): void => {
+        const sel = currentSelection;
+        const galaxy = wiring.galaxy;
+        const player = galaxy?.playerEmpire ?? null;
+        dispatchSlots = sel && galaxy && player !== null && !sel.creature && !sel.shipGroup && !sel.builtObject && !sel.builtObjects
+            ? habitatDispatchSlots(galaxy, player, sel.habitat)
+            : [];
     };
     builtObjectListSelectHandler = (list) => {
         const galaxy = wiring.galaxy;
@@ -1403,16 +1506,25 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
         wiring.onSelectionChange?.({ habitat: system.systemStar, system, builtObjects: list });
     };
     wiring.onSelectionChange = (sel) => {
+        // A star picked at galaxy / sector zoom is the C# SystemInfo selection (DrawSystemInfo); at system zoom the
+        // star itself (DrawHabitat).
+        if (sel !== null && sel.systemInfo === undefined && sel.habitat === sel.system.systemStar && !sel.builtObject && !sel.shipGroup && !sel.creature && !sel.builtObjects) {
+            const cam = wiring.camera;
+            sel = { ...sel, systemInfo: cam !== undefined && cam.zoom < SYSTEM_INFO_ZOOM };
+        }
+        const changed = currentSelection !== sel;
         currentSelection = sel;
         // [followcam] a selection change stops following unless it's the same object already followed.
         if (wiring.followState) followOnSelectionChanged(wiring.followState, followTarget());
+        lastScroll = 0;
         refresh();
-        refreshSelectionActionBar(); // [ordermenu]
+        if (changed) rebuildExtras();
         charterButton.update(); // [charters]
+        refreshSelectionActionBar(); // [ordermenu]
         wiring.afterSelectionChange?.(sel);
     };
-    // Task 14b: ship/base status (speed, fuel, mission) changes every tick — re-render
-    // the rows twice a second while one is selected. Stops once the HUD is removed.
+    // Main.Part11.cs 661: the panel redraws twice a second (ship status, colony troops, building queues). Stops
+    // once the HUD is removed.
     const liveTimer = setInterval(() => {
         if (!panel.isConnected) {
             clearInterval(liveTimer);
@@ -1424,17 +1536,33 @@ function buildSelectionPanel(wiring: HudWiring): HTMLElement {
             else refresh();
             return;
         }
-        if (currentSelection?.builtObject) refresh();
         const multi = currentSelection?.builtObjects;
         if (multi) {
             // Destroyed / lost ships drop out of the multi-selection (one left: a single selection).
             const alive = multi.filter((bo) => !bo.hasBeenDestroyed && bo.empire === multi[0].empire);
-            if (alive.length !== multi.length) builtObjectListSelectHandler?.(alive);
-            else subEl.textContent = multipleShipsSummary(multi, wiring.galaxy ?? null, multi[0]?.empire === (wiring.galaxy?.playerEmpire ?? null));
+            if (alive.length !== multi.length) {
+                builtObjectListSelectHandler?.(alive);
+                return;
+            }
         }
+        // Don't redraw under the pointer while it hovers a hotspot (its tooltip would flicker).
+        if (content.querySelector('.sel-hot:hover') === null) refresh();
+        else syncLock();
     }, 500);
+    rebuildExtras();
     refresh();
     return panel;
+}
+
+/** Below this camera zoom a picked system star is the system as a whole (DrawSystemInfo). */
+export const SYSTEM_INFO_ZOOM = 1 / 70;
+
+/** A creature's picture for the panel (its first animation frame). */
+function creaturePictureUrl(c: Creature): string | null {
+    const idx = creatureFrameSetIndexes(c.type);
+    if (idx === null) return null;
+    const set = CREATURE_FRAME_SETS[idx.moving];
+    return set !== undefined ? (creatureFrameUrls(set)[0] ?? null) : null;
 }
 
 /** Bottom-right options list: View rows + overlay toggles. */
@@ -1765,60 +1893,12 @@ export function builtObjectRows(bo: BuiltObject): { label: string; value: string
 // [troopart] Troop images + invasion status (colony panel and the ship panel's troop transports).
 // ---------------------------------------------------------------------------------------------------------------
 
-/**
- * Port of InfoPanel.cs:2609 DrawTroopsAgents (the icon strip only — Characters/InvadingCharacters get their own
- * icons there too, but this panel has no character UI yet; TODO(port): Characters / InvadingCharacters icons,
- * InfoPanel.cs:2609 DrawTroopsAgents). One small race/type image per troop: a garrisoned troop gets the green
- * tint (`Color.FromArgb(0,128,0)` behind the icon, lines 2841/2870), a troop being recruited is dimmed (the C#'s
- * separate `_TroopImagesFaded*` arrays; done here with CSS opacity), an invading troop sits on the red chip
- * (`Color.Red`, lines 2882-2892). `label` is "Troops" for a colony (DrawTroopsAgents' own label) or
- * "Troops {used}/{capacity}" for a ship (BaconInfoPanel.cs:666 the `prefix` string, GameText "Troop UNITS
- * CAPACITY" = "{0}/{1}").
- */
-function troopsAgentsRow(galaxy: Galaxy, label: string, troops: readonly Troop[], recruiting: readonly Troop[], invading: readonly Troop[]): SelectionRow | null {
-    if (troops.length === 0 && recruiting.length === 0 && invading.length === 0) return null;
-    const raceCount = galaxy.races.length;
-    const line = document.createElement('div');
-    line.className = 'hud-money-row hud-troop-row';
-    const k = document.createElement('span');
-    k.className = 'hud-label';
-    k.textContent = label;
-    const icons = document.createElement('span');
-    icons.className = 'hud-troop-icons';
-    const addIcon = (t: Troop, cls: string, title: string): void => {
-        const img = document.createElement('img');
-        img.className = `hud-troop-icon ${cls}`.trim();
-        const concordArt = raceHasConcordArt(galaxy, (t.race as Race | null)?.name);
-        img.src = troopImageUrl(t, raceCount, { concordArt });
-        img.alt = '';
-        img.title = title;
-        wireTroopImageFallback(img, t, raceCount, { concordArt });
-        icons.appendChild(img);
-    };
-    for (const t of recruiting) addIcon(t, 'hud-troop-recruiting', `Recruiting ${t.name}`);
-    for (const t of troops) addIcon(t, t.garrisoned ? 'hud-troop-garrisoned' : '', t.name);
-    for (const t of invading) addIcon(t, 'hud-troop-invading', `Invading ${t.name}`);
-    line.append(k, icons);
-    return { element: line };
-}
 
 function nonNullTroops(list: TroopList | null): Troop[] {
     return list !== null ? list.items.filter((t): t is Troop => t != null) : [];
 }
 
-/** Colony panel: InfoPanel.cs:4418 `DrawTroopsAgents(labelWidthHabitat, habitat.Troops, habitat.TroopsToRecruit,
- *  habitat.InvadingTroops, habitat.Characters, habitat.InvadingCharacters, …)`. */
-function colonyTroopIconsRow(h: Habitat, galaxy: Galaxy): SelectionRow | null {
-    return troopsAgentsRow(galaxy, 'Troops', nonNullTroops(h.troops), nonNullTroops(h.troopsToRecruit), nonNullTroops(h.invadingTroops));
-}
 
-/** Ship/base panel: BaconInfoPanel.cs:661-669 (shown when `TroopCapacity > 0`; the prefix is "{used}/{capacity}",
- *  GameText "Troop UNITS CAPACITY"). Never has recruiting/invading troops of its own. */
-function builtObjectTroopIconsRow(bo: BuiltObject, galaxy: Galaxy): SelectionRow | null {
-    if (bo.troopCapacity <= 0) return null;
-    const used = bo.troopCapacity - bo.troopCapacityRemaining;
-    return troopsAgentsRow(galaxy, `Troops ${used}/${bo.troopCapacity}`, nonNullTroops(bo.troops), [], []);
-}
 
 export interface TroopStrengthText {
     /** "Show {colony} Ground/Battle Report  (Strength: …)". */
@@ -1891,31 +1971,7 @@ export function buildingQueueText(queue: ConstructionQueue | null): string | nul
     return text;
 }
 
-function buildingQueueRow(queue: ConstructionQueue | null): SelectionRow | null {
-    const text = buildingQueueText(queue);
-    if (text === null) return null;
-    const line = document.createElement('div');
-    line.className = 'hud-money-row';
-    const k = document.createElement('span');
-    k.className = 'hud-label';
-    k.textContent = 'Building';
-    const v = document.createElement('span');
-    v.className = 'hud-value';
-    v.textContent = text;
-    v.title = text;
-    line.append(k, v);
-    return { element: line };
-}
 
-function troopStrengthRow(h: Habitat, galaxy: Galaxy): SelectionRow | null {
-    const t = troopStrengthText(h, galaxy);
-    if (t === null) return null;
-    const line = document.createElement('div');
-    line.className = t.invading ? 'hud-troop-strength hud-invasion-alert' : 'hud-troop-strength';
-    line.textContent = t.text;
-    line.title = t.text;
-    return { element: line };
-}
 
 export interface InvasionVsText {
     /** "  {defend}   vs   {attack}" (InfoPanel.cs:4489 description7). */
@@ -1955,15 +2011,6 @@ export function invasionVsText(h: Habitat, galaxy: Galaxy, player: Empire | null
     return { text: `  ${defendText}   vs   ${attackText}`, title: `Show ${h.name} Battle Report` };
 }
 
-function invasionVsRow(h: Habitat, galaxy: Galaxy, player: Empire | null): SelectionRow | null {
-    const v = invasionVsText(h, galaxy, player);
-    if (v === null) return null;
-    const line = document.createElement('div');
-    line.className = 'hud-invasion-alert hud-invasion-vs';
-    line.textContent = v.text;
-    line.title = v.title;
-    return { element: line };
-}
 // [/troopart]
 
 // Port of Galaxy.2.cs ResolveDescription(BuiltObjectMissionType) (GameText.txt values)
@@ -2032,27 +2079,6 @@ export function automationToggleLabel(target: BuiltObject | ShipGroup): { automa
     return { automated, label: automated ? 'Automated: On (click to turn off)' : 'Automated: Off (click to automate)' };
 }
 
-function automationRow(target: BuiltObject | ShipGroup, player: Empire): SelectionRow | null {
-    const bo = target instanceof ShipGroup ? target.leadShip : target;
-    if (bo === null || bo.role === BuiltObjectRole.Base || (target instanceof ShipGroup ? target.empire : bo.owner) !== player) return null;
-    const { automated, label } = automationToggleLabel(target);
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'hud-automation-toggle' + (automated ? ' hud-automation-on' : '');
-    btn.textContent = label;
-    btn.addEventListener('click', () => {
-        const action = createShipAction(automated ? ShipActionType.UnautomateShip : ShipActionType.AutomateShip, target);
-        issuePlayerCommand(player.galaxy, player, 'shipAction', [target, action, false, undefined], () => {
-            const now = automationToggleLabel(target);
-            btn.textContent = now.label;
-            btn.classList.toggle('hud-automation-on', now.automated);
-        });
-    });
-    const line = document.createElement('div');
-    line.className = 'hud-money-row';
-    line.appendChild(btn);
-    return { element: line };
-}
 
 /** Hyperdrive status of a ship/base: "No hyperdrive" (WarpSpeed <= 0, BaconInfoPanel.cs:645), "Blocked" (hyperjump
  * disabled here / CanHyperJump false), "Charging (N s)" while the jump countdown (BuiltObject._HyperjumpCountdown, set
@@ -2380,19 +2406,7 @@ export function resourceIconUrl(pictureRef: number): string {
     return `/assets/dwu/images/ui/resources/Resource_${pictureRef}.bmp`;
 }
 
-/** Industry label for the research-bonus row (IndustryType member names). */
-function industryLabel(industry: IndustryType): string {
-    for (const key of Object.keys(IndustryType)) {
-        if ((IndustryType as Record<string, unknown>)[key] === industry) {
-            return key;
-        }
-    }
-    return '';
-}
 
-interface SelectionRow {
-    element: HTMLElement;
-}
 
 /** CSS colour for a packed RGB empire mainColor, decoded the same way as the
  * Empires list swatch (empiresList.ts). */
@@ -2451,177 +2465,6 @@ export function systemRows(sys: SystemInfo): { label: string; value: string; col
     return rows;
 }
 
-/** Build the selection panel's detail rows in the original's order, skipping
- * empty ones: Quality (planets/moons), Diameter, Resources, Natives, Scenic,
- * Research bonus; stars additionally show their planet count. Colonies add
- * Owner / Status / Population rows after the header (task 12l). */
-export function buildSelectionRows(sel: Selection, gameData?: GameData, player: Empire | null = null): SelectionRow[] {
-    const h = sel.habitat;
-    const rows: SelectionRow[] = [];
-    const addText = (label: string, value: string): void => {
-        if (value === '') return; // hide empty rows
-        const line = document.createElement('div');
-        line.className = 'hud-money-row';
-        const k = document.createElement('span');
-        k.className = 'hud-label';
-        k.textContent = label;
-        const v = document.createElement('span');
-        v.className = 'hud-value';
-        v.textContent = value;
-        line.append(k, v);
-        rows.push({ element: line });
-    };
-
-    // Owner / Status / Population for colonies (task 12l), right after the
-    // name/type header and before Quality. The owner row carries a 10px swatch
-    // in the empire's main colour, decoded like the Empires list.
-    const addColorRow = (row: { label: string; value: string; color?: number }): void => {
-        const line = document.createElement('div');
-        line.className = 'hud-money-row';
-        const k = document.createElement('span');
-        k.className = 'hud-label';
-        if (row.color !== undefined) {
-            const swatch = document.createElement('span');
-            swatch.className = 'hud-owner-swatch';
-            swatch.style.background = rgbCss(row.color);
-            k.appendChild(swatch);
-        }
-        k.append(document.createTextNode(row.label));
-        const v = document.createElement('span');
-        v.className = 'hud-value';
-        v.textContent = row.value;
-        line.append(k, v);
-        rows.push({ element: line });
-    };
-    // A selected creature shows its own rows (InfoPanel.cs 3453 DrawCreature + type and location).
-    if (sel.creature) {
-        for (const r of creatureSelectionRows(sel.creature)) addColorRow(r);
-        return rows;
-    }
-    // [15c] A selected fleet shows its own rows instead of the lead ship's.
-    if (sel.shipGroup) {
-        for (const r of shipGroupSelectionRows(sel.shipGroup, player)) addColorRow(r);
-        if (player !== null) {
-            const a = automationRow(sel.shipGroup, player);
-            if (a !== null) rows.push(a);
-        }
-        return rows;
-    }
-    // [/15c]
-    // Task 13c: a selected ship/base shows only its own rows (Owner / Design /
-    // Size / Location / Troops) instead of the habitat's detail rows.
-    if (sel.builtObject) {
-        for (const r of builtObjectRows(sel.builtObject)) addColorRow(r);
-        for (const r of threatRows(sel.builtObject, player)) addColorRow(r);
-        for (const r of builtObjectStatusRows(sel.builtObject, player)) addColorRow(r);
-        if (player !== null) {
-            const a = automationRow(sel.builtObject, player);
-            if (a !== null) rows.push(a);
-        }
-        // A directly-selected shipyard base's own build queue (InfoPanel.cs:3480-3495 DrawBuiltObjectList
-        // "Building", the base-panel twin of the colony one above) — same gap, a selected shipyard station had
-        // no indicator for what it was building either.
-        {
-            const buildingRow = buildingQueueRow(sel.builtObject.constructionQueue as ConstructionQueue | null);
-            if (buildingRow !== null) rows.push(buildingRow);
-        }
-        if (player !== null) for (const r of wreckSalvageRows(player.galaxy, sel.builtObject, player)) addColorRow(r); // [wreckage] 19e-7
-        // [troopart] Ship/base troop transports (BaconInfoPanel.cs:661-669 DrawTroopsAgents).
-        if (player !== null) {
-            const r = builtObjectTroopIconsRow(sel.builtObject, player.galaxy);
-            if (r !== null) rows.push(r);
-        }
-        return rows;
-    }
-    for (const orow of ownerRows(h)) addColorRow(orow);
-    for (const r of threatRows(h, player)) addColorRow(r);
-
-    // Quality: baseQuality × 100 as %, planets/moons only.
-    if (h.category === HabitatCategoryType.Planet || h.category === HabitatCategoryType.Moon) {
-        addText('Quality', `${Math.round(h.baseQuality * 100)}%`);
-    }
-    addText('Diameter', `${h.diameter}`);
-
-    // Stars: system rows from the cached SystemInfo fields (task 12r).
-    if (h.category === HabitatCategoryType.Star) {
-        for (const r of systemRows(sel.system)) addColorRow(r);
-    }
-
-    // Resources: one small icon per entry, abundance % as tooltip/label.
-    if (h.resources.length > 0) {
-        const line = document.createElement('div');
-        line.className = 'hud-money-row hud-resource-row';
-        const k = document.createElement('span');
-        k.className = 'hud-label';
-        k.textContent = 'Resources';
-        const icons = document.createElement('span');
-        icons.className = 'hud-resource-icons';
-        for (const r of h.resources) {
-            const def = gameData?.resources.find((d) => d.resourceId === r.resourceId);
-            const img = document.createElement('img');
-            img.src = def ? resourceIconUrl(def.pictureRef) : '';
-            img.alt = def?.name ?? `Resource ${r.resourceId}`;
-            img.title = `${def?.name ?? `Resource ${r.resourceId}`} (${abundancePercentText(r.abundance)})`;
-            if (!def) img.style.display = 'none';
-            const pct = document.createElement('span');
-            pct.className = 'hud-resource-pct';
-            pct.textContent = abundancePercentText(r.abundance);
-            // [rimTrader] begin
-            const rimMark = player !== null ? rimGoodMarker(player.galaxy, r.resourceId) : '';
-            if (rimMark !== '') {
-                img.title += ` ${rimMark}`;
-                pct.textContent += ` ${rimMark}`;
-            }
-            // [rimTrader] end
-            icons.append(img, pct);
-        }
-        line.append(k, icons);
-        rows.push({ element: line });
-    }
-
-    // Natives: each population entry — race name + formatted amount.
-    if (h.population.items.length > 0) {
-        const natives = h.population.items
-            .map((p) => `${p.race.name}: ${formatPopulation(p.amount)}`)
-            .join(', ');
-        // Owned habitats list their population's races; unowned ones natives.
-        addText(h.empire ? 'Races' : 'Natives', natives);
-    }
-
-    // [troopart] begin
-    // Colony troops + ground-invasion status: InfoPanel.cs:4404-4500 (right after Facilities in the original;
-    // Facilities has no row in this panel, so this sits after Races/Natives, the nearest population-related row).
-    if (player !== null) {
-        const galaxy = player.galaxy;
-        const iconsRow = colonyTroopIconsRow(h, galaxy);
-        if (iconsRow !== null) rows.push(iconsRow);
-        const strengthRow = troopStrengthRow(h, galaxy);
-        if (strengthRow !== null) rows.push(strengthRow);
-        const vsRow = invasionVsRow(h, galaxy, player);
-        if (vsRow !== null) rows.push(vsRow);
-    }
-    // [/troopart]
-
-    // Colony build queue (BaconInfoPanel.cs:4502-4516 DrawBuiltObjectList("Building", …), after Troops/Agents
-    // in the original) — the user-report gap: no indicator anywhere for what a colony is building or its %.
-    {
-        const buildingRow = buildingQueueRow(h.constructionQueue as ConstructionQueue | null);
-        if (buildingRow !== null) rows.push(buildingRow);
-    }
-
-    // Scenic feature (Galaxy.5.cs SetScenicFactor).
-    if (h.scenicFeature !== '') {
-        addText('Scenic', h.scenicFeature);
-    }
-
-    // Research bonus (Galaxy.5.cs SetResearchBonus) with its industry.
-    if (h.researchBonus > 0) {
-        const ind = industryLabel(h.researchBonusIndustry);
-        addText('Research bonus', ind ? `${h.researchBonus} (${ind})` : `${h.researchBonus}`);
-    }
-
-    return rows;
-}
 
 /** Name of the system nearest the camera centre, or '' if unavailable. 19i item 11: the rim name override
  *  (rimSystemDisplayName) replaces the base name for a rim system when the scenario flag is on — a display-time
@@ -2648,21 +2491,15 @@ export function nearestSystemName(
     const star = systems[best].systemStar;
     return rimSystemDisplayName({ scenario: dwu?.galaxy?.scenario ?? null }, star.systemIndex, star.name);
 }
-/** Selection-panel dispatch buttons for a selected habitat: each sends the nearest idle unselected ship that can take the
- *  order (sim/player/habitatDispatch.ts) through the player command path, then toasts which ship went. */
-function habitatDispatchBar(galaxy: Galaxy, player: Empire, h: Habitat): HTMLElement | null {
-    const options = habitatDispatchOptions(galaxy, player, h);
-    if (options.length === 0) return null;
-    const bar = document.createElement('div');
-    bar.className = 'hud-dispatch';
-    for (const o of options) {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'hud-btn';
-        btn.textContent = o.label;
-        btn.title = o.hint;
-        btn.disabled = o.ship === null;
-        btn.addEventListener('click', () => {
+/** Selection-panel dispatch orders for a selected habitat: each sends the nearest idle unselected ship that can take
+ *  the order (sim/player/habitatDispatch.ts) through the player command path, then toasts which ship went. Shown in
+ *  the action strip's empty slots (or the overflow row). */
+function habitatDispatchSlots(galaxy: Galaxy, player: Empire, h: Habitat): SelectionExtraSlot[] {
+    return habitatDispatchOptions(galaxy, player, h).map((o) => ({
+        label: o.label,
+        title: o.hint,
+        disabled: o.ship === null,
+        onClick: () => {
             // Re-resolve at click time: ships' queues and positions have moved since the panel was drawn.
             const fresh = habitatDispatchOptions(galaxy, player, h).find((x) => x.id === o.id);
             if (!fresh || fresh.ship === null || fresh.action === null) {
@@ -2684,8 +2521,6 @@ function habitatDispatchBar(galaxy: Galaxy, player: Empire, h: Habitat): HTMLEle
             issuePlayerCommand(galaxy, player, 'shipAction', [ship, fresh.action, true, { x: h.xpos, y: h.ypos }], (r) => {
                 showToast(r.ok === false ? `${ship.name}: ${r.message ?? 'order refused'}` : `${ship.name} sent: ${o.label} ${h.name}`);
             });
-        });
-        bar.appendChild(btn);
-    }
-    return bar;
+        },
+    }));
 }

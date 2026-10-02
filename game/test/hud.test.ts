@@ -298,7 +298,7 @@ describe('streamlined HUD element set (task 05c)', () => {
         const layout = computeHudLayout(1920, 1080);
         expect(layout['pnlTopLeftBar']).toEqual({ x: 10, y: 10, w: 300, h: 40 });
         expect(layout['pnlMoney'].x).toBe(1920 - 230 - 10);
-        expect(layout['pnlSelection']).toEqual({ x: 10, y: 1080 - 220 - 10, w: 300, h: 220 });
+        expect(layout['pnlSelection']).toEqual({ x: 10, y: 1080 - 310 - 10, w: 399, h: 310 });
         expect(layout['pnlOptionsList']).toEqual({ x: 1920 - 220 - 10, y: 1080 - 10, w: 220, h: 0 });
     });
 });

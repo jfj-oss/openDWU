@@ -1,0 +1,614 @@
+/* The bottom-left selection frame (hud.ts buildSelectionPanel): the original's pnlInfoPanel + pnlDetailInfo
+   (InfoPanel) with its GlassButtons, laid out in the original's pixels (Main.Part2.cs QxrIvWcaOp) and scaled as a
+   whole (hud.ts selectionFrameScale). Colours are the original controls' (Main.InitializeComponent.cs,
+   InfoPanel.cs, GlassButton.cs). */
+
+.sel-frame {
+    pointer-events: none;
+    font-family: 'Forgotten Futurist', sans-serif;
+    font-size: 10px;
+    line-height: 15px;
+    color: rgb(200, 200, 200);
+    box-sizing: border-box;
+    /* Text stays crisp under the frame's scale transform. */
+    -webkit-font-smoothing: antialiased;
+}
+.sel-frame * {
+    box-sizing: border-box;
+}
+
+/* pnlInfoPanel: BackColor (48,48,64), 3 px border in BorderColor1..4 (96-alpha greys). */
+.sel-infopanel {
+    position: absolute;
+    left: 16px;
+    top: 30px;
+    width: 370px;
+    height: 250px;
+    pointer-events: auto;
+    background: linear-gradient(to bottom, rgb(62, 63, 72), rgb(44, 45, 54) 60%, rgb(52, 53, 62));
+    border: 3px solid;
+    border-color: rgba(200, 200, 200, 0.38) rgba(80, 80, 80, 0.38) rgba(20, 20, 20, 0.38) rgba(140, 140, 140, 0.38);
+    border-radius: 5px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+}
+
+/* pnlDetailInfo: the InfoPanel (vertical gradient (39,40,44) → (22,21,26) → (51,54,61), border (67,67,77)). */
+.sel-detail {
+    position: absolute;
+    left: 60px;
+    top: 35px;
+    width: 280px;
+    height: 240px;
+    pointer-events: auto;
+    background: linear-gradient(to bottom, rgb(39, 40, 44), rgb(22, 21, 26) 50%, rgb(51, 54, 61));
+    border: 1px solid rgb(67, 67, 77);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.sel-content-box {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+}
+.sel-picture {
+    position: absolute;
+    pointer-events: none;
+    object-fit: contain;
+    image-rendering: auto;
+}
+.sel-scroll {
+    position: absolute;
+    inset: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    scrollbar-width: none;
+    padding: 3px 4px 2px 4px;
+    display: flex;
+    flex-direction: column;
+}
+.sel-scroll::-webkit-scrollbar {
+    display: none;
+}
+
+/* Title (_TitleFont, bold) + the corner flag (_FlagSizeSmall 30 × 18). */
+.sel-title {
+    flex: none;
+    display: flex;
+    align-items: baseline;
+    height: 19px;
+    padding-right: 34px;
+    font-size: 12px;
+    line-height: 19px;
+    font-weight: bold;
+    white-space: nowrap;
+    overflow: hidden;
+}
+.sel-title .sel-icon {
+    align-self: center;
+}
+.sel-title .sel-title-suffix {
+    font-size: 10px;
+    font-weight: normal;
+}
+.sel-corner {
+    position: absolute;
+    top: 4px;
+    right: 5px;
+}
+span.sel-corner.sel-text {
+    top: 5px;
+}
+
+/* Rows (DrawLabelledDescription: the bold label right-aligned in the label width, the text 10 px after it). */
+.sel-row {
+    flex: none;
+    display: flex;
+    align-items: center;
+    min-height: 15px;
+    line-height: 15px;
+    white-space: nowrap;
+}
+.sel-line {
+    overflow: hidden;
+}
+.sel-label {
+    flex: none;
+    text-align: right;
+    font-weight: bold;
+    position: relative;
+    top: -1px;
+    color: rgb(200, 200, 200);
+    text-shadow: 1px 1px 0 #000;
+    overflow: visible;
+    white-space: nowrap;
+}
+.sel-content {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin-left: 10px;
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+}
+/* The (190,24,24,32) strip behind resources / facilities / fighters / population. */
+.sel-strip {
+    background: rgba(24, 24, 32, 0.745);
+    height: 14px;
+}
+.sel-wrap {
+    white-space: normal;
+    flex-wrap: wrap;
+    height: auto;
+}
+.sel-wrap .sel-text {
+    white-space: normal;
+}
+.sel-text {
+    white-space: pre;
+}
+.sel-fixed {
+    flex: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.sel-tiny {
+    font-size: 7.5px;
+    line-height: 14px;
+}
+.sel-icon,
+.sel-spacer {
+    flex: none;
+    display: inline-block;
+    object-fit: contain;
+    user-select: none;
+    -webkit-user-drag: none;
+}
+.sel-faded {
+    opacity: 0.4;
+}
+.sel-troop {
+    image-rendering: pixelated;
+    margin-right: 1px;
+}
+.sel-troop-garrison {
+    background: rgba(0, 128, 0, 0.6);
+}
+.sel-troop-recruit {
+    opacity: 0.45;
+}
+.sel-troop-invade {
+    background: rgba(255, 0, 0, 0.6);
+}
+
+/* The label-area brush (63,127,32,32) from the first labelled row to the panel bottom. */
+.sel-banded {
+    flex: 1 0 auto;
+    display: flex;
+    flex-direction: column;
+    margin-left: -2px;
+    padding-left: 2px;
+    background: linear-gradient(to right, rgba(127, 32, 32, 0.247) 0 var(--band-w), transparent var(--band-w));
+}
+
+/* DrawBarGraph. */
+.sel-bar {
+    position: relative;
+    flex: none;
+    height: 13px;
+    margin-left: 10px;
+    overflow: hidden;
+}
+.sel-bar-fill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+}
+.sel-bar-alt {
+    animation: sel-bar-oscillate 2s ease-in-out infinite alternate;
+}
+@keyframes sel-bar-oscillate {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+.sel-bar-text {
+    position: relative;
+    display: block;
+    text-align: center;
+    line-height: 13px;
+    color: rgb(200, 200, 200);
+    white-space: pre;
+}
+.sel-bar-max {
+    margin-left: 5px;
+}
+
+/* An invasion in progress: GraphicsHelper.OscillateColor (0,255,0,0) ↔ (160,255,0,0). */
+.sel-alert {
+    animation: sel-alert-pulse 1.6s ease-in-out infinite;
+}
+@keyframes sel-alert-pulse {
+    0%, 100% { background-color: rgba(255, 0, 0, 0); }
+    50% { background-color: rgba(255, 0, 0, 0.63); }
+}
+
+/* Hotspots: the dotted (170,170,170) hover rectangle (DrawHotspotHoverRegions). */
+.sel-hot {
+    cursor: pointer;
+    pointer-events: auto;
+}
+.sel-hot:hover {
+    outline: 1px dotted rgb(170, 170, 170);
+    outline-offset: 0;
+}
+
+/* Empire flags. */
+.sel-flag {
+    display: inline-block;
+    flex: none;
+    position: relative;
+    overflow: hidden;
+}
+.sel-flag img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: fill;
+}
+
+/* DrawSystemColoniesSummary. */
+.sel-colonies {
+    position: relative;
+    flex: none;
+    height: 100px;
+}
+.sel-colonies-line {
+    position: absolute;
+    height: 0;
+    border-top: 1px dotted rgb(170, 170, 170);
+}
+.sel-colony {
+    position: absolute;
+    top: 0;
+    width: 26px;
+}
+.sel-colony-img {
+    display: block;
+    width: 26px;
+    height: 26px;
+    object-fit: contain;
+}
+.sel-colony-detail {
+    position: absolute;
+    top: 27px;
+}
+.sel-colony-abbr {
+    height: 21px;
+    line-height: 15px;
+    text-align: center;
+    white-space: nowrap;
+}
+.sel-colony-flag {
+    height: 15px;
+}
+.sel-colony-race {
+    display: block;
+    width: 14px;
+    height: 14px;
+    margin: 0 auto 3px;
+    object-fit: contain;
+}
+.sel-colony-base {
+    display: block;
+    width: 18px;
+    height: 18px;
+    margin: 0 1px 3px;
+    object-fit: contain;
+}
+.sel-colony-res {
+    display: block;
+    width: 14px;
+    height: 14px;
+    margin: 0 auto;
+    object-fit: contain;
+}
+/* DrawPopulationIndicator: 5 × 5 cells, (48,48,96) unlit, (96,96,255) lit. */
+.sel-popgrid {
+    display: grid;
+    grid-template-columns: repeat(5, 3px);
+    grid-auto-rows: 2px;
+    gap: 1px;
+    width: 20px;
+}
+.sel-popgrid span {
+    background: rgb(48, 48, 96);
+}
+.sel-popgrid span.lit {
+    background: rgb(96, 96, 255);
+}
+
+/* Fleet / multi-selection ship grid: 27 px cells with a green fuel bar. */
+.sel-grid {
+    flex: none;
+    display: flex;
+    flex-wrap: wrap;
+}
+.sel-cell {
+    position: relative;
+    width: 27px;
+    height: 27px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.sel-cell img {
+    object-fit: contain;
+}
+.sel-cell-fuel {
+    position: absolute;
+    right: 2px;
+    bottom: 2px;
+    width: 2px;
+    background: rgb(0, 128, 0);
+}
+
+.sel-automate {
+    position: absolute;
+    right: 5px;
+    bottom: 5px;
+    width: 16px;
+    height: 16px;
+}
+
+/* The extras row (follow / automate / dispatch / charter): small buttons along the info area's bottom. */
+.sel-extras {
+    flex: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    padding: 1px 2px 2px;
+    background: rgba(10, 10, 20, 0.55);
+    border-top: 1px solid rgba(67, 67, 77, 0.8);
+}
+.sel-extras[hidden] {
+    display: none;
+}
+.sel-frame .sel-extra-btn,
+.sel-frame .sel-extras button {
+    pointer-events: auto;
+    font-family: inherit;
+    font-size: 8.5px;
+    line-height: 11px;
+    height: 13px;
+    padding: 0 5px;
+    margin: 0;
+    color: rgb(200, 200, 200);
+    background: linear-gradient(to bottom, rgba(112, 112, 176, 0.45), rgba(0, 0, 64, 0.9) 55%);
+    border: 1px solid rgb(0, 0, 64);
+    border-radius: 3px;
+    box-shadow: inset 0 0 0 1px rgba(67, 67, 77, 0.8);
+    cursor: pointer;
+    white-space: nowrap;
+}
+.sel-frame .sel-extras button:hover:not(:disabled) {
+    color: #fff;
+    background: linear-gradient(to bottom, rgba(112, 112, 176, 0.55), rgba(40, 40, 140, 0.95) 55%);
+}
+.sel-frame .sel-extras button:disabled {
+    color: rgb(110, 110, 120);
+    cursor: default;
+}
+.sel-frame .sel-extras .hud-follow-toggle-active,
+.sel-frame .sel-extras .hud-automation-on {
+    color: #fff;
+    background: linear-gradient(to bottom, rgba(79, 195, 247, 0.5), rgba(0, 60, 100, 0.95) 55%);
+}
+
+/* GlassButton (GlassButton.cs DrawButtonBackground): outer border + fill, a shine gradient on the top half, the
+   inner border, and the radial glow from the bottom on hover. */
+.sel-glass {
+    --outer: rgb(0, 0, 16);
+    --shine: 112, 112, 128;
+    --glow: 48, 48, 128;
+    --inner: rgb(67, 67, 77);
+    position: absolute;
+    pointer-events: auto;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    font-family: inherit;
+    border: 1px solid var(--outer);
+    border-radius: 7px;
+    background:
+        linear-gradient(to bottom, rgba(var(--shine), 0.6), rgba(var(--shine), 0.2) 50%, transparent 50%),
+        linear-gradient(to bottom, rgb(18, 18, 26), rgb(4, 4, 14));
+    box-shadow: inset 0 0 0 1px var(--inner);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+.sel-glass:hover {
+    background:
+        linear-gradient(to bottom, rgba(var(--shine), 0.6), rgba(var(--shine), 0.2) 50%, transparent 50%),
+        radial-gradient(ellipse 70% 60% at 50% 100%, rgba(var(--glow), 0.7), rgba(var(--glow), 0) 100%),
+        linear-gradient(to bottom, rgb(18, 18, 26), rgb(4, 4, 14));
+}
+.sel-glass:active {
+    background: linear-gradient(to bottom, rgba(var(--shine), 0.24), rgba(var(--shine), 0.08) 50%, transparent 50%), rgb(4, 4, 14);
+}
+.sel-glass img {
+    max-width: 100%;
+    max-height: 100%;
+    pointer-events: none;
+    user-select: none;
+}
+.sel-corners-left {
+    border-radius: 7px 0 0 7px;
+}
+.sel-corners-right {
+    border-radius: 0 7px 7px 0;
+}
+.sel-corners-none {
+    border-radius: 0;
+}
+.sel-glass-on {
+    --inner: rgb(140, 160, 255);
+    --glow: 96, 96, 255;
+}
+
+/* btnSelectionAction1-8: 35 × 28 each from (60, 282). */
+.sel-frame .order-actions.sel-actions {
+    position: absolute;
+    left: 60px;
+    top: 282px;
+    width: 280px;
+    height: 28px;
+    margin: 0;
+    display: grid;
+    grid-template-columns: repeat(8, 35px);
+    gap: 0;
+    pointer-events: none;
+}
+.sel-frame .order-actions.sel-actions .order-action-btn {
+    --outer: rgb(0, 0, 64);
+    --shine: 112, 112, 176;
+    --glow: 128, 128, 255;
+    --back: rgb(0, 0, 48);
+    position: relative;
+    visibility: visible;
+    pointer-events: auto;
+    width: 35px;
+    height: 28px;
+    min-height: 0;
+    padding: 2px;
+    font-size: 7px;
+    line-height: 8px;
+    white-space: normal;
+    text-align: center;
+    color: rgb(200, 200, 200);
+    border: 1px solid var(--outer);
+    border-radius: 0;
+    background:
+        linear-gradient(to bottom, rgba(var(--shine), 0.6), rgba(var(--shine), 0.2) 50%, transparent 50%),
+        linear-gradient(to bottom, var(--back), rgba(var(--glow), 0.25));
+    box-shadow: inset 0 0 0 1px rgb(67, 67, 77);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+.sel-frame .order-actions.sel-actions .order-action-btn:hover:not(:disabled) {
+    background:
+        linear-gradient(to bottom, rgba(var(--shine), 0.6), rgba(var(--shine), 0.2) 50%, transparent 50%),
+        radial-gradient(ellipse 70% 60% at 50% 100%, rgba(var(--glow), 0.75), rgba(var(--glow), 0) 100%),
+        var(--back);
+}
+.sel-frame .order-actions.sel-actions .order-action-btn:disabled {
+    cursor: default;
+}
+.sel-frame .order-actions.sel-actions .order-action-btn:disabled .order-action-icon {
+    opacity: 0.45;
+}
+.sel-frame .order-actions.sel-actions .order-action-btn.order-action-empty {
+    visibility: visible;
+    background:
+        linear-gradient(to bottom, rgba(112, 112, 176, 0.25), rgba(112, 112, 176, 0.08) 50%, transparent 50%),
+        rgb(0, 0, 40);
+}
+.sel-frame .order-action-icon {
+    max-width: 25px;
+    max-height: 22px;
+    object-fit: contain;
+    pointer-events: none;
+}
+.sel-frame .order-actions.sel-actions .order-style-build { --back: rgb(120, 96, 0); --outer: rgb(51, 40, 20); --shine: 180, 168, 84; --glow: 204, 160, 80; }
+.sel-frame .order-actions.sel-actions .order-style-buildprivate { --back: rgb(120, 76, 0); --outer: rgb(51, 40, 20); --shine: 192, 128, 64; --glow: 255, 160, 80; }
+.sel-frame .order-actions.sel-actions .order-style-fighter { --back: rgb(76, 51, 128); --outer: rgb(32, 20, 51); --shine: 153, 108, 192; --glow: 128, 80, 204; }
+.sel-frame .order-actions.sel-actions .order-style-facility { --back: rgb(10, 70, 20); --outer: rgb(0, 48, 16); --shine: 64, 192, 96; --glow: 80, 255, 112; }
+.sel-frame .order-actions.sel-actions .order-style-wonder { --back: rgb(96, 10, 64); --outer: rgb(40, 0, 32); --shine: 224, 80, 184; --glow: 255, 64, 192; }
+.sel-frame .order-actions.sel-actions .order-style-plague { --back: rgb(96, 10, 0); --outer: rgb(40, 0, 0); --shine: 224, 80, 0; --glow: 255, 64, 0; }
+.sel-frame .order-actions.sel-actions .order-action-count {
+    position: absolute;
+    top: 0;
+    right: 2px;
+    font-size: 8px;
+    color: rgb(255, 255, 0);
+    text-shadow: 1px 1px 0 #000;
+}
+
+.sel-flag.sel-corner {
+    position: absolute;
+}
+.sel-troop {
+    width: 14px;
+    height: 14px;
+}
+/* Extras in empty action slots: an icon (if any) over a tiny caption. */
+.sel-frame .order-actions.sel-actions .order-action-btn.order-action-extra {
+    flex-direction: column;
+    gap: 0;
+    padding: 1px;
+    --back: rgb(0, 0, 40);
+}
+.sel-frame .order-action-extra .order-action-icon {
+    max-height: 14px;
+}
+.sel-frame .order-action-caption {
+    font-size: 6.5px;
+    line-height: 7px;
+    max-height: 21px;
+    overflow: hidden;
+    word-break: break-word;
+}
+.sel-frame .order-actions.sel-actions .order-action-btn.order-action-extra-on {
+    --back: rgb(0, 60, 100);
+    --shine: 79, 195, 247;
+    color: #fff;
+}
+.sel-frame .order-actions.sel-actions .order-action-btn.order-action-extra:disabled {
+    color: rgb(110, 110, 120);
+}
+/* The "More…" popup over the action strip (the dispatch orders that found no empty slot). */
+.sel-more {
+    position: absolute;
+    left: 60px;
+    bottom: 30px;
+    width: 280px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    padding: 3px;
+    pointer-events: auto;
+    background: rgba(10, 10, 24, 0.94);
+    border: 1px solid rgb(67, 67, 77);
+    box-shadow: 0 -2px 6px rgba(0, 0, 0, 0.6);
+    z-index: 2;
+}
+.sel-more[hidden] {
+    display: none;
+}
+.sel-frame .sel-more button {
+    pointer-events: auto;
+    font-family: inherit;
+    font-size: 8.5px;
+    line-height: 11px;
+    height: 13px;
+    padding: 0 5px;
+    color: rgb(200, 200, 200);
+    background: linear-gradient(to bottom, rgba(112, 112, 176, 0.45), rgba(0, 0, 64, 0.9) 55%);
+    border: 1px solid rgb(0, 0, 64);
+    border-radius: 3px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.sel-frame .sel-more button:hover:not(:disabled) {
+    color: #fff;
+}
+.sel-frame .sel-more button:disabled {
+    color: rgb(110, 110, 120);
+    cursor: default;
+}

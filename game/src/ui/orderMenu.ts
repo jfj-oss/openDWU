@@ -11,6 +11,8 @@ import { BuiltObject } from '../sim/builtObject';
 import { Habitat } from '../sim/types';
 import { ShipGroup } from '../sim/fleets/shipGroup';
 import { BuiltObjectMissionType } from '../sim/missions/mission';
+import { BuiltObjectRole } from '../sim/data/designSpecifications';
+import { FleetPosture } from '../sim/diplomacyTick';
 import { resolveGameText, tryGetText } from '../sim/textResolver';
 import { ShipAction, ShipActionType, isSystemInfo } from '../sim/player/shipAction';
 import { playAttackClick, playOrderSting } from '../audio/gameAudio'; // [audio]
@@ -592,6 +594,125 @@ export function selectionButtonLabel(b: SelectionButton): string {
     return '';
 }
 
+const CHROME_DIR = '/assets/dwu/images/ui/chrome';
+
+/** Main.Part3.cs 1208 method_588(button, action): the button's image — a chrome bitmap for most actions, the design's
+ *  ship (rotated 270°) for a build button, the facility / troop / plague picture for those. Null = blank.png (an empty
+ *  button). `troopUrl` resolves a RecruitTroops button's troop picture (troopImageUrl needs the galaxy's race count). */
+export function selectionButtonIcon(
+    b: SelectionButton,
+    selected: unknown,
+    troopUrl: (troop: unknown) => string | null,
+    shipUrl: (design: { pictureRef: number; subRole: number }) => string | null,
+): { url: string; rotate: number } | null {
+    const a = b.action;
+    if (a === null) return null;
+    const chrome = (f: string): { url: string; rotate: number } => ({ url: `${CHROME_DIR}/${f}`, rotate: 0 });
+    if (a.actionType !== ShipActionType.Undefined) {
+        switch (a.actionType) {
+            case ShipActionType.RecruitTroops: {
+                const u = troopUrl(a.target2);
+                return u !== null ? { url: u, rotate: 0 } : null;
+            }
+            case ShipActionType.AutomateShip: return chrome('automate.png');
+            case ShipActionType.UnautomateShip: return chrome('unautomate.png');
+            case ShipActionType.JoinShipGroup: return chrome('joinfleet.png');
+            case ShipActionType.LeaveShipGroup: return chrome('leavefleet.png');
+            case ShipActionType.BuildColonize: return chrome('colonize.png');
+            case ShipActionType.FighterOptions: return chrome('fighters.png');
+            case ShipActionType.FighterBuildFighter: return chrome('buildfighter.png');
+            case ShipActionType.FighterBuildBomber: return chrome('buildbomber.png');
+            case ShipActionType.FighterLaunchFighters: return chrome('launchfighters.png');
+            case ShipActionType.FighterLaunchBombers: return chrome('launchbombers.png');
+            case ShipActionType.FighterRetrieveFighters: return chrome('retrievefighters.png');
+            case ShipActionType.FighterRetrieveBombers: return chrome('retrievebombers.png');
+            case ShipActionType.FighterUpgradeAll: return chrome('upgradefighters.png');
+            case ShipActionType.BuildOptions:
+            case ShipActionType.BuildOptionsPrivate:
+            case ShipActionType.ColonyBuildOptions:
+            case ShipActionType.ColonyBuildWonder:
+                return chrome('build.png');
+            case ShipActionType.ReturnToTop: return chrome('returntotop.png');
+            case ShipActionType.CreateNewFleet: return chrome('newfleet.png');
+            case ShipActionType.AssignAttack: return chrome('attack.png');
+            case ShipActionType.SetFleetAttackPoint: return chrome('fleetAttackPoint.png');
+            case ShipActionType.SetFleetHomeBase: return chrome('fleetHomeBase.png');
+            case ShipActionType.GeneratePirateMissionAttack: return chrome('pirateMissionAttack.png');
+            case ShipActionType.GeneratePirateMissionDefend: return chrome('pirateMissionDefend.png');
+            case ShipActionType.GeneratePirateMissionSmuggling: return chrome('pirateMissionSmuggling.png');
+            case ShipActionType.BuildPlanetaryFacility: {
+                const ref = (a.target as { pictureRef?: number } | null)?.pictureRef;
+                return ref !== undefined ? { url: `/assets/dwu/images/environment/planetaryfacilities/facility_${ref}.png`, rotate: 0 } : null;
+            }
+            case ShipActionType.SetFleetPosture: {
+                const sg = a.target as { posture?: FleetPosture } | null;
+                return sg?.posture === FleetPosture.Attack ? chrome('fleetAttackPosture.png') : sg?.posture === FleetPosture.Defend ? chrome('fleetDefendPosture.png') : null;
+            }
+            case ShipActionType.SetFleetRange: {
+                const r = (a.target as { postureRangeSquared?: number } | null)?.postureRangeSquared ?? 0;
+                if (r <= 2250000.0) return chrome('fleetRangeTarget.png');
+                if (r <= 2304000000.0) return chrome('fleetRangeSystem.png');
+                if (r <= 250000000000.0) return chrome('fleetRangeArea.png');
+                if (r <= 1000000000000.0) return chrome('fleetRangeSector.png');
+                return chrome('fleetRangeAny.png');
+            }
+            case ShipActionType.DeployVirus: {
+                const ref = (a.target2 as { pictureRef?: number } | null)?.pictureRef;
+                return ref !== undefined ? { url: `/assets/dwu/images/ui/plagues/Plague_${ref}.png`, rotate: 0 } : null;
+            }
+        }
+        return null;
+    }
+    switch (a.missionType) {
+        case BuiltObjectMissionType.Escape: return chrome('emergency.png');
+        case BuiltObjectMissionType.Retire:
+            return a.target instanceof BuiltObject ? chrome('scrapbase.png') : chrome('scrapfighter.png');
+        case BuiltObjectMissionType.Retrofit:
+            return selected instanceof BuiltObject && selected.role === BuiltObjectRole.Base ? chrome('retrofitbase.png') : chrome('retrofitship.png');
+        case BuiltObjectMissionType.Hold: return chrome('stop.png');
+        case BuiltObjectMissionType.Build:
+            if (a.design !== null) {
+                const u = shipUrl(a.design);
+                return u !== null ? { url: u, rotate: 270 } : null;
+            }
+            return chrome('build.png');
+        case BuiltObjectMissionType.Repair: return chrome('construction.png');
+        case BuiltObjectMissionType.Move: return chrome('colony.png');
+        case BuiltObjectMissionType.Refuel: return chrome('refuel.png');
+        case BuiltObjectMissionType.LoadTroops: return chrome('loadtroops.png');
+    }
+    return null;
+}
+
+/** One of our own controls shown in an empty action-button slot (small tweak: the original has no such buttons). */
+export interface SelectionExtraSlot {
+    label: string;
+    title: string;
+    icon?: string;
+    active?: boolean;
+    disabled?: boolean;
+    onClick: () => void;
+}
+let extraSlotProvider: () => SelectionExtraSlot[] = () => [];
+let extraOverflow: (rest: SelectionExtraSlot[], behindMore: boolean) => void = () => {};
+let extraMoreToggle: () => void = () => {};
+/** The HUD supplies the extras for the current selection and receives those that found no empty slot
+ *  (`behindMore`: a "More…" slot opens them; else there was no empty slot at all). */
+export function setSelectionExtraSlots(provider: () => SelectionExtraSlot[], overflow: (rest: SelectionExtraSlot[], behindMore: boolean) => void, moreToggle: () => void): void {
+    extraSlotProvider = provider;
+    extraOverflow = overflow;
+    extraMoreToggle = moreToggle;
+}
+
+/** Icon resolvers the selection bar uses (installed by the HUD: they need the galaxy's race count / ship art). */
+let iconResolvers: { troop: (t: unknown) => string | null; ship: (design: { pictureRef: number; subRole: number }) => string | null } = {
+    troop: () => null,
+    ship: () => null,
+};
+export function setSelectionIconResolvers(r: typeof iconResolvers): void {
+    iconResolvers = r;
+}
+
 interface SelectionBar {
     element: HTMLElement;
     /** The button page: null = the top level (method_592), else the sub-menu ShipAction (method_593). */
@@ -644,12 +765,22 @@ export function createSelectionActionBar(): HTMLElement {
     };
     // Eight persistent buttons, updated in place (no DOM rebuild on refresh).
     const btns: HTMLButtonElement[] = [];
+    // Our extra controls placed in the empty slots (slotExtras[i] set: that slot is an extra, not an action).
+    const slotExtras: (SelectionExtraSlot | null)[] = new Array(8).fill(null);
     for (let i = 0; i < 8; i++) {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'order-action-btn';
         btn.addEventListener('click', (e) => {
             e.stopPropagation();
+            const extra = slotExtras[i];
+            if (extra !== null) {
+                if (!extra.disabled) {
+                    extra.onClick();
+                    draw();
+                }
+                return;
+            }
             const b = buttons[i];
             if (b === undefined || b.action === null || !b.enabled) return;
             void performAction(b.action, false); // method_594 → method_347(action, false)
@@ -657,17 +788,26 @@ export function createSelectionActionBar(): HTMLElement {
         btns.push(btn);
     }
     const draw = (): void => {
-        if (buttons.every((b) => b.action === null)) {
-            element.replaceChildren();
-            return;
-        }
+        // The original keeps all eight buttons visible (an empty one shows blank.png, Main.Part3.cs method_588).
         if (element.childElementCount !== 8) element.replaceChildren(...btns);
-        buttons.forEach((b, i) => {
-            const btn = btns[i];
+        const selected = deps?.getSelected() ?? null;
+        btns.forEach((btn, i) => {
+            const b: SelectionButton = buttons[i] ?? { action: null, enabled: false, hint: '', style: '', count: 0 };
             btn.className = 'order-action-btn';
             if (b.style !== '') btn.classList.add(`order-style-${b.style}`);
             if (b.action === null) btn.classList.add('order-action-empty');
-            btn.textContent = selectionButtonLabel(b);
+            const icon = selectionButtonIcon(b, selected, iconResolvers.troop, iconResolvers.ship);
+            if (icon !== null) {
+                const img = document.createElement('img');
+                img.className = 'order-action-icon';
+                img.src = icon.url;
+                img.alt = selectionButtonLabel(b);
+                if (icon.rotate !== 0) img.style.transform = `rotate(${icon.rotate}deg)`;
+                img.draggable = false;
+                btn.replaceChildren(img);
+            } else {
+                btn.textContent = selectionButtonLabel(b);
+            }
             if (b.count > 0) {
                 const c = document.createElement('span');
                 c.className = 'order-action-count';
@@ -677,6 +817,43 @@ export function createSelectionActionBar(): HTMLElement {
             btn.title = b.hint;
             btn.disabled = !b.enabled;
         });
+        // Fill the empty slots with the extras (follow, dispatch, charter); the rest overflow to the HUD's row.
+        let extras = extraSlotProvider();
+        const empty = btns.filter((_, i) => buttons[i]?.action == null).length;
+        let rest: SelectionExtraSlot[] = [];
+        if (extras.length > empty) {
+            // More extras than empty slots: the last empty slot opens the rest ("More…" popup).
+            const keep = Math.max(0, empty - 1);
+            rest = extras.slice(keep);
+            extras = extras.slice(0, keep);
+            if (empty > 0) extras.push({ label: `More… (${rest.length})`, title: rest.map((x) => x.label).join(', '), onClick: () => extraMoreToggle() });
+        }
+        let next = 0;
+        for (let i = 0; i < 8; i++) {
+            slotExtras[i] = null;
+            if (buttons[i]?.action != null || next >= extras.length) continue;
+            const x = extras[next++];
+            slotExtras[i] = x;
+            const btn = btns[i];
+            btn.className = 'order-action-btn order-action-extra';
+            if (x.active) btn.classList.add('order-action-extra-on');
+            btn.replaceChildren();
+            if (x.icon !== undefined) {
+                const img = document.createElement('img');
+                img.className = 'order-action-icon';
+                img.src = x.icon;
+                img.alt = '';
+                img.draggable = false;
+                btn.appendChild(img);
+            }
+            const cap = document.createElement('span');
+            cap.className = 'order-action-caption';
+            cap.textContent = x.label;
+            btn.appendChild(cap);
+            btn.title = x.title;
+            btn.disabled = x.disabled === true;
+        }
+        extraOverflow(rest, empty > 0);
     };
     bar = self;
     // Main.Part11.cs 661-728: refresh the page every 500 ms from the first button's Tag.

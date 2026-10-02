@@ -103,9 +103,11 @@ export function computeHudLayout(width: number, height: number): Record<string, 
     layout['pnlMoney'] = { x: width - 230 - 10, y: 10, w: 230, h: 100 };
 
     // ------------------------------------------------------------------
-    // Bottom-left: streamlined selection panel, 300 px wide.
+    // Bottom-left: the selection panel frame.
     // ------------------------------------------------------------------
-    layout['pnlSelection'] = { x: 10, y: height - 220 - 10, w: 300, h: 220 };
+    // The original's frame (Main.Part12.cs 1962-2097): 399 × 310 px from x = 10 down to 10 px above the bottom, in
+    // the original's pixels (the HUD scales it, hud.ts selectionFrameScale).
+    layout['pnlSelection'] = { x: 10, y: height - 310 - 10, w: 399, h: 310 };
 
     // ------------------------------------------------------------------
     // Bottom-right: options list, 220 px wide (replaces the minimap),

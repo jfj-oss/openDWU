@@ -196,21 +196,3 @@
     font-size: 9px;
     color: #ffff00;
 }
-
-/* The selection panel has a fixed height (hudLayout pnlSelection): with the action buttons the rows scroll instead
-   of pushing the buttons and the cycle chips off the panel. */
-.hud-panel.hud-selection {
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-}
-.hud-panel.hud-selection .hud-selection-body {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow-y: auto;
-}
-.hud-panel.hud-selection .order-actions,
-.hud-panel.hud-selection .hud-selection-footer,
-.hud-panel.hud-selection .hud-selection-header {
-    flex: 0 0 auto;
-}
