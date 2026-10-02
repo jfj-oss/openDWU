@@ -178,3 +178,38 @@
 }
 
 .ships-list-body { max-height: 45vh; }
+
+/* Construction job board (sim/player/constructionBoard.ts). */
+.ships-list-jobs {
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+    padding: 4px 6px;
+    max-height: 30%;
+    overflow-y: auto;
+    flex: none;
+}
+.ships-list-jobs-title {
+    font-weight: bold;
+    margin-bottom: 2px;
+}
+.ships-list-job {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.ships-list-job-label {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.ships-list-job-ship {
+    flex: 0 0 9em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.ships-list-job-eta {
+    flex: 0 0 5em;
+    text-align: right;
+}

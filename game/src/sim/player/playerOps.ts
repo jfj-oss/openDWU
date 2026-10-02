@@ -18,6 +18,7 @@ import type { EmpirePolicy } from '../data/policies';
 import type { ConstructionQueue } from '../construction/constructionQueue';
 import type { ShipAction } from './shipAction';
 import { executeShipAction, type ShipActionSelection } from './executeShipAction';
+import { addConstructionJob, cancelConstructionJob, moveConstructionJobUp } from './constructionBoard';
 import { applyAutomationOff, fleetPointClick, rightClickOrder } from './orderMenu';
 import {
     fleetLoadTroops,
@@ -142,6 +143,12 @@ export const PLAYER_OPS = {
         initiateCrashResearchProgram(galaxy, empire, node, cost);
         return node.isRushing;
     },
+
+    // --- Construction job board (player/constructionBoard.ts; not in the C#) ---
+    /** Add a base build (habitat or point; x / y the Build mission's coordinates) to the player's construction job board. */
+    constructionJobAdd: (galaxy: Galaxy, empire: Empire, design: Design, habitat: Habitat | null, x: number, y: number) => addConstructionJob(galaxy, empire, design, habitat, x, y),
+    constructionJobCancel: (galaxy: Galaxy, empire: Empire, jobId: number) => cancelConstructionJob(galaxy, empire, jobId),
+    constructionJobMoveUp: (galaxy: Galaxy, empire: Empire, jobId: number) => moveConstructionJobUp(galaxy, empire, jobId),
 
     // --- Designs ---
     saveDesign: (galaxy: Galaxy, empire: Empire, draft: DesignDraft) => saveDesign(galaxy, empire, draft),

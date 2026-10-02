@@ -20,7 +20,7 @@ import type { Empire } from '../sim/empire';
 import type { BuiltObject } from '../sim/builtObject';
 import { BuiltObjectSubRole } from '../sim/builtObjectTypes';
 import { BuiltObjectRole } from '../sim/data/designSpecifications';
-import { BuiltObjectMissionType, builtObjectMission, type BuiltObjectMission } from '../sim/missions/mission';
+import { BuiltObjectMissionType, COORD_UNSET_DOUBLE, builtObjectMission, type BuiltObjectMission } from '../sim/missions/mission';
 // [15c]
 import { ShipGroup } from '../sim/fleets/shipGroup';
 import { fleetCycleList, fleetName, fleetShipAction, fleetSystemName, shipGroupSelectionRows, toggleFleetsList } from './screens/fleetsList';
@@ -2670,6 +2670,17 @@ function habitatDispatchBar(galaxy: Galaxy, player: Empire, h: Habitat): HTMLEle
                 return;
             }
             const ship = fresh.ship;
+            const design = fresh.action.design;
+            if (o.id.startsWith('build:') && design !== null) {
+                // Build orders go onto the empire's construction job board (sim/player/constructionBoard.ts): the
+                // construction ship that finishes it first takes it, instead of a backlog on one ship.
+                const p = fresh.action.position;
+                const zero = p.x === 0 && p.y === 0;
+                issuePlayerCommand(galaxy, player, 'constructionJobAdd', [design, h, zero ? COORD_UNSET_DOUBLE : p.x, zero ? COORD_UNSET_DOUBLE : p.y], (id) => {
+                    showToast(id === 0 ? `${o.label} ${h.name}: not possible` : `Construction job added: ${o.label} at ${h.name}`);
+                });
+                return;
+            }
             issuePlayerCommand(galaxy, player, 'shipAction', [ship, fresh.action, true, { x: h.xpos, y: h.ypos }], (r) => {
                 showToast(r.ok === false ? `${ship.name}: ${r.message ?? 'order refused'}` : `${ship.name} sent: ${o.label} ${h.name}`);
             });

@@ -16,6 +16,7 @@
 // - Paused ⇒ no frames (the C# loop keeps calling DoTasks with a frozen clock; with dt = 0 only the round-robin
 //   cursors would move).
 
+import { processConstructionBoard } from '../player/constructionBoard';
 import { gameVictoryArgs } from '../victory';
 import type { Galaxy } from '../galaxy';
 import type { Empire } from '../empire';
@@ -461,6 +462,8 @@ function runSimFrameBody(galaxy: Galaxy, frameMs: number, opts: FrameOptions): v
     }
     backgroundPass(galaxy, state, time, starDate, inView, opts.multiCore ?? true);
     drainQueue(galaxy, state);
+    // Not in the C#: the player's construction job board (O(1) unless it changed; player/constructionBoard.ts).
+    processConstructionBoard(galaxy);
     state.frames++;
 }
 

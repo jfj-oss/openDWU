@@ -21,6 +21,7 @@ import { BuiltObjectSubRole } from '../../sim/builtObjectTypes';
 import { BuiltObjectMissionType, builtObjectMission } from '../../sim/missions/mission';
 import { ShipGroup, empireShipGroups } from '../../sim/fleets/shipGroup';
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
+import { constructionJobRows } from '../../sim/player/constructionBoard';
 import { subRoleLabel, missionTypeLabel } from '../hud';
 import { ListSelection } from '../listSelection';
 import { confirmAutomationOff } from '../orderMenu';
@@ -437,6 +438,62 @@ function createShipsAndBasesList(opts: ShipsAndBasesListOptions): OpenState {
     const btnRetire = button('Retire', 'Send the highlighted ships to a ship yard to be retired', shipsCommand('retireShips'));
     win.appendChild(actions);
 
+    // Construction job board (sim/player/constructionBoard.ts; not in the original): open jobs, the ship that took
+    // each one and its estimated finish, with Move up / Cancel.
+    const jobsBox = document.createElement('div');
+    jobsBox.className = 'ships-list-jobs';
+    win.appendChild(jobsBox);
+    let jobsKey = '';
+    function buildJobs(): void {
+        const jobs = constructionJobRows(galaxy, empire);
+        const key = jobs.map((j) => `${j.id}:${j.state}:${j.shipName}:${j.etaMs === null ? '' : Math.round(j.etaMs / 1000)}`).join('|');
+        if (key === jobsKey) return;
+        jobsKey = key;
+        jobsBox.replaceChildren();
+        const title = document.createElement('div');
+        title.className = 'ships-list-jobs-title';
+        title.textContent = `Construction jobs (${jobs.length})`;
+        jobsBox.appendChild(title);
+        if (jobs.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'ships-list-empty';
+            empty.textContent = 'No construction jobs. Build orders for stations and bases are queued here and taken by the construction ship that can finish them first.';
+            jobsBox.appendChild(empty);
+            return;
+        }
+        jobs.forEach((j, i) => {
+            const line = document.createElement('div');
+            line.className = 'ships-list-job';
+            const label = document.createElement('span');
+            label.className = 'ships-list-job-label';
+            label.textContent = j.label;
+            label.title = j.label;
+            const who = document.createElement('span');
+            who.className = 'ships-list-job-ship';
+            who.textContent = j.state === 'open' ? 'Open' : `${j.shipName}${j.state === 'next' ? ' (next)' : ''}`;
+            const eta = document.createElement('span');
+            eta.className = 'ships-list-job-eta';
+            eta.textContent = j.etaMs === null ? '—' : formatEta(j.etaMs);
+            eta.title = 'Estimated time until the job is done (travel + build, after the ship\'s current work)';
+            const up = document.createElement('button');
+            up.type = 'button';
+            up.className = 'ships-list-button';
+            up.textContent = '▲';
+            up.title = 'Move up (earlier jobs are handed out first)';
+            up.disabled = i === 0;
+            up.addEventListener('click', () => issuePlayerCommand(galaxy, empire, 'constructionJobMoveUp', [j.id], () => buildJobs()));
+            const cancel = document.createElement('button');
+            cancel.type = 'button';
+            cancel.className = 'ships-list-button';
+            cancel.textContent = '✕';
+            cancel.title = 'Cancel this construction job';
+            cancel.addEventListener('click', () => issuePlayerCommand(galaxy, empire, 'constructionJobCancel', [j.id], () => buildJobs()));
+            line.append(label, who, eta, up, cancel);
+            jobsBox.appendChild(line);
+        });
+    }
+    const jobsTimer = window.setInterval(buildJobs, 1000);
+
     root.appendChild(win);
     document.body.appendChild(root);
 
@@ -524,6 +581,7 @@ function createShipsAndBasesList(opts: ShipsAndBasesListOptions): OpenState {
         fillSetFleet();
         buildBody();
         paintSelection();
+        buildJobs();
     }
 
     filterSelect.addEventListener('change', () => {
@@ -536,6 +594,7 @@ function createShipsAndBasesList(opts: ShipsAndBasesListOptions): OpenState {
     refresh();
 
     function close(): void {
+        window.clearInterval(jobsTimer);
         document.removeEventListener('keydown', onKeyDown);
         root.remove();
         open = null;
@@ -558,4 +617,15 @@ function createShipsAndBasesList(opts: ShipsAndBasesListOptions): OpenState {
     closeBtn.addEventListener('click', () => close());
 
     return { root, close };
+}
+
+/** "1h 05m" / "4m 30s" / "12s" for a job's estimated time (sim ms). */
+export function formatEta(ms: number): string {
+    const sec = Math.max(0, Math.round(ms / 1000));
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = sec % 60;
+    if (h > 0) return `${h}h ${String(m).padStart(2, '0')}m`;
+    if (m > 0) return `${m}m ${String(s).padStart(2, '0')}s`;
+    return `${s}s`;
 }

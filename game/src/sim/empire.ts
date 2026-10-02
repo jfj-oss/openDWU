@@ -9,6 +9,7 @@
 import type { Achievement } from './achievements';
 import { takeOwnershipOfColonyConstructionQueue } from './construction/constructionYard';
 import type { Galaxy } from './galaxy';
+import type { ConstructionBoard } from './player/constructionBoard';
 import { HabitatCategoryType, HabitatType } from './types';
 import type { Habitat } from './types';
 import type { PlanetaryFacilityBuildDate } from './construction/facilities';
@@ -514,6 +515,9 @@ export class Empire {
     miningStations: BuiltObject[] = [];
     freighters: unknown[] = [];
     constructionShips: unknown[] = [];
+    /** Not in the C#: the player's construction job board (player/constructionBoard.ts). `declare`d: only the
+     *  player's empire gets the property (and only once used), so AI empires and older saves are unchanged. */
+    declare constructionBoard?: ConstructionBoard | null;
     longRangeScanners: unknown[] = [];
     researchFacilities: unknown[] = [];
     resortBases: unknown[] = [];

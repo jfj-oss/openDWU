@@ -22,6 +22,7 @@ import { appendCommandLog, commandLog, copyCommandLogEntry, type CommandLogEntry
 import { CommandEncodeError, decodeCommandArg, encodeCommandArg, type EncodedArg } from './commandCodec';
 import { PLAYER_OPS, type PlayerOpArgs, type PlayerOpName, type PlayerOpResult } from './playerOps';
 import { applyStrategicCommand } from './strategicDecisions';
+import { noteConstructionBoardCommand } from './constructionBoard';
 
 interface Pending {
     empire: Empire;
@@ -113,7 +114,10 @@ function drain(galaxy: Galaxy): void {
 function applyOp(galaxy: Galaxy, empire: Empire, op: PlayerOpName, args: unknown[]): unknown {
     const fn = PLAYER_OPS[op] as unknown as (g: Galaxy, e: Empire, ...a: unknown[]) => unknown;
     if (fn === undefined) throw new Error(`command log: unknown player op ${String(op)}`);
-    return fn(galaxy, empire, ...args);
+    const result = fn(galaxy, empire, ...args);
+    // Any order may have replaced a construction-board job: re-check the board at the next frame (no-op without jobs).
+    noteConstructionBoardCommand(galaxy, empire);
+    return result;
 }
 
 function encodeArgs(galaxy: Galaxy, args: readonly unknown[]): EncodedArg[] {

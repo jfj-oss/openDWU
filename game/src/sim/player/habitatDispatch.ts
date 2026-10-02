@@ -186,7 +186,12 @@ export function habitatDispatchOptions(galaxy: Galaxy, empire: Empire, habitat: 
             ship,
             action,
             tasks,
-            hint: ship !== null ? `${k.label}: sends ${ship.name} (${tasks === 0 ? 'idle' : `${tasks} task${tasks === 1 ? '' : 's'} queued`})` : `No available ${k.role}`,
+            hint:
+                ship === null
+                    ? `No available ${k.role}`
+                    : k.id.startsWith('build:')
+                      ? `${k.label}: adds a construction job — the construction ship that can finish it first takes it`
+                      : `${k.label}: sends ${ship.name} (${tasks === 0 ? 'idle' : `${tasks} task${tasks === 1 ? '' : 's'} queued`})`,
         });
     }
     return options;

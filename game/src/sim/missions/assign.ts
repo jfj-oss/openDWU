@@ -38,6 +38,7 @@ import {
     type StellarObject,
 } from './mission';
 import { scenarioQuery } from '../scenario/hooks';
+import { constructionBoardShipFree } from '../player/constructionBoard';
 
 /** Optional arguments of the 13-argument AssignMission (BuiltObject.2.cs 7620); every overload is a subset. */
 export interface AssignMissionArgs {
@@ -527,6 +528,9 @@ export function checkAndAssignRepeatingMission(galaxy: Galaxy, ship: BuiltObject
 /** BaconBuiltObject.cs 4007 AssignQueuedMission(ship, allowReprocessing) (BuiltObject.2.cs 4940 delegates here). */
 export function assignQueuedMission(galaxy: Galaxy, ship: BuiltObject, allowReprocessing = true): boolean {
     const subsequentMissions = builtObjectSubsequentMissions(ship);
+    // Not in the C#: the player's construction job board (player/constructionBoard.ts) finalizes the ship's board job
+    // and, with nothing queued, hands it its next board job. O(1) for ships of empires without board jobs.
+    if (constructionBoardShipFree(galaxy, ship, subsequentMissions === null || subsequentMissions.length <= 0)) return true;
     if (subsequentMissions === null || subsequentMissions.length <= 0) {
         return checkAndAssignRepeatingMission(galaxy, ship);
     }

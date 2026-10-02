@@ -147,6 +147,7 @@ import {
     returnToCarrier,
 } from '../combat/fighters';
 import { ShipAction, ShipActionType, isSystemInfo } from './shipAction';
+import { addConstructionJob, isBoardBuildDesign, queueBuildOrderOnBoard, routesToBoard } from './constructionBoard';
 
 /** What _Game.SelectedObject can be when an order is given (method_347 handles these five kinds). */
 export type ShipActionSelection = BuiltObject | Habitat | ShipGroup | Fighter | BuiltObject[] | null;
@@ -866,6 +867,13 @@ function executeForShip(ctx: Ctx, builtObject: BuiltObject, action: ShipAction):
     }
     // 772-819
     const target = missionTarget(action.target);
+    // Not in the C#: a shift-queued base build for a busy player construction ship goes to the empire's construction
+    // job board (player/constructionBoard.ts) — the ship's next job when it has room, else whichever ship finishes first.
+    if (action.missionType === BuiltObjectMissionType.Build && action.design !== null && (target === null || isHabitat(target)) && routesToBoard(galaxy, empire, builtObject, action.design, action.isSubsequentAction)) {
+        const zero = positionIsZero(action);
+        if (queueBuildOrderOnBoard(galaxy, empire, builtObject, action.design, target, zero ? COORD_UNSET_DOUBLE : action.position.x, zero ? COORD_UNSET_DOUBLE : action.position.y) === 0) return ctx.fail('the construction job is not valid');
+        return ctx.result;
+    }
     if (action.design !== null) {
         if (positionIsZero(action)) {
             if (action.isSubsequentAction) {
@@ -1084,6 +1092,11 @@ function executeForHabitat(ctx: Ctx, habitat4: Habitat, action: ShipAction, from
                     const p = galaxy.selectRelativeHabitatSurfacePoint(habitat4);
                     num12 = p.x;
                     num13 = p.y;
+                }
+                // Not in the C#: the player's order goes to the construction job board (player/constructionBoard.ts).
+                if (empire === galaxy.playerEmpire && isBoardBuildDesign(action.design)) {
+                    if (addConstructionJob(galaxy, empire, action.design, habitat4, num12, num13) === 0) return ctx.fail('the construction job is not valid');
+                    return ctx.result;
                 }
                 const builtObject11 = fastFindBestConstructionShip(galaxy, habitat4.xpos, habitat4.ypos, empire);
                 if (builtObject11 !== null) {
@@ -1870,6 +1883,11 @@ function buildMiningStationAt(ctx: Ctx, builtObject8: BuiltObject | null, habita
     const num = p.x;
     const num2 = p.y;
     if (builtObject8 === null) {
+        // Not in the C#: the player's order goes to the construction job board (player/constructionBoard.ts).
+        if (empire === galaxy.playerEmpire) {
+            addConstructionJob(galaxy, empire, design, habitat9, num, num2);
+            return;
+        }
         builtObject8 = fastFindBestConstructionShip(galaxy, habitat9.xpos, habitat9.ypos, empire);
         if (builtObject8 !== null) {
             const m = builtObjectMission(builtObject8.mission);
