@@ -42,6 +42,17 @@ mod/scenario layer on top. The implementation lives under [`game/`](game/).
 
 ## Install
 
+### Windows
+
+Open **PowerShell** and install Node.js and git (Node 22 or newer is fine):
+
+```powershell
+winget install OpenJS.NodeJS.LTS
+winget install Git.Git
+```
+
+Close and reopen PowerShell afterwards so `node` and `git` are on your PATH.
+
 ### Linux
 
 **Arch / CachyOS:**
@@ -68,6 +79,31 @@ brew install node git
 
 You need a copy of Distant Worlds: Universe for the original art and data. Everything is on the default
 branch, `main`.
+
+**Windows (x86_64), game installed through Steam** (PowerShell):
+
+```powershell
+git clone https://github.com/jfj-oss/Dwureup.git
+cd Dwureup\game
+npm ci
+npm run import-assets      # links C:\Program Files (x86)\Steam\steamapps\common\Distant Worlds Universe
+npm run dev                # then open http://localhost:5173/
+```
+
+If your Steam library is somewhere else, set `DWU_DIR` first. PowerShell syntax differs from bash:
+
+```powershell
+$env:DWU_DIR = "D:\SteamLibrary\steamapps\common\Distant Worlds Universe"
+npm run import-assets
+```
+
+**Update to the latest version later** (from `Dwureup\game`):
+
+```powershell
+git pull
+npm ci
+npm run dev
+```
 
 **Linux (x86_64), game installed through Steam:**
 
@@ -117,6 +153,7 @@ On the Mac, also run `git -C ~/dwu-assets pull` if you use the assets mirror.
 `import-assets` links your DW:U install folder into `public/assets/dwu`
 (nothing is copied). The default Steam install paths are:
 
+- Windows: `C:\Program Files (x86)\Steam\steamapps\common\Distant Worlds Universe`
 - Linux: `~/.local/share/Steam/steamapps/common/Distant Worlds Universe`
 - macOS: `~/Library/Application Support/Steam/steamapps/common/Distant Worlds Universe`
 
@@ -142,6 +179,13 @@ DWU_DIR="$(realpath ../../dwu-assets)" npm run import-assets
 ```
 
 #### Play in the browser
+
+```
+cd Dwureup/game
+git pull
+npm ci
+npm run dev
+```
 
 ```sh
 npm run dev
