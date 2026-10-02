@@ -73,8 +73,8 @@ branch, `main`.
 
 ```sh
 sudo pacman -S nodejs npm git        # Arch / CachyOS (Debian/Ubuntu: see Node 22 note above)
-git clone https://github.com/jfj-oss/Dwureup.git
-cd Dwureup/game
+git clone https://github.com/jfj-oss/openDWU.git
+cd openDWU/game
 npm ci
 npm run import-assets                # links ~/.local/share/Steam/steamapps/common/Distant Worlds Universe
 npm run dev                          # then open http://localhost:5173/
@@ -85,8 +85,8 @@ npm run dev                          # then open http://localhost:5173/
 ```sh
 brew install node git
 git clone https://github.com/jfj-oss/dwu-assets.git
-git clone https://github.com/jfj-oss/Dwureup.git
-cd Dwureup/game
+git clone https://github.com/jfj-oss/openDWU.git
+cd openDWU/game
 npm ci
 DWU_DIR="$HOME/dwu-assets" npm run import-assets
 npm run dev                          # then open http://localhost:5173/
@@ -95,14 +95,14 @@ npm run dev                          # then open http://localhost:5173/
 If the game is installed through Steam on the Mac, skip the `dwu-assets` clone and run
 `DWU_DIR="$HOME/Library/Application Support/Steam/steamapps/common/Distant Worlds Universe" npm run import-assets`.
 
-**Native desktop app instead of the browser** (from `Dwureup/game`, after the steps above):
+**Native desktop app instead of the browser** (from `openDWU/game`, after the steps above):
 
 ```sh
 npm run package:linux                # Linux x86_64 -> release/dwu-linux-x64/
 npm run package:mac                  # macOS arm64  -> release/dwu-darwin-arm64/
 ```
 
-**Update to the latest version later** (from `Dwureup/game`):
+**Update to the latest version later** (from `openDWU/game`):
 
 ```sh
 git pull
