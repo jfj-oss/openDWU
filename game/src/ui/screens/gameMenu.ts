@@ -214,21 +214,24 @@ export function buildOptionsPanel(
     const scaleLabel = document.createElement('span');
     scaleLabel.className = 'game-menu-option-label';
     scaleLabel.textContent = 'UI Scale';
-    const scaleSelect = document.createElement('select');
+    // Slider 50% - 200% (100% = the default size).
+    const scaleSelect = document.createElement('input');
+    scaleSelect.type = 'range';
+    scaleSelect.min = '50';
+    scaleSelect.max = '200';
+    scaleSelect.step = '5';
+    scaleSelect.value = String(settings.uiScale);
     scaleSelect.setAttribute('aria-label', 'UI scale');
-    for (const pct of [90, 100, 110, 125]) {
-        const opt = document.createElement('option');
-        opt.value = String(pct);
-        opt.textContent = `${pct}%`;
-        if (pct === settings.uiScale) opt.selected = true;
-        scaleSelect.appendChild(opt);
-    }
-    scaleSelect.addEventListener('change', () => {
+    const scaleValue = document.createElement('span');
+    scaleValue.className = 'game-menu-option-value';
+    scaleValue.textContent = `${settings.uiScale}%`;
+    scaleSelect.addEventListener('input', () => {
         const pct = parseInt(scaleSelect.value, 10) || 100;
+        scaleValue.textContent = `${pct}%`;
         updateSettings({ uiScale: pct });
         applyUiScaleToHudRoot();
     });
-    scaleRow.append(scaleLabel, scaleSelect);
+    scaleRow.append(scaleLabel, scaleSelect, scaleValue);
     optionsPanel.appendChild(scaleRow);
 
     // Show system names / region labels toggles.

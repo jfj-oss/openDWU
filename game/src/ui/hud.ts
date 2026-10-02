@@ -6,6 +6,7 @@ import { toggleAdvisorPanel } from './advisorPanel';
 import { empireFlagUrl } from './selectionInfoView';
 import { threatKnownSites } from '../sim/scenario/threats/framework';
 import { onSettingsChange, uiScaleFactor } from './settings';
+import { HUD_FRAME_SIZE } from './topBar';
 import { GalaxyTime } from '../sim/clock';
 import { resolveStarDateDescription } from '../sim/galaxyTime';
 import { createMapOverlayState, OVERLAY_ROWS, toggleOverlay, type MapOverlayState, type OverlayKey } from './mapOverlays';
@@ -1156,7 +1157,7 @@ function selectionPanelSmall(): boolean {
  *  scale setting (and 0.75 in the small size). */
 export function selectionFrameScale(viewportHeight: number, uiScale: number, small: boolean): number {
     const v = Math.max(0.5, viewportHeight / 1080);
-    return SELECTION_FRAME_BASE_SCALE * v * uiScale * (small ? 0.75 : 1);
+    return SELECTION_FRAME_BASE_SCALE * HUD_FRAME_SIZE * v * uiScale * (small ? 0.75 : 1);
 }
 
 /** The original's selection-panel cycle buttons, top to bottom (Main.Part12.cs 2003-2030). */

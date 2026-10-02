@@ -15,6 +15,7 @@ import {
     viewSystemName,
     type SystemNameGalaxy,
     type SystemNameHabitat,
+    HUD_FRAME_SIZE,
 } from '../src/ui/topBar';
 import { HabitatCategoryType, HabitatType } from '../src/sim/types';
 import { SystemVisibilityStatus } from '../src/sim/visibility';
@@ -64,13 +65,14 @@ describe('topBarLayout (Main.Part12.cs MainInit 1714-1804)', () => {
 
 describe('topBarScale', () => {
     it('matches the selection frame at 1080 p and follows the height and UI scale', () => {
-        expect(topBarScale(1920, 1080, 1)).toBeCloseTo(Math.min(TOP_BASE_SCALE, 1920 / TOP_MIN_VIRTUAL_WIDTH));
+        expect(topBarScale(1920, 1080, 1)).toBeCloseTo(Math.min(TOP_BASE_SCALE * HUD_FRAME_SIZE, 1920 / TOP_MIN_VIRTUAL_WIDTH));
         expect(topBarScale(3840, 2160, 1)).toBeCloseTo(2 * topBarScale(1920, 1080, 1));
-        expect(topBarScale(1280, 720, 1)).toBeCloseTo(TOP_BASE_SCALE * (720 / 1080));
+        expect(topBarScale(1280, 720, 1)).toBeCloseTo(TOP_BASE_SCALE * HUD_FRAME_SIZE * (720 / 1080));
+        expect(topBarScale(1920, 1080, 2)).toBeCloseTo(2 * topBarScale(1920, 1080, 1));
     });
     it('is capped by the width so narrow windows keep the virtual width', () => {
-        const k = topBarScale(1440, 1080, 1.25);
-        expect(1440 / k).toBeCloseTo(TOP_MIN_VIRTUAL_WIDTH);
+        const k = topBarScale(800, 1080, 2);
+        expect(800 / k).toBeCloseTo(TOP_MIN_VIRTUAL_WIDTH);
     });
 });
 

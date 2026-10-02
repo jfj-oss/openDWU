@@ -201,7 +201,7 @@ export function loadSettings(): UiSettings {
         }
         if (typeof parsed.soundMuted === 'boolean') out.soundMuted = parsed.soundMuted;
         if (typeof parsed.uiScale === 'number' && Number.isFinite(parsed.uiScale)) {
-            out.uiScale = parsed.uiScale;
+            out.uiScale = Math.min(200, Math.max(50, parsed.uiScale));
         }
         if (typeof parsed.showSystemNames === 'boolean') out.showSystemNames = parsed.showSystemNames;
         if (typeof parsed.showRegionLabels === 'boolean') out.showRegionLabels = parsed.showRegionLabels;

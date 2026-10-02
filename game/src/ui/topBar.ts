@@ -92,10 +92,13 @@ export const TOP_BASE_SCALE = 683 / 399;
  *  buttons (700): (W + 700) / 2 <= W - 210 → W >= 1120. */
 export const TOP_MIN_VIRTUAL_WIDTH = 1120;
 
+/** Size of the original-style HUD frames at UI scale 100% (user call: half the first port's size). */
+export const HUD_FRAME_SIZE = 0.5;
+
 /** The strip's CSS scale: the base scale at 1080 px window height, proportional to the height, times the UI scale
  *  setting; capped so the strip's virtual width never drops below TOP_MIN_VIRTUAL_WIDTH (narrow / 4:3 windows). */
 export function topBarScale(viewportWidth: number, viewportHeight: number, uiScale: number): number {
-    const byHeight = TOP_BASE_SCALE * Math.max(0.5, viewportHeight / 1080) * uiScale;
+    const byHeight = TOP_BASE_SCALE * HUD_FRAME_SIZE * Math.max(0.5, viewportHeight / 1080) * uiScale;
     const byWidth = viewportWidth / TOP_MIN_VIRTUAL_WIDTH;
     return Math.max(0.25, Math.min(byHeight, byWidth));
 }

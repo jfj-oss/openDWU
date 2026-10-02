@@ -221,11 +221,11 @@ describe('selection action button images (Main.Part3.cs method_588)', () => {
 });
 
 describe('selection frame scale', () => {
-    it('is the original frame at ~683 px wide at 1080p and scales with the window height', () => {
-        expect(Math.round(SELECTION_FRAME.w * selectionFrameScale(1080, 1, false))).toBe(683);
-        expect(Math.round(SELECTION_FRAME.h * selectionFrameScale(1080, 1, false))).toBe(531);
-        expect(selectionFrameScale(2160, 1, false)).toBeCloseTo(SELECTION_FRAME_BASE_SCALE * 2);
-        expect(selectionFrameScale(1080, 1.25, false)).toBeCloseTo(SELECTION_FRAME_BASE_SCALE * 1.25);
-        expect(selectionFrameScale(1080, 1, true)).toBeCloseTo(SELECTION_FRAME_BASE_SCALE * 0.75);
+    it('is half the original-port frame (~342 px wide) at 1080p and 100%, scaling with the window height and UI scale', () => {
+        expect(Math.round(SELECTION_FRAME.w * selectionFrameScale(1080, 1, false))).toBe(342);
+        expect(Math.round(SELECTION_FRAME.w * selectionFrameScale(1080, 2, false))).toBe(683);
+        expect(selectionFrameScale(2160, 1, false)).toBeCloseTo(SELECTION_FRAME_BASE_SCALE * 0.5 * 2);
+        expect(selectionFrameScale(1080, 1.25, false)).toBeCloseTo(SELECTION_FRAME_BASE_SCALE * 0.5 * 1.25);
+        expect(selectionFrameScale(1080, 1, true)).toBeCloseTo(SELECTION_FRAME_BASE_SCALE * 0.5 * 0.75);
     });
 });
