@@ -143,7 +143,7 @@ describe('system nebula raster', () => {
         }
     });
 
-    it('stores valid premultiplied colour, dithered so slow gradients have no long flat runs', () => {
+    it('stores valid premultiplied colour (no texel dither: banding is handled by the screen-space output dither)', () => {
         const big = 320;
         const p = systemNebulaParams(1, 3).patches[0];
         const r = new NebulaPatchRaster(p, big);
@@ -163,8 +163,8 @@ describe('system nebula raster', () => {
                 maxRun = Math.max(maxRun, run);
             }
         }
-        // Undithered, this patch's centre row had flat runs of 40+ texels.
-        expect(maxRun).toBeLessThan(24);
+        // Texel dither removed (magnified texels showed it as blotches at close zoom): only check it is defined.
+        expect(maxRun).toBeGreaterThan(0);
     });
 
     it('TPDF dither is zero-mean, within ±1 step and triangular', () => {

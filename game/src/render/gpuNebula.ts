@@ -117,13 +117,10 @@ void main() {
     float lum = 0.75 + 0.35 * d;
     vec3 rgb = mix(uC1, uC2, t) * lum / 255.0;
     float a = uOpacity * d;
-    // Premultiplied output, dithered like the CPU path (systemNebula.ts tpdfDither): triangular-PDF noise in
-    // (-1, 1) 8-bit steps before the 8-bit store, one value for the colour channels (keeps the hue) and an independent
-    // one for alpha; colour kept <= the stored alpha (valid premultiplied, no additive specks).
-    float nc = hash12(pxy) + hash12(pxy + vec2(37.0, 113.0)) - 1.0;
-    float na = hash12(pxy + vec2(71.0, 19.0)) + hash12(pxy + vec2(5.0, 211.0)) - 1.0;
-    float aq = clamp(floor(a * 255.0 + na + 0.5), 0.0, 255.0) / 255.0;
-    outColor = vec4(min(clamp(rgb * a + nc / 255.0, 0.0, 1.0), vec3(aq)), aq);
+    // Premultiplied output, no texel dither (magnified texels turned the noise into blotches / holes at close zoom;
+    // the screen-space output dither in outputDither.ts handles banding). Colour kept <= alpha.
+    float aq = clamp(floor(a * 255.0 + 0.5), 0.0, 255.0) / 255.0;
+    outColor = vec4(min(clamp(rgb * a, 0.0, 1.0), vec3(aq)), aq);
 }`;
 
 export class GpuNebula {

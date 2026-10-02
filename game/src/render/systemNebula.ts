@@ -314,13 +314,12 @@ export class NebulaPatchRaster {
                 const lum = 0.75 + 0.35 * d;
                 const a = alphaMax * d;
                 const k = (lum * a) / 255; // straight colour → premultiplied
-                // One dither value for the three colour channels (keeps the hue), an independent one for alpha; the
-                // clamped store rounds to nearest. Colour is kept <= alpha (valid premultiplied: no additive specks).
-                const nc = tpdfDither(i, j, seedC);
-                const aq = Math.min(255, Math.max(0, Math.round(a + tpdfDither(i, j, seedA))));
-                data[o] = Math.min(aq, (c1.r + (c2.r - c1.r) * t) * k + nc);
-                data[o + 1] = Math.min(aq, (c1.g + (c2.g - c1.g) * t) * k + nc);
-                data[o + 2] = Math.min(aq, (c1.b + (c2.b - c1.b) * t) * k + nc);
+                // No texel dither: at close zoom one texel covers dozens of screen px, so per-texel noise showed as
+                // blotches / holes (user report). The screen-space output dither (outputDither.ts) breaks the bands.
+                const aq = Math.min(255, Math.max(0, Math.round(a)));
+                data[o] = Math.min(aq, (c1.r + (c2.r - c1.r) * t) * k);
+                data[o + 1] = Math.min(aq, (c1.g + (c2.g - c1.g) * t) * k);
+                data[o + 2] = Math.min(aq, (c1.b + (c2.b - c1.b) * t) * k);
                 data[o + 3] = aq;
             }
         }
