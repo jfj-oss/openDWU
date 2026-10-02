@@ -108,7 +108,7 @@ void main() {
     float d = ramp(v, uThr, uThr + 0.55);
     d = d * (0.55 + 0.45 * d);
     d = max(d, 0.1 * env * env);
-    d *= ramp(env, 0.0, 0.35);
+    d *= ramp(env, 0.0, 0.6);
     if (r >= uEnvOuter || d <= 0.002) {
         outColor = vec4(0.0);
         return;

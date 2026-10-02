@@ -304,7 +304,7 @@ export class NebulaPatchRaster {
                 d = d * (0.55 + 0.45 * d); // denser cores, thinner wisps
                 // A faint veil under the structure, so the thin parts still tint the sky.
                 d = Math.max(d, 0.1 * env * env);
-                d *= smooth01(0, 0.35, env);
+                d *= smooth01(0, 0.6, env); // longer, flat-tangent tail to zero at the rim (was smooth01(0, 0.35, env))
                 if (d <= 0.002) {
                     data[o + 3] = 0;
                     continue;
