@@ -7,6 +7,7 @@ import type { Galaxy } from '../src/sim/galaxy';
 import type { Empire } from '../src/sim/empire';
 import type { GameData } from '../src/sim/data/gameData';
 import type { BuiltObject } from '../src/sim/builtObject';
+import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
 import { Habitat } from '../src/sim/types';
 import { BuiltObjectMissionType, builtObjectMission } from '../src/sim/missions/mission';
 import { ShipGroup } from '../src/sim/fleets/shipGroup';
@@ -39,7 +40,7 @@ beforeEach(() => {
 });
 
 function explorer(): BuiltObject {
-    return player.builtObjects.find((b) => b.name === 'Glowing Way')!;
+    return player.builtObjects.find((b) => b.subRole === BuiltObjectSubRole.ExplorationShip)!;
 }
 
 function commandFor(brief: AdvisorBrief, who: string, verb: string, note?: string): string {
@@ -59,9 +60,9 @@ describe('buildAdvisorBrief (seed-1 harness game)', () => {
         // 12 mobile ships, none in a fleet; bases are not ships.
         expect(brief.ships.length).toBe(12);
         expect(brief.ships.every((s) => s.ref.startsWith('s'))).toBe(true);
-        expect(brief.ships.find((s) => s.name === 'Glowing Way')).toMatchObject({ type: 'ExplorationShip', fuel: 100, at: 'Sol', mission: 'Explore' });
+        expect(brief.ships.find((s) => s.ref === shipRef(explorer()))).toMatchObject({ type: 'ExplorationShip', fuel: 100, at: 'Sol', mission: 'Explore' });
         // fix7: the start explorer has an Explore mission (FastFindNearestUnexploredHabitat finds star-only systems, Galaxy.6.cs 4611).
-        expect(brief.ships.find((s) => s.name === 'Glowing Way')!.idle).toBeFalsy();
+        expect(brief.ships.find((s) => s.ref === shipRef(explorer()))!.idle).toBeFalsy();
         expect(brief.places.find((p) => p.name === 'Sol')).toMatchObject({ kind: 'System', explored: true, owner: 'you' });
         expect(brief.places.find((p) => p.name === 'Skaif Space Port')).toMatchObject({ kind: 'MediumSpacePort', refuel: true });
         // Ids are unique and every ref in the orders resolves.
@@ -81,7 +82,7 @@ describe('buildAdvisorBrief (seed-1 harness game)', () => {
         const c = brief.commands.find((x) => x.who === shipRef(explorer()) && x.do === 'Explore' && x.note === 'nearest unexplored system')!;
         expect(c.to).toBe(`h${star.habitatIndex}`);
         expect(brief.places.find((p) => p.ref === c.to)).toMatchObject({ kind: 'System', explored: false });
-        const frigate = player.builtObjects.find((b) => b.name === 'Minotaur 001')!;
+        const frigate = player.builtObjects.find((b) => b.subRole === BuiltObjectSubRole.Frigate)!;
         expect(brief.commands.some((x) => x.who === shipRef(frigate) && x.do === 'Explore')).toBe(false);
         expect(brief.commands.some((x) => x.who === shipRef(frigate) && x.do === 'Patrol')).toBe(true);
         expect(brief.commands.some((x) => x.who === shipRef(explorer()) && x.do === 'Patrol')).toBe(false);
@@ -96,7 +97,7 @@ describe('validateAdvisorResponse', () => {
     it('rejects unknown ids and invalid targets, accepts a target given by name', () => {
         const brief = buildAdvisorBrief(galaxy, player, null);
         const move = commandFor(brief, shipRef(explorer()), 'Move');
-        const patrolFrigate = commandFor(brief, brief.ships.find((s) => s.name === 'Minotaur 001')!.ref, 'Patrol');
+        const patrolFrigate = commandFor(brief, brief.ships.find((s) => s.ref === shipRef(player.builtObjects.find((b) => b.subRole === BuiltObjectSubRole.Frigate)!))!.ref, 'Patrol');
         const v = validateAdvisorResponse(brief, {
             reply: 'At once.',
             commands: [{ id: 'c9999' }, { id: move, targetId: 'RD27' }, { id: patrolFrigate, targetId: 'h999999' }],
@@ -113,7 +114,7 @@ describe('validateAdvisorResponse', () => {
         const who = shipRef(explorer());
         const noTarget = validateAdvisorResponse(brief, JSON.stringify({ reply: 'Where to?', commands: [{ id: commandFor(brief, who, 'Move') }] }));
         expect(noTarget.commands).toEqual([]);
-        expect(noTarget.clarify).toMatch(/^Glowing Way — Move where\?/);
+        expect(noTarget.clarify).toMatch(new RegExp(`^${explorer().name} — Move where\\?`));
         const two = validateAdvisorResponse(brief, {
             reply: '',
             commands: [{ id: commandFor(brief, who, 'Explore', 'nearest unexplored system') }, { id: commandFor(brief, who, 'Refuel', 'at nearest refuelling point') }],
@@ -145,7 +146,7 @@ describe('executeAdvisorCommands (scripted model replies)', () => {
         const reply = { reply: 'Glowing Way will chart it.', commands: [{ id: commandFor(brief, shipRef(ship), 'Explore', 'nearest unexplored system') }] };
         const v = validateAdvisorResponse(brief, reply);
         const [r] = executeAdvisorCommands(galaxy, player, brief, v.commands);
-        expect(r).toMatchObject({ ok: true, status: 'done', text: `Glowing Way: Explore → ${star.name}`, message: 'mission Explore' });
+        expect(r).toMatchObject({ ok: true, status: 'done', text: `${explorer().name}: Explore → ${star.name}`, message: 'mission Explore' });
         const m = builtObjectMission(ship.mission)!;
         expect(m.type).toBe(BuiltObjectMissionType.Explore);
         expect(m.targetHabitat).toBe(star);
@@ -154,7 +155,7 @@ describe('executeAdvisorCommands (scripted model replies)', () => {
     });
 
     it('"refuel the fleet": the fleet gets a Refuel mission at its nearest refuelling point', () => {
-        const ships = player.builtObjects.filter((b) => b.name.startsWith('Venator'));
+        const ships = player.builtObjects.filter((b) => b.subRole === BuiltObjectSubRole.Destroyer);
         const join = createMissionShipAction(BuiltObjectMissionType.Undefined);
         join.actionType = ShipActionType.JoinShipGroup;
         const r0 = executeShipAction(galaxy, player, ships[0], join, true);
@@ -179,7 +180,7 @@ describe('executeAdvisorCommands (scripted model replies)', () => {
         const typeBefore = missionBefore?.type ?? BuiltObjectMissionType.Undefined;
         ship.owner = null; // e.g. captured between the brief and the answer
         const [r] = executeAdvisorCommands(galaxy, player, brief, v.commands);
-        expect(r).toMatchObject({ ok: false, status: 'failed', message: 'Glowing Way can no longer take orders' });
+        expect(r).toMatchObject({ ok: false, status: 'failed', message: `${ship.name} can no longer take orders` });
         expect(builtObjectMission(ship.mission)).toBe(missionBefore);
         expect(builtObjectMission(ship.mission)?.type ?? BuiltObjectMissionType.Undefined).toBe(typeBefore);
     });

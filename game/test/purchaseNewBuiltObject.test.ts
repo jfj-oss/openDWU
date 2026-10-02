@@ -1,6 +1,9 @@
 // Empire.6.cs 1991-2180 PurchaseNewBuiltObject (src/sim/construction/empireConstruction.ts) and the player orders that
 // call it (src/sim/player/executeShipAction.ts: Main.Part7.cs 379 Build at a base, 1180 Build at a colony, 895 →
 // Main.Part4.cs 2826 method_539 BuildColonize), on the seed-1 harness game. Expectations are hand-worked from the C#.
+import type { Empire } from '../src/sim/empire';
+import type { Design as ShipDesign } from '../src/sim/design';
+import { applyShipRegistryPrefix } from '../src/sim/shipNameStyle';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadGameDataFs } from './helpers/loadGameDataFs';
 import { cachedTickGame } from './helpers/gameCache';
@@ -26,8 +29,8 @@ function newGame(): Game {
 }
 
 /** Galaxy.4.cs GenerateBuiltObjectName numbered names: BuildCount as "000". */
-function numbered(name: string, n: number): string {
-    return name + ' ' + String(n).padStart(3, '0');
+function numbered(e: Empire, d: ShipDesign, n: number): string {
+    return applyShipRegistryPrefix(e, d.subRole, d.name + ' ' + String(n).padStart(3, '0')); // + per-race registry prefix (shipNameStyle.ts)
 }
 
 describe('Build at the space port (Main.Part7.cs 379 → Empire.6.cs 2098 PurchaseNewBuiltObject(design, BuiltObject yard))', () => {
@@ -53,7 +56,7 @@ describe('Build at the space port (Main.Part7.cs 379 → Empire.6.cs 2098 Purcha
         const b = g.builtObjects[bos0]!;
         expect(q.constructionWaitQueue!.slice(wait0)).toEqual([b]);
         // Escorts take GenerateBuiltObjectName's numbered branch: "<design> <BuildCount:000>" (Empire.6.cs 2121/2132/2135).
-        expect(b.name).toBe(numbered(d.name, buildCount0 + 1));
+        expect(b.name).toBe(numbered(e, d, buildCount0 + 1));
         expect(d.buildCount).toBe(buildCount0 + 1);
         expect(b.design).toBe(d);
         expect(b.builtAt).toBe(port);
