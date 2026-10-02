@@ -83,8 +83,8 @@ branch, `main`.
 **Windows (x86_64), game installed through Steam** (PowerShell):
 
 ```powershell
-git clone https://github.com/jfj-oss/Dwureup.git
-cd Dwureup\game
+git clone https://github.com/jfj-oss/openDWU.git
+cd openDWU\game
 npm ci
 npm run import-assets      # links C:\Program Files (x86)\Steam\steamapps\common\Distant Worlds Universe
 npm run dev                # then open http://localhost:5173/
@@ -97,7 +97,7 @@ $env:DWU_DIR = "D:\SteamLibrary\steamapps\common\Distant Worlds Universe"
 npm run import-assets
 ```
 
-**Update to the latest version later** (from `Dwureup\game`):
+**Update to the latest version later** (from `openDWU\game`):
 
 ```powershell
 git pull
@@ -181,7 +181,7 @@ DWU_DIR="$(realpath ../../dwu-assets)" npm run import-assets
 #### Play in the browser
 
 ```
-cd Dwureup/game
+cd openDWU/game
 git pull
 npm ci
 npm run dev
