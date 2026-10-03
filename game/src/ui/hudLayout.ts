@@ -12,24 +12,10 @@ export interface Rect { x: number; y: number; w: number; h: number }
  *  (envelope) and galactic history (hourglass) buttons beside the message box. */
 export const TOP_BAR_BUTTONS = [...TOP_ROW_BUTTONS.map((b) => b.name), 'btnHistoryMessages', 'btnGalacticHistory'] as const;
 
-/** View rows of the bottom-right options list. */
-export const VIEW_ROWS = [
-    { key: 'zoomSelection', label: 'Zoom to selection' },
-    { key: 'zoomIn', label: 'Zoom in' },
-    { key: 'zoomOut', label: 'Zoom out' },
-    { key: 'zoomPlanet', label: '100% (planet level)' },
-    { key: 'system', label: 'System' },
-    { key: 'sector', label: 'Sector' },
-    { key: 'galaxy', label: 'Galaxy' },
-    { key: 'galaxyMap', label: 'Galaxy map (G)' },
-] as const;
-
-export type ViewRowKey = (typeof VIEW_ROWS)[number]['key'];
-
 /** pnlSystemMap's size (Main.Part12.cs 2099-2100; hudSystemMap.ts SYSTEM_MAP_PANEL). */
 export const SYSTEM_MAP_PANEL_W = 330;
 export const SYSTEM_MAP_PANEL_H = 290;
-/** Gap between the mini-map's top and the "View" button's bottom (original pixels). */
+/** Gap between the mini-map's top and the "View" button's bottom (CSS px at UI scale 1). */
 export const OPTIONS_ABOVE_MAP_GAP = 4;
 
 export function computeHudLayout(width: number, height: number, uiScale = 1): Record<string, Rect> {
