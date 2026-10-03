@@ -143,7 +143,7 @@ span.sel-corner.sel-text {
     height: auto;
 }
 .sel-wrap .sel-text {
-    white-space: normal;
+    white-space: pre-line; /* wraps; keeps the text's own line breaks (DrawStringWithDropShadowBounded) */
 }
 .sel-text {
     white-space: pre;

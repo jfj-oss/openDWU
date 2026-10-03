@@ -51,6 +51,7 @@ import { installOutputDither, setOutputDither } from './render/outputDither';
 // [aiadvisor] end
 import { closeMessageHistory } from './ui/screens/messageHistory';
 import { closeFleetsList } from './ui/screens/fleetsList'; // [15c]
+import { closeBuildQueue } from './ui/screens/buildQueue'; // [buildQueue]
 import { closeBuildOrder } from './ui/screens/buildOrder'; import { closeConstructionYards } from './ui/screens/constructionYards'; // [16c]
 import { createEmpireMessageFeed, recordTickerMessage, savedHistoryLines } from './ui/empireMessageFeed';
 // [policy] begin
@@ -842,6 +843,7 @@ export async function startGameView(
         closeMessageHistory();
         closeFleetsList(); // [15c]
         closeBuildOrder(); closeConstructionYards(); // [16c]
+        closeBuildQueue(); // [buildQueue]
 
         // [policy] begin
         closeEmpirePolicy();
