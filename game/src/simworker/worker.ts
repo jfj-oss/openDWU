@@ -59,6 +59,8 @@ const bootDeps = {
 
 let host: SimHost | null = null;
 let timer: ReturnType<typeof setTimeout> | null = null;
+/** Set once the game stopped for good (fatal): the step loop and the sync threw, nothing is answered any more. */
+let dead: string | null = null;
 let last = 0;
 /** Messages that arrived before the game existed. */
 const early: ToWorker[] = [];
@@ -83,15 +85,35 @@ async function init(m: InitMessage): Promise<void> {
     loop();
 }
 
+/**
+ * The game cannot go on (the step loop or the replica sync threw — the sim's own errors are contained by SimHost.tick,
+ * so this is the sync or the host itself): stop the loop and tell the main thread, which fails everything waiting on
+ * this worker (docs/sim-worker.md §4.4 "Failed commands") instead of waiting for replies that will never come.
+ */
+function fatal(where: string, err: unknown): void {
+    if (dead !== null) return;
+    dead = `${where}: ${err instanceof Error ? err.message : String(err)}`;
+    console.error(`sim worker: STOPPED (${where})`, err);
+    if (timer !== null) clearTimeout(timer);
+    timer = null;
+    post({ type: 'error', message: dead, fatal: true });
+}
+
 function loop(): void {
     timer = null;
     const h = host;
-    if (h === null) return;
+    if (h === null || dead !== null) return;
     const now = performance.now();
     const dt = now - last;
     last = now;
-    const msg = h.tick(dt);
-    if (msg !== null) post(msg);
+    let msg: ReturnType<SimHost['tick']>;
+    try {
+        msg = h.tick(dt);
+        if (msg !== null) post(msg);
+    } catch (err) {
+        fatal('step loop', err);
+        return;
+    }
     // Next tick when the next step is due (paused: poll for commands / clock changes at the step rate).
     const delay = h.time.paused ? FRAME_REAL_MS : Math.max(0, FRAME_REAL_MS - h.budget.backlogMs);
     timer = setTimeout(loop, delay);
@@ -120,7 +142,29 @@ function kickNow(): void {
     }
 }
 
+/** Request messages whose sender waits for an answer under their id (an error answers them). */
+function requestId(m: ToWorker): number | undefined {
+    return m.type === 'save' || m.type === 'digest' || m.type === 'debug' || m.type === 'commandLog' ? m.id : undefined;
+}
+
 function handle(m: ToWorker): void {
+    if (dead !== null) {
+        // Nothing runs any more; a request still gets its answer (an error), the main thread knows the rest.
+        const id = requestId(m);
+        if (id !== undefined) post({ type: 'error', message: `the game stopped (${dead})`, id });
+        return;
+    }
+    try {
+        dispatch(m);
+    } catch (err) {
+        // The host's command / host-op / UI-op paths contain their own errors (an error reply); what is left is
+        // a request handler or the host itself. A request gets an error answer; the rest is logged on the main thread.
+        console.error(`sim worker: ${m.type} failed`, err);
+        post({ type: 'error', message: `${m.type} failed: ${err instanceof Error ? err.message : String(err)}`, id: requestId(m) });
+    }
+}
+
+function dispatch(m: ToWorker): void {
     if (host === null) {
         if (m.type !== 'init') {
             early.push(m);

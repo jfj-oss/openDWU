@@ -102,8 +102,13 @@ describe('mainView.renderOrbitAngle (render-only orbit interpolation, no sim-sta
         expect(renderOrbitAngle(0, 0.1, true, 0, 1_000_000, 2)).toBeCloseTo(0.2, 12);
     });
 
-    it('never runs backward past the committed angle when nowMs < lastTouch', () => {
-        expect(renderOrbitAngle(0.7, 0.1, true, 5000, 1000, 10)).toBeCloseTo(0.7, 12);
+    it('runs backward along the same orbit, clamped, when the presented instant is before lastTouch (PresentationClock delay)', () => {
+        // 4 s before the touch at 0.1 rad/s: 0.7 − 0.4.
+        expect(renderOrbitAngle(0.7, 0.1, true, 5000, 1000, 10)).toBeCloseTo(0.3, 12);
+        // Clamped to clampSeconds (2 s back at most).
+        expect(renderOrbitAngle(0.7, 0.1, true, 5000, 1000, 2)).toBeCloseTo(0.5, 12);
+        // Counter-clockwise orbits run the other way.
+        expect(renderOrbitAngle(0.7, 0.1, false, 5000, 1000, 10)).toBeCloseTo(1.1, 12);
     });
 
     it('is continuous with the real touch: interpolating right up to the moment of a touch matches what advanceOrbit would commit', () => {

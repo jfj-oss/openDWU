@@ -576,6 +576,8 @@ export async function startGameView(
             const t = resolve(e.target) as { xpos: number; ypos: number } | null;
             if (t !== null) camera.centerOn(t.xpos, t.ypos);
         } else if (e.kind === 'simError') showToast('Simulation error — game paused (see the worker console)');
+        // The worker itself stopped (docs/sim-worker.md §4.4 "Failed commands"): orders in flight have failed.
+        else if (e.kind === 'workerStopped') showToast('The simulation stopped — the game cannot continue; return to the main menu (see the console)');
     });
     // 19p event log: `?eventLog=dump` logs the chronicle digest; __dwu.eventLog.dump() / .export(since).
     (window as unknown as { __dwu: Record<string, unknown> }).__dwu.eventLog = installEventLogDevHook(galaxy, window.location.search);
@@ -756,7 +758,7 @@ export async function startGameView(
 
     // [leftovers] begin
     // The player's EventMessageRecipient (Main.Part12.cs:2881) → history messages + the wonder-built popup.
-    installEventMessages({ player: game.playerEmpire, galaxy, onGoTo: (t) => selectStellarObject(t, true) });
+    installEventMessages({ player: game.playerEmpire, galaxy, onGoTo: (t) => selectStellarObject(t, true), onGoToCreature: (c) => selectCreature(c, true) });
     // Autosave every GameOptions.AutoSaveInterval minutes (Main.Part12.cs:4013 method_97).
     installAutosave({
         serialize: () => serializeCurrent(),

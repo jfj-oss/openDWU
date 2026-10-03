@@ -38,6 +38,8 @@ import { landscapeImageUrl } from './screens/intelligence';
 import { characterPortraitUrl } from './characterPortrait';
 import { messageCardFlagEmpire, messageCardText, messageImageUrl, messagePicture, type MessagePicture } from './messagePicture';
 import { CARD, CARD_STRIP_H, EVENT, TALK, cardHeight, cardPosition, eventButtonRects, eventPanelLayout } from './messageWindowLayout';
+import type { EventPicture } from './eventMessagePresentation';
+import { autoPauseClose, autoPauseOpen } from './autoPause';
 import { conversationActions, pirateOfferPriceLine, type ConversationAction } from './conversationActions';
 import { pirateProtectionPriceText } from './pirateProtectionPrice';
 import { goToMessage, messageGoToTarget } from './messageGoto';
@@ -275,6 +277,77 @@ function messagePictureElement(p: MessagePicture, galaxy: Galaxy): HTMLElement {
     return box;
 }
 
+/** An <img> that swaps to `fallback` when its file is missing (then hides, like pictureImg). */
+function pictureImgWithFallback(url: string, fallback: string | undefined, className: string): HTMLImageElement {
+    const img = pictureImg(url, className);
+    if (fallback !== undefined) {
+        img.addEventListener('error', () => {
+            if (img.src.endsWith(fallback)) return;
+            img.style.visibility = '';
+            img.src = fallback;
+        });
+    }
+    return img;
+}
+
+/**
+ * The DOM for a method_523 picture (eventMessagePresentation.ts EventPicture) in a box of the given size: picEventMessage
+ * draws it with SizeMode Zoom (scaled to fit, centred, aspect kept), so every part is `object-fit: contain`.
+ */
+export function eventPictureElement(p: EventPicture, galaxy: Galaxy, className = 'msg-event-picture'): HTMLElement {
+    const box = el('div', `${className} msg-event-pic msg-event-pic-${p.kind}`);
+    const zoom = (img: HTMLImageElement): HTMLImageElement => {
+        img.classList.add('msg-event-pic-img');
+        return img;
+    };
+    switch (p.kind) {
+        case 'url':
+            box.appendChild(zoom(pictureImgWithFallback(p.url, p.fallback, 'msg-event-pic-file')));
+            break;
+        case 'ship':
+            box.appendChild(zoom(pictureImg(shipImageUrl(p.builtObject))));
+            break;
+        case 'habitat':
+            box.appendChild(zoom(pictureImg(habitatImageUrl(p.habitat))));
+            break;
+        case 'landscape':
+            box.appendChild(zoom(pictureImg(landscapeImageUrl(p.ref))));
+            break;
+        case 'character':
+            box.appendChild(zoom(pictureImg(characterPortraitUrl(p.character))));
+            break;
+        case 'flag': {
+            const f = zoom(pictureImg(null));
+            f.style.visibility = '';
+            void empireFlagUrl(galaxy, p.empire).then((u) => (f.src = u));
+            box.appendChild(f);
+            break;
+        }
+        case 'flagRace': {
+            // method_652(empire, 200): a 333 × 200 bitmap, the flag (0, 40) 200 × 120, the race (133, 0) 200 × 200.
+            const inner = el('div', 'msg-event-flagrace');
+            const flag = flagImage(p.empire, 200, 120, 'msg-event-flagrace-flag');
+            const race = raceImage(p.empire, 200, 'msg-event-flagrace-race');
+            inner.append(flag, race);
+            box.appendChild(inner);
+            break;
+        }
+        case 'creature': {
+            const img = zoom(pictureImg(p.url));
+            if (p.rotate !== 0) img.style.transform = `rotate(${p.rotate}deg)`;
+            box.appendChild(img);
+            break;
+        }
+        case 'pair': {
+            // method_654: the two pictures side by side, vertically centred.
+            box.classList.add('msg-event-pic-row');
+            box.append(eventPictureElement(p.left, galaxy, 'msg-event-pic-part'), eventPictureElement(p.right, galaxy, 'msg-event-pic-part'));
+            break;
+        }
+    }
+    return box;
+}
+
 /** Start routing the player's messages into the popup card and the conversation queue. Idempotent. */
 export function installMessagePopups(opts: MessagePopupsOptions): void {
     removeMessagePopups();
@@ -470,7 +543,10 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
                 // acceptPirateOfferProtection → the ported Empire.3.cs 4213 AcceptPirateProtection).
                 issuePlayerCommand(galaxy, player, 'acceptPirateOfferProtection', [sender], (result) => {
                     showToast(
-                        !result.accepted
+                        // cost < 0: the order never reached the game (sim worker: simworker/commandFailure.ts).
+                        result.cost < 0
+                            ? 'The offer could not be answered (see the console)'
+                            : !result.accepted
                             ? 'We already have an arrangement with them'
                             : result.cost > 0
                               ? `Protection accepted — ${pirateProtectionPriceText(result.cost)}`
@@ -653,6 +729,7 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
             headerless: true,
             width: EVENT.width,
             height: EVENT.height,
+            forcePause: p.forcePause === true,
             onClose: () => {
                 if (eventWin === win) eventWin = null;
                 closeEventSting(); // btnEventMessageClose_Click: method_522
@@ -660,7 +737,8 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
         });
         eventWin = win;
         win.frame.classList.add('msg-event');
-        const extra = 0;
+        // method_509 lays the panel out with int_64 = 30 (taller buttons, a shorter text box); the others with 0.
+        const extra = p.extraButtonH ?? 0;
         const panel = gradientPanel({ corners: { tl: true, tr: true, br: true, bl: true }, radius: 20, className: 'msg-event-panel' });
         win.body.appendChild(panel);
         const panelRect = eventPanelLayout(false, 0).panel;
@@ -670,12 +748,13 @@ export function installMessagePopups(opts: MessagePopupsOptions): void {
         titleEl.style.maxWidth = `${EVENT.width - 40}px`;
         panel.appendChild(titleEl);
         const titleH = Math.max(1, Math.ceil(titleEl.offsetHeight || FONT.header * 1.25));
-        const lay = eventPanelLayout(p.imageUrl !== null, titleH, false, extra);
+        const picture: EventPicture | null = p.picture ?? (p.imageUrl !== null ? { kind: 'url', url: p.imageUrl } : null);
+        const lay = eventPanelLayout(picture !== null, titleH, false, extra);
         const titleW = Math.min(lay.titleMaxW, Math.ceil(titleEl.offsetWidth || lay.titleMaxW));
         place(titleEl, Math.trunc((lay.panel.w - titleW) / 2), lay.titleY);
-        if (lay.picture !== null && p.imageUrl !== null) {
+        if (lay.picture !== null && picture !== null) {
             // picEventMessage: SizeMode Zoom.
-            panel.appendChild(place(pictureImg(p.imageUrl, 'msg-event-picture'), lay.picture.x, lay.picture.y, lay.picture.w, lay.picture.h));
+            panel.appendChild(place(eventPictureElement(picture, galaxy), lay.picture.x, lay.picture.y, lay.picture.w, lay.picture.h));
         }
         // pnlEventMessageContainer (AutoScroll) holding lblEventMessageText (16.67 px, (170, 170, 170)).
         const container = place(el('div', 'msg-event-container ow-scroll'), lay.container.x, lay.container.y, lay.container.w, lay.container.h - 16);
@@ -814,6 +893,7 @@ export function removeMessagePopups(): void {
     s.closeDialog();
     s.closePopup(); // [popupstubs]
     s.closeEvent();
+    closeStoryEventPopup();
     s.queue.length = 0;
 }
 
@@ -866,6 +946,66 @@ export interface EventPopup {
     onGoTo?: (() => void) | null;
     /** btnEventMessageInvestigate / btnEventMessageAvoid (Main.Part4.cs:48-108 method_509-511): choice buttons; each closes the panel. */
     actions?: { label: string; onClick: () => void }[];
+    /** The picture as method_523 composes it (wins over imageUrl). */
+    picture?: EventPicture | null;
+    /** method_513's int_64 (30 for method_509's decision events, else 0). */
+    extraButtonH?: number;
+    /** method_508-511 pause through method_154 whatever AutoPauseWhenInPopupWindow says. */
+    forcePause?: boolean;
+}
+
+/** A story event (pnlStoryEvent, Main.Part4.cs:4839 method_570 / 4899 method_572). */
+export interface StoryEventPopup {
+    title: string;
+    text: string;
+    /** pnlStoryEvent.BackgroundImage (ImageLayout.Zoom over black). */
+    picture: EventPicture | null;
+}
+
+let storyPanel: { root: HTMLDivElement; close: () => void } | null = null;
+
+/**
+ * Show a story event full-view (pnlStoryEvent: mainView-sized, black, the picture zoomed behind; the title in white
+ * centred, the text 800 px wide below it, one Close button (260 × 33) 20 px above the bottom). Pauses only with
+ * AutoPauseWhenInPopupWindow (method_570 4842-4846), as autoPause.ts does. Replaces the one shown.
+ */
+export function showStoryEventPopup(p: StoryEventPopup, galaxy: Galaxy): void {
+    closeStoryEventPopup();
+    const root = el('div', 'msg-story');
+    if (p.picture !== null) root.appendChild(eventPictureElement(p.picture, galaxy, 'msg-story-picture'));
+    const content = el('div', 'msg-story-content');
+    const title = el('div', 'msg-story-title');
+    title.textContent = resolveGameText(p.title);
+    const body = el('div', 'msg-story-text');
+    body.textContent = resolveGameText(p.text);
+    content.append(title, body);
+    root.appendChild(content);
+    let closed = false;
+    const onKey = (e: KeyboardEvent): void => {
+        if (e.key !== 'Escape') return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        close();
+    };
+    const close = (): void => {
+        if (closed) return;
+        closed = true;
+        document.removeEventListener('keydown', onKey, true);
+        root.remove();
+        if (storyPanel?.root === root) storyPanel = null;
+        autoPauseClose();
+        closeEventSting(); // btnStoryEventClose: method_522
+    };
+    const btn = glassButton(gt('Close'), { className: 'msg-story-close', onClick: () => close() });
+    root.appendChild(btn);
+    document.body.appendChild(root);
+    document.addEventListener('keydown', onKey, true);
+    autoPauseOpen();
+    storyPanel = { root, close };
+}
+
+export function closeStoryEventPopup(): void {
+    storyPanel?.close();
 }
 
 /**

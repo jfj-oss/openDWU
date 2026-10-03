@@ -28,10 +28,14 @@ export interface BootProgress {
 export type ReplicaGameData = GameData | ((snapshot: SnapshotMessage) => GameData);
 
 export class SimWorkerClient {
-    private readonly waiting = new Map<number, (m: FromWorker) => void>();
+    /** save / digest / debug / commandLog requests waiting for their answer (rejected when the worker stops or the
+     *  client is disposed). */
+    private readonly waiting = new Map<number, { resolve: (m: FromWorker) => void; reject: (err: Error) => void }>();
     private nextRequest = 1;
     private eventHandler: ((e: WorkerEvent, resolve: (a: unknown) => unknown) => void) | null = null;
     private disposed = false;
+    /** Why the worker is gone (stop()), else null. */
+    private stopped: string | null = null;
 
     private constructor(
         private readonly worker: Worker,
@@ -55,7 +59,15 @@ export class SimWorkerClient {
             };
             worker.onerror = (e) => {
                 if (client === null) fail(new Error(`sim worker failed to start: ${e.message}`));
-                else console.error('sim worker error', e);
+                // An exception nothing in the worker caught (worker.ts contains its handlers and its loop, so this is
+                // unexpected): its game can no longer be trusted to answer — stop, so nothing waits on it forever.
+                else client.stop(`uncaught error in the worker: ${e.message}`);
+            };
+            worker.onmessageerror = () => {
+                // A message that could not be deserialized: a step (its delta and replies) is lost, the replica is out
+                // of step with the worker.
+                if (client === null) fail(new Error('sim worker: a message from the worker could not be read'));
+                else client.stop('a message from the worker could not be read');
             };
             const build = async (m: SnapshotMessage): Promise<void> => {
                 try {
@@ -119,12 +131,20 @@ export class SimWorkerClient {
             case 'commandLog': {
                 const w = this.waiting.get(m.id);
                 this.waiting.delete(m.id);
-                w?.(m);
+                w?.resolve(m);
                 return;
             }
-            case 'error':
+            case 'error': {
+                if (m.fatal === true) {
+                    this.stop(m.message);
+                    return;
+                }
                 console.error(`sim worker: ${m.message}`);
+                const w = m.id === undefined ? undefined : this.waiting.get(m.id);
+                if (m.id !== undefined) this.waiting.delete(m.id);
+                w?.reject(new Error(`sim worker: ${m.message}`));
                 return;
+            }
             default:
                 return;
         }
@@ -151,13 +171,33 @@ export class SimWorkerClient {
     private request<T extends FromWorker>(m: { type: 'save' | 'digest' | 'commandLog' } | Omit<DebugRequest, 'id'>): Promise<T> {
         const id = this.nextRequest++;
         return new Promise<T>((resolve, reject) => {
-            if (this.disposed) {
-                reject(new Error('sim worker: disposed'));
+            if (this.disposed || this.stopped !== null) {
+                reject(new Error(`sim worker: ${this.disposed ? 'disposed' : this.stopped}`));
                 return;
             }
-            this.waiting.set(id, (r) => resolve(r as T));
+            this.waiting.set(id, { resolve: (r) => resolve(r as T), reject });
             this.worker.postMessage({ ...m, id } as ToWorker);
         });
+    }
+
+    /** Every waiting save / digest / debug / commandLog request rejects with `reason`. */
+    private rejectWaiting(reason: string): void {
+        const all = [...this.waiting.values()];
+        this.waiting.clear();
+        for (const w of all) w.reject(new Error(`sim worker: ${reason}`));
+    }
+
+    /**
+     * The worker is gone for good (a fatal error it reported, an uncaught one, a lost message — or a test / the smoke
+     * simulating a crash): it is terminated, and everything waiting on it fails (SimClientCore.workerFailed: commands
+     * get their failure value, promises reject; the save / digest requests reject), loudly.
+     */
+    stop(reason: string): void {
+        if (this.disposed || this.stopped !== null) return;
+        this.stopped = reason;
+        this.worker.terminate();
+        this.core.workerFailed(reason);
+        this.rejectWaiting(`the simulation worker stopped (${reason})`);
     }
 
     /** [simworker chunk 1] The authoritative game's command log (`__dwu.commands.log()` in worker mode). */
@@ -212,7 +252,14 @@ export class SimWorkerClient {
 
     /** serializeGame text of the authoritative game (null when the worker could not save). */
     async save(): Promise<string | null> {
-        const r = await this.request<Extract<FromWorker, { type: 'saved' }>>({ type: 'save' });
+        let r: Extract<FromWorker, { type: 'saved' }>;
+        try {
+            r = await this.request<Extract<FromWorker, { type: 'saved' }>>({ type: 'save' });
+        } catch (err) {
+            // The worker stopped or the game was closed before it answered: no save (as when its save fails).
+            console.error(`sim worker save failed: ${err instanceof Error ? err.message : String(err)}`);
+            return null;
+        }
         if (r.error !== undefined) console.error(`sim worker save failed: ${r.error}`);
         return r.text;
     }
@@ -229,7 +276,7 @@ export class SimWorkerClient {
         this.worker.postMessage({ type: 'dispose' } satisfies ToWorker);
         this.worker.terminate();
         this.core.dispose();
-        this.waiting.clear();
+        this.rejectWaiting('the game was closed');
     }
 }
 

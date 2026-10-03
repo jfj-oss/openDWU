@@ -43,6 +43,14 @@ describe('resolveGameText (gameText encoding → C# text)', () => {
         );
     });
 
+    it('surplus arguments at the end are dropped, as string.Format ignores them (Empire.7.cs 3508)', () => {
+        // "PreWarpProgressEvent Message BuildFirstMiningStation" uses {0} only; the sender also passes the planet name.
+        const s = resolveGameText(gameText('PreWarpProgressEvent Message BuildFirstMiningStation', 'Ore Station Xylothar', 'Sol 2'));
+        expect(s).toContain('Building Ore Station Xylothar has galvanized the resolve of our population');
+        expect(s).not.toContain('|');
+        expect(s).not.toContain('Sol 2');
+    });
+
     it('concatenated texts, tag-only texts, literal prefixes and unknown text', () => {
         const s = gameText('SHIPTYPE NAME requires refuelling', 'Escort', 'Swift') + '\n\n' + gameText('SHIPTYPE NAME has completed its mission', 'Frigate', 'Talon');
         expect(resolveGameText(s)).toBe('Escort Swift requires refuelling\n\nFrigate Talon has completed its mission');

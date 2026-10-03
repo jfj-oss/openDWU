@@ -697,7 +697,7 @@ const GALAXY_ICON_BOXES: [string, GalaxyViewDisplayKey, number, number][] = [
     ['Always show Pirates', 'galaxyViewDisplayAlwaysPirates', 10, 198],
 ];
 
-type MapDisplayKey = 'showSystemNames' | 'showRegionLabels' | 'freightFlowsDefault' | 'ditherGradients';
+type MapDisplayKey = 'showSystemNames' | 'showRegionLabels' | 'freightFlowsDefault' | 'ditherGradients' | 'pullStationsToCentre';
 
 function createAdvancedDisplaySettings(): OriginalWindow {
     const win = openOriginalWindow({
@@ -753,13 +753,14 @@ function createAdvancedDisplaySettings(): OriginalWindow {
     for (const [caption, key, x, y] of GALAXY_ICON_BOXES) check(icons, caption, st[key], x, y, (v) => updateSettings({ [key]: v } as Partial<UiSettings>));
 
     // Ours: the map label / overlay / output toggles (were in the Escape menu's Options panel).
-    const map = place(groupBox('Map Display', 400, 112, F2), 12, 425);
+    const map = place(groupBox('Map Display', 400, 134, F2), 12, 425);
     body.appendChild(map);
     const mapBoxes: [string, MapDisplayKey][] = [
         ['Show system names', 'showSystemNames'],
         ['Show region labels', 'showRegionLabels'],
         ['Freight flows overlay on at start', 'freightFlowsDefault'],
         ['Dither gradients (no banding)', 'ditherGradients'],
+        ['Draw stations closer to their planet / moon', 'pullStationsToCentre'],
     ];
     mapBoxes.forEach(([caption, key], i) => check(map, caption, st[key], 10, 22 + 22 * i, (v) => updateSettings({ [key]: v } as Partial<UiSettings>)));
     return win;

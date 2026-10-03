@@ -9,6 +9,8 @@ import { diplomacyMoodFile, eventStingFile, investigateSting, messageSoundReques
 import { classifyUiClick, type ClosestLike } from '../src/audio/uiClicks';
 import { EventMessageType } from '../src/sim/eventTypes';
 import { Creature, CreatureType } from '../src/sim/creature';
+import { Habitat } from '../src/sim/types';
+import { EventAction, EventActionType } from '../src/sim/story/gameEventModel';
 import { ShipAction, ShipActionType } from '../src/sim/player/shipAction';
 import { Explosion } from '../src/sim/combat/damage';
 import { HabitatCategoryType, HabitatType } from '../src/sim/types';
@@ -57,6 +59,14 @@ describe('eventStingFile (Main.Part4.cs:487 method_523)', () => {
         expect(eventStingFile(EventMessageType.RogueFleetDefectsToUs, null, true, false)).toBeNull();
         expect(eventStingFile(EventMessageType.WonderBuilt, null, false, true)).toBeNull();
         expect(eventStingFile(EventMessageType.RogueFleetDefectsToUs, null, false, true)).toBe(STING_DISCOVERY);
+    });
+    it('flag7: a panel the discovery settings hide plays no sting; a story EventAction plays discovery (method_570)', () => {
+        expect(eventStingFile(EventMessageType.WonderBuilt, null, false, false, false)).toBeNull();
+        expect(eventStingFile(EventMessageType.EncounterRuins, Object.create(Habitat.prototype), false, false, false)).toBe(STING_DISCOVERY);
+        const story = new EventAction(null, EventActionType.GeneralMessageToEmpire);
+        expect(eventStingFile(EventMessageType.GeneralDiscovery, story, false, false)).toBe(STING_DISCOVERY);
+        expect(eventStingFile(EventMessageType.GeneralDiscovery, story, false, true)).toBeNull();
+        expect(eventStingFile(EventMessageType.GeneralDiscovery, null, false, false)).toBeNull(); // the pre-warp milestones: silent
     });
 });
 

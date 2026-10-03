@@ -68,6 +68,8 @@ function createEmpirePolicy(opts: EmpirePolicyOptions): OpenState {
     const controls = panelControls(sections);
     const playerIsPirate = (galaxy.playerEmpire ?? empire).pirateEmpireBaseHabitat !== null;
 
+    // Worker mode: the automation values this panel has issued (the replica shows them one round trip later).
+    const sentControls = new Map<string, unknown>();
     // Main.Part2.cs WqesexberY_Click: _Game.PlayerEmpire.Policy = method_597(panel, PlayerEmpire) — run on every change.
     const apply = (): void => {
         // The automation combos (which the C# method_597 writes into the empire) become setEmpireControl commands (only
@@ -75,11 +77,14 @@ function createEmpirePolicy(opts: EmpirePolicyOptions): OpenState {
         // the command log and a replay would drift; in worker mode the replica is read-only — docs/sim-worker.md §8).
         const changes: PolicyAutomationChange[] = [];
         const policy = applyPolicyPanel(empire, playerIsPirate, controls, ctx, (field, value) => {
-            const c = policyAutomationChange(empire, field, value);
+            const c = policyAutomationChange(empire, field, value, sentControls);
             if (c !== null) changes.push(c);
         });
         // Command log: queued, applied at the next frame boundary.
-        for (const c of changes) issuePlayerCommand(galaxy, empire, 'setEmpireControl', [c.field, c.value]);
+        for (const c of changes) {
+            sentControls.set(c.field, c.value);
+            issuePlayerCommand(galaxy, empire, 'setEmpireControl', [c.field, c.value]);
+        }
         issuePlayerCommand(galaxy, empire, 'setPolicy', [policy]);
     };
 

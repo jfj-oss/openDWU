@@ -1176,6 +1176,8 @@ function createShipsAndBasesList(opts: ShipsAndBasesListOptions): OpenState {
 
     /** Rebuild the rows from the sim (after a filter change or an applied command), keeping the selection. */
     function refresh(): void {
+        // A command reply can land after the window closed (one worker round trip later on a sim-worker replica).
+        if (win.closed) return;
         rows = shipsAndBasesRows(empire, opts.selected, filter);
         const keep = grid.selectedRows.map((r) => r.stellarObject);
         grid.setRows(rows);

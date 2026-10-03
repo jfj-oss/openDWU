@@ -799,7 +799,9 @@ function createEmpireSummary(src: EmpireSummarySource): OpenState {
     renderAll();
     // The original repaints on Invalidate; refresh the figures once a second.
     // Worker mode: bring what the screen shows up to date now instead of up to a cold cycle later (no-op in-thread).
-    requestSimRefresh(galaxy, [empire], () => renderAll());
+    requestSimRefresh(galaxy, [empire], () => {
+        if (!win.closed) renderAll();
+    });
     const timer = window.setInterval(renderAll, 1000);
 
     const state: OpenState = { win, close: () => win.close() };

@@ -834,6 +834,12 @@ function createTroopsScreen(opts: TroopsScreenOptions): OpenState {
         if (list.length <= 0 || win.closed) return;
         issuePlayerCommand(galaxy, empire, 'disbandTroops', [list], (num) => {
             if (win.closed) return;
+            // -1: nothing was disbanded (in-thread only for an empty list, which never gets here; on a sim-worker
+            // replica an order that could not be carried out): the view stays as it is.
+            if (num < 0) {
+                refresh();
+                return;
+            }
             // The C# rebinds to all troops and reselects the troop at index num.
             filter = { kind: 'all' };
             filterSig = '';

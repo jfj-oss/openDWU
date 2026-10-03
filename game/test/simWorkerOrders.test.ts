@@ -125,7 +125,7 @@ function menuCommand<K extends PlayerOpName>(g: Galaxy, p: Empire, op: K, args: 
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// The scripted UI player (mode-agnostic: simQuery + issuePlayerCommand, on whatever galaxy it is handed)
+// The scripted UI player (mode-agnostic: issuePlayerCommand and reads, on whatever galaxy it is handed)
 // ---------------------------------------------------------------------------------------------------------------
 
 interface UiRun {

@@ -364,7 +364,8 @@ export function openCharterDialog(galaxy: Galaxy, player: Empire, target: Habita
     ok.addEventListener('click', () => {
         const terms = { kind: kindSel.value as CharterKind, tariffPct: Number(tariff.value), durationYears: Math.max(1, Math.min(100, Math.trunc(Number(dur.value) || m.defaults.durationYears))) };
         issuePlayerCommand(galaxy, player, 'charterCompany', [target, terms], (granted) => {
-            const why = charterEligibility(galaxy, player, target).reason;
+            // (A sim-worker order that never reached the game leaves the target eligible: no reason of its own.)
+            const why = charterEligibility(galaxy, player, target).reason || 'the order could not be carried out';
             showToast(granted ? `Charter granted: the expedition sets out for ${target.name}` : `Charter refused: ${why}`);
         });
         p.close();
