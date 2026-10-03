@@ -557,12 +557,11 @@ Each chunk is independent. All chunks share the same test approach:
 - `builtObjectIndexGrid` stays cold (consumer audit §3: 400 000-unit cells, one reader, splices would go hot).
 - Audio: `mainViewSounds.ts SoundMarks` — render-side marks on a replica (`ReplicaSoundMarks`), the sim's flags
   in-thread (`simFlagSoundMarks`, unchanged). An ion hit that disables nothing re-arms the C# flag without a new
-  LastIonStrike, so on a replica only strikes that land are heard. The event stings ride on
-  `Empire.eventMessageRecipient`, which the worker's sim calls on its own empire: on a replica `gameAudio.ts` no
-  longer defines it (one writer of chunk 0's `Empire.eventMessageRecipient` finding gone; `ui/eventMessages.ts` is the
-  other), and chunk 4's event-message handler plays them with `gameAudio.ts playEventMessageSting`.
+  LastIonStrike, so on a replica only strikes that land are heard. The event stings chain on the replica player's
+  `Empire.eventMessageRecipient`, which chunk 4's `ui/workerMessages.ts` calls with the worker's event messages.
 - Write detector (smoke `--detect-writes`, late save, combat and hyperjump views added to the smoke): no chunk-2 key
-  left (`*SoundPlayed` gone); what remains is chunk 4's.
+  left (`*SoundPlayed` gone); `Empire.eventMessageRecipient` (defined on the replica player by `eventMessages.ts` and
+  `gameAudio.ts`, chunk 4's design) remains.
 - Hot-apply spikes: mission / design / fleet references compared hot but sent cold, births-only dependencies (§3.3).
 - Interpolation timing: `clientCore.ts StepPacer`, a playout buffer in step units (`?simPace=0` turns it off).
   With chunk 1's optimistic pause: the picture stops at the press (drawn position held at the latest applied step;

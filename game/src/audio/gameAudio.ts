@@ -241,9 +241,8 @@ export interface GameAudio {
 }
 
 /**
- * Main.Part4.cs:487 method_523's sting for an event message that reached the player (Empire.EventMessageRecipient).
- * In-thread installGameAudio's recipient calls it; in worker mode, the main thread's handler of the worker's event
- * messages should (the recipient there runs in the worker).
+ * Main.Part4.cs:487 method_523's sting for an event message that reached the player (Empire.EventMessageRecipient):
+ * what installGameAudio's recipient plays (in worker mode the recipient is called by ui/workerMessages.ts).
  */
 export function playEventMessageSting(type: EventMessageType, additionalData: unknown, suppressAllPopups: boolean): void {
     try {
@@ -295,10 +294,9 @@ export function installGameAudio(deps: GameAudioDeps): GameAudio {
     const setRecipient = (value: Empire['eventMessageRecipient'], enumerable: boolean): void => {
         if (player !== null) Object.defineProperty(player, 'eventMessageRecipient', { value, writable: true, configurable: true, enumerable });
     };
-    // [simworker] On a replica the sim that calls the recipient runs in the worker, on its own empire: a recipient here
-    // would never be called, and defining it writes the replica (docs/sim-worker.md §9 chunk 0's findings). The
-    // worker's event-message stream (chunk 4) plays the stings through playEventMessageSting.
-    const recipientInstalled = player !== null && !replica;
+    // [simworker] On a replica the sim's call arrives as the worker's 'playerMessages' event, which ui/workerMessages.ts
+    // hands to this same recipient chain (docs/sim-worker.md §9 chunk 4), so the stings play in both modes.
+    const recipientInstalled = player !== null;
     if (recipientInstalled) {
         setRecipient({
             receiveEventMessage(type, title, message, additionalData, location) {
