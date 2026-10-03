@@ -22,9 +22,9 @@ import { GalaxyTime } from './sim/clock';
 import { resolveStarDateDescription } from './sim/galaxyTime';
 import { createSimLoop, simViewEnabledFromUrl } from './simLoop';
 // [simworker] begin — docs/sim-worker.md: the sim in a Web Worker behind ?simWorker=1 / Settings (default off).
-import { SimWorkerClient, simWorkerEnabled } from './simworker/workerClient';
+import { SimWorkerClient, simWorkerEnabled, type ReplicaGameData } from './simworker/workerClient';
 import { workerCreateOptions } from './simworker/bootOptions';
-import type { WorkerBoot } from './simworker/protocol';
+import type { ScenarioRef, WorkerBoot } from './simworker/protocol';
 import type { RenderTime } from './render/renderInterp';
 // [simworker] end
 import { SECTOR_LEVEL_ZOOM, SYSTEM_LEVEL_ZOOM, type Selection } from './ui/hud';
@@ -284,7 +284,7 @@ function gameDataForSave(save: GameSaveJSON): GameData {
 /** Deserialize a save under the loading overlay (the save is parsed once; a late-game save takes seconds). */
 async function loadSaveWithProgress(text: string): Promise<LoadedGame> {
     if (lastGameData === null) throw new Error('DW:U game data is required to load a save');
-    if (useSimWorker()) return (await loadSaveInWorker(text)) as unknown as LoadedGame;
+    if (useSimWorker()) return (await loadSaveInWorker({ text })) as unknown as LoadedGame;
     return (await runStepsWithProgress('Loading game', deserializeGameSteps(text, gameDataForSave))) as unknown as LoadedGame;
 }
 
@@ -295,15 +295,27 @@ function useSimWorker(): boolean {
 }
 
 /** Boot the worker's game under the loading overlay and build the replica from its snapshot. */
-async function bootWorker(title: string, boot: WorkerBoot, playData: GameData, startOptions: StartGameOptions, clock?: { speed: number; paused: boolean }): Promise<SimWorkerClient> {
+async function bootWorker(title: string, boot: WorkerBoot, playData: ReplicaGameData, startOptions: StartGameOptions | undefined, clock?: { speed: number; paused: boolean }): Promise<SimWorkerClient> {
     const overlay = showLoadingOverlay(title);
     try {
         overlay.update({ step: 'Starting simulation thread', fraction: 0 });
         await nextPaint();
-        return await SimWorkerClient.boot({ type: 'init', boot, startOptions, clock }, playData, overlay);
+        return await SimWorkerClient.boot({ type: 'init', boot, startOptions, clock }, playData, { update: (p) => overlay.update(p), paint: nextPaint });
     } finally {
         overlay.close();
     }
+}
+
+/**
+ * The replica's static data for the scenario the worker found in a save (main.ts gameDataForSave without the parsed
+ * save): the base data with that scenario's overlay, plus the static tables and hooks createGame installs.
+ */
+function gameDataForScenario(scenario: ScenarioRef): GameData {
+    if (lastGameData === null) throw new Error('DW:U game data is required to load a save');
+    lastPlayedGameData = gameDataWithScenario(lastGameData, scenario?.id ?? null, scenario?.include ?? null);
+    installGameStatics(lastPlayedGameData);
+    registerGameHooks();
+    return lastPlayedGameData;
 }
 
 /** The loaded-game record of a worker game (bootLoadedGame hands `simClient` on to startGameView). */
@@ -314,17 +326,21 @@ interface WorkerLoadedGame {
     simClient: SimWorkerClient;
 }
 
-/** A save loaded by the worker: the main thread only reads the scenario (for its replica's static data). */
-async function loadSaveInWorker(text: string): Promise<WorkerLoadedGame> {
-    const save = JSON.parse(text) as GameSaveJSON;
-    const playData = gameDataForSave(save);
-    const id = savedScenarioId(save);
-    const scenario = id === null ? null : { id, include: id === COMPOSITE_SCENARIO_ID ? savedScenarioInclude(save) : null };
-    const client = await bootWorker('Loading game', { kind: 'load', text, scenario }, playData, save.startOptions);
+/**
+ * A save loaded by the worker. The main thread does not parse it (a late save is 100+ MB of JSON: seconds of a frozen
+ * tab): the worker parses it once, and its snapshot names the scenario (for the replica's static data) and carries the
+ * save's start options. `url`: the worker fetches the save itself (`?load=`), so the text never reaches this thread.
+ */
+async function loadSaveInWorker(source: { text: string } | { url: string }): Promise<WorkerLoadedGame> {
+    let startOptions: StartGameOptions | null = null;
+    const client = await bootWorker('Loading game', { kind: 'load', ...source }, (snap) => {
+        startOptions = snap.startOptions;
+        return gameDataForScenario(snap.scenario ?? null);
+    }, undefined);
     const time = new GalaxyTime();
     time.speed = client.core.clock.speed;
     time.paused = client.core.clock.paused;
-    return { game: client.core.game, time, startOptions: save.startOptions, simClient: client };
+    return { game: client.core.game, time, startOptions: startOptions ?? defaultStartGameOptions(), simClient: client };
 }
 
 /** createGame in the worker (autostart / wizard): the options minus gameData, and the scenario to apply to its data. */
@@ -545,7 +561,8 @@ export async function startGameView(
     // Task 06l: also exposes the running clock (`time`) so the tutorial
     // window's "Play This Game" button can unpause it.
     (window as unknown as { __dwu?: unknown }).__dwu = buildDwuDebugObject({ camera, galaxy, view, app, game, time });
-    Object.assign((window as unknown as { __dwu: Record<string, unknown> }).__dwu, { sim: inThreadLoop?.driver ?? null, simStats: simLoop.stats, simWorker: simClient ?? null });
+    // [simworker] in worker mode `sim` / `simBudget` stand in for the worker's driver / budget (SimWorkerClient.debugObject).
+    Object.assign((window as unknown as { __dwu: Record<string, unknown> }).__dwu, { sim: inThreadLoop?.driver ?? simClient?.debugObject('sim') ?? null, simStats: simLoop.stats, simWorker: simClient ?? null });
     // [simworker] Sim → UI events from the worker (the sim-side handling already ran there).
     simClient?.onEvent((e, resolve) => {
         if (e.kind === 'locationPinged') {
@@ -580,9 +597,10 @@ export async function startGameView(
     (window as unknown as { __dwu?: Record<string, unknown> }).__dwu!.galaxyMap = galaxyMap;
     // [fix6ui] begin — ship-order / selection keys (created after the order UI below).
     let shipKeys: ShipCommandKeys | null = null;
-    Object.assign((window as unknown as { __dwu: Record<string, unknown> }).__dwu, { simBudget: inThreadLoop?.budget ?? null });
-    // Command log (smoke / debugging): issue a player command through the queue and read the journal.
-    Object.assign((window as unknown as { __dwu: Record<string, unknown> }).__dwu, { commands: { issue: issuePlayerCommand, log: () => commandLog(galaxy), moveOrder: (t: Habitat) => createMissionShipActionAt(BuiltObjectMissionType.Move, t, Math.trunc(t.xpos), Math.trunc(t.ypos)) } });
+    Object.assign((window as unknown as { __dwu: Record<string, unknown> }).__dwu, { simBudget: inThreadLoop?.budget ?? simClient?.debugObject('simBudget') ?? null });
+    // Command log (smoke / debugging): issue a player command through the queue and read the journal. [simworker] In
+    // worker mode the journal is the worker's: `log()` returns a Promise of it (the replica keeps no log).
+    Object.assign((window as unknown as { __dwu: Record<string, unknown> }).__dwu, { commands: { issue: issuePlayerCommand, log: () => (simClient !== undefined ? simClient.commandLog() : commandLog(galaxy)), moveOrder: (t: Habitat) => createMissionShipActionAt(BuiltObjectMissionType.Move, t, Math.trunc(t.xpos), Math.trunc(t.ypos)) } });
     // [fix6ui] end
     // [freightOverlay] begin — task 19e-9: Trade Flows panel (overlay row "…", legend button) + map legend.
     const tradeFlowsOpts = {
@@ -1091,10 +1109,19 @@ async function startTutorialGame(file: string): Promise<void> {
     }
     const opts = defaultDevGameOptions(1, GalaxyShape.Spiral, 700, 4, 4, systemNames, gameData);
     let game: Game | null = null;
+    // [simworker] the tutorial game is created in the worker too (the same options; createGame there).
+    const inWorker = useSimWorker();
+    let simClient: SimWorkerClient | undefined;
     try {
-        game = createGame(opts);
+        if (inWorker) ({ game, simClient } = await createGameInWorker(opts, null, { ...defaultStartGameOptions(), seed: opts.seed }));
+        else game = createGame(opts);
     } catch (err) {
         console.warn('Tutorial game creation failed', err);
+        if (inWorker) {
+            // [simworker] the Tutorials screen is gone: back to the menu rather than a blank page.
+            showToast('Could not create the tutorial game — see console');
+            showMainMenu();
+        }
         return;
     }
     // Saves need start options (metadata only; the galaxy itself is saved).
@@ -1112,7 +1139,7 @@ async function startTutorialGame(file: string): Promise<void> {
                 }
             },
         });
-    }]);
+    }], undefined, simClient);
 }
 
 /** Task 11a3: remember the loaded game data so later loads (main menu or
@@ -1173,6 +1200,12 @@ async function main(): Promise<void> {
         // Dev / perf hook: ?load=<url> fetches a save (serializeGame text, e.g. /dev-saves/x.dwusave under public/) and
         // boots it as the main menu's Load Game would (scripts/perf-render.mjs --load=...).
         await ensureStaticData();
+        if (useSimWorker()) {
+            // [simworker] the worker fetches and parses the save itself (the text never reaches the main thread).
+            if (lastGameData === null) throw new Error('DW:U game data is required to load a save');
+            await bootLoadedGame((await loadSaveInWorker({ url: new URL(loadUrl, window.location.href).href })) as unknown as LoadedGame);
+            return;
+        }
         const res = await fetch(loadUrl);
         if (!res.ok) throw new Error(`?load=${loadUrl}: HTTP ${res.status}`);
         await bootLoadedGame(await loadSaveWithProgress(await res.text()));
@@ -1488,6 +1521,18 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
         }
     }
 
+    // [simworker] begin — the bare generateGalaxy boot runs in the worker too (it needs the DW:U data for the replica's
+    // static tables; without it, or if the worker fails, the galaxy is generated here as before).
+    let simClient: SimWorkerClient | null = null;
+    if (useSimWorker() && gameData !== null) {
+        try {
+            simClient = await bootWorker('Creating galaxy', { kind: 'generate', options: { seed, shape, starCount, sectorWidth, sectorHeight, systemNames }, viewX: 0, viewY: 0 }, gameData, defaultStartGameOptions());
+        } catch (err) {
+            console.warn('sim worker: generateGalaxy failed in the worker; generating it in-thread', err);
+        }
+    }
+    // [simworker] end
+
     const app = new Application();
     await app.init({
         resizeTo: window,
@@ -1502,8 +1547,8 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     initOutputDither(app);
     document.body.appendChild(app.canvas);
 
-    // Deterministic galaxy (seed/shape/stars/sectors from the URL or wizard).
-    const galaxy = generateGalaxy({
+    // Deterministic galaxy (seed/shape/stars/sectors from the URL or wizard). [simworker] or the worker's replica.
+    const galaxy = simClient !== null ? simClient.core.galaxy : generateGalaxy({
         seed,
         shape,
         starCount: starCount,
@@ -1551,8 +1596,14 @@ async function bootGameWithOptions(opts: BootOptions): Promise<void> {
     // centre).
     // One clock (galaxy.nowMs), advanced by the real scheduler below; generateGalaxy leaves Galaxy.Age 0.
     const time = new GalaxyTime();
-    const simLoop = createSimLoop(galaxy, time, camera, simViewEnabledFromUrl(window.location.search));
-    Object.assign(debugHook, { time, sim: simLoop.driver, simStats: simLoop.stats });
+    // [simworker] in worker mode the frame loop applies the worker's deltas to the replica instead of stepping.
+    const inThreadLoop = simClient === null ? createSimLoop(galaxy, time, camera, simViewEnabledFromUrl(window.location.search)) : null;
+    const simLoop: { tick(realDtMs: number): number; renderTime: RenderTime } = inThreadLoop ?? simClient!.createLoop(time);
+    if (inThreadLoop !== null) Object.assign(debugHook, { time, sim: inThreadLoop.driver, simStats: inThreadLoop.stats });
+    else {
+        const sc = simClient!;
+        Object.assign(debugHook, { time, sim: sc.debugObject('sim'), simBudget: sc.debugObject('simBudget'), simStats: sc.core.stats, simWorker: sc, commands: { log: () => sc.commandLog() } });
+    }
     // Task C3: Galaxy Map screen (G key / HUD "Galaxy map (G)" row).
     const galaxyMap = createGalaxyMapFor(galaxy, camera);
     debugHook.galaxyMap = galaxyMap;
