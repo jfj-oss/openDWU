@@ -11,9 +11,12 @@ import type { Empire } from '../../sim/empire';
 import { planetaryFacilityDefinitionsStatic } from '../../sim/construction/facilities';
 import { defaultEmpirePolicy } from '../../sim/data/policies';
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
+import { isReplicaGalaxy } from '../../simworker/refresh';
 import {
     applyPolicyPanel,
     buildPolicyPanel,
+    policyAutomationChange,
+    type PolicyAutomationChange,
     clampNumeric,
     panelControls,
     policyText,
@@ -68,8 +71,22 @@ function createEmpirePolicy(opts: EmpirePolicyOptions): OpenState {
 
     // Main.Part2.cs WqesexberY_Click: _Game.PlayerEmpire.Policy = method_597(panel, PlayerEmpire) — run on every change.
     const apply = (): void => {
+        if (!isReplicaGalaxy(galaxy)) {
+            // In-thread, as the C# method_597: the automation combos write the empire, the policy is a command.
+            // Command log: queued, applied at the next frame boundary.
+            issuePlayerCommand(galaxy, empire, 'setPolicy', [applyPolicyPanel(empire, playerIsPirate, controls, ctx)]);
+            return;
+        }
+        // On a sim-worker replica (read-only, docs/sim-worker.md §9 chunk 6) the automation combos become
+        // setEmpireControl commands (only the values that change), then the policy.
+        const changes: PolicyAutomationChange[] = [];
+        const policy = applyPolicyPanel(empire, playerIsPirate, controls, ctx, (field, value) => {
+            const c = policyAutomationChange(empire, field, value);
+            if (c !== null) changes.push(c);
+        });
         // Command log: queued, applied at the next frame boundary.
-        issuePlayerCommand(galaxy, empire, 'setPolicy', [applyPolicyPanel(empire, playerIsPirate, controls, ctx)]);
+        for (const c of changes) issuePlayerCommand(galaxy, empire, 'setEmpireControl', [c.field, c.value]);
+        issuePlayerCommand(galaxy, empire, 'setPolicy', [policy]);
     };
 
     const root = el('div', 'policy-wrap');

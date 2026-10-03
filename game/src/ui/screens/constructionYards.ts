@@ -65,6 +65,7 @@ import {
     valueRow,
     type OriginalWindow,
 } from '../originalWindow';
+import { requestSimRefresh } from '../../simworker/refresh';
 export { moveWaitQueueItem, type WaitQueueMove };
 
 // -------------------------------------------------------------------------------------------------------------------
@@ -1075,6 +1076,8 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
     showTab();
     if (selected) siteGrid.select(siteTarget(selected));
     // Progress moves while open: refresh every second, keeping the selections and scroll positions.
+    // Worker mode: bring what the screen shows up to date now instead of up to a cold cycle later (no-op in-thread).
+    requestSimRefresh(galaxy, [empire, empire.constructionYards ?? [], empire.spacePorts], () => refresh());
     timer = window.setInterval(refresh, 1000);
 
     return { win, close: () => win.close() };

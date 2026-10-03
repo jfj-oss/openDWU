@@ -30,6 +30,7 @@ import {
 } from '../../sim/scenario/charteredCompanies/charters';
 import { issuePlayerCommand } from '../../sim/player/playerCommands';
 import { showToast } from '../toast';
+import { requestSimRefresh } from '../../simworker/refresh';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Pure models
@@ -275,6 +276,10 @@ export function toggleChartersScreen(galaxy: Galaxy, player: Empire): void {
     }
     render();
     // Figures change with the sim; refresh in place every 2 s (buttons are rebuilt only then).
+    // Worker mode: bring what the screen shows up to date now instead of up to a cold cycle later (no-op in-thread).
+    requestSimRefresh(galaxy, [player], () => {
+        if (p.root.isConnected) render();
+    });
     const timer = window.setInterval(() => {
         if (!p.root.isConnected) return;
         render();
