@@ -924,6 +924,21 @@ export class EffectsLayer {
         if (h.explosion !== null) this.drawPlanetExplosion(h, h.explosion as Explosion, f, hz);
     }
 
+    /**
+     * Whether checkHyper would do anything for `bo` until its sim flags change: an enter animation due, a fresh exit, a
+     * new / changed / latched exit flag, or a recorded flag to reset. Half the ships of a late game keep
+     * HyperExitStartAnimation set long after their exit (it is cleared when a mission is assigned) with the exit
+     * already recorded — checkHyper is a no-op for them, every frame.
+     */
+    private hyperPending(bo: BuiltObject, starDate: number): boolean {
+        if (bo.hyperjumpJustExited || hyperEnterDue(bo.hyperjumpCountdown, starDate, bo.hyperEnterStartAnimation, bo.canHyperJump)) return true;
+        if (bo.hyperExitStartAnimation) {
+            const st = this.hyper.get(bo);
+            return st === undefined || !st.exitFlag || st.exitLatched;
+        }
+        return this.hyperDirty.has(bo);
+    }
+
     /** Re-collect the per-step candidate lists when a sim step landed, the arrays changed, or every 8 frames. */
     private refreshCandidates(nowMs: number, starDate: number): void {
         const g = this.galaxy;
@@ -958,13 +973,7 @@ export class EffectsLayer {
             if (bo === null) continue;
             let need = (bo.explosions as Explosion[]).length > 0;
             if (!need && !bo.hasBeenDestroyed) {
-                need =
-                    shieldStrikeVisible(bo.lastShieldStrike, nowMs) ||
-                    hyperEnterDue(bo.hyperjumpCountdown, starDate, bo.hyperEnterStartAnimation, bo.canHyperJump) ||
-                    bo.hyperExitStartAnimation ||
-                    bo.hyperjumpJustExited ||
-                    this.hyperDirty.has(bo) ||
-                    this.strikeBos.has(bo);
+                need = shieldStrikeVisible(bo.lastShieldStrike, nowMs) || this.hyperPending(bo, starDate) || this.strikeBos.has(bo);
                 const weapons = bo.weapons;
                 if (!need && weapons !== null) {
                     for (let i = 0; i < weapons.length; i++) {

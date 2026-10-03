@@ -401,12 +401,12 @@ export function pickNearestBuiltObject(
  * Release the sprites of built objects that were not visited as live this frame: destroyed ships/bases
  * (hasBeenDestroyed — their explosion is drawn by effectsLayer.ts) and objects gone from galaxy.builtObjects (the sim
  * leaves a null slot). `seen` holds every live object the frame visited. Each released entry is removed from `sprites`
- * and handed to `release` (which detaches / destroys it). Returns how many were released.
+ * and handed to `release` (which detaches / destroys it); entries `keep` accepts stay. Returns how many were released.
  */
-export function releaseStaleSprites<K, S>(sprites: Map<K, S>, seen: ReadonlySet<K>, release: (key: K, sprite: S) => void): number {
+export function releaseStaleSprites<K, S>(sprites: Map<K, S>, seen: ReadonlySet<K>, release: (key: K, sprite: S) => void, keep?: (key: K) => boolean): number {
     let n = 0;
     for (const [key, sprite] of sprites) {
-        if (seen.has(key)) continue;
+        if (seen.has(key) || (keep !== undefined && keep(key))) continue;
         sprites.delete(key);
         release(key, sprite);
         n++;
@@ -416,6 +416,7 @@ export function releaseStaleSprites<K, S>(sprites: Map<K, S>, seen: ReadonlySet<
 
 // [concordArt]
 const NO_TREASURE: ReadonlySet<unknown> = new Set();
+const NO_BUILT_OBJECTS: ReadonlySet<BuiltObject> = new Set();
 
 interface LoadedShipImage {
     texture: Texture;
@@ -464,6 +465,7 @@ export class BuiltObjectLayer {
     index: BuiltObjectIndex | null = null;
     private nearScratch: BuiltObject[] = [];
     private liveScratch = new Set<BuiltObject>();
+    private rebuildsSeen = 0;
     // [concordArt] begin — scenario 19a: the Concord's ships (concordArt.ts: procedural hulls) and overlays.
     private concordFx = new ConcordFxLayer();
     private frame = 0;
@@ -681,8 +683,16 @@ export class BuiltObjectLayer {
         this.shownNow = this.shownLast;
         this.shownLast = shown;
         // Destroyed or removed objects: drop their sprite and drawn size (which also clears their selection ring / pick).
-        // Liveness only changes when the index is rebuilt (a sim step, an array change).
-        if (index === null || index.changed) {
+        // Liveness only changes when the index is rebuilt (a sim step, an array change). A sprite not drawn this frame
+        // is already hidden (above), so releasing it is memory housekeeping only: destroyed objects are released on every
+        // rebuild, objects that left galaxy.builtObjects without being destroyed on every 30th (a full liveness set).
+        if (index !== null && index.changed && ++this.rebuildsSeen % 30 !== 0) {
+            releaseStaleSprites(this.sprites, NO_BUILT_OBJECTS, (bo, sprite) => {
+                this.drawnPx.delete(bo);
+                this.shownLast.delete(sprite);
+                sprite.destroy();
+            }, (bo) => !bo.hasBeenDestroyed);
+        } else if (index === null || index.changed) {
             let live: ReadonlySet<BuiltObject>;
             if (index !== null) live = index.liveSet();
             else {
