@@ -15,6 +15,8 @@ import {
     ComponentCategoryType,
     defaultEmpirePolicy,
     resolveTechFocus,
+    resolveTechFocusIndexCategory,
+    resolveTechFocusIndexType,
     type EmpirePolicy as PolicyData,
 } from '../../sim/data/policies';
 import { ComponentType } from '../../sim/data/components';
@@ -185,47 +187,8 @@ export function clampNumeric(value: number, min: number, max: number): number {
     return Math.min(max, Math.max(value, min));
 }
 
-// Port of Galaxy.4.cs:490-545 ResolveTechFocusIndex(ComponentType).
-export function resolveTechFocusIndexType(type: ComponentType): number {
-    switch (type) {
-        case ComponentType.WeaponPhaser: return 2;
-        case ComponentType.WeaponRailGun: return 3;
-        case ComponentType.WeaponBombard: return 5;
-        case ComponentType.WeaponMissile: return 6;
-        case ComponentType.Armor: return 10;
-        case ComponentType.EngineMainThrust: return 13;
-        case ComponentType.EngineVectoring: return 14;
-        case ComponentType.DamageControl: return 18;
-        case ComponentType.ComputerTargetting: return 19;
-        case ComponentType.ComputerCountermeasures: return 20;
-        case ComponentType.HabitationMedicalCenter: return 22;
-        case ComponentType.HabitationRecreationCenter: return 23;
-        case ComponentType.WeaponTractorBeam: return 24;
-        case ComponentType.AssaultPod: return 25;
-        case ComponentType.WeaponGravityBeam: return 26;
-        case ComponentType.WeaponAreaGravity: return 27;
-        default: return 0;
-    }
-}
-
-// Port of Galaxy.4.cs:547-590 ResolveTechFocusIndex(ComponentCategoryType).
-export function resolveTechFocusIndexCategory(category: ComponentCategoryType): number {
-    switch (category) {
-        case ComponentCategoryType.WeaponBeam: return 1;
-        case ComponentCategoryType.WeaponTorpedo: return 4;
-        case ComponentCategoryType.WeaponArea: return 7;
-        case ComponentCategoryType.WeaponIon: return 8;
-        case ComponentCategoryType.Fighter: return 9;
-        case ComponentCategoryType.Shields: return 11;
-        case ComponentCategoryType.Reactor: return 12;
-        case ComponentCategoryType.HyperDrive: return 15;
-        case ComponentCategoryType.HyperDisrupt: return 16;
-        case ComponentCategoryType.Construction: return 17;
-        case ComponentCategoryType.Sensor: return 21;
-        case ComponentCategoryType.AssaultPod: return 25;
-        default: return 0;
-    }
-}
+// Galaxy.4.cs ResolveTechFocusIndex (both overloads) live in sim/data/policies.ts (the policy file writer needs them).
+export { resolveTechFocusIndexCategory, resolveTechFocusIndexType };
 
 // ---------------------------------------------------------------------------------------------------------------
 // Read back: the method_597 control readers (Main.Part3.cs:4203-4486)

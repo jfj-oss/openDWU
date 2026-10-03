@@ -87,8 +87,11 @@ import {
     disbandTroops,
     moveWaitQueueItem,
     queueResearchProject,
+    renameCharacter,
     renameTroop,
     renameEmpire,
+    setAllianceName,
+    setSupplyRestrictedResources,
     changeGovernmentByRevolution,
     setTroopsGarrisoned,
     toggleDesignAutoRetrofit,
@@ -262,6 +265,8 @@ export const PLAYER_OPS = {
         character.transferToNewLocation(destination, galaxy);
         return true;
     },
+    /** CharacterSummary.cs txtName_Leave: `_Character.Name = txtName.Text`. */
+    renameCharacter: (_galaxy: Galaxy, _empire: Empire, character: Character, name: string) => renameCharacter(character, name),
     /** Main.Part6.cs 3351 btnIntelligenceAgentsDisband_Click: `Mission = null; Kill(galaxy)`. */
     dismissCharacter: (galaxy: Galaxy, _empire: Empire, character: Character) => {
         character.mission = null;
@@ -278,6 +283,10 @@ export const PLAYER_OPS = {
     answerConversation: (galaxy: Galaxy, empire: Empire, sender: Empire, part: ConversationReplyPart, related: ConversationRelated, cost: number) =>
         answerConversationReply(galaxy, empire, sender, part, related, cost),
     acceptProposal: (_galaxy: Galaxy, empire: Empire, other: Empire) => acceptProposal(empire, other),
+    /** TradeRestrictedResourcesPanel.cs chkTradeResources_CheckedChanged: our SupplyRestrictedResources towards `other`. */
+    setSupplyRestrictedResources: (_galaxy: Galaxy, empire: Empire, other: Empire, supply: boolean) => setSupplyRestrictedResources(empire, other, supply),
+    /** Main.Part2.cs:4652 method_683 (pnlRelationAllianceName Apply): the alliance name on both relations. */
+    setAllianceName: (_galaxy: Galaxy, empire: Empire, other: Empire, name: string) => setAllianceName(empire, other, name),
     declineProposal: (_galaxy: Galaxy, empire: Empire, other: Empire) => declineProposal(empire, other),
 
     // --- Pirates ---
