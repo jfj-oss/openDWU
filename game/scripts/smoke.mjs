@@ -381,7 +381,7 @@ async function main() {
         try {
             const panels = [
                 ['h', '.message-history-wrap'],
-                ['F2', '.colonies-list-wrap'],
+                ['F2', '[data-ow="colonies"]'],
                 ['F6', '.empire-summary-wrap'],
             ];
             for (const [key, sel] of panels) {

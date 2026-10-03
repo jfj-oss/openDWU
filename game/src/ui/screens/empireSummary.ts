@@ -55,6 +55,7 @@ import {
 import { empireFlagUrl } from '../selectionInfoView';
 import { racePortraitUrl } from '../empireEmblem';
 import { facilityImageUrl } from './researchTreeModel';
+import { characterPortrait } from '../characterPortrait';
 import { openGalactopedia } from './galactopedia';
 import { isEmpirePolicyOpen, toggleEmpirePolicy, closeEmpirePolicy } from './empirePolicy';
 import { formatK, gt } from './researchBenefits';
@@ -681,7 +682,7 @@ function createEmpireSummary(src: EmpireSummarySource): OpenState {
             case 'race': return racePortraitUrl(img.pictureIndex);
             case 'ruin': return `/assets/dwu/images/environment/ruins/ruin_${img.pictureRef}.png`;
             case 'facility': return facilityImageUrl(img.pictureRef);
-            case 'character': return `/assets/dwu/images/units/characters/${img.file}`;
+            case 'character': return '';
         }
     }
 
@@ -695,7 +696,13 @@ function createEmpireSummary(src: EmpireSummarySource): OpenState {
         lines.forEach((l, i) => {
             const row = el('div', 'es-bonus-line');
             if (i === abilityCount && i > 0) row.classList.add('es-bonus-gap');
-            if (l.image !== null) {
+            if (l.image !== null && l.image.kind === 'character') {
+                // CharacterImageCache.ObtainCharacterImageSmall(Leader): the portrait with the role icon.
+                const pic = characterPortrait(l.image.character, 'small', 15);
+                pic.classList.add('es-bonus-img');
+                pic.style.position = 'absolute';
+                row.appendChild(pic);
+            } else if (l.image !== null) {
                 const img = el('img', 'es-bonus-img');
                 img.src = bonusImageUrl(l.image);
                 img.alt = '';

@@ -354,7 +354,7 @@ export function shipRowLabel(spec: ShipRowSpec): string {
 export interface BonusLine {
     text: string;
     /** The 15 × 15 picture left of the text. */
-    image: { kind: 'race'; pictureIndex: number } | { kind: 'ruin'; pictureRef: number } | { kind: 'facility'; pictureRef: number } | { kind: 'character'; file: string } | null;
+    image: { kind: 'race'; pictureIndex: number } | { kind: 'ruin'; pictureRef: number } | { kind: 'facility'; pictureRef: number } | { kind: 'character'; character: Character } | null;
 }
 
 /** Empire.cs 2834 ResolveEmpireAbilityBonusDescriptions(includeDominantRaceInDescriptions, out bonusRaces). */
@@ -479,6 +479,6 @@ export function bonusLines(galaxy: Galaxy, e: Empire): BonusLine[] {
     // EmpireSummaryBonuses.cs DrawBonuses.
     const leader = (e.leader ?? null) as Character | null;
     const desc = leaderBonusDescription(leader);
-    if (desc !== '') out.push({ text: desc, image: leader !== null && leader.pictureFilename ? { kind: 'character', file: leader.pictureFilename } : null });
+    if (desc !== '') out.push({ text: desc, image: leader !== null ? { kind: 'character', character: leader } : null }); // ObtainCharacterImageSmall(Leader)
     return out;
 }

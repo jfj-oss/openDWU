@@ -39,9 +39,8 @@ import {
     text,
     type GridColumn,
     type OriginalWindow,
-    type Rect,
 } from '../originalWindow';
-import { racePortraitUrl } from '../empireEmblem';
+import { characterPortrait, characterPortraitUrl } from '../characterPortrait';
 import { openGalactopedia } from './galactopedia';
 import { characterPublicEvents, resolveCharacterEventDescription } from './characterEventText';
 import { compareShipGroups, shipGroupDetermineStrongestTroopTransport } from '../../sim/fleets/shipGroupTasks';
@@ -642,41 +641,8 @@ export function cancelMission(player: Empire, agent: Character): void {
 // Pictures (CharacterImageCache.cs, CharacterSummary.cs GenerateCharacterPlanetCompositeImage)
 // ---------------------------------------------------------------------------------------------------------------
 
-/** Main.Part12.cs:715-723 bitmap_3: images/ui/chrome/characterRole_<Role>.png (CharacterImageCache.GetRoleIcon). */
-export function roleIconUrl(role: CharacterRole): string | null {
-    switch (role) {
-        case CharacterRole.Leader:
-        case CharacterRole.Ambassador:
-        case CharacterRole.ColonyGovernor:
-        case CharacterRole.FleetAdmiral:
-        case CharacterRole.TroopGeneral:
-        case CharacterRole.IntelligenceAgent:
-        case CharacterRole.Scientist:
-        case CharacterRole.PirateLeader:
-        case CharacterRole.ShipCaptain:
-            return chromeImageUrl(`characterRole_${CharacterRole[role]}.png`);
-        default:
-            return null;
-    }
-}
-
-/**
- * CharacterImageCache.cs CacheImage / LoadImage: the character's own picture (images/units/characters/<PictureFilename>)
- * when it has one, else the race picture (RaceImages[Race.PictureRef] = images/units/races/race_<n>.png); null for a
- * character without a race (the C# draws a blank 200 × 200 bitmap).
- */
-export function characterPortraitUrl(c: Character): string | null {
-    if (c.pictureFilename) return `/assets/dwu/images/units/characters/${c.pictureFilename}`;
-    return c.race !== null ? racePortraitUrl(c.race.pictureIndex) : null;
-}
-
-/** CharacterImageCache.cs OverlayRoleIcon: the role icon's rectangle in an image `imageSize` square (bottom-right,
- *  `iconSizeRatio` of the width, `minimumEdgeOffset` from the edges); `iconW` × `iconH` is the icon bitmap (64 × 64). */
-export function roleIconOverlayRect(imageSize: number, iconSizeRatio: number, minimumEdgeOffset: number, iconW = 64, iconH = 64): Rect {
-    const w = Math.max(1, Math.trunc(imageSize * iconSizeRatio));
-    const h = Math.max(1, Math.trunc(iconH * (w / iconW)));
-    return { x: imageSize - (w + minimumEdgeOffset), y: imageSize - (h + minimumEdgeOffset), w, h };
-}
+// Role icons, portraits and OverlayRoleIcon: characterPortrait.ts (CharacterImageCache.cs).
+export { characterPortraitUrl, roleIconOverlayRect, roleIconUrl } from '../characterPortrait';
 
 /** Main.Part12.cs LoadEnvLandscapes: the landscape bitmaps in GalaxyImages LandscapeImageOffset order. */
 const LANDSCAPE_FOLDERS: readonly [string, number][] = [
@@ -905,34 +871,6 @@ function labelledCombo(parent: HTMLElement, label: string, x: number, y: number,
     return { label: l, sel };
 }
 
-/** CharacterSummary / CharacterListView picture: the portrait (cover-scaled) with the role icon (OverlayRoleIcon). */
-function portraitBox(c: Character, size: number, ratio: number, offset: number): HTMLDivElement {
-    const box = el('div', 'ch-portrait');
-    box.style.width = `${size}px`;
-    box.style.height = `${size}px`;
-    const url = characterPortraitUrl(c);
-    if (url !== null) {
-        const img = el('img', 'ch-fill');
-        img.src = url;
-        img.alt = '';
-        img.draggable = false;
-        box.appendChild(img);
-    }
-    const icon = roleIconUrl(c.role);
-    if (icon !== null) {
-        // The overlay is drawn on the character bitmap (300 px race image): scale its rect to the box.
-        const r = roleIconOverlayRect(300, ratio, offset);
-        const k = size / 300;
-        const i = el('img', 'ch-role-overlay');
-        i.src = icon;
-        i.alt = '';
-        i.draggable = false;
-        place(i, r.x * k, r.y * k, r.w * k, r.h * k);
-        box.appendChild(i);
-    }
-    return box;
-}
-
 function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
     const player = opts.player;
     const galaxy = player.galaxy as Galaxy;
@@ -1013,7 +951,7 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
             width: 40,
             render: (r, cell) => {
                 cell.title = tip;
-                cell.appendChild(portraitBox(r.character, 38, 0.35, 1));
+                cell.appendChild(characterPortrait(r.character, 'small', 38));
             },
         },
         { id: 'name', header: T('Name'), width: 100, sort: (r) => r.name, render: (r, cell) => wrapCell(cell, r.name, tip) },
@@ -1139,7 +1077,7 @@ function createIntelligenceScreen(opts: IntelligenceScreenOptions): OpenState {
         bg.alt = '';
         bg.draggable = false;
         pictureWrap.appendChild(place(bg, 6, 6, 238, 238));
-        pictureWrap.appendChild(place(portraitBox(c, 238, 0.2, 20), 6, 6, 238, 238));
+        pictureWrap.appendChild(place(characterPortrait(c, 'large', 238), 6, 6, 238, 238));
         const frame = el('img');
         frame.src = chromeImageUrl('panelframe.png');
         frame.alt = '';

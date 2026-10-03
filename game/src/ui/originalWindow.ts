@@ -23,7 +23,8 @@
 //        glassButton()    GlassButton (black glass, shine on the top half, glow on hover, grey→white text); `colors`
 //                         recolours it (OuterBorderColor / ShineColor / GlowColor), `minorText` adds the second line
 //        messageBox()     MessageBoxEx (caption, text, Yes / No / OK buttons) → Promise of the clicked button
-//        OwGrid           DataGridView via ListViewBase (row colours, header, selection, sortable columns)
+//        OwGrid           DataGridView via ListViewBase (row colours, header, selection, sortable columns;
+//                         `multiSelect` = MultiSelect with Ctrl / Shift, column `onClick` = CellClick)
 //        tabStrip()       EnhancedTabControl
 //        text() / dropText()  labels (GraphicsHelper.DrawStringWithDropShadow)
 //        valueRow()       "Label  value" rows with the label right-aligned (EmpireDetailView stat block)
@@ -41,6 +42,7 @@
 //      Escape closes the topmost window (one document listener, registered first so the HUD's game-menu Escape on
 //      window does not also fire). `win.close()` removes it and calls onClose.
 //   6. Images: only `/assets/dwu/images/...` URLs (chromeUrl()); never copy the original art into the repo.
+//   7. Controls the source parents to the HeaderPanel (e.g. a filter combo) go in `win.header`, header-relative.
 // ===================================================================================================================
 //
 // Sources: DistantWorlds.Controls/Controls/ScreenPanel.cs (DoLayout: header (7, 8) W-14 × 51, body (8, 59)),
@@ -491,7 +493,7 @@ export interface GridColumn<T> {
     /** Fill the cell (text or nodes). */
     render: (row: T, cell: HTMLDivElement) => void;
     title?: string;
-    /** DataGridView.CellClick on this column's cells (after the row is selected). */
+    /** DataGridView.CellClick on this column (after the row selection updated). */
     onClick?: (row: T, e: MouseEvent) => void;
 }
 
@@ -511,21 +513,51 @@ export interface GridOptions<T> {
     rowClass?: (row: T) => string;
     empty?: string;
     fontSize?: number;
-    /** DataGridView.MultiSelect: Ctrl-click toggles a row, Shift-click selects the range from the last clicked row. */
+    /** DataGridView.MultiSelect: Ctrl+click toggles a row, Shift+click selects the range from the anchor
+     *  (Ctrl+Shift adds it); `selectAll()` for Ctrl+A. Default false (full-row single selection). */
     multiSelect?: boolean;
+    /** SelectionChanged: the selected rows (display order) after a click changed them. */
+    onSelectionChange?: (rows: T[]) => void;
+}
+
+/** Next selection of a DataGridView click (MultiSelect semantics, keys in display order): a plain click selects one
+ *  row, Ctrl toggles it, Shift selects the range from the anchor (Ctrl+Shift adds the range). Returns the new
+ *  selection and anchor; without `multi` every click is a plain click. */
+export function gridClickSelection<K>(
+    keys: readonly K[],
+    selected: ReadonlySet<K>,
+    anchor: K | undefined,
+    key: K,
+    mods: { ctrl?: boolean; shift?: boolean },
+    multi: boolean,
+): { selected: Set<K>; anchor: K | undefined } {
+    const a = anchor === undefined ? -1 : keys.indexOf(anchor);
+    const i = keys.indexOf(key);
+    if (multi && mods.shift && a >= 0 && i >= 0) {
+        const out = mods.ctrl ? new Set(selected) : new Set<K>();
+        for (let j = Math.min(a, i); j <= Math.max(a, i); j++) out.add(keys[j]);
+        return { selected: out, anchor };
+    }
+    if (multi && mods.ctrl) {
+        const out = new Set(selected);
+        if (out.has(key)) out.delete(key);
+        else out.add(key);
+        return { selected: out, anchor: key };
+    }
+    return { selected: new Set([key]), anchor: key };
 }
 
 /** A DataGridView in ListViewBase's styles: header (24, 24, 24) / (170, 170, 170), rows alternating (32, 32, 40) and
- *  (48, 48, 56), (170, 170, 170) text, the selected row (96, 96, 96) with yellow text, full-row single selection,
- *  vertical scrollbar, click a header to sort (when the column has a sort key). */
+ *  (48, 48, 56), (170, 170, 170) text, the selected row (96, 96, 96) with yellow text, full-row selection (single, or
+ *  `multiSelect`), vertical scrollbar, click a header to sort (when the column has a sort key). */
 export class OwGrid<T> {
     readonly el: HTMLDivElement;
     readonly body: HTMLDivElement;
     private readonly head: HTMLDivElement | null;
     private rows: T[] = [];
-    private selectedKey: unknown = undefined;
-    /** MultiSelect: every selected row's key (always includes selectedKey when set). */
     private selectedKeys = new Set<unknown>();
+    private anchorKey: unknown = undefined;
+    private rowEls = new Map<unknown, HTMLElement>();
     private sortCol: string | null = null;
     private sortDir: 'asc' | 'desc' | null = null;
 
@@ -557,17 +589,48 @@ export class OwGrid<T> {
         this.el.appendChild(this.body);
     }
 
+    /** The (first, in display order) selected row. */
     get selected(): T | null {
-        return this.rows.find((r) => this.o.key(r) === this.selectedKey) ?? null;
+        return this.displayed.find((r) => this.selectedKeys.has(this.o.key(r))) ?? null;
     }
 
-    /** DataGridView.SelectedRows: the selected rows in display order (one row unless `multiSelect`). */
+    /** Every selected row, in display order (DataGridView.SelectedRows). */
+    get selectedRows(): T[] {
+        return this.displayed.filter((r) => this.selectedKeys.has(this.o.key(r)));
+    }
+
+    /** Select exactly these rows (no callbacks); keys not in the grid are dropped. */
+    setSelection(keys: readonly unknown[], scroll = false): void {
+        const present = new Set(this.rows.map((r) => this.o.key(r)));
+        this.selectedKeys = new Set(keys.filter((k) => present.has(k)));
+        if (!this.selectedKeys.has(this.anchorKey)) this.anchorKey = keys.find((k) => present.has(k));
+        this.paintSelection(scroll);
+    }
+
+    /** Ctrl+A on a MultiSelect grid. */
+    selectAll(): void {
+        if (!this.o.multiSelect) return;
+        this.selectedKeys = new Set(this.rows.map((r) => this.o.key(r)));
+        this.paintSelection(false);
+        this.o.onSelectionChange?.(this.selectedRows);
+    }
+
+    private paintSelection(scroll: boolean): void {
+        for (const [k, r] of this.rowEls) r.classList.toggle('ow-sel', this.selectedKeys.has(k));
+        if (scroll) this.scrollToSelected();
+    }
+
+    private scrollToSelected(): void {
+        const r = this.body.querySelector<HTMLElement>('.ow-grid-row.ow-sel');
+        if (r) {
+            const top = r.offsetTop;
+            if (top < this.body.scrollTop || top + r.offsetHeight > this.body.scrollTop + this.body.clientHeight) this.body.scrollTop = top;
+        }
+    }
+
+    /** DataGridView.SelectedRows (same as `selectedRows`). */
     get selectedAll(): T[] {
-        return this.displayed.filter((r) => this.isSelectedKey(this.o.key(r)));
-    }
-
-    private isSelectedKey(key: unknown): boolean {
-        return key === this.selectedKey || this.selectedKeys.has(key);
+        return this.selectedRows;
     }
 
     /** The rows in display order (after sorting). */
@@ -583,41 +646,10 @@ export class OwGrid<T> {
 
     /** Select the row with this key (no onSelect call) and scroll it into view (FirstDisplayedScrollingRowIndex). */
     select(key: unknown, scroll = true): void {
-        this.selectedKey = key;
-        this.selectedKeys = new Set(key === undefined ? [] : [key]);
-        this.render();
-        if (scroll) {
-            const r = this.body.querySelector<HTMLElement>('.ow-grid-row.ow-sel');
-            if (r) {
-                const top = r.offsetTop;
-                if (top < this.body.scrollTop || top + r.offsetHeight > this.body.scrollTop + this.body.clientHeight) this.body.scrollTop = top;
-            }
-        }
-    }
-
-    /** A row click: plain = select only it; MultiSelect Ctrl = toggle; Shift = the range from the last clicked row. */
-    private clickRow(rows: readonly T[], key: unknown, e: MouseEvent): void {
-        if (this.o.multiSelect && e.shiftKey && this.selectedKey !== undefined) {
-            const keys = rows.map((r) => this.o.key(r));
-            const a = keys.indexOf(this.selectedKey);
-            const b = keys.indexOf(key);
-            if (a >= 0 && b >= 0) {
-                this.selectedKeys = new Set(keys.slice(Math.min(a, b), Math.max(a, b) + 1));
-                return; // the anchor stays
-            }
-        }
-        if (this.o.multiSelect && (e.ctrlKey || e.metaKey)) {
-            if (this.selectedKeys.has(key) && this.selectedKeys.size > 1) {
-                this.selectedKeys.delete(key);
-                if (this.selectedKey === key) this.selectedKey = this.selectedKeys.values().next().value;
-            } else {
-                this.selectedKeys.add(key);
-                this.selectedKey = key;
-            }
-            return;
-        }
-        this.selectedKey = key;
         this.selectedKeys = new Set([key]);
+        this.anchorKey = key;
+        this.render();
+        if (scroll) this.scrollToSelected();
     }
 
     render(): void {
@@ -631,28 +663,34 @@ export class OwGrid<T> {
             });
         }
         const rows = this.displayed;
+        const keys = rows.map((row) => this.o.key(row));
+        this.rowEls.clear();
         if (rows.length === 0 && this.o.empty) this.body.appendChild(el('div', 'ow-grid-empty', this.o.empty));
         rows.forEach((row, i) => {
-            const key = this.o.key(row);
+            const key = keys[i];
             const extra = this.o.rowClass?.(row) ?? '';
-            const r = el('div', `ow-grid-row${i % 2 === 1 ? ' ow-alt' : ''}${this.isSelectedKey(key) ? ' ow-sel' : ''}${extra ? ` ${extra}` : ''}`);
+            const r = el('div', `ow-grid-row${i % 2 === 1 ? ' ow-alt' : ''}${this.selectedKeys.has(key) ? ' ow-sel' : ''}${extra ? ` ${extra}` : ''}`);
+            this.rowEls.set(key, r);
+            const cellClicks: [HTMLDivElement, (row: T, e: MouseEvent) => void][] = [];
             for (const c of this.o.columns) {
                 const cell = el('div', `ow-grid-cell ow-align-${c.align ?? 'left'}`);
                 c.render(row, cell);
-                if (c.onClick) cell.classList.add('ow-hot');
+                if (c.onClick) {
+                    cell.classList.add('ow-hot');
+                    cellClicks.push([cell, c.onClick]);
+                }
                 r.appendChild(cell);
             }
+            // No text selection while Shift-selecting a range.
+            if (this.o.multiSelect) r.addEventListener('mousedown', (e) => { if (e.shiftKey) e.preventDefault(); });
             r.addEventListener('click', (e) => {
-                this.clickRow(rows, key, e);
-                for (const x of this.body.querySelectorAll<HTMLElement>('.ow-grid-row')) {
-                    const k = this.o.key(rows[Number(x.dataset.i)]);
-                    x.classList.toggle('ow-sel', this.isSelectedKey(k));
-                }
+                const next = gridClickSelection(keys, this.selectedKeys, this.anchorKey, key, { ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey }, this.o.multiSelect === true);
+                this.selectedKeys = next.selected;
+                this.anchorKey = next.anchor;
+                this.paintSelection(false);
                 this.o.onSelect?.(row);
-                // CellClick after the selection changed (DataGridView raises SelectionChanged first).
-                const cell = (e.target as HTMLElement).closest('.ow-grid-cell');
-                const col = cell ? this.o.columns[Array.prototype.indexOf.call(r.children, cell)] : undefined;
-                col?.onClick?.(row, e);
+                this.o.onSelectionChange?.(this.selectedRows);
+                for (const [cell, fn] of cellClicks) if (cell.contains(e.target as Node)) fn(row, e);
             });
             r.dataset.i = String(i);
             if (this.o.onDoubleClick) r.addEventListener('dblclick', () => this.o.onDoubleClick!(row));
@@ -696,6 +734,9 @@ export interface OriginalWindow {
     readonly frame: HTMLDivElement;
     /** pnlBody (GradientPanel): lay the screen's controls out in it, in body-relative original pixels. */
     readonly body: HTMLDivElement;
+    /** pnlHeader (null when headerless): for controls the source parents to the header (e.g. a filter combo), placed
+     *  in header-relative original pixels. */
+    readonly header: HTMLDivElement | null;
     /** Body size in original pixels. */
     readonly bodySize: { w: number; h: number };
     /** The viewport in original pixels (for the large / small variants). */
@@ -804,7 +845,7 @@ export function openOriginalWindow(o: OriginalWindowOptions): OriginalWindow {
     // ScreenPanel.HeaderDragStart / Move: drag the window by its header.
     if (headerEl) {
         headerEl.addEventListener('pointerdown', (e) => {
-            if (e.button !== 0 || (e.target as HTMLElement).closest('.ow-close')) return;
+            if (e.button !== 0 || (e.target as HTMLElement).closest('.ow-close, select, input, button')) return;
             const sx = e.clientX - dragDx;
             const sy = e.clientY - dragDy;
             headerEl.setPointerCapture(e.pointerId);
@@ -833,6 +874,7 @@ export function openOriginalWindow(o: OriginalWindowOptions): OriginalWindow {
         root,
         frame,
         body,
+        header: headerEl,
         bodySize,
         virtualSize,
         get scale() {
