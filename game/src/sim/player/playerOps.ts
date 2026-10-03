@@ -56,6 +56,7 @@ import type { AdvisorBrief } from './advisorBrief';
 import { proposeDiplomatCounter } from './diplomatCounter';
 import type { DiplomatBrief } from './diplomatBrief';
 import { deleteDesign, saveDesign, setDesignSubRoleShouldBeUpgraded, type DesignDraft } from './designEditor';
+import { autoUpgradeDesigns, loadDesignFile } from './designTools';
 import { executeShipOrderKey, type ShipOrderKeyAction } from './shipHotkeys';
 import { initiateCrashResearchProgram } from '../researchTick';
 import type { EmpireMessage } from '../messages';
@@ -196,6 +197,10 @@ export const PLAYER_OPS = {
         setDesignSubRoleShouldBeUpgraded(empire, subRole, upgrade);
         return true;
     },
+    /** BaconMain.cs:2471 btnDesignsUpgrade_Click (player/designTools.ts). */
+    autoUpgradeDesigns: (galaxy: Galaxy, empire: Empire, designs: Design[]) => autoUpgradeDesigns(galaxy, empire, designs),
+    /** Main.Part4.cs:1682 Load Designs... with the picked file's text (player/designTools.ts). */
+    loadDesignFile: (galaxy: Galaxy, empire: Empire, text: string) => loadDesignFile(galaxy, empire, text),
 
     // --- Empire Summary (player/playerOrders.ts) ---
     /** Main.Part9.cs:4306 txtEmpireSummaryName_Leave. */

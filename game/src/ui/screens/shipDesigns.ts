@@ -13,10 +13,12 @@
 // The design editor (pnlDesignDetail) is designEditor.ts. Every change goes through a player command or the editor.
 // Our additions (kept from the streamlined screen): the selected design's summary on the right (picture, the stat rows,
 // its components) — the original window has no detail pane; double-click a row to edit it.
-// TODO(port): "Auto Upgrade Selected Designs" (BaconMain.cs:2471 btnDesignsUpgrade_Click — needs
-//   Empire.ResolveLatestStandardTorpedoWeapon / ResolveLatestBombardWeapon / ResearchSystem.CalculateCurrentTechPoints),
-//   Load / Save design files (Main.Part4.cs:1598 btnDesignsSave_Click), the empire-colour tint of the list's ship
-//   pictures (DesignListView.PrepareBuiltObjectImage).
+// - "Auto Upgrade Selected Designs": BaconMain.cs:2471 btnDesignsUpgrade_Click (player/designTools.ts
+//   autoUpgradeDesigns, the autoUpgradeDesigns command);
+// - Load Designs... / Save Selected Designs...: Main.Part4.cs:1682 mgohAuJwBE / :1598 btnDesignsSave_Click. The
+//   original's Open / Save file dialogs are a file input and a download here (player/designTools.ts has the file
+//   format; loading is the loadDesignFile command).
+// TODO(port): the empire-colour tint of the list's ship pictures (DesignListView.PrepareBuiltObjectImage).
 
 import './designsScreen.css';
 import type { Empire } from '../../sim/empire';
@@ -43,6 +45,7 @@ import {
     type DesignDraftSource,
 } from '../../sim/player/designEditor';
 import { openDesignEditor, type DesignEditorHandle } from './designEditor';
+import { DESIGN_FILE_EXTENSION, writeDesignFile } from '../../sim/player/designTools';
 import { isPrivateDesignSubRole, toggleDesignObsolete, toggleDesignAutoRetrofit } from '../../sim/player/playerOrders';
 import { builtObjectImageUrl, resolveDrawPictureRef } from '../../render/builtObjectLayer';
 import { empireFlagUrl } from '../selectionInfoView';
@@ -433,8 +436,8 @@ function createShipDesigns(opts: ShipDesignsOptions): OpenState {
     // lblDesignsMaximumSize (method_305).
     const maxSize = dropText(body, maximumSizeText(player), 370, 15, { color: COLORS.text });
     // btnDesignsLoad / btnDesignsSave.
-    body.appendChild(place(glassButton(gt('Load Designs...'), { disabled: true, title: 'Loading design files is not available yet' }), 635, 10, 155, 40));
-    body.appendChild(place(glassButton(`${gt('Save Selected Designs')}...`, { disabled: true, title: 'Saving design files is not available yet' }), 800, 10, 155, 40));
+    body.appendChild(place(glassButton(gt('Load Designs...'), { onClick: () => loadDesigns() }), 635, 10, 155, 40));
+    body.appendChild(place(glassButton(`${gt('Save Selected Designs')}...`, { onClick: () => void saveSelected() }), 800, 10, 155, 40));
     // lblDesignsUpgradeRolesExplanation (10, 60) 615 × 45, MiddleLeft, font_3.
     const explanation = el('div', 'dsg-explanation');
     explanation.appendChild(text(gt('Designs Upgrade Roles Explanation'), { size: FONT.normal, wrapWidth: 615, color: COLORS.text }));
@@ -543,7 +546,7 @@ function createShipDesigns(opts: ShipDesignsOptions): OpenState {
             if (sel.length === 1) void startEditor({ kind: 'upgrade', design: sel[0].design });
         },
     });
-    const autoUpgradeBtn = glassButton(gt('Auto Upgrade Selected Designs'), { disabled: true, title: 'Automatic upgrading of selected designs is not available yet' });
+    const autoUpgradeBtn = glassButton(gt('Auto Upgrade Selected Designs'), { onClick: () => void autoUpgradeSelected() });
     const deleteBtn = glassButton(gt('Delete Selected Designs'), { onClick: () => void deleteSelected() });
     body.append(
         place(editBtn, 10, 580, 128, 40),
@@ -577,6 +580,7 @@ function createShipDesigns(opts: ShipDesignsOptions): OpenState {
         enable(copyBtn, design !== null);
         enable(upgradeManualBtn, sel.length === 1);
         enable(deleteBtn, sel.length > 0);
+        enable(autoUpgradeBtn, sel.length > 0);
         if (design === null) {
             setText(detailName, sel.length > 1 ? `${sel.length} ${gt('Designs')}` : '');
             setText(detailRole, '');
@@ -670,6 +674,73 @@ function createShipDesigns(opts: ShipDesignsOptions): OpenState {
         } finally {
             busy = false;
         }
+    }
+
+    // BaconMain.cs:2471 btnDesignsUpgrade_Click: the automation question whenever ControlDesigns is on, then upgrade the
+    // selection; one selected design → the new design is selected.
+    async function autoUpgradeSelected(): Promise<void> {
+        if (busy || editor !== null) return;
+        busy = true;
+        try {
+            if (player.controlDesigns) await askDesignAutomation(galaxy, player);
+            if (win.closed) return;
+            const designs = grid.selectedAll.map((r) => r.design);
+            if (designs.length <= 0) return;
+            issuePlayerCommand(galaxy, player, 'autoUpgradeDesigns', [designs], (res) => {
+                if (!win.closed) refreshList(res.select);
+            });
+        } finally {
+            busy = false;
+        }
+    }
+
+    // btnDesignsSave_Click: "No designs have been selected", else the selected designs as a file (a download here).
+    async function saveSelected(): Promise<void> {
+        if (busy) return;
+        const designs = grid.selectedAll.map((r) => r.design);
+        if (designs.length <= 0) {
+            busy = true;
+            try {
+                await messageBox({ caption: gt('No designs to save'), text: gt('No designs have been selected'), icon: 'information' });
+            } finally {
+                busy = false;
+            }
+            return;
+        }
+        const blob = new Blob([writeDesignFile(designs)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = el('a');
+        a.href = url;
+        a.download = `${designs.length === 1 ? designs[0].name.replace(/[\\/:*?"<>|]+/g, '_') || 'designs' : 'designs'}${DESIGN_FILE_EXTENSION}`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    // mgohAuJwBE (Load Designs...): pick a file (a file input here), then load it through the command log.
+    function loadDesigns(): void {
+        if (busy || editor !== null) return;
+        const input = el('input');
+        input.type = 'file';
+        input.accept = `${DESIGN_FILE_EXTENSION},.json,.dwd`;
+        input.style.display = 'none';
+        input.addEventListener('change', () => {
+            const file = input.files?.[0];
+            input.remove();
+            if (file === undefined) return;
+            void file.text().then((textContent) => {
+                if (win.closed) return;
+                issuePlayerCommand(galaxy, player, 'loadDesignFile', [textContent], (res) => {
+                    if (!win.closed) refreshList();
+                    if (!res.ok && res.message !== undefined) {
+                        void messageBox({ caption: resolveGameText(res.title ?? ''), text: resolveGameText(res.message), icon: 'warning' });
+                    }
+                });
+            });
+        });
+        document.body.appendChild(input);
+        input.click();
     }
 
     refreshList();
