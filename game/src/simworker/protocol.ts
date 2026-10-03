@@ -116,7 +116,20 @@ export interface TradeFlowsMessage {
     record: boolean;
 }
 
-export type ToWorker = InitMessage | ClockMessage | CommandMessage | QueryMessage | SaveRequest | DigestRequest | TradeFlowsMessage | DebugRequest | CommandLogRequest | { type: 'dispose' };
+/**
+ * A host op (hostOps.ts) to run on the authoritative game between two ticks: a sim write of the local-model paths
+ * that is not a player command (strategic decisions, a chronicle year, a voiced message). Its result travels in the
+ * next step message's `results` under `id`, like a command reply.
+ */
+export interface HostOpMessage {
+    type: 'hostOp';
+    /** Main-side id for the reply (shared with the command ids). */
+    id: number;
+    op: string;
+    args: RemoteArg[];
+}
+
+export type ToWorker = InitMessage | ClockMessage | CommandMessage | QueryMessage | HostOpMessage | SaveRequest | DigestRequest | TradeFlowsMessage | DebugRequest | CommandLogRequest | { type: 'dispose' };
 
 export interface ProgressMessage {
     type: 'progress';
@@ -167,7 +180,9 @@ export interface StepMessage {
 export type WorkerEvent =
     | { kind: 'gameEnd' }
     | { kind: 'locationPinged'; target: RemoteArg }
-    | { kind: 'simError'; message: string };
+    | { kind: 'simError'; message: string }
+    /** 19s-2 voice cues the tick left (sim/scenario/llm/voiceCues.ts drainVoiceCues, drained in the worker): VoiceCue[]. */
+    | { kind: 'voiceCues'; cues: RemoteArg[] };
 
 export type FromWorker =
     | ProgressMessage
