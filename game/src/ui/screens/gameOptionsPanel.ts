@@ -19,9 +19,10 @@
 // automatically" / the stub count sit under the message columns. "Allow colonization and mining stations in other
 // empires systems" is a galaxy-creation option (the original hides it in game, Main.Part4.cs:4245): it is shown
 // read-only, reflecting this game's setting.
-// TODO(port): GameOptions defaults for new games (gameOptions_0.FleetAttack* in method_558, the Automation defaults
-// in Start's options panel) — there is no persisted GameOptions file yet; the HotKeys button opens our shortcut list
-// (BaconDistantWorlds/HotKeys remapping is not ported).
+// Closing the window saves the player empire's settings as the next new game's defaults (YxwyUefOyQ + method_257;
+// settings.newGameOptions, read by main.ts for the wizard's games).
+// TODO(port): the main menu's Options panel editing those defaults before a game (Start.1.cs:1928-1960) — mainMenu.ts;
+// the HotKeys button opens our shortcut list (BaconDistantWorlds/HotKeys remapping is not ported).
 
 import './gameOptionsPanel.css';
 import { AutomationLevel, type Empire } from '../../sim/empire';
@@ -45,7 +46,7 @@ import { clampAutoSaveMinutes, clampMaximumFramerate, getSettings, resetAutomati
 import { getMessageOptions, MessageCategory, setMessageOption, setSuppressAllPopups, type MessageOptions } from '../messageRouting';
 import { COLORS, checkBox, dropDown, el, glassButton, messageBox, numericUpDown, openOriginalWindow, place, text, type OriginalWindow } from '../originalWindow';
 import { checkBoxRight, colorSlider, groupBox, labelledTrackBar } from '../originalWindowControls';
-import { AUTOMATION_MODE_ITEMS, AUTOMATION_PRESETS, detectAutomationMode, empireAutomationValues, messageSettingsRows } from './gameOptionsModel';
+import { AUTOMATION_MODE_ITEMS, AUTOMATION_PRESETS, detectAutomationMode, empireAutomationValues, gameOptionsFromEmpire, messageSettingsRows, type PendingEmpireValues } from './gameOptionsModel';
 
 export type AutomationField =
     | 'controlMilitaryAttacks'
@@ -160,9 +161,11 @@ export function setAutomationValue(empire: Empire, row: AutomationRow, value: nu
     (empire as unknown as Record<string, unknown>)[fv.field] = fv.value;
 }
 
-/** The same through the command log (queued, applied at the next frame boundary). */
+/** The same through the command log (queued, applied at the next frame boundary); the value is also kept as pending
+ *  for the new-game defaults the window saves on close. */
 function issueAutomationValue(empire: Empire, row: AutomationRow, value: number | boolean): void {
     const fv = automationFieldValue(row, value);
+    pendingEmpireValues[fv.field] = fv.value;
     issuePlayerCommand(empire.galaxy, empire, 'setEmpireControl', [fv.field, fv.value]);
 }
 
@@ -239,6 +242,8 @@ interface OpenState {
 let open: OpenState | null = null;
 /** The open sub-windows (closed with the Options window, like method_413). */
 const subWindows = new Map<'empire' | 'messages' | 'advanced', OriginalWindow>();
+/** The values this Options session issued as commands (gameOptionsModel.ts gameOptionsFromEmpire). */
+let pendingEmpireValues: PendingEmpireValues = {};
 /** This game's "Allow colonization and mining stations in other empires systems" start option (main.ts registers it). */
 let allowSameSystemSource: (() => boolean | null) | null = null;
 
@@ -327,12 +332,14 @@ function slider(parent: HTMLElement, value: number, min: number, max: number, x:
 
 /** The player's empire changes through the command log (setEmpireControl / setEmpireSetting). */
 function issueSetting(empire: Empire, field: EmpireSettingField, value: number | boolean): void {
+    pendingEmpireValues[field] = value;
     issuePlayerCommand(empire.galaxy, empire, 'setEmpireSetting', [field, value]);
 }
 
 function createGameOptionsPanel(opts: GameOptionsPanelOptions): OpenState {
     const { empire } = opts;
     const s = getSettings();
+    pendingEmpireValues = {};
     const win = openOriginalWindow({
         id: 'gameoptions',
         title: 'Options',
@@ -342,6 +349,10 @@ function createGameOptionsPanel(opts: GameOptionsPanelOptions): OpenState {
         onClose: () => {
             open = null;
             for (const w of [...subWindows.values()]) w.close();
+            // method_413 → method_418's tail: YxwyUefOyQ (the player empire's settings become the GameOptions
+            // defaults of the next new game) and method_257 (save the defaultOptions file).
+            updateSettings({ newGameOptions: { ...gameOptionsFromEmpire(empire, pendingEmpireValues) } });
+            pendingEmpireValues = {};
         },
     });
     const body = win.body;
@@ -438,7 +449,7 @@ function createGameOptionsPanel(opts: GameOptionsPanelOptions): OpenState {
         const controls = new Map<AutomationField, HTMLSelectElement | HTMLInputElement>();
         const setControl = (row: AutomationRow, v: number | boolean): void => {
             values[row.field] = v;
-            issuePlayerCommand(emp.galaxy, emp, 'setEmpireControl', [automationFieldValue(row, v).field, automationFieldValue(row, v).value]);
+            issueAutomationValue(emp, row, v);
         };
         // cmbOptionsAutomationMode (58, 25) 162 × 24 (parented to the group, over the mode panel).
         const mode = combo(g, AUTOMATION_MODE_ITEMS, detectAutomationMode(values), 58, 25, 162, 24, (i) => {
