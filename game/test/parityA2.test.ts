@@ -22,6 +22,11 @@ import { baconSettings } from '../src/sim/data/baconSettings';
 import { empireGovernmentAttributes, registerTakeOwnershipOfColonyFull } from '../src/sim/empire';
 import { takeOwnershipOfColonyFull } from '../src/sim/combat/ownership';
 import { strategicValue } from '../src/sim/territory';
+import { reviewPirateRelations } from '../src/sim/pirates/missionsMarket';
+import { advisorSuggestions, AdvisorMessageType } from '../src/sim/advisorQueue';
+import { AutomationLevel } from '../src/sim/empire';
+import { galaxyCurrentStarDate } from '../src/sim/pirateRelations';
+import * as orders from '../src/sim/logistics/orders';
 import { calculateScenicFactorIncludingRuinsWonders, checkColonyForResourceClearance } from '../src/sim/civilianAI';
 import { maximumFuelRange } from '../src/sim/movement';
 import { resolveLocationsToDefend } from '../src/sim/characters';
@@ -336,3 +341,30 @@ describe('Empire.1.cs 201 TakeOwnershipOfColony (setup path): SelectBestCandidat
         expect(e.capital).toBe(high);
     });
 });
+
+describe('Empire.8.cs 4395 CheckTaskAuthorized: one implementation (diplomacyTick.ts)', () => {
+    it('logistics/orders.ts no longer carries the reduced copy', () => {
+        expect((orders as Record<string, unknown>)['checkTaskAuthorized']).toBeUndefined();
+    });
+
+    it('a semi-automated player is asked before cancelling pirate protection (Empire.2.cs 2485)', () => {
+        const g = newGame();
+        const gal = g.galaxy;
+        const e = g.playerEmpire;
+        const pirate = gal.pirateEmpires[0];
+        expect(pirate).toBeDefined();
+        e.controlDiplomacyTreaties = AutomationLevel.PartiallyAutomated; // C# SemiAutomated
+        const rel = obtainPirateRelation(e, pirate);
+        rel.type = PirateRelationType.Protection;
+        rel.lastChangeDate = -1e15;
+        obtainPirateRelation(pirate, e).monthlyProtectionFeeToThisEmpire = 1e12; // far above the cash-flow share
+        const before = advisorSuggestions(e).length;
+        reviewPirateRelations(gal, e, galaxyCurrentStarDate(gal), 0);
+        expect(rel.type).toBe(PirateRelationType.Protection); // the player decides
+        const added = advisorSuggestions(e).slice(before);
+        expect(added.length).toBe(1);
+        expect(added[0].advisorMessageType).toBe(AdvisorMessageType.TreatyOffer);
+        expect(added[0].description.startsWith('Automation Pirate Cancel Protection|' + pirate.name + '|')).toBe(true);
+    });
+});
+
