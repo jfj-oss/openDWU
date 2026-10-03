@@ -14,14 +14,15 @@
 // Our additions (kept from the streamlined screen): the [freightOverlay] "Where does the money go?" link to the Trade
 // Flows panel, and the mod-layer rows ([emergent] / [security] stability, [court], scenario crises) listed under the
 // bonuses in the Bonuses panel's scroll area.
-// TODO(port): renaming the empire (txtEmpireSummaryName_Leave) and the revolution (Empire.HaveRevolution) need player
-// commands (sim/player/playerOps.ts) — the name box is read-only and the button only shows its state for now.
+// The name box (txtEmpireSummaryName_Leave) and the revolution button (Empire.HaveRevolution) issue the journaled player
+// commands 'empireRename' / 'empireChangeGovernment' (sim/player/playerOps.ts → playerOrders.ts).
 
 import './empireSummary.css';
 import type { Empire } from '../../sim/empire';
 import type { Galaxy } from '../../sim/galaxy';
 import type { Habitat } from '../../sim/types';
 import { getGovernmentsStatic } from '../../sim/empire';
+import { issuePlayerCommand } from '../../sim/player/playerCommands';
 import { BuiltObjectSubRole } from '../../sim/builtObjectTypes';
 import { annualStateMaintenance, annualTaxRevenue } from '../../sim/forceStructure';
 import { computeEconomyBreakdown, type EconomyBreakdown, type EconomyLine } from '../../sim/economyBreakdown';
@@ -47,6 +48,7 @@ import {
     setButtonLabel,
     text,
     textBox,
+    messageBox,
     type OriginalWindow,
     type TextOptions,
 } from '../originalWindow';
@@ -330,8 +332,28 @@ function createEmpireSummary(src: EmpireSummarySource): OpenState {
 
     // txtEmpireSummaryName: (120, 10) 308 × 20, font_7 (16.67 bold), (48, 48, 64) / (170, 170, 170).
     const name = textBox(empire.name, '', () => {});
-    name.readOnly = true; // TODO(port): txtEmpireSummaryName_Leave renames the empire (needs a player command).
     name.classList.add('es-name');
+    // txtEmpireSummaryName_Leave (Main.Part9.cs:4306): a non-blank name renames the empire; the header title follows.
+    // Committed on blur (Leave) and on Enter (which blurs the box).
+    const commitName = (): void => {
+        const text = name.value;
+        if (galaxy === null || galaxy === undefined || text.trim() === '' || text.trim() === empire.name) {
+            if (text.trim() === '') name.value = empire.name;
+            return;
+        }
+        issuePlayerCommand(galaxy, empire, 'empireRename', [text], (ok) => {
+            if (!ok || win.closed) return;
+            win.setTitle(`${gt('Empire Summary')}: ${empire.name}`);
+            if (document.activeElement !== name) name.value = empire.name;
+        });
+    };
+    name.addEventListener('blur', commitName);
+    name.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            name.blur();
+        }
+    });
     body.appendChild(place(name, 120, 10, 308, 20));
 
     // btnEmpireSummaryShowEmpirePolicy: (700, 10) 300 × 35 → method_595.
@@ -367,10 +389,26 @@ function createEmpireSummary(src: EmpireSummarySource): OpenState {
         const g = selectedGovernment >= 0 ? governments[selectedGovernment] : null;
         const st = revolutionButtonState(empire, selectedGovernment, g?.name ?? null);
         setButtonLabel(revolution, st.text);
-        // TODO(port): Empire.HaveRevolution after the "Have a Revolution?" message box (Main.Part6.cs
-        // btnEmpireSummaryChangeGovernment_Click) — needs a player command, so the button stays disabled.
-        revolution.disabled = true;
-        revolution.title = st.enabled ? 'Changing government is not available yet' : '';
+        revolution.disabled = !st.enabled;
+    };
+    // Main.Part6.cs:3028 btnEmpireSummaryChangeGovernment_Click: the "Have a Revolution?" Yes / No box (method_372,
+    // Question icon), then Empire.HaveRevolution(DominantRace, id) through the 'empireChangeGovernment' command.
+    const onRevolution = async (): Promise<void> => {
+        const id = selectedGovernment;
+        const g = id >= 0 ? governments[id] : null;
+        if (g === null || g === undefined || id === empire.governmentId || galaxy === null || galaxy === undefined) return;
+        const answer = await messageBox({
+            caption: gt('Have a Revolution?'),
+            text: gt('Changing your style of government can have serious negative effects on your empire', g.name),
+            buttons: ['Yes', 'No'],
+            icon: 'question',
+        });
+        if (answer !== 'Yes' || win.closed) return;
+        issuePlayerCommand(galaxy, empire, 'empireChangeGovernment', [id], () => {
+            if (win.closed) return;
+            updateRevolution();
+            renderColony(); // pnlEmpireSummaryColony.Invalidate()
+        });
     };
     if (!isPirate) {
         // lnkEmpireSummaryGovernmentType (271, 164): the selected government's Galactopedia page (or "Government Types").
@@ -393,7 +431,7 @@ function createEmpireSummary(src: EmpireSummarySource): OpenState {
         combo.classList.add('es-gov-combo');
         body.appendChild(place(combo, 271, 189, 155, 21));
         // btnEmpireSummaryChangeGovernment (10, 345) 420 × 50.
-        revolution = glassButton('', {});
+        revolution = glassButton('', { onClick: () => void onRevolution() });
         body.appendChild(place(revolution, 10, 345, 420, 50));
         updateRevolution();
     }

@@ -82,6 +82,8 @@ import {
     moveWaitQueueItem,
     queueResearchProject,
     renameTroop,
+    renameEmpire,
+    changeGovernmentByRevolution,
     setTroopsGarrisoned,
     toggleDesignAutoRetrofit,
     toggleDesignObsolete,
@@ -182,6 +184,12 @@ export const PLAYER_OPS = {
         setDesignSubRoleShouldBeUpgraded(empire, subRole, upgrade);
         return true;
     },
+
+    // --- Empire Summary (player/playerOrders.ts) ---
+    /** Main.Part9.cs:4306 txtEmpireSummaryName_Leave. */
+    empireRename: (_galaxy: Galaxy, empire: Empire, name: string) => renameEmpire(empire, name),
+    /** Main.Part6.cs:3028 btnEmpireSummaryChangeGovernment_Click → Empire.HaveRevolution; -1 when rejected. */
+    empireChangeGovernment: (galaxy: Galaxy, empire: Empire, governmentId: number) => changeGovernmentByRevolution(galaxy, empire, governmentId),
 
     // --- Troops ---
     disbandTroops: (_galaxy: Galaxy, empire: Empire, troops: Troop[]) => disbandTroops(empire, troops),

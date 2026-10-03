@@ -16,6 +16,7 @@ import { DiplomaticRelation, DiplomaticRelationType } from '../diplomacy';
 import { cancelBlockades, changeDiplomaticRelation, processEndOfWarWithEmpire, resetAttitudeLevelsAtEndOfWar } from '../diplomacyTick';
 import { galaxyStarDate } from '../tick/simTime';
 import { scenarioEmit } from '../scenario/hooks';
+import { haveRevolution } from '../treasury';
 
 const S = BuiltObjectSubRole;
 
@@ -118,6 +119,36 @@ export function renameTroop(troop: Troop | null, text: string): boolean {
     if (troop === null || text.trim() === '') return false;
     troop.name = text;
     return true;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Empire Summary (empireSummary.ts): the name box and the revolution button
+// ---------------------------------------------------------------------------------------------------------------
+
+/** Port of Main.Part9.cs:4306 txtEmpireSummaryName_Leave: a non-blank name becomes `PlayerEmpire.Name` (the setter
+ *  only stores it; there is no MaxLength on the text box). Ours stores the trimmed text. Everything derived from the
+ *  name (ship registry prefixes in shipNameStyle.ts, message text, flags keyed by empire id) reads it live, so only
+ *  ships named after this get the new prefix. Returns false (no change) for a blank name. */
+export function renameEmpire(empire: Empire, text: string): boolean {
+    const name = text.trim();
+    if (name === '') return false;
+    empire.name = name;
+    return true;
+}
+
+/** Port of Main.Part6.cs:3028 btnEmpireSummaryChangeGovernment_Click after its "Have a Revolution?" Yes:
+ *  `PlayerEmpire.HaveRevolution(PlayerEmpire.DominantRace, governmentId)` (damage factor 1.0). The click only acts
+ *  when the id is a government (>= 0) other than the current one; the button is disabled when the dominant race
+ *  cannot change government (Main.Part4.cs:4758 cmbEmpireSummaryChangeGovernmentType_SelectedIndexChanged), the combo
+ *  lists only AllowableGovernmentTypes and the controls are hidden for pirates (Main.Part9.cs:4233). There is no
+ *  cooldown. Returns the new government id, or -1 when rejected. */
+export function changeGovernmentByRevolution(galaxy: Galaxy, empire: Empire, governmentId: number): number {
+    if (!Number.isInteger(governmentId) || governmentId < 0 || governmentId === empire.governmentId) return -1;
+    if (empire.pirateEmpireBaseHabitat !== null) return -1;
+    if (!empire.allowableGovernmentTypes.includes(governmentId)) return -1;
+    const race = empire.dominantRace as Race | null;
+    if (race !== null && race.canChangeGovernment === false) return -1;
+    return haveRevolution(galaxy, empire, race, governmentId, 1.0);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
