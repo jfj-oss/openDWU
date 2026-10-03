@@ -16,6 +16,7 @@
 import type { PickCandidate } from './pickStack';
 import { BuiltObjectRole } from '../sim/data/designSpecifications';
 import { sampleBuiltObject, type MotionInterpolator } from './renderInterp';
+import type { BuiltObjectIndex } from './builtObjectIndex';
 import { Container, Sprite } from 'pixi.js';
 import type { Texture } from 'pixi.js';
 import { Camera } from './camera';
@@ -455,8 +456,14 @@ export class BuiltObjectLayer {
     private drawnPx = new Map<BuiltObject, number>();
     /** Art URL per pictureRef (render: perf pass — built once instead of a string per ship per frame). */
     private urlByPictureRef = new Map<number, string | null>();
-    /** Live (not destroyed) built objects visited by the current update; the rest release their sprites. */
-    private seen = new Set<BuiltObject>();
+    /** Sprites made visible by the current / the previous update (the rest of the pool is already hidden). */
+    private shownNow = new Set<Sprite>();
+    private shownLast = new Set<Sprite>();
+    /** Render-side index of the live built objects (set by MainView): only objects near the view are visited. Null:
+     * every frame walks galaxy.builtObjects. */
+    index: BuiltObjectIndex | null = null;
+    private nearScratch: BuiltObject[] = [];
+    private liveScratch = new Set<BuiltObject>();
     // [concordArt] begin — scenario 19a: the Concord's ships (concordArt.ts: procedural hulls) and overlays.
     private concordFx = new ConcordFxLayer();
     private frame = 0;
@@ -539,14 +546,22 @@ export class BuiltObjectLayer {
         // MainView.1.cs:884 `GodMode || IsObjectVisibleToThisEmpire(builtObject5)` (after the off-screen cull): an unseen
         // ship / base is not drawn (fog.ts) and so has no drawn size, which also keeps it out of picking.
         const fog = fogOf(this.galaxy);
-        this.seen.clear();
         const motion = this.motion;
-        for (const bo of this.galaxy.builtObjects) {
+        // Perf (late games, ~10k objects): with the index, only the objects inside the 100 px cull below are visited (in
+        // galaxy.builtObjects order); every other live object's sprite is hidden and it has no drawn size, as the cull
+        // gives it. Liveries still observe every live object.
+        const index = this.index;
+        const list: readonly (BuiltObject | null)[] = index !== null ? index.near(camX, camY, halfW / z, halfH / z, 101 / z, false, this.nearScratch) : this.galaxy.builtObjects;
+        if (liveries) {
+            for (const bo of index !== null ? index.live : this.galaxy.builtObjects) if (bo !== null && !bo.hasBeenDestroyed) this.liveries.observe(bo);
+        }
+        this.drawnPx.clear();
+        const shown = this.shownNow;
+        shown.clear();
+        for (const bo of list) {
             // MainView.1.cs:867 `if (builtObject5 == null) continue;` — Galaxy.BuiltObjects keeps null holes after
             // CompleteTeardown (BuiltObject.2.cs:5522) until RemoveNullBuiltObjects (Galaxy.9.cs:2862) compacts it.
             if (bo === null || bo.hasBeenDestroyed) continue;
-            this.seen.add(bo);
-            if (liveries) this.liveries.observe(bo);
             const sx = (bo.xpos - camX) * z + halfW;
             const sy = (bo.ypos - camY) * z + halfH;
             let sprite = this.sprites.get(bo);
@@ -635,6 +650,7 @@ export class BuiltObjectLayer {
             sprite.scale.set(px / metrics.cropSide / z);
             sprite.alpha = this.overlays.fadeCivilianShips && bo.owner === null ? 144 / 255 : 1;
             sprite.visible = true;
+            shown.add(sprite);
             // [concordArt] begin
             if (cArt !== null) {
                 this.concordFx.draw(cArt, x, y, sprite.rotation, sprite.scale.x, sprite.anchor.x, sprite.anchor.y, bo.builtObjectID, px, nowMs);
@@ -660,11 +676,27 @@ export class BuiltObjectLayer {
         this.damage.end();
         this.construction.end();
         if (liveries) this.liveries.end();
+        // Sprites shown last frame and not this one (off screen, unseen, ...): hidden, as the per-object cull did.
+        for (const sp of this.shownLast) if (!shown.has(sp)) sp.visible = false;
+        this.shownNow = this.shownLast;
+        this.shownLast = shown;
         // Destroyed or removed objects: drop their sprite and drawn size (which also clears their selection ring / pick).
-        releaseStaleSprites(this.sprites, this.seen, (bo, sprite) => {
-            this.drawnPx.delete(bo);
-            sprite.destroy();
-        });
+        // Liveness only changes when the index is rebuilt (a sim step, an array change).
+        if (index === null || index.changed) {
+            let live: ReadonlySet<BuiltObject>;
+            if (index !== null) live = index.liveSet();
+            else {
+                const set = this.liveScratch;
+                set.clear();
+                for (const bo of this.galaxy.builtObjects) if (bo !== null && !bo.hasBeenDestroyed) set.add(bo);
+                live = set;
+            }
+            releaseStaleSprites(this.sprites, live, (bo, sprite) => {
+                this.drawnPx.delete(bo);
+                this.shownLast.delete(sprite);
+                sprite.destroy();
+            });
+        }
         // TODO(port): DrawShipSymbolXna (MainView.1.cs:1085-1110) — small symbol for ships too far away to show their art.
         // TODO(port): engine exhaust flames (MainView.1.cs ~1112-1133) — animated thrust frames behind moving ships.
     }

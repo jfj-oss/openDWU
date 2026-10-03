@@ -443,6 +443,48 @@ export function sampleBuiltObject(m: MotionInterpolator, bo: MovingBuiltObject, 
     return m.sample(bo, bo.xpos, bo.ypos, bo.heading, maxSpeed);
 }
 
+/** Game seconds of one sim step at the fastest game speed (4×): stepSeconds bound for records taken at any speed. */
+const MAX_STEP_SECONDS = 4 / FRAMES_PER_SECOND;
+
+/**
+ * Upper bound (world units) on how far `h`'s drawn position (renderHabitatPos) can be from its committed xpos / ypos:
+ * for each orbiting level of its parent chain, the orbit angle is extrapolated by at most anglePerSecond × clampSeconds
+ * (and a chord is never longer than the diameter), counted twice to cover the parent having moved since the child's
+ * committed position was taken.
+ */
+export function habitatDrawnOffsetBound(h: OrbitingBody, clampSeconds: number): number {
+    let b = 0;
+    for (let n: OrbitingBody | null = h; n !== null && n.parent !== null; n = n.parent) {
+        const r = Math.abs(n.orbitDistance);
+        b += 2 * Math.min(2 * r, Math.abs(n.anglePerSecond) * Math.max(0, clampSeconds) * r);
+    }
+    return b;
+}
+
+/**
+ * Upper bound (world units) on the distance between a built object's drawn position this frame (sampleBuiltObject /
+ * drawnBuiltObjectPos) and its committed xpos / ypos, so callers can cull on the committed position before paying for
+ * a sample: the step lerp (isJump keeps the previous step's estimate within SNAP_SPEED_FACTOR × speed × one step — at
+ * 4× speed, for records taken at any speed), the untouched extrapolation (currentSpeed × untouchedMaxMs) and, when a
+ * parent offset is set, the drift allowed by followsParent plus the parent's own bound (every candidate parent: dock,
+ * ParentHabitat, ParentBuiltObject). Doubled for slack.
+ */
+export function builtObjectDrawnOffsetBound(m: MotionInterpolator, bo: MovingBuiltObject, depth = 0): number {
+    const maxSpeed = Math.max(bo.topSpeed, bo.warpSpeed, Math.abs(bo.currentSpeed), SNAP_MIN_SPEED);
+    let b = SNAP_SPEED_FACTOR * maxSpeed * Math.max(MAX_STEP_SECONDS, m.stepSeconds) + (Math.abs(bo.currentSpeed) * m.untouchedMaxMs) / 1000;
+    if (bo.parentOffsetX > PARENT_OFFSET_UNSET && bo.parentOffsetY > PARENT_OFFSET_UNSET) {
+        b += PARENT_FRAME_MAX_DRIFT + parentDrawnOffsetBound(m, bo.dockedAt, depth) + parentDrawnOffsetBound(m, bo.parentHabitat, depth) + parentDrawnOffsetBound(m, bo.parentBuiltObject, depth);
+    }
+    return 2 * b;
+}
+
+function parentDrawnOffsetBound(m: MotionInterpolator, p: object | null | undefined, depth: number): number {
+    if (p === null || p === undefined) return 0;
+    if (isOrbitingBody(p)) return habitatDrawnOffsetBound(p, m.clampSeconds);
+    if (depth < MAX_PARENT_DEPTH && typeof (p as MovingBuiltObject).parentOffsetX === 'number') return builtObjectDrawnOffsetBound(m, p as MovingBuiltObject, depth + 1);
+    return 0;
+}
+
 /** Longest parent chain followed (ship → base → …); the planet at the end is placed by renderHabitatPos. */
 const MAX_PARENT_DEPTH = 3;
 

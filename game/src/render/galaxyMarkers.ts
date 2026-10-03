@@ -45,6 +45,7 @@
 // original symbol art (procedural shapes when the art is missing), the discs a second one; rings one Graphics
 // rebuilt only on zoom / data / view changes. Everything lives in world space and is sized by /z in screen px.
 
+import type { BuiltObjectIndex } from './builtObjectIndex';
 import { inOwnRenderGroup } from './renderGroups';
 import { Container, Graphics, Particle, ParticleContainer, Rectangle, Sprite, Text, Texture } from 'pixi.js';
 import type { Camera } from './camera';
@@ -693,6 +694,13 @@ export class GalaxyMarkerLayer {
 
     /** Ship position for drawing / picking — swap in the interpolated render position when there is one. */
     positionOf: (bo: BuiltObject) => { x: number; y: number } = (bo) => ({ x: bo.xpos, y: bo.ypos });
+    /** Upper bound (world units) on |positionOf(bo) - (xpos, ypos)| this frame (renderInterp.ts
+     * builtObjectDrawnOffsetBound), so off-screen objects are culled on their committed position without a sample. */
+    drawnOffsetBound: (bo: BuiltObject) => number = () => 0;
+    /** Render-side index of the live built objects (set by MainView): the symbol pass visits only those near the view.
+     * Null: galaxy.builtObjects. */
+    index: BuiltObjectIndex | null = null;
+    private nearScratch: BuiltObject[] = [];
     /** Drawn ship-art size in px (builtObjectLayer.drawnSizePx), for the per-ship symbol pass. */
     shipPxOf: (bo: BuiltObject) => number = () => 0;
     /** Current selection (the HUD's), for the method_212 selection boxes at galaxy zoom. */
@@ -1079,30 +1087,36 @@ export class GalaxyMarkerLayer {
         const basePx = shipSymbolPx(f, true);
         const opts: GalaxyViewDisplay = getSettings();
         const fog = fogOf(g);
-        for (const bo of g.builtObjects) {
+        // Perf (late games: ~10k built objects, every frame): the tests that do not depend on the drawn position run
+        // first, and objects whose committed position is off screen by more than their drawn-position bound are
+        // dropped before the (costly) render-interpolated sample. Same symbols, in the same order.
+        const pad = 40;
+        const list: readonly (BuiltObject | null)[] =
+            this.index !== null ? this.index.near(cam.x, cam.y, cam.width / (2 * z), cam.height / (2 * z), (pad + 1) / z, true, this.nearScratch) : g.builtObjects;
+        for (const bo of list) {
             if (bo === null || bo.hasBeenDestroyed) continue;
             const art = symbolArtFor(bo.role, bo.subRole);
             if (art === null) continue;
-            const pos = this.positionOf(bo);
-            if (!boundsOnScreen(pos.x, pos.y, 0, 40, cam.x, cam.y, cam.width, cam.height, z)) continue;
             const isBase = bo.role === BuiltObjectRole.Base;
             const owned = bo.empire !== null && bo.empire !== indep;
-            let heightPx: number;
             if (galaxyPass) {
                 if (!this.visibleObjects.has(bo)) continue;
                 if (drawnAsFleet(bo)) continue; // the fleet icon stands for the whole fleet
                 const enemy = bo.empire !== null && (g.pirateEmpires.includes(bo.empire) || this.war.includes(bo.empire));
                 if (!galaxyViewTypeShown(bo.subRole, opts, enemy, f)) continue;
                 if (builtObjectHiddenFromPick(bo, g.systems, g.pirateEmpires, this.war)) continue;
-                heightPx = (isBase ? basePx : shipPx) * symbolSizeMultiplier(bo.role, bo.subRole, true);
             } else {
-                // The marker belongs to the ship's draw block: an unseen ship (fog.ts, MainView.1.cs:884) gets none.
-                if (!fog.builtObject(bo)) continue;
                 // MainView.1.cs 1083-1088: beyond f = 20 the player's own private ships get no symbol.
                 if (f > 20 && !isBase && bo.owner === null && player !== null && bo.empire === player) continue;
-                const px = this.shipPxOf(bo);
-                heightPx = perShipSymbolPx(px, isBase) * symbolSizeMultiplier(bo.role, bo.subRole, band === 'filled');
             }
+            if (!boundsOnScreen(bo.xpos, bo.ypos, this.drawnOffsetBound(bo), pad, cam.x, cam.y, cam.width, cam.height, z)) continue;
+            // The marker belongs to the ship's draw block: an unseen ship (fog.ts, MainView.1.cs:884) gets none.
+            if (!galaxyPass && !fog.builtObject(bo)) continue;
+            const pos = this.positionOf(bo);
+            if (!boundsOnScreen(pos.x, pos.y, 0, pad, cam.x, cam.y, cam.width, cam.height, z)) continue;
+            const heightPx = galaxyPass
+                ? (isBase ? basePx : shipPx) * symbolSizeMultiplier(bo.role, bo.subRole, true)
+                : perShipSymbolPx(this.shipPxOf(bo), isBase) * symbolSizeMultiplier(bo.role, bo.subRole, band === 'filled');
             const base = owned ? empireMarkerColor(bo.empire!) : UNOWNED_SYMBOL_COLOR;
             const tint = brighten(base, 48);
             // Restyle: the outline frame recedes (it must not out-shout the ship / base it frames); filled markers are a touch softer.

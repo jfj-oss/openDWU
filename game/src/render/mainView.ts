@@ -87,7 +87,8 @@ import { wreckTooltipText } from '../ui/scenario/wreckageUi'; // [wreckage]
 import type { FreightOverlay } from './freightOverlay'; // [freightOverlay]
 import { boundsOnScreen, DrawKey } from './drawCache';
 import { drawRangeRings, fleetRangeRadii } from './rangeRings';
-import { MotionInterpolator, createRenderTime, drawnBuiltObjectPos, habitatTouchClampSeconds, renderOrbitAngle, type RenderTime } from './renderInterp';
+import { BuiltObjectIndex } from './builtObjectIndex';
+import { MotionInterpolator, createRenderTime, builtObjectDrawnOffsetBound, drawnBuiltObjectPos, habitatTouchClampSeconds, renderOrbitAngle, type RenderTime } from './renderInterp';
 import { isDrag, objectsInBox, resolveBoxSelection, screenBox, shiftClickSelection, type ScreenBox } from './boxSelect';
 import { isObjectVisibleToThisEmpire } from '../sim/independentTraders';
 import { createFollowState, followTargetAlive, followTargetPosition, isFollowing, stopFollow, type FollowState, type FollowTarget } from './followCamera';
@@ -1209,6 +1210,8 @@ export class MainView {
      * previous/current step positions shared by every layer that draws a moving object. Render-only. */
     renderTime: RenderTime = createRenderTime();
     readonly motion = new MotionInterpolator();
+    /** Render-side index of the live built objects, refreshed per sim step (builtObjectIndex.ts). */
+    readonly builtObjectIndex = new BuiltObjectIndex();
     /** Follow camera (task followcam): shared with the HUD's selection-panel toggle (src/ui/hud.ts) and its
      * followOnSelectionChanged call. Recentred on the followed ship/fleet every frame in update(); cleared here
      * on a manual drag/edge-scroll/map-click or target loss, and by keyboard.ts on a keyboard scroll. */
@@ -1665,6 +1668,8 @@ export class MainView {
         // [galaxymarkers] symbols (and so their pick boxes) follow the render-interpolated ship: BuiltObjectLayer's
         // sample this frame, else (galaxy / sector zoom, where the ship art is not drawn) a sample taken here.
         this.galaxyMarkers.positionOf = (bo) => drawnBuiltObjectPos(this.motion, bo);
+        this.galaxyMarkers.drawnOffsetBound = (bo) => builtObjectDrawnOffsetBound(this.motion, bo);
+        this.galaxyMarkers.index = this.builtObjectIndex;
         // Task 13a: ships/bases/pirates/traders on top of all map layers.
         this.builtObjectLayer = new BuiltObjectLayer(this.galaxy, this.world, this.store, this.overlays);
         // [ambientfx] begin
@@ -1680,10 +1685,12 @@ export class MainView {
         this.creatureLayer = new CreatureLayer(this.galaxy, this.world, this.store.dwuPresent);
         // Render interpolation between sim steps: the layers drawing moving objects share one interpolator.
         this.builtObjectLayer.motion = this.motion;
+        this.builtObjectLayer.index = this.builtObjectIndex;
         this.overlayLayer.motion = this.motion;
         this.overlayLayer.getSelection = () => this.getHudSelection();
         this.empireLayer.motion = this.motion;
         this.ambientLayer.motion = this.motion;
+        this.ambientLayer.index = this.builtObjectIndex;
         this.fighterLayer.motion = this.motion;
         this.creatureLayer.motion = this.motion;
         if (typeof window !== 'undefined') {
@@ -1742,6 +1749,7 @@ export class MainView {
             rt.simNowMs = this.galaxy.nowMs;
         }
         this.motion.begin(rt, habitatTouchClampSeconds(this.galaxy.habitats.length), this.galaxy.builtObjects.length);
+        this.builtObjectIndex.update(this.galaxy, this.motion);
         fogOf(this.galaxy).begin(); // the player's per-frame visibility answers (fog.ts)
 
         // Frame delta for the animated star discs/corona (task 02c2).

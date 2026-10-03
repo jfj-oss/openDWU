@@ -23,6 +23,7 @@
 // the shieldstrike hit flash, MainView.1.cs:1215-1233, which belongs to the combat effects layer).
 // Minimal own animation helper (pooled sprites + frame clock) — no shared fx helper exists on main yet.
 
+import type { BuiltObjectIndex } from './builtObjectIndex';
 import { fogOf } from './fog';
 import type { MotionInterpolator } from './renderInterp';
 import { Container, Sprite, Texture } from 'pixi.js';
@@ -434,6 +435,9 @@ export class AmbientLayer {
     private gasMining: FrameSet = { urls: frameUrls('gasmining', GAS_MINING_FRAME_COUNT), textures: null, loading: false };
     private construction: FrameSet = { urls: frameUrls('construction', CONSTRUCTION_FRAME_COUNT), textures: null, loading: false };
     private shieldHabitats: Habitat[] | null = null;
+    /** Render-side index of the live built objects (set by MainView). Null: galaxy.builtObjects. */
+    index: BuiltObjectIndex | null = null;
+    private nearScratch: BuiltObject[] = [];
     /** 19i item 7 hook: alpha multiplier for nav lights / shield glow at a world point (null = 1, the default). */
     lightScale: ((x: number, y: number) => number) | null = null;
     private pruneCounter = 0;
@@ -531,7 +535,10 @@ export class AmbientLayer {
             const look = concord !== null ? concordArtLook(this.galaxy) : 'weathered';
             // [concordArt] end
             const fog = fogOf(this.galaxy);
-            for (const bo of this.galaxy.builtObjects) {
+            // Perf: with the index, only the objects inside the 100 px cull below (same order).
+            const list: readonly (BuiltObject | null)[] =
+                this.index !== null ? this.index.near(cam.x, cam.y, halfW / z, halfH / z, 101 / z, false, this.nearScratch) : this.galaxy.builtObjects;
+            for (const bo of list) {
                 if (bo === null || bo.hasBeenDestroyed) continue;
                 const sx = (bo.xpos - cam.x) * z + halfW;
                 const sy = (bo.ypos - cam.y) * z + halfH;
