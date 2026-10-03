@@ -22,6 +22,7 @@ import { baconSettings } from '../src/sim/data/baconSettings';
 import { empireGovernmentAttributes } from '../src/sim/empire';
 import { calculateScenicFactorIncludingRuinsWonders, checkColonyForResourceClearance } from '../src/sim/civilianAI';
 import { maximumFuelRange } from '../src/sim/movement';
+import { resolveLocationsToDefend } from '../src/sim/characters';
 import { BuiltObjectSubRole } from '../src/sim/builtObjectTypes';
 import { PlanetaryFacility } from '../src/sim/construction/facilities';
 import { PlanetaryFacilityType, WonderType, facilityType } from '../src/sim/researchSystem';
@@ -285,5 +286,20 @@ describe('Empire.5.cs 4063 CheckColonyForResourceClearance: the cached refuellin
         expect(far).toBeDefined();
         b.ship.refuellingLocation = far;
         expect(checkColonyForResourceClearance(b.g.galaxy, b.e, b.ship, b.colony)).toBe(false);
+    });
+});
+
+describe('Empire.9.cs 1819 ResolveLocationsToDefend reads the cached Empire.Capitals', () => {
+    it('a colony in empire.capitals is defended; the list is not recomputed', () => {
+        const g = newGame();
+        const e = g.playerEmpire;
+        const gal = g.galaxy;
+        // A second colony of the player (test-only re-ownership; ResolveLocationsToDefend keeps only own objects).
+        const h = gal.habitats.find((x) => x.empire === gal.independentEmpire && x.population.totalAmount > 0)!;
+        h.empire = e;
+        h.owner = e;
+        expect(resolveLocationsToDefend(gal, e, false)).not.toContain(h);
+        e.capitals = [...e.capitals, h];
+        expect(resolveLocationsToDefend(gal, e, false)).toContain(h);
     });
 });
