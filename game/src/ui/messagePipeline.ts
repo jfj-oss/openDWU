@@ -216,6 +216,19 @@ export function isAnswerableProposal(entry: ConversationEntry, player: Empire, s
     return isProposalStillValid(p, entry.sender, player, starDate);
 }
 
+/**
+ * A ProposeDiplomaticRelation naming DiplomaticRelationType.None from an empire the player is at war with: Main.Part9.cs
+ * 1694-1723 queues it as the WAR_END conversation, whose answers (Main.Part9.cs:500: WAR_END_ACCEPT / ..._SUBJUGATIONDEMAND
+ * / ..._REJECT, Main.Part10.cs:4798) act on the relation, not on a pending proposal. An AI's SubjugateRequest (Empire.8.cs
+ * 1527) arrives this way: its proposed SubjugatedDominion relation never passes EmpireDetailView's check, but the
+ * conversation stays answerable while the war is on.
+ */
+export function isWarEndConversation(entry: ConversationEntry, player: Empire): boolean {
+    if (entry.message.messageType !== EmpireMessageType.ProposeDiplomaticRelation || entry.sender === null) return false;
+    if (entry.message.subject !== DiplomaticRelationType.None) return false;
+    return player.diplomaticRelations.byEmpire(entry.sender)?.type === DiplomaticRelationType.War;
+}
+
 // Stand-in for DiplomaticMessageQueue.cs:404 ExpireInvalidMessages — TODO(port): the full per-type expiry rules
 // [popupstubs] + DiplomaticMessageQueue.cs:671 method_3: entries older than 250 x RealSecondsInGalacticYear expire.
 export function pruneConversationQueue(queue: ConversationEntry[], player: Empire, starDate: number): number {
@@ -223,7 +236,7 @@ export function pruneConversationQueue(queue: ConversationEntry[], player: Empir
     for (let i = queue.length - 1; i >= 0; i--) {
         const e = queue[i];
         if (
-            (e.message.messageType === EmpireMessageType.ProposeDiplomaticRelation && !isAnswerableProposal(e, player, starDate)) ||
+            (e.message.messageType === EmpireMessageType.ProposeDiplomaticRelation && !isAnswerableProposal(e, player, starDate) && !isWarEndConversation(e, player)) ||
             (e.message.starDate > 0 && isConversationExpired(e.message.starDate, starDate))
         ) {
             queue.splice(i, 1);

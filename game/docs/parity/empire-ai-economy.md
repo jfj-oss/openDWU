@@ -16,17 +16,17 @@ Read-only audit: C# Empire.cs + Empire.1-10.cs, EmpirePolicy, DiplomaticRelation
 | 4 | Race periodic personality swings | Race.cs 320-400 ChangePeriodActive; Galaxy.cs 3438-3473 | FIXED (8f3b492, 10b4bc8) | accessors in colonyTick.ts:139-170 | Med | ~20 sites read raw values: researchTick.ts:1022-1033/1531, civilianAI.ts:2327, tradeItems.ts:620, taxes.ts:198/486, resourceTargets.ts:355, combat/threats.ts:1238, troops.ts:163, designGeneration.ts:106/624, empireEvents.ts:624; empireConstruction.ts:215 hardcodes StrengthInNumbers maintenance bonus to 0. Affects Dhayut, Gizurean, Securan |
 | 5 | Fleet retrofit mission carries the target design | Empire.9.cs AssignFleetRetrofit | FIXED (840902b) | construction/empireConstruction.ts:939 | Med-Low | Design parameter dropped |
 | 6 | Player prompt for semi-automated restricted-resource trading | Empire.8.cs 4395 CheckTaskAuthorized | FIXED (5ff63c8) | logistics/orders.ts:719 | Low-Med | Use the full diplomacyTick.ts:385 version |
-| 7 | Player toggle for restricted-resource trading | DiplomaticRelation.SupplyRestrictedResources | FIXED (D4: setSupplyRestrictedResources op) | ui/screens/diplomacyScreen.ts:1186 | Med (player) | Sim side ported |
-| 8 | Pirate "Buy information" | Main.Part9.cs:207, Empire.5.cs GenerateSaleableInfoForEmpire | FIXED (D4: PIRATE_BUYINFO) | player/diplomacyProposals.ts:31 | Low-Med | Sim function ported; never offered |
-| 9 | Empire Policy design pickers and default automation options | Main.Part3.cs 4710-4716 | OPEN (UI) | ui/screens/empirePolicyModel.ts:72/499/862 | Low-Med | Pickers read-only |
-| 10 | AI SubjugateRequest to the player | Empire.8.cs 1527 | OPEN (advisor brief; AI-to-AI ported) | player/diplomatBrief.ts:236 | Low | AI-to-AI works |
+| 7 | Player toggle for restricted-resource trading | DiplomaticRelation.SupplyRestrictedResources | DONE (D3) | ui/screens/diplomacyScreen.ts:1186 | Med (player) | player op setSupplyRestrictedResources (diplomacy screen checkbox) |
+| 8 | Pirate "Buy information" | Main.Part9.cs:207, Empire.5.cs GenerateSaleableInfoForEmpire | DONE (D3) | player/diplomacyProposals.ts:31 | Low-Med | PIRATE_BUYINFO on the pirate greeting menu; INFO_* follow-ups bought via conversationReplies buyInfo |
+| 9 | Empire Policy design pickers and default automation options | Main.Part3.cs 4710-4716 | PARTIAL (D3: picker editable) | ui/screens/empirePolicyModel.ts:72/499/862 | Low-Med | default automation options (GameOptions persistence) still TODO |
+| 10 | AI SubjugateRequest to the player | Empire.8.cs 1527 | DONE (D3) | player/diplomatBrief.ts:236 | Low | answered as the WAR_END conversation (messagePipeline isWarEndConversation, WAR_END_ACCEPT) |
 | 11 | Characters read the cached capitals list | Empire.cs 513 Capitals | FIXED (c84178d) | characters.ts:7062 | Low | Recomputed each time; determinism risk |
 | 12 | Capital choice after losing a colony (setup path) | Empire.cs 3596 SelectBestCandidateForCapital | FIXED (9508833) | empire.ts:1066 | Low | Uses colonies[0]; runtime path is correct |
 | 13 | Player free-trader upkeep (Bacon mod) | BaconEmpire PayAnnualMaintenanceCostForFreeTraders | OPEN (Bacon mod, unreachable) | treasury.ts:221-248 | Low | |
-| 14 | Freedom Alliance victory story | Galaxy.1.cs 429 DecimateEmpire / GuardiansDepart | OPEN (agent C4) | victory.ts:1052 | Low | |
+| 14 | Freedom Alliance victory story | Galaxy.1.cs 429 DecimateEmpire / GuardiansDepart | DONE (parC4) | victory.ts, story/freedomAlliance.ts | — | |
 | 15 | Bacon story actions: loan payment, scientific missions | BaconGalaxy.cs 334-343 | OPEN (Bacon mod, nothing queues them) | story/eventActions.ts:1713-1717 | Low | |
-| 16 | Pirate relationship factors (diplomacy UI) | Empire.7.cs 4270 | OPEN (UI) | diplomacyScreen.ts:1352 | Low | |
-| 17 | Empire ability-bonus lines (diplomacy UI) | Empire.cs ResolveEmpireAbilityBonusDescriptions | OPEN (UI) | diplomacyScreen.ts:1124 | Low | |
+| 16 | Pirate relationship factors (diplomacy UI) | Empire.7.cs 4270 | DONE (D3) | diplomacyScreen.ts:1352 | Low | pirate detail shows the factors and our funded attack missions |
+| 17 | Empire ability-bonus lines (diplomacy UI) | Empire.cs ResolveEmpireAbilityBonusDescriptions | DONE (D3) | diplomacyScreen.ts:1124 | Low | empireSummaryModel abilityBonusLines under the race |
 | 18 | Original-save fix-ups | Empire.10.cs ExtendLatestDesignsWithNewSubRoles, ReviewBuiltObjectWeaponsComponentValues, ReviewUnpersistedColonyData | OPEN (original .sav only) | — | Low | Only for loading original .sav files |
 
 ## Fully ported (spot-verified)

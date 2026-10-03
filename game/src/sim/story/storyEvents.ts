@@ -1226,11 +1226,12 @@ export function generateMajorStoryItem(storyLevel: number): string {
 /** Galaxy.5.cs 3798 GenerateMajorStoryVictoryMessage(outcome): 0 = Victory, 1 = Defeat (GameEndOutcome). */
 export function generateMajorStoryVictoryMessage(outcome: number): string {
     let text = '';
+    // GameEndOutcome: Undefined 0, Victory 1, Defeat 2 (victory.ts GameEndOutcome).
     switch (outcome) {
-        case 0:
+        case 1:
             text += formatGameTextNow('ShakturiPlayerVictory');
             break;
-        case 1:
+        case 2:
             text += formatGameTextNow('ShakturiPlayerDefeat');
             break;
     }

@@ -21,8 +21,7 @@
 // detail's ObtainDiplomaticRelation add relations; here the progresses are generated with filterOutUnmetEmpires =
 // false and filtered with read-only lookups — isVictoryProgressVisible / diplomaticRelationTypeReadOnly). It reads
 // the read-only replica under ?simWorker=1.
-//
-// TODO(port): Shakturi story message (Code 1) — Main.Part12.cs 3428 DoGameEnd.
+// The Code 1 ending (Main.Part12.cs 3428 DoGameEnd) also shows the Shakturi story panel: presentGameEnd / shakturiEndingStory.
 
 import './empireComparison.css';
 import type { Empire } from '../../sim/empire';
@@ -36,6 +35,8 @@ import {
     setGameEndHandler,
 } from '../../sim/victory';
 import type { GameEndEventArgs, VictoryConditionProgress, VictoryConditions } from '../../sim/victory';
+import { generateMajorStoryVictoryMessage } from '../../sim/story/storyEvents';
+import { showStoryEventPopup } from '../messagePopups';
 import {
     AchievementType,
     determineAchievementLevel,
@@ -399,6 +400,17 @@ export function presentGameEnd(galaxy: Galaxy, time: { paused: boolean }, e: Gam
     }
     // pnlGameEnd: the outcome with Continue Playing / Exit to main menu (gameEndPanel.ts).
     openGameEndPanel(galaxy, time, e);
+    // Main.Part12.cs 3429-3438: a story ending (Code 1: the Freedom Alliance took the Shakturi capital, or the Guardians'
+    // capital fell) also shows the story panel (method_571) with GenerateMajorStoryVictoryMessage.
+    const story = shakturiEndingStory(e);
+    if (story !== null) showStoryEventPopup({ title: story.title, text: story.text, picture: { kind: 'url', url: '/assets/dwu/images/ui/chrome/storyEvent.jpg' } }, galaxy);
+}
+
+/** DoGameEnd's Code 1 story panel title and text (Main.Part12.cs 3429-3437), or null for any other ending. */
+export function shakturiEndingStory(e: GameEndEventArgs): { title: string; text: string } | null {
+    if (e.code !== 1) return null;
+    const title = e.outcomeForPlayer === GameEndOutcome.Defeat ? 'The Shakturi have defeated the Freedom Alliance!' : 'You have Defeated the Shakturi!';
+    return { title: tryGetText(title) ?? title, text: generateMajorStoryVictoryMessage(e.outcomeForPlayer) };
 }
 
 export function removeGameEndHandler(galaxy: Galaxy): void {

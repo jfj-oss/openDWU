@@ -11,17 +11,22 @@
 //
 // TODO(port): "Enemy Targets" panel (PrioritizedTarget rows, Main.method_205 + ItemListPanel.cs method_8/method_9, the
 //   click-to-assign-a-fleet behaviour of Main.Part12.cs method_78) — the target prioritisation is not ported.
-// TODO(port): "Pirate Missions" panel (EmpireActivity rows, ItemListPanel.cs method_7) — pirate playstyle only.
-// TODO(port): colony governor / fleet admiral portraits on the rows (characterImageCache ObtainCharacterImageVerySmall)
-//   — there is no character art; the Characters panel shows the character's race portrait instead.
-// TODO(port): the pirate player's Colonies rows (ItemListPanel.cs 729-848: other empires' colonies with pirate
-//   control %) — pirate playstyle only.
+// "Pirate Missions" panel (Main.Part11.cs method_163, every empire): the list is BaconMain.cs PopulateListsOnLefthandSide's
+//   pirate branches (sim/pirates/pirateMissionsPanel.ts, read-only from the UI: the pirate relations it obtains are
+//   requested through obtainUiRecords), the rows ItemListPanel.cs 1577 method_7 (missionRow below), the right-hand button the
+//   pirateMissionButton command (Main.Part12.cs 2591-2678).
+// TODO(port): hovering a Pirate Missions row highlights the ships assigned to it (ItemListPanel.cs 2353
+//   DetermineShipsAssignedToMission → Main.method_246) — no ship-highlight list in the main view yet.
+// Colony governor / fleet admiral pictures on the rows: ItemListPanel.cs 868-882 / 1371-1390
+//   (ObtainCharacterImageVerySmall, characterPortrait.ts: the picture file or race portrait with the role icon).
+// The pirate player's Colonies rows (ItemListPanel.cs 728-848: the colonies it controls but does not own, with the
+//   control % and its pirate facilities): pirateColonyRow below.
 
 import type { Galaxy } from '../sim/galaxy';
 import type { Empire } from '../sim/empire';
 import { BuiltObject } from '../sim/builtObject';
 import type { Race } from '../sim/data/races';
-import { Character } from '../sim/characters';
+import { Character, CharacterRole } from '../sim/characters';
 import type { ConstructionQueue } from '../sim/construction/constructionQueue';
 import { BuiltObjectSubRole } from '../sim/builtObjectTypes';
 import { BuiltObjectRole } from '../sim/data/designSpecifications';
@@ -45,11 +50,28 @@ import { fighterImageUrl } from '../render/fighterLayer';
 import { troopImageUrl } from '../render/troopImages';
 import { mapStarUrls, cloudUrls } from '../render/assets';
 import { racePortraitUrl } from './empireEmblem';
-import { characterPortraitUrl, roleIconRectForSize, roleIconUrl } from './characterPortrait';
+import { CHARACTER_IMAGE_SPEC, characterPortraitUrl, roleIconRectForSize, roleIconUrl } from './characterPortrait';
+import { getFleetAdmiralsAndGenerals } from '../sim/fleets/shipGroupTasks';
 import { chromeUrl, fmtK, habitatImageUrl, missionDescription, shipImageUrl } from './selectionInfo';
 import { resourceIconUrl } from './hud';
 import { plannerStatusInput, type PlannerStatusInput } from './screens/expansionPlanner';
 import { resolveDescriptionCharacterTask, resolveRoleDescription } from './screens/intelligence';
+import { EmpireActivity, EmpireActivityType, type ActivityTarget } from '../sim/pirates/empireActivity';
+import {
+    countPirateFactionsAcceptedSmugglingMission,
+    countShipsAssignedToMission,
+    pirateMissionButtonKind,
+    PIRATE_MISSIONS_STATUS_TOGGLE,
+    PIRATE_MISSIONS_TYPE_TOGGLE,
+    type PirateMissionsPanelData,
+} from '../sim/pirates/pirateMissionsPanel';
+import { countIdleFreighters, totalMobileMilitaryFirepowerNotAttackingDefending } from '../sim/pirates/missionsMarket';
+import { countResourceSupplyLocations } from '../sim/logistics/orders';
+import { PlanetaryFacilityType } from '../sim/researchSystem';
+import { resolveStarDateDescription } from '../sim/galaxyTime';
+import { galaxyStarDate, REAL_SECONDS_IN_GALACTIC_YEAR } from '../sim/tick/simTime';
+import { tryGetText } from '../sim/textResolver';
+import { facilityImageUrl } from './eventMessagePresentation';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Panels (Main.Part11.cs method_163 AddPanel order)
@@ -68,6 +90,7 @@ export type ItemPanelId =
     | 'potentialMining'
     | 'potentialResearch'
     | 'potentialResort'
+    | 'pirateMissions'
     | 'specialLocations'
     | 'idleShips';
 
@@ -87,8 +110,8 @@ export interface ItemPanelDef {
     extra?: boolean;
 }
 
-/** Port of Main.Part11.cs method_163: the panels in their original order. Enemy Targets and Pirate Missions are not
- *  ported (see the TODOs above); "Idle Ships" is our extra (the old Idle chip), after the original set. */
+/** Port of Main.Part11.cs method_163: the panels in their original order. Enemy Targets is not ported (see the TODO
+ *  above); "Idle Ships" is our extra (the old Idle chip), after the original set. */
 export function itemPanelDefs(isPirate: boolean): ItemPanelDef[] {
     const out: ItemPanelDef[] = [
         { id: 'colonies', title: 'Colonies', icon: { kind: 'chrome', file: 'colony.png' }, toggles: [], itemHeightFactor: 1 },
@@ -115,6 +138,14 @@ export function itemPanelDefs(isPirate: boolean): ItemPanelDef[] {
             itemHeightFactor: 1,
         });
     }
+    // AddPanel("Pirate Missions", bitmap_49 pirateflag.png, typeof(EmpireActivity), two toggles, 3.3175f) — for every empire.
+    out.push({
+        id: 'pirateMissions',
+        title: 'Pirate Missions',
+        icon: { kind: 'chrome', file: 'pirateflag.png' },
+        toggles: [PIRATE_MISSIONS_STATUS_TOGGLE.map((t) => pt(t)), PIRATE_MISSIONS_TYPE_TOGGLE.map((t) => pt(t))],
+        itemHeightFactor: 3.3175,
+    });
     out.push(
         { id: 'potentialMining', title: 'Potential Mining Locations', icon: { kind: 'chrome', file: 'mine.png' }, toggles: [['Excluding Asteroids', 'Including Asteroids']], itemHeightFactor: 1 },
         { id: 'potentialResearch', title: 'Potential Research Locations', icon: { kind: 'chrome', file: 'research_small.png' }, toggles: [], itemHeightFactor: 1 },
@@ -289,7 +320,7 @@ export function panelLayout(w: number, h: number, m: PanelMetrics, toggleCount: 
 // Item lists (BaconMain.PopulateListsOnLefthandSide, vanilla order: the empire's own list order)
 // ---------------------------------------------------------------------------------------------------------------
 
-export type PanelItem = Habitat | BuiltObject | ShipGroup | Character | GalaxyLocation;
+export type PanelItem = Habitat | BuiltObject | ShipGroup | Character | GalaxyLocation | EmpireActivity;
 
 function live<T>(list: readonly (T | null | undefined)[] | null | undefined): T[] {
     return (list ?? []).filter((x): x is T => x != null && !(x as { hasBeenDestroyed?: boolean }).hasBeenDestroyed);
@@ -313,6 +344,8 @@ export function idleShipsList(player: Empire): (ShipGroup | BuiltObject)[] {
 export interface PanelListOptions {
     /** Toggle button states (index → state). */
     toggles: readonly number[];
+    /** The Pirate Missions list for these toggles (pirateMissionsPanelData; the view builds it, none → no rows). */
+    pirateMissions?: PirateMissionsPanelData | null;
 }
 
 /** Port of BaconMain.PopulateListsOnLefthandSide for one panel (vanilla: no distance ordering, no resource filter). */
@@ -353,6 +386,8 @@ export function panelItems(id: ItemPanelId, galaxy: Galaxy, player: Empire, o: P
             return player.visibility.knownGalaxyLocations.filter(
                 (l) => l.type === GalaxyLocationType.DebrisField || l.type === GalaxyLocationType.PlanetDestroyer || l.type === GalaxyLocationType.RestrictedArea,
             );
+        case 'pirateMissions':
+            return o.pirateMissions?.items.slice() ?? [];
         case 'idleShips':
             return idleShipsList(player);
     }
@@ -376,7 +411,9 @@ export const ROW_TEXT = 0xaaaaaa;
 /** A piece of a row line, laid out left to right (gapBefore px before it), or at a fixed x (`at`, from the text
  *  column) when the source draws it at a constant offset. */
 export type RowSeg =
-    | { kind: 'text'; text: string; font: 'bold' | 'small'; color: number; gapBefore?: number; at?: number; maxWidth?: number }
+    | { kind: 'text'; text: string; font: 'bold' | 'small' | 'regular'; color: number; gapBefore?: number; at?: number; maxWidth?: number }
+    /** Empire.SmallFlagPicture (13 × 8). */
+    | { kind: 'flag'; empire: Empire; w: number; h: number; gapBefore?: number; at?: number }
     | { kind: 'img'; url: string; size: number; gapBefore?: number; at?: number; dotted?: boolean; title?: string; full?: boolean };
 
 export interface RowPicture {
@@ -401,6 +438,11 @@ export interface ItemRowModel {
     line2: RowSeg[];
     /** Icons drawn from the row's right edge (fleet posture / range; colonizing / base-to-build markers). */
     right: { url: string; fromRight: number; size: number; y: number; full?: boolean }[];
+    /** Pieces drawn at fixed row positions (the tall Pirate Missions rows, ItemListPanel.cs method_7). */
+    free?: { x: number; y: number; seg: RowSeg }[];
+    /** The Pirate Missions row's button (method_7 rect3 / rect2): `w` px wide at the right edge, the row's height less 2;
+     *  `text` bold, `sub` small below it. */
+    button?: { text: string; sub: string; w: number };
 }
 
 export interface RowContext {
@@ -409,6 +451,8 @@ export interface RowContext {
     sizeFactor: number;
     /** resources.txt id → picture ref. */
     resource: (id: number) => { name: string; pictureRef: number } | null;
+    /** The Pirate Missions panel's "considering" counts (method_7's DisplayExtraData), by row. */
+    pirateMissionsConsidering?: ReadonlyMap<EmpireActivity, number>;
 }
 
 /** "0,,M": millions, rounded, no separators. */
@@ -432,7 +476,7 @@ function k(ctx: RowContext): Record<string, number> {
     };
 }
 
-function txt(text: string, font: 'bold' | 'small', color = ROW_TEXT, extra: { gapBefore?: number; at?: number; maxWidth?: number } = {}): RowSeg {
+function txt(text: string, font: 'bold' | 'small' | 'regular', color = ROW_TEXT, extra: { gapBefore?: number; at?: number; maxWidth?: number } = {}): RowSeg {
     return { kind: 'text', text, font, color, ...extra };
 }
 
@@ -537,7 +581,32 @@ function colonyRow(ctx: RowContext, h: Habitat): ItemRowModel {
         if (waiting > 0) line2.push(txt(` (${waiting} waiting)`, 'small', ROW_TEXT, { at: c.n165 + 27 + 2 }));
     }
     if (deficient(h as unknown as { manufacturingQueue: unknown })) overlays.push({ url: STALLED_URL, x: 5, y: c.n20, size: c.half });
+    // ItemListPanel.cs 868-882: every colony governor at the colony (Characters.FindCharactersAtLocation), right to left
+    // from x 5 + image width - num7, at y num, num10 apart.
+    if (pic) {
+        let x = 5 + c.image - c.n11;
+        for (const ch of (owner.characters ?? []) as (Character | null)[]) {
+            if (ch == null || ch.location !== h || ch.role !== CharacterRole.ColonyGovernor) continue;
+            overlays.push(...verySmallPortrait(ch, x, c.n3));
+            x -= c.n15;
+        }
+    }
     return { pictures, overlays, textX, line1, line2, right: [] };
+}
+
+/** CharacterImageCache.ObtainCharacterImageVerySmall drawn at its 13 px (DrawImage at a point): the picture and the
+ *  role icon over it (OverlayRoleIcon 0.48), unfaded. */
+function verySmallPortrait(ch: Character, x: number, y: number): ItemRowModel['overlays'] {
+    const out: ItemRowModel['overlays'] = [];
+    const size = CHARACTER_IMAGE_SPEC.verySmall.bitmap;
+    const url = characterPortraitUrl(ch);
+    if (url !== null) out.push({ url, x, y, size, full: true });
+    const role = roleIconUrl(ch.role);
+    if (role !== null) {
+        const r = roleIconRectForSize('verySmall', size);
+        out.push({ url: role, x: x + r.x, y: y + r.y, size: r.w, full: true });
+    }
+    return out;
 }
 
 /** method_6, any other Habitat (the Potential … lists): status colour, quality / size, resources, bonuses, and the
@@ -695,7 +764,18 @@ function shipGroupRow(ctx: RowContext, sg: ShipGroup): ItemRowModel {
     const r2 = sg.postureRangeSquared;
     const range = r2 <= 2250000 ? 'fleetRangeTarget.png' : r2 <= 2304000000 ? 'fleetRangeSystem.png' : r2 <= 250000000000 ? 'fleetRangeArea.png' : r2 <= 1000000000000 ? 'fleetRangeSector.png' : 'fleetRangeAny.png';
     right.push({ url: chromeUrl(range), fromRight: c.n20, size: c.half, y: c.n4 });
-    return { pictures, overlays: [], textX, line1, line2, right };
+    // ItemListPanel.cs 1371-1390: the admirals and generals (GetFleetAdmiralsAndGenerals) at x 5 + image width - num7,
+    // from y num down num10 apart, stopping past num12.
+    const overlays: ItemRowModel['overlays'] = [];
+    if (pic) {
+        let y = c.n3;
+        for (const ch of getFleetAdmiralsAndGenerals((sg.empire?.characters ?? []) as unknown[], sg)) {
+            overlays.push(...verySmallPortrait(ch, 5 + c.image - c.n11, y));
+            y += c.n15;
+            if (y > c.n19) break;
+        }
+    }
+    return { pictures, overlays, textX, line1, line2, right };
 }
 
 /** method_6, Character: ObtainCharacterImageSmall (characterPortrait.ts) — the picture with the role icon. */
@@ -765,10 +845,327 @@ function galaxyLocationRow(ctx: RowContext, loc: GalaxyLocation): ItemRowModel {
     };
 }
 
+// ---------------------------------------------------------------------------------------------------------------
+// The pirate rows (ItemListPanel.cs 728-848 and 1577 method_7)
+// ---------------------------------------------------------------------------------------------------------------
+
+/** GameText.txt strings of the pirate rows, for when the table is not loaded (headless tests). */
+const PIRATE_TEXT: Record<string, string> = {
+    'Pirate Missions List Status All': 'Showing Accepted and Available missions',
+    'Pirate Missions List Status Accepted': 'Showing Accepted missions',
+    'Pirate Missions List Status Open': 'Showing Available missions',
+    'Pirate Missions List Type All': 'Showing all mission types',
+    'Pirate Missions List Type Smuggling': 'Showing Smuggling missions',
+    'Pirate Missions List Type Attack': 'Showing Attack missions',
+    'Pirate Missions List Type Defend': 'Showing Defend missions',
+    'Attack requested by EMPIRE': 'Attack for {0}',
+    'Defense requested by EMPIRE': 'Defend for {0}',
+    'Assigned to: EMPIRE': 'Assigned to: {0} for {1} credits',
+    'Current bid: EMPIRE': 'Current bid: {0} for {1} credits',
+    'Smuggling requested by Independent': 'Smuggle {0} to {1}',
+    'Smuggling requested by Independent All Resources': 'Smuggle resources to {0}',
+    'Smuggling requested by EMPIRE': 'Smuggle {0} for {1}',
+    'Smuggling requested by EMPIRE All Resources': 'Smuggle resources for {0}',
+    'You and X other pirate factions accepted': 'You and {0} other pirate factions accepted',
+    'X pirate factions accepted': '{0} pirate factions accepted',
+    'Accept Smuggling Mission': 'Accept Mission',
+    'Smuggling bonus AMOUNT': '{0} credits per 100 units',
+    'Pirate Mission Completes DATE': 'Mission completes at {0}',
+    'Pirate Mission Expires DATE': 'Must complete before {0}',
+    'Bid PRICE credits': 'Bid {0} credits',
+    'X ships are attacking this target': '{0} ships attacking this target ({1} firepower)',
+    'Mission Available Forces': '{0} military ships available ({1} firepower)',
+    'Target Firepower': 'Target Firepower',
+    'X ships are defending this target': '{0} ships defending this target ({1} firepower)',
+    'X smugglers are performing this mission': '{0} smugglers performing this mission',
+    'Smuggling Mission Delivery Report': '{0} units delivered, {1} credits earned',
+    'We have X smugglers available for this mission': '{0} smuggling ships available for this mission',
+    'Our empire has access to X sources of this resource': 'Our empire has {0} sources of this resource',
+    'Smuggling Mission Delivery Report For Requester': '{0} units delivered, {1} credits paid',
+    'Other Empires Considering Pirate Mission Description': '{0} other empires considering this mission',
+    'Empires Considering Pirate Mission Description': '{0} empires considering this mission',
+    'Already Bidded': 'Already Bid',
+    'X seconds': '{0} seconds',
+    'No bids yet': 'No bids yet',
+    Cancel: 'Cancel',
+    None: 'None',
+    Control: 'Control',
+    Quality: 'Quality',
+    system: 'system',
+    Size: 'Size',
+    'Unknown resources': 'Unknown resources',
+};
+
+/** TextResolver.GetText(tag) formatted with `args` ({0}, {1}, ...), with the English fallback above. */
+export function pt(tag: string, ...args: unknown[]): string {
+    const t = tryGetText(tag) ?? PIRATE_TEXT[tag] ?? tag;
+    return t.replace(/\{(\d+)\}/g, (m: string, i: string) => (Number(i) < args.length ? String(args[Number(i)]) : m));
+}
+
+/** .NET "#,###,##0". */
+function n0(v: number): string {
+    return Math.round(v).toLocaleString('en-US');
+}
+
+/** A target's picture (method_7: BuiltObjectImages[PictureRef] / HabitatImages[PictureRef]). */
+function targetPictureUrl(t: ActivityTarget): { url: string | null; rotate: boolean } {
+    if (t instanceof BuiltObject) return { url: shipImageUrl(t), rotate: true };
+    return { url: habitatImageUrl(t), rotate: false };
+}
+
+const GREY_128 = 0x808080;
+
+/**
+ * Port of ItemListPanel.cs 1577 method_7: a Pirate Missions row (3.3175 rows tall). The target's empire flag, picture,
+ * name and empire; the requester's flag and the mission ("Attack for …", "Defend for …", "Smuggle … for …"), the
+ * smuggling resource and bonus; then, for a pirate faction, its ships on the mission or available for it (and the
+ * target's firepower), or the smugglers and resource sources; for a standard empire, the assignee's ships or the
+ * deliveries; the assignment / bid line, the deadline (red within half a year) or the "considering" count; and the
+ * button at the right: Cancel (the player's own request), Bid … / Accept Mission / (Already Bid).
+ */
+export function missionRow(ctx: RowContext, a: EmpireActivity): ItemRowModel {
+    const empty: ItemRowModel = { pictures: [], overlays: [], textX: 0, line1: [], line2: [], right: [] };
+    if (a.targetEmpire === null || a.target === null || a.requestingEmpire === null) return empty;
+    const galaxy = ctx.galaxy;
+    const player = ctx.player;
+    const f = snapSizeFactor(ctx.sizeFactor);
+    const s = (v: number): number => Math.trunc(v * f);
+    const num = s(60), num2 = s(2), num3 = s(3), num4 = s(5), num5 = s(10), num6 = s(16), num7 = s(17), num8 = s(18), num9 = s(19), num10 = s(20), num11 = s(30), num12 = s(36), num13 = s(39), num14 = s(40);
+    const line = s(13); // the regular / small font's line height (MeasureString)
+    const arg = resolveStarDateDescription(a.expiryDate);
+    let string2 = `(${pt('Pirate Mission Expires DATE', arg)})`;
+    let text2 = a.assignedEmpire === null ? pt('Bid PRICE credits', a.price.toFixed(0)) : pt('Bid PRICE credits', (a.price * 0.9).toFixed(0));
+    let string1 = '';
+    let text = '';
+    let string3 = '';
+    let num15 = 0;
+    const button = pirateMissionButtonKind(galaxy, player, a);
+    let typeIcon: string | null = null;
+    const assignedText = (): string =>
+        a.assignedEmpire === null
+            ? pt('Assigned to: EMPIRE', `(${pt('None')})`, a.price.toFixed(0))
+            : a.bidTimeRemaining > 0
+              ? pt('Current bid: EMPIRE', a.assignedEmpire.name, a.price.toFixed(0))
+              : pt('Assigned to: EMPIRE', a.assignedEmpire.name, a.price.toFixed(0));
+    switch (a.type) {
+        case EmpireActivityType.Attack:
+            string1 = pt('Attack requested by EMPIRE', a.requestingEmpire.name);
+            text = assignedText();
+            typeIcon = chromeUrl('pirateMissionAttack.png');
+            break;
+        case EmpireActivityType.Defend:
+            string1 = pt('Defense requested by EMPIRE', a.requestingEmpire.name);
+            text = assignedText();
+            string2 = `(${pt('Pirate Mission Completes DATE', arg)})`;
+            typeIcon = chromeUrl('pirateMissionDefend.png');
+            break;
+        case EmpireActivityType.Smuggle: {
+            num15 = countPirateFactionsAcceptedSmugglingMission(galaxy, a.target);
+            const res = a.resourceId !== 255 ? (ctx.resource(a.resourceId)?.name ?? '') : '';
+            if (a.requestingEmpire === galaxy.independentEmpire) {
+                string1 = a.resourceId !== 255 ? pt('Smuggling requested by Independent', res, a.target.name) : pt('Smuggling requested by Independent All Resources', a.target.name);
+            } else {
+                string1 = a.resourceId !== 255 ? pt('Smuggling requested by EMPIRE', res, a.requestingEmpire.name) : pt('Smuggling requested by EMPIRE All Resources', a.requestingEmpire.name);
+            }
+            if (player.pirateEmpireBaseHabitat !== null && player.pirateMissions.containsEquivalent(a)) {
+                num15--;
+                text = pt('You and X other pirate factions accepted', num15 < 0 ? '0' : String(num15));
+            } else {
+                text = pt('X pirate factions accepted', String(num15));
+            }
+            text2 = pt('Accept Smuggling Mission');
+            string3 = `(${pt('Smuggling bonus AMOUNT', (a.price * 100.0).toFixed(1))})`;
+            string2 = `(${pt('Pirate Mission Completes DATE', arg)})`;
+            typeIcon = chromeUrl('pirateMissionSmuggle.png');
+            break;
+        }
+    }
+    const free: { x: number; y: number; seg: RowSeg }[] = [];
+    const at = (x: number, y: number, seg: RowSeg): void => {
+        free.push({ x, y, seg });
+    };
+    at(num4, num2, { kind: 'flag', empire: a.targetEmpire, w: 13, h: 8 });
+    const pic = targetPictureUrl(a.target);
+    const pictures: RowPicture[] = [];
+    if (pic.url !== null) pictures.push({ url: pic.url, size: s(16), rotate: pic.rotate, x: num6, y: num2 });
+    if (typeIcon !== null) pictures.push({ url: typeIcon, size: num10, rotate: false, x: num4, y: num5 });
+    let color = a.targetEmpire.mainColor;
+    if (a.targetEmpire === galaxy.independentEmpire || a.targetEmpire.pirateEmpireBaseHabitat !== null) color = GREY_128;
+    const num17 = pic.url !== null ? s(16) : 0;
+    at(num6 + num17 + 1, num2, txt(a.target.name, 'bold', color));
+    at(num6 + num17 + 1, num9, txt(`(${a.targetEmpire.name})`, 'small', color));
+    let num18 = num12;
+    at(num4, num13, { kind: 'flag', empire: a.requestingEmpire, w: 13, h: 8 });
+    at(num10, num18 - num3, txt(string1, 'bold', a.requestingEmpire.mainColor));
+    num18 += num7;
+    if (a.type === EmpireActivityType.Smuggle) {
+        let num19 = 0;
+        if (a.resourceId !== 255) {
+            const r = ctx.resource(a.resourceId);
+            if (r !== null) {
+                num19 = num7;
+                at(num11, num18, { kind: 'img', url: resourceIconUrl(r.pictureRef), size: num7, title: r.name });
+            }
+        }
+        at(num11 + num19 + 2, num18, txt(string3, 'regular'));
+        num18 += num7;
+    }
+    if (player.pirateEmpireBaseHabitat !== null) {
+        switch (a.type) {
+            case EmpireActivityType.Attack:
+                if (a.assignedEmpire === player && a.bidTimeRemaining <= 0) {
+                    const c = countShipsAssignedToMission(galaxy, player, a);
+                    at(num10, num18, txt(pt('X ships are attacking this target', String(c.count), String(c.firepower)), 'regular'));
+                    num18 += num8;
+                    break;
+                }
+                {
+                    const av = totalMobileMilitaryFirepowerNotAttackingDefending(player.builtObjects);
+                    at(num10, num18, txt(pt('Mission Available Forces', String(av.shipCount), String(av.firepower)), 'regular'));
+                    num18 += num6;
+                    at(num10, num18, txt(`${pt('Target Firepower')}: ${(a.target instanceof BuiltObject ? a.target.firepowerRaw : 0).toFixed(0)}`, 'regular'));
+                    num18 += num8;
+                }
+                break;
+            case EmpireActivityType.Defend:
+                if (a.assignedEmpire === player && a.bidTimeRemaining <= 0) {
+                    const c = countShipsAssignedToMission(galaxy, player, a);
+                    at(num10, num18, txt(pt('X ships are defending this target', String(c.count), String(c.firepower)), 'regular'));
+                } else {
+                    const av = totalMobileMilitaryFirepowerNotAttackingDefending(player.builtObjects);
+                    at(num10, num18, txt(pt('Mission Available Forces', String(av.shipCount), String(av.firepower)), 'regular'));
+                }
+                num18 += num8;
+                break;
+            case EmpireActivityType.Smuggle:
+                if (player.pirateMissions.containsEquivalent(a)) {
+                    const c = countShipsAssignedToMission(galaxy, player, a);
+                    at(num10, num18, txt(pt('X smugglers are performing this mission', String(c.count)), 'regular'));
+                    num18 += num6;
+                    at(num10, num18, txt(pt('Smuggling Mission Delivery Report', n0(a.playerAmountDelivered), n0(a.playerIncomeEarned)), 'regular'));
+                    num18 += num8;
+                    break;
+                }
+                at(num10, num18, txt(pt('We have X smugglers available for this mission', String(countIdleFreighters(player))), 'regular'));
+                num18 += num6;
+                if (a.resourceId !== 255) {
+                    at(num10, num18, txt(pt('Our empire has access to X sources of this resource', String(countResourceSupplyLocations(galaxy, player, a.resourceId, true))), 'regular'));
+                    num18 += num8;
+                }
+                break;
+        }
+    } else {
+        switch (a.type) {
+            case EmpireActivityType.Attack:
+                if (a.assignedEmpire !== null && a.bidTimeRemaining <= 0) {
+                    const c = countShipsAssignedToMission(galaxy, a.assignedEmpire, a);
+                    at(num10, num18, txt(pt('X ships are attacking this target', String(c.count), String(c.firepower)), 'regular'));
+                    num18 += num8;
+                }
+                break;
+            case EmpireActivityType.Defend:
+                if (a.assignedEmpire !== null && a.bidTimeRemaining <= 0) {
+                    const c = countShipsAssignedToMission(galaxy, a.assignedEmpire, a);
+                    at(num10, num18, txt(pt('X ships are defending this target', String(c.count), String(c.firepower)), 'regular'));
+                    num18 += num8;
+                }
+                break;
+            case EmpireActivityType.Smuggle:
+                at(num10, num18, txt(pt('Smuggling Mission Delivery Report For Requester', n0(a.playerAmountDelivered), n0(a.playerIncomeEarned)), 'regular'));
+                num18 += num8;
+                break;
+        }
+    }
+    const rowWidth = s(300) - 2; // ItemListCollectionPanel width (300 × factor), less the border
+    const base = { pictures, overlays: [], textX: 0, line1: [], line2: [], right: [], free };
+    if (a.assignedEmpire !== null && a.bidTimeRemaining <= 0) {
+        // 1785-1801: assigned — the assignee and the deadline (red within half a year); no "considering" line, no button.
+        at(num4, num18 + num3, { kind: 'flag', empire: a.assignedEmpire, w: 13, h: 8 });
+        at(num10, num18, txt(text, 'regular', 0xffffff, { maxWidth: rowWidth - (num + num10) }));
+        num18 += line;
+        const late = a.expiryDate - galaxyStarDate(galaxy) < REAL_SECONDS_IN_GALACTIC_YEAR * 1000.0 * 0.5;
+        at(num14, num18, txt(string2, 'small', late ? 0xff0000 : ROW_TEXT));
+        return base;
+    }
+    if (a.assignedEmpire !== null) {
+        at(num4, num18 + num3, { kind: 'flag', empire: a.assignedEmpire, w: 13, h: 8 });
+        at(num10, num18, txt(text, 'regular', 0xffffff, { maxWidth: rowWidth - (num + num10) }));
+    } else {
+        const wide = a.type === EmpireActivityType.Smuggle && player.pirateEmpireBaseHabitat !== null && player.pirateMissions.containsEquivalent(a);
+        at(num10, num18, txt(text, 'regular', 0xffffff, { maxWidth: wide ? rowWidth - num10 : rowWidth - (num + num10) }));
+    }
+    num18 += line;
+    let num24 = ctx.pirateMissionsConsidering?.get(a) ?? 0;
+    if (a.type === EmpireActivityType.Smuggle) num24 = Math.max(0, num24 - num15);
+    const considering = player.pirateEmpireBaseHabitat !== null ? pt('Other Empires Considering Pirate Mission Description', String(num24)) : pt('Empires Considering Pirate Mission Description', String(num24));
+    at(num14, num18, txt(considering, 'small'));
+    if (button === 'cancel') {
+        return { ...base, button: { text: pt('Cancel'), sub: '', w: num } };
+    }
+    if (button === 'bid' || button === 'alreadyBid') {
+        if (button === 'alreadyBid') text2 = `(${pt('Already Bidded')})`;
+        const num25 = Math.trunc(a.bidTimeRemaining / 1000);
+        const sub = a.type === EmpireActivityType.Smuggle ? '' : num25 > 0 ? `(${pt('X seconds', String(num25))})` : `(${pt('No bids yet')})`;
+        return { ...base, button: { text: text2, sub, w: num } };
+    }
+    return base;
+}
+
+/**
+ * Port of ItemListPanel.cs 728-848: a colony the pirate player controls but does not own (its Colonies list holds them:
+ * Empire.1.cs PirateReviewColoniesToControl). The planet and race pictures (and the construction-stalled icon), the name
+ * and "(Quality, system)" in the owner's colour, then the population, the resources (or "(Unknown resources)"), the
+ * player's control and — with facility control — its pirate base / fortress / criminal network pictures.
+ */
+export function pirateColonyRow(ctx: RowContext, h: Habitat): ItemRowModel {
+    const c = k(ctx);
+    const pictures: RowPicture[] = [];
+    const overlays: ItemRowModel['overlays'] = [];
+    const pic = habitatImageUrl(h);
+    if (pic) pictures.push({ url: pic, size: c.image, rotate: false, x: 5, y: 5 });
+    if (deficient(h as unknown as { manufacturingQueue: unknown })) overlays.push({ url: STALLED_URL, x: 5, y: c.n20, size: c.half });
+    const race = h.population?.dominantRace as Race | null | undefined;
+    if (race) pictures.push({ url: racePortraitUrl(race.pictureIndex), size: c.image, rotate: false, x: 5 + c.image + c.n5, y: c.n5 });
+    const textX = 5 + c.image + c.n5 + c.image + c.n5;
+    let color = ROW_TEXT;
+    if (h.empire !== null && h.empire !== ctx.galaxy.independentEmpire) color = h.empire.mainColor;
+    const desc =
+        h.category !== HabitatCategoryType.Star && h.category !== HabitatCategoryType.GasCloud
+            ? `(${pt('Quality')}: ${pct(h.quality)}, ${systemStarOf(ctx.galaxy, h)?.name ?? ''} ${pt('system')})`
+            : `(${pt('Size')}: ${(h.diameter / 10).toFixed(1)}K)`;
+    const line1: RowSeg[] = [txt(h.name, 'bold', color), txt(desc, 'small', color, { gapBefore: c.n8 })];
+    const line2: RowSeg[] = [];
+    if (race) line2.push(txt(fmtMillionsM(h.population.totalAmount), 'small'));
+    if (ctx.player.resourceMap?.checkResourcesKnown(h)) {
+        const res = resourceSegs(ctx, h, c.half, 1);
+        if (res.length > 0 && line2.length > 0) res[0] = { ...res[0], gapBefore: c.n6 };
+        line2.push(...res);
+    } else {
+        line2.push(txt(`(${pt('Unknown resources')})`, 'small', ROW_TEXT, { gapBefore: line2.length > 0 ? c.n6 : 0 }));
+    }
+    const byFaction = h.pirateColonyControl.getByFaction(ctx.player.empireId);
+    if (byFaction !== null) {
+        line2.push(txt(`${pt('Control')}: ${pct(byFaction.controlLevel)}`, 'small', ROW_TEXT, { gapBefore: line2.length > 0 ? c.n6 : 0 }));
+        if (byFaction.hasFacilityControl && h.facilities !== null) {
+            for (const fac of h.facilities) {
+                if (fac === null) continue;
+                const t = fac.type;
+                if (t === PlanetaryFacilityType.PirateBase || t === PlanetaryFacilityType.PirateFortress || t === PlanetaryFacilityType.PirateCriminalNetwork) {
+                    line2.push(...img(facilityImageUrl(fac.def.pictureRef), c.n15, { gapBefore: c.n5, title: fac.name }));
+                }
+            }
+        }
+    }
+    return { pictures, overlays, textX, line1, line2, right: [] };
+}
+
 /** Port of ItemListPanel.cs method_6: the row model of one item of panel `id`. */
 export function itemRowModel(ctx: RowContext, id: ItemPanelId, item: PanelItem): ItemRowModel {
     if (item instanceof ShipGroup) return shipGroupRow(ctx, item);
+    if (item instanceof EmpireActivity) return missionRow(ctx, item);
     if (item instanceof Habitat) {
+        // ItemListPanel.cs 728: the pirate player's controlled colonies (not its own).
+        if (ctx.player.pirateEmpireBaseHabitat !== null && item.empire !== ctx.player && (item.population?.items.length ?? 0) > 0) return pirateColonyRow(ctx, item);
         const owned = item.owner != null && item.owner !== ctx.galaxy.independentEmpire && (item.population?.totalAmount ?? 0) > 0;
         if (owned) return colonyRow(ctx, item);
         return locationRow(ctx, item, id === 'potentialColonies', id === 'potentialMining');
@@ -785,6 +1182,11 @@ export function itemRowModel(ctx: RowContext, id: ItemPanelId, item: PanelItem):
 /** What a click on an item does: the object to select (method_208) and whether to move the view + zoom (a double
  *  click: method_157 + method_4(1.0)). A Character selects its location; a GalaxyLocation its related object. */
 export function itemClickTarget(item: PanelItem): { select: Habitat | BuiltObject | ShipGroup | null; centre: { x: number; y: number } | null } {
+    // Main.Part12.cs 2593-2599: an EmpireActivity selects (and on a double click shows) its target.
+    if (item instanceof EmpireActivity) {
+        const t = item.target;
+        return { select: t, centre: t !== null ? { x: t.xpos, y: t.ypos } : null };
+    }
     if (item instanceof ShipGroup) return { select: item, centre: item.leadShip ? { x: item.leadShip.xpos, y: item.leadShip.ypos } : null };
     if (item instanceof Habitat) return { select: item, centre: { x: item.xpos, y: item.ypos } };
     if (item instanceof BuiltObject) return { select: item, centre: { x: item.xpos, y: item.ypos } };

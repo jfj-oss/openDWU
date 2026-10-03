@@ -297,13 +297,16 @@ export function empireRaces(empire: Empire): { race: Race; millions: number }[] 
 
 /** The player's ambassador at `empire`'s capital (Characters.FindCharactersAtLocationNotTransferring(capital,
  *  Ambassador)[0]): role, name and the diplomacy bonus ("+#0%;-#0%", "?%" until the bonuses are known). */
-export function ambassadorAt(player: Empire, empire: Empire): { role: string; name: string; bonus: string } | null {
+export function ambassadorAt<C extends { role: CharacterRole; location: unknown; transferDestination: unknown; name: string; diplomacy: number; bonusesKnown: boolean }>(
+    player: Empire,
+    empire: Empire,
+): { role: string; name: string; bonus: string; character: C } | null {
     const capital = empire.capital;
     if (capital == null) return null;
-    for (const c of (player.characters ?? []) as { role: CharacterRole; location: unknown; transferDestination: unknown; name: string; diplomacy: number; bonusesKnown: boolean }[]) {
+    for (const c of (player.characters ?? []) as unknown as C[]) {
         if (c == null || c.role !== CharacterRole.Ambassador || c.location !== capital || c.transferDestination != null) continue;
         const pct = Math.round(c.diplomacy);
-        return { role: 'Ambassador', name: c.name, bonus: c.bonusesKnown ? `${pct >= 0 ? '+' : '-'}${Math.abs(pct)}%` : '?%' };
+        return { role: 'Ambassador', name: c.name, bonus: c.bonusesKnown ? `${pct >= 0 ? '+' : '-'}${Math.abs(pct)}%` : '?%', character: c };
     }
     return null;
 }

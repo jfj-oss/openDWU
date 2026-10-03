@@ -12,8 +12,8 @@
 // TODO(port): the other detail tabs (Cargo / Components / Docking Bays / Troops / Weapons, Main.Part11.cs method_170-176),
 //             the Set Fleet combo, Scrap selected (btnBuiltObjectScrapSelected_Click) and the manufacturing plants grids
 //             (duExoPvEoA / ctlConstructionYardManufacturerWaitQueue, laid out below the visible tab page in method_169).
-// TODO(port): pirate purchasing at a controlled colony / private construction at a pirate base (method_169 empire /
-//             allowPrivateConstruction overrides).
+// The purchaser is bound as method_169 binds it (purchaserBinding): a pirate player buys at a colony it controls as itself,
+// and private ships (freighters, mining ships / stations, passenger ships) too at its own bases (allowPrivateConstruction).
 
 import './constructionYards.css';
 import type { Empire } from '../../sim/empire';
@@ -299,6 +299,39 @@ export function purchaserDesigns(designs: readonly Design[], site: ConstructionS
         out.push(design);
     }
     return out;
+}
+
+/** How method_169 binds the purchaser (ConstructionYardPurchaser.BindData's empire / allowPrivateConstruction), or null when
+ *  it is not bound. */
+export interface PurchaserBinding {
+    /** The empire whose designs and funds the purchaser uses. */
+    empire: Empire;
+    /** !allowPrivateConstruction. */
+    stateConstructionOnly: boolean;
+}
+
+/**
+ * Port of Main.Part11.cs 3366 method_169's purchaser binding. `shipsAndBases` is bool_28: the Ships and Bases / Construction
+ * Yards window (a site the player does not own is not bound; a mobile yard — TopSpeed > 0 — disables the purchaser); else the
+ * Colonies window's Construction Yard tab (the colony's owner). Either way a pirate player that controls the colony
+ * (PirateColonyControlList.CheckFactionHasControl) buys there as itself, and in the Ships and Bases window it may also
+ * buy private ships at its own bases (allowPrivateConstruction = pirate && the site is a Base).
+ */
+export function purchaserBinding(player: Empire, site: ConstructionSite, shipsAndBases: boolean): PurchaserBinding | null {
+    const isPirate = player.pirateEmpireBaseHabitat !== null;
+    if (shipsAndBases) {
+        const so = site.kind === 'colony' ? site.habitat : site.builtObject;
+        if (so.empire !== player) return null;
+        if (site.kind === 'builtObject' && site.builtObject.topSpeed > 0) return null;
+        let empire = so.empire as Empire;
+        if (isPirate && site.kind === 'colony' && site.habitat.pirateColonyControl.checkFactionHasControl(player)) empire = player;
+        const allowPrivateConstruction = isPirate && site.kind === 'builtObject' && site.builtObject.role === BuiltObjectRole.Base;
+        return { empire, stateConstructionOnly: !allowPrivateConstruction };
+    }
+    if (site.kind !== 'colony') return null;
+    let empire2 = site.habitat.empire as Empire | null;
+    if (isPirate && site.habitat.pirateColonyControl.checkFactionHasControl(player)) empire2 = player;
+    return empire2 === null ? null : { empire: empire2, stateConstructionOnly: true };
 }
 
 /** The purchaser combo's item text: "<sub-role>: <design> (<price> credits)". */
@@ -939,7 +972,9 @@ function createConstructionYards(opts: ConstructionYardsOptions): OpenState {
 
     function refreshPurchaser(): void {
         const site = selected;
-        const list = site === null || (site.kind === 'builtObject' && site.builtObject.topSpeed > 0) ? [] : purchaserDesigns(empire.designs, site, purchaserChecks(empire));
+        // method_169: the binding's empire and allowPrivateConstruction (a pirate's own bases build private ships too).
+        const binding = site === null ? null : purchaserBinding(empire, site, true);
+        const list = binding === null || binding.empire !== empire ? [] : purchaserDesigns(binding.empire.designs, site!, purchaserChecks(binding.empire), binding.stateConstructionOnly);
         const prices = list.map((d) => d.calculateCurrentPurchasePrice(galaxy));
         const key = list.map((d, i) => `${objectId(d)}:${Math.trunc(prices[i])}`).join('|') + `@${site ? objectId(siteTarget(site)) : ''}`;
         if (key !== designsKey) {
