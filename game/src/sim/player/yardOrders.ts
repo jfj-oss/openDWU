@@ -13,6 +13,8 @@ import { newBuiltObjectShouldBeAutomated, purchaseNewBuiltObject } from '../cons
 import { builtObjectCompleteTeardown } from '../combat/teardown';
 import { PirateIncomeType } from '../pirates/pirateEconomy';
 import { galaxyStarDate } from '../tick/simTime';
+import { calculateBuiltObjectLootingValue, empireColonyIncomeFactor, empireLootingFactor } from '../combat/damage';
+import { applyCorruptionToIncome } from '../logistics/orders';
 
 function queueOf(site: BuiltObject | Habitat): ConstructionQueue | null {
     return (site.constructionQueue as ConstructionQueue | null) ?? null;
@@ -68,3 +70,57 @@ export function scrapShipUnderConstruction(galaxy: Galaxy, site: BuiltObject | H
     return true;
 }
 
+
+/**
+ * Main.Part3.cs 403 btnBuiltObjectScrapSelected_Click (after the "Scrap selected ships and bases?" confirmation), in the
+ * source's order per selected ship / base: take it off the slipway or out of the wait queue of its parent habitat's
+ * yards; tear down every ship on its own slipways and in its own wait queue (CompleteTeardown(galaxy, true)) and clear
+ * the queue; a pirate player is paid the looting value (× ColonyIncomeFactor × LootingFactor, after corruption,
+ * booked as Looting income); then CompleteTeardown(galaxy). Returns how many were scrapped. The source scraps whatever
+ * is selected; here only `empire`'s own (or its private) ships and bases, the only ones its lists can select.
+ */
+export function scrapBuiltObjects(galaxy: Galaxy, empire: Empire, ships: readonly (BuiltObject | null)[]): number {
+    let n = 0;
+    for (let i = 0; i < ships.length; i++) {
+        const builtObject = ships[i];
+        if (builtObject == null || builtObject.hasBeenDestroyed) continue;
+        if (builtObject.empire !== empire && builtObject.actualEmpire !== empire) continue;
+        const parentQueue = builtObject.parentHabitat !== null ? queueOf(builtObject.parentHabitat) : null;
+        if (parentQueue !== null) {
+            for (const constructionYard of parentQueue.constructionYards ?? []) {
+                if (constructionYard != null && constructionYard.shipUnderConstruction === builtObject) constructionYard.shipUnderConstruction = null;
+            }
+            const wait = parentQueue.constructionWaitQueue;
+            if (wait !== null) {
+                const k = wait.indexOf(builtObject);
+                if (k >= 0) wait.splice(k, 1);
+            }
+        }
+        const ownQueue = queueOf(builtObject);
+        if (ownQueue !== null) {
+            for (const constructionYard2 of ownQueue.constructionYards ?? []) {
+                if (constructionYard2 != null && constructionYard2.shipUnderConstruction !== null) {
+                    builtObjectCompleteTeardown(galaxy, constructionYard2.shipUnderConstruction, true);
+                    constructionYard2.shipUnderConstruction = null;
+                }
+            }
+            const wait = ownQueue.constructionWaitQueue;
+            if (wait !== null) {
+                const builtObjectList = wait.slice();
+                for (const item of builtObjectList) if (item != null) builtObjectCompleteTeardown(galaxy, item, true);
+                wait.length = 0;
+            }
+        }
+        if (empire.pirateEmpireBaseHabitat !== null) {
+            let num2 = calculateBuiltObjectLootingValue(builtObject);
+            num2 *= empireColonyIncomeFactor(empire);
+            num2 *= empireLootingFactor(empire);
+            num2 = applyCorruptionToIncome(empire, num2);
+            empire.stateMoney += num2;
+            empire.pirateEconomy.performIncome(num2, PirateIncomeType.Looting, galaxyStarDate(galaxy));
+        }
+        builtObjectCompleteTeardown(galaxy, builtObject);
+        n++;
+    }
+    return n;
+}

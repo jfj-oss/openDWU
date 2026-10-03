@@ -73,7 +73,7 @@ import { generateDesignFromSpec } from './designGeneration';
 import { selectRandomRace } from './pirates';
 import { gameText } from './colonyTick';
 import { baconSettings } from './data/baconSettings';
-import { formatGameTextNow } from './textResolver';
+import { formatGameTextNow, formatNet, tryGetText } from './textResolver';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Constants
@@ -832,6 +832,48 @@ export function checkRuinBonuses(ruin: Ruin | null): boolean {
             ruin.bonusResearchWeapons > 0.0 ||
             ruin.bonusWealth > 0.0)
     );
+}
+
+/** .NET custom numeric formats "#%" / "+#%": the percent rounded half away from zero, "#" printing nothing for 0. */
+export function formatNetPercentHash(value: number, plus: boolean): string {
+    // .NET formats a double from its 15 significant digits, then rounds the percent half away from zero.
+    const digits = Math.round(Number((Math.abs(value) * 100).toPrecision(15)));
+    return `${value < 0 && digits > 0 ? '-' : ''}${plus ? '+' : ''}${digits === 0 ? '' : String(digits)}%`;
+}
+
+/** TextResolver.GetText(tag) with GameText's "\n" escapes as newlines; the English fallback for headless tests. */
+function ruinText(tag: string, english: string): string {
+    return (tryGetText(tag) ?? english).replace(/\\n/g, '\n');
+}
+
+/**
+ * Galaxy.6.cs 20 GenerateRuinAbilitiesSummary(ruin): "(Not Investigated - Details Unknown)" unless the player has
+ * encountered the ruin and it is a research-unlock ruin or has no benefit left for the player; then the development
+ * bonus and each empire-wide bonus, formatted and concatenated exactly as the source does (the defensive text loses
+ * its last two characters, the others follow one another without a separator). No Rnd.
+ */
+export function generateRuinAbilitiesSummary(galaxy: Galaxy, ruin: Ruin): string {
+    let empty = '';
+    const flag = checkRuinsHaveBenefit(galaxy, ruin, galaxy.playerEmpire);
+    if ((!ruin.playerEmpireEncountered || ruin.type !== RuinType.UnlockResearchProject) && (!ruin.playerEmpireEncountered || flag)) {
+        empty += `(${ruinText('Not Investigated - Details Unknown', 'Not Investigated - Details Unknown')})`;
+    } else {
+        empty += `${formatNet(ruinText('X Development bonus for colony', '{0} Development bonus for colony'), [formatNetPercentHash(ruin.developmentBonus, true)])}\n\n`;
+        if (ruin.bonusDefensive > 0.0) {
+            empty += formatNet(
+                ruinText('Ruins Bonus Defensive', 'Any troops trained at this {0} gain a {1} strength bonus, as well as being trained {1} faster.\\n\\nAdditionally any forces defending this {0} from invasion gain a {1} combat bonus.\\n\\n'),
+                [ruinText('Colony', 'Colony').toLowerCase(), formatNetPercentHash(ruin.bonusDefensive, false)],
+            );
+            empty = empty.substring(0, empty.length - 2);
+        }
+        if (ruin.bonusDiplomacy > 0.0) empty += formatNet(ruinText('Ruins Bonus Diplomacy', 'Empire-wide Diplomacy bonus of {0}'), [formatNetPercentHash(ruin.bonusDiplomacy, true)]);
+        if (ruin.bonusHappiness > 0.0) empty += formatNet(ruinText('Ruins Bonus Happiness', 'Empire-wide Happiness bonus of {0}'), [formatNetPercentHash(ruin.bonusHappiness, true)]);
+        if (ruin.bonusResearchEnergy > 0.0) empty += formatNet(ruinText('Ruins Bonus Energy Research', 'Empire-wide Energy Research bonus of {0}'), [formatNetPercentHash(ruin.bonusResearchEnergy, true)]);
+        if (ruin.bonusResearchHighTech > 0.0) empty += formatNet(ruinText('Ruins Bonus HighTech Research', 'Empire-wide HighTech Research bonus of {0}'), [formatNetPercentHash(ruin.bonusResearchHighTech, true)]);
+        if (ruin.bonusResearchWeapons > 0.0) empty += formatNet(ruinText('Ruins Bonus Weapons Research', 'Empire-wide Weapons Research bonus of {0}'), [formatNetPercentHash(ruin.bonusResearchWeapons, true)]);
+        if (ruin.bonusWealth > 0.0) empty += formatNet(ruinText('Ruins Bonus Colony Income', 'Empire-wide Colony Income bonus of {0}'), [formatNetPercentHash(ruin.bonusWealth, true)]);
+    }
+    return empty;
 }
 
 /** Galaxy.5.cs 3951 CheckRuinsHaveBenefit(ruin, empire). No Rnd. */

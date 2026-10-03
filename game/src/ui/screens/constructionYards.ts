@@ -352,6 +352,109 @@ export const YARDS_LAYOUT = {
 } as const;
 
 // -------------------------------------------------------------------------------------------------------------------
+// ConstructionYardPurchaser (shared with the Colonies screen's Construction Yard tab)
+// -------------------------------------------------------------------------------------------------------------------
+
+/** A stable id per object (combo keys). */
+const objectIds = new WeakMap<object, number>();
+let nextObjectId = 1;
+function objectId(o: object): number {
+    let id = objectIds.get(o);
+    if (id === undefined) {
+        id = nextObjectId++;
+        objectIds.set(o, id);
+    }
+    return id;
+}
+
+export interface YardPurchaser {
+    /** The panel (place it where the screen's layout puts the purchaser). */
+    readonly el: HTMLDivElement;
+    /**
+     * BindData(empire, queue, colony, galaxy, allowPrivateConstruction): list the designs `empire` can build at `site`
+     * (none for null), refresh the funds; `enabled` = the panel's Enabled.
+     */
+    bind(site: ConstructionSite | null, enabled: boolean): void;
+}
+
+/**
+ * Port of DistantWorlds.Controls ConstructionYardPurchaser.cs (DoLayout: "Available Funds" at (10, 8) and the funds at
+ * (105, 8); cmbDesigns (10, 27) Width - 20 × 21; btnPurchase (10, 56) Width - 20 × 25; PopulateDesigns;
+ * btnPurchase_Click: the automation prompt, then FlashAvailableFunds when unaffordable, else the purchase), a
+ * `width` × `height` GradientPanel. The purchase is the 'yardPurchase' command; `onPurchased` is PurchaseMade.
+ */
+export function yardPurchaser(empire: Empire, width: number, height: number, onPurchased: () => void): YardPurchaser {
+    const galaxy = empire.galaxy as Galaxy;
+    const panel = gradientPanel({ corners: { tl: true, tr: true, br: true, bl: true }, radius: 20, className: 'cy-purchaser' });
+    panel.style.width = `${width}px`;
+    panel.style.height = `${height}px`;
+    dropText(panel, gt('Available Funds'), 10, 8, { color: COLORS.label, size: FONT.small });
+    const funds = dropText(panel, '', 105, 8, { color: COLORS.label, bold: true, size: FONT.small });
+    let site: ConstructionSite | null = null;
+    let designs: Design[] = [];
+    let designsKey = '';
+    let enabled = false;
+    // cmbDesigns_SelectedIndexChanged: ClearAvailableFunds.
+    const designBox = dropDown([], '', () => funds.classList.remove('cy-funds-short'), 'Design to build at this yard');
+    panel.appendChild(place(designBox, 10, 27, width - 20, 21));
+    const btnPurchase = glassButton(gt('Purchase'), { onClick: () => void purchase() });
+    panel.appendChild(place(btnPurchase, 10, 56, width - 20, 25));
+
+    async function purchase(): Promise<void> {
+        const at = site;
+        const design = designs[Number(designBox.value)];
+        if (!at || !design) return;
+        // ConstructionYardPurchaser.btnPurchase_Click: the automation prompt first.
+        const task = purchaseAutomationTask(empire, design);
+        if (task !== null) {
+            const b = await messageBox({
+                caption: gt(task),
+                text: `${gt(task)} is automated. Turn off automation so your order is not overridden?`,
+                buttons: ['Turn off', 'Leave on'],
+                icon: 'question',
+            });
+            if (b === 'Turn off') issuePlayerCommand(galaxy, empire, 'automationOff', [task]);
+        }
+        if (design.calculateCurrentPurchasePrice(galaxy) > empire.stateMoney) {
+            funds.classList.add('cy-funds-short'); // FlashAvailableFunds
+            return;
+        }
+        issuePlayerCommand(galaxy, empire, 'yardPurchase', [design, siteTarget(at)], (bo) => {
+            if (bo === null) showToast(`${design.name}: cannot be built at ${siteTarget(at).name}`);
+            setText(funds, gt('X credits', Math.trunc(empire.stateMoney).toFixed(0)));
+            onPurchased();
+        });
+    }
+
+    function bind(next: ConstructionSite | null, isEnabled: boolean): void {
+        site = next;
+        enabled = isEnabled;
+        const list = next === null ? [] : purchaserDesigns(empire.designs, next, purchaserChecks(empire));
+        const prices = list.map((d) => d.calculateCurrentPurchasePrice(galaxy));
+        const key = list.map((d, i) => `${objectId(d)}:${Math.trunc(prices[i])}`).join('|') + `@${next ? objectId(siteTarget(next)) : ''}`;
+        if (key !== designsKey) {
+            const prev = designs[Number(designBox.value)];
+            designsKey = key;
+            designs = list;
+            designBox.replaceChildren(...list.map((d, i) => {
+                const o = el('option', '', purchaserLabel(d, prices[i]));
+                o.value = String(i);
+                return o;
+            }));
+            const keep = prev ? list.indexOf(prev) : -1;
+            designBox.value = String(keep >= 0 ? keep : 0);
+        }
+        setText(funds, gt('X credits', Math.trunc(empire.stateMoney).toFixed(0)));
+        const canBuy = enabled && next !== null && designs.length > 0;
+        btnPurchase.disabled = !canBuy;
+        designBox.disabled = !canBuy;
+        panel.classList.toggle('cy-disabled', !enabled);
+    }
+
+    return { el: panel, bind };
+}
+
+// -------------------------------------------------------------------------------------------------------------------
 // The screen
 // -------------------------------------------------------------------------------------------------------------------
 
@@ -384,18 +487,6 @@ export function toggleConstructionYards(opts: ConstructionYardsOptions): void {
 /** Close the Construction Yards screen (no-op when closed). */
 export function closeConstructionYards(): void {
     open?.close();
-}
-
-/** A stable id per object (combo keys). */
-const objectIds = new WeakMap<object, number>();
-let nextObjectId = 1;
-function objectId(o: object): number {
-    let id = objectIds.get(o);
-    if (id === undefined) {
-        id = nextObjectId++;
-        objectIds.set(o, id);
-    }
-    return id;
 }
 
 /** Empire flag pictures (async composites), cached by empire. */

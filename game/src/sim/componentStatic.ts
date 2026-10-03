@@ -676,3 +676,19 @@ export function buildComponentStatic(gameData: GameData, opts: BuildComponentSta
 
     return componentStatic;
 }
+
+/**
+ * Port of Galaxy.3.cs 334 ResolveComponentsThatUseResource(resource): every component definition (in
+ * ComponentDefinitionsStatic order, skipping component 106) with a required resource of this id — once per matching
+ * requirement, as the source adds it inside the requirement loop. No Rnd.
+ */
+export function resolveComponentsThatUseResource(definitions: readonly ComponentDefinition[], resourceId: number): ComponentDefinition[] {
+    const componentList: ComponentDefinition[] = [];
+    for (const componentDefinition of definitions) {
+        if (componentDefinition.componentId === 106) continue;
+        for (const requiredResource of componentDefinition.resourceRequirements) {
+            if (requiredResource.resourceId === resourceId) componentList.push(componentDefinition);
+        }
+    }
+    return componentList;
+}

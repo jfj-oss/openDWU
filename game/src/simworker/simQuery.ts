@@ -10,7 +10,8 @@
 // command log and state stay the in-thread ones. The callback then runs on the main thread one round trip later, with
 // the result's objects resolved to replica objects (by sync id).
 //
-// What belongs here: the UI-side sim calls that change sim state the way the C# UI does — galaxy.rnd draws, the
+// What belongs here: the UI-side sim calls that change sim state the way the C# UI does — galaxy.rnd draws (also the
+// left sidebar's Enemy Targets list, IdentifyEmpireStrikePoints), the
 // Empire.latestDesigns cache the design lookups of the menus fill, the money panel's CheckAgeVariableIncome
 // (treasury.ts moneyPanelIncome: Empire.useAveragedVariableIncome, the variable income ageing). On a replica those
 // writes would be lost (the sync overwrites them, the worker never sees them). Like in-thread, a query is not journaled.
@@ -27,6 +28,7 @@ import { habitatDispatchOptions } from '../sim/player/habitatDispatch';
 import { moneyPanelIncome } from '../sim/treasury';
 import { listProposals } from '../sim/player/diplomacyProposals';
 import { calculatePirateProtectionPricePerMonth } from '../sim/pirates/pirateRelationsAI';
+import { enemyTargetObjects } from '../sim/player/enemyTargets';
 
 export const SIM_QUERIES = {
     /**
@@ -42,6 +44,9 @@ export const SIM_QUERIES = {
     /** The top-right money panel's Cashflow / Bonus Income (treasury.ts moneyPanelIncome; Main.Part11.cs 832 method_126,
      *  which runs CheckAgeVariableIncome on the empire). */
     moneyPanel: (galaxy: Galaxy, empire: Empire) => moneyPanelIncome(galaxy, empire),
+    /** The left sidebar's Enemy Targets list (player/enemyTargets.ts; Main.Part11.cs 5081 method_205, which draws
+     *  galaxy.rnd in IdentifyEmpireStrikePoints each time the panel is rebound). */
+    enemyTargets: (galaxy: Galaxy, empire: Empire) => enemyTargetObjects(galaxy, empire),
     // [chunk 7] diplomacy (docs/sim-worker.md §9 chunk 7): sim reads the diplomacy screen shows that obtain records.
     /** The talk panel's conversation options (diplomacyProposals.ts listProposals; Main.Part9.cs:46 method_238 obtains
      *  the diplomatic / pirate relations it lists — Obtain* adds a NotMet record). */
